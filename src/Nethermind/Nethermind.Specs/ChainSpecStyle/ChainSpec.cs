@@ -11,7 +11,7 @@ namespace Nethermind.Specs.ChainSpecStyle
 {
     /// <summary>
     /// https://github.com/ethereum/wiki/wiki/Ethereum-Chain-Spec-Format
-    /// https://wiki.parity.io/Chain-specification 
+    /// https://wiki.parity.io/Chain-specification
     /// </summary>
     [DebuggerDisplay("{Name}, ChainId = {ChainId}")]
     public class ChainSpec
@@ -39,7 +39,7 @@ namespace Nethermind.Specs.ChainSpecStyle
 
         public EthashParameters Ethash { get; set; }
 
-        public ChainParameters Parameters { get; set; }
+        public ChainParameters Parameters { get; set; } = new();
 
         public Dictionary<Address, ChainSpecAllocation> Allocations { get; set; }
 

@@ -31,6 +31,7 @@ using Nethermind.TxPool;
 using Nethermind.Wallet;
 using Newtonsoft.Json;
 using Nethermind.Config;
+using Nethermind.Facade.Multicall;
 using Nethermind.Synchronization.ParallelSync;
 
 namespace Nethermind.JsonRpc.Test.Modules

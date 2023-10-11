@@ -94,10 +94,8 @@ namespace Nethermind.Facade.Test.Proxy
         public async Task eth_multicall_should_invoke_client_method_even_empty()
         {
             MultiCallPayload<CallTransaction> payload = new();
-            var blockParameter = BlockParameterModel.Latest;
+            BlockParameterModel blockParameter = BlockParameterModel.Latest;
             await _proxy.eth_multicallV1(payload, blockParameter);
-
-            var calls = _client.ReceivedCalls().ToList();
             await _client.Received().SendAsync<IReadOnlyList<MultiCallBlockResult>>(nameof(_proxy.eth_multicallV1),
                 payload, blockParameter.Type);
         }
@@ -107,15 +105,12 @@ namespace Nethermind.Facade.Test.Proxy
         {
             MultiCallPayload<CallTransaction> payload = new()
             {
-                BlockStateCalls = new BlockStateCall<CallTransaction>[] { },
+                BlockStateCalls = Array.Empty<BlockStateCall<CallTransaction>>(),
                 TraceTransfers = true
             };
 
-            var blockParameter = BlockParameterModel.Latest;
-
+            BlockParameterModel blockParameter = BlockParameterModel.Latest;
             await _proxy.eth_multicallV1(payload, blockParameter);
-
-            var calls = _client.ReceivedCalls().ToList();
             await _client.Received().SendAsync<IReadOnlyList<MultiCallBlockResult>>(nameof(_proxy.eth_multicallV1),
                  payload, blockParameter.Type);
         }

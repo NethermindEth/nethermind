@@ -5,10 +5,9 @@ using System;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
-using Nethermind.Consensus.Comparers;
+using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
 using Nethermind.Db.Blooms;
@@ -19,32 +18,25 @@ using Nethermind.State;
 using Nethermind.State.Repositories;
 using Nethermind.Trie.Pruning;
 
-namespace Nethermind.Consensus.Processing;
+namespace Nethermind.Facade.Multicall;
 
 public class MultiCallReadOnlyBlocksProcessingEnv : ReadOnlyTxProcessingEnvBase, IDisposable
 {
-    private readonly ITrieStore? _trieStore;
+    private readonly ITrieStore _trieStore;
     private readonly ILogManager? _logManager;
     private readonly IBlockValidator _blockValidator;
     public ISpecProvider SpecProvider { get; }
-    public IMultiCallVirtualMachine VirtualMachine { get; }
+    public IVirtualMachine VirtualMachine { get; }
+    public OverridableCodeInfoRepository CodeInfoRepository { get; }
 
-    //We need ability to get many instances that do not conflict in terms of editable tmp storage - thus we implement env cloning
-    public static MultiCallReadOnlyBlocksProcessingEnv Create(bool traceTransfers, IReadOnlyDbProvider? readOnlyDbProvider,
-        ISpecProvider? specProvider,
-        ILogManager? logManager
-        )
+    // We need ability to get many instances that do not conflict in terms of editable tmp storage - thus we implement env cloning
+    public static MultiCallReadOnlyBlocksProcessingEnv Create(
+        bool traceTransfers,
+        IReadOnlyDbProvider readOnlyDbProvider,
+        ISpecProvider specProvider,
+        ILogManager? logManager = null)
     {
-        if (specProvider == null)
-        {
-            throw new ArgumentNullException(nameof(specProvider));
-        }
-        if (readOnlyDbProvider == null)
-        {
-            throw new ArgumentNullException(nameof(readOnlyDbProvider));
-        }
-
-        ReadOnlyDbProvider? dbProvider = new(readOnlyDbProvider, true);
+        ReadOnlyDbProvider dbProvider = new(readOnlyDbProvider, true);
         TrieStore trieStore = new(readOnlyDbProvider.StateDb, logManager);
         BlockTree blockTree = new(readOnlyDbProvider,
             new ChainLevelInfoRepository(readOnlyDbProvider.BlockInfosDb),
@@ -62,32 +54,25 @@ public class MultiCallReadOnlyBlocksProcessingEnv : ReadOnlyTxProcessingEnvBase,
             logManager);
     }
 
-    public MultiCallReadOnlyBlocksProcessingEnv Clone(bool traceTransfers)
-    {
-        return Create(traceTransfers, DbProvider, SpecProvider, _logManager);
-    }
+    public MultiCallReadOnlyBlocksProcessingEnv Clone(bool traceTransfers) =>
+        Create(traceTransfers, DbProvider, SpecProvider, _logManager);
 
     private MultiCallReadOnlyBlocksProcessingEnv(
         bool traceTransfers,
-        IReadOnlyDbProvider? readOnlyDbProvider,
-        ITrieStore? trieStore,
-        IBlockTree? blockTree,
-        ISpecProvider? specProvider,
-        ILogManager? logManager) : base(readOnlyDbProvider, trieStore, blockTree,
-        logManager)
+        IReadOnlyDbProvider readOnlyDbProvider,
+        ITrieStore trieStore,
+        IBlockTree blockTree,
+        ISpecProvider specProvider,
+        ILogManager? logManager = null)
+        : base(readOnlyDbProvider, trieStore, blockTree, logManager)
     {
         _trieStore = trieStore;
         _logManager = logManager;
         SpecProvider = specProvider;
 
-        if (traceTransfers)
-        {
-            VirtualMachine = new MultiCallVirtualMachine<MultiCallDoTraceTransfers>(BlockhashProvider, specProvider, logManager);
-        }
-        else
-        {
-            VirtualMachine = new MultiCallVirtualMachine<MultiCallDoNotTraceTransfers>(BlockhashProvider, specProvider, logManager);
-        }
+        CodeInfoRepository = new OverridableCodeInfoRepository(new CodeInfoRepository());
+
+        VirtualMachine = new VirtualMachine(BlockhashProvider, specProvider, CodeInfoRepository, logManager);
 
         HeaderValidator headerValidator = new(
             BlockTree,
@@ -95,7 +80,7 @@ public class MultiCallReadOnlyBlocksProcessingEnv : ReadOnlyTxProcessingEnvBase,
             SpecProvider,
             _logManager);
 
-        BlockValidator? blockValidator = new(
+        BlockValidator blockValidator = new(
             new TxValidator(SpecProvider.ChainId),
             headerValidator,
             Always.Valid,
@@ -107,7 +92,7 @@ public class MultiCallReadOnlyBlocksProcessingEnv : ReadOnlyTxProcessingEnvBase,
 
     public IBlockProcessor GetProcessor()
     {
-        TransactionProcessor? transactionProcessor = new(SpecProvider, StateProvider, VirtualMachine, _logManager);
+        TransactionProcessor transactionProcessor = new(SpecProvider, StateProvider, VirtualMachine, CodeInfoRepository, _logManager);
 
         return new BlockProcessor(SpecProvider,
             _blockValidator,
@@ -121,7 +106,7 @@ public class MultiCallReadOnlyBlocksProcessingEnv : ReadOnlyTxProcessingEnvBase,
 
     public void Dispose()
     {
-        _trieStore?.Dispose();
+        _trieStore.Dispose();
         DbProvider.Dispose();
     }
 }

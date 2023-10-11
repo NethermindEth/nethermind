@@ -126,7 +126,7 @@ public class BlockValidator : IBlockValidator
     /// <param name="receipts">List of tx receipts from the processed block (required only for better diagnostics when the receipt root is invalid).</param>
     /// <param name="suggestedBlock">Block received from the network - unchanged.</param>
     /// <returns><c>true</c> if the <paramref name="processedBlock"/> is valid; otherwise, <c>false</c>.</returns>
-    public virtual bool ValidateProcessedBlock(Block processedBlock, TxReceipt[] receipts, Block suggestedBlock)
+    public bool ValidateProcessedBlock(Block processedBlock, TxReceipt[] receipts, Block suggestedBlock)
     {
         bool isValid = processedBlock.Header.Hash == suggestedBlock.Header.Hash;
         if (!isValid)

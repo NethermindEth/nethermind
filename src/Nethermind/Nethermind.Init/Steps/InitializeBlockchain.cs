@@ -217,15 +217,19 @@ namespace Nethermind.Init.Steps
             BlockhashProvider blockhashProvider = new(
                 getApi.BlockTree, getApi.LogManager);
 
+            CodeInfoRepository codeInfoRepository = new();
+
             VirtualMachine virtualMachine = new(
                 blockhashProvider,
                 getApi.SpecProvider,
+                codeInfoRepository,
                 getApi.LogManager);
 
             _api.TransactionProcessor = new TransactionProcessor(
                 getApi.SpecProvider,
                 worldState,
                 virtualMachine,
+                codeInfoRepository,
                 getApi.LogManager);
 
             InitSealEngine();

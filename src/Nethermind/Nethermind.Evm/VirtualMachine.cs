@@ -20,6 +20,7 @@ using Nethermind.State;
 using System.Diagnostics.CodeAnalysis;
 using System.Diagnostics;
 using System.Runtime.Intrinsics;
+using Nethermind.Core.Collections;
 using static Nethermind.Evm.VirtualMachine;
 using static System.Runtime.CompilerServices.Unsafe;
 
@@ -33,41 +34,24 @@ namespace Nethermind.Evm;
 
 using System.Linq;
 using Int256;
-using Microsoft.Extensions.Logging;
 
 public class VirtualMachine : IVirtualMachine
 {
     public const int MaxCallDepth = 1024;
 
-    protected readonly IVirtualMachine _evm;
+    private readonly IVirtualMachine _evm;
 
     public VirtualMachine(
         IBlockhashProvider? blockhashProvider,
         ISpecProvider? specProvider,
+        ICodeInfoRepository codeInfoRepository,
         ILogManager? logManager)
     {
-        var logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
-        _evm = CreateVirtualMachine(blockhashProvider, specProvider, logger);
+        ILogger logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+        _evm = logger.IsTrace
+            ? new VirtualMachine<IsTracing>(blockhashProvider, specProvider, codeInfoRepository, logger)
+            : new VirtualMachine<NotTracing>(blockhashProvider, specProvider, codeInfoRepository, logger);
     }
-
-    protected virtual IVirtualMachine CreateVirtualMachine(IBlockhashProvider? blockhashProvider, ISpecProvider? specProvider, Logging.ILogger? logger)
-    {
-        IVirtualMachine result;
-        if (!logger.IsTrace)
-        {
-            result = new VirtualMachine<NotTracing>(blockhashProvider, specProvider, logger);
-        }
-        else
-        {
-            result = new VirtualMachine<IsTracing>(blockhashProvider, specProvider, logger);
-        }
-
-        return result;
-    }
-
-
-    public virtual CodeInfo GetCachedCodeInfo(IWorldState worldState, Address codeSource, IReleaseSpec spec)
-        => _evm.GetCachedCodeInfo(worldState, codeSource, spec);
 
     public TransactionSubstate Run<TTracingActions>(EvmState state, IWorldState worldState, ITxTracer txTracer)
         where TTracingActions : struct, IIsTracing
@@ -136,7 +120,7 @@ public class VirtualMachine : IVirtualMachine
     public readonly struct IsTracing : IIsTracing { }
 }
 
-internal class VirtualMachine<TLogger> : IVirtualMachine
+internal sealed class VirtualMachine<TLogger> : IVirtualMachine
     where TLogger : struct, IIsTracing
 {
     private UInt256 P255Int = (UInt256)System.Numerics.BigInteger.Pow(2, 255);
@@ -166,26 +150,25 @@ internal class VirtualMachine<TLogger> : IVirtualMachine
 
     private readonly IBlockhashProvider _blockhashProvider;
     private readonly ISpecProvider _specProvider;
-    private static readonly LruCache<ValueKeccak, CodeInfo> _codeCache = new(MemoryAllowance.CodeCacheSize, MemoryAllowance.CodeCacheSize, "VM bytecodes");
-    private readonly Logging.ILogger _logger;
-    private IWorldState _worldState;
-    private IWorldState _state;
+    private readonly ILogger _logger;
+    private IWorldState _state = null!;
     private readonly Stack<EvmState> _stateStack = new();
     private (Address Address, bool ShouldDelete) _parityTouchBugAccount = (Address.FromNumber(3), false);
-    private Dictionary<Address, CodeInfo>? _precompiles;
     private byte[] _returnDataBuffer = Array.Empty<byte>();
     private ITxTracer _txTracer = NullTxTracer.Instance;
+    private readonly ICodeInfoRepository _codeInfoRepository;
 
     public VirtualMachine(
         IBlockhashProvider? blockhashProvider,
         ISpecProvider? specProvider,
-        Logging.ILogger? logger)
+        ICodeInfoRepository codeInfoRepository,
+        ILogger? logger)
     {
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _blockhashProvider = blockhashProvider ?? throw new ArgumentNullException(nameof(blockhashProvider));
         _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
+        _codeInfoRepository = codeInfoRepository ?? throw new ArgumentNullException(nameof(codeInfoRepository));
         _chainId = ((UInt256)specProvider.ChainId).ToBigEndian();
-        InitializePrecompiledContracts();
     }
 
     public TransactionSubstate Run<TTracingActions>(EvmState state, IWorldState worldState, ITxTracer txTracer)
@@ -193,7 +176,6 @@ internal class VirtualMachine<TLogger> : IVirtualMachine
     {
         _txTracer = txTracer;
         _state = worldState;
-        _worldState = worldState;
 
         IReleaseSpec spec = _specProvider.GetSpec(state.Env.TxExecutionContext.BlockExecutionContext.Header.Number, state.Env.TxExecutionContext.BlockExecutionContext.Header.Timestamp);
         EvmState currentState = state;
@@ -238,17 +220,12 @@ internal class VirtualMachine<TLogger> : IVirtualMachine
                 {
                     if (typeof(TTracingActions) == typeof(IsTracing) && !currentState.IsContinuation)
                     {
-                        TraceAction<TTracingActions>(currentState);
+                        TraceAction(currentState);
                     }
 
-                    if (!_txTracer.IsTracingInstructions)
-                    {
-                        callResult = ExecuteCall<NotTracing>(currentState, previousCallResult, previousCallOutput, previousCallOutputDestination, spec);
-                    }
-                    else
-                    {
-                        callResult = ExecuteCall<IsTracing>(currentState, previousCallResult, previousCallOutput, previousCallOutputDestination, spec);
-                    }
+                    callResult = !_txTracer.IsTracingInstructions
+                        ? ExecuteCall<NotTracing>(currentState, previousCallResult, previousCallOutput, previousCallOutputDestination, spec)
+                        : ExecuteCall<IsTracing>(currentState, previousCallResult, previousCallOutput, previousCallOutputDestination, spec);
 
                     if (!callResult.IsReturn)
                     {
@@ -263,7 +240,7 @@ internal class VirtualMachine<TLogger> : IVirtualMachine
                     if (callResult.IsException)
                     {
                         if (typeof(TTracingActions) == typeof(IsTracing)) _txTracer.ReportActionError(callResult.ExceptionType);
-                        _worldState.Restore(currentState.Snapshot);
+                        _state.Restore(currentState.Snapshot);
 
                         RevertParityTouchBugAccount(spec);
 
@@ -442,7 +419,7 @@ internal class VirtualMachine<TLogger> : IVirtualMachine
             {
                 if (typeof(TLogger) == typeof(IsTracing)) _logger.Trace($"exception ({ex.GetType().Name}) in {currentState.ExecutionType} at depth {currentState.Env.CallDepth} - restoring snapshot");
 
-                _worldState.Restore(currentState.Snapshot);
+                _state.Restore(currentState.Snapshot);
 
                 RevertParityTouchBugAccount(spec);
 
@@ -475,11 +452,23 @@ internal class VirtualMachine<TLogger> : IVirtualMachine
         }
     }
 
-    protected virtual void TraceAction<TTracingActions>(EvmState currentState) where TTracingActions : struct, IIsTracing
+    private void TraceAction(EvmState currentState)
     {
-        _txTracer.ReportAction(currentState.GasAvailable, currentState.Env.Value, currentState.From, currentState.To,
-            currentState.ExecutionType.IsAnyCreate() ? currentState.Env.CodeInfo.MachineCode : currentState.Env.InputData,
-            currentState.ExecutionType);
+        if (_txTracer is ILogsTxTracer { IsTracingLogs: true } logsTxTracer)
+        {
+            IEnumerable<LogEntry> logs = logsTxTracer.ReportAction(currentState.GasAvailable, currentState.Env.Value, currentState.From, currentState.To,
+                currentState.ExecutionType.IsAnyCreate() ? currentState.Env.CodeInfo.MachineCode : currentState.Env.InputData,
+                currentState.ExecutionType);
+
+            currentState.Logs.AddRange(logs);
+        }
+        else
+        {
+            _txTracer.ReportAction(currentState.GasAvailable, currentState.Env.Value, currentState.From, currentState.To,
+                currentState.ExecutionType.IsAnyCreate() ? currentState.Env.CodeInfo.MachineCode : currentState.Env.InputData,
+                currentState.ExecutionType);
+        }
+
         if (_txTracer.IsTracingCode) _txTracer.ReportByteCode(currentState.Env.CodeInfo.MachineCode);
     }
 
@@ -494,71 +483,6 @@ internal class VirtualMachine<TLogger> : IVirtualMachine
 
             _parityTouchBugAccount.ShouldDelete = false;
         }
-    }
-
-    public CodeInfo GetCachedCodeInfo(IWorldState worldState, Address codeSource, IReleaseSpec vmSpec)
-    {
-        if (codeSource.IsPrecompile(vmSpec))
-        {
-            if (_precompiles is null)
-            {
-                throw new InvalidOperationException("EVM precompile have not been initialized properly.");
-            }
-
-            return _precompiles[codeSource];
-        }
-
-        Keccak codeHash = worldState.GetCodeHash(codeSource);
-        CodeInfo cachedCodeInfo = _codeCache.Get(codeHash);
-        if (cachedCodeInfo is null)
-        {
-            byte[] code = worldState.GetCode(codeHash);
-
-            if (code is null)
-            {
-                throw new NullReferenceException($"Code {codeHash} missing in the state for address {codeSource}");
-            }
-
-            cachedCodeInfo = new CodeInfo(code);
-            _codeCache.Set(codeHash, cachedCodeInfo);
-        }
-        else
-        {
-            // need to touch code so that any collectors that track database access are informed
-            worldState.TouchCode(codeHash);
-        }
-
-        return cachedCodeInfo;
-    }
-
-    private void InitializePrecompiledContracts()
-    {
-        _precompiles = new Dictionary<Address, CodeInfo>
-        {
-            [EcRecoverPrecompile.Address] = new(EcRecoverPrecompile.Instance),
-            [Sha256Precompile.Address] = new(Sha256Precompile.Instance),
-            [Ripemd160Precompile.Address] = new(Ripemd160Precompile.Instance),
-            [IdentityPrecompile.Address] = new(IdentityPrecompile.Instance),
-
-            [Bn254AddPrecompile.Address] = new(Bn254AddPrecompile.Instance),
-            [Bn254MulPrecompile.Address] = new(Bn254MulPrecompile.Instance),
-            [Bn254PairingPrecompile.Address] = new(Bn254PairingPrecompile.Instance),
-            [ModExpPrecompile.Address] = new(ModExpPrecompile.Instance),
-
-            [Blake2FPrecompile.Address] = new(Blake2FPrecompile.Instance),
-
-            [G1AddPrecompile.Address] = new(G1AddPrecompile.Instance),
-            [G1MulPrecompile.Address] = new(G1MulPrecompile.Instance),
-            [G1MultiExpPrecompile.Address] = new(G1MultiExpPrecompile.Instance),
-            [G2AddPrecompile.Address] = new(G2AddPrecompile.Instance),
-            [G2MulPrecompile.Address] = new(G2MulPrecompile.Instance),
-            [G2MultiExpPrecompile.Address] = new(G2MultiExpPrecompile.Instance),
-            [PairingPrecompile.Address] = new(PairingPrecompile.Instance),
-            [MapToG1Precompile.Address] = new(MapToG1Precompile.Instance),
-            [MapToG2Precompile.Address] = new(MapToG2Precompile.Instance),
-
-            [PointEvaluationPrecompile.Address] = new(PointEvaluationPrecompile.Instance),
-        };
     }
 
     private static bool UpdateGas(long gasCost, ref long gasAvailable)
@@ -647,7 +571,7 @@ internal class VirtualMachine<TLogger> : IVirtualMachine
         UInt256 transferValue = state.Env.TransferValue;
         long gasAvailable = state.GasAvailable;
 
-        IPrecompile precompile = state.Env.CodeInfo.Precompile;
+        IPrecompile precompile = state.Env.CodeInfo.Precompile!;
         long baseGasCost = precompile.BaseGasCost(spec);
         long blobGasCost = precompile.DataGasCost(callData, spec);
 
@@ -1398,7 +1322,7 @@ OutOfGas:
                         {
                             if (!UpdateMemoryCost(vmState, ref gasAvailable, in a, result)) goto OutOfGas;
 
-                            byte[] externalCode = GetCachedCodeInfo(_worldState, address, spec).MachineCode;
+                            byte[] externalCode = _codeInfoRepository.GetCachedCodeInfo(_state, address, spec).MachineCode;
                             slice = externalCode.SliceWithZeroPadding(b, (int)result);
                             vmState.Memory.Save(in a, in slice);
                             if (typeof(TTracingInstructions) == typeof(IsTracing))
@@ -2162,7 +2086,7 @@ ReturnFailure:
     [MethodImpl(MethodImplOptions.NoInlining)]
     private void InstructionExtCodeSize<TTracingInstructions>(Address address, ref EvmStack<TTracingInstructions> stack, IReleaseSpec spec) where TTracingInstructions : struct, IIsTracing
     {
-        byte[] accountCode = GetCachedCodeInfo(_worldState, address, spec).MachineCode;
+        byte[] accountCode = _codeInfoRepository.GetCachedCodeInfo(_state, address, spec).MachineCode;
         UInt256 result = (UInt256)accountCode.Length;
         stack.PushUInt256(in result);
     }
@@ -2283,7 +2207,7 @@ ReturnFailure:
 
         ReadOnlyMemory<byte> callData = vmState.Memory.Load(in dataOffset, dataLength);
 
-        Snapshot snapshot = _worldState.TakeSnapshot();
+        Snapshot snapshot = _state.TakeSnapshot();
         _state.SubtractFromBalance(caller, transferValue, spec);
 
         ExecutionEnvironment callEnv = new
@@ -2296,7 +2220,7 @@ ReturnFailure:
             transferValue: transferValue,
             value: callValue,
             inputData: callData,
-            codeInfo: GetCachedCodeInfo(_worldState, codeSource, spec)
+            codeInfo: _codeInfoRepository.GetCachedCodeInfo(_state, codeSource, spec)
         );
         if (typeof(TLogger) == typeof(IsTracing)) _logger.Trace($"Tx call gas {gasLimitUl}");
         if (outputLength == 0)
@@ -2484,10 +2408,10 @@ ReturnFailure:
 
         _state.IncrementNonce(env.ExecutingAccount);
 
-        Snapshot snapshot = _worldState.TakeSnapshot();
+        Snapshot snapshot = _state.TakeSnapshot();
 
         bool accountExists = _state.AccountExists(contractAddress);
-        if (accountExists && (GetCachedCodeInfo(_worldState, contractAddress, spec).MachineCode.Length != 0 ||
+        if (accountExists && (_codeInfoRepository.GetCachedCodeInfo(_state, contractAddress, spec).MachineCode.Length != 0 ||
                               _state.GetNonce(contractAddress) != 0))
         {
             /* we get the snapshot before this as there is a possibility with that we will touch an empty account and remove it even if the REVERT operation follows */
@@ -2509,13 +2433,8 @@ ReturnFailure:
         _state.SubtractFromBalance(env.ExecutingAccount, value, spec);
 
         ValueKeccak codeHash = ValueKeccak.Compute(initCode);
-        // Prefer code from code cache (e.g. if create from a factory contract or copypasta)
-        if (!_codeCache.TryGet(codeHash, out CodeInfo codeInfo))
-        {
-            codeInfo = new(initCode.ToArray());
-            // Prime the code cache as likely to be used by more txs
-            _codeCache.Set(codeHash, codeInfo);
-        }
+
+        CodeInfo codeInfo = _codeInfoRepository.GetOrAdd(codeHash, initCode);
 
         ExecutionEnvironment callEnv = new
         (

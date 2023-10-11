@@ -273,7 +273,8 @@ namespace Nethermind.Synchronization.Test
             TxPool.TxPool txPool = new(ecdsa, new ChainHeadInfoProvider(specProvider, tree, stateReader),
                 new TxPoolConfig(), new TxValidator(specProvider.ChainId), logManager, transactionComparerProvider.GetDefaultComparer());
             BlockhashProvider blockhashProvider = new(tree, LimboLogs.Instance);
-            VirtualMachine virtualMachine = new(blockhashProvider, specProvider, logManager);
+            CodeInfoRepository codeInfoRepository = new();
+            VirtualMachine virtualMachine = new(blockhashProvider, specProvider, codeInfoRepository, logManager);
 
             Always sealValidator = Always.Valid;
             HeaderValidator headerValidator = new(tree, sealValidator, specProvider, logManager);
@@ -288,7 +289,7 @@ namespace Nethermind.Synchronization.Test
 
             RewardCalculator rewardCalculator = new(specProvider);
             TransactionProcessor txProcessor =
-                new(specProvider, stateProvider, virtualMachine, logManager);
+                new(specProvider, stateProvider, virtualMachine, codeInfoRepository, logManager);
 
             BlockProcessor blockProcessor = new(
                 specProvider,
@@ -309,8 +310,8 @@ namespace Nethermind.Synchronization.Test
             SyncPeerPool syncPeerPool = new(tree, nodeStatsManager, new TotalDifficultyBetterPeerStrategy(LimboLogs.Instance), logManager, 25);
 
             WorldState devState = new(trieStore, codeDb, logManager);
-            VirtualMachine devEvm = new(blockhashProvider, specProvider, logManager);
-            TransactionProcessor devTxProcessor = new(specProvider, devState, devEvm, logManager);
+            VirtualMachine devEvm = new(blockhashProvider, specProvider, codeInfoRepository, logManager);
+            TransactionProcessor devTxProcessor = new(specProvider, devState, devEvm, codeInfoRepository, logManager);
 
             BlockProcessor devBlockProcessor = new(
                 specProvider,

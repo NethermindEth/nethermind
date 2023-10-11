@@ -3,7 +3,9 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Tasks;
+using FluentAssertions;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
@@ -103,9 +105,7 @@ public class EthMulticallTestsBlocksAndTransactions
 
         foreach (MultiCallBlockResult blockResult in data)
         {
-            Assert.That(blockResult.Calls.Length, Is.EqualTo(2));
-            Assert.That(blockResult.Calls[0].Type, Is.EqualTo(ResultType.Failure));
-            Assert.That(blockResult.Calls[1].Type, Is.EqualTo(ResultType.Success));
+            blockResult.Calls.Select(c => c.Type).Should().BeEquivalentTo(new[] { ResultType.Failure, ResultType.Success });
         }
     }
 
@@ -186,7 +186,7 @@ public class EthMulticallTestsBlocksAndTransactions
 
         foreach (MultiCallBlockResult blockResult in data)
         {
-            Assert.That(blockResult.Calls.Length, Is.EqualTo(2));
+            Assert.That(blockResult.Calls.Count(), Is.EqualTo(2));
         }
     }
 
@@ -258,6 +258,6 @@ public class EthMulticallTestsBlocksAndTransactions
 
         ResultWrapper<IReadOnlyList<MultiCallBlockResult>> result =
             executor.Execute(payload, BlockParameter.Latest);
-        Assert.IsTrue(result.Data[1].Calls[0].Error?.Message.StartsWith("insufficient"));
+        Assert.IsTrue(result.Data[1].Calls.First().Error?.Message.StartsWith("insufficient"));
     }
 }

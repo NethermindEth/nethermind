@@ -15,6 +15,7 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
+using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Db;
@@ -49,8 +50,13 @@ namespace Nethermind.Runner.Test.Ethereum
 {
     public static class Build
     {
-        public static NethermindApi ContextWithMocks() =>
-            new(Substitute.For<IConfigProvider>(), Substitute.For<IJsonSerializer>(), LimboLogs.Instance, new ChainSpec())
+        public static NethermindApi ContextWithMocks(string sealEngine = SealEngineType.Ethash) =>
+            new(
+                Substitute.For<IConfigProvider>(),
+                Substitute.For<IJsonSerializer>(),
+                LimboLogs.Instance,
+                new ChainSpec { SealEngineType = sealEngine },
+                Substitute.For<ISpecProvider>())
             {
                 Enode = Substitute.For<IEnode>(),
                 TxPool = Substitute.For<ITxPool>(),
@@ -60,7 +66,6 @@ namespace Nethermind.Runner.Test.Ethereum
                 DbProvider = TestMemDbProvider.Init(),
                 PeerManager = Substitute.For<IPeerManager>(),
                 PeerPool = Substitute.For<IPeerPool>(),
-                SpecProvider = Substitute.For<ISpecProvider>(),
                 EthereumEcdsa = Substitute.For<IEthereumEcdsa>(),
                 MainBlockProcessor = Substitute.For<IBlockProcessor>(),
                 ReceiptStorage = Substitute.For<IReceiptStorage>(),

@@ -29,6 +29,7 @@ namespace Nethermind.Evm.TransactionProcessing
         private readonly ISpecProvider _specProvider;
         private readonly IWorldState _worldState;
         private readonly IVirtualMachine _virtualMachine;
+        private readonly ICodeInfoRepository _codeInfoRepository;
 
         [Flags]
         protected enum ExecutionOptions
@@ -63,12 +64,14 @@ namespace Nethermind.Evm.TransactionProcessing
             ISpecProvider? specProvider,
             IWorldState? worldState,
             IVirtualMachine? virtualMachine,
+            ICodeInfoRepository? codeInfoRepository,
             ILogManager? logManager)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
             _worldState = worldState ?? throw new ArgumentNullException(nameof(worldState));
             _virtualMachine = virtualMachine ?? throw new ArgumentNullException(nameof(virtualMachine));
+            _codeInfoRepository = codeInfoRepository ?? throw new ArgumentNullException(nameof(codeInfoRepository));
             _ecdsa = new EthereumEcdsa(specProvider.ChainId, logManager);
         }
 
@@ -436,15 +439,15 @@ namespace Nethermind.Evm.TransactionProcessing
             Transaction tx, BlockExecutionContext blCtx, IReleaseSpec spec, ITxTracer tracer, ExecutionOptions opts,
             in UInt256 effectiveGasPrice)
         {
-            Address recipient = tx.GetRecipient(tx.IsContractCreation ? _worldState.GetNonce(tx.SenderAddress) : 0) ??
+            Address recipient = tx.GetRecipient(tx.IsContractCreation ? _worldState.GetNonce(tx.SenderAddress!) : 0) ??
                 // this transaction is not a contract creation so it should have the recipient known and not null
                 throw new InvalidDataException("Recipient has not been resolved properly before tx execution");
 
             TxExecutionContext executionContext =
-                new(blCtx, tx.SenderAddress, effectiveGasPrice, tx.BlobVersionedHashes);
+                new(blCtx, tx.SenderAddress!, effectiveGasPrice, tx.BlobVersionedHashes);
 
-            CodeInfo codeInfo = tx.IsContractCreation ? new(tx.Data.AsArray())
-                                    : _virtualMachine.GetCachedCodeInfo(_worldState, recipient, spec);
+            CodeInfo codeInfo = tx.IsContractCreation ? new(tx.Data.AsArray()!)
+                                    : _codeInfoRepository.GetCachedCodeInfo(_worldState, recipient, spec);
 
             byte[] inputData = tx.IsMessageCall ? tx.Data.AsArray() ?? Array.Empty<byte>() : Array.Empty<byte>();
 
@@ -615,7 +618,7 @@ namespace Nethermind.Evm.TransactionProcessing
         {
             if (_worldState.AccountExists(contractAddress))
             {
-                CodeInfo codeInfo = _virtualMachine.GetCachedCodeInfo(_worldState, contractAddress, spec);
+                CodeInfo codeInfo = _codeInfoRepository.GetCachedCodeInfo(_worldState, contractAddress, spec);
                 bool codeIsNotEmpty = codeInfo.MachineCode.Length != 0;
                 bool accountNonceIsNotZero = _worldState.GetNonce(contractAddress) != 0;
 

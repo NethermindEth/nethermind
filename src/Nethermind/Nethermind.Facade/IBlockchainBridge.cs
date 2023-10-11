@@ -9,6 +9,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Evm;
 using Nethermind.Facade.Filters;
+using Nethermind.Facade.Multicall;
 using Nethermind.Facade.Proxy.Models.MultiCall;
 using Nethermind.Int256;
 using Nethermind.Trie;

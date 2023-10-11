@@ -19,20 +19,18 @@ public class ReadOnlyTxProcessingEnvBase
     public IReadOnlyDbProvider DbProvider { get; }
     public IBlockhashProvider BlockhashProvider { get; }
 
-    public ReadOnlyTxProcessingEnvBase(
-        IReadOnlyDbProvider? readOnlyDbProvider,
+    protected ReadOnlyTxProcessingEnvBase(
+        IReadOnlyDbProvider readOnlyDbProvider,
         ITrieStore? trieStore,
-        IBlockTree? blockTree,
+        IBlockTree blockTree,
         ILogManager? logManager
     )
     {
-        DbProvider = readOnlyDbProvider ?? throw new ArgumentNullException(nameof(readOnlyDbProvider));
+        DbProvider = readOnlyDbProvider;
         ReadOnlyDb codeDb = readOnlyDbProvider.CodeDb.AsReadOnly(true);
-
         StateReader = new StateReader(trieStore, codeDb, logManager);
         StateProvider = new WorldState(trieStore, codeDb, logManager);
-
-        BlockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
+        BlockTree = blockTree;
         BlockhashProvider = new BlockhashProvider(BlockTree, logManager);
 
     }

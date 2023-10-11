@@ -7,6 +7,7 @@ using System.Threading;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Facade;
+using Nethermind.Facade.Multicall;
 using Nethermind.Facade.Proxy.Models;
 using Nethermind.Facade.Proxy.Models.MultiCall;
 using Nethermind.JsonRpc.Data;
@@ -21,7 +22,7 @@ public class MultiCallTxExecutor : ExecutorBase<IReadOnlyList<MultiCallBlockResu
 
     protected override MultiCallPayload<Transaction> Prepare(MultiCallPayload<TransactionForRpc> call)
     {
-        var result = new MultiCallPayload<Transaction>
+        MultiCallPayload<Transaction>? result = new()
         {
             TraceTransfers = call.TraceTransfers,
             Validation = call.Validation,
@@ -43,15 +44,11 @@ public class MultiCallTxExecutor : ExecutorBase<IReadOnlyList<MultiCallBlockResu
 
     protected override ResultWrapper<IReadOnlyList<MultiCallBlockResult>> Execute(BlockHeader header, MultiCallPayload<Transaction> tx, CancellationToken token)
     {
-        MultiCallOutput results = _blockchainBridge.MultiCall(header.Clone(), tx, token);
+        MultiCallOutput results = _blockchainBridge.MultiCall(header, tx, token);
 
-        if (results.Error == null)
-        {
-            return ResultWrapper<IReadOnlyList<MultiCallBlockResult>>.Success(results.Items);
-        }
-
-        return ResultWrapper<IReadOnlyList<MultiCallBlockResult>>.Fail(results.Error, results.Items);
-
+        return results.Error is null
+            ? ResultWrapper<IReadOnlyList<MultiCallBlockResult>>.Success(results.Items)
+            : ResultWrapper<IReadOnlyList<MultiCallBlockResult>>.Fail(results.Error, results.Items);
     }
 }
 

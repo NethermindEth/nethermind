@@ -28,6 +28,7 @@ using Nethermind.Config;
 using Nethermind.Facade.Proxy.Models.MultiCall;
 using System.Transactions;
 using Microsoft.CSharp.RuntimeBinder;
+using Nethermind.Facade.Multicall;
 using Transaction = Nethermind.Core.Transaction;
 using Nethermind.Specs;
 
@@ -51,7 +52,7 @@ namespace Nethermind.Facade
         private readonly ILogFinder _logFinder;
         private readonly ISpecProvider _specProvider;
         private readonly IBlocksConfig _blocksConfig;
-        private readonly MultycallBridgeHelper _multicallBridgeHelper;
+        private readonly MulticallBridgeHelper _multicallBridgeHelper;
 
         public BlockchainBridge(ReadOnlyTxProcessingEnv processingEnv,
             MultiCallReadOnlyBlocksProcessingEnv multiCallProcessingEnv,
@@ -77,7 +78,10 @@ namespace Nethermind.Facade
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
             _blocksConfig = blocksConfig;
             IsMining = isMining;
-            _multicallBridgeHelper = new MultycallBridgeHelper(multiCallProcessingEnv ?? throw new ArgumentNullException(nameof(multiCallProcessingEnv)), _specProvider, _blocksConfig);
+            _multicallBridgeHelper = new MulticallBridgeHelper(
+                multiCallProcessingEnv ?? throw new ArgumentNullException(nameof(multiCallProcessingEnv)),
+                _specProvider,
+                _blocksConfig);
         }
 
         public Block? HeadBlock
@@ -150,16 +154,15 @@ namespace Nethermind.Facade
 
         public MultiCallOutput MultiCall(BlockHeader header, MultiCallPayload<Transaction> payload, CancellationToken cancellationToken)
         {
-            MultiCallBlockTracer multiCallOutputTracer = new();
+            MultiCallBlockTracer multiCallOutputTracer = new(payload.TraceTransfers);
             MultiCallOutput result = new();
             try
             {
-                (bool Success, string Error) tryMultiCallResult = _multicallBridgeHelper.TryMultiCallTrace(header, payload,
-                    multiCallOutputTracer.WithCancellation(cancellationToken));
+                (bool success, string error) = _multicallBridgeHelper.TryMultiCallTrace(header, payload, multiCallOutputTracer.WithCancellation(cancellationToken));
 
-                if (!tryMultiCallResult.Success)
+                if (!success)
                 {
-                    result.Error = tryMultiCallResult.Error;
+                    result.Error = error;
                 }
             }
             catch (Exception ex)

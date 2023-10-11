@@ -48,15 +48,11 @@ namespace Nethermind.Runner.Ethereum.Api
                 throw new NotSupportedException("Creation of multiple APIs not supported.");
             }
 
-            string engine = chainSpec.SealEngineType;
-            IConsensusPlugin? enginePlugin = consensusPlugins.FirstOrDefault(p => p.SealEngineType == engine);
+            IConsensusPlugin? enginePlugin = consensusPlugins.FirstOrDefault(p => p.SealEngineType == chainSpec.SealEngineType);
 
             INethermindApi nethermindApi =
                 enginePlugin?.CreateApi(_configProvider, _jsonSerializer, _logManager, chainSpec) ??
                 new NethermindApi(_configProvider, _jsonSerializer, _logManager, chainSpec);
-            nethermindApi.SealEngineType = engine;
-            nethermindApi.SpecProvider = new ChainSpecBasedSpecProvider(chainSpec, _logManager);
-            nethermindApi.GasLimitCalculator = new FollowOtherMiners(nethermindApi.SpecProvider);
 
             SetLoggerVariables(chainSpec);
 
