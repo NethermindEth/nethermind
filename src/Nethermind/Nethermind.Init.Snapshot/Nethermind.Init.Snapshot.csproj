@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <TargetFramework>net7.0</TargetFramework>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+    </PropertyGroup>
+
+    <ItemGroup>
+      <ProjectReference Include="..\Nethermind.Api\Nethermind.Api.csproj" />
+      <ProjectReference Include="..\Nethermind.Init\Nethermind.Init.csproj" />
+    </ItemGroup>
+
+</Project>
