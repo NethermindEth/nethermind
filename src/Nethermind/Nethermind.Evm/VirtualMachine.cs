@@ -220,7 +220,22 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine
                 {
                     if (typeof(TTracingActions) == typeof(IsTracing) && !currentState.IsContinuation)
                     {
-                        TraceAction(currentState);
+                        if (_txTracer is ILogsTxTracer { IsTracingLogs: true } logsTxTracer)
+                        {
+                            IEnumerable<LogEntry> logs = logsTxTracer.ReportAction(currentState.GasAvailable, currentState.Env.Value, currentState.From, currentState.To,
+                                currentState.ExecutionType.IsAnyCreate() ? currentState.Env.CodeInfo.MachineCode : currentState.Env.InputData,
+                                currentState.ExecutionType);
+
+                            currentState.Logs.AddRange(logs);
+                        }
+                        else
+                        {
+                            _txTracer.ReportAction(currentState.GasAvailable, currentState.Env.Value, currentState.From, currentState.To,
+                                currentState.ExecutionType.IsAnyCreate() ? currentState.Env.CodeInfo.MachineCode : currentState.Env.InputData,
+                                currentState.ExecutionType);
+                        }
+
+                        if (_txTracer.IsTracingCode) _txTracer.ReportByteCode(currentState.Env.CodeInfo.MachineCode);
                     }
 
                     callResult = !_txTracer.IsTracingInstructions
@@ -450,26 +465,6 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine
                 currentState.IsContinuation = true;
             }
         }
-    }
-
-    private void TraceAction(EvmState currentState)
-    {
-        if (_txTracer is ILogsTxTracer { IsTracingLogs: true } logsTxTracer)
-        {
-            IEnumerable<LogEntry> logs = logsTxTracer.ReportAction(currentState.GasAvailable, currentState.Env.Value, currentState.From, currentState.To,
-                currentState.ExecutionType.IsAnyCreate() ? currentState.Env.CodeInfo.MachineCode : currentState.Env.InputData,
-                currentState.ExecutionType);
-
-            currentState.Logs.AddRange(logs);
-        }
-        else
-        {
-            _txTracer.ReportAction(currentState.GasAvailable, currentState.Env.Value, currentState.From, currentState.To,
-                currentState.ExecutionType.IsAnyCreate() ? currentState.Env.CodeInfo.MachineCode : currentState.Env.InputData,
-                currentState.ExecutionType);
-        }
-
-        if (_txTracer.IsTracingCode) _txTracer.ReportByteCode(currentState.Env.CodeInfo.MachineCode);
     }
 
     private void RevertParityTouchBugAccount(IReleaseSpec spec)
