@@ -79,7 +79,7 @@ internal class FundsDistributor
         UInt256 perKeyToSend = balanceToDistribute / keysToMake;
 
         using PrivateKeyGenerator generator = new();
-        IEnumerable<PrivateKey> privateKeys = Enumerable.Range(1, (int)keysToMake).Select(i => generator.Generate()).ToArray();
+        IEnumerable<PrivateKey> privateKeys = Enumerable.Range(1, (int)keysToMake).Select(i => generator.Generate());
 
         List<string> txHash = new List<string>();
 
