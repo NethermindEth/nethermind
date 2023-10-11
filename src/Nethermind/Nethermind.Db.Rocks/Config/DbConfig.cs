@@ -27,6 +27,8 @@ public class DbConfig : IDbConfig
     public ulong? CompactionReadAhead { get; set; }
     public IDictionary<string, string>? AdditionalRocksDbOptions { get; set; }
     public ulong? MaxBytesForLevelBase { get; set; } = (ulong)256.MiB();
+    public ulong TargetFileSizeBase { get; set; } = (ulong)64.MiB();
+    public int TargetFileSizeMultiplier { get; set; } = 1;
 
     public ulong ReceiptsDbWriteBufferSize { get; set; } = (ulong)8.MiB();
     public uint ReceiptsDbWriteBufferNumber { get; set; } = 4;
@@ -38,6 +40,7 @@ public class DbConfig : IDbConfig
     public bool? ReceiptsDbUseDirectReads { get; set; }
     public bool? ReceiptsDbUseDirectIoForFlushAndCompactions { get; set; }
     public ulong? ReceiptsDbCompactionReadAhead { get; set; }
+    public ulong ReceiptsDbTargetFileSizeBase { get; set; } = (ulong)256.MiB();
     public IDictionary<string, string>? ReceiptsDbAdditionalRocksDbOptions { get; set; }
 
     public ulong BlocksDbWriteBufferSize { get; set; } = (ulong)8.MiB();
@@ -157,6 +160,7 @@ public class DbConfig : IDbConfig
     public bool? StateDbUseDirectIoForFlushAndCompactions { get; set; } = false;
     public ulong? StateDbCompactionReadAhead { get; set; }
     public bool? StateDbDisableCompression { get; set; } = false;
+    public int StateDbTargetFileSizeMultiplier { get; set; } = 2;
     public IDictionary<string, string>? StateDbAdditionalRocksDbOptions { get; set; }
 
     public uint RecycleLogFileNum { get; set; } = 0;

@@ -173,7 +173,7 @@ public class TransactionProcessorTests
     [TestCase(false, false)]
     public void Can_handle_quick_fail_on_not_enough_balance_on_intrinsic_gas(bool withStateDiff, bool withTrace)
     {
-        AccessListBuilder accessListBuilder = new();
+        AccessList.Builder accessListBuilder = new();
         foreach (Address address in TestItem.Addresses)
         {
             accessListBuilder.AddAddress(address);
@@ -181,7 +181,7 @@ public class TransactionProcessorTests
 
         Transaction tx = Build.A.Transaction
             .WithGasLimit(GasCostOf.Transaction * 2)
-            .WithAccessList(accessListBuilder.ToAccessList())
+            .WithAccessList(accessListBuilder.Build())
             .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, _isEip155Enabled)
             .TestObject;
 
