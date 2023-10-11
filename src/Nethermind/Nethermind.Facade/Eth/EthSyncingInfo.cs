@@ -47,7 +47,7 @@ namespace Nethermind.Facade.Eth
                 return ReturnSyncing(headNumberOrZero, bestSuggestedNumber, syncMode);
             }
 
-            if (_syncConfig.FastSync)
+            if (_syncConfig.FastSync && _syncConfig.PivotNumber != null)
             {
                 if (_syncConfig.DownloadReceiptsInFastSync &&
                     (_receiptStorage.LowestInsertedReceiptBlockNumber is null || _receiptStorage.LowestInsertedReceiptBlockNumber > _syncConfig.AncientReceiptsBarrierCalc))

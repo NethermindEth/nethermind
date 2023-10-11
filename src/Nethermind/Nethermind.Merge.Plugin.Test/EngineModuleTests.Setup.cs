@@ -7,7 +7,6 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Consensus;
@@ -16,6 +15,7 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
+using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
@@ -24,6 +24,7 @@ using Nethermind.Core.Timers;
 using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Evm.Tracing;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Facade.Eth;
 using Nethermind.HealthChecks;
 using Nethermind.Int256;
@@ -117,6 +118,7 @@ public partial class EngineModuleTests
                 chain.BeaconSync,
                 chain.BeaconPivot,
                 peerRefresher,
+                chain.SpecProvider,
                 chain.LogManager),
             new GetPayloadBodiesByHashV1Handler(chain.BlockTree, chain.LogManager),
             new GetPayloadBodiesByRangeV1Handler(chain.BlockTree, chain.LogManager),
@@ -141,7 +143,9 @@ public partial class EngineModuleTests
 
         public BeaconSync? BeaconSync { get; set; }
 
-        private int _blockProcessingThrottle = 0;
+        public IWithdrawalProcessor? WithdrawalProcessor { get; set; }
+
+        protected int _blockProcessingThrottle = 0;
 
         public MergeTestBlockchain ThrottleBlockProcessor(int delayMs)
         {
@@ -215,8 +219,8 @@ public partial class EngineModuleTests
 
         protected override IBlockProcessor CreateBlockProcessor()
         {
-            BeaconBlockRootHandler beaconBlockRootHandler = new BeaconBlockRootHandler(TxProcessor, LogManager);
             BlockValidator = CreateBlockValidator();
+            WithdrawalProcessor = new WithdrawalProcessor(State, LogManager);
             IBlockProcessor processor = new BlockProcessor(
                 SpecProvider,
                 BlockValidator,
@@ -226,12 +230,13 @@ public partial class EngineModuleTests
                 ReceiptStorage,
                 NullWitnessCollector.Instance,
                 TxProcessor,
-                LogManager);
+                LogManager,
+                WithdrawalProcessor);
 
             return new TestBlockProcessorInterceptor(processor, _blockProcessingThrottle);
         }
 
-        private IBlockValidator CreateBlockValidator()
+        protected IBlockValidator CreateBlockValidator()
         {
             IBlockCacheService blockCacheService = new BlockCacheService();
             PoSSwitcher = new PoSSwitcher(MergeConfig, SyncConfig.Default, new MemDb(), BlockTree, SpecProvider, LogManager);
@@ -260,7 +265,7 @@ public partial class EngineModuleTests
     }
 }
 
-internal class TestBlockProcessorInterceptor : IBlockProcessor
+public class TestBlockProcessorInterceptor : IBlockProcessor
 {
     private readonly IBlockProcessor _blockProcessorImplementation;
     public int DelayMs { get; set; }
