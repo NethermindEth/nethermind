@@ -36,6 +36,7 @@ using Nethermind.Wallet;
 using BlockTree = Nethermind.Blockchain.BlockTree;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
+using Nethermind.Facade.Multicall;
 using Nethermind.Synchronization.ParallelSync;
 
 namespace Nethermind.JsonRpc.Benchmark
@@ -77,7 +78,8 @@ namespace Nethermind.JsonRpc.Benchmark
                 new SyncConfig(),
                 LimboLogs.Instance);
             _blockhashProvider = new BlockhashProvider(blockTree, LimboLogs.Instance);
-            _virtualMachine = new VirtualMachine(_blockhashProvider, specProvider, LimboLogs.Instance);
+            CodeInfoRepository codeInfoRepository = new();
+            _virtualMachine = new VirtualMachine(_blockhashProvider, specProvider, codeInfoRepository, LimboLogs.Instance);
 
             Block genesisBlock = Build.A.Block.Genesis.TestObject;
             blockTree.SuggestBlock(genesisBlock);
@@ -86,7 +88,7 @@ namespace Nethermind.JsonRpc.Benchmark
             blockTree.SuggestBlock(block1);
 
             TransactionProcessor transactionProcessor
-                 = new(MainnetSpecProvider.Instance, stateProvider, _virtualMachine, LimboLogs.Instance);
+                 = new(MainnetSpecProvider.Instance, stateProvider, _virtualMachine, codeInfoRepository, LimboLogs.Instance);
 
             IBlockProcessor.IBlockTransactionsExecutor transactionsExecutor = new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor, stateProvider);
             BlockProcessor blockProcessor = new(specProvider, Always.Valid, new RewardCalculator(specProvider), transactionsExecutor,
