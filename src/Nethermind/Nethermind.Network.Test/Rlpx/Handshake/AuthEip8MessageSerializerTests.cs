@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using DotNetty.Buffers;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -9,6 +10,7 @@ using Nethermind.Crypto;
 using Nethermind.Logging;
 using Nethermind.Network.Rlpx.Handshake;
 using NUnit.Framework;
+using Org.BouncyCastle.Utilities.Encoders;
 
 namespace Nethermind.Network.Test.Rlpx.Handshake
 {
@@ -59,6 +61,16 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
         {
             EthereumEcdsa ecdsa = new(BlockchainIds.Olympic, LimboLogs.Instance);
             TestEncodeDecode(ecdsa);
+        }
+
+        [Test]
+        public void TestBadVersion()
+        {
+            string rawMsg = "f8bab841b054620e0d28697f4d4cbc1b25873d45ba17a62d724fea574982b76885ba164423b0160e39943610fe8c795f5d5167e2f3b5d52452d255a6dfb95d8339f0361f00b840a84e79d9c17895ec9720603c950293a5570727240e83774c128ea1654e64880ae2b1384167cab68dc3b2e7d1a741220a98c9842f36c5daa6094e586914516928a016e33b0bacaa8a7b493e2e43ec1bdb45b28f2f9111066228fb3c1063ffd8067d932b383f24302935273b29302a2f2b3d2621212a0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000";
+            IByteBuffer byteBuffer = Unpooled.Buffer();
+            byteBuffer.WriteBytes(Hex.Decode(rawMsg));
+
+            _serializer.Deserialize(byteBuffer);
         }
     }
 }
