@@ -51,7 +51,6 @@ namespace Nethermind.Network.Rlpx.Handshake
             authMessage.Signature = signature;
             authMessage.PublicKey = new PublicKey(rlpStream.DecodeByteArraySpan());
             authMessage.Nonce = rlpStream.DecodeByteArray();
-            _ = rlpStream.DecodeInt();
             return authMessage;
         }
     }
