@@ -161,11 +161,6 @@ namespace Nethermind.Network.Rlpx
             _initCompletionSource?.SetResult(input);
             _session.Handshake(_handshake.RemoteNodeId);
 
-            if (_role == HandshakeRole.Recipient)
-            {
-                if (_logger.IsTrace) _logger.Trace($"Registering {nameof(OneTimeLengthFieldBasedFrameDecoder)}  for {RemoteId} @ {context.Channel.RemoteAddress}");
-                context.Channel.Pipeline.AddLast("enc-handshake-dec", new OneTimeLengthFieldBasedFrameDecoder());
-            }
             if (_logger.IsTrace) _logger.Trace($"Registering {nameof(ReadTimeoutHandler)} for {RemoteId} @ {context.Channel.RemoteAddress}");
             context.Channel.Pipeline.AddLast(new ReadTimeoutHandler(TimeSpan.FromSeconds(30))); // read timeout instead of session monitoring
             if (_logger.IsTrace) _logger.Trace($"Registering {nameof(ZeroFrameDecoder)} for {RemoteId} @ {context.Channel.RemoteAddress}");

@@ -98,6 +98,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
                     : TryGetInputError(result) ?? ResultWrapper<AccessListForRpc>.Fail(result.Error, ErrorCodes.ExecutionError, new AccessListForRpc(GetResultAccessList(tx, result), GetResultGas(tx, result)));
             }
 
+
             private static IEnumerable<AccessListItemForRpc> GetResultAccessList(Transaction tx, CallOutput result)
             {
                 AccessList? accessList = result.AccessList ?? tx.AccessList;

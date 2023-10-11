@@ -434,8 +434,8 @@ public partial class BlockDownloaderTests
 
         public override IBlockTree BlockTree => _blockTreeScenario?.NotSyncedTree ?? base.BlockTree;
 
-        private MemDb? _metadataDb;
-        private MemDb MetadataDb => (_metadataDb ?? _blockTreeScenario?.NotSyncedTreeBuilder.MetadataDb) ?? (_metadataDb ??= new MemDb());
+        private IDb? _metadataDb;
+        private IDb MetadataDb => (_metadataDb ?? _blockTreeScenario?.NotSyncedTreeBuilder.MetadataDb) ?? (_metadataDb ??= new MemDb());
 
         private MergeConfig? _mergeConfig;
 

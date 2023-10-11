@@ -60,7 +60,7 @@ public class BlockStore : IBlockStore
         _blockCache.Delete(blockHash);
     }
 
-    public Block? Get(Keccak blockHash, bool shouldCache)
+    public Block? Get(Keccak blockHash, bool shouldCache = false)
     {
 
         return _blockDb.Get(blockHash, _blockDecoder, _blockCache, shouldCache);
