@@ -1293,26 +1293,22 @@ namespace Nethermind.Blockchain
                 return null;
             }
 
-            Block? block;
-            bool allowInvalid = (options & BlockTreeLookupOptions.AllowInvalid) == BlockTreeLookupOptions.AllowInvalid;
-            if (allowInvalid)
-            {
-                if (_invalidBlocks.TryGet(blockHash, out block))
-                {
-                    return block;
-                }
-            }
-
+            Block? block = null;
             blockNumber ??= _headerStore.GetBlockNumber(blockHash);
-            if (blockNumber == null)
+            if (blockNumber != null)
             {
-                return null;
+                block = _blockStore.Get(blockNumber.Value, blockHash, shouldCache: false);
             }
 
-            block = _blockStore.Get(blockNumber.Value, blockHash, shouldCache: false);
             if (block is null)
             {
-                return null;
+                bool allowInvalid = (options & BlockTreeLookupOptions.AllowInvalid) == BlockTreeLookupOptions.AllowInvalid;
+                if (allowInvalid)
+                {
+                    _invalidBlocks.TryGet(blockHash, out block);
+                }
+
+                return block;
             }
 
             bool totalDifficultyNeeded = (options & BlockTreeLookupOptions.TotalDifficultyNotNeeded) ==
