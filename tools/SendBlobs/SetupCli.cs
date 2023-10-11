@@ -83,20 +83,40 @@ internal static class SetupCli
 
     private static (int count, int blobCount, string @break)[] ParseTxOptions(string options)
     {
-        return options.Split(',')
-        .Select(x =>
+        if (string.IsNullOrWhiteSpace(options))
+            return Array.Empty<(int count, int blobCount, string @break)>();
+
+        ReadOnlySpan<char> chars = options.AsSpan();
+        var result = new List<(int, int, string)>();
+
+        ReadOnlySpan<char> SplitToNext(ReadOnlySpan<char> line, char separator, bool returnRemainder = false){
+            int i = line.IndexOf(separator);
+            if (i == -1)
+                return returnRemainder ? ReadOnlySpan<char>.Empty : line;    
+            return returnRemainder ? line[(i+1)..] : line[..i];
+        };
+
+        ReadOnlySpan<char> nextComma;
+        int offSet = 0; 
+        while (true)
         {
-            string @break = "";
-            if (x.Contains("-"))
+            nextComma = SplitToNext(chars[offSet..], ',');
+
+            ReadOnlySpan<char> @break = SplitToNext(nextComma, '-', true);
+
+            ReadOnlySpan<char> rest = nextComma[..(nextComma.Length - (@break.Length == 0 ? 0 : @break.Length + 1))];
+            ReadOnlySpan<char> count = SplitToNext(rest, 'x');
+            ReadOnlySpan<char> txCount = SplitToNext(rest, 'x', true);
+
+            result.Add(new(int.Parse(count), txCount.Length == 0 ? 1 : int.Parse(txCount), new string(@break)));
+
+            offSet += nextComma.Length + 1;
+            if (offSet > chars.Length)
             {
-                @break = x.Split("-")[1];
-                x = x.Split("-")[0];
+                break;
             }
-            return x.Contains("x") ?
-               (int.Parse(x.Split('x')[0]), int.Parse(x.Split('x')[1]), @break)
-             : (int.Parse(x), 1, @break);
-        })
-        .ToArray();
+        }
+        return result.ToArray();
     }
 
     public static void SetupDistributeCommand(CommandLineApplication app)
