@@ -11,6 +11,7 @@ using NUnit.Framework;
 using Nethermind.Specs;
 using static System.Runtime.InteropServices.JavaScript.JSType;
 using System;
+using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.Tracing.GethStyle.Javascript;
 
 namespace Nethermind.Evm.Test.Tracing;
@@ -52,7 +53,7 @@ public class GethLikeJavascriptTracerTests : VirtualMachineTestsBase
                 GetBytecode(),
                 MainnetSpecProvider.CancunActivation)
             .BuildResult();
-        string[] expectedStrings = { "PUSH32 : 0x7F : true", "PUSH1 : 0x60 : true", "MSTORE : 0x52 : false", "PUSH32 : 0x7F : true", "PUSH1 : 0x60 : true", "MSTORE : 0x52 : false", "STOP : 0x00 : false" };
+        string[] expectedStrings = { "PUSH32 : 127 : true", "PUSH1 : 96 : true", "MSTORE : 82 : false", "PUSH32 : 127 : true", "PUSH1 : 96 : true", "MSTORE : 82 : false", "STOP : 0 : false" };
         Assert.That(traces.CustomTracerResult, Is.EqualTo(expectedStrings));
     }
 
@@ -78,12 +79,14 @@ public class GethLikeJavascriptTracerTests : VirtualMachineTestsBase
     {
         string userTracer = @"{
                     retVal: [],
-                     step: function(log, db) {
-                       if (log.op.toNumber() == 0x00) {
-                            this.retVal.push(log.memory.slice(16, 32));
+                         step: function(log, db) {
+                        if (log.op.toNumber() == 0x52) {
+                            this.retVal.push(log.memory.length());
+                        } else if (log.op.toNumber() == 0x00) {
+                            this.retVal.push(log.memory.length());
                         }
                     },
-                    fault: function(log, db) { this.retVal.push('FAULT: ' + JSON.stringify(log)) },
+                    fault: function(log, db) { this.retVal.push('FAULT: ' + JSON.stringify(log.getError())) },
                     result: function(ctx, db) { return this.retVal }
                 }";
         GethLikeTxTrace traces = Execute(
@@ -91,7 +94,8 @@ public class GethLikeJavascriptTracerTests : VirtualMachineTestsBase
                 GetBytecode(),
                 MainnetSpecProvider.CancunActivation)
             .BuildResult();
-        // Assert.That(traces.CustomTracerResult, Has.All.Empty);
+        dynamic[] expectedStrings = { "FAULT: undefined", 32, 64};
+        Assert.That(traces.CustomTracerResult, Is.EqualTo(expectedStrings));
     }
 
     [Test]
@@ -299,7 +303,7 @@ public class GethLikeJavascriptTracerTests : VirtualMachineTestsBase
     [Test]
     public void JS_tracers_builtIns_noop_tracer_legacy()
     {
-        string userTracer = "prestateTracer";
+        string userTracer = "noopTracer";
         GethLikeTxTrace traces = Execute(
                 new GethLikeJavascriptTxTracer(TestState, GethTraceOptions.Default with { EnableMemory = true, Tracer = userTracer }),
                 GetBytecode(),
@@ -321,55 +325,16 @@ public class GethLikeJavascriptTracerTests : VirtualMachineTestsBase
     }
 
     [Test]
-    public void JS_tracers_builtIns_trigram_tracer()
-    {
-        string userTracer = "trigramTracer";
-        GethLikeTxTrace traces = Execute(
-                new GethLikeJavascriptTxTracer(TestState, GethTraceOptions.Default with { EnableMemory = true, Tracer = userTracer }),
-                GetBytecode(),
-                MainnetSpecProvider.CancunActivation)
-            .BuildResult();
-        // Assert.That(traces.CustomTracerResult, Has.All.Empty);
-    }
-
-
-    [Test]
-    public void JS_tracers_builtIns_unigram_tracer()
-    {
-        string userTracer = "unigramTracer";
-        GethLikeTxTrace traces = Execute(
-                new GethLikeJavascriptTxTracer(TestState, GethTraceOptions.Default with { EnableMemory = true, Tracer = userTracer }),
-                GetBytecode(),
-                MainnetSpecProvider.CancunActivation)
-            .BuildResult();
-        // Assert.That(traces.CustomTracerResult, Has.All.Empty);
-    }
-
-    [Test]
-    public void JS_tracers_builtIns_bigram_tracer()
-    {
-        string userTracer = "bigramTracer";
-        GethLikeTxTrace traces = Execute(
-                new GethLikeJavascriptTxTracer(TestState, GethTraceOptions.Default with { EnableMemory = true, Tracer = userTracer }),
-                GetBytecode(),
-                MainnetSpecProvider.CancunActivation)
-            .BuildResult();
-        // Assert.That(traces.CustomTracerResult, Has.All.Empty);
-    }
-
-
-    [Test]
     public void JS_tracers_builtIns_evmdis_tracer()
     {
-        string userTracer = "evmdisTracer";
+        string userTracer = "4byteTracer";
         GethLikeTxTrace traces = Execute(
                 new GethLikeJavascriptTxTracer(TestState, GethTraceOptions.Default with { EnableMemory = true, Tracer = userTracer }),
-                GetBytecode(),
+                GetComplexBytecode(),
                 MainnetSpecProvider.CancunActivation)
             .BuildResult();
-        // Assert.That(traces.CustomTracerResult, Has.All.Empty);
+        Assert.That(traces.CustomTracerResult, Has.All.Empty);
     }
-
     private static byte[] GetBytecode()
     {
         return Prepare.EvmCode
@@ -409,6 +374,31 @@ public class GethLikeJavascriptTracerTests : VirtualMachineTestsBase
             .PushData(SampleHexData1.PadLeft(64, '0'))
             .PushData(0)
             .Op(Instruction.SLOAD)
+            .Op(Instruction.STOP)
+            .Done;
+    }
+
+    private byte[] GetComplexBytecode()
+    {
+        byte[] deployedCode = new byte[3];
+
+        byte[] initCode = Prepare.EvmCode
+            .ForInitOf(deployedCode)
+            .Done;
+
+        byte[] createCode = Prepare.EvmCode
+            .Create(initCode, 0)
+            .Op(Instruction.STOP)
+            .Done;
+
+        TestState.CreateAccount(TestItem.AddressC, 1.Ether());
+        TestState.InsertCode(TestItem.AddressC, createCode, Spec);
+        return Prepare.EvmCode
+            // .PushData(SampleHexData2.PadLeft(64, '0'))
+            // .PushData(SampleHexData1.PadLeft(64, '0'))
+            // .PushData(SampleHexData2.PadLeft(64, '0'))
+            // .PushData(SampleHexData1.PadLeft(64, '0'))
+            .DelegateCall(TestItem.AddressC, 50000)
             .Op(Instruction.STOP)
             .Done;
     }

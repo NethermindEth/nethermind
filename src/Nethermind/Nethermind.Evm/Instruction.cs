@@ -186,6 +186,7 @@ namespace Nethermind.Evm
                 Instruction.JUMPSUB or Instruction.MCOPY => spec?.IsEip5656Enabled == true ? "MCOPY" : "JUMPSUB",
                 _ => FastEnum.IsDefined(instruction) ? FastEnum.GetName(instruction) : null
             };
-        public static string? GetHex(this Instruction instruction) => $"0x{(byte)instruction:X2}";
+        public static int GetHex(this Instruction instruction) => (int)instruction;
+
     }
 }

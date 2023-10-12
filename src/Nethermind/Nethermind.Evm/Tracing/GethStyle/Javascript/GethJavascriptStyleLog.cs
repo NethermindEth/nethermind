@@ -9,6 +9,8 @@ using Nethermind.Int256;
 using System.Linq;
 using System.Numerics;
 using System.Runtime.InteropServices;
+using Microsoft.ClearScript;
+
 
 
 // ReSharper disable InconsistentNaming
@@ -46,14 +48,17 @@ namespace Nethermind.Evm.Tracing.GethStyle.Javascript
 
         public long? getRefund() => refund;
 
-        public string? getError() //needs looking into
-            => !string.IsNullOrEmpty(error) ? error : null;
+        public dynamic? getError() //needs looking into
+            => !string.IsNullOrEmpty(error) ? error : Undefined.Value;
 
         public class OpcodeString
         {
+
             private readonly Instruction _value;
+
             public OpcodeString(Instruction value) => _value = value;
-            public string? toNumber() => _value.GetHex();
+
+            public dynamic? toNumber() => _value.GetHex();
             public string? toString() => _value.GetName();
             public bool? isPush() => _value is >= Instruction.PUSH0 and <= Instruction.PUSH32;
         }
@@ -77,16 +82,12 @@ namespace Nethermind.Evm.Tracing.GethStyle.Javascript
             {
                 int topIndex = _items.Count - 1 - index;
                 string rtn = topIndex >= 0 && topIndex < _items.Count ? _items[topIndex] : null;
-                if (rtn.StartsWith("0x", StringComparison.OrdinalIgnoreCase))
-                {
-                    rtn = rtn.Substring(2);
-                }
-
+                rtn = rtn?.Substring(2);
                 // Convert the hexadecimal string to a byte array
                 byte[] byteArray = Enumerable.Range(0, rtn.Length / 2)
                     .Select(x => Convert.ToByte(rtn.Substring(x * 2, 2), 16))
                     .ToArray();
-                BigInteger bigIntValue = new BigInteger(byteArray);
+                BigInteger bigIntValue = new (byteArray);
                 return bigIntValue;
             }
 
@@ -104,7 +105,7 @@ namespace Nethermind.Evm.Tracing.GethStyle.Javascript
                 _memory = memory;
             }
 
-            public int length() => _memory.Count; // / EvmPooledMemory.WordSize?
+            public int? length() => _memory.Count; // / EvmPooledMemory.WordSize?
 
             public dynamic slice(int start, int end) // needs looking into
             {
@@ -118,23 +119,17 @@ namespace Nethermind.Evm.Tracing.GethStyle.Javascript
                 return slice.ToArray().ToScriptArray(_engine);
             }
 
-            public byte[]? getUint(int offset) // needs looking into
+            public dynamic? getUint(int offset)
             {
-                if (offset < 0 || offset + 32 > _memoryTrace.Length)
+                if (offset < 0 || offset + 32 > _memory.Count)
                 {
                     throw new ArgumentOutOfRangeException("Invalid offset.");
                 }
 
-                string uintHex = _memoryTrace.Substring(offset * 2, 64);
-
-                byte[] byteArray = new byte[32];
-                for (int i = 0; i < 64; i += 2)
-                {
-                    byteArray[i / 2] = Convert.ToByte(uintHex.Substring(i, 2), 16);
-                }
-
-                return byteArray;
+                Span<byte> byteArray = CollectionsMarshal.AsSpan(_memory).Slice(offset, 32); // Adjust the length to 32 bytes
+                return byteArray.ToArray().ToScriptArray(_engine);
             }
+
         }
 
         public class Contract
@@ -161,7 +156,7 @@ namespace Nethermind.Evm.Tracing.GethStyle.Javascript
             public dynamic getAddress() => _addressConverted ??= _address.Bytes.ToScriptArray(_engine);
             public dynamic getCaller() => _callerConverted ??= _caller.Bytes.ToScriptArray(_engine);
             public dynamic getInput() => _inputConverted ??= _input.ToArray().ToScriptArray(_engine);
-            public UInt256 getValue() => _value;
+            public dynamic getValue() => _value.ToInt64(null);
         }
 
         public class CTX
@@ -186,7 +181,7 @@ namespace Nethermind.Evm.Tracing.GethStyle.Javascript
             private object? _outputConverted;
 
 
-            public CTX(V8ScriptEngine engine, string type, Address from, Address to, ReadOnlyMemory<byte> input, UInt256 value, long gas, UInt256 gasUsed, UInt256 gasPrice, UInt256 intrinsicGas, UInt256 block, ReadOnlyMemory<byte> output,
+            public CTX(V8ScriptEngine engine, string type,  Address from,Address to, ReadOnlyMemory<byte> input, UInt256 value, long gas, UInt256 gasUsed, UInt256 gasPrice, UInt256 intrinsicGas, UInt256 block, ReadOnlyMemory<byte> output,
                 string time)
             {
                 _engine = engine;
@@ -208,14 +203,16 @@ namespace Nethermind.Evm.Tracing.GethStyle.Javascript
             public dynamic from => _fromConverted ??= _from.Bytes.ToScriptArray(_engine);
             public dynamic to => _toConverted ??= _to.Bytes.ToScriptArray(_engine);
             public dynamic input => _inputConverted ??= _input.ToArray().ToScriptArray(_engine);
-            public UInt256 value => _value;
+            public dynamic value => _value.ToInt64(null);
             public long gas => _gas;
-            public UInt256 gasUsed => _gasUsed;
-            public UInt256 gasPrice => _gasPrice;
-            public UInt256 intrinsicGas => _intrinsicGas;
-            public UInt256 block => _block;
+            public dynamic gasUsed => _gasUsed.ToInt64(null);
+            public dynamic gasPrice => _gasPrice.ToInt64(null);
+            public dynamic intrinsicGas => _intrinsicGas.ToInt64(null);
+            public dynamic block => _block.ToInt64(null);
             public dynamic output => _outputConverted ??= _output.ToArray().ToScriptArray(_engine);
             public string time => _time;
         }
+
+
     }
 }
