@@ -252,10 +252,7 @@ namespace Nethermind.Facade
                 {
                     transaction.Nonce = _processingEnv.StateReader.GetNonce(stateRoot, transaction.SenderAddress);
                 }
-                catch (Exception)
-                {
-                    // TODO: handle missing state exception, may be account needs to be created
-                }
+                catch (TrieException) { }
             }
 
             BlockHeader callHeader = treatBlockHeaderAsParentBlock

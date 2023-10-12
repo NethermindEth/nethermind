@@ -275,7 +275,7 @@ namespace Nethermind.State
             }
         }
 
-        public void IncrementNonce(Address address)
+        public void IncrementNonce(Address address, UInt256 delta)
         {
             _needsStateRootUpdate = true;
             Account? account = GetThroughCache(address);
@@ -284,12 +284,12 @@ namespace Nethermind.State
                 throw new InvalidOperationException($"Account {address} is null when incrementing nonce");
             }
 
-            Account changedAccount = account.WithChangedNonce(account.Nonce + 1);
+            Account changedAccount = account.WithChangedNonce(account.Nonce + delta);
             if (_logger.IsTrace) _logger.Trace($"  Update {address} N {account.Nonce} -> {changedAccount.Nonce}");
             PushUpdate(address, changedAccount);
         }
 
-        public void DecrementNonce(Address address)
+        public void DecrementNonce(Address address, UInt256 delta)
         {
             _needsStateRootUpdate = true;
             Account? account = GetThroughCache(address);
@@ -298,7 +298,7 @@ namespace Nethermind.State
                 throw new InvalidOperationException($"Account {address} is null when decrementing nonce.");
             }
 
-            Account changedAccount = account.WithChangedNonce(account.Nonce - 1);
+            Account changedAccount = account.WithChangedNonce(account.Nonce - delta);
             if (_logger.IsTrace) _logger.Trace($"  Update {address} N {account.Nonce} -> {changedAccount.Nonce}");
             PushUpdate(address, changedAccount);
         }

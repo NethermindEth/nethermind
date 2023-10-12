@@ -6,7 +6,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 
-namespace Nethermind.Facade.Proxy.Models.MultiCall;
+namespace Nethermind.Facade.Proxy.Models;
 
 public class AccountOverride
 {
@@ -24,8 +24,4 @@ public class AccountOverride
     /// Storage difference for AccountOverrideStateDiff
     /// </summary>
     public Dictionary<UInt256, ValueKeccak>? StateDiff { get; set; }
-
-    public AccountOverrideType Type => State is null
-        ? AccountOverrideType.AccountOverrideState
-        : AccountOverrideType.AccountOverrideStateDiff;
 }
