@@ -17,7 +17,8 @@ public interface IGCKeeper
     IDisposable TryStartNoGCRegion(long? size = null);
 }
 
-public class GCAlwaysEnabled : IGCKeeper {
+public class GCAlwaysEnabled : IGCKeeper
+{
     public IDisposable TryStartNoGCRegion(long? size = null)
     {
         return new DummyDisposable();
