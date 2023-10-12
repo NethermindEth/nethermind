@@ -39,7 +39,7 @@ jobs:
         mkdir bin
         cd src/Nethermind
         dotnet build Nethermind.sln -c release
-        cp -r Nethermind.Runner/bin/Release/net8.0/* $GITHUB_WORKSPACE/nethermind/bin/
+        cp -r artifacts/bin/Nethermind.Runner/release/* $GITHUB_WORKSPACE/nethermind/bin/
     - name: Set up Node.js v12
       if: ${{ !contains(github.event.inputs.branch, 'merge') }}
       uses: actions/setup-node@v1.4.4
