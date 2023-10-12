@@ -45,7 +45,7 @@ namespace Nethermind.Synchronization.Test
             _genesisBlock = Build.A.Block.WithNumber(0).TestObject;
             _blockTree = Build.A.BlockTree(_genesisBlock).OfChainLength(1).TestObject;
             IDbProvider dbProvider = await TestMemDbProvider.InitAsync();
-            _stateDb = dbProvider.PathStateDb;
+            _stateDb = dbProvider.StateDb;
             _codeDb = dbProvider.CodeDb;
             _receiptStorage = Substitute.For<IReceiptStorage>();
             SyncConfig quickConfig = new() { FastSync = false };
@@ -57,7 +57,7 @@ namespace Nethermind.Synchronization.Test
             ProgressTracker progressTracker = new(_blockTree, dbProvider.StateDb, LimboLogs.Instance);
             SnapProvider snapProvider = new(progressTracker, dbProvider, LimboLogs.Instance);
 
-            TrieStoreByPath trieStore = new(_stateDb, LimboLogs.Instance);
+            TrieStore trieStore = new(_stateDb, LimboLogs.Instance);
             SyncProgressResolver resolver = new(
                 _blockTree,
                 _receiptStorage,

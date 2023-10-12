@@ -562,7 +562,7 @@ namespace Nethermind.Store.Test
         public void History_get_cached_from_root_with_no_changes()
         {
             MemColumnsDb<StateColumns> db = new MemColumnsDb<StateColumns>();
-            StateTreeByPath tree = new(new TrieStoreByPath(db, LimboLogs.Instance), LimboLogs.Instance);
+            StateTreeByPath tree = new(new TrieStoreByPath(db, Persist.IfBlockOlderThan(5), LimboLogs.Instance), LimboLogs.Instance);
             tree.Set(TestItem.AddressA, _account0);
             tree.Set(TestItem.AddressB, _account1);
             tree.Set(TestItem.AddressC, _account2);
@@ -702,7 +702,7 @@ namespace Nethermind.Store.Test
             ILogger logger = logManager.GetLogger("");
 
             MemColumnsDb<StateColumns> pathDb = new MemColumnsDb<StateColumns>();
-            StateTreeByPath tree = new(new TrieStoreByPath(pathDb, LimboLogs.Instance), LimboLogs.Instance);
+            StateTreeByPath tree = new(new TrieStoreByPath(pathDb, Persist.IfBlockOlderThan(10), LimboLogs.Instance), LimboLogs.Instance);
 
             MemDb db = new MemDb();
             StateTree hashStateTree = new(new TrieStore(db, logManager), logManager);
