@@ -17,7 +17,6 @@ using Nethermind.Synchronization.Blocks;
 using Nethermind.Synchronization.FastBlocks;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
-using Nethermind.Synchronization.Reporting;
 using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Merge.Plugin.Synchronization;
@@ -30,7 +29,7 @@ public class MergeSynchronizer : Synchronizer
     private BeaconHeadersSyncFeed _beaconHeadersFeed = null!;
     private readonly IBeaconSyncStrategy _beaconSync;
 
-    public override ISyncModeSelector SyncModeSelector => _syncModeSelector ?? new MultiSyncModeSelector(
+    public override ISyncModeSelector SyncModeSelector => _syncModeSelector ??= new MultiSyncModeSelector(
         SyncProgressResolver,
         _syncPeerPool,
         _syncConfig,
