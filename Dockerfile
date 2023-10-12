@@ -5,11 +5,9 @@ FROM --platform=$BUILDPLATFORM mcr.microsoft.com/dotnet/sdk:8.0-jammy AS build
 
 ARG BUILD_CONFIG=release
 ARG BUILD_TIMESTAMP
-ARG BUILDPLATFORM
 ARG COMMIT_HASH
 ARG TARGETARCH
 ARG TARGETOS
-ARG TARGETPLATFORM
 
 COPY . .
 
@@ -22,23 +20,16 @@ RUN ln -s -r pub/nethermind pub/Nethermind.Runner
 
 FROM --platform=$TARGETPLATFORM mcr.microsoft.com/dotnet/aspnet:8.0-jammy
 
-ARG BUILDPLATFORM
-ARG TARGETARCH
-ARG TARGETOS
-ARG TARGETPLATFORM
-
-RUN apt-get update && apt-get -y install libsnappy-dev
-
 WORKDIR /nethermind
-
-COPY --from=build /pub .
-
-LABEL git_commit=$COMMIT_HASH
 
 EXPOSE 8545 8551 30303
 
 VOLUME /nethermind/keystore
 VOLUME /nethermind/logs
 VOLUME /nethermind/nethermind_db
+
+RUN apt-get update && apt-get -y install libsnappy-dev
+
+COPY --from=build /pub .
 
 ENTRYPOINT ["./nethermind"]
