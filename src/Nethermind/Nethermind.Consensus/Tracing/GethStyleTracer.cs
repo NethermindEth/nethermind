@@ -12,6 +12,7 @@ using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.Tracing.GethStyle;
@@ -25,6 +26,7 @@ namespace Nethermind.Consensus.Tracing;
 public class GethStyleTracer : IGethStyleTracer
 {
     private readonly IBlockTree _blockTree;
+    private readonly ISpecProvider _specProvider;
     private readonly ChangeableTransactionProcessorAdapter _transactionProcessorAdapter;
     private readonly IBlockchainProcessor _processor;
     private readonly IWorldState _worldState;
@@ -35,6 +37,7 @@ public class GethStyleTracer : IGethStyleTracer
         IWorldState worldState,
         IReceiptStorage receiptStorage,
         IBlockTree blockTree,
+        ISpecProvider specProvider,
         ChangeableTransactionProcessorAdapter transactionProcessorAdapter,
         IFileSystem fileSystem)
     {
@@ -42,6 +45,7 @@ public class GethStyleTracer : IGethStyleTracer
         _worldState = worldState;
         _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
         _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
+        _specProvider = specProvider;
         _transactionProcessorAdapter = transactionProcessorAdapter;
         _fileSystem = fileSystem ?? throw new ArgumentNullException(nameof(fileSystem));
     }
@@ -114,10 +118,11 @@ public class GethStyleTracer : IGethStyleTracer
         if (tx.Hash is null) throw new InvalidOperationException("Cannot trace transactions without tx hash set.");
 
         block = block.WithReplacedBodyCloned(BlockBody.WithOneTransactionOnly(tx));
-        IBlockTracer<GethLikeTxTrace> blockTracer = CreateOptionsTracer(options with { TxHash = tx.Hash });
+        IBlockTracer<GethLikeTxTrace> blockTracer = CreateOptionsTracer(block.Header, options with { TxHash = tx.Hash });
         _processor.Process(block, ProcessingOptions.Trace, blockTracer.WithCancellation(cancellationToken));
         return blockTracer.BuildResult().SingleOrDefault();
     }
+
     public GethLikeTxTrace[] TraceBlock(BlockParameter blockParameter, GethTraceOptions options, CancellationToken cancellationToken)
     {
         var block = _blockTree.FindBlock(blockParameter);
@@ -156,16 +161,17 @@ public class GethStyleTracer : IGethStyleTracer
     {
         ArgumentNullException.ThrowIfNull(txHash);
 
-        IBlockTracer<GethLikeTxTrace> tracer = CreateOptionsTracer(options with { TxHash = txHash });
+        IBlockTracer<GethLikeTxTrace> tracer = CreateOptionsTracer(block.Header, options with { TxHash = txHash });
 
         _processor.Process(block, ProcessingOptions.Trace, tracer.WithCancellation(cancellationToken));
 
         return tracer.BuildResult().SingleOrDefault();
     }
 
-    private IBlockTracer<GethLikeTxTrace> CreateOptionsTracer(GethTraceOptions options) =>
+    private IBlockTracer<GethLikeTxTrace> CreateOptionsTracer(BlockHeader block, GethTraceOptions options) =>
         !string.IsNullOrEmpty(options.Tracer)
-            ? new GethLikeBlockJavascriptTracer(_worldState, options)
+        // block.Number
+            ? new GethLikeBlockJavascriptTracer(_worldState, _specProvider.GetSpec(block), options)
             : new GethLikeBlockMemoryTracer(options);
 
     private GethLikeTxTrace[] TraceBlock(Block? block, GethTraceOptions options, CancellationToken cancellationToken)
@@ -183,7 +189,7 @@ public class GethStyleTracer : IGethStyleTracer
             if (!_blockTree.IsMainChain(parent.Hash)) throw new InvalidOperationException("Cannot trace orphaned blocks");
         }
 
-        IBlockTracer<GethLikeTxTrace> tracer = CreateOptionsTracer(options);
+        IBlockTracer<GethLikeTxTrace> tracer = CreateOptionsTracer(block.Header, options);
         _processor.Process(block, ProcessingOptions.Trace, tracer.WithCancellation(cancellationToken));
         return tracer.BuildResult().ToArray();
     }

@@ -11,8 +11,8 @@ using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
-
 using System.Runtime.InteropServices;
+
 namespace Nethermind.Evm.Tracing.GethStyle.Javascript;
 
 public static class JavascriptConverter
@@ -23,58 +23,29 @@ public static class JavascriptConverter
         string hexString = pooledList.AsSpan().ToHexString();
         return "0x" + hexString;
     }
-    // Precompiles bool
-    public static bool IsPrecompile(this IList list)
-    {
-        Span<uint> data = MemoryMarshal.Cast<byte, uint>(list.ToBytes().ToArray());
-        return (data[4] & 0x00ffffff) == 0
-               && data[3] == 0 && data[2] == 0 && data[1] == 0 && data[0] == 0
-               && (data[4] >>> 24) switch
-               {
-                   0x01 => true,
-                   0x02 => true,
-                   0x03 => true,
-                   0x04 => true,
-                   0x05 => true,
-                   0x06 => true,
-                   0x07 => true,
-                   0x08 => true,
-                   0x09 => true,
-                   0x0a => true,
-                   0x0c => true,
-                   0x0d => true,
-                   0x0e => true,
-                   0x0f => true,
-                   0x10 => true,
-                   0x11 => true,
-                   0x12 => true,
-                   0x13 => true,
-                   0x14 => true,
-                   _ => false
-               };
-    }
+
     // Slice
-    public static string SliceAndConvertToString(string sourceString, int startIndex, int endIndex)
+    public static byte[] Slice(this IList input, int startIndex, int endIndex)
     {
-        if (sourceString == null)
+        if (input == null)
         {
-            throw new ArgumentNullException(nameof(sourceString));
+            throw new ArgumentNullException(nameof(input));
         }
 
-        if (startIndex < 0 || startIndex >= sourceString.Length)
+        if (startIndex < 0 || startIndex >= input.Count)
         {
             throw new ArgumentOutOfRangeException(nameof(startIndex), "Start index is out of range.");
         }
 
-        if (endIndex <= startIndex || endIndex > sourceString.Length)
+        if (endIndex <= startIndex || endIndex > input.Count)
         {
             throw new ArgumentOutOfRangeException(nameof(endIndex), "End index is out of range.");
         }
 
         int length = endIndex - startIndex;
-        string slicedString = sourceString.Substring(startIndex, length);
-        return slicedString;
+        return input.ToBytes().Skip(startIndex).Take(length).ToArray();
     }
+
     public static string ToHexAddress(this IList list)
     {
         Span<byte> address = stackalloc byte[20];
@@ -82,12 +53,38 @@ public static class JavascriptConverter
         {
             address[i] = (byte)list[i];
         }
+
         return address.ToHexString();
     }
 
     public static IEnumerable<byte> ToBytes(this IList list) => list.ToEnumerable().Select(Convert.ToByte);
 
-    public static Address GetAddress(this IList address) => new(address.ToBytes().ToArray());
+    public static byte[]? ToWord(this object input) => input switch
+    {
+        string hexString => Bytes.FromHexString(hexString, EvmPooledMemory.WordSize),
+        IList list => list.ToBytes()
+            .Concat(Enumerable.Repeat((byte)0, Math.Max(0, EvmPooledMemory.WordSize - list.Count)))
+            .Take(EvmPooledMemory.WordSize).ToArray(),
+        _ => null
+    };
+
+    public static byte[]? ToBytes(this object input) => input switch
+    {
+        string hexString => Bytes.FromHexString(hexString),
+        IList list => list.ToBytes().ToArray(),
+        _ => null
+    };
+
+    public static Address ToAddress(this IList address) => new(address.ToBytes().ToArray());
+
+    public static Address ToAddress(this object address) => address switch
+    {
+        string hexString => Address.TryParseVariableLength(hexString, out Address parsedAddress)
+            ? parsedAddress
+            : throw new ArgumentException("Not correct address", nameof(address)),
+        IList list => list.ToAddress(),
+        _ => throw new ArgumentException("Not correct address", nameof(address))
+    } ?? throw new ArgumentException("Not correct address", nameof(address));
 
     public static UInt256 GetUint256(this IList index)
     {
@@ -101,7 +98,4 @@ public static class JavascriptConverter
     }
 
     public static dynamic ToScriptArray(this Array array, ScriptEngine engine) => engine.Script.Array.from(array);
-
-
-
 }

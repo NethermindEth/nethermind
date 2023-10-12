@@ -3,6 +3,7 @@
 
 using System;
 using System.ComponentModel;
+using System.Drawing;
 using System.Globalization;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
@@ -68,11 +69,27 @@ namespace Nethermind.Core
                 try
                 {
                     byte[] bytes = Extensions.Bytes.FromHexString(value);
-                    if (bytes?.Length == ByteLength)
+                    if (bytes.Length == ByteLength)
                     {
                         address = new Address(bytes);
                         return true;
                     }
+                }
+                catch (IndexOutOfRangeException) { }
+            }
+
+            address = default;
+            return false;
+        }
+
+        public static bool TryParseVariableLength(string? value, out Address? address)
+        {
+            if (value is not null)
+            {
+                try
+                {
+                    address = new Address(Extensions.Bytes.FromHexString(value, ByteLength));
+                    return true;
                 }
                 catch (IndexOutOfRangeException) { }
             }

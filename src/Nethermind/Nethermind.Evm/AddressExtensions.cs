@@ -24,7 +24,7 @@ namespace Nethermind.Evm
             return new Address(in contractAddressKeccak);
         }
 
-        public static Address From(Address deployingAddress, Span<byte> salt, Span<byte> initCode)
+        public static Address From(Address deployingAddress, ReadOnlySpan<byte> salt, ReadOnlySpan<byte> initCode)
         {
             // sha3(0xff ++ msg.sender ++ salt ++ sha3(init_code)))
             Span<byte> bytes = new byte[1 + Address.ByteLength + 32 + salt.Length];

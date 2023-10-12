@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using Microsoft.ClearScript.V8;
 using Nethermind.Core;
 using Nethermind.Int256;
@@ -10,7 +11,6 @@ using System.Linq;
 using System.Numerics;
 using System.Runtime.InteropServices;
 using Microsoft.ClearScript;
-
 
 
 // ReSharper disable InconsistentNaming
@@ -53,7 +53,6 @@ namespace Nethermind.Evm.Tracing.GethStyle.Javascript
 
         public class OpcodeString
         {
-
             private readonly Instruction _value;
 
             public OpcodeString(Instruction value) => _value = value;
@@ -79,17 +78,7 @@ namespace Nethermind.Evm.Tracing.GethStyle.Javascript
             public int? getCount() => _items.Count;
 
             public dynamic? peek(int index) //needs looking into
-            {
-                int topIndex = _items.Count - 1 - index;
-                string rtn = topIndex >= 0 && topIndex < _items.Count ? _items[topIndex] : null;
-                rtn = rtn?.Substring(2);
-                // Convert the hexadecimal string to a byte array
-                byte[] byteArray = Enumerable.Range(0, rtn.Length / 2)
-                    .Select(x => Convert.ToByte(rtn.Substring(x * 2, 2), 16))
-                    .ToArray();
-                BigInteger bigIntValue = new (byteArray);
-                return bigIntValue;
-            }
+                => BigInteger.Parse(_items[^index].AsSpan().Slice(2), NumberStyles.HexNumber);
 
             public string? getItem(int index) => index >= 0 && index < _items.Count ? _items[index] : null;
         }
@@ -107,15 +96,15 @@ namespace Nethermind.Evm.Tracing.GethStyle.Javascript
 
             public int? length() => _memory.Count; // / EvmPooledMemory.WordSize?
 
-            public dynamic slice(int start, int end) // needs looking into
+            public dynamic slice(BigInteger start, BigInteger end) // needs looking into
             {
                 if (start < 0 || end < start || end > _memory.Count)
                 {
                     throw new ArgumentOutOfRangeException("Invalid start or end values.");
                 }
 
-                int length = end - start;
-                Span<byte> slice = CollectionsMarshal.AsSpan(_memory).Slice(start, length);
+                int length = (int)(end - start);
+                Span<byte> slice = CollectionsMarshal.AsSpan(_memory).Slice((int)start, length);
                 return slice.ToArray().ToScriptArray(_engine);
             }
 
@@ -129,7 +118,6 @@ namespace Nethermind.Evm.Tracing.GethStyle.Javascript
                 Span<byte> byteArray = CollectionsMarshal.AsSpan(_memory).Slice(offset, 32); // Adjust the length to 32 bytes
                 return byteArray.ToArray().ToScriptArray(_engine);
             }
-
         }
 
         public class Contract
@@ -181,7 +169,7 @@ namespace Nethermind.Evm.Tracing.GethStyle.Javascript
             private object? _outputConverted;
 
 
-            public CTX(V8ScriptEngine engine, string type,  Address from,Address to, ReadOnlyMemory<byte> input, UInt256 value, long gas, UInt256 gasUsed, UInt256 gasPrice, UInt256 intrinsicGas, UInt256 block, ReadOnlyMemory<byte> output,
+            public CTX(V8ScriptEngine engine, string type, Address from, Address to, ReadOnlyMemory<byte> input, UInt256 value, long gas, UInt256 gasUsed, UInt256 gasPrice, UInt256 intrinsicGas, UInt256 block, ReadOnlyMemory<byte> output,
                 string time)
             {
                 _engine = engine;
@@ -212,7 +200,5 @@ namespace Nethermind.Evm.Tracing.GethStyle.Javascript
             public dynamic output => _outputConverted ??= _output.ToArray().ToScriptArray(_engine);
             public string time => _time;
         }
-
-
     }
 }

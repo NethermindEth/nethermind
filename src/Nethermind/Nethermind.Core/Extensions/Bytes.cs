@@ -685,24 +685,24 @@ namespace Nethermind.Core.Extensions
             return withEip55Checksum
                 ? ByteArrayToHexViaLookup32Checksum(length, stateToPass)
                 : string.Create(length, stateToPass, static (chars, state) =>
-            {
-                int skip = state.LeadingZeros / 2;
-                byte[] bytes = state.Bytes;
-                if (bytes.Length == 0)
                 {
-                    if (state.WithZeroX)
+                    int skip = state.LeadingZeros / 2;
+                    byte[] bytes = state.Bytes;
+                    if (bytes.Length == 0)
                     {
-                        chars[1] = 'x';
-                        chars[0] = '0';
+                        if (state.WithZeroX)
+                        {
+                            chars[1] = 'x';
+                            chars[0] = '0';
+                        }
+
+                        return;
                     }
 
-                    return;
-                }
-
-                ref byte input = ref Unsafe.Add(ref bytes[0], skip);
-                ref char charsRef = ref MemoryMarshal.GetReference(chars);
-                OutputBytesToCharHex(ref input, state.Bytes.Length, ref charsRef, state.WithZeroX, state.LeadingZeros);
-            });
+                    ref byte input = ref Unsafe.Add(ref bytes[0], skip);
+                    ref char charsRef = ref MemoryMarshal.GetReference(chars);
+                    OutputBytesToCharHex(ref input, state.Bytes.Length, ref charsRef, state.WithZeroX, state.LeadingZeros);
+                });
         }
 
         internal static void OutputBytesToCharHex(ref byte input, int length, ref char charsRef, bool withZeroX, int leadingZeros)
@@ -737,9 +737,9 @@ namespace Nethermind.Core.Extensions
                     0xFF, 0xFF, 2, 0xFF, 0xFF, 0xFF, 3, 0xFF);
 
                 Vector128<byte> asciiTable = Vector128.Create((byte)'0', (byte)'1', (byte)'2', (byte)'3',
-                                     (byte)'4', (byte)'5', (byte)'6', (byte)'7',
-                                     (byte)'8', (byte)'9', (byte)'a', (byte)'b',
-                                     (byte)'c', (byte)'d', (byte)'e', (byte)'f');
+                    (byte)'4', (byte)'5', (byte)'6', (byte)'7',
+                    (byte)'8', (byte)'9', (byte)'a', (byte)'b',
+                    (byte)'c', (byte)'d', (byte)'e', (byte)'f');
 
                 nuint pos = 0;
                 Debug.Assert(toProcess >= 4);
@@ -768,6 +768,7 @@ namespace Nethermind.Core.Extensions
                         {
                             ThrowHelper.ThrowNotSupportedException();
                         }
+
                         return AdvSimd.Arm64.VectorTableLookup(value, mask);
                     }
 
@@ -777,9 +778,7 @@ namespace Nethermind.Core.Extensions
 
                     // ExtractVector128 is not entirely the same as ShiftRightLogical128BitLane, but it works here since
                     // first two bytes in lowNibbles are guaranteed to be zeros
-                    Vector128<byte> shifted = Sse2.IsSupported ?
-                        Sse2.ShiftRightLogical128BitLane(lowNibbles, 2) :
-                        AdvSimd.ExtractVector128(lowNibbles, lowNibbles, 2);
+                    Vector128<byte> shifted = Sse2.IsSupported ? Sse2.ShiftRightLogical128BitLane(lowNibbles, 2) : AdvSimd.ExtractVector128(lowNibbles, lowNibbles, 2);
 
                     Vector128<byte> highNibbles = Vector128.ShiftRightLogical(shifted.AsInt32(), 4).AsByte();
 
@@ -803,7 +802,6 @@ namespace Nethermind.Core.Extensions
                     {
                         pos = lengthSubVector128;
                     }
-
                 } while (true);
             }
             else
@@ -934,6 +932,42 @@ namespace Nethermind.Core.Extensions
         }
 
         [DebuggerStepThrough]
+        public static byte[] FromHexString(string hexString, int length)
+        {
+            if (hexString is null)
+            {
+                throw new ArgumentNullException(nameof(hexString));
+            }
+
+            int start = hexString is ['0', 'x', ..] ? 2 : 0;
+            ReadOnlySpan<char> chars = hexString.AsSpan(start);
+
+            if (chars.Length == 0)
+            {
+                return Array.Empty<byte>();
+            }
+
+            int oddMod = hexString.Length % 2;
+            int actualLength = (chars.Length >> 1) + oddMod;
+            byte[] result = GC.AllocateArray<byte>(length);
+            Span<byte> writeToSpan = result.AsSpan(length - actualLength);
+
+            bool isSuccess;
+            if (oddMod == 0 &&
+                BitConverter.IsLittleEndian && (Ssse3.IsSupported || AdvSimd.Arm64.IsSupported) &&
+                chars.Length >= Vector128<ushort>.Count * 2)
+            {
+                isSuccess = HexConverter.TryDecodeFromUtf16_Vector128(chars, writeToSpan);
+            }
+            else
+            {
+                isSuccess = HexConverter.TryDecodeFromUtf16(chars, writeToSpan, oddMod == 1);
+            }
+
+            return isSuccess ? result : throw new FormatException("Incorrect hex string");
+        }
+
+        [DebuggerStepThrough]
         public static byte[] FromHexString(string hexString)
         {
             if (hexString is null)
@@ -950,7 +984,8 @@ namespace Nethermind.Core.Extensions
             }
 
             int oddMod = hexString.Length % 2;
-            byte[] result = GC.AllocateUninitializedArray<byte>((chars.Length >> 1) + oddMod);
+            int actualLength = (chars.Length >> 1) + oddMod;
+            byte[] result = GC.AllocateUninitializedArray<byte>(actualLength);
 
             bool isSuccess;
             if (oddMod == 0 &&

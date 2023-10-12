@@ -13,9 +13,11 @@ using static System.Runtime.InteropServices.JavaScript.JSType;
 using System;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.Tracing.GethStyle.Javascript;
+using Nethermind.Specs.Forks;
 
 namespace Nethermind.Evm.Test.Tracing;
 
+// [Parallelizable(ParallelScope.All)]
 public class GethLikeJavascriptTracerTests : VirtualMachineTestsBase
 {
     /// <summary>
@@ -31,13 +33,16 @@ public class GethLikeJavascriptTracerTests : VirtualMachineTestsBase
                     result: function(ctx, db) { return this.retVal }
                 }";
         GethLikeTxTrace traces = Execute(
-                new GethLikeJavascriptTxTracer(TestState, GethTraceOptions.Default with { EnableMemory = true, Tracer = userTracer }),
+                GetTracer(userTracer),
                 GetBytecode(),
                 MainnetSpecProvider.CancunActivation)
             .BuildResult();
         string[] expectedStrings = { "0:PUSH32:0:79000:null", "33:PUSH1:0:78997:null", "35:MSTORE:0:78994:null", "36:PUSH32:0:78988:null", "69:PUSH1:0:78985:null", "71:MSTORE:0:78982:null", "72:STOP:0:78976:null" };
         Assert.That(traces.CustomTracerResult, Is.EqualTo(expectedStrings));
     }
+
+    private GethLikeJavascriptTxTracer GetTracer(string userTracer) =>
+        new(TestState, Cancun.Instance, GethTraceOptions.Default with { EnableMemory = true, Tracer = userTracer });
 
     [Test]
     public void JS_tracers_log_op_functions()
@@ -49,7 +54,7 @@ public class GethLikeJavascriptTracerTests : VirtualMachineTestsBase
                     result: function(ctx, db) { return this.retVal }
                 }";
         GethLikeTxTrace traces = Execute(
-                new GethLikeJavascriptTxTracer(TestState, GethTraceOptions.Default with { EnableMemory = true, Tracer = userTracer }),
+                GetTracer(userTracer),
                 GetBytecode(),
                 MainnetSpecProvider.CancunActivation)
             .BuildResult();
@@ -67,7 +72,7 @@ public class GethLikeJavascriptTracerTests : VirtualMachineTestsBase
                     result: function(ctx, db) { return this.retVal }
                 }";
         GethLikeTxTrace traces = Execute(
-                new GethLikeJavascriptTxTracer(TestState, GethTraceOptions.Default with { EnableMemory = true, Tracer = userTracer }),
+                GetTracer(userTracer),
                 GetBytecode(),
                 MainnetSpecProvider.CancunActivation)
             .BuildResult();
@@ -90,11 +95,11 @@ public class GethLikeJavascriptTracerTests : VirtualMachineTestsBase
                     result: function(ctx, db) { return this.retVal }
                 }";
         GethLikeTxTrace traces = Execute(
-                new GethLikeJavascriptTxTracer(TestState, GethTraceOptions.Default with { EnableMemory = true, Tracer = userTracer }),
+                GetTracer(userTracer),
                 GetBytecode(),
                 MainnetSpecProvider.CancunActivation)
             .BuildResult();
-        dynamic[] expectedStrings = { "FAULT: undefined", 32, 64};
+        dynamic[] expectedStrings = { "FAULT: undefined", 32, 64 };
         Assert.That(traces.CustomTracerResult, Is.EqualTo(expectedStrings));
     }
 
@@ -108,7 +113,7 @@ public class GethLikeJavascriptTracerTests : VirtualMachineTestsBase
                     result: function(ctx, db) { return this.retVal }
                 }";
         GethLikeTxTrace traces = Execute(
-                new GethLikeJavascriptTxTracer(TestState, GethTraceOptions.Default with { EnableMemory = true, Tracer = userTracer }),
+                GetTracer(userTracer),
                 GetBytecode(),
                 MainnetSpecProvider.CancunActivation)
             .BuildResult();
@@ -140,7 +145,7 @@ public class GethLikeJavascriptTracerTests : VirtualMachineTestsBase
         ;
 
         GethLikeTxTrace traces = Execute(
-                new GethLikeJavascriptTxTracer(TestState, GethTraceOptions.Default with { EnableMemory = true, Tracer = userTracer }),
+                GetTracer(userTracer),
                 GetBytecode(),
                 MainnetSpecProvider.CancunActivation)
             .BuildResult();
@@ -164,7 +169,7 @@ public class GethLikeJavascriptTracerTests : VirtualMachineTestsBase
                     result: function(ctx, db) { return this.retVal; }
                 }";
         GethLikeTxTrace traces = Execute(
-                new GethLikeJavascriptTxTracer(TestState, GethTraceOptions.Default with { EnableMemory = true, Tracer = userTracer }),
+                GetTracer(userTracer),
                 GetBytecode(),
                 MainnetSpecProvider.CancunActivation)
             .BuildResult();
@@ -193,7 +198,7 @@ public class GethLikeJavascriptTracerTests : VirtualMachineTestsBase
                     }
                 }";
         GethLikeTxTrace traces = Execute(
-                new GethLikeJavascriptTxTracer(TestState, GethTraceOptions.Default with { EnableMemory = true, Tracer = userTracer }),
+                GetTracer(userTracer),
                 GetStorageBytecode(),
                 MainnetSpecProvider.CancunActivation)
             .BuildResult();
@@ -227,7 +232,7 @@ public class GethLikeJavascriptTracerTests : VirtualMachineTestsBase
                     }
                 }";
         GethLikeTxTrace traces = Execute(
-                new GethLikeJavascriptTxTracer(TestState, GethTraceOptions.Default with { EnableMemory = true, Tracer = userTracer }),
+                GetTracer(userTracer),
                 GetOperationalBytecode(),
                 MainnetSpecProvider.CancunActivation)
             .BuildResult();
@@ -292,7 +297,7 @@ public class GethLikeJavascriptTracerTests : VirtualMachineTestsBase
             }";
 
         GethLikeTxTrace traces = Execute(
-                new GethLikeJavascriptTxTracer(TestState, GethTraceOptions.Default with { EnableMemory = true, Tracer = userTracer }),
+                GetTracer(userTracer),
                 GetOperationalBytecode(),
                 MainnetSpecProvider.CancunActivation)
             .BuildResult();
@@ -305,7 +310,7 @@ public class GethLikeJavascriptTracerTests : VirtualMachineTestsBase
     {
         string userTracer = "noopTracer";
         GethLikeTxTrace traces = Execute(
-                new GethLikeJavascriptTxTracer(TestState, GethTraceOptions.Default with { EnableMemory = true, Tracer = userTracer }),
+                GetTracer(userTracer),
                 GetBytecode(),
                 MainnetSpecProvider.CancunActivation)
             .BuildResult();
@@ -317,7 +322,7 @@ public class GethLikeJavascriptTracerTests : VirtualMachineTestsBase
     {
         string userTracer = "opcountTracer";
         GethLikeTxTrace traces = Execute(
-                new GethLikeJavascriptTxTracer(TestState, GethTraceOptions.Default with { EnableMemory = true, Tracer = userTracer }),
+                GetTracer(userTracer),
                 GetBytecode(),
                 MainnetSpecProvider.CancunActivation)
             .BuildResult();
@@ -327,14 +332,15 @@ public class GethLikeJavascriptTracerTests : VirtualMachineTestsBase
     [Test]
     public void JS_tracers_builtIns_evmdis_tracer()
     {
-        string userTracer = "4byteTracer";
+        string userTracer = "evmdisTracer";
         GethLikeTxTrace traces = Execute(
-                new GethLikeJavascriptTxTracer(TestState, GethTraceOptions.Default with { EnableMemory = true, Tracer = userTracer }),
+                GetTracer(userTracer),
                 GetComplexBytecode(),
                 MainnetSpecProvider.CancunActivation)
             .BuildResult();
         Assert.That(traces.CustomTracerResult, Has.All.Empty);
     }
+
     private static byte[] GetBytecode()
     {
         return Prepare.EvmCode

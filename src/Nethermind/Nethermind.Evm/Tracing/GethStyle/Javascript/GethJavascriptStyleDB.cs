@@ -24,15 +24,15 @@ public class GethJavascriptStyleDb
         _stateRepository = stateRepository;
     }
 
-    public UInt256 getBalance(IList address) => _stateRepository.GetBalance(address.GetAddress());
+    public UInt256 getBalance(IList address) => _stateRepository.GetBalance(address.ToAddress());
 
-    public UInt256 getNonce(IList address) => _stateRepository.GetNonce(address.GetAddress());
+    public UInt256 getNonce(IList address) => _stateRepository.GetNonce(address.ToAddress());
 
     public dynamic getCode(IList address) =>
-        _stateRepository.GetCode(address.GetAddress()).ToScriptArray(_engine);
+        _stateRepository.GetCode(address.ToAddress()).ToScriptArray(_engine);
 
     public dynamic getState(IList address, IList index) =>
-        _stateRepository.Get(new StorageCell(address.GetAddress(), index.GetUint256())).ToScriptArray(_engine);
+        _stateRepository.Get(new StorageCell(address.ToAddress(), index.GetUint256())).ToScriptArray(_engine);
 
-    public bool exists(IList address) => !_stateRepository.GetAccount(address.GetAddress()).IsTotallyEmpty;
+    public bool exists(IList address) => !_stateRepository.GetAccount(address.ToAddress()).IsTotallyEmpty;
 }
