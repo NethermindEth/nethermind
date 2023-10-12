@@ -84,7 +84,6 @@ public class BeaconHeadersSyncTests
         private BeaconHeadersSyncFeed? _feed;
         public BeaconHeadersSyncFeed Feed => _feed ??= new BeaconHeadersSyncFeed(
             PoSSwitcher,
-            Selector,
             BlockTree,
             PeerPool,
             SyncConfig,

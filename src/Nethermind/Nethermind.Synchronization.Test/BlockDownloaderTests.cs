@@ -968,21 +968,16 @@ namespace Nethermind.Synchronization.Test
                     _syncConfig,
                     LimboLogs.Instance);
 
-            private MultiSyncModeSelector? _syncModeSelector;
-
             protected IBetterPeerStrategy? _betterPeerStrategy;
 
             protected virtual IBetterPeerStrategy BetterPeerStrategy =>
                 _betterPeerStrategy ??= new TotalDifficultyBetterPeerStrategy(LimboLogs.Instance);
 
-            public ISyncModeSelector SyncModeSelector => _syncModeSelector ??=
-                new MultiSyncModeSelector(SyncProgressResolver, PeerPool, _syncConfig, No.BeaconSync, BetterPeerStrategy, LimboLogs.Instance);
-
             private ActivatedSyncFeed<BlocksRequest?>? _feed;
 
             public ActivatedSyncFeed<BlocksRequest?> Feed
             {
-                get => _feed ??= new FullSyncFeed(SyncModeSelector, LimboLogs.Instance);
+                get => _feed ??= new FullSyncFeed();
                 set => _feed = value;
             }
 

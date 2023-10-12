@@ -38,14 +38,13 @@ namespace Nethermind.Synchronization.FastBlocks
         private SyncStatusList _syncStatusList;
 
         public BodiesSyncFeed(
-            ISyncModeSelector syncModeSelector,
             IBlockTree blockTree,
             ISyncPeerPool syncPeerPool,
             ISyncConfig syncConfig,
             ISyncReport syncReport,
             IDbMeta blocksDb,
             ILogManager logManager,
-            long flushDbInterval = DefaultFlushDbInterval) : base(syncModeSelector)
+            long flushDbInterval = DefaultFlushDbInterval)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));

@@ -25,5 +25,6 @@ namespace Nethermind.Synchronization.ParallelSync
         void Activate();
         void Finish();
         Task FeedTask { get; }
+        void SyncModeSelectorOnChanged(SyncMode current);
     }
 }

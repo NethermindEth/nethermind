@@ -20,20 +20,17 @@ namespace Nethermind.Synchronization.SnapSync
 
         private const SnapSyncBatch EmptyBatch = null;
 
-        private readonly ISyncModeSelector _syncModeSelector;
         private readonly ISnapProvider _snapProvider;
 
         private readonly ILogger _logger;
+        private bool _disposed = false;
         public override bool IsMultiFeed => true;
         public override AllocationContexts Contexts => AllocationContexts.Snap;
 
-        public SnapSyncFeed(ISyncModeSelector syncModeSelector, ISnapProvider snapProvider, ILogManager logManager)
+        public SnapSyncFeed(ISnapProvider snapProvider, ILogManager logManager)
         {
-            _syncModeSelector = syncModeSelector;
             _snapProvider = snapProvider;
             _logger = logManager.GetClassLogger();
-
-            _syncModeSelector.Changed += SyncModeSelectorOnChanged;
         }
 
         public override Task<SnapSyncBatch?> PrepareRequest(CancellationToken token = default)
@@ -193,14 +190,15 @@ namespace Nethermind.Synchronization.SnapSync
 
         public void Dispose()
         {
-            _syncModeSelector.Changed -= SyncModeSelectorOnChanged;
+            _disposed = true;
         }
 
-        private void SyncModeSelectorOnChanged(object? sender, SyncModeChangedEventArgs e)
+        public override void SyncModeSelectorOnChanged(SyncMode current)
         {
+            if (_disposed) return;
             if (CurrentState == SyncFeedState.Dormant)
             {
-                if ((e.Current & SyncMode.SnapSync) == SyncMode.SnapSync)
+                if ((current & SyncMode.SnapSync) == SyncMode.SnapSync)
                 {
                     if (_snapProvider.CanSync())
                     {

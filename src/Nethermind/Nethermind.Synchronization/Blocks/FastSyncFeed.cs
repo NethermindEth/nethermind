@@ -16,8 +16,7 @@ namespace Nethermind.Synchronization.Blocks
         private readonly ISyncConfig _syncConfig;
         private readonly BlocksRequest _blocksRequest;
 
-        public FastSyncFeed(ISyncModeSelector syncModeSelector, ISyncConfig syncConfig, ILogManager logManager)
-            : base(syncModeSelector)
+        public FastSyncFeed(ISyncConfig syncConfig)
         {
             _syncConfig = syncConfig ?? throw new ArgumentNullException(nameof(syncConfig));
             _blocksRequest = new BlocksRequest(BuildOptions(), MultiSyncModeSelector.FastSyncLag);

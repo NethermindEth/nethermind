@@ -69,7 +69,6 @@ namespace Nethermind.Synchronization.Test.FastSync
         private static readonly ISpecProvider _specProvider;
         private IReceiptStorage _receiptStorage = null!;
         private ISyncPeerPool _syncPeerPool = null!;
-        private ISyncModeSelector _selector = null!;
         private ReceiptsSyncFeed _feed = null!;
         private ISyncConfig _syncConfig = null!;
         private ISyncReport _syncReport = null!;
@@ -112,10 +111,7 @@ namespace Nethermind.Synchronization.Test.FastSync
             _syncReport.FastBlocksReceipts.Returns(_measuredProgress);
             _syncReport.ReceiptsInQueue.Returns(_measuredProgressQueue);
 
-            _selector = Substitute.For<ISyncModeSelector>();
-
             _feed = new ReceiptsSyncFeed(
-                _selector,
                 _specProvider,
                 _blockTree,
                 _receiptStorage,
@@ -131,7 +127,6 @@ namespace Nethermind.Synchronization.Test.FastSync
             _syncConfig = new SyncConfig { FastBlocks = false };
             Assert.Throws<InvalidOperationException>(
                 () => _feed = new ReceiptsSyncFeed(
-                    _selector,
                     _specProvider,
                     _blockTree,
                     _receiptStorage,
@@ -145,7 +140,6 @@ namespace Nethermind.Synchronization.Test.FastSync
         public async Task Should_finish_on_start_when_receipts_not_stored()
         {
             _feed = new ReceiptsSyncFeed(
-                _selector,
                 _specProvider,
                 _blockTree,
                 NullReceiptStorage.Instance,
@@ -243,7 +237,6 @@ namespace Nethermind.Synchronization.Test.FastSync
             _syncConfig.PivotHash = scenario.Blocks.Last()?.Hash?.ToString();
 
             _feed = new ReceiptsSyncFeed(
-                _selector,
                 _specProvider,
                 _blockTree,
                 _receiptStorage,

@@ -26,6 +26,7 @@ public class MergeSynchronizer : Synchronizer
     private readonly IPoSSwitcher _poSSwitcher;
     private readonly IMergeConfig _mergeConfig;
     private readonly IInvalidChainTracker _invalidChainTracker;
+    private BeaconHeadersSyncFeed _beaconHeadersFeed = null!;
 
     public MergeSynchronizer(
         IDbProvider dbProvider,
@@ -75,17 +76,18 @@ public class MergeSynchronizer : Synchronizer
 
         base.Start();
         StartBeaconHeadersComponents();
+        WireMultiSyncModeSelector();
     }
 
     private void StartBeaconHeadersComponents()
     {
         FastBlocksPeerAllocationStrategyFactory fastFactory = new();
-        BeaconHeadersSyncFeed beaconHeadersFeed =
-            new(_poSSwitcher, _syncMode, _blockTree, _syncPeerPool, _syncConfig, _syncReport, _pivot, _mergeConfig, _invalidChainTracker, _logManager);
+        _beaconHeadersFeed =
+            new(_poSSwitcher, _blockTree, _syncPeerPool, _syncConfig, _syncReport, _pivot, _mergeConfig, _invalidChainTracker, _logManager);
         BeaconHeadersSyncDownloader beaconHeadersDownloader = new(_logManager);
 
         SyncDispatcher<HeadersSyncBatch> dispatcher = CreateDispatcher(
-            beaconHeadersFeed!,
+            _beaconHeadersFeed!,
             beaconHeadersDownloader,
             fastFactory
         );
@@ -101,5 +103,10 @@ public class MergeSynchronizer : Synchronizer
                 if (_logger.IsInfo) _logger.Info("Beacon headers task completed.");
             }
         });
+    }
+
+    private void WireMultiSyncModeSelector()
+    {
+        WireFeedWithModeSelector(_beaconHeadersFeed);
     }
 }

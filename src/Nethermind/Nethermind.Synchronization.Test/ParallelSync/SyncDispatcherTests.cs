@@ -202,6 +202,9 @@ namespace Nethermind.Synchronization.Test.ParallelSync
 
             public override bool IsMultiFeed { get; }
             public override AllocationContexts Contexts => AllocationContexts.All;
+            public override void SyncModeSelectorOnChanged(SyncMode current)
+            {
+            }
 
             private int _pendingRequests;
 

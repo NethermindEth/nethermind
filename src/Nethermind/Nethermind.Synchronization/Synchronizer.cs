@@ -130,6 +130,8 @@ namespace Nethermind.Synchronization
             {
                 _exitSource.WatchForExit(_syncMode, _logManager, TimeSpan.FromSeconds(_syncConfig.ExitOnSyncedWaitTimeSec));
             }
+
+            WireMultiSyncModeSelector();
         }
 
         private void SetupDbOptimizer()
@@ -147,7 +149,7 @@ namespace Nethermind.Synchronization
 
         private void StartFullSyncComponents()
         {
-            _fullSyncFeed = new FullSyncFeed(_syncMode, LimboLogs.Instance);
+            _fullSyncFeed = new FullSyncFeed();
             BlockDownloader fullSyncBlockDownloader = _blockDownloaderFactory.Create(_fullSyncFeed);
             fullSyncBlockDownloader.SyncEvent += DownloaderOnSyncEvent;
 
@@ -172,7 +174,7 @@ namespace Nethermind.Synchronization
 
         private void StartFastSyncComponents()
         {
-            _fastSyncFeed = new FastSyncFeed(_syncMode, _syncConfig, _logManager);
+            _fastSyncFeed = new FastSyncFeed(_syncConfig);
             BlockDownloader downloader = _blockDownloaderFactory.Create(_fastSyncFeed);
             downloader.SyncEvent += DownloaderOnSyncEvent;
 
@@ -198,7 +200,7 @@ namespace Nethermind.Synchronization
         private void StartStateSyncComponents()
         {
             TreeSync treeSync = new(SyncMode.StateNodes, _dbProvider.CodeDb, _dbProvider.StateDb, _blockTree, _logManager);
-            _stateSyncFeed = new StateSyncFeed(_syncMode, treeSync, _logManager);
+            _stateSyncFeed = new StateSyncFeed(treeSync, _logManager);
             SyncDispatcher<StateSyncBatch> stateSyncDispatcher = CreateDispatcher(
                 _stateSyncFeed,
                 new StateSyncDownloader(_logManager),
@@ -220,7 +222,7 @@ namespace Nethermind.Synchronization
 
         private void StartSnapSyncComponents()
         {
-            _snapSyncFeed = new SnapSyncFeed(_syncMode, _snapProvider, _logManager);
+            _snapSyncFeed = new SnapSyncFeed(_snapProvider, _logManager);
             SyncDispatcher<SnapSyncBatch> dispatcher = CreateDispatcher(
                 _snapSyncFeed,
                 new SnapSyncDownloader(_logManager),
@@ -244,7 +246,7 @@ namespace Nethermind.Synchronization
         {
             FastBlocksPeerAllocationStrategyFactory fastFactory = new();
 
-            _headersFeed = new HeadersSyncFeed(_syncMode, _blockTree, _syncPeerPool, _syncConfig, _syncReport, _logManager);
+            _headersFeed = new HeadersSyncFeed(_blockTree, _syncPeerPool, _syncConfig, _syncReport, _logManager);
             SyncDispatcher<HeadersSyncBatch> headersDispatcher = CreateDispatcher(
                 _headersFeed,
                 new HeadersSyncDownloader(_logManager),
@@ -267,7 +269,7 @@ namespace Nethermind.Synchronization
             {
                 if (_syncConfig.DownloadBodiesInFastSync)
                 {
-                    _bodiesFeed = new BodiesSyncFeed(_syncMode, _blockTree, _syncPeerPool, _syncConfig, _syncReport, _dbProvider.BlocksDb, _logManager);
+                    _bodiesFeed = new BodiesSyncFeed(_blockTree, _syncPeerPool, _syncConfig, _syncReport, _dbProvider.BlocksDb, _logManager);
 
                     SyncDispatcher<BodiesSyncBatch> bodiesDispatcher = CreateDispatcher(
                         _bodiesFeed,
@@ -290,7 +292,7 @@ namespace Nethermind.Synchronization
 
                 if (_syncConfig.DownloadReceiptsInFastSync)
                 {
-                    _receiptsFeed = new ReceiptsSyncFeed(_syncMode, _specProvider, _blockTree, _receiptStorage, _syncPeerPool, _syncConfig, _syncReport, _logManager);
+                    _receiptsFeed = new ReceiptsSyncFeed(_specProvider, _blockTree, _receiptStorage, _syncPeerPool, _syncConfig, _syncReport, _logManager);
 
                     SyncDispatcher<ReceiptsSyncBatch> receiptsDispatcher = CreateDispatcher(
                         _receiptsFeed,
@@ -356,6 +358,27 @@ namespace Nethermind.Synchronization
                     _headersFeed?.FeedTask ?? Task.CompletedTask,
                     _bodiesFeed?.FeedTask ?? Task.CompletedTask,
                     _receiptsFeed?.FeedTask ?? Task.CompletedTask));
+        }
+
+        private void WireMultiSyncModeSelector()
+        {
+            WireFeedWithModeSelector(_fastSyncFeed);
+            WireFeedWithModeSelector(_stateSyncFeed);
+            WireFeedWithModeSelector(_snapSyncFeed);
+            WireFeedWithModeSelector(_fullSyncFeed);
+            WireFeedWithModeSelector(_headersFeed);
+            WireFeedWithModeSelector(_bodiesFeed);
+            WireFeedWithModeSelector(_receiptsFeed);
+        }
+
+        protected void WireFeedWithModeSelector<T>(ISyncFeed<T>? feed)
+        {
+            if (feed == null) return;
+            _syncMode.Changed += ((sender, args) =>
+            {
+                feed?.SyncModeSelectorOnChanged(args.Current);
+            });
+            feed?.SyncModeSelectorOnChanged(_syncMode.Current);
         }
 
         public void Dispose()
