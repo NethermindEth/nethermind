@@ -29,11 +29,6 @@
     <ProjectReference Include="..\Ethereum.Test.Base\Ethereum.Test.Base.csproj" />
   </ItemGroup>
   <ItemGroup>
-    <Content Include="Fixtures\**">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </Content>
-  </ItemGroup>
-  <ItemGroup>
     <Folder Include="Fixtures\" />
   </ItemGroup>
 </Project>
