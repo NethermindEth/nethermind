@@ -32,10 +32,7 @@ public class ShardBlobBlockValidatorTests
             .TestObject);
     }
 
-    [TestCase(0ul, ExpectedResult = true)]
-    [TestCase(Eip4844Constants.MaxBlobGasPerBlock - Eip4844Constants.BlobGasPerBlob, ExpectedResult = true)]
-    [TestCase(Eip4844Constants.MaxBlobGasPerBlock, ExpectedResult = true)]
-    [TestCase(Eip4844Constants.MaxBlobGasPerBlock + Eip4844Constants.BlobGasPerBlob, ExpectedResult = false)]
+    [TestCaseSource(nameof(BlobsPerBlockCountTestCases))]
     public bool Blobs_per_block_count_is_valid(ulong blobGasUsed)
     {
         ISpecProvider specProvider = new CustomSpecProvider(((ForkActivation)0, Cancun.Instance));
@@ -46,59 +43,66 @@ public class ShardBlobBlockValidatorTests
                 .WithWithdrawals(TestItem.WithdrawalA_1Eth)
                 .WithBlobGasUsed(blobGasUsed)
                 .WithExcessBlobGas(0)
-                .WithTransactions(Enumerable.Range(0, (int)(blobGasUsed / Eip4844Constants.BlobGasPerBlob))
-                    .Select(i => Build.A.Transaction.WithType(TxType.Blob)
-                                                    .WithMaxFeePerBlobGas(ulong.MaxValue)
-                                                    .WithBlobVersionedHashes(1).TestObject).ToArray())
+                .WithTransactions(Enumerable.Range(0, (int)(blobGasUsed / Eip4844Constants.GasPerBlob))
+                    .Select(i => Build.A.Transaction
+                        .WithType(TxType.Blob)
+                        .WithMaxFeePerBlobGas(ulong.MaxValue)
+                        .WithBlobVersionedHashes(1).TestObject).ToArray())
                 .TestObject);
     }
 
-    public static IEnumerable<TestCaseData> BlobGasFieldsPerForkTestCases
+    private static IEnumerable<TestCaseData> BlobsPerBlockCountTestCases()
     {
-        get
+        yield return new TestCaseData(0UL) { ExpectedResult = true };
+
+        yield return new TestCaseData(Eip4844Constants.MaxBlobGasPerBlock - Eip4844Constants.GasPerBlob) { ExpectedResult = true };
+
+        yield return new TestCaseData(Eip4844Constants.MaxBlobGasPerBlock) { ExpectedResult = true };
+
+        yield return new TestCaseData(Eip4844Constants.MaxBlobGasPerBlock + Eip4844Constants.GasPerBlob) { ExpectedResult = false };
+    }
+
+    private static IEnumerable<TestCaseData> BlobGasFieldsPerForkTestCases()
+    {
+        yield return new TestCaseData(Shanghai.Instance, null, null)
         {
-            yield return new TestCaseData(Shanghai.Instance, null, null)
-            {
-                TestName = "Blob gas fields are not set pre-Cancun",
-                ExpectedResult = true
-            };
-            yield return new TestCaseData(Shanghai.Instance, 0ul, null)
-            {
-                TestName = "BlobGasUsed is set pre-Cancun",
-                ExpectedResult = false
-            };
-            yield return new TestCaseData(Shanghai.Instance, null, 0ul)
-            {
-                TestName = "ExcessBlobGas is set pre-Cancun",
-                ExpectedResult = false
-            };
-            yield return new TestCaseData(Shanghai.Instance, 0ul, 0ul)
-            {
-                TestName = "Blob gas fields are set pre-Cancun",
-                ExpectedResult = false
-            };
-
-
-            yield return new TestCaseData(Cancun.Instance, null, null)
-            {
-                TestName = "Blob gas fields are not set post-Cancun",
-                ExpectedResult = false
-            };
-            yield return new TestCaseData(Cancun.Instance, 0ul, null)
-            {
-                TestName = "Just BlobGasUsed is set post-Cancun",
-                ExpectedResult = false
-            };
-            yield return new TestCaseData(Cancun.Instance, null, 0ul)
-            {
-                TestName = "Just ExcessBlobGas is set post-Cancun",
-                ExpectedResult = false
-            };
-            yield return new TestCaseData(Cancun.Instance, 0ul, 0ul)
-            {
-                TestName = "Blob gas fields are set post-Cancun",
-                ExpectedResult = true
-            };
-        }
+            TestName = "Blob gas fields are not set pre-Cancun",
+            ExpectedResult = true
+        };
+        yield return new TestCaseData(Shanghai.Instance, 0ul, null)
+        {
+            TestName = "BlobGasUsed is set pre-Cancun",
+            ExpectedResult = false
+        };
+        yield return new TestCaseData(Shanghai.Instance, null, 0ul)
+        {
+            TestName = "ExcessBlobGas is set pre-Cancun",
+            ExpectedResult = false
+        };
+        yield return new TestCaseData(Shanghai.Instance, 0ul, 0ul)
+        {
+            TestName = "Blob gas fields are set pre-Cancun",
+            ExpectedResult = false
+        };
+        yield return new TestCaseData(Cancun.Instance, null, null)
+        {
+            TestName = "Blob gas fields are not set post-Cancun",
+            ExpectedResult = false
+        };
+        yield return new TestCaseData(Cancun.Instance, 0ul, null)
+        {
+            TestName = "Just BlobGasUsed is set post-Cancun",
+            ExpectedResult = false
+        };
+        yield return new TestCaseData(Cancun.Instance, null, 0ul)
+        {
+            TestName = "Just ExcessBlobGas is set post-Cancun",
+            ExpectedResult = false
+        };
+        yield return new TestCaseData(Cancun.Instance, 0ul, 0ul)
+        {
+            TestName = "Blob gas fields are set post-Cancun",
+            ExpectedResult = true
+        };
     }
 }

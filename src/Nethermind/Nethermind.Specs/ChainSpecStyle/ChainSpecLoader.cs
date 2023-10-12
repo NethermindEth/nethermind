@@ -170,6 +170,11 @@ public class ChainSpecLoader : IChainSpecLoader
         Eip1559Constants.ElasticityMultiplier = chainSpec.Parameters.Eip1559ElasticityMultiplier;
         Eip1559Constants.ForkBaseFee = chainSpec.Parameters.Eip1559BaseFeeInitialValue;
         Eip1559Constants.BaseFeeMaxChangeDenominator = chainSpec.Parameters.Eip1559BaseFeeMaxChangeDenominator;
+
+        Eip4844Constants.BlobGasPriceUpdateFraction = chainSpecJson.Params.MaxBlobGasPerBlock ?? Eip4844Constants.BlobGasPriceUpdateFraction;
+        Eip4844Constants.MaxBlobGasPerBlock = chainSpecJson.Params.MaxBlobGasPerBlock ?? Eip4844Constants.MaxBlobGasPerBlock;
+        Eip4844Constants.MinBlobGasPrice = chainSpecJson.Params.MinBlobGasPrice ?? Eip4844Constants.MinBlobGasPrice;
+        Eip4844Constants.TargetBlobGasPerBlock = chainSpecJson.Params.TargetBlobGasPerBlock ?? Eip4844Constants.TargetBlobGasPerBlock;
     }
 
     private static void ValidateParams(ChainSpecParamsJson parameters)

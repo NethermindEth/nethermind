@@ -10,7 +10,7 @@ namespace Nethermind.Evm;
 public static class BlobGasCalculator
 {
     public static ulong CalculateBlobGas(int blobCount) =>
-        (ulong)blobCount * Eip4844Constants.BlobGasPerBlob;
+        (ulong)blobCount * Eip4844Constants.GasPerBlob;
 
     public static ulong CalculateBlobGas(Transaction transaction) =>
         CalculateBlobGas(transaction.BlobVersionedHashes?.Length ?? 0);
@@ -85,7 +85,7 @@ public static class BlobGasCalculator
             return false;
         }
 
-        return !FakeExponentialOverflow(Eip4844Constants.MinBlobGasPrice, excessBlobGas, Eip4844Constants.BlobGasUpdateFraction, out blobGasPricePerUnit);
+        return !FakeExponentialOverflow(Eip4844Constants.MinBlobGasPrice, excessBlobGas, Eip4844Constants.BlobGasPriceUpdateFraction, out blobGasPricePerUnit);
     }
 
     public static ulong? CalculateExcessBlobGas(BlockHeader? parentBlockHeader, IReleaseSpec releaseSpec)

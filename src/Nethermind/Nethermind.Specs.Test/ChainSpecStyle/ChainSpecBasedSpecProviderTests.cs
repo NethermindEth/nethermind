@@ -8,6 +8,7 @@ using System.Linq;
 using System.Reflection;
 using FluentAssertions;
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -258,6 +259,14 @@ public class ChainSpecBasedSpecProviderTests
         VerifyGnosisShanghaiExceptions(preShanghaiSpec, postShanghaiSpec);
         GetTransitionTimestamps(chainSpec.Parameters).Should().AllSatisfy(
             t => ValidateSlotByTimestamp(t, ChiadoSpecProvider.BeaconChainGenesisTimestamp, GnosisBlockTime).Should().BeTrue());
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(Eip4844Constants.BlobGasPriceUpdateFraction, Is.EqualTo((UInt256)1112826));
+            Assert.That(Eip4844Constants.MaxBlobGasPerBlock, Is.EqualTo(262144));
+            Assert.That(Eip4844Constants.MinBlobGasPrice, Is.EqualTo(1.GWei()));
+            Assert.That(Eip4844Constants.TargetBlobGasPerBlock, Is.EqualTo(131072));
+        });
     }
 
     [Test]
@@ -301,6 +310,14 @@ public class ChainSpecBasedSpecProviderTests
         VerifyGnosisShanghaiExceptions(preShanghaiSpec, postShanghaiSpec);
         GetTransitionTimestamps(chainSpec.Parameters).Should().AllSatisfy(
             t => ValidateSlotByTimestamp(t, GnosisSpecProvider.BeaconChainGenesisTimestamp, GnosisBlockTime).Should().BeTrue());
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(Eip4844Constants.BlobGasPriceUpdateFraction, Is.EqualTo((UInt256)1112826));
+            Assert.That(Eip4844Constants.MaxBlobGasPerBlock, Is.EqualTo(262144));
+            Assert.That(Eip4844Constants.MinBlobGasPrice, Is.EqualTo(1.GWei()));
+            Assert.That(Eip4844Constants.TargetBlobGasPerBlock, Is.EqualTo(131072));
+        });
     }
 
     private void VerifyGnosisShanghaiExceptions(IReleaseSpec preShanghaiSpec, IReleaseSpec postShanghaiSpec)
@@ -452,6 +469,11 @@ public class ChainSpecBasedSpecProviderTests
                      .Where(p => p.Name != nameof(IReleaseSpec.Eip1559TransitionBlock))
                      .Where(p => p.Name != nameof(IReleaseSpec.WithdrawalTimestamp))
                      .Where(p => p.Name != nameof(IReleaseSpec.Eip4844TransitionTimestamp))
+
+                     // Skip EIP-4844 parameter validation
+                     .Where(p => p.Name != nameof(Eip4844Constants.MaxBlobGasPerBlock))
+                     .Where(p => p.Name != nameof(Eip4844Constants.MinBlobGasPrice))
+                     .Where(p => p.Name != nameof(Eip4844Constants.TargetBlobGasPerBlock))
 
                      // handle gnosis specific exceptions
                      .Where(p => !isGnosis || p.Name != nameof(IReleaseSpec.MaxCodeSize))
