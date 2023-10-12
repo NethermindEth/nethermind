@@ -14,11 +14,11 @@ namespace Nethermind.Serialization.Json
     using System.Text.Json;
     using System.Text.Json.Serialization;
 
-    public class StorageCellIndexConverter : JsonConverter<UInt256[]?>
+    public class StorageCellIndexConverter : JsonConverter<IEnumerable<UInt256>?>
     {
         private UInt256Converter _converter = new();
 
-        public override UInt256[]? Read(
+        public override IEnumerable<UInt256>? Read(
             ref Utf8JsonReader reader,
             Type typeToConvert,
             JsonSerializerOptions options)
@@ -48,10 +48,10 @@ namespace Nethermind.Serialization.Json
         [SkipLocalsInit]
         public override void Write(
             Utf8JsonWriter writer,
-            UInt256[]? value,
+            IEnumerable<UInt256>? values,
             JsonSerializerOptions options)
         {
-            if (value is null)
+            if (values is null)
             {
                 writer.WriteNullValue();
                 return;
@@ -59,9 +59,10 @@ namespace Nethermind.Serialization.Json
 
             writer.WriteStartArray();
             Span<byte> bytes = stackalloc byte[32];
-            for (int i = 0; i < value.Length; i++)
+
+            foreach (var value in values)
             {
-                value[i].ToBigEndian(bytes);
+                value.ToBigEndian(bytes);
                 ByteArrayConverter.Convert(writer, bytes, skipLeadingZeros: false);
             }
             writer.WriteEndArray();
