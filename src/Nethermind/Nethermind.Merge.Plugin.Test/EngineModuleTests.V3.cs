@@ -222,7 +222,7 @@ public partial class EngineModuleTests
 
         string executionPayloadString = serializer.Serialize(executionPayload);
         string blobsString = serializer.Serialize(Array.Empty<byte[]>());
-        string parentBeaconBlockRootString = serializer.Serialize(TestItem.KeccakA.BytesToArray());
+        string parentBeaconBlockRootString = TestItem.KeccakA.ToString();
 
         {
             JsonObject executionPayloadAsJObject = serializer.Deserialize<JsonObject>(executionPayloadString);
