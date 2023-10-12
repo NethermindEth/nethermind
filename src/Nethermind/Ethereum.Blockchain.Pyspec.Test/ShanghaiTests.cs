@@ -9,9 +9,8 @@ using NUnit.Framework;
 namespace Ethereum.Blockchain.Pyspec.Test;
 
 [TestFixture]
-[Explicit("This test runs all fixtures.")]
 [Parallelizable(ParallelScope.All)]
-public class AllTests : BlockchainTestBase
+public class ShanghaiTests : BlockchainTestBase
 {
     [TestCaseSource(nameof(LoadTests))]
     public async Task Test(BlockchainTest test) => await RunTest(test);
@@ -19,7 +18,7 @@ public class AllTests : BlockchainTestBase
     private static IEnumerable<BlockchainTest> LoadTests()
     {
         TestsSourceLoader loader = new(new LoadPyspecTestsStrategy(),
-            "Fixtures");
+            "Fixtures/shanghai");
         return (IEnumerable<BlockchainTest>)loader.LoadTests();
     }
 }
