@@ -5,9 +5,13 @@ on:
     branches: [master]
     paths:
       - 'src/Nethermind/**'
-      
+
   workflow_dispatch:
     inputs:
+      image-name:
+        description: Image name
+        required: true
+        default: nethermindeth/nethermind
       tag:
         description: Image tag
         required: true
@@ -43,7 +47,7 @@ jobs:
           build_timestamp=$(date '+%s')
           docker buildx build --platform=linux/amd64,linux/arm64 \
             -f ${{ github.event.inputs.dockerfile || 'Dockerfile' }} \
-            -t "nethermindeth/nethermind:${{ github.event.inputs.tag || 'master' }}" \
+            -t "${{ github.event.inputs.image-name }}:${{ github.event.inputs.tag || 'master' }}" \
             --build-arg BUILD_CONFIG=${{ github.event.inputs.build-config || 'release' }} \
             --build-arg BUILD_TIMESTAMP=$build_timestamp \
             --build-arg COMMIT_HASH=$GITHUB_SHA . --push
