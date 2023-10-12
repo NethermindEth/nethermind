@@ -18,7 +18,7 @@ public class CancunTests : BlockchainTestBase
     private static IEnumerable<BlockchainTest> LoadTests()
     {
         TestsSourceLoader loader = new(new LoadPyspecTestsStrategy(),
-            "Fixtures\\cancun");
+            "Fixtures/cancun");
         return (IEnumerable<BlockchainTest>)loader.LoadTests();
     }
 }
