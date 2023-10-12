@@ -6,7 +6,7 @@ using System.Threading.Tasks;
 using Ethereum.Test.Base;
 using NUnit.Framework;
 
-namespace Ethereum.Blockchain.Block.Test.Pyspecs;
+namespace Ethereum.Blockchain.Pyspec.Test;
 
 [TestFixture]
 [Parallelizable(ParallelScope.All)]

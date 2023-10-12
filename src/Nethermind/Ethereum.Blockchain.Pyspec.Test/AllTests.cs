@@ -6,12 +6,12 @@ using System.Threading.Tasks;
 using Ethereum.Test.Base;
 using NUnit.Framework;
 
-namespace Ethereum.Blockchain.Block.Test.Pyspecs;
+namespace Ethereum.Blockchain.Pyspec.Test;
 
 [TestFixture]
 [Explicit("This test runs all fixtures.")]
 [Parallelizable(ParallelScope.All)]
-public class PyspecTests : BlockchainTestBase
+public class AllTests : BlockchainTestBase
 {
     [TestCaseSource(nameof(LoadTests))]
     public async Task Test(BlockchainTest test) => await RunTest(test);
