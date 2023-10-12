@@ -55,7 +55,7 @@ namespace Nethermind.Synchronization.Blocks
                 _syncPeerPool,
                 _blockTree,
                 _blockValidator,
-                 _sealValidator,
+                _sealValidator,
                 _syncReport,
                 _receiptStorage,
                 _specProvider,

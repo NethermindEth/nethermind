@@ -386,7 +386,6 @@ namespace Nethermind.Synchronization.Test
                 Policy.FullGossip,
                 MainnetSpecProvider.Instance,
                 logManager);
-            selector.Changed += syncReport.SyncModeSelectorOnChanged;
 
             ManualResetEventSlim waitEvent = new();
             tree.NewHeadBlock += (_, _) => waitEvent.Set();

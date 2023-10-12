@@ -163,8 +163,6 @@ public class InitializeNetwork : IStep
                 _api.BetterPeerStrategy,
                 _api.ChainSpec,
                 _api.LogManager);
-
-            _api.SyncModeSelector.Changed += syncReport.SyncModeSelectorOnChanged;
         }
 
         _api.SnapProvider = _api.Synchronizer.SnapProvider;

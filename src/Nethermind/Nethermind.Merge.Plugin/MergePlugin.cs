@@ -31,7 +31,9 @@ using Nethermind.Merge.Plugin.GC;
 using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Merge.Plugin.InvalidChainTracker;
 using Nethermind.Merge.Plugin.Synchronization;
+using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Reporting;
+using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Merge.Plugin;
 
@@ -423,7 +425,7 @@ public partial class MergePlugin : IConsensusWrapperPlugin, ISynchronizationPlug
                 _syncConfig,
                 _api.BetterPeerStrategy!,
                 syncReport,
-                _api.SyncProgressResolver,
+                new FullStateFinder(_api.BlockTree, _api.DbProvider.StateDb, _api.TrieStore!.AsReadOnly()),
                 _api.LogManager);
 
             MergeSynchronizer synchronizer = new MergeSynchronizer(
@@ -459,8 +461,6 @@ public partial class MergePlugin : IConsensusWrapperPlugin, ISynchronizationPlug
                 _api.DbProvider.MetadataDb,
                 synchronizer.SyncProgressResolver,
                 _api.LogManager);
-
-            _api.SyncModeSelector.Changed += syncReport.SyncModeSelectorOnChanged;
         }
 
         return Task.CompletedTask;

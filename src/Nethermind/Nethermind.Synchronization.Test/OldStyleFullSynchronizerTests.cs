@@ -86,7 +86,6 @@ namespace Nethermind.Synchronization.Test
                 bestPeerStrategy,
                 new ChainSpec(),
                 LimboLogs.Instance);
-            _synchronizer.SyncModeSelector.Changed += syncReport.SyncModeSelectorOnChanged;
             _syncServer = new SyncServer(
                 trieStore.AsKeyValueStore(),
                 _codeDb,

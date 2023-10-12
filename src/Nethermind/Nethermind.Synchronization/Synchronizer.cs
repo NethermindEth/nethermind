@@ -182,6 +182,7 @@ namespace Nethermind.Synchronization
             WireMultiSyncModeSelector();
 
             new MallocTrimmer(SyncModeSelector, TimeSpan.FromSeconds(_syncConfig.MallocTrimIntervalSec), _logManager);
+            SyncModeSelector.Changed += _syncReport.SyncModeSelectorOnChanged;
         }
 
         private HeadersSyncFeed? CreateHeadersSyncFeed()

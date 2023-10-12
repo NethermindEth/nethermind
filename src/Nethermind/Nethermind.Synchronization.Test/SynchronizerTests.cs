@@ -376,8 +376,6 @@ namespace Nethermind.Synchronization.Test
                         No.BeaconSync,
                         _logManager,
                         syncReport);
-
-                    Synchronizer.SyncModeSelector.Changed += syncReport.SyncModeSelectorOnChanged;
                 }
                 else
                 {
@@ -409,8 +407,6 @@ namespace Nethermind.Synchronization.Test
                         bestPeerStrategy,
                         new ChainSpec(),
                         _logManager);
-
-                    Synchronizer.SyncModeSelector.Changed += syncReport.SyncModeSelectorOnChanged;
                 }
 
                 SyncServer = new SyncServer(
