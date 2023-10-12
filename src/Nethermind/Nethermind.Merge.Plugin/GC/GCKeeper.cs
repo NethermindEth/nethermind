@@ -12,7 +12,24 @@ using Nethermind.Logging;
 
 namespace Nethermind.Merge.Plugin.GC;
 
-public class GCKeeper
+public interface IGCKeeper
+{
+    IDisposable TryStartNoGCRegion(long? size = null);
+}
+
+public class GCAlwaysEnabled : IGCKeeper {
+    public IDisposable TryStartNoGCRegion(long? size = null)
+    {
+        return new DummyDisposable();
+    }
+
+    class DummyDisposable : IDisposable
+    {
+        public void Dispose() { }
+    }
+}
+
+public class GCKeeper : IGCKeeper
 {
     private static ulong _forcedGcCount = 0;
     private readonly IGCStrategy _gcStrategy;

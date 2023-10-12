@@ -15,7 +15,7 @@ public class AlwaysPoS : IPoSSwitcher
 
     public UInt256? TerminalTotalDifficulty => 0;
 
-    public UInt256? FinalTotalDifficulty => 0;
+    public UInt256? FinalTotalDifficulty => null;
 
     public bool TransitionFinished => true;
 

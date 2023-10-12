@@ -23,7 +23,7 @@ public partial class EngineRpcModule : IEngineRpcModule
     private readonly IHandler<TransitionConfigurationV1, TransitionConfigurationV1> _transitionConfigurationHandler;
     private readonly SemaphoreSlim _locker = new(1, 1);
     private readonly TimeSpan _timeout = TimeSpan.FromSeconds(8);
-    private readonly GCKeeper _gcKeeper;
+    private readonly IGCKeeper _gcKeeper;
 
     public ResultWrapper<TransitionConfigurationV1> engine_exchangeTransitionConfigurationV1(
         TransitionConfigurationV1 beaconTransitionConfiguration) => _transitionConfigurationHandler.Handle(beaconTransitionConfiguration);

@@ -31,7 +31,7 @@ public partial class EngineRpcModule : IEngineRpcModule
         IHandler<TransitionConfigurationV1, TransitionConfigurationV1> transitionConfigurationHandler,
         IHandler<IEnumerable<string>, IEnumerable<string>> capabilitiesHandler,
         ISpecProvider specProvider,
-        GCKeeper gcKeeper,
+        IGCKeeper gcKeeper,
         ILogManager logManager)
     {
         _capabilitiesHandler = capabilitiesHandler ?? throw new ArgumentNullException(nameof(capabilitiesHandler));

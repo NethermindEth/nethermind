@@ -271,6 +271,7 @@ public class OptimismPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitial
 
         _api.RpcCapabilitiesProvider = new EngineRpcCapabilitiesProvider(_api.SpecProvider);
 
+        IInitConfig initConfig = _api.Config<IInitConfig>();
         IEngineRpcModule engineRpcModule = new EngineRpcModule(
             new GetPayloadV1Handler(payloadPreparationService, _api.SpecProvider, _api.LogManager),
             new GetPayloadV2Handler(payloadPreparationService, _api.SpecProvider, _api.LogManager),
@@ -278,7 +279,7 @@ public class OptimismPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitial
             new NewPayloadHandler(
                 _api.BlockValidator,
                 _api.BlockTree,
-                _api.Config<IInitConfig>(),
+                initConfig,
                 _syncConfig,
                 _api.PoSSwitcher,
                 _beaconSync,
@@ -307,7 +308,9 @@ public class OptimismPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitial
             new ExchangeTransitionConfigurationV1Handler(_api.PoSSwitcher, _api.LogManager),
             new ExchangeCapabilitiesHandler(_api.RpcCapabilitiesProvider, _api.LogManager),
             _api.SpecProvider,
-            new GCKeeper(new NoSyncGcRegionStrategy(_api.SyncModeSelector, _mergeConfig), _api.LogManager),
+            initConfig.DisableGcOnNewPayload
+                ? new GCKeeper(new NoSyncGcRegionStrategy(_api.SyncModeSelector, _mergeConfig), _api.LogManager)
+                : new GCAlwaysEnabled(),
             _api.LogManager);
 
         IOptimismEngineRpcModule opEngine = new OptimismEngineRpcModule(engineRpcModule);
