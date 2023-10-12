@@ -374,7 +374,6 @@ public partial class MergePlugin : IConsensusWrapperPlugin, ISynchronizationPlug
             if (_api.NodeStatsManager is null) throw new ArgumentNullException(nameof(_api.NodeStatsManager));
             if (_api.HeaderValidator is null) throw new ArgumentNullException(nameof(_api.HeaderValidator));
             if (_api.PeerDifficultyRefreshPool is null) throw new ArgumentNullException(nameof(_api.PeerDifficultyRefreshPool));
-            if (_api.SnapProvider is null) throw new ArgumentNullException(nameof(_api.SnapProvider));
 
             // ToDo strange place for validators initialization
             PeerRefresher peerRefresher = new(_api.PeerDifficultyRefreshPool, _api.TimerFactory, _api.LogManager);
@@ -411,20 +410,14 @@ public partial class MergePlugin : IConsensusWrapperPlugin, ISynchronizationPlug
 
             _api.Pivot = _beaconPivot;
 
-            SyncReport syncReport = new(_api.SyncPeerPool, _api.NodeStatsManager, _syncConfig, _beaconPivot, _api.LogManager);
-
             MergeBlockDownloaderFactory blockDownloaderFactory = new MergeBlockDownloaderFactory(
                 _poSSwitcher,
                 _beaconPivot,
                 _api.SpecProvider,
-                _api.BlockTree,
-                _api.ReceiptStorage!,
                 _api.BlockValidator!,
                 _api.SealValidator!,
-                _api.SyncPeerPool,
                 _syncConfig,
                 _api.BetterPeerStrategy!,
-                syncReport,
                 new FullStateFinder(_api.BlockTree, _api.DbProvider.StateDb, _api.TrieStore!.AsReadOnly()),
                 _api.LogManager);
 
@@ -437,7 +430,7 @@ public partial class MergePlugin : IConsensusWrapperPlugin, ISynchronizationPlug
                 _api.NodeStatsManager!,
                 _syncConfig,
                 blockDownloaderFactory,
-                _api.Pivot,
+                _beaconPivot,
                 _poSSwitcher,
                 _mergeConfig,
                 _invalidChainTracker,
@@ -446,8 +439,7 @@ public partial class MergePlugin : IConsensusWrapperPlugin, ISynchronizationPlug
                 _api.BetterPeerStrategy,
                 _api.ChainSpec,
                 _beaconSync,
-                _api.LogManager,
-                syncReport
+                _api.LogManager
             );
             _api.Synchronizer = synchronizer;
 

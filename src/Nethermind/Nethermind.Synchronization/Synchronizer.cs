@@ -110,7 +110,6 @@ namespace Nethermind.Synchronization
             ISyncConfig syncConfig,
             IBlockDownloaderFactory blockDownloaderFactory,
             IPivot pivot,
-            ISyncReport syncReport,
             IProcessExitSource processExitSource,
             IReadOnlyTrieStore readOnlyTrieStore,
             IBetterPeerStrategy betterPeerStrategy,
@@ -129,7 +128,6 @@ namespace Nethermind.Synchronization
             _nodeStatsManager = nodeStatsManager ?? throw new ArgumentNullException(nameof(nodeStatsManager));
             _exitSource = processExitSource ?? throw new ArgumentNullException(nameof(processExitSource));
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
-            _syncReport = syncReport ?? throw new ArgumentNullException(nameof(syncReport));
             _betterPeerStrategy = betterPeerStrategy ?? throw new ArgumentNullException(nameof(betterPeerStrategy));
             _chainSpec = chainSpec ?? throw new ArgumentNullException(nameof(chainSpec));
             _readOnlyTrieStore = readOnlyTrieStore ?? throw new ArgumentNullException(nameof(readOnlyTrieStore));
@@ -139,6 +137,8 @@ namespace Nethermind.Synchronization
                 dbProvider.StateDb,
                 logManager,
                 _syncConfig.SnapSyncAccountRangePartitionCount);
+
+            _syncReport = new SyncReport(_syncPeerPool!, nodeStatsManager!, _syncConfig, _pivot, logManager);
 
             SnapProvider = new SnapProvider(_progressTracker, dbProvider, logManager);
         }
@@ -225,7 +225,7 @@ namespace Nethermind.Synchronization
         private void StartFullSyncComponents()
         {
             _fullSyncFeed = new FullSyncFeed();
-            BlockDownloader fullSyncBlockDownloader = _blockDownloaderFactory.Create(_fullSyncFeed);
+            BlockDownloader fullSyncBlockDownloader = _blockDownloaderFactory.Create(_fullSyncFeed, _blockTree, _receiptStorage, _syncPeerPool, _syncReport);
             fullSyncBlockDownloader.SyncEvent += DownloaderOnSyncEvent;
 
             SyncDispatcher<BlocksRequest> dispatcher = CreateDispatcher(
@@ -250,7 +250,7 @@ namespace Nethermind.Synchronization
         private void StartFastSyncComponents()
         {
             _fastSyncFeed = new FastSyncFeed(_syncConfig);
-            BlockDownloader downloader = _blockDownloaderFactory.Create(_fastSyncFeed);
+            BlockDownloader downloader = _blockDownloaderFactory.Create(_fastSyncFeed, _blockTree, _receiptStorage, _syncPeerPool, _syncReport);
             downloader.SyncEvent += DownloaderOnSyncEvent;
 
             SyncDispatcher<BlocksRequest> dispatcher = CreateDispatcher(

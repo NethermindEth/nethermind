@@ -56,8 +56,7 @@ public class MergeSynchronizer : Synchronizer
         IBetterPeerStrategy betterPeerStrategy,
         ChainSpec chainSpec,
         IBeaconSyncStrategy beaconSync,
-        ILogManager logManager,
-        ISyncReport syncReport)
+        ILogManager logManager)
         : base(
             dbProvider,
             specProvider,
@@ -68,7 +67,6 @@ public class MergeSynchronizer : Synchronizer
             syncConfig,
             blockDownloaderFactory,
             pivot,
-            syncReport,
             exitSource,
             readOnlyTrieStore,
             betterPeerStrategy,

@@ -340,19 +340,14 @@ namespace Nethermind.Synchronization.Test
                 IInvalidChainTracker invalidChainTracker = new NoopInvalidChainTracker();
                 if (IsMerge(synchronizerType))
                 {
-                    SyncReport syncReport = new(SyncPeerPool, stats, syncConfig, beaconPivot, _logManager);
                     IBlockDownloaderFactory blockDownloaderFactory = new MergeBlockDownloaderFactory(
                         poSSwitcher,
                         beaconPivot,
                         MainnetSpecProvider.Instance,
-                        BlockTree,
-                        NullReceiptStorage.Instance,
                         Always.Valid,
                         Always.Valid,
-                        SyncPeerPool,
                         syncConfig,
                         bestPeerStrategy,
-                        syncReport,
                         fullStateFinder,
                         _logManager
                     );
@@ -374,21 +369,15 @@ namespace Nethermind.Synchronization.Test
                         bestPeerStrategy,
                         new ChainSpec(),
                         No.BeaconSync,
-                        _logManager,
-                        syncReport);
+                        _logManager);
                 }
                 else
                 {
-                    SyncReport syncReport = new(SyncPeerPool, stats, syncConfig, pivot, _logManager);
                     IBlockDownloaderFactory blockDownloaderFactory = new BlockDownloaderFactory(
                         MainnetSpecProvider.Instance,
-                        BlockTree,
-                        NullReceiptStorage.Instance,
                         Always.Valid,
                         Always.Valid,
-                        SyncPeerPool,
                         new TotalDifficultyBetterPeerStrategy(_logManager),
-                        syncReport,
                         _logManager);
 
                     Synchronizer = new Synchronizer(
@@ -401,7 +390,6 @@ namespace Nethermind.Synchronization.Test
                         syncConfig,
                         blockDownloaderFactory,
                         pivot,
-                        syncReport,
                         Substitute.For<IProcessExitSource>(),
                         trieStore.AsReadOnly(),
                         bestPeerStrategy,

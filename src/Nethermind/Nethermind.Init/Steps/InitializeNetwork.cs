@@ -134,17 +134,11 @@ public class InitializeNetwork : IStep
 
         if (_api.Synchronizer is null)
         {
-            SyncReport syncReport = new(_api.SyncPeerPool!, _api.NodeStatsManager!, _syncConfig, _api.Pivot, _api.LogManager);
-
             BlockDownloaderFactory blockDownloaderFactory = new BlockDownloaderFactory(
                 _api.SpecProvider!,
-                _api.BlockTree,
-                _api.ReceiptStorage!,
                 _api.BlockValidator!,
                 _api.SealValidator!,
-                _api.SyncPeerPool!,
                 _api.BetterPeerStrategy!,
-                syncReport,
                 _api.LogManager);
 
             _api.Synchronizer ??= new Synchronizer(
@@ -157,7 +151,6 @@ public class InitializeNetwork : IStep
                 _syncConfig,
                 blockDownloaderFactory,
                 _api.Pivot,
-                syncReport,
                 _api.ProcessExit!,
                 _api.ReadOnlyTrieStore!,
                 _api.BetterPeerStrategy,
@@ -165,7 +158,6 @@ public class InitializeNetwork : IStep
                 _api.LogManager);
         }
 
-        _api.SnapProvider = _api.Synchronizer.SnapProvider;
         _api.SyncProgressResolver = _api.Synchronizer.SyncProgressResolver;
         _api.SyncModeSelector = _api.Synchronizer.SyncModeSelector;
 

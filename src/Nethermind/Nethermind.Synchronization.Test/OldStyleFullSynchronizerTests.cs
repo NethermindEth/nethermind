@@ -59,16 +59,11 @@ namespace Nethermind.Synchronization.Test
             TrieStore trieStore = new(_stateDb, LimboLogs.Instance);
             TotalDifficultyBetterPeerStrategy bestPeerStrategy = new(LimboLogs.Instance);
             Pivot pivot = new(syncConfig);
-            SyncReport syncReport = new(_pool, stats, syncConfig, pivot, LimboLogs.Instance);
             BlockDownloaderFactory blockDownloaderFactory = new(
                 MainnetSpecProvider.Instance,
-                _blockTree,
-                _receiptStorage,
                 Always.Valid,
                 Always.Valid,
-                _pool,
                 new TotalDifficultyBetterPeerStrategy(LimboLogs.Instance),
-                syncReport,
                 LimboLogs.Instance);
             _synchronizer = new Synchronizer(
                 dbProvider,
@@ -80,7 +75,6 @@ namespace Nethermind.Synchronization.Test
                 syncConfig,
                 blockDownloaderFactory,
                 pivot,
-                syncReport,
                 Substitute.For<IProcessExitSource>(),
                 trieStore.AsReadOnly(),
                 bestPeerStrategy,

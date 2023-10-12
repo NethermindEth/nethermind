@@ -343,16 +343,11 @@ namespace Nethermind.Synchronization.Test
 
             TotalDifficultyBetterPeerStrategy bestPeerStrategy = new(LimboLogs.Instance);
             Pivot pivot = new(syncConfig);
-            SyncReport syncReport = new(syncPeerPool, nodeStatsManager, syncConfig, pivot, LimboLogs.Instance);
             BlockDownloaderFactory blockDownloaderFactory = new(
-            MainnetSpecProvider.Instance,
-                tree,
-                NullReceiptStorage.Instance,
+                MainnetSpecProvider.Instance,
                 blockValidator,
                 sealValidator,
-                syncPeerPool,
                 new TotalDifficultyBetterPeerStrategy(LimboLogs.Instance),
-                syncReport,
                 logManager);
             Synchronizer synchronizer = new(
                 dbProvider,
@@ -364,7 +359,6 @@ namespace Nethermind.Synchronization.Test
                 syncConfig,
                 blockDownloaderFactory,
                 pivot,
-                syncReport,
                 Substitute.For<IProcessExitSource>(),
                 trieStore.AsReadOnly(),
                 bestPeerStrategy,
