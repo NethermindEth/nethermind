@@ -103,19 +103,6 @@ public class InitializeNetwork : IStep
 
         CanonicalHashTrie cht = new CanonicalHashTrie(_api.DbProvider!.ChtDb);
 
-        ProgressTracker progressTracker = new(_api.BlockTree, _api.DbProvider.StateDb, _api.LogManager, _syncConfig.SnapSyncAccountRangePartitionCount);
-        _api.SnapProvider = new SnapProvider(progressTracker, _api.DbProvider, _api.LogManager);
-
-        SyncProgressResolver syncProgressResolver = new(
-            _api.BlockTree,
-            _api.ReceiptStorage!,
-            _api.DbProvider.StateDb,
-            _api.ReadOnlyTrieStore!,
-            progressTracker,
-            _syncConfig,
-            _api.LogManager);
-
-        _api.SyncProgressResolver = syncProgressResolver;
         _api.BetterPeerStrategy = new TotalDifficultyBetterPeerStrategy(_api.LogManager);
 
         int maxPeersCount = _networkConfig.ActivePeersMaxCount;
@@ -143,12 +130,6 @@ public class InitializeNetwork : IStep
             await plugin.InitSynchronization();
         }
 
-        _api.SyncModeSelector ??= CreateMultiSyncModeSelector(syncProgressResolver);
-        _api.TxGossipPolicy.Policies.Add(new SyncedTxGossipPolicy(_api.SyncModeSelector));
-
-        _api.EthSyncingInfo = new EthSyncingInfo(_api.BlockTree, _api.ReceiptStorage!, _syncConfig, _api.SyncModeSelector, _api.LogManager);
-        _api.DisposeStack.Push(_api.SyncModeSelector);
-
         _api.Pivot ??= new Pivot(_syncConfig);
 
         if (_api.Synchronizer is null)
@@ -165,6 +146,7 @@ public class InitializeNetwork : IStep
                 _api.BetterPeerStrategy!,
                 syncReport,
                 _api.LogManager);
+
             _api.Synchronizer ??= new Synchronizer(
                 _api.DbProvider,
                 _api.SpecProvider!,
@@ -172,18 +154,26 @@ public class InitializeNetwork : IStep
                 _api.ReceiptStorage!,
                 _api.SyncPeerPool,
                 _api.NodeStatsManager!,
-                _api.SyncModeSelector,
                 _syncConfig,
-                _api.SnapProvider,
                 blockDownloaderFactory,
                 _api.Pivot,
                 syncReport,
                 _api.ProcessExit!,
+                _api.ReadOnlyTrieStore!,
+                _api.BetterPeerStrategy,
+                _api.ChainSpec,
                 _api.LogManager);
 
             _api.SyncModeSelector.Changed += syncReport.SyncModeSelectorOnChanged;
         }
 
+        _api.SnapProvider = _api.Synchronizer.SnapProvider;
+        _api.SyncProgressResolver = _api.Synchronizer.SyncProgressResolver;
+        _api.SyncModeSelector = _api.Synchronizer.SyncModeSelector;
+
+        _api.EthSyncingInfo = new EthSyncingInfo(_api.BlockTree, _api.ReceiptStorage!, _syncConfig, _api.SyncModeSelector, _api.LogManager);
+        _api.TxGossipPolicy.Policies.Add(new SyncedTxGossipPolicy(_api.SyncModeSelector));
+        _api.DisposeStack.Push(_api.SyncModeSelector);
         _api.DisposeStack.Push(_api.Synchronizer);
 
         ISyncServer syncServer = _api.SyncServer = new SyncServer(
@@ -288,9 +278,6 @@ public class InitializeNetwork : IStep
         ThisNodeInfo.AddInfo("This node    :", $"{_api.Enode.Info}");
         ThisNodeInfo.AddInfo("Node address :", $"{_api.Enode.Address} (do not use as an account)");
     }
-
-    protected virtual MultiSyncModeSelector CreateMultiSyncModeSelector(SyncProgressResolver syncProgressResolver)
-        => new(syncProgressResolver, _api.SyncPeerPool!, _syncConfig, No.BeaconSync, _api.BetterPeerStrategy!, _api.LogManager, _api.ChainSpec?.SealEngineType == SealEngineType.Clique);
 
     private Task StartDiscovery()
     {

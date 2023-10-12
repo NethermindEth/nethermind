@@ -31,7 +31,6 @@ using Nethermind.Merge.Plugin.GC;
 using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Merge.Plugin.InvalidChainTracker;
 using Nethermind.Merge.Plugin.Synchronization;
-using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Reporting;
 
 namespace Nethermind.Merge.Plugin;
@@ -265,7 +264,6 @@ public partial class MergePlugin : IConsensusWrapperPlugin, ISynchronizationPlug
             if (_api.SyncProgressResolver is null) throw new ArgumentNullException(nameof(_api.SyncProgressResolver));
             if (_api.SpecProvider is null) throw new ArgumentNullException(nameof(_api.SpecProvider));
             if (_api.StateReader is null) throw new ArgumentNullException(nameof(_api.StateReader));
-            if (_api.SyncModeSelector is null) throw new ArgumentNullException(nameof(_api.SyncModeSelector));
             if (_beaconPivot is null) throw new ArgumentNullException(nameof(_beaconPivot));
             if (_beaconSync is null) throw new ArgumentNullException(nameof(_beaconSync));
             if (_blockProductionTrigger is null) throw new ArgumentNullException(nameof(_blockProductionTrigger));
@@ -409,25 +407,7 @@ public partial class MergePlugin : IConsensusWrapperPlugin, ISynchronizationPlug
 
             _api.BetterPeerStrategy = new MergeBetterPeerStrategy(_api.BetterPeerStrategy, _poSSwitcher, _beaconPivot, _api.LogManager);
 
-            _api.SyncModeSelector = new MultiSyncModeSelector(
-                _api.SyncProgressResolver,
-                _api.SyncPeerPool,
-                _syncConfig,
-                _beaconSync,
-                _api.BetterPeerStrategy!,
-                _api.LogManager);
             _api.Pivot = _beaconPivot;
-
-            PivotUpdator pivotUpdator = new(
-                _api.BlockTree,
-                _api.SyncModeSelector,
-                _api.SyncPeerPool,
-                _syncConfig,
-                _blockCacheService,
-                _beaconSync,
-                _api.DbProvider.MetadataDb,
-                _api.SyncProgressResolver,
-                _api.LogManager);
 
             SyncReport syncReport = new(_api.SyncPeerPool, _api.NodeStatsManager, _syncConfig, _beaconPivot, _api.LogManager);
 
@@ -445,24 +425,40 @@ public partial class MergePlugin : IConsensusWrapperPlugin, ISynchronizationPlug
                 syncReport,
                 _api.SyncProgressResolver,
                 _api.LogManager);
-            _api.Synchronizer = new MergeSynchronizer(
+
+            MergeSynchronizer synchronizer = new MergeSynchronizer(
                 _api.DbProvider,
                 _api.SpecProvider!,
                 _api.BlockTree!,
                 _api.ReceiptStorage!,
                 _api.SyncPeerPool,
                 _api.NodeStatsManager!,
-                _api.SyncModeSelector,
                 _syncConfig,
-                _api.SnapProvider,
                 blockDownloaderFactory,
                 _api.Pivot,
                 _poSSwitcher,
                 _mergeConfig,
                 _invalidChainTracker,
                 _api.ProcessExit!,
+                _api.ReadOnlyTrieStore!,
+                _api.BetterPeerStrategy,
+                _api.ChainSpec,
+                _beaconSync,
                 _api.LogManager,
-                syncReport);
+                syncReport
+            );
+            _api.Synchronizer = synchronizer;
+
+            PivotUpdator pivotUpdator = new(
+                _api.BlockTree,
+                synchronizer.SyncModeSelector,
+                _api.SyncPeerPool,
+                _syncConfig,
+                _blockCacheService,
+                _beaconSync,
+                _api.DbProvider.MetadataDb,
+                synchronizer.SyncProgressResolver,
+                _api.LogManager);
 
             _api.SyncModeSelector.Changed += syncReport.SyncModeSelectorOnChanged;
         }

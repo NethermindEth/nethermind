@@ -8,10 +8,12 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
+using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
 using Nethermind.Logging;
+using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization.Blocks;
@@ -23,6 +25,7 @@ using Nethermind.Synchronization.Peers;
 using Nethermind.Synchronization.Reporting;
 using Nethermind.Synchronization.SnapSync;
 using Nethermind.Synchronization.StateSync;
+using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Synchronization
 {
@@ -38,7 +41,6 @@ namespace Nethermind.Synchronization
         protected readonly ILogger _logger;
         protected readonly IBlockTree _blockTree;
         protected readonly ISyncConfig _syncConfig;
-        protected readonly ISnapProvider _snapProvider;
         protected readonly ISyncPeerPool _syncPeerPool;
         protected readonly ILogManager _logManager;
         protected readonly ISyncReport _syncReport;
@@ -59,6 +61,21 @@ namespace Nethermind.Synchronization
         private BodiesSyncFeed? _bodiesFeed;
         private ReceiptsSyncFeed? _receiptsFeed;
         private IProcessExitSource _exitSource;
+        protected IBetterPeerStrategy _betterPeerStrategy;
+        private readonly ChainSpec _chainSpec;
+
+        public ISyncProgressResolver SyncProgressResolver { get; }
+        public ISnapProvider SnapProvider { get; }
+
+        protected ISyncModeSelector? _syncModeSelector = null;
+        public virtual ISyncModeSelector SyncModeSelector => _syncModeSelector ?? new MultiSyncModeSelector(
+            SyncProgressResolver,
+            _syncPeerPool!,
+            _syncConfig,
+            No.BeaconSync,
+            _betterPeerStrategy!,
+            _logManager,
+            _chainSpec?.SealEngineType == SealEngineType.Clique);
 
         public Synchronizer(
             IDbProvider dbProvider,
@@ -67,23 +84,22 @@ namespace Nethermind.Synchronization
             IReceiptStorage receiptStorage,
             ISyncPeerPool peerPool,
             INodeStatsManager nodeStatsManager,
-            ISyncModeSelector syncModeSelector,
             ISyncConfig syncConfig,
-            ISnapProvider snapProvider,
             IBlockDownloaderFactory blockDownloaderFactory,
             IPivot pivot,
             ISyncReport syncReport,
             IProcessExitSource processExitSource,
+            IReadOnlyTrieStore readOnlyTrieStore,
+            IBetterPeerStrategy betterPeerStrategy,
+            ChainSpec chainSpec,
             ILogManager logManager)
         {
             _dbProvider = dbProvider ?? throw new ArgumentNullException(nameof(dbProvider));
-            _syncMode = syncModeSelector ?? throw new ArgumentNullException(nameof(syncModeSelector));
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
             _syncConfig = syncConfig ?? throw new ArgumentNullException(nameof(syncConfig));
-            _snapProvider = snapProvider ?? throw new ArgumentNullException(nameof(snapProvider));
             _blockDownloaderFactory = blockDownloaderFactory ?? throw new ArgumentNullException(nameof(blockDownloaderFactory));
             _pivot = pivot ?? throw new ArgumentNullException(nameof(pivot));
             _syncPeerPool = peerPool ?? throw new ArgumentNullException(nameof(peerPool));
@@ -91,8 +107,24 @@ namespace Nethermind.Synchronization
             _exitSource = processExitSource ?? throw new ArgumentNullException(nameof(processExitSource));
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
             _syncReport = syncReport ?? throw new ArgumentNullException(nameof(syncReport));
+            _betterPeerStrategy = betterPeerStrategy ?? throw new ArgumentNullException(nameof(betterPeerStrategy));
+            _chainSpec = chainSpec ?? throw new ArgumentNullException(nameof(chainSpec));
 
-            new MallocTrimmer(syncModeSelector, TimeSpan.FromSeconds(syncConfig.MallocTrimIntervalSec), _logManager);
+            ProgressTracker progressTracker = new(
+                blockTree,
+                dbProvider.StateDb,
+                logManager,
+                _syncConfig.SnapSyncAccountRangePartitionCount);
+            SnapProvider = new SnapProvider(progressTracker, dbProvider, logManager);
+
+            SyncProgressResolver = new SyncProgressResolver(
+                blockTree,
+                receiptStorage!,
+                dbProvider.StateDb,
+                readOnlyTrieStore!,
+                progressTracker,
+                _syncConfig,
+                logManager);
         }
 
         public virtual void Start()
@@ -132,6 +164,8 @@ namespace Nethermind.Synchronization
             }
 
             WireMultiSyncModeSelector();
+
+            new MallocTrimmer(SyncModeSelector, TimeSpan.FromSeconds(_syncConfig.MallocTrimIntervalSec), _logManager);
         }
 
         private void SetupDbOptimizer()
@@ -222,7 +256,7 @@ namespace Nethermind.Synchronization
 
         private void StartSnapSyncComponents()
         {
-            _snapSyncFeed = new SnapSyncFeed(_snapProvider, _logManager);
+            _snapSyncFeed = new SnapSyncFeed(SnapProvider, _logManager);
             SyncDispatcher<SnapSyncBatch> dispatcher = CreateDispatcher(
                 _snapSyncFeed,
                 new SnapSyncDownloader(_logManager),
@@ -374,11 +408,11 @@ namespace Nethermind.Synchronization
         protected void WireFeedWithModeSelector<T>(ISyncFeed<T>? feed)
         {
             if (feed == null) return;
-            _syncMode.Changed += ((sender, args) =>
+            SyncModeSelector.Changed += ((sender, args) =>
             {
                 feed?.SyncModeSelectorOnChanged(args.Current);
             });
-            feed?.SyncModeSelectorOnChanged(_syncMode.Current);
+            feed?.SyncModeSelectorOnChanged(SyncModeSelector.Current);
         }
 
         public void Dispose()

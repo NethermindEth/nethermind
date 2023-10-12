@@ -10,6 +10,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.InvalidChainTracker;
+using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Stats;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.Blocks;
@@ -17,7 +18,7 @@ using Nethermind.Synchronization.FastBlocks;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
 using Nethermind.Synchronization.Reporting;
-using Nethermind.Synchronization.SnapSync;
+using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Merge.Plugin.Synchronization;
 
@@ -27,6 +28,15 @@ public class MergeSynchronizer : Synchronizer
     private readonly IMergeConfig _mergeConfig;
     private readonly IInvalidChainTracker _invalidChainTracker;
     private BeaconHeadersSyncFeed _beaconHeadersFeed = null!;
+    private readonly IBeaconSyncStrategy _beaconSync;
+
+    public override ISyncModeSelector SyncModeSelector => _syncModeSelector ?? new MultiSyncModeSelector(
+        SyncProgressResolver,
+        _syncPeerPool,
+        _syncConfig,
+        _beaconSync,
+        _betterPeerStrategy!,
+        _logManager);
 
     public MergeSynchronizer(
         IDbProvider dbProvider,
@@ -35,15 +45,17 @@ public class MergeSynchronizer : Synchronizer
         IReceiptStorage receiptStorage,
         ISyncPeerPool peerPool,
         INodeStatsManager nodeStatsManager,
-        ISyncModeSelector syncModeSelector,
         ISyncConfig syncConfig,
-        ISnapProvider snapProvider,
         IBlockDownloaderFactory blockDownloaderFactory,
         IPivot pivot,
         IPoSSwitcher poSSwitcher,
         IMergeConfig mergeConfig,
         IInvalidChainTracker invalidChainTracker,
         IProcessExitSource exitSource,
+        IReadOnlyTrieStore readOnlyTrieStore,
+        IBetterPeerStrategy betterPeerStrategy,
+        ChainSpec chainSpec,
+        IBeaconSyncStrategy beaconSync,
         ILogManager logManager,
         ISyncReport syncReport)
         : base(
@@ -53,18 +65,20 @@ public class MergeSynchronizer : Synchronizer
             receiptStorage,
             peerPool,
             nodeStatsManager,
-            syncModeSelector,
             syncConfig,
-            snapProvider,
             blockDownloaderFactory,
             pivot,
             syncReport,
             exitSource,
+            readOnlyTrieStore,
+            betterPeerStrategy,
+            chainSpec,
             logManager)
     {
         _invalidChainTracker = invalidChainTracker;
         _poSSwitcher = poSSwitcher;
         _mergeConfig = mergeConfig;
+        _beaconSync = beaconSync;
     }
 
     public override void Start()

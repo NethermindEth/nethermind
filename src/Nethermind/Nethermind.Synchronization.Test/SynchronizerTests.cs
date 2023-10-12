@@ -31,6 +31,7 @@ using Nethermind.Merge.Plugin;
 using Nethermind.Merge.Plugin.InvalidChainTracker;
 using Nethermind.Merge.Plugin.Synchronization;
 using Nethermind.Merge.Plugin.Test;
+using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.State.Witnesses;
 using Nethermind.Synchronization.Blocks;
 using Nethermind.Synchronization.ParallelSync;
@@ -344,7 +345,6 @@ namespace Nethermind.Synchronization.Test
                     : totalDifficultyBetterPeerStrategy;
 
                 SyncPeerPool = new SyncPeerPool(BlockTree, stats, bestPeerStrategy, _logManager, 25);
-                MultiSyncModeSelector syncModeSelector = new(syncProgressResolver, SyncPeerPool, syncConfig, No.BeaconSync, bestPeerStrategy, _logManager);
                 Pivot pivot = new(syncConfig);
 
                 IInvalidChainTracker invalidChainTracker = new NoopInvalidChainTracker();
@@ -373,19 +373,21 @@ namespace Nethermind.Synchronization.Test
                         NullReceiptStorage.Instance,
                         SyncPeerPool,
                         stats,
-                        syncModeSelector,
                         syncConfig,
-                        snapProvider,
                         blockDownloaderFactory,
                         pivot,
                         poSSwitcher,
                         mergeConfig,
                         invalidChainTracker,
                         Substitute.For<IProcessExitSource>(),
+                        trieStore.AsReadOnly(),
+                        bestPeerStrategy,
+                        new ChainSpec(),
+                        No.BeaconSync,
                         _logManager,
                         syncReport);
 
-                    syncModeSelector.Changed += syncReport.SyncModeSelectorOnChanged;
+                    Synchronizer.SyncModeSelector.Changed += syncReport.SyncModeSelectorOnChanged;
                 }
                 else
                 {
@@ -408,16 +410,17 @@ namespace Nethermind.Synchronization.Test
                         NullReceiptStorage.Instance,
                         SyncPeerPool,
                         stats,
-                        syncModeSelector,
                         syncConfig,
-                        snapProvider,
                         blockDownloaderFactory,
                         pivot,
                         syncReport,
                         Substitute.For<IProcessExitSource>(),
+                        trieStore.AsReadOnly(),
+                        bestPeerStrategy,
+                        new ChainSpec(),
                         _logManager);
 
-                    syncModeSelector.Changed += syncReport.SyncModeSelectorOnChanged;
+                    Synchronizer.SyncModeSelector.Changed += syncReport.SyncModeSelectorOnChanged;
                 }
 
                 SyncServer = new SyncServer(
@@ -428,7 +431,7 @@ namespace Nethermind.Synchronization.Test
                     Always.Valid,
                     Always.Valid,
                     SyncPeerPool,
-                    syncModeSelector,
+                    Synchronizer.SyncModeSelector,
                     syncConfig,
                     new WitnessCollector(new MemDb(), LimboLogs.Instance),
                     Policy.FullGossip,
