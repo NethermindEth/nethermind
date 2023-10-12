@@ -158,7 +158,6 @@ public class InitializeNetwork : IStep
                 _api.LogManager);
         }
 
-        _api.SyncProgressResolver = _api.Synchronizer.SyncProgressResolver;
         _api.SyncModeSelector = _api.Synchronizer.SyncModeSelector;
 
         _api.EthSyncingInfo = new EthSyncingInfo(_api.BlockTree, _api.ReceiptStorage!, _syncConfig, _api.SyncModeSelector, _api.LogManager);
@@ -199,7 +198,7 @@ public class InitializeNetwork : IStep
             }
         });
 
-        bool stateSyncFinished = _api.SyncProgressResolver.FindBestFullState() != 0;
+        bool stateSyncFinished = _api.Synchronizer.SyncProgressResolver.FindBestFullState() != 0;
 
         if (_syncConfig.SnapSync || stateSyncFinished || !_syncConfig.FastSync)
         {
