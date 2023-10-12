@@ -186,12 +186,6 @@ namespace Nethermind.Synchronization.Test.FastSync
         }
 
         [Test]
-        public void Feed_id_should_not_be_zero()
-        {
-            _feed.FeedId.Should().NotBe(0);
-        }
-
-        [Test]
         public void When_no_bodies_downloaded_then_request_will_be_empty()
         {
             _feed.PrepareRequest().Result.Should().BeNull();

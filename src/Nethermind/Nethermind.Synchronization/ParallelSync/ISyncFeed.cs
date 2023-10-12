@@ -10,7 +10,6 @@ namespace Nethermind.Synchronization.ParallelSync
 {
     public interface ISyncFeed<T>
     {
-        int FeedId { get; }
         SyncFeedState CurrentState { get; }
         event EventHandler<SyncFeedStateEventArgs> StateChanged;
         Task<T> PrepareRequest(CancellationToken token = default);
