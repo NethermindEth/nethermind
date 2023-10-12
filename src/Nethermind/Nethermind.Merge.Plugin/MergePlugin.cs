@@ -429,9 +429,9 @@ public partial class MergePlugin : IConsensusWrapperPlugin, ISynchronizationPlug
                 _api.SyncProgressResolver,
                 _api.LogManager);
 
-            SyncReport syncReport = new(_api.SyncPeerPool, _api.NodeStatsManager, _api.SyncModeSelector, _syncConfig, _beaconPivot, _api.LogManager);
+            SyncReport syncReport = new(_api.SyncPeerPool, _api.NodeStatsManager, _syncConfig, _beaconPivot, _api.LogManager);
 
-            _api.BlockDownloaderFactory = new MergeBlockDownloaderFactory(
+            MergeBlockDownloaderFactory blockDownloaderFactory = new MergeBlockDownloaderFactory(
                 _poSSwitcher,
                 _beaconPivot,
                 _api.SpecProvider,
@@ -455,7 +455,7 @@ public partial class MergePlugin : IConsensusWrapperPlugin, ISynchronizationPlug
                 _api.SyncModeSelector,
                 _syncConfig,
                 _api.SnapProvider,
-                _api.BlockDownloaderFactory,
+                blockDownloaderFactory,
                 _api.Pivot,
                 _poSSwitcher,
                 _mergeConfig,
@@ -463,6 +463,8 @@ public partial class MergePlugin : IConsensusWrapperPlugin, ISynchronizationPlug
                 _api.ProcessExit!,
                 _api.LogManager,
                 syncReport);
+
+            _api.SyncModeSelector.Changed += syncReport.SyncModeSelectorOnChanged;
         }
 
         return Task.CompletedTask;

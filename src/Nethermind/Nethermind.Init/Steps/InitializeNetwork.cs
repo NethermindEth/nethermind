@@ -151,11 +151,11 @@ public class InitializeNetwork : IStep
 
         _api.Pivot ??= new Pivot(_syncConfig);
 
-        if (_api.BlockDownloaderFactory is null || _api.Synchronizer is null)
+        if (_api.Synchronizer is null)
         {
-            SyncReport syncReport = new(_api.SyncPeerPool!, _api.NodeStatsManager!, _api.SyncModeSelector, _syncConfig, _api.Pivot, _api.LogManager);
+            SyncReport syncReport = new(_api.SyncPeerPool!, _api.NodeStatsManager!, _syncConfig, _api.Pivot, _api.LogManager);
 
-            _api.BlockDownloaderFactory ??= new BlockDownloaderFactory(
+            BlockDownloaderFactory blockDownloaderFactory = new BlockDownloaderFactory(
                 _api.SpecProvider!,
                 _api.BlockTree,
                 _api.ReceiptStorage!,
@@ -175,11 +175,13 @@ public class InitializeNetwork : IStep
                 _api.SyncModeSelector,
                 _syncConfig,
                 _api.SnapProvider,
-                _api.BlockDownloaderFactory,
+                blockDownloaderFactory,
                 _api.Pivot,
                 syncReport,
                 _api.ProcessExit!,
                 _api.LogManager);
+
+            _api.SyncModeSelector.Changed += syncReport.SyncModeSelectorOnChanged;
         }
 
         _api.DisposeStack.Push(_api.Synchronizer);

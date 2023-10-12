@@ -69,7 +69,7 @@ namespace Nethermind.Synchronization.Test
             TotalDifficultyBetterPeerStrategy bestPeerStrategy = new(LimboLogs.Instance);
             MultiSyncModeSelector syncModeSelector = new(resolver, _pool, syncConfig, No.BeaconSync, bestPeerStrategy, LimboLogs.Instance);
             Pivot pivot = new(syncConfig);
-            SyncReport syncReport = new(_pool, stats, syncModeSelector, syncConfig, pivot, LimboLogs.Instance);
+            SyncReport syncReport = new(_pool, stats, syncConfig, pivot, LimboLogs.Instance);
             BlockDownloaderFactory blockDownloaderFactory = new(
                 MainnetSpecProvider.Instance,
                 _blockTree,
@@ -95,6 +95,7 @@ namespace Nethermind.Synchronization.Test
                 syncReport,
                 Substitute.For<IProcessExitSource>(),
                 LimboLogs.Instance);
+            syncModeSelector.Changed += syncReport.SyncModeSelectorOnChanged;
             _syncServer = new SyncServer(
                 trieStore.AsKeyValueStore(),
                 _codeDb,

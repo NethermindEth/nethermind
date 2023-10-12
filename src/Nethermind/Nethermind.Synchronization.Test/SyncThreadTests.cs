@@ -348,7 +348,7 @@ namespace Nethermind.Synchronization.Test
             TotalDifficultyBetterPeerStrategy bestPeerStrategy = new(LimboLogs.Instance);
             MultiSyncModeSelector selector = new(resolver, syncPeerPool, syncConfig, No.BeaconSync, bestPeerStrategy, logManager);
             Pivot pivot = new(syncConfig);
-            SyncReport syncReport = new(syncPeerPool, nodeStatsManager, selector, syncConfig, pivot, LimboLogs.Instance);
+            SyncReport syncReport = new(syncPeerPool, nodeStatsManager, syncConfig, pivot, LimboLogs.Instance);
             BlockDownloaderFactory blockDownloaderFactory = new(
             MainnetSpecProvider.Instance,
                 tree,
@@ -388,6 +388,7 @@ namespace Nethermind.Synchronization.Test
                 Policy.FullGossip,
                 MainnetSpecProvider.Instance,
                 logManager);
+            selector.Changed += syncReport.SyncModeSelectorOnChanged;
 
             ManualResetEventSlim waitEvent = new();
             tree.NewHeadBlock += (_, _) => waitEvent.Set();

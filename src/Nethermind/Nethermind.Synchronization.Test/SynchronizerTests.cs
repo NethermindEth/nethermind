@@ -348,11 +348,10 @@ namespace Nethermind.Synchronization.Test
                 Pivot pivot = new(syncConfig);
 
                 IInvalidChainTracker invalidChainTracker = new NoopInvalidChainTracker();
-                IBlockDownloaderFactory blockDownloaderFactory;
                 if (IsMerge(synchronizerType))
                 {
-                    SyncReport syncReport = new(SyncPeerPool, stats, syncModeSelector, syncConfig, beaconPivot, _logManager);
-                    blockDownloaderFactory = new MergeBlockDownloaderFactory(
+                    SyncReport syncReport = new(SyncPeerPool, stats, syncConfig, beaconPivot, _logManager);
+                    IBlockDownloaderFactory blockDownloaderFactory = new MergeBlockDownloaderFactory(
                         poSSwitcher,
                         beaconPivot,
                         MainnetSpecProvider.Instance,
@@ -385,11 +384,13 @@ namespace Nethermind.Synchronization.Test
                         Substitute.For<IProcessExitSource>(),
                         _logManager,
                         syncReport);
+
+                    syncModeSelector.Changed += syncReport.SyncModeSelectorOnChanged;
                 }
                 else
                 {
-                    SyncReport syncReport = new(SyncPeerPool, stats, syncModeSelector, syncConfig, pivot, _logManager);
-                    blockDownloaderFactory = new BlockDownloaderFactory(
+                    SyncReport syncReport = new(SyncPeerPool, stats, syncConfig, pivot, _logManager);
+                    IBlockDownloaderFactory blockDownloaderFactory = new BlockDownloaderFactory(
                         MainnetSpecProvider.Instance,
                         BlockTree,
                         NullReceiptStorage.Instance,
@@ -415,6 +416,8 @@ namespace Nethermind.Synchronization.Test
                         syncReport,
                         Substitute.For<IProcessExitSource>(),
                         _logManager);
+
+                    syncModeSelector.Changed += syncReport.SyncModeSelectorOnChanged;
                 }
 
                 SyncServer = new SyncServer(

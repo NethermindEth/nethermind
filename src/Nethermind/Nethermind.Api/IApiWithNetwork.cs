@@ -44,7 +44,6 @@ namespace Nethermind.Api
         ISessionMonitor? SessionMonitor { get; set; }
         IStaticNodesManager? StaticNodesManager { get; set; }
         ISynchronizer? Synchronizer { get; set; }
-        IBlockDownloaderFactory? BlockDownloaderFactory { get; set; }
         IPivot? Pivot { get; set; }
         ISyncPeerPool? SyncPeerPool { get; set; }
         IPeerDifficultyRefreshPool? PeerDifficultyRefreshPool { get; set; }
