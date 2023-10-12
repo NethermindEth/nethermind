@@ -31,7 +31,7 @@ using Nethermind.JsonRpc.Modules.Rpc;
 
 namespace Nethermind.Init.Steps;
 
-[RunnerStepDependencies(typeof(InitializeNetwork), typeof(SetupKeyStore), typeof(InitializeBlockchain), typeof(InitializePlugins), typeof(InitializeBlockProducer))]
+[RunnerStepDependencies(typeof(InitializeNetwork), typeof(SetupKeyStore), typeof(InitializeBlockchain), typeof(InitializePlugins))]
 public class RegisterRpcModules : IStep
 {
     private readonly INethermindApi _api;
@@ -230,18 +230,12 @@ public class RegisterRpcModules : IStep
         Web3RpcModule web3RpcModule = new(_api.LogManager);
         rpcModuleProvider.RegisterSingle<IWeb3RpcModule>(web3RpcModule);
 
-        EvmRpcModule evmRpcModule = new(_api.ManualBlockProductionTrigger);
-        rpcModuleProvider.RegisterSingle<IEvmRpcModule>(evmRpcModule);
-
-        foreach (INethermindPlugin plugin in _api.Plugins)
-        {
-            await plugin.InitRpcModules();
-        }
-
         RpcRpcModule rpcRpcModule = new(rpcModuleProvider.Enabled);
         rpcModuleProvider.RegisterSingle<IRpcRpcModule>(rpcRpcModule);
 
         if (logger.IsDebug) logger.Debug($"RPC modules  : {string.Join(", ", rpcModuleProvider.Enabled.OrderBy(x => x))}");
         ThisNodeInfo.AddInfo("RPC modules  :", $"{string.Join(", ", rpcModuleProvider.Enabled.OrderBy(x => x))}");
+
+        await Task.CompletedTask;
     }
 }

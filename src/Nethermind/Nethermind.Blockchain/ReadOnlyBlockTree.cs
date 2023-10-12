@@ -93,9 +93,9 @@ namespace Nethermind.Blockchain
         public Keccak FinalizedHash => _wrapped.FinalizedHash;
         public Keccak SafeHash => _wrapped.SafeHash;
 
-        public Block FindBlock(Keccak blockHash, BlockTreeLookupOptions options) => _wrapped.FindBlock(blockHash, options);
+        public Block FindBlock(Keccak blockHash, BlockTreeLookupOptions options, long? blockNumber = null) => _wrapped.FindBlock(blockHash, options, blockNumber);
 
-        public BlockHeader FindHeader(Keccak blockHash, BlockTreeLookupOptions options) => _wrapped.FindHeader(blockHash, options);
+        public BlockHeader FindHeader(Keccak blockHash, BlockTreeLookupOptions options, long? blockNumber = null) => _wrapped.FindHeader(blockHash, options, blockNumber: blockNumber);
 
         public BlockHeader FindHeader(long blockNumber, BlockTreeLookupOptions options) => _wrapped.FindHeader(blockNumber, options);
         public Keccak FindBlockHash(long blockNumber) => _wrapped.FindBlockHash(blockNumber);

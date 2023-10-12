@@ -178,7 +178,7 @@ namespace Nethermind.Synchronization.FastBlocks
 
         private bool TryPrepareReceipts(BlockInfo blockInfo, TxReceipt[] receipts, out TxReceipt[]? preparedReceipts)
         {
-            BlockHeader? header = _blockTree.FindHeader(blockInfo.BlockHash);
+            BlockHeader? header = _blockTree.FindHeader(blockInfo.BlockHash, blockNumber: blockInfo.BlockNumber);
             if (header is null)
             {
                 if (_logger.IsWarn) _logger.Warn("Could not find header for requested blockhash.");
