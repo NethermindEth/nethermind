@@ -21,19 +21,21 @@ jobs:
         with:
           repository: NethermindEth/nethermind.launcher
           path: launcher
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v3
+        with:
+          global-json-file: nethermind/global.json
       - name: Set up Node.js
         uses: actions/setup-node@v3
         with:
           node-version: 14
       - name: Install npm packages
-        run: npm i pkg @vercel/ncc -g
-      - name: Set up .NET
-        uses: actions/setup-dotnet@v3
+        run: npm i -g pkg @vercel/ncc
       - name: Set up QEMU
-        uses: docker/setup-qemu-action@v2
+        uses: docker/setup-qemu-action@v3
       - name: Set up Docker Buildx
         id: buildx
-        uses: docker/setup-buildx-action@v2
+        uses: docker/setup-buildx-action@v3
       - name: Build Nethermind.Runner
         id: build-runner
         run: |
