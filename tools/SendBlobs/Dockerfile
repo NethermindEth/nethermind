@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 # SPDX-License-Identifier: LGPL-3.0-only
 
-FROM --platform=$BUILDPLATFORM mcr.microsoft.com/dotnet/sdk:7.0-jammy AS build
+FROM --platform=$BUILDPLATFORM mcr.microsoft.com/dotnet/sdk:7.0-alpine AS build
 
 ARG TARGETPLATFORM
 ARG TARGETOS
@@ -21,14 +21,12 @@ RUN if [ "$TARGETARCH" = "amd64" ]; \
     fi
 
 
-FROM --platform=$TARGETPLATFORM mcr.microsoft.com/dotnet/runtime:7.0
+FROM --platform=$TARGETPLATFORM alpine
 
 ARG TARGETPLATFORM
 ARG TARGETOS
 ARG TARGETARCH
 ARG BUILDPLATFORM
-
-RUN apt-get update && apt-get -y install libsnappy-dev
 
 WORKDIR /nethermind
 
