@@ -17,7 +17,7 @@ using Nethermind.Serialization.Json;
 
 namespace Nethermind.Runner.Ethereum.Steps
 {
-    [RunnerStepDependencies(typeof(InitializeNetwork), typeof(RegisterRpcModules))]
+    [RunnerStepDependencies(typeof(InitializeNetwork), typeof(RegisterRpcModules), typeof(RegisterPluginRpcModules))]
     public class StartRpc : IStep
     {
         private readonly INethermindApi _api;
