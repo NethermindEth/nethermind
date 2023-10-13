@@ -60,7 +60,7 @@ public class TraceStoreRpcModule : ITraceRpcModule
     public ResultWrapper<ParityTxTraceFromReplay> trace_rawTransaction(byte[] data, string[] traceTypes) =>
         _traceModule.trace_rawTransaction(data, traceTypes);
 
-    public ResultWrapper<ParityTxTraceFromReplay> trace_replayTransaction(Keccak txHash, params string[] traceTypes) =>
+    public ResultWrapper<ParityTxTraceFromReplay> trace_replayTransaction(Commitment txHash, params string[] traceTypes) =>
         TryTraceTransaction(
             txHash,
             TraceRpcModule.GetParityTypes(traceTypes),
@@ -159,14 +159,14 @@ public class TraceStoreRpcModule : ITraceRpcModule
         return _traceModule.trace_block(blockParameter);
     }
 
-    public ResultWrapper<IEnumerable<ParityTxTraceFromStore>> trace_get(Keccak txHash, long[] positions)
+    public ResultWrapper<IEnumerable<ParityTxTraceFromStore>> trace_get(Commitment txHash, long[] positions)
     {
         ResultWrapper<IEnumerable<ParityTxTraceFromStore>> traceTransaction = trace_transaction(txHash);
         List<ParityTxTraceFromStore> traces = TraceRpcModule.ExtractPositionsFromTxTrace(positions, traceTransaction);
         return ResultWrapper<IEnumerable<ParityTxTraceFromStore>>.Success(traces);
     }
 
-    public ResultWrapper<IEnumerable<ParityTxTraceFromStore>> trace_transaction(Keccak txHash) =>
+    public ResultWrapper<IEnumerable<ParityTxTraceFromStore>> trace_transaction(Commitment txHash) =>
         TryTraceTransaction(
             txHash,
             ParityTraceTypes.Trace,
@@ -177,12 +177,12 @@ public class TraceStoreRpcModule : ITraceRpcModule
             : _traceModule.trace_transaction(txHash);
 
     private bool TryTraceTransaction<T>(
-        Keccak txHash,
+        Commitment txHash,
         ParityTraceTypes traceTypes,
         Func<ParityLikeTxTrace, T> map,
         out ResultWrapper<T>? result)
     {
-        SearchResult<Keccak> blockHashSearch = _receiptFinder.SearchForReceiptBlockHash(txHash);
+        SearchResult<Commitment> blockHashSearch = _receiptFinder.SearchForReceiptBlockHash(txHash);
         if (blockHashSearch.IsError)
         {
             {
@@ -242,7 +242,7 @@ public class TraceStoreRpcModule : ITraceRpcModule
         }
     }
 
-    private ParityLikeTxTrace? GetTxTrace(Block block, Keccak txHash, List<ParityLikeTxTrace> traces)
+    private ParityLikeTxTrace? GetTxTrace(Block block, Commitment txHash, List<ParityLikeTxTrace> traces)
     {
         int index = traces.FindIndex(t => t.TransactionHash == txHash);
         return index != -1 ? traces[index] : null;

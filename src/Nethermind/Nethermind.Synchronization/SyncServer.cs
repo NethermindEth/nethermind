@@ -48,10 +48,10 @@ namespace Nethermind.Synchronization
         private bool _gossipStopped = false;
         private readonly Random _broadcastRandomizer = new();
 
-        private readonly LruCache<ValueKeccak, ISyncPeer> _recentlySuggested = new(128, 128, "recently suggested blocks");
+        private readonly LruCache<ValueCommitment, ISyncPeer> _recentlySuggested = new(128, 128, "recently suggested blocks");
 
         private readonly long _pivotNumber;
-        private readonly Keccak _pivotHash;
+        private readonly Commitment _pivotHash;
         private BlockHeader? _pivotHeader;
 
         public SyncServer(
@@ -85,7 +85,7 @@ namespace Nethermind.Synchronization
             _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _cht = cht;
             _pivotNumber = config.PivotNumberParsed;
-            _pivotHash = new Keccak(config.PivotHash ?? Keccak.Zero.ToString());
+            _pivotHash = new Commitment(config.PivotHash ?? Commitment.Zero.ToString());
 
             _blockTree.NewHeadBlock += OnNewHeadBlock;
             _pool.NotifyPeerBlock += OnNotifyPeerBlock;
@@ -115,7 +115,7 @@ namespace Nethermind.Synchronization
             }
         }
 
-        public Keccak[]? GetBlockWitnessHashes(Keccak blockHash)
+        public Commitment[]? GetBlockWitnessHashes(Commitment blockHash)
         {
             return _witnessRepository.Load(blockHash);
         }
@@ -366,7 +366,7 @@ namespace Nethermind.Synchronization
             _logger.Info(sb.ToString());
         }
 
-        public void HintBlock(Keccak hash, long number, ISyncPeer syncPeer)
+        public void HintBlock(Commitment hash, long number, ISyncPeer syncPeer)
         {
             if (!_gossipPolicy.CanGossipBlocks) return;
 
@@ -383,17 +383,17 @@ namespace Nethermind.Synchronization
             }
         }
 
-        public TxReceipt[] GetReceipts(Keccak? blockHash)
+        public TxReceipt[] GetReceipts(Commitment? blockHash)
         {
             return blockHash is not null ? _receiptFinder.Get(blockHash) : Array.Empty<TxReceipt>();
         }
 
-        public BlockHeader[] FindHeaders(Keccak hash, int numberOfBlocks, int skip, bool reverse)
+        public BlockHeader[] FindHeaders(Commitment hash, int numberOfBlocks, int skip, bool reverse)
         {
             return _blockTree.FindHeaders(hash, numberOfBlocks, skip, reverse);
         }
 
-        public byte[]?[] GetNodeData(IReadOnlyList<Keccak> keys, NodeDataType includedTypes = NodeDataType.State | NodeDataType.Code)
+        public byte[]?[] GetNodeData(IReadOnlyList<Commitment> keys, NodeDataType includedTypes = NodeDataType.State | NodeDataType.Code)
         {
             byte[]?[] values = new byte[keys.Count][];
             for (int i = 0; i < keys.Count; i++)
@@ -418,13 +418,13 @@ namespace Nethermind.Synchronization
             return _blockTree.FindLowestCommonAncestor(firstDescendant, secondDescendant, Sync.MaxReorgLength);
         }
 
-        public Block Find(Keccak hash) => _blockTree.FindBlock(hash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+        public Block Find(Commitment hash) => _blockTree.FindBlock(hash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
 
-        public Keccak? FindHash(long number)
+        public Commitment? FindHash(long number)
         {
             try
             {
-                Keccak? hash = _blockTree.FindHash(number);
+                Commitment? hash = _blockTree.FindHash(number);
                 return hash;
             }
             catch (Exception)

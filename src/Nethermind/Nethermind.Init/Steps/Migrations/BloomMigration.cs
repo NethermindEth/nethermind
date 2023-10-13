@@ -23,7 +23,7 @@ namespace Nethermind.Init.Steps.Migrations
 {
     public class BloomMigration : IDatabaseMigration
     {
-        private static readonly BlockHeader EmptyHeader = new BlockHeader(Keccak.Zero, Keccak.Zero, Address.Zero, UInt256.Zero, 0L, 0L, 0UL, Array.Empty<byte>());
+        private static readonly BlockHeader EmptyHeader = new BlockHeader(Commitment.Zero, Commitment.Zero, Address.Zero, UInt256.Zero, 0L, 0L, 0UL, Array.Empty<byte>());
 
         private readonly IApiWithNetwork _api;
         private readonly ILogger _logger;
@@ -166,7 +166,7 @@ namespace Nethermind.Init.Steps.Migrations
 
                 IEnumerable<BlockHeader> GetHeadersForMigration()
                 {
-                    bool TryGetMainChainBlockHashFromLevel(long number, out Keccak? blockHash)
+                    bool TryGetMainChainBlockHashFromLevel(long number, out Commitment? blockHash)
                     {
                         using BatchWrite batch = chainLevelInfoRepository.StartBatch();
                         ChainLevelInfo? level = chainLevelInfoRepository.LoadLevel(number);
@@ -200,7 +200,7 @@ namespace Nethermind.Init.Steps.Migrations
                             yield break;
                         }
 
-                        if (TryGetMainChainBlockHashFromLevel(i, out Keccak? blockHash))
+                        if (TryGetMainChainBlockHashFromLevel(i, out Commitment? blockHash))
                         {
                             BlockHeader? header = blockTree.FindHeader(blockHash!, BlockTreeLookupOptions.None);
                             yield return header ?? GetMissingBlockHeader(i);

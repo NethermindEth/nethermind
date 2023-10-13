@@ -13,7 +13,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
         /// <summary>
         /// Root hash of the account trie to serve
         /// </summary>
-        public ValueKeccak RootHash { get; set; }
+        public ValueCommitment RootHash { get; set; }
 
         /// <summary>
         /// Trie paths to retrieve the nodes for, grouped by account

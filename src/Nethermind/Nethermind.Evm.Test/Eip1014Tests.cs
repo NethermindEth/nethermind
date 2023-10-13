@@ -21,7 +21,7 @@ namespace Nethermind.Evm.Test
 
         private void AssertEip1014(Address address, byte[] code)
         {
-            AssertCodeHash(address, Keccak.Compute(code));
+            AssertCodeHash(address, Commitment.Compute(code));
         }
 
         [Test]
@@ -109,7 +109,7 @@ namespace Nethermind.Evm.Test
             TestState.Commit(Spec);
             TestState.CommitTree(0);
 
-            Keccak storageRoot = TestState.GetAccount(expectedAddress).StorageRoot;
+            Commitment storageRoot = TestState.GetAccount(expectedAddress).StorageRoot;
             storageRoot.Should().NotBe(PatriciaTree.EmptyTreeHash);
 
             TestState.CreateAccount(TestItem.AddressC, 1.Ether());

@@ -11,8 +11,8 @@ namespace Nethermind.Crypto
     {
         void Sign(PrivateKey privateKey, Transaction tx, bool isEip155Enabled = true);
         Address? RecoverAddress(Transaction tx, bool useSignatureChainId = false);
-        Address? RecoverAddress(Signature signature, Keccak message);
-        Address? RecoverAddress(Span<byte> signatureBytes, Keccak message);
+        Address? RecoverAddress(Signature signature, Commitment message);
+        Address? RecoverAddress(Span<byte> signatureBytes, Commitment message);
         bool Verify(Address sender, Transaction tx);
     }
 }

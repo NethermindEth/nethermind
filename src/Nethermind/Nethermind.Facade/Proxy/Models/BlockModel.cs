@@ -14,20 +14,20 @@ namespace Nethermind.Facade.Proxy.Models
         public byte[] ExtraData { get; set; }
         public UInt256 GasLimit { get; set; }
         public UInt256 GasUsed { get; set; }
-        public Keccak Hash { get; set; }
+        public Commitment Hash { get; set; }
         public Address Miner { get; set; }
-        public Keccak MixHash { get; set; }
+        public Commitment MixHash { get; set; }
         public UInt256 Nonce { get; set; }
         public UInt256 Number { get; set; }
-        public Keccak ParentHash { get; set; }
-        public Keccak ReceiptsRoot { get; set; }
-        public Keccak Sha3Uncles { get; set; }
+        public Commitment ParentHash { get; set; }
+        public Commitment ReceiptsRoot { get; set; }
+        public Commitment Sha3Uncles { get; set; }
         public UInt256 Size { get; set; }
-        public Keccak StateRoot { get; set; }
+        public Commitment StateRoot { get; set; }
         public ulong Timestamp { get; set; }
         public UInt256 TotalDifficulty { get; set; }
         public List<T> Transactions { get; set; }
-        public Keccak TransactionsRoot { get; set; }
+        public Commitment TransactionsRoot { get; set; }
 
         public Block ToBlock()
         {

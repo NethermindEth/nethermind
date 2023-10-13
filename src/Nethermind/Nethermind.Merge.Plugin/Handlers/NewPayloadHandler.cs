@@ -42,7 +42,7 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
     private readonly IMergeSyncController _mergeSyncController;
     private readonly IInvalidChainTracker _invalidChainTracker;
     private readonly ILogger _logger;
-    private readonly LruCache<ValueKeccak, bool>? _latestBlocks;
+    private readonly LruCache<ValueCommitment, bool>? _latestBlocks;
     private readonly ProcessingOptions _defaultProcessingOptions;
     private readonly TimeSpan _timeout;
 
@@ -103,7 +103,7 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
         }
 
         _invalidChainTracker.SetChildParent(block.Hash!, block.ParentHash!);
-        if (_invalidChainTracker.IsOnKnownInvalidChain(block.Hash!, out Keccak? lastValidHash))
+        if (_invalidChainTracker.IsOnKnownInvalidChain(block.Hash!, out Commitment? lastValidHash))
         {
             if (_logger.IsInfo) _logger.Info($"Invalid - block {request} is known to be a part of an invalid chain. The last valid is {lastValidHash}");
             return NewPayloadV1Result.Invalid(lastValidHash, $"Block {request} is known to be a part of an invalid chain.");
@@ -185,7 +185,7 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
         {
             if (_logger.IsWarn) _logger.Warn($"Misconfigured terminal total difficulty.");
 
-            return NewPayloadV1Result.Invalid(Keccak.Zero);
+            return NewPayloadV1Result.Invalid(Commitment.Zero);
         }
 
         if ((block.TotalDifficulty ?? 0) != 0 && _poSSwitcher.BlockBeforeTerminalTotalDifficulty(parentHeader))
@@ -193,7 +193,7 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
             if (_logger.IsWarn) _logger.Warn($"Invalid terminal block. Nethermind TTD {_poSSwitcher.TerminalTotalDifficulty}, Parent TD: {parentHeader.TotalDifficulty}. Request: {requestStr}.");
 
             // {status: INVALID, latestValidHash: 0x0000000000000000000000000000000000000000000000000000000000000000, validationError: errorMessage | null} if terminal block conditions are not satisfied
-            return NewPayloadV1Result.Invalid(Keccak.Zero);
+            return NewPayloadV1Result.Invalid(Commitment.Zero);
         }
 
         // Otherwise, we can just process this block and we don't need to do BeaconSync anymore.
@@ -404,7 +404,7 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
         {
             Status = PayloadStatus.Invalid,
             ValidationError = validationMessage,
-            LatestValidHash = _invalidChainTracker.IsOnKnownInvalidChain(request.BlockHash!, out Keccak? lastValidHash)
+            LatestValidHash = _invalidChainTracker.IsOnKnownInvalidChain(request.BlockHash!, out Commitment? lastValidHash)
                 ? lastValidHash
                 : request.ParentHash
         };
@@ -424,7 +424,7 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
             while (current != null)
             {
                 stack.Push(current);
-                Keccak currentHash = current.Hash!;
+                Commitment currentHash = current.Hash!;
                 if (currentHash == _beaconPivot.PivotHash || _blockTree.IsKnownBeaconBlock(current.Number, currentHash))
                 {
                     break;

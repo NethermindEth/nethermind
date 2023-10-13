@@ -132,7 +132,7 @@ public class ReceiptArrayStorageDecoder : IRlpStreamDecoder<TxReceipt[]>
         }
     }
 
-    public TxReceipt DeserializeReceiptObsolete(Keccak hash, Span<byte> receiptData)
+    public TxReceipt DeserializeReceiptObsolete(Commitment hash, Span<byte> receiptData)
     {
         var context = new Rlp.ValueDecoderContext(receiptData);
         try

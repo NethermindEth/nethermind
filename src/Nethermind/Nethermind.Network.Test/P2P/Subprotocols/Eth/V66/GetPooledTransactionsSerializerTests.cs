@@ -14,9 +14,9 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
         [Test]
         public void Roundtrip()
         {
-            Keccak a = new("0x00000000000000000000000000000000000000000000000000000000deadc0de");
-            Keccak b = new("0x00000000000000000000000000000000000000000000000000000000feedbeef");
-            Keccak[] keys = { a, b };
+            Commitment a = new("0x00000000000000000000000000000000000000000000000000000000deadc0de");
+            Commitment b = new("0x00000000000000000000000000000000000000000000000000000000feedbeef");
+            Commitment[] keys = { a, b };
             var ethMessage = new Network.P2P.Subprotocols.Eth.V65.Messages.GetPooledTransactionsMessage(keys);
 
             GetPooledTransactionsMessage message = new(1111, ethMessage);

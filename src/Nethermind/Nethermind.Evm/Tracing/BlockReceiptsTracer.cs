@@ -30,7 +30,7 @@ public class BlockReceiptsTracer : IBlockTracer, ITxTracer, IJournal<int>, ITxTr
 
     private IBlockTracer _otherTracer = NullBlockTracer.Instance;
 
-    public void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Keccak? stateRoot = null)
+    public void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Commitment? stateRoot = null)
     {
         _txReceipts.Add(BuildReceipt(recipient, gasSpent, StatusCode.Success, logs, stateRoot));
 
@@ -46,7 +46,7 @@ public class BlockReceiptsTracer : IBlockTracer, ITxTracer, IJournal<int>, ITxTr
         }
     }
 
-    public void MarkAsFailed(Address recipient, long gasSpent, byte[] output, string error, Keccak? stateRoot = null)
+    public void MarkAsFailed(Address recipient, long gasSpent, byte[] output, string error, Commitment? stateRoot = null)
     {
         _txReceipts.Add(BuildFailedReceipt(recipient, gasSpent, error, stateRoot));
 
@@ -62,14 +62,14 @@ public class BlockReceiptsTracer : IBlockTracer, ITxTracer, IJournal<int>, ITxTr
         }
     }
 
-    private TxReceipt BuildFailedReceipt(Address recipient, long gasSpent, string error, Keccak? stateRoot = null)
+    private TxReceipt BuildFailedReceipt(Address recipient, long gasSpent, string error, Commitment? stateRoot = null)
     {
         TxReceipt receipt = BuildReceipt(recipient, gasSpent, StatusCode.Failure, Array.Empty<LogEntry>(), stateRoot);
         receipt.Error = error;
         return receipt;
     }
 
-    private TxReceipt BuildReceipt(Address recipient, long spentGas, byte statusCode, LogEntry[] logEntries, Keccak? stateRoot = null)
+    private TxReceipt BuildReceipt(Address recipient, long spentGas, byte statusCode, LogEntry[] logEntries, Commitment? stateRoot = null)
     {
         Transaction transaction = _currentTx!;
         TxReceipt txReceipt = new()
@@ -176,7 +176,7 @@ public class BlockReceiptsTracer : IBlockTracer, ITxTracer, IJournal<int>, ITxTr
     public void ReportStackPush(in ReadOnlySpan<byte> stackItem) =>
         _currentTxTracer.ReportStackPush(stackItem);
 
-    public void ReportBlockHash(Keccak blockHash) =>
+    public void ReportBlockHash(Commitment blockHash) =>
         _currentTxTracer.ReportBlockHash(blockHash);
 
     public void SetOperationMemory(IEnumerable<string> memoryTrace) =>

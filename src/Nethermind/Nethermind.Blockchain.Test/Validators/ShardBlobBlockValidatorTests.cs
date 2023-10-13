@@ -26,7 +26,7 @@ public class ShardBlobBlockValidatorTests
         return blockValidator.ValidateSuggestedBlock(Build.A.Block
             .WithBlobGasUsed(blobGasUsed)
             .WithExcessBlobGas(excessBlobGas)
-            .WithWithdrawalsRoot(TestItem.KeccakA)
+            .WithWithdrawalsRoot(TestItem._commitmentA)
             .WithWithdrawals(TestItem.WithdrawalA_1Eth)
             .WithParent(Build.A.BlockHeader.TestObject)
             .TestObject);
@@ -42,7 +42,7 @@ public class ShardBlobBlockValidatorTests
         BlockValidator blockValidator = new(Always.Valid, Always.Valid, Always.Valid, specProvider, TestLogManager.Instance);
         return blockValidator.ValidateSuggestedBlock(
             Build.A.Block
-                .WithWithdrawalsRoot(TestItem.KeccakA)
+                .WithWithdrawalsRoot(TestItem._commitmentA)
                 .WithWithdrawals(TestItem.WithdrawalA_1Eth)
                 .WithBlobGasUsed(blobGasUsed)
                 .WithExcessBlobGas(0)

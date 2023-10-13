@@ -9,6 +9,6 @@ namespace Nethermind.Merge.Plugin.Handlers;
 
 public interface IBlockCacheService
 {
-    public ConcurrentDictionary<Keccak, Block> BlockCache { get; }
-    Keccak FinalizedHash { get; set; }
+    public ConcurrentDictionary<Commitment, Block> BlockCache { get; }
+    Commitment FinalizedHash { get; set; }
 }

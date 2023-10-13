@@ -118,7 +118,7 @@ namespace Nethermind.Blockchain.Receipts
             return receipt.Logs is null ? new LogEntriesIterator(receipt.LogsRlp, _receiptRefDecoder) : new LogEntriesIterator(receipt.Logs);
         }
 
-        public Keccak[] DecodeTopics(Rlp.ValueDecoderContext valueDecoderContext)
+        public Commitment[] DecodeTopics(Rlp.ValueDecoderContext valueDecoderContext)
         {
             return _receiptRefDecoder.DecodeTopics(valueDecoderContext);
         }

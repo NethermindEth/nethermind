@@ -33,8 +33,8 @@ namespace Nethermind.Merge.Plugin.Test
         private static readonly DateTime Timestamp = DateTimeOffset.FromUnixTimeSeconds(1000).UtcDateTime;
         private static readonly IBeaconBlockRootHandler _beaconBlockRootHandler = new BeaconBlockRootHandler();
         private ITimestamper Timestamper { get; } = new ManualTimestamper(Timestamp);
-        private void AssertExecutionStatusChanged(IBlockFinder blockFinder, Keccak headBlockHash, Keccak finalizedBlockHash,
-             Keccak safeBlockHash)
+        private void AssertExecutionStatusChanged(IBlockFinder blockFinder, Commitment headBlockHash, Commitment finalizedBlockHash,
+             Commitment safeBlockHash)
         {
             Assert.That(blockFinder.HeadHash, Is.EqualTo(headBlockHash));
             Assert.That(blockFinder.FinalizedHash, Is.EqualTo(finalizedBlockHash));
@@ -50,7 +50,7 @@ namespace Nethermind.Merge.Plugin.Test
             return (accountFrom.Balance - totalValue, chain.StateReader.GetBalance(parentHeader.StateRoot!, to) + totalValue);
         }
 
-        private Transaction[] BuildTransactions(MergeTestBlockchain chain, Keccak parentHash, PrivateKey from,
+        private Transaction[] BuildTransactions(MergeTestBlockchain chain, Commitment parentHash, PrivateKey from,
             Address to, uint count, int value, out Account accountFrom, out BlockHeader parentHeader, int blobCountPerTx = 0)
         {
             Transaction BuildTransaction(uint index, Account senderAccount) =>
@@ -89,7 +89,7 @@ namespace Nethermind.Merge.Plugin.Test
         }
 
         private static ExecutionPayload CreateBlockRequest(MergeTestBlockchain chain, ExecutionPayload parent, Address miner, IList<Withdrawal>? withdrawals = null,
-               ulong? blobGasUsed = null, ulong? excessBlobGas = null, Transaction[]? transactions = null, Keccak? parentBeaconBlockRoot = null)
+               ulong? blobGasUsed = null, ulong? excessBlobGas = null, Transaction[]? transactions = null, Commitment? parentBeaconBlockRoot = null)
         {
             ExecutionPayload blockRequest = CreateBlockRequestInternal<ExecutionPayload>(parent, miner, withdrawals, blobGasUsed, excessBlobGas, transactions: transactions, parentBeaconBlockRoot: parentBeaconBlockRoot);
             blockRequest.TryGetBlock(out Block? block);
@@ -102,13 +102,13 @@ namespace Nethermind.Merge.Plugin.Test
             blockRequest.StateRoot = chain.State.StateRoot;
             chain.State.Restore(before);
 
-            TryCalculateHash(blockRequest, out Keccak? hash);
+            TryCalculateHash(blockRequest, out Commitment? hash);
             blockRequest.BlockHash = hash;
             return blockRequest;
         }
 
         private static ExecutionPayloadV3 CreateBlockRequestV3(MergeTestBlockchain chain, ExecutionPayload parent, Address miner, IList<Withdrawal>? withdrawals = null,
-                ulong? blobGasUsed = null, ulong? excessBlobGas = null, Transaction[]? transactions = null, Keccak? parentBeaconBlockRoot = null)
+                ulong? blobGasUsed = null, ulong? excessBlobGas = null, Transaction[]? transactions = null, Commitment? parentBeaconBlockRoot = null)
         {
             ExecutionPayloadV3 blockRequestV3 = CreateBlockRequestInternal<ExecutionPayloadV3>(parent, miner, withdrawals, blobGasUsed, excessBlobGas, transactions: transactions, parentBeaconBlockRoot: parentBeaconBlockRoot);
             blockRequestV3.TryGetBlock(out Block? block);
@@ -122,13 +122,13 @@ namespace Nethermind.Merge.Plugin.Test
             blockRequestV3.StateRoot = chain.State.StateRoot;
             chain.State.Restore(before);
 
-            TryCalculateHash(blockRequestV3, out Keccak? hash);
+            TryCalculateHash(blockRequestV3, out Commitment? hash);
             blockRequestV3.BlockHash = hash;
             return blockRequestV3;
         }
 
         private static T CreateBlockRequestInternal<T>(ExecutionPayload parent, Address miner, IList<Withdrawal>? withdrawals = null,
-                ulong? blobGasUsed = null, ulong? excessBlobGas = null, Transaction[]? transactions = null, Keccak? parentBeaconBlockRoot = null) where T : ExecutionPayload, new()
+                ulong? blobGasUsed = null, ulong? excessBlobGas = null, Transaction[]? transactions = null, Commitment? parentBeaconBlockRoot = null) where T : ExecutionPayload, new()
         {
             T blockRequest = new()
             {
@@ -138,7 +138,7 @@ namespace Nethermind.Merge.Plugin.Test
                 BlockNumber = parent.BlockNumber + 1,
                 GasLimit = parent.GasLimit,
                 GasUsed = 0,
-                ReceiptsRoot = Keccak.EmptyTreeHash,
+                ReceiptsRoot = Commitment.EmptyTreeHash,
                 LogsBloom = Bloom.Empty,
                 Timestamp = parent.Timestamp + 1,
                 Withdrawals = withdrawals,
@@ -148,7 +148,7 @@ namespace Nethermind.Merge.Plugin.Test
             };
 
             blockRequest.SetTransactions(transactions ?? Array.Empty<Transaction>());
-            TryCalculateHash(blockRequest, out Keccak? hash);
+            TryCalculateHash(blockRequest, out Commitment? hash);
             blockRequest.BlockHash = hash;
             return blockRequest;
         }
@@ -166,7 +166,7 @@ namespace Nethermind.Merge.Plugin.Test
             return blockRequests;
         }
 
-        private Block? RunForAllBlocksInBranch(IBlockTree blockTree, Keccak blockHash, Func<Block, bool> shouldStop,
+        private Block? RunForAllBlocksInBranch(IBlockTree blockTree, Commitment blockHash, Func<Block, bool> shouldStop,
             bool requireCanonical)
         {
             BlockTreeLookupOptions options = requireCanonical ? BlockTreeLookupOptions.RequireCanonical : BlockTreeLookupOptions.None;
@@ -191,7 +191,7 @@ namespace Nethermind.Merge.Plugin.Test
             };
         }
 
-        private static bool TryCalculateHash(ExecutionPayload request, out Keccak hash)
+        private static bool TryCalculateHash(ExecutionPayload request, out Commitment hash)
         {
             if (request.TryGetBlock(out Block? block) && block is not null)
             {
@@ -200,7 +200,7 @@ namespace Nethermind.Merge.Plugin.Test
             }
             else
             {
-                hash = Keccak.Zero;
+                hash = Commitment.Zero;
                 return false;
             }
         }

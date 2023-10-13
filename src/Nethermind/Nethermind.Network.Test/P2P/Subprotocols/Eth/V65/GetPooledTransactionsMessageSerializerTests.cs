@@ -11,7 +11,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V65
     [TestFixture, Parallelizable(ParallelScope.All)]
     public class GetPooledTransactionsSerializerTests
     {
-        private static void Test(Keccak[] keys)
+        private static void Test(Commitment[] keys)
         {
             GetPooledTransactionsMessage message = new(keys);
             GetPooledTransactionsMessageSerializer serializer = new();
@@ -22,21 +22,21 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V65
         [Test]
         public void Roundtrip()
         {
-            Keccak[] keys = { TestItem.KeccakA, TestItem.KeccakB, TestItem.KeccakC };
+            Commitment[] keys = { TestItem._commitmentA, TestItem._commitmentB, TestItem._commitmentC };
             Test(keys);
         }
 
         [Test]
         public void Roundtrip_with_nulls()
         {
-            Keccak[] keys = { null, TestItem.KeccakA, null, TestItem.KeccakB, null, null };
+            Commitment[] keys = { null, TestItem._commitmentA, null, TestItem._commitmentB, null, null };
             Test(keys);
         }
 
         [Test]
         public void Empty_to_string()
         {
-            GetPooledTransactionsMessage message = new(new Keccak[] { });
+            GetPooledTransactionsMessage message = new(new Commitment[] { });
             _ = message.ToString();
         }
     }

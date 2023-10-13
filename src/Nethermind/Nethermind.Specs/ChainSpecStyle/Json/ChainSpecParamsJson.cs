@@ -29,7 +29,7 @@ namespace Nethermind.Specs.ChainSpecStyle.Json
 
         public long? ForkBlock { get; set; }
 
-        public Keccak ForkCanonHash { get; set; }
+        public Commitment ForkCanonHash { get; set; }
 
         public long? Eip7Transition { get; set; }
 

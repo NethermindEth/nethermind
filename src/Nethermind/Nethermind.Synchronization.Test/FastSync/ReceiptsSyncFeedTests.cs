@@ -61,7 +61,7 @@ namespace Nethermind.Synchronization.Test.FastSync
                     .ToDictionary(b => b!.Hash!, b => b!);
             }
 
-            public Dictionary<Keccak, Block> BlocksByHash { get; }
+            public Dictionary<Commitment, Block> BlocksByHash { get; }
             public Block?[] Blocks { get; }
             public Block? LowestInsertedBody { get; }
         }
@@ -102,7 +102,7 @@ namespace Nethermind.Synchronization.Test.FastSync
 
             _syncConfig = new SyncConfig { FastBlocks = true, FastSync = true };
             _syncConfig.PivotNumber = _pivotNumber.ToString();
-            _syncConfig.PivotHash = Keccak.Zero.ToString();
+            _syncConfig.PivotHash = Commitment.Zero.ToString();
 
             _syncPeerPool = Substitute.For<ISyncPeerPool>();
             _syncReport = Substitute.For<ISyncReport>();
@@ -269,13 +269,13 @@ namespace Nethermind.Synchronization.Test.FastSync
                     return blockInfo;
                 });
 
-            _blockTree.FindBlock(Keccak.Zero, BlockTreeLookupOptions.None)
+            _blockTree.FindBlock(Commitment.Zero, BlockTreeLookupOptions.None)
                 .ReturnsForAnyArgs(ci =>
-                    scenario.BlocksByHash.TryGetValue(ci.Arg<Keccak>(), out Block? value) ? value : null);
+                    scenario.BlocksByHash.TryGetValue(ci.Arg<Commitment>(), out Block? value) ? value : null);
 
-            _blockTree.FindHeader(Keccak.Zero, BlockTreeLookupOptions.None)
+            _blockTree.FindHeader(Commitment.Zero, BlockTreeLookupOptions.None)
                 .ReturnsForAnyArgs(ci =>
-                    scenario.BlocksByHash.TryGetValue(ci.Arg<Keccak>(), out Block? value) ? value.Header
+                    scenario.BlocksByHash.TryGetValue(ci.Arg<Commitment>(), out Block? value) ? value.Header
                         : null);
 
             _receiptStorage.LowestInsertedReceiptBlockNumber.Returns((long?)null);

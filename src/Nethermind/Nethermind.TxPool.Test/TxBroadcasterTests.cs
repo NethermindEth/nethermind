@@ -390,7 +390,7 @@ public class TxBroadcasterTests
             Substitute.For<ITxPool>(),
             Substitute.For<IPooledTxsRequestor>(),
             Substitute.For<IGossipPolicy>(),
-            new ForkInfo(_specProvider, Keccak.Zero),
+            new ForkInfo(_specProvider, Commitment.Zero),
             Substitute.For<ILogManager>());
         _broadcaster.AddPeer(eth68Handler);
 
@@ -417,7 +417,7 @@ public class TxBroadcasterTests
             Substitute.For<ITxPool>(),
             Substitute.For<IPooledTxsRequestor>(),
             Substitute.For<IGossipPolicy>(),
-            new ForkInfo(_specProvider, Keccak.Zero),
+            new ForkInfo(_specProvider, Commitment.Zero),
             Substitute.For<ILogManager>());
 
         ISession session68 = Substitute.For<ISession>();
@@ -429,7 +429,7 @@ public class TxBroadcasterTests
             Substitute.For<ITxPool>(),
             Substitute.For<IPooledTxsRequestor>(),
             Substitute.For<IGossipPolicy>(),
-            new ForkInfo(_specProvider, Keccak.Zero),
+            new ForkInfo(_specProvider, Commitment.Zero),
             Substitute.For<ILogManager>());
 
         Transaction localTx = Build.A.Transaction
@@ -469,7 +469,7 @@ public class TxBroadcasterTests
             Substitute.For<ITxPool>(),
             Substitute.For<IPooledTxsRequestor>(),
             Substitute.For<IGossipPolicy>(),
-            new ForkInfo(_specProvider, Keccak.Zero),
+            new ForkInfo(_specProvider, Commitment.Zero),
             Substitute.For<ILogManager>());
 
         Transaction localTx = Build.A.Transaction
@@ -522,7 +522,7 @@ public class TxBroadcasterTests
             Substitute.For<ITxPool>(),
             Substitute.For<IPooledTxsRequestor>(),
             Substitute.For<IGossipPolicy>(),
-            new ForkInfo(_specProvider, Keccak.Zero),
+            new ForkInfo(_specProvider, Commitment.Zero),
             Substitute.For<ILogManager>());
         _broadcaster.AddPeer(eth68Handler);
 

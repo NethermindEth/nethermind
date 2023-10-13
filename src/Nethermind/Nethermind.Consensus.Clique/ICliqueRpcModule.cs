@@ -12,19 +12,19 @@ namespace Nethermind.Consensus.Clique
     public interface ICliqueRpcModule : IRpcModule
     {
         [JsonRpcMethod(Description = "Retrieves the signer of the block with the given hash. Returns error of a block with the given hash does not exist.", IsImplemented = true)]
-        ResultWrapper<Address?> clique_getBlockSigner(Keccak? hash);
+        ResultWrapper<Address?> clique_getBlockSigner(Commitment? hash);
 
         [JsonRpcMethod(Description = "Retrieves a snapshot of all clique state at a given block.", IsImplemented = true)]
         ResultWrapper<Snapshot> clique_getSnapshot();
 
         [JsonRpcMethod(Description = "Retrieves the state snapshot at a given block.", IsImplemented = true)]
-        ResultWrapper<Snapshot> clique_getSnapshotAtHash(Keccak hash);
+        ResultWrapper<Snapshot> clique_getSnapshotAtHash(Commitment hash);
 
         [JsonRpcMethod(Description = "Retrieves the list of authorized signers.", IsImplemented = true)]
         ResultWrapper<Address[]> clique_getSigners();
 
         [JsonRpcMethod(Description = "Retrieves the list of authorized signers at the specified block by hash.", IsImplemented = true)]
-        ResultWrapper<Address[]> clique_getSignersAtHash(Keccak hash);
+        ResultWrapper<Address[]> clique_getSignersAtHash(Commitment hash);
 
         [JsonRpcMethod(Description = "Retrieves the list of authorized signers at the specified block by block number.", IsImplemented = true)]
         ResultWrapper<Address[]> clique_getSignersAtNumber(long number);
@@ -33,7 +33,7 @@ namespace Nethermind.Consensus.Clique
         ResultWrapper<string[]> clique_getSignersAnnotated();
 
         [JsonRpcMethod(Description = "Retrieves the list of authorized signers at the specified block by hash but with signer names instead of addresses", IsImplemented = true)]
-        ResultWrapper<string[]> clique_getSignersAtHashAnnotated(Keccak hash);
+        ResultWrapper<string[]> clique_getSignersAtHashAnnotated(Commitment hash);
 
         [JsonRpcMethod(Description = "Adds a new authorization proposal that the signer will attempt to push through. If the `vote` parameter is true, the local signer votes for the given address to be included in the set of authorized signers. With `vote` set to false, the signer is against the address.", IsImplemented = true)]
         ResultWrapper<bool> clique_propose(Address signer, bool vote);
@@ -42,6 +42,6 @@ namespace Nethermind.Consensus.Clique
         ResultWrapper<bool> clique_discard(Address signer);
 
         [JsonRpcMethod(Description = "Forces Clique block producer to produce a new block", IsImplemented = true)]
-        ResultWrapper<bool> clique_produceBlock(Keccak parentHash);
+        ResultWrapper<bool> clique_produceBlock(Commitment parentHash);
     }
 }

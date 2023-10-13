@@ -55,7 +55,7 @@ namespace Nethermind.Consensus.AuRa.Transactions
             }
         }
 
-        private UInt256 CalculateNonce(Address address, Keccak stateRoot, IDictionary<Address, UInt256> nonces)
+        private UInt256 CalculateNonce(Address address, Commitment stateRoot, IDictionary<Address, UInt256> nonces)
         {
             if (!nonces.TryGetValue(address, out var nonce))
             {

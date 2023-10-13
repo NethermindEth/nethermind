@@ -28,12 +28,12 @@ public class Eip4788Tests : TestBlockchain
     [TestCaseSource(nameof(BeaconBlockRootGetPayloadV3ForDifferentSpecTestSource))]
     public void BeaconBlockRoot_Is_Stored_Correctly_and_Only_Valid_PostCancun((IReleaseSpec Spec, bool ShouldFail) testCase)
     {
-        // empty placeholder for tests 
+        // empty placeholder for tests
     }
 
     Block CreateBlock(IWorldState testState, IReleaseSpec spec)
     {
-        Keccak parentBeaconBlockRoot = TestItem.KeccakG;
+        Commitment parentBeaconBlockRoot = TestItem._commitmentG;
 
         byte[] bytecode = Prepare
             .EvmCode

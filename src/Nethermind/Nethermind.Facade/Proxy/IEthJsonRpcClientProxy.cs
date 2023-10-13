@@ -15,16 +15,16 @@ namespace Nethermind.Facade.Proxy
         Task<RpcResult<long?>> eth_blockNumber();
         Task<RpcResult<UInt256?>> eth_getBalance(Address address, BlockParameterModel blockParameter = null);
         Task<RpcResult<UInt256>> eth_getTransactionCount(Address address, BlockParameterModel blockParameter = null);
-        Task<RpcResult<ReceiptModel>> eth_getTransactionReceipt(Keccak transactionHash);
+        Task<RpcResult<ReceiptModel>> eth_getTransactionReceipt(Commitment transactionHash);
         Task<RpcResult<byte[]>> eth_call(CallTransactionModel transaction, BlockParameterModel blockParameter = null);
         Task<RpcResult<byte[]>> eth_getCode(Address address, BlockParameterModel blockParameter = null);
-        Task<RpcResult<TransactionModel>> eth_getTransactionByHash(Keccak transactionHash);
+        Task<RpcResult<TransactionModel>> eth_getTransactionByHash(Commitment transactionHash);
         Task<RpcResult<TransactionModel[]>> eth_pendingTransactions();
-        Task<RpcResult<Keccak>> eth_sendRawTransaction(byte[] transaction);
-        Task<RpcResult<Keccak>> eth_sendTransaction(TransactionModel transaction);
+        Task<RpcResult<Commitment>> eth_sendRawTransaction(byte[] transaction);
+        Task<RpcResult<Commitment>> eth_sendTransaction(TransactionModel transaction);
         Task<RpcResult<byte[]>> eth_estimateGas(TransactionModel transaction, BlockParameterModel blockParameter = null);
-        Task<RpcResult<BlockModel<Keccak>>> eth_getBlockByHash(Keccak blockHash, bool returnFullTransactionObjects = false);
-        Task<RpcResult<BlockModel<Keccak>>> eth_getBlockByNumber(BlockParameterModel blockParameter,
+        Task<RpcResult<BlockModel<Commitment>>> eth_getBlockByHash(Commitment blockHash, bool returnFullTransactionObjects = false);
+        Task<RpcResult<BlockModel<Commitment>>> eth_getBlockByNumber(BlockParameterModel blockParameter,
             bool returnFullTransactionObjects = false);
         Task<RpcResult<BlockModel<TransactionModel>>> eth_getBlockByNumberWithTransactionDetails(BlockParameterModel blockParameter,
             bool returnFullTransactionObjects = false);

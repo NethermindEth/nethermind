@@ -19,7 +19,7 @@ public class CompositeBlockTracerTests
     [Test]
     public void Should_create_tracer_correctly()
     {
-        Keccak txHash = TestItem.KeccakA;
+        Commitment txHash = TestItem._commitmentA;
         GethLikeBlockMemoryTracer gethLikeBlockTracer = new(GethTraceOptions.Default with { TxHash = txHash });
         ParityLikeBlockTracer parityLikeBlockTracer = new(txHash, ParityTraceTypes.All);
 

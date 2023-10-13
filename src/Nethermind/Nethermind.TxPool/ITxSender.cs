@@ -9,6 +9,6 @@ namespace Nethermind.TxPool
 {
     public interface ITxSender
     {
-        ValueTask<(Keccak Hash, AcceptTxResult? AddTxResult)> SendTransaction(Transaction tx, TxHandlingOptions txHandlingOptions);
+        ValueTask<(Commitment Hash, AcceptTxResult? AddTxResult)> SendTransaction(Transaction tx, TxHandlingOptions txHandlingOptions);
     }
 }

@@ -9,28 +9,28 @@ namespace Nethermind.Blockchain.Find
 {
     public interface IBlockFinder
     {
-        Keccak HeadHash { get; }
+        Commitment HeadHash { get; }
 
-        Keccak GenesisHash { get; }
+        Commitment GenesisHash { get; }
 
-        Keccak? PendingHash { get; }
+        Commitment? PendingHash { get; }
 
-        Keccak? FinalizedHash { get; }
+        Commitment? FinalizedHash { get; }
 
-        Keccak? SafeHash { get; }
+        Commitment? SafeHash { get; }
 
         Block? Head { get; }
 
-        Block? FindBlock(Keccak blockHash, BlockTreeLookupOptions options, long? blockNumber = null);
+        Block? FindBlock(Commitment blockHash, BlockTreeLookupOptions options, long? blockNumber = null);
 
         Block? FindBlock(long blockNumber, BlockTreeLookupOptions options);
 
         /// Find a header. blockNumber is optional, but specifying it can improve performance.
-        BlockHeader? FindHeader(Keccak blockHash, BlockTreeLookupOptions options, long? blockNumber = null);
+        BlockHeader? FindHeader(Commitment blockHash, BlockTreeLookupOptions options, long? blockNumber = null);
 
         BlockHeader? FindHeader(long blockNumber, BlockTreeLookupOptions options);
 
-        Keccak? FindBlockHash(long blockNumber);
+        Commitment? FindBlockHash(long blockNumber);
 
         /// <summary>
         /// Checks if the block is currently in the canonical chain
@@ -44,9 +44,9 @@ namespace Nethermind.Blockchain.Find
         /// </summary>
         /// <param name="blockHash">Hash of the block to check</param>
         /// <returns><value>True</value> if part of the canonical chain, otherwise <value>False</value></returns>
-        bool IsMainChain(Keccak blockHash);
+        bool IsMainChain(Commitment blockHash);
 
-        public Block? FindBlock(Keccak blockHash, long? blockNumber = null) => FindBlock(blockHash, BlockTreeLookupOptions.None, blockNumber);
+        public Block? FindBlock(Commitment blockHash, long? blockNumber = null) => FindBlock(blockHash, BlockTreeLookupOptions.None, blockNumber);
 
         public Block? FindBlock(long blockNumber) => FindBlock(blockNumber, BlockTreeLookupOptions.RequireCanonical);
 
@@ -64,7 +64,7 @@ namespace Nethermind.Blockchain.Find
 
         public Block? FindSafeBlock() => SafeHash is null ? null : FindBlock(SafeHash, BlockTreeLookupOptions.None);
 
-        public BlockHeader? FindHeader(Keccak blockHash, long? blockNumber = null) => FindHeader(blockHash, BlockTreeLookupOptions.None, blockNumber: blockNumber);
+        public BlockHeader? FindHeader(Commitment blockHash, long? blockNumber = null) => FindHeader(blockHash, BlockTreeLookupOptions.None, blockNumber: blockNumber);
 
         public BlockHeader? FindHeader(long blockNumber) => FindHeader(blockNumber, BlockTreeLookupOptions.RequireCanonical);
 

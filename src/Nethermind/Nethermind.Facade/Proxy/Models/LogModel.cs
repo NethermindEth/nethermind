@@ -10,13 +10,13 @@ namespace Nethermind.Facade.Proxy.Models
     public class LogModel
     {
         public Address Address { get; set; }
-        public Keccak BlockHash { get; set; }
+        public Commitment BlockHash { get; set; }
         public UInt256 BlockNumber { get; set; }
         public byte[] Data { get; set; }
         public UInt256 LogIndex { get; set; }
         public bool Removed { get; set; }
-        public Keccak[] Topics { get; set; }
-        public Keccak TransactionHash { get; set; }
+        public Commitment[] Topics { get; set; }
+        public Commitment TransactionHash { get; set; }
         public UInt256 TransactionIndex { get; set; }
     }
 }

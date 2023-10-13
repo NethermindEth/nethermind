@@ -16,7 +16,7 @@ namespace Nethermind.Consensus.AuRa.Transactions
     {
         private readonly IContractDataStore<Address> _sendersWhitelist;
         private readonly IDictionaryContractDataStore<TxPriorityContract.Destination> _priorities;
-        private Keccak _blockHash;
+        private Commitment _blockHash;
         private ISet<Address> _sendersWhiteListSet;
 
         public CompareTxByPriorityBase(IContractDataStore<Address> sendersWhitelist, // expected HashSet based

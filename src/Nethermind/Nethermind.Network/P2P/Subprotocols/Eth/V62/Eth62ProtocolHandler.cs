@@ -31,7 +31,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
         protected readonly ITxPool _txPool;
         private readonly IGossipPolicy _gossipPolicy;
         private readonly ITxGossipPolicy _txGossipPolicy;
-        private readonly LruKeyCache<Keccak> _lastBlockNotificationCache = new(10, "LastBlockNotificationCache");
+        private readonly LruKeyCache<Commitment> _lastBlockNotificationCache = new(10, "LastBlockNotificationCache");
 
         public Eth62ProtocolHandler(ISession session,
             IMessageSerializationService serializer,
@@ -316,10 +316,10 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
 
         private void Handle(NewBlockHashesMessage newBlockHashes)
         {
-            (Keccak, long)[] blockHashes = newBlockHashes.BlockHashes;
+            (Commitment, long)[] blockHashes = newBlockHashes.BlockHashes;
             for (int i = 0; i < blockHashes.Length; i++)
             {
-                (Keccak hash, long number) = blockHashes[i];
+                (Commitment hash, long number) = blockHashes[i];
                 SyncServer.HintBlock(hash, number, this);
             }
         }
@@ -377,7 +377,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
             Send(msg);
         }
 
-        private void HintNewBlock(Keccak blockHash, long number)
+        private void HintNewBlock(Commitment blockHash, long number)
         {
             if (Logger.IsTrace) Logger.Trace($"OUT {Counter:D5} HintBlock to {Node:c}");
 

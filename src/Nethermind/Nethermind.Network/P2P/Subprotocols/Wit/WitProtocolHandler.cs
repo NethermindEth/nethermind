@@ -22,7 +22,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Wit
     {
         private readonly ISyncServer _syncServer;
 
-        private readonly MessageQueue<GetBlockWitnessHashesMessage, Keccak[]> _witnessRequests;
+        private readonly MessageQueue<GetBlockWitnessHashesMessage, Commitment[]> _witnessRequests;
 
         public WitProtocolHandler(ISession session,
             IMessageSerializationService serializer,
@@ -31,7 +31,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Wit
             ILogManager logManager) : base(session, nodeStats, serializer, logManager)
         {
             _syncServer = syncServer ?? throw new ArgumentNullException(nameof(syncServer));
-            _witnessRequests = new MessageQueue<GetBlockWitnessHashesMessage, Keccak[]>(Send);
+            _witnessRequests = new MessageQueue<GetBlockWitnessHashesMessage, Commitment[]>(Send);
         }
 
         public override byte ProtocolVersion => 0;
@@ -79,7 +79,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Wit
 
         private void Handle(GetBlockWitnessHashesMessage requestMsg)
         {
-            Keccak[] hashes = _syncServer.GetBlockWitnessHashes(requestMsg.BlockHash);
+            Commitment[] hashes = _syncServer.GetBlockWitnessHashes(requestMsg.BlockHash);
             BlockWitnessHashesMessage msg = new(requestMsg.RequestId, hashes);
             Send(msg);
         }
@@ -91,28 +91,28 @@ namespace Nethermind.Network.P2P.Subprotocols.Wit
 
         private static long _requestId;
 
-        public async Task<Keccak[]> GetBlockWitnessHashes(Keccak blockHash, CancellationToken token)
+        public async Task<Commitment[]> GetBlockWitnessHashes(Commitment blockHash, CancellationToken token)
         {
             long requestId = Interlocked.Increment(ref _requestId);
             GetBlockWitnessHashesMessage msg = new(requestId, blockHash);
 
             if (Logger.IsTrace) Logger.Trace(
                 $"{Counter:D5} {nameof(WitMessageCode.GetBlockWitnessHashes)} to {Session}");
-            Keccak[] witnessHashes = await SendRequest(msg, token);
+            Commitment[] witnessHashes = await SendRequest(msg, token);
             return witnessHashes;
         }
 
-        private async Task<Keccak[]> SendRequest(GetBlockWitnessHashesMessage message, CancellationToken token)
+        private async Task<Commitment[]> SendRequest(GetBlockWitnessHashesMessage message, CancellationToken token)
         {
             if (Logger.IsTrace)
             {
                 Logger.Trace($"Sending block witness hashes request: {message.BlockHash}");
             }
 
-            Request<GetBlockWitnessHashesMessage, Keccak[]> request = new(message);
+            Request<GetBlockWitnessHashesMessage, Commitment[]> request = new(message);
             _witnessRequests.Send(request);
 
-            Task<Keccak[]> task = request.CompletionSource.Task;
+            Task<Commitment[]> task = request.CompletionSource.Task;
             using CancellationTokenSource delayCancellation = new();
             using CancellationTokenSource compositeCancellation = CancellationTokenSource.CreateLinkedTokenSource(token, delayCancellation.Token);
             Task firstTask = await Task.WhenAny(task, Task.Delay(Timeouts.Eth, compositeCancellation.Token));

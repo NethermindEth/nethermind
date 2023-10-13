@@ -16,6 +16,6 @@ namespace Nethermind.JsonRpc.Modules.Parity
         public UInt256 Difficulty { get; set; }
 
         [JsonProperty("head", Order = 2)]
-        public Keccak HeadHash { get; set; }
+        public Commitment HeadHash { get; set; }
     }
 }

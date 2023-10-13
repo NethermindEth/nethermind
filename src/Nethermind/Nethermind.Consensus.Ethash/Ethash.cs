@@ -120,15 +120,15 @@ namespace Nethermind.Consensus.Ethash
             return true;
         }
 
-        public static Keccak GetSeedHash(uint epoch)
+        public static Commitment GetSeedHash(uint epoch)
         {
-            ValueKeccak seed = new ValueKeccak();
+            ValueCommitment seed = new ValueCommitment();
             for (uint i = 0; i < epoch; i++)
             {
-                seed = ValueKeccak.Compute(seed.Bytes);
+                seed = ValueCommitment.Compute(seed.Bytes);
             }
 
-            return new Keccak(seed.Bytes);
+            return new Commitment(seed.Bytes);
         }
 
         private readonly BigInteger _2To256 = BigInteger.Pow(2, 256);
@@ -149,7 +149,7 @@ namespace Nethermind.Consensus.Ethash
             return (BigInteger)resultAsInteger <= target;
         }
 
-        public (Keccak MixHash, ulong Nonce) Mine(BlockHeader header, ulong? startNonce = null)
+        public (Commitment MixHash, ulong Nonce) Mine(BlockHeader header, ulong? startNonce = null)
         {
             uint epoch = GetEpoch(header.Number);
             IEthashDataSet dataSet = _hintBasedCache.Get(epoch);
@@ -161,13 +161,13 @@ namespace Nethermind.Consensus.Ethash
 
             ulong fullSize = GetDataSize(epoch);
             ulong nonce = startNonce ?? GetRandomNonce();
-            Keccak headerHashed = GetTruncatedHash(header);
+            Commitment headerHashed = GetTruncatedHash(header);
 
             // parallel for (just with ulong...) - adjust based on the available mining threads, low priority
             byte[] mixHash;
             while (true)
             {
-                ValueKeccak result;
+                ValueCommitment result;
                 (mixHash, result, _) = Hashimoto(fullSize, dataSet, headerHashed, null, nonce);
                 if (IsLessOrEqualThanTarget(result.Bytes, header.Difficulty))
                 {
@@ -180,7 +180,7 @@ namespace Nethermind.Consensus.Ethash
                 }
             }
 
-            return (new Keccak(mixHash), nonce);
+            return (new Commitment(mixHash), nonce);
         }
 
         internal const uint FnvPrime = 0x01000193;
@@ -227,8 +227,8 @@ namespace Nethermind.Consensus.Ethash
             }
 
             ulong fullSize = GetDataSize(epoch);
-            Keccak headerHashed = GetTruncatedHash(header);
-            (byte[] _, ValueKeccak result, bool isValid) = Hashimoto(fullSize, dataSet, headerHashed, header.MixHash, header.Nonce);
+            Commitment headerHashed = GetTruncatedHash(header);
+            (byte[] _, ValueCommitment result, bool isValid) = Hashimoto(fullSize, dataSet, headerHashed, header.MixHash, header.Nonce);
             if (!isValid)
             {
                 return false;
@@ -242,7 +242,7 @@ namespace Nethermind.Consensus.Ethash
         private IEthashDataSet BuildCache(uint epoch)
         {
             uint cacheSize = GetCacheSize(epoch);
-            Keccak seed = GetSeedHash(epoch);
+            Commitment seed = GetSeedHash(epoch);
             if (_logger.IsInfo) _logger.Info($"Building ethash cache for epoch {epoch}");
             _cacheStopwatch.Restart();
             IEthashDataSet dataSet = new EthashCache(cacheSize, seed.Bytes);
@@ -253,14 +253,14 @@ namespace Nethermind.Consensus.Ethash
 
         private static HeaderDecoder _headerDecoder = new();
 
-        private static Keccak GetTruncatedHash(BlockHeader header)
+        private static Commitment GetTruncatedHash(BlockHeader header)
         {
             Rlp encoded = _headerDecoder.Encode(header, RlpBehaviors.ForSealing);
-            Keccak headerHashed = Keccak.Compute(encoded.Bytes); // sic! Keccak here not Keccak512
+            Commitment headerHashed = Commitment.Compute(encoded.Bytes); // sic! Keccak here not Keccak512
             return headerHashed;
         }
 
-        public (byte[], ValueKeccak, bool) Hashimoto(ulong fullSize, IEthashDataSet dataSet, Keccak headerHash, Keccak expectedMixHash, ulong nonce)
+        public (byte[], ValueCommitment, bool) Hashimoto(ulong fullSize, IEthashDataSet dataSet, Commitment headerHash, Commitment expectedMixHash, ulong nonce)
         {
             uint hashesInFull = (uint)(fullSize / HashBytes); // TODO: at current rate would cover around 200 years... but will the block rate change? what with private chains with shorter block times?
             const uint wordsInMix = MixBytes / WordBytes;
@@ -305,7 +305,7 @@ namespace Nethermind.Consensus.Ethash
                 return (null, null, false);
             }
 
-            return (cmix, ValueKeccak.Compute(Bytes.Concat(headerAndNonceHashed, cmix)), true); // this tests fine
+            return (cmix, ValueCommitment.Compute(Bytes.Concat(headerAndNonceHashed, cmix)), true); // this tests fine
         }
     }
 }

@@ -24,12 +24,12 @@ namespace Nethermind.Evm.Tracing
             _addressesToOptimize = addressesToOptimize;
         }
 
-        public override void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Keccak? stateRoot = null)
+        public override void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Commitment? stateRoot = null)
         {
             GasSpent += gasSpent;
         }
 
-        public override void MarkAsFailed(Address recipient, long gasSpent, byte[] output, string error, Keccak? stateRoot = null)
+        public override void MarkAsFailed(Address recipient, long gasSpent, byte[] output, string error, Commitment? stateRoot = null)
         {
             GasSpent += gasSpent;
         }

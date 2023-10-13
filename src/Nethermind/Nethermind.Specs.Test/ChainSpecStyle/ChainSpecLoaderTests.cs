@@ -56,11 +56,11 @@ public class ChainSpecLoaderTests
         Assert.That(chainSpec.Genesis.BaseFeePerGas, Is.EqualTo((UInt256)11), $"genesis base fee");
 
         Assert.That(chainSpec.Genesis.Header.Nonce, Is.EqualTo(0xdeadbeefdeadbeef), $"genesis {nameof(BlockHeader.Nonce)}");
-        Assert.That(chainSpec.Genesis.Header.MixHash, Is.EqualTo(Keccak.Zero), $"genesis {nameof(BlockHeader.MixHash)}");
+        Assert.That(chainSpec.Genesis.Header.MixHash, Is.EqualTo(Commitment.Zero), $"genesis {nameof(BlockHeader.MixHash)}");
         Assert.That((long)chainSpec.Genesis.Header.Difficulty, Is.EqualTo(0x10), $"genesis {nameof(BlockHeader.Difficulty)}");
         Assert.That(chainSpec.Genesis.Header.Beneficiary, Is.EqualTo(Address.Zero), $"genesis {nameof(BlockHeader.Beneficiary)}");
         Assert.That((long)chainSpec.Genesis.Header.Timestamp, Is.EqualTo(0x00L), $"genesis {nameof(BlockHeader.Timestamp)}");
-        Assert.That(chainSpec.Genesis.Header.ParentHash, Is.EqualTo(Keccak.Zero), $"genesis {nameof(BlockHeader.ParentHash)}");
+        Assert.That(chainSpec.Genesis.Header.ParentHash, Is.EqualTo(Commitment.Zero), $"genesis {nameof(BlockHeader.ParentHash)}");
         Assert.That(
             chainSpec.Genesis.Header.ExtraData, Is.EqualTo(Bytes.FromHexString("0x0000000000000000000000000000000000000000000000000000000000000000")),
             $"genesis {nameof(BlockHeader.ExtraData)}");
@@ -90,7 +90,7 @@ public class ChainSpecLoaderTests
         Assert.That(chainSpec.Parameters.MinGasLimit, Is.EqualTo((long?)0x1388L), "min gas limit");
         Assert.That(chainSpec.Parameters.Registrar, Is.EqualTo(new Address("0xe3389675d0338462dC76C6f9A3e432550c36A142")), "registrar");
         Assert.That(chainSpec.Parameters.ForkBlock, Is.EqualTo((long?)0x1d4c00L), "fork block");
-        Assert.That(chainSpec.Parameters.ForkCanonHash, Is.EqualTo(new Keccak("0x4985f5ca3d2afbec36529aa96f74de3cc10a2a4a6c44f2157a57d2c6059a11bb")), "fork block");
+        Assert.That(chainSpec.Parameters.ForkCanonHash, Is.EqualTo(new Commitment("0x4985f5ca3d2afbec36529aa96f74de3cc10a2a4a6c44f2157a57d2c6059a11bb")), "fork block");
 
         Assert.That(chainSpec.Parameters.Eip150Transition, Is.EqualTo((long?)0L), "eip150");
         Assert.That(chainSpec.Parameters.Eip160Transition, Is.EqualTo((long?)0L), "eip160");

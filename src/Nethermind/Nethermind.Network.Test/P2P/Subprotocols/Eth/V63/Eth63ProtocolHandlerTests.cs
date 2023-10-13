@@ -42,7 +42,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
                 new("eth", Eth63MessageCode.Receipts, ctx._receiptMessageSerializer.Serialize(receiptsMsg));
 
             Task<TxReceipt[][]> task = ctx.ProtocolHandler.GetReceipts(
-                Enumerable.Repeat(Keccak.Zero, 1000).ToArray(),
+                Enumerable.Repeat(Commitment.Zero, 1000).ToArray(),
                 CancellationToken.None);
 
             ctx.ProtocolHandler.HandleMessage(receiptsPacket);
@@ -72,7 +72,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
                 .Do((info => receiptsMessage = (GetReceiptsMessage)info[0]));
 
             Task<TxReceipt[][]> receiptsTask = ctx.ProtocolHandler.GetReceipts(
-                Enumerable.Repeat(Keccak.Zero, 1000).ToArray(),
+                Enumerable.Repeat(Commitment.Zero, 1000).ToArray(),
                 CancellationToken.None);
 
             ctx.ProtocolHandler.HandleMessage(smallReceiptsPacket);
@@ -81,7 +81,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
             Assert.That(receiptsMessage?.Hashes?.Count, Is.EqualTo(8));
 
             receiptsTask = ctx.ProtocolHandler.GetReceipts(
-                Enumerable.Repeat(Keccak.Zero, 1000).ToArray(),
+                Enumerable.Repeat(Commitment.Zero, 1000).ToArray(),
                 CancellationToken.None);
 
             ctx.ProtocolHandler.HandleMessage(largeReceiptsPacket);
@@ -91,7 +91,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
 
             // Back to 10
             receiptsTask = ctx.ProtocolHandler.GetReceipts(
-                Enumerable.Repeat(Keccak.Zero, 1000).ToArray(),
+                Enumerable.Repeat(Commitment.Zero, 1000).ToArray(),
                 CancellationToken.None);
 
             ctx.ProtocolHandler.HandleMessage(smallReceiptsPacket);
@@ -105,7 +105,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
         {
             Context ctx = new();
             GetReceiptsMessage getReceiptsMessage = new(
-                Enumerable.Repeat(Keccak.Zero, 513).ToArray());
+                Enumerable.Repeat(Commitment.Zero, 513).ToArray());
             Packet getReceiptsPacket =
                 new("eth", Eth63MessageCode.GetReceipts, ctx._getReceiptMessageSerializer.Serialize(getReceiptsMessage));
 
@@ -116,11 +116,11 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
         public void Will_not_send_messages_larger_than_2MB()
         {
             Context ctx = new();
-            ctx.SyncServer.GetReceipts(Arg.Any<Keccak>()).Returns(
+            ctx.SyncServer.GetReceipts(Arg.Any<Commitment>()).Returns(
                 Enumerable.Repeat(Build.A.Receipt.WithAllFieldsFilled.TestObject, 512).ToArray());
 
             GetReceiptsMessage getReceiptsMessage = new(
-                Enumerable.Repeat(Keccak.Zero, 512).ToArray());
+                Enumerable.Repeat(Commitment.Zero, 512).ToArray());
             Packet getReceiptsPacket =
                 new("eth", Eth63MessageCode.GetReceipts, ctx._getReceiptMessageSerializer.Serialize(getReceiptsMessage));
 

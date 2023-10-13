@@ -14,7 +14,7 @@ namespace Nethermind.Analytics
     public class SupplyVerifier : ITreeVisitor
     {
         private readonly ILogger _logger;
-        private HashSet<Keccak> _ignoreThisOne = new HashSet<Keccak>();
+        private HashSet<Commitment> _ignoreThisOne = new HashSet<Commitment>();
         private int _accountsVisited;
         private int _nodesVisited;
 
@@ -27,7 +27,7 @@ namespace Nethermind.Analytics
 
         public bool IsFullDbScan => false;
 
-        public bool ShouldVisit(Keccak nextNode)
+        public bool ShouldVisit(Commitment nextNode)
         {
             if (_ignoreThisOne.Count > 16)
             {
@@ -43,11 +43,11 @@ namespace Nethermind.Analytics
             return true;
         }
 
-        public void VisitTree(Keccak rootHash, TrieVisitContext trieVisitContext)
+        public void VisitTree(Commitment rootHash, TrieVisitContext trieVisitContext)
         {
         }
 
-        public void VisitMissingNode(Keccak nodeHash, TrieVisitContext trieVisitContext)
+        public void VisitMissingNode(Commitment nodeHash, TrieVisitContext trieVisitContext)
         {
             _logger.Warn($"Missing node {nodeHash}");
         }
@@ -61,7 +61,7 @@ namespace Nethermind.Analytics
             {
                 for (int i = 0; i < 16; i++)
                 {
-                    Keccak childHash = node.GetChildHash(i);
+                    Commitment childHash = node.GetChildHash(i);
                     if (childHash is not null)
                     {
                         _ignoreThisOne.Add(childHash);
@@ -96,7 +96,7 @@ namespace Nethermind.Analytics
             _logger.Info($"Balance after visiting {_accountsVisited} accounts and {_nodesVisited} nodes: {Balance}");
         }
 
-        public void VisitCode(Keccak codeHash, TrieVisitContext trieVisitContext)
+        public void VisitCode(Commitment codeHash, TrieVisitContext trieVisitContext)
         {
             _nodesVisited++;
         }

@@ -10,8 +10,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
 {
     public interface IPooledTxsRequestor
     {
-        void RequestTransactions(Action<GetPooledTransactionsMessage> send, IReadOnlyList<Keccak> hashes);
-        void RequestTransactionsEth66(Action<V66.Messages.GetPooledTransactionsMessage> send, IReadOnlyList<Keccak> hashes);
-        void RequestTransactionsEth68(Action<V66.Messages.GetPooledTransactionsMessage> send, IReadOnlyList<Keccak> hashes, IReadOnlyList<int> sizes);
+        void RequestTransactions(Action<GetPooledTransactionsMessage> send, IReadOnlyList<Commitment> hashes);
+        void RequestTransactionsEth66(Action<V66.Messages.GetPooledTransactionsMessage> send, IReadOnlyList<Commitment> hashes);
+        void RequestTransactionsEth68(Action<V66.Messages.GetPooledTransactionsMessage> send, IReadOnlyList<Commitment> hashes, IReadOnlyList<int> sizes);
     }
 }

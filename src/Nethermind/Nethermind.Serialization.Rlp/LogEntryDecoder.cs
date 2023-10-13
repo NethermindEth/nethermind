@@ -21,7 +21,7 @@ namespace Nethermind.Serialization.Rlp
             rlpStream.ReadSequenceLength();
             Address? address = rlpStream.DecodeAddress();
             long sequenceLength = rlpStream.ReadSequenceLength();
-            Keccak[] topics = new Keccak[sequenceLength / 33];
+            Commitment[] topics = new Commitment[sequenceLength / 33];
             for (int i = 0; i < topics.Length; i++)
             {
                 topics[i] = rlpStream.DecodeKeccak();
@@ -43,7 +43,7 @@ namespace Nethermind.Serialization.Rlp
             decoderContext.ReadSequenceLength();
             Address? address = decoderContext.DecodeAddress();
             long sequenceLength = decoderContext.ReadSequenceLength();
-            Keccak[] topics = new Keccak[sequenceLength / 33];
+            Commitment[] topics = new Commitment[sequenceLength / 33];
             for (int i = 0; i < topics.Length; i++)
             {
                 topics[i] = decoderContext.DecodeKeccak();

@@ -22,8 +22,8 @@ namespace Nethermind.Store.Test.Witnesses
             WitnessCollector witnessCollector = new(new MemDb(), LimboLogs.Instance);
 
             using IDisposable tracker = witnessCollector.TrackOnThisThread();
-            witnessCollector.Add(Keccak.Zero);
-            witnessCollector.Add(Keccak.Zero);
+            witnessCollector.Add(Commitment.Zero);
+            witnessCollector.Add(Commitment.Zero);
 
             witnessCollector.Collected.Should().HaveCount(1);
         }
@@ -34,8 +34,8 @@ namespace Nethermind.Store.Test.Witnesses
             WitnessCollector witnessCollector = new(new MemDb(), LimboLogs.Instance);
 
             using IDisposable tracker = witnessCollector.TrackOnThisThread();
-            witnessCollector.Add(TestItem.KeccakA);
-            witnessCollector.Add(TestItem.KeccakB);
+            witnessCollector.Add(TestItem._commitmentA);
+            witnessCollector.Add(TestItem._commitmentB);
 
             witnessCollector.Collected.Should().HaveCount(2);
         }
@@ -46,8 +46,8 @@ namespace Nethermind.Store.Test.Witnesses
             WitnessCollector witnessCollector = new(new MemDb(), LimboLogs.Instance);
 
             using IDisposable tracker = witnessCollector.TrackOnThisThread();
-            witnessCollector.Add(TestItem.KeccakA);
-            witnessCollector.Add(TestItem.KeccakB);
+            witnessCollector.Add(TestItem._commitmentA);
+            witnessCollector.Add(TestItem._commitmentB);
             witnessCollector.Reset();
 
             witnessCollector.Collected.Should().HaveCount(0);
@@ -59,10 +59,10 @@ namespace Nethermind.Store.Test.Witnesses
             WitnessCollector witnessCollector = new(new MemDb(), LimboLogs.Instance);
 
             using IDisposable tracker = witnessCollector.TrackOnThisThread();
-            witnessCollector.Add(TestItem.KeccakA);
-            witnessCollector.Add(TestItem.KeccakB);
+            witnessCollector.Add(TestItem._commitmentA);
+            witnessCollector.Add(TestItem._commitmentB);
             witnessCollector.Reset();
-            witnessCollector.Add(TestItem.KeccakC);
+            witnessCollector.Add(TestItem._commitmentC);
 
             witnessCollector.Collected.Should().HaveCount(1);
         }
@@ -73,11 +73,11 @@ namespace Nethermind.Store.Test.Witnesses
             WitnessCollector witnessCollector = new(new MemDb(), LimboLogs.Instance);
 
             using IDisposable tracker = witnessCollector.TrackOnThisThread();
-            witnessCollector.Add(TestItem.KeccakA);
-            witnessCollector.Add(TestItem.KeccakB);
+            witnessCollector.Add(TestItem._commitmentA);
+            witnessCollector.Add(TestItem._commitmentB);
 
-            witnessCollector.Collected.Should().Contain(TestItem.KeccakA);
-            witnessCollector.Collected.Should().Contain(TestItem.KeccakB);
+            witnessCollector.Collected.Should().Contain(TestItem._commitmentA);
+            witnessCollector.Collected.Should().Contain(TestItem._commitmentB);
         }
 
         [Test]
@@ -110,11 +110,11 @@ namespace Nethermind.Store.Test.Witnesses
             WitnessCollector witnessCollector = new(new MemDb(), LimboLogs.Instance);
 
             using IDisposable tracker = witnessCollector.TrackOnThisThread();
-            witnessCollector.Add(TestItem.KeccakA);
+            witnessCollector.Add(TestItem._commitmentA);
             witnessCollector.Reset();
-            witnessCollector.Add(TestItem.KeccakA);
+            witnessCollector.Add(TestItem._commitmentA);
             witnessCollector.Reset();
-            witnessCollector.Add(TestItem.KeccakA);
+            witnessCollector.Add(TestItem._commitmentA);
             witnessCollector.Reset();
 
             witnessCollector.Collected.Should().HaveCount(0);
@@ -126,9 +126,9 @@ namespace Nethermind.Store.Test.Witnesses
             IKeyValueStore keyValueStore = new MemDb();
 
             WitnessCollector witnessCollector = new(keyValueStore, LimboLogs.Instance);
-            witnessCollector.Persist(Keccak.Zero);
+            witnessCollector.Persist(Commitment.Zero);
 
-            var witness = keyValueStore[Keccak.Zero.Bytes];
+            var witness = keyValueStore[Commitment.Zero.Bytes];
             witness.Should().BeNull();
         }
 
@@ -139,11 +139,11 @@ namespace Nethermind.Store.Test.Witnesses
             WitnessCollector witnessCollector = new(keyValueStore, LimboLogs.Instance);
 
             using IDisposable tracker = witnessCollector.TrackOnThisThread();
-            witnessCollector.Add(TestItem.KeccakA);
-            witnessCollector.Add(TestItem.KeccakB);
-            witnessCollector.Persist(Keccak.Zero);
+            witnessCollector.Add(TestItem._commitmentA);
+            witnessCollector.Add(TestItem._commitmentB);
+            witnessCollector.Persist(Commitment.Zero);
 
-            var witness = keyValueStore[Keccak.Zero.Bytes];
+            var witness = keyValueStore[Commitment.Zero.Bytes];
             witness.Length.Should().Be(64);
         }
 
@@ -154,11 +154,11 @@ namespace Nethermind.Store.Test.Witnesses
             WitnessCollector witnessCollector = new(keyValueStore, LimboLogs.Instance);
 
             using IDisposable tracker = witnessCollector.TrackOnThisThread();
-            witnessCollector.Add(TestItem.KeccakA);
-            witnessCollector.Add(TestItem.KeccakB);
-            witnessCollector.Persist(Keccak.Zero);
+            witnessCollector.Add(TestItem._commitmentA);
+            witnessCollector.Add(TestItem._commitmentB);
+            witnessCollector.Persist(Commitment.Zero);
 
-            var witness = witnessCollector.Load(Keccak.Zero);
+            var witness = witnessCollector.Load(Commitment.Zero);
             witness.Should().HaveCount(2);
         }
 
@@ -167,7 +167,7 @@ namespace Nethermind.Store.Test.Witnesses
         {
             IKeyValueStore keyValueStore = new MemDb();
             WitnessCollector witnessCollector = new(keyValueStore, LimboLogs.Instance);
-            var witness = witnessCollector.Load(Keccak.Zero);
+            var witness = witnessCollector.Load(Commitment.Zero);
             witness.Should().BeNull();
         }
 
@@ -184,8 +184,8 @@ namespace Nethermind.Store.Test.Witnesses
                 witnessCollector.Persist(TestItem.Keccaks[i]);
             }
 
-            witnessCollector.Persist(TestItem.KeccakA);
-            witnessCollector.Persist(TestItem.KeccakB);
+            witnessCollector.Persist(TestItem._commitmentA);
+            witnessCollector.Persist(TestItem._commitmentB);
 
             witnessCollector.Load(TestItem.Keccaks[0]);
         }

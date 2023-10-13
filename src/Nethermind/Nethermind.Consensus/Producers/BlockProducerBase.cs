@@ -233,9 +233,9 @@ namespace Nethermind.Consensus.Producers
         /// <param name="parentStateRoot">Parent block state</param>
         /// <returns>True if succeeded, false otherwise</returns>
         /// <remarks>Should be called inside <see cref="_producingBlockLock"/> lock.</remarks>
-        protected bool TrySetState(Keccak? parentStateRoot)
+        protected bool TrySetState(Commitment? parentStateRoot)
         {
-            bool HasState(Keccak stateRoot)
+            bool HasState(Commitment stateRoot)
             {
                 RootCheckVisitor visitor = new();
                 StateProvider.Accept(visitor, stateRoot);
@@ -281,7 +281,7 @@ namespace Nethermind.Consensus.Producers
             Address blockAuthor = payloadAttributes?.SuggestedFeeRecipient ?? Sealer.Address;
             BlockHeader header = new(
                 parent.Hash!,
-                Keccak.OfAnEmptySequenceRlp,
+                Commitment.OfAnEmptySequenceRlp,
                 blockAuthor,
                 UInt256.Zero,
                 parent.Number + 1,

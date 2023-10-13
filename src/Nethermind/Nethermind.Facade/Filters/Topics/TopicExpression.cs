@@ -8,9 +8,9 @@ namespace Nethermind.Blockchain.Filters.Topics
 {
     public abstract class TopicExpression
     {
-        public abstract bool Accepts(Keccak topic);
+        public abstract bool Accepts(Commitment topic);
 
-        public abstract bool Accepts(ref KeccakStructRef topic);
+        public abstract bool Accepts(ref CommitmentStructRef topic);
 
         public abstract bool Matches(Bloom bloom);
 

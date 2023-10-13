@@ -229,7 +229,7 @@ namespace Nethermind.TxPool
             for (int i = 0; i < blockTransactions.Length; i++)
             {
                 Transaction transaction = blockTransactions[i];
-                Keccak txHash = transaction.Hash ?? throw new ArgumentException("Hash was unexpectedly null!");
+                Commitment txHash = transaction.Hash ?? throw new ArgumentException("Hash was unexpectedly null!");
 
                 if (!IsKnown(txHash))
                 {
@@ -520,7 +520,7 @@ namespace Nethermind.TxPool
             }
         }
 
-        public bool RemoveTransaction(Keccak? hash)
+        public bool RemoveTransaction(Commitment? hash)
         {
             if (hash is null)
             {
@@ -546,7 +546,7 @@ namespace Nethermind.TxPool
             return hasBeenRemoved;
         }
 
-        public bool TryGetPendingTransaction(Keccak hash, out Transaction? transaction)
+        public bool TryGetPendingTransaction(Commitment hash, out Transaction? transaction)
         {
             lock (_locker)
             {
@@ -607,7 +607,7 @@ namespace Nethermind.TxPool
             return maxPendingNonce;
         }
 
-        public bool IsKnown(Keccak? hash) => hash != null ? _hashCache.Get(hash) : false;
+        public bool IsKnown(Commitment? hash) => hash != null ? _hashCache.Get(hash) : false;
 
         public event EventHandler<TxEventArgs>? NewDiscovered;
         public event EventHandler<TxEventArgs>? NewPending;
@@ -628,7 +628,7 @@ namespace Nethermind.TxPool
         private static void AddNodeInfoEntryForTxPool()
         {
             ThisNodeInfo.AddInfo("Mem est tx   :",
-                $"{(LruCache<ValueKeccak, object>.CalculateMemorySize(32, MemoryAllowance.TxHashCacheSize) + LruCache<Keccak, Transaction>.CalculateMemorySize(4096, MemoryAllowance.MemPoolSize)) / 1000 / 1000} MB"
+                $"{(LruCache<ValueCommitment, object>.CalculateMemorySize(32, MemoryAllowance.TxHashCacheSize) + LruCache<Commitment, Transaction>.CalculateMemorySize(4096, MemoryAllowance.MemPoolSize)) / 1000 / 1000} MB"
                     .PadLeft(8));
         }
 

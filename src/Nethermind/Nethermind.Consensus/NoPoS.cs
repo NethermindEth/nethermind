@@ -14,7 +14,7 @@ public class NoPoS : IPoSSwitcher
 
     public static NoPoS Instance { get; } = new();
 
-    public void ForkchoiceUpdated(BlockHeader newHeadHash, Keccak finalizedBlockHash)
+    public void ForkchoiceUpdated(BlockHeader newHeadHash, Commitment finalizedBlockHash)
     {
         throw new NotImplementedException();
     }
@@ -28,7 +28,7 @@ public class NoPoS : IPoSSwitcher
     public UInt256? TerminalTotalDifficulty => null;
     public UInt256? FinalTotalDifficulty => null;
     public bool TransitionFinished => false;
-    public Keccak ConfiguredTerminalBlockHash => Keccak.Zero;
+    public Commitment ConfiguredTerminalBlockHash => Commitment.Zero;
     public long? ConfiguredTerminalBlockNumber => null;
 
     public bool TryUpdateTerminalBlock(BlockHeader header)

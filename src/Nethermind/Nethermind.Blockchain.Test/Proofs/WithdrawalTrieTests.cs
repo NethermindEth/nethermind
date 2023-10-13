@@ -36,12 +36,12 @@ public class WithdrawalTrieTests
         }
     }
 
-    private static bool VerifyProof(byte[][] proof, Keccak root)
+    private static bool VerifyProof(byte[][] proof, Commitment root)
     {
         for (var i = proof.Length - 1; i >= 0; i--)
         {
             var p = proof[i];
-            var hash = Keccak.Compute(p);
+            var hash = Commitment.Compute(p);
 
             if (i > 0)
             {

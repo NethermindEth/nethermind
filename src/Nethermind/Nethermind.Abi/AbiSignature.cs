@@ -9,7 +9,7 @@ namespace Nethermind.Abi
     public class AbiSignature
     {
         private string? _toString;
-        private Keccak? _hash;
+        private Commitment? _hash;
 
         public AbiSignature(string name, params AbiType[] types)
         {
@@ -20,7 +20,7 @@ namespace Nethermind.Abi
         public string Name { get; }
         public AbiType[] Types { get; }
         public byte[] Address => GetAddress(Hash.Bytes);
-        public Keccak Hash => _hash ??= Keccak.Compute(ToString());
+        public Commitment Hash => _hash ??= Commitment.Compute(ToString());
 
         public override string ToString()
         {

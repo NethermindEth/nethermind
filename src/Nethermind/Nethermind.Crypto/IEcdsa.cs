@@ -7,8 +7,8 @@ namespace Nethermind.Crypto
 {
     public interface IEcdsa
     {
-        Signature Sign(PrivateKey privateKey, Keccak message);
-        PublicKey RecoverPublicKey(Signature signature, Keccak message);
-        CompressedPublicKey RecoverCompressedPublicKey(Signature signature, Keccak message);
+        Signature Sign(PrivateKey privateKey, Commitment message);
+        PublicKey RecoverPublicKey(Signature signature, Commitment message);
+        CompressedPublicKey RecoverCompressedPublicKey(Signature signature, Commitment message);
     }
 }

@@ -30,7 +30,7 @@ namespace Nethermind.Trie.Test
         public class PruningContext
         {
             private long _blockNumber = 1;
-            private Dictionary<string, (long blockNumber, Keccak rootHash)> _branchingPoints = new();
+            private Dictionary<string, (long blockNumber, Commitment rootHash)> _branchingPoints = new();
             private IDbProvider _dbProvider;
             private IWorldState _stateProvider;
             private IStateReader _stateReader;
@@ -242,9 +242,9 @@ namespace Nethermind.Trie.Test
 
             public PruningContext RestoreBranchingPoint(string name)
             {
-                (long blockNumber, Keccak rootHash) branchPoint = _branchingPoints[name];
+                (long blockNumber, Commitment rootHash) branchPoint = _branchingPoints[name];
                 _blockNumber = branchPoint.blockNumber;
-                Keccak rootHash = branchPoint.rootHash;
+                Commitment rootHash = branchPoint.rootHash;
                 _stateProvider.Reset();
                 _stateProvider.StateRoot = rootHash;
                 return this;

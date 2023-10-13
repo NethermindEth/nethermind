@@ -191,9 +191,9 @@ namespace Nethermind.Blockchain.Filters
                 case string topic:
                     return new FilterTopic
                     {
-                        Topic = new Keccak(topic)
+                        Topic = new Commitment(topic)
                     };
-                case Keccak keccak:
+                case Commitment keccak:
                     return new FilterTopic
                     {
                         Topic = keccak
@@ -208,15 +208,15 @@ namespace Nethermind.Blockchain.Filters
             {
                 return new FilterTopic
                 {
-                    Topics = topics.Select(t => new Keccak(t)).ToArray()
+                    Topics = topics.Select(t => new Commitment(t)).ToArray()
                 };
             }
         }
 
         private class FilterTopic
         {
-            public Keccak? Topic { get; set; }
-            public Keccak[]? Topics { get; set; }
+            public Commitment? Topic { get; set; }
+            public Commitment[]? Topics { get; set; }
 
         }
     }

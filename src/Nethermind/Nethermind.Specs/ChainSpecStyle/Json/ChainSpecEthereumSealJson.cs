@@ -9,6 +9,6 @@ namespace Nethermind.Specs.ChainSpecStyle.Json
     internal class ChainSpecEthereumSealJson
     {
         public UInt256 Nonce { get; set; }
-        public Keccak MixHash { get; set; }
+        public Commitment MixHash { get; set; }
     }
 }

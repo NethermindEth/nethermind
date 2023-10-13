@@ -15,9 +15,9 @@ public class Web3RpcModule : IWeb3RpcModule
 
     public ResultWrapper<string> web3_clientVersion() => ResultWrapper<string>.Success(ProductInfo.ClientId);
 
-    public ResultWrapper<Keccak> web3_sha3(byte[] data)
+    public ResultWrapper<Commitment> web3_sha3(byte[] data)
     {
-        Keccak keccak = Keccak.Compute(data);
-        return ResultWrapper<Keccak>.Success(keccak);
+        Commitment commitment = Commitment.Compute(data);
+        return ResultWrapper<Commitment>.Success(commitment);
     }
 }

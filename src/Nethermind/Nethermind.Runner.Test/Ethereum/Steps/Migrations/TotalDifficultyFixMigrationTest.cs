@@ -31,7 +31,7 @@ public class TotalDifficultyFixMigrationTest
         long firstBlock = 3;
         // Setup headers
         BlockHeader[] headers = new BlockHeader[numberOfBlocks];
-        Dictionary<Keccak, BlockHeader> hashesToHeaders = new();
+        Dictionary<Commitment, BlockHeader> hashesToHeaders = new();
         headers[0] = Core.Test.Builders.Build.A.BlockHeader.WithDifficulty(1).TestObject;
         for (int i = 1; i < numberOfBlocks; ++i)
         {
@@ -50,7 +50,7 @@ public class TotalDifficultyFixMigrationTest
 
         // Setup api
         IBlockTree blockTree = Substitute.For<IBlockTree>();
-        blockTree.FindHeader(Arg.Any<Keccak>()).Returns(info => hashesToHeaders[(Keccak)info[0]]);
+        blockTree.FindHeader(Arg.Any<Commitment>()).Returns(info => hashesToHeaders[(Commitment)info[0]]);
         blockTree.BestKnownNumber.Returns(numberOfBlocks);
 
         IChainLevelInfoRepository chainLevelInfoRepository = Substitute.For<IChainLevelInfoRepository>();
@@ -91,7 +91,7 @@ public class TotalDifficultyFixMigrationTest
     [Test]
     public void should_fix_non_canonical()
     {
-        Dictionary<Keccak, BlockHeader> hashesToHeaders = new();
+        Dictionary<Commitment, BlockHeader> hashesToHeaders = new();
         BlockHeader g = Core.Test.Builders.Build.A.BlockHeader.WithDifficulty(1).TestObject;
 
         // Canonical
@@ -127,7 +127,7 @@ public class TotalDifficultyFixMigrationTest
 
         // Setup mocks
         IBlockTree blockTree = Substitute.For<IBlockTree>();
-        blockTree.FindHeader(Arg.Any<Keccak>()).Returns(info => hashesToHeaders[(Keccak)info[0]]);
+        blockTree.FindHeader(Arg.Any<Commitment>()).Returns(info => hashesToHeaders[(Commitment)info[0]]);
         blockTree.BestKnownNumber.Returns(5);
 
         ChainLevelInfo[] persistedLevels = new ChainLevelInfo[5];

@@ -38,18 +38,18 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.Messages
             var acc01 = Build.An.Account
                 .WithBalance(1)
                 .WithCode(Code0)
-                .WithStorageRoot(new Keccak("0x10d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470"))
+                .WithStorageRoot(new Commitment("0x10d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470"))
                 .TestObject;
             var acc02 = Build.An.Account
                 .WithBalance(2)
                 .WithCode(Code1)
-                .WithStorageRoot(new Keccak("0x20d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470"))
+                .WithStorageRoot(new Commitment("0x20d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470"))
                 .TestObject;
 
             AccountRangeMessage msg = new()
             {
                 RequestId = MessageConstants.Random.NextLong(),
-                PathsWithAccounts = new[] { new PathWithAccount(TestItem.KeccakA, acc01), new PathWithAccount(TestItem.KeccakB, acc02) },
+                PathsWithAccounts = new[] { new PathWithAccount(TestItem._commitmentA, acc01), new PathWithAccount(TestItem._commitmentB, acc02) },
                 Proofs = new[] { TestItem.RandomDataA, TestItem.RandomDataB }
             };
 
@@ -64,13 +64,13 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.Messages
             var acc01 = Build.An.Account
                 .WithBalance(1)
                 .WithCode(Code0)
-                .WithStorageRoot(Keccak.EmptyTreeHash)
+                .WithStorageRoot(Commitment.EmptyTreeHash)
                 .TestObject;
 
             AccountRangeMessage msg = new()
             {
                 RequestId = MessageConstants.Random.NextLong(),
-                PathsWithAccounts = new[] { new PathWithAccount(TestItem.KeccakB, acc01) },
+                PathsWithAccounts = new[] { new PathWithAccount(TestItem._commitmentB, acc01) },
                 Proofs = new[] { TestItem.RandomDataA, TestItem.RandomDataB }
             };
 
@@ -85,13 +85,13 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.Messages
 
             var acc01 = Build.An.Account
                 .WithBalance(1)
-                .WithStorageRoot(TestItem.KeccakA)
+                .WithStorageRoot(TestItem._commitmentA)
                 .TestObject;
 
             AccountRangeMessage msg = new()
             {
                 RequestId = MessageConstants.Random.NextLong(),
-                PathsWithAccounts = new[] { new PathWithAccount(TestItem.KeccakB, acc01) },
+                PathsWithAccounts = new[] { new PathWithAccount(TestItem._commitmentB, acc01) },
                 Proofs = new[] { TestItem.RandomDataA, TestItem.RandomDataB }
             };
 

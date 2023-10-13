@@ -12,7 +12,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
     [Parallelizable(ParallelScope.All)]
     public class GetReceiptsMessageSerializerTests
     {
-        private static void Test(Keccak[] keys)
+        private static void Test(Commitment[] keys)
         {
             GetReceiptsMessage message = new(keys);
             GetReceiptsMessageSerializer serializer = new();
@@ -26,14 +26,14 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
         [Test]
         public void Roundtrip()
         {
-            Keccak[] hashes = { TestItem.KeccakA, TestItem.KeccakB, TestItem.KeccakC };
+            Commitment[] hashes = { TestItem._commitmentA, TestItem._commitmentB, TestItem._commitmentC };
             Test(hashes);
         }
 
         [Test]
         public void Roundtrip_with_nulls()
         {
-            Keccak[] hashes = { null, TestItem.KeccakA, null, TestItem.KeccakB, null, null };
+            Commitment[] hashes = { null, TestItem._commitmentA, null, TestItem._commitmentB, null, null };
             Test(hashes);
         }
 

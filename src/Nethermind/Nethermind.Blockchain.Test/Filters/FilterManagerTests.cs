@@ -170,37 +170,37 @@ namespace Nethermind.Blockchain.Test.Filters
         [Test, Timeout(Timeout.MaxTestTime)]
         public void logs_should_not_be_empty_for_existing_specific_topic()
             => LogsShouldNotBeEmpty(filter => filter
-                    .WithTopicExpressions(TestTopicExpressions.Specific(TestItem.KeccakA)),
+                    .WithTopicExpressions(TestTopicExpressions.Specific(TestItem._commitmentA)),
                 receipt => receipt
-                    .WithLogs(Build.A.LogEntry.WithTopics(TestItem.KeccakA, TestItem.KeccakB).TestObject));
+                    .WithLogs(Build.A.LogEntry.WithTopics(TestItem._commitmentA, TestItem._commitmentB).TestObject));
 
         [Test, Timeout(Timeout.MaxTestTime)]
         public void logs_should_be_empty_for_non_existing_specific_topic()
             => LogsShouldBeEmpty(filter => filter
-                    .WithTopicExpressions(TestTopicExpressions.Specific(TestItem.KeccakA)),
+                    .WithTopicExpressions(TestTopicExpressions.Specific(TestItem._commitmentA)),
                 receipt => receipt
-                    .WithLogs(Build.A.LogEntry.WithTopics(TestItem.KeccakB, TestItem.KeccakC).TestObject));
+                    .WithLogs(Build.A.LogEntry.WithTopics(TestItem._commitmentB, TestItem._commitmentC).TestObject));
 
         [Test, Timeout(Timeout.MaxTestTime)]
         public void logs_should_not_be_empty_for_existing_any_topic()
             => LogsShouldNotBeEmpty(filter => filter
                     .WithTopicExpressions(TestTopicExpressions.Any),
                 receipt => receipt
-                    .WithLogs(Build.A.LogEntry.WithTopics(TestItem.KeccakA, TestItem.KeccakB).TestObject));
+                    .WithLogs(Build.A.LogEntry.WithTopics(TestItem._commitmentA, TestItem._commitmentB).TestObject));
 
         [Test, Timeout(Timeout.MaxTestTime)]
         public void logs_should_not_be_empty_for_existing_or_topic()
             => LogsShouldNotBeEmpty(filter => filter
-                    .WithTopicExpressions(TestTopicExpressions.Or(TestTopicExpressions.Specific(TestItem.KeccakB), TestTopicExpressions.Specific(TestItem.KeccakD))),
+                    .WithTopicExpressions(TestTopicExpressions.Or(TestTopicExpressions.Specific(TestItem._commitmentB), TestTopicExpressions.Specific(TestItem._commitmentD))),
                 receipt => receipt
-                    .WithLogs(Build.A.LogEntry.WithTopics(TestItem.KeccakB, TestItem.KeccakC).TestObject));
+                    .WithLogs(Build.A.LogEntry.WithTopics(TestItem._commitmentB, TestItem._commitmentC).TestObject));
 
         [Test, Timeout(Timeout.MaxTestTime)]
         public void logs_should_be_empty_for_non_existing_or_topic()
             => LogsShouldBeEmpty(filter => filter
-                    .WithTopicExpressions(TestTopicExpressions.Or(TestTopicExpressions.Specific(TestItem.KeccakA), TestTopicExpressions.Specific(TestItem.KeccakD))),
+                    .WithTopicExpressions(TestTopicExpressions.Or(TestTopicExpressions.Specific(TestItem._commitmentA), TestTopicExpressions.Specific(TestItem._commitmentD))),
                 receipt => receipt
-                    .WithLogs(Build.A.LogEntry.WithTopics(TestItem.KeccakB, TestItem.KeccakC).TestObject));
+                    .WithLogs(Build.A.LogEntry.WithTopics(TestItem._commitmentB, TestItem._commitmentC).TestObject));
 
         [Test, Timeout(Timeout.MaxTestTime)]
         public void logs_should_not_be_empty_for_existing_block_and_address_and_topics()
@@ -208,11 +208,11 @@ namespace Nethermind.Blockchain.Test.Filters
                     .FromBlock(1L)
                     .ToBlock(10L)
                     .WithAddress(TestItem.AddressA)
-                    .WithTopicExpressions(TestTopicExpressions.Or(TestTopicExpressions.Specific(TestItem.KeccakB), TestTopicExpressions.Specific(TestItem.KeccakD))),
+                    .WithTopicExpressions(TestTopicExpressions.Or(TestTopicExpressions.Specific(TestItem._commitmentB), TestTopicExpressions.Specific(TestItem._commitmentD))),
                 receipt => receipt
                     .WithBlockNumber(6L)
                     .WithLogs(Build.A.LogEntry.WithAddress(TestItem.AddressA)
-                        .WithTopics(TestItem.KeccakB, TestItem.KeccakC).TestObject));
+                        .WithTopics(TestItem._commitmentB, TestItem._commitmentC).TestObject));
 
         [Test, Timeout(Timeout.MaxTestTime)]
         public void logs_should_not_be_empty_for_existing_block_and_addresses_and_topics()
@@ -220,11 +220,11 @@ namespace Nethermind.Blockchain.Test.Filters
                     .FromBlock(1L)
                     .ToBlock(10L)
                     .WithAddresses(TestItem.AddressA, TestItem.AddressB)
-                    .WithTopicExpressions(TestTopicExpressions.Or(TestTopicExpressions.Specific(TestItem.KeccakB), TestTopicExpressions.Specific(TestItem.KeccakD))),
+                    .WithTopicExpressions(TestTopicExpressions.Or(TestTopicExpressions.Specific(TestItem._commitmentB), TestTopicExpressions.Specific(TestItem._commitmentD))),
                 receipt => receipt
                     .WithBlockNumber(6L)
                     .WithLogs(Build.A.LogEntry.WithAddress(TestItem.AddressA)
-                        .WithTopics(TestItem.KeccakB, TestItem.KeccakC).TestObject));
+                        .WithTopics(TestItem._commitmentB, TestItem._commitmentC).TestObject));
 
         [Test, Timeout(Timeout.MaxTestTime)]
         public void logs_should_be_empty_for_existing_block_and_addresses_and_non_existing_topic()
@@ -232,11 +232,11 @@ namespace Nethermind.Blockchain.Test.Filters
                     .FromBlock(1L)
                     .ToBlock(10L)
                     .WithAddresses(TestItem.AddressA, TestItem.AddressB)
-                    .WithTopicExpressions(TestTopicExpressions.Or(TestTopicExpressions.Specific(TestItem.KeccakC), TestTopicExpressions.Specific(TestItem.KeccakD))),
+                    .WithTopicExpressions(TestTopicExpressions.Or(TestTopicExpressions.Specific(TestItem._commitmentC), TestTopicExpressions.Specific(TestItem._commitmentD))),
                 receipt => receipt
                     .WithBlockNumber(6L)
                     .WithLogs(Build.A.LogEntry.WithAddress(TestItem.AddressA)
-                        .WithTopics(TestItem.KeccakB, TestItem.KeccakC).TestObject));
+                        .WithTopics(TestItem._commitmentB, TestItem._commitmentC).TestObject));
 
 
         private void LogsShouldNotBeEmpty(Action<FilterBuilder> filterBuilder,
@@ -298,7 +298,7 @@ namespace Nethermind.Blockchain.Test.Filters
                     logsAssertion(logs);
                 }
 
-                Keccak[] hashes = _filterManager.GetBlocksHashes(blockFilter.Id);
+                Commitment[] hashes = _filterManager.GetBlocksHashes(blockFilter.Id);
                 NUnit.Framework.Assert.That(hashes.Length, Is.EqualTo(1));
             });
         }

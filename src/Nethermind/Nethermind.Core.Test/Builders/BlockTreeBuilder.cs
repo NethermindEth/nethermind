@@ -71,7 +71,7 @@ namespace Nethermind.Core.Test.Builders
                     if (!_noHead)
                     {
                         // so we automatically include in all tests my questionable decision of storing Head block header at 00...
-                        BlocksDb.Set(Keccak.Zero, Rlp.Encode(Build.A.BlockHeader.TestObject).Bytes);
+                        BlocksDb.Set(Commitment.Zero, Rlp.Encode(Build.A.BlockHeader.TestObject).Bytes);
                     }
 
                     _blockTree = new BlockTree(

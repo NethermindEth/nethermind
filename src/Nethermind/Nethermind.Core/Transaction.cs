@@ -44,8 +44,8 @@ namespace Nethermind.Core
         public bool IsContractCreation => To is null;
         public bool IsMessageCall => To is not null;
 
-        private Keccak? _hash;
-        public Keccak? Hash
+        private Commitment? _hash;
+        public Commitment? Hash
         {
             get
             {
@@ -57,7 +57,7 @@ namespace Nethermind.Core
 
                     if (_preHash.Length > 0)
                     {
-                        _hash = Keccak.Compute(_preHash.Span);
+                        _hash = Commitment.Compute(_preHash.Span);
                         ClearPreHashInternal();
                     }
                 }

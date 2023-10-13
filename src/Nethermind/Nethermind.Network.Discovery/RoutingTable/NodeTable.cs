@@ -102,7 +102,7 @@ public class NodeTable : INodeTable
     {
         CheckInitialization();
 
-        Keccak idHash = Keccak.Compute(nodeId);
+        Commitment idHash = Commitment.Compute(nodeId);
         return Buckets.SelectMany(x => x.BondedItems)
             .Where(x => x.Node?.IdHash != idHash && x.Node is not null)
             .Select(x => new { x.Node, Distance = _nodeDistanceCalculator.CalculateDistance(x.Node!.Id.Bytes, nodeId) })

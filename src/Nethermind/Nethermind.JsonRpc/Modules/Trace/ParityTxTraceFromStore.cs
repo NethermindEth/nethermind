@@ -63,7 +63,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
 
         public ParityTraceAction Action { get; set; }
 
-        public Keccak BlockHash { get; set; }
+        public Commitment BlockHash { get; set; }
 
         [JsonConverter(typeof(LongConverter), NumberConversion.Raw)]
         public long BlockNumber { get; set; }
@@ -74,7 +74,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
 
         public int[] TraceAddress { get; set; }
 
-        public Keccak TransactionHash { get; set; }
+        public Commitment TransactionHash { get; set; }
 
         public int? TransactionPosition { get; set; }
         public string Type { get; set; }

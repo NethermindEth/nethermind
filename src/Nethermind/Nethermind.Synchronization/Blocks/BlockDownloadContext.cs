@@ -31,7 +31,7 @@ namespace Nethermind.Synchronization.Blocks
             _syncPeer = syncPeer;
 
             Blocks = new Block[headers.Length - 1];
-            NonEmptyBlockHashes = new List<Keccak>();
+            NonEmptyBlockHashes = new List<Commitment>();
 
             if (_downloadReceipts)
             {
@@ -67,9 +67,9 @@ namespace Nethermind.Synchronization.Blocks
 
         public TxReceipt[]?[]? ReceiptsForBlocks { get; }
 
-        public List<Keccak> NonEmptyBlockHashes { get; }
+        public List<Commitment> NonEmptyBlockHashes { get; }
 
-        public IReadOnlyList<Keccak> GetHashesByOffset(int offset, int maxLength)
+        public IReadOnlyList<Commitment> GetHashesByOffset(int offset, int maxLength)
         {
             var hashesToRequest =
                 offset == 0
@@ -125,7 +125,7 @@ namespace Nethermind.Synchronization.Blocks
 
         private void ValidateReceipts(Block block, TxReceipt[] blockReceipts)
         {
-            Keccak receiptsRoot = new ReceiptTrie(_specProvider.GetSpec(block.Header), blockReceipts).RootHash;
+            Commitment receiptsRoot = new ReceiptTrie(_specProvider.GetSpec(block.Header), blockReceipts).RootHash;
 
             if (receiptsRoot != block.ReceiptsRoot)
             {

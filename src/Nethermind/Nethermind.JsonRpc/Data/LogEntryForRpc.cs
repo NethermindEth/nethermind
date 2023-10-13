@@ -28,12 +28,12 @@ namespace Nethermind.JsonRpc.Data
         public bool? Removed { get; set; }
         public long? LogIndex { get; set; }
         public long? TransactionIndex { get; set; }
-        public Keccak TransactionHash { get; set; }
-        public Keccak BlockHash { get; set; }
+        public Commitment TransactionHash { get; set; }
+        public Commitment BlockHash { get; set; }
         public long? BlockNumber { get; set; }
         public Address Address { get; set; }
         public byte[] Data { get; set; }
-        public Keccak[] Topics { get; set; }
+        public Commitment[] Topics { get; set; }
 
         public LogEntry ToLogEntry()
         {

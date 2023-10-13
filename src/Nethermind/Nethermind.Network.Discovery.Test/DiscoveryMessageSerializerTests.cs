@@ -116,13 +116,13 @@ namespace Nethermind.Network.Discovery.Test
             nodeRecord.EnrSequence = 5;
             NodeRecordSigner signer = new(new Ecdsa(), _privateKey);
             signer.Sign(nodeRecord);
-            EnrResponseMsg msg = new(TestItem.PublicKeyA, nodeRecord, TestItem.KeccakA);
+            EnrResponseMsg msg = new(TestItem.PublicKeyA, nodeRecord, TestItem._commitmentA);
 
             IByteBuffer serialized = _messageSerializationService.ZeroSerialize(msg);
             EnrResponseMsg deserialized = _messageSerializationService.Deserialize<EnrResponseMsg>(serialized);
             serialized.SafeRelease();
             Assert.That(deserialized.NodeRecord.EnrSequence, Is.EqualTo(msg.NodeRecord.EnrSequence));
-            Assert.That(deserialized.RequestKeccak, Is.EqualTo(msg.RequestKeccak));
+            Assert.That(deserialized.RequestCommitment, Is.EqualTo(msg.RequestCommitment));
             Assert.That(deserialized.NodeRecord.Signature, Is.EqualTo(msg.NodeRecord.Signature));
         }
 

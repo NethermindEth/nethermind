@@ -60,7 +60,7 @@ namespace Nethermind.Mev.Test
         public void Should_count_valid_megabundles()
         {
             var ecdsa = Substitute.For<IEthereumEcdsa>();
-            ecdsa.RecoverAddress(Arg.Any<Signature>(), Arg.Any<Keccak>()).Returns(TestItem.AddressB);
+            ecdsa.RecoverAddress(Arg.Any<Signature>(), Arg.Any<Commitment>()).Returns(TestItem.AddressB);
 
             TestBundlePool bundlePool = CreateTestBundlePool(ecdsa);
 
@@ -196,8 +196,8 @@ namespace Nethermind.Mev.Test
             blockTree.NetworkId.Returns((ulong)TestBlockchainIds.NetworkId);
             blockTree.ChainId.Returns((ulong)TestBlockchainIds.ChainId);
             BlockHeader header = new(
-                Keccak.Zero,
-                Keccak.Zero,
+                Commitment.Zero,
+                Commitment.Zero,
                 Address.Zero,
                 UInt256.One,
                 0,
@@ -205,7 +205,7 @@ namespace Nethermind.Mev.Test
                 1,
                 Bytes.Empty);
             Block head = new Block(header);
-            ChainLevelInfo info = new(true, new[] { new BlockInfo(Keccak.Zero, 1) });
+            ChainLevelInfo info = new(true, new[] { new BlockInfo(Commitment.Zero, 1) });
 
             blockTree.Head.Returns(head);
             //blockTree.FindLevel(0).ReturnsForAnyArgs(info);

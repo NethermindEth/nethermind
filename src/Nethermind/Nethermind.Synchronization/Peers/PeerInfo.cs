@@ -40,7 +40,7 @@ namespace Nethermind.Synchronization.Peers
 
         public long HeadNumber => SyncPeer.HeadNumber;
 
-        public Keccak HeadHash => SyncPeer.HeadHash;
+        public Commitment HeadHash => SyncPeer.HeadHash;
 
         [MethodImpl(MethodImplOptions.Synchronized)]
         public bool CanBeAllocated(AllocationContexts contexts)

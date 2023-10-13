@@ -19,7 +19,7 @@ public class BlockStore : IBlockStore
     private readonly BlockDecoder _blockDecoder = new();
     private const int CacheSize = 128 + 32;
 
-    private readonly LruCache<ValueKeccak, Block>
+    private readonly LruCache<ValueCommitment, Block>
         _blockCache = new(CacheSize, CacheSize, "blocks");
 
     public BlockStore(IDb blockDb)
@@ -56,27 +56,27 @@ public class BlockStore : IBlockStore
         _blockDb.Set(block.Number, block.Hash, newRlp.AsSpan());
     }
 
-    private static void GetBlockNumPrefixedKey(long blockNumber, Keccak blockHash, Span<byte> output)
+    private static void GetBlockNumPrefixedKey(long blockNumber, Commitment blockHash, Span<byte> output)
     {
         blockNumber.WriteBigEndian(output);
         blockHash!.Bytes.CopyTo(output[8..]);
     }
 
-    public void Delete(long blockNumber, Keccak blockHash)
+    public void Delete(long blockNumber, Commitment blockHash)
     {
         _blockCache.Delete(blockHash);
         _blockDb.Delete(blockNumber, blockHash);
         _blockDb.Remove(blockHash.Bytes);
     }
 
-    public Block? Get(long blockNumber, Keccak blockHash, bool shouldCache = false)
+    public Block? Get(long blockNumber, Commitment blockHash, bool shouldCache = false)
     {
         Block? b = _blockDb.Get(blockNumber, blockHash, _blockDecoder, _blockCache, shouldCache);
         if (b != null) return b;
         return _blockDb.Get(blockHash, _blockDecoder, _blockCache, shouldCache);
     }
 
-    public ReceiptRecoveryBlock? GetReceiptRecoveryBlock(long blockNumber, Keccak blockHash)
+    public ReceiptRecoveryBlock? GetReceiptRecoveryBlock(long blockNumber, Commitment blockHash)
     {
         Span<byte> keyWithBlockNumber = stackalloc byte[40];
         GetBlockNumPrefixedKey(blockNumber, blockHash, keyWithBlockNumber);

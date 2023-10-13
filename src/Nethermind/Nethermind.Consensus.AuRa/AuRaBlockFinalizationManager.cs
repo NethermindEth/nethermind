@@ -28,7 +28,7 @@ namespace Nethermind.Consensus.AuRa
         private readonly IValidSealerStrategy _validSealerStrategy;
         private readonly long _twoThirdsMajorityTransition;
         private long _lastFinalizedBlockLevel;
-        private Keccak _lastProcessedBlockHash = Keccak.EmptyTreeHash;
+        private Commitment _lastProcessedBlockHash = Commitment.EmptyTreeHash;
         private readonly ValidationStampCollection _consecutiveValidatorsForNotYetFinalizedBlocks = new ValidationStampCollection();
 
         public AuRaBlockFinalizationManager(
@@ -66,7 +66,7 @@ namespace Nethermind.Consensus.AuRa
 
             LastFinalizedBlockLevel = level;
 
-            // This is needed if processing was stopped between processing last block and running finalization logic 
+            // This is needed if processing was stopped between processing last block and running finalization logic
             if (hasHead)
             {
                 FinalizeBlocks(_blockTree.Head?.Header);
@@ -226,7 +226,7 @@ namespace Nethermind.Consensus.AuRa
             return (chainLevelInfo, blockInfo);
         }
 
-        /* Simple, unoptimized method implementation for reference: 
+        /* Simple, unoptimized method implementation for reference:
         private IReadOnlyList<BlockHeader> GetFinalizedBlocks(BlockHeader block)
         {
             (ChainLevelInfo parentLevel, BlockInfo parentBlockInfo) GetBlockInfo(BlockHeader blockHeader)
@@ -240,11 +240,11 @@ namespace Nethermind.Consensus.AuRa
             var validators = new HashSet<Address>();
             var minSealersForFinalization = block.IsGenesis ? 1 : _auRaValidator.MinSealersForFinalization;
             var originalBlockSealer = block.Beneficiary;
-            
+
             using (var batch = _blockInfoRepository.StartBatch())
             {
                 var (chainLevel, blockInfo) = GetBlockInfo(block);
-                
+
                 while (!blockInfo.IsFinalized)
                 {
                     validators.Add(block.Beneficiary);
@@ -264,14 +264,14 @@ namespace Nethermind.Consensus.AuRa
             }
 
             finalizedBlocks.Reverse(); // we were adding from the last to earliest, going through parents
-            
+
             return finalizedBlocks;
         }
         */
 
         public event EventHandler<FinalizeEventArgs> BlocksFinalized;
 
-        public long GetLastLevelFinalizedBy(Keccak blockHash)
+        public long GetLastLevelFinalizedBy(Commitment blockHash)
         {
             var block = _blockTree.FindHeader(blockHash, BlockTreeLookupOptions.None);
             var validators = new HashSet<Address>();

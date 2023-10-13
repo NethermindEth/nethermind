@@ -217,8 +217,8 @@ namespace Nethermind.Synchronization.Test
             syncPeer.GetBlockHeaders(Arg.Any<long>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
                 .Returns(async ci => await ctx.ResponseBuilder.BuildHeaderResponse(ci.ArgAt<long>(0), ci.ArgAt<int>(1), Response.AllCorrect | Response.TimeoutOnFullBatch));
 
-            syncPeer.GetBlockBodies(Arg.Any<IReadOnlyList<Keccak>>(), Arg.Any<CancellationToken>())
-                .Returns(ci => ctx.ResponseBuilder.BuildBlocksResponse(ci.ArgAt<IList<Keccak>>(0), Response.AllCorrect | Response.TimeoutOnFullBatch));
+            syncPeer.GetBlockBodies(Arg.Any<IReadOnlyList<Commitment>>(), Arg.Any<CancellationToken>())
+                .Returns(ci => ctx.ResponseBuilder.BuildBlocksResponse(ci.ArgAt<IList<Commitment>>(0), Response.AllCorrect | Response.TimeoutOnFullBatch));
 
             syncPeer.TotalDifficulty.Returns(UInt256.MaxValue);
             syncPeer.HeadNumber.Returns((int)Math.Ceiling(SyncBatchSize.Max * SyncBatchSize.AdjustmentFactor) + ignoredBlocks);
@@ -252,11 +252,11 @@ namespace Nethermind.Synchronization.Test
             syncPeer.GetBlockHeaders(Arg.Any<long>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
                 .Returns(async ci => await ctx.ResponseBuilder.BuildHeaderResponse(ci.ArgAt<long>(0), ci.ArgAt<int>(1), Response.AllCorrect | Response.WithTransactions & ~Response.AllKnown));
 
-            List<Keccak> requestedHashes = new();
-            syncPeer.GetBlockBodies(Arg.Any<IReadOnlyList<Keccak>>(), Arg.Any<CancellationToken>())
+            List<Commitment> requestedHashes = new();
+            syncPeer.GetBlockBodies(Arg.Any<IReadOnlyList<Commitment>>(), Arg.Any<CancellationToken>())
                 .Returns(ci =>
                 {
-                    IList<Keccak> blockHashes = ci.ArgAt<IList<Keccak>>(0);
+                    IList<Commitment> blockHashes = ci.ArgAt<IList<Commitment>>(0);
                     int toTake = availableBlock - requestedHashes.Count;
                     blockHashes = blockHashes.Take(toTake).ToList();
                     requestedHashes.AddRange(blockHashes);
@@ -304,8 +304,8 @@ namespace Nethermind.Synchronization.Test
             syncPeer.GetBlockHeaders(Arg.Any<long>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
                 .Returns(ci => ctx.ResponseBuilder.BuildHeaderResponse(ci.ArgAt<long>(0), ci.ArgAt<int>(1), Response.AllCorrect | Response.AllKnown));
 
-            syncPeer.GetBlockBodies(Arg.Any<IReadOnlyList<Keccak>>(), Arg.Any<CancellationToken>())
-                .Returns(ci => ctx.ResponseBuilder.BuildBlocksResponse(ci.ArgAt<IList<Keccak>>(0), Response.AllCorrect | Response.AllKnown));
+            syncPeer.GetBlockBodies(Arg.Any<IReadOnlyList<Commitment>>(), Arg.Any<CancellationToken>())
+                .Returns(ci => ctx.ResponseBuilder.BuildBlocksResponse(ci.ArgAt<IList<Commitment>>(0), Response.AllCorrect | Response.AllKnown));
 
             PeerInfo peerInfo = new(syncPeer);
             syncPeer.HeadNumber.Returns(64);
@@ -348,8 +348,8 @@ namespace Nethermind.Synchronization.Test
             syncPeer.GetBlockHeaders(Arg.Any<long>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
                 .Returns(ci => ctx.ResponseBuilder.BuildHeaderResponse(ci.ArgAt<long>(0), ci.ArgAt<int>(1), Response.AllCorrect | Response.NoBody));
 
-            syncPeer.GetBlockBodies(Arg.Any<IReadOnlyList<Keccak>>(), Arg.Any<CancellationToken>())
-                .Returns(ci => ctx.ResponseBuilder.BuildBlocksResponse(ci.ArgAt<IList<Keccak>>(0), Response.AllCorrect | Response.JustFirst));
+            syncPeer.GetBlockBodies(Arg.Any<IReadOnlyList<Commitment>>(), Arg.Any<CancellationToken>())
+                .Returns(ci => ctx.ResponseBuilder.BuildBlocksResponse(ci.ArgAt<IList<Commitment>>(0), Response.AllCorrect | Response.JustFirst));
 
             PeerInfo peerInfo = new(syncPeer);
             syncPeer.HeadNumber.Returns(headNumber);
@@ -503,8 +503,8 @@ namespace Nethermind.Synchronization.Test
             syncPeer.GetBlockHeaders(Arg.Any<long>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
                 .Returns(ci => ctx.ResponseBuilder.BuildHeaderResponse(ci.ArgAt<long>(0), ci.ArgAt<int>(1), Response.AllCorrect));
 
-            syncPeer.GetBlockBodies(Arg.Any<IReadOnlyList<Keccak>>(), Arg.Any<CancellationToken>())
-                .Returns(ci => ctx.ResponseBuilder.BuildBlocksResponse(ci.ArgAt<IList<Keccak>>(0), Response.AllCorrect));
+            syncPeer.GetBlockBodies(Arg.Any<IReadOnlyList<Commitment>>(), Arg.Any<CancellationToken>())
+                .Returns(ci => ctx.ResponseBuilder.BuildBlocksResponse(ci.ArgAt<IList<Commitment>>(0), Response.AllCorrect));
 
             PeerInfo peerInfo = new(syncPeer);
             syncPeer.TotalDifficulty.Returns(UInt256.MaxValue);
@@ -535,8 +535,8 @@ namespace Nethermind.Synchronization.Test
             syncPeer.GetBlockHeaders(Arg.Any<long>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
                 .Returns(ci => ctx.ResponseBuilder.BuildHeaderResponse(ci.ArgAt<long>(0), ci.ArgAt<int>(1), Response.AllCorrect));
 
-            syncPeer.GetBlockBodies(Arg.Any<IReadOnlyList<Keccak>>(), Arg.Any<CancellationToken>())
-                .Returns(ci => ctx.ResponseBuilder.BuildBlocksResponse(ci.ArgAt<IList<Keccak>>(0), Response.AllCorrect));
+            syncPeer.GetBlockBodies(Arg.Any<IReadOnlyList<Commitment>>(), Arg.Any<CancellationToken>())
+                .Returns(ci => ctx.ResponseBuilder.BuildBlocksResponse(ci.ArgAt<IList<Commitment>>(0), Response.AllCorrect));
 
             syncPeer.TotalDifficulty.Returns(UInt256.MaxValue);
             syncPeer.HeadNumber.Returns(1000);
@@ -586,11 +586,11 @@ namespace Nethermind.Synchronization.Test
 
         private class ThrowingPeer : ISyncPeer
         {
-            public ThrowingPeer(long number, UInt256? totalDiff, Keccak? headHash = null)
+            public ThrowingPeer(long number, UInt256? totalDiff, Commitment? headHash = null)
             {
                 HeadNumber = number;
                 TotalDifficulty = totalDiff ?? UInt256.MaxValue;
-                HeadHash = headHash ?? Keccak.Zero;
+                HeadHash = headHash ?? Commitment.Zero;
             }
 
             public string Name => "Throwing";
@@ -598,7 +598,7 @@ namespace Nethermind.Synchronization.Test
             public Node Node { get; } = null!;
             public string ProtocolCode { get; } = null!;
             public byte ProtocolVersion { get; } = default;
-            public Keccak HeadHash { get; set; }
+            public Commitment HeadHash { get; set; }
             public long HeadNumber { get; set; }
             public UInt256 TotalDifficulty { get; set; }
             public bool IsInitialized { get; set; }
@@ -609,12 +609,12 @@ namespace Nethermind.Synchronization.Test
                 throw new NotImplementedException();
             }
 
-            public Task<OwnedBlockBodies> GetBlockBodies(IReadOnlyList<Keccak> blockHashes, CancellationToken token)
+            public Task<OwnedBlockBodies> GetBlockBodies(IReadOnlyList<Commitment> blockHashes, CancellationToken token)
             {
                 throw new NotImplementedException();
             }
 
-            public Task<BlockHeader[]> GetBlockHeaders(Keccak blockHash, int maxBlocks, int skip, CancellationToken token)
+            public Task<BlockHeader[]> GetBlockHeaders(Commitment blockHash, int maxBlocks, int skip, CancellationToken token)
             {
                 throw new NotImplementedException();
             }
@@ -624,7 +624,7 @@ namespace Nethermind.Synchronization.Test
                 throw new Exception();
             }
 
-            public Task<BlockHeader?> GetHeadBlockHeader(Keccak? hash, CancellationToken token)
+            public Task<BlockHeader?> GetHeadBlockHeader(Commitment? hash, CancellationToken token)
             {
                 throw new NotImplementedException();
             }
@@ -641,12 +641,12 @@ namespace Nethermind.Synchronization.Test
                 throw new NotImplementedException();
             }
 
-            public Task<TxReceipt[]?[]> GetReceipts(IReadOnlyList<Keccak> blockHash, CancellationToken token)
+            public Task<TxReceipt[]?[]> GetReceipts(IReadOnlyList<Commitment> blockHash, CancellationToken token)
             {
                 throw new NotImplementedException();
             }
 
-            public Task<byte[][]> GetNodeData(IReadOnlyList<Keccak> hashes, CancellationToken token)
+            public Task<byte[][]> GetNodeData(IReadOnlyList<Commitment> hashes, CancellationToken token)
             {
                 throw new NotImplementedException();
             }
@@ -686,11 +686,11 @@ namespace Nethermind.Synchronization.Test
             syncPeer.GetBlockHeaders(Arg.Any<long>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
                 .Returns(ci => ctx.ResponseBuilder.BuildHeaderResponse(ci.ArgAt<long>(0), ci.ArgAt<int>(1), Response.AllCorrect | Response.WithTransactions));
 
-            syncPeer.GetBlockBodies(Arg.Any<IReadOnlyList<Keccak>>(), Arg.Any<CancellationToken>())
+            syncPeer.GetBlockBodies(Arg.Any<IReadOnlyList<Commitment>>(), Arg.Any<CancellationToken>())
                 .Returns(Task.FromException<OwnedBlockBodies>(new TimeoutException()));
 
-            syncPeer.GetReceipts(Arg.Any<IReadOnlyList<Keccak>>(), Arg.Any<CancellationToken>())
-                .Returns(ci => ctx.ResponseBuilder.BuildReceiptsResponse(ci.ArgAt<IList<Keccak>>(0), Response.AllCorrect | Response.WithTransactions));
+            syncPeer.GetReceipts(Arg.Any<IReadOnlyList<Commitment>>(), Arg.Any<CancellationToken>())
+                .Returns(ci => ctx.ResponseBuilder.BuildReceiptsResponse(ci.ArgAt<IList<Commitment>>(0), Response.AllCorrect | Response.WithTransactions));
 
             PeerInfo peerInfo = new(syncPeer);
             syncPeer.HeadNumber.Returns(1);
@@ -717,10 +717,10 @@ namespace Nethermind.Synchronization.Test
             syncPeer.GetBlockHeaders(Arg.Any<long>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
                 .Returns(ci => ctx.ResponseBuilder.BuildHeaderResponse(ci.ArgAt<long>(0), ci.ArgAt<int>(1), Response.AllCorrect | Response.WithTransactions));
 
-            syncPeer.GetBlockBodies(Arg.Any<IReadOnlyList<Keccak>>(), Arg.Any<CancellationToken>())
-                .Returns(ci => ctx.ResponseBuilder.BuildBlocksResponse(ci.ArgAt<IList<Keccak>>(0), Response.AllCorrect | Response.WithTransactions));
+            syncPeer.GetBlockBodies(Arg.Any<IReadOnlyList<Commitment>>(), Arg.Any<CancellationToken>())
+                .Returns(ci => ctx.ResponseBuilder.BuildBlocksResponse(ci.ArgAt<IList<Commitment>>(0), Response.AllCorrect | Response.WithTransactions));
 
-            syncPeer.GetReceipts(Arg.Any<IReadOnlyList<Keccak>>(), Arg.Any<CancellationToken>())
+            syncPeer.GetReceipts(Arg.Any<IReadOnlyList<Commitment>>(), Arg.Any<CancellationToken>())
                 .Returns(Task.FromException<TxReceipt[]?[]>(new TimeoutException()));
 
             PeerInfo peerInfo = new(syncPeer);
@@ -766,13 +766,13 @@ namespace Nethermind.Synchronization.Test
             syncPeer.GetBlockHeaders(Arg.Any<long>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
                 .Returns(ci => syncPeerInternal.GetBlockHeaders(ci.ArgAt<long>(0), ci.ArgAt<int>(1), ci.ArgAt<int>(2), ci.ArgAt<CancellationToken>(3)));
 
-            syncPeer.GetBlockBodies(Arg.Any<IReadOnlyList<Keccak>>(), Arg.Any<CancellationToken>())
-                .Returns(ci => syncPeerInternal.GetBlockBodies(ci.ArgAt<IReadOnlyList<Keccak>>(0), ci.ArgAt<CancellationToken>(1)));
+            syncPeer.GetBlockBodies(Arg.Any<IReadOnlyList<Commitment>>(), Arg.Any<CancellationToken>())
+                .Returns(ci => syncPeerInternal.GetBlockBodies(ci.ArgAt<IReadOnlyList<Commitment>>(0), ci.ArgAt<CancellationToken>(1)));
 
-            syncPeer.GetReceipts(Arg.Any<IReadOnlyList<Keccak>>(), Arg.Any<CancellationToken>())
+            syncPeer.GetReceipts(Arg.Any<IReadOnlyList<Commitment>>(), Arg.Any<CancellationToken>())
                 .Returns(async ci =>
                 {
-                    TxReceipt[]?[] receipts = await syncPeerInternal.GetReceipts(ci.ArgAt<IReadOnlyList<Keccak>>(0), ci.ArgAt<CancellationToken>(1));
+                    TxReceipt[]?[] receipts = await syncPeerInternal.GetReceipts(ci.ArgAt<IReadOnlyList<Commitment>>(0), ci.ArgAt<CancellationToken>(1));
                     receipts[^1] = null;
                     return receipts;
                 });
@@ -814,11 +814,11 @@ namespace Nethermind.Synchronization.Test
             syncPeer.GetBlockHeaders(Arg.Any<long>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
                 .Returns(ci => ctx.ResponseBuilder.BuildHeaderResponse(ci.ArgAt<long>(0), ci.ArgAt<int>(1), Response.AllCorrect | Response.WithTransactions));
 
-            syncPeer.GetBlockBodies(Arg.Any<IReadOnlyList<Keccak>>(), Arg.Any<CancellationToken>())
-                .Returns(ci => ctx.ResponseBuilder.BuildBlocksResponse(ci.ArgAt<IList<Keccak>>(0), Response.AllCorrect | Response.WithTransactions));
+            syncPeer.GetBlockBodies(Arg.Any<IReadOnlyList<Commitment>>(), Arg.Any<CancellationToken>())
+                .Returns(ci => ctx.ResponseBuilder.BuildBlocksResponse(ci.ArgAt<IList<Commitment>>(0), Response.AllCorrect | Response.WithTransactions));
 
-            syncPeer.GetReceipts(Arg.Any<IReadOnlyList<Keccak>>(), Arg.Any<CancellationToken>())
-                .Returns(ci => ctx.ResponseBuilder.BuildReceiptsResponse(ci.ArgAt<IList<Keccak>>(0), Response.AllCorrect | Response.WithTransactions).Result.Skip(1).ToArray());
+            syncPeer.GetReceipts(Arg.Any<IReadOnlyList<Commitment>>(), Arg.Any<CancellationToken>())
+                .Returns(ci => ctx.ResponseBuilder.BuildReceiptsResponse(ci.ArgAt<IList<Commitment>>(0), Response.AllCorrect | Response.WithTransactions).Result.Skip(1).ToArray());
 
             PeerInfo peerInfo = new(syncPeer);
             syncPeer.HeadNumber.Returns(1);
@@ -842,11 +842,11 @@ namespace Nethermind.Synchronization.Test
             syncPeer.GetBlockHeaders(Arg.Any<long>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
                 .Returns(ci => ctx.ResponseBuilder.BuildHeaderResponse(ci.ArgAt<long>(0), ci.ArgAt<int>(1), Response.AllCorrect | Response.WithTransactions));
 
-            syncPeer.GetBlockBodies(Arg.Any<IReadOnlyList<Keccak>>(), Arg.Any<CancellationToken>())
-                .Returns(ci => ctx.ResponseBuilder.BuildBlocksResponse(ci.ArgAt<IList<Keccak>>(0), Response.AllCorrect | Response.WithTransactions));
+            syncPeer.GetBlockBodies(Arg.Any<IReadOnlyList<Commitment>>(), Arg.Any<CancellationToken>())
+                .Returns(ci => ctx.ResponseBuilder.BuildBlocksResponse(ci.ArgAt<IList<Commitment>>(0), Response.AllCorrect | Response.WithTransactions));
 
-            syncPeer.GetReceipts(Arg.Any<IReadOnlyList<Keccak>>(), Arg.Any<CancellationToken>())
-                .Returns(ci => ctx.ResponseBuilder.BuildReceiptsResponse(ci.ArgAt<IList<Keccak>>(0), Response.AllCorrect | Response.WithTransactions)
+            syncPeer.GetReceipts(Arg.Any<IReadOnlyList<Commitment>>(), Arg.Any<CancellationToken>())
+                .Returns(ci => ctx.ResponseBuilder.BuildReceiptsResponse(ci.ArgAt<IList<Commitment>>(0), Response.AllCorrect | Response.WithTransactions)
                     .Result.Select(r => r is null || r.Length == 0 ? r : r.Skip(1).ToArray()).ToArray());
 
             PeerInfo peerInfo = new(syncPeer);
@@ -872,11 +872,11 @@ namespace Nethermind.Synchronization.Test
             syncPeer.GetBlockHeaders(Arg.Any<long>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
                 .Returns(ci => ctx.ResponseBuilder.BuildHeaderResponse(ci.ArgAt<long>(0), ci.ArgAt<int>(1), Response.IncorrectReceiptRoot));
 
-            syncPeer.GetBlockBodies(Arg.Any<IReadOnlyList<Keccak>>(), Arg.Any<CancellationToken>())
-                .Returns(ci => ctx.ResponseBuilder.BuildBlocksResponse(ci.ArgAt<IList<Keccak>>(0), Response.AllCorrect | Response.WithTransactions));
+            syncPeer.GetBlockBodies(Arg.Any<IReadOnlyList<Commitment>>(), Arg.Any<CancellationToken>())
+                .Returns(ci => ctx.ResponseBuilder.BuildBlocksResponse(ci.ArgAt<IList<Commitment>>(0), Response.AllCorrect | Response.WithTransactions));
 
-            syncPeer.GetReceipts(Arg.Any<IReadOnlyList<Keccak>>(), Arg.Any<CancellationToken>())
-                .Returns(ci => ctx.ResponseBuilder.BuildReceiptsResponse(ci.ArgAt<IList<Keccak>>(0), Response.AllCorrect | Response.WithTransactions).Result);
+            syncPeer.GetReceipts(Arg.Any<IReadOnlyList<Commitment>>(), Arg.Any<CancellationToken>())
+                .Returns(ci => ctx.ResponseBuilder.BuildReceiptsResponse(ci.ArgAt<IList<Commitment>>(0), Response.AllCorrect | Response.WithTransactions).Result);
 
             PeerInfo peerInfo = new(syncPeer);
             syncPeer.HeadNumber.Returns(1);
@@ -908,7 +908,7 @@ namespace Nethermind.Synchronization.Test
             private readonly MemDb _blockInfoDb = new();
             private readonly SyncConfig _syncConfig = new();
             private IBlockTree? _blockTree { get; set; }
-            private Dictionary<long, Keccak> TestHeaderMapping { get; }
+            private Dictionary<long, Commitment> TestHeaderMapping { get; }
             public InMemoryReceiptStorage ReceiptStorage { get; } = new();
 
             private SyncBatchSize? _syncBatchSize;
@@ -1032,7 +1032,7 @@ namespace Nethermind.Synchronization.Test
 
             public Context()
             {
-                TestHeaderMapping = new Dictionary<long, Keccak>
+                TestHeaderMapping = new Dictionary<long, Commitment>
                 {
                     {
                         0, _genesis.Hash!
@@ -1100,18 +1100,18 @@ namespace Nethermind.Synchronization.Test
             public string ClientId { get; } = null!;
             public byte ProtocolVersion { get; } = default;
             public string ProtocolCode { get; } = null!;
-            public Keccak HeadHash { get; set; } = null!;
+            public Commitment HeadHash { get; set; } = null!;
             public PublicKey Id => Node.Id;
             public long HeadNumber { get; set; }
             public UInt256 TotalDifficulty { get; set; }
             public bool IsInitialized { get; set; }
             public bool IsPriority { get; set; }
 
-            public async Task<OwnedBlockBodies> GetBlockBodies(IReadOnlyList<Keccak> blockHashes, CancellationToken token)
+            public async Task<OwnedBlockBodies> GetBlockBodies(IReadOnlyList<Commitment> blockHashes, CancellationToken token)
             {
                 BlockBody[] headers = new BlockBody[blockHashes.Count];
                 int i = 0;
-                foreach (Keccak blockHash in blockHashes)
+                foreach (Commitment blockHash in blockHashes)
                 {
                     headers[i++] = BlockTree.FindBlock(blockHash, BlockTreeLookupOptions.None)!.Body;
                 }
@@ -1142,11 +1142,11 @@ namespace Nethermind.Synchronization.Test
                 return await Task.FromResult(_headersSerializer.Deserialize(messageSerialized).BlockHeaders);
             }
 
-            public async Task<TxReceipt[]?[]> GetReceipts(IReadOnlyList<Keccak> blockHash, CancellationToken token)
+            public async Task<TxReceipt[]?[]> GetReceipts(IReadOnlyList<Commitment> blockHash, CancellationToken token)
             {
                 TxReceipt[][] receipts = new TxReceipt[blockHash.Count][];
                 int i = 0;
-                foreach (Keccak keccak in blockHash)
+                foreach (Commitment keccak in blockHash)
                 {
                     Block? block = BlockTree.FindBlock(keccak, BlockTreeLookupOptions.None);
                     TxReceipt[] blockReceipts = _receiptStorage.Get(block!);
@@ -1163,12 +1163,12 @@ namespace Nethermind.Synchronization.Test
                 throw new NotImplementedException();
             }
 
-            public Task<BlockHeader[]> GetBlockHeaders(Keccak startHash, int maxBlocks, int skip, CancellationToken token)
+            public Task<BlockHeader[]> GetBlockHeaders(Commitment startHash, int maxBlocks, int skip, CancellationToken token)
             {
                 throw new NotImplementedException();
             }
 
-            public Task<BlockHeader?> GetHeadBlockHeader(Keccak? hash, CancellationToken token)
+            public Task<BlockHeader?> GetHeadBlockHeader(Commitment? hash, CancellationToken token)
             {
                 throw new NotImplementedException();
             }
@@ -1183,7 +1183,7 @@ namespace Nethermind.Synchronization.Test
                 throw new NotImplementedException();
             }
 
-            public Task<byte[][]> GetNodeData(IReadOnlyList<Keccak> hashes, CancellationToken token)
+            public Task<byte[][]> GetNodeData(IReadOnlyList<Commitment> hashes, CancellationToken token)
             {
                 throw new NotImplementedException();
             }
@@ -1202,9 +1202,9 @@ namespace Nethermind.Synchronization.Test
         private class ResponseBuilder
         {
             private readonly IBlockTree _blockTree;
-            private readonly Dictionary<long, Keccak> _testHeaderMapping;
+            private readonly Dictionary<long, Commitment> _testHeaderMapping;
 
-            public ResponseBuilder(IBlockTree blockTree, Dictionary<long, Keccak> testHeaderMapping)
+            public ResponseBuilder(IBlockTree blockTree, Dictionary<long, Commitment> testHeaderMapping)
             {
                 _blockTree = blockTree;
                 _testHeaderMapping = testHeaderMapping;
@@ -1230,7 +1230,7 @@ namespace Nethermind.Synchronization.Test
                 {
                     for (int i = 1; i < number; i++)
                     {
-                        Keccak receiptRoot = i == 1 ? Keccak.EmptyTreeHash : new Keccak("0x9904791428367d3f36f2be68daf170039dd0b3d6b23da00697de816a05fb5cc1");
+                        Commitment receiptRoot = i == 1 ? Commitment.EmptyTreeHash : new Commitment("0x9904791428367d3f36f2be68daf170039dd0b3d6b23da00697de816a05fb5cc1");
                         BlockHeaderBuilder blockHeaderBuilder = consistent
                             ? Build.A.BlockHeader.WithReceiptsRoot(receiptRoot).WithParent(headers[i - 1])
                             : Build.A.BlockHeader.WithReceiptsRoot(receiptRoot).WithNumber(headers[i - 1].Number + 1);
@@ -1238,8 +1238,8 @@ namespace Nethermind.Synchronization.Test
                         if (withTransaction)
                         {
                             // We don't know the TX root yet, it should be populated by `BuildBlocksResponse` and `BuildReceiptsResponse`.
-                            blockHeaderBuilder.WithTransactionsRoot(Keccak.Compute("something"));
-                            blockHeaderBuilder.WithReceiptsRoot(Keccak.Compute("something"));
+                            blockHeaderBuilder.WithTransactionsRoot(Commitment.Compute("something"));
+                            blockHeaderBuilder.WithReceiptsRoot(Commitment.Compute("something"));
                         }
 
                         headers[i] = blockHeaderBuilder.TestObject;
@@ -1266,10 +1266,10 @@ namespace Nethermind.Synchronization.Test
             private readonly BlockHeadersMessageSerializer _headersSerializer = new();
             private readonly BlockBodiesMessageSerializer _bodiesSerializer = new();
             private readonly ReceiptsMessageSerializer _receiptsSerializer = new(MainnetSpecProvider.Instance);
-            private readonly Dictionary<Keccak, BlockHeader> _headers = new();
-            private readonly Dictionary<Keccak, BlockBody> _bodies = new();
+            private readonly Dictionary<Commitment, BlockHeader> _headers = new();
+            private readonly Dictionary<Commitment, BlockBody> _bodies = new();
 
-            public async Task<OwnedBlockBodies> BuildBlocksResponse(IList<Keccak> blockHashes, Response flags)
+            public async Task<OwnedBlockBodies> BuildBlocksResponse(IList<Commitment> blockHashes, Response flags)
             {
                 bool consistent = flags.HasFlag(Response.Consistent);
                 bool justFirst = flags.HasFlag(Response.JustFirst);
@@ -1292,7 +1292,7 @@ namespace Nethermind.Synchronization.Test
                 {
                     BlockBuilder blockBuilder = Build.A.Block.WithHeader(header);
 
-                    if (withTransactions && header.TxRoot != Keccak.EmptyTreeHash)
+                    if (withTransactions && header.TxRoot != Commitment.EmptyTreeHash)
                     {
                         blockBuilder.WithTransactions(Build.A.Transaction.WithValue(txSeed * 2).SignedAndResolved().TestObject,
                             Build.A.Transaction.WithValue(txSeed * 2 + 1).SignedAndResolved().TestObject);
@@ -1336,7 +1336,7 @@ namespace Nethermind.Synchronization.Test
                 return await Task.FromResult(_bodiesSerializer.Deserialize(messageSerialized).Bodies!);
             }
 
-            public async Task<TxReceipt[]?[]> BuildReceiptsResponse(IList<Keccak> blockHashes, Response flags = Response.AllCorrect)
+            public async Task<TxReceipt[]?[]> BuildReceiptsResponse(IList<Commitment> blockHashes, Response flags = Response.AllCorrect)
             {
                 TxReceipt[][] receipts = new TxReceipt[blockHashes.Count][];
                 for (int i = 0; i < receipts.Length; i++)
@@ -1347,12 +1347,12 @@ namespace Nethermind.Synchronization.Test
                             .WithStatusCode(StatusCode.Success)
                             .WithGasUsed(10)
                             .WithBloom(Bloom.Empty)
-                            .WithLogs(Build.A.LogEntry.WithAddress(t.SenderAddress!).WithTopics(TestItem.KeccakA).TestObject)
+                            .WithLogs(Build.A.LogEntry.WithAddress(t.SenderAddress!).WithTopics(TestItem._commitmentA).TestObject)
                             .TestObject)
                         .ToArray();
 
                     _headers[blockHashes[i]].ReceiptsRoot = flags.HasFlag(Response.IncorrectReceiptRoot)
-                        ? Keccak.EmptyTreeHash
+                        ? Commitment.EmptyTreeHash
                         : new ReceiptTrie(MainnetSpecProvider.Instance.GetSpec((ForkActivation)_headers[blockHashes[i]].Number), receipts[i]).RootHash;
                 }
 

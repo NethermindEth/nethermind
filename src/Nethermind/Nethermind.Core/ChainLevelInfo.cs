@@ -44,11 +44,11 @@ namespace Nethermind.Core
             }
         }
 
-        public int? FindBlockInfoIndex(Keccak blockHash)
+        public int? FindBlockInfoIndex(Commitment blockHash)
         {
             for (int i = 0; i < BlockInfos.Length; i++)
             {
-                Keccak hashAtIndex = BlockInfos[i].BlockHash;
+                Commitment hashAtIndex = BlockInfos[i].BlockHash;
                 if (hashAtIndex.Equals(blockHash))
                 {
                     return i;
@@ -58,11 +58,11 @@ namespace Nethermind.Core
             return null;
         }
 
-        public int? FindIndex(Keccak blockHash)
+        public int? FindIndex(Commitment blockHash)
         {
             for (int i = 0; i < BlockInfos.Length; i++)
             {
-                Keccak hashAtIndex = BlockInfos[i].BlockHash;
+                Commitment hashAtIndex = BlockInfos[i].BlockHash;
                 if (hashAtIndex.Equals(blockHash))
                 {
                     return i;
@@ -72,13 +72,13 @@ namespace Nethermind.Core
             return null;
         }
 
-        public BlockInfo? FindBlockInfo(Keccak blockHash)
+        public BlockInfo? FindBlockInfo(Commitment blockHash)
         {
             int? index = FindIndex(blockHash);
             return index.HasValue ? BlockInfos[index.Value] : null;
         }
 
-        public void InsertBlockInfo(Keccak hash, BlockInfo blockInfo, bool setAsMain)
+        public void InsertBlockInfo(Commitment hash, BlockInfo blockInfo, bool setAsMain)
         {
             BlockInfo[] blockInfos = BlockInfos;
 

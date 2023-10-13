@@ -138,7 +138,7 @@ namespace Nethermind.Blockchain.Visitors
             }
         }
 
-        Task<bool> IBlockTreeVisitor.VisitMissing(Keccak hash, CancellationToken cancellationToken)
+        Task<bool> IBlockTreeVisitor.VisitMissing(Commitment hash, CancellationToken cancellationToken)
         {
             AssertNotVisitingAfterGap();
             _blocksCheckedInCurrentLevel++;

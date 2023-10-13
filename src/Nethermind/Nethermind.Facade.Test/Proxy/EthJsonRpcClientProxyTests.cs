@@ -69,7 +69,7 @@ namespace Nethermind.Facade.Test.Proxy
         [Test]
         public async Task eth_getTransactionReceipt_should_invoke_client_method()
         {
-            var hash = TestItem.KeccakA;
+            var hash = TestItem._commitmentA;
             await _proxy.eth_getTransactionReceipt(hash);
             await _client.Received().SendAsync<ReceiptModel>(nameof(_proxy.eth_getTransactionReceipt), hash);
         }
@@ -97,7 +97,7 @@ namespace Nethermind.Facade.Test.Proxy
         [Test]
         public async Task eth_getTransactionByHash_should_invoke_client_method()
         {
-            var hash = TestItem.KeccakA;
+            var hash = TestItem._commitmentA;
             await _proxy.eth_getTransactionByHash(hash);
             await _client.Received().SendAsync<TransactionModel>(nameof(_proxy.eth_getTransactionByHash), hash);
         }
@@ -112,10 +112,10 @@ namespace Nethermind.Facade.Test.Proxy
         [Test]
         public async Task eth_getBlockByHash_should_invoke_client_method()
         {
-            var hash = TestItem.KeccakA;
+            var hash = TestItem._commitmentA;
             const bool returnFullTransactionObjects = true;
             await _proxy.eth_getBlockByHash(hash, returnFullTransactionObjects);
-            await _client.Received().SendAsync<BlockModel<Keccak>>(nameof(_proxy.eth_getBlockByHash),
+            await _client.Received().SendAsync<BlockModel<Commitment>>(nameof(_proxy.eth_getBlockByHash),
                 hash, returnFullTransactionObjects);
         }
 
@@ -125,7 +125,7 @@ namespace Nethermind.Facade.Test.Proxy
             var blockParameter = BlockParameterModel.FromNumber(1L);
             const bool returnFullTransactionObjects = true;
             await _proxy.eth_getBlockByNumber(blockParameter, returnFullTransactionObjects);
-            await _client.Received().SendAsync<BlockModel<Keccak>>(nameof(_proxy.eth_getBlockByNumber),
+            await _client.Received().SendAsync<BlockModel<Commitment>>(nameof(_proxy.eth_getBlockByNumber),
                 blockParameter.Number, returnFullTransactionObjects);
         }
     }

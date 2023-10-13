@@ -101,7 +101,7 @@ namespace Nethermind.Synchronization.Test
             public Node Node { get; } = new Node(Build.A.PrivateKey.TestObject.PublicKey, "127.0.0.1", 1234);
 
             public string ClientId { get; }
-            public Keccak HeadHash { get; set; } = null!;
+            public Commitment HeadHash { get; set; } = null!;
             public byte ProtocolVersion { get; } = default;
             public string ProtocolCode { get; } = null!;
             public long HeadNumber { get; set; }
@@ -115,7 +115,7 @@ namespace Nethermind.Synchronization.Test
                 Disconnected?.Invoke(this, EventArgs.Empty);
             }
 
-            public Task<OwnedBlockBodies> GetBlockBodies(IReadOnlyList<Keccak> blockHashes, CancellationToken token)
+            public Task<OwnedBlockBodies> GetBlockBodies(IReadOnlyList<Commitment> blockHashes, CancellationToken token)
             {
                 if (_causeTimeoutOnBlocks)
                 {
@@ -168,12 +168,12 @@ namespace Nethermind.Synchronization.Test
                 return Task.FromResult(result);
             }
 
-            public Task<BlockHeader[]> GetBlockHeaders(Keccak startHash, int maxBlocks, int skip, CancellationToken token)
+            public Task<BlockHeader[]> GetBlockHeaders(Commitment startHash, int maxBlocks, int skip, CancellationToken token)
             {
                 throw new NotImplementedException();
             }
 
-            public async Task<BlockHeader?> GetHeadBlockHeader(Keccak? hash, CancellationToken token)
+            public async Task<BlockHeader?> GetHeadBlockHeader(Commitment? hash, CancellationToken token)
             {
                 if (_causeTimeoutOnInit)
                 {
@@ -210,12 +210,12 @@ namespace Nethermind.Synchronization.Test
 
             public void SendNewTransactions(IEnumerable<Transaction> txs, bool sendFullTx) { }
 
-            public Task<TxReceipt[]?[]> GetReceipts(IReadOnlyList<Keccak> blockHash, CancellationToken token)
+            public Task<TxReceipt[]?[]> GetReceipts(IReadOnlyList<Commitment> blockHash, CancellationToken token)
             {
                 throw new NotImplementedException();
             }
 
-            public Task<byte[][]> GetNodeData(IReadOnlyList<Keccak> hashes, CancellationToken token)
+            public Task<byte[][]> GetNodeData(IReadOnlyList<Commitment> hashes, CancellationToken token)
             {
                 throw new NotImplementedException();
             }

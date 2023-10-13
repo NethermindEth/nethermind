@@ -45,7 +45,7 @@ namespace Nethermind.Trie
                             if (child is not null)
                             {
                                 child.ResolveKey(nodeResolver, false);
-                                if (visitor.ShouldVisit(child.Keccak!))
+                                if (visitor.ShouldVisit(child.Commitment!))
                                 {
                                     SmallTrieVisitContext childCtx = trieVisitContext; // Copy
                                     childCtx.BranchChildIndex = (byte?)i;
@@ -72,7 +72,7 @@ namespace Nethermind.Trie
                         }
 
                         child.ResolveKey(nodeResolver, false);
-                        if (visitor.ShouldVisit(child.Keccak!))
+                        if (visitor.ShouldVisit(child.Commitment!))
                         {
                             trieVisitContext.Level++;
                             trieVisitContext.BranchChildIndex = null;
@@ -119,7 +119,7 @@ namespace Nethermind.Trie
                     }
 
                 default:
-                    throw new TrieException($"An attempt was made to visit a node {Keccak} of type {NodeType}");
+                    throw new TrieException($"An attempt was made to visit a node {Commitment} of type {NodeType}");
             }
         }
 
@@ -131,7 +131,7 @@ namespace Nethermind.Trie
             }
             catch (TrieException)
             {
-                visitor.VisitMissingNode(Keccak, trieVisitContext);
+                visitor.VisitMissingNode(Commitment, trieVisitContext);
                 return;
             }
 
@@ -147,7 +147,7 @@ namespace Nethermind.Trie
                             if (child is not null)
                             {
                                 child.ResolveKey(resolver, false);
-                                if (v.ShouldVisit(child.Keccak!))
+                                if (v.ShouldVisit(child.Commitment!))
                                 {
                                     context.BranchChildIndex = i;
                                     child.Accept(v, resolver, context);
@@ -233,7 +233,7 @@ namespace Nethermind.Trie
                         }
 
                         child.ResolveKey(nodeResolver, false);
-                        if (visitor.ShouldVisit(child.Keccak!))
+                        if (visitor.ShouldVisit(child.Commitment!))
                         {
                             trieVisitContext.Level++;
                             trieVisitContext.BranchChildIndex = null;
@@ -283,7 +283,7 @@ namespace Nethermind.Trie
                     }
 
                 default:
-                    throw new TrieException($"An attempt was made to visit a node {Keccak} of type {NodeType}");
+                    throw new TrieException($"An attempt was made to visit a node {Commitment} of type {NodeType}");
             }
         }
     }

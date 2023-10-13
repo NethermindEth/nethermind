@@ -14,21 +14,21 @@ namespace Nethermind.Synchronization
 {
     public interface ISyncServer : IDisposable
     {
-        void HintBlock(Keccak hash, long number, ISyncPeer receivedFrom);
+        void HintBlock(Commitment hash, long number, ISyncPeer receivedFrom);
         void AddNewBlock(Block block, ISyncPeer node);
         void StopNotifyingPeersAboutNewBlocks();
-        TxReceipt[] GetReceipts(Keccak blockHashes);
-        Block? Find(Keccak hash);
+        TxReceipt[] GetReceipts(Commitment blockHashes);
+        Block? Find(Commitment hash);
         BlockHeader FindLowestCommonAncestor(BlockHeader firstDescendant, BlockHeader secondDescendant);
         public Task BuildCHT();
         public CanonicalHashTrie? GetCHT();
-        Keccak? FindHash(long number);
-        BlockHeader[] FindHeaders(Keccak hash, int numberOfBlocks, int skip, bool reverse);
-        byte[]?[] GetNodeData(IReadOnlyList<Keccak> keys, NodeDataType includedTypes = NodeDataType.Code | NodeDataType.State);
+        Commitment? FindHash(long number);
+        BlockHeader[] FindHeaders(Commitment hash, int numberOfBlocks, int skip, bool reverse);
+        byte[]?[] GetNodeData(IReadOnlyList<Commitment> keys, NodeDataType includedTypes = NodeDataType.Code | NodeDataType.State);
         int GetPeerCount();
         ulong NetworkId { get; }
         BlockHeader Genesis { get; }
         BlockHeader? Head { get; }
-        Keccak[]? GetBlockWitnessHashes(Keccak blockHash);
+        Commitment[]? GetBlockWitnessHashes(Commitment blockHash);
     }
 }

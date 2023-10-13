@@ -62,10 +62,10 @@ namespace Nethermind.Network.Test.Rlpx
         [TestCase(StackType.Zero, StackType.Zero, false)]
         public void Get_block_bodies_there_and_back(StackType inbound, StackType outbound, bool framingEnabled)
         {
-            var hashes = new Keccak[256];
+            var hashes = new Commitment[256];
             for (int i = 0; i < hashes.Length; i++)
             {
-                hashes[i] = Keccak.Compute(i.ToString());
+                hashes[i] = Commitment.Compute(i.ToString());
             }
 
             GetBlockBodiesMessage message = new(hashes);
@@ -116,10 +116,10 @@ namespace Nethermind.Network.Test.Rlpx
         [TestCase(StackType.Zero, StackType.Zero, false)]
         public void Receipts_message(StackType inbound, StackType outbound, bool framingEnabled)
         {
-            Keccak[] hashes = new Keccak[256];
+            Commitment[] hashes = new Commitment[256];
             for (int i = 0; i < hashes.Length; i++)
             {
-                hashes[i] = Keccak.Compute(i.ToString());
+                hashes[i] = Commitment.Compute(i.ToString());
             }
 
             GetReceiptsMessage message = new(hashes);
@@ -138,8 +138,8 @@ namespace Nethermind.Network.Test.Rlpx
         public void Status_message(StackType inbound, StackType outbound, bool framingEnabled)
         {
             StatusMessage message = new();
-            message.BestHash = Keccak.Zero;
-            message.GenesisHash = Keccak.Zero;
+            message.BestHash = Commitment.Zero;
+            message.GenesisHash = Commitment.Zero;
             message.ProtocolVersion = 63;
             message.TotalDifficulty = 10000000000;
             message.NetworkId = 5;

@@ -11,12 +11,12 @@ namespace Nethermind.Mev.Data
 {
     public partial class MevMegabundle : MevBundle, IEquatable<MevMegabundle>
     {
-        public MevMegabundle(long blockNumber, IReadOnlyList<BundleTransaction> transactions, Keccak[]? revertingTxHashes = null,
+        public MevMegabundle(long blockNumber, IReadOnlyList<BundleTransaction> transactions, Commitment[]? revertingTxHashes = null,
             Signature? relaySignature = null, UInt256? minTimestamp = null, UInt256? maxTimestamp = null)
             : base(blockNumber, transactions, minTimestamp, maxTimestamp)
         {
             RelaySignature = relaySignature;
-            RevertingTxHashes = revertingTxHashes ?? Array.Empty<Keccak>();
+            RevertingTxHashes = revertingTxHashes ?? Array.Empty<Commitment>();
             Hash = GetHash(this);
             for (int i = 0; i < transactions.Count; i++)
             {
@@ -24,12 +24,12 @@ namespace Nethermind.Mev.Data
             }
         }
 
-        public override Keccak Hash { get; }
+        public override Commitment Hash { get; }
         public Signature? RelaySignature { get; set; }
 
         public Address? RelayAddress { get; internal set; }
 
-        public Keccak[] RevertingTxHashes { get; }
+        public Commitment[] RevertingTxHashes { get; }
 
         public bool Equals(MevMegabundle? other)
         {

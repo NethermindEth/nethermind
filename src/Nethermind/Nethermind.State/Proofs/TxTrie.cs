@@ -41,10 +41,10 @@ public class TxTrie : PatriciaTrie<Transaction>
         }
     }
 
-    public static Keccak CalculateRoot(IList<Transaction> transactions)
+    public static Commitment CalculateRoot(IList<Transaction> transactions)
     {
         TrackingCappedArrayPool cappedArray = new TrackingCappedArrayPool(transactions.Count * 4);
-        Keccak rootHash = new TxTrie(transactions, false, bufferPool: cappedArray).RootHash;
+        Commitment rootHash = new TxTrie(transactions, false, bufferPool: cappedArray).RootHash;
         cappedArray.ReturnAll();
         return rootHash;
     }

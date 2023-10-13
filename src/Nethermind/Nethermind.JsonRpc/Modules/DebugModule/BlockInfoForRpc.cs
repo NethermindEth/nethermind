@@ -17,7 +17,7 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
             IsFinalized = blockInfo.IsFinalized;
         }
 
-        public Keccak BlockHash { get; set; }
+        public Commitment BlockHash { get; set; }
 
         public UInt256 TotalDifficulty { get; set; }
 

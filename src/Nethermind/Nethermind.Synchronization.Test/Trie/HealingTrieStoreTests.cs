@@ -26,21 +26,21 @@ public class HealingTrieStoreTests
     public void get_works()
     {
         TestMemDb db = new();
-        db[TestItem.KeccakA.Bytes] = new byte[] { 1, 2 };
+        db[TestItem._commitmentA.Bytes] = new byte[] { 1, 2 };
         HealingTrieStore healingTrieStore = new(db, Nethermind.Trie.Pruning.No.Pruning, Persist.EveryBlock, LimboLogs.Instance);
-        healingTrieStore.LoadRlp(TestItem.KeccakA, ReadFlags.None);
+        healingTrieStore.LoadRlp(TestItem._commitmentA, ReadFlags.None);
     }
 
     [Test]
     public void recovery_works([Values(true, false)] bool isMainThread, [Values(true, false)] bool successfullyRecovered)
     {
         byte[] rlp = { 1, 2 };
-        Keccak key = TestItem.KeccakA;
+        Commitment key = TestItem._commitmentA;
         TestMemDb db = new();
         HealingTrieStore healingTrieStore = new(db, Nethermind.Trie.Pruning.No.Pruning, Persist.EveryBlock, LimboLogs.Instance);
-        ITrieNodeRecovery<IReadOnlyList<Keccak>> recovery = Substitute.For<ITrieNodeRecovery<IReadOnlyList<Keccak>>>();
+        ITrieNodeRecovery<IReadOnlyList<Commitment>> recovery = Substitute.For<ITrieNodeRecovery<IReadOnlyList<Commitment>>>();
         recovery.CanRecover.Returns(isMainThread);
-        recovery.Recover(key, Arg.Is<IReadOnlyList<Keccak>>(l => l.SequenceEqual(new[] { key })))
+        recovery.Recover(key, Arg.Is<IReadOnlyList<Commitment>>(l => l.SequenceEqual(new[] { key })))
             .Returns(successfullyRecovered ? Task.FromResult<byte[]?>(rlp) : Task.FromResult<byte[]?>(null));
 
         healingTrieStore.InitializeNetwork(recovery);

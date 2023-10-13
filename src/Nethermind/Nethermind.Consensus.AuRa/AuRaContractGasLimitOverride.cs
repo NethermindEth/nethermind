@@ -98,7 +98,7 @@ namespace Nethermind.Consensus.AuRa
         {
             private const int MaxCacheSize = 10;
 
-            internal LruCache<ValueKeccak, long?> GasLimitCache { get; } = new(MaxCacheSize, "BlockGasLimit");
+            internal LruCache<ValueCommitment, long?> GasLimitCache { get; } = new(MaxCacheSize, "BlockGasLimit");
         }
 
         public bool IsGasLimitValid(BlockHeader parentHeader, in long gasLimit, out long? expectedGasLimit)

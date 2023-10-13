@@ -28,9 +28,9 @@ namespace Nethermind.TxPool
         void AddPeer(ITxPoolPeer peer);
         void RemovePeer(PublicKey nodeId);
         AcceptTxResult SubmitTx(Transaction tx, TxHandlingOptions handlingOptions);
-        bool RemoveTransaction(Keccak? hash);
-        bool IsKnown(Keccak hash);
-        bool TryGetPendingTransaction(Keccak hash, out Transaction? transaction);
+        bool RemoveTransaction(Commitment? hash);
+        bool IsKnown(Commitment hash);
+        bool TryGetPendingTransaction(Commitment hash, out Transaction? transaction);
         UInt256 GetLatestPendingNonce(Address address);
         event EventHandler<TxEventArgs> NewDiscovered;
         event EventHandler<TxEventArgs> NewPending;

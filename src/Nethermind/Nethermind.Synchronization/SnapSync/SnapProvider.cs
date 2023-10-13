@@ -67,16 +67,16 @@ namespace Nethermind.Synchronization.SnapSync
             return result;
         }
 
-        public AddRangeResult AddAccountRange(long blockNumber, in ValueKeccak expectedRootHash, in ValueKeccak startingHash, PathWithAccount[] accounts, byte[][] proofs = null, in ValueKeccak? hashLimit = null!)
+        public AddRangeResult AddAccountRange(long blockNumber, in ValueCommitment expectedRootHash, in ValueCommitment startingHash, PathWithAccount[] accounts, byte[][] proofs = null, in ValueCommitment? hashLimit = null!)
         {
             ITrieStore store = _trieStorePool.Get();
             try
             {
                 StateTree tree = new(store, _logManager);
 
-                ValueKeccak effectiveHashLimit = hashLimit.HasValue ? hashLimit.Value : ValueKeccak.MaxValue;
+                ValueCommitment effectiveHashLimit = hashLimit.HasValue ? hashLimit.Value : ValueCommitment.MaxValue;
 
-                (AddRangeResult result, bool moreChildrenToRight, List<PathWithAccount> accountsWithStorage, List<ValueKeccak> codeHashes) =
+                (AddRangeResult result, bool moreChildrenToRight, List<PathWithAccount> accountsWithStorage, List<ValueCommitment> codeHashes) =
                     SnapProviderHelper.AddAccountRange(tree, blockNumber, expectedRootHash, startingHash, effectiveHashLimit, accounts, proofs);
 
                 if (result == AddRangeResult.OK)
@@ -158,7 +158,7 @@ namespace Nethermind.Synchronization.SnapSync
             return result;
         }
 
-        public AddRangeResult AddStorageRange(long blockNumber, PathWithAccount pathWithAccount, in ValueKeccak expectedRootHash, in ValueKeccak? startingHash, PathWithStorageSlot[] slots, byte[][]? proofs = null)
+        public AddRangeResult AddStorageRange(long blockNumber, PathWithAccount pathWithAccount, in ValueCommitment expectedRootHash, in ValueCommitment? startingHash, PathWithStorageSlot[] slots, byte[][]? proofs = null)
         {
             ITrieStore store = _trieStorePool.Get();
             StorageTree tree = new(store, _logManager);
@@ -227,9 +227,9 @@ namespace Nethermind.Synchronization.SnapSync
                             node.ResolveNode(store);
                             node.ResolveKey(store, true);
 
-                            requestedPath.PathAndAccount.Account = requestedPath.PathAndAccount.Account.WithChangedStorageRoot(node.Keccak);
+                            requestedPath.PathAndAccount.Account = requestedPath.PathAndAccount.Account.WithChangedStorageRoot(node.Commitment);
 
-                            if (requestedPath.StorageStartingHash > ValueKeccak.Zero)
+                            if (requestedPath.StorageStartingHash > ValueCommitment.Zero)
                             {
                                 StorageRange range = new()
                                 {
@@ -269,16 +269,16 @@ namespace Nethermind.Synchronization.SnapSync
             _progressTracker.EnqueueAccountRefresh(requestedPath.PathAndAccount, requestedPath.StorageStartingHash);
         }
 
-        public void AddCodes(ValueKeccak[] requestedHashes, byte[][] codes)
+        public void AddCodes(ValueCommitment[] requestedHashes, byte[][] codes)
         {
-            HashSet<ValueKeccak> set = requestedHashes.ToHashSet();
+            HashSet<ValueCommitment> set = requestedHashes.ToHashSet();
 
             using (IBatch writeBatch = _dbProvider.CodeDb.StartBatch())
             {
                 for (int i = 0; i < codes.Length; i++)
                 {
                     byte[] code = codes[i];
-                    ValueKeccak codeHash = ValueKeccak.Compute(code);
+                    ValueCommitment codeHash = ValueCommitment.Compute(code);
 
                     if (set.Remove(codeHash))
                     {

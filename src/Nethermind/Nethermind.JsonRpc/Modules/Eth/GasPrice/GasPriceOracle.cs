@@ -48,7 +48,7 @@ namespace Nethermind.JsonRpc.Modules.Eth.GasPrice
                 return FallbackGasPrice();
             }
 
-            Keccak headBlockHash = headBlock.Hash!;
+            Commitment headBlockHash = headBlock.Hash!;
             if (_gasPriceEstimation.TryGetPrice(headBlockHash, out UInt256? price))
             {
                 return price!.Value;
@@ -73,7 +73,7 @@ namespace Nethermind.JsonRpc.Modules.Eth.GasPrice
                 return EthGasPriceConstants.FallbackMaxPriorityFeePerGas;
             }
 
-            Keccak headBlockHash = headBlock.Hash!;
+            Commitment headBlockHash = headBlock.Hash!;
             if (_maxPriorityFeePerGasEstimation.TryGetPrice(headBlockHash, out UInt256? price))
             {
                 return price!.Value;
@@ -173,22 +173,22 @@ namespace Nethermind.JsonRpc.Modules.Eth.GasPrice
 
         internal struct PriceCache
         {
-            public PriceCache(Keccak? headHash, UInt256? price)
+            public PriceCache(Commitment? headHash, UInt256? price)
             {
                 LastHeadHash = headHash;
                 LastPrice = price;
             }
 
             public UInt256? LastPrice { get; private set; }
-            private Keccak? LastHeadHash { get; set; }
+            private Commitment? LastHeadHash { get; set; }
 
-            public void Set(Keccak headHash, UInt256 price)
+            public void Set(Commitment headHash, UInt256 price)
             {
                 LastHeadHash = headHash;
                 LastPrice = price;
             }
 
-            public bool TryGetPrice(Keccak headHash, out UInt256? price)
+            public bool TryGetPrice(Commitment headHash, out UInt256? price)
             {
                 if (headHash == LastHeadHash)
                 {

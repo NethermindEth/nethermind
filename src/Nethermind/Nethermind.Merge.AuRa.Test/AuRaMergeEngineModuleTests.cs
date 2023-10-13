@@ -45,7 +45,7 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
         ILogManager? logManager = null)
         => new MergeAuRaTestBlockchain(mergeConfig, mockedPayloadService);
 
-    protected override Keccak ExpectedBlockHash => new("0x990d377b67dbffee4a60db6f189ae479ffb406e8abea16af55e0469b8524cf46");
+    protected override Commitment ExpectedBlockHash => new("0x990d377b67dbffee4a60db6f189ae479ffb406e8abea16af55e0469b8524cf46");
 
     [TestCaseSource(nameof(GetWithdrawalValidationValues))]
     public override Task forkchoiceUpdatedV2_should_validate_withdrawals((IReleaseSpec Spec,

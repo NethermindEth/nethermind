@@ -38,7 +38,7 @@ namespace Nethermind.Serialization.Rlp
             }
             else
             {
-                txReceipt.PostTransactionState = firstItem.Length == 0 ? null : new Keccak(firstItem);
+                txReceipt.PostTransactionState = firstItem.Length == 0 ? null : new Commitment(firstItem);
             }
 
             txReceipt.Sender = rlpStream.DecodeAddress();
@@ -85,7 +85,7 @@ namespace Nethermind.Serialization.Rlp
             }
             else
             {
-                txReceipt.PostTransactionState = firstItem.Length == 0 ? null : new Keccak(firstItem);
+                txReceipt.PostTransactionState = firstItem.Length == 0 ? null : new Commitment(firstItem);
             }
 
             txReceipt.Sender = decoderContext.DecodeAddress();
@@ -136,7 +136,7 @@ namespace Nethermind.Serialization.Rlp
             else
             {
                 item.PostTransactionState =
-                    firstItem.Length == 0 ? new KeccakStructRef() : new KeccakStructRef(firstItem);
+                    firstItem.Length == 0 ? new CommitmentStructRef() : new CommitmentStructRef(firstItem);
             }
 
             decoderContext.DecodeAddressStructRef(out item.Sender);
@@ -155,7 +155,7 @@ namespace Nethermind.Serialization.Rlp
             CompactLogEntryDecoder.Instance.DecodeLogEntryStructRef(ref decoderContext, none, out current);
         }
 
-        public Keccak[] DecodeTopics(Rlp.ValueDecoderContext valueDecoderContext)
+        public Commitment[] DecodeTopics(Rlp.ValueDecoderContext valueDecoderContext)
         {
             return CompactLogEntryDecoder.Instance.DecodeTopics(valueDecoderContext);
         }

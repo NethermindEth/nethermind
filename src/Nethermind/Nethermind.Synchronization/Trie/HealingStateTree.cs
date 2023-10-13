@@ -27,7 +27,7 @@ public class HealingStateTree : StateTree
         _recovery = recovery;
     }
 
-    public override byte[]? Get(ReadOnlySpan<byte> rawKey, Keccak? rootHash = null)
+    public override byte[]? Get(ReadOnlySpan<byte> rawKey, Commitment? rootHash = null)
     {
         try
         {
@@ -63,7 +63,7 @@ public class HealingStateTree : StateTree
         }
     }
 
-    private bool Recover(in ValueKeccak rlpHash, ReadOnlySpan<byte> pathPart, Keccak rootHash)
+    private bool Recover(in ValueCommitment rlpHash, ReadOnlySpan<byte> pathPart, Commitment rootHash)
     {
         if (_recovery?.CanRecover == true)
         {

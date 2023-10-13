@@ -14,7 +14,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
         public override string Protocol { get; } = "eth";
 
         public long StartBlockNumber { get; set; }
-        public Keccak? StartBlockHash { get; set; }
+        public Commitment? StartBlockHash { get; set; }
         public long MaxHeaders { get; set; }
         public long Skip { get; set; }
         public byte Reverse { get; set; }

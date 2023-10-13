@@ -22,9 +22,9 @@ public class HeaderDecoderTests
     public void Can_decode(bool hasWithdrawalsRoot)
     {
         BlockHeader header = Build.A.BlockHeader
-            .WithMixHash(Keccak.Compute("mix_hash"))
+            .WithMixHash(Commitment.Compute("mix_hash"))
             .WithNonce(1000)
-            .WithWithdrawalsRoot(hasWithdrawalsRoot ? Keccak.EmptyTreeHash : null)
+            .WithWithdrawalsRoot(hasWithdrawalsRoot ? Commitment.EmptyTreeHash : null)
             .TestObject;
 
         HeaderDecoder decoder = new();
@@ -40,7 +40,7 @@ public class HeaderDecoderTests
     public void Can_decode_tricky()
     {
         BlockHeader header = Build.A.BlockHeader
-            .WithMixHash(Keccak.Compute("mix_hash"))
+            .WithMixHash(Commitment.Compute("mix_hash"))
             .WithTimestamp(2730)
             .WithNonce(1000)
             .TestObject;
@@ -114,10 +114,10 @@ public class HeaderDecoderTests
     public void Can_encode_with_withdrawals()
     {
         BlockHeader header = Build.A.BlockHeader.WithBaseFee(1).WithNonce(0).WithDifficulty(0)
-            .WithWithdrawalsRoot(Keccak.Compute("withdrawals")).TestObject;
+            .WithWithdrawalsRoot(Commitment.Compute("withdrawals")).TestObject;
         Rlp rlp = Rlp.Encode(header);
         BlockHeader blockHeader = Rlp.Decode<BlockHeader>(rlp);
-        blockHeader.WithdrawalsRoot.Should().Be(Keccak.Compute("withdrawals"));
+        blockHeader.WithdrawalsRoot.Should().Be(Commitment.Compute("withdrawals"));
     }
 
     [Test]
@@ -163,12 +163,12 @@ public class HeaderDecoderTests
     }
 
     [TestCaseSource(nameof(CancunFieldsSource))]
-    public void Can_encode_decode_with_cancun_fields(ulong? blobGasUsed, ulong? excessBlobGas, Keccak? parentBeaconBlockRoot)
+    public void Can_encode_decode_with_cancun_fields(ulong? blobGasUsed, ulong? excessBlobGas, Commitment? parentBeaconBlockRoot)
     {
         BlockHeader header = Build.A.BlockHeader
             .WithTimestamp(ulong.MaxValue)
             .WithBaseFee(1)
-            .WithWithdrawalsRoot(Keccak.Zero)
+            .WithWithdrawalsRoot(Commitment.Zero)
             .WithBlobGasUsed(blobGasUsed)
             .WithExcessBlobGas(excessBlobGas)
             .WithParentBeaconBlockRoot(parentBeaconBlockRoot).TestObject;
@@ -183,8 +183,8 @@ public class HeaderDecoderTests
     public static IEnumerable<object?[]> CancunFieldsSource()
     {
         yield return new object?[] { null, null, null };
-        yield return new object?[] { 0ul, 0ul, TestItem.KeccakA };
-        yield return new object?[] { 1ul, 2ul, TestItem.KeccakB };
+        yield return new object?[] { 0ul, 0ul, TestItem._commitmentA };
+        yield return new object?[] { 1ul, 2ul, TestItem._commitmentB };
         yield return new object?[] { ulong.MaxValue / 2, ulong.MaxValue, null };
         yield return new object?[] { ulong.MaxValue, ulong.MaxValue / 2, null };
     }

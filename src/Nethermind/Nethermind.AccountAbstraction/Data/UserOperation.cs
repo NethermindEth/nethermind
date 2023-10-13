@@ -30,19 +30,19 @@ namespace Nethermind.AccountAbstraction.Data
             Signature = userOperationRpc.Signature;
 
             AccessList = UserOperationAccessList.Empty;
-            AddressesToCodeHashes = ImmutableDictionary<Address, Keccak>.Empty;
+            AddressesToCodeHashes = ImmutableDictionary<Address, Commitment>.Empty;
         }
 
-        private Keccak CalculateHash()
+        private Commitment CalculateHash()
         {
-            return Keccak.Compute(_packer.Pack(this));
+            return Commitment.Compute(_packer.Pack(this));
         }
 
         private readonly AbiSignature _idSignature = new AbiSignature("RequestId", AbiType.Bytes32, AbiAddress.Instance, AbiType.UInt256);
 
         public void CalculateRequestId(Address entryPointAddress, ulong chainId)
         {
-            RequestId = Keccak.Compute(_abiEncoder.Encode(AbiEncodingStyle.None, _idSignature, CalculateHash(), entryPointAddress, chainId));
+            RequestId = Commitment.Compute(_abiEncoder.Encode(AbiEncodingStyle.None, _idSignature, CalculateHash(), entryPointAddress, chainId));
         }
 
         public UserOperationAbi Abi => new()
@@ -61,7 +61,7 @@ namespace Nethermind.AccountAbstraction.Data
             Signature = Signature!
         };
 
-        public Keccak? RequestId { get; set; }
+        public Commitment? RequestId { get; set; }
         public Address Sender { get; set; }
         public UInt256 Nonce { get; set; }
         public byte[] InitCode { get; set; }
@@ -75,7 +75,7 @@ namespace Nethermind.AccountAbstraction.Data
         public byte[] Signature { get; set; }
         public byte[] PaymasterData { get; set; }
         public UserOperationAccessList AccessList { get; set; }
-        public IDictionary<Address, Keccak> AddressesToCodeHashes { get; set; }
+        public IDictionary<Address, Commitment> AddressesToCodeHashes { get; set; }
         public bool AlreadySimulated { get; set; }
         public bool PassedBaseFee { get; set; } // if the MaxFeePerGas has ever exceeded the basefee
     }

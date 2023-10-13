@@ -23,7 +23,7 @@ namespace Nethermind.Trie.Test
         public void Cache_post_init_memory_calculated_correctly()
         {
             MemCountingCache cache = new(1024, string.Empty);
-            cache.Set(Keccak.Zero, new byte[0]);
+            cache.Set(Commitment.Zero, new byte[0]);
             cache.MemorySize.Should().Be(344);
         }
 
@@ -31,10 +31,10 @@ namespace Nethermind.Trie.Test
         public void Cache_post_capacity_growth_memory_calculated_correctly()
         {
             MemCountingCache cache = new(1024, string.Empty);
-            cache.Set(TestItem.KeccakA, new byte[0]);
-            cache.Set(TestItem.KeccakB, new byte[0]);
-            cache.Set(TestItem.KeccakC, new byte[0]);
-            cache.Set(TestItem.KeccakD, new byte[0]);
+            cache.Set(TestItem._commitmentA, new byte[0]);
+            cache.Set(TestItem._commitmentB, new byte[0]);
+            cache.Set(TestItem._commitmentC, new byte[0]);
+            cache.Set(TestItem._commitmentD, new byte[0]);
             cache.MemorySize.Should().Be(672);
         }
 
@@ -42,42 +42,42 @@ namespace Nethermind.Trie.Test
         public void Limit_by_memory_works_fine()
         {
             MemCountingCache cache = new(584, string.Empty);
-            cache.Set(TestItem.KeccakA, new byte[0]);
-            cache.Set(TestItem.KeccakB, new byte[0]);
-            cache.Set(TestItem.KeccakC, new byte[0]);
+            cache.Set(TestItem._commitmentA, new byte[0]);
+            cache.Set(TestItem._commitmentB, new byte[0]);
+            cache.Set(TestItem._commitmentC, new byte[0]);
 
             cache.MemorySize.Should().Be(488);
-            cache.Get(TestItem.KeccakA).Should().NotBeNull();
+            cache.Get(TestItem._commitmentA).Should().NotBeNull();
 
-            cache.Set(TestItem.KeccakD, new byte[0]);
+            cache.Set(TestItem._commitmentD, new byte[0]);
             cache.MemorySize.Should().Be(488);
-            cache.Get(TestItem.KeccakB).Should().BeNull();
-            cache.Get(TestItem.KeccakD).Should().NotBeNull();
+            cache.Get(TestItem._commitmentB).Should().BeNull();
+            cache.Get(TestItem._commitmentD).Should().NotBeNull();
 
-            cache.Set(TestItem.KeccakE, new byte[0]);
+            cache.Set(TestItem._commitmentE, new byte[0]);
             cache.MemorySize.Should().Be(488);
-            cache.Get(TestItem.KeccakB).Should().BeNull();
-            cache.Get(TestItem.KeccakC).Should().BeNull();
-            cache.Get(TestItem.KeccakE).Should().NotBeNull();
+            cache.Get(TestItem._commitmentB).Should().BeNull();
+            cache.Get(TestItem._commitmentC).Should().BeNull();
+            cache.Get(TestItem._commitmentE).Should().NotBeNull();
         }
 
         [Test]
         public void Limit_by_memory_works_fine_wth_deletes()
         {
             MemCountingCache cache = new(800, string.Empty);
-            cache.Set(TestItem.KeccakA, new byte[0]);
-            cache.Set(TestItem.KeccakB, new byte[0]);
-            cache.Set(TestItem.KeccakC, new byte[0]);
+            cache.Set(TestItem._commitmentA, new byte[0]);
+            cache.Set(TestItem._commitmentB, new byte[0]);
+            cache.Set(TestItem._commitmentC, new byte[0]);
 
-            cache.Set(TestItem.KeccakA, null);
+            cache.Set(TestItem._commitmentA, null);
 
             cache.MemorySize.Should().Be(416);
-            cache.Get(TestItem.KeccakA).Should().BeNull();
+            cache.Get(TestItem._commitmentA).Should().BeNull();
 
-            cache.Set(TestItem.KeccakD, new byte[0]);
+            cache.Set(TestItem._commitmentD, new byte[0]);
             cache.MemorySize.Should().Be(488);
-            cache.Get(TestItem.KeccakB).Should().NotBeNull();
-            cache.Get(TestItem.KeccakD).Should().NotBeNull();
+            cache.Get(TestItem._commitmentB).Should().NotBeNull();
+            cache.Get(TestItem._commitmentD).Should().NotBeNull();
         }
     }
 }

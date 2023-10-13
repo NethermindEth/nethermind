@@ -13,7 +13,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V68;
 [TestFixture, Parallelizable(ParallelScope.All)]
 public class NewPooledTransactionHashesMessageSerializerTests
 {
-    private static void Test(TxType[] types, int[] sizes, Keccak[] hashes, string expected = null)
+    private static void Test(TxType[] types, int[] sizes, Commitment[] hashes, string expected = null)
     {
         NewPooledTransactionHashesMessage68 message = new(types.Select(t => (byte)t).ToList(), sizes, hashes);
         NewPooledTransactionHashesMessageSerializer serializer = new();
@@ -26,7 +26,7 @@ public class NewPooledTransactionHashesMessageSerializerTests
     {
         TxType[] types = { TxType.Legacy, TxType.AccessList, TxType.EIP1559 };
         int[] sizes = { 5, 10, 1500 };
-        Keccak[] hashes = { TestItem.KeccakA, TestItem.KeccakB, TestItem.KeccakC };
+        Commitment[] hashes = { TestItem._commitmentA, TestItem._commitmentB, TestItem._commitmentC };
         Test(types, sizes, hashes);
     }
 
@@ -35,7 +35,7 @@ public class NewPooledTransactionHashesMessageSerializerTests
     {
         TxType[] types = { };
         int[] sizes = { };
-        Keccak[] hashes = { };
+        Commitment[] hashes = { };
         Test(types, sizes, hashes, "c380c0c0");
     }
 
@@ -44,7 +44,7 @@ public class NewPooledTransactionHashesMessageSerializerTests
     {
         TxType[] types = { TxType.EIP1559 };
         int[] sizes = { 10 };
-        Keccak[] hashes = { };
+        Commitment[] hashes = { };
         Test(types, sizes, hashes, "c402c10ac0");
     }
 
@@ -53,9 +53,9 @@ public class NewPooledTransactionHashesMessageSerializerTests
     {
         TxType[] types = { TxType.AccessList };
         int[] sizes = { 2 };
-        Keccak[] hashes = { TestItem.KeccakA };
+        Commitment[] hashes = { TestItem._commitmentA };
         Test(types, sizes, hashes,
-            "e5" + "01" + "c102" + "e1a0" + TestItem.KeccakA.ToString(false));
+            "e5" + "01" + "c102" + "e1a0" + TestItem._commitmentA.ToString(false));
     }
 
 }

@@ -17,7 +17,7 @@ namespace Nethermind.Core.Test
         public void Test()
         {
             Bloom bloom = new();
-            bloom.Set(Keccak.OfAnEmptyString.Bytes);
+            bloom.Set(Commitment.OfAnEmptyString.Bytes);
             byte[] bytes = bloom.Bytes;
             Bloom bloom2 = new(bytes);
             Assert.That(bloom2.ToString(), Is.EqualTo(bloom.ToString()));
@@ -69,7 +69,7 @@ namespace Nethermind.Core.Test
             for (int i = start; i < count + start; i++)
             {
                 int topicsCount = i % topicsMax + 1;
-                var topics = new Keccak[topicsCount];
+                var topics = new Commitment[topicsCount];
                 for (int j = 0; j < topicsCount; j++)
                 {
                     topics[j] = keccakGenerator[i + j];

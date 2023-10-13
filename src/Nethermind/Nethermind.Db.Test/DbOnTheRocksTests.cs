@@ -75,7 +75,7 @@ namespace Nethermind.Db.Test
             {
                 for (int i = 0; i < 10000; i++)
                 {
-                    db.Set(Keccak.Zero, new byte[] { 1, 2, 3 });
+                    db.Set(Commitment.Zero, new byte[] { 1, 2, 3 });
                     if (i == 0) firstWriteWait.Set();
 
                     if (cancelSource.IsCancellationRequested)

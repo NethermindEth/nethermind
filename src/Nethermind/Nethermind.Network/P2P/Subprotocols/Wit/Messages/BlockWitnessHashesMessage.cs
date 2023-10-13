@@ -14,9 +14,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Wit.Messages
 
         public long RequestId { get; }
 
-        public Keccak[] Hashes { get; }
+        public Commitment[] Hashes { get; }
 
-        public BlockWitnessHashesMessage(long requestId, Keccak[] hashes)
+        public BlockWitnessHashesMessage(long requestId, Commitment[] hashes)
         {
             RequestId = requestId;
             Hashes = hashes;

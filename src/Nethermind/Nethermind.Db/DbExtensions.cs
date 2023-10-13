@@ -20,15 +20,15 @@ namespace Nethermind.Db
             return new(db, createInMemoryWriteStore);
         }
 
-        public static void Set(this IDb db, Keccak key, byte[] value, WriteFlags writeFlags = WriteFlags.None)
+        public static void Set(this IDb db, Commitment key, byte[] value, WriteFlags writeFlags = WriteFlags.None)
         {
             db.Set(key.Bytes, value, writeFlags);
         }
 
-        public static byte[]? Get(this IDb db, Keccak key)
+        public static byte[]? Get(this IDb db, Commitment key)
         {
 #if DEBUG
-            if (key == Keccak.OfAnEmptyString)
+            if (key == Commitment.OfAnEmptyString)
             {
                 throw new InvalidOperationException();
             }
@@ -37,7 +37,7 @@ namespace Nethermind.Db
             return db[key.Bytes];
         }
 
-        public static void Set(this IDb db, Keccak key, Span<byte> value)
+        public static void Set(this IDb db, Commitment key, Span<byte> value)
         {
             if (db is IDbWithSpan dbWithSpan)
             {
@@ -49,20 +49,20 @@ namespace Nethermind.Db
             }
         }
 
-        public static void Set(this IDb db, long blockNumber, Keccak key, Span<byte> value)
+        public static void Set(this IDb db, long blockNumber, Commitment key, Span<byte> value)
         {
             Span<byte> blockNumberPrefixedKey = stackalloc byte[40];
             GetBlockNumPrefixedKey(blockNumber, key, blockNumberPrefixedKey);
             db.Set(blockNumberPrefixedKey, value);
         }
 
-        private static void GetBlockNumPrefixedKey(long blockNumber, ValueKeccak blockHash, Span<byte> output)
+        private static void GetBlockNumPrefixedKey(long blockNumber, ValueCommitment blockHash, Span<byte> output)
         {
             blockNumber.WriteBigEndian(output);
             blockHash!.Bytes.CopyTo(output[8..]);
         }
 
-        public static void Set(this IDb db, in ValueKeccak key, Span<byte> value)
+        public static void Set(this IDb db, in ValueCommitment key, Span<byte> value)
         {
             if (db is IDbWithSpan dbWithSpan)
             {
@@ -86,7 +86,7 @@ namespace Nethermind.Db
             }
         }
 
-        public static KeyValuePair<byte[], byte[]>[] MultiGet(this IDb db, IEnumerable<ValueKeccak> keys)
+        public static KeyValuePair<byte[], byte[]>[] MultiGet(this IDb db, IEnumerable<ValueCommitment> keys)
         {
             var k = keys.Select(k => k.Bytes.ToArray()).ToArray();
             return db[k];
@@ -99,10 +99,10 @@ namespace Nethermind.Db
         /// <param name="key"></param>
         /// <returns>Can return null or empty Span on missing key</returns>
         /// <exception cref="InvalidOperationException"></exception>
-        public static Span<byte> GetSpan(this IDbWithSpan db, Keccak key)
+        public static Span<byte> GetSpan(this IDbWithSpan db, Commitment key)
         {
 #if DEBUG
-            if (key == Keccak.OfAnEmptyString)
+            if (key == Commitment.OfAnEmptyString)
             {
                 throw new InvalidOperationException();
             }
@@ -111,10 +111,10 @@ namespace Nethermind.Db
             return db.GetSpan(key.Bytes);
         }
 
-        public static bool KeyExists(this IDb db, Keccak key)
+        public static bool KeyExists(this IDb db, Commitment key)
         {
 #if DEBUG
-            if (key == Keccak.OfAnEmptyString)
+            if (key == Commitment.OfAnEmptyString)
             {
                 throw new InvalidOperationException();
             }
@@ -128,13 +128,13 @@ namespace Nethermind.Db
             return db.KeyExists(key.ToBigEndianByteArrayWithoutLeadingZeros());
         }
 
-        public static void Delete(this IDb db, Keccak key)
+        public static void Delete(this IDb db, Commitment key)
         {
             db.Remove(key.Bytes);
         }
 
         [SkipLocalsInit]
-        public static void Delete(this IDb db, long blockNumber, Keccak hash)
+        public static void Delete(this IDb db, long blockNumber, Commitment hash)
         {
             Span<byte> key = stackalloc byte[40];
             GetBlockNumPrefixedKey(blockNumber, hash, key);
@@ -170,15 +170,15 @@ namespace Nethermind.Db
         }
 
         [SkipLocalsInit]
-        public static TItem? Get<TItem>(this IDb db, long blockNumber, ValueKeccak hash, IRlpStreamDecoder<TItem> decoder,
-            LruCache<ValueKeccak, TItem> cache = null, bool shouldCache = true) where TItem : class
+        public static TItem? Get<TItem>(this IDb db, long blockNumber, ValueCommitment hash, IRlpStreamDecoder<TItem> decoder,
+            LruCache<ValueCommitment, TItem> cache = null, bool shouldCache = true) where TItem : class
         {
             Span<byte> dbKey = stackalloc byte[40];
             GetBlockNumPrefixedKey(blockNumber, hash, dbKey);
             return Get(db, hash, dbKey, decoder, cache, shouldCache);
         }
 
-        public static TItem? Get<TItem>(this IDb db, Keccak key, IRlpStreamDecoder<TItem> decoder, LruCache<ValueKeccak, TItem> cache = null, bool shouldCache = true) where TItem : class
+        public static TItem? Get<TItem>(this IDb db, Commitment key, IRlpStreamDecoder<TItem> decoder, LruCache<ValueCommitment, TItem> cache = null, bool shouldCache = true) where TItem : class
         {
             return Get(db, key, key.Bytes, decoder, cache, shouldCache);
         }

@@ -20,7 +20,7 @@ namespace Nethermind.State.Proofs
 
         private Nibble[] Prefix => Nibbles.FromBytes(_key);
 
-        private HashSet<Keccak> _visitingFilter = new();
+        private HashSet<Commitment> _visitingFilter = new();
 
         private List<byte[]> _proofBits = new();
 
@@ -34,20 +34,20 @@ namespace Nethermind.State.Proofs
 
         public bool IsFullDbScan => false;
 
-        public bool ShouldVisit(Keccak nextNode) => _visitingFilter.Contains(nextNode);
+        public bool ShouldVisit(Commitment nextNode) => _visitingFilter.Contains(nextNode);
 
-        public void VisitTree(Keccak rootHash, TrieVisitContext trieVisitContext)
+        public void VisitTree(Commitment rootHash, TrieVisitContext trieVisitContext)
         {
         }
 
-        public void VisitMissingNode(Keccak nodeHash, TrieVisitContext trieVisitContext)
+        public void VisitMissingNode(Commitment nodeHash, TrieVisitContext trieVisitContext)
         {
         }
 
         public void VisitBranch(TrieNode node, TrieVisitContext trieVisitContext)
         {
             AddProofBits(node);
-            _visitingFilter.Remove(node.Keccak);
+            _visitingFilter.Remove(node.Commitment);
             _visitingFilter.Add(node.GetChildHash((byte)Prefix[_pathIndex]));
 
             _pathIndex++;
@@ -56,9 +56,9 @@ namespace Nethermind.State.Proofs
         public void VisitExtension(TrieNode node, TrieVisitContext trieVisitContext)
         {
             AddProofBits(node);
-            _visitingFilter.Remove(node.Keccak);
+            _visitingFilter.Remove(node.Commitment);
 
-            Keccak childHash = node.GetChildHash(0);
+            Commitment childHash = node.GetChildHash(0);
             _visitingFilter.Add(childHash); // always accept so can optimize
 
             _pathIndex += node.Key.Length;
@@ -72,11 +72,11 @@ namespace Nethermind.State.Proofs
         public void VisitLeaf(TrieNode node, TrieVisitContext trieVisitContext, byte[] value)
         {
             AddProofBits(node);
-            _visitingFilter.Remove(node.Keccak);
+            _visitingFilter.Remove(node.Commitment);
             _pathIndex = 0;
         }
 
-        public void VisitCode(Keccak codeHash, TrieVisitContext trieVisitContext)
+        public void VisitCode(Commitment codeHash, TrieVisitContext trieVisitContext)
         {
             throw new InvalidOperationException($"{nameof(AccountProofCollector)} does never expect to visit code");
         }

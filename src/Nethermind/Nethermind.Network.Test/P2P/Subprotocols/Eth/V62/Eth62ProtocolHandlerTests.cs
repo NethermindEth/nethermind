@@ -176,7 +176,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         public void Get_headers_from_genesis()
         {
             var msg = new GetBlockHeadersMessage();
-            msg.StartBlockHash = TestItem.KeccakA;
+            msg.StartBlockHash = TestItem._commitmentA;
             msg.MaxHeaders = 3;
             msg.Skip = 1;
             msg.Reverse = 1;
@@ -184,14 +184,14 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             HandleIncomingStatusMessage();
             HandleZeroMessage(msg, Eth62MessageCode.GetBlockHeaders);
 
-            _syncManager.Received().FindHeaders(TestItem.KeccakA, 3, 1, true);
+            _syncManager.Received().FindHeaders(TestItem._commitmentA, 3, 1, true);
         }
 
         [Test]
         public void Receiving_request_before_status_fails()
         {
             var msg = new GetBlockHeadersMessage();
-            msg.StartBlockHash = TestItem.KeccakA;
+            msg.StartBlockHash = TestItem._commitmentA;
             msg.MaxHeaders = 3;
             msg.Skip = 1;
             msg.Reverse = 1;
@@ -211,8 +211,8 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             headers[1] = Build.A.BlockHeader.TestObject;
             headers[2] = Build.A.BlockHeader.TestObject;
 
-            _syncManager.FindHash(100).Returns(TestItem.KeccakA);
-            _syncManager.FindHeaders(TestItem.KeccakA, 5, 1, true).Returns(headers);
+            _syncManager.FindHash(100).Returns(TestItem._commitmentA);
+            _syncManager.FindHeaders(TestItem._commitmentA, 5, 1, true).Returns(headers);
             _syncManager.Head.Returns(_genesisBlock.Header);
             _syncManager.Genesis.Returns(_genesisBlock.Header);
 
@@ -246,8 +246,8 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             headers[3] = Build.A.BlockHeader.TestObject;
             headers[4] = Build.A.BlockHeader.TestObject;
 
-            _syncManager.FindHash(100).Returns(TestItem.KeccakA);
-            _syncManager.FindHeaders(TestItem.KeccakA, 5, 1, true)
+            _syncManager.FindHash(100).Returns(TestItem._commitmentA);
+            _syncManager.FindHeaders(TestItem._commitmentA, 5, 1, true)
                 .Returns(headers);
 
             _syncManager.Head.Returns(_genesisBlock.Header);
@@ -317,7 +317,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         [Test]
         public void Can_handle_new_block_hashes()
         {
-            NewBlockHashesMessage msg = new((Keccak.Zero, 1), (Keccak.Zero, 2));
+            NewBlockHashesMessage msg = new((Commitment.Zero, 1), (Commitment.Zero, 2));
             HandleIncomingStatusMessage();
             HandleZeroMessage(msg, Eth62MessageCode.NewBlockHashes);
         }
@@ -325,7 +325,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         [Test]
         public void Should_disconnect_peer_sending_new_block_hashes_in_PoS()
         {
-            NewBlockHashesMessage msg = new NewBlockHashesMessage((Keccak.Zero, 1), (Keccak.Zero, 2));
+            NewBlockHashesMessage msg = new NewBlockHashesMessage((Commitment.Zero, 1), (Commitment.Zero, 2));
 
             _gossipPolicy.ShouldDisconnectGossipingNodes.Returns(true);
 
@@ -338,7 +338,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         [Test]
         public void Can_handle_get_block_bodies()
         {
-            GetBlockBodiesMessage msg = new(new[] { Keccak.Zero, TestItem.KeccakA });
+            GetBlockBodiesMessage msg = new(new[] { Commitment.Zero, TestItem._commitmentA });
 
             HandleIncomingStatusMessage();
             HandleZeroMessage(msg, Eth62MessageCode.GetBlockBodies);
@@ -410,7 +410,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             Block largerBlock = Build.A.Block.WithTransactions(Enumerable.Repeat(signedTransaction, 1000).ToArray()).TestObject;
 
             BlockBodiesMessage largeMsg = new(Enumerable.Repeat(largerBlock, 100).ToArray());
-            List<Keccak> requests = Enumerable.Repeat(Keccak.Zero, 1000).ToList();
+            List<Commitment> requests = Enumerable.Repeat(Commitment.Zero, 1000).ToList();
 
             GetBlockBodiesMessage? getMsg = null;
 
@@ -444,7 +444,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             BlockBodiesMessage msg = new(Build.A.Block.TestObjectNTimes(3));
 
             HandleIncomingStatusMessage();
-            ((ISyncPeer)_handler).GetBlockBodies(new List<Keccak>(new[] { Keccak.Zero }), CancellationToken.None);
+            ((ISyncPeer)_handler).GetBlockBodies(new List<Commitment>(new[] { Commitment.Zero }), CancellationToken.None);
             HandleZeroMessage(msg, Eth62MessageCode.BlockBodies);
         }
 
@@ -452,7 +452,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         public async Task Get_block_bodies_returns_immediately_when_empty_hash_list()
         {
             OwnedBlockBodies bodies =
-                await ((ISyncPeer)_handler).GetBlockBodies(new List<Keccak>(), CancellationToken.None);
+                await ((ISyncPeer)_handler).GetBlockBodies(new List<Commitment>(), CancellationToken.None);
 
             bodies.Bodies.Should().HaveCount(0);
         }

@@ -14,7 +14,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Les.Messages
         public long RequestId;
         public CodeRequest[] Requests;
 
-        public Keccak[] RequestAddresses =>
+        public Commitment[] RequestAddresses =>
             Requests.Select(request => request.AccountKey).ToArray();
 
         public GetContractCodesMessage()

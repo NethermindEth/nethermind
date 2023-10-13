@@ -24,9 +24,9 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
                 Value = 0x200,
                 Data = new byte[] { },
                 Signature = new Signature(
-                    new Keccak("0x64b1702d9298fee62dfeccc57d322a463ad55ca201256d01f62b45b2e1c21c12").Bytes,
-                    new Keccak("0x64b1702d9298fee62dfeccc57d322a463ad55ca201256d01f62b45b2e1c21c10").Bytes, 0x25),
-                Hash = new Keccak("0x588df025c4c2d757d3e314bd3dfbfe352687324e6b8557ad1731585e96928aed")
+                    new Commitment("0x64b1702d9298fee62dfeccc57d322a463ad55ca201256d01f62b45b2e1c21c12").Bytes,
+                    new Commitment("0x64b1702d9298fee62dfeccc57d322a463ad55ca201256d01f62b45b2e1c21c10").Bytes, 0x25),
+                Hash = new Commitment("0x588df025c4c2d757d3e314bd3dfbfe352687324e6b8557ad1731585e96928aed")
             };
 
             Transaction tx2 = new()
@@ -38,9 +38,9 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
                 Value = 0x2d9,
                 Data = new byte[] { },
                 Signature = new Signature(
-                    new Keccak("0x52f8f61201b2b11a78d6e866abc9c3db2ae8631fa656bfe5cb53668255367afb").Bytes,
-                    new Keccak("0x52f8f61201b2b11a78d6e866abc9c3db2ae8631fa656bfe5cb53668255367afb").Bytes, 0x25),
-                Hash = new Keccak("0xf39c7dac06a9f3abf09faf5e30439a349d3717611b3ed337cd52b0d192bc72da")
+                    new Commitment("0x52f8f61201b2b11a78d6e866abc9c3db2ae8631fa656bfe5cb53668255367afb").Bytes,
+                    new Commitment("0x52f8f61201b2b11a78d6e866abc9c3db2ae8631fa656bfe5cb53668255367afb").Bytes, 0x25),
+                Hash = new Commitment("0xf39c7dac06a9f3abf09faf5e30439a349d3717611b3ed337cd52b0d192bc72da")
             };
 
             var ethMessage = new Network.P2P.Subprotocols.Eth.V65.Messages.PooledTransactionsMessage(new[] { tx1, tx2 });

@@ -23,7 +23,7 @@ namespace Nethermind.Synchronization.Test.Trie;
 public class HealingTreeTests
 {
     private static readonly byte[] _rlp = { 3, 4 };
-    private static readonly Keccak _key = Keccak.Compute(_rlp);
+    private static readonly Commitment _key = Commitment.Compute(_rlp);
 
     [Test]
     public void get_state_tree_works()
@@ -35,7 +35,7 @@ public class HealingTreeTests
     [Test]
     public void get_storage_tree_works()
     {
-        HealingStorageTree stateTree = new(Substitute.For<ITrieStore>(), Keccak.EmptyTreeHash, LimboLogs.Instance, TestItem.AddressA, TestItem.KeccakA, null);
+        HealingStorageTree stateTree = new(Substitute.For<ITrieStore>(), Commitment.EmptyTreeHash, LimboLogs.Instance, TestItem.AddressA, TestItem._commitmentA, null);
         stateTree.Get(stackalloc byte[] { 1, 2, 3 });
     }
 
@@ -63,9 +63,9 @@ public class HealingTreeTests
     public void recovery_works_storage_trie([Values(true, false)] bool isMainThread, [Values(true, false)] bool successfullyRecovered)
     {
         HealingStorageTree CreateHealingStorageTree(ITrieStore trieStore, ITrieNodeRecovery<GetTrieNodesRequest> recovery) =>
-            new(trieStore, Keccak.EmptyTreeHash, LimboLogs.Instance, TestItem.AddressA, _key, recovery);
+            new(trieStore, Commitment.EmptyTreeHash, LimboLogs.Instance, TestItem.AddressA, _key, recovery);
         byte[] path = { 1, 2 };
-        byte[] addressPath = ValueKeccak.Compute(TestItem.AddressA.Bytes).Bytes.ToArray();
+        byte[] addressPath = ValueCommitment.Compute(TestItem.AddressA.Bytes).Bytes.ToArray();
         recovery_works(isMainThread, successfullyRecovered, path, CreateHealingStorageTree,
             r => PathMatch(r, path, 1) && Bytes.AreEqual(r.AccountAndStoragePaths[0].Group[0], addressPath));
     }
@@ -95,7 +95,7 @@ public class HealingTreeTests
         if (isMainThread && successfullyRecovered)
         {
             action.Should().NotThrow();
-            db.KeyWasWritten(kvp => Bytes.AreEqual(kvp.Item1, ValueKeccak.Compute(_rlp).Bytes) && Bytes.AreEqual(kvp.Item2, _rlp));
+            db.KeyWasWritten(kvp => Bytes.AreEqual(kvp.Item1, ValueCommitment.Compute(_rlp).Bytes) && Bytes.AreEqual(kvp.Item2, _rlp));
         }
         else
         {

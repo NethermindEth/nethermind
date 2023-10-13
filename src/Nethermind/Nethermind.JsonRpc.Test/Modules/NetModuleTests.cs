@@ -46,7 +46,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             blockTree.NetworkId.Returns((ulong)TestBlockchainIds.NetworkId);
             blockTree.ChainId.Returns((ulong)TestBlockchainIds.ChainId);
             var syncConfig = Substitute.For<ISyncConfig>();
-            syncConfig.PivotHash.Returns(Keccak.MaxValue.ToString());
+            syncConfig.PivotHash.Returns(Commitment.MaxValue.ToString());
             ISyncServer syncServer = new SyncServer(
                 Substitute.For<IReadOnlyKeyValueStore>(),
                 Substitute.For<IReadOnlyKeyValueStore>(),

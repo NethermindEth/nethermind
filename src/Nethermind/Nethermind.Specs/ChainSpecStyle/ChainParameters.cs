@@ -16,7 +16,7 @@ namespace Nethermind.Specs.ChainSpecStyle
         public Address Registrar { get; set; }
         public long MaximumExtraDataSize { get; set; }
         public long MinGasLimit { get; set; }
-        public Keccak ForkCanonHash { get; set; }
+        public Commitment ForkCanonHash { get; set; }
         public long? ForkBlock { get; set; }
         public long? Eip7Transition { get; set; }
         public long? Eip150Transition { get; set; }

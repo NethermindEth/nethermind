@@ -68,7 +68,7 @@ namespace Nethermind.Synchronization.Test
         public byte ProtocolVersion { get; } = default;
         public string ProtocolCode { get; } = null!;
         public string ClientId => Node.ClientId;
-        public Keccak HeadHash { get; set; }
+        public Commitment HeadHash { get; set; }
         public long HeadNumber { get; set; }
         public UInt256 TotalDifficulty { get; set; }
         public bool IsInitialized { get; set; }
@@ -78,7 +78,7 @@ namespace Nethermind.Synchronization.Test
         {
         }
 
-        public Task<OwnedBlockBodies> GetBlockBodies(IReadOnlyList<Keccak> blockHashes, CancellationToken token)
+        public Task<OwnedBlockBodies> GetBlockBodies(IReadOnlyList<Commitment> blockHashes, CancellationToken token)
         {
             BlockBody[] result = new BlockBody[blockHashes.Count];
             for (int i = 0; i < blockHashes.Count; i++)
@@ -90,7 +90,7 @@ namespace Nethermind.Synchronization.Test
             return Task.FromResult(new OwnedBlockBodies(result));
         }
 
-        public Task<BlockHeader[]> GetBlockHeaders(Keccak blockHash, int maxBlocks, int skip, CancellationToken token)
+        public Task<BlockHeader[]> GetBlockHeaders(Commitment blockHash, int maxBlocks, int skip, CancellationToken token)
         {
             BlockHeader[] result = new BlockHeader[maxBlocks];
             long? firstNumber = _remoteTree.FindHeader(blockHash, BlockTreeLookupOptions.RequireCanonical)?.Number;
@@ -132,7 +132,7 @@ namespace Nethermind.Synchronization.Test
             return Task.FromResult(result);
         }
 
-        public Task<BlockHeader?> GetHeadBlockHeader(Keccak? hash, CancellationToken token)
+        public Task<BlockHeader?> GetHeadBlockHeader(Commitment? hash, CancellationToken token)
         {
             return Task.FromResult(_remoteTree.Head?.Header);
         }
@@ -156,7 +156,7 @@ namespace Nethermind.Synchronization.Test
             _sendQueue.Add(() => _remoteSyncServer?.AddNewBlock(block, this));
         }
 
-        private void HintNewBlock(Keccak blockHash, long number)
+        private void HintNewBlock(Commitment blockHash, long number)
         {
             _sendQueue.Add(() => _remoteSyncServer?.HintBlock(blockHash, number, this));
         }
@@ -165,7 +165,7 @@ namespace Nethermind.Synchronization.Test
 
         public void SendNewTransactions(IEnumerable<Transaction> txs, bool sendFullTx) { }
 
-        public Task<TxReceipt[]?[]> GetReceipts(IReadOnlyList<Keccak> blockHash, CancellationToken token)
+        public Task<TxReceipt[]?[]> GetReceipts(IReadOnlyList<Commitment> blockHash, CancellationToken token)
         {
             TxReceipt[]?[] result = new TxReceipt[blockHash.Count][];
             for (int i = 0; i < blockHash.Count; i++)
@@ -176,7 +176,7 @@ namespace Nethermind.Synchronization.Test
             return Task.FromResult(result);
         }
 
-        public Task<byte[][]> GetNodeData(IReadOnlyList<Keccak> hashes, CancellationToken token) => Task.FromResult(_remoteSyncServer?.GetNodeData(hashes))!;
+        public Task<byte[][]> GetNodeData(IReadOnlyList<Commitment> hashes, CancellationToken token) => Task.FromResult(_remoteSyncServer?.GetNodeData(hashes))!;
 
         public void RegisterSatelliteProtocol<T>(string protocol, T protocolHandler) where T : class
         {

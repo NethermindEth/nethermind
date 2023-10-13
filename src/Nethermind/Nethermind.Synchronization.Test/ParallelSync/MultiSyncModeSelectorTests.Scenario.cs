@@ -172,7 +172,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                     SyncConfig.FastSync = false;
                     SyncConfig.FastBlocks = false;
                     SyncConfig.PivotNumber = Pivot.Number.ToString();
-                    SyncConfig.PivotHash = Keccak.Zero.ToString();
+                    SyncConfig.PivotHash = Commitment.Zero.ToString();
                     SyncConfig.SynchronizationEnabled = true;
                     SyncConfig.NetworkingEnabled = true;
                     SyncConfig.DownloadBodiesInFastSync = true;
@@ -219,9 +219,9 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                             SyncProgressResolver.FindBestFullBlock().Returns(ChainHead.Number);
                             SyncProgressResolver.FindBestFullState().Returns(ChainHead.Number);
                             SyncProgressResolver.FindBestProcessedBlock().Returns(ChainHead.Number);
-                            SyncProgressResolver.GetTotalDifficulty(Arg.Any<Keccak>()).Returns(info =>
+                            SyncProgressResolver.GetTotalDifficulty(Arg.Any<Commitment>()).Returns(info =>
                             {
-                                var hash = info.Arg<Keccak>();
+                                var hash = info.Arg<Commitment>();
 
                                 foreach (BlockHeader scenarioHeader in ScenarioHeaders)
                                 {
@@ -884,7 +884,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                         {
                             SyncConfig.MaxAttemptsToUpdatePivot = 3;
                             BeaconSyncStrategy = Substitute.For<IBeaconSyncStrategy>();
-                            BeaconSyncStrategy.GetFinalizedHash().Returns(TestItem.KeccakA);
+                            BeaconSyncStrategy.GetFinalizedHash().Returns(TestItem._commitmentA);
                             return "merge sync pivot not resolved yet";
                         }
                     );

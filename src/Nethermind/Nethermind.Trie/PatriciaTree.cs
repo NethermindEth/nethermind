@@ -32,7 +32,7 @@ namespace Nethermind.Trie
         /// <summary>
         ///     0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421
         /// </summary>
-        public static readonly Keccak EmptyTreeHash = Keccak.EmptyTreeHash;
+        public static readonly Commitment EmptyTreeHash = Commitment.EmptyTreeHash;
 
         public TrieType TrieType { get; init; }
 
@@ -53,7 +53,7 @@ namespace Nethermind.Trie
 
         private readonly bool _allowCommits;
 
-        private Keccak _rootHash = Keccak.EmptyTreeHash;
+        private Commitment _rootHash = Commitment.EmptyTreeHash;
 
         public TrieNode? RootRef { get; set; }
 
@@ -69,7 +69,7 @@ namespace Nethermind.Trie
             }
         }
 
-        public Keccak RootHash
+        public Commitment RootHash
         {
             get => _rootHash;
             set => SetRootHash(value, true);
@@ -92,7 +92,7 @@ namespace Nethermind.Trie
 
         public PatriciaTree(
             IKeyValueStoreWithBatching keyValueStore,
-            Keccak rootHash,
+            Commitment rootHash,
             bool parallelBranches,
             bool allowCommits,
             ILogManager logManager,
@@ -109,7 +109,7 @@ namespace Nethermind.Trie
 
         public PatriciaTree(
             ITrieStore? trieStore,
-            Keccak rootHash,
+            Commitment rootHash,
             bool parallelBranches,
             bool allowCommits,
             ILogManager? logManager,
@@ -157,7 +157,7 @@ namespace Nethermind.Trie
 
                 // reset objects
                 RootRef!.ResolveKey(TrieStore, true, bufferPool: _bufferPool);
-                SetRootHash(RootRef.Keccak!, true);
+                SetRootHash(RootRef.Commitment!, true);
             }
 
             TrieStore.FinishBlockCommit(TrieType, blockNumber, RootRef, writeFlags);
@@ -291,13 +291,13 @@ namespace Nethermind.Trie
         public void UpdateRootHash()
         {
             RootRef?.ResolveKey(TrieStore, true, bufferPool: _bufferPool);
-            SetRootHash(RootRef?.Keccak ?? EmptyTreeHash, false);
+            SetRootHash(RootRef?.Commitment ?? EmptyTreeHash, false);
         }
 
-        private void SetRootHash(Keccak? value, bool resetObjects)
+        private void SetRootHash(Commitment? value, bool resetObjects)
         {
-            _rootHash = value ?? Keccak.EmptyTreeHash; // nulls were allowed before so for now we leave it this way
-            if (_rootHash == Keccak.EmptyTreeHash)
+            _rootHash = value ?? Commitment.EmptyTreeHash; // nulls were allowed before so for now we leave it this way
+            if (_rootHash == Commitment.EmptyTreeHash)
             {
                 RootRef = null;
             }
@@ -309,7 +309,7 @@ namespace Nethermind.Trie
 
         [SkipLocalsInit]
         [DebuggerStepThrough]
-        public virtual byte[]? Get(ReadOnlySpan<byte> rawKey, Keccak? rootHash = null)
+        public virtual byte[]? Get(ReadOnlySpan<byte> rawKey, Commitment? rootHash = null)
         {
             try
             {
@@ -337,7 +337,7 @@ namespace Nethermind.Trie
             }
         }
 
-        private static void EnhanceException(ReadOnlySpan<byte> rawKey, ValueKeccak rootHash, TrieException baseException)
+        private static void EnhanceException(ReadOnlySpan<byte> rawKey, ValueCommitment rootHash, TrieException baseException)
         {
             TrieNodeException? GetTrieNodeException(TrieException? exception) =>
                 exception switch
@@ -400,7 +400,7 @@ namespace Nethermind.Trie
             CappedArray<byte> updateValue,
             bool isUpdate,
             bool ignoreMissingDelete = true,
-            Keccak? startRootHash = null)
+            Commitment? startRootHash = null)
         {
             if (isUpdate && startRootHash is not null)
             {
@@ -481,7 +481,7 @@ namespace Nethermind.Trie
                 NodeType.Extension => TraverseExtension(node, in traverseContext),
                 NodeType.Leaf => TraverseLeaf(node, in traverseContext),
                 NodeType.Unknown => throw new InvalidOperationException(
-                    $"Cannot traverse unresolved node {node.Keccak}"),
+                    $"Cannot traverse unresolved node {node.Commitment}"),
                 _ => throw new NotSupportedException(
                     $"Unknown node type {node.NodeType}")
             };
@@ -1058,7 +1058,7 @@ namespace Nethermind.Trie
             }
         }
 
-        public void Accept(ITreeVisitor visitor, Keccak rootHash, VisitingOptions? visitingOptions = null)
+        public void Accept(ITreeVisitor visitor, Commitment rootHash, VisitingOptions? visitingOptions = null)
         {
             if (visitor is null) throw new ArgumentNullException(nameof(visitor));
             if (rootHash is null) throw new ArgumentNullException(nameof(rootHash));
@@ -1074,7 +1074,7 @@ namespace Nethermind.Trie
             };
 
             TrieNode rootRef = null;
-            if (!rootHash.Equals(Keccak.EmptyTreeHash))
+            if (!rootHash.Equals(Commitment.EmptyTreeHash))
             {
                 rootRef = RootHash == rootHash ? RootRef : TrieStore.FindCachedOrUnknown(rootHash);
                 try
@@ -1111,7 +1111,7 @@ namespace Nethermind.Trie
         private static void ThrowInvalidDataException(TrieNode originalNode)
         {
             throw new InvalidDataException(
-                $"Extension {originalNode.Keccak} has no child.");
+                $"Extension {originalNode.Commitment} has no child.");
         }
 
         [DoesNotReturn]
@@ -1119,7 +1119,7 @@ namespace Nethermind.Trie
         private static void ThrowMissingChildException(TrieNode node)
         {
             throw new TrieException(
-                $"Found an {nameof(NodeType.Extension)} {node.Keccak} that is missing a child.");
+                $"Found an {nameof(NodeType.Extension)} {node.Commitment} that is missing a child.");
         }
 
         [DoesNotReturn]

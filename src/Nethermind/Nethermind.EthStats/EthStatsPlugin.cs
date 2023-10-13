@@ -71,7 +71,7 @@ public class EthStatsPlugin : INethermindPlugin
 
         if (_isOn)
         {
-            string instanceId = $"{_ethStatsConfig.Name}-{Keccak.Compute(getFromAPi.Enode!.Info)}";
+            string instanceId = $"{_ethStatsConfig.Name}-{Commitment.Compute(getFromAPi.Enode!.Info)}";
             if (_logger.IsInfo)
             {
                 _logger.Info($"Initializing ETH Stats for the instance: {instanceId}, server: {_ethStatsConfig.Server}");

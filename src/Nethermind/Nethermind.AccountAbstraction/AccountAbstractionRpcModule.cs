@@ -28,14 +28,14 @@ namespace Nethermind.AccountAbstraction
             _supportedEntryPoints = supportedEntryPoints;
         }
 
-        public ResultWrapper<Keccak> eth_sendUserOperation(UserOperationRpc userOperationRpc, Address entryPointAddress)
+        public ResultWrapper<Commitment> eth_sendUserOperation(UserOperationRpc userOperationRpc, Address entryPointAddress)
         {
             if (!_supportedEntryPoints.Contains(entryPointAddress))
             {
-                return ResultWrapper<Keccak>.Fail($"entryPoint {entryPointAddress} not supported, supported entryPoints: {string.Join(", ", _supportedEntryPoints.ToList())}");
+                return ResultWrapper<Commitment>.Fail($"entryPoint {entryPointAddress} not supported, supported entryPoints: {string.Join(", ", _supportedEntryPoints.ToList())}");
             }
 
-            // check if any entrypoint has both the sender and same nonce, if they do then the fee must increase 
+            // check if any entrypoint has both the sender and same nonce, if they do then the fee must increase
             bool allow = _supportedEntryPoints
                 .Select(ep => _userOperationPool[ep])
                 .Where(pool => pool.IncludesUserOperationWithSenderAndNonce(userOperationRpc.Sender, userOperationRpc.Nonce))
@@ -43,7 +43,7 @@ namespace Nethermind.AccountAbstraction
 
             if (!allow)
             {
-                return ResultWrapper<Keccak>.Fail("op with same nonce and sender already present in a pool but op fee increase is not large enough to replace it");
+                return ResultWrapper<Commitment>.Fail("op with same nonce and sender already present in a pool but op fee increase is not large enough to replace it");
             }
 
             return _userOperationPool[entryPointAddress].AddUserOperation(new UserOperation(userOperationRpc));

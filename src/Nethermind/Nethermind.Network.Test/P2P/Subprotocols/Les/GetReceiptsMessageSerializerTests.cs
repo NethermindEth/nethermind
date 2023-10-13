@@ -14,7 +14,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Les
         [Test]
         public void RoundTrip()
         {
-            Keccak[] hashes = { TestItem.KeccakA, TestItem.KeccakB, TestItem.KeccakC };
+            Commitment[] hashes = { TestItem._commitmentA, TestItem._commitmentB, TestItem._commitmentC };
             var ethMessage = new Network.P2P.Subprotocols.Eth.V63.Messages.GetReceiptsMessage(hashes);
 
             GetReceiptsMessage getReceiptsMessage = new(ethMessage, 1);

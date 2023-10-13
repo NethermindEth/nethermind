@@ -32,12 +32,12 @@ namespace Nethermind.JsonRpc.Test.Eip1186
             IDb memDb = new MemDb();
             TrieStore trieStore = new(memDb, LimboLogs.Instance);
             StateTree tree = new(trieStore, LimboLogs.Instance);
-            StorageTree storageTree = new(trieStore, Keccak.EmptyTreeHash, LimboLogs.Instance);
-            storageTree.Set(Keccak.Compute(a).Bytes, Rlp.Encode(Bytes.FromHexString("0xab12000000000000000000000000000000000000000000000000000000000000000000000000000000")));
-            storageTree.Set(Keccak.Compute(b).Bytes, Rlp.Encode(Bytes.FromHexString("0xab34000000000000000000000000000000000000000000000000000000000000000000000000000000")));
-            storageTree.Set(Keccak.Compute(c).Bytes, Rlp.Encode(Bytes.FromHexString("0xab56000000000000000000000000000000000000000000000000000000000000000000000000000000")));
-            storageTree.Set(Keccak.Compute(d).Bytes, Rlp.Encode(Bytes.FromHexString("0xab78000000000000000000000000000000000000000000000000000000000000000000000000000000")));
-            storageTree.Set(Keccak.Compute(e).Bytes, Rlp.Encode(Bytes.FromHexString("0xab9a000000000000000000000000000000000000000000000000000000000000000000000000000000")));
+            StorageTree storageTree = new(trieStore, Commitment.EmptyTreeHash, LimboLogs.Instance);
+            storageTree.Set(Commitment.Compute(a).Bytes, Rlp.Encode(Bytes.FromHexString("0xab12000000000000000000000000000000000000000000000000000000000000000000000000000000")));
+            storageTree.Set(Commitment.Compute(b).Bytes, Rlp.Encode(Bytes.FromHexString("0xab34000000000000000000000000000000000000000000000000000000000000000000000000000000")));
+            storageTree.Set(Commitment.Compute(c).Bytes, Rlp.Encode(Bytes.FromHexString("0xab56000000000000000000000000000000000000000000000000000000000000000000000000000000")));
+            storageTree.Set(Commitment.Compute(d).Bytes, Rlp.Encode(Bytes.FromHexString("0xab78000000000000000000000000000000000000000000000000000000000000000000000000000000")));
+            storageTree.Set(Commitment.Compute(e).Bytes, Rlp.Encode(Bytes.FromHexString("0xab9a000000000000000000000000000000000000000000000000000000000000000000000000000000")));
             storageTree.Commit(0);
 
             byte[] code = new byte[] { 1, 2, 3 };
@@ -66,12 +66,12 @@ namespace Nethermind.JsonRpc.Test.Eip1186
             IDb memDb = new MemDb();
             TrieStore trieStore = new(memDb, LimboLogs.Instance);
             StateTree tree = new(trieStore, LimboLogs.Instance);
-            StorageTree storageTree = new(trieStore, Keccak.EmptyTreeHash, LimboLogs.Instance);
-            storageTree.Set(Keccak.Compute(a).Bytes, Rlp.Encode(Bytes.FromHexString("0xab12000000000000000000000000000000000000000000000000000000000000000000000000000000")));
-            storageTree.Set(Keccak.Compute(b).Bytes, Rlp.Encode(Bytes.FromHexString("0xab34000000000000000000000000000000000000000000000000000000000000000000000000000000")));
-            storageTree.Set(Keccak.Compute(c).Bytes, Rlp.Encode(Bytes.FromHexString("0xab56000000000000000000000000000000000000000000000000000000000000000000000000000000")));
-            storageTree.Set(Keccak.Compute(d).Bytes, Rlp.Encode(Bytes.FromHexString("0xab78000000000000000000000000000000000000000000000000000000000000000000000000000000")));
-            storageTree.Set(Keccak.Compute(e).Bytes, Rlp.Encode(Bytes.FromHexString("0xab9a000000000000000000000000000000000000000000000000000000000000000000000000000000")));
+            StorageTree storageTree = new(trieStore, Commitment.EmptyTreeHash, LimboLogs.Instance);
+            storageTree.Set(Commitment.Compute(a).Bytes, Rlp.Encode(Bytes.FromHexString("0xab12000000000000000000000000000000000000000000000000000000000000000000000000000000")));
+            storageTree.Set(Commitment.Compute(b).Bytes, Rlp.Encode(Bytes.FromHexString("0xab34000000000000000000000000000000000000000000000000000000000000000000000000000000")));
+            storageTree.Set(Commitment.Compute(c).Bytes, Rlp.Encode(Bytes.FromHexString("0xab56000000000000000000000000000000000000000000000000000000000000000000000000000000")));
+            storageTree.Set(Commitment.Compute(d).Bytes, Rlp.Encode(Bytes.FromHexString("0xab78000000000000000000000000000000000000000000000000000000000000000000000000000000")));
+            storageTree.Set(Commitment.Compute(e).Bytes, Rlp.Encode(Bytes.FromHexString("0xab9a000000000000000000000000000000000000000000000000000000000000000000000000000000")));
             storageTree.Commit(0);
 
             byte[] code = new byte[] { 1, 2, 3 };

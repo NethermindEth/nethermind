@@ -198,17 +198,17 @@ namespace Nethermind.Serialization.Rlp
             return PeekByte() >= 192;
         }
 
-        public void Encode(Keccak? keccak)
+        public void Encode(Commitment? keccak)
         {
             if (keccak is null)
             {
                 WriteByte(EmptyArrayByte);
             }
-            else if (ReferenceEquals(keccak, Keccak.EmptyTreeHash))
+            else if (ReferenceEquals(keccak, Commitment.EmptyTreeHash))
             {
                 Write(Rlp.OfEmptyTreeHash.Bytes);
             }
-            else if (ReferenceEquals(keccak, Keccak.OfAnEmptyString))
+            else if (ReferenceEquals(keccak, Commitment.OfAnEmptyString))
             {
                 Write(Rlp.OfEmptyStringHash.Bytes);
             }
@@ -219,7 +219,7 @@ namespace Nethermind.Serialization.Rlp
             }
         }
 
-        public void Encode(in ValueKeccak? keccak)
+        public void Encode(in ValueCommitment? keccak)
         {
             if (keccak is null)
             {
@@ -232,7 +232,7 @@ namespace Nethermind.Serialization.Rlp
             }
         }
 
-        public void Encode(Keccak[] keccaks)
+        public void Encode(Commitment[] keccaks)
         {
             if (keccaks is null)
             {
@@ -249,7 +249,7 @@ namespace Nethermind.Serialization.Rlp
             }
         }
 
-        public void Encode(ValueKeccak[] keccaks)
+        public void Encode(ValueCommitment[] keccaks)
         {
             if (keccaks is null)
             {
@@ -266,7 +266,7 @@ namespace Nethermind.Serialization.Rlp
             }
         }
 
-        public void Encode(IReadOnlyList<Keccak> keccaks)
+        public void Encode(IReadOnlyList<Commitment> keccaks)
         {
             if (keccaks is null)
             {
@@ -285,7 +285,7 @@ namespace Nethermind.Serialization.Rlp
         }
 
 
-        public void Encode(IReadOnlyList<ValueKeccak> keccaks)
+        public void Encode(IReadOnlyList<ValueCommitment> keccaks)
         {
             if (keccaks is null)
             {
@@ -891,7 +891,7 @@ namespace Nethermind.Serialization.Rlp
             }
         }
 
-        public Keccak? DecodeKeccak()
+        public Commitment? DecodeKeccak()
         {
             int prefix = ReadByte();
             if (prefix == 128)
@@ -902,26 +902,26 @@ namespace Nethermind.Serialization.Rlp
             if (prefix != 128 + 32)
             {
                 throw new RlpException(
-                    $"Unexpected prefix of {prefix} when decoding {nameof(Keccak)} at position {Position} in the message of length {Length} starting with {Description}");
+                    $"Unexpected prefix of {prefix} when decoding {nameof(Commitment)} at position {Position} in the message of length {Length} starting with {Description}");
             }
 
             Span<byte> keccakSpan = Read(32);
-            if (keccakSpan.SequenceEqual(Keccak.OfAnEmptyString.Bytes))
+            if (keccakSpan.SequenceEqual(Commitment.OfAnEmptyString.Bytes))
             {
-                return Keccak.OfAnEmptyString;
+                return Commitment.OfAnEmptyString;
             }
 
-            if (keccakSpan.SequenceEqual(Keccak.EmptyTreeHash.Bytes))
+            if (keccakSpan.SequenceEqual(Commitment.EmptyTreeHash.Bytes))
             {
-                return Keccak.EmptyTreeHash;
+                return Commitment.EmptyTreeHash;
             }
 
-            return new Keccak(keccakSpan);
+            return new Commitment(keccakSpan);
         }
 
-        public bool DecodeValueKeccak(out ValueKeccak keccak)
+        public bool DecodeValueKeccak(out ValueCommitment commitment)
         {
-            Unsafe.SkipInit(out keccak);
+            Unsafe.SkipInit(out commitment);
             int prefix = ReadByte();
             if (prefix == 128)
             {
@@ -931,15 +931,15 @@ namespace Nethermind.Serialization.Rlp
             if (prefix != 128 + 32)
             {
                 throw new RlpException(
-                    $"Unexpected prefix of {prefix} when decoding {nameof(Keccak)} at position {Position} in the message of length {Length} starting with {Description}");
+                    $"Unexpected prefix of {prefix} when decoding {nameof(Commitment)} at position {Position} in the message of length {Length} starting with {Description}");
             }
 
             Span<byte> keccakSpan = Read(32);
-            keccak = new ValueKeccak(keccakSpan);
+            commitment = new ValueCommitment(keccakSpan);
             return true;
         }
 
-        public Keccak? DecodeZeroPrefixKeccak()
+        public Commitment? DecodeZeroPrefixKeccak()
         {
             int prefix = PeekByte();
             if (prefix == 128)
@@ -951,7 +951,7 @@ namespace Nethermind.Serialization.Rlp
             ReadOnlySpan<byte> theSpan = DecodeByteArraySpan();
             byte[] keccakByte = new byte[32];
             theSpan.CopyTo(keccakByte.AsSpan(32 - theSpan.Length));
-            return new Keccak(keccakByte);
+            return new Commitment(keccakByte);
         }
 
         public Address? DecodeAddress()
@@ -965,7 +965,7 @@ namespace Nethermind.Serialization.Rlp
             if (prefix != 128 + 20)
             {
                 throw new RlpException(
-                    $"Unexpected prefix of {prefix} when decoding {nameof(Keccak)} at position {Position} in the message of length {Length} starting with {Description}");
+                    $"Unexpected prefix of {prefix} when decoding {nameof(Commitment)} at position {Position} in the message of length {Length} starting with {Description}");
             }
 
             byte[] buffer = Read(20).ToArray();

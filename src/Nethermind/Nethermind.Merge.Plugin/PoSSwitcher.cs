@@ -40,12 +40,12 @@ namespace Nethermind.Merge.Plugin
         private readonly IBlockTree _blockTree;
         private readonly ISpecProvider _specProvider;
         private readonly ILogger _logger;
-        private Keccak? _terminalBlockHash;
+        private Commitment? _terminalBlockHash;
 
         private long? _terminalBlockNumber;
         private long? _firstPoSBlockNumber;
         private bool _hasEverReachedTerminalDifficulty;
-        private Keccak _finalizedBlockHash = Keccak.Zero;
+        private Commitment _finalizedBlockHash = Commitment.Zero;
         private bool _terminalBlockExplicitSpecified;
         private UInt256? _finalTotalDifficulty;
 
@@ -102,7 +102,7 @@ namespace Nethermind.Merge.Plugin
 
         private void LoadFinalizedBlockHash()
         {
-            _finalizedBlockHash = LoadHashFromDb(MetadataDbKeys.FinalizedBlockHash) ?? Keccak.Zero;
+            _finalizedBlockHash = LoadHashFromDb(MetadataDbKeys.FinalizedBlockHash) ?? Commitment.Zero;
         }
 
         public bool TryUpdateTerminalBlock(BlockHeader header)
@@ -133,16 +133,16 @@ namespace Nethermind.Merge.Plugin
             return true;
         }
 
-        public void ForkchoiceUpdated(BlockHeader newHeadHash, Keccak finalizedHash)
+        public void ForkchoiceUpdated(BlockHeader newHeadHash, Commitment finalizedHash)
         {
-            if (finalizedHash != Keccak.Zero && _finalizedBlockHash == Keccak.Zero)
+            if (finalizedHash != Commitment.Zero && _finalizedBlockHash == Commitment.Zero)
             {
                 _blockTree.NewHeadBlock -= CheckIfTerminalBlockReached;
             }
 
-            if (finalizedHash != Keccak.Zero)
+            if (finalizedHash != Commitment.Zero)
             {
-                if (_finalizedBlockHash == Keccak.Zero)
+                if (_finalizedBlockHash == Commitment.Zero)
                 {
                     if (_logger.IsInfo) _logger.Info($"Reached the first finalized PoS block FinalizedHash: {finalizedHash}, NewHeadHash: {newHeadHash}");
                     _blockTree.NewHeadBlock -= CheckIfTerminalBlockReached;
@@ -152,7 +152,7 @@ namespace Nethermind.Merge.Plugin
             }
         }
 
-        public bool TransitionFinished => FinalTotalDifficulty is not null || _finalizedBlockHash != Keccak.Zero;
+        public bool TransitionFinished => FinalTotalDifficulty is not null || _finalizedBlockHash != Commitment.Zero;
 
         public (bool IsTerminal, bool IsPostMerge) GetBlockConsensusInfo(BlockHeader header)
         {
@@ -214,7 +214,7 @@ namespace Nethermind.Merge.Plugin
 
         public UInt256? FinalTotalDifficulty => _finalTotalDifficulty;
 
-        public Keccak ConfiguredTerminalBlockHash => _mergeConfig.TerminalBlockHashParsed;
+        public Commitment ConfiguredTerminalBlockHash => _mergeConfig.TerminalBlockHashParsed;
 
         public long? ConfiguredTerminalBlockNumber => _mergeConfig.TerminalBlockNumber;
 
@@ -226,7 +226,7 @@ namespace Nethermind.Merge.Plugin
             _terminalBlockExplicitSpecified = _terminalBlockNumber is not null;
             _terminalBlockNumber ??= LoadTerminalBlockNumberFromDb();
 
-            _terminalBlockHash = _mergeConfig.TerminalBlockHashParsed != Keccak.Zero
+            _terminalBlockHash = _mergeConfig.TerminalBlockHashParsed != Commitment.Zero
                 ? _mergeConfig.TerminalBlockHashParsed
                 : LoadHashFromDb(MetadataDbKeys.TerminalPoWHash);
 
@@ -253,7 +253,7 @@ namespace Nethermind.Merge.Plugin
             return null;
         }
 
-        private Keccak? LoadHashFromDb(int key)
+        private Commitment? LoadHashFromDb(int key)
         {
             try
             {

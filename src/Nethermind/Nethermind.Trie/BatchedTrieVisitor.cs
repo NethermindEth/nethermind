@@ -117,14 +117,14 @@ public class BatchedTrieVisitor
     }
 
     // Determine the locality of the key. I guess if you use paprika or something, you'd need to modify this.
-    int CalculatePartitionIdx(ValueKeccak key)
+    int CalculatePartitionIdx(ValueCommitment key)
     {
         uint number = BinaryPrimitives.ReadUInt32BigEndian(key.Bytes);
         return (int)(number * (ulong)_partitionCount / uint.MaxValue);
     }
 
     public void Start(
-        ValueKeccak root,
+        ValueCommitment root,
         TrieVisitContext trieVisitContext)
     {
         // Start with the root
@@ -191,7 +191,7 @@ public class BatchedTrieVisitor
                 for (int i = 0; i < _maxBatchSize; i++)
                 {
                     if (!theStack.TryPop(out Job item)) break;
-                    finalBatch.Add((_resolver.FindCachedOrUnknown(item.Key.ToKeccak()), item.Context));
+                    finalBatch.Add((_resolver.FindCachedOrUnknown(item.Key.ToCommitment()), item.Context));
                     Interlocked.Decrement(ref _queuedJobs);
                 }
             }
@@ -224,7 +224,7 @@ public class BatchedTrieVisitor
             {
                 Job job = preSort[i];
 
-                TrieNode node = _resolver.FindCachedOrUnknown(job.Key.ToKeccak());
+                TrieNode node = _resolver.FindCachedOrUnknown(job.Key.ToCommitment());
                 finalBatch.Add((node, job.Context));
             }
 
@@ -261,15 +261,15 @@ public class BatchedTrieVisitor
                 continue;
             }
 
-            ValueKeccak keccak = trieNode.Keccak;
-            int partitionIdx = CalculatePartitionIdx(keccak);
+            ValueCommitment commitment = trieNode.Commitment;
+            int partitionIdx = CalculatePartitionIdx(commitment);
             Interlocked.Increment(ref _activeJobs);
             Interlocked.Increment(ref _queuedJobs);
 
             var theStack = _partitions[partitionIdx];
             lock (theStack)
             {
-                theStack.Push(new Job(keccak, ctx));
+                theStack.Push(new Job(commitment, ctx));
             }
         }
 
@@ -296,7 +296,7 @@ public class BatchedTrieVisitor
                 SmallTrieVisitContext ctx = currentBatch[i].Item2;
 
                 if (cur.FullRlp.IsNotNull) continue;
-                if (cur.Keccak is null) throw new TrieException($"Unable to resolve node without Keccak. ctx: {ctx.Level}, {ctx.ExpectAccounts}, {ctx.IsStorage}, {ctx.BranchChildIndex}");
+                if (cur.Commitment is null) throw new TrieException($"Unable to resolve node without Keccak. ctx: {ctx.Level}, {ctx.ExpectAccounts}, {ctx.IsStorage}, {ctx.BranchChildIndex}");
 
                 resolveOrdering.Add(i);
             }
@@ -305,7 +305,7 @@ public class BatchedTrieVisitor
             // take about 0.1% of the time, so not very cpu intensive in this case.
             resolveOrdering
                 .AsSpan()
-                .Sort((item1, item2) => currentBatch[item1].Item1.Keccak.CompareTo(currentBatch[item2].Item1.Keccak));
+                .Sort((item1, item2) => currentBatch[item1].Item1.Commitment.CompareTo(currentBatch[item2].Item1.Commitment));
 
             ReadFlags flags = ReadFlags.None;
             if (resolveOrdering.Count > _readAheadThreshold)
@@ -321,13 +321,13 @@ public class BatchedTrieVisitor
                 (TrieNode nodeToResolve, SmallTrieVisitContext ctx) = currentBatch[idx];
                 try
                 {
-                    Keccak theKeccak = nodeToResolve.Keccak;
+                    Commitment theCommitment = nodeToResolve.Commitment;
                     nodeToResolve.ResolveNode(_resolver, flags);
-                    nodeToResolve.Keccak = theKeccak; // The resolve may set a key which clear the keccak
+                    nodeToResolve.Commitment = theCommitment; // The resolve may set a key which clear the keccak
                 }
                 catch (TrieException)
                 {
-                    _visitor.VisitMissingNode(nodeToResolve.Keccak, ctx.ToVisitContext());
+                    _visitor.VisitMissingNode(nodeToResolve.Commitment, ctx.ToVisitContext());
                 }
             };
 
@@ -355,10 +355,10 @@ public class BatchedTrieVisitor
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
     private readonly struct Job
     {
-        public readonly ValueKeccak Key;
+        public readonly ValueCommitment Key;
         public readonly SmallTrieVisitContext Context;
 
-        public Job(ValueKeccak key, SmallTrieVisitContext context)
+        public Job(ValueCommitment key, SmallTrieVisitContext context)
         {
             Key = key;
             Context = context;

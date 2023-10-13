@@ -34,7 +34,7 @@ namespace Nethermind.Consensus.AuRa.Transactions
             IList<IRandomContract> contracts,
             IEciesCipher eciesCipher,
             ISigner signer,
-            ProtectedPrivateKey previousCryptoKey, // this is for backwards-compability when upgrading validator node 
+            ProtectedPrivateKey previousCryptoKey, // this is for backwards-compability when upgrading validator node
             ICryptoRandom cryptoRandom,
             ILogManager logManager)
         {
@@ -69,7 +69,7 @@ namespace Nethermind.Consensus.AuRa.Transactions
                         {
                             byte[] bytes = new byte[32];
                             _random.GenerateRandomBytes(bytes);
-                            var hash = Keccak.Compute(bytes);
+                            var hash = Commitment.Compute(bytes);
                             PrivateKey? privateKey = _signer.Key;
                             if (privateKey is not null)
                             {
@@ -114,7 +114,7 @@ namespace Nethermind.Consensus.AuRa.Transactions
                                 throw new AuRaException("Decrypted random number has the wrong length.");
                             }
 
-                            var computedHash = ValueKeccak.Compute(bytes);
+                            var computedHash = ValueCommitment.Compute(bytes);
                             if (!Bytes.AreEqual(hash.Bytes, computedHash.BytesAsSpan))
                             {
                                 throw new AuRaException("Decrypted random number doesn't agree with the hash.");

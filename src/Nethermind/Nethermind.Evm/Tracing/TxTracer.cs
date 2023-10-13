@@ -48,8 +48,8 @@ public class TxTracer : ITxTracer
     public virtual void ReportStorageChange(in ReadOnlySpan<byte> key, in ReadOnlySpan<byte> value) { }
     public virtual void ReportStorageChange(in StorageCell storageCell, byte[] before, byte[] after) { }
     public virtual void ReportStorageRead(in StorageCell storageCell) { }
-    public virtual void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Keccak? stateRoot = null) { }
-    public virtual void MarkAsFailed(Address recipient, long gasSpent, byte[] output, string error, Keccak? stateRoot = null) { }
+    public virtual void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Commitment? stateRoot = null) { }
+    public virtual void MarkAsFailed(Address recipient, long gasSpent, byte[] output, string error, Commitment? stateRoot = null) { }
     public virtual void StartOperation(int depth, long gas, Instruction opcode, int pc, bool isPostMerge = false) { }
     public virtual void ReportOperationError(EvmExceptionType error) { }
     public virtual void ReportOperationRemainingGas(long gas) { }
@@ -65,7 +65,7 @@ public class TxTracer : ITxTracer
     public virtual void ReportActionEnd(long gas, ReadOnlyMemory<byte> output) { }
     public virtual void ReportActionError(EvmExceptionType evmExceptionType) { }
     public virtual void ReportActionEnd(long gas, Address deploymentAddress, ReadOnlyMemory<byte> deployedCode) { }
-    public virtual void ReportBlockHash(Keccak blockHash) { }
+    public virtual void ReportBlockHash(Commitment blockHash) { }
     public virtual void ReportByteCode(byte[] byteCode) { }
     public virtual void ReportGasUpdateForVmTrace(long refund, long gasAvailable) { }
     public virtual void ReportRefund(long refund) { }

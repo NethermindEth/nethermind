@@ -130,7 +130,7 @@ public class TestBlockchain : IDisposable
         State.CreateAccount(TestItem.AddressC, (initialValues ?? InitialValue));
 
         byte[] code = Bytes.FromHexString("0xabcd");
-        Keccak codeHash = Keccak.Compute(code);
+        Commitment codeHash = Commitment.Compute(code);
         State.InsertCode(TestItem.AddressA, code, SpecProvider.GenesisSpec);
 
         State.Set(new StorageCell(TestItem.AddressA, UInt256.One), Bytes.FromHexString("0xabcdef"));
@@ -320,7 +320,7 @@ public class TestBlockchain : IDisposable
 
         if (SpecProvider.GenesisSpec.IsBeaconBlockRootAvailable)
         {
-            genesisBlockBuilder.WithParentBeaconBlockRoot(Keccak.Zero);
+            genesisBlockBuilder.WithParentBeaconBlockRoot(Commitment.Zero);
         }
 
         genesisBlockBuilder.WithStateRoot(State.StateRoot);

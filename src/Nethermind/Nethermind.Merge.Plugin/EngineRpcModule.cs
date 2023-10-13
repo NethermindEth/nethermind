@@ -26,7 +26,7 @@ public partial class EngineRpcModule : IEngineRpcModule
         IAsyncHandler<byte[], GetPayloadV3Result?> getPayloadHandlerV3,
         IAsyncHandler<ExecutionPayload, PayloadStatusV1> newPayloadV1Handler,
         IForkchoiceUpdatedHandler forkchoiceUpdatedV1Handler,
-        IAsyncHandler<IList<Keccak>, IEnumerable<ExecutionPayloadBodyV1Result?>> executionGetPayloadBodiesByHashV1Handler,
+        IAsyncHandler<IList<Commitment>, IEnumerable<ExecutionPayloadBodyV1Result?>> executionGetPayloadBodiesByHashV1Handler,
         IGetPayloadBodiesByRangeV1Handler executionGetPayloadBodiesByRangeV1Handler,
         IHandler<TransitionConfigurationV1, TransitionConfigurationV1> transitionConfigurationHandler,
         IHandler<IEnumerable<string>, IEnumerable<string>> capabilitiesHandler,

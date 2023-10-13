@@ -45,7 +45,7 @@ namespace Nethermind.Blockchain.Visitors
         /// <param name="hash">Hash of the missing block</param>
         /// <param name="cancellationToken"></param>
         /// <returns></returns>
-        Task<bool> VisitMissing(Keccak hash, CancellationToken cancellationToken);
+        Task<bool> VisitMissing(Commitment hash, CancellationToken cancellationToken);
 
         /// <summary>
         /// If the block hash is defined on the chain level and only header is available but not block body

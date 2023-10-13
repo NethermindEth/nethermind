@@ -54,10 +54,10 @@ public class ReceiptTrie : PatriciaTrie<TxReceipt>
 
     protected override void Initialize(IEnumerable<TxReceipt> list) => throw new NotSupportedException();
 
-    public static Keccak CalculateRoot(IReceiptSpec receiptSpec, IList<TxReceipt> txReceipts)
+    public static Commitment CalculateRoot(IReceiptSpec receiptSpec, IList<TxReceipt> txReceipts)
     {
         TrackingCappedArrayPool cappedArrayPool = new(txReceipts.Count * 4);
-        Keccak receiptsRoot = new ReceiptTrie(receiptSpec, txReceipts, bufferPool: cappedArrayPool).RootHash;
+        Commitment receiptsRoot = new ReceiptTrie(receiptSpec, txReceipts, bufferPool: cappedArrayPool).RootHash;
         cappedArrayPool.ReturnAll();
         return receiptsRoot;
     }

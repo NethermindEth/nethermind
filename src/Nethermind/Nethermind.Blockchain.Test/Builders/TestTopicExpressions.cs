@@ -9,9 +9,9 @@ namespace Nethermind.Blockchain.Test.Builders
 {
     public class TestTopicExpressions
     {
-        public static TopicExpression Specific(Keccak keccak) => new SpecificTopic(keccak);
+        public static TopicExpression Specific(Commitment commitment) => new SpecificTopic(commitment);
         public static TopicExpression Any => AnyTopic.Instance;
         public static TopicExpression Or(params TopicExpression[] topics) => new OrExpression(topics);
-        public static TopicExpression Or(params Keccak[] topics) => Or(topics.Select(Specific).ToArray());
+        public static TopicExpression Or(params Commitment[] topics) => Or(topics.Select(Specific).ToArray());
     }
 }

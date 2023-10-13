@@ -40,7 +40,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             ResultWrapper<FeeHistoryResults> expected =
                 ResultWrapper<FeeHistoryResults>.Fail("newestBlock: Is not correct block number", ErrorCodes.InvalidParams);
 
-            ResultWrapper<FeeHistoryResults> resultWrapper = feeHistoryOracle.GetFeeHistory(0, new BlockParameter(TestItem.KeccakA));
+            ResultWrapper<FeeHistoryResults> resultWrapper = feeHistoryOracle.GetFeeHistory(0, new BlockParameter(TestItem._commitmentA));
 
             resultWrapper.Should().BeEquivalentTo(expected);
         }
@@ -307,12 +307,12 @@ namespace Nethermind.JsonRpc.Test.Modules
             Transaction[] transactions = new Transaction[]
             {
                 //Rewards: 
-                Build.A.Transaction.WithHash(TestItem.KeccakA).WithMaxFeePerGas(20).WithMaxPriorityFeePerGas(13)
+                Build.A.Transaction.WithHash(TestItem._commitmentA).WithMaxFeePerGas(20).WithMaxPriorityFeePerGas(13)
                     .WithType(TxType.EIP1559).TestObject, //13
-                Build.A.Transaction.WithHash(TestItem.KeccakB).WithMaxFeePerGas(10).WithMaxPriorityFeePerGas(7).TestObject, //4
-                Build.A.Transaction.WithHash(TestItem.KeccakC).WithMaxFeePerGas(25).WithMaxPriorityFeePerGas(24)
+                Build.A.Transaction.WithHash(TestItem._commitmentB).WithMaxFeePerGas(10).WithMaxPriorityFeePerGas(7).TestObject, //4
+                Build.A.Transaction.WithHash(TestItem._commitmentC).WithMaxFeePerGas(25).WithMaxPriorityFeePerGas(24)
                     .WithType(TxType.EIP1559).TestObject, //22
-                Build.A.Transaction.WithHash(TestItem.KeccakD).WithMaxFeePerGas(15).WithMaxPriorityFeePerGas(10)
+                Build.A.Transaction.WithHash(TestItem._commitmentD).WithMaxFeePerGas(15).WithMaxPriorityFeePerGas(10)
                     .WithType(TxType.EIP1559).TestObject //10
             };
             return transactions;

@@ -33,7 +33,7 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams
         GasUsed = block.GasUsed;
         ReceiptsRoot = block.ReceiptsRoot!;
         LogsBloom = block.Bloom!;
-        PrevRandao = block.MixHash ?? Keccak.Zero;
+        PrevRandao = block.MixHash ?? Commitment.Zero;
         ExtraData = block.ExtraData!;
         Timestamp = block.Timestamp;
         BaseFeePerGas = block.BaseFeePerGas;
@@ -44,7 +44,7 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams
 
     public UInt256 BaseFeePerGas { get; set; }
 
-    public Keccak BlockHash { get; set; } = Keccak.Zero;
+    public Commitment BlockHash { get; set; } = Commitment.Zero;
 
     public long BlockNumber { get; set; }
 
@@ -58,13 +58,13 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams
 
     public Bloom LogsBloom { get; set; } = Bloom.Empty;
 
-    public Keccak ParentHash { get; set; } = Keccak.Zero;
+    public Commitment ParentHash { get; set; } = Commitment.Zero;
 
-    public Keccak PrevRandao { get; set; } = Keccak.Zero;
+    public Commitment PrevRandao { get; set; } = Commitment.Zero;
 
-    public Keccak ReceiptsRoot { get; set; } = Keccak.Zero;
+    public Commitment ReceiptsRoot { get; set; } = Commitment.Zero;
 
-    public Keccak StateRoot { get; set; } = Keccak.Zero;
+    public Commitment StateRoot { get; set; } = Commitment.Zero;
 
     public ulong Timestamp { get; set; }
 
@@ -109,7 +109,7 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams
     /// <see href="https://eips.ethereum.org/EIPS/eip-4788">EIP-4788</see>.
     /// </summary>
     [JsonIgnore]
-    public Keccak? ParentBeaconBlockRoot { get; set; }
+    public Commitment? ParentBeaconBlockRoot { get; set; }
 
     /// <summary>
     /// Creates the execution block from payload.
@@ -124,7 +124,7 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams
             var transactions = GetTransactions();
             var header = new BlockHeader(
                 ParentHash,
-                Keccak.OfAnEmptySequenceRlp,
+                Commitment.OfAnEmptySequenceRlp,
                 FeeRecipient,
                 UInt256.Zero,
                 BlockNumber,

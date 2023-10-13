@@ -25,17 +25,17 @@ namespace Nethermind.State
             _logger = logManager?.GetClassLogger<StateReader>() ?? throw new ArgumentNullException(nameof(logManager));
             _codeDb = codeDb ?? throw new ArgumentNullException(nameof(codeDb));
             _state = new StateTree(trieStore, logManager);
-            _storage = new StorageTree(trieStore, Keccak.EmptyTreeHash, logManager);
+            _storage = new StorageTree(trieStore, Commitment.EmptyTreeHash, logManager);
         }
 
-        public Account? GetAccount(Keccak stateRoot, Address address)
+        public Account? GetAccount(Commitment stateRoot, Address address)
         {
             return GetState(stateRoot, address);
         }
 
-        public byte[] GetStorage(Keccak storageRoot, in UInt256 index)
+        public byte[] GetStorage(Commitment storageRoot, in UInt256 index)
         {
-            if (storageRoot == Keccak.EmptyTreeHash)
+            if (storageRoot == Commitment.EmptyTreeHash)
             {
                 return new byte[] { 0 };
             }
@@ -44,14 +44,14 @@ namespace Nethermind.State
             return _storage.Get(index, storageRoot);
         }
 
-        public UInt256 GetBalance(Keccak stateRoot, Address address)
+        public UInt256 GetBalance(Commitment stateRoot, Address address)
         {
             return GetState(stateRoot, address)?.Balance ?? UInt256.Zero;
         }
 
-        public byte[]? GetCode(Keccak codeHash)
+        public byte[]? GetCode(Commitment codeHash)
         {
-            if (codeHash == Keccak.OfAnEmptyString)
+            if (codeHash == Commitment.OfAnEmptyString)
             {
                 return Array.Empty<byte>();
             }
@@ -59,20 +59,20 @@ namespace Nethermind.State
             return _codeDb[codeHash.Bytes];
         }
 
-        public void RunTreeVisitor(ITreeVisitor treeVisitor, Keccak rootHash, VisitingOptions? visitingOptions = null)
+        public void RunTreeVisitor(ITreeVisitor treeVisitor, Commitment rootHash, VisitingOptions? visitingOptions = null)
         {
             _state.Accept(treeVisitor, rootHash, visitingOptions);
         }
 
-        public byte[] GetCode(Keccak stateRoot, Address address)
+        public byte[] GetCode(Commitment stateRoot, Address address)
         {
             Account? account = GetState(stateRoot, address);
             return account is null ? Array.Empty<byte>() : GetCode(account.CodeHash);
         }
 
-        private Account? GetState(Keccak stateRoot, Address address)
+        private Account? GetState(Commitment stateRoot, Address address)
         {
-            if (stateRoot == Keccak.EmptyTreeHash)
+            if (stateRoot == Commitment.EmptyTreeHash)
             {
                 return null;
             }

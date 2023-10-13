@@ -15,8 +15,8 @@ namespace Nethermind.Wallet
         bool UnlockAccount(Address address, SecureString passphrase, TimeSpan? timeSpan = null);
         bool LockAccount(Address address);
         bool IsUnlocked(Address address);
-        Signature Sign(Keccak message, Address address, SecureString passphrase = null);
-        Signature Sign(Keccak message, Address address);
+        Signature Sign(Commitment message, Address address, SecureString passphrase = null);
+        Signature Sign(Commitment message, Address address);
         Address[] GetAccounts();
         event EventHandler<AccountLockedEventArgs> AccountLocked;
         event EventHandler<AccountUnlockedEventArgs> AccountUnlocked;

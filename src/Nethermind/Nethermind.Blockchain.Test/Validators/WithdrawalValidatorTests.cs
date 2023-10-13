@@ -40,8 +40,8 @@ public class WithdrawalValidatorTests
         ISpecProvider specProvider = new CustomSpecProvider(((ForkActivation)0, Shanghai.Instance));
         BlockValidator blockValidator = new(Always.Valid, Always.Valid, Always.Valid, specProvider, LimboLogs.Instance);
         Withdrawal[] withdrawals = { TestItem.WithdrawalA_1Eth, TestItem.WithdrawalB_2Eth };
-        Keccak withdrawalRoot = new WithdrawalTrie(withdrawals).RootHash;
-        bool isValid = blockValidator.ValidateSuggestedBlock(Build.A.Block.WithWithdrawals(withdrawals).WithWithdrawalsRoot(TestItem.KeccakD).TestObject);
+        Commitment withdrawalRoot = new WithdrawalTrie(withdrawals).RootHash;
+        bool isValid = blockValidator.ValidateSuggestedBlock(Build.A.Block.WithWithdrawals(withdrawals).WithWithdrawalsRoot(TestItem._commitmentD).TestObject);
         Assert.False(isValid);
     }
 
@@ -51,7 +51,7 @@ public class WithdrawalValidatorTests
         ISpecProvider specProvider = new CustomSpecProvider(((ForkActivation)0, Shanghai.Instance));
         BlockValidator blockValidator = new(Always.Valid, Always.Valid, Always.Valid, specProvider, LimboLogs.Instance);
         Withdrawal[] withdrawals = { };
-        Keccak withdrawalRoot = new WithdrawalTrie(withdrawals).RootHash;
+        Commitment withdrawalRoot = new WithdrawalTrie(withdrawals).RootHash;
         bool isValid = blockValidator.ValidateSuggestedBlock(Build.A.Block.WithWithdrawals(withdrawals).WithWithdrawalsRoot(withdrawalRoot).TestObject);
         Assert.True(isValid);
     }
@@ -62,7 +62,7 @@ public class WithdrawalValidatorTests
         ISpecProvider specProvider = new CustomSpecProvider(((ForkActivation)0, Shanghai.Instance));
         BlockValidator blockValidator = new(Always.Valid, Always.Valid, Always.Valid, specProvider, LimboLogs.Instance);
         Withdrawal[] withdrawals = { TestItem.WithdrawalA_1Eth, TestItem.WithdrawalB_2Eth };
-        Keccak withdrawalRoot = new WithdrawalTrie(withdrawals).RootHash;
+        Commitment withdrawalRoot = new WithdrawalTrie(withdrawals).RootHash;
         bool isValid = blockValidator.ValidateSuggestedBlock(Build.A.Block.WithWithdrawals(withdrawals).WithWithdrawalsRoot(withdrawalRoot).TestObject);
         Assert.True(isValid);
     }

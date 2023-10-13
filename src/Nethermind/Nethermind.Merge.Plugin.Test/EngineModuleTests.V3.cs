@@ -63,7 +63,7 @@ public partial class EngineModuleTests
     }
 
     [TestCaseSource(nameof(CancunFieldsTestSource))]
-    public async Task<int> NewPayloadV2_should_decline_pre_cancun_with_cancun_fields(ulong? blobGasUsed, ulong? excessBlobGas, Keccak? parentBlockBeaconRoot)
+    public async Task<int> NewPayloadV2_should_decline_pre_cancun_with_cancun_fields(ulong? blobGasUsed, ulong? excessBlobGas, Commitment? parentBlockBeaconRoot)
     {
         MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Shanghai.Instance);
         IEngineRpcModule rpcModule = CreateEngineModule(chain);
@@ -170,7 +170,7 @@ public partial class EngineModuleTests
             payload.BlobGasUsed += 1;
         }
 
-        payload.ParentHash = TestItem.KeccakA;
+        payload.ParentHash = TestItem._commitmentA;
         payload.BlockNumber = 2;
         payload.TryGetBlock(out Block? b);
         payload.BlockHash = b!.CalculateHash();
@@ -208,7 +208,7 @@ public partial class EngineModuleTests
         moduleProvider.Register(new SingletonModulePool<IEngineRpcModule>(new SingletonFactory<IEngineRpcModule>(rpcModule), true));
 
         ExecutionPayloadV3 executionPayload = CreateBlockRequestV3(
-            chain, CreateParentBlockRequestOnHead(chain.BlockTree), TestItem.AddressD, withdrawals: Array.Empty<Withdrawal>(), blobGasUsed: 0, excessBlobGas: 0, parentBeaconBlockRoot: TestItem.KeccakA);
+            chain, CreateParentBlockRequestOnHead(chain.BlockTree), TestItem.AddressD, withdrawals: Array.Empty<Withdrawal>(), blobGasUsed: 0, excessBlobGas: 0, parentBeaconBlockRoot: TestItem._commitmentA);
 
         return (new(moduleProvider, LimboLogs.Instance, jsonRpcConfig), new(RpcEndpoint.Http), new(), executionPayload);
     }
@@ -221,7 +221,7 @@ public partial class EngineModuleTests
 
         string executionPayloadString = serializer.Serialize(executionPayload);
         string blobsString = serializer.Serialize(Array.Empty<byte[]>());
-        string parentBeaconBlockRootString = serializer.Serialize(TestItem.KeccakA.BytesToArray());
+        string parentBeaconBlockRootString = serializer.Serialize(TestItem._commitmentA.BytesToArray());
 
         {
             JObject executionPayloadAsJObject = serializer.Deserialize<JObject>(executionPayloadString);
@@ -266,14 +266,14 @@ public partial class EngineModuleTests
     {
         MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: releaseSpec);
         IEngineRpcModule rpcModule = CreateEngineModule(chain);
-        ForkchoiceStateV1 fcuState = new(Keccak.Zero, Keccak.Zero, Keccak.Zero);
+        ForkchoiceStateV1 fcuState = new(Commitment.Zero, Commitment.Zero, Commitment.Zero);
         PayloadAttributes payloadAttributes = new()
         {
             Timestamp = chain.BlockTree.Head!.Timestamp,
-            PrevRandao = Keccak.Zero,
+            PrevRandao = Commitment.Zero,
             SuggestedFeeRecipient = Address.Zero,
             Withdrawals = new List<Withdrawal>(),
-            ParentBeaconBlockRoot = isBeaconRootSet ? Keccak.Zero : null,
+            ParentBeaconBlockRoot = isBeaconRootSet ? Commitment.Zero : null,
         };
 
         string response = await RpcTest.TestSerializedRequest(rpcModule, method,
@@ -306,7 +306,7 @@ public partial class EngineModuleTests
                  Substitute.For<IAsyncHandler<byte[], GetPayloadV3Result?>>(),
                  newPayloadHandlerMock,
                  Substitute.For<IForkchoiceUpdatedHandler>(),
-                 Substitute.For<IAsyncHandler<IList<Keccak>, IEnumerable<ExecutionPayloadBodyV1Result?>>>(),
+                 Substitute.For<IAsyncHandler<IList<Commitment>, IEnumerable<ExecutionPayloadBodyV1Result?>>>(),
                  Substitute.For<IGetPayloadBodiesByRangeV1Handler>(),
                  Substitute.For<IHandler<TransitionConfigurationV1, TransitionConfigurationV1>>(),
                  Substitute.For<IHandler<IEnumerable<string>, IEnumerable<string>>>(),
@@ -365,8 +365,8 @@ public partial class EngineModuleTests
         (byte[][] blobVersionedHashes, Transaction[] transactions) = BuildTransactionsAndBlobVersionedHashesList(hashesFirstBytes, transactionsAndFirstBytesOfTheirHashes, blockchain.SpecProvider.ChainId);
 
         ExecutionPayloadV3 executionPayload = CreateBlockRequestV3(
-            blockchain, CreateParentBlockRequestOnHead(blockchain.BlockTree), TestItem.AddressD, withdrawals: Array.Empty<Withdrawal>(), 0, 0, transactions: transactions, parentBeaconBlockRoot: Keccak.Zero);
-        ResultWrapper<PayloadStatusV1> result = await engineRpcModule.engine_newPayloadV3(executionPayload, blobVersionedHashes, Keccak.Zero);
+            blockchain, CreateParentBlockRequestOnHead(blockchain.BlockTree), TestItem.AddressD, withdrawals: Array.Empty<Withdrawal>(), 0, 0, transactions: transactions, parentBeaconBlockRoot: Commitment.Zero);
+        ResultWrapper<PayloadStatusV1> result = await engineRpcModule.engine_newPayloadV3(executionPayload, blobVersionedHashes, Commitment.Zero);
 
         return result.Data.Status;
     }
@@ -382,7 +382,7 @@ public partial class EngineModuleTests
         PayloadAttributes payloadAttributes = new()
         {
             Timestamp = payload.Timestamp + 1,
-            PrevRandao = Keccak.Zero,
+            PrevRandao = Commitment.Zero,
             SuggestedFeeRecipient = Address.Zero,
             Withdrawals = new List<Withdrawal>(),
             ParentBeaconBlockRoot = null,
@@ -409,7 +409,7 @@ public partial class EngineModuleTests
         PayloadAttributes payloadAttributes = new()
         {
             Timestamp = payload.Timestamp + 1,
-            PrevRandao = Keccak.Zero,
+            PrevRandao = Commitment.Zero,
             SuggestedFeeRecipient = Address.Zero,
             Withdrawals = new List<Withdrawal>(),
         };
@@ -552,7 +552,7 @@ public partial class EngineModuleTests
                 ExpectedResult = ErrorCodes.InvalidParams,
                 TestName = $"{nameof(ExecutionPayloadV3.ExcessBlobGas)} is set",
             };
-            yield return new TestCaseData(null, null, Keccak.Zero)
+            yield return new TestCaseData(null, null, Commitment.Zero)
             {
                 ExpectedResult = ErrorCodes.InvalidParams,
                 TestName = $"{nameof(ExecutionPayloadV3.ParentBeaconBlockRoot)} is set",
@@ -562,12 +562,12 @@ public partial class EngineModuleTests
                 ExpectedResult = ErrorCodes.InvalidParams,
                 TestName = $"Multiple fields #1",
             };
-            yield return new TestCaseData(1ul, 1ul, Keccak.Zero)
+            yield return new TestCaseData(1ul, 1ul, Commitment.Zero)
             {
                 ExpectedResult = ErrorCodes.InvalidParams,
                 TestName = $"Multiple fields #2",
             };
-            yield return new TestCaseData(1ul, null, Keccak.Zero)
+            yield return new TestCaseData(1ul, null, Commitment.Zero)
             {
                 ExpectedResult = ErrorCodes.InvalidParams,
                 TestName = $"Multiple fields #3",
@@ -578,7 +578,7 @@ public partial class EngineModuleTests
     private async Task<ExecutionPayload> SendNewBlockV3(IEngineRpcModule rpc, MergeTestBlockchain chain, IList<Withdrawal>? withdrawals)
     {
         ExecutionPayloadV3 executionPayload = CreateBlockRequestV3(
-            chain, CreateParentBlockRequestOnHead(chain.BlockTree), TestItem.AddressD, withdrawals, 0, 0, parentBeaconBlockRoot: TestItem.KeccakE);
+            chain, CreateParentBlockRequestOnHead(chain.BlockTree), TestItem.AddressD, withdrawals, 0, 0, parentBeaconBlockRoot: TestItem._commitmentE);
         ResultWrapper<PayloadStatusV1> executePayloadResult = await rpc.engine_newPayloadV3(executionPayload, Array.Empty<byte[]>(), executionPayload.ParentBeaconBlockRoot);
 
         executePayloadResult.Data.Status.Should().Be(PayloadStatus.Valid);
@@ -611,12 +611,12 @@ public partial class EngineModuleTests
         PayloadAttributes payloadAttributes = new()
         {
             Timestamp = chain.BlockTree.Head!.Timestamp + 1,
-            PrevRandao = TestItem.KeccakH,
+            PrevRandao = TestItem._commitmentH,
             SuggestedFeeRecipient = TestItem.AddressF,
             Withdrawals = new List<Withdrawal> { TestItem.WithdrawalA_1Eth },
-            ParentBeaconBlockRoot = spec.IsBeaconBlockRootAvailable ? TestItem.KeccakE : null
+            ParentBeaconBlockRoot = spec.IsBeaconBlockRootAvailable ? TestItem._commitmentE : null
         };
-        Keccak currentHeadHash = chain.BlockTree.HeadHash;
+        Commitment currentHeadHash = chain.BlockTree.HeadHash;
         ForkchoiceStateV1 forkchoiceState = new(currentHeadHash, currentHeadHash, currentHeadHash);
         string payloadId = spec.IsBeaconBlockRootAvailable
             ? rpcModule.engine_forkchoiceUpdatedV3(forkchoiceState, payloadAttributes).Result.Data.PayloadId!

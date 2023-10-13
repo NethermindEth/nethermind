@@ -64,10 +64,10 @@ namespace Nethermind.Blockchain.Test.Filters
         public void specific_topics_filter_matches_bloom()
         {
             LogFilter filter = FilterBuilder.New(ref _filterCounter)
-                .WithTopicExpressions(TestTopicExpressions.Specific(TestItem.KeccakA))
+                .WithTopicExpressions(TestTopicExpressions.Specific(TestItem._commitmentA))
                 .Build();
 
-            Core.Bloom bloom = GetBloom(GetLogEntry(TestItem.AddressB, TestItem.KeccakA, TestItem.KeccakB));
+            Core.Bloom bloom = GetBloom(GetLogEntry(TestItem.AddressB, TestItem._commitmentA, TestItem._commitmentB));
 
             filter.Matches(bloom).Should().BeTrue();
         }
@@ -76,10 +76,10 @@ namespace Nethermind.Blockchain.Test.Filters
         public void multiple_specific_topics_filter_matches_bloom()
         {
             LogFilter filter = FilterBuilder.New(ref _filterCounter)
-                .WithTopicExpressions(TestTopicExpressions.Specific(TestItem.KeccakA), TestTopicExpressions.Specific(TestItem.KeccakB))
+                .WithTopicExpressions(TestTopicExpressions.Specific(TestItem._commitmentA), TestTopicExpressions.Specific(TestItem._commitmentB))
                 .Build();
 
-            Core.Bloom bloom = GetBloom(GetLogEntry(TestItem.AddressA, TestItem.KeccakA, TestItem.KeccakB));
+            Core.Bloom bloom = GetBloom(GetLogEntry(TestItem.AddressA, TestItem._commitmentA, TestItem._commitmentB));
 
             filter.Matches(bloom).Should().BeTrue();
         }
@@ -88,10 +88,10 @@ namespace Nethermind.Blockchain.Test.Filters
         public void or_topics_filter_matches_bloom()
         {
             LogFilter filter = FilterBuilder.New(ref _filterCounter)
-                .WithTopicExpressions(TestTopicExpressions.Or(TestTopicExpressions.Specific(TestItem.KeccakB), TestTopicExpressions.Specific(TestItem.KeccakA)))
+                .WithTopicExpressions(TestTopicExpressions.Or(TestTopicExpressions.Specific(TestItem._commitmentB), TestTopicExpressions.Specific(TestItem._commitmentA)))
                 .Build();
 
-            Core.Bloom bloom = GetBloom(GetLogEntry(TestItem.AddressB, TestItem.KeccakB));
+            Core.Bloom bloom = GetBloom(GetLogEntry(TestItem.AddressB, TestItem._commitmentB));
 
             filter.Matches(bloom).Should().BeTrue();
         }
@@ -100,10 +100,10 @@ namespace Nethermind.Blockchain.Test.Filters
         public void complex_topics_filter_matches_bloom()
         {
             LogFilter filter = FilterBuilder.New(ref _filterCounter)
-                .WithTopicExpressions(TestTopicExpressions.Specific(TestItem.KeccakA), TestTopicExpressions.Or(TestTopicExpressions.Specific(TestItem.KeccakB), TestTopicExpressions.Specific(TestItem.KeccakA)))
+                .WithTopicExpressions(TestTopicExpressions.Specific(TestItem._commitmentA), TestTopicExpressions.Or(TestTopicExpressions.Specific(TestItem._commitmentB), TestTopicExpressions.Specific(TestItem._commitmentA)))
                 .Build();
 
-            Core.Bloom bloom = GetBloom(GetLogEntry(TestItem.AddressA, TestItem.KeccakA));
+            Core.Bloom bloom = GetBloom(GetLogEntry(TestItem.AddressA, TestItem._commitmentA));
 
             filter.Matches(bloom).Should().BeTrue();
         }
@@ -112,11 +112,11 @@ namespace Nethermind.Blockchain.Test.Filters
         public void complex_filter_matches_bloom()
         {
             LogFilter filter = FilterBuilder.New(ref _filterCounter)
-                .WithTopicExpressions(TestTopicExpressions.Specific(TestItem.KeccakA), TestTopicExpressions.Or(TestTopicExpressions.Specific(TestItem.KeccakB), TestTopicExpressions.Specific(TestItem.KeccakC)))
+                .WithTopicExpressions(TestTopicExpressions.Specific(TestItem._commitmentA), TestTopicExpressions.Or(TestTopicExpressions.Specific(TestItem._commitmentB), TestTopicExpressions.Specific(TestItem._commitmentC)))
                 .WithAddress(TestItem.AddressD)
                 .Build();
 
-            Core.Bloom bloom = GetBloom(GetLogEntry(TestItem.AddressD, TestItem.KeccakA, TestItem.KeccakC));
+            Core.Bloom bloom = GetBloom(GetLogEntry(TestItem.AddressD, TestItem._commitmentA, TestItem._commitmentC));
 
             filter.Matches(bloom).Should().BeTrue();
         }
@@ -149,10 +149,10 @@ namespace Nethermind.Blockchain.Test.Filters
         public void specific_topics_filter_doesnt_match_bloom()
         {
             LogFilter filter = FilterBuilder.New(ref _filterCounter)
-                .WithTopicExpressions(TestTopicExpressions.Specific(TestItem.KeccakA), TestTopicExpressions.Specific(TestItem.KeccakC))
+                .WithTopicExpressions(TestTopicExpressions.Specific(TestItem._commitmentA), TestTopicExpressions.Specific(TestItem._commitmentC))
                 .Build();
 
-            Core.Bloom bloom = GetBloom(GetLogEntry(TestItem.AddressB, TestItem.KeccakA, TestItem.KeccakB));
+            Core.Bloom bloom = GetBloom(GetLogEntry(TestItem.AddressB, TestItem._commitmentA, TestItem._commitmentB));
 
             filter.Matches(bloom).Should().BeFalse();
         }
@@ -161,10 +161,10 @@ namespace Nethermind.Blockchain.Test.Filters
         public void multiple_specific_topics_filter_doesnt_match_bloom()
         {
             LogFilter filter = FilterBuilder.New(ref _filterCounter)
-                .WithTopicExpressions(TestTopicExpressions.Specific(TestItem.KeccakA), TestTopicExpressions.Specific(TestItem.KeccakB))
+                .WithTopicExpressions(TestTopicExpressions.Specific(TestItem._commitmentA), TestTopicExpressions.Specific(TestItem._commitmentB))
                 .Build();
 
-            Core.Bloom bloom = GetBloom(GetLogEntry(TestItem.AddressB, TestItem.KeccakC));
+            Core.Bloom bloom = GetBloom(GetLogEntry(TestItem.AddressB, TestItem._commitmentC));
 
             filter.Matches(bloom).Should().BeFalse();
         }
@@ -173,10 +173,10 @@ namespace Nethermind.Blockchain.Test.Filters
         public void or_topics_filter_doesnt_match_bloom()
         {
             LogFilter filter = FilterBuilder.New(ref _filterCounter)
-                .WithTopicExpressions(TestTopicExpressions.Or(TestTopicExpressions.Specific(TestItem.KeccakB), TestTopicExpressions.Specific(TestItem.KeccakA)))
+                .WithTopicExpressions(TestTopicExpressions.Or(TestTopicExpressions.Specific(TestItem._commitmentB), TestTopicExpressions.Specific(TestItem._commitmentA)))
                 .Build();
 
-            Core.Bloom bloom = GetBloom(GetLogEntry(TestItem.AddressB, TestItem.KeccakC));
+            Core.Bloom bloom = GetBloom(GetLogEntry(TestItem.AddressB, TestItem._commitmentC));
 
             filter.Matches(bloom).Should().BeFalse();
         }
@@ -185,10 +185,10 @@ namespace Nethermind.Blockchain.Test.Filters
         public void complex_topics_filter_doesnt_match_bloom()
         {
             LogFilter filter = FilterBuilder.New(ref _filterCounter)
-                .WithTopicExpressions(TestTopicExpressions.Specific(TestItem.KeccakA), TestTopicExpressions.Or(TestTopicExpressions.Specific(TestItem.KeccakB), TestTopicExpressions.Specific(TestItem.KeccakA)))
+                .WithTopicExpressions(TestTopicExpressions.Specific(TestItem._commitmentA), TestTopicExpressions.Or(TestTopicExpressions.Specific(TestItem._commitmentB), TestTopicExpressions.Specific(TestItem._commitmentA)))
                 .Build();
 
-            Core.Bloom bloom = GetBloom(GetLogEntry(TestItem.AddressA, TestItem.KeccakC));
+            Core.Bloom bloom = GetBloom(GetLogEntry(TestItem.AddressA, TestItem._commitmentC));
 
             filter.Matches(bloom).Should().BeFalse();
         }
@@ -197,11 +197,11 @@ namespace Nethermind.Blockchain.Test.Filters
         public void complex_filter_doesnt_match_bloom()
         {
             LogFilter filter = FilterBuilder.New(ref _filterCounter)
-                .WithTopicExpressions(TestTopicExpressions.Specific(TestItem.KeccakA), TestTopicExpressions.Or(TestTopicExpressions.Specific(TestItem.KeccakB), TestTopicExpressions.Specific(TestItem.KeccakC)))
+                .WithTopicExpressions(TestTopicExpressions.Specific(TestItem._commitmentA), TestTopicExpressions.Or(TestTopicExpressions.Specific(TestItem._commitmentB), TestTopicExpressions.Specific(TestItem._commitmentC)))
                 .WithAddress(TestItem.AddressD)
                 .Build();
 
-            Core.Bloom bloom = GetBloom(GetLogEntry(TestItem.AddressA, TestItem.KeccakA, TestItem.KeccakD));
+            Core.Bloom bloom = GetBloom(GetLogEntry(TestItem.AddressA, TestItem._commitmentA, TestItem._commitmentD));
 
             filter.Matches(bloom).Should().BeFalse();
         }
@@ -213,6 +213,6 @@ namespace Nethermind.Blockchain.Test.Filters
             return bloom;
         }
 
-        private static LogEntry GetLogEntry(Address address, params Keccak[] topics) => new(address, Array.Empty<byte>(), topics);
+        private static LogEntry GetLogEntry(Address address, params Commitment[] topics) => new(address, Array.Empty<byte>(), topics);
     }
 }

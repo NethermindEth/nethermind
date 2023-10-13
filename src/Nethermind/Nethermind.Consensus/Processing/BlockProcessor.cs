@@ -79,7 +79,7 @@ public partial class BlockProcessor : IBlockProcessor
     }
 
     // TODO: move to branch processor
-    public Block[] Process(Keccak newBranchStateRoot, List<Block> suggestedBlocks, ProcessingOptions options, IBlockTracer blockTracer)
+    public Block[] Process(Commitment newBranchStateRoot, List<Block> suggestedBlocks, ProcessingOptions options, IBlockTracer blockTracer)
     {
         if (suggestedBlocks.Count == 0) return Array.Empty<Block>();
 
@@ -88,7 +88,7 @@ public partial class BlockProcessor : IBlockProcessor
         /* We need to save the snapshot state root before reorganization in case the new branch has invalid blocks.
            In case of invalid blocks on the new branch we will discard the entire branch and come back to
            the previous head state.*/
-        Keccak previousBranchStateRoot = CreateCheckpoint();
+        Commitment previousBranchStateRoot = CreateCheckpoint();
         InitBranch(newBranchStateRoot);
 
         bool notReadOnly = !options.ContainsFlag(ProcessingOptions.ReadOnlyChain);
@@ -125,7 +125,7 @@ public partial class BlockProcessor : IBlockProcessor
                 {
                     if (_logger.IsInfo) _logger.Info($"Commit part of a long blocks branch {i}/{blocksCount}");
                     previousBranchStateRoot = CreateCheckpoint();
-                    Keccak? newStateRoot = suggestedBlocks[i].StateRoot;
+                    Commitment? newStateRoot = suggestedBlocks[i].StateRoot;
                     InitBranch(newStateRoot, false);
                 }
             }
@@ -148,7 +148,7 @@ public partial class BlockProcessor : IBlockProcessor
     public event EventHandler<BlocksProcessingEventArgs>? BlocksProcessing;
 
     // TODO: move to branch processor
-    private void InitBranch(Keccak branchStateRoot, bool incrementReorgMetric = true)
+    private void InitBranch(Commitment branchStateRoot, bool incrementReorgMetric = true)
     {
         /* Please note that we do not reset the state if branch state root is null.
            That said, I do not remember in what cases we receive null here.*/
@@ -166,20 +166,20 @@ public partial class BlockProcessor : IBlockProcessor
     }
 
     // TODO: move to branch processor
-    private Keccak CreateCheckpoint()
+    private Commitment CreateCheckpoint()
     {
         return _stateProvider.StateRoot;
     }
 
     // TODO: move to block processing pipeline
-    private void PreCommitBlock(Keccak newBranchStateRoot, long blockNumber)
+    private void PreCommitBlock(Commitment newBranchStateRoot, long blockNumber)
     {
         if (_logger.IsTrace) _logger.Trace($"Committing the branch - {newBranchStateRoot}");
         _stateProvider.CommitTree(blockNumber);
     }
 
     // TODO: move to branch processor
-    private void RestoreBranch(Keccak branchingPointStateRoot)
+    private void RestoreBranch(Commitment branchingPointStateRoot)
     {
         if (_logger.IsTrace) _logger.Trace($"Restoring the branch checkpoint - {branchingPointStateRoot}");
         _stateProvider.Reset();

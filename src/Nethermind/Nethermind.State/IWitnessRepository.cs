@@ -6,15 +6,15 @@ using Nethermind.Core.Crypto;
 namespace Nethermind.State
 {
     /// <summary>
-    /// Allows to access persisted witnesses 
+    /// Allows to access persisted witnesses
     /// </summary>
     /// <remarks>
-    /// Witnesses can be pruned (deleted) to decrease space that is used 
+    /// Witnesses can be pruned (deleted) to decrease space that is used
     /// </remarks>
     public interface IWitnessRepository
     {
-        Keccak[]? Load(Keccak blockHash);
+        Commitment[]? Load(Commitment blockHash);
 
-        void Delete(Keccak blockHash);
+        void Delete(Commitment blockHash);
     }
 }

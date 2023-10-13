@@ -21,7 +21,7 @@ public static class BlockTraceDumper
 
     public static void LogDiagnosticTrace(
         IBlockTracer blockTracer,
-        Keccak blockHash,
+        Commitment blockHash,
         ILogger logger)
     {
         static FileStream GetFileStream(string name) =>
@@ -75,7 +75,7 @@ public static class BlockTraceDumper
         }
     }
 
-    public static void LogTraceFailure(IBlockTracer blockTracer, Keccak blockHash, Exception exception, ILogger logger)
+    public static void LogTraceFailure(IBlockTracer blockTracer, Commitment blockHash, Exception exception, ILogger logger)
     {
         if (logger.IsError)
             logger.Error($"Cannot create trace of blocks starting from {blockHash} of type {blockTracer.GetType().Name}", exception);

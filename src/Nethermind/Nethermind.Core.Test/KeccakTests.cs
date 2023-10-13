@@ -19,7 +19,7 @@ namespace Nethermind.Core.Test
         [TestCase(false, "c5d246...85a470")]
         public void To_short_string(bool withZeroX, string expected)
         {
-            string result = Keccak.OfAnEmptyString.ToShortString(withZeroX);
+            string result = Commitment.OfAnEmptyString.ToShortString(withZeroX);
             Assert.That(result, Is.EqualTo(expected));
         }
 
@@ -29,7 +29,7 @@ namespace Nethermind.Core.Test
             byte[] bytes = new byte[32];
             new Random(42).NextBytes(bytes);
 
-            string result = Keccak.Compute(bytes).ToString();
+            string result = Commitment.Compute(bytes).ToString();
 
             KeccakHash keccakHash = KeccakHash.Create();
             keccakHash.Reset();
@@ -45,35 +45,35 @@ namespace Nethermind.Core.Test
         [Test]
         public void Empty_byte_array()
         {
-            string result = Keccak.Compute(new byte[] { }).ToString();
+            string result = Commitment.Compute(new byte[] { }).ToString();
             Assert.That(result, Is.EqualTo(KeccakOfAnEmptyString));
         }
 
         [Test]
         public void Empty_string()
         {
-            string result = Keccak.Compute(string.Empty).ToString();
+            string result = Commitment.Compute(string.Empty).ToString();
             Assert.That(result, Is.EqualTo(KeccakOfAnEmptyString));
         }
 
         [Test]
         public void Null_string()
         {
-            string result = Keccak.Compute((string)null!).ToString();
+            string result = Commitment.Compute((string)null!).ToString();
             Assert.That(result, Is.EqualTo(KeccakOfAnEmptyString));
         }
 
         [Test]
         public void Null_bytes()
         {
-            string result = Keccak.Compute((byte[])null!).ToString();
+            string result = Commitment.Compute((byte[])null!).ToString();
             Assert.That(result, Is.EqualTo(KeccakOfAnEmptyString));
         }
 
         [Test]
         public void Zero()
         {
-            string result = Keccak.Zero.ToString();
+            string result = Commitment.Zero.ToString();
             Assert.That(result, Is.EqualTo("0x0000000000000000000000000000000000000000000000000000000000000000"));
         }
 
@@ -85,18 +85,18 @@ namespace Nethermind.Core.Test
         public void Compare(string a, string b, int result)
         {
 #pragma warning disable CS8600
-            Keccak keccakA = a is null ? null : new Keccak(a);
-            Keccak keccakB = b is null ? null : new Keccak(b);
+            Commitment commitmentA = a is null ? null : new Commitment(a);
+            Commitment commitmentB = b is null ? null : new Commitment(b);
 #pragma warning restore CS8600
 #pragma warning disable CS8602
-            Math.Sign(keccakA.CompareTo(keccakB)).Should().Be(result);
+            Math.Sign(commitmentA.CompareTo(commitmentB)).Should().Be(result);
 #pragma warning restore CS8602
         }
 
         [Test]
         public void CompareSameInstance()
         {
-            Keccak.Zero.CompareTo(Keccak.Zero).Should().Be(0);
+            Commitment.Zero.CompareTo(Commitment.Zero).Should().Be(0);
         }
 
         [Test]
@@ -108,7 +108,7 @@ namespace Nethermind.Core.Test
                 byteArray[i] = (byte)(i % 256);
             }
 
-            Assert.That(Keccak.Compute(byteArray.AsSpan()), Is.EqualTo(Keccak.Compute(byteArray)));
+            Assert.That(Commitment.Compute(byteArray.AsSpan()), Is.EqualTo(Commitment.Compute(byteArray)));
         }
     }
 }

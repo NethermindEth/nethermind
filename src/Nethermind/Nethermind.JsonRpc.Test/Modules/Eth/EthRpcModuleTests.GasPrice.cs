@@ -51,7 +51,7 @@ public partial class EthRpcModuleTests
 
     private static Block[] GetThreeTestBlocks()
     {
-        Block firstBlock = Build.A.Block.WithNumber(0).WithParentHash(Keccak.Zero).WithTransactions(
+        Block firstBlock = Build.A.Block.WithNumber(0).WithParentHash(Commitment.Zero).WithTransactions(
             Build.A.Transaction.WithGasPrice(1).SignedAndResolved(TestItem.PrivateKeyA).WithNonce(0).TestObject,
             Build.A.Transaction.WithGasPrice(2).SignedAndResolved(TestItem.PrivateKeyB).WithNonce(0).TestObject
         ).TestObject;
@@ -71,7 +71,7 @@ public partial class EthRpcModuleTests
 
     private static Block[] GetThreeTestBlocksWith1559Tx()
     {
-        Block firstBlock = Build.A.Block.WithNumber(0).WithParentHash(Keccak.Zero).WithBaseFeePerGas(3).WithTransactions(
+        Block firstBlock = Build.A.Block.WithNumber(0).WithParentHash(Commitment.Zero).WithBaseFeePerGas(3).WithTransactions(
             Build.A.Transaction.WithMaxFeePerGas(1).WithMaxPriorityFeePerGas(1).SignedAndResolved(TestItem.PrivateKeyA).WithNonce(0).WithType(TxType.EIP1559).TestObject, //Min(1, 1 + 3) = 1
             Build.A.Transaction.WithMaxFeePerGas(2).WithMaxPriorityFeePerGas(2).SignedAndResolved(TestItem.PrivateKeyB).WithNonce(0).WithType(TxType.EIP1559).TestObject  //Min(2, 2 + 3) = 2
         ).TestObject;

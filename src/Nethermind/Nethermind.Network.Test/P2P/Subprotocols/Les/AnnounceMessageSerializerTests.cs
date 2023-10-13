@@ -14,7 +14,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Les
         public void RoundTripWithRequiredData()
         {
             AnnounceMessage announceMessage = new();
-            announceMessage.HeadHash = Keccak.Compute("1");
+            announceMessage.HeadHash = Commitment.Compute("1");
             announceMessage.HeadBlockNo = 4;
             announceMessage.TotalDifficulty = 131200;
             announceMessage.ReorgDepth = 0;

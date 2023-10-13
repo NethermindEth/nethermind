@@ -181,7 +181,7 @@ namespace Nethermind.Evm.TransactionProcessing
 
             if (tracer.IsTracingReceipt)
             {
-                Keccak stateRoot = null;
+                Commitment stateRoot = null;
                 if (!spec.IsEip658Enabled)
                 {
                     _worldState.RecalculateStateRoot();
@@ -211,7 +211,7 @@ namespace Nethermind.Evm.TransactionProcessing
 
             if (txTracer.IsTracingReceipt)
             {
-                Keccak? stateRoot = null;
+                Commitment? stateRoot = null;
                 if (!spec.IsEip658Enabled)
                 {
                     _worldState.RecalculateStateRoot();
@@ -632,7 +632,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 }
 
                 // we clean any existing storage (in case of a previously called self destruct)
-                _worldState.UpdateStorageRoot(contractAddress, Keccak.EmptyTreeHash);
+                _worldState.UpdateStorageRoot(contractAddress, Commitment.EmptyTreeHash);
             }
         }
 

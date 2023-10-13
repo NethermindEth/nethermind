@@ -10,6 +10,6 @@ namespace Nethermind.Consensus.Clique
     {
         void CastVote(Address signer, bool vote);
         void UncastVote(Address signer);
-        void ProduceOnTopOf(Keccak hash);
+        void ProduceOnTopOf(Commitment hash);
     }
 }

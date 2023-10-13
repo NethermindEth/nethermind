@@ -22,7 +22,7 @@ namespace Nethermind.Consensus.AuRa.Validators
 
         private PendingValidators _currentPendingValidators;
         private long? _lastProcessedBlockNumber = null;
-        private Keccak? _lastProcessedBlockHash = null;
+        private Commitment? _lastProcessedBlockHash = null;
         private IAuRaBlockFinalizationManager _blockFinalizationManager;
         internal IBlockTree BlockTree { get; }
         private readonly IReceiptFinder _receiptFinder;
@@ -135,7 +135,7 @@ namespace Nethermind.Consensus.AuRa.Validators
             (_lastProcessedBlockNumber, _lastProcessedBlockHash) = (block.Number, block.Hash);
         }
 
-        private PendingValidators TryGetInitChangeFromPastBlocks(Keccak blockHash)
+        private PendingValidators TryGetInitChangeFromPastBlocks(Commitment blockHash)
         {
             PendingValidators pendingValidators = null;
             var lastFinalized = _blockFinalizationManager.GetLastLevelFinalizedBy(blockHash);

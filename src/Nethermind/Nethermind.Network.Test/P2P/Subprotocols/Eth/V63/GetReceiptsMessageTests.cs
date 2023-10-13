@@ -16,7 +16,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
         [Test]
         public void Sets_values_from_contructor_argument()
         {
-            Keccak[] hashes = { TestItem.KeccakA, TestItem.KeccakB };
+            Commitment[] hashes = { TestItem._commitmentA, TestItem._commitmentB };
             GetReceiptsMessage message = new(hashes);
             Assert.That(message.Hashes, Is.SameAs(hashes));
         }
@@ -30,7 +30,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
         [Test]
         public void To_string()
         {
-            GetReceiptsMessage statusMessage = new(new List<Keccak>());
+            GetReceiptsMessage statusMessage = new(new List<Commitment>());
             _ = statusMessage.ToString();
         }
     }

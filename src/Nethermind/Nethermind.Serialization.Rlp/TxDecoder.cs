@@ -143,20 +143,20 @@ namespace Nethermind.Serialization.Rlp
             else
             {
                 // Just calculate the Hash as txn too large
-                transaction.Hash = Keccak.Compute(transactionSequence);
+                transaction.Hash = Commitment.Compute(transactionSequence);
             }
 
             return transaction;
         }
 
-        private static Keccak CalculateHashForNetworkPayloadForm(TxType type, Span<byte> transactionSequence)
+        private static Commitment CalculateHashForNetworkPayloadForm(TxType type, Span<byte> transactionSequence)
         {
             KeccakHash hash = KeccakHash.Create();
             Span<byte> txType = stackalloc byte[1];
             txType[0] = (byte)type;
             hash.Update(txType);
             hash.Update(transactionSequence);
-            return new Keccak(hash.Hash);
+            return new Commitment(hash.Hash);
         }
 
         private void DecodeLegacyPayloadWithoutSig(T transaction, RlpStream rlpStream)
@@ -454,7 +454,7 @@ namespace Nethermind.Serialization.Rlp
             else
             {
                 // Just calculate the Hash immediately as txn too large
-                transaction.Hash = Keccak.Compute(transactionSequence);
+                transaction.Hash = Commitment.Compute(transactionSequence);
             }
         }
 

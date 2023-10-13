@@ -8,12 +8,12 @@ namespace Nethermind.Trie;
 
 public class TrieNodeException : TrieException
 {
-    public ValueKeccak NodeHash { get; private set; }
+    public ValueCommitment NodeHash { get; private set; }
     public string? EnhancedMessage { get; set; }
     public override string Message => EnhancedMessage is null ? base.Message : EnhancedMessage + Environment.NewLine + base.Message;
 
-    public TrieNodeException(string message, Keccak keccak, Exception? inner = null) : base(message, inner)
+    public TrieNodeException(string message, Commitment commitment, Exception? inner = null) : base(message, inner)
     {
-        NodeHash = keccak;
+        NodeHash = commitment;
     }
 }

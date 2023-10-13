@@ -80,7 +80,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
         private PathWithStorageSlot DecodeSlot(RlpStream stream)
         {
             stream.ReadSequenceLength();
-            Keccak path = stream.DecodeKeccak();
+            Commitment path = stream.DecodeKeccak();
             byte[] value = stream.DecodeByteArray();
 
             PathWithStorageSlot data = new(path, value);

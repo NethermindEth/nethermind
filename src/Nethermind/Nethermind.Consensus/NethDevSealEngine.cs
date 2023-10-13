@@ -18,12 +18,12 @@ namespace Nethermind.Consensus
 
         public Task<Block> SealBlock(Block block, CancellationToken cancellationToken)
         {
-            block.Header.MixHash = Keccak.Zero;
+            block.Header.MixHash = Commitment.Zero;
             block.Header.Hash = block.CalculateHash();
             return Task.FromResult(block);
         }
 
-        public bool CanSeal(long blockNumber, Keccak parentHash)
+        public bool CanSeal(long blockNumber, Commitment parentHash)
         {
             return true;
         }

@@ -76,7 +76,7 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
 
             AuthMessage authMessage = _messageSerializationService.Deserialize<AuthMessage>(deciphered);
             Assert.That(NetTestVectors.StaticKeyA.PublicKey, Is.EqualTo(authMessage.PublicKey));
-            Assert.That(Keccak.Compute(NetTestVectors.EphemeralKeyA.PublicKey.Bytes), Is.EqualTo(authMessage.EphemeralPublicHash));
+            Assert.That(Commitment.Compute(NetTestVectors.EphemeralKeyA.PublicKey.Bytes), Is.EqualTo(authMessage.EphemeralPublicHash));
             Assert.That(NetTestVectors.NonceA, Is.EqualTo(authMessage.Nonce));
             Assert.That(authMessage.IsTokenUsed, Is.EqualTo(false));
             Assert.NotNull(authMessage.Signature);

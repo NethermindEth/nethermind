@@ -168,7 +168,7 @@ public class CancellationTxTracer : ITxTracer, ITxTracerWrapper
         }
     }
 
-    public void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Keccak? stateRoot = null)
+    public void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Commitment? stateRoot = null)
     {
         _token.ThrowIfCancellationRequested();
         if (_innerTracer.IsTracingReceipt)
@@ -177,7 +177,7 @@ public class CancellationTxTracer : ITxTracer, ITxTracerWrapper
         }
     }
 
-    public void MarkAsFailed(Address recipient, long gasSpent, byte[] output, string error, Keccak? stateRoot = null)
+    public void MarkAsFailed(Address recipient, long gasSpent, byte[] output, string error, Commitment? stateRoot = null)
     {
         _token.ThrowIfCancellationRequested();
         if (_innerTracer.IsTracingReceipt)
@@ -375,7 +375,7 @@ public class CancellationTxTracer : ITxTracer, ITxTracerWrapper
         }
     }
 
-    public void ReportBlockHash(Keccak blockHash)
+    public void ReportBlockHash(Commitment blockHash)
     {
         _token.ThrowIfCancellationRequested();
         if (_innerTracer.IsTracingBlockHash)

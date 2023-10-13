@@ -15,22 +15,22 @@ namespace Nethermind.JsonRpc.Modules.DebugModule;
 
 public interface IDebugBridge
 {
-    GethLikeTxTrace GetTransactionTrace(Keccak transactionHash, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null);
+    GethLikeTxTrace GetTransactionTrace(Commitment transactionHash, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null);
     GethLikeTxTrace GetTransactionTrace(long blockNumber, int index, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null);
-    GethLikeTxTrace GetTransactionTrace(Keccak blockHash, int index, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null);
-    GethLikeTxTrace GetTransactionTrace(Rlp blockRlp, Keccak transactionHash, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null);
+    GethLikeTxTrace GetTransactionTrace(Commitment blockHash, int index, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null);
+    GethLikeTxTrace GetTransactionTrace(Rlp blockRlp, Commitment transactionHash, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null);
     GethLikeTxTrace? GetTransactionTrace(Transaction transaction, BlockParameter blockParameter, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null);
     GethLikeTxTrace[] GetBlockTrace(BlockParameter blockParameter, CancellationToken cancellationToken, GethTraceOptions gethTraceOptions = null);
     GethLikeTxTrace[] GetBlockTrace(Rlp blockRlp, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null);
-    byte[] GetBlockRlp(Keccak blockHash);
+    byte[] GetBlockRlp(Commitment blockHash);
     byte[] GetBlockRlp(long number);
     byte[] GetDbValue(string dbName, byte[] key);
     object GetConfigValue(string category, string name);
     public ChainLevelInfo GetLevelInfo(long number);
     public int DeleteChainSlice(long startNumber);
-    public void UpdateHeadBlock(Keccak blockHash);
+    public void UpdateHeadBlock(Commitment blockHash);
     Task<bool> MigrateReceipts(long blockNumber);
     void InsertReceipts(BlockParameter blockParameter, TxReceipt[] receipts);
     SyncReportSymmary GetCurrentSyncStage();
-    IEnumerable<string> TraceBlockToFile(Keccak blockHash, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null);
+    IEnumerable<string> TraceBlockToFile(Commitment blockHash, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null);
 }

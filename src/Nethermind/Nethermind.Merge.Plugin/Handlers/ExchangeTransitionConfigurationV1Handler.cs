@@ -30,7 +30,7 @@ public class ExchangeTransitionConfigurationV1Handler : IHandler<TransitionConfi
     {
         UInt256 terminalTotalDifficulty = _poSSwitcher.TerminalTotalDifficulty ?? _ttdPlaceholderForCl;
         long configuredTerminalBlockNumber = _poSSwitcher.ConfiguredTerminalBlockNumber ?? 0;
-        Keccak configuredTerminalBlockHash = _poSSwitcher.ConfiguredTerminalBlockHash ?? Keccak.Zero;
+        Commitment configuredTerminalBlockHash = _poSSwitcher.ConfiguredTerminalBlockHash ?? Commitment.Zero;
 
         if (terminalTotalDifficulty == _ttdPlaceholderForCl)
         {

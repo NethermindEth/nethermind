@@ -70,8 +70,8 @@ public class DebugModuleTests
                 true,
                 new[]
                 {
-                    new BlockInfo(TestItem.KeccakA, 1000),
-                    new BlockInfo(TestItem.KeccakB, 1001),
+                    new BlockInfo(TestItem._commitmentA, 1000),
+                    new BlockInfo(TestItem._commitmentB, 1001),
                 }));
 
         DebugRpcModule rpcModule = new(LimboLogs.Instance, debugBridge, jsonRpcConfig);
@@ -87,10 +87,10 @@ public class DebugModuleTests
     {
         BlockDecoder decoder = new();
         Rlp rlp = decoder.Encode(Build.A.Block.WithNumber(1).TestObject);
-        debugBridge.GetBlockRlp(Keccak.Zero).Returns(rlp.Bytes);
+        debugBridge.GetBlockRlp(Commitment.Zero).Returns(rlp.Bytes);
 
         DebugRpcModule rpcModule = new(LimboLogs.Instance, debugBridge, jsonRpcConfig);
-        JsonRpcSuccessResponse? response = RpcTest.TestRequest<IDebugRpcModule>(rpcModule, "debug_getBlockRlpByHash", $"{Keccak.Zero.Bytes.ToHexString()}") as JsonRpcSuccessResponse;
+        JsonRpcSuccessResponse? response = RpcTest.TestRequest<IDebugRpcModule>(rpcModule, "debug_getBlockRlpByHash", $"{Commitment.Zero.Bytes.ToHexString()}") as JsonRpcSuccessResponse;
         Assert.That((byte[]?)response?.Result, Is.EqualTo(rlp.Bytes));
     }
 
@@ -124,10 +124,10 @@ public class DebugModuleTests
     {
         BlockDecoder decoder = new();
         Rlp rlp = decoder.Encode(Build.A.Block.WithNumber(1).TestObject);
-        debugBridge.GetBlockRlp(Keccak.Zero).Returns((byte[])null!);
+        debugBridge.GetBlockRlp(Commitment.Zero).Returns((byte[])null!);
 
         DebugRpcModule rpcModule = new(LimboLogs.Instance, debugBridge, jsonRpcConfig);
-        JsonRpcErrorResponse? response = RpcTest.TestRequest<IDebugRpcModule>(rpcModule, "debug_getBlockRlpByHash", $"{Keccak.Zero.Bytes.ToHexString()}") as JsonRpcErrorResponse;
+        JsonRpcErrorResponse? response = RpcTest.TestRequest<IDebugRpcModule>(rpcModule, "debug_getBlockRlpByHash", $"{Commitment.Zero.Bytes.ToHexString()}") as JsonRpcErrorResponse;
 
         Assert.That(response?.Error?.Code, Is.EqualTo(-32001));
     }
@@ -163,10 +163,10 @@ public class DebugModuleTests
         trace.ReturnValue = Bytes.FromHexString("a2");
         trace.Entries.Add(entry);
 
-        debugBridge.GetTransactionTrace(Arg.Any<Keccak>(), Arg.Any<CancellationToken>(), Arg.Any<GethTraceOptions>()).Returns(trace);
+        debugBridge.GetTransactionTrace(Arg.Any<Commitment>(), Arg.Any<CancellationToken>(), Arg.Any<GethTraceOptions>()).Returns(trace);
 
         DebugRpcModule rpcModule = new(LimboLogs.Instance, debugBridge, jsonRpcConfig);
-        string response = await RpcTest.TestSerializedRequest<IDebugRpcModule>(DebugModuleFactory.Converters, rpcModule, "debug_traceTransaction", TestItem.KeccakA.ToString(true), "{}");
+        string response = await RpcTest.TestSerializedRequest<IDebugRpcModule>(DebugModuleFactory.Converters, rpcModule, "debug_traceTransaction", TestItem._commitmentA.ToString(true), "{}");
 
         Assert.That(response, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":{\"gas\":\"0x0\",\"failed\":false,\"returnValue\":\"0xa2\",\"structLogs\":[{\"pc\":0,\"op\":\"STOP\",\"gas\":22000,\"gasCost\":1,\"depth\":1,\"error\":null,\"stack\":[\"0000000000000000000000000000000000000000000000000000000000000007\",\"0000000000000000000000000000000000000000000000000000000000000008\"],\"memory\":[\"0000000000000000000000000000000000000000000000000000000000000005\",\"0000000000000000000000000000000000000000000000000000000000000006\"],\"storage\":{\"0000000000000000000000000000000000000000000000000000000000000001\":\"0000000000000000000000000000000000000000000000000000000000000002\",\"0000000000000000000000000000000000000000000000000000000000000003\":\"0000000000000000000000000000000000000000000000000000000000000004\"}}]},\"id\":67}"));
     }
@@ -200,10 +200,10 @@ public class DebugModuleTests
         trace.ReturnValue = Bytes.FromHexString("a2");
         trace.Entries.Add(entry);
 
-        debugBridge.GetTransactionTrace(Arg.Any<Keccak>(), Arg.Any<CancellationToken>(), Arg.Any<GethTraceOptions>()).Returns(trace);
+        debugBridge.GetTransactionTrace(Arg.Any<Commitment>(), Arg.Any<CancellationToken>(), Arg.Any<GethTraceOptions>()).Returns(trace);
 
         DebugRpcModule rpcModule = new(LimboLogs.Instance, debugBridge, jsonRpcConfig);
-        string response = await RpcTest.TestSerializedRequest<IDebugRpcModule>(DebugModuleFactory.Converters, rpcModule, "debug_traceTransaction", TestItem.KeccakA.ToString(true), "{disableStack : true}");
+        string response = await RpcTest.TestSerializedRequest<IDebugRpcModule>(DebugModuleFactory.Converters, rpcModule, "debug_traceTransaction", TestItem._commitmentA.ToString(true), "{disableStack : true}");
 
         Assert.That(response, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":{\"gas\":\"0x0\",\"failed\":false,\"returnValue\":\"0xa2\",\"structLogs\":[{\"pc\":0,\"op\":\"STOP\",\"gas\":22000,\"gasCost\":1,\"depth\":1,\"error\":null,\"stack\":[],\"memory\":[\"0000000000000000000000000000000000000000000000000000000000000005\",\"0000000000000000000000000000000000000000000000000000000000000006\"],\"storage\":{\"0000000000000000000000000000000000000000000000000000000000000001\":\"0000000000000000000000000000000000000000000000000000000000000002\",\"0000000000000000000000000000000000000000000000000000000000000003\":\"0000000000000000000000000000000000000000000000000000000000000004\"}}]},\"id\":67}"));
     }
@@ -237,7 +237,7 @@ public class DebugModuleTests
 
         GethTraceOptions gtOptions = new();
 
-        Transaction transaction = Build.A.Transaction.WithTo(TestItem.AddressA).WithHash(TestItem.KeccakA).TestObject;
+        Transaction transaction = Build.A.Transaction.WithTo(TestItem.AddressA).WithHash(TestItem._commitmentA).TestObject;
         TransactionForRpc txForRpc = new(transaction);
 
         debugBridge.GetTransactionTrace(Arg.Any<Transaction>(), Arg.Any<BlockParameter>(), Arg.Any<CancellationToken>(), Arg.Any<GethTraceOptions>()).Returns(trace);
@@ -296,10 +296,10 @@ public class DebugModuleTests
     [Test]
     public void Update_head_block()
     {
-        debugBridge.UpdateHeadBlock(Arg.Any<Keccak>());
+        debugBridge.UpdateHeadBlock(Arg.Any<Commitment>());
         IDebugRpcModule rpcModule = new DebugRpcModule(LimboLogs.Instance, debugBridge, jsonRpcConfig);
-        RpcTest.TestSerializedRequest(rpcModule, "debug_resetHead", TestItem.KeccakA.ToString());
-        debugBridge.Received().UpdateHeadBlock(TestItem.KeccakA);
+        RpcTest.TestSerializedRequest(rpcModule, "debug_resetHead", TestItem._commitmentA.ToString());
+        debugBridge.Received().UpdateHeadBlock(TestItem._commitmentA);
     }
 
     [Test]
@@ -339,14 +339,14 @@ public class DebugModuleTests
     [Test]
     public void StandardTraceBlockToFile()
     {
-        var blockHash = Keccak.EmptyTreeHash;
+        var blockHash = Commitment.EmptyTreeHash;
 
-        static IEnumerable<string> GetFileNames(Keccak hash) =>
+        static IEnumerable<string> GetFileNames(Commitment hash) =>
             new[] { $"block_{hash.ToShortString()}-0", $"block_{hash.ToShortString()}-1" };
 
         debugBridge
             .TraceBlockToFile(Arg.Is(blockHash), Arg.Any<CancellationToken>(), Arg.Any<GethTraceOptions>())
-            .Returns(c => GetFileNames(c.ArgAt<Keccak>(0)));
+            .Returns(c => GetFileNames(c.ArgAt<Commitment>(0)));
 
         var rpcModule = new DebugRpcModule(LimboLogs.Instance, debugBridge, jsonRpcConfig);
         var actual = rpcModule.debug_standardTraceBlockToFile(blockHash);
@@ -360,7 +360,7 @@ public class DebugModuleTests
     {
         var traces = Enumerable.Repeat(MockGethLikeTrace(), 2).ToArray();
         var tracesClone = TestItem.CloneObject(traces);
-        var blockHash = TestItem.KeccakA;
+        var blockHash = TestItem._commitmentA;
 
         debugBridge
             .GetBlockTrace(new BlockParameter(blockHash), Arg.Any<CancellationToken>(), Arg.Any<GethTraceOptions>())
@@ -376,7 +376,7 @@ public class DebugModuleTests
     [Test]
     public void TraceBlockByHash_Fail()
     {
-        var blockHash = TestItem.KeccakA;
+        var blockHash = TestItem._commitmentA;
 
         debugBridge
             .GetBlockTrace(new BlockParameter(blockHash), Arg.Any<CancellationToken>(), Arg.Any<GethTraceOptions>())

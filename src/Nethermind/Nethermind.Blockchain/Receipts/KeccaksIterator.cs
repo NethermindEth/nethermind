@@ -25,7 +25,7 @@ namespace Nethermind.Blockchain.Receipts
             Index = -1;
         }
 
-        public bool TryGetNext(out KeccakStructRef current)
+        public bool TryGetNext(out CommitmentStructRef current)
         {
             if (_decoderContext.Position < _length + _startPosition)
             {
@@ -35,7 +35,7 @@ namespace Nethermind.Blockchain.Receipts
             }
             else
             {
-                current = new KeccakStructRef(Keccak.Zero.Bytes);
+                current = new CommitmentStructRef(Commitment.Zero.Bytes);
                 return false;
             }
         }

@@ -181,7 +181,7 @@ public class BeaconHeadersSyncTests
                 FastSync = true,
                 FastBlocks = true,
                 PivotNumber = "1000",
-                PivotHash = Keccak.Zero.ToString(),
+                PivotHash = Commitment.Zero.ToString(),
                 PivotTotalDifficulty = "1000"
             },
             MergeConfig = { }
@@ -212,7 +212,7 @@ public class BeaconHeadersSyncTests
             FastSync = true,
             FastBlocks = true,
             PivotNumber = "1000",
-            PivotHash = Keccak.Zero.ToString(),
+            PivotHash = Commitment.Zero.ToString(),
             PivotTotalDifficulty = "1000"
         };
 
@@ -249,7 +249,7 @@ public class BeaconHeadersSyncTests
             FastSync = true,
             FastBlocks = true,
             PivotNumber = "500",
-            PivotHash = Keccak.Zero.ToString(),
+            PivotHash = Commitment.Zero.ToString(),
             PivotTotalDifficulty = "1000000" // default difficulty in block tree builder
         };
         BlockHeader? pivotHeader = syncedBlockTree.FindHeader(700, BlockTreeLookupOptions.None);
@@ -320,11 +320,11 @@ public class BeaconHeadersSyncTests
         batch!.Response = syncedBlockTree.FindHeaders(syncedBlockTree.FindHeader(batch.StartNumber, BlockTreeLookupOptions.None)!.Hash, batch.RequestSize, 0, false);
         ctx.Feed.HandleResponse(batch);
 
-        Keccak lastHeader = syncedBlockTree.FindHeader(batch.EndNumber, BlockTreeLookupOptions.None)!.GetOrCalculateHash();
-        Keccak headerToInvalidate = syncedBlockTree.FindHeader(batch.StartNumber + 10, BlockTreeLookupOptions.None)!.GetOrCalculateHash();
-        Keccak lastValidHeader = syncedBlockTree.FindHeader(batch.StartNumber + 9, BlockTreeLookupOptions.None)!.GetOrCalculateHash();
+        Commitment lastHeader = syncedBlockTree.FindHeader(batch.EndNumber, BlockTreeLookupOptions.None)!.GetOrCalculateHash();
+        Commitment headerToInvalidate = syncedBlockTree.FindHeader(batch.StartNumber + 10, BlockTreeLookupOptions.None)!.GetOrCalculateHash();
+        Commitment lastValidHeader = syncedBlockTree.FindHeader(batch.StartNumber + 9, BlockTreeLookupOptions.None)!.GetOrCalculateHash();
         invalidChainTracker.OnInvalidBlock(headerToInvalidate, lastValidHeader);
-        invalidChainTracker.IsOnKnownInvalidChain(lastHeader, out Keccak? storedLastValidHash).Should().BeTrue();
+        invalidChainTracker.IsOnKnownInvalidChain(lastHeader, out Commitment? storedLastValidHash).Should().BeTrue();
         storedLastValidHash.Should().Be(lastValidHeader);
     }
 
@@ -336,7 +336,7 @@ public class BeaconHeadersSyncTests
             FastSync = true,
             FastBlocks = true,
             PivotNumber = "0",
-            PivotHash = Keccak.Zero.ToString(),
+            PivotHash = Commitment.Zero.ToString(),
             PivotTotalDifficulty = "0"
         };
 

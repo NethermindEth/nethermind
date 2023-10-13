@@ -13,7 +13,7 @@ namespace Nethermind.Consensus
         // TODO: this breaks the encapsulation of the key inside the signer, would like to see this removed
         PrivateKey? Key { get; }
         Address Address { get; }
-        Signature Sign(Keccak message);
+        Signature Sign(Commitment message);
         bool CanSign { get; }
     }
 }

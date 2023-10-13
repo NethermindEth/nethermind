@@ -21,52 +21,52 @@ namespace Nethermind.State
 
         [DebuggerStepThrough]
         public StateTree(ICappedArrayPool? bufferPool = null)
-            : base(new MemDb(), Keccak.EmptyTreeHash, true, true, NullLogManager.Instance, bufferPool: bufferPool)
+            : base(new MemDb(), Commitment.EmptyTreeHash, true, true, NullLogManager.Instance, bufferPool: bufferPool)
         {
             TrieType = TrieType.State;
         }
 
         [DebuggerStepThrough]
         public StateTree(ITrieStore? store, ILogManager? logManager)
-            : base(store, Keccak.EmptyTreeHash, true, true, logManager)
+            : base(store, Commitment.EmptyTreeHash, true, true, logManager)
         {
             TrieType = TrieType.State;
         }
 
         [DebuggerStepThrough]
-        public Account? Get(Address address, Keccak? rootHash = null)
+        public Account? Get(Address address, Commitment? rootHash = null)
         {
-            byte[]? bytes = Get(ValueKeccak.Compute(address.Bytes).BytesAsSpan, rootHash);
+            byte[]? bytes = Get(ValueCommitment.Compute(address.Bytes).BytesAsSpan, rootHash);
             return bytes is null ? null : _decoder.Decode(bytes.AsRlpStream());
         }
 
         [DebuggerStepThrough]
-        internal Account? Get(Keccak keccak) // for testing
+        internal Account? Get(Commitment commitment) // for testing
         {
-            byte[]? bytes = Get(keccak.Bytes);
+            byte[]? bytes = Get(commitment.Bytes);
             return bytes is null ? null : _decoder.Decode(bytes.AsRlpStream());
         }
 
         public void Set(Address address, Account? account)
         {
-            ValueKeccak keccak = ValueKeccak.Compute(address.Bytes);
-            Set(keccak.BytesAsSpan, account is null ? null : account.IsTotallyEmpty ? EmptyAccountRlp : Rlp.Encode(account));
+            ValueCommitment commitment = ValueCommitment.Compute(address.Bytes);
+            Set(commitment.BytesAsSpan, account is null ? null : account.IsTotallyEmpty ? EmptyAccountRlp : Rlp.Encode(account));
         }
 
         [DebuggerStepThrough]
-        public Rlp? Set(Keccak keccak, Account? account)
+        public Rlp? Set(Commitment commitment, Account? account)
         {
             Rlp rlp = account is null ? null : account.IsTotallyEmpty ? EmptyAccountRlp : Rlp.Encode(account);
 
-            Set(keccak.Bytes, rlp);
+            Set(commitment.Bytes, rlp);
             return rlp;
         }
 
-        public Rlp? Set(in ValueKeccak keccak, Account? account)
+        public Rlp? Set(in ValueCommitment commitment, Account? account)
         {
             Rlp rlp = account is null ? null : account.IsTotallyEmpty ? EmptyAccountRlp : Rlp.Encode(account);
 
-            Set(keccak.Bytes, rlp);
+            Set(commitment.Bytes, rlp);
             return rlp;
         }
     }

@@ -82,13 +82,13 @@ namespace Nethermind.JsonRpc.Modules.Trace
                 return ResultWrapper<IEnumerable<ParityTxTraceFromReplay>>.Fail(headerSearch);
             }
 
-            Dictionary<Keccak, ParityTraceTypes> traceTypeByTransaction = new(calls.Length);
+            Dictionary<Commitment, ParityTraceTypes> traceTypeByTransaction = new(calls.Length);
             Transaction[] txs = new Transaction[calls.Length];
             for (int i = 0; i < calls.Length; i++)
             {
                 calls[i].Transaction.EnsureDefaults(_jsonRpcConfig.GasCap);
                 Transaction tx = calls[i].Transaction.ToTransaction();
-                tx.Hash = new Keccak(new UInt256((ulong)i).ToBigEndian());
+                tx.Hash = new Commitment(new UInt256((ulong)i).ToBigEndian());
                 ParityTraceTypes traceTypes = GetParityTypes(calls[i].TraceTypes);
                 txs[i] = tx;
                 traceTypeByTransaction.Add(tx.Hash, traceTypes);
@@ -122,7 +122,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
                 UInt256 baseFee = header.BaseFeePerGas;
                 header = new BlockHeader(
                     header.Hash!,
-                    Keccak.OfAnEmptySequenceRlp,
+                    Commitment.OfAnEmptySequenceRlp,
                     Address.Zero,
                     header.Difficulty,
                     header.Number + 1,
@@ -157,9 +157,9 @@ namespace Nethermind.JsonRpc.Modules.Trace
         /// <summary>
         /// Traces one transaction. As it replays existing transaction will charge gas
         /// </summary>
-        public ResultWrapper<ParityTxTraceFromReplay> trace_replayTransaction(Keccak txHash, string[] traceTypes)
+        public ResultWrapper<ParityTxTraceFromReplay> trace_replayTransaction(Commitment txHash, string[] traceTypes)
         {
-            SearchResult<Keccak> blockHashSearch = _receiptFinder.SearchForReceiptBlockHash(txHash);
+            SearchResult<Commitment> blockHashSearch = _receiptFinder.SearchForReceiptBlockHash(txHash);
             if (blockHashSearch.IsError)
             {
                 return ResultWrapper<ParityTxTraceFromReplay>.Fail(blockHashSearch);
@@ -241,7 +241,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
         /// <summary>
         /// Traces one transaction. As it replays existing transaction will charge gas
         /// </summary>
-        public ResultWrapper<IEnumerable<ParityTxTraceFromStore>> trace_get(Keccak txHash, long[] positions)
+        public ResultWrapper<IEnumerable<ParityTxTraceFromStore>> trace_get(Commitment txHash, long[] positions)
         {
             ResultWrapper<IEnumerable<ParityTxTraceFromStore>> traceTransaction = trace_transaction(txHash);
             List<ParityTxTraceFromStore> traces = ExtractPositionsFromTxTrace(positions, traceTransaction);
@@ -268,9 +268,9 @@ namespace Nethermind.JsonRpc.Modules.Trace
         /// <summary>
         /// Traces one transaction. As it replays existing transaction will charge gas
         /// </summary>
-        public ResultWrapper<IEnumerable<ParityTxTraceFromStore>> trace_transaction(Keccak txHash)
+        public ResultWrapper<IEnumerable<ParityTxTraceFromStore>> trace_transaction(Commitment txHash)
         {
-            SearchResult<Keccak> blockHashSearch = _receiptFinder.SearchForReceiptBlockHash(txHash);
+            SearchResult<Commitment> blockHashSearch = _receiptFinder.SearchForReceiptBlockHash(txHash);
             if (blockHashSearch.IsError)
             {
                 return ResultWrapper<IEnumerable<ParityTxTraceFromStore>>.Fail(blockHashSearch);

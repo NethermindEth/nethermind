@@ -20,7 +20,7 @@ public class NodeRecord
 
     private string? _enrString;
 
-    private Keccak? _contentHash;
+    private Commitment? _contentHash;
 
     private SortedDictionary<string, EnrContentEntry> Entries { get; } = new();
 
@@ -66,7 +66,7 @@ public class NodeRecord
     /// <summary>
     /// Hash of the content, i.e. Keccak([seq, k, v, ...]) as defined in https://eips.ethereum.org/EIPS/eip-778
     /// </summary>
-    public Keccak ContentHash
+    public Commitment ContentHash
     {
         get
         {
@@ -74,7 +74,7 @@ public class NodeRecord
         }
     }
 
-    private Keccak CalculateContentHash()
+    private Commitment CalculateContentHash()
     {
         KeccakRlpStream rlpStream = new();
         EncodeContent(rlpStream);

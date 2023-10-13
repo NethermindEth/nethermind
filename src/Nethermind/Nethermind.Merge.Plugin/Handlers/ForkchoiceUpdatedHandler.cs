@@ -86,7 +86,7 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
 
     private ResultWrapper<ForkchoiceUpdatedV1Result>? ApplyForkchoiceUpdate(Block? newHeadBlock, ForkchoiceStateV1 forkchoiceState, PayloadAttributes? payloadAttributes)
     {
-        if (_invalidChainTracker.IsOnKnownInvalidChain(forkchoiceState.HeadBlockHash, out Keccak? lastValidHash))
+        if (_invalidChainTracker.IsOnKnownInvalidChain(forkchoiceState.HeadBlockHash, out Commitment? lastValidHash))
         {
             if (_logger.IsInfo) _logger.Info($"Received Invalid {forkchoiceState} {payloadAttributes} - {forkchoiceState.HeadBlockHash} is known to be a part of an invalid chain.");
             return ForkchoiceUpdatedV1Result.Invalid(lastValidHash);
@@ -188,7 +188,7 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
 
             // https://github.com/ethereum/execution-apis/blob/main/src/engine/specification.md#specification
             // {status: INVALID, latestValidHash: 0x0000000000000000000000000000000000000000000000000000000000000000, validationError: errorMessage | null} if terminal block conditions are not satisfied
-            return ForkchoiceUpdatedV1Result.Invalid(Keccak.Zero);
+            return ForkchoiceUpdatedV1Result.Invalid(Commitment.Zero);
         }
 
         Block[]? blocks = EnsureNewHead(newHeadBlock, out string? setHeadErrorMsg);
@@ -225,7 +225,7 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
             return ForkchoiceUpdatedV1Result.Error(errorMsg, MergeErrorCodes.InvalidForkchoiceState);
         }
 
-        bool nonZeroFinalizedBlockHash = forkchoiceState.FinalizedBlockHash != Keccak.Zero;
+        bool nonZeroFinalizedBlockHash = forkchoiceState.FinalizedBlockHash != Commitment.Zero;
         if (nonZeroFinalizedBlockHash)
         {
             _manualBlockFinalizationManager.MarkFinalized(newHeadBlock.Header, finalizedHeader!);
@@ -285,9 +285,9 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
         if (_logger.IsInfo) _logger.Info($"Start a new sync process, Request: {requestStr}.");
     }
 
-    private bool IsInconsistent(Keccak blockHash) => blockHash != Keccak.Zero && !_blockTree.IsMainChain(blockHash);
+    private bool IsInconsistent(Commitment blockHash) => blockHash != Commitment.Zero && !_blockTree.IsMainChain(blockHash);
 
-    private Block? GetBlock(Keccak headBlockHash)
+    private Block? GetBlock(Commitment headBlockHash)
     {
         Block? block = _blockTree.FindBlock(headBlockHash, BlockTreeLookupOptions.DoNotCreateLevelIfMissing);
         if (block is null)
@@ -315,10 +315,10 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
         return branchOfBlocks;
     }
 
-    private BlockHeader? ValidateBlockHash(Keccak blockHash, out string? errorMessage, bool skipZeroHash = true)
+    private BlockHeader? ValidateBlockHash(Commitment blockHash, out string? errorMessage, bool skipZeroHash = true)
     {
         errorMessage = null;
-        if (skipZeroHash && blockHash == Keccak.Zero)
+        if (skipZeroHash && blockHash == Commitment.Zero)
         {
             return null;
         }

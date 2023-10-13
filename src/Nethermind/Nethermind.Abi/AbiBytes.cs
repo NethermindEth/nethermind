@@ -59,7 +59,7 @@ namespace Nethermind.Abi
                 return Encode(Encoding.ASCII.GetBytes(stringInput), packed);
             }
 
-            if (arg is Keccak hash && Length == 32)
+            if (arg is Commitment hash && Length == 32)
             {
                 return Encode(hash.Bytes.ToArray(), packed);
             }

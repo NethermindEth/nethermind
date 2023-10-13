@@ -42,7 +42,7 @@ namespace Nethermind.State
             _storageTreeFactory = storageTreeFactory ?? new StorageTreeFactory();
         }
 
-        public Keccak StateRoot { get; set; } = null!;
+        public Commitment StateRoot { get; set; } = null!;
 
         /// <summary>
         /// Reset the storage state
@@ -187,7 +187,7 @@ namespace Nethermind.State
                 // since the accounts could be empty accounts that are removing (EIP-158)
                 if (_stateProvider.AccountExists(address))
                 {
-                    Keccak root = RecalculateRootHash(address);
+                    Commitment root = RecalculateRootHash(address);
 
                     // _logger.Warn($"Recalculating storage root {address}->{root} ({toUpdateRoots.Count})");
                     _stateProvider.UpdateStorageRoot(address, root);
@@ -266,7 +266,7 @@ namespace Nethermind.State
             }
         }
 
-        private Keccak RecalculateRootHash(Address address)
+        private Commitment RecalculateRootHash(Address address)
         {
             StorageTree storageTree = GetOrCreateStorage(address);
             storageTree.UpdateRootHash();
@@ -285,12 +285,12 @@ namespace Nethermind.State
             // by means of CREATE 2 - notice that the cached trie may carry information about items that were not
             // touched in this block, hence were not zeroed above
             // TODO: how does it work with pruning?
-            _storages[address] = new StorageTree(_trieStore, Keccak.EmptyTreeHash, _logManager);
+            _storages[address] = new StorageTree(_trieStore, Commitment.EmptyTreeHash, _logManager);
         }
 
         private class StorageTreeFactory : IStorageTreeFactory
         {
-            public StorageTree Create(Address address, ITrieStore trieStore, Keccak storageRoot, Keccak stateRoot, ILogManager? logManager)
+            public StorageTree Create(Address address, ITrieStore trieStore, Commitment storageRoot, Commitment stateRoot, ILogManager? logManager)
                 => new(trieStore, storageRoot, logManager);
         }
     }

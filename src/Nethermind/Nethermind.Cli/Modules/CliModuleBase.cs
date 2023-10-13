@@ -36,11 +36,11 @@ namespace Nethermind.Cli.Modules
             }
         }
 
-        protected static Keccak CliParseHash(string hashHex)
+        protected static Commitment CliParseHash(string hashHex)
         {
             try
             {
-                Keccak hash = new Keccak(hashHex);
+                Commitment hash = new Commitment(hashHex);
                 return hash;
             }
             catch (Exception)

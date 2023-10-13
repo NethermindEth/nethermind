@@ -34,7 +34,7 @@ namespace Nethermind.Core.Test
         {
             EthereumEcdsa ethereumEcdsa = new(BlockchainIds.Olympic, LimboLogs.Instance);
 
-            Keccak message = Keccak.Compute("Test message");
+            Commitment message = Commitment.Compute("Test message");
             PrivateKey privateKey = Build.A.PrivateKey.TestObject;
             Signature signature = ethereumEcdsa.Sign(privateKey, message);
             Assert.That(ethereumEcdsa.RecoverAddress(signature, message), Is.EqualTo(privateKey.Address));

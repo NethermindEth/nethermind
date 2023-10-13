@@ -11,7 +11,7 @@ namespace Nethermind.Core.Test.Builders
         public ReceiptBuilder()
         {
             TestObjectInternal = new TxReceipt();
-            TestObjectInternal.Logs = new[] { new LogEntry(Address.Zero, Array.Empty<byte>(), new[] { Keccak.Zero }) };
+            TestObjectInternal.Logs = new[] { new LogEntry(Address.Zero, Array.Empty<byte>(), new[] { Commitment.Zero }) };
         }
 
         public ReceiptBuilder WithAllFieldsFilled => WithBloom(TestItem.NonZeroBloom)
@@ -21,15 +21,15 @@ namespace Nethermind.Core.Test.Builders
             .WithRecipient(TestItem.AddressB)
             .WithContractAddress(TestItem.AddressC)
             .WithGasUsed(100)
-            .WithTransactionHash(TestItem.KeccakA)
-            .WithState(TestItem.KeccakB)
-            .WithBlockHash(TestItem.KeccakC)
+            .WithTransactionHash(TestItem._commitmentA)
+            .WithState(TestItem._commitmentB)
+            .WithBlockHash(TestItem._commitmentC)
             .WithBlockNumber(2)
             .WithBloom(Bloom.Empty)
             .WithGasUsedTotal(1000)
             .WithStatusCode(1);
 
-        public ReceiptBuilder WithState(Keccak state)
+        public ReceiptBuilder WithState(Commitment state)
         {
             TestObjectInternal.PostTransactionState = state;
             return this;
@@ -48,7 +48,7 @@ namespace Nethermind.Core.Test.Builders
             return this;
         }
 
-        public ReceiptBuilder WithTransactionHash(Keccak? hash)
+        public ReceiptBuilder WithTransactionHash(Commitment? hash)
         {
             TestObject.TxHash = hash;
             return this;
@@ -60,7 +60,7 @@ namespace Nethermind.Core.Test.Builders
             return this;
         }
 
-        public ReceiptBuilder WithBlockHash(Keccak? hash)
+        public ReceiptBuilder WithBlockHash(Commitment? hash)
         {
             TestObject.BlockHash = hash;
             return this;

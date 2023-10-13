@@ -9,15 +9,15 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
 {
     public abstract class HashesMessageSerializer<T> : IZeroInnerMessageSerializer<T> where T : HashesMessage
     {
-        protected Keccak[] DeserializeHashes(IByteBuffer byteBuffer)
+        protected Commitment[] DeserializeHashes(IByteBuffer byteBuffer)
         {
             NettyRlpStream nettyRlpStream = new(byteBuffer);
             return DeserializeHashes(nettyRlpStream);
         }
 
-        protected static Keccak[] DeserializeHashes(RlpStream rlpStream)
+        protected static Commitment[] DeserializeHashes(RlpStream rlpStream)
         {
-            Keccak[] hashes = rlpStream.DecodeArray(itemContext => itemContext.DecodeKeccak());
+            Commitment[] hashes = rlpStream.DecodeArray(itemContext => itemContext.DecodeKeccak());
             return hashes;
         }
 

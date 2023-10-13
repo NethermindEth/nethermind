@@ -33,7 +33,7 @@ namespace Nethermind.Core.Test.Builders
             return this;
         }
 
-        public TransactionBuilder<T> WithHash(Keccak? hash)
+        public TransactionBuilder<T> WithHash(Commitment? hash)
         {
             TestObjectInternal.Hash = hash;
             return this;

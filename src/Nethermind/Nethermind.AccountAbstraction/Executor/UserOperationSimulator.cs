@@ -66,7 +66,7 @@ namespace Nethermind.AccountAbstraction.Executor
             _abiEncoder = new AbiEncoder();
         }
 
-        public ResultWrapper<Keccak> Simulate(UserOperation userOperation,
+        public ResultWrapper<Commitment> Simulate(UserOperation userOperation,
             BlockHeader parent,
             UInt256? timestamp = null,
             CancellationToken cancellationToken = default)
@@ -74,13 +74,13 @@ namespace Nethermind.AccountAbstraction.Executor
             if (userOperation.AlreadySimulated)
             {
                 // codehash of all accessed addresses should not change between calls
-                foreach (KeyValuePair<Address, Keccak> kv in userOperation.AddressesToCodeHashes)
+                foreach (KeyValuePair<Address, Commitment> kv in userOperation.AddressesToCodeHashes)
                 {
-                    (Address address, Keccak expectedCodeHash) = kv;
-                    Keccak codeHash = _stateProvider.GetCodeHash(address);
+                    (Address address, Commitment expectedCodeHash) = kv;
+                    Commitment codeHash = _stateProvider.GetCodeHash(address);
                     if (codeHash != expectedCodeHash)
                     {
-                        return ResultWrapper<Keccak>.Fail($"codehash of address {address} changed since initial simulation");
+                        return ResultWrapper<Commitment>.Fail($"codehash of address {address} changed since initial simulation");
                     }
                 }
             }
@@ -96,13 +96,13 @@ namespace Nethermind.AccountAbstraction.Executor
             UserOperationSimulationResult simulationResult = SimulateValidation(simulateValidationTransaction, userOperation, parent, transactionProcessor);
 
             if (!simulationResult.Success)
-                return ResultWrapper<Keccak>.Fail(simulationResult.Error ?? "unknown simulation failure");
+                return ResultWrapper<Commitment>.Fail(simulationResult.Error ?? "unknown simulation failure");
 
             if (userOperation.AlreadySimulated)
             {
                 // if previously simulated we must make sure it doesn't access any more than it did on the first round
                 if (!userOperation.AccessList.AccessListContains(simulationResult.AccessList.Data))
-                    return ResultWrapper<Keccak>.Fail("access list exceeded");
+                    return ResultWrapper<Commitment>.Fail("access list exceeded");
             }
             else
             {
@@ -111,7 +111,7 @@ namespace Nethermind.AccountAbstraction.Executor
                 userOperation.AlreadySimulated = true;
             }
 
-            return ResultWrapper<Keccak>.Success(userOperation.RequestId!);
+            return ResultWrapper<Commitment>.Success(userOperation.RequestId!);
         }
 
         private UserOperationSimulationResult SimulateValidation(
@@ -145,7 +145,7 @@ namespace Nethermind.AccountAbstraction.Executor
 
             UserOperationAccessList userOperationAccessList = new(txTracer.AccessedStorage);
 
-            IDictionary<Address, Keccak> addressesToCodeHashes = new Dictionary<Address, Keccak>();
+            IDictionary<Address, Commitment> addressesToCodeHashes = new Dictionary<Address, Commitment>();
             foreach (Address accessedAddress in txTracer.AccessedAddresses)
             {
                 addressesToCodeHashes[accessedAddress] = _stateProvider.GetCodeHash(accessedAddress);
@@ -246,7 +246,7 @@ namespace Nethermind.AccountAbstraction.Executor
 
             BlockHeader callHeader = new(
                 blockHeader.Hash!,
-                Keccak.OfAnEmptySequenceRlp,
+                Commitment.OfAnEmptySequenceRlp,
                 Address.Zero,
                 0,
                 treatBlockHeaderAsParentBlock ? blockHeader.Number + 1 : blockHeader.Number,

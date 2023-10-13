@@ -22,7 +22,7 @@ namespace Nethermind.Mev.Test
 
         public Address Address { get; }
 
-        public Signature Sign(Keccak message) => null!;
+        public Signature Sign(Commitment message) => null!;
 
         public bool CanSign => true;
     }

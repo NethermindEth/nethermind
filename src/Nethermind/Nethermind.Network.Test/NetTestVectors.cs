@@ -35,16 +35,16 @@ namespace Nethermind.Network.Test
         public static (EncryptionSecrets A, EncryptionSecrets B) GetSecretsPair()
         {
             EncryptionHandshake handshakeA = new();
-            handshakeA.InitiatorNonce = TestItem.KeccakA.BytesToArray();
-            handshakeA.RecipientNonce = TestItem.KeccakB.BytesToArray();
+            handshakeA.InitiatorNonce = TestItem._commitmentA.BytesToArray();
+            handshakeA.RecipientNonce = TestItem._commitmentB.BytesToArray();
             handshakeA.EphemeralPrivateKey = TestItem.PrivateKeyA;
             handshakeA.RemoteEphemeralPublicKey = TestItem.PrivateKeyB.PublicKey;
             handshakeA.AckPacket = new Packet(new byte[128]);
             handshakeA.AuthPacket = new Packet(new byte[128]);
 
             EncryptionHandshake handshakeB = new();
-            handshakeB.InitiatorNonce = TestItem.KeccakA.BytesToArray();
-            handshakeB.RecipientNonce = TestItem.KeccakB.BytesToArray();
+            handshakeB.InitiatorNonce = TestItem._commitmentA.BytesToArray();
+            handshakeB.RecipientNonce = TestItem._commitmentB.BytesToArray();
             handshakeB.EphemeralPrivateKey = TestItem.PrivateKeyB;
             handshakeB.RemoteEphemeralPublicKey = TestItem.PrivateKeyA.PublicKey;
             handshakeB.AckPacket = new Packet(new byte[128]);

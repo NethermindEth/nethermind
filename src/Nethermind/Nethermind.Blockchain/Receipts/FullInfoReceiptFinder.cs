@@ -21,7 +21,7 @@ namespace Nethermind.Blockchain.Receipts
             _blockFinder = blockFinder ?? throw new ArgumentNullException(nameof(blockFinder));
         }
 
-        public Keccak FindBlockHash(Keccak txHash) => _receiptStorage.FindBlockHash(txHash);
+        public Commitment FindBlockHash(Commitment txHash) => _receiptStorage.FindBlockHash(txHash);
 
         public TxReceipt[] Get(Block block)
         {
@@ -34,7 +34,7 @@ namespace Nethermind.Blockchain.Receipts
             return receipts;
         }
 
-        public TxReceipt[] Get(Keccak blockHash)
+        public TxReceipt[] Get(Commitment blockHash)
         {
             var receipts = _receiptStorage.Get(blockHash);
 
@@ -51,6 +51,6 @@ namespace Nethermind.Blockchain.Receipts
         }
 
         public bool CanGetReceiptsByHash(long blockNumber) => _receiptStorage.CanGetReceiptsByHash(blockNumber);
-        public bool TryGetReceiptsIterator(long blockNumber, Keccak blockHash, out ReceiptsIterator iterator) => _receiptStorage.TryGetReceiptsIterator(blockNumber, blockHash, out iterator);
+        public bool TryGetReceiptsIterator(long blockNumber, Commitment blockHash, out ReceiptsIterator iterator) => _receiptStorage.TryGetReceiptsIterator(blockNumber, blockHash, out iterator);
     }
 }

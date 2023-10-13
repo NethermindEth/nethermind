@@ -123,7 +123,7 @@ namespace Nethermind.AccountAbstraction.Test
                     Transaction entryPointTx = Core.Test.Builders.Build.A.Transaction.WithTo(singletonFactoryAddress).WithData(createEntryPointBytes).WithGasLimit(6_000_000).WithNonce(chain.State.GetNonce(ContractCreatorPrivateKey.Address)).WithValue(0).SignedAndResolved(ContractCreatorPrivateKey).TestObject;
                     await chain.AddBlock(true, entryPointTx);
 
-                    Address computedAddress = new(Keccak.Compute(Bytes.Concat(Bytes.FromHexString("0xff"), singletonFactoryAddress.Bytes, Bytes.Zero32, Keccak.Compute(entryPointConstructorBytes).Bytes)).BytesToArray().TakeLast(20).ToArray());
+                    Address computedAddress = new(Commitment.Compute(Bytes.Concat(Bytes.FromHexString("0xff"), singletonFactoryAddress.Bytes, Bytes.Zero32, Commitment.Compute(entryPointConstructorBytes).Bytes)).BytesToArray().TakeLast(20).ToArray());
 
                     TxReceipt createEntryPointTxReceipt = chain.Bridge.GetReceipt(entryPointTx.Hash!);
                     createEntryPointTxReceipt.Error.Should().BeNullOrEmpty($"Contract transaction {computedAddress!} was not deployed.");
@@ -185,8 +185,8 @@ namespace Nethermind.AccountAbstraction.Test
 
             Address entryPointId = new Address("0x90f3e1105e63c877bf9587de5388c23cdb702c6b");
             ulong chainId = 5;
-            Keccak idFromTransaction =
-                new Keccak("0x87c3605deda77b02b78e62157309985d94531cf7fbb13992c602c8555bece921");
+            Commitment idFromTransaction =
+                new Commitment("0x87c3605deda77b02b78e62157309985d94531cf7fbb13992c602c8555bece921");
             createOp.CalculateRequestId(entryPointId, chainId);
             Assert.That(createOp.RequestId!, Is.EqualTo(idFromTransaction),
                 "Request IDs do not match.");
@@ -505,7 +505,7 @@ namespace Nethermind.AccountAbstraction.Test
             op.CalculateRequestId(entryPointAddress, chainId);
 
             Signer signer = new(chainId, privateKey, NullLogManager.Instance);
-            Keccak hashedRequestId = Keccak.Compute(
+            Commitment hashedRequestId = Commitment.Compute(
                 Bytes.Concat(
                     Encoding.UTF8.GetBytes("\x19"),
                     Encoding.UTF8.GetBytes("Ethereum Signed Message:\n" + op.RequestId!.Bytes.Length),

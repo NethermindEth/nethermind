@@ -7,13 +7,13 @@ namespace Nethermind.State.Snap
 {
     public class PathWithStorageSlot
     {
-        public PathWithStorageSlot(ValueKeccak keyHash, byte[] slotRlpValue)
+        public PathWithStorageSlot(ValueCommitment keyHash, byte[] slotRlpValue)
         {
             Path = keyHash;
             SlotRlpValue = slotRlpValue;
         }
 
-        public ValueKeccak Path { get; set; }
+        public ValueCommitment Path { get; set; }
         public byte[] SlotRlpValue { get; set; }
     }
 }

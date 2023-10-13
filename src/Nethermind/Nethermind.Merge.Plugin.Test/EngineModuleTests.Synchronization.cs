@@ -34,10 +34,10 @@ public partial class EngineModuleTests
     {
         using MergeTestBlockchain chain = await CreateBlockchain();
         IEngineRpcModule rpc = CreateEngineModule(chain);
-        Keccak? startingHead = chain.BlockTree.HeadHash;
+        Commitment? startingHead = chain.BlockTree.HeadHash;
         BlockHeader parent = Build.A.BlockHeader
             .WithNumber(1)
-            .WithHash(TestItem.KeccakA)
+            .WithHash(TestItem._commitmentA)
             .WithNonce(0)
             .WithDifficulty(0)
             .TestObject;
@@ -88,10 +88,10 @@ public partial class EngineModuleTests
     {
         using MergeTestBlockchain chain = await CreateBlockchain();
         IEngineRpcModule rpc = CreateEngineModule(chain);
-        Keccak? startingHead = chain.BlockTree.HeadHash;
+        Commitment? startingHead = chain.BlockTree.HeadHash;
         BlockHeader parent = Build.A.BlockHeader
             .WithNumber(1)
-            .WithHash(TestItem.KeccakA)
+            .WithHash(TestItem._commitmentA)
             .WithNonce(0)
             .WithDifficulty(0)
             .TestObject;
@@ -178,10 +178,10 @@ public partial class EngineModuleTests
     {
         using MergeTestBlockchain chain = await CreateBlockchain();
         IEngineRpcModule rpc = CreateEngineModule(chain);
-        Keccak? startingHead = chain.BlockTree.HeadHash;
+        Commitment? startingHead = chain.BlockTree.HeadHash;
         BlockHeader parent = Build.A.BlockHeader
             .WithNumber(1)
-            .WithHash(TestItem.KeccakA)
+            .WithHash(TestItem._commitmentA)
             .WithNonce(0)
             .WithDifficulty(0)
             .TestObject;
@@ -226,7 +226,7 @@ public partial class EngineModuleTests
     {
         using MergeTestBlockchain chain = await CreateBlockchain();
         IEngineRpcModule rpc = CreateEngineModule(chain);
-        Keccak startingHead = chain.BlockTree.HeadHash;
+        Commitment startingHead = chain.BlockTree.HeadHash;
 
         ExecutionPayload parentBlockRequest = new(Build.A.Block.WithNumber(2).TestObject);
         ExecutionPayload[] requests = CreateBlockRequestBranch(chain, parentBlockRequest, Address.Zero, 7);
@@ -271,10 +271,10 @@ public partial class EngineModuleTests
     {
         using MergeTestBlockchain chain = await CreateBlockchain();
         IEngineRpcModule rpc = CreateEngineModule(chain);
-        Keccak? startingHead = chain.BlockTree.HeadHash;
+        Commitment? startingHead = chain.BlockTree.HeadHash;
         BlockHeader parent = Build.A.BlockHeader
             .WithNumber(1)
-            .WithHash(TestItem.KeccakA)
+            .WithHash(TestItem._commitmentA)
             .WithNonce(0)
             .WithDifficulty(0)
             .TestObject;
@@ -312,10 +312,10 @@ public partial class EngineModuleTests
     {
         using MergeTestBlockchain chain = await CreateBlockchain();
         IEngineRpcModule rpc = CreateEngineModule(chain);
-        Keccak? startingHead = chain.BlockTree.HeadHash;
+        Commitment? startingHead = chain.BlockTree.HeadHash;
         BlockHeader parent = Build.A.BlockHeader
             .WithNumber(1)
-            .WithHash(TestItem.KeccakA)
+            .WithHash(TestItem._commitmentA)
             .WithNonce(0)
             .WithDifficulty(0)
             .TestObject;
@@ -361,7 +361,7 @@ public partial class EngineModuleTests
     {
         using MergeTestBlockchain chain = await CreateBlockchain();
         IEngineRpcModule rpc = CreateEngineModule(chain);
-        Keccak lastHash = (await ProduceBranchV1(rpc, chain, 20, CreateParentBlockRequestOnHead(chain.BlockTree), true)).LastOrDefault()?.BlockHash ?? Keccak.Zero;
+        Commitment lastHash = (await ProduceBranchV1(rpc, chain, 20, CreateParentBlockRequestOnHead(chain.BlockTree), true)).LastOrDefault()?.BlockHash ?? Commitment.Zero;
         chain.BlockTree.HeadHash.Should().Be(lastHash);
         Block? last = RunForAllBlocksInBranch(chain.BlockTree, chain.BlockTree.HeadHash, b => b.IsGenesis, true);
         last.Should().NotBeNull();
@@ -372,7 +372,7 @@ public partial class EngineModuleTests
             .WithNonce(0)
             .WithDifficulty(0)
             .WithPostMergeFlag(true)
-            .WithStateRoot(new Keccak("0x1ef7300d8961797263939a3d29bbba4ccf1702fabf02d8ad7a20b454edb6fd2f")).TestObject;
+            .WithStateRoot(new Commitment("0x1ef7300d8961797263939a3d29bbba4ccf1702fabf02d8ad7a20b454edb6fd2f")).TestObject;
         newBlock.CalculateHash();
         await chain.BlockTree.SuggestBlockAsync(newBlock, BlockTreeSuggestOptions.None);
 
@@ -381,7 +381,7 @@ public partial class EngineModuleTests
             .WithNonce(0)
             .WithDifficulty(0)
             .WithPostMergeFlag(true)
-            .WithStateRoot(new Keccak("0x1ef7300d8961797263939a3d29bbba4ccf1702fabf02d8ad7a20b454edb6fd2f")).TestObject;
+            .WithStateRoot(new Commitment("0x1ef7300d8961797263939a3d29bbba4ccf1702fabf02d8ad7a20b454edb6fd2f")).TestObject;
         newBlock2.CalculateHash();
 
         chain.BeaconPivot!.BeaconPivotExists().Should().BeFalse();
@@ -396,7 +396,7 @@ public partial class EngineModuleTests
     {
         using MergeTestBlockchain chain = await CreateBlockchain();
         IEngineRpcModule rpc = CreateEngineModule(chain);
-        Keccak lastHash = (await ProduceBranchV1(rpc, chain, 20, CreateParentBlockRequestOnHead(chain.BlockTree), true)).LastOrDefault()?.BlockHash ?? Keccak.Zero;
+        Commitment lastHash = (await ProduceBranchV1(rpc, chain, 20, CreateParentBlockRequestOnHead(chain.BlockTree), true)).LastOrDefault()?.BlockHash ?? Commitment.Zero;
         chain.BlockTree.HeadHash.Should().Be(lastHash);
         Block? last = RunForAllBlocksInBranch(chain.BlockTree, chain.BlockTree.HeadHash, b => b.IsGenesis, true);
         last.Should().NotBeNull();
@@ -407,7 +407,7 @@ public partial class EngineModuleTests
             .WithNonce(0)
             .WithDifficulty(0)
             .WithPostMergeFlag(true)
-            .WithStateRoot(new Keccak("0x1ef7300d8961797263939a3d29bbba4ccf1702fabf02d8ad7a20b454edb6fd2f")).TestObject;
+            .WithStateRoot(new Commitment("0x1ef7300d8961797263939a3d29bbba4ccf1702fabf02d8ad7a20b454edb6fd2f")).TestObject;
         newBlock.CalculateHash();
         await chain.BlockTree.SuggestBlockAsync(newBlock, BlockTreeSuggestOptions.None);
 
@@ -416,7 +416,7 @@ public partial class EngineModuleTests
             .WithNonce(0)
             .WithDifficulty(0)
             .WithPostMergeFlag(true)
-            .WithStateRoot(new Keccak("0x1ef7300d8961797263939a3d29bbba4ccf1702fabf02d8ad7a20b454edb6fd2f")).TestObject;
+            .WithStateRoot(new Commitment("0x1ef7300d8961797263939a3d29bbba4ccf1702fabf02d8ad7a20b454edb6fd2f")).TestObject;
         newBlock2.CalculateHash();
 
         await rpc.engine_newPayloadV1(new ExecutionPayload(newBlock2));
@@ -432,7 +432,7 @@ public partial class EngineModuleTests
     {
         using MergeTestBlockchain chain = await CreateBlockchain();
         IEngineRpcModule rpc = CreateEngineModule(chain);
-        Keccak lastHash = (await ProduceBranchV1(rpc, chain, 20, CreateParentBlockRequestOnHead(chain.BlockTree), true)).LastOrDefault()?.BlockHash ?? Keccak.Zero;
+        Commitment lastHash = (await ProduceBranchV1(rpc, chain, 20, CreateParentBlockRequestOnHead(chain.BlockTree), true)).LastOrDefault()?.BlockHash ?? Commitment.Zero;
         chain.BlockTree.HeadHash.Should().Be(lastHash);
         Block? last = RunForAllBlocksInBranch(chain.BlockTree, chain.BlockTree.HeadHash, b => b.IsGenesis, true);
         last.Should().NotBeNull();
@@ -443,7 +443,7 @@ public partial class EngineModuleTests
             .WithNonce(0)
             .WithDifficulty(0)
             .WithPostMergeFlag(true)
-            .WithStateRoot(new Keccak("0x1ef7300d8961797263939a3d29bbba4ccf1702fabf02d8ad7a20b454edb6fd2f")).TestObject;
+            .WithStateRoot(new Commitment("0x1ef7300d8961797263939a3d29bbba4ccf1702fabf02d8ad7a20b454edb6fd2f")).TestObject;
         newBlock.CalculateHash();
         await chain.BlockTree.SuggestBlockAsync(newBlock!, BlockTreeSuggestOptions.FillBeaconBlock);
 
@@ -453,7 +453,7 @@ public partial class EngineModuleTests
             .WithNonce(0)
             .WithDifficulty(0)
             .WithPostMergeFlag(true)
-            .WithStateRoot(new Keccak("0x1ef7300d8961797263939a3d29bbba4ccf1702fabf02d8ad7a20b454edb6fd2f")).TestObject;
+            .WithStateRoot(new Commitment("0x1ef7300d8961797263939a3d29bbba4ccf1702fabf02d8ad7a20b454edb6fd2f")).TestObject;
         newBlock2.CalculateHash();
         await chain.BlockTree.SuggestBlockAsync(newBlock2!, BlockTreeSuggestOptions.FillBeaconBlock);
 
@@ -470,10 +470,10 @@ public partial class EngineModuleTests
     {
         using MergeTestBlockchain chain = await CreateBlockchain();
         IEngineRpcModule rpc = CreateEngineModule(chain);
-        Keccak? startingHead = chain.BlockTree.HeadHash;
+        Commitment? startingHead = chain.BlockTree.HeadHash;
         BlockHeader parent = Build.A.BlockHeader
             .WithNumber(1)
-            .WithHash(TestItem.KeccakA)
+            .WithHash(TestItem._commitmentA)
             .WithNonce(0)
             .WithDifficulty(0)
             .TestObject;
@@ -530,10 +530,10 @@ public partial class EngineModuleTests
     {
         using MergeTestBlockchain chain = await CreateBlockchain();
         IEngineRpcModule rpc = CreateEngineModule(chain);
-        Keccak? startingHead = chain.BlockTree.HeadHash;
+        Commitment? startingHead = chain.BlockTree.HeadHash;
         BlockHeader parent = Build.A.BlockHeader
             .WithNumber(1)
-            .WithHash(TestItem.KeccakA)
+            .WithHash(TestItem._commitmentA)
             .WithNonce(0)
             .WithDifficulty(0)
             .TestObject;
@@ -561,7 +561,7 @@ public partial class EngineModuleTests
             await rpc.engine_newPayloadV1(r);
         }
 
-        Keccak lastHash = newBranchPayloads[reorgToIndex ?? ^1].BlockHash!;
+        Commitment lastHash = newBranchPayloads[reorgToIndex ?? ^1].BlockHash!;
         ForkchoiceStateV1 forkchoiceStateV1Reorg = new(lastHash, lastHash, lastHash);
         await rpc.engine_forkchoiceUpdatedV1(forkchoiceStateV1Reorg);
 
@@ -584,7 +584,7 @@ public partial class EngineModuleTests
     public async Task Blocks_from_cache_inserted_when_fast_headers_sync_finish_before_newPayloadV1_request()
     {
         using MergeTestBlockchain chain = await CreateBlockchain();
-        Keccak startingHead = chain.BlockTree.HeadHash;
+        Commitment startingHead = chain.BlockTree.HeadHash;
         IEngineRpcModule rpc = CreateEngineModule(chain);
         ExecutionPayload[] requests = CreateBlockRequestBranch(chain, new ExecutionPayload(chain.BlockTree.Head!), Address.Zero, 7);
 
@@ -631,7 +631,7 @@ public partial class EngineModuleTests
     {
         using MergeTestBlockchain chain = await CreateBlockchain();
         IEngineRpcModule rpc = CreateEngineModule(chain);
-        Keccak startingHead = chain.BlockTree.HeadHash;
+        Commitment startingHead = chain.BlockTree.HeadHash;
         // create 7 block gap
         int gap = 7;
         ExecutionPayload headBlockRequest = new(chain.BlockTree.Head!);
@@ -814,7 +814,7 @@ public partial class EngineModuleTests
         };
         AssertBlockTreePointers(chain.BlockTree, pointers);
         // initiate sync
-        Keccak startingHead = chain.BlockTree.HeadHash;
+        Commitment startingHead = chain.BlockTree.HeadHash;
         ForkchoiceStateV1 forkchoiceStateV1 = new(pivotBlock!.Hash!, startingHead, startingHead);
         ResultWrapper<ForkchoiceUpdatedV1Result> forkchoiceUpdatedResult =
             await rpc.engine_forkchoiceUpdatedV1(forkchoiceStateV1);
@@ -850,8 +850,8 @@ public partial class EngineModuleTests
     {
         using MergeTestBlockchain chain = await CreateBlockchain();
         IEngineRpcModule rpc = CreateEngineModule(chain);
-        Keccak lastHash = (await ProduceBranchV1(rpc, chain, 30, CreateParentBlockRequestOnHead(chain.BlockTree), true))
-            .LastOrDefault()?.BlockHash ?? Keccak.Zero;
+        Commitment lastHash = (await ProduceBranchV1(rpc, chain, 30, CreateParentBlockRequestOnHead(chain.BlockTree), true))
+            .LastOrDefault()?.BlockHash ?? Commitment.Zero;
         chain.BlockTree.HeadHash.Should().Be(lastHash);
 
         // send newPayload
@@ -861,8 +861,8 @@ public partial class EngineModuleTests
 
         // send block with invalid state root
         ExecutionPayload blockWithInvalidStateRoot = CreateBlockRequest(chain, validBlockOnTopOfHead, TestItem.AddressA);
-        blockWithInvalidStateRoot.StateRoot = TestItem.KeccakB;
-        TryCalculateHash(blockWithInvalidStateRoot, out Keccak? hash);
+        blockWithInvalidStateRoot.StateRoot = TestItem._commitmentB;
+        TryCalculateHash(blockWithInvalidStateRoot, out Commitment? hash);
         blockWithInvalidStateRoot.BlockHash = hash;
         PayloadStatusV1 invalidStateRootNewPayloadResponse = (await rpc.engine_newPayloadV1(blockWithInvalidStateRoot)).Data;
         invalidStateRootNewPayloadResponse.Status.Should().Be(PayloadStatus.Invalid);
@@ -887,8 +887,8 @@ public partial class EngineModuleTests
     {
         using MergeTestBlockchain chain = await CreateBlockchain();
         IEngineRpcModule rpc = CreateEngineModule(chain);
-        Keccak lastHash = (await ProduceBranchV1(rpc, chain, 30, CreateParentBlockRequestOnHead(chain.BlockTree), true))
-            .LastOrDefault()?.BlockHash ?? Keccak.Zero;
+        Commitment lastHash = (await ProduceBranchV1(rpc, chain, 30, CreateParentBlockRequestOnHead(chain.BlockTree), true))
+            .LastOrDefault()?.BlockHash ?? Commitment.Zero;
         chain.BlockTree.HeadHash.Should().Be(lastHash);
 
         // send newPayload
@@ -898,8 +898,8 @@ public partial class EngineModuleTests
 
         // send block with invalid state root
         ExecutionPayload blockWithInvalidStateRoot = CreateBlockRequest(chain, validBlockOnTopOfHead, TestItem.AddressA);
-        blockWithInvalidStateRoot.StateRoot = TestItem.KeccakB;
-        TryCalculateHash(blockWithInvalidStateRoot, out Keccak? hash);
+        blockWithInvalidStateRoot.StateRoot = TestItem._commitmentB;
+        TryCalculateHash(blockWithInvalidStateRoot, out Commitment? hash);
         blockWithInvalidStateRoot.BlockHash = hash;
         PayloadStatusV1 invalidStateRootNewPayloadResponse = (await rpc.engine_newPayloadV1(blockWithInvalidStateRoot)).Data;
         invalidStateRootNewPayloadResponse.Status.Should().Be(PayloadStatus.Invalid);

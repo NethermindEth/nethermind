@@ -311,7 +311,7 @@ namespace Nethermind.Blockchain.Test
             _headersDb = new TestMemDb();
             TestMemDb blocksInfosDb = new TestMemDb();
 
-            Rlp chainLevel = Rlp.Encode(new ChainLevelInfo(true, new BlockInfo(TestItem.KeccakA, 1)));
+            Rlp chainLevel = Rlp.Encode(new ChainLevelInfo(true, new BlockInfo(TestItem._commitmentA, 1)));
             blocksInfosDb.ReadFunc = (key) =>
             {
                 if (!Bytes.AreEqual(key, BlockTree.DeletePointerAddressInDb.Bytes))
@@ -711,7 +711,7 @@ namespace Nethermind.Blockchain.Test
             Block block0 = Build.A.Block.WithNumber(0).WithDifficulty(1).TestObject;
             blockTree.SuggestBlock(block0);
 
-            Block block2 = Build.A.Block.WithNumber(1).WithDifficulty(3).WithParentHash(Keccak.Zero).TestObject;
+            Block block2 = Build.A.Block.WithNumber(1).WithDifficulty(3).WithParentHash(Commitment.Zero).TestObject;
             blockTree.SuggestBlock(block2);
             Assert.That(block2.TotalDifficulty, Is.EqualTo(null));
         }
@@ -755,8 +755,8 @@ namespace Nethermind.Blockchain.Test
         public void ForkChoiceUpdated_update_hashes()
         {
             BlockTree blockTree = BuildBlockTree();
-            Keccak finalizedBlockHash = TestItem.KeccakB;
-            Keccak safeBlockHash = TestItem.KeccakC;
+            Commitment finalizedBlockHash = TestItem._commitmentB;
+            Commitment safeBlockHash = TestItem._commitmentC;
             blockTree.ForkChoiceUpdated(finalizedBlockHash, safeBlockHash);
             Assert.That(blockTree.FinalizedHash, Is.EqualTo(finalizedBlockHash));
             Assert.That(blockTree.SafeHash, Is.EqualTo(safeBlockHash));
@@ -791,7 +791,7 @@ namespace Nethermind.Blockchain.Test
             headersDb.Set(genesisBlock.Hash!, Rlp.Encode(genesisBlock.Header).Bytes);
 
             TestMemDb blockInfosDb = new();
-            blockInfosDb.Set(Keccak.Zero, genesisBlock.Hash!.Bytes);
+            blockInfosDb.Set(Commitment.Zero, genesisBlock.Hash!.Bytes);
             ChainLevelInfo level = new(true, new BlockInfo(headBlock.Hash!, headBlock.Difficulty));
             level.BlockInfos[0].WasProcessed = true;
 
@@ -824,7 +824,7 @@ namespace Nethermind.Blockchain.Test
             AddToMain(blockTree, block0);
             AddToMain(blockTree, block1);
 
-            Keccak dec = new Keccak(blockInfosDb.Get(Keccak.Zero)!);
+            Commitment dec = new Commitment(blockInfosDb.Get(Commitment.Zero)!);
             Assert.That(dec, Is.EqualTo(block1.Hash));
         }
 
@@ -931,7 +931,7 @@ namespace Nethermind.Blockchain.Test
             blockTree.SuggestBlock(block1);
             blockTree.UpdateMainChain(block1);
 
-            Keccak storedInDb = new(blockInfosDb.Get(Keccak.Zero)!);
+            Commitment storedInDb = new(blockInfosDb.Get(Commitment.Zero)!);
             Assert.That(storedInDb, Is.EqualTo(block1.Hash));
         }
 
@@ -1692,7 +1692,7 @@ namespace Nethermind.Blockchain.Test
                 {
                     for (int j = 0; j < level.BlockInfos.Length; j++)
                     {
-                        Keccak blockHash = level.BlockInfos[j].BlockHash;
+                        Commitment blockHash = level.BlockInfos[j].BlockHash;
                         BlockHeader? header = blockTree.FindHeader(blockHash, BlockTreeLookupOptions.None);
                         if (header is not null)
                         {
@@ -1789,18 +1789,18 @@ namespace Nethermind.Blockchain.Test
         {
             get
             {
-                BlockHeader? FindHeader(BlockTree b, Keccak? h, BlockTreeLookupOptions o) => b.FindHeader(h, o);
-                BlockHeader? FindBlock(BlockTree b, Keccak? h, BlockTreeLookupOptions o) => b.FindBlock(h, o)?.Header;
+                BlockHeader? FindHeader(BlockTree b, Commitment? h, BlockTreeLookupOptions o) => b.FindHeader(h, o);
+                BlockHeader? FindBlock(BlockTree b, Commitment? h, BlockTreeLookupOptions o) => b.FindBlock(h, o)?.Header;
 
                 IReadOnlyList<BlockTreeLookupOptions> valueCombinations = EnumExtensions.AllValuesCombinations<BlockTreeLookupOptions>();
                 foreach (BlockTreeLookupOptions blockTreeLookupOptions in valueCombinations)
                 {
                     bool allowInvalid = (blockTreeLookupOptions & BlockTreeLookupOptions.AllowInvalid) == BlockTreeLookupOptions.AllowInvalid;
-                    yield return new TestCaseData((Func<BlockTree, Keccak?, BlockTreeLookupOptions, BlockHeader?>)FindHeader, blockTreeLookupOptions, allowInvalid)
+                    yield return new TestCaseData((Func<BlockTree, Commitment?, BlockTreeLookupOptions, BlockHeader?>)FindHeader, blockTreeLookupOptions, allowInvalid)
                     {
                         TestName = $"InvalidBlock_{nameof(FindHeader)}_({blockTreeLookupOptions})_{(allowInvalid ? "found" : "not_found")}"
                     };
-                    yield return new TestCaseData((Func<BlockTree, Keccak?, BlockTreeLookupOptions, BlockHeader?>)FindBlock, blockTreeLookupOptions, allowInvalid)
+                    yield return new TestCaseData((Func<BlockTree, Commitment?, BlockTreeLookupOptions, BlockHeader?>)FindBlock, blockTreeLookupOptions, allowInvalid)
                     {
                         TestName = $"InvalidBlock_{nameof(FindBlock)}_({blockTreeLookupOptions})_{(allowInvalid ? "found" : "not_found")}"
                     };
@@ -1809,7 +1809,7 @@ namespace Nethermind.Blockchain.Test
         }
 
         [TestCaseSource(nameof(InvalidBlockTestCases))]
-        public void Find_handles_invalid_blocks(Func<BlockTree, Keccak?, BlockTreeLookupOptions, BlockHeader?> findFunction, BlockTreeLookupOptions lookupOptions, bool foundInvalid)
+        public void Find_handles_invalid_blocks(Func<BlockTree, Commitment?, BlockTreeLookupOptions, BlockHeader?> findFunction, BlockTreeLookupOptions lookupOptions, bool foundInvalid)
         {
             BlockTree blockTree = Build.A.BlockTree().OfChainLength(3).TestObject;
             Block invalidBlock = Build.A.Block.WithNumber(4).WithParent(blockTree.Head!).TestObject;
@@ -1842,7 +1842,7 @@ namespace Nethermind.Blockchain.Test
                 return LevelVisitOutcome.None;
             }
 
-            public Task<bool> VisitMissing(Keccak hash, CancellationToken cancellationToken)
+            public Task<bool> VisitMissing(Commitment hash, CancellationToken cancellationToken)
             {
                 return Task.FromResult(true);
             }

@@ -205,7 +205,7 @@ namespace Nethermind.Blockchain.FullPruning
             }
         }
 
-        protected virtual void RunPruning(IPruningContext pruning, Keccak statRoot)
+        protected virtual void RunPruning(IPruningContext pruning, Commitment statRoot)
         {
             try
             {

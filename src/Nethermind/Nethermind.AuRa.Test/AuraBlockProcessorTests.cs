@@ -41,7 +41,7 @@ namespace Nethermind.AuRa.Test
             BlockHeader header = Build.A.BlockHeader.WithAuthor(TestItem.AddressD).TestObject;
             Block block = Build.A.Block.WithHeader(header).TestObject;
             Block[] processedBlocks = processor.Process(
-                Keccak.EmptyTreeHash,
+                Commitment.EmptyTreeHash,
                 new List<Block> { block },
                 ProcessingOptions.None,
                 NullBlockTracer.Instance);
@@ -63,7 +63,7 @@ namespace Nethermind.AuRa.Test
                 .SignedAndResolved().WithChainId(105).WithGasPrice(0).WithValue(0).TestObject;
             Block block = Build.A.Block.WithHeader(header).WithTransactions(new Transaction[] { tx }).TestObject;
             Block[] processedBlocks = processor.Process(
-                Keccak.EmptyTreeHash,
+                Commitment.EmptyTreeHash,
                 new List<Block> { block },
                 ProcessingOptions.None,
                 NullBlockTracer.Instance);
@@ -81,7 +81,7 @@ namespace Nethermind.AuRa.Test
             Block block = Build.A.Block.WithHeader(header).WithTransactions(new Transaction[] { tx })
                 .WithGasLimit(gasLimit).TestObject;
             Assert.DoesNotThrow(() => processor.Process(
-                Keccak.EmptyTreeHash,
+                Commitment.EmptyTreeHash,
                 new List<Block> { block },
                 ProcessingOptions.None,
                 NullBlockTracer.Instance));
@@ -90,7 +90,7 @@ namespace Nethermind.AuRa.Test
         [Test]
         public void Should_rewrite_contracts()
         {
-            void Process(AuRaBlockProcessor auRaBlockProcessor, int blockNumber, Keccak stateRoot)
+            void Process(AuRaBlockProcessor auRaBlockProcessor, int blockNumber, Commitment stateRoot)
             {
                 BlockHeader header = Build.A.BlockHeader.WithAuthor(TestItem.AddressD).WithNumber(blockNumber).TestObject;
                 Block block = Build.A.Block.WithHeader(header).TestObject;

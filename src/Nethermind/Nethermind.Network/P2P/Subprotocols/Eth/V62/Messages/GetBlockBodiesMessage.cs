@@ -9,16 +9,16 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
 {
     public class GetBlockBodiesMessage : P2PMessage
     {
-        public IReadOnlyList<Keccak> BlockHashes { get; }
+        public IReadOnlyList<Commitment> BlockHashes { get; }
         public override int PacketType { get; } = Eth62MessageCode.GetBlockBodies;
         public override string Protocol { get; } = "eth";
 
-        public GetBlockBodiesMessage(IReadOnlyList<Keccak> blockHashes)
+        public GetBlockBodiesMessage(IReadOnlyList<Commitment> blockHashes)
         {
             BlockHashes = blockHashes;
         }
 
-        public GetBlockBodiesMessage(params Keccak[] blockHashes) : this((IReadOnlyList<Keccak>)blockHashes)
+        public GetBlockBodiesMessage(params Commitment[] blockHashes) : this((IReadOnlyList<Commitment>)blockHashes)
         {
         }
 

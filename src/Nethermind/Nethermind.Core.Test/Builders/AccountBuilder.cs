@@ -27,11 +27,11 @@ namespace Nethermind.Core.Test.Builders
 
         public AccountBuilder WithCode(byte[] code)
         {
-            TestObjectInternal = TestObjectInternal.WithChangedCodeHash(Keccak.Compute(code));
+            TestObjectInternal = TestObjectInternal.WithChangedCodeHash(Commitment.Compute(code));
             return this;
         }
 
-        public AccountBuilder WithStorageRoot(Keccak storageRoot)
+        public AccountBuilder WithStorageRoot(Commitment storageRoot)
         {
             TestObjectInternal = TestObjectInternal.WithChangedStorageRoot(storageRoot);
             return this;

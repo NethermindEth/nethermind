@@ -19,7 +19,7 @@ namespace Nethermind.Serialization.Rlp
 
             int lastCheck = rlpStream.ReadSequenceLength() + rlpStream.Position;
 
-            Keccak? blockHash = rlpStream.DecodeKeccak();
+            Commitment? blockHash = rlpStream.DecodeKeccak();
 
             bool wasProcessed = rlpStream.DecodeBool();
             UInt256 totalDifficulty = rlpStream.DecodeUInt256();
@@ -102,7 +102,7 @@ namespace Nethermind.Serialization.Rlp
 
             int lastCheck = decoderContext.ReadSequenceLength() + decoderContext.Position;
 
-            Keccak? blockHash = decoderContext.DecodeKeccak();
+            Commitment? blockHash = decoderContext.DecodeKeccak();
             bool wasProcessed = decoderContext.DecodeBool();
             UInt256 totalDifficulty = decoderContext.DecodeUInt256();
 

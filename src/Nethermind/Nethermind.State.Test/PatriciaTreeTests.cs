@@ -60,7 +60,7 @@ namespace Nethermind.Store.Test
             stateTree.Set(TestItem.AddressA, account);
             stateTree.Commit(0);
 
-            Keccak rootHash = stateTree.RootHash;
+            Commitment rootHash = stateTree.RootHash;
             stateTree.RootHash = null;
 
             stateTree.RootHash = rootHash;
@@ -83,7 +83,7 @@ namespace Nethermind.Store.Test
             StateTree stateTree = new(trieStore, LimboLogs.Instance);
             stateTree.Set(TestItem.AddressA, account);
             stateTree.UpdateRootHash();
-            Keccak stateRoot = stateTree.RootHash;
+            Commitment stateRoot = stateTree.RootHash;
             stateTree.Commit(0, skipRoot);
 
             if (hasRoot)

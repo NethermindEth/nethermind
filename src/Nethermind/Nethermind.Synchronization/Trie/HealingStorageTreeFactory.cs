@@ -19,6 +19,6 @@ public class HealingStorageTreeFactory : IStorageTreeFactory
         _recovery = recovery;
     }
 
-    public StorageTree Create(Address address, ITrieStore trieStore, Keccak storageRoot, Keccak stateRoot, ILogManager? logManager) =>
+    public StorageTree Create(Address address, ITrieStore trieStore, Commitment storageRoot, Commitment stateRoot, ILogManager? logManager) =>
         new HealingStorageTree(trieStore, storageRoot, logManager, address, stateRoot, _recovery);
 }

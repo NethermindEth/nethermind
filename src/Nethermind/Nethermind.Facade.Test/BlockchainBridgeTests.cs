@@ -86,14 +86,14 @@ namespace Nethermind.Facade.Test
         [Test]
         public void get_transaction_returns_null_when_transaction_not_found()
         {
-            _blockchainBridge.GetTransaction(TestItem.KeccakA).Should().Be((null, null, null));
+            _blockchainBridge.GetTransaction(TestItem._commitmentA).Should().Be((null, null, null));
         }
 
         [Test]
         public void get_transaction_returns_null_when_block_not_found()
         {
-            _receiptStorage.FindBlockHash(TestItem.KeccakA).Returns(TestItem.KeccakB);
-            _blockchainBridge.GetTransaction(TestItem.KeccakA).Should().Be((null, null, null));
+            _receiptStorage.FindBlockHash(TestItem._commitmentA).Returns(TestItem._commitmentB);
+            _blockchainBridge.GetTransaction(TestItem._commitmentA).Should().Be((null, null, null));
         }
 
         [Test]
@@ -101,8 +101,8 @@ namespace Nethermind.Facade.Test
         {
             int index = 5;
             var receipt = Build.A.Receipt
-                .WithBlockHash(TestItem.KeccakB)
-                .WithTransactionHash(TestItem.KeccakA)
+                .WithBlockHash(TestItem._commitmentB)
+                .WithTransactionHash(TestItem._commitmentA)
                 .WithIndex(index)
                 .TestObject;
             IEnumerable<Transaction> transactions = Enumerable.Range(0, 10)
@@ -110,10 +110,10 @@ namespace Nethermind.Facade.Test
             var block = Build.A.Block
                 .WithTransactions(transactions.ToArray())
                 .TestObject;
-            _blockTree.FindBlock(TestItem.KeccakB, Arg.Any<BlockTreeLookupOptions>()).Returns(block);
-            _receiptStorage.FindBlockHash(TestItem.KeccakA).Returns(TestItem.KeccakB);
+            _blockTree.FindBlock(TestItem._commitmentB, Arg.Any<BlockTreeLookupOptions>()).Returns(block);
+            _receiptStorage.FindBlockHash(TestItem._commitmentA).Returns(TestItem._commitmentB);
             _receiptStorage.Get(block).Returns(new[] { receipt });
-            _blockchainBridge.GetTransaction(TestItem.KeccakA).Should()
+            _blockchainBridge.GetTransaction(TestItem._commitmentA).Should()
                 .BeEquivalentTo((receipt, Build.A.Transaction.WithNonce((UInt256)index).TestObject));
         }
 
@@ -142,7 +142,7 @@ namespace Nethermind.Facade.Test
         {
             BlockHeader header = Build.A.BlockHeader
                 .WithDifficulty(0)
-                .WithMixHash(TestItem.KeccakA)
+                .WithMixHash(TestItem._commitmentA)
                 .TestObject;
 
             Transaction tx = Build.A.Transaction.TestObject;
@@ -151,7 +151,7 @@ namespace Nethermind.Facade.Test
             _transactionProcessor.Received().CallAndRestore(
                 tx,
                 Arg.Is<BlockExecutionContext>(blkCtx =>
-                blkCtx.Header.IsPostMerge && blkCtx.Header.Random == TestItem.KeccakA),
+                blkCtx.Header.IsPostMerge && blkCtx.Header.Random == TestItem._commitmentA),
                 Arg.Any<ITxTracer>());
         }
 
@@ -175,13 +175,13 @@ namespace Nethermind.Facade.Test
         {
             _timestamper.UtcNow = DateTime.MinValue;
             _timestamper.Add(TimeSpan.FromDays(123));
-            BlockHeader header = Build.A.BlockHeader.WithMixHash(TestItem.KeccakA).TestObject;
+            BlockHeader header = Build.A.BlockHeader.WithMixHash(TestItem._commitmentA).TestObject;
             Transaction tx = new() { GasLimit = Transaction.BaseTxGasCost };
 
             _blockchainBridge.Call(header, tx, CancellationToken.None);
             _transactionProcessor.Received().CallAndRestore(
                 tx,
-                Arg.Is<BlockExecutionContext>(blkCtx => blkCtx.Header.MixHash == TestItem.KeccakA),
+                Arg.Is<BlockExecutionContext>(blkCtx => blkCtx.Header.MixHash == TestItem._commitmentA),
                 Arg.Any<ITxTracer>());
         }
 
@@ -239,8 +239,8 @@ namespace Nethermind.Facade.Test
         [TestCase(false, false)]
         public void GetReceiptAndGasInfo_returns_correct_results(bool isCanonical, bool postEip4844)
         {
-            Keccak txHash = TestItem.KeccakA;
-            Keccak blockHash = TestItem.KeccakB;
+            Commitment txHash = TestItem._commitmentA;
+            Commitment blockHash = TestItem._commitmentB;
             UInt256 effectiveGasPrice = 123;
 
             Transaction tx = postEip4844

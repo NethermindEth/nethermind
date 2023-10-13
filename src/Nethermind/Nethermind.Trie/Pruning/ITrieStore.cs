@@ -13,7 +13,7 @@ namespace Nethermind.Trie.Pruning
 
         void FinishBlockCommit(TrieType trieType, long blockNumber, TrieNode? root, WriteFlags writeFlags = WriteFlags.None);
 
-        bool IsPersisted(in ValueKeccak keccak);
+        bool IsPersisted(in ValueCommitment commitment);
 
         IReadOnlyTrieStore AsReadOnly(IKeyValueStore? keyValueStore);
 

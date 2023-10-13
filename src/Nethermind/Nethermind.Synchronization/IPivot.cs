@@ -10,9 +10,9 @@ namespace Nethermind.Synchronization
     {
         long PivotNumber { get; }
 
-        Keccak? PivotHash { get; }
+        Commitment? PivotHash { get; }
 
-        Keccak? PivotParentHash { get; }
+        Commitment? PivotParentHash { get; }
 
         UInt256? PivotTotalDifficulty { get; }
 

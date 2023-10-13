@@ -26,14 +26,14 @@ namespace Nethermind.Trie
 
         public bool IsFullDbScan => true;
 
-        public bool ShouldVisit(Keccak nextNode)
+        public bool ShouldVisit(Commitment nextNode)
         {
             return true;
         }
 
-        public void VisitTree(Keccak rootHash, TrieVisitContext trieVisitContext) { }
+        public void VisitTree(Commitment rootHash, TrieVisitContext trieVisitContext) { }
 
-        public void VisitMissingNode(Keccak nodeHash, TrieVisitContext trieVisitContext)
+        public void VisitMissingNode(Commitment nodeHash, TrieVisitContext trieVisitContext)
         {
             if (trieVisitContext.IsStorage)
             {
@@ -101,7 +101,7 @@ namespace Nethermind.Trie
             IncrementLevel(trieVisitContext);
         }
 
-        public void VisitCode(Keccak codeHash, TrieVisitContext trieVisitContext)
+        public void VisitCode(Commitment codeHash, TrieVisitContext trieVisitContext)
         {
             byte[] code = _codeKeyValueStore[codeHash.Bytes];
             if (code is not null)

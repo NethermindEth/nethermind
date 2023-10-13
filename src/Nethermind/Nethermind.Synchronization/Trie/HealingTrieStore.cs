@@ -17,7 +17,7 @@ namespace Nethermind.Synchronization.Trie;
 /// </summary>
 public class HealingTrieStore : TrieStore
 {
-    private ITrieNodeRecovery<IReadOnlyList<Keccak>>? _recovery;
+    private ITrieNodeRecovery<IReadOnlyList<Commitment>>? _recovery;
 
     public HealingTrieStore(
         IKeyValueStoreWithBatching? keyValueStore,
@@ -28,20 +28,20 @@ public class HealingTrieStore : TrieStore
     {
     }
 
-    public void InitializeNetwork(ITrieNodeRecovery<IReadOnlyList<Keccak>> recovery)
+    public void InitializeNetwork(ITrieNodeRecovery<IReadOnlyList<Commitment>> recovery)
     {
         _recovery = recovery;
     }
 
-    public override byte[] LoadRlp(Keccak keccak, ReadFlags readFlags = ReadFlags.None)
+    public override byte[] LoadRlp(Commitment commitment, ReadFlags readFlags = ReadFlags.None)
     {
         try
         {
-            return base.LoadRlp(keccak, readFlags);
+            return base.LoadRlp(commitment, readFlags);
         }
         catch (TrieNodeException)
         {
-            if (TryRecover(keccak, out byte[] rlp))
+            if (TryRecover(commitment, out byte[] rlp))
             {
                 return rlp;
             }
@@ -50,11 +50,11 @@ public class HealingTrieStore : TrieStore
         }
     }
 
-    private bool TryRecover(Keccak rlpHash, [NotNullWhen(true)] out byte[]? rlp)
+    private bool TryRecover(Commitment rlpHash, [NotNullWhen(true)] out byte[]? rlp)
     {
         if (_recovery?.CanRecover == true)
         {
-            using ArrayPoolList<Keccak> request = new(1) { rlpHash };
+            using ArrayPoolList<Commitment> request = new(1) { rlpHash };
             rlp = _recovery.Recover(rlpHash, request).GetAwaiter().GetResult();
             if (rlp is not null)
             {

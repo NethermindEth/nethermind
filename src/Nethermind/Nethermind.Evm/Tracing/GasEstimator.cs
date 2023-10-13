@@ -106,11 +106,11 @@ namespace Nethermind.Evm.Tracing
             public override bool IsTracingInstructions => true;
             public bool OutOfGas { get; private set; }
 
-            public override void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Keccak? stateRoot = null)
+            public override void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Commitment? stateRoot = null)
             {
             }
 
-            public override void MarkAsFailed(Address recipient, long gasSpent, byte[] output, string error, Keccak? stateRoot = null)
+            public override void MarkAsFailed(Address recipient, long gasSpent, byte[] output, string error, Commitment? stateRoot = null)
             {
             }
 

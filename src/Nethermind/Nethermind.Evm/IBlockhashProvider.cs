@@ -8,6 +8,6 @@ namespace Nethermind.Evm
 {
     public interface IBlockhashProvider
     {
-        Keccak GetBlockhash(BlockHeader currentBlock, in long number);
+        Commitment GetBlockhash(BlockHeader currentBlock, in long number);
     }
 }

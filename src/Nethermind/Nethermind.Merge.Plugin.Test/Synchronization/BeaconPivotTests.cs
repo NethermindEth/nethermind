@@ -29,7 +29,7 @@ public class BeaconPivotTests
             FastSync = true,
             FastBlocks = true,
             PivotNumber = "1000",
-            PivotHash = Keccak.Zero.ToString(),
+            PivotHash = Commitment.Zero.ToString(),
             PivotTotalDifficulty = "1000"
         };
     }

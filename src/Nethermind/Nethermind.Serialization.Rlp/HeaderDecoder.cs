@@ -22,12 +22,12 @@ namespace Nethermind.Serialization.Rlp
             int headerSequenceLength = decoderContext.ReadSequenceLength();
             int headerCheck = decoderContext.Position + headerSequenceLength;
 
-            Keccak? parentHash = decoderContext.DecodeKeccak();
-            Keccak? unclesHash = decoderContext.DecodeKeccak();
+            Commitment? parentHash = decoderContext.DecodeKeccak();
+            Commitment? unclesHash = decoderContext.DecodeKeccak();
             Address? beneficiary = decoderContext.DecodeAddress();
-            Keccak? stateRoot = decoderContext.DecodeKeccak();
-            Keccak? transactionsRoot = decoderContext.DecodeKeccak();
-            Keccak? receiptsRoot = decoderContext.DecodeKeccak();
+            Commitment? stateRoot = decoderContext.DecodeKeccak();
+            Commitment? transactionsRoot = decoderContext.DecodeKeccak();
+            Commitment? receiptsRoot = decoderContext.DecodeKeccak();
             Bloom? bloom = decoderContext.DecodeBloom();
             UInt256 difficulty = decoderContext.DecodeUInt256();
             long number = decoderContext.DecodeLong();
@@ -51,10 +51,10 @@ namespace Nethermind.Serialization.Rlp
                 ReceiptsRoot = receiptsRoot,
                 Bloom = bloom,
                 GasUsed = gasUsed,
-                Hash = Keccak.Compute(headerRlp)
+                Hash = Commitment.Compute(headerRlp)
             };
 
-            if (decoderContext.PeekPrefixAndContentLength().ContentLength == Keccak.Size)
+            if (decoderContext.PeekPrefixAndContentLength().ContentLength == Commitment.Size)
             {
                 blockHeader.MixHash = decoderContext.DecodeKeccak();
                 blockHeader.Nonce = (ulong)decoderContext.DecodeUBigInt();
@@ -73,7 +73,7 @@ namespace Nethermind.Serialization.Rlp
 
             int itemsRemaining = decoderContext.PeekNumberOfItemsRemaining(null, 4);
             if (itemsRemaining > 0 &&
-                decoderContext.PeekPrefixAndContentLength().ContentLength == Keccak.Size)
+                decoderContext.PeekPrefixAndContentLength().ContentLength == Commitment.Size)
             {
                 blockHeader.WithdrawalsRoot = decoderContext.DecodeKeccak();
 
@@ -110,12 +110,12 @@ namespace Nethermind.Serialization.Rlp
             int headerSequenceLength = rlpStream.ReadSequenceLength();
             int headerCheck = rlpStream.Position + headerSequenceLength;
 
-            Keccak? parentHash = rlpStream.DecodeKeccak();
-            Keccak? unclesHash = rlpStream.DecodeKeccak();
+            Commitment? parentHash = rlpStream.DecodeKeccak();
+            Commitment? unclesHash = rlpStream.DecodeKeccak();
             Address? beneficiary = rlpStream.DecodeAddress();
-            Keccak? stateRoot = rlpStream.DecodeKeccak();
-            Keccak? transactionsRoot = rlpStream.DecodeKeccak();
-            Keccak? receiptsRoot = rlpStream.DecodeKeccak();
+            Commitment? stateRoot = rlpStream.DecodeKeccak();
+            Commitment? transactionsRoot = rlpStream.DecodeKeccak();
+            Commitment? receiptsRoot = rlpStream.DecodeKeccak();
             Bloom? bloom = rlpStream.DecodeBloom();
             UInt256 difficulty = rlpStream.DecodeUInt256();
             long number = rlpStream.DecodeLong();
@@ -139,10 +139,10 @@ namespace Nethermind.Serialization.Rlp
                 ReceiptsRoot = receiptsRoot,
                 Bloom = bloom,
                 GasUsed = gasUsed,
-                Hash = Keccak.Compute(headerRlp)
+                Hash = Commitment.Compute(headerRlp)
             };
 
-            if (rlpStream.PeekPrefixAndContentLength().ContentLength == Keccak.Size)
+            if (rlpStream.PeekPrefixAndContentLength().ContentLength == Commitment.Size)
             {
                 blockHeader.MixHash = rlpStream.DecodeKeccak();
                 blockHeader.Nonce = (ulong)rlpStream.DecodeUBigInt();
@@ -160,7 +160,7 @@ namespace Nethermind.Serialization.Rlp
 
             int itemsRemaining = rlpStream.PeekNumberOfItemsRemaining(null, 4);
             if (itemsRemaining > 0 &&
-                rlpStream.PeekPrefixAndContentLength().ContentLength == Keccak.Size)
+                rlpStream.PeekPrefixAndContentLength().ContentLength == Commitment.Size)
             {
                 blockHeader.WithdrawalsRoot = rlpStream.DecodeKeccak();
 
@@ -230,7 +230,7 @@ namespace Nethermind.Serialization.Rlp
 
             if (header.WithdrawalsRoot is not null || header.ExcessBlobGas is not null || header.BlobGasUsed is not null || header.ParentBeaconBlockRoot is not null)
             {
-                rlpStream.Encode(header.WithdrawalsRoot ?? Keccak.Zero);
+                rlpStream.Encode(header.WithdrawalsRoot ?? Commitment.Zero);
             }
 
             if (header.BlobGasUsed is not null || header.ExcessBlobGas is not null || header.ParentBeaconBlockRoot is not null)

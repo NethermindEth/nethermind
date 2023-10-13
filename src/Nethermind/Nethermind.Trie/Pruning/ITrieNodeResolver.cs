@@ -15,13 +15,13 @@ namespace Nethermind.Trie.Pruning
         /// </summary>
         /// <param name="hash">Keccak hash of the RLP of the node.</param>
         /// <returns></returns>
-        TrieNode FindCachedOrUnknown(Keccak hash);
+        TrieNode FindCachedOrUnknown(Commitment hash);
 
         /// <summary>
         /// Loads RLP of the node.
         /// </summary>
         /// <param name="hash"></param>
         /// <returns></returns>
-        byte[]? LoadRlp(Keccak hash, ReadFlags flags = ReadFlags.None);
+        byte[]? LoadRlp(Commitment hash, ReadFlags flags = ReadFlags.None);
     }
 }

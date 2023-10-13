@@ -10,7 +10,7 @@ namespace Nethermind.Evm.Tracing.Proofs
     {
         private readonly bool _treatSystemAccountDifferently;
 
-        public ProofBlockTracer(Keccak? txHash, bool treatSystemAccountDifferently) : base(txHash)
+        public ProofBlockTracer(Commitment? txHash, bool treatSystemAccountDifferently) : base(txHash)
         {
             _treatSystemAccountDifferently = treatSystemAccountDifferently;
         }

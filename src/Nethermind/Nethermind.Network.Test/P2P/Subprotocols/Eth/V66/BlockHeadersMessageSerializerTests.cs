@@ -17,12 +17,12 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
         public void RoundTrip()
         {
             BlockHeader header = Build.A.BlockHeader.TestObject;
-            header.ParentHash = Keccak.Zero;
-            header.UnclesHash = Keccak.Zero;
+            header.ParentHash = Commitment.Zero;
+            header.UnclesHash = Commitment.Zero;
             header.Beneficiary = Address.Zero;
-            header.StateRoot = Keccak.Zero;
-            header.TxRoot = Keccak.Zero;
-            header.ReceiptsRoot = Keccak.Zero;
+            header.StateRoot = Commitment.Zero;
+            header.TxRoot = Commitment.Zero;
+            header.ReceiptsRoot = Commitment.Zero;
             header.Bloom = Bloom.Empty;
             header.Difficulty = 0x8ae;
             header.Number = 0xd05;
@@ -30,9 +30,9 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
             header.GasUsed = 0x15b3;
             header.Timestamp = 0x1a0a;
             header.ExtraData = new byte[] { 0x77, 0x88 };
-            header.MixHash = Keccak.Zero;
+            header.MixHash = Commitment.Zero;
             header.Nonce = 0;
-            header.Hash = new Keccak("0x8c2f2af15b7b563b6ab1e09bed0e9caade7ed730aec98b70a993597a797579a9");
+            header.Hash = new Commitment("0x8c2f2af15b7b563b6ab1e09bed0e9caade7ed730aec98b70a993597a797579a9");
 
             var ethMessage = new Network.P2P.Subprotocols.Eth.V62.Messages.BlockHeadersMessage();
             ethMessage.BlockHeaders = new[] { header };

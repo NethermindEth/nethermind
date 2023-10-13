@@ -7,6 +7,6 @@ namespace Nethermind.Evm.TransactionProcessing
 {
     public interface IReadOnlyTxProcessorSource
     {
-        IReadOnlyTransactionProcessor Build(Keccak stateRoot);
+        IReadOnlyTransactionProcessor Build(Commitment stateRoot);
     }
 }

@@ -31,7 +31,7 @@ namespace Nethermind.Specs
 
         public ulong NetworkId => Core.BlockchainIds.Mainnet;
         public ulong ChainId => NetworkId;
-        public Keccak GenesisHash => KnownHashes.MainnetGenesis;
+        public Commitment GenesisHash => KnownHashes.MainnetGenesis;
         public ForkActivation[] TransitionActivations { get; } = { (ForkActivation)0 };
 
         private FrontierSpecProvider()

@@ -11,7 +11,7 @@ namespace Nethermind.Stats.Model
         public byte ProtocolVersion { get; set; }
         public ulong NetworkId { get; set; }
         public BigInteger TotalDifficulty { get; set; }
-        public Keccak BestHash { get; set; }
-        public Keccak GenesisHash { get; set; }
+        public Commitment BestHash { get; set; }
+        public Commitment GenesisHash { get; set; }
     }
 }

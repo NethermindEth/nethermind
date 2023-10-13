@@ -11,7 +11,7 @@ namespace Nethermind.Crypto
     {
         private static readonly TxDecoder _txDecoder = new();
 
-        public static Keccak CalculateHash(this Transaction transaction)
+        public static Commitment CalculateHash(this Transaction transaction)
         {
             KeccakRlpStream stream = new();
             _txDecoder.Encode(stream, transaction, RlpBehaviors.SkipTypedWrapping);

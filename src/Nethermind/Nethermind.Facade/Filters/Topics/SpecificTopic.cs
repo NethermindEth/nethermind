@@ -8,10 +8,10 @@ namespace Nethermind.Blockchain.Filters.Topics
 {
     public class SpecificTopic : TopicExpression
     {
-        private readonly Keccak _topic;
+        private readonly Commitment _topic;
         private Bloom.BloomExtract _bloomExtract;
 
-        public SpecificTopic(Keccak topic)
+        public SpecificTopic(Commitment topic)
         {
             _topic = topic;
         }
@@ -29,9 +29,9 @@ namespace Nethermind.Blockchain.Filters.Topics
             }
         }
 
-        public override bool Accepts(Keccak topic) => topic == _topic;
+        public override bool Accepts(Commitment topic) => topic == _topic;
 
-        public override bool Accepts(ref KeccakStructRef topic) => topic == _topic;
+        public override bool Accepts(ref CommitmentStructRef topic) => topic == _topic;
 
         public override bool Matches(Bloom bloom) => bloom.Matches(in BloomExtract);
 

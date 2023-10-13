@@ -165,7 +165,7 @@ namespace Nethermind.AuRa.Test
             {
                 if (repeat == Repeat.YesChangeHash)
                 {
-                    block.Hash = Keccak.Compute("AAA");
+                    block.Hash = Commitment.Compute("AAA");
                 }
 
                 validateParams = _sealValidator.ValidateParams(parentBlock, block);
@@ -196,7 +196,7 @@ namespace Nethermind.AuRa.Test
                 .WithNumber(blockNumber)
                 .TestObject;
 
-            Keccak hash = block.CalculateHash(RlpBehaviors.ForSealing);
+            Commitment hash = block.CalculateHash(RlpBehaviors.ForSealing);
             block.AuRaSignature = _wallet.Sign(hash, signedAddress).BytesWithRecovery;
             _ethereumEcdsa.RecoverAddress(Arg.Any<Signature>(), hash).Returns(recoveredAddress);
 

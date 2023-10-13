@@ -24,7 +24,7 @@ namespace Nethermind.TxPool.Test.Collections
     {
         private const int Capacity = 16;
 
-        private SortedPool<ValueKeccak, Transaction, Address> _sortedPool;
+        private SortedPool<ValueCommitment, Transaction, Address> _sortedPool;
 
         private Transaction[] _transactions = new Transaction[Capacity * 8];
 
@@ -94,7 +94,7 @@ namespace Nethermind.TxPool.Test.Collections
         {
             Transaction tx = Build.A.Transaction
                 .WithSenderAddress(TestItem.AddressA)
-                .WithHash(TestItem.KeccakA).TestObject;
+                .WithHash(TestItem._commitmentA).TestObject;
 
             _sortedPool.TryInsert(tx.Hash, tx);
             _sortedPool.TryGetBucket(tx.SenderAddress, out _).Should().BeTrue();

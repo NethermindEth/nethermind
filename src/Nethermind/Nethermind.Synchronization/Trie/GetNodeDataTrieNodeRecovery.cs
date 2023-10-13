@@ -12,23 +12,23 @@ using Nethermind.Synchronization.StateSync;
 
 namespace Nethermind.Synchronization.Trie;
 
-public class GetNodeDataTrieNodeRecovery : TrieNodeRecovery<IReadOnlyList<Keccak>>
+public class GetNodeDataTrieNodeRecovery : TrieNodeRecovery<IReadOnlyList<Commitment>>
 {
     public GetNodeDataTrieNodeRecovery(ISyncPeerPool syncPeerPool, ILogManager? logManager) : base(syncPeerPool, logManager)
     {
     }
 
-    protected override string GetMissingNodes(IReadOnlyList<Keccak> request) => string.Join(", ", request);
+    protected override string GetMissingNodes(IReadOnlyList<Commitment> request) => string.Join(", ", request);
 
     protected override bool CanAllocatePeer(ISyncPeer peer) => peer.CanGetNodeData();
 
-    protected override async Task<byte[]?> RecoverRlpFromPeerBase(ValueKeccak rlpHash, ISyncPeer peer, IReadOnlyList<Keccak> request, CancellationTokenSource cts)
+    protected override async Task<byte[]?> RecoverRlpFromPeerBase(ValueCommitment rlpHash, ISyncPeer peer, IReadOnlyList<Commitment> request, CancellationTokenSource cts)
     {
         byte[][] rlp = await peer.GetNodeData(request, cts.Token);
         if (rlp.Length == 1)
         {
             byte[] recoveredRlp = rlp[0];
-            if (ValueKeccak.Compute(recoveredRlp) == rlpHash)
+            if (ValueCommitment.Compute(recoveredRlp) == rlpHash)
             {
                 return recoveredRlp;
             }

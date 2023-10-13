@@ -809,7 +809,7 @@ namespace Nethermind.Mining.Test
             Ethash ethash = new(LimboLogs.Instance);
             EthashSealValidator sealValidator = new(LimboLogs.Instance, new EthashDifficultyCalculator(MainnetSpecProvider.Instance), new CryptoRandom(), ethash, Timestamper.Default);
             sealValidator.ValidateSeal(b.Header, true);
-            b.Header.MixHash = Keccak.Zero;
+            b.Header.MixHash = Commitment.Zero;
             bool valid = sealValidator.ValidateSeal(b.Header, true);
             Assert.True(valid);
         }
@@ -818,7 +818,7 @@ namespace Nethermind.Mining.Test
         public void Can_skip_when_not_forced(string blockRlp)
         {
             Block b = Rlp.Decode<Block>(new Rlp(Bytes.FromHexString(blockRlp)));
-            b.Header.MixHash = Keccak.Zero;
+            b.Header.MixHash = Commitment.Zero;
 
             Ethash ethash = new(LimboLogs.Instance);
             EthashSealValidator sealValidator = new(LimboLogs.Instance, new EthashDifficultyCalculator(MainnetSpecProvider.Instance), new CryptoRandom(), ethash, Timestamper.Default);

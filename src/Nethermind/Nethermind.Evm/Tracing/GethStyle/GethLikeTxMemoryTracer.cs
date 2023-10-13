@@ -14,7 +14,7 @@ public class GethLikeTxMemoryTracer : GethLikeTxTracer<GethTxMemoryTraceEntry>
 {
     public GethLikeTxMemoryTracer(GethTraceOptions options) : base(options) => IsTracingMemory = IsTracingFullMemory;
 
-    public override void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Keccak? stateRoot = null)
+    public override void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Commitment? stateRoot = null)
     {
         base.MarkAsSuccess(recipient, gasSpent, output, logs, stateRoot);
 

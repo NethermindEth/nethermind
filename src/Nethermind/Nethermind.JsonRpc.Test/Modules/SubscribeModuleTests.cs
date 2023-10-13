@@ -425,7 +425,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             int blockNumber = 55555;
             Filter filter = Substitute.For<Filter>();
 
-            LogEntry logEntry = Build.A.LogEntry.WithAddress(TestItem.AddressA).WithTopics(TestItem.KeccakA).WithData(TestItem.RandomDataA).TestObject;
+            LogEntry logEntry = Build.A.LogEntry.WithAddress(TestItem.AddressA).WithTopics(TestItem._commitmentA).WithData(TestItem.RandomDataA).TestObject;
             TxReceipt[] txReceipts = { Build.A.Receipt.WithBlockNumber(blockNumber).WithLogs(logEntry).TestObject };
             _receiptStorage.Get(Arg.Any<Block>()).Returns(txReceipts);
 
@@ -446,7 +446,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             int blockNumber = 22222;
             Filter filter = Substitute.For<Filter>();
 
-            LogEntry logEntry = Build.A.LogEntry.WithAddress(TestItem.AddressA).WithTopics(TestItem.KeccakA).WithData(TestItem.RandomDataA).TestObject;
+            LogEntry logEntry = Build.A.LogEntry.WithAddress(TestItem.AddressA).WithTopics(TestItem._commitmentA).WithData(TestItem.RandomDataA).TestObject;
             TxReceipt[] txReceipts = { Build.A.Receipt.WithBlockNumber(blockNumber).WithLogs(logEntry).TestObject };
             _receiptStorage.Get(Arg.Any<Block>()).Returns(txReceipts);
 
@@ -464,8 +464,8 @@ namespace Nethermind.JsonRpc.Test.Modules
             int blockNumber = 77777;
             Filter filter = Substitute.For<Filter>();
 
-            LogEntry logEntryA = Build.A.LogEntry.WithAddress(TestItem.AddressA).WithTopics(TestItem.KeccakA).WithData(TestItem.RandomDataA).TestObject;
-            LogEntry logEntryB = Build.A.LogEntry.WithAddress(TestItem.AddressB).WithTopics(TestItem.KeccakB).TestObject;
+            LogEntry logEntryA = Build.A.LogEntry.WithAddress(TestItem.AddressA).WithTopics(TestItem._commitmentA).WithData(TestItem.RandomDataA).TestObject;
+            LogEntry logEntryB = Build.A.LogEntry.WithAddress(TestItem.AddressB).WithTopics(TestItem._commitmentB).TestObject;
             LogEntry logEntryC = Build.A.LogEntry.WithData(TestItem.RandomDataC).TestObject;
 
             TxReceipt[] txReceipts = { Build.A.Receipt.WithBlockNumber(blockNumber).WithLogs(logEntryA, logEntryB, logEntryC).TestObject };
@@ -496,8 +496,8 @@ namespace Nethermind.JsonRpc.Test.Modules
             int blockNumber = 55555;
             Filter filter = Substitute.For<Filter>();
 
-            LogEntry logEntryA = Build.A.LogEntry.WithAddress(TestItem.AddressA).WithTopics(TestItem.KeccakA).WithData(TestItem.RandomDataA).TestObject;
-            LogEntry logEntryB = Build.A.LogEntry.WithAddress(TestItem.AddressB).WithTopics(TestItem.KeccakB).TestObject;
+            LogEntry logEntryA = Build.A.LogEntry.WithAddress(TestItem.AddressA).WithTopics(TestItem._commitmentA).WithData(TestItem.RandomDataA).TestObject;
+            LogEntry logEntryB = Build.A.LogEntry.WithAddress(TestItem.AddressB).WithTopics(TestItem._commitmentB).TestObject;
             LogEntry logEntryC = Build.A.LogEntry.WithData(TestItem.RandomDataC).TestObject;
 
             TxReceipt[] txReceipts =
@@ -545,11 +545,11 @@ namespace Nethermind.JsonRpc.Test.Modules
                 FromBlock = BlockParameter.Latest,
                 ToBlock = BlockParameter.Latest,
                 Address = "0xb7705ae4c6f81b66cdb323c65f4e8133690fc099",
-                Topics = new[] { TestItem.KeccakA }
+                Topics = new[] { TestItem._commitmentA }
             };
 
-            LogEntry logEntryA = Build.A.LogEntry.WithAddress(TestItem.AddressA).WithTopics(TestItem.KeccakA).WithData(TestItem.RandomDataA).TestObject;
-            LogEntry logEntryB = Build.A.LogEntry.WithAddress(TestItem.AddressB).WithTopics(TestItem.KeccakB).WithData(TestItem.RandomDataB).TestObject;
+            LogEntry logEntryA = Build.A.LogEntry.WithAddress(TestItem.AddressA).WithTopics(TestItem._commitmentA).WithData(TestItem.RandomDataA).TestObject;
+            LogEntry logEntryB = Build.A.LogEntry.WithAddress(TestItem.AddressB).WithTopics(TestItem._commitmentB).WithData(TestItem.RandomDataB).TestObject;
             LogEntry logEntryC = Build.A.LogEntry.WithData(TestItem.RandomDataC).TestObject;
 
             TxReceipt[] txReceipts =
@@ -593,11 +593,11 @@ namespace Nethermind.JsonRpc.Test.Modules
                 FromBlock = BlockParameter.Latest,
                 ToBlock = BlockParameter.Latest,
                 Address = "0xb7705ae4c6f81b66cdb323c65f4e8133690fc099",
-                Topics = new[] { TestItem.KeccakA }
+                Topics = new[] { TestItem._commitmentA }
             };
 
-            LogEntry logEntryA = Build.A.LogEntry.WithAddress(TestItem.AddressA).WithTopics(TestItem.KeccakA).WithData(TestItem.RandomDataA).TestObject;
-            LogEntry logEntryB = Build.A.LogEntry.WithAddress(TestItem.AddressB).WithTopics(TestItem.KeccakB).WithData(TestItem.RandomDataB).TestObject;
+            LogEntry logEntryA = Build.A.LogEntry.WithAddress(TestItem.AddressA).WithTopics(TestItem._commitmentA).WithData(TestItem.RandomDataA).TestObject;
+            LogEntry logEntryB = Build.A.LogEntry.WithAddress(TestItem.AddressB).WithTopics(TestItem._commitmentB).WithData(TestItem.RandomDataB).TestObject;
             LogEntry logEntryC = Build.A.LogEntry.WithAddress(TestItem.AddressC).WithData(TestItem.RandomDataC).TestObject;
 
             TxReceipt[] txReceipts =
@@ -634,21 +634,21 @@ namespace Nethermind.JsonRpc.Test.Modules
         public void LogsSubscription_on_NewHeadBlock_event_with_few_TxReceipts_with_few_logs_with_few_topics_and_some_address_and_topic_mismatches()
         {
             int blockNumber = 55555;
-            IEnumerable<object> topics = new List<object> { TestItem.KeccakA };
+            IEnumerable<object> topics = new List<object> { TestItem._commitmentA };
 
             Filter filter = new()
             {
                 FromBlock = BlockParameter.Latest,
                 ToBlock = BlockParameter.Latest,
                 Address = new[] { "0xb7705ae4c6f81b66cdb323c65f4e8133690fc099", "0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358" },
-                Topics = new[] { TestItem.KeccakA, TestItem.KeccakD }
+                Topics = new[] { TestItem._commitmentA, TestItem._commitmentD }
             };
 
-            LogEntry logEntryA = Build.A.LogEntry.WithAddress(TestItem.AddressA).WithTopics(TestItem.KeccakA, TestItem.KeccakD).WithData(TestItem.RandomDataA).TestObject;
-            LogEntry logEntryB = Build.A.LogEntry.WithAddress(TestItem.AddressC).WithTopics(TestItem.KeccakA, TestItem.KeccakD).WithData(TestItem.RandomDataB).TestObject;
+            LogEntry logEntryA = Build.A.LogEntry.WithAddress(TestItem.AddressA).WithTopics(TestItem._commitmentA, TestItem._commitmentD).WithData(TestItem.RandomDataA).TestObject;
+            LogEntry logEntryB = Build.A.LogEntry.WithAddress(TestItem.AddressC).WithTopics(TestItem._commitmentA, TestItem._commitmentD).WithData(TestItem.RandomDataB).TestObject;
             LogEntry logEntryC = Build.A.LogEntry.WithAddress(TestItem.AddressA).WithData(TestItem.RandomDataC).TestObject;
-            LogEntry logEntryD = Build.A.LogEntry.WithAddress(TestItem.AddressB).WithTopics(TestItem.KeccakA, TestItem.KeccakD, TestItem.KeccakE).WithData(TestItem.RandomDataB).TestObject;
-            LogEntry logEntryE = Build.A.LogEntry.WithTopics(TestItem.KeccakA, TestItem.KeccakD).WithData(TestItem.RandomDataB).TestObject;
+            LogEntry logEntryD = Build.A.LogEntry.WithAddress(TestItem.AddressB).WithTopics(TestItem._commitmentA, TestItem._commitmentD, TestItem._commitmentE).WithData(TestItem.RandomDataB).TestObject;
+            LogEntry logEntryE = Build.A.LogEntry.WithTopics(TestItem._commitmentA, TestItem._commitmentD).WithData(TestItem.RandomDataB).TestObject;
 
             TxReceipt[] txReceipts =
             {
@@ -688,7 +688,7 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             LogsSubscription logsSubscription = new(_jsonRpcDuplexClient, _receiptCanonicalityMonitor, _filterStore, _blockTree, _logManager, filter);
 
-            LogEntry logEntry = Build.A.LogEntry.WithAddress(TestItem.AddressA).WithTopics(TestItem.KeccakA).WithData(TestItem.RandomDataA).TestObject;
+            LogEntry logEntry = Build.A.LogEntry.WithAddress(TestItem.AddressA).WithTopics(TestItem._commitmentA).WithData(TestItem.RandomDataA).TestObject;
             TxReceipt[] txReceipts = { Build.A.Receipt.WithBlockNumber(blockNumber).WithLogs(logEntry).TestObject };
             BlockHeader blockHeader = Build.A.BlockHeader.WithNumber(blockNumber).TestObject;
             Block block = Build.A.Block.WithHeader(blockHeader).TestObject;
@@ -749,14 +749,14 @@ namespace Nethermind.JsonRpc.Test.Modules
         public void NewPendingTransactionsSubscription_on_NewPending_event()
         {
             Transaction transaction = Build.A.Transaction.TestObject;
-            transaction.Hash = TestItem.KeccakA;
+            transaction.Hash = TestItem._commitmentA;
             TxEventArgs txEventArgs = new(transaction);
 
             JsonRpcResult jsonRpcResult = GetNewPendingTransactionsResult(txEventArgs, out var subscriptionId);
 
             jsonRpcResult.Response.Should().NotBeNull();
             string serialized = _jsonSerializer.Serialize(jsonRpcResult.Response);
-            var expectedResult = string.Concat("{\"jsonrpc\":\"2.0\",\"method\":\"eth_subscription\",\"params\":{\"subscription\":\"", subscriptionId, "\",\"result\":\"", TestItem.KeccakA, "\"}}");
+            var expectedResult = string.Concat("{\"jsonrpc\":\"2.0\",\"method\":\"eth_subscription\",\"params\":{\"subscription\":\"", subscriptionId, "\",\"result\":\"", TestItem._commitmentA, "\"}}");
             expectedResult.Should().Be(serialized);
         }
 
@@ -834,14 +834,14 @@ namespace Nethermind.JsonRpc.Test.Modules
         public void DroppedPendingTransactionsSubscription_on_EvictedPending_event()
         {
             Transaction transaction = Build.A.Transaction.TestObject;
-            transaction.Hash = TestItem.KeccakA;
+            transaction.Hash = TestItem._commitmentA;
             TxEventArgs txEventArgs = new(transaction);
 
             JsonRpcResult jsonRpcResult = GetDroppedPendingTransactionsResult(txEventArgs, out var subscriptionId);
 
             jsonRpcResult.Response.Should().NotBeNull();
             string serialized = _jsonSerializer.Serialize(jsonRpcResult.Response);
-            var expectedResult = string.Concat("{\"jsonrpc\":\"2.0\",\"method\":\"eth_subscription\",\"params\":{\"subscription\":\"", subscriptionId, "\",\"result\":\"", TestItem.KeccakA, "\"}}");
+            var expectedResult = string.Concat("{\"jsonrpc\":\"2.0\",\"method\":\"eth_subscription\",\"params\":{\"subscription\":\"", subscriptionId, "\",\"result\":\"", TestItem._commitmentA, "\"}}");
             expectedResult.Should().Be(serialized);
         }
 
@@ -1035,7 +1035,7 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             LogsSubscription logsSubscription = new(_jsonRpcDuplexClient, _receiptCanonicalityMonitor, _filterStore, _blockTree, _logManager, filter);
 
-            LogEntry logEntry = Build.A.LogEntry.WithAddress(TestItem.AddressA).WithTopics(TestItem.KeccakA).WithData(TestItem.RandomDataA).TestObject;
+            LogEntry logEntry = Build.A.LogEntry.WithAddress(TestItem.AddressA).WithTopics(TestItem._commitmentA).WithData(TestItem.RandomDataA).TestObject;
             TxReceipt[] txReceipts = { Build.A.Receipt.WithLogs(logEntry).WithBlockNumber(blockNumber).TestObject };
             BlockHeader blockHeader = Build.A.BlockHeader.WithNumber(blockNumber).TestObject;
             Block block = Build.A.Block.TestObject;

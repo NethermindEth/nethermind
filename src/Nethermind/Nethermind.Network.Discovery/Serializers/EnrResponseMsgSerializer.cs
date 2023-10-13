@@ -30,7 +30,7 @@ public class EnrResponseMsgSerializer : DiscoveryMsgSerializerBase, IZeroInnerMe
         PrepareBufferForSerialization(byteBuffer, totalLength, (byte)msg.MsgType);
         NettyRlpStream rlpStream = new(byteBuffer);
         rlpStream.StartSequence(contentLength);
-        rlpStream.Encode(msg.RequestKeccak);
+        rlpStream.Encode(msg.RequestCommitment);
         msg.NodeRecord.Encode(rlpStream);
 
         byteBuffer.ResetIndex();
@@ -42,7 +42,7 @@ public class EnrResponseMsgSerializer : DiscoveryMsgSerializerBase, IZeroInnerMe
         (PublicKey? farPublicKey, _, IByteBuffer? data) = PrepareForDeserialization(msgBytes);
         NettyRlpStream rlpStream = new(data);
         rlpStream.ReadSequenceLength();
-        Keccak? requestKeccak = rlpStream.DecodeKeccak(); // skip (not sure if needed to verify)
+        Commitment? requestKeccak = rlpStream.DecodeKeccak(); // skip (not sure if needed to verify)
 
         int positionForHex = rlpStream.Position;
         NodeRecord nodeRecord = _nodeRecordSigner.Deserialize(rlpStream);

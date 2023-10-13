@@ -16,7 +16,7 @@ namespace Nethermind.Consensus
 
         public ValueTask Sign(Transaction tx) => default;
 
-        public Signature Sign(Keccak message) { return new(new byte[65]); }
+        public Signature Sign(Commitment message) { return new(new byte[65]); }
 
         public bool CanSign { get; } = true; // TODO: why true?
 

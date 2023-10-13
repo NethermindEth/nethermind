@@ -13,7 +13,7 @@ namespace Nethermind.Core.Crypto
 {
     [DebuggerStepThrough]
     [DebuggerDisplay("{ToString()}")]
-    public readonly struct ValueKeccak : IEquatable<ValueKeccak>, IComparable<ValueKeccak>, IEquatable<Keccak>
+    public readonly struct ValueCommitment : IEquatable<ValueCommitment>, IComparable<ValueCommitment>, IEquatable<Commitment>
     {
         private readonly Vector256<byte> _bytes;
 
@@ -26,34 +26,34 @@ namespace Nethermind.Core.Crypto
         /// <returns>
         ///     <string>0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470</string>
         /// </returns>
-        public static readonly ValueKeccak OfAnEmptyString = InternalCompute(new byte[] { });
+        public static readonly ValueCommitment OfAnEmptyString = InternalCompute(new byte[] { });
 
         /// <returns>
         ///     <string>0x1dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347</string>
         /// </returns>
-        public static readonly ValueKeccak OfAnEmptySequenceRlp = InternalCompute(new byte[] { 192 });
+        public static readonly ValueCommitment OfAnEmptySequenceRlp = InternalCompute(new byte[] { 192 });
 
         /// <summary>
         ///     0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421
         /// </summary>
-        public static readonly ValueKeccak EmptyTreeHash = InternalCompute(new byte[] { 128 });
+        public static readonly ValueCommitment EmptyTreeHash = InternalCompute(new byte[] { 128 });
 
         /// <returns>
         ///     <string>0x0000000000000000000000000000000000000000000000000000000000000000</string>
         /// </returns>
-        public static ValueKeccak Zero { get; } = default;
+        public static ValueCommitment Zero { get; } = default;
 
         /// <summary>
         ///     <string>0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff</string>
         /// </summary>
-        public static ValueKeccak MaxValue { get; } = new("0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff");
+        public static ValueCommitment MaxValue { get; } = new("0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff");
 
-        public static implicit operator ValueKeccak(Keccak? keccak)
+        public static implicit operator ValueCommitment(Commitment? keccak)
         {
-            return keccak?.ValueKeccak ?? default;
+            return keccak?.ValueCommitment ?? default;
         }
 
-        public ValueKeccak(byte[]? bytes)
+        public ValueCommitment(byte[]? bytes)
         {
             if (bytes is null || bytes.Length == 0)
             {
@@ -61,11 +61,11 @@ namespace Nethermind.Core.Crypto
                 return;
             }
 
-            Debug.Assert(bytes.Length == ValueKeccak.MemorySize);
+            Debug.Assert(bytes.Length == ValueCommitment.MemorySize);
             _bytes = Unsafe.As<byte, Vector256<byte>>(ref MemoryMarshal.GetArrayDataReference(bytes));
         }
 
-        public ValueKeccak(string? hex)
+        public ValueCommitment(string? hex)
         {
             if (hex is null || hex.Length == 0)
             {
@@ -74,14 +74,14 @@ namespace Nethermind.Core.Crypto
             }
 
             byte[] bytes = Extensions.Bytes.FromHexString(hex);
-            Debug.Assert(bytes.Length == ValueKeccak.MemorySize);
+            Debug.Assert(bytes.Length == ValueCommitment.MemorySize);
             _bytes = Unsafe.As<byte, Vector256<byte>>(ref MemoryMarshal.GetArrayDataReference(bytes));
         }
 
-        public ValueKeccak(Span<byte> bytes)
+        public ValueCommitment(Span<byte> bytes)
             : this((ReadOnlySpan<byte>)bytes) { }
 
-        public ValueKeccak(ReadOnlySpan<byte> bytes)
+        public ValueCommitment(ReadOnlySpan<byte> bytes)
         {
             if (bytes.Length == 0)
             {
@@ -89,12 +89,12 @@ namespace Nethermind.Core.Crypto
                 return;
             }
 
-            Debug.Assert(bytes.Length == ValueKeccak.MemorySize);
+            Debug.Assert(bytes.Length == ValueCommitment.MemorySize);
             _bytes = Unsafe.As<byte, Vector256<byte>>(ref MemoryMarshal.GetReference(bytes));
         }
 
         [DebuggerStepThrough]
-        public static ValueKeccak Compute(string input)
+        public static ValueCommitment Compute(string input)
         {
             if (string.IsNullOrWhiteSpace(input))
             {
@@ -105,31 +105,31 @@ namespace Nethermind.Core.Crypto
         }
 
         [DebuggerStepThrough]
-        public static ValueKeccak Compute(ReadOnlySpan<byte> input)
+        public static ValueCommitment Compute(ReadOnlySpan<byte> input)
         {
             if (input.Length == 0)
             {
                 return OfAnEmptyString;
             }
 
-            Unsafe.SkipInit(out ValueKeccak keccak);
+            Unsafe.SkipInit(out ValueCommitment keccak);
             KeccakHash.ComputeHashBytesToSpan(input, MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref keccak, 1)));
             return keccak;
         }
 
-        internal static ValueKeccak InternalCompute(byte[] input)
+        internal static ValueCommitment InternalCompute(byte[] input)
         {
-            Unsafe.SkipInit(out ValueKeccak keccak);
+            Unsafe.SkipInit(out ValueCommitment keccak);
             KeccakHash.ComputeHashBytesToSpan(input, MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref keccak, 1)));
             return keccak;
         }
 
-        public override bool Equals(object? obj) => obj is ValueKeccak keccak && Equals(keccak);
+        public override bool Equals(object? obj) => obj is ValueCommitment keccak && Equals(keccak);
 
-        public bool Equals(ValueKeccak other) => _bytes.Equals(other._bytes);
-        public bool Equals(in ValueKeccak other) => _bytes.Equals(other._bytes);
+        public bool Equals(ValueCommitment other) => _bytes.Equals(other._bytes);
+        public bool Equals(in ValueCommitment other) => _bytes.Equals(other._bytes);
 
-        public bool Equals(Keccak? other) => _bytes.Equals(other?.ValueKeccak._bytes ?? default);
+        public bool Equals(Commitment? other) => _bytes.Equals(other?.ValueCommitment._bytes ?? default);
 
         public override int GetHashCode()
         {
@@ -144,12 +144,12 @@ namespace Nethermind.Core.Crypto
             return (int)v0 ^ (int)(v0 >> 32);
         }
 
-        public int CompareTo(ValueKeccak other)
+        public int CompareTo(ValueCommitment other)
         {
             return Extensions.Bytes.Comparer.Compare(Bytes, other.Bytes);
         }
 
-        public int CompareTo(in ValueKeccak other)
+        public int CompareTo(in ValueCommitment other)
         {
             return Extensions.Bytes.Comparer.Compare(Bytes, other.Bytes);
         }
@@ -175,22 +175,22 @@ namespace Nethermind.Core.Crypto
             return Bytes.ToArray();
         }
 
-        public Keccak ToKeccak()
+        public Commitment ToCommitment()
         {
-            return new Keccak(this);
+            return new Commitment(this);
         }
 
-        public static bool operator ==(in ValueKeccak left, in ValueKeccak right) => left.Equals(in right);
+        public static bool operator ==(in ValueCommitment left, in ValueCommitment right) => left.Equals(in right);
 
-        public static bool operator !=(in ValueKeccak left, in ValueKeccak right) => !(left == right);
-        public static bool operator >(in ValueKeccak left, in ValueKeccak right) => left.CompareTo(in right) > 0;
-        public static bool operator <(in ValueKeccak left, in ValueKeccak right) => left.CompareTo(in right) < 0;
-        public static bool operator >=(in ValueKeccak left, in ValueKeccak right) => left.CompareTo(in right) >= 0;
-        public static bool operator <=(in ValueKeccak left, in ValueKeccak right) => left.CompareTo(in right) <= 0;
+        public static bool operator !=(in ValueCommitment left, in ValueCommitment right) => !(left == right);
+        public static bool operator >(in ValueCommitment left, in ValueCommitment right) => left.CompareTo(in right) > 0;
+        public static bool operator <(in ValueCommitment left, in ValueCommitment right) => left.CompareTo(in right) < 0;
+        public static bool operator >=(in ValueCommitment left, in ValueCommitment right) => left.CompareTo(in right) >= 0;
+        public static bool operator <=(in ValueCommitment left, in ValueCommitment right) => left.CompareTo(in right) <= 0;
     }
 
     [DebuggerStepThrough]
-    public class Keccak : IEquatable<Keccak>, IComparable<Keccak>
+    public class Commitment : IEquatable<Commitment>, IComparable<Commitment>
     {
         public const int Size = 32;
 
@@ -199,65 +199,65 @@ namespace Nethermind.Core.Crypto
             MemorySizes.RefSize +
             Size;
 
-        private readonly ValueKeccak _keccak;
+        private readonly ValueCommitment _commitment;
 
         /// <returns>
         ///     <string>0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470</string>
         /// </returns>
-        public static readonly Keccak OfAnEmptyString = new Keccak(ValueKeccak.InternalCompute(new byte[] { }));
+        public static readonly Commitment OfAnEmptyString = new Commitment(ValueCommitment.InternalCompute(new byte[] { }));
 
         /// <returns>
         ///     <string>0x1dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347</string>
         /// </returns>
-        public static readonly Keccak OfAnEmptySequenceRlp = new Keccak(ValueKeccak.InternalCompute(new byte[] { 192 }));
+        public static readonly Commitment OfAnEmptySequenceRlp = new Commitment(ValueCommitment.InternalCompute(new byte[] { 192 }));
 
         /// <summary>
         ///     0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421
         /// </summary>
-        public static Keccak EmptyTreeHash = new Keccak(ValueKeccak.InternalCompute(new byte[] { 128 }));
+        public static Commitment EmptyTreeHash = new Commitment(ValueCommitment.InternalCompute(new byte[] { 128 }));
 
         /// <returns>
         ///     <string>0x0000000000000000000000000000000000000000000000000000000000000000</string>
         /// </returns>
-        public static Keccak Zero { get; } = new(new byte[Size]);
+        public static Commitment Zero { get; } = new(new byte[Size]);
 
         /// <summary>
         ///     <string>0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff</string>
         /// </summary>
-        public static Keccak MaxValue { get; } = new("0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff");
+        public static Commitment MaxValue { get; } = new("0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff");
 
         [ThreadStatic] static byte[]? _threadStaticBuffer;
 
-        public ref readonly ValueKeccak ValueKeccak => ref _keccak;
+        public ref readonly ValueCommitment ValueCommitment => ref _commitment;
 
-        public Span<byte> Bytes => MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref Unsafe.AsRef(in _keccak), 1));
+        public Span<byte> Bytes => MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref Unsafe.AsRef(in _commitment), 1));
 
-        public Keccak(string hexString)
+        public Commitment(string hexString)
             : this(Extensions.Bytes.FromHexString(hexString)) { }
 
-        public Keccak(in ValueKeccak keccak)
+        public Commitment(in ValueCommitment commitment)
         {
-            _keccak = keccak;
+            _commitment = commitment;
         }
 
-        public Keccak(byte[] bytes)
+        public Commitment(byte[] bytes)
         {
             if (bytes.Length != Size)
             {
-                throw new ArgumentException($"{nameof(Keccak)} must be {Size} bytes and was {bytes.Length} bytes", nameof(bytes));
+                throw new ArgumentException($"{nameof(Commitment)} must be {Size} bytes and was {bytes.Length} bytes", nameof(bytes));
             }
 
-            _keccak = new ValueKeccak(bytes);
+            _commitment = new ValueCommitment(bytes);
         }
 
-        public Keccak(ReadOnlySpan<byte> bytes)
+        public Commitment(ReadOnlySpan<byte> bytes)
         {
             if (bytes.Length != Size)
             {
-                throw new ArgumentException($"{nameof(Keccak)} must be {Size} bytes and was {bytes.Length} bytes", nameof(bytes));
+                throw new ArgumentException($"{nameof(Commitment)} must be {Size} bytes and was {bytes.Length} bytes", nameof(bytes));
             }
 
-            _keccak = new ValueKeccak(bytes);
+            _commitment = new ValueCommitment(bytes);
         }
 
         public override string ToString()
@@ -277,54 +277,54 @@ namespace Nethermind.Core.Crypto
         }
 
         [DebuggerStepThrough]
-        public static Keccak Compute(byte[]? input)
+        public static Commitment Compute(byte[]? input)
         {
             if (input is null || input.Length == 0)
             {
                 return OfAnEmptyString;
             }
 
-            return new Keccak(KeccakHash.ComputeHashBytes(input));
+            return new Commitment(KeccakHash.ComputeHashBytes(input));
         }
 
         [DebuggerStepThrough]
-        public static Keccak Compute(ReadOnlySpan<byte> input)
+        public static Commitment Compute(ReadOnlySpan<byte> input)
         {
-            return new Keccak(ValueKeccak.Compute(input));
+            return new Commitment(ValueCommitment.Compute(input));
         }
 
         [DebuggerStepThrough]
-        public static Keccak Compute(string input)
+        public static Commitment Compute(string input)
         {
-            return new Keccak(ValueKeccak.Compute(input));
+            return new Commitment(ValueCommitment.Compute(input));
         }
 
-        public bool Equals(Keccak? other)
+        public bool Equals(Commitment? other)
         {
             if (other is null)
             {
                 return false;
             }
 
-            return other._keccak == _keccak;
+            return other._commitment == _commitment;
         }
 
-        public int CompareTo(Keccak? other)
+        public int CompareTo(Commitment? other)
         {
-            return other is null ? -1 : _keccak.CompareTo(other._keccak);
+            return other is null ? -1 : _commitment.CompareTo(other._commitment);
         }
 
         public override bool Equals(object? obj)
         {
-            return obj?.GetType() == typeof(Keccak) && Equals((Keccak)obj);
+            return obj?.GetType() == typeof(Commitment) && Equals((Commitment)obj);
         }
 
         public override int GetHashCode()
         {
-            return _keccak.GetHashCode();
+            return _commitment.GetHashCode();
         }
 
-        public static bool operator ==(Keccak? a, Keccak? b)
+        public static bool operator ==(Commitment? a, Commitment? b)
         {
             if (a is null)
             {
@@ -336,53 +336,53 @@ namespace Nethermind.Core.Crypto
                 return false;
             }
 
-            return a._keccak == b._keccak;
+            return a._commitment == b._commitment;
         }
 
-        public static bool operator !=(Keccak? a, Keccak? b)
+        public static bool operator !=(Commitment? a, Commitment? b)
         {
             return !(a == b);
         }
 
-        public static bool operator >(Keccak? k1, Keccak? k2)
+        public static bool operator >(Commitment? k1, Commitment? k2)
         {
             if (ReferenceEquals(k1, k2)) return false;
             if (k1 is null) return k2 is not null;
             if (k2 is null) return false;
 
-            return k1._keccak > k2._keccak;
+            return k1._commitment > k2._commitment;
         }
 
-        public static bool operator <(Keccak? k1, Keccak? k2)
+        public static bool operator <(Commitment? k1, Commitment? k2)
         {
             if (ReferenceEquals(k1, k2)) return false;
             if (k1 is null) return false;
             if (k2 is null) return true;
 
-            return k1._keccak < k2._keccak;
+            return k1._commitment < k2._commitment;
         }
 
-        public static bool operator >=(Keccak? k1, Keccak? k2)
+        public static bool operator >=(Commitment? k1, Commitment? k2)
         {
             if (ReferenceEquals(k1, k2)) return true;
             if (k1 is null) return true;
             if (k2 is null) return false;
 
-            return k1._keccak >= k2._keccak;
+            return k1._commitment >= k2._commitment;
         }
 
-        public static bool operator <=(Keccak? k1, Keccak? k2)
+        public static bool operator <=(Commitment? k1, Commitment? k2)
         {
             if (ReferenceEquals(k1, k2)) return true;
             if (k1 is null) return k2 is null;
             if (k2 is null) return true;
 
-            return k1._keccak <= k2._keccak;
+            return k1._commitment <= k2._commitment;
         }
 
         public byte[] BytesToArray()
         {
-            return _keccak.ToByteArray();
+            return _commitment.ToByteArray();
         }
 
         public byte[] ThreadStaticBytes()
@@ -392,10 +392,10 @@ namespace Nethermind.Core.Crypto
             return _threadStaticBuffer;
         }
 
-        public KeccakStructRef ToStructRef() => new(Bytes);
+        public CommitmentStructRef ToStructRef() => new(Bytes);
     }
 
-    public ref struct KeccakStructRef
+    public ref struct CommitmentStructRef
     {
         public const int Size = 32;
 
@@ -403,11 +403,11 @@ namespace Nethermind.Core.Crypto
 
         public Span<byte> Bytes { get; }
 
-        public KeccakStructRef(Span<byte> bytes)
+        public CommitmentStructRef(Span<byte> bytes)
         {
             if (bytes.Length != Size)
             {
-                throw new ArgumentException($"{nameof(Keccak)} must be {Size} bytes and was {bytes.Length} bytes", nameof(bytes));
+                throw new ArgumentException($"{nameof(Commitment)} must be {Size} bytes and was {bytes.Length} bytes", nameof(bytes));
             }
 
             Bytes = bytes;
@@ -430,52 +430,52 @@ namespace Nethermind.Core.Crypto
         }
 
         [DebuggerStepThrough]
-        public static KeccakStructRef Compute(byte[]? input)
+        public static CommitmentStructRef Compute(byte[]? input)
         {
             if (input is null || input.Length == 0)
             {
-                return new KeccakStructRef(Keccak.OfAnEmptyString.Bytes);
+                return new CommitmentStructRef(Commitment.OfAnEmptyString.Bytes);
             }
 
-            var result = new KeccakStructRef();
+            var result = new CommitmentStructRef();
             KeccakHash.ComputeHashBytesToSpan(input, result.Bytes);
             return result;
         }
 
         [DebuggerStepThrough]
-        public static KeccakStructRef Compute(Span<byte> input)
+        public static CommitmentStructRef Compute(Span<byte> input)
         {
             if (input.Length == 0)
             {
-                return new KeccakStructRef(Keccak.OfAnEmptyString.Bytes);
+                return new CommitmentStructRef(Commitment.OfAnEmptyString.Bytes);
             }
 
-            var result = new KeccakStructRef();
+            var result = new CommitmentStructRef();
             KeccakHash.ComputeHashBytesToSpan(input, result.Bytes);
             return result;
         }
 
-        private static KeccakStructRef InternalCompute(Span<byte> input)
+        private static CommitmentStructRef InternalCompute(Span<byte> input)
         {
-            var result = new KeccakStructRef();
+            var result = new CommitmentStructRef();
             KeccakHash.ComputeHashBytesToSpan(input, result.Bytes);
             return result;
         }
 
         [DebuggerStepThrough]
-        public static KeccakStructRef Compute(string input)
+        public static CommitmentStructRef Compute(string input)
         {
             if (string.IsNullOrWhiteSpace(input))
             {
-                return new KeccakStructRef(Keccak.OfAnEmptyString.Bytes);
+                return new CommitmentStructRef(Commitment.OfAnEmptyString.Bytes);
             }
 
-            var result = new KeccakStructRef();
+            var result = new CommitmentStructRef();
             KeccakHash.ComputeHashBytesToSpan(System.Text.Encoding.UTF8.GetBytes(input), result.Bytes);
             return result;
         }
 
-        public bool Equals(Keccak? other)
+        public bool Equals(Commitment? other)
         {
             if (other is null)
             {
@@ -485,11 +485,11 @@ namespace Nethermind.Core.Crypto
             return Extensions.Bytes.AreEqual(other.Bytes, Bytes);
         }
 
-        public bool Equals(KeccakStructRef other) => Extensions.Bytes.AreEqual(other.Bytes, Bytes);
+        public bool Equals(CommitmentStructRef other) => Extensions.Bytes.AreEqual(other.Bytes, Bytes);
 
         public override bool Equals(object? obj)
         {
-            return obj?.GetType() == typeof(Keccak) && Equals((Keccak)obj);
+            return obj?.GetType() == typeof(Commitment) && Equals((Commitment)obj);
         }
 
         public override int GetHashCode()
@@ -497,7 +497,7 @@ namespace Nethermind.Core.Crypto
             return MemoryMarshal.Read<int>(Bytes);
         }
 
-        public static bool operator ==(KeccakStructRef a, Keccak? b)
+        public static bool operator ==(CommitmentStructRef a, Commitment? b)
         {
             if (b is null)
             {
@@ -507,7 +507,7 @@ namespace Nethermind.Core.Crypto
             return Extensions.Bytes.AreEqual(a.Bytes, b.Bytes);
         }
 
-        public static bool operator ==(Keccak? a, KeccakStructRef b)
+        public static bool operator ==(Commitment? a, CommitmentStructRef b)
         {
             if (a is null)
             {
@@ -517,26 +517,26 @@ namespace Nethermind.Core.Crypto
             return Extensions.Bytes.AreEqual(a.Bytes, b.Bytes);
         }
 
-        public static bool operator ==(KeccakStructRef a, KeccakStructRef b)
+        public static bool operator ==(CommitmentStructRef a, CommitmentStructRef b)
         {
             return Extensions.Bytes.AreEqual(a.Bytes, b.Bytes);
         }
 
-        public static bool operator !=(KeccakStructRef a, Keccak b)
+        public static bool operator !=(CommitmentStructRef a, Commitment b)
         {
             return !(a == b);
         }
 
-        public static bool operator !=(Keccak a, KeccakStructRef b)
+        public static bool operator !=(Commitment a, CommitmentStructRef b)
         {
             return !(a == b);
         }
 
-        public static bool operator !=(KeccakStructRef a, KeccakStructRef b)
+        public static bool operator !=(CommitmentStructRef a, CommitmentStructRef b)
         {
             return !(a == b);
         }
 
-        public Keccak ToKeccak() => new(Bytes);
+        public Commitment ToCommitment() => new(Bytes);
     }
 }

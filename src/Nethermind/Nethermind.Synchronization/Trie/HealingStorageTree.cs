@@ -15,10 +15,10 @@ namespace Nethermind.Synchronization.Trie;
 public class HealingStorageTree : StorageTree
 {
     private readonly Address _address;
-    private readonly Keccak _stateRoot;
+    private readonly Commitment _stateRoot;
     private readonly ITrieNodeRecovery<GetTrieNodesRequest>? _recovery;
 
-    public HealingStorageTree(ITrieStore? trieStore, Keccak rootHash, ILogManager? logManager, Address address, Keccak stateRoot, ITrieNodeRecovery<GetTrieNodesRequest>? recovery)
+    public HealingStorageTree(ITrieStore? trieStore, Commitment rootHash, ILogManager? logManager, Address address, Commitment stateRoot, ITrieNodeRecovery<GetTrieNodesRequest>? recovery)
         : base(trieStore, rootHash, logManager)
     {
         _address = address;
@@ -26,7 +26,7 @@ public class HealingStorageTree : StorageTree
         _recovery = recovery;
     }
 
-    public override byte[]? Get(ReadOnlySpan<byte> rawKey, Keccak? rootHash = null)
+    public override byte[]? Get(ReadOnlySpan<byte> rawKey, Commitment? rootHash = null)
     {
         try
         {
@@ -62,7 +62,7 @@ public class HealingStorageTree : StorageTree
         }
     }
 
-    private bool Recover(in ValueKeccak rlpHash, ReadOnlySpan<byte> pathPart)
+    private bool Recover(in ValueCommitment rlpHash, ReadOnlySpan<byte> pathPart)
     {
         if (_recovery?.CanRecover == true)
         {
@@ -73,7 +73,7 @@ public class HealingStorageTree : StorageTree
                 {
                     new PathGroup
                     {
-                        Group = new[] { ValueKeccak.Compute(_address.Bytes).ToByteArray(), Nibbles.EncodePath(pathPart) }
+                        Group = new[] { ValueCommitment.Compute(_address.Bytes).ToByteArray(), Nibbles.EncodePath(pathPart) }
                     }
                 }
             };

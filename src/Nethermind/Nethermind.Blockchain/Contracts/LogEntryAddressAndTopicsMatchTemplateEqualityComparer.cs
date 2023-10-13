@@ -23,7 +23,7 @@ namespace Nethermind.Blockchain.Contracts
         /// <returns></returns>
         public bool Equals(LogEntry logEntry, LogEntry searchedEntryTemplate)
         {
-            Keccak[] matchEntryTopics = searchedEntryTemplate?.Topics ?? Array.Empty<Keccak>();
+            Commitment[] matchEntryTopics = searchedEntryTemplate?.Topics ?? Array.Empty<Commitment>();
             return ReferenceEquals(logEntry, searchedEntryTemplate) || (
                 logEntry is not null
                 && logEntry.LoggersAddress == searchedEntryTemplate?.LoggersAddress

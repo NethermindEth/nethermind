@@ -17,7 +17,7 @@ namespace Nethermind.Merge.Plugin.Data
 
         public static readonly PayloadStatusV1 Accepted = new() { Status = PayloadStatus.Accepted };
 
-        public static PayloadStatusV1 Invalid(Keccak? latestValidHash, string? validationError = null) => new()
+        public static PayloadStatusV1 Invalid(Commitment? latestValidHash, string? validationError = null) => new()
         {
             Status = PayloadStatus.Invalid,
             LatestValidHash = latestValidHash,
@@ -33,7 +33,7 @@ namespace Nethermind.Merge.Plugin.Data
         /// Hash of the most recent valid block in the branch defined by payload and its ancestors.
         /// </summary>
         [JsonProperty(NullValueHandling = NullValueHandling.Include)]
-        public Keccak? LatestValidHash { get; set; }
+        public Commitment? LatestValidHash { get; set; }
 
         /// <summary>
         /// Message providing additional details on the validation error if the payload is classified as <see cref="PayloadStatus.Invalid"/>.

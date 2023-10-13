@@ -12,9 +12,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Wit.Messages
         public override string Protocol { get; } = "wit";
 
         public long RequestId { get; set; }
-        public Keccak BlockHash { get; set; }
+        public Commitment BlockHash { get; set; }
 
-        public GetBlockWitnessHashesMessage(long requestId, Keccak blockHash)
+        public GetBlockWitnessHashesMessage(long requestId, Commitment blockHash)
         {
             RequestId = requestId;
             BlockHash = blockHash;

@@ -10,7 +10,7 @@ namespace Nethermind.Synchronization.FastSync
     [DebuggerDisplay("Requested Nodes: {RequestedNodes?.Count ?? 0}, Responses: {Responses?.Length ?? 0}, Assigned: {AssignedPeer?.Current}")]
     public class StateSyncBatch
     {
-        public StateSyncBatch(Keccak stateRoot, NodeDataType nodeDataType, IList<StateSyncItem> requestedNodes)
+        public StateSyncBatch(Commitment stateRoot, NodeDataType nodeDataType, IList<StateSyncItem> requestedNodes)
         {
             StateRoot = stateRoot;
             NodeDataType = nodeDataType;
@@ -19,7 +19,7 @@ namespace Nethermind.Synchronization.FastSync
 
         public NodeDataType NodeDataType { get; }
 
-        public Keccak StateRoot;
+        public Commitment StateRoot;
 
         public IList<StateSyncItem>? RequestedNodes { get; }
 

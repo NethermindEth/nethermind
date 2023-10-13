@@ -31,12 +31,12 @@ public class InvalidChainTrackerTest
         _tracker = new(NoPoS.Instance, blockFinder, blockCacheService, new TestLogManager());
     }
 
-    private List<Keccak> MakeChain(int n, bool connectInReverse = false)
+    private List<Commitment> MakeChain(int n, bool connectInReverse = false)
     {
-        List<Keccak> hashList = new();
+        List<Commitment> hashList = new();
         for (int i = 0; i < n; i++)
         {
-            Keccak newHash = Keccak.Compute(Random.Shared.NextInt64().ToString());
+            Commitment newHash = Commitment.Compute(Random.Shared.NextInt64().ToString());
             hashList.Add(newHash);
         }
 
@@ -62,7 +62,7 @@ public class InvalidChainTrackerTest
     [TestCase(false)]
     public void given_aChainOfLength5_when_originBlockIsInvalid_then_otherBlockIsInvalid(bool connectInReverse)
     {
-        List<Keccak> hashes = MakeChain(5, connectInReverse);
+        List<Commitment> hashes = MakeChain(5, connectInReverse);
         AssertValid(hashes[1]);
         AssertValid(hashes[2]);
         AssertValid(hashes[3]);
@@ -79,7 +79,7 @@ public class InvalidChainTrackerTest
     [TestCase(false)]
     public void given_aChainOfLength5_when_aLastValidHashIsInvalidated_then_lastValidHashShouldBeForwarded(bool connectInReverse)
     {
-        List<Keccak> hashes = MakeChain(5, connectInReverse);
+        List<Commitment> hashes = MakeChain(5, connectInReverse);
 
         _tracker.OnInvalidBlock(hashes[3], hashes[2]);
         AssertInvalid(hashes[3], hashes[2]);
@@ -95,13 +95,13 @@ public class InvalidChainTrackerTest
     [TestCase(false)]
     public void given_aTreeWith3Branch_trackerShouldDetectCorrectValidChain(bool connectInReverse)
     {
-        List<Keccak> mainChain = MakeChain(20, connectInReverse);
-        List<Keccak> branchAt5 = MakeChain(10, connectInReverse);
-        List<Keccak> branchAt10 = MakeChain(10, connectInReverse);
-        List<Keccak> branchAt15 = MakeChain(10, connectInReverse);
-        List<Keccak> branchAt15_butConnectOnItem5 = MakeChain(10, connectInReverse);
-        List<Keccak> branchAt11_butConnectLater = MakeChain(10, connectInReverse);
-        List<Keccak> branchAt5_butConnectLater = MakeChain(10, connectInReverse);
+        List<Commitment> mainChain = MakeChain(20, connectInReverse);
+        List<Commitment> branchAt5 = MakeChain(10, connectInReverse);
+        List<Commitment> branchAt10 = MakeChain(10, connectInReverse);
+        List<Commitment> branchAt15 = MakeChain(10, connectInReverse);
+        List<Commitment> branchAt15_butConnectOnItem5 = MakeChain(10, connectInReverse);
+        List<Commitment> branchAt11_butConnectLater = MakeChain(10, connectInReverse);
+        List<Commitment> branchAt5_butConnectLater = MakeChain(10, connectInReverse);
 
         _tracker.SetChildParent(mainChain[1], mainChain[0]);
         _tracker.SetChildParent(mainChain[1], mainChain[0]);
@@ -138,15 +138,15 @@ public class InvalidChainTrackerTest
     [TestCase(false)]
     public void whenCreatingACycle_itShouldNotThrow_whenSettingInvalidation(bool connectInReverse)
     {
-        List<Keccak> chain1 = MakeChain(50, connectInReverse);
-        List<Keccak> chain2 = MakeChain(50, connectInReverse);
-        List<Keccak> chain3 = MakeChain(50, connectInReverse);
+        List<Commitment> chain1 = MakeChain(50, connectInReverse);
+        List<Commitment> chain2 = MakeChain(50, connectInReverse);
+        List<Commitment> chain3 = MakeChain(50, connectInReverse);
 
         _tracker.SetChildParent(chain2[0], chain1[5]);
         _tracker.SetChildParent(chain3[0], chain2[5]);
         _tracker.SetChildParent(chain1[0], chain2[40]);
 
-        _tracker.OnInvalidBlock(chain2[40], Keccak.Zero);
+        _tracker.OnInvalidBlock(chain2[40], Commitment.Zero);
         AssertInvalid(chain1[3]);
     }
 
@@ -154,10 +154,10 @@ public class InvalidChainTrackerTest
     [TestCase(false)]
     public void givenAnInvalidBlock_whenAttachingLater_trackingShouldStillBeCorrect(bool connectInReverse)
     {
-        List<Keccak> mainChain = MakeChain(50, connectInReverse);
-        List<Keccak> secondChain = MakeChain(50, connectInReverse);
-        Keccak invalidBlockParent = Keccak.Compute(Random.Shared.NextInt64().ToString());
-        Keccak invalidBlock = Keccak.Compute(Random.Shared.NextInt64().ToString());
+        List<Commitment> mainChain = MakeChain(50, connectInReverse);
+        List<Commitment> secondChain = MakeChain(50, connectInReverse);
+        Commitment invalidBlockParent = Commitment.Compute(Random.Shared.NextInt64().ToString());
+        Commitment invalidBlock = Commitment.Compute(Random.Shared.NextInt64().ToString());
 
         _tracker.OnInvalidBlock(invalidBlock, invalidBlockParent);
         AssertInvalid(invalidBlock);
@@ -178,7 +178,7 @@ public class InvalidChainTrackerTest
         IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
         IBlockCacheService blockCacheService = new BlockCacheService();
 
-        Keccak invalidBlock = Keccak.Compute("A");
+        Commitment invalidBlock = Commitment.Compute("A");
         BlockHeader parentBlockHeader = new BlockHeaderBuilder().TestObject;
 
         blockCacheService.BlockCache[parentBlockHeader.GetOrCalculateHash()] = new Block(parentBlockHeader);
@@ -189,7 +189,7 @@ public class InvalidChainTrackerTest
         _tracker = new(poSSwitcher, blockFinder, blockCacheService, new TestLogManager()); // Small max section size, to make sure things propagate correctly
         _tracker.OnInvalidBlock(invalidBlock, parentBlockHeader.Hash);
 
-        AssertInvalid(invalidBlock, Keccak.Zero);
+        AssertInvalid(invalidBlock, Commitment.Zero);
     }
 
     [Test]
@@ -215,15 +215,15 @@ public class InvalidChainTrackerTest
         AssertInvalid(blockHeader.GetOrCalculateHash(), parentBlockHeader.Hash);
     }
 
-    private void AssertValid(Keccak hash)
+    private void AssertValid(Commitment hash)
     {
-        Keccak? lastValidHash;
+        Commitment? lastValidHash;
         _tracker.IsOnKnownInvalidChain(hash, out lastValidHash).Should().BeFalse();
     }
 
-    private void AssertInvalid(Keccak hash, Keccak? expectedLsatValidHash = null)
+    private void AssertInvalid(Commitment hash, Commitment? expectedLsatValidHash = null)
     {
-        Keccak? lastValidHash;
+        Commitment? lastValidHash;
         _tracker.IsOnKnownInvalidChain(hash, out lastValidHash).Should().BeTrue();
         if (expectedLsatValidHash is not null)
         {

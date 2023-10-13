@@ -124,7 +124,7 @@ namespace Nethermind.Core
                 Set(addressBytes, blockBloom);
                 for (int topicIndex = 0; topicIndex < logEntry.Topics.Length; topicIndex++)
                 {
-                    Keccak topic = logEntry.Topics[topicIndex];
+                    Commitment topic = logEntry.Topics[topicIndex];
                     Set(topic.Bytes, blockBloom);
                 }
             }
@@ -174,13 +174,13 @@ namespace Nethermind.Core
 
         public bool Matches(Address address) => Matches(address.Bytes);
 
-        public bool Matches(Keccak topic) => Matches(topic.Bytes);
+        public bool Matches(Commitment topic) => Matches(topic.Bytes);
 
         public bool Matches(in BloomExtract extract) => Get(extract.Index1) && Get(extract.Index2) && Get(extract.Index3);
 
         public static BloomExtract GetExtract(Address address) => GetExtract(address.Bytes);
 
-        public static BloomExtract GetExtract(Keccak topic) => GetExtract(topic.Bytes);
+        public static BloomExtract GetExtract(Commitment topic) => GetExtract(topic.Bytes);
 
         private static BloomExtract GetExtract(ReadOnlySpan<byte> sequence)
         {
@@ -189,7 +189,7 @@ namespace Nethermind.Core
                 return 2047 - ((bytes[index1] << 8) + bytes[index2]) % 2048;
             }
 
-            var keccakBytes = ValueKeccak.Compute(sequence).BytesAsSpan;
+            var keccakBytes = ValueCommitment.Compute(sequence).BytesAsSpan;
             var indexes = new BloomExtract(GetIndex(keccakBytes, 0, 1), GetIndex(keccakBytes, 2, 3), GetIndex(keccakBytes, 4, 5));
             return indexes;
         }
@@ -311,7 +311,7 @@ namespace Nethermind.Core
                 Set(addressBytes, blockBloom);
                 for (int topicIndex = 0; topicIndex < logEntry.Topics.Length; topicIndex++)
                 {
-                    Keccak topic = logEntry.Topics[topicIndex];
+                    Commitment topic = logEntry.Topics[topicIndex];
                     Set(topic.Bytes, blockBloom);
                 }
             }
@@ -356,13 +356,13 @@ namespace Nethermind.Core
 
         public bool Matches(Address address) => Matches(address.Bytes);
 
-        public bool Matches(Keccak topic) => Matches(topic.Bytes);
+        public bool Matches(Commitment topic) => Matches(topic.Bytes);
 
         public bool Matches(in Bloom.BloomExtract extract) => Get(extract.Index1) && Get(extract.Index2) && Get(extract.Index3);
 
         public static Bloom.BloomExtract GetExtract(Address address) => GetExtract(address.Bytes);
 
-        public static Bloom.BloomExtract GetExtract(Keccak topic) => GetExtract(topic.Bytes);
+        public static Bloom.BloomExtract GetExtract(Commitment topic) => GetExtract(topic.Bytes);
 
         private static Bloom.BloomExtract GetExtract(ReadOnlySpan<byte> sequence)
         {
@@ -371,7 +371,7 @@ namespace Nethermind.Core
                 return 2047 - ((bytes[index1] << 8) + bytes[index2]) % 2048;
             }
 
-            var keccakBytes = ValueKeccak.Compute(sequence).BytesAsSpan;
+            var keccakBytes = ValueCommitment.Compute(sequence).BytesAsSpan;
             var indexes = new Bloom.BloomExtract(GetIndex(keccakBytes, 0, 1), GetIndex(keccakBytes, 2, 3), GetIndex(keccakBytes, 4, 5));
             return indexes;
         }

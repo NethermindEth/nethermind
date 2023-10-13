@@ -80,7 +80,7 @@ namespace Nethermind.Blockchain.Visitors
             return Task.FromResult(LevelVisitOutcome.None);
         }
 
-        Task<bool> IBlockTreeVisitor.VisitMissing(Keccak hash, CancellationToken cancellationToken)
+        Task<bool> IBlockTreeVisitor.VisitMissing(Commitment hash, CancellationToken cancellationToken)
         {
             throw new InvalidDataException($"Block {hash} is missing from the database when loading blocks.");
         }

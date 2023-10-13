@@ -57,7 +57,7 @@ namespace Nethermind.Synchronization.Test
                 ClientId = description;
             }
 
-            public Keccak HeadHash { get; set; } = null!;
+            public Commitment HeadHash { get; set; } = null!;
             public byte ProtocolVersion { get; } = default;
             public string ProtocolCode { get; } = null!;
             public Node Node { get; }
@@ -74,7 +74,7 @@ namespace Nethermind.Synchronization.Test
                 DisconnectRequested = true;
             }
 
-            public Task<OwnedBlockBodies> GetBlockBodies(IReadOnlyList<Keccak> blockHashes, CancellationToken token)
+            public Task<OwnedBlockBodies> GetBlockBodies(IReadOnlyList<Commitment> blockHashes, CancellationToken token)
             {
                 return Task.FromResult(new OwnedBlockBodies(Array.Empty<BlockBody>()));
             }
@@ -84,12 +84,12 @@ namespace Nethermind.Synchronization.Test
                 return Task.FromResult(Array.Empty<BlockHeader>());
             }
 
-            public Task<BlockHeader[]> GetBlockHeaders(Keccak startHash, int maxBlocks, int skip, CancellationToken token)
+            public Task<BlockHeader[]> GetBlockHeaders(Commitment startHash, int maxBlocks, int skip, CancellationToken token)
             {
                 return Task.FromResult(Array.Empty<BlockHeader>());
             }
 
-            public async Task<BlockHeader?> GetHeadBlockHeader(Keccak? hash, CancellationToken token)
+            public async Task<BlockHeader?> GetHeadBlockHeader(Commitment? hash, CancellationToken token)
             {
                 if (_shouldFail)
                 {
@@ -118,12 +118,12 @@ namespace Nethermind.Synchronization.Test
 
             public void SendNewTransactions(IEnumerable<Transaction> txs, bool sendFullTx) { }
 
-            public Task<TxReceipt[]?[]> GetReceipts(IReadOnlyList<Keccak> blockHash, CancellationToken token)
+            public Task<TxReceipt[]?[]> GetReceipts(IReadOnlyList<Commitment> blockHash, CancellationToken token)
             {
                 return Task.FromResult(Array.Empty<TxReceipt[]?>());
             }
 
-            public Task<byte[][]> GetNodeData(IReadOnlyList<Keccak> hashes, CancellationToken token)
+            public Task<byte[][]> GetNodeData(IReadOnlyList<Commitment> hashes, CancellationToken token)
             {
                 return Task.FromResult(Array.Empty<byte[]>());
             }
@@ -367,7 +367,7 @@ namespace Nethermind.Synchronization.Test
             ISyncPeer? syncPeer = Substitute.For<ISyncPeer>();
             syncPeer.Node.Returns(new Node(TestItem.PublicKeyA, "127.0.0.1", 30303));
             ctx.Pool.AddPeer(syncPeer);
-            ctx.Pool.RefreshTotalDifficulty(syncPeer, Keccak.Zero);
+            ctx.Pool.RefreshTotalDifficulty(syncPeer, Commitment.Zero);
             await Task.Delay(100);
 
             Assert.That(() =>

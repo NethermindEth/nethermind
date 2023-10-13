@@ -39,39 +39,39 @@ namespace Nethermind.Blockchain.Test
             {
                 private ILogger _logger;
 
-                private HashSet<Keccak> _allowed = new();
+                private HashSet<Commitment> _allowed = new();
 
-                private HashSet<Keccak> _allowedToFail = new();
+                private HashSet<Commitment> _allowedToFail = new();
 
-                private HashSet<Keccak> _rootProcessed = new();
+                private HashSet<Commitment> _rootProcessed = new();
 
                 public BlockProcessorMock(ILogManager logManager, IStateReader stateReader)
                 {
                     _logger = logManager.GetClassLogger();
                     stateReader.When(it =>
-                            it.RunTreeVisitor(Arg.Any<ITreeVisitor>(), Arg.Any<Keccak>(), Arg.Any<VisitingOptions>()))
+                            it.RunTreeVisitor(Arg.Any<ITreeVisitor>(), Arg.Any<Commitment>(), Arg.Any<VisitingOptions>()))
                         .Do((info =>
                         {
                             // Simulate state root check
                             ITreeVisitor visitor = (ITreeVisitor)info[0];
-                            Keccak stateRoot = (Keccak)info[1];
+                            Commitment stateRoot = (Commitment)info[1];
                             if (!_rootProcessed.Contains(stateRoot)) visitor.VisitMissingNode(stateRoot, new TrieVisitContext());
                         }));
                 }
 
-                public void Allow(Keccak hash)
+                public void Allow(Commitment hash)
                 {
                     _logger.Info($"Allowing {hash} to process");
                     _allowed.Add(hash);
                 }
 
-                public void AllowToFail(Keccak hash)
+                public void AllowToFail(Commitment hash)
                 {
                     _logger.Info($"Allowing {hash} to fail");
                     _allowedToFail.Add(hash);
                 }
 
-                public Block[] Process(Keccak newBranchStateRoot, List<Block> suggestedBlocks, ProcessingOptions processingOptions, IBlockTracer blockTracer)
+                public Block[] Process(Commitment newBranchStateRoot, List<Block> suggestedBlocks, ProcessingOptions processingOptions, IBlockTracer blockTracer)
                 {
                     if (blockTracer != NullBlockTracer.Instance)
                     {
@@ -87,7 +87,7 @@ namespace Nethermind.Blockchain.Test
                         {
                             BlocksProcessing?.Invoke(this, new BlocksProcessingEventArgs(suggestedBlocks));
                             Block suggestedBlock = suggestedBlocks[i];
-                            Keccak hash = suggestedBlock.Hash!;
+                            Commitment hash = suggestedBlock.Hash!;
                             if (!_allowed.Contains(hash))
                             {
                                 if (_allowedToFail.Contains(hash))
@@ -129,15 +129,15 @@ namespace Nethermind.Blockchain.Test
             private class RecoveryStepMock : IBlockPreprocessorStep
             {
                 private readonly ILogger _logger;
-                private readonly ConcurrentDictionary<Keccak, object> _allowed = new();
-                private readonly ConcurrentDictionary<Keccak, object> _allowedToFail = new();
+                private readonly ConcurrentDictionary<Commitment, object> _allowed = new();
+                private readonly ConcurrentDictionary<Commitment, object> _allowedToFail = new();
 
                 public RecoveryStepMock(ILogManager logManager)
                 {
                     _logger = logManager.GetClassLogger();
                 }
 
-                public void Allow(Keccak hash)
+                public void Allow(Commitment hash)
                 {
                     _logger.Info($"Allowing {hash} to recover");
                     _allowed[hash] = new object();
@@ -154,7 +154,7 @@ namespace Nethermind.Blockchain.Test
 
                     while (true)
                     {
-                        Keccak blockHash = block.Hash!;
+                        Commitment blockHash = block.Hash!;
                         if (!_allowed.ContainsKey(blockHash))
                         {
                             if (_allowedToFail.ContainsKey(blockHash))
@@ -182,7 +182,7 @@ namespace Nethermind.Blockchain.Test
             private readonly BlockchainProcessor _processor;
             private readonly ILogger _logger;
 
-            private Keccak? _headBefore;
+            private Commitment? _headBefore;
             private int _processingQueueEmptyFired;
             private const int ProcessingWait = 2000;
 

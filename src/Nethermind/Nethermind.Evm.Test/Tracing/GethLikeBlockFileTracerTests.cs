@@ -21,8 +21,8 @@ public class GethLikeBlockFileTracerTests : VirtualMachineTestsBase
         var fileSystem = new MockFileSystem();
         var block = Build.A.Block
             .WithTransactions(new[] {
-                Build.A.Transaction.WithHash(Keccak.OfAnEmptyString).TestObject,
-                Build.A.Transaction.WithHash(Keccak.OfAnEmptySequenceRlp).TestObject
+                Build.A.Transaction.WithHash(Commitment.OfAnEmptyString).TestObject,
+                Build.A.Transaction.WithHash(Commitment.OfAnEmptySequenceRlp).TestObject
             })
             .TestObject;
 

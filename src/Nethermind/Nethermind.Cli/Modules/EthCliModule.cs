@@ -27,7 +27,7 @@ namespace Nethermind.Cli.Modules
             tx.Nonce = (ulong)NodeManager.Post<long>("eth_getTransactionCount", from, blockNumber).Result;
             tx.From = from;
 
-            Keccak? keccak = NodeManager.Post<Keccak>("eth_sendTransaction", tx).Result;
+            Commitment? keccak = NodeManager.Post<Commitment>("eth_sendTransaction", tx).Result;
             return keccak?.Bytes.ToHexString();
         }
 

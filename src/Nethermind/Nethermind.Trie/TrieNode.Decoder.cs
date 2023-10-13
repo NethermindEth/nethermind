@@ -67,7 +67,7 @@ namespace Nethermind.Trie
 
                 nodeRef.ResolveKey(tree, false, bufferPool: bufferPool);
 
-                int contentLength = Rlp.LengthOf(keyBytes) + (nodeRef.Keccak is null ? nodeRef.FullRlp.Length : Rlp.LengthOfKeccakRlp);
+                int contentLength = Rlp.LengthOf(keyBytes) + (nodeRef.Commitment is null ? nodeRef.FullRlp.Length : Rlp.LengthOfKeccakRlp);
                 int totalLength = Rlp.LengthOfSequence(contentLength);
 
                 CappedArray<byte> data = bufferPool.SafeRentBuffer(totalLength);
@@ -78,7 +78,7 @@ namespace Nethermind.Trie
                 {
                     ArrayPool<byte>.Shared.Return(rentedBuffer);
                 }
-                if (nodeRef.Keccak is null)
+                if (nodeRef.Commitment is null)
                 {
                     // I think it can only happen if we have a short extension to a branch with a short extension as the only child?
                     // so |
@@ -90,7 +90,7 @@ namespace Nethermind.Trie
                 }
                 else
                 {
-                    rlpStream.Encode(nodeRef.Keccak);
+                    rlpStream.Encode(nodeRef.Commitment);
                 }
 
                 return data;
@@ -101,7 +101,7 @@ namespace Nethermind.Trie
             {
                 if (node.Key is null)
                 {
-                    throw new TrieException($"Hex prefix of a leaf node is null at node {node.Keccak}");
+                    throw new TrieException($"Hex prefix of a leaf node is null at node {node.Commitment}");
                 }
 
                 byte[] hexPrefix = node.Key;
@@ -170,7 +170,7 @@ namespace Nethermind.Trie
                         {
                             totalLength++;
                         }
-                        else if (item._data[i] is Keccak)
+                        else if (item._data[i] is Commitment)
                         {
                             totalLength += Rlp.LengthOfKeccakRlp;
                         }
@@ -178,7 +178,7 @@ namespace Nethermind.Trie
                         {
                             TrieNode childNode = (TrieNode)item._data[i];
                             childNode!.ResolveKey(tree, false, bufferPool: bufferPool);
-                            totalLength += childNode.Keccak is null ? childNode.FullRlp.Length : Rlp.LengthOfKeccakRlp;
+                            totalLength += childNode.Commitment is null ? childNode.FullRlp.Length : Rlp.LengthOfKeccakRlp;
                         }
                     }
 
@@ -211,15 +211,15 @@ namespace Nethermind.Trie
                         {
                             destination[position++] = 128;
                         }
-                        else if (item._data[i] is Keccak)
+                        else if (item._data[i] is Commitment)
                         {
-                            position = Rlp.Encode(destination, position, (item._data[i] as Keccak)!.Bytes);
+                            position = Rlp.Encode(destination, position, (item._data[i] as Commitment)!.Bytes);
                         }
                         else
                         {
                             TrieNode childNode = (TrieNode)item._data[i];
                             childNode!.ResolveKey(tree, false, bufferPool: bufferPool);
-                            if (childNode.Keccak is null)
+                            if (childNode.Commitment is null)
                             {
                                 Span<byte> fullRlp = childNode.FullRlp!.AsSpan();
                                 fullRlp.CopyTo(destination.Slice(position, fullRlp.Length));
@@ -227,7 +227,7 @@ namespace Nethermind.Trie
                             }
                             else
                             {
-                                position = Rlp.Encode(destination, position, childNode.Keccak.Bytes);
+                                position = Rlp.Encode(destination, position, childNode.Commitment.Bytes);
                             }
                         }
                     }

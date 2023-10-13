@@ -10,12 +10,12 @@ namespace Nethermind.State
 {
     public interface IStateReader
     {
-        Account? GetAccount(Keccak stateRoot, Address address);
+        Account? GetAccount(Commitment stateRoot, Address address);
 
-        byte[]? GetStorage(Keccak storageRoot, in UInt256 index);
+        byte[]? GetStorage(Commitment storageRoot, in UInt256 index);
 
-        byte[]? GetCode(Keccak codeHash);
+        byte[]? GetCode(Commitment codeHash);
 
-        void RunTreeVisitor(ITreeVisitor treeVisitor, Keccak stateRoot, VisitingOptions? visitingOptions = null);
+        void RunTreeVisitor(ITreeVisitor treeVisitor, Commitment stateRoot, VisitingOptions? visitingOptions = null);
     }
 }

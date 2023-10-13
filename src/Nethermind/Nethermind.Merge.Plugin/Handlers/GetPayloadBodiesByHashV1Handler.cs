@@ -12,7 +12,7 @@ using Nethermind.Merge.Plugin.Data;
 
 namespace Nethermind.Merge.Plugin.Handlers;
 
-public class GetPayloadBodiesByHashV1Handler : IAsyncHandler<IList<Keccak>, IEnumerable<ExecutionPayloadBodyV1Result?>>
+public class GetPayloadBodiesByHashV1Handler : IAsyncHandler<IList<Commitment>, IEnumerable<ExecutionPayloadBodyV1Result?>>
 {
     private const int MaxCount = 1024;
     private readonly IBlockTree _blockTree;
@@ -24,7 +24,7 @@ public class GetPayloadBodiesByHashV1Handler : IAsyncHandler<IList<Keccak>, IEnu
         _logger = logManager.GetClassLogger();
     }
 
-    public Task<ResultWrapper<IEnumerable<ExecutionPayloadBodyV1Result?>>> HandleAsync(IList<Keccak> blockHashes)
+    public Task<ResultWrapper<IEnumerable<ExecutionPayloadBodyV1Result?>>> HandleAsync(IList<Commitment> blockHashes)
     {
         if (blockHashes.Count > MaxCount)
         {

@@ -8,11 +8,11 @@ namespace Nethermind.Consensus.Processing;
 
 public class BlockHashEventArgs : EventArgs
 {
-    public Keccak BlockHash { get; }
+    public Commitment BlockHash { get; }
     public ProcessingResult ProcessingResult { get; }
     public Exception? Exception { get; }
 
-    public BlockHashEventArgs(Keccak blockHash, ProcessingResult processingResult, Exception? exception = null)
+    public BlockHashEventArgs(Commitment blockHash, ProcessingResult processingResult, Exception? exception = null)
     {
         BlockHash = blockHash;
         ProcessingResult = processingResult;

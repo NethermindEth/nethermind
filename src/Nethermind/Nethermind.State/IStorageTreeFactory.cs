@@ -10,5 +10,5 @@ namespace Nethermind.State;
 
 public interface IStorageTreeFactory
 {
-    StorageTree Create(Address address, ITrieStore trieStore, Keccak storageRoot, Keccak stateRoot, ILogManager? logManager);
+    StorageTree Create(Address address, ITrieStore trieStore, Commitment storageRoot, Commitment stateRoot, ILogManager? logManager);
 }

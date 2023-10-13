@@ -198,17 +198,17 @@ namespace Nethermind.EthStats.Integrations
             => _sender.SendAsync(_websocketClient!, new BlockMessage(
                 new Messages.Models.Block(
                     block.Number,
-                    (block.Hash ?? Keccak.Zero).ToString(),
-                    (block.ParentHash ?? Keccak.Zero).ToString(),
+                    (block.Hash ?? Commitment.Zero).ToString(),
+                    (block.ParentHash ?? Commitment.Zero).ToString(),
                     (long)block.Timestamp,
                     (block.Author ?? block.Beneficiary ?? Address.Zero).ToString(),
                     block.GasUsed,
                     block.GasLimit,
                     block.Difficulty.ToString(),
                     (block.TotalDifficulty ?? 0).ToString(),
-                    block.Transactions.Select(t => new Transaction((t.Hash ?? Keccak.Zero).ToString())),
-                    (block.TxRoot ?? Keccak.Zero).ToString(),
-                    (block.StateRoot ?? Keccak.Zero).ToString(),
+                    block.Transactions.Select(t => new Transaction((t.Hash ?? Commitment.Zero).ToString())),
+                    (block.TxRoot ?? Commitment.Zero).ToString(),
+                    (block.StateRoot ?? Commitment.Zero).ToString(),
                     block.Uncles.Select(_ => new Uncle()))));
 
         // ReSharper disable once UnusedMethodReturnValue.Local

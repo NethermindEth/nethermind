@@ -110,7 +110,7 @@ public class CliqueBlockProducer : ICliqueBlockProducer, IDisposable
         if (_logger.IsWarn) _logger.Warn($"Removed Clique vote for {signer}");
     }
 
-    public void ProduceOnTopOf(Keccak hash)
+    public void ProduceOnTopOf(Commitment hash)
     {
         _signalsQueue.Add(_blockTree.FindBlock(hash, BlockTreeLookupOptions.None));
     }
@@ -335,7 +335,7 @@ public class CliqueBlockProducer : ICliqueBlockProducer, IDisposable
 
     public event EventHandler<BlockEventArgs>? BlockProduced;
 
-    private Keccak? _recentNotAllowedParent;
+    private Commitment? _recentNotAllowedParent;
 
     private Block? PrepareBlock(Block parentBlock)
     {
@@ -366,7 +366,7 @@ public class CliqueBlockProducer : ICliqueBlockProducer, IDisposable
 
         BlockHeader header = new(
             parentHeader.Hash,
-            Keccak.OfAnEmptySequenceRlp,
+            Commitment.OfAnEmptySequenceRlp,
             Address.Zero,
             1,
             parentBlock.Number + 1,
@@ -435,8 +435,8 @@ public class CliqueBlockProducer : ICliqueBlockProducer, IDisposable
         }
 
         // Mix digest is reserved for now, set to empty
-        header.MixHash = Keccak.Zero;
-        header.WithdrawalsRoot = spec.WithdrawalsEnabled ? Keccak.EmptyTreeHash : null;
+        header.MixHash = Commitment.Zero;
+        header.WithdrawalsRoot = spec.WithdrawalsEnabled ? Commitment.EmptyTreeHash : null;
 
         _stateProvider.StateRoot = parentHeader.StateRoot!;
 

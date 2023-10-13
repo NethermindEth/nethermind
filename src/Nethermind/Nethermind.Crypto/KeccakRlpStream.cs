@@ -14,9 +14,9 @@ namespace Nethermind.Crypto
     {
         private readonly KeccakHash _keccakHash;
 
-        public Keccak GetHash()
+        public Commitment GetHash()
         {
-            return new Keccak(_keccakHash.Hash);
+            return new Commitment(_keccakHash.Hash);
         }
 
         public KeccakRlpStream()

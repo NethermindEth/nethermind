@@ -7,7 +7,7 @@ namespace Nethermind.State.Snap
 {
     public class AccountRange
     {
-        public AccountRange(ValueKeccak rootHash, ValueKeccak startingHash, ValueKeccak? limitHash = null, long? blockNumber = null)
+        public AccountRange(ValueCommitment rootHash, ValueCommitment startingHash, ValueCommitment? limitHash = null, long? blockNumber = null)
         {
             RootHash = rootHash;
             StartingHash = startingHash;
@@ -20,17 +20,17 @@ namespace Nethermind.State.Snap
         /// <summary>
         /// Root hash of the account trie to serve
         /// </summary>
-        public ValueKeccak RootHash { get; }
+        public ValueCommitment RootHash { get; }
 
         /// <summary>
         /// Account hash of the first to retrieve
         /// </summary>
-        public ValueKeccak StartingHash { get; }
+        public ValueCommitment StartingHash { get; }
 
         /// <summary>
         /// Account hash after which to stop serving data
         /// </summary>
-        public ValueKeccak? LimitHash { get; }
+        public ValueCommitment? LimitHash { get; }
 
         public override string ToString()
         {

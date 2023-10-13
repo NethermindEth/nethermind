@@ -36,9 +36,9 @@ namespace Nethermind.AuRa.Test.Contract
             _block = new Block(Build.A.BlockHeader.TestObject, new BlockBody());
             _transactionProcessor = Substitute.For<IReadOnlyTransactionProcessor>();
             _readOnlyTxProcessorSource = Substitute.For<IReadOnlyTxProcessorSource>();
-            _readOnlyTxProcessorSource.Build(TestItem.KeccakA).Returns(_transactionProcessor);
+            _readOnlyTxProcessorSource.Build(TestItem._commitmentA).Returns(_transactionProcessor);
             _stateProvider = Substitute.For<IWorldState>();
-            _stateProvider.StateRoot.Returns(TestItem.KeccakA);
+            _stateProvider.StateRoot.Returns(TestItem._commitmentA);
         }
 
         [Test]
@@ -62,7 +62,7 @@ namespace Nethermind.AuRa.Test.Contract
             {
                 Value = 0,
                 Data = new byte[] { 0x75, 0x28, 0x62, 0x11 },
-                Hash = new Keccak("0x0652461cead47b6e1436fc631debe06bde8bcdd2dad3b9d21df5cf092078c6d3"),
+                Hash = new Commitment("0x0652461cead47b6e1436fc631debe06bde8bcdd2dad3b9d21df5cf092078c6d3"),
                 To = _contractAddress,
                 SenderAddress = Address.SystemUser,
                 GasLimit = Blockchain.Contracts.CallableContract.UnlimitedGas,

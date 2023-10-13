@@ -18,24 +18,24 @@ namespace Nethermind.Serialization.Rlp
             _slimFormat = slimFormat;
         }
 
-        public (Keccak CodeHash, Keccak StorageRoot) DecodeHashesOnly(RlpStream rlpStream)
+        public (Commitment CodeHash, Commitment StorageRoot) DecodeHashesOnly(RlpStream rlpStream)
         {
             rlpStream.SkipLength();
             rlpStream.SkipItem();
             rlpStream.SkipItem();
 
-            Keccak storageRoot = DecodeStorageRoot(rlpStream);
-            Keccak codeHash = DecodeCodeHash(rlpStream);
+            Commitment storageRoot = DecodeStorageRoot(rlpStream);
+            Commitment codeHash = DecodeCodeHash(rlpStream);
 
             return (codeHash, storageRoot);
         }
 
-        public Keccak DecodeStorageRootOnly(RlpStream rlpStream)
+        public Commitment DecodeStorageRootOnly(RlpStream rlpStream)
         {
             rlpStream.SkipLength();
             rlpStream.SkipItem();
             rlpStream.SkipItem();
-            Keccak storageRoot = DecodeStorageRoot(rlpStream);
+            Commitment storageRoot = DecodeStorageRoot(rlpStream);
             return storageRoot;
         }
 
@@ -49,9 +49,9 @@ namespace Nethermind.Serialization.Rlp
 
             UInt256 nonce = rlpStream.DecodeUInt256();
             UInt256 balance = rlpStream.DecodeUInt256();
-            Keccak storageRoot = DecodeStorageRoot(rlpStream);
-            Keccak codeHash = DecodeCodeHash(rlpStream);
-            if (ReferenceEquals(storageRoot, Keccak.EmptyTreeHash) && ReferenceEquals(codeHash, Keccak.OfAnEmptyString))
+            Commitment storageRoot = DecodeStorageRoot(rlpStream);
+            Commitment codeHash = DecodeCodeHash(rlpStream);
+            if (ReferenceEquals(storageRoot, Commitment.EmptyTreeHash) && ReferenceEquals(codeHash, Commitment.OfAnEmptyString))
             {
                 return new(nonce, balance);
             }
@@ -170,13 +170,13 @@ namespace Nethermind.Serialization.Rlp
             return contentLength;
         }
 
-        private Keccak DecodeStorageRoot(RlpStream rlpStream)
+        private Commitment DecodeStorageRoot(RlpStream rlpStream)
         {
-            Keccak storageRoot;
+            Commitment storageRoot;
             if (_slimFormat && rlpStream.IsNextItemEmptyArray())
             {
                 rlpStream.ReadByte();
-                storageRoot = Keccak.EmptyTreeHash;
+                storageRoot = Commitment.EmptyTreeHash;
             }
             else
             {
@@ -186,13 +186,13 @@ namespace Nethermind.Serialization.Rlp
             return storageRoot;
         }
 
-        private Keccak DecodeCodeHash(RlpStream rlpStream)
+        private Commitment DecodeCodeHash(RlpStream rlpStream)
         {
-            Keccak codeHash;
+            Commitment codeHash;
             if (_slimFormat && rlpStream.IsNextItemEmptyArray())
             {
                 rlpStream.ReadByte();
-                codeHash = Keccak.OfAnEmptyString;
+                codeHash = Commitment.OfAnEmptyString;
             }
             else
             {

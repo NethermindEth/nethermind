@@ -30,12 +30,12 @@ public abstract class GethLikeTxTracer<TEntry> : TxTracer where TEntry : GethTxT
     protected TEntry? CurrentTraceEntry { get; set; }
     protected GethLikeTxTrace Trace { get; } = new();
 
-    public override void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Keccak? stateRoot = null)
+    public override void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Commitment? stateRoot = null)
     {
         Trace.ReturnValue = output;
     }
 
-    public override void MarkAsFailed(Address recipient, long gasSpent, byte[]? output, string error, Keccak? stateRoot = null)
+    public override void MarkAsFailed(Address recipient, long gasSpent, byte[]? output, string error, Commitment? stateRoot = null)
     {
         Trace.Failed = true;
         Trace.ReturnValue = output ?? Array.Empty<byte>();

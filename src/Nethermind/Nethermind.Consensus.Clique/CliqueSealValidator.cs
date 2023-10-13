@@ -103,14 +103,14 @@ namespace Nethermind.Consensus.Clique
             }
 
             // Ensure that the mix digest is zero as we don't have fork protection currently
-            if (header.MixHash != Keccak.Zero)
+            if (header.MixHash != Commitment.Zero)
             {
                 if (_logger.IsWarn) _logger.Warn($"Invalid block mix hash ({header.MixHash}) - should be zeroes");
                 return false;
             }
 
             // Ensure that the block doesn't contain any uncles which are meaningless in PoA
-            if (header.UnclesHash != Keccak.OfAnEmptySequenceRlp)
+            if (header.UnclesHash != Commitment.OfAnEmptySequenceRlp)
             {
                 if (_logger.IsWarn) _logger.Warn($"Invalid block uncles hash ({header.UnclesHash}) - uncles are meaningless in Clique");
                 return false;

@@ -19,13 +19,13 @@ public class PayloadAttributes
 {
     public ulong Timestamp { get; set; }
 
-    public Keccak PrevRandao { get; set; }
+    public Commitment PrevRandao { get; set; }
 
     public Address SuggestedFeeRecipient { get; set; }
 
     public IList<Withdrawal>? Withdrawals { get; set; }
 
-    public Keccak? ParentBeaconBlockRoot { get; set; }
+    public Commitment? ParentBeaconBlockRoot { get; set; }
     /// <summary>Gets or sets the gas limit.</summary>
     /// <remarks>Used for MEV-Boost only.</remarks>
     public long? GasLimit { get; set; }
@@ -64,12 +64,12 @@ public static class PayloadAttributesExtensions
         bool hasWithdrawals = payloadAttributes.Withdrawals is not null;
         bool hasParentBeaconBlockRoot = payloadAttributes.ParentBeaconBlockRoot is not null;
 
-        const int preambleLength = Keccak.Size + Keccak.Size + Keccak.Size + Address.ByteLength;
-        Span<byte> inputSpan = stackalloc byte[preambleLength + (hasWithdrawals ? Keccak.Size : 0) + (hasParentBeaconBlockRoot ? Keccak.Size : 0)];
+        const int preambleLength = Commitment.Size + Commitment.Size + Commitment.Size + Address.ByteLength;
+        Span<byte> inputSpan = stackalloc byte[preambleLength + (hasWithdrawals ? Commitment.Size : 0) + (hasParentBeaconBlockRoot ? Commitment.Size : 0)];
 
-        parentHeader.Hash!.Bytes.CopyTo(inputSpan[..Keccak.Size]);
+        parentHeader.Hash!.Bytes.CopyTo(inputSpan[..Commitment.Size]);
         BinaryPrimitives.WriteUInt64BigEndian(inputSpan.Slice(56, sizeof(UInt64)), payloadAttributes.Timestamp);
-        payloadAttributes.PrevRandao.Bytes.CopyTo(inputSpan.Slice(64, Keccak.Size));
+        payloadAttributes.PrevRandao.Bytes.CopyTo(inputSpan.Slice(64, Commitment.Size));
         payloadAttributes.SuggestedFeeRecipient.Bytes.CopyTo(inputSpan.Slice(96, Address.ByteLength));
 
         if (hasWithdrawals)
@@ -83,10 +83,10 @@ public static class PayloadAttributesExtensions
 
         if (hasParentBeaconBlockRoot)
         {
-            payloadAttributes.ParentBeaconBlockRoot.Bytes.CopyTo(inputSpan[(preambleLength + (hasWithdrawals ? Keccak.Size : 0))..]);
+            payloadAttributes.ParentBeaconBlockRoot.Bytes.CopyTo(inputSpan[(preambleLength + (hasWithdrawals ? Commitment.Size : 0))..]);
         }
 
-        ValueKeccak inputHash = ValueKeccak.Compute(inputSpan);
+        ValueCommitment inputHash = ValueCommitment.Compute(inputSpan);
 
         return inputHash.BytesAsSpan[..8].ToHexString(true);
     }

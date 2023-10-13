@@ -51,7 +51,7 @@ namespace Nethermind.Consensus.Tracing
 
         public void Execute(Block block, IBlockTracer tracer) => Process(block, tracer, _executeProcessor);
 
-        public void Accept(ITreeVisitor visitor, Keccak stateRoot)
+        public void Accept(ITreeVisitor visitor, Commitment stateRoot)
         {
             if (visitor is null) throw new ArgumentNullException(nameof(visitor));
             if (stateRoot is null) throw new ArgumentNullException(nameof(stateRoot));

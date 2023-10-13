@@ -18,7 +18,7 @@ namespace Nethermind.JsonRpc.Test.Data
         [Test]
         public void Are_log_indexes_unique()
         {
-            Keccak txHash = Keccak.OfAnEmptyString;
+            Commitment txHash = Commitment.OfAnEmptyString;
             LogEntry[] logEntries = { Build.A.LogEntry.TestObject, Build.A.LogEntry.TestObject, Build.A.LogEntry.TestObject };
 
             TxReceipt receipt1 = new()
@@ -27,7 +27,7 @@ namespace Nethermind.JsonRpc.Test.Data
                 Index = 1,
                 Recipient = TestItem.AddressA,
                 Sender = TestItem.AddressB,
-                BlockHash = TestItem.KeccakA,
+                BlockHash = TestItem._commitmentA,
                 BlockNumber = 1,
                 ContractAddress = TestItem.AddressC,
                 GasUsed = 1000,

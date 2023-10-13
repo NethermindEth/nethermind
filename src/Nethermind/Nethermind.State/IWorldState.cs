@@ -76,7 +76,7 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
 
     void RecalculateStateRoot();
 
-    new Keccak StateRoot { get; set; }
+    new Commitment StateRoot { get; set; }
 
     void DeleteAccount(Address address);
 
@@ -91,7 +91,7 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
 
     void SubtractFromBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec);
 
-    void UpdateStorageRoot(Address address, Keccak storageRoot);
+    void UpdateStorageRoot(Address address, Commitment storageRoot);
 
     void IncrementNonce(Address address);
 
@@ -109,5 +109,5 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
     /// For witness
     /// </summary>
     /// <param name="codeHash"></param>
-    void TouchCode(Keccak codeHash);
+    void TouchCode(Commitment codeHash);
 }

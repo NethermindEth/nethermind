@@ -34,7 +34,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.Messages
             GetByteCodesMessage msg = new()
             {
                 RequestId = MessageConstants.Random.NextLong(),
-                Hashes = Array.Empty<ValueKeccak>(),
+                Hashes = Array.Empty<ValueCommitment>(),
                 Bytes = 10
             };
 

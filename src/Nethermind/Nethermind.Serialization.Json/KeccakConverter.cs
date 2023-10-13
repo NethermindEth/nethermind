@@ -8,9 +8,9 @@ using Newtonsoft.Json;
 
 namespace Nethermind.Serialization.Json
 {
-    public class KeccakConverter : JsonConverter<Keccak>
+    public class KeccakConverter : JsonConverter<Commitment>
     {
-        public override void WriteJson(JsonWriter writer, Keccak value, JsonSerializer serializer)
+        public override void WriteJson(JsonWriter writer, Commitment value, JsonSerializer serializer)
         {
             if (value is null)
             {
@@ -22,10 +22,10 @@ namespace Nethermind.Serialization.Json
             }
         }
 
-        public override Keccak ReadJson(JsonReader reader, Type objectType, Keccak existingValue, bool hasExistingValue, JsonSerializer serializer)
+        public override Commitment ReadJson(JsonReader reader, Type objectType, Commitment existingValue, bool hasExistingValue, JsonSerializer serializer)
         {
             string s = (string)reader.Value;
-            return string.IsNullOrWhiteSpace(s) ? null : new Keccak(Bytes.FromHexString(s));
+            return string.IsNullOrWhiteSpace(s) ? null : new Commitment(Bytes.FromHexString(s));
         }
     }
 }

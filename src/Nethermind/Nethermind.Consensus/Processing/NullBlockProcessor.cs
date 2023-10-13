@@ -15,7 +15,7 @@ namespace Nethermind.Consensus.Processing
 
         public static IBlockProcessor Instance { get; } = new NullBlockProcessor();
 
-        public Block[] Process(Keccak newBranchStateRoot, List<Block> suggestedBlocks, ProcessingOptions processingOptions, IBlockTracer blockTracer)
+        public Block[] Process(Commitment newBranchStateRoot, List<Block> suggestedBlocks, ProcessingOptions processingOptions, IBlockTracer blockTracer)
         {
             return suggestedBlocks.ToArray();
         }

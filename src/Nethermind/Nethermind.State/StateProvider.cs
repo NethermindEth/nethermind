@@ -29,7 +29,7 @@ namespace Nethermind.State
         // Note:
         // False negatives are fine as they will just result in a overwrite set
         // False positives would be problematic as the code _must_ be persisted
-        private readonly LruKeyCache<Keccak> _codeInsertFilter = new(2048, "Code Insert Filter");
+        private readonly LruKeyCache<Commitment> _codeInsertFilter = new(2048, "Code Insert Filter");
 
         private readonly List<Change> _keptInCache = new();
         private readonly ILogger _logger;
@@ -46,7 +46,7 @@ namespace Nethermind.State
             _tree = stateTree ?? new StateTree(trieStore, logManager);
         }
 
-        public void Accept(ITreeVisitor? visitor, Keccak? stateRoot, VisitingOptions? visitingOptions = null)
+        public void Accept(ITreeVisitor? visitor, Commitment? stateRoot, VisitingOptions? visitingOptions = null)
         {
             if (visitor is null) throw new ArgumentNullException(nameof(visitor));
             if (stateRoot is null) throw new ArgumentNullException(nameof(stateRoot));
@@ -62,7 +62,7 @@ namespace Nethermind.State
             _needsStateRootUpdate = false;
         }
 
-        public Keccak StateRoot
+        public Commitment StateRoot
         {
             get
             {
@@ -127,7 +127,7 @@ namespace Nethermind.State
             return account?.Nonce ?? UInt256.Zero;
         }
 
-        public Keccak GetStorageRoot(Address address)
+        public Commitment GetStorageRoot(Address address)
         {
             Account? account = GetThroughCache(address);
             if (account is null)
@@ -147,7 +147,7 @@ namespace Nethermind.State
         public void InsertCode(Address address, ReadOnlyMemory<byte> code, IReleaseSpec spec, bool isGenesis = false)
         {
             _needsStateRootUpdate = true;
-            Keccak codeHash = code.Length == 0 ? Keccak.OfAnEmptyString : Keccak.Compute(code.Span);
+            Commitment codeHash = code.Length == 0 ? Commitment.OfAnEmptyString : Commitment.Compute(code.Span);
 
             // Don't reinsert if already inserted. This can be the case when the same
             // code is used by multiple deployments. Either from factory contracts (e.g. LPs)
@@ -258,7 +258,7 @@ namespace Nethermind.State
         /// </summary>
         /// <param name="address"></param>
         /// <param name="storageRoot"></param>
-        public void UpdateStorageRoot(Address address, Keccak storageRoot)
+        public void UpdateStorageRoot(Address address, Commitment storageRoot)
         {
             _needsStateRootUpdate = true;
             Account? account = GetThroughCache(address);
@@ -303,7 +303,7 @@ namespace Nethermind.State
             PushUpdate(address, changedAccount);
         }
 
-        public void TouchCode(Keccak codeHash)
+        public void TouchCode(Commitment codeHash)
         {
             if (_codeDb is WitnessingStore witnessingStore)
             {
@@ -311,15 +311,15 @@ namespace Nethermind.State
             }
         }
 
-        public Keccak GetCodeHash(Address address)
+        public Commitment GetCodeHash(Address address)
         {
             Account? account = GetThroughCache(address);
-            return account?.CodeHash ?? Keccak.OfAnEmptyString;
+            return account?.CodeHash ?? Commitment.OfAnEmptyString;
         }
 
-        public byte[] GetCode(Keccak codeHash)
+        public byte[] GetCode(Commitment codeHash)
         {
-            byte[]? code = codeHash == Keccak.OfAnEmptyString ? Array.Empty<byte>() : _codeDb[codeHash.Bytes];
+            byte[]? code = codeHash == Commitment.OfAnEmptyString ? Array.Empty<byte>() : _codeDb[codeHash.Bytes];
             if (code is null)
             {
                 throw new InvalidOperationException($"Code {codeHash} is missing from the database.");
@@ -624,19 +624,19 @@ namespace Nethermind.State
                 UInt256? beforeNonce = before?.Nonce;
                 UInt256? afterNonce = after?.Nonce;
 
-                Keccak? beforeCodeHash = before?.CodeHash;
-                Keccak? afterCodeHash = after?.CodeHash;
+                Commitment? beforeCodeHash = before?.CodeHash;
+                Commitment? afterCodeHash = after?.CodeHash;
 
                 if (beforeCodeHash != afterCodeHash)
                 {
                     byte[]? beforeCode = beforeCodeHash is null
                         ? null
-                        : beforeCodeHash == Keccak.OfAnEmptyString
+                        : beforeCodeHash == Commitment.OfAnEmptyString
                             ? Array.Empty<byte>()
                             : _codeDb[beforeCodeHash.Bytes];
                     byte[]? afterCode = afterCodeHash is null
                         ? null
-                        : afterCodeHash == Keccak.OfAnEmptyString
+                        : afterCodeHash == Commitment.OfAnEmptyString
                             ? Array.Empty<byte>()
                             : _codeDb[afterCodeHash.Bytes];
 

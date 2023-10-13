@@ -25,7 +25,7 @@ namespace Nethermind.Stats.Model
         /// <summary>
         /// Hash of the node ID used extensively in discovery and kept here to avoid rehashing.
         /// </summary>
-        public Keccak IdHash { get; }
+        public Commitment IdHash { get; }
 
         /// <summary>
         /// Host part of the network node.
@@ -83,7 +83,7 @@ namespace Nethermind.Stats.Model
         public Node(PublicKey id, IPEndPoint address, bool isStatic = false)
         {
             Id = id;
-            IdHash = Keccak.Compute(Id.PrefixedBytes);
+            IdHash = Commitment.Compute(Id.PrefixedBytes);
             IsStatic = isStatic;
             SetIPEndPoint(address);
         }

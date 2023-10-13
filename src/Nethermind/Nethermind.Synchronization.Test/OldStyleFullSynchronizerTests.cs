@@ -331,7 +331,7 @@ namespace Nethermind.Synchronization.Test
             minerTree.UpdateMainChain(newBlock);
 
             ISyncPeer miner2 = Substitute.For<ISyncPeer>();
-            miner2.GetHeadBlockHeader(Arg.Any<Keccak>(), Arg.Any<CancellationToken>()).Returns(miner1.GetHeadBlockHeader(null, CancellationToken.None));
+            miner2.GetHeadBlockHeader(Arg.Any<Commitment>(), Arg.Any<CancellationToken>()).Returns(miner1.GetHeadBlockHeader(null, CancellationToken.None));
             miner2.Node.Id.Returns(TestItem.PublicKeyB);
 
             Assert.That((await miner2.GetHeadBlockHeader(null, Arg.Any<CancellationToken>()))?.Number, Is.EqualTo(newBlock.Number), "number as expected");
@@ -369,7 +369,7 @@ namespace Nethermind.Synchronization.Test
             minerTree.UpdateMainChain(newBlock);
 
             ISyncPeer miner2 = Substitute.For<ISyncPeer>();
-            miner2.GetHeadBlockHeader(Arg.Any<Keccak>(), Arg.Any<CancellationToken>()).Returns(miner1.GetHeadBlockHeader(null, CancellationToken.None));
+            miner2.GetHeadBlockHeader(Arg.Any<Commitment>(), Arg.Any<CancellationToken>()).Returns(miner1.GetHeadBlockHeader(null, CancellationToken.None));
             miner2.Node.Id.Returns(TestItem.PublicKeyB);
 
             Assert.That((await miner2.GetHeadBlockHeader(null, Arg.Any<CancellationToken>()))?.Number, Is.EqualTo(newBlock.Number), "number as expected");
@@ -385,8 +385,8 @@ namespace Nethermind.Synchronization.Test
         [Test]
         public void Can_retrieve_node_values()
         {
-            _stateDb.Set(TestItem.KeccakA, TestItem.RandomDataA);
-            byte[]?[] data = _syncServer.GetNodeData(new[] { TestItem.KeccakA, TestItem.KeccakB });
+            _stateDb.Set(TestItem._commitmentA, TestItem.RandomDataA);
+            byte[]?[] data = _syncServer.GetNodeData(new[] { TestItem._commitmentA, TestItem._commitmentB });
 
             Assert.That(data, Is.Not.Null);
             Assert.That(data.Length, Is.EqualTo(2), "data.Length");
@@ -403,7 +403,7 @@ namespace Nethermind.Synchronization.Test
 
             _syncServer.GetReceipts(block0!.Hash!).Should().HaveCount(0);
             _syncServer.GetReceipts(block1!.Hash!).Should().HaveCount(0);
-            _syncServer.GetReceipts(TestItem.KeccakA).Should().HaveCount(0);
+            _syncServer.GetReceipts(TestItem._commitmentA).Should().HaveCount(0);
         }
     }
 }

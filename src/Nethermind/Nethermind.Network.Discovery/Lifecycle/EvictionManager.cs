@@ -10,7 +10,7 @@ namespace Nethermind.Network.Discovery.Lifecycle;
 
 public class EvictionManager : IEvictionManager
 {
-    private readonly ConcurrentDictionary<Keccak, EvictionPair?> _evictionPairs = new();
+    private readonly ConcurrentDictionary<Commitment, EvictionPair?> _evictionPairs = new();
     private readonly INodeTable _nodeTable;
     private readonly ILogger _logger;
 

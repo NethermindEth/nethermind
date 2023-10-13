@@ -47,7 +47,7 @@ namespace Nethermind.Blockchain
                     for (int blockIndex = 0; blockIndex < numberOfBlocksAtThisLevel; blockIndex++)
                     {
                         // if we delete blocks during the process then the number of blocks at this level will be falling and we need to adjust the index
-                        Keccak hash = level!.BlockInfos[blockIndex - (numberOfBlocksAtThisLevel - level.BlockInfos.Length)].BlockHash;
+                        Commitment hash = level!.BlockInfos[blockIndex - (numberOfBlocksAtThisLevel - level.BlockInfos.Length)].BlockHash;
                         Block block = FindBlock(hash, BlockTreeLookupOptions.None);
                         if (block is null)
                         {
@@ -97,7 +97,7 @@ namespace Nethermind.Blockchain
             }
         }
 
-        private static async Task<bool> VisitMissing(IBlockTreeVisitor visitor, Keccak hash, CancellationToken cancellationToken)
+        private static async Task<bool> VisitMissing(IBlockTreeVisitor visitor, Commitment hash, CancellationToken cancellationToken)
         {
             bool shouldContinue = await visitor.VisitMissing(hash, cancellationToken);
             if (!shouldContinue)

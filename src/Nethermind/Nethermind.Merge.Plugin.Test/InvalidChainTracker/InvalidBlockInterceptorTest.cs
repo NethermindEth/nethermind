@@ -76,7 +76,7 @@ public class InvalidBlockInterceptorTest
     public void TestInvalidBlockhashShouldNotGetTracked()
     {
         Block block = Build.A.Block.TestObject;
-        block.Header.StateRoot = Keccak.Zero;
+        block.Header.StateRoot = Commitment.Zero;
 
         _baseValidator.ValidateSuggestedBlock(block).Returns(false);
         _invalidBlockInterceptor.ValidateSuggestedBlock(block);

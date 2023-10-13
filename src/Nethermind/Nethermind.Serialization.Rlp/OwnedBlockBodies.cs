@@ -39,7 +39,7 @@ public class OwnedBlockBodies : IDisposable
             if (blockBody == null) continue;
             foreach (Transaction tx in blockBody.Transactions)
             {
-                Keccak? _ = tx.Hash; // Just need to trigger hash calculation
+                Commitment? _ = tx.Hash; // Just need to trigger hash calculation
                 if (tx.Data != null)
                 {
                     tx.Data = tx.Data.Value.ToArray();

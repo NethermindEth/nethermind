@@ -63,7 +63,7 @@ namespace Nethermind.JsonRpc.Modules.Personal
         }
 
         [RequiresSecurityReview("Consider removing any operations that allow to provide passphrase in JSON RPC")]
-        public ResultWrapper<Keccak> personal_sendTransaction(TransactionForRpc transaction, string passphrase)
+        public ResultWrapper<Commitment> personal_sendTransaction(TransactionForRpc transaction, string passphrase)
         {
             throw new NotImplementedException();
         }
@@ -71,7 +71,7 @@ namespace Nethermind.JsonRpc.Modules.Personal
         public ResultWrapper<Address> personal_ecRecover(byte[] message, byte[] signature)
         {
             message = ToEthSignedMessage(message);
-            Keccak msgHash = Keccak.Compute(message);
+            Commitment msgHash = Commitment.Compute(message);
             PublicKey publicKey = _ecdsa.RecoverPublicKey(new Signature(signature), msgHash);
             return ResultWrapper<Address>.Success(publicKey.Address);
         }
@@ -96,7 +96,7 @@ namespace Nethermind.JsonRpc.Modules.Personal
             }
 
             message = ToEthSignedMessage(message);
-            return ResultWrapper<byte[]>.Success(_wallet.Sign(Keccak.Compute(message), address).Bytes);
+            return ResultWrapper<byte[]>.Success(_wallet.Sign(Commitment.Compute(message), address).Bytes);
         }
     }
 }

@@ -39,7 +39,7 @@ namespace Nethermind.TxPool
         /// <summary>
         /// Transactions published locally (initiated by this node users) or reorganised.
         /// </summary>
-        private readonly SortedPool<ValueKeccak, Transaction, Address> _persistentTxs;
+        private readonly SortedPool<ValueCommitment, Transaction, Address> _persistentTxs;
 
         /// <summary>
         /// Transactions added by external peers between timer elapses.
@@ -211,7 +211,7 @@ namespace Nethermind.TxPool
             return (persistentTxsToSend, persistentHashesToSend);
         }
 
-        public void StopBroadcast(Keccak txHash)
+        public void StopBroadcast(Commitment txHash)
         {
             if (_persistentTxs.Count != 0)
             {
@@ -294,7 +294,7 @@ namespace Nethermind.TxPool
             }
         }
 
-        public bool TryGetPersistentTx(Keccak hash, out Transaction? transaction)
+        public bool TryGetPersistentTx(Commitment hash, out Transaction? transaction)
         {
             return _persistentTxs.TryGetValue(hash, out transaction);
         }

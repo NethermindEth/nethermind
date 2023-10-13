@@ -23,7 +23,7 @@ namespace Nethermind.Consensus.Processing
         /// </param>
         /// <returns>List of processed blocks.</returns>
         Block[] Process(
-            Keccak newBranchStateRoot,
+            Commitment newBranchStateRoot,
             List<Block> suggestedBlocks,
             ProcessingOptions processingOptions,
             IBlockTracer blockTracer);

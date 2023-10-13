@@ -87,7 +87,7 @@ public class BlockValidator : IBlockValidator
             return false;
         }
 
-        if (!ValidateUnclesHashMatches(block, out Keccak unclesHash))
+        if (!ValidateUnclesHashMatches(block, out Commitment unclesHash))
         {
             if (_logger.IsDebug) _logger.Debug($"{Invalid(block)} Uncles hash mismatch: expected {block.Header.UnclesHash}, got {unclesHash}");
             return false;
@@ -106,7 +106,7 @@ public class BlockValidator : IBlockValidator
             return false;
         }
 
-        if (!ValidateTxRootMatchesTxs(block, out Keccak txRoot))
+        if (!ValidateTxRootMatchesTxs(block, out Commitment txRoot))
         {
             if (_logger.IsDebug) _logger.Debug($"{Invalid(block)} Transaction root hash mismatch: expected {block.Header.TxRoot}, got {txRoot}");
             return false;
@@ -206,7 +206,7 @@ public class BlockValidator : IBlockValidator
 
         if (block.Withdrawals is not null)
         {
-            if (!ValidateWithdrawalsHashMatches(block, out Keccak withdrawalsRoot))
+            if (!ValidateWithdrawalsHashMatches(block, out Commitment withdrawalsRoot))
             {
                 error = $"Withdrawals root hash mismatch in block {block.ToString(Block.Format.FullHashAndNumber)}: expected {block.Header.WithdrawalsRoot}, got {withdrawalsRoot}";
                 if (_logger.IsWarn) _logger.Warn($"Withdrawals root hash mismatch in block {block.ToString(Block.Format.FullHashAndNumber)}: expected {block.Header.WithdrawalsRoot}, got {withdrawalsRoot}");
@@ -299,20 +299,20 @@ public class BlockValidator : IBlockValidator
         return true;
     }
 
-    public static bool ValidateTxRootMatchesTxs(Block block, out Keccak txRoot)
+    public static bool ValidateTxRootMatchesTxs(Block block, out Commitment txRoot)
     {
         txRoot = new TxTrie(block.Transactions).RootHash;
         return txRoot == block.Header.TxRoot;
     }
 
-    public static bool ValidateUnclesHashMatches(Block block, out Keccak unclesHash)
+    public static bool ValidateUnclesHashMatches(Block block, out Commitment unclesHash)
     {
         unclesHash = UnclesHash.Calculate(block);
 
         return block.Header.UnclesHash == unclesHash;
     }
 
-    public static bool ValidateWithdrawalsHashMatches(Block block, out Keccak? withdrawalsRoot)
+    public static bool ValidateWithdrawalsHashMatches(Block block, out Commitment? withdrawalsRoot)
     {
         withdrawalsRoot = null;
         if (block.Withdrawals == null)

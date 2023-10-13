@@ -23,7 +23,7 @@ public class TraceStorePrunerTests
     [Test]
     public async Task prunes_old_blocks()
     {
-        IEnumerable<Keccak> GenerateTraces(MemDb db, BlockTree tree)
+        IEnumerable<Commitment> GenerateTraces(MemDb db, BlockTree tree)
         {
             ParityLikeBlockTracer parityTracer = new(ParityTraceTypes.Trace);
             ParityLikeTraceSerializer serializer = new(LimboLogs.Instance);
@@ -57,7 +57,7 @@ public class TraceStorePrunerTests
         MemDb memDb = new();
         BlockTree blockTree = Build.A.BlockTree().OfChainLength(5).TestObject;
         TraceStorePruner tracePruner = new(blockTree, memDb, 3, LimboLogs.Instance);
-        List<Keccak> keys = GenerateTraces(memDb, blockTree).ToList();
+        List<Commitment> keys = GenerateTraces(memDb, blockTree).ToList();
         keys.Select(k => memDb.Get(k)).Should().NotContain((byte[]?)null);
         AddNewBlocks(blockTree);
         await Task.Delay(100);

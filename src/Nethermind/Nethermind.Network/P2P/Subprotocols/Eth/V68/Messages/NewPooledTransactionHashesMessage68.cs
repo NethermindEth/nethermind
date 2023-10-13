@@ -18,9 +18,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V68.Messages
 
         public readonly IReadOnlyList<byte> Types;
         public readonly IReadOnlyList<int> Sizes;
-        public readonly IReadOnlyList<Keccak> Hashes;
+        public readonly IReadOnlyList<Commitment> Hashes;
 
-        public NewPooledTransactionHashesMessage68(IReadOnlyList<byte> types, IReadOnlyList<int> sizes, IReadOnlyList<Keccak> hashes)
+        public NewPooledTransactionHashesMessage68(IReadOnlyList<byte> types, IReadOnlyList<int> sizes, IReadOnlyList<Commitment> hashes)
         {
             Types = types;
             Sizes = sizes;

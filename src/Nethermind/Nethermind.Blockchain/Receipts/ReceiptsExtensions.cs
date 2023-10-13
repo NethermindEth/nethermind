@@ -12,7 +12,7 @@ namespace Nethermind.Blockchain.Receipts
 {
     public static class ReceiptsExtensions
     {
-        public static TxReceipt ForTransaction(this TxReceipt[] receipts, Keccak txHash)
+        public static TxReceipt ForTransaction(this TxReceipt[] receipts, Commitment txHash)
             => receipts.FirstOrDefault(r => r.TxHash == txHash);
 
         public static void SetSkipStateAndStatusInRlp(this TxReceipt[] receipts, bool value)
@@ -23,9 +23,9 @@ namespace Nethermind.Blockchain.Receipts
             }
         }
 
-        public static Keccak GetReceiptsRoot(this TxReceipt[] txReceipts, IReceiptSpec receiptSpec, Keccak suggestedRoot)
+        public static Commitment GetReceiptsRoot(this TxReceipt[] txReceipts, IReceiptSpec receiptSpec, Commitment suggestedRoot)
         {
-            Keccak SkipStateAndStatusReceiptsRoot()
+            Commitment SkipStateAndStatusReceiptsRoot()
             {
                 txReceipts.SetSkipStateAndStatusInRlp(true);
                 try
@@ -38,7 +38,7 @@ namespace Nethermind.Blockchain.Receipts
                 }
             }
 
-            Keccak receiptsRoot = ReceiptTrie.CalculateRoot(receiptSpec, txReceipts);
+            Commitment receiptsRoot = ReceiptTrie.CalculateRoot(receiptSpec, txReceipts);
             if (!receiptSpec.ValidateReceipts && receiptsRoot != suggestedRoot)
             {
                 var skipStateAndStatusReceiptsRoot = SkipStateAndStatusReceiptsRoot();

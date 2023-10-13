@@ -9,10 +9,10 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.Core.Caching
 {
-    public sealed class MemCountingCache : ICache<ValueKeccak, byte[]>
+    public sealed class MemCountingCache : ICache<ValueCommitment, byte[]>
     {
         private readonly int _maxCapacity;
-        private readonly Dictionary<ValueKeccak, LinkedListNode<LruCacheItem>> _cacheMap;
+        private readonly Dictionary<ValueCommitment, LinkedListNode<LruCacheItem>> _cacheMap;
         private LinkedListNode<LruCacheItem>? _leastRecentlyUsed;
 
         private const int PreInitMemorySize =
@@ -45,7 +45,7 @@ namespace Nethermind.Core.Caching
         }
 
         [MethodImpl(MethodImplOptions.Synchronized)]
-        public byte[]? Get(ValueKeccak key)
+        public byte[]? Get(ValueCommitment key)
         {
             if (_cacheMap.TryGetValue(key, out LinkedListNode<LruCacheItem>? node))
             {
@@ -58,7 +58,7 @@ namespace Nethermind.Core.Caching
         }
 
         [MethodImpl(MethodImplOptions.Synchronized)]
-        public bool TryGet(ValueKeccak key, out byte[]? value)
+        public bool TryGet(ValueCommitment key, out byte[]? value)
         {
             if (_cacheMap.TryGetValue(key, out LinkedListNode<LruCacheItem>? node))
             {
@@ -72,7 +72,7 @@ namespace Nethermind.Core.Caching
         }
 
         [MethodImpl(MethodImplOptions.Synchronized)]
-        public bool Set(ValueKeccak key, byte[]? val)
+        public bool Set(ValueCommitment key, byte[]? val)
         {
             if (val is null)
             {
@@ -118,7 +118,7 @@ namespace Nethermind.Core.Caching
         }
 
         [MethodImpl(MethodImplOptions.Synchronized)]
-        public bool Delete(ValueKeccak key)
+        public bool Delete(ValueCommitment key)
         {
             if (_cacheMap.TryGetValue(key, out LinkedListNode<LruCacheItem>? node))
             {
@@ -133,9 +133,9 @@ namespace Nethermind.Core.Caching
         }
 
         [MethodImpl(MethodImplOptions.Synchronized)]
-        public bool Contains(ValueKeccak key) => _cacheMap.ContainsKey(key);
+        public bool Contains(ValueCommitment key) => _cacheMap.ContainsKey(key);
 
-        private void Replace(ValueKeccak key, byte[] value)
+        private void Replace(ValueCommitment key, byte[] value)
         {
             LinkedListNode<LruCacheItem> node = _leastRecentlyUsed!;
             if (node is null)
@@ -162,13 +162,13 @@ namespace Nethermind.Core.Caching
 
         private struct LruCacheItem
         {
-            public LruCacheItem(ValueKeccak k, byte[] v)
+            public LruCacheItem(ValueCommitment k, byte[] v)
             {
                 Key = k;
                 Value = v;
             }
 
-            public readonly ValueKeccak Key;
+            public readonly ValueCommitment Key;
             public byte[] Value;
 
             public long MemorySize => FindMemorySize(Value);
@@ -176,7 +176,7 @@ namespace Nethermind.Core.Caching
             public static long FindMemorySize(byte[] withValue)
             {
                 return MemorySizes.Align(
-                    Keccak.MemorySize +
+                    Commitment.MemorySize +
                     MemorySizes.ArrayOverhead +
                     withValue.Length);
             }

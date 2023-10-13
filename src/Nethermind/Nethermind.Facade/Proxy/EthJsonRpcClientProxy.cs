@@ -31,7 +31,7 @@ namespace Nethermind.Facade.Proxy
         public Task<RpcResult<UInt256>> eth_getTransactionCount(Address address, BlockParameterModel blockParameter = null)
             => _proxy.SendAsync<UInt256>(nameof(eth_getTransactionCount), address, MapBlockParameter(blockParameter));
 
-        public Task<RpcResult<ReceiptModel>> eth_getTransactionReceipt(Keccak transactionHash)
+        public Task<RpcResult<ReceiptModel>> eth_getTransactionReceipt(Commitment transactionHash)
             => _proxy.SendAsync<ReceiptModel>(nameof(eth_getTransactionReceipt), transactionHash);
 
         public Task<RpcResult<byte[]>> eth_call(CallTransactionModel transaction,
@@ -41,28 +41,28 @@ namespace Nethermind.Facade.Proxy
         public Task<RpcResult<byte[]>> eth_getCode(Address address, BlockParameterModel blockParameter = null)
             => _proxy.SendAsync<byte[]>(nameof(eth_getCode), address, MapBlockParameter(blockParameter));
 
-        public Task<RpcResult<TransactionModel>> eth_getTransactionByHash(Keccak transactionHash)
+        public Task<RpcResult<TransactionModel>> eth_getTransactionByHash(Commitment transactionHash)
             => _proxy.SendAsync<TransactionModel>(nameof(eth_getTransactionByHash), transactionHash);
 
         public Task<RpcResult<TransactionModel[]>> eth_pendingTransactions()
             => _proxy.SendAsync<TransactionModel[]>(nameof(eth_pendingTransactions));
 
-        public Task<RpcResult<Keccak>> eth_sendRawTransaction(byte[] transaction)
-            => _proxy.SendAsync<Keccak>(nameof(eth_sendRawTransaction), transaction);
+        public Task<RpcResult<Commitment>> eth_sendRawTransaction(byte[] transaction)
+            => _proxy.SendAsync<Commitment>(nameof(eth_sendRawTransaction), transaction);
 
-        public Task<RpcResult<Keccak>> eth_sendTransaction(TransactionModel transaction)
-            => _proxy.SendAsync<Keccak>(nameof(eth_sendTransaction), transaction);
+        public Task<RpcResult<Commitment>> eth_sendTransaction(TransactionModel transaction)
+            => _proxy.SendAsync<Commitment>(nameof(eth_sendTransaction), transaction);
 
         public Task<RpcResult<byte[]>> eth_estimateGas(TransactionModel transaction, BlockParameterModel blockParameter = null)
             => _proxy.SendAsync<byte[]>(nameof(eth_estimateGas), transaction);
 
-        public Task<RpcResult<BlockModel<Keccak>>> eth_getBlockByHash(Keccak blockHash,
+        public Task<RpcResult<BlockModel<Commitment>>> eth_getBlockByHash(Commitment blockHash,
             bool returnFullTransactionObjects = false)
-            => _proxy.SendAsync<BlockModel<Keccak>>(nameof(eth_getBlockByHash), blockHash, returnFullTransactionObjects);
+            => _proxy.SendAsync<BlockModel<Commitment>>(nameof(eth_getBlockByHash), blockHash, returnFullTransactionObjects);
 
-        public Task<RpcResult<BlockModel<Keccak>>> eth_getBlockByNumber(BlockParameterModel blockParameter,
+        public Task<RpcResult<BlockModel<Commitment>>> eth_getBlockByNumber(BlockParameterModel blockParameter,
             bool returnFullTransactionObjects = false)
-            => _proxy.SendAsync<BlockModel<Keccak>>(nameof(eth_getBlockByNumber), MapBlockParameter(blockParameter),
+            => _proxy.SendAsync<BlockModel<Commitment>>(nameof(eth_getBlockByNumber), MapBlockParameter(blockParameter),
                 returnFullTransactionObjects);
 
         public Task<RpcResult<BlockModel<TransactionModel>>> eth_getBlockByNumberWithTransactionDetails(BlockParameterModel blockParameter,

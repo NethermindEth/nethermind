@@ -14,7 +14,7 @@ namespace Nethermind.Blockchain.Synchronization
 {
     public interface IWitnessPeer
     {
-        Task<Keccak[]> GetBlockWitnessHashes(Keccak blockHash, CancellationToken token);
+        Task<Commitment[]> GetBlockWitnessHashes(Commitment blockHash, CancellationToken token);
     }
 
     public interface ISyncPeer : ITxPoolPeer, IPeerWithSatelliteProtocol
@@ -24,7 +24,7 @@ namespace Nethermind.Blockchain.Synchronization
         string Name { get; }
         string ClientId => Node?.ClientId;
         NodeClientType ClientType => Node?.ClientType ?? NodeClientType.Unknown;
-        Keccak HeadHash { get; set; }
+        Commitment HeadHash { get; set; }
         long HeadNumber { get; set; }
         UInt256 TotalDifficulty { get; set; }
         bool IsInitialized { get; set; }
@@ -32,12 +32,12 @@ namespace Nethermind.Blockchain.Synchronization
         byte ProtocolVersion { get; }
         string ProtocolCode { get; }
         void Disconnect(DisconnectReason reason, string details);
-        Task<OwnedBlockBodies> GetBlockBodies(IReadOnlyList<Keccak> blockHashes, CancellationToken token);
+        Task<OwnedBlockBodies> GetBlockBodies(IReadOnlyList<Commitment> blockHashes, CancellationToken token);
         Task<BlockHeader[]> GetBlockHeaders(long number, int maxBlocks, int skip, CancellationToken token);
-        Task<BlockHeader[]> GetBlockHeaders(Keccak startHash, int maxBlocks, int skip, CancellationToken token);
-        Task<BlockHeader?> GetHeadBlockHeader(Keccak? hash, CancellationToken token);
+        Task<BlockHeader[]> GetBlockHeaders(Commitment startHash, int maxBlocks, int skip, CancellationToken token);
+        Task<BlockHeader?> GetHeadBlockHeader(Commitment? hash, CancellationToken token);
         void NotifyOfNewBlock(Block block, SendBlockMode mode);
-        Task<TxReceipt[]?[]> GetReceipts(IReadOnlyList<Keccak> blockHash, CancellationToken token);
-        Task<byte[][]> GetNodeData(IReadOnlyList<Keccak> hashes, CancellationToken token);
+        Task<TxReceipt[]?[]> GetReceipts(IReadOnlyList<Commitment> blockHash, CancellationToken token);
+        Task<byte[][]> GetNodeData(IReadOnlyList<Commitment> hashes, CancellationToken token);
     }
 }

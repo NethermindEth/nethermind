@@ -51,7 +51,7 @@ namespace Nethermind.Merge.Plugin
             _manualBlockFinalizationManager.MarkFinalized(finalizingBlock, finalizedBlock);
         }
 
-        public long GetLastLevelFinalizedBy(Keccak blockHash)
+        public long GetLastLevelFinalizedBy(Commitment blockHash)
         {
             if (_auRaBlockFinalizationManager is not null)
             {
@@ -81,7 +81,7 @@ namespace Nethermind.Merge.Plugin
             }
         }
 
-        public Keccak LastFinalizedHash { get => _manualBlockFinalizationManager.LastFinalizedHash; }
+        public Commitment LastFinalizedHash { get => _manualBlockFinalizationManager.LastFinalizedHash; }
 
         public long LastFinalizedBlockLevel
         {

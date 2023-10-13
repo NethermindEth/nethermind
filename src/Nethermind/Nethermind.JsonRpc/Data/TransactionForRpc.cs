@@ -20,7 +20,7 @@ public class TransactionForRpc
 
     public TransactionForRpc(Transaction transaction) : this(null, null, null, transaction) { }
 
-    public TransactionForRpc(Keccak? blockHash, long? blockNumber, int? txIndex, Transaction transaction, UInt256? baseFee = null)
+    public TransactionForRpc(Commitment? blockHash, long? blockNumber, int? txIndex, Transaction transaction, UInt256? baseFee = null)
     {
         Hash = transaction.Hash;
         Nonce = transaction.Nonce;
@@ -81,11 +81,11 @@ public class TransactionForRpc
     {
     }
 
-    public Keccak? Hash { get; set; }
+    public Commitment? Hash { get; set; }
     public UInt256? Nonce { get; set; }
 
     [JsonProperty(NullValueHandling = NullValueHandling.Include)]
-    public Keccak? BlockHash { get; set; }
+    public Commitment? BlockHash { get; set; }
 
     [JsonProperty(NullValueHandling = NullValueHandling.Include)]
     public long? BlockNumber { get; set; }

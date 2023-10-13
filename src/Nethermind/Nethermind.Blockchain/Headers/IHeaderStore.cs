@@ -9,9 +9,9 @@ namespace Nethermind.Blockchain.Headers;
 public interface IHeaderStore
 {
     void Insert(BlockHeader header);
-    BlockHeader? Get(Keccak blockHash, bool shouldCache, long? blockNumber = null);
+    BlockHeader? Get(Commitment blockHash, bool shouldCache, long? blockNumber = null);
     void Cache(BlockHeader header);
-    void Delete(Keccak blockHash);
-    void InsertBlockNumber(Keccak blockHash, long blockNumber);
-    long? GetBlockNumber(Keccak blockHash);
+    void Delete(Commitment blockHash);
+    void InsertBlockNumber(Commitment blockHash, long blockNumber);
+    long? GetBlockNumber(Commitment blockHash);
 }

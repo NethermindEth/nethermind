@@ -29,11 +29,11 @@ namespace Nethermind.Trie.Pruning
 
         public IKeyValueStore AsKeyValueStore() => null!;
 
-        public TrieNode FindCachedOrUnknown(Keccak hash) => new(NodeType.Unknown, hash);
+        public TrieNode FindCachedOrUnknown(Commitment hash) => new(NodeType.Unknown, hash);
 
-        public byte[] LoadRlp(Keccak hash, ReadFlags flags = ReadFlags.None) => Array.Empty<byte>();
+        public byte[] LoadRlp(Commitment hash, ReadFlags flags = ReadFlags.None) => Array.Empty<byte>();
 
-        public bool IsPersisted(in ValueKeccak keccak) => true;
+        public bool IsPersisted(in ValueCommitment commitment) => true;
 
         public void Dispose() { }
 

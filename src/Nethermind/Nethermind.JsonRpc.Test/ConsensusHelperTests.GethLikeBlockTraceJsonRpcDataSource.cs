@@ -14,17 +14,17 @@ namespace Nethermind.JsonRpc.Test
     {
         private class GethLikeBlockTraceJsonRpcDataSource : JsonRpcDataSource<IEnumerable<GethLikeTxTrace>>,
             IConsensusDataSource<IEnumerable<GethLikeTxTrace>>,
-            IConsensusDataSourceWithParameter<Keccak>,
+            IConsensusDataSourceWithParameter<Commitment>,
             IConsensusDataSourceWithParameter<GethTraceOptions>
         {
-            private Keccak _blockHash = null!;
+            private Commitment _blockHash = null!;
             private GethTraceOptions _options = null!;
 
             public GethLikeBlockTraceJsonRpcDataSource(Uri uri, IJsonSerializer serializer) : base(uri, serializer)
             {
             }
 
-            Keccak IConsensusDataSourceWithParameter<Keccak>.Parameter
+            Commitment IConsensusDataSourceWithParameter<Commitment>.Parameter
             {
                 get => _blockHash;
                 set => _blockHash = value;

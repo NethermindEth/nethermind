@@ -208,7 +208,7 @@ namespace Nethermind.Init.Steps.Migrations
 
                 GetBlockBodiesForMigration(token).AsParallel().WithDegreeOfParallelism(parallelism).ForAll((item) =>
                 {
-                    (long blockNum, Keccak blockHash) = item;
+                    (long blockNum, Commitment blockHash) = item;
                     Block? block = _blockTree.FindBlock(blockHash!, BlockTreeLookupOptions.None);
                     bool usingEmptyBlock = block == null;
                     if (usingEmptyBlock)
@@ -248,7 +248,7 @@ namespace Nethermind.Init.Steps.Migrations
             }
         }
 
-        Block GetMissingBlock(long i, Keccak? blockHash)
+        Block GetMissingBlock(long i, Commitment? blockHash)
         {
             if (_logger.IsDebug) _logger.Debug(GetLogMessage("warning", $"Block {i} not found. Logs will not be searchable for this block."));
             Block emptyBlock = EmptyBlock.Get();
@@ -262,9 +262,9 @@ namespace Nethermind.Init.Steps.Migrations
             EmptyBlock.Return(emptyBlock);
         }
 
-        IEnumerable<(long, Keccak)> GetBlockBodiesForMigration(CancellationToken token)
+        IEnumerable<(long, Commitment)> GetBlockBodiesForMigration(CancellationToken token)
         {
-            bool TryGetMainChainBlockHashFromLevel(long number, out Keccak? blockHash)
+            bool TryGetMainChainBlockHashFromLevel(long number, out Commitment? blockHash)
             {
                 using BatchWrite batch = _chainLevelInfoRepository.StartBatch();
                 ChainLevelInfo? level = _chainLevelInfoRepository.LoadLevel(number);
@@ -297,7 +297,7 @@ namespace Nethermind.Init.Steps.Migrations
                     yield break;
                 }
 
-                if (TryGetMainChainBlockHashFromLevel(i, out Keccak? blockHash))
+                if (TryGetMainChainBlockHashFromLevel(i, out Commitment? blockHash))
                 {
                     yield return (i, blockHash!);
                 }
@@ -386,7 +386,7 @@ namespace Nethermind.Init.Steps.Migrations
             }
         }
 
-        private bool IsMigrationNeeded(long blockNumber, Keccak blockHash, TxReceipt[] receipts)
+        private bool IsMigrationNeeded(long blockNumber, Commitment blockHash, TxReceipt[] receipts)
         {
             if (!_receiptConfig.CompactReceiptStore && _recovery.NeedRecover(receipts))
             {
@@ -419,7 +419,7 @@ namespace Nethermind.Init.Steps.Migrations
         {
             public Block Create()
             {
-                return new Block(new BlockHeader(Keccak.Zero, Keccak.Zero, Address.Zero, UInt256.Zero, 0L, 0L, 0UL, Array.Empty<byte>()));
+                return new Block(new BlockHeader(Commitment.Zero, Commitment.Zero, Address.Zero, UInt256.Zero, 0L, 0L, 0UL, Array.Empty<byte>()));
             }
 
             public bool Return(Block obj)

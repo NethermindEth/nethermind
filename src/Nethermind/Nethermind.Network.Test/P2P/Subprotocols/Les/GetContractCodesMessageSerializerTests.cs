@@ -16,8 +16,8 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Les
         {
             CodeRequest[] requests = new CodeRequest[]
             {
-                new(TestItem.KeccakA, TestItem.KeccakB),
-                new(TestItem.KeccakC, TestItem.KeccakD),
+                new(TestItem._commitmentA, TestItem._commitmentB),
+                new(TestItem._commitmentC, TestItem._commitmentD),
             };
 
             GetContractCodesMessage message = new(requests, 774);

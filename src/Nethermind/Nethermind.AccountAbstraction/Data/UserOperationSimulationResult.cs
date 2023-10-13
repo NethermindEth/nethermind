@@ -12,7 +12,7 @@ namespace Nethermind.AccountAbstraction.Data
     {
         public bool Success { get; set; }
         public UserOperationAccessList AccessList { get; set; }
-        public IDictionary<Address, Keccak> AddressesToCodeHashes { get; set; }
+        public IDictionary<Address, Commitment> AddressesToCodeHashes { get; set; }
         public string? Error { get; set; }
 
         public static UserOperationSimulationResult Failed(string? error)
@@ -21,7 +21,7 @@ namespace Nethermind.AccountAbstraction.Data
             {
                 Success = false,
                 AccessList = UserOperationAccessList.Empty,
-                AddressesToCodeHashes = ImmutableDictionary<Address, Keccak>.Empty,
+                AddressesToCodeHashes = ImmutableDictionary<Address, Commitment>.Empty,
                 Error = error
             };
         }

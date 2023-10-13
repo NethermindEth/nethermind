@@ -20,13 +20,13 @@ namespace Nethermind.Core.Test.Builders
         static TestItem()
         {
             NonZeroBloom = new Bloom();
-            NonZeroBloom.Set(KeccakA.Bytes);
+            NonZeroBloom.Set(_commitmentA.Bytes);
 
             PrivateKeys = new PrivateKey[255];
             PublicKeys = new PublicKey[255];
             Addresses = new Address[255];
-            Keccaks = new Keccak[255];
-            ValueKeccaks = new ValueKeccak[255];
+            Keccaks = new Commitment[255];
+            ValueKeccaks = new ValueCommitment[255];
 
             for (byte i = 1; i > 0; i++) // this will wrap around
             {
@@ -35,17 +35,17 @@ namespace Nethermind.Core.Test.Builders
                 PrivateKeys[i - 1] = new PrivateKey(bytes);
                 PublicKeys[i - 1] = PrivateKeys[i - 1].PublicKey;
                 Addresses[i - 1] = PublicKeys[i - 1].Address;
-                Keccaks[i - 1] = Keccak.Compute(PublicKeys[i - 1].Bytes);
+                Keccaks[i - 1] = Commitment.Compute(PublicKeys[i - 1].Bytes);
                 ValueKeccaks[i - 1] = Keccaks[i - 1];
             }
         }
 
-        public static Keccak KeccakFromNumber(int i)
+        public static Commitment KeccakFromNumber(int i)
         {
             UInt256 keccakNumber = (UInt256)i;
             byte[] keccakBytes = new byte[32];
             keccakNumber.ToBigEndian(keccakBytes);
-            return new Keccak(keccakBytes);
+            return new Commitment(keccakBytes);
         }
 
         public static byte[] RandomDataA = { 1, 2, 3 };
@@ -53,14 +53,14 @@ namespace Nethermind.Core.Test.Builders
         public static byte[] RandomDataC = { 1, 2, 8, 9, 10 };
         public static byte[] RandomDataD = { 1, 2, 8, 9, 10, 17 };
 
-        public static Keccak KeccakA = Keccak.Compute("A");
-        public static Keccak KeccakB = Keccak.Compute("B");
-        public static Keccak KeccakC = Keccak.Compute("C");
-        public static Keccak KeccakD = Keccak.Compute("D");
-        public static Keccak KeccakE = Keccak.Compute("E");
-        public static Keccak KeccakF = Keccak.Compute("F");
-        public static Keccak KeccakG = Keccak.Compute("G");
-        public static Keccak KeccakH = Keccak.Compute("H");
+        public static Commitment _commitmentA = Commitment.Compute("A");
+        public static Commitment _commitmentB = Commitment.Compute("B");
+        public static Commitment _commitmentC = Commitment.Compute("C");
+        public static Commitment _commitmentD = Commitment.Compute("D");
+        public static Commitment _commitmentE = Commitment.Compute("E");
+        public static Commitment _commitmentF = Commitment.Compute("F");
+        public static Commitment _commitmentG = Commitment.Compute("G");
+        public static Commitment _commitmentH = Commitment.Compute("H");
 
         public static PrivateKey PrivateKeyA = new("010102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f");
         public static PrivateKey PrivateKeyB = new("020102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f");
@@ -82,8 +82,8 @@ namespace Nethermind.Core.Test.Builders
         public static PrivateKey[] PrivateKeys;
         public static PublicKey[] PublicKeys;
         public static Address[] Addresses;
-        public static Keccak[] Keccaks;
-        public static ValueKeccak[] ValueKeccaks;
+        public static Commitment[] Keccaks;
+        public static ValueCommitment[] ValueKeccaks;
 
         public static Address AddressA = PublicKeyA.Address;
         public static Address AddressB = PublicKeyB.Address;
@@ -126,11 +126,11 @@ namespace Nethermind.Core.Test.Builders
             return new Address(bytes);
         }
 
-        public static Keccak GetRandomKeccak(Random? random = null)
+        public static Commitment GetRandomKeccak(Random? random = null)
         {
             byte[] bytes = new byte[32];
             (random ?? Random).NextBytes(bytes);
-            return new Keccak(bytes);
+            return new Commitment(bytes);
         }
 
         public static Account GenerateRandomAccount(Random? random = null)
@@ -140,8 +140,8 @@ namespace Nethermind.Core.Test.Builders
             Account account = new(
                 (UInt256)random.Next(1000),
                 (UInt256)random.Next(1000),
-                Keccak.EmptyTreeHash,
-                Keccak.OfAnEmptyString);
+                Commitment.EmptyTreeHash,
+                Commitment.OfAnEmptyString);
 
             return account;
         }

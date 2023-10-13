@@ -189,7 +189,7 @@ namespace Nethermind.Store.Test
             ctx.StateProvider.CommitTree(0);
 
             // block 2
-            Keccak stateRoot = ctx.StateProvider.StateRoot;
+            Commitment stateRoot = ctx.StateProvider.StateRoot;
             storageProvider.Set(new StorageCell(ctx.Address1, 1), _values[2]);
             storageProvider.Commit(Frontier.Instance);
             ctx.StateProvider.Commit(Frontier.Instance);
@@ -413,8 +413,8 @@ namespace Nethermind.Store.Test
         {
             public WorldState StateProvider { get; }
 
-            public readonly Address Address1 = new(Keccak.Compute("1"));
-            public readonly Address Address2 = new(Keccak.Compute("2"));
+            public readonly Address Address1 = new(Commitment.Compute("1"));
+            public readonly Address Address2 = new(Commitment.Compute("2"));
 
             public Context()
             {

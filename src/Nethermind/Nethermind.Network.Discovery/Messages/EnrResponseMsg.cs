@@ -18,19 +18,19 @@ public class EnrResponseMsg : DiscoveryMsg
 
     public NodeRecord NodeRecord { get; }
 
-    public Keccak RequestKeccak { get; set; }
+    public Commitment RequestCommitment { get; set; }
 
-    public EnrResponseMsg(IPEndPoint farAddress, NodeRecord nodeRecord, Keccak requestKeccak)
+    public EnrResponseMsg(IPEndPoint farAddress, NodeRecord nodeRecord, Commitment requestCommitment)
         : base(farAddress, MaxTime)
     {
         NodeRecord = nodeRecord;
-        RequestKeccak = requestKeccak;
+        RequestCommitment = requestCommitment;
     }
 
-    public EnrResponseMsg(PublicKey farPublicKey, NodeRecord nodeRecord, Keccak requestKeccak)
+    public EnrResponseMsg(PublicKey farPublicKey, NodeRecord nodeRecord, Commitment requestCommitment)
         : base(farPublicKey, MaxTime)
     {
         NodeRecord = nodeRecord;
-        RequestKeccak = requestKeccak;
+        RequestCommitment = requestCommitment;
     }
 }

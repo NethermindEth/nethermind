@@ -287,7 +287,7 @@ namespace Nethermind.AccountAbstraction.Test
 
             public void SendUserOperation(Address entryPoint, UserOperation userOperation)
             {
-                ResultWrapper<Keccak> resultOfUserOperation = UserOperationPool[entryPoint].AddUserOperation(userOperation);
+                ResultWrapper<Commitment> resultOfUserOperation = UserOperationPool[entryPoint].AddUserOperation(userOperation);
                 resultOfUserOperation.Result.Should().Be(Result.Success, resultOfUserOperation.Result.Error);
                 resultOfUserOperation.Data.Should().Be(userOperation.RequestId!);
             }

@@ -16,7 +16,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Wit
         public void Can_handle_zero()
         {
             BlockWitnessHashesMessageSerializer serializer = new();
-            BlockWitnessHashesMessage message = new(1, new Keccak[0]);
+            BlockWitnessHashesMessage message = new(1, new Commitment[0]);
             SerializerTester.TestZero(serializer, message);
         }
 
@@ -24,7 +24,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Wit
         public void Can_handle_one()
         {
             BlockWitnessHashesMessageSerializer serializer = new();
-            BlockWitnessHashesMessage message = new(1, new[] { Keccak.Zero });
+            BlockWitnessHashesMessage message = new(1, new[] { Commitment.Zero });
             SerializerTester.TestZero(serializer, message);
         }
 

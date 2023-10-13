@@ -29,7 +29,7 @@ public record GethTraceOptions
     public string Tracer { get; init; }
 
     [JsonProperty("txHash")]
-    public Keccak? TxHash { get; init; }
+    public Commitment? TxHash { get; init; }
 
     public static GethTraceOptions Default { get; } = new();
 }

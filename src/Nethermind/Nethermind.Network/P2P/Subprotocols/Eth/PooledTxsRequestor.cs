@@ -16,7 +16,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
     {
         private const int MaxNumberOfTxsInOneMsg = 256;
         private readonly ITxPool _txPool;
-        private readonly LruKeyCache<ValueKeccak> _pendingHashes = new(MemoryAllowance.TxHashCacheSize,
+        private readonly LruKeyCache<ValueCommitment> _pendingHashes = new(MemoryAllowance.TxHashCacheSize,
             Math.Min(1024 * 16, MemoryAllowance.TxHashCacheSize), "pending tx hashes");
 
         public PooledTxsRequestor(ITxPool txPool)
@@ -24,9 +24,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             _txPool = txPool;
         }
 
-        public void RequestTransactions(Action<GetPooledTransactionsMessage> send, IReadOnlyList<Keccak> hashes)
+        public void RequestTransactions(Action<GetPooledTransactionsMessage> send, IReadOnlyList<Commitment> hashes)
         {
-            using ArrayPoolList<Keccak> discoveredTxHashes = new(hashes.Count);
+            using ArrayPoolList<Commitment> discoveredTxHashes = new(hashes.Count);
             AddMarkUnknownHashes(hashes, discoveredTxHashes);
 
             if (discoveredTxHashes.Count != 0)
@@ -35,9 +35,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             }
         }
 
-        public void RequestTransactionsEth66(Action<V66.Messages.GetPooledTransactionsMessage> send, IReadOnlyList<Keccak> hashes)
+        public void RequestTransactionsEth66(Action<V66.Messages.GetPooledTransactionsMessage> send, IReadOnlyList<Commitment> hashes)
         {
-            using ArrayPoolList<Keccak> discoveredTxHashes = new(hashes.Count);
+            using ArrayPoolList<Commitment> discoveredTxHashes = new(hashes.Count);
             AddMarkUnknownHashes(hashes, discoveredTxHashes);
 
             if (discoveredTxHashes.Count != 0)
@@ -48,7 +48,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
                 }
                 else
                 {
-                    using ArrayPoolList<Keccak> hashesToRequest = new(MaxNumberOfTxsInOneMsg);
+                    using ArrayPoolList<Commitment> hashesToRequest = new(MaxNumberOfTxsInOneMsg);
                     for (int i = 0; i < discoveredTxHashes.Count; i++)
                     {
                         if (hashesToRequest.Count % MaxNumberOfTxsInOneMsg == 0 && hashesToRequest.Count > 0)
@@ -68,15 +68,15 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             }
         }
 
-        public void RequestTransactionsEth68(Action<V66.Messages.GetPooledTransactionsMessage> send, IReadOnlyList<Keccak> hashes, IReadOnlyList<int> sizes)
+        public void RequestTransactionsEth68(Action<V66.Messages.GetPooledTransactionsMessage> send, IReadOnlyList<Commitment> hashes, IReadOnlyList<int> sizes)
         {
-            using ArrayPoolList<(Keccak Hash, int Size)> discoveredTxHashesAndSizes = new(hashes.Count);
+            using ArrayPoolList<(Commitment Hash, int Size)> discoveredTxHashesAndSizes = new(hashes.Count);
             AddMarkUnknownHashesEth68(hashes, sizes, discoveredTxHashesAndSizes);
 
             if (discoveredTxHashesAndSizes.Count != 0)
             {
                 int packetSizeLeft = TransactionsMessage.MaxPacketSize;
-                using ArrayPoolList<Keccak> hashesToRequest = new(discoveredTxHashesAndSizes.Count);
+                using ArrayPoolList<Commitment> hashesToRequest = new(discoveredTxHashesAndSizes.Count);
 
                 for (int i = 0; i < discoveredTxHashesAndSizes.Count; i++)
                 {
@@ -100,24 +100,24 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             }
         }
 
-        private void AddMarkUnknownHashes(IReadOnlyList<Keccak> hashes, ArrayPoolList<Keccak> discoveredTxHashes)
+        private void AddMarkUnknownHashes(IReadOnlyList<Commitment> hashes, ArrayPoolList<Commitment> discoveredTxHashes)
         {
             int count = hashes.Count;
             for (int i = 0; i < count; i++)
             {
-                Keccak hash = hashes[i];
+                Commitment hash = hashes[i];
                 if (!_txPool.IsKnown(hash) && _pendingHashes.Set(hash))
                 {
                     discoveredTxHashes.Add(hash);
                 }
             }
         }
-        private void AddMarkUnknownHashesEth68(IReadOnlyList<Keccak> hashes, IReadOnlyList<int> sizes, ArrayPoolList<(Keccak, int)> discoveredTxHashesAndSizes)
+        private void AddMarkUnknownHashesEth68(IReadOnlyList<Commitment> hashes, IReadOnlyList<int> sizes, ArrayPoolList<(Commitment, int)> discoveredTxHashesAndSizes)
         {
             int count = hashes.Count;
             for (int i = 0; i < count; i++)
             {
-                Keccak hash = hashes[i];
+                Commitment hash = hashes[i];
                 if (!_txPool.IsKnown(hash) && _pendingHashes.Set(hash))
                 {
                     discoveredTxHashesAndSizes.Add((hash, sizes[i]));
@@ -125,13 +125,13 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             }
         }
 
-        private void RequestPooledTransactions(Action<GetPooledTransactionsMessage> send, IReadOnlyList<Keccak> hashesToRequest)
+        private void RequestPooledTransactions(Action<GetPooledTransactionsMessage> send, IReadOnlyList<Commitment> hashesToRequest)
         {
             send(new GetPooledTransactionsMessage(hashesToRequest));
             Metrics.Eth65GetPooledTransactionsRequested++;
         }
 
-        private void RequestPooledTransactionsEth66(Action<V66.Messages.GetPooledTransactionsMessage> send, IReadOnlyList<Keccak> hashesToRequest)
+        private void RequestPooledTransactionsEth66(Action<V66.Messages.GetPooledTransactionsMessage> send, IReadOnlyList<Commitment> hashesToRequest)
         {
             GetPooledTransactionsMessage msg65 = new(hashesToRequest);
             send(new V66.Messages.GetPooledTransactionsMessage() { EthMessage = msg65 });

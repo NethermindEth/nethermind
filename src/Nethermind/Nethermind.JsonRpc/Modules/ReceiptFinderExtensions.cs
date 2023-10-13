@@ -8,12 +8,12 @@ namespace Nethermind.JsonRpc.Modules
 {
     public static class ReceiptFinderExtensions
     {
-        public static SearchResult<Keccak> SearchForReceiptBlockHash(this IReceiptFinder receiptFinder, Keccak txHash)
+        public static SearchResult<Commitment> SearchForReceiptBlockHash(this IReceiptFinder receiptFinder, Commitment txHash)
         {
-            Keccak blockHash = receiptFinder.FindBlockHash(txHash);
+            Commitment blockHash = receiptFinder.FindBlockHash(txHash);
             return blockHash is null
-                ? new SearchResult<Keccak>($"{txHash} receipt could not be found", ErrorCodes.ResourceNotFound)
-                : new SearchResult<Keccak>(blockHash);
+                ? new SearchResult<Commitment>($"{txHash} receipt could not be found", ErrorCodes.ResourceNotFound)
+                : new SearchResult<Commitment>(blockHash);
         }
     }
 }

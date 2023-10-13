@@ -37,7 +37,7 @@ public class BlockDecoderTests
         for (var i = 0; i < uncles.Length; i++)
         {
             uncles[i] = Build.A.BlockHeader
-                .WithWithdrawalsRoot(i % 3 == 0 ? null : Keccak.Compute(i.ToString()))
+                .WithWithdrawalsRoot(i % 3 == 0 ? null : Commitment.Compute(i.ToString()))
                 .TestObject;
         }
 
@@ -48,14 +48,14 @@ public class BlockDecoderTests
                 .WithNumber(1)
                 .WithTransactions(transactions)
                 .WithUncles(Build.A.BlockHeader.TestObject)
-                .WithMixHash(Keccak.EmptyTreeHash)
+                .WithMixHash(Commitment.EmptyTreeHash)
                 .TestObject,
             Build.A.Block
                 .WithNumber(1)
                 .WithTransactions(transactions)
                 .WithUncles(uncles)
                 .WithWithdrawals(8)
-                .WithMixHash(Keccak.EmptyTreeHash)
+                .WithMixHash(Commitment.EmptyTreeHash)
                 .TestObject,
             Build.A.Block
                 .WithNumber(1)
@@ -65,7 +65,7 @@ public class BlockDecoderTests
                 .WithWithdrawals(8)
                 .WithBlobGasUsed(0)
                 .WithExcessBlobGas(0)
-                .WithMixHash(Keccak.EmptyTreeHash)
+                .WithMixHash(Commitment.EmptyTreeHash)
                 .TestObject,
             Build.A.Block
                 .WithNumber(1)
@@ -75,7 +75,7 @@ public class BlockDecoderTests
                 .WithWithdrawals(8)
                 .WithBlobGasUsed(0xff)
                 .WithExcessBlobGas(0xff)
-                .WithMixHash(Keccak.EmptyTreeHash)
+                .WithMixHash(Commitment.EmptyTreeHash)
                 .TestObject,
             Build.A.Block
                 .WithNumber(1)
@@ -85,7 +85,7 @@ public class BlockDecoderTests
                 .WithWithdrawals(8)
                 .WithBlobGasUsed(ulong.MaxValue)
                 .WithExcessBlobGas(ulong.MaxValue)
-                .WithMixHash(Keccak.EmptyTreeHash)
+                .WithMixHash(Commitment.EmptyTreeHash)
                 .TestObject
         };
     }

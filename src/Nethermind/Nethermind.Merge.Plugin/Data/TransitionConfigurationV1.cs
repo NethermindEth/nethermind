@@ -8,7 +8,7 @@ namespace Nethermind.Merge.Plugin.Data;
 
 /// <summary>
 /// Result of call.
-/// 
+///
 /// <seealso cref="https://github.com/ethereum/execution-apis/blob/main/src/engine/specification.md#transitionconfigurationv1"/>
 /// </summary>
 public class TransitionConfigurationV1
@@ -21,7 +21,7 @@ public class TransitionConfigurationV1
     /// <summary>
     /// Maps on TERMINAL_BLOCK_HASH parameter of EIP-3675
     /// </summary>
-    public Keccak TerminalBlockHash { get; set; } = Keccak.Zero;
+    public Commitment TerminalBlockHash { get; set; } = Commitment.Zero;
 
     /// <summary>
     /// Maps on TERMINAL_BLOCK_NUMBER parameter of EIP-3675

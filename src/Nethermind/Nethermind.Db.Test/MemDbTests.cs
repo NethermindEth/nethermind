@@ -17,8 +17,8 @@ namespace Nethermind.Db.Test
         {
             IDb memDb = new MemDb();
             byte[] bytes = new byte[] { 1, 2, 3 };
-            memDb.Set(TestItem.KeccakA, bytes);
-            byte[] retrievedBytes = memDb.Get(TestItem.KeccakA);
+            memDb.Set(TestItem._commitmentA, bytes);
+            byte[] retrievedBytes = memDb.Get(TestItem._commitmentA);
             retrievedBytes.Should().BeEquivalentTo(bytes);
         }
 
@@ -28,17 +28,17 @@ namespace Nethermind.Db.Test
         public void Can_create_with_delays()
         {
             MemDb memDb = new(10, 10);
-            memDb.Set(TestItem.KeccakA, new byte[] { 1, 2, 3 });
-            memDb.Get(TestItem.KeccakA);
-            KeyValuePair<byte[], byte[]>[] some = memDb[new[] { TestItem.KeccakA.BytesToArray() }];
+            memDb.Set(TestItem._commitmentA, new byte[] { 1, 2, 3 });
+            memDb.Get(TestItem._commitmentA);
+            KeyValuePair<byte[], byte[]>[] some = memDb[new[] { TestItem._commitmentA.BytesToArray() }];
         }
 
         [Test]
         public void Can_create_with_name()
         {
             MemDb memDb = new("desc");
-            memDb.Set(TestItem.KeccakA, new byte[] { 1, 2, 3 });
-            memDb.Get(TestItem.KeccakA);
+            memDb.Set(TestItem._commitmentA, new byte[] { 1, 2, 3 });
+            memDb.Get(TestItem._commitmentA);
             memDb.Name.Should().Be("desc");
         }
 
@@ -46,8 +46,8 @@ namespace Nethermind.Db.Test
         public void Can_create_without_arguments()
         {
             MemDb memDb = new();
-            memDb.Set(TestItem.KeccakA, new byte[] { 1, 2, 3 });
-            memDb.Get(TestItem.KeccakA);
+            memDb.Set(TestItem._commitmentA, new byte[] { 1, 2, 3 });
+            memDb.Get(TestItem._commitmentA);
         }
 
         [Test]
@@ -56,10 +56,10 @@ namespace Nethermind.Db.Test
             MemDb memDb = new();
             using (memDb.StartBatch())
             {
-                memDb.Set(TestItem.KeccakA, _sampleValue);
+                memDb.Set(TestItem._commitmentA, _sampleValue);
             }
 
-            byte[] retrieved = memDb.Get(TestItem.KeccakA);
+            byte[] retrieved = memDb.Get(TestItem._commitmentA);
             retrieved.Should().BeEquivalentTo(_sampleValue);
         }
 
@@ -67,8 +67,8 @@ namespace Nethermind.Db.Test
         public void Can_delete()
         {
             MemDb memDb = new();
-            memDb.Set(TestItem.KeccakA, _sampleValue);
-            memDb.Set(TestItem.KeccakB, _sampleValue);
+            memDb.Set(TestItem._commitmentA, _sampleValue);
+            memDb.Set(TestItem._commitmentB, _sampleValue);
             memDb.Clear();
             memDb.Keys.Should().HaveCount(0);
         }
@@ -77,26 +77,26 @@ namespace Nethermind.Db.Test
         public void Can_check_if_key_exists()
         {
             MemDb memDb = new();
-            memDb.Set(TestItem.KeccakA, _sampleValue);
-            memDb.KeyExists(TestItem.KeccakA).Should().BeTrue();
-            memDb.KeyExists(TestItem.KeccakB).Should().BeFalse();
+            memDb.Set(TestItem._commitmentA, _sampleValue);
+            memDb.KeyExists(TestItem._commitmentA).Should().BeTrue();
+            memDb.KeyExists(TestItem._commitmentB).Should().BeFalse();
         }
 
         [Test]
         public void Can_remove_key()
         {
             MemDb memDb = new();
-            memDb.Set(TestItem.KeccakA, _sampleValue);
-            memDb.Remove(TestItem.KeccakA.Bytes);
-            memDb.KeyExists(TestItem.KeccakA).Should().BeFalse();
+            memDb.Set(TestItem._commitmentA, _sampleValue);
+            memDb.Remove(TestItem._commitmentA.Bytes);
+            memDb.KeyExists(TestItem._commitmentA).Should().BeFalse();
         }
 
         [Test]
         public void Can_get_keys()
         {
             MemDb memDb = new();
-            memDb.Set(TestItem.KeccakA, _sampleValue);
-            memDb.Set(TestItem.KeccakB, _sampleValue);
+            memDb.Set(TestItem._commitmentA, _sampleValue);
+            memDb.Set(TestItem._commitmentB, _sampleValue);
             memDb.Keys.Should().HaveCount(2);
         }
 
@@ -104,9 +104,9 @@ namespace Nethermind.Db.Test
         public void Can_get_some_keys()
         {
             MemDb memDb = new();
-            memDb.Set(TestItem.KeccakA, _sampleValue);
-            memDb.Set(TestItem.KeccakB, _sampleValue);
-            KeyValuePair<byte[], byte[]>[] result = memDb[new[] { TestItem.KeccakB.BytesToArray(), TestItem.KeccakB.BytesToArray(), TestItem.KeccakC.BytesToArray() }];
+            memDb.Set(TestItem._commitmentA, _sampleValue);
+            memDb.Set(TestItem._commitmentB, _sampleValue);
+            KeyValuePair<byte[], byte[]>[] result = memDb[new[] { TestItem._commitmentB.BytesToArray(), TestItem._commitmentB.BytesToArray(), TestItem._commitmentC.BytesToArray() }];
             result.Should().HaveCount(3);
             result[0].Value.Should().NotBeNull();
             result[1].Value.Should().NotBeNull();
@@ -117,8 +117,8 @@ namespace Nethermind.Db.Test
         public void Can_get_all()
         {
             MemDb memDb = new();
-            memDb.Set(TestItem.KeccakA, _sampleValue);
-            memDb.Set(TestItem.KeccakB, _sampleValue);
+            memDb.Set(TestItem._commitmentA, _sampleValue);
+            memDb.Set(TestItem._commitmentB, _sampleValue);
             memDb.GetAllValues().Should().HaveCount(2);
         }
 
@@ -126,8 +126,8 @@ namespace Nethermind.Db.Test
         public void Can_get_values()
         {
             MemDb memDb = new();
-            memDb.Set(TestItem.KeccakA, _sampleValue);
-            memDb.Set(TestItem.KeccakB, _sampleValue);
+            memDb.Set(TestItem._commitmentA, _sampleValue);
+            memDb.Set(TestItem._commitmentB, _sampleValue);
             memDb.Values.Should().HaveCount(2);
         }
 

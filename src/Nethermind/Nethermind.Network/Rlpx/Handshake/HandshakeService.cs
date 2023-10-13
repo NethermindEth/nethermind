@@ -61,9 +61,9 @@ namespace Nethermind.Network.Rlpx.Handshake
                 {
                     Nonce = handshake.InitiatorNonce,
                     PublicKey = _privateKey.PublicKey,
-                    Signature = _ecdsa.Sign(handshake.EphemeralPrivateKey, new Keccak(forSigning)),
+                    Signature = _ecdsa.Sign(handshake.EphemeralPrivateKey, new Commitment(forSigning)),
                     IsTokenUsed = false,
-                    EphemeralPublicHash = Keccak.Compute(handshake.EphemeralPrivateKey.PublicKey.Bytes)
+                    EphemeralPublicHash = Commitment.Compute(handshake.EphemeralPrivateKey.PublicKey.Bytes)
                 };
 
                 IByteBuffer authData = _messageSerializationService.ZeroSerialize(authMessage);
@@ -85,7 +85,7 @@ namespace Nethermind.Network.Rlpx.Handshake
                 {
                     Nonce = handshake.InitiatorNonce,
                     PublicKey = _privateKey.PublicKey,
-                    Signature = _ecdsa.Sign(handshake.EphemeralPrivateKey, new Keccak(forSigning))
+                    Signature = _ecdsa.Sign(handshake.EphemeralPrivateKey, new Commitment(forSigning))
                 };
 
                 IByteBuffer authData = _messageSerializationService.ZeroSerialize(authMessage);
@@ -145,7 +145,7 @@ namespace Nethermind.Network.Rlpx.Handshake
             byte[] staticSharedSecret = SecP256k1.EcdhSerialized(handshake.RemoteNodeId.Bytes, _privateKey.KeyBytes);
             byte[] forSigning = staticSharedSecret.Xor(handshake.InitiatorNonce);
 
-            handshake.RemoteEphemeralPublicKey = _ecdsa.RecoverPublicKey(authMessage.Signature, new Keccak(forSigning));
+            handshake.RemoteEphemeralPublicKey = _ecdsa.RecoverPublicKey(authMessage.Signature, new Commitment(forSigning));
 
             byte[] data;
             if (preEip8Format)
@@ -249,17 +249,17 @@ namespace Nethermind.Network.Rlpx.Handshake
         {
             Span<byte> tempConcat = stackalloc byte[64];
             Span<byte> ephemeralSharedSecret = SecP256k1.EcdhSerialized(handshake.RemoteEphemeralPublicKey.Bytes, handshake.EphemeralPrivateKey.KeyBytes);
-            Span<byte> nonceHash = ValueKeccak.Compute(Bytes.Concat(handshake.RecipientNonce, handshake.InitiatorNonce)).BytesAsSpan;
+            Span<byte> nonceHash = ValueCommitment.Compute(Bytes.Concat(handshake.RecipientNonce, handshake.InitiatorNonce)).BytesAsSpan;
             ephemeralSharedSecret.CopyTo(tempConcat[..32]);
             nonceHash.CopyTo(tempConcat.Slice(32, 32));
-            Span<byte> sharedSecret = ValueKeccak.Compute(tempConcat).BytesAsSpan;
+            Span<byte> sharedSecret = ValueCommitment.Compute(tempConcat).BytesAsSpan;
             //            byte[] token = Keccak.Compute(sharedSecret).Bytes;
             sharedSecret.CopyTo(tempConcat.Slice(32, 32));
-            byte[] aesSecret = Keccak.Compute(tempConcat).BytesToArray();
+            byte[] aesSecret = Commitment.Compute(tempConcat).BytesToArray();
 
             sharedSecret.Clear();
             aesSecret.CopyTo(tempConcat.Slice(32, 32));
-            byte[] macSecret = Keccak.Compute(tempConcat).BytesToArray();
+            byte[] macSecret = Commitment.Compute(tempConcat).BytesToArray();
 
             ephemeralSharedSecret.Clear();
             handshake.Secrets = new EncryptionSecrets();

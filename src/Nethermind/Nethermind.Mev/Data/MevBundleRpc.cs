@@ -13,6 +13,6 @@ namespace Nethermind.Mev.Data
         public long BlockNumber { get; set; }
         public UInt256? MinTimestamp { get; set; } = null;
         public UInt256? MaxTimestamp { get; set; } = null;
-        public Keccak[]? RevertingTxHashes { get; set; } = null;
+        public Commitment[]? RevertingTxHashes { get; set; } = null;
     }
 }

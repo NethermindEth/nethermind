@@ -45,7 +45,7 @@ namespace Nethermind.Core.Test.Encoding
 
         private static void Roundtrip(bool valueDecode)
         {
-            BlockInfo blockInfo = new(TestItem.KeccakA, 1);
+            BlockInfo blockInfo = new(TestItem._commitmentA, 1);
             blockInfo.WasProcessed = true;
             blockInfo.IsFinalized = true;
             blockInfo.Metadata |= BlockMetadata.Invalid;
@@ -56,13 +56,13 @@ namespace Nethermind.Core.Test.Encoding
             Assert.True(decoded.WasProcessed, "0 processed");
             Assert.True((decoded.Metadata & BlockMetadata.Finalized) == BlockMetadata.Finalized, "metadata finalized");
             Assert.True((decoded.Metadata & BlockMetadata.Invalid) == BlockMetadata.Invalid, "metadata invalid");
-            Assert.That(decoded.BlockHash, Is.EqualTo(TestItem.KeccakA), "block hash");
+            Assert.That(decoded.BlockHash, Is.EqualTo(TestItem._commitmentA), "block hash");
             Assert.That(decoded.TotalDifficulty, Is.EqualTo(UInt256.One), "difficulty");
         }
 
         private static void RoundtripBackwardsCompatible(bool valueDecode, bool chainWithFinalization, bool isFinalized)
         {
-            BlockInfo blockInfo = new(TestItem.KeccakA, 1);
+            BlockInfo blockInfo = new(TestItem._commitmentA, 1);
             blockInfo.WasProcessed = true;
             blockInfo.IsFinalized = isFinalized;
 
@@ -71,7 +71,7 @@ namespace Nethermind.Core.Test.Encoding
 
             Assert.True(decoded.WasProcessed, "0 processed");
             Assert.That(decoded.IsFinalized, Is.EqualTo(chainWithFinalization && isFinalized), "finalized");
-            Assert.That(decoded.BlockHash, Is.EqualTo(TestItem.KeccakA), "block hash");
+            Assert.That(decoded.BlockHash, Is.EqualTo(TestItem._commitmentA), "block hash");
             Assert.That(decoded.TotalDifficulty, Is.EqualTo(UInt256.One), "difficulty");
         }
 

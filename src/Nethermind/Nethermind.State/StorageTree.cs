@@ -29,17 +29,17 @@ namespace Nethermind.State
             {
                 UInt256 index = (UInt256)i;
                 index.ToBigEndian(buffer);
-                Cache[index] = Keccak.Compute(buffer).BytesToArray();
+                Cache[index] = Commitment.Compute(buffer).BytesToArray();
             }
         }
 
         public StorageTree(ITrieStore? trieStore, ILogManager? logManager)
-            : base(trieStore, Keccak.EmptyTreeHash, false, true, logManager)
+            : base(trieStore, Commitment.EmptyTreeHash, false, true, logManager)
         {
             TrieType = TrieType.Storage;
         }
 
-        public StorageTree(ITrieStore? trieStore, Keccak rootHash, ILogManager? logManager)
+        public StorageTree(ITrieStore? trieStore, Commitment rootHash, ILogManager? logManager)
             : base(trieStore, rootHash, false, true, logManager)
         {
             TrieType = TrieType.Storage;
@@ -61,7 +61,7 @@ namespace Nethermind.State
 
 
         [SkipLocalsInit]
-        public byte[] Get(in UInt256 index, Keccak? storageRoot = null)
+        public byte[] Get(in UInt256 index, Commitment? storageRoot = null)
         {
             Span<byte> key = stackalloc byte[32];
             GetKey(index, key);
@@ -84,7 +84,7 @@ namespace Nethermind.State
             SetInternal(key, value);
         }
 
-        public void Set(in ValueKeccak key, byte[] value, bool rlpEncode = true)
+        public void Set(in ValueCommitment key, byte[] value, bool rlpEncode = true)
         {
             SetInternal(key.Bytes, value, rlpEncode);
         }

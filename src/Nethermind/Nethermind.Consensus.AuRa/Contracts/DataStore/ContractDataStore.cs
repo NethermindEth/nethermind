@@ -20,7 +20,7 @@ namespace Nethermind.Consensus.AuRa.Contracts.DataStore
         private readonly IDataContract<T> _dataContract;
         private readonly IReceiptFinder _receiptFinder;
         private readonly IBlockTree _blockTree;
-        private Keccak _lastHash;
+        private Commitment _lastHash;
         private readonly object _lock = new object();
         private readonly ILogger _logger;
 

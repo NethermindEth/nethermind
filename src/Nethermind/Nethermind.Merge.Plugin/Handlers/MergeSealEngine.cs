@@ -39,7 +39,7 @@ namespace Nethermind.Merge.Plugin.Handlers
             return _preMergeSealValidator.SealBlock(block, cancellationToken);
         }
 
-        public bool CanSeal(long blockNumber, Keccak parentHash)
+        public bool CanSeal(long blockNumber, Commitment parentHash)
         {
             if (_poSSwitcher.HasEverReachedTerminalBlock())
             {

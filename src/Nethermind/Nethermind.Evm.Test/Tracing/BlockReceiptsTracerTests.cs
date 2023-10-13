@@ -23,9 +23,9 @@ namespace Nethermind.Evm.Test.Tracing
             tracer.SetOtherTracer(NullBlockTracer.Instance);
             tracer.StartNewBlockTrace(block);
             tracer.StartNewTxTrace(block.Transactions[0]);
-            tracer.MarkAsSuccess(TestItem.AddressA, 100, new byte[0], new LogEntry[0], TestItem.KeccakF);
+            tracer.MarkAsSuccess(TestItem.AddressA, 100, new byte[0], new LogEntry[0], TestItem._commitmentF);
 
-            Assert.That(tracer.TxReceipts[0].PostTransactionState, Is.EqualTo(TestItem.KeccakF));
+            Assert.That(tracer.TxReceipts[0].PostTransactionState, Is.EqualTo(TestItem._commitmentF));
         }
 
         [Test]
@@ -51,9 +51,9 @@ namespace Nethermind.Evm.Test.Tracing
             tracer.SetOtherTracer(NullBlockTracer.Instance);
             tracer.StartNewBlockTrace(block);
             tracer.StartNewTxTrace(block.Transactions[0]);
-            tracer.MarkAsFailed(TestItem.AddressA, 100, new byte[0], "error", TestItem.KeccakF);
+            tracer.MarkAsFailed(TestItem.AddressA, 100, new byte[0], "error", TestItem._commitmentF);
 
-            Assert.That(tracer.TxReceipts[0].PostTransactionState, Is.EqualTo(TestItem.KeccakF));
+            Assert.That(tracer.TxReceipts[0].PostTransactionState, Is.EqualTo(TestItem._commitmentF));
         }
 
         [Test]
@@ -66,9 +66,9 @@ namespace Nethermind.Evm.Test.Tracing
             tracer.SetOtherTracer(otherTracer);
             tracer.StartNewBlockTrace(block);
             tracer.StartNewTxTrace(block.Transactions[0]);
-            tracer.MarkAsFailed(TestItem.AddressA, 100, Array.Empty<byte>(), "error", TestItem.KeccakF);
+            tracer.MarkAsFailed(TestItem.AddressA, 100, Array.Empty<byte>(), "error", TestItem._commitmentF);
 
-            (otherTracer as ITxTracer).Received().MarkAsFailed(TestItem.AddressA, 100, Array.Empty<byte>(), "error", TestItem.KeccakF);
+            (otherTracer as ITxTracer).Received().MarkAsFailed(TestItem.AddressA, 100, Array.Empty<byte>(), "error", TestItem._commitmentF);
         }
 
         [Test]
@@ -82,9 +82,9 @@ namespace Nethermind.Evm.Test.Tracing
             tracer.StartNewBlockTrace(block);
             tracer.StartNewTxTrace(block.Transactions[0]);
             LogEntry[] logEntries = new LogEntry[0];
-            tracer.MarkAsSuccess(TestItem.AddressA, 100, Array.Empty<byte>(), logEntries, TestItem.KeccakF);
+            tracer.MarkAsSuccess(TestItem.AddressA, 100, Array.Empty<byte>(), logEntries, TestItem._commitmentF);
 
-            (otherTracer as ITxTracer).Received().MarkAsSuccess(TestItem.AddressA, 100, Array.Empty<byte>(), logEntries, TestItem.KeccakF);
+            (otherTracer as ITxTracer).Received().MarkAsSuccess(TestItem.AddressA, 100, Array.Empty<byte>(), logEntries, TestItem._commitmentF);
         }
     }
 }

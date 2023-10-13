@@ -44,21 +44,21 @@ namespace Nethermind.Synchronization.Test
         public void When_finding_hash_it_does_not_load_headers()
         {
             Context ctx = new();
-            ctx.BlockTree.FindHash(123).Returns(TestItem.KeccakA);
-            Keccak result = ctx.SyncServer.FindHash(123)!;
+            ctx.BlockTree.FindHash(123).Returns(TestItem._commitmentA);
+            Commitment result = ctx.SyncServer.FindHash(123)!;
 
             ctx.BlockTree.DidNotReceive().FindHeader(Arg.Any<long>(), Arg.Any<BlockTreeLookupOptions>());
-            ctx.BlockTree.DidNotReceive().FindHeader(Arg.Any<Keccak>(), Arg.Any<BlockTreeLookupOptions>());
-            ctx.BlockTree.DidNotReceive().FindBlock(Arg.Any<Keccak>(), Arg.Any<BlockTreeLookupOptions>());
-            Assert.That(result, Is.EqualTo(TestItem.KeccakA));
+            ctx.BlockTree.DidNotReceive().FindHeader(Arg.Any<Commitment>(), Arg.Any<BlockTreeLookupOptions>());
+            ctx.BlockTree.DidNotReceive().FindBlock(Arg.Any<Commitment>(), Arg.Any<BlockTreeLookupOptions>());
+            Assert.That(result, Is.EqualTo(TestItem._commitmentA));
         }
 
         [Test]
         public void Does_not_request_peer_refresh_on_known_hints()
         {
             Context ctx = new();
-            ctx.BlockTree.IsKnownBlock(1, TestItem.KeccakA).ReturnsForAnyArgs(true);
-            ctx.SyncServer.HintBlock(TestItem.KeccakA, 1, ctx.NodeWhoSentTheBlock);
+            ctx.BlockTree.IsKnownBlock(1, TestItem._commitmentA).ReturnsForAnyArgs(true);
+            ctx.SyncServer.HintBlock(TestItem._commitmentA, 1, ctx.NodeWhoSentTheBlock);
             ctx.PeerPool.DidNotReceiveWithAnyArgs().RefreshTotalDifficulty(null!, null!);
         }
 
@@ -66,8 +66,8 @@ namespace Nethermind.Synchronization.Test
         public void Requests_peer_refresh_on_unknown_hints()
         {
             Context ctx = new();
-            ctx.BlockTree.IsKnownBlock(1, TestItem.KeccakA).ReturnsForAnyArgs(false);
-            ctx.SyncServer.HintBlock(TestItem.KeccakA, 1, ctx.NodeWhoSentTheBlock);
+            ctx.BlockTree.IsKnownBlock(1, TestItem._commitmentA).ReturnsForAnyArgs(false);
+            ctx.SyncServer.HintBlock(TestItem._commitmentA, 1, ctx.NodeWhoSentTheBlock);
             ctx.PeerPool.Received().ReceivedWithAnyArgs();
         }
 
@@ -75,8 +75,8 @@ namespace Nethermind.Synchronization.Test
         public void When_finding_by_hash_block_info_is_not_loaded()
         {
             Context ctx = new();
-            ctx.SyncServer.Find(TestItem.KeccakA);
-            ctx.BlockTree.Received().FindBlock(Arg.Any<Keccak>(), BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+            ctx.SyncServer.Find(TestItem._commitmentA);
+            ctx.BlockTree.Received().FindBlock(Arg.Any<Commitment>(), BlockTreeLookupOptions.TotalDifficultyNotNeeded);
         }
 
         [TestCase(true, true, true)]
@@ -659,13 +659,13 @@ namespace Nethermind.Synchronization.Test
                 MainnetSpecProvider.Instance,
                 LimboLogs.Instance);
 
-            Keccak nodeKey = TestItem.KeccakA;
-            TrieNode node = new(NodeType.Leaf, nodeKey, TestItem.KeccakB.Bytes);
+            Commitment nodeKey = TestItem._commitmentA;
+            TrieNode node = new(NodeType.Leaf, nodeKey, TestItem._commitmentB.Bytes);
             trieStore.CommitNode(1, new NodeCommitInfo(node));
             trieStore.FinishBlockCommit(TrieType.State, 1, node);
 
             stateDb.KeyExists(nodeKey).Should().BeFalse();
-            ctx.SyncServer.GetNodeData(new[] { nodeKey }, NodeDataType.All).Should().BeEquivalentTo(new[] { TestItem.KeccakB.BytesToArray() });
+            ctx.SyncServer.GetNodeData(new[] { nodeKey }, NodeDataType.All).Should().BeEquivalentTo(new[] { TestItem._commitmentB.BytesToArray() });
         }
 
         private class Context

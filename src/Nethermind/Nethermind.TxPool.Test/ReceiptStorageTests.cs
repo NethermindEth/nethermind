@@ -160,7 +160,7 @@ namespace Nethermind.TxPool.Test
             => Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
 
         private static TxReceipt GetReceipt(Transaction transaction, Block block)
-            => Build.A.Receipt.WithState(TestItem.KeccakB)
+            => Build.A.Receipt.WithState(TestItem._commitmentB)
                 .WithTransactionHash(transaction.Hash)
                 .WithBlockHash(block.Hash).TestObject;
 
@@ -168,6 +168,6 @@ namespace Nethermind.TxPool.Test
             Build.A.Block.WithNumber(1)
                 .WithParent(_blockTree.Genesis)
                 .WithTransactions(transaction)
-                .WithReceiptsRoot(TestItem.KeccakA).TestObject;
+                .WithReceiptsRoot(TestItem._commitmentA).TestObject;
     }
 }

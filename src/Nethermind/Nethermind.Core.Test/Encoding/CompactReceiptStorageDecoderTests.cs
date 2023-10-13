@@ -48,7 +48,7 @@ namespace Nethermind.Core.Test.Encoding
                 if (withNonEmptyTopic)
                 {
                     receiptBuilder.WithLogs(Build.A.LogEntry
-                        .WithTopics(new Keccak("0x00000000000000000000000000000000000000000000000000000000000000ff"))
+                        .WithTopics(new Commitment("0x00000000000000000000000000000000000000000000000000000000000000ff"))
                         .WithData(Bytes.FromHexString("0x0000000000ff0000000000"))
                         .TestObject);
                 }
@@ -65,7 +65,7 @@ namespace Nethermind.Core.Test.Encoding
                 if (withNonEmptyTopic)
                 {
                     receiptBuilder.WithLogs(Build.A.LogEntry
-                        .WithTopics(new Keccak("0x00000000000000000000000000000000000000000000000000000000000000ff"))
+                        .WithTopics(new Commitment("0x00000000000000000000000000000000000000000000000000000000000000ff"))
                         .WithData(Bytes.FromHexString("0x0000000000ff0000000000"))
                         .TestObject);
                 }
@@ -98,7 +98,7 @@ namespace Nethermind.Core.Test.Encoding
         {
             TxReceipt txReceipt = Build.A.Receipt.TestObject;
             txReceipt.BlockNumber = 1;
-            txReceipt.BlockHash = TestItem.KeccakA;
+            txReceipt.BlockHash = TestItem._commitmentA;
             txReceipt.Bloom = new Bloom(txReceipt.Logs);
             txReceipt.ContractAddress = TestItem.AddressA;
             txReceipt.Sender = TestItem.AddressB;
@@ -106,7 +106,7 @@ namespace Nethermind.Core.Test.Encoding
             txReceipt.GasUsed = 100;
             txReceipt.GasUsedTotal = 1000;
             txReceipt.Index = 2;
-            txReceipt.PostTransactionState = TestItem.KeccakH;
+            txReceipt.PostTransactionState = TestItem._commitmentH;
             txReceipt.StatusCode = 1;
 
             CompactReceiptStorageDecoder decoder = new();
@@ -121,7 +121,7 @@ namespace Nethermind.Core.Test.Encoding
         {
             TxReceipt txReceipt = Build.A.Receipt.TestObject;
             txReceipt.BlockNumber = 1;
-            txReceipt.BlockHash = TestItem.KeccakA;
+            txReceipt.BlockHash = TestItem._commitmentA;
             txReceipt.Bloom = new Bloom(txReceipt.Logs);
             txReceipt.ContractAddress = TestItem.AddressA;
             txReceipt.Sender = TestItem.AddressB;
@@ -129,7 +129,7 @@ namespace Nethermind.Core.Test.Encoding
             txReceipt.GasUsed = 100;
             txReceipt.GasUsedTotal = 1000;
             txReceipt.Index = 2;
-            txReceipt.PostTransactionState = TestItem.KeccakH;
+            txReceipt.PostTransactionState = TestItem._commitmentH;
 
             CompactReceiptStorageDecoder decoder = new();
 
@@ -155,7 +155,7 @@ namespace Nethermind.Core.Test.Encoding
         {
             TxReceipt txReceipt = Build.A.Receipt.TestObject;
             txReceipt.BlockNumber = 1;
-            txReceipt.BlockHash = TestItem.KeccakA;
+            txReceipt.BlockHash = TestItem._commitmentA;
             txReceipt.Bloom = new Bloom(txReceipt.Logs);
             txReceipt.ContractAddress = TestItem.AddressA;
             txReceipt.Sender = TestItem.AddressB;
@@ -163,7 +163,7 @@ namespace Nethermind.Core.Test.Encoding
             txReceipt.GasUsed = 100;
             txReceipt.GasUsedTotal = 1000;
             txReceipt.Index = 2;
-            txReceipt.PostTransactionState = TestItem.KeccakH;
+            txReceipt.PostTransactionState = TestItem._commitmentH;
 
             CompactReceiptStorageDecoder decoder = new();
 
@@ -178,7 +178,7 @@ namespace Nethermind.Core.Test.Encoding
         {
             TxReceipt txReceipt = Build.A.Receipt.TestObject;
             txReceipt.BlockNumber = 1;
-            txReceipt.BlockHash = TestItem.KeccakA;
+            txReceipt.BlockHash = TestItem._commitmentA;
             txReceipt.Bloom = new Bloom(txReceipt.Logs);
             txReceipt.ContractAddress = TestItem.AddressA;
             txReceipt.Sender = TestItem.AddressB;
@@ -186,7 +186,7 @@ namespace Nethermind.Core.Test.Encoding
             txReceipt.GasUsed = 100;
             txReceipt.GasUsedTotal = 1000;
             txReceipt.Index = 2;
-            txReceipt.PostTransactionState = TestItem.KeccakH;
+            txReceipt.PostTransactionState = TestItem._commitmentH;
             txReceipt.StatusCode = 1;
             txReceipt.TxType = TxType.AccessList;
 
@@ -220,9 +220,9 @@ namespace Nethermind.Core.Test.Encoding
         public static IEnumerable<(TxReceipt, string)> TestCaseSource()
         {
             yield return (Build.A.Receipt.WithCalculatedBloom().TestObject, "basic with defaults");
-            yield return (Build.A.Receipt.WithCalculatedBloom().WithGasUsedTotal(1000).WithState(TestItem.KeccakH).TestObject, "basic");
-            yield return (Build.A.Receipt.WithCalculatedBloom().WithGasUsedTotal(500).WithState(TestItem.KeccakA).WithTxType(TxType.AccessList).TestObject, "access list");
-            yield return (Build.A.Receipt.WithCalculatedBloom().WithGasUsedTotal(100).WithState(TestItem.KeccakH).WithTxType(TxType.EIP1559).TestObject, "eip 1559");
+            yield return (Build.A.Receipt.WithCalculatedBloom().WithGasUsedTotal(1000).WithState(TestItem._commitmentH).TestObject, "basic");
+            yield return (Build.A.Receipt.WithCalculatedBloom().WithGasUsedTotal(500).WithState(TestItem._commitmentA).WithTxType(TxType.AccessList).TestObject, "access list");
+            yield return (Build.A.Receipt.WithCalculatedBloom().WithGasUsedTotal(100).WithState(TestItem._commitmentH).WithTxType(TxType.EIP1559).TestObject, "eip 1559");
         }
 
         [TestCaseSource(nameof(TestCaseSource))]

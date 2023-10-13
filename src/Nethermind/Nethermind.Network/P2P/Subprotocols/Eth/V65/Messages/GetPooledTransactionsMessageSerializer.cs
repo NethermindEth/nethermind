@@ -10,7 +10,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65.Messages
     {
         public override GetPooledTransactionsMessage Deserialize(IByteBuffer byteBuffer)
         {
-            Keccak[] hashes = DeserializeHashes(byteBuffer);
+            Commitment[] hashes = DeserializeHashes(byteBuffer);
             return new GetPooledTransactionsMessage(hashes);
         }
     }

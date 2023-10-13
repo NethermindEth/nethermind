@@ -26,7 +26,7 @@ namespace Nethermind.JsonRpc.Modules.Personal
         ResultWrapper<Address> personal_newAccount([JsonRpcParameter(ExampleValue = "testPass")] string passphrase);
 
         [JsonRpcMethod(Description = "", IsImplemented = false)]
-        ResultWrapper<Keccak> personal_sendTransaction(TransactionForRpc transaction, string passphrase);
+        ResultWrapper<Commitment> personal_sendTransaction(TransactionForRpc transaction, string passphrase);
 
         [JsonRpcMethod(Description = "ecRecover returns the address associated with the private key that was used to calculate the signature in personal_sign",
             IsImplemented = false,

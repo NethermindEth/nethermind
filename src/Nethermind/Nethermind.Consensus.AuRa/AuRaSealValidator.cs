@@ -154,7 +154,7 @@ namespace Nethermind.Consensus.AuRa
         {
             Signature signature = new Signature(header.AuRaSignature);
             signature.V += Signature.VOffset;
-            Keccak message = header.CalculateHash(RlpBehaviors.ForSealing);
+            Commitment message = header.CalculateHash(RlpBehaviors.ForSealing);
             return _ecdsa.RecoverAddress(signature, message);
         }
 
@@ -162,14 +162,14 @@ namespace Nethermind.Consensus.AuRa
         {
             private readonly struct AuthorBlock : IEquatable<AuthorBlock>
             {
-                public AuthorBlock(Address author, Keccak block)
+                public AuthorBlock(Address author, Commitment block)
                 {
                     Author = author;
                     Block = block;
                 }
 
                 public Address Author { get; }
-                public Keccak Block { get; }
+                public Commitment Block { get; }
 
                 public bool Equals(AuthorBlock other) => Equals(Author, other.Author) && Equals(Block, other.Block);
                 public override bool Equals(object obj) => obj is AuthorBlock other && Equals(other);

@@ -18,11 +18,11 @@ namespace Nethermind.State.Proofs
 
         public UInt256 Balance { get; set; }
 
-        public Keccak CodeHash { get; set; } = Keccak.OfAnEmptyString;
+        public Commitment CodeHash { get; set; } = Commitment.OfAnEmptyString;
 
         public UInt256 Nonce { get; set; }
 
-        public Keccak StorageRoot { get; set; } = Keccak.EmptyTreeHash;
+        public Commitment StorageRoot { get; set; } = Commitment.EmptyTreeHash;
 
         public StorageProof[]? StorageProofs { get; set; }
     }

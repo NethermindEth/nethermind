@@ -52,7 +52,7 @@ namespace Nethermind.JsonRpc.Test
         }
 
         [TestCaseSource(nameof(Tests))]
-        public async Task CompareReceipts(Uri uri1, Uri uri2, Keccak? blockHash = null)
+        public async Task CompareReceipts(Uri uri1, Uri uri2, Commitment? blockHash = null)
         {
             using IConsensusDataSource<IEnumerable<ReceiptForRpc>> receipt1Source = GetSource<IEnumerable<ReceiptForRpc>>(uri1);
             using IConsensusDataSource<IEnumerable<ReceiptForRpc>> receipt2Source = GetSource<IEnumerable<ReceiptForRpc>>(uri2);
@@ -61,7 +61,7 @@ namespace Nethermind.JsonRpc.Test
         }
 
         [TestCaseSource(nameof(Tests))]
-        public async Task CompareReceipt(Uri uri1, Uri uri2, Keccak? blockHash = null)
+        public async Task CompareReceipt(Uri uri1, Uri uri2, Commitment? blockHash = null)
         {
             using IConsensusDataSource<ReceiptForRpc> receipt1Source = GetSource<ReceiptForRpc>(uri1);
             using IConsensusDataSource<ReceiptForRpc> receipt2Source = GetSource<ReceiptForRpc>(uri2);
@@ -70,7 +70,7 @@ namespace Nethermind.JsonRpc.Test
         }
 
         [TestCaseSource(nameof(Tests))]
-        public async Task CompareGethBlockTrace(Uri uri1, Uri uri2, Keccak? blockHash = null, GethTraceOptions? gethTraceOptions = null)
+        public async Task CompareGethBlockTrace(Uri uri1, Uri uri2, Commitment? blockHash = null, GethTraceOptions? gethTraceOptions = null)
         {
             gethTraceOptions ??= GethTraceOptions.Default;
             using IConsensusDataSource<IEnumerable<GethLikeTxTrace>> receipt1Source = GetSource<IEnumerable<GethLikeTxTrace>>(uri1, DebugModuleFactory.Converters);
@@ -81,7 +81,7 @@ namespace Nethermind.JsonRpc.Test
         }
 
         [TestCaseSource(nameof(Tests))]
-        public async Task CompareGethTxTrace(Uri uri1, Uri uri2, Keccak? transactionHash = null, GethTraceOptions? gethTraceOptions = null)
+        public async Task CompareGethTxTrace(Uri uri1, Uri uri2, Commitment? transactionHash = null, GethTraceOptions? gethTraceOptions = null)
         {
             gethTraceOptions ??= GethTraceOptions.Default;
             using IConsensusDataSource<GethLikeTxTrace> receipt1Source = GetSource<GethLikeTxTrace>(uri1, DebugModuleFactory.Converters);

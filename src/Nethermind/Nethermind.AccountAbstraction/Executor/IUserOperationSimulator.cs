@@ -13,7 +13,7 @@ namespace Nethermind.AccountAbstraction.Executor
 {
     public interface IUserOperationSimulator
     {
-        ResultWrapper<Keccak> Simulate(UserOperation userOperation,
+        ResultWrapper<Commitment> Simulate(UserOperation userOperation,
             BlockHeader parent,
             UInt256? timestamp = null,
             CancellationToken cancellationToken = default);

@@ -31,11 +31,11 @@ namespace Nethermind.TxPool
 
         public AcceptTxResult SubmitTx(Transaction tx, TxHandlingOptions txHandlingOptions) => AcceptTxResult.Accepted;
 
-        public bool RemoveTransaction(Keccak? hash) => false;
+        public bool RemoveTransaction(Commitment? hash) => false;
 
-        public bool IsKnown(Keccak hash) => false;
+        public bool IsKnown(Commitment hash) => false;
 
-        public bool TryGetPendingTransaction(Keccak hash, out Transaction? transaction)
+        public bool TryGetPendingTransaction(Commitment hash, out Transaction? transaction)
         {
             transaction = null;
             return false;

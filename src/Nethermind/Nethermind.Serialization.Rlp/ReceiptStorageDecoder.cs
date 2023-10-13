@@ -46,7 +46,7 @@ namespace Nethermind.Serialization.Rlp
             }
             else
             {
-                txReceipt.PostTransactionState = firstItem.Length == 0 ? null : new Keccak(firstItem);
+                txReceipt.PostTransactionState = firstItem.Length == 0 ? null : new Commitment(firstItem);
             }
 
             if (isStorage) txReceipt.BlockHash = rlpStream.DecodeKeccak();
@@ -121,7 +121,7 @@ namespace Nethermind.Serialization.Rlp
             }
             else
             {
-                txReceipt.PostTransactionState = firstItem.Length == 0 ? null : new Keccak(firstItem);
+                txReceipt.PostTransactionState = firstItem.Length == 0 ? null : new Commitment(firstItem);
             }
 
             if (isStorage) txReceipt.BlockHash = decoderContext.DecodeKeccak();
@@ -354,7 +354,7 @@ namespace Nethermind.Serialization.Rlp
             else
             {
                 item.PostTransactionState =
-                    firstItem.Length == 0 ? new KeccakStructRef() : new KeccakStructRef(firstItem);
+                    firstItem.Length == 0 ? new CommitmentStructRef() : new CommitmentStructRef(firstItem);
             }
 
             if (isStorage)
@@ -403,9 +403,9 @@ namespace Nethermind.Serialization.Rlp
             LogEntryDecoder.DecodeStructRef(ref decoderContext, behaviour, out current);
         }
 
-        public Keccak[] DecodeTopics(Rlp.ValueDecoderContext valueDecoderContext)
+        public Commitment[] DecodeTopics(Rlp.ValueDecoderContext valueDecoderContext)
         {
-            return KeccakDecoder.Instance.DecodeArray(ref valueDecoderContext);
+            return CommitmentDecoder.Instance.DecodeArray(ref valueDecoderContext);
         }
 
         public bool CanDecodeBloom => true;

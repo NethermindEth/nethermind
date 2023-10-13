@@ -47,7 +47,7 @@ namespace Nethermind.Synchronization.Test.SnapSync
         //[Test]
         public void Test01()
         {
-            Keccak rootHash = _inputTree.RootHash;   // "0x8c81279168edc449089449bc0f2136fc72c9645642845755633cf259cd97988b"
+            Commitment rootHash = _inputTree.RootHash;   // "0x8c81279168edc449089449bc0f2136fc72c9645642845755633cf259cd97988b"
 
             byte[][] firstProof = CreateProofForPath(TestItem.Tree.AccountsWithPaths[0].Path.Bytes);
             byte[][] lastProof = CreateProofForPath(TestItem.Tree.AccountsWithPaths[5].Path.Bytes);
@@ -107,9 +107,9 @@ namespace Nethermind.Synchronization.Test.SnapSync
         [Test]
         public void RecreateAccountStateFromOneRangeWithNonExistenceProof()
         {
-            Keccak rootHash = _inputTree.RootHash;   // "0x8c81279168edc449089449bc0f2136fc72c9645642845755633cf259cd97988b"
+            Commitment rootHash = _inputTree.RootHash;   // "0x8c81279168edc449089449bc0f2136fc72c9645642845755633cf259cd97988b"
 
-            byte[][] firstProof = CreateProofForPath(Keccak.Zero.Bytes);
+            byte[][] firstProof = CreateProofForPath(Commitment.Zero.Bytes);
             byte[][] lastProof = CreateProofForPath(TestItem.Tree.AccountsWithPaths[5].Path.Bytes);
 
             MemDb db = new();
@@ -117,7 +117,7 @@ namespace Nethermind.Synchronization.Test.SnapSync
             dbProvider.RegisterDb(DbNames.State, db);
             ProgressTracker progressTracker = new(null, dbProvider.GetDb<IDb>(DbNames.State), LimboLogs.Instance);
             SnapProvider snapProvider = new(progressTracker, dbProvider, LimboLogs.Instance);
-            AddRangeResult result = snapProvider.AddAccountRange(1, rootHash, Keccak.Zero, TestItem.Tree.AccountsWithPaths, firstProof!.Concat(lastProof!).ToArray());
+            AddRangeResult result = snapProvider.AddAccountRange(1, rootHash, Commitment.Zero, TestItem.Tree.AccountsWithPaths, firstProof!.Concat(lastProof!).ToArray());
 
             Assert.That(result, Is.EqualTo(AddRangeResult.OK));
             Assert.That(db.Keys.Count, Is.EqualTo(10));  // we persist proof nodes (boundary nodes) via stitching
@@ -127,7 +127,7 @@ namespace Nethermind.Synchronization.Test.SnapSync
         [Test]
         public void RecreateAccountStateFromOneRangeWithExistenceProof()
         {
-            Keccak rootHash = _inputTree.RootHash;   // "0x8c81279168edc449089449bc0f2136fc72c9645642845755633cf259cd97988b"
+            Commitment rootHash = _inputTree.RootHash;   // "0x8c81279168edc449089449bc0f2136fc72c9645642845755633cf259cd97988b"
 
             byte[][] firstProof = CreateProofForPath(TestItem.Tree.AccountsWithPaths[0].Path.Bytes);
             byte[][] lastProof = CreateProofForPath(TestItem.Tree.AccountsWithPaths[5].Path.Bytes);
@@ -147,7 +147,7 @@ namespace Nethermind.Synchronization.Test.SnapSync
         [Test]
         public void RecreateAccountStateFromOneRangeWithoutProof()
         {
-            Keccak rootHash = _inputTree.RootHash;   // "0x8c81279168edc449089449bc0f2136fc72c9645642845755633cf259cd97988b"
+            Commitment rootHash = _inputTree.RootHash;   // "0x8c81279168edc449089449bc0f2136fc72c9645642845755633cf259cd97988b"
 
             MemDb db = new();
             DbProvider dbProvider = new(DbModeHint.Mem);
@@ -164,7 +164,7 @@ namespace Nethermind.Synchronization.Test.SnapSync
         [Test]
         public void RecreateAccountStateFromMultipleRange()
         {
-            Keccak rootHash = _inputTree.RootHash;   // "0x8c81279168edc449089449bc0f2136fc72c9645642845755633cf259cd97988b"
+            Commitment rootHash = _inputTree.RootHash;   // "0x8c81279168edc449089449bc0f2136fc72c9645642845755633cf259cd97988b"
 
             // output state
             MemDb db = new();
@@ -173,10 +173,10 @@ namespace Nethermind.Synchronization.Test.SnapSync
             ProgressTracker progressTracker = new(null, dbProvider.GetDb<IDb>(DbNames.State), LimboLogs.Instance);
             SnapProvider snapProvider = new(progressTracker, dbProvider, LimboLogs.Instance);
 
-            byte[][] firstProof = CreateProofForPath(Keccak.Zero.Bytes);
+            byte[][] firstProof = CreateProofForPath(Commitment.Zero.Bytes);
             byte[][] lastProof = CreateProofForPath(TestItem.Tree.AccountsWithPaths[1].Path.Bytes);
 
-            var result1 = snapProvider.AddAccountRange(1, rootHash, Keccak.Zero, TestItem.Tree.AccountsWithPaths[0..2], firstProof!.Concat(lastProof!).ToArray());
+            var result1 = snapProvider.AddAccountRange(1, rootHash, Commitment.Zero, TestItem.Tree.AccountsWithPaths[0..2], firstProof!.Concat(lastProof!).ToArray());
 
             Assert.That(db.Keys.Count, Is.EqualTo(2));
 
@@ -202,7 +202,7 @@ namespace Nethermind.Synchronization.Test.SnapSync
         [Test]
         public void RecreateAccountStateFromMultipleRange_InReverseOrder()
         {
-            Keccak rootHash = _inputTree.RootHash;   // "0x8c81279168edc449089449bc0f2136fc72c9645642845755633cf259cd97988b"
+            Commitment rootHash = _inputTree.RootHash;   // "0x8c81279168edc449089449bc0f2136fc72c9645642845755633cf259cd97988b"
 
             // output state
             MemDb db = new();
@@ -223,9 +223,9 @@ namespace Nethermind.Synchronization.Test.SnapSync
 
             Assert.That(db.Keys.Count, Is.EqualTo(6));  // we don't persist proof nodes (boundary nodes)
 
-            firstProof = CreateProofForPath(Keccak.Zero.Bytes);
+            firstProof = CreateProofForPath(Commitment.Zero.Bytes);
             lastProof = CreateProofForPath(TestItem.Tree.AccountsWithPaths[1].Path.Bytes);
-            var result1 = snapProvider.AddAccountRange(1, rootHash, Keccak.Zero, TestItem.Tree.AccountsWithPaths[0..2], firstProof!.Concat(lastProof!).ToArray());
+            var result1 = snapProvider.AddAccountRange(1, rootHash, Commitment.Zero, TestItem.Tree.AccountsWithPaths[0..2], firstProof!.Concat(lastProof!).ToArray());
 
             Assert.That(result1, Is.EqualTo(AddRangeResult.OK));
             Assert.That(result2, Is.EqualTo(AddRangeResult.OK));
@@ -237,7 +237,7 @@ namespace Nethermind.Synchronization.Test.SnapSync
         [Test]
         public void RecreateAccountStateFromMultipleRange_OutOfOrder()
         {
-            Keccak rootHash = _inputTree.RootHash;   // "0x8c81279168edc449089449bc0f2136fc72c9645642845755633cf259cd97988b"
+            Commitment rootHash = _inputTree.RootHash;   // "0x8c81279168edc449089449bc0f2136fc72c9645642845755633cf259cd97988b"
 
             // output state
             MemDb db = new();
@@ -252,9 +252,9 @@ namespace Nethermind.Synchronization.Test.SnapSync
 
             Assert.That(db.Keys.Count, Is.EqualTo(4));
 
-            firstProof = CreateProofForPath(Keccak.Zero.Bytes);
+            firstProof = CreateProofForPath(Commitment.Zero.Bytes);
             lastProof = CreateProofForPath(TestItem.Tree.AccountsWithPaths[1].Path.Bytes);
-            var result1 = snapProvider.AddAccountRange(1, rootHash, Keccak.Zero, TestItem.Tree.AccountsWithPaths[0..2], firstProof!.Concat(lastProof!).ToArray());
+            var result1 = snapProvider.AddAccountRange(1, rootHash, Commitment.Zero, TestItem.Tree.AccountsWithPaths[0..2], firstProof!.Concat(lastProof!).ToArray());
 
             Assert.That(db.Keys.Count, Is.EqualTo(6));  // we don't persist proof nodes (boundary nodes)
 
@@ -272,7 +272,7 @@ namespace Nethermind.Synchronization.Test.SnapSync
         [Test]
         public void RecreateAccountStateFromMultipleOverlappingRange()
         {
-            Keccak rootHash = _inputTree.RootHash;   // "0x8c81279168edc449089449bc0f2136fc72c9645642845755633cf259cd97988b"
+            Commitment rootHash = _inputTree.RootHash;   // "0x8c81279168edc449089449bc0f2136fc72c9645642845755633cf259cd97988b"
 
             // output state
             MemDb db = new();
@@ -281,10 +281,10 @@ namespace Nethermind.Synchronization.Test.SnapSync
             ProgressTracker progressTracker = new(null, dbProvider.GetDb<IDb>(DbNames.State), LimboLogs.Instance);
             SnapProvider snapProvider = new(progressTracker, dbProvider, LimboLogs.Instance);
 
-            byte[][] firstProof = CreateProofForPath(Keccak.Zero.Bytes);
+            byte[][] firstProof = CreateProofForPath(Commitment.Zero.Bytes);
             byte[][] lastProof = CreateProofForPath(TestItem.Tree.AccountsWithPaths[2].Path.Bytes);
 
-            var result1 = snapProvider.AddAccountRange(1, rootHash, Keccak.Zero, TestItem.Tree.AccountsWithPaths[0..3], firstProof!.Concat(lastProof!).ToArray());
+            var result1 = snapProvider.AddAccountRange(1, rootHash, Commitment.Zero, TestItem.Tree.AccountsWithPaths[0..3], firstProof!.Concat(lastProof!).ToArray());
 
             Assert.That(db.Keys.Count, Is.EqualTo(3));
 
@@ -316,7 +316,7 @@ namespace Nethermind.Synchronization.Test.SnapSync
         [Test]
         public void CorrectlyDetermineHasMoreChildren()
         {
-            Keccak rootHash = _inputTree.RootHash;   // "0x8c81279168edc449089449bc0f2136fc72c9645642845755633cf259cd97988b"
+            Commitment rootHash = _inputTree.RootHash;   // "0x8c81279168edc449089449bc0f2136fc72c9645642845755633cf259cd97988b"
 
             // output state
             MemDb db = new();
@@ -325,7 +325,7 @@ namespace Nethermind.Synchronization.Test.SnapSync
             ProgressTracker progressTracker = new(null, dbProvider.GetDb<IDb>(DbNames.State), LimboLogs.Instance);
             SnapProvider snapProvider = new(progressTracker, dbProvider, LimboLogs.Instance);
 
-            byte[][] firstProof = CreateProofForPath(Keccak.Zero.Bytes);
+            byte[][] firstProof = CreateProofForPath(Commitment.Zero.Bytes);
             byte[][] lastProof = CreateProofForPath(TestItem.Tree.AccountsWithPaths[1].Path.Bytes);
             byte[][] proofs = firstProof.Concat(lastProof).ToArray();
 
@@ -333,10 +333,10 @@ namespace Nethermind.Synchronization.Test.SnapSync
 
             PathWithAccount[] receiptAccounts = TestItem.Tree.AccountsWithPaths[0..2];
 
-            bool HasMoreChildren(ValueKeccak limitHash)
+            bool HasMoreChildren(ValueCommitment limitHash)
             {
-                (AddRangeResult _, bool moreChildrenToRight, IList<PathWithAccount> _, IList<ValueKeccak> _) =
-                    SnapProviderHelper.AddAccountRange(newTree, 0, rootHash, Keccak.Zero, limitHash.ToKeccak(), receiptAccounts, proofs);
+                (AddRangeResult _, bool moreChildrenToRight, IList<PathWithAccount> _, IList<ValueCommitment> _) =
+                    SnapProviderHelper.AddAccountRange(newTree, 0, rootHash, Commitment.Zero, limitHash.ToCommitment(), receiptAccounts, proofs);
                 return moreChildrenToRight;
             }
 
@@ -348,12 +348,12 @@ namespace Nethermind.Synchronization.Test.SnapSync
             UInt256 between2and3 = new UInt256(TestItem.Tree.AccountsWithPaths[1].Path.Bytes, true);
             between2and3 += 5;
 
-            HasMoreChildren(new Keccak(between2and3.ToBigEndian())).Should().BeFalse();
+            HasMoreChildren(new Commitment(between2and3.ToBigEndian())).Should().BeFalse();
 
             between2and3 = new UInt256(TestItem.Tree.AccountsWithPaths[2].Path.Bytes, true);
             between2and3 -= 1;
 
-            HasMoreChildren(new Keccak(between2and3.ToBigEndian())).Should().BeFalse();
+            HasMoreChildren(new Commitment(between2and3.ToBigEndian())).Should().BeFalse();
         }
 
         [Test]
@@ -361,16 +361,16 @@ namespace Nethermind.Synchronization.Test.SnapSync
         {
             StateTree tree = new StateTree(new TrieStore(new MemDb(), LimboLogs.Instance), LimboLogs.Instance);
 
-            PathWithAccount ac1 = new PathWithAccount(Keccak.Zero, Build.An.Account.WithBalance(1).TestObject);
-            PathWithAccount ac2 = new PathWithAccount(Keccak.Compute("anything"), Build.An.Account.WithBalance(2).TestObject);
-            PathWithAccount ac3 = new PathWithAccount(Keccak.MaxValue, Build.An.Account.WithBalance(2).TestObject);
+            PathWithAccount ac1 = new PathWithAccount(Commitment.Zero, Build.An.Account.WithBalance(1).TestObject);
+            PathWithAccount ac2 = new PathWithAccount(Commitment.Compute("anything"), Build.An.Account.WithBalance(2).TestObject);
+            PathWithAccount ac3 = new PathWithAccount(Commitment.MaxValue, Build.An.Account.WithBalance(2).TestObject);
 
             tree.Set(ac1.Path, ac1.Account);
             tree.Set(ac2.Path, ac2.Account);
             tree.Set(ac3.Path, ac3.Account);
             tree.Commit(0);
 
-            Keccak rootHash = tree.RootHash;   // "0x8c81279168edc449089449bc0f2136fc72c9645642845755633cf259cd97988b"
+            Commitment rootHash = tree.RootHash;   // "0x8c81279168edc449089449bc0f2136fc72c9645642845755633cf259cd97988b"
 
             // output state
             MemDb db = new();
@@ -387,10 +387,10 @@ namespace Nethermind.Synchronization.Test.SnapSync
 
             PathWithAccount[] receiptAccounts = { ac1, ac2 };
 
-            bool HasMoreChildren(ValueKeccak limitHash)
+            bool HasMoreChildren(ValueCommitment limitHash)
             {
-                (AddRangeResult _, bool moreChildrenToRight, IList<PathWithAccount> _, IList<ValueKeccak> _) =
-                    SnapProviderHelper.AddAccountRange(newTree, 0, rootHash, Keccak.Zero, limitHash.ToKeccak(), receiptAccounts, proofs);
+                (AddRangeResult _, bool moreChildrenToRight, IList<PathWithAccount> _, IList<ValueCommitment> _) =
+                    SnapProviderHelper.AddAccountRange(newTree, 0, rootHash, Commitment.Zero, limitHash.ToCommitment(), receiptAccounts, proofs);
                 return moreChildrenToRight;
             }
 
@@ -400,16 +400,16 @@ namespace Nethermind.Synchronization.Test.SnapSync
             UInt256 between2and3 = new UInt256(ac2.Path.Bytes, true);
             between2and3 += 5;
 
-            HasMoreChildren(new Keccak(between2and3.ToBigEndian())).Should().BeFalse();
+            HasMoreChildren(new Commitment(between2and3.ToBigEndian())).Should().BeFalse();
 
             // The special case
-            HasMoreChildren(Keccak.MaxValue).Should().BeTrue();
+            HasMoreChildren(Commitment.MaxValue).Should().BeTrue();
         }
 
         [Test]
         public void MissingAccountFromRange()
         {
-            Keccak rootHash = _inputTree.RootHash;   // "0x8c81279168edc449089449bc0f2136fc72c9645642845755633cf259cd97988b"
+            Commitment rootHash = _inputTree.RootHash;   // "0x8c81279168edc449089449bc0f2136fc72c9645642845755633cf259cd97988b"
 
             // output state
             MemDb db = new();
@@ -418,10 +418,10 @@ namespace Nethermind.Synchronization.Test.SnapSync
             ProgressTracker progressTracker = new(null, dbProvider.GetDb<IDb>(DbNames.State), LimboLogs.Instance);
             SnapProvider snapProvider = new(progressTracker, dbProvider, LimboLogs.Instance);
 
-            byte[][] firstProof = CreateProofForPath(Keccak.Zero.Bytes);
+            byte[][] firstProof = CreateProofForPath(Commitment.Zero.Bytes);
             byte[][] lastProof = CreateProofForPath(TestItem.Tree.AccountsWithPaths[1].Path.Bytes);
 
-            var result1 = snapProvider.AddAccountRange(1, rootHash, Keccak.Zero, TestItem.Tree.AccountsWithPaths[0..2], firstProof!.Concat(lastProof!).ToArray());
+            var result1 = snapProvider.AddAccountRange(1, rootHash, Commitment.Zero, TestItem.Tree.AccountsWithPaths[0..2], firstProof!.Concat(lastProof!).ToArray());
 
             Assert.That(db.Keys.Count, Is.EqualTo(2));
 

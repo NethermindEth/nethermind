@@ -58,29 +58,29 @@ public class Block
 
     public Withdrawal[]? Withdrawals => Body.Withdrawals;
 
-    public Keccak? Hash => Header.Hash; // do not add setter here
+    public Commitment? Hash => Header.Hash; // do not add setter here
 
-    public Keccak? ParentHash => Header.ParentHash; // do not add setter here
+    public Commitment? ParentHash => Header.ParentHash; // do not add setter here
 
     public ulong Nonce => Header.Nonce; // do not add setter here
 
-    public Keccak? MixHash => Header.MixHash; // do not add setter here
+    public Commitment? MixHash => Header.MixHash; // do not add setter here
 
     public byte[]? ExtraData => Header.ExtraData; // do not add setter here
 
     public Bloom? Bloom => Header.Bloom; // do not add setter here
 
-    public Keccak? UnclesHash => Header.UnclesHash; // do not add setter here
+    public Commitment? UnclesHash => Header.UnclesHash; // do not add setter here
 
     public Address? Beneficiary => Header.Beneficiary; // do not add setter here
 
     public Address? Author => Header.Author; // do not add setter here
 
-    public Keccak? StateRoot => Header.StateRoot; // do not add setter here
+    public Commitment? StateRoot => Header.StateRoot; // do not add setter here
 
-    public Keccak? TxRoot => Header.TxRoot; // do not add setter here
+    public Commitment? TxRoot => Header.TxRoot; // do not add setter here
 
-    public Keccak? ReceiptsRoot => Header.ReceiptsRoot; // do not add setter here
+    public Commitment? ReceiptsRoot => Header.ReceiptsRoot; // do not add setter here
 
     public long GasLimit => Header.GasLimit; // do not add setter here
 
@@ -106,8 +106,8 @@ public class Block
 
     public bool IsBodyMissing => Header.HasBody && Body.IsEmpty;
 
-    public Keccak? WithdrawalsRoot => Header.WithdrawalsRoot; // do not add setter here
-    public Keccak? ParentBeaconBlockRoot => Header.ParentBeaconBlockRoot; // do not add setter here
+    public Commitment? WithdrawalsRoot => Header.WithdrawalsRoot; // do not add setter here
+    public Commitment? ParentBeaconBlockRoot => Header.ParentBeaconBlockRoot; // do not add setter here
 
     public override string ToString() => ToString(Format.Short);
 

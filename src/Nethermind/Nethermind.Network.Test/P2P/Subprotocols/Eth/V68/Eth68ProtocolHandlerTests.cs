@@ -107,7 +107,7 @@ public class Eth68ProtocolHandlerTests
     {
         _txGossipPolicy.ShouldListenToGossippedTransactions.Returns(canGossipTransactions);
 
-        GenerateLists(txCount, out List<byte> types, out List<int> sizes, out List<Keccak> hashes);
+        GenerateLists(txCount, out List<byte> types, out List<int> sizes, out List<Commitment> hashes);
 
         var msg = new NewPooledTransactionHashesMessage68(types, sizes, hashes);
 
@@ -115,14 +115,14 @@ public class Eth68ProtocolHandlerTests
         HandleZeroMessage(msg, Eth68MessageCode.NewPooledTransactionHashes);
 
         _pooledTxsRequestor.Received(canGossipTransactions ? 1 : 0).RequestTransactionsEth68(Arg.Any<Action<GetPooledTransactionsMessage>>(),
-            Arg.Any<IReadOnlyList<Keccak>>(), Arg.Any<IReadOnlyList<int>>());
+            Arg.Any<IReadOnlyList<Commitment>>(), Arg.Any<IReadOnlyList<int>>());
     }
 
     [TestCase(true)]
     [TestCase(false)]
     public void Should_throw_when_sizes_doesnt_match(bool removeSize)
     {
-        GenerateLists(4, out List<byte> types, out List<int> sizes, out List<Keccak> hashes);
+        GenerateLists(4, out List<byte> types, out List<int> sizes, out List<Commitment> hashes);
 
         if (removeSize)
         {
@@ -144,7 +144,7 @@ public class Eth68ProtocolHandlerTests
     public void Should_process_huge_transaction()
     {
         Transaction tx = Build.A.Transaction.WithType(TxType.EIP1559).WithData(new byte[2 * 1024 * 1024])
-            .WithHash(TestItem.KeccakA).TestObject;
+            .WithHash(TestItem._commitmentA).TestObject;
 
         var msg = new NewPooledTransactionHashesMessage68(new[] { (byte)tx.Type },
             new[] { tx.GetLength() }, new[] { tx.Hash });
@@ -153,7 +153,7 @@ public class Eth68ProtocolHandlerTests
         HandleZeroMessage(msg, Eth68MessageCode.NewPooledTransactionHashes);
 
         _pooledTxsRequestor.Received(1).RequestTransactionsEth68(Arg.Any<Action<GetPooledTransactionsMessage>>(),
-            Arg.Any<IReadOnlyList<Keccak>>(), Arg.Any<IReadOnlyList<int>>());
+            Arg.Any<IReadOnlyList<Commitment>>(), Arg.Any<IReadOnlyList<int>>());
     }
 
     [TestCase(1)]
@@ -213,13 +213,13 @@ public class Eth68ProtocolHandlerTests
 
         List<byte> types = new(numberOfTransactions);
         List<int> sizes = new(numberOfTransactions);
-        List<Keccak> hashes = new(numberOfTransactions);
+        List<Commitment> hashes = new(numberOfTransactions);
 
         for (int i = 0; i < numberOfTransactions; i++)
         {
             types.Add(0);
             sizes.Add(sizeOfOneTx);
-            hashes.Add(new Keccak(i.ToString("X64")));
+            hashes.Add(new Commitment(i.ToString("X64")));
         }
 
         NewPooledTransactionHashesMessage68 hashesMsg = new(types, sizes, hashes);
@@ -247,7 +247,7 @@ public class Eth68ProtocolHandlerTests
         _handler.HandleMessage(new ZeroPacket(getBlockHeadersPacket) { PacketType = messageCode });
     }
 
-    private void GenerateLists(int txCount, out List<byte> types, out List<int> sizes, out List<Keccak> hashes)
+    private void GenerateLists(int txCount, out List<byte> types, out List<int> sizes, out List<Commitment> hashes)
     {
         TxDecoder txDecoder = new();
         types = new();
@@ -257,7 +257,7 @@ public class Eth68ProtocolHandlerTests
         for (int i = 0; i < txCount; ++i)
         {
             Transaction tx = Build.A.Transaction.WithType((TxType)(i % 3)).WithData(new byte[i])
-                .WithHash(i % 2 == 0 ? TestItem.KeccakA : TestItem.KeccakB).TestObject;
+                .WithHash(i % 2 == 0 ? TestItem._commitmentA : TestItem._commitmentB).TestObject;
 
             types.Add((byte)tx.Type);
             sizes.Add(txDecoder.GetLength(tx, RlpBehaviors.None));

@@ -13,7 +13,7 @@ namespace Nethermind.JsonRpc.Test.Data
         [Test]
         public void Can_do_roundtrip()
         {
-            TestRoundtrip(TestItem.KeccakA);
+            TestRoundtrip(TestItem._commitmentA);
         }
     }
 }
