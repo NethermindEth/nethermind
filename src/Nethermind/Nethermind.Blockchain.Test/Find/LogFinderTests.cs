@@ -381,6 +381,8 @@ namespace Nethermind.Blockchain.Test.Find
             EliasFanoStorage storage = new EliasFanoStorage();
             storage.PutAll(TestItem.AddressA.GetHashCode(), new List<ulong> { 1, 2, 3, 4 });
             storage.PutAll(TestItem.KeccakA.GetHashCode(), new List<ulong> { 2, 5 });
+            storage.Put(TestItem.AddressA.GetHashCode(), 99);
+            storage.Put(TestItem.KeccakA.GetHashCode(), 99);
             return storage;
         }
 
@@ -391,9 +393,9 @@ namespace Nethermind.Blockchain.Test.Find
             List<ulong> results = new List<ulong>();
             foreach (Keccak topic in topics)
             {
-                results = storage.FindBlockNumbers(address.GetHashCode(), topic.GetHashCode());
+                results.AddRange(storage.FindBlockNumbers(address.GetHashCode(), topic.GetHashCode()));
             }
-            results.Should().BeEquivalentTo(new List<long> {2});
+            results.Should().BeEquivalentTo(new List<ulong> {2, 99});
         }
     }
 }

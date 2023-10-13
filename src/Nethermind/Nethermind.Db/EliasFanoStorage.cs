@@ -29,30 +29,46 @@ public class EliasFanoStorage
         // TODO: what to return in case of no key?
     }
 
-    //
-    // public void Put(int key, ulong values)
-    // {
-    //     if (storage.ContainsKey(key))
-    //     {
-    //         // TODO
-    //         EliasFano ef = storage[key];
-    //         EliasFanoBuilder efb = new EliasFanoBuilder(ef._universe, ef.Length + 1);
-    //         // storage[key].Push(values);
-    //     }
-    //     else
-    //     {
-    //         EliasFanoBuilder efb = new EliasFanoBuilder();
-    //         storage[key] = new List<long>(values);
-    //     }
-    // }
+    // Add single a
+    // block number to the storage.
+    public void Put(int key, ulong new_val)
+    {
+        if (storage.ContainsKey(key))
+        {
+            List<ulong> curr_list = storage[key].GetEnumerator(0).ToList();
+            curr_list.Add(new_val);
+            EliasFanoBuilder efb = new EliasFanoBuilder(curr_list.Max() + 1, curr_list.Count);
+            curr_list.Sort();
+            efb.Extend(curr_list);
+            storage[key] = efb.Build();
+        }
+        else
+        {
+            EliasFanoBuilder efb = new EliasFanoBuilder(new_val + 1, 1);
+            efb.Push(new_val);
+            storage[key] = efb.Build();
+        }
+    }
 
+    // Add a list of block numbers to storage
     public void PutAll(int key, List<ulong> values)
     {
-        // TODO: handle different cases: when it has key and when not
-        EliasFanoBuilder efb = new EliasFanoBuilder(values.Max(), values.Count);
-        efb.Extend(values);
-        EliasFano ef = efb.Build();
-        storage[key] = ef;
+        if (storage.ContainsKey(key))
+        {
+            List<ulong> curr_list = storage[key].GetEnumerator(0).ToList();
+            curr_list.AddRange(values);
+            EliasFanoBuilder efb = new EliasFanoBuilder(curr_list.Max() + 1, curr_list.Count);
+            curr_list.Sort();
+            efb.Extend(curr_list);
+            storage[key] = efb.Build();
+        }
+        else
+        {
+            EliasFanoBuilder efb = new EliasFanoBuilder(values.Max() + 1, values.Count);
+            efb.Extend(values);
+            EliasFano ef = efb.Build();
+            storage[key] = ef;
+        }
     }
 
     public List<ulong> FindBlockNumbers(int address, int topic)
