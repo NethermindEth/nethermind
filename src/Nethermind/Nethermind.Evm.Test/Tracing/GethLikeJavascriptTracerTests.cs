@@ -99,7 +99,7 @@ public class GethLikeJavascriptTracerTests : VirtualMachineTestsBase
                 GetBytecode(),
                 MainnetSpecProvider.CancunActivation)
             .BuildResult();
-        dynamic[] expectedResult = {0, 32, 64};
+        dynamic[] expectedResult = { 0, 32, 64 };
         Assert.That(traces.CustomTracerResult, Is.EqualTo(expectedResult));
     }
 
@@ -308,9 +308,8 @@ public class GethLikeJavascriptTracerTests : VirtualMachineTestsBase
     [Test]
     public void JS_tracers_builtIns_noop_tracer_legacy()
     {
-        string userTracer = "noopTracer";
         GethLikeTxTrace traces = Execute(
-                GetTracer(userTracer),
+                GetTracer("noopTracer"),
                 GetBytecode(),
                 MainnetSpecProvider.CancunActivation)
             .BuildResult();
@@ -320,9 +319,8 @@ public class GethLikeJavascriptTracerTests : VirtualMachineTestsBase
     [Test]
     public void JS_tracers_builtIns_opcount_tracer()
     {
-        string userTracer = "opcountTracer";
         GethLikeTxTrace traces = Execute(
-                GetTracer(userTracer),
+                GetTracer("opcountTracer"),
                 GetBytecode(),
                 MainnetSpecProvider.CancunActivation)
             .BuildResult();
@@ -332,14 +330,13 @@ public class GethLikeJavascriptTracerTests : VirtualMachineTestsBase
     [Test]
     public void JS_tracers_builtIns_prestate_tracer()
     {
-        string userTracer = "prestateTracer";
         GethLikeTxTrace traces = Execute(
-                GetTracer(userTracer),
+                GetTracer("prestateTracer"),
                 GetComplexBytecode(),
                 MainnetSpecProvider.CancunActivation)
             .BuildResult();
         Assert.That(traces.CustomTracerResult, Has.All.Empty);
-        }
+    }
 
     private static byte[] GetBytecode()
     {

@@ -7,6 +7,7 @@ using System.IO;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
+using System.Numerics;
 using System.Runtime.InteropServices;
 using Microsoft.ClearScript;
 using Microsoft.ClearScript.V8;
@@ -48,10 +49,10 @@ public class GethLikeJavascriptTxTracer : GethLikeTxTracer<GethTxTraceEntry>
         _engine.AddHostObject("toHex", new Func<IList, string>(bytes => bytes.ToHexString()));
         _engine.AddHostObject("toAddress", new Func<object, dynamic>(address => address.ToAddress().Bytes.ToScriptArray(_engine)));
         _engine.AddHostObject("isPrecompiled", new Func<object, bool>(address => address.ToAddress().IsPrecompile(spec)));
-        _engine.AddHostObject("slice", new Func<IList, int, int, dynamic>(((input, start, end) => input.Slice(start, end).ToScriptArray(_engine))));
-        _engine.AddHostObject("toContract", new Func<object, uint, dynamic>(((from, nonce) => ContractAddress.From(from.ToAddress(), nonce).Bytes.ToScriptArray(_engine))));
+        _engine.AddHostObject("slice", new Func<IList, long, long, dynamic>(((input, start, end) => input.Slice(start, end).ToScriptArray(_engine))));
+        _engine.AddHostObject("toContract", new Func<object, ulong, dynamic>(((from, nonce) => ContractAddress.From(from.ToAddress(), nonce).Bytes.ToScriptArray(_engine))));
         _engine.AddHostObject("toContract2", new Func<object, string, object, dynamic>(((from, salt, initcode) =>
-            ContractAddress.From(from.ToAddress(), Bytes.FromHexString(salt), ValueKeccak.Compute(initcode.ToBytes()).Bytes))));
+            ContractAddress.From(from.ToAddress(), Bytes.FromHexString(salt), ValueKeccak.Compute(initcode.ToBytes()).Bytes).Bytes.ToScriptArray(_engine))));
         _tracer = _engine.Script.tracer;
         IsTracingRefunds = true;
         IsTracingActions = true;
@@ -108,16 +109,16 @@ public class GethLikeJavascriptTxTracer : GethLikeTxTracer<GethTxTraceEntry>
         return trace;
     }
 
-    public override void ReportAction(long gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType,
+    public override void ReportAction(long gas, UInt256 value, Address from, Address? to, ReadOnlyMemory<byte> input, ExecutionType callType,
         bool isPrecompileCall = false)
     {
         base.ReportAction(gas, value, from, to, input, callType, isPrecompileCall);
         _customTraceEntry.contract = new GethJavascriptStyleLog.Contract(_engine, from, to, value, input);
         _ctx.type = GetCallType(callType);
-        _ctx.from = from?.Bytes.ToScriptArray(_engine);
+        _ctx.from = from.Bytes.ToScriptArray(_engine);
         _ctx.to = to?.Bytes.ToScriptArray(_engine);
         _ctx.input = input.ToArray().ToScriptArray(_engine);
-        _ctx.value = value.ToInt64(null);
+        _ctx.value = (BigInteger)value;
         _ctx.gas = gas;
         // _customTraceEntry.ctx = new GethJavascriptStyleLog.CTX(_engine, GetCallType(callType), from, to, input, value, gas, 0, 0, 0, 0, new byte[0], DateTime.Now.ToString());
     }
@@ -162,7 +163,7 @@ public class GethLikeJavascriptTxTracer : GethLikeTxTracer<GethTxTraceEntry>
     public override void SetOperationStack(List<string> stackTrace)
     {
         base.SetOperationStack(stackTrace);
-        _customTraceEntry.stack = new GethJavascriptStyleLog.JSStack(_engine, stackTrace);
+        _customTraceEntry.stack = new GethJavascriptStyleLog.JSStack(stackTrace);
     }
 
     public override void ReportRefund(long refund)

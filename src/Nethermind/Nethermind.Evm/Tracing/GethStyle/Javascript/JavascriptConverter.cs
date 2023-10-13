@@ -17,15 +17,19 @@ namespace Nethermind.Evm.Tracing.GethStyle.Javascript;
 
 public static class JavascriptConverter
 {
-    public static string ToHexString(this IList list)
+    public static string ToHexString(this IList? list)
     {
+        if (list is null)
+        {
+            return "0x";
+        }
+
         using ArrayPoolList<byte>? pooledList = new(list.Count, list.ToBytes());
-        string hexString = pooledList.AsSpan().ToHexString();
-        return "0x" + hexString;
+        return ((ReadOnlySpan<byte>)pooledList.AsSpan()).ToHexString(true);
     }
 
     // Slice
-    public static byte[] Slice(this IList input, int startIndex, int endIndex)
+    public static byte[] Slice(this IList input, long startIndex, long endIndex)
     {
         if (input == null)
         {
@@ -42,19 +46,8 @@ public static class JavascriptConverter
             throw new ArgumentOutOfRangeException(nameof(endIndex), "End index is out of range.");
         }
 
-        int length = endIndex - startIndex;
-        return input.ToBytes().Skip(startIndex).Take(length).ToArray();
-    }
-
-    public static string ToHexAddress(this IList list)
-    {
-        Span<byte> address = stackalloc byte[20];
-        for (int i = 0; i < 20; i++)
-        {
-            address[i] = (byte)list[i];
-        }
-
-        return address.ToHexString();
+        int length = (int)(endIndex - startIndex);
+        return input.ToBytes().Skip((int)startIndex).Take(length).ToArray();
     }
 
     public static IEnumerable<byte> ToBytes(this IList list) => list.ToEnumerable().Select(Convert.ToByte);
