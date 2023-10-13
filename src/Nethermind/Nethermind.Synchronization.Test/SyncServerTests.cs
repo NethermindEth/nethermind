@@ -45,7 +45,7 @@ namespace Nethermind.Synchronization.Test
         {
             Context ctx = new();
             ctx.BlockTree.FindHash(123).Returns(TestItem.KeccakA);
-            Keccak result = ctx.SyncServer.FindHash(123);
+            Keccak result = ctx.SyncServer.FindHash(123)!;
 
             ctx.BlockTree.DidNotReceive().FindHeader(Arg.Any<long>(), Arg.Any<BlockTreeLookupOptions>());
             ctx.BlockTree.DidNotReceive().FindHeader(Arg.Any<Keccak>(), Arg.Any<BlockTreeLookupOptions>());
@@ -105,7 +105,7 @@ namespace Nethermind.Synchronization.Test
                 MainnetSpecProvider.Instance,
                 LimboLogs.Instance);
 
-            Block block = remoteBlockTree.FindBlock(9, BlockTreeLookupOptions.None);
+            Block block = remoteBlockTree.FindBlock(9, BlockTreeLookupOptions.None)!;
 
             if (!accepted)
             {
@@ -148,7 +148,7 @@ namespace Nethermind.Synchronization.Test
                 MainnetSpecProvider.Instance,
                 LimboLogs.Instance);
 
-            Block block = remoteBlockTree.FindBlock(9, BlockTreeLookupOptions.None);
+            Block block = remoteBlockTree.FindBlock(9, BlockTreeLookupOptions.None)!;
 
             ctx.SyncServer.AddNewBlock(block, ctx.NodeWhoSentTheBlock);
 
@@ -161,20 +161,39 @@ namespace Nethermind.Synchronization.Test
             Context ctx = new();
             BlockTree remoteBlockTree = Build.A.BlockTree().OfChainLength(10).TestObject;
             BlockTree localBlockTree = Build.A.BlockTree().OfChainLength(9).TestObject;
-            TestSpecProvider testSpecProvider = new(London.Instance);
-            testSpecProvider.TerminalTotalDifficulty = 10_000_000;
+            TestSpecProvider testSpecProvider = new(London.Instance)
+            {
+                TerminalTotalDifficulty = 10_000_000,
+            };
 
-            Block newBestLocalBlock = Build.A.Block.WithNumber(localBlockTree.Head!.Number + 1).WithParent(localBlockTree.Head!).WithDifficulty(10_000_002L).TestObject;
+            Block newBestLocalBlock = Build.A.Block
+                .WithNumber(localBlockTree.Head!.Number + 1)
+                .WithParent(localBlockTree.Head!).WithDifficulty(10_000_002L).TestObject;
             localBlockTree.SuggestBlock(newBestLocalBlock);
 
-            PoSSwitcher poSSwitcher = new(new MergeConfig() { TerminalTotalDifficulty = $"{testSpecProvider.TerminalTotalDifficulty}" }, new SyncConfig(), new MemDb(), localBlockTree, testSpecProvider, LimboLogs.Instance);
+            PoSSwitcher poSSwitcher = new(
+                new MergeConfig
+                {
+                    TerminalTotalDifficulty = $"{testSpecProvider.TerminalTotalDifficulty}"
+                },
+                new SyncConfig(),
+                new MemDb(),
+                localBlockTree,
+                testSpecProvider,
+                LimboLogs.Instance);
             HeaderValidator headerValidator = new(
                 localBlockTree,
                 Always.Valid,
                 testSpecProvider,
                 LimboLogs.Instance);
 
-            MergeHeaderValidator mergeHeaderValidator = new(poSSwitcher, headerValidator, localBlockTree, testSpecProvider, Always.Valid, LimboLogs.Instance);
+            MergeHeaderValidator mergeHeaderValidator = new(
+                poSSwitcher,
+                headerValidator,
+                localBlockTree,
+                testSpecProvider,
+                Always.Valid,
+                LimboLogs.Instance);
             BlockValidator blockValidator = new(
                 Always.Valid,
                 mergeHeaderValidator,
@@ -211,13 +230,13 @@ namespace Nethermind.Synchronization.Test
             BlockTree remoteBlockTree = Build.A.BlockTree().OfChainLength(10).TestObject;
             Context ctx = CreateMergeContext(9, (UInt256)ttd);
 
-            Block? block = remoteBlockTree.FindBlock(9, BlockTreeLookupOptions.None);
-            block!.Header.TotalDifficulty *= 2;
+            Block block = remoteBlockTree.FindBlock(9, BlockTreeLookupOptions.None)!;
+            block.Header.TotalDifficulty = block.Header.TotalDifficulty * 2;
 
             ctx.SyncServer.AddNewBlock(block, ctx.NodeWhoSentTheBlock);
             Assert.That(block.Header.Hash, Is.EqualTo(ctx.LocalBlockTree.BestSuggestedHeader!.Hash));
 
-            Block? parentBlock = remoteBlockTree.FindBlock(8, BlockTreeLookupOptions.None);
+            Block parentBlock = remoteBlockTree.FindBlock(8, BlockTreeLookupOptions.None)!;
             Assert.That(ctx.LocalBlockTree.BestSuggestedHeader.TotalDifficulty, Is.EqualTo(parentBlock.TotalDifficulty + block.Difficulty));
         }
 
@@ -229,10 +248,10 @@ namespace Nethermind.Synchronization.Test
             BlockTree remoteBlockTree = Build.A.BlockTree().OfChainLength(10).TestObject;
             Context ctx = CreateMergeContext(9, (UInt256)ttd);
 
-            Block block = remoteBlockTree.FindBlock(9, BlockTreeLookupOptions.None);
+            Block block = remoteBlockTree.FindBlock(9, BlockTreeLookupOptions.None)!;
             if (sendFakeTd)
             {
-                block.Header.TotalDifficulty *= 2;
+                block.Header.TotalDifficulty = block.Header.TotalDifficulty * 2;
             }
 
             Assert.Throws<EthSyncException>(() => ctx.SyncServer.AddNewBlock(block, ctx.NodeWhoSentTheBlock));
@@ -245,14 +264,19 @@ namespace Nethermind.Synchronization.Test
         public void Post_merge_blocks_wont_be_accepted_by_gossip(long ttd, bool sendFakeTd)
         {
             BlockTree remoteBlockTree = Build.A.BlockTree().OfChainLength(9).TestObject;
-            Block postMergeBlock = Build.A.Block.WithDifficulty(0).WithParent(remoteBlockTree.Head).WithTotalDifficulty(remoteBlockTree.Head.TotalDifficulty).WithNonce(0u).TestObject;
+            Block postMergeBlock = Build.A.Block
+                .WithDifficulty(0)
+                .WithParent(remoteBlockTree.Head!)
+                .WithTotalDifficulty(remoteBlockTree.Head!.TotalDifficulty)
+                .WithNonce(0u)
+                .TestObject;
             remoteBlockTree.SuggestBlock(postMergeBlock);
             Context ctx = CreateMergeContext(9, (UInt256)ttd);
 
-            Block block = remoteBlockTree.FindBlock(9, BlockTreeLookupOptions.None);
+            Block block = remoteBlockTree.FindBlock(9, BlockTreeLookupOptions.None)!;
             if (sendFakeTd)
             {
-                block.Header.TotalDifficulty *= 2;
+                block.Header.TotalDifficulty = block.Header.TotalDifficulty * 2;
             }
 
             ctx.SyncServer.AddNewBlock(block, ctx.NodeWhoSentTheBlock);
@@ -267,15 +291,20 @@ namespace Nethermind.Synchronization.Test
         public void Can_inject_terminal_block_with_not_higher_td_than_head(long ttd, bool sendFakeTd, long difficulty)
         {
             BlockTree remoteBlockTree = Build.A.BlockTree().OfChainLength(9).TestObject;
-            Block terminalBlockWithLowerDifficulty = Build.A.Block.WithDifficulty((UInt256)difficulty).WithParent(remoteBlockTree.Head).WithGasLimit(remoteBlockTree.Head.GasLimit + 1).WithTotalDifficulty(remoteBlockTree.Head.TotalDifficulty + (UInt256)difficulty).TestObject;
+            Block terminalBlockWithLowerDifficulty = Build.A.Block
+                .WithDifficulty((UInt256)difficulty)
+                .WithParent(remoteBlockTree.Head!)
+                .WithGasLimit(remoteBlockTree.Head!.GasLimit + 1)
+                .WithTotalDifficulty(remoteBlockTree.Head.TotalDifficulty + (UInt256)difficulty)
+                .TestObject;
             remoteBlockTree.SuggestBlock(terminalBlockWithLowerDifficulty);
             Context ctx = CreateMergeContext(10, (UInt256)ttd);
             Assert.True(terminalBlockWithLowerDifficulty.IsTerminalBlock(ctx.SpecProvider));
 
-            Block block = remoteBlockTree.FindBlock(9, BlockTreeLookupOptions.None);
+            Block block = remoteBlockTree.FindBlock(9, BlockTreeLookupOptions.None)!;
             if (sendFakeTd)
             {
-                block.Header.TotalDifficulty *= 2;
+                block.Header.TotalDifficulty = block.Header.TotalDifficulty * 2;
             }
 
             ctx.SyncServer.AddNewBlock(block, ctx.NodeWhoSentTheBlock);
@@ -289,15 +318,19 @@ namespace Nethermind.Synchronization.Test
         public void Can_inject_terminal_block_with_higher_td_than_head(long ttd, bool sendFakeTd)
         {
             BlockTree remoteBlockTree = Build.A.BlockTree().OfChainLength(9).TestObject;
-            Block terminalBlockWithHigherTotalDifficulty = Build.A.Block.WithDifficulty(1000010).WithParent(remoteBlockTree.Head).WithTotalDifficulty(remoteBlockTree.Head.TotalDifficulty + 1000010).TestObject;
+            Block terminalBlockWithHigherTotalDifficulty = Build.A.Block
+                .WithDifficulty(1000010)
+                .WithParent(remoteBlockTree.Head!)
+                .WithTotalDifficulty(remoteBlockTree.Head!.TotalDifficulty + 1000010)
+                .TestObject;
             remoteBlockTree.SuggestBlock(terminalBlockWithHigherTotalDifficulty);
             Context ctx = CreateMergeContext(10, (UInt256)ttd);
             Assert.True(terminalBlockWithHigherTotalDifficulty.IsTerminalBlock(ctx.SpecProvider));
 
-            Block? block = remoteBlockTree.FindBlock(9, BlockTreeLookupOptions.None);
+            Block block = remoteBlockTree.FindBlock(9, BlockTreeLookupOptions.None)!;
             if (sendFakeTd)
             {
-                block.Header.TotalDifficulty *= 2;
+                block.Header.TotalDifficulty = block.Header.TotalDifficulty * 2;
             }
 
             ctx.SyncServer.AddNewBlock(block, ctx.NodeWhoSentTheBlock);
@@ -311,40 +344,69 @@ namespace Nethermind.Synchronization.Test
         public void PostMerge_block_from_gossip_should_not_override_main_chain(long ttd)
         {
             BlockTree remoteBlockTree = Build.A.BlockTree().OfChainLength(9).TestObject;
-            Block poWBlockPostMerge = Build.A.Block.WithDifficulty(1000010).WithParent(remoteBlockTree.Head).WithTotalDifficulty(remoteBlockTree.Head.TotalDifficulty + 1000010).TestObject;
+            Block poWBlockPostMerge = Build.A.Block
+                .WithDifficulty(1000010)
+                .WithParent(remoteBlockTree.Head!)
+                .WithTotalDifficulty(remoteBlockTree.Head!.TotalDifficulty + 1000010)
+                .TestObject;
             remoteBlockTree.SuggestBlock(poWBlockPostMerge);
 
             Context ctx = CreateMergeContext(10, (UInt256)ttd);
-            Block newPostMergeBlock = Build.A.Block.WithDifficulty(0).WithParent(ctx.LocalBlockTree.Head).WithTotalDifficulty(ctx.LocalBlockTree.Head.TotalDifficulty).TestObject;
+            Block newPostMergeBlock = Build.A.Block
+                .WithDifficulty(0)
+                .WithParent(ctx.LocalBlockTree.Head!)
+                .WithTotalDifficulty(ctx.LocalBlockTree.Head!.TotalDifficulty)
+                .TestObject;
             ctx.LocalBlockTree.SuggestBlock(newPostMergeBlock);
             ctx.LocalBlockTree.UpdateMainChain(new[] { newPostMergeBlock }, true, true);
 
-            Block block = remoteBlockTree.FindBlock(9, BlockTreeLookupOptions.None);
+            Block block = remoteBlockTree.FindBlock(9, BlockTreeLookupOptions.None)!;
 
             ctx.SyncServer.AddNewBlock(block, ctx.NodeWhoSentTheBlock);
             Assert.That(ctx.LocalBlockTree.BestSuggestedHeader!.Number, Is.EqualTo(10));
             ctx.LocalBlockTree.FindBlock(poWBlockPostMerge.Hash!, BlockTreeLookupOptions.None).Should().NotBeNull();
             ctx.LocalBlockTree.BestSuggestedHeader!.Hash.Should().Be(newPostMergeBlock.Hash!);
-            ctx.LocalBlockTree.FindCanonicalBlockInfo(poWBlockPostMerge.Number).BlockHash.Should().NotBe(poWBlockPostMerge.Hash);
+            ctx.LocalBlockTree.FindCanonicalBlockInfo(poWBlockPostMerge.Number).BlockHash.Should().NotBe(poWBlockPostMerge.Hash!);
         }
 
 
         private Context CreateMergeContext(int blockTreeChainLength, UInt256 ttd)
         {
             Context ctx = new();
-            TestSpecProvider testSpecProvider = new(London.Instance);
-            testSpecProvider.TerminalTotalDifficulty = ttd;
+            TestSpecProvider testSpecProvider = new(London.Instance)
+            {
+                TerminalTotalDifficulty = ttd,
+            };
             Block genesis = Build.A.Block.Genesis.TestObject;
             BlockTree localBlockTree = Build.A.BlockTree(genesis, testSpecProvider).OfChainLength(blockTreeChainLength).TestObject;
 
-            PoSSwitcher poSSwitcher = new(new MergeConfig() { TerminalTotalDifficulty = $"{ttd}" }, new SyncConfig(), new MemDb(), localBlockTree, testSpecProvider, LimboLogs.Instance);
-            MergeSealEngine sealEngine = new(new SealEngine(new NethDevSealEngine(), Always.Valid), poSSwitcher, new MergeSealValidator(poSSwitcher, Always.Valid), LimboLogs.Instance);
+            PoSSwitcher poSSwitcher = new(
+                new MergeConfig
+                {
+                    TerminalTotalDifficulty = $"{ttd}"
+                },
+                new SyncConfig(),
+                new MemDb(),
+                localBlockTree,
+                testSpecProvider,
+                LimboLogs.Instance);
+            MergeSealEngine sealEngine = new(
+                new SealEngine(new NethDevSealEngine(), Always.Valid),
+                poSSwitcher,
+                new MergeSealValidator(poSSwitcher, Always.Valid),
+                LimboLogs.Instance);
             HeaderValidator headerValidator = new(
                 localBlockTree,
                 sealEngine,
                 testSpecProvider,
                 LimboLogs.Instance);
-            MergeHeaderValidator mergeHeaderValidator = new(poSSwitcher, headerValidator, localBlockTree, testSpecProvider, Always.Valid, LimboLogs.Instance);
+            MergeHeaderValidator mergeHeaderValidator = new(
+                poSSwitcher,
+                headerValidator,
+                localBlockTree,
+                testSpecProvider,
+                Always.Valid,
+                LimboLogs.Instance);
 
             InvalidChainTracker invalidChainTracker = new(
                 poSSwitcher,
@@ -418,14 +480,14 @@ namespace Nethermind.Synchronization.Test
                 MainnetSpecProvider.Instance,
                 LimboLogs.Instance);
 
-            Block? block = remoteBlockTree.FindBlock(9, BlockTreeLookupOptions.None);
-            block!.Header!.TotalDifficulty *= 2;
+            Block block = remoteBlockTree.FindBlock(9, BlockTreeLookupOptions.None)!;
+            block.Header.TotalDifficulty = block.Header.TotalDifficulty * 2;
 
             ctx.SyncServer.AddNewBlock(block, ctx.NodeWhoSentTheBlock);
             Assert.That(block.Header.Hash, Is.EqualTo(localBlockTree.BestSuggestedHeader!.Hash));
 
             Block? parentBlock = remoteBlockTree.FindBlock(8, BlockTreeLookupOptions.None);
-            Assert.That(localBlockTree.BestSuggestedHeader.TotalDifficulty, Is.EqualTo(parentBlock.TotalDifficulty + block.Difficulty));
+            Assert.That(localBlockTree.BestSuggestedHeader.TotalDifficulty, Is.EqualTo(parentBlock!.TotalDifficulty + block.Difficulty));
         }
 
         [Test]
@@ -451,7 +513,7 @@ namespace Nethermind.Synchronization.Test
                 MainnetSpecProvider.Instance,
                 LimboLogs.Instance);
 
-            Block block = remoteBlockTree.FindBlock(9, BlockTreeLookupOptions.None);
+            Block block = remoteBlockTree.FindBlock(9, BlockTreeLookupOptions.None)!;
 
             ctx.SyncServer.AddNewBlock(block, ctx.NodeWhoSentTheBlock);
 
@@ -564,7 +626,7 @@ namespace Nethermind.Synchronization.Test
                 .When(r => r.AddNewBlock(Arg.Is<Block>(b => b.Hash == remoteBlockTree.Head!.Hash), Arg.Any<ISyncPeer>()))
                 .Do(_ => count++);
             PeerInfo[] peers = Enumerable.Range(0, peerCount).Take(peerCount)
-                .Select(k => new PeerInfo(new SyncPeerMock(remoteBlockTree, remoteSyncServer: remoteServer)))
+                .Select(_ => new PeerInfo(new SyncPeerMock(remoteBlockTree, remoteSyncServer: remoteServer)))
                 .ToArray();
             ctx.PeerPool.AllPeers.Returns(peers);
             ctx.PeerPool.PeerCount.Returns(peers.Length);
@@ -635,9 +697,9 @@ namespace Nethermind.Synchronization.Test
             public IBlockTree BlockTree { get; }
             public ISyncPeerPool PeerPool { get; }
             public SyncServer SyncServer { get; set; }
-            public ISpecProvider SpecProvider { get; set; }
+            public ISpecProvider SpecProvider { get; set; } = null!;
 
-            public IBlockTree LocalBlockTree { get; set; }
+            public IBlockTree LocalBlockTree { get; set; } = null!;
             public ISyncPeer NodeWhoSentTheBlock { get; }
         }
     }

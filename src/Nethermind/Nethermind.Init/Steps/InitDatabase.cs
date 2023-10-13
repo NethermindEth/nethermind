@@ -27,7 +27,7 @@ namespace Nethermind.Init.Steps
             _api = api;
         }
 
-        public async Task Execute(CancellationToken _)
+        public virtual async Task Execute(CancellationToken _)
         {
             ILogger logger = _api.LogManager.GetClassLogger();
 

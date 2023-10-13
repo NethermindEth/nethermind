@@ -33,11 +33,10 @@ namespace Nethermind.Core.Test.Encoding
                 .WithType(TxType.AccessList)
                 .WithChainId(TestBlockchainIds.ChainId)
                 .WithAccessList(
-                    new AccessList(
-                        new Dictionary<Address, IReadOnlySet<UInt256>>
-                        {
-                            { Address.Zero, new HashSet<UInt256> { (UInt256)1 } }
-                        }, new Queue<object>(new List<object> { Address.Zero, (UInt256)1 })))
+                    new AccessList.Builder()
+                        .AddAddress(Address.Zero)
+                        .AddStorage(1)
+                        .Build())
                 .SignedAndResolved(), "access list");
             yield return (Build.A.Transaction
                 .WithData(new byte[] { 1, 2, 3 })
@@ -45,11 +44,10 @@ namespace Nethermind.Core.Test.Encoding
                 .WithMaxFeePerGas(30)
                 .WithChainId(TestBlockchainIds.ChainId)
                 .WithAccessList(
-                    new AccessList(
-                        new Dictionary<Address, IReadOnlySet<UInt256>>
-                        {
-                            { Address.Zero, new HashSet<UInt256> { (UInt256)1 } }
-                        }, new Queue<object>(new List<object> { Address.Zero, (UInt256)1 })))
+                    new AccessList.Builder()
+                        .AddAddress(Address.Zero)
+                        .AddStorage(1)
+                        .Build())
                 .SignedAndResolved(), "EIP1559 - access list");
             yield return (Build.A.Transaction
                 .WithType(TxType.EIP1559)
@@ -242,6 +240,35 @@ namespace Nethermind.Core.Test.Encoding
             Rlp rlpStreamResult = _txDecoder.Encode(testCase.Tx, RlpBehaviors.SkipTypedWrapping);
             Rlp rlpResult = Rlp.Encode(testCase.Tx, false, true, testCase.Tx.ChainId ?? 0);
             Assert.That(rlpStreamResult.Bytes, Is.EqualTo(rlpResult.Bytes));
+        }
+
+        [Test]
+        public void Duplicate_storage_keys_result_in_different_hashes()
+        {
+            Transaction noDuplicates = Build.A.Transaction
+                .WithType(TxType.EIP1559)
+                .WithChainId(TestBlockchainIds.ChainId)
+                .WithAccessList(
+                    new AccessList.Builder()
+                        .AddAddress(Address.Zero)
+                        .AddStorage(1)
+                        .Build())
+                .SignedAndResolved()
+                .TestObject;
+
+            Transaction duplicates = Build.A.Transaction
+                .WithType(TxType.EIP1559)
+                .WithChainId(TestBlockchainIds.ChainId)
+                .WithAccessList(
+                    new AccessList.Builder()
+                        .AddAddress(Address.Zero)
+                        .AddStorage(1)
+                        .AddStorage(1)
+                        .Build())
+                .SignedAndResolved()
+                .TestObject;
+
+            duplicates.CalculateHash().Should().NotBe(noDuplicates.CalculateHash());
         }
 
         public static IEnumerable<(string, Keccak)> SkipTypedWrappingTestCases()

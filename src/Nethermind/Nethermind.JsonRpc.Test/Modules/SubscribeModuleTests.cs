@@ -9,6 +9,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
@@ -40,18 +41,18 @@ namespace Nethermind.JsonRpc.Test.Modules
     [TestFixture]
     public class SubscribeModuleTests
     {
-        private ISubscribeRpcModule _subscribeRpcModule;
-        private ILogManager _logManager;
-        private IBlockTree _blockTree;
-        private ITxPool _txPool;
-        private IReceiptStorage _receiptStorage;
-        private IFilterStore _filterStore;
-        private ISubscriptionManager _subscriptionManager;
-        private IJsonRpcDuplexClient _jsonRpcDuplexClient;
-        private IJsonSerializer _jsonSerializer;
-        private ISpecProvider _specProvider;
-        private IReceiptMonitor _receiptCanonicalityMonitor;
-        private ISyncConfig _syncConfig;
+        private ISubscribeRpcModule _subscribeRpcModule = null!;
+        private ILogManager _logManager = null!;
+        private IBlockTree _blockTree = null!;
+        private ITxPool _txPool = null!;
+        private IReceiptStorage _receiptStorage = null!;
+        private IFilterStore _filterStore = null!;
+        private ISubscriptionManager _subscriptionManager = null!;
+        private IJsonRpcDuplexClient _jsonRpcDuplexClient = null!;
+        private IJsonSerializer _jsonSerializer = null!;
+        private ISpecProvider _specProvider = null!;
+        private IReceiptMonitor _receiptCanonicalityMonitor = null!;
+        private ISyncConfig _syncConfig = null!;
 
         [SetUp]
         public void Setup()
@@ -293,19 +294,11 @@ namespace Nethermind.JsonRpc.Test.Modules
         [Test]
         public void NewHeadSubscription_should_send_notifications_when_adding_multiple_blocks_at_once_and_after_reorgs()
         {
-            MemDb blocksDb = new();
-            MemDb headersDb = new();
-            MemDb blocksInfosDb = new();
-            ChainLevelInfoRepository chainLevelInfoRepository = new(blocksInfosDb);
             MainnetSpecProvider specProvider = MainnetSpecProvider.Instance;
-            BlockTree blockTree = new(
-                blocksDb,
-                headersDb,
-                blocksInfosDb,
-                chainLevelInfoRepository,
-                specProvider,
-                NullBloomStorage.Instance,
-                LimboLogs.Instance);
+            BlockTree blockTree = Build.A.BlockTree()
+                .WithoutSettingHead
+                .WithSpecProvider(specProvider)
+                .TestObject;
 
             NewHeadSubscription newHeadSubscription = new(_jsonRpcDuplexClient, blockTree, _logManager, specProvider);
             ConcurrentQueue<JsonRpcResult> jsonRpcResult = new();
@@ -350,19 +343,12 @@ namespace Nethermind.JsonRpc.Test.Modules
         [Test]
         public void NewHeadSubscription_should_send_notifications_in_order()
         {
-            MemDb blocksDb = new();
-            MemDb headersDb = new();
-            MemDb blocksInfosDb = new();
-            ChainLevelInfoRepository chainLevelInfoRepository = new(blocksInfosDb);
             MainnetSpecProvider specProvider = MainnetSpecProvider.Instance;
-            BlockTree blockTree = new(
-                blocksDb,
-                headersDb,
-                blocksInfosDb,
-                chainLevelInfoRepository,
-                specProvider,
-                NullBloomStorage.Instance,
-                LimboLogs.Instance);
+
+            BlockTree blockTree = Build.A.BlockTree()
+                .WithoutSettingHead
+                .WithSpecProvider(specProvider)
+                .TestObject;
 
             NewHeadSubscription newHeadSubscription = new(_jsonRpcDuplexClient, blockTree, _logManager, specProvider);
             ConcurrentQueue<JsonRpcResult> jsonRpcResult = new();

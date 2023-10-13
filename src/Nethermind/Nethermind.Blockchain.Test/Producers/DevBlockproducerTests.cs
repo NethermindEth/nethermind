@@ -42,12 +42,10 @@ namespace Nethermind.Blockchain.Test.Producers
             dbProvider.RegisterDb(DbNames.Code, new MemDb());
             dbProvider.RegisterDb(DbNames.Metadata, new MemDb());
 
-            BlockTree blockTree = new(
-                dbProvider,
-                new ChainLevelInfoRepository(dbProvider),
-                specProvider,
-                NullBloomStorage.Instance,
-                LimboLogs.Instance);
+            BlockTree blockTree = Build.A.BlockTree()
+                .WithoutSettingHead
+                .TestObject;
+
             TrieStoreByPath trieStore = new(
                 (IColumnsDb<StateColumns>)dbProvider.RegisteredDbs[DbNames.PathState],
                 LimboLogs.Instance);
@@ -100,18 +98,18 @@ namespace Nethermind.Blockchain.Test.Producers
 
             blockchainProcessor.Start();
             devBlockProducer.Start();
-            ProducedBlockSuggester suggester = new ProducedBlockSuggester(blockTree, devBlockProducer);
+            ProducedBlockSuggester _ = new ProducedBlockSuggester(blockTree, devBlockProducer);
 
             AutoResetEvent autoResetEvent = new(false);
 
-            blockTree.NewHeadBlock += (s, e) => autoResetEvent.Set();
+            blockTree.NewHeadBlock += (_, _) => autoResetEvent.Set();
             blockTree.SuggestBlock(Build.A.Block.Genesis.TestObject);
 
             autoResetEvent.WaitOne(1000).Should().BeTrue("genesis");
 
             trigger.BuildBlock();
             autoResetEvent.WaitOne(1000).Should().BeTrue("1");
-            blockTree.Head.Number.Should().Be(1);
+            blockTree.Head!.Number.Should().Be(1);
         }
     }
 }
