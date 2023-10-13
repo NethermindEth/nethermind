@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Collections.Immutable;
 using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
@@ -1816,6 +1817,93 @@ namespace Nethermind.Blockchain.Test
             blockTree.SuggestBlock(invalidBlock);
             blockTree.DeleteInvalidBlock(invalidBlock);
             findFunction(blockTree, invalidBlock.Hash, lookupOptions).Should().Be(foundInvalid ? invalidBlock.Header : null);
+        }
+
+        [Test]
+        public void On_restart_loads_already_processed_genesis_block()
+        {
+            TestMemDb blocksDb = new();
+            TestMemDb headersDb = new();
+            TestMemDb blocksInfosDb = new();
+            ChainLevelInfoRepository chainLevelInfoRepository = new(blocksInfosDb);
+
+            // First run
+            {
+                Keccak uncleHash = new("0x1dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347");
+                BlockTree tree = Build.A.BlockTree()
+                    .WithBlocksDb(blocksDb)
+                    .WithHeadersDb(headersDb)
+                    .WithBlockInfoDb(blocksInfosDb)
+                    .WithChainLevelInfoRepository(chainLevelInfoRepository)
+                    .TestObject;
+
+                // Holesky genesis
+                Block genesis = new(new(
+                    parentHash: Keccak.Zero,
+                    unclesHash: uncleHash,
+                    beneficiary: new Address(Keccak.Zero),
+                    difficulty: 1,
+                    number: 0,
+                    gasLimit: 25000000,
+                    timestamp: 1695902100,
+                    extraData: Array.Empty<byte>())
+                {
+                    Hash = new Keccak("0xb5f7f912443c940f21fd611f12828d75b534364ed9e95ca4e307729a4661bde4"),
+                    Bloom = Core.Bloom.Empty
+                });
+
+                // Second block
+                Block second = new(new(
+                    parentHash: genesis.Header.Hash!,
+                    unclesHash: uncleHash,
+                    beneficiary: new Address(Keccak.Zero),
+                    difficulty: 0,
+                    number: genesis.Header.Number + 1,
+                    gasLimit: 25000000,
+                    timestamp: genesis.Header.Timestamp + 100,
+                    extraData: Array.Empty<byte>())
+                {
+                    Hash = new Keccak("0x1111111111111111111111111111111111111111111111111111111111111111"),
+                    Bloom = Core.Bloom.Empty,
+                    StateRoot = genesis.Header.Hash,
+                });
+
+                // Third block
+                Block third = new(new(
+                    parentHash: second.Header.Hash!,
+                    unclesHash: uncleHash,
+                    beneficiary: new Address(Keccak.Zero),
+                    difficulty: 0,
+                    number: second.Header.Number + 1,
+                    gasLimit: 25000000,
+                    timestamp: second.Header.Timestamp + 100,
+                    extraData: Array.Empty<byte>())
+                {
+                    Hash = new Keccak("0x2222222222222222222222222222222222222222222222222222222222222222"),
+                    Bloom = Core.Bloom.Empty,
+                    StateRoot = genesis.Header.Hash,
+                });
+
+                tree.SuggestBlock(genesis);
+                tree.Genesis.Should().NotBeNull();
+
+                tree.UpdateMainChain(ImmutableList.Create(genesis), true);
+
+                tree.SuggestBlock(second);
+                tree.SuggestBlock(third);
+            }
+
+            // Assume Nethermind got restarted
+            {
+                BlockTree tree = Build.A.BlockTree()
+                    .WithBlocksDb(blocksDb)
+                    .WithHeadersDb(headersDb)
+                    .WithBlockInfoDb(blocksInfosDb)
+                    .WithChainLevelInfoRepository(chainLevelInfoRepository)
+                    .TestObject;
+
+                tree.Genesis.Should().NotBeNull();
+            }
         }
 
         private class TestBlockTreeVisitor : IBlockTreeVisitor
