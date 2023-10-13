@@ -16,12 +16,11 @@ namespace Nethermind.Evm.Tracing.GethStyle.Javascript;
 
 public class GethJavascriptStyleDb
 {
-    private readonly V8ScriptEngine _engine;
+    public V8ScriptEngine Engine { get; set; } = null!;
     private readonly IWorldState _stateRepository;
 
-    public GethJavascriptStyleDb(V8ScriptEngine engine, IWorldState stateRepository)
+    public GethJavascriptStyleDb(IWorldState stateRepository)
     {
-        _engine = engine;
         _stateRepository = stateRepository;
     }
 
@@ -30,10 +29,10 @@ public class GethJavascriptStyleDb
     public ulong getNonce(IList address) => (ulong)_stateRepository.GetNonce(address.ToAddress());
 
     public dynamic getCode(IList address) =>
-        _stateRepository.GetCode(address.ToAddress()).ToScriptArray(_engine);
+        _stateRepository.GetCode(address.ToAddress()).ToScriptArray(Engine);
 
     public dynamic getState(IList address, IList index) =>
-        _stateRepository.Get(new StorageCell(address.ToAddress(), index.GetUint256())).ToScriptArray(_engine);
+        _stateRepository.Get(new StorageCell(address.ToAddress(), index.GetUint256())).ToScriptArray(Engine);
 
     public bool exists(IList address) => !_stateRepository.GetAccount(address.ToAddress()).IsTotallyEmpty;
 }

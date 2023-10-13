@@ -42,7 +42,12 @@ public class GethLikeJavascriptTracerTests : VirtualMachineTestsBase
     }
 
     private GethLikeJavascriptTxTracer GetTracer(string userTracer) =>
-        new(TestState, Cancun.Instance, GethTraceOptions.Default with { EnableMemory = true, Tracer = userTracer });
+        new(
+            new GethJavascriptStyleDb(TestState),
+            new GethJavascriptStyleCtx(),
+            Cancun.Instance,
+            GethTraceOptions.Default with { EnableMemory = true, Tracer = userTracer }
+        );
 
     [Test]
     public void JS_tracers_log_op_functions()
