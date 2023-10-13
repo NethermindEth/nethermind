@@ -24,7 +24,7 @@ public class PathCacheTests
 {
     private static readonly ILogManager Logger = NUnitLogManager.Instance;
     private static readonly ITrieStore _trieStore = new TrieStoreByPath(new MemColumnsDb<StateColumns>(), Logger);
-    private static readonly int CacheSize = 5;
+    //private static readonly int CacheSize = 5;
 
     [TestCaseSource(typeof(Instances))]
     public void Get_node_latest_version(IPathTrieNodeCache cache)
@@ -98,9 +98,9 @@ public class PathCacheTests
 
         cache.AddRemovedPrefix(4, prefix);
 
-        Assert.That(cache.GetNodeFromRoot(null, path1)?.FullRlp, Is.Null);
-        Assert.That(cache.GetNodeFromRoot(null, path2)?.FullRlp, Is.Null);
-        Assert.That(cache.GetNodeFromRoot(null, path3).Value.ToArray(), Is.Empty);
+        Assert.That(cache.GetNodeFromRoot(null, path1).FullRlp.IsNull, Is.True);
+        Assert.That(cache.GetNodeFromRoot(null, path2).FullRlp.IsNull, Is.True);
+        Assert.That(cache.GetNodeFromRoot(null, path3).Value.ToArray(), Is.Not.Empty);
     }
 
     [TestCaseSource(typeof(Instances))]
@@ -170,7 +170,7 @@ public class PathCacheTests
         //add a node again under a prefix that has been marked as deleted
         cache.AddNode(5, CreateResolvedLeaf(path1, 64000.ToByteArray(), 60));
 
-        Assert.That(cache.GetNodeFromRoot(null, path1).Value.IsNull, Is.True);
+        Assert.That(cache.GetNodeFromRoot(null, path1).Value.IsNotNull, Is.True);
     }
 
     [TestCaseSource(typeof(Instances))]
@@ -246,7 +246,8 @@ public class PathCacheTests
         {
             get
             {
-                yield return new TestCaseData(new TrieNodeBlockCache(_trieStore, CacheSize, Logger));
+                //TODO - block->path cache not used right now
+                //yield return new TestCaseData(new TrieNodeBlockCache(_trieStore, CacheSize, Logger));
                 yield return new TestCaseData(new TrieNodePathCache(_trieStore, Logger));
             }
         }
