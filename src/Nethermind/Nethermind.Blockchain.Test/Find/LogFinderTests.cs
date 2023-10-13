@@ -446,31 +446,23 @@ namespace Nethermind.Blockchain.Test.Find
             }
         }
 
-        private KeyValueStorage setup_new_storage()
+        private EliasFanoStorage setup_new_storage()
         {
-            // Add a address key and value
-            // Add a topic key and value
-            // Make a FilterLog instantiation
-            // Use Logfinder to find the block numbers that match.
-            KeyValueStorage keyValueStorage = new KeyValueStorage();
-            keyValueStorage.Put(TestItem.AddressA.GetHashCode(), new List<long> { 1, 2, 3, 4 });
-            keyValueStorage.Put(TestItem.KeccakA.GetHashCode(), new List<long> { 2, 5 });
-            return keyValueStorage;
+            EliasFanoStorage storage = new EliasFanoStorage();
+            storage.PutAll(TestItem.AddressA.GetHashCode(), new List<ulong> { 1, 2, 3, 4 });
+            storage.PutAll(TestItem.KeccakA.GetHashCode(), new List<ulong> { 2, 5 });
+            return storage;
         }
 
         [TestCaseSource(nameof(FilterByAddressAndTopics))]
         public void test_new_storage(Address address, Keccak[] topics)
         {
-            // Setup new storage and fill it up with test values.
-            // See if the FindBlockNumbers works to output the block numbers with the given address and topics.
-            KeyValueStorage keyValueStorage = setup_new_storage();
-            List<long> results = new List<long>();
+            EliasFanoStorage storage = setup_new_storage();
+            List<ulong> results = new List<ulong>();
             foreach (Keccak topic in topics)
             {
-                results = keyValueStorage.FindBlockNumbers(address.GetHashCode(), topic.GetHashCode());
-                // results?.ForEach(Console.WriteLine);
+                results = storage.FindBlockNumbers(address.GetHashCode(), topic.GetHashCode());
             }
-
             results.Should().BeEquivalentTo(new List<long> {2});
         }
 
