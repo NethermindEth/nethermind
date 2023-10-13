@@ -74,7 +74,7 @@ namespace Nethermind.Blockchain.Receipts
         {
             if (e.PreviousBlock != null)
             {
-                RemoveBlockTx(e.PreviousBlock);
+                RemoveBlockTx(e.PreviousBlock, e.Block);
             }
 
             // Dont block main loop
@@ -364,11 +364,20 @@ namespace Nethermind.Blockchain.Receipts
             }
         }
 
-        private void RemoveBlockTx(Block block)
+        private void RemoveBlockTx(Block block, Block? exceptBlock = null)
         {
+            HashSet<Keccak> newTxs = null;
+            if (exceptBlock is not null)
+            {
+                newTxs = new HashSet<Keccak>(exceptBlock.Transactions.Select((tx) => tx.Hash));
+            }
+
             using IBatch batch = _transactionDb.StartBatch();
             foreach (Transaction tx in block.Transactions)
             {
+                // If the tx is contained in another block, don't remove it. Used for reorg where the same tx
+                // is contained in the new block
+                if (newTxs?.Contains(tx.Hash) == true) continue;
                 batch[tx.Hash.Bytes] = null;
             }
         }
