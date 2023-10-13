@@ -12,7 +12,7 @@ ARG TARGETOS
 COPY . .
 
 RUN arch=$([ "$TARGETARCH" = "amd64" ] && echo "x64" || echo "$TARGETARCH") && \
-    dotnet publish tools/SendBlobs -c $BUILD_CONFIG -r $TARGETOS-$arch -o pub --sc true \
+    dotnet publish tools/SendBlobs -c $BUILD_CONFIG -r $TARGETOS-$arch -o out --sc true \
       -p:BuildTimestamp=$BUILD_TIMESTAMP -p:Commit=$COMMIT_HASH
 
 FROM --platform=$TARGETPLATFORM mcr.microsoft.com/dotnet/runtime:7.0
