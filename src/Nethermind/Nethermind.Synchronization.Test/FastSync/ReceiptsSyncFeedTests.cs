@@ -152,6 +152,7 @@ namespace Nethermind.Synchronization.Test.FastSync
                 _syncConfig,
                 _syncReport,
                 LimboLogs.Instance);
+            _feed.InitializeFeed();
 
             ReceiptsSyncBatch? request = await _feed.PrepareRequest();
             request.Should().BeNull();
@@ -188,6 +189,7 @@ namespace Nethermind.Synchronization.Test.FastSync
         [Test]
         public void When_no_bodies_downloaded_then_request_will_be_empty()
         {
+            _feed.InitializeFeed();
             _feed.PrepareRequest().Result.Should().BeNull();
         }
 
@@ -243,6 +245,7 @@ namespace Nethermind.Synchronization.Test.FastSync
                 _syncConfig,
                 _syncReport,
                 LimboLogs.Instance);
+            _feed.InitializeFeed();
 
             _blockTree.Genesis.Returns(scenario.Blocks[0]!.Header);
             _blockTree.FindCanonicalBlockInfo(Arg.Any<long>()).Returns(
@@ -384,6 +387,7 @@ namespace Nethermind.Synchronization.Test.FastSync
             _receiptStorage.LowestInsertedReceiptBlockNumber.Returns(1);
 
             ReceiptsSyncFeed feed = CreateFeed();
+            feed.InitializeFeed();
             Assert.True(feed.IsFinished);
         }
 
