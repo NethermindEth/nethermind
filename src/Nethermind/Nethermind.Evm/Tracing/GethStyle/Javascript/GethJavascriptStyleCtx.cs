@@ -7,9 +7,7 @@ namespace Nethermind.Evm.Tracing.GethStyle.Javascript;
 
 public class GethJavascriptStyleCtx
 {
-    private readonly V8ScriptEngine _engine;
-
-   public GethJavascriptStyleCtx(V8ScriptEngine engine) => _engine = engine;
+    public V8ScriptEngine Engine { get; set; } = null!;
 
     public dynamic type { get; set; }
     public dynamic from { get; set; }
@@ -18,7 +16,7 @@ public class GethJavascriptStyleCtx
     public dynamic value { get; set; }
     public long gas { get; set; }
     public dynamic gasUsed { get; set; }
-    public dynamic gasPrice { get; set; }
+    public dynamic? gasPrice { get; set; }
     public dynamic intrinsicGas { get; set; }
     public dynamic block { get; set; }
     public dynamic output { get; set; }

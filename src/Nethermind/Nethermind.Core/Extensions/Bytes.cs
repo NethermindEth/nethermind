@@ -932,15 +932,14 @@ namespace Nethermind.Core.Extensions
         }
 
         [DebuggerStepThrough]
-        public static byte[] FromHexString(string hexString, int length)
-        {
-            if (hexString is null)
-            {
-                throw new ArgumentNullException(nameof(hexString));
-            }
+        public static byte[] FromHexString(string hexString, int length) =>
+            hexString is null ? throw new ArgumentNullException(nameof(hexString)) : FromHexString(hexString.AsSpan(), length);
 
+        [DebuggerStepThrough]
+        private static byte[] FromHexString(ReadOnlySpan<char> hexString, int length)
+        {
             int start = hexString is ['0', 'x', ..] ? 2 : 0;
-            ReadOnlySpan<char> chars = hexString.AsSpan(start);
+            ReadOnlySpan<char> chars = hexString.Slice(start);
 
             if (chars.Length == 0)
             {
@@ -968,15 +967,14 @@ namespace Nethermind.Core.Extensions
         }
 
         [DebuggerStepThrough]
-        public static byte[] FromHexString(string hexString)
-        {
-            if (hexString is null)
-            {
-                throw new ArgumentNullException(nameof(hexString));
-            }
+        public static byte[] FromHexString(string hexString) =>
+            hexString is null ? throw new ArgumentNullException(nameof(hexString)) : FromHexString(hexString.AsSpan());
 
+        [DebuggerStepThrough]
+        private static byte[] FromHexString(ReadOnlySpan<char> hexString)
+        {
             int start = hexString is ['0', 'x', ..] ? 2 : 0;
-            ReadOnlySpan<char> chars = hexString.AsSpan(start);
+            ReadOnlySpan<char> chars = hexString.Slice(start);
 
             if (chars.Length == 0)
             {

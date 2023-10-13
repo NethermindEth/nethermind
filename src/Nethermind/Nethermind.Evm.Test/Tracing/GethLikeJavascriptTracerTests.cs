@@ -42,7 +42,12 @@ public class GethLikeJavascriptTracerTests : VirtualMachineTestsBase
     }
 
     private GethLikeJavascriptTxTracer GetTracer(string userTracer) =>
-        new(TestState, Cancun.Instance, GethTraceOptions.Default with { EnableMemory = true, Tracer = userTracer });
+        new(
+            new GethJavascriptStyleDb(TestState),
+            new GethJavascriptStyleCtx(),
+            Cancun.Instance,
+            GethTraceOptions.Default with { EnableMemory = true, Tracer = userTracer }
+        );
 
     [Test]
     public void JS_tracers_log_op_functions()
@@ -99,7 +104,7 @@ public class GethLikeJavascriptTracerTests : VirtualMachineTestsBase
                 GetBytecode(),
                 MainnetSpecProvider.CancunActivation)
             .BuildResult();
-        dynamic[] expectedResult = {0, 32, 64};
+        dynamic[] expectedResult = { 0, 32, 64 };
         Assert.That(traces.CustomTracerResult, Is.EqualTo(expectedResult));
     }
 
@@ -308,9 +313,8 @@ public class GethLikeJavascriptTracerTests : VirtualMachineTestsBase
     [Test]
     public void JS_tracers_builtIns_noop_tracer_legacy()
     {
-        string userTracer = "noopTracer";
         GethLikeTxTrace traces = Execute(
-                GetTracer(userTracer),
+                GetTracer("noopTracer"),
                 GetBytecode(),
                 MainnetSpecProvider.CancunActivation)
             .BuildResult();
@@ -320,9 +324,8 @@ public class GethLikeJavascriptTracerTests : VirtualMachineTestsBase
     [Test]
     public void JS_tracers_builtIns_opcount_tracer()
     {
-        string userTracer = "opcountTracer";
         GethLikeTxTrace traces = Execute(
-                GetTracer(userTracer),
+                GetTracer("opcountTracer"),
                 GetBytecode(),
                 MainnetSpecProvider.CancunActivation)
             .BuildResult();
@@ -332,14 +335,18 @@ public class GethLikeJavascriptTracerTests : VirtualMachineTestsBase
     [Test]
     public void JS_tracers_builtIns_prestate_tracer()
     {
-        string userTracer = "prestateTracer";
         GethLikeTxTrace traces = Execute(
-                GetTracer(userTracer),
+                GetTracer("prestateTracer"),
                 GetComplexBytecode(),
                 MainnetSpecProvider.CancunActivation)
             .BuildResult();
+<<<<<<< HEAD
         // Assert.That(traces.CustomTracerResult, Has.All.Empty);
         }
+=======
+        Assert.That(traces.CustomTracerResult, Has.All.Empty);
+    }
+>>>>>>> upstream/feature/javascript_tracers
 
     private static byte[] GetBytecode()
     {
