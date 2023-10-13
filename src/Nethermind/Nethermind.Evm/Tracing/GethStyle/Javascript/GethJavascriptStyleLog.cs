@@ -123,7 +123,7 @@ namespace Nethermind.Evm.Tracing.GethStyle.Javascript
             public dynamic getAddress() => _addressConverted ??= _address.Bytes.ToScriptArray(_engine);
             public dynamic getCaller() => _callerConverted ??= _caller.Bytes.ToScriptArray(_engine);
             public dynamic getInput() => _inputConverted ??= _input.ToArray().ToScriptArray(_engine);
-            public dynamic getValue() => _value.ToInt64(null);
+            public dynamic getValue() => (BigInteger)_value;
         }
     }
 }
