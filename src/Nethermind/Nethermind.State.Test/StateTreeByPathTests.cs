@@ -702,7 +702,8 @@ namespace Nethermind.Store.Test
             ILogger logger = logManager.GetLogger("");
 
             MemColumnsDb<StateColumns> pathDb = new MemColumnsDb<StateColumns>();
-            StateTreeByPath tree = new(new TrieStoreByPath(pathDb, Persist.IfBlockOlderThan(10), LimboLogs.Instance), LimboLogs.Instance);
+            TrieStoreByPath pathStore = new(pathDb, Persist.IfBlockOlderThan(10), LimboLogs.Instance);
+            StateTreeByPath tree = new(pathStore, LimboLogs.Instance);
 
             MemDb db = new MemDb();
             StateTree hashStateTree = new(new TrieStore(db, logManager), logManager);
@@ -714,14 +715,14 @@ namespace Nethermind.Store.Test
             int seed = Environment.TickCount;
             //int seed = 367667468;
             logger.Warn($"Seed: {seed}");
-            Random r = new Random(seed);
+            Random _random = new Random(seed);
 
             Keccak[] allPaths = new Keccak[numberOfAccounts];
 
             for (int i = 0; i < numberOfAccounts; i++)
             {
                 byte[] key = new byte[32];
-                r.NextBytes(key);
+                _random.NextBytes(key);
                 Keccak keccak = new(key);
                 allPaths[i] = keccak;
 
@@ -735,17 +736,19 @@ namespace Nethermind.Store.Test
             Assert.That(tree.RootHash, Is.EqualTo(hashStateTree.RootHash));
             CompareTrees(hashStateTree, tree);
 
-
+            Keccak prevRootHash = tree.RootHash;
             for (int i = 1; i <= numberOfBlocks; i++)
             {
+                tree = new StateTreeByPath(pathStore, LimboLogs.Instance);
+                tree.RootHash = prevRootHash;
                 for (int accountIndex = 0; accountIndex < numberOfUpdates; accountIndex++)
                 {
                     Account account = TestItem.GenerateRandomAccount();
-                    Keccak path = allPaths[TestItem.Random.Next(numberOfAccounts - 1)];
+                    Keccak path = allPaths[_random.Next(numberOfAccounts - 1)];
 
                     if (hashStateTree.Get(path) is not null)
                     {
-                        if (TestItem.Random.NextSingle() > 0.25)
+                        if (_random.NextSingle() > 0.25)
                         {
                             tree.Set(path, account);
                             hashStateTree.Set(path, account);
@@ -768,7 +771,151 @@ namespace Nethermind.Store.Test
 
                 Assert.That(tree.RootHash, Is.EqualTo(hashStateTree.RootHash));
                 CompareTrees(hashStateTree, tree);
+
+                prevRootHash = tree.RootHash;
             }
+        }
+
+        [Test]
+        public void Get_By_Path_With_Cache_No_Reset_No_Root_Overwrite()
+        {
+            ILogManager logManager = new NUnitLogManager(LogLevel.Warn);
+            ILogger logger = logManager.GetLogger("");
+
+            MemColumnsDb<StateColumns> pathDb = new MemColumnsDb<StateColumns>();
+            TrieStoreByPath pathStore = new(pathDb, Persist.IfBlockOlderThan(2), logManager);
+            StateTreeByPath tree = new(pathStore, LimboLogs.Instance);
+            MemDb innerStateDb = (MemDb)pathDb.GetColumnDb(StateColumns.State);
+
+            tree.Set(TestItem.AddressA, TestItem.GenerateIndexedAccount(100));
+            tree.Set(TestItem.AddressB, TestItem.GenerateIndexedAccount(200));
+            tree.Commit(1);
+            Keccak root_1 = tree.RootHash;
+
+            Assert.That(tree.Get(TestItem.AddressA).Balance, Is.EqualTo((UInt256)100));
+            Assert.That(tree.Get(TestItem.AddressB).Balance, Is.EqualTo((UInt256)200));
+
+            Assert.That(innerStateDb.ReadsCount, Is.EqualTo(0));
+
+            tree.Set(TestItem.AddressC, TestItem.GenerateIndexedAccount(300));
+            tree.Commit(2); //persist here
+            Keccak root_2 = tree.RootHash;
+
+            Assert.That(tree.Get(TestItem.AddressA).Balance, Is.EqualTo((UInt256)100));
+            Assert.That(tree.Get(TestItem.AddressC).Balance, Is.EqualTo((UInt256)300));
+
+            Assert.That(innerStateDb.ReadsCount, Is.EqualTo(2));
+        }
+
+        [Test]
+        public void Get_By_Path_With_Cache_With_Reset_At_Persisted_With_Root_Overwrite()
+        {
+            ILogManager logManager = new NUnitLogManager(LogLevel.Warn);
+            ILogger logger = logManager.GetLogger("");
+
+            MemColumnsDb<StateColumns> pathDb = new MemColumnsDb<StateColumns>();
+            TrieStoreByPath pathStore = new(pathDb, Persist.IfBlockOlderThan(2), logManager);
+            StateTreeByPath tree = new(pathStore, LimboLogs.Instance);
+            MemDb innerStateDb = (MemDb)pathDb.GetColumnDb(StateColumns.State);
+
+            tree.Set(TestItem.AddressA, TestItem.GenerateIndexedAccount(100));
+            tree.Set(TestItem.AddressB, TestItem.GenerateIndexedAccount(200));
+            tree.Commit(1);
+            Keccak root_1 = tree.RootHash;
+
+            tree.Set(TestItem.AddressC, TestItem.GenerateIndexedAccount(300));
+
+            Assert.That(tree.Get(TestItem.AddressA).Balance, Is.EqualTo((UInt256)100));
+            Assert.That(tree.Get(TestItem.AddressB).Balance, Is.EqualTo((UInt256)200));
+            Assert.That(tree.Get(TestItem.AddressC).Balance, Is.EqualTo((UInt256)300));
+
+            //nothing read from DB - all from cache of from in-mem trie
+            Assert.That(innerStateDb.ReadsCount, Is.EqualTo(0));
+
+            tree.Commit(2); //persist here
+            Keccak root_2 = tree.RootHash;
+
+            //reset the trie and set context to latest root hash
+            tree = new StateTreeByPath(pathStore, logManager);
+            tree.RootHash = root_2;
+
+            Assert.That(tree.Get(TestItem.AddressA).Balance, Is.EqualTo((UInt256)100));
+            Assert.That(tree.Get(TestItem.AddressC).Balance, Is.EqualTo((UInt256)300));
+            //both read from database
+            Assert.That(innerStateDb.ReadsCount, Is.EqualTo(2));
+
+            //latest persisted block was 2, so we don't have history at block 1
+            Assert.That(() => tree.Get(TestItem.AddressA, root_1), Throws.TypeOf<InvalidOperationException>());
+        }
+
+        [Test]
+        public void Get_By_Path_With_Cache_With_Reset_Not_At_Persisted_With_Root_Overwrite()
+        {
+            ILogManager logManager = new NUnitLogManager(LogLevel.Warn);
+            ILogger logger = logManager.GetLogger("");
+
+            MemColumnsDb<StateColumns> pathDb = new MemColumnsDb<StateColumns>();
+            TrieStoreByPath pathStore = new(pathDb, Persist.IfBlockOlderThan(4), logManager);
+            StateTreeByPath tree = new(pathStore, LimboLogs.Instance);
+            MemDb innerStateDb = (MemDb)pathDb.GetColumnDb(StateColumns.State);
+
+            //block 0
+            tree.Set(TestItem.AddressA, TestItem.GenerateIndexedAccount(100));
+            tree.Set(TestItem.AddressB, TestItem.GenerateIndexedAccount(200));
+            tree.Commit(0); //block 0 is persisted
+            Keccak root_0 = tree.RootHash;
+
+            //block 1
+            tree.Set(TestItem.AddressA, TestItem.GenerateIndexedAccount(101));
+            tree.Set(TestItem.AddressC, TestItem.GenerateIndexedAccount(301));
+            int expectedReads = 3; //reads for intermmediate nodes when traversing trie in Set operation
+
+            Assert.That(tree.Get(TestItem.AddressA).Balance, Is.EqualTo((UInt256)101));
+            Assert.That(tree.Get(TestItem.AddressB).Balance, Is.EqualTo((UInt256)200));
+            Assert.That(tree.Get(TestItem.AddressC).Balance, Is.EqualTo((UInt256)301));
+
+            //1 accounts read from database, 2 from trie (modifications not yet commited)
+            expectedReads++;
+            Assert.That(innerStateDb.ReadsCount, Is.EqualTo(expectedReads));
+
+            tree.Commit(1); //not persisted
+            Keccak root_1 = tree.RootHash;
+
+            //reset the trie and set context to latest root hash (block 1 not persisted)
+            tree = new StateTreeByPath(pathStore, logManager);
+            tree.RootHash = root_1;
+
+            Assert.That(tree.Get(TestItem.AddressA).Balance, Is.EqualTo((UInt256)101));
+            Assert.That(tree.Get(TestItem.AddressC).Balance, Is.EqualTo((UInt256)301));
+            //both reads from cache
+            Assert.That(innerStateDb.ReadsCount, Is.EqualTo(expectedReads));
+
+            //can return for root_0 as it's the last persisted - both reads from cache
+            expectedReads += 2 * 2;
+            Assert.That(tree.Get(TestItem.AddressA, root_0).Balance, Is.EqualTo((UInt256)100));
+            Assert.That(tree.Get(TestItem.AddressB, root_0).Balance, Is.EqualTo((UInt256)200));
+            Assert.That(innerStateDb.ReadsCount, Is.EqualTo(expectedReads));
+
+            //block 2
+            tree.Set(TestItem.AddressA, TestItem.GenerateIndexedAccount(102));
+            tree.Set(TestItem.AddressC, TestItem.GenerateIndexedAccount(302));
+
+            tree.Commit(2); //not persisted
+            Keccak root_2 = tree.RootHash;
+
+            //reset the trie and set context to latest root hash (block 1 not persisted)
+            tree = new StateTreeByPath(pathStore, logManager);
+            tree.RootHash = root_1;
+
+            //get items at current root hash - data at block 1 - all reads from cache
+            Assert.That(tree.Get(TestItem.AddressA).Balance, Is.EqualTo((UInt256)101));
+            Assert.That(tree.Get(TestItem.AddressC).Balance, Is.EqualTo((UInt256)301));
+            Assert.That(innerStateDb.ReadsCount, Is.EqualTo(expectedReads));
+
+            //get items at overwritten root hash pointing to block 2 - all reads from cache
+            Assert.That(tree.Get(TestItem.AddressA, root_2).Balance, Is.EqualTo((UInt256)102));
+            Assert.That(tree.Get(TestItem.AddressC, root_2).Balance, Is.EqualTo((UInt256)302));
+            Assert.That(innerStateDb.ReadsCount, Is.EqualTo(expectedReads));
         }
 
         private void CompareTrees(StateTree keccakTree, StateTreeByPath pathTree)
