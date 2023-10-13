@@ -83,7 +83,7 @@ namespace Nethermind.Core
             BlockInfo[] blockInfos = BlockInfos;
 
             int? foundIndex = FindIndex(hash);
-            if (!foundIndex.HasValue)
+            if (foundIndex is null)
             {
                 Array.Resize(ref blockInfos, blockInfos.Length + 1);
             }
@@ -91,6 +91,9 @@ namespace Nethermind.Core
             {
                 if (blockInfo.IsBeaconInfo && blockInfos[foundIndex.Value].IsBeaconMainChain)
                     blockInfo.Metadata |= BlockMetadata.BeaconMainChain;
+
+                if (blockInfo.EqualsIgnoringWasProcessed(blockInfos[foundIndex.Value]))
+                    blockInfo.WasProcessed |= blockInfos[foundIndex.Value].WasProcessed;
             }
 
             int index = foundIndex ?? blockInfos.Length - 1;
