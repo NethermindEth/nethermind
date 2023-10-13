@@ -78,8 +78,18 @@ namespace Nethermind.Evm.Tracing.GethStyle.Javascript
             public int? getCount() => _items.Count;
 
             public dynamic? peek(int index) //needs looking into
-                => BigInteger.Parse(_items[^index].AsSpan().Slice(2), NumberStyles.HexNumber);
-
+                // => BigInteger.Parse(_items[^index].AsSpan().Slice(2), NumberStyles.HexNumber);
+            {
+                int topIndex = _items.Count - 1 - index;
+                string rtn = topIndex >= 0 && topIndex < _items.Count ? _items[topIndex] : null;
+                rtn = rtn?.Substring(2);
+                // Convert the hexadecimal string to a byte array
+                byte[] byteArray = Enumerable.Range(0, rtn.Length / 2)
+                    .Select(x => Convert.ToByte(rtn.Substring(x * 2, 2), 16))
+                    .ToArray();
+                BigInteger bigIntValue = new (byteArray);
+                return bigIntValue;
+            }
             public string? getItem(int index) => index >= 0 && index < _items.Count ? _items[index] : null;
         }
 

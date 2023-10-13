@@ -18,6 +18,7 @@ using Nethermind.State;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.Precompiles;
+using Newtonsoft.Json.Linq;
 
 namespace Nethermind.Evm.Tracing.GethStyle.Javascript;
 
@@ -29,6 +30,7 @@ public class GethLikeJavascriptTxTracer : GethLikeTxTracer<GethTxTraceEntry>
     private readonly GethJavascriptStyleLog _customTraceEntry;
     private readonly List<byte> _memory = new List<byte>();
     private readonly GethJavascriptStyleDb _db;
+    private readonly GethJavascriptStyleCtx _ctx;
 
     // bigIntegerJS is the minified version of https://github.com/peterolson/BigInteger.js.
     private const string BigIntegerJS =
@@ -38,6 +40,7 @@ public class GethLikeJavascriptTxTracer : GethLikeTxTracer<GethTxTraceEntry>
     public GethLikeJavascriptTxTracer(IWorldState worldState, IReleaseSpec spec, GethTraceOptions options) : base(options)
     {
         _db = new GethJavascriptStyleDb(_engine, worldState);
+        _ctx = new GethJavascriptStyleCtx(_engine);
         _customTraceEntry = new(_engine) { memory = new GethJavascriptStyleLog.JSMemory(_engine, _memory) };
         _engine.Execute(LoadJavascriptCode(options.Tracer));
         _engine.Execute(BigIntegerJS);
@@ -98,10 +101,10 @@ public class GethLikeJavascriptTxTracer : GethLikeTxTracer<GethTxTraceEntry>
     public override GethLikeTxTrace BuildResult()
     {
         GethLikeTxTrace trace = base.BuildResult();
-        trace.CustomTracerResult = _tracer.result(_customTraceEntry.ctx, _db);
+        trace.CustomTracerResult = _tracer.result(_ctx, _db);
         dynamic result = trace.CustomTracerResult;
         trace.CustomTracerResult = result;
-        // Console.WriteLine("this is the result {0}", JArray.FromObject(result ));
+        // Console.WriteLine("this is the result {0}", JArray.FromObject(result));
         return trace;
     }
 
@@ -110,19 +113,27 @@ public class GethLikeJavascriptTxTracer : GethLikeTxTracer<GethTxTraceEntry>
     {
         base.ReportAction(gas, value, from, to, input, callType, isPrecompileCall);
         _customTraceEntry.contract = new GethJavascriptStyleLog.Contract(_engine, from, to, value, input);
-        _customTraceEntry.ctx = new GethJavascriptStyleLog.CTX(_engine, GetCallType(callType), from, to, input, value, gas, 0, 0, 0, 0, new byte[0], DateTime.Now.ToString());
+        _ctx.type = GetCallType(callType);
+        _ctx.from = from?.Bytes.ToScriptArray(_engine);
+        _ctx.to = to?.Bytes.ToScriptArray(_engine);
+        _ctx.input = input.ToArray().ToScriptArray(_engine);
+        _ctx.value = value.ToInt64(null);
+        _ctx.gas = gas;
+        // _customTraceEntry.ctx = new GethJavascriptStyleLog.CTX(_engine, GetCallType(callType), from, to, input, value, gas, 0, 0, 0, 0, new byte[0], DateTime.Now.ToString());
     }
 
     public override void MarkAsFailed(Address recipient, long gasSpent, byte[]? output, string error, Keccak? stateRoot = null)
     {
         base.MarkAsFailed(recipient, gasSpent, output, error, stateRoot);
-        // _customTraceEntry.ctx.gasUsed = gasSpent;
+        _ctx.gasUsed = gasSpent;
+        _ctx.output = output?.ToScriptArray(_engine);
     }
 
     public override void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Keccak? stateRoot = null)
     {
         base.MarkAsSuccess(recipient, gasSpent, output, logs, stateRoot);
-        // _customTraceEntry.ctx.gasUsed = gasSpent;
+        _ctx.gasUsed = gasSpent;
+        _ctx.output = output.ToScriptArray(_engine);
     }
 
     public override void ReportMemoryChange(long offset, in ReadOnlySpan<byte> data)

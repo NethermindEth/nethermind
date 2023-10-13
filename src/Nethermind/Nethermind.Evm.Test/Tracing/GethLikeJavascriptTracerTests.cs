@@ -99,8 +99,8 @@ public class GethLikeJavascriptTracerTests : VirtualMachineTestsBase
                 GetBytecode(),
                 MainnetSpecProvider.CancunActivation)
             .BuildResult();
-        dynamic[] expectedStrings = { "FAULT: undefined", 32, 64 };
-        Assert.That(traces.CustomTracerResult, Is.EqualTo(expectedStrings));
+        dynamic[] expectedResult = {0, 32, 64};
+        Assert.That(traces.CustomTracerResult, Is.EqualTo(expectedResult));
     }
 
     [Test]
@@ -330,16 +330,16 @@ public class GethLikeJavascriptTracerTests : VirtualMachineTestsBase
     }
 
     [Test]
-    public void JS_tracers_builtIns_evmdis_tracer()
+    public void JS_tracers_builtIns_prestate_tracer()
     {
-        string userTracer = "evmdisTracer";
+        string userTracer = "prestateTracer";
         GethLikeTxTrace traces = Execute(
                 GetTracer(userTracer),
                 GetComplexBytecode(),
                 MainnetSpecProvider.CancunActivation)
             .BuildResult();
         Assert.That(traces.CustomTracerResult, Has.All.Empty);
-    }
+        }
 
     private static byte[] GetBytecode()
     {
