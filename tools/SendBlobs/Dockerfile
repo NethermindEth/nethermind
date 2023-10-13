@@ -3,37 +3,24 @@
 
 FROM --platform=$BUILDPLATFORM mcr.microsoft.com/dotnet/sdk:7.0-jammy AS build
 
-ARG TARGETPLATFORM
-ARG TARGETOS
-ARG TARGETARCH
-ARG BUILDPLATFORM
 ARG BUILD_CONFIG=release
 ARG BUILD_TIMESTAMP
 ARG COMMIT_HASH
+ARG TARGETARCH
+ARG TARGETOS
 
 COPY . .
 
-RUN if [ "$TARGETARCH" = "amd64" ]; \
-    then dotnet publish tools/SendBlobs -c $BUILD_CONFIG -r $TARGETOS-x64 -o out --sc \
-      -p:BuildTimestamp=$BUILD_TIMESTAMP -p:Commit=$COMMIT_HASH -p:Deterministic=true ; \
-    else dotnet publish tools/SendBlobs -c $BUILD_CONFIG -r $TARGETOS-$TARGETARCH -o out --sc \
-      -p:BuildTimestamp=$BUILD_TIMESTAMP -p:Commit=$COMMIT_HASH -p:Deterministic=true ; \
-    fi
-
+RUN arch=$([ "$TARGETARCH" = "amd64" ] && echo "x64" || echo "$TARGETARCH") && \
+    dotnet publish tools/SendBlobs -c $BUILD_CONFIG -r $TARGETOS-$arch -o pub --sc true \
+      -p:BuildTimestamp=$BUILD_TIMESTAMP -p:Commit=$COMMIT_HASH
 
 FROM --platform=$TARGETPLATFORM mcr.microsoft.com/dotnet/runtime:7.0
 
-ARG TARGETPLATFORM
-ARG TARGETOS
-ARG TARGETARCH
-ARG BUILDPLATFORM
+WORKDIR /nethermind
 
 RUN apt-get update && apt-get -y install libsnappy-dev
 
-WORKDIR /nethermind
-
 COPY --from=build /out/SendBlobs .
-
-LABEL git_commit=$COMMIT_HASH
 
 ENTRYPOINT ["./SendBlobs"]
