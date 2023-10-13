@@ -449,7 +449,6 @@ public partial class MergePlugin : IConsensusWrapperPlugin, ISynchronizationPlug
                 _blockCacheService,
                 _beaconSync,
                 _api.DbProvider.MetadataDb,
-                synchronizer.SyncProgressResolver,
                 _api.LogManager);
         }
 

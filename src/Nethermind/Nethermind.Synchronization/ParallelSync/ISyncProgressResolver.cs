@@ -10,8 +10,6 @@ namespace Nethermind.Synchronization.ParallelSync
 {
     public interface ISyncProgressResolver : IFullStateFinder
     {
-        void UpdateBarriers();
-
         long FindBestHeader();
 
         long FindBestFullBlock();

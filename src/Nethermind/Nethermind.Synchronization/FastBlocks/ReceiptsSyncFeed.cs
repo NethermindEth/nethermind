@@ -64,17 +64,12 @@ namespace Nethermind.Synchronization.FastBlocks
                 throw new InvalidOperationException("Entered fast blocks mode without fast blocks enabled in configuration.");
             }
 
-            _pivotNumber = _syncConfig.PivotNumberParsed;
-            _barrier = _syncConfig.AncientReceiptsBarrierCalc;
-
-            if (_logger.IsInfo) _logger.Info($"Using pivot {_pivotNumber} and barrier {_barrier} in receipts sync");
-
-            ResetSyncStatusList();
+            _pivotNumber = -1; // First reset in `InitializeFeed`.
         }
 
         public override void InitializeFeed()
         {
-            if (_pivotNumber < _syncConfig.PivotNumberParsed)
+            if (_pivotNumber != _syncConfig.PivotNumberParsed || _barrier != _syncConfig.AncientReceiptsBarrierCalc)
             {
                 _pivotNumber = _syncConfig.PivotNumberParsed;
                 _barrier = _syncConfig.AncientReceiptsBarrierCalc;

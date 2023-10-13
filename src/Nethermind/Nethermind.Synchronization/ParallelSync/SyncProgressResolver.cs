@@ -49,10 +49,6 @@ namespace Nethermind.Synchronization.ParallelSync
             _snapSyncFeed = snapSyncFeed;
         }
 
-        public void UpdateBarriers()
-        {
-        }
-
         public long FindBestFullState()
         {
             return _fullStateFinder.FindBestFullState();
