@@ -231,10 +231,10 @@ public class OptimismPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitial
         return Task.CompletedTask;
     }
 
-    public Task InitRpcModules()
+    public async Task InitRpcModules()
     {
         if (_api is null || !ShouldRunSteps(_api))
-            return Task.CompletedTask;
+            return;
 
         ArgumentNullException.ThrowIfNull(_api.SpecProvider);
         ArgumentNullException.ThrowIfNull(_api.BlockProcessingQueue);
@@ -255,8 +255,8 @@ public class OptimismPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitial
         // Ugly temporary hack to not receive engine API messages before end of processing of all blocks after restart.
         // Then we will wait 5s more to ensure everything is processed
         while (!_api.BlockProcessingQueue.IsEmpty)
-            Thread.Sleep(100);
-        Thread.Sleep(5000);
+            await Task.Delay(100);
+        await Task.Delay(5000);
 
         BlockImprovementContextFactory improvementContextFactory = new(
             _blockProductionTrigger,
@@ -318,8 +318,6 @@ public class OptimismPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitial
         _api.RpcModuleProvider.RegisterSingle(opEngine);
 
         if (_logger.IsInfo) _logger.Info("Optimism Engine Module has been enabled");
-
-        return Task.CompletedTask;
     }
 
     public ValueTask DisposeAsync() => ValueTask.CompletedTask;
