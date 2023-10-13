@@ -9,6 +9,7 @@ using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Find;
+using Nethermind.Blockchain.Headers;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Blockchain.Visitors;
 using Nethermind.Core;
@@ -1824,18 +1825,23 @@ namespace Nethermind.Blockchain.Test
         {
             TestMemDb blocksDb = new();
             TestMemDb headersDb = new();
+            TestMemDb blockNumberDb = new();
             TestMemDb blocksInfosDb = new();
             ChainLevelInfoRepository chainLevelInfoRepository = new(blocksInfosDb);
 
             // First run
             {
                 Keccak uncleHash = new("0x1dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347");
-                BlockTree tree = Build.A.BlockTree()
-                    .WithBlocksDb(blocksDb)
-                    .WithHeadersDb(headersDb)
-                    .WithBlockInfoDb(blocksInfosDb)
-                    .WithChainLevelInfoRepository(chainLevelInfoRepository)
-                    .TestObject;
+                BlockTree tree = new(
+                    blockStore: new BlockStore(blocksDb),
+                    headerDb: new HeaderStore(headersDb, blockNumberDb),
+                    blockInfoDb: new MemDb(),
+                    metadataDb: new MemDb(),
+                    chainLevelInfoRepository: chainLevelInfoRepository,
+                    specProvider: HoleskySpecProvider.Instance,
+                    bloomStorage: NullBloomStorage.Instance,
+                    syncConfig: new SyncConfig(),
+                    logManager: LimboLogs.Instance);
 
                 // Holesky genesis
                 Block genesis = new(new(
@@ -1895,12 +1901,16 @@ namespace Nethermind.Blockchain.Test
 
             // Assume Nethermind got restarted
             {
-                BlockTree tree = Build.A.BlockTree()
-                    .WithBlocksDb(blocksDb)
-                    .WithHeadersDb(headersDb)
-                    .WithBlockInfoDb(blocksInfosDb)
-                    .WithChainLevelInfoRepository(chainLevelInfoRepository)
-                    .TestObject;
+                BlockTree tree = new(
+                    blockStore: new BlockStore(blocksDb),
+                    headerDb: new HeaderStore(headersDb, blockNumberDb),
+                    blockInfoDb: new MemDb(),
+                    metadataDb: new MemDb(),
+                    chainLevelInfoRepository: chainLevelInfoRepository,
+                    specProvider: HoleskySpecProvider.Instance,
+                    bloomStorage: NullBloomStorage.Instance,
+                    syncConfig: new SyncConfig(),
+                    logManager: LimboLogs.Instance);
 
                 tree.Genesis.Should().NotBeNull();
             }
