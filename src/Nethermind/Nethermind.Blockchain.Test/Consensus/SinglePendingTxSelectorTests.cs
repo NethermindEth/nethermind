@@ -25,12 +25,6 @@ namespace Nethermind.Blockchain.Test.Consensus
         }
 
         [Test, Timeout(Timeout.MaxTestTime)]
-        public void Throws_on_null_argument()
-        {
-            Assert.Throws<ArgumentNullException>(() => new SinglePendingTxSelector(null));
-        }
-
-        [Test, Timeout(Timeout.MaxTestTime)]
         public void When_no_transactions_returns_empty_list()
         {
             ITxSource txSource = Substitute.For<ITxSource>();

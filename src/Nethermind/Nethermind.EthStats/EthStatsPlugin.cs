@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
@@ -64,7 +65,7 @@ public class EthStatsPlugin : INethermindPlugin
 
     public async Task InitNetworkProtocol()
     {
-        var (getFromAPi, _) = _api.ForNetwork;
+        (IApiWithNetwork getFromAPi, _) = _api.ForNetwork;
         INetworkConfig networkConfig = _api.Config<INetworkConfig>();
         IInitConfig initConfig = _api.Config<IInitConfig>();
 
@@ -104,12 +105,13 @@ public class EthStatsPlugin : INethermindPlugin
                 _ethStatsConfig.Secret!,
                 _ethStatsClient,
                 sender,
-                getFromAPi.TxPool,
-                getFromAPi.BlockTree,
-                getFromAPi.PeerManager,
-                getFromAPi.GasPriceOracle,
+                getFromAPi.TxPool!,
+                getFromAPi.BlockTree!,
+                getFromAPi.PeerManager!,
+                getFromAPi.GasPriceOracle!,
                 getFromAPi.EthSyncingInfo!,
                 initConfig.IsMining,
+                TimeSpan.FromSeconds(_ethStatsConfig.SendInterval),
                 getFromAPi.LogManager);
 
             await _ethStatsIntegration.InitAsync();

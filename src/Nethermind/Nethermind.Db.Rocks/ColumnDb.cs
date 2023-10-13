@@ -92,7 +92,7 @@ public class ColumnDb : IDbWithSpan
             }
             else
             {
-                _underlyingBatch.Set(key, value, _columnDb._columnFamily);
+                _underlyingBatch.Set(key, value, _columnDb._columnFamily, flags);
             }
         }
     }
