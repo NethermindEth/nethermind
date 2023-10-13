@@ -53,6 +53,11 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
                 using CancellationTokenSource cancellationTokenSource = new(_rpcConfig.Timeout);
                 Transaction tx = transactionCall.ToTransaction(_blockchainBridge.GetChainId());
+                if (tx.IsContractCreation && tx.DataLength == 0)
+                {
+                    return ResultWrapper<TResult>.Fail("Contract creation without any data provided.",
+                                               ErrorCodes.InvalidInput);
+                }
                 return ExecuteTx(header.Clone(), tx, cancellationTokenSource.Token);
             }
 
