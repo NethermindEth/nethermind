@@ -10,11 +10,15 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Serialization.Ssz;
 using Snappier;
 
 namespace Nethermind.Era1;
 internal class EraBuilder:IDisposable
 {
+    private const int MaxEra1Size = 8192;
+
+
     private long _startNumber;
     private bool _firstBlock = true;
     private UInt256 _startTd;
@@ -27,46 +31,88 @@ internal class EraBuilder:IDisposable
     private ReceiptDecoder _receiptDecoder = new ReceiptDecoder();
 
     private FileStream _fileStream;
-    private SnappyStream _snappyStream;
     private E2Store _e2Store;
     private bool _disposedValue;
 
     internal EraBuilder(string file)
     {
         _fileStream = File.OpenWrite(file);
-        _snappyStream = new SnappyStream(_fileStream, System.IO.Compression.CompressionMode.Compress);
         //TODO FIX
         _e2Store = E2Store.FromStream(_fileStream).Result;
     }
 
-    public Task Add(Block block, TxReceipt[] receipts, UInt256 totalDifficulty)
+    public async Task<bool> Add(Block block, TxReceipt[] receipts, UInt256 totalDifficulty, CancellationToken cancellation = default)
     {
+        if (block.Header == null)
+            throw new ArgumentException("The block must have a header.", nameof(block));
+
+        if (block.Hash == null)
+            throw new ArgumentException("The block must have a hash.", nameof(block));
+
         if (_firstBlock)
         {
-            _firstBlock = false;
-
             _startNumber = block.Number;
-            _totalWritten = _startNumber;
             _startTd = totalDifficulty - block.Difficulty;
+            await WriteVersion();
+            _firstBlock = false;
         }
+
+        if (_entryIndexInfos.Count >= MaxEra1Size)
+            return false;
+
+        _entryIndexInfos.Add(new EntryIndexInfo(_totalWritten, block.Hash, totalDifficulty));
+        //TODO possible optimize
+
         Rlp encodedHeader = _headerDecoder.Encode(block.Header);
+        _totalWritten += await _e2Store.WriteEntryAsSnappy(EntryTypes.TypeCompressedHeader, encodedHeader.Bytes, cancellation);
 
         Rlp encodedBody = _blockBodyDecoder.Encode(block.Body);
-        NettyRlpStream encodedReceipt = _receiptDecoder.EncodeToNewNettyStream(receipts);
-        
-        throw new NotImplementedException();
+        _totalWritten += await _e2Store.WriteEntryAsSnappy(EntryTypes.TypeCompressedBody, encodedBody.Bytes, cancellation);
+
+        Rlp encodedReceipts = _receiptDecoder.Encode(receipts);
+        _totalWritten += await _e2Store.WriteEntryAsSnappy(EntryTypes.TypeCompressedReceipts, encodedReceipts.Bytes, cancellation);
+
+        _totalWritten += await _e2Store.WriteEntry(EntryTypes.TypeTotalDifficulty, totalDifficulty.ToLittleEndian(), cancellation);
+
+        return true;
+    }
+
+    public async Task Finalize()
+    {
+        if (_firstBlock)
+            throw new EraException("Finalize was called,but no blocks have been added yet.");
+
+        await _fileStream.FlushAsync();
+        _entryIndexInfos.Clear();
+    }
+
+    private Keccak CalculateAccumulator()
+    {
+        //TODO optmize
+        var buf = new byte[32];
+        foreach (var info in _entryIndexInfos)
+        {
+        }
+        return null;
     }
 
     private Task WriteVersion()
     {
-        return _e2Store.WriteEntry(E2Store.TypeVersion, Array.Empty<byte>(), 0);
+        return _e2Store.WriteEntry(EntryTypes.TypeVersion, Array.Empty<byte>());
     }
 
     private struct EntryIndexInfo
     {
-        public int Index;
+        public long Index;
         public Keccak Hash;
         public UInt256 TotalDifficulty;
+
+        public EntryIndexInfo(long index, Keccak hash, UInt256 totalDifficulty)
+        {
+            Index = index;
+            Hash = hash;
+            TotalDifficulty = totalDifficulty;
+        }
     }
 
     protected virtual void Dispose(bool disposing)

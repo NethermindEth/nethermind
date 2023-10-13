@@ -1,23 +1,21 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Snappier;
+
 namespace Nethermind.Era1;
 
-internal class Entry
+internal struct Entry
 {
-    public ushort Type;
-    public byte[] Value;
-    public Entry(ushort t) : this(t, Array.Empty<byte>())
-    {}
-    public Entry(ushort t, byte[] v)
+    public ushort Type { get; }
+    public long Offset { get; }
+    public long ValueOffset => Offset + E2Store.HeaderSize;
+    public long Length { get; }
+    public Entry(ushort type, long offset, long length)
     {
-        Type = t;
-        Value = v;
+        Length = length;
+        Offset = offset;
+        Type = type;
     }
-    public StreamArray ValueAsStream()
-    {
-        return new StreamArray(Value);
-    }
-
 }
 

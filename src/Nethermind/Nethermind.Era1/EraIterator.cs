@@ -7,9 +7,11 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 using System.Reflection.PortableExecutable;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading.Tasks;
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
 using Snappier;
@@ -55,6 +57,7 @@ internal class EraIterator : IAsyncEnumerable<(Block, TxReceipt[])>, IDisposable
     {
         if (_store.Metadata.Start + _store.Metadata.Count <= _currentBlockIndex)
         {
+            //TODO test enumerate more than once
             Reset();
             return (null, null);
         }
@@ -64,30 +67,27 @@ internal class EraIterator : IAsyncEnumerable<(Block, TxReceipt[])>, IDisposable
         {
             Debug.WriteLine($"Reading block entry at index {_currentBlockIndex}");
             (int read, Entry e) = await _store.ReadEntryAt(blockOffset, cancellationToken);
-            CheckType(e, E2Store.TypeCompressedHeader);
-            blockOffset += read;
-
-            BlockHeader header = DecompressAndDecode<BlockHeader>(buffer, e);
+            CheckType(e, EntryTypes.TypeCompressedHeader);
+            BlockHeader header = await DecompressAndDecode<BlockHeader>(buffer, e);
             var headerEntry = e;
-            (read, e) = await _store.ReadEntryAt(blockOffset, cancellationToken);
-            CheckType(e, E2Store.TypeCompressedBody);
-            blockOffset += read;
 
-            BlockBody body = DecompressAndDecode<BlockBody>(buffer, e);
+            (read, e) = await _store.ReadEntryCurrentPosition(cancellationToken);
+            CheckType(e, EntryTypes.TypeCompressedBody);
 
-            (read, e) = await _store.ReadEntryAt(blockOffset, cancellationToken);
-            CheckType(e, E2Store.TypeCompressedReceipts);
-            blockOffset += read;
+            BlockBody body = await DecompressAndDecode<BlockBody>(buffer, e);
 
-            read = Decompress(buffer, 0, e);
+            (read, e) = await _store.ReadEntryCurrentPosition(cancellationToken);
+            CheckType(e, EntryTypes.TypeCompressedReceipts);
+
+            read = await Decompress(buffer, e);
             TxReceipt[] receipts = DecodeReceipts(buffer, 0, read);
             
 
-            (read, e) = await _store.ReadEntryAt(blockOffset, cancellationToken);
-            CheckType(e, E2Store.TypeTotalDifficulty);
-            blockOffset += read;
-           
-            _currentTotalDiffulty = e.Value.AsRlpValueContext().DecodeUInt256();
+            (read, e) = await _store.ReadEntryCurrentPosition(cancellationToken);
+            CheckType(e, EntryTypes.TypeTotalDifficulty);
+            read = await _store.ReadEntryValue(buffer, e, cancellationToken);
+            
+            _currentTotalDiffulty = new UInt256(new ArraySegment<byte>(buffer, 0, read));
 
             Block block = new Block(header, body);
             
@@ -130,48 +130,52 @@ internal class EraIterator : IAsyncEnumerable<(Block, TxReceipt[])>, IDisposable
         if (e.Type != expected)
             throw new EraException($"Expected an entry of type {expected}, but got {e.Type}.");
     }
-    private static int Decompress(byte[] buffer, int offset, Entry e)
+    private Task<int> Decompress(byte[] buffer, Entry e, CancellationToken cancellation = default)
     {
-        using var decompressionStream = new SnappyStream(e.ValueAsStream(), System.IO.Compression.CompressionMode.Decompress);
-        //TODO handle read more than buffer length
-        var bufferRead = decompressionStream.Read(buffer, offset, buffer.Length - offset);
-        return bufferRead;
+        return _store.ReadEntryValueAsSnappy(buffer, e, cancellation);
     }
 
-    private static T DecompressAndDecode<T>(byte[] buffer, Entry e) where T : class
+    private async Task<T> DecompressAndDecode<T>(byte[] buffer, Entry e, CancellationToken cancellation = default) where T : class
     {
-        using var decompressionStream = new SnappyStream(e.ValueAsStream(), System.IO.Compression.CompressionMode.Decompress);
         //TODO handle read more than buffer length
-        var bufferRead = decompressionStream.Read(buffer, 0, buffer.Length);
-        var section = new Span<byte>(buffer, 0, bufferRead);
-        T? decoded = RlpDecode<T>(section);
+        var bufferRead = await _store.ReadEntryValueAsSnappy(buffer, e, cancellation);
+        T? decoded = RlpDecode<T>(buffer, 0, bufferRead);
+        //TODO remove
         switch (typeof(T).Name)
         {
             case nameof(BlockHeader):
                 Rlp encodedHeader = new HeaderDecoder().Encode((BlockHeader)Convert.ChangeType(decoded, typeof(BlockHeader)));
-                if (!section.SequenceEqual(encodedHeader.Bytes))
+                if (!ByteArrayCompare(buffer, encodedHeader.Bytes, bufferRead))
                 {
                     throw new Exception("not equal");
                 }
                 break;
             case nameof(BlockBody):
-                Rlp encodedBody= new BlockBodyDecoder().Encode((BlockBody)Convert.ChangeType(decoded, typeof(BlockBody)));
-                if (!section.SequenceEqual(encodedBody.Bytes))
+                Rlp encodedBody = new BlockBodyDecoder().Encode((BlockBody)Convert.ChangeType(decoded, typeof(BlockBody)));
+                if (!ByteArrayCompare(buffer, encodedBody.Bytes, bufferRead))
                 {
                     throw new Exception("not equal");
                 }
                 break;
-            
+
             default:
                 break;
         }
         return decoded;
     }
 
-    private static T RlpDecode<T>(Span<byte> buffer)
+    //TODO REMOVE
+    [DllImport("msvcrt.dll", CallingConvention = CallingConvention.Cdecl)]
+    static extern int memcmp(byte[] b1, byte[] b2, long count);
+    static bool ByteArrayCompare(byte[] b1, byte[] b2, long count)
     {
-        T? decoded = Rlp.Decode<T>(buffer);
-        Debug.WriteLine($"Rlp decoded {typeof(T).Name} {BitConverter.ToString(buffer.ToArray()).Replace("-","")}");
+        return memcmp(b1, b2, count) == 0;
+    }
+
+    private static T RlpDecode<T>(byte[] buffer, int offset, int count)
+    {
+        T? decoded = Rlp.Decode<T>(new Span<byte>(buffer, offset, count));
+        //Debug.WriteLine($"Rlp decoded {typeof(T).Name} {BitConverter.ToString(new ArraySegment<byte>(buffer, offset, count).ToArray()).Replace("-","")}");
         return decoded;
     }
 
