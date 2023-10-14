@@ -899,15 +899,7 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
 
         public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None)
         {
-            if (_isDisposed)
-            {
-                throw new ObjectDisposedException($"Attempted to write a disposed batch {_dbOnTheRocks.Name}");
-            }
-
-            _rocksBatch.Put(key, value);
-            _writeFlags = flags;
-
-            if ((flags & WriteFlags.DisableWAL) != 0) FlushOnTooManyWrites();
+            Set(key, value, cf: null, flags: flags);
         }
 
         private void FlushOnTooManyWrites()
