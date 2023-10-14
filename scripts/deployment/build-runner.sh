@@ -19,19 +19,17 @@ do
     -p:BuildTimestamp=$2 \
     -p:Commit=$1 \
     -p:DebugType=none \
-    -p:Deterministic=true \
     -p:IncludeAllContentForSelfExtract=true \
     -p:PublishSingleFile=true
 
   cp -r configs $output_path/$rid
   mkdir $output_path/$rid/keystore
 
-  # A temporary symlink for Linux and macOS to support existing scripts if any
+  # A temporary symlink for Linux and macOS for the old executable name
   [[ $rid != win* ]] && ln -s -r $output_path/$rid/nethermind $output_path/$rid/Nethermind.Runner
 done
 
 mkdir $output_path/ref
-cd ..
-cp artifacts/obj/**/$build_config/refint/*.dll $output_path/ref
+cp ../artifacts/obj/**/$build_config/refint/*.dll $output_path/ref
 
 echo "Build completed"

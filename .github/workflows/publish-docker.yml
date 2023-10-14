@@ -32,9 +32,9 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v3
       - name: Set up QEMU
-        uses: docker/setup-qemu-action@v2
+        uses: docker/setup-qemu-action@v3
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v2
+        uses: docker/setup-buildx-action@v3
       - name: Log in to Docker Hub
         if: success()
         run: echo "${{ secrets.DOCKER_ACCESS_TOKEN }}" | docker login --username "${{ secrets.DOCKER_USERNAME }}" --password-stdin
@@ -46,7 +46,9 @@ jobs:
             -t "nethermindeth/nethermind:${{ github.event.inputs.tag || 'master' }}" \
             --build-arg BUILD_CONFIG=${{ github.event.inputs.build-config || 'release' }} \
             --build-arg BUILD_TIMESTAMP=$build_timestamp \
-            --build-arg COMMIT_HASH=$GITHUB_SHA . --push
+            --build-arg COMMIT_HASH=$GITHUB_SHA \
+            --build-arg GITHUB_ACTIONS=$GITHUB_ACTIONS \
+            . --push
       - name: Clear Docker cache
         if: always()
         run: rm -f $HOME/.docker/config.json
