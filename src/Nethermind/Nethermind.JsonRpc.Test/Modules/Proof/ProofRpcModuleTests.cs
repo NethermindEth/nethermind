@@ -40,10 +40,10 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
     {
         private readonly bool _createSystemAccount;
         private readonly bool _useNonZeroGasPrice;
-        private IProofRpcModule _proofRpcModule;
-        private IBlockTree _blockTree;
-        private IDbProvider _dbProvider;
-        private TestSpecProvider _specProvider;
+        private IProofRpcModule _proofRpcModule = null!;
+        private IBlockTree _blockTree = null!;
+        private IDbProvider _dbProvider = null!;
+        private TestSpecProvider _specProvider = null!;
 
         public ProofRpcModuleTests(bool createSystemAccount, bool useNonZeroGasPrice)
         {

@@ -15,4 +15,10 @@ public class MallocHelperTests
     {
         MallocHelper.Instance.MallOpt(MallocHelper.Option.M_MMAP_THRESHOLD, (int)128.KiB()).Should().BeTrue();
     }
+
+    [Test]
+    public void TestMallocTrim()
+    {
+        MallocHelper.Instance.MallocTrim(0).Should().BeTrue();
+    }
 }

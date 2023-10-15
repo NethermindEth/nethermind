@@ -46,7 +46,7 @@ namespace Nethermind.Synchronization.FastSync
 
         private readonly IChainEstimations _chainEstimations;
 
-        public DetailedProgress(ulong chainId, byte[] serializedInitialState)
+        public DetailedProgress(ulong chainId, byte[]? serializedInitialState)
         {
             _chainEstimations = ChainSizes.CreateChainSizeInfo(chainId);
 
@@ -100,28 +100,30 @@ namespace Nethermind.Synchronization.FastSync
             }
         }
 
-        private void LoadFromSerialized(byte[] serializedData)
+        private void LoadFromSerialized(byte[]? serializedData)
         {
-            if (serializedData != null)
+            if (serializedData == null)
             {
-                RlpStream rlpStream = new(serializedData);
-                rlpStream.ReadSequenceLength();
-                ConsumedNodesCount = rlpStream.DecodeLong();
-                SavedStorageCount = rlpStream.DecodeLong();
-                SavedStateCount = rlpStream.DecodeLong();
-                SavedNodesCount = rlpStream.DecodeLong();
-                SavedAccounts = rlpStream.DecodeLong();
-                SavedCode = rlpStream.DecodeLong();
-                RequestedNodesCount = rlpStream.DecodeLong();
-                DbChecks = rlpStream.DecodeLong();
-                StateWasThere = rlpStream.DecodeLong();
-                StateWasNotThere = rlpStream.DecodeLong();
-                DataSize = rlpStream.DecodeLong();
+                return;
+            }
 
-                if (rlpStream.Position != rlpStream.Length)
-                {
-                    SecondsInSync = rlpStream.DecodeLong();
-                }
+            RlpStream rlpStream = new(serializedData);
+            rlpStream.ReadSequenceLength();
+            ConsumedNodesCount = rlpStream.DecodeLong();
+            SavedStorageCount = rlpStream.DecodeLong();
+            SavedStateCount = rlpStream.DecodeLong();
+            SavedNodesCount = rlpStream.DecodeLong();
+            SavedAccounts = rlpStream.DecodeLong();
+            SavedCode = rlpStream.DecodeLong();
+            RequestedNodesCount = rlpStream.DecodeLong();
+            DbChecks = rlpStream.DecodeLong();
+            StateWasThere = rlpStream.DecodeLong();
+            StateWasNotThere = rlpStream.DecodeLong();
+            DataSize = rlpStream.DecodeLong();
+
+            if (rlpStream.Position != rlpStream.Length)
+            {
+                SecondsInSync = rlpStream.DecodeLong();
             }
         }
 

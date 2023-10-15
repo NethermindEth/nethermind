@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
@@ -51,6 +53,11 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
                 using CancellationTokenSource cancellationTokenSource = new(_rpcConfig.Timeout);
                 Transaction tx = transactionCall.ToTransaction(_blockchainBridge.GetChainId());
+                if (tx.IsContractCreation && tx.DataLength == 0)
+                {
+                    return ResultWrapper<TResult>.Fail("Contract creation without any data provided.",
+                                               ErrorCodes.InvalidInput);
+                }
                 return ExecuteTx(header.Clone(), tx, cancellationTokenSource.Token);
             }
 
@@ -104,7 +111,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             }
         }
 
-        private class CreateAccessListTxExecutor : TxExecutor<AccessListForRpc>
+        private class CreateAccessListTxExecutor : TxExecutor<AccessListForRpc?>
         {
             private readonly bool _optimize;
 
@@ -114,24 +121,24 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 _optimize = optimize;
             }
 
-            protected override ResultWrapper<AccessListForRpc> ExecuteTx(BlockHeader header, Transaction tx, CancellationToken token)
+            protected override ResultWrapper<AccessListForRpc?> ExecuteTx(BlockHeader header, Transaction tx, CancellationToken token)
             {
                 BlockchainBridge.CallOutput result = _blockchainBridge.CreateAccessList(header, tx, token, _optimize);
 
                 if (result.Error is null)
                 {
-                    return ResultWrapper<AccessListForRpc>.Success(new(GetResultAccessList(tx, result), GetResultGas(tx, result)));
+                    return ResultWrapper<AccessListForRpc?>.Success(new(GetResultAccessList(tx, result), GetResultGas(tx, result)));
                 }
 
                 return result.InputError
                     ? GetInputError(result)
-                    : ResultWrapper<AccessListForRpc>.Fail(result.Error, ErrorCodes.ExecutionError, new AccessListForRpc(GetResultAccessList(tx, result), GetResultGas(tx, result)));
+                    : ResultWrapper<AccessListForRpc?>.Fail(result.Error, ErrorCodes.ExecutionError, new AccessListForRpc(GetResultAccessList(tx, result), GetResultGas(tx, result)));
             }
 
-            private static AccessListItemForRpc[] GetResultAccessList(Transaction tx, BlockchainBridge.CallOutput result)
+            private static IEnumerable<AccessListItemForRpc> GetResultAccessList(Transaction tx, BlockchainBridge.CallOutput result)
             {
                 AccessList? accessList = result.AccessList ?? tx.AccessList;
-                return accessList is null ? Array.Empty<AccessListItemForRpc>() : AccessListItemForRpc.FromAccessList(accessList);
+                return accessList is null ? Enumerable.Empty<AccessListItemForRpc>() : AccessListItemForRpc.FromAccessList(accessList);
             }
 
             private static UInt256 GetResultGas(Transaction transaction, BlockchainBridge.CallOutput result)

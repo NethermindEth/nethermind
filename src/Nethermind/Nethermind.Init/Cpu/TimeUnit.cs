@@ -77,7 +77,7 @@ internal class TimeUnit : IEquatable<TimeUnit>
             return false;
         }
 
-        if ((object)this == other)
+        if (ReferenceEquals((object)this, other))
         {
             return true;
         }

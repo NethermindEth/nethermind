@@ -75,7 +75,7 @@ namespace Ethereum.KeyAddress.Test
             string expectedSigHex = expectedSig.ToString();
             Address expectedAddress = new Address(test.Address);
 
-            Assert.That(actualAddress, Is.EqualTo(expectedAddress), "address vs adress from private key");
+            Assert.That(actualAddress, Is.EqualTo(expectedAddress), "address vs address from private key");
 
             Address recoveredActualAddress = _ecdsa.RecoverAddress(actualSig, Keccak.OfAnEmptyString);
             Assert.That(recoveredActualAddress, Is.EqualTo(actualAddress));

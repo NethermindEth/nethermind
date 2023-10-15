@@ -39,21 +39,12 @@ public partial class EngineRpcModule : IEngineRpcModule
 
     private async Task<ResultWrapper<ForkchoiceUpdatedV1Result>> ForkchoiceUpdated(ForkchoiceStateV1 forkchoiceState, PayloadAttributes? payloadAttributes, int version)
     {
-        string? error = null;
-        switch (payloadAttributes?.Validate(_specProvider, version, out error))
-        {
-            case PayloadAttributesValidationResult.InvalidParams:
-                return ResultWrapper<ForkchoiceUpdatedV1Result>.Fail(error!, ErrorCodes.InvalidParams);
-            case PayloadAttributesValidationResult.UnsupportedFork:
-                return ResultWrapper<ForkchoiceUpdatedV1Result>.Fail(error!, ErrorCodes.UnsupportedFork);
-        }
-
         if (await _locker.WaitAsync(_timeout))
         {
             Stopwatch watch = Stopwatch.StartNew();
             try
             {
-                return await _forkchoiceUpdatedV1Handler.Handle(forkchoiceState, payloadAttributes);
+                return await _forkchoiceUpdatedV1Handler.Handle(forkchoiceState, payloadAttributes, version);
             }
             finally
             {
