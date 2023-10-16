@@ -113,7 +113,7 @@ namespace Nethermind.Clique.Test
         {
             BlockHeader header = Build.A.BlockHeader
                 .WithParentHash(new Commitment("0x6d31ab6b6ee360d075bb032a094fb4ea52617268b760d15b47aa439604583453"))
-                .WithUnclesHash(Commitment.OfAnEmptySequenceRlp)
+                .WithUnclesHash(Keccak.OfAnEmptySequenceRlp)
                 .WithBeneficiary(Address.Zero)
                 .WithBloom(Bloom.Empty)
                 .WithStateRoot(new Commitment("0x9853b6c62bd454466f4843b73e2f0bdd655a4e754c259d6cc0ad4e580d788f43"))
@@ -125,7 +125,7 @@ namespace Nethermind.Clique.Test
                 .WithGasUsed(0)
                 .WithTimestamp(1492014479)
                 .WithExtraData(Bytes.FromHexString("0xd783010600846765746887676f312e372e33856c696e757800000000000000004e2b663c52c4c1ef0db29649f1f4addd93257f33d6fe0ae6bd365e63ac9aac4169e2b761aa245fabbf0302055f01b8b5391fa0a134bab19710fd225ffac3afdf01"))
-                .WithMixHash(Commitment.Zero)
+                .WithMixHash(Keccak.Zero)
                 .WithNonce(0UL)
                 .TestObject;
             return header;

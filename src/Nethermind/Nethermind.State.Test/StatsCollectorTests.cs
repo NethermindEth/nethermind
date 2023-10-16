@@ -45,7 +45,7 @@ namespace Nethermind.Store.Test
             stateProvider.CommitTree(0);
             stateProvider.CommitTree(1);
 
-            memDb.Delete(Commitment.Compute(new byte[] { 1, 2, 3, 4 })); // missing code
+            memDb.Delete(Keccak.Compute(new byte[] { 1, 2, 3, 4 })); // missing code
             Commitment storageKey = new("0x345e54154080bfa9e8f20c99d7a0139773926479bc59e5b4f830ad94b6425332");
             memDb.Delete(storageKey); // deletes some storage
             trieStore.ClearCache();

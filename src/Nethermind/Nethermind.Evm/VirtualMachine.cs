@@ -1193,7 +1193,7 @@ OutOfGas:
                         if (!UpdateMemoryCost(vmState, ref gasAvailable, in a, b)) goto OutOfGas;
 
                         bytes = vmState.Memory.LoadSpan(in a, b);
-                        stack.PushBytes(ValueCommitment.Compute(bytes).BytesAsSpan);
+                        stack.PushBytes(ValueKeccak.Compute(bytes).BytesAsSpan);
                         break;
                     }
                 case Instruction.ADDRESS:
@@ -2482,7 +2482,7 @@ ReturnFailure:
 
         if (accountExists)
         {
-            _state.UpdateStorageRoot(contractAddress, Commitment.EmptyTreeHash);
+            _state.UpdateStorageRoot(contractAddress, Keccak.EmptyTreeHash);
         }
         else if (_state.IsDeadAccount(contractAddress))
         {
@@ -2491,7 +2491,7 @@ ReturnFailure:
 
         _state.SubtractFromBalance(env.ExecutingAccount, value, spec);
 
-        ValueCommitment codeHash = ValueCommitment.Compute(initCode);
+        ValueCommitment codeHash = ValueKeccak.Compute(initCode);
         // Prefer code from code cache (e.g. if create from a factory contract or copypasta)
         if (!_codeCache.TryGet(codeHash, out CodeInfo codeInfo))
         {

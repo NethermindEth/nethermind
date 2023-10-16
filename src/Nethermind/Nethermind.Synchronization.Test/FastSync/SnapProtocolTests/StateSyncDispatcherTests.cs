@@ -62,9 +62,9 @@ namespace Nethermind.Synchronization.Test.FastSync.SnapProtocolTests
             _pool.AddPeer(peer);
 
             StateSyncBatch batch = new(
-                Commitment.OfAnEmptyString,
+                Keccak.OfAnEmptyString,
                 NodeDataType.State,
-                new[] { new StateSyncItem(Commitment.EmptyTreeHash, Array.Empty<byte>(), Array.Empty<byte>(), NodeDataType.State) });
+                new[] { new StateSyncItem(Keccak.EmptyTreeHash, Array.Empty<byte>(), Array.Empty<byte>(), NodeDataType.State) });
 
             await _dispatcher.ExecuteDispatch(batch, 1);
 
@@ -88,15 +88,15 @@ namespace Nethermind.Synchronization.Test.FastSync.SnapProtocolTests
                 });
             _pool.AddPeer(peer);
 
-            StateSyncItem item01 = new(Commitment.EmptyTreeHash, null, new byte[] { 3 }, NodeDataType.State);
-            StateSyncItem item02 = new(Commitment.EmptyTreeHash, new byte[] { 11 }, new byte[] { 2 }, NodeDataType.State);
-            StateSyncItem item03 = new(Commitment.EmptyTreeHash, null, new byte[] { 1 }, NodeDataType.State);
-            StateSyncItem item04 = new(Commitment.EmptyTreeHash, new byte[] { 22 }, new byte[] { 21 }, NodeDataType.State);
-            StateSyncItem item05 = new(Commitment.EmptyTreeHash, new byte[] { 11 }, new byte[] { 1 }, NodeDataType.State);
-            StateSyncItem item06 = new(Commitment.EmptyTreeHash, new byte[] { 22 }, new byte[] { 22 }, NodeDataType.State);
+            StateSyncItem item01 = new(Keccak.EmptyTreeHash, null, new byte[] { 3 }, NodeDataType.State);
+            StateSyncItem item02 = new(Keccak.EmptyTreeHash, new byte[] { 11 }, new byte[] { 2 }, NodeDataType.State);
+            StateSyncItem item03 = new(Keccak.EmptyTreeHash, null, new byte[] { 1 }, NodeDataType.State);
+            StateSyncItem item04 = new(Keccak.EmptyTreeHash, new byte[] { 22 }, new byte[] { 21 }, NodeDataType.State);
+            StateSyncItem item05 = new(Keccak.EmptyTreeHash, new byte[] { 11 }, new byte[] { 1 }, NodeDataType.State);
+            StateSyncItem item06 = new(Keccak.EmptyTreeHash, new byte[] { 22 }, new byte[] { 22 }, NodeDataType.State);
 
             StateSyncBatch batch = new(
-                Commitment.OfAnEmptyString,
+                Keccak.OfAnEmptyString,
                 NodeDataType.State,
                 new[] { item01, item02, item03, item04, item05, item06 });
 

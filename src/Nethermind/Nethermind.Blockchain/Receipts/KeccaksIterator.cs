@@ -35,7 +35,7 @@ namespace Nethermind.Blockchain.Receipts
             }
             else
             {
-                current = new CommitmentStructRef(Commitment.Zero.Bytes);
+                current = new CommitmentStructRef(Keccak.Zero.Bytes);
                 return false;
             }
         }

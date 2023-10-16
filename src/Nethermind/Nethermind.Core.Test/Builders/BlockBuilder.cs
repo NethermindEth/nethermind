@@ -164,7 +164,7 @@ namespace Nethermind.Core.Test.Builders
         {
             TestObjectInternal.Header.Number = blockHeader?.Number + 1 ?? 0;
             TestObjectInternal.Header.Timestamp = blockHeader?.Timestamp + 1 ?? 0;
-            TestObjectInternal.Header.ParentHash = blockHeader is null ? Commitment.Zero : blockHeader.Hash;
+            TestObjectInternal.Header.ParentHash = blockHeader is null ? Keccak.Zero : blockHeader.Hash;
             TestObjectInternal.Header.MaybeParent = blockHeader is null ? null : new WeakReference<BlockHeader>(blockHeader);
             return this;
         }
@@ -177,7 +177,7 @@ namespace Nethermind.Core.Test.Builders
         public BlockBuilder WithPostMergeRules()
         {
             TestObjectInternal.Header.Difficulty = 0;
-            TestObjectInternal.Header.UnclesHash = Commitment.OfAnEmptySequenceRlp;
+            TestObjectInternal.Header.UnclesHash = Keccak.OfAnEmptySequenceRlp;
             TestObjectInternal.Header.Nonce = 0;
             TestObjectInternal.Header.IsPostMerge = true;
             return this;
@@ -235,7 +235,7 @@ namespace Nethermind.Core.Test.Builders
             return this;
         }
 
-        public BlockBuilder Genesis => WithNumber(0).WithParentHash(Commitment.Zero).WithMixHash(Commitment.Zero);
+        public BlockBuilder Genesis => WithNumber(0).WithParentHash(Keccak.Zero).WithMixHash(Keccak.Zero);
 
         protected override void BeforeReturn()
         {

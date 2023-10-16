@@ -73,7 +73,7 @@ public class HealingStorageTree : StorageTree
                 {
                     new PathGroup
                     {
-                        Group = new[] { ValueCommitment.Compute(_address.Bytes).ToByteArray(), Nibbles.EncodePath(pathPart) }
+                        Group = new[] { ValueKeccak.Compute(_address.Bytes).ToByteArray(), Nibbles.EncodePath(pathPart) }
                     }
                 }
             };

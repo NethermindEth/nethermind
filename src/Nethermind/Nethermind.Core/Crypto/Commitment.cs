@@ -23,56 +23,19 @@ namespace Nethermind.Core.Crypto
         public Span<byte> BytesAsSpan => MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref Unsafe.AsRef(in _bytes), 1));
         public ReadOnlySpan<byte> Bytes => MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref Unsafe.AsRef(in _bytes), 1));
 
-        /// <returns>
-        ///     <string>0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470</string>
-        /// </returns>
-        public static readonly ValueCommitment OfAnEmptyString = InternalCompute(new byte[] { });
-
-        /// <returns>
-        ///     <string>0x1dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347</string>
-        /// </returns>
-        public static readonly ValueCommitment OfAnEmptySequenceRlp = InternalCompute(new byte[] { 192 });
-
-        /// <summary>
-        ///     0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421
-        /// </summary>
-        public static readonly ValueCommitment EmptyTreeHash = InternalCompute(new byte[] { 128 });
-
-        /// <returns>
-        ///     <string>0x0000000000000000000000000000000000000000000000000000000000000000</string>
-        /// </returns>
-        public static ValueCommitment Zero { get; } = default;
-
-        /// <summary>
-        ///     <string>0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff</string>
-        /// </summary>
-        public static ValueCommitment MaxValue { get; } = new("0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff");
-
         public static implicit operator ValueCommitment(Commitment? keccak)
         {
             return keccak?.ValueCommitment ?? default;
         }
 
-        public ValueCommitment(byte[]? bytes)
+        public ValueCommitment(byte[] bytes)
         {
-            if (bytes is null || bytes.Length == 0)
-            {
-                _bytes = OfAnEmptyString._bytes;
-                return;
-            }
-
             Debug.Assert(bytes.Length == ValueCommitment.MemorySize);
             _bytes = Unsafe.As<byte, Vector256<byte>>(ref MemoryMarshal.GetArrayDataReference(bytes));
         }
 
-        public ValueCommitment(string? hex)
+        public ValueCommitment(string hex)
         {
-            if (hex is null || hex.Length == 0)
-            {
-                _bytes = OfAnEmptyString._bytes;
-                return;
-            }
-
             byte[] bytes = Extensions.Bytes.FromHexString(hex);
             Debug.Assert(bytes.Length == ValueCommitment.MemorySize);
             _bytes = Unsafe.As<byte, Vector256<byte>>(ref MemoryMarshal.GetArrayDataReference(bytes));
@@ -83,45 +46,8 @@ namespace Nethermind.Core.Crypto
 
         public ValueCommitment(ReadOnlySpan<byte> bytes)
         {
-            if (bytes.Length == 0)
-            {
-                _bytes = OfAnEmptyString._bytes;
-                return;
-            }
-
-            Debug.Assert(bytes.Length == ValueCommitment.MemorySize);
+            Debug.Assert(bytes.Length == MemorySize);
             _bytes = Unsafe.As<byte, Vector256<byte>>(ref MemoryMarshal.GetReference(bytes));
-        }
-
-        [DebuggerStepThrough]
-        public static ValueCommitment Compute(string input)
-        {
-            if (string.IsNullOrWhiteSpace(input))
-            {
-                return OfAnEmptyString;
-            }
-
-            return InternalCompute(System.Text.Encoding.UTF8.GetBytes(input));
-        }
-
-        [DebuggerStepThrough]
-        public static ValueCommitment Compute(ReadOnlySpan<byte> input)
-        {
-            if (input.Length == 0)
-            {
-                return OfAnEmptyString;
-            }
-
-            Unsafe.SkipInit(out ValueCommitment keccak);
-            KeccakHash.ComputeHashBytesToSpan(input, MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref keccak, 1)));
-            return keccak;
-        }
-
-        internal static ValueCommitment InternalCompute(byte[] input)
-        {
-            Unsafe.SkipInit(out ValueCommitment keccak);
-            KeccakHash.ComputeHashBytesToSpan(input, MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref keccak, 1)));
-            return keccak;
         }
 
         public override bool Equals(object? obj) => obj is ValueCommitment keccak && Equals(keccak);
@@ -201,31 +127,6 @@ namespace Nethermind.Core.Crypto
 
         private readonly ValueCommitment _commitment;
 
-        /// <returns>
-        ///     <string>0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470</string>
-        /// </returns>
-        public static readonly Commitment OfAnEmptyString = new Commitment(ValueCommitment.InternalCompute(new byte[] { }));
-
-        /// <returns>
-        ///     <string>0x1dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347</string>
-        /// </returns>
-        public static readonly Commitment OfAnEmptySequenceRlp = new Commitment(ValueCommitment.InternalCompute(new byte[] { 192 }));
-
-        /// <summary>
-        ///     0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421
-        /// </summary>
-        public static Commitment EmptyTreeHash = new Commitment(ValueCommitment.InternalCompute(new byte[] { 128 }));
-
-        /// <returns>
-        ///     <string>0x0000000000000000000000000000000000000000000000000000000000000000</string>
-        /// </returns>
-        public static Commitment Zero { get; } = new(new byte[Size]);
-
-        /// <summary>
-        ///     <string>0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff</string>
-        /// </summary>
-        public static Commitment MaxValue { get; } = new("0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff");
-
         [ThreadStatic] static byte[]? _threadStaticBuffer;
 
         public ref readonly ValueCommitment ValueCommitment => ref _commitment;
@@ -274,29 +175,6 @@ namespace Nethermind.Core.Crypto
         public string ToString(bool withZeroX)
         {
             return Bytes.ToHexString(withZeroX);
-        }
-
-        [DebuggerStepThrough]
-        public static Commitment Compute(byte[]? input)
-        {
-            if (input is null || input.Length == 0)
-            {
-                return OfAnEmptyString;
-            }
-
-            return new Commitment(KeccakHash.ComputeHashBytes(input));
-        }
-
-        [DebuggerStepThrough]
-        public static Commitment Compute(ReadOnlySpan<byte> input)
-        {
-            return new Commitment(ValueCommitment.Compute(input));
-        }
-
-        [DebuggerStepThrough]
-        public static Commitment Compute(string input)
-        {
-            return new Commitment(ValueCommitment.Compute(input));
         }
 
         public bool Equals(Commitment? other)
@@ -427,52 +305,6 @@ namespace Nethermind.Core.Crypto
         public string ToString(bool withZeroX)
         {
             return Bytes.ToHexString(withZeroX);
-        }
-
-        [DebuggerStepThrough]
-        public static CommitmentStructRef Compute(byte[]? input)
-        {
-            if (input is null || input.Length == 0)
-            {
-                return new CommitmentStructRef(Commitment.OfAnEmptyString.Bytes);
-            }
-
-            var result = new CommitmentStructRef();
-            KeccakHash.ComputeHashBytesToSpan(input, result.Bytes);
-            return result;
-        }
-
-        [DebuggerStepThrough]
-        public static CommitmentStructRef Compute(Span<byte> input)
-        {
-            if (input.Length == 0)
-            {
-                return new CommitmentStructRef(Commitment.OfAnEmptyString.Bytes);
-            }
-
-            var result = new CommitmentStructRef();
-            KeccakHash.ComputeHashBytesToSpan(input, result.Bytes);
-            return result;
-        }
-
-        private static CommitmentStructRef InternalCompute(Span<byte> input)
-        {
-            var result = new CommitmentStructRef();
-            KeccakHash.ComputeHashBytesToSpan(input, result.Bytes);
-            return result;
-        }
-
-        [DebuggerStepThrough]
-        public static CommitmentStructRef Compute(string input)
-        {
-            if (string.IsNullOrWhiteSpace(input))
-            {
-                return new CommitmentStructRef(Commitment.OfAnEmptyString.Bytes);
-            }
-
-            var result = new CommitmentStructRef();
-            KeccakHash.ComputeHashBytesToSpan(System.Text.Encoding.UTF8.GetBytes(input), result.Bytes);
-            return result;
         }
 
         public bool Equals(Commitment? other)

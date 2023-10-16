@@ -21,14 +21,14 @@ namespace Nethermind.State
 
         [DebuggerStepThrough]
         public StateTree(ICappedArrayPool? bufferPool = null)
-            : base(new MemDb(), Commitment.EmptyTreeHash, true, true, NullLogManager.Instance, bufferPool: bufferPool)
+            : base(new MemDb(), Keccak.EmptyTreeHash, true, true, NullLogManager.Instance, bufferPool: bufferPool)
         {
             TrieType = TrieType.State;
         }
 
         [DebuggerStepThrough]
         public StateTree(ITrieStore? store, ILogManager? logManager)
-            : base(store, Commitment.EmptyTreeHash, true, true, logManager)
+            : base(store, Keccak.EmptyTreeHash, true, true, logManager)
         {
             TrieType = TrieType.State;
         }
@@ -36,7 +36,7 @@ namespace Nethermind.State
         [DebuggerStepThrough]
         public Account? Get(Address address, Commitment? rootHash = null)
         {
-            byte[]? bytes = Get(ValueCommitment.Compute(address.Bytes).BytesAsSpan, rootHash);
+            byte[]? bytes = Get(ValueKeccak.Compute(address.Bytes).BytesAsSpan, rootHash);
             return bytes is null ? null : _decoder.Decode(bytes.AsRlpStream());
         }
 
@@ -49,7 +49,7 @@ namespace Nethermind.State
 
         public void Set(Address address, Account? account)
         {
-            ValueCommitment commitment = ValueCommitment.Compute(address.Bytes);
+            ValueCommitment commitment = ValueKeccak.Compute(address.Bytes);
             Set(commitment.BytesAsSpan, account is null ? null : account.IsTotallyEmpty ? EmptyAccountRlp : Rlp.Encode(account));
         }
 

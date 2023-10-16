@@ -29,12 +29,12 @@ namespace Nethermind.State
             {
                 UInt256 index = (UInt256)i;
                 index.ToBigEndian(buffer);
-                Cache[index] = Commitment.Compute(buffer).BytesToArray();
+                Cache[index] = Keccak.Compute(buffer).BytesToArray();
             }
         }
 
         public StorageTree(ITrieStore? trieStore, ILogManager? logManager)
-            : base(trieStore, Commitment.EmptyTreeHash, false, true, logManager)
+            : base(trieStore, Keccak.EmptyTreeHash, false, true, logManager)
         {
             TrieType = TrieType.Storage;
         }

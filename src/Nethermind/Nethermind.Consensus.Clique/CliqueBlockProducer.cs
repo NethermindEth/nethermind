@@ -366,7 +366,7 @@ public class CliqueBlockProducer : ICliqueBlockProducer, IDisposable
 
         BlockHeader header = new(
             parentHeader.Hash,
-            Commitment.OfAnEmptySequenceRlp,
+            Keccak.OfAnEmptySequenceRlp,
             Address.Zero,
             1,
             parentBlock.Number + 1,
@@ -435,8 +435,8 @@ public class CliqueBlockProducer : ICliqueBlockProducer, IDisposable
         }
 
         // Mix digest is reserved for now, set to empty
-        header.MixHash = Commitment.Zero;
-        header.WithdrawalsRoot = spec.WithdrawalsEnabled ? Commitment.EmptyTreeHash : null;
+        header.MixHash = Keccak.Zero;
+        header.WithdrawalsRoot = spec.WithdrawalsEnabled ? Keccak.EmptyTreeHash : null;
 
         _stateProvider.StateRoot = parentHeader.StateRoot!;
 

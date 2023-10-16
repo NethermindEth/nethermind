@@ -941,7 +941,7 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
 
     public void Compact()
     {
-        _db.CompactRange(Commitment.Zero.BytesToArray(), Commitment.MaxValue.BytesToArray());
+        _db.CompactRange(Keccak.Zero.BytesToArray(), Keccak.MaxValue.BytesToArray());
     }
 
     private void InnerFlush()

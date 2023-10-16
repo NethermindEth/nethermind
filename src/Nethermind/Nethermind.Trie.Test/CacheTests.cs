@@ -23,7 +23,7 @@ namespace Nethermind.Trie.Test
         public void Cache_post_init_memory_calculated_correctly()
         {
             MemCountingCache cache = new(1024, string.Empty);
-            cache.Set(Commitment.Zero, new byte[0]);
+            cache.Set(Keccak.Zero, new byte[0]);
             cache.MemorySize.Should().Be(344);
         }
 

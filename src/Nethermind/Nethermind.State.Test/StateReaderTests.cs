@@ -21,7 +21,7 @@ namespace Nethermind.Store.Test
     [TestFixture, Parallelizable(ParallelScope.All)]
     public class StateReaderTests
     {
-        private static readonly Commitment Hash1 = Commitment.Compute("1");
+        private static readonly Commitment Hash1 = Keccak.Compute("1");
         private readonly Address _address1 = new(Hash1);
         private static readonly ILogManager Logger = LimboLogs.Instance;
 
@@ -150,7 +150,7 @@ namespace Nethermind.Store.Test
                 new(new TrieStore(stateDb, LimboLogs.Instance), Substitute.For<IDb>(), Logger);
             Commitment storageRoot = reader.GetStorageRoot(stateRoot0, _address1);
             reader.GetStorage(storageRoot, storageCell.Index + 1).Should().BeEquivalentTo(new byte[] { 0 });
-            reader.GetStorage(Commitment.EmptyTreeHash, storageCell.Index + 1).Should().BeEquivalentTo(new byte[] { 0 });
+            reader.GetStorage(Keccak.EmptyTreeHash, storageCell.Index + 1).Should().BeEquivalentTo(new byte[] { 0 });
         }
 
         private Task StartTask(StateReader reader, Commitment stateRoot, UInt256 value)

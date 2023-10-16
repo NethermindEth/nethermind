@@ -63,7 +63,7 @@ namespace Nethermind.Synchronization.Test.FastBlocks
                     FastSync = true,
                     FastBlocks = true,
                     PivotNumber = "1000",
-                    PivotHash = Commitment.Zero.ToString(),
+                    PivotHash = Keccak.Zero.ToString(),
                     PivotTotalDifficulty = "1000"
                 },
                 syncReport: Substitute.For<ISyncReport>(),
@@ -337,7 +337,7 @@ namespace Nethermind.Synchronization.Test.FastBlocks
                     FastSync = true,
                     FastBlocks = true,
                     PivotNumber = "1000",
-                    PivotHash = Commitment.Zero.ToString(),
+                    PivotHash = Keccak.Zero.ToString(),
                     PivotTotalDifficulty = "1000"
                 },
                 syncReport: Substitute.For<ISyncReport>(),
@@ -361,7 +361,7 @@ namespace Nethermind.Synchronization.Test.FastBlocks
             report.HeadersInQueue.Returns(new MeasuredProgress());
             MeasuredProgress measuredProgress = new();
             report.FastBlocksHeaders.Returns(measuredProgress);
-            HeadersSyncFeed feed = new(Substitute.For<ISyncModeSelector>(), blockTree, Substitute.For<ISyncPeerPool>(), new SyncConfig { FastSync = true, FastBlocks = true, PivotNumber = "1000", PivotHash = Commitment.Zero.ToString(), PivotTotalDifficulty = "1000" }, report, LimboLogs.Instance);
+            HeadersSyncFeed feed = new(Substitute.For<ISyncModeSelector>(), blockTree, Substitute.For<ISyncPeerPool>(), new SyncConfig { FastSync = true, FastBlocks = true, PivotNumber = "1000", PivotHash = Keccak.Zero.ToString(), PivotTotalDifficulty = "1000" }, report, LimboLogs.Instance);
             await feed.PrepareRequest();
             blockTree.LowestInsertedHeader.Returns(Build.A.BlockHeader.WithNumber(1).TestObject);
             HeadersSyncBatch? result = await feed.PrepareRequest();
@@ -384,7 +384,7 @@ namespace Nethermind.Synchronization.Test.FastBlocks
             report.HeadersInQueue.Returns(new MeasuredProgress());
             report.FastBlocksHeaders.Returns(new MeasuredProgress());
 
-            HeadersSyncFeed feed = new(Substitute.For<ISyncModeSelector>(), blockTree, Substitute.For<ISyncPeerPool>(), new SyncConfig { FastSync = true, FastBlocks = true, PivotNumber = "1000", PivotHash = Commitment.Zero.ToString(), PivotTotalDifficulty = "1000" }, report, LimboLogs.Instance);
+            HeadersSyncFeed feed = new(Substitute.For<ISyncModeSelector>(), blockTree, Substitute.For<ISyncPeerPool>(), new SyncConfig { FastSync = true, FastBlocks = true, PivotNumber = "1000", PivotHash = Keccak.Zero.ToString(), PivotTotalDifficulty = "1000" }, report, LimboLogs.Instance);
             feed.InitializeFeed();
             HeadersSyncBatch? result = await feed.PrepareRequest();
 
@@ -410,7 +410,7 @@ namespace Nethermind.Synchronization.Test.FastBlocks
                     FastSync = true,
                     FastBlocks = true,
                     PivotNumber = "1000",
-                    PivotHash = Commitment.Zero.ToString(),
+                    PivotHash = Keccak.Zero.ToString(),
                     PivotTotalDifficulty = "1000"
                 }, report, LimboLogs.Instance);
             feed.InitializeFeed();

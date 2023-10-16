@@ -73,7 +73,7 @@ namespace Nethermind.Core.Extensions
 
         private static string ToHexStringWithEip55Checksum(ReadOnlySpan<byte> bytes, bool withZeroX, bool skipLeadingZeros)
         {
-            string hashHex = Commitment.Compute(bytes.ToHexString(false)).ToString(false);
+            string hashHex = Keccak.Compute(bytes.ToHexString(false)).ToString(false);
 
             int leadingZeros = skipLeadingZeros ? Bytes.CountLeadingZeros(bytes) : 0;
             int length = bytes.Length * 2 + (withZeroX ? 2 : 0) - leadingZeros;

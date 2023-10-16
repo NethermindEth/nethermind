@@ -56,11 +56,11 @@ public class ChainSpecLoaderTests
         Assert.That(chainSpec.Genesis.BaseFeePerGas, Is.EqualTo((UInt256)11), $"genesis base fee");
 
         Assert.That(chainSpec.Genesis.Header.Nonce, Is.EqualTo(0xdeadbeefdeadbeef), $"genesis {nameof(BlockHeader.Nonce)}");
-        Assert.That(chainSpec.Genesis.Header.MixHash, Is.EqualTo(Commitment.Zero), $"genesis {nameof(BlockHeader.MixHash)}");
+        Assert.That(chainSpec.Genesis.Header.MixHash, Is.EqualTo(Keccak.Zero), $"genesis {nameof(BlockHeader.MixHash)}");
         Assert.That((long)chainSpec.Genesis.Header.Difficulty, Is.EqualTo(0x10), $"genesis {nameof(BlockHeader.Difficulty)}");
         Assert.That(chainSpec.Genesis.Header.Beneficiary, Is.EqualTo(Address.Zero), $"genesis {nameof(BlockHeader.Beneficiary)}");
         Assert.That((long)chainSpec.Genesis.Header.Timestamp, Is.EqualTo(0x00L), $"genesis {nameof(BlockHeader.Timestamp)}");
-        Assert.That(chainSpec.Genesis.Header.ParentHash, Is.EqualTo(Commitment.Zero), $"genesis {nameof(BlockHeader.ParentHash)}");
+        Assert.That(chainSpec.Genesis.Header.ParentHash, Is.EqualTo(Keccak.Zero), $"genesis {nameof(BlockHeader.ParentHash)}");
         Assert.That(
             chainSpec.Genesis.Header.ExtraData, Is.EqualTo(Bytes.FromHexString("0x0000000000000000000000000000000000000000000000000000000000000000")),
             $"genesis {nameof(BlockHeader.ExtraData)}");

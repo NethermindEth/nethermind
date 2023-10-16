@@ -147,7 +147,7 @@ namespace Nethermind.KeyStore
                     return (null, Result.Fail($"Unsupported algoritm: {kdf}"));
             }
 
-            var restoredMac = Commitment.Compute(derivedKey.Slice(kdfParams.DkLen - 16, 16).Concat(cipher).ToArray()).Bytes;
+            var restoredMac = Keccak.Compute(derivedKey.Slice(kdfParams.DkLen - 16, 16).Concat(cipher).ToArray()).Bytes;
             if (!Bytes.AreEqual(mac, restoredMac))
             {
                 return (null, Result.Fail("Incorrect MAC"));
@@ -157,7 +157,7 @@ namespace Nethermind.KeyStore
             byte[] decryptKey;
             if (kdf == "scrypt" && cipherType == "aes-128-cbc")
             {
-                decryptKey = Commitment.Compute(derivedKey.Slice(0, 16)).Bytes.Slice(0, 16).ToArray();
+                decryptKey = Keccak.Compute(derivedKey.Slice(0, 16)).Bytes.Slice(0, 16).ToArray();
             }
             else
             {
@@ -238,7 +238,7 @@ namespace Nethermind.KeyStore
             var cipherType = _config.Cipher;
             if (kdf == "scrypt" && cipherType == "aes-128-cbc")
             {
-                encryptKey = Commitment.Compute(derivedKey.Slice(0, 16)).Bytes.Slice(0, 16).ToArray();
+                encryptKey = Keccak.Compute(derivedKey.Slice(0, 16)).Bytes.Slice(0, 16).ToArray();
             }
             else
             {
@@ -254,7 +254,7 @@ namespace Nethermind.KeyStore
                 return Result.Fail("Error during encryption");
             }
 
-            var mac = Commitment.Compute(derivedKey.Skip(_config.KdfparamsDklen - 16).Take(16).Concat(cipher).ToArray()).Bytes;
+            var mac = Keccak.Compute(derivedKey.Skip(_config.KdfparamsDklen - 16).Take(16).Concat(cipher).ToArray()).Bytes;
 
             string addressString = address.ToString(false, false);
             var keyStoreItem = new KeyStoreItem

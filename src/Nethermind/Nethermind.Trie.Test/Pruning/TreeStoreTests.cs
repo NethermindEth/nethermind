@@ -41,7 +41,7 @@ namespace Nethermind.Trie.Test.Pruning
         [Test]
         public void Memory_with_one_node_is_288()
         {
-            TrieNode trieNode = new(NodeType.Leaf, Commitment.Zero); // 56B
+            TrieNode trieNode = new(NodeType.Leaf, Keccak.Zero); // 56B
 
             using TrieStore trieStore = new(new MemDb(), new TestPruningStrategy(true), No.Persistence, _logManager);
             trieStore.CommitNode(1234, new NodeCommitInfo(trieNode));
@@ -53,7 +53,7 @@ namespace Nethermind.Trie.Test.Pruning
         [Test]
         public void Pruning_off_cache_should_not_change_commit_node()
         {
-            TrieNode trieNode = new(NodeType.Leaf, Commitment.Zero);
+            TrieNode trieNode = new(NodeType.Leaf, Keccak.Zero);
             TrieNode trieNode2 = new(NodeType.Branch, TestItem._commitmentA);
             TrieNode trieNode3 = new(NodeType.Branch, TestItem._commitmentB);
 
@@ -68,7 +68,7 @@ namespace Nethermind.Trie.Test.Pruning
         [Test]
         public void When_commit_forward_write_flag_if_available()
         {
-            TrieNode trieNode = new(NodeType.Leaf, Commitment.Zero);
+            TrieNode trieNode = new(NodeType.Leaf, Keccak.Zero);
 
             TestMemDb testMemDb = new TestMemDb();
 
@@ -81,7 +81,7 @@ namespace Nethermind.Trie.Test.Pruning
         [Test]
         public void Should_always_announce_block_number_when_pruning_disabled_and_persisting()
         {
-            TrieNode trieNode = new(NodeType.Leaf, Commitment.Zero) { LastSeen = 1 };
+            TrieNode trieNode = new(NodeType.Leaf, Keccak.Zero) { LastSeen = 1 };
 
             long reorgBoundaryCount = 0L;
             using TrieStore trieStore = new(new MemDb(), No.Pruning, Archive.Instance, _logManager);
@@ -99,7 +99,7 @@ namespace Nethermind.Trie.Test.Pruning
         [Test]
         public void Should_always_announce_zero_when_not_persisting()
         {
-            TrieNode trieNode = new(NodeType.Leaf, Commitment.Zero);
+            TrieNode trieNode = new(NodeType.Leaf, Keccak.Zero);
 
             long reorgBoundaryCount = 0L;
             using TrieStore trieStore = new(new MemDb(), No.Pruning, No.Persistence, _logManager);
@@ -130,7 +130,7 @@ namespace Nethermind.Trie.Test.Pruning
             using TrieStore trieStore = new(new MemDb(), new TestPruningStrategy(true), No.Persistence, _logManager);
             long startSize = trieStore.MemoryUsedByDirtyCache;
             trieStore.FindCachedOrUnknown(TestItem._commitmentA);
-            TrieNode trieNode = new(NodeType.Leaf, Commitment.Zero);
+            TrieNode trieNode = new(NodeType.Leaf, Keccak.Zero);
             long oneKeccakSize = trieNode.GetMemorySize(false);
             Assert.That(trieStore.MemoryUsedByDirtyCache, Is.EqualTo(startSize + oneKeccakSize));
             trieStore.FindCachedOrUnknown(TestItem._commitmentB);
@@ -302,10 +302,10 @@ namespace Nethermind.Trie.Test.Pruning
         public void Can_load_from_rlp()
         {
             MemDb memDb = new();
-            memDb[Commitment.Zero.Bytes] = new byte[] { 1, 2, 3 };
+            memDb[Keccak.Zero.Bytes] = new byte[] { 1, 2, 3 };
 
             using TrieStore trieStore = new(memDb, _logManager);
-            trieStore.LoadRlp(Commitment.Zero).Should().NotBeNull();
+            trieStore.LoadRlp(Keccak.Zero).Should().NotBeNull();
         }
 
         [Test]
@@ -461,7 +461,7 @@ namespace Nethermind.Trie.Test.Pruning
             storage1.ResolveKey(NullTrieNodeResolver.Instance, true);
 
             TrieNode a = new(NodeType.Leaf);
-            Account account = new(1, 1, storage1.Commitment, Commitment.OfAnEmptyString);
+            Account account = new(1, 1, storage1.Commitment, Keccak.OfAnEmptyString);
             a.Value = _accountDecoder.Encode(account).Bytes;
             a.Key = Bytes.FromHexString("abc");
             a.ResolveKey(NullTrieNodeResolver.Instance, true);
@@ -495,7 +495,7 @@ namespace Nethermind.Trie.Test.Pruning
             storage1.ResolveKey(NullTrieNodeResolver.Instance, true);
 
             TrieNode a = new(NodeType.Leaf);
-            Account account = new(1, 1, storage1.Commitment, Commitment.OfAnEmptyString);
+            Account account = new(1, 1, storage1.Commitment, Keccak.OfAnEmptyString);
             a.Value = _accountDecoder.Encode(account).Bytes;
             a.Key = Bytes.FromHexString("abc");
             a.ResolveKey(NullTrieNodeResolver.Instance, true);
@@ -534,7 +534,7 @@ namespace Nethermind.Trie.Test.Pruning
             storage1.ResolveKey(NullTrieNodeResolver.Instance, true);
 
             TrieNode a = new(NodeType.Leaf);
-            Account account = new(1, 1, storage1.Commitment, Commitment.OfAnEmptyString);
+            Account account = new(1, 1, storage1.Commitment, Keccak.OfAnEmptyString);
             a.Value = _accountDecoder.Encode(account).Bytes;
             a.Key = Bytes.FromHexString("abc");
             a.ResolveKey(NullTrieNodeResolver.Instance, true);
@@ -543,7 +543,7 @@ namespace Nethermind.Trie.Test.Pruning
             storage2.ResolveKey(NullTrieNodeResolver.Instance, true);
 
             TrieNode b = new(NodeType.Leaf);
-            Account accountB = new(2, 1, storage2.Commitment, Commitment.OfAnEmptyString);
+            Account accountB = new(2, 1, storage2.Commitment, Keccak.OfAnEmptyString);
             b.Value = _accountDecoder.Encode(accountB).Bytes;
             b.Key = Bytes.FromHexString("abcd");
             b.ResolveKey(NullTrieNodeResolver.Instance, true);
@@ -584,7 +584,7 @@ namespace Nethermind.Trie.Test.Pruning
         public void ReadOnly_store_doesnt_change_witness()
         {
             TrieNode node = new(NodeType.Leaf);
-            Account account = new(1, 1, TestItem._commitmentA, Commitment.OfAnEmptyString);
+            Account account = new(1, 1, TestItem._commitmentA, Keccak.OfAnEmptyString);
             node.Value = _accountDecoder.Encode(account).Bytes;
             node.Key = Bytes.FromHexString("abc");
             node.ResolveKey(NullTrieNodeResolver.Instance, true);
@@ -663,7 +663,7 @@ namespace Nethermind.Trie.Test.Pruning
         public void ReadOnly_store_returns_copies(bool pruning)
         {
             TrieNode node = new(NodeType.Leaf);
-            Account account = new(1, 1, TestItem._commitmentA, Commitment.OfAnEmptyString);
+            Account account = new(1, 1, TestItem._commitmentA, Keccak.OfAnEmptyString);
             node.Value = _accountDecoder.Encode(account).Bytes;
             node.Key = Bytes.FromHexString("abc");
             node.ResolveKey(NullTrieNodeResolver.Instance, true);

@@ -185,7 +185,7 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
         {
             if (_logger.IsWarn) _logger.Warn($"Misconfigured terminal total difficulty.");
 
-            return NewPayloadV1Result.Invalid(Commitment.Zero);
+            return NewPayloadV1Result.Invalid(Keccak.Zero);
         }
 
         if ((block.TotalDifficulty ?? 0) != 0 && _poSSwitcher.BlockBeforeTerminalTotalDifficulty(parentHeader))
@@ -193,7 +193,7 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
             if (_logger.IsWarn) _logger.Warn($"Invalid terminal block. Nethermind TTD {_poSSwitcher.TerminalTotalDifficulty}, Parent TD: {parentHeader.TotalDifficulty}. Request: {requestStr}.");
 
             // {status: INVALID, latestValidHash: 0x0000000000000000000000000000000000000000000000000000000000000000, validationError: errorMessage | null} if terminal block conditions are not satisfied
-            return NewPayloadV1Result.Invalid(Commitment.Zero);
+            return NewPayloadV1Result.Invalid(Keccak.Zero);
         }
 
         // Otherwise, we can just process this block and we don't need to do BeaconSync anymore.

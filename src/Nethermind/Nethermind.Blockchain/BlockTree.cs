@@ -35,7 +35,7 @@ namespace Nethermind.Blockchain
         public static readonly byte[] LowestInsertedBodyNumberDbEntryAddress = ((long)0).ToBigEndianByteArrayWithoutLeadingZeros();
         private static byte[] StateHeadHashDbEntryAddress = new byte[16];
         internal static Commitment DeletePointerAddressInDb = new(new BitArray(32 * 8, true).ToBytes());
-        internal static Commitment HeadAddressInDb = Commitment.Zero;
+        internal static Commitment HeadAddressInDb = Keccak.Zero;
 
         private const int BestKnownSearchLimit = 256_000_000;
 
@@ -443,7 +443,7 @@ namespace Nethermind.Blockchain
 
         public BlockHeader? FindHeader(Commitment? blockHash, BlockTreeLookupOptions options, long? blockNumber = null)
         {
-            if (blockHash is null || blockHash == Commitment.Zero)
+            if (blockHash is null || blockHash == Keccak.Zero)
             {
                 // TODO: would be great to check why this is still needed (maybe it is something archaic)
                 return null;
@@ -1020,7 +1020,7 @@ namespace Nethermind.Blockchain
                              // || totalDifficulty >= (_blockTree.Head?.TotalDifficulty ?? 0)
                              // below are some new conditions under test
                              || (header.TotalDifficulty == Head?.TotalDifficulty &&
-                                 ((Head?.Hash ?? Commitment.Zero).CompareTo(header.Hash) > 0))
+                                 ((Head?.Hash ?? Keccak.Zero).CompareTo(header.Hash) > 0))
                              || (header.TotalDifficulty == Head?.TotalDifficulty &&
                                  ((Head?.Number ?? 0L).CompareTo(header.Number) > 0))
                              || (header.TotalDifficulty >= _specProvider.TerminalTotalDifficulty);
@@ -1288,7 +1288,7 @@ namespace Nethermind.Blockchain
 
         public Block? FindBlock(Commitment? blockHash, BlockTreeLookupOptions options, long? blockNumber = null)
         {
-            if (blockHash is null || blockHash == Commitment.Zero)
+            if (blockHash is null || blockHash == Keccak.Zero)
             {
                 return null;
             }

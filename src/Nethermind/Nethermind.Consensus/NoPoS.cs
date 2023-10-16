@@ -28,7 +28,7 @@ public class NoPoS : IPoSSwitcher
     public UInt256? TerminalTotalDifficulty => null;
     public UInt256? FinalTotalDifficulty => null;
     public bool TransitionFinished => false;
-    public Commitment ConfiguredTerminalBlockHash => Commitment.Zero;
+    public Commitment ConfiguredTerminalBlockHash => Keccak.Zero;
     public long? ConfiguredTerminalBlockNumber => null;
 
     public bool TryUpdateTerminalBlock(BlockHeader header)

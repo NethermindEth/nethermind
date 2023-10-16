@@ -122,7 +122,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
                 UInt256 baseFee = header.BaseFeePerGas;
                 header = new BlockHeader(
                     header.Hash!,
-                    Commitment.OfAnEmptySequenceRlp,
+                    Keccak.OfAnEmptySequenceRlp,
                     Address.Zero,
                     header.Difficulty,
                     header.Number + 1,

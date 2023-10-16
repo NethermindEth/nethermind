@@ -112,7 +112,7 @@ public class ColumnDb : IDbWithSpan
 
     public void Compact()
     {
-        _rocksDb.CompactRange(Commitment.Zero.BytesToArray(), Commitment.MaxValue.BytesToArray(), _columnFamily);
+        _rocksDb.CompactRange(Keccak.Zero.BytesToArray(), Keccak.MaxValue.BytesToArray(), _columnFamily);
     }
 
     /// <summary>

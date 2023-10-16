@@ -56,7 +56,7 @@ namespace Nethermind.Blockchain.Test.Consensus
         public void Throws_when_trying_to_sign_with_a_null_key()
         {
             Signer signer = new(1, (PrivateKey?)null, LimboLogs.Instance);
-            Assert.Throws<InvalidOperationException>(() => signer.Sign(Commitment.Zero));
+            Assert.Throws<InvalidOperationException>(() => signer.Sign(Keccak.Zero));
         }
 
         [Test, Timeout(Timeout.MaxTestTime)]
@@ -64,7 +64,7 @@ namespace Nethermind.Blockchain.Test.Consensus
         {
             Signer signer = new(1, TestItem.PrivateKeyA, LimboLogs.Instance);
             await signer.Sign(Build.A.Transaction.TestObject);
-            signer.Sign(Commitment.Zero).Bytes.Should().HaveCount(64);
+            signer.Sign(Keccak.Zero).Bytes.Should().HaveCount(64);
         }
     }
 }

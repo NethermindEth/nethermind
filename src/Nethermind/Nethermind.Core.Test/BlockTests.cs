@@ -18,6 +18,6 @@ internal class BlockTests
         new[]
         {
             (new BlockHeader(), (int?)null),
-            (new BlockHeader { WithdrawalsRoot = Commitment.EmptyTreeHash }, 0)
+            (new BlockHeader { WithdrawalsRoot = Keccak.EmptyTreeHash }, 0)
         };
 }

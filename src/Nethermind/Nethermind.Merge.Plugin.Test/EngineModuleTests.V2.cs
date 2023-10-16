@@ -42,14 +42,14 @@ public partial class EngineModuleTests
             await CreateBlockchain(Shanghai.Instance, new MergeConfig { TerminalTotalDifficulty = "0" });
         IEngineRpcModule rpc = CreateEngineModule(chain);
         Commitment startingHead = chain.BlockTree.HeadHash;
-        Commitment prevRandao = Commitment.Zero;
+        Commitment prevRandao = Keccak.Zero;
         Address feeRecipient = TestItem.AddressC;
         ulong timestamp = Timestamper.UnixTime.Seconds;
         var fcuState = new
         {
             headBlockHash = startingHead.ToString(),
             safeBlockHash = startingHead.ToString(),
-            finalizedBlockHash = Commitment.Zero.ToString()
+            finalizedBlockHash = Keccak.Zero.ToString()
         };
         Withdrawal[] withdrawals = new[]
         {
@@ -91,7 +91,7 @@ public partial class EngineModuleTests
         Block block = new(
             new(
                 startingHead,
-                Commitment.OfAnEmptySequenceRlp,
+                Keccak.OfAnEmptySequenceRlp,
                 feeRecipient,
                 UInt256.Zero,
                 1,
@@ -175,14 +175,14 @@ public partial class EngineModuleTests
         IEngineRpcModule rpcModule = CreateEngineModule(chain);
         var fcuState = new
         {
-            headBlockHash = Commitment.Zero.ToString(),
-            safeBlockHash = Commitment.Zero.ToString(),
-            finalizedBlockHash = Commitment.Zero.ToString()
+            headBlockHash = Keccak.Zero.ToString(),
+            safeBlockHash = Keccak.Zero.ToString(),
+            finalizedBlockHash = Keccak.Zero.ToString()
         };
         var payloadAttrs = new
         {
             timestamp = "0x0",
-            prevRandao = Commitment.Zero.ToString(),
+            prevRandao = Keccak.Zero.ToString(),
             suggestedFeeRecipient = Address.Zero.ToString(),
             withdrawals = Enumerable.Empty<Withdrawal>()
         };
@@ -214,12 +214,12 @@ public partial class EngineModuleTests
         {
             headBlockHash = chain.BlockTree.HeadHash.ToString(),
             safeBlockHash = chain.BlockTree.HeadHash.ToString(),
-            finalizedBlockHash = Commitment.Zero.ToString()
+            finalizedBlockHash = Keccak.Zero.ToString()
         };
         var payloadAttrs = new
         {
             timestamp = Timestamper.UnixTime.Seconds.ToHexString(true),
-            prevRandao = Commitment.Zero.ToString(),
+            prevRandao = Keccak.Zero.ToString(),
             suggestedFeeRecipient = TestItem.AddressA.ToString(),
             withdrawals = input.Withdrawals
         };
@@ -245,12 +245,12 @@ public partial class EngineModuleTests
 
         Commitment startingHead = chain.BlockTree.HeadHash;
 
-        ForkchoiceStateV1 forkchoiceState = new(startingHead, Commitment.Zero, startingHead);
+        ForkchoiceStateV1 forkchoiceState = new(startingHead, Keccak.Zero, startingHead);
         PayloadAttributes payload = new()
         {
             Timestamp = Timestamper.UnixTime.Seconds,
             SuggestedFeeRecipient = Address.Zero,
-            PrevRandao = Commitment.Zero
+            PrevRandao = Keccak.Zero
         };
         Task<ResultWrapper<ForkchoiceUpdatedV1Result>> forkchoiceResponse =
             rpc.engine_forkchoiceUpdatedV1(forkchoiceState, payload);
@@ -283,7 +283,7 @@ public partial class EngineModuleTests
         chain.PayloadPreparationService!.BlockImproved += (_, _) => { blockImprovementLock.Release(1); };
 
         string? payloadId = rpc.engine_forkchoiceUpdatedV1(
-                new ForkchoiceStateV1(startingHead, Commitment.Zero, startingHead),
+                new ForkchoiceStateV1(startingHead, Keccak.Zero, startingHead),
                 new PayloadAttributes()
                 {
                     Timestamp = 100,
@@ -443,7 +443,7 @@ public partial class EngineModuleTests
             chain.AddTransactions(txsA);
 
             ExecutionPayload executionPayload2 = await BuildAndGetPayloadResultV2(
-                rpc, chain, head.Hash!, head.Hash!, head.Hash!, 1001, Commitment.Zero, Address.Zero, withdrawals);
+                rpc, chain, head.Hash!, head.Hash!, head.Hash!, 1001, Keccak.Zero, Address.Zero, withdrawals);
             ResultWrapper<PayloadStatusV1> execResult = await rpc.engine_newPayloadV2(executionPayload2);
 
             execResult.Data.Status.Should().Be(PayloadStatus.Valid);
@@ -540,17 +540,17 @@ public partial class EngineModuleTests
         ExecutionPayload expectedPayload = new()
         {
             BaseFeePerGas = 0,
-            BlockHash = Commitment.Zero,
+            BlockHash = Keccak.Zero,
             BlockNumber = 1,
             ExtraData = Array.Empty<byte>(),
             FeeRecipient = Address.Zero,
             GasLimit = 0,
             GasUsed = 0,
             LogsBloom = Bloom.Empty,
-            ParentHash = Commitment.Zero,
-            PrevRandao = Commitment.Zero,
-            ReceiptsRoot = Commitment.Zero,
-            StateRoot = Commitment.Zero,
+            ParentHash = Keccak.Zero,
+            PrevRandao = Keccak.Zero,
+            ReceiptsRoot = Keccak.Zero,
+            StateRoot = Keccak.Zero,
             Timestamp = 0,
             Transactions = Array.Empty<byte[]>(),
             Withdrawals = Enumerable.Empty<Withdrawal>()
@@ -578,7 +578,7 @@ public partial class EngineModuleTests
         IEngineRpcModule rpcModule = CreateEngineModule(chain);
         Commitment blockHash = new(input.BlockHash);
         Commitment startingHead = chain.BlockTree.HeadHash;
-        Commitment prevRandao = Commitment.Zero;
+        Commitment prevRandao = Keccak.Zero;
         Address feeRecipient = TestItem.AddressC;
         ulong timestamp = Timestamper.UnixTime.Seconds;
         ExecutionPayload expectedPayload = new()
@@ -752,7 +752,7 @@ public partial class EngineModuleTests
         var blockHeader = Build.A.BlockHeader.TestObject;
         var payloadAttributes = new PayloadAttributes
         {
-            PrevRandao = Commitment.Zero,
+            PrevRandao = Keccak.Zero,
             SuggestedFeeRecipient = Address.Zero,
             Timestamp = 0,
             Withdrawals = input.Withdrawals
@@ -860,10 +860,10 @@ public partial class EngineModuleTests
     {
         Commitment head = chain.BlockTree.HeadHash;
         ulong timestamp = Timestamper.UnixTime.Seconds;
-        Commitment random = Commitment.Zero;
+        Commitment random = Keccak.Zero;
         Address feeRecipient = Address.Zero;
         ExecutionPayload executionPayload = await BuildAndGetPayloadResultV2(rpc, chain, head,
-            Commitment.Zero, head, timestamp, random, feeRecipient, withdrawals, waitForBlockImprovement);
+            Keccak.Zero, head, timestamp, random, feeRecipient, withdrawals, waitForBlockImprovement);
         ResultWrapper<PayloadStatusV1> executePayloadResult =
             await rpc.engine_newPayloadV2(executionPayload);
         executePayloadResult.Data.Status.Should().Be(PayloadStatus.Valid);

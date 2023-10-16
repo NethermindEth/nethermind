@@ -64,7 +64,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.Messages
             var acc01 = Build.An.Account
                 .WithBalance(1)
                 .WithCode(Code0)
-                .WithStorageRoot(Commitment.EmptyTreeHash)
+                .WithStorageRoot(Keccak.EmptyTreeHash)
                 .TestObject;
 
             AccountRangeMessage msg = new()

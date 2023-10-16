@@ -204,11 +204,11 @@ namespace Nethermind.Serialization.Rlp
             {
                 WriteByte(EmptyArrayByte);
             }
-            else if (ReferenceEquals(keccak, Commitment.EmptyTreeHash))
+            else if (ReferenceEquals(keccak, Keccak.EmptyTreeHash))
             {
                 Write(Rlp.OfEmptyTreeHash.Bytes);
             }
-            else if (ReferenceEquals(keccak, Commitment.OfAnEmptyString))
+            else if (ReferenceEquals(keccak, Keccak.OfAnEmptyString))
             {
                 Write(Rlp.OfEmptyStringHash.Bytes);
             }
@@ -906,14 +906,14 @@ namespace Nethermind.Serialization.Rlp
             }
 
             Span<byte> keccakSpan = Read(32);
-            if (keccakSpan.SequenceEqual(Commitment.OfAnEmptyString.Bytes))
+            if (keccakSpan.SequenceEqual(Keccak.OfAnEmptyString.Bytes))
             {
-                return Commitment.OfAnEmptyString;
+                return Keccak.OfAnEmptyString;
             }
 
-            if (keccakSpan.SequenceEqual(Commitment.EmptyTreeHash.Bytes))
+            if (keccakSpan.SequenceEqual(Keccak.EmptyTreeHash.Bytes))
             {
-                return Commitment.EmptyTreeHash;
+                return Keccak.EmptyTreeHash;
             }
 
             return new Commitment(keccakSpan);

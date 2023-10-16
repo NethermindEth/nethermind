@@ -44,8 +44,8 @@ namespace Nethermind.Mev.Execution
         private Block BuildBlock(MevBundle bundle, BlockHeader parent, ulong? timestamp)
         {
             BlockHeader header = new(
-                parent.Hash ?? Commitment.OfAnEmptySequenceRlp,
-                Commitment.OfAnEmptySequenceRlp,
+                parent.Hash ?? Keccak.OfAnEmptySequenceRlp,
+                Keccak.OfAnEmptySequenceRlp,
                 Beneficiary,
                 parent.Difficulty,
                 bundle.BlockNumber,

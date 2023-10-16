@@ -74,7 +74,7 @@ public partial class EthRpcModuleTests
     public async Task Eth_call_no_sender()
     {
         using Context ctx = await Context.Create();
-        TransactionForRpc transaction = new(Commitment.Zero, 1L, 1, new Transaction());
+        TransactionForRpc transaction = new(Keccak.Zero, 1L, 1, new Transaction());
         transaction.To = TestItem.AddressB;
 
         string serialized =
@@ -86,7 +86,7 @@ public partial class EthRpcModuleTests
     public async Task Eth_call_no_recipient_should_work_as_init()
     {
         using Context ctx = await Context.Create();
-        TransactionForRpc transaction = new(Commitment.Zero, 1L, 1, new Transaction());
+        TransactionForRpc transaction = new(Keccak.Zero, 1L, 1, new Transaction());
         transaction.From = TestItem.AddressA;
         transaction.Input = new byte[] { 1, 2, 3 };
 
@@ -105,7 +105,7 @@ public partial class EthRpcModuleTests
         using Context ctx = await Context.Create(specProvider);
 
         Transaction tx = Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyA).TestObject;
-        TransactionForRpc transaction = new(Commitment.Zero, 1L, 1, tx);
+        TransactionForRpc transaction = new(Keccak.Zero, 1L, 1, tx);
         ctx.Test.State.InsertCode(TestItem.AddressA, "H"u8.ToArray(), London.Instance);
         transaction.To = TestItem.AddressB;
 
@@ -128,7 +128,7 @@ public partial class EthRpcModuleTests
     public async Task Eth_call_ok()
     {
         using Context ctx = await Context.Create();
-        TransactionForRpc transaction = new(Commitment.Zero, 1L, 1, new Transaction());
+        TransactionForRpc transaction = new(Keccak.Zero, 1L, 1, new Transaction());
         transaction.From = TestItem.AddressA;
         transaction.To = TestItem.AddressB;
 
@@ -153,7 +153,7 @@ public partial class EthRpcModuleTests
     public async Task Eth_call_missing_state_after_fast_sync()
     {
         using Context ctx = await Context.Create();
-        TransactionForRpc transaction = new(Commitment.Zero, 1L, 1, new Transaction());
+        TransactionForRpc transaction = new(Keccak.Zero, 1L, 1, new Transaction());
         transaction.From = TestItem.AddressA;
         transaction.To = TestItem.AddressB;
 

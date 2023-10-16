@@ -246,7 +246,7 @@ namespace Nethermind.AccountAbstraction.Executor
 
             BlockHeader callHeader = new(
                 blockHeader.Hash!,
-                Commitment.OfAnEmptySequenceRlp,
+                Keccak.OfAnEmptySequenceRlp,
                 Address.Zero,
                 0,
                 treatBlockHeaderAsParentBlock ? blockHeader.Number + 1 : blockHeader.Number,

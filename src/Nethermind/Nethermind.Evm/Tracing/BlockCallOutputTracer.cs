@@ -10,7 +10,7 @@ namespace Nethermind.Evm.Tracing
     public class BlockCallOutputTracer : BlockTracer
     {
         private readonly Dictionary<Commitment, CallOutputTracer> _results = new();
-        public override ITxTracer StartNewTxTrace(Transaction? tx) => _results[tx?.Hash ?? Commitment.Zero] = new CallOutputTracer();
+        public override ITxTracer StartNewTxTrace(Transaction? tx) => _results[tx?.Hash ?? Keccak.Zero] = new CallOutputTracer();
         public IReadOnlyDictionary<Commitment, CallOutputTracer> BuildResults() => _results;
     }
 }

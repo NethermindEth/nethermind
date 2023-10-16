@@ -18,7 +18,7 @@ namespace Nethermind.JsonRpc.Test.Data
         [Test]
         public void Are_log_indexes_unique()
         {
-            Commitment txHash = Commitment.OfAnEmptyString;
+            Commitment txHash = Keccak.OfAnEmptyString;
             LogEntry[] logEntries = { Build.A.LogEntry.TestObject, Build.A.LogEntry.TestObject, Build.A.LogEntry.TestObject };
 
             TxReceipt receipt1 = new()

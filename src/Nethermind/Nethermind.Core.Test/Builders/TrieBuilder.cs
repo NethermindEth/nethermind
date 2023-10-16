@@ -15,7 +15,7 @@ namespace Nethermind.Core.Test.Builders
 
         public TrieBuilder(IKeyValueStoreWithBatching db)
         {
-            TestObjectInternal = new PatriciaTree(db, Commitment.EmptyTreeHash, false, true, LimboLogs.Instance);
+            TestObjectInternal = new PatriciaTree(db, Keccak.EmptyTreeHash, false, true, LimboLogs.Instance);
         }
 
         public TrieBuilder WithAccountsByIndex(int start, int count)
@@ -46,8 +46,8 @@ namespace Nethermind.Core.Test.Builders
             Account account = new(
                 (UInt256)index,
                 (UInt256)index,
-                Commitment.EmptyTreeHash,
-                Commitment.OfAnEmptyString);
+                Keccak.EmptyTreeHash,
+                Keccak.OfAnEmptyString);
 
             return account;
         }

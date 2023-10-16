@@ -11,7 +11,7 @@ namespace Nethermind.Core.Test.Builders
         public ReceiptBuilder()
         {
             TestObjectInternal = new TxReceipt();
-            TestObjectInternal.Logs = new[] { new LogEntry(Address.Zero, Array.Empty<byte>(), new[] { Commitment.Zero }) };
+            TestObjectInternal.Logs = new[] { new LogEntry(Address.Zero, Array.Empty<byte>(), new[] { Keccak.Zero }) };
         }
 
         public ReceiptBuilder WithAllFieldsFilled => WithBloom(TestItem.NonZeroBloom)

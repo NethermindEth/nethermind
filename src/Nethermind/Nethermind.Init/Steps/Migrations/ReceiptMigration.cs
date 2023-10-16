@@ -419,7 +419,7 @@ namespace Nethermind.Init.Steps.Migrations
         {
             public Block Create()
             {
-                return new Block(new BlockHeader(Commitment.Zero, Commitment.Zero, Address.Zero, UInt256.Zero, 0L, 0L, 0UL, Array.Empty<byte>()));
+                return new Block(new BlockHeader(Keccak.Zero, Keccak.Zero, Address.Zero, UInt256.Zero, 0L, 0L, 0UL, Array.Empty<byte>()));
             }
 
             public bool Return(Block obj)

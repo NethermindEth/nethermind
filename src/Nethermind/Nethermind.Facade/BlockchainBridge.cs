@@ -246,7 +246,7 @@ namespace Nethermind.Facade
             BlockHeader callHeader = treatBlockHeaderAsParentBlock
                 ? new(
                     blockHeader.Hash!,
-                    Commitment.OfAnEmptySequenceRlp,
+                    Keccak.OfAnEmptySequenceRlp,
                     Address.Zero,
                     UInt256.Zero,
                     blockHeader.Number + 1,

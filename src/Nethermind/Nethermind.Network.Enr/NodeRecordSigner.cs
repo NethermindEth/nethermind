@@ -132,7 +132,7 @@ public class NodeRecordSigner : INodeRecordSigner
         Commitment contentHash;
         if (nodeRecord.OriginalContentRlp is not null)
         {
-            contentHash = Commitment.Compute(nodeRecord.OriginalContentRlp);
+            contentHash = Keccak.Compute(nodeRecord.OriginalContentRlp);
         }
         else
         {

@@ -16,7 +16,7 @@ namespace Nethermind.Store.Test.Witnesses
         public void Cannot_call_add()
         {
             Assert.Throws<InvalidOperationException>(
-                () => NullWitnessCollector.Instance.Add(Commitment.Zero));
+                () => NullWitnessCollector.Instance.Add(Keccak.Zero));
         }
 
         [Test]
@@ -35,14 +35,14 @@ namespace Nethermind.Store.Test.Witnesses
         [Test]
         public void Persist_does_nothing()
         {
-            NullWitnessCollector.Instance.Persist(Commitment.Zero);
+            NullWitnessCollector.Instance.Persist(Keccak.Zero);
         }
 
         [Test]
         public void Load_throws()
         {
             Assert.Throws<InvalidOperationException>(
-                () => NullWitnessCollector.Instance.Load(Commitment.Zero));
+                () => NullWitnessCollector.Instance.Load(Keccak.Zero));
         }
     }
 }

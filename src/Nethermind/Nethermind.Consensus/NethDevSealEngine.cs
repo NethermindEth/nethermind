@@ -18,7 +18,7 @@ namespace Nethermind.Consensus
 
         public Task<Block> SealBlock(Block block, CancellationToken cancellationToken)
         {
-            block.Header.MixHash = Commitment.Zero;
+            block.Header.MixHash = Keccak.Zero;
             block.Header.Hash = block.CalculateHash();
             return Task.FromResult(block);
         }

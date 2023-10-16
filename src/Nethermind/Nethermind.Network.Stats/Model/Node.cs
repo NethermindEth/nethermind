@@ -83,7 +83,7 @@ namespace Nethermind.Stats.Model
         public Node(PublicKey id, IPEndPoint address, bool isStatic = false)
         {
             Id = id;
-            IdHash = Commitment.Compute(Id.PrefixedBytes);
+            IdHash = Keccak.Compute(Id.PrefixedBytes);
             IsStatic = isStatic;
             SetIPEndPoint(address);
         }

@@ -37,7 +37,7 @@ namespace Nethermind.Evm.Test
 
             TestAllTracerWithOutput result = Execute(code);
             AssertGas(result, 21000 + GasCostOf.VeryLow * 2 + GasCostOf.SSet + GasCostOf.ExtCodeHash);
-            AssertStorage(UInt256.Zero, Commitment.OfAnEmptyString.Bytes);
+            AssertStorage(UInt256.Zero, Keccak.OfAnEmptyString.Bytes);
         }
 
         [Test]
@@ -53,7 +53,7 @@ namespace Nethermind.Evm.Test
             TestAllTracerWithOutput result = Execute(code);
             AssertGas(result,
                 21000 + GasCostOf.VeryLow * 2 + GasCostOf.SStoreNetMeteredEip1283 + GasCostOf.ExtCodeHash);
-            AssertStorage(UInt256.Zero, Commitment.Zero);
+            AssertStorage(UInt256.Zero, Keccak.Zero);
         }
 
         [Test]
@@ -70,7 +70,7 @@ namespace Nethermind.Evm.Test
                 .Done;
 
             Execute(code);
-            AssertStorage(UInt256.Zero, Commitment.Zero);
+            AssertStorage(UInt256.Zero, Keccak.Zero);
         }
 
         [Test]
@@ -89,7 +89,7 @@ namespace Nethermind.Evm.Test
                 .Done;
 
             Execute(code);
-            AssertStorage(UInt256.Zero, Commitment.OfAnEmptyString.Bytes);
+            AssertStorage(UInt256.Zero, Keccak.OfAnEmptyString.Bytes);
         }
 
         [Test]
@@ -127,7 +127,7 @@ namespace Nethermind.Evm.Test
                 .Done;
 
             Execute(code);
-            Commitment codehash = Commitment.Compute("some code");
+            Commitment codehash = Keccak.Compute("some code");
             AssertStorage(0, codehash.Bytes);
             AssertStorage(1, codehash.Bytes);
         }
@@ -151,7 +151,7 @@ namespace Nethermind.Evm.Test
                 .Done;
 
             Execute(code);
-            AssertStorage(0, Commitment.Compute(selfDestructCode));
+            AssertStorage(0, Keccak.Compute(selfDestructCode));
         }
 
         [Test]
@@ -180,7 +180,7 @@ namespace Nethermind.Evm.Test
                 .Done;
 
             Execute(code);
-            AssertStorage(0, Commitment.Compute(selfDestructCode));
+            AssertStorage(0, Keccak.Compute(selfDestructCode));
         }
 
         [Test]
@@ -216,7 +216,7 @@ namespace Nethermind.Evm.Test
             Execute(code);
 
             // todo: so far EIP does not define whether it should be zero or empty data
-            AssertStorage(0, Commitment.OfAnEmptyString);
+            AssertStorage(0, Keccak.OfAnEmptyString);
             Assert.True(TestState.AccountExists(ContractAddress.From(Recipient, 0)),
                 "did not test the right thing - it was not a newly created empty account scenario");
         }
@@ -251,14 +251,14 @@ namespace Nethermind.Evm.Test
                 .Done;
 
             Execute(code);
-            AssertStorage(0, Commitment.Zero);
+            AssertStorage(0, Keccak.Zero);
         }
 
         [Test]
         public void Create_returns_code_hash()
         {
             byte[] deployedCode = { 1, 2, 3 };
-            Commitment deployedCodeHash = Commitment.Compute(deployedCode);
+            Commitment deployedCodeHash = Keccak.Compute(deployedCode);
 
             byte[] initCode = Prepare.EvmCode
                 .ForInitOf(deployedCode).Done;

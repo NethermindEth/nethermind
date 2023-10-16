@@ -342,7 +342,7 @@ namespace Nethermind.AccountAbstraction.Test
                 new FilterLog(0, 0, receipt,
                     new LogEntry(new Address(_entryPointContractAddress),
                         Bytes.Zero32,
-                        new[] {_userOperationEventTopic, uops[0].RequestId!, Commitment.Zero, Commitment.Zero}))
+                        new[] {_userOperationEventTopic, uops[0].RequestId!, Keccak.Zero, Keccak.Zero}))
             });
             //_receiptFinder.Get(block).Returns(new[]{receipt});
             BlockEventArgs blockEventArgs = new(block);
@@ -400,7 +400,7 @@ namespace Nethermind.AccountAbstraction.Test
             _stateProvider.IsContract(_notAnAddress).Returns(false);
 
             _simulator.Simulate(Arg.Any<UserOperation>(), Arg.Any<BlockHeader>())
-                .ReturnsForAnyArgs(x => ResultWrapper<Commitment>.Success(Commitment.Zero));
+                .ReturnsForAnyArgs(x => ResultWrapper<Commitment>.Success(Keccak.Zero));
 
             _blockTree.Head.Returns(Core.Test.Builders.Build.A.Block.TestObject);
 

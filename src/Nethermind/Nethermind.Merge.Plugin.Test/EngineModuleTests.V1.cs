@@ -55,14 +55,14 @@ public partial class EngineModuleTests
         });
         IEngineRpcModule rpc = CreateEngineModule(chain);
         Commitment startingHead = chain.BlockTree.HeadHash;
-        Commitment prevRandao = Commitment.Zero;
+        Commitment prevRandao = Keccak.Zero;
         Address feeRecipient = TestItem.AddressC;
         UInt256 timestamp = Timestamper.UnixTime.Seconds;
         var forkChoiceUpdatedParams = new
         {
             headBlockHash = startingHead.ToString(),
             safeBlockHash = startingHead.ToString(),
-            finalizedBlockHash = Commitment.Zero.ToString(),
+            finalizedBlockHash = Keccak.Zero.ToString(),
         };
         var preparePayloadParams = new
         {
@@ -126,9 +126,9 @@ public partial class EngineModuleTests
         IEngineRpcModule rpc = CreateEngineModule(chain);
         var forkChoiceUpdatedParams = new
         {
-            headBlockHash = Commitment.Zero.ToString(),
-            safeBlockHash = Commitment.Zero.ToString(),
-            finalizedBlockHash = Commitment.Zero.ToString(),
+            headBlockHash = Keccak.Zero.ToString(),
+            safeBlockHash = Keccak.Zero.ToString(),
+            finalizedBlockHash = Keccak.Zero.ToString(),
         };
         string[] parameters = new[] { JsonConvert.SerializeObject(forkChoiceUpdatedParams) };
         string? result = await RpcTest.TestSerializedRequest(rpc, "engine_forkchoiceUpdatedV1", parameters);
@@ -156,11 +156,11 @@ public partial class EngineModuleTests
         IEngineRpcModule rpc = CreateEngineModule(chain);
         Commitment startingHead = chain.BlockTree.HeadHash;
         ulong timestamp = 30;
-        Commitment random = Commitment.Zero;
+        Commitment random = Keccak.Zero;
         Address feeRecipient = TestItem.AddressD;
 
         ExecutionPayload? executionPayloadV1 = await BuildAndGetPayloadResult(rpc, chain, startingHead,
-            Commitment.Zero, startingHead, timestamp, random, feeRecipient);
+            Keccak.Zero, startingHead, timestamp, random, feeRecipient);
 
         ExecutionPayload expected = CreateParentBlockRequestOnHead(chain.BlockTree);
         expected.GasLimit = 4000000L;
@@ -191,11 +191,11 @@ public partial class EngineModuleTests
         Commitment startingHead = chain.BlockTree.HeadHash;
         Commitment notExistingHash = TestItem._commitmentH;
         ulong timestamp = Timestamper.UnixTime.Seconds;
-        Commitment random = Commitment.Zero;
+        Commitment random = Keccak.Zero;
         Address feeRecipient = Address.Zero;
 
         ResultWrapper<ForkchoiceUpdatedV1Result> forkchoiceUpdatedV1Response = await rpc.engine_forkchoiceUpdatedV1(
-            new ForkchoiceStateV1(notExistingHash, Commitment.Zero, notExistingHash),
+            new ForkchoiceStateV1(notExistingHash, Keccak.Zero, notExistingHash),
             new PayloadAttributes { Timestamp = timestamp, SuggestedFeeRecipient = feeRecipient, PrevRandao = random });
 
         forkchoiceUpdatedV1Response.Data.PayloadStatus.Status.Should()
@@ -266,7 +266,7 @@ public partial class EngineModuleTests
         chain.BlockTree.FindBlock(newHead, BlockTreeLookupOptions.RequireCanonical).Should().BeNull();
         chain.BlockTree.FindBlock(newHead, BlockTreeLookupOptions.None).Should().NotBeNull();
 
-        await rpc.engine_forkchoiceUpdatedV1(new ForkchoiceStateV1(newHead, Commitment.Zero, Commitment.Zero));
+        await rpc.engine_forkchoiceUpdatedV1(new ForkchoiceStateV1(newHead, Keccak.Zero, Keccak.Zero));
         chain.BlockTree.FindBlock(newHead, BlockTreeLookupOptions.RequireCanonical).Should().NotBeNull();
         chain.BlockTree.FindBlock(newHead, BlockTreeLookupOptions.None).Should().NotBeNull();
     }
@@ -277,9 +277,9 @@ public partial class EngineModuleTests
         using MergeTestBlockchain chain = await CreateBlockchain();
         IEngineRpcModule rpc = CreateEngineModule(chain);
         Commitment startingHead = chain.BlockTree.HeadHash;
-        Commitment finalizedHash = Commitment.Zero;
+        Commitment finalizedHash = Keccak.Zero;
         ulong timestamp = 30;
-        Commitment random = Commitment.Zero;
+        Commitment random = Keccak.Zero;
         Address feeRecipientA = TestItem.AddressD;
         Address feeRecipientB = TestItem.AddressE;
 
@@ -327,7 +327,7 @@ public partial class EngineModuleTests
     {
         Commitment startingHead = chain.BlockTree.HeadHash;
         ulong timestamp = Timestamper.UnixTime.Seconds;
-        Commitment random = Commitment.Zero;
+        Commitment random = Keccak.Zero;
         Address feeRecipient = Address.Zero;
         return await PrepareAndGetPayloadResultV1(rpc, startingHead, timestamp, random, feeRecipient);
     }
@@ -493,7 +493,7 @@ public partial class EngineModuleTests
         ExecutionPayload executionPayload = await SendNewBlockV1(rpc, chain);
 
         Commitment newHeadHash = executionPayload.BlockHash;
-        ForkchoiceStateV1 forkchoiceStateV1 = new(newHeadHash!, Commitment.Zero, startingHead);
+        ForkchoiceStateV1 forkchoiceStateV1 = new(newHeadHash!, Keccak.Zero, startingHead);
         ResultWrapper<ForkchoiceUpdatedV1Result> forkchoiceUpdatedResult = await rpc.engine_forkchoiceUpdatedV1(forkchoiceStateV1);
         forkchoiceUpdatedResult.Data.PayloadStatus.Status.Should().Be(PayloadStatus.Valid);
         forkchoiceUpdatedResult.Data.PayloadId.Should().Be(null);
@@ -501,7 +501,7 @@ public partial class EngineModuleTests
         Commitment actualHead = chain.BlockTree.HeadHash;
         actualHead.Should().NotBe(startingHead);
         actualHead.Should().Be(newHeadHash);
-        AssertExecutionStatusChanged(chain.BlockFinder, newHeadHash!, Commitment.Zero, startingHead);
+        AssertExecutionStatusChanged(chain.BlockFinder, newHeadHash!, Keccak.Zero, startingHead);
     }
 
     [Test]
@@ -571,7 +571,7 @@ public partial class EngineModuleTests
         ExecutionPayload executionPayload = await SendNewBlockV1(rpc, chain);
 
         Commitment newHeadHash = executionPayload.BlockHash!;
-        ForkchoiceStateV1 forkchoiceStateV1 = new(newHeadHash, newHeadHash, Commitment.Zero);
+        ForkchoiceStateV1 forkchoiceStateV1 = new(newHeadHash, newHeadHash, Keccak.Zero);
         ResultWrapper<ForkchoiceUpdatedV1Result> forkchoiceUpdatedResult = await rpc.engine_forkchoiceUpdatedV1(forkchoiceStateV1);
         forkchoiceUpdatedResult.Data.PayloadStatus.Status.Should().Be(PayloadStatus.Valid);
         forkchoiceUpdatedResult.Data.PayloadId.Should().Be(null);
@@ -579,7 +579,7 @@ public partial class EngineModuleTests
         Commitment actualHead = chain.BlockTree.HeadHash;
         actualHead.Should().NotBe(startingHead);
         actualHead.Should().Be(newHeadHash);
-        AssertExecutionStatusChanged(chain.BlockFinder, newHeadHash!, newHeadHash, Commitment.Zero);
+        AssertExecutionStatusChanged(chain.BlockFinder, newHeadHash!, newHeadHash, Keccak.Zero);
     }
 
     [Test]
@@ -789,7 +789,7 @@ public partial class EngineModuleTests
         ExecutionPayload executionPayload = CreateBlockRequest(chain, CreateParentBlockRequestOnHead(chain.BlockTree), TestItem.AddressD);
         ResultWrapper<PayloadStatusV1> resultWrapper = await rpc.engine_newPayloadV1(executionPayload);
         resultWrapper.Data.Status.Should().Be(PayloadStatus.Invalid);
-        resultWrapper.Data.LatestValidHash.Should().Be(Commitment.Zero);
+        resultWrapper.Data.LatestValidHash.Should().Be(Keccak.Zero);
     }
 
     [TestCase(null)]
@@ -805,7 +805,7 @@ public partial class EngineModuleTests
         Commitment blockHash = chain.BlockTree.HeadHash;
         ResultWrapper<ForkchoiceUpdatedV1Result> resultWrapper = await rpc.engine_forkchoiceUpdatedV1(new ForkchoiceStateV1(blockHash, blockHash, blockHash), null);
         resultWrapper.Data.PayloadStatus.Status.Should().Be(PayloadStatus.Invalid);
-        resultWrapper.Data.PayloadStatus.LatestValidHash.Should().Be(Commitment.Zero);
+        resultWrapper.Data.PayloadStatus.LatestValidHash.Should().Be(Keccak.Zero);
     }
 
     [Test]
@@ -895,7 +895,7 @@ public partial class EngineModuleTests
         ExecutionPayload executionPayload = new(firstPoSBlock);
         ResultWrapper<PayloadStatusV1> resultWrapper = await rpc.engine_newPayloadV1(executionPayload);
         resultWrapper.Data.Status.Should().Be(PayloadStatus.Invalid);
-        resultWrapper.Data.LatestValidHash.Should().Be(Commitment.Zero);
+        resultWrapper.Data.LatestValidHash.Should().Be(Keccak.Zero);
     }
 
     [Test]
@@ -933,7 +933,7 @@ public partial class EngineModuleTests
         using MergeTestBlockchain chain = await CreateBlockchain();
         IEngineRpcModule rpc = CreateEngineModule(chain);
         Commitment lastHash = (await ProduceBranchV1(rpc, chain, count, CreateParentBlockRequestOnHead(chain.BlockTree), true))
-            .LastOrDefault()?.BlockHash ?? Commitment.Zero;
+            .LastOrDefault()?.BlockHash ?? Keccak.Zero;
         chain.BlockTree.HeadHash.Should().Be(lastHash);
         Block? last = RunForAllBlocksInBranch(chain.BlockTree, chain.BlockTree.HeadHash, b => b.IsGenesis, true);
         last.Should().NotBeNull();
@@ -1163,9 +1163,9 @@ public partial class EngineModuleTests
         IEngineRpcModule rpc = CreateEngineModule(chain);
         Commitment startingHead = chain.BlockTree.HeadHash;
         ulong timestamp = Timestamper.UnixTime.Seconds;
-        Commitment random = Commitment.Zero;
+        Commitment random = Keccak.Zero;
         Address feeRecipient = TestItem.AddressC;
-        string payloadId = rpc.engine_forkchoiceUpdatedV1(new ForkchoiceStateV1(startingHead, Commitment.Zero, startingHead),
+        string payloadId = rpc.engine_forkchoiceUpdatedV1(new ForkchoiceStateV1(startingHead, Keccak.Zero, startingHead),
                 new PayloadAttributes { Timestamp = timestamp, SuggestedFeeRecipient = feeRecipient, PrevRandao = random }).Result.Data
             .PayloadId!;
         (await rpc.engine_getPayloadV1(Bytes.FromHexString(payloadId))).Data!.FeeRecipient.Should()
@@ -1227,10 +1227,10 @@ public partial class EngineModuleTests
     {
         Commitment head = chain.BlockTree.HeadHash;
         ulong timestamp = Timestamper.UnixTime.Seconds;
-        Commitment random = Commitment.Zero;
+        Commitment random = Keccak.Zero;
         Address feeRecipient = Address.Zero;
         ExecutionPayload executionPayload = await BuildAndGetPayloadResult(rpc, chain, head,
-            Commitment.Zero, head, timestamp, random, feeRecipient, waitForBlockImprovement);
+            Keccak.Zero, head, timestamp, random, feeRecipient, waitForBlockImprovement);
         ResultWrapper<PayloadStatusV1> executePayloadResult =
             await rpc.engine_newPayloadV1(executionPayload);
         executePayloadResult.Data.Status.Should().Be(PayloadStatus.Valid);
@@ -1627,7 +1627,7 @@ public partial class EngineModuleTests
         Commitment parentHead = chain.BlockTree.Head!.ParentHash!;
 
         ulong timestamp = Timestamper.UnixTime.Seconds;
-        Commitment random = Commitment.Zero;
+        Commitment random = Keccak.Zero;
         Address feeRecipient = Address.Zero;
 
         return await BuildAndGetPayloadResult(rpc, chain, startingHead, parentHead, startingHead,

@@ -35,7 +35,7 @@ namespace Nethermind.Core.Test.Builders
                 PrivateKeys[i - 1] = new PrivateKey(bytes);
                 PublicKeys[i - 1] = PrivateKeys[i - 1].PublicKey;
                 Addresses[i - 1] = PublicKeys[i - 1].Address;
-                Keccaks[i - 1] = Commitment.Compute(PublicKeys[i - 1].Bytes);
+                Keccaks[i - 1] = Keccak.Compute(PublicKeys[i - 1].Bytes);
                 ValueKeccaks[i - 1] = Keccaks[i - 1];
             }
         }
@@ -53,14 +53,14 @@ namespace Nethermind.Core.Test.Builders
         public static byte[] RandomDataC = { 1, 2, 8, 9, 10 };
         public static byte[] RandomDataD = { 1, 2, 8, 9, 10, 17 };
 
-        public static Commitment _commitmentA = Commitment.Compute("A");
-        public static Commitment _commitmentB = Commitment.Compute("B");
-        public static Commitment _commitmentC = Commitment.Compute("C");
-        public static Commitment _commitmentD = Commitment.Compute("D");
-        public static Commitment _commitmentE = Commitment.Compute("E");
-        public static Commitment _commitmentF = Commitment.Compute("F");
-        public static Commitment _commitmentG = Commitment.Compute("G");
-        public static Commitment _commitmentH = Commitment.Compute("H");
+        public static Commitment _commitmentA = Keccak.Compute("A");
+        public static Commitment _commitmentB = Keccak.Compute("B");
+        public static Commitment _commitmentC = Keccak.Compute("C");
+        public static Commitment _commitmentD = Keccak.Compute("D");
+        public static Commitment _commitmentE = Keccak.Compute("E");
+        public static Commitment _commitmentF = Keccak.Compute("F");
+        public static Commitment _commitmentG = Keccak.Compute("G");
+        public static Commitment _commitmentH = Keccak.Compute("H");
 
         public static PrivateKey PrivateKeyA = new("010102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f");
         public static PrivateKey PrivateKeyB = new("020102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f");
@@ -140,8 +140,8 @@ namespace Nethermind.Core.Test.Builders
             Account account = new(
                 (UInt256)random.Next(1000),
                 (UInt256)random.Next(1000),
-                Commitment.EmptyTreeHash,
-                Commitment.OfAnEmptyString);
+                Keccak.EmptyTreeHash,
+                Keccak.OfAnEmptyString);
 
             return account;
         }

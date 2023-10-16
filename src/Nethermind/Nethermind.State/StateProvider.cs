@@ -147,7 +147,7 @@ namespace Nethermind.State
         public void InsertCode(Address address, ReadOnlyMemory<byte> code, IReleaseSpec spec, bool isGenesis = false)
         {
             _needsStateRootUpdate = true;
-            Commitment codeHash = code.Length == 0 ? Commitment.OfAnEmptyString : Commitment.Compute(code.Span);
+            Commitment codeHash = code.Length == 0 ? Keccak.OfAnEmptyString : Keccak.Compute(code.Span);
 
             // Don't reinsert if already inserted. This can be the case when the same
             // code is used by multiple deployments. Either from factory contracts (e.g. LPs)
@@ -314,12 +314,12 @@ namespace Nethermind.State
         public Commitment GetCodeHash(Address address)
         {
             Account? account = GetThroughCache(address);
-            return account?.CodeHash ?? Commitment.OfAnEmptyString;
+            return account?.CodeHash ?? Keccak.OfAnEmptyString;
         }
 
         public byte[] GetCode(Commitment codeHash)
         {
-            byte[]? code = codeHash == Commitment.OfAnEmptyString ? Array.Empty<byte>() : _codeDb[codeHash.Bytes];
+            byte[]? code = codeHash == Keccak.OfAnEmptyString ? Array.Empty<byte>() : _codeDb[codeHash.Bytes];
             if (code is null)
             {
                 throw new InvalidOperationException($"Code {codeHash} is missing from the database.");
@@ -631,12 +631,12 @@ namespace Nethermind.State
                 {
                     byte[]? beforeCode = beforeCodeHash is null
                         ? null
-                        : beforeCodeHash == Commitment.OfAnEmptyString
+                        : beforeCodeHash == Keccak.OfAnEmptyString
                             ? Array.Empty<byte>()
                             : _codeDb[beforeCodeHash.Bytes];
                     byte[]? afterCode = afterCodeHash is null
                         ? null
-                        : afterCodeHash == Commitment.OfAnEmptyString
+                        : afterCodeHash == Keccak.OfAnEmptyString
                             ? Array.Empty<byte>()
                             : _codeDb[afterCodeHash.Bytes];
 

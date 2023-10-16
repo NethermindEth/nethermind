@@ -39,7 +39,7 @@ public class SnapTrieNodeRecovery : TrieNodeRecovery<GetTrieNodesRequest>
         if (peer.TryGetSatelliteProtocol(Protocol.Snap, out ISnapSyncPeer? snapPeer))
         {
             byte[][] rlp = await snapPeer.GetTrieNodes(request, cts.Token);
-            if (rlp.Length == 1 && rlp[0]?.Length > 0 && ValueCommitment.Compute(rlp[0]) == rlpHash)
+            if (rlp.Length == 1 && rlp[0]?.Length > 0 && ValueKeccak.Compute(rlp[0]) == rlpHash)
             {
                 return rlp[0];
             }

@@ -125,7 +125,7 @@ namespace Nethermind.Consensus.Ethash
             ValueCommitment seed = new ValueCommitment();
             for (uint i = 0; i < epoch; i++)
             {
-                seed = ValueCommitment.Compute(seed.Bytes);
+                seed = ValueKeccak.Compute(seed.Bytes);
             }
 
             return new Commitment(seed.Bytes);
@@ -256,7 +256,7 @@ namespace Nethermind.Consensus.Ethash
         private static Commitment GetTruncatedHash(BlockHeader header)
         {
             Rlp encoded = _headerDecoder.Encode(header, RlpBehaviors.ForSealing);
-            Commitment headerHashed = Commitment.Compute(encoded.Bytes); // sic! Keccak here not Keccak512
+            Commitment headerHashed = Keccak.Compute(encoded.Bytes); // sic! Keccak here not Keccak512
             return headerHashed;
         }
 
@@ -305,7 +305,7 @@ namespace Nethermind.Consensus.Ethash
                 return (null, null, false);
             }
 
-            return (cmix, ValueCommitment.Compute(Bytes.Concat(headerAndNonceHashed, cmix)), true); // this tests fine
+            return (cmix, ValueKeccak.Compute(Bytes.Concat(headerAndNonceHashed, cmix)), true); // this tests fine
         }
     }
 }

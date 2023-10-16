@@ -37,9 +37,9 @@ namespace Nethermind.Serialization.Rlp
 
         public static readonly Rlp OfEmptySequence = new(NullObjectByte);
 
-        internal static readonly Rlp OfEmptyTreeHash = Encode(Commitment.EmptyTreeHash.Bytes); // use bytes to avoid stack overflow
+        internal static readonly Rlp OfEmptyTreeHash = Encode(Keccak.EmptyTreeHash.Bytes); // use bytes to avoid stack overflow
 
-        internal static readonly Rlp OfEmptyStringHash = Encode(Commitment.OfAnEmptyString.Bytes); // use bytes to avoid stack overflow
+        internal static readonly Rlp OfEmptyStringHash = Encode(Keccak.OfAnEmptyString.Bytes); // use bytes to avoid stack overflow
 
         internal static readonly Rlp EmptyBloom = Encode(Bloom.Empty.Bytes);
         static Rlp()
@@ -463,12 +463,12 @@ namespace Nethermind.Serialization.Rlp
                 return OfEmptyByteArray;
             }
 
-            if (ReferenceEquals(keccak, Commitment.EmptyTreeHash))
+            if (ReferenceEquals(keccak, Keccak.EmptyTreeHash))
             {
                 return OfEmptyTreeHash;
             }
 
-            if (ReferenceEquals(keccak, Commitment.OfAnEmptyString))
+            if (ReferenceEquals(keccak, Keccak.OfAnEmptyString))
             {
                 return OfEmptyStringHash;
             }
@@ -830,14 +830,14 @@ namespace Nethermind.Serialization.Rlp
                 }
 
                 Span<byte> keccakSpan = Read(32);
-                if (keccakSpan.SequenceEqual(Commitment.OfAnEmptyString.Bytes))
+                if (keccakSpan.SequenceEqual(Keccak.OfAnEmptyString.Bytes))
                 {
-                    return Commitment.OfAnEmptyString;
+                    return Keccak.OfAnEmptyString;
                 }
 
-                if (keccakSpan.SequenceEqual(Commitment.EmptyTreeHash.Bytes))
+                if (keccakSpan.SequenceEqual(Keccak.EmptyTreeHash.Bytes))
                 {
-                    return Commitment.EmptyTreeHash;
+                    return Keccak.EmptyTreeHash;
                 }
 
                 return new Commitment(keccakSpan);
@@ -863,7 +863,7 @@ namespace Nethermind.Serialization.Rlp
                 int prefix = ReadByte();
                 if (prefix == 128)
                 {
-                    commitment = new CommitmentStructRef(Commitment.Zero.Bytes);
+                    commitment = new CommitmentStructRef(Keccak.Zero.Bytes);
                 }
                 else if (prefix != 128 + 32)
                 {
@@ -872,13 +872,13 @@ namespace Nethermind.Serialization.Rlp
                 else
                 {
                     Span<byte> keccakSpan = Read(32);
-                    if (keccakSpan.SequenceEqual(Commitment.OfAnEmptyString.Bytes))
+                    if (keccakSpan.SequenceEqual(Keccak.OfAnEmptyString.Bytes))
                     {
-                        commitment = new CommitmentStructRef(Commitment.OfAnEmptyString.Bytes);
+                        commitment = new CommitmentStructRef(Keccak.OfAnEmptyString.Bytes);
                     }
-                    else if (keccakSpan.SequenceEqual(Commitment.EmptyTreeHash.Bytes))
+                    else if (keccakSpan.SequenceEqual(Keccak.EmptyTreeHash.Bytes))
                     {
-                        commitment = new CommitmentStructRef(Commitment.EmptyTreeHash.Bytes);
+                        commitment = new CommitmentStructRef(Keccak.EmptyTreeHash.Bytes);
                     }
                     else
                     {
@@ -893,7 +893,7 @@ namespace Nethermind.Serialization.Rlp
                 if (prefix == 128)
                 {
                     ReadByte();
-                    commitment = new CommitmentStructRef(Commitment.Zero.Bytes);
+                    commitment = new CommitmentStructRef(Keccak.Zero.Bytes);
                 }
                 else if (prefix > 128 + 32)
                 {
@@ -904,13 +904,13 @@ namespace Nethermind.Serialization.Rlp
                 {
                     ReadByte();
                     Span<byte> keccakSpan = Read(32);
-                    if (keccakSpan.SequenceEqual(Commitment.OfAnEmptyString.Bytes))
+                    if (keccakSpan.SequenceEqual(Keccak.OfAnEmptyString.Bytes))
                     {
-                        commitment = new CommitmentStructRef(Commitment.OfAnEmptyString.Bytes);
+                        commitment = new CommitmentStructRef(Keccak.OfAnEmptyString.Bytes);
                     }
-                    else if (keccakSpan.SequenceEqual(Commitment.EmptyTreeHash.Bytes))
+                    else if (keccakSpan.SequenceEqual(Keccak.EmptyTreeHash.Bytes))
                     {
-                        commitment = new CommitmentStructRef(Commitment.EmptyTreeHash.Bytes);
+                        commitment = new CommitmentStructRef(Keccak.EmptyTreeHash.Bytes);
                     }
                     else
                     {

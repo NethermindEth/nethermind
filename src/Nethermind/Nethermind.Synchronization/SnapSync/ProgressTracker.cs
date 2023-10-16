@@ -84,7 +84,7 @@ namespace Nethermind.Synchronization.SnapSync
             {
                 AccountRangePartition partition = new AccountRangePartition();
 
-                Commitment startingPath = new Commitment(Commitment.Zero.Bytes);
+                Commitment startingPath = new Commitment(Keccak.Zero.Bytes);
                 startingPath.Bytes[0] = curStartingPath;
 
                 partition.NextAccountPath = startingPath;
@@ -97,11 +97,11 @@ namespace Nethermind.Synchronization.SnapSync
                 // Special case for the last partition
                 if (i == _accountRangePartitionCount - 1)
                 {
-                    limitPath = Commitment.MaxValue;
+                    limitPath = Keccak.MaxValue;
                 }
                 else
                 {
-                    limitPath = new Commitment(Commitment.Zero.Bytes);
+                    limitPath = new Commitment(Keccak.Zero.Bytes);
                     limitPath.Bytes[0] = curStartingPath;
                 }
 
@@ -225,7 +225,7 @@ namespace Nethermind.Synchronization.SnapSync
             {
                 RootHash = rootHash,
                 Accounts = storagesToQuery.ToArray(),
-                StartingHash = ValueCommitment.Zero,
+                StartingHash = ValueKeccak.Zero,
                 BlockNumber = blockNumber
             };
 
@@ -398,7 +398,7 @@ namespace Nethermind.Synchronization.SnapSync
             {
                 ValueCommitment path = new ValueCommitment(progress);
 
-                if (path == ValueCommitment.MaxValue)
+                if (path == ValueKeccak.MaxValue)
                 {
                     _logger.Info($"Snap - State Ranges (Phase 1) is finished.");
                     foreach (KeyValuePair<ValueCommitment, AccountRangePartition> partition in AccountRangePartitions)
@@ -416,7 +416,7 @@ namespace Nethermind.Synchronization.SnapSync
 
         private void FinishRangePhase()
         {
-            _db.Set(ACC_PROGRESS_KEY, ValueCommitment.MaxValue.Bytes);
+            _db.Set(ACC_PROGRESS_KEY, ValueKeccak.MaxValue.Bytes);
         }
 
         private void LogRequest(string reqType)
@@ -461,9 +461,9 @@ namespace Nethermind.Synchronization.SnapSync
         // A partition of the top level account range starting from `AccountPathStart` to `AccountPathLimit` (exclusive).
         private class AccountRangePartition
         {
-            public ValueCommitment NextAccountPath { get; set; } = ValueCommitment.Zero;
-            public ValueCommitment AccountPathStart { get; set; } = ValueCommitment.Zero; // Not really needed, but useful
-            public ValueCommitment AccountPathLimit { get; set; } = ValueCommitment.MaxValue;
+            public ValueCommitment NextAccountPath { get; set; } = ValueKeccak.Zero;
+            public ValueCommitment AccountPathStart { get; set; } = ValueKeccak.Zero; // Not really needed, but useful
+            public ValueCommitment AccountPathLimit { get; set; } = ValueKeccak.MaxValue;
             public bool MoreAccountsToRight { get; set; } = true;
         }
     }

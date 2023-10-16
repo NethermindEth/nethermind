@@ -52,7 +52,7 @@ namespace Nethermind.Blockchain.Test.Receipts
             _receiptConfig = new ReceiptConfig();
             _receiptsRecovery = new(ethereumEcdsa, specProvider);
             _receiptsDb = new TestMemColumnsDb<ReceiptsColumns>();
-            _receiptsDb.GetColumnDb(ReceiptsColumns.Blocks).Set(Commitment.Zero, Array.Empty<byte>());
+            _receiptsDb.GetColumnDb(ReceiptsColumns.Blocks).Set(Keccak.Zero, Array.Empty<byte>());
             _blockTree = Substitute.For<IBlockTree>();
             _blockStore = Substitute.For<IBlockStore>();
             CreateStorage();
@@ -76,29 +76,29 @@ namespace Nethermind.Blockchain.Test.Receipts
         [Test, Timeout(Timeout.MaxTestTime)]
         public void Returns_null_for_missing_tx()
         {
-            Commitment blockHash = _storage.FindBlockHash(Commitment.Zero);
+            Commitment blockHash = _storage.FindBlockHash(Keccak.Zero);
             blockHash.Should().BeNull();
         }
 
         [Test, Timeout(Timeout.MaxTestTime)]
         public void ReceiptsIterator_doesnt_throw_on_empty_span()
         {
-            _storage.TryGetReceiptsIterator(1, Commitment.Zero, out ReceiptsIterator iterator);
+            _storage.TryGetReceiptsIterator(1, Keccak.Zero, out ReceiptsIterator iterator);
             iterator.TryGetNext(out _).Should().BeFalse();
         }
 
         [Test, Timeout(Timeout.MaxTestTime)]
         public void ReceiptsIterator_doesnt_throw_on_null()
         {
-            _receiptsDb.GetColumnDb(ReceiptsColumns.Blocks).Set(Commitment.Zero, null!);
-            _storage.TryGetReceiptsIterator(1, Commitment.Zero, out ReceiptsIterator iterator);
+            _receiptsDb.GetColumnDb(ReceiptsColumns.Blocks).Set(Keccak.Zero, null!);
+            _storage.TryGetReceiptsIterator(1, Keccak.Zero, out ReceiptsIterator iterator);
             iterator.TryGetNext(out _).Should().BeFalse();
         }
 
         [Test, Timeout(Timeout.MaxTestTime)]
         public void Get_returns_empty_on_empty_span()
         {
-            _storage.Get(Commitment.Zero).Should().BeEquivalentTo(Array.Empty<TxReceipt>());
+            _storage.Get(Keccak.Zero).Should().BeEquivalentTo(Array.Empty<TxReceipt>());
         }
 
         [Test, Timeout(Timeout.MaxTestTime)]
@@ -225,7 +225,7 @@ namespace Nethermind.Blockchain.Test.Receipts
         [Test, Timeout(Timeout.MaxTestTime)]
         public void HasBlock_should_returnFalseForMissingHash()
         {
-            _storage.HasBlock(0, Commitment.Compute("missing-value")).Should().BeFalse();
+            _storage.HasBlock(0, Keccak.Compute("missing-value")).Should().BeFalse();
         }
 
         [Test, Timeout(Timeout.MaxTestTime)]

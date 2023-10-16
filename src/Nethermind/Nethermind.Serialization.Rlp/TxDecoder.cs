@@ -143,7 +143,7 @@ namespace Nethermind.Serialization.Rlp
             else
             {
                 // Just calculate the Hash as txn too large
-                transaction.Hash = Commitment.Compute(transactionSequence);
+                transaction.Hash = Keccak.Compute(transactionSequence);
             }
 
             return transaction;
@@ -454,7 +454,7 @@ namespace Nethermind.Serialization.Rlp
             else
             {
                 // Just calculate the Hash immediately as txn too large
-                transaction.Hash = Commitment.Compute(transactionSequence);
+                transaction.Hash = Keccak.Compute(transactionSequence);
             }
         }
 

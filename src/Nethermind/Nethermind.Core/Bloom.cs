@@ -189,7 +189,7 @@ namespace Nethermind.Core
                 return 2047 - ((bytes[index1] << 8) + bytes[index2]) % 2048;
             }
 
-            var keccakBytes = ValueCommitment.Compute(sequence).BytesAsSpan;
+            var keccakBytes = ValueKeccak.Compute(sequence).BytesAsSpan;
             var indexes = new BloomExtract(GetIndex(keccakBytes, 0, 1), GetIndex(keccakBytes, 2, 3), GetIndex(keccakBytes, 4, 5));
             return indexes;
         }
@@ -371,7 +371,7 @@ namespace Nethermind.Core
                 return 2047 - ((bytes[index1] << 8) + bytes[index2]) % 2048;
             }
 
-            var keccakBytes = ValueCommitment.Compute(sequence).BytesAsSpan;
+            var keccakBytes = ValueKeccak.Compute(sequence).BytesAsSpan;
             var indexes = new Bloom.BloomExtract(GetIndex(keccakBytes, 0, 1), GetIndex(keccakBytes, 2, 3), GetIndex(keccakBytes, 4, 5));
             return indexes;
         }

@@ -167,31 +167,31 @@ public class BlockHeaderTests
 
             (new BlockHeader
             {
-                TxRoot = Commitment.EmptyTreeHash,
-                UnclesHash = Commitment.OfAnEmptySequenceRlp,
-                WithdrawalsRoot = Commitment.EmptyTreeHash
+                TxRoot = Keccak.EmptyTreeHash,
+                UnclesHash = Keccak.OfAnEmptySequenceRlp,
+                WithdrawalsRoot = Keccak.EmptyTreeHash
             }, false),
 
             (new BlockHeader
             {
-                TxRoot = Commitment.Zero,
-                UnclesHash = Commitment.OfAnEmptySequenceRlp,
-                WithdrawalsRoot = Commitment.EmptyTreeHash
+                TxRoot = Keccak.Zero,
+                UnclesHash = Keccak.OfAnEmptySequenceRlp,
+                WithdrawalsRoot = Keccak.EmptyTreeHash
             }, true),
 
             (new BlockHeader
             {
-                UnclesHash = Commitment.Zero,
-                WithdrawalsRoot = Commitment.EmptyTreeHash
+                UnclesHash = Keccak.Zero,
+                WithdrawalsRoot = Keccak.EmptyTreeHash
             }, true),
 
-            (new BlockHeader { WithdrawalsRoot = Commitment.Zero }, true),
+            (new BlockHeader { WithdrawalsRoot = Keccak.Zero }, true),
 
             (new BlockHeader
             {
-                TxRoot = Commitment.Zero,
-                UnclesHash = Commitment.Zero,
-                WithdrawalsRoot = Commitment.Zero
+                TxRoot = Keccak.Zero,
+                UnclesHash = Keccak.Zero,
+                WithdrawalsRoot = Keccak.Zero
             }, true)
         };
 }

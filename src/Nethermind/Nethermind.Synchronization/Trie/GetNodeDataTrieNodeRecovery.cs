@@ -28,7 +28,7 @@ public class GetNodeDataTrieNodeRecovery : TrieNodeRecovery<IReadOnlyList<Commit
         if (rlp.Length == 1)
         {
             byte[] recoveredRlp = rlp[0];
-            if (ValueCommitment.Compute(recoveredRlp) == rlpHash)
+            if (ValueKeccak.Compute(recoveredRlp) == rlpHash)
             {
                 return recoveredRlp;
             }

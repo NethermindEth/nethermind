@@ -22,8 +22,8 @@ namespace Nethermind.Store.Test.Witnesses
             WitnessCollector witnessCollector = new(new MemDb(), LimboLogs.Instance);
 
             using IDisposable tracker = witnessCollector.TrackOnThisThread();
-            witnessCollector.Add(Commitment.Zero);
-            witnessCollector.Add(Commitment.Zero);
+            witnessCollector.Add(Keccak.Zero);
+            witnessCollector.Add(Keccak.Zero);
 
             witnessCollector.Collected.Should().HaveCount(1);
         }
@@ -126,9 +126,9 @@ namespace Nethermind.Store.Test.Witnesses
             IKeyValueStore keyValueStore = new MemDb();
 
             WitnessCollector witnessCollector = new(keyValueStore, LimboLogs.Instance);
-            witnessCollector.Persist(Commitment.Zero);
+            witnessCollector.Persist(Keccak.Zero);
 
-            var witness = keyValueStore[Commitment.Zero.Bytes];
+            var witness = keyValueStore[Keccak.Zero.Bytes];
             witness.Should().BeNull();
         }
 
@@ -141,9 +141,9 @@ namespace Nethermind.Store.Test.Witnesses
             using IDisposable tracker = witnessCollector.TrackOnThisThread();
             witnessCollector.Add(TestItem._commitmentA);
             witnessCollector.Add(TestItem._commitmentB);
-            witnessCollector.Persist(Commitment.Zero);
+            witnessCollector.Persist(Keccak.Zero);
 
-            var witness = keyValueStore[Commitment.Zero.Bytes];
+            var witness = keyValueStore[Keccak.Zero.Bytes];
             witness.Length.Should().Be(64);
         }
 
@@ -156,9 +156,9 @@ namespace Nethermind.Store.Test.Witnesses
             using IDisposable tracker = witnessCollector.TrackOnThisThread();
             witnessCollector.Add(TestItem._commitmentA);
             witnessCollector.Add(TestItem._commitmentB);
-            witnessCollector.Persist(Commitment.Zero);
+            witnessCollector.Persist(Keccak.Zero);
 
-            var witness = witnessCollector.Load(Commitment.Zero);
+            var witness = witnessCollector.Load(Keccak.Zero);
             witness.Should().HaveCount(2);
         }
 
@@ -167,7 +167,7 @@ namespace Nethermind.Store.Test.Witnesses
         {
             IKeyValueStore keyValueStore = new MemDb();
             WitnessCollector witnessCollector = new(keyValueStore, LimboLogs.Instance);
-            var witness = witnessCollector.Load(Commitment.Zero);
+            var witness = witnessCollector.Load(Keccak.Zero);
             witness.Should().BeNull();
         }
 

@@ -33,7 +33,7 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams
         GasUsed = block.GasUsed;
         ReceiptsRoot = block.ReceiptsRoot!;
         LogsBloom = block.Bloom!;
-        PrevRandao = block.MixHash ?? Commitment.Zero;
+        PrevRandao = block.MixHash ?? Keccak.Zero;
         ExtraData = block.ExtraData!;
         Timestamp = block.Timestamp;
         BaseFeePerGas = block.BaseFeePerGas;
@@ -44,7 +44,7 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams
 
     public UInt256 BaseFeePerGas { get; set; }
 
-    public Commitment BlockHash { get; set; } = Commitment.Zero;
+    public Commitment BlockHash { get; set; } = Keccak.Zero;
 
     public long BlockNumber { get; set; }
 
@@ -58,13 +58,13 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams
 
     public Bloom LogsBloom { get; set; } = Bloom.Empty;
 
-    public Commitment ParentHash { get; set; } = Commitment.Zero;
+    public Commitment ParentHash { get; set; } = Keccak.Zero;
 
-    public Commitment PrevRandao { get; set; } = Commitment.Zero;
+    public Commitment PrevRandao { get; set; } = Keccak.Zero;
 
-    public Commitment ReceiptsRoot { get; set; } = Commitment.Zero;
+    public Commitment ReceiptsRoot { get; set; } = Keccak.Zero;
 
-    public Commitment StateRoot { get; set; } = Commitment.Zero;
+    public Commitment StateRoot { get; set; } = Keccak.Zero;
 
     public ulong Timestamp { get; set; }
 
@@ -124,7 +124,7 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams
             var transactions = GetTransactions();
             var header = new BlockHeader(
                 ParentHash,
-                Commitment.OfAnEmptySequenceRlp,
+                Keccak.OfAnEmptySequenceRlp,
                 FeeRecipient,
                 UInt256.Zero,
                 BlockNumber,

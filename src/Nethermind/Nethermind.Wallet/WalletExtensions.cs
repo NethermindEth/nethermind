@@ -34,7 +34,7 @@ namespace Nethermind.Wallet
 
         public static void Sign(this IWallet @this, Transaction tx, ulong chainId)
         {
-            Commitment hash = Commitment.Compute(Rlp.Encode(tx, true, true, chainId).Bytes);
+            Commitment hash = Keccak.Compute(Rlp.Encode(tx, true, true, chainId).Bytes);
             tx.Signature = @this.Sign(hash, tx.SenderAddress);
             if (tx.Signature is null)
             {

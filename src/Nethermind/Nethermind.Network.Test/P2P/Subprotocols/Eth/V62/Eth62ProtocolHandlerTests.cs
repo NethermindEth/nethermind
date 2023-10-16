@@ -317,7 +317,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         [Test]
         public void Can_handle_new_block_hashes()
         {
-            NewBlockHashesMessage msg = new((Commitment.Zero, 1), (Commitment.Zero, 2));
+            NewBlockHashesMessage msg = new((Keccak.Zero, 1), (Keccak.Zero, 2));
             HandleIncomingStatusMessage();
             HandleZeroMessage(msg, Eth62MessageCode.NewBlockHashes);
         }
@@ -325,7 +325,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         [Test]
         public void Should_disconnect_peer_sending_new_block_hashes_in_PoS()
         {
-            NewBlockHashesMessage msg = new NewBlockHashesMessage((Commitment.Zero, 1), (Commitment.Zero, 2));
+            NewBlockHashesMessage msg = new NewBlockHashesMessage((Keccak.Zero, 1), (Keccak.Zero, 2));
 
             _gossipPolicy.ShouldDisconnectGossipingNodes.Returns(true);
 
@@ -338,7 +338,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         [Test]
         public void Can_handle_get_block_bodies()
         {
-            GetBlockBodiesMessage msg = new(new[] { Commitment.Zero, TestItem._commitmentA });
+            GetBlockBodiesMessage msg = new(new[] { Keccak.Zero, TestItem._commitmentA });
 
             HandleIncomingStatusMessage();
             HandleZeroMessage(msg, Eth62MessageCode.GetBlockBodies);
@@ -410,7 +410,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             Block largerBlock = Build.A.Block.WithTransactions(Enumerable.Repeat(signedTransaction, 1000).ToArray()).TestObject;
 
             BlockBodiesMessage largeMsg = new(Enumerable.Repeat(largerBlock, 100).ToArray());
-            List<Commitment> requests = Enumerable.Repeat(Commitment.Zero, 1000).ToList();
+            List<Commitment> requests = Enumerable.Repeat(Keccak.Zero, 1000).ToList();
 
             GetBlockBodiesMessage? getMsg = null;
 
@@ -444,7 +444,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             BlockBodiesMessage msg = new(Build.A.Block.TestObjectNTimes(3));
 
             HandleIncomingStatusMessage();
-            ((ISyncPeer)_handler).GetBlockBodies(new List<Commitment>(new[] { Commitment.Zero }), CancellationToken.None);
+            ((ISyncPeer)_handler).GetBlockBodies(new List<Commitment>(new[] { Keccak.Zero }), CancellationToken.None);
             HandleZeroMessage(msg, Eth62MessageCode.BlockBodies);
         }
 

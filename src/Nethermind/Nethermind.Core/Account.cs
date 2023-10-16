@@ -39,8 +39,8 @@ namespace Nethermind.Core
 
         public Account(in UInt256 nonce, in UInt256 balance, Commitment storageRoot, Commitment codeHash)
         {
-            _codeHash = codeHash == Commitment.OfAnEmptyString ? null : codeHash;
-            _storageRoot = storageRoot == Commitment.EmptyTreeHash ? null : storageRoot;
+            _codeHash = codeHash == Keccak.OfAnEmptyString ? null : codeHash;
+            _storageRoot = storageRoot == Keccak.EmptyTreeHash ? null : storageRoot;
             Nonce = nonce;
             Balance = balance;
         }
@@ -48,14 +48,14 @@ namespace Nethermind.Core
         private Account(Account account, Commitment? storageRoot)
         {
             _codeHash = account._codeHash;
-            _storageRoot = storageRoot == Commitment.EmptyTreeHash ? null : storageRoot;
+            _storageRoot = storageRoot == Keccak.EmptyTreeHash ? null : storageRoot;
             Nonce = account.Nonce;
             Balance = account.Balance;
         }
 
         private Account(Commitment? codeHash, Account account)
         {
-            _codeHash = codeHash == Commitment.OfAnEmptyString ? null : codeHash;
+            _codeHash = codeHash == Keccak.OfAnEmptyString ? null : codeHash;
             _storageRoot = account._storageRoot;
             Nonce = account.Nonce;
             Balance = account.Balance;
@@ -75,8 +75,8 @@ namespace Nethermind.Core
 
         public UInt256 Nonce { get; }
         public UInt256 Balance { get; }
-        public Commitment StorageRoot => _storageRoot ?? Commitment.EmptyTreeHash;
-        public Commitment CodeHash => _codeHash ?? Commitment.OfAnEmptyString;
+        public Commitment StorageRoot => _storageRoot ?? Keccak.EmptyTreeHash;
+        public Commitment CodeHash => _codeHash ?? Keccak.OfAnEmptyString;
         public bool IsTotallyEmpty => _storageRoot is null && IsEmpty;
         public bool IsEmpty => _codeHash is null && Balance.IsZero && Nonce.IsZero;
         public bool IsContract => _codeHash is not null;

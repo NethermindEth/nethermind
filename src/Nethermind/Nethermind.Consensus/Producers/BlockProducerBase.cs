@@ -281,7 +281,7 @@ namespace Nethermind.Consensus.Producers
             Address blockAuthor = payloadAttributes?.SuggestedFeeRecipient ?? Sealer.Address;
             BlockHeader header = new(
                 parent.Hash!,
-                Commitment.OfAnEmptySequenceRlp,
+                Keccak.OfAnEmptySequenceRlp,
                 blockAuthor,
                 UInt256.Zero,
                 parent.Number + 1,

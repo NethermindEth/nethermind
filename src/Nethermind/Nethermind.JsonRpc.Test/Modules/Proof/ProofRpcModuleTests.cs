@@ -831,15 +831,15 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
             // just the keys for debugging
             byte[] span = new byte[32];
             new UInt256(0).ToBigEndian(span);
-            Commitment unused = Commitment.Compute(span);
+            Commitment unused = Keccak.Compute(span);
 
             // just the keys for debugging
             new UInt256(1).ToBigEndian(span);
-            Commitment unused1 = Commitment.Compute(span);
+            Commitment unused1 = Keccak.Compute(span);
 
             // just the keys for debugging
             new UInt256(2).ToBigEndian(span);
-            Commitment unused2 = Commitment.Compute(span);
+            Commitment unused2 = Keccak.Compute(span);
 
             foreach (AccountProof accountProof in callResultWithProof.Accounts)
             {

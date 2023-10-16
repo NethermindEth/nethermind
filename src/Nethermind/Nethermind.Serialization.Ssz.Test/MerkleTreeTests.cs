@@ -288,7 +288,7 @@ namespace Nethermind.Serialization.Ssz.Test
 
             for (int i = 0; i < nodesCount; i++)
             {
-                baselineTree.GetLeaf((uint)i).Hash.Should().NotBe(Commitment.Zero);
+                baselineTree.GetLeaf((uint)i).Hash.Should().NotBe(Keccak.Zero);
             }
         }
 
@@ -308,7 +308,7 @@ namespace Nethermind.Serialization.Ssz.Test
             var result = baselineTree.GetLeaves(leafIndexes);
             for (int i = 0; i < result.Length; i++)
             {
-                result[i].Hash.Should().NotBe(Commitment.Zero);
+                result[i].Hash.Should().NotBe(Keccak.Zero);
             }
         }
     }

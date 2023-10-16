@@ -58,7 +58,7 @@ public partial class EngineModuleTests
         IEngineRpcModule rpc = CreateEngineModule(chain);
         Commitment startingHead = chain.BlockTree.HeadHash;
         ulong timestamp = Timestamper.UnixTime.Seconds;
-        Commitment random = Commitment.Zero;
+        Commitment random = Keccak.Zero;
         Address feeRecipient = Address.Zero;
 
         BoostExecutionPayloadV1? sentItem = null;
@@ -68,7 +68,7 @@ public partial class EngineModuleTests
         ManualResetEvent wait = new(false);
         chain.PayloadPreparationService.BlockImproved += (_, _) => wait.Set();
 
-        string payloadId = rpc.engine_forkchoiceUpdatedV1(new ForkchoiceStateV1(startingHead, Commitment.Zero, startingHead),
+        string payloadId = rpc.engine_forkchoiceUpdatedV1(new ForkchoiceStateV1(startingHead, Keccak.Zero, startingHead),
                 new PayloadAttributes { Timestamp = timestamp, SuggestedFeeRecipient = feeRecipient, PrevRandao = random }).Result.Data
             .PayloadId!;
 
@@ -97,7 +97,7 @@ public partial class EngineModuleTests
         IJsonSerializer serializer = chain.JsonSerializer;
 
         ulong timestamp = Timestamper.UnixTime.Seconds;
-        PayloadAttributes payloadAttributes = new() { Timestamp = timestamp, SuggestedFeeRecipient = Address.Zero, PrevRandao = Commitment.Zero };
+        PayloadAttributes payloadAttributes = new() { Timestamp = timestamp, SuggestedFeeRecipient = Address.Zero, PrevRandao = Keccak.Zero };
 
         string relayUrl = "http://localhost";
         MockHttpMessageHandler mockHttp = new();
@@ -164,7 +164,7 @@ public partial class EngineModuleTests
         ManualResetEvent wait = new(false);
         chain.PayloadPreparationService.BlockImproved += (_, _) => wait.Set();
 
-        string payloadId = rpc.engine_forkchoiceUpdatedV1(new ForkchoiceStateV1(startingHead, Commitment.Zero, startingHead),
+        string payloadId = rpc.engine_forkchoiceUpdatedV1(new ForkchoiceStateV1(startingHead, Keccak.Zero, startingHead),
                 payloadAttributes).Result.Data
             .PayloadId!;
 
@@ -210,10 +210,10 @@ public partial class EngineModuleTests
         IEngineRpcModule rpc = CreateEngineModule(chain);
         Commitment startingHead = chain.BlockTree.HeadHash;
         ulong timestamp = Timestamper.UnixTime.Seconds;
-        Commitment random = Commitment.Zero;
+        Commitment random = Keccak.Zero;
         Address feeRecipient = Address.Zero;
 
-        string payloadId = rpc.engine_forkchoiceUpdatedV1(new ForkchoiceStateV1(startingHead, Commitment.Zero, startingHead),
+        string payloadId = rpc.engine_forkchoiceUpdatedV1(new ForkchoiceStateV1(startingHead, Keccak.Zero, startingHead),
                 new PayloadAttributes { Timestamp = timestamp, SuggestedFeeRecipient = feeRecipient, PrevRandao = random, GasLimit = 10_000_000L }).Result.Data
             .PayloadId!;
 

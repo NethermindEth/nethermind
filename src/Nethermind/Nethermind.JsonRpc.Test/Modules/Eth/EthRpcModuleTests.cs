@@ -289,7 +289,7 @@ public partial class EthRpcModuleTests
 
         var test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build(initialValues: 2.Ether());
 
-        Commitment? blockHash = Commitment.Zero;
+        Commitment? blockHash = Keccak.Zero;
         void handleNewBlock(object? sender, BlockReplacementEventArgs e)
         {
             blockHash = e.Block.Hash;
@@ -482,7 +482,7 @@ public partial class EthRpcModuleTests
 
         var test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build(initialValues: 2.Ether());
 
-        Commitment? blockHash = Commitment.Zero;
+        Commitment? blockHash = Keccak.Zero;
         void handleNewBlock(object? sender, BlockReplacementEventArgs e)
         {
             blockHash = e.Block.Hash;
@@ -619,7 +619,7 @@ public partial class EthRpcModuleTests
     public async Task Eth_get_block_by_hash_null()
     {
         using Context ctx = await Context.Create();
-        string serialized = await ctx.Test.TestEthRpc("eth_getBlockByHash", Commitment.Zero.ToString(), "true");
+        string serialized = await ctx.Test.TestEthRpc("eth_getBlockByHash", Keccak.Zero.ToString(), "true");
         Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":null,\"id\":67}"));
     }
 

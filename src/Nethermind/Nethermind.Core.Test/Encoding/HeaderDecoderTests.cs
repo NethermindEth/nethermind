@@ -22,9 +22,9 @@ public class HeaderDecoderTests
     public void Can_decode(bool hasWithdrawalsRoot)
     {
         BlockHeader header = Build.A.BlockHeader
-            .WithMixHash(Commitment.Compute("mix_hash"))
+            .WithMixHash(Keccak.Compute("mix_hash"))
             .WithNonce(1000)
-            .WithWithdrawalsRoot(hasWithdrawalsRoot ? Commitment.EmptyTreeHash : null)
+            .WithWithdrawalsRoot(hasWithdrawalsRoot ? Keccak.EmptyTreeHash : null)
             .TestObject;
 
         HeaderDecoder decoder = new();
@@ -40,7 +40,7 @@ public class HeaderDecoderTests
     public void Can_decode_tricky()
     {
         BlockHeader header = Build.A.BlockHeader
-            .WithMixHash(Commitment.Compute("mix_hash"))
+            .WithMixHash(Keccak.Compute("mix_hash"))
             .WithTimestamp(2730)
             .WithNonce(1000)
             .TestObject;
@@ -114,10 +114,10 @@ public class HeaderDecoderTests
     public void Can_encode_with_withdrawals()
     {
         BlockHeader header = Build.A.BlockHeader.WithBaseFee(1).WithNonce(0).WithDifficulty(0)
-            .WithWithdrawalsRoot(Commitment.Compute("withdrawals")).TestObject;
+            .WithWithdrawalsRoot(Keccak.Compute("withdrawals")).TestObject;
         Rlp rlp = Rlp.Encode(header);
         BlockHeader blockHeader = Rlp.Decode<BlockHeader>(rlp);
-        blockHeader.WithdrawalsRoot.Should().Be(Commitment.Compute("withdrawals"));
+        blockHeader.WithdrawalsRoot.Should().Be(Keccak.Compute("withdrawals"));
     }
 
     [Test]
@@ -168,7 +168,7 @@ public class HeaderDecoderTests
         BlockHeader header = Build.A.BlockHeader
             .WithTimestamp(ulong.MaxValue)
             .WithBaseFee(1)
-            .WithWithdrawalsRoot(Commitment.Zero)
+            .WithWithdrawalsRoot(Keccak.Zero)
             .WithBlobGasUsed(blobGasUsed)
             .WithExcessBlobGas(excessBlobGas)
             .WithParentBeaconBlockRoot(parentBeaconBlockRoot).TestObject;

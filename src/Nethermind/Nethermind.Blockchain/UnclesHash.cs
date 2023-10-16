@@ -12,15 +12,15 @@ namespace Nethermind.Blockchain
         public static Commitment Calculate(Block block)
         {
             return block.Uncles.Length == 0
-                ? Commitment.OfAnEmptySequenceRlp
-                : Commitment.Compute(Rlp.Encode(block.Uncles).Bytes);
+                ? Keccak.OfAnEmptySequenceRlp
+                : Keccak.Compute(Rlp.Encode(block.Uncles).Bytes);
         }
 
         public static Commitment Calculate(BlockHeader[] uncles)
         {
             return uncles.Length == 0
-                ? Commitment.OfAnEmptySequenceRlp
-                : Commitment.Compute(Rlp.Encode(uncles).Bytes);
+                ? Keccak.OfAnEmptySequenceRlp
+                : Keccak.Compute(Rlp.Encode(uncles).Bytes);
         }
     }
 }

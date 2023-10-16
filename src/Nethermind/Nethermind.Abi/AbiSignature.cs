@@ -20,7 +20,7 @@ namespace Nethermind.Abi
         public string Name { get; }
         public AbiType[] Types { get; }
         public byte[] Address => GetAddress(Hash.Bytes);
-        public Commitment Hash => _hash ??= Commitment.Compute(ToString());
+        public Commitment Hash => _hash ??= Keccak.Compute(ToString());
 
         public override string ToString()
         {

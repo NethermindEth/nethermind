@@ -14,7 +14,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Les
         public void RoundTripWithHash()
         {
             var ethMessage = new Network.P2P.Subprotocols.Eth.V62.Messages.GetBlockHeadersMessage();
-            ethMessage.StartBlockHash = Commitment.Compute("1");
+            ethMessage.StartBlockHash = Keccak.Compute("1");
             ethMessage.MaxHeaders = 10;
             ethMessage.Skip = 2;
             ethMessage.Reverse = 0;

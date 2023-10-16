@@ -16,7 +16,7 @@ namespace Nethermind.Evm.Test
 
         public Commitment GetBlockhash(BlockHeader currentBlock, in long number)
         {
-            return Commitment.Compute(number.ToString());
+            return Keccak.Compute(number.ToString());
         }
     }
 }

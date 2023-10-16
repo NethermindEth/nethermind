@@ -711,7 +711,7 @@ namespace Nethermind.Blockchain.Test
             Block block0 = Build.A.Block.WithNumber(0).WithDifficulty(1).TestObject;
             blockTree.SuggestBlock(block0);
 
-            Block block2 = Build.A.Block.WithNumber(1).WithDifficulty(3).WithParentHash(Commitment.Zero).TestObject;
+            Block block2 = Build.A.Block.WithNumber(1).WithDifficulty(3).WithParentHash(Keccak.Zero).TestObject;
             blockTree.SuggestBlock(block2);
             Assert.That(block2.TotalDifficulty, Is.EqualTo(null));
         }
@@ -791,7 +791,7 @@ namespace Nethermind.Blockchain.Test
             headersDb.Set(genesisBlock.Hash!, Rlp.Encode(genesisBlock.Header).Bytes);
 
             TestMemDb blockInfosDb = new();
-            blockInfosDb.Set(Commitment.Zero, genesisBlock.Hash!.Bytes);
+            blockInfosDb.Set(Keccak.Zero, genesisBlock.Hash!.Bytes);
             ChainLevelInfo level = new(true, new BlockInfo(headBlock.Hash!, headBlock.Difficulty));
             level.BlockInfos[0].WasProcessed = true;
 
@@ -824,7 +824,7 @@ namespace Nethermind.Blockchain.Test
             AddToMain(blockTree, block0);
             AddToMain(blockTree, block1);
 
-            Commitment dec = new Commitment(blockInfosDb.Get(Commitment.Zero)!);
+            Commitment dec = new Commitment(blockInfosDb.Get(Keccak.Zero)!);
             Assert.That(dec, Is.EqualTo(block1.Hash));
         }
 
@@ -931,7 +931,7 @@ namespace Nethermind.Blockchain.Test
             blockTree.SuggestBlock(block1);
             blockTree.UpdateMainChain(block1);
 
-            Commitment storedInDb = new(blockInfosDb.Get(Commitment.Zero)!);
+            Commitment storedInDb = new(blockInfosDb.Get(Keccak.Zero)!);
             Assert.That(storedInDb, Is.EqualTo(block1.Hash));
         }
 

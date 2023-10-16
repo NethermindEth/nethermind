@@ -18,7 +18,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             message.MaxHeaders = 1;
             message.Skip = 2;
             message.Reverse = 1;
-            message.StartBlockHash = Commitment.OfAnEmptyString;
+            message.StartBlockHash = Keccak.OfAnEmptyString;
             GetBlockHeadersMessageSerializer serializer = new();
             byte[] bytes = serializer.Serialize(message);
             byte[] expectedBytes = Bytes.FromHexString("e4a0c5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470010201");

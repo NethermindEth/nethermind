@@ -27,7 +27,7 @@ namespace Nethermind.Trie
 
         public void VisitTree(Commitment rootHash, TrieVisitContext trieVisitContext)
         {
-            if (rootHash == Commitment.EmptyTreeHash)
+            if (rootHash == Keccak.EmptyTreeHash)
             {
                 _builder.AppendLine("EMPTY TREE");
             }

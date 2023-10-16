@@ -30,7 +30,7 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
         {
             AuthEip8Message authMessage = new();
             authMessage.Nonce = new byte[AuthMessageSerializer.NonceLength]; // sic!
-            authMessage.Signature = ecdsa.Sign(_privateKey, Commitment.Compute("anything"));
+            authMessage.Signature = ecdsa.Sign(_privateKey, Keccak.Compute("anything"));
             authMessage.PublicKey = _privateKey.PublicKey;
             _random.NextBytes(authMessage.Nonce);
             byte[] data = _serializer.Serialize(authMessage);

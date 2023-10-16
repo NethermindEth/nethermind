@@ -58,7 +58,7 @@ namespace Nethermind.JsonRpc.Modules.Proof
             BlockHeader sourceHeader = searchResult.Object;
             BlockHeader callHeader = new(
                 sourceHeader.Hash,
-                Commitment.OfAnEmptySequenceRlp,
+                Keccak.OfAnEmptySequenceRlp,
                 Address.Zero,
                 0,
                 sourceHeader.Number + 1,
@@ -66,8 +66,8 @@ namespace Nethermind.JsonRpc.Modules.Proof
                 sourceHeader.Timestamp,
                 Array.Empty<byte>())
             {
-                TxRoot = Commitment.EmptyTreeHash,
-                ReceiptsRoot = Commitment.EmptyTreeHash,
+                TxRoot = Keccak.EmptyTreeHash,
+                ReceiptsRoot = Keccak.EmptyTreeHash,
                 Author = Address.SystemUser
             };
 

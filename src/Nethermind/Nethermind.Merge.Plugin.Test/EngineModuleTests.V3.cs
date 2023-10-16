@@ -266,14 +266,14 @@ public partial class EngineModuleTests
     {
         MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: releaseSpec);
         IEngineRpcModule rpcModule = CreateEngineModule(chain);
-        ForkchoiceStateV1 fcuState = new(Commitment.Zero, Commitment.Zero, Commitment.Zero);
+        ForkchoiceStateV1 fcuState = new(Keccak.Zero, Keccak.Zero, Keccak.Zero);
         PayloadAttributes payloadAttributes = new()
         {
             Timestamp = chain.BlockTree.Head!.Timestamp,
-            PrevRandao = Commitment.Zero,
+            PrevRandao = Keccak.Zero,
             SuggestedFeeRecipient = Address.Zero,
             Withdrawals = new List<Withdrawal>(),
-            ParentBeaconBlockRoot = isBeaconRootSet ? Commitment.Zero : null,
+            ParentBeaconBlockRoot = isBeaconRootSet ? Keccak.Zero : null,
         };
 
         string response = await RpcTest.TestSerializedRequest(rpcModule, method,
@@ -365,8 +365,8 @@ public partial class EngineModuleTests
         (byte[][] blobVersionedHashes, Transaction[] transactions) = BuildTransactionsAndBlobVersionedHashesList(hashesFirstBytes, transactionsAndFirstBytesOfTheirHashes, blockchain.SpecProvider.ChainId);
 
         ExecutionPayloadV3 executionPayload = CreateBlockRequestV3(
-            blockchain, CreateParentBlockRequestOnHead(blockchain.BlockTree), TestItem.AddressD, withdrawals: Array.Empty<Withdrawal>(), 0, 0, transactions: transactions, parentBeaconBlockRoot: Commitment.Zero);
-        ResultWrapper<PayloadStatusV1> result = await engineRpcModule.engine_newPayloadV3(executionPayload, blobVersionedHashes, Commitment.Zero);
+            blockchain, CreateParentBlockRequestOnHead(blockchain.BlockTree), TestItem.AddressD, withdrawals: Array.Empty<Withdrawal>(), 0, 0, transactions: transactions, parentBeaconBlockRoot: Keccak.Zero);
+        ResultWrapper<PayloadStatusV1> result = await engineRpcModule.engine_newPayloadV3(executionPayload, blobVersionedHashes, Keccak.Zero);
 
         return result.Data.Status;
     }
@@ -382,7 +382,7 @@ public partial class EngineModuleTests
         PayloadAttributes payloadAttributes = new()
         {
             Timestamp = payload.Timestamp + 1,
-            PrevRandao = Commitment.Zero,
+            PrevRandao = Keccak.Zero,
             SuggestedFeeRecipient = Address.Zero,
             Withdrawals = new List<Withdrawal>(),
             ParentBeaconBlockRoot = null,
@@ -409,7 +409,7 @@ public partial class EngineModuleTests
         PayloadAttributes payloadAttributes = new()
         {
             Timestamp = payload.Timestamp + 1,
-            PrevRandao = Commitment.Zero,
+            PrevRandao = Keccak.Zero,
             SuggestedFeeRecipient = Address.Zero,
             Withdrawals = new List<Withdrawal>(),
         };
@@ -552,7 +552,7 @@ public partial class EngineModuleTests
                 ExpectedResult = ErrorCodes.InvalidParams,
                 TestName = $"{nameof(ExecutionPayloadV3.ExcessBlobGas)} is set",
             };
-            yield return new TestCaseData(null, null, Commitment.Zero)
+            yield return new TestCaseData(null, null, Keccak.Zero)
             {
                 ExpectedResult = ErrorCodes.InvalidParams,
                 TestName = $"{nameof(ExecutionPayloadV3.ParentBeaconBlockRoot)} is set",
@@ -562,12 +562,12 @@ public partial class EngineModuleTests
                 ExpectedResult = ErrorCodes.InvalidParams,
                 TestName = $"Multiple fields #1",
             };
-            yield return new TestCaseData(1ul, 1ul, Commitment.Zero)
+            yield return new TestCaseData(1ul, 1ul, Keccak.Zero)
             {
                 ExpectedResult = ErrorCodes.InvalidParams,
                 TestName = $"Multiple fields #2",
             };
-            yield return new TestCaseData(1ul, null, Commitment.Zero)
+            yield return new TestCaseData(1ul, null, Keccak.Zero)
             {
                 ExpectedResult = ErrorCodes.InvalidParams,
                 TestName = $"Multiple fields #3",

@@ -75,7 +75,7 @@ namespace Nethermind.Core.Test.Encoding
             TxDecoder decoder = new TxDecoder();
             Rlp rlp = decoder.Encode(tx);
 
-            Commitment expectedHash = Commitment.Compute(rlp.Bytes);
+            Commitment expectedHash = Keccak.Compute(rlp.Bytes);
 
             Transaction decodedTx = decoder.Decode(new RlpStream(rlp.Bytes))!;
 
@@ -180,7 +180,7 @@ namespace Nethermind.Core.Test.Encoding
             Rlp encodedForTreeRoot = _txDecoder.Encode(decoded, RlpBehaviors.SkipTypedWrapping);
 
             decoded.CalculateHash().Should().Be(decoded.Hash!);
-            decoded.Hash.Should().Be(Commitment.Compute(encodedForTreeRoot.Bytes));
+            decoded.Hash.Should().Be(Keccak.Compute(encodedForTreeRoot.Bytes));
         }
 
         [TestCaseSource(nameof(YoloV3TestCases))]
@@ -190,7 +190,7 @@ namespace Nethermind.Core.Test.Encoding
             RlpStream incomingTxRlp = Bytes.FromHexString(testCase.IncomingRlpHex).AsRlpStream();
             Transaction decoded = _txDecoder.Decode(incomingTxRlp)!;
             Rlp encodedForTreeRoot = _txDecoder.Encode(decoded, RlpBehaviors.SkipTypedWrapping);
-            decoded.Hash.Should().Be(Commitment.Compute(encodedForTreeRoot.Bytes));
+            decoded.Hash.Should().Be(Keccak.Compute(encodedForTreeRoot.Bytes));
         }
 
         [TestCaseSource(nameof(YoloV3TestCases))]
@@ -200,7 +200,7 @@ namespace Nethermind.Core.Test.Encoding
             RlpStream incomingTxRlp = Bytes.FromHexString(testCase.IncomingRlpHex).AsRlpStream();
             Transaction decoded = _txDecoder.Decode(incomingTxRlp)!;
             Rlp encodedForTreeRoot = _txDecoder.Encode(decoded, RlpBehaviors.SkipTypedWrapping);
-            decoded.Hash.Should().Be(Commitment.Compute(encodedForTreeRoot.Bytes));
+            decoded.Hash.Should().Be(Keccak.Compute(encodedForTreeRoot.Bytes));
         }
 
         [TestCaseSource(nameof(YoloV3TestCases))]

@@ -343,12 +343,12 @@ public class ChainSpecLoader : IChainSpecLoader
         }
 
         UInt256 nonce = chainSpecJson.Genesis.Seal?.Ethereum?.Nonce ?? 0;
-        Commitment mixHash = chainSpecJson.Genesis.Seal?.Ethereum?.MixHash ?? Commitment.Zero;
+        Commitment mixHash = chainSpecJson.Genesis.Seal?.Ethereum?.MixHash ?? Keccak.Zero;
 
         byte[] auRaSignature = chainSpecJson.Genesis.Seal?.AuthorityRound?.Signature;
         long? step = chainSpecJson.Genesis.Seal?.AuthorityRound?.Step;
 
-        Commitment parentHash = chainSpecJson.Genesis.ParentHash ?? Commitment.Zero;
+        Commitment parentHash = chainSpecJson.Genesis.ParentHash ?? Keccak.Zero;
         ulong timestamp = chainSpecJson.Genesis.Timestamp;
         UInt256 difficulty = chainSpecJson.Genesis.Difficulty;
         byte[] extraData = chainSpecJson.Genesis.ExtraData ?? Array.Empty<byte>();
@@ -362,7 +362,7 @@ public class ChainSpecLoader : IChainSpecLoader
 
         BlockHeader genesisHeader = new(
             parentHash,
-            Commitment.OfAnEmptySequenceRlp,
+            Keccak.OfAnEmptySequenceRlp,
             beneficiary,
             difficulty,
             0,
@@ -371,17 +371,17 @@ public class ChainSpecLoader : IChainSpecLoader
             extraData);
 
         genesisHeader.Author = beneficiary;
-        genesisHeader.Hash = Commitment.Zero; // need to run the block to know the actual hash
+        genesisHeader.Hash = Keccak.Zero; // need to run the block to know the actual hash
         genesisHeader.Bloom = Bloom.Empty;
         genesisHeader.MixHash = mixHash;
         genesisHeader.Nonce = (ulong)nonce;
-        genesisHeader.ReceiptsRoot = Commitment.EmptyTreeHash;
-        genesisHeader.StateRoot = Commitment.EmptyTreeHash;
-        genesisHeader.TxRoot = Commitment.EmptyTreeHash;
+        genesisHeader.ReceiptsRoot = Keccak.EmptyTreeHash;
+        genesisHeader.StateRoot = Keccak.EmptyTreeHash;
+        genesisHeader.TxRoot = Keccak.EmptyTreeHash;
         genesisHeader.BaseFeePerGas = baseFee;
         bool withdrawalsEnabled = chainSpecJson.Params.Eip4895TransitionTimestamp != null && genesisHeader.Timestamp >= chainSpecJson.Params.Eip4895TransitionTimestamp;
         if (withdrawalsEnabled)
-            genesisHeader.WithdrawalsRoot = Commitment.EmptyTreeHash;
+            genesisHeader.WithdrawalsRoot = Keccak.EmptyTreeHash;
 
         bool isEip4844Enabled = chainSpecJson.Params.Eip4844TransitionTimestamp != null && genesisHeader.Timestamp >= chainSpecJson.Params.Eip4844TransitionTimestamp;
         if (isEip4844Enabled)
@@ -393,7 +393,7 @@ public class ChainSpecLoader : IChainSpecLoader
         bool isEip4788Enabled = chainSpecJson.Params.Eip4788TransitionTimestamp != null && genesisHeader.Timestamp >= chainSpecJson.Params.Eip4788TransitionTimestamp;
         if (isEip4788Enabled)
         {
-            genesisHeader.ParentBeaconBlockRoot = Commitment.Zero;
+            genesisHeader.ParentBeaconBlockRoot = Keccak.Zero;
         }
 
         genesisHeader.AuRaStep = step;

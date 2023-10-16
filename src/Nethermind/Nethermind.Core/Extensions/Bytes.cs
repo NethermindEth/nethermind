@@ -845,7 +845,7 @@ namespace Nethermind.Core.Extensions
             {
                 // this path is rarely used - only in wallets
                 byte[] bytesArray = state.Bytes;
-                string hashHex = Commitment.Compute(bytesArray.ToHexString(false)).ToString(false);
+                string hashHex = Keccak.Compute(bytesArray.ToHexString(false)).ToString(false);
                 Span<byte> bytes = bytesArray;
 
                 if (state.WithZeroX)

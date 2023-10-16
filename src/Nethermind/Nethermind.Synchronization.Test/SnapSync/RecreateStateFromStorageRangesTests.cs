@@ -36,7 +36,7 @@ namespace Nethermind.Synchronization.Test.SnapSync
         {
             Commitment rootHash = _inputStorageTree!.RootHash;   // "..."
 
-            AccountProofCollector accountProofCollector = new(TestItem.Tree.AccountAddress0.Bytes, new ValueCommitment[] { Commitment.Zero, TestItem.Tree.SlotsWithPaths[5].Path });
+            AccountProofCollector accountProofCollector = new(TestItem.Tree.AccountAddress0.Bytes, new ValueCommitment[] { Keccak.Zero, TestItem.Tree.SlotsWithPaths[5].Path });
             _inputStateTree!.Accept(accountProofCollector, _inputStateTree.RootHash);
             var proof = accountProofCollector.BuildResult();
 
@@ -46,7 +46,7 @@ namespace Nethermind.Synchronization.Test.SnapSync
             ProgressTracker progressTracker = new(null, dbProvider.GetDb<IDb>(DbNames.State), LimboLogs.Instance);
             SnapProvider snapProvider = new(progressTracker, dbProvider, LimboLogs.Instance);
 
-            var result = snapProvider.AddStorageRange(1, null, rootHash, Commitment.Zero, TestItem.Tree.SlotsWithPaths, proof!.StorageProofs![0].Proof!.Concat(proof!.StorageProofs![1].Proof!).ToArray());
+            var result = snapProvider.AddStorageRange(1, null, rootHash, Keccak.Zero, TestItem.Tree.SlotsWithPaths, proof!.StorageProofs![0].Proof!.Concat(proof!.StorageProofs![1].Proof!).ToArray());
 
             Assert.That(result, Is.EqualTo(AddRangeResult.OK));
         }
@@ -66,7 +66,7 @@ namespace Nethermind.Synchronization.Test.SnapSync
             ProgressTracker progressTracker = new(null, dbProvider.GetDb<IDb>(DbNames.State), LimboLogs.Instance);
             SnapProvider snapProvider = new(progressTracker, dbProvider, LimboLogs.Instance);
 
-            var result = snapProvider.AddStorageRange(1, null, rootHash, Commitment.Zero, TestItem.Tree.SlotsWithPaths, proof!.StorageProofs![0].Proof!.Concat(proof!.StorageProofs![1].Proof!).ToArray());
+            var result = snapProvider.AddStorageRange(1, null, rootHash, Keccak.Zero, TestItem.Tree.SlotsWithPaths, proof!.StorageProofs![0].Proof!.Concat(proof!.StorageProofs![1].Proof!).ToArray());
 
             Assert.That(result, Is.EqualTo(AddRangeResult.OK));
         }
@@ -99,11 +99,11 @@ namespace Nethermind.Synchronization.Test.SnapSync
             ProgressTracker progressTracker = new(null, dbProvider.GetDb<IDb>(DbNames.State), LimboLogs.Instance);
             SnapProvider snapProvider = new(progressTracker, dbProvider, LimboLogs.Instance);
 
-            AccountProofCollector accountProofCollector = new(TestItem.Tree.AccountAddress0.Bytes, new ValueCommitment[] { Commitment.Zero, TestItem.Tree.SlotsWithPaths[1].Path });
+            AccountProofCollector accountProofCollector = new(TestItem.Tree.AccountAddress0.Bytes, new ValueCommitment[] { Keccak.Zero, TestItem.Tree.SlotsWithPaths[1].Path });
             _inputStateTree!.Accept(accountProofCollector, _inputStateTree.RootHash);
             var proof = accountProofCollector.BuildResult();
 
-            var result1 = snapProvider.AddStorageRange(1, null, rootHash, Commitment.Zero, TestItem.Tree.SlotsWithPaths[0..2], proof!.StorageProofs![0].Proof!.Concat(proof!.StorageProofs![1].Proof!).ToArray());
+            var result1 = snapProvider.AddStorageRange(1, null, rootHash, Keccak.Zero, TestItem.Tree.SlotsWithPaths[0..2], proof!.StorageProofs![0].Proof!.Concat(proof!.StorageProofs![1].Proof!).ToArray());
 
             accountProofCollector = new(TestItem.Tree.AccountAddress0.Bytes, new ValueCommitment[] { TestItem.Tree.SlotsWithPaths[2].Path, TestItem.Tree.SlotsWithPaths[3].Path });
             _inputStateTree!.Accept(accountProofCollector, _inputStateTree.RootHash);
@@ -134,11 +134,11 @@ namespace Nethermind.Synchronization.Test.SnapSync
             ProgressTracker progressTracker = new(null, dbProvider.GetDb<IDb>(DbNames.State), LimboLogs.Instance);
             SnapProvider snapProvider = new(progressTracker, dbProvider, LimboLogs.Instance);
 
-            AccountProofCollector accountProofCollector = new(TestItem.Tree.AccountAddress0.Bytes, new ValueCommitment[] { Commitment.Zero, TestItem.Tree.SlotsWithPaths[1].Path });
+            AccountProofCollector accountProofCollector = new(TestItem.Tree.AccountAddress0.Bytes, new ValueCommitment[] { Keccak.Zero, TestItem.Tree.SlotsWithPaths[1].Path });
             _inputStateTree!.Accept(accountProofCollector, _inputStateTree.RootHash);
             var proof = accountProofCollector.BuildResult();
 
-            var result1 = snapProvider.AddStorageRange(1, null, rootHash, Commitment.Zero, TestItem.Tree.SlotsWithPaths[0..2], proof!.StorageProofs![0].Proof!.Concat(proof!.StorageProofs![1].Proof!).ToArray());
+            var result1 = snapProvider.AddStorageRange(1, null, rootHash, Keccak.Zero, TestItem.Tree.SlotsWithPaths[0..2], proof!.StorageProofs![0].Proof!.Concat(proof!.StorageProofs![1].Proof!).ToArray());
 
             accountProofCollector = new(TestItem.Tree.AccountAddress0.Bytes, new ValueCommitment[] { TestItem.Tree.SlotsWithPaths[2].Path, TestItem.Tree.SlotsWithPaths[3].Path });
             _inputStateTree!.Accept(accountProofCollector, _inputStateTree.RootHash);

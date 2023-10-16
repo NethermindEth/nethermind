@@ -43,7 +43,7 @@ namespace Nethermind.Crypto
 
             //Keccak hash = Keccak.Compute(Bytes.Concat((byte)tx.Type, Rlp.Encode(tx, true, isEip155Enabled, _chainIdValue).Bytes));
 
-            Commitment hash = Commitment.Compute(Rlp.Encode(tx, true, isEip155Enabled, _chainIdValue).Bytes);
+            Commitment hash = Keccak.Compute(Rlp.Encode(tx, true, isEip155Enabled, _chainIdValue).Bytes);
             tx.Signature = Sign(privateKey, hash);
 
             if (tx.Type != TxType.Legacy)
@@ -104,7 +104,7 @@ namespace Nethermind.Crypto
                     chainId = tx.ChainId!.Value;
                     break;
             }
-            Commitment hash = Commitment.Compute(Rlp.Encode(tx, true, applyEip155, chainId).Bytes);
+            Commitment hash = Keccak.Compute(Rlp.Encode(tx, true, applyEip155, chainId).Bytes);
 
             return RecoverAddress(tx.Signature, hash);
         }

@@ -72,11 +72,11 @@ public class BlockHeader
     public Commitment? ParentBeaconBlockRoot { get; set; }
     public ulong? BlobGasUsed { get; set; }
     public ulong? ExcessBlobGas { get; set; }
-    public bool HasBody => (TxRoot is not null && TxRoot != Commitment.EmptyTreeHash)
-                           || (UnclesHash is not null && UnclesHash != Commitment.OfAnEmptySequenceRlp)
-                           || (WithdrawalsRoot is not null && WithdrawalsRoot != Commitment.EmptyTreeHash);
+    public bool HasBody => (TxRoot is not null && TxRoot != Keccak.EmptyTreeHash)
+                           || (UnclesHash is not null && UnclesHash != Keccak.OfAnEmptySequenceRlp)
+                           || (WithdrawalsRoot is not null && WithdrawalsRoot != Keccak.EmptyTreeHash);
 
-    public bool HasTransactions => (TxRoot is not null && TxRoot != Commitment.EmptyTreeHash);
+    public bool HasTransactions => (TxRoot is not null && TxRoot != Keccak.EmptyTreeHash);
 
     public string SealEngineType { get; set; } = Core.SealEngineType.Ethash;
     public bool IsPostMerge { get; set; }

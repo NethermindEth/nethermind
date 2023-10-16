@@ -23,7 +23,7 @@ namespace Nethermind.Clique.Test
             ICryptoRandom cryptoRandom = Substitute.For<ICryptoRandom>();
             cryptoRandom.NextInt(Arg.Any<int>()).Returns(ci => randoms.Dequeue());
 
-            Snapshot snapshot = new(1, Commitment.Zero, new SortedList<Address, long>(AddressComparer.Instance)
+            Snapshot snapshot = new(1, Keccak.Zero, new SortedList<Address, long>(AddressComparer.Instance)
             {
                 {TestItem.AddressA, 1},
                 {TestItem.AddressB, 2},
@@ -48,7 +48,7 @@ namespace Nethermind.Clique.Test
             ICryptoRandom cryptoRandom = Substitute.For<ICryptoRandom>();
             cryptoRandom.NextInt(Arg.Any<int>()).Returns(ci => randoms.Dequeue());
 
-            Snapshot snapshot = new(1, Commitment.Zero, new SortedList<Address, long>(AddressComparer.Instance)
+            Snapshot snapshot = new(1, Keccak.Zero, new SortedList<Address, long>(AddressComparer.Instance)
             {
                 {TestItem.AddressA, 1},
                 {TestItem.AddressB, 2},
@@ -80,7 +80,7 @@ namespace Nethermind.Clique.Test
             ICryptoRandom cryptoRandom = Substitute.For<ICryptoRandom>();
             cryptoRandom.NextInt(Arg.Any<int>()).Returns(ci => randoms.Dequeue());
 
-            Snapshot snapshot = new(1, Commitment.Zero, new SortedList<Address, long>(AddressComparer.Instance)
+            Snapshot snapshot = new(1, Keccak.Zero, new SortedList<Address, long>(AddressComparer.Instance)
             {
                 {TestItem.AddressA, 1},
                 {TestItem.AddressB, 2},

@@ -36,7 +36,7 @@ public class InvalidChainTrackerTest
         List<Commitment> hashList = new();
         for (int i = 0; i < n; i++)
         {
-            Commitment newHash = Commitment.Compute(Random.Shared.NextInt64().ToString());
+            Commitment newHash = Keccak.Compute(Random.Shared.NextInt64().ToString());
             hashList.Add(newHash);
         }
 
@@ -146,7 +146,7 @@ public class InvalidChainTrackerTest
         _tracker.SetChildParent(chain3[0], chain2[5]);
         _tracker.SetChildParent(chain1[0], chain2[40]);
 
-        _tracker.OnInvalidBlock(chain2[40], Commitment.Zero);
+        _tracker.OnInvalidBlock(chain2[40], Keccak.Zero);
         AssertInvalid(chain1[3]);
     }
 
@@ -156,8 +156,8 @@ public class InvalidChainTrackerTest
     {
         List<Commitment> mainChain = MakeChain(50, connectInReverse);
         List<Commitment> secondChain = MakeChain(50, connectInReverse);
-        Commitment invalidBlockParent = Commitment.Compute(Random.Shared.NextInt64().ToString());
-        Commitment invalidBlock = Commitment.Compute(Random.Shared.NextInt64().ToString());
+        Commitment invalidBlockParent = Keccak.Compute(Random.Shared.NextInt64().ToString());
+        Commitment invalidBlock = Keccak.Compute(Random.Shared.NextInt64().ToString());
 
         _tracker.OnInvalidBlock(invalidBlock, invalidBlockParent);
         AssertInvalid(invalidBlock);
@@ -178,7 +178,7 @@ public class InvalidChainTrackerTest
         IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
         IBlockCacheService blockCacheService = new BlockCacheService();
 
-        Commitment invalidBlock = Commitment.Compute("A");
+        Commitment invalidBlock = Keccak.Compute("A");
         BlockHeader parentBlockHeader = new BlockHeaderBuilder().TestObject;
 
         blockCacheService.BlockCache[parentBlockHeader.GetOrCalculateHash()] = new Block(parentBlockHeader);
@@ -189,7 +189,7 @@ public class InvalidChainTrackerTest
         _tracker = new(poSSwitcher, blockFinder, blockCacheService, new TestLogManager()); // Small max section size, to make sure things propagate correctly
         _tracker.OnInvalidBlock(invalidBlock, parentBlockHeader.Hash);
 
-        AssertInvalid(invalidBlock, Commitment.Zero);
+        AssertInvalid(invalidBlock, Keccak.Zero);
     }
 
     [Test]

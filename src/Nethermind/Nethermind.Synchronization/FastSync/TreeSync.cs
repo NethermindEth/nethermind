@@ -36,7 +36,7 @@ namespace Nethermind.Synchronization.FastSync
         private readonly DetailedProgress _data;
         private readonly IPendingSyncItems _pendingItems;
 
-        private readonly Commitment _fastSyncProgressKey = Commitment.Zero;
+        private readonly Commitment _fastSyncProgressKey = Keccak.Zero;
 
         private DateTime _lastReview = DateTime.UtcNow;
         private DateTime _currentSyncStart;
@@ -51,7 +51,7 @@ namespace Nethermind.Synchronization.FastSync
         private readonly Stopwatch _networkWatch = new();
         private long _handleWatch = new();
 
-        private Commitment _rootNode = Commitment.EmptyTreeHash;
+        private Commitment _rootNode = Keccak.EmptyTreeHash;
         private int _rootSaved;
 
         private readonly ILogger _logger;
@@ -222,7 +222,7 @@ namespace Nethermind.Synchronization.FastSync
                         }
 
                         /* node sent data that is not consistent with its hash - it happens surprisingly often */
-                        if (!ValueCommitment.Compute(currentResponseItem).BytesAsSpan
+                        if (!ValueKeccak.Compute(currentResponseItem).BytesAsSpan
                                 .SequenceEqual(currentStateSyncItem.Hash.Bytes))
                         {
                             AddNodeToPending(currentStateSyncItem, null, "missing", true);
@@ -359,7 +359,7 @@ namespace Nethermind.Synchronization.FastSync
                 return (false, false);
             }
 
-            if (_rootNode == Commitment.EmptyTreeHash)
+            if (_rootNode == Keccak.EmptyTreeHash)
             {
                 if (_logger.IsDebug) _logger.Info("StateNode sync: falling asleep - root is empty tree");
                 return (false, true);
@@ -471,7 +471,7 @@ namespace Nethermind.Synchronization.FastSync
 
                 bool hasOnlyRootNode = false;
 
-                if (_rootNode != Commitment.EmptyTreeHash)
+                if (_rootNode != Keccak.EmptyTreeHash)
                 {
                     if (_pendingItems.Count == 1)
                     {
@@ -875,7 +875,7 @@ namespace Nethermind.Synchronization.FastSync
                         _pendingItems.MaxStateLevel = 64;
                         DependentItem dependentItem = new(currentStateSyncItem, currentResponseItem, 2, true);
                         (Commitment codeHash, Commitment storageRoot) = AccountDecoder.DecodeHashesOnly(new RlpStream(trieNode.Value.ToArray()));
-                        if (codeHash != Commitment.OfAnEmptyString)
+                        if (codeHash != Keccak.OfAnEmptyString)
                         {
                             // prepare a branch without the code DB
                             // this only protects against being same as storage root?
@@ -899,7 +899,7 @@ namespace Nethermind.Synchronization.FastSync
                             dependentItem.Counter--;
                         }
 
-                        if (storageRoot != Commitment.EmptyTreeHash)
+                        if (storageRoot != Keccak.EmptyTreeHash)
                         {
                             // it's a leaf with a storage, so we need to copy the current path (full 64 nibbles) to StateSyncItem.AccountPathNibbles
                             // and StateSyncItem.PathNibbles will start from null (storage root)

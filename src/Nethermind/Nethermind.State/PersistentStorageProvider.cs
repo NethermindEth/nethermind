@@ -285,7 +285,7 @@ namespace Nethermind.State
             // by means of CREATE 2 - notice that the cached trie may carry information about items that were not
             // touched in this block, hence were not zeroed above
             // TODO: how does it work with pruning?
-            _storages[address] = new StorageTree(_trieStore, Commitment.EmptyTreeHash, _logManager);
+            _storages[address] = new StorageTree(_trieStore, Keccak.EmptyTreeHash, _logManager);
         }
 
         private class StorageTreeFactory : IStorageTreeFactory

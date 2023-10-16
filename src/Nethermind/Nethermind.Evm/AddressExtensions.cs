@@ -19,7 +19,7 @@ namespace Nethermind.Evm
             stream.Encode(deployingAddress);
             stream.Encode(nonce);
 
-            ValueCommitment contractAddressCommitment = ValueCommitment.Compute(stream.Data.AsSpan());
+            ValueCommitment contractAddressCommitment = ValueKeccak.Compute(stream.Data.AsSpan());
 
             return new Address(in contractAddressCommitment);
         }
@@ -31,9 +31,9 @@ namespace Nethermind.Evm
             bytes[0] = 0xff;
             deployingAddress.Bytes.CopyTo(bytes.Slice(1, 20));
             salt.CopyTo(bytes.Slice(21, salt.Length));
-            ValueCommitment.Compute(initCode).BytesAsSpan.CopyTo(bytes.Slice(21 + salt.Length, 32));
+            ValueKeccak.Compute(initCode).BytesAsSpan.CopyTo(bytes.Slice(21 + salt.Length, 32));
 
-            ValueCommitment contractAddressCommitment = ValueCommitment.Compute(bytes);
+            ValueCommitment contractAddressCommitment = ValueKeccak.Compute(bytes);
             return new Address(in contractAddressCommitment);
         }
     }

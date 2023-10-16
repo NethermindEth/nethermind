@@ -178,7 +178,7 @@ namespace Nethermind.Evm.Test
 
         private void AssertNotDestroyed()
         {
-            AssertCodeHash(_contractAddress, Commitment.Compute(_selfDestructCode.AsSpan()));
+            AssertCodeHash(_contractAddress, Keccak.Compute(_selfDestructCode.AsSpan()));
         }
 
         private void AssertDestroyed(Address address = null)

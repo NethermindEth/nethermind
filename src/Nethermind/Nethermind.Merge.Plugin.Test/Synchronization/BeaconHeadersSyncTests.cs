@@ -181,7 +181,7 @@ public class BeaconHeadersSyncTests
                 FastSync = true,
                 FastBlocks = true,
                 PivotNumber = "1000",
-                PivotHash = Commitment.Zero.ToString(),
+                PivotHash = Keccak.Zero.ToString(),
                 PivotTotalDifficulty = "1000"
             },
             MergeConfig = { }
@@ -212,7 +212,7 @@ public class BeaconHeadersSyncTests
             FastSync = true,
             FastBlocks = true,
             PivotNumber = "1000",
-            PivotHash = Commitment.Zero.ToString(),
+            PivotHash = Keccak.Zero.ToString(),
             PivotTotalDifficulty = "1000"
         };
 
@@ -249,7 +249,7 @@ public class BeaconHeadersSyncTests
             FastSync = true,
             FastBlocks = true,
             PivotNumber = "500",
-            PivotHash = Commitment.Zero.ToString(),
+            PivotHash = Keccak.Zero.ToString(),
             PivotTotalDifficulty = "1000000" // default difficulty in block tree builder
         };
         BlockHeader? pivotHeader = syncedBlockTree.FindHeader(700, BlockTreeLookupOptions.None);
@@ -336,7 +336,7 @@ public class BeaconHeadersSyncTests
             FastSync = true,
             FastBlocks = true,
             PivotNumber = "0",
-            PivotHash = Commitment.Zero.ToString(),
+            PivotHash = Keccak.Zero.ToString(),
             PivotTotalDifficulty = "0"
         };
 

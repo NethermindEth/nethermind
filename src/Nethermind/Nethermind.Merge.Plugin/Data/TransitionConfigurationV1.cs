@@ -21,7 +21,7 @@ public class TransitionConfigurationV1
     /// <summary>
     /// Maps on TERMINAL_BLOCK_HASH parameter of EIP-3675
     /// </summary>
-    public Commitment TerminalBlockHash { get; set; } = Commitment.Zero;
+    public Commitment TerminalBlockHash { get; set; } = Keccak.Zero;
 
     /// <summary>
     /// Maps on TERMINAL_BLOCK_NUMBER parameter of EIP-3675

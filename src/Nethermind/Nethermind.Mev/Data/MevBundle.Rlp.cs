@@ -11,7 +11,7 @@ namespace Nethermind.Mev.Data
         private static Commitment GetHash(MevBundle bundle)
         {
             RlpStream stream = EncodeRlp(bundle);
-            return Commitment.Compute(stream.Data);
+            return Keccak.Compute(stream.Data);
         }
 
         private static RlpStream EncodeRlp(MevBundle bundle)

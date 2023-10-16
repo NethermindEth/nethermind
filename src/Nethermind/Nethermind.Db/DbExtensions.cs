@@ -28,7 +28,7 @@ namespace Nethermind.Db
         public static byte[]? Get(this IDb db, Commitment key)
         {
 #if DEBUG
-            if (key == Commitment.OfAnEmptyString)
+            if (key == Keccak.OfAnEmptyString)
             {
                 throw new InvalidOperationException();
             }
@@ -102,7 +102,7 @@ namespace Nethermind.Db
         public static Span<byte> GetSpan(this IDbWithSpan db, Commitment key)
         {
 #if DEBUG
-            if (key == Commitment.OfAnEmptyString)
+            if (key == Keccak.OfAnEmptyString)
             {
                 throw new InvalidOperationException();
             }
@@ -114,7 +114,7 @@ namespace Nethermind.Db
         public static bool KeyExists(this IDb db, Commitment key)
         {
 #if DEBUG
-            if (key == Commitment.OfAnEmptyString)
+            if (key == Keccak.OfAnEmptyString)
             {
                 throw new InvalidOperationException();
             }

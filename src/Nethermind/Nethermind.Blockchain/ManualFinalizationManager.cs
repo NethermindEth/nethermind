@@ -13,7 +13,7 @@ namespace Nethermind.Blockchain
         public long LastFinalizedBlockLevel { get; private set; } = 0;
 
         // We could save in DB, but its not really needed yet
-        public Commitment LastFinalizedHash { get; private set; } = Commitment.Zero;
+        public Commitment LastFinalizedHash { get; private set; } = Keccak.Zero;
 
         public event EventHandler<FinalizeEventArgs>? BlocksFinalized;
 

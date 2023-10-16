@@ -17,7 +17,7 @@ namespace Nethermind.Blockchain
         public SpecificBlockReadOnlyStateProvider(IStateReader stateReader, Commitment? stateRoot = null)
         {
             _stateReader = stateReader ?? throw new ArgumentNullException(nameof(stateReader));
-            StateRoot = stateRoot ?? Commitment.EmptyTreeHash;
+            StateRoot = stateRoot ?? Keccak.EmptyTreeHash;
         }
 
         public virtual Commitment StateRoot { get; }

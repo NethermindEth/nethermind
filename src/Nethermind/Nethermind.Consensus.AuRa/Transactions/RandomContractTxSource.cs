@@ -69,7 +69,7 @@ namespace Nethermind.Consensus.AuRa.Transactions
                         {
                             byte[] bytes = new byte[32];
                             _random.GenerateRandomBytes(bytes);
-                            var hash = Commitment.Compute(bytes);
+                            var hash = Keccak.Compute(bytes);
                             PrivateKey? privateKey = _signer.Key;
                             if (privateKey is not null)
                             {
@@ -114,7 +114,7 @@ namespace Nethermind.Consensus.AuRa.Transactions
                                 throw new AuRaException("Decrypted random number has the wrong length.");
                             }
 
-                            var computedHash = ValueCommitment.Compute(bytes);
+                            var computedHash = ValueKeccak.Compute(bytes);
                             if (!Bytes.AreEqual(hash.Bytes, computedHash.BytesAsSpan))
                             {
                                 throw new AuRaException("Decrypted random number doesn't agree with the hash.");

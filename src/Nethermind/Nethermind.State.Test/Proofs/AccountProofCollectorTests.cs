@@ -34,10 +34,10 @@ namespace Nethermind.Store.Test.Proofs
             tree.Accept(accountProofCollector, tree.RootHash);
             AccountProof proof = accountProofCollector.BuildResult();
             Assert.That(proof.Address, Is.EqualTo(TestItem.AddressA));
-            Assert.That(proof.CodeHash, Is.EqualTo(Commitment.OfAnEmptyString));
-            Assert.That(proof.StorageRoot, Is.EqualTo(Commitment.EmptyTreeHash));
-            Assert.That(proof.CodeHash, Is.EqualTo(ValueCommitment.OfAnEmptyString));
-            Assert.That(proof.StorageRoot, Is.EqualTo(ValueCommitment.EmptyTreeHash));
+            Assert.That(proof.CodeHash, Is.EqualTo(Keccak.OfAnEmptyString));
+            Assert.That(proof.StorageRoot, Is.EqualTo(Keccak.EmptyTreeHash));
+            Assert.That(proof.CodeHash, Is.EqualTo(ValueKeccak.OfAnEmptyString));
+            Assert.That(proof.StorageRoot, Is.EqualTo(ValueKeccak.EmptyTreeHash));
             Assert.That(proof.Balance, Is.EqualTo(UInt256.Zero));
             Assert.That(proof.StorageProofs[0].Value, Is.EqualTo(new byte[] { 0 }));
             Assert.That(proof.StorageProofs[1].Value, Is.EqualTo(new byte[] { 0 }));
@@ -60,8 +60,8 @@ namespace Nethermind.Store.Test.Proofs
             AccountProof proof = accountProofCollector.BuildResult();
             proof.Proof.Should().HaveCount(1);
             Assert.That(proof.Address, Is.EqualTo(TestItem.AddressC));
-            Assert.That(proof.CodeHash, Is.EqualTo(Commitment.OfAnEmptyString));
-            Assert.That(proof.StorageRoot, Is.EqualTo(Commitment.EmptyTreeHash));
+            Assert.That(proof.CodeHash, Is.EqualTo(Keccak.OfAnEmptyString));
+            Assert.That(proof.StorageRoot, Is.EqualTo(Keccak.EmptyTreeHash));
             Assert.That(proof.Balance, Is.EqualTo(UInt256.Zero));
             Assert.That(proof.StorageProofs[0].Value, Is.EqualTo(new byte[] { 0 }));
             Assert.That(proof.StorageProofs[1].Value, Is.EqualTo(new byte[] { 0 }));
@@ -82,8 +82,8 @@ namespace Nethermind.Store.Test.Proofs
             AccountProof proof = accountProofCollector.BuildResult();
             proof.Proof.Should().HaveCount(1);
             Assert.That(proof.Address, Is.EqualTo(TestItem.AddressC));
-            Assert.That(proof.CodeHash, Is.EqualTo(Commitment.OfAnEmptyString));
-            Assert.That(proof.StorageRoot, Is.EqualTo(Commitment.EmptyTreeHash));
+            Assert.That(proof.CodeHash, Is.EqualTo(Keccak.OfAnEmptyString));
+            Assert.That(proof.StorageRoot, Is.EqualTo(Keccak.EmptyTreeHash));
             Assert.That(proof.Balance, Is.EqualTo(UInt256.Zero));
             Assert.That(proof.StorageProofs[0].Value, Is.EqualTo(new byte[] { 0 }));
             Assert.That(proof.StorageProofs[1].Value, Is.EqualTo(new byte[] { 0 }));
@@ -183,7 +183,7 @@ namespace Nethermind.Store.Test.Proofs
             AccountProofCollector accountProofCollector2 = new(TestItem.AddressB);
             tree.Accept(accountProofCollector2, tree.RootHash);
             AccountProof proof2 = accountProofCollector2.BuildResult();
-            Assert.That(proof2.CodeHash, Is.EqualTo(Commitment.OfAnEmptyString));
+            Assert.That(proof2.CodeHash, Is.EqualTo(Keccak.OfAnEmptyString));
         }
 
         [Test]
@@ -229,7 +229,7 @@ namespace Nethermind.Store.Test.Proofs
             AccountProofCollector accountProofCollector2 = new(TestItem.AddressB);
             tree.Accept(accountProofCollector2, tree.RootHash);
             AccountProof proof2 = accountProofCollector2.BuildResult();
-            Assert.That(proof2.StorageRoot, Is.EqualTo(Commitment.EmptyTreeHash));
+            Assert.That(proof2.StorageRoot, Is.EqualTo(Keccak.EmptyTreeHash));
         }
 
         [Test]
@@ -274,7 +274,7 @@ namespace Nethermind.Store.Test.Proofs
             IDb memDb = new MemDb();
             TrieStore trieStore = new(memDb, LimboLogs.Instance);
             StateTree tree = new(trieStore, LimboLogs.Instance);
-            StorageTree storageTree = new(trieStore, Commitment.EmptyTreeHash, LimboLogs.Instance);
+            StorageTree storageTree = new(trieStore, Keccak.EmptyTreeHash, LimboLogs.Instance);
             storageTree.Set(UInt256.Zero, Bytes.FromHexString("0xab12000000000000000000000000000000000000000000000000000000000000000000000000000000"));
             storageTree.Set(UInt256.One, Bytes.FromHexString("0xab34000000000000000000000000000000000000000000000000000000000000000000000000000000"));
             storageTree.Commit(0);
@@ -299,7 +299,7 @@ namespace Nethermind.Store.Test.Proofs
             IDb memDb = new MemDb();
             ITrieStore trieStore = new TrieStore(memDb, LimboLogs.Instance);
             StateTree tree = new(trieStore, LimboLogs.Instance);
-            StorageTree storageTree = new(trieStore, Commitment.EmptyTreeHash, LimboLogs.Instance);
+            StorageTree storageTree = new(trieStore, Keccak.EmptyTreeHash, LimboLogs.Instance);
             storageTree.Set(UInt256.Zero, Bytes.FromHexString("0xab12000000000000000000000000000000000000000000000000000000000000000000000000000000"));
             storageTree.Set(UInt256.One, Bytes.FromHexString("0xab34000000000000000000000000000000000000000000000000000000000000000000000000000000"));
             storageTree.Commit(0);
@@ -328,10 +328,10 @@ namespace Nethermind.Store.Test.Proofs
             IDb memDb = new MemDb();
             TrieStore trieStore = new(memDb, LimboLogs.Instance);
             StateTree tree = new(trieStore, LimboLogs.Instance);
-            StorageTree storageTree = new(trieStore, Commitment.EmptyTreeHash, LimboLogs.Instance);
-            storageTree.Set(Commitment.Compute(a).Bytes, Rlp.Encode(Bytes.FromHexString("0xab12000000000000000000000000000000000000000000000000000000000000000000000000000000")));
-            storageTree.Set(Commitment.Compute(b).Bytes, Rlp.Encode(Bytes.FromHexString("0xab34000000000000000000000000000000000000000000000000000000000000000000000000000000")));
-            storageTree.Set(Commitment.Compute(c).Bytes, Rlp.Encode(Bytes.FromHexString("0xab56000000000000000000000000000000000000000000000000000000000000000000000000000000")));
+            StorageTree storageTree = new(trieStore, Keccak.EmptyTreeHash, LimboLogs.Instance);
+            storageTree.Set(Keccak.Compute(a).Bytes, Rlp.Encode(Bytes.FromHexString("0xab12000000000000000000000000000000000000000000000000000000000000000000000000000000")));
+            storageTree.Set(Keccak.Compute(b).Bytes, Rlp.Encode(Bytes.FromHexString("0xab34000000000000000000000000000000000000000000000000000000000000000000000000000000")));
+            storageTree.Set(Keccak.Compute(c).Bytes, Rlp.Encode(Bytes.FromHexString("0xab56000000000000000000000000000000000000000000000000000000000000000000000000000000")));
             storageTree.Commit(0);
 
             byte[] code = new byte[] { 1, 2, 3 };
@@ -365,12 +365,12 @@ namespace Nethermind.Store.Test.Proofs
             IDb memDb = new MemDb();
             TrieStore trieStore = new(memDb, LimboLogs.Instance);
             StateTree tree = new(trieStore, LimboLogs.Instance);
-            StorageTree storageTree = new(trieStore, Commitment.EmptyTreeHash, LimboLogs.Instance);
-            storageTree.Set(Commitment.Compute(a).Bytes, Rlp.Encode(Bytes.FromHexString("0xab12000000000000000000000000000000000000000000000000000000000000000000000000000000")));
-            storageTree.Set(Commitment.Compute(b).Bytes, Rlp.Encode(Bytes.FromHexString("0xab34000000000000000000000000000000000000000000000000000000000000000000000000000000")));
-            storageTree.Set(Commitment.Compute(c).Bytes, Rlp.Encode(Bytes.FromHexString("0xab56000000000000000000000000000000000000000000000000000000000000000000000000000000")));
-            storageTree.Set(Commitment.Compute(d).Bytes, Rlp.Encode(Bytes.FromHexString("0xab78000000000000000000000000000000000000000000000000000000000000000000000000000000")));
-            storageTree.Set(Commitment.Compute(e).Bytes, Rlp.Encode(Bytes.FromHexString("0xab9a000000000000000000000000000000000000000000000000000000000000000000000000000000")));
+            StorageTree storageTree = new(trieStore, Keccak.EmptyTreeHash, LimboLogs.Instance);
+            storageTree.Set(Keccak.Compute(a).Bytes, Rlp.Encode(Bytes.FromHexString("0xab12000000000000000000000000000000000000000000000000000000000000000000000000000000")));
+            storageTree.Set(Keccak.Compute(b).Bytes, Rlp.Encode(Bytes.FromHexString("0xab34000000000000000000000000000000000000000000000000000000000000000000000000000000")));
+            storageTree.Set(Keccak.Compute(c).Bytes, Rlp.Encode(Bytes.FromHexString("0xab56000000000000000000000000000000000000000000000000000000000000000000000000000000")));
+            storageTree.Set(Keccak.Compute(d).Bytes, Rlp.Encode(Bytes.FromHexString("0xab78000000000000000000000000000000000000000000000000000000000000000000000000000000")));
+            storageTree.Set(Keccak.Compute(e).Bytes, Rlp.Encode(Bytes.FromHexString("0xab9a000000000000000000000000000000000000000000000000000000000000000000000000000000")));
             storageTree.Commit(0);
 
             byte[] code = new byte[] { 1, 2, 3 };
@@ -406,12 +406,12 @@ namespace Nethermind.Store.Test.Proofs
             IDb memDb = new MemDb();
             TrieStore trieStore = new(memDb, LimboLogs.Instance);
             StateTree tree = new(trieStore, LimboLogs.Instance);
-            StorageTree storageTree = new(trieStore, Commitment.EmptyTreeHash, LimboLogs.Instance);
-            storageTree.Set(Commitment.Compute(a).Bytes, Rlp.Encode(Bytes.FromHexString("0xab12000000000000000000000000000000000000000000000000000000000000000000000000000000")));
-            storageTree.Set(Commitment.Compute(b).Bytes, Rlp.Encode(Bytes.FromHexString("0xab34000000000000000000000000000000000000000000000000000000000000000000000000000000")));
-            storageTree.Set(Commitment.Compute(c).Bytes, Rlp.Encode(Bytes.FromHexString("0xab56000000000000000000000000000000000000000000000000000000000000000000000000000000")));
-            storageTree.Set(Commitment.Compute(d).Bytes, Rlp.Encode(Bytes.FromHexString("0xab78000000000000000000000000000000000000000000000000000000000000000000000000000000")));
-            storageTree.Set(Commitment.Compute(e).Bytes, Rlp.Encode(Bytes.FromHexString("0xab9a000000000000000000000000000000000000000000000000000000000000000000000000000000")));
+            StorageTree storageTree = new(trieStore, Keccak.EmptyTreeHash, LimboLogs.Instance);
+            storageTree.Set(Keccak.Compute(a).Bytes, Rlp.Encode(Bytes.FromHexString("0xab12000000000000000000000000000000000000000000000000000000000000000000000000000000")));
+            storageTree.Set(Keccak.Compute(b).Bytes, Rlp.Encode(Bytes.FromHexString("0xab34000000000000000000000000000000000000000000000000000000000000000000000000000000")));
+            storageTree.Set(Keccak.Compute(c).Bytes, Rlp.Encode(Bytes.FromHexString("0xab56000000000000000000000000000000000000000000000000000000000000000000000000000000")));
+            storageTree.Set(Keccak.Compute(d).Bytes, Rlp.Encode(Bytes.FromHexString("0xab78000000000000000000000000000000000000000000000000000000000000000000000000000000")));
+            storageTree.Set(Keccak.Compute(e).Bytes, Rlp.Encode(Bytes.FromHexString("0xab9a000000000000000000000000000000000000000000000000000000000000000000000000000000")));
             storageTree.Commit(0);
 
             byte[] code = new byte[] { 1, 2, 3 };
@@ -447,10 +447,10 @@ namespace Nethermind.Store.Test.Proofs
             IDb memDb = new MemDb();
             TrieStore trieStore = new(memDb, LimboLogs.Instance);
             StateTree tree = new(trieStore, LimboLogs.Instance);
-            StorageTree storageTree = new(trieStore, Commitment.EmptyTreeHash, LimboLogs.Instance);
-            storageTree.Set(Commitment.Compute(a).Bytes, Rlp.Encode(Bytes.FromHexString("0xab12000000000000000000000000000000000000000000000000000000000000000000000000000000")));
-            storageTree.Set(Commitment.Compute(c).Bytes, Rlp.Encode(Bytes.FromHexString("0xab56000000000000000000000000000000000000000000000000000000000000000000000000000000")));
-            storageTree.Set(Commitment.Compute(e).Bytes, Rlp.Encode(Bytes.FromHexString("0xab9a000000000000000000000000000000000000000000000000000000000000000000000000000000")));
+            StorageTree storageTree = new(trieStore, Keccak.EmptyTreeHash, LimboLogs.Instance);
+            storageTree.Set(Keccak.Compute(a).Bytes, Rlp.Encode(Bytes.FromHexString("0xab12000000000000000000000000000000000000000000000000000000000000000000000000000000")));
+            storageTree.Set(Keccak.Compute(c).Bytes, Rlp.Encode(Bytes.FromHexString("0xab56000000000000000000000000000000000000000000000000000000000000000000000000000000")));
+            storageTree.Set(Keccak.Compute(e).Bytes, Rlp.Encode(Bytes.FromHexString("0xab9a000000000000000000000000000000000000000000000000000000000000000000000000000000")));
             storageTree.Commit(0);
 
             byte[] code = new byte[] { 1, 2, 3 };
@@ -497,8 +497,8 @@ namespace Nethermind.Store.Test.Proofs
             AccountProof proof = accountProofCollector.BuildResult();
             Assert.That(proof.Balance, Is.EqualTo((UInt256)0));
             Assert.That(proof.Nonce, Is.EqualTo(UInt256.Zero));
-            Assert.That(proof.CodeHash, Is.EqualTo(Commitment.OfAnEmptyString));
-            Assert.That(proof.StorageRoot, Is.EqualTo(Commitment.EmptyTreeHash));
+            Assert.That(proof.CodeHash, Is.EqualTo(Keccak.OfAnEmptyString));
+            Assert.That(proof.StorageRoot, Is.EqualTo(Keccak.EmptyTreeHash));
         }
 
         [Test]
@@ -513,12 +513,12 @@ namespace Nethermind.Store.Test.Proofs
             IDb memDb = new MemDb();
             TrieStore trieStore = new(memDb, LimboLogs.Instance);
             StateTree tree = new(trieStore, LimboLogs.Instance);
-            StorageTree storageTree = new(trieStore, Commitment.EmptyTreeHash, LimboLogs.Instance);
-            storageTree.Set(Commitment.Compute(a).Bytes, Rlp.Encode(Bytes.FromHexString("0xab12000000000000000000000000000000000000000000000000000000000000000000000000000000")));
-            storageTree.Set(Commitment.Compute(b).Bytes, Rlp.Encode(Bytes.FromHexString("0xab34000000000000000000000000000000000000000000000000000000000000000000000000000000")));
-            storageTree.Set(Commitment.Compute(c).Bytes, Rlp.Encode(Bytes.FromHexString("0xab56000000000000000000000000000000000000000000000000000000000000000000000000000000")));
-            storageTree.Set(Commitment.Compute(d).Bytes, Rlp.Encode(Bytes.FromHexString("0xab78000000000000000000000000000000000000000000000000000000000000000000000000000000")));
-            storageTree.Set(Commitment.Compute(e).Bytes, Rlp.Encode(Bytes.FromHexString("0xab9a000000000000000000000000000000000000000000000000000000000000000000000000000000")));
+            StorageTree storageTree = new(trieStore, Keccak.EmptyTreeHash, LimboLogs.Instance);
+            storageTree.Set(Keccak.Compute(a).Bytes, Rlp.Encode(Bytes.FromHexString("0xab12000000000000000000000000000000000000000000000000000000000000000000000000000000")));
+            storageTree.Set(Keccak.Compute(b).Bytes, Rlp.Encode(Bytes.FromHexString("0xab34000000000000000000000000000000000000000000000000000000000000000000000000000000")));
+            storageTree.Set(Keccak.Compute(c).Bytes, Rlp.Encode(Bytes.FromHexString("0xab56000000000000000000000000000000000000000000000000000000000000000000000000000000")));
+            storageTree.Set(Keccak.Compute(d).Bytes, Rlp.Encode(Bytes.FromHexString("0xab78000000000000000000000000000000000000000000000000000000000000000000000000000000")));
+            storageTree.Set(Keccak.Compute(e).Bytes, Rlp.Encode(Bytes.FromHexString("0xab9a000000000000000000000000000000000000000000000000000000000000000000000000000000")));
             storageTree.Commit(0);
 
             byte[] code = new byte[] { 1, 2, 3 };
@@ -618,7 +618,7 @@ storage: 10075208144087594565017167249218046892267736431914869828855077415926031
             addressWithStorage.StorageCells = new StorageCell[storageCount];
             addressWithStorage.Address = address;
 
-            StorageTree storageTree = new(trieStore, Commitment.EmptyTreeHash, LimboLogs.Instance);
+            StorageTree storageTree = new(trieStore, Keccak.EmptyTreeHash, LimboLogs.Instance);
             for (int j = 0; j < storageCount; j++)
             {
                 UInt256 index = UInt256.Parse(lines[j + 2].Replace("storage: ", string.Empty));
@@ -626,7 +626,7 @@ storage: 10075208144087594565017167249218046892267736431914869828855077415926031
                 addressWithStorage.StorageCells[j] = storageCell;
                 byte[] rawKey = new byte[32];
                 addressWithStorage.StorageCells[j].Index.ToBigEndian(rawKey);
-                TestContext.WriteLine($"Set {Commitment.Compute(rawKey).Bytes.ToHexString()}");
+                TestContext.WriteLine($"Set {Keccak.Compute(rawKey).Bytes.ToHexString()}");
                 storageTree.Set(addressWithStorage.StorageCells[j].Index, new byte[] { 1 });
                 storageTree.UpdateRootHash();
                 storageTree.Commit(0);
@@ -649,8 +649,8 @@ storage: 10075208144087594565017167249218046892267736431914869828855077415926031
             accountProof.Address.Should().Be(address);
             accountProof.Balance.Should().Be((UInt256)accountIndex);
             accountProof.Nonce.Should().Be(0);
-            accountProof.CodeHash.Should().Be(Commitment.OfAnEmptyString);
-            if (accountIndex != 0) accountProof.StorageRoot.Should().NotBe(Commitment.EmptyTreeHash);
+            accountProof.CodeHash.Should().Be(Keccak.OfAnEmptyString);
+            if (accountIndex != 0) accountProof.StorageRoot.Should().NotBe(Keccak.EmptyTreeHash);
             accountProof.StorageProofs.Length.Should().Be(accountIndex);
 
             for (int j = 0; j < accountProof.StorageProofs.Length; j++)
@@ -698,7 +698,7 @@ storage: 10075208144087594565017167249218046892267736431914869828855077415926031
             for (int i = 0; i < accountsCount; i++)
             {
                 Account account = Build.An.Account.WithBalance((UInt256)i).TestObject;
-                StorageTree storageTree = new(trieStore, Commitment.EmptyTreeHash, LimboLogs.Instance);
+                StorageTree storageTree = new(trieStore, Keccak.EmptyTreeHash, LimboLogs.Instance);
                 for (int j = 0; j < i; j++)
                 {
                     storageTree.Set(addressesWithStorage[i].StorageCells[j].Index, new byte[1] { 1 });
@@ -723,8 +723,8 @@ storage: 10075208144087594565017167249218046892267736431914869828855077415926031
                 accountProof.Address.Should().Be(addressesWithStorage[i].Address);
                 accountProof.Balance.Should().Be((UInt256)i);
                 accountProof.Nonce.Should().Be(0);
-                accountProof.CodeHash.Should().Be(Commitment.OfAnEmptyString);
-                if (i != 0) accountProof.StorageRoot.Should().NotBe(Commitment.EmptyTreeHash);
+                accountProof.CodeHash.Should().Be(Keccak.OfAnEmptyString);
+                if (i != 0) accountProof.StorageRoot.Should().NotBe(Keccak.EmptyTreeHash);
                 accountProof.StorageProofs.Length.Should().Be(i);
 
                 for (int j = 0; j < i; j++)

@@ -92,7 +92,7 @@ namespace Nethermind.Synchronization.SnapSync
             ValueCommitment lastHash = slots[^1].Path;
 
             (AddRangeResult result, List<TrieNode> sortedBoundaryList, bool moreChildrenToRight) = FillBoundaryTree(
-                tree, startingHash, lastHash, ValueCommitment.MaxValue, expectedRootHash, proofs);
+                tree, startingHash, lastHash, ValueKeccak.MaxValue, expectedRootHash, proofs);
 
             if (result != AddRangeResult.OK)
             {
@@ -140,7 +140,7 @@ namespace Nethermind.Synchronization.SnapSync
                 throw new ArgumentNullException(nameof(tree));
             }
 
-            ValueCommitment effectiveStartingHAsh = startingHash.HasValue ? startingHash.Value : ValueCommitment.Zero;
+            ValueCommitment effectiveStartingHAsh = startingHash.HasValue ? startingHash.Value : ValueKeccak.Zero;
             List<TrieNode> sortedBoundaryList = new();
 
             Dictionary<ValueCommitment, TrieNode> dict = CreateProofDict(proofs, tree.TrieStore);
@@ -161,7 +161,7 @@ namespace Nethermind.Synchronization.SnapSync
             // For when in very-very unlikely case where the last remaining address is Keccak.MaxValue, (who knows why,
             // the chain have special handling for it maybe) and it is not included the returned account range, (again,
             // very-very unlikely), we want `moreChildrenToRight` to return true.
-            bool noLimit = limitHash == ValueCommitment.MaxValue;
+            bool noLimit = limitHash == ValueKeccak.MaxValue;
 
             Stack<(TrieNode parent, TrieNode node, int pathIndex, List<byte> path)> proofNodesToProcess = new();
 

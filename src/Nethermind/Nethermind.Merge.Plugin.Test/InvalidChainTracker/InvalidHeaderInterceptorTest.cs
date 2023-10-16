@@ -80,7 +80,7 @@ public class InvalidHeaderInterceptorTest
             .WithParent(parent)
             .TestObject;
 
-        header.StateRoot = Commitment.Zero;
+        header.StateRoot = Keccak.Zero;
 
         _baseValidator.Validate(header, parent, false).Returns(false);
         _invalidHeaderInterceptor.Validate(header, parent, false);

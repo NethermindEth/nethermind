@@ -37,7 +37,7 @@ public class PivotUpdator
     private static int _maxAttempts;
     private int _attemptsLeft;
     private int _updateInProgress;
-    private Commitment _alreadyAnnouncedNewPivotHash = Commitment.Zero;
+    private Commitment _alreadyAnnouncedNewPivotHash = Keccak.Zero;
 
     public PivotUpdator(IBlockTree blockTree,
         ISyncModeSelector syncModeSelector,
@@ -126,7 +126,7 @@ public class PivotUpdator
     {
         Commitment? finalizedBlockHash = TryGetFinalizedBlockHashFromCl();
 
-        if (finalizedBlockHash is null || finalizedBlockHash == Commitment.Zero)
+        if (finalizedBlockHash is null || finalizedBlockHash == Keccak.Zero)
         {
             return false;
         }
@@ -142,7 +142,7 @@ public class PivotUpdator
     {
         Commitment? finalizedBlockHash = _beaconSyncStrategy.GetFinalizedHash();
 
-        if (finalizedBlockHash is null || finalizedBlockHash == Commitment.Zero)
+        if (finalizedBlockHash is null || finalizedBlockHash == Keccak.Zero)
         {
             if (_logger.IsInfo && (_maxAttempts - _attemptsLeft) % 10 == 0) _logger.Info($"Waiting for Forkchoice message from Consensus Layer to set fresh pivot block [{_maxAttempts - _attemptsLeft}s]");
 

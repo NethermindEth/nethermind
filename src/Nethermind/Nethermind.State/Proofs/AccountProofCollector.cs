@@ -44,7 +44,7 @@ namespace Nethermind.State.Proofs
 
         private static Commitment ToKey(byte[] index)
         {
-            return Commitment.Compute(index);
+            return Keccak.Compute(index);
         }
 
         private static byte[] ToKey(UInt256 index)
@@ -122,7 +122,7 @@ namespace Nethermind.State.Proofs
         }
 
         public AccountProofCollector(Address address, params byte[][] storageKeys)
-            : this(Commitment.Compute(address?.Bytes ?? Address.Zero.Bytes).Bytes, storageKeys)
+            : this(Keccak.Compute(address?.Bytes ?? Address.Zero.Bytes).Bytes, storageKeys)
         {
             _accountProof.Address = _address = address ?? throw new ArgumentNullException(nameof(address));
         }

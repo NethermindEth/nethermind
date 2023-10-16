@@ -183,7 +183,7 @@ public class AbiTests
     {
         AbiType type = AbiType.Address;
         AbiSignature signature = new AbiSignature("abc", type);
-        Address arg = new Address(Commitment.OfAnEmptyString);
+        Address arg = new Address(Keccak.OfAnEmptyString);
         byte[] encoded = _abiEncoder.Encode(encodingStyle, signature, arg);
         object[] arguments = _abiEncoder.Decode(encodingStyle, signature, encoded);
         Assert.That(arguments[0], Is.EqualTo(arg));
@@ -357,7 +357,7 @@ public class AbiTests
     {
         AbiType type = AbiType.Address;
         AbiSignature signature = new AbiSignature("abc", type);
-        Address arg = new Address(Commitment.OfAnEmptyString);
+        Address arg = new Address(Keccak.OfAnEmptyString);
         byte[] encoded = _abiEncoder.Encode(AbiEncodingStyle.None, signature, arg);
         object[] arguments = _abiEncoder.Decode(AbiEncodingStyle.None, signature, encoded);
         Assert.That(arguments[0], Is.EqualTo(arg));
@@ -369,7 +369,7 @@ public class AbiTests
     [TestCase(AbiEncodingStyle.None)]
     public void Test_packed(AbiEncodingStyle encodingStyle)
     {
-        Commitment assetId = Commitment.Compute("assetId");
+        Commitment assetId = Keccak.Compute("assetId");
         uint expiryTime = (uint)Timestamper.Default.UnixTime.Seconds + 86000;
         UInt256 value = 1.Ether();
         uint units = 10U;

@@ -82,7 +82,7 @@ namespace Nethermind.Blockchain.Test.Proofs
         {
             for (int i = proof.Length; i > 0; i--)
             {
-                Commitment proofHash = Commitment.Compute(proof[i - 1]);
+                Commitment proofHash = Keccak.Compute(proof[i - 1]);
                 if (i > 1)
                 {
                     if (!new Rlp(proof[i - 2]).ToString(false).Contains(proofHash.ToString(false)))

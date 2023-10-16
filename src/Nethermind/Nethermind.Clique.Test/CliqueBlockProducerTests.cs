@@ -198,8 +198,8 @@ namespace Nethermind.Clique.Test
 
             private Block GetGenesis(int validatorsCount = 2)
             {
-                Commitment parentHash = Commitment.Zero;
-                Commitment unclesHash = Commitment.OfAnEmptySequenceRlp;
+                Commitment parentHash = Keccak.Zero;
+                Commitment unclesHash = Keccak.OfAnEmptySequenceRlp;
                 Address beneficiary = Address.Zero;
                 UInt256 difficulty = new(1);
                 long number = 0L;
@@ -219,9 +219,9 @@ namespace Nethermind.Clique.Test
                 BlockHeader header = new(parentHash, unclesHash, beneficiary, difficulty, number, gasLimit, timestamp, extraData);
                 Block genesis = new(header);
                 genesis.Header.Hash = genesis.Header.CalculateHash();
-                genesis.Header.StateRoot = Commitment.EmptyTreeHash;
-                genesis.Header.TxRoot = Commitment.EmptyTreeHash;
-                genesis.Header.ReceiptsRoot = Commitment.EmptyTreeHash;
+                genesis.Header.StateRoot = Keccak.EmptyTreeHash;
+                genesis.Header.TxRoot = Keccak.EmptyTreeHash;
+                genesis.Header.ReceiptsRoot = Keccak.EmptyTreeHash;
                 genesis.Header.Bloom = Bloom.Empty;
 
                 return genesis;

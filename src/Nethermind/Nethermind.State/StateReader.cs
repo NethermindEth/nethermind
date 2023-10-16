@@ -25,7 +25,7 @@ namespace Nethermind.State
             _logger = logManager?.GetClassLogger<StateReader>() ?? throw new ArgumentNullException(nameof(logManager));
             _codeDb = codeDb ?? throw new ArgumentNullException(nameof(codeDb));
             _state = new StateTree(trieStore, logManager);
-            _storage = new StorageTree(trieStore, Commitment.EmptyTreeHash, logManager);
+            _storage = new StorageTree(trieStore, Keccak.EmptyTreeHash, logManager);
         }
 
         public Account? GetAccount(Commitment stateRoot, Address address)
@@ -35,7 +35,7 @@ namespace Nethermind.State
 
         public byte[] GetStorage(Commitment storageRoot, in UInt256 index)
         {
-            if (storageRoot == Commitment.EmptyTreeHash)
+            if (storageRoot == Keccak.EmptyTreeHash)
             {
                 return new byte[] { 0 };
             }
@@ -51,7 +51,7 @@ namespace Nethermind.State
 
         public byte[]? GetCode(Commitment codeHash)
         {
-            if (codeHash == Commitment.OfAnEmptyString)
+            if (codeHash == Keccak.OfAnEmptyString)
             {
                 return Array.Empty<byte>();
             }
@@ -72,7 +72,7 @@ namespace Nethermind.State
 
         private Account? GetState(Commitment stateRoot, Address address)
         {
-            if (stateRoot == Commitment.EmptyTreeHash)
+            if (stateRoot == Keccak.EmptyTreeHash)
             {
                 return null;
             }

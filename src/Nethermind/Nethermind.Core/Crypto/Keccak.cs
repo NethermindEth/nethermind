@@ -70,7 +70,7 @@ namespace Nethermind.Core.Crypto
     }
 
     [DebuggerStepThrough]
-    public class Keccak
+    public static class Keccak
     {
         public const int Size = 32;
 
@@ -126,59 +126,6 @@ namespace Nethermind.Core.Crypto
         public static Commitment Compute(string input)
         {
             return new Commitment(ValueKeccak.Compute(input));
-        }
-    }
-
-    public ref struct KeccakStructRef
-    {
-        public const int Size = 32;
-
-        public int MemorySize => MemorySizes.ArrayOverhead + Size;
-
-        [DebuggerStepThrough]
-        public static CommitmentStructRef Compute(byte[]? input)
-        {
-            if (input is null || input.Length == 0)
-            {
-                return new CommitmentStructRef(Keccak.OfAnEmptyString.Bytes);
-            }
-
-            var result = new CommitmentStructRef();
-            KeccakHash.ComputeHashBytesToSpan(input, result.Bytes);
-            return result;
-        }
-
-        [DebuggerStepThrough]
-        public static CommitmentStructRef Compute(Span<byte> input)
-        {
-            if (input.Length == 0)
-            {
-                return new CommitmentStructRef(Keccak.OfAnEmptyString.Bytes);
-            }
-
-            var result = new CommitmentStructRef();
-            KeccakHash.ComputeHashBytesToSpan(input, result.Bytes);
-            return result;
-        }
-
-        private static CommitmentStructRef InternalCompute(Span<byte> input)
-        {
-            var result = new CommitmentStructRef();
-            KeccakHash.ComputeHashBytesToSpan(input, result.Bytes);
-            return result;
-        }
-
-        [DebuggerStepThrough]
-        public static CommitmentStructRef Compute(string input)
-        {
-            if (string.IsNullOrWhiteSpace(input))
-            {
-                return new CommitmentStructRef(Keccak.OfAnEmptyString.Bytes);
-            }
-
-            var result = new CommitmentStructRef();
-            KeccakHash.ComputeHashBytesToSpan(System.Text.Encoding.UTF8.GetBytes(input), result.Bytes);
-            return result;
         }
     }
 }

@@ -188,7 +188,7 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
 
             // https://github.com/ethereum/execution-apis/blob/main/src/engine/specification.md#specification
             // {status: INVALID, latestValidHash: 0x0000000000000000000000000000000000000000000000000000000000000000, validationError: errorMessage | null} if terminal block conditions are not satisfied
-            return ForkchoiceUpdatedV1Result.Invalid(Commitment.Zero);
+            return ForkchoiceUpdatedV1Result.Invalid(Keccak.Zero);
         }
 
         Block[]? blocks = EnsureNewHead(newHeadBlock, out string? setHeadErrorMsg);
@@ -225,7 +225,7 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
             return ForkchoiceUpdatedV1Result.Error(errorMsg, MergeErrorCodes.InvalidForkchoiceState);
         }
 
-        bool nonZeroFinalizedBlockHash = forkchoiceState.FinalizedBlockHash != Commitment.Zero;
+        bool nonZeroFinalizedBlockHash = forkchoiceState.FinalizedBlockHash != Keccak.Zero;
         if (nonZeroFinalizedBlockHash)
         {
             _manualBlockFinalizationManager.MarkFinalized(newHeadBlock.Header, finalizedHeader!);
@@ -285,7 +285,7 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
         if (_logger.IsInfo) _logger.Info($"Start a new sync process, Request: {requestStr}.");
     }
 
-    private bool IsInconsistent(Commitment blockHash) => blockHash != Commitment.Zero && !_blockTree.IsMainChain(blockHash);
+    private bool IsInconsistent(Commitment blockHash) => blockHash != Keccak.Zero && !_blockTree.IsMainChain(blockHash);
 
     private Block? GetBlock(Commitment headBlockHash)
     {
@@ -318,7 +318,7 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
     private BlockHeader? ValidateBlockHash(Commitment blockHash, out string? errorMessage, bool skipZeroHash = true)
     {
         errorMessage = null;
-        if (skipZeroHash && blockHash == Commitment.Zero)
+        if (skipZeroHash && blockHash == Keccak.Zero)
         {
             return null;
         }

@@ -22,7 +22,7 @@ public class PeerRefresher : IPeerRefresher, IAsyncDisposable
     private readonly IPeerDifficultyRefreshPool _syncPeerPool;
     private static readonly TimeSpan _minRefreshDelay = TimeSpan.FromSeconds(10);
     private DateTime _lastRefresh = DateTime.MinValue;
-    private (Commitment headBlockhash, Commitment headParentBlockhash, Commitment finalizedBlockhash) _lastBlockhashes = (Commitment.Zero, Commitment.Zero, Commitment.Zero);
+    private (Commitment headBlockhash, Commitment headParentBlockhash, Commitment finalizedBlockhash) _lastBlockhashes = (Keccak.Zero, Keccak.Zero, Keccak.Zero);
     private readonly ITimer _refreshTimer;
     private readonly ILogger _logger;
 
@@ -91,7 +91,7 @@ public class PeerRefresher : IPeerRefresher, IAsyncDisposable
     {
         // headBlockhash is obtained together with headParentBlockhash
         Task<BlockHeader[]> getHeadParentHeaderTask = syncPeer.GetBlockHeaders(headParentBlockhash, 2, 0, token);
-        Task<BlockHeader?> getFinalizedHeaderTask = finalizedBlockhash == Commitment.Zero
+        Task<BlockHeader?> getFinalizedHeaderTask = finalizedBlockhash == Keccak.Zero
             ? Task.FromResult<BlockHeader?>(null)
             : syncPeer.GetHeadBlockHeader(finalizedBlockhash, token);
 
@@ -126,7 +126,7 @@ public class PeerRefresher : IPeerRefresher, IAsyncDisposable
 
         if (_logger.IsTrace) _logger.Trace($"PeerRefreshForFCU received block info from {syncPeer.Node:c} headHeader: {headBlockHeader} headParentHeader: {headParentBlockHeader} finalizedBlockHeader: {finalizedBlockHeader}");
 
-        if (finalizedBlockhash != Commitment.Zero && finalizedBlockHeader is null)
+        if (finalizedBlockhash != Keccak.Zero && finalizedBlockHeader is null)
         {
             _syncPeerPool.ReportRefreshFailed(syncPeer, "ForkChoiceUpdate: no finalized block header");
             return;

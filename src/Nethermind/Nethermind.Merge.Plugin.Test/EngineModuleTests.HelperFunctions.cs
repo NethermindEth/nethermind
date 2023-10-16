@@ -138,7 +138,7 @@ namespace Nethermind.Merge.Plugin.Test
                 BlockNumber = parent.BlockNumber + 1,
                 GasLimit = parent.GasLimit,
                 GasUsed = 0,
-                ReceiptsRoot = Commitment.EmptyTreeHash,
+                ReceiptsRoot = Keccak.EmptyTreeHash,
                 LogsBloom = Bloom.Empty,
                 Timestamp = parent.Timestamp + 1,
                 Withdrawals = withdrawals,
@@ -200,7 +200,7 @@ namespace Nethermind.Merge.Plugin.Test
             }
             else
             {
-                hash = Commitment.Zero;
+                hash = Keccak.Zero;
                 return false;
             }
         }

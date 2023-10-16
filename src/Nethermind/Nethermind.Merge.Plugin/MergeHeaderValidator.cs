@@ -71,7 +71,7 @@ namespace Nethermind.Merge.Plugin
             {
                 validDifficulty = ValidateHeaderField(header, header.Difficulty, UInt256.Zero, nameof(header.Difficulty));
                 validNonce = ValidateHeaderField(header, header.Nonce, 0u, nameof(header.Nonce));
-                validUncles = ValidateHeaderField(header, header.UnclesHash, Commitment.OfAnEmptySequenceRlp, nameof(header.UnclesHash));
+                validUncles = ValidateHeaderField(header, header.UnclesHash, Keccak.OfAnEmptySequenceRlp, nameof(header.UnclesHash));
             }
 
             return terminalTotalDifficultyChecks

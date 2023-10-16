@@ -139,7 +139,7 @@ namespace Nethermind.AuRa.Test.Validators
 
             int blockNumber = 10;
             Address[] validators = TestItem.Addresses.Take(10).ToArray();
-            Commitment blockHash = Commitment.Compute("Test");
+            Commitment blockHash = Keccak.Compute("Test");
             PendingValidators pendingValidators = new(blockNumber, blockHash, validators);
             _validatorStore.PendingValidators.Returns(pendingValidators);
             _blockTree.Head.Returns((Block)null);
@@ -499,8 +499,8 @@ namespace Nethermind.AuRa.Test.Validators
                 _block.Header.Number = blockNumber;
                 _block.Header.Beneficiary = currentValidators[blockNumber % currentValidators.Length];
                 _block.Header.AuRaStep = blockNumber;
-                _block.Header.Hash = Commitment.Compute((blockNumber + hashSeeds[blockNumber]).ToString());
-                _block.Header.ParentHash = blockNumber == test.StartBlockNumber ? Commitment.Zero : Commitment.Compute((blockNumber - 1 + hashSeeds[blockNumber - 1]).ToString());
+                _block.Header.Hash = Keccak.Compute((blockNumber + hashSeeds[blockNumber]).ToString());
+                _block.Header.ParentHash = blockNumber == test.StartBlockNumber ? Keccak.Zero : Keccak.Compute((blockNumber - 1 + hashSeeds[blockNumber - 1]).ToString());
 
                 TxReceipt[] txReceipts = test.GetReceipts(_validatorContract, _block, _contractAddress, _abiEncoder, SetupAbiAddresses);
 
@@ -518,7 +518,7 @@ namespace Nethermind.AuRa.Test.Validators
                 _blockFinalizationManager.GetLastLevelFinalizedBy(_block.Header.Hash).Returns(finalizedNumber);
                 _blockFinalizationManager.BlocksFinalized += Raise.EventWith(
                     new FinalizeEventArgs(_block.Header, Build.A.BlockHeader.WithNumber(finalizedNumber)
-                            .WithHash(Commitment.Compute((finalizedNumber + hashSeeds[finalizedNumber]).ToString())).TestObject));
+                            .WithHash(Keccak.Compute((finalizedNumber + hashSeeds[finalizedNumber]).ToString())).TestObject));
 
                 currentValidators = test.GetCurrentValidators(blockNumber);
                 validator.Validators.Should().BeEquivalentTo(currentValidators, o => o.WithStrictOrdering(), $"Validator address should be recognized in block {blockNumber}");

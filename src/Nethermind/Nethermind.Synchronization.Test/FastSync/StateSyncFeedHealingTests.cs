@@ -151,7 +151,7 @@ namespace Nethermind.Synchronization.Test.FastSync
         {
             ValueCommitment startingHash = accounts.First().Path;
             ValueCommitment endHash = accounts.Last().Path;
-            Commitment limitHash = Commitment.MaxValue;
+            Commitment limitHash = Keccak.MaxValue;
 
             AccountProofCollector accountProofCollector = new(startingHash.Bytes);
             remoteStateTree.Accept(accountProofCollector, remoteStateTree.RootHash);

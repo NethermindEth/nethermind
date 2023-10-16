@@ -590,7 +590,7 @@ namespace Nethermind.Synchronization.Test
             {
                 HeadNumber = number;
                 TotalDifficulty = totalDiff ?? UInt256.MaxValue;
-                HeadHash = headHash ?? Commitment.Zero;
+                HeadHash = headHash ?? Keccak.Zero;
             }
 
             public string Name => "Throwing";
@@ -1230,7 +1230,7 @@ namespace Nethermind.Synchronization.Test
                 {
                     for (int i = 1; i < number; i++)
                     {
-                        Commitment receiptRoot = i == 1 ? Commitment.EmptyTreeHash : new Commitment("0x9904791428367d3f36f2be68daf170039dd0b3d6b23da00697de816a05fb5cc1");
+                        Commitment receiptRoot = i == 1 ? Keccak.EmptyTreeHash : new Commitment("0x9904791428367d3f36f2be68daf170039dd0b3d6b23da00697de816a05fb5cc1");
                         BlockHeaderBuilder blockHeaderBuilder = consistent
                             ? Build.A.BlockHeader.WithReceiptsRoot(receiptRoot).WithParent(headers[i - 1])
                             : Build.A.BlockHeader.WithReceiptsRoot(receiptRoot).WithNumber(headers[i - 1].Number + 1);
@@ -1238,8 +1238,8 @@ namespace Nethermind.Synchronization.Test
                         if (withTransaction)
                         {
                             // We don't know the TX root yet, it should be populated by `BuildBlocksResponse` and `BuildReceiptsResponse`.
-                            blockHeaderBuilder.WithTransactionsRoot(Commitment.Compute("something"));
-                            blockHeaderBuilder.WithReceiptsRoot(Commitment.Compute("something"));
+                            blockHeaderBuilder.WithTransactionsRoot(Keccak.Compute("something"));
+                            blockHeaderBuilder.WithReceiptsRoot(Keccak.Compute("something"));
                         }
 
                         headers[i] = blockHeaderBuilder.TestObject;
@@ -1292,7 +1292,7 @@ namespace Nethermind.Synchronization.Test
                 {
                     BlockBuilder blockBuilder = Build.A.Block.WithHeader(header);
 
-                    if (withTransactions && header.TxRoot != Commitment.EmptyTreeHash)
+                    if (withTransactions && header.TxRoot != Keccak.EmptyTreeHash)
                     {
                         blockBuilder.WithTransactions(Build.A.Transaction.WithValue(txSeed * 2).SignedAndResolved().TestObject,
                             Build.A.Transaction.WithValue(txSeed * 2 + 1).SignedAndResolved().TestObject);
@@ -1352,7 +1352,7 @@ namespace Nethermind.Synchronization.Test
                         .ToArray();
 
                     _headers[blockHashes[i]].ReceiptsRoot = flags.HasFlag(Response.IncorrectReceiptRoot)
-                        ? Commitment.EmptyTreeHash
+                        ? Keccak.EmptyTreeHash
                         : new ReceiptTrie(MainnetSpecProvider.Instance.GetSpec((ForkActivation)_headers[blockHashes[i]].Number), receipts[i]).RootHash;
                 }
 

@@ -31,7 +31,7 @@ namespace Nethermind.Consensus.Ethash
                 parent.Timestamp,
                 header.Timestamp,
                 header.Number,
-                parent.UnclesHash != Commitment.OfAnEmptySequenceRlp);
+                parent.UnclesHash != Keccak.OfAnEmptySequenceRlp);
 
         public UInt256 Calculate(
             in UInt256 parentDifficulty,

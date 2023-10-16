@@ -13,7 +13,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Les
         [Test]
         public void RoundTrip()
         {
-            var ethMessage = new Network.P2P.Subprotocols.Eth.V62.Messages.GetBlockBodiesMessage(Commitment.OfAnEmptySequenceRlp, Commitment.Zero, Commitment.EmptyTreeHash);
+            var ethMessage = new Network.P2P.Subprotocols.Eth.V62.Messages.GetBlockBodiesMessage(Keccak.OfAnEmptySequenceRlp, Keccak.Zero, Keccak.EmptyTreeHash);
             var message = new GetBlockBodiesMessage(ethMessage, 1);
 
             GetBlockBodiesMessageSerializer serializer = new();

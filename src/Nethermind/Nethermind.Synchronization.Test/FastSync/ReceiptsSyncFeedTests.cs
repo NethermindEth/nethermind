@@ -102,7 +102,7 @@ namespace Nethermind.Synchronization.Test.FastSync
 
             _syncConfig = new SyncConfig { FastBlocks = true, FastSync = true };
             _syncConfig.PivotNumber = _pivotNumber.ToString();
-            _syncConfig.PivotHash = Commitment.Zero.ToString();
+            _syncConfig.PivotHash = Keccak.Zero.ToString();
 
             _syncPeerPool = Substitute.For<ISyncPeerPool>();
             _syncReport = Substitute.For<ISyncReport>();
@@ -269,11 +269,11 @@ namespace Nethermind.Synchronization.Test.FastSync
                     return blockInfo;
                 });
 
-            _blockTree.FindBlock(Commitment.Zero, BlockTreeLookupOptions.None)
+            _blockTree.FindBlock(Keccak.Zero, BlockTreeLookupOptions.None)
                 .ReturnsForAnyArgs(ci =>
                     scenario.BlocksByHash.TryGetValue(ci.Arg<Commitment>(), out Block? value) ? value : null);
 
-            _blockTree.FindHeader(Commitment.Zero, BlockTreeLookupOptions.None)
+            _blockTree.FindHeader(Keccak.Zero, BlockTreeLookupOptions.None)
                 .ReturnsForAnyArgs(ci =>
                     scenario.BlocksByHash.TryGetValue(ci.Arg<Commitment>(), out Block? value) ? value.Header
                         : null);

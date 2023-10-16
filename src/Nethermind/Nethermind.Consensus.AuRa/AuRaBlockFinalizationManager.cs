@@ -28,7 +28,7 @@ namespace Nethermind.Consensus.AuRa
         private readonly IValidSealerStrategy _validSealerStrategy;
         private readonly long _twoThirdsMajorityTransition;
         private long _lastFinalizedBlockLevel;
-        private Commitment _lastProcessedBlockHash = Commitment.EmptyTreeHash;
+        private Commitment _lastProcessedBlockHash = Keccak.EmptyTreeHash;
         private readonly ValidationStampCollection _consecutiveValidatorsForNotYetFinalizedBlocks = new ValidationStampCollection();
 
         public AuRaBlockFinalizationManager(

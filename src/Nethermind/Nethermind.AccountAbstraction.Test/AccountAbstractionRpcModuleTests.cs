@@ -123,7 +123,7 @@ namespace Nethermind.AccountAbstraction.Test
                     Transaction entryPointTx = Core.Test.Builders.Build.A.Transaction.WithTo(singletonFactoryAddress).WithData(createEntryPointBytes).WithGasLimit(6_000_000).WithNonce(chain.State.GetNonce(ContractCreatorPrivateKey.Address)).WithValue(0).SignedAndResolved(ContractCreatorPrivateKey).TestObject;
                     await chain.AddBlock(true, entryPointTx);
 
-                    Address computedAddress = new(Commitment.Compute(Bytes.Concat(Bytes.FromHexString("0xff"), singletonFactoryAddress.Bytes, Bytes.Zero32, Commitment.Compute(entryPointConstructorBytes).Bytes)).BytesToArray().TakeLast(20).ToArray());
+                    Address computedAddress = new(Keccak.Compute(Bytes.Concat(Bytes.FromHexString("0xff"), singletonFactoryAddress.Bytes, Bytes.Zero32, Keccak.Compute(entryPointConstructorBytes).Bytes)).BytesToArray().TakeLast(20).ToArray());
 
                     TxReceipt createEntryPointTxReceipt = chain.Bridge.GetReceipt(entryPointTx.Hash!);
                     createEntryPointTxReceipt.Error.Should().BeNullOrEmpty($"Contract transaction {computedAddress!} was not deployed.");
@@ -505,7 +505,7 @@ namespace Nethermind.AccountAbstraction.Test
             op.CalculateRequestId(entryPointAddress, chainId);
 
             Signer signer = new(chainId, privateKey, NullLogManager.Instance);
-            Commitment hashedRequestId = Commitment.Compute(
+            Commitment hashedRequestId = Keccak.Compute(
                 Bytes.Concat(
                     Encoding.UTF8.GetBytes("\x19"),
                     Encoding.UTF8.GetBytes("Ethereum Signed Message:\n" + op.RequestId!.Bytes.Length),

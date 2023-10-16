@@ -118,7 +118,7 @@ namespace Nethermind.AccountAbstraction.Test
             _stateProvider.IsContract(_notAnAddress).Returns(false);
 
             _simulator.Simulate(Arg.Any<UserOperation>(), Arg.Any<BlockHeader>())
-                .ReturnsForAnyArgs(x => ResultWrapper<Commitment>.Success(Commitment.Zero));
+                .ReturnsForAnyArgs(x => ResultWrapper<Commitment>.Success(Keccak.Zero));
 
             _blockTree.Head.Returns(Core.Test.Builders.Build.A.Block.TestObject);
 

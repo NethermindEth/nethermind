@@ -275,7 +275,7 @@ public partial class EthRpcModule : IEthRpcModule
             string messageText = _messageEncoding.GetString(message);
             const string signatureTemplate = "\x19Ethereum Signed Message:\n{0}{1}";
             string signatureText = string.Format(signatureTemplate, messageText.Length, messageText);
-            sig = _wallet.Sign(Commitment.Compute(signatureText), address);
+            sig = _wallet.Sign(Keccak.Compute(signatureText), address);
         }
         catch (SecurityException e)
         {
@@ -407,7 +407,7 @@ public partial class EthRpcModule : IEthRpcModule
             Transaction transaction = transactions[i];
             RecoverTxSenderIfNeeded(transaction);
             transactionsModels[i] = new TransactionForRpc(transaction);
-            transactionsModels[i].BlockHash = Commitment.Zero;
+            transactionsModels[i].BlockHash = Keccak.Zero;
         }
 
         if (_logger.IsTrace) _logger.Trace($"eth_pendingTransactions request, result: {transactionsModels.Length}");

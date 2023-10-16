@@ -16,8 +16,8 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
         public void RoundTrip()
         {
             BlockHeader header = new(
-                Commitment.Zero,
-                Commitment.Zero,
+                Keccak.Zero,
+                Keccak.Zero,
                 Address.Zero,
                 0x8ae,
                 0xd05,
@@ -25,12 +25,12 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
                 0x1a0a,
                 new byte[] { 0x77, 0x88 })
             {
-                StateRoot = Commitment.Zero,
-                TxRoot = Commitment.Zero,
-                ReceiptsRoot = Commitment.Zero,
+                StateRoot = Keccak.Zero,
+                TxRoot = Keccak.Zero,
+                ReceiptsRoot = Keccak.Zero,
                 Bloom = Bloom.Empty,
                 GasUsed = 0x15b3,
-                MixHash = Commitment.Zero,
+                MixHash = Keccak.Zero,
                 Nonce = 0,
                 Hash = new Commitment("0x8c2f2af15b7b563b6ab1e09bed0e9caade7ed730aec98b70a993597a797579a9")
             };

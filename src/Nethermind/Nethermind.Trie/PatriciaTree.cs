@@ -32,7 +32,7 @@ namespace Nethermind.Trie
         /// <summary>
         ///     0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421
         /// </summary>
-        public static readonly Commitment EmptyTreeHash = Commitment.EmptyTreeHash;
+        public static readonly Commitment EmptyTreeHash = Keccak.EmptyTreeHash;
 
         public TrieType TrieType { get; init; }
 
@@ -53,7 +53,7 @@ namespace Nethermind.Trie
 
         private readonly bool _allowCommits;
 
-        private Commitment _rootHash = Commitment.EmptyTreeHash;
+        private Commitment _rootHash = Keccak.EmptyTreeHash;
 
         public TrieNode? RootRef { get; set; }
 
@@ -296,8 +296,8 @@ namespace Nethermind.Trie
 
         private void SetRootHash(Commitment? value, bool resetObjects)
         {
-            _rootHash = value ?? Commitment.EmptyTreeHash; // nulls were allowed before so for now we leave it this way
-            if (_rootHash == Commitment.EmptyTreeHash)
+            _rootHash = value ?? Keccak.EmptyTreeHash; // nulls were allowed before so for now we leave it this way
+            if (_rootHash == Keccak.EmptyTreeHash)
             {
                 RootRef = null;
             }
@@ -1074,7 +1074,7 @@ namespace Nethermind.Trie
             };
 
             TrieNode rootRef = null;
-            if (!rootHash.Equals(Commitment.EmptyTreeHash))
+            if (!rootHash.Equals(Keccak.EmptyTreeHash))
             {
                 rootRef = RootHash == rootHash ? RootRef : TrieStore.FindCachedOrUnknown(rootHash);
                 try

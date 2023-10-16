@@ -23,7 +23,7 @@ namespace Nethermind.State
 
         public static Commitment GetStorageRoot(this IStateReader stateReader, Commitment stateRoot, Address address)
         {
-            return stateReader.GetAccount(stateRoot, address)?.StorageRoot ?? Commitment.EmptyTreeHash;
+            return stateReader.GetAccount(stateRoot, address)?.StorageRoot ?? Keccak.EmptyTreeHash;
         }
 
         public static byte[] GetCode(this IStateReader stateReader, Commitment stateRoot, Address address)
@@ -33,7 +33,7 @@ namespace Nethermind.State
 
         public static Commitment GetCodeHash(this IStateReader stateReader, Commitment stateRoot, Address address)
         {
-            return stateReader.GetAccount(stateRoot, address)?.CodeHash ?? Commitment.OfAnEmptyString;
+            return stateReader.GetAccount(stateRoot, address)?.CodeHash ?? Keccak.OfAnEmptyString;
         }
 
         public static bool HasStateForBlock(this IStateReader stateReader, BlockHeader header)

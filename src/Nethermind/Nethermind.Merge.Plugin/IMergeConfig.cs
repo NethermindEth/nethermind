@@ -39,7 +39,7 @@ namespace Nethermind.Merge.Plugin
         public ulong SecondsPerSlot { get; set; }
 
         [ConfigItem(DisabledForCli = true, HiddenFromDocs = true)]
-        Commitment TerminalBlockHashParsed => string.IsNullOrWhiteSpace(TerminalBlockHash) ? Commitment.Zero : new Commitment(Bytes.FromHexString(TerminalBlockHash));
+        Commitment TerminalBlockHashParsed => string.IsNullOrWhiteSpace(TerminalBlockHash) ? Keccak.Zero : new Commitment(Bytes.FromHexString(TerminalBlockHash));
 
         [ConfigItem(Description = "URL to Builder Relay. If set when building blocks nethermind will send them to the relay.", DefaultValue = "null")]
         string? BuilderRelayUrl { get; set; }

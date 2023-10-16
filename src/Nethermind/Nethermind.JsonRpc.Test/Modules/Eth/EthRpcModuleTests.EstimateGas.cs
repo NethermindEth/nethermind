@@ -249,7 +249,7 @@ public partial class EthRpcModuleTests
         using Context ctx = await Context.Create(specProvider);
 
         Transaction tx = Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyA).TestObject;
-        TransactionForRpc transaction = new(Commitment.Zero, 1L, 1, tx);
+        TransactionForRpc transaction = new(Keccak.Zero, 1L, 1, tx);
         ctx.Test.State.InsertCode(TestItem.AddressA, "H"u8.ToArray(), London.Instance);
         transaction.To = TestItem.AddressB;
 

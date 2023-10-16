@@ -12,8 +12,8 @@ namespace Nethermind.Consensus.AuRa.Validators
 {
     public class ValidatorStore : IValidatorStore
     {
-        internal static readonly Commitment LatestFinalizedValidatorsBlockNumberKey = Commitment.Compute("LatestFinalizedValidatorsBlockNumber");
-        internal static readonly Commitment PendingValidatorsKey = Commitment.Compute("PendingValidators");
+        internal static readonly Commitment LatestFinalizedValidatorsBlockNumberKey = Keccak.Compute("LatestFinalizedValidatorsBlockNumber");
+        internal static readonly Commitment PendingValidatorsKey = Keccak.Compute("PendingValidators");
         private static readonly PendingValidatorsDecoder PendingValidatorsDecoder = new PendingValidatorsDecoder();
 
         private readonly IDb _db;
@@ -21,7 +21,7 @@ namespace Nethermind.Consensus.AuRa.Validators
         private ValidatorInfo _latestValidatorInfo;
         private static readonly int EmptyBlockNumber = -1;
         private static readonly ValidatorInfo EmptyValidatorInfo = new ValidatorInfo(-1, -1, Array.Empty<Address>());
-        private static Commitment GetKey(in long blockNumber) => Commitment.Compute("Validators" + blockNumber);
+        private static Commitment GetKey(in long blockNumber) => Keccak.Compute("Validators" + blockNumber);
 
         public ValidatorStore(IDb db)
         {

@@ -38,7 +38,7 @@ public class RecoveryTests
     public void SetUp()
     {
         _returnedRlp = _keyRlp = new byte[] { 1, 2, 3 };
-        _key = Commitment.Compute(_keyRlp);
+        _key = Keccak.Compute(_keyRlp);
         _syncPeerEth66 = Substitute.For<ISyncPeer>();
         _syncPeerEth66.ProtocolVersion.Returns(EthVersions.Eth66);
         _syncPeerEth66.GetNodeData(Arg.Is<IReadOnlyList<Commitment>>(l => l.Contains(_key)), Arg.Any<CancellationToken>())

@@ -35,14 +35,14 @@ namespace Nethermind.AccountAbstraction.Data
 
         private Commitment CalculateHash()
         {
-            return Commitment.Compute(_packer.Pack(this));
+            return Keccak.Compute(_packer.Pack(this));
         }
 
         private readonly AbiSignature _idSignature = new AbiSignature("RequestId", AbiType.Bytes32, AbiAddress.Instance, AbiType.UInt256);
 
         public void CalculateRequestId(Address entryPointAddress, ulong chainId)
         {
-            RequestId = Commitment.Compute(_abiEncoder.Encode(AbiEncodingStyle.None, _idSignature, CalculateHash(), entryPointAddress, chainId));
+            RequestId = Keccak.Compute(_abiEncoder.Encode(AbiEncodingStyle.None, _idSignature, CalculateHash(), entryPointAddress, chainId));
         }
 
         public UserOperationAbi Abi => new()

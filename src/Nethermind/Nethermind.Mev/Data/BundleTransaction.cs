@@ -9,7 +9,7 @@ namespace Nethermind.Mev.Data
 {
     public class BundleTransaction : Transaction
     {
-        public Commitment BundleHash { get; set; } = Commitment.Zero;
+        public Commitment BundleHash { get; set; } = Keccak.Zero;
         public bool CanRevert { get; set; } = false;
         public UInt256 SimulatedBundleFee { get; set; } = UInt256.Zero;
         public UInt256 SimulatedBundleGasUsed { get; set; } = UInt256.Zero;

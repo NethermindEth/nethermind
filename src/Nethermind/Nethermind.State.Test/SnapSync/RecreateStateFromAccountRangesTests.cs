@@ -99,7 +99,7 @@ namespace Nethermind.Store.Test
         {
             Commitment rootHash = _inputTree.RootHash;   // "0x8c81279168edc449089449bc0f2136fc72c9645642845755633cf259cd97988b"
 
-            AccountProofCollector accountProofCollector = new(Commitment.Zero.Bytes);
+            AccountProofCollector accountProofCollector = new(Keccak.Zero.Bytes);
             _inputTree.Accept(accountProofCollector, _inputTree.RootHash);
             byte[][] firstProof = accountProofCollector.BuildResult().Proof;
             accountProofCollector = new(TestItem.Tree.AccountsWithPaths[5].Path.Bytes);
@@ -111,7 +111,7 @@ namespace Nethermind.Store.Test
             dbProvider.RegisterDb(DbNames.State, db);
             ProgressTracker progressTracker = new(null, dbProvider.GetDb<IDb>(DbNames.State), LimboLogs.Instance);
             SnapProvider snapProvider = new(progressTracker, dbProvider, LimboLogs.Instance);
-            AddRangeResult result = snapProvider.AddAccountRange(1, rootHash, Commitment.Zero, TestItem.Tree.AccountsWithPaths, firstProof!.Concat(lastProof!).ToArray());
+            AddRangeResult result = snapProvider.AddAccountRange(1, rootHash, Keccak.Zero, TestItem.Tree.AccountsWithPaths, firstProof!.Concat(lastProof!).ToArray());
 
             Assert.That(result, Is.EqualTo(AddRangeResult.OK));
             Assert.That(db.Keys.Count, Is.EqualTo(10));  // we persist proof nodes (boundary nodes) via stitching
@@ -171,14 +171,14 @@ namespace Nethermind.Store.Test
             ProgressTracker progressTracker = new(null, dbProvider.GetDb<IDb>(DbNames.State), LimboLogs.Instance);
             SnapProvider snapProvider = new(progressTracker, dbProvider, LimboLogs.Instance);
 
-            AccountProofCollector accountProofCollector = new(Commitment.Zero.Bytes);
+            AccountProofCollector accountProofCollector = new(Keccak.Zero.Bytes);
             _inputTree.Accept(accountProofCollector, _inputTree.RootHash);
             byte[][] firstProof = accountProofCollector.BuildResult().Proof;
             accountProofCollector = new(TestItem.Tree.AccountsWithPaths[1].Path.Bytes);
             _inputTree.Accept(accountProofCollector, _inputTree.RootHash);
             byte[][] lastProof = accountProofCollector.BuildResult().Proof;
 
-            var result1 = snapProvider.AddAccountRange(1, rootHash, Commitment.Zero, TestItem.Tree.AccountsWithPaths[0..2], firstProof!.Concat(lastProof!).ToArray());
+            var result1 = snapProvider.AddAccountRange(1, rootHash, Keccak.Zero, TestItem.Tree.AccountsWithPaths[0..2], firstProof!.Concat(lastProof!).ToArray());
 
             Assert.That(db.Keys.Count, Is.EqualTo(2));
 
@@ -221,14 +221,14 @@ namespace Nethermind.Store.Test
             ProgressTracker progressTracker = new(null, dbProvider.GetDb<IDb>(DbNames.State), LimboLogs.Instance);
             SnapProvider snapProvider = new(progressTracker, dbProvider, LimboLogs.Instance);
 
-            AccountProofCollector accountProofCollector = new(Commitment.Zero.Bytes);
+            AccountProofCollector accountProofCollector = new(Keccak.Zero.Bytes);
             _inputTree.Accept(accountProofCollector, _inputTree.RootHash);
             byte[][] firstProof = accountProofCollector.BuildResult().Proof;
             accountProofCollector = new(TestItem.Tree.AccountsWithPaths[1].Path.Bytes);
             _inputTree.Accept(accountProofCollector, _inputTree.RootHash);
             byte[][] lastProof = accountProofCollector.BuildResult().Proof;
 
-            var result1 = snapProvider.AddAccountRange(1, rootHash, Commitment.Zero, TestItem.Tree.AccountsWithPaths[0..2], firstProof!.Concat(lastProof!).ToArray());
+            var result1 = snapProvider.AddAccountRange(1, rootHash, Keccak.Zero, TestItem.Tree.AccountsWithPaths[0..2], firstProof!.Concat(lastProof!).ToArray());
 
             Assert.That(db.Keys.Count, Is.EqualTo(2));
 

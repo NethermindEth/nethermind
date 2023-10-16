@@ -72,7 +72,7 @@ public sealed class BeaconHeadersSyncFeed : HeadersSyncFeed
     private long ExpectedPivotNumber =>
         _pivot.PivotParentHash is not null ? _pivot.PivotNumber - 1 : _pivot.PivotNumber;
 
-    private Commitment ExpectedPivotHash => _pivot.PivotParentHash ?? _pivot.PivotHash ?? Commitment.Zero;
+    private Commitment ExpectedPivotHash => _pivot.PivotParentHash ?? _pivot.PivotHash ?? Keccak.Zero;
 
     protected override void ResetPivot()
     {
@@ -90,7 +90,7 @@ public sealed class BeaconHeadersSyncFeed : HeadersSyncFeed
         if (lowestInserted is not null && lowestInserted.Number <= _pivotNumber)
         {
             startNumber = lowestInserted.Number - 1;
-            _nextHeaderHash = lowestInserted.ParentHash ?? Commitment.Zero;
+            _nextHeaderHash = lowestInserted.ParentHash ?? Keccak.Zero;
             _nextHeaderDiff = lowestInserted.TotalDifficulty - lowestInserted.Difficulty;
         }
 

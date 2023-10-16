@@ -24,19 +24,19 @@ public class BlockHeaderBuilder : BuilderBase<BlockHeader>
     public BlockHeaderBuilder()
     {
         TestObjectInternal = new BlockHeader(
-            Commitment.Compute("parent"),
-            Commitment.OfAnEmptySequenceRlp,
+            Keccak.Compute("parent"),
+            Keccak.OfAnEmptySequenceRlp,
             Address.Zero,
             DefaultDifficulty, 0,
             4_000_000,
             1_000_000,
             new byte[] { 1, 2, 3 });
         TestObjectInternal.Bloom = Bloom.Empty;
-        TestObjectInternal.MixHash = Commitment.Compute("mix_hash");
+        TestObjectInternal.MixHash = Keccak.Compute("mix_hash");
         TestObjectInternal.Nonce = 1000;
-        TestObjectInternal.ReceiptsRoot = Commitment.EmptyTreeHash;
-        TestObjectInternal.StateRoot = Commitment.EmptyTreeHash;
-        TestObjectInternal.TxRoot = Commitment.EmptyTreeHash;
+        TestObjectInternal.ReceiptsRoot = Keccak.EmptyTreeHash;
+        TestObjectInternal.StateRoot = Keccak.EmptyTreeHash;
+        TestObjectInternal.TxRoot = Keccak.EmptyTreeHash;
     }
 
     public BlockHeaderBuilder WithParent(BlockHeader parentHeader)

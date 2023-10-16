@@ -51,8 +51,8 @@ namespace Nethermind.Merge.Plugin.BlockProduction
         public virtual Block PrepareEmptyBlock(BlockHeader parent, PayloadAttributes? payloadAttributes = null)
         {
             BlockHeader blockHeader = PrepareBlockHeader(parent, payloadAttributes);
-            blockHeader.ReceiptsRoot = Commitment.EmptyTreeHash;
-            blockHeader.TxRoot = Commitment.EmptyTreeHash;
+            blockHeader.ReceiptsRoot = Keccak.EmptyTreeHash;
+            blockHeader.TxRoot = Keccak.EmptyTreeHash;
             blockHeader.Bloom = Bloom.Empty;
             var block = new Block(blockHeader, Array.Empty<Transaction>(), Array.Empty<BlockHeader>(), payloadAttributes?.Withdrawals);
 

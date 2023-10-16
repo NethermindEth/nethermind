@@ -87,10 +87,10 @@ public class DebugModuleTests
     {
         BlockDecoder decoder = new();
         Rlp rlp = decoder.Encode(Build.A.Block.WithNumber(1).TestObject);
-        debugBridge.GetBlockRlp(Commitment.Zero).Returns(rlp.Bytes);
+        debugBridge.GetBlockRlp(Keccak.Zero).Returns(rlp.Bytes);
 
         DebugRpcModule rpcModule = new(LimboLogs.Instance, debugBridge, jsonRpcConfig);
-        JsonRpcSuccessResponse? response = RpcTest.TestRequest<IDebugRpcModule>(rpcModule, "debug_getBlockRlpByHash", $"{Commitment.Zero.Bytes.ToHexString()}") as JsonRpcSuccessResponse;
+        JsonRpcSuccessResponse? response = RpcTest.TestRequest<IDebugRpcModule>(rpcModule, "debug_getBlockRlpByHash", $"{Keccak.Zero.Bytes.ToHexString()}") as JsonRpcSuccessResponse;
         Assert.That((byte[]?)response?.Result, Is.EqualTo(rlp.Bytes));
     }
 
@@ -124,10 +124,10 @@ public class DebugModuleTests
     {
         BlockDecoder decoder = new();
         Rlp rlp = decoder.Encode(Build.A.Block.WithNumber(1).TestObject);
-        debugBridge.GetBlockRlp(Commitment.Zero).Returns((byte[])null!);
+        debugBridge.GetBlockRlp(Keccak.Zero).Returns((byte[])null!);
 
         DebugRpcModule rpcModule = new(LimboLogs.Instance, debugBridge, jsonRpcConfig);
-        JsonRpcErrorResponse? response = RpcTest.TestRequest<IDebugRpcModule>(rpcModule, "debug_getBlockRlpByHash", $"{Commitment.Zero.Bytes.ToHexString()}") as JsonRpcErrorResponse;
+        JsonRpcErrorResponse? response = RpcTest.TestRequest<IDebugRpcModule>(rpcModule, "debug_getBlockRlpByHash", $"{Keccak.Zero.Bytes.ToHexString()}") as JsonRpcErrorResponse;
 
         Assert.That(response?.Error?.Code, Is.EqualTo(-32001));
     }
@@ -339,7 +339,7 @@ public class DebugModuleTests
     [Test]
     public void StandardTraceBlockToFile()
     {
-        var blockHash = Commitment.EmptyTreeHash;
+        var blockHash = Keccak.EmptyTreeHash;
 
         static IEnumerable<string> GetFileNames(Commitment hash) =>
             new[] { $"block_{hash.ToShortString()}-0", $"block_{hash.ToShortString()}-1" };

@@ -64,7 +64,7 @@ namespace Nethermind.Synchronization.ParallelSync
 
         private bool IsFullySynced(Commitment stateRoot)
         {
-            if (stateRoot == Commitment.EmptyTreeHash)
+            if (stateRoot == Keccak.EmptyTreeHash)
             {
                 return true;
             }

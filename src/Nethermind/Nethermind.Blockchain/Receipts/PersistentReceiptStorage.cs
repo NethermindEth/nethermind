@@ -27,7 +27,7 @@ namespace Nethermind.Blockchain.Receipts
         private long? _lowestInsertedReceiptBlock;
         private readonly IDbWithSpan _blocksDb;
         private readonly IDb _transactionDb;
-        private static readonly Commitment MigrationBlockNumberKey = Commitment.Compute(nameof(MigratedBlockNumber));
+        private static readonly Commitment MigrationBlockNumberKey = Keccak.Compute(nameof(MigratedBlockNumber));
         private long _migratedBlockNumber;
         private readonly ReceiptArrayStorageDecoder _storageDecoder = ReceiptArrayStorageDecoder.Instance;
         private readonly IBlockTree _blockTree;
@@ -60,7 +60,7 @@ namespace Nethermind.Blockchain.Receipts
             _storageDecoder = storageDecoder ?? ReceiptArrayStorageDecoder.Instance;
             _receiptConfig = receiptConfig ?? throw new ArgumentNullException(nameof(receiptConfig));
 
-            byte[] lowestBytes = _database.Get(Commitment.Zero);
+            byte[] lowestBytes = _database.Get(Keccak.Zero);
             _lowestInsertedReceiptBlock = lowestBytes is null ? (long?)null : new RlpStream(lowestBytes).DecodeLong();
             _migratedBlockNumber = Get(MigrationBlockNumberKey, long.MaxValue);
 
@@ -132,7 +132,7 @@ namespace Nethermind.Blockchain.Receipts
 
         public TxReceipt[] Get(Block block)
         {
-            if (block.ReceiptsRoot == Commitment.EmptyTreeHash)
+            if (block.ReceiptsRoot == Keccak.EmptyTreeHash)
             {
                 return Array.Empty<TxReceipt>();
             }
@@ -300,7 +300,7 @@ namespace Nethermind.Blockchain.Receipts
                 _lowestInsertedReceiptBlock = value;
                 if (value.HasValue)
                 {
-                    _database.Set(Commitment.Zero, Rlp.Encode(value.Value).Bytes);
+                    _database.Set(Keccak.Zero, Rlp.Encode(value.Value).Bytes);
                 }
             }
         }

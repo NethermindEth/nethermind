@@ -172,7 +172,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                     SyncConfig.FastSync = false;
                     SyncConfig.FastBlocks = false;
                     SyncConfig.PivotNumber = Pivot.Number.ToString();
-                    SyncConfig.PivotHash = Commitment.Zero.ToString();
+                    SyncConfig.PivotHash = Keccak.Zero.ToString();
                     SyncConfig.SynchronizationEnabled = true;
                     SyncConfig.NetworkingEnabled = true;
                     SyncConfig.DownloadBodiesInFastSync = true;

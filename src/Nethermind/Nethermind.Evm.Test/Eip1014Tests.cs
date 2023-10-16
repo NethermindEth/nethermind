@@ -21,7 +21,7 @@ namespace Nethermind.Evm.Test
 
         private void AssertEip1014(Address address, byte[] code)
         {
-            AssertCodeHash(address, Commitment.Compute(code));
+            AssertCodeHash(address, Keccak.Compute(code));
         }
 
         [Test]

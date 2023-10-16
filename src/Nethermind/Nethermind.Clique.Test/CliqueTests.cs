@@ -92,8 +92,8 @@ namespace Nethermind.Clique.Test
 
         public static Block GetRinkebyGenesis()
         {
-            Commitment parentHash = Commitment.Zero;
-            Commitment unclesHash = Commitment.OfAnEmptySequenceRlp;
+            Commitment parentHash = Keccak.Zero;
+            Commitment unclesHash = Keccak.OfAnEmptySequenceRlp;
             Address beneficiary = Address.Zero;
             UInt256 difficulty = new(1);
             long number = 0L;

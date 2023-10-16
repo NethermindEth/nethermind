@@ -367,7 +367,7 @@ namespace Nethermind.Synchronization.Test
             ISyncPeer? syncPeer = Substitute.For<ISyncPeer>();
             syncPeer.Node.Returns(new Node(TestItem.PublicKeyA, "127.0.0.1", 30303));
             ctx.Pool.AddPeer(syncPeer);
-            ctx.Pool.RefreshTotalDifficulty(syncPeer, Commitment.Zero);
+            ctx.Pool.RefreshTotalDifficulty(syncPeer, Keccak.Zero);
             await Task.Delay(100);
 
             Assert.That(() =>

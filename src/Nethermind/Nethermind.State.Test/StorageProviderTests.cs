@@ -413,8 +413,8 @@ namespace Nethermind.Store.Test
         {
             public WorldState StateProvider { get; }
 
-            public readonly Address Address1 = new(Commitment.Compute("1"));
-            public readonly Address Address2 = new(Commitment.Compute("2"));
+            public readonly Address Address1 = new(Keccak.Compute("1"));
+            public readonly Address Address2 = new(Keccak.Compute("2"));
 
             public Context()
             {

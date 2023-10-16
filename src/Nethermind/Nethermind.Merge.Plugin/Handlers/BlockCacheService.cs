@@ -10,5 +10,5 @@ namespace Nethermind.Merge.Plugin.Handlers;
 public class BlockCacheService : IBlockCacheService
 {
     public ConcurrentDictionary<Commitment, Block> BlockCache { get; } = new();
-    public Commitment FinalizedHash { get; set; } = Commitment.Zero;
+    public Commitment FinalizedHash { get; set; } = Keccak.Zero;
 }

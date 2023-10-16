@@ -13,7 +13,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Les.Messages
         {
             // note: If there are any changes to how a hash is encoded, this will break (compression?)
             // calling LengthOf for each hash would be more resistant to future changes, if we think there will be any
-            int requestLength = Rlp.LengthOf(Commitment.OfAnEmptyString) * 2;
+            int requestLength = Rlp.LengthOf(Keccak.OfAnEmptyString) * 2;
             int allRequestsLength = Rlp.LengthOfSequence(requestLength) * message.Requests.Length;
             int contentLength =
                 Rlp.LengthOf(message.RequestId) +

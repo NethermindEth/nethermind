@@ -41,7 +41,7 @@ public class WithdrawalTrieTests
         for (var i = proof.Length - 1; i >= 0; i--)
         {
             var p = proof[i];
-            var hash = Commitment.Compute(p);
+            var hash = Keccak.Compute(p);
 
             if (i > 0)
             {

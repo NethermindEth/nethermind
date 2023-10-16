@@ -17,7 +17,7 @@ public class Web3RpcModule : IWeb3RpcModule
 
     public ResultWrapper<Commitment> web3_sha3(byte[] data)
     {
-        Commitment commitment = Commitment.Compute(data);
+        Commitment commitment = Keccak.Compute(data);
         return ResultWrapper<Commitment>.Success(commitment);
     }
 }

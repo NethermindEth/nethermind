@@ -51,7 +51,7 @@ namespace Nethermind.Serialization.Rlp
                 ReceiptsRoot = receiptsRoot,
                 Bloom = bloom,
                 GasUsed = gasUsed,
-                Hash = Commitment.Compute(headerRlp)
+                Hash = Keccak.Compute(headerRlp)
             };
 
             if (decoderContext.PeekPrefixAndContentLength().ContentLength == Commitment.Size)
@@ -139,7 +139,7 @@ namespace Nethermind.Serialization.Rlp
                 ReceiptsRoot = receiptsRoot,
                 Bloom = bloom,
                 GasUsed = gasUsed,
-                Hash = Commitment.Compute(headerRlp)
+                Hash = Keccak.Compute(headerRlp)
             };
 
             if (rlpStream.PeekPrefixAndContentLength().ContentLength == Commitment.Size)
@@ -230,7 +230,7 @@ namespace Nethermind.Serialization.Rlp
 
             if (header.WithdrawalsRoot is not null || header.ExcessBlobGas is not null || header.BlobGasUsed is not null || header.ParentBeaconBlockRoot is not null)
             {
-                rlpStream.Encode(header.WithdrawalsRoot ?? Commitment.Zero);
+                rlpStream.Encode(header.WithdrawalsRoot ?? Keccak.Zero);
             }
 
             if (header.BlobGasUsed is not null || header.ExcessBlobGas is not null || header.ParentBeaconBlockRoot is not null)

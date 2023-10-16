@@ -90,24 +90,24 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Wit
             Context context = new();
             context.WitProtocolHandler.Init();
 
-            GetBlockWitnessHashesMessage msg = new(5, Commitment.Zero);
+            GetBlockWitnessHashesMessage msg = new(5, Keccak.Zero);
             GetBlockWitnessHashesMessageSerializer serializer = new();
             var serialized = serializer.Serialize(msg);
 
             context.WitProtocolHandler.HandleMessage(new Packet("wit", WitMessageCode.GetBlockWitnessHashes, serialized));
-            context.SyncServer.Received().GetBlockWitnessHashes(Commitment.Zero);
+            context.SyncServer.Received().GetBlockWitnessHashes(Keccak.Zero);
         }
 
         [Test]
         public void Can_handle_request_for_a_non_empty_witness()
         {
             Context context = new();
-            context.SyncServer.GetBlockWitnessHashes(Commitment.Zero)
+            context.SyncServer.GetBlockWitnessHashes(Keccak.Zero)
                 .Returns(new[] { TestItem._commitmentA, TestItem._commitmentB });
 
             context.WitProtocolHandler.Init();
 
-            GetBlockWitnessHashesMessage msg = new(5, Commitment.Zero);
+            GetBlockWitnessHashesMessage msg = new(5, Keccak.Zero);
             GetBlockWitnessHashesMessageSerializer serializer = new();
             var serialized = serializer.Serialize(msg);
 

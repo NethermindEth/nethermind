@@ -51,7 +51,7 @@ namespace Nethermind.Serialization.Rlp
             UInt256 balance = rlpStream.DecodeUInt256();
             Commitment storageRoot = DecodeStorageRoot(rlpStream);
             Commitment codeHash = DecodeCodeHash(rlpStream);
-            if (ReferenceEquals(storageRoot, Commitment.EmptyTreeHash) && ReferenceEquals(codeHash, Commitment.OfAnEmptyString))
+            if (ReferenceEquals(storageRoot, Keccak.EmptyTreeHash) && ReferenceEquals(codeHash, Keccak.OfAnEmptyString))
             {
                 return new(nonce, balance);
             }
@@ -176,7 +176,7 @@ namespace Nethermind.Serialization.Rlp
             if (_slimFormat && rlpStream.IsNextItemEmptyArray())
             {
                 rlpStream.ReadByte();
-                storageRoot = Commitment.EmptyTreeHash;
+                storageRoot = Keccak.EmptyTreeHash;
             }
             else
             {
@@ -192,7 +192,7 @@ namespace Nethermind.Serialization.Rlp
             if (_slimFormat && rlpStream.IsNextItemEmptyArray())
             {
                 rlpStream.ReadByte();
-                codeHash = Commitment.OfAnEmptyString;
+                codeHash = Keccak.OfAnEmptyString;
             }
             else
             {

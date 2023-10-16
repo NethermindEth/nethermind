@@ -129,7 +129,7 @@ namespace Nethermind.Blockchain.Test.Validators
         [Test, Timeout(Timeout.MaxTestTime)]
         public void When_no_parent_invalid()
         {
-            _block.Header.ParentHash = Commitment.Zero;
+            _block.Header.ParentHash = Keccak.Zero;
             _block.Header.SealEngineType = SealEngineType.None;
             _block.Header.Hash = _block.CalculateHash();
             _block.Header.MaybeParent = null;

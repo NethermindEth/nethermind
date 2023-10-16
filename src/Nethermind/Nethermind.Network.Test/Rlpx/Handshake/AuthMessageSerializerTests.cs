@@ -29,7 +29,7 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
             AuthMessage authMessage = new();
             authMessage.EphemeralPublicHash = new Commitment(new byte[AuthMessageSerializer.EphemeralHashLength]);
             authMessage.Nonce = new byte[AuthMessageSerializer.NonceLength];
-            authMessage.Signature = ecdsa.Sign(_privateKey, Commitment.Compute("anything"));
+            authMessage.Signature = ecdsa.Sign(_privateKey, Keccak.Compute("anything"));
             _random.NextBytes(authMessage.EphemeralPublicHash.Bytes);
             authMessage.PublicKey = _privateKey.PublicKey;
             _random.NextBytes(authMessage.Nonce);

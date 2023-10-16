@@ -186,7 +186,7 @@ namespace Nethermind.Synchronization.FastBlocks
             }
             else
             {
-                if (header.ReceiptsRoot == Commitment.EmptyTreeHash)
+                if (header.ReceiptsRoot == Keccak.EmptyTreeHash)
                 {
                     preparedReceipts = receipts.Length == 0 ? receipts : null;
                 }

@@ -57,7 +57,7 @@ namespace Nethermind.Core
 
                     if (_preHash.Length > 0)
                     {
-                        _hash = Commitment.Compute(_preHash.Span);
+                        _hash = Keccak.Compute(_preHash.Span);
                         ClearPreHashInternal();
                     }
                 }

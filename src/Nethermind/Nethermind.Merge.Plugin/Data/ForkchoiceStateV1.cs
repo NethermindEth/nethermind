@@ -27,13 +27,13 @@ public class ForkchoiceStateV1
     /// <summary>
     /// Safe block hash of the canonical chain under certain synchrony and honesty assumptions. This value MUST be either equal to or an ancestor of headBlockHash.
     /// </summary>
-    /// <remarks>Can be <see cref="Commitment.Zero"/> when transition block is not finalized yet.</remarks>
+    /// <remarks>Can be <see cref="Keccak.Zero"/> when transition block is not finalized yet.</remarks>
     public Commitment SafeBlockHash { get; set; }
 
     /// <summary>
     /// Hash of the most recent finalized block
     /// </summary>
-    /// <remarks>Can be <see cref="Commitment.Zero"/> when transition block is not finalized yet.</remarks>
+    /// <remarks>Can be <see cref="Keccak.Zero"/> when transition block is not finalized yet.</remarks>
     public Commitment FinalizedBlockHash { get; set; }
 
     public override string ToString() => $"ForkChoice: Head: {HeadBlockHash.ToShortString()}, Safe: {SafeBlockHash.ToShortString()}, Finalized: {FinalizedBlockHash.ToShortString()}";

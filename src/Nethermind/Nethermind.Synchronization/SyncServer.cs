@@ -85,7 +85,7 @@ namespace Nethermind.Synchronization
             _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _cht = cht;
             _pivotNumber = config.PivotNumberParsed;
-            _pivotHash = new Commitment(config.PivotHash ?? Commitment.Zero.ToString());
+            _pivotHash = new Commitment(config.PivotHash ?? Keccak.Zero.ToString());
 
             _blockTree.NewHeadBlock += OnNewHeadBlock;
             _pool.NotifyPeerBlock += OnNotifyPeerBlock;

@@ -86,7 +86,7 @@ public static class PayloadAttributesExtensions
             payloadAttributes.ParentBeaconBlockRoot.Bytes.CopyTo(inputSpan[(preambleLength + (hasWithdrawals ? Commitment.Size : 0))..]);
         }
 
-        ValueCommitment inputHash = ValueCommitment.Compute(inputSpan);
+        ValueCommitment inputHash = ValueKeccak.Compute(inputSpan);
 
         return inputHash.BytesAsSpan[..8].ToHexString(true);
     }

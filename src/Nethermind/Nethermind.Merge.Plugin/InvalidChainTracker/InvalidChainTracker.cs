@@ -143,7 +143,7 @@ public class InvalidChainTracker : IInvalidChainTracker
         {
             if (!_poSSwitcher.IsPostMerge(parentHeader))
             {
-                effectiveParent = Commitment.Zero;
+                effectiveParent = Keccak.Zero;
             }
         }
         else

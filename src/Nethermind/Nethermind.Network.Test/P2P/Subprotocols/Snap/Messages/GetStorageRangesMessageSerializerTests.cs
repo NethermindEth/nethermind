@@ -44,7 +44,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.Messages
                 RequestId = MessageConstants.Random.NextLong(),
                 StoragetRange = new()
                 {
-                    RootHash = Commitment.OfAnEmptyString,
+                    RootHash = Keccak.OfAnEmptyString,
                     Accounts = Array.Empty<PathWithAccount>(),
                     StartingHash = new Commitment("0x15d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470"),
                     LimitHash = new Commitment("0x20d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470")

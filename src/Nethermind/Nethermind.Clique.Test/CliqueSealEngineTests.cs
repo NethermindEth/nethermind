@@ -122,8 +122,8 @@ namespace Nethermind.Clique.Test
 
         private Block GetRinkebyGenesis()
         {
-            Commitment parentHash = Commitment.Zero;
-            Commitment unclesHash = Commitment.OfAnEmptySequenceRlp;
+            Commitment parentHash = Keccak.Zero;
+            Commitment unclesHash = Keccak.OfAnEmptySequenceRlp;
             Address beneficiary = Address.Zero;
             UInt256 difficulty = new(1);
             long number = 0L;
@@ -164,7 +164,7 @@ namespace Nethermind.Clique.Test
         private Block CreateBlock(int blockDifficulty, int blockNumber, Block lastBlock)
         {
             Commitment parentHash = lastBlock.Hash;
-            Commitment unclesHash = Commitment.OfAnEmptySequenceRlp;
+            Commitment unclesHash = Keccak.OfAnEmptySequenceRlp;
             Address beneficiary = Address.Zero;
             UInt256 difficulty = (UInt256)blockDifficulty;
             long number = blockNumber;
@@ -172,7 +172,7 @@ namespace Nethermind.Clique.Test
             ulong timestamp = (ulong)DateTimeOffset.UtcNow.ToUnixTimeSeconds();
             byte[] extraData = Bytes.FromHexString("d883010812846765746888676f312e31312e31856c696e75780000000000000028eb026ab5355b45499053382886754f1db544618d45edc979de1864d83a626b77513bd34d7f21059e79e303c3ab210e1424e71bcb8347835cbd378a785a06f800");
             BlockHeader header = new(parentHash, unclesHash, beneficiary, difficulty, number, gasLimit, timestamp, extraData);
-            header.MixHash = Commitment.Zero;
+            header.MixHash = Keccak.Zero;
             Block block = new(header);
             block.Header.Bloom = Bloom.Empty;
             block.Header.Hash = block.CalculateHash();
@@ -193,7 +193,7 @@ namespace Nethermind.Clique.Test
         {
             BlockHeader header = Build.A.BlockHeader
                 .WithParentHash(new Commitment("0x6d31ab6b6ee360d075bb032a094fb4ea52617268b760d15b47aa439604583453"))
-                .WithUnclesHash(Commitment.OfAnEmptySequenceRlp)
+                .WithUnclesHash(Keccak.OfAnEmptySequenceRlp)
                 .WithBeneficiary(Address.Zero)
                 .WithBloom(Bloom.Empty)
                 .WithStateRoot(new Commitment("0x9853b6c62bd454466f4843b73e2f0bdd655a4e754c259d6cc0ad4e580d788f43"))
@@ -205,7 +205,7 @@ namespace Nethermind.Clique.Test
                 .WithGasUsed(0)
                 .WithTimestamp(1492014479)
                 .WithExtraData(Bytes.FromHexString("0xd783010600846765746887676f312e372e33856c696e757800000000000000004e2b663c52c4c1ef0db29649f1f4addd93257f33d6fe0ae6bd365e63ac9aac4169e2b761aa245fabbf0302055f01b8b5391fa0a134bab19710fd225ffac3afdf01"))
-                .WithMixHash(Commitment.Zero)
+                .WithMixHash(Keccak.Zero)
                 .WithNonce(0UL)
                 .TestObject;
             return header;

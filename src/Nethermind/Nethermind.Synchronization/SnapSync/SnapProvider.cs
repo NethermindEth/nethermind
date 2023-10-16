@@ -74,7 +74,7 @@ namespace Nethermind.Synchronization.SnapSync
             {
                 StateTree tree = new(store, _logManager);
 
-                ValueCommitment effectiveHashLimit = hashLimit.HasValue ? hashLimit.Value : ValueCommitment.MaxValue;
+                ValueCommitment effectiveHashLimit = hashLimit.HasValue ? hashLimit.Value : ValueKeccak.MaxValue;
 
                 (AddRangeResult result, bool moreChildrenToRight, List<PathWithAccount> accountsWithStorage, List<ValueCommitment> codeHashes) =
                     SnapProviderHelper.AddAccountRange(tree, blockNumber, expectedRootHash, startingHash, effectiveHashLimit, accounts, proofs);
@@ -229,7 +229,7 @@ namespace Nethermind.Synchronization.SnapSync
 
                             requestedPath.PathAndAccount.Account = requestedPath.PathAndAccount.Account.WithChangedStorageRoot(node.Commitment);
 
-                            if (requestedPath.StorageStartingHash > ValueCommitment.Zero)
+                            if (requestedPath.StorageStartingHash > ValueKeccak.Zero)
                             {
                                 StorageRange range = new()
                                 {
@@ -278,7 +278,7 @@ namespace Nethermind.Synchronization.SnapSync
                 for (int i = 0; i < codes.Length; i++)
                 {
                     byte[] code = codes[i];
-                    ValueCommitment codeHash = ValueCommitment.Compute(code);
+                    ValueCommitment codeHash = ValueKeccak.Compute(code);
 
                     if (set.Remove(codeHash))
                     {

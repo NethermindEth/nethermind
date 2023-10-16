@@ -343,12 +343,12 @@ namespace Nethermind.Trie
                 }
                 else
                 {
-                    throw new TrieNodeException($"Unexpected number of items = {numberOfItems} when decoding a node from RLP ({FullRlp.AsSpan().ToHexString()})", Commitment ?? Commitment.Zero);
+                    throw new TrieNodeException($"Unexpected number of items = {numberOfItems} when decoding a node from RLP ({FullRlp.AsSpan().ToHexString()})", Commitment ?? Keccak.Zero);
                 }
             }
             catch (RlpException rlpException)
             {
-                throw new TrieNodeException($"Error when decoding node {Commitment}", Commitment ?? Commitment.Zero, rlpException);
+                throw new TrieNodeException($"Error when decoding node {Commitment}", Commitment ?? Keccak.Zero, rlpException);
             }
         }
 
@@ -389,7 +389,7 @@ namespace Nethermind.Trie
             if (FullRlp.Length >= 32 || isRoot)
             {
                 Metrics.TreeNodeHashCalculations++;
-                return Commitment.Compute(FullRlp.AsSpan());
+                return Keccak.Compute(FullRlp.AsSpan());
             }
 
             return null;
@@ -404,7 +404,7 @@ namespace Nethermind.Trie
                 try
                 {
                     storageRootHash = _accountDecoder.DecodeStorageRootOnly(Value.AsRlpStream());
-                    if (storageRootHash is not null && storageRootHash != Commitment.EmptyTreeHash)
+                    if (storageRootHash is not null && storageRootHash != Keccak.EmptyTreeHash)
                     {
                         return true;
                     }
@@ -545,7 +545,7 @@ namespace Nethermind.Trie
                 // we expect this to happen as a Trie traversal error (please see the stack trace above)
                 // we need to investigate this case when it happens again
                 bool isKeccakCalculated = Commitment is not null && FullRlp.IsNotNull;
-                bool isKeccakCorrect = isKeccakCalculated && Commitment == Commitment.Compute(FullRlp.AsSpan());
+                bool isKeccakCorrect = isKeccakCalculated && Commitment == Keccak.Compute(FullRlp.AsSpan());
                 throw new TrieException($"Unexpected type found at position {childIndex} of {this} with {nameof(_data)} of length {_data?.Length}. Expected a {nameof(TrieNode)} or {nameof(Commitment)} but found {childOrRef?.GetType()} with a value of {childOrRef}. Keccak calculated? : {isKeccakCalculated}; Keccak correct? : {isKeccakCorrect}");
             }
 
@@ -819,7 +819,7 @@ namespace Nethermind.Trie
                 else if (Value.Length > 64) // if not a storage leaf
                 {
                     Commitment storageRootKey = _accountDecoder.DecodeStorageRootOnly(Value.AsRlpStream());
-                    if (storageRootKey != Commitment.EmptyTreeHash)
+                    if (storageRootKey != Keccak.EmptyTreeHash)
                     {
                         hasStorage = true;
                         _storageRoot = storageRoot = resolver.FindCachedOrUnknown(storageRootKey);
