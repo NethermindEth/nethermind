@@ -366,10 +366,10 @@ namespace Nethermind.Blockchain.Receipts
 
         private void RemoveBlockTx(Block block, Block? exceptBlock = null)
         {
-            HashSet<Keccak> newTxs = null;
+            HashSet<Commitment> newTxs = null;
             if (exceptBlock is not null)
             {
-                newTxs = new HashSet<Keccak>(exceptBlock.Transactions.Select((tx) => tx.Hash));
+                newTxs = new HashSet<Commitment>(exceptBlock.Transactions.Select((tx) => tx.Hash));
             }
 
             using IBatch batch = _transactionDb.StartBatch();
