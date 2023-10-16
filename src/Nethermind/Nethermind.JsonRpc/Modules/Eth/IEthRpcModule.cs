@@ -150,7 +150,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             EdgeCaseHint = "If your transaction has code executed, then you can generate transaction access list with eth_createAccessList. If you send it with your transaction then it will lower your gas cost on Ethereum",
             IsSharable = false,
             ExampleResponse = "{\"accessList\":[{\"address\":\"0xfffffffffffffffffffffffffffffffffffffffe\",\"storageKeys\":[\"0x0000000000000000000000000000000000000000000000000000000000000001\",\"0x0000000000000000000000000000000000000000000000000000000000000002\"]},{\"address\":\"0x76e68a8696537e4141926f3e528733af9e237d69\",\"storageKeys\":[]}],\"gasUsed\":\"0xf71b\"}")]
-        ResultWrapper<AccessListForRpc> eth_createAccessList(
+        ResultWrapper<AccessListForRpc?> eth_createAccessList(
             [JsonRpcParameter(Description = "Transaction's details", ExampleValue = "[\"{\"type\":\"0x1\"]")]
             TransactionForRpc transactionCall,
             [JsonRpcParameter(Description = "(optional)")]

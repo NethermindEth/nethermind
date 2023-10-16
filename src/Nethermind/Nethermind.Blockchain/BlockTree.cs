@@ -10,6 +10,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Find;
+using Nethermind.Blockchain.Headers;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
@@ -34,26 +35,18 @@ namespace Nethermind.Blockchain
         public static readonly byte[] LowestInsertedBodyNumberDbEntryAddress = ((long)0).ToBigEndianByteArrayWithoutLeadingZeros();
         private static byte[] StateHeadHashDbEntryAddress = new byte[16];
         internal static Keccak DeletePointerAddressInDb = new(new BitArray(32 * 8, true).ToBytes());
-
         internal static Keccak HeadAddressInDb = Keccak.Zero;
-
-        // SyncProgressResolver MaxLookupBack is 128, add 16 wiggle room
-        private const int CacheSize = 128 + 16;
-
-        private readonly LruCache<ValueKeccak, BlockHeader> _headerCache =
-            new(CacheSize, CacheSize, "headers");
 
         private const int BestKnownSearchLimit = 256_000_000;
 
         private readonly IBlockStore _blockStore;
-        private readonly IDb _headerDb;
+        private readonly IHeaderStore _headerStore;
         private readonly IDb _blockInfoDb;
         private readonly IDb _metadataDb;
 
         private readonly LruCache<ValueKeccak, Block> _invalidBlocks =
             new(128, 128, "invalid blocks");
 
-        private readonly HeaderDecoder _headerDecoder = new();
         private readonly ILogger _logger;
         private readonly ISpecProvider _specProvider;
         private readonly IBloomStorage _bloomStorage;
@@ -114,7 +107,7 @@ namespace Nethermind.Blockchain
 
         public BlockTree(
             IBlockStore? blockStore,
-            IDb? headerDb,
+            IHeaderStore? headerDb,
             IDb? blockInfoDb,
             IDb? metadataDb,
             IChainLevelInfoRepository? chainLevelInfoRepository,
@@ -125,7 +118,7 @@ namespace Nethermind.Blockchain
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _blockStore = blockStore ?? throw new ArgumentNullException(nameof(blockStore));
-            _headerDb = headerDb ?? throw new ArgumentNullException(nameof(headerDb));
+            _headerStore = headerDb ?? throw new ArgumentNullException(nameof(headerDb));
             _blockInfoDb = blockInfoDb ?? throw new ArgumentNullException(nameof(blockInfoDb));
             _metadataDb = metadataDb ?? throw new ArgumentNullException(nameof(metadataDb));
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
@@ -212,14 +205,7 @@ namespace Nethermind.Blockchain
             }
 
             _bloomStorage.Store(header.Number, header.Bloom);
-
-            // validate hash here
-            // using previously received header RLPs would allows us to save 2GB allocations on a sample
-            // 3M Goerli blocks fast sync
-            using (NettyRlpStream newRlp = _headerDecoder.EncodeToNewNettyStream(header))
-            {
-                _headerDb.Set(header.Hash, newRlp.AsSpan());
-            }
+            _headerStore.Insert(header);
 
             bool isOnMainChain = (headerOptions & BlockTreeInsertHeaderOptions.NotOnMainChain) == 0;
             BlockInfo blockInfo = new(header.Hash, header.TotalDifficulty ?? 0);
@@ -308,6 +294,7 @@ namespace Nethermind.Blockchain
             }
 
             _blockStore.Insert(block);
+            _headerStore.InsertBlockNumber(block.Hash, block.Number);
 
             bool saveHeader = (insertBlockOptions & BlockTreeInsertBlockOptions.SaveHeader) != 0;
             if (saveHeader)
@@ -379,8 +366,7 @@ namespace Nethermind.Blockchain
 
             if (!isKnown)
             {
-                using NettyRlpStream newRlp = _headerDecoder.EncodeToNewNettyStream(header);
-                _headerDb.Set(header.Hash, newRlp.AsSpan());
+                _headerStore.Insert(header);
             }
 
             if (!isKnown || fillBeaconBlock)
@@ -450,12 +436,12 @@ namespace Nethermind.Blockchain
         public BlockHeader? FindHeader(long number, BlockTreeLookupOptions options)
         {
             Keccak blockHash = GetBlockHashOnMainOrBestDifficultyHash(number);
-            return blockHash is null ? null : FindHeader(blockHash, options);
+            return blockHash is null ? null : FindHeader(blockHash, options, blockNumber: number);
         }
 
         public Keccak? FindBlockHash(long blockNumber) => GetBlockHashOnMainOrBestDifficultyHash(blockNumber);
 
-        public BlockHeader? FindHeader(Keccak? blockHash, BlockTreeLookupOptions options)
+        public BlockHeader? FindHeader(Keccak? blockHash, BlockTreeLookupOptions options, long? blockNumber = null)
         {
             if (blockHash is null || blockHash == Keccak.Zero)
             {
@@ -463,7 +449,7 @@ namespace Nethermind.Blockchain
                 return null;
             }
 
-            BlockHeader? header = _headerDb.Get(blockHash, _headerDecoder, _headerCache, shouldCache: false);
+            BlockHeader? header = _headerStore.Get(blockHash, shouldCache: false, blockNumber: blockNumber);
             if (header is null)
             {
                 bool allowInvalid = (options & BlockTreeLookupOptions.AllowInvalid) == BlockTreeLookupOptions.AllowInvalid;
@@ -515,7 +501,7 @@ namespace Nethermind.Blockchain
 
             if (header is not null && ShouldCache(header.Number))
             {
-                _headerCache.Set(blockHash, header);
+                _headerStore.Cache(header);
             }
 
             return header;
@@ -710,7 +696,7 @@ namespace Nethermind.Blockchain
         public Block? FindBlock(long blockNumber, BlockTreeLookupOptions options)
         {
             Keccak hash = GetBlockHashOnMainOrBestDifficultyHash(blockNumber);
-            return FindBlock(hash, options);
+            return FindBlock(hash, options, blockNumber: blockNumber);
         }
 
         public void DeleteInvalidBlock(Block invalidBlock)
@@ -798,9 +784,8 @@ namespace Nethermind.Blockchain
                 }
 
                 if (_logger.IsInfo) _logger.Info($"Deleting invalid block {currentHash} at level {currentNumber}");
-                _blockStore.Delete(currentHash);
-                _headerCache.Delete(currentHash);
-                _headerDb.Delete(currentHash);
+                _blockStore.Delete(currentNumber, currentHash);
+                _headerStore.Delete(currentHash);
 
                 if (nextHash is null)
                 {
@@ -888,7 +873,7 @@ namespace Nethermind.Blockchain
                 if (ShouldCache(block.Number))
                 {
                     _blockStore.Cache(block);
-                    _headerCache.Set(block.Hash, block.Header);
+                    _headerStore.Cache(block.Header);
                 }
 
                 ChainLevelInfo? level = LoadLevel(block.Number);
@@ -962,7 +947,7 @@ namespace Nethermind.Blockchain
                 if (ShouldCache(block.Number))
                 {
                     _blockStore.Cache(block);
-                    _headerCache.Set(block.Hash, block.Header);
+                    _headerStore.Cache(block.Header);
                 }
 
                 // we only force update head block for last block in processed blocks
@@ -1090,7 +1075,7 @@ namespace Nethermind.Blockchain
             _chainLevelInfoRepository.PersistLevel(block.Number, level, batch);
 
             Block previous = hashOfThePreviousMainBlock is not null && hashOfThePreviousMainBlock != block.Hash
-                ? FindBlock(hashOfThePreviousMainBlock, BlockTreeLookupOptions.TotalDifficultyNotNeeded)
+                ? FindBlock(hashOfThePreviousMainBlock, BlockTreeLookupOptions.TotalDifficultyNotNeeded, blockNumber: block.Number)
                 : null;
 
             if (_logger.IsTrace) _logger.Trace($"Block added to main {block}, block TD {block.TotalDifficulty}");
@@ -1301,14 +1286,20 @@ namespace Nethermind.Blockchain
         public Keccak? FinalizedHash { get; private set; }
         public Keccak? SafeHash { get; private set; }
 
-        public Block? FindBlock(Keccak? blockHash, BlockTreeLookupOptions options)
+        public Block? FindBlock(Keccak? blockHash, BlockTreeLookupOptions options, long? blockNumber = null)
         {
             if (blockHash is null || blockHash == Keccak.Zero)
             {
                 return null;
             }
 
-            Block block = _blockStore.Get(blockHash, shouldCache: false);
+            Block? block = null;
+            blockNumber ??= _headerStore.GetBlockNumber(blockHash);
+            if (blockNumber != null)
+            {
+                block = _blockStore.Get(blockNumber.Value, blockHash, shouldCache: false);
+            }
+
             if (block is null)
             {
                 bool allowInvalid = (options & BlockTreeLookupOptions.AllowInvalid) == BlockTreeLookupOptions.AllowInvalid;
@@ -1363,7 +1354,7 @@ namespace Nethermind.Blockchain
             if (block is not null && ShouldCache(block.Number))
             {
                 _blockStore.Cache(block);
-                _headerCache.Set(blockHash, block.Header);
+                _headerStore.Cache(block.Header);
             }
 
             return block;
@@ -1535,7 +1526,7 @@ namespace Nethermind.Blockchain
                 Keccak? newHeadHash = chainLevelInfo.HasBlockOnMainChain
                     ? chainLevelInfo.BlockInfos[0].BlockHash
                     : Genesis?.Hash;
-                newHeadBlock = newHeadHash is null ? null : FindBlock(newHeadHash, BlockTreeLookupOptions.None);
+                newHeadBlock = newHeadHash is null ? null : FindBlock(newHeadHash, BlockTreeLookupOptions.None, blockNumber: startNumber - 1);
             }
 
             using (_chainLevelInfoRepository.StartBatch())
@@ -1555,8 +1546,8 @@ namespace Nethermind.Blockchain
                     {
                         Keccak blockHash = blockInfo.BlockHash;
                         _blockInfoDb.Delete(blockHash);
-                        _blockStore.Delete(blockHash);
-                        _headerDb.Delete(blockHash);
+                        _blockStore.Delete(i, blockHash);
+                        _headerStore.Delete(blockHash);
                     }
                 }
             }

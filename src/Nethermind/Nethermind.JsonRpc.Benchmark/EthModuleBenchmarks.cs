@@ -6,6 +6,7 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Find;
+using Nethermind.Blockchain.Headers;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Rewards;
@@ -67,7 +68,7 @@ namespace Nethermind.JsonRpc.Benchmark
             ChainLevelInfoRepository chainLevelInfoRepository = new(blockInfoDb);
             BlockTree blockTree = new(
                 new BlockStore(dbProvider.BlocksDb),
-                dbProvider.HeadersDb,
+                new HeaderStore(dbProvider.HeadersDb, dbProvider.BlockNumbersDb),
                 dbProvider.BlockInfosDb,
                 dbProvider.MetadataDb,
                 chainLevelInfoRepository,
