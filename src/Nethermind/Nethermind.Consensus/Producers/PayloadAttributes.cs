@@ -20,13 +20,13 @@ public class PayloadAttributes
 {
     public ulong Timestamp { get; set; }
 
-    public Keccak PrevRandao { get; set; }
+    public Hash256 PrevRandao { get; set; }
 
     public Address SuggestedFeeRecipient { get; set; }
 
     public IList<Withdrawal>? Withdrawals { get; set; }
 
-    public Keccak? ParentBeaconBlockRoot { get; set; }
+    public Hash256? ParentBeaconBlockRoot { get; set; }
 
     public virtual long? GetGasLimit() => null;
 
@@ -77,7 +77,7 @@ public class PayloadAttributes
 
     protected static string ComputePayloadId(Span<byte> inputSpan)
     {
-        ValueKeccak inputHash = ValueKeccak.Compute(inputSpan);
+        ValueHash256 inputHash = ValueKeccak.Compute(inputSpan);
         return inputHash.BytesAsSpan[..8].ToHexString(true);
     }
 
@@ -99,7 +99,7 @@ public class PayloadAttributes
 
         if (Withdrawals is not null)
         {
-            Keccak withdrawalsRootHash = Withdrawals.Count == 0
+            Hash256 withdrawalsRootHash = Withdrawals.Count == 0
                 ? PatriciaTree.EmptyTreeHash
                 : new WithdrawalTrie(Withdrawals).RootHash;
             withdrawalsRootHash.Bytes.CopyTo(inputSpan.Slice(position, Keccak.Size));

@@ -19,7 +19,7 @@ public class AlwaysPoS : IPoSSwitcher
 
     public bool TransitionFinished => true;
 
-    public Keccak? ConfiguredTerminalBlockHash => null;
+    public Hash256? ConfiguredTerminalBlockHash => null;
 
     public long? ConfiguredTerminalBlockNumber => 0;
 
@@ -27,7 +27,7 @@ public class AlwaysPoS : IPoSSwitcher
     public event EventHandler TerminalBlockReached;
 #pragma warning restore CS0067
 
-    public void ForkchoiceUpdated(BlockHeader newHeadHash, Keccak finalizedHash) { }
+    public void ForkchoiceUpdated(BlockHeader newHeadHash, Hash256 finalizedHash) { }
 
     public (bool IsTerminal, bool IsPostMerge) GetBlockConsensusInfo(BlockHeader header) => (false, true);
 

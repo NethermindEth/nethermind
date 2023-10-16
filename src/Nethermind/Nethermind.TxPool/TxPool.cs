@@ -249,7 +249,7 @@ namespace Nethermind.TxPool
             for (int i = 0; i < blockTransactions.Length; i++)
             {
                 Transaction transaction = blockTransactions[i];
-                Keccak txHash = transaction.Hash ?? throw new ArgumentException("Hash was unexpectedly null!");
+                Hash256 txHash = transaction.Hash ?? throw new ArgumentException("Hash was unexpectedly null!");
 
                 if (!IsKnown(txHash))
                 {
@@ -570,7 +570,7 @@ namespace Nethermind.TxPool
             }
         }
 
-        public bool RemoveTransaction(Keccak? hash)
+        public bool RemoveTransaction(Hash256? hash)
         {
             if (hash is null)
             {
@@ -598,11 +598,11 @@ namespace Nethermind.TxPool
             return hasBeenRemoved;
         }
 
-        public bool ContainsTx(Keccak hash, TxType txType) => txType == TxType.Blob
+        public bool ContainsTx(Hash256 hash, TxType txType) => txType == TxType.Blob
             ? _blobTransactions.ContainsKey(hash)
             : _transactions.ContainsKey(hash) || _broadcaster.ContainsTx(hash);
 
-        public bool TryGetPendingTransaction(Keccak hash, out Transaction? transaction)
+        public bool TryGetPendingTransaction(Hash256 hash, out Transaction? transaction)
         {
             lock (_locker)
             {
@@ -612,7 +612,7 @@ namespace Nethermind.TxPool
             }
         }
 
-        public bool TryGetPendingBlobTransaction(Keccak hash, [NotNullWhen(true)] out Transaction? blobTransaction)
+        public bool TryGetPendingBlobTransaction(Hash256 hash, [NotNullWhen(true)] out Transaction? blobTransaction)
         {
             lock (_locker)
             {
@@ -621,7 +621,7 @@ namespace Nethermind.TxPool
         }
 
         // only for tests - to test sorting
-        internal void TryGetBlobTxSortingEquivalent(Keccak hash, out Transaction? transaction)
+        internal void TryGetBlobTxSortingEquivalent(Hash256 hash, out Transaction? transaction)
             => _blobTransactions.TryGetBlobTxSortingEquivalent(hash, out transaction);
 
         // should own transactions (in broadcaster) be also checked here?
@@ -675,7 +675,7 @@ namespace Nethermind.TxPool
             return maxPendingNonce;
         }
 
-        public bool IsKnown(Keccak? hash) => hash != null ? _hashCache.Get(hash) : false;
+        public bool IsKnown(Hash256? hash) => hash != null ? _hashCache.Get(hash) : false;
 
         public event EventHandler<TxEventArgs>? NewDiscovered;
         public event EventHandler<TxEventArgs>? NewPending;
@@ -696,7 +696,7 @@ namespace Nethermind.TxPool
         private static void AddNodeInfoEntryForTxPool()
         {
             ThisNodeInfo.AddInfo("Mem est tx   :",
-                $"{(LruCache<ValueKeccak, object>.CalculateMemorySize(32, MemoryAllowance.TxHashCacheSize) + LruCache<Keccak, Transaction>.CalculateMemorySize(4096, MemoryAllowance.MemPoolSize)) / 1000 / 1000} MB"
+                $"{(LruCache<ValueHash256, object>.CalculateMemorySize(32, MemoryAllowance.TxHashCacheSize) + LruCache<Hash256, Transaction>.CalculateMemorySize(4096, MemoryAllowance.MemPoolSize)) / 1000 / 1000} MB"
                     .PadLeft(8));
         }
 

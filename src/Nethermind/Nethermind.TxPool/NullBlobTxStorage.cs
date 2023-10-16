@@ -14,7 +14,7 @@ public class NullBlobTxStorage : ITxStorage
 {
     public static NullBlobTxStorage Instance { get; } = new();
 
-    public bool TryGet(in ValueKeccak hash, Address sender, in UInt256 timestamp, [NotNullWhen(true)] out Transaction? transaction)
+    public bool TryGet(in ValueHash256 hash, Address sender, in UInt256 timestamp, [NotNullWhen(true)] out Transaction? transaction)
     {
         transaction = default;
         return false;
@@ -24,5 +24,5 @@ public class NullBlobTxStorage : ITxStorage
 
     public void Add(Transaction transaction) { }
 
-    public void Delete(in ValueKeccak hash, in UInt256 timestamp) { }
+    public void Delete(in ValueHash256 hash, in UInt256 timestamp) { }
 }

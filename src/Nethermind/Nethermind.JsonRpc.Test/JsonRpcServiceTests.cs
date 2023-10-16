@@ -187,7 +187,7 @@ namespace Nethermind.JsonRpc.Test
         public void Web3ShaTest()
         {
             IWeb3RpcModule web3RpcModule = Substitute.For<IWeb3RpcModule>();
-            web3RpcModule.web3_sha3(Arg.Any<byte[]>()).ReturnsForAnyArgs(_ => ResultWrapper<Keccak>.Success(TestItem.KeccakA));
+            web3RpcModule.web3_sha3(Arg.Any<byte[]>()).ReturnsForAnyArgs(_ => ResultWrapper<Hash256>.Success(TestItem.KeccakA));
             JsonRpcSuccessResponse? response = TestRequest(web3RpcModule, "web3_sha3", "0x68656c6c6f20776f726c64") as JsonRpcSuccessResponse;
             Assert.That(response?.Result, Is.EqualTo(TestItem.KeccakA));
         }

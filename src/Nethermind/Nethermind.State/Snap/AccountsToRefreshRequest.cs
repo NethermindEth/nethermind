@@ -10,7 +10,7 @@ namespace Nethermind.State.Snap
         /// <summary>
         /// Root hash of the account trie to serve
         /// </summary>
-        public ValueKeccak RootHash { get; set; }
+        public ValueHash256 RootHash { get; set; }
 
         public AccountWithStorageStartingHash[] Paths { get; set; }
 
@@ -23,6 +23,6 @@ namespace Nethermind.State.Snap
     public class AccountWithStorageStartingHash
     {
         public PathWithAccount PathAndAccount { get; set; }
-        public ValueKeccak StorageStartingHash { get; set; }
+        public ValueHash256 StorageStartingHash { get; set; }
     }
 }

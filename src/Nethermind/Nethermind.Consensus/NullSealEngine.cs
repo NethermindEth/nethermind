@@ -23,7 +23,7 @@ namespace Nethermind.Consensus
             return Task.FromResult(block);
         }
 
-        public bool CanSeal(long blockNumber, Keccak? parentHash)
+        public bool CanSeal(long blockNumber, Hash256? parentHash)
         {
             return true;
         }

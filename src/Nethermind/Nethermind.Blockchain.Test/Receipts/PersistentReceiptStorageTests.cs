@@ -76,7 +76,7 @@ namespace Nethermind.Blockchain.Test.Receipts
         [Test, Timeout(Timeout.MaxTestTime)]
         public void Returns_null_for_missing_tx()
         {
-            Keccak blockHash = _storage.FindBlockHash(Keccak.Zero);
+            Hash256 blockHash = _storage.FindBlockHash(Keccak.Zero);
             blockHash.Should().BeNull();
         }
 
@@ -253,7 +253,7 @@ namespace Nethermind.Blockchain.Test.Receipts
             _storage.Insert(anotherBlock, new[] { Build.A.Receipt.TestObject }, ensureCanonical);
             _blockTree.FindBlockHash(anotherBlock.Number).Returns(anotherBlock.Hash);
 
-            Keccak findBlockHash = _storage.FindBlockHash(receipts[0].TxHash!);
+            Hash256 findBlockHash = _storage.FindBlockHash(receipts[0].TxHash!);
             if (ensureCanonical)
             {
                 findBlockHash.Should().Be(anotherBlock.Hash!);

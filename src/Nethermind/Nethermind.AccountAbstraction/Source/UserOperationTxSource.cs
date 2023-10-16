@@ -96,7 +96,7 @@ namespace Nethermind.AccountAbstraction.Source
                 if (userOperation.AccessList.AccessListOverlaps(usedAccessList)) continue;
 
                 // simulate again to make sure the op is still valid
-                ResultWrapper<Keccak> result = _userOperationSimulators[entryPoint].Simulate(userOperation, parent);
+                ResultWrapper<Hash256> result = _userOperationSimulators[entryPoint].Simulate(userOperation, parent);
                 if (result.Result != Result.Success)
                 {
                     //if (_logger.IsDebug) commented out for testing

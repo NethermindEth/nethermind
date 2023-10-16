@@ -16,7 +16,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V68.Messages
             rlpStream.ReadSequenceLength();
             byte[] types = rlpStream.DecodeByteArray();
             int[] sizes = rlpStream.DecodeArray(item => item.DecodeInt());
-            Keccak[] hashes = rlpStream.DecodeArray(item => item.DecodeKeccak());
+            Hash256[] hashes = rlpStream.DecodeArray(item => item.DecodeKeccak());
             return new NewPooledTransactionHashesMessage68(types, sizes, hashes);
         }
 

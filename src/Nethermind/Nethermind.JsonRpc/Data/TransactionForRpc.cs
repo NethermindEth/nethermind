@@ -20,7 +20,7 @@ public class TransactionForRpc
 
     public TransactionForRpc(Transaction transaction) : this(null, null, null, transaction) { }
 
-    public TransactionForRpc(Keccak? blockHash, long? blockNumber, int? txIndex, Transaction transaction, UInt256? baseFee = null)
+    public TransactionForRpc(Hash256? blockHash, long? blockNumber, int? txIndex, Transaction transaction, UInt256? baseFee = null)
     {
         if (transaction.Type == TxType.DepositTx)
         {
@@ -87,15 +87,15 @@ public class TransactionForRpc
     {
     }
 
-    public Keccak? SourceHash { get; set; }
+    public Hash256? SourceHash { get; set; }
     public UInt256? Mint { get; set; }
     public bool? IsSystemTx { get; set; } // this is the IsOpSystemTransaction flag
 
-    public Keccak? Hash { get; set; }
+    public Hash256? Hash { get; set; }
     public UInt256? Nonce { get; set; }
 
     [JsonProperty(NullValueHandling = NullValueHandling.Include)]
-    public Keccak? BlockHash { get; set; }
+    public Hash256? BlockHash { get; set; }
 
     [JsonProperty(NullValueHandling = NullValueHandling.Include)]
     public long? BlockNumber { get; set; }

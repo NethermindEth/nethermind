@@ -21,7 +21,7 @@ public class HeaderStore : IHeaderStore
     private readonly IDb _headerDb;
     private readonly IDb _blockNumberDb;
     private readonly HeaderDecoder _headerDecoder = new();
-    private readonly LruCache<ValueKeccak, BlockHeader> _headerCache =
+    private readonly LruCache<ValueHash256, BlockHeader> _headerCache =
         new(CacheSize, CacheSize, "headers");
 
     public HeaderStore(IDb headerDb, IDb blockNumberDb)
@@ -37,7 +37,7 @@ public class HeaderStore : IHeaderStore
         InsertBlockNumber(header.Hash, header.Number);
     }
 
-    public BlockHeader? Get(Keccak blockHash, bool shouldCache = false, long? blockNumber = null)
+    public BlockHeader? Get(Hash256 blockHash, bool shouldCache = false, long? blockNumber = null)
     {
         blockNumber ??= GetBlockNumberFromBlockNumberDb(blockHash);
 
@@ -54,7 +54,7 @@ public class HeaderStore : IHeaderStore
         _headerCache.Set(header.Hash, header);
     }
 
-    public void Delete(Keccak blockHash)
+    public void Delete(Hash256 blockHash)
     {
         long? blockNumber = GetBlockNumberFromBlockNumberDb(blockHash);
         if (blockNumber != null) _headerDb.Delete(blockNumber.Value, blockHash);
@@ -63,14 +63,14 @@ public class HeaderStore : IHeaderStore
         _headerCache.Delete(blockHash);
     }
 
-    public void InsertBlockNumber(Keccak blockHash, long blockNumber)
+    public void InsertBlockNumber(Hash256 blockHash, long blockNumber)
     {
         Span<byte> blockNumberSpan = stackalloc byte[8];
         blockNumber.WriteBigEndian(blockNumberSpan);
         _blockNumberDb.Set(blockHash, blockNumberSpan);
     }
 
-    public long? GetBlockNumber(Keccak blockHash)
+    public long? GetBlockNumber(Hash256 blockHash)
     {
         long? blockNumber = GetBlockNumberFromBlockNumberDb(blockHash);
         if (blockNumber != null) return blockNumber.Value;
@@ -79,7 +79,7 @@ public class HeaderStore : IHeaderStore
         return Get(blockHash)?.Number;
     }
 
-    private long? GetBlockNumberFromBlockNumberDb(Keccak blockHash)
+    private long? GetBlockNumberFromBlockNumberDb(Hash256 blockHash)
     {
         if (_blockNumberDb is IDbWithSpan spanDb)
         {

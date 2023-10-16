@@ -123,11 +123,11 @@ public class TraceStoreRpcModuleTests
             ReceiptFinder = Substitute.For<IReceiptFinder>();
             ParityLikeTraceSerializer serializer = new(LimboLogs.Instance);
             Module = new TraceStoreRpcModule(InnerModule, Store, BlockFinder, ReceiptFinder, serializer, LimboLogs.Instance);
-            Keccak dbTransaction = Build.A.Transaction.TestObject.Hash!;
-            Keccak dbBlock = BlockFinder.Head!.Hash!;
+            Hash256 dbTransaction = Build.A.Transaction.TestObject.Hash!;
+            Hash256 dbBlock = BlockFinder.Head!.Hash!;
             DbTrace = new() { BlockHash = dbBlock, TransactionHash = dbTransaction };
             DbTraces = new[] { DbTrace };
-            Keccak nonDbTransaction = TestItem.KeccakA;
+            Hash256 nonDbTransaction = TestItem.KeccakA;
             NonDbTraces = new[] { new ParityLikeTxTrace() { BlockHash = dbBlock, TransactionHash = nonDbTransaction } };
             Store.Set(dbBlock, serializer.Serialize(DbTraces));
             ReceiptFinder.FindBlockHash(dbTransaction).Returns(dbBlock);

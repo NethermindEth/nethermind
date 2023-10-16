@@ -27,7 +27,7 @@ namespace Nethermind.Core
 
         // Optimism deposit transaction fields
         // SourceHash uniquely identifies the source of the deposit
-        public Keccak? SourceHash { get; set; }
+        public Hash256? SourceHash { get; set; }
         // Mint is minted on L2, locked on L1, nil if no minting.
         public UInt256 Mint { get; set; }
         // Field indicating if this transaction is exempt from the L2 gas limit.
@@ -52,8 +52,8 @@ namespace Nethermind.Core
         public bool IsContractCreation => To is null;
         public bool IsMessageCall => To is not null;
 
-        private Keccak? _hash;
-        public Keccak? Hash
+        private Hash256? _hash;
+        public Hash256? Hash
         {
             get
             {

@@ -11,8 +11,8 @@ namespace Nethermind.TxPool;
 
 public interface ITxStorage
 {
-    bool TryGet(in ValueKeccak hash, Address sender, in UInt256 timestamp, [NotNullWhen(true)] out Transaction? transaction);
+    bool TryGet(in ValueHash256 hash, Address sender, in UInt256 timestamp, [NotNullWhen(true)] out Transaction? transaction);
     IEnumerable<LightTransaction> GetAll();
     void Add(Transaction transaction);
-    void Delete(in ValueKeccak hash, in UInt256 timestamp);
+    void Delete(in ValueHash256 hash, in UInt256 timestamp);
 }

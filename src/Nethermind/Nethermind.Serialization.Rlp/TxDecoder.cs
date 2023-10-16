@@ -152,14 +152,14 @@ namespace Nethermind.Serialization.Rlp
             return transaction;
         }
 
-        private static Keccak CalculateHashForNetworkPayloadForm(TxType type, Span<byte> transactionSequence)
+        private static Hash256 CalculateHashForNetworkPayloadForm(TxType type, Span<byte> transactionSequence)
         {
             KeccakHash hash = KeccakHash.Create();
             Span<byte> txType = stackalloc byte[1];
             txType[0] = (byte)type;
             hash.Update(txType);
             hash.Update(transactionSequence);
-            return new Keccak(hash.Hash);
+            return new Hash256(hash.Hash);
         }
 
         private void DecodeLegacyPayloadWithoutSig(T transaction, RlpStream rlpStream)

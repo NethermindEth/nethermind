@@ -15,17 +15,17 @@ namespace Nethermind.Specs.ChainSpecStyle.Json
         public UInt256 Difficulty { get; set; }
         public Address Author { get; set; }
         public ulong Timestamp { get; set; }
-        public Keccak ParentHash { get; set; }
+        public Hash256 ParentHash { get; set; }
         public byte[] ExtraData { get; set; }
         public UInt256 GasLimit { get; set; }
 
         public UInt256? BaseFeePerGas { get; set; }
 
         public bool StateUnavailable { get; set; } = false;
-        public Keccak StateRoot { get; set; }
+        public Hash256 StateRoot { get; set; }
 
         public ulong? BlobGasUsed { get; set; }
         public ulong? ExcessBlobGas { get; set; }
-        public Keccak ParentBeaconBlockRoot { get; set; }
+        public Hash256 ParentBeaconBlockRoot { get; set; }
     }
 }

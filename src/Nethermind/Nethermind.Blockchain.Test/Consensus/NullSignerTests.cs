@@ -27,7 +27,7 @@ namespace Nethermind.Blockchain.Test.Consensus
         {
             NullSigner signer = NullSigner.Instance;
             await signer.Sign((Transaction)null!);
-            signer.Sign((Keccak)null!).Bytes.Should().HaveCount(64);
+            signer.Sign((Hash256)null!).Bytes.Should().HaveCount(64);
         }
     }
 }
