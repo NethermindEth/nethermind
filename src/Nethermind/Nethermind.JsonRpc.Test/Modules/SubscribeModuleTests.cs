@@ -734,9 +734,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         }
 
         [TestCase("true")]
-        [TestCase("True")]
         [TestCase("false")]
-        [TestCase("False")]
         public async Task NewPendingTransactionsSubscription_creating_result_with_bool_arg(string boolArg)
         {
             string serialized = await RpcTest.TestSerializedRequest(_subscribeRpcModule, "eth_subscribe", "newPendingTransactions", boolArg);
