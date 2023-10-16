@@ -199,8 +199,8 @@ jobs:
             ${{ needs.build.outputs.prerelease == 'false' && '-t $image:latest' || '' }} \
             -t "$image:${{ github.event.inputs.tag }}" \
             --build-arg BUILD_TIMESTAMP=${{ needs.build.outputs.build-timestamp }} \
+            --build-arg CI=$CI \
             --build-arg COMMIT_HASH=$GITHUB_SHA \
-            --build-arg GITHUB_ACTIONS=$GITHUB_ACTIONS \
             . --push
       - name: Clear Docker cache
         if: always()

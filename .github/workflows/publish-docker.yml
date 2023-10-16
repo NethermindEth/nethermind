@@ -46,8 +46,8 @@ jobs:
             -t "nethermindeth/nethermind:${{ github.event.inputs.tag || 'master' }}" \
             --build-arg BUILD_CONFIG=${{ github.event.inputs.build-config || 'release' }} \
             --build-arg BUILD_TIMESTAMP=$build_timestamp \
+            --build-arg CI=$CI \
             --build-arg COMMIT_HASH=$GITHUB_SHA \
-            --build-arg GITHUB_ACTIONS=$GITHUB_ACTIONS \
             . --push
       - name: Clear Docker cache
         if: always()
