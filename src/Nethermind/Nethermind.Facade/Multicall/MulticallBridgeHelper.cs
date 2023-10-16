@@ -98,27 +98,27 @@ public class MulticallBridgeHelper
 
                     if (transaction.Nonce == 0)
                     {
-                        try
+                        //try
+                        //{
+                        if (!nonceCache.TryGetValue(transaction.SenderAddress, out UInt256 cachedNonce))
                         {
-                            if (!nonceCache.TryGetValue(transaction.SenderAddress, out UInt256 cachedNonce))
-                            {
-                                cachedNonce = env.StateProvider.GetAccount(transaction.SenderAddress).Nonce;
-                                nonceCache[transaction.SenderAddress] = cachedNonce;
-                            }
-
-                            else
-                            {
-                                cachedNonce++;
-                                nonceCache[transaction.SenderAddress] = cachedNonce;
-                            }
-
-                            transaction.Nonce = cachedNonce;
+                            cachedNonce = env.StateProvider.GetAccount(transaction.SenderAddress).Nonce;
+                            nonceCache[transaction.SenderAddress] = cachedNonce;
                         }
-                        catch (TrieException)
+
+                        else
                         {
-                            // ignore
-                            // Transaction from unknown account
+                            cachedNonce++;
+                            nonceCache[transaction.SenderAddress] = cachedNonce;
                         }
+
+                        transaction.Nonce = cachedNonce;
+                        //}
+                        //catch (TrieException)
+                        //{
+                        // ignore
+                        // Transaction from unknown account
+                        //}
                     }
 
                     transaction.Hash = transaction.CalculateHash();

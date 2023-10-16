@@ -50,7 +50,7 @@ internal sealed class MultiCallTxTracer : TxTracer, ILogsTxTracer
             GasUsed = (ulong)gasSpent,
             Error = new Error
             {
-                Code = StatusCode.Failure,
+                Code = StatusCode.FailureBytes,
                 Message = error
             },
             ReturnData = output,

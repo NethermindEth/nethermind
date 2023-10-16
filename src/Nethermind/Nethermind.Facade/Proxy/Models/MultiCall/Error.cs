@@ -5,7 +5,7 @@ namespace Nethermind.Facade.Proxy.Models.MultiCall;
 
 public class Error
 {
-    public int Code { get; set; }
+    public byte[] Code { get; set; }
     public string Message { get; set; }
     public string Data { get; set; }
 }
