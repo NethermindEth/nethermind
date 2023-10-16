@@ -18,7 +18,7 @@ public class KeccaksIteratorTests
     [TestCaseSource(nameof(TestKeccaks))]
     public void TestKeccakIteratorDecodeCorrectly(Commitment[] keccak)
     {
-        Commitment[] keccaks = new[] { TestItem._commitmentA, Keccak.Zero };
+        Commitment[] keccaks = new[] { TestItem.KeccakA, Keccak.Zero };
         Commitment[] decoded = EncodeDecode(keccaks);
         decoded.Should().BeEquivalentTo(keccaks);
     }
@@ -26,7 +26,7 @@ public class KeccaksIteratorTests
     [TestCaseSource(nameof(TestKeccaks))]
     public void TestKeccakIteratorDecodedCorrectlyWithReset(Commitment[] keccak)
     {
-        Commitment[] keccaks = new[] { TestItem._commitmentA, Keccak.Zero };
+        Commitment[] keccaks = new[] { TestItem.KeccakA, Keccak.Zero };
         Commitment[] decoded = EncodeDecodeReDecoded(keccaks);
         decoded.Should().BeEquivalentTo(keccaks);
     }
@@ -34,17 +34,17 @@ public class KeccaksIteratorTests
     public static IEnumerable<Commitment[]> TestKeccaks()
     {
         yield return Array.Empty<Commitment>();
-        yield return new[] { TestItem._commitmentA };
+        yield return new[] { TestItem.KeccakA };
         yield return new[] { Keccak.Zero };
-        yield return new[] { TestItem._commitmentA, Keccak.Zero };
-        yield return new[] { Keccak.Zero, TestItem._commitmentA };
-        yield return new[] { TestItem._commitmentA, TestItem._commitmentB, TestItem._commitmentC, Keccak.Zero, };
-        yield return new[] { TestItem._commitmentA, new Commitment("0xffffffffffffffffffffffffffffffff00000000000000000000000000000000") };
-        yield return new[] { TestItem._commitmentA, new Commitment("0x00000000000000000000000000000000ffffffffffffffffffffffffffffffff") };
-        yield return new[] { TestItem._commitmentA, new Commitment("0xffffffffffffffffffffffffffffffff00000000000000000000000000000000"), TestItem._commitmentB };
-        yield return new[] { TestItem._commitmentA, new Commitment("0x00000000000000000000000000000000ffffffffffffffffffffffffffffffff"), TestItem._commitmentB };
-        yield return new[] { new Commitment("0xffffffffffffffffffffffffffffffff00000000000000000000000000000000"), TestItem._commitmentB };
-        yield return new[] { new Commitment("0x00000000000000000000000000000000ffffffffffffffffffffffffffffffff"), TestItem._commitmentB };
+        yield return new[] { TestItem.KeccakA, Keccak.Zero };
+        yield return new[] { Keccak.Zero, TestItem.KeccakA };
+        yield return new[] { TestItem.KeccakA, TestItem.KeccakB, TestItem.KeccakC, Keccak.Zero, };
+        yield return new[] { TestItem.KeccakA, new Commitment("0xffffffffffffffffffffffffffffffff00000000000000000000000000000000") };
+        yield return new[] { TestItem.KeccakA, new Commitment("0x00000000000000000000000000000000ffffffffffffffffffffffffffffffff") };
+        yield return new[] { TestItem.KeccakA, new Commitment("0xffffffffffffffffffffffffffffffff00000000000000000000000000000000"), TestItem.KeccakB };
+        yield return new[] { TestItem.KeccakA, new Commitment("0x00000000000000000000000000000000ffffffffffffffffffffffffffffffff"), TestItem.KeccakB };
+        yield return new[] { new Commitment("0xffffffffffffffffffffffffffffffff00000000000000000000000000000000"), TestItem.KeccakB };
+        yield return new[] { new Commitment("0x00000000000000000000000000000000ffffffffffffffffffffffffffffffff"), TestItem.KeccakB };
     }
 
     private Commitment[] EncodeDecode(Commitment[] input)

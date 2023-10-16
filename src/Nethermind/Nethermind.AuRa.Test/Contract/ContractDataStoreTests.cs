@@ -50,9 +50,9 @@ public class ContractDataStoreTests
     public void returns_data_from_getAll_on_non_consecutive_call()
     {
         TestCase<Address> testCase = BuildTestCase<Address>();
-        BlockHeader blockHeader = Build.A.BlockHeader.WithNumber(1).WithHash(TestItem._commitmentA).TestObject;
+        BlockHeader blockHeader = Build.A.BlockHeader.WithNumber(1).WithHash(TestItem.KeccakA).TestObject;
         testCase.DataContract.GetAllItemsFromBlock(blockHeader).Returns(new[] { TestItem.AddressA });
-        BlockHeader secondBlockHeader = Build.A.BlockHeader.WithNumber(3).WithHash(TestItem._commitmentB).WithParentHash(TestItem._commitmentC).TestObject;
+        BlockHeader secondBlockHeader = Build.A.BlockHeader.WithNumber(3).WithHash(TestItem.KeccakB).WithParentHash(TestItem.KeccakC).TestObject;
         Address[] expected = { TestItem.AddressB };
         testCase.DataContract.GetAllItemsFromBlock(secondBlockHeader).Returns(expected);
 
@@ -64,10 +64,10 @@ public class ContractDataStoreTests
     public void returns_data_from_previous_block_on_error()
     {
         TestCase<Address> testCase = BuildTestCase<Address>();
-        BlockHeader blockHeader = Build.A.BlockHeader.WithNumber(1).WithHash(TestItem._commitmentA).TestObject;
+        BlockHeader blockHeader = Build.A.BlockHeader.WithNumber(1).WithHash(TestItem.KeccakA).TestObject;
         Address[] expected = { TestItem.AddressA };
         testCase.DataContract.GetAllItemsFromBlock(blockHeader).Returns(expected);
-        BlockHeader secondBlockHeader = Build.A.BlockHeader.WithNumber(3).WithHash(TestItem._commitmentB).WithParentHash(TestItem._commitmentC).TestObject;
+        BlockHeader secondBlockHeader = Build.A.BlockHeader.WithNumber(3).WithHash(TestItem.KeccakB).WithParentHash(TestItem.KeccakC).TestObject;
         testCase.DataContract.GetAllItemsFromBlock(secondBlockHeader).Throws(new AbiException(string.Empty));
 
         testCase.ContractDataStore.GetItemsFromContractAtBlock(blockHeader);
@@ -78,9 +78,9 @@ public class ContractDataStoreTests
     public void returns_data_from_getAll_on_non_consecutive_receipts_with_incremental_changes()
     {
         TestCase<Address> testCase = BuildTestCase<Address>();
-        BlockHeader blockHeader = Build.A.BlockHeader.WithNumber(1).WithHash(TestItem._commitmentA).TestObject;
+        BlockHeader blockHeader = Build.A.BlockHeader.WithNumber(1).WithHash(TestItem.KeccakA).TestObject;
         testCase.DataContract.GetAllItemsFromBlock(blockHeader).Returns(new[] { TestItem.AddressA });
-        Block secondBlock = Build.A.Block.WithHeader(Build.A.BlockHeader.WithNumber(3).WithHash(TestItem._commitmentB).WithParentHash(TestItem._commitmentC).TestObject).TestObject;
+        Block secondBlock = Build.A.Block.WithHeader(Build.A.BlockHeader.WithNumber(3).WithHash(TestItem.KeccakB).WithParentHash(TestItem.KeccakC).TestObject).TestObject;
         Address[] expected = { TestItem.AddressB };
         testCase.DataContract.GetAllItemsFromBlock(secondBlock.Header).Returns(expected);
 
@@ -95,9 +95,9 @@ public class ContractDataStoreTests
     {
         TestCase<Address> testCase = BuildTestCase<Address>();
         testCase.DataContract.IncrementalChanges.Returns(false);
-        BlockHeader blockHeader = Build.A.BlockHeader.WithNumber(1).WithHash(TestItem._commitmentA).TestObject;
+        BlockHeader blockHeader = Build.A.BlockHeader.WithNumber(1).WithHash(TestItem.KeccakA).TestObject;
         testCase.DataContract.GetAllItemsFromBlock(blockHeader).Returns(new[] { TestItem.AddressA });
-        Block secondBlock = Build.A.Block.WithHeader(Build.A.BlockHeader.WithNumber(3).WithHash(TestItem._commitmentB).WithParentHash(TestItem._commitmentC).TestObject).TestObject;
+        Block secondBlock = Build.A.Block.WithHeader(Build.A.BlockHeader.WithNumber(3).WithHash(TestItem.KeccakB).WithParentHash(TestItem.KeccakC).TestObject).TestObject;
         Address[] expected = { TestItem.AddressB };
         testCase.DataContract.TryGetItemsChangedFromBlock(secondBlock.Header, Array.Empty<TxReceipt>(), out Arg.Any<IEnumerable<Address>>())
             .Returns(x =>
@@ -131,9 +131,9 @@ public class ContractDataStoreTests
     {
         TestCase<Address> testCase = BuildTestCase<Address>();
         testCase.DataContract.IncrementalChanges.Returns(false);
-        BlockHeader blockHeader = Build.A.BlockHeader.WithNumber(1).WithHash(TestItem._commitmentA).TestObject;
+        BlockHeader blockHeader = Build.A.BlockHeader.WithNumber(1).WithHash(TestItem.KeccakA).TestObject;
         testCase.DataContract.GetAllItemsFromBlock(blockHeader).Returns(new[] { TestItem.AddressA });
-        Block secondBlock = Build.A.Block.WithHeader(Build.A.BlockHeader.WithNumber(2).WithHash(TestItem._commitmentB).WithParentHash(TestItem._commitmentA).TestObject).TestObject;
+        Block secondBlock = Build.A.Block.WithHeader(Build.A.BlockHeader.WithNumber(2).WithHash(TestItem.KeccakB).WithParentHash(TestItem.KeccakA).TestObject).TestObject;
         Address[] expected = { TestItem.AddressB };
         testCase.DataContract.TryGetItemsChangedFromBlock(secondBlock.Header, Array.Empty<TxReceipt>(), out Arg.Any<IEnumerable<Address>>())
             .Returns(x =>
@@ -154,9 +154,9 @@ public class ContractDataStoreTests
     public async Task returns_data_from_receipts_on_consecutive_with_incremental_changes()
     {
         TestCase<Address> testCase = BuildTestCase<Address>();
-        BlockHeader blockHeader = Build.A.BlockHeader.WithNumber(1).WithHash(TestItem._commitmentA).TestObject;
+        BlockHeader blockHeader = Build.A.BlockHeader.WithNumber(1).WithHash(TestItem.KeccakA).TestObject;
         testCase.DataContract.GetAllItemsFromBlock(blockHeader).Returns(new[] { TestItem.AddressA });
-        Block secondBlock = Build.A.Block.WithHeader(Build.A.BlockHeader.WithNumber(2).WithHash(TestItem._commitmentB).WithParentHash(TestItem._commitmentA).TestObject).TestObject;
+        Block secondBlock = Build.A.Block.WithHeader(Build.A.BlockHeader.WithNumber(2).WithHash(TestItem.KeccakB).WithParentHash(TestItem.KeccakA).TestObject).TestObject;
         testCase.DataContract.TryGetItemsChangedFromBlock(secondBlock.Header, Array.Empty<TxReceipt>(), out Arg.Any<IEnumerable<Address>>())
             .Returns(x =>
             {
@@ -179,9 +179,9 @@ public class ContractDataStoreTests
     public async Task returns_unmodified_data_from_empty_receipts_on_consecutive_with_incremental_changes()
     {
         TestCase<Address> testCase = BuildTestCase<Address>();
-        BlockHeader blockHeader = Build.A.BlockHeader.WithNumber(1).WithHash(TestItem._commitmentA).TestObject;
+        BlockHeader blockHeader = Build.A.BlockHeader.WithNumber(1).WithHash(TestItem.KeccakA).TestObject;
         testCase.DataContract.GetAllItemsFromBlock(blockHeader).Returns(new[] { TestItem.AddressA, TestItem.AddressC });
-        Block secondBlock = Build.A.Block.WithHeader(Build.A.BlockHeader.WithNumber(2).WithHash(TestItem._commitmentB).WithParentHash(TestItem._commitmentA).TestObject).TestObject;
+        Block secondBlock = Build.A.Block.WithHeader(Build.A.BlockHeader.WithNumber(2).WithHash(TestItem.KeccakB).WithParentHash(TestItem.KeccakA).TestObject).TestObject;
         testCase.DataContract.TryGetItemsChangedFromBlock(secondBlock.Header, Array.Empty<TxReceipt>(), out Arg.Any<IEnumerable<Address>>())
             .Returns(x =>
             {
@@ -203,7 +203,7 @@ public class ContractDataStoreTests
         TestCase<TxPriorityContract.Destination> testCase = BuildTestCase(
             TxPriorityContract.DistinctDestinationMethodComparer.Instance,
             TxPriorityContract.ValueDestinationMethodComparer.Instance);
-        BlockHeader blockHeader = Build.A.BlockHeader.WithNumber(1).WithHash(TestItem._commitmentA).TestObject;
+        BlockHeader blockHeader = Build.A.BlockHeader.WithNumber(1).WithHash(TestItem.KeccakA).TestObject;
         testCase.DataContract.GetAllItemsFromBlock(blockHeader).Returns(
             new[]
             {
@@ -211,7 +211,7 @@ public class ContractDataStoreTests
                 new TxPriorityContract.Destination(TestItem.AddressA, new byte[] {0, 1, 2, 3}, 1),
             });
 
-        Block secondBlock = Build.A.Block.WithHeader(Build.A.BlockHeader.WithNumber(2).WithHash(TestItem._commitmentB).WithParentHash(TestItem._commitmentA).TestObject).TestObject;
+        Block secondBlock = Build.A.Block.WithHeader(Build.A.BlockHeader.WithNumber(2).WithHash(TestItem.KeccakB).WithParentHash(TestItem.KeccakA).TestObject).TestObject;
         testCase.DataContract.TryGetItemsChangedFromBlock(secondBlock.Header, Array.Empty<TxReceipt>()
                 , out Arg.Any<IEnumerable<TxPriorityContract.Destination>>())
             .Returns(x =>

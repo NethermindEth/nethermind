@@ -385,8 +385,8 @@ namespace Nethermind.Synchronization.Test
         [Test]
         public void Can_retrieve_node_values()
         {
-            _stateDb.Set(TestItem._commitmentA, TestItem.RandomDataA);
-            byte[]?[] data = _syncServer.GetNodeData(new[] { TestItem._commitmentA, TestItem._commitmentB });
+            _stateDb.Set(TestItem.KeccakA, TestItem.RandomDataA);
+            byte[]?[] data = _syncServer.GetNodeData(new[] { TestItem.KeccakA, TestItem.KeccakB });
 
             Assert.That(data, Is.Not.Null);
             Assert.That(data.Length, Is.EqualTo(2), "data.Length");
@@ -403,7 +403,7 @@ namespace Nethermind.Synchronization.Test
 
             _syncServer.GetReceipts(block0!.Hash!).Should().HaveCount(0);
             _syncServer.GetReceipts(block1!.Hash!).Should().HaveCount(0);
-            _syncServer.GetReceipts(TestItem._commitmentA).Should().HaveCount(0);
+            _syncServer.GetReceipts(TestItem.KeccakA).Should().HaveCount(0);
         }
     }
 }

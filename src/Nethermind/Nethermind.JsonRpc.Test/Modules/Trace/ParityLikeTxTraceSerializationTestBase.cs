@@ -38,9 +38,9 @@ namespace Nethermind.JsonRpc.Test.Modules.Trace
                     Gas = 40000,
                     TraceAddress = new int[] { 0 }
                 },
-                BlockHash = TestItem._commitmentB,
+                BlockHash = TestItem.KeccakB,
                 BlockNumber = 123456,
-                TransactionHash = TestItem._commitmentC,
+                TransactionHash = TestItem.KeccakC,
                 TransactionPosition = 5
             };
             result.Action.TraceAddress = new int[] { 1, 2, 3 };

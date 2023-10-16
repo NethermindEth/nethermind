@@ -27,7 +27,7 @@ namespace Nethermind.JsonRpc.Test.Data
                 Index = 1,
                 Recipient = TestItem.AddressA,
                 Sender = TestItem.AddressB,
-                BlockHash = TestItem._commitmentA,
+                BlockHash = TestItem.KeccakA,
                 BlockNumber = 1,
                 ContractAddress = TestItem.AddressC,
                 GasUsed = 1000,

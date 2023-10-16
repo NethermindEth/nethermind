@@ -16,7 +16,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
         [Test]
         public void Sets_values_from_constructor_argument()
         {
-            Commitment[] keys = { TestItem._commitmentA, TestItem._commitmentB };
+            Commitment[] keys = { TestItem.KeccakA, TestItem.KeccakB };
             GetNodeDataMessage message = new(keys);
             Assert.That(message.Hashes, Is.SameAs(keys));
         }

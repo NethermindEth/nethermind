@@ -30,8 +30,8 @@ namespace Nethermind.Store.Test
         public void Two_children_store_encode()
         {
             TrieNode node = new(NodeType.Branch);
-            node.SetChild(0, new TrieNode(NodeType.Leaf, TestItem._commitmentA));
-            node.SetChild(1, new TrieNode(NodeType.Leaf, TestItem._commitmentB));
+            node.SetChild(0, new TrieNode(NodeType.Leaf, TestItem.KeccakA));
+            node.SetChild(1, new TrieNode(NodeType.Leaf, TestItem.KeccakB));
             ITrieNodeResolver tree = BuildATreeFromNode(node);
             TrieNode decoded = new(NodeType.Unknown, node.Commitment);
             decoded.ResolveNode(tree);
@@ -42,8 +42,8 @@ namespace Nethermind.Store.Test
         public void Two_children_store_resolve_encode()
         {
             TrieNode node = new(NodeType.Branch);
-            node.SetChild(0, new TrieNode(NodeType.Leaf, TestItem._commitmentA));
-            node.SetChild(1, new TrieNode(NodeType.Leaf, TestItem._commitmentB));
+            node.SetChild(0, new TrieNode(NodeType.Leaf, TestItem.KeccakA));
+            node.SetChild(1, new TrieNode(NodeType.Leaf, TestItem.KeccakB));
             ITrieNodeResolver tree = BuildATreeFromNode(node);
             TrieNode decoded = new(NodeType.Unknown, node.Commitment);
             decoded.ResolveNode(tree);
@@ -54,8 +54,8 @@ namespace Nethermind.Store.Test
         public void Two_children_store_resolve_get1_encode()
         {
             TrieNode node = new(NodeType.Branch);
-            node.SetChild(0, new TrieNode(NodeType.Leaf, TestItem._commitmentA));
-            node.SetChild(1, new TrieNode(NodeType.Leaf, TestItem._commitmentB));
+            node.SetChild(0, new TrieNode(NodeType.Leaf, TestItem.KeccakA));
+            node.SetChild(1, new TrieNode(NodeType.Leaf, TestItem.KeccakB));
             ITrieNodeResolver tree = BuildATreeFromNode(node);
             TrieNode decoded = new(NodeType.Unknown, node.Commitment);
             decoded.ResolveNode(tree);
@@ -67,8 +67,8 @@ namespace Nethermind.Store.Test
         public void Two_children_store_resolve_getnull_encode()
         {
             TrieNode node = new(NodeType.Branch);
-            node.SetChild(0, new TrieNode(NodeType.Leaf, TestItem._commitmentA));
-            node.SetChild(1, new TrieNode(NodeType.Leaf, TestItem._commitmentB));
+            node.SetChild(0, new TrieNode(NodeType.Leaf, TestItem.KeccakA));
+            node.SetChild(1, new TrieNode(NodeType.Leaf, TestItem.KeccakB));
             ITrieNodeResolver tree = BuildATreeFromNode(node);
             TrieNode decoded = new(NodeType.Unknown, node.Commitment);
             decoded.ResolveNode(tree);
@@ -80,13 +80,13 @@ namespace Nethermind.Store.Test
         public void Two_children_store_resolve_update_encode()
         {
             TrieNode node = new(NodeType.Branch);
-            node.SetChild(0, new TrieNode(NodeType.Leaf, TestItem._commitmentA));
-            node.SetChild(1, new TrieNode(NodeType.Leaf, TestItem._commitmentB));
+            node.SetChild(0, new TrieNode(NodeType.Leaf, TestItem.KeccakA));
+            node.SetChild(1, new TrieNode(NodeType.Leaf, TestItem.KeccakB));
             ITrieNodeResolver tree = BuildATreeFromNode(node);
             TrieNode decoded = new(NodeType.Unknown, node.Commitment);
             decoded.ResolveNode(tree);
             decoded = decoded.Clone();
-            decoded.SetChild(0, new TrieNode(NodeType.Leaf, TestItem._commitmentC));
+            decoded.SetChild(0, new TrieNode(NodeType.Leaf, TestItem.KeccakC));
             decoded.RlpEncode(tree);
         }
 
@@ -94,14 +94,14 @@ namespace Nethermind.Store.Test
         public void Two_children_store_resolve_update_null_encode()
         {
             TrieNode node = new(NodeType.Branch);
-            node.SetChild(0, new TrieNode(NodeType.Leaf, TestItem._commitmentA));
-            node.SetChild(1, new TrieNode(NodeType.Leaf, TestItem._commitmentB));
+            node.SetChild(0, new TrieNode(NodeType.Leaf, TestItem.KeccakA));
+            node.SetChild(1, new TrieNode(NodeType.Leaf, TestItem.KeccakB));
             ITrieNodeResolver tree = BuildATreeFromNode(node);
             TrieNode decoded = new(NodeType.Unknown, node.Commitment);
             decoded.ResolveNode(tree);
             decoded = decoded.Clone();
-            decoded.SetChild(4, new TrieNode(NodeType.Leaf, TestItem._commitmentC));
-            decoded.SetChild(5, new TrieNode(NodeType.Leaf, TestItem._commitmentD));
+            decoded.SetChild(4, new TrieNode(NodeType.Leaf, TestItem.KeccakC));
+            decoded.SetChild(5, new TrieNode(NodeType.Leaf, TestItem.KeccakD));
             decoded.RlpEncode(tree);
         }
 
@@ -109,14 +109,14 @@ namespace Nethermind.Store.Test
         public void Two_children_store_resolve_delete_and_add_encode()
         {
             TrieNode node = new(NodeType.Branch);
-            node.SetChild(0, new TrieNode(NodeType.Leaf, TestItem._commitmentA));
-            node.SetChild(1, new TrieNode(NodeType.Leaf, TestItem._commitmentB));
+            node.SetChild(0, new TrieNode(NodeType.Leaf, TestItem.KeccakA));
+            node.SetChild(1, new TrieNode(NodeType.Leaf, TestItem.KeccakB));
             ITrieNodeResolver tree = BuildATreeFromNode(node);
             TrieNode decoded = new(NodeType.Unknown, node.Commitment);
             decoded.ResolveNode(tree);
             decoded = decoded.Clone();
             decoded.SetChild(0, null);
-            decoded.SetChild(4, new TrieNode(NodeType.Leaf, TestItem._commitmentC));
+            decoded.SetChild(4, new TrieNode(NodeType.Leaf, TestItem.KeccakC));
             decoded.RlpEncode(tree);
         }
 
@@ -124,7 +124,7 @@ namespace Nethermind.Store.Test
         public void Child_and_value_store_encode()
         {
             TrieNode node = new(NodeType.Branch);
-            node.SetChild(0, new TrieNode(NodeType.Leaf, TestItem._commitmentA));
+            node.SetChild(0, new TrieNode(NodeType.Leaf, TestItem.KeccakA));
             ITrieNodeResolver tree = BuildATreeFromNode(node);
             TrieNode decoded = new(NodeType.Unknown, node.Commitment);
             decoded.ResolveNode(tree);

@@ -46,7 +46,7 @@ namespace Nethermind.JsonRpc.Test
             {
                 // yield return new TestCaseData(new Uri("file:///c:/temp/data1"), new Uri("file:///c:/temp/data1"));
                 // yield return new TestCaseData(new Uri("http://localhost:8545"), new Uri("http://localhost:8545"), 10l);
-                // yield return new TestCaseData(new Uri("http://localhost:8545"), new Uri("http://localhost:8545"), new Keccak("0x0"), new GethTraceOptions());
+                // yield return new TestCaseData(new Uri("http://localhost:8545"), new Uri("http://localhost:8545"), new Commitment("0x0"), new GethTraceOptions());
                 yield break;
             }
         }

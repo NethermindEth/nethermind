@@ -35,7 +35,7 @@ public class HealingTreeTests
     [Test]
     public void get_storage_tree_works()
     {
-        HealingStorageTree stateTree = new(Substitute.For<ITrieStore>(), Keccak.EmptyTreeHash, LimboLogs.Instance, TestItem.AddressA, TestItem._commitmentA, null);
+        HealingStorageTree stateTree = new(Substitute.For<ITrieStore>(), Keccak.EmptyTreeHash, LimboLogs.Instance, TestItem.AddressA, TestItem.KeccakA, null);
         stateTree.Get(stackalloc byte[] { 1, 2, 3 });
     }
 

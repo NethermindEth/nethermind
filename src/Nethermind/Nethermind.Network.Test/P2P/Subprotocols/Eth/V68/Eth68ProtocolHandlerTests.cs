@@ -144,7 +144,7 @@ public class Eth68ProtocolHandlerTests
     public void Should_process_huge_transaction()
     {
         Transaction tx = Build.A.Transaction.WithType(TxType.EIP1559).WithData(new byte[2 * 1024 * 1024])
-            .WithHash(TestItem._commitmentA).TestObject;
+            .WithHash(TestItem.KeccakA).TestObject;
 
         var msg = new NewPooledTransactionHashesMessage68(new[] { (byte)tx.Type },
             new[] { tx.GetLength() }, new[] { tx.Hash });
@@ -257,7 +257,7 @@ public class Eth68ProtocolHandlerTests
         for (int i = 0; i < txCount; ++i)
         {
             Transaction tx = Build.A.Transaction.WithType((TxType)(i % 3)).WithData(new byte[i])
-                .WithHash(i % 2 == 0 ? TestItem._commitmentA : TestItem._commitmentB).TestObject;
+                .WithHash(i % 2 == 0 ? TestItem.KeccakA : TestItem.KeccakB).TestObject;
 
             types.Add((byte)tx.Type);
             sizes.Add(txDecoder.GetLength(tx, RlpBehaviors.None));

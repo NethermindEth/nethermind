@@ -184,7 +184,7 @@ namespace Nethermind.Synchronization.Test.FastSync
         public async Task When_saving_root_goes_asleep()
         {
             DbContext dbContext = new(_logger, _logManager);
-            dbContext.RemoteStateTree.Set(TestItem._commitmentA, Build.An.Account.TestObject);
+            dbContext.RemoteStateTree.Set(TestItem.KeccakA, Build.An.Account.TestObject);
             dbContext.RemoteStateTree.Commit(0);
 
 
@@ -357,7 +357,7 @@ namespace Nethermind.Synchronization.Test.FastSync
         public async Task When_empty_response_received_return_lesser_quality()
         {
             DbContext dbContext = new(_logger, _logManager);
-            dbContext.RemoteStateTree.Set(TestItem._commitmentA, Build.An.Account.TestObject);
+            dbContext.RemoteStateTree.Set(TestItem.KeccakA, Build.An.Account.TestObject);
             dbContext.RemoteStateTree.Commit(0);
 
             SafeContext ctx = new();
@@ -380,7 +380,7 @@ namespace Nethermind.Synchronization.Test.FastSync
         public async Task When_empty_response_received_with_no_peer_return_not_allocated()
         {
             DbContext dbContext = new(_logger, _logManager);
-            dbContext.RemoteStateTree.Set(TestItem._commitmentA, Build.An.Account.TestObject);
+            dbContext.RemoteStateTree.Set(TestItem.KeccakA, Build.An.Account.TestObject);
             dbContext.RemoteStateTree.Commit(0);
 
             SafeContext ctx = new();

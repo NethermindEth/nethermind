@@ -102,7 +102,7 @@ public partial class EngineModuleTests
         chain.PayloadPreparationService!.BlockImproved += (_, _) => { blockImprovementLock.Release(1); };
         string? payloadId = rpc.engine_forkchoiceUpdatedV1(
                 new ForkchoiceStateV1(startingHead, Keccak.Zero, startingHead),
-                new PayloadAttributes() { Timestamp = 100, PrevRandao = TestItem._commitmentA, SuggestedFeeRecipient = Address.Zero })
+                new PayloadAttributes() { Timestamp = 100, PrevRandao = TestItem.KeccakA, SuggestedFeeRecipient = Address.Zero })
             .Result.Data.PayloadId!;
 
         await blockImprovementLock.WaitAsync(10000);
@@ -157,7 +157,7 @@ public partial class EngineModuleTests
         chain.AddTransactions(transactions);
         string payloadId = rpc.engine_forkchoiceUpdatedV1(
                 new ForkchoiceStateV1(startingHead, Keccak.Zero, startingHead),
-                new PayloadAttributes { Timestamp = 100, PrevRandao = TestItem._commitmentA, SuggestedFeeRecipient = Address.Zero })
+                new PayloadAttributes { Timestamp = 100, PrevRandao = TestItem.KeccakA, SuggestedFeeRecipient = Address.Zero })
             .Result.Data.PayloadId!;
 
         ExecutionPayload getPayloadResult = (await rpc.engine_getPayloadV1(Bytes.FromHexString(payloadId))).Data!;
@@ -171,7 +171,7 @@ public partial class EngineModuleTests
         using MergeTestBlockchain chain = await CreateBlockchain();
         IEngineRpcModule rpc = CreateEngineModule(chain);
         Commitment startingHead = chain.BlockTree.HeadHash;
-        Commitment? random = TestItem._commitmentF;
+        Commitment? random = TestItem.KeccakF;
         ulong timestamp = chain.BlockTree.Head!.Timestamp + 5;
         Address? suggestedFeeRecipient = TestItem.AddressC;
         PayloadAttributes? payloadAttributes = new() { PrevRandao = random, Timestamp = timestamp, SuggestedFeeRecipient = suggestedFeeRecipient };
@@ -329,7 +329,7 @@ public partial class EngineModuleTests
         chain.PayloadPreparationService!.BlockImproved += (_, _) => { blockImprovementLock.Release(1); };
         string? payloadId = rpc.engine_forkchoiceUpdatedV1(
                 new ForkchoiceStateV1(startingHead, Keccak.Zero, startingHead),
-                new PayloadAttributes { Timestamp = 100, PrevRandao = TestItem._commitmentA, SuggestedFeeRecipient = Address.Zero })
+                new PayloadAttributes { Timestamp = 100, PrevRandao = TestItem.KeccakA, SuggestedFeeRecipient = Address.Zero })
             .Result.Data.PayloadId!;
 
         await blockImprovementLock.WaitAsync(500 * TestContext.CurrentContext.CurrentRepeatCount);
@@ -375,7 +375,7 @@ public partial class EngineModuleTests
         chain.PayloadPreparationService!.BlockImproved += (_, _) => { blockImprovementLock.Release(1); };
         string? payloadId = rpc.engine_forkchoiceUpdatedV1(
                 new ForkchoiceStateV1(startingHead, Keccak.Zero, startingHead),
-                new PayloadAttributes { Timestamp = 100, PrevRandao = TestItem._commitmentA, SuggestedFeeRecipient = Address.Zero })
+                new PayloadAttributes { Timestamp = 100, PrevRandao = TestItem.KeccakA, SuggestedFeeRecipient = Address.Zero })
             .Result.Data.PayloadId!;
 
         await blockImprovementLock.WaitAsync(100);
@@ -433,7 +433,7 @@ public partial class EngineModuleTests
         chain.PayloadPreparationService!.BlockImproved += (_, _) => { blockImprovementLock.Release(1); };
         string? payloadId = rpc.engine_forkchoiceUpdatedV1(
                 new ForkchoiceStateV1(blockX, Keccak.Zero, blockX),
-                new PayloadAttributes { Timestamp = (ulong)DateTime.UtcNow.AddDays(3).Ticks, PrevRandao = TestItem._commitmentA, SuggestedFeeRecipient = Address.Zero })
+                new PayloadAttributes { Timestamp = (ulong)DateTime.UtcNow.AddDays(3).Ticks, PrevRandao = TestItem.KeccakA, SuggestedFeeRecipient = Address.Zero })
             .Result.Data.PayloadId!;
         chain.AddTransactions(BuildTransactions(chain, blockX, TestItem.PrivateKeyC, TestItem.AddressA, 3, 10, out _, out _));
         await blockImprovementLock.WaitAsync(delay * 100);
@@ -459,7 +459,7 @@ public partial class EngineModuleTests
         // starting building on block X
         await rpc.engine_forkchoiceUpdatedV1(
             new ForkchoiceStateV1(blockX, Keccak.Zero, blockX),
-            new PayloadAttributes { Timestamp = (ulong)DateTime.UtcNow.AddDays(4).Ticks, PrevRandao = TestItem._commitmentA, SuggestedFeeRecipient = Address.Zero });
+            new PayloadAttributes { Timestamp = (ulong)DateTime.UtcNow.AddDays(4).Ticks, PrevRandao = TestItem.KeccakA, SuggestedFeeRecipient = Address.Zero });
 
         int milliseconds = RandomNumberGenerator.GetInt32(timePerSlot.Milliseconds, timePerSlot.Milliseconds * 2);
         await Task.Delay(milliseconds);
@@ -467,7 +467,7 @@ public partial class EngineModuleTests
         // starting building on block X + 1
         string? secondNewPayload = rpc.engine_forkchoiceUpdatedV1(
                 new ForkchoiceStateV1(getPayloadResult.BlockHash, Keccak.Zero, getPayloadResult.BlockHash),
-                new PayloadAttributes { Timestamp = (ulong)DateTime.UtcNow.AddDays(5).Ticks, PrevRandao = TestItem._commitmentA, SuggestedFeeRecipient = Address.Zero })
+                new PayloadAttributes { Timestamp = (ulong)DateTime.UtcNow.AddDays(5).Ticks, PrevRandao = TestItem.KeccakA, SuggestedFeeRecipient = Address.Zero })
             .Result.Data.PayloadId!;
 
         ExecutionPayload getSecondBlockPayload = (await rpc.engine_getPayloadV1(Bytes.FromHexString(secondNewPayload))).Data!;
@@ -497,7 +497,7 @@ public partial class EngineModuleTests
             new ForkchoiceStateV1(blockX, Keccak.Zero, blockX));
 
         PostMergeBlockProducer blockProducer = chain.PostMergeBlockProducer!;
-        Block emptyBlock = blockProducer.PrepareEmptyBlock(chain.BlockTree.Head!.Header, new PayloadAttributes { Timestamp = (ulong)DateTime.UtcNow.AddDays(5).Ticks, PrevRandao = TestItem._commitmentA, SuggestedFeeRecipient = Address.Zero });
+        Block emptyBlock = blockProducer.PrepareEmptyBlock(chain.BlockTree.Head!.Header, new PayloadAttributes { Timestamp = (ulong)DateTime.UtcNow.AddDays(5).Ticks, PrevRandao = TestItem.KeccakA, SuggestedFeeRecipient = Address.Zero });
         Task<ResultWrapper<PayloadStatusV1>> result1 = await rpc.engine_newPayloadV1(new ExecutionPayload(emptyBlock));
         result1.Result.Data.Status.Should().Be(PayloadStatus.Valid);
     }
@@ -516,7 +516,7 @@ public partial class EngineModuleTests
         PayloadAttributes payloadAttributes = new()
         {
             Timestamp = (ulong)DateTime.UtcNow.AddDays(5).Ticks,
-            PrevRandao = TestItem._commitmentA,
+            PrevRandao = TestItem.KeccakA,
             SuggestedFeeRecipient = Address.Zero,
             Withdrawals = new List<Withdrawal>() { TestItem.WithdrawalA_1Eth }
         };

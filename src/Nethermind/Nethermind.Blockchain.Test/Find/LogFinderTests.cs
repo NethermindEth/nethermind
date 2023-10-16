@@ -73,23 +73,23 @@ namespace Nethermind.Blockchain.Test.Find
             {
                 if (transaction.Value == 1)
                 {
-                    yield return Build.A.LogEntry.WithAddress(TestItem.AddressA).WithTopics(TestItem._commitmentA).TestObject;
+                    yield return Build.A.LogEntry.WithAddress(TestItem.AddressA).WithTopics(TestItem.KeccakA).TestObject;
                 }
                 else if (transaction.Value == 2)
                 {
-                    yield return Build.A.LogEntry.WithAddress(TestItem.AddressA).WithTopics(TestItem._commitmentA, TestItem._commitmentB).TestObject;
+                    yield return Build.A.LogEntry.WithAddress(TestItem.AddressA).WithTopics(TestItem.KeccakA, TestItem.KeccakB).TestObject;
                 }
             }
             else if (block.Number == 4)
             {
                 if (transaction.Value == 1)
                 {
-                    yield return Build.A.LogEntry.WithAddress(TestItem.AddressB).WithTopics(TestItem._commitmentA, TestItem._commitmentB).TestObject;
+                    yield return Build.A.LogEntry.WithAddress(TestItem.AddressB).WithTopics(TestItem.KeccakA, TestItem.KeccakB).TestObject;
                 }
                 else if (transaction.Value == 2)
                 {
-                    yield return Build.A.LogEntry.WithAddress(TestItem.AddressC).WithTopics(TestItem._commitmentB, TestItem._commitmentA, TestItem._commitmentE).TestObject;
-                    yield return Build.A.LogEntry.WithAddress(TestItem.AddressD).WithTopics(TestItem._commitmentD, TestItem._commitmentA).TestObject;
+                    yield return Build.A.LogEntry.WithAddress(TestItem.AddressC).WithTopics(TestItem.KeccakB, TestItem.KeccakA, TestItem.KeccakE).TestObject;
+                    yield return Build.A.LogEntry.WithAddress(TestItem.AddressD).WithTopics(TestItem.KeccakD, TestItem.KeccakA).TestObject;
                 }
             }
         }
@@ -214,19 +214,19 @@ namespace Nethermind.Blockchain.Test.Find
         {
             get
             {
-                yield return new TestCaseData(new[] { TestTopicExpressions.Specific(TestItem._commitmentA) }, false, new long[] { 1, 1, 4 });
-                yield return new TestCaseData(new[] { TestTopicExpressions.Any, TestTopicExpressions.Specific(TestItem._commitmentB) }, false, new long[] { 1, 4 });
-                yield return new TestCaseData(new[] { TestTopicExpressions.Any, TestTopicExpressions.Specific(TestItem._commitmentA), TestTopicExpressions.Any }, false, new long[] { 4 });
-                yield return new TestCaseData(new[] { TestTopicExpressions.Specific(TestItem._commitmentB), TestTopicExpressions.Any, TestTopicExpressions.Specific(TestItem._commitmentE) }, false, new long[] { 4 });
-                yield return new TestCaseData(new[] { TestTopicExpressions.Or(TestItem._commitmentA, TestItem._commitmentB) }, false, new long[] { 1, 1, 4, 4 });
-                yield return new TestCaseData(new[] { TestTopicExpressions.Or(TestItem._commitmentA, TestItem._commitmentB), TestTopicExpressions.Specific(TestItem._commitmentB) }, false, new long[] { 1, 4 });
+                yield return new TestCaseData(new[] { TestTopicExpressions.Specific(TestItem.KeccakA) }, false, new long[] { 1, 1, 4 });
+                yield return new TestCaseData(new[] { TestTopicExpressions.Any, TestTopicExpressions.Specific(TestItem.KeccakB) }, false, new long[] { 1, 4 });
+                yield return new TestCaseData(new[] { TestTopicExpressions.Any, TestTopicExpressions.Specific(TestItem.KeccakA), TestTopicExpressions.Any }, false, new long[] { 4 });
+                yield return new TestCaseData(new[] { TestTopicExpressions.Specific(TestItem.KeccakB), TestTopicExpressions.Any, TestTopicExpressions.Specific(TestItem.KeccakE) }, false, new long[] { 4 });
+                yield return new TestCaseData(new[] { TestTopicExpressions.Or(TestItem.KeccakA, TestItem.KeccakB) }, false, new long[] { 1, 1, 4, 4 });
+                yield return new TestCaseData(new[] { TestTopicExpressions.Or(TestItem.KeccakA, TestItem.KeccakB), TestTopicExpressions.Specific(TestItem.KeccakB) }, false, new long[] { 1, 4 });
 
-                yield return new TestCaseData(new[] { TestTopicExpressions.Specific(TestItem._commitmentA) }, true, new long[] { 1, 1, 4 });
-                yield return new TestCaseData(new[] { TestTopicExpressions.Any, TestTopicExpressions.Specific(TestItem._commitmentB) }, true, new long[] { 1, 4 });
-                yield return new TestCaseData(new[] { TestTopicExpressions.Any, TestTopicExpressions.Specific(TestItem._commitmentA), TestTopicExpressions.Any }, true, new long[] { 4 });
-                yield return new TestCaseData(new[] { TestTopicExpressions.Specific(TestItem._commitmentB), TestTopicExpressions.Any, TestTopicExpressions.Specific(TestItem._commitmentE) }, true, new long[] { 4 });
-                yield return new TestCaseData(new[] { TestTopicExpressions.Or(TestItem._commitmentA, TestItem._commitmentB) }, true, new long[] { 1, 1, 4, 4 });
-                yield return new TestCaseData(new[] { TestTopicExpressions.Or(TestItem._commitmentA, TestItem._commitmentB), TestTopicExpressions.Specific(TestItem._commitmentB) }, true, new long[] { 1, 4 });
+                yield return new TestCaseData(new[] { TestTopicExpressions.Specific(TestItem.KeccakA) }, true, new long[] { 1, 1, 4 });
+                yield return new TestCaseData(new[] { TestTopicExpressions.Any, TestTopicExpressions.Specific(TestItem.KeccakB) }, true, new long[] { 1, 4 });
+                yield return new TestCaseData(new[] { TestTopicExpressions.Any, TestTopicExpressions.Specific(TestItem.KeccakA), TestTopicExpressions.Any }, true, new long[] { 4 });
+                yield return new TestCaseData(new[] { TestTopicExpressions.Specific(TestItem.KeccakB), TestTopicExpressions.Any, TestTopicExpressions.Specific(TestItem.KeccakE) }, true, new long[] { 4 });
+                yield return new TestCaseData(new[] { TestTopicExpressions.Or(TestItem.KeccakA, TestItem.KeccakB) }, true, new long[] { 1, 1, 4, 4 });
+                yield return new TestCaseData(new[] { TestTopicExpressions.Or(TestItem.KeccakA, TestItem.KeccakB), TestTopicExpressions.Specific(TestItem.KeccakB) }, true, new long[] { 1, 4 });
             }
         }
 
@@ -287,19 +287,19 @@ namespace Nethermind.Blockchain.Test.Find
             get
             {
                 yield return new TestCaseData(FilterBuilder.New().FromLatestBlock().ToLatestBlock()
-                    .WithTopicExpressions(TestTopicExpressions.Or(TestItem._commitmentD, TestItem._commitmentB), TestTopicExpressions.Specific(TestItem._commitmentA))
+                    .WithTopicExpressions(TestTopicExpressions.Or(TestItem.KeccakD, TestItem.KeccakB), TestTopicExpressions.Specific(TestItem.KeccakA))
                     .WithAddresses(TestItem.AddressC, TestItem.AddressD).Build(), 2, false);
 
                 yield return new TestCaseData(FilterBuilder.New().FromLatestBlock().ToLatestBlock()
-                    .WithTopicExpressions(TestTopicExpressions.Or(TestItem._commitmentD, TestItem._commitmentB), TestTopicExpressions.Specific(TestItem._commitmentA))
+                    .WithTopicExpressions(TestTopicExpressions.Or(TestItem.KeccakD, TestItem.KeccakB), TestTopicExpressions.Specific(TestItem.KeccakA))
                     .WithAddresses(TestItem.AddressC).Build(), 1, false);
 
                 yield return new TestCaseData(FilterBuilder.New().FromLatestBlock().ToLatestBlock()
-                    .WithTopicExpressions(TestTopicExpressions.Or(TestItem._commitmentD, TestItem._commitmentB), TestTopicExpressions.Specific(TestItem._commitmentA))
+                    .WithTopicExpressions(TestTopicExpressions.Or(TestItem.KeccakD, TestItem.KeccakB), TestTopicExpressions.Specific(TestItem.KeccakA))
                     .WithAddresses(TestItem.AddressC, TestItem.AddressD).Build(), 2, true);
 
                 yield return new TestCaseData(FilterBuilder.New().FromLatestBlock().ToLatestBlock()
-                    .WithTopicExpressions(TestTopicExpressions.Or(TestItem._commitmentD, TestItem._commitmentB), TestTopicExpressions.Specific(TestItem._commitmentA))
+                    .WithTopicExpressions(TestTopicExpressions.Or(TestItem.KeccakD, TestItem.KeccakB), TestTopicExpressions.Specific(TestItem.KeccakA))
                     .WithAddresses(TestItem.AddressC).Build(), 1, true);
             }
         }

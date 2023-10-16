@@ -44,14 +44,14 @@ namespace Ethereum.PoW.Test
             return new EthashTest(
                 name,
                 nonceValue,
-                new Keccak(testJson.MixHash),
+                new Commitment(testJson.MixHash),
                 Bytes.FromHexString(testJson.Header),
-                new Keccak(testJson.Seed),
+                new Commitment(testJson.Seed),
                 testJson.CacheSize,
                 testJson.FullSize,
-                new Keccak(testJson.HeaderHash),
-                new Keccak(testJson.CacheHash),
-                new Keccak(testJson.Result));
+                new Commitment(testJson.HeaderHash),
+                new Commitment(testJson.CacheHash),
+                new Commitment(testJson.Result));
         }
 
         [TestCaseSource(nameof(LoadTests))]
@@ -61,7 +61,7 @@ namespace Ethereum.PoW.Test
             Assert.That(blockHeader.Nonce, Is.EqualTo(test.Nonce), "header nonce vs test nonce");
             Assert.That(Bytes.AreEqual(blockHeader.MixHash.Bytes, test.MixHash.Bytes), Is.True, "header mix hash vs test mix hash");
 
-            Keccak headerHash = Keccak.Compute(Rlp.Encode(blockHeader, RlpBehaviors.ForSealing).Bytes);
+            Commitment headerHash = Keccak.Compute(Rlp.Encode(blockHeader, RlpBehaviors.ForSealing).Bytes);
             Assert.That(headerHash, Is.EqualTo(test.HeaderHash), "header hash");
 
             // seed is correct
@@ -84,7 +84,7 @@ namespace Ethereum.PoW.Test
             Assert.That(Bytes.AreEqual(test.Result.Bytes, resultHalfTest), Is.True, "half test");
 
             // here we confirm that the whole mix hash calculation is fine
-            (byte[] mixHash, ValueKeccak result, bool success) = ethash.Hashimoto((ulong)test.FullSize, cache, headerHash, blockHeader.MixHash, test.Nonce);
+            (byte[] mixHash, ValueCommitment result, bool success) = ethash.Hashimoto((ulong)test.FullSize, cache, headerHash, blockHeader.MixHash, test.Nonce);
             Assert.That(Bytes.AreEqual(mixHash, test.MixHash.Bytes), Is.True, "mix hash");
             Assert.That(Bytes.AreEqual(result.Bytes, test.Result.Bytes), Is.True, "result");
 
@@ -123,14 +123,14 @@ namespace Ethereum.PoW.Test
             public EthashTest(
                 string name,
                 ulong nonce,
-                Keccak mixHash,
+                Commitment mixHash,
                 byte[] header,
-                Keccak seed,
+                Commitment seed,
                 BigInteger cacheSize,
                 BigInteger fullSize,
-                Keccak headerHash,
-                Keccak cacheHash,
-                Keccak result)
+                Commitment headerHash,
+                Commitment cacheHash,
+                Commitment result)
             {
                 Name = name;
                 Nonce = nonce;
@@ -146,14 +146,14 @@ namespace Ethereum.PoW.Test
 
             public string Name { get; }
             public ulong Nonce { get; }
-            public Keccak MixHash { get; }
+            public Commitment MixHash { get; }
             public byte[] Header { get; }
-            public Keccak Seed { get; }
+            public Commitment Seed { get; }
             public BigInteger CacheSize { get; }
             public BigInteger FullSize { get; }
-            public Keccak HeaderHash { get; }
-            public Keccak CacheHash { get; }
-            public Keccak Result { get; }
+            public Commitment HeaderHash { get; }
+            public Commitment CacheHash { get; }
+            public Commitment Result { get; }
 
             public override string ToString() => Name;
         }

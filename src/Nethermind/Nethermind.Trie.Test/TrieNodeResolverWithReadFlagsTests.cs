@@ -21,8 +21,8 @@ public class TrieNodeResolverWithReadFlagsTests
         ITrieStore trieStore = new TrieStore(memDb, LimboLogs.Instance);
         TrieNodeResolverWithReadFlags resolver = new(trieStore, theFlags);
 
-        Commitment theCommitment = TestItem._commitmentA;
-        memDb[theCommitment.Bytes] = TestItem._commitmentA.BytesToArray();
+        Commitment theCommitment = TestItem.KeccakA;
+        memDb[theCommitment.Bytes] = TestItem.KeccakA.BytesToArray();
         resolver.LoadRlp(theCommitment);
 
         memDb.KeyWasReadWithFlags(theCommitment.BytesToArray(), theFlags);
@@ -36,8 +36,8 @@ public class TrieNodeResolverWithReadFlagsTests
         ITrieStore trieStore = new TrieStore(memDb, LimboLogs.Instance);
         TrieNodeResolverWithReadFlags resolver = new(trieStore, theFlags);
 
-        Commitment theCommitment = TestItem._commitmentA;
-        memDb[theCommitment.Bytes] = TestItem._commitmentA.BytesToArray();
+        Commitment theCommitment = TestItem.KeccakA;
+        memDb[theCommitment.Bytes] = TestItem.KeccakA.BytesToArray();
         resolver.LoadRlp(theCommitment, ReadFlags.HintReadAhead);
 
         memDb.KeyWasReadWithFlags(theCommitment.BytesToArray(), theFlags | ReadFlags.HintReadAhead);

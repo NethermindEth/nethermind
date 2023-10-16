@@ -151,7 +151,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
         [Test]
         public void Can_handle_get_block_bodies()
         {
-            var msg62 = new GetBlockBodiesMessage(new[] { Keccak.Zero, TestItem._commitmentA });
+            var msg62 = new GetBlockBodiesMessage(new[] { Keccak.Zero, TestItem.KeccakA });
             var msg66 = new Network.P2P.Subprotocols.Eth.V66.Messages.GetBlockBodiesMessage(1111, msg62);
 
             HandleIncomingStatusMessage();
@@ -190,7 +190,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
         [Test]
         public void Can_handle_get_pooled_transactions()
         {
-            var msg65 = new GetPooledTransactionsMessage(new[] { Keccak.Zero, TestItem._commitmentA });
+            var msg65 = new GetPooledTransactionsMessage(new[] { Keccak.Zero, TestItem.KeccakA });
             var msg66 = new Network.P2P.Subprotocols.Eth.V66.Messages.GetPooledTransactionsMessage(1111, msg65);
 
             HandleIncomingStatusMessage();
@@ -212,7 +212,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
         [Test]
         public void Can_handle_get_node_data()
         {
-            var msg63 = new GetNodeDataMessage(new[] { Keccak.Zero, TestItem._commitmentA });
+            var msg63 = new GetNodeDataMessage(new[] { Keccak.Zero, TestItem.KeccakA });
             var msg66 = new Network.P2P.Subprotocols.Eth.V66.Messages.GetNodeDataMessage(1111, msg63);
 
             HandleIncomingStatusMessage();
@@ -251,7 +251,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
         [Test]
         public void Can_handle_get_receipts()
         {
-            var msg63 = new GetReceiptsMessage(new[] { Keccak.Zero, TestItem._commitmentA });
+            var msg63 = new GetReceiptsMessage(new[] { Keccak.Zero, TestItem.KeccakA });
             var msg66 = new Network.P2P.Subprotocols.Eth.V66.Messages.GetReceiptsMessage(1111, msg63);
 
             HandleIncomingStatusMessage();

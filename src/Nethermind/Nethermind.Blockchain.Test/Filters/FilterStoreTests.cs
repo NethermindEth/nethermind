@@ -122,17 +122,17 @@ namespace Nethermind.Blockchain.Test.Filters
             {
                 yield return new TestCaseData(null, SequenceTopicsFilter.AnyTopic);
 
-                yield return new TestCaseData(new[] { TestItem._commitmentA.ToString() },
-                    new SequenceTopicsFilter(new SpecificTopic(TestItem._commitmentA)));
+                yield return new TestCaseData(new[] { TestItem.KeccakA.ToString() },
+                    new SequenceTopicsFilter(new SpecificTopic(TestItem.KeccakA)));
 
-                yield return new TestCaseData(new[] { TestItem._commitmentA.ToString(), TestItem._commitmentB.ToString() },
-                    new SequenceTopicsFilter(new SpecificTopic(TestItem._commitmentA), new SpecificTopic(TestItem._commitmentB)));
+                yield return new TestCaseData(new[] { TestItem.KeccakA.ToString(), TestItem.KeccakB.ToString() },
+                    new SequenceTopicsFilter(new SpecificTopic(TestItem.KeccakA), new SpecificTopic(TestItem.KeccakB)));
 
-                yield return new TestCaseData(new[] { null, TestItem._commitmentB.ToString() },
-                    new SequenceTopicsFilter(AnyTopic.Instance, new SpecificTopic(TestItem._commitmentB)));
+                yield return new TestCaseData(new[] { null, TestItem.KeccakB.ToString() },
+                    new SequenceTopicsFilter(AnyTopic.Instance, new SpecificTopic(TestItem.KeccakB)));
 
-                yield return new TestCaseData(new object[] { new[] { TestItem._commitmentA.ToString(), TestItem._commitmentB.ToString(), TestItem._commitmentC.ToString() }, TestItem._commitmentD.ToString() },
-                    new SequenceTopicsFilter(new OrExpression(new SpecificTopic(TestItem._commitmentA), new SpecificTopic(TestItem._commitmentB), new SpecificTopic(TestItem._commitmentC)), new SpecificTopic(TestItem._commitmentD)));
+                yield return new TestCaseData(new object[] { new[] { TestItem.KeccakA.ToString(), TestItem.KeccakB.ToString(), TestItem.KeccakC.ToString() }, TestItem.KeccakD.ToString() },
+                    new SequenceTopicsFilter(new OrExpression(new SpecificTopic(TestItem.KeccakA), new SpecificTopic(TestItem.KeccakB), new SpecificTopic(TestItem.KeccakC)), new SpecificTopic(TestItem.KeccakD)));
             }
         }
 

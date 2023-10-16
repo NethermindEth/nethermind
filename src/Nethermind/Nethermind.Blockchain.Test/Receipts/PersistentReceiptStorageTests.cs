@@ -163,7 +163,7 @@ namespace Nethermind.Blockchain.Test.Receipts
         {
             Block block = Build.A.Block
                 .WithTransactions(Build.A.Transaction.SignedAndResolved().TestObject)
-                .WithReceiptsRoot(TestItem._commitmentA)
+                .WithReceiptsRoot(TestItem.KeccakA)
                 .TestObject;
 
             TxReceipt[] emptyReceipts = Array.Empty<TxReceipt>();
@@ -218,7 +218,7 @@ namespace Nethermind.Blockchain.Test.Receipts
         [Test, Timeout(Timeout.MaxTestTime)]
         public void Should_handle_inserting_null_receipts()
         {
-            Block block = Build.A.Block.WithReceiptsRoot(TestItem._commitmentA).TestObject;
+            Block block = Build.A.Block.WithReceiptsRoot(TestItem.KeccakA).TestObject;
             _storage.Insert(block, null);
         }
 
@@ -245,7 +245,7 @@ namespace Nethermind.Blockchain.Test.Receipts
 
             Block anotherBlock = Build.A.Block
                 .WithTransactions(block.Transactions)
-                .WithReceiptsRoot(TestItem._commitmentA)
+                .WithReceiptsRoot(TestItem.KeccakA)
                 .WithExtraData(new byte[] { 1 })
                 .TestObject;
 
@@ -397,7 +397,7 @@ namespace Nethermind.Blockchain.Test.Receipts
             block ??= Build.A.Block
                 .WithNumber(1)
                 .WithTransactions(Build.A.Transaction.SignedAndResolved().TestObject)
-                .WithReceiptsRoot(TestItem._commitmentA)
+                .WithReceiptsRoot(TestItem.KeccakA)
                 .TestObject;
 
             _blockTree.FindBlock(block.Hash!).Returns(block);

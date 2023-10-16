@@ -295,7 +295,7 @@ public class VirtualMachineTestsBase
             .WithBeneficiary(senderRecipientAndMiner.Miner)
             .WithBlobGasUsed(0)
             .WithExcessBlobGas(0)
-            .WithParentBeaconBlockRoot(TestItem._commitmentG)
+            .WithParentBeaconBlockRoot(TestItem.KeccakG)
             .WithExcessBlobGas(excessBlobGas)
             .TestObject;
     }

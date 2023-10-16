@@ -70,8 +70,8 @@ public class DebugModuleTests
                 true,
                 new[]
                 {
-                    new BlockInfo(TestItem._commitmentA, 1000),
-                    new BlockInfo(TestItem._commitmentB, 1001),
+                    new BlockInfo(TestItem.KeccakA, 1000),
+                    new BlockInfo(TestItem.KeccakB, 1001),
                 }));
 
         DebugRpcModule rpcModule = new(LimboLogs.Instance, debugBridge, jsonRpcConfig);
@@ -166,7 +166,7 @@ public class DebugModuleTests
         debugBridge.GetTransactionTrace(Arg.Any<Commitment>(), Arg.Any<CancellationToken>(), Arg.Any<GethTraceOptions>()).Returns(trace);
 
         DebugRpcModule rpcModule = new(LimboLogs.Instance, debugBridge, jsonRpcConfig);
-        string response = await RpcTest.TestSerializedRequest<IDebugRpcModule>(DebugModuleFactory.Converters, rpcModule, "debug_traceTransaction", TestItem._commitmentA.ToString(true), "{}");
+        string response = await RpcTest.TestSerializedRequest<IDebugRpcModule>(DebugModuleFactory.Converters, rpcModule, "debug_traceTransaction", TestItem.KeccakA.ToString(true), "{}");
 
         Assert.That(response, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":{\"gas\":\"0x0\",\"failed\":false,\"returnValue\":\"0xa2\",\"structLogs\":[{\"pc\":0,\"op\":\"STOP\",\"gas\":22000,\"gasCost\":1,\"depth\":1,\"error\":null,\"stack\":[\"0000000000000000000000000000000000000000000000000000000000000007\",\"0000000000000000000000000000000000000000000000000000000000000008\"],\"memory\":[\"0000000000000000000000000000000000000000000000000000000000000005\",\"0000000000000000000000000000000000000000000000000000000000000006\"],\"storage\":{\"0000000000000000000000000000000000000000000000000000000000000001\":\"0000000000000000000000000000000000000000000000000000000000000002\",\"0000000000000000000000000000000000000000000000000000000000000003\":\"0000000000000000000000000000000000000000000000000000000000000004\"}}]},\"id\":67}"));
     }
@@ -203,7 +203,7 @@ public class DebugModuleTests
         debugBridge.GetTransactionTrace(Arg.Any<Commitment>(), Arg.Any<CancellationToken>(), Arg.Any<GethTraceOptions>()).Returns(trace);
 
         DebugRpcModule rpcModule = new(LimboLogs.Instance, debugBridge, jsonRpcConfig);
-        string response = await RpcTest.TestSerializedRequest<IDebugRpcModule>(DebugModuleFactory.Converters, rpcModule, "debug_traceTransaction", TestItem._commitmentA.ToString(true), "{disableStack : true}");
+        string response = await RpcTest.TestSerializedRequest<IDebugRpcModule>(DebugModuleFactory.Converters, rpcModule, "debug_traceTransaction", TestItem.KeccakA.ToString(true), "{disableStack : true}");
 
         Assert.That(response, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":{\"gas\":\"0x0\",\"failed\":false,\"returnValue\":\"0xa2\",\"structLogs\":[{\"pc\":0,\"op\":\"STOP\",\"gas\":22000,\"gasCost\":1,\"depth\":1,\"error\":null,\"stack\":[],\"memory\":[\"0000000000000000000000000000000000000000000000000000000000000005\",\"0000000000000000000000000000000000000000000000000000000000000006\"],\"storage\":{\"0000000000000000000000000000000000000000000000000000000000000001\":\"0000000000000000000000000000000000000000000000000000000000000002\",\"0000000000000000000000000000000000000000000000000000000000000003\":\"0000000000000000000000000000000000000000000000000000000000000004\"}}]},\"id\":67}"));
     }
@@ -237,7 +237,7 @@ public class DebugModuleTests
 
         GethTraceOptions gtOptions = new();
 
-        Transaction transaction = Build.A.Transaction.WithTo(TestItem.AddressA).WithHash(TestItem._commitmentA).TestObject;
+        Transaction transaction = Build.A.Transaction.WithTo(TestItem.AddressA).WithHash(TestItem.KeccakA).TestObject;
         TransactionForRpc txForRpc = new(transaction);
 
         debugBridge.GetTransactionTrace(Arg.Any<Transaction>(), Arg.Any<BlockParameter>(), Arg.Any<CancellationToken>(), Arg.Any<GethTraceOptions>()).Returns(trace);
@@ -298,8 +298,8 @@ public class DebugModuleTests
     {
         debugBridge.UpdateHeadBlock(Arg.Any<Commitment>());
         IDebugRpcModule rpcModule = new DebugRpcModule(LimboLogs.Instance, debugBridge, jsonRpcConfig);
-        RpcTest.TestSerializedRequest(rpcModule, "debug_resetHead", TestItem._commitmentA.ToString());
-        debugBridge.Received().UpdateHeadBlock(TestItem._commitmentA);
+        RpcTest.TestSerializedRequest(rpcModule, "debug_resetHead", TestItem.KeccakA.ToString());
+        debugBridge.Received().UpdateHeadBlock(TestItem.KeccakA);
     }
 
     [Test]
@@ -360,7 +360,7 @@ public class DebugModuleTests
     {
         var traces = Enumerable.Repeat(MockGethLikeTrace(), 2).ToArray();
         var tracesClone = TestItem.CloneObject(traces);
-        var blockHash = TestItem._commitmentA;
+        var blockHash = TestItem.KeccakA;
 
         debugBridge
             .GetBlockTrace(new BlockParameter(blockHash), Arg.Any<CancellationToken>(), Arg.Any<GethTraceOptions>())
@@ -376,7 +376,7 @@ public class DebugModuleTests
     [Test]
     public void TraceBlockByHash_Fail()
     {
-        var blockHash = TestItem._commitmentA;
+        var blockHash = TestItem.KeccakA;
 
         debugBridge
             .GetBlockTrace(new BlockParameter(blockHash), Arg.Any<CancellationToken>(), Arg.Any<GethTraceOptions>())

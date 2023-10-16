@@ -26,19 +26,19 @@ namespace Nethermind.Benchmarks.Core
         [Params(1, 2, 8, 32, 64)]
         public int ItemsCount { get; set; }
 
-        public Keccak[] Keys { get; set; } = new Keccak[64];
+        public Commitment[] Keys { get; set; } = new Commitment[64];
 
         public byte[] Value { get; set; } = new byte[0];
 
         [Benchmark]
-        public LruCache<ValueKeccak, byte[]> WithItems()
+        public LruCache<ValueCommitment, byte[]> WithItems()
         {
-            LruCache<ValueKeccak, byte[]> cache = new LruCache<ValueKeccak, byte[]>(MaxCapacity, MaxCapacity, String.Empty);
+            LruCache<ValueCommitment, byte[]> cache = new LruCache<ValueCommitment, byte[]>(MaxCapacity, MaxCapacity, String.Empty);
             Fill(cache);
 
             return cache;
 
-            void Fill(LruCache<ValueKeccak, byte[]> cache)
+            void Fill(LruCache<ValueCommitment, byte[]> cache)
             {
                 for (int j = 0; j < ItemsCount; j++)
                 {

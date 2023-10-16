@@ -30,10 +30,10 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V65
         {
             _response = new List<Commitment>();
             _requestor = new PooledTxsRequestor(_txPool);
-            _requestor.RequestTransactions(_doNothing, new List<Commitment> { TestItem._commitmentA, TestItem._commitmentD });
+            _requestor.RequestTransactions(_doNothing, new List<Commitment> { TestItem.KeccakA, TestItem.KeccakD });
 
-            _request = new List<Commitment> { TestItem._commitmentA, TestItem._commitmentB, TestItem._commitmentC };
-            _expected = new List<Commitment> { TestItem._commitmentB, TestItem._commitmentC };
+            _request = new List<Commitment> { TestItem.KeccakA, TestItem.KeccakB, TestItem.KeccakC };
+            _expected = new List<Commitment> { TestItem.KeccakB, TestItem.KeccakC };
             _requestor.RequestTransactions(Send, _request);
             _response.Should().BeEquivalentTo(_expected);
         }
@@ -43,9 +43,9 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V65
         {
             _response = new List<Commitment>();
             _requestor = new PooledTxsRequestor(_txPool);
-            _requestor.RequestTransactions(_doNothing, new List<Commitment> { TestItem._commitmentA, TestItem._commitmentB, TestItem._commitmentC });
+            _requestor.RequestTransactions(_doNothing, new List<Commitment> { TestItem.KeccakA, TestItem.KeccakB, TestItem.KeccakC });
 
-            _request = new List<Commitment> { TestItem._commitmentA, TestItem._commitmentB, TestItem._commitmentC };
+            _request = new List<Commitment> { TestItem.KeccakA, TestItem.KeccakB, TestItem.KeccakC };
             _requestor.RequestTransactions(Send, _request);
             _response.Should().BeEmpty();
         }
@@ -56,8 +56,8 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V65
             _response = new List<Commitment>();
             _requestor = new PooledTxsRequestor(_txPool);
 
-            _request = new List<Commitment> { TestItem._commitmentA, TestItem._commitmentB, TestItem._commitmentC };
-            _expected = new List<Commitment> { TestItem._commitmentA, TestItem._commitmentB, TestItem._commitmentC };
+            _request = new List<Commitment> { TestItem.KeccakA, TestItem.KeccakB, TestItem.KeccakC };
+            _expected = new List<Commitment> { TestItem.KeccakA, TestItem.KeccakB, TestItem.KeccakC };
             _requestor.RequestTransactions(Send, _request);
             _response.Should().BeEquivalentTo(_expected);
         }
@@ -79,7 +79,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V65
             txPool.IsKnown(Arg.Any<Commitment>()).Returns(true);
             _requestor = new PooledTxsRequestor(txPool);
 
-            _request = new List<Commitment> { TestItem._commitmentA, TestItem._commitmentB };
+            _request = new List<Commitment> { TestItem.KeccakA, TestItem.KeccakB };
             _expected = new List<Commitment> { };
             _requestor.RequestTransactions(Send, _request);
             _response.Should().BeEquivalentTo(_expected);

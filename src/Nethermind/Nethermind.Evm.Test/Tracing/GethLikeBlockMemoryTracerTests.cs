@@ -18,7 +18,7 @@ public class GethLikeBlockMemoryTracerTests
     [Test]
     public void Starts_with_trace_set_to_null()
     {
-        Commitment txHash = TestItem._commitmentA;
+        Commitment txHash = TestItem.KeccakA;
         GethLikeBlockMemoryTracer blockTracer = new(GethTraceOptions.Default with { TxHash = txHash });
         Assert.IsNull(blockTracer.BuildResult().SingleOrDefault(), $"starts with trace set to null");
     }

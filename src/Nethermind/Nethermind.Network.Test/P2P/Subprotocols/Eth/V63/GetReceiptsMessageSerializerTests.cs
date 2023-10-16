@@ -26,14 +26,14 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
         [Test]
         public void Roundtrip()
         {
-            Commitment[] hashes = { TestItem._commitmentA, TestItem._commitmentB, TestItem._commitmentC };
+            Commitment[] hashes = { TestItem.KeccakA, TestItem.KeccakB, TestItem.KeccakC };
             Test(hashes);
         }
 
         [Test]
         public void Roundtrip_with_nulls()
         {
-            Commitment[] hashes = { null, TestItem._commitmentA, null, TestItem._commitmentB, null, null };
+            Commitment[] hashes = { null, TestItem.KeccakA, null, TestItem.KeccakB, null, null };
             Test(hashes);
         }
 

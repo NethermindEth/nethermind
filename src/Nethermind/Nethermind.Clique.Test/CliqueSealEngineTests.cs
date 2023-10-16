@@ -137,7 +137,7 @@ namespace Nethermind.Clique.Test
             genesis.Header.Hash = genesis.CalculateHash();
 
             // this would need to be loaded from rinkeby chainspec to include allocations
-            //            Assert.AreEqual(new Keccak("0x6341fd3daf94b748c72ced5a5b26028f2474f5f00d824504e4fa37a75767e177"), genesis.Hash);
+            //            Assert.AreEqual(new Commitment("0x6341fd3daf94b748c72ced5a5b26028f2474f5f00d824504e4fa37a75767e177"), genesis.Hash);
 
             genesis.Header.Hash = genesis.Header.CalculateHash();
             return genesis;

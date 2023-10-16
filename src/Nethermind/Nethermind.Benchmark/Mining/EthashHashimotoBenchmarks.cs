@@ -32,13 +32,13 @@ namespace Nethermind.Benchmarks.Mining
         }
 
         [Benchmark]
-        public (Keccak, ulong) Improved()
+        public (Commitment, ulong) Improved()
         {
             return _ethash.Mine(_header, 0UL);
         }
 
         [Benchmark]
-        public (Keccak, ulong) Current()
+        public (Commitment, ulong) Current()
         {
             return _ethash.Mine(_header, 0UL);
         }

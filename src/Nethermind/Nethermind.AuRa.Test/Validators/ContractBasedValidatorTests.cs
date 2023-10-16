@@ -76,7 +76,7 @@ namespace Nethermind.AuRa.Test.Validators
             _transactionProcessor.IsContractDeployed(_contractAddress).Returns(true);
             _readOnlyTxProcessorSource = Substitute.For<IReadOnlyTxProcessorSource>();
             _readOnlyTxProcessorSource.Build(Arg.Any<Commitment>()).Returns(_transactionProcessor);
-            _stateProvider.StateRoot.Returns(TestItem._commitmentA);
+            _stateProvider.StateRoot.Returns(TestItem.KeccakA);
             _blockTree.Head.Returns(_block);
 
             _abiEncoder

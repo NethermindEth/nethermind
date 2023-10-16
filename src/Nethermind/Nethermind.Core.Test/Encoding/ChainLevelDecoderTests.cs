@@ -16,10 +16,10 @@ namespace Nethermind.Core.Test.Encoding
         [TestCase(false)]
         public void Can_do_roundtrip(bool valueDecode)
         {
-            BlockInfo blockInfo = new(TestItem._commitmentA, 1);
+            BlockInfo blockInfo = new(TestItem.KeccakA, 1);
             blockInfo.WasProcessed = true;
 
-            BlockInfo blockInfo2 = new(TestItem._commitmentB, 2);
+            BlockInfo blockInfo2 = new(TestItem.KeccakB, 2);
             blockInfo2.WasProcessed = false;
 
             ChainLevelInfo chainLevelInfo = new(true, new[] { blockInfo, blockInfo2 });
@@ -32,7 +32,7 @@ namespace Nethermind.Core.Test.Encoding
             Assert.True(decoded.HasBlockOnMainChain, "has block on the main chain");
             Assert.True(decoded.BlockInfos[0].WasProcessed, "0 processed");
             Assert.False(decoded.BlockInfos[1].WasProcessed, "1 not processed");
-            Assert.That(decoded.BlockInfos[0].BlockHash, Is.EqualTo(TestItem._commitmentA), "block hash");
+            Assert.That(decoded.BlockInfos[0].BlockHash, Is.EqualTo(TestItem.KeccakA), "block hash");
             Assert.That(decoded.BlockInfos[0].TotalDifficulty, Is.EqualTo(UInt256.One), "difficulty");
         }
 

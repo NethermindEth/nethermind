@@ -9,6 +9,6 @@ namespace Nethermind.State.Test.Runner
     public class StateTestTxTraceState
     {
         [JsonProperty("stateRoot")]
-        public Keccak StateRoot { get; set; }
+        public Commitment StateRoot { get; set; }
     }
 }

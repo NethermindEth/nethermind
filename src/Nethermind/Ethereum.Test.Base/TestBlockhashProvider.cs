@@ -9,7 +9,7 @@ namespace Ethereum.Test.Base
 {
     public class TestBlockhashProvider : IBlockhashProvider
     {
-        public Keccak GetBlockhash(BlockHeader currentBlock, in long number)
+        public Commitment GetBlockhash(BlockHeader currentBlock, in long number)
         {
             if (number != 0)
                 return Keccak.Zero;

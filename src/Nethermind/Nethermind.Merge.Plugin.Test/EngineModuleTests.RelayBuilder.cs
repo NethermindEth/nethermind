@@ -40,7 +40,7 @@ public partial class EngineModuleTests
             {
                 PayloadAttributes payloadAttributes = c.Arg<PayloadAttributes>();
                 payloadAttributes.SuggestedFeeRecipient = TestItem.AddressA;
-                payloadAttributes.PrevRandao = TestItem._commitmentA;
+                payloadAttributes.PrevRandao = TestItem.KeccakA;
                 payloadAttributes.Timestamp += 1;
                 payloadAttributes.GasLimit = 10_000_000L;
                 return payloadAttributes;
@@ -78,7 +78,7 @@ public partial class EngineModuleTests
 
         ExecutionPayload executionPayloadV1 = response.Data!;
         executionPayloadV1.FeeRecipient.Should().Be(TestItem.AddressA);
-        executionPayloadV1.PrevRandao.Should().Be(TestItem._commitmentA);
+        executionPayloadV1.PrevRandao.Should().Be(TestItem.KeccakA);
         executionPayloadV1.GasLimit.Should().Be(10_000_000L);
         executionPayloadV1.Should().BeEquivalentTo(sentItem!.Block);
         sentItem.Profit.Should().Be(0);
@@ -174,7 +174,7 @@ public partial class EngineModuleTests
 
         ExecutionPayload executionPayloadV1 = response.Data!;
         executionPayloadV1.FeeRecipient.Should().Be(TestItem.AddressA);
-        executionPayloadV1.PrevRandao.Should().Be(TestItem._commitmentA);
+        executionPayloadV1.PrevRandao.Should().Be(TestItem.KeccakA);
 
         mockHttp.VerifyNoOutstandingExpectation();
     }

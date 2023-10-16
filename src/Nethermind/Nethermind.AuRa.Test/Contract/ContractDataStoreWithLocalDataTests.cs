@@ -72,13 +72,13 @@ namespace Nethermind.AuRa.Test.Contract
             ILocalDataSource<IEnumerable<Address>> localDataSource = Substitute.For<ILocalDataSource<IEnumerable<Address>>>();
             localDataSource.Data.Returns(new[] { TestItem.AddressC });
             TestCase<Address> testCase = BuildTestCase<Address>(localDataSource);
-            BlockHeader blockHeader = Build.A.BlockHeader.WithNumber(1).WithHash(TestItem._commitmentA).TestObject;
+            BlockHeader blockHeader = Build.A.BlockHeader.WithNumber(1).WithHash(TestItem.KeccakA).TestObject;
             testCase.DataContract.GetAllItemsFromBlock(blockHeader).Returns(new[] { TestItem.AddressA });
 
             Address[] expected = { TestItem.AddressC, TestItem.AddressA };
             testCase.ContractDataStore.GetItemsFromContractAtBlock(blockHeader).Should().BeEquivalentTo(expected.Cast<object>());
 
-            Block secondBlock = Build.A.Block.WithHeader(Build.A.BlockHeader.WithNumber(3).WithHash(TestItem._commitmentB).WithParentHash(TestItem._commitmentC).TestObject).TestObject;
+            Block secondBlock = Build.A.Block.WithHeader(Build.A.BlockHeader.WithNumber(3).WithHash(TestItem.KeccakB).WithParentHash(TestItem.KeccakC).TestObject).TestObject;
             expected = new[] { TestItem.AddressC, TestItem.AddressB };
             testCase.DataContract.GetAllItemsFromBlock(secondBlock.Header).Returns(new[] { TestItem.AddressB });
             testCase.ContractDataStore.GetItemsFromContractAtBlock(blockHeader);

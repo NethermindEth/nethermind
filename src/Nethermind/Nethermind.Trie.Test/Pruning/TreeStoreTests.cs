@@ -54,8 +54,8 @@ namespace Nethermind.Trie.Test.Pruning
         public void Pruning_off_cache_should_not_change_commit_node()
         {
             TrieNode trieNode = new(NodeType.Leaf, Keccak.Zero);
-            TrieNode trieNode2 = new(NodeType.Branch, TestItem._commitmentA);
-            TrieNode trieNode3 = new(NodeType.Branch, TestItem._commitmentB);
+            TrieNode trieNode2 = new(NodeType.Branch, TestItem.KeccakA);
+            TrieNode trieNode3 = new(NodeType.Branch, TestItem.KeccakB);
 
             using TrieStore trieStore = new(new MemDb(), No.Pruning, No.Persistence, _logManager);
             trieStore.CommitNode(1234, new NodeCommitInfo(trieNode));
@@ -115,9 +115,9 @@ namespace Nethermind.Trie.Test.Pruning
         public void Pruning_off_cache_should_not_find_cached_or_unknown()
         {
             using TrieStore trieStore = new(new MemDb(), No.Pruning, No.Persistence, _logManager);
-            TrieNode returnedNode = trieStore.FindCachedOrUnknown(TestItem._commitmentA);
-            TrieNode returnedNode2 = trieStore.FindCachedOrUnknown(TestItem._commitmentB);
-            TrieNode returnedNode3 = trieStore.FindCachedOrUnknown(TestItem._commitmentC);
+            TrieNode returnedNode = trieStore.FindCachedOrUnknown(TestItem.KeccakA);
+            TrieNode returnedNode2 = trieStore.FindCachedOrUnknown(TestItem.KeccakB);
+            TrieNode returnedNode3 = trieStore.FindCachedOrUnknown(TestItem.KeccakC);
             Assert.That(returnedNode.NodeType, Is.EqualTo(NodeType.Unknown));
             Assert.That(returnedNode2.NodeType, Is.EqualTo(NodeType.Unknown));
             Assert.That(returnedNode3.NodeType, Is.EqualTo(NodeType.Unknown));
@@ -129,25 +129,25 @@ namespace Nethermind.Trie.Test.Pruning
         {
             using TrieStore trieStore = new(new MemDb(), new TestPruningStrategy(true), No.Persistence, _logManager);
             long startSize = trieStore.MemoryUsedByDirtyCache;
-            trieStore.FindCachedOrUnknown(TestItem._commitmentA);
+            trieStore.FindCachedOrUnknown(TestItem.KeccakA);
             TrieNode trieNode = new(NodeType.Leaf, Keccak.Zero);
             long oneKeccakSize = trieNode.GetMemorySize(false);
             Assert.That(trieStore.MemoryUsedByDirtyCache, Is.EqualTo(startSize + oneKeccakSize));
-            trieStore.FindCachedOrUnknown(TestItem._commitmentB);
+            trieStore.FindCachedOrUnknown(TestItem.KeccakB);
             Assert.That(trieStore.MemoryUsedByDirtyCache, Is.EqualTo(2 * oneKeccakSize + startSize));
-            trieStore.FindCachedOrUnknown(TestItem._commitmentB);
+            trieStore.FindCachedOrUnknown(TestItem.KeccakB);
             Assert.That(trieStore.MemoryUsedByDirtyCache, Is.EqualTo(2 * oneKeccakSize + startSize));
-            trieStore.FindCachedOrUnknown(TestItem._commitmentC);
+            trieStore.FindCachedOrUnknown(TestItem.KeccakC);
             Assert.That(trieStore.MemoryUsedByDirtyCache, Is.EqualTo(3 * oneKeccakSize + startSize));
-            trieStore.FindCachedOrUnknown(TestItem._commitmentD, true);
+            trieStore.FindCachedOrUnknown(TestItem.KeccakD, true);
             Assert.That(trieStore.MemoryUsedByDirtyCache, Is.EqualTo(3 * oneKeccakSize + startSize));
         }
 
         [Test]
         public void Memory_with_two_nodes_is_correct()
         {
-            TrieNode trieNode1 = new(NodeType.Leaf, TestItem._commitmentA);
-            TrieNode trieNode2 = new(NodeType.Leaf, TestItem._commitmentB);
+            TrieNode trieNode1 = new(NodeType.Leaf, TestItem.KeccakA);
+            TrieNode trieNode2 = new(NodeType.Leaf, TestItem.KeccakB);
 
             using TrieStore trieStore = new(new MemDb(), new TestPruningStrategy(true), No.Persistence, _logManager);
             trieStore.CommitNode(1234, new NodeCommitInfo(trieNode1));
@@ -160,10 +160,10 @@ namespace Nethermind.Trie.Test.Pruning
         [Test]
         public void Memory_with_two_times_two_nodes_is_correct()
         {
-            TrieNode trieNode1 = new(NodeType.Leaf, TestItem._commitmentA);
-            TrieNode trieNode2 = new(NodeType.Leaf, TestItem._commitmentB);
-            TrieNode trieNode3 = new(NodeType.Leaf, TestItem._commitmentA);
-            TrieNode trieNode4 = new(NodeType.Leaf, TestItem._commitmentB);
+            TrieNode trieNode1 = new(NodeType.Leaf, TestItem.KeccakA);
+            TrieNode trieNode2 = new(NodeType.Leaf, TestItem.KeccakB);
+            TrieNode trieNode3 = new(NodeType.Leaf, TestItem.KeccakA);
+            TrieNode trieNode4 = new(NodeType.Leaf, TestItem.KeccakB);
 
             using TrieStore trieStore = new(new MemDb(), new TestPruningStrategy(true), No.Persistence, _logManager);
             trieStore.CommitNode(1234, new NodeCommitInfo(trieNode1));
@@ -584,7 +584,7 @@ namespace Nethermind.Trie.Test.Pruning
         public void ReadOnly_store_doesnt_change_witness()
         {
             TrieNode node = new(NodeType.Leaf);
-            Account account = new(1, 1, TestItem._commitmentA, Keccak.OfAnEmptyString);
+            Account account = new(1, 1, TestItem.KeccakA, Keccak.OfAnEmptyString);
             node.Value = _accountDecoder.Encode(account).Bytes;
             node.Key = Bytes.FromHexString("abc");
             node.ResolveKey(NullTrieNodeResolver.Instance, true);
@@ -663,7 +663,7 @@ namespace Nethermind.Trie.Test.Pruning
         public void ReadOnly_store_returns_copies(bool pruning)
         {
             TrieNode node = new(NodeType.Leaf);
-            Account account = new(1, 1, TestItem._commitmentA, Keccak.OfAnEmptyString);
+            Account account = new(1, 1, TestItem.KeccakA, Keccak.OfAnEmptyString);
             node.Value = _accountDecoder.Encode(account).Bytes;
             node.Key = Bytes.FromHexString("abc");
             node.ResolveKey(NullTrieNodeResolver.Instance, true);

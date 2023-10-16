@@ -20,7 +20,7 @@ namespace Nethermind.Core.Test.Builders
         static TestItem()
         {
             NonZeroBloom = new Bloom();
-            NonZeroBloom.Set(_commitmentA.Bytes);
+            NonZeroBloom.Set(KeccakA.Bytes);
 
             PrivateKeys = new PrivateKey[255];
             PublicKeys = new PublicKey[255];
@@ -53,14 +53,14 @@ namespace Nethermind.Core.Test.Builders
         public static byte[] RandomDataC = { 1, 2, 8, 9, 10 };
         public static byte[] RandomDataD = { 1, 2, 8, 9, 10, 17 };
 
-        public static Commitment _commitmentA = Keccak.Compute("A");
-        public static Commitment _commitmentB = Keccak.Compute("B");
-        public static Commitment _commitmentC = Keccak.Compute("C");
-        public static Commitment _commitmentD = Keccak.Compute("D");
-        public static Commitment _commitmentE = Keccak.Compute("E");
-        public static Commitment _commitmentF = Keccak.Compute("F");
-        public static Commitment _commitmentG = Keccak.Compute("G");
-        public static Commitment _commitmentH = Keccak.Compute("H");
+        public static Commitment KeccakA = Keccak.Compute("A");
+        public static Commitment KeccakB = Keccak.Compute("B");
+        public static Commitment KeccakC = Keccak.Compute("C");
+        public static Commitment KeccakD = Keccak.Compute("D");
+        public static Commitment KeccakE = Keccak.Compute("E");
+        public static Commitment KeccakF = Keccak.Compute("F");
+        public static Commitment KeccakG = Keccak.Compute("G");
+        public static Commitment KeccakH = Keccak.Compute("H");
 
         public static PrivateKey PrivateKeyA = new("010102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f");
         public static PrivateKey PrivateKeyB = new("020102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f");

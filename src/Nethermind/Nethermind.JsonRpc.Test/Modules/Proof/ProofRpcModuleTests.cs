@@ -96,7 +96,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
         [TestCase(false)]
         public async Task When_getting_non_existing_tx_correct_error_code_is_returned(bool withHeader)
         {
-            Commitment txHash = TestItem._commitmentH;
+            Commitment txHash = TestItem.KeccakH;
             string response = await RpcTest.TestSerializedRequest(_proofRpcModule, "proof_getTransactionByHash", $"{txHash}", $"{withHeader}");
             Assert.True(response.Contains($"{ErrorCodes.ResourceNotFound}"));
         }
@@ -105,7 +105,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
         [TestCase(false)]
         public async Task When_getting_non_existing_receipt_correct_error_code_is_returned(bool withHeader)
         {
-            Commitment txHash = TestItem._commitmentH;
+            Commitment txHash = TestItem.KeccakH;
             string response = await RpcTest.TestSerializedRequest(_proofRpcModule, "proof_getTransactionReceipt", $"{txHash}", $"{withHeader}");
             Assert.True(response.Contains($"{ErrorCodes.ResourceNotFound}"));
         }
@@ -113,7 +113,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
         [TestCase]
         public async Task On_incorrect_params_returns_correct_error_code()
         {
-            Commitment txHash = TestItem._commitmentH;
+            Commitment txHash = TestItem.KeccakH;
 
             // missing with header
             string response = await RpcTest.TestSerializedRequest(_proofRpcModule, "proof_getTransactionReceipt", $"{txHash}");
@@ -300,7 +300,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
             string response = await RpcTest.TestSerializedRequest(_proofRpcModule, "proof_call", $"{serializer.Serialize(tx)}", $"{{\"blockHash\" : \"{block.Hash}\", \"requireCanonical\" : true}}");
             Assert.True(response.Contains("-32000"));
 
-            response = await RpcTest.TestSerializedRequest(_proofRpcModule, "proof_call", $"{serializer.Serialize(tx)}", $"{{\"blockHash\" : \"{TestItem._commitmentG}\", \"requireCanonical\" : true}}");
+            response = await RpcTest.TestSerializedRequest(_proofRpcModule, "proof_call", $"{serializer.Serialize(tx)}", $"{{\"blockHash\" : \"{TestItem.KeccakG}\", \"requireCanonical\" : true}}");
             Assert.True(response.Contains("-32001"));
         }
 

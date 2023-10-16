@@ -109,8 +109,8 @@ namespace Nethermind.JsonRpc.Test.Data
             TestRoundtrip(BlockParameter.Safe, "safe");
             TestRoundtrip(new BlockParameter(0L), "zero");
             TestRoundtrip(new BlockParameter(long.MaxValue), "max");
-            TestRoundtrip(new BlockParameter(TestItem._commitmentA), "hash");
-            TestRoundtrip(new BlockParameter(TestItem._commitmentA, true), "hash with canonical");
+            TestRoundtrip(new BlockParameter(TestItem.KeccakA), "hash");
+            TestRoundtrip(new BlockParameter(TestItem.KeccakA, true), "hash with canonical");
         }
     }
 }

@@ -96,7 +96,7 @@ public class Eth67ProtocolHandlerTests
     [Test]
     public void Can_ignore_get_node_data()
     {
-        var msg63 = new GetNodeDataMessage(new[] { Keccak.Zero, TestItem._commitmentA });
+        var msg63 = new GetNodeDataMessage(new[] { Keccak.Zero, TestItem.KeccakA });
         var msg66 = new Network.P2P.Subprotocols.Eth.V66.Messages.GetNodeDataMessage(1111, msg63);
 
         HandleIncomingStatusMessage();

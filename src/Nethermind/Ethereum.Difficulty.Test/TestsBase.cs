@@ -62,7 +62,7 @@ namespace Ethereum.Difficulty.Test
 
         protected static DifficultyTests ToTest(string fileName, string name, DifficultyTestHexJson json)
         {
-            Keccak noUnclesHash = Keccak.OfAnEmptySequenceRlp;
+            Commitment noUnclesHash = Keccak.OfAnEmptySequenceRlp;
 
             return new DifficultyTests(
                 fileName,
@@ -72,7 +72,7 @@ namespace Ethereum.Difficulty.Test
                 (ulong)ToUInt256(json.CurrentTimestamp),
                 (long)ToUInt256(json.CurrentBlockNumber),
                 ToUInt256(json.CurrentDifficulty),
-                !string.IsNullOrWhiteSpace(json.ParentUncles) && new Keccak(json.ParentUncles) != noUnclesHash);
+                !string.IsNullOrWhiteSpace(json.ParentUncles) && new Commitment(json.ParentUncles) != noUnclesHash);
         }
 
         protected void RunTest(DifficultyTests test, ISpecProvider specProvider)

@@ -41,7 +41,7 @@ public class WithdrawalValidatorTests
         BlockValidator blockValidator = new(Always.Valid, Always.Valid, Always.Valid, specProvider, LimboLogs.Instance);
         Withdrawal[] withdrawals = { TestItem.WithdrawalA_1Eth, TestItem.WithdrawalB_2Eth };
         Commitment withdrawalRoot = new WithdrawalTrie(withdrawals).RootHash;
-        bool isValid = blockValidator.ValidateSuggestedBlock(Build.A.Block.WithWithdrawals(withdrawals).WithWithdrawalsRoot(TestItem._commitmentD).TestObject);
+        bool isValid = blockValidator.ValidateSuggestedBlock(Build.A.Block.WithWithdrawals(withdrawals).WithWithdrawalsRoot(TestItem.KeccakD).TestObject);
         Assert.False(isValid);
     }
 

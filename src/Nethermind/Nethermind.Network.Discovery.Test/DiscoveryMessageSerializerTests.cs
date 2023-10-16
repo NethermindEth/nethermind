@@ -116,7 +116,7 @@ namespace Nethermind.Network.Discovery.Test
             nodeRecord.EnrSequence = 5;
             NodeRecordSigner signer = new(new Ecdsa(), _privateKey);
             signer.Sign(nodeRecord);
-            EnrResponseMsg msg = new(TestItem.PublicKeyA, nodeRecord, TestItem._commitmentA);
+            EnrResponseMsg msg = new(TestItem.PublicKeyA, nodeRecord, TestItem.KeccakA);
 
             IByteBuffer serialized = _messageSerializationService.ZeroSerialize(msg);
             EnrResponseMsg deserialized = _messageSerializationService.Deserialize<EnrResponseMsg>(serialized);

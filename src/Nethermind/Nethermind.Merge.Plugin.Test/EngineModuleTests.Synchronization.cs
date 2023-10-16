@@ -37,7 +37,7 @@ public partial class EngineModuleTests
         Commitment? startingHead = chain.BlockTree.HeadHash;
         BlockHeader parent = Build.A.BlockHeader
             .WithNumber(1)
-            .WithHash(TestItem._commitmentA)
+            .WithHash(TestItem.KeccakA)
             .WithNonce(0)
             .WithDifficulty(0)
             .TestObject;
@@ -91,7 +91,7 @@ public partial class EngineModuleTests
         Commitment? startingHead = chain.BlockTree.HeadHash;
         BlockHeader parent = Build.A.BlockHeader
             .WithNumber(1)
-            .WithHash(TestItem._commitmentA)
+            .WithHash(TestItem.KeccakA)
             .WithNonce(0)
             .WithDifficulty(0)
             .TestObject;
@@ -181,7 +181,7 @@ public partial class EngineModuleTests
         Commitment? startingHead = chain.BlockTree.HeadHash;
         BlockHeader parent = Build.A.BlockHeader
             .WithNumber(1)
-            .WithHash(TestItem._commitmentA)
+            .WithHash(TestItem.KeccakA)
             .WithNonce(0)
             .WithDifficulty(0)
             .TestObject;
@@ -274,7 +274,7 @@ public partial class EngineModuleTests
         Commitment? startingHead = chain.BlockTree.HeadHash;
         BlockHeader parent = Build.A.BlockHeader
             .WithNumber(1)
-            .WithHash(TestItem._commitmentA)
+            .WithHash(TestItem.KeccakA)
             .WithNonce(0)
             .WithDifficulty(0)
             .TestObject;
@@ -315,7 +315,7 @@ public partial class EngineModuleTests
         Commitment? startingHead = chain.BlockTree.HeadHash;
         BlockHeader parent = Build.A.BlockHeader
             .WithNumber(1)
-            .WithHash(TestItem._commitmentA)
+            .WithHash(TestItem.KeccakA)
             .WithNonce(0)
             .WithDifficulty(0)
             .TestObject;
@@ -473,7 +473,7 @@ public partial class EngineModuleTests
         Commitment? startingHead = chain.BlockTree.HeadHash;
         BlockHeader parent = Build.A.BlockHeader
             .WithNumber(1)
-            .WithHash(TestItem._commitmentA)
+            .WithHash(TestItem.KeccakA)
             .WithNonce(0)
             .WithDifficulty(0)
             .TestObject;
@@ -533,7 +533,7 @@ public partial class EngineModuleTests
         Commitment? startingHead = chain.BlockTree.HeadHash;
         BlockHeader parent = Build.A.BlockHeader
             .WithNumber(1)
-            .WithHash(TestItem._commitmentA)
+            .WithHash(TestItem.KeccakA)
             .WithNonce(0)
             .WithDifficulty(0)
             .TestObject;
@@ -861,7 +861,7 @@ public partial class EngineModuleTests
 
         // send block with invalid state root
         ExecutionPayload blockWithInvalidStateRoot = CreateBlockRequest(chain, validBlockOnTopOfHead, TestItem.AddressA);
-        blockWithInvalidStateRoot.StateRoot = TestItem._commitmentB;
+        blockWithInvalidStateRoot.StateRoot = TestItem.KeccakB;
         TryCalculateHash(blockWithInvalidStateRoot, out Commitment? hash);
         blockWithInvalidStateRoot.BlockHash = hash;
         PayloadStatusV1 invalidStateRootNewPayloadResponse = (await rpc.engine_newPayloadV1(blockWithInvalidStateRoot)).Data;
@@ -898,7 +898,7 @@ public partial class EngineModuleTests
 
         // send block with invalid state root
         ExecutionPayload blockWithInvalidStateRoot = CreateBlockRequest(chain, validBlockOnTopOfHead, TestItem.AddressA);
-        blockWithInvalidStateRoot.StateRoot = TestItem._commitmentB;
+        blockWithInvalidStateRoot.StateRoot = TestItem.KeccakB;
         TryCalculateHash(blockWithInvalidStateRoot, out Commitment? hash);
         blockWithInvalidStateRoot.BlockHash = hash;
         PayloadStatusV1 invalidStateRootNewPayloadResponse = (await rpc.engine_newPayloadV1(blockWithInvalidStateRoot)).Data;

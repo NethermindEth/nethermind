@@ -26,7 +26,7 @@ public class NewPooledTransactionHashesMessageSerializerTests
     {
         TxType[] types = { TxType.Legacy, TxType.AccessList, TxType.EIP1559 };
         int[] sizes = { 5, 10, 1500 };
-        Commitment[] hashes = { TestItem._commitmentA, TestItem._commitmentB, TestItem._commitmentC };
+        Commitment[] hashes = { TestItem.KeccakA, TestItem.KeccakB, TestItem.KeccakC };
         Test(types, sizes, hashes);
     }
 
@@ -53,9 +53,9 @@ public class NewPooledTransactionHashesMessageSerializerTests
     {
         TxType[] types = { TxType.AccessList };
         int[] sizes = { 2 };
-        Commitment[] hashes = { TestItem._commitmentA };
+        Commitment[] hashes = { TestItem.KeccakA };
         Test(types, sizes, hashes,
-            "e5" + "01" + "c102" + "e1a0" + TestItem._commitmentA.ToString(false));
+            "e5" + "01" + "c102" + "e1a0" + TestItem.KeccakA.ToString(false));
     }
 
 }

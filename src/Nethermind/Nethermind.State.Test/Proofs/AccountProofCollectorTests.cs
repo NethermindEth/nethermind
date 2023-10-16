@@ -215,7 +215,7 @@ namespace Nethermind.Store.Test.Proofs
             StateTree tree = new();
 
             byte[] code = new byte[] { 1, 2, 3 };
-            Account account1 = Build.An.Account.WithBalance(1).WithStorageRoot(TestItem._commitmentA).TestObject;
+            Account account1 = Build.An.Account.WithBalance(1).WithStorageRoot(TestItem.KeccakA).TestObject;
             Account account2 = Build.An.Account.WithBalance(2).TestObject;
             tree.Set(TestItem.AddressA, account1);
             tree.Set(TestItem.AddressB, account2);
@@ -224,7 +224,7 @@ namespace Nethermind.Store.Test.Proofs
             AccountProofCollector accountProofCollector = new(TestItem.AddressA);
             tree.Accept(accountProofCollector, tree.RootHash);
             AccountProof proof = accountProofCollector.BuildResult();
-            Assert.That(proof.StorageRoot, Is.EqualTo(TestItem._commitmentA));
+            Assert.That(proof.StorageRoot, Is.EqualTo(TestItem.KeccakA));
 
             AccountProofCollector accountProofCollector2 = new(TestItem.AddressB);
             tree.Accept(accountProofCollector2, tree.RootHash);
@@ -238,7 +238,7 @@ namespace Nethermind.Store.Test.Proofs
             StateTree tree = new();
 
             byte[] code = new byte[] { 1, 2, 3 };
-            Account account1 = Build.An.Account.WithBalance(1).WithStorageRoot(TestItem._commitmentA).TestObject;
+            Account account1 = Build.An.Account.WithBalance(1).WithStorageRoot(TestItem.KeccakA).TestObject;
             Account account2 = Build.An.Account.WithBalance(2).TestObject;
             tree.Set(TestItem.AddressA, account1);
             tree.Set(TestItem.AddressB, account2);
@@ -256,7 +256,7 @@ namespace Nethermind.Store.Test.Proofs
             StateTree tree = new();
 
             byte[] code = new byte[] { 1, 2, 3 };
-            Account account1 = Build.An.Account.WithBalance(1).WithStorageRoot(TestItem._commitmentA).TestObject;
+            Account account1 = Build.An.Account.WithBalance(1).WithStorageRoot(TestItem.KeccakA).TestObject;
             Account account2 = Build.An.Account.WithBalance(2).TestObject;
             tree.Set(TestItem.AddressA, account1);
             tree.Set(TestItem.AddressB, account2);

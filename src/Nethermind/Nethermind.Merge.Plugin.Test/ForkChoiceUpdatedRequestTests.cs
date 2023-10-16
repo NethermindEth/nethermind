@@ -16,7 +16,7 @@ namespace Nethermind.Merge.Plugin.Test
         [Test]
         public void serialization_and_deserialization_roundtrip()
         {
-            ForkchoiceStateV1 initial = new(TestItem._commitmentA, TestItem._commitmentB, TestItem._commitmentC);
+            ForkchoiceStateV1 initial = new(TestItem.KeccakA, TestItem.KeccakB, TestItem.KeccakC);
             string? serialized = _serializer.Serialize(initial);
             ForkchoiceStateV1 deserialized = _serializer.Deserialize<ForkchoiceStateV1>(serialized);
             deserialized.Should().BeEquivalentTo(initial);

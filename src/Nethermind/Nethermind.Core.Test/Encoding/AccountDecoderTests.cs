@@ -14,25 +14,25 @@ namespace Nethermind.Core.Test.Encoding
         [Test]
         public void Can_read_hashes_only()
         {
-            Account account = new Account(100).WithChangedCodeHash(TestItem._commitmentA).WithChangedStorageRoot(TestItem._commitmentB);
+            Account account = new Account(100).WithChangedCodeHash(TestItem.KeccakA).WithChangedStorageRoot(TestItem.KeccakB);
             AccountDecoder decoder = new();
             Rlp rlp = decoder.Encode(account);
             (Commitment codeHash, Commitment storageRoot) = decoder.DecodeHashesOnly(new RlpStream(rlp.Bytes));
-            Assert.That(TestItem._commitmentA, Is.EqualTo(codeHash));
-            Assert.That(TestItem._commitmentB, Is.EqualTo(storageRoot));
+            Assert.That(TestItem.KeccakA, Is.EqualTo(codeHash));
+            Assert.That(TestItem.KeccakB, Is.EqualTo(storageRoot));
         }
 
         [Test]
         public void Roundtrip_test()
         {
-            Account account = new Account(100).WithChangedCodeHash(TestItem._commitmentA).WithChangedStorageRoot(TestItem._commitmentB);
+            Account account = new Account(100).WithChangedCodeHash(TestItem.KeccakA).WithChangedStorageRoot(TestItem.KeccakB);
             AccountDecoder decoder = new();
             Rlp rlp = decoder.Encode(account);
             Account decoded = decoder.Decode(new RlpStream(rlp.Bytes))!;
             Assert.That((int)decoded.Balance, Is.EqualTo(100));
             Assert.That((int)decoded.Nonce, Is.EqualTo(0));
-            Assert.That(TestItem._commitmentA, Is.EqualTo(decoded.CodeHash));
-            Assert.That(TestItem._commitmentB, Is.EqualTo(decoded.StorageRoot));
+            Assert.That(TestItem.KeccakA, Is.EqualTo(decoded.CodeHash));
+            Assert.That(TestItem.KeccakB, Is.EqualTo(decoded.StorageRoot));
         }
     }
 }

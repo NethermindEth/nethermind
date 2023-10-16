@@ -26,16 +26,16 @@ public class HealingTrieStoreTests
     public void get_works()
     {
         TestMemDb db = new();
-        db[TestItem._commitmentA.Bytes] = new byte[] { 1, 2 };
+        db[TestItem.KeccakA.Bytes] = new byte[] { 1, 2 };
         HealingTrieStore healingTrieStore = new(db, Nethermind.Trie.Pruning.No.Pruning, Persist.EveryBlock, LimboLogs.Instance);
-        healingTrieStore.LoadRlp(TestItem._commitmentA, ReadFlags.None);
+        healingTrieStore.LoadRlp(TestItem.KeccakA, ReadFlags.None);
     }
 
     [Test]
     public void recovery_works([Values(true, false)] bool isMainThread, [Values(true, false)] bool successfullyRecovered)
     {
         byte[] rlp = { 1, 2 };
-        Commitment key = TestItem._commitmentA;
+        Commitment key = TestItem.KeccakA;
         TestMemDb db = new();
         HealingTrieStore healingTrieStore = new(db, Nethermind.Trie.Pruning.No.Pruning, Persist.EveryBlock, LimboLogs.Instance);
         ITrieNodeRecovery<IReadOnlyList<Commitment>> recovery = Substitute.For<ITrieNodeRecovery<IReadOnlyList<Commitment>>>();

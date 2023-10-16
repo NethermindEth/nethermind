@@ -94,7 +94,7 @@ namespace Nethermind.TxPool.Test.Collections
         {
             Transaction tx = Build.A.Transaction
                 .WithSenderAddress(TestItem.AddressA)
-                .WithHash(TestItem._commitmentA).TestObject;
+                .WithHash(TestItem.KeccakA).TestObject;
 
             _sortedPool.TryInsert(tx.Hash, tx);
             _sortedPool.TryGetBucket(tx.SenderAddress, out _).Should().BeTrue();

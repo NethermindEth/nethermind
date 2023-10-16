@@ -179,7 +179,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V65
         public void should_handle_NewPooledTransactionHashesMessage([Values(true, false)] bool canGossipTransactions)
         {
             _txGossipPolicy.ShouldListenToGossippedTransactions.Returns(canGossipTransactions);
-            NewPooledTransactionHashesMessage msg = new(new[] { TestItem._commitmentA, TestItem._commitmentB });
+            NewPooledTransactionHashesMessage msg = new(new[] { TestItem.KeccakA, TestItem.KeccakB });
             IMessageSerializationService serializationService = Build.A.SerializationService().WithEth65().TestObject;
 
             HandleIncomingStatusMessage();

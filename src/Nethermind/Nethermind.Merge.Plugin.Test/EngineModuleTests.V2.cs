@@ -287,7 +287,7 @@ public partial class EngineModuleTests
                 new PayloadAttributes()
                 {
                     Timestamp = 100,
-                    PrevRandao = TestItem._commitmentA,
+                    PrevRandao = TestItem.KeccakA,
                     SuggestedFeeRecipient = feeRecipient
                 })
             .Result.Data.PayloadId!;
@@ -336,7 +336,7 @@ public partial class EngineModuleTests
         ExecutionPayload executionPayload2 = await BuildAndSendNewBlockV2(rpc, chain, true, withdrawals);
         Commitment[] blockHashes = new Commitment[]
         {
-            executionPayload1.BlockHash, TestItem._commitmentA, executionPayload2.BlockHash
+            executionPayload1.BlockHash, TestItem.KeccakA, executionPayload2.BlockHash
         };
         IEnumerable<ExecutionPayloadBodyV1Result?> payloadBodies =
             rpc.engine_getPayloadBodiesByHashV1(blockHashes).Result.Data;
@@ -401,7 +401,7 @@ public partial class EngineModuleTests
     {
         using MergeTestBlockchain chain = await CreateBlockchain();
         IEngineRpcModule rpc = CreateEngineModule(chain);
-        Commitment[] hashes = Enumerable.Repeat(TestItem._commitmentA, 1025).ToArray();
+        Commitment[] hashes = Enumerable.Repeat(TestItem.KeccakA, 1025).ToArray();
         Task<ResultWrapper<IEnumerable<ExecutionPayloadBodyV1Result?>>> result =
             rpc.engine_getPayloadBodiesByHashV1(hashes);
 
@@ -669,7 +669,7 @@ public partial class EngineModuleTests
             PayloadAttributes payloadAttributes = new()
             {
                 Timestamp = chain.BlockTree.Head!.Timestamp + 1,
-                PrevRandao = TestItem._commitmentH,
+                PrevRandao = TestItem.KeccakH,
                 SuggestedFeeRecipient = TestItem.AddressF,
                 Withdrawals = withdrawal
             };
@@ -715,7 +715,7 @@ public partial class EngineModuleTests
         PayloadAttributes payloadAttributes = new()
         {
             Timestamp = chain.BlockTree.Head!.Timestamp + 2,
-            PrevRandao = TestItem._commitmentH,
+            PrevRandao = TestItem.KeccakH,
             SuggestedFeeRecipient = TestItem.AddressF,
             Withdrawals = new[] { TestItem.WithdrawalA_1Eth }
         };
@@ -737,7 +737,7 @@ public partial class EngineModuleTests
         PayloadAttributes attrs = new()
         {
             Timestamp = 1,
-            PrevRandao = TestItem._commitmentH,
+            PrevRandao = TestItem.KeccakH,
             SuggestedFeeRecipient = TestItem.AddressF,
             Withdrawals = new[] { TestItem.WithdrawalA_1Eth }
         };

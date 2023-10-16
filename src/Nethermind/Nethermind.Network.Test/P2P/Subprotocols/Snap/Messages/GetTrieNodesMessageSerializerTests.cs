@@ -19,7 +19,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.Messages
             GetTrieNodesMessage msg = new()
             {
                 RequestId = MessageConstants.Random.NextLong(),
-                RootHash = TestItem._commitmentA,
+                RootHash = TestItem.KeccakA,
                 Paths = Array.Empty<PathGroup>(),
                 Bytes = 10
             };
@@ -34,7 +34,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.Messages
             GetTrieNodesMessage msg = new()
             {
                 RequestId = MessageConstants.Random.NextLong(),
-                RootHash = TestItem._commitmentA,
+                RootHash = TestItem.KeccakA,
                 Paths = new PathGroup[]
                     {
                         new PathGroup(){Group = new []{TestItem.RandomDataA}}
@@ -52,7 +52,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.Messages
             GetTrieNodesMessage msg = new()
             {
                 RequestId = MessageConstants.Random.NextLong(),
-                RootHash = TestItem._commitmentA,
+                RootHash = TestItem.KeccakA,
                 Paths = new PathGroup[]
                     {
                         new PathGroup(){Group = new []{TestItem.RandomDataA, TestItem.RandomDataB}},
@@ -71,7 +71,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.Messages
             GetTrieNodesMessage msg = new()
             {
                 RequestId = MessageConstants.Random.NextLong(),
-                RootHash = TestItem._commitmentA,
+                RootHash = TestItem.KeccakA,
                 Paths = new PathGroup[]
                     {
                         new PathGroup(){Group = new []{TestItem.RandomDataA, TestItem.RandomDataB, TestItem.RandomDataD}},

@@ -127,7 +127,7 @@ public class TraceStoreRpcModuleTests
             Commitment dbBlock = BlockFinder.Head!.Hash!;
             DbTrace = new() { BlockHash = dbBlock, TransactionHash = dbTransaction };
             DbTraces = new[] { DbTrace };
-            Commitment nonDbTransaction = TestItem._commitmentA;
+            Commitment nonDbTransaction = TestItem.KeccakA;
             NonDbTraces = new[] { new ParityLikeTxTrace() { BlockHash = dbBlock, TransactionHash = nonDbTransaction } };
             Store.Set(dbBlock, serializer.Serialize(DbTraces));
             ReceiptFinder.FindBlockHash(dbTransaction).Returns(dbBlock);

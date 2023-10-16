@@ -33,7 +33,7 @@ public class Eip4788Tests : TestBlockchain
 
     Block CreateBlock(IWorldState testState, IReleaseSpec spec)
     {
-        Commitment parentBeaconBlockRoot = TestItem._commitmentG;
+        Commitment parentBeaconBlockRoot = TestItem.KeccakG;
 
         byte[] bytecode = Prepare
             .EvmCode

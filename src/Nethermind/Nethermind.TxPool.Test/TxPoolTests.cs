@@ -791,7 +791,7 @@ namespace Nethermind.TxPool.Test
             _txPool = CreatePool();
             var transaction = AddTransactionToPool();
             _txPool.RemoveTransaction(transaction.Hash);
-            _txPool.RemoveTransaction(TestItem._commitmentA);
+            _txPool.RemoveTransaction(TestItem.KeccakA);
             _txPool.SubmitTx(transaction, TxHandlingOptions.None);
             Assert.That(_txPool.GetOwnPendingTransactions().Length, Is.EqualTo(0));
         }
@@ -1187,8 +1187,8 @@ namespace Nethermind.TxPool.Test
         public void should_return_false_when_asking_for_not_known_txHash()
         {
             _txPool = CreatePool();
-            _txPool.IsKnown(TestItem._commitmentA).Should().Be(false);
-            Transaction tx = Build.A.Transaction.WithHash(TestItem._commitmentA).TestObject;
+            _txPool.IsKnown(TestItem.KeccakA).Should().Be(false);
+            Transaction tx = Build.A.Transaction.WithHash(TestItem.KeccakA).TestObject;
             _txPool.RemoveTransaction(tx.Hash).Should().Be(false);
         }
 

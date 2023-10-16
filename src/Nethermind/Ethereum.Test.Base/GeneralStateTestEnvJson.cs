@@ -15,7 +15,7 @@ namespace Ethereum.Test.Base
         public long CurrentNumber { get; set; }
         public ulong CurrentTimestamp { get; set; }
         public UInt256? CurrentBaseFee { get; set; }
-        public Keccak PreviousHash { get; set; }
-        public Keccak? CurrentRandom { get; set; }
+        public Commitment PreviousHash { get; set; }
+        public Commitment? CurrentRandom { get; set; }
     }
 }

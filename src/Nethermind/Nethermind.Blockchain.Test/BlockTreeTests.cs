@@ -311,7 +311,7 @@ namespace Nethermind.Blockchain.Test
             _headersDb = new TestMemDb();
             TestMemDb blocksInfosDb = new TestMemDb();
 
-            Rlp chainLevel = Rlp.Encode(new ChainLevelInfo(true, new BlockInfo(TestItem._commitmentA, 1)));
+            Rlp chainLevel = Rlp.Encode(new ChainLevelInfo(true, new BlockInfo(TestItem.KeccakA, 1)));
             blocksInfosDb.ReadFunc = (key) =>
             {
                 if (!Bytes.AreEqual(key, BlockTree.DeletePointerAddressInDb.Bytes))
@@ -755,8 +755,8 @@ namespace Nethermind.Blockchain.Test
         public void ForkChoiceUpdated_update_hashes()
         {
             BlockTree blockTree = BuildBlockTree();
-            Commitment finalizedBlockHash = TestItem._commitmentB;
-            Commitment safeBlockHash = TestItem._commitmentC;
+            Commitment finalizedBlockHash = TestItem.KeccakB;
+            Commitment safeBlockHash = TestItem.KeccakC;
             blockTree.ForkChoiceUpdated(finalizedBlockHash, safeBlockHash);
             Assert.That(blockTree.FinalizedHash, Is.EqualTo(finalizedBlockHash));
             Assert.That(blockTree.SafeHash, Is.EqualTo(safeBlockHash));

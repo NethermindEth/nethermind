@@ -18,7 +18,7 @@ namespace Nethermind.Core.Test.Encoding
         [TestCase(false)]
         public void Can_do_roundtrip(bool valueDecode)
         {
-            LogEntry logEntry = new(TestItem.AddressA, new byte[] { 1, 2, 3 }, new[] { TestItem._commitmentA, TestItem._commitmentB });
+            LogEntry logEntry = new(TestItem.AddressA, new byte[] { 1, 2, 3 }, new[] { TestItem.KeccakA, TestItem.KeccakB });
             Rlp rlp = Rlp.Encode(logEntry);
             LogEntry decoded = valueDecode ? Rlp.Decode<LogEntry>(rlp.Bytes.AsSpan()) : Rlp.Decode<LogEntry>(rlp);
 
@@ -30,7 +30,7 @@ namespace Nethermind.Core.Test.Encoding
         [Test]
         public void Can_do_roundtrip_ref_struct()
         {
-            LogEntry logEntry = new(TestItem.AddressA, new byte[] { 1, 2, 3 }, new[] { TestItem._commitmentA, TestItem._commitmentB });
+            LogEntry logEntry = new(TestItem.AddressA, new byte[] { 1, 2, 3 }, new[] { TestItem.KeccakA, TestItem.KeccakB });
             Rlp rlp = Rlp.Encode(logEntry);
             Rlp.ValueDecoderContext valueDecoderContext = new(rlp.Bytes);
             LogEntryDecoder.DecodeStructRef(ref valueDecoderContext, RlpBehaviors.None, out LogEntryStructRef decoded);
@@ -58,7 +58,7 @@ namespace Nethermind.Core.Test.Encoding
         [Test]
         public void Can_do_roundtrip_rlp_stream()
         {
-            LogEntry logEntry = new(TestItem.AddressA, new byte[] { 1, 2, 3 }, new[] { TestItem._commitmentA, TestItem._commitmentB });
+            LogEntry logEntry = new(TestItem.AddressA, new byte[] { 1, 2, 3 }, new[] { TestItem.KeccakA, TestItem.KeccakB });
             LogEntryDecoder decoder = LogEntryDecoder.Instance;
 
             Rlp encoded = decoder.Encode(logEntry);
@@ -72,7 +72,7 @@ namespace Nethermind.Core.Test.Encoding
         [Test]
         public void Rlp_stream_and_standard_have_same_results()
         {
-            LogEntry logEntry = new(TestItem.AddressA, new byte[] { 1, 2, 3 }, new[] { TestItem._commitmentA, TestItem._commitmentB });
+            LogEntry logEntry = new(TestItem.AddressA, new byte[] { 1, 2, 3 }, new[] { TestItem.KeccakA, TestItem.KeccakB });
             LogEntryDecoder decoder = LogEntryDecoder.Instance;
 
             Rlp rlpStreamResult = decoder.Encode(logEntry);

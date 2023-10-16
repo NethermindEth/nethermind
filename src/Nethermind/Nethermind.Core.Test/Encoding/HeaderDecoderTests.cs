@@ -183,8 +183,8 @@ public class HeaderDecoderTests
     public static IEnumerable<object?[]> CancunFieldsSource()
     {
         yield return new object?[] { null, null, null };
-        yield return new object?[] { 0ul, 0ul, TestItem._commitmentA };
-        yield return new object?[] { 1ul, 2ul, TestItem._commitmentB };
+        yield return new object?[] { 0ul, 0ul, TestItem.KeccakA };
+        yield return new object?[] { 1ul, 2ul, TestItem.KeccakB };
         yield return new object?[] { ulong.MaxValue / 2, ulong.MaxValue, null };
         yield return new object?[] { ulong.MaxValue, ulong.MaxValue / 2, null };
     }

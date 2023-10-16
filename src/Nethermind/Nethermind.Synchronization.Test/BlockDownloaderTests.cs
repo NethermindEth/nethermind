@@ -1347,7 +1347,7 @@ namespace Nethermind.Synchronization.Test
                             .WithStatusCode(StatusCode.Success)
                             .WithGasUsed(10)
                             .WithBloom(Bloom.Empty)
-                            .WithLogs(Build.A.LogEntry.WithAddress(t.SenderAddress!).WithTopics(TestItem._commitmentA).TestObject)
+                            .WithLogs(Build.A.LogEntry.WithAddress(t.SenderAddress!).WithTopics(TestItem.KeccakA).TestObject)
                             .TestObject)
                         .ToArray();
 

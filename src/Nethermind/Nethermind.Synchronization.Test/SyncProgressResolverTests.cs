@@ -69,7 +69,7 @@ namespace Nethermind.Synchronization.Test
             ProgressTracker progressTracker = new(blockTree, stateDb, LimboLogs.Instance);
 
             SyncProgressResolver syncProgressResolver = new(blockTree, receiptStorage, stateDb, NullTrieNodeResolver.Instance, progressTracker, syncConfig, LimboLogs.Instance);
-            Block head = Build.A.Block.WithHeader(Build.A.BlockHeader.WithNumber(5).WithStateRoot(TestItem._commitmentA).TestObject).TestObject;
+            Block head = Build.A.Block.WithHeader(Build.A.BlockHeader.WithNumber(5).WithStateRoot(TestItem.KeccakA).TestObject).TestObject;
             blockTree.Head.Returns(head);
             blockTree.BestSuggestedHeader.Returns(head.Header);
             stateDb[head.StateRoot!.Bytes] = new byte[] { 1 };
@@ -89,8 +89,8 @@ namespace Nethermind.Synchronization.Test
             ProgressTracker progressTracker = new(blockTree, stateDb, LimboLogs.Instance);
 
             SyncProgressResolver syncProgressResolver = new(blockTree, receiptStorage, stateDb, NullTrieNodeResolver.Instance, progressTracker, syncConfig, LimboLogs.Instance);
-            Block head = Build.A.Block.WithHeader(Build.A.BlockHeader.WithNumber(5).WithStateRoot(TestItem._commitmentA).TestObject).TestObject;
-            BlockHeader suggested = Build.A.BlockHeader.WithNumber(6).WithStateRoot(TestItem._commitmentB).TestObject;
+            Block head = Build.A.Block.WithHeader(Build.A.BlockHeader.WithNumber(5).WithStateRoot(TestItem.KeccakA).TestObject).TestObject;
+            BlockHeader suggested = Build.A.BlockHeader.WithNumber(6).WithStateRoot(TestItem.KeccakB).TestObject;
             blockTree.Head.Returns(head);
             blockTree.BestSuggestedHeader.Returns(suggested);
             blockTree.FindHeader(Arg.Any<Commitment>(), BlockTreeLookupOptions.TotalDifficultyNotNeeded).Returns(head.Header);
@@ -113,8 +113,8 @@ namespace Nethermind.Synchronization.Test
             ProgressTracker progressTracker = new(blockTree, stateDb, LimboLogs.Instance);
 
             SyncProgressResolver syncProgressResolver = new(blockTree, receiptStorage, stateDb, NullTrieNodeResolver.Instance, progressTracker, syncConfig, LimboLogs.Instance);
-            Block head = Build.A.Block.WithHeader(Build.A.BlockHeader.WithNumber(5).WithStateRoot(TestItem._commitmentA).TestObject).TestObject;
-            BlockHeader suggested = Build.A.BlockHeader.WithNumber(6).WithStateRoot(TestItem._commitmentB).TestObject;
+            Block head = Build.A.Block.WithHeader(Build.A.BlockHeader.WithNumber(5).WithStateRoot(TestItem.KeccakA).TestObject).TestObject;
+            BlockHeader suggested = Build.A.BlockHeader.WithNumber(6).WithStateRoot(TestItem.KeccakB).TestObject;
             blockTree.Head.Returns(head);
             blockTree.BestSuggestedHeader.Returns(suggested);
             blockTree.FindHeader(Arg.Any<Commitment>(), BlockTreeLookupOptions.TotalDifficultyNotNeeded).Returns(head.Header);
@@ -158,7 +158,7 @@ namespace Nethermind.Synchronization.Test
             };
             ProgressTracker progressTracker = new(blockTree, stateDb, LimboLogs.Instance);
 
-            blockTree.LowestInsertedHeader.Returns(Build.A.BlockHeader.WithNumber(2).WithStateRoot(TestItem._commitmentA).TestObject);
+            blockTree.LowestInsertedHeader.Returns(Build.A.BlockHeader.WithNumber(2).WithStateRoot(TestItem.KeccakA).TestObject);
 
             SyncProgressResolver syncProgressResolver = new(blockTree, receiptStorage, stateDb, NullTrieNodeResolver.Instance, progressTracker, syncConfig, LimboLogs.Instance);
             Assert.False(syncProgressResolver.IsFastBlocksHeadersFinished());
@@ -180,7 +180,7 @@ namespace Nethermind.Synchronization.Test
             };
             ProgressTracker progressTracker = new(blockTree, stateDb, LimboLogs.Instance);
 
-            blockTree.LowestInsertedHeader.Returns(Build.A.BlockHeader.WithNumber(1).WithStateRoot(TestItem._commitmentA).TestObject);
+            blockTree.LowestInsertedHeader.Returns(Build.A.BlockHeader.WithNumber(1).WithStateRoot(TestItem.KeccakA).TestObject);
             blockTree.LowestInsertedBodyNumber.Returns(2);
 
             SyncProgressResolver syncProgressResolver = new(blockTree, receiptStorage, stateDb, NullTrieNodeResolver.Instance, progressTracker, syncConfig, LimboLogs.Instance);
@@ -203,7 +203,7 @@ namespace Nethermind.Synchronization.Test
             };
             ProgressTracker progressTracker = new(blockTree, stateDb, LimboLogs.Instance);
 
-            blockTree.LowestInsertedHeader.Returns(Build.A.BlockHeader.WithNumber(1).WithStateRoot(TestItem._commitmentA).TestObject);
+            blockTree.LowestInsertedHeader.Returns(Build.A.BlockHeader.WithNumber(1).WithStateRoot(TestItem.KeccakA).TestObject);
             blockTree.LowestInsertedBodyNumber.Returns(1);
             receiptStorage.LowestInsertedReceiptBlockNumber.Returns(2);
 
@@ -227,7 +227,7 @@ namespace Nethermind.Synchronization.Test
             };
             ProgressTracker progressTracker = new(blockTree, stateDb, LimboLogs.Instance);
 
-            blockTree.LowestInsertedHeader.Returns(Build.A.BlockHeader.WithNumber(1).WithStateRoot(TestItem._commitmentA).TestObject);
+            blockTree.LowestInsertedHeader.Returns(Build.A.BlockHeader.WithNumber(1).WithStateRoot(TestItem.KeccakA).TestObject);
             blockTree.LowestInsertedBodyNumber.Returns(2);
             receiptStorage.LowestInsertedReceiptBlockNumber.Returns(1);
 
@@ -250,7 +250,7 @@ namespace Nethermind.Synchronization.Test
             };
             ProgressTracker progressTracker = new(blockTree, stateDb, LimboLogs.Instance);
 
-            blockTree.LowestInsertedHeader.Returns(Build.A.BlockHeader.WithNumber(1).WithStateRoot(TestItem._commitmentA).TestObject);
+            blockTree.LowestInsertedHeader.Returns(Build.A.BlockHeader.WithNumber(1).WithStateRoot(TestItem.KeccakA).TestObject);
             blockTree.LowestInsertedBodyNumber.Returns(1);
             receiptStorage.LowestInsertedReceiptBlockNumber.Returns(2);
 

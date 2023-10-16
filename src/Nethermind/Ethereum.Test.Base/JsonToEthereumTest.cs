@@ -89,8 +89,8 @@ namespace Ethereum.Test.Base
             }
 
             BlockHeader header = new(
-                new Keccak(headerJson.ParentHash),
-                new Keccak(headerJson.UncleHash),
+                new Commitment(headerJson.ParentHash),
+                new Commitment(headerJson.UncleHash),
                 new Address(headerJson.Coinbase),
                 Bytes.FromHexString(headerJson.Difficulty).ToUInt256(),
                 (long)Bytes.FromHexString(headerJson.Number).ToUInt256(),
@@ -101,12 +101,12 @@ namespace Ethereum.Test.Base
 
             header.Bloom = new Bloom(Bytes.FromHexString(headerJson.Bloom));
             header.GasUsed = (long)Bytes.FromHexString(headerJson.GasUsed).ToUnsignedBigInteger();
-            header.Hash = new Keccak(headerJson.Hash);
-            header.MixHash = new Keccak(headerJson.MixHash);
+            header.Hash = new Commitment(headerJson.Hash);
+            header.MixHash = new Commitment(headerJson.MixHash);
             header.Nonce = (ulong)Bytes.FromHexString(headerJson.Nonce).ToUnsignedBigInteger();
-            header.ReceiptsRoot = new Keccak(headerJson.ReceiptTrie);
-            header.StateRoot = new Keccak(headerJson.StateRoot);
-            header.TxRoot = new Keccak(headerJson.TransactionsTrie);
+            header.ReceiptsRoot = new Commitment(headerJson.ReceiptTrie);
+            header.StateRoot = new Commitment(headerJson.StateRoot);
+            header.TxRoot = new Commitment(headerJson.TransactionsTrie);
             return header;
         }
 
@@ -254,7 +254,7 @@ namespace Ethereum.Test.Base
             test.Network = testJson.EthereumNetwork;
             test.NetworkAfterTransition = testJson.EthereumNetworkAfterTransition;
             test.TransitionForkActivation = testJson.TransitionForkActivation;
-            test.LastBlockHash = new Keccak(testJson.LastBlockHash);
+            test.LastBlockHash = new Commitment(testJson.LastBlockHash);
             test.GenesisRlp = testJson.GenesisRlp == null ? null : new Rlp(Bytes.FromHexString(testJson.GenesisRlp));
             test.GenesisBlockHeader = testJson.GenesisBlockHeader;
             test.Blocks = testJson.Blocks;

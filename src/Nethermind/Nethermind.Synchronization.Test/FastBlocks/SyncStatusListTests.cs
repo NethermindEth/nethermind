@@ -49,7 +49,7 @@ namespace Nethermind.Synchronization.Test.FastBlocks
         public void Will_not_go_below_ancient_barrier()
         {
             IBlockTree blockTree = Substitute.For<IBlockTree>();
-            blockTree.FindCanonicalBlockInfo(Arg.Any<long>()).Returns(new BlockInfo(TestItem._commitmentA, 0));
+            blockTree.FindCanonicalBlockInfo(Arg.Any<long>()).Returns(new BlockInfo(TestItem.KeccakA, 0));
             SyncStatusList syncStatusList = new SyncStatusList(blockTree, 1000, null, 900);
 
             BlockInfo?[] infos = new BlockInfo?[500];

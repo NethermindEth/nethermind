@@ -103,7 +103,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Wit
         {
             Context context = new();
             context.SyncServer.GetBlockWitnessHashes(Keccak.Zero)
-                .Returns(new[] { TestItem._commitmentA, TestItem._commitmentB });
+                .Returns(new[] { TestItem.KeccakA, TestItem.KeccakB });
 
             context.WitProtocolHandler.Init();
 
@@ -120,7 +120,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Wit
         public async Task Can_request_non_empty_witness()
         {
             Context context = new();
-            BlockWitnessHashesMessage msg = new(5, new[] { TestItem._commitmentA, TestItem._commitmentB });
+            BlockWitnessHashesMessage msg = new(5, new[] { TestItem.KeccakA, TestItem.KeccakB });
             BlockWitnessHashesMessageSerializer serializer = new();
             var serialized = serializer.Serialize(msg);
 
@@ -130,9 +130,9 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Wit
             context.Session
                 // check if you did not enable the Init -> send message diag
                 .When(s => s.DeliverMessage(
-                    Arg.Is<GetBlockWitnessHashesMessage>(msg => msg.BlockHash == TestItem._commitmentA)))
+                    Arg.Is<GetBlockWitnessHashesMessage>(msg => msg.BlockHash == TestItem.KeccakA)))
                 .Do(_ => context.WitProtocolHandler.HandleMessage(new Packet("wit", WitMessageCode.BlockWitnessHashes, serialized)));
-            Task result = context.WitProtocolHandler.GetBlockWitnessHashes(TestItem._commitmentA, CancellationToken.None);
+            Task result = context.WitProtocolHandler.GetBlockWitnessHashes(TestItem.KeccakA, CancellationToken.None);
             await result;
             result.Status.Should().Be(TaskStatus.RanToCompletion);
         }

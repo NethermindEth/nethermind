@@ -9,7 +9,7 @@ namespace Ethereum.Test.Base
 {
     public class HalfBlockchainTestJson : BlockchainTestJson
     {
-        public new Keccak PostState { get; set; }
+        public new Commitment PostState { get; set; }
     }
 
     public class BlockchainTestJson
@@ -27,7 +27,7 @@ namespace Ethereum.Test.Base
         public Dictionary<string, AccountStateJson>? Pre { get; set; }
         public Dictionary<string, AccountStateJson>? PostState { get; set; }
 
-        public Keccak? PostStateHash { get; set; }
+        public Commitment? PostStateHash { get; set; }
 
         public string? SealEngine { get; set; }
         public string? LoadFailure { get; set; }

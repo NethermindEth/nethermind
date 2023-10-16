@@ -69,7 +69,7 @@ namespace Nethermind.Facade.Test.Proxy
         [Test]
         public async Task eth_getTransactionReceipt_should_invoke_client_method()
         {
-            var hash = TestItem._commitmentA;
+            var hash = TestItem.KeccakA;
             await _proxy.eth_getTransactionReceipt(hash);
             await _client.Received().SendAsync<ReceiptModel>(nameof(_proxy.eth_getTransactionReceipt), hash);
         }
@@ -97,7 +97,7 @@ namespace Nethermind.Facade.Test.Proxy
         [Test]
         public async Task eth_getTransactionByHash_should_invoke_client_method()
         {
-            var hash = TestItem._commitmentA;
+            var hash = TestItem.KeccakA;
             await _proxy.eth_getTransactionByHash(hash);
             await _client.Received().SendAsync<TransactionModel>(nameof(_proxy.eth_getTransactionByHash), hash);
         }
@@ -112,7 +112,7 @@ namespace Nethermind.Facade.Test.Proxy
         [Test]
         public async Task eth_getBlockByHash_should_invoke_client_method()
         {
-            var hash = TestItem._commitmentA;
+            var hash = TestItem.KeccakA;
             const bool returnFullTransactionObjects = true;
             await _proxy.eth_getBlockByHash(hash, returnFullTransactionObjects);
             await _client.Received().SendAsync<BlockModel<Commitment>>(nameof(_proxy.eth_getBlockByHash),

@@ -16,17 +16,17 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Les
         {
             byte[][] proofs = new byte[][]
             {
-                TestItem._commitmentA.BytesToArray(),
-                TestItem._commitmentB.BytesToArray(),
-                TestItem._commitmentC.BytesToArray(),
-                TestItem._commitmentD.BytesToArray(),
-                TestItem._commitmentE.BytesToArray(),
-                TestItem._commitmentF.BytesToArray(),
+                TestItem.KeccakA.BytesToArray(),
+                TestItem.KeccakB.BytesToArray(),
+                TestItem.KeccakC.BytesToArray(),
+                TestItem.KeccakD.BytesToArray(),
+                TestItem.KeccakE.BytesToArray(),
+                TestItem.KeccakF.BytesToArray(),
             };
             byte[][] auxData = new byte[][]
             {
-                TestItem._commitmentG.BytesToArray(),
-                TestItem._commitmentH.BytesToArray(),
+                TestItem.KeccakG.BytesToArray(),
+                TestItem.KeccakH.BytesToArray(),
                 Rlp.Encode(Build.A.BlockHeader.TestObject).Bytes,
             };
             var message = new HelperTrieProofsMessage(proofs, auxData, 324, 734);

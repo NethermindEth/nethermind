@@ -300,8 +300,8 @@ namespace Nethermind.Network.Test
                 StatusMessage msg = new();
                 msg.TotalDifficulty = 1;
                 msg.NetworkId = networkId;
-                msg.GenesisHash = TestItem._commitmentA;
-                msg.BestHash = TestItem._commitmentA;
+                msg.GenesisHash = TestItem.KeccakA;
+                msg.BestHash = TestItem.KeccakA;
                 msg.ProtocolVersion = 66;
 
                 return ReceiveStatus(msg);
@@ -312,8 +312,8 @@ namespace Nethermind.Network.Test
                 StatusMessage msg = new();
                 msg.TotalDifficulty = 1;
                 msg.NetworkId = TestBlockchainIds.NetworkId;
-                msg.GenesisHash = TestItem._commitmentB;
-                msg.BestHash = TestItem._commitmentB;
+                msg.GenesisHash = TestItem.KeccakB;
+                msg.BestHash = TestItem.KeccakB;
                 msg.ProtocolVersion = 66;
 
                 return ReceiveStatus(msg);
