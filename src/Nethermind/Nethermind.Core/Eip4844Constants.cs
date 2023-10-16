@@ -22,13 +22,13 @@ public class Eip4844Constants
     /// Gets the <c>BLOB_GASPRICE_UPDATE_FRACTION</c> parameter.
     /// </summary>
     /// <remarks>Defaults to 3338477.</remarks>
-    public static UInt256 BlobGasPriceUpdateFraction { get; set; } = 3338477;
+    public static UInt256 BlobGasPriceUpdateFraction { get; private set; } = 3338477;
 
     /// <summary>
     /// Gets the <c>MAX_BLOB_GAS_PER_BLOCK</c> parameter.
     /// </summary>
     /// <remarks>Defaults to 786432.</remarks>
-    public static ulong MaxBlobGasPerBlock { get; set; } = GasPerBlob * 6;
+    public static ulong MaxBlobGasPerBlock { get; private set; } = GasPerBlob * 6;
 
     public static ulong MaxBlobGasPerTransaction => MaxBlobGasPerBlock;
 
@@ -36,11 +36,22 @@ public class Eip4844Constants
     /// Gets the <c>MIN_BLOB_GASPRICE</c> parameter, in wei.
     /// </summary>
     /// <remarks>Defaults to 1.</remarks>
-    public static UInt256 MinBlobGasPrice { get; set; } = 1;
+    public static UInt256 MinBlobGasPrice { get; private set; } = 1;
 
     /// <summary>
     /// Gets the <c>TARGET_BLOB_GAS_PER_BLOCK</c> parameter.
     /// </summary>
     /// <remarks>Defaults to 393216.</remarks>
-    public static ulong TargetBlobGasPerBlock { get; set; } = GasPerBlob * 3;
+    public static ulong TargetBlobGasPerBlock { get; private set; } = GasPerBlob * 3;
+
+    // The parameter mutators are kept separate deliberately to ensure no accidental value changes.
+    #region Mutators
+    public static void OverrideBlobGasPriceUpdateFraction(UInt256 value) => BlobGasPriceUpdateFraction = value;
+
+    public static void OverrideMaxBlobGasPerBlock(ulong value) => MaxBlobGasPerBlock = value;
+
+    public static void OverrideMinBlobGasPrice(UInt256 value) => MinBlobGasPrice = value;
+
+    public static void OverrideTargetBlobGasPerBlock(ulong value) => TargetBlobGasPerBlock = value;
+    #endregion
 }

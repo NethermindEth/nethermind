@@ -171,10 +171,17 @@ public class ChainSpecLoader : IChainSpecLoader
         Eip1559Constants.ForkBaseFee = chainSpec.Parameters.Eip1559BaseFeeInitialValue;
         Eip1559Constants.BaseFeeMaxChangeDenominator = chainSpec.Parameters.Eip1559BaseFeeMaxChangeDenominator;
 
-        Eip4844Constants.BlobGasPriceUpdateFraction = chainSpecJson.Params.BlobGasPriceUpdateFraction ?? Eip4844Constants.BlobGasPriceUpdateFraction;
-        Eip4844Constants.MaxBlobGasPerBlock = chainSpecJson.Params.MaxBlobGasPerBlock ?? Eip4844Constants.MaxBlobGasPerBlock;
-        Eip4844Constants.MinBlobGasPrice = chainSpecJson.Params.MinBlobGasPrice ?? Eip4844Constants.MinBlobGasPrice;
-        Eip4844Constants.TargetBlobGasPerBlock = chainSpecJson.Params.TargetBlobGasPerBlock ?? Eip4844Constants.TargetBlobGasPerBlock;
+        if (chainSpecJson.Params.BlobGasPriceUpdateFraction.HasValue)
+            Eip4844Constants.OverrideBlobGasPriceUpdateFraction(chainSpecJson.Params.BlobGasPriceUpdateFraction.Value);
+
+        if (chainSpecJson.Params.MaxBlobGasPerBlock.HasValue)
+            Eip4844Constants.OverrideMaxBlobGasPerBlock(chainSpecJson.Params.MaxBlobGasPerBlock.Value);
+
+        if (chainSpecJson.Params.MinBlobGasPrice.HasValue)
+            Eip4844Constants.OverrideMinBlobGasPrice(chainSpecJson.Params.MinBlobGasPrice.Value);
+
+        if (chainSpecJson.Params.TargetBlobGasPerBlock.HasValue)
+            Eip4844Constants.OverrideTargetBlobGasPerBlock(chainSpecJson.Params.TargetBlobGasPerBlock.Value);
     }
 
     private static void ValidateParams(ChainSpecParamsJson parameters)
