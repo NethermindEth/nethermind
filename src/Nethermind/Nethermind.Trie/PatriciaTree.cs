@@ -443,6 +443,7 @@ namespace Nethermind.Trie
 
         private byte[]? GetByPath(ReadOnlySpan<byte> rawKey, Keccak? rootHash = null)
         {
+            Keccak cacheProbeRoot = rootHash;
             if (rootHash is null)
             {
                 if (RootRef is null) return null;
@@ -459,7 +460,7 @@ namespace Nethermind.Trie
                         RootRef.ResolveNode(TrieStore);
                         RootRef.ResolveKey(TrieStore, true);
                     }
-                    rootHash = RootRef.Keccak;
+                    cacheProbeRoot = RootRef.Keccak;
                 }
             }
 
@@ -467,22 +468,33 @@ namespace Nethermind.Trie
             Span<byte> nibbleBytes = stackalloc byte[StoreNibblePathPrefix.Length + rawKey.Length * 2];
             StoreNibblePathPrefix.CopyTo(nibbleBytes);
             Nibbles.BytesToNibbleBytes(rawKey, nibbleBytes[StoreNibblePathPrefix.Length..]);
-            TrieNode? node = TrieStore.FindCachedOrUnknown(nibbleBytes[StoreNibblePathPrefix.Length..], StoreNibblePathPrefix, rootHash);
+            TrieNode? node = TrieStore.FindCachedOrUnknown(nibbleBytes[StoreNibblePathPrefix.Length..], StoreNibblePathPrefix, cacheProbeRoot);
 
             if (node is null)
                 return null;
 
-            if (RootRef?.NodeType == NodeType.Unknown)
+            // if not in cached nodes - then check persisted nodes
+            if (node.NodeType == NodeType.Unknown)
             {
-                RootRef.ResolveNode(TrieStore);
-                RootRef.ResolveKey(TrieStore, true);
-                if (rootHash != RootRef.Keccak)
-                    return null;
-            }
+                //check the root of the persisted nodes
+                if (rootHash is not null)
+                {
+                    Keccak? persistedRootHash;
+                    if (RootRef?.IsPersisted == true && RootRef?.NodeType == NodeType.Unknown)
+                    {
+                        RootRef.ResolveNode(TrieStore);
+                        RootRef.ResolveKey(TrieStore, true);
+                        persistedRootHash = RootRef.Keccak;
+                    }
+                    else
+                    {
+                        persistedRootHash = GetPersistedRoot();
+                    }
 
-            if (node.NodeType != NodeType.Leaf)
-            {
-                // if not in cached nodes - then check persisted nodes`
+                    if (rootHash != persistedRootHash)
+                        throw new InvalidOperationException($"Attempting to get data for state having different root than persisted. Trie type: {TrieType} | Data requested: {rawKey.ToHexString()} | Root requested: {rootHash} | Root at DB: {RootRef?.Keccak}");
+                }
+
                 byte[]? nodeData = TrieStore.TryLoadRlp(nibbleBytes, null);
                 if (nodeData is null) return null;
 
@@ -491,6 +503,18 @@ namespace Nethermind.Trie
             }
 
             return node.Value.ToArray();
+        }
+
+        private Keccak? GetPersistedRoot()
+        {
+            byte[]? nodeData = TrieStore.TryLoadRlp(Array.Empty<byte>(), null);
+            if (nodeData is null)
+                return null;
+
+            TrieNode node = new(NodeType.Unknown, nodeData);
+            node.ResolveNode(TrieStore);
+            node.ResolveKey(TrieStore, true);
+            return node.Keccak;
         }
 
         [SkipLocalsInit]
@@ -917,12 +941,7 @@ namespace Nethermind.Trie
                 return traverseContext.UpdateValue;
             }
 
-            TrieNode childNode = Capability switch
-            {
-                TrieNodeResolverCapability.Hash => node.GetChild(TrieStore, traverseContext.UpdatePath[traverseContext.CurrentIndex]),
-                TrieNodeResolverCapability.Path => node.GetChild(TrieStore, traverseContext.UpdatePath.Slice(0, traverseContext.CurrentIndex + 1).ToArray(), traverseContext.UpdatePath[traverseContext.CurrentIndex]),
-                _ => throw new ArgumentOutOfRangeException()
-            };
+            TrieNode childNode = node.GetChild(TrieStore, traverseContext.UpdatePath[traverseContext.CurrentIndex]);
 
             if (traverseContext.IsUpdate)
             {
@@ -1136,12 +1155,7 @@ namespace Nethermind.Trie
                     _nodeStack.Push(new StackedNode(node, 0));
                 }
 
-                TrieNode next = Capability switch
-                {
-                    TrieNodeResolverCapability.Hash => node.GetChild(TrieStore, 0),
-                    TrieNodeResolverCapability.Path => node.GetChild(TrieStore, traverseContext.GetCurrentPath(currentIndex).ToArray(), 0),
-                    _ => throw new ArgumentOutOfRangeException()
-                };
+                TrieNode next = node.GetChild(TrieStore, 0);
 
                 if (next is null)
                 {

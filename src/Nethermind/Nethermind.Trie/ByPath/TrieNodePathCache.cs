@@ -22,6 +22,8 @@ public class TrieNodePathCache : IPathTrieNodeCache
     {
         private readonly SortedSet<NodeAtBlock> _nodes;
         private readonly ReaderWriterLockSlim _lock = new();
+        private bool _memRecalc = false;
+        private int _usedMemory = 0;
 
         public NodeVersions()
         {
@@ -37,6 +39,7 @@ public class TrieNodePathCache : IPathTrieNodeCache
                 NodeAtBlock nad = new(blockNumber, node);
                 _nodes.Remove(nad);
                 _nodes.Add(nad);
+                _memRecalc = true;
             }
             finally
             {
@@ -74,6 +77,26 @@ public class TrieNodePathCache : IPathTrieNodeCache
             finally
             {
                 _lock.ExitUpgradeableReadLock();
+            }
+        }
+
+        public int ClearUntil(long blockNumber)
+        {
+            try
+            {
+                _lock.EnterWriteLock();
+                if (blockNumber < _nodes.Min.BlockNumber)
+                    return 0;
+
+                SortedSet<NodeAtBlock> viewUntilBlock = _nodes.GetViewBetween(_nodes.Min, new NodeAtBlock(blockNumber));
+                int ret = viewUntilBlock.Count;
+                viewUntilBlock.Clear();
+                _memRecalc = true;
+                return ret;
+            }
+            finally
+            {
+                _lock.ExitWriteLock();
             }
         }
 
@@ -121,6 +144,32 @@ public class TrieNodePathCache : IPathTrieNodeCache
         public void Dispose()
         {
             _lock.Dispose();
+        }
+
+        public int UsedMemory
+        {
+            get
+            {
+                if (_memRecalc)
+                {
+                    try
+                    {
+                        _lock.EnterReadLock();
+                        _usedMemory = 0;
+                        SortedSet<NodeAtBlock>.Enumerator em = _nodes.GetEnumerator();
+                        while (em.MoveNext())
+                        {
+                            _usedMemory += (int)em.Current.TrieNode.GetMemorySize(false);
+                        }
+                    }
+                    finally
+                    {
+                        _lock.ExitReadLock();
+                    }
+                    _memRecalc = false;
+                }
+                return _usedMemory;
+            }
         }
     }
 
@@ -221,6 +270,8 @@ public class TrieNodePathCache : IPathTrieNodeCache
         AddNodeInternal(path, trieNode, blockNumber);
         if (trieNode.IsLeaf && trieNode.PathToNode.Length < 64)
             AddNodeInternal(trieNode.StoreNibblePathPrefix.Concat(trieNode.PathToNode).ToArray(), trieNode, blockNumber);
+
+        Pruning.Metrics.CachedNodesCount = Interlocked.Increment(ref _count);
     }
 
     private void AddNodeInternal(byte[] pathToNode, TrieNode trieNode, long blockNumber)
@@ -235,7 +286,6 @@ public class TrieNodePathCache : IPathTrieNodeCache
             nodeVersions.Add(blockNumber, trieNode);
             _nodesByPath[pathToNode] = nodeVersions;
         }
-        Pruning.Metrics.CachedNodesCount = Interlocked.Increment(ref _count);
         if (_logger.IsTrace) _logger.Trace($"Added node for block {blockNumber} | node version for path {pathToNode.ToHexString()} : {nodeVersions.Count} | Paths cached: {_nodesByPath.Count}");
     }
 
@@ -250,17 +300,13 @@ public class TrieNodePathCache : IPathTrieNodeCache
 
     public void PersistUntilBlock(long blockNumber, IBatch? batch = null)
     {
-        List<byte[]> removedPaths = new();
         List<TrieNode> toPersist = new();
 
         ProcessDestroyed(blockNumber);
 
         foreach (KeyValuePair<byte[], NodeVersions> nodeVersion in _nodesByPath)
         {
-            TrieNode node = nodeVersion.Value.GetLatestUntil(blockNumber, true);
-            if (nodeVersion.Value.Count == 0)
-                removedPaths.Add(nodeVersion.Key);
-
+            TrieNode node = nodeVersion.Value.GetLatestUntil(blockNumber);
             if (node is null)
                 continue;
 
@@ -275,10 +321,28 @@ public class TrieNodePathCache : IPathTrieNodeCache
             node.IsPersisted = true;
         }
 
+        PruneUntil(blockNumber);
+    }
+
+    public void PruneUntil(long blockNumber)
+    {
+        List<byte[]> removedPaths = new();
+        List<Keccak> removedRoots = new();
+        int newCount = 0;
+
+        foreach (KeyValuePair<byte[], NodeVersions> nodeVersion in _nodesByPath)
+        {
+            nodeVersion.Value.ClearUntil(blockNumber);
+
+            if (nodeVersion.Value.Count == 0)
+                removedPaths.Add(nodeVersion.Key);
+            else
+                newCount += nodeVersion.Value.Count;
+        }
+
         foreach (byte[] path in removedPaths)
             _nodesByPath.Remove(path, out _);
 
-        List<Keccak> removedRoots = new();
         foreach (KeyValuePair<Keccak, HashSet<long>> kvp in _rootHashToBlock)
         {
             kvp.Value.RemoveWhere(blk => blk <= blockNumber);
@@ -287,6 +351,8 @@ public class TrieNodePathCache : IPathTrieNodeCache
         }
         foreach (Keccak rootHash in removedRoots)
             _rootHashToBlock.Remove(rootHash, out _);
+
+        Interlocked.Exchange(ref _count, newCount);
     }
 
     private void ProcessDestroyed(long blockNumber)
@@ -313,15 +379,17 @@ public class TrieNodePathCache : IPathTrieNodeCache
 
     public void AddRemovedPrefix(long blockNumber, ReadOnlySpan<byte> keyPrefix)
     {
-        foreach (byte[] path in _nodesByPath.Keys)
+        if (_nodesByPath.ContainsKey(keyPrefix))
         {
-            if (path.Length >= keyPrefix.Length && Bytes.AreEqual(path.AsSpan()[0..keyPrefix.Length], keyPrefix))
+            foreach (byte[] path in _nodesByPath.Keys)
             {
-                TrieNode deletedNode = _nodesByPath[path].GetLatest().CloneNodeForDeletion();
-                _nodesByPath[path].Add(blockNumber, deletedNode);
+                if (path.Length >= keyPrefix.Length && Bytes.AreEqual(path.AsSpan()[0..keyPrefix.Length], keyPrefix))
+                {
+                    TrieNode deletedNode = _nodesByPath[path].GetLatest().CloneNodeForDeletion();
+                    _nodesByPath[path].Add(blockNumber, deletedNode);
+                }
             }
         }
-
         _removedPrefixes[keyPrefix] = blockNumber;
     }
 

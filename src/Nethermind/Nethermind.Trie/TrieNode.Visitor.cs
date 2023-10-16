@@ -171,12 +171,7 @@ namespace Nethermind.Trie
                             {
                                 using (trieVisitContext.AbsolutePathNext((byte)i))
                                 {
-                                    TrieNode? child = nodeResolver.Capability switch
-                                    {
-                                        TrieNodeResolverCapability.Hash => GetChild(trieNodeResolver, i),
-                                        TrieNodeResolverCapability.Path => GetChild(trieNodeResolver, CollectionsMarshal.AsSpan(trieVisitContext.AbsolutePathNibbles), i),
-                                        _ => throw new ArgumentOutOfRangeException()
-                                    };
+                                    TrieNode? child = GetChild(trieNodeResolver, i);
                                     VisitChild(i, child, trieNodeResolver, treeVisitor, visitContext);
                                 }
                             }
@@ -221,12 +216,7 @@ namespace Nethermind.Trie
                             {
                                 using (trieVisitContext.AbsolutePathNext((byte)i))
                                 {
-                                    children[i] = nodeResolver.Capability switch
-                                    {
-                                        TrieNodeResolverCapability.Hash => GetChild(nodeResolver, i),
-                                        TrieNodeResolverCapability.Path => GetChild(nodeResolver, CollectionsMarshal.AsSpan(trieVisitContext.AbsolutePathNibbles), i),
-                                        _ => throw new ArgumentOutOfRangeException()
-                                    };
+                                    children[i] = GetChild(nodeResolver, i);
                                 }
                             }
 
@@ -255,12 +245,7 @@ namespace Nethermind.Trie
                         trieVisitContext.AddVisited();
                         using (trieVisitContext.AbsolutePathNext(Key!))
                         {
-                            TrieNode child = nodeResolver.Capability switch
-                            {
-                                TrieNodeResolverCapability.Hash => GetChild(nodeResolver, 0),
-                                TrieNodeResolverCapability.Path => GetChild(nodeResolver, CollectionsMarshal.AsSpan(trieVisitContext.AbsolutePathNibbles), 0),
-                                _ => throw new ArgumentOutOfRangeException()
-                            };
+                            TrieNode child = GetChild(nodeResolver, 0);
                             if (child is null)
                             {
                                 throw new InvalidDataException($"Child of an extension {Key} should not be null.");

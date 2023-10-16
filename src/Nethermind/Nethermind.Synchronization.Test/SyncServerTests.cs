@@ -643,7 +643,7 @@ namespace Nethermind.Synchronization.Test
             BlockTree localBlockTree = Build.A.BlockTree().OfChainLength(600).TestObject;
             ISealValidator sealValidator = Substitute.For<ISealValidator>();
             MemDb stateDb = new();
-            TrieStoreByPath trieStore = new(stateDb, LimboLogs.Instance);
+            TrieStore trieStore = new(stateDb, Prune.WhenCacheReaches(10.MB()), NoPersistence.Instance, LimboLogs.Instance);
             ctx.SyncServer = new SyncServer(
                 trieStore.AsKeyValueStore(),
                 new MemDb(),

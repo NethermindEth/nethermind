@@ -373,7 +373,13 @@ namespace Nethermind.Trie
 
                             FullRlp = tree.LoadRlp(FullPath);
                             //if node was created as unknown, the hash may be different and needs to be recalculated - maybe should throw an exception here?
-                            Keccak = null;
+                            //diagnostic code - check keccak of loaded RLP
+                            if (Keccak is not null)
+                            {
+                                Keccak dbHash = Keccak.Compute(FullRlp.AsSpan());
+                                if (Keccak != dbHash)
+                                    throw new TrieException($"Hash mismatch - wanted {Keccak}, got {dbHash} for path {FullPath.ToHexString()}");
+                            }
                         }
                         IsPersisted = true;
 
@@ -659,47 +665,6 @@ namespace Nethermind.Trie
                 // we need to investigate this case when it happens again
                 bool isKeccakCalculated = Keccak is not null && FullRlp.IsNotNull;
                 bool isKeccakCorrect = isKeccakCalculated && Keccak == Keccak.Compute(FullRlp);
-                throw new TrieException($"Unexpected type found at position {childIndex} of {this} with {nameof(_data)} of length {_data?.Length}. Expected a {nameof(TrieNode)} or {nameof(Keccak)} but found {childOrRef?.GetType()} with a value of {childOrRef}. Keccak calculated? : {isKeccakCalculated}; Keccak correct? : {isKeccakCorrect}");
-            }
-
-            // pruning trick so we never store long persisted paths
-            if (child?.IsPersisted == true)
-            {
-                UnresolveChild(childIndex);
-            }
-
-            return child;
-        }
-
-        public TrieNode? GetChild(ITrieNodeResolver tree, Span<byte> childPath, int childIndex)
-        {
-            /* extensions store value before the child while branches store children before the value
-                         * so just to treat them in the same way we update index on extensions
-                         */
-            childIndex = IsExtension ? childIndex + 1 : childIndex;
-            object childOrRef = ResolveChild(tree, childPath, childIndex);
-
-            TrieNode? child;
-            if (ReferenceEquals(childOrRef, _nullNode) || ReferenceEquals(childOrRef, null))
-            {
-                child = null;
-            }
-            else if (childOrRef is TrieNode childNode)
-            {
-                child = childNode;
-            }
-            else if (childOrRef is Keccak reference)
-            {
-                child = tree.Capability == TrieNodeResolverCapability.Hash
-                    ? tree.FindCachedOrUnknown(reference)
-                    : tree.FindCachedOrUnknown(reference, childPath, StoreNibblePathPrefix);
-            }
-            else
-            {
-                // we expect this to happen as a Trie traversal error (please see the stack trace above)
-                // we need to investigate this case when it happens again
-                bool isKeccakCalculated = Keccak is not null && FullRlp.IsNotNull;
-                bool isKeccakCorrect = isKeccakCalculated && Keccak == Keccak.Compute(FullRlp.AsSpan());
                 throw new TrieException($"Unexpected type found at position {childIndex} of {this} with {nameof(_data)} of length {_data?.Length}. Expected a {nameof(TrieNode)} or {nameof(Keccak)} but found {childOrRef?.GetType()} with a value of {childOrRef}. Keccak calculated? : {isKeccakCalculated}; Keccak correct? : {isKeccakCorrect}");
             }
 
@@ -1082,66 +1047,6 @@ namespace Nethermind.Trie
                 rlpStream.SkipItem();
             }
         }
-
-        private object? ResolveChild(ITrieNodeResolver tree, Span<byte> path, int i)
-        {
-            object? childOrRef;
-            if (_rlpStream is null)
-            {
-                childOrRef = _data?[i];
-            }
-            else
-            {
-                InitData();
-                if (_data![i] is null)
-                {
-                    // Allows to load children in parallel
-                    RlpStream rlpStream = new(_rlpStream!.Data!);
-                    SeekChild(rlpStream, i);
-                    int prefix = rlpStream!.ReadByte();
-
-                    switch (prefix)
-                    {
-                        case 0:
-                        case 128:
-                            {
-                                _data![i] = childOrRef = _nullNode;
-                                break;
-                            }
-                        case 160:
-                            {
-                                rlpStream.Position--;
-                                Keccak keccak = rlpStream.DecodeKeccak();
-                                TrieNode child = tree.FindCachedOrUnknown(keccak, path, StoreNibblePathPrefix);
-                                _data![i] = childOrRef = child;
-
-                                if (IsPersisted && !child.IsPersisted)
-                                {
-                                    child.CallRecursively(_markPersisted, tree, false, NullLogger.Instance);
-                                }
-
-                                break;
-                            }
-                        default:
-                            {
-                                rlpStream.Position--;
-                                Span<byte> fullRlp = rlpStream.PeekNextItem();
-                                TrieNode child = new(NodeType.Unknown, path.ToArray(), null, fullRlp.ToArray());
-                                child.StoreNibblePathPrefix = StoreNibblePathPrefix;
-                                _data![i] = childOrRef = child;
-                                break;
-                            }
-                    }
-                }
-                else
-                {
-                    childOrRef = _data?[i];
-                }
-            }
-
-            return childOrRef;
-        }
-
 
         private int GetChildPathLength()
         {
