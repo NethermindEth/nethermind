@@ -50,7 +50,7 @@ public class GethLikeJavascriptTxTracer : GethLikeTxTracer<GethTxTraceEntry>
         _customTraceEntry = new(_engine) { memory = new GethJavascriptStyleLog.JSMemory(_engine, _memory) };
         _engine.Execute(LoadJavascriptCode(options.Tracer));
         _engine.Execute(BigIntegerJS);
-        _engine.AddHostObject("toWord", new Func<object, string>(bytes => bytes.ToWord()?.ToScriptArray(_engine)));
+        _engine.AddHostObject("toWord", new Func<object, dynamic>(bytes => bytes.ToWord()?.ToScriptArray(_engine)));
         _engine.AddHostObject("toHex", new Func<IList, string>(bytes => bytes.ToHexString()));
         _engine.AddHostObject("toAddress", new Func<object, dynamic>(address => address.ToAddress().Bytes.ToScriptArray(_engine)));
         _engine.AddHostObject("isPrecompiled", new Func<object, bool>(address => address.ToAddress().IsPrecompile(spec)));
@@ -126,6 +126,17 @@ public class GethLikeJavascriptTxTracer : GethLikeTxTracer<GethTxTraceEntry>
         _ctx.value = (BigInteger)value;
         _ctx.gas = gas;
         // _customTraceEntry.ctx = new GethJavascriptStyleLog.CTX(_engine, GetCallType(callType), from, to, input, value, gas, 0, 0, 0, 0, new byte[0], DateTime.Now.ToString());
+    }
+
+    public override void ReportActionEnd(long gas, Address deploymentAddress, ReadOnlyMemory<byte> deployedCode)
+    {
+        base.ReportActionEnd(gas, deploymentAddress, deployedCode);
+        dynamic address = deploymentAddress.Bytes.ToScriptArray(_engine);
+        _ctx.to = address;
+        if (_customTraceEntry.contract is not null)
+        {
+            _customTraceEntry.contract.AddressConverted = address;
+        }
     }
 
     public override void MarkAsFailed(Address recipient, long gasSpent, byte[]? output, string error, Keccak? stateRoot = null)

@@ -61,7 +61,7 @@ public class TxTracer : ITxTracer
     public virtual void SetOperationStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> newValue, ReadOnlySpan<byte> currentValue) { }
     public virtual void LoadOperationStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> value) { }
     public virtual void ReportSelfDestruct(Address address, UInt256 balance, Address refundAddress) { }
-    public virtual void ReportAction(long gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false) { }
+    public virtual void ReportAction(long gas, UInt256 value, Address from, Address? to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false) { }
     public virtual void ReportActionEnd(long gas, ReadOnlyMemory<byte> output) { }
     public virtual void ReportActionError(EvmExceptionType evmExceptionType) { }
     public virtual void ReportActionEnd(long gas, Address deploymentAddress, ReadOnlyMemory<byte> deployedCode) { }

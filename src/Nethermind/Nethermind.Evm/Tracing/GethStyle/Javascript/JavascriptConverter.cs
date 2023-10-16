@@ -5,6 +5,7 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using Microsoft.ClearScript;
 using Microsoft.ClearScript.JavaScript;
 using Nethermind.Core;
@@ -79,12 +80,13 @@ public static class JavascriptConverter
         _ => throw new ArgumentException("Not correct address", nameof(address))
     } ?? throw new ArgumentException("Not correct address", nameof(address));
 
+    [SkipLocalsInit]
     public static UInt256 GetUint256(this IList index)
     {
         Span<byte> indexSpan = stackalloc byte[32];
         for (int i = 0; i < index.Count; i++)
         {
-            indexSpan[i] = (byte)index[i];
+            indexSpan[i] = (byte)(int)index[i];
         }
 
         return new UInt256(indexSpan);

@@ -199,7 +199,6 @@ public interface ITxTracer : IWorldStateTracer
     void ReportStackPush(in ReadOnlySpan<byte> stackItem);
 
     /// <summary>
-
     /// </summary>
     /// <param name="stackItem"></param>
     /// <remarks>Depends on <see cref="IsTracingInstructions"/></remarks>
@@ -334,7 +333,7 @@ public interface ITxTracer : IWorldStateTracer
     /// <param name="callType"></param>
     /// <param name="isPrecompileCall"></param>
     /// <remarks>Depends on <see cref="IsTracingActions"/></remarks>
-    void ReportAction(long gas, UInt256 value, Address @from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false);
+    void ReportAction(long gas, UInt256 value, Address @from, Address? to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false);
 
     /// <summary>
     ///

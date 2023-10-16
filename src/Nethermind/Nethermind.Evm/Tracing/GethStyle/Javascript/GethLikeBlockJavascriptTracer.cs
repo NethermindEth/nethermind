@@ -30,13 +30,13 @@ public class GethLikeBlockJavascriptTracer : BlockTracerBase<GethLikeTxTrace, Ge
 
     public override void StartNewBlockTrace(Block block)
     {
-        _ctx.block = (ulong)block.Number;
+        _ctx.block = block.Number;
         base.StartNewBlockTrace(block);
     }
 
     protected override GethLikeJavascriptTxTracer OnStart(Transaction? tx)
     {
-        _ctx.gasPrice = (BigInteger?)tx?.GasPrice;
+        _ctx.gasPrice = (ulong?)tx?.GasPrice;
         _ctx.intrinsicGas = IntrinsicGasCalculator.Calculate(tx, _spec);
         return new GethLikeJavascriptTxTracer(_db, _ctx, _spec, _options);
     }

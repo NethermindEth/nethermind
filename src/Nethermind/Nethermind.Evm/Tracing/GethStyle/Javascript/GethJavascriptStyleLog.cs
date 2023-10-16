@@ -104,14 +104,14 @@ namespace Nethermind.Evm.Tracing.GethStyle.Javascript
             private readonly V8ScriptEngine _engine;
             private readonly UInt256 _value;
             private readonly Address _caller;
-            private readonly Address _address;
+            private readonly Address? _address;
             private readonly ReadOnlyMemory<byte> _input;
             private object? _callerConverted;
-            private object? _addressConverted;
+            public object? AddressConverted { get; set; }
             private object? _inputConverted;
 
 
-            public Contract(V8ScriptEngine engine, Address caller, Address address, UInt256 value, ReadOnlyMemory<byte> input)
+            public Contract(V8ScriptEngine engine, Address caller, Address? address, UInt256 value, ReadOnlyMemory<byte> input)
             {
                 _engine = engine;
                 _caller = caller;
@@ -120,7 +120,7 @@ namespace Nethermind.Evm.Tracing.GethStyle.Javascript
                 _input = input;
             }
 
-            public dynamic getAddress() => _addressConverted ??= _address.Bytes.ToScriptArray(_engine);
+            public dynamic? getAddress() => AddressConverted ??= _address?.Bytes.ToScriptArray(_engine);
             public dynamic getCaller() => _callerConverted ??= _caller.Bytes.ToScriptArray(_engine);
             public dynamic getInput() => _inputConverted ??= _input.ToArray().ToScriptArray(_engine);
             public dynamic getValue() => (BigInteger)_value;
