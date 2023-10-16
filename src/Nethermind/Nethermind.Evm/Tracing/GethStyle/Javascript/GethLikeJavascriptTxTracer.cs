@@ -114,18 +114,18 @@ public class GethLikeJavascriptTxTracer : GethLikeTxTracer<GethTxTraceEntry>
         return trace;
     }
 
-    public override void ReportAction(long gas, UInt256 value, Address from, Address? to, ReadOnlyMemory<byte> input, ExecutionType callType,
+    public override void ReportAction(long gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType,
         bool isPrecompileCall = false)
     {
         base.ReportAction(gas, value, from, to, input, callType, isPrecompileCall);
+
         _customTraceEntry.contract = new GethJavascriptStyleLog.Contract(_engine, from, to, value, input);
         _ctx.type = GetCallType(callType);
         _ctx.from = from.Bytes.ToScriptArray(_engine);
-        _ctx.to = to?.Bytes.ToScriptArray(_engine);
+        _ctx.to = to.Bytes.ToScriptArray(_engine);
         _ctx.input = input.ToArray().ToScriptArray(_engine);
-        _ctx.value = (BigInteger)value;
+        _ctx.value = value.ToInt64(null);
         _ctx.gas = gas;
-        // _customTraceEntry.ctx = new GethJavascriptStyleLog.CTX(_engine, GetCallType(callType), from, to, input, value, gas, 0, 0, 0, 0, new byte[0], DateTime.Now.ToString());
     }
 
     public override void MarkAsFailed(Address recipient, long gasSpent, byte[]? output, string error, Keccak? stateRoot = null)

@@ -337,16 +337,13 @@ public class GethLikeJavascriptTracerTests : VirtualMachineTestsBase
     {
         GethLikeTxTrace traces = Execute(
                 GetTracer("prestateTracer"),
-                GetComplexBytecode(),
+                GetOperationalBytecode(),
                 MainnetSpecProvider.CancunActivation)
             .BuildResult();
-<<<<<<< HEAD
+         // string[] expectedStrings = { "68: SSTORE 942921b14f1b1c385cd7e0cc2ef7abe5598c8358:3412a0 <- 7856b1", "104: SLOAD 942921b14f1b1c385cd7e0cc2ef7abe5598c8358:3412a0", "Result: 3412a0" };
+         // Assert.That(traces.CustomTracerResult, Is.EqualTo(expectedStrings));
         // Assert.That(traces.CustomTracerResult, Has.All.Empty);
-        }
-=======
-        Assert.That(traces.CustomTracerResult, Has.All.Empty);
     }
->>>>>>> upstream/feature/javascript_tracers
 
     private static byte[] GetBytecode()
     {

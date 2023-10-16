@@ -36,7 +36,7 @@ public class GethLikeBlockJavascriptTracer : BlockTracerBase<GethLikeTxTrace, Ge
 
     protected override GethLikeJavascriptTxTracer OnStart(Transaction? tx)
     {
-        _ctx.gasPrice = (BigInteger?)tx?.GasPrice;
+        _ctx.gasPrice = tx?.GasPrice.ToInt64(null);
         _ctx.intrinsicGas = IntrinsicGasCalculator.Calculate(tx, _spec);
         return new GethLikeJavascriptTxTracer(_db, _ctx, _spec, _options);
     }
