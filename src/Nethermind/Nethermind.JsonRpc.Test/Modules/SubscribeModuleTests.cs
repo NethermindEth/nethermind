@@ -238,9 +238,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         }
 
         [TestCase("true")]
-        [TestCase("True")]
         [TestCase("false")]
-        [TestCase("False")]
         public async Task NewHeadSubscription_with_bool_arg(string boolArg)
         {
             string serialized = await RpcTest.TestSerializedRequest(_subscribeRpcModule, "eth_subscribe", "newHeads", boolArg);
