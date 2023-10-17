@@ -12,4 +12,6 @@ public interface IHeaderStore
     BlockHeader? Get(Keccak blockHash, bool shouldCache, long? blockNumber = null);
     void Cache(BlockHeader header);
     void Delete(Keccak blockHash);
+    void InsertBlockNumber(Keccak blockHash, long blockNumber);
+    long? GetBlockNumber(Keccak blockHash);
 }
