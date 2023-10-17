@@ -5,6 +5,7 @@ using System;
 using System.Buffers;
 using System.Diagnostics;
 using System.Drawing;
+using System.IO.Abstractions;
 using System.IO.Compression;
 using System.Text;
 using Nethermind.Core.Crypto;
@@ -31,10 +32,14 @@ internal class E2Store : IDisposable
         _stream = stream;        
     }
 
-    public static async Task<E2Store> FromStream(Stream stream, CancellationToken token = default)
+    public static Task<E2Store> ForRead(Stream stream, CancellationToken token = default) => FromStream(stream, true, token);
+    public static Task<E2Store> ForWrite(Stream stream, CancellationToken token = default) => FromStream(stream, false, token);
+
+    private static async Task<E2Store> FromStream(Stream stream, bool initForRead, CancellationToken token = default)
     {
         E2Store e = new E2Store(stream);
-        e.Metadata = await e.ReadFileMetaData(token);
+        if (initForRead)
+            e.Metadata = await e.ReadEraMetaData(token);
         return e;
     }
 
@@ -117,9 +122,13 @@ internal class E2Store : IDisposable
         }
     }
 
-    private async Task<EraMetadata> ReadFileMetaData(CancellationToken token = default)
+    private async Task<EraMetadata> ReadEraMetaData(CancellationToken token = default)
     {
         long l = _stream!.Length;
+        if (_stream.Length < 16)
+        {
+            throw new EraFormatException($"Data is not in a valid Era format.");
+        }
 
         byte[] bytes = new byte[16];
         _stream.Position = _stream.Length - 8;  
@@ -220,7 +229,7 @@ internal class E2Store : IDisposable
     public Task<int> ReadEntryValueAsSnappy(byte[] buffer, Entry e, CancellationToken cancellation = default)
     {
         if (buffer is null) throw new ArgumentNullException(nameof(buffer));
-        using var snappy = new SnappyStream(new SegmentStream(_stream, e.ValueOffset, e.Length), CompressionMode.Decompress, true);
+        using SnappyStream snappy = new (new StreamSegment(_stream, e.ValueOffset, e.Length), CompressionMode.Decompress, true);
         return snappy.ReadAsync(buffer, 0, buffer.Length, cancellation);
     }
 

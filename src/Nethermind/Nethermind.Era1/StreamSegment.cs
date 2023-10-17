@@ -10,14 +10,13 @@ using Snappier;
 
 namespace Nethermind.Era1;
 
-//TODO find a better solution 
-internal class SegmentStream : Stream
+internal class StreamSegment : Stream
 {
     private readonly Stream _internalStream;
     private readonly long _streamOffset;
     private readonly long _streamLength;
 
-    public SegmentStream(Stream stream, long offset, long length)
+    public StreamSegment(Stream stream, long offset, long length)
     {
         _internalStream = stream ?? throw new ArgumentNullException(nameof(stream));
         _streamOffset = offset;
@@ -70,7 +69,7 @@ internal class SegmentStream : Stream
 
     public override long Seek(long offset, SeekOrigin origin)
     {
-        return _internalStream.Seek(offset, origin);
+        return _internalStream.Seek(offset + _streamOffset, origin);
     }
 
     public override void SetLength(long value)

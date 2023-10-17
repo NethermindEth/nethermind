@@ -4,8 +4,11 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.Intrinsics.X86;
+using System.Security.Cryptography;
 using System.Text;
 using System.Threading.Tasks;
+using Cortex.SimpleSerialize;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
@@ -38,7 +41,7 @@ internal class EraBuilder:IDisposable
     {
         _fileStream = File.OpenWrite(file);
         //TODO FIX
-        _e2Store = E2Store.FromStream(_fileStream).Result;
+        _e2Store = E2Store.ForWrite(_fileStream).Result;
     }
 
     public async Task<bool> Add(Block block, TxReceipt[] receipts, UInt256 totalDifficulty, CancellationToken cancellation = default)
@@ -80,20 +83,30 @@ internal class EraBuilder:IDisposable
     public async Task Finalize()
     {
         if (_firstBlock)
-            throw new EraException("Finalize was called,but no blocks have been added yet.");
+            throw new EraException("Finalize was called, but no blocks have been added yet.");
 
-        await _fileStream.FlushAsync();
+        byte[] root = CalculateAccumulator().ToArray();
+        _totalWritten += await _e2Store.WriteEntry(EntryTypes.TypeAccumulator, root);
+
+        _fileStream.Flush();
         _entryIndexInfos.Clear();
     }
+    private static readonly HashAlgorithm _hashAlgorithm = SHA256.Create();
 
-    private Keccak CalculateAccumulator()
+    private ReadOnlySpan<byte> CalculateAccumulator()
     {
         //TODO optmize
-        var buf = new byte[32];
+        List<SszComposite> roots = new(_entryIndexInfos.Count);
+        List<SszElement> sszElements = new(2);
         foreach (var info in _entryIndexInfos)
         {
+            sszElements.Add(new SszBasicVector(info.Hash.Bytes));
+            sszElements.Add(new SszBasicVector(info.TotalDifficulty.ToLittleEndian()));
+            SszTree tree = new ( new SszContainer(sszElements));
+            roots.Add(new SszBasicVector(tree.HashTreeRoot()));
+            sszElements.Clear();
         }
-        return null;
+        return new SszTree(new SszList(roots, (ulong)MaxEra1Size)).HashTreeRoot();
     }
 
     private Task WriteVersion()
