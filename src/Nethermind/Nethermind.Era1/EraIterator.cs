@@ -17,12 +17,11 @@ using Nethermind.Serialization.Rlp;
 using Snappier;
 
 namespace Nethermind.Era1;
-internal class EraIterator : IAsyncEnumerable<(Block, TxReceipt[])>, IDisposable
+internal class EraIterator : IAsyncEnumerable<(Block, TxReceipt[], UInt256)>, IDisposable
 {
     private E2Store _store;
     private bool _disposedValue;
     private long _currentBlockIndex;
-    private UInt256 _currentTotalDiffulty;
 
     public long CurrentBlockIndex => _currentBlockIndex;
 
@@ -31,13 +30,13 @@ internal class EraIterator : IAsyncEnumerable<(Block, TxReceipt[])>, IDisposable
         _store = e2;
         _currentBlockIndex = e2.Metadata.Start;
     }
-    public async IAsyncEnumerator<(Block, TxReceipt[])> GetAsyncEnumerator(CancellationToken cancellationToken = default)
+    public async IAsyncEnumerator<(Block, TxReceipt[], UInt256)> GetAsyncEnumerator(CancellationToken cancellationToken = default)
     {
-        (Block? b, TxReceipt[]? r) = await Next(cancellationToken);
-        while(b != null && r != null)
+        (Block? b, TxReceipt[]? r, UInt256? td) = await Next(cancellationToken);
+        while(b != null && r != null && td != null)
         {
-            yield return (b, r)!;
-            (b, r) = await Next(cancellationToken);
+            yield return (b, r, td.Value);
+            (b, r, td) = await Next(cancellationToken);
         }
     }
     internal static Task<EraIterator> Create(string file, CancellationToken token = default)
@@ -50,16 +49,18 @@ internal class EraIterator : IAsyncEnumerable<(Block, TxReceipt[])>, IDisposable
         if (stream == null) throw new ArgumentNullException(nameof(stream));
         if (!stream.CanRead) throw new ArgumentException("Provided stream is not readable.");
 
-        EraIterator e = new EraIterator(await E2Store.FromStream(stream, token));
+        E2Store e2 = await E2Store.ForRead(stream, token);
+        EraIterator e = new EraIterator(e2);
+        
         return e;
     }
-    private async Task<(Block?, TxReceipt[]?)> Next(CancellationToken cancellationToken)
+    private async Task<(Block?, TxReceipt[]?, UInt256?)> Next(CancellationToken cancellationToken)
     {
         if (_store.Metadata.Start + _store.Metadata.Count <= _currentBlockIndex)
         {
             //TODO test enumerate more than once
             Reset();
-            return (null, null);
+            return (null, null, null);
         }
         long blockOffset = await FindBlockOffset(_currentBlockIndex, cancellationToken);
         byte[] buffer = ArrayPool<byte>.Shared.Rent(E2Store.ValueSizeLimit);
@@ -87,12 +88,12 @@ internal class EraIterator : IAsyncEnumerable<(Block, TxReceipt[])>, IDisposable
             CheckType(e, EntryTypes.TypeTotalDifficulty);
             read = await _store.ReadEntryValue(buffer, e, cancellationToken);
             
-            _currentTotalDiffulty = new UInt256(new ArraySegment<byte>(buffer, 0, read));
+            UInt256 currentTotalDiffulty = new UInt256(new ArraySegment<byte>(buffer, 0, read));
 
             Block block = new Block(header, body);
             
             _currentBlockIndex++;
-            return (block, receipts);
+            return (block, receipts, currentTotalDiffulty);
         }
         finally
         {
@@ -121,7 +122,6 @@ internal class EraIterator : IAsyncEnumerable<(Block, TxReceipt[])>, IDisposable
     private void Reset()
     {
         _currentBlockIndex = 0;
-        _currentTotalDiffulty = 0;
     }
 
 

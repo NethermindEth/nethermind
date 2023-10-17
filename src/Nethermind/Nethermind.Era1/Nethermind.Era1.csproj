@@ -7,6 +7,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="Cortex.SimpleSerialize" />
     <PackageReference Include="Snappier" />
     <PackageReference Include="Snappy.Standard" />
   </ItemGroup>
