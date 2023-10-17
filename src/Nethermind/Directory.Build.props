@@ -3,6 +3,7 @@
   <PropertyGroup>
     <Configuration Condition="'$(Configuration)' == ''">Debug</Configuration>
     <ContinuousIntegrationBuild Condition="'$(CI)' == 'true'">true</ContinuousIntegrationBuild>
+    <TFM>net8.0</TFM>
     <UseArtifactsOutput>true</UseArtifactsOutput>
   </PropertyGroup>
 

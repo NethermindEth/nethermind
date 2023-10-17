@@ -15,7 +15,7 @@
 
   <PropertyGroup>
     <OutputType>Exe</OutputType>
-    <TargetFramework>net8.0</TargetFramework>
+    <TargetFramework>$(TFM)</TargetFramework>
     <LangVersion>latest</LangVersion>
   </PropertyGroup>
   
