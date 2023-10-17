@@ -10,7 +10,7 @@ using Nethermind.Logging;
 
 namespace Nethermind.Hive
 {
-    public class HivePlugin : INethermindPlugin
+    public class HivePlugin : INethermindPlugin, IInitializationPlugin
     {
         private INethermindApi _api = null!;
         private IHiveConfig _hiveConfig = null!;
@@ -69,10 +69,9 @@ namespace Nethermind.Hive
             }
         }
 
-        public Task InitRpcModules()
-        {
-            return Task.CompletedTask;
-        }
+        public Task InitRpcModules() => Task.CompletedTask;
+
+        public bool ShouldRunSteps(INethermindApi api) => Enabled;
 
         private bool Enabled { get; set; }
     }

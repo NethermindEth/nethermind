@@ -7,11 +7,12 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="TestableIO.System.IO.Abstractions.Wrappers" />
+    <PackageReference Include="TestableIO.System.IO.Abstractions.Wrappers"/>
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\Nethermind.Api\Nethermind.Api.csproj" />
+    <ProjectReference Include="..\Nethermind.Api\Nethermind.Api.csproj"/>
+    <ProjectReference Include="..\Nethermind.Runner\Nethermind.Runner.csproj"/>
   </ItemGroup>
 
 </Project>
