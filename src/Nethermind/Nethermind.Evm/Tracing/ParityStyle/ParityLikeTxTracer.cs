@@ -34,13 +34,7 @@ namespace Nethermind.Evm.Tracing.ParityStyle
             _parityTraceTypes = parityTraceTypes;
 
             _tx = tx;
-            _trace = new ParityLikeTxTrace
-            {
-                TransactionHash = tx?.Hash,
-                TransactionPosition = tx is null ? null : Array.IndexOf(block.Transactions!, tx),
-                BlockNumber = block.Number,
-                BlockHash = block.Hash!
-            };
+            _trace = new ParityLikeTxTrace { TransactionHash = tx?.Hash, TransactionPosition = tx is null ? null : Array.IndexOf(block.Transactions!, tx), BlockNumber = block.Number, BlockHash = block.Hash! };
 
             if ((_parityTraceTypes & ParityTraceTypes.StateDiff) != 0)
             {
@@ -389,7 +383,7 @@ namespace Nethermind.Evm.Tracing.ParityStyle
             storage[storageCell.Index] = new ParityStateChange<byte[]>(before, after);
         }
 
-        public override void ReportAction(long gas, UInt256 value, Address @from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false)
+        public override void ReportAction(long gas, UInt256 value, Address from, Address? to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false)
         {
             ParityTraceAction action = new()
             {
