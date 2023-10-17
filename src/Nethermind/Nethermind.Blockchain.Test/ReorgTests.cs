@@ -56,6 +56,7 @@ namespace Nethermind.Blockchain.Test
                 LimboLogs.Instance);
             TxPool.TxPool txPool = new(
                 ecdsa,
+                new BlobTxStorage(),
                 new ChainHeadInfoProvider(specProvider, _blockTree, stateProvider),
                 new TxPoolConfig(),
                 new TxValidator(specProvider.ChainId),
