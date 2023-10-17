@@ -21,6 +21,10 @@ namespace Nethermind.TxPool
             return tx.GetLength(_transactionSizeCalculator);
         }
 
+        public static bool CanPayBaseFee(this Transaction tx, UInt256 currentBaseFee) => tx.MaxFeePerGas >= currentBaseFee;
+
+        public static bool CanPayForBlobGas(this Transaction tx, UInt256 currentPricePerBlobGas) => !tx.SupportsBlobs || tx.MaxFeePerBlobGas >= currentPricePerBlobGas;
+
         public static bool CanBeBroadcast(this Transaction tx) => !tx.SupportsBlobs && tx.GetLength() <= MaxSizeOfTxForBroadcast;
 
         internal static UInt256 CalculateGasPrice(this Transaction tx, bool eip1559Enabled, in UInt256 baseFee)
@@ -74,7 +78,18 @@ namespace Nethermind.TxPool
             overflow |= UInt256.AddOverflow(currentCost, maxTxCost, out cumulativeCost);
             overflow |= UInt256.AddOverflow(cumulativeCost, tx.Value, out cumulativeCost);
 
+            if (tx.SupportsBlobs)
+            {
+                // if tx.SupportsBlobs and has BlobVersionedHashes = null, it will throw on earlier step of validation, in TxValidator
+                overflow |= UInt256.MultiplyOverflow(Eip4844Constants.BlobGasPerBlob, (UInt256)tx.BlobVersionedHashes!.Length, out UInt256 blobGas);
+                overflow |= UInt256.MultiplyOverflow(blobGas, tx.MaxFeePerBlobGas ?? UInt256.MaxValue, out UInt256 blobGasCost);
+                overflow |= UInt256.AddOverflow(cumulativeCost, blobGasCost, out cumulativeCost);
+            }
+
             return overflow;
         }
+
+        internal static bool IsOverflowInTxCostAndValue(this Transaction tx, out UInt256 txCost)
+            => IsOverflowWhenAddingTxCostToCumulative(tx, UInt256.Zero, out txCost);
     }
 }

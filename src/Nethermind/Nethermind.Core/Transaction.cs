@@ -145,7 +145,8 @@ namespace Nethermind.Core
         /// <remarks>Used for sorting in edge cases.</remarks>
         public ulong PoolIndex { get; set; }
 
-        private int? _size = null;
+        protected int? _size = null;
+
         /// <summary>
         /// Encoded transaction length
         /// </summary>
