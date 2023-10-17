@@ -20,13 +20,6 @@ namespace Nethermind.Evm.Tracing.GethStyle.Javascript
 {
     public class GethJavascriptStyleLog
     {
-        private readonly V8ScriptEngine _engine;
-
-        public GethJavascriptStyleLog(V8ScriptEngine engine)
-        {
-            _engine = engine;
-        }
-
         public long? pc { get; set; }
         public OpcodeString? op { get; set; }
         public long? gas { get; set; }
@@ -55,11 +48,11 @@ namespace Nethermind.Evm.Tracing.GethStyle.Javascript
 
         public class JSStack
         {
-            private readonly List<string> _items;
-            public JSStack(List<string> items) => _items = items;
-            public string? length() => _items.Count.ToString();
-            public int? getCount() => _items.Count;
-            public dynamic peek(int index) => new BigInteger(Bytes.FromHexString(_items[^(index + 1)]));
+            public List<string> Items { get; }
+            public JSStack(List<string> items) => Items = items;
+            public string? length() => Items.Count.ToString();
+            public int? getCount() => Items.Count;
+            public dynamic peek(int index) => new BigInteger(Bytes.FromHexString(Items[^(index + 1)]));
         }
 
         public class JSMemory
@@ -103,25 +96,25 @@ namespace Nethermind.Evm.Tracing.GethStyle.Javascript
         {
             private readonly V8ScriptEngine _engine;
             private readonly UInt256 _value;
-            private readonly Address _caller;
+            public Address Caller { get; }
             private readonly Address? _address;
             private readonly ReadOnlyMemory<byte> _input;
             private object? _callerConverted;
-            public object? AddressConverted { get; set; }
+            private object? _addressConverted;
             private object? _inputConverted;
 
 
             public Contract(V8ScriptEngine engine, Address caller, Address? address, UInt256 value, ReadOnlyMemory<byte> input)
             {
                 _engine = engine;
-                _caller = caller;
+                Caller = caller;
                 _address = address;
                 _value = value;
                 _input = input;
             }
 
-            public dynamic? getAddress() => AddressConverted ??= _address?.Bytes.ToScriptArray(_engine);
-            public dynamic getCaller() => _callerConverted ??= _caller.Bytes.ToScriptArray(_engine);
+            public dynamic? getAddress() => _addressConverted ??= _address?.Bytes.ToScriptArray(_engine);
+            public dynamic getCaller() => _callerConverted ??= Caller.Bytes.ToScriptArray(_engine);
             public dynamic getInput() => _inputConverted ??= _input.ToArray().ToScriptArray(_engine);
             public dynamic getValue() => (BigInteger)_value;
         }

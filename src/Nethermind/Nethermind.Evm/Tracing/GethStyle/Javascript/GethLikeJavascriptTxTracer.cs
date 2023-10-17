@@ -26,6 +26,7 @@ namespace Nethermind.Evm.Tracing.GethStyle.Javascript;
 public class GethLikeJavascriptTxTracer : GethLikeTxTracer<GethTxTraceEntry>
 {
     // private readonly V8ScriptEngine _engine = new(V8ScriptEngineFlags.AwaitDebuggerAndPauseOnStart | V8ScriptEngineFlags.EnableDebugging);
+
     private readonly V8ScriptEngine _engine = new();
     private readonly dynamic _tracer;
     private readonly GethJavascriptStyleLog _customTraceEntry;
@@ -47,7 +48,7 @@ public class GethLikeJavascriptTxTracer : GethLikeTxTracer<GethTxTraceEntry>
         _db = db;
         _ctx = ctx;
         _db.Engine = _ctx.Engine = _engine;
-        _customTraceEntry = new(_engine) { memory = new GethJavascriptStyleLog.JSMemory(_engine, _memory) };
+        _customTraceEntry = new() { memory = new GethJavascriptStyleLog.JSMemory(_engine, _memory) };
         _engine.Execute(LoadJavascriptCode(options.Tracer));
         _engine.Execute(BigIntegerJS);
         _engine.AddHostObject("toWord", new Func<object, dynamic>(bytes => bytes.ToWord()?.ToScriptArray(_engine)));
@@ -88,6 +89,19 @@ public class GethLikeJavascriptTxTracer : GethLikeTxTracer<GethTxTraceEntry>
             _customTraceEntry.gas = CurrentTraceEntry.Gas;
             _customTraceEntry.gasCost = CurrentTraceEntry.GasCost;
             _customTraceEntry.depth = CurrentTraceEntry.Depth;
+            Address from = _customTraceEntry.contract!.Caller;
+            // switch (opcode)
+            // {
+            //     case Instruction.CREATE:
+            //         ContractAddress.From(from, _db.WorldState.GetNonce(from));
+            //         break;
+            //     case Instruction.CREATE2:
+            //         Span<byte> salt = stackalloc byte[32];
+            //         HexConverter.TryDecodeFromUtf16_Vector128(_customTraceEntry.stack!.Items[^1], salt);
+            //         ContractAddress.From(from, salt);
+            //         break;
+            // }
+
             Step(_customTraceEntry, _db);
         }
     }
@@ -128,16 +142,16 @@ public class GethLikeJavascriptTxTracer : GethLikeTxTracer<GethTxTraceEntry>
         // _customTraceEntry.ctx = new GethJavascriptStyleLog.CTX(_engine, GetCallType(callType), from, to, input, value, gas, 0, 0, 0, 0, new byte[0], DateTime.Now.ToString());
     }
 
-    public override void ReportActionEnd(long gas, Address deploymentAddress, ReadOnlyMemory<byte> deployedCode)
-    {
-        base.ReportActionEnd(gas, deploymentAddress, deployedCode);
-        dynamic address = deploymentAddress.Bytes.ToScriptArray(_engine);
-        _ctx.to = address;
-        if (_customTraceEntry.contract is not null)
-        {
-            _customTraceEntry.contract.AddressConverted = address;
-        }
-    }
+    // public override void ReportActionEnd(long gas, Address deploymentAddress, ReadOnlyMemory<byte> deployedCode)
+    // {
+    //     base.ReportActionEnd(gas, deploymentAddress, deployedCode);
+    //     dynamic address = deploymentAddress.Bytes.ToScriptArray(_engine);
+    //     _ctx.to = address;
+    //     if (_customTraceEntry.contract is not null)
+    //     {
+    //         _customTraceEntry.contract.AddressConverted = address;
+    //     }
+    // }
 
     public override void MarkAsFailed(Address recipient, long gasSpent, byte[]? output, string error, Keccak? stateRoot = null)
     {

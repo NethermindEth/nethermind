@@ -17,22 +17,22 @@ namespace Nethermind.Evm.Tracing.GethStyle.Javascript;
 public class GethJavascriptStyleDb
 {
     public V8ScriptEngine Engine { get; set; } = null!;
-    private readonly IWorldState _stateRepository;
+    public IWorldState WorldState { get; }
 
-    public GethJavascriptStyleDb(IWorldState stateRepository)
+    public GethJavascriptStyleDb(IWorldState worldState)
     {
-        _stateRepository = stateRepository;
+        WorldState = worldState;
     }
 
-    public BigInteger getBalance(IList address) => (BigInteger)_stateRepository.GetBalance(address.ToAddress());
+    public BigInteger getBalance(IList address) => (BigInteger)WorldState.GetBalance(address.ToAddress());
 
-    public ulong getNonce(IList address) => (ulong)_stateRepository.GetNonce(address.ToAddress());
+    public ulong getNonce(IList address) => (ulong)WorldState.GetNonce(address.ToAddress());
 
     public dynamic getCode(IList address) =>
-        _stateRepository.GetCode(address.ToAddress()).ToScriptArray(Engine);
+        WorldState.GetCode(address.ToAddress()).ToScriptArray(Engine);
 
     public dynamic getState(IList address, IList index) =>
-        _stateRepository.Get(new StorageCell(address.ToAddress(), index.GetUint256())).ToScriptArray(Engine);
+        WorldState.Get(new StorageCell(address.ToAddress(), index.GetUint256())).ToScriptArray(Engine);
 
-    public bool exists(IList address) => !_stateRepository.GetAccount(address.ToAddress()).IsTotallyEmpty;
+    public bool exists(IList address) => !WorldState.GetAccount(address.ToAddress()).IsTotallyEmpty;
 }

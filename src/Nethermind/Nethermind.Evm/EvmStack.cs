@@ -18,7 +18,6 @@ using System.Runtime.Intrinsics.X86;
 namespace Nethermind.Evm;
 
 using static Nethermind.Evm.VirtualMachine;
-
 using Word = Vector256<byte>;
 
 public ref struct EvmStack<TTracing>
@@ -39,9 +38,9 @@ public ref struct EvmStack<TTracing>
 
     public int Head;
 
-    private Span<byte> _bytes;
+    private readonly Span<byte> _bytes;
 
-    private ITxTracer _tracer;
+    private readonly ITxTracer _tracer;
 
     public void PushBytes(scoped in Span<byte> value)
     {
@@ -221,13 +220,6 @@ public ref struct EvmStack<TTracing>
         {
             EvmStack.ThrowEvmStackUnderflowException();
         }
-    }
-
-    public void PopSignedInt256(out Int256.Int256 result)
-    {
-        // tail call into UInt256
-        Unsafe.SkipInit(out result);
-        PopUInt256(out Unsafe.As<Int256.Int256, UInt256>(ref result));
     }
 
     /// <summary>

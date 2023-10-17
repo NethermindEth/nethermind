@@ -337,7 +337,7 @@ public class GethLikeJavascriptTracerTests : VirtualMachineTestsBase
     {
         GethLikeTxTrace traces = Execute(
                 GetTracer("prestateTracer"),
-                GetOperationalBytecode(),
+                GetComplexBytecode(),
                 MainnetSpecProvider.CancunActivation)
             .BuildResult();
         Assert.That(traces.CustomTracerResult, Has.All.Empty);
