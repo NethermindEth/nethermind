@@ -3,12 +3,11 @@
 
 internal static class EntryTypes
 {
-    public const UInt16 TypeVersion = 0x3265;
-    public const UInt16 TypeCompressedHeader = 0x03;
-    public const UInt16 TypeCompressedBody = 0x04;
-    public const UInt16 TypeCompressedReceipts = 0x05;
-    public const UInt16 TypeTotalDifficulty = 0x06;
-    public const UInt16 TypeAccumulator = 0x07;
-    public const UInt16 TypeBlockIndex = 0x3266;
-    public const UInt16 MaxEra1Size = 8192;
+    public const UInt16 Version = 0x3265;
+    public const UInt16 CompressedHeader = 0x03;
+    public const UInt16 CompressedBody = 0x04;
+    public const UInt16 CompressedReceipts = 0x05;
+    public const UInt16 TotalDifficulty = 0x06;
+    public const UInt16 Accumulator = 0x07;
+    public const UInt16 BlockIndex = 0x3266;
 }

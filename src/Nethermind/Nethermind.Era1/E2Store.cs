@@ -90,31 +90,32 @@ internal class E2Store : IDisposable
     private async Task<int> WriteEntry(UInt16 type, byte[] bytes, bool asSnappy, CancellationToken cancellation = default)
     {
         //TODO refactor to sync and use span?
-        var headerBuffer = ArrayPool<byte>.Shared.Rent(HeaderSize);
+        byte[] headerBuffer = ArrayPool<byte>.Shared.Rent(HeaderSize);
         try
-        {
+        {            
+            if (asSnappy)
+            {
+                using MemoryStream memoryStream = new MemoryStream(20 * 1024);   
+                using SnappyStream snappyStream = new(memoryStream, CompressionMode.Compress, true);
+                await snappyStream.WriteAsync(bytes, cancellation);
+                await snappyStream.FlushAsync();
+                bytes = memoryStream.ToArray();
+            }
+
             headerBuffer[0] = (byte)type;
             headerBuffer[1] = (byte)(type >> 8);
             int length = bytes.Length;
-            headerBuffer[2] = (byte)(length);
-            headerBuffer[3] = (byte)(length >> 8);
-            headerBuffer[4] = (byte)(length >> 16);
-            headerBuffer[5] = (byte)(length >> 24);
+            headerBuffer[2] = (byte)(bytes.Length);
+            headerBuffer[3] = (byte)(bytes.Length >> 8);
+            headerBuffer[4] = (byte)(bytes.Length >> 16);
+            headerBuffer[5] = (byte)(bytes.Length >> 24);
             headerBuffer[6] = 0;
             headerBuffer[7] = 0;
 
             await _stream.WriteAsync(headerBuffer, 0, HeaderSize, cancellation);
-            long written = bytes.Length;
-            if (asSnappy)
-            {
-                long before = _stream.Position;
-                using SnappyStream snappyStream = new(_stream, CompressionMode.Compress, true);
-                await snappyStream.WriteAsync(bytes, cancellation);
-                written = _stream.Position - before;
-            }
-            else
-                await _stream.WriteAsync(bytes, 0, bytes.Length, cancellation);
-            return (int)written + HeaderSize;
+            await _stream.WriteAsync(bytes, 0, bytes.Length, cancellation);
+
+            return bytes.Length + HeaderSize;
         }
         finally
         {
@@ -125,20 +126,25 @@ internal class E2Store : IDisposable
     private async Task<EraMetadata> ReadEraMetaData(CancellationToken token = default)
     {
         long l = _stream!.Length;
-        if (_stream.Length < 16)
+        if (_stream.Length < 16)        
+            throw new EraFormatException($"Data is not in a valid Era format.");        
+
+        byte[] bytes = ArrayPool<byte>.Shared.Rent(16);
+        try
         {
-            throw new EraFormatException($"Data is not in a valid Era format.");
+            _stream.Position = _stream.Length - 8;
+            await _stream.ReadAsync(bytes, 0, 8, token);
+            long c = BitConverter.ToInt64(bytes);
+
+            _stream.Position = l - 16L - c * 8;
+            await _stream.ReadAsync(bytes, 8, 8, token);
+            long s = BitConverter.ToInt64(bytes, 8);
+            return new EraMetadata(s, c, l);
         }
-
-        byte[] bytes = new byte[16];
-        _stream.Position = _stream.Length - 8;  
-        await _stream.ReadAsync(bytes, 0, 8, token);
-        long c = BitConverter.ToInt64(bytes);
-
-        _stream.Position = l - 16L - c * 8;
-        await _stream.ReadAsync(bytes, 8, 8, token);
-        long s = BitConverter.ToInt64(bytes, 8);
-        return new EraMetadata(s, c, l);
+        finally
+        {
+            ArrayPool<byte>.Shared.Return(bytes);
+        }
     }
 
     // Reads the header metadata at the given offset.

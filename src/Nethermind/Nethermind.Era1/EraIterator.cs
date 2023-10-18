@@ -68,24 +68,24 @@ internal class EraIterator : IAsyncEnumerable<(Block, TxReceipt[], UInt256)>, ID
         {
             Debug.WriteLine($"Reading block entry at index {_currentBlockIndex}");
             (int read, Entry e) = await _store.ReadEntryAt(blockOffset, cancellationToken);
-            CheckType(e, EntryTypes.TypeCompressedHeader);
+            CheckType(e, EntryTypes.CompressedHeader);
             BlockHeader header = await DecompressAndDecode<BlockHeader>(buffer, e);
             var headerEntry = e;
 
             (read, e) = await _store.ReadEntryCurrentPosition(cancellationToken);
-            CheckType(e, EntryTypes.TypeCompressedBody);
+            CheckType(e, EntryTypes.CompressedBody);
 
             BlockBody body = await DecompressAndDecode<BlockBody>(buffer, e);
 
             (read, e) = await _store.ReadEntryCurrentPosition(cancellationToken);
-            CheckType(e, EntryTypes.TypeCompressedReceipts);
+            CheckType(e, EntryTypes.CompressedReceipts);
 
             read = await Decompress(buffer, e);
             TxReceipt[] receipts = DecodeReceipts(buffer, 0, read);
             
 
             (read, e) = await _store.ReadEntryCurrentPosition(cancellationToken);
-            CheckType(e, EntryTypes.TypeTotalDifficulty);
+            CheckType(e, EntryTypes.TotalDifficulty);
             read = await _store.ReadEntryValue(buffer, e, cancellationToken);
             
             UInt256 currentTotalDiffulty = new UInt256(new ArraySegment<byte>(buffer, 0, read));
@@ -179,7 +179,7 @@ internal class EraIterator : IAsyncEnumerable<(Block, TxReceipt[], UInt256)>, ID
         return decoded;
     }
 
-    private bool IsValidFilename(string file)
+    private static bool IsValidFilename(string file)
     {
         if (!Path.GetExtension(file).Equals(".era1", StringComparison.OrdinalIgnoreCase))
             return false;
