@@ -49,7 +49,7 @@ public class VirtualMachineTestsBase
     protected virtual ForkActivation Activation => (BlockNumber, Timestamp);
     protected virtual long BlockNumber { get; } = MainnetSpecProvider.ByzantiumBlockNumber;
     protected virtual ulong Timestamp => 0UL;
-    protected virtual ISpecProvider SpecProvider { get; set; } = MainnetSpecProvider.Instance;
+    internal virtual ISpecProvider SpecProvider { get; set; } = MainnetSpecProvider.Instance;
     protected IReleaseSpec Spec => SpecProvider.GetSpec(Activation);
 
     protected virtual ILogManager GetLogManager()
@@ -119,14 +119,14 @@ public class VirtualMachineTestsBase
 
     protected virtual TestAllTracerWithOutput CreateTracer() => new();
 
-    protected T Execute<T>(T tracer, byte[] code, ForkActivation? forkActivation = null) where T : ITxTracer
+    internal T Execute<T>(T tracer, byte[] code, ForkActivation? forkActivation = null) where T : ITxTracer
     {
         (Block block, Transaction transaction) = PrepareTx(forkActivation ?? Activation, 100000, code);
         _processor.Execute(transaction, block.Header, tracer);
         return tracer;
     }
 
-    protected T Execute<T>(T tracer, long gas, byte[] code, ForkActivation? forkActivation = null) where T : ITxTracer
+    internal T Execute<T>(T tracer, long gas, byte[] code, ForkActivation? forkActivation = null) where T : ITxTracer
     {
         (Block block, Transaction transaction) = PrepareTx(forkActivation ?? Activation, gas, code);
         _processor.Execute(transaction, block.Header, tracer);

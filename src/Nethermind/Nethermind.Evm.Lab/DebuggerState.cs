@@ -19,6 +19,12 @@ using Nethermind.Evm;
 using MachineStateEvents;
 using FluentAssertions.Equivalency.Tracing;
 using System;
+using Nethermind.Core;
+using Nethermind.Blockchain.Find;
+using Nethermind.Core.Crypto;
+using Nethermind.JsonRpc.Modules;
+using Nethermind.Blockchain.Receipts;
+using Nethermind.Blockchain;
 
 namespace DebuggerStateEvents
 {
@@ -48,6 +54,48 @@ namespace Nethermind.Evm.Lab
                 .ResetTracer(true)
                 .Setup(); ;
         }
+
+        public DebuggerState Initialize(Transaction transaction, BlockParameter blkParam)
+        {
+            SearchResult<Block> blockResult = context.NethermindApi.BlockTree.SearchForBlock(blkParam);
+            if (blockResult.IsError) throw new Exception(blockResult.Error);
+            IReleaseSpec spec = context.NethermindApi.SpecProvider.GetSpec(blockResult.Object.Header);
+
+            byte[] bytecode;
+            if(transaction.IsContractCreation)
+            {
+                bytecode = transaction.Data.Value.ToArray();
+            } else
+            {
+                bytecode = context.NethermindApi.WorldState.GetCode(transaction.To);
+            }
+
+            return SetFork(spec ?? Cancun.Instance)
+                .SetBytecode(bytecode ?? Bytes.FromHexString(Uri.IsWellFormedUriString(GlobalState.initialCmdArgument, UriKind.Absolute) ? File.OpenText(GlobalState.initialCmdArgument).ReadToEnd() : GlobalState.initialCmdArgument))
+                .SetGas(transaction.GasLimit)
+                .ResetTracer(true)
+                .Setup(); ;
+        }
+
+        public DebuggerState Initialize(Keccak transactionHash, BlockParameter blkParam)
+        {
+            Keccak blockHash = context.NethermindApi.ReceiptFinder.FindBlockHash(transactionHash);
+            Transaction? tx = null;
+            if (blockHash is not null)
+            {
+                Block block = context.NethermindApi.BlockTree.FindBlock(blockHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+                TxReceipt txReceipt = context.NethermindApi.ReceiptFinder.Get(block).ForTransaction(transactionHash);
+                tx = block?.Transactions[txReceipt.Index];
+            }
+
+            if (context.NethermindApi.TxPool.TryGetPendingTransaction(transactionHash, out Transaction? transaction))
+            {
+                tx = transaction;
+            }
+
+            return Initialize(tx!, blkParam);
+        }
+
         public DebuggerState() => Initialize();
 
         public EventsSink EventsSink { get; } = new EventsSink();
