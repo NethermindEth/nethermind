@@ -9,7 +9,6 @@ using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Blockchain.Filters;
-using Nethermind.Blockchain.Filters.Topics;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Test.Builders;
@@ -21,6 +20,7 @@ using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Db.Blooms;
 using Nethermind.Facade.Filters;
+using Nethermind.Facade.Filters.Topics;
 using NSubstitute;
 using NUnit.Framework;
 

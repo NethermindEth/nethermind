@@ -7,11 +7,10 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Threading;
-
-using Nethermind.Blockchain.Filters.Topics;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Facade.Filters.Topics;
 
 namespace Nethermind.Blockchain.Filters
 {
@@ -66,8 +65,8 @@ namespace Nethermind.Blockchain.Filters
         }
 
         public T? GetFilter<T>(int filterId) where T : FilterBase => _filters.TryGetValue(filterId, out var filter)
-                ? filter as T
-                : null;
+            ? filter as T
+            : null;
 
         public BlockFilter CreateBlockFilter(long startBlockNumber, bool setId = true) =>
             new(GetFilterId(setId), startBlockNumber);
@@ -123,7 +122,7 @@ namespace Nethermind.Blockchain.Filters
         {
             if (topics is null)
             {
-                return SequenceTopicsFilter.AnyTopic;
+                return TopicsFilter.AnyTopic;
             }
 
             FilterTopic?[]? filterTopics = GetFilterTopics(topics);
@@ -134,7 +133,7 @@ namespace Nethermind.Blockchain.Filters
                 expressions.Add(GetTopicExpression(filterTopics[i]));
             }
 
-            return new SequenceTopicsFilter(expressions.ToArray());
+            return new TopicsFilter(expressions.ToArray());
         }
 
         private TopicExpression GetTopicExpression(FilterTopic? filterTopic)
@@ -149,7 +148,7 @@ namespace Nethermind.Blockchain.Filters
             }
             else if (filterTopic.Topics?.Length > 0)
             {
-                return new OrExpression(filterTopic.Topics.Select(t => new SpecificTopic(t)).ToArray<TopicExpression>());
+                return new OrExpression(filterTopic.Topics.Select(t => new SpecificTopic(t)).ToArray());
             }
             else
             {
@@ -189,15 +188,9 @@ namespace Nethermind.Blockchain.Filters
                 case null:
                     return null;
                 case string topic:
-                    return new FilterTopic
-                    {
-                        Topic = new Keccak(topic)
-                    };
+                    return new FilterTopic { Topic = new Keccak(topic) };
                 case Keccak keccak:
-                    return new FilterTopic
-                    {
-                        Topic = keccak
-                    };
+                    return new FilterTopic { Topic = keccak };
             }
 
             if (obj is not IEnumerable<string> topics)
@@ -206,10 +199,7 @@ namespace Nethermind.Blockchain.Filters
             }
             else
             {
-                return new FilterTopic
-                {
-                    Topics = topics.Select(t => new Keccak(t)).ToArray()
-                };
+                return new FilterTopic { Topics = topics.Select(t => new Keccak(t)).ToArray() };
             }
         }
 
@@ -217,7 +207,6 @@ namespace Nethermind.Blockchain.Filters
         {
             public Keccak? Topic { get; set; }
             public Keccak[]? Topics { get; set; }
-
         }
     }
 }

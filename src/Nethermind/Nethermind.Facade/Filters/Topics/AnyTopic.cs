@@ -1,10 +1,12 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Generic;
+using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 
-namespace Nethermind.Blockchain.Filters.Topics
+namespace Nethermind.Facade.Filters.Topics
 {
     public class AnyTopic : TopicExpression
     {
@@ -17,6 +19,8 @@ namespace Nethermind.Blockchain.Filters.Topics
 
         public override bool Matches(Bloom bloom) => true;
         public override bool Matches(ref BloomStructRef bloom) => true;
+
+        public override IEnumerable<Keccak> OrTopicExpression => Enumerable.Empty<Keccak>();
 
         public override string ToString() => "null";
     }

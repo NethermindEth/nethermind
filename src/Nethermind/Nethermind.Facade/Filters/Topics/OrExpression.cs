@@ -2,17 +2,18 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 
-namespace Nethermind.Blockchain.Filters.Topics
+namespace Nethermind.Facade.Filters.Topics
 {
     public class OrExpression : TopicExpression, IEquatable<OrExpression>
     {
-        private readonly TopicExpression[] _subexpressions;
+        private readonly SpecificTopic[] _subexpressions;
 
-        public OrExpression(params TopicExpression[] subexpressions)
+        public OrExpression(params SpecificTopic[] subexpressions)
         {
             _subexpressions = subexpressions;
         }
@@ -68,6 +69,8 @@ namespace Nethermind.Blockchain.Filters.Topics
 
             return false;
         }
+
+        public override IEnumerable<Keccak> OrTopicExpression => _subexpressions.Select(e => e.Topic);
 
         public override bool Equals(object? obj)
         {
