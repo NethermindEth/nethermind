@@ -1,18 +1,16 @@
 #See https://aka.ms/containerfastmode to understand how Visual Studio uses this Dockerfile to build your images for faster debugging.
 
-FROM mcr.microsoft.com/dotnet/aspnet:7.0 AS base
+FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS base
 WORKDIR /app
-
-EXPOSE 8545 8551 30303
-
-RUN apt-get update && apt-get install -y --no-install-recommends \
-  libc6-dev \
-  libsnappy-dev \
-  && rm -rf /var/lib/apt/lists/*
 
 VOLUME /data
 
-FROM mcr.microsoft.com/dotnet/sdk:7.0 AS build
+EXPOSE 8545 8551 30303
+
+RUN apt-get update && apt-get install -y libsnappy-dev && \
+  rm -rf /var/lib/apt/lists/*
+
+FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
 WORKDIR /src
 
 COPY ["Nethermind.Runner/Nethermind.Runner.csproj", "Nethermind.Runner/"]

@@ -1,36 +1,44 @@
 # SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 # SPDX-License-Identifier: LGPL-3.0-only
 
-FROM --platform=$BUILDPLATFORM mcr.microsoft.com/dotnet/sdk:8.0-jammy AS build
+FROM --platform=$BUILDPLATFORM mcr.microsoft.com/dotnet/sdk:8.0 AS build
 
 ARG BUILD_CONFIG=release
 ARG BUILD_TIMESTAMP
 ARG CI
 ARG COMMIT_HASH
 ARG TARGETARCH
-ARG TARGETOS
 
 COPY . .
 
 RUN arch=$([ "$TARGETARCH" = "amd64" ] && echo "x64" || echo "$TARGETARCH") && \
-    dotnet publish src/Nethermind/Nethermind.Runner -c $BUILD_CONFIG -r $TARGETOS-$arch -o pub --sc false \
+    dotnet publish src/Nethermind/Nethermind.Runner -c $BUILD_CONFIG -a $arch -o /publish --sc false \
       -p:BuildTimestamp=$BUILD_TIMESTAMP -p:Commit=$COMMIT_HASH
 
 # A temporary symlink to support the old executable name
-RUN ln -s -r pub/nethermind pub/Nethermind.Runner
+RUN ln -s -r /publish/nethermind /publish/Nethermind.Runner
 
-FROM --platform=$TARGETPLATFORM mcr.microsoft.com/dotnet/aspnet:8.0-jammy
+# Creating these directiories here is needed to ensure the correct permissions
+RUN cd /publish && \
+  mkdir keystore && \
+  mkdir logs && \
+  mkdir nethermind_db
+
+FROM --platform=$TARGETPLATFORM mcr.microsoft.com/dotnet/aspnet:8.0
 
 WORKDIR /nethermind
-
-EXPOSE 8545 8551 30303
 
 VOLUME /nethermind/keystore
 VOLUME /nethermind/logs
 VOLUME /nethermind/nethermind_db
 
-RUN apt-get update && apt-get -y install libsnappy-dev
+EXPOSE 8545 8551 30303
 
-COPY --from=build /pub .
+COPY --from=build --chown=app /publish .
+
+RUN apt-get update && apt-get -y install libsnappy-dev && \
+  rm -rf /var/lib/apt/lists/*
+
+USER app
 
 ENTRYPOINT ["./nethermind"]
