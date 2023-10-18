@@ -144,5 +144,15 @@ namespace Nethermind.Specs.ChainSpecStyle.Json
         public ulong? Eip6780TransitionTimestamp { get; set; }
         public ulong? Eip4788TransitionTimestamp { get; set; }
         public Address Eip4788ContractAddress { get; set; }
+
+        #region EIP-4844 parameters
+        public UInt256? BlobGasPriceUpdateFraction { get; set; }
+
+        public ulong? MaxBlobGasPerBlock { get; set; }
+
+        public UInt256? MinBlobGasPrice { get; set; }
+
+        public ulong? TargetBlobGasPerBlock { get; set; }
+        #endregion
     }
 }

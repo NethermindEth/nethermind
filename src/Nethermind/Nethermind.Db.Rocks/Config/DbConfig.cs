@@ -27,6 +27,8 @@ public class DbConfig : IDbConfig
     public ulong? CompactionReadAhead { get; set; }
     public IDictionary<string, string>? AdditionalRocksDbOptions { get; set; }
     public ulong? MaxBytesForLevelBase { get; set; } = (ulong)256.MiB();
+    public ulong TargetFileSizeBase { get; set; } = (ulong)64.MiB();
+    public int TargetFileSizeMultiplier { get; set; } = 1;
 
     public ulong ReceiptsDbWriteBufferSize { get; set; } = (ulong)8.MiB();
     public uint ReceiptsDbWriteBufferNumber { get; set; } = 4;
@@ -38,6 +40,7 @@ public class DbConfig : IDbConfig
     public bool? ReceiptsDbUseDirectReads { get; set; }
     public bool? ReceiptsDbUseDirectIoForFlushAndCompactions { get; set; }
     public ulong? ReceiptsDbCompactionReadAhead { get; set; }
+    public ulong ReceiptsDbTargetFileSizeBase { get; set; } = (ulong)256.MiB();
     public IDictionary<string, string>? ReceiptsDbAdditionalRocksDbOptions { get; set; }
 
     public ulong BlocksDbWriteBufferSize { get; set; } = (ulong)8.MiB();
@@ -58,12 +61,25 @@ public class DbConfig : IDbConfig
     public bool HeadersDbCacheIndexAndFilterBlocks { get; set; } = false;
     public int? HeadersDbMaxOpenFiles { get; set; }
     public long? HeadersDbMaxBytesPerSec { get; set; }
-    public int? HeadersDbBlockSize { get; set; }
+    public int? HeadersDbBlockSize { get; set; } = 32 * 1024;
     public bool? HeadersDbUseDirectReads { get; set; }
     public bool? HeadersDbUseDirectIoForFlushAndCompactions { get; set; }
     public ulong? HeadersDbCompactionReadAhead { get; set; }
     public IDictionary<string, string>? HeadersDbAdditionalRocksDbOptions { get; set; }
     public ulong? HeadersDbMaxBytesForLevelBase { get; set; } = (ulong)128.MiB();
+
+    public ulong BlockNumbersDbWriteBufferSize { get; set; } = (ulong)8.MiB();
+    public uint BlockNumbersDbWriteBufferNumber { get; set; } = 2;
+    public ulong BlockNumbersDbBlockCacheSize { get; set; }
+    public bool BlockNumbersDbCacheIndexAndFilterBlocks { get; set; }
+    public int? BlockNumbersDbMaxOpenFiles { get; set; }
+    public long? BlockNumbersDbMaxBytesPerSec { get; set; }
+    public int? BlockNumbersDbBlockSize { get; set; } = 4 * 1024;
+    public bool? BlockNumbersDbUseDirectReads { get; set; }
+    public bool? BlockNumbersDbUseDirectIoForFlushAndCompactions { get; set; }
+    public ulong? BlockNumbersDbCompactionReadAhead { get; set; }
+    public IDictionary<string, string>? BlockNumbersDbAdditionalRocksDbOptions { get; set; }
+    public ulong? BlockNumbersDbMaxBytesForLevelBase { get; set; } = (ulong)16.MiB();
 
     public ulong BlockInfosDbWriteBufferSize { get; set; } = (ulong)8.MiB();
     public uint BlockInfosDbWriteBufferNumber { get; set; } = 4;
@@ -157,6 +173,7 @@ public class DbConfig : IDbConfig
     public bool? StateDbUseDirectIoForFlushAndCompactions { get; set; } = false;
     public ulong? StateDbCompactionReadAhead { get; set; }
     public bool? StateDbDisableCompression { get; set; } = false;
+    public int StateDbTargetFileSizeMultiplier { get; set; } = 2;
     public IDictionary<string, string>? StateDbAdditionalRocksDbOptions { get; set; }
 
     public uint RecycleLogFileNum { get; set; } = 0;

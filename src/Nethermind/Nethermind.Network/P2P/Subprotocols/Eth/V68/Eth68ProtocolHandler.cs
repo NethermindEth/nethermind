@@ -88,12 +88,13 @@ public class Eth68ProtocolHandler : Eth67ProtocolHandler
         }
 
         Metrics.Eth68NewPooledTransactionHashesReceived++;
+        TxPool.Metrics.PendingTransactionsHashesReceived += message.Hashes.Count;
 
         AddNotifiedTransactions(message.Hashes);
 
         Stopwatch? stopwatch = isTrace ? Stopwatch.StartNew() : null;
 
-        _pooledTxsRequestor.RequestTransactionsEth68(_sendAction, message.Hashes, message.Sizes);
+        _pooledTxsRequestor.RequestTransactionsEth68(_sendAction, message.Hashes, message.Sizes, message.Types);
 
         stopwatch?.Stop();
 

@@ -12,15 +12,11 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
-using Nethermind.Db;
-using Nethermind.Db.Blooms;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
-using Nethermind.State.Repositories;
-using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test.Validators
@@ -42,8 +38,10 @@ namespace Nethermind.Blockchain.Test.Validators
             EthashDifficultyCalculator calculator = new(new TestSingleReleaseSpecProvider(Frontier.Instance));
             _ethash = new EthashSealValidator(LimboLogs.Instance, calculator, new CryptoRandom(), new Ethash(LimboLogs.Instance), Timestamper.Default);
             _testLogger = new TestLogger();
-            MemDb blockInfoDb = new();
-            _blockTree = new BlockTree(new MemDb(), new MemDb(), blockInfoDb, new ChainLevelInfoRepository(blockInfoDb), FrontierSpecProvider.Instance, Substitute.For<IBloomStorage>(), LimboLogs.Instance);
+            _blockTree = Build.A.BlockTree()
+                .WithSpecProvider(FrontierSpecProvider.Instance)
+                .WithoutSettingHead
+                .TestObject;
             _specProvider = new TestSingleReleaseSpecProvider(Byzantium.Instance);
 
             _validator = new HeaderValidator(_blockTree, _ethash, _specProvider, new OneLoggerLogManager(_testLogger));
@@ -296,10 +294,10 @@ namespace Nethermind.Blockchain.Test.Validators
             _block.Header.Hash = _block.CalculateHash();
 
             {
-                MemDb blockInfoDb = new();
-                _blockTree = new BlockTree(new MemDb(), new MemDb(), blockInfoDb,
-                    new ChainLevelInfoRepository(blockInfoDb),
-                    FrontierSpecProvider.Instance, Substitute.For<IBloomStorage>(), LimboLogs.Instance);
+                _blockTree = Build.A.BlockTree()
+                    .WithSpecProvider(FrontierSpecProvider.Instance)
+                    .WithoutSettingHead
+                    .TestObject;
 
                 Block genesis = Build.A.Block.WithDifficulty((UInt256)genesisTd).TestObject;
                 _blockTree.SuggestBlock(genesis);
