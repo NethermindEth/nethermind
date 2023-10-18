@@ -41,11 +41,14 @@
     }
   },
   "params": {
+    "blobGasPriceUpdateFraction": "0x10fafa",
     "networkID": "100",
     "gasLimitBoundDivisor": "0x400",
+    "maxBlobGasPerBlock": "0x40000",
     "maximumExtraDataSize": "0x20",
     "maxCodeSize": "0x6000",
     "maxCodeSizeTransitionTimestamp": "0x64c8edbc",
+    "minBlobGasPrice": "0x3b9aca00",
     "minGasLimit": "0x1388",
     "eip140Transition": "0x0",
     "eip211Transition": "0x0",
@@ -80,6 +83,7 @@
     "eip1559FeeCollector": "0x6BBe78ee9e474842Dbd4AB4987b3CeFE88426A92",
     "eip1559FeeCollectorTransition": 19040000,
     "registrar": "0x6B53721D4f2Fb9514B85f5C49b197D857e36Cf03",
+    "targetBlobGasPerBlock": "0x20000",
     "transactionPermissionContract": "0x7Dd7032AA75A37ea0b150f57F899119C7379A78b",
     "transactionPermissionContractTransition": 9186425,
     "terminalTotalDifficulty": "8626000000000000000000058750000000000000000000"

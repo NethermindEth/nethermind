@@ -294,6 +294,7 @@ namespace Nethermind.Blockchain
             }
 
             _blockStore.Insert(block);
+            _headerStore.InsertBlockNumber(block.Hash, block.Number);
 
             bool saveHeader = (insertBlockOptions & BlockTreeInsertBlockOptions.SaveHeader) != 0;
             if (saveHeader)
@@ -695,7 +696,7 @@ namespace Nethermind.Blockchain
         public Block? FindBlock(long blockNumber, BlockTreeLookupOptions options)
         {
             Keccak hash = GetBlockHashOnMainOrBestDifficultyHash(blockNumber);
-            return FindBlock(hash, options);
+            return FindBlock(hash, options, blockNumber: blockNumber);
         }
 
         public void DeleteInvalidBlock(Block invalidBlock)
@@ -783,7 +784,7 @@ namespace Nethermind.Blockchain
                 }
 
                 if (_logger.IsInfo) _logger.Info($"Deleting invalid block {currentHash} at level {currentNumber}");
-                _blockStore.Delete(currentHash);
+                _blockStore.Delete(currentNumber, currentHash);
                 _headerStore.Delete(currentHash);
 
                 if (nextHash is null)
@@ -1074,7 +1075,7 @@ namespace Nethermind.Blockchain
             _chainLevelInfoRepository.PersistLevel(block.Number, level, batch);
 
             Block previous = hashOfThePreviousMainBlock is not null && hashOfThePreviousMainBlock != block.Hash
-                ? FindBlock(hashOfThePreviousMainBlock, BlockTreeLookupOptions.TotalDifficultyNotNeeded)
+                ? FindBlock(hashOfThePreviousMainBlock, BlockTreeLookupOptions.TotalDifficultyNotNeeded, blockNumber: block.Number)
                 : null;
 
             if (_logger.IsTrace) _logger.Trace($"Block added to main {block}, block TD {block.TotalDifficulty}");
@@ -1285,14 +1286,20 @@ namespace Nethermind.Blockchain
         public Keccak? FinalizedHash { get; private set; }
         public Keccak? SafeHash { get; private set; }
 
-        public Block? FindBlock(Keccak? blockHash, BlockTreeLookupOptions options)
+        public Block? FindBlock(Keccak? blockHash, BlockTreeLookupOptions options, long? blockNumber = null)
         {
             if (blockHash is null || blockHash == Keccak.Zero)
             {
                 return null;
             }
 
-            Block block = _blockStore.Get(blockHash, shouldCache: false);
+            Block? block = null;
+            blockNumber ??= _headerStore.GetBlockNumber(blockHash);
+            if (blockNumber != null)
+            {
+                block = _blockStore.Get(blockNumber.Value, blockHash, shouldCache: false);
+            }
+
             if (block is null)
             {
                 bool allowInvalid = (options & BlockTreeLookupOptions.AllowInvalid) == BlockTreeLookupOptions.AllowInvalid;
@@ -1519,7 +1526,7 @@ namespace Nethermind.Blockchain
                 Keccak? newHeadHash = chainLevelInfo.HasBlockOnMainChain
                     ? chainLevelInfo.BlockInfos[0].BlockHash
                     : Genesis?.Hash;
-                newHeadBlock = newHeadHash is null ? null : FindBlock(newHeadHash, BlockTreeLookupOptions.None);
+                newHeadBlock = newHeadHash is null ? null : FindBlock(newHeadHash, BlockTreeLookupOptions.None, blockNumber: startNumber - 1);
             }
 
             using (_chainLevelInfoRepository.StartBatch())
@@ -1539,7 +1546,7 @@ namespace Nethermind.Blockchain
                     {
                         Keccak blockHash = blockInfo.BlockHash;
                         _blockInfoDb.Delete(blockHash);
-                        _blockStore.Delete(blockHash);
+                        _blockStore.Delete(i, blockHash);
                         _headerStore.Delete(blockHash);
                     }
                 }

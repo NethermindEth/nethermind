@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using FluentAssertions;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
@@ -238,9 +239,10 @@ public partial class BlockTreeTests
         Block? beaconBlock = syncedTree.FindBlock(14, BlockTreeLookupOptions.None)!;
         BlockTreeInsertHeaderOptions headerOptions = BlockTreeInsertHeaderOptions.BeaconBlockInsert;
         AddBlockResult insertResult = notSyncedTree.Insert(beaconBlock, BlockTreeInsertBlockOptions.SaveHeader, headerOptions);
+
         Block? beaconBlock2 = syncedTree.FindBlock(13, BlockTreeLookupOptions.None);
         beaconBlock2!.Header.TotalDifficulty = null;
-        AddBlockResult insertOutcome = notSyncedTree.Insert(beaconBlock2, BlockTreeInsertBlockOptions.None);
+        AddBlockResult insertOutcome = notSyncedTree.Insert(beaconBlock2, BlockTreeInsertBlockOptions.SaveHeader, headerOptions);
         Assert.That(insertResult, Is.EqualTo(insertOutcome));
 
         Block? blockToCheck = notSyncedTree.FindBlock(beaconBlock2.Hash, BlockTreeLookupOptions.None);
@@ -531,7 +533,10 @@ public partial class BlockTreeTests
             {
                 BlockDecoder blockDecoder = new();
                 Rlp newRlp = blockDecoder.Encode(block);
-                NotSyncedTreeBuilder.BlocksDb.Set(block.GetOrCalculateHash(), newRlp.Bytes);
+                NotSyncedTreeBuilder.BlocksDb.Set(
+                    block.Number,
+                    block.GetOrCalculateHash(),
+                    newRlp.Bytes);
 
                 return this;
             }
@@ -626,6 +631,7 @@ public partial class BlockTreeTests
 
         Block? beaconBlock = scenario.SyncedTree.FindBlock(14, BlockTreeLookupOptions.None)!;
         scenario.InsertToBlockDb(beaconBlock);
+        scenario.InsertToHeaderDb(beaconBlock.Header);
         Assert.Throws<InvalidOperationException>(() => scenario.NotSyncedTree.FindBlock(beaconBlock.Header.Hash, BlockTreeLookupOptions.None));
     }
 

@@ -68,21 +68,21 @@ public class BlobGasCalculatorTests
     public static IEnumerable<(ulong parentExcessBlobGas, int parentBlobsCount, ulong expectedExcessBlobGas)> ExcessBlobGasTestCaseSource()
     {
         yield return (0, 0, 0);
-        yield return (0, (int)(Eip4844Constants.TargetBlobGasPerBlock / Eip4844Constants.BlobGasPerBlob) - 1, 0);
-        yield return (0, (int)(Eip4844Constants.TargetBlobGasPerBlock / Eip4844Constants.BlobGasPerBlob), 0);
-        yield return (100000, (int)(Eip4844Constants.TargetBlobGasPerBlock / Eip4844Constants.BlobGasPerBlob), 100000);
-        yield return (0, (int)(Eip4844Constants.TargetBlobGasPerBlock / Eip4844Constants.BlobGasPerBlob) + 1, Eip4844Constants.BlobGasPerBlob * 1);
-        yield return (Eip4844Constants.TargetBlobGasPerBlock, 1, Eip4844Constants.BlobGasPerBlob * 1);
+        yield return (0, (int)(Eip4844Constants.TargetBlobGasPerBlock / Eip4844Constants.GasPerBlob) - 1, 0);
+        yield return (0, (int)(Eip4844Constants.TargetBlobGasPerBlock / Eip4844Constants.GasPerBlob), 0);
+        yield return (100000, (int)(Eip4844Constants.TargetBlobGasPerBlock / Eip4844Constants.GasPerBlob), 100000);
+        yield return (0, (int)(Eip4844Constants.TargetBlobGasPerBlock / Eip4844Constants.GasPerBlob) + 1, Eip4844Constants.GasPerBlob * 1);
+        yield return (Eip4844Constants.TargetBlobGasPerBlock, 1, Eip4844Constants.GasPerBlob * 1);
         yield return (Eip4844Constants.TargetBlobGasPerBlock, 0, 0);
-        yield return (Eip4844Constants.TargetBlobGasPerBlock, 2, Eip4844Constants.BlobGasPerBlob * 2);
-        yield return (Eip4844Constants.MaxBlobGasPerBlock, 1, Eip4844Constants.TargetBlobGasPerBlock + Eip4844Constants.BlobGasPerBlob * 1);
+        yield return (Eip4844Constants.TargetBlobGasPerBlock, 2, Eip4844Constants.GasPerBlob * 2);
+        yield return (Eip4844Constants.MaxBlobGasPerBlock, 1, Eip4844Constants.TargetBlobGasPerBlock + Eip4844Constants.GasPerBlob * 1);
         yield return (
             Eip4844Constants.MaxBlobGasPerBlock,
-            (int)(Eip4844Constants.TargetBlobGasPerBlock / Eip4844Constants.BlobGasPerBlob),
+            (int)(Eip4844Constants.TargetBlobGasPerBlock / Eip4844Constants.GasPerBlob),
             Eip4844Constants.MaxBlobGasPerBlock);
         yield return (
             Eip4844Constants.MaxBlobGasPerBlock,
-            (int)(Eip4844Constants.MaxBlobGasPerBlock / Eip4844Constants.BlobGasPerBlob),
+            (int)(Eip4844Constants.MaxBlobGasPerBlock / Eip4844Constants.GasPerBlob),
             Eip4844Constants.MaxBlobGasPerBlock * 2 - Eip4844Constants.TargetBlobGasPerBlock
             );
     }

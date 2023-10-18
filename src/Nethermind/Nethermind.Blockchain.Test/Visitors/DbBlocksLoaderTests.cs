@@ -176,9 +176,9 @@ namespace Nethermind.Blockchain.Test.Visitors
             tree2.Head!.Header.Should().BeEquivalentTo(block3B.Header, options => { return options.Excluding(t => t.MaybeParent); });
             tree2.BestSuggestedHeader.Should().BeEquivalentTo(block3B.Header, options => { return options.Excluding(t => t.MaybeParent); });
 
-            Assert.IsNull(blockStore.Get(block1.Hash!), "block 1");
-            Assert.IsNull(blockStore.Get(block2.Hash!), "block 2");
-            Assert.IsNull(blockStore.Get(block3.Hash!), "block 3");
+            Assert.IsNull(blockStore.Get(block1.Number, block1.Hash!), "block 1");
+            Assert.IsNull(blockStore.Get(block2.Number, block2.Hash!), "block 2");
+            Assert.IsNull(blockStore.Get(block3.Number, block3.Hash!), "block 3");
 
             Assert.NotNull(blockInfosDb.Get(1), "level 1");
             Assert.NotNull(blockInfosDb.Get(2), "level 2");
@@ -238,9 +238,9 @@ namespace Nethermind.Blockchain.Test.Visitors
             Assert.That(tree2.Head!.Hash, Is.EqualTo(block0.Hash), "head");
             Assert.That(tree2.BestSuggestedHeader!.Hash, Is.EqualTo(block0.Hash), "suggested");
 
-            Assert.IsNull(blockStore.Get(block1.Hash!), "block 1");
-            Assert.IsNull(blockStore.Get(block2.Hash!), "block 2");
-            Assert.IsNull(blockStore.Get(block3.Hash!), "block 3");
+            Assert.IsNull(blockStore.Get(block1.Number, block1.Hash!), "block 1");
+            Assert.IsNull(blockStore.Get(block2.Number, block2.Hash!), "block 2");
+            Assert.IsNull(blockStore.Get(block3.Number, block3.Hash!), "block 3");
 
             Assert.IsNull(blockInfosDb.Get(1), "level 1");
             Assert.IsNull(blockInfosDb.Get(2), "level 2");
