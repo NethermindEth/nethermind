@@ -375,23 +375,45 @@ namespace Nethermind.Blockchain.Test.Find
             }
         }
 
+
+
         private EliasFanoStorage setup_new_storage()
         {
             EliasFanoStorage storage = new EliasFanoStorage();
-            storage.PutAll(TestItem.AddressA.GetHashCode(), new List<ulong> { 1, 2, 3, 4 });
-            storage.PutAll(TestItem.KeccakA.GetHashCode(), new List<ulong> { 2, 5 });
-            storage.Put(TestItem.AddressA.GetHashCode(), 99);
-            storage.Put(TestItem.KeccakA.GetHashCode(), 99);
+            storage.PutAll(TestItem.AddressA.GetHashCode(), new List<ulong> { 1, 3, 5, 7, 10 });
+            storage.PutAll(TestItem.KeccakA.GetHashCode(), new List<ulong> { 1, 5, 7, 10});
+            storage.PutAll(TestItem.KeccakB.GetHashCode(), new List<ulong> { 1, 5});
+            storage.PutAll(TestItem.KeccakC.GetHashCode(), new List<ulong> { 1, 5, 10});
+
+            // [Y] -> [ 1, 3, 4, 5, 7, 10 ]
+            // [X] -> [ 1, 5, 7, 10 ]
+            // [A] -> [ 1, 5 ]
+            // [B] -> [ 10 ]
+            // Y AND X AND (A OR B)
+            // Output: [1, 5, 10]
+
             return storage;
         }
 
-        [TestCaseSource(nameof(FilterByAddressAndTopics))]
-        public void test_new_storage(Address address, Keccak topic)
+        public static IEnumerable FilterEliasFanoTestCases
+        {
+            get
+            {
+                yield return new TestCaseData(FilterBuilder.New()
+                    .WithTopicExpressions(TestTopicExpressions.Specific(TestItem.KeccakA), TestTopicExpressions.Or(TestItem.KeccakB, TestItem.KeccakC))
+                    .WithAddresses(TestItem.AddressA).Build(), 3);
+
+            }
+        }
+
+        [TestCaseSource(nameof(FilterEliasFanoTestCases))]
+        public void complex_filter_new(LogFilter filter, int expectedCount)
         {
             EliasFanoStorage storage = setup_new_storage();
-            List<ulong> results = new List<ulong>();
-            results.AddRange(storage.FindBlockNumbers(address.GetHashCode(), topic.GetHashCode()));
-            results.Should().BeEquivalentTo(new List<ulong> {2, 99});
+            // _logFinder = new LogFinder(_blockTree, _receiptStorage, _receiptStorage, storage, LimboLogs.Instance, _receiptsRecovery);
+            IEnumerable<long> results = storage.Match(filter.FromBlock.BlockNumber, filter.ToBlock.BlockNumber, filter.AddressFilter.Addresses, filter.TopicsFilter.LogicalTopicsSequence);
+            // var logs = _logFinder.FindLogs(filter).ToArray();
+            results.Count().Should().Be(expectedCount);
         }
     }
 }

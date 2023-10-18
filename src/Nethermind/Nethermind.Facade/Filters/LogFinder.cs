@@ -9,6 +9,7 @@ using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Db.Blooms;
@@ -29,6 +30,7 @@ namespace Nethermind.Blockchain.Find
         private readonly int _rpcConfigGetLogsThreads;
         private readonly IBlockFinder _blockFinder;
         private readonly ILogger _logger;
+        private readonly EliasFanoStorage _eliasFanoStorage;
 
         public LogFinder(IBlockFinder? blockFinder,
             IReceiptFinder? receiptFinder,
@@ -42,6 +44,24 @@ namespace Nethermind.Blockchain.Find
             _receiptFinder = receiptFinder ?? throw new ArgumentNullException(nameof(receiptFinder));
             _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage)); ;
             _bloomStorage = bloomStorage ?? throw new ArgumentNullException(nameof(bloomStorage));
+            _receiptsRecovery = receiptsRecovery ?? throw new ArgumentNullException(nameof(receiptsRecovery));
+            _logger = logManager?.GetClassLogger<LogFinder>() ?? throw new ArgumentNullException(nameof(logManager));
+            _maxBlockDepth = maxBlockDepth;
+            _rpcConfigGetLogsThreads = Math.Max(1, Environment.ProcessorCount / 4);
+        }
+
+        public LogFinder(IBlockFinder? blockFinder,
+            IReceiptFinder? receiptFinder,
+            IReceiptStorage? receiptStorage,
+            EliasFanoStorage? eliasFanoStorage,
+            ILogManager? logManager,
+            IReceiptsRecovery? receiptsRecovery,
+            int maxBlockDepth = 1000)
+        {
+            _blockFinder = blockFinder ?? throw new ArgumentNullException(nameof(blockFinder));
+            _receiptFinder = receiptFinder ?? throw new ArgumentNullException(nameof(receiptFinder));
+            _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage)); ;
+            _eliasFanoStorage = eliasFanoStorage ?? throw new ArgumentNullException(nameof(eliasFanoStorage));
             _receiptsRecovery = receiptsRecovery ?? throw new ArgumentNullException(nameof(receiptsRecovery));
             _logger = logManager?.GetClassLogger<LogFinder>() ?? throw new ArgumentNullException(nameof(logManager));
             _maxBlockDepth = maxBlockDepth;
@@ -84,7 +104,76 @@ namespace Nethermind.Blockchain.Find
                 : FilterLogsIteratively(filter, fromBlock, toBlock, cancellationToken);
         }
 
-        public void FindLogsEliasFano(LogFilter filter, CancellationToken cancellationToken = default)
+        private bool ShouldUseBloomDatabase(BlockHeader fromBlock, BlockHeader toBlock)
+        {
+            var blocksToSearch = toBlock.Number - fromBlock.Number + 1;
+            return blocksToSearch > 1; // if we are searching only in 1 block skip bloom index altogether, this can be tweaked
+        }
+
+        private IEnumerable<FilterLog> FilterLogsWithBloomsIndex(LogFilter filter, BlockHeader fromBlock, BlockHeader toBlock, CancellationToken cancellationToken)
+        {
+            Keccak FindBlockHash(long blockNumber, CancellationToken token)
+            {
+                token.ThrowIfCancellationRequested();
+                var blockHash = _blockFinder.FindBlockHash(blockNumber);
+                if (blockHash is null)
+                {
+                    if (_logger.IsError) _logger.Error($"Could not find block {blockNumber} in database. eth_getLogs will return incomplete results.");
+                }
+
+                return blockHash;
+            }
+
+            IEnumerable<long> FilterBlocks(LogFilter f, long @from, long to, bool runParallel, CancellationToken token)
+            {
+                try
+                {
+                    var enumeration = _bloomStorage.GetBlooms(from, to);
+                    EliasFanoStorage efs = _eliasFanoStorage;
+                    foreach (var bloom in enumeration)
+                    {
+                        token.ThrowIfCancellationRequested();
+                        if (f.Matches(bloom) && enumeration.TryGetBlockNumber(out var blockNumber))
+                        {
+                            yield return blockNumber;
+                        }
+                    }
+                }
+                finally
+                {
+                    if (runParallel)
+                    {
+                        Interlocked.CompareExchange(ref ParallelLock, 0, 1);
+                    }
+                    Interlocked.Decrement(ref ParallelExecutions);
+                }
+            }
+
+            // we want to support one parallel eth_getLogs call for maximum performance
+            // we don't want support more than one eth_getLogs call so we don't starve CPU and threads
+            int parallelLock = Interlocked.CompareExchange(ref ParallelLock, 1, 0);
+            int parallelExecutions = Interlocked.Increment(ref ParallelExecutions) - 1;
+            bool canRunParallel = parallelLock == 0;
+
+            IEnumerable<long> filterBlocks = FilterBlocks(filter, fromBlock.Number, toBlock.Number, canRunParallel, cancellationToken);
+
+            if (canRunParallel)
+            {
+                if (_logger.IsTrace) _logger.Trace($"Allowing parallel eth_getLogs, already parallel executions: {parallelExecutions}.");
+                filterBlocks = filterBlocks.AsParallel() // can yield big performance improvements
+                    .AsOrdered() // we want to keep block order
+                    .WithDegreeOfParallelism(_rpcConfigGetLogsThreads); // explicitly provide number of threads
+            }
+            else
+            {
+                if (_logger.IsTrace) _logger.Trace($"Not allowing parallel eth_getLogs, already parallel executions: {parallelExecutions}.");
+            }
+
+            return filterBlocks
+                .SelectMany(blockNumber => FindLogsInBlock(filter, FindBlockHash(blockNumber, cancellationToken), blockNumber, cancellationToken));
+        }
+
+        public IEnumerable<FilterLog> FindLogsEliasFano(LogFilter filter, CancellationToken cancellationToken = default)
         {
             BlockHeader FindHeader(BlockParameter blockParameter, string name, bool headLimit) =>
                 _blockFinder.FindHeader(blockParameter, headLimit) ?? throw new ResourceNotFoundException($"Block not found: {name} {blockParameter}");
@@ -112,66 +201,10 @@ namespace Nethermind.Blockchain.Find
             }
             cancellationToken.ThrowIfCancellationRequested();
 
-            // TODO: integrate new way of looking for logs here
-            // It should call a function that looks for logs through the EliasFanoStorage
-            // We get the block number from EliasFanoStorage.FindBlockNumber
-            //     -> Probably need to chagne to use AddressFilter & TopicsFilter to get the block number
-            // Need to see how to get FilterLogs afterwards.
-
-            // bool shouldUseBloom = ShouldUseBloomDatabase(fromBlock, toBlock);
-            // bool canUseBloom = CanUseBloomDatabase(toBlock, fromBlock);
-            // bool useBloom = shouldUseBloom && canUseBloom;
-            // return useBloom
-            // ? FilterLogsWithBloomsIndex(filter, fromBlock, toBlock, cancellationToken)
-            //     : FilterLogsIteratively(filter, fromBlock, toBlock, cancellationToken);
+            return FilterLogsWithEliasFano(filter, fromBlock, toBlock, cancellationToken);
         }
 
-        // public List<ulong> FindBlockNumbers(LogFilter filter, int from, int to)
-        // {
-        //     AddressFilter af = filter.AddressFilter;
-        //     af.Addresses;
-        //     TopicsFilter tf = filter.TopicsFilter;
-        //
-        //     // tf.
-        //     // tf.
-        //     // EliasFano addressEf = Get(address);
-        //     // EliasFano topicEf = Get(topic);
-        //     // Store results.
-        //     List<ulong> filterBlocks = new List<ulong>();
-        //     // Get the list of values for iteration. Maybe can change to just use EliasFanoIterator.
-        //     List<ulong> addressList = addressEf.GetEnumerator(0).ToList();
-        //     List<ulong> topicList = topicEf.GetEnumerator(0).ToList();
-        //     int i = 0;
-        //     int j = 0;
-        //     while (i < addressList.Count() && j < topicList.Count())
-        //     {
-        //         if (addressList[i] == topicList[j])
-        //         {
-        //             filterBlocks.Add(topicList[j]);
-        //             i++;
-        //             j++;
-        //         }
-        //         else if (addressList[i] < topicList[j])
-        //         {
-        //             i++;
-        //         }
-        //         else
-        //         {
-        //             j++;
-        //         }
-        //     }
-        //     // Probably can call FindBlock
-        //     //filterBlocks.SelectMany(blockNumber => FindLogsInBlock(filter, FindBlockHash(blockNumber, cancellationToken), blockNumber, cancellationToken));
-        //     return filterBlocks;
-        // }
-
-        private bool ShouldUseBloomDatabase(BlockHeader fromBlock, BlockHeader toBlock)
-        {
-            var blocksToSearch = toBlock.Number - fromBlock.Number + 1;
-            return blocksToSearch > 1; // if we are searching only in 1 block skip bloom index altogether, this can be tweaked
-        }
-
-        private IEnumerable<FilterLog> FilterLogsWithBloomsIndex(LogFilter filter, BlockHeader fromBlock, BlockHeader toBlock, CancellationToken cancellationToken)
+        private IEnumerable<FilterLog> FilterLogsWithEliasFano(LogFilter filter, BlockHeader fromBlock, BlockHeader toBlock, CancellationToken cancellationToken)
         {
             Keccak FindBlockHash(long blockNumber, CancellationToken token)
             {
@@ -189,15 +222,7 @@ namespace Nethermind.Blockchain.Find
             {
                 try
                 {
-                    var enumeration = _bloomStorage.GetBlooms(from, to);
-                    foreach (var bloom in enumeration)
-                    {
-                        token.ThrowIfCancellationRequested();
-                        if (f.Matches(bloom) && enumeration.TryGetBlockNumber(out var blockNumber))
-                        {
-                            yield return blockNumber;
-                        }
-                    }
+                    return _eliasFanoStorage.Match(f.ToBlock.BlockNumber, f.FromBlock.BlockNumber, f.AddressFilter.Addresses, f.TopicsFilter.LogicalTopicsSequence);
                 }
                 finally
                 {
