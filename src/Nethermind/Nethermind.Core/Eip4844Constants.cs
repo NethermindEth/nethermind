@@ -16,6 +16,7 @@ public class Eip4844Constants
     /// <remarks>Defaults to 2e17.</remarks>
     public const ulong GasPerBlob = 1 << 17;
 
+    public const int MaxBlobsPerBlock = 6;
     public const int MinBlobsPerTransaction = 1;
 
     /// <summary>
@@ -28,7 +29,7 @@ public class Eip4844Constants
     /// Gets the <c>MAX_BLOB_GAS_PER_BLOCK</c> parameter.
     /// </summary>
     /// <remarks>Defaults to 786432.</remarks>
-    public static ulong MaxBlobGasPerBlock { get; private set; } = GasPerBlob * 6;
+    public static ulong MaxBlobGasPerBlock { get; private set; } = GasPerBlob * MaxBlobsPerBlock;
 
     public static ulong MaxBlobGasPerTransaction => MaxBlobGasPerBlock;
 
@@ -42,7 +43,7 @@ public class Eip4844Constants
     /// Gets the <c>TARGET_BLOB_GAS_PER_BLOCK</c> parameter.
     /// </summary>
     /// <remarks>Defaults to 393216.</remarks>
-    public static ulong TargetBlobGasPerBlock { get; private set; } = GasPerBlob * 3;
+    public static ulong TargetBlobGasPerBlock { get; private set; } = MaxBlobGasPerBlock / 2;
 
     // The parameter mutators are kept separate deliberately to ensure no accidental value changes.
     #region Mutators
