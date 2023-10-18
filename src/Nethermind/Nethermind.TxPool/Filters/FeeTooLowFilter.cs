@@ -11,21 +11,23 @@ using Nethermind.TxPool.Collections;
 namespace Nethermind.TxPool.Filters
 {
     /// <summary>
-    /// Filters out transactions where gas fee properties were set too low or where the sender has not enough balance.
+    /// Filters out transactions where gas fee properties were set too low.
     /// </summary>
     internal sealed class FeeTooLowFilter : IIncomingTxFilter
     {
         private readonly IChainHeadSpecProvider _specProvider;
         private readonly IChainHeadInfoProvider _headInfo;
         private readonly TxDistinctSortedPool _txs;
+        private readonly TxDistinctSortedPool _blobTxs;
         private readonly bool _thereIsPriorityContract;
         private readonly ILogger _logger;
 
-        public FeeTooLowFilter(IChainHeadInfoProvider headInfo, TxDistinctSortedPool txs, bool thereIsPriorityContract, ILogger logger)
+        public FeeTooLowFilter(IChainHeadInfoProvider headInfo, TxDistinctSortedPool txs, TxDistinctSortedPool blobTxs, bool thereIsPriorityContract, ILogger logger)
         {
             _specProvider = headInfo.SpecProvider;
             _headInfo = headInfo;
             _txs = txs;
+            _blobTxs = blobTxs;
             _thereIsPriorityContract = thereIsPriorityContract;
             _logger = logger;
         }
@@ -51,7 +53,8 @@ namespace Nethermind.TxPool.Filters
                     AcceptTxResult.FeeTooLow.WithMessage("Affordable gas price is 0");
             }
 
-            if (_txs.IsFull() && _txs.TryGetLast(out Transaction? lastTx)
+            TxDistinctSortedPool relevantPool = (tx.SupportsBlobs ? _blobTxs : _txs);
+            if (relevantPool.IsFull() && relevantPool.TryGetLast(out Transaction? lastTx)
                 && affordableGasPrice <= lastTx?.GasBottleneck)
             {
                 Metrics.PendingTransactionsTooLowFee++;

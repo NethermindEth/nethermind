@@ -53,6 +53,7 @@ namespace Nethermind.Blockchain.Test
 
             TxPool.TxPool txPool = new(
                 ecdsa,
+                new BlobTxStorage(),
                 new ChainHeadInfoProvider(specProvider, _blockTree, stateProvider),
                 new TxPoolConfig(),
                 new TxValidator(specProvider.ChainId),
