@@ -91,6 +91,8 @@ namespace Nethermind.Synchronization
             _exitSource = processExitSource ?? throw new ArgumentNullException(nameof(processExitSource));
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
             _syncReport = syncReport ?? throw new ArgumentNullException(nameof(syncReport));
+
+            new MallocTrimmer(syncModeSelector, TimeSpan.FromSeconds(syncConfig.MallocTrimIntervalSec), _logManager);
         }
 
         public virtual void Start()

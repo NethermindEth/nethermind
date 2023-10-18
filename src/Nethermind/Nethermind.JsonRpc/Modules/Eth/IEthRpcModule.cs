@@ -41,9 +41,6 @@ namespace Nethermind.JsonRpc.Modules.Eth
             ExampleResponse = "0x0000000000000000000000000000000000000000")]
         ResultWrapper<Address> eth_coinbase();
 
-        [JsonRpcMethod(IsImplemented = false, Description = "Returns mining status", IsSharable = true)]
-        ResultWrapper<bool?> eth_mining();
-
         [JsonRpcMethod(IsImplemented = true,
             Description = "Returns block fee history.",
             IsSharable = true,
@@ -55,12 +52,6 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
         [JsonRpcMethod(IsImplemented = false, Description = "", IsSharable = true)]
         ResultWrapper<UInt256?> eth_maxPriorityFeePerGas();
-
-        [JsonRpcMethod(IsImplemented = false,
-            Description = "Returns mining hashrate",
-            IsSharable = true,
-            ExampleResponse = "0x0")]
-        ResultWrapper<UInt256?> eth_hashrate();
 
         [JsonRpcMethod(IsImplemented = false,
             Description = "Returns miner's gas price",
@@ -159,7 +150,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             EdgeCaseHint = "If your transaction has code executed, then you can generate transaction access list with eth_createAccessList. If you send it with your transaction then it will lower your gas cost on Ethereum",
             IsSharable = false,
             ExampleResponse = "{\"accessList\":[{\"address\":\"0xfffffffffffffffffffffffffffffffffffffffe\",\"storageKeys\":[\"0x0000000000000000000000000000000000000000000000000000000000000001\",\"0x0000000000000000000000000000000000000000000000000000000000000002\"]},{\"address\":\"0x76e68a8696537e4141926f3e528733af9e237d69\",\"storageKeys\":[]}],\"gasUsed\":\"0xf71b\"}")]
-        ResultWrapper<AccessListForRpc> eth_createAccessList(
+        ResultWrapper<AccessListForRpc?> eth_createAccessList(
             [JsonRpcParameter(Description = "Transaction's details", ExampleValue = "[\"{\"type\":\"0x1\"]")]
             TransactionForRpc transactionCall,
             [JsonRpcParameter(Description = "(optional)")]
@@ -257,15 +248,6 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
         [JsonRpcMethod(IsImplemented = true, Description = "Reads logs", IsSharable = false)]
         ResultWrapper<IEnumerable<FilterLog>> eth_getLogs(Filter filter);
-
-        [JsonRpcMethod(Description = "", IsImplemented = false, IsSharable = true)]
-        ResultWrapper<IEnumerable<byte[]>> eth_getWork();
-
-        [JsonRpcMethod(Description = "", IsImplemented = false, IsSharable = false)]
-        ResultWrapper<bool?> eth_submitWork(byte[] nonce, Keccak headerPowHash, byte[] mixDigest);
-
-        [JsonRpcMethod(Description = "", IsImplemented = false, IsSharable = false)]
-        ResultWrapper<bool?> eth_submitHashrate(string hashRate, string id);
 
         [JsonRpcMethod(Description = "https://github.com/ethereum/EIPs/issues/1186",
             IsImplemented = true,

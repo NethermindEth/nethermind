@@ -126,17 +126,28 @@ namespace Nethermind.Init.Steps
                 persistenceStrategy = Persist.EveryBlock;
             }
 
-            TrieStore trieStore = new HealingTrieStore(
-                stateWitnessedBy,
-                pruningStrategy,
-                persistenceStrategy,
-                getApi.LogManager);
+            TrieStore trieStore = syncConfig.TrieHealing
+                ? new HealingTrieStore(
+                    stateWitnessedBy,
+                    pruningStrategy,
+                    persistenceStrategy,
+                    getApi.LogManager)
+                : new TrieStore(
+                    stateWitnessedBy,
+                    pruningStrategy,
+                    persistenceStrategy,
+                    getApi.LogManager);
             setApi.TrieStore = trieStore;
 
-            IWorldState worldState = setApi.WorldState = new HealingWorldState(
-                trieStore,
-                codeDb,
-                getApi.LogManager);
+            IWorldState worldState = setApi.WorldState = syncConfig.TrieHealing
+                ? new HealingWorldState(
+                    trieStore,
+                    codeDb,
+                    getApi.LogManager)
+                : new WorldState(
+                    trieStore,
+                    codeDb,
+                    getApi.LogManager);
 
             if (pruningConfig.Mode.IsFull())
             {
@@ -333,6 +344,7 @@ namespace Nethermind.Init.Steps
 
         protected virtual TxPool.TxPool CreateTxPool() =>
             new(_api.EthereumEcdsa!,
+                _api.BlobTxStorage ?? NullBlobTxStorage.Instance,
                 new ChainHeadInfoProvider(_api.SpecProvider!, _api.BlockTree!, _api.StateReader!),
                 _api.Config<ITxPoolConfig>(),
                 _api.TxValidator!,

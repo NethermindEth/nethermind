@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -16,12 +17,15 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
     {
         private const int MaxNumberOfTxsInOneMsg = 256;
         private readonly ITxPool _txPool;
+        private readonly ITxPoolConfig _txPoolConfig;
+
         private readonly LruKeyCache<ValueKeccak> _pendingHashes = new(MemoryAllowance.TxHashCacheSize,
             Math.Min(1024 * 16, MemoryAllowance.TxHashCacheSize), "pending tx hashes");
 
-        public PooledTxsRequestor(ITxPool txPool)
+        public PooledTxsRequestor(ITxPool txPool, ITxPoolConfig txPoolConfig)
         {
             _txPool = txPool;
+            _txPoolConfig = txPoolConfig;
         }
 
         public void RequestTransactions(Action<GetPooledTransactionsMessage> send, IReadOnlyList<Keccak> hashes)
@@ -68,10 +72,10 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             }
         }
 
-        public void RequestTransactionsEth68(Action<V66.Messages.GetPooledTransactionsMessage> send, IReadOnlyList<Keccak> hashes, IReadOnlyList<int> sizes)
+        public void RequestTransactionsEth68(Action<V66.Messages.GetPooledTransactionsMessage> send, IReadOnlyList<Keccak> hashes, IReadOnlyList<int> sizes, IReadOnlyList<byte> types)
         {
-            using ArrayPoolList<(Keccak Hash, int Size)> discoveredTxHashesAndSizes = new(hashes.Count);
-            AddMarkUnknownHashesEth68(hashes, sizes, discoveredTxHashesAndSizes);
+            using ArrayPoolList<(Keccak Hash, byte Type, int Size)> discoveredTxHashesAndSizes = new(hashes.Count);
+            AddMarkUnknownHashesEth68(hashes, sizes, types, discoveredTxHashesAndSizes);
 
             if (discoveredTxHashesAndSizes.Count != 0)
             {
@@ -81,6 +85,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
                 for (int i = 0; i < discoveredTxHashesAndSizes.Count; i++)
                 {
                     int txSize = discoveredTxHashesAndSizes[i].Size;
+                    TxType txType = (TxType)discoveredTxHashesAndSizes[i].Type;
 
                     if (txSize > packetSizeLeft && hashesToRequest.Count > 0)
                     {
@@ -89,8 +94,11 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
                         packetSizeLeft = TransactionsMessage.MaxPacketSize;
                     }
 
-                    hashesToRequest.Add(discoveredTxHashesAndSizes[i].Hash);
-                    packetSizeLeft -= txSize;
+                    if (_txPoolConfig.BlobSupportEnabled || txType != TxType.Blob)
+                    {
+                        hashesToRequest.Add(discoveredTxHashesAndSizes[i].Hash);
+                        packetSizeLeft -= txSize;
+                    }
                 }
 
                 if (hashesToRequest.Count > 0)
@@ -112,15 +120,15 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
                 }
             }
         }
-        private void AddMarkUnknownHashesEth68(IReadOnlyList<Keccak> hashes, IReadOnlyList<int> sizes, ArrayPoolList<(Keccak, int)> discoveredTxHashesAndSizes)
+        private void AddMarkUnknownHashesEth68(IReadOnlyList<Keccak> hashes, IReadOnlyList<int> sizes, IReadOnlyList<byte> types, ArrayPoolList<(Keccak, byte, int)> discoveredTxHashesAndSizes)
         {
             int count = hashes.Count;
             for (int i = 0; i < count; i++)
             {
                 Keccak hash = hashes[i];
-                if (!_txPool.IsKnown(hash) && _pendingHashes.Set(hash))
+                if (!_txPool.IsKnown(hash) && !_txPool.ContainsTx(hash, (TxType)types[i]) && _pendingHashes.Set(hash))
                 {
-                    discoveredTxHashesAndSizes.Add((hash, sizes[i]));
+                    discoveredTxHashesAndSizes.Add((hash, types[i], sizes[i]));
                 }
             }
         }

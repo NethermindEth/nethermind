@@ -20,6 +20,8 @@ namespace Nethermind.Init.Steps
         private readonly ILogger _logger;
         private IInitConfig? _initConfig;
 
+        readonly TimeSpan _genesisProcessedTimeout = TimeSpan.FromSeconds(40);
+
         public LoadGenesisBlock(INethermindApi api)
         {
             _api = api;
@@ -69,22 +71,20 @@ namespace Nethermind.Init.Steps
 
             ManualResetEventSlim genesisProcessedEvent = new(false);
 
-            bool genesisLoaded = false;
             void GenesisProcessed(object? sender, BlockEventArgs args)
             {
                 if (_api.BlockTree is null) throw new StepDependencyException(nameof(_api.BlockTree));
                 _api.BlockTree.NewHeadBlock -= GenesisProcessed;
-                genesisLoaded = true;
                 genesisProcessedEvent.Set();
             }
 
             _api.BlockTree.NewHeadBlock += GenesisProcessed;
             _api.BlockTree.SuggestBlock(genesis);
-            genesisProcessedEvent.Wait(TimeSpan.FromSeconds(40));
+            bool genesisLoaded = genesisProcessedEvent.Wait(_genesisProcessedTimeout);
 
             if (!genesisLoaded)
             {
-                throw new BlockchainException("Genesis block processing failure");
+                throw new TimeoutException($"Genesis block was not processed after {_genesisProcessedTimeout.TotalSeconds} seconds");
             }
         }
 

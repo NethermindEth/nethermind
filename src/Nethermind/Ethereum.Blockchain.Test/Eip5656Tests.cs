@@ -9,15 +9,13 @@ namespace Ethereum.Blockchain.Test;
 
 [TestFixture]
 [Parallelizable(ParallelScope.All)]
-public class Eip5656Tests : GeneralStateTestBase
+public class EIP5656MCOPYTests : GeneralStateTestBase
 {
-    // wait untill Eip5656 tests are merged to de-comment this
-
-    // [TestCaseSource(nameof(LoadTests))]
-    // public void Test(GeneralStateTest test)
-    // {
-    //     Assert.True(RunTest(test).Pass);
-    // }
+    [TestCaseSource(nameof(LoadTests))]
+    public void Test(GeneralStateTest test)
+    {
+        Assert.True(RunTest(test).Pass);
+    }
 
     public static IEnumerable<GeneralStateTest> LoadTests()
     {

@@ -31,8 +31,8 @@ namespace Nethermind.Blockchain.Test
     [TestFixture]
     public class ReorgTests
     {
-        private BlockchainProcessor _blockchainProcessor;
-        private BlockTree _blockTree;
+        private BlockchainProcessor _blockchainProcessor = null!;
+        private BlockTree _blockTree = null!;
 
         [SetUp]
         public void Setup()
@@ -41,21 +41,19 @@ namespace Nethermind.Blockchain.Test
             TrieStore trieStore = new(new MemDb(), LimboLogs.Instance);
             WorldState stateProvider = new(trieStore, memDbProvider.CodeDb, LimboLogs.Instance);
             StateReader stateReader = new(trieStore, memDbProvider.CodeDb, LimboLogs.Instance);
-            ChainLevelInfoRepository chainLevelInfoRepository = new(memDbProvider);
             ISpecProvider specProvider = MainnetSpecProvider.Instance;
-            IBloomStorage bloomStorage = NullBloomStorage.Instance;
             EthereumEcdsa ecdsa = new(1, LimboLogs.Instance);
             ITransactionComparerProvider transactionComparerProvider =
                 new TransactionComparerProvider(specProvider, _blockTree);
-            _blockTree = new BlockTree(
-                memDbProvider,
-                chainLevelInfoRepository,
-                specProvider,
-                bloomStorage,
-                new SyncConfig(),
-                LimboLogs.Instance);
+
+            _blockTree = Build.A.BlockTree()
+                .WithoutSettingHead
+                .WithSpecProvider(specProvider)
+                .TestObject;
+
             TxPool.TxPool txPool = new(
                 ecdsa,
+                new BlobTxStorage(),
                 new ChainHeadInfoProvider(specProvider, _blockTree, stateProvider),
                 new TxPoolConfig(),
                 new TxValidator(specProvider.ChainId),
@@ -123,8 +121,8 @@ namespace Nethermind.Blockchain.Test
             Assert.That(() => _blockTree.Head, Is.EqualTo(block2B).After(10000, 500));
 
             events.Should().HaveCount(6);
-            events[4].Hash.Should().Be(block1B.Hash);
-            events[5].Hash.Should().Be(block2B.Hash);
+            events[4].Hash.Should().Be(block1B.Hash!);
+            events[5].Hash.Should().Be(block2B.Hash!);
         }
     }
 }

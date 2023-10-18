@@ -9,6 +9,7 @@ using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Crypto;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Handlers;
 using NSubstitute;
@@ -19,7 +20,7 @@ namespace Nethermind.Merge.Plugin.Test;
 [TestFixture]
 public class InvalidChainTrackerTest
 {
-    private InvalidChainTracker.InvalidChainTracker _tracker;
+    private InvalidChainTracker.InvalidChainTracker _tracker = null!;
 
     [SetUp]
     public void Setup()
@@ -180,7 +181,7 @@ public class InvalidChainTrackerTest
         Keccak invalidBlock = Keccak.Compute("A");
         BlockHeader parentBlockHeader = new BlockHeaderBuilder().TestObject;
 
-        blockCacheService.BlockCache[parentBlockHeader.Hash] = new Block(parentBlockHeader);
+        blockCacheService.BlockCache[parentBlockHeader.GetOrCalculateHash()] = new Block(parentBlockHeader);
 
         IPoSSwitcher poSSwitcher = Substitute.For<IPoSSwitcher>();
         poSSwitcher.IsPostMerge(parentBlockHeader).Returns(false);
@@ -200,18 +201,18 @@ public class InvalidChainTrackerTest
         BlockHeader parentBlockHeader = new BlockHeaderBuilder()
             .TestObject;
         BlockHeader blockHeader = new BlockHeaderBuilder()
-            .WithParentHash(parentBlockHeader.Hash).TestObject;
+            .WithParentHash(parentBlockHeader.GetOrCalculateHash()).TestObject;
 
-        blockCacheService.BlockCache[blockHeader.Hash] = new Block(blockHeader);
-        blockCacheService.BlockCache[parentBlockHeader.Hash] = new Block(parentBlockHeader);
+        blockCacheService.BlockCache[blockHeader.GetOrCalculateHash()] = new Block(blockHeader);
+        blockCacheService.BlockCache[parentBlockHeader.GetOrCalculateHash()] = new Block(parentBlockHeader);
 
         IPoSSwitcher alwaysPos = Substitute.For<IPoSSwitcher>();
         alwaysPos.IsPostMerge(Arg.Any<BlockHeader>()).Returns(true);
 
         _tracker = new(alwaysPos, blockFinder, blockCacheService, new TestLogManager()); // Small max section size, to make sure things propagate correctly
-        _tracker.OnInvalidBlock(blockHeader.Hash, null);
+        _tracker.OnInvalidBlock(blockHeader.GetOrCalculateHash(), null);
 
-        AssertInvalid(blockHeader.Hash, parentBlockHeader.Hash);
+        AssertInvalid(blockHeader.GetOrCalculateHash(), parentBlockHeader.Hash);
     }
 
     private void AssertValid(Keccak hash)
