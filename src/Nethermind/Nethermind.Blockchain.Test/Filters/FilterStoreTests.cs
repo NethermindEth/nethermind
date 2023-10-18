@@ -7,10 +7,10 @@ using System.Collections.Generic;
 using System.Linq;
 using FluentAssertions;
 using Nethermind.Blockchain.Filters;
-using Nethermind.Blockchain.Filters.Topics;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Facade.Filters.Topics;
 using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test.Filters
@@ -120,19 +120,19 @@ namespace Nethermind.Blockchain.Test.Filters
         {
             get
             {
-                yield return new TestCaseData(null, SequenceTopicsFilter.AnyTopic);
+                yield return new TestCaseData(null, TopicsFilter.AnyTopic);
 
                 yield return new TestCaseData(new[] { TestItem.KeccakA.ToString() },
-                    new SequenceTopicsFilter(new SpecificTopic(TestItem.KeccakA)));
+                    new TopicsFilter(new SpecificTopic(TestItem.KeccakA)));
 
                 yield return new TestCaseData(new[] { TestItem.KeccakA.ToString(), TestItem.KeccakB.ToString() },
-                    new SequenceTopicsFilter(new SpecificTopic(TestItem.KeccakA), new SpecificTopic(TestItem.KeccakB)));
+                    new TopicsFilter(new SpecificTopic(TestItem.KeccakA), new SpecificTopic(TestItem.KeccakB)));
 
                 yield return new TestCaseData(new[] { null, TestItem.KeccakB.ToString() },
-                    new SequenceTopicsFilter(AnyTopic.Instance, new SpecificTopic(TestItem.KeccakB)));
+                    new TopicsFilter(AnyTopic.Instance, new SpecificTopic(TestItem.KeccakB)));
 
                 yield return new TestCaseData(new object[] { new[] { TestItem.KeccakA.ToString(), TestItem.KeccakB.ToString(), TestItem.KeccakC.ToString() }, TestItem.KeccakD.ToString() },
-                    new SequenceTopicsFilter(new OrExpression(new SpecificTopic(TestItem.KeccakA), new SpecificTopic(TestItem.KeccakB), new SpecificTopic(TestItem.KeccakC)), new SpecificTopic(TestItem.KeccakD)));
+                    new TopicsFilter(new OrExpression(new SpecificTopic(TestItem.KeccakA), new SpecificTopic(TestItem.KeccakB), new SpecificTopic(TestItem.KeccakC)), new SpecificTopic(TestItem.KeccakD)));
             }
         }
 

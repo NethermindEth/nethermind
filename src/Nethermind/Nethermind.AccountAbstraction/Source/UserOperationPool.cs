@@ -14,7 +14,6 @@ using Nethermind.AccountAbstraction.Executor;
 using Nethermind.AccountAbstraction.Network;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Filters;
-using Nethermind.Blockchain.Filters.Topics;
 using Nethermind.Blockchain.Find;
 using Nethermind.Consensus;
 using Nethermind.Core;
@@ -22,6 +21,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Facade.Filters;
+using Nethermind.Facade.Filters.Topics;
 using Nethermind.Int256;
 using Nethermind.JsonRpc;
 using Nethermind.Logging;
@@ -71,7 +71,7 @@ namespace Nethermind.AccountAbstraction.Source
             UserOperationSortedPool userOperationSortedPool,
             IUserOperationBroadcaster userOperationBroadcaster,
             ulong chainId
-            )
+        )
         {
             _blockTree = blockTree;
             _stateProvider = stateProvider;
@@ -280,6 +280,7 @@ namespace Nethermind.AccountAbstraction.Source
                         userOperation.PassedBaseFee = true;
                         _paymasterThrottler.IncrementOpsSeen(userOperation.Paymaster);
                     }
+
                     if (_logger.IsDebug) _logger.Debug($"UserOperation {userOperation.RequestId!} inserted into pool");
                     _userOperationBroadcaster.BroadcastOnce(new UserOperationWithEntryPoint(userOperation, _entryPointAddress));
                     NewPending?.Invoke(this, userOperationEventArgs);
@@ -318,7 +319,7 @@ namespace Nethermind.AccountAbstraction.Source
                 currentBlockParameter,
                 currentBlockParameter,
                 entryPointAddressFilter,
-                new SequenceTopicsFilter(new TopicExpression[] { new SpecificTopic(_userOperationEventTopic) })));
+                new TopicsFilter(new TopicExpression[] { new SpecificTopic(_userOperationEventTopic) })));
 
             // find any userOps included on chain submitted by this miner, delete from the pool
             foreach (FilterLog log in foundLogs)
@@ -334,6 +335,7 @@ namespace Nethermind.AccountAbstraction.Source
                         {
                             _paymasterThrottler.IncrementOpsIncluded(op.Paymaster);
                         }
+
                         RemoveUserOperation(op.RequestId!);
                         _removedUserOperations.AddOrUpdate(block.Number,
                             k => new HashSet<UserOperation>() { op },
@@ -367,13 +369,13 @@ namespace Nethermind.AccountAbstraction.Source
                 case PaymasterStatus.Ok: break;
                 case PaymasterStatus.Banned: return ResultWrapper<Keccak>.Fail("paymaster banned");
                 case PaymasterStatus.Throttled:
-                    {
-                        IEnumerable<UserOperation> poolUserOperations = GetUserOperations();
-                        if (poolUserOperations.Any(poolOp => poolOp.Paymaster == userOperation.Paymaster))
-                            return ResultWrapper<Keccak>.Fail(
-                                $"paymaster throttled and userOp with paymaster {userOperation.Paymaster} is already present in the pool");
-                        break;
-                    }
+                {
+                    IEnumerable<UserOperation> poolUserOperations = GetUserOperations();
+                    if (poolUserOperations.Any(poolOp => poolOp.Paymaster == userOperation.Paymaster))
+                        return ResultWrapper<Keccak>.Fail(
+                            $"paymaster throttled and userOp with paymaster {userOperation.Paymaster} is already present in the pool");
+                    break;
+                }
             }
 
             if (_userOperationSortedPool.UserOperationWouldOverflowSenderBucket(userOperation))
@@ -440,6 +442,5 @@ namespace Nethermind.AccountAbstraction.Source
 
         public event EventHandler<UserOperationEventArgs>? NewReceived;
         public event EventHandler<UserOperationEventArgs>? NewPending;
-
     }
 }
