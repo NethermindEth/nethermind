@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using Nethermind.Blockchain.Filters;
+using Nethermind.Blockchain.Filters.Topics;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -83,6 +84,87 @@ namespace Nethermind.Blockchain.Find
                 ? FilterLogsWithBloomsIndex(filter, fromBlock, toBlock, cancellationToken)
                 : FilterLogsIteratively(filter, fromBlock, toBlock, cancellationToken);
         }
+
+        public void FindLogsEliasFano(LogFilter filter, CancellationToken cancellationToken = default)
+        {
+            BlockHeader FindHeader(BlockParameter blockParameter, string name, bool headLimit) =>
+                _blockFinder.FindHeader(blockParameter, headLimit) ?? throw new ResourceNotFoundException($"Block not found: {name} {blockParameter}");
+
+            cancellationToken.ThrowIfCancellationRequested();
+            var toBlock = FindHeader(filter.ToBlock, nameof(filter.ToBlock), false);
+            cancellationToken.ThrowIfCancellationRequested();
+            var fromBlock = FindHeader(filter.FromBlock, nameof(filter.FromBlock), false);
+
+            if (fromBlock.Number > toBlock.Number && toBlock.Number != 0)
+            {
+                throw new ArgumentException($"'From' block '{fromBlock.Number}' is later than 'to' block '{toBlock.Number}'.");
+            }
+            cancellationToken.ThrowIfCancellationRequested();
+
+            if (fromBlock.Number != 0 && fromBlock.ReceiptsRoot != Keccak.EmptyTreeHash && !_receiptStorage.HasBlock(fromBlock.Number, fromBlock.Hash!))
+            {
+                throw new ResourceNotFoundException($"Receipt not available for 'From' block '{fromBlock.Number}'.");
+            }
+            cancellationToken.ThrowIfCancellationRequested();
+
+            if (toBlock.Number != 0 && toBlock.ReceiptsRoot != Keccak.EmptyTreeHash && !_receiptStorage.HasBlock(toBlock.Number, toBlock.Hash!))
+            {
+                throw new ResourceNotFoundException($"Receipt not available for 'To' block '{toBlock.Number}'.");
+            }
+            cancellationToken.ThrowIfCancellationRequested();
+
+            // TODO: integrate new way of looking for logs here
+            // It should call a function that looks for logs through the EliasFanoStorage
+            // We get the block number from EliasFanoStorage.FindBlockNumber
+            //     -> Probably need to chagne to use AddressFilter & TopicsFilter to get the block number
+            // Need to see how to get FilterLogs afterwards.
+
+            // bool shouldUseBloom = ShouldUseBloomDatabase(fromBlock, toBlock);
+            // bool canUseBloom = CanUseBloomDatabase(toBlock, fromBlock);
+            // bool useBloom = shouldUseBloom && canUseBloom;
+            // return useBloom
+            // ? FilterLogsWithBloomsIndex(filter, fromBlock, toBlock, cancellationToken)
+            //     : FilterLogsIteratively(filter, fromBlock, toBlock, cancellationToken);
+        }
+
+        // public List<ulong> FindBlockNumbers(LogFilter filter, int from, int to)
+        // {
+        //     AddressFilter af = filter.AddressFilter;
+        //     af.Addresses;
+        //     TopicsFilter tf = filter.TopicsFilter;
+        //
+        //     // tf.
+        //     // tf.
+        //     // EliasFano addressEf = Get(address);
+        //     // EliasFano topicEf = Get(topic);
+        //     // Store results.
+        //     List<ulong> filterBlocks = new List<ulong>();
+        //     // Get the list of values for iteration. Maybe can change to just use EliasFanoIterator.
+        //     List<ulong> addressList = addressEf.GetEnumerator(0).ToList();
+        //     List<ulong> topicList = topicEf.GetEnumerator(0).ToList();
+        //     int i = 0;
+        //     int j = 0;
+        //     while (i < addressList.Count() && j < topicList.Count())
+        //     {
+        //         if (addressList[i] == topicList[j])
+        //         {
+        //             filterBlocks.Add(topicList[j]);
+        //             i++;
+        //             j++;
+        //         }
+        //         else if (addressList[i] < topicList[j])
+        //         {
+        //             i++;
+        //         }
+        //         else
+        //         {
+        //             j++;
+        //         }
+        //     }
+        //     // Probably can call FindBlock
+        //     //filterBlocks.SelectMany(blockNumber => FindLogsInBlock(filter, FindBlockHash(blockNumber, cancellationToken), blockNumber, cancellationToken));
+        //     return filterBlocks;
+        // }
 
         private bool ShouldUseBloomDatabase(BlockHeader fromBlock, BlockHeader toBlock)
         {

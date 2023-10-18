@@ -50,7 +50,7 @@ public class EliasFanoStorage
         }
     }
 
-    // Add a list of block numbers to storage
+    // Add a list of block numbers to storage.
     public void PutAll(int key, List<ulong> values)
     {
         if (storage.ContainsKey(key))
