@@ -50,7 +50,7 @@ namespace Nethermind.AuRa.Test
             finalizationManager.LastFinalizedBlockLevel.Should().Be(1);
         }
 
-        private void FinalizeToLevel(long upperLevel, ChainLevelInfoRepository chainLevelInfoRepository)
+        private void FinalizeToLevel(long upperLevel, IChainLevelInfoRepository chainLevelInfoRepository)
         {
             for (long i = 0; i <= upperLevel; i++)
             {

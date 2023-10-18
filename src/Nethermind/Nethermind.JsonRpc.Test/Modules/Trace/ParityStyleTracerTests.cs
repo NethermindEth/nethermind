@@ -47,13 +47,12 @@ namespace Nethermind.JsonRpc.Test.Modules.Trace
         [SetUp]
         public void Setup()
         {
-            IDb blocksDb = new MemDb();
-            IDb blocksInfoDb = new MemDb();
-            IDb headersDb = new MemDb();
-            IDb metadataDb = new MemDb();
-            ChainLevelInfoRepository repository = new(blocksInfoDb);
             ISpecProvider specProvider = MainnetSpecProvider.Instance;
-            _blockTree = new BlockTree(blocksDb, headersDb, blocksInfoDb, metadataDb, repository, specProvider, NullBloomStorage.Instance, new SyncConfig(), LimboLogs.Instance);
+
+            _blockTree = Build.A.BlockTree()
+                .WithoutSettingHead
+                .WithSpecProvider(specProvider)
+                .TestObject;
 
             MemDb stateDb = new();
             MemDb codeDb = new();

@@ -20,7 +20,7 @@ namespace Nethermind.Blockchain.Find
                         $"Cannot find parent when parent hash is null on block with hash {header.Hash}.");
                 }
 
-                BlockHeader parent = finder.FindHeader(header.ParentHash, options);
+                BlockHeader parent = finder.FindHeader(header.ParentHash, options, blockNumber: header.Number - 1);
                 header.MaybeParent = new WeakReference<BlockHeader>(parent);
                 return parent;
             }
@@ -34,7 +34,7 @@ namespace Nethermind.Blockchain.Find
                         $"Cannot find parent when parent hash is null on block with hash {header.Hash}.");
                 }
 
-                BlockHeader parent = finder.FindHeader(header.ParentHash, options);
+                BlockHeader parent = finder.FindHeader(header.ParentHash, options, blockNumber: header.Number - 1);
                 header.MaybeParent.SetTarget(parent);
                 return parent;
             }
@@ -47,7 +47,7 @@ namespace Nethermind.Blockchain.Find
                         $"Cannot find parent when parent hash is null on block with hash {header.Hash}.");
                 }
 
-                BlockHeader? fromDb = finder.FindHeader(header.ParentHash, options);
+                BlockHeader? fromDb = finder.FindHeader(header.ParentHash, options, blockNumber: header.Number - 1);
                 maybeParent.TotalDifficulty = fromDb?.TotalDifficulty;
             }
 
@@ -62,7 +62,7 @@ namespace Nethermind.Blockchain.Find
                     $"Cannot find parent when parent hash is null on block with hash {block.Hash}.");
             }
 
-            return finder.FindBlock(block.Header.ParentHash, options);
+            return finder.FindBlock(block.Header.ParentHash, options, blockNumber: block.Header.Number - 1);
         }
 
         public static Block? FindParent(this IBlockFinder finder, BlockHeader blockHeader, BlockTreeLookupOptions options)
@@ -73,7 +73,7 @@ namespace Nethermind.Blockchain.Find
                     $"Cannot find parent when parent hash is null on block with hash {blockHeader.Hash}.");
             }
 
-            return finder.FindBlock(blockHeader.ParentHash, options);
+            return finder.FindBlock(blockHeader.ParentHash, options, blockNumber: blockHeader.Number - 1);
         }
 
         public static Block? RetrieveHeadBlock(this IBlockFinder finder)
