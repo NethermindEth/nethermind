@@ -293,6 +293,8 @@ namespace Nethermind.TxPool
 
         public void AddPeer(ITxPoolPeer peer)
         {
+            if (_logger.IsTrace) _logger.Trace($"Added a peer to TX pool: {peer}");
+
             if (_broadcaster.AddPeer(peer))
             {
                 // Announce txs to newly connected peer only if we are synced. If chain head of the peer is higher by
@@ -308,8 +310,6 @@ namespace Nethermind.TxPool
                 {
                     if (_logger.IsTrace) _logger.Trace($"Skipped announcing txs to peer {peer} because of syncing. Peer is on head {peer.HeadNumber}, we are at {_headInfo.BestKnownBlockNumber}");
                 }
-
-                if (_logger.IsTrace) _logger.Trace($"Added a peer to TX pool: {peer}");
             }
         }
 
