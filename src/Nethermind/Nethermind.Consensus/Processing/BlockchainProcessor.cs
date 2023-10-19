@@ -28,8 +28,7 @@ public class BlockchainProcessor : IBlockchainProcessor, IBlockProcessingQueue
     public int SoftMaxRecoveryQueueSizeInTx = 10000; // adjust based on tx or gas
     public const int MaxProcessingQueueSize = 2000; // adjust based on tx or gas
 
-    [ThreadStatic]
-    private static bool _isMainProcessingThread;
+    [ThreadStatic] private static bool _isMainProcessingThread;
     public static bool IsMainProcessingThread => _isMainProcessingThread;
     public bool IsMainProcessor { get; init; }
 
@@ -472,7 +471,9 @@ public class BlockchainProcessor : IBlockchainProcessor, IBlockProcessingQueue
                 if (processingBranch.BlocksToProcess[i].Hash == invalidBlockHash)
                 {
                     _blockTree.DeleteInvalidBlock(processingBranch.BlocksToProcess[i]);
-                    if (_logger.IsDebug) _logger.Debug($"Skipped processing of {processingBranch.BlocksToProcess[^1].ToString(Block.Format.FullHashAndNumber)} because of {processingBranch.BlocksToProcess[i].ToString(Block.Format.FullHashAndNumber)} is invalid");
+                    if (_logger.IsDebug)
+                        _logger.Debug(
+                            $"Skipped processing of {processingBranch.BlocksToProcess[^1].ToString(Block.Format.FullHashAndNumber)} because of {processingBranch.BlocksToProcess[i].ToString(Block.Format.FullHashAndNumber)} is invalid");
                 }
             }
         }
@@ -489,12 +490,16 @@ public class BlockchainProcessor : IBlockchainProcessor, IBlockProcessingQueue
         }
         catch (InvalidBlockException ex)
         {
-            InvalidBlock?.Invoke(this, new IBlockchainProcessor.InvalidBlockEventArgs
-            {
-                InvalidBlock = ex.InvalidBlock,
-            });
+            InvalidBlock?.Invoke(this, new IBlockchainProcessor.InvalidBlockEventArgs { InvalidBlock = ex.InvalidBlock, });
 
             invalidBlockHash = ex.InvalidBlock.Hash;
+
+
+            if ((_options.DumpOptions & DumpOptions.Rlp) != 0)
+            {
+                BlockTraceDumper.LogDiagnosticRlp(ex.InvalidBlock, _logger);
+            }
+
             TraceFailingBranch(
                 processingBranch,
                 options,
@@ -669,7 +674,6 @@ public class BlockchainProcessor : IBlockchainProcessor, IBlockProcessingQueue
             if (_logger.IsTrace)
                 _logger.Trace(
                     $" Current branching point: {branchingPoint.Number}, {branchingPoint.Hash} TD: {branchingPoint.TotalDifficulty} Processing conditions notFoundTheBranchingPointYet {notFoundTheBranchingPointYet}, notReachedTheReorgBoundary: {notReachedTheReorgBoundary}, suggestedBlockIsPostMerge {suggestedBlockIsPostMerge}");
-
         } while (preMergeFinishBranchingCondition);
 
         if (branchingPoint is not null && branchingPoint.Hash != _blockTree.Head?.Hash)

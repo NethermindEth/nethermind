@@ -11,25 +11,33 @@ using Nethermind.Evm.Tracing.GethStyle;
 using Nethermind.Evm.Tracing.ParityStyle;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
+using Nethermind.Serialization.Rlp;
 using Newtonsoft.Json;
 
 namespace Nethermind.Blockchain;
 
 public static class BlockTraceDumper
 {
-    public static List<JsonConverter> Converters { get; } = new List<JsonConverter>();
+    public static List<JsonConverter> Converters { get; } = new();
+
+    public static void LogDiagnosticRlp(
+        Block block,
+        ILogger logger)
+    {
+        Keccak blockHash = block.Hash;
+        string fileName = $"block_{blockHash}.txt";
+        using FileStream diagnosticFile = GetFileStream(fileName);
+        Rlp rlp = new BlockDecoder().Encode(block, RlpBehaviors.AllowExtraBytes);
+        diagnosticFile.Write(rlp.Bytes);
+        if (logger.IsInfo)
+            logger.Info($"Created a Receipts trace of block {blockHash} in file {diagnosticFile.Name}");
+    }
 
     public static void LogDiagnosticTrace(
         IBlockTracer blockTracer,
         Keccak blockHash,
         ILogger logger)
     {
-        static FileStream GetFileStream(string name) =>
-            new(
-                Path.Combine(Path.GetTempPath(), name),
-                FileMode.Create,
-                FileAccess.Write);
-
         string fileName = string.Empty;
 
         try
@@ -45,7 +53,6 @@ public static class BlockTraceDumper
                 serializer.Serialize(diagnosticFile, receipts, true);
                 if (logger.IsInfo)
                     logger.Info($"Created a Receipts trace of block {blockHash} in file {diagnosticFile.Name}");
-
             }
 
             if (blockTracer is GethLikeBlockMemoryTracer gethTracer)
@@ -74,6 +81,12 @@ public static class BlockTraceDumper
                 logger.Error($"Cannot save trace of block {blockHash} in file {fileName}", e);
         }
     }
+
+    private static FileStream GetFileStream(string name) =>
+        new(
+            Path.Combine(Path.GetTempPath(), name),
+            FileMode.Create,
+            FileAccess.Write);
 
     public static void LogTraceFailure(IBlockTracer blockTracer, Keccak blockHash, Exception exception, ILogger logger)
     {
