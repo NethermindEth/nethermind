@@ -121,19 +121,32 @@ public class EliasFanoStorage
         foreach (Address addr in addresses)
         {
             IEnumerable<ulong> temp = Get(addr.Bytes).GetEnumerator(0);
-            foreach (ulong t in temp)
+            foreach (long t in temp)
             {
                 if (startBlock != null && endBlock != null)
                 {
-                    long tc = (long)t;
-                    if (startBlock <= tc && tc <= endBlock)
+                    if (startBlock <= t && t <= endBlock)
                     {
-                        addressesBlockNumbersFromIndex.Add(tc);
+                        addressesBlockNumbersFromIndex.Add(t);
+                    }
+                }
+                else if (startBlock != null)
+                {
+                    if (startBlock <= t)
+                    {
+                        addressesBlockNumbersFromIndex.Add(t);
+                    }
+                }
+                else if (endBlock != null)
+                {
+                    if (t <= endBlock)
+                    {
+                        addressesBlockNumbersFromIndex.Add(t);
                     }
                 }
                 else
                 {
-                    addressesBlockNumbersFromIndex.Add((long)t);
+                    addressesBlockNumbersFromIndex.Add(t);
                 }
             }
         }
@@ -157,6 +170,20 @@ public class EliasFanoStorage
                             temp.Add(bn);
                         }
                     }
+                    else if (startBlock != null)
+                    {
+                        if (startBlock <= bn)
+                        {
+                            temp.Add(bn);
+                        }
+                    }
+                    else if (endBlock != null)
+                    {
+                        if (bn <= endBlock)
+                        {
+                            temp.Add(bn);
+                        }
+                    }
                     else
                     {
                         temp.Add(bn);
@@ -167,12 +194,13 @@ public class EliasFanoStorage
             enumerators.Add(temp.ToList());
         }
 
+        // Loop to find matching block numbers
         // if they are all pointing to the same block -> yield return that block
         // advance the lowest one
 
+        // Use a variable to store the current index of each enumerator
         int[] indices = new int[enumerators.Count];
 
-        // Use a loop to iterate until all enumerators are exhausted
         bool done = false;
         while (!done)
         {
@@ -182,29 +210,23 @@ public class EliasFanoStorage
             // Use a loop to get the current block number of each enumerator
             for (int i = 0; i < enumerators.Count; i++)
             {
-                // Check if the enumerator has reached the end
                 if (indices[i] >= enumerators[i].Count)
                 {
-                    // Set the block number to -1 to indicate the end
                     blocks[i] = -1;
                 }
                 else
                 {
-                    // Get the block number from the enumerator at the current index
                     blocks[i] = enumerators[i][indices[i]];
                 }
             }
 
-            // Use a variable to store the minimum block number among all enumerators
             long minBlock = long.MaxValue;
 
             // Use a loop to find the minimum block number among all enumerators
             for (int i = 0; i < blocks.Length; i++)
             {
-                // Check if the block number is valid and smaller than the current minimum
                 if (blocks[i] != -1 && blocks[i] < minBlock)
                 {
-                    // Update the minimum block number
                     minBlock = blocks[i];
                 }
             }
@@ -212,42 +234,35 @@ public class EliasFanoStorage
             // Check if the minimum block number is valid
             if (minBlock != long.MaxValue)
             {
-                // Use a variable to store whether all enumerators have the same block number
                 bool sameBlock = true;
 
                 // Use a loop to check whether all enumerators have the same block number
                 for (int i = 0; i < blocks.Length; i++)
                 {
-                    // Check if the block number is different from the minimum block number
                     if (blocks[i] != minBlock)
                     {
-                        // Set the flag to false and break the loop
                         sameBlock = false;
                         break;
                     }
                 }
 
-                // Check if all enumerators have the same block number
+                // Check if all enumerators have the same block number -> add it to the result
                 if (sameBlock)
                 {
-                    // Add the block number to the result list
                     resultBlockNumbers = resultBlockNumbers.Append(minBlock);
                 }
 
                 // Use a loop to advance the enumerators that have the minimum block number
                 for (int i = 0; i < blocks.Length; i++)
                 {
-                    // Check if the block number is equal to the minimum block number
                     if (blocks[i] == minBlock)
                     {
-                        // Increment the index of the enumerator
                         indices[i]++;
                     }
                 }
             }
             else
             {
-                // Set the flag to true to indicate that all enumerators are exhausted
                 done = true;
             }
         }

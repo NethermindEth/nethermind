@@ -402,18 +402,37 @@ namespace Nethermind.Blockchain.Test.Find
                 yield return new TestCaseData(FilterBuilder.New()
                     .WithTopicExpressions(TestTopicExpressions.Specific(TestItem.KeccakA), TestTopicExpressions.Or(TestItem.KeccakB, TestItem.KeccakC))
                     .WithAddresses(TestItem.AddressA).Build(), 3);
-
+                yield return new TestCaseData(FilterBuilder.New().FromBlock(2)
+                    .WithTopicExpressions(TestTopicExpressions.Specific(TestItem.KeccakA), TestTopicExpressions.Or(TestItem.KeccakB, TestItem.KeccakC))
+                    .WithAddresses(TestItem.AddressA).Build(), 2);
+                yield return new TestCaseData(FilterBuilder.New().FromBlock(5).ToBlock(9)
+                    .WithTopicExpressions(TestTopicExpressions.Specific(TestItem.KeccakA), TestTopicExpressions.Or(TestItem.KeccakB, TestItem.KeccakC))
+                    .WithAddresses(TestItem.AddressA).Build(), 1);
             }
         }
 
         [TestCaseSource(nameof(FilterEliasFanoTestCases))]
-        public void complex_filter_new(LogFilter filter, int expectedCount)
+        public void filter_with_address_and_topic_elias_fano(LogFilter filter, int expectedCount)
         {
             EliasFanoStorage storage = setup_new_storage();
             // _logFinder = new LogFinder(_blockTree, _receiptStorage, _receiptStorage, storage, LimboLogs.Instance, _receiptsRecovery);
             IEnumerable<long> results = storage.Match(filter.FromBlock.BlockNumber, filter.ToBlock.BlockNumber, filter.AddressFilter.Addresses, filter.TopicsFilter.LogicalTopicsSequence);
             // var logs = _logFinder.FindLogsEliasFano(filter).ToArray();
             results.Count().Should().Be(expectedCount);
+        }
+
+        [Test, Timeout(Timeout.MaxTestTime)]
+        public void filter_all_logs_elias_fano([ValueSource(nameof(WithBloomValues))] bool withBloomDb, [Values(false, true)] bool allowReceiptIterator)
+        {
+            // SetUp(allowReceiptIterator);
+            // StoreTreeBlooms(withBloomDb);
+            EliasFanoStorage storage = setup_new_storage();
+            var logFilter = AllBlockFilter().Build();
+            LogFinder logFinder = new LogFinder(_blockTree, _receiptStorage, _receiptStorage, storage, LimboLogs.Instance, _receiptsRecovery);
+            var logs = logFinder.FindLogs(logFilter).ToArray();
+            logs.Length.Should().Be(5);
+            var indexes = logs.Select(l => (int)l.LogIndex).ToArray();
+            indexes.Should().BeEquivalentTo(new[] { 0, 1, 0, 1, 2 });
         }
     }
 }
