@@ -2,9 +2,11 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Text;
 using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.Int256;
@@ -129,52 +131,59 @@ public class BlockValidator : IBlockValidator
     public bool ValidateProcessedBlock(Block processedBlock, TxReceipt[] receipts, Block suggestedBlock)
     {
         bool isValid = processedBlock.Header.Hash == suggestedBlock.Header.Hash;
-        if (!isValid)
+        if (!isValid && _logger.IsError)
         {
-            if (_logger.IsError) _logger.Error($"Processed block {processedBlock.ToString(Block.Format.Short)} is invalid:");
-            if (_logger.IsError) _logger.Error($"- hash: expected {suggestedBlock.Hash}, got {processedBlock.Hash}");
+            _logger.Error($"Processed block {processedBlock.ToString(Block.Format.Short)} is invalid:");
+            _logger.Error($"- hash: expected {suggestedBlock.Hash}, got {processedBlock.Hash}");
 
             if (processedBlock.Header.GasUsed != suggestedBlock.Header.GasUsed)
             {
-                if (_logger.IsError) _logger.Error($"- gas used: expected {suggestedBlock.Header.GasUsed}, got {processedBlock.Header.GasUsed} (diff: {processedBlock.Header.GasUsed - suggestedBlock.Header.GasUsed})");
+                _logger.Error($"- gas used: expected {suggestedBlock.Header.GasUsed}, got {processedBlock.Header.GasUsed} (diff: {processedBlock.Header.GasUsed - suggestedBlock.Header.GasUsed})");
             }
 
             if (processedBlock.Header.Bloom != suggestedBlock.Header.Bloom)
             {
-                if (_logger.IsError) _logger.Error($"- bloom: expected {suggestedBlock.Header.Bloom}, got {processedBlock.Header.Bloom}");
+                _logger.Error($"- bloom: expected {suggestedBlock.Header.Bloom}, got {processedBlock.Header.Bloom}");
             }
 
             if (processedBlock.Header.ReceiptsRoot != suggestedBlock.Header.ReceiptsRoot)
             {
-                if (_logger.IsError) _logger.Error($"- receipts root: expected {suggestedBlock.Header.ReceiptsRoot}, got {processedBlock.Header.ReceiptsRoot}");
+                _logger.Error($"- receipts root: expected {suggestedBlock.Header.ReceiptsRoot}, got {processedBlock.Header.ReceiptsRoot}");
             }
 
             if (processedBlock.Header.StateRoot != suggestedBlock.Header.StateRoot)
             {
-                if (_logger.IsError) _logger.Error($"- state root: expected {suggestedBlock.Header.StateRoot}, got {processedBlock.Header.StateRoot}");
+                _logger.Error($"- state root: expected {suggestedBlock.Header.StateRoot}, got {processedBlock.Header.StateRoot}");
             }
 
             if (processedBlock.Header.BlobGasUsed != suggestedBlock.Header.BlobGasUsed)
             {
-                if (_logger.IsError) _logger.Error($"- blob gas used: expected {suggestedBlock.Header.BlobGasUsed}, got {processedBlock.Header.BlobGasUsed}");
+                _logger.Error($"- blob gas used: expected {suggestedBlock.Header.BlobGasUsed}, got {processedBlock.Header.BlobGasUsed}");
             }
 
             if (processedBlock.Header.ExcessBlobGas != suggestedBlock.Header.ExcessBlobGas)
             {
-                if (_logger.IsError) _logger.Error($"- excess blob gas: expected {suggestedBlock.Header.ExcessBlobGas}, got {processedBlock.Header.ExcessBlobGas}");
+                _logger.Error($"- excess blob gas: expected {suggestedBlock.Header.ExcessBlobGas}, got {processedBlock.Header.ExcessBlobGas}");
             }
 
             if (processedBlock.Header.ParentBeaconBlockRoot != suggestedBlock.Header.ParentBeaconBlockRoot)
             {
-                if (_logger.IsError) _logger.Error($"- parent beacon block root : expected {suggestedBlock.Header.ParentBeaconBlockRoot}, got {processedBlock.Header.ParentBeaconBlockRoot}");
+                _logger.Error($"- parent beacon block root : expected {suggestedBlock.Header.ParentBeaconBlockRoot}, got {processedBlock.Header.ParentBeaconBlockRoot}");
             }
 
             for (int i = 0; i < processedBlock.Transactions.Length; i++)
             {
                 if (receipts[i].Error is not null && receipts[i].GasUsed == 0 && receipts[i].Error == "invalid")
                 {
-                    if (_logger.IsError) _logger.Error($"- invalid transaction {i}");
+                    _logger.Error($"- invalid transaction {i}");
                 }
+            }
+
+            _logger.Error($"- parent beacon block root : expected {suggestedBlock.Header.ParentBeaconBlockRoot}, got {processedBlock.Header.ParentBeaconBlockRoot}");
+
+            if (suggestedBlock.ExtraData is not null)
+            {
+                _logger.Error($"- block extra data : {suggestedBlock.ExtraData.ToHexString()}, UTF8: {Encoding.UTF8.GetString(suggestedBlock.ExtraData)}");
             }
         }
 
