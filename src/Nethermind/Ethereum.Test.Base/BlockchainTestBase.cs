@@ -106,6 +106,11 @@ namespace Ethereum.Test.Base
                 Assert.Fail("Expected genesis spec to be Frontier for blockchain tests");
             }
 
+            if (test.Network is Cancun || test.NetworkAfterTransition is Cancun)
+            {
+                await KzgPolynomialCommitments.InitializeAsync();
+            }
+
             DifficultyCalculator.Wrapped = new EthashDifficultyCalculator(specProvider);
             IRewardCalculator rewardCalculator = new RewardCalculator(specProvider);
             bool isPostMerge = test.Network != London.Instance &&
