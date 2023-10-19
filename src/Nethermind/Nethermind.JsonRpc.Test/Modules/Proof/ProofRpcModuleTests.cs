@@ -350,7 +350,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
                 .Done;
 
             CallResultWithProof result = await TestCallWithCode(code);
-            Assert.That(result.Accounts.Length, Is.EqualTo(2));
+            Assert.That(result.Accounts.Length, Is.EqualTo(1));
         }
 
         [TestCase]
@@ -363,7 +363,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
                 .Op(Instruction.SLOAD)
                 .Done;
             CallResultWithProof result = await TestCallWithCode(code);
-            Assert.That(result.Accounts.Length, Is.EqualTo(2));
+            Assert.That(result.Accounts.Length, Is.EqualTo(1));
         }
 
         [TestCase]
@@ -376,7 +376,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
                 .Done;
 
             CallResultWithProof result = await TestCallWithCode(code);
-            Assert.That(result.Accounts.Length, Is.EqualTo(2));
+            Assert.That(result.Accounts.Length, Is.EqualTo(1));
         }
 
         [TestCase]
@@ -390,7 +390,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
                 .Op(Instruction.EXTCODECOPY)
                 .Done;
             CallResultWithProof result = await TestCallWithCode(code);
-            Assert.That(result.Accounts.Length, Is.EqualTo(3));
+            Assert.That(result.Accounts.Length, Is.EqualTo(2));
         }
 
         [TestCase]
@@ -404,7 +404,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
                 .Op(Instruction.EXTCODECOPY)
                 .Done;
             CallResultWithProof result = await TestCallWithCode(code);
-            Assert.That(result.Accounts.Length, Is.EqualTo(1));
+            Assert.That(result.Accounts.Length, Is.EqualTo(2));
         }
 
         [TestCase]
@@ -415,7 +415,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
                 .Op(Instruction.EXTCODESIZE)
                 .Done;
             CallResultWithProof result = await TestCallWithCode(code);
-            Assert.That(result.Accounts.Length, Is.EqualTo(3));
+            Assert.That(result.Accounts.Length, Is.EqualTo(2));
         }
 
         [TestCase]
@@ -426,7 +426,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
                 .Op(Instruction.EXTCODESIZE)
                 .Done;
             CallResultWithProof result = await TestCallWithCode(code);
-            Assert.That(result.Accounts.Length, Is.EqualTo(1));
+            Assert.That(result.Accounts.Length, Is.EqualTo(2));
         }
 
         [TestCase]
@@ -438,7 +438,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
                 .Op(Instruction.EXTCODEHASH)
                 .Done;
             CallResultWithProof result = await TestCallWithCode(code);
-            Assert.That(result.Accounts.Length, Is.EqualTo(3));
+            Assert.That(result.Accounts.Length, Is.EqualTo(2));
         }
 
         [TestCase]
@@ -450,7 +450,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
                 .Op(Instruction.EXTCODEHASH)
                 .Done;
             CallResultWithProof result = await TestCallWithCode(code);
-            Assert.That(result.Accounts.Length, Is.EqualTo(1));
+            Assert.That(result.Accounts.Length, Is.EqualTo(2));
         }
 
         [TestCase]
@@ -461,7 +461,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
                 .Op(Instruction.STOP)
                 .Done;
             CallResultWithProof result = await TestCallWithCode(code);
-            Assert.That(result.Accounts.Length, Is.EqualTo(2));
+            Assert.That(result.Accounts.Length, Is.EqualTo(1));
         }
 
         [TestCase]
@@ -486,7 +486,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
                 .Done;
 
             CallResultWithProof result = await TestCallWithCode(code);
-            Assert.That(result.Accounts.Length, Is.EqualTo(2));
+            Assert.That(result.Accounts.Length, Is.EqualTo(1));
         }
 
         [TestCase]
@@ -498,7 +498,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
                 .Op(Instruction.BALANCE)
                 .Done;
             CallResultWithProof result = await TestCallWithCode(code);
-            Assert.That(result.Accounts.Length, Is.EqualTo(1));
+            Assert.That(result.Accounts.Length, Is.EqualTo(2));
         }
 
         [TestCase]
@@ -550,7 +550,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
                 .Op(Instruction.DELEGATECALL)
                 .Done;
             CallResultWithProof result = await TestCallWithCode(code);
-            Assert.That(result.Accounts.Length, Is.EqualTo(1));
+            Assert.That(result.Accounts.Length, Is.EqualTo(2));
         }
 
         [TestCase]
@@ -586,7 +586,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
                 .Op(Instruction.CALL)
                 .Done;
             CallResultWithProof result = await TestCallWithCode(code);
-            Assert.That(result.Accounts.Length, Is.EqualTo(3));
+            Assert.That(result.Accounts.Length, Is.EqualTo(2));
         }
 
         [TestCase]
@@ -603,7 +603,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
                 .Op(Instruction.STATICCALL)
                 .Done;
             CallResultWithProof result = await TestCallWithCode(code);
-            Assert.That(result.Accounts.Length, Is.EqualTo(3));
+            Assert.That(result.Accounts.Length, Is.EqualTo(2));
         }
 
         [TestCase]
@@ -620,7 +620,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
                 .Op(Instruction.DELEGATECALL)
                 .Done;
             CallResultWithProof result = await TestCallWithCode(code);
-            Assert.That(result.Accounts.Length, Is.EqualTo(2));
+            Assert.That(result.Accounts.Length, Is.EqualTo(3));
         }
 
         [TestCase]
@@ -638,7 +638,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
                 .Op(Instruction.CALL)
                 .Done;
             CallResultWithProof result = await TestCallWithCode(code);
-            Assert.That(result.Accounts.Length, Is.EqualTo(3));
+            Assert.That(result.Accounts.Length, Is.EqualTo(2));
         }
 
         [TestCase]
@@ -651,7 +651,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
                 .Done;
             CallResultWithProof result = await TestCallWithCode(code);
 
-            Assert.That(result.Accounts.Length, Is.EqualTo(3));
+            Assert.That(result.Accounts.Length, Is.EqualTo(2));
         }
 
         [TestCase]
@@ -679,7 +679,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
                 .Op(Instruction.SSTORE)
                 .Done;
             CallResultWithProof result = await TestCallWithCode(code);
-            Assert.That(result.Accounts.Length, Is.EqualTo(2));
+            Assert.That(result.Accounts.Length, Is.EqualTo(1));
         }
 
         [TestCase]
