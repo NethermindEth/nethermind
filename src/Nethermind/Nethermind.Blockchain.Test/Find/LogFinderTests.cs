@@ -380,10 +380,10 @@ namespace Nethermind.Blockchain.Test.Find
         private EliasFanoStorage setup_new_storage()
         {
             EliasFanoStorage storage = new EliasFanoStorage();
-            storage.PutAll(TestItem.AddressA.GetHashCode(), new List<ulong> { 1, 3, 5, 7, 10 });
-            storage.PutAll(TestItem.KeccakA.GetHashCode(), new List<ulong> { 1, 5, 7, 10});
-            storage.PutAll(TestItem.KeccakB.GetHashCode(), new List<ulong> { 1, 5});
-            storage.PutAll(TestItem.KeccakC.GetHashCode(), new List<ulong> { 1, 5, 10});
+            storage.PutAll(TestItem.AddressA.Bytes, new List<ulong> { 1, 3, 5, 7, 10 });
+            storage.PutAll(TestItem.KeccakA.Bytes.ToArray(), new List<ulong> { 1, 5, 7, 10});
+            storage.PutAll(TestItem.KeccakB.Bytes.ToArray(), new List<ulong> { 1, 5});
+            storage.PutAll(TestItem.KeccakC.Bytes.ToArray(), new List<ulong> { 1, 5, 10});
 
             // [Y] -> [ 1, 3, 4, 5, 7, 10 ]
             // [X] -> [ 1, 5, 7, 10 ]
@@ -412,7 +412,7 @@ namespace Nethermind.Blockchain.Test.Find
             EliasFanoStorage storage = setup_new_storage();
             // _logFinder = new LogFinder(_blockTree, _receiptStorage, _receiptStorage, storage, LimboLogs.Instance, _receiptsRecovery);
             IEnumerable<long> results = storage.Match(filter.FromBlock.BlockNumber, filter.ToBlock.BlockNumber, filter.AddressFilter.Addresses, filter.TopicsFilter.LogicalTopicsSequence);
-            // var logs = _logFinder.FindLogs(filter).ToArray();
+            // var logs = _logFinder.FindLogsEliasFano(filter).ToArray();
             results.Count().Should().Be(expectedCount);
         }
     }

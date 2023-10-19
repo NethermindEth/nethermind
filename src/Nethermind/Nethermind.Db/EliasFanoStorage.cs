@@ -13,25 +13,60 @@ namespace Nethermind.Db;
 
 public class EliasFanoStorage
 {
-    private Dictionary<int, EliasFano> storage;
+    private class ByteArrayComparer : IEqualityComparer<byte[]>
+    {
+        public bool Equals(byte[] x, byte[] y)
+        {
+            if (x.Length != y.Length)
+            {
+                return false;
+            }
+
+            for (int i = 0; i < x.Length; i++)
+            {
+                if (x[i] != y[i])
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        public int GetHashCode(byte[] obj)
+        {
+            int hash = 17;
+            foreach (byte b in obj)
+            {
+                hash = hash * 31 + b;
+            }
+
+            return hash;
+        }
+    }
+
+    private Dictionary<byte[], EliasFano> storage;
 
     public EliasFanoStorage()
     {
-        storage = new Dictionary<int, EliasFano>();
+        storage = new Dictionary<byte[], EliasFano>(new ByteArrayComparer());
     }
 
-    public EliasFano Get(int key)
+    public EliasFano Get(byte[] key)
     {
-        // if (storage.ContainsKey(key))
-        // {
-        return storage[key];
-        // }
-        // TODO: what to return in case of no key?
+        if (storage.ContainsKey(key))
+        {
+            return storage[key];
+        }
+        else
+        {
+            return new EliasFano();
+        }
     }
 
     // Add single a
     // block number to the storage.
-    public void Put(int key, ulong new_val)
+    public void Put(byte[] key, ulong new_val)
     {
         if (storage.ContainsKey(key))
         {
@@ -51,7 +86,7 @@ public class EliasFanoStorage
     }
 
     // Add a list of block numbers to storage.
-    public void PutAll(int key, List<ulong> values)
+    public void PutAll(byte[] key, List<ulong> values)
     {
         if (storage.ContainsKey(key))
         {
@@ -71,38 +106,6 @@ public class EliasFanoStorage
         }
     }
 
-    public List<ulong> FindBlockNumbers(int address, int topic)
-    {
-        EliasFano addressEf = Get(address);
-        EliasFano topicEf = Get(topic);
-        // Store results.
-        List<ulong> matchingValues = new List<ulong>();
-        // Get the list of values for iteration. May need to change to just use EliasFanoIterator.
-        List<ulong> addressList = addressEf.GetEnumerator(0).ToList();
-        List<ulong> topicList = topicEf.GetEnumerator(0).ToList();
-        int i = 0;
-        int j = 0;
-        while (i < addressList.Count() && j < topicList.Count())
-        {
-            if (addressList[i] == topicList[j])
-            {
-                matchingValues.Add(topicList[j]);
-                i++;
-                j++;
-            }
-            else if (addressList[i] < topicList[j])
-            {
-                i++;
-            }
-            else
-            {
-                j++;
-            }
-        }
-
-        return matchingValues;
-    }
-
     public IEnumerable<long> Match(long? startBlock, long? endBlock, IEnumerable<Address>? addresses,
         IEnumerable<IEnumerable<Keccak>> topics)
     {
@@ -110,28 +113,27 @@ public class EliasFanoStorage
         // We add a topic enumerator for each First level of the list AFTER we unionize the second levels with OR
         List<List<long>> enumerators = new List<List<long>>();
         IEnumerable<long> resultBlockNumbers = new List<long>();
-        IEnumerable<long> addressesBlockNumbersFromIndex = new List<long>();
+
+        // IEnumerable<long> addressesBlockNumbersFromIndex = new List<long>();
+        SortedSet<long> addressesBlockNumbersFromIndex = new SortedSet<long>();
 
         // Add all block numbers from the addresses in our list of addresses. (OR relation)
         foreach (Address addr in addresses)
         {
-            IEnumerable<ulong> temp = Get(addr.GetHashCode()).GetEnumerator(0);
+            IEnumerable<ulong> temp = Get(addr.Bytes).GetEnumerator(0);
             foreach (ulong t in temp)
             {
                 if (startBlock != null && endBlock != null)
                 {
-                    long? tc = (long?)t;
-                    if (!temp.Contains(t) && startBlock <= tc && tc <= endBlock)
+                    long tc = (long)t;
+                    if (startBlock <= tc && tc <= endBlock)
                     {
-                        addressesBlockNumbersFromIndex = addressesBlockNumbersFromIndex.Append((long)t);
+                        addressesBlockNumbersFromIndex.Add(tc);
                     }
                 }
                 else
                 {
-                    // if (!temp.Contains(t))
-                    // {
-                        addressesBlockNumbersFromIndex = addressesBlockNumbersFromIndex.Append((long)t);
-                    // }
+                    addressesBlockNumbersFromIndex.Add((long)t);
                 }
             }
         }
@@ -142,25 +144,22 @@ public class EliasFanoStorage
         // But we should iterate over first levels at the same time?
         foreach (IEnumerable<Keccak> topic in topics)
         {
-            IEnumerable<long> temp = new List<long>();
+            SortedSet<long> temp = new SortedSet<long>();
             foreach (Keccak t in topic)
             {
                 // List of block numbers
-                foreach (long bn in Get(t.GetHashCode()).GetEnumerator(0))
+                foreach (long bn in Get(t.Bytes.ToArray()).GetEnumerator(0))
                 {
                     if (startBlock != null && endBlock != null)
                     {
-                        if (!temp.Contains(bn) && startBlock <= bn && bn <= endBlock)
+                        if (startBlock <= bn && bn <= endBlock)
                         {
-                            temp = temp.Append(bn);
+                            temp.Add(bn);
                         }
                     }
                     else
                     {
-                        if (!temp.Contains(bn))
-                        {
-                            temp = temp.Append(bn);
-                        }
+                        temp.Add(bn);
                     }
                 }
             }
@@ -168,7 +167,7 @@ public class EliasFanoStorage
             enumerators.Add(temp.ToList());
         }
 
-        // TODO: if they are all pointing to the same block -> yield return that block
+        // if they are all pointing to the same block -> yield return that block
         // advance the lowest one
 
         int[] indices = new int[enumerators.Count];
