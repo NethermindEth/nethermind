@@ -293,10 +293,10 @@ namespace Nethermind.TxPool
 
         public void AddPeer(ITxPoolPeer peer)
         {
-            if (_logger.IsTrace) _logger.Trace($"Added a peer to TX pool: {peer}");
-
             if (_broadcaster.AddPeer(peer))
             {
+                if (_logger.IsTrace) _logger.Trace($"Added a peer to TX pool: {peer}");
+
                 // Announce txs to newly connected peer only if we are synced. If chain head of the peer is higher by
                 // more than 16 blocks than our head, skip announcing txs as some of them are probably already processed
                 // Also skip announcing if peer's head number is shown as 0 as then we don't know peer's head block yet
