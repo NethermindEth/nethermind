@@ -156,6 +156,10 @@ public class ChainSpecLoader : IChainSpecLoader
             Eip1559FeeCollectorTransition = chainSpecJson.Params.Eip1559FeeCollectorTransition,
             Eip1559BaseFeeMinValueTransition = chainSpecJson.Params.Eip1559BaseFeeMinValueTransition,
             Eip1559BaseFeeMinValue = chainSpecJson.Params.Eip1559BaseFeeMinValue,
+            Eip4844BlobGasPriceUpdateFraction = chainSpecJson.Params.Eip4844BlobGasPriceUpdateFraction,
+            Eip4844MaxBlobGasPerBlock = chainSpecJson.Params.Eip4844MaxBlobGasPerBlock,
+            Eip4844MinBlobGasPrice = chainSpecJson.Params.Eip4844MinBlobGasPrice,
+            Eip4844TargetBlobGasPerBlock = chainSpecJson.Params.Eip4844TargetBlobGasPerBlock,
             MergeForkIdTransition = chainSpecJson.Params.MergeForkIdTransition,
             TerminalTotalDifficulty = chainSpecJson.Params.TerminalTotalDifficulty,
             TerminalPoWBlockNumber = chainSpecJson.Params.TerminalPoWBlockNumber
@@ -170,6 +174,12 @@ public class ChainSpecLoader : IChainSpecLoader
         Eip1559Constants.ElasticityMultiplier = chainSpec.Parameters.Eip1559ElasticityMultiplier;
         Eip1559Constants.ForkBaseFee = chainSpec.Parameters.Eip1559BaseFeeInitialValue;
         Eip1559Constants.BaseFeeMaxChangeDenominator = chainSpec.Parameters.Eip1559BaseFeeMaxChangeDenominator;
+
+        Eip4844Constants.OverrideIfAny(
+            chainSpec.Parameters.Eip4844BlobGasPriceUpdateFraction,
+            chainSpec.Parameters.Eip4844MaxBlobGasPerBlock,
+            chainSpec.Parameters.Eip4844MinBlobGasPrice,
+            chainSpec.Parameters.Eip4844TargetBlobGasPerBlock);
     }
 
     private static void ValidateParams(ChainSpecParamsJson parameters)

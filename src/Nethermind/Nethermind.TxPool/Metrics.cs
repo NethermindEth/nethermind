@@ -21,8 +21,16 @@ namespace Nethermind.TxPool
         public static long PendingTransactionsReceived { get; set; }
 
         [CounterMetric]
+        [Description("Number of hashes of pending transactions received from peers.")]
+        public static long PendingTransactionsHashesReceived { get; set; }
+
+        [CounterMetric]
         [Description("Number of pending transactions received that were ignored.")]
         public static long PendingTransactionsDiscarded { get; set; }
+
+        [CounterMetric]
+        [Description("Number of pending transactions received that were ignored because of not supported transaction type.")]
+        public static long PendingTransactionsNotSupportedTxType { get; set; }
 
         [CounterMetric]
         [Description(
@@ -30,8 +38,11 @@ namespace Nethermind.TxPool
         public static long PendingTransactionsNonceGap { get; set; }
 
         [CounterMetric]
-        [Description(
-            "Number of pending transactions received that were ignored because of fee lower than the lowest fee in transaction pool.")]
+        [Description("Number of pending transactions received that were ignored because of priority fee lower than minimal requirement.")]
+        public static long PendingTransactionsTooLowPriorityFee { get; set; }
+
+        [CounterMetric]
+        [Description("Number of pending transactions received that were ignored because of fee lower than the lowest fee in transaction pool.")]
         public static long PendingTransactionsTooLowFee { get; set; }
 
         [CounterMetric]
@@ -60,9 +71,12 @@ namespace Nethermind.TxPool
         public static long PendingTransactionsGasLimitTooHigh { get; set; }
 
         [CounterMetric]
-        [Description(
-            "Number of pending transactions received that were ignored after passing early rejections as balance is too low to compete with lowest effective fee in transaction pool.")]
+        [Description("Number of pending transactions received that were ignored after passing early rejections as balance is too low to compete with lowest effective fee in transaction pool.")]
         public static long PendingTransactionsPassedFiltersButCannotCompeteOnFees { get; set; }
+
+        [CounterMetric]
+        [Description("Number of pending transactions received that were trying to replace tx with the same sender and nonce and failed.")]
+        public static long PendingTransactionsPassedFiltersButCannotReplace { get; set; }
 
         [CounterMetric]
         [Description("Number of pending transactions that reached filters which are resource expensive")]
@@ -81,6 +95,14 @@ namespace Nethermind.TxPool
         public static long PendingTransactionsLowNonce { get; set; }
 
         [CounterMetric]
+        [Description("Number of transactions with nonce too far in future.")]
+        public static long PendingTransactionsNonceTooFarInFuture { get; set; }
+
+        [CounterMetric]
+        [Description("Number of transactions rejected because of already pending tx of other type (allowed blob txs or others, not both at once).")]
+        public static long PendingTransactionsConflictingTxType { get; set; }
+
+        [CounterMetric]
         [Description("Number of pending transactions added to transaction pool.")]
         public static long PendingTransactionsAdded { get; set; }
 
@@ -89,12 +111,24 @@ namespace Nethermind.TxPool
         public static long Pending1559TransactionsAdded { get; set; }
 
         [CounterMetric]
+        [Description("Number of pending blob-type transactions added to transaction pool.")]
+        public static long PendingBlobTransactionsAdded { get; set; }
+
+        [CounterMetric]
         [Description("Number of pending transactions evicted from transaction pool.")]
         public static long PendingTransactionsEvicted { get; set; }
 
         [GaugeMetric]
         [Description("Ratio of 1559-type transactions in the block.")]
         public static float Eip1559TransactionsRatio { get; set; }
+
+        [GaugeMetric]
+        [Description("Number of blob transactions in the block.")]
+        public static long BlobTransactionsInBlock { get; set; }
+
+        [GaugeMetric]
+        [Description("Number of blobs in the block.")]
+        public static long BlobsInBlock { get; set; }
 
         [GaugeMetric]
         [Description("Ratio of transactions in the block absent in hashCache.")]
@@ -106,6 +140,10 @@ namespace Nethermind.TxPool
 
         [GaugeMetric]
         [Description("Number of transactions in pool.")]
-        public static float TransactionCount { get; set; }
+        public static long TransactionCount { get; set; }
+
+        [GaugeMetric]
+        [Description("Number of blob transactions in pool.")]
+        public static long BlobTransactionCount { get; set; }
     }
 }

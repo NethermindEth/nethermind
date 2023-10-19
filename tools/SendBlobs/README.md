@@ -3,8 +3,8 @@
 ## Run using docker
 
 ```
-docker run ghcr.io/flcl42/send-blobs:latest --rpcurl http://localhost:8545 --bloboptions 5 --privatekey 0x0000000000000000000000000000000000000000000000000000000000000000 --receiveraddress 0x000000000000000000000000000000000000f1c1
-docker run ghcr.io/flcl42/send-blobs:latest --rpcurl http://localhost:8545 --bloboptions 5x6 --privatekey 0x0000000000000000000000000000000000000000000000000000000000000000 --receiveraddress 0x000000000000000000000000000000000000f1c1 --maxfeeperdatagas 10000 --feemultiplier 4
+docker run nethermindeth/send-blobs:latest --rpcurl http://localhost:8545 --bloboptions 5 --privatekey 0x0000000000000000000000000000000000000000000000000000000000000000 --receiveraddress 0x000000000000000000000000000000000000f1c1
+docker run nethermindeth/send-blobs:latest --rpcurl http://localhost:8545 --bloboptions 5x6 --privatekey 0x0000000000000000000000000000000000000000000000000000000000000000 --receiveraddress 0x000000000000000000000000000000000000f1c1 --maxfeeperdatagas 10000 --feemultiplier 4
 ```
 
 ## Usage
@@ -122,7 +122,7 @@ For funding the private key used in the project launch settings, the address is:
 
 ```sh
 apt install libsnappy-dev dotnet-sdk-7.0 -y
-cd ./tools/SendBlobs
+cd ./nethermind/tools/SendBlobs
 dotnet publish --sc -o .
 ./SendBlobs
 ```
