@@ -13,6 +13,7 @@ namespace Nethermind.Consensus.Processing
         Parity = 2,
         Geth = 4,
         Rlp = 8,
-        All = Receipts | Parity | Geth
+        Default = Receipts | Rlp,
+        All = Receipts | Parity | Geth | Rlp
     }
 }
