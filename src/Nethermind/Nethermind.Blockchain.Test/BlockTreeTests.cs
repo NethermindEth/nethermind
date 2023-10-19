@@ -1832,16 +1832,13 @@ namespace Nethermind.Blockchain.Test
             // First run
             {
                 Keccak uncleHash = new("0x1dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347");
-                BlockTree tree = new(
-                    blockStore: new BlockStore(blocksDb),
-                    headerDb: new HeaderStore(headersDb, blockNumberDb),
-                    blockInfoDb: new MemDb(),
-                    metadataDb: new MemDb(),
-                    chainLevelInfoRepository: chainLevelInfoRepository,
-                    specProvider: HoleskySpecProvider.Instance,
-                    bloomStorage: NullBloomStorage.Instance,
-                    syncConfig: new SyncConfig(),
-                    logManager: LimboLogs.Instance);
+                BlockTree tree = Build.A.BlockTree(HoleskySpecProvider.Instance)
+                    .WithBlockStore(new BlockStore(blocksDb))
+                    .WithBlocksNumberDb(blockNumberDb)
+                    .WithHeadersDb(headersDb)
+                    .WithChainLevelInfoRepository(chainLevelInfoRepository)
+                    .WithoutSettingHead
+                    .TestObject;
 
                 // Holesky genesis
                 Block genesis = new(new(
@@ -1901,16 +1898,13 @@ namespace Nethermind.Blockchain.Test
 
             // Assume Nethermind got restarted
             {
-                BlockTree tree = new(
-                    blockStore: new BlockStore(blocksDb),
-                    headerDb: new HeaderStore(headersDb, blockNumberDb),
-                    blockInfoDb: new MemDb(),
-                    metadataDb: new MemDb(),
-                    chainLevelInfoRepository: chainLevelInfoRepository,
-                    specProvider: HoleskySpecProvider.Instance,
-                    bloomStorage: NullBloomStorage.Instance,
-                    syncConfig: new SyncConfig(),
-                    logManager: LimboLogs.Instance);
+                BlockTree tree = Build.A.BlockTree(HoleskySpecProvider.Instance)
+                    .WithBlockStore(new BlockStore(blocksDb))
+                    .WithBlocksNumberDb(blockNumberDb)
+                    .WithHeadersDb(headersDb)
+                    .WithChainLevelInfoRepository(chainLevelInfoRepository)
+                    .WithoutSettingHead
+                    .TestObject;
 
                 tree.Genesis.Should().NotBeNull();
             }
