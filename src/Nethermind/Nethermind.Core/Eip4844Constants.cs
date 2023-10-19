@@ -46,13 +46,22 @@ public class Eip4844Constants
     public static ulong TargetBlobGasPerBlock { get; private set; } = MaxBlobGasPerBlock / 2;
 
     // The parameter mutators are kept separate deliberately to ensure no accidental value changes.
-    #region Mutators
-    public static void OverrideBlobGasPriceUpdateFraction(UInt256 value) => BlobGasPriceUpdateFraction = value;
+    public static void OverrideIfAny(
+        UInt256? blobGasPriceUpdateFraction = null,
+        ulong? maxBlobGasPerBlock = null,
+        UInt256? minBlobGasPrice = null,
+        ulong? targetBlobGasPerBlock = null)
+    {
+        if (blobGasPriceUpdateFraction.HasValue)
+            BlobGasPriceUpdateFraction = blobGasPriceUpdateFraction.Value;
 
-    public static void OverrideMaxBlobGasPerBlock(ulong value) => MaxBlobGasPerBlock = value;
+        if (maxBlobGasPerBlock.HasValue)
+            MaxBlobGasPerBlock = maxBlobGasPerBlock.Value;
 
-    public static void OverrideMinBlobGasPrice(UInt256 value) => MinBlobGasPrice = value;
+        if (minBlobGasPrice.HasValue)
+            MinBlobGasPrice = minBlobGasPrice.Value;
 
-    public static void OverrideTargetBlobGasPerBlock(ulong value) => TargetBlobGasPerBlock = value;
-    #endregion
+        if (targetBlobGasPerBlock.HasValue)
+            TargetBlobGasPerBlock = targetBlobGasPerBlock.Value;
+    }
 }
