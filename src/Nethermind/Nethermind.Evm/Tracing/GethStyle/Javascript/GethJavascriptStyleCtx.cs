@@ -2,24 +2,27 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Numerics;
+using Microsoft.ClearScript;
 using Microsoft.ClearScript.V8;
 
 namespace Nethermind.Evm.Tracing.GethStyle.Javascript;
 
 public class GethJavascriptStyleCtx
 {
-    public V8ScriptEngine Engine { get; set; } = null!;
-
-    public string? type { get; set; }
-    public dynamic from { get; set; }
-    public dynamic? to { get; set; }
-    public dynamic input { get; set; }
-    public BigInteger value { get; set; }
+    public string type { get; set; } = null!;
+    public ScriptObject from { get; set; } = null!;
+    public ScriptObject? to { get; set; }
+    public ScriptObject input { get; set; } = null!;
     public long gas { get; set; }
     public long gasUsed { get; set; }
-    public ulong? gasPrice { get; set; }
+    public ulong gasPrice { get; set; }
     public long intrinsicGas { get; set; }
+    public BigInteger value { get; set; }
     public long block { get; set; }
-    public dynamic? output { get; set; }
+    public ScriptObject? output { get; set; }
     public string time { get; set; }
+
+    public ScriptObject? blockHash { get; set; }
+    public int? txIndex { get; set; }
+    public dynamic? txHash { get; set; }
 }

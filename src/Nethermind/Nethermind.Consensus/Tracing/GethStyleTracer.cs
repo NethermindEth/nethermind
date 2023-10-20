@@ -170,7 +170,6 @@ public class GethStyleTracer : IGethStyleTracer
 
     private IBlockTracer<GethLikeTxTrace> CreateOptionsTracer(BlockHeader block, GethTraceOptions options) =>
         !string.IsNullOrEmpty(options.Tracer)
-        // block.Number
             ? new GethLikeBlockJavascriptTracer(_worldState, _specProvider.GetSpec(block), options)
             : new GethLikeBlockMemoryTracer(options);
 

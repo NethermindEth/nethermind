@@ -9,6 +9,8 @@ namespace Nethermind.Evm.Tracing.GethStyle;
 
 public record GethTraceOptions
 {
+    private static readonly object _emptyConfig = new();
+
     [JsonProperty("disableMemory")]
     [Obsolete("Use EnableMemory instead.")]
     public bool DisableMemory { get => !EnableMemory; init => EnableMemory = !value; }
@@ -30,6 +32,8 @@ public record GethTraceOptions
 
     [JsonProperty("txHash")]
     public Keccak? TxHash { get; init; }
+
+    [JsonProperty("tracerConfig")] public dynamic TracerConfig { get; init; } = _emptyConfig;
 
     public static GethTraceOptions Default { get; } = new();
 }

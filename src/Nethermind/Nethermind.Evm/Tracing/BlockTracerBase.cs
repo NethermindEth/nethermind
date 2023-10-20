@@ -63,10 +63,7 @@ public abstract class BlockTracerBase<TTrace, TTracer> : IBlockTracer<TTrace> wh
 
     public virtual void EndBlockTrace() { }
 
-    protected virtual bool ShouldTraceTx(Transaction? tx)
-    {
-        return _txHash is null || tx?.Hash == _txHash;
-    }
+    protected virtual bool ShouldTraceTx(Transaction? tx) => _txHash is null || tx?.Hash == _txHash;
 
     protected ResettableList<TTrace> TxTraces { get; }
 
