@@ -55,7 +55,7 @@ public class TxTracer : ITxTracer
     public virtual void ReportOperationRemainingGas(long gas) { }
     public virtual void SetOperationStack(TraceStack stack) { }
     public virtual void ReportStackPush(in ReadOnlySpan<byte> stackItem) { }
-    public virtual void SetOperationMemory(IEnumerable<string> memoryTrace) { }
+    public virtual void SetOperationMemory(TraceMemory memoryTrace) { }
     public virtual void SetOperationMemorySize(ulong newSize) { }
     public virtual void ReportMemoryChange(long offset, in ReadOnlySpan<byte> data) { }
     public virtual void SetOperationStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> newValue, ReadOnlySpan<byte> currentValue) { }

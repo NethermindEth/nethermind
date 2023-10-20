@@ -249,7 +249,7 @@ public class CancellationTxTracer : ITxTracer, ITxTracerWrapper
         }
     }
 
-    public void SetOperationMemory(IEnumerable<string> memoryTrace)
+    public void SetOperationMemory(TraceMemory memoryTrace)
     {
         _token.ThrowIfCancellationRequested();
         if (_innerTracer.IsTracingMemory)

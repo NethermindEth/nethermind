@@ -52,7 +52,7 @@ public class NullTxTracer : TxTracer
     public override void ReportStackPush(in ReadOnlySpan<byte> stackItem)
         => ThrowInvalidOperationException();
 
-    public override void SetOperationMemory(IEnumerable<string> memoryTrace)
+    public override void SetOperationMemory(TraceMemory memoryTrace)
         => ThrowInvalidOperationException();
 
     public override void SetOperationStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> newValue, ReadOnlySpan<byte> currentValue)

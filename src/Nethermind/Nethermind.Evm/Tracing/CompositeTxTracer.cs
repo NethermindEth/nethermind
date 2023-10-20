@@ -233,7 +233,7 @@ public class CompositeTxTracer : ITxTracer
         }
     }
 
-    public void SetOperationMemory(IEnumerable<string> memoryTrace)
+    public void SetOperationMemory(TraceMemory memoryTrace)
     {
         for (int index = 0; index < _txTracers.Count; index++)
         {

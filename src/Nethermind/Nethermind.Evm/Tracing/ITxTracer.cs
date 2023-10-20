@@ -222,7 +222,7 @@ public interface ITxTracer : IWorldStateTracer
     /// </summary>
     /// <param name="memoryTrace"></param>
     /// <remarks>Depends on <see cref="IsTracingMemory"/></remarks>
-    void SetOperationMemory(IEnumerable<string> memoryTrace);
+    void SetOperationMemory(TraceMemory memoryTrace);
 
     /// <summary>
     ///

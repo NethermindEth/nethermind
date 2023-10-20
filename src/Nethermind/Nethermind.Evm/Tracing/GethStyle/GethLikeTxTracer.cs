@@ -56,7 +56,7 @@ public abstract class GethLikeTxTracer<TEntry> : TxTracer where TEntry : GethTxT
 
     public override void ReportOperationError(EvmExceptionType error) => CurrentTraceEntry.Error = GetErrorDescription(error);
 
-    private string? GetErrorDescription(EvmExceptionType evmExceptionType)
+    protected string? GetErrorDescription(EvmExceptionType evmExceptionType)
     {
         return evmExceptionType switch
         {
@@ -80,19 +80,13 @@ public abstract class GethLikeTxTracer<TEntry> : TxTracer where TEntry : GethTxT
 
     public override void SetOperationStack(TraceStack stack)
     {
-        List<string> stackTrace = new(stack.Count);
-        for (int i = 0; i < stack.Count; i+= 1)
-        {
-            stackTrace.Add(stack[i].Span.ToHexString(true, true));
-        }
-
-        CurrentTraceEntry.Stack = stackTrace;
+        CurrentTraceEntry.Stack = stack.ToHexWordList();
     }
 
-    public override void SetOperationMemory(IEnumerable<string> memoryTrace)
+    public override void SetOperationMemory(TraceMemory memoryTrace)
     {
         if (IsTracingFullMemory)
-            CurrentTraceEntry.Memory = memoryTrace.ToList();
+            CurrentTraceEntry.Memory = memoryTrace.ToHexWordList();
     }
 
     public virtual GethLikeTxTrace BuildResult()

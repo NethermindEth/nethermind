@@ -2774,7 +2774,7 @@ ReturnFailure:
         _txTracer.StartOperation(vmState.Env.CallDepth + 1, gasAvailable, instruction, programCounter, vmState.Env.TxExecutionContext.Header.IsPostMerge);
         if (_txTracer.IsTracingMemory)
         {
-            _txTracer.SetOperationMemory(vmState.Memory?.GetTrace() ?? Enumerable.Empty<string>());
+            _txTracer.SetOperationMemory(vmState.Memory?.GetTrace() ?? new TraceMemory());
             _txTracer.SetOperationMemorySize(vmState.Memory?.Size ?? 0);
         }
 

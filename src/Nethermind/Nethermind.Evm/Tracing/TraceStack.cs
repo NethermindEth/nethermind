@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
+using Nethermind.Core.Extensions;
 
 namespace Nethermind.Evm.Tracing;
 
@@ -20,4 +22,15 @@ public readonly struct TraceStack
     }
 
     public int Count => _stack.Length / EvmStack.WordSize;
+
+    public List<string> ToHexWordList()
+    {
+        List<string> hexWordList = new(Count);
+        for (int i = 0; i < Count; i+= 1)
+        {
+            hexWordList.Add(this[i].Span.ToHexString(true, true));
+        }
+
+        return hexWordList;
+    }
 }

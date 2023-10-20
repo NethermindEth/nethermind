@@ -223,11 +223,11 @@ public class GethLikeJavascriptTracerTests : VirtualMachineTestsBase
                             this.afterSload = false;
                         }
                         if (log.op.toNumber() == 0x54) {
-                                this.retVal.push(log.getPC() + ""SLOAD "" + log.stack.peek(0).toString(16));
+                                this.retVal.push(log.getPC() + "" SLOAD "" + log.stack.peek(0).toString(16));
                             this.afterSload = true;
                         }
                         if (log.op.toNumber() == 0x55)
-                            this.retVal.push(log.getPC() + "" SSTORE"" + log.stack.peek(0).toString(16) + "" <- "" + log.stack.peek(1).toString(16));
+                            this.retVal.push(log.getPC() + "" SSTORE "" + log.stack.peek(0).toString(16) + "" <- "" + log.stack.peek(1).toString(16));
                     },
                     fault: function(log, db) {
                         this.retVal.push(""FAULT: "" + JSON.stringify(log));
@@ -241,7 +241,7 @@ public class GethLikeJavascriptTracerTests : VirtualMachineTestsBase
                 GetOperationalBytecode(),
                 MainnetSpecProvider.CancunActivation)
             .BuildResult();
-        string[] expectedStrings = { "68 SSTORE3412a0 <- 7856b1", "104SLOAD 3412a0", "Result: 0" };
+        string[] expectedStrings = { "68 SSTORE 3412a0 <- 7856b1", "104 SLOAD 3412a0", "Result: 0" };
         Assert.That(traces.CustomTracerResult, Is.EqualTo(expectedStrings));
     }
 

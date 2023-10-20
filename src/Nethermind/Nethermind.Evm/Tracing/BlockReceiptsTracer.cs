@@ -179,7 +179,7 @@ public class BlockReceiptsTracer : IBlockTracer, ITxTracer, IJournal<int>, ITxTr
     public void ReportBlockHash(Keccak blockHash) =>
         _currentTxTracer.ReportBlockHash(blockHash);
 
-    public void SetOperationMemory(IEnumerable<string> memoryTrace) =>
+    public void SetOperationMemory(TraceMemory memoryTrace) =>
         _currentTxTracer.SetOperationMemory(memoryTrace);
 
     public void ReportFees(UInt256 fees, UInt256 burntFees)

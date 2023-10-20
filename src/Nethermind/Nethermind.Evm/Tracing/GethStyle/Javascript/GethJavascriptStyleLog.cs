@@ -79,15 +79,15 @@ namespace Nethermind.Evm.Tracing.GethStyle.Javascript
                 return slice.ToArray().ToScriptArray(_engine);
             }
 
-            public dynamic? getUint(int offset)
+            public BigInteger getUint(int offset)
             {
                 if (offset < 0 || offset + 32 > _memory.Count)
                 {
                     throw new ArgumentOutOfRangeException("Invalid offset.");
                 }
 
-                Span<byte> byteArray = CollectionsMarshal.AsSpan(_memory).Slice(offset, 32); // Adjust the length to 32 bytes
-                return byteArray.ToArray().ToScriptArray(_engine);
+                ReadOnlySpan<byte> byteArray = CollectionsMarshal.AsSpan(_memory).Slice(offset, 32); // Adjust the length to 32 bytes
+                return new BigInteger(byteArray);
             }
         }
 
@@ -95,25 +95,25 @@ namespace Nethermind.Evm.Tracing.GethStyle.Javascript
         {
             private readonly V8ScriptEngine _engine;
             private readonly UInt256 _value;
-            public Address Caller { get; }
             private readonly Address? _address;
             private readonly ReadOnlyMemory<byte> _input;
             private object? _callerConverted;
             private object? _addressConverted;
             private object? _inputConverted;
+            private readonly Address _caller;
 
 
             public Contract(V8ScriptEngine engine, Address caller, Address? address, UInt256 value, ReadOnlyMemory<byte> input)
             {
                 _engine = engine;
-                Caller = caller;
+                _caller = caller;
                 _address = address;
                 _value = value;
                 _input = input;
             }
 
             public dynamic? getAddress() => _addressConverted ??= _address?.Bytes.ToScriptArray(_engine);
-            public dynamic getCaller() => _callerConverted ??= Caller.Bytes.ToScriptArray(_engine);
+            public dynamic getCaller() => _callerConverted ??= _caller.Bytes.ToScriptArray(_engine);
             public dynamic getInput() => _inputConverted ??= _input.ToArray().ToScriptArray(_engine);
             public dynamic getValue() => (BigInteger)_value;
         }
