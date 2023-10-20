@@ -334,6 +334,8 @@ public class ChainSpecLoader : IChainSpecLoader
             {
                 RegolithTimestamp = chainSpecJson.Engine.Optimism.RegolithTimestamp,
                 BedrockBlockNumber = chainSpecJson.Engine.Optimism.BedrockBlockNumber,
+                L1FeeRecipient = chainSpecJson.Engine.Optimism.L1FeeRecipient,
+                L1BlockAddress = chainSpecJson.Engine.Optimism.L1BlockAddress
             };
         }
         else if (chainSpecJson.Engine?.NethDev is not null)

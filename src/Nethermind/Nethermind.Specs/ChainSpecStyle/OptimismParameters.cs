@@ -12,5 +12,9 @@ namespace Nethermind.Specs.ChainSpecStyle
         public ulong RegolithTimestamp { get; set; }
 
         public long BedrockBlockNumber { get; set; }
+
+        public Address L1FeeRecipient { get; set; }
+
+        public Address L1BlockAddress { get; set; }
     }
 }

@@ -5,7 +5,9 @@
     "Optimism": {
       "params": {
         "regolithTimestamp": "0x6414B8B0",
-        "bedrockBlockNumber": "0x0"
+        "bedrockBlockNumber": "0x0",
+        "l1FeeRecipient": "0x420000000000000000000000000000000000001A",
+        "l1BlockAddress": "0x4200000000000000000000000000000000000015"
       }
     }
   },

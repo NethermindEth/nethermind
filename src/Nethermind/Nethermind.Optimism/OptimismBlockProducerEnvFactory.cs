@@ -50,16 +50,12 @@ public class OptimismBlockProducerEnvFactory : BlockProducerEnvFactory
     protected override ReadOnlyTxProcessingEnv CreateReadonlyTxProcessingEnv(ReadOnlyDbProvider readOnlyDbProvider,
         ReadOnlyBlockTree readOnlyBlockTree)
     {
-        // TODO: get from chainspec
-        Address l1FeeRecipient = new("0x420000000000000000000000000000000000001A");
-        Address l1BlockAddress = new("0x4200000000000000000000000000000000000015");
-
         OPSpecHelper opConfigHelper = new(
             _chainSpec.Optimism.RegolithTimestamp,
             _chainSpec.Optimism.BedrockBlockNumber,
-            l1FeeRecipient // it would be good to get this last one from chainspec too
+            _chainSpec.Optimism.L1FeeRecipient
         );
-        OPL1CostHelper l1CostHelper = new(opConfigHelper, l1BlockAddress);
+        OPL1CostHelper l1CostHelper = new(opConfigHelper, _chainSpec.Optimism.L1BlockAddress);
         OptimismTransactionProcessorFactory txProcessorFactory = new(l1CostHelper, opConfigHelper);
 
         ReadOnlyTxProcessingEnv result = new(readOnlyDbProvider, _readOnlyTrieStore,

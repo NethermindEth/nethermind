@@ -163,6 +163,8 @@ internal class ChainSpecJson
     {
         public ulong RegolithTimestamp => Params.RegolithTimestamp;
         public long BedrockBlockNumber => Params.BedrockBlockNumber;
+        public Address L1FeeRecipient => Params.L1FeeRecipient;
+        public Address L1BlockAddress => Params.L1BlockAddress;
         public OptimismEngineParamsJson Params { get; set; }
     }
 
@@ -170,6 +172,8 @@ internal class ChainSpecJson
     {
         public ulong RegolithTimestamp { get; set; }
         public long BedrockBlockNumber { get; set; }
+        public Address L1FeeRecipient { get; set; }
+        public Address L1BlockAddress { get; set; }
     }
 
     internal class NethDevJson
