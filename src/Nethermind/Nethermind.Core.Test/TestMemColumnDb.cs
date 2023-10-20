@@ -6,7 +6,7 @@ using Nethermind.Db;
 
 namespace Nethermind.Core.Test;
 
-public class TestMemColumnsDb<TKey> : TestMemDb, IColumnsDb<TKey>
+public class TestMemColumnsDb<TKey> : IColumnsDb<TKey>
     where TKey : notnull
 {
     private readonly IDictionary<TKey, IDbWithSpan> _columnDbs = new Dictionary<TKey, IDbWithSpan>();
@@ -26,8 +26,13 @@ public class TestMemColumnsDb<TKey> : TestMemDb, IColumnsDb<TKey>
     public IDbWithSpan GetColumnDb(TKey key) => !_columnDbs.TryGetValue(key, out var db) ? _columnDbs[key] = new TestMemDb() : db;
     public IEnumerable<TKey> ColumnKeys => _columnDbs.Keys;
 
-    public IReadOnlyDb CreateReadOnly(bool createInMemWriteStore)
+    public IColumnsDb<TKey> CreateReadOnly(bool createInMemWriteStore)
     {
         return new ReadOnlyColumnsDb<TKey>(this, createInMemWriteStore);
+    }
+
+    public IColumnsBatch<TKey> StartBatch()
+    {
+        return new InMemoryColumnBatch<TKey>(this);
     }
 }
