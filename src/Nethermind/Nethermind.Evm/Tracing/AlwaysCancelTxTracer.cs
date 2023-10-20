@@ -57,7 +57,7 @@ public class AlwaysCancelTxTracer : ITxTracer
     public void ReportMemoryChange(long offset, in ReadOnlySpan<byte> data) => throw new OperationCanceledException(ErrorMessage);
     public void ReportStorageChange(in ReadOnlySpan<byte> key, in ReadOnlySpan<byte> value) => throw new OperationCanceledException(ErrorMessage);
 
-    public void SetOperationStack(List<string> stackTrace) => throw new OperationCanceledException(ErrorMessage);
+    public void SetOperationStack(TraceStack stack) => throw new OperationCanceledException(ErrorMessage);
 
     public void ReportStackPush(in ReadOnlySpan<byte> stackItem) => throw new OperationCanceledException(ErrorMessage);
 

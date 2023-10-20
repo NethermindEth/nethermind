@@ -53,7 +53,7 @@ public class TxTracer : ITxTracer
     public virtual void StartOperation(int depth, long gas, Instruction opcode, int pc, bool isPostMerge = false) { }
     public virtual void ReportOperationError(EvmExceptionType error) { }
     public virtual void ReportOperationRemainingGas(long gas) { }
-    public virtual void SetOperationStack(List<string> stackTrace) { }
+    public virtual void SetOperationStack(TraceStack stack) { }
     public virtual void ReportStackPush(in ReadOnlySpan<byte> stackItem) { }
     public virtual void SetOperationMemory(IEnumerable<string> memoryTrace) { }
     public virtual void SetOperationMemorySize(ulong newSize) { }

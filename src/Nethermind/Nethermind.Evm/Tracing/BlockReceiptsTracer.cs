@@ -170,8 +170,8 @@ public class BlockReceiptsTracer : IBlockTracer, ITxTracer, IJournal<int>, ITxTr
     public void ReportAccess(IReadOnlySet<Address> accessedAddresses, IReadOnlySet<StorageCell> accessedStorageCells) =>
         _currentTxTracer.ReportAccess(accessedAddresses, accessedStorageCells);
 
-    public void SetOperationStack(List<string> stackTrace) =>
-        _currentTxTracer.SetOperationStack(stackTrace);
+    public void SetOperationStack(TraceStack stack) =>
+        _currentTxTracer.SetOperationStack(stack);
 
     public void ReportStackPush(in ReadOnlySpan<byte> stackItem) =>
         _currentTxTracer.ReportStackPush(stackItem);

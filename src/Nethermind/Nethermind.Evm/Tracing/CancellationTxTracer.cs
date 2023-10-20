@@ -213,12 +213,12 @@ public class CancellationTxTracer : ITxTracer, ITxTracerWrapper
         }
     }
 
-    public void SetOperationStack(List<string> stackTrace)
+    public void SetOperationStack(TraceStack stack)
     {
         _token.ThrowIfCancellationRequested();
         if (_innerTracer.IsTracingStack)
         {
-            _innerTracer.SetOperationStack(stackTrace);
+            _innerTracer.SetOperationStack(stack);
         }
     }
 

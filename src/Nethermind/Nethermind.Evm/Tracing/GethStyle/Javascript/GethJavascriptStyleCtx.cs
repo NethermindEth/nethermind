@@ -10,7 +10,7 @@ public class GethJavascriptStyleCtx
 {
     public V8ScriptEngine Engine { get; set; } = null!;
 
-    public string type { get; set; }
+    public string? type { get; set; }
     public dynamic from { get; set; }
     public dynamic? to { get; set; }
     public dynamic input { get; set; }
@@ -20,6 +20,6 @@ public class GethJavascriptStyleCtx
     public ulong? gasPrice { get; set; }
     public long intrinsicGas { get; set; }
     public long block { get; set; }
-    public dynamic output { get; set; }
+    public dynamic? output { get; set; }
     public string time { get; set; }
 }

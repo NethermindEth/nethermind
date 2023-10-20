@@ -185,14 +185,14 @@ public class CompositeTxTracer : ITxTracer
         }
     }
 
-    public void SetOperationStack(List<string> stackTrace)
+    public void SetOperationStack(TraceStack stack)
     {
         for (int index = 0; index < _txTracers.Count; index++)
         {
             ITxTracer innerTracer = _txTracers[index];
             if (innerTracer.IsTracingStack)
             {
-                innerTracer.SetOperationStack(stackTrace);
+                innerTracer.SetOperationStack(stack);
             }
         }
     }

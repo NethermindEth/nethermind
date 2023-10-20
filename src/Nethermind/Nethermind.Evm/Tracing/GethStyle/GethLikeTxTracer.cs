@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 
 namespace Nethermind.Evm.Tracing.GethStyle;
 
@@ -77,7 +78,16 @@ public abstract class GethLikeTxTracer<TEntry> : TxTracer where TEntry : GethTxT
 
     public override void SetOperationMemorySize(ulong newSize) => CurrentTraceEntry.UpdateMemorySize(newSize);
 
-    public override void SetOperationStack(List<string> stackTrace) => CurrentTraceEntry.Stack = stackTrace;
+    public override void SetOperationStack(TraceStack stack)
+    {
+        List<string> stackTrace = new(stack.Count);
+        for (int i = 0; i < stack.Count; i+= 1)
+        {
+            stackTrace.Add(stack[i].Span.ToHexString(true, true));
+        }
+
+        CurrentTraceEntry.Stack = stackTrace;
+    }
 
     public override void SetOperationMemory(IEnumerable<string> memoryTrace)
     {

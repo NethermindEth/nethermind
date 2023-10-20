@@ -37,7 +37,7 @@ namespace Nethermind.Evm.Tracing.GethStyle.Javascript
         public ulong? getRefund() => (ulong?)refund;
         public dynamic? getError() => !string.IsNullOrEmpty(error) ? error : Undefined.Value;
 
-        public class OpcodeString
+        public readonly struct OpcodeString
         {
             private readonly Instruction _value;
             public OpcodeString(Instruction value) => _value = value;
@@ -46,16 +46,15 @@ namespace Nethermind.Evm.Tracing.GethStyle.Javascript
             public bool? isPush() => _value is >= Instruction.PUSH0 and <= Instruction.PUSH32;
         }
 
-        public class JSStack
+        public readonly struct JSStack
         {
-            public List<string> Items { get; }
-            public JSStack(List<string> items) => Items = items;
-            public string? length() => Items.Count.ToString();
-            public int? getCount() => Items.Count;
-            public dynamic peek(int index) => new BigInteger(Bytes.FromHexString(Items[^(index + 1)]));
+            public TraceStack Items { get; }
+            public JSStack(TraceStack items) => Items = items;
+            public int length() => Items.Count;
+            public dynamic peek(int index) => new BigInteger(Items[^(index + 1)].Span);
         }
 
-        public class JSMemory
+        public readonly struct JSMemory
         {
             private readonly V8ScriptEngine _engine;
             private readonly List<byte> _memory;
@@ -92,7 +91,7 @@ namespace Nethermind.Evm.Tracing.GethStyle.Javascript
             }
         }
 
-        public class Contract
+        public struct Contract
         {
             private readonly V8ScriptEngine _engine;
             private readonly UInt256 _value;

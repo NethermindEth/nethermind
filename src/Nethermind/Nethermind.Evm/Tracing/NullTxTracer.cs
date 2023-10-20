@@ -46,7 +46,7 @@ public class NullTxTracer : TxTracer
     public override void ReportStorageChange(in ReadOnlySpan<byte> key, in ReadOnlySpan<byte> value)
         => ThrowInvalidOperationException();
 
-    public override void SetOperationStack(List<string> stackTrace)
+    public override void SetOperationStack(TraceStack stack)
         => ThrowInvalidOperationException();
 
     public override void ReportStackPush(in ReadOnlySpan<byte> stackItem)

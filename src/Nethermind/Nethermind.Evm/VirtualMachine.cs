@@ -2780,7 +2780,8 @@ ReturnFailure:
 
         if (_txTracer.IsTracingStack)
         {
-            _txTracer.SetOperationStack(stackValue.GetStackTrace());
+            Memory<byte> stackMemory = vmState.DataStack.AsMemory().Slice(0, stackValue.Head * EvmStack<TIsTracing>.WordSize);
+            _txTracer.SetOperationStack(new TraceStack(stackMemory));
         }
     }
 
