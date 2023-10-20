@@ -804,9 +804,11 @@ namespace Nethermind.JsonRpc.Test.Modules
             expectedResult.Should().Be(serialized);
         }
 
-        [Test]
+        [TestCase(2)]
+        [TestCase(10)]
+        [TestCase(50)]
         [Explicit("Requires a WS server running")]
-        public async Task NewPendingTransactionSubscription_multiple_fast_messages()
+        public async Task NewPendingTransactionSubscription_multiple_fast_messages(int messages)
         {
             ITxPool txPool = Substitute.For<ITxPool>();
 
@@ -829,7 +831,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                 txPool: txPool,
                 logManager: LimboLogs.Instance);
 
-            for (int i = 0; i < 10; i++)
+            for (int i = 0; i < messages; i++)
             {
                 Transaction tx = new();
                 txPool.NewPending += Raise.EventWith(new TxEventArgs(tx));
