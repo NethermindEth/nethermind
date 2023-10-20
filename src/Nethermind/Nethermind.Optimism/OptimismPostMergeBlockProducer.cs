@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
 using System;
 using System.Collections.Generic;
 using Nethermind.Blockchain;
@@ -56,7 +59,7 @@ public class OptimismPostMergeBlockProducer : PostMergeBlockProducer
 
         IEnumerable<Transaction> txs = _payloadAttrsTxSource.GetTransactions(parent, attrs.GasLimit, attrs);
 
-        Block block = new(blockHeader, txs, Array.Empty<BlockHeader>(), payloadAttributes?.Withdrawals);
+        Block block = new(blockHeader, txs, Array.Empty<BlockHeader>(), payloadAttributes.Withdrawals);
 
         if (_producingBlockLock.Wait(BlockProductionTimeout))
         {

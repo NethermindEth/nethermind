@@ -1,19 +1,10 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
-using System.Collections.Generic;
 using System.Threading.Tasks;
-using Nethermind.Consensus.Producers;
-using Nethermind.Core.Crypto;
-using Nethermind.Core.Specs;
 using Nethermind.JsonRpc;
-using Nethermind.JsonRpc.Modules;
-using Nethermind.Logging;
 using Nethermind.Merge.Plugin;
 using Nethermind.Merge.Plugin.Data;
-using Nethermind.Merge.Plugin.GC;
-using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Optimism;

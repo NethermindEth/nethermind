@@ -15,12 +15,24 @@ public class OptimismPayloadPreparationService : PayloadPreparationService
 {
     private readonly ILogger _logger;
 
-    public OptimismPayloadPreparationService(PostMergeBlockProducer blockProducer,
-        IBlockImprovementContextFactory blockImprovementContextFactory, ITimerFactory timerFactory,
-        ILogManager logManager, TimeSpan timePerSlot, int slotsPerOldPayloadCleanup = SlotsPerOldPayloadCleanup,
-        TimeSpan? improvementDelay = null, TimeSpan? minTimeForProduction = null) : base(blockProducer,
-        blockImprovementContextFactory, timerFactory, logManager, timePerSlot, slotsPerOldPayloadCleanup,
-        improvementDelay, minTimeForProduction)
+    public OptimismPayloadPreparationService(
+        PostMergeBlockProducer blockProducer,
+        IBlockImprovementContextFactory blockImprovementContextFactory,
+        ITimerFactory timerFactory,
+        ILogManager logManager,
+        TimeSpan timePerSlot,
+        int slotsPerOldPayloadCleanup = SlotsPerOldPayloadCleanup,
+        TimeSpan? improvementDelay = null,
+        TimeSpan? minTimeForProduction = null)
+        : base(
+            blockProducer,
+            blockImprovementContextFactory,
+            timerFactory,
+            logManager,
+            timePerSlot,
+            slotsPerOldPayloadCleanup,
+            improvementDelay,
+            minTimeForProduction)
     {
         _logger = logManager.GetClassLogger();
     }
@@ -30,8 +42,8 @@ public class OptimismPayloadPreparationService : PayloadPreparationService
     {
         if (payloadAttributes is OptimismPayloadAttributes { NoTxPool: true })
         {
-            if (_logger.IsInfo)
-                _logger.Info($"Skip block improvement because of NoTxPool payload attribute.");
+            if (_logger.IsDebug)
+                _logger.Debug("Skip block improvement because of NoTxPool payload attribute.");
 
             // ignore TryAdd failure (it can only happen if payloadId is already in the dictionary)
             _payloadStorage.TryAdd(payloadId,

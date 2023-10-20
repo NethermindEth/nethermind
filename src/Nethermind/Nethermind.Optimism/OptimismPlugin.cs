@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
 using System;
 using System.Threading.Tasks;
 using Nethermind.Api;
@@ -62,8 +65,7 @@ public class OptimismPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitial
             throw new ArgumentException(
                 "Optimism does not support custom block production trigger or additional tx source");
 
-        if (_api is null) throw new NullReferenceException(nameof(_api));
-
+        ArgumentNullException.ThrowIfNull(_api);
         ArgumentNullException.ThrowIfNull(_api.SpecProvider);
         ArgumentNullException.ThrowIfNull(_api.DbProvider);
         ArgumentNullException.ThrowIfNull(_api.BlockTree);
@@ -308,9 +310,10 @@ public class OptimismPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitial
             new ExchangeTransitionConfigurationV1Handler(_api.PoSSwitcher, _api.LogManager),
             new ExchangeCapabilitiesHandler(_api.RpcCapabilitiesProvider, _api.LogManager),
             _api.SpecProvider,
-            initConfig.DisableGcOnNewPayload
-                ? new GCKeeper(new NoSyncGcRegionStrategy(_api.SyncModeSelector, _mergeConfig), _api.LogManager)
-                : new GCAlwaysEnabled(),
+            new GCKeeper(
+                initConfig.DisableGcOnNewPayload
+                    ? NoGCStrategy.Instance
+                    : new NoSyncGcRegionStrategy(_api.SyncModeSelector, _mergeConfig), _api.LogManager),
             _api.LogManager);
 
         IOptimismEngineRpcModule opEngine = new OptimismEngineRpcModule(engineRpcModule);

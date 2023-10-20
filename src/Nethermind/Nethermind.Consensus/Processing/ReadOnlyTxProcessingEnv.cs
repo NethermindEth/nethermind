@@ -41,8 +41,7 @@ namespace Nethermind.Consensus.Processing
             IReadOnlyTrieStore? readOnlyTrieStore,
             IReadOnlyBlockTree? readOnlyBlockTree,
             ISpecProvider? specProvider,
-            ILogManager? logManager,
-            ITransactionProcessorFactory? txProcessorFactory = null)
+            ILogManager? logManager)
         {
             if (specProvider is null) throw new ArgumentNullException(nameof(specProvider));
 
@@ -56,8 +55,7 @@ namespace Nethermind.Consensus.Processing
             BlockhashProvider = new BlockhashProvider(BlockTree, logManager);
 
             Machine = new VirtualMachine(BlockhashProvider, specProvider, logManager);
-            TransactionProcessor = txProcessorFactory?.Create(specProvider, StateProvider, Machine, logManager) ??
-                                   new TransactionProcessor(specProvider, StateProvider, Machine, logManager);
+            TransactionProcessor = new TransactionProcessor(specProvider, StateProvider, Machine, logManager);
         }
 
         public IReadOnlyTransactionProcessor Build(Keccak stateRoot) => new ReadOnlyTransactionProcessor(TransactionProcessor, StateProvider, stateRoot);

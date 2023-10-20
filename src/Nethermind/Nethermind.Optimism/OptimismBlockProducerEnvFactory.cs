@@ -62,8 +62,11 @@ public class OptimismBlockProducerEnvFactory : BlockProducerEnvFactory
         OPL1CostHelper l1CostHelper = new(opConfigHelper, l1BlockAddress);
         OptimismTransactionProcessorFactory txProcessorFactory = new(l1CostHelper, opConfigHelper);
 
-        return new ReadOnlyTxProcessingEnv(readOnlyDbProvider, _readOnlyTrieStore, readOnlyBlockTree, _specProvider,
-            _logManager, txProcessorFactory);
+        ReadOnlyTxProcessingEnv result = new(readOnlyDbProvider, _readOnlyTrieStore,
+            readOnlyBlockTree, _specProvider, _logManager);
+        result.TransactionProcessor = txProcessorFactory.Create(_specProvider, result.StateProvider, result.Machine, _logManager);
+
+        return result;
     }
 
     protected override ITxSource CreateTxSourceForProducer(ITxSource? additionalTxSource,

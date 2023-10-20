@@ -3,18 +3,12 @@
 
 using System;
 using System.Buffers.Binary;
-using System.Collections.Generic;
-using System.Drawing;
 using System.Linq;
-using System.Runtime.CompilerServices;
 using System.Text;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Serialization.Rlp;
-using Org.BouncyCastle.Utilities;
-using Bytes = Nethermind.Core.Extensions.Bytes;
 
 namespace Nethermind.Optimism;
 

@@ -5,16 +5,13 @@ using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Blockchain.Services;
 using Nethermind.Config;
-using Nethermind.Consensus;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Evm;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Init.Steps;
-using Nethermind.Merge.Plugin;
 using Nethermind.Merge.Plugin.InvalidChainTracker;
-using Nethermind.TxPool;
 
 namespace Nethermind.Optimism;
 

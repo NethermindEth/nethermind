@@ -31,7 +31,7 @@ public class AlwaysStartBlockProductionPolicy : IBlockProductionPolicy
     public static AlwaysStartBlockProductionPolicy Instance =>
         LazyInitializer.EnsureInitialized(ref _instance, () => new());
 
-    private static AlwaysStartBlockProductionPolicy _instance;
+    private static AlwaysStartBlockProductionPolicy? _instance;
     private AlwaysStartBlockProductionPolicy() { }
 }
 

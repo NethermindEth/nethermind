@@ -111,10 +111,8 @@ public partial class BlockTree
     private void LoadForkChoiceInfo()
     {
         _logger.Info("Loading fork choice info");
-        if (FinalizedHash is null && _metadataDb.KeyExists(MetadataDbKeys.FinalizedBlockHash))
-            FinalizedHash = _metadataDb.Get(MetadataDbKeys.FinalizedBlockHash)?.AsRlpStream().DecodeKeccak();
-        if (SafeHash is null && _metadataDb.KeyExists(MetadataDbKeys.SafeBlockHash))
-            SafeHash = _metadataDb.Get(MetadataDbKeys.SafeBlockHash)?.AsRlpStream().DecodeKeccak();
+        FinalizedHash ??= _metadataDb.Get(MetadataDbKeys.FinalizedBlockHash)?.AsRlpStream().DecodeKeccak();
+        SafeHash ??= _metadataDb.Get(MetadataDbKeys.SafeBlockHash)?.AsRlpStream().DecodeKeccak();
     }
 
     private void LoadLowestInsertedBodyNumber()

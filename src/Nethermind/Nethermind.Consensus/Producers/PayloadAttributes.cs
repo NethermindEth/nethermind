@@ -60,7 +60,7 @@ public class PayloadAttributes
     public string GetPayloadId(BlockHeader parentHeader) => _payloadId ??= ComputePayloadId(parentHeader);
 
     [SkipLocalsInit]
-    protected virtual string ComputePayloadId(BlockHeader parentHeader)
+    protected string ComputePayloadId(BlockHeader parentHeader)
     {
         int size = ComputePayloadIdMembersSize();
         Span<byte> inputSpan = stackalloc byte[size];

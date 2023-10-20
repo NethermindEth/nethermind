@@ -805,11 +805,9 @@ namespace Nethermind.Serialization.Rlp
 
             if (withNetworkWrapper)
             {
-                switch (item.Type)
+                if (item.Type == TxType.Blob)
                 {
-                    case TxType.Blob:
-                        contentLength = GetShardBlobNetworkWrapperContentLength(item, contentLength);
-                        break;
+                    contentLength = GetShardBlobNetworkWrapperContentLength(item, contentLength);
                 }
             }
             return contentLength;
