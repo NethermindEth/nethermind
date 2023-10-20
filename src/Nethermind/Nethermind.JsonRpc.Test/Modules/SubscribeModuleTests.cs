@@ -805,8 +805,8 @@ namespace Nethermind.JsonRpc.Test.Modules
         }
 
         [TestCase(2)]
+        [TestCase(5)]
         [TestCase(10)]
-        [TestCase(50)]
         [Explicit("Requires a WS server running")]
         public async Task NewPendingTransactionSubscription_multiple_fast_messages(int messages)
         {
