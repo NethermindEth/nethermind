@@ -200,13 +200,13 @@ public class DebugTracer : ITxTracer, ITxTracerWrapper, IDisposable
     public void ReportOperationRemainingGas(long gas)
         => InnerTracer.ReportOperationRemainingGas(gas);
 
-    public void SetOperationStack(List<string> stackTrace)
-        => InnerTracer.SetOperationStack(stackTrace);
+    public void SetOperationStack(TraceStack stack)
+        => InnerTracer.SetOperationStack(stack);
 
     public void ReportStackPush(in ReadOnlySpan<byte> stackItem)
         => InnerTracer.ReportStackPush(stackItem);
 
-    public void SetOperationMemory(IEnumerable<string> memoryTrace)
+    public void SetOperationMemory(TraceMemory memoryTrace)
         => InnerTracer.SetOperationMemory(memoryTrace);
 
     public void SetOperationMemorySize(ulong newSize)
