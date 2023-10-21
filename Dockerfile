@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 # SPDX-License-Identifier: LGPL-3.0-only
 
-FROM --platform=$BUILDPLATFORM mcr.microsoft.com/dotnet/sdk:8.0 AS build
+FROM --platform=$BUILDPLATFORM mcr.microsoft.com/dotnet/sdk:8.0-jammy AS build
 
 ARG BUILD_CONFIG=release
 ARG BUILD_TIMESTAMP
@@ -18,13 +18,13 @@ RUN arch=$([ "$TARGETARCH" = "amd64" ] && echo "x64" || echo "$TARGETARCH") && \
 # A temporary symlink to support the old executable name
 RUN ln -s -r /publish/nethermind /publish/Nethermind.Runner
 
-# Creating these directiories here is needed to ensure the correct permissions
+# Creation of these directiories is needed to ensure permissions
 RUN cd /publish && \
   mkdir keystore && \
   mkdir logs && \
   mkdir nethermind_db
 
-FROM --platform=$TARGETPLATFORM mcr.microsoft.com/dotnet/aspnet:8.0
+FROM --platform=$TARGETPLATFORM mcr.microsoft.com/dotnet/aspnet:8.0-jammy
 
 WORKDIR /nethermind
 
