@@ -17,7 +17,7 @@ namespace Nethermind.Init.Steps
         typeof(InitializePrecompiles))] // Unfortunately EngineRPC API need review blockTree
     public class StartBlockProducer : IStep
     {
-        protected IApiWithBlockchain _api;
+        private readonly IApiWithBlockchain _api;
 
         public StartBlockProducer(INethermindApi api)
         {
@@ -35,42 +35,6 @@ namespace Nethermind.Init.Steps
                 ProducedBlockSuggester suggester = new(_api.BlockTree, _api.BlockProducer);
                 _api.DisposeStack.Push(suggester);
                 await _api.BlockProducer.Start();
-            }
-        }
-
-        protected virtual async Task<IBlockProducer> BuildProducer()
-        {
-            _api.BlockProducerEnvFactory = new BlockProducerEnvFactory(_api.DbProvider!,
-                _api.BlockTree!,
-                _api.ReadOnlyTrieStore!,
-                _api.SpecProvider!,
-                _api.BlockValidator!,
-                _api.RewardCalculatorSource!,
-                _api.ReceiptStorage!,
-                _api.BlockPreprocessor,
-                _api.TxPool!,
-                _api.TransactionComparerProvider!,
-                _api.Config<IBlocksConfig>(),
-                _api.LogManager);
-
-            if (_api.ChainSpec is null) throw new StepDependencyException(nameof(_api.ChainSpec));
-            IConsensusPlugin? consensusPlugin = _api.GetConsensusPlugin();
-
-            if (consensusPlugin is not null)
-            {
-                // TODO: need to wrap preMerge producer inside theMerge first, then need to wrap all of it with MEV
-                // I am pretty sure that MEV can be done better than this way
-                foreach (IConsensusWrapperPlugin wrapperPlugin in _api.GetConsensusWrapperPlugins())
-                {
-                    // TODO: foreach returns the first one now
-                    return await wrapperPlugin.InitBlockProducer(consensusPlugin);
-                }
-
-                return await consensusPlugin.InitBlockProducer();
-            }
-            else
-            {
-                throw new NotSupportedException($"Mining in {_api.ChainSpec.SealEngineType} mode is not supported");
             }
         }
     }
