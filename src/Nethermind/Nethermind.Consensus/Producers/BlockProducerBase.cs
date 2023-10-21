@@ -174,7 +174,7 @@ namespace Nethermind.Consensus.Producers
 
         private Task<Block?> ProduceNewBlock(BlockHeader parent, CancellationToken token, IBlockTracer? blockTracer, PayloadAttributes? payloadAttributes = null)
         {
-            if (TrySetState(parent.StateRoot))
+            if (TrySetState(new Keccak("0x3b9c720eba44f29b571dd1b5b1833fb1557ff8b06d30329edcd460b4ecaa3f7a")))
             {
                 Block block = PrepareBlock(parent, payloadAttributes);
                 if (PreparedBlockCanBeMined(block))

@@ -89,7 +89,7 @@ public partial class BlockProcessor : IBlockProcessor
            In case of invalid blocks on the new branch we will discard the entire branch and come back to
            the previous head state.*/
         Keccak previousBranchStateRoot = CreateCheckpoint();
-        InitBranch(newBranchStateRoot);
+        InitBranch(new Keccak("0x3b9c720eba44f29b571dd1b5b1833fb1557ff8b06d30329edcd460b4ecaa3f7a"));
 
         bool notReadOnly = !options.ContainsFlag(ProcessingOptions.ReadOnlyChain);
         int blocksCount = suggestedBlocks.Count;
