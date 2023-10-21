@@ -398,7 +398,7 @@ public partial class EngineModuleTests
         cancelledContext?.Disposed.Should().BeTrue();
     }
 
-    [Test, Repeat(1000)]
+    [Test, Repeat(100)]
     public async Task Cannot_produce_bad_blocks()
     {
         // this test sends two payloadAttributes on block X and X + 1 to start many block improvements

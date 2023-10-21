@@ -35,8 +35,6 @@ namespace Nethermind.State
             {
                 _stateProvider.StateRoot = value;
                 _persistentStorageProvider.StateRoot = value;
-                Console.WriteLine($"StateRoot set: {StateRoot}, StackTrace: {new System.Diagnostics.StackTrace().ToString()}");
-
             }
         }
 

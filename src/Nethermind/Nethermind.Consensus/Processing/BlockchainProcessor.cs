@@ -589,8 +589,7 @@ public class BlockchainProcessor : IBlockchainProcessor, IBlockProcessingQueue
         do
         {
             iterations++;
-            if (!options.ContainsFlag(ProcessingOptions.Trace)
-                && !options.ContainsFlag(ProcessingOptions.ProducingBlock))
+            if (!options.ContainsFlag(ProcessingOptions.Trace))
             {
                 blocksToBeAddedToMain.Add(toBeProcessed);
             }
