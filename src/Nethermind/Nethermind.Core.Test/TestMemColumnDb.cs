@@ -26,11 +26,6 @@ public class TestMemColumnsDb<TKey> : IColumnsDb<TKey>
     public IDbWithSpan GetColumnDb(TKey key) => !_columnDbs.TryGetValue(key, out var db) ? _columnDbs[key] = new TestMemDb() : db;
     public IEnumerable<TKey> ColumnKeys => _columnDbs.Keys;
 
-    public IColumnsDb<TKey> CreateReadOnly(bool createInMemWriteStore)
-    {
-        return new ReadOnlyColumnsDb<TKey>(this, createInMemWriteStore);
-    }
-
     public IColumnsBatch<TKey> StartBatch()
     {
         return new InMemoryColumnBatch<TKey>(this);
