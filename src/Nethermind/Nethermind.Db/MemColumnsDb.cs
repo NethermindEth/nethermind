@@ -11,7 +11,7 @@ namespace Nethermind.Db
     {
         private readonly IDictionary<TKey, IDbWithSpan> _columnDbs = new Dictionary<TKey, IDbWithSpan>();
 
-        public MemColumnsDb(string _): this(Enum.GetValues<TKey>())
+        public MemColumnsDb(string _) : this(Enum.GetValues<TKey>())
         {
         }
 

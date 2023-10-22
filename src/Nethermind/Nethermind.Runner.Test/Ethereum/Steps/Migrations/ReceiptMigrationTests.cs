@@ -68,8 +68,8 @@ namespace Nethermind.Runner.Test.Ethereum.Steps.Migrations
             }
 
             TestMemColumnsDb<ReceiptsColumns> receiptColumnDb = new();
-            TestMemDb blocksDb = (TestMemDb) receiptColumnDb.GetColumnDb(ReceiptsColumns.Blocks);
-            TestMemDb txDb = (TestMemDb) receiptColumnDb.GetColumnDb(ReceiptsColumns.Transactions);
+            TestMemDb blocksDb = (TestMemDb)receiptColumnDb.GetColumnDb(ReceiptsColumns.Blocks);
+            TestMemDb txDb = (TestMemDb)receiptColumnDb.GetColumnDb(ReceiptsColumns.Transactions);
 
             // Put the last block receipt encoding
             Block lastBlock = blockTree.FindBlock(chainLength - 1);

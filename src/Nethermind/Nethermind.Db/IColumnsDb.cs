@@ -7,7 +7,7 @@ using Nethermind.Core;
 
 namespace Nethermind.Db
 {
-    public interface IColumnsDb<TKey>: IDbMeta
+    public interface IColumnsDb<TKey> : IDbMeta
     {
         IDbWithSpan GetColumnDb(TKey key);
         IEnumerable<TKey> ColumnKeys { get; }
@@ -15,7 +15,7 @@ namespace Nethermind.Db
         IColumnsBatch<TKey> StartBatch();
     }
 
-    public interface IColumnsBatch<in TKey>: IDisposable
+    public interface IColumnsBatch<in TKey> : IDisposable
     {
         IBatch GetColumnBatch(TKey key);
     }

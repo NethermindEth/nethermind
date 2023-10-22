@@ -31,7 +31,7 @@ namespace Nethermind.Db
 
         public void ClearTempChanges()
         {
-            foreach (KeyValuePair<T,IReadOnlyDb> readOnlyColumn in _readOnlyColumns)
+            foreach (KeyValuePair<T, IReadOnlyDb> readOnlyColumn in _readOnlyColumns)
             {
                 readOnlyColumn.Value.ClearTempChanges();
             }
@@ -39,7 +39,7 @@ namespace Nethermind.Db
 
         public void Dispose()
         {
-            foreach (KeyValuePair<T,IReadOnlyDb> readOnlyColumn in _readOnlyColumns)
+            foreach (KeyValuePair<T, IReadOnlyDb> readOnlyColumn in _readOnlyColumns)
             {
                 readOnlyColumn.Value.Dispose();
             }
