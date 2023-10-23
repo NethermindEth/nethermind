@@ -457,12 +457,6 @@ public static class Program
         _appClosed.Wait();
     }
 
-    private static void ConsoleOnCancelKeyPress(object? sender, ConsoleCancelEventArgs e)
-    {
-        _processExitSource.Exit(ExitCodes.SigInt);
-        e.Cancel = true;
-    }
-
     private static void LogMemoryConfiguration()
     {
         if (_logger.IsDebug)
@@ -512,6 +506,12 @@ public static class Program
             keyStoreConfig.KeyStoreDirectory ??= string.Empty.GetApplicationResourcePath("keystore");
             initConfig.LogDirectory ??= string.Empty.GetApplicationResourcePath("logs");
         }
+    }
+
+    private static void ConsoleOnCancelKeyPress(object? sender, ConsoleCancelEventArgs e)
+    {
+        _processExitSource.Exit(ExitCodes.SigInt);
+        e.Cancel = true;
     }
 
     private static void ConfigureSeqLogger(IConfigProvider configProvider)
