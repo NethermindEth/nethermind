@@ -841,6 +841,64 @@ namespace Nethermind.JsonRpc.Test.Modules
             await Task.Delay(10_000);
         }
 
+        [TestCase(2)]
+        [TestCase(5)]
+        [TestCase(10)]
+        [Explicit("Requires a WS server running")]
+        public async Task MultipleSubscriptions_concurrent_fast_messages(int messages)
+        {
+            using ClientWebSocket socket = new();
+            await socket.ConnectAsync(new Uri("ws://localhost:1337/"), CancellationToken.None);
+
+            using ISocketHandler handler = new WebSocketHandler(socket, NullLogManager.Instance);
+            using JsonRpcSocketsClient client = new(
+                clientName: "TestClient",
+                handler: handler,
+                endpointType: RpcEndpoint.Ws,
+                jsonRpcProcessor: null!,
+                jsonRpcService: null!,
+                jsonRpcLocalStats: new NullJsonRpcLocalStats(),
+                jsonSerializer: new EthereumJsonSerializer()
+            );
+
+            Task subA = Task.Run(() =>
+            {
+                ITxPool txPool = Substitute.For<ITxPool>();
+                using NewPendingTransactionsSubscription subscription = new(
+                    // ReSharper disable once AccessToDisposedClosure
+                    jsonRpcDuplexClient: client,
+                    txPool: txPool,
+                    logManager: LimboLogs.Instance);
+
+                for (int i = 0; i < messages; i++)
+                {
+                    Transaction tx = new();
+                    txPool.NewPending += Raise.EventWith(new TxEventArgs(tx));
+                }
+            });
+            Task subB = Task.Run(() =>
+            {
+                IBlockTree blockTree = Substitute.For<IBlockTree>();
+                using NewHeadSubscription subscription = new(
+                    // ReSharper disable once AccessToDisposedClosure
+                    jsonRpcDuplexClient: client,
+                    blockTree: blockTree,
+                    specProvider: new TestSpecProvider(new ReleaseSpec()),
+                    logManager: LimboLogs.Instance);
+
+                for (int i = 0; i < messages; i++)
+                {
+                    BlockReplacementEventArgs eventArgs = new(Build.A.Block.TestObject);
+                    blockTree.BlockAddedToMain += Raise.EventWith(eventArgs);
+                }
+            });
+
+            await Task.WhenAll(subA, subB);
+
+            // Wait until all messages are sent
+            await Task.Delay(10_000);
+        }
+
         [Test]
         public void NewHeadSubscription_with_baseFeePerGas_test()
         {
