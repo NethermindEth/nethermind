@@ -48,6 +48,7 @@ namespace Nethermind.JsonRpc.WebSockets
         public override void Dispose()
         {
             base.Dispose();
+            _sendSemaphore.Dispose();
             Closed?.Invoke(this, EventArgs.Empty);
         }
 
