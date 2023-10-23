@@ -838,7 +838,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             }
 
             // Wait until all messages are sent
-            await Task.Delay(10_000);
+            await Task.Delay(1_000);
         }
 
         [TestCase(2)]
@@ -896,7 +896,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             await Task.WhenAll(subA, subB);
 
             // Wait until all messages are sent
-            await Task.Delay(10_000);
+            await Task.Delay(1_000);
         }
 
         [Test]
