@@ -665,8 +665,8 @@ public class BlockchainProcessor : IBlockchainProcessor, IBlockProcessingQueue
             // otherwise some nodes would be missing
             bool notFoundTheBranchingPointYet = !_blockTree.IsMainChain(branchingPoint.Hash!);
             bool notReachedTheReorgBoundary = branchingPoint.Number > (_blockTree.Head?.Header.Number ?? 0);
-            bool notInBlockProduction = !options.ContainsFlag(ProcessingOptions.ProducingBlock);
-            branchingCondition = (notFoundTheBranchingPointYet || notReachedTheReorgBoundary) && notInBlockProduction;
+            bool notInForceProcessing = !options.ContainsFlag(ProcessingOptions.ForceProcessing);
+            branchingCondition = (notFoundTheBranchingPointYet || notReachedTheReorgBoundary) && notInForceProcessing;
             if (_logger.IsTrace)
                 _logger.Trace(
                     $" Current branching point: {branchingPoint.Number}, {branchingPoint.Hash} TD: {branchingPoint.TotalDifficulty} Processing conditions notFoundTheBranchingPointYet {notFoundTheBranchingPointYet}, notReachedTheReorgBoundary: {notReachedTheReorgBoundary}, suggestedBlockIsPostMerge {suggestedBlockIsPostMerge}");
