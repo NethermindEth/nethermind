@@ -47,22 +47,19 @@ namespace Nethermind.Consensus.Processing
 
             var releaseSpec = _specProvider.GetSpec(block.Header);
 
-            Parallel.For(0, block.Transactions.Length, i =>
-            {
-                Transaction blockTransaction = block.Transactions[i];
+            Parallel.ForEach(
+                block.Transactions.Where(tx => tx.IsSigned && tx.SenderAddress is null),
+                blockTransaction =>
+                {
+                    _txPool.TryGetPendingTransaction(blockTransaction.Hash, out Transaction? transaction);
 
-                if (!blockTransaction.IsSigned || blockTransaction.SenderAddress is not null)
-                    // there is no signature from which to recover the sender
-                    return;
+                    Address sender = transaction?.SenderAddress;
+                    Address blockTransactionAddress = blockTransaction.SenderAddress;
 
-                _txPool.TryGetPendingTransaction(blockTransaction.Hash, out Transaction? transaction);
-
-                Address sender = transaction?.SenderAddress;
-                Address blockTransactionAddress = blockTransaction.SenderAddress;
-
-                blockTransaction.SenderAddress = sender ?? _ecdsa.RecoverAddress(blockTransaction, !releaseSpec.ValidateChainId);
-                if (_logger.IsTrace) _logger.Trace($"Recovered {blockTransaction.SenderAddress} sender for {blockTransaction.Hash} (tx pool cached value: {sender}, block transaction address: {blockTransactionAddress})");
-            });
+                    blockTransaction.SenderAddress =
+                        sender ?? _ecdsa.RecoverAddress(blockTransaction, !releaseSpec.ValidateChainId);
+                    if (_logger.IsTrace) _logger.Trace($"Recovered {blockTransaction.SenderAddress} sender for {blockTransaction.Hash} (tx pool cached value: {sender}, block transaction address: {blockTransactionAddress})");
+                });
         }
     }
 }
