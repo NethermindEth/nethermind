@@ -477,9 +477,9 @@ namespace Nethermind.TxPool.Test
 
         [TestCase(0, 97)]
         [TestCase(1, 131320)]
-        [TestCase(2, 262530)]
+        [TestCase(2, 262529)]
         [TestCase(3, 393737)]
-        [TestCase(4, 524943)]
+        [TestCase(4, 524944)]
         [TestCase(5, 656152)]
         [TestCase(6, 787361)]
         public void should_calculate_size_of_blob_tx_correctly(int numberOfBlobs, int expectedLength)
