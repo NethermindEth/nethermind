@@ -19,16 +19,17 @@ using Snappier;
 namespace Nethermind.Era1;
 internal class EraIterator : IAsyncEnumerable<(Block, TxReceipt[], UInt256)>, IDisposable
 {
-    private E2Store _store;
     private bool _disposedValue;
-    private long _currentBlockIndex;
+    private long _currentBlockNumber;
+    private ReceiptStorageDecoder _receiptStorageDecoder = new();
+    private E2Store _store;
 
-    public long CurrentBlockIndex => _currentBlockIndex;
+    public long CurrentBlockNumber => _currentBlockNumber;
 
     private EraIterator(E2Store e2)
     {
         _store = e2;
-        _currentBlockIndex = e2.Metadata.Start;
+        _currentBlockNumber = e2.Metadata.Start;
     }
     public async IAsyncEnumerator<(Block, TxReceipt[], UInt256)> GetAsyncEnumerator(CancellationToken cancellationToken = default)
     {
@@ -49,50 +50,48 @@ internal class EraIterator : IAsyncEnumerable<(Block, TxReceipt[], UInt256)>, ID
         if (stream == null) throw new ArgumentNullException(nameof(stream));
         if (!stream.CanRead) throw new ArgumentException("Provided stream is not readable.");
 
-        E2Store e2 = await E2Store.ForRead(stream, token);
+        E2Store e2 = new E2Store(stream);
+        await e2.SetMetaData();
         EraIterator e = new EraIterator(e2);
         
         return e;
     }
     private async Task<(Block?, TxReceipt[]?, UInt256?)> Next(CancellationToken cancellationToken)
     {
-        if (_store.Metadata.Start + _store.Metadata.Count <= _currentBlockIndex)
+        if (_store.Metadata.Start + _store.Metadata.Count <= _currentBlockNumber)
         {
             //TODO test enumerate more than once
             Reset();
             return (null, null, null);
         }
-        long blockOffset = await FindBlockOffset(_currentBlockIndex, cancellationToken);
+        long blockOffset = await SeekToBlock(_currentBlockNumber, cancellationToken);
         byte[] buffer = ArrayPool<byte>.Shared.Rent(E2Store.ValueSizeLimit);
         try
         {
-            Debug.WriteLine($"Reading block entry at index {_currentBlockIndex}");
-            (int read, Entry e) = await _store.ReadEntryAt(blockOffset, cancellationToken);
+            Entry e = await _store.ReadEntryAt(blockOffset, cancellationToken);
             CheckType(e, EntryTypes.CompressedHeader);
-            BlockHeader header = await DecompressAndDecode<BlockHeader>(buffer, e);
-            var headerEntry = e;
+            BlockHeader header = await DecompressAndDecode<BlockHeader>(buffer, 0, e);
 
-            (read, e) = await _store.ReadEntryCurrentPosition(cancellationToken);
+            e = await _store.ReadEntryCurrentPosition(cancellationToken);
             CheckType(e, EntryTypes.CompressedBody);
 
-            BlockBody body = await DecompressAndDecode<BlockBody>(buffer, e);
+            BlockBody body = await DecompressAndDecode<BlockBody>(buffer, 0, e);
 
-            (read, e) = await _store.ReadEntryCurrentPosition(cancellationToken);
+            e = await _store.ReadEntryCurrentPosition(cancellationToken);
             CheckType(e, EntryTypes.CompressedReceipts);
 
-            read = await Decompress(buffer, e);
+            int read = await Decompress(buffer, 0, e);
             TxReceipt[] receipts = DecodeReceipts(buffer, 0, read);
-            
 
-            (read, e) = await _store.ReadEntryCurrentPosition(cancellationToken);
+            e = await _store.ReadEntryCurrentPosition(cancellationToken);
             CheckType(e, EntryTypes.TotalDifficulty);
             read = await _store.ReadEntryValue(buffer, e, cancellationToken);
             
             UInt256 currentTotalDiffulty = new UInt256(new ArraySegment<byte>(buffer, 0, read));
 
             Block block = new Block(header, body);
-            
-            _currentBlockIndex++;
+
+            _currentBlockNumber++;
             return (block, receipts, currentTotalDiffulty);
         }
         finally
@@ -106,22 +105,23 @@ internal class EraIterator : IAsyncEnumerable<(Block, TxReceipt[], UInt256)>, ID
         //TODO optimize
         var b = new byte[count];
         new Span<byte>(buf, off, count).CopyTo(b);
-        return new ReceiptDecoder().DecodeArray(b.AsRlpStream());
+        return _receiptStorageDecoder.DecodeArray(b.AsRlpStream());
     }
 
-    private async Task<long> FindBlockOffset(long blockIndex, CancellationToken token = default)
+    private async Task<long> SeekToBlock(long blockNumber, CancellationToken token = default)
     {
-        long firstIndex = -8 - _store.Metadata.Count * 8;
-        long indexOffset = (blockIndex - _store.Metadata.Start) * 8;
-        long offOffset = _store.Metadata.Length + firstIndex + indexOffset;
+        //Last 8 bytes is the count, so we skip them
+        long startOfIndex = _store.Metadata.Length - 8 - _store.Metadata.Count * 8;
+        long indexOffset = (blockNumber - _store.Metadata.Start) * 8;
+        long blockIndexOffset =  startOfIndex + indexOffset;
 
-        long blockOffset = await _store.ReadValueAt(offOffset, token);
-        return offOffset + 8 + blockOffset;
+        long blockOffset = await _store.ReadValueAt(blockIndexOffset, token);
+        return _store.Seek(blockOffset, SeekOrigin.Current);
     }
 
     private void Reset()
     {
-        _currentBlockIndex = 0;
+        _currentBlockNumber = 0;
     }
 
 
@@ -130,37 +130,16 @@ internal class EraIterator : IAsyncEnumerable<(Block, TxReceipt[], UInt256)>, ID
         if (e.Type != expected)
             throw new EraException($"Expected an entry of type {expected}, but got {e.Type}.");
     }
-    private Task<int> Decompress(byte[] buffer, Entry e, CancellationToken cancellation = default)
+    private Task<int> Decompress(byte[] buffer, int offset, Entry e, CancellationToken cancellation = default)
     {
-        return _store.ReadEntryValueAsSnappy(buffer, e, cancellation);
+        return _store.ReadEntryValueAsSnappy(buffer, offset, e, cancellation);
     }
 
-    private async Task<T> DecompressAndDecode<T>(byte[] buffer, Entry e, CancellationToken cancellation = default) where T : class
+    private async Task<T> DecompressAndDecode<T>(byte[] buffer, int offset, Entry e, CancellationToken cancellation = default) where T : class
     {
         //TODO handle read more than buffer length
-        var bufferRead = await _store.ReadEntryValueAsSnappy(buffer, e, cancellation);
+        var bufferRead = await _store.ReadEntryValueAsSnappy(buffer, offset, e, cancellation);
         T? decoded = RlpDecode<T>(buffer, 0, bufferRead);
-        //TODO remove
-        switch (typeof(T).Name)
-        {
-            case nameof(BlockHeader):
-                Rlp encodedHeader = new HeaderDecoder().Encode((BlockHeader)Convert.ChangeType(decoded, typeof(BlockHeader)));
-                if (!ByteArrayCompare(buffer, encodedHeader.Bytes, bufferRead))
-                {
-                    throw new Exception("not equal");
-                }
-                break;
-            case nameof(BlockBody):
-                Rlp encodedBody = new BlockBodyDecoder().Encode((BlockBody)Convert.ChangeType(decoded, typeof(BlockBody)));
-                if (!ByteArrayCompare(buffer, encodedBody.Bytes, bufferRead))
-                {
-                    throw new Exception("not equal");
-                }
-                break;
-
-            default:
-                break;
-        }
         return decoded;
     }
 
@@ -175,7 +154,6 @@ internal class EraIterator : IAsyncEnumerable<(Block, TxReceipt[], UInt256)>, ID
     private static T RlpDecode<T>(byte[] buffer, int offset, int count)
     {
         T? decoded = Rlp.Decode<T>(new Span<byte>(buffer, offset, count));
-        //Debug.WriteLine($"Rlp decoded {typeof(T).Name} {BitConverter.ToString(new ArraySegment<byte>(buffer, offset, count).ToArray()).Replace("-","")}");
         return decoded;
     }
 

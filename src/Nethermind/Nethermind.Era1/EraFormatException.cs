@@ -11,11 +11,11 @@ internal class EraFormatException : EraException
     {
     }
 
-    public EraFormatException(string? message) : base(message)
+    public EraFormatException(string message) : base(message)
     {
     }
 
-    public EraFormatException(string? message, Exception? innerException) : base(message, innerException)
+    public EraFormatException(string message, Exception innerException) : base(message, innerException)
     {
     }
 

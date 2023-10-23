@@ -3,7 +3,7 @@
 
 namespace Nethermind.Era1;
 
-[System.Serializable]
+[Serializable]
 internal class EraException : Exception
 {
     public EraException() { }

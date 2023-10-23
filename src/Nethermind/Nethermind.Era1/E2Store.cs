@@ -5,12 +5,10 @@ using System;
 using System.Buffers;
 using System.Diagnostics;
 using System.Drawing;
-using System.IO.Abstractions;
 using System.IO.Compression;
 using System.Text;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
-using Newtonsoft.Json.Converters;
+using Newtonsoft.Json.Linq;
 using Snappier;
 
 namespace Nethermind.Era1;
@@ -25,22 +23,26 @@ internal class E2Store : IDisposable
 
     public long Position => _stream!.Position;
 
-    public EraMetadata Metadata {  get; private set; }
+    private EraMetadata? _metadata;
+    public EraMetadata Metadata => GetMetadata();
 
-    private E2Store(Stream stream)
+    public E2Store(Stream stream)
     {
         _stream = stream;        
     }
 
-    public static Task<E2Store> ForRead(Stream stream, CancellationToken token = default) => FromStream(stream, true, token);
-    public static Task<E2Store> ForWrite(Stream stream, CancellationToken token = default) => FromStream(stream, false, token);
-
-    private static async Task<E2Store> FromStream(Stream stream, bool initForRead, CancellationToken token = default)
+    private EraMetadata GetMetadata()
     {
-        E2Store e = new E2Store(stream);
-        if (initForRead)
-            e.Metadata = await e.ReadEraMetaData(token);
-        return e;
+        if (_metadata is null)
+        {
+            _metadata = ReadEraMetaData().GetAwaiter().GetResult();
+        }
+        return _metadata.Value;
+    }
+
+    public async Task SetMetaData()
+    {
+        _metadata = await ReadEraMetaData();
     }
 
     public string Filename(string network, int epoch , Keccak root )
@@ -92,10 +94,12 @@ internal class E2Store : IDisposable
         //TODO refactor to sync and use span?
         byte[] headerBuffer = ArrayPool<byte>.Shared.Rent(HeaderSize);
         try
-        {            
+        {
+            //See https://github.com/google/snappy/blob/main/framing_format.txt
             if (asSnappy)
             {
-                using MemoryStream memoryStream = new MemoryStream(20 * 1024);   
+                //TODO find a way to write directly to file, and still return the number of bytes written
+                using MemoryStream memoryStream = new MemoryStream();   
                 using SnappyStream snappyStream = new(memoryStream, CompressionMode.Compress, true);
                 await snappyStream.WriteAsync(bytes, cancellation);
                 await snappyStream.FlushAsync();
@@ -148,7 +152,7 @@ internal class E2Store : IDisposable
     }
 
     // Reads the header metadata at the given offset.
-    public async Task<HeaderData> ReadMetadataAt(long offset, CancellationToken token = default)
+    public async Task<HeaderData> ReadEntryHeaderAt(long offset, CancellationToken token = default)
     {
         var buf = ArrayPool<byte>.Shared.Rent(HeaderSize);
         try
@@ -182,11 +186,11 @@ internal class E2Store : IDisposable
         var entries = new List<Entry>();    
         while (true)
         {
-            var hd = await ReadMetadataAt(off, token);
+            var hd = await ReadEntryHeaderAt(off, token);
 
             if (hd.Type == type)
             {
-                var (_, e)= await ReadEntryAt(off, token);
+                var e = await ReadEntryAt(off, token);
                 entries.Add(e);
 
             }
@@ -213,13 +217,13 @@ internal class E2Store : IDisposable
             ArrayPool<byte>.Shared.Return(buf);
         }
     }
-    public Task<(int, Entry)> ReadEntryCurrentPosition(CancellationToken token = default)
+    public Task<Entry> ReadEntryCurrentPosition(CancellationToken token = default)
     {
         return ReadEntryAt((int)_stream.Position, token);
     }
-    public async Task<(int, Entry)> ReadEntryAt(long off, CancellationToken token = default)
+    public async Task<Entry> ReadEntryAt(long off, CancellationToken token = default)
     {
-        var eHeader = await ReadMetadataAt(off, token);
+        var eHeader = await ReadEntryHeaderAt(off, token);
         
         Entry e = new (eHeader.Type, off, eHeader.Length);
 
@@ -227,16 +231,22 @@ internal class E2Store : IDisposable
             throw new EraException($"Entry exceeds the maximum size limit of {ValueSizeLimit}. Entry is {eHeader.Length}.");
         if (eHeader.Length == 0)
             //Empty entry?
-            return (HeaderSize, e);
+            return e;
 
-        return (HeaderSize + (int)eHeader.Length, e);
+        return e;
     }
 
     public Task<int> ReadEntryValueAsSnappy(byte[] buffer, Entry e, CancellationToken cancellation = default)
     {
+        return ReadEntryValueAsSnappy(buffer, 0, e, cancellation);
+    }
+    public Task<int> ReadEntryValueAsSnappy(byte[] buffer, int offset, Entry e, CancellationToken cancellation = default)
+    {
         if (buffer is null) throw new ArgumentNullException(nameof(buffer));
+        if (offset < 0) throw new ArgumentOutOfRangeException(nameof(offset), "Cannot be a negative number.");
+        if (offset >= buffer.Length) throw new ArgumentOutOfRangeException(nameof(offset), "Cannot exceed the length of the buffer.");
         using SnappyStream snappy = new (new StreamSegment(_stream, e.ValueOffset, e.Length), CompressionMode.Decompress, true);
-        return snappy.ReadAsync(buffer, 0, buffer.Length, cancellation);
+        return snappy.ReadAsync(buffer, offset, buffer.Length - offset, cancellation);
     }
 
     public async ValueTask<int> ReadEntryValue(byte[] buffer, Entry e, CancellationToken cancellation = default)
@@ -245,16 +255,10 @@ internal class E2Store : IDisposable
         if (buffer.Length < e.Length)
             throw new ArgumentException($"Buffer must be at least {e.Length} long.", nameof(buffer));
         _stream.Position = e.ValueOffset;
-        int read = 0; 
-        while (read < e.Length)
-        {
-            read += await _stream.ReadAsync(buffer, read, (int)e.Length, cancellation);
-            if (read == 0)
-                break;
-        }
+        int read = await _stream.ReadAsync(buffer, 0, (int)e.Length, cancellation);
         if (read != e.Length)
         {
-            //TODO not correct length, entry mismatch 
+            //TODO not correct length, but can only happen if EOF
         }
         return read;    
     }
@@ -275,6 +279,11 @@ internal class E2Store : IDisposable
         // Do not change this code. Put cleanup code in 'Dispose(bool disposing)' method
         Dispose(disposing: true);
         GC.SuppressFinalize(this);
+    }
+
+    internal long Seek(long offset, SeekOrigin origin)
+    {
+        return _stream.Seek(offset, origin);
     }
 }
 

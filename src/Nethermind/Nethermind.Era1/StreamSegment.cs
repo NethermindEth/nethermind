@@ -34,11 +34,13 @@ internal class StreamSegment : Stream
     public override bool CanWrite => false;
 
     public override long Length => _streamLength;
-    public override long Position { get => _internalStream.Position + _streamOffset;
+    public override long Position
+    {
+        get => _internalStream.Position + _streamOffset;
         set
         {
             //TODO boundary check
-            if (value > _streamLength)
+            if (value > Length)
                 throw new ArgumentOutOfRangeException(nameof(value), "Value exceeds the length of the stream.");
             _internalStream.Position = value + _streamOffset;
         }

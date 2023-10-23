@@ -27,21 +27,30 @@ internal class EraBuilder:IDisposable
     private long _totalWritten;
     private List<EntryIndexInfo> _entryIndexInfos = new List<EntryIndexInfo>();
 
-    private BlockDecoder _blockDecoder = new BlockDecoder();
-    private BlockBodyDecoder _blockBodyDecoder = new BlockBodyDecoder();
     private HeaderDecoder _headerDecoder = new HeaderDecoder();
-    private ReceiptDecoder _receiptDecoder = new ReceiptDecoder();
+    private BlockBodyDecoder _blockBodyDecoder = new BlockBodyDecoder();
+    private ReceiptStorageDecoder _receiptDecoder = new();
 
-    private FileStream _fileStream;
+    private Stream _stream;
     private E2Store _e2Store;
     private bool _disposedValue;
     private bool _finalized;
 
-    internal EraBuilder(string file)
+    public static Task<EraBuilder> Create(string path)
     {
-        _fileStream = new FileStream(file, FileMode.Create);
-        //TODO FIX
-        _e2Store = E2Store.ForWrite(_fileStream).Result;
+        if (string.IsNullOrWhiteSpace(path)) throw new ArgumentException($"'{nameof(path)}' cannot be null or whitespace.", nameof(path));
+        return Create(new FileStream(path, FileMode.Create));    
+    }
+    public static async Task<EraBuilder> Create(Stream stream)
+    {
+        EraBuilder b = new(new E2Store(stream), stream);
+        return b;
+    }
+
+    private EraBuilder(E2Store e2Store, Stream stream)
+    {
+        _e2Store = e2Store;
+        _stream = stream;
     }
 
     public async Task<bool> Add(Block block, TxReceipt[] receipts, UInt256 totalDifficulty, CancellationToken cancellation = default)
@@ -119,7 +128,7 @@ internal class EraBuilder:IDisposable
         }
         await _e2Store.WriteEntry(EntryTypes.BlockIndex, index);
 
-        await _fileStream.FlushAsync();
+        await _stream.FlushAsync();
         _entryIndexInfos.Clear();
         _finalized = true;
     }
@@ -170,7 +179,7 @@ internal class EraBuilder:IDisposable
             if (disposing)
             {
                 _e2Store?.Dispose();
-                _fileStream?.Dispose();
+                _stream?.Dispose();
             }
 
             // TODO: free unmanaged resources (unmanaged objects) and override finalizer
