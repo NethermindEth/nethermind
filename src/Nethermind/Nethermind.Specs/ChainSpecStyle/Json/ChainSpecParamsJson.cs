@@ -17,7 +17,7 @@ internal class ChainSpecParamsJson
     public ulong? ChainId { get; set; }
     public ulong? NetworkId { get; set; }
 
-    [JsonProperty(PropertyName = "registrar")]
+    [JsonPropertyName("registrar")]
     public Address EnsRegistrar { get; set; }
 
     public long? GasLimitBoundDivisor { get; set; }
