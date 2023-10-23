@@ -16,9 +16,17 @@ using Nethermind.Facade.Proxy.Models.MultiCall;
 using NSubstitute;
 using NUnit.Framework;
 using System.Collections.Generic;
+using Nethermind.Serialization.Json;
+using Newtonsoft.Json;
+using static Microsoft.FSharp.Core.ByRefKinds;
+using System.Collections;
+using System.Globalization;
+using System.Numerics;
+
 
 namespace Nethermind.Facade.Test.Proxy
 {
+
     public class EthJsonRpcClientProxyTests
     {
         private IEthJsonRpcClientProxy _proxy;
@@ -98,6 +106,40 @@ namespace Nethermind.Facade.Test.Proxy
             await _proxy.eth_multicallV1(payload, blockParameter);
             await _client.Received().SendAsync<IReadOnlyList<MultiCallBlockResult>>(nameof(_proxy.eth_multicallV1),
                 payload, blockParameter.Type);
+        }
+
+
+        [Test]
+        public async Task eth_multicall_should_invoke_client_method_on_complex_data()
+        {
+            var input = @"{
+              ""blockStateCalls"": [
+                {
+                  ""stateOverrides"": {
+                    ""0xc100000000000000000000000000000000000000"": {
+                      ""state"": {
+                        ""0x0000000000000000000000000000000000000000000000000000000000000000"": ""0x1200000000000000000000000000000000000000000000000000000000000000""
+                      }
+                    }
+                  },
+                }
+              ],
+            }";
+
+            var settings = new JsonSerializerSettings();
+            foreach (JsonConverter converter in EthereumJsonSerializer.CommonConverters)
+            {
+                settings.Converters.Add(converter);
+            }
+            settings.Converters.Add(new DictionaryWithSpecialUInt256KeyConverter());
+
+            var payload = JsonConvert.DeserializeObject<MultiCallPayload<CallTransaction>>(input, settings);
+
+            BlockParameterModel blockParameter = BlockParameterModel.Latest;
+            await _proxy.eth_multicallV1(payload, blockParameter);
+            await _client.Received().SendAsync<IReadOnlyList<MultiCallBlockResult>>(nameof(_proxy.eth_multicallV1),
+                payload, blockParameter.Type);
+
         }
 
         [Test]
