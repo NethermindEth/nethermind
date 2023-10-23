@@ -81,10 +81,7 @@ namespace Nethermind.Crypto
         {
             if (tx.Signature is null)
             {
-                return tx.IsOPSystemTransaction
-                    ? Address.Zero
-                    : throw new InvalidDataException(
-                        "Cannot recover sender address from a transaction without a signature.");
+                throw new InvalidDataException("Cannot recover sender address from a transaction without a signature.");
             }
 
             useSignatureChainId &= tx.Signature.ChainId.HasValue;

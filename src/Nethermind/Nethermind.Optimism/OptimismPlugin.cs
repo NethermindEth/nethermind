@@ -132,10 +132,12 @@ public class OptimismPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitial
         _logger = _api.LogManager.GetClassLogger();
 
         ArgumentNullException.ThrowIfNull(_api.BlockTree);
+        ArgumentNullException.ThrowIfNull(_api.EthereumEcdsa);
 
         _api.PoSSwitcher = AlwaysPoS.Instance;
 
         _blockCacheService = new BlockCacheService();
+        _api.EthereumEcdsa = new OptimismEthereumEcdsa(_api.EthereumEcdsa);
         _api.InvalidChainTracker = _invalidChainTracker = new InvalidChainTracker(
             _api.PoSSwitcher,
             _api.BlockTree,
