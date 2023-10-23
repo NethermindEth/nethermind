@@ -37,7 +37,6 @@ public class OPL1CostHelper : IL1CostHelper
         if (dataGas == 0)
             return UInt256.Zero;
 
-        // TODO: cache state access
         UInt256 l1BaseFee = new(worldState.Get(_l1BaseFeeSlot), true);
         UInt256 overhead = new(worldState.Get(_overheadSlot), true);
         UInt256 scalar = new(worldState.Get(_scalarSlot), true);
@@ -45,7 +44,6 @@ public class OPL1CostHelper : IL1CostHelper
         return ((UInt256)dataGas + overhead) * l1BaseFee * scalar / 1_000_000;
     }
 
-    // TODO: cache this result
     private long ComputeDataGas(Transaction tx, BlockHeader header)
     {
         byte[] encoded = Rlp.Encode(tx, RlpBehaviors.SkipTypedWrapping).Bytes;

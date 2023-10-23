@@ -29,8 +29,11 @@ public class OptimismTransactionProcessor : TransactionProcessor
         _opConfigHelper = opConfigHelper;
     }
 
+    private UInt256? _currentTxL1Cost;
+
     protected override void Execute(Transaction tx, BlockExecutionContext blCtx, ITxTracer tracer, ExecutionOptions opts)
     {
+        _currentTxL1Cost = null;
         if (tx.IsDeposit())
         {
             IReleaseSpec spec = SpecProvider.GetSpec(blCtx.Header);
@@ -103,7 +106,7 @@ public class OptimismTransactionProcessor : TransactionProcessor
                 return false;
             }
 
-            UInt256 l1Cost = _l1CostHelper.ComputeL1Cost(tx, header, WorldState);
+            UInt256 l1Cost = _currentTxL1Cost ??= _l1CostHelper.ComputeL1Cost(tx, header, WorldState);
             if (UInt256.SubtractUnderflow(balanceLeft, l1Cost, out balanceLeft))
             {
                 TraceLogInvalidTx(tx, $"INSUFFICIENT_SENDER_BALANCE: ({tx.SenderAddress})_BALANCE = {senderBalance}");
@@ -165,7 +168,7 @@ public class OptimismTransactionProcessor : TransactionProcessor
 
         if (_opConfigHelper.IsBedrock(header))
         {
-            UInt256 l1Cost = _l1CostHelper.ComputeL1Cost(tx, header, WorldState);
+            UInt256 l1Cost = _currentTxL1Cost ??= _l1CostHelper.ComputeL1Cost(tx, header, WorldState);
             WorldState.AddToBalanceAndCreateIfNotExists(_opConfigHelper.L1FeeReceiver, l1Cost, spec);
         }
 
