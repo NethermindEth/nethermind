@@ -462,7 +462,7 @@ public static class Program
 
     private static void CurrentDomainOnProcessExit(object? sender, EventArgs e)
     {
-        _processExitSource.Exit(ExitCodes.Ok);
+        _processExitSource.Exit(ExitCodes.SigTerm);
         _appClosed.Wait();
     }
 
