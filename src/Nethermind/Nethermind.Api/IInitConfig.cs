@@ -65,7 +65,7 @@ namespace Nethermind.Api
         [ConfigItem(Description = "Diagnostics modes", DefaultValue = "None")]
         DiagnosticMode DiagnosticMode { get; set; }
 
-        [ConfigItem(Description = "Auto dump on bad blocks for diagnostics, Possible values [None, Receipts, Parity, Geth, Rlp, All, Default], Default = Receipts, Rlp", DefaultValue = "Default")]
+        [ConfigItem(Description = "Auto dump on bad blocks for diagnostics, Possible values [None, Receipts, Parity, Geth, Rlp, RlpLog, All, Default], Default = Receipts, Rlp", DefaultValue = "Default")]
         DumpOptions AutoDump { get; set; }
 
         [ConfigItem(Description = "Url for remote node that will be used as DB source when 'DiagnosticMode' is set to'RpcDb'", DefaultValue = "")]

@@ -179,8 +179,6 @@ public class BlockValidator : IBlockValidator
                 }
             }
 
-            _logger.Error($"- parent beacon block root : expected {suggestedBlock.Header.ParentBeaconBlockRoot}, got {processedBlock.Header.ParentBeaconBlockRoot}");
-
             if (suggestedBlock.ExtraData is not null)
             {
                 _logger.Error($"- block extra data : {suggestedBlock.ExtraData.ToHexString()}, UTF8: {Encoding.UTF8.GetString(suggestedBlock.ExtraData)}");

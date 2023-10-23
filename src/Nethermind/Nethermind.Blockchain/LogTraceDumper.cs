@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.IO;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.Tracing.GethStyle;
 using Nethermind.Evm.Tracing.ParityStyle;
@@ -22,15 +23,28 @@ public static class BlockTraceDumper
 
     public static void LogDiagnosticRlp(
         Block block,
-        ILogger logger)
+        ILogger logger,
+        bool toFile,
+        bool toLog)
     {
-        Keccak blockHash = block.Hash;
-        string fileName = $"block_{blockHash}.txt";
-        using FileStream diagnosticFile = GetFileStream(fileName);
-        Rlp rlp = new BlockDecoder().Encode(block, RlpBehaviors.AllowExtraBytes);
-        diagnosticFile.Write(rlp.Bytes);
-        if (logger.IsInfo)
-            logger.Info($"Created a Receipts trace of block {blockHash} in file {diagnosticFile.Name}");
+        if (toFile || toLog)
+        {
+            Rlp rlp = new BlockDecoder().Encode(block, RlpBehaviors.AllowExtraBytes);
+            Keccak blockHash = block.Hash;
+            if (toFile)
+            {
+                string fileName = $"block_{blockHash}.rlp";
+                using FileStream diagnosticFile = GetFileStream(fileName);
+                diagnosticFile.Write(rlp.Bytes);
+                if (logger.IsInfo)
+                    logger.Info($"Created a RLP dump of invalid block {blockHash} in file {diagnosticFile.Name}");
+            }
+
+            if (toLog)
+            {
+                if (logger.IsInfo) logger.Info($"RLP dump of invalid block {blockHash} is {rlp.Bytes.ToHexString()}");
+            }
+        }
     }
 
     public static void LogDiagnosticTrace(
@@ -52,7 +66,7 @@ public static class BlockTraceDumper
                 IReadOnlyList<TxReceipt> receipts = receiptsTracer.TxReceipts;
                 serializer.Serialize(diagnosticFile, receipts, true);
                 if (logger.IsInfo)
-                    logger.Info($"Created a Receipts trace of block {blockHash} in file {diagnosticFile.Name}");
+                    logger.Info($"Created a Receipts trace of invalid block {blockHash} in file {diagnosticFile.Name}");
             }
 
             if (blockTracer is GethLikeBlockMemoryTracer gethTracer)
@@ -62,7 +76,7 @@ public static class BlockTraceDumper
                 IReadOnlyCollection<GethLikeTxTrace> trace = gethTracer.BuildResult();
                 serializer.Serialize(diagnosticFile, trace, true);
                 if (logger.IsInfo)
-                    logger.Info($"Created a Geth-style trace of block {blockHash} in file {diagnosticFile.Name}");
+                    logger.Info($"Created a Geth-style trace of invalid block {blockHash} in file {diagnosticFile.Name}");
             }
 
             if (blockTracer is ParityLikeBlockTracer parityTracer)
@@ -72,7 +86,7 @@ public static class BlockTraceDumper
                 IReadOnlyCollection<ParityLikeTxTrace> trace = parityTracer.BuildResult();
                 serializer.Serialize(diagnosticFile, trace, true);
                 if (logger.IsInfo)
-                    logger.Info($"Created a Parity-style trace of block {blockHash} in file {diagnosticFile.Name}");
+                    logger.Info($"Created a Parity-style trace of invalid block {blockHash} in file {diagnosticFile.Name}");
             }
         }
         catch (IOException e)

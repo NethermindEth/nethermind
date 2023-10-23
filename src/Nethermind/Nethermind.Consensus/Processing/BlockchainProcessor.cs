@@ -495,10 +495,9 @@ public class BlockchainProcessor : IBlockchainProcessor, IBlockProcessingQueue
             invalidBlockHash = ex.InvalidBlock.Hash;
 
 
-            if ((_options.DumpOptions & DumpOptions.Rlp) != 0)
-            {
-                BlockTraceDumper.LogDiagnosticRlp(ex.InvalidBlock, _logger);
-            }
+            BlockTraceDumper.LogDiagnosticRlp(ex.InvalidBlock, _logger,
+                (_options.DumpOptions & DumpOptions.Rlp) != 0,
+                (_options.DumpOptions & DumpOptions.RlpLog) != 0);
 
             TraceFailingBranch(
                 processingBranch,
