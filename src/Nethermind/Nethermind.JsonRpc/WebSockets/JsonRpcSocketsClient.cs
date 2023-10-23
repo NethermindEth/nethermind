@@ -24,7 +24,7 @@ namespace Nethermind.JsonRpc.WebSockets
         private readonly long? _maxBatchResponseBodySize;
         private readonly JsonRpcContext _jsonRpcContext;
 
-        private readonly SemaphoreSlim _sendSemaphore = new SemaphoreSlim(1, 1);
+        private readonly SemaphoreSlim _sendSemaphore = new(1, 1);
 
         public JsonRpcSocketsClient(
             string clientName,
