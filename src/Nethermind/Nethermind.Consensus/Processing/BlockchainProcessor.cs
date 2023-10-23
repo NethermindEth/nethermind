@@ -581,7 +581,7 @@ public class BlockchainProcessor : IBlockchainProcessor, IBlockProcessingQueue
         BlockHeader branchingPoint = null;
         List<Block> blocksToBeAddedToMain = new();
 
-        bool preMergeFinishBranchingCondition;
+        bool branchingCondition;
         bool suggestedBlockIsPostMerge = suggestedBlock.IsPostMerge;
 
         Block toBeProcessed = suggestedBlock;
@@ -589,8 +589,7 @@ public class BlockchainProcessor : IBlockchainProcessor, IBlockProcessingQueue
         do
         {
             iterations++;
-            if (!options.ContainsFlag(ProcessingOptions.Trace)
-                && !options.ContainsFlag(ProcessingOptions.ProducingBlock))
+            if (!options.ContainsFlag(ProcessingOptions.Trace))
             {
                 blocksToBeAddedToMain.Add(toBeProcessed);
             }
@@ -666,12 +665,13 @@ public class BlockchainProcessor : IBlockchainProcessor, IBlockProcessingQueue
             // otherwise some nodes would be missing
             bool notFoundTheBranchingPointYet = !_blockTree.IsMainChain(branchingPoint.Hash!);
             bool notReachedTheReorgBoundary = branchingPoint.Number > (_blockTree.Head?.Header.Number ?? 0);
-            preMergeFinishBranchingCondition = (notFoundTheBranchingPointYet || notReachedTheReorgBoundary);
+            bool notInBlockProduction = !options.ContainsFlag(ProcessingOptions.ProducingBlock);
+            branchingCondition = (notFoundTheBranchingPointYet || notReachedTheReorgBoundary) && notInBlockProduction;
             if (_logger.IsTrace)
                 _logger.Trace(
                     $" Current branching point: {branchingPoint.Number}, {branchingPoint.Hash} TD: {branchingPoint.TotalDifficulty} Processing conditions notFoundTheBranchingPointYet {notFoundTheBranchingPointYet}, notReachedTheReorgBoundary: {notReachedTheReorgBoundary}, suggestedBlockIsPostMerge {suggestedBlockIsPostMerge}");
 
-        } while (preMergeFinishBranchingCondition);
+        } while (branchingCondition);
 
         if (branchingPoint is not null && branchingPoint.Hash != _blockTree.Head?.Hash)
         {

@@ -27,6 +27,7 @@ using Nethermind.Merge.Plugin.Data;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
+using Nethermind.State.Repositories;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -396,6 +397,76 @@ public partial class EngineModuleTests
 
         getPayloadResult.GetTransactions().Should().HaveCount(3);
         cancelledContext?.Disposed.Should().BeTrue();
+    }
+
+    [Test]
+    public async Task Cannot_build_invalid_block_with_the_branch()
+    {
+        using SemaphoreSlim blockImprovementLock = new(0);
+        using MergeTestBlockchain chain = await CreateBlockchain(new TestSingleReleaseSpecProvider(London.Instance));
+        IEngineRpcModule rpc = CreateEngineModule(chain);
+
+        // creating chain with 30 blocks
+        await ProduceBranchV1(rpc, chain, 30, CreateParentBlockRequestOnHead(chain.BlockTree), true);
+
+        TimeSpan delay = TimeSpan.FromMilliseconds(10);
+        TimeSpan timePerSlot = 4 * delay;
+        StoringBlockImprovementContextFactory improvementContextFactory = new(new BlockImprovementContextFactory(chain.BlockProductionTrigger, TimeSpan.FromSeconds(chain.MergeConfig.SecondsPerSlot)));
+        chain.PayloadPreparationService = new PayloadPreparationService(
+            chain.PostMergeBlockProducer!,
+            improvementContextFactory,
+            TimerFactory.Default,
+            chain.LogManager,
+            timePerSlot,
+            improvementDelay: delay,
+            minTimeForProduction: delay);
+        chain.PayloadPreparationService!.BlockImproved += (_, _) => { blockImprovementLock.Release(1); };
+        var block30 = chain.BlockTree.Head!;
+        chain.AddTransactions(BuildTransactions(chain, block30.CalculateHash(), TestItem.PrivateKeyB, TestItem.AddressF, 3, 10, out _, out _));
+        var payloadAttributes31 = new PayloadAttributes
+        {
+            Timestamp = (ulong)DateTime.UtcNow.AddDays(3).Ticks,
+            PrevRandao = TestItem.KeccakA,
+            SuggestedFeeRecipient = Address.Zero
+        };
+        string? payloadId31 = rpc.engine_forkchoiceUpdatedV1(
+                new ForkchoiceStateV1(block30.GetOrCalculateHash(), Keccak.Zero, block30.GetOrCalculateHash()),
+                payloadAttributes31)
+            .Result.Data.PayloadId!;
+        await blockImprovementLock.WaitAsync(delay * 1000);
+
+        ExecutionPayload getPayloadResult31 = (await rpc.engine_getPayloadV1(Bytes.FromHexString(payloadId31))).Data!;
+        getPayloadResult31.Should().NotBeNull();
+        await rpc.engine_newPayloadV1(getPayloadResult31);
+        await rpc.engine_forkchoiceUpdatedV1(new ForkchoiceStateV1(getPayloadResult31.BlockHash, Keccak.Zero, getPayloadResult31.BlockHash));
+
+
+        var blockY = chain.BlockTree.Head!;
+        var blockX = chain.BlockTree.FindBlock(30)!;
+
+        var payloadAttributes = new PayloadAttributes
+        {
+            Timestamp = (ulong)DateTime.UtcNow.AddDays(4).Ticks,
+            PrevRandao = TestItem.KeccakA,
+            SuggestedFeeRecipient = Address.Zero
+        };
+
+        var alternativeEmptyBlock = chain.PostMergeBlockProducer!.PrepareEmptyBlock(blockX.Header, payloadAttributes);
+        await rpc.engine_newPayloadV1(new ExecutionPayload(alternativeEmptyBlock));
+
+        string? payloadId = rpc.engine_forkchoiceUpdatedV1(
+                new ForkchoiceStateV1(blockY.GetOrCalculateHash(), Keccak.Zero, blockY.GetOrCalculateHash()),
+                payloadAttributes)
+            .Result.Data.PayloadId!;
+        var result = rpc.engine_forkchoiceUpdatedV1(
+            new ForkchoiceStateV1(alternativeEmptyBlock.GetOrCalculateHash(), Keccak.Zero, alternativeEmptyBlock.GetOrCalculateHash())).Result.Data;
+        chain.AddTransactions(BuildTransactions(chain, blockY.GetOrCalculateHash(), TestItem.PrivateKeyC, TestItem.AddressF, 3, 10, out _, out _));
+        await blockImprovementLock.WaitAsync(delay * 1000);
+        ExecutionPayload getPayloadResult = (await rpc.engine_getPayloadV1(Bytes.FromHexString(payloadId))).Data!;
+        getPayloadResult.Should().NotBeNull();
+
+        ResultWrapper<PayloadStatusV1> finalResult = await rpc.engine_newPayloadV1(getPayloadResult);
+        finalResult.Data.Status.Should().Be(PayloadStatus.Valid);
     }
 
     [Test, Repeat(100)]
