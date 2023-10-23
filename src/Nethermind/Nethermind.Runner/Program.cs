@@ -51,9 +51,6 @@ public static class Program
     private static ILogger _logger = SimpleConsoleLogger.Instance;
 
     private static readonly ProcessExitSource _processExitSource = new();
-    private static readonly TaskCompletionSource<object?> _cancelKeySource = new();
-    private static readonly TaskCompletionSource<object?> _processExit = new();
-    private static readonly TaskCompletionSource<object?> _exitSourceExit = new();
     private static readonly ManualResetEventSlim _appClosed = new(true);
 
     public static void Main(string[] args)
@@ -112,7 +109,16 @@ public static class Program
         _logger.Info("Nethermind starting initialization.");
         _logger.Info($"Client version: {ProductInfo.ClientId}");
 
-        AppDomain.CurrentDomain.ProcessExit += CurrentDomainOnProcessExit;
+        if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+        {
+            AppDomain.CurrentDomain.ProcessExit += CurrentDomainOnProcessExit;
+        }
+        else
+        {
+            PosixSignalRegistration.Create(PosixSignal.SIGINT, OnSigInt);
+            PosixSignalRegistration.Create(PosixSignal.SIGTERM, OnSigTerm);
+        }
+
         AssemblyLoadContext.Default.ResolvingUnmanagedDll += OnResolvingUnmanagedDll;
 
         GlobalDiagnosticsContext.Set("version", ProductInfo.Version);
@@ -199,7 +205,7 @@ public static class Program
             {
                 await ethereumRunner.Start(_processExitSource.Token);
 
-                _ = await Task.WhenAny(_cancelKeySource.Task, _processExit.Task, _processExitSource.ExitTask);
+                await _processExitSource.ExitTask;
             }
             catch (TaskCanceledException)
             {
@@ -457,7 +463,24 @@ public static class Program
     private static void CurrentDomainOnProcessExit(object? sender, EventArgs e)
     {
         _processExitSource.Exit(ExitCodes.Ok);
-        _processExit.SetResult(null);
+        _appClosed.Wait();
+    }
+
+    private static void ConsoleOnCancelKeyPress(object? sender, ConsoleCancelEventArgs e)
+    {
+        _processExitSource.Exit(ExitCodes.SigInt);
+        e.Cancel = true;
+    }
+
+    private static void OnSigInt(PosixSignalContext obj)
+    {
+        _processExitSource.Exit(ExitCodes.SigInt);
+        _appClosed.Wait();
+    }
+
+    private static void OnSigTerm(PosixSignalContext obj)
+    {
+        _processExitSource.Exit(ExitCodes.SigTerm);
         _appClosed.Wait();
     }
 
@@ -510,13 +533,6 @@ public static class Program
             keyStoreConfig.KeyStoreDirectory ??= string.Empty.GetApplicationResourcePath("keystore");
             initConfig.LogDirectory ??= string.Empty.GetApplicationResourcePath("logs");
         }
-    }
-
-    private static void ConsoleOnCancelKeyPress(object? sender, ConsoleCancelEventArgs e)
-    {
-        _processExitSource.Exit(ExitCodes.Ok);
-        _ = _cancelKeySource.TrySetResult(null);
-        e.Cancel = true;
     }
 
     private static void ConfigureSeqLogger(IConfigProvider configProvider)
