@@ -51,7 +51,7 @@ public class OPL1CostHelper : IL1CostHelper
         long zeroCount = encoded.Count(b => b == 0);
         long nonZeroCount = encoded.Length - zeroCount;
         // Add pre-EIP-3529 overhead
-        nonZeroCount += _opConfigHelper.IsRegolith(header) ? 0 : 68;
+        nonZeroCount += _opConfigHelper.IsRegolith(header) ? 0 : OptimismConstants.PreRegolithNonZeroCountOverhead;
 
         return zeroCount * GasCostOf.TxDataZero + nonZeroCount * GasCostOf.TxDataNonZeroEip2028;
     }
