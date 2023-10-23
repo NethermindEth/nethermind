@@ -202,25 +202,31 @@ namespace Nethermind.Trie
                     _currentCommit.Enqueue(new NodeCommitInfo(delNode));
             }
 
+            //TrieStore.SetContext(GetStateRootHash());
+
             bool processCommits = RootRef?.IsDirty == true;
             if (processCommits)
+            {
                 Commit(new NodeCommitInfo(RootRef), skipSelf: skipRoot);
+                RootRef!.ResolveKey(TrieStore, true);
+            }
 
             while (_currentCommit.TryDequeue(out NodeCommitInfo node))
             {
                 if (_logger.IsTrace) _logger.Trace($"Committing {node} in {blockNumber}");
-                TrieStore.CommitNode(blockNumber, node, writeFlags: writeFlags);
+                TrieStore.CommitNode(blockNumber, GetStateRootHash(), node, writeFlags: writeFlags);
             }
 
             if (processCommits)
             {
-                RootRef!.ResolveKey(TrieStore, true);
+                //RootRef!.ResolveKey(TrieStore, true);
+
                 //resetting root reference for instances without cache will 'unresolve' root node, freeing TrieNode instances
                 //otherwise block commit sets will retain references to TrieNodes and not free them during e.g. snap sync
                 SetRootHash(RootRef.Keccak!, true);
             }
 
-            TrieStore.FinishBlockCommit(TrieType, blockNumber, RootRef, writeFlags);
+            TrieStore.FinishBlockCommit(TrieType, blockNumber, RootRef, GetStateRootHash(), writeFlags);
             _uncommitedPaths = new Bloom();
             ClearedBySelfDestruct = false;
             if (_logger.IsDebug) _logger.Debug($"Finished committing block {blockNumber}");
@@ -369,6 +375,7 @@ namespace Nethermind.Trie
             else if (resetObjects)
             {
                 RootRef = TrieStore.FindCachedOrUnknown(_rootHash, Array.Empty<byte>(), StoreNibblePathPrefix);
+                //TrieStore.ClearCacheAfter(value);
             }
         }
 
@@ -464,11 +471,23 @@ namespace Nethermind.Trie
                 }
             }
 
+            if (TrieType == TrieType.Storage)
+                cacheProbeRoot = GetStateRootHash();
+
             // try and get cached nodes
             Span<byte> nibbleBytes = stackalloc byte[StoreNibblePathPrefix.Length + rawKey.Length * 2];
             StoreNibblePathPrefix.CopyTo(nibbleBytes);
             Nibbles.BytesToNibbleBytes(rawKey, nibbleBytes[StoreNibblePathPrefix.Length..]);
             TrieNode? node = TrieStore.FindCachedOrUnknown(nibbleBytes[StoreNibblePathPrefix.Length..], StoreNibblePathPrefix, cacheProbeRoot);
+            if (cacheProbeRoot is null)
+            {
+                TrieNode? node2 = TrieStore.FindCachedOrUnknown(nibbleBytes[StoreNibblePathPrefix.Length..], StoreNibblePathPrefix, RootHash);
+                if (node2.NodeType != node.NodeType)
+                {
+                    int a = 10;
+                    a++;
+                }
+            }
 
             if (node is null)
                 return null;
@@ -1463,6 +1482,11 @@ namespace Nethermind.Trie
         private static void ThrowMissingTrieNodeException(in TraverseContext traverseContext, TrieNodeException e)
         {
             throw new MissingTrieNodeException(e.Message, e, traverseContext.UpdatePath.ToArray(), traverseContext.CurrentIndex);
+        }
+
+        protected virtual Keccak GetStateRootHash()
+        {
+            return RootRef?.Keccak ?? Keccak.EmptyTreeHash;
         }
     }
 }

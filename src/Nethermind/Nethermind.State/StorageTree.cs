@@ -29,6 +29,15 @@ namespace Nethermind.State
 
         internal const byte StorageDifferentiatingByte = 128;
 
+        private Keccak _stateRootHash;
+        public Keccak StateRootHash
+        {
+            set
+            {
+                _stateRootHash = value;
+            }
+        }
+
         static StorageTree()
         {
             Span<byte> buffer = stackalloc byte[32];
@@ -133,6 +142,11 @@ namespace Nethermind.State
                 Rlp rlpEncoded = rlpEncode ? Rlp.Encode(value) : new Rlp(value);
                 Set(rawKey, rlpEncoded);
             }
+        }
+
+        protected override Keccak GetStateRootHash()
+        {
+            return _stateRootHash;
         }
     }
 }

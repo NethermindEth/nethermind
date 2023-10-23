@@ -9,9 +9,11 @@ namespace Nethermind.Trie.Pruning
 {
     public interface ITrieStore : ITrieNodeResolver, IDisposable
     {
+        void SetContext(Keccak keccak);
         void CommitNode(long blockNumber, NodeCommitInfo nodeCommitInfo, WriteFlags writeFlags = WriteFlags.None);
+        void CommitNode(long blockNumber, Keccak rootHash, NodeCommitInfo nodeCommitInfo, WriteFlags writeFlags = WriteFlags.None);
 
-        void FinishBlockCommit(TrieType trieType, long blockNumber, TrieNode? root, WriteFlags writeFlags = WriteFlags.None);
+        void FinishBlockCommit(TrieType trieType, long blockNumber, TrieNode? root, Keccak stateRootHash = null, WriteFlags writeFlags = WriteFlags.None);
 
         bool IsPersisted(in ValueKeccak keccak);
 

@@ -276,7 +276,7 @@ namespace Nethermind.Trie.Pruning
             return node;
         }
 
-        public void FinishBlockCommit(TrieType trieType, long blockNumber, TrieNode? root, WriteFlags writeFlags = WriteFlags.None)
+        public void FinishBlockCommit(TrieType trieType, long blockNumber, TrieNode? root, Keccak stateRootHash = null, WriteFlags writeFlags = WriteFlags.None)
         {
             if (blockNumber < 0) throw new ArgumentOutOfRangeException(nameof(blockNumber));
             EnsureCommitSetExistsForBlock(blockNumber);
@@ -555,6 +555,11 @@ namespace Nethermind.Trie.Pruning
         /// This method is here to support testing.
         /// </summary>
         public void ClearCache() => _dirtyNodes.Clear();
+
+        public void ClearCacheAfter(Keccak rootHash)
+        {
+            throw new NotImplementedException();
+        }
 
         public void Dispose()
         {
@@ -882,6 +887,15 @@ namespace Nethermind.Trie.Pruning
         }
 
         public IKeyValueStore AsKeyValueStore() => _publicStore;
+
+        public void CommitNode(long blockNumber, Keccak rootHash, NodeCommitInfo nodeCommitInfo, WriteFlags writeFlags = WriteFlags.None)
+        {
+            CommitNode(blockNumber, nodeCommitInfo, writeFlags);
+        }
+
+        public void SetContext(Keccak keccak)
+        {
+        }
 
         private class TrieKeyValueStore : IKeyValueStore
         {

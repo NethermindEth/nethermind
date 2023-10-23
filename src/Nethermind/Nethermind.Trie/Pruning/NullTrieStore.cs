@@ -15,7 +15,7 @@ namespace Nethermind.Trie.Pruning
 
         public void CommitNode(long blockNumber, NodeCommitInfo nodeCommitInfo, WriteFlags flags = WriteFlags.None) { }
 
-        public void FinishBlockCommit(TrieType trieType, long blockNumber, TrieNode? root, WriteFlags flags = WriteFlags.None) { }
+        public void FinishBlockCommit(TrieType trieType, long blockNumber, TrieNode? root, Keccak stateRootHash = null, WriteFlags flags = WriteFlags.None) { }
 
         public void HackPersistOnShutdown() { }
 
@@ -64,6 +64,7 @@ namespace Nethermind.Trie.Pruning
         public void SaveNodeDirectly(long blockNumber, TrieNode trieNode, IKeyValueStore? keyValueStore = null, bool withDelete = false, WriteFlags writeFlags = WriteFlags.None) { }
 
         public void ClearCache() { }
+        public void ClearCacheAfter(Keccak rootHash) { }
 
         public bool ExistsInDB(Keccak hash, byte[] nodePathNibbles) => false;
 
@@ -79,6 +80,16 @@ namespace Nethermind.Trie.Pruning
         }
 
         public byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
+        {
+            throw new NotImplementedException();
+        }
+
+        public void CommitNode(long blockNumber, Keccak rootHash, NodeCommitInfo nodeCommitInfo, WriteFlags writeFlags = WriteFlags.None)
+        {
+            throw new NotImplementedException();
+        }
+
+        public void SetContext(Keccak keccak)
         {
             throw new NotImplementedException();
         }

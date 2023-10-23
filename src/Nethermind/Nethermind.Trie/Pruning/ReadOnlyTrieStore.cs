@@ -50,7 +50,7 @@ namespace Nethermind.Trie.Pruning
 
         public void CommitNode(long blockNumber, NodeCommitInfo nodeCommitInfo, WriteFlags flags = WriteFlags.None) { }
 
-        public void FinishBlockCommit(TrieType trieType, long blockNumber, TrieNode? root, WriteFlags flags = WriteFlags.None) { }
+        public void FinishBlockCommit(TrieType trieType, long blockNumber, TrieNode? root, Keccak stateRootHash = null, WriteFlags flags = WriteFlags.None) { }
 
         public event EventHandler<ReorgBoundaryReached> ReorgBoundaryReached
         {
@@ -76,6 +76,8 @@ namespace Nethermind.Trie.Pruning
             _trieStore.ClearCache();
         }
 
+        public void ClearCacheAfter(Keccak rootHash) { }
+
         public bool ExistsInDB(Keccak hash, byte[] nodePathNibbles) => _trieStore.ExistsInDB(hash, nodePathNibbles);
 
         public byte[]? this[ReadOnlySpan<byte> key] => _trieStore[key];
@@ -88,6 +90,16 @@ namespace Nethermind.Trie.Pruning
         }
 
         public void DeleteByRange(Span<byte> startKey, Span<byte> endKey) { }
+
+        public void CommitNode(long blockNumber, Keccak rootHash, NodeCommitInfo nodeCommitInfo, WriteFlags writeFlags = WriteFlags.None)
+        {
+            throw new NotImplementedException();
+        }
+
+        public void SetContext(Keccak keccak)
+        {
+            throw new NotImplementedException();
+        }
 
         private class ReadOnlyValueStore : IKeyValueStore
         {
