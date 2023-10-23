@@ -19,9 +19,9 @@ public class AlwaysPoS : IPoSSwitcher
 
     public bool TransitionFinished => true;
 
-    public Keccak ConfiguredTerminalBlockHash => throw new NotImplementedException();
+    public Keccak? ConfiguredTerminalBlockHash => null;
 
-    public long? ConfiguredTerminalBlockNumber => throw new NotImplementedException();
+    public long? ConfiguredTerminalBlockNumber => 0;
 
 #pragma warning disable CS0067
     public event EventHandler TerminalBlockReached;
