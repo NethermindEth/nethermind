@@ -40,6 +40,7 @@ using Nethermind.Synchronization.Peers;
 using Nethermind.Synchronization.Reporting;
 using Nethermind.Synchronization.SnapSync;
 using Nethermind.Synchronization.Trie;
+using Nethermind.TxPool;
 
 namespace Nethermind.Init.Steps;
 
@@ -528,7 +529,7 @@ public class InitializeNetwork : IStep
         ForkInfo forkInfo = new(_api.SpecProvider!, syncServer.Genesis.Hash!);
 
         ProtocolValidator protocolValidator = new(_api.NodeStatsManager!, _api.BlockTree, forkInfo, _api.LogManager);
-        PooledTxsRequestor pooledTxsRequestor = new(_api.TxPool!);
+        PooledTxsRequestor pooledTxsRequestor = new(_api.TxPool!, _api.Config<ITxPoolConfig>());
         _api.ProtocolsManager = new ProtocolsManager(
             _api.SyncPeerPool!,
             syncServer,
