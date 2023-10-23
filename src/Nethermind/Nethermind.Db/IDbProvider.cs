@@ -20,6 +20,7 @@ namespace Nethermind.Db
         public IColumnsDb<ReceiptsColumns> ReceiptsDb => GetDb<IColumnsDb<ReceiptsColumns>>(DbNames.Receipts);
         public IDb BlocksDb => GetDb<IDb>(DbNames.Blocks);
         public IDb HeadersDb => GetDb<IDb>(DbNames.Headers);
+        public IDb BlockNumbersDb => GetDb<IDb>(DbNames.BlockNumbers);
         public IDb BlockInfosDb => GetDb<IDb>(DbNames.BlockInfos);
 
         // BloomDB progress / config (does not contain blooms - they are kept in bloom storage)
@@ -31,6 +32,8 @@ namespace Nethermind.Db
         public IDb WitnessDb => GetDb<IDb>(DbNames.Witness);
 
         public IDb MetadataDb => GetDb<IDb>(DbNames.Metadata);
+
+        public IColumnsDb<BlobTxsColumns> BlobTransactionsDb => GetDb<IColumnsDb<BlobTxsColumns>>(DbNames.BlobTransactions);
 
         T GetDb<T>(string dbName) where T : class, IDb;
 
