@@ -109,16 +109,7 @@ public static class Program
         _logger.Info("Nethermind starting initialization.");
         _logger.Info($"Client version: {ProductInfo.ClientId}");
 
-        if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
-        {
-            AppDomain.CurrentDomain.ProcessExit += CurrentDomainOnProcessExit;
-        }
-        else
-        {
-            PosixSignalRegistration.Create(PosixSignal.SIGINT, OnSigInt);
-            PosixSignalRegistration.Create(PosixSignal.SIGTERM, OnSigTerm);
-        }
-
+        AppDomain.CurrentDomain.ProcessExit += CurrentDomainOnProcessExit;
         AssemblyLoadContext.Default.ResolvingUnmanagedDll += OnResolvingUnmanagedDll;
 
         GlobalDiagnosticsContext.Set("version", ProductInfo.Version);
@@ -470,18 +461,6 @@ public static class Program
     {
         _processExitSource.Exit(ExitCodes.SigInt);
         e.Cancel = true;
-    }
-
-    private static void OnSigInt(PosixSignalContext obj)
-    {
-        _processExitSource.Exit(ExitCodes.SigInt);
-        _appClosed.Wait();
-    }
-
-    private static void OnSigTerm(PosixSignalContext obj)
-    {
-        _processExitSource.Exit(ExitCodes.SigTerm);
-        _appClosed.Wait();
     }
 
     private static void LogMemoryConfiguration()
