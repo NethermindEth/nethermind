@@ -4,8 +4,9 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using Nethermind.Core;
 
-namespace Nethermind.Core
+namespace Nethermind.Db
 {
     public class InMemoryBatch : IBatch
     {
