@@ -7,7 +7,6 @@ using Nethermind.Blockchain.Services;
 using Nethermind.Config;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Validators;
-using Nethermind.Core;
 using Nethermind.Evm;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Init.Steps;
@@ -24,17 +23,6 @@ public class InitializeBlockchainOptimism : InitializeBlockchain
     {
         _api = api;
         _blocksConfig = api.Config<IBlocksConfig>();
-    }
-
-    protected override async Task InitBlockchain()
-    {
-        await base.InitBlockchain();
-
-        if (_api.InvalidChainTracker is null) throw new StepDependencyException(nameof(_api.InvalidChainTracker));
-        if (_api.BlockchainProcessor is null) throw new StepDependencyException(nameof(_api.BlockchainProcessor));
-
-        // because we know we are in Optimism and it was OptimismPlugin that created the InvalidChainTracker
-        ((InvalidChainTracker)_api.InvalidChainTracker).SetupBlockchainProcessorInterceptor(_api.BlockchainProcessor);
     }
 
     protected override ITransactionProcessor CreateTransactionProcessor()

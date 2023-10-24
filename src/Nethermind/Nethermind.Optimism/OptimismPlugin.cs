@@ -171,9 +171,12 @@ public class OptimismPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitial
         ArgumentNullException.ThrowIfNull(_api.SyncPeerPool);
         ArgumentNullException.ThrowIfNull(_api.NodeStatsManager);
         ArgumentNullException.ThrowIfNull(_api.SyncProgressResolver);
+        ArgumentNullException.ThrowIfNull(_api.BlockchainProcessor);
 
         ArgumentNullException.ThrowIfNull(_blockCacheService);
         ArgumentNullException.ThrowIfNull(_invalidChainTracker);
+
+        _invalidChainTracker.SetupBlockchainProcessorInterceptor(_api.BlockchainProcessor);
 
         _peerRefresher = new PeerRefresher(_api.PeerDifficultyRefreshPool, _api.TimerFactory, _api.LogManager);
         _api.DisposeStack.Push((PeerRefresher)_peerRefresher);
