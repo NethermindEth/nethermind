@@ -149,8 +149,8 @@ public class DbConfig : IDbConfig
     public ulong? MetadataCompactionReadAhead { get; set; }
     public IDictionary<string, string>? MetadataDbAdditionalRocksDbOptions { get; set; }
 
-    public ulong StateDbWriteBufferSize { get; set; }
-    public uint StateDbWriteBufferNumber { get; set; }
+    public ulong StateDbWriteBufferSize { get; set; } = (ulong)16.MB();
+    public uint StateDbWriteBufferNumber { get; set; } = 4;
     public ulong StateDbBlockCacheSize { get; set; }
     public bool StateDbCacheIndexAndFilterBlocks { get; set; }
     public int? StateDbMaxOpenFiles { get; set; }
