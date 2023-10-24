@@ -326,23 +326,13 @@ namespace Nethermind.Synchronization.Test
                 PoSSwitcher poSSwitcher = new(mergeConfig, syncConfig, dbProvider.MetadataDb, BlockTree, new TestSingleReleaseSpecProvider(Constantinople.Instance), _logManager);
                 IBeaconPivot beaconPivot = new BeaconPivot(syncConfig, dbProvider.MetadataDb, BlockTree, _logManager);
 
-                ProgressTracker progressTracker = new(BlockTree, dbProvider.StateDb, LimboLogs.Instance);
-                SnapProvider snapProvider = new(progressTracker, dbProvider, LimboLogs.Instance);
-
                 TrieStore trieStore = new(stateDb, LimboLogs.Instance);
-                SyncProgressResolver syncProgressResolver = new(
-                    BlockTree,
-                    NullReceiptStorage.Instance,
-                    stateDb,
-                    trieStore,
-                    progressTracker,
-                    syncConfig,
-                    _logManager);
-
                 TotalDifficultyBetterPeerStrategy totalDifficultyBetterPeerStrategy = new(LimboLogs.Instance);
                 IBetterPeerStrategy bestPeerStrategy = IsMerge(synchronizerType)
                     ? new MergeBetterPeerStrategy(totalDifficultyBetterPeerStrategy, poSSwitcher, beaconPivot, LimboLogs.Instance)
                     : totalDifficultyBetterPeerStrategy;
+
+                FullStateFinder fullStateFinder = new FullStateFinder(BlockTree, stateDb, trieStore);
 
                 SyncPeerPool = new SyncPeerPool(BlockTree, stats, bestPeerStrategy, _logManager, 25);
                 Pivot pivot = new(syncConfig);
@@ -363,7 +353,7 @@ namespace Nethermind.Synchronization.Test
                         syncConfig,
                         bestPeerStrategy,
                         syncReport,
-                        syncProgressResolver,
+                        fullStateFinder,
                         _logManager
                     );
                     Synchronizer = new MergeSynchronizer(

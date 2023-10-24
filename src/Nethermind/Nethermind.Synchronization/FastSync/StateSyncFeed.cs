@@ -91,5 +91,7 @@ namespace Nethermind.Synchronization.FastSync
                 _treeSync.ResetStateRoot(CurrentState);
             }
         }
+
+        public override bool IsFinished => false; // Check MultiSyncModeSelector
     }
 }

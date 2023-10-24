@@ -206,6 +206,8 @@ namespace Nethermind.Synchronization.Test.ParallelSync
             {
             }
 
+            public override bool IsFinished => false;
+
             private int _pendingRequests;
 
             public override async Task<TestBatch> PrepareRequest(CancellationToken token = default)

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Configuration;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Synchronization;
@@ -51,5 +52,6 @@ namespace Nethermind.Synchronization.Blocks
         public override bool IsMultiFeed => false;
 
         public override AllocationContexts Contexts => AllocationContexts.Blocks;
+        public override bool IsFinished => false; // Check MultiSyncModeSelector
     }
 }

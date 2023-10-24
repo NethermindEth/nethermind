@@ -111,7 +111,12 @@ namespace Nethermind.Synchronization.Test.FastSync
             _syncReport.FastBlocksReceipts.Returns(_measuredProgress);
             _syncReport.ReceiptsInQueue.Returns(_measuredProgressQueue);
 
-            _feed = new ReceiptsSyncFeed(
+            _feed = CreateFeed();
+        }
+
+        private ReceiptsSyncFeed CreateFeed()
+        {
+            return new ReceiptsSyncFeed(
                 _specProvider,
                 _blockTree,
                 _receiptStorage,
@@ -343,5 +348,50 @@ namespace Nethermind.Synchronization.Test.FastSync
 
             _feed.CurrentState.Should().Be(SyncFeedState.Finished);
         }
+
+        [Test]
+        public void Is_fast_block_receipts_finished_returns_false_when_receipts_not_downloaded()
+        {
+            _blockTree = Substitute.For<IBlockTree>();
+            _syncConfig = new SyncConfig()
+            {
+                FastBlocks = true,
+                FastSync = true,
+                DownloadBodiesInFastSync = true,
+                DownloadReceiptsInFastSync = true,
+                PivotNumber = "1",
+            };
+
+            _blockTree.LowestInsertedHeader.Returns(Build.A.BlockHeader.WithNumber(1).WithStateRoot(TestItem.KeccakA).TestObject);
+            _blockTree.LowestInsertedBodyNumber.Returns(1);
+
+            _receiptStorage = Substitute.For<IReceiptStorage>();
+            _receiptStorage.LowestInsertedReceiptBlockNumber.Returns(2);
+
+            ReceiptsSyncFeed feed = CreateFeed();
+            Assert.False(feed.IsFinished);
+        }
+
+        [Test]
+        public void Is_fast_block_bodies_finished_returns_true_when_bodies_not_downloaded_and_we_do_not_want_to_download_bodies()
+        {
+            _blockTree = Substitute.For<IBlockTree>();
+            _syncConfig = new SyncConfig()
+            {
+                FastBlocks = true,
+                DownloadBodiesInFastSync = false,
+                DownloadReceiptsInFastSync = true,
+                PivotNumber = "1",
+            };
+
+            _blockTree.LowestInsertedHeader.Returns(Build.A.BlockHeader.WithNumber(1).WithStateRoot(TestItem.KeccakA).TestObject);
+            _blockTree.LowestInsertedBodyNumber.Returns(2);
+            _receiptStorage = Substitute.For<IReceiptStorage>();
+            _receiptStorage.LowestInsertedReceiptBlockNumber.Returns(1);
+
+            ReceiptsSyncFeed feed = CreateFeed();
+            Assert.True(feed.IsFinished);
+        }
+
     }
 }

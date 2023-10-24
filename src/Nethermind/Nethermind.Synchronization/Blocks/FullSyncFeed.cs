@@ -28,5 +28,6 @@ namespace Nethermind.Synchronization.Blocks
         public override bool IsMultiFeed => false;
 
         public override AllocationContexts Contexts => AllocationContexts.Blocks;
+        public override bool IsFinished => false; // Check MultiSyncModeSelector
     }
 }

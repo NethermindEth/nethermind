@@ -459,6 +459,32 @@ namespace Nethermind.Synchronization.Test.FastBlocks
             batches.Count.Should().Be(totalBatchCount);
         }
 
+
+        [Test]
+        public void IsFinished_returns_false_when_headers_not_downloaded()
+        {
+            IBlockTree blockTree = Substitute.For<IBlockTree>();
+            SyncConfig syncConfig = new()
+            {
+                FastBlocks = true,
+                FastSync = true,
+                DownloadBodiesInFastSync = true,
+                DownloadReceiptsInFastSync = true,
+                PivotNumber = "1",
+            };
+
+            blockTree.LowestInsertedHeader.Returns(Build.A.BlockHeader.WithNumber(2).WithStateRoot(TestItem.KeccakA).TestObject);
+
+            HeadersSyncFeed feed = new(
+                blockTree,
+                Substitute.For<ISyncPeerPool>(),
+                syncConfig,
+                Substitute.For<ISyncReport>(),
+                LimboLogs.Instance);
+
+            Assert.False(feed.IsFinished);
+        }
+
         private class ResettableHeaderSyncFeed : HeadersSyncFeed
         {
             private readonly ManualResetEventSlim? _hangLatch;

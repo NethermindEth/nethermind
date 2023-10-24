@@ -904,9 +904,7 @@ namespace Nethermind.Synchronization.Test
         private class Context
         {
             private readonly Block _genesis = Build.A.Block.Genesis.TestObject;
-            private readonly MemDb _stateDb = new();
             private readonly MemDb _blockInfoDb = new();
-            private readonly SyncConfig _syncConfig = new();
             private IBlockTree? _blockTree { get; set; }
             private Dictionary<long, Hash256> TestHeaderMapping { get; }
             public InMemoryReceiptStorage ReceiptStorage { get; } = new();
@@ -950,23 +948,6 @@ namespace Nethermind.Synchronization.Test
             private ResponseBuilder? _responseBuilder;
             public ResponseBuilder ResponseBuilder =>
                 _responseBuilder ??= new ResponseBuilder(BlockTree, TestHeaderMapping);
-
-            private ProgressTracker? _progressTracker;
-
-            private ProgressTracker ProgressTracker => _progressTracker ??=
-                new(BlockTree, _stateDb, LimboLogs.Instance);
-
-            private ISyncProgressResolver? _syncProgressResolver;
-
-            private ISyncProgressResolver SyncProgressResolver => _syncProgressResolver ??=
-                new SyncProgressResolver(
-                    BlockTree,
-                    ReceiptStorage,
-                    _stateDb,
-                    new TrieStore(_stateDb, LimboLogs.Instance),
-                    ProgressTracker,
-                    _syncConfig,
-                    LimboLogs.Instance);
 
             protected IBetterPeerStrategy? _betterPeerStrategy;
 

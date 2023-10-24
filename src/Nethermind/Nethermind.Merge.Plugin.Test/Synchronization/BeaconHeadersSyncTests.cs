@@ -94,32 +94,6 @@ public class BeaconHeadersSyncTests
             LimboLogs.Instance
         );
 
-        private MultiSyncModeSelector? _selector;
-        public MultiSyncModeSelector Selector
-        {
-            get
-            {
-                if (_selector is null)
-                {
-                    MemDb stateDb = new();
-                    ProgressTracker progressTracker = new(BlockTree, stateDb, LimboLogs.Instance);
-                    SyncProgressResolver syncProgressResolver = new(
-                        BlockTree,
-                        NullReceiptStorage.Instance,
-                        stateDb,
-                        new TrieStore(stateDb, LimboLogs.Instance),
-                        progressTracker,
-                        SyncConfig,
-                        LimboLogs.Instance);
-                    TotalDifficultyBetterPeerStrategy bestPeerStrategy = new(LimboLogs.Instance);
-                    _selector = new MultiSyncModeSelector(syncProgressResolver, PeerPool, SyncConfig, BeaconSync,
-                        bestPeerStrategy, LimboLogs.Instance);
-                }
-
-                return _selector;
-            }
-        }
-
         private ISyncPeerPool? _peerPool;
         public ISyncPeerPool PeerPool => _peerPool ??= Substitute.For<ISyncPeerPool>();
 

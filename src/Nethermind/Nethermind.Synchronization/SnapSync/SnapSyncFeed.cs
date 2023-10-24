@@ -207,5 +207,9 @@ namespace Nethermind.Synchronization.SnapSync
                 }
             }
         }
+
+        // Check MultiSyncModeSelector
+        // TODO: Probably can consolidate some logic here
+        public override bool IsFinished => false;
     }
 }

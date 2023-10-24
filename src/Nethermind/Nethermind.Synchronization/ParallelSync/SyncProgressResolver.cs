@@ -3,135 +3,59 @@
 
 using System;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Synchronization.FastBlocks;
 using Nethermind.Synchronization.SnapSync;
-using Nethermind.Trie;
-using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Synchronization.ParallelSync
 {
     public class SyncProgressResolver : ISyncProgressResolver
     {
-        // TODO: we can search 1024 back and confirm 128 deep header and start using it as Max(0, confirmed)
-        // then we will never have to look 128 back again
-        // note that we will be doing that every second or so
-        private const int MaxLookupBack = 128;
 
         private readonly IBlockTree _blockTree;
-        private readonly IReceiptStorage _receiptStorage;
-        private readonly IDb _stateDb;
-        private readonly ITrieNodeResolver _trieNodeResolver;
         private readonly ProgressTracker _progressTracker;
         private readonly ISyncConfig _syncConfig;
+        private readonly IFullStateFinder _fullStateFinder;
 
         // ReSharper disable once NotAccessedField.Local
         private readonly ILogger _logger;
 
-        private long _bodiesBarrier;
-        private long _receiptsBarrier;
+        private readonly ISyncFeed<HeadersSyncBatch?>? _headersSyncFeed;
+        private readonly ISyncFeed<BodiesSyncBatch?>? _bodiesSyncFeed;
+        private readonly ISyncFeed<ReceiptsSyncBatch?>? _receiptsSyncFeed;
 
-        public SyncProgressResolver(IBlockTree blockTree,
-            IReceiptStorage receiptStorage,
-            IDb stateDb,
-            ITrieNodeResolver trieNodeResolver,
+        public SyncProgressResolver(
+            IBlockTree blockTree,
+            IFullStateFinder fullStateFinder,
             ProgressTracker progressTracker,
             ISyncConfig syncConfig,
+            ISyncFeed<HeadersSyncBatch?>? headersSyncFeed,
+            ISyncFeed<BodiesSyncBatch?>? bodiesSyncFeed,
+            ISyncFeed<ReceiptsSyncBatch?>? receiptsSyncFeed,
             ILogManager logManager)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
-            _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
-            _stateDb = stateDb ?? throw new ArgumentNullException(nameof(stateDb));
-            _trieNodeResolver = trieNodeResolver ?? throw new ArgumentNullException(nameof(trieNodeResolver));
+            _fullStateFinder = fullStateFinder ?? throw new ArgumentNullException(nameof(fullStateFinder));
             _progressTracker = progressTracker ?? throw new ArgumentNullException(nameof(progressTracker));
             _syncConfig = syncConfig ?? throw new ArgumentNullException(nameof(syncConfig));
 
-            _bodiesBarrier = _syncConfig.AncientBodiesBarrierCalc;
-            _receiptsBarrier = _syncConfig.AncientReceiptsBarrierCalc;
+            _headersSyncFeed = headersSyncFeed;
+            _bodiesSyncFeed = bodiesSyncFeed;
+            _receiptsSyncFeed = receiptsSyncFeed;
         }
 
         public void UpdateBarriers()
         {
-            _bodiesBarrier = _syncConfig.AncientBodiesBarrierCalc;
-            _receiptsBarrier = _syncConfig.AncientReceiptsBarrierCalc;
-        }
-
-        private bool IsFullySynced(Hash256 stateRoot)
-        {
-            if (stateRoot == Keccak.EmptyTreeHash)
-            {
-                return true;
-            }
-
-            TrieNode trieNode = _trieNodeResolver.FindCachedOrUnknown(stateRoot);
-            bool stateRootIsInMemory = trieNode.NodeType != NodeType.Unknown;
-            // We check whether one of below happened:
-            //   1) the block has been processed but not yet persisted (pruning) OR
-            //   2) the block has been persisted and removed from cache already OR
-            //   3) the full block state has been synced in the state nodes sync (fast sync)
-            // In 2) and 3) the state root will be saved in the database.
-            // In fast sync we never save the state root unless all the descendant nodes have been stored in the DB.
-            return stateRootIsInMemory || _stateDb.Get(stateRoot) is not null;
         }
 
         public long FindBestFullState()
         {
-            // so the full state can be in a few places but there are some best guesses
-            // if we are state syncing then the full state may be one of the recent blocks (maybe one of the last 128 blocks)
-            // if we full syncing then the state should be at head
-            // it also may seem tricky if best suggested is part of a reorg while we are already full syncing so
-            // ideally we would like to check its siblings too (but this may be a bit expensive and less likely
-            // to be important
-            // we want to avoid a scenario where state is not found even as it is just near head or best suggested
-
-            Block head = _blockTree.Head;
-            BlockHeader initialBestSuggested = _blockTree.BestSuggestedHeader; // just storing here for debugging sake
-            BlockHeader bestSuggested = initialBestSuggested;
-
-            long bestFullState = 0;
-            if (head is not null)
-            {
-                // head search should be very inexpensive as we generally expect the state to be there
-                bestFullState = SearchForFullState(head.Header);
-            }
-
-            if (bestSuggested is not null)
-            {
-                if (bestFullState < bestSuggested?.Number)
-                {
-                    bestFullState = Math.Max(bestFullState, SearchForFullState(bestSuggested));
-                }
-            }
-
-            return bestFullState;
-        }
-
-        private long SearchForFullState(BlockHeader startHeader)
-        {
-            long bestFullState = 0;
-            for (int i = 0; i < MaxLookupBack; i++)
-            {
-                if (startHeader is null)
-                {
-                    break;
-                }
-
-                if (IsFullySynced(startHeader.StateRoot!))
-                {
-                    bestFullState = startHeader.Number;
-                    break;
-                }
-
-                startHeader = _blockTree.FindHeader(startHeader.ParentHash!, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
-            }
-
-            return bestFullState;
+            return _fullStateFinder.FindBestFullState();
         }
 
         public long FindBestHeader() => _blockTree.BestSuggestedHeader?.Number ?? 0;
@@ -164,17 +88,13 @@ namespace Nethermind.Synchronization.ParallelSync
         }
 
         public bool IsFastBlocksHeadersFinished() => !IsFastBlocks() || (!_syncConfig.DownloadHeadersInFastSync ||
-                                                                         (_blockTree.LowestInsertedHeader?.Number ??
-                                                                          long.MaxValue) <= 1);
+                                                                         (_headersSyncFeed?.IsFinished == true));
 
         public bool IsFastBlocksBodiesFinished() => !IsFastBlocks() || (!_syncConfig.DownloadBodiesInFastSync ||
-                                                                        (_blockTree.LowestInsertedBodyNumber ??
-                                                                         long.MaxValue) <= _bodiesBarrier);
+                                                                        (_bodiesSyncFeed?.IsFinished == true));
 
         public bool IsFastBlocksReceiptsFinished() => !IsFastBlocks() || (!_syncConfig.DownloadReceiptsInFastSync ||
-                                                                          (_receiptStorage
-                                                                               .LowestInsertedReceiptBlockNumber ??
-                                                                           long.MaxValue) <= _receiptsBarrier);
+                                                                          (_receiptsSyncFeed?.IsFinished == true));
 
         public bool IsSnapGetRangesFinished() => _progressTracker.IsSnapGetRangesFinished();
 

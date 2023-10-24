@@ -8,11 +8,9 @@ using Nethermind.Int256;
 [assembly: InternalsVisibleTo("DynamicProxyGenAssembly2")]
 namespace Nethermind.Synchronization.ParallelSync
 {
-    public interface ISyncProgressResolver
+    public interface ISyncProgressResolver: IFullStateFinder
     {
         void UpdateBarriers();
-
-        long FindBestFullState();
 
         long FindBestHeader();
 

@@ -40,6 +40,7 @@ namespace Nethermind.Synchronization.FastBlocks
 
         private bool ShouldFinish => !_syncConfig.DownloadReceiptsInFastSync || AllReceiptsDownloaded;
         private bool AllReceiptsDownloaded => _receiptStorage.LowestInsertedReceiptBlockNumber <= _barrier;
+        public override bool IsFinished => AllReceiptsDownloaded;
 
         public ReceiptsSyncFeed(
             ISpecProvider specProvider,

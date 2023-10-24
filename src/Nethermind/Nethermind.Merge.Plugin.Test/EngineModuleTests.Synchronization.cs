@@ -18,6 +18,7 @@ using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.Synchronization;
 using Nethermind.Synchronization;
+using Nethermind.Synchronization.FastBlocks;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
 using Nethermind.Synchronization.SnapSync;
@@ -921,7 +922,6 @@ public partial class EngineModuleTests
 
     private MultiSyncModeSelector CreateMultiSyncModeSelector(MergeTestBlockchain chain)
     {
-        SyncProgressResolver syncProgressResolver = new(chain.BlockTree, chain.ReceiptStorage, chain.DbProvider.StateDb, chain.TrieStore, new ProgressTracker(chain.BlockTree, chain.StateDb, LimboLogs.Instance), new SyncConfig(), LimboLogs.Instance);
         BlockHeader peerHeader = chain.BlockTree.Head!.Header;
         ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
         syncPeer.HeadHash.Returns(peerHeader.Hash);
@@ -931,6 +931,17 @@ public partial class EngineModuleTests
         ISyncPeerPool? syncPeerPool = Substitute.For<ISyncPeerPool>();
         List<PeerInfo> peerInfos = new() { new(syncPeer) };
         syncPeerPool.InitializedPeers.Returns(peerInfos);
+
+        SyncProgressResolver syncProgressResolver = new(
+            chain.BlockTree,
+            new FullStateFinder(chain.BlockTree, chain.DbProvider.StateDb, chain.TrieStore),
+            new ProgressTracker(chain.BlockTree, chain.StateDb, LimboLogs.Instance),
+            new SyncConfig(),
+            Substitute.For<ISyncFeed<HeadersSyncBatch?>>(),
+            Substitute.For<ISyncFeed<BodiesSyncBatch?>>(),
+            Substitute.For<ISyncFeed<ReceiptsSyncBatch?>>(),
+            LimboLogs.Instance);
+
         MultiSyncModeSelector multiSyncModeSelector = new(syncProgressResolver,
             syncPeerPool, new SyncConfig(), No.BeaconSync,
             new TotalDifficultyBetterPeerStrategy(LimboLogs.Instance), LimboLogs.Instance);

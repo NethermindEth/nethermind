@@ -57,18 +57,40 @@ namespace Nethermind.Synchronization
         private StateSyncFeed? _stateSyncFeed;
         private SnapSyncFeed? _snapSyncFeed;
         private FullSyncFeed? _fullSyncFeed;
-        private HeadersSyncFeed? _headersFeed;
-        private BodiesSyncFeed? _bodiesFeed;
-        private ReceiptsSyncFeed? _receiptsFeed;
         private IProcessExitSource _exitSource;
         protected IBetterPeerStrategy _betterPeerStrategy;
         private readonly ChainSpec _chainSpec;
 
-        public ISyncProgressResolver SyncProgressResolver { get; }
+        private readonly ProgressTracker _progressTracker;
+
         public ISnapProvider SnapProvider { get; }
 
-        protected ISyncModeSelector? _syncModeSelector = null;
-        public virtual ISyncModeSelector SyncModeSelector => _syncModeSelector ?? new MultiSyncModeSelector(
+        private HeadersSyncFeed? _headersSyncFeed;
+        private HeadersSyncFeed? HeadersSyncFeed => _headersSyncFeed ??= CreateHeadersSyncFeed();
+
+        private ReceiptsSyncFeed? _receiptsSyncFeed;
+        private ReceiptsSyncFeed? ReceiptsSyncFeed => _receiptsSyncFeed ??= CreateReceiptsSyncFeed();
+
+        private BodiesSyncFeed? _bodiesSyncFeed;
+        private BodiesSyncFeed? BodiesSyncFeed => _bodiesSyncFeed ??= CreateBodiesSyncFeed();
+
+
+        private ISyncProgressResolver? _syncProgressResolver;
+        public ISyncProgressResolver SyncProgressResolver => _syncProgressResolver ??= new SyncProgressResolver(
+            _blockTree,
+            new FullStateFinder(_blockTree, _dbProvider.StateDb, _readOnlyTrieStore),
+            _progressTracker,
+            _syncConfig,
+            HeadersSyncFeed,
+            BodiesSyncFeed,
+            ReceiptsSyncFeed,
+            _logManager);
+
+        private readonly IReadOnlyTrieStore _readOnlyTrieStore;
+
+
+        protected ISyncModeSelector? _syncModeSelector;
+        public virtual ISyncModeSelector SyncModeSelector => _syncModeSelector ??= new MultiSyncModeSelector(
             SyncProgressResolver,
             _syncPeerPool!,
             _syncConfig,
@@ -109,22 +131,15 @@ namespace Nethermind.Synchronization
             _syncReport = syncReport ?? throw new ArgumentNullException(nameof(syncReport));
             _betterPeerStrategy = betterPeerStrategy ?? throw new ArgumentNullException(nameof(betterPeerStrategy));
             _chainSpec = chainSpec ?? throw new ArgumentNullException(nameof(chainSpec));
+            _readOnlyTrieStore = readOnlyTrieStore ?? throw new ArgumentNullException(nameof(readOnlyTrieStore));
 
-            ProgressTracker progressTracker = new(
+            _progressTracker = new(
                 blockTree,
                 dbProvider.StateDb,
                 logManager,
                 _syncConfig.SnapSyncAccountRangePartitionCount);
-            SnapProvider = new SnapProvider(progressTracker, dbProvider, logManager);
 
-            SyncProgressResolver = new SyncProgressResolver(
-                blockTree,
-                receiptStorage!,
-                dbProvider.StateDb,
-                readOnlyTrieStore!,
-                progressTracker,
-                _syncConfig,
-                logManager);
+            SnapProvider = new SnapProvider(_progressTracker, dbProvider, logManager);
         }
 
         public virtual void Start()
@@ -168,13 +183,31 @@ namespace Nethermind.Synchronization
             new MallocTrimmer(SyncModeSelector, TimeSpan.FromSeconds(_syncConfig.MallocTrimIntervalSec), _logManager);
         }
 
+        private HeadersSyncFeed? CreateHeadersSyncFeed()
+        {
+            if (!_syncConfig.FastSync || !_syncConfig.FastBlocks || !_syncConfig.DownloadHeadersInFastSync) return null;
+            return new HeadersSyncFeed(_blockTree, _syncPeerPool, _syncConfig, _syncReport, _logManager);
+        }
+
+        private BodiesSyncFeed? CreateBodiesSyncFeed()
+        {
+            if (!_syncConfig.FastSync || !_syncConfig.FastBlocks || !_syncConfig.DownloadHeadersInFastSync || !_syncConfig.DownloadBodiesInFastSync) return null;
+            return new BodiesSyncFeed(_blockTree, _syncPeerPool, _syncConfig, _syncReport, _dbProvider.BlocksDb, _logManager);
+        }
+
+        private ReceiptsSyncFeed? CreateReceiptsSyncFeed()
+        {
+            if (!_syncConfig.FastSync || !_syncConfig.FastBlocks || !_syncConfig.DownloadHeadersInFastSync || !_syncConfig.DownloadBodiesInFastSync || !_syncConfig.DownloadReceiptsInFastSync) return null;
+            return new ReceiptsSyncFeed(_specProvider, _blockTree, _receiptStorage, _syncPeerPool, _syncConfig, _syncReport, _logManager);
+        }
+
         private void SetupDbOptimizer()
         {
             new SyncDbTuner(
                 _syncConfig,
                 _snapSyncFeed,
-                _bodiesFeed,
-                _receiptsFeed,
+                BodiesSyncFeed,
+                ReceiptsSyncFeed,
                 _dbProvider.StateDb as ITunableDb,
                 _dbProvider.CodeDb as ITunableDb,
                 _dbProvider.BlocksDb as ITunableDb,
@@ -279,10 +312,8 @@ namespace Nethermind.Synchronization
         private void StartFastBlocksComponents()
         {
             FastBlocksPeerAllocationStrategyFactory fastFactory = new();
-
-            _headersFeed = new HeadersSyncFeed(_blockTree, _syncPeerPool, _syncConfig, _syncReport, _logManager);
             SyncDispatcher<HeadersSyncBatch> headersDispatcher = CreateDispatcher(
-                _headersFeed,
+                HeadersSyncFeed,
                 new HeadersSyncDownloader(_logManager),
                 fastFactory
             );
@@ -303,10 +334,9 @@ namespace Nethermind.Synchronization
             {
                 if (_syncConfig.DownloadBodiesInFastSync)
                 {
-                    _bodiesFeed = new BodiesSyncFeed(_blockTree, _syncPeerPool, _syncConfig, _syncReport, _dbProvider.BlocksDb, _logManager);
 
                     SyncDispatcher<BodiesSyncBatch> bodiesDispatcher = CreateDispatcher(
-                        _bodiesFeed,
+                        BodiesSyncFeed!,
                         new BodiesSyncDownloader(_logManager),
                         fastFactory
                     );
@@ -326,10 +356,8 @@ namespace Nethermind.Synchronization
 
                 if (_syncConfig.DownloadReceiptsInFastSync)
                 {
-                    _receiptsFeed = new ReceiptsSyncFeed(_specProvider, _blockTree, _receiptStorage, _syncPeerPool, _syncConfig, _syncReport, _logManager);
-
                     SyncDispatcher<ReceiptsSyncBatch> receiptsDispatcher = CreateDispatcher(
-                        _receiptsFeed,
+                        ReceiptsSyncFeed!,
                         new ReceiptsSyncDispatcher(_logManager),
                         fastFactory
                     );
@@ -389,9 +417,9 @@ namespace Nethermind.Synchronization
                     _stateSyncFeed?.FeedTask ?? Task.CompletedTask,
                     _snapSyncFeed?.FeedTask ?? Task.CompletedTask,
                     _fullSyncFeed?.FeedTask ?? Task.CompletedTask,
-                    _headersFeed?.FeedTask ?? Task.CompletedTask,
-                    _bodiesFeed?.FeedTask ?? Task.CompletedTask,
-                    _receiptsFeed?.FeedTask ?? Task.CompletedTask));
+                    HeadersSyncFeed?.FeedTask ?? Task.CompletedTask,
+                    BodiesSyncFeed?.FeedTask ?? Task.CompletedTask,
+                    ReceiptsSyncFeed?.FeedTask ?? Task.CompletedTask));
         }
 
         private void WireMultiSyncModeSelector()
@@ -400,9 +428,9 @@ namespace Nethermind.Synchronization
             WireFeedWithModeSelector(_stateSyncFeed);
             WireFeedWithModeSelector(_snapSyncFeed);
             WireFeedWithModeSelector(_fullSyncFeed);
-            WireFeedWithModeSelector(_headersFeed);
-            WireFeedWithModeSelector(_bodiesFeed);
-            WireFeedWithModeSelector(_receiptsFeed);
+            WireFeedWithModeSelector(HeadersSyncFeed);
+            WireFeedWithModeSelector(BodiesSyncFeed);
+            WireFeedWithModeSelector(ReceiptsSyncFeed);
         }
 
         protected void WireFeedWithModeSelector<T>(ISyncFeed<T>? feed)
@@ -423,9 +451,9 @@ namespace Nethermind.Synchronization
             _stateSyncFeed?.Dispose();
             _snapSyncFeed?.Dispose();
             _fullSyncFeed?.Dispose();
-            _headersFeed?.Dispose();
-            _bodiesFeed?.Dispose();
-            _receiptsFeed?.Dispose();
+            HeadersSyncFeed?.Dispose();
+            BodiesSyncFeed?.Dispose();
+            ReceiptsSyncFeed?.Dispose();
         }
     }
 }

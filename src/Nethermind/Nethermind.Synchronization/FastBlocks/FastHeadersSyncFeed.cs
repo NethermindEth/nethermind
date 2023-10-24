@@ -81,6 +81,8 @@ namespace Nethermind.Synchronization.FastBlocks
 
         protected virtual long HeadersDestinationNumber => 0;
         protected virtual bool AllHeadersDownloaded => (LowestInsertedBlockHeader?.Number ?? long.MaxValue) == 1;
+
+        public override bool IsFinished => AllHeadersDownloaded;
         private bool AnyHeaderDownloaded => LowestInsertedBlockHeader is not null;
 
         private long HeadersInQueue
