@@ -84,7 +84,7 @@ public class DictionaryWithSpecialUInt256KeyValueKeccakValConverter : JsonConver
         if (args.Length < 2) return false;
 
         bool isKeyUint256 = IsType(args[0], typeof(UInt256));
-        if(!isKeyUint256) return false;
+        if (!isKeyUint256) return false;
 
         bool isValValueKeccak = IsType(args[1], typeof(ValueKeccak));
         return isValValueKeccak;
