@@ -110,7 +110,9 @@ public class TransactionForRpc
     // Accept during deserialization, ignore during serialization
     // See: https://github.com/NethermindEth/nethermind/pull/6067
     [JsonPropertyName(nameof(Data))]
-    private byte[]? Data { set { Input = value; } }
+    [JsonConverter(typeof(DataConverter))]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public byte[]? Data { set { Input = value; } private get { return null; } }
 
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
     public byte[]? Input { get; set; }
@@ -225,5 +227,20 @@ public class TransactionForRpc
             : Math.Min(gasCap.Value, Gas.Value);
 
         From ??= Address.SystemUser;
+    }
+
+    private class DataConverter : JsonConverter<byte[]?>
+    {
+        public override bool HandleNull { get; } = false;
+
+        public override byte[]? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+        {
+            return JsonSerializer.Deserialize<byte[]?>(ref reader, options);
+        }
+
+        public override void Write(Utf8JsonWriter writer, byte[]? value, JsonSerializerOptions options)
+        {
+            throw new NotSupportedException();
+        }
     }
 }
