@@ -17,7 +17,6 @@ namespace Nethermind.Synchronization.ParallelSync
     {
 
         private readonly IBlockTree _blockTree;
-        private readonly ProgressTracker _progressTracker;
         private readonly ISyncConfig _syncConfig;
         private readonly IFullStateFinder _fullStateFinder;
 
@@ -27,26 +26,27 @@ namespace Nethermind.Synchronization.ParallelSync
         private readonly ISyncFeed<HeadersSyncBatch?>? _headersSyncFeed;
         private readonly ISyncFeed<BodiesSyncBatch?>? _bodiesSyncFeed;
         private readonly ISyncFeed<ReceiptsSyncBatch?>? _receiptsSyncFeed;
+        private readonly ISyncFeed<SnapSyncBatch?>? _snapSyncFeed;
 
         public SyncProgressResolver(
             IBlockTree blockTree,
             IFullStateFinder fullStateFinder,
-            ProgressTracker progressTracker,
             ISyncConfig syncConfig,
             ISyncFeed<HeadersSyncBatch?>? headersSyncFeed,
             ISyncFeed<BodiesSyncBatch?>? bodiesSyncFeed,
             ISyncFeed<ReceiptsSyncBatch?>? receiptsSyncFeed,
+            ISyncFeed<SnapSyncBatch?>? snapSyncFeed,
             ILogManager logManager)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _fullStateFinder = fullStateFinder ?? throw new ArgumentNullException(nameof(fullStateFinder));
-            _progressTracker = progressTracker ?? throw new ArgumentNullException(nameof(progressTracker));
             _syncConfig = syncConfig ?? throw new ArgumentNullException(nameof(syncConfig));
 
             _headersSyncFeed = headersSyncFeed;
             _bodiesSyncFeed = bodiesSyncFeed;
             _receiptsSyncFeed = receiptsSyncFeed;
+            _snapSyncFeed = snapSyncFeed;
         }
 
         public void UpdateBarriers()
@@ -96,7 +96,7 @@ namespace Nethermind.Synchronization.ParallelSync
         public bool IsFastBlocksReceiptsFinished() => !IsFastBlocks() || (!_syncConfig.DownloadReceiptsInFastSync ||
                                                                           (_receiptsSyncFeed?.IsFinished == true));
 
-        public bool IsSnapGetRangesFinished() => _progressTracker.IsSnapGetRangesFinished();
+        public bool IsSnapGetRangesFinished() => _snapSyncFeed?.IsFinished ?? true;
 
         public void RecalculateProgressPointers() => _blockTree.RecalculateTreeLevels();
 

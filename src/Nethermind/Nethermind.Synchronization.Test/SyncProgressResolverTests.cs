@@ -177,16 +177,14 @@ namespace Nethermind.Synchronization.Test
             ISyncFeed<ReceiptsSyncBatch?> receiptFeed = Substitute.For<ISyncFeed<ReceiptsSyncBatch?>>();
             receiptFeed.IsFinished.Returns(isReceiptFinished);
 
-            ProgressTracker progressTracker = new(blockTree, stateDb, LimboLogs.Instance);
-
             return new SyncProgressResolver(
                 blockTree,
                 new FullStateFinder(blockTree, stateDb, nodeResolver),
-                progressTracker,
                 syncConfig,
                 Substitute.For<ISyncFeed<HeadersSyncBatch?>>(),
                 Substitute.For<ISyncFeed<BodiesSyncBatch?>>(),
                 Substitute.For<ISyncFeed<ReceiptsSyncBatch?>>(),
+                Substitute.For<ISyncFeed<SnapSyncBatch?>>(),
                 limboLogs
             );
         }

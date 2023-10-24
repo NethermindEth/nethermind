@@ -26,10 +26,11 @@ namespace Nethermind.Synchronization.ParallelSync
         void Finish();
         Task FeedTask { get; }
 
-        // Called by MultiSyncModeSelector on sync mode change
+        /// Called by MultiSyncModeSelector on sync mode change
         void SyncModeSelectorOnChanged(SyncMode current);
 
-        // Return true if not finished. May not run even if return true if MultiSyncModeSelector said no.
+        /// Return true if not finished. May not run even if return true if MultiSyncModeSelector said no, probably
+        /// because it's waiting for other sync or something.
         bool IsFinished { get; }
     }
 }

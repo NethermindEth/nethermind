@@ -935,11 +935,11 @@ public partial class EngineModuleTests
         SyncProgressResolver syncProgressResolver = new(
             chain.BlockTree,
             new FullStateFinder(chain.BlockTree, chain.DbProvider.StateDb, chain.TrieStore),
-            new ProgressTracker(chain.BlockTree, chain.StateDb, LimboLogs.Instance),
             new SyncConfig(),
             Substitute.For<ISyncFeed<HeadersSyncBatch?>>(),
             Substitute.For<ISyncFeed<BodiesSyncBatch?>>(),
             Substitute.For<ISyncFeed<ReceiptsSyncBatch?>>(),
+            Substitute.For<ISyncFeed<SnapSyncBatch?>>(),
             LimboLogs.Instance);
 
         MultiSyncModeSelector multiSyncModeSelector = new(syncProgressResolver,

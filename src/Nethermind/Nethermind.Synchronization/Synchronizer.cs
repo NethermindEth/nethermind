@@ -55,7 +55,6 @@ namespace Nethermind.Synchronization
         protected readonly ISyncModeSelector _syncMode;
         private FastSyncFeed? _fastSyncFeed;
         private StateSyncFeed? _stateSyncFeed;
-        private SnapSyncFeed? _snapSyncFeed;
         private FullSyncFeed? _fullSyncFeed;
         private IProcessExitSource _exitSource;
         protected IBetterPeerStrategy _betterPeerStrategy;
@@ -74,16 +73,18 @@ namespace Nethermind.Synchronization
         private BodiesSyncFeed? _bodiesSyncFeed;
         private BodiesSyncFeed? BodiesSyncFeed => _bodiesSyncFeed ??= CreateBodiesSyncFeed();
 
+        private SnapSyncFeed? _snapSyncFeed;
+        private SnapSyncFeed? SnapSyncFeed => _snapSyncFeed ??= CreateSnapSyncFeed();
 
         private ISyncProgressResolver? _syncProgressResolver;
         public ISyncProgressResolver SyncProgressResolver => _syncProgressResolver ??= new SyncProgressResolver(
             _blockTree,
             new FullStateFinder(_blockTree, _dbProvider.StateDb, _readOnlyTrieStore),
-            _progressTracker,
             _syncConfig,
             HeadersSyncFeed,
             BodiesSyncFeed,
             ReceiptsSyncFeed,
+            SnapSyncFeed,
             _logManager);
 
         private readonly IReadOnlyTrieStore _readOnlyTrieStore;
@@ -201,11 +202,17 @@ namespace Nethermind.Synchronization
             return new ReceiptsSyncFeed(_specProvider, _blockTree, _receiptStorage, _syncPeerPool, _syncConfig, _syncReport, _logManager);
         }
 
+        private SnapSyncFeed? CreateSnapSyncFeed()
+        {
+            if (!_syncConfig.FastSync || !_syncConfig.SnapSync) return null;
+            return new SnapSyncFeed(SnapProvider, _logManager);
+        }
+
         private void SetupDbOptimizer()
         {
             new SyncDbTuner(
                 _syncConfig,
-                _snapSyncFeed,
+                SnapSyncFeed,
                 BodiesSyncFeed,
                 ReceiptsSyncFeed,
                 _dbProvider.StateDb as ITunableDb,
@@ -289,9 +296,8 @@ namespace Nethermind.Synchronization
 
         private void StartSnapSyncComponents()
         {
-            _snapSyncFeed = new SnapSyncFeed(SnapProvider, _logManager);
             SyncDispatcher<SnapSyncBatch> dispatcher = CreateDispatcher(
-                _snapSyncFeed,
+                SnapSyncFeed,
                 new SnapSyncDownloader(_logManager),
                 new SnapSyncAllocationStrategyFactory()
             );
@@ -415,7 +421,7 @@ namespace Nethermind.Synchronization
                 Task.WhenAll(
                     _fastSyncFeed?.FeedTask ?? Task.CompletedTask,
                     _stateSyncFeed?.FeedTask ?? Task.CompletedTask,
-                    _snapSyncFeed?.FeedTask ?? Task.CompletedTask,
+                    SnapSyncFeed?.FeedTask ?? Task.CompletedTask,
                     _fullSyncFeed?.FeedTask ?? Task.CompletedTask,
                     HeadersSyncFeed?.FeedTask ?? Task.CompletedTask,
                     BodiesSyncFeed?.FeedTask ?? Task.CompletedTask,
@@ -426,7 +432,7 @@ namespace Nethermind.Synchronization
         {
             WireFeedWithModeSelector(_fastSyncFeed);
             WireFeedWithModeSelector(_stateSyncFeed);
-            WireFeedWithModeSelector(_snapSyncFeed);
+            WireFeedWithModeSelector(SnapSyncFeed);
             WireFeedWithModeSelector(_fullSyncFeed);
             WireFeedWithModeSelector(HeadersSyncFeed);
             WireFeedWithModeSelector(BodiesSyncFeed);
@@ -449,7 +455,7 @@ namespace Nethermind.Synchronization
             _syncReport.Dispose();
             _fastSyncFeed?.Dispose();
             _stateSyncFeed?.Dispose();
-            _snapSyncFeed?.Dispose();
+            SnapSyncFeed?.Dispose();
             _fullSyncFeed?.Dispose();
             HeadersSyncFeed?.Dispose();
             BodiesSyncFeed?.Dispose();
