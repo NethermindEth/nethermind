@@ -46,7 +46,7 @@ namespace Nethermind.Runner.Test.Ethereum.Steps.Migrations
 
             BlockTreeBuilder blockTreeBuilder = Core.Test.Builders.Build.A.BlockTree().OfChainLength(chainLength);
             IBlockTree blockTree = blockTreeBuilder.TestObject;
-            ChainLevelInfoRepository chainLevelInfoRepository = blockTreeBuilder.ChainLevelInfoRepository;
+            IChainLevelInfoRepository chainLevelInfoRepository = blockTreeBuilder.ChainLevelInfoRepository;
 
             InMemoryReceiptStorage inMemoryReceiptStorage = new(true) { MigratedBlockNumber = currentMigratedBlockNumber };
             InMemoryReceiptStorage outMemoryReceiptStorage = new(true) { MigratedBlockNumber = currentMigratedBlockNumber };
@@ -68,14 +68,15 @@ namespace Nethermind.Runner.Test.Ethereum.Steps.Migrations
             }
 
             TestMemColumnsDb<ReceiptsColumns> receiptColumnDb = new();
+            TestMemDb blocksDb = (TestMemDb)receiptColumnDb.GetColumnDb(ReceiptsColumns.Blocks);
+            TestMemDb txDb = (TestMemDb)receiptColumnDb.GetColumnDb(ReceiptsColumns.Transactions);
 
             // Put the last block receipt encoding
             Block lastBlock = blockTree.FindBlock(chainLength - 1);
             TxReceipt[] receipts = inMemoryReceiptStorage.Get(lastBlock);
             using (NettyRlpStream nettyStream = receiptArrayStorageDecoder.EncodeToNewNettyStream(receipts, RlpBehaviors.Storage))
             {
-                receiptColumnDb.GetColumnDb(ReceiptsColumns.Blocks)
-                    .Set(Bytes.Concat(lastBlock.Number.ToBigEndianByteArray(), lastBlock.Hash.BytesToArray()), nettyStream.AsSpan());
+                blocksDb.Set(Bytes.Concat(lastBlock.Number.ToBigEndianByteArray(), lastBlock.Hash.BytesToArray()), nettyStream.AsSpan());
             }
 
             ManualResetEvent guard = new(false);
@@ -108,14 +109,13 @@ namespace Nethermind.Runner.Test.Ethereum.Steps.Migrations
             {
                 int blockNum = (commandStartBlockNumber ?? chainLength) - 1 - 1;
                 int txCount = blockNum * 2;
-                receiptColumnDb
-                    .KeyWasWritten((item => item.Item2 == null), txCount);
+                txDb.KeyWasWritten((item => item.Item2 == null), txCount);
                 ((TestMemDb)receiptColumnDb.GetColumnDb(ReceiptsColumns.Blocks)).KeyWasRemoved((_ => true), blockNum);
                 outMemoryReceiptStorage.Count.Should().Be(txCount);
             }
             else
             {
-                receiptColumnDb.KeyWasWritten((item => item.Item2 == null), 0);
+                txDb.KeyWasWritten((item => item.Item2 == null), 0);
             }
         }
 

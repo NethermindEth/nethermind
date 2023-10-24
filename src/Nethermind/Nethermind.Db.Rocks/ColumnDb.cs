@@ -22,6 +22,7 @@ public class ColumnDb : IDbWithSpan
     {
         _rocksDb = rocksDb;
         _mainDb = mainDb;
+        if (name == "Default") name = "default";
         _columnFamily = _rocksDb.GetColumnFamily(name);
         Name = name;
     }

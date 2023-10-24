@@ -55,7 +55,6 @@ public class DebugBridge : IDebugBridge
         IDb blockInfosDb = dbProvider.BlockInfosDb ?? throw new ArgumentNullException(nameof(dbProvider.BlockInfosDb));
         IDb blocksDb = dbProvider.BlocksDb ?? throw new ArgumentNullException(nameof(dbProvider.BlocksDb));
         IDb headersDb = dbProvider.HeadersDb ?? throw new ArgumentNullException(nameof(dbProvider.HeadersDb));
-        IDb receiptsDb = dbProvider.ReceiptsDb ?? throw new ArgumentNullException(nameof(dbProvider.ReceiptsDb));
         IDb codeDb = dbProvider.CodeDb ?? throw new ArgumentNullException(nameof(dbProvider.CodeDb));
         IDb metadataDb = dbProvider.MetadataDb ?? throw new ArgumentNullException(nameof(dbProvider.MetadataDb));
 
@@ -68,8 +67,13 @@ public class DebugBridge : IDebugBridge
             {DbNames.Headers, headersDb},
             {DbNames.Metadata, metadataDb},
             {DbNames.Code, codeDb},
-            {DbNames.Receipts, receiptsDb},
         };
+
+        IColumnsDb<ReceiptsColumns> receiptsDb = dbProvider.ReceiptsDb ?? throw new ArgumentNullException(nameof(dbProvider.ReceiptsDb));
+        foreach (ReceiptsColumns receiptsDbColumnKey in receiptsDb.ColumnKeys)
+        {
+            _dbMappings[DbNames.Receipts + receiptsDbColumnKey] = receiptsDb.GetColumnDb(receiptsDbColumnKey);
+        }
     }
 
     public byte[] GetDbValue(string dbName, byte[] key)

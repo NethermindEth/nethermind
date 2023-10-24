@@ -928,7 +928,11 @@ namespace Nethermind.Synchronization.Test
                 {
                     if (_blockTree is null)
                     {
-                        _blockTree = new BlockTree(new MemDb(), new MemDb(), _blockInfoDb, new ChainLevelInfoRepository(_blockInfoDb), SpecProvider, NullBloomStorage.Instance, LimboLogs.Instance);
+                        _blockTree = Build.A.BlockTree()
+                            .WithoutSettingHead
+                            .WithSpecProvider(SpecProvider)
+                            .WithBlockInfoDb(_blockInfoDb)
+                            .TestObject;
                         _blockTree.SuggestBlock(_genesis);
                     }
 

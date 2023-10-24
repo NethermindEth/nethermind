@@ -13,7 +13,7 @@ using Nethermind.Serialization.Json;
 
 namespace Nethermind.Db.Rpc
 {
-    public class RpcDb : IDb
+    public class RpcDb : IDb, IDbWithSpan
     {
         private readonly string _dbName;
         private readonly IJsonSerializer _jsonSerializer;
@@ -100,6 +100,20 @@ namespace Nethermind.Db.Rpc
             }
 
             return value;
+        }
+
+        public Span<byte> GetSpan(ReadOnlySpan<byte> key)
+        {
+            return Get(key);
+        }
+
+        public void PutSpan(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value)
+        {
+            Set(key, value.ToArray());
+        }
+
+        public void DangerousReleaseMemory(in Span<byte> span)
+        {
         }
     }
 }

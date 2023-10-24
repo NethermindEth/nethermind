@@ -6,13 +6,13 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.IO.Abstractions;
-using System.Linq;
 using System.Reflection;
 using System.Threading;
 using ConcurrentCollections;
+using Nethermind.Config;
 using Nethermind.Core;
-using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
 using Nethermind.Db.Rocks.Config;
 using Nethermind.Db.Rocks.Statistics;
@@ -131,8 +131,13 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
             if (columnNames != null)
             {
                 columnFamilies = new ColumnFamilies();
-                foreach (string columnFamily in columnNames)
+                foreach (string enumColumnName in columnNames)
                 {
+                    string columnFamily = enumColumnName;
+
+                    // "default" is a special column name with rocksdb, which is what previously not specifying column goes to
+                    if (columnFamily == "Default") columnFamily = "default";
+
                     ColumnFamilyOptions options = new();
                     BuildOptions(new PerTableDbConfig(dbConfig, _settings, columnFamily), options, sharedCache);
                     columnFamilies.Add(columnFamily, options);
@@ -358,6 +363,13 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
             options.SetMaxOpenFiles(dbConfig.MaxOpenFiles.Value);
         }
 
+        // Target size of each SST file.
+        options.SetTargetFileSizeBase(dbConfig.TargetFileSizeBase);
+
+        // Multiply the target size of SST file by this much every level down. Does not have much downside on
+        // hash based DB, but might disable some move optimization on db with blocknumber key.
+        options.SetTargetFileSizeMultiplier(dbConfig.TargetFileSizeMultiplier);
+
         if (dbConfig.MaxBytesPerSec.HasValue)
         {
             _rateLimiter =
@@ -368,6 +380,7 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
         ulong writeBufferSize = dbConfig.WriteBufferSize;
         options.SetWriteBufferSize(writeBufferSize);
         int writeBufferNumber = (int)dbConfig.WriteBufferNumber;
+        if (writeBufferNumber < 1) throw new InvalidConfigurationException($"Error initializing {Name} db. Max write buffer number must be more than 1. max write buffer number: {writeBufferNumber}", ExitCodes.GeneralError);
         options.SetMaxWriteBufferNumber(writeBufferNumber);
 
         lock (_dbsByPath)
@@ -1159,7 +1172,7 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
             { "level0_stop_writes_trigger", 36.ToString() },
 
             { "max_bytes_for_level_base", _perTableDbConfig.MaxBytesForLevelBase.ToString() },
-            { "target_file_size_base", 64.MiB().ToString() },
+            { "target_file_size_base", _perTableDbConfig.TargetFileSizeBase.ToString() },
             { "disable_auto_compactions", "false" },
 
             { "enable_blob_files", "false" },
@@ -1249,7 +1262,13 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
         {
             { "enable_blob_files", "true" },
             { "blob_compression_type", "kSnappyCompression" },
-            { "write_buffer_size", 64.MiB().ToString() },
+
+            // Make file size big, so we have less of them.
+            { "write_buffer_size", 256.MiB().ToString() },
+            // Current memtable + 2 concurrent writes. Can't have too many of these as it take up RAM.
+            { "max_write_buffer_number", 3.ToString() },
+
+            // These two are SST files instead of the blobs, which are now much smaller.
             { "max_bytes_for_level_base", 4.MiB().ToString() },
             { "target_file_size_base", 1.MiB().ToString() },
         };

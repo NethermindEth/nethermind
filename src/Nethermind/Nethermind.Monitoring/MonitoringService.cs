@@ -80,7 +80,8 @@ namespace Nethermind.Monitoring
             }
             if (_exposePort is not null)
             {
-                IMetricServer metricServer = new KestrelMetricServer(_exposePort.Value);
+                // KestrelMetricServer intercept SIGTERM causing exitcode to be incorrect
+                IMetricServer metricServer = new MetricServer(_exposePort.Value);
                 metricServer.Start();
             }
             await Task.Factory.StartNew(() => _metricsController.StartUpdating(), TaskCreationOptions.LongRunning);

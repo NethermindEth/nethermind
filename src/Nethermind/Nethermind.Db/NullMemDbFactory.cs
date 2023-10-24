@@ -16,7 +16,7 @@ namespace Nethermind.Db
             throw new InvalidOperationException();
         }
 
-        public IColumnsDb<T> CreateColumnsDb<T>(string dbName)
+        public IColumnsDb<T> CreateColumnsDb<T>(string dbName) where T : struct, Enum
         {
             throw new InvalidOperationException();
         }

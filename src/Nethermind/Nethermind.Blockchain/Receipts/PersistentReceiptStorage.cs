@@ -26,6 +26,7 @@ namespace Nethermind.Blockchain.Receipts
         private readonly IReceiptsRecovery _receiptsRecovery;
         private long? _lowestInsertedReceiptBlock;
         private readonly IDbWithSpan _blocksDb;
+        private readonly IDbWithSpan _defaultColumn;
         private readonly IDb _transactionDb;
         private static readonly Keccak MigrationBlockNumberKey = Keccak.Compute(nameof(MigratedBlockNumber));
         private long _migratedBlockNumber;
@@ -48,9 +49,10 @@ namespace Nethermind.Blockchain.Receipts
             ReceiptArrayStorageDecoder? storageDecoder = null
         )
         {
-            long Get(Keccak key, long defaultValue) => _database.Get(key)?.ToLongFromBigEndianByteArrayWithoutLeadingZeros() ?? defaultValue;
-
             _database = receiptsDb ?? throw new ArgumentNullException(nameof(receiptsDb));
+            _defaultColumn = _database.GetColumnDb(ReceiptsColumns.Default);
+            long Get(Keccak key, long defaultValue) => _defaultColumn.Get(key)?.ToLongFromBigEndianByteArrayWithoutLeadingZeros() ?? defaultValue;
+
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
             _receiptsRecovery = receiptsRecovery ?? throw new ArgumentNullException(nameof(receiptsRecovery));
             _blocksDb = _database.GetColumnDb(ReceiptsColumns.Blocks);
@@ -60,7 +62,7 @@ namespace Nethermind.Blockchain.Receipts
             _storageDecoder = storageDecoder ?? ReceiptArrayStorageDecoder.Instance;
             _receiptConfig = receiptConfig ?? throw new ArgumentNullException(nameof(receiptConfig));
 
-            byte[] lowestBytes = _database.Get(Keccak.Zero);
+            byte[] lowestBytes = _defaultColumn.Get(Keccak.Zero);
             _lowestInsertedReceiptBlock = lowestBytes is null ? (long?)null : new RlpStream(lowestBytes).DecodeLong();
             _migratedBlockNumber = Get(MigrationBlockNumberKey, long.MaxValue);
 
@@ -74,7 +76,7 @@ namespace Nethermind.Blockchain.Receipts
         {
             if (e.PreviousBlock != null)
             {
-                RemoveBlockTx(e.PreviousBlock);
+                RemoveBlockTx(e.PreviousBlock, e.Block);
             }
 
             // Dont block main loop
@@ -109,14 +111,14 @@ namespace Nethermind.Blockchain.Receipts
         // Find receipt stored with old - obsolete format.
         private TxReceipt FindReceiptObsolete(Keccak hash)
         {
-            var receiptData = _database.GetSpan(hash);
+            var receiptData = _defaultColumn.GetSpan(hash);
             try
             {
                 return DeserializeReceiptObsolete(hash, receiptData);
             }
             finally
             {
-                _database.DangerousReleaseMemory(receiptData);
+                _defaultColumn.DangerousReleaseMemory(receiptData);
             }
         }
 
@@ -235,7 +237,7 @@ namespace Nethermind.Blockchain.Receipts
             {
                 recoveryContextFactory = () =>
                 {
-                    ReceiptRecoveryBlock? block = _blockStore.GetReceiptRecoveryBlock(blockHash);
+                    ReceiptRecoveryBlock? block = _blockStore.GetReceiptRecoveryBlock(blockNumber, blockHash);
 
                     if (!block.HasValue)
                     {
@@ -300,7 +302,7 @@ namespace Nethermind.Blockchain.Receipts
                 _lowestInsertedReceiptBlock = value;
                 if (value.HasValue)
                 {
-                    _database.Set(Keccak.Zero, Rlp.Encode(value.Value).Bytes);
+                    _defaultColumn.Set(Keccak.Zero, Rlp.Encode(value.Value).Bytes);
                 }
             }
         }
@@ -311,7 +313,7 @@ namespace Nethermind.Blockchain.Receipts
             set
             {
                 _migratedBlockNumber = value;
-                _database.Set(MigrationBlockNumberKey, MigratedBlockNumber.ToBigEndianByteArrayWithoutLeadingZeros());
+                _defaultColumn.Set(MigrationBlockNumberKey, MigratedBlockNumber.ToBigEndianByteArrayWithoutLeadingZeros());
             }
         }
 
@@ -364,11 +366,20 @@ namespace Nethermind.Blockchain.Receipts
             }
         }
 
-        private void RemoveBlockTx(Block block)
+        private void RemoveBlockTx(Block block, Block? exceptBlock = null)
         {
+            HashSet<Keccak> newTxs = null;
+            if (exceptBlock is not null)
+            {
+                newTxs = new HashSet<Keccak>(exceptBlock.Transactions.Select((tx) => tx.Hash));
+            }
+
             using IBatch batch = _transactionDb.StartBatch();
             foreach (Transaction tx in block.Transactions)
             {
+                // If the tx is contained in another block, don't remove it. Used for reorg where the same tx
+                // is contained in the new block
+                if (newTxs?.Contains(tx.Hash) == true) continue;
                 batch[tx.Hash.Bytes] = null;
             }
         }
