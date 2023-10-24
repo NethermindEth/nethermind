@@ -26,7 +26,6 @@ using Nethermind.Consensus.Ethash;
 using Nethermind.Core;
 using Nethermind.Core.Exceptions;
 using Nethermind.Db.Rocks;
-using Nethermind.Hive;
 using Nethermind.KeyStore.Config;
 using Nethermind.Logging;
 using Nethermind.Logging.NLog;
@@ -133,7 +132,6 @@ public static class Program
             typeof(CliquePlugin),
             typeof(EthashPlugin),
             typeof(NethDevPlugin),
-            typeof(HivePlugin),
             typeof(UPnPPlugin)
         );
 
@@ -234,6 +232,7 @@ public static class Program
             {
                 Environment.ExitCode = ExitCodes.GeneralError;
             }
+
             throw;
         }
         finally
@@ -248,8 +247,7 @@ public static class Program
         var alternativePath = nativeLibraryName switch
         {
             "libdl" => "libdl.so.2",
-            "libsnappy" or "snappy" => Directory.Exists(macosSnappyPath) ?
-                Directory.EnumerateFiles(macosSnappyPath, "libsnappy.dylib", SearchOption.AllDirectories).FirstOrDefault() : "libsnappy.so.1",
+            "libsnappy" or "snappy" => Directory.Exists(macosSnappyPath) ? Directory.EnumerateFiles(macosSnappyPath, "libsnappy.dylib", SearchOption.AllDirectories).FirstOrDefault() : "libsnappy.so.1",
             _ => null
         };
 
@@ -283,8 +281,8 @@ public static class Program
                 ConfigItemAttribute? configItemAttribute = propertyInfo.GetCustomAttribute<ConfigItemAttribute>();
                 if (!(configItemAttribute?.DisabledForCli ?? false))
                 {
-                    _ = app.Option($"--{configType.Name[1..].Replace("Config", string.Empty)}.{propertyInfo.Name}", $"{(configItemAttribute is null ? "<missing documentation>" : configItemAttribute.Description + $" (DEFAULT: {configItemAttribute.DefaultValue})" ?? "<missing documentation>")}", CommandOptionType.SingleValue);
-
+                    _ = app.Option($"--{configType.Name[1..].Replace("Config", string.Empty)}.{propertyInfo.Name}",
+                        $"{(configItemAttribute is null ? "<missing documentation>" : configItemAttribute.Description + $" (DEFAULT: {configItemAttribute.DefaultValue})" ?? "<missing documentation>")}", CommandOptionType.SingleValue);
                 }
             }
         }
@@ -301,7 +299,8 @@ public static class Program
                 ConfigItemAttribute? configItemAttribute = propertyInfo.GetCustomAttribute<ConfigItemAttribute>();
                 if (configItemAttribute is not null && !(string.IsNullOrEmpty(configItemAttribute?.EnvironmentVariable)))
                 {
-                    sb.AppendLine($"{configItemAttribute.EnvironmentVariable} - {(string.IsNullOrEmpty(configItemAttribute.Description) ? "<missing documentation>" : configItemAttribute.Description)} (DEFAULT: {configItemAttribute.DefaultValue})");
+                    sb.AppendLine(
+                        $"{configItemAttribute.EnvironmentVariable} - {(string.IsNullOrEmpty(configItemAttribute.Description) ? "<missing documentation>" : configItemAttribute.Description)} (DEFAULT: {configItemAttribute.DefaultValue})");
                 }
             }
 

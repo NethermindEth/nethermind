@@ -22,53 +22,52 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Antlr4.Runtime.Standard" />
-    <PackageReference Include="AspNetCore.HealthChecks.UI" />
-    <PackageReference Include="AspNetCore.HealthChecks.UI.Client" />
-    <PackageReference Include="AspNetCore.HealthChecks.UI.InMemory.Storage" />
-    <PackageReference Include="Microsoft.AspNetCore.DataProtection.Abstractions" />
-    <PackageReference Include="Microsoft.AspNetCore.DataProtection.Extensions" />
-    <PackageReference Include="Microsoft.Extensions.CommandLineUtils" />
-    <PackageReference Include="Microsoft.Extensions.Logging" />
-    <PackageReference Include="Microsoft.VisualStudio.Azure.Containers.Tools.Targets" />
-    <PackageReference Include="NLog.Targets.Seq" />
-    <PackageReference Include="NLog" />
-    <PackageReference Include="Pyroscope" />
-    <PackageReference Include="Seq.Api" />
-    <PackageReference Include="System.Linq.Async" />
-    <PackageReference Include="TestableIO.System.IO.Abstractions.Wrappers" />
-    <PackageReference Include="YamlDotNet" />
+    <PackageReference Include="Antlr4.Runtime.Standard"/>
+    <PackageReference Include="AspNetCore.HealthChecks.UI"/>
+    <PackageReference Include="AspNetCore.HealthChecks.UI.Client"/>
+    <PackageReference Include="AspNetCore.HealthChecks.UI.InMemory.Storage"/>
+    <PackageReference Include="Microsoft.AspNetCore.DataProtection.Abstractions"/>
+    <PackageReference Include="Microsoft.AspNetCore.DataProtection.Extensions"/>
+    <PackageReference Include="Microsoft.Extensions.CommandLineUtils"/>
+    <PackageReference Include="Microsoft.Extensions.Logging"/>
+    <PackageReference Include="Microsoft.VisualStudio.Azure.Containers.Tools.Targets"/>
+    <PackageReference Include="NLog.Targets.Seq"/>
+    <PackageReference Include="NLog"/>
+    <PackageReference Include="Pyroscope"/>
+    <PackageReference Include="Seq.Api"/>
+    <PackageReference Include="System.Linq.Async"/>
+    <PackageReference Include="TestableIO.System.IO.Abstractions.Wrappers"/>
+    <PackageReference Include="YamlDotNet"/>
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\Nethermind.AccountAbstraction\Nethermind.AccountAbstraction.csproj" />
-    <ProjectReference Include="..\Nethermind.Api\Nethermind.Api.csproj" />
-    <ProjectReference Include="..\Nethermind.Consensus.AuRa\Nethermind.Consensus.AuRa.csproj" />
-    <ProjectReference Include="..\Nethermind.Consensus.Clique\Nethermind.Consensus.Clique.csproj" />
-    <ProjectReference Include="..\Nethermind.Consensus.Ethash\Nethermind.Consensus.Ethash.csproj" />
-    <ProjectReference Include="..\Nethermind.Core\Nethermind.Core.csproj" />
-    <ProjectReference Include="..\Nethermind.Db.Rocks\Nethermind.Db.Rocks.csproj" />
-    <ProjectReference Include="..\Nethermind.Db\Nethermind.Db.csproj" />
-    <ProjectReference Include="..\Nethermind.EthStats\Nethermind.EthStats.csproj" />
-    <ProjectReference Include="..\Nethermind.Grpc\Nethermind.Grpc.csproj" />
-    <ProjectReference Include="..\Nethermind.Hive\Nethermind.Hive.csproj" />
-    <ProjectReference Include="..\Nethermind.Init\Nethermind.Init.csproj" />
-    <ProjectReference Include="..\Nethermind.JsonRpc.TraceStore\Nethermind.JsonRpc.TraceStore.csproj" />
-    <ProjectReference Include="..\Nethermind.JsonRpc\Nethermind.JsonRpc.csproj" />
-    <ProjectReference Include="..\Nethermind.Logging.NLog\Nethermind.Logging.NLog.csproj" />
-    <ProjectReference Include="..\Nethermind.Merge.Plugin\Nethermind.Merge.Plugin.csproj" />
-    <ProjectReference Include="..\Nethermind.Merge.AuRa\Nethermind.Merge.AuRa.csproj" />
-    <ProjectReference Include="..\Nethermind.Mev\Nethermind.Mev.csproj" />
-    <ProjectReference Include="..\Nethermind.Monitoring\Nethermind.Monitoring.csproj" />
-    <ProjectReference Include="..\Nethermind.Network\Nethermind.Network.csproj" />
-    <ProjectReference Include="..\Nethermind.Specs\Nethermind.Specs.csproj" />
-    <ProjectReference Include="..\Nethermind.Db.Rpc\Nethermind.Db.Rpc.csproj" />
-    <ProjectReference Include="..\Nethermind.Synchronization\Nethermind.Synchronization.csproj" />
-    <ProjectReference Include="..\Nethermind.Sockets\Nethermind.Sockets.csproj" />
-    <ProjectReference Include="..\Nethermind.Seq\Nethermind.Seq.csproj" />
-    <ProjectReference Include="..\Nethermind.HealthChecks\Nethermind.HealthChecks.csproj" />
-    <ProjectReference Include="..\Nethermind.UPnP.Plugin\Nethermind.UPnP.Plugin.csproj" />
-    <ProjectReference Include="..\Nethermind.Init.Snapshot\Nethermind.Init.Snapshot.csproj" />
+    <ProjectReference Include="..\Nethermind.AccountAbstraction\Nethermind.AccountAbstraction.csproj"/>
+    <ProjectReference Include="..\Nethermind.Api\Nethermind.Api.csproj"/>
+    <ProjectReference Include="..\Nethermind.Consensus.AuRa\Nethermind.Consensus.AuRa.csproj"/>
+    <ProjectReference Include="..\Nethermind.Consensus.Clique\Nethermind.Consensus.Clique.csproj"/>
+    <ProjectReference Include="..\Nethermind.Consensus.Ethash\Nethermind.Consensus.Ethash.csproj"/>
+    <ProjectReference Include="..\Nethermind.Core\Nethermind.Core.csproj"/>
+    <ProjectReference Include="..\Nethermind.Db.Rocks\Nethermind.Db.Rocks.csproj"/>
+    <ProjectReference Include="..\Nethermind.Db\Nethermind.Db.csproj"/>
+    <ProjectReference Include="..\Nethermind.EthStats\Nethermind.EthStats.csproj"/>
+    <ProjectReference Include="..\Nethermind.Grpc\Nethermind.Grpc.csproj"/>
+    <ProjectReference Include="..\Nethermind.Init\Nethermind.Init.csproj"/>
+    <ProjectReference Include="..\Nethermind.JsonRpc.TraceStore\Nethermind.JsonRpc.TraceStore.csproj"/>
+    <ProjectReference Include="..\Nethermind.JsonRpc\Nethermind.JsonRpc.csproj"/>
+    <ProjectReference Include="..\Nethermind.Logging.NLog\Nethermind.Logging.NLog.csproj"/>
+    <ProjectReference Include="..\Nethermind.Merge.Plugin\Nethermind.Merge.Plugin.csproj"/>
+    <ProjectReference Include="..\Nethermind.Merge.AuRa\Nethermind.Merge.AuRa.csproj"/>
+    <ProjectReference Include="..\Nethermind.Mev\Nethermind.Mev.csproj"/>
+    <ProjectReference Include="..\Nethermind.Monitoring\Nethermind.Monitoring.csproj"/>
+    <ProjectReference Include="..\Nethermind.Network\Nethermind.Network.csproj"/>
+    <ProjectReference Include="..\Nethermind.Specs\Nethermind.Specs.csproj"/>
+    <ProjectReference Include="..\Nethermind.Db.Rpc\Nethermind.Db.Rpc.csproj"/>
+    <ProjectReference Include="..\Nethermind.Synchronization\Nethermind.Synchronization.csproj"/>
+    <ProjectReference Include="..\Nethermind.Sockets\Nethermind.Sockets.csproj"/>
+    <ProjectReference Include="..\Nethermind.Seq\Nethermind.Seq.csproj"/>
+    <ProjectReference Include="..\Nethermind.HealthChecks\Nethermind.HealthChecks.csproj"/>
+    <ProjectReference Include="..\Nethermind.UPnP.Plugin\Nethermind.UPnP.Plugin.csproj"/>
+    <ProjectReference Include="..\Nethermind.Init.Snapshot\Nethermind.Init.Snapshot.csproj"/>
   </ItemGroup>
 
   <ItemGroup>
@@ -90,30 +89,30 @@
     <Content Update="NLog.config">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </Content>
-    <None Remove="keystore\**" />
+    <None Remove="keystore\**"/>
   </ItemGroup>
 
   <Target Name="CollectPlugins" AfterTargets="AfterBuild;AfterPublish">
     <ItemGroup>
-      <PluginsForBuild Include="$(OutputPath)\Nethermind.Merge.AuRa.*;$(OutputPath)\Nethermind.Merge.Plugin.*;$(OutputPath)\Nethermind.Consensus.AuRa.*;$(OutputPath)\Nethermind.Init.*;$(OutputPath)\Nethermind.Mev.*;$(OutputPath)\Nethermind.HealthChecks.*;$(OutputPath)\Nethermind.Api.*;$(OutputPath)\Nethermind.AccountAbstraction.*;$(OutputPath)\Nethermind.EthStats.*;$(OutputPath)\Nethermind.JsonRpc.TraceStore.*;$(OutputPath)\Nethermind.Init.Snapshot.*" />
-      <PluginsForPublish Include="$(OutputPath)\Nethermind.Merge.AuRa.dll;$(OutputPath)\Nethermind.Merge.Plugin.dll;$(OutputPath)\Nethermind.Consensus.AuRa.dll;$(OutputPath)\Nethermind.Init.dll;$(OutputPath)\Nethermind.Mev.dll;$(OutputPath)\Nethermind.HealthChecks.dll;$(OutputPath)\Nethermind.Api.dll;$(OutputPath)\Nethermind.AccountAbstraction.dll;$(OutputPath)\Nethermind.EthStats.dll;$(OutputPath)\Nethermind.JsonRpc.TraceStore.dll;$(OutputPath)\Nethermind.Init.Snapshot.dll" />
+      <PluginsForBuild Include="$(OutputPath)\Nethermind.Merge.AuRa.*;$(OutputPath)\Nethermind.Merge.Plugin.*;$(OutputPath)\Nethermind.Consensus.AuRa.*;$(OutputPath)\Nethermind.Init.*;$(OutputPath)\Nethermind.Mev.*;$(OutputPath)\Nethermind.HealthChecks.*;$(OutputPath)\Nethermind.Api.*;$(OutputPath)\Nethermind.AccountAbstraction.*;$(OutputPath)\Nethermind.EthStats.*;$(OutputPath)\Nethermind.JsonRpc.TraceStore.*;$(OutputPath)\Nethermind.Init.Snapshot.*;$(OutputPath)\Nethermind.Hive.*"/>
+      <PluginsForPublish Include="$(OutputPath)\Nethermind.Merge.AuRa.dll;$(OutputPath)\Nethermind.Merge.Plugin.dll;$(OutputPath)\Nethermind.Consensus.AuRa.dll;$(OutputPath)\Nethermind.Init.dll;$(OutputPath)\Nethermind.Mev.dll;$(OutputPath)\Nethermind.HealthChecks.dll;$(OutputPath)\Nethermind.Api.dll;$(OutputPath)\Nethermind.AccountAbstraction.dll;$(OutputPath)\Nethermind.EthStats.dll;$(OutputPath)\Nethermind.JsonRpc.TraceStore.dll;$(OutputPath)\Nethermind.Init.Snapshot.dll;$(OutputPath)\Nethermind.Hive.dll"/>
     </ItemGroup>
   </Target>
 
   <Target Name="CopyPluginsAfterBuild" AfterTargets="AfterBuild" DependsOnTargets="CollectPlugins">
-    <Message Text="Copying plugins after build..." Importance="High" />
-    <Copy SourceFiles="@(PluginsForBuild)" DestinationFolder="$(OutDir)\plugins" />
+    <Message Text="Copying plugins after build..." Importance="High"/>
+    <Copy SourceFiles="@(PluginsForBuild)" DestinationFolder="$(OutDir)\plugins"/>
   </Target>
 
   <Target Name="CopyPluginsAfterPublish" AfterTargets="AfterPublish" DependsOnTargets="CollectPlugins">
-    <Message Text="Copying plugins after publish..." Importance="High" />
-    <Copy SourceFiles="@(PluginsForBuild)" DestinationFolder="$(OutDir)\plugins" />
-    <Copy SourceFiles="@(PluginsForPublish)" DestinationFolder="$(PublishDir)\plugins" />
+    <Message Text="Copying plugins after publish..." Importance="High"/>
+    <Copy SourceFiles="@(PluginsForBuild)" DestinationFolder="$(OutDir)\plugins"/>
+    <Copy SourceFiles="@(PluginsForPublish)" DestinationFolder="$(PublishDir)\plugins"/>
   </Target>
 
   <Target Name="CommitFallback" AfterTargets="BeforeBuild" Condition="'$(Commit)' == ''">
     <Exec Command="git describe --always --exclude=* --abbrev=40" ConsoleToMSBuild="True" IgnoreExitCode="False" StandardOutputImportance="low">
-      <Output PropertyName="Commit" TaskParameter="ConsoleOutput" />
+      <Output PropertyName="Commit" TaskParameter="ConsoleOutput"/>
     </Exec>
     <PropertyGroup>
       <SourceRevisionId>$(Commit.Substring(0, 8))</SourceRevisionId>
