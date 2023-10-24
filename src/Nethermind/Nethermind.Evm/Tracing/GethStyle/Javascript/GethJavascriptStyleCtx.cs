@@ -16,13 +16,10 @@ public class GethJavascriptStyleCtx
     public long gas { get; set; }
     public long gasUsed { get; set; }
     public ulong gasPrice { get; set; }
-    public long intrinsicGas { get; set; }
     public BigInteger value { get; set; }
     public long block { get; set; }
     public ScriptObject? output { get; set; }
-    public string time { get; set; }
-
     public ScriptObject? blockHash { get; set; }
     public int? txIndex { get; set; }
-    public dynamic? txHash { get; set; }
+    public ScriptObject? txHash { get; set; }
 }

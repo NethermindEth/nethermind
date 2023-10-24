@@ -65,6 +65,7 @@ public static class JavascriptConverter
     public static byte[]? ToBytes(this object input) => input switch
     {
         string hexString => Bytes.FromHexString(hexString),
+        ITypedArray<byte> typedArray => typedArray.ToArray(),
         IList list => list.ToBytes().ToArray(),
         _ => null
     };
@@ -76,6 +77,7 @@ public static class JavascriptConverter
         string hexString => Address.TryParseVariableLength(hexString, out Address parsedAddress)
             ? parsedAddress
             : throw new ArgumentException("Not correct address", nameof(address)),
+        ITypedArray<byte> typedArray => new Address(typedArray.ToArray()),
         IList list => list.ToAddress(),
         _ => throw new ArgumentException("Not correct address", nameof(address))
     } ?? throw new ArgumentException("Not correct address", nameof(address));
