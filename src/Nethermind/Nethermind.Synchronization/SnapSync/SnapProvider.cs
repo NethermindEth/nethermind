@@ -273,7 +273,7 @@ namespace Nethermind.Synchronization.SnapSync
         {
             HashSet<ValueKeccak> set = requestedHashes.ToHashSet();
 
-            using (IBatch writeBatch = _dbProvider.CodeDb.StartBatch())
+            using (IWriteBatch writeWriteBatch = _dbProvider.CodeDb.StartWriteBatch())
             {
                 for (int i = 0; i < codes.Length; i++)
                 {
@@ -283,7 +283,7 @@ namespace Nethermind.Synchronization.SnapSync
                     if (set.Remove(codeHash))
                     {
                         Interlocked.Add(ref Metrics.SnapStateSynced, code.Length);
-                        writeBatch[codeHash.Bytes] = code;
+                        writeWriteBatch[codeHash.Bytes] = code;
                     }
                 }
             }

@@ -1600,7 +1600,7 @@ namespace Nethermind.Blockchain
         {
             FinalizedHash = finalizedBlockHash;
             SafeHash = safeBlockHash;
-            using (_metadataDb.StartBatch())
+            using (_metadataDb.StartWriteBatch())
             {
                 _metadataDb.Set(MetadataDbKeys.FinalizedBlockHash, Rlp.Encode(FinalizedHash!).Bytes);
                 _metadataDb.Set(MetadataDbKeys.SafeBlockHash, Rlp.Encode(SafeHash!).Bytes);

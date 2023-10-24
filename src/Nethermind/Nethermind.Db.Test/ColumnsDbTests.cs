@@ -81,7 +81,7 @@ public class ColumnsDbTests
     [Test]
     public void TestWriteBatch_WriteToAllColumn()
     {
-        var batch = _db.StartBatch();
+        var batch = _db.StartWriteBatch();
         var colA = batch.GetColumnBatch(TestColumns.ColumnA);
         var colB = batch.GetColumnBatch(TestColumns.ColumnB);
 

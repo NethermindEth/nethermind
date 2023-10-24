@@ -79,7 +79,7 @@ namespace Nethermind.Db.Rpc
 
         public IEnumerable<byte[]> GetAllValues(bool ordered = false) => _recordDb.GetAllValues();
 
-        public IBatch StartBatch()
+        public IWriteBatch StartWriteBatch()
         {
             throw new InvalidOperationException("RPC DB does not support writes");
         }

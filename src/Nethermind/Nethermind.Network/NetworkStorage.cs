@@ -97,7 +97,7 @@ namespace Nethermind.Network
 
         private void UpdateNodeImpl(NetworkNode node)
         {
-            (_currentBatch ?? (IKeyValueStore)_fullDb)[node.NodeId.Bytes] = Rlp.Encode(node).Bytes;
+            (_currentBatch ?? (IWriteOnlyKeyValueStore)_fullDb)[node.NodeId.Bytes] = Rlp.Encode(node).Bytes;
             _updateCounter++;
 
             if (!_nodesDict.ContainsKey(node.NodeId))
@@ -125,7 +125,7 @@ namespace Nethermind.Network
 
         public void RemoveNode(PublicKey nodeId)
         {
-            (_currentBatch ?? (IKeyValueStore)_fullDb)[nodeId.Bytes] = null;
+            (_currentBatch ?? (IWriteOnlyKeyValueStore)_fullDb)[nodeId.Bytes] = null;
             _removeCounter++;
 
             RemoveLocal(nodeId);
@@ -143,11 +143,11 @@ namespace Nethermind.Network
             }
         }
 
-        private IBatch? _currentBatch;
+        private IWriteBatch? _currentBatch;
 
         public void StartBatch()
         {
-            _currentBatch = _fullDb.StartBatch();
+            _currentBatch = _fullDb.StartWriteBatch();
             _updateCounter = 0;
             _removeCounter = 0;
         }

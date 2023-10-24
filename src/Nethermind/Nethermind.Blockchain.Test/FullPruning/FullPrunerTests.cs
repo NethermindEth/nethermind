@@ -150,9 +150,9 @@ namespace Nethermind.Blockchain.Test.FullPruning
             byte[] key = { 0, 1, 2 };
             TestFullPruningDb.TestPruningContext context = test.WaitForPruningStart();
 
-            using (IBatch batch = test.FullPruningDb.StartBatch())
+            using (IWriteBatch writeBatch = test.FullPruningDb.StartWriteBatch())
             {
-                batch[key] = key;
+                writeBatch[key] = key;
             }
 
             await test.WaitForPruningEnd(context);

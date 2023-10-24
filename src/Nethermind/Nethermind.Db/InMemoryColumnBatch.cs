@@ -6,26 +6,26 @@ using Nethermind.Core;
 
 namespace Nethermind.Db
 {
-    public class InMemoryColumnBatch<TKey> : IColumnsBatch<TKey>
+    public class InMemoryColumnWriteBatch<TKey> : IColumnsWriteBatch<TKey>
     {
-        private IList<IBatch> _underlyingBatch = new List<IBatch>();
+        private IList<IWriteBatch> _underlyingBatch = new List<IWriteBatch>();
         private readonly IColumnsDb<TKey> _columnsDb;
 
-        public InMemoryColumnBatch(IColumnsDb<TKey> columnsDb)
+        public InMemoryColumnWriteBatch(IColumnsDb<TKey> columnsDb)
         {
             _columnsDb = columnsDb;
         }
 
-        public IBatch GetColumnBatch(TKey key)
+        public IWriteBatch GetColumnBatch(TKey key)
         {
-            InMemoryBatch batch = new InMemoryBatch(_columnsDb.GetColumnDb(key));
-            _underlyingBatch.Add(batch);
-            return batch;
+            InMemoryWriteBatch writeBatch = new InMemoryWriteBatch(_columnsDb.GetColumnDb(key));
+            _underlyingBatch.Add(writeBatch);
+            return writeBatch;
         }
 
         public void Dispose()
         {
-            foreach (IBatch batch in _underlyingBatch)
+            foreach (IWriteBatch batch in _underlyingBatch)
             {
                 batch.Dispose();
             }

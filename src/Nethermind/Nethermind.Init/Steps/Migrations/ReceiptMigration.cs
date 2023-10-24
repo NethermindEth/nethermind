@@ -322,10 +322,10 @@ namespace Nethermind.Init.Steps.Migrations
 
             // I guess some old schema need this
             {
-                using IBatch batch = _receiptsDb.StartBatch().GetColumnBatch(ReceiptsColumns.Transactions);
+                using IWriteBatch writeBatch = _receiptsDb.StartWriteBatch().GetColumnBatch(ReceiptsColumns.Transactions);
                 for (int i = 0; i < notNullReceipts.Length; i++)
                 {
-                    batch[notNullReceipts[i].TxHash!.Bytes] = null;
+                    writeBatch[notNullReceipts[i].TxHash!.Bytes] = null;
                 }
             }
 
@@ -337,10 +337,10 @@ namespace Nethermind.Init.Steps.Migrations
             bool neverIndexTx = _receiptConfig.TxLookupLimit == -1;
             if (neverIndexTx || txIndexExpired)
             {
-                using IBatch batch = _txIndexDb.StartBatch();
+                using IWriteBatch writeBatch = _txIndexDb.StartWriteBatch();
                 foreach (TxReceipt? receipt in notNullReceipts)
                 {
-                    batch[receipt.TxHash!.Bytes] = null;
+                    writeBatch[receipt.TxHash!.Bytes] = null;
                 }
             }
 

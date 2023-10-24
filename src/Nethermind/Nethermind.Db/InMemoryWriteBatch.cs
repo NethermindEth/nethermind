@@ -8,13 +8,13 @@ using Nethermind.Core;
 
 namespace Nethermind.Db
 {
-    public class InMemoryBatch : IBatch
+    public class InMemoryWriteBatch : IWriteBatch
     {
         private readonly IKeyValueStore _store;
         private readonly ConcurrentDictionary<byte[], byte[]?> _currentItems = new();
         private WriteFlags _writeFlags = WriteFlags.None;
 
-        public InMemoryBatch(IKeyValueStore storeWithNoBatchSupport)
+        public InMemoryWriteBatch(IKeyValueStore storeWithNoBatchSupport)
         {
             _store = storeWithNoBatchSupport;
         }
@@ -33,11 +33,6 @@ namespace Nethermind.Db
         {
             _currentItems[key.ToArray()] = value;
             _writeFlags = flags;
-        }
-
-        public byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
-        {
-            return _store.Get(key, flags);
         }
     }
 }
