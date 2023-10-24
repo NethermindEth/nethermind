@@ -4,3 +4,4 @@
 using System.Runtime.CompilerServices;
 
 [assembly: InternalsVisibleTo("Nethermind.Era1.Test")]
+[assembly: InternalsVisibleTo("Nethermind.Benchmark")]

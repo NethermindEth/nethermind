@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using FluentAssertions;
 using Snappier;
 
 namespace Nethermind.Era1.Test;
@@ -17,9 +18,9 @@ internal class E2StoreTests
     [TestCase(EntryTypes.CompressedReceipts)]
     [TestCase(EntryTypes.Accumulator)]
     [TestCase(EntryTypes.BlockIndex)]
-    public async Task WriteEntry_WritesCorrectHeader(ushort type)
+    public async Task WriteEntry_WritingAnEntry_WritesCorrectHeaderType(ushort type)
     {
-        MemoryStream stream = new MemoryStream();
+        using MemoryStream stream = new MemoryStream();
         using E2Store sut = new E2Store(stream);
 
         await sut.WriteEntry(type, Array.Empty<byte>());
@@ -30,9 +31,9 @@ internal class E2StoreTests
     [TestCase(6)]
     [TestCase(20)]
     [TestCase(32)]
-    public async Task WriteEntry_WritesCorrectLengthInHeader(int length)
+    public async Task WriteEntry_WritingAnEntry_WritesCorrectLengthInHeader(int length)
     {
-        MemoryStream stream = new MemoryStream();
+        using MemoryStream stream = new MemoryStream();
         using E2Store sut = new E2Store(stream);
 
         await sut.WriteEntry(EntryTypes.CompressedHeader, new byte[length]);
@@ -43,9 +44,9 @@ internal class E2StoreTests
     [TestCase(1)]
     [TestCase(5)]
     [TestCase(12)]
-    public async Task WriteEntry_ReturnCorrectNumberofBytesWritten(int length)
+    public async Task WriteEntry_WritingAnEntry_ReturnCorrectNumberofBytesWritten(int length)
     {
-        MemoryStream stream = new MemoryStream();
+        using MemoryStream stream = new MemoryStream();
         using E2Store sut = new E2Store(stream);
 
         int result = await sut.WriteEntry(EntryTypes.CompressedHeader, new byte[length]);
@@ -55,9 +56,9 @@ internal class E2StoreTests
 
 
     [Test]
-    public async Task WriteEntry_ZeroesAtCorrectIndexesInHeader()
+    public async Task WriteEntry_WritingAnEntry_ZeroesAtCorrectIndexesInHeader()
     {
-        MemoryStream stream = new MemoryStream();
+        using MemoryStream stream = new MemoryStream();
         using E2Store sut = new E2Store(stream);
 
         await sut.WriteEntry(EntryTypes.CompressedHeader, new byte[] { 0xff, 0xff, 0xff, 0xff });
@@ -68,9 +69,9 @@ internal class E2StoreTests
     }
 
     [Test]
-    public async Task WriteEntry_WritesBytesToStream()
+    public async Task WriteEntry_WritingEntryValue_BytesAreWrittenToStream()
     {
-        MemoryStream stream = new MemoryStream();
+        using MemoryStream stream = new MemoryStream();
         using E2Store sut = new E2Store(stream);
 
         byte[] bytes = new byte[] { 0x0f, 0xf0, 0xff, 0xff };
@@ -81,9 +82,9 @@ internal class E2StoreTests
     }
 
     [Test]
-    public async Task WriteEntryAsSnappy_WritesEncodedBytesToStream()
+    public async Task WriteEntryAsSnappy_WritingEntryValue_WritesEncodedBytesToStream()
     {
-        MemoryStream stream = new MemoryStream();
+        using MemoryStream stream = new MemoryStream();
         using E2Store sut = new E2Store(stream);
         byte[] bytes = new byte[] { 0x0f, 0xf0, 0xff, 0xff };
 
@@ -96,9 +97,9 @@ internal class E2StoreTests
     }
 
     [Test]
-    public async Task WriteEntryAsSnappy_ReturnsCompressedSize()
+    public async Task WriteEntryAsSnappy_WritingEntryValue_ReturnsCompressedSize()
     {
-        MemoryStream stream = new MemoryStream();
+        using MemoryStream stream = new MemoryStream();
         using E2Store sut = new E2Store(stream);
         byte[] bytes = new byte[] { 0x0f, 0xf0, 0xff, 0xff };
 
@@ -108,9 +109,9 @@ internal class E2StoreTests
     }
 
     [Test]
-    public async Task ReadEntryValue_ReturnsCorrectValue()
+    public async Task ReadEntryValue_ReadingValueBytesOfEntry_ReturnsBytes()
     {
-        MemoryStream stream = new MemoryStream();
+        using MemoryStream stream = new MemoryStream();
         using E2Store sut = new E2Store(stream);
         byte[] bytes = new byte[] { 0x0f, 0xf0, 0xff, 0xff };
         await sut.WriteEntry(EntryTypes.Accumulator, bytes);
@@ -122,9 +123,9 @@ internal class E2StoreTests
     }
 
     [Test]
-    public async Task ReadEntryValue_ReturnsBytesRead()
+    public async Task ReadEntryValue_ReadingValueBytesOfEntry_ReturnsBytesRead()
     {
-        MemoryStream stream = new MemoryStream();
+        using MemoryStream stream = new MemoryStream();
         using E2Store sut = new E2Store(stream);
         byte[] bytes = new byte[] { 0x0f, 0xf0, 0xff, 0xff };
         await sut.WriteEntry(EntryTypes.Accumulator, bytes);
@@ -136,9 +137,9 @@ internal class E2StoreTests
     }
 
     [Test]
-    public async Task ReadEntryValueAsSnappy_ReturnsDecompressedBytes()
+    public async Task ReadEntryValueAsSnappy_ReadingValueBytesOfEntry_ReturnsDecompressedBytes()
     {
-        MemoryStream stream = new ();
+        using MemoryStream stream = new ();
         using E2Store sut = new E2Store(stream);
         byte[] bytes = new byte[] { 0x0f, 0xf0, 0xff, 0xff };
         MemoryStream compressed = new();
@@ -154,25 +155,28 @@ internal class E2StoreTests
         Assert.That(new ArraySegment<byte>(buffer, 0, read), Is.EquivalentTo(bytes));
     }
 
-    [Test]
-    public async Task ReadValueAt_ReturnsCorrectValue()
+
+    [TestCase(0)]
+    [TestCase(8)]
+    [TestCase(16)]
+    public async Task ReadValueAt_ReadingValueAtDifferentOffset_ReturnsCorrectValue(int offset)
     {
-        MemoryStream stream = new();
+        using MemoryStream stream = new();
         using E2Store sut = new E2Store(stream);
-        byte[] bytes = new byte[] { 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff };
+        byte[] bytes = new byte[] { 0xf0, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xf0 };
         stream.Write(bytes, 0, bytes.Length);
 
-        long result = await sut.ReadValueAt(2);
+        long result = await sut.ReadValueAt(offset);
 
-        Assert.That(result, Is.EqualTo(BitConverter.ToInt64(bytes, 2)));
+        Assert.That(result, Is.EqualTo(BitConverter.ToInt64(bytes, offset)));
     }
 
     [TestCase(6)]
     [TestCase(14)]
     [TestCase(24)]
-    public async Task ReadEntryAt_ReturnsCorrectEntry(int offset)
+    public async Task ReadEntryAt_ReadingEntryAtDifferentOffset_ReturnsCorrectEntry(int offset)
     {
-        MemoryStream stream = new();
+        using MemoryStream stream = new();
         using E2Store sut = new E2Store(stream);
         byte[] bytes = new byte[] { 0xff, 0xff, 0xff, 0xff};
         stream.SetLength(offset);
@@ -189,9 +193,9 @@ internal class E2StoreTests
     [TestCase(12)]
     [TestCase(20)]
     [TestCase(32)]
-    public async Task ReadEntryHeaderAt_ReturnsCorrectEntryHeader(int offset)
+    public async Task ReadEntryHeaderAt_ReadingEntryHeaderAtDifferentOffset_ReturnsCorrectEntryHeader(int offset)
     {
-        MemoryStream stream = new();
+        using MemoryStream stream = new();
         using E2Store sut = new E2Store(stream);
         byte[] bytes = new byte[] { 0xff, 0xff, 0xff, 0xff };
         stream.SetLength(offset);
@@ -204,5 +208,37 @@ internal class E2StoreTests
         Assert.That(result.Length, Is.EqualTo(bytes.Length));
     }
 
+    [Test]
+    public async Task Test()
+    {
+        //TODO possible optimization avoid alloc snappy stream by not disposing the stream and reusing like this
+        using MemoryStream stream = new();
+        byte[] bytes = new byte[] { 0x0f, 0xf0, 0xff, 0xff };
+        byte[] bytes1 = new byte[] { 0x1, 0x2, 0x3, 0x4 };
+        MemoryStream compressed = new();
+        using SnappyStream snappy = new SnappyStream(compressed, System.IO.Compression.CompressionMode.Compress);
+        snappy.Write(bytes);
+        snappy.Flush();
+        byte[] compressedBytes = compressed.ToArray();
+        compressed.Seek(0, SeekOrigin.Begin);
+        using SnappyStream snappyDecom = new SnappyStream(compressed, System.IO.Compression.CompressionMode.Decompress);
+        var decomBytes = new byte[bytes.Length];
+        snappyDecom.Read(decomBytes, 0, decomBytes.Length);
+        decomBytes.Should().BeEquivalentTo(bytes);
+
+        compressed.SetLength(0);
+        var snappyHeader = new byte[]
+        {
+            0xff, 0x06, 0x00, 0x00, 0x73, 0x4e, 0x61, 0x50, 0x70, 0x59
+        };
+        compressed.Write(snappyHeader, 0, snappyHeader.Length);
+        snappy.Write(bytes1);
+        snappy.Flush();
+        compressed.Seek(0, SeekOrigin.Begin);
+
+        snappyDecom.Read(decomBytes, 0, decomBytes.Length);
+        decomBytes.Should().BeEquivalentTo(bytes1);
+
+    }
 
 }

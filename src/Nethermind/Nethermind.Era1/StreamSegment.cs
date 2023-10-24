@@ -56,17 +56,17 @@ internal class StreamSegment : Stream
         throw new NotImplementedException();
     }
 
-    public override async Task<int> ReadAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken = default)
+    public override Task<int> ReadAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken = default)
     {
         if (offset < 0)
             throw new ArgumentOutOfRangeException(nameof(offset), "Cannot be less than zero.");
         if (count < 0)
             throw new ArgumentOutOfRangeException(nameof(count), "Cannot be less than zero.");
         if (count == 0)
-            return 0;
+            return Task.FromResult(0);
 
         long actualCount = count + _internalStream.Position > _streamLength + _streamOffset ? _streamLength + _streamOffset - _internalStream.Position : count;
-        return await _internalStream.ReadAsync(buffer, offset, (int)actualCount);
+        return  _internalStream.ReadAsync(buffer, offset, (int)actualCount);
     }
 
     public override long Seek(long offset, SeekOrigin origin)

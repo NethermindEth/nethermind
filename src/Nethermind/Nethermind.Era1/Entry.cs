@@ -5,7 +5,7 @@ using Snappier;
 
 namespace Nethermind.Era1;
 
-internal struct Entry
+internal readonly struct Entry
 {
     public ushort Type { get; }
     public long Offset { get; }
@@ -13,6 +13,10 @@ internal struct Entry
     public long Length { get; }
     public Entry(ushort type, long offset, long length)
     {
+        if (offset < 0)
+            throw new ArgumentOutOfRangeException(nameof(offset), "Cannot be negative.");
+        if (length < 0)
+            throw new ArgumentOutOfRangeException(nameof(length), "Cannot be negativrae.");
         Length = length;
         Offset = offset;
         Type = type;

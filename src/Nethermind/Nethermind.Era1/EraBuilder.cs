@@ -17,128 +17,159 @@ using Nethermind.Serialization.Ssz;
 using Snappier;
 
 namespace Nethermind.Era1;
-internal class EraBuilder:IDisposable
+internal class EraBuilder : IDisposable
 {
-    private const int MaxEra1Size = 8192;
+    public const int MaxEra1Size = 8192;
 
     private long _startNumber;
     private bool _firstBlock = true;
-    private UInt256 _startTd;
     private long _totalWritten;
     private List<EntryIndexInfo> _entryIndexInfos = new List<EntryIndexInfo>();
 
     private HeaderDecoder _headerDecoder = new HeaderDecoder();
     private BlockBodyDecoder _blockBodyDecoder = new BlockBodyDecoder();
-    private ReceiptStorageDecoder _receiptDecoder = new();
+    private ReceiptMessageDecoder _receiptDecoder = new();
 
-    private Stream _stream;
     private E2Store _e2Store;
     private bool _disposedValue;
     private bool _finalized;
 
-    public static Task<EraBuilder> Create(string path)
+    public static EraBuilder Create(string path)
     {
         if (string.IsNullOrWhiteSpace(path)) throw new ArgumentException($"'{nameof(path)}' cannot be null or whitespace.", nameof(path));
-        return Create(new FileStream(path, FileMode.Create));    
+        return Create(new FileStream(path, FileMode.Create));
     }
-    public static async Task<EraBuilder> Create(Stream stream)
+    public static EraBuilder Create(Stream stream)
     {
-        EraBuilder b = new(new E2Store(stream), stream);
+        EraBuilder b = new(new E2Store(stream));
         return b;
     }
 
-    private EraBuilder(E2Store e2Store, Stream stream)
+    private EraBuilder(E2Store e2Store)
     {
         _e2Store = e2Store;
-        _stream = stream;
     }
 
-    public async Task<bool> Add(Block block, TxReceipt[] receipts, UInt256 totalDifficulty, CancellationToken cancellation = default)
+    public Task<bool> Add(Block block, TxReceipt[] receipts, CancellationToken cancellation = default)
     {
-        if (_finalized)
-            throw new EraException($"Finalized has been called on this {nameof(EraBuilder)}, and no more blocks can be added. ");
-
+        if (block.TotalDifficulty == null)
+            throw new ArgumentException($"The block must have a {nameof(block.TotalDifficulty)}.", nameof(block));
+        return Add(block, receipts, block.TotalDifficulty.Value, cancellation);
+    }
+    public Task<bool> Add(Block block, TxReceipt[] receipts, UInt256 totalDifficulty, CancellationToken cancellation = default)
+    {
         if (block.Header == null)
             throw new ArgumentException("The block must have a header.", nameof(block));
-
         if (block.Hash == null)
             throw new ArgumentException("The block must have a hash.", nameof(block));
 
+        Rlp encodedHeader = _headerDecoder.Encode(block.Header);
+        Rlp encodedBody = _blockBodyDecoder.Encode(block.Body);
+        Rlp encodedReceipts = _receiptDecoder.Encode(receipts);
+
+        return Add(block.Hash, encodedHeader.Bytes, encodedBody.Bytes, encodedReceipts.Bytes, block.Number, block.Difficulty, totalDifficulty, cancellation);
+    }
+    /// <summary>
+    /// Write RLP encoded data to the underlying stream. 
+    /// </summary>
+    /// <param name="blockHash"></param>
+    /// <param name="blockHeader"></param>
+    /// <param name="blockBody"></param>
+    /// <param name="receiptsArray"></param>
+    /// <param name="blockNumber"></param>
+    /// <param name="blockDifficulty"></param>
+    /// <param name="totalDifficulty"></param>
+    /// <param name="cancellation"></param>
+    /// <returns></returns>
+    /// <exception cref="ArgumentNullException"></exception>
+    /// <exception cref="ArgumentOutOfRangeException"></exception>
+    /// <exception cref="EraException"></exception>
+    public async Task<bool> Add(
+        Keccak blockHash,
+        byte[] blockHeader,
+        byte[] blockBody,
+        byte[] receiptsArray,
+        long blockNumber,
+        UInt256 blockDifficulty,
+        UInt256 totalDifficulty,
+        CancellationToken cancellation = default)
+    {
+        if (blockHash is null) throw new ArgumentNullException(nameof(blockHash));
+        if (blockHeader is null) throw new ArgumentNullException(nameof(blockHeader));
+        if (blockBody is null) throw new ArgumentNullException(nameof(blockBody));
+        if (receiptsArray is null) throw new ArgumentNullException(nameof(receiptsArray));
+        if (totalDifficulty < blockDifficulty)
+            throw new ArgumentOutOfRangeException(nameof(totalDifficulty), $"Cannot be less than the block difficulty.");
+        if (_finalized)
+            throw new EraException($"Finalized() has been called on this {nameof(EraBuilder)}, and no more blocks can be added. ");
+
         if (_firstBlock)
         {
-            _startNumber = block.Number;
-            _startTd = totalDifficulty - block.Difficulty;
-            await WriteVersion();
+            _startNumber = blockNumber;
+            _totalWritten += await WriteVersion();
             _firstBlock = false;
         }
 
         if (_entryIndexInfos.Count >= MaxEra1Size)
             return false;
 
-        _entryIndexInfos.Add(new EntryIndexInfo(_totalWritten, block.Hash, totalDifficulty));
+        _entryIndexInfos.Add(new EntryIndexInfo(_totalWritten, blockHash, totalDifficulty));
         //TODO possible optimize
 
-        Rlp encodedHeader = _headerDecoder.Encode(block.Header);
-        _totalWritten += await _e2Store.WriteEntryAsSnappy(EntryTypes.CompressedHeader, encodedHeader.Bytes, cancellation);
+        _totalWritten += await _e2Store.WriteEntryAsSnappy(EntryTypes.CompressedHeader, blockHeader, cancellation);
 
-        Rlp encodedBody = _blockBodyDecoder.Encode(block.Body);
-        _totalWritten += await _e2Store.WriteEntryAsSnappy(EntryTypes.CompressedBody, encodedBody.Bytes, cancellation);
+        _totalWritten += await _e2Store.WriteEntryAsSnappy(EntryTypes.CompressedBody, blockBody, cancellation);
 
-        Rlp encodedReceipts = _receiptDecoder.Encode(receipts);
-        _totalWritten += await _e2Store.WriteEntryAsSnappy(EntryTypes.CompressedReceipts, encodedReceipts.Bytes, cancellation);
+        _totalWritten += await _e2Store.WriteEntryAsSnappy(EntryTypes.CompressedReceipts, receiptsArray, cancellation);
 
         _totalWritten += await _e2Store.WriteEntry(EntryTypes.TotalDifficulty, totalDifficulty.ToLittleEndian(), cancellation);
 
         return true;
     }
 
-    public async Task Finalize()
+    public async Task<byte[]> Finalize(CancellationToken cancellation = default)
     {
         if (_firstBlock)
             throw new EraException("Finalize was called, but no blocks have been added yet.");
 
         byte[] root = CalculateAccumulator().ToArray();
-        _totalWritten += await _e2Store.WriteEntry(EntryTypes.Accumulator, root);
+        _totalWritten += await _e2Store.WriteEntry(EntryTypes.Accumulator, root, cancellation);
 
         //Index is 64 bits segments in the format => start | index | index | ... | count
-        //16 bytes for start and count plus every entry 
-        byte[] index = new byte[16 + _entryIndexInfos.Count * 8];
-        if (!TryWriteUInt64(index, 0, (ulong)_startNumber))
-        {
-            //TODO handle
-        }
+        //16 bytes is for the start and count plus every entry 
+        byte[] blockIndex = new byte[16 + _entryIndexInfos.Count * 8];
+        WriteUInt64(blockIndex, 0, (ulong)_startNumber);
 
-        long absoluteIndexStart = _totalWritten + 3 * 8;
+        //era1:= Version | block-tuple ... | other-entries ... | Accumulator | BlockIndex
+        //block-index := starting-number | index | index | index... | count
 
-        //All positions are relative to the position in the index
+        long firstIndexEnd = _totalWritten + 2 * 8;
+
+        //All positions are relative to the end position in the index
         for (int i = 0; i < _entryIndexInfos.Count; i++)
         {
-            long relativePosition = _entryIndexInfos[i].Index - (absoluteIndexStart + i * 8);
+            long relativePosition = _entryIndexInfos[i].Index - 8 - (firstIndexEnd + i * 8);
             //Skip 8 bytes for the start value
-            if (TryWriteUInt64(index, 8 + i * 8, (ulong)relativePosition))
-            {
-                //TODO handle
-            }
-
+            WriteUInt64(blockIndex, 8 + i * 8, (ulong)relativePosition);
         }
 
-        if (!TryWriteUInt64(index, 8 + _entryIndexInfos.Count * 8, (ulong)_entryIndexInfos.Count))
-        {
-            //TODO handle
-        }
-        await _e2Store.WriteEntry(EntryTypes.BlockIndex, index);
+        WriteUInt64(blockIndex, 8 + _entryIndexInfos.Count * 8, (ulong)_entryIndexInfos.Count);
 
-        await _stream.FlushAsync();
+        await _e2Store.WriteEntry(EntryTypes.BlockIndex, blockIndex, cancellation);
+        await _e2Store.Flush(cancellation);
+
         _entryIndexInfos.Clear();
         _finalized = true;
+        return root;
     }
-    private static bool TryWriteUInt64(byte[] destination, int off, ulong value)
+    private static bool WriteUInt64(byte[] destination, int off, ulong value)
     {
-        return BitConverter.TryWriteBytes(new Span<byte>(destination, off, 8), value);
+        return BitConverter.TryWriteBytes(new Span<byte>(destination, off, 8), value) == false ? throw new EraException("Failed to write UInt64 to output.") : true;
     }
 
     private ReadOnlySpan<byte> CalculateAccumulator()
     {
+        //See https://github.com/ethereum/portal-network-specs/blob/master/history-network.md#algorithms
         //TODO optmize
         List<SszComposite> roots = new(_entryIndexInfos.Count);
         List<SszElement> sszElements = new(2);
@@ -146,24 +177,23 @@ internal class EraBuilder:IDisposable
         {
             sszElements.Add(new SszBasicVector(info.Hash.Bytes));
             sszElements.Add(new SszBasicVector(info.TotalDifficulty.ToLittleEndian()));
-            SszTree tree = new ( new SszContainer(sszElements));
+            SszTree tree = new(new SszContainer(sszElements));
             roots.Add(new SszBasicVector(tree.HashTreeRoot()));
             sszElements.Clear();
         }
         return new SszTree(new SszList(roots, (ulong)MaxEra1Size)).HashTreeRoot();
     }
 
-    private Task WriteVersion()
+    private Task<int> WriteVersion()
     {
         return _e2Store.WriteEntry(EntryTypes.Version, Array.Empty<byte>());
     }
 
-    private struct EntryIndexInfo
+    private class EntryIndexInfo
     {
-        public long Index;
-        public Keccak Hash;
-        public UInt256 TotalDifficulty;
-
+        public long Index { get; }
+        public Keccak Hash { get; }
+        public UInt256 TotalDifficulty { get; }
         public EntryIndexInfo(long index, Keccak hash, UInt256 totalDifficulty)
         {
             Index = index;
@@ -179,7 +209,6 @@ internal class EraBuilder:IDisposable
             if (disposing)
             {
                 _e2Store?.Dispose();
-                _stream?.Dispose();
             }
 
             // TODO: free unmanaged resources (unmanaged objects) and override finalizer
@@ -193,5 +222,14 @@ internal class EraBuilder:IDisposable
         // Do not change this code. Put cleanup code in 'Dispose(bool disposing)' method
         Dispose(disposing: true);
         GC.SuppressFinalize(this);
+    }
+
+    public static string Filename(string network, int epoch, Keccak root)
+    {
+        if (string.IsNullOrEmpty(network)) throw new ArgumentException($"'{nameof(network)}' cannot be null or empty.", nameof(network));
+        if (root is null) throw new ArgumentNullException(nameof(root));
+        if (epoch < 0) throw new ArgumentOutOfRangeException(nameof(epoch), "Cannot be a negative number.");
+
+        return $"{network}-{epoch.ToString("D5")}-{root.ToString(true)[2..10]}.era1";
     }
 }

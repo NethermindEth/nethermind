@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Diagnostics;
+using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Test.Blockchain;
@@ -14,30 +15,64 @@ using NUnit.Framework.Constraints;
 using Snappier;
 
 namespace Nethermind.Era1.Test;
-public class Era1Tests
+public class Era1IntegrationTests
 {
     [Test]
-    public async Task Test1()
+    public async Task ExportAndImportTwoBlocksAndReceipts()
     {
-        var ms = new MemoryStream();    
-        var sut = new E2Store(ms);
+        using MemoryStream stream = new();
+        EraBuilder builder = EraBuilder.Create(stream);
+        Block block0 = Build.A.Block
+            .WithNumber(0)
+            .WithTotalDifficulty(BlockHeaderBuilder.DefaultDifficulty).TestObject;
+        Block block1 = Build.A.Block
+            .WithNumber(1)
+            .WithTotalDifficulty(BlockHeaderBuilder.DefaultDifficulty).TestObject;
+        TxReceipt receipt0 = Build.A.Receipt
+            .WithAllFieldsFilled
+            .TestObject;
+        TxReceipt receipt1 = Build.A.Receipt
+            .WithAllFieldsFilled
+            .TestObject;
 
-        await sut.WriteEntry(EntryTypes.Version, Array.Empty<byte>());
+        await builder.Add(block0, new[] {receipt0} );
+        await builder.Add(block1, new[] {receipt1} );
+        await builder.Finalize();
+
+        EraReader reader = await EraReader.Create(stream);
+
+        IAsyncEnumerator<(Block, TxReceipt[], UInt256)> enumerator = reader.GetAsyncEnumerator();
+        await enumerator.MoveNextAsync();
+        (Block importedBlock0, TxReceipt[] ImportedReceipts0, UInt256 td0) = enumerator.Current;
+        importedBlock0.Header.TotalDifficulty = td0;
+        await enumerator.MoveNextAsync();
+        (Block importedBlock1, TxReceipt[] ImportedReceipts1, UInt256 td1) = enumerator.Current;
+        importedBlock1.Header.TotalDifficulty = td1;
+        await enumerator.DisposeAsync();
+
+        importedBlock0.Should().BeEquivalentTo(block0);
+        importedBlock1.Should().BeEquivalentTo(block1);
+
+        ImportedReceipts0.Should().BeEquivalentTo(ImportedReceipts0);
+        ImportedReceipts1.Should().BeEquivalentTo(ImportedReceipts1);
+
+        Assert.That(td0, Is.EqualTo(BlockHeaderBuilder.DefaultDifficulty));
+        Assert.That(td1, Is.EqualTo(BlockHeaderBuilder.DefaultDifficulty));
     }
 
     [Test]
-    public async Task TestHistoryImport()
+    public async Task ImportFiles()
     {
-        var eraFiles = E2Store.GetAllEraFiles("data", "mainnet");
+        var eraFiles = EraReader.GetAllEraFiles("data", "mainnet");
 
         Directory.CreateDirectory("temp");
 
         foreach (var era in eraFiles)
         {
-            using var eraEnumerator = await EraIterator.Create(era);
+            using var eraEnumerator = await EraReader.Create(era);
 
             string tempEra = Path.Combine("temp", Path.GetFileName(era));
-            var builder = await EraBuilder.Create(tempEra);
+            var builder = EraBuilder.Create(tempEra);
 
             await foreach ((Block b, TxReceipt[] r, UInt256 td) in eraEnumerator)
             {
@@ -51,7 +86,7 @@ public class Era1Tests
             await builder.Finalize();
             builder.Dispose();
 
-            using var eraEnumeratorTemp = await EraIterator.Create(tempEra);
+            using var eraEnumeratorTemp = await EraReader.Create(tempEra);
             await foreach ((Block b, TxReceipt[] r, UInt256 td) in eraEnumeratorTemp)
             {
                 Rlp encodedHeader = new HeaderDecoder().Encode(b.Header);
@@ -67,15 +102,15 @@ public class Era1Tests
     {
         BasicTestBlockchain testBlockchain = await BasicTestBlockchain.Create();
         using MemoryStream stream = new();
-        EraBuilder builder = await EraBuilder.Create(stream);
+        EraBuilder builder = EraBuilder.Create(stream);
 
         Block genesis = testBlockchain.BlockFinder.FindBlock(0)!;
         TxReceipt[] genesisReceipts = testBlockchain.ReceiptStorage.Get(genesis);
 
-        await builder.Add(genesis, genesisReceipts, genesis.TotalDifficulty ?? 0);
+        await builder.Add(genesis, genesisReceipts);
 
         testBlockchain.BlockProcessor.BlockProcessed += (sender, blockArgs) => {
-            builder.Add(blockArgs.Block, blockArgs.TxReceipts, blockArgs.Block.TotalDifficulty ?? 0).Wait();
+            builder.Add(blockArgs.Block, blockArgs.TxReceipts).Wait();
         };
 
         int numOfBlocks = 12;
@@ -109,7 +144,7 @@ public class Era1Tests
             //Block offsets should be relative to index position
             stream.Seek(blockOffset, SeekOrigin.Current);
 
-            stream.Read(buffer, 0, buffer.Length);
+            stream.Read(buffer, 0, 2);
 
             ushort entryType = BitConverter.ToUInt16(buffer);
 
@@ -123,15 +158,15 @@ public class Era1Tests
     {
         BasicTestBlockchain testBlockchain = await BasicTestBlockchain.Create();
         using MemoryStream stream = new();
-        EraBuilder builder = await EraBuilder.Create(stream);
+        EraBuilder builder = EraBuilder.Create(stream);
 
         Block genesis = testBlockchain.BlockFinder.FindBlock(0)!;
         TxReceipt[] genesisReceipts = testBlockchain.ReceiptStorage.Get(genesis);
 
-        await builder.Add(genesis, genesisReceipts, genesis.TotalDifficulty ?? 0);
+        await builder.Add(genesis, genesisReceipts);
 
         testBlockchain.BlockProcessor.BlockProcessed += (sender, blockArgs) => {
-            builder.Add(blockArgs.Block, blockArgs.TxReceipts, blockArgs.Block.TotalDifficulty??0).Wait();
+            builder.Add(blockArgs.Block, blockArgs.TxReceipts).Wait();
         };
 
         int numOfBlocks = 32 * 3 * 10;
@@ -139,7 +174,7 @@ public class Era1Tests
 
         await builder.Finalize();
 
-        EraIterator iterator = await EraIterator.Create(stream);
+        EraReader iterator = await EraReader.Create(stream);
 
         await using var enu = iterator.GetAsyncEnumerator();
         for (int i = 0; i < numOfBlocks;i++)
@@ -148,37 +183,24 @@ public class Era1Tests
             (Block b, TxReceipt[] r, UInt256 td) = enu.Current;
             b.Header.TotalDifficulty = td;
                 
-            Block wantedBlock = testBlockchain.BlockFinder.FindBlock(i) ?? throw new ArgumentException("Could not find required block?");
-            TxReceipt[] wantedReceipts = testBlockchain.ReceiptStorage.Get(wantedBlock);
+            Block expectedBlock = testBlockchain.BlockFinder.FindBlock(i) ?? throw new ArgumentException("Could not find required block?");
+            TxReceipt[] expectedReceipts = testBlockchain.ReceiptStorage.Get(expectedBlock);
 
-            Assert.That(b.ToString(Block.Format.Full), Is.EqualTo(wantedBlock.ToString(Block.Format.Full)));
+            expectedBlock.Should().BeEquivalentTo(b);
 
-            for (int y = 0; y < wantedBlock.Transactions.Length; y++)
+            Assert.That(r.Length, Is.EqualTo(expectedReceipts.Length), "Incorrect amount of receipts.");
+
+            for (int y = 0; y < expectedReceipts.Length; y++)
             {
-                Assert.That(b.Transactions[y].CalculateHash(), Is.EqualTo(wantedBlock.Transactions[y].CalculateHash()));
-            }
-
-            Assert.That(b.Uncles, Is.EquivalentTo(wantedBlock.Uncles));
-
-            if (wantedBlock.Withdrawals == null)
-                Assert.That(b.Withdrawals, Is.EqualTo(wantedBlock.Withdrawals));
-            else
-                Assert.That(b.Withdrawals, Is.EquivalentTo(wantedBlock.Withdrawals));
-
-
-            Assert.That(r.Length, Is.EqualTo(wantedReceipts.Length), "Incorrect amount of receipts.");
-
-            for (int y = 0; y < wantedReceipts.Length; y++)
-            {
-                Assert.That(r[y].TxType, Is.EqualTo(wantedReceipts[y].TxType));
-                Assert.That(r[y].PostTransactionState, Is.EqualTo(wantedReceipts[y].PostTransactionState));
-                Assert.That(r[y].GasUsedTotal, Is.EqualTo(wantedReceipts[y].GasUsedTotal));
-                Assert.That(r[y].Bloom, Is.EqualTo(wantedReceipts[y].Bloom));
-                Assert.That(r[y].Logs, Is.EquivalentTo(wantedReceipts[y].Logs));
-                if (wantedReceipts[y].Error == null)
+                Assert.That(r[y].TxType, Is.EqualTo(expectedReceipts[y].TxType));
+                Assert.That(r[y].PostTransactionState, Is.EqualTo(expectedReceipts[y].PostTransactionState));
+                Assert.That(r[y].GasUsedTotal, Is.EqualTo(expectedReceipts[y].GasUsedTotal));
+                Assert.That(r[y].Bloom, Is.EqualTo(expectedReceipts[y].Bloom));
+                Assert.That(r[y].Logs, Is.EquivalentTo(expectedReceipts[y].Logs));
+                if (expectedReceipts[y].Error == null)
                     Assert.That(r[y].Error, new OrConstraint( Is.Null, Is.Empty));
                 else
-                    Assert.That(r[y].Error, Is.EqualTo(wantedReceipts[y].Error));
+                    Assert.That(r[y].Error, Is.EqualTo(expectedReceipts[y].Error));
             }
         }
         

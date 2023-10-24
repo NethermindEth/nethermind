@@ -86,7 +86,7 @@
     },
     "Mainnet": {
       "commandName": "Project",
-      "commandLineArgs": "-c mainnet -dd .data",
+      "commandLineArgs": "-c mainnet -dd D:/nethermind ",
       "environmentVariables": {
         "ASPNETCORE_ENVIRONMENT": "Development"
       }

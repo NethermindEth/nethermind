@@ -21,14 +21,13 @@ internal class E2Store : IDisposable
     private Stream _stream;
     private bool _disposedValue;
 
-    public long Position => _stream!.Position;
-
     private EraMetadata? _metadata;
+    public long StreamLength => _stream.Length;
     public EraMetadata Metadata => GetMetadata();
 
     public E2Store(Stream stream)
     {
-        _stream = stream;        
+        _stream = stream;
     }
 
     private EraMetadata GetMetadata()
@@ -37,56 +36,22 @@ internal class E2Store : IDisposable
         {
             _metadata = ReadEraMetaData().GetAwaiter().GetResult();
         }
-        return _metadata.Value;
+        return _metadata;
     }
 
-    public async Task SetMetaData()
+    public async Task SetMetaData(CancellationToken token = default)
     {
-        _metadata = await ReadEraMetaData();
-    }
-
-    public string Filename(string network, int epoch , Keccak root )
-    {
-        return $"{network}-{epoch}-{root.ToString(true)[..8]}.era1"; 
-    }
-
-    // Format: <network>-<epoch>-<hexroot>.era1
-    public static IEnumerable<string> GetAllEraFiles(string directoryPath, string network)
-    {
-        var entries = Directory.GetFiles(directoryPath, "*.era1");
-        if (!entries.Any())
-            return Array.Empty<string>();
-
-        uint next = 0;
-        List<string> files = new();
-
-        foreach (string file in entries)
-        {
-            string[] parts = Path.GetFileName(file).Split(new char[] { '-' });
-            if (parts.Length != 3 || parts[0] != network)
-            {
-                continue;
-            }
-            uint epoch;
-            if (!uint.TryParse(parts[1], out epoch))
-                throw new EraException($"Invalid era1 filename: {Path.GetFileName(file)}");
-            else if (epoch != next)
-                throw new EraException($"Epoch {epoch} is missing.");
-
-            next++;
-            files.Add(file);    
-        }
-        return files;
+        _metadata = await ReadEraMetaData(token);
     }
 
     public Task<int> WriteEntryAsSnappy(UInt16 type, byte[] bytes, CancellationToken cancellation = default)
     {
         return WriteEntry(type, bytes, true, cancellation);
-        
+
     }
     public Task<int> WriteEntry(UInt16 type, byte[] bytes, CancellationToken cancellation = default)
     {
-        return WriteEntry(type, bytes, false, cancellation); 
+        return WriteEntry(type, bytes, false, cancellation);
     }
 
     private async Task<int> WriteEntry(UInt16 type, byte[] bytes, bool asSnappy, CancellationToken cancellation = default)
@@ -96,10 +61,10 @@ internal class E2Store : IDisposable
         try
         {
             //See https://github.com/google/snappy/blob/main/framing_format.txt
-            if (asSnappy)
+            if (asSnappy && bytes.Length > 0)
             {
                 //TODO find a way to write directly to file, and still return the number of bytes written
-                using MemoryStream memoryStream = new MemoryStream();   
+                using MemoryStream memoryStream = new MemoryStream();
                 using SnappyStream snappyStream = new(memoryStream, CompressionMode.Compress, true);
                 await snappyStream.WriteAsync(bytes, cancellation);
                 await snappyStream.FlushAsync();
@@ -109,17 +74,17 @@ internal class E2Store : IDisposable
             headerBuffer[0] = (byte)type;
             headerBuffer[1] = (byte)(type >> 8);
             int length = bytes.Length;
-            headerBuffer[2] = (byte)(bytes.Length);
-            headerBuffer[3] = (byte)(bytes.Length >> 8);
-            headerBuffer[4] = (byte)(bytes.Length >> 16);
-            headerBuffer[5] = (byte)(bytes.Length >> 24);
+            headerBuffer[2] = (byte)(length);
+            headerBuffer[3] = (byte)(length >> 8);
+            headerBuffer[4] = (byte)(length >> 16);
+            headerBuffer[5] = (byte)(length >> 24);
             headerBuffer[6] = 0;
             headerBuffer[7] = 0;
 
             await _stream.WriteAsync(headerBuffer, 0, HeaderSize, cancellation);
-            await _stream.WriteAsync(bytes, 0, bytes.Length, cancellation);
+            if (length > 0) await _stream.WriteAsync(bytes, 0, length, cancellation);
 
-            return bytes.Length + HeaderSize;
+            return length + HeaderSize;
         }
         finally
         {
@@ -130,8 +95,8 @@ internal class E2Store : IDisposable
     private async Task<EraMetadata> ReadEraMetaData(CancellationToken token = default)
     {
         long l = _stream!.Length;
-        if (_stream.Length < 16)        
-            throw new EraFormatException($"Data is not in a valid Era format.");        
+        if (_stream.Length < 16)
+            throw new EraFormatException($"Data is not in a valid Era format.");
 
         byte[] bytes = ArrayPool<byte>.Shared.Rent(16);
         try
@@ -140,7 +105,8 @@ internal class E2Store : IDisposable
             await _stream.ReadAsync(bytes, 0, 8, token);
             long c = BitConverter.ToInt64(bytes);
 
-            _stream.Position = l - 16L - c * 8;
+            long indexOffset = l - 16L - c * 8;
+            _stream.Position = indexOffset;
             await _stream.ReadAsync(bytes, 8, 8, token);
             long s = BitConverter.ToInt64(bytes, 8);
             return new EraMetadata(s, c, l);
@@ -154,6 +120,8 @@ internal class E2Store : IDisposable
     // Reads the header metadata at the given offset.
     public async Task<HeaderData> ReadEntryHeaderAt(long offset, CancellationToken token = default)
     {
+        CheckStreamBounds(offset);
+
         var buf = ArrayPool<byte>.Shared.Rent(HeaderSize);
         try
         {
@@ -172,6 +140,8 @@ internal class E2Store : IDisposable
                 Type = BitConverter.ToUInt16(buf, 0),
                 Length = BitConverter.ToUInt32(buf, 2)
             };
+            if (h.Length > StreamLength - offset)
+                throw new EraFormatException($"Invalid length of entry value was detected. Entry has a length of {h.Length} at position {offset}, and Stream has a length of {StreamLength}.");
             return h;
         }
         finally
@@ -179,11 +149,10 @@ internal class E2Store : IDisposable
             ArrayPool<byte>.Shared.Return(buf);
         }
     }
-
-    public async Task<IEnumerable<Entry>> FindAll(UInt16 type, CancellationToken token  = default)
+    public async Task<IEnumerable<Entry>> FindAll(UInt16 type, CancellationToken token = default)
     {
         int off = 0;
-        var entries = new List<Entry>();    
+        var entries = new List<Entry>();
         while (true)
         {
             var hd = await ReadEntryHeaderAt(off, token);
@@ -197,14 +166,15 @@ internal class E2Store : IDisposable
             off += HeaderSize + (int)hd.Length;
             if (_stream!.Length < off)
                 //TODO improve message
-                throw new EraException($"Malformed era1 format detected "); 
+                throw new EraException($"Malformed era1 format detected ");
             if (_stream.Length == off)
                 return entries;
         }
     }
-
     public async Task<long> ReadValueAt(long off, CancellationToken token = default)
     {
+        CheckStreamBounds(off);
+
         byte[] buf = ArrayPool<byte>.Shared.Rent(8);
         try
         {
@@ -219,13 +189,15 @@ internal class E2Store : IDisposable
     }
     public Task<Entry> ReadEntryCurrentPosition(CancellationToken token = default)
     {
-        return ReadEntryAt((int)_stream.Position, token);
+        return ReadEntryAt(_stream.Position, token);
     }
     public async Task<Entry> ReadEntryAt(long off, CancellationToken token = default)
     {
+        CheckStreamBounds(off);
+
         var eHeader = await ReadEntryHeaderAt(off, token);
-        
-        Entry e = new (eHeader.Type, off, eHeader.Length);
+
+        Entry e = new(eHeader.Type, off, eHeader.Length);
 
         if (eHeader.Length > ValueSizeLimit)
             throw new EraException($"Entry exceeds the maximum size limit of {ValueSizeLimit}. Entry is {eHeader.Length}.");
@@ -240,27 +212,41 @@ internal class E2Store : IDisposable
     {
         return ReadEntryValueAsSnappy(buffer, 0, e, cancellation);
     }
-    public Task<int> ReadEntryValueAsSnappy(byte[] buffer, int offset, Entry e, CancellationToken cancellation = default)
+    public async Task<int> ReadEntryValueAsSnappy(byte[] buffer, int offset, Entry e, CancellationToken cancellation = default)
     {
         if (buffer is null) throw new ArgumentNullException(nameof(buffer));
         if (offset < 0) throw new ArgumentOutOfRangeException(nameof(offset), "Cannot be a negative number.");
         if (offset >= buffer.Length) throw new ArgumentOutOfRangeException(nameof(offset), "Cannot exceed the length of the buffer.");
-        using SnappyStream snappy = new (new StreamSegment(_stream, e.ValueOffset, e.Length), CompressionMode.Decompress, true);
-        return snappy.ReadAsync(buffer, offset, buffer.Length - offset, cancellation);
+        if (e.ValueOffset + e.Length > StreamLength) throw new EraFormatException($"Entry has a length ({e.Length}) and offset ({e.Offset}) that would read beyond the length of the stream.");
+        using SnappyStream snappy = new(new StreamSegment(_stream, e.ValueOffset, e.Length), CompressionMode.Decompress, true);
+        int totalRead = 0;
+        int read = 0;
+        do
+        {
+            read = await snappy.ReadAsync(buffer, offset + totalRead, buffer.Length - offset - totalRead, cancellation);
+            totalRead += read;
+        }
+        while (read != 0);
+        return totalRead;
     }
 
     public async ValueTask<int> ReadEntryValue(byte[] buffer, Entry e, CancellationToken cancellation = default)
     {
         if (buffer is null) throw new ArgumentNullException(nameof(buffer));
-        if (buffer.Length < e.Length)
-            throw new ArgumentException($"Buffer must be at least {e.Length} long.", nameof(buffer));
+        if (buffer.Length < e.Length) throw new ArgumentException($"Buffer must be at least {e.Length} long.", nameof(buffer));
+        if (e.ValueOffset + e.Length > StreamLength) throw new EraFormatException($"Entry has a length ({e.Length}) and offset ({e.Offset}) that would read beyond the length of the stream.");
+
         _stream.Position = e.ValueOffset;
         int read = await _stream.ReadAsync(buffer, 0, (int)e.Length, cancellation);
+        //TODO not correct length, but can only happen if EOF or Entry is malformed
         if (read != e.Length)
-        {
-            //TODO not correct length, but can only happen if EOF
-        }
-        return read;    
+            throw new EraFormatException($"Invalid entry detected at offset {e.Offset}. Entry has a length of {e.Length}, but the stream .");
+        return read;
+    }
+
+    public Task Flush(CancellationToken cancellation = default)
+    {
+        return _stream.FlushAsync(cancellation);
     }
 
     protected virtual void Dispose(bool disposing)
@@ -285,24 +271,12 @@ internal class E2Store : IDisposable
     {
         return _stream.Seek(offset, origin);
     }
-}
-
-internal struct HeaderData
-{
-    public ushort Type;
-    public uint Length;
-}
-
-internal struct EraMetadata
-{
-    public long Start { get; }
-    public long Count { get; }
-    public long Length { get; }
-
-    public EraMetadata(long start, long count, long length)
+    private void CheckStreamBounds(long offset)
     {
-        Start = start;
-        Count = count;
-        Length = length;
+        if (offset < 0)
+            throw new ArgumentOutOfRangeException(nameof(offset), "Cannot be a negative number.");
+        if (offset > StreamLength - 8)
+            throw new ArgumentOutOfRangeException(nameof(offset), "Cannot read beyond the length of the stream.");
     }
+
 }
