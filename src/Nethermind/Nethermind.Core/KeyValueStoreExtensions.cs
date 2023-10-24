@@ -19,7 +19,7 @@ namespace Nethermind.Core
             return new FakeWriteBatch(keyValueStore, onDispose);
         }
 
-        public static void Set(this IKeyValueStore db, Keccak key, byte[] value, WriteFlags writeFlags = WriteFlags.None)
+        public static void Set(this IWriteOnlyKeyValueStore db, Keccak key, byte[] value, WriteFlags writeFlags = WriteFlags.None)
         {
             if (db.PreferWriteByArray)
             {
@@ -29,12 +29,7 @@ namespace Nethermind.Core
             db.PutSpan(key.Bytes, value, writeFlags);
         }
 
-        public static void Set(this IKeyValueStore db, Keccak key, Span<byte> value, WriteFlags writeFlags = WriteFlags.None)
-        {
-            db.PutSpan(key.Bytes, value, writeFlags);
-        }
-
-        public static void Set(this IKeyValueStore db, Keccak key, CappedArray<byte> value, WriteFlags writeFlags = WriteFlags.None)
+        public static void Set(this IWriteOnlyKeyValueStore db, Keccak key, CappedArray<byte> value, WriteFlags writeFlags = WriteFlags.None)
         {
             if (value.IsUncapped && db.PreferWriteByArray)
             {
