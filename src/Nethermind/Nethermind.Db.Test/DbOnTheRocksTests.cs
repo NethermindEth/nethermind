@@ -201,7 +201,7 @@ namespace Nethermind.Db.Test
     public class DbOnTheRocksDbTests
     {
         string DbPath => "testdb/" + TestContext.CurrentContext.Test.Name;
-        private IDbWithSpan _db = null!;
+        private IDb _db = null!;
         IDisposable? _dbDisposable = null!;
 
         private bool _useColumnDb = false;

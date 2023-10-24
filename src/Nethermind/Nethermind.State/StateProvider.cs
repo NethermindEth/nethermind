@@ -154,9 +154,9 @@ namespace Nethermind.State
             // or people copy and pasting popular contracts
             if (!_codeInsertFilter.Get(codeHash))
             {
-                if (_codeDb is IDbWithSpan dbWithSpan)
+                if (!_codeDb.PreferWriteByArray)
                 {
-                    dbWithSpan.PutSpan(codeHash.Bytes, code.Span);
+                    _codeDb.PutSpan(codeHash.Bytes, code.Span);
                 }
                 else if (MemoryMarshal.TryGetArray(code, out ArraySegment<byte> codeArray)
                         && codeArray.Offset == 0

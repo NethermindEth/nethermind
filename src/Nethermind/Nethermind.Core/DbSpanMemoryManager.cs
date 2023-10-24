@@ -7,17 +7,16 @@ using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
-using Nethermind.Db;
 
 namespace Nethermind.Core.Buffers;
 
 public unsafe sealed class DbSpanMemoryManager : MemoryManager<byte>
 {
-    private readonly IDbWithSpan _db;
+    private readonly IReadOnlyKeyValueStore _db;
     private void* _ptr;
     private readonly int _length;
 
-    public DbSpanMemoryManager(IDbWithSpan db, Span<byte> unmanagedSpan)
+    public DbSpanMemoryManager(IReadOnlyKeyValueStore db, Span<byte> unmanagedSpan)
     {
         _db = db;
         _ptr = Unsafe.AsPointer(ref MemoryMarshal.GetReference(unmanagedSpan));

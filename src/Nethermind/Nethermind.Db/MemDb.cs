@@ -11,7 +11,7 @@ using Nethermind.Core.Extensions;
 
 namespace Nethermind.Db
 {
-    public class MemDb : IFullDb, IDbWithSpan
+    public class MemDb : IFullDb
     {
         private readonly int _writeDelay; // for testing scenarios
         private readonly int _readDelay; // for testing scenarios
@@ -108,6 +108,8 @@ namespace Nethermind.Db
         public void Dispose()
         {
         }
+
+        public bool PreferWriteByArray => true;
 
         public virtual Span<byte> GetSpan(ReadOnlySpan<byte> key)
         {

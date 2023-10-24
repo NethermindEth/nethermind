@@ -13,8 +13,6 @@ namespace Nethermind.Db
         KeyValuePair<byte[], byte[]?>[] this[byte[][] keys] { get; }
         IEnumerable<KeyValuePair<byte[], byte[]?>> GetAll(bool ordered = false);
         IEnumerable<byte[]> GetAllValues(bool ordered = false);
-        void Remove(ReadOnlySpan<byte> key);
-        bool KeyExists(ReadOnlySpan<byte> key);
 
         public IReadOnlyDb CreateReadOnly(bool createInMemWriteStore) => new ReadOnlyDb(this, createInMemWriteStore);
     }

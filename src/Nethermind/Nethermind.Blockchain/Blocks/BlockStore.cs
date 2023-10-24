@@ -15,7 +15,6 @@ namespace Nethermind.Blockchain.Blocks;
 public class BlockStore : IBlockStore
 {
     private readonly IDb _blockDb;
-    private readonly IDbWithSpan? _blockDbAsSpan;
     private readonly BlockDecoder _blockDecoder = new();
     private const int CacheSize = 128 + 32;
 
@@ -25,11 +24,6 @@ public class BlockStore : IBlockStore
     public BlockStore(IDb blockDb)
     {
         _blockDb = blockDb;
-
-        if (blockDb is IDbWithSpan blockDbAsSpan)
-            _blockDbAsSpan = blockDbAsSpan;
-        else
-            _blockDbAsSpan = null;
     }
 
     public void SetMetadata(byte[] key, byte[] value)
@@ -81,32 +75,13 @@ public class BlockStore : IBlockStore
         Span<byte> keyWithBlockNumber = stackalloc byte[40];
         GetBlockNumPrefixedKey(blockNumber, blockHash, keyWithBlockNumber);
 
-        MemoryManager<byte>? memoryOwner = null;
-        Memory<byte> memory;
-        if (_blockDbAsSpan != null)
+        MemoryManager<byte>? memoryOwner = _blockDb.GetOwnedMemory(keyWithBlockNumber);
+        if (memoryOwner == null)
         {
-
-            memoryOwner = _blockDbAsSpan.GetOwnedMemory(keyWithBlockNumber);
-            if (memoryOwner == null)
-            {
-                memoryOwner = _blockDbAsSpan.GetOwnedMemory(blockHash.Bytes);
-            }
-
-            memory = memoryOwner.Memory;
-
-        }
-        else
-        {
-            byte[]? data = _blockDb.Get(keyWithBlockNumber);
-            if (data == null)
-            {
-                data = _blockDb.Get(blockHash.Bytes);
-            }
-
-            memory = data;
+            memoryOwner = _blockDb.GetOwnedMemory(blockHash.Bytes);
         }
 
-        return _blockDecoder.DecodeToReceiptRecoveryBlock(memoryOwner, memory, RlpBehaviors.None);
+        return _blockDecoder.DecodeToReceiptRecoveryBlock(memoryOwner, memoryOwner?.Memory ?? Memory<byte>.Empty, RlpBehaviors.None);
     }
 
     public void Cache(Block block)

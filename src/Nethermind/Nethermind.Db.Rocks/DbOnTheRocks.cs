@@ -22,7 +22,7 @@ using IWriteBatch = Nethermind.Core.IWriteBatch;
 
 namespace Nethermind.Db.Rocks;
 
-public class DbOnTheRocks : IDbWithSpan, ITunableDb
+public class DbOnTheRocks : IDb, ITunableDb
 {
     private ILogger _logger;
 

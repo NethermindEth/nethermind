@@ -11,7 +11,7 @@ using IWriteBatch = Nethermind.Core.IWriteBatch;
 
 namespace Nethermind.Db.Rocks;
 
-public class ColumnDb : IDbWithSpan
+public class ColumnDb : IDb
 {
     private readonly RocksDb _rocksDb;
     private readonly DbOnTheRocks _mainDb;

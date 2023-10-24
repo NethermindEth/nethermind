@@ -795,7 +795,7 @@ namespace Nethermind.Trie.Pruning
                     Hash256? hash = n.Keccak;
                     if (hash is not null)
                     {
-                        store[hash.Bytes] = n.FullRlp.ToArray();
+                        store.Set(hash, n.FullRlp);
                         int persistedNodesCount = Interlocked.Increment(ref persistedNodes);
                         if (_logger.IsInfo && persistedNodesCount % million == 0)
                         {

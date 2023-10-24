@@ -9,7 +9,7 @@ namespace Nethermind.Db
 {
     public interface IColumnsDb<TKey> : IDbMeta
     {
-        IDbWithSpan GetColumnDb(TKey key);
+        IDb GetColumnDb(TKey key);
         IEnumerable<TKey> ColumnKeys { get; }
         public IReadOnlyColumnDb<TKey> CreateReadOnly(bool createInMemWriteStore) => new ReadOnlyColumnsDb<TKey>(this, createInMemWriteStore);
         IColumnsWriteBatch<TKey> StartWriteBatch();

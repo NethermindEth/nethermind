@@ -64,26 +64,12 @@ namespace Nethermind.Db
 
         public static void Set(this IDb db, in ValueHash256 key, Span<byte> value)
         {
-            if (db is IDbWithSpan dbWithSpan)
-            {
-                dbWithSpan.PutSpan(key.Bytes, value);
-            }
-            else
-            {
-                db[key.Bytes] = value.ToArray();
-            }
+            db.PutSpan(key.Bytes, value);
         }
 
         public static void Set(this IDb db, ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags writeFlags = WriteFlags.None)
         {
-            if (db is IDbWithSpan dbWithSpan)
-            {
-                dbWithSpan.PutSpan(key, value, flags: writeFlags);
-            }
-            else
-            {
-                db.Set(key, value.ToArray(), flags: writeFlags);
-            }
+            db.PutSpan(key, value, writeFlags);
         }
 
         public static KeyValuePair<byte[], byte[]>[] MultiGet(this IDb db, IEnumerable<ValueHash256> keys)
@@ -161,7 +147,7 @@ namespace Nethermind.Db
         /// <param name="db"></param>
         /// <param name="key"></param>
         /// <returns>Can return null or empty Span on missing key</returns>
-        public static Span<byte> GetSpan(this IDbWithSpan db, long key) => db.GetSpan(key.ToBigEndianByteArrayWithoutLeadingZeros());
+        public static Span<byte> GetSpan(this IDb db, long key) => db.GetSpan(key.ToBigEndianByteArrayWithoutLeadingZeros());
 
 
         public static void Delete(this IDb db, long key)
@@ -201,7 +187,7 @@ namespace Nethermind.Db
             TItem item = cache?.Get(cacheKey);
             if (item is null)
             {
-                if (db is IDbWithSpan spanDb && decoder is IRlpValueDecoder<TItem> valueDecoder)
+                if (db is IDb spanDb && decoder is IRlpValueDecoder<TItem> valueDecoder)
                 {
                     Span<byte> data = spanDb.GetSpan(key);
                     if (data.IsNull())

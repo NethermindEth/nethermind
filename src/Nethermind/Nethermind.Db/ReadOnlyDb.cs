@@ -7,7 +7,7 @@ using Nethermind.Core;
 
 namespace Nethermind.Db
 {
-    public class ReadOnlyDb : IReadOnlyDb, IDbWithSpan
+    public class ReadOnlyDb : IReadOnlyDb
     {
         private readonly MemDb _memDb = new();
 
@@ -107,5 +107,7 @@ namespace Nethermind.Db
         }
 
         public void DangerousReleaseMemory(in Span<byte> span) { }
+
+        public bool PreferWriteByArray => true; // Because of memdb buffer
     }
 }
