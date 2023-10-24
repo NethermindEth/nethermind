@@ -56,11 +56,11 @@ public class OptimismBlockProducerEnvFactory : BlockProducerEnvFactory
             _chainSpec.Optimism.L1FeeRecipient
         );
         OPL1CostHelper l1CostHelper = new(opConfigHelper, _chainSpec.Optimism.L1BlockAddress);
-        OptimismTransactionProcessorFactory txProcessorFactory = new(l1CostHelper, opConfigHelper);
 
         ReadOnlyTxProcessingEnv result = new(readOnlyDbProvider, _readOnlyTrieStore,
             readOnlyBlockTree, _specProvider, _logManager);
-        result.TransactionProcessor = txProcessorFactory.Create(_specProvider, result.StateProvider, result.Machine, _logManager);
+        result.TransactionProcessor =
+            new OptimismTransactionProcessor(_specProvider, result.StateProvider, result.Machine, _logManager, l1CostHelper, opConfigHelper);
 
         return result;
     }
