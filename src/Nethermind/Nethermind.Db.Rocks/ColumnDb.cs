@@ -50,9 +50,9 @@ public class ColumnDb : IDb
         _mainDb.SetWithColumnFamily(key, _columnFamily, value, flags);
     }
 
-    public void PutSpan(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags flags = WriteFlags.None)
+    public void PutSpan(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags writeFlags = WriteFlags.None)
     {
-        _mainDb.PutSpanWithColumnFamily(key, _columnFamily, value, flags);
+        _mainDb.SetWithColumnFamily(key, _columnFamily, value, writeFlags);
     }
 
     public KeyValuePair<byte[], byte[]?>[] this[byte[][] keys] =>
@@ -131,17 +131,6 @@ public class ColumnDb : IDb
     public long GetCacheSize() => _mainDb.GetCacheSize();
     public long GetIndexSize() => _mainDb.GetIndexSize();
     public long GetMemtableSize() => _mainDb.GetMemtableSize();
-
-    public Span<byte> GetSpan(ReadOnlySpan<byte> key)
-    {
-        _mainDb.UpdateReadMetrics();
-        return _rocksDb.GetSpan(key, _columnFamily);
-    }
-
-    public void PutSpan(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags writeFlags = WriteFlags.None)
-    {
-        _mainDb.SetWithColumnFamily(key, _columnFamily, value, writeFlags);
-    }
 
     public void DangerousReleaseMemory(in Span<byte> span) => _rocksDb.DangerousReleaseMemory(span);
 }
