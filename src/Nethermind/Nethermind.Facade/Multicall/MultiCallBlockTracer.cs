@@ -55,7 +55,7 @@ public class MultiCallBlockTracer : BlockTracer
             Timestamp = _currentBlock.Timestamp,
             FeeRecipient = _currentBlock.Beneficiary!,
             BaseFeePerGas = _currentBlock.BaseFeePerGas,
-            PrevRandao = _currentBlock.Header!.Random,
+            PrevRandao = _currentBlock.Header!.Random!.BytesToArray(),
         };
 
         result.Calls.ForEach(callResult =>

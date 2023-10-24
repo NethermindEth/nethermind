@@ -2,8 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Linq;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Find;
+using Nethermind.Core.Crypto;
 using Nethermind.Facade.Proxy.Models.MultiCall;
 using Nethermind.JsonRpc.Data;
 using Nethermind.Serialization.Json;
@@ -61,6 +63,9 @@ public class EthMultiCallTestsHiveBase
         Console.WriteLine("current test: multicallBasefeeTooLowWithValidation38012");
         var result = chain.EthRpcModule.eth_multicallV1(payload!, BlockParameter.Latest);
         Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success));
+        Assert.That(result.Data.First().PrevRandao, Is.EqualTo(new Keccak("0x0000000000000000000000000000000000000000000000000000000000000000").BytesToArray()));
+
+
         Assert.IsNotNull(result.Data);
     }
 

@@ -7,13 +7,15 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using System.Numerics;
+using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
 
 namespace Nethermind.Serialization.Json;
 
 //This is a temp solution to bypass https://github.com/NethermindEth/int256/pull/35
-public class DictionaryWithSpecialUInt256KeyConverter : JsonConverter
+public class DictionaryWithSpecialUInt256KeyValueKeccakValConverter : JsonConverter
 {
     public static bool IsType(Type type, Type typeToBe)
     {
@@ -21,11 +23,11 @@ public class DictionaryWithSpecialUInt256KeyConverter : JsonConverter
         if (!typeToBe.IsGenericTypeDefinition)
             return typeToBe.IsAssignableFrom(type);
 
-        var toCheckTypes = new List<Type> { type };
+        List<Type> toCheckTypes = new() { type };
         if (typeToBe.IsInterface)
             toCheckTypes.AddRange(type.GetInterfaces());
 
-        var basedOn = type;
+        Type basedOn = type;
         while (basedOn.BaseType != null)
         {
             toCheckTypes.Add(basedOn.BaseType);
@@ -51,16 +53,23 @@ public class DictionaryWithSpecialUInt256KeyConverter : JsonConverter
             return null;
 
         // Assuming the keys in JSON are strings, and the Address type has a suitable Parse or TryParse method
-        var valueType = objectType.GetGenericArguments()[1];
-        var intermediateDictionaryType = typeof(Dictionary<,>).MakeGenericType(typeof(string), valueType);
-        var intermediateDictionary = (IDictionary)Activator.CreateInstance(intermediateDictionaryType);
+        Type valueType = objectType.GetGenericArguments()[1];
+        Type intermediateDictionaryType = typeof(Dictionary<,>).MakeGenericType(typeof(string), typeof(string));
+        IDictionary intermediateDictionary = (IDictionary)Activator.CreateInstance(intermediateDictionaryType);
         serializer.Populate(reader, intermediateDictionary);
 
-        var finalDictionary = (IDictionary)Activator.CreateInstance(objectType);
+        IDictionary finalDictionary = (IDictionary)Activator.CreateInstance(objectType);
         foreach (DictionaryEntry pair in intermediateDictionary)
         {
-            UInt256 key = (UInt256)BigInteger.Parse(pair.Key.ToString().Substring(2), NumberStyles.HexNumber);
-            finalDictionary.Add(key, pair.Value);
+            string keyData = pair.Key.ToString();
+            UInt256 key = keyData.StartsWith("0x", StringComparison.OrdinalIgnoreCase)
+                ? (UInt256)BigInteger.Parse(keyData.Substring(2), NumberStyles.HexNumber)
+                : UInt256.Parse(keyData);
+
+            string valueData = pair.Value.ToString();
+            ValueKeccak val = new(valueData);
+
+            finalDictionary.Add(key, val);
         }
 
         return finalDictionary;
@@ -71,9 +80,13 @@ public class DictionaryWithSpecialUInt256KeyConverter : JsonConverter
         bool isDict = IsType(objectType, typeof(IDictionary<,>));
         if (!isDict) return false;
 
-        Type genericArgument = objectType.GetGenericArguments()[0];
-        bool isKeyUint256 = IsType(genericArgument, typeof(UInt256));
-        var res = isDict && isKeyUint256;
-        return res;
+        var args = objectType.GetGenericArguments();
+        if (args.Length < 2) return false;
+
+        bool isKeyUint256 = IsType(args[0], typeof(UInt256));
+        if(!isKeyUint256) return false;
+
+        bool isValValueKeccak = IsType(args[1], typeof(ValueKeccak));
+        return isValValueKeccak;
     }
 }

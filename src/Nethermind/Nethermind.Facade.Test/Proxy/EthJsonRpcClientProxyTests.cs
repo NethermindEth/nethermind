@@ -131,7 +131,7 @@ namespace Nethermind.Facade.Test.Proxy
             {
                 settings.Converters.Add(converter);
             }
-            settings.Converters.Add(new DictionaryWithSpecialUInt256KeyConverter());
+            settings.Converters.Add(new DictionaryWithSpecialUInt256KeyValueKeccakValConverter());
 
             var payload = JsonConvert.DeserializeObject<MultiCallPayload<CallTransaction>>(input, settings);
 

@@ -20,6 +20,6 @@ public class MultiCallBlockResult
     public Address FeeRecipient { get; set; } = Address.Zero;
     public UInt256 BaseFeePerGas { get; set; }
     public IEnumerable<MultiCallCallResult> Calls { get; set; } = Enumerable.Empty<MultiCallCallResult>();
-    public Keccak? PrevRandao { get; set; }
+    public byte[]? PrevRandao { get; set; }
 
 }
