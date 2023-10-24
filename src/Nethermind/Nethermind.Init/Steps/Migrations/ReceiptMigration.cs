@@ -322,7 +322,7 @@ namespace Nethermind.Init.Steps.Migrations
 
             // I guess some old schema need this
             {
-                using IBatch batch = _receiptsDb.StartBatch();
+                using IBatch batch = _receiptsDb.StartBatch().GetColumnBatch(ReceiptsColumns.Transactions);
                 for (int i = 0; i < notNullReceipts.Length; i++)
                 {
                     batch[notNullReceipts[i].TxHash!.Bytes] = null;
