@@ -137,8 +137,10 @@ namespace Nethermind.Synchronization.FastBlocks
                 }
             }
 
-            if ((_blockTree.LowestInsertedBodyNumber ?? long.MaxValue) - _syncStatusList.LowestInsertWithoutGaps > _flushDbInterval)
-            {
+            if (
+                (_blockTree.LowestInsertedBodyNumber ?? long.MaxValue) - _syncStatusList.LowestInsertWithoutGaps > _flushDbInterval ||
+                _syncStatusList.LowestInsertWithoutGaps <= _barrier // Other state depends on LowestInsertedBodyNumber, so this need to flush or it wont finish
+            ) {
                 Flush();
             }
 
