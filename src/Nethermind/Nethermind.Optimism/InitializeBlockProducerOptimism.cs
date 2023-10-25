@@ -12,7 +12,12 @@ namespace Nethermind.Optimism;
 
 public class InitializeBlockProducerOptimism : InitializeBlockProducer
 {
-    public InitializeBlockProducerOptimism(OptimismNethermindApi api) : base(api) { }
+    private readonly OptimismNethermindApi _api;
+
+    public InitializeBlockProducerOptimism(OptimismNethermindApi api) : base(api)
+    {
+        _api = api;
+    }
 
     protected override Task<IBlockProducer> BuildProducer()
     {
@@ -25,6 +30,8 @@ public class InitializeBlockProducerOptimism : InitializeBlockProducer
         if (_api.TxPool is null) throw new StepDependencyException(nameof(_api.TxPool));
         if (_api.TransactionComparerProvider is null) throw new StepDependencyException(nameof(_api.TransactionComparerProvider));
         if (_api.BlockValidator is null) throw new StepDependencyException(nameof(_api.BlockValidator));
+        if (_api.SpecHelper is null) throw new StepDependencyException(nameof(_api.SpecHelper));
+        if (_api.L1CostHelper is null) throw new StepDependencyException(nameof(_api.L1CostHelper));
 
         _api.BlockProducerEnvFactory = new OptimismBlockProducerEnvFactory(
             _api.ChainSpec,
@@ -39,6 +46,8 @@ public class InitializeBlockProducerOptimism : InitializeBlockProducer
             _api.TxPool,
             _api.TransactionComparerProvider,
             _api.Config<IBlocksConfig>(),
+            _api.SpecHelper,
+            _api.L1CostHelper,
             _api.LogManager);
 
         _api.GasLimitCalculator = new OptimismGasLimitCalculator();

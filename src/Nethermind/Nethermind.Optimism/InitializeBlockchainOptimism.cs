@@ -25,27 +25,34 @@ public class InitializeBlockchainOptimism : InitializeBlockchain
         _blocksConfig = api.Config<IBlocksConfig>();
     }
 
-    protected override ITransactionProcessor CreateTransactionProcessor()
+    protected override Task InitBlockchain()
     {
-        if (_api.SpecProvider is null) throw new StepDependencyException(nameof(_api.SpecProvider));
-        if (_api.WorldState is null) throw new StepDependencyException(nameof(_api.WorldState));
-
-        VirtualMachine virtualMachine = CreateVirtualMachine();
-
-        OPSpecHelper opConfigHelper = new(
+        _api.SpecHelper = new(
             _api.ChainSpec.Optimism.RegolithTimestamp,
             _api.ChainSpec.Optimism.BedrockBlockNumber,
             _api.ChainSpec.Optimism.L1FeeRecipient
         );
-        OPL1CostHelper l1CostHelper = new(opConfigHelper, _api.ChainSpec.Optimism.L1BlockAddress);
+        _api.L1CostHelper = new(_api.SpecHelper, _api.ChainSpec.Optimism.L1BlockAddress);
+
+        return base.InitBlockchain();
+    }
+
+    protected override ITransactionProcessor CreateTransactionProcessor()
+    {
+        if (_api.SpecProvider is null) throw new StepDependencyException(nameof(_api.SpecProvider));
+        if (_api.WorldState is null) throw new StepDependencyException(nameof(_api.WorldState));
+        if (_api.SpecHelper is null) throw new StepDependencyException(nameof(_api.SpecHelper));
+        if (_api.L1CostHelper is null) throw new StepDependencyException(nameof(_api.L1CostHelper));
+
+        VirtualMachine virtualMachine = CreateVirtualMachine();
 
         return new OptimismTransactionProcessor(
             _api.SpecProvider,
             _api.WorldState,
             virtualMachine,
             _api.LogManager,
-            l1CostHelper,
-            opConfigHelper
+            _api.L1CostHelper,
+            _api.SpecHelper
         );
     }
 

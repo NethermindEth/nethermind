@@ -24,6 +24,8 @@ namespace Nethermind.Optimism;
 public class OptimismBlockProducerEnvFactory : BlockProducerEnvFactory
 {
     private readonly ChainSpec _chainSpec;
+    private readonly OPSpecHelper _specHelper;
+    private readonly OPL1CostHelper _l1CostHelper;
 
     public OptimismBlockProducerEnvFactory(
         ChainSpec chainSpec,
@@ -38,11 +40,15 @@ public class OptimismBlockProducerEnvFactory : BlockProducerEnvFactory
         ITxPool txPool,
         ITransactionComparerProvider transactionComparerProvider,
         IBlocksConfig blocksConfig,
+        OPSpecHelper specHelper,
+        OPL1CostHelper l1CostHelper,
         ILogManager logManager) : base(dbProvider,
         blockTree, readOnlyTrieStore, specProvider, blockValidator,
         rewardCalculatorSource, receiptStorage, blockPreprocessorStep,
         txPool, transactionComparerProvider, blocksConfig, logManager)
     {
+        _specHelper = specHelper;
+        _l1CostHelper = l1CostHelper;
         _chainSpec = chainSpec;
         TransactionsExecutorFactory = new OptimismTransactionsExecutorFactory(specProvider, logManager);
     }
@@ -50,17 +56,10 @@ public class OptimismBlockProducerEnvFactory : BlockProducerEnvFactory
     protected override ReadOnlyTxProcessingEnv CreateReadonlyTxProcessingEnv(ReadOnlyDbProvider readOnlyDbProvider,
         ReadOnlyBlockTree readOnlyBlockTree)
     {
-        OPSpecHelper opConfigHelper = new(
-            _chainSpec.Optimism.RegolithTimestamp,
-            _chainSpec.Optimism.BedrockBlockNumber,
-            _chainSpec.Optimism.L1FeeRecipient
-        );
-        OPL1CostHelper l1CostHelper = new(opConfigHelper, _chainSpec.Optimism.L1BlockAddress);
-
         ReadOnlyTxProcessingEnv result = new(readOnlyDbProvider, _readOnlyTrieStore,
             readOnlyBlockTree, _specProvider, _logManager);
         result.TransactionProcessor =
-            new OptimismTransactionProcessor(_specProvider, result.StateProvider, result.Machine, _logManager, l1CostHelper, opConfigHelper);
+            new OptimismTransactionProcessor(_specProvider, result.StateProvider, result.Machine, _logManager, _l1CostHelper, _specHelper);
 
         return result;
     }
