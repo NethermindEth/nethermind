@@ -12,6 +12,7 @@ namespace Nethermind.DocGen;
 
 internal static class JsonRpcGenerator
 {
+    private const string _directory = "json-rpc-ns";
     private const string _objectTypeName = "*object*";
 
     internal static void Generate()
@@ -27,6 +28,11 @@ internal static class JsonRpcGenerator
                 !t.Name.Equals(nameof(IWitnessRpcModule), StringComparison.Ordinal))
             .OrderBy(t => t.Name);
 
+        if (Directory.Exists(_directory))
+            Directory.Delete(_directory, true);
+
+        Directory.CreateDirectory(_directory);
+
         var i = 0;
 
         foreach (var type in types)
@@ -37,7 +43,7 @@ internal static class JsonRpcGenerator
     {
         var rpcName = rpcType.Name[1..].Replace("RpcModule", null).ToLowerInvariant();
 
-        using var file = new StreamWriter(File.OpenWrite($"{rpcName}.md"));
+        using var file = new StreamWriter(File.OpenWrite($"{_directory}/{rpcName}.md"));
         file.NewLine = "\n";
 
         file.WriteLine($"""
@@ -87,6 +93,10 @@ internal static class JsonRpcGenerator
 
                 """);
         }
+
+        file.Close();
+
+        Console.WriteLine($"Generated {_directory}/{rpcName}.md");
     }
 
     private static void WriteParameters(StreamWriter file, MethodInfo method)

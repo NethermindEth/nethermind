@@ -24,7 +24,9 @@ internal static partial class MetricsGenerator
             .Where(t => t.Name.Equals("Metrics", StringComparison.Ordinal) &&
                 !excluded.Any(x => t.FullName?.Contains(x, StringComparison.Ordinal) ?? false))
             .OrderBy(t => GetNamespace(t.FullName));
-        
+
+        File.Delete($"~{fileName}");
+
         using var readStream = new StreamReader(File.OpenRead(fileName));
         using var writeStream = new StreamWriter(File.OpenWrite($"~{fileName}"));
 
@@ -59,6 +61,13 @@ internal static partial class MetricsGenerator
 
             writeStream.WriteLine(line);
         }
+
+        readStream.Close();
+        writeStream.Close();
+
+        File.Move($"~{fileName}", fileName, true);
+
+        Console.WriteLine($"Updated {fileName}");
     }
 
     private static void WriteMarkdown(StreamWriter file, Type metricsType)

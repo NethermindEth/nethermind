@@ -14,12 +14,16 @@ internal static class ConfigGenerator
         var startMark = "<!--[start autogen]-->";
         var endMark = "<!--[end autogen]-->";
         var fileName = "configuration.md";
+        var excluded = new[] { "AccountAbstraction", "Mev" };
 
         var types = Directory
             .GetFiles(AppDomain.CurrentDomain.BaseDirectory, "Nethermind.*.dll")
             .SelectMany(a => Assembly.LoadFile(a).GetExportedTypes())
-            .Where(t => t.IsInterface && typeof(IConfig).IsAssignableFrom(t))
+            .Where(t => t.IsInterface && typeof(IConfig).IsAssignableFrom(t) &&
+                !excluded.Any(x => t.FullName?.Contains(x, StringComparison.Ordinal) ?? false))
             .OrderBy(t => t.Name);
+
+        File.Delete($"~{fileName}");
 
         using var readStream = new StreamReader(File.OpenRead(fileName));
         using var writeStream = new StreamWriter(File.OpenWrite($"~{fileName}"));
@@ -55,6 +59,13 @@ internal static class ConfigGenerator
 
             writeStream.WriteLine(line);
         }
+
+        readStream.Close();
+        writeStream.Close();
+
+        File.Move($"~{fileName}", fileName, true);
+
+        Console.WriteLine($"Updated {fileName}");
     }
 
     private static void WriteMarkdown(StreamWriter file, Type configType)
