@@ -56,7 +56,7 @@ public class OptimismPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitial
 
     public string SealEngineType => Core.SealEngineType.Optimism;
 
-    public IBlockProductionTrigger DefaultBlockProductionTrigger => throw new NotImplementedException();
+    public IBlockProductionTrigger DefaultBlockProductionTrigger => NeverProduceTrigger.Instance;
 
     public Task<IBlockProducer> InitBlockProducer(IBlockProductionTrigger? blockProductionTrigger = null,
         ITxSource? additionalTxSource = null)
