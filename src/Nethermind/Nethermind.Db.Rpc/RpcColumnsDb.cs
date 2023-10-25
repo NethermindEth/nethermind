@@ -3,34 +3,47 @@
 
 using System;
 using System.Collections.Generic;
-using Nethermind.Core.Attributes;
 using Nethermind.JsonRpc.Client;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 
 namespace Nethermind.Db.Rpc
 {
-    public class RpcColumnsDb<T> : RpcDb, IColumnsDb<T>
+    public class RpcColumnsDb<T> : IColumnsDb<T> where T : struct, Enum
     {
-        public RpcColumnsDb(string dbName, IJsonSerializer jsonSerializer, IJsonRpcClient rpcClient, ILogManager logManager, IDb recordDb) : base(dbName, jsonSerializer, rpcClient, logManager, recordDb)
+        private readonly string _dbName;
+        private readonly IJsonSerializer _jsonSerializer;
+        private readonly IJsonRpcClient _rpcClient;
+        private readonly ILogManager _logManager;
+        private readonly IColumnsDb<T> _recordDb;
+
+        public RpcColumnsDb(
+            string dbName,
+            IJsonSerializer jsonSerializer,
+            IJsonRpcClient rpcClient,
+            ILogManager logManager,
+            IColumnsDb<T> recordDb
+        )
         {
+            _dbName = dbName;
+            _jsonSerializer = jsonSerializer;
+            _rpcClient = rpcClient;
+            _logManager = logManager;
+            _recordDb = recordDb;
         }
 
-        [Todo(Improve.MissingFunctionality, "Need to implement RPC method for column DB's")]
-        public IDbWithSpan GetColumnDb(T key) => this;
-
-        [Todo(Improve.MissingFunctionality, "Need to implement RPC method for column DB's")]
-        public IEnumerable<T> ColumnKeys { get; } = Array.Empty<T>();
-
-        public Span<byte> GetSpan(ReadOnlySpan<byte> key) => this[key].AsSpan();
-        public void PutSpan(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value)
+        public IDbWithSpan GetColumnDb(T key)
         {
-            this[key] = value.ToArray();
+            string dbName = _dbName + key;
+            IDbWithSpan column = _recordDb.GetColumnDb(key);
+            return new RpcDb(dbName, _jsonSerializer, _rpcClient, _logManager, column);
         }
 
-        public void DangerousReleaseMemory(in Span<byte> span)
-        {
+        public IEnumerable<T> ColumnKeys => Enum.GetValues<T>();
 
+        public IColumnsBatch<T> StartBatch()
+        {
+            return new InMemoryColumnBatch<T>(this);
         }
     }
 }

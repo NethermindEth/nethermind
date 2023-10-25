@@ -6,13 +6,13 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.IO.Abstractions;
-using System.Linq;
 using System.Reflection;
 using System.Threading;
 using ConcurrentCollections;
+using Nethermind.Config;
 using Nethermind.Core;
-using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
 using Nethermind.Db.Rocks.Config;
 using Nethermind.Db.Rocks.Statistics;
@@ -131,8 +131,13 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
             if (columnNames != null)
             {
                 columnFamilies = new ColumnFamilies();
-                foreach (string columnFamily in columnNames)
+                foreach (string enumColumnName in columnNames)
                 {
+                    string columnFamily = enumColumnName;
+
+                    // "default" is a special column name with rocksdb, which is what previously not specifying column goes to
+                    if (columnFamily == "Default") columnFamily = "default";
+
                     ColumnFamilyOptions options = new();
                     BuildOptions(new PerTableDbConfig(dbConfig, _settings, columnFamily), options, sharedCache);
                     columnFamilies.Add(columnFamily, options);
@@ -375,6 +380,7 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
         ulong writeBufferSize = dbConfig.WriteBufferSize;
         options.SetWriteBufferSize(writeBufferSize);
         int writeBufferNumber = (int)dbConfig.WriteBufferNumber;
+        if (writeBufferNumber < 1) throw new InvalidConfigurationException($"Error initializing {Name} db. Max write buffer number must be more than 1. max write buffer number: {writeBufferNumber}", ExitCodes.GeneralError);
         options.SetMaxWriteBufferNumber(writeBufferNumber);
 
         lock (_dbsByPath)
