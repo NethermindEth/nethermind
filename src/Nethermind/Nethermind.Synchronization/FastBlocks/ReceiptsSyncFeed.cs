@@ -24,7 +24,7 @@ using Nethermind.Synchronization.SyncLimits;
 
 namespace Nethermind.Synchronization.FastBlocks
 {
-    
+
     public class ReceiptsSyncFeed : ActivatedSyncFeed<ReceiptsSyncBatch?>
     {
         internal const int DepositContractBarrier = 11052984;
