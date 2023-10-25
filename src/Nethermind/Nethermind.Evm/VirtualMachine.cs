@@ -63,7 +63,7 @@ public class VirtualMachine : IVirtualMachine
         where TTracingActions : struct, IIsTracing
         => _evm.Run<TTracingActions>(state, worldState, txTracer);
 
-    internal readonly ref struct CallResult
+    public readonly ref struct CallResult
     {
         public static CallResult InvalidSubroutineEntry => new(EvmExceptionType.InvalidSubroutineEntry);
         public static CallResult InvalidSubroutineReturn => new(EvmExceptionType.InvalidSubroutineReturn);
