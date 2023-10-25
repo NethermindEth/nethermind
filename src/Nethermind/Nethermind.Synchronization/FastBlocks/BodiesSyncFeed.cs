@@ -8,7 +8,7 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Specs;
+using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.State.Proofs;
 using Nethermind.Stats.Model;
@@ -22,13 +22,14 @@ namespace Nethermind.Synchronization.FastBlocks
     public class BodiesSyncFeed : ActivatedSyncFeed<BodiesSyncBatch?>
     {
         private int _requestSize = GethSyncLimits.MaxBodyFetch;
+        private const long FlushDbInterval = 100000; // About every 10GB on mainnet
 
         private readonly ILogger _logger;
         private readonly IBlockTree _blockTree;
         private readonly ISyncConfig _syncConfig;
         private readonly ISyncReport _syncReport;
-        private readonly ISpecProvider _specProvider;
         private readonly ISyncPeerPool _syncPeerPool;
+        private readonly IDbMeta _blocksDb;
 
         private long _pivotNumber;
         private long _barrier;
@@ -41,7 +42,7 @@ namespace Nethermind.Synchronization.FastBlocks
             ISyncPeerPool syncPeerPool,
             ISyncConfig syncConfig,
             ISyncReport syncReport,
-            ISpecProvider specProvider,
+            IDbMeta blocksDb,
             ILogManager logManager) : base(syncModeSelector)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
@@ -49,7 +50,7 @@ namespace Nethermind.Synchronization.FastBlocks
             _syncPeerPool = syncPeerPool ?? throw new ArgumentNullException(nameof(syncPeerPool));
             _syncConfig = syncConfig ?? throw new ArgumentNullException(nameof(syncConfig));
             _syncReport = syncReport ?? throw new ArgumentNullException(nameof(syncReport));
-            _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
+            _blocksDb = blocksDb ?? throw new ArgumentNullException(nameof(blocksDb));
 
             if (!_syncConfig.FastBlocks)
             {
@@ -115,6 +116,7 @@ namespace Nethermind.Synchronization.FastBlocks
             _syncReport.FastBlocksBodies.MarkEnd();
             _syncReport.BodiesInQueue.Update(0);
             _syncReport.BodiesInQueue.MarkEnd();
+            Flush();
         }
 
         public override Task<BodiesSyncBatch?> PrepareRequest(CancellationToken token = default)
@@ -132,9 +134,18 @@ namespace Nethermind.Synchronization.FastBlocks
                 }
             }
 
-            _blockTree.LowestInsertedBodyNumber = _syncStatusList.LowestInsertWithoutGaps;
+            if ((_blockTree.LowestInsertedBodyNumber ?? long.MaxValue) - _syncStatusList.LowestInsertWithoutGaps > FlushDbInterval)
+            {
+                Flush();
+            }
 
             return Task.FromResult(batch);
+        }
+
+        private void Flush()
+        {
+            _blocksDb.Flush();
+            _blockTree.LowestInsertedBodyNumber = _syncStatusList.LowestInsertWithoutGaps;
         }
 
         public override SyncResponseHandlingResult HandleResponse(BodiesSyncBatch? batch, PeerInfo peer = null)
@@ -234,7 +245,7 @@ namespace Nethermind.Synchronization.FastBlocks
 
         private void InsertOneBlock(Block block)
         {
-            _blockTree.Insert(block, BlockTreeInsertBlockOptions.SkipCanAcceptNewBlocks);
+            _blockTree.Insert(block, BlockTreeInsertBlockOptions.SkipCanAcceptNewBlocks, bodiesWriteFlags: WriteFlags.DisableWAL);
             _syncStatusList.MarkInserted(block.Number);
         }
 
