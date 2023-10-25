@@ -201,4 +201,69 @@ internal static class SetupCli
         nodeManager.SwitchUri(new Uri(rpcUrl));
         return nodeManager;
     }
+
+    public static void SetupSendFileCommand(CommandLineApplication app)
+    {
+        app.Command("send", (command) =>
+        {
+            command.Description = "Sends a file";
+            command.HelpOption("--help");
+
+            CommandOption fileOption = command.Option("--file <file>", "File to send as is.", CommandOptionType.SingleValue);
+            CommandOption rpcUrlOption = command.Option("--rpcurl <rpcUrl>", "Url of the Json RPC.", CommandOptionType.SingleValue);
+            CommandOption privateKeyOption = command.Option("--privatekey <privateKey>", "The key to use for sending blobs.", CommandOptionType.SingleValue);
+            CommandOption receiverOption = command.Option("--receiveraddress <receiverAddress>", "Receiver address of the blobs.", CommandOptionType.SingleValue);
+            CommandOption maxFeePerDataGasOption = command.Option("--maxfeeperdatagas <maxFeePerDataGas>", "(Optional) Set the maximum fee per blob data.", CommandOptionType.SingleValue);
+            CommandOption feeMultiplierOption = command.Option("--feemultiplier <feeMultiplier>", "(Optional) A multiplier to use for gas fees.", CommandOptionType.SingleValue);
+            CommandOption maxPriorityFeeGasOption = command.Option("--maxpriorityfee <maxPriorityFee>", "(Optional) The maximum priority fee for each transaction.", CommandOptionType.SingleValue);
+
+            command.OnExecute(async () =>
+            {
+                string rpcUrl = rpcUrlOption.Value();
+
+                PrivateKey privateKey;
+
+                if (privateKeyOption.HasValue())
+                    privateKey = new PrivateKey(privateKeyOption.Value());
+                else
+                {
+                    Console.WriteLine("Missing private key argument.");
+                    app.ShowHelp();
+                    return 1;
+                }
+
+                string receiver = receiverOption.Value();
+
+                UInt256 maxFeePerDataGas = 1000;
+                if (maxFeePerDataGasOption.HasValue())
+                {
+                    ulong.TryParse(maxFeePerDataGasOption.Value(), out ulong shortMaxFeePerDataGas);
+                    maxFeePerDataGas = shortMaxFeePerDataGas;
+                }
+
+                ulong feeMultiplier = 4;
+                if (feeMultiplierOption.HasValue())
+                    ulong.TryParse(feeMultiplierOption.Value(), out feeMultiplier);
+
+                UInt256 maxPriorityFeeGasArgs = 0;
+                if (maxPriorityFeeGasOption.HasValue()) UInt256.TryParse(maxPriorityFeeGasOption.Value(), out maxPriorityFeeGasArgs);
+
+                ILogger logger = SimpleConsoleLogManager.Instance.GetLogger("send blobs");
+
+                byte[] data = File.ReadAllBytes(fileOption.Value());
+
+                BlobSender sender = new(rpcUrl, logger);
+                await sender.SendData(
+                    data,
+                    privateKey,
+                    receiver,
+                    maxFeePerDataGas,
+                    feeMultiplier,
+                    maxPriorityFeeGasArgs);
+
+                return 0;
+            });
+        });
+    }
+
 }

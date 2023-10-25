@@ -205,6 +205,107 @@ internal class BlobSender
         }
     }
 
+    public async Task SendData(
+        byte[] data,
+        PrivateKey privateKey,
+        string receiver,
+        UInt256 maxFeePerDataGas,
+        ulong feeMultiplier,
+        UInt256 maxPriorityFeeGasArgs)
+    {
+        int n = 0;
+        data = data
+            .Select((s, i) => (i + n) % 32 != 0 ? new byte[] { s } : (s < 0x73 ? new byte[] { s } : new byte[] {(byte)(32 + (n++ * 0)), s }))
+            .SelectMany(b => b).ToArray();
+
+        await KzgPolynomialCommitments.InitializeAsync();
+
+        bool isNodeSynced = await _nodeManager.Post<dynamic>("eth_syncing") is bool;
+        if (!isNodeSynced) Console.WriteLine($"Will not wait for blob inclusion since selected node at {_nodeManager.CurrentUri} is still syncing");
+
+        string? chainIdString = await _nodeManager.Post<string>("eth_chainId") ?? "1";
+        ulong chainId = HexConvert.ToUInt64(chainIdString);
+
+        OneLoggerLogManager logManager = new(_logger);
+
+        string? nonceString = await _nodeManager.Post<string>("eth_getTransactionCount", privateKey.Address, "latest");
+        if (nonceString is null)
+        {
+            _logger.Error("Unable to get nonce");
+            return;
+        }
+        ulong nonce = HexConvert.ToUInt64(nonceString);
+
+        Signer signer = new Signer(chainId, privateKey, logManager);
+
+        TxDecoder txDecoder = new();
+
+        bool waitForBlock = false;
+        int blobCount = (int)Math.Ceiling((decimal)data.Length / Ckzg.Ckzg.BytesPerBlob);
+
+
+        byte[][] blobs = new byte[blobCount][];
+        byte[][] commitments = new byte[blobCount][];
+        byte[][] proofs = new byte[blobCount][];
+        byte[][] blobhashes = new byte[blobCount][];
+
+        for (int blobIndex = 0; blobIndex < blobCount; blobIndex++)
+        {
+            blobs[blobIndex] = new byte[Ckzg.Ckzg.BytesPerBlob];
+            Array.Copy(data, blobIndex * Ckzg.Ckzg.BytesPerBlob, blobs[blobIndex], 0, Math.Min(data.Length - blobIndex * Ckzg.Ckzg.BytesPerBlob, Ckzg.Ckzg.BytesPerBlob));
+
+            commitments[blobIndex] = new byte[Ckzg.Ckzg.BytesPerCommitment];
+            proofs[blobIndex] = new byte[Ckzg.Ckzg.BytesPerProof];
+            blobhashes[blobIndex] = new byte[32];
+
+            KzgPolynomialCommitments.KzgifyBlob(
+                blobs[blobIndex].AsSpan(),
+                commitments[blobIndex].AsSpan(),
+                proofs[blobIndex].AsSpan(),
+                blobhashes[blobIndex].AsSpan());
+        }
+
+        string? gasPriceRes = await _nodeManager.Post<string>("eth_gasPrice") ?? "1";
+        UInt256 gasPrice = HexConvert.ToUInt256(gasPriceRes);
+
+        string? maxPriorityFeePerGasRes = await _nodeManager.Post<string>("eth_maxPriorityFeePerGas") ?? "1";
+        UInt256 maxPriorityFeePerGas = HexConvert.ToUInt256(maxPriorityFeePerGasRes);
+
+        Console.WriteLine($"Nonce: {nonce}, GasPrice: {gasPrice}, MaxPriorityFeePerGas: {maxPriorityFeePerGas}");
+
+        UInt256 adjustedMaxPriorityFeePerGas = maxPriorityFeeGasArgs == 0 ? maxPriorityFeePerGas : maxPriorityFeeGasArgs;
+        Transaction tx = new()
+        {
+            Type = TxType.Blob,
+            ChainId = chainId,
+            Nonce = nonce,
+            GasLimit = GasCostOf.Transaction,
+            GasPrice = adjustedMaxPriorityFeePerGas * feeMultiplier,
+            DecodedMaxFeePerGas = gasPrice * feeMultiplier,
+            MaxFeePerBlobGas = maxFeePerDataGas,
+            Value = 0,
+            To = new Address(receiver),
+            BlobVersionedHashes = blobhashes,
+            NetworkWrapper = new ShardBlobNetworkWrapper(blobs, commitments, proofs),
+        };
+
+        await signer.Sign(tx);
+
+        string txRlp = Hex.ToHexString(txDecoder
+            .Encode(tx, RlpBehaviors.InMempoolForm | RlpBehaviors.SkipTypedWrapping).Bytes);
+
+        BlockModel<Keccak>? blockResult = null;
+        if (waitForBlock)
+            blockResult = await _nodeManager.Post<BlockModel<Keccak>>("eth_getBlockByNumber", "latest", false);
+
+        string? result = await _nodeManager.Post<string>("eth_sendRawTransaction", "0x" + txRlp);
+
+        Console.WriteLine("Result:" + result);
+
+        if (blockResult != null && waitForBlock)
+            await WaitForBlobInclusion(_nodeManager, tx.CalculateHash(), blockResult.Number);
+    }
+
     private async static Task WaitForBlobInclusion(INodeManager nodeManager, Keccak txHash, UInt256 lastBlockNumber)
     {
         Console.WriteLine("Waiting for blob transaction to be included in a block");
