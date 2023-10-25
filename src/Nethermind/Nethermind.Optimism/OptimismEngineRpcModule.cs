@@ -15,20 +15,6 @@ public class OptimismEngineRpcModule : IOptimismEngineRpcModule
 
     public async Task<ResultWrapper<ForkchoiceUpdatedV1Result>> engine_forkchoiceUpdatedV1(ForkchoiceStateV1 forkchoiceState, OptimismPayloadAttributes? payloadAttributes = null)
     {
-        if (payloadAttributes is { GasLimit: 0 })
-        {
-            return ForkchoiceUpdatedV1Result.Error("GasLimit is required", MergeErrorCodes.InvalidForkchoiceState);
-        }
-
-        try
-        {
-            payloadAttributes?.GetTransactions();
-        }
-        catch (RlpException e)
-        {
-            return ForkchoiceUpdatedV1Result.Error(e.Message, MergeErrorCodes.InvalidForkchoiceState);
-        }
-
         return await _engineRpcModule.engine_forkchoiceUpdatedV1(forkchoiceState, payloadAttributes);
     }
 

@@ -3,11 +3,13 @@
 
 using System;
 using System.Buffers.Binary;
+using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Text;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Optimism;
@@ -86,6 +88,27 @@ public class OptimismPayloadAttributes : PayloadAttributes
         offset += sizeof(long);
 
         return offset;
+    }
+
+    public override PayloadAttributesValidationResult Validate(ISpecProvider specProvider, int apiVersion,
+        [NotNullWhen(false)] out string? error)
+    {
+        if (GasLimit == 0)
+        {
+            error = "Gas Limit should not be zero";
+            return PayloadAttributesValidationResult.InvalidParams;
+        }
+
+        try
+        {
+            GetTransactions();
+        }
+        catch (RlpException e)
+        {
+            error = $"Error decoding transactions: {e}";
+            return PayloadAttributesValidationResult.InvalidParams;
+        }
+        return base.Validate(specProvider, apiVersion, out error);
     }
 
     public override string ToString()

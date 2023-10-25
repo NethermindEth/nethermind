@@ -114,42 +114,8 @@ public class PayloadAttributes
 
         return position;
     }
-}
 
-public enum PayloadAttributesValidationResult : byte { Success, InvalidParams, UnsupportedFork };
-
-public static class PayloadAttributesExtensions
-{
-    public static int GetVersion(this PayloadAttributes executionPayload) =>
-        executionPayload switch
-        {
-            { ParentBeaconBlockRoot: not null, Withdrawals: not null } => EngineApiVersions.Cancun,
-            { Withdrawals: not null } => EngineApiVersions.Shanghai,
-            _ => EngineApiVersions.Paris
-        };
-
-    public static int ExpectedEngineSpecVersion(this IReleaseSpec spec) =>
-        spec switch
-        {
-            { IsEip4844Enabled: true } => EngineApiVersions.Cancun,
-            { WithdrawalsEnabled: true } => EngineApiVersions.Shanghai,
-            _ => EngineApiVersions.Paris
-        };
-
-    public static PayloadAttributesValidationResult Validate(
-       this PayloadAttributes payloadAttributes,
-       ISpecProvider specProvider,
-       int apiVersion,
-       [NotNullWhen(false)] out string? error) =>
-        Validate(
-            apiVersion: apiVersion,
-            actualVersion: payloadAttributes.GetVersion(),
-            expectedVersion: specProvider.GetSpec(ForkActivation.TimestampOnly(payloadAttributes.Timestamp))
-                                         .ExpectedEngineSpecVersion(),
-            "PayloadAttributesV",
-            out error);
-
-    public static PayloadAttributesValidationResult Validate(
+    private static PayloadAttributesValidationResult ValidateVersion(
         int apiVersion,
         int actualVersion,
         int expectedVersion,
@@ -196,4 +162,37 @@ public static class PayloadAttributesExtensions
         error = $"{methodName}{expectedVersion} expected";
         return PayloadAttributesValidationResult.InvalidParams;
     }
+
+    public virtual PayloadAttributesValidationResult Validate(
+        ISpecProvider specProvider,
+        int apiVersion,
+        [NotNullWhen(false)] out string? error) =>
+        ValidateVersion(
+            apiVersion: apiVersion,
+            actualVersion: this.GetVersion(),
+            expectedVersion: specProvider.GetSpec(ForkActivation.TimestampOnly(Timestamp))
+                .ExpectedEngineSpecVersion(),
+            "PayloadAttributesV",
+            out error);
+}
+
+public enum PayloadAttributesValidationResult : byte { Success, InvalidParams, UnsupportedFork };
+
+public static class PayloadAttributesExtensions
+{
+    public static int GetVersion(this PayloadAttributes executionPayload) =>
+        executionPayload switch
+        {
+            { ParentBeaconBlockRoot: not null, Withdrawals: not null } => EngineApiVersions.Cancun,
+            { Withdrawals: not null } => EngineApiVersions.Shanghai,
+            _ => EngineApiVersions.Paris
+        };
+
+    public static int ExpectedEngineSpecVersion(this IReleaseSpec spec) =>
+        spec switch
+        {
+            { IsEip4844Enabled: true } => EngineApiVersions.Cancun,
+            { WithdrawalsEnabled: true } => EngineApiVersions.Shanghai,
+            _ => EngineApiVersions.Paris
+        };
 }
