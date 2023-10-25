@@ -42,7 +42,7 @@ public class BlockStore : IBlockStore
         return _blockDb.Get(key);
     }
 
-    public void Insert(Block block)
+    public void Insert(Block block, WriteFlags writeFlags = WriteFlags.None)
     {
         if (block.Hash is null)
         {

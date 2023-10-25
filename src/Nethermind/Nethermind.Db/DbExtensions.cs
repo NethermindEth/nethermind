@@ -74,15 +74,15 @@ namespace Nethermind.Db
             }
         }
 
-        public static void Set(this IDb db, ReadOnlySpan<byte> key, ReadOnlySpan<byte> value)
+        public static void Set(this IDb db, ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags writeFlags = WriteFlags.None)
         {
             if (db is IDbWithSpan dbWithSpan)
             {
-                dbWithSpan.PutSpan(key, value);
+                dbWithSpan.PutSpan(key, value, flags: writeFlags);
             }
             else
             {
-                db[key] = value.ToArray();
+                db.Set(key, value.ToArray(), flags: writeFlags);
             }
         }
 
