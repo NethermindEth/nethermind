@@ -47,8 +47,6 @@ public class OptimismPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitial
     private IPeerRefresher? _peerRefresher;
     private IBeaconPivot? _beaconPivot;
     private BeaconSync? _beaconSync;
-    private IManualBlockProductionTrigger? _blockProductionTrigger;
-    private OptimismPostMergeBlockProducer? _blockProducer;
 
     public bool ShouldRunSteps(INethermindApi api) => api.ChainSpec.SealEngineType == SealEngineType;
 
@@ -66,50 +64,7 @@ public class OptimismPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitial
                 "Optimism does not support custom block production trigger or additional tx source");
 
         ArgumentNullException.ThrowIfNull(_api);
-        ArgumentNullException.ThrowIfNull(_api.SpecProvider);
-        ArgumentNullException.ThrowIfNull(_api.DbProvider);
-        ArgumentNullException.ThrowIfNull(_api.BlockTree);
-        ArgumentNullException.ThrowIfNull(_api.ReadOnlyTrieStore);
-        ArgumentNullException.ThrowIfNull(_api.BlockValidator);
-        ArgumentNullException.ThrowIfNull(_api.RewardCalculatorSource);
-        ArgumentNullException.ThrowIfNull(_api.ReceiptStorage);
-        ArgumentNullException.ThrowIfNull(_api.TxPool);
-        ArgumentNullException.ThrowIfNull(_api.TransactionComparerProvider);
-
-        _api.BlockProducerEnvFactory = new OptimismBlockProducerEnvFactory(
-            _api.ChainSpec,
-            _api.DbProvider,
-            _api.BlockTree,
-            _api.ReadOnlyTrieStore,
-            _api.SpecProvider,
-            _api.BlockValidator,
-            _api.RewardCalculatorSource,
-            _api.ReceiptStorage,
-            _api.BlockPreprocessor,
-            _api.TxPool,
-            _api.TransactionComparerProvider,
-            _blocksConfig,
-            _api.LogManager);
-
-        _api.GasLimitCalculator = new OptimismGasLimitCalculator();
-
-        _blockProductionTrigger = new BuildBlocksWhenRequested();
-
-        BlockProducerEnv producerEnv = _api.BlockProducerEnvFactory.Create();
-
-        _api.BlockProducer = _blockProducer = new OptimismPostMergeBlockProducer(
-            new OptimismPayloadTxSource(),
-            producerEnv.TxSource,
-            producerEnv.ChainProcessor,
-            producerEnv.BlockTree,
-            _blockProductionTrigger,
-            producerEnv.ReadOnlyStateProvider,
-            _api.GasLimitCalculator,
-            NullSealEngine.Instance,
-            new ManualTimestamper(),
-            _api.SpecProvider,
-            _api.LogManager,
-            _api.Config<IBlocksConfig>());
+        ArgumentNullException.ThrowIfNull(_api.BlockProducer);
 
         return Task.FromResult(_api.BlockProducer);
     }
@@ -249,9 +204,8 @@ public class OptimismPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitial
         ArgumentNullException.ThrowIfNull(_api.BlockTree);
         ArgumentNullException.ThrowIfNull(_api.BlockValidator);
         ArgumentNullException.ThrowIfNull(_api.RpcModuleProvider);
+        ArgumentNullException.ThrowIfNull(_api.BlockProducer);
 
-        ArgumentNullException.ThrowIfNull(_blockProducer);
-        ArgumentNullException.ThrowIfNull(_blockProductionTrigger);
         ArgumentNullException.ThrowIfNull(_beaconSync);
         ArgumentNullException.ThrowIfNull(_beaconPivot);
         ArgumentNullException.ThrowIfNull(_blockCacheService);
@@ -266,11 +220,11 @@ public class OptimismPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitial
         await Task.Delay(5000);
 
         BlockImprovementContextFactory improvementContextFactory = new(
-            _blockProductionTrigger,
+            _api.ManualBlockProductionTrigger,
             TimeSpan.FromSeconds(_blocksConfig.SecondsPerSlot));
 
         OptimismPayloadPreparationService payloadPreparationService = new(
-            _blockProducer,
+            (PostMergeBlockProducer)_api.BlockProducer,
             improvementContextFactory,
             _api.TimerFactory,
             _api.LogManager,
