@@ -91,6 +91,32 @@ public class StateTestTxTracer : ITxTracer
         }
     }
 
+    public void SetOperationStack(TraceStack stack)
+    {
+        _traceEntry.Stack = new List<string>();
+        foreach (string s in stack.ToHexWordList())
+        {
+            ReadOnlySpan<char> inProgress = s.AsSpan();
+            if (s.StartsWith("0x"))
+            {
+                inProgress = inProgress.Slice(2);
+            }
+
+            inProgress = inProgress.TrimStart('0');
+
+            _traceEntry.Stack.Add(inProgress.Length == 0 ? "0x0" : "0x" + inProgress.ToString());
+        }
+
+    }
+
+    public void SetOperationMemory(TraceMemory memoryTrace)
+    {
+        if (IsTracingDetailedMemory)
+        {
+            _traceEntry.Memory = string.Concat("0x", string.Join("", memoryTrace.ToHexWordList().Select(mt => mt.Replace("0x", string.Empty))));
+        }
+    }
+
     public void SetOperationMemorySize(ulong newSize)
     {
         _traceEntry.UpdateMemorySize((int)newSize);
@@ -208,33 +234,8 @@ public class StateTestTxTracer : ITxTracer
         throw new NotImplementedException();
     }
 
-    public void SetOperationStack(List<string> stackTrace)
-    {
-        _traceEntry.Stack = new List<string>();
-        foreach (string s in stackTrace)
-        {
-            ReadOnlySpan<char> inProgress = s.AsSpan();
-            if (s.StartsWith("0x"))
-            {
-                inProgress = inProgress.Slice(2);
-            }
-
-            inProgress = inProgress.TrimStart('0');
-
-            _traceEntry.Stack.Add(inProgress.Length == 0 ? "0x0" : "0x" + inProgress.ToString());
-        }
-    }
-
     public void ReportStackPush(in ReadOnlySpan<byte> stackItem)
     {
-    }
-
-    public void SetOperationMemory(IEnumerable<string> memoryTrace)
-    {
-        if (IsTracingDetailedMemory)
-        {
-            _traceEntry.Memory = string.Concat("0x", string.Join("", memoryTrace.Select(mt => mt.Replace("0x", string.Empty))));
-        }
     }
 
     public StateTestTxTrace BuildResult()
