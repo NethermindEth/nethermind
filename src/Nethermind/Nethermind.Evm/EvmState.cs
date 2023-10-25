@@ -146,7 +146,7 @@ namespace Nethermind.Evm
             Env = env;
         }
 
-        internal EvmState(
+        public EvmState(
             long gasAvailable,
             ExecutionEnvironment env,
             ExecutionType executionType,
@@ -231,13 +231,13 @@ namespace Nethermind.Evm
         public long Refund { get; set; }
 
         public Address To => Env.CodeSource;
-        internal bool IsPrecompile => Env.CodeInfo.IsPrecompile;
+        public bool IsPrecompile => Env.CodeInfo.IsPrecompile;
         public readonly ExecutionEnvironment Env;
 
-        internal ExecutionType ExecutionType { get; } // TODO: move to CallEnv
+        public ExecutionType ExecutionType { get; } // TODO: move to CallEnv
         public bool IsTopLevel { get; } // TODO: move to CallEnv
-        internal long OutputDestination { get; } // TODO: move to CallEnv
-        internal long OutputLength { get; } // TODO: move to CallEnv
+        public long OutputDestination { get; } // TODO: move to CallEnv
+        public long OutputLength { get; } // TODO: move to CallEnv
         public bool IsStatic { get; } // TODO: move to CallEnv
         public bool IsContinuation { get; set; } // TODO: move to CallEnv
         public bool IsCreateOnPreExistingAccount { get; } // TODO: move to CallEnv
