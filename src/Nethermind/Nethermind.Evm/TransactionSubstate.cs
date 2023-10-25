@@ -3,9 +3,11 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
+using MemoryExtensions = Nethermind.Core.Extensions.MemoryExtensions;
 
 namespace Nethermind.Evm;
 
@@ -68,6 +70,7 @@ public class TransactionSubstate
 
         ReadOnlySpan<byte> span = Output.Span;
         Error = TryGetErrorMessage(span)
+                ?? TryUnpackRevertMessage(span)
                 ?? DefaultErrorMessage(span);
     }
 
@@ -100,6 +103,40 @@ public class TransactionSubstate
             return string.Concat(RevertedErrorMessagePrefix, span.Slice(RevertPrefix + start + sizeof(UInt256), length).ToHexString(true));
         }
         catch (OverflowException)
+        {
+            return null;
+        }
+    }
+
+    [SuppressMessage("ReSharper", "BuiltInTypeReferenceStyle")]
+    private unsafe string? TryUnpackRevertMessage(ReadOnlySpan<byte> span)
+    {
+        if (span.Length < RevertPrefix + sizeof(UInt256) * 2)
+        {
+            return null;
+        }
+
+        ReadOnlySpan<byte> errorSelector = new byte[] { 0x08, 0xc3, 0x79, 0xa0 }; // Function selector for Error(string)
+        if (!span[..RevertPrefix].SequenceEqual(errorSelector))
+        {
+            return null;
+        }
+
+        try
+        {
+            int start = (int)new UInt256(span.Slice(RevertPrefix, sizeof(UInt256)), isBigEndian: true);
+            if (start != sizeof(UInt256))
+            {
+                return null;
+            }
+
+            int length = (int)new UInt256(span.Slice(RevertPrefix + sizeof(UInt256), sizeof(UInt256)), isBigEndian: true);
+            ReadOnlySpan<byte> binaryMessage = span.Slice(RevertPrefix + sizeof(UInt256) + sizeof(UInt256), length);
+            string message = System.Text.Encoding.UTF8.GetString(binaryMessage);
+
+            return message;
+        }
+        catch (Exception e) when (e is OverflowException or ArgumentOutOfRangeException)
         {
             return null;
         }
