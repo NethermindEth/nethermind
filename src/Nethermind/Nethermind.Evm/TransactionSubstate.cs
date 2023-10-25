@@ -7,7 +7,6 @@ using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
-using MemoryExtensions = Nethermind.Core.Extensions.MemoryExtensions;
 
 namespace Nethermind.Evm;
 
@@ -22,6 +21,7 @@ public class TransactionSubstate
     private const int RevertPrefix = 4;
 
     private const string RevertedErrorMessagePrefix = "Reverted ";
+    private readonly byte[] ErrorFunctionSelector = { 0x08, 0xc3, 0x79, 0xa0 };
 
     public bool IsError => Error is not null && !ShouldRevert;
     public string? Error { get; }
@@ -116,8 +116,7 @@ public class TransactionSubstate
             return null;
         }
 
-        ReadOnlySpan<byte> errorSelector = new byte[] { 0x08, 0xc3, 0x79, 0xa0 }; // Function selector for Error(string)
-        if (!span[..RevertPrefix].SequenceEqual(errorSelector))
+        if (!span[..RevertPrefix].SequenceEqual(ErrorFunctionSelector))
         {
             return null;
         }
