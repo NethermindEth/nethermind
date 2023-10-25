@@ -22,7 +22,8 @@ namespace Nethermind.Synchronization.FastBlocks
     public class BodiesSyncFeed : ActivatedSyncFeed<BodiesSyncBatch?>
     {
         private int _requestSize = GethSyncLimits.MaxBodyFetch;
-        private const long FlushDbInterval = 100000; // About every 10GB on mainnet
+        private const long DefaultFlushDbInterval = 100000; // About every 10GB on mainnet
+        private readonly long _flushDbInterval; // About every 10GB on mainnet
 
         private readonly ILogger _logger;
         private readonly IBlockTree _blockTree;
@@ -43,7 +44,8 @@ namespace Nethermind.Synchronization.FastBlocks
             ISyncConfig syncConfig,
             ISyncReport syncReport,
             IDbMeta blocksDb,
-            ILogManager logManager) : base(syncModeSelector)
+            ILogManager logManager,
+            long flushDbInterval = DefaultFlushDbInterval) : base(syncModeSelector)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
@@ -51,6 +53,7 @@ namespace Nethermind.Synchronization.FastBlocks
             _syncConfig = syncConfig ?? throw new ArgumentNullException(nameof(syncConfig));
             _syncReport = syncReport ?? throw new ArgumentNullException(nameof(syncReport));
             _blocksDb = blocksDb ?? throw new ArgumentNullException(nameof(blocksDb));
+            _flushDbInterval = flushDbInterval;
 
             if (!_syncConfig.FastBlocks)
             {
@@ -134,7 +137,7 @@ namespace Nethermind.Synchronization.FastBlocks
                 }
             }
 
-            if ((_blockTree.LowestInsertedBodyNumber ?? long.MaxValue) - _syncStatusList.LowestInsertWithoutGaps > FlushDbInterval)
+            if ((_blockTree.LowestInsertedBodyNumber ?? long.MaxValue) - _syncStatusList.LowestInsertWithoutGaps > _flushDbInterval)
             {
                 Flush();
             }
