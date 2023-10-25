@@ -108,7 +108,6 @@ public class TransactionSubstate
         }
     }
 
-    [SuppressMessage("ReSharper", "BuiltInTypeReferenceStyle")]
     private unsafe string? TryUnpackRevertMessage(ReadOnlySpan<byte> span)
     {
         if (span.Length < RevertPrefix + sizeof(UInt256) * 2)
