@@ -334,8 +334,8 @@ public class ChainSpecBasedSpecProviderTests
         preShanghaiSpec.IsEip170Enabled.Should().Be(false);
         postShanghaiSpec.IsEip170Enabled.Should().Be(true);
 
-        preShanghaiSpec.AuRaSystemCalls.Should().Be(false);
-        postShanghaiSpec.AuRaSystemCalls.Should().Be(false);
+        preShanghaiSpec.AuRaSystemCalls.Should().Be(true);
+        postShanghaiSpec.AuRaSystemCalls.Should().Be(true);
     }
 
     private void VerifyGnosisPreShanghaiExceptions(ISpecProvider specProvider)
@@ -783,7 +783,7 @@ public class ChainSpecBasedSpecProviderTests
             r.MaximumUncleCount = 2;
             r.WithdrawalTimestamp = ulong.MaxValue;
             r.Eip4844TransitionTimestamp = ulong.MaxValue;
-            r.AuRaSystemCalls = true;
+            r.AuRaSystemCalls = false;
         });
 
         TestTransitions((ForkActivation)1L, r =>
