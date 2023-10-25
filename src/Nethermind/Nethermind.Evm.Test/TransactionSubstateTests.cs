@@ -15,7 +15,8 @@ namespace Nethermind.Evm.Test
         [Test]
         public void should_return_proper_revert_error_when_there_is_no_exception()
         {
-            byte[] data = {
+            byte[] data =
+            {
                 0, 0, 0, 0,
                 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
                 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x20,
