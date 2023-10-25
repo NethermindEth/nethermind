@@ -9,6 +9,7 @@ using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
@@ -226,18 +227,30 @@ namespace Nethermind.Synchronization.Test.FastSync
             _measuredProgressQueue.HasEnded.Should().BeTrue();
         }
 
-        [Test]
-        public async Task When_finished_sync_with_old_default_barrier_then_finishes_imedietely()
+        [TestCase(100, false)]
+        [TestCase(11052930, true)]
+        [TestCase(11052984, true)]
+        [TestCase(11052985, false)]
+        public async Task When_finished_sync_with_old_default_barrier_then_finishes_imedietely(
+            long? lowestInsertedReceiptBlockNumber, bool Shouldfinish)
         {
             _syncConfig.AncientReceiptsBarrier = 0;
             LoadScenario(_256BodiesWithOneTxEach);
-            _receiptStorage.LowestInsertedReceiptBlockNumber.Returns(ReceiptsSyncFeed.DepositContractBarrier - 50);
+            _receiptStorage.LowestInsertedReceiptBlockNumber.Returns(lowestInsertedReceiptBlockNumber);
 
             ReceiptsSyncBatch? request = await _feed.PrepareRequest();
-            request.Should().BeNull();
-            _feed.CurrentState.Should().Be(SyncFeedState.Finished);
-            _measuredProgress.HasEnded.Should().BeTrue();
-            _measuredProgressQueue.HasEnded.Should().BeTrue();
+            if (Shouldfinish)
+            {
+                request.Should().BeNull();
+                _feed.CurrentState.Should().Be(SyncFeedState.Finished);
+            }
+            else
+            {
+                request.Should().NotBeNull();
+                _feed.CurrentState.Should().NotBe(SyncFeedState.Finished);
+            }
+            _measuredProgress.HasEnded.Should().Be(Shouldfinish);
+            _measuredProgressQueue.HasEnded.Should().Be(Shouldfinish);
         }
 
         private void LoadScenario(Scenario scenario)
