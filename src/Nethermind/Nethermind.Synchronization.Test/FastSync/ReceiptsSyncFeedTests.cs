@@ -226,6 +226,20 @@ namespace Nethermind.Synchronization.Test.FastSync
             _measuredProgressQueue.HasEnded.Should().BeTrue();
         }
 
+        [Test]
+        public async Task When_finished_sync_with_old_default_barrier_then_finishes_imedietely()
+        {
+            _syncConfig.AncientReceiptsBarrier = 0;
+            LoadScenario(_256BodiesWithOneTxEach);
+            _receiptStorage.LowestInsertedReceiptBlockNumber.Returns(ReceiptsSyncFeed.DepositContractBarrier - 50);
+
+            ReceiptsSyncBatch? request = await _feed.PrepareRequest();
+            request.Should().BeNull();
+            _feed.CurrentState.Should().Be(SyncFeedState.Finished);
+            _measuredProgress.HasEnded.Should().BeTrue();
+            _measuredProgressQueue.HasEnded.Should().BeTrue();
+        }
+
         private void LoadScenario(Scenario scenario)
         {
             LoadScenario(scenario, _syncConfig);

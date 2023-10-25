@@ -3,6 +3,7 @@
 
 using System;
 using System.IO;
+using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
@@ -19,11 +20,14 @@ using Nethermind.Synchronization.Peers;
 using Nethermind.Synchronization.Reporting;
 using Nethermind.Synchronization.SyncLimits;
 
+[assembly: InternalsVisibleTo("Nethermind.Synchronization.Test")]
+
 namespace Nethermind.Synchronization.FastBlocks
 {
+    
     public class ReceiptsSyncFeed : ActivatedSyncFeed<ReceiptsSyncBatch?>
     {
-        private const int DepositContractBarrier = 11052984;
+        internal const int DepositContractBarrier = 11052984;
         private int _requestSize = GethSyncLimits.MaxReceiptFetch;
 
         private readonly ILogger _logger;
