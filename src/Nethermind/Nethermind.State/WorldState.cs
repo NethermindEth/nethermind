@@ -27,12 +27,14 @@ namespace Nethermind.State
         internal readonly StateProvider _stateProvider;
         internal readonly PersistentStorageProvider _persistentStorageProvider;
         private readonly TransientStorageProvider _transientStorageProvider;
+        private readonly ITrieStore? _trieStore;
 
         public Keccak StateRoot
         {
             get => _stateProvider.StateRoot;
             set
             {
+                _trieStore.OpenContext(value);
                 _stateProvider.StateRoot = value;
                 _persistentStorageProvider.StateRoot = value;
             }
@@ -40,6 +42,7 @@ namespace Nethermind.State
 
         public WorldState(ITrieStore? trieStore, IKeyValueStore? codeDb, ILogManager? logManager)
         {
+            _trieStore = trieStore;
             _stateProvider = new StateProvider(trieStore, codeDb, logManager);
             _persistentStorageProvider = new PersistentStorageProvider(trieStore, _stateProvider, logManager);
             _transientStorageProvider = new TransientStorageProvider(logManager);
@@ -47,6 +50,7 @@ namespace Nethermind.State
 
         internal WorldState(ITrieStore? trieStore, IKeyValueStore? codeDb, ILogManager? logManager, StateTree stateTree, IStorageTreeFactory storageTreeFactory)
         {
+            _trieStore = trieStore;
             _stateProvider = new StateProvider(trieStore, codeDb, logManager, stateTree);
             _persistentStorageProvider = new PersistentStorageProvider(trieStore, _stateProvider, logManager, storageTreeFactory);
             _transientStorageProvider = new TransientStorageProvider(logManager);

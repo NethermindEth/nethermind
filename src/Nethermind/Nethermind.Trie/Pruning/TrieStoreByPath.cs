@@ -179,10 +179,7 @@ namespace Nethermind.Trie.Pruning
                 {
                     //_committedNodes[GetProperColumn(nodeCommitInfo.Node.FullPath.Length)].AddNode(blockNumber, node);
                     StateColumns column = GetProperColumn(nodeCommitInfo.Node);
-                    if (column == StateColumns.State)
-                        _committedNodes[column].AddNodeData(blockNumber, rootHash, node);
-                    else
-                        _committedNodes[column].AddNodeDataTransient(node);
+                    _committedNodes[column].AddNodeData(blockNumber, node);
                 }
                 else
                 {
@@ -206,12 +203,12 @@ namespace Nethermind.Trie.Pruning
                     if (_useCommittedCache)
                     {
                         if (_logger.IsTrace) _logger.Trace($"Setting root hash {root?.Keccak} for block {blockNumber}");
-                        _committedNodes[StateColumns.Storage].MoveTransientData(blockNumber, stateRootHash);
+                        //_committedNodes[StateColumns.Storage].MoveTransientData(blockNumber, stateRootHash);
 
-                        _committedNodes[StateColumns.State].EnsureStateHistoryExists(blockNumber, stateRootHash);
-                        _committedNodes[StateColumns.Storage].EnsureStateHistoryExists(blockNumber, stateRootHash);
-                        _committedNodes[StateColumns.State].SetContext(stateRootHash);
-                        _committedNodes[StateColumns.Storage].SetContext(stateRootHash);
+                        //_committedNodes[StateColumns.State].EnsureStateHistoryExists(blockNumber, stateRootHash);
+                        //_committedNodes[StateColumns.Storage].EnsureStateHistoryExists(blockNumber, stateRootHash);
+                        _committedNodes[StateColumns.State].CloseContext(blockNumber, stateRootHash);
+                        _committedNodes[StateColumns.Storage].CloseContext(blockNumber, stateRootHash);
                         //_committedNodes[column].SetRootHashForBlock(blockNumber, root?.Keccak);
                     }
 
@@ -236,6 +233,12 @@ namespace Nethermind.Trie.Pruning
                             AnnounceReorgBoundaries();
                         }
                     }
+
+                    if (_useCommittedCache)
+                    {
+                        _committedNodes[StateColumns.State].OpenContext(stateRootHash);
+                        _committedNodes[StateColumns.Storage].OpenContext(stateRootHash);
+                    }
                 }
                 // set rootHash here to account for root hashes for the storage trees also in every block
                 // there needs to be a better way to handle this
@@ -245,6 +248,8 @@ namespace Nethermind.Trie.Pruning
                     TrieType.Storage => StateColumns.Storage,
                     _ => throw new NotImplementedException()
                 };
+
+
 
                 //if (_useCommittedCache)
                 //{
@@ -716,11 +721,12 @@ namespace Nethermind.Trie.Pruning
             _stateDb.GetColumnDb(column).DeleteByRange(startDbKey, endDbKey);
         }
 
-        public void MarkPrefixDeleted(long blockNumber, ReadOnlySpan<byte> keyPrefixNibbles)
+        public void MarkPrefixDeleted(long blockNumber, Keccak stateRoot, ReadOnlySpan<byte> keyPrefixNibbles)
         {
             if (_useCommittedCache)
             {
                 //_committedNodes[StateColumns.Storage].AddRemovedPrefix(blockNumber, keyPrefixNibbles);
+                _committedNodes[StateColumns.Storage].AddRemovedPrefix(blockNumber, keyPrefixNibbles);
             }
             else
             {
@@ -992,10 +998,10 @@ namespace Nethermind.Trie.Pruning
 
         public IKeyValueStore AsKeyValueStore() => _publicStore;
 
-        public void SetContext(Keccak keccak)
+        public void OpenContext(Keccak keccak)
         {
-            _committedNodes[StateColumns.State].SetContext(keccak);
-            _committedNodes[StateColumns.Storage].SetContext(keccak);
+            _committedNodes[StateColumns.State].OpenContext(keccak);
+            _committedNodes[StateColumns.Storage].OpenContext(keccak);
         }
 
         private class TrieKeyValueStore : IKeyValueStore

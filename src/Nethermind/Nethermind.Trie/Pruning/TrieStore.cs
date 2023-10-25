@@ -876,7 +876,7 @@ namespace Nethermind.Trie.Pruning
             _keyValueStore.DeleteByRange(startKey, endKey);
         }
 
-        public void MarkPrefixDeleted(long blockNumber, ReadOnlySpan<byte> keyPrefix)
+        public void MarkPrefixDeleted(long blockNumber, Keccak stateRoot, ReadOnlySpan<byte> keyPrefix)
         {
             throw new NotImplementedException();
         }
@@ -893,7 +893,7 @@ namespace Nethermind.Trie.Pruning
             CommitNode(blockNumber, nodeCommitInfo, writeFlags);
         }
 
-        public void SetContext(Keccak keccak)
+        public void OpenContext(Keccak keccak)
         {
         }
 

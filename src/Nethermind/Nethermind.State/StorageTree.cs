@@ -144,7 +144,7 @@ namespace Nethermind.State
             }
         }
 
-        protected override Keccak GetStateRootHash()
+        public override Keccak GetStateRootHash()
         {
             return _stateRootHash;
         }

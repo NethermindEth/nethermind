@@ -12,12 +12,11 @@ using Nethermind.Core.Crypto;
 namespace Nethermind.Trie.ByPath;
 public interface IPathDataCache
 {
-    void SetContext(Keccak keccak);
-    bool EnsureStateHistoryExists(long blockNuber, Keccak stateHash);
-    void AddNodeData(long blockNuber, Keccak stateHash, TrieNode node);
-    void AddNodeDataTransient(TrieNode node);
+    void OpenContext(Keccak parentStateRoot);
+    void CloseContext(long blockNumber, Keccak newStatRoot);
+    void AddNodeData(long blockNuber, TrieNode node);
     NodeData? GetNodeDataAtRoot(Keccak? rootHash, Span<byte> path);
     NodeData? GetNodeData(Span<byte> path, Keccak? hash);
     bool PersistUntilBlock(long blockNumber, Keccak rootHash, IBatch? batch = null);
-    void MoveTransientData(long blockNumber, Keccak stateRoot);
+    void AddRemovedPrefix(long blockNumber, ReadOnlySpan<byte> keyPrefix);
 }

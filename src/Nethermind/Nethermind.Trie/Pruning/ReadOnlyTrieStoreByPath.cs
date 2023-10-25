@@ -75,7 +75,7 @@ namespace Nethermind.Trie.Pruning
         public bool ExistsInDB(Keccak hash, byte[] nodePathNibbles) => _trieStore.ExistsInDB(hash, nodePathNibbles);
 
         public void DeleteByRange(Span<byte> startKey, Span<byte> endKey) { }
-        public void MarkPrefixDeleted(long blockNumber, ReadOnlySpan<byte> keyPrefix) { }
+        public void MarkPrefixDeleted(long blockNumber, Keccak stateRoot, ReadOnlySpan<byte> keyPrefix) { }
 
         public bool CanAccessByPath() => _trieStore.CanAccessByPath();
 
@@ -90,7 +90,7 @@ namespace Nethermind.Trie.Pruning
             throw new NotImplementedException();
         }
 
-        public void SetContext(Keccak keccak)
+        public void OpenContext(Keccak keccak)
         {
             throw new NotImplementedException();
         }

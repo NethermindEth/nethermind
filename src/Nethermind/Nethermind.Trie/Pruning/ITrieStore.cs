@@ -9,7 +9,7 @@ namespace Nethermind.Trie.Pruning
 {
     public interface ITrieStore : ITrieNodeResolver, IDisposable
     {
-        void SetContext(Keccak keccak);
+        void OpenContext(Keccak keccak);
         void CommitNode(long blockNumber, NodeCommitInfo nodeCommitInfo, WriteFlags writeFlags = WriteFlags.None);
         void CommitNode(long blockNumber, Keccak rootHash, NodeCommitInfo nodeCommitInfo, WriteFlags writeFlags = WriteFlags.None);
 
@@ -27,7 +27,7 @@ namespace Nethermind.Trie.Pruning
 
         public void ClearCache();
 
-        void MarkPrefixDeleted(long blockNumber, ReadOnlySpan<byte> keyPrefix);
+        void MarkPrefixDeleted(long blockNumber, Keccak rootHash, ReadOnlySpan<byte> keyPrefix);
         void DeleteByRange(Span<byte> startKey, Span<byte> endKey);
 
         bool CanAccessByPath();

@@ -84,7 +84,7 @@ namespace Nethermind.Trie.Pruning
         public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None) { }
 
         public bool CanAccessByPath() => _trieStore.CanAccessByPath();
-        public void MarkPrefixDeleted(long blockNumber, ReadOnlySpan<byte> keyPrefix)
+        public void MarkPrefixDeleted(long blockNumber, Keccak stateRoot, ReadOnlySpan<byte> keyPrefix)
         {
             throw new NotImplementedException();
         }
@@ -96,7 +96,7 @@ namespace Nethermind.Trie.Pruning
             throw new NotImplementedException();
         }
 
-        public void SetContext(Keccak keccak)
+        public void OpenContext(Keccak keccak)
         {
             throw new NotImplementedException();
         }

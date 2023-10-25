@@ -197,7 +197,7 @@ namespace Nethermind.Trie
             if (TrieStore.Capability == TrieNodeResolverCapability.Path)
             {
                 if (ClearedBySelfDestruct)
-                    TrieStore.MarkPrefixDeleted(blockNumber, StoreNibblePathPrefix);
+                    TrieStore.MarkPrefixDeleted(blockNumber, GetStateRootHash(), StoreNibblePathPrefix);
                 while (_deleteNodes != null && _deleteNodes.TryDequeue(out TrieNode delNode))
                     _currentCommit.Enqueue(new NodeCommitInfo(delNode));
             }
@@ -1484,7 +1484,7 @@ namespace Nethermind.Trie
             throw new MissingTrieNodeException(e.Message, e, traverseContext.UpdatePath.ToArray(), traverseContext.CurrentIndex);
         }
 
-        protected virtual Keccak GetStateRootHash()
+        public virtual Keccak GetStateRootHash()
         {
             return RootRef?.Keccak ?? Keccak.EmptyTreeHash;
         }

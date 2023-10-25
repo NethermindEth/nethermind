@@ -13,6 +13,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 using Nethermind.Trie.Pruning;
+using static System.Runtime.InteropServices.JavaScript.JSType;
 
 namespace Nethermind.Trie.ByPath;
 
@@ -24,37 +25,37 @@ public class NodeData
     public NodeData(byte[] data, Keccak keccak) { RLP = data; Keccak = keccak; }
 }
 
-
-public class PathDataCache : IPathDataCache
+internal class PathDataCacheInstance
 {
     class StateId
     {
         static int _stateIdSeed = 0;
         public int Id { get; }
-        public long BlockNumber { get; set; }
-        public Keccak BlockHash { get; set; }
-
+        public long? BlockNumber { get; set; }
+        public Keccak? BlockStateRoot { get; set; }
         public StateId? ParentBlock { get; set; }
+        public Keccak? ParentStateHash { get; set; }
 
-        public StateId(long blockNumber, Keccak blockHash, StateId? parentBlock)
+        public StateId(long? blockNumber, Keccak? blockHash, Keccak parentStateRoot, StateId? parentBlock = null)
         {
             Id = Interlocked.Increment(ref _stateIdSeed);
             BlockNumber = blockNumber;
-            BlockHash = blockHash;
+            BlockStateRoot = blockHash;
+            ParentStateHash = parentStateRoot;
             ParentBlock = parentBlock;
         }
 
-        private StateId(int id, long blockNumber, Keccak blockHash, StateId? parentBlock)
+        private StateId(int id, long? blockNumber, Keccak blockHash, StateId? parentBlock = null)
         {
             Id = id;
             BlockNumber = blockNumber;
-            BlockHash = blockHash;
+            BlockStateRoot = blockHash;
             ParentBlock = parentBlock;
         }
 
         public StateId Clone()
         {
-            return new StateId(Id, BlockNumber, BlockHash, ParentBlock);
+            return new StateId(Id, BlockNumber, BlockStateRoot, ParentBlock);
         }
     }
 
@@ -182,15 +183,28 @@ public class PathDataCache : IPathDataCache
             {
                 _lock.EnterWriteLock();
 
-                if (_nodes.Count == 0 || stateId < _nodes.Min.StateId || stateId > _nodes.Max.StateId)
+                if (_nodes.Count == 0 || stateId > _nodes.Max.StateId)
                     return null;
 
-                SortedSet<PathDataAtState> viewUntilBlock = _nodes.GetViewBetween(new PathDataAtState(stateId), _nodes.Max);
-                PathDataAtState[] copy = new PathDataAtState[viewUntilBlock.Count];
-                viewUntilBlock.CopyTo(copy);
-                PathDataHistory newHistory = new PathDataHistory(copy);
-                viewUntilBlock.Clear();
+                SortedSet<PathDataAtState> viewFromBlock = _nodes.GetViewBetween(new PathDataAtState(stateId), _nodes.Max);
+                PathDataAtState[] copy = new PathDataAtState[viewFromBlock.Count];
+                viewFromBlock.CopyTo(copy);
+                PathDataHistory newHistory = new(copy);
+                viewFromBlock.Clear();
                 return newHistory;
+            }
+            finally
+            {
+                _lock.ExitWriteLock();
+            }
+        }
+
+        public void Merge(PathDataHistory history)
+        {
+            try
+            {
+                _lock.EnterWriteLock();
+                _nodes.UnionWith(history._nodes);
             }
             finally
             {
@@ -199,165 +213,503 @@ public class PathDataCache : IPathDataCache
         }
     }
 
-    public PathDataCache(ITrieStore trieStore, ILogManager? logManager)
+    public PathDataCacheInstance(ITrieStore trieStore, ILogger? logger)
     {
         _trieStore = trieStore;
-        _logger = logManager?.GetClassLogger<TrieNodePathCache>() ?? throw new ArgumentNullException(nameof(logManager));
-        _branches = new ConcurrentBag<PathDataCache>();
+        _logger = logger;
+        _branches = new ConcurrentBag<PathDataCacheInstance>();
         _isDetached = false;
-        _transientStore = new SpanConcurrentDictionary<byte, NodeData>(Bytes.SpanNibbleEqualityComparer);
+        _removedPrefixes = new SpanConcurrentDictionary<byte, List<int>>(Bytes.SpanNibbleEqualityComparer);
     }
 
-    private PathDataCache(ITrieStore trieStore, ILogger? logger, StateId lastState, IEnumerable<PathDataCache> branches = null, bool isDetached = false)
+    private PathDataCacheInstance(ITrieStore trieStore, ILogger? logger, StateId lastState, PathDataCacheInstance? parent, StateId? parentStateId, IEnumerable<PathDataCacheInstance> branches = null)
     {
         _lastState = lastState;
         _trieStore = trieStore;
         _logger = logger;
-        _branches = new ConcurrentBag<PathDataCache>();
-        _isDetached = isDetached;
-        _transientStore = new SpanConcurrentDictionary<byte, NodeData>(Bytes.SpanNibbleEqualityComparer);
+        _branches = new ConcurrentBag<PathDataCacheInstance>();
+        _removedPrefixes = new SpanConcurrentDictionary<byte, List<int>>(Bytes.SpanNibbleEqualityComparer);
+        _parentInstance = parent;
         if (branches is not null)
         {
             foreach (var b in branches)
                 _branches.Add(b);
         }
+        _parentStateId = parentStateId;
     }
 
     private StateId _lastState;
     private bool _isDetached;
 
     private SpanConcurrentDictionary<byte, PathDataHistory> _historyByPath = new(Bytes.SpanNibbleEqualityComparer);
-    private ConcurrentBag<PathDataCache> _branches;
-    private Keccak _context;
-    private SpanConcurrentDictionary<byte, NodeData> _transientStore;
+    private ConcurrentBag<PathDataCacheInstance> _branches;
+    //private Keccak _context;
+    private SpanConcurrentDictionary<byte, List<int>> _removedPrefixes;
+    private PathDataCacheInstance? _parentInstance;
+    private StateId _parentStateId;
 
     private readonly ITrieStore _trieStore;
     private readonly ILogger _logger;
+    private bool _isDirty;
+    public bool IsDirty => _isDirty;
 
-    public void SetContext(Keccak keccak)
+    public int PrefixLength { get; set; } = 66;
+
+    public bool IsOpened => _lastState.BlockStateRoot is null;
+    public bool IsEmpty => _historyByPath.Count == 0 && _removedPrefixes.Count == 0;
+
+    //public bool EnsureStateHistoryExists(long blockNuber, Keccak stateHash)
+    //{
+    //    if (_lastState is null)
+    //    {
+    //        _lastState = new StateId(blockNuber, stateHash, null);
+    //        if (_logger.IsTrace) _logger.Trace($"New initial state {blockNuber} / {stateHash}");
+    //    }
+
+    //    StateId stateId = FindState(stateHash, blockNuber);
+    //    if (stateId is null)
+    //    {
+    //        foreach (PathDataCacheInstance branch in _branches)
+    //        {
+    //            bool handledInBranch = branch.EnsureStateHistoryExists(blockNuber, stateHash);
+    //            if (handledInBranch)
+    //            {
+    //                PrintStates("State tree after branch prep", 0);
+    //                return true;
+    //            }
+    //        }
+    //        PathDataCache prepBranch = PrepareBranch(blockNuber, stateHash);
+    //        PrintStates("State tree after branch prep", 0);
+    //        return prepBranch is not null ? prepBranch.EnsureStateHistoryExists(blockNuber, stateHash) : false;
+    //    }
+    //    return true;
+    //}
+
+    //private PathDataCacheInstance? GetCacheInstance(long blockNuber, Keccak stateHash)
+    //{
+    //    if (_lastState is null)
+    //    {
+    //        _lastState = new StateId(blockNuber, stateHash, null);
+    //        return this;
+    //    }
+
+    //    StateId stateId = FindState(stateHash, blockNuber);
+    //    if (stateId is null)
+    //    {
+    //        foreach (PathDataCacheInstance branch in _branches)
+    //        {
+    //            PathDataCacheInstance innerCache = branch.GetCacheInstance(blockNuber, stateHash);
+    //            if (innerCache is not null)
+    //                return innerCache;
+    //        }
+    //        return PrepareBranchByParent(blockNuber, stateHash);
+    //    }
+    //    return this;
+    //}
+
+    public PathDataCacheInstance? CloseState(long blockNumber, Keccak stateRootHash)
     {
-        if (_lastState is not null)
-            SetContextInner(keccak);
-    }
-
-    public bool EnsureStateHistoryExists(long blockNuber, Keccak stateHash)
-    {
-        if (_lastState is null)
+        if (IsOpened)
         {
-            _lastState = new StateId(blockNuber, stateHash, null);
-            if (_logger.IsTrace) _logger.Trace($"New initial state {blockNuber} / {stateHash}");
-        }
-
-        StateId stateId = FindState(stateHash, blockNuber);
-        if (stateId is null)
-        {
-            foreach (PathDataCache branch in _branches)
+            _isDirty = false;
+            if (_lastState.ParentBlock?.BlockNumber == blockNumber && _lastState.ParentBlock?.BlockStateRoot == stateRootHash)
             {
-                bool handledInBranch = branch.EnsureStateHistoryExists(blockNuber, stateHash);
-                if (handledInBranch)
+                _lastState = _lastState.ParentBlock;
+            }
+            else
+            {
+                if (blockNumber < _lastState.BlockNumber && _parentInstance is null)
                 {
-                    PrintStates("State tree after branch prep", 0);
-                    return true;
+                    Keccak searchedParentHash = _lastState.ParentStateHash;
+                    StateId st = _lastState;
+                    while (st is not null)
+                    {
+                        if (st.ParentStateHash == searchedParentHash && st.BlockNumber <= blockNumber)
+                            break;
+                        st = st.ParentBlock;
+                    }
+                    if (st?.BlockStateRoot == stateRootHash)
+                    {
+                        _lastState = _lastState.ParentBlock;
+                        return null;
+                    }
+
+                    PathDataCacheInstance parentCacheInstance = null;
+                    if (st?.ParentBlock is not null)
+                    {
+                        parentCacheInstance = this;
+                    }
+
+                    StateId clonedState = _lastState.Clone();
+                    clonedState.BlockStateRoot = stateRootHash;
+                    clonedState.BlockNumber = blockNumber;
+                    clonedState.ParentBlock = null;
+                    clonedState.ParentStateHash = _lastState.ParentStateHash;
+
+                    PathDataCacheInstance newBranch = new(_trieStore, _logger, clonedState, parentCacheInstance, st?.ParentBlock);
+
+                    foreach (KeyValuePair<byte[], PathDataHistory> histEntry in _historyByPath)
+                    {
+                        PathDataHistory? newHist = histEntry.Value.SplitAt(clonedState.Id);
+                        if (newHist is not null)
+                            newBranch.Add(histEntry.Key, newHist);
+                    }
+
+                    _lastState = _lastState.ParentBlock;
+
+                    if (st?.ParentBlock is not null)
+                    {
+                        PathDataCacheInstance copyOfExisting = new(_trieStore, _logger, _lastState, parentCacheInstance, st?.ParentBlock, _branches);
+
+                        foreach (KeyValuePair<byte[], PathDataHistory> histEntry in _historyByPath)
+                        {
+                            PathDataHistory? newHist = histEntry.Value.SplitAt(st.Id);
+                            if (newHist is not null)
+                                copyOfExisting.Add(histEntry.Key, newHist);
+                        }
+                        _branches.Clear();
+                        _branches.Add(copyOfExisting);
+                        _branches.Add(newBranch);
+                    }
+                    else
+                    {
+                        return newBranch;
+                    }
+                }
+                else
+                {
+                    _lastState.BlockStateRoot = stateRootHash;
+                    _lastState.BlockNumber = blockNumber;
                 }
             }
-            PathDataCache prepBranch = PrepareBranch(blockNuber, stateHash);
-            PrintStates("State tree after branch prep", 0);
-            return prepBranch is not null ? prepBranch.EnsureStateHistoryExists(blockNuber, stateHash) : false;
         }
-        return true;
+        return null;
     }
 
-    private PathDataCache GetCacheInstance(long blockNuber, Keccak stateHash)
+    public void RollbackState()
+    {
+        if (IsOpened)
+        {
+            _lastState = _lastState.ParentBlock;
+        }
+    }
+
+        //public PathDataCacheInstance? GetCacheInstanceForParent(Keccak parentStateRoot)
+        //{
+        //    if (_lastState is null)
+        //    {
+        //        _lastState = new StateId(null, null, parentStateRoot);
+        //        return this;
+        //    }
+
+        //    StateId stateId = FindState(parentStateRoot);
+        //    if (stateId is null)
+        //    {
+        //        foreach (PathDataCacheInstance branch in _branches)
+        //        {
+        //            PathDataCacheInstance innerCache = branch.GetCacheInstanceForParent(parentStateRoot);
+        //            if (innerCache is not null)
+        //                return innerCache;
+        //        }
+        //    }
+        //    else
+        //    {
+        //        PathDataCacheInstance? newBranch = null;
+        //        if (_lastState.BlockStateRoot == parentStateRoot)
+        //        {
+        //            newBranch = new PathDataCacheInstance(_trieStore, _logger, new StateId(_lastState.BlockNumber + 1, null, parentStateRoot), this);
+        //        }
+        //        else
+        //        {
+        //            //create a new branch
+        //            StateId? currState = FindStateAfter(parentStateRoot);
+        //            if (currState is not null)
+        //            {
+        //                PathDataCacheInstance newBranchExisting = new(_trieStore, _logger, _lastState, this, _branches);
+
+        //                foreach (KeyValuePair<byte[], PathDataHistory> histEntry in _historyByPath)
+        //                {
+        //                    PathDataHistory? newHist = histEntry.Value.SplitAt(currState.Id);
+        //                    if (newHist is not null)
+        //                        newBranchExisting.Add(histEntry.Key, newHist);
+        //                }
+        //                _branches.Clear();
+        //                _branches.Add(newBranchExisting);
+
+        //                newBranch = new(_trieStore, _logger, new StateId(currState.BlockNumber, null, parentStateRoot), this);
+        //                _branches.Add(newBranch);
+
+        //                _lastState = currState.ParentBlock;
+        //                currState.ParentBlock = null;
+        //            }
+        //        }
+        //        return newBranch;
+        //    }
+        //    return null;
+        //}
+
+        public PathDataCacheInstance? GetCacheInstanceForParent(Keccak parentStateRoot)
     {
         if (_lastState is null)
         {
-            _lastState = new StateId(blockNuber, stateHash, null);
+            _lastState = new StateId(null, null, parentStateRoot);
             return this;
         }
 
-        StateId stateId = FindState(stateHash, blockNuber);
-        if (stateId is null)
+        StateId stateId = FindState(parentStateRoot);
+        if (stateId is not null)
         {
-            foreach (PathDataCache branch in _branches)
+            if (stateId == _lastState)
             {
-                PathDataCache innerCache = branch.GetCacheInstance(blockNuber, stateHash);
-                if (innerCache is not null)
-                    return innerCache;
+                _lastState = new StateId(_lastState.BlockNumber + 1, null, parentStateRoot, _lastState);
+                return this;
             }
-            return PrepareBranch(blockNuber, stateHash);
-        }
-        return this;
-    }
-
-    public void AddNodeDataTransient(TrieNode node)
-    {
-        NodeData nd = new(node.FullRlp.Array, node.Keccak);
-        if (node.IsLeaf)
-            _transientStore[node.StoreNibblePathPrefix.Concat(node.PathToNode).ToArray()] = nd;
-        _transientStore[node.FullPath] = nd;
-    }
-
-    public void MoveTransientData(long blockNumber, Keccak stateRoot)
-    {
-        PathDataCache targetInstabce = GetCacheInstance(blockNumber, stateRoot);
-        if (targetInstabce is null)
-            throw new Exception("Unable to create target cache instance!");
-
-        PrintStates("MoveTransientData - block state tree", 0);
-
-        StateId targetState = targetInstabce.FindState(stateRoot, blockNumber);
-        foreach (KeyValuePair<byte[], NodeData> tmpVal in _transientStore)
-        {
-            targetInstabce.AddNodeData(targetState, tmpVal.Key, tmpVal.Value);
-        }
-    }
-
-    public void AddNodeData(long blockNuber, Keccak stateHash, TrieNode node)
-    {
-        if (_logger.IsTrace) _logger.Trace($"Adding node {node.PathToNode.ToHexString()} / {node.FullPath.ToHexString()} with Keccak: {node.Keccak} at block {blockNuber}");
-        if (_lastState is null)
-        {
-            _lastState = new StateId(blockNuber, stateHash, null);
-            if (_logger.IsTrace) _logger.Trace($"New state {blockNuber} / {stateHash}");
-        }
-
-        AddNodeDataInner(blockNuber, stateHash, node);
-    }
-
-    private void AddNodeData(StateId stateId, Span<byte> path, NodeData nodeData)
-    {
-        PathDataHistory hist = GetHistoryForPath(path);
-        hist.Add(stateId.Id, nodeData, true);
-    }
-
-    private bool AddNodeDataInner(long blockNuber, Keccak stateHash, TrieNode node)
-    {
-        StateId stateId = FindState(stateHash, blockNuber);
-        if (stateId is null)
-        {
-            foreach (PathDataCache branch in _branches)
+            else
             {
-                bool handledInBranch = branch.AddNodeDataInner(blockNuber, stateHash, node);
-                if (handledInBranch)
-                    return true;
+                return new PathDataCacheInstance(_trieStore, _logger, new StateId(stateId.BlockNumber + 1, null, parentStateRoot), this, stateId);
+            }
+        }
+
+        foreach (PathDataCacheInstance branch in _branches)
+        {
+            PathDataCacheInstance innerCache = branch.GetCacheInstanceForParent(parentStateRoot);
+            if (innerCache is not null)
+                return innerCache;
+        }
+
+        return null;
+    }
+
+    public PathDataCacheInstance? GetCacheInstanceForPersisted(Keccak parentStateRoot)
+    {
+        StateId firstState = GetFirstState();
+        if (firstState.ParentStateHash == parentStateRoot)
+            return new PathDataCacheInstance(_trieStore, _logger, new StateId(firstState.BlockNumber, null, parentStateRoot), null, null);
+        return null;
+    }
+
+
+    public void PrepareForCommit()
+    {
+        //if (_readyForWrite)
+        //    return;
+
+        ////if (!IsEmpty)
+        ////    throw new ArgumentException("Can't branch");
+
+        //if (_parentInstance is null || _lastState.ParentStateHash == _parentInstance._lastState.BlockStateRoot)
+        //{
+        //    //successor of parent - nothing to do
+        //}
+        //else
+        //{
+        //    //SplitAt(_lastState.ParentStateHash);
+        //    //_parentInstance._branches.Add(this);
+        //}
+        _isDirty = true;
+    }
+
+    private StateId? SplitAt(Keccak stateRoot, long? highestBlockNumber = null)
+    {
+        //create a new branch
+        StateId? currState = FindStateWithParent(stateRoot, highestBlockNumber);
+        if (currState is not null)
+        {
+            PathDataCacheInstance newBranchExisting = new(_trieStore, _logger, _lastState.Clone(), this, currState.ParentBlock, _branches);
+
+            foreach (KeyValuePair<byte[], PathDataHistory> histEntry in _historyByPath)
+            {
+                PathDataHistory? newHist = histEntry.Value.SplitAt(currState.Id);
+                if (newHist is not null)
+                    newBranchExisting.Add(histEntry.Key, newHist);
+            }
+            _branches.Clear();
+            _branches.Add(newBranchExisting);
+
+            _lastState = currState.ParentBlock;
+            currState.ParentBlock = null;
+        }
+        return currState;
+    }
+
+    //private void SplitAt(StateId stateId)
+    //{
+    //    //create a new branch
+    //    if (stateId.ParentBlock is not null)
+    //    {
+    //        PathDataCacheInstance newBranchExisting = new(_trieStore, _logger, _lastState, this, stateId.ParentBlock, _branches);
+
+    //        foreach (KeyValuePair<byte[], PathDataHistory> histEntry in _historyByPath)
+    //        {
+    //            PathDataHistory? newHist = histEntry.Value.SplitAt(stateId.Id);
+    //            if (newHist is not null)
+    //                newBranchExisting.Add(histEntry.Key, newHist);
+    //        }
+    //        _branches.Clear();
+    //        _branches.Add(newBranchExisting);
+
+    //        _lastState = stateId.ParentBlock;
+    //        stateId.ParentBlock = null;
+    //    }
+    //}
+
+    public bool MergeToParent()
+    {
+        if (_parentInstance == null)
+            return false;
+
+        if (_parentInstance._lastState.BlockStateRoot == _lastState.ParentStateHash)
+        {
+            _lastState.ParentBlock = _parentInstance._lastState;
+            _parentInstance._lastState = _lastState;
+
+            foreach (KeyValuePair<byte[], PathDataHistory> nodeVersion in _historyByPath)
+            {
+                if (_parentInstance._historyByPath.TryGetValue(nodeVersion.Key, out PathDataHistory pathDataHistory))
+                {
+                    pathDataHistory.Merge(nodeVersion.Value);
+                }
+                else
+                {
+                    _parentInstance._historyByPath[nodeVersion.Key] = nodeVersion.Value;
+                }
             }
 
-            PathDataCache prepBranch = PrepareBranch(blockNuber, stateHash);
-            return prepBranch is not null ? prepBranch.AddNodeDataInner(blockNuber, stateHash, node) : false;
+            foreach (var kvp in _removedPrefixes)
+            {
+                if (_parentInstance._removedPrefixes.TryGetValue(kvp.Key, out List<int> stateIds))
+                {
+                    stateIds.AddRange(kvp.Value);
+                }
+                else
+                {
+                    _parentInstance._removedPrefixes[kvp.Key] = kvp.Value;
+                }
+            }
+            return true;
         }
         else
         {
-            NodeData nd = new(node.FullRlp.Array, node.Keccak);
-            if (node.IsLeaf)
-            {
-                PathDataHistory leafPointerHist = GetHistoryForPath(node.PathToNode);
-                leafPointerHist.Add(stateId.Id, nd, false);
-            }
-            PathDataHistory history = GetHistoryForPath(node.FullPath);
-            history.Add(stateId.Id, nd, true);
-
+            if (_parentInstance.SplitAt(_lastState.ParentStateHash, _lastState.BlockNumber) is not null)
+                _parentInstance._branches.Add(this);
             return true;
         }
+    }
+
+    public bool CloseAndMergeToParent(long blockNumber, Keccak stateRootHash)
+    {
+        if (IsOpened)
+        {
+            if (_lastState.ParentBlock?.BlockNumber == blockNumber && _lastState.ParentBlock?.BlockStateRoot == stateRootHash)
+            {
+                _lastState = _lastState.ParentBlock;
+            }
+            else
+            {
+                if (blockNumber < _lastState.BlockNumber)
+                {
+                    Keccak searchedParentHash = _lastState.ParentStateHash;
+                    StateId st = _lastState;
+                    while (st is not null && st.ParentStateHash == searchedParentHash && st.BlockNumber > blockNumber)
+                    {
+                        st = st.ParentBlock;
+                    }
+                }
+
+                _lastState.BlockStateRoot = stateRootHash;
+                _lastState.BlockNumber = blockNumber;
+            }
+        }
+
+        if (_parentInstance == null)
+            return false;
+
+        if (_parentInstance._lastState.BlockStateRoot == _lastState.ParentStateHash)
+        {
+            _lastState.ParentBlock = _parentInstance._lastState;
+            _parentInstance._lastState = _lastState;
+
+            foreach (KeyValuePair<byte[], PathDataHistory> nodeVersion in _historyByPath)
+            {
+                if (_parentInstance._historyByPath.TryGetValue(nodeVersion.Key, out PathDataHistory pathDataHistory))
+                {
+                    pathDataHistory.Merge(nodeVersion.Value);
+                }
+                else
+                {
+                    _parentInstance._historyByPath[nodeVersion.Key] = nodeVersion.Value;
+                }
+            }
+
+            foreach (var kvp in _removedPrefixes)
+            {
+                if (_parentInstance._removedPrefixes.TryGetValue(kvp.Key, out List<int> stateIds))
+                {
+                    stateIds.AddRange(kvp.Value);
+                }
+                else
+                {
+                    _parentInstance._removedPrefixes[kvp.Key] = kvp.Value;
+                }
+            }
+            return true;
+        }
+        else
+        {
+            _parentInstance._branches.Add(this);
+            return true;
+        }
+    }
+
+    //public void AddNodeDataTransient(TrieNode node)
+    //{
+    //    NodeData nd = new(node.FullRlp.Array, node.Keccak);
+    //    if (node.IsLeaf)
+    //        _transientStore[node.StoreNibblePathPrefix.Concat(node.PathToNode).ToArray()] = nd;
+    //    _transientStore[node.FullPath] = nd;
+    //}
+
+    //public void MoveTransientData(long blockNumber, Keccak stateRoot)
+    //{
+    //    PathDataCache targetInstabce = GetCacheInstance(blockNumber, stateRoot);
+    //    if (targetInstabce is null)
+    //        throw new Exception("Unable to create target cache instance!");
+
+    //    PrintStates("MoveTransientData - block state tree", 0);
+
+    //    StateId targetState = targetInstabce.FindState(stateRoot, blockNumber);
+    //    foreach (KeyValuePair<byte[], NodeData> tmpVal in _transientStore)
+    //    {
+    //        targetInstabce.AddNodeData(targetState, tmpVal.Key, tmpVal.Value);
+    //    }
+    //    _transientStore.Clear();
+    //}
+
+    public void AddNodeData(long blockNuber, TrieNode node)
+    {
+        if (!IsOpened)
+            throw new ArgumentException("Can't add node to closed cache instance");
+
+        if (Bytes.Comparer.Compare(node.FullPath, Bytes.FromHexString("0808020c0f08000e0208070b080a04040a060c020b050e01090903010f02060d070e0307050e0902020e060f0f04010904030d040907050b03040e0c0902070908000a050f06060c0108070d04030a04010f0e0d040f0a040101060008090f0e030c040b030b000504090305080c050608050702080c0406010400030303020c0005")) == 0)
+        {
+            int a = 10;
+            a++;
+        }
+
+        if (_logger.IsTrace) _logger.Trace($"Adding node {node.PathToNode.ToHexString()} / {node.FullPath.ToHexString()} with Keccak: {node.Keccak} at block {blockNuber}");
+
+        NodeData nd = new(node.FullRlp.Array, node.Keccak);
+        if (node.IsLeaf)
+        {
+            Span<byte> pathToNode = node.PathToNode;
+            if (node.StoreNibblePathPrefix.Length > 0)
+                pathToNode = Bytes.Concat(node.StoreNibblePathPrefix, node.PathToNode);
+
+            PathDataHistory leafPointerHist = GetHistoryForPath(pathToNode);
+            leafPointerHist.Add(_lastState.Id, nd, false);
+        }
+        PathDataHistory history = GetHistoryForPath(node.FullPath);
+        history.Add(_lastState.Id, nd, true);
     }
 
     public NodeData? GetNodeDataAtRoot(Keccak? rootHash, Span<byte> path)
@@ -374,27 +726,30 @@ public class PathDataCache : IPathDataCache
         }
         else
         {
-            bool rootInBranch = false;
-            NodeData foundData = null;
-            foreach (PathDataCache branchCache in _branches)
-            {
-                rootInBranch = branchCache.GetNodeDataAtRoot(rootHash, path, out foundData);
-                if (rootInBranch)
-                    break;
-            }
-
             StateId localState = FindState(rootHash);
-            if (rootInBranch && foundData is null)
-                localState = _lastState;
-
-            if (localState is not null && _historyByPath.TryGetValue(path, out PathDataHistory pathHistory))
+            if (localState is not null)
             {
-                PathDataAtState? data = pathHistory.GetLatestUntil(localState.Id);
-                if (data is not null)
+                PathDataAtState? latestDataHeld = null;
+                if (_historyByPath.TryGetValue(path, out PathDataHistory pathHistory))
+                {
+                    latestDataHeld = pathHistory.GetLatestUntil(localState.Id);
+                }
+
+                if (WasRemovedAfter(path, latestDataHeld?.StateId ?? -1))
                 {
                     Pruning.Metrics.LoadedFromCacheNodesCount++;
-                    return data.Data;
+                    return new NodeData(null, Keccak.OfAnEmptySequenceRlp);
                 }
+
+                if (latestDataHeld is not null)
+                {
+                    Pruning.Metrics.LoadedFromCacheNodesCount++;
+                    return latestDataHeld.Data;
+                }
+            }
+            else
+            {
+                return _parentInstance?.GetNodeDataAtRoot(_parentStateId?.BlockStateRoot, path);
             }
         }
         return null;
@@ -402,17 +757,17 @@ public class PathDataCache : IPathDataCache
 
     public NodeData? GetNodeData(Span<byte> path, Keccak? hash)
     {
-        foreach (var cache in _branches)
-        {
-            NodeData? data = cache.GetNodeData(path, hash);
-            if (data is not null)
-                return data;
-        }
+        //foreach (var cache in _branches)
+        //{
+        //    NodeData? data = cache.GetNodeData(path, hash);
+        //    if (data is not null)
+        //        return data;
+        //}
         if (_historyByPath.TryGetValue(path, out PathDataHistory history))
         {
             return history.Get(hash)?.Data;
         }
-        return null;
+        return _parentInstance?.GetNodeData(path, hash);
     }
 
     private bool GetNodeDataAtRoot(Keccak? rootHash, Span<byte> path, out NodeData? nodeData)
@@ -437,16 +792,19 @@ public class PathDataCache : IPathDataCache
 
     public bool PersistUntilBlock(long blockNumber, Keccak rootHash, IBatch? batch = null)
     {
-        Stack<PathDataCache> branches = new Stack<PathDataCache>();
+        Stack<PathDataCacheInstance> branches = new Stack<PathDataCacheInstance>();
         GetBranchesToProcess(blockNumber, rootHash, branches, true, out StateId? latestState);
+
+        if (branches.Count == 0)
+            return false;
+
         while (branches.Count > 0)
         {
-            PathDataCache branch = branches.Pop();
+            PathDataCacheInstance branch = branches.Pop();
             branch.PersistUntilBlockInner(latestState, batch);
         }
 
         PruneUntil(blockNumber, rootHash);
-
         return true;
     }
 
@@ -481,14 +839,14 @@ public class PathDataCache : IPathDataCache
 
         foreach (TrieNode node in toPersist)
         {
-            _trieStore.SaveNodeDirectly(stateId.BlockNumber, node, batch);
-            if (_logger.IsTrace) _logger.Trace($"Persising node {node.PathToNode.ToHexString()} / {node.FullPath.ToHexString()} with Keccak: {node.Keccak} at block {stateId.BlockNumber} / {stateId.BlockHash} Value: {node.FullRlp.ToArray()?.ToHexString()}");
+            _trieStore.SaveNodeDirectly(stateId.BlockNumber.Value, node, batch);
+            if (_logger.IsTrace) _logger.Trace($"Persising node {node.PathToNode.ToHexString()} / {node.FullPath.ToHexString()} with Keccak: {node.Keccak} at block {stateId.BlockNumber} / {stateId.BlockStateRoot} Value: {node.FullRlp.ToArray()?.ToHexString()}");
         }
     }
 
     public bool PruneUntil(long blockNumber, Keccak rootHash)
     {
-        Stack<PathDataCache> branches = new Stack<PathDataCache>();
+        Stack<PathDataCacheInstance> branches = new Stack<PathDataCacheInstance>();
         GetBranchesToProcess(blockNumber, rootHash, branches, false, out StateId? latestState);
 
         if (branches.Count == 0)
@@ -497,7 +855,7 @@ public class PathDataCache : IPathDataCache
         while (branches.Count > 1)
             branches.Pop();
 
-        PathDataCache branch = branches.Pop();
+        PathDataCacheInstance branch = branches.Pop();
         branch.PruneUntilInner(latestState);
 
         if (branch != this)
@@ -525,11 +883,13 @@ public class PathDataCache : IPathDataCache
         foreach (byte[] path in removedPaths)
             _historyByPath.Remove(path, out _);
 
-        StateId? childOfPersisted = FindStateAfter(stateId.BlockHash, stateId.BlockNumber);
+        StateId? childOfPersisted = FindStateWithParent(stateId.BlockStateRoot, stateId.BlockNumber);
         if (childOfPersisted is not null)
             childOfPersisted.ParentBlock = null;
         else
             _lastState = null;
+
+        _branches.Clear();
     }
 
     private PathDataHistory GetHistoryForPath(Span<byte> path)
@@ -548,31 +908,24 @@ public class PathDataCache : IPathDataCache
         StateId stateId = _lastState;
         while (stateId is not null)
         {
-            if (stateId.BlockHash == rootHash && (stateId.BlockNumber == blockNumber || blockNumber == -1))
+            if (stateId.BlockStateRoot == rootHash && (stateId.BlockNumber == blockNumber || blockNumber == -1))
                 return stateId;
             stateId = stateId.ParentBlock;
         }
         return null;
     }
 
-    private bool SetContextInner(Keccak context)
+    private StateId? GetFirstState()
     {
-        foreach (PathDataCache branchCache in _branches)
+        StateId stateId = _lastState;
+        while (stateId.ParentBlock is not null)
         {
-            branchCache.SetContextInner(context);
+            stateId = stateId.ParentBlock;
         }
-
-        StateId? localState = FindState(context);
-        if (localState is not null)
-        {
-            if (_logger.IsTrace) _logger.Trace($"Setting context to {context} at state {localState.BlockNumber} / {localState.BlockHash}");
-            _context = context;
-            return true;
-        }
-        return false;
+        return stateId;
     }
 
-    private bool GetBranchesToProcess(long blockNumber, Keccak stateRoot, Stack<PathDataCache> branches, bool filterDetached, out StateId? latestState)
+    private bool GetBranchesToProcess(long blockNumber, Keccak stateRoot, Stack<PathDataCacheInstance> branches, bool filterDetached, out StateId? latestState)
     {
         StateId? localState = FindState(stateRoot, blockNumber);
         if (localState is not null)
@@ -582,7 +935,7 @@ public class PathDataCache : IPathDataCache
             return true;
         }
 
-        foreach (PathDataCache branchCache in _branches)
+        foreach (PathDataCacheInstance branchCache in _branches)
         {
             if (branchCache.GetBranchesToProcess(blockNumber, stateRoot, branches, filterDetached, out latestState))
             {
@@ -597,7 +950,7 @@ public class PathDataCache : IPathDataCache
 
     private StateId? FindStateIncludingBranches(Keccak rootHash, long blockNumber = -1)
     {
-        foreach (PathDataCache branchCache in _branches)
+        foreach (PathDataCacheInstance branchCache in _branches)
         {
             StateId? stateInBranch = branchCache.FindStateIncludingBranches(rootHash, blockNumber);
             if (stateInBranch is not null)
@@ -607,19 +960,19 @@ public class PathDataCache : IPathDataCache
         StateId stateId = _lastState;
         while (stateId is not null)
         {
-            if (stateId.BlockHash == rootHash && (stateId.BlockNumber == blockNumber || blockNumber == -1))
+            if (stateId.BlockStateRoot == rootHash && (stateId.BlockNumber == blockNumber || blockNumber == -1))
                 return stateId;
             stateId = stateId.ParentBlock;
         }
         return null;
     }
 
-    private StateId? FindStateAfter(Keccak rootHash, long blockNumber)
+    private StateId? FindStateWithParent(Keccak rootHash, long? highestBlockNumber = null)
     {
         StateId stateId = _lastState;
         while (stateId.ParentBlock is not null)
         {
-            if (stateId.ParentBlock.BlockHash == rootHash && stateId.ParentBlock.BlockNumber == blockNumber)
+            if (stateId.ParentBlock.BlockStateRoot == rootHash && (highestBlockNumber is null || stateId.BlockNumber <= highestBlockNumber))
                 return stateId;
             stateId = stateId.ParentBlock;
         }
@@ -643,67 +996,158 @@ public class PathDataCache : IPathDataCache
         _historyByPath[path] = history;
     }
 
-    private PathDataCache? PrepareBranch(long blockNumber, Keccak stateHash)
+    //private PathDataCacheInstance? PrepareBranch(long blockNumber, Keccak stateHash)
+    //{
+    //    PathDataCacheInstance newBranch = null;
+
+    //    //can add to end of chain?
+    //    if (_lastState.BlockHash == _context && _lastState.BlockNumber < blockNumber)
+    //    {
+    //        if (_logger.IsTrace) _logger.Trace($"Adding new state in current chain {blockNumber} / {stateHash} parent: {_lastState.BlockNumber} / {_lastState.BlockHash}");
+    //        _lastState = new StateId(blockNumber, stateHash, _lastState);
+    //        newBranch = this;
+    //    }
+    //    else
+    //    {
+    //        //create a new branch
+    //        StateId? currState = FindStateWithBlockNumberOrEarlier(blockNumber);
+    //        if (currState is not null)
+    //        {
+    //            if (currState.BlockNumber == blockNumber)
+    //            {
+    //                if (_context is not null && currState.ParentBlock?.BlockHash == _context)
+    //                {
+    //                    PathDataCacheInstance newBranchExisting = new(_trieStore, _logger, _lastState, _branches);
+
+    //                    foreach (KeyValuePair<byte[], PathDataHistory> histEntry in _historyByPath)
+    //                    {
+    //                        PathDataHistory? newHist = histEntry.Value.SplitAt(currState.Id);
+    //                        if (newHist is not null)
+    //                            newBranchExisting.Add(histEntry.Key, newHist);
+    //                    }
+    //                    _branches.Clear();
+    //                    _branches.Add(newBranchExisting);
+
+    //                    newBranch = new(_trieStore, _logger, new StateId(blockNumber, stateHash, null), isDetached: currState.ParentBlock is null);
+    //                    _branches.Add(newBranch);
+
+    //                    _lastState = currState.ParentBlock;
+    //                    currState.ParentBlock = null;
+    //                }
+    //                else if (currState.ParentBlock is null)
+    //                {
+    //                    newBranch = new(_trieStore, _logger, new StateId(blockNumber, stateHash, null), isDetached: currState.ParentBlock is null);
+    //                    _branches.Add(newBranch);
+    //                }
+    //            }
+    //            else if (_context is not null && currState.BlockNumber < blockNumber && currState.BlockHash == _context)
+    //            {
+    //                newBranch = new(_trieStore, _logger, new StateId(blockNumber, stateHash, null), isDetached: currState.ParentBlock is null);
+    //                _branches.Add(newBranch);
+    //            }
+    //        }
+    //    }
+
+    //    return newBranch;
+    //}
+
+    //private PathDataCacheInstance? PrepareBranchForParent(Keccak parentStateRoot)
+    //{
+    //    PathDataCacheInstance newBranch = null;
+
+    //    //can add to end of chain?
+    //    if (_lastState.BlockStateRoot == parentStateRoot)
+    //    {
+    //        if (_logger.IsTrace) _logger.Trace($"Adding new state in current chain - parent: {_lastState.BlockNumber} / {_lastState.BlockStateRoot}");
+    //        _lastState = new StateId(_lastState.BlockNumber + 1, null, _lastState);
+    //        newBranch = this;
+    //    }
+    //    else
+    //    {
+    //        //create a new branch
+    //        StateId? currState = FindStateAfter(blockNumber);
+    //        if (currState is not null)
+    //        {
+    //            if (currState.BlockNumber == blockNumber)
+    //            {
+    //                if (currState.ParentBlock?.BlockStateRoot == parentStateRoot)
+    //                {
+    //                    PathDataCacheInstance newBranchExisting = new(_trieStore, _logger, _lastState, this, _branches);
+
+    //                    foreach (KeyValuePair<byte[], PathDataHistory> histEntry in _historyByPath)
+    //                    {
+    //                        PathDataHistory? newHist = histEntry.Value.SplitAt(currState.Id);
+    //                        if (newHist is not null)
+    //                            newBranchExisting.Add(histEntry.Key, newHist);
+    //                    }
+    //                    _branches.Clear();
+    //                    _branches.Add(newBranchExisting);
+
+    //                    newBranch = new(_trieStore, _logger, new StateId(blockNumber, null, null), this);
+    //                    _branches.Add(newBranch);
+
+    //                    _lastState = currState.ParentBlock;
+    //                    currState.ParentBlock = null;
+    //                }
+    //                else if (currState.ParentBlock is null)
+    //                {
+    //                    newBranch = new(_trieStore, _logger, new StateId(blockNumber, null, null), this);
+    //                    _branches.Add(newBranch);
+    //                }
+    //            }
+    //            else if (currState.BlockNumber < blockNumber && currState.BlockStateRoot == parentStateRoot)
+    //            {
+    //                newBranch = new(_trieStore, _logger, new StateId(blockNumber, null, null), this);
+    //                _branches.Add(newBranch);
+    //            }
+    //        }
+    //    }
+
+    //    return newBranch;
+    //}
+
+    public void AddRemovedPrefix(long blockNumber, ReadOnlySpan<byte> keyPrefix)
     {
-        PathDataCache newBranch = null;
-
-        //can add to end of chain?
-        if (_lastState.BlockHash == _context && _lastState.BlockNumber < blockNumber)
+        if (!_removedPrefixes.TryGetValue(keyPrefix, out List<int> destroyedAtStates))
         {
-            if (_logger.IsTrace) _logger.Trace($"Adding new state in current chain {blockNumber} / {stateHash} parent: {_lastState.BlockNumber} / {_lastState.BlockHash}");
-            _lastState = new StateId(blockNumber, stateHash, _lastState);
-            newBranch = this;
+            destroyedAtStates = new List<int>();
+            _removedPrefixes[keyPrefix] = destroyedAtStates;
         }
-        else
-        {
-            //create a new branch
-            StateId? currState = FindStateWithBlockNumberOrEarlier(blockNumber);
-            if (currState is not null)
-            {
-                if (currState.BlockNumber == blockNumber)
-                {
-                    if (_context is not null && currState.ParentBlock?.BlockHash == _context)
-                    {
-                        PathDataCache newBranchExisting = new(_trieStore, _logger, _lastState, _branches);
-
-                        foreach (KeyValuePair<byte[], PathDataHistory> histEntry in _historyByPath)
-                        {
-                            PathDataHistory? newHist = histEntry.Value.SplitAt(currState.Id);
-                            if (newHist is not null)
-                                newBranchExisting.Add(histEntry.Key, newHist);
-                        }
-                        _branches.Clear();
-                        _branches.Add(newBranchExisting);
-
-                        newBranch = new(_trieStore, _logger, new StateId(blockNumber, stateHash, null), isDetached: currState.ParentBlock is null);
-                        _branches.Add(newBranch);
-
-                        _lastState = currState.ParentBlock;
-                        currState.ParentBlock = null;
-                    }
-                    else if (currState.ParentBlock is null)
-                    {
-                        newBranch = new(_trieStore, _logger, new StateId(blockNumber, stateHash, null), isDetached: currState.ParentBlock is null);
-                        _branches.Add(newBranch);
-                    }
-                }
-                else if (_context is not null && currState.BlockNumber < blockNumber && currState.BlockHash == _context)
-                {
-                    newBranch = new(_trieStore, _logger, new StateId(blockNumber, stateHash, null), isDetached: currState.ParentBlock is null);
-                    _branches.Add(newBranch);
-                }
-            }
-        }
-
-        return newBranch;
+        destroyedAtStates.Add(_lastState.Id);
     }
 
-    private void PrintStates(string topLevelMsg, int level)
+    private bool WasRemovedAfter(Span<byte> path, int stateId)
+    {
+        if (path.Length >= PrefixLength && _removedPrefixes.TryGetValue(path[0..PrefixLength], out List<int> deletedAtStates))
+        {
+            for (int i = 0; i < deletedAtStates.Count; i++)
+                if (deletedAtStates[i] > stateId) return true;
+        }
+        return false;
+    }
+
+    public bool HasSameState(PathDataCacheInstance newInstance)
+    {
+        StateId st = _lastState;
+        while (st is not null)
+        {
+            if (newInstance._lastState?.ParentBlock == null
+                    && newInstance._lastState.BlockNumber == st.BlockNumber
+                    && newInstance._lastState.BlockStateRoot == st.BlockStateRoot)
+                return true;
+
+            st = st.ParentBlock;
+        }
+        return false;
+    }
+
+    public void PrintStates(string topLevelMsg, int level)
     {
         if (!_logger.IsTrace)
             return;
 
-        _logger.Trace(topLevelMsg);
+        if (level == 0)
+            _logger.Trace(topLevelMsg);
 
         StateId stateId = _lastState;
         Stack<StateId> stack = new Stack<StateId>();
@@ -718,13 +1162,183 @@ public class PathDataCache : IPathDataCache
         while (stack.Count > 0)
         {
             StateId st = stack.Pop();
-            sb.Append($"[B {st.BlockNumber} | H {st.BlockHash} | I {st.Id}] -> ");
+            sb.Append($"[B {st.BlockNumber} | H {st.BlockStateRoot} | I {st.Id}] -> ");
         }
-        
+
         _logger.Trace(sb.ToString());
 
         level++;
-        foreach (PathDataCache branch in _branches)
+        foreach (PathDataCacheInstance branch in _branches)
             branch.PrintStates(topLevelMsg, level);
+    }
+}
+
+public class PathDataCache : IPathDataCache
+{
+    public PathDataCache(ITrieStore trieStore, ILogManager? logManager)
+    {
+        _trieStore = trieStore;
+        _logger = logManager?.GetClassLogger<TrieNodePathCache>() ?? throw new ArgumentNullException(nameof(logManager));
+        _mains = new List<PathDataCacheInstance>
+        {
+            new PathDataCacheInstance(_trieStore, _logger)
+        };
+    }
+
+    private readonly ITrieStore _trieStore;
+    private readonly ILogger _logger;
+
+    private List<PathDataCacheInstance> _mains;
+    private PathDataCacheInstance _openedInstance;
+
+    public int PrefixLength { get; set; } = 66;
+
+    public void OpenContext(Keccak parentStateRoot)
+    {
+        if (_openedInstance is not null)
+        {
+            if (!_openedInstance.IsDirty)
+            {
+                _openedInstance.RollbackState();
+                _openedInstance = null;
+            }
+            else if (_openedInstance.IsEmpty)
+            {
+                _openedInstance = null;
+            }
+            else
+                throw new ArgumentException("Already having instance opened");
+        }
+
+        _openedInstance = GetCacheInstanceForState(parentStateRoot);
+    }
+
+    public void CloseContext(long blockNumber, Keccak newStatRoot)
+    {
+        //if (_openedInstance is null)
+        //    throw new ArgumentException("Nothing to close instance opened");
+        //if (_logger is null)
+        //    return;
+
+        if (_openedInstance is null)
+        {
+            foreach (var mainInstance in _mains)
+            {
+                if (mainInstance.IsEmpty)
+                {
+                    mainInstance.GetCacheInstanceForParent(Keccak.EmptyTreeHash);
+                    mainInstance.CloseState(blockNumber, newStatRoot);
+                }
+            }
+            return;
+        }
+
+        if (_openedInstance == GetMainEqualTo(_openedInstance))
+        {
+            PathDataCacheInstance? newInstance = _openedInstance.CloseState(blockNumber, newStatRoot);
+            if (newInstance is not null && !StateAlreadyInMain(newInstance))
+                _mains.Add(newInstance);
+        }
+        else
+        {
+            _openedInstance.CloseState(blockNumber, newStatRoot);
+            if (!_openedInstance.MergeToParent() && !StateAlreadyInMain(_openedInstance)) { 
+                _mains.Add(_openedInstance);
+            }
+        }
+        _openedInstance = null;
+
+        foreach (var mainInstance in _mains)
+        {
+            mainInstance.PrintStates("After close", 0);
+        }
+    }
+
+    public void AddNodeData(long blockNuber, TrieNode node)
+    {
+        if (_openedInstance is null)
+        {
+            if (_mains.Count == 1 && _mains[0].IsEmpty)
+            {
+                _openedInstance = _mains[0].GetCacheInstanceForParent(Keccak.EmptyTreeHash);
+            }
+            else
+                throw new ArgumentException("No cache instance opened");
+        }
+
+        _openedInstance.PrepareForCommit();
+        _openedInstance.AddNodeData(blockNuber, node);
+    }
+
+    public NodeData? GetNodeDataAtRoot(Keccak? rootHash, Span<byte> path)
+    {
+        NodeData? data = _openedInstance?.GetNodeDataAtRoot(rootHash, path);
+
+        //if (data is null)
+        //    return _main.GetNodeDataAtRoot(rootHash, path);
+
+        return data;
+    }
+
+    public NodeData? GetNodeData(Span<byte> path, Keccak? hash)
+    {
+        NodeData? data = _openedInstance?.GetNodeData(path, hash);
+
+        //if (data is null)
+        //    return _main.GetNodeData(path, hash);
+
+        return data;
+    }
+
+    public bool PersistUntilBlock(long blockNumber, Keccak rootHash, IBatch? batch = null)
+    {
+        for (int i = _mains.Count - 1; i >= 0; i--)
+        {
+            if (!_mains[i].PersistUntilBlock(blockNumber, rootHash, batch))
+                _mains.RemoveAt(i);
+        }
+        return true;
+    }
+
+    public void AddRemovedPrefix(long blockNumber, ReadOnlySpan<byte> keyPrefix)
+    {
+        if (_openedInstance is null)
+            throw new ArgumentException("No cache instance opened");
+
+        _openedInstance.AddRemovedPrefix(blockNumber, keyPrefix);
+    }
+
+    private PathDataCacheInstance? GetMainEqualTo(PathDataCacheInstance instance)
+    {
+        foreach (var mainInstance in _mains)
+        {
+            if (mainInstance.Equals(instance)) return mainInstance;
+        }
+        return null;
+    }
+
+    private PathDataCacheInstance? GetCacheInstanceForState(Keccak parentStateRoot)
+    {
+        PathDataCacheInstance newInstance = null;
+        foreach (var mainInstance in _mains)
+        {
+            if ((newInstance = mainInstance.GetCacheInstanceForParent(parentStateRoot)) is not null)
+                break;
+        }
+        if (newInstance is null)
+            newInstance = _mains[0].GetCacheInstanceForPersisted(parentStateRoot);
+
+        return newInstance;
+    }
+
+    private bool StateAlreadyInMain(PathDataCacheInstance newInstance)
+    {
+        bool same = false;
+        foreach (var mainInstance in _mains)
+        {
+            if (same = mainInstance.HasSameState(newInstance) == true)
+                break;
+        }
+        return same;
     }
 }

@@ -288,10 +288,14 @@ namespace Nethermind.State
             // by means of CREATE 2 - notice that the cached trie may carry information about items that were not
             // touched in this block, hence were not zeroed above
             // TODO: how does it work with pruning?
+            Keccak stateRootHash = null;
+            if (_storages.ContainsKey(address))
+                stateRootHash = _storages[address].GetStateRootHash();
             _storages[address] = new StorageTree(_trieStore, Keccak.EmptyTreeHash, _logManager, address);
             // mark the tree as cleared by SD - will be used by path state to avoid reads from flat storage until
             // they get committed to avoid reading uncleared data
             _storages[address].ClearedBySelfDestruct = true;
+            _storages[address].StateRootHash = stateRootHash;
 
 
         }
