@@ -51,9 +51,6 @@ public static class Program
     private static ILogger _logger = SimpleConsoleLogger.Instance;
 
     private static readonly ProcessExitSource _processExitSource = new();
-    private static readonly TaskCompletionSource<object?> _cancelKeySource = new();
-    private static readonly TaskCompletionSource<object?> _processExit = new();
-    private static readonly TaskCompletionSource<object?> _exitSourceExit = new();
     private static readonly ManualResetEventSlim _appClosed = new(true);
 
     public static void Main(string[] args)
@@ -199,7 +196,7 @@ public static class Program
             {
                 await ethereumRunner.Start(_processExitSource.Token);
 
-                _ = await Task.WhenAny(_cancelKeySource.Task, _processExit.Task, _processExitSource.ExitTask);
+                await _processExitSource.ExitTask;
             }
             catch (TaskCanceledException)
             {
@@ -456,8 +453,7 @@ public static class Program
 
     private static void CurrentDomainOnProcessExit(object? sender, EventArgs e)
     {
-        _processExitSource.Exit(ExitCodes.Ok);
-        _processExit.SetResult(null);
+        _processExitSource.Exit(ExitCodes.SigTerm);
         _appClosed.Wait();
     }
 
@@ -514,8 +510,7 @@ public static class Program
 
     private static void ConsoleOnCancelKeyPress(object? sender, ConsoleCancelEventArgs e)
     {
-        _processExitSource.Exit(ExitCodes.Ok);
-        _ = _cancelKeySource.TrySetResult(null);
+        _processExitSource.Exit(ExitCodes.SigInt);
         e.Cancel = true;
     }
 

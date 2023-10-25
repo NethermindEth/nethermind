@@ -65,7 +65,7 @@ namespace Nethermind.Api
         [ConfigItem(Description = "Diagnostics modes", DefaultValue = "None")]
         DiagnosticMode DiagnosticMode { get; set; }
 
-        [ConfigItem(Description = "Auto dump on bad blocks for diagnostics, Possible values [None, Receipts, Parity, Geth, All]", DefaultValue = "Receipts")]
+        [ConfigItem(Description = "Auto dump on bad blocks for diagnostics, Possible values [None, Receipts, Parity, Geth, Rlp, RlpLog, All, Default], Default = Receipts, Rlp", DefaultValue = "Default")]
         DumpOptions AutoDump { get; set; }
 
         [ConfigItem(Description = "Url for remote node that will be used as DB source when 'DiagnosticMode' is set to'RpcDb'", DefaultValue = "")]
@@ -81,16 +81,22 @@ namespace Nethermind.Api
     public enum DiagnosticMode
     {
         None,
+
         [ConfigItem(Description = "Diagnostics mode which uses an in-memory DB")]
         MemDb,
+
         [ConfigItem(Description = "Diagnostics mode which uses a remote DB")]
         RpcDb,
+
         [ConfigItem(Description = "Diagnostics mode which uses a read-only DB")]
         ReadOnlyDb,
+
         [ConfigItem(Description = "Just scan rewards for blocks + genesis")]
         VerifyRewards,
+
         [ConfigItem(Description = "Just scan and sum supply on all accounts")]
         VerifySupply,
+
         [ConfigItem(Description = "Verifies if full state is stored")]
         VerifyTrie
     }

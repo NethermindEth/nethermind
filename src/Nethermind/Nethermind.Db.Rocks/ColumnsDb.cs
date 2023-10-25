@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using FastEnumUtility;
+using Nethermind.Core;
 using Nethermind.Db.Rocks.Config;
 using Nethermind.Logging;
 using RocksDbSharp;
@@ -46,9 +47,14 @@ public class ColumnsDb<T> : DbOnTheRocks, IColumnsDb<T> where T : struct, Enum
 
     public IEnumerable<T> ColumnKeys => _columnDbs.Keys;
 
-    public IReadOnlyDb CreateReadOnly(bool createInMemWriteStore)
+    public IReadOnlyColumnDb<T> CreateReadOnly(bool createInMemWriteStore)
     {
         return new ReadOnlyColumnsDb<T>(this, createInMemWriteStore);
+    }
+
+    public new IColumnsBatch<T> StartBatch()
+    {
+        return new RocksColumnsBatch(this);
     }
 
     protected override void ApplyOptions(IDictionary<string, string> options)
@@ -60,5 +66,54 @@ public class ColumnsDb<T> : DbOnTheRocks, IColumnsDb<T> where T : struct, Enum
             _rocksDbNative.rocksdb_set_options_cf(_db.Handle, cols.Value._columnFamily.Handle, keys.Length, keys, values);
         }
         base.ApplyOptions(options);
+    }
+
+    private class RocksColumnsBatch : IColumnsBatch<T>
+    {
+        internal RocksDbBatch _batch;
+        private ColumnsDb<T> _columnsDb;
+
+        public RocksColumnsBatch(ColumnsDb<T> columnsDb)
+        {
+            _batch = new RocksDbBatch(columnsDb);
+            _columnsDb = columnsDb;
+        }
+
+        public IBatch GetColumnBatch(T key)
+        {
+            return new RocksColumnBatch(_columnsDb._columnDbs[key], this);
+        }
+
+        public void Dispose()
+        {
+            _batch.Dispose();
+        }
+    }
+
+    private class RocksColumnBatch : IBatch
+    {
+        private readonly ColumnDb _column;
+        private readonly RocksColumnsBatch _batch;
+
+        public RocksColumnBatch(ColumnDb column, RocksColumnsBatch batch)
+        {
+            _column = column;
+            _batch = batch;
+        }
+
+        public void Dispose()
+        {
+            _batch.Dispose();
+        }
+
+        public byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
+        {
+            return _column.Get(key, flags);
+        }
+
+        public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None)
+        {
+            _batch._batch.Set(key, value, _column._columnFamily, flags);
+        }
     }
 }
