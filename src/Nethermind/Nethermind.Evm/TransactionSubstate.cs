@@ -129,7 +129,7 @@ public class TransactionSubstate
 
             int length = (int)new UInt256(span.Slice(RevertPrefix + sizeof(UInt256), sizeof(UInt256)), isBigEndian: true);
             ReadOnlySpan<byte> binaryMessage = span.Slice(RevertPrefix + sizeof(UInt256) + sizeof(UInt256), length);
-            string message = System.Text.Encoding.UTF8.GetString(binaryMessage);
+            string message = string.Concat(RevertedErrorMessagePrefix, System.Text.Encoding.UTF8.GetString(binaryMessage));
 
             return message;
         }
