@@ -272,7 +272,7 @@ namespace Nethermind.Runner.Test
         }
 
         [TestCase("^mainnet", 0)]
-        [TestCase("mainnet fast", 11052984)]
+        [TestCase("mainnet fast", 0)]
         public void Barriers_defaults_are_correct(string configWildcard, long barrier)
         {
             Test<ISyncConfig, long>(configWildcard, c => c.AncientBodiesBarrier, barrier);
