@@ -21,6 +21,7 @@ namespace Nethermind.Synchronization.FastBlocks
 {
     public class BodiesSyncFeed : ActivatedSyncFeed<BodiesSyncBatch?>
     {
+        private const int DepositContractBarrier = 11052984;
         private int _requestSize = GethSyncLimits.MaxBodyFetch;
         private const long DefaultFlushDbInterval = 100000; // About every 10GB on mainnet
         private readonly long _flushDbInterval; // About every 10GB on mainnet
@@ -37,6 +38,14 @@ namespace Nethermind.Synchronization.FastBlocks
         private long _barrier;
 
         private SyncStatusList _syncStatusList;
+
+        private bool ShouldFinish => !_syncConfig.DownloadBodiesInFastSync || AllDownloaded;
+        private bool AllDownloaded => _blockTree.LowestInsertedBodyNumber <= _barrier
+            || WithinOldBarrierDefault;
+
+        // This property was introduced when we switched defaults of barriers from 11052984 to 0 to not disturb existing node operators
+        private bool WithinOldBarrierDefault => _blockTree.LowestInsertedBodyNumber <= DepositContractBarrier
+                                            && _blockTree.LowestInsertedBodyNumber > DepositContractBarrier - GethSyncLimits.MaxBodyFetch;
 
         public BodiesSyncFeed(
             IBlockTree blockTree,
@@ -94,10 +103,7 @@ namespace Nethermind.Synchronization.FastBlocks
 
         private bool ShouldBuildANewBatch()
         {
-            bool shouldDownloadBodies = _syncConfig.DownloadBodiesInFastSync;
-            bool allBodiesDownloaded = _syncStatusList.LowestInsertWithoutGaps <= _barrier;
-            bool shouldFinish = !shouldDownloadBodies || allBodiesDownloaded;
-            if (shouldFinish)
+            if (ShouldFinish)
             {
                 ResetSyncStatusList();
                 Finish();
@@ -105,7 +111,6 @@ namespace Nethermind.Synchronization.FastBlocks
 
                 return false;
             }
-
             return true;
         }
 

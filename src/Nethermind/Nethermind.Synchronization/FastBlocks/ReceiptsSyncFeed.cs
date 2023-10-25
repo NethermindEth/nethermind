@@ -23,7 +23,7 @@ namespace Nethermind.Synchronization.FastBlocks
 {
     public class ReceiptsSyncFeed : ActivatedSyncFeed<ReceiptsSyncBatch?>
     {
-        private const int MinReceiptBlock = 1;
+        private const int DepositContractBarrier = 11052984;
         private int _requestSize = GethSyncLimits.MaxReceiptFetch;
 
         private readonly ILogger _logger;
@@ -38,10 +38,15 @@ namespace Nethermind.Synchronization.FastBlocks
         private long _pivotNumber;
         private long _barrier;
 
-        private bool ShouldFinish => !_syncConfig.DownloadReceiptsInFastSync || AllReceiptsDownloaded;
-        private bool AllReceiptsDownloaded => _receiptStorage.LowestInsertedReceiptBlockNumber <= _barrier;
-        public override bool IsFinished => AllReceiptsDownloaded;
+        private bool ShouldFinish => !_syncConfig.DownloadReceiptsInFastSync || AllDownloaded;
+        private bool AllDownloaded => _receiptStorage.LowestInsertedReceiptBlockNumber <= _barrier
+            || WithinOldBarrierDefault;
 
+        // This property was introduced when we switched defaults of barriers from 11052984 to 0 to not disturb existing node operators
+        private bool WithinOldBarrierDefault => _receiptStorage.LowestInsertedReceiptBlockNumber <= DepositContractBarrier
+            && _receiptStorage.LowestInsertedReceiptBlockNumber > DepositContractBarrier - GethSyncLimits.MaxBodyFetch; // this is intentional. using this as an approxamation assuming a minimum of 1 receipt in per block
+
+        public override bool IsFinished => AllReceiptsDownloaded;
         public ReceiptsSyncFeed(
             ISpecProvider specProvider,
             IBlockTree blockTree,
@@ -98,25 +103,13 @@ namespace Nethermind.Synchronization.FastBlocks
 
         private bool ShouldBuildANewBatch()
         {
-            bool shouldDownloadReceipts = _syncConfig.DownloadReceiptsInFastSync;
-            bool allReceiptsDownloaded = AllReceiptsDownloaded;
-            bool isGenesisDownloaded = _syncStatusList.LowestInsertWithoutGaps <= MinReceiptBlock;
-            bool noBatchesLeft = !shouldDownloadReceipts
-                                 || allReceiptsDownloaded
-                                 || isGenesisDownloaded;
-
-            if (noBatchesLeft)
+            if (ShouldFinish)
             {
-                if (ShouldFinish)
-                {
-                    ResetSyncStatusList();
-                    Finish();
-                    PostFinishCleanUp();
-                }
-
+                ResetSyncStatusList();
+                Finish();
+                PostFinishCleanUp();
                 return false;
             }
-
             return true;
         }
 
