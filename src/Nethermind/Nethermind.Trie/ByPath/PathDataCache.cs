@@ -515,7 +515,7 @@ internal class PathDataCacheInstance
         StateId? currState = FindStateWithParent(stateRoot, highestBlockNumber);
         if (currState is not null)
         {
-            PathDataCacheInstance newBranchExisting = new(_trieStore, _logger, _lastState.Clone(), this, currState.ParentBlock, _branches);
+            PathDataCacheInstance newBranchExisting = new(_trieStore, _logger, _lastState, this, currState.ParentBlock, _branches);
 
             foreach (KeyValuePair<byte[], PathDataHistory> histEntry in _historyByPath)
             {
@@ -591,8 +591,11 @@ internal class PathDataCacheInstance
         else
         {
             if (_parentInstance.SplitAt(_lastState.ParentStateHash, _lastState.BlockNumber) is not null)
+            {
                 _parentInstance._branches.Add(this);
-            return true;
+                return true;
+            }
+            return false;
         }
     }
 
