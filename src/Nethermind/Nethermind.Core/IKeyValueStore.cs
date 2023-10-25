@@ -32,11 +32,6 @@ namespace Nethermind.Core
 
         bool KeyExists(ReadOnlySpan<byte> key) => GetSpan(key).IsNull();
         void DangerousReleaseMemory(in Span<byte> span) { }
-        MemoryManager<byte>? GetOwnedMemory(ReadOnlySpan<byte> key)
-        {
-            Span<byte> span = GetSpan(key);
-            return span.IsNullOrEmpty() ? null : new DbSpanMemoryManager(this, span);
-        }
     }
 
     public interface IWriteOnlyKeyValueStore
