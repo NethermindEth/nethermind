@@ -27,16 +27,36 @@ public class TransactionSubstate
 
     private readonly IDictionary<UInt256, string> PanicReasons = new Dictionary<UInt256, string>
     {
-        { 0x00, "generic panic" },
-        { 0x01, "assert(false)" },
-        { 0x11, "arithmetic underflow or overflow" },
-        { 0x12, "division or modulo by zero" },
-        { 0x21, "enum overflow" },
-        { 0x22, "invalid encoded storage byte array accessed" },
-        { 0x31, "out-of-bounds array access; popping on an empty array" },
-        { 0x32, "out-of-bounds access of an array or bytesN" },
-        { 0x41, "out of memory" },
-        { 0x51, "uninitialized function" },
+        {
+            0x00, "generic panic"
+        },
+        {
+            0x01, "assert(false)"
+        },
+        {
+            0x11, "arithmetic underflow or overflow"
+        },
+        {
+            0x12, "division or modulo by zero"
+        },
+        {
+            0x21, "enum overflow"
+        },
+        {
+            0x22, "invalid encoded storage byte array accessed"
+        },
+        {
+            0x31, "out-of-bounds array access; popping on an empty array"
+        },
+        {
+            0x32, "out-of-bounds access of an array or bytesN"
+        },
+        {
+            0x41, "out of memory"
+        },
+        {
+            0x51, "uninitialized function"
+        },
     };
 
     public bool IsError => Error is not null && !ShouldRevert;
@@ -86,7 +106,8 @@ public class TransactionSubstate
 
         ReadOnlySpan<byte> span = Output.Span;
         Error = TryGetErrorMessage(span)
-                ?? TryUnpackErrorFunctionMessage(span)
+                // ?? TryUnpackErrorFunctionMessage(span)
+                ?? TryUnpackSpecialFunctionMessage(span)
                 ?? TryUnpackPanicFunctionMessage(span)
                 ?? DefaultErrorMessage(span);
     }
@@ -122,41 +143,27 @@ public class TransactionSubstate
         }
     }
 
-    private string? TryUnpackErrorFunctionMessage(ReadOnlySpan<byte> span)
+    private string? TryUnpackSpecialFunctionMessage(ReadOnlySpan<byte> span)
     {
-        if (span.Length < RevertPrefix + WordSize * 2)
+        if (span.Length < RevertPrefix)
         {
             return null;
         }
-
-        if (!span[..RevertPrefix].SequenceEqual(ErrorFunctionSelector))
-        {
-            return null;
-        }
-
-        try
+        if (span[..RevertPrefix].SequenceEqual(ErrorFunctionSelector))
         {
             int start = (int)new UInt256(span.Slice(RevertPrefix, WordSize), isBigEndian: true);
-            if (start != WordSize)
-            {
-                return null;
-            }
+            if (start != WordSize) { return null; }
 
             int length = (int)new UInt256(span.Slice(RevertPrefix + WordSize, WordSize), isBigEndian: true);
-            if (checked(RevertPrefix + WordSize + WordSize + length) > span.Length)
-            {
-                return null;
-            }
+            if (checked(RevertPrefix + WordSize + WordSize + length) > span.Length) { return null; }
 
             ReadOnlySpan<byte> binaryMessage = span.Slice(RevertPrefix + WordSize + WordSize, length);
             string message = string.Concat(RevertedErrorMessagePrefix, System.Text.Encoding.UTF8.GetString(binaryMessage));
 
             return message;
         }
-        catch (OverflowException)
-        {
-            return null;
-        }
+
+        return null;
     }
 
     private string? TryUnpackPanicFunctionMessage(ReadOnlySpan<byte> span)
