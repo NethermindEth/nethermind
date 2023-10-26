@@ -18,6 +18,7 @@ using Nethermind.Db.Rocks.Config;
 using Nethermind.Db.Rocks.Statistics;
 using Nethermind.Logging;
 using RocksDbSharp;
+using IWriteBatch = Nethermind.Core.IWriteBatch;
 
 namespace Nethermind.Db.Rocks;
 
@@ -32,7 +33,7 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
     private bool _isDisposing;
     private bool _isDisposed;
 
-    private readonly ConcurrentHashSet<IBatch> _currentBatches = new();
+    private readonly ConcurrentHashSet<IWriteBatch> _currentBatches = new();
 
     internal readonly RocksDb _db;
 
@@ -788,14 +789,14 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
         }
     }
 
-    public IBatch StartBatch()
+    public IWriteBatch StartWriteBatch()
     {
-        IBatch batch = new RocksDbBatch(this);
-        _currentBatches.Add(batch);
-        return batch;
+        IWriteBatch writeBatch = new RocksDbWriteBatch(this);
+        _currentBatches.Add(writeBatch);
+        return writeBatch;
     }
 
-    internal class RocksDbBatch : IBatch
+    internal class RocksDbWriteBatch : IWriteBatch
     {
         private readonly DbOnTheRocks _dbOnTheRocks;
         private WriteBatch _rocksBatch;
@@ -813,7 +814,7 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
         private const int MaxWritesOnNoWal = 128;
         private int _writeCount;
 
-        public RocksDbBatch(DbOnTheRocks dbOnTheRocks)
+        public RocksDbWriteBatch(DbOnTheRocks dbOnTheRocks)
         {
             _dbOnTheRocks = dbOnTheRocks;
             _rocksBatch = CreateWriteBatch();
@@ -870,14 +871,6 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
                 _dbOnTheRocks.CreateMarkerIfCorrupt(e);
                 throw;
             }
-        }
-
-        public byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
-        {
-            // Not checking _isDisposing here as for some reason, sometimes is is read after dispose
-            // Note: The batch itself is not checked. Will need to use WriteBatchWithIndex to do that, but that will
-            // hurt perf.
-            return _dbOnTheRocks.Get(key, flags);
         }
 
         public void Delete(ReadOnlySpan<byte> key, ColumnFamilyHandle? cf = null)
@@ -1020,7 +1013,7 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
     {
         // ReSharper disable once ConstantConditionalAccessQualifier
         // running in finalizer, potentially not fully constructed
-        foreach (IBatch batch in _currentBatches)
+        foreach (IWriteBatch batch in _currentBatches)
         {
             batch.Dispose();
         }

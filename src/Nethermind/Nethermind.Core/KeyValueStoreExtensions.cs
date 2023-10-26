@@ -7,14 +7,14 @@ namespace Nethermind.Core
 {
     public static class KeyValueStoreExtensions
     {
-        public static IBatch LikeABatch(this IKeyValueStoreWithBatching keyValueStore)
+        public static IWriteBatch LikeABatch(this IKeyValueStoreWithBatching keyValueStore)
         {
             return LikeABatch(keyValueStore, null);
         }
 
-        public static IBatch LikeABatch(this IKeyValueStoreWithBatching keyValueStore, Action? onDispose)
+        public static IWriteBatch LikeABatch(this IKeyValueStoreWithBatching keyValueStore, Action? onDispose)
         {
-            return new FakeBatch(keyValueStore, onDispose);
+            return new FakeWriteBatch(keyValueStore, onDispose);
         }
     }
 }

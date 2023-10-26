@@ -24,9 +24,9 @@ namespace Nethermind.Db
         }
 
         public IEnumerable<T> ColumnKeys => _readOnlyColumns.Keys;
-        public IColumnsBatch<T> StartBatch()
+        public IColumnsWriteBatch<T> StartWriteBatch()
         {
-            return new InMemoryColumnBatch<T>(this);
+            return new InMemoryColumnWriteBatch<T>(this);
         }
 
         public void ClearTempChanges()

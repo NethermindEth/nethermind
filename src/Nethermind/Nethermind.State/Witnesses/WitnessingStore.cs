@@ -52,9 +52,9 @@ namespace Nethermind.State.Witnesses
             _wrapped.Set(key, value, flags);
         }
 
-        public IBatch StartBatch()
+        public IWriteBatch StartWriteBatch()
         {
-            return _wrapped.StartBatch();
+            return _wrapped.StartWriteBatch();
         }
 
         public void Touch(ReadOnlySpan<byte> key)

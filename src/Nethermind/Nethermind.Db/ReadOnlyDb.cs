@@ -65,7 +65,7 @@ namespace Nethermind.Db
 
         public IEnumerable<byte[]> GetAllValues(bool ordered = false) => _memDb.GetAllValues();
 
-        public IBatch StartBatch()
+        public IWriteBatch StartWriteBatch()
         {
             return this.LikeABatch();
         }

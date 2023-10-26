@@ -5,18 +5,18 @@ using System;
 
 namespace Nethermind.Core
 {
-    public class FakeBatch : IBatch
+    public class FakeWriteBatch : IWriteBatch
     {
         private readonly IKeyValueStore _storePretendingToSupportBatches;
 
         private readonly Action? _onDispose;
 
-        public FakeBatch(IKeyValueStore storePretendingToSupportBatches)
+        public FakeWriteBatch(IKeyValueStore storePretendingToSupportBatches)
             : this(storePretendingToSupportBatches, null)
         {
         }
 
-        public FakeBatch(IKeyValueStore storePretendingToSupportBatches, Action? onDispose)
+        public FakeWriteBatch(IKeyValueStore storePretendingToSupportBatches, Action? onDispose)
         {
             _storePretendingToSupportBatches = storePretendingToSupportBatches;
             _onDispose = onDispose;
@@ -25,11 +25,6 @@ namespace Nethermind.Core
         public void Dispose()
         {
             _onDispose?.Invoke();
-        }
-
-        public byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
-        {
-            return _storePretendingToSupportBatches.Get(key, flags);
         }
 
         public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None)

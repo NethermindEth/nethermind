@@ -100,9 +100,9 @@ public class TestMemDb : MemDb, ITunableDb
         _removedKeys.Count(cond).Should().Be(times);
     }
 
-    public override IBatch StartBatch()
+    public override IWriteBatch StartWriteBatch()
     {
-        return new InMemoryBatch(this);
+        return new InMemoryWriteBatch(this);
     }
 
     public override void Flush()
