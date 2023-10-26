@@ -68,7 +68,6 @@ namespace Nethermind.Evm.Test
             transactionSubstate.Error.Should().Be($"Reverted {hex}");
         }
 
-
         private static IEnumerable<(byte[], string)> ErrorFunctionTestCases()
         {
             yield return (
@@ -92,9 +91,37 @@ namespace Nethermind.Evm.Test
                 "Reverted Req::UnAuthAuditor");
         }
 
+        private static IEnumerable<(byte[], string)> PanicFunctionTestCases()
+        {
+            yield return (
+                new byte[]
+                {
+                    0x4e, 0x48, 0x7b, 0x71, // Function selector for Panic(uint256)
+                    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 // Panic code 0x0
+                },
+                "Reverted generic panic");
+
+            yield return (
+                new byte[]
+                {
+                    0x4e, 0x48, 0x7b, 0x71, // Function selector for Panic(uint256)
+                    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x22 // Panic code 0x22
+                },
+                "Reverted invalid encoded storage byte array accessed");
+
+            yield return (
+                new byte[]
+                {
+                    0x4e, 0x48, 0x7b, 0x71,
+                    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xFF // Unknown panic code
+                },
+                "Reverted unknown panic code (0xff)");
+        }
+
         [Test]
         [TestCaseSource(nameof(ErrorFunctionTestCases))]
-        public void should_return_proper_revert_error_when_using_Error_function((byte[] data, string expected) tc)
+        [TestCaseSource(nameof(PanicFunctionTestCases))]
+        public void should_return_proper_revert_error_when_using_special_functions((byte[] data, string expected) tc)
         {
             // See: https://docs.soliditylang.org/en/latest/control-structures.html#revert
             ReadOnlyMemory<byte> readOnlyMemory = new(tc.data);
