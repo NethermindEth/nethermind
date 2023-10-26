@@ -95,11 +95,7 @@ public class TransactionSubstate
 
     private string? TryGetErrorMessage(ReadOnlySpan<byte> span)
     {
-        if (span.Length < RevertPrefix)
-        {
-            return null;
-        }
-
+        if (span.Length < RevertPrefix) { return null; }
         ReadOnlySpan<byte> prefix = span.TakeAndMove(RevertPrefix);
 
         if (prefix.SequenceEqual(PanicFunctionSelector))
@@ -147,15 +143,5 @@ public class TransactionSubstate
         {
             return null;
         }
-    }
-}
-
-static class SpanExtensions
-{
-    public static ReadOnlySpan<byte> TakeAndMove(this ref ReadOnlySpan<byte> span, int length)
-    {
-        ReadOnlySpan<byte> s = span[..length];
-        span = span[length..];
-        return s;
     }
 }
