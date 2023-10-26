@@ -78,5 +78,11 @@ namespace Nethermind.Core
         public long BlockNumber { get; set; }
 
         public override string ToString() => BlockHash.ToString();
+
+        public bool EqualsIgnoringWasProcessed(BlockInfo other) =>
+            TotalDifficulty.Equals(other.TotalDifficulty)
+            && BlockHash.Equals(other.BlockHash)
+            && Metadata == other.Metadata
+            && BlockNumber == other.BlockNumber;
     }
 }
