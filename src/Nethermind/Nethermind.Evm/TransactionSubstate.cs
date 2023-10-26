@@ -128,23 +128,24 @@ public class TransactionSubstate
             return null;
         }
 
-        if (span[..RevertPrefix].SequenceEqual(ErrorFunctionSelector))
+        ReadOnlySpan<byte> prefix = span.SliceAndMove(0, RevertPrefix);
+        if (prefix.SequenceEqual(ErrorFunctionSelector))
         {
-            int start = (int)new UInt256(span.Slice(RevertPrefix, WordSize), isBigEndian: true);
+            int start = (int)new UInt256(span.SliceAndMove(0, WordSize), isBigEndian: true);
             if (start != WordSize) { return null; }
 
-            int length = (int)new UInt256(span.Slice(RevertPrefix + WordSize, WordSize), isBigEndian: true);
-            if (checked(RevertPrefix + WordSize + WordSize + length) > span.Length) { return null; }
+            int length = (int)new UInt256(span.SliceAndMove(0, WordSize), isBigEndian: true);
+            if (length > span.Length) { return null; }
 
-            ReadOnlySpan<byte> binaryMessage = span.Slice(RevertPrefix + WordSize + WordSize, length);
+            ReadOnlySpan<byte> binaryMessage = span.SliceAndMove(0, length);
             string message = string.Concat(RevertedErrorMessagePrefix, System.Text.Encoding.UTF8.GetString(binaryMessage));
 
             return message;
         }
 
-        if (span[..RevertPrefix].SequenceEqual(PanicFunctionSelector))
+        if (prefix.SequenceEqual(PanicFunctionSelector))
         {
-            UInt256 panicCode = new(span.Slice(RevertPrefix, WordSize), isBigEndian: true);
+            UInt256 panicCode = new(span.SliceAndMove(0, WordSize), isBigEndian: true);
             if (!PanicReasons.TryGetValue(panicCode, out string panicReason))
             {
                 return string.Concat(RevertedErrorMessagePrefix, $"unknown panic code ({panicCode.ToHexString(skipLeadingZeros: true)})");
@@ -155,5 +156,14 @@ public class TransactionSubstate
 
         return null;
     }
+}
 
+static class SpanExtensions
+{
+    public static ReadOnlySpan<byte> SliceAndMove(this ref ReadOnlySpan<byte> span, int start = 0, int length = 0)
+    {
+        ReadOnlySpan<byte> s = span.Slice(start, length);
+        span = span[(start + length)..];
+        return s;
+    }
 }
