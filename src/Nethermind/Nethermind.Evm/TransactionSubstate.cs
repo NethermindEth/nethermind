@@ -85,11 +85,13 @@ public class TransactionSubstate
             return;
 
         ReadOnlySpan<byte> span = Output.Span;
-        Error = TryGetErrorMessage(span)
-                ?? DefaultErrorMessage(span);
+        Error = string.Concat(
+            RevertedErrorMessagePrefix,
+            TryGetErrorMessage(span) ?? DefaultErrorMessage(span)
+        );
     }
 
-    private string DefaultErrorMessage(ReadOnlySpan<byte> span) => string.Concat(RevertedErrorMessagePrefix, span.ToHexString(true));
+    private string DefaultErrorMessage(ReadOnlySpan<byte> span) => span.ToHexString(true);
 
     private string? TryGetErrorMessage(ReadOnlySpan<byte> span)
     {
@@ -105,10 +107,10 @@ public class TransactionSubstate
             UInt256 panicCode = new(span.TakeAndMove(WordSize), isBigEndian: true);
             if (!PanicReasons.TryGetValue(panicCode, out string panicReason))
             {
-                return string.Concat(RevertedErrorMessagePrefix, $"unknown panic code ({panicCode.ToHexString(skipLeadingZeros: true)})");
+                return $"unknown panic code ({panicCode.ToHexString(skipLeadingZeros: true)})";
             }
 
-            return string.Concat(RevertedErrorMessagePrefix, panicReason);
+            return panicReason;
         }
 
         if (prefix.SequenceEqual(ErrorFunctionSelector))
@@ -120,7 +122,7 @@ public class TransactionSubstate
             if (length > span.Length) { return null; }
 
             ReadOnlySpan<byte> binaryMessage = span.TakeAndMove(length);
-            string message = string.Concat(RevertedErrorMessagePrefix, System.Text.Encoding.UTF8.GetString(binaryMessage));
+            string message = System.Text.Encoding.UTF8.GetString(binaryMessage);
 
             return message;
         }
@@ -135,7 +137,7 @@ public class TransactionSubstate
             int length = (int)new UInt256(span.Slice(start, WordSize), isBigEndian: true);
             if (checked(start + WordSize + length) != span.Length) { return null; }
 
-            return string.Concat(RevertedErrorMessagePrefix, span.Slice(start + WordSize, length).ToHexString(true));
+            return span.Slice(start + WordSize, length).ToHexString(true);
         }
         catch (OverflowException)
         {
