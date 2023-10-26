@@ -149,8 +149,9 @@ namespace Nethermind.Synchronization.FastBlocks
 
         private void Flush()
         {
+            long lowestInsertedAtPoint = _syncStatusList.LowestInsertWithoutGaps;
             _blocksDb.Flush();
-            _blockTree.LowestInsertedBodyNumber = _syncStatusList.LowestInsertWithoutGaps;
+            _blockTree.LowestInsertedBodyNumber = lowestInsertedAtPoint;
         }
 
         public override SyncResponseHandlingResult HandleResponse(BodiesSyncBatch? batch, PeerInfo peer = null)
