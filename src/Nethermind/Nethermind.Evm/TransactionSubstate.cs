@@ -89,11 +89,11 @@ public class TransactionSubstate
             int lengthEnd = checked(lengthStart + fieldLength);
             if (lengthEnd <= span.Length)
             {
-                int length = (int)new UInt256(span.Slice(lengthStart, fieldLength), isBigEndian: true);
-                int messageEnd = checked(lengthEnd + length);
+                int messageLength = (int)new UInt256(span.Slice(lengthStart, fieldLength), isBigEndian: true);
+                int messageEnd = checked(lengthEnd + messageLength);
                 if (messageEnd <= span.Length)
                 {
-                    ReadOnlySpan<byte> message = span.Slice(lengthEnd, length);
+                    ReadOnlySpan<byte> message = span.Slice(lengthEnd, messageLength);
 
                     if (messageEnd == span.Length)
                     {
