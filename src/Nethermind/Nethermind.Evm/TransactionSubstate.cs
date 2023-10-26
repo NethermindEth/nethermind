@@ -22,6 +22,21 @@ public class TransactionSubstate
 
     private const string RevertedErrorMessagePrefix = "Reverted ";
     private readonly byte[] ErrorFunctionSelector = Keccak.Compute("Error(string)").BytesToArray()[..RevertPrefix];
+    private readonly byte[] PanicFunctionSelector = Keccak.Compute("Panic(uint256)").BytesToArray()[..RevertPrefix];
+
+    private readonly IDictionary<UInt256, string> PanicReasons = new Dictionary<UInt256, string>
+    {
+        { 0x00, "generic panic" },
+        { 0x01, "assert(false)" },
+        { 0x11, "arithmetic underflow or overflow" },
+        { 0x12, "division or modulo by zero" },
+        { 0x21, "enum overflow" },
+        { 0x22, "invalid encoded storage byte array accessed" },
+        { 0x31, "out-of-bounds array access; popping on an empty array" },
+        { 0x32, "out-of-bounds access of an array or bytesN" },
+        { 0x41, "out of memory" },
+        { 0x51, "uninitialized function" },
+    };
 
     public bool IsError => Error is not null && !ShouldRevert;
     public string? Error { get; }
@@ -69,47 +84,105 @@ public class TransactionSubstate
             return;
 
         ReadOnlySpan<byte> span = Output.Span;
-        Error = TryGetErrorMessage(span) ?? DefaultErrorMessage(span);
+        Error = TryGetErrorMessage(span)
+                ?? TryUnpackErrorFunctionMessage(span)
+                ?? TryUnpackPanicFunctionMessage(span)
+                ?? DefaultErrorMessage(span);
     }
 
     private string DefaultErrorMessage(ReadOnlySpan<byte> span) => string.Concat(RevertedErrorMessagePrefix, span.ToHexString(true));
 
-    private string? TryGetErrorMessage(ReadOnlySpan<byte> span)
+    private unsafe string? TryGetErrorMessage(ReadOnlySpan<byte> span)
     {
-        const int fieldLength = EvmPooledMemory.WordSize;
-        if (span.Length < RevertPrefix + fieldLength * 2)
+        if (span.Length < RevertPrefix + sizeof(UInt256) * 2)
         {
             return null;
         }
 
         try
         {
-            int start = (int)new UInt256(span.Slice(RevertPrefix, fieldLength), isBigEndian: true);
-
-            int lengthStart = RevertPrefix + start;
-            int lengthEnd = checked(lengthStart + fieldLength);
-            if (lengthEnd <= span.Length)
+            int start = (int)new UInt256(span.Slice(RevertPrefix, sizeof(UInt256)), isBigEndian: true);
+            if (checked(RevertPrefix + start + sizeof(UInt256)) > span.Length)
             {
-                int messageLength = (int)new UInt256(span.Slice(lengthStart, fieldLength), isBigEndian: true);
-                int messageEnd = checked(lengthEnd + messageLength);
-                if (messageEnd <= span.Length)
-                {
-                    ReadOnlySpan<byte> message = span.Slice(lengthEnd, messageLength);
-
-                    if (messageEnd == span.Length)
-                    {
-                        return string.Concat(RevertedErrorMessagePrefix, message.ToHexString(true));
-                    }
-
-                    if (span[..RevertPrefix].SequenceEqual(ErrorFunctionSelector) && start == fieldLength)
-                    {
-                        return string.Concat(RevertedErrorMessagePrefix, System.Text.Encoding.UTF8.GetString(message));
-                    }
-                }
+                return null;
             }
-        }
-        catch (OverflowException) { }
 
-        return null;
+            int length = (int)new UInt256(span.Slice(RevertPrefix + start, sizeof(UInt256)), isBigEndian: true);
+            if (checked(RevertPrefix + start + sizeof(UInt256) + length) != span.Length)
+            {
+                return null;
+            }
+
+            return string.Concat(RevertedErrorMessagePrefix, span.Slice(RevertPrefix + start + sizeof(UInt256), length).ToHexString(true));
+        }
+        catch (OverflowException)
+        {
+            return null;
+        }
+    }
+
+    private unsafe string? TryUnpackErrorFunctionMessage(ReadOnlySpan<byte> span)
+    {
+        if (span.Length < RevertPrefix + sizeof(UInt256) * 2)
+        {
+            return null;
+        }
+
+        if (!span[..RevertPrefix].SequenceEqual(ErrorFunctionSelector))
+        {
+            return null;
+        }
+
+        try
+        {
+            int start = (int)new UInt256(span.Slice(RevertPrefix, sizeof(UInt256)), isBigEndian: true);
+            if (start != sizeof(UInt256))
+            {
+                return null;
+            }
+
+            int length = (int)new UInt256(span.Slice(RevertPrefix + sizeof(UInt256), sizeof(UInt256)), isBigEndian: true);
+            if (checked(RevertPrefix + sizeof(UInt256) + sizeof(UInt256) + length) > span.Length)
+            {
+                return null;
+            }
+
+            ReadOnlySpan<byte> binaryMessage = span.Slice(RevertPrefix + sizeof(UInt256) + sizeof(UInt256), length);
+            string message = string.Concat(RevertedErrorMessagePrefix, System.Text.Encoding.UTF8.GetString(binaryMessage));
+
+            return message;
+        }
+        catch (OverflowException)
+        {
+            return null;
+        }
+    }
+
+    private unsafe string? TryUnpackPanicFunctionMessage(ReadOnlySpan<byte> span)
+    {
+        if (span.Length < RevertPrefix + sizeof(UInt256))
+        {
+            return null;
+        }
+
+        if (!span[..RevertPrefix].SequenceEqual(PanicFunctionSelector))
+        {
+            return null;
+        }
+
+        try
+        {
+            UInt256 panicCode = new UInt256(span.Slice(RevertPrefix, sizeof(UInt256)), isBigEndian: true);
+            if (!PanicReasons.TryGetValue(panicCode, out string panicReason))
+            {
+                return string.Concat(RevertedErrorMessagePrefix, $"unknown panic code ({panicCode.ToHexString(skipLeadingZeros: true)})");
+            }
+
+            return string.Concat(RevertedErrorMessagePrefix, panicReason);
+        }
+        catch (OverflowException)
+        {
+            return null;
+        }
     }
 }
