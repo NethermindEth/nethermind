@@ -85,41 +85,11 @@ public class TransactionSubstate
             return;
 
         ReadOnlySpan<byte> span = Output.Span;
-        Error = TryGetErrorMessage(span)
-                ?? TryUnpackSpecialFunctionMessage(span)
+        Error = TryUnpackSpecialFunctionMessage(span)
                 ?? DefaultErrorMessage(span);
     }
 
     private string DefaultErrorMessage(ReadOnlySpan<byte> span) => string.Concat(RevertedErrorMessagePrefix, span.ToHexString(true));
-
-    private string? TryGetErrorMessage(ReadOnlySpan<byte> span)
-    {
-        if (span.Length < RevertPrefix + WordSize * 2)
-        {
-            return null;
-        }
-
-        try
-        {
-            int start = (int)new UInt256(span.Slice(RevertPrefix, WordSize), isBigEndian: true);
-            if (checked(RevertPrefix + start + WordSize) > span.Length)
-            {
-                return null;
-            }
-
-            int length = (int)new UInt256(span.Slice(RevertPrefix + start, WordSize), isBigEndian: true);
-            if (checked(RevertPrefix + start + WordSize + length) != span.Length)
-            {
-                return null;
-            }
-
-            return string.Concat(RevertedErrorMessagePrefix, span.Slice(RevertPrefix + start + WordSize, length).ToHexString(true));
-        }
-        catch (OverflowException)
-        {
-            return null;
-        }
-    }
 
     private string? TryUnpackSpecialFunctionMessage(ReadOnlySpan<byte> span)
     {
@@ -154,7 +124,22 @@ public class TransactionSubstate
             return string.Concat(RevertedErrorMessagePrefix, panicReason);
         }
 
-        return null;
+        try
+        {
+            if (span.Length < WordSize * 2) { return null; }
+
+            int start = (int)new UInt256(span.Slice(0, WordSize), isBigEndian: true);
+            if (checked(start + WordSize) > span.Length) { return null; }
+
+            int length = (int)new UInt256(span.Slice(start, WordSize), isBigEndian: true);
+            if (checked(start + WordSize + length) != span.Length) { return null; }
+
+            return string.Concat(RevertedErrorMessagePrefix, span.Slice(start + WordSize, length).ToHexString(true));
+        }
+        catch (OverflowException)
+        {
+            return null;
+        }
     }
 }
 
