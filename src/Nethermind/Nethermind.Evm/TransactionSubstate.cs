@@ -128,16 +128,16 @@ public class TransactionSubstate
             return null;
         }
 
-        ReadOnlySpan<byte> prefix = span.SliceAndMove(0, RevertPrefix);
+        ReadOnlySpan<byte> prefix = span.TakeAndMove(RevertPrefix);
         if (prefix.SequenceEqual(ErrorFunctionSelector))
         {
-            int start = (int)new UInt256(span.SliceAndMove(0, WordSize), isBigEndian: true);
+            int start = (int)new UInt256(span.TakeAndMove(WordSize), isBigEndian: true);
             if (start != WordSize) { return null; }
 
-            int length = (int)new UInt256(span.SliceAndMove(0, WordSize), isBigEndian: true);
+            int length = (int)new UInt256(span.TakeAndMove(WordSize), isBigEndian: true);
             if (length > span.Length) { return null; }
 
-            ReadOnlySpan<byte> binaryMessage = span.SliceAndMove(0, length);
+            ReadOnlySpan<byte> binaryMessage = span.TakeAndMove(length);
             string message = string.Concat(RevertedErrorMessagePrefix, System.Text.Encoding.UTF8.GetString(binaryMessage));
 
             return message;
@@ -145,7 +145,7 @@ public class TransactionSubstate
 
         if (prefix.SequenceEqual(PanicFunctionSelector))
         {
-            UInt256 panicCode = new(span.SliceAndMove(0, WordSize), isBigEndian: true);
+            UInt256 panicCode = new(span.TakeAndMove(WordSize), isBigEndian: true);
             if (!PanicReasons.TryGetValue(panicCode, out string panicReason))
             {
                 return string.Concat(RevertedErrorMessagePrefix, $"unknown panic code ({panicCode.ToHexString(skipLeadingZeros: true)})");
@@ -160,10 +160,10 @@ public class TransactionSubstate
 
 static class SpanExtensions
 {
-    public static ReadOnlySpan<byte> SliceAndMove(this ref ReadOnlySpan<byte> span, int start = 0, int length = 0)
+    public static ReadOnlySpan<byte> TakeAndMove(this ref ReadOnlySpan<byte> span, int length)
     {
-        ReadOnlySpan<byte> s = span.Slice(start, length);
-        span = span[(start + length)..];
+        ReadOnlySpan<byte> s = span[..length];
+        span = span[length..];
         return s;
     }
 }
