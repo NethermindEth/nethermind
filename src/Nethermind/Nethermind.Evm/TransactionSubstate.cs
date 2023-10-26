@@ -99,6 +99,18 @@ public class TransactionSubstate
         }
 
         ReadOnlySpan<byte> prefix = span.TakeAndMove(RevertPrefix);
+
+        if (prefix.SequenceEqual(PanicFunctionSelector))
+        {
+            UInt256 panicCode = new(span.TakeAndMove(WordSize), isBigEndian: true);
+            if (!PanicReasons.TryGetValue(panicCode, out string panicReason))
+            {
+                return string.Concat(RevertedErrorMessagePrefix, $"unknown panic code ({panicCode.ToHexString(skipLeadingZeros: true)})");
+            }
+
+            return string.Concat(RevertedErrorMessagePrefix, panicReason);
+        }
+
         if (prefix.SequenceEqual(ErrorFunctionSelector))
         {
             int start = (int)new UInt256(span.TakeAndMove(WordSize), isBigEndian: true);
@@ -111,17 +123,6 @@ public class TransactionSubstate
             string message = string.Concat(RevertedErrorMessagePrefix, System.Text.Encoding.UTF8.GetString(binaryMessage));
 
             return message;
-        }
-
-        if (prefix.SequenceEqual(PanicFunctionSelector))
-        {
-            UInt256 panicCode = new(span.TakeAndMove(WordSize), isBigEndian: true);
-            if (!PanicReasons.TryGetValue(panicCode, out string panicReason))
-            {
-                return string.Concat(RevertedErrorMessagePrefix, $"unknown panic code ({panicCode.ToHexString(skipLeadingZeros: true)})");
-            }
-
-            return string.Concat(RevertedErrorMessagePrefix, panicReason);
         }
 
         try
