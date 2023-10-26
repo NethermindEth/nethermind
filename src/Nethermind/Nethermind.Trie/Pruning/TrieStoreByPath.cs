@@ -472,14 +472,14 @@ namespace Nethermind.Trie.Pruning
                     if (_logger.IsTrace) _logger.Trace($"Persist target {persistUntilBlock} | persisting {frontSet.BlockNumber} / {frontSet.Root?.Keccak}");
                 }
 
-                LastPersistedBlockNumber = frontSet.BlockNumber;
-
                 foreach (StateColumns column in Enum.GetValues(typeof(StateColumns)))
                 {
                     _currentBatches[column] ??= _stateDb.GetColumnDb(column).StartBatch();
                     //_committedNodes[column].PersistUntilBlock(persistUntilBlock, _currentBatches[column]);
-                    _committedNodes[column].PersistUntilBlock(persistUntilBlock, stateRoot, _currentBatches[column]);
+                    _committedNodes[column].PersistUntilBlock(persistUntilBlock, frontSet?.Root?.Keccak ?? Keccak.EmptyTreeHash, _currentBatches[column]);
                 }
+
+                LastPersistedBlockNumber = frontSet.BlockNumber;
 
                 stopwatch.Stop();
                 Metrics.SnapshotPersistenceTime = stopwatch.ElapsedMilliseconds;

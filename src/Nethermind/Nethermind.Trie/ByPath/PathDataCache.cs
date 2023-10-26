@@ -760,7 +760,7 @@ internal class PathDataCacheInstance
         foreach (byte[] path in removedPaths)
             _historyByPath.Remove(path, out _);
 
-        StateId? childOfPersisted = FindStateWithParent(stateId.BlockStateRoot, stateId.BlockNumber);
+        StateId? childOfPersisted = FindStateWithParent(stateId.BlockStateRoot, stateId.BlockNumber + 1);
         if (childOfPersisted is not null)
             childOfPersisted.ParentBlock = null;
         else
@@ -848,7 +848,7 @@ internal class PathDataCacheInstance
         StateId stateId = _lastState;
         while (stateId.ParentBlock is not null)
         {
-            if (stateId.ParentBlock.BlockStateRoot == rootHash && (highestBlockNumber is null || stateId.BlockNumber < highestBlockNumber))
+            if (stateId.ParentBlock.BlockStateRoot == rootHash && (highestBlockNumber is null || stateId.BlockNumber <= highestBlockNumber))
                 return stateId;
             stateId = stateId.ParentBlock;
         }
@@ -1053,15 +1053,6 @@ public class PathDataCache : IPathDataCache
             throw new ArgumentException("No cache instance opened");
 
         _openedInstance.AddRemovedPrefix(blockNumber, keyPrefix);
-    }
-
-    private PathDataCacheInstance? GetMainEqualTo(PathDataCacheInstance instance)
-    {
-        foreach (var mainInstance in _mains)
-        {
-            if (mainInstance.Equals(instance)) return mainInstance;
-        }
-        return null;
     }
 
     private PathDataCacheInstance? GetCacheInstanceForState(Keccak parentStateRoot)
