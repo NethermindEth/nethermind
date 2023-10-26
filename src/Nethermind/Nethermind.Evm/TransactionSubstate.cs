@@ -73,7 +73,7 @@ public class TransactionSubstate
 
     private string DefaultErrorMessage(ReadOnlySpan<byte> span) => string.Concat(RevertedErrorMessagePrefix, span.ToHexString(true));
 
-    private unsafe string? TryGetErrorMessage(ReadOnlySpan<byte> span)
+    private string? TryGetErrorMessage(ReadOnlySpan<byte> span)
     {
         const int fieldLength = EvmPooledMemory.WordSize;
         if (span.Length < RevertPrefix + fieldLength * 2)
