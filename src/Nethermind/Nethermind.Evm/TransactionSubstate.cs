@@ -68,79 +68,47 @@ public class TransactionSubstate
             return;
 
         ReadOnlySpan<byte> span = Output.Span;
-        Error = TryGetErrorMessage(span)
-                ?? TryUnpackRevertMessage(span)
-                ?? DefaultErrorMessage(span);
+        Error = TryGetErrorMessage(span) ?? DefaultErrorMessage(span);
     }
 
-    private string DefaultErrorMessage(ReadOnlySpan<byte> span)
-    {
-        return string.Concat(RevertedErrorMessagePrefix, span.ToHexString(true));
-    }
+    private string DefaultErrorMessage(ReadOnlySpan<byte> span) => string.Concat(RevertedErrorMessagePrefix, span.ToHexString(true));
 
     private unsafe string? TryGetErrorMessage(ReadOnlySpan<byte> span)
     {
-        if (span.Length < RevertPrefix + sizeof(UInt256) * 2)
+        const int fieldLength = EvmPooledMemory.WordSize;
+        if (span.Length < RevertPrefix + fieldLength * 2)
         {
             return null;
         }
 
         try
         {
-            int start = (int)new UInt256(span.Slice(RevertPrefix, sizeof(UInt256)), isBigEndian: true);
-            if (checked(RevertPrefix + start + sizeof(UInt256)) > span.Length)
+            int start = (int)new UInt256(span.Slice(RevertPrefix, fieldLength), isBigEndian: true);
+
+            int lengthStart = RevertPrefix + start;
+            int lengthEnd = checked(lengthStart + fieldLength);
+            if (lengthEnd <= span.Length)
             {
-                return null;
+                int length = (int)new UInt256(span.Slice(lengthStart, fieldLength), isBigEndian: true);
+                int messageEnd = checked(lengthEnd + length);
+                if (messageEnd <= span.Length)
+                {
+                    ReadOnlySpan<byte> message = span.Slice(lengthEnd, length);
+
+                    if (messageEnd == span.Length)
+                    {
+                        return string.Concat(RevertedErrorMessagePrefix, message.ToHexString(true));
+                    }
+
+                    if (span[..RevertPrefix].SequenceEqual(ErrorFunctionSelector) && start == fieldLength)
+                    {
+                        return string.Concat(RevertedErrorMessagePrefix, System.Text.Encoding.UTF8.GetString(message));
+                    }
+                }
             }
-
-            int length = (int)new UInt256(span.Slice(RevertPrefix + start, sizeof(UInt256)), isBigEndian: true);
-            if (checked(RevertPrefix + start + sizeof(UInt256) + length) != span.Length)
-            {
-                return null;
-            }
-
-            return string.Concat(RevertedErrorMessagePrefix, span.Slice(RevertPrefix + start + sizeof(UInt256), length).ToHexString(true));
         }
-        catch (OverflowException)
-        {
-            return null;
-        }
-    }
+        catch (OverflowException) { }
 
-    private unsafe string? TryUnpackRevertMessage(ReadOnlySpan<byte> span)
-    {
-        if (span.Length < RevertPrefix + sizeof(UInt256) * 2)
-        {
-            return null;
-        }
-
-        if (!span[..RevertPrefix].SequenceEqual(ErrorFunctionSelector))
-        {
-            return null;
-        }
-
-        try
-        {
-            int start = (int)new UInt256(span.Slice(RevertPrefix, sizeof(UInt256)), isBigEndian: true);
-            if (start != sizeof(UInt256))
-            {
-                return null;
-            }
-
-            int length = (int)new UInt256(span.Slice(RevertPrefix + sizeof(UInt256), sizeof(UInt256)), isBigEndian: true);
-            if (checked(RevertPrefix + sizeof(UInt256) + sizeof(UInt256) + length) > span.Length)
-            {
-                return null;
-            }
-
-            ReadOnlySpan<byte> binaryMessage = span.Slice(RevertPrefix + sizeof(UInt256) + sizeof(UInt256), length);
-            string message = string.Concat(RevertedErrorMessagePrefix, System.Text.Encoding.UTF8.GetString(binaryMessage));
-
-            return message;
-        }
-        catch (OverflowException)
-        {
-            return null;
-        }
+        return null;
     }
 }
