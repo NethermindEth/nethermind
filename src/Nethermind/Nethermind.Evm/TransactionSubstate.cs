@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 
@@ -20,7 +21,7 @@ public class TransactionSubstate
     private const int RevertPrefix = 4;
 
     private const string RevertedErrorMessagePrefix = "Reverted ";
-    private readonly byte[] ErrorFunctionSelector = { 0x08, 0xc3, 0x79, 0xa0 };
+    private readonly byte[] ErrorFunctionSelector = Keccak.Compute("Error(string)").BytesToArray()[..RevertPrefix];
 
     public bool IsError => Error is not null && !ShouldRevert;
     public string? Error { get; }
