@@ -85,13 +85,13 @@ public class TransactionSubstate
             return;
 
         ReadOnlySpan<byte> span = Output.Span;
-        Error = TryUnpackSpecialFunctionMessage(span)
+        Error = TryGetErrorMessage(span)
                 ?? DefaultErrorMessage(span);
     }
 
     private string DefaultErrorMessage(ReadOnlySpan<byte> span) => string.Concat(RevertedErrorMessagePrefix, span.ToHexString(true));
 
-    private string? TryUnpackSpecialFunctionMessage(ReadOnlySpan<byte> span)
+    private string? TryGetErrorMessage(ReadOnlySpan<byte> span)
     {
         if (span.Length < RevertPrefix)
         {
