@@ -99,22 +99,21 @@ public class TransactionSubstate
             return null;
         }
 
-        ReadOnlySpan<byte> _ = span.TakeAndMove(RevertPrefix);
         try
         {
-            int start = (int)new UInt256(span.Slice(0, WordSize), isBigEndian: true);
-            if (checked(0 + start + WordSize) > span.Length)
+            int start = (int)new UInt256(span.Slice(RevertPrefix, WordSize), isBigEndian: true);
+            if (checked(RevertPrefix + start + WordSize) > span.Length)
             {
                 return null;
             }
 
-            int length = (int)new UInt256(span.Slice(0 + start, WordSize), isBigEndian: true);
-            if (checked(0 + start + WordSize + length) != span.Length)
+            int length = (int)new UInt256(span.Slice(RevertPrefix + start, WordSize), isBigEndian: true);
+            if (checked(RevertPrefix + start + WordSize + length) != span.Length)
             {
                 return null;
             }
 
-            return string.Concat(RevertedErrorMessagePrefix, span.Slice(0 + start + WordSize, length).ToHexString(true));
+            return string.Concat(RevertedErrorMessagePrefix, span.Slice(RevertPrefix + start + WordSize, length).ToHexString(true));
         }
         catch (OverflowException)
         {
