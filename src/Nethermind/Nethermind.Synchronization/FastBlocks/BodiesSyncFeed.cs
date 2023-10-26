@@ -21,7 +21,7 @@ namespace Nethermind.Synchronization.FastBlocks
 {
     public class BodiesSyncFeed : ActivatedSyncFeed<BodiesSyncBatch?>
     {
-        private const int DepositContractBarrier = 11052984;
+        internal const int DepositContractBarrier = 11052984;
         private int _requestSize = GethSyncLimits.MaxBodyFetch;
         private const long DefaultFlushDbInterval = 100000; // About every 10GB on mainnet
         private readonly long _flushDbInterval; // About every 10GB on mainnet

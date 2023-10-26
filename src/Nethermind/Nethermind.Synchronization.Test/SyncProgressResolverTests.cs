@@ -151,6 +151,34 @@ namespace Nethermind.Synchronization.Test
             Assert.False(syncProgressResolver.IsFastBlocksBodiesFinished());
         }
 
+        [TestCase(100, false)]
+        [TestCase(11052930, true)]
+        [TestCase(11052984, true)]
+        [TestCase(11052985, false)]
+        public void Is_fast_block_bodies_and_receipts_finished_returns_correct_value_when_within_deposit_contract_barrier(long? lowestInsertedReceiptBlockNumber, bool shouldfinish)
+        {
+            IBlockTree blockTree = Substitute.For<IBlockTree>();
+            IReceiptStorage receiptStorage = Substitute.For<IReceiptStorage>();
+            IDb stateDb = new MemDb();
+            SyncConfig syncConfig = new()
+            {
+                FastBlocks = true,
+                FastSync = true,
+                DownloadBodiesInFastSync = true,
+                DownloadReceiptsInFastSync = true,
+                PivotNumber = "1",
+            };
+            ProgressTracker progressTracker = new(blockTree, stateDb, LimboLogs.Instance);
+
+            blockTree.LowestInsertedHeader.Returns(Build.A.BlockHeader.WithNumber(1).WithStateRoot(TestItem.KeccakA).TestObject);
+            blockTree.LowestInsertedBodyNumber.Returns(lowestInsertedReceiptBlockNumber);
+            receiptStorage.LowestInsertedReceiptBlockNumber.Returns(lowestInsertedReceiptBlockNumber);
+
+            SyncProgressResolver syncProgressResolver = new(blockTree, receiptStorage, stateDb, NullTrieNodeResolver.Instance, progressTracker, syncConfig, LimboLogs.Instance);
+            Assert.That(shouldfinish, Is.EqualTo(syncProgressResolver.IsFastBlocksBodiesFinished()));
+            Assert.That(shouldfinish, Is.EqualTo(syncProgressResolver.IsFastBlocksReceiptsFinished()));
+        }
+
         [Test]
         public void Is_fast_block_receipts_finished_returns_true_when_receipts_not_downloaded_and_we_do_not_want_to_download_receipts()
         {
