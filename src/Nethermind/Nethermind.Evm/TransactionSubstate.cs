@@ -128,12 +128,17 @@ public class TransactionSubstate
             }
 
             int length = (int)new UInt256(span.Slice(RevertPrefix + sizeof(UInt256), sizeof(UInt256)), isBigEndian: true);
+            if (checked(RevertPrefix + sizeof(UInt256) + sizeof(UInt256) + length) > span.Length)
+            {
+                return null;
+            }
+
             ReadOnlySpan<byte> binaryMessage = span.Slice(RevertPrefix + sizeof(UInt256) + sizeof(UInt256), length);
             string message = string.Concat(RevertedErrorMessagePrefix, System.Text.Encoding.UTF8.GetString(binaryMessage));
 
             return message;
         }
-        catch (Exception e) when (e is OverflowException or ArgumentOutOfRangeException)
+        catch (OverflowException)
         {
             return null;
         }
