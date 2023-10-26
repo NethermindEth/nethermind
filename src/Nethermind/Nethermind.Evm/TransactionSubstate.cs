@@ -104,6 +104,8 @@ public class TransactionSubstate
 
         if (prefix.SequenceEqual(PanicFunctionSelector))
         {
+            if (span.Length < WordSize) { return null; }
+
             UInt256 panicCode = new(span.TakeAndMove(WordSize), isBigEndian: true);
             if (!PanicReasons.TryGetValue(panicCode, out string panicReason))
             {
@@ -115,6 +117,8 @@ public class TransactionSubstate
 
         if (prefix.SequenceEqual(ErrorFunctionSelector))
         {
+            if (span.Length < WordSize * 2) { return null; }
+
             int start = (int)new UInt256(span.TakeAndMove(WordSize), isBigEndian: true);
             if (start != WordSize) { return null; }
 
