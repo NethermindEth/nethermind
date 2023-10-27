@@ -41,13 +41,13 @@ public class InvalidHeaderSealInterceptorTest
 
         public Context InvalidBlockShouldGetReported()
         {
-            _invalidChainTracker.Received().OnInvalidBlock(Arg.Any<Keccak>(), Arg.Any<Keccak>());
+            _invalidChainTracker.Received().OnInvalidBlock(Arg.Any<Hash256>(), Arg.Any<Hash256>());
             return this;
         }
 
         public Context InvalidBlockShouldNotGetReported()
         {
-            _invalidChainTracker.DidNotReceive().OnInvalidBlock(Arg.Any<Keccak>(), Arg.Any<Keccak>());
+            _invalidChainTracker.DidNotReceive().OnInvalidBlock(Arg.Any<Hash256>(), Arg.Any<Hash256>());
             return this;
         }
     }

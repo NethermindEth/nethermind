@@ -10,19 +10,19 @@ namespace Nethermind.State
 {
     public interface IReadOnlyStateProvider : IAccountStateProvider
     {
-        Keccak StateRoot { get; }
+        Hash256 StateRoot { get; }
 
         UInt256 GetNonce(Address address);
 
         UInt256 GetBalance(Address address);
 
-        Keccak GetStorageRoot(Address address);
+        Hash256 GetStorageRoot(Address address);
 
         byte[] GetCode(Address address);
 
-        byte[] GetCode(Keccak codeHash);
+        byte[] GetCode(Hash256 codeHash);
 
-        Keccak GetCodeHash(Address address);
+        Hash256 GetCodeHash(Address address);
 
         public bool IsContract(Address address);
 
@@ -32,7 +32,7 @@ namespace Nethermind.State
         /// <param name="visitor">Visitor to run.</param>
         /// <param name="stateRoot">Root to run on.</param>
         /// <param name="visitingOptions">Options to run visitor.</param>
-        void Accept(ITreeVisitor visitor, Keccak stateRoot, VisitingOptions? visitingOptions = null);
+        void Accept(ITreeVisitor visitor, Hash256 stateRoot, VisitingOptions? visitingOptions = null);
 
         bool AccountExists(Address address);
 

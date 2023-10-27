@@ -7,14 +7,14 @@ namespace Nethermind.Network.P2P.Subprotocols.Les
 {
     public class CodeRequest
     {
-        public Keccak BlockHash;
-        public Keccak AccountKey;
+        public Hash256 BlockHash;
+        public Hash256 AccountKey;
 
         public CodeRequest()
         {
         }
 
-        public CodeRequest(Keccak blockHash, Keccak accountKey)
+        public CodeRequest(Hash256 blockHash, Hash256 accountKey)
         {
             BlockHash = blockHash;
             AccountKey = accountKey;

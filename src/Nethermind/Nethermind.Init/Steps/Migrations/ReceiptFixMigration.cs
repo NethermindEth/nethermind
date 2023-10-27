@@ -132,7 +132,7 @@ namespace Nethermind.Init.Steps.Migrations
                 {
                     try
                     {
-                        TxReceipt[]?[] receipts = await currentSyncPeer.GetReceipts(new List<Keccak> { block.Hash }, _cancellationToken);
+                        TxReceipt[]?[] receipts = await currentSyncPeer.GetReceipts(new List<Hash256> { block.Hash }, _cancellationToken);
                         TxReceipt[]? txReceipts = receipts.FirstOrDefault();
                         if (txReceipts is not null)
                         {

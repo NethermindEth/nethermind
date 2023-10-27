@@ -258,7 +258,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Les
             }
             else if (request.AuxiliaryData == 2)
             {
-                (Keccak hash, _) = cht.Get(request.Key);
+                (Hash256 hash, _) = cht.Get(request.Key);
                 var headerResult = SyncServer.FindHeaders(hash, 1, 0, false);
                 if (headerResult.Length != 1) throw new SubprotocolException($"Unable to find header for block {request.Key.WithoutLeadingZeros().ToArray().ToLongFromBigEndianByteArrayWithoutLeadingZeros()} for GetHelperProofs response.");
                 auxData.Add(Rlp.Encode(headerResult[0]).Bytes);
@@ -297,7 +297,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Les
             Send(announceMessage);
         }
 
-        Task<BlockHeader?> ISyncPeer.GetHeadBlockHeader(Keccak? hash, CancellationToken token)
+        Task<BlockHeader?> ISyncPeer.GetHeadBlockHeader(Hash256? hash, CancellationToken token)
         {
             return Task.FromResult(_lastSentBlock);
         }

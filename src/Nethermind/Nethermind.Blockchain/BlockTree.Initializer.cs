@@ -126,7 +126,7 @@ public partial class BlockTree
     {
         if (_metadataDb.KeyExists(MetadataDbKeys.LowestInsertedBeaconHeaderHash))
         {
-            Keccak? lowestBeaconHeaderHash = _metadataDb.Get(MetadataDbKeys.LowestInsertedBeaconHeaderHash)?
+            Hash256? lowestBeaconHeaderHash = _metadataDb.Get(MetadataDbKeys.LowestInsertedBeaconHeaderHash)?
                 .AsRlpStream().DecodeKeccak();
             _lowestInsertedBeaconHeader = FindHeader(lowestBeaconHeaderHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
         }
@@ -351,7 +351,7 @@ public partial class BlockTree
             byte[] data = _blockInfoDb.Get(HeadAddressInDb);
             if (data is not null)
             {
-                startBlock = FindBlock(new Keccak(data), BlockTreeLookupOptions.None);
+                startBlock = FindBlock(new Hash256(data), BlockTreeLookupOptions.None);
                 if (_logger.IsInfo) _logger.Info($"Start block loaded from HEAD - {startBlock?.ToString(Block.Format.Short)}");
             }
         }
@@ -367,7 +367,7 @@ public partial class BlockTree
         }
     }
 
-    private void SetHeadBlock(Keccak headHash)
+    private void SetHeadBlock(Hash256 headHash)
     {
         Block? headBlock = FindBlock(headHash, BlockTreeLookupOptions.None);
         if (headBlock is null)

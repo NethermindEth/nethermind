@@ -233,9 +233,9 @@ namespace Nethermind.Consensus.Producers
         /// <param name="parentStateRoot">Parent block state</param>
         /// <returns>True if succeeded, false otherwise</returns>
         /// <remarks>Should be called inside <see cref="_producingBlockLock"/> lock.</remarks>
-        protected bool TrySetState(Keccak? parentStateRoot)
+        protected bool TrySetState(Hash256? parentStateRoot)
         {
-            bool HasState(Keccak stateRoot)
+            bool HasState(Hash256 stateRoot)
             {
                 RootCheckVisitor visitor = new();
                 StateProvider.Accept(visitor, stateRoot);

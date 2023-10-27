@@ -12,8 +12,8 @@ namespace Nethermind.Blockchain.Filters.Topics
 
         private AnyTopic() { }
 
-        public override bool Accepts(Keccak topic) => true;
-        public override bool Accepts(ref KeccakStructRef topic) => true;
+        public override bool Accepts(Hash256 topic) => true;
+        public override bool Accepts(ref Hash256StructRef topic) => true;
 
         public override bool Matches(Bloom bloom) => true;
         public override bool Matches(ref BloomStructRef bloom) => true;

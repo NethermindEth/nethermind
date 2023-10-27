@@ -26,7 +26,7 @@ internal class ChainSpecParamsJson
 
     public long? ForkBlock { get; set; }
 
-    public Keccak ForkCanonHash { get; set; }
+    public Hash256 ForkCanonHash { get; set; }
 
     public long? Eip7Transition { get; set; }
 

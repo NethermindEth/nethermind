@@ -166,7 +166,7 @@ namespace Nethermind.Blockchain.Test.FullPruning
         private class TestContext
         {
             private readonly bool _clearPrunedDb;
-            private readonly Keccak _stateRoot;
+            private readonly Hash256 _stateRoot;
             private long _head;
             public TestFullPruningDb FullPruningDb { get; }
             public IPruningTrigger PruningTrigger { get; } = Substitute.For<IPruningTrigger>();

@@ -27,7 +27,7 @@ namespace Nethermind.Merge.Plugin.Test
             IJsonSerializer jsonSerializer = new EthereumJsonSerializer();
             int destinationBlockNumber = 5000;
             long? currentBlockNumber = null;
-            Keccak? currentHash = null;
+            Hash256? currentHash = null;
             JsonRpcClient? client = new($"http://127.0.0.1:8545");
             do
             {

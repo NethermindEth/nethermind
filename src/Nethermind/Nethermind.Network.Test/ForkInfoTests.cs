@@ -337,13 +337,13 @@ public class ForkInfoTests
         provider.NetworkId.Should().Be(expectedNetworkId);
     }
 
-    private static void Test(long head, ulong headTimestamp, Keccak genesisHash, string forkHashHex, ulong next, string description, ISpecProvider specProvider, string chainSpec, string path = "../../../../Chains")
+    private static void Test(long head, ulong headTimestamp, Hash256 genesisHash, string forkHashHex, ulong next, string description, ISpecProvider specProvider, string chainSpec, string path = "../../../../Chains")
     {
         Test(head, headTimestamp, genesisHash, forkHashHex, next, description, specProvider);
         Test(head, headTimestamp, genesisHash, forkHashHex, next, description, chainSpec, path);
     }
 
-    private static void Test(long head, ulong headTimestamp, Keccak genesisHash, string forkHashHex, ulong next, string description, string chainSpec, string path = "../../../../Chains")
+    private static void Test(long head, ulong headTimestamp, Hash256 genesisHash, string forkHashHex, ulong next, string description, string chainSpec, string path = "../../../../Chains")
     {
         ChainSpecLoader loader = new ChainSpecLoader(new EthereumJsonSerializer());
         ChainSpec spec = loader.Load(File.ReadAllText(Path.Combine(path, chainSpec)));
@@ -351,7 +351,7 @@ public class ForkInfoTests
         Test(head, headTimestamp, genesisHash, forkHashHex, next, description, provider);
     }
 
-    private static void Test(long head, ulong headTimestamp, Keccak genesisHash, string forkHashHex, ulong next, string description, ISpecProvider specProvider)
+    private static void Test(long head, ulong headTimestamp, Hash256 genesisHash, string forkHashHex, ulong next, string description, ISpecProvider specProvider)
     {
         uint expectedForkHash = Bytes.ReadEthUInt32(Bytes.FromHexString(forkHashHex));
 

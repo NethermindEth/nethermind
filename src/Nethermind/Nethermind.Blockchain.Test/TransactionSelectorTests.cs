@@ -246,7 +246,7 @@ namespace Nethermind.Blockchain.Test
             transactionPool.GetPendingLightBlobTransactionsBySender().Returns(blobTransactions);
             foreach (Transaction blobTx in blobTransactions.SelectMany(kvp => kvp.Value))
             {
-                transactionPool.TryGetPendingBlobTransaction(Arg.Is<Keccak>(h => h == blobTx.Hash),
+                transactionPool.TryGetPendingBlobTransaction(Arg.Is<Hash256>(h => h == blobTx.Hash),
                     out Arg.Any<Transaction?>()).Returns(x =>
                 {
                     x[1] = blobTx;

@@ -822,7 +822,7 @@ namespace Nethermind.TxPool.Test
             BlockReplacementEventArgs blockReplacementEventArgs = new(block, null);
 
             ManualResetEvent manualResetEvent = new(false);
-            _txPool.RemoveTransaction(Arg.Do<Keccak>(t => manualResetEvent.Set()));
+            _txPool.RemoveTransaction(Arg.Do<Hash256>(t => manualResetEvent.Set()));
             _blockTree.BlockAddedToMain += Raise.EventWith(new object(), blockReplacementEventArgs);
             manualResetEvent.WaitOne(TimeSpan.FromMilliseconds(200));
 
@@ -860,7 +860,7 @@ namespace Nethermind.TxPool.Test
             BlockReplacementEventArgs blockReplacementEventArgs = new(block, null);
 
             ManualResetEvent manualResetEvent = new(false);
-            _txPool.RemoveTransaction(Arg.Do<Keccak>(t => manualResetEvent.Set()));
+            _txPool.RemoveTransaction(Arg.Do<Hash256>(t => manualResetEvent.Set()));
             _blockTree.BlockAddedToMain += Raise.EventWith(new object(), blockReplacementEventArgs);
             manualResetEvent.WaitOne(TimeSpan.FromMilliseconds(200));
 
@@ -941,7 +941,7 @@ namespace Nethermind.TxPool.Test
             BlockReplacementEventArgs blockReplacementEventArgs = new(block, null);
 
             ManualResetEvent manualResetEvent = new(false);
-            _txPool.RemoveTransaction(Arg.Do<Keccak>(t => manualResetEvent.Set()));
+            _txPool.RemoveTransaction(Arg.Do<Hash256>(t => manualResetEvent.Set()));
             _blockTree.BlockAddedToMain += Raise.EventWith(new object(), blockReplacementEventArgs);
             manualResetEvent.WaitOne(TimeSpan.FromMilliseconds(200));
 
@@ -964,7 +964,7 @@ namespace Nethermind.TxPool.Test
             BlockReplacementEventArgs blockReplacementEventArgs = new(block, null);
 
             ManualResetEvent manualResetEvent = new(false);
-            _txPool.RemoveTransaction(Arg.Do<Keccak>(t => manualResetEvent.Set()));
+            _txPool.RemoveTransaction(Arg.Do<Hash256>(t => manualResetEvent.Set()));
             _blockTree.BlockAddedToMain += Raise.EventWith(new object(), blockReplacementEventArgs);
             manualResetEvent.WaitOne(TimeSpan.FromMilliseconds(200));
 

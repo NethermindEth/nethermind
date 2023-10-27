@@ -127,8 +127,8 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             Assert.That(message.ProtocolVersion, Is.EqualTo(39), "ProtocolVersion");
 
             Assert.That((int)message.TotalDifficulty, Is.EqualTo(0x25c60144), "Difficulty");
-            Assert.That(message.BestHash, Is.EqualTo(new Keccak("832056d3c93ff2739ace7199952e5365aa29f18805be05634c4db125c5340216")), "BestHash");
-            Assert.That(message.GenesisHash, Is.EqualTo(new Keccak("0x955f36d073ccb026b78ab3424c15cf966a7563aa270413859f78702b9e8e22cb")), "GenesisHash");
+            Assert.That(message.BestHash, Is.EqualTo(new Hash256("832056d3c93ff2739ace7199952e5365aa29f18805be05634c4db125c5340216")), "BestHash");
+            Assert.That(message.GenesisHash, Is.EqualTo(new Hash256("0x955f36d073ccb026b78ab3424c15cf966a7563aa270413859f78702b9e8e22cb")), "GenesisHash");
 
             byte[] serialized = serializer.Serialize(message);
             Assert.That(serialized, Is.EqualTo(bytes), "serializing to same format");

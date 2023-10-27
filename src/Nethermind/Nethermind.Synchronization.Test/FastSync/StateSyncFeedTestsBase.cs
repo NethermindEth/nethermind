@@ -222,14 +222,14 @@ namespace Nethermind.Synchronization.Test.FastSync
             private readonly IDb _codeDb;
             private readonly IDb _stateDb;
 
-            private Keccak[]? _filter;
-            private readonly Func<IReadOnlyList<Keccak>, Task<byte[][]>>? _executorResultFunction;
+            private Hash256[]? _filter;
+            private readonly Func<IReadOnlyList<Hash256>, Task<byte[][]>>? _executorResultFunction;
             private readonly long _maxRandomizedLatencyMs;
 
             public SyncPeerMock(
                 IDb stateDb,
                 IDb codeDb,
-                Func<IReadOnlyList<Keccak>, Task<byte[][]>>? executorResultFunction = null,
+                Func<IReadOnlyList<Hash256>, Task<byte[][]>>? executorResultFunction = null,
                 long? maxRandomizedLatencyMs = null,
                 Node? node = null
             )
@@ -243,7 +243,7 @@ namespace Nethermind.Synchronization.Test.FastSync
             }
 
             public int MaxResponseLength { get; set; } = int.MaxValue;
-            public Keccak HeadHash { get; set; } = null!;
+            public Hash256 HeadHash { get; set; } = null!;
             public string ProtocolCode { get; } = null!;
             public byte ProtocolVersion { get; } = default;
             public string ClientId => "executorMock";
@@ -255,7 +255,7 @@ namespace Nethermind.Synchronization.Test.FastSync
 
             public PublicKey Id => Node.Id;
 
-            public async Task<byte[][]> GetNodeData(IReadOnlyList<Keccak> hashes, CancellationToken token)
+            public async Task<byte[][]> GetNodeData(IReadOnlyList<Hash256> hashes, CancellationToken token)
             {
                 if (_maxRandomizedLatencyMs != 0)
                 {
@@ -267,7 +267,7 @@ namespace Nethermind.Synchronization.Test.FastSync
                 byte[][] responses = new byte[hashes.Count][];
 
                 int i = 0;
-                foreach (Keccak item in hashes)
+                foreach (Hash256 item in hashes)
                 {
                     if (i >= MaxResponseLength) break;
 
@@ -279,7 +279,7 @@ namespace Nethermind.Synchronization.Test.FastSync
                 return responses;
             }
 
-            public void SetFilter(Keccak[]? availableHashes)
+            public void SetFilter(Hash256[]? availableHashes)
             {
                 _filter = availableHashes;
             }
@@ -300,12 +300,12 @@ namespace Nethermind.Synchronization.Test.FastSync
                 throw new NotImplementedException();
             }
 
-            public Task<OwnedBlockBodies> GetBlockBodies(IReadOnlyList<Keccak> blockHashes, CancellationToken token)
+            public Task<OwnedBlockBodies> GetBlockBodies(IReadOnlyList<Hash256> blockHashes, CancellationToken token)
             {
                 throw new NotImplementedException();
             }
 
-            public Task<BlockHeader[]> GetBlockHeaders(Keccak blockHash, int maxBlocks, int skip, CancellationToken token)
+            public Task<BlockHeader[]> GetBlockHeaders(Hash256 blockHash, int maxBlocks, int skip, CancellationToken token)
             {
                 throw new NotImplementedException();
             }
@@ -315,7 +315,7 @@ namespace Nethermind.Synchronization.Test.FastSync
                 throw new NotImplementedException();
             }
 
-            public Task<BlockHeader?> GetHeadBlockHeader(Keccak? hash, CancellationToken token)
+            public Task<BlockHeader?> GetHeadBlockHeader(Hash256? hash, CancellationToken token)
             {
                 return Task.FromResult(BlockTree.Head?.Header);
             }
@@ -330,7 +330,7 @@ namespace Nethermind.Synchronization.Test.FastSync
                 throw new NotImplementedException();
             }
 
-            public Task<TxReceipt[]?[]> GetReceipts(IReadOnlyList<Keccak> blockHash, CancellationToken token)
+            public Task<TxReceipt[]?[]> GetReceipts(IReadOnlyList<Hash256> blockHash, CancellationToken token)
             {
                 throw new NotImplementedException();
             }
