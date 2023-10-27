@@ -16,7 +16,7 @@ public class Eip4844Constants
     /// <remarks>Defaults to 2e17.</remarks>
     public const ulong GasPerBlob = 1 << 17;
 
-    public const int MaxBlobsPerBlock = 6;
+    private const int MaxBlobsPerBlock = 6;
     public const int MinBlobsPerTransaction = 1;
 
     /// <summary>
