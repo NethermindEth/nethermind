@@ -300,7 +300,7 @@ namespace Nethermind.TxPool
                 // Announce txs to newly connected peer only if we are synced. If chain head of the peer is higher by
                 // more than 16 blocks than our head, skip announcing txs as some of them are probably already processed
                 // Also skip announcing if peer's head number is shown as 0 as then we don't know peer's head block yet
-                if (peer.HeadNumber != 0 && peer.HeadNumber < _headInfo.BestKnownBlockNumber + 16)
+                if (peer.HeadNumber != 0 && peer.HeadNumber < _headInfo.HeadNumber + 16)
                 {
                     _broadcaster.AnnounceOnce(peer, _transactionSnapshot ??= _transactions.GetSnapshot());
                     _broadcaster.AnnounceOnce(peer, _blobTransactionSnapshot ??= _blobTransactions.GetSnapshot());
@@ -308,7 +308,7 @@ namespace Nethermind.TxPool
                 }
                 else
                 {
-                    if (_logger.IsTrace) _logger.Trace($"Skipped announcing txs to peer {peer} because of syncing. Peer is on head {peer.HeadNumber}, we are at {_headInfo.BestKnownBlockNumber}");
+                    if (_logger.IsTrace) _logger.Trace($"Skipped announcing txs to peer {peer} because of syncing. Peer is on head {peer.HeadNumber}, we are at {_headInfo.HeadNumber}");
                 }
             }
         }
