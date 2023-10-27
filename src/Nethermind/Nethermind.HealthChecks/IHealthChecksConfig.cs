@@ -25,7 +25,7 @@ namespace Nethermind.HealthChecks
         [ConfigItem(Description = "RestorePayload is the json payload that will be send on Recovery and must be escaped.", DefaultValue = "{\"attachments\":[{\"color\":\"#36a64f\",\"pretext\":\"Health Check Status :+1:\",\"fields\":[{\"title\":\"Details\",\"value\":\"`More details available at /healthchecks-ui`\",\"short\":false},{\"title\":\"description\",\"value\":\"The HealthCheck `[[LIVENESS]]` is recovered. All is up and running\",\"short\":false}]}]}")]
         public string WebhooksRestorePayload { get; set; }
 
-        [ConfigItem(Description = "If 'true' then HealthChecks UI will be avaiable at /healthchecks-ui", DefaultValue = "false")]
+        [ConfigItem(Description = "If 'true' then HealthChecks UI will be available at /healthchecks-ui", DefaultValue = "false")]
         public bool UIEnabled { get; set; }
 
         [ConfigItem(Description = "Configures the UI to poll for healthchecks updates (in seconds)", DefaultValue = "5")]
@@ -46,7 +46,7 @@ namespace Nethermind.HealthChecks
         [ConfigItem(Description = "Percentage of available disk space below which node will shutdown. Zero to disable.", DefaultValue = "1")]
         public float LowStorageSpaceShutdownThreshold { get; set; }
 
-        [ConfigItem(Description = "Free disk space check on startup will pause node initalization until enough space is available.", DefaultValue = "false")]
+        [ConfigItem(Description = "Free disk space check on startup will pause node initialization until enough space is available.", DefaultValue = "false")]
         public bool LowStorageCheckAwaitOnStartup { get; set; }
     }
 }
