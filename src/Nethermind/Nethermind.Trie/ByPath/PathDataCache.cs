@@ -502,71 +502,6 @@ internal class PathDataCacheInstance
         return merged;
     }
 
-    public bool CloseAndMergeToParent(long blockNumber, Keccak stateRootHash)
-    {
-        if (IsOpened)
-        {
-            if (_lastState.ParentBlock?.BlockNumber == blockNumber && _lastState.ParentBlock?.BlockStateRoot == stateRootHash)
-            {
-                _lastState = _lastState.ParentBlock;
-            }
-            else
-            {
-                if (blockNumber < _lastState.BlockNumber)
-                {
-                    Keccak searchedParentHash = _lastState.ParentStateHash;
-                    StateId st = _lastState;
-                    while (st is not null && st.ParentStateHash == searchedParentHash && st.BlockNumber > blockNumber)
-                    {
-                        st = st.ParentBlock;
-                    }
-                }
-
-                _lastState.BlockStateRoot = stateRootHash;
-                _lastState.BlockNumber = blockNumber;
-            }
-        }
-
-        if (_parentInstance == null)
-            return false;
-
-        if (_parentInstance._lastState.BlockStateRoot == _lastState.ParentStateHash)
-        {
-            _lastState.ParentBlock = _parentInstance._lastState;
-            _parentInstance._lastState = _lastState;
-
-            foreach (KeyValuePair<byte[], PathDataHistory> nodeVersion in _historyByPath)
-            {
-                if (_parentInstance._historyByPath.TryGetValue(nodeVersion.Key, out PathDataHistory pathDataHistory))
-                {
-                    pathDataHistory.Merge(nodeVersion.Value);
-                }
-                else
-                {
-                    _parentInstance._historyByPath[nodeVersion.Key] = nodeVersion.Value;
-                }
-            }
-
-            foreach (var kvp in _removedPrefixes)
-            {
-                if (_parentInstance._removedPrefixes.TryGetValue(kvp.Key, out List<int> stateIds))
-                {
-                    stateIds.AddRange(kvp.Value);
-                }
-                else
-                {
-                    _parentInstance._removedPrefixes[kvp.Key] = kvp.Value;
-                }
-            }
-            return true;
-        }
-        else
-        {
-            _parentInstance._branches.Add(this);
-            return true;
-        }
-    }
-
     public void AddNodeData(long blockNuber, TrieNode node)
     {
         if (!IsOpened)
@@ -590,18 +525,7 @@ internal class PathDataCacheInstance
 
     public NodeData? GetNodeDataAtRoot(Keccak? rootHash, Span<byte> path)
     {
-        if (rootHash is null)
-        {
-            if (_historyByPath.TryGetValue(path, out PathDataHistory history))
-            {
-                PathDataAtState dataAtState = history.GetLatest();
-                if (dataAtState is not null)
-                    Pruning.Metrics.LoadedFromCacheNodesCount++;
-                return dataAtState?.Data;
-            }
-        }
-        else
-        {
+        rootHash ??= _lastState.BlockStateRoot;
             StateId localState = FindState(rootHash);
             if (localState is not null)
             {
@@ -623,12 +547,7 @@ internal class PathDataCacheInstance
                     return latestDataHeld.Data;
                 }
             }
-            else
-            {
-                return _parentInstance?.GetNodeDataAtRoot(_parentStateId?.BlockStateRoot, path);
-            }
-        }
-        return null;
+            return _parentInstance?.GetNodeDataAtRoot(_parentStateId?.BlockStateRoot, path);
     }
 
     public NodeData? GetNodeData(Span<byte> path, Keccak? hash)
@@ -647,26 +566,6 @@ internal class PathDataCacheInstance
             data = highestStateId is not null ? (history.Get(hash, highestStateId.Id)?.Data) : (history.Get(hash)?.Data);
 
         return data is null ? (_parentInstance?.GetNodeData(path, hash, highestStateId)) : data;
-    }
-
-    private bool GetNodeDataAtRoot(Keccak? rootHash, Span<byte> path, out NodeData? nodeData)
-    {
-        nodeData = null;
-        StateId stateId = FindState(rootHash);
-        if (stateId is not null)
-        {
-            if (_historyByPath.TryGetValue(path, out PathDataHistory pathHistory))
-            {
-                PathDataAtState? data = pathHistory.GetLatestUntil(stateId.Id);
-                if (data is not null)
-                {
-                    nodeData = data.Data;
-                    Pruning.Metrics.LoadedFromCacheNodesCount++;
-                }
-            }
-            return true;
-        }
-        return false;
     }
 
     public bool PersistUntilBlock(long blockNumber, Keccak rootHash, IBatch? batch = null)
@@ -689,30 +588,33 @@ internal class PathDataCacheInstance
 
     private void PersistUntilBlockInner(StateId? stateId, IBatch? batch = null)
     {
+        ProcessDestroyed(stateId);
+
         List<TrieNode> toPersist = new();
         foreach (KeyValuePair<byte[], PathDataHistory> nodeVersion in _historyByPath)
         {
             PathDataAtState? nodeData = nodeVersion.Value.GetLatestUntil(stateId.Id);
             if (nodeData?.ShouldPersist == true)
             {
+                NodeData data = nodeData.Data;
                 TrieNode node;
                 if (nodeVersion.Key.Length >= 66)
                 {
                     byte[] prefix = nodeVersion.Key.Slice(0, 66);
-                    node = new(NodeType.Unknown, nodeVersion.Key.Slice(66), nodeData.Data.Keccak, nodeData.Data.RLP);
+                    node = new(NodeType.Unknown, nodeVersion.Key.Slice(66), data.Keccak, data.RLP);
                     node.StoreNibblePathPrefix = prefix;
                 }
                 else
                 {
-                    node = new(NodeType.Unknown, nodeVersion.Key, nodeData.Data.Keccak, nodeData.Data.RLP);
+                    node = new(NodeType.Unknown, nodeVersion.Key, data.Keccak, data.RLP);
                 }
 
-                if (nodeData.Data.RLP is not null)
+                if (data.RLP is not null)
                 {
                     node.ResolveNode(_trieStore);
                     node.ResolveKey(_trieStore, nodeVersion.Key.Length == 0);
                 }
-                if (nodeData.Data.RLP is null) toPersist.Insert(0, node); else toPersist.Add(node);
+                if (data.RLP is null) toPersist.Insert(0, node); else toPersist.Add(node);
             }
         }
 
@@ -760,6 +662,23 @@ internal class PathDataCacheInstance
         foreach (byte[] path in removedPaths)
             _historyByPath.Remove(path, out _);
 
+        removedPaths.Clear();
+        List<byte[]> paths = _removedPrefixes.Where(kvp => kvp.Value.Exists(st => st <= stateId.Id)).Select(kvp => kvp.Key).ToList();
+        
+        foreach (byte[] path in paths)
+        {
+            List<int> states = _removedPrefixes[path];
+            for (int i = states.Count - 1; i >= 0; i--)
+            {
+                if (states[i] <= stateId.Id)
+                    states.RemoveAt(i);
+            }
+            if (states.Count == 0)
+                removedPaths.Add(path);
+        }
+        foreach (byte[] path in removedPaths)
+            _removedPrefixes.Remove(path, out _);
+
         StateId? childOfPersisted = FindStateWithParent(stateId.BlockStateRoot, stateId.BlockNumber + 1);
         if (childOfPersisted is not null)
             childOfPersisted.ParentBlock = null;
@@ -767,6 +686,16 @@ internal class PathDataCacheInstance
             _lastState = null;
 
         _branches.Clear();
+    }
+    private void ProcessDestroyed(StateId stateId)
+    {
+        List<byte[]> paths = _removedPrefixes.Where(kvp => kvp.Value.Exists(st => st <= stateId.Id)).Select(kvp => kvp.Key).ToList();
+
+        foreach (byte[] path in paths)
+        {
+            (byte[] startKey, byte[] endKey) = TrieStoreByPath.GetDeleteKeyFromNibblePrefix(path);
+            _trieStore.DeleteByRange(startKey, endKey);
+        }
     }
 
     private PathDataHistory GetHistoryForPath(Span<byte> path)
@@ -910,14 +839,6 @@ internal class PathDataCacheInstance
             StateId st = stack.Pop();
             sb.Append($"[B {st.BlockNumber} | H {st.BlockStateRoot} | I {st.Id}] -> ");
         }
-        //sb.AppendLine();
-        //sb.Append(string.Concat(Enumerable.Repeat("\t", level)));
-        //foreach (var kvp in _historyByPath)
-        //{
-        //    sb.Append(kvp.Key.ToHexString());
-        //    foreach (var kvp2 in kvp.Value)
-        //    sb.Append("\t");
-        //}
 
         _logger.Trace(sb.ToString());
 
@@ -1017,21 +938,32 @@ public class PathDataCache : IPathDataCache
 
     public NodeData? GetNodeDataAtRoot(Keccak? rootHash, Span<byte> path)
     {
+        if (rootHash is not null)
+        {
+            if (_openedInstance?.LatestParentStateRootHash != rootHash)
+            {
+                PathDataCacheInstance tmpInstance = GetCacheInstanceForState(rootHash);
+                if (tmpInstance is null)
+                    if (_logger.IsTrace) _logger.Trace($"Root hash {rootHash} not available in commidated cache");
+                return tmpInstance?.GetNodeDataAtRoot(rootHash, path);
+            }
+        }
         NodeData? data = _openedInstance?.GetNodeDataAtRoot(rootHash, path);
-
-        //if (data is null)
-        //    return _main.GetNodeDataAtRoot(rootHash, path);
-
         return data;
     }
 
     public NodeData? GetNodeData(Span<byte> path, Keccak? hash)
     {
-        NodeData? data = _openedInstance?.GetNodeData(path, hash);
+        if (_openedInstance is not null)
+            return _openedInstance.GetNodeData(path, hash);
 
-        //if (data is null)
-        //    return _main.GetNodeData(path, hash);
-
+        NodeData? data = null;
+        foreach (PathDataCacheInstance instance in _mains)
+        {
+            data = instance.GetNodeData(path, hash);
+            if (data is not null)
+                break;
+        }
         return data;
     }
 
@@ -1042,6 +974,9 @@ public class PathDataCache : IPathDataCache
             if (!_mains[i].PersistUntilBlock(blockNumber, rootHash, batch))
                 _mains.RemoveAt(i);
         }
+
+        if (_mains.Count == 0)
+            _mains.Add(new PathDataCacheInstance(_trieStore, _logger));
 
         LogCache("After persisting");
         return true;
