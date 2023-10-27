@@ -27,7 +27,7 @@ namespace Nethermind.Evm
         public static Address From(Address deployingAddress, Span<byte> salt, Span<byte> initCode)
         {
             // sha3(0xff ++ msg.sender ++ salt ++ sha3(init_code)))
-            Span<byte> bytes = new byte[1 + Address.ByteLength + 32 + salt.Length];
+            Span<byte> bytes = new byte[1 + Address.Size + 32 + salt.Length];
             bytes[0] = 0xff;
             deployingAddress.Bytes.CopyTo(bytes.Slice(1, 20));
             salt.CopyTo(bytes.Slice(21, salt.Length));

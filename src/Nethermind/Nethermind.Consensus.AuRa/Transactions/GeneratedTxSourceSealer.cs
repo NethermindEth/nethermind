@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -30,13 +31,13 @@ namespace Nethermind.Consensus.AuRa.Transactions
             _logger = logManager?.GetClassLogger<GeneratedTxSource>() ?? throw new ArgumentNullException(nameof(logManager));
         }
 
-        public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit)
+        public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit, PayloadAttributes? payloadAttributes = null)
         {
             _nonces.Clear();
 
             try
             {
-                return _innerSource.GetTransactions(parent, gasLimit).Select(tx =>
+                return _innerSource.GetTransactions(parent, gasLimit, payloadAttributes).Select(tx =>
                 {
                     if (tx is GeneratedTransaction)
                     {

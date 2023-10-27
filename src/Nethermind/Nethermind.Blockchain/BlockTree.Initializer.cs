@@ -21,6 +21,7 @@ public partial class BlockTree
         LoadLowestInsertedBeaconHeader();
         LoadBestKnown();
         LoadBeaconBestKnown();
+        LoadForkChoiceInfo();
     }
 
     private void AttemptToFixCorruptionByMovingHeadBackwards()
@@ -106,6 +107,12 @@ public partial class BlockTree
         }
 
         return false;
+    }
+    private void LoadForkChoiceInfo()
+    {
+        _logger.Info("Loading fork choice info");
+        FinalizedHash ??= _metadataDb.Get(MetadataDbKeys.FinalizedBlockHash)?.AsRlpStream().DecodeKeccak();
+        SafeHash ??= _metadataDb.Get(MetadataDbKeys.SafeBlockHash)?.AsRlpStream().DecodeKeccak();
     }
 
     private void LoadLowestInsertedBodyNumber()

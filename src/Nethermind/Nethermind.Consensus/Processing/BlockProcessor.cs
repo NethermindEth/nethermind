@@ -215,6 +215,9 @@ public partial class BlockProcessor : IBlockProcessor
         }
     }
 
+    private bool ShouldComputeStateRoot(BlockHeader header) =>
+        !header.IsGenesis || !_specProvider.GenesisStateUnavailable;
+
     // TODO: block processor pipeline
     protected virtual TxReceipt[] ProcessBlock(
         Block block,
@@ -242,9 +245,13 @@ public partial class BlockProcessor : IBlockProcessor
         _receiptsTracer.EndBlockTrace();
 
         _stateProvider.Commit(spec);
-        _stateProvider.RecalculateStateRoot();
 
-        block.Header.StateRoot = _stateProvider.StateRoot;
+        if (ShouldComputeStateRoot(block.Header))
+        {
+            _stateProvider.RecalculateStateRoot();
+            block.Header.StateRoot = _stateProvider.StateRoot;
+        }
+
         block.Header.Hash = block.Header.CalculateHash();
 
         return receipts;
@@ -289,6 +296,11 @@ public partial class BlockProcessor : IBlockProcessor
             IsPostMerge = bh.IsPostMerge,
             ParentBeaconBlockRoot = bh.ParentBeaconBlockRoot,
         };
+
+        if (!ShouldComputeStateRoot(bh))
+        {
+            headerForProcessing.StateRoot = bh.StateRoot;
+        }
 
         return suggestedBlock.CreateCopy(headerForProcessing);
     }

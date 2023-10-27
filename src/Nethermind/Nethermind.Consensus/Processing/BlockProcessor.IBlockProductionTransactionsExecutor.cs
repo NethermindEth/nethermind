@@ -9,12 +9,12 @@ namespace Nethermind.Consensus.Processing
 {
     public partial class BlockProcessor
     {
-        protected interface IBlockProductionTransactionsExecutor : IBlockProcessor.IBlockTransactionsExecutor
+        public interface IBlockProductionTransactionsExecutor : IBlockProcessor.IBlockTransactionsExecutor
         {
             public event EventHandler<AddingTxEventArgs> AddingTransaction;
         }
 
-        protected class AddingTxEventArgs : TxEventArgs
+        public class AddingTxEventArgs : TxEventArgs
         {
             public Block Block { get; }
             public IReadOnlyCollection<Transaction> TransactionsInBlock { get; }

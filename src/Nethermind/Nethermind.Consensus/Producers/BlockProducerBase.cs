@@ -268,12 +268,6 @@ namespace Nethermind.Consensus.Producers
             return true;
         }
 
-        private IEnumerable<Transaction> GetTransactions(BlockHeader parent)
-        {
-            long gasLimit = _gasLimitCalculator.GetGasLimit(parent);
-            return _txSource.GetTransactions(parent, gasLimit);
-        }
-
         protected virtual BlockHeader PrepareBlockHeader(BlockHeader parent,
             PayloadAttributes? payloadAttributes = null)
         {
@@ -285,7 +279,7 @@ namespace Nethermind.Consensus.Producers
                 blockAuthor,
                 UInt256.Zero,
                 parent.Number + 1,
-                payloadAttributes?.GasLimit ?? _gasLimitCalculator.GetGasLimit(parent),
+                payloadAttributes?.GetGasLimit() ?? _gasLimitCalculator.GetGasLimit(parent),
                 timestamp,
                 _blocksConfig.GetExtraDataBytes())
             {
@@ -309,7 +303,7 @@ namespace Nethermind.Consensus.Producers
         {
             BlockHeader header = PrepareBlockHeader(parent, payloadAttributes);
 
-            IEnumerable<Transaction> transactions = GetTransactions(parent);
+            IEnumerable<Transaction> transactions = _txSource.GetTransactions(parent, header.GasLimit, payloadAttributes);
 
             return new BlockToProduce(header, transactions, Array.Empty<BlockHeader>(), payloadAttributes?.Withdrawals);
         }

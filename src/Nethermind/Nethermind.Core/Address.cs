@@ -15,18 +15,18 @@ namespace Nethermind.Core
     [TypeConverter(typeof(AddressTypeConverter))]
     public class Address : IEquatable<Address>, IComparable<Address>
     {
-        public const int ByteLength = 20;
-        private const int HexCharsCount = 2 * ByteLength; // 5a4eab120fb44eb6684e5e32785702ff45ea344d
+        public const int Size = 20;
+        private const int HexCharsCount = 2 * Size; // 5a4eab120fb44eb6684e5e32785702ff45ea344d
         private const int PrefixedHexCharsCount = 2 + HexCharsCount; // 0x5a4eab120fb44eb6684e5e32785702ff45ea344d
 
-        public static Address Zero { get; } = new(new byte[ByteLength]);
+        public static Address Zero { get; } = new(new byte[Size]);
         public static Address SystemUser { get; } = new("0xfffffffffffffffffffffffffffffffffffffffe");
 
         public byte[] Bytes { get; }
 
-        public Address(Keccak keccak) : this(keccak.Bytes.Slice(12, ByteLength).ToArray()) { }
+        public Address(Keccak keccak) : this(keccak.Bytes.Slice(12, Size).ToArray()) { }
 
-        public Address(in ValueKeccak keccak) : this(keccak.BytesAsSpan.Slice(12, ByteLength).ToArray()) { }
+        public Address(in ValueKeccak keccak) : this(keccak.BytesAsSpan.Slice(12, Size).ToArray()) { }
 
         public byte this[int index] => Bytes[index];
 
@@ -68,7 +68,7 @@ namespace Nethermind.Core
                 try
                 {
                     byte[] bytes = Extensions.Bytes.FromHexString(value);
-                    if (bytes?.Length == ByteLength)
+                    if (bytes?.Length == Size)
                     {
                         address = new Address(bytes);
                         return true;
@@ -88,10 +88,10 @@ namespace Nethermind.Core
                 throw new ArgumentNullException(nameof(bytes));
             }
 
-            if (bytes.Length != ByteLength)
+            if (bytes.Length != Size)
             {
                 throw new ArgumentException(
-                    $"{nameof(Address)} should be {ByteLength} bytes long and is {bytes.Length} bytes long",
+                    $"{nameof(Address)} should be {Size} bytes long and is {bytes.Length} bytes long",
                     nameof(bytes));
             }
 

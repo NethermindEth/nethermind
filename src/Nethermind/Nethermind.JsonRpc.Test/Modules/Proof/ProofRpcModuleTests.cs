@@ -620,7 +620,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
                 .Op(Instruction.DELEGATECALL)
                 .Done;
             CallResultWithProof result = await TestCallWithCode(code);
-            Assert.That(result.Accounts.Length, Is.EqualTo(3));
+            Assert.That(result.Accounts.Length, Is.EqualTo(_createSystemAccount && _useNonZeroGasPrice ? 3 : 2));
         }
 
         [TestCase]
