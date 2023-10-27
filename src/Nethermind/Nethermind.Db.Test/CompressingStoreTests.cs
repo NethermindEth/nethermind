@@ -79,9 +79,9 @@ namespace Nethermind.Store.Test
         {
             Context ctx = new();
 
-            using (IBatch batch = ctx.Compressed.StartBatch())
+            using (IWriteBatch writeBatch = ctx.Compressed.StartWriteBatch())
             {
-                batch[Key] = EOABytes;
+                writeBatch[Key] = EOABytes;
             }
 
             CollectionAssert.AreEqual(EOABytes, ctx.Compressed[Key]);

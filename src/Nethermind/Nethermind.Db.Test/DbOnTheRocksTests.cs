@@ -21,6 +21,7 @@ using Nethermind.Logging;
 using NSubstitute;
 using NUnit.Framework;
 using RocksDbSharp;
+using IWriteBatch = Nethermind.Core.IWriteBatch;
 
 namespace Nethermind.Db.Test
 {
@@ -124,7 +125,7 @@ namespace Nethermind.Db.Test
         {
             IDbConfig config = new DbConfig();
             DbOnTheRocks db = new("testDispose2", GetRocksDbSettings("testDispose2", "TestDispose2"), config, LimboLogs.Instance);
-            IBatch batch = db.StartBatch();
+            IWriteBatch writeBatch = db.StartWriteBatch();
             db.Dispose();
         }
 
@@ -255,14 +256,14 @@ namespace Nethermind.Db.Test
         [Test]
         public void Smoke_test_large_writes_with_nowal()
         {
-            IBatch batch = _db.StartBatch();
+            IWriteBatch writeBatch = _db.StartWriteBatch();
 
             for (int i = 0; i < 1000; i++)
             {
-                batch.Set(i.ToBigEndianByteArray(), i.ToBigEndianByteArray(), WriteFlags.DisableWAL);
+                writeBatch.Set(i.ToBigEndianByteArray(), i.ToBigEndianByteArray(), WriteFlags.DisableWAL);
             }
 
-            batch.Dispose();
+            writeBatch.Dispose();
 
             for (int i = 0; i < 1000; i++)
             {

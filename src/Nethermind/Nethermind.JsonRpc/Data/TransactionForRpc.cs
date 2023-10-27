@@ -23,6 +23,12 @@ public class TransactionForRpc
 
     public TransactionForRpc(Keccak? blockHash, long? blockNumber, int? txIndex, Transaction transaction, UInt256? baseFee = null)
     {
+        if (transaction.Type == TxType.DepositTx)
+        {
+            SourceHash = transaction.SourceHash;
+            Mint = transaction.Mint;
+            IsSystemTx = transaction.IsOPSystemTransaction;
+        }
         Hash = transaction.Hash;
         Nonce = transaction.Nonce;
         BlockHash = blockHash;
@@ -80,6 +86,10 @@ public class TransactionForRpc
     // ReSharper disable once UnusedMember.Global
     [JsonConstructor]
     public TransactionForRpc() { }
+
+    public Keccak? SourceHash { get; set; }
+    public UInt256? Mint { get; set; }
+    public bool? IsSystemTx { get; set; } // this is the IsOpSystemTransaction flag
 
     public Keccak? Hash { get; set; }
     public UInt256? Nonce { get; set; }

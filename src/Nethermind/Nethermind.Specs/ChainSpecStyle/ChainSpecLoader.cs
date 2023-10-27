@@ -340,6 +340,17 @@ public class ChainSpecLoader : IChainSpecLoader
                 }
             }
         }
+        else if (chainSpecJson.Engine?.Optimism is not null)
+        {
+            chainSpec.SealEngineType = SealEngineType.Optimism;
+            chainSpec.Optimism = new OptimismParameters
+            {
+                RegolithTimestamp = chainSpecJson.Engine.Optimism.RegolithTimestamp,
+                BedrockBlockNumber = chainSpecJson.Engine.Optimism.BedrockBlockNumber,
+                L1FeeRecipient = chainSpecJson.Engine.Optimism.L1FeeRecipient,
+                L1BlockAddress = chainSpecJson.Engine.Optimism.L1BlockAddress
+            };
+        }
         else if (chainSpecJson.Engine?.NethDev is not null)
         {
             chainSpec.SealEngineType = SealEngineType.NethDev;
@@ -383,6 +394,9 @@ public class ChainSpecLoader : IChainSpecLoader
                 ? (chainSpecJson.Genesis.BaseFeePerGas ?? Eip1559Constants.DefaultForkBaseFee)
                 : UInt256.Zero;
 
+        Keccak stateRoot = chainSpecJson.Genesis.StateRoot ?? Keccak.EmptyTreeHash;
+        chainSpec.GenesisStateUnavailable = chainSpecJson.Genesis.StateUnavailable;
+
         BlockHeader genesisHeader = new(
             parentHash,
             Keccak.OfAnEmptySequenceRlp,
@@ -399,7 +413,7 @@ public class ChainSpecLoader : IChainSpecLoader
         genesisHeader.MixHash = mixHash;
         genesisHeader.Nonce = (ulong)nonce;
         genesisHeader.ReceiptsRoot = Keccak.EmptyTreeHash;
-        genesisHeader.StateRoot = Keccak.EmptyTreeHash;
+        genesisHeader.StateRoot = stateRoot;
         genesisHeader.TxRoot = Keccak.EmptyTreeHash;
         genesisHeader.BaseFeePerGas = baseFee;
         bool withdrawalsEnabled = chainSpecJson.Params.Eip4895TransitionTimestamp != null && genesisHeader.Timestamp >= chainSpecJson.Params.Eip4895TransitionTimestamp;

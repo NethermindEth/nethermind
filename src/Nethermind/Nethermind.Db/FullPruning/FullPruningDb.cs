@@ -69,17 +69,17 @@ namespace Nethermind.Db.FullPruning
             }
         }
 
-        private void Duplicate(IKeyValueStore db, ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags)
+        private void Duplicate(IWriteOnlyKeyValueStore db, ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags)
         {
             db.Set(key, value, flags);
             _updateDuplicateWriteMetrics?.Invoke();
         }
 
         // we also need to duplicate writes that are in batches
-        public IBatch StartBatch() =>
+        public IWriteBatch StartWriteBatch() =>
             _pruningContext is null
-                ? _currentDb.StartBatch()
-                : new DuplicatingBatch(_currentDb.StartBatch(), _pruningContext.CloningDb.StartBatch(), this);
+                ? _currentDb.StartWriteBatch()
+                : new DuplicatingWriteBatch(_currentDb.StartWriteBatch(), _pruningContext.CloningDb.StartWriteBatch(), this);
 
         public void Dispose()
         {
@@ -196,7 +196,7 @@ namespace Nethermind.Db.FullPruning
             private readonly FullPruningDb _db;
 
             private long _counter = 0;
-            private ConcurrentQueue<IBatch> _batches = new();
+            private ConcurrentQueue<IWriteBatch> _batches = new();
 
             public PruningContext(FullPruningDb db, IDb cloningDb, bool duplicateReads)
             {
@@ -207,9 +207,9 @@ namespace Nethermind.Db.FullPruning
 
             public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None)
             {
-                if (!_batches.TryDequeue(out IBatch currentBatch))
+                if (!_batches.TryDequeue(out IWriteBatch currentBatch))
                 {
-                    currentBatch = CloningDb.StartBatch();
+                    currentBatch = CloningDb.StartWriteBatch();
                 }
 
                 _db.Duplicate(currentBatch, key, value, flags);
@@ -232,7 +232,7 @@ namespace Nethermind.Db.FullPruning
             /// <inheritdoc />
             public void Commit()
             {
-                foreach (IBatch batch in _batches)
+                foreach (IWriteBatch batch in _batches)
                 {
                     batch.Dispose();
                 }
@@ -271,37 +271,32 @@ namespace Nethermind.Db.FullPruning
         /// <summary>
         /// Batch that duplicates writes to the current DB and the cloned DB batches.
         /// </summary>
-        private class DuplicatingBatch : IBatch
+        private class DuplicatingWriteBatch : IWriteBatch
         {
-            private readonly IBatch _batch;
-            private readonly IBatch _clonedBatch;
+            private readonly IWriteBatch _writeBatch;
+            private readonly IWriteBatch _clonedWriteBatch;
             private readonly FullPruningDb _db;
 
-            public DuplicatingBatch(
-                IBatch batch,
-                IBatch clonedBatch,
+            public DuplicatingWriteBatch(
+                IWriteBatch writeBatch,
+                IWriteBatch clonedWriteBatch,
                 FullPruningDb db)
             {
-                _batch = batch;
-                _clonedBatch = clonedBatch;
+                _writeBatch = writeBatch;
+                _clonedWriteBatch = clonedWriteBatch;
                 _db = db;
             }
 
             public void Dispose()
             {
-                _batch.Dispose();
-                _clonedBatch.Dispose();
-            }
-
-            public byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
-            {
-                return _batch.Get(key, flags);
+                _writeBatch.Dispose();
+                _clonedWriteBatch.Dispose();
             }
 
             public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None)
             {
-                _batch.Set(key, value, flags);
-                _db.Duplicate(_clonedBatch, key, value, flags);
+                _writeBatch.Set(key, value, flags);
+                _db.Duplicate(_clonedWriteBatch, key, value, flags);
             }
         }
 

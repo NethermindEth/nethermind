@@ -167,20 +167,34 @@ namespace Nethermind.Specs.ChainSpecStyle.Json
             public AuraEngineParamsJson Params { get; set; }
         }
 
-        internal class NethDevJson
-        {
-        }
+    internal class OptimismEngineJson
+    {
+        public ulong RegolithTimestamp => Params.RegolithTimestamp;
+        public long BedrockBlockNumber => Params.BedrockBlockNumber;
+        public Address L1FeeRecipient => Params.L1FeeRecipient;
+        public Address L1BlockAddress => Params.L1BlockAddress;
+        public OptimismEngineParamsJson Params { get; set; }
+    }
 
-        internal class EngineJson
-        {
-            [JsonPropertyName("Ethash")]
-            public EthashEngineJson Ethash { get; set; }
-            [JsonPropertyName("Clique")]
-            public CliqueEngineJson Clique { get; set; }
-            [JsonPropertyName("AuthorityRound")]
-            public AuraEngineJson AuthorityRound { get; set; }
-            [JsonPropertyName("NethDev")]
-            public NethDevJson NethDev { get; set; }
+    internal class OptimismEngineParamsJson
+    {
+        public ulong RegolithTimestamp { get; set; }
+        public long BedrockBlockNumber { get; set; }
+        public Address L1FeeRecipient { get; set; }
+        public Address L1BlockAddress { get; set; }
+    }
+
+    internal class NethDevJson
+    {
+    }
+
+    internal class EngineJson
+    {
+        public EthashEngineJson Ethash { get; set; }
+        public CliqueEngineJson Clique { get; set; }
+        public AuraEngineJson AuthorityRound { get; set; }
+        public OptimismEngineJson Optimism { get; set; }
+        public NethDevJson NethDev { get; set; }
 
             [JsonExtensionData]
             public Dictionary<string, JsonElement> CustomEngineData { get; set; }

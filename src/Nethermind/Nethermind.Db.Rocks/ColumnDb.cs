@@ -7,6 +7,7 @@ using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using RocksDbSharp;
+using IWriteBatch = Nethermind.Core.IWriteBatch;
 
 namespace Nethermind.Db.Rocks;
 
@@ -59,41 +60,36 @@ public class ColumnDb : IDbWithSpan
         return _mainDb.GetAllValuesCore(iterator);
     }
 
-    public IBatch StartBatch()
+    public IWriteBatch StartWriteBatch()
     {
-        return new ColumnsDbBatch(this, (DbOnTheRocks.RocksDbBatch)_mainDb.StartBatch());
+        return new ColumnsDbWriteBatch(this, (DbOnTheRocks.RocksDbWriteBatch)_mainDb.StartWriteBatch());
     }
 
-    private class ColumnsDbBatch : IBatch
+    private class ColumnsDbWriteBatch : IWriteBatch
     {
         private readonly ColumnDb _columnDb;
-        private readonly DbOnTheRocks.RocksDbBatch _underlyingBatch;
+        private readonly DbOnTheRocks.RocksDbWriteBatch _underlyingWriteBatch;
 
-        public ColumnsDbBatch(ColumnDb columnDb, DbOnTheRocks.RocksDbBatch underlyingBatch)
+        public ColumnsDbWriteBatch(ColumnDb columnDb, DbOnTheRocks.RocksDbWriteBatch underlyingWriteBatch)
         {
             _columnDb = columnDb;
-            _underlyingBatch = underlyingBatch;
+            _underlyingWriteBatch = underlyingWriteBatch;
         }
 
         public void Dispose()
         {
-            _underlyingBatch.Dispose();
-        }
-
-        public byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
-        {
-            return _underlyingBatch.Get(key, flags);
+            _underlyingWriteBatch.Dispose();
         }
 
         public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None)
         {
             if (value is null)
             {
-                _underlyingBatch.Delete(key, _columnDb._columnFamily);
+                _underlyingWriteBatch.Delete(key, _columnDb._columnFamily);
             }
             else
             {
-                _underlyingBatch.Set(key, value, _columnDb._columnFamily, flags);
+                _underlyingWriteBatch.Set(key, value, _columnDb._columnFamily, flags);
             }
         }
     }

@@ -67,7 +67,7 @@ namespace Nethermind.Consensus.Clique
         private int CalculateSignersCount(BlockHeader blockHeader)
         {
             int signersCount = (blockHeader.ExtraData.Length - Clique.ExtraVanityLength - Clique.ExtraSealLength) /
-                               Address.ByteLength;
+                               Address.Size;
             _lastSignersCount = signersCount > 0 ? (ulong)signersCount : 1;
             return signersCount;
         }
@@ -127,7 +127,7 @@ namespace Nethermind.Consensus.Clique
                         Address epochSigner = GetBlockSealer(header);
                         for (int i = 0; i < signersCount; i++)
                         {
-                            Address signer = new(header.ExtraData.Slice(Clique.ExtraVanityLength + i * Address.ByteLength, Address.ByteLength));
+                            Address signer = new(header.ExtraData.Slice(Clique.ExtraVanityLength + i * Address.Size, Address.Size));
                             signers.Add(signer, signer == epochSigner ? number : parentSnapshot is null ? 0L : parentSnapshot.Signers.TryGetValue(signer, out long value) ? value : 0L);
                         }
 

@@ -26,6 +26,8 @@ namespace Nethermind.JsonRpc.WebSockets
         private readonly long? _maxBatchResponseBodySize;
         private readonly JsonRpcContext _jsonRpcContext;
 
+        private readonly SemaphoreSlim _sendSemaphore = new(1, 1);
+
         public JsonRpcSocketsClient(
             string clientName,
             ISocketHandler handler,
@@ -48,6 +50,7 @@ namespace Nethermind.JsonRpc.WebSockets
         public override void Dispose()
         {
             base.Dispose();
+            _sendSemaphore.Dispose();
             Closed?.Invoke(this, EventArgs.Empty);
         }
 
@@ -113,50 +116,57 @@ namespace Nethermind.JsonRpc.WebSockets
 
         public virtual async Task<int> SendJsonRpcResult(JsonRpcResult result)
         {
-            if (result.IsCollection)
+            await _sendSemaphore.WaitAsync();
+            try
             {
-                int singleResponseSize = 1;
-                bool isFirst = true;
-                await _handler.SendRawAsync(_jsonOpeningBracket, false);
-                JsonRpcBatchResultAsyncEnumerator enumerator = result.BatchedResponses!.GetAsyncEnumerator(CancellationToken.None);
-                try
+                if (result.IsCollection)
                 {
-                    while (await enumerator.MoveNextAsync())
+                    int singleResponseSize = 1;
+                    bool isFirst = true;
+                    await _handler.SendRawAsync(_jsonOpeningBracket, false);
+                    JsonRpcBatchResultAsyncEnumerator enumerator = result.BatchedResponses!.GetAsyncEnumerator(CancellationToken.None);
+                    try
                     {
-                        JsonRpcResult.Entry entry = enumerator.Current;
-                        using (entry)
+                        while (await enumerator.MoveNextAsync())
                         {
-                            if (!isFirst)
+                            JsonRpcResult.Entry entry = enumerator.Current;
+                            using (entry)
                             {
-                                await _handler.SendRawAsync(_jsonComma, false);
-                                singleResponseSize += 1;
-                            }
+                                if (!isFirst)
+                                {
+                                    await _handler.SendRawAsync(_jsonComma, false);
+                                    singleResponseSize += 1;
+                                }
+                                isFirst = false;
+                                singleResponseSize += SendJsonRpcResultEntry(entry, false);
+                                _ = _jsonRpcLocalStats.ReportCall(entry.Report);
 
-                            isFirst = false;
-                            singleResponseSize += await SendJsonRpcResultEntry(entry, false);
-                            _ = _jsonRpcLocalStats.ReportCall(entry.Report);
-
-                            // We reached the limit and don't want to responded to more request in the batch
-                            if (!_jsonRpcContext.IsAuthenticated && singleResponseSize > _maxBatchResponseBodySize)
-                            {
-                                enumerator.IsStopped = true;
+                                // We reached the limit and don't want to responded to more request in the batch
+                                if (!_jsonRpcContext.IsAuthenticated && singleResponseSize > _maxBatchResponseBodySize)
+                                {
+                                    enumerator.IsStopped = true;
+                                }
                             }
                         }
                     }
+                    finally
+                    {
+                        await enumerator.DisposeAsync();
+                    }
+
+                    await _handler.SendRawAsync(_jsonClosingBracket, true);
+                    singleResponseSize += 1;
+
+                    return singleResponseSize;
                 }
-                finally
+                else
                 {
-                    await enumerator.DisposeAsync();
+                    return await SendJsonRpcResultEntry(result.SingleResponse!.Value);
                 }
-
-                await _handler.SendRawAsync(_jsonClosingBracket, true);
-                singleResponseSize += 1;
-
-                return singleResponseSize;
             }
-            else
+            finally
             {
-                return await SendJsonRpcResultEntry(result.SingleResponse!.Value);
+                _sendSemaphore.Release();
             }
         }
 
@@ -170,7 +180,7 @@ namespace Nethermind.JsonRpc.WebSockets
 
             using (result)
             {
-                await using MemoryStream resultData = new();
+                await using MemoryStream resultData = new();{
 
                 try
                 {

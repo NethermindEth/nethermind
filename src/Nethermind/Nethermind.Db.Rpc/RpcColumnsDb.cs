@@ -41,9 +41,9 @@ namespace Nethermind.Db.Rpc
 
         public IEnumerable<T> ColumnKeys => Enum.GetValues<T>();
 
-        public IColumnsBatch<T> StartBatch()
+        public IColumnsWriteBatch<T> StartWriteBatch()
         {
-            return new InMemoryColumnBatch<T>(this);
+            return new InMemoryColumnWriteBatch<T>(this);
         }
     }
 }

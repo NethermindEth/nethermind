@@ -31,9 +31,9 @@ namespace Nethermind.Db
             return new ReadOnlyColumnsDb<TKey>(this, createInMemWriteStore);
         }
 
-        public IColumnsBatch<TKey> StartBatch()
+        public IColumnsWriteBatch<TKey> StartWriteBatch()
         {
-            return new InMemoryColumnBatch<TKey>(this);
+            return new InMemoryColumnWriteBatch<TKey>(this);
         }
     }
 }

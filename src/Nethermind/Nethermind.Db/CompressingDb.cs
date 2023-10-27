@@ -34,25 +34,21 @@ namespace Nethermind.Db
                 set => _wrapped[key] = Compress(value);
             }
 
-            public IBatch StartBatch() => new Batch(_wrapped.StartBatch());
+            public IWriteBatch StartWriteBatch() => new WriteBatch(_wrapped.StartWriteBatch());
 
-            private class Batch : IBatch
+            private class WriteBatch : IWriteBatch
             {
-                private readonly IBatch _wrapped;
+                private readonly IWriteBatch _wrapped;
 
-                public Batch(IBatch wrapped) => _wrapped = wrapped;
+                public WriteBatch(IWriteBatch wrapped) => _wrapped = wrapped;
 
                 public void Dispose() => _wrapped.Dispose();
 
                 public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None)
                     => _wrapped.Set(key, Compress(value), flags);
 
-                public byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
-                    => Decompress(_wrapped.Get(key, flags));
-
                 public byte[]? this[ReadOnlySpan<byte> key]
                 {
-                    get => Decompress(_wrapped[key]);
                     set => _wrapped[key] = Compress(value);
                 }
             }

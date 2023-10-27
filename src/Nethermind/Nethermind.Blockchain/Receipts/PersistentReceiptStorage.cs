@@ -344,7 +344,7 @@ namespace Nethermind.Blockchain.Receipts
 
         public void EnsureCanonical(Block block)
         {
-            using IBatch batch = _transactionDb.StartBatch();
+            using IWriteBatch writeBatch = _transactionDb.StartWriteBatch();
 
             long headNumber = _blockTree.FindBestSuggestedHeader()?.Number ?? 0;
 
@@ -354,14 +354,14 @@ namespace Nethermind.Blockchain.Receipts
             {
                 foreach (Transaction tx in block.Transactions)
                 {
-                    batch[tx.Hash.Bytes] = Rlp.Encode(block.Number).Bytes;
+                    writeBatch[tx.Hash.Bytes] = Rlp.Encode(block.Number).Bytes;
                 }
             }
             else
             {
                 foreach (Transaction tx in block.Transactions)
                 {
-                    batch[tx.Hash.Bytes] = block.Hash.BytesToArray();
+                    writeBatch[tx.Hash.Bytes] = block.Hash.BytesToArray();
                 }
             }
         }
@@ -374,13 +374,13 @@ namespace Nethermind.Blockchain.Receipts
                 newTxs = new HashSet<Keccak>(exceptBlock.Transactions.Select((tx) => tx.Hash));
             }
 
-            using IBatch batch = _transactionDb.StartBatch();
+            using IWriteBatch writeBatch = _transactionDb.StartWriteBatch();
             foreach (Transaction tx in block.Transactions)
             {
                 // If the tx is contained in another block, don't remove it. Used for reorg where the same tx
                 // is contained in the new block
                 if (newTxs?.Contains(tx.Hash) == true) continue;
-                batch[tx.Hash.Bytes] = null;
+                writeBatch[tx.Hash.Bytes] = null;
             }
         }
     }

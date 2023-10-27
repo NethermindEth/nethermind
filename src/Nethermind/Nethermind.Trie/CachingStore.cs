@@ -70,7 +70,7 @@ namespace Nethermind.Trie
         }
 
 
-        public IBatch StartBatch() => _wrappedStore.StartBatch();
+        public IWriteBatch StartWriteBatch() => _wrappedStore.StartWriteBatch();
 
         public void PersistCache(IKeyValueStore pruningContext)
         {

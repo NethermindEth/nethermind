@@ -90,7 +90,7 @@ namespace Nethermind.Db
 
         public IEnumerable<byte[]> GetAllValues(bool ordered = false) => Values;
 
-        public virtual IBatch StartBatch()
+        public virtual IWriteBatch StartWriteBatch()
         {
             return this.LikeABatch();
         }
