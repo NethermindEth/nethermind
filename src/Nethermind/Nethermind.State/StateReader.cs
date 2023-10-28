@@ -41,7 +41,7 @@ namespace Nethermind.State
             }
 
             Metrics.StorageTreeReads++;
-            return _storage.Get(index, storageRoot);
+            return _storage.Get(index, false, storageRoot);
         }
 
         public UInt256 GetBalance(Hash256 stateRoot, Address address)
