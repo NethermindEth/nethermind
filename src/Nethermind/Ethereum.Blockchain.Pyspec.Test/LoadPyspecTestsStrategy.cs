@@ -14,23 +14,34 @@ namespace Ethereum.Blockchain.Pyspec.Test;
 
 public class LoadPyspecTestsStrategy : ITestLoadStrategy
 {
-    public IEnumerable<IEthereumTest> Load(string archiveAddress, string wildcard = null)
+    public IEnumerable<IEthereumTest> Load(string testsDir, string wildcard = null)
     {
-        string[] addressAndDir = archiveAddress.Split("||");
-        string testsDirectoryName = $"{AppContext.BaseDirectory}pyTests/";
-        HttpClient httpClient = new();
-        HttpResponseMessage response = httpClient.GetAsync(addressAndDir[0]).Result;
-        response.EnsureSuccessStatusCode();
-        using Stream contentStream = response.Content.ReadAsStreamAsync().Result;
-        using TarArchive archive = TarArchive.Open(contentStream);
-        archive.ExtractToDirectory(testsDirectoryName);
-        IEnumerable<string> testDirs;
-        if (addressAndDir.Length > 1)
-            testDirs = Directory.EnumerateDirectories(testsDirectoryName + "/" + addressAndDir[1], "*", new EnumerationOptions { RecurseSubdirectories = true });
-        else
+        string[] versionAndDir = testsDir.Split(",");
+        string archiveVersion = Constants.DEFAULT_ARCHIVE_VERSION;
+        string archiveName = Constants.DEFAULT_ARCHIVE_NAME;
+        if (versionAndDir.Length < 3)
         {
-            testDirs = Directory.EnumerateDirectories(testsDirectoryName, "*", new EnumerationOptions { RecurseSubdirectories = true });
+            throw new ArgumentException("Invalid testsDir argument. It should be in format: <version>,<archiveName>,<testsDir>");
         }
+        if (!string.IsNullOrEmpty(versionAndDir[0]))
+            archiveVersion = versionAndDir[0];
+        if (!string.IsNullOrEmpty(versionAndDir[1]))
+            archiveName = versionAndDir[1];
+        if (!string.IsNullOrEmpty(versionAndDir[2]))
+            testsDir = versionAndDir[2];
+        string testsDirectoryName = $"{AppContext.BaseDirectory}PyTests/{archiveVersion}/{archiveName.Split('.')[0]}";
+        if (!Directory.Exists(testsDirectoryName))
+        {
+            HttpClient httpClient = new();
+            HttpResponseMessage response = httpClient.GetAsync(string.Format(Constants.ARCHIVE_URL_TEMPLATE, archiveVersion, archiveName)).Result;
+            response.EnsureSuccessStatusCode();
+            using Stream contentStream = response.Content.ReadAsStreamAsync().Result;
+            using TarArchive archive = TarArchive.Open(contentStream);
+            archive.ExtractToDirectory(testsDirectoryName);
+        }
+        IEnumerable<string> testDirs = !string.IsNullOrEmpty(testsDir)
+            ? Directory.EnumerateDirectories(testsDirectoryName + "/" + testsDir, "*", new EnumerationOptions { RecurseSubdirectories = true })
+            : Directory.EnumerateDirectories(testsDirectoryName, "*", new EnumerationOptions { RecurseSubdirectories = true });
         List<BlockchainTest> testJsons = new();
         foreach (string testDir in testDirs)
         {

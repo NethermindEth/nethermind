@@ -4,7 +4,6 @@
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using Ethereum.Test.Base;
-using Nethermind.Crypto;
 using NUnit.Framework;
 
 namespace Ethereum.Blockchain.Pyspec.Test;
@@ -18,8 +17,7 @@ public class CancunTests : BlockchainTestBase
 
     private static IEnumerable<BlockchainTest> LoadTests()
     {
-        TestsSourceLoader loader = new(new LoadPyspecTestsStrategy(),
-            "https://github.com/ethereum/execution-spec-tests/releases/download/v1.0.6/fixtures_develop.tar.gz||fixtures/cancun");
+        TestsSourceLoader loader = new(new LoadPyspecTestsStrategy(), $",,fixtures/cancun");
         return (IEnumerable<BlockchainTest>)loader.LoadTests();
     }
 }
