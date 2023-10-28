@@ -20,7 +20,7 @@ namespace Nethermind.State
 
         private static readonly int CacheSizeInt = (int)CacheSize;
 
-        private static readonly Dictionary<UInt256, byte[]> Cache = new(CacheSizeInt);
+        private static readonly byte[][] Cache = new byte[CacheSizeInt][];
 
         static StorageTree()
         {
@@ -29,7 +29,7 @@ namespace Nethermind.State
             {
                 UInt256 index = (UInt256)i;
                 index.ToBigEndian(buffer);
-                Cache[index] = Keccak.Compute(buffer).BytesToArray();
+                Cache[(int)index] = Keccak.Compute(buffer).BytesToArray();
             }
         }
 
@@ -49,7 +49,7 @@ namespace Nethermind.State
         {
             if (index < CacheSize)
             {
-                Cache[index].CopyTo(key);
+                Cache[(int)index].CopyTo(key);
                 return;
             }
 
