@@ -102,6 +102,11 @@ public class ColumnDb : IDb
                 _underlyingWriteBatch.Set(key, value, _columnDb._columnFamily, flags);
             }
         }
+
+        public void PutSpan(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags flags = WriteFlags.None)
+        {
+            _underlyingWriteBatch.Set(key, value, _columnDb._columnFamily, flags);
+        }
     }
 
     public void Remove(ReadOnlySpan<byte> key)
