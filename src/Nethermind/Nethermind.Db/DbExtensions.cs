@@ -49,11 +49,11 @@ namespace Nethermind.Db
             }
         }
 
-        public static void Set(this IDb db, long blockNumber, Hash256 key, Span<byte> value)
+        public static void Set(this IDb db, long blockNumber, Hash256 key, Span<byte> value, WriteFlags writeFlags = WriteFlags.None)
         {
             Span<byte> blockNumberPrefixedKey = stackalloc byte[40];
             GetBlockNumPrefixedKey(blockNumber, key, blockNumberPrefixedKey);
-            db.Set(blockNumberPrefixedKey, value);
+            db.Set(blockNumberPrefixedKey, value, writeFlags);
         }
 
         private static void GetBlockNumPrefixedKey(long blockNumber, ValueHash256 blockHash, Span<byte> output)
@@ -74,15 +74,15 @@ namespace Nethermind.Db
             }
         }
 
-        public static void Set(this IDb db, ReadOnlySpan<byte> key, ReadOnlySpan<byte> value)
+        public static void Set(this IDb db, ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags writeFlags = WriteFlags.None)
         {
             if (db is IDbWithSpan dbWithSpan)
             {
-                dbWithSpan.PutSpan(key, value);
+                dbWithSpan.PutSpan(key, value, flags: writeFlags);
             }
             else
             {
-                db[key] = value.ToArray();
+                db.Set(key, value.ToArray(), flags: writeFlags);
             }
         }
 

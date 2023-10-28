@@ -42,7 +42,7 @@ public class BlockStore : IBlockStore
         return _blockDb.Get(key);
     }
 
-    public void Insert(Block block)
+    public void Insert(Block block, WriteFlags writeFlags = WriteFlags.None)
     {
         if (block.Hash is null)
         {
@@ -53,7 +53,7 @@ public class BlockStore : IBlockStore
         // by avoiding encoding back to RLP here (allocations measured on a sample 3M blocks Goerli fast sync
         using NettyRlpStream newRlp = _blockDecoder.EncodeToNewNettyStream(block);
 
-        _blockDb.Set(block.Number, block.Hash, newRlp.AsSpan());
+        _blockDb.Set(block.Number, block.Hash, newRlp.AsSpan(), writeFlags);
     }
 
     private static void GetBlockNumPrefixedKey(long blockNumber, Hash256 blockHash, Span<byte> output)
