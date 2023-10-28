@@ -175,6 +175,7 @@ namespace Nethermind.Synchronization.FastBlocks
             {
                 foreach (BlockInfo batchInfo in batch.Infos)
                 {
+                    if (batchInfo == null) break;
                     _syncStatusList.MarkPending(batchInfo);
                 }
 

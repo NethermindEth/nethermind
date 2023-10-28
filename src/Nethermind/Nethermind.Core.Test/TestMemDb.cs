@@ -22,6 +22,7 @@ public class TestMemDb : MemDb, ITunableDb
     private List<ITunableDb.TuneType> _tuneTypes = new();
 
     public Func<byte[], byte[]>? ReadFunc { get; set; }
+    public Func<byte[], byte[]?, bool>? WriteFunc { get; set; }
     public Action<byte[]>? RemoveFunc { get; set; }
 
     public bool WasFlushed => FlushCount > 0;
@@ -40,6 +41,8 @@ public class TestMemDb : MemDb, ITunableDb
     public override void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None)
     {
         _writes.Add(((key.ToArray(), value), flags));
+
+        if (WriteFunc?.Invoke(key.ToArray(), value) == false) return;
         base.Set(key, value, flags);
     }
 
