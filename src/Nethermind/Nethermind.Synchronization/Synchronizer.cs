@@ -59,8 +59,6 @@ namespace Nethermind.Synchronization
         protected IBetterPeerStrategy _betterPeerStrategy;
         private readonly ChainSpec _chainSpec;
 
-        private readonly ProgressTracker _progressTracker;
-
         public ISnapProvider SnapProvider { get; }
 
         private HeadersSyncFeed? _headersSyncFeed;
@@ -131,15 +129,14 @@ namespace Nethermind.Synchronization
             _chainSpec = chainSpec ?? throw new ArgumentNullException(nameof(chainSpec));
             _readOnlyTrieStore = readOnlyTrieStore ?? throw new ArgumentNullException(nameof(readOnlyTrieStore));
 
-            _progressTracker = new(
+            _syncReport = new SyncReport(_syncPeerPool!, nodeStatsManager!, _syncConfig, _pivot, logManager);
+
+            ProgressTracker progressTracker = new(
                 blockTree,
                 dbProvider.StateDb,
                 logManager,
                 _syncConfig.SnapSyncAccountRangePartitionCount);
-
-            _syncReport = new SyncReport(_syncPeerPool!, nodeStatsManager!, _syncConfig, _pivot, logManager);
-
-            SnapProvider = new SnapProvider(_progressTracker, dbProvider, logManager);
+            SnapProvider = new SnapProvider(progressTracker, dbProvider, logManager);
         }
 
         public virtual void Start()
