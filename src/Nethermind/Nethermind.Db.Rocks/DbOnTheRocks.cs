@@ -573,7 +573,12 @@ public class DbOnTheRocks : IDb, ITunableDb
         }
     }
 
-    public Span<byte> GetSpan(ReadOnlySpan<byte> key)
+    public Span<byte> GetSpan(ReadOnlySpan<byte> key, ReadFlags flags)
+    {
+        return GetSpanWithColumnFamily(key, null);
+    }
+
+    internal Span<byte> GetSpanWithColumnFamily(ReadOnlySpan<byte> key, ColumnFamilyHandle? cf)
     {
         if (_isDisposing)
         {
@@ -584,10 +589,7 @@ public class DbOnTheRocks : IDb, ITunableDb
 
         try
         {
-            Span<byte> span = _db.GetSpan(key);
-            if (!span.IsNullOrEmpty())
-                GC.AddMemoryPressure(span.Length);
-            return span;
+            return _db.GetSpan(key, cf);
         }
         catch (RocksDbSharpException e)
         {
@@ -882,6 +884,11 @@ public class DbOnTheRocks : IDb, ITunableDb
         }
 
         public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None)
+        {
+            Set(key, value, null, flags);
+        }
+
+        public void PutSpan(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags flags = WriteFlags.None)
         {
             if (_isDisposed)
             {

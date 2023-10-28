@@ -28,7 +28,8 @@ namespace Nethermind.Core
         /// </summary>
         /// <param name="key"></param>
         /// <returns>Can return null or empty Span on missing key</returns>
-        Span<byte> GetSpan(ReadOnlySpan<byte> key) => this[key.ToArray()];
+        Span<byte> GetSpan(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None) => Get(key, flags);
+
         bool KeyExists(ReadOnlySpan<byte> key) => GetSpan(key).IsNull();
         void DangerousReleaseMemory(in Span<byte> span) { }
         MemoryManager<byte>? GetOwnedMemory(ReadOnlySpan<byte> key)
@@ -52,7 +53,7 @@ namespace Nethermind.Core
         /// is preferable. Unless you plan to reuse the array somehow (pool), then you'd just use span.
         /// </summary>
         public bool PreferWriteByArray => false;
-        void PutSpan(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value) => Set(key, value.ToArray());
+        void PutSpan(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags flags = WriteFlags.None) => Set(key, value.ToArray(), flags);
         void Remove(ReadOnlySpan<byte> key) => Set(key, null);
     }
 
