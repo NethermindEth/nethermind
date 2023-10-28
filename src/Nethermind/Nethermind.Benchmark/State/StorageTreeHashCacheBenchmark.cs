@@ -15,7 +15,7 @@ namespace Nethermind.Benchmarks.State
     public class StorageTreeHashCacheBenchmark
     {
         private const int CellIndexMemoizationCount = 16;
-        private static readonly int _count = 1024 * 2;
+        private static readonly int _count = StorageTree.CacheSize * 2;
         private static readonly byte[] _value = { 1 };
         private StorageTree _storage;
 
@@ -30,10 +30,10 @@ namespace Nethermind.Benchmarks.State
             }
         }
 
-        [Benchmark(OperationsPerInvoke = 1024)]
+        [Benchmark(OperationsPerInvoke = StorageTree.CacheSize)]
         public void CellIndexes_cached()
         {
-            for (int i = 0; i < 1024; i++)
+            for (int i = 0; i < StorageTree.CacheSize; i++)
             {
                 _storage.Get((UInt256)i);
             }
@@ -47,7 +47,7 @@ namespace Nethermind.Benchmarks.State
 
             for (int i = 0; i < size; i++)
             {
-                _storage.Get((UInt256)i + cachedOffset);
+                _storage.Get((UInt256)i + cachedOffset, true);
             }
 
             for (int i = 0; i < size; i++)
@@ -64,7 +64,7 @@ namespace Nethermind.Benchmarks.State
 
             for (int i = 0; i < size; i++)
             {
-                _storage.Get((UInt256)i + cachedOffset);
+                _storage.Get((UInt256)i + cachedOffset, true);
             }
 
             for (int i = 0; i < size; i++)

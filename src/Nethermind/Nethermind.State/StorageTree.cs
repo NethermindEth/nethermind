@@ -152,8 +152,8 @@ namespace Nethermind.State
             {
                 _cells ??= new Cell[Size];
 
-                int cellHashCode = value.GetHashCode();
-                ref Cell cell = ref _cells![cellHashCode % Size];
+                int cellHashCode = FastHash(value);
+                ref Cell cell = ref _cells![cellHashCode & (Size - 1)];
 
                 cell.HashCode = cellHashCode;
                 cell.Value = value;
@@ -165,8 +165,8 @@ namespace Nethermind.State
                 if (_cells == null)
                     return false;
 
-                int cellHashCode = value.GetHashCode();
-                ref readonly Cell cell = ref _cells![cellHashCode % Size];
+                int cellHashCode = FastHash(value);
+                ref readonly Cell cell = ref _cells![cellHashCode & (Size - 1)];
 
                 if (cell.HashCode == cellHashCode && cell.Value == value)
                 {
@@ -175,6 +175,12 @@ namespace Nethermind.State
                 }
 
                 return false;
+            }
+
+            private static int FastHash(in UInt256 v)
+            {
+                ulong xor = v.u0 ^ v.u1 ^ v.u2 ^ v.u3;
+                return unchecked((int)((xor >> 32) ^ xor));
             }
         }
     }
