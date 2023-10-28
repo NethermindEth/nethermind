@@ -589,7 +589,10 @@ public class DbOnTheRocks : IDb, ITunableDb
 
         try
         {
-            return _db.GetSpan(key, cf);
+            Span<byte> span = _db.GetSpan(key, cf);
+            if (!span.IsNullOrEmpty())
+                GC.AddMemoryPressure(span.Length);
+            return span;
         }
         catch (RocksDbSharpException e)
         {

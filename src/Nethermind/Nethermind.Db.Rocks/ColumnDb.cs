@@ -136,6 +136,4 @@ public class ColumnDb : IDb
     public long GetCacheSize() => _mainDb.GetCacheSize();
     public long GetIndexSize() => _mainDb.GetIndexSize();
     public long GetMemtableSize() => _mainDb.GetMemtableSize();
-
-    public void DangerousReleaseMemory(in Span<byte> span) => _rocksDb.DangerousReleaseMemory(span);
 }
