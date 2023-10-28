@@ -416,7 +416,7 @@ namespace Nethermind.Synchronization.SnapSync
 
         private void FinishRangePhase()
         {
-            _db.Set(ACC_PROGRESS_KEY, ValueKeccak.MaxValue.Bytes);
+            _db.PutSpan(ACC_PROGRESS_KEY, ValueKeccak.MaxValue.Bytes);
         }
 
         private void LogRequest(string reqType)

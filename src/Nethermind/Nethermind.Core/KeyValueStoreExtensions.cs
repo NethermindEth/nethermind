@@ -133,11 +133,6 @@ namespace Nethermind.Core
             db.PutSpan(key.Bytes, value);
         }
 
-        public static void Set(this IWriteOnlyKeyValueStore db, ReadOnlySpan<byte> key, ReadOnlySpan<byte> value)
-        {
-            db.PutSpan(key, value);
-        }
-
         public static void Delete(this IWriteOnlyKeyValueStore db, Hash256 key)
         {
             db.Remove(key.Bytes);
@@ -154,11 +149,6 @@ namespace Nethermind.Core
             Span<byte> key = stackalloc byte[40];
             GetBlockNumPrefixedKey(blockNumber, hash, key);
             db.Remove(key);
-        }
-
-        public static void Set(this IWriteOnlyKeyValueStore db, byte[] key, byte[] value)
-        {
-            db[key] = value;
         }
 
         public static void Set(this IWriteOnlyKeyValueStore db, long key, byte[] value)

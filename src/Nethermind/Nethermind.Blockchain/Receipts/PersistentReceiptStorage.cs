@@ -278,7 +278,7 @@ namespace Nethermind.Blockchain.Receipts
                 Span<byte> blockNumPrefixed = stackalloc byte[40];
                 GetBlockNumPrefixedKey(blockNumber, block.Hash!, blockNumPrefixed);
 
-                _blocksDb.Set(blockNumPrefixed, stream.AsSpan());
+                _blocksDb.PutSpan(blockNumPrefixed, stream.AsSpan());
             }
 
             if (blockNumber < MigratedBlockNumber)

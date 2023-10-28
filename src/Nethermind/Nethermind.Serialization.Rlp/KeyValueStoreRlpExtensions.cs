@@ -3,6 +3,7 @@
 
 using System;
 using System.Runtime.CompilerServices;
+using DotNetty.Buffers;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
@@ -69,13 +70,19 @@ public static class KeyValueStoreRlpExtensions
             }
             else
             {
-                byte[]? data = db.Get(key);
-                if (data is null)
+                Span<byte> data = db.Get(key);
+                if (data.IsNull())
                 {
                     return null;
                 }
 
-                item = decoder.Decode(data.AsRlpStream(), RlpBehaviors.AllowExtraBytes);
+                IByteBuffer buff = PooledByteBufferAllocator.Default.Buffer(data.Length);
+                data.CopyTo(buff.Array.AsSpan(buff.ArrayOffset + buff.WriterIndex));
+                buff.SetWriterIndex(buff.WriterIndex + data.Length);
+
+                using NettyRlpStream nettyRlpStream = new NettyRlpStream(buff);
+
+                item = decoder.Decode(nettyRlpStream, RlpBehaviors.AllowExtraBytes);
             }
         }
 
