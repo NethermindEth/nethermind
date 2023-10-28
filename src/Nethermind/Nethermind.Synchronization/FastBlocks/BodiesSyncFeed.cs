@@ -171,6 +171,15 @@ namespace Nethermind.Synchronization.FastBlocks
                     ? SyncResponseHandlingResult.NoProgress
                     : SyncResponseHandlingResult.OK;
             }
+            catch (Exception)
+            {
+                foreach (BlockInfo batchInfo in batch.Infos)
+                {
+                    _syncStatusList.MarkPending(batchInfo);
+                }
+
+                throw;
+            }
             finally
             {
                 batch.Response?.Dispose();
