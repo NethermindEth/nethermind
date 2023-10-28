@@ -52,7 +52,6 @@ namespace Nethermind.Synchronization
         public event EventHandler<SyncEventArgs>? SyncEvent;
 
         private readonly IDbProvider _dbProvider;
-        protected readonly ISyncModeSelector _syncMode;
         private FastSyncFeed? _fastSyncFeed;
         private StateSyncFeed? _stateSyncFeed;
         private FullSyncFeed? _fullSyncFeed;
@@ -176,7 +175,7 @@ namespace Nethermind.Synchronization
 
             if (_syncConfig.ExitOnSynced)
             {
-                _exitSource.WatchForExit(_syncMode, _logManager, TimeSpan.FromSeconds(_syncConfig.ExitOnSyncedWaitTimeSec));
+                _exitSource.WatchForExit(SyncModeSelector, _logManager, TimeSpan.FromSeconds(_syncConfig.ExitOnSyncedWaitTimeSec));
             }
 
             WireMultiSyncModeSelector();
