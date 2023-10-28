@@ -21,10 +21,7 @@ public class LoadPyspecTestsStrategy : ITestLoadStrategy
         HttpClient httpClient = new();
         HttpResponseMessage response = httpClient.GetAsync(addressAndDir[0]).Result;
         response.EnsureSuccessStatusCode();
-        // fetch filename from response
-        string filename = response.Content.Headers.ContentDisposition.FileName;
         using Stream contentStream = response.Content.ReadAsStreamAsync().Result;
-        // unarchive tar.gz file using sharpCompress
         using TarArchive archive = TarArchive.Open(contentStream);
         archive.ExtractToDirectory(testsDirectoryName);
         IEnumerable<string> testDirs;
