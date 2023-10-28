@@ -4,30 +4,42 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Net.Http;
 using Ethereum.Test.Base.Interfaces;
+using SharpCompress.Archives;
+using SharpCompress.Archives.Tar;
 
 namespace Ethereum.Test.Base
 {
     public class LoadPyspecTestsStrategy : ITestLoadStrategy
     {
-        public IEnumerable<IEthereumTest> Load(string testsDirectoryName, string wildcard = null)
+        public IEnumerable<IEthereumTest> Load(string archiveAddress, string wildcard = null)
         {
+            string[] addressAndDir = archiveAddress.Split("||");
+            string testsDirectoryName = $"{AppContext.BaseDirectory}pyTests/";
+            HttpClient httpClient = new();
+            HttpResponseMessage response = httpClient.GetAsync(addressAndDir[0]).Result;
+            response.EnsureSuccessStatusCode();
+            // fetch filename from response
+            string filename = response.Content.Headers.ContentDisposition.FileName;
+            using Stream contentStream = response.Content.ReadAsStreamAsync().Result;
+            // unarchive tar.gz file using sharpCompress
+            using TarArchive archive = TarArchive.Open(contentStream);
+            archive.ExtractToDirectory(testsDirectoryName);
             IEnumerable<string> testDirs;
-            if (!Path.IsPathRooted(testsDirectoryName))
+            if (addressAndDir.Length > 1)
             {
-                testDirs = Directory.EnumerateDirectories(Environment.CurrentDirectory + "/../../../" + testsDirectoryName, "*", new EnumerationOptions { RecurseSubdirectories = true });
+                testDirs = Directory.EnumerateDirectories(testsDirectoryName + "/" + addressAndDir[1], "*", new EnumerationOptions { RecurseSubdirectories = true });
             }
             else
             {
-                testDirs = new[] { testsDirectoryName };
+                testDirs = Directory.EnumerateDirectories(testsDirectoryName, "*", new EnumerationOptions { RecurseSubdirectories = true });
             }
-
             List<BlockchainTest> testJsons = new();
             foreach (string testDir in testDirs)
             {
                 testJsons.AddRange(LoadTestsFromDirectory(testDir, wildcard));
             }
-
             return testJsons;
         }
 

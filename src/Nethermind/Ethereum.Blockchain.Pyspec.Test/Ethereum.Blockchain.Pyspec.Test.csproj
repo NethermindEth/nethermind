@@ -28,7 +28,4 @@
   <ItemGroup>
     <ProjectReference Include="..\Ethereum.Test.Base\Ethereum.Test.Base.csproj" />
   </ItemGroup>
-  <ItemGroup>
-    <Folder Include="Fixtures\" />
-  </ItemGroup>
 </Project>

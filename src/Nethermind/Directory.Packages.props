@@ -66,6 +66,7 @@
     <PackageVersion Include="RocksDB" Version="8.3.2.39829" />
     <PackageVersion Include="SCrypt" Version="2.0.0.2" />
     <PackageVersion Include="Seq.Api" Version="2023.3.0" />
+    <PackageVersion Include="SharpCompress" Version="0.34.1" />
     <PackageVersion Include="Shouldly" Version="4.2.1" />
     <PackageVersion Include="Snappy.Standard" Version="0.2.0" />
     <PackageVersion Include="System.Configuration.ConfigurationManager" Version="7.0.0" />

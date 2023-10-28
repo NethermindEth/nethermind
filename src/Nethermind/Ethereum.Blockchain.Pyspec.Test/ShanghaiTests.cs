@@ -18,7 +18,7 @@ public class ShanghaiTests : BlockchainTestBase
     private static IEnumerable<BlockchainTest> LoadTests()
     {
         TestsSourceLoader loader = new(new LoadPyspecTestsStrategy(),
-            "Fixtures/shanghai");
+            "https://github.com/ethereum/execution-spec-tests/releases/download/v1.0.6/fixtures_develop.tar.gz||fixtures/shanghai");
         return (IEnumerable<BlockchainTest>)loader.LoadTests();
     }
 }
