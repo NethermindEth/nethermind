@@ -13,15 +13,15 @@ namespace Nethermind.Serialization.Rlp;
 public static class KeyValueStoreRlpExtensions
 {
     [SkipLocalsInit]
-    public static TItem? Get<TItem>(this IReadOnlyKeyValueStore db, long blockNumber, ValueKeccak hash, IRlpStreamDecoder<TItem> decoder,
-        LruCache<ValueKeccak, TItem> cache = null, bool shouldCache = true) where TItem : class
+    public static TItem? Get<TItem>(this IReadOnlyKeyValueStore db, long blockNumber, ValueHash256 hash, IRlpStreamDecoder<TItem> decoder,
+        LruCache<ValueHash256, TItem> cache = null, bool shouldCache = true) where TItem : class
     {
         Span<byte> dbKey = stackalloc byte[40];
         KeyValueStoreExtensions.GetBlockNumPrefixedKey(blockNumber, hash, dbKey);
         return Get(db, hash, dbKey, decoder, cache, shouldCache);
     }
 
-    public static TItem? Get<TItem>(this IReadOnlyKeyValueStore db, Keccak key, IRlpStreamDecoder<TItem> decoder, LruCache<ValueKeccak, TItem> cache = null, bool shouldCache = true) where TItem : class
+    public static TItem? Get<TItem>(this IReadOnlyKeyValueStore db, ValueHash256 key, IRlpStreamDecoder<TItem> decoder, LruCache<ValueHash256, TItem> cache = null, bool shouldCache = true) where TItem : class
     {
         return Get(db, key, key.Bytes, decoder, cache, shouldCache);
     }
@@ -35,7 +35,7 @@ public static class KeyValueStoreRlpExtensions
     public static TItem? Get<TCacheKey, TItem>(
         this IReadOnlyKeyValueStore db,
         TCacheKey cacheKey,
-        Span<byte> key,
+        ReadOnlySpan<byte> key,
         IRlpStreamDecoder<TItem> decoder,
         LruCache<TCacheKey, TItem> cache = null,
         bool shouldCache = true
