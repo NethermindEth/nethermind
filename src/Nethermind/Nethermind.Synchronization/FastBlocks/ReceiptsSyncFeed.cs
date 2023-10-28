@@ -13,7 +13,9 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Db;
 using Nethermind.Logging;
+using Nethermind.Specs;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
@@ -37,10 +39,12 @@ namespace Nethermind.Synchronization.FastBlocks
         private readonly ISpecProvider _specProvider;
         private readonly IReceiptStorage _receiptStorage;
         private readonly ISyncPeerPool _syncPeerPool;
+        private readonly IDb _metadataDb;
 
         private SyncStatusList _syncStatusList;
         private long _pivotNumber;
         private long _barrier;
+        private readonly long? _barrierWhenStarted;
 
         private bool ShouldFinish => !_syncConfig.DownloadReceiptsInFastSync || AllDownloaded;
         private bool AllDownloaded => _receiptStorage.LowestInsertedReceiptBlockNumber <= _barrier
@@ -58,6 +62,7 @@ namespace Nethermind.Synchronization.FastBlocks
             ISyncPeerPool syncPeerPool,
             ISyncConfig syncConfig,
             ISyncReport syncReport,
+            IDb metadataDb,
             ILogManager logManager)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
@@ -67,6 +72,7 @@ namespace Nethermind.Synchronization.FastBlocks
             _syncConfig = syncConfig ?? throw new ArgumentNullException(nameof(syncConfig));
             _syncReport = syncReport ?? throw new ArgumentNullException(nameof(syncReport));
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
+            _metadataDb = metadataDb ?? throw new ArgumentNullException(nameof(metadataDb));
 
             if (!_syncConfig.FastBlocks)
             {
@@ -84,6 +90,21 @@ namespace Nethermind.Synchronization.FastBlocks
                 _barrier = _syncConfig.AncientReceiptsBarrierCalc;
                 if (_logger.IsInfo) _logger.Info($"Changed pivot in receipts sync. Now using pivot {_pivotNumber} and barrier {_barrier}");
                 ResetSyncStatusList();
+                if (specProvider.ChainId != BlockchainIds.Mainnet)
+                    return;
+
+                if (_receiptStorage.LowestInsertedReceiptBlockNumber is null)
+                {
+                    if (!_metadataDb.KeyExists(MetadataDbKeys.ReceiptsBarrierWhenStarted))
+                    {
+                        _barrierWhenStarted = _syncConfig.AncientReceiptsBarrier;
+                        _metadataDb.Set(MetadataDbKeys.ReceiptsBarrierWhenStarted, _barrierWhenStarted.Value.ToBigEndianByteArrayWithoutLeadingZeros());
+                    }
+                }
+                if (_metadataDb.KeyExists(MetadataDbKeys.ReceiptsBarrierWhenStarted))
+                {
+                    _barrierWhenStarted = _metadataDb.Get(MetadataDbKeys.ReceiptsBarrierWhenStarted).ToLongFromBigEndianByteArrayWithoutLeadingZeros();
+                }
             }
 
             base.InitializeFeed();
