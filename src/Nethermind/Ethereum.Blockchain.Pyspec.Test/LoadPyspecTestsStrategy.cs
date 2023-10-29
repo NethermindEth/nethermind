@@ -33,9 +33,9 @@ public class LoadPyspecTestsStrategy : ITestLoadStrategy
         if (!Directory.Exists(testsDirectoryName))
         {
             HttpClient httpClient = new();
-            HttpResponseMessage response = httpClient.GetAsync(string.Format(Constants.ARCHIVE_URL_TEMPLATE, archiveVersion, archiveName)).Result;
+            HttpResponseMessage response = httpClient.GetAsync(string.Format(Constants.ARCHIVE_URL_TEMPLATE, archiveVersion, archiveName)).GetAwaiter().GetResult();
             response.EnsureSuccessStatusCode();
-            using Stream contentStream = response.Content.ReadAsStreamAsync().Result;
+            using Stream contentStream = response.Content.ReadAsStreamAsync().GetAwaiter().GetResult();
             using TarArchive archive = TarArchive.Open(contentStream);
             archive.ExtractToDirectory(testsDirectoryName);
         }
