@@ -526,28 +526,28 @@ internal class PathDataCacheInstance
     public NodeData? GetNodeDataAtRoot(Keccak? rootHash, Span<byte> path)
     {
         rootHash ??= _lastState.BlockStateRoot;
-            StateId localState = FindState(rootHash);
-            if (localState is not null)
+        StateId localState = FindState(rootHash);
+        if (localState is not null)
+        {
+            PathDataAtState? latestDataHeld = null;
+            if (_historyByPath.TryGetValue(path, out PathDataHistory pathHistory))
             {
-                PathDataAtState? latestDataHeld = null;
-                if (_historyByPath.TryGetValue(path, out PathDataHistory pathHistory))
-                {
-                    latestDataHeld = pathHistory.GetLatestUntil(localState.Id);
-                }
-
-                if (WasRemovedAfter(path, latestDataHeld?.StateId ?? -1))
-                {
-                    Pruning.Metrics.LoadedFromCacheNodesCount++;
-                    return new NodeData(null, Keccak.OfAnEmptySequenceRlp);
-                }
-
-                if (latestDataHeld is not null)
-                {
-                    Pruning.Metrics.LoadedFromCacheNodesCount++;
-                    return latestDataHeld.Data;
-                }
+                latestDataHeld = pathHistory.GetLatestUntil(localState.Id);
             }
-            return _parentInstance?.GetNodeDataAtRoot(_parentStateId?.BlockStateRoot, path);
+
+            if (WasRemovedAfter(path, latestDataHeld?.StateId ?? -1))
+            {
+                Pruning.Metrics.LoadedFromCacheNodesCount++;
+                return new NodeData(null, Keccak.OfAnEmptySequenceRlp);
+            }
+
+            if (latestDataHeld is not null)
+            {
+                Pruning.Metrics.LoadedFromCacheNodesCount++;
+                return latestDataHeld.Data;
+            }
+        }
+        return _parentInstance?.GetNodeDataAtRoot(_parentStateId?.BlockStateRoot, path);
     }
 
     public NodeData? GetNodeData(Span<byte> path, Keccak? hash)
@@ -556,7 +556,16 @@ internal class PathDataCacheInstance
         if (_historyByPath.TryGetValue(path, out PathDataHistory history))
             data = history.Get(hash)?.Data;
 
-        return data is null ? (_parentInstance?.GetNodeData(path, hash, _parentStateId)) : data;
+        if (data is null)
+        {
+            foreach (PathDataCacheInstance branch in _branches)
+            {
+                data = branch.GetNodeData(path, hash);
+                if (data is not null)
+                    break;
+            }
+        }
+        return data;
     }
 
     private NodeData? GetNodeData(Span<byte> path, Keccak? hash, StateId? highestStateId)
@@ -954,15 +963,20 @@ public class PathDataCache : IPathDataCache
 
     public NodeData? GetNodeData(Span<byte> path, Keccak? hash)
     {
-        if (_openedInstance is not null)
-            return _openedInstance.GetNodeData(path, hash);
-
         NodeData? data = null;
-        foreach (PathDataCacheInstance instance in _mains)
+        if (_openedInstance is not null)
         {
-            data = instance.GetNodeData(path, hash);
-            if (data is not null)
-                break;
+            data = _openedInstance.GetNodeData(path, hash);
+        }
+
+        if (data is null)
+        {
+            foreach (PathDataCacheInstance instance in _mains)
+            {
+                data = instance.GetNodeData(path, hash);
+                if (data is not null)
+                    break;
+            }
         }
         return data;
     }
