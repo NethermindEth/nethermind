@@ -172,9 +172,9 @@ namespace Nethermind.Synchronization.FastBlocks
             }
             catch (Exception)
             {
-                foreach (BlockInfo batchInfo in batch.Infos)
+                foreach (BlockInfo? batchInfo in batch.Infos)
                 {
-                    if (batchInfo == null) break;
+                    if (batchInfo is null) break;
                     _syncStatusList.MarkPending(batchInfo);
                 }
 
