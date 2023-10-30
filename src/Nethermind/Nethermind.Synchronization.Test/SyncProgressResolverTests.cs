@@ -93,7 +93,7 @@ namespace Nethermind.Synchronization.Test
             BlockHeader suggested = Build.A.BlockHeader.WithNumber(6).WithStateRoot(TestItem.KeccakB).TestObject;
             blockTree.Head.Returns(head);
             blockTree.BestSuggestedHeader.Returns(suggested);
-            blockTree.FindHeader(Arg.Any<Keccak>(), BlockTreeLookupOptions.TotalDifficultyNotNeeded).Returns(head.Header);
+            blockTree.FindHeader(Arg.Any<Hash256>(), BlockTreeLookupOptions.TotalDifficultyNotNeeded).Returns(head.Header);
 
             stateDb[head.StateRoot!.Bytes] = new byte[] { 1 };
             stateDb[suggested.StateRoot!.Bytes] = new byte[] { 1 };
@@ -117,7 +117,7 @@ namespace Nethermind.Synchronization.Test
             BlockHeader suggested = Build.A.BlockHeader.WithNumber(6).WithStateRoot(TestItem.KeccakB).TestObject;
             blockTree.Head.Returns(head);
             blockTree.BestSuggestedHeader.Returns(suggested);
-            blockTree.FindHeader(Arg.Any<Keccak>(), BlockTreeLookupOptions.TotalDifficultyNotNeeded).Returns(head.Header);
+            blockTree.FindHeader(Arg.Any<Hash256>(), BlockTreeLookupOptions.TotalDifficultyNotNeeded).Returns(head.Header);
             stateDb[head.StateRoot!.Bytes] = new byte[] { 1 };
             stateDb[suggested.StateRoot!.Bytes] = null;
             Assert.That(syncProgressResolver.FindBestFullState(), Is.EqualTo(head.Number));

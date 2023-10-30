@@ -18,16 +18,16 @@ public class EnrResponseMsg : DiscoveryMsg
 
     public NodeRecord NodeRecord { get; }
 
-    public Keccak RequestKeccak { get; set; }
+    public Hash256 RequestKeccak { get; set; }
 
-    public EnrResponseMsg(IPEndPoint farAddress, NodeRecord nodeRecord, Keccak requestKeccak)
+    public EnrResponseMsg(IPEndPoint farAddress, NodeRecord nodeRecord, Hash256 requestKeccak)
         : base(farAddress, MaxTime)
     {
         NodeRecord = nodeRecord;
         RequestKeccak = requestKeccak;
     }
 
-    public EnrResponseMsg(PublicKey farPublicKey, NodeRecord nodeRecord, Keccak requestKeccak)
+    public EnrResponseMsg(PublicKey farPublicKey, NodeRecord nodeRecord, Hash256 requestKeccak)
         : base(farPublicKey, MaxTime)
     {
         NodeRecord = nodeRecord;

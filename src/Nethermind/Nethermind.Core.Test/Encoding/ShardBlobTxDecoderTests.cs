@@ -60,7 +60,7 @@ public partial class ShardBlobTxDecoderTests
     }
 
     [TestCaseSource(nameof(ShardBlobTxTests))]
-    public void NetworkWrapper_is_decoded_correctly(string rlp, Keccak signedHash, RlpBehaviors rlpBehaviors)
+    public void NetworkWrapper_is_decoded_correctly(string rlp, Hash256 signedHash, RlpBehaviors rlpBehaviors)
     {
         RlpStream incomingTxRlp = Bytes.FromHexString(rlp).AsRlpStream();
         byte[] spanIncomingTxRlp = Bytes.FromHexString(rlp);

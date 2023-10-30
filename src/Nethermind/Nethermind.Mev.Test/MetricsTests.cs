@@ -60,7 +60,7 @@ namespace Nethermind.Mev.Test
         public void Should_count_valid_megabundles()
         {
             var ecdsa = Substitute.For<IEthereumEcdsa>();
-            ecdsa.RecoverAddress(Arg.Any<Signature>(), Arg.Any<Keccak>()).Returns(TestItem.AddressB);
+            ecdsa.RecoverAddress(Arg.Any<Signature>(), Arg.Any<Hash256>()).Returns(TestItem.AddressB);
 
             TestBundlePool bundlePool = CreateTestBundlePool(ecdsa);
 

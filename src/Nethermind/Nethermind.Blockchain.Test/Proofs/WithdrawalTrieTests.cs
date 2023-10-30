@@ -36,7 +36,7 @@ public class WithdrawalTrieTests
         }
     }
 
-    private static bool VerifyProof(byte[][] proof, Keccak root)
+    private static bool VerifyProof(byte[][] proof, Hash256 root)
     {
         for (var i = proof.Length - 1; i >= 0; i--)
         {

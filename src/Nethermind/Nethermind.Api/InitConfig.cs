@@ -27,10 +27,11 @@ namespace Nethermind.Api
         public bool StoreReceipts { get; set; } = true;
         public bool ReceiptsMigration { get; set; } = false;
         public DiagnosticMode DiagnosticMode { get; set; } = DiagnosticMode.None;
-        public DumpOptions AutoDump { get; set; } = DumpOptions.Receipts;
+        public DumpOptions AutoDump { get; set; } = DumpOptions.Default;
 
         public string RpcDbUrl { get; set; } = String.Empty;
         public long? MemoryHint { get; set; }
+        public bool DisableGcOnNewPayload { get; set; } = true;
         public bool DisableMallocOpts { get; set; } = false;
 
         [Obsolete("Use DiagnosticMode with MemDb instead")]

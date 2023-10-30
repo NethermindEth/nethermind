@@ -37,7 +37,7 @@ public partial class EngineRpcModule : IEngineRpcModule
     public async Task<ResultWrapper<PayloadStatusV1>> engine_newPayloadV1(ExecutionPayload executionPayload)
         => await NewPayload(executionPayload, EngineApiVersions.Paris);
 
-    private async Task<ResultWrapper<ForkchoiceUpdatedV1Result>> ForkchoiceUpdated(ForkchoiceStateV1 forkchoiceState, PayloadAttributes? payloadAttributes, int version)
+    protected async Task<ResultWrapper<ForkchoiceUpdatedV1Result>> ForkchoiceUpdated(ForkchoiceStateV1 forkchoiceState, PayloadAttributes? payloadAttributes, int version)
     {
         if (await _locker.WaitAsync(_timeout))
         {
@@ -60,7 +60,7 @@ public partial class EngineRpcModule : IEngineRpcModule
         }
     }
 
-    private async Task<ResultWrapper<PayloadStatusV1>> NewPayload(IExecutionPayloadParams executionPayloadParams, int version)
+    protected async Task<ResultWrapper<PayloadStatusV1>> NewPayload(IExecutionPayloadParams executionPayloadParams, int version)
     {
         ExecutionPayload executionPayload = executionPayloadParams.ExecutionPayload;
 

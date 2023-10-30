@@ -61,7 +61,7 @@ namespace Nethermind.Synchronization.Test.FastSync
                     .ToDictionary(b => b!.Hash!, b => b!);
             }
 
-            public Dictionary<Keccak, Block> BlocksByHash { get; }
+            public Dictionary<Hash256, Block> BlocksByHash { get; }
             public Block?[] Blocks { get; }
             public Block? LowestInsertedBody { get; }
         }
@@ -271,11 +271,11 @@ namespace Nethermind.Synchronization.Test.FastSync
 
             _blockTree.FindBlock(Keccak.Zero, BlockTreeLookupOptions.None)
                 .ReturnsForAnyArgs(ci =>
-                    scenario.BlocksByHash.TryGetValue(ci.Arg<Keccak>(), out Block? value) ? value : null);
+                    scenario.BlocksByHash.TryGetValue(ci.Arg<Hash256>(), out Block? value) ? value : null);
 
             _blockTree.FindHeader(Keccak.Zero, BlockTreeLookupOptions.None)
                 .ReturnsForAnyArgs(ci =>
-                    scenario.BlocksByHash.TryGetValue(ci.Arg<Keccak>(), out Block? value) ? value.Header
+                    scenario.BlocksByHash.TryGetValue(ci.Arg<Hash256>(), out Block? value) ? value.Header
                         : null);
 
             _receiptStorage.LowestInsertedReceiptBlockNumber.Returns((long?)null);

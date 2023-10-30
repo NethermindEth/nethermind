@@ -57,7 +57,7 @@ namespace Nethermind.Synchronization.Test
                 ClientId = description;
             }
 
-            public Keccak HeadHash { get; set; } = null!;
+            public Hash256 HeadHash { get; set; } = null!;
             public byte ProtocolVersion { get; } = default;
             public string ProtocolCode { get; } = null!;
             public Node Node { get; }
@@ -74,7 +74,7 @@ namespace Nethermind.Synchronization.Test
                 DisconnectRequested = true;
             }
 
-            public Task<OwnedBlockBodies> GetBlockBodies(IReadOnlyList<Keccak> blockHashes, CancellationToken token)
+            public Task<OwnedBlockBodies> GetBlockBodies(IReadOnlyList<Hash256> blockHashes, CancellationToken token)
             {
                 return Task.FromResult(new OwnedBlockBodies(Array.Empty<BlockBody>()));
             }
@@ -84,12 +84,12 @@ namespace Nethermind.Synchronization.Test
                 return Task.FromResult(Array.Empty<BlockHeader>());
             }
 
-            public Task<BlockHeader[]> GetBlockHeaders(Keccak startHash, int maxBlocks, int skip, CancellationToken token)
+            public Task<BlockHeader[]> GetBlockHeaders(Hash256 startHash, int maxBlocks, int skip, CancellationToken token)
             {
                 return Task.FromResult(Array.Empty<BlockHeader>());
             }
 
-            public async Task<BlockHeader?> GetHeadBlockHeader(Keccak? hash, CancellationToken token)
+            public async Task<BlockHeader?> GetHeadBlockHeader(Hash256? hash, CancellationToken token)
             {
                 if (_shouldFail)
                 {
@@ -118,12 +118,12 @@ namespace Nethermind.Synchronization.Test
 
             public void SendNewTransactions(IEnumerable<Transaction> txs, bool sendFullTx) { }
 
-            public Task<TxReceipt[]?[]> GetReceipts(IReadOnlyList<Keccak> blockHash, CancellationToken token)
+            public Task<TxReceipt[]?[]> GetReceipts(IReadOnlyList<Hash256> blockHash, CancellationToken token)
             {
                 return Task.FromResult(Array.Empty<TxReceipt[]?>());
             }
 
-            public Task<byte[][]> GetNodeData(IReadOnlyList<Keccak> hashes, CancellationToken token)
+            public Task<byte[][]> GetNodeData(IReadOnlyList<Hash256> hashes, CancellationToken token)
             {
                 return Task.FromResult(Array.Empty<byte[]>());
             }

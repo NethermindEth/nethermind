@@ -14,7 +14,7 @@ namespace Nethermind.Blockchain.Synchronization
 {
     public interface IWitnessPeer
     {
-        Task<Keccak[]> GetBlockWitnessHashes(Keccak blockHash, CancellationToken token);
+        Task<Hash256[]> GetBlockWitnessHashes(Hash256 blockHash, CancellationToken token);
     }
 
     public interface ISyncPeer : ITxPoolPeer, IPeerWithSatelliteProtocol
@@ -24,19 +24,19 @@ namespace Nethermind.Blockchain.Synchronization
         string Name { get; }
         string ClientId => Node?.ClientId;
         NodeClientType ClientType => Node?.ClientType ?? NodeClientType.Unknown;
-        Keccak HeadHash { get; set; }
+        Hash256 HeadHash { get; set; }
         UInt256 TotalDifficulty { get; set; }
         bool IsInitialized { get; set; }
         bool IsPriority { get; set; }
         byte ProtocolVersion { get; }
         string ProtocolCode { get; }
         void Disconnect(DisconnectReason reason, string details);
-        Task<OwnedBlockBodies> GetBlockBodies(IReadOnlyList<Keccak> blockHashes, CancellationToken token);
+        Task<OwnedBlockBodies> GetBlockBodies(IReadOnlyList<Hash256> blockHashes, CancellationToken token);
         Task<BlockHeader[]> GetBlockHeaders(long number, int maxBlocks, int skip, CancellationToken token);
-        Task<BlockHeader[]> GetBlockHeaders(Keccak startHash, int maxBlocks, int skip, CancellationToken token);
-        Task<BlockHeader?> GetHeadBlockHeader(Keccak? hash, CancellationToken token);
+        Task<BlockHeader[]> GetBlockHeaders(Hash256 startHash, int maxBlocks, int skip, CancellationToken token);
+        Task<BlockHeader?> GetHeadBlockHeader(Hash256? hash, CancellationToken token);
         void NotifyOfNewBlock(Block block, SendBlockMode mode);
-        Task<TxReceipt[]?[]> GetReceipts(IReadOnlyList<Keccak> blockHash, CancellationToken token);
-        Task<byte[][]> GetNodeData(IReadOnlyList<Keccak> hashes, CancellationToken token);
+        Task<TxReceipt[]?[]> GetReceipts(IReadOnlyList<Hash256> blockHash, CancellationToken token);
+        Task<byte[][]> GetNodeData(IReadOnlyList<Hash256> hashes, CancellationToken token);
     }
 }

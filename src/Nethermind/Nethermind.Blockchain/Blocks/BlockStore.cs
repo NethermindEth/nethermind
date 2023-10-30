@@ -19,7 +19,7 @@ public class BlockStore : IBlockStore
     private readonly BlockDecoder _blockDecoder = new();
     private const int CacheSize = 128 + 32;
 
-    private readonly LruCache<ValueKeccak, Block>
+    private readonly LruCache<ValueHash256, Block>
         _blockCache = new(CacheSize, CacheSize, "blocks");
 
     public BlockStore(IDb blockDb)
@@ -42,7 +42,7 @@ public class BlockStore : IBlockStore
         return _blockDb.Get(key);
     }
 
-    public void Insert(Block block)
+    public void Insert(Block block, WriteFlags writeFlags = WriteFlags.None)
     {
         if (block.Hash is null)
         {
@@ -53,30 +53,30 @@ public class BlockStore : IBlockStore
         // by avoiding encoding back to RLP here (allocations measured on a sample 3M blocks Goerli fast sync
         using NettyRlpStream newRlp = _blockDecoder.EncodeToNewNettyStream(block);
 
-        _blockDb.Set(block.Number, block.Hash, newRlp.AsSpan());
+        _blockDb.Set(block.Number, block.Hash, newRlp.AsSpan(), writeFlags);
     }
 
-    private static void GetBlockNumPrefixedKey(long blockNumber, Keccak blockHash, Span<byte> output)
+    private static void GetBlockNumPrefixedKey(long blockNumber, Hash256 blockHash, Span<byte> output)
     {
         blockNumber.WriteBigEndian(output);
         blockHash!.Bytes.CopyTo(output[8..]);
     }
 
-    public void Delete(long blockNumber, Keccak blockHash)
+    public void Delete(long blockNumber, Hash256 blockHash)
     {
         _blockCache.Delete(blockHash);
         _blockDb.Delete(blockNumber, blockHash);
         _blockDb.Remove(blockHash.Bytes);
     }
 
-    public Block? Get(long blockNumber, Keccak blockHash, bool shouldCache = false)
+    public Block? Get(long blockNumber, Hash256 blockHash, bool shouldCache = false)
     {
         Block? b = _blockDb.Get(blockNumber, blockHash, _blockDecoder, _blockCache, shouldCache);
         if (b != null) return b;
         return _blockDb.Get(blockHash, _blockDecoder, _blockCache, shouldCache);
     }
 
-    public ReceiptRecoveryBlock? GetReceiptRecoveryBlock(long blockNumber, Keccak blockHash)
+    public ReceiptRecoveryBlock? GetReceiptRecoveryBlock(long blockNumber, Hash256 blockHash)
     {
         Span<byte> keyWithBlockNumber = stackalloc byte[40];
         GetBlockNumPrefixedKey(blockNumber, blockHash, keyWithBlockNumber);

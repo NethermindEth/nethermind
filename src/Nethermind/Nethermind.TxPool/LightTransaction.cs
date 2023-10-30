@@ -41,7 +41,7 @@ public class LightTransaction : Transaction
         UInt256 timestamp,
         Address sender,
         UInt256 nonce,
-        Keccak hash,
+        Hash256 hash,
         UInt256 value,
         long gasLimit,
         UInt256 gasPrice,

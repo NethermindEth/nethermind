@@ -161,7 +161,7 @@ namespace Nethermind.Blockchain.Test
                     tx.MaxFeePerBlobGas = 1;
                 });
                 maxTransactionsSelected.Transactions[1].BlobVersionedHashes =
-                    new byte[Eip4844Constants.MaxBlobGasPerTransaction / Eip4844Constants.BlobGasPerBlob - 1][];
+                    new byte[Eip4844Constants.MaxBlobGasPerTransaction / Eip4844Constants.GasPerBlob - 1][];
                 maxTransactionsSelected.ExpectedSelectedTransactions.AddRange(
                     maxTransactionsSelected.Transactions.OrderBy(t => t.Nonce).Take(2));
                 yield return new TestCaseData(maxTransactionsSelected).SetName("Enough transactions selected");
@@ -175,7 +175,7 @@ namespace Nethermind.Blockchain.Test
                     enoughTransactionsSelected.Transactions.OrderBy(t => t.Nonce).ToArray();
                 expectedSelectedTransactions[0].Type = TxType.Blob;
                 expectedSelectedTransactions[0].BlobVersionedHashes =
-                    new byte[Eip4844Constants.MaxBlobGasPerTransaction / Eip4844Constants.BlobGasPerBlob][];
+                    new byte[Eip4844Constants.MaxBlobGasPerTransaction / Eip4844Constants.GasPerBlob][];
                 expectedSelectedTransactions[0].MaxFeePerBlobGas = 1;
                 expectedSelectedTransactions[1].Type = TxType.Blob;
                 expectedSelectedTransactions[1].BlobVersionedHashes = new byte[1][];
@@ -246,7 +246,7 @@ namespace Nethermind.Blockchain.Test
             transactionPool.GetPendingLightBlobTransactionsBySender().Returns(blobTransactions);
             foreach (Transaction blobTx in blobTransactions.SelectMany(kvp => kvp.Value))
             {
-                transactionPool.TryGetPendingBlobTransaction(Arg.Is<Keccak>(h => h == blobTx.Hash),
+                transactionPool.TryGetPendingBlobTransaction(Arg.Is<Hash256>(h => h == blobTx.Hash),
                     out Arg.Any<Transaction?>()).Returns(x =>
                 {
                     x[1] = blobTx;

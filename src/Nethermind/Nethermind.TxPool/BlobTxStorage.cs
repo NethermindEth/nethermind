@@ -33,7 +33,7 @@ public class BlobTxStorage : ITxStorage
         _lightBlobTxsDb = database.GetColumnDb(BlobTxsColumns.LightBlobTxs);
     }
 
-    public bool TryGet(in ValueKeccak hash, Address sender, in UInt256 timestamp, [NotNullWhen(true)] out Transaction? transaction)
+    public bool TryGet(in ValueHash256 hash, Address sender, in UInt256 timestamp, [NotNullWhen(true)] out Transaction? transaction)
     {
         Span<byte> txHashPrefixed = stackalloc byte[64];
         GetHashPrefixedByTimestamp(timestamp, hash, txHashPrefixed);
@@ -72,7 +72,7 @@ public class BlobTxStorage : ITxStorage
         _lightBlobTxsDb.Set(transaction.Hash, _lightTxDecoder.Encode(transaction));
     }
 
-    public void Delete(in ValueKeccak hash, in UInt256 timestamp)
+    public void Delete(in ValueHash256 hash, in UInt256 timestamp)
     {
         Span<byte> txHashPrefixed = stackalloc byte[64];
         GetHashPrefixedByTimestamp(timestamp, hash, txHashPrefixed);
@@ -107,7 +107,7 @@ public class BlobTxStorage : ITxStorage
         return false;
     }
 
-    private void GetHashPrefixedByTimestamp(UInt256 timestamp, ValueKeccak hash, Span<byte> txHashPrefixed)
+    private void GetHashPrefixedByTimestamp(UInt256 timestamp, ValueHash256 hash, Span<byte> txHashPrefixed)
     {
         timestamp.WriteBigEndian(txHashPrefixed);
         hash.Bytes.CopyTo(txHashPrefixed[32..]);

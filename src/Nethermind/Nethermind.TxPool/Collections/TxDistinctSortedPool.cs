@@ -16,7 +16,7 @@ using Nethermind.TxPool.Comparison;
 
 namespace Nethermind.TxPool.Collections
 {
-    public class TxDistinctSortedPool : DistinctValueSortedPool<ValueKeccak, Transaction, Address>
+    public class TxDistinctSortedPool : DistinctValueSortedPool<ValueHash256, Transaction, Address>
     {
         private readonly List<Transaction> _transactionsToRemove = new();
         protected int _poolCapacity;
@@ -35,7 +35,7 @@ namespace Nethermind.TxPool.Collections
         protected override IComparer<Transaction> GetReplacementComparer(IComparer<Transaction> comparer) => comparer.GetReplacementComparer();
 
         protected override Address MapToGroup(Transaction value) => value.MapTxToGroup() ?? throw new ArgumentException("MapTxToGroup() returned null!");
-        protected override ValueKeccak GetKey(Transaction value) => value.Hash!;
+        protected override ValueHash256 GetKey(Transaction value) => value.Hash!;
 
         protected override void UpdateGroup(Address groupKey, EnhancedSortedSet<Transaction> bucket, Func<Address, IReadOnlySortedSet<Transaction>, IEnumerable<(Transaction Tx, Action<Transaction>? Change)>> changingElements)
         {
