@@ -52,6 +52,8 @@ namespace Nethermind.Db
                     _wrapped.PutSpan(key, Compress(value, stackalloc byte[value.Length]), flags);
                 }
 
+                public bool PreferWriteByArray => _wrapped.PreferWriteByArray;
+
                 public byte[]? this[ReadOnlySpan<byte> key]
                 {
                     set => _wrapped[key] = Compress(value);
@@ -162,6 +164,8 @@ namespace Nethermind.Db
                 // from DB, it would crash on DangerouslyReleaseMemory.
                 return Decompress(Get(key, flags));
             }
+
+            public bool PreferWriteByArray => _wrapped.PreferWriteByArray;
 
             public void Tune(ITunableDb.TuneType type)
             {
