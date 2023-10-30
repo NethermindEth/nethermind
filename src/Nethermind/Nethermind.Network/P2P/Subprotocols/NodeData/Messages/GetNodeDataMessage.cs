@@ -11,7 +11,7 @@ public class GetNodeDataMessage : Eth.V63.Messages.GetNodeDataMessage
     public override int PacketType { get; } = NodeDataMessageCode.GetNodeData;
     public override string Protocol { get; } = "nodedata";
 
-    public GetNodeDataMessage(IReadOnlyList<Keccak> keys)
+    public GetNodeDataMessage(IReadOnlyList<Hash256> keys)
         : base(keys)
     {
     }

@@ -19,7 +19,7 @@ public class GetNodeDataMessageTests
     [Test]
     public void Sets_values_from_constructor_argument()
     {
-        Keccak[] keys = { TestItem.KeccakA, TestItem.KeccakB };
+        Hash256[] keys = { TestItem.KeccakA, TestItem.KeccakB };
         GetNodeDataMessage message = new(keys);
         keys.Should().BeEquivalentTo(message.Hashes);
     }
@@ -33,14 +33,14 @@ public class GetNodeDataMessageTests
     [Test]
     public void To_string()
     {
-        GetNodeDataMessage message = new(new List<Keccak>());
+        GetNodeDataMessage message = new(new List<Hash256>());
         _ = message.ToString();
     }
 
     [Test]
     public void Packet_type_and_protocol_are_correct()
     {
-        Keccak[] keys = { TestItem.KeccakA, TestItem.KeccakB };
+        Hash256[] keys = { TestItem.KeccakA, TestItem.KeccakB };
         GetNodeDataMessage message = new(keys);
 
         message.PacketType.Should().Be(NodeDataMessageCode.GetNodeData);

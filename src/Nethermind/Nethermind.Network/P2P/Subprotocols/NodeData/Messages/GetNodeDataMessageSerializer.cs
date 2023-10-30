@@ -11,7 +11,7 @@ public class GetNodeDataMessageSerializer : HashesMessageSerializer<GetNodeDataM
 {
     public override GetNodeDataMessage Deserialize(IByteBuffer byteBuffer)
     {
-        Keccak[] keys = DeserializeHashes(byteBuffer);
+        Hash256[] keys = DeserializeHashes(byteBuffer);
         return new GetNodeDataMessage(keys);
     }
 }

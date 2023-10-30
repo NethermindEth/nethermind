@@ -103,7 +103,7 @@ public class NodeDataProtocolHandler : ZeroProtocolHandlerBase, INodeDataPeer
         _nodeDataRequests.Handle(msg.Data, size);
     }
 
-    public async Task<byte[][]> GetNodeData(IReadOnlyList<Keccak> keys, CancellationToken token)
+    public async Task<byte[][]> GetNodeData(IReadOnlyList<Hash256> keys, CancellationToken token)
     {
         if (keys.Count == 0)
         {

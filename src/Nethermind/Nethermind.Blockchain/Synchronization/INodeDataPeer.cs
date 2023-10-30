@@ -10,5 +10,5 @@ namespace Nethermind.Blockchain.Synchronization;
 
 public interface INodeDataPeer
 {
-    Task<byte[][]> GetNodeData(IReadOnlyList<Keccak> hashes, CancellationToken token);
+    Task<byte[][]> GetNodeData(IReadOnlyList<Hash256> hashes, CancellationToken token);
 }
