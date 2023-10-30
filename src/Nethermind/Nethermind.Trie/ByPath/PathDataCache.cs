@@ -693,9 +693,8 @@ internal class PathDataCacheInstance
             childOfPersisted.ParentBlock = null;
         else
             _lastState = null;
-
-        _branches.Clear();
     }
+
     private void ProcessDestroyed(StateId stateId)
     {
         List<byte[]> paths = _removedPrefixes.Where(kvp => kvp.Value.Exists(st => st <= stateId.Id)).Select(kvp => kvp.Key).ToList();
@@ -897,6 +896,7 @@ public class PathDataCache : IPathDataCache
         }
 
         _openedInstance = GetCacheInstanceForState(parentStateRoot);
+        _logger.Info($"Opening context for {parentStateRoot}");
     }
 
     public void CloseContext(long blockNumber, Keccak newStatRoot)
@@ -925,7 +925,7 @@ public class PathDataCache : IPathDataCache
 
         _openedInstance = null;
 
-        LogCache("Cache at end of CloseContext");
+        LogCache($"Cache at end of CloseContext block {blockNumber} new state root: {newStatRoot}");
         
     }
 
@@ -965,9 +965,7 @@ public class PathDataCache : IPathDataCache
     {
         NodeData? data = null;
         if (_openedInstance is not null)
-        {
             data = _openedInstance.GetNodeData(path, hash);
-        }
 
         if (data is null)
         {
