@@ -6,6 +6,7 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Threading;
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 
 namespace Nethermind.Db.FullPruning
@@ -59,6 +60,17 @@ namespace Nethermind.Db.FullPruning
             return value;
         }
 
+        public Span<byte> GetSpan(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
+        {
+            Span<byte> value = _currentDb.GetSpan(key, flags); // we are reading from the main DB
+            if (!value.IsNull() && _pruningContext?.DuplicateReads == true)
+            {
+                Duplicate(_pruningContext.CloningDb, key, value, WriteFlags.None);
+            }
+
+            return value;
+        }
+
         public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None)
         {
             _currentDb.Set(key, value, flags); // we are writing to the main DB
@@ -69,9 +81,25 @@ namespace Nethermind.Db.FullPruning
             }
         }
 
+        public void PutSpan(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags flags = WriteFlags.None)
+        {
+            _currentDb.PutSpan(key, value, flags); // we are writing to the main DB
+            IDb? cloningDb = _pruningContext?.CloningDb;
+            if (cloningDb is not null) // if pruning is in progress we are also writing to the secondary, copied DB
+            {
+                Duplicate(cloningDb, key, value, flags);
+            }
+        }
+
         private void Duplicate(IWriteOnlyKeyValueStore db, ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags)
         {
             db.Set(key, value, flags);
+            _updateDuplicateWriteMetrics?.Invoke();
+        }
+
+        private void Duplicate(IWriteOnlyKeyValueStore db, ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags flags)
+        {
+            db.PutSpan(key, value, flags);
             _updateDuplicateWriteMetrics?.Invoke();
         }
 
