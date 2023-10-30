@@ -10,7 +10,6 @@ using Nethermind.Consensus.Comparers;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
-using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.Int256;
@@ -29,19 +28,22 @@ namespace Nethermind.Consensus.Producers
         private readonly ITxFilterPipeline _txFilterPipeline;
         private readonly ISpecProvider _specProvider;
         protected readonly ILogger _logger;
+        private readonly IEip4844Config _eip4844Config;
 
         public TxPoolTxSource(
             ITxPool? transactionPool,
             ISpecProvider? specProvider,
             ITransactionComparerProvider? transactionComparerProvider,
             ILogManager? logManager,
-            ITxFilterPipeline? txFilterPipeline)
+            ITxFilterPipeline? txFilterPipeline,
+            IEip4844Config? eip4844ConstantsProvider = null)
         {
             _transactionPool = transactionPool ?? throw new ArgumentNullException(nameof(transactionPool));
             _transactionComparerProvider = transactionComparerProvider ?? throw new ArgumentNullException(nameof(transactionComparerProvider));
             _txFilterPipeline = txFilterPipeline ?? throw new ArgumentNullException(nameof(txFilterPipeline));
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
             _logger = logManager?.GetClassLogger<TxPoolTxSource>() ?? throw new ArgumentNullException(nameof(logManager));
+            _eip4844Config = eip4844ConstantsProvider ?? ConstantEip4844Config.Instance;
         }
 
         public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit, PayloadAttributes? payloadAttributes = null)
@@ -60,7 +62,7 @@ namespace Nethermind.Consensus.Producers
 
             int checkedTransactions = 0;
             int selectedTransactions = 0;
-            using ArrayPoolList<Transaction> selectedBlobTxs = new(Eip4844Constants.GetMaxBlobsPerBlock());
+            using ArrayPoolList<Transaction> selectedBlobTxs = new(_eip4844Config.GetMaxBlobsPerBlock());
 
             SelectBlobTransactions(blobTransactions, parent, spec, selectedBlobTxs);
 
@@ -126,7 +128,7 @@ namespace Nethermind.Consensus.Producers
 
             foreach (Transaction blobTx in blobTransactions)
             {
-                if (blobGasCounter >= Eip4844Constants.MaxBlobGasPerBlock)
+                if (blobGasCounter >= _eip4844Config.MaxBlobGasPerBlock)
                 {
                     if (_logger.IsTrace) _logger.Trace($"Declining {blobTx.ToShortString()}, no more blob space. Block already have {blobGasCounter} blob gas which is max value allowed.");
                     break;
@@ -134,8 +136,8 @@ namespace Nethermind.Consensus.Producers
 
                 checkedBlobTransactions++;
 
-                ulong txBlobGas = (ulong)(blobTx.BlobVersionedHashes?.Length ?? 0) * Eip4844Constants.GasPerBlob;
-                if (txBlobGas > Eip4844Constants.MaxBlobGasPerBlock - blobGasCounter)
+                ulong txBlobGas = (ulong)(blobTx.BlobVersionedHashes?.Length ?? 0) * _eip4844Config.GasPerBlob;
+                if (txBlobGas > _eip4844Config.MaxBlobGasPerBlock - blobGasCounter)
                 {
                     if (_logger.IsTrace) _logger.Trace($"Declining {blobTx.ToShortString()}, not enough blob space.");
                     continue;
