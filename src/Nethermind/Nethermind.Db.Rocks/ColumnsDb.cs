@@ -44,7 +44,7 @@ public class ColumnsDb<T> : DbOnTheRocks, IColumnsDb<T> where T : struct, Enum
         options.SetCreateMissingColumnFamilies();
     }
 
-    public IDbWithSpan GetColumnDb(T key) => _columnDbs[key];
+    public IDb GetColumnDb(T key) => _columnDbs[key];
 
     public IEnumerable<T> ColumnKeys => _columnDbs.Keys;
 

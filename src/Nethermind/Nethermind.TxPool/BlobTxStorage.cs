@@ -68,7 +68,7 @@ public class BlobTxStorage : ITxStorage
         using NettyRlpStream rlpStream = new(byteBuffer);
         rlpStream.Encode(transaction, RlpBehaviors.InMempoolForm);
 
-        _fullBlobTxsDb.Set(txHashPrefixed, byteBuffer.AsSpan());
+        _fullBlobTxsDb.PutSpan(txHashPrefixed, byteBuffer.AsSpan());
         _lightBlobTxsDb.Set(transaction.Hash, _lightTxDecoder.Encode(transaction));
     }
 

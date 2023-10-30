@@ -51,8 +51,8 @@ namespace Nethermind.Init.Steps.Migrations
 
         private readonly IReceiptConfig _receiptConfig;
         private readonly IColumnsDb<ReceiptsColumns> _receiptsDb;
-        private readonly IDbWithSpan _txIndexDb;
-        private readonly IDbWithSpan _receiptsBlockDb;
+        private readonly IDb _txIndexDb;
+        private readonly IDb _receiptsBlockDb;
         private readonly IReceiptsRecovery _recovery;
 
         public ReceiptMigration(IApiWithNetwork api) : this(

@@ -64,6 +64,19 @@ namespace Nethermind.Store.Test
         }
 
         [Test]
+        public void EOAWithSPan()
+        {
+            Context ctx = new();
+
+            Rlp encoded = new AccountDecoder().Encode((Account)new(1));
+            ctx.Compressed.PutSpan(Key, encoded.Bytes);
+
+            CollectionAssert.AreEqual(encoded.Bytes, ctx.Compressed[Key]);
+            CollectionAssert.AreEqual(encoded.Bytes, ctx.Compressed.GetSpan(Key).ToArray());
+            ctx.Wrapped[Key]!.Length.Should().Be(5);
+        }
+
+        [Test]
         public void Backward_compatible_read()
         {
             Context ctx = new();

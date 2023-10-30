@@ -9,7 +9,7 @@ namespace Nethermind.Db
 {
     public class MemColumnsDb<TKey> : IColumnsDb<TKey> where TKey : struct, Enum
     {
-        private readonly IDictionary<TKey, IDbWithSpan> _columnDbs = new Dictionary<TKey, IDbWithSpan>();
+        private readonly IDictionary<TKey, IDb> _columnDbs = new Dictionary<TKey, IDb>();
 
         public MemColumnsDb(string _) : this(Enum.GetValues<TKey>())
         {
@@ -23,7 +23,7 @@ namespace Nethermind.Db
             }
         }
 
-        public IDbWithSpan GetColumnDb(TKey key) => !_columnDbs.TryGetValue(key, out var db) ? _columnDbs[key] = new MemDb() : db;
+        public IDb GetColumnDb(TKey key) => !_columnDbs.TryGetValue(key, out var db) ? _columnDbs[key] = new MemDb() : db;
         public IEnumerable<TKey> ColumnKeys => _columnDbs.Keys;
 
         public IReadOnlyColumnDb<TKey> CreateReadOnly(bool createInMemWriteStore)

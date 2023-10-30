@@ -4,6 +4,7 @@
 using System;
 using System.IO;
 using FluentAssertions;
+using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db.Rocks;
@@ -53,9 +54,9 @@ public class ColumnsDbTests
     [Test]
     public void SmokeTest()
     {
-        IDbWithSpan colA = _db.GetColumnDb(TestColumns.ColumnA);
-        IDbWithSpan colB = _db.GetColumnDb(TestColumns.ColumnB);
-        IDbWithSpan defaultCol = _db.GetColumnDb(TestColumns.Default);
+        IDb colA = _db.GetColumnDb(TestColumns.ColumnA);
+        IDb colB = _db.GetColumnDb(TestColumns.ColumnB);
+        IDb defaultCol = _db.GetColumnDb(TestColumns.Default);
 
         colA.Set(TestItem.KeccakA, TestItem.KeccakA.BytesToArray());
         colB.Set(TestItem.KeccakA, TestItem.KeccakB.BytesToArray());
@@ -69,7 +70,7 @@ public class ColumnsDbTests
     [Test]
     public void SmokeTestDefaultColumn()
     {
-        IDbWithSpan defaultCol = _db.GetColumnDb(TestColumns.Default);
+        IDb defaultCol = _db.GetColumnDb(TestColumns.Default);
 
         defaultCol.Get(TestItem.KeccakB).Should().BeNull();
         defaultCol.Set(TestItem.KeccakB, TestItem.KeccakC.BytesToArray());

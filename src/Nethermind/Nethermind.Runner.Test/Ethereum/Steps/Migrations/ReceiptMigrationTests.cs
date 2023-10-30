@@ -76,7 +76,7 @@ namespace Nethermind.Runner.Test.Ethereum.Steps.Migrations
             TxReceipt[] receipts = inMemoryReceiptStorage.Get(lastBlock);
             using (NettyRlpStream nettyStream = receiptArrayStorageDecoder.EncodeToNewNettyStream(receipts, RlpBehaviors.Storage))
             {
-                blocksDb.Set(Bytes.Concat(lastBlock.Number.ToBigEndianByteArray(), lastBlock.Hash.BytesToArray()), nettyStream.AsSpan());
+                ((IKeyValueStoreWithBatching)blocksDb).PutSpan(Bytes.Concat(lastBlock.Number.ToBigEndianByteArray(), lastBlock.Hash.BytesToArray()).AsSpan(), nettyStream.AsSpan());
             }
 
             ManualResetEvent guard = new(false);

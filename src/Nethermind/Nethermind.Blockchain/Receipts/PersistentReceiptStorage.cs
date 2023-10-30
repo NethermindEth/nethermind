@@ -25,8 +25,8 @@ namespace Nethermind.Blockchain.Receipts
         private readonly ISpecProvider _specProvider;
         private readonly IReceiptsRecovery _receiptsRecovery;
         private long? _lowestInsertedReceiptBlock;
-        private readonly IDbWithSpan _blocksDb;
-        private readonly IDbWithSpan _defaultColumn;
+        private readonly IDb _blocksDb;
+        private readonly IDb _defaultColumn;
         private readonly IDb _transactionDb;
         private static readonly Hash256 MigrationBlockNumberKey = Keccak.Compute(nameof(MigratedBlockNumber));
         private long _migratedBlockNumber;
@@ -278,7 +278,7 @@ namespace Nethermind.Blockchain.Receipts
                 Span<byte> blockNumPrefixed = stackalloc byte[40];
                 GetBlockNumPrefixedKey(blockNumber, block.Hash!, blockNumPrefixed);
 
-                _blocksDb.Set(blockNumPrefixed, stream.AsSpan());
+                _blocksDb.PutSpan(blockNumPrefixed, stream.AsSpan());
             }
 
             if (blockNumber < MigratedBlockNumber)

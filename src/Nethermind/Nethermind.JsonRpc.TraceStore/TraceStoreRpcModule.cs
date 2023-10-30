@@ -19,7 +19,7 @@ namespace Nethermind.JsonRpc.TraceStore;
 /// </summary>
 public class TraceStoreRpcModule : ITraceRpcModule
 {
-    private readonly IDbWithSpan _traceStore;
+    private readonly IDb _traceStore;
     private readonly ITraceRpcModule _traceModule;
     private readonly IBlockFinder _blockFinder;
     private readonly IReceiptFinder _receiptFinder;
@@ -35,7 +35,7 @@ public class TraceStoreRpcModule : ITraceRpcModule
     };
 
     public TraceStoreRpcModule(ITraceRpcModule traceModule,
-        IDbWithSpan traceStore,
+        IDb traceStore,
         IBlockFinder blockFinder,
         IReceiptFinder receiptFinder,
         ITraceSerializer<ParityLikeTxTrace> traceSerializer,

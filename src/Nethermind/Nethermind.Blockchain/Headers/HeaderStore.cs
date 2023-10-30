@@ -81,33 +81,20 @@ public class HeaderStore : IHeaderStore
 
     private long? GetBlockNumberFromBlockNumberDb(Hash256 blockHash)
     {
-        if (_blockNumberDb is IDbWithSpan spanDb)
+        Span<byte> numberSpan = _blockNumberDb.GetSpan(blockHash);
+        if (numberSpan.IsNullOrEmpty()) return null;
+        try
         {
-            Span<byte> numberSpan = spanDb.GetSpan(blockHash);
-            if (numberSpan.IsNullOrEmpty()) return null;
-            try
+            if (numberSpan.Length != 8)
             {
-                if (numberSpan.Length != 8)
-                {
-                    throw new InvalidDataException($"Unexpected number span length: {numberSpan.Length}");
-                }
+                throw new InvalidDataException($"Unexpected number span length: {numberSpan.Length}");
+            }
 
-                long num = BinaryPrimitives.ReadInt64BigEndian(numberSpan);
-                return num;
-            }
-            finally
-            {
-                spanDb.DangerousReleaseMemory(numberSpan);
-            }
+            return BinaryPrimitives.ReadInt64BigEndian(numberSpan);
         }
-
-        byte[] numberBytes = _blockNumberDb.Get(blockHash);
-        if (numberBytes == null) return null;
-        if (numberBytes.Length != 8)
+        finally
         {
-            throw new InvalidDataException($"Unexpected number span length: {numberBytes.Length}");
+            _blockNumberDb.DangerousReleaseMemory(numberSpan);
         }
-
-        return BinaryPrimitives.ReadInt64BigEndian(numberBytes);
     }
 }

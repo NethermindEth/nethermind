@@ -2,6 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
+using Nethermind.Core.Buffers;
+using Nethermind.Core.Extensions;
 
 namespace Nethermind.Core
 {
@@ -19,6 +22,16 @@ namespace Nethermind.Core
         byte[]? this[ReadOnlySpan<byte> key] => Get(key);
 
         byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None);
+
+        /// <summary>
+        /// Return span. Must call `DangerousReleaseMemory` or there can be some leak.
+        /// </summary>
+        /// <param name="key"></param>
+        /// <returns>Can return null or empty Span on missing key</returns>
+        Span<byte> GetSpan(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None) => Get(key, flags);
+
+        bool KeyExists(ReadOnlySpan<byte> key) => GetSpan(key).IsNull();
+        void DangerousReleaseMemory(in Span<byte> span) { }
     }
 
     public interface IWriteOnlyKeyValueStore
@@ -29,6 +42,14 @@ namespace Nethermind.Core
         }
 
         void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None);
+
+        /// <summary>
+        /// Some store keep the input array directly. (eg: CachingStore), and therefore passing the value by array
+        /// is preferable. Unless you plan to reuse the array somehow (pool), then you'd just use span.
+        /// </summary>
+        public bool PreferWriteByArray => false;
+        void PutSpan(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags flags = WriteFlags.None) => Set(key, value.ToArray(), flags);
+        void Remove(ReadOnlySpan<byte> key) => Set(key, null);
     }
 
     [Flags]

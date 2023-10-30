@@ -652,7 +652,7 @@ namespace Nethermind.Trie.Pruning
                 // to prevent it from being removed from cache and also want to have it persisted.
 
                 if (_logger.IsTrace) _logger.Trace($"Persisting {nameof(TrieNode)} {currentNode} in snapshot {blockNumber}.");
-                _currentBatch.Set(currentNode.Keccak.Bytes, currentNode.FullRlp.ToArray(), writeFlags);
+                _currentBatch.Set(currentNode.Keccak, currentNode.FullRlp, writeFlags);
                 currentNode.IsPersisted = true;
                 currentNode.LastSeen = Math.Max(blockNumber, currentNode.LastSeen ?? 0);
                 PersistedNodesCount++;
@@ -795,7 +795,7 @@ namespace Nethermind.Trie.Pruning
                     Hash256? hash = n.Keccak;
                     if (hash is not null)
                     {
-                        store[hash.Bytes] = n.FullRlp.ToArray();
+                        store.Set(hash, n.FullRlp);
                         int persistedNodesCount = Interlocked.Increment(ref persistedNodes);
                         if (_logger.IsInfo && persistedNodesCount % million == 0)
                         {

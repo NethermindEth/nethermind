@@ -13,7 +13,7 @@ using Nethermind.Serialization.Json;
 
 namespace Nethermind.Db.Rpc
 {
-    public class RpcDb : IDb, IDbWithSpan
+    public class RpcDb : IDb
     {
         private readonly string _dbName;
         private readonly IJsonSerializer _jsonSerializer;

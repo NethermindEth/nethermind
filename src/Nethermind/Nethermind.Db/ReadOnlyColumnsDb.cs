@@ -18,9 +18,9 @@ namespace Nethermind.Db
                 .ToDictionary(it => it.Item1, it => it.Item2);
         }
 
-        public IDbWithSpan GetColumnDb(T key)
+        public IDb GetColumnDb(T key)
         {
-            return (IDbWithSpan)_readOnlyColumns[key!];
+            return _readOnlyColumns[key!];
         }
 
         public IEnumerable<T> ColumnKeys => _readOnlyColumns.Keys;
