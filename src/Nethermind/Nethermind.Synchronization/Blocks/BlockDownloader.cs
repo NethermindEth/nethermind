@@ -704,7 +704,7 @@ namespace Nethermind.Synchronization.Blocks
         /// <param name="downloadTime"></param>
         protected void AdjustSyncBatchSize(TimeSpan downloadTime)
         {
-            // We shrink the batch size to prevent timeout. Timeout are wasted bandwith.
+            // We shrink the batch size to prevent timeout. Timeout are wasted bandwidth.
             if (downloadTime > SyncBatchDownloadTimeUpperBound)
             {
                 _syncBatchSize.Shrink();
