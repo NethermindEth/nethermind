@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Linq;
 using System.Threading.Tasks;
 using FluentAssertions;
@@ -21,25 +22,29 @@ namespace Nethermind.Synchronization.Test.FastBlocks;
 
 public class BodiesSyncFeedTests
 {
-    [Test]
-    public async Task ShouldCallFlushPeriodically()
+    private BlockTree _syncingFromBlockTree = null!;
+    private TestMemDb _blocksDb = null!;
+    private BodiesSyncFeed _syncFeed = null!;
+
+    [SetUp]
+    public void Setup()
     {
-        BlockTree syncingFromBlockTree = Build.A.BlockTree()
+        _syncingFromBlockTree = Build.A.BlockTree()
             .OfChainLength(100)
             .TestObject;
 
-        TestMemDb blocksDb = new TestMemDb();
+        _blocksDb = new TestMemDb();
         BlockTree syncingTooBlockTree = Build.A.BlockTree()
-            .WithBlocksDb(blocksDb)
+            .WithBlocksDb(_blocksDb)
             .TestObject;
 
         for (int i = 1; i < 100; i++)
         {
-            Block block = syncingFromBlockTree.FindBlock(i, BlockTreeLookupOptions.None)!;
+            Block block = _syncingFromBlockTree.FindBlock(i, BlockTreeLookupOptions.None)!;
             syncingTooBlockTree.Insert(block.Header);
         }
 
-        Block pivot = syncingFromBlockTree.FindBlock(99, BlockTreeLookupOptions.None)!;
+        Block pivot = _syncingFromBlockTree.FindBlock(99, BlockTreeLookupOptions.None)!;
 
         SyncConfig syncConfig = new SyncConfig()
         {
@@ -51,40 +56,71 @@ public class BodiesSyncFeedTests
             DownloadBodiesInFastSync = true,
         };
 
-        BodiesSyncFeed syncFeed = new BodiesSyncFeed(
+        _syncFeed = new BodiesSyncFeed(
             Substitute.For<ISyncModeSelector>(),
             syncingTooBlockTree,
             Substitute.For<ISyncPeerPool>(),
             syncConfig,
             new NullSyncReport(),
-            blocksDb,
+            _blocksDb,
             LimboLogs.Instance,
             flushDbInterval: 10
         );
+        _syncFeed.InitializeFeed();
+    }
 
-        syncFeed.InitializeFeed();
-        BodiesSyncBatch req = (await syncFeed.PrepareRequest())!;
-        blocksDb.FlushCount.Should().Be(1);
+    [Test]
+    public async Task ShouldCallFlushPeriodically()
+    {
+        BodiesSyncBatch req = (await _syncFeed.PrepareRequest())!;
+        _blocksDb.FlushCount.Should().Be(1);
 
         async Task HandleAndPrepareNextRequest()
         {
             req.Response = new OwnedBlockBodies(req.Infos.Take(8).Select((info) =>
-                syncingFromBlockTree.FindBlock(info!.BlockNumber, BlockTreeLookupOptions.None)!.Body).ToArray());
+                _syncingFromBlockTree.FindBlock(info!.BlockNumber, BlockTreeLookupOptions.None)!.Body).ToArray());
 
-            syncFeed.HandleResponse(req);
-            req = (await syncFeed.PrepareRequest())!;
+            _syncFeed.HandleResponse(req);
+            req = (await _syncFeed.PrepareRequest())!;
         }
 
         await HandleAndPrepareNextRequest();
-        blocksDb.FlushCount.Should().Be(1);
+        _blocksDb.FlushCount.Should().Be(1);
 
         await HandleAndPrepareNextRequest();
-        blocksDb.FlushCount.Should().Be(2);
+        _blocksDb.FlushCount.Should().Be(2);
 
         await HandleAndPrepareNextRequest();
-        blocksDb.FlushCount.Should().Be(2);
+        _blocksDb.FlushCount.Should().Be(2);
 
         await HandleAndPrepareNextRequest();
-        blocksDb.FlushCount.Should().Be(3);
+        _blocksDb.FlushCount.Should().Be(3);
+    }
+
+    [Test]
+    public async Task ShouldRecoverOnInsertFailure()
+    {
+        BodiesSyncBatch req = (await _syncFeed.PrepareRequest())!;
+
+        req.Response = new OwnedBlockBodies(req.Infos.Take(8).Select((info) =>
+            _syncingFromBlockTree.FindBlock(info!.BlockNumber, BlockTreeLookupOptions.None)!.Body).ToArray());
+
+        int writeCount = 0;
+        _blocksDb.WriteFunc = (k, value) =>
+        {
+            writeCount++;
+            if (writeCount == 5)
+            {
+                throw new Exception("test failure");
+            }
+            return true;
+        };
+
+        Func<SyncResponseHandlingResult> act = () => _syncFeed.HandleResponse(req);
+        act.Should().Throw<Exception>();
+
+        req = (await _syncFeed.PrepareRequest())!;
+
+        req.Infos[0]!.BlockNumber.Should().Be(95);
     }
 }
