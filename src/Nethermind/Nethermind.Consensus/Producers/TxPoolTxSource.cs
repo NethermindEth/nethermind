@@ -60,7 +60,7 @@ namespace Nethermind.Consensus.Producers
 
             int checkedTransactions = 0;
             int selectedTransactions = 0;
-            using ArrayPoolList<Transaction> selectedBlobTxs = new(Eip4844Constants.MaxBlobsPerBlock);
+            using ArrayPoolList<Transaction> selectedBlobTxs = new(Eip4844Constants.GetMaxBlobsPerBlock());
 
             SelectBlobTransactions(blobTransactions, parent, spec, selectedBlobTxs);
 
@@ -121,21 +121,21 @@ namespace Nethermind.Consensus.Producers
         {
             int checkedBlobTransactions = 0;
             int selectedBlobTransactions = 0;
-            int blobsCounter = 0;
+            UInt256 blobGasCounter = 0;
             UInt256 blobGasPrice = UInt256.Zero;
 
             foreach (Transaction blobTx in blobTransactions)
             {
-                if (blobsCounter == Eip4844Constants.MaxBlobsPerBlock)
+                if (blobGasCounter >= Eip4844Constants.MaxBlobGasPerBlock)
                 {
-                    if (_logger.IsTrace) _logger.Trace($"Declining {blobTx.ToShortString()}, no more blob space. Block already have {blobsCounter} which is max value allowed.");
+                    if (_logger.IsTrace) _logger.Trace($"Declining {blobTx.ToShortString()}, no more blob space. Block already have {blobGasCounter} blob gas which is max value allowed.");
                     break;
                 }
 
                 checkedBlobTransactions++;
 
-                int txAmountOfBlobs = blobTx.BlobVersionedHashes?.Length ?? 0;
-                if (blobsCounter + txAmountOfBlobs > Eip4844Constants.MaxBlobsPerBlock)
+                ulong txBlobGas = (ulong)(blobTx.BlobVersionedHashes?.Length ?? 0) * Eip4844Constants.GasPerBlob;
+                if (txBlobGas > Eip4844Constants.MaxBlobGasPerBlock - blobGasCounter)
                 {
                     if (_logger.IsTrace) _logger.Trace($"Declining {blobTx.ToShortString()}, not enough blob space.");
                     continue;
@@ -162,8 +162,8 @@ namespace Nethermind.Consensus.Producers
                     continue;
                 }
 
-                blobsCounter += txAmountOfBlobs;
-                if (_logger.IsTrace) _logger.Trace($"Selected shard blob tx {fullBlobTx.ToShortString()} to be potentially included in block, total blobs included: {blobsCounter}.");
+                blobGasCounter += txBlobGas;
+                if (_logger.IsTrace) _logger.Trace($"Selected shard blob tx {fullBlobTx.ToShortString()} to be potentially included in block, total blob gas included: {blobGasCounter}.");
 
                 selectedBlobTransactions++;
                 selectedBlobTxs.Add(fullBlobTx);
