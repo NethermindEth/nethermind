@@ -11,7 +11,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages
         public override int PacketType { get; } = Eth63MessageCode.GetReceipts;
         public override string Protocol { get; } = "eth";
 
-        public GetReceiptsMessage(IReadOnlyList<Keccak> blockHashes)
+        public GetReceiptsMessage(IReadOnlyList<Hash256> blockHashes)
             : base(blockHashes)
         {
         }

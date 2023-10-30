@@ -50,7 +50,7 @@ public static class KzgPolynomialCommitments
     /// <summary>
     ///
     /// </summary>
-    /// <param name="commitment">Commitment to calculate hash from</param>
+    /// <param name="commitment">Hash256 to calculate hash from</param>
     /// <param name="hashBuffer">Holds the output, can safely contain any data before the call.</param>
     /// <returns>Result of the attempt</returns>
     /// <exception cref="ArgumentException"></exception>

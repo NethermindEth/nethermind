@@ -5,15 +5,13 @@ using System;
 
 namespace Nethermind.Core
 {
-    public interface IKeyValueStore : IReadOnlyKeyValueStore
+    public interface IKeyValueStore : IReadOnlyKeyValueStore, IWriteOnlyKeyValueStore
     {
         new byte[]? this[ReadOnlySpan<byte> key]
         {
             get => Get(key);
             set => Set(key, value);
         }
-
-        void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None);
     }
 
     public interface IReadOnlyKeyValueStore
@@ -21,6 +19,16 @@ namespace Nethermind.Core
         byte[]? this[ReadOnlySpan<byte> key] => Get(key);
 
         byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None);
+    }
+
+    public interface IWriteOnlyKeyValueStore
+    {
+        byte[]? this[ReadOnlySpan<byte> key]
+        {
+            set => Set(key, value);
+        }
+
+        void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None);
     }
 
     [Flags]

@@ -1,38 +1,48 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
+using System.Linq;
 
 namespace Nethermind.Db
 {
-    public class ReadOnlyColumnsDb<T> : ReadOnlyDb, IColumnsDb<T>
+    public class ReadOnlyColumnsDb<T> : IReadOnlyColumnDb<T>, IDisposable
     {
-        private readonly IColumnsDb<T> _wrappedDb;
-        private readonly bool _createInMemWriteStore;
-        private readonly IDictionary<T, ReadOnlyDb> _columnDbs = new Dictionary<T, ReadOnlyDb>();
+        private readonly IDictionary<T, IReadOnlyDb> _readOnlyColumns;
 
-        public ReadOnlyColumnsDb(IColumnsDb<T> wrappedDb, bool createInMemWriteStore) : base(wrappedDb, createInMemWriteStore)
+        public ReadOnlyColumnsDb(IColumnsDb<T> baseColumnDb, bool createInMemWriteStore)
         {
-            _wrappedDb = wrappedDb;
-            _createInMemWriteStore = createInMemWriteStore;
+            _readOnlyColumns = baseColumnDb.ColumnKeys
+                .Select(key => (key, baseColumnDb.GetColumnDb(key).CreateReadOnly(createInMemWriteStore)))
+                .ToDictionary(it => it.Item1, it => it.Item2);
         }
 
-        public IDbWithSpan GetColumnDb(T key) => _columnDbs.TryGetValue(key, out var db) ? db : _columnDbs[key] = new ReadOnlyDb(_wrappedDb.GetColumnDb(key), _createInMemWriteStore);
-
-        public IEnumerable<T> ColumnKeys => _wrappedDb.ColumnKeys;
-
-        public override void ClearTempChanges()
+        public IDbWithSpan GetColumnDb(T key)
         {
-            base.ClearTempChanges();
-            foreach (var columnDbsValue in _columnDbs.Values)
+            return (IDbWithSpan)_readOnlyColumns[key!];
+        }
+
+        public IEnumerable<T> ColumnKeys => _readOnlyColumns.Keys;
+        public IColumnsWriteBatch<T> StartWriteBatch()
+        {
+            return new InMemoryColumnWriteBatch<T>(this);
+        }
+
+        public void ClearTempChanges()
+        {
+            foreach (KeyValuePair<T, IReadOnlyDb> readOnlyColumn in _readOnlyColumns)
             {
-                columnDbsValue.ClearTempChanges();
+                readOnlyColumn.Value.ClearTempChanges();
             }
         }
 
-        public IReadOnlyDb CreateReadOnly(bool createInMemWriteStore)
+        public void Dispose()
         {
-            return new ReadOnlyColumnsDb<T>(this, createInMemWriteStore);
+            foreach (KeyValuePair<T, IReadOnlyDb> readOnlyColumn in _readOnlyColumns)
+            {
+                readOnlyColumn.Value.Dispose();
+            }
         }
     }
 }

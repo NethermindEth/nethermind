@@ -11,7 +11,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65.Messages
     {
         public override NewPooledTransactionHashesMessage Deserialize(IByteBuffer byteBuffer)
         {
-            Keccak[] hashes = DeserializeHashes(byteBuffer);
+            Hash256[] hashes = DeserializeHashes(byteBuffer);
             return new NewPooledTransactionHashesMessage(hashes);
         }
     }

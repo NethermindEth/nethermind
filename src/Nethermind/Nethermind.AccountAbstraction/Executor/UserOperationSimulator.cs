@@ -15,6 +15,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
+using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Facade;
@@ -65,7 +66,7 @@ namespace Nethermind.AccountAbstraction.Executor
             _abiEncoder = new AbiEncoder();
         }
 
-        public ResultWrapper<Keccak> Simulate(UserOperation userOperation,
+        public ResultWrapper<Hash256> Simulate(UserOperation userOperation,
             BlockHeader parent,
             UInt256? timestamp = null,
             CancellationToken cancellationToken = default)
@@ -73,13 +74,13 @@ namespace Nethermind.AccountAbstraction.Executor
             if (userOperation.AlreadySimulated)
             {
                 // codehash of all accessed addresses should not change between calls
-                foreach (KeyValuePair<Address, Keccak> kv in userOperation.AddressesToCodeHashes)
+                foreach (KeyValuePair<Address, Hash256> kv in userOperation.AddressesToCodeHashes)
                 {
-                    (Address address, Keccak expectedCodeHash) = kv;
-                    Keccak codeHash = _stateProvider.GetCodeHash(address);
+                    (Address address, Hash256 expectedCodeHash) = kv;
+                    Hash256 codeHash = _stateProvider.GetCodeHash(address);
                     if (codeHash != expectedCodeHash)
                     {
-                        return ResultWrapper<Keccak>.Fail($"codehash of address {address} changed since initial simulation");
+                        return ResultWrapper<Hash256>.Fail($"codehash of address {address} changed since initial simulation");
                     }
                 }
             }
@@ -95,13 +96,13 @@ namespace Nethermind.AccountAbstraction.Executor
             UserOperationSimulationResult simulationResult = SimulateValidation(simulateValidationTransaction, userOperation, parent, transactionProcessor);
 
             if (!simulationResult.Success)
-                return ResultWrapper<Keccak>.Fail(simulationResult.Error ?? "unknown simulation failure");
+                return ResultWrapper<Hash256>.Fail(simulationResult.Error ?? "unknown simulation failure");
 
             if (userOperation.AlreadySimulated)
             {
                 // if previously simulated we must make sure it doesn't access any more than it did on the first round
                 if (!userOperation.AccessList.AccessListContains(simulationResult.AccessList.Data))
-                    return ResultWrapper<Keccak>.Fail("access list exceeded");
+                    return ResultWrapper<Hash256>.Fail("access list exceeded");
             }
             else
             {
@@ -110,7 +111,7 @@ namespace Nethermind.AccountAbstraction.Executor
                 userOperation.AlreadySimulated = true;
             }
 
-            return ResultWrapper<Keccak>.Success(userOperation.RequestId!);
+            return ResultWrapper<Hash256>.Success(userOperation.RequestId!);
         }
 
         private UserOperationSimulationResult SimulateValidation(
@@ -127,7 +128,7 @@ namespace Nethermind.AccountAbstraction.Executor
                 _logger
             );
 
-            transactionProcessor.Trace(transaction, parent, txTracer);
+            transactionProcessor.Trace(transaction, new BlockExecutionContext(parent), txTracer);
 
             FailedOp? failedOp = _userOperationTxBuilder.DecodeEntryPointOutputError(txTracer.Output);
 
@@ -144,7 +145,7 @@ namespace Nethermind.AccountAbstraction.Executor
 
             UserOperationAccessList userOperationAccessList = new(txTracer.AccessedStorage);
 
-            IDictionary<Address, Keccak> addressesToCodeHashes = new Dictionary<Address, Keccak>();
+            IDictionary<Address, Hash256> addressesToCodeHashes = new Dictionary<Address, Hash256>();
             foreach (Address accessedAddress in txTracer.AccessedAddresses)
             {
                 addressesToCodeHashes[accessedAddress] = _stateProvider.GetCodeHash(accessedAddress);
@@ -258,7 +259,7 @@ namespace Nethermind.AccountAbstraction.Executor
                 : blockHeader.BaseFeePerGas;
 
             transaction.Hash = transaction.CalculateHash();
-            transactionProcessor.CallAndRestore(transaction, callHeader, tracer);
+            transactionProcessor.CallAndRestore(transaction, new BlockExecutionContext(callHeader), tracer);
         }
     }
 }

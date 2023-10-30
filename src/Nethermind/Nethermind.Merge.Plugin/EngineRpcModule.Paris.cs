@@ -37,23 +37,14 @@ public partial class EngineRpcModule : IEngineRpcModule
     public async Task<ResultWrapper<PayloadStatusV1>> engine_newPayloadV1(ExecutionPayload executionPayload)
         => await NewPayload(executionPayload, EngineApiVersions.Paris);
 
-    private async Task<ResultWrapper<ForkchoiceUpdatedV1Result>> ForkchoiceUpdated(ForkchoiceStateV1 forkchoiceState, PayloadAttributes? payloadAttributes, int version)
+    protected async Task<ResultWrapper<ForkchoiceUpdatedV1Result>> ForkchoiceUpdated(ForkchoiceStateV1 forkchoiceState, PayloadAttributes? payloadAttributes, int version)
     {
-        string? error = null;
-        switch (payloadAttributes?.Validate(_specProvider, version, out error))
-        {
-            case PayloadAttributesValidationResult.InvalidParams:
-                return ResultWrapper<ForkchoiceUpdatedV1Result>.Fail(error!, ErrorCodes.InvalidParams);
-            case PayloadAttributesValidationResult.UnsupportedFork:
-                return ResultWrapper<ForkchoiceUpdatedV1Result>.Fail(error!, ErrorCodes.UnsupportedFork);
-        }
-
         if (await _locker.WaitAsync(_timeout))
         {
             Stopwatch watch = Stopwatch.StartNew();
             try
             {
-                return await _forkchoiceUpdatedV1Handler.Handle(forkchoiceState, payloadAttributes);
+                return await _forkchoiceUpdatedV1Handler.Handle(forkchoiceState, payloadAttributes, version);
             }
             finally
             {
@@ -69,7 +60,7 @@ public partial class EngineRpcModule : IEngineRpcModule
         }
     }
 
-    private async Task<ResultWrapper<PayloadStatusV1>> NewPayload(IExecutionPayloadParams executionPayloadParams, int version)
+    protected async Task<ResultWrapper<PayloadStatusV1>> NewPayload(IExecutionPayloadParams executionPayloadParams, int version)
     {
         ExecutionPayload executionPayload = executionPayloadParams.ExecutionPayload;
 

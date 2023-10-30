@@ -31,7 +31,7 @@ public record GethTraceOptions
     public string Tracer { get; init; }
 
     [JsonProperty("txHash")]
-    public Keccak? TxHash { get; init; }
+    public Hash256? TxHash { get; init; }
 
     [JsonProperty("tracerConfig")] public dynamic TracerConfig { get; init; } = _emptyConfig;
 

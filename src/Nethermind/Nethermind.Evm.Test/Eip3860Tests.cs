@@ -37,7 +37,7 @@ namespace Nethermind.Evm.Test
 
             byte[] callCode = Prepare.EvmCode.Call(TestItem.AddressC, 100000).Done;
 
-            var tracer = Execute(BlockNumber, eip3860Enabled ? Timestamp : Timestamp - 1, callCode);
+            var tracer = Execute((BlockNumber, eip3860Enabled ? Timestamp : Timestamp - 1), callCode);
             Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success));
             Assert.That(tracer.GasSpent - _transactionCallCost, Is.EqualTo(expectedGasUsage));
         }
@@ -102,7 +102,7 @@ namespace Nethermind.Evm.Test
 
             TestState.CreateAccount(TestItem.AddressC, 1.Ether());
 
-            (Block block, Transaction transaction) = PrepareTx(BlockNumber, 500000, createCode, timestamp: timestamp);
+            (Block block, Transaction transaction) = PrepareTx((BlockNumber, timestamp), 500000, createCode);
 
             transaction.GasPrice = 2.GWei();
             transaction.To = null;

@@ -35,12 +35,12 @@ public class HealingTrieStoreTests
     public void recovery_works([Values(true, false)] bool isMainThread, [Values(true, false)] bool successfullyRecovered)
     {
         byte[] rlp = { 1, 2 };
-        Keccak key = TestItem.KeccakA;
+        Hash256 key = TestItem.KeccakA;
         TestMemDb db = new();
         HealingTrieStore healingTrieStore = new(db, Nethermind.Trie.Pruning.No.Pruning, Persist.EveryBlock, LimboLogs.Instance);
-        ITrieNodeRecovery<IReadOnlyList<Keccak>> recovery = Substitute.For<ITrieNodeRecovery<IReadOnlyList<Keccak>>>();
+        ITrieNodeRecovery<IReadOnlyList<Hash256>> recovery = Substitute.For<ITrieNodeRecovery<IReadOnlyList<Hash256>>>();
         recovery.CanRecover.Returns(isMainThread);
-        recovery.Recover(key, Arg.Is<IReadOnlyList<Keccak>>(l => l.SequenceEqual(new[] { key })))
+        recovery.Recover(key, Arg.Is<IReadOnlyList<Hash256>>(l => l.SequenceEqual(new[] { key })))
             .Returns(successfullyRecovered ? Task.FromResult<byte[]?>(rlp) : Task.FromResult<byte[]?>(null));
 
         healingTrieStore.InitializeNetwork(recovery);

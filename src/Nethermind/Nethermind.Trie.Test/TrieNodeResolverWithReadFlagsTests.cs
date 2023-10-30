@@ -21,7 +21,7 @@ public class TrieNodeResolverWithReadFlagsTests
         ITrieStore trieStore = new TrieStore(memDb, LimboLogs.Instance);
         TrieNodeResolverWithReadFlags resolver = new(trieStore, theFlags);
 
-        Keccak theKeccak = TestItem.KeccakA;
+        Hash256 theKeccak = TestItem.KeccakA;
         memDb[theKeccak.Bytes] = TestItem.KeccakA.BytesToArray();
         resolver.LoadRlp(theKeccak);
 
@@ -36,7 +36,7 @@ public class TrieNodeResolverWithReadFlagsTests
         ITrieStore trieStore = new TrieStore(memDb, LimboLogs.Instance);
         TrieNodeResolverWithReadFlags resolver = new(trieStore, theFlags);
 
-        Keccak theKeccak = TestItem.KeccakA;
+        Hash256 theKeccak = TestItem.KeccakA;
         memDb[theKeccak.Bytes] = TestItem.KeccakA.BytesToArray();
         resolver.LoadRlp(theKeccak, ReadFlags.HintReadAhead);
 

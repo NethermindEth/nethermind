@@ -24,9 +24,9 @@ public class Pivot : IPivot
 
     public long PivotNumber { get; }
 
-    public Keccak? PivotHash { get; }
+    public Hash256? PivotHash { get; }
 
-    public Keccak? PivotParentHash => null;
+    public Hash256? PivotParentHash => null;
 
     public UInt256? PivotTotalDifficulty { get; }
 

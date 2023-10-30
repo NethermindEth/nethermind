@@ -325,6 +325,10 @@ public class JsonRpcService : IJsonRpcService
                     if (providedParameter.StartsWith('[') || providedParameter.StartsWith('{'))
                     {
                         executionParam = _serializer.Deserialize(new JsonTextReader(new StringReader(providedParameter)), paramType);
+                        if (executionParam is null && !IsNullableParameter(expectedParameter))
+                        {
+                            executionParameters.Add(Type.Missing);
+                        }
                     }
                     else
                     {

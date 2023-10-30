@@ -22,6 +22,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
+using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Db.Blooms;
@@ -128,12 +129,12 @@ namespace Ethereum.Test.Base
 
             TrieStore trieStore = new(stateDb, _logManager);
             IWorldState stateProvider = new WorldState(trieStore, codeDb, _logManager);
-            MemDb blockInfoDb = new MemDb();
-            IBlockTree blockTree = new BlockTree(new MemDb(), new MemDb(), blockInfoDb, new ChainLevelInfoRepository(blockInfoDb), specProvider, NullBloomStorage.Instance, _logManager);
+            IBlockTree blockTree = Build.A.BlockTree()
+                .WithSpecProvider(specProvider)
+                .WithoutSettingHead
+                .TestObject;
             ITransactionComparerProvider transactionComparerProvider = new TransactionComparerProvider(specProvider, blockTree);
             IStateReader stateReader = new StateReader(trieStore, codeDb, _logManager);
-            IChainHeadInfoProvider chainHeadInfoProvider = new ChainHeadInfoProvider(specProvider, blockTree, stateReader);
-            ITxPool transactionPool = new TxPool(ecdsa, chainHeadInfoProvider, new TxPoolConfig(), new TxValidator(specProvider.ChainId), _logManager, transactionComparerProvider.GetDefaultComparer());
 
             IReceiptStorage receiptStorage = NullReceiptStorage.Instance;
             IBlockhashProvider blockhashProvider = new BlockhashProvider(blockTree, _logManager);
@@ -181,7 +182,7 @@ namespace Ethereum.Test.Base
             }
 
             Block genesisBlock = Rlp.Decode<Block>(test.GenesisRlp.Bytes);
-            Assert.That(genesisBlock.Header.Hash, Is.EqualTo(new Keccak(test.GenesisBlockHeader.Hash)));
+            Assert.That(genesisBlock.Header.Hash, Is.EqualTo(new Hash256(test.GenesisBlockHeader.Hash)));
 
             ManualResetEvent genesisProcessed = new(false);
             blockTree.NewHeadBlock += (_, args) =>
@@ -263,12 +264,12 @@ namespace Ethereum.Test.Base
 
                     if (testBlockJson.BlockHeader is not null)
                     {
-                        Assert.That(suggestedBlock.Header.Hash, Is.EqualTo(new Keccak(testBlockJson.BlockHeader.Hash)));
+                        Assert.That(suggestedBlock.Header.Hash, Is.EqualTo(new Hash256(testBlockJson.BlockHeader.Hash)));
 
 
                         for (int uncleIndex = 0; uncleIndex < suggestedBlock.Uncles.Length; uncleIndex++)
                         {
-                            Assert.That(suggestedBlock.Uncles[uncleIndex].Hash, Is.EqualTo(new Keccak(testBlockJson.UncleHeaders[uncleIndex].Hash)));
+                            Assert.That(suggestedBlock.Uncles[uncleIndex].Hash, Is.EqualTo(new Hash256(testBlockJson.UncleHeaders[uncleIndex].Hash)));
                         }
 
                         correctRlp.Add((suggestedBlock, testBlockJson.ExpectedException));
@@ -300,7 +301,7 @@ namespace Ethereum.Test.Base
             if (correctRlp.Count == 0)
             {
                 Assert.NotNull(test.GenesisBlockHeader);
-                Assert.That(test.LastBlockHash, Is.EqualTo(new Keccak(test.GenesisBlockHeader.Hash)));
+                Assert.That(test.LastBlockHash, Is.EqualTo(new Hash256(test.GenesisBlockHeader.Hash)));
             }
 
             return correctRlp;
@@ -340,7 +341,7 @@ namespace Ethereum.Test.Base
 
             TestBlockHeaderJson testHeaderJson = (test.Blocks?
                                                      .Where(b => b.BlockHeader != null)
-                                                     .SingleOrDefault(b => new Keccak(b.BlockHeader.Hash) == headBlock.Hash)?.BlockHeader) ?? test.GenesisBlockHeader;
+                                                     .SingleOrDefault(b => new Hash256(b.BlockHeader.Hash) == headBlock.Hash)?.BlockHeader) ?? test.GenesisBlockHeader;
             BlockHeader testHeader = JsonToEthereumTest.Convert(testHeaderJson);
             List<string> differences = new();
 

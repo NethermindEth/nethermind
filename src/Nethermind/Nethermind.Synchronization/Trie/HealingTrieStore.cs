@@ -17,7 +17,7 @@ namespace Nethermind.Synchronization.Trie;
 /// </summary>
 public class HealingTrieStore : TrieStore
 {
-    private ITrieNodeRecovery<IReadOnlyList<Keccak>>? _recovery;
+    private ITrieNodeRecovery<IReadOnlyList<Hash256>>? _recovery;
 
     public HealingTrieStore(
         IKeyValueStoreWithBatching? keyValueStore,
@@ -28,12 +28,12 @@ public class HealingTrieStore : TrieStore
     {
     }
 
-    public void InitializeNetwork(ITrieNodeRecovery<IReadOnlyList<Keccak>> recovery)
+    public void InitializeNetwork(ITrieNodeRecovery<IReadOnlyList<Hash256>> recovery)
     {
         _recovery = recovery;
     }
 
-    public override byte[] LoadRlp(Keccak keccak, ReadFlags readFlags = ReadFlags.None)
+    public override byte[] LoadRlp(Hash256 keccak, ReadFlags readFlags = ReadFlags.None)
     {
         try
         {
@@ -50,11 +50,11 @@ public class HealingTrieStore : TrieStore
         }
     }
 
-    private bool TryRecover(Keccak rlpHash, [NotNullWhen(true)] out byte[]? rlp)
+    private bool TryRecover(Hash256 rlpHash, [NotNullWhen(true)] out byte[]? rlp)
     {
         if (_recovery?.CanRecover == true)
         {
-            using ArrayPoolList<Keccak> request = new(1) { rlpHash };
+            using ArrayPoolList<Hash256> request = new(1) { rlpHash };
             rlp = _recovery.Recover(rlpHash, request).GetAwaiter().GetResult();
             if (rlp is not null)
             {

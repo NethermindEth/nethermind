@@ -36,13 +36,13 @@ public class StateTestTxTracer : ITxTracer
     public bool IsTracing => IsTracingReceipt || IsTracingActions || IsTracingOpLevelStorage || IsTracingMemory || IsTracingInstructions || IsTracingRefunds || IsTracingCode || IsTracingStack || IsTracingBlockHash || IsTracingAccess || IsTracingFees;
 
 
-    public void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Keccak stateRoot = null)
+    public void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Hash256 stateRoot = null)
     {
         _trace.Result.Output = output;
         _trace.Result.GasUsed = gasSpent;
     }
 
-    public void MarkAsFailed(Address recipient, long gasSpent, byte[] output, string error, Keccak stateRoot = null)
+    public void MarkAsFailed(Address recipient, long gasSpent, byte[] output, string error, Hash256 stateRoot = null)
     {
         _trace.Result.Error = _traceEntry?.Error ?? error;
         _trace.Result.Output = output ?? Bytes.Empty;
@@ -201,7 +201,7 @@ public class StateTestTxTracer : ITxTracer
         throw new NotSupportedException();
     }
 
-    public void ReportBlockHash(Keccak blockHash)
+    public void ReportBlockHash(Hash256 blockHash)
     {
         throw new NotImplementedException();
     }

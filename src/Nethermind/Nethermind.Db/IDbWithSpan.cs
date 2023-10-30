@@ -3,7 +3,9 @@
 
 using System;
 using System.Buffers;
+using Nethermind.Core;
 using Nethermind.Core.Buffers;
+using Nethermind.Core.Extensions;
 
 namespace Nethermind.Db
 {
@@ -15,12 +17,12 @@ namespace Nethermind.Db
         /// <param name="key"></param>
         /// <returns>Can return null or empty Span on missing key</returns>
         Span<byte> GetSpan(ReadOnlySpan<byte> key);
-        void PutSpan(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value);
+        void PutSpan(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags flags = WriteFlags.None);
         void DangerousReleaseMemory(in Span<byte> span);
-        MemoryManager<byte> GetOwnedMemory(ReadOnlySpan<byte> key)
+        MemoryManager<byte>? GetOwnedMemory(ReadOnlySpan<byte> key)
         {
             Span<byte> span = GetSpan(key);
-            return new DbSpanMemoryManager(this, span);
+            return span.IsNullOrEmpty() ? null : new DbSpanMemoryManager(this, span);
         }
     }
 }

@@ -5,6 +5,7 @@ using System.Threading.Tasks;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Specs;
 using Nethermind.JsonRpc.Modules;
@@ -32,19 +33,14 @@ public class BoundedModulePoolTests
     private BoundedModulePool<IEthRpcModule> _modulePool = null!;
 
     [SetUp]
-    public async Task Initialize()
+    public Task Initialize()
     {
-        ISpecProvider specProvider = MainnetSpecProvider.Instance;
         ITxPool txPool = NullTxPool.Instance;
-        IDbProvider dbProvider = await TestMemDbProvider.InitAsync();
 
-        BlockTree blockTree = new(
-            dbProvider,
-            new ChainLevelInfoRepository(dbProvider.BlockInfosDb),
-            specProvider,
-            new BloomStorage(new BloomConfig(), dbProvider.HeadersDb, new InMemoryDictionaryFileStoreFactory()),
-            new SyncConfig(),
-            LimboLogs.Instance);
+        BlockTree blockTree = Build.A
+            .BlockTree()
+            .WithRealBloom
+            .TestObject;
 
         _modulePool = new BoundedModulePool<IEthRpcModule>(new EthModuleFactory(
             txPool,
@@ -60,6 +56,8 @@ public class BoundedModulePoolTests
             Substitute.For<IGasPriceOracle>(),
             Substitute.For<IEthSyncingInfo>()),
              1, 1000);
+
+        return Task.CompletedTask;
     }
 
     [Test]
@@ -104,11 +102,11 @@ public class BoundedModulePoolTests
         {
             for (int i = 0; i < iterations; i++)
             {
-                TestContext.Out.WriteLine($"Rent shared {i}");
+                // TestContext.Out.WriteLine($"Rent shared {i}");
                 IEthRpcModule ethRpcModule = await _modulePool.GetModule(true);
                 Assert.That(ethRpcModule, Is.SameAs(sharedRpcModule));
                 _modulePool.ReturnModule(ethRpcModule);
-                TestContext.Out.WriteLine($"Return shared {i}");
+                // TestContext.Out.WriteLine($"Return shared {i}");
             }
         }
 
@@ -116,11 +114,11 @@ public class BoundedModulePoolTests
         {
             for (int i = 0; i < iterations; i++)
             {
-                TestContext.Out.WriteLine($"Rent exclusive {i}");
+                // TestContext.Out.WriteLine($"Rent exclusive {i}");
                 IEthRpcModule ethRpcModule = await _modulePool.GetModule(false);
                 Assert.That(ethRpcModule, Is.Not.SameAs(sharedRpcModule));
                 _modulePool.ReturnModule(ethRpcModule);
-                TestContext.Out.WriteLine($"Return exclusive {i}");
+                // TestContext.Out.WriteLine($"Return exclusive {i}");
             }
         }
 

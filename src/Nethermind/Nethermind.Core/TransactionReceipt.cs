@@ -19,8 +19,8 @@ namespace Nethermind.Core
         /// </summary>
         public byte StatusCode { get; set; }
         public long BlockNumber { get; set; }
-        public Keccak? BlockHash { get; set; }
-        public Keccak? TxHash { get; set; }
+        public Hash256? BlockHash { get; set; }
+        public Hash256? TxHash { get; set; }
         public int Index { get; set; }
         public long GasUsed { get; set; }
         public long GasUsedTotal { get; set; }
@@ -34,7 +34,7 @@ namespace Nethermind.Core
         /// <summary>
         ///     Removed in EIP-658
         /// </summary>
-        public Keccak? PostTransactionState { get; set; }
+        public Hash256? PostTransactionState { get; set; }
         public Bloom? Bloom { get; set; }
         public LogEntry[]? Logs { get; set; }
         public string? Error { get; set; }
@@ -58,8 +58,8 @@ namespace Nethermind.Core
         /// </summary>
         public byte StatusCode { get; set; }
         public long BlockNumber { get; set; }
-        public KeccakStructRef BlockHash;
-        public KeccakStructRef TxHash;
+        public Hash256StructRef BlockHash;
+        public Hash256StructRef TxHash;
         public int Index { get; set; }
         public long GasUsed { get; set; }
         public long GasUsedTotal { get; set; }
@@ -73,7 +73,7 @@ namespace Nethermind.Core
         /// <summary>
         ///     Removed in EIP-658
         /// </summary>
-        public KeccakStructRef PostTransactionState;
+        public Hash256StructRef PostTransactionState;
 
         public BloomStructRef Bloom;
 

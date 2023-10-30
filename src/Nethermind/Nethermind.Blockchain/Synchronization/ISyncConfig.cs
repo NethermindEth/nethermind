@@ -59,7 +59,7 @@ namespace Nethermind.Blockchain.Synchronization
         UInt256 PivotTotalDifficultyParsed => UInt256.Parse(PivotTotalDifficulty ?? "0");
 
         [ConfigItem(DisabledForCli = true, HiddenFromDocs = true)]
-        Keccak? PivotHashParsed => PivotHash is null ? null : new Keccak(Bytes.FromHexString(PivotHash));
+        Hash256? PivotHashParsed => PivotHash is null ? null : new Hash256(Bytes.FromHexString(PivotHash));
 
         [ConfigItem(Description = "Max number of attempts (seconds) to update pivot block basing on Forkchoice message from Consensus Layer. Only for PoS chains. Infinite by default.", DefaultValue = "2147483647")]
         int MaxAttemptsToUpdatePivot { get; set; }
@@ -104,7 +104,7 @@ namespace Nethermind.Blockchain.Synchronization
         [ConfigItem(Description = "[EXPERIMENTAL] Only for non validator nodes! If set to true, DownloadReceiptsInFastSync and/or DownloadBodiesInFastSync can be set to false.", DefaultValue = "false")]
         public bool NonValidatorNode { get; set; }
 
-        [ConfigItem(Description = "[EXPERIMENTAL] Optimize db for write during sync. Significantly reduce total writes written and some sync time if you are not network limited.", DefaultValue = "Default")]
+        [ConfigItem(Description = "[EXPERIMENTAL] Optimize db for write during sync. Significantly reduce total writes written and some sync time if you are not network limited.", DefaultValue = "HeavyWrite")]
         public ITunableDb.TuneType TuneDbMode { get; set; }
 
         [ConfigItem(Description = "[EXPERIMENTAL] Optimize db for write during sync just for blocks db. Useful for turning on blobs file.", DefaultValue = "EnableBlobFiles")]
@@ -113,10 +113,16 @@ namespace Nethermind.Blockchain.Synchronization
         [ConfigItem(Description = "[TECHNICAL] Specify max num of thread used for processing. Default is same as logical core count.", DefaultValue = "0")]
         public int MaxProcessingThreads { get; set; }
 
+        [ConfigItem(Description = "Enables healing trie from network when state is corrupted.", DefaultValue = "true", HiddenFromDocs = true)]
+        public bool TrieHealing { get; set; }
+
         [ConfigItem(Description = "Exit Nethermind once sync is finished", DefaultValue = "false")]
         public bool ExitOnSynced { get; set; }
 
         [ConfigItem(Description = "Specify wait time after sync finished.", DefaultValue = "60")]
         public int ExitOnSyncedWaitTimeSec { get; set; }
+
+        [ConfigItem(Description = "[TECHNICAL] specify interval between malloc_trim during sync", DefaultValue = "300", HiddenFromDocs = true)]
+        public int MallocTrimIntervalSec { get; set; }
     }
 }

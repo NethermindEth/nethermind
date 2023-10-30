@@ -24,7 +24,8 @@ public class TestMemDb : MemDb, ITunableDb
     public Func<byte[], byte[]>? ReadFunc { get; set; }
     public Action<byte[]>? RemoveFunc { get; set; }
 
-    public bool WasFlushed { get; set; }
+    public bool WasFlushed => FlushCount > 0;
+    public int FlushCount { get; set; } = 0;
 
     [MethodImpl(MethodImplOptions.Synchronized)]
     public override byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
@@ -100,13 +101,13 @@ public class TestMemDb : MemDb, ITunableDb
         _removedKeys.Count(cond).Should().Be(times);
     }
 
-    public override IBatch StartBatch()
+    public override IWriteBatch StartWriteBatch()
     {
-        return new InMemoryBatch(this);
+        return new InMemoryWriteBatch(this);
     }
 
     public override void Flush()
     {
-        WasFlushed = true;
+        FlushCount++;
     }
 }

@@ -59,7 +59,7 @@ public struct ReceiptRecoveryBlock
         return _txBuffer;
     }
 
-    public Keccak? Hash => Header.Hash; // do not add setter here
+    public Hash256? Hash => Header.Hash; // do not add setter here
     public long Number => Header.Number; // do not add setter here
 
     public void Dispose()

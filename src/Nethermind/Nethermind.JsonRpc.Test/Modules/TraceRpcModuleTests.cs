@@ -24,6 +24,7 @@ using Nethermind.Consensus.Tracing;
 using Nethermind.Consensus.Validators;
 using Nethermind.Db;
 using Nethermind.Evm;
+using Nethermind.Evm.Tracing.ParityStyle;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
@@ -834,18 +835,18 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             ResultWrapper<IEnumerable<ParityTxTraceFromReplay>> traces = context.TraceRpcModule.trace_replayBlockTransactions(new BlockParameter(blockchain.BlockFinder.FindLatestBlock()!.Number), traceTypes);
             traces.Data.Should().HaveCount(1);
-            var state = traces.Data.ElementAt(0).StateChanges;
+            Dictionary<Address, ParityAccountStateChange> state = traces.Data.ElementAt(0).StateChanges!;
 
             state.Count.Should().Be(3);
-            state[TestItem.AddressA].Nonce.Before.Should().Be(accountA.Nonce);
-            state[TestItem.AddressD].Balance.Before.Should().Be(accountD.Balance);
-            state[TestItem.AddressA].Balance.Before.Should().Be(accountA.Balance);
-            state[TestItem.AddressF].Balance.Before.Should().Be(null);
+            state[TestItem.AddressA].Nonce!.Before.Should().Be(accountA.Nonce);
+            state[TestItem.AddressD].Balance!.Before.Should().Be(accountD.Balance);
+            state[TestItem.AddressA].Balance!.Before.Should().Be(accountA.Balance);
+            state[TestItem.AddressF].Balance!.Before.Should().Be(null);
 
-            state[TestItem.AddressA].Nonce.After.Should().Be(accountA.Nonce + 1);
-            state[TestItem.AddressD].Balance.After.Should().Be(accountD.Balance + 21000 * tx.GasPrice);
-            state[TestItem.AddressA].Balance.After.Should().Be(accountA.Balance - 21000 * tx.GasPrice - tx.Value);
-            state[TestItem.AddressF].Balance.After.Should().Be(accountF.Balance + tx.Value);
+            state[TestItem.AddressA].Nonce!.After.Should().Be(accountA.Nonce + 1);
+            state[TestItem.AddressD].Balance!.After.Should().Be(accountD.Balance + 21000 * tx.GasPrice);
+            state[TestItem.AddressA].Balance!.After.Should().Be(accountA.Balance - 21000 * tx.GasPrice - tx.Value);
+            state[TestItem.AddressF].Balance!.After.Should().Be(accountF.Balance + tx.Value);
         }
     }
 }
