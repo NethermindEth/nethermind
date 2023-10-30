@@ -71,7 +71,7 @@ public class NodeDataProtocolHandlerTests
     {
         var msg = new NodeDataMessage(System.Array.Empty<byte[]>());
 
-        ((INodeDataPeer)_handler).GetNodeData(new List<Keccak>(new[] { Keccak.Zero }), CancellationToken.None);
+        ((INodeDataPeer)_handler).GetNodeData(new List<Hash256>(new[] { Keccak.Zero }), CancellationToken.None);
         HandleZeroMessage(msg, NodeDataMessageCode.NodeData);
     }
 

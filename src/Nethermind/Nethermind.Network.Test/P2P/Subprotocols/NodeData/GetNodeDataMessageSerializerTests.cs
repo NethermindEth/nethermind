@@ -11,7 +11,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.NodeData;
 [Parallelizable(ParallelScope.All)]
 public class GetNodeDataMessageSerializerTests
 {
-    private static void Test(Keccak[] keys)
+    private static void Test(Hash256[] keys)
     {
         GetNodeDataMessage message = new(keys);
         GetNodeDataMessageSerializer serializer = new();
@@ -22,14 +22,14 @@ public class GetNodeDataMessageSerializerTests
     [Test]
     public void Roundtrip()
     {
-        Keccak[] keys = { TestItem.KeccakA, TestItem.KeccakB, TestItem.KeccakC };
+        Hash256[] keys = { TestItem.KeccakA, TestItem.KeccakB, TestItem.KeccakC };
         Test(keys);
     }
 
     [Test]
     public void Roundtrip_with_nulls()
     {
-        Keccak[] keys = { null, TestItem.KeccakA, null, TestItem.KeccakB, null, null };
+        Hash256[] keys = { null, TestItem.KeccakA, null, TestItem.KeccakB, null, null };
         Test(keys);
     }
 }
