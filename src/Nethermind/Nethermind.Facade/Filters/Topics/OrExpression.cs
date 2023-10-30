@@ -17,7 +17,7 @@ namespace Nethermind.Blockchain.Filters.Topics
             _subexpressions = subexpressions;
         }
 
-        public override bool Accepts(Keccak topic)
+        public override bool Accepts(Hash256 topic)
         {
             for (int i = 0; i < _subexpressions.Length; i++)
             {
@@ -30,7 +30,7 @@ namespace Nethermind.Blockchain.Filters.Topics
             return false;
         }
 
-        public override bool Accepts(ref KeccakStructRef topic)
+        public override bool Accepts(ref Hash256StructRef topic)
         {
             for (int i = 0; i < _subexpressions.Length; i++)
             {

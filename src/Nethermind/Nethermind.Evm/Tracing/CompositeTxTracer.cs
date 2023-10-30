@@ -125,7 +125,7 @@ public class CompositeTxTracer : ITxTracer
         }
     }
 
-    public void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Keccak? stateRoot = null)
+    public void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null)
     {
         for (int index = 0; index < _txTracers.Count; index++)
         {
@@ -137,7 +137,7 @@ public class CompositeTxTracer : ITxTracer
         }
     }
 
-    public void MarkAsFailed(Address recipient, long gasSpent, byte[] output, string error, Keccak? stateRoot = null)
+    public void MarkAsFailed(Address recipient, long gasSpent, byte[] output, string error, Hash256? stateRoot = null)
     {
         for (int index = 0; index < _txTracers.Count; index++)
         {
@@ -401,7 +401,7 @@ public class CompositeTxTracer : ITxTracer
         }
     }
 
-    public void ReportBlockHash(Keccak blockHash)
+    public void ReportBlockHash(Hash256 blockHash)
     {
         for (int index = 0; index < _txTracers.Count; index++)
         {

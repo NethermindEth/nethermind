@@ -28,6 +28,7 @@ namespace Nethermind.Trie
             _cache = new SpanLruCache<byte, byte[]>(maxCapacity, 0, "RLP Cache", Bytes.SpanEqualityComparer);
         }
 
+        public bool PreferWriteByArray => true;
         private readonly SpanLruCache<byte, byte[]> _cache;
 
         public byte[]? this[ReadOnlySpan<byte> key]
@@ -70,7 +71,7 @@ namespace Nethermind.Trie
         }
 
 
-        public IBatch StartBatch() => _wrappedStore.StartBatch();
+        public IWriteBatch StartWriteBatch() => _wrappedStore.StartWriteBatch();
 
         public void PersistCache(IKeyValueStore pruningContext)
         {

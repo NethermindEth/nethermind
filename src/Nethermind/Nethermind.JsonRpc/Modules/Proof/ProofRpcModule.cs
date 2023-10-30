@@ -100,9 +100,9 @@ namespace Nethermind.JsonRpc.Modules.Proof
             return ResultWrapper<CallResultWithProof>.Success(callResultWithProof);
         }
 
-        public ResultWrapper<TransactionWithProof> proof_getTransactionByHash(Keccak txHash, bool includeHeader)
+        public ResultWrapper<TransactionWithProof> proof_getTransactionByHash(Hash256 txHash, bool includeHeader)
         {
-            Keccak blockHash = _receiptFinder.FindBlockHash(txHash);
+            Hash256 blockHash = _receiptFinder.FindBlockHash(txHash);
             if (blockHash is null)
             {
                 return ResultWrapper<TransactionWithProof>.Fail($"{txHash} receipt (transaction) could not be found", ErrorCodes.ResourceNotFound);
@@ -130,9 +130,9 @@ namespace Nethermind.JsonRpc.Modules.Proof
             return ResultWrapper<TransactionWithProof>.Success(txWithProof);
         }
 
-        public ResultWrapper<ReceiptWithProof> proof_getTransactionReceipt(Keccak txHash, bool includeHeader)
+        public ResultWrapper<ReceiptWithProof> proof_getTransactionReceipt(Hash256 txHash, bool includeHeader)
         {
-            Keccak blockHash = _receiptFinder.FindBlockHash(txHash);
+            Hash256 blockHash = _receiptFinder.FindBlockHash(txHash);
             if (blockHash is null)
             {
                 return ResultWrapper<ReceiptWithProof>.Fail($"{txHash} receipt could not be found", ErrorCodes.ResourceNotFound);
@@ -170,7 +170,7 @@ namespace Nethermind.JsonRpc.Modules.Proof
             return ResultWrapper<ReceiptWithProof>.Success(receiptWithProof);
         }
 
-        private AccountProof[] CollectAccountProofs(Keccak stateRoot, ProofTxTracer proofTxTracer)
+        private AccountProof[] CollectAccountProofs(Hash256 stateRoot, ProofTxTracer proofTxTracer)
         {
             List<AccountProof> accountProofs = new();
             foreach (Address address in proofTxTracer.Accounts)
@@ -189,7 +189,7 @@ namespace Nethermind.JsonRpc.Modules.Proof
         private byte[][] CollectHeaderBytes(ProofTxTracer proofTxTracer, BlockHeader tracedBlockHeader)
         {
             List<BlockHeader> relevantHeaders = new() { tracedBlockHeader };
-            foreach (Keccak blockHash in proofTxTracer.BlockHashes)
+            foreach (Hash256 blockHash in proofTxTracer.BlockHashes)
             {
                 relevantHeaders.Add(_blockFinder.FindHeader(blockHash));
             }

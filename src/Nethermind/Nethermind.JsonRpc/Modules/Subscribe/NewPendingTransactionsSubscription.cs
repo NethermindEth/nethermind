@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Threading.Tasks;
 using Nethermind.JsonRpc.Data;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.Logging;
@@ -31,10 +32,10 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
 
         private void OnNewPending(object? sender, TxEventArgs e)
         {
-            ScheduleAction(() =>
+            ScheduleAction(async () =>
             {
                 JsonRpcResult result = CreateSubscriptionMessage(_includeTransactions ? new TransactionForRpc(e.Transaction) : e.Transaction.Hash);
-                JsonRpcDuplexClient.SendJsonRpcResult(result);
+                await JsonRpcDuplexClient.SendJsonRpcResult(result);
                 if (_logger.IsTrace) _logger.Trace($"NewPendingTransactions subscription {Id} printed hash of NewPendingTransaction.");
             });
         }

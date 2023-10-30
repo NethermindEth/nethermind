@@ -140,7 +140,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V65
             Transaction tx = Build.A.Transaction.WithData(new byte[1024]).SignedAndResolved().TestObject;
             int sizeOfOneTx = tx.GetLength();
             int numberOfTxsInOneMsg = TransactionsMessage.MaxPacketSize / sizeOfOneTx;
-            _transactionPool.TryGetPendingTransaction(Arg.Any<Keccak>(), out Arg.Any<Transaction>())
+            _transactionPool.TryGetPendingTransaction(Arg.Any<Hash256>(), out Arg.Any<Transaction>())
                 .Returns(x =>
                 {
                     x[1] = tx;
@@ -164,13 +164,13 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V65
             Transaction tx = Build.A.Transaction.WithData(new byte[dataSize]).SignedAndResolved().TestObject;
             int sizeOfOneTx = tx.GetLength();
             int numberOfTxsInOneMsg = Math.Max(TransactionsMessage.MaxPacketSize / sizeOfOneTx, 1);
-            _transactionPool.TryGetPendingTransaction(Arg.Any<Keccak>(), out Arg.Any<Transaction>())
+            _transactionPool.TryGetPendingTransaction(Arg.Any<Hash256>(), out Arg.Any<Transaction>())
                 .Returns(x =>
                 {
                     x[1] = tx;
                     return true;
                 });
-            GetPooledTransactionsMessage request = new(new Keccak[2048]);
+            GetPooledTransactionsMessage request = new(new Hash256[2048]);
             PooledTransactionsMessage response = _handler.FulfillPooledTransactionsRequest(request, new List<Transaction>());
             response.Transactions.Count.Should().Be(numberOfTxsInOneMsg);
         }
@@ -185,7 +185,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V65
             HandleIncomingStatusMessage();
             HandleZeroMessage(msg, Eth65MessageCode.NewPooledTransactionHashes);
 
-            _pooledTxsRequestor.Received(canGossipTransactions ? 1 : 0).RequestTransactions(Arg.Any<Action<GetPooledTransactionsMessage>>(), Arg.Any<IReadOnlyList<Keccak>>());
+            _pooledTxsRequestor.Received(canGossipTransactions ? 1 : 0).RequestTransactions(Arg.Any<Action<GetPooledTransactionsMessage>>(), Arg.Any<IReadOnlyList<Hash256>>());
         }
 
         private void HandleZeroMessage<T>(T msg, int messageCode) where T : MessageBase

@@ -28,8 +28,7 @@ public class BlockchainProcessor : IBlockchainProcessor, IBlockProcessingQueue
     public int SoftMaxRecoveryQueueSizeInTx = 10000; // adjust based on tx or gas
     public const int MaxProcessingQueueSize = 2000; // adjust based on tx or gas
 
-    [ThreadStatic]
-    private static bool _isMainProcessingThread;
+    [ThreadStatic] private static bool _isMainProcessingThread;
     public static bool IsMainProcessingThread => _isMainProcessingThread;
     public bool IsMainProcessor { get; init; }
 
@@ -117,7 +116,7 @@ public class BlockchainProcessor : IBlockchainProcessor, IBlockProcessingQueue
         if (_logger.IsTrace) _logger.Trace($"Enqueuing a new block {block.ToString(Block.Format.Short)} for processing.");
 
         int currentRecoveryQueueSize = Interlocked.Add(ref _currentRecoveryQueueSize, block.Transactions.Length);
-        Keccak? blockHash = block.Hash!;
+        Hash256? blockHash = block.Hash!;
         BlockRef blockRef = currentRecoveryQueueSize >= SoftMaxRecoveryQueueSizeInTx
             ? new BlockRef(blockHash, processingOptions)
             : new BlockRef(block, processingOptions);
@@ -205,7 +204,7 @@ public class BlockchainProcessor : IBlockchainProcessor, IBlockProcessingQueue
 
     private void RunRecoveryLoop()
     {
-        void DecrementQueue(Keccak blockHash, ProcessingResult processingResult, Exception? exception = null)
+        void DecrementQueue(Hash256 blockHash, ProcessingResult processingResult, Exception? exception = null)
         {
             Interlocked.Decrement(ref _queueCount);
             BlockRemoved?.Invoke(this, new BlockHashEventArgs(blockHash, processingResult, exception));
@@ -465,19 +464,21 @@ public class BlockchainProcessor : IBlockchainProcessor, IBlockProcessingQueue
 
     private Block[]? ProcessBranch(in ProcessingBranch processingBranch, ProcessingOptions options, IBlockTracer tracer)
     {
-        void DeleteInvalidBlocks(in ProcessingBranch processingBranch, Keccak invalidBlockHash)
+        void DeleteInvalidBlocks(in ProcessingBranch processingBranch, Hash256 invalidBlockHash)
         {
             for (int i = 0; i < processingBranch.BlocksToProcess.Count; i++)
             {
                 if (processingBranch.BlocksToProcess[i].Hash == invalidBlockHash)
                 {
                     _blockTree.DeleteInvalidBlock(processingBranch.BlocksToProcess[i]);
-                    if (_logger.IsDebug) _logger.Debug($"Skipped processing of {processingBranch.BlocksToProcess[^1].ToString(Block.Format.FullHashAndNumber)} because of {processingBranch.BlocksToProcess[i].ToString(Block.Format.FullHashAndNumber)} is invalid");
+                    if (_logger.IsDebug)
+                        _logger.Debug(
+                            $"Skipped processing of {processingBranch.BlocksToProcess[^1].ToString(Block.Format.FullHashAndNumber)} because of {processingBranch.BlocksToProcess[i].ToString(Block.Format.FullHashAndNumber)} is invalid");
                 }
             }
         }
 
-        Keccak? invalidBlockHash = null;
+        Hash256? invalidBlockHash = null;
         Block[]? processedBlocks;
         try
         {
@@ -489,12 +490,15 @@ public class BlockchainProcessor : IBlockchainProcessor, IBlockProcessingQueue
         }
         catch (InvalidBlockException ex)
         {
-            InvalidBlock?.Invoke(this, new IBlockchainProcessor.InvalidBlockEventArgs
-            {
-                InvalidBlock = ex.InvalidBlock,
-            });
+            InvalidBlock?.Invoke(this, new IBlockchainProcessor.InvalidBlockEventArgs { InvalidBlock = ex.InvalidBlock, });
 
             invalidBlockHash = ex.InvalidBlock.Hash;
+
+
+            BlockTraceDumper.LogDiagnosticRlp(ex.InvalidBlock, _logger,
+                (_options.DumpOptions & DumpOptions.Rlp) != 0,
+                (_options.DumpOptions & DumpOptions.RlpLog) != 0);
+
             TraceFailingBranch(
                 processingBranch,
                 options,
@@ -688,7 +692,7 @@ public class BlockchainProcessor : IBlockchainProcessor, IBlockProcessingQueue
                     : $"Adding on top of {branchingPoint.ToString(BlockHeader.Format.Short)}");
         }
 
-        Keccak stateRoot = branchingPoint?.StateRoot;
+        Hash256 stateRoot = branchingPoint?.StateRoot;
         if (_logger.IsTrace) _logger.Trace($"State root lookup: {stateRoot}");
         blocksToBeAddedToMain.Reverse();
         return new ProcessingBranch(stateRoot, blocksToBeAddedToMain);
@@ -748,14 +752,14 @@ public class BlockchainProcessor : IBlockchainProcessor, IBlockProcessingQueue
     [DebuggerDisplay("Root: {Root}, Length: {BlocksToProcess.Count}")]
     private readonly struct ProcessingBranch
     {
-        public ProcessingBranch(Keccak root, List<Block> blocks)
+        public ProcessingBranch(Hash256 root, List<Block> blocks)
         {
             Root = root;
             Blocks = blocks;
             BlocksToProcess = new List<Block>();
         }
 
-        public Keccak Root { get; }
+        public Hash256 Root { get; }
         public List<Block> Blocks { get; }
         public List<Block> BlocksToProcess { get; }
     }

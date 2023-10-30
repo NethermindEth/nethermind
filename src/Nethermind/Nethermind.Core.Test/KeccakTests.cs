@@ -85,8 +85,8 @@ namespace Nethermind.Core.Test
         public void Compare(string a, string b, int result)
         {
 #pragma warning disable CS8600
-            Keccak keccakA = a is null ? null : new Keccak(a);
-            Keccak keccakB = b is null ? null : new Keccak(b);
+            Hash256 keccakA = a is null ? null : new Hash256(a);
+            Hash256 keccakB = b is null ? null : new Hash256(b);
 #pragma warning restore CS8600
 #pragma warning disable CS8602
             Math.Sign(keccakA.CompareTo(keccakB)).Should().Be(result);

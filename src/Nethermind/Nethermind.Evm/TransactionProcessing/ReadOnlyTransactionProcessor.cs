@@ -13,9 +13,9 @@ namespace Nethermind.Evm.TransactionProcessing
     {
         private readonly ITransactionProcessor _transactionProcessor;
         private readonly IWorldState _stateProvider;
-        private readonly Keccak _stateBefore;
+        private readonly Hash256 _stateBefore;
 
-        public ReadOnlyTransactionProcessor(ITransactionProcessor transactionProcessor, IWorldState stateProvider, Keccak startState)
+        public ReadOnlyTransactionProcessor(ITransactionProcessor transactionProcessor, IWorldState stateProvider, Hash256 startState)
         {
             _transactionProcessor = transactionProcessor ?? throw new ArgumentNullException(nameof(transactionProcessor));
             _stateProvider = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));

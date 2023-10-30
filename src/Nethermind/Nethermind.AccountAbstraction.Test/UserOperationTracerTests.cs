@@ -144,7 +144,7 @@ namespace Nethermind.AccountAbstraction.Test
                 .Op(Instruction.STOP)
                 .Done;
 
-            Keccak initialCodeHash = TestState.GetCodeHash(externalContractAddress);
+            Hash256 initialCodeHash = TestState.GetCodeHash(externalContractAddress);
             (UserOperationTxTracer tracer, _, _) = ExecuteAndTraceAccessCall(SenderRecipientAndMiner.Default, code, whitelisted);
             if (shouldMatch)
             {

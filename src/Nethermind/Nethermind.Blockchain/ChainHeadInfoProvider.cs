@@ -31,6 +31,7 @@ namespace Nethermind.Blockchain
         {
             SpecProvider = specProvider;
             AccountStateProvider = stateProvider;
+            HeadNumber = blockTree.BestKnownNumber;
 
             blockTree.BlockAddedToMain += OnHeadChanged;
         }
@@ -38,6 +39,8 @@ namespace Nethermind.Blockchain
         public IChainHeadSpecProvider SpecProvider { get; }
 
         public IAccountStateProvider AccountStateProvider { get; }
+
+        public long HeadNumber { get; private set; }
 
         public long? BlockGasLimit { get; internal set; }
 
@@ -49,6 +52,7 @@ namespace Nethermind.Blockchain
 
         private void OnHeadChanged(object? sender, BlockReplacementEventArgs e)
         {
+            HeadNumber = e.Block.Number;
             BlockGasLimit = e.Block!.GasLimit;
             CurrentBaseFee = e.Block.Header.BaseFeePerGas;
             CurrentPricePerBlobGas =
