@@ -493,7 +493,7 @@ namespace Nethermind.Synchronization.Blocks
                     }
                     if (!context.TrySetReceipts(i + offset, txReceipts, out block))
                     {
-                        throw new EthSyncException($"{peer} sent invalid receipts for block {block.ToString(Block.Format.Short)}.");
+                        throw new EthSyncException($"{peer} {peer.PeerClientType} sent invalid receipts for block {block.ToString(Block.Format.Short)}.");
                     }
                 }
 
