@@ -376,7 +376,7 @@ namespace Nethermind.Facade
 
         public bool HashStateForRoot(Hash256 stateRoot)
         {
-            throw new NotImplementedException();
+            return _processingEnv.StateReader.HashStateForRoot(stateRoot);
         }
 
         public IEnumerable<FilterLog> FindLogs(LogFilter filter, CancellationToken cancellationToken = default)
