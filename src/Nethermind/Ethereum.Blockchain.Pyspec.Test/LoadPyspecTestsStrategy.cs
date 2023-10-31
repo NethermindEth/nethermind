@@ -15,34 +15,18 @@ namespace Ethereum.Blockchain.Pyspec.Test;
 
 public class LoadPyspecTestsStrategy : ITestLoadStrategy
 {
+    public string ArchiveVersion { get; init; } = Constants.DEFAULT_ARCHIVE_VERSION;
+    public string ArchiveName { get; init; } = Constants.DEFAULT_ARCHIVE_NAME;
+
     public IEnumerable<IEthereumTest> Load(string testsDir, string wildcard = null)
     {
-        testsDir = GetArchiveVersionAndName(testsDir, out string archiveVersion, out string archiveName);
-        string testsDirectoryName = Path.Combine(AppContext.BaseDirectory, "PyTests", archiveVersion, archiveName.Split('.')[0]);
+        string testsDirectoryName = Path.Combine(AppContext.BaseDirectory, "PyTests", ArchiveVersion, ArchiveName.Split('.')[0]);
         if (!Directory.Exists(testsDirectoryName)) // Prevent redownloading the fixtures if they already exists with this version and archive name
-            DownloadAndExtract(archiveVersion, archiveName, testsDirectoryName);
+            DownloadAndExtract(ArchiveVersion, ArchiveName, testsDirectoryName);
         IEnumerable<string> testDirs = !string.IsNullOrEmpty(testsDir)
             ? Directory.EnumerateDirectories(Path.Combine(testsDirectoryName, testsDir), "*", new EnumerationOptions { RecurseSubdirectories = true })
             : Directory.EnumerateDirectories(testsDirectoryName, "*", new EnumerationOptions { RecurseSubdirectories = true });
-        return testDirs.SelectMany(td => LoadTestsFromDirectory(td, wildcard)).ToList();
-    }
-
-    private string GetArchiveVersionAndName(string testsDir, out string archiveVersion, out string archiveName)
-    {
-        string[] versionAndDir = testsDir.Split(",");
-        archiveVersion = Constants.DEFAULT_ARCHIVE_VERSION;
-        archiveName = Constants.DEFAULT_ARCHIVE_NAME;
-        if (versionAndDir.Length < 3)
-        {
-            throw new ArgumentException("Invalid testsDir argument. It should be in format: <version>,<archiveName>,<testsDir>");
-        }
-        if (!string.IsNullOrEmpty(versionAndDir[0]))
-            archiveVersion = versionAndDir[0];
-        if (!string.IsNullOrEmpty(versionAndDir[1]))
-            archiveName = versionAndDir[1];
-        if (!string.IsNullOrEmpty(versionAndDir[2]))
-            testsDir = versionAndDir[2];
-        return testsDir;
+        return testDirs.SelectMany(td => LoadTestsFromDirectory(td, wildcard));
     }
 
     private void DownloadAndExtract(string archiveVersion, string archiveName, string testsDirectoryName)
