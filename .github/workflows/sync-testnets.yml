@@ -23,7 +23,7 @@ jobs:
             cl-client: "lighthouse"
             el-client: "nethermind:current_branch_image"
     name: "Run sync of ${{ matrix.network }} testnet"
-    runs-on: ubuntu-latest
+    runs-on: sync-agent-80gb
     steps:
       - name: Checkout repository
         uses: actions/checkout@v3
