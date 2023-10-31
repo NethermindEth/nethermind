@@ -18,6 +18,7 @@ public class BlobTxStorage : ITxStorage
 {
     private readonly IDb _fullBlobTxsDb;
     private readonly IDb _lightBlobTxsDb;
+    private readonly IDb _processedBlobTxsDb;
     private static readonly TxDecoder _txDecoder = new();
     private static readonly LightTxDecoder _lightTxDecoder = new();
 
@@ -25,12 +26,14 @@ public class BlobTxStorage : ITxStorage
     {
         _fullBlobTxsDb = new MemDb();
         _lightBlobTxsDb = new MemDb();
+        _processedBlobTxsDb = new MemDb();
     }
 
     public BlobTxStorage(IColumnsDb<BlobTxsColumns> database)
     {
         _fullBlobTxsDb = database.GetColumnDb(BlobTxsColumns.FullBlobTxs);
         _lightBlobTxsDb = database.GetColumnDb(BlobTxsColumns.LightBlobTxs);
+        _processedBlobTxsDb = database.GetColumnDb(BlobTxsColumns.ProcessedTxs);
     }
 
     public bool TryGet(in ValueHash256 hash, Address sender, in UInt256 timestamp, [NotNullWhen(true)] out Transaction? transaction)
@@ -112,6 +115,53 @@ public class BlobTxStorage : ITxStorage
         timestamp.WriteBigEndian(txHashPrefixed);
         hash.Bytes.CopyTo(txHashPrefixed[32..]);
     }
+
+
+    public void AddBlobTransactionsFromBlock(long blockNumber, IList<Transaction> blockBlobTransactions)
+    {
+        if (blockBlobTransactions.Count == 0)
+        {
+            return;
+        }
+
+        int contentLength = 0;
+        foreach (Transaction transaction in blockBlobTransactions)
+        {
+            contentLength += _txDecoder.GetLength(transaction, RlpBehaviors.InMempoolForm);
+        }
+
+        RlpStream rlpStream = new(Rlp.LengthOfSequence(contentLength));
+        rlpStream.StartSequence(contentLength);
+        foreach (Transaction transaction in blockBlobTransactions)
+        {
+            _txDecoder.Encode(rlpStream, transaction, RlpBehaviors.InMempoolForm);
+        }
+
+        if (rlpStream.Data is not null)
+        {
+            _processedBlobTxsDb.Set(blockNumber, rlpStream.Data);
+        }
+    }
+
+    public bool TryGetBlobTransactionsFromBlock(long blockNumber, out Transaction[]? blockBlobTransactions)
+    {
+        byte[]? bytes = _processedBlobTxsDb.Get(blockNumber);
+
+        if (bytes is not null)
+        {
+            RlpStream rlpStream = new(bytes);
+
+            blockBlobTransactions = _txDecoder.DecodeArray(rlpStream, RlpBehaviors.InMempoolForm);
+            return true;
+
+        }
+
+        blockBlobTransactions = default;
+        return false;
+    }
+
+    public void DeleteBlobTransactionsFromBlock(long blockNumber)
+        => _processedBlobTxsDb.Delete(blockNumber);
 }
 
 internal static class UInt256Extensions
