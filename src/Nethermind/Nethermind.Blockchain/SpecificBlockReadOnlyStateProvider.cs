@@ -59,6 +59,10 @@ namespace Nethermind.Blockchain
         public bool AccountExists(Address address) => _stateReader.GetAccount(StateRoot, address) is not null;
 
         public bool IsEmptyAccount(Address address) => GetAccount(address).IsEmpty;
+        public bool HashStateForRoot(Hash256 stateRoot)
+        {
+            return _stateReader.HashStateForRoot(stateRoot);
+        }
 
         public bool IsDeadAccount(Address address)
         {

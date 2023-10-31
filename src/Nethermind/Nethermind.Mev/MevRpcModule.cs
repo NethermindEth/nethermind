@@ -134,10 +134,8 @@ namespace Nethermind.Mev
 
         private bool HasStateForBlock(BlockHeader header)
         {
-            RootCheckVisitor rootCheckVisitor = new();
             if (header.StateRoot is null) return false;
-            _stateReader.RunTreeVisitor(rootCheckVisitor, header.StateRoot!);
-            return rootCheckVisitor.HasRoot;
+            return _stateReader.HashStateForRoot(header.StateRoot!);
         }
     }
 }

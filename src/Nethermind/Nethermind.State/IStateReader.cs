@@ -17,5 +17,6 @@ namespace Nethermind.State
         byte[]? GetCode(Hash256 codeHash);
 
         void RunTreeVisitor(ITreeVisitor treeVisitor, Hash256 stateRoot, VisitingOptions? visitingOptions = null);
+        bool HashStateForRoot(Hash256 stateRoot);
     }
 }

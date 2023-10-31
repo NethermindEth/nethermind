@@ -38,9 +38,7 @@ namespace Nethermind.State
 
         public static bool HasStateForBlock(this IStateReader stateReader, BlockHeader header)
         {
-            RootCheckVisitor rootCheckVisitor = new();
-            stateReader.RunTreeVisitor(rootCheckVisitor, header.StateRoot);
-            return rootCheckVisitor.HasRoot;
+            return stateReader.HashStateForRoot(header.StateRoot!);
         }
     }
 }

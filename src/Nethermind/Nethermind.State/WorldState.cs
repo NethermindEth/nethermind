@@ -188,6 +188,13 @@ namespace Nethermind.State
             return _stateProvider.IsEmptyAccount(address);
         }
 
+        public bool HashStateForRoot(Hash256 stateRoot)
+        {
+            RootCheckVisitor visitor = new();
+            Accept(visitor, stateRoot);
+            return visitor.HasRoot;
+        }
+
         public void Commit(IReleaseSpec releaseSpec, bool isGenesis = false)
         {
             _persistentStorageProvider.Commit();

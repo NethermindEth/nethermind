@@ -1037,9 +1037,7 @@ public partial class EngineModuleTests
             executePayloadRequest.BlockHash = hash;
             ResultWrapper<PayloadStatusV1> result = await rpc.engine_newPayloadV1(executePayloadRequest);
             result.Data.Status.Should().Be(PayloadStatus.Valid);
-            RootCheckVisitor rootCheckVisitor = new();
-            chain.StateReader.RunTreeVisitor(rootCheckVisitor, executePayloadRequest.StateRoot);
-            rootCheckVisitor.HasRoot.Should().BeTrue();
+            chain.StateReader.HashStateForRoot(executePayloadRequest.StateRoot).Should().BeTrue();
 
             chain.StateReader.GetBalance(executePayloadRequest.StateRoot, to).Should().Be(toBalanceAfter);
             if (moveHead)
@@ -1078,9 +1076,7 @@ public partial class EngineModuleTests
             ResultWrapper<PayloadStatusV1> result = await rpc.engine_newPayloadV1(executionPayload);
 
             result.Data.Status.Should().Be(PayloadStatus.Valid);
-            RootCheckVisitor rootCheckVisitor = new();
-            chain.StateReader.RunTreeVisitor(rootCheckVisitor, executionPayload.StateRoot);
-            rootCheckVisitor.HasRoot.Should().BeTrue();
+            chain.StateReader.HashStateForRoot(executionPayload.StateRoot).Should().BeTrue();
 
             UInt256 fromBalanceAfter = chain.StateReader.GetBalance(executionPayload.StateRoot, from.Address);
             Assert.True(fromBalanceAfter < fromBalance - toBalanceAfter);
