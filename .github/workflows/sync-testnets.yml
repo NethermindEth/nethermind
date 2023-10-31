@@ -36,6 +36,7 @@ jobs:
           
       - name: Install Docker
         run: |
+          apt-get install -y uidmap
           curl -fsSL https://get.docker.com/rootless | sh
 
       - name: Set up Docker Buildx
