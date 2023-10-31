@@ -184,7 +184,6 @@ namespace Nethermind.Api
 
         public ISyncProgressResolver? SyncProgressResolver { get; set; }
         public IBetterPeerStrategy? BetterPeerStrategy { get; set; }
-        public IBlockDownloaderFactory? BlockDownloaderFactory { get; set; }
         public IPivot? Pivot { get; set; }
         public ISyncPeerPool? SyncPeerPool { get; set; }
         public IPeerDifficultyRefreshPool? PeerDifficultyRefreshPool { get; set; }

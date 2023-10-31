@@ -32,7 +32,7 @@ public class FullStateFinder : IFullStateFinder
         _trieNodeResolver = trieNodeResolver ?? throw new ArgumentNullException(nameof(trieNodeResolver));
     }
 
-    private bool IsFullySynced(Keccak stateRoot)
+    private bool IsFullySynced(Hash256 stateRoot)
     {
         if (stateRoot == Keccak.EmptyTreeHash)
         {
