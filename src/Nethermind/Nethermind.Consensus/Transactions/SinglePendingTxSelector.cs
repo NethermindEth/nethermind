@@ -24,6 +24,5 @@ namespace Nethermind.Consensus.Transactions
                 .Take(1);
 
         public override string ToString() => $"{nameof(SinglePendingTxSelector)} [ {_innerSource} ]";
-
     }
 }
