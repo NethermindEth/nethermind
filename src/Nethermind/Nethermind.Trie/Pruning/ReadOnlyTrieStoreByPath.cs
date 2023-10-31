@@ -52,7 +52,7 @@ namespace Nethermind.Trie.Pruning
 
         public void CommitNode(long blockNumber, NodeCommitInfo nodeCommitInfo, WriteFlags writeFlags = WriteFlags.None) { }
 
-        public void FinishBlockCommit(TrieType trieType, long blockNumber, TrieNode? root, Keccak stateRootHash = null, WriteFlags writeFlags = WriteFlags.None) { }
+        public void FinishBlockCommit(TrieType trieType, long blockNumber, TrieNode? root, WriteFlags writeFlags = WriteFlags.None) { }
 
         public void HackPersistOnShutdown() { }
 
@@ -75,7 +75,7 @@ namespace Nethermind.Trie.Pruning
         public bool ExistsInDB(Keccak hash, byte[] nodePathNibbles) => _trieStore.ExistsInDB(hash, nodePathNibbles);
 
         public void DeleteByRange(Span<byte> startKey, Span<byte> endKey) { }
-        public void MarkPrefixDeleted(long blockNumber, Keccak stateRoot, ReadOnlySpan<byte> keyPrefix) { }
+        public void MarkPrefixDeleted(long blockNumber, ReadOnlySpan<byte> keyPrefix) { }
 
         public bool CanAccessByPath() => _trieStore.CanAccessByPath();
 

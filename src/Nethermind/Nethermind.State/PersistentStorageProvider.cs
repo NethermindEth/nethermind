@@ -290,14 +290,12 @@ namespace Nethermind.State
             // TODO: how does it work with pruning?
             Keccak stateRootHash = null;
             if (_storages.ContainsKey(address))
-                stateRootHash = _storages[address].GetStateRootHash();
+                stateRootHash = _storages[address].ParentStateRootHash;
             _storages[address] = new StorageTree(_trieStore, Keccak.EmptyTreeHash, _logManager, address);
             // mark the tree as cleared by SD - will be used by path state to avoid reads from flat storage until
             // they get committed to avoid reading uncleared data
             _storages[address].ClearedBySelfDestruct = true;
-            _storages[address].StateRootHash = stateRootHash;
-
-
+            _storages[address].ParentStateRootHash = stateRootHash ?? StateRoot;
         }
 
         private class StorageTreeFactory : IStorageTreeFactory
@@ -305,7 +303,7 @@ namespace Nethermind.State
             public StorageTree Create(Address address, ITrieStore trieStore, Keccak storageRoot, Keccak stateRoot, ILogManager? logManager)
             {
                 StorageTree st = new(trieStore, storageRoot, logManager, address);
-                st.StateRootHash = stateRoot;
+                st.ParentStateRootHash = stateRoot;
                 return st;
             }
         }

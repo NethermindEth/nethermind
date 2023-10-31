@@ -87,6 +87,8 @@ namespace Nethermind.Trie
 
         public bool ClearedBySelfDestruct = false;
 
+        public Keccak? ParentStateRootHash { get; set; }
+
         /// <summary>
         /// Only used in EthereumTests
         /// </summary>
@@ -196,37 +198,36 @@ namespace Nethermind.Trie
             //process deletions - it can happend that a root is set too empty hash due to deletions - needs to be outside of root ref condition
             if (TrieStore.Capability == TrieNodeResolverCapability.Path)
             {
+                TrieStore.OpenContext(ParentStateRootHash);
                 if (ClearedBySelfDestruct)
-                    TrieStore.MarkPrefixDeleted(blockNumber, GetStateRootHash(), StoreNibblePathPrefix);
+                    TrieStore.MarkPrefixDeleted(blockNumber, StoreNibblePathPrefix);
                 while (_deleteNodes != null && _deleteNodes.TryDequeue(out TrieNode delNode))
                     _currentCommit.Enqueue(new NodeCommitInfo(delNode));
             }
 
-            //TrieStore.SetContext(GetStateRootHash());
-
-            bool processCommits = RootRef?.IsDirty == true;
-            if (processCommits)
+            bool processDirtyRoot = RootRef?.IsDirty == true;
+            if (processDirtyRoot)
             {
                 Commit(new NodeCommitInfo(RootRef), skipSelf: skipRoot);
-                RootRef!.ResolveKey(TrieStore, true);
             }
 
             while (_currentCommit.TryDequeue(out NodeCommitInfo node))
             {
                 if (_logger.IsTrace) _logger.Trace($"Committing {node} in {blockNumber}");
-                TrieStore.CommitNode(blockNumber, GetStateRootHash(), node, writeFlags: writeFlags);
+                TrieStore.CommitNode(blockNumber, node, writeFlags: writeFlags);
             }
 
-            if (processCommits)
+            if (processDirtyRoot)
             {
-                //RootRef!.ResolveKey(TrieStore, true);
-
+                RootRef!.ResolveKey(TrieStore, true);
                 //resetting root reference for instances without cache will 'unresolve' root node, freeing TrieNode instances
                 //otherwise block commit sets will retain references to TrieNodes and not free them during e.g. snap sync
                 SetRootHash(RootRef.Keccak!, true);
             }
 
-            TrieStore.FinishBlockCommit(TrieType, blockNumber, RootRef, GetStateRootHash(), writeFlags);
+            TrieStore.FinishBlockCommit(TrieType, blockNumber, RootRef, writeFlags);
+            if (TrieStore.Capability == TrieNodeResolverCapability.Path && TrieType == TrieType.State)
+                ParentStateRootHash = RootHash;
             _uncommitedPaths = new Bloom();
             ClearedBySelfDestruct = false;
             if (_logger.IsDebug) _logger.Debug($"Finished committing block {blockNumber}");
@@ -375,7 +376,6 @@ namespace Nethermind.Trie
             else if (resetObjects)
             {
                 RootRef = TrieStore.FindCachedOrUnknown(_rootHash, Array.Empty<byte>(), StoreNibblePathPrefix);
-                //TrieStore.ClearCacheAfter(value);
             }
         }
 
@@ -431,26 +431,26 @@ namespace Nethermind.Trie
         public virtual byte[]? Get(ReadOnlySpan<byte> rawKey, Keccak? rootHash = null)
         {
             //for diagnostics
-            //if (Capability == TrieNodeResolverCapability.Path)
-            //{
-            //    byte[] pathValue = TrieStore.CanAccessByPath() ? GetByPath(rawKey, rootHash) : GetInternal(rawKey, rootHash);
-            //    byte[] internalValue = GetInternal(rawKey, rootHash);
-            //    if (!Bytes.EqualityComparer.Equals(internalValue, pathValue))
-            //        if (_logger.IsWarn) _logger.Warn($"Difference for key: {rawKey.ToHexString()} | ST prefix: {StoreNibblePathPrefix?.ToHexString()} | internal: {internalValue?.ToHexString()} | path value: {pathValue?.ToHexString()}");
-            //    return pathValue;
-            //}
-            //return GetInternal(rawKey, rootHash);
-            return Capability switch
+            if (Capability == TrieNodeResolverCapability.Path)
             {
-                TrieNodeResolverCapability.Hash => GetInternal(rawKey, rootHash),
-                TrieNodeResolverCapability.Path => TrieStore.CanAccessByPath() ? GetByPath(rawKey, rootHash) : GetInternal(rawKey, rootHash),
-                _ => throw new ArgumentOutOfRangeException()
-            };
+                byte[] pathValue = TrieStore.CanAccessByPath() ? GetByPath(rawKey, rootHash) : GetInternal(rawKey, rootHash);
+                byte[] internalValue = GetInternal(rawKey, rootHash);
+                if (!Bytes.EqualityComparer.Equals(internalValue, pathValue))
+                    if (_logger.IsWarn) _logger.Warn($"Difference for key: {rawKey.ToHexString()} | ST prefix: {StoreNibblePathPrefix?.ToHexString()} | internal: {internalValue?.ToHexString()} | path value: {pathValue?.ToHexString()}");
+                return pathValue;
+            }
+            return GetInternal(rawKey, rootHash);
+            //return Capability switch
+            //{
+            //    TrieNodeResolverCapability.Hash => GetInternal(rawKey, rootHash),
+            //    TrieNodeResolverCapability.Path => TrieStore.CanAccessByPath() ? GetByPath(rawKey, rootHash) : GetInternal(rawKey, rootHash),
+            //    _ => throw new ArgumentOutOfRangeException()
+            //};
         }
 
         private byte[]? GetByPath(ReadOnlySpan<byte> rawKey, Keccak? rootHash = null)
         {
-            Keccak cacheProbeRoot = rootHash;
+            //Keccak cacheProbeRoot = rootHash;
             if (rootHash is null)
             {
                 if (RootRef is null) return null;
@@ -462,32 +462,20 @@ namespace Nethermind.Trie
                 else
                 {
                     //is it possible outside of unit tests?
-                    if (RootRef.Keccak is null)
-                    {
-                        RootRef.ResolveNode(TrieStore);
-                        RootRef.ResolveKey(TrieStore, true);
-                    }
-                    cacheProbeRoot = RootRef.Keccak;
+                    //if (RootRef.Keccak is null)
+                    //{
+                    //    RootRef.ResolveNode(TrieStore);
+                    //    RootRef.ResolveKey(TrieStore, true);
+                    //}
+                    //cacheProbeRoot = RootRef.Keccak;
                 }
             }
-
-            if (TrieType == TrieType.Storage)
-                cacheProbeRoot = GetStateRootHash();
 
             // try and get cached nodes
             Span<byte> nibbleBytes = stackalloc byte[StoreNibblePathPrefix.Length + rawKey.Length * 2];
             StoreNibblePathPrefix.CopyTo(nibbleBytes);
             Nibbles.BytesToNibbleBytes(rawKey, nibbleBytes[StoreNibblePathPrefix.Length..]);
-            TrieNode? node = TrieStore.FindCachedOrUnknown(nibbleBytes[StoreNibblePathPrefix.Length..], StoreNibblePathPrefix, cacheProbeRoot);
-            if (cacheProbeRoot is null)
-            {
-                TrieNode? node2 = TrieStore.FindCachedOrUnknown(nibbleBytes[StoreNibblePathPrefix.Length..], StoreNibblePathPrefix, RootHash);
-                if (node2.NodeType != node.NodeType)
-                {
-                    int a = 10;
-                    a++;
-                }
-            }
+            TrieNode? node = TrieStore.FindCachedOrUnknown(nibbleBytes[StoreNibblePathPrefix.Length..], StoreNibblePathPrefix, ParentStateRootHash);
 
             if (node is null)
                 return null;
@@ -1482,11 +1470,6 @@ namespace Nethermind.Trie
         private static void ThrowMissingTrieNodeException(in TraverseContext traverseContext, TrieNodeException e)
         {
             throw new MissingTrieNodeException(e.Message, e, traverseContext.UpdatePath.ToArray(), traverseContext.CurrentIndex);
-        }
-
-        public virtual Keccak GetStateRootHash()
-        {
-            return RootRef?.Keccak ?? Keccak.EmptyTreeHash;
         }
     }
 }

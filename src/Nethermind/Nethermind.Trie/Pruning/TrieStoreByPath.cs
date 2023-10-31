@@ -144,40 +144,6 @@ namespace Nethermind.Trie.Pruning
                 if (_useCommittedCache)
                 {
                     //_committedNodes[GetProperColumn(nodeCommitInfo.Node.FullPath.Length)].AddNode(blockNumber, node);
-                }
-                else
-                {
-                    Persist(nodeCommitInfo.Node, blockNumber, writeFlags);
-                }
-                node.LastSeen = Math.Max(blockNumber, node.LastSeen ?? 0);
-
-                CommittedNodesCount++;
-            }
-        }
-
-        public void CommitNode(long blockNumber, Keccak rootHash, NodeCommitInfo nodeCommitInfo, WriteFlags writeFlags = WriteFlags.None)
-        {
-            if (blockNumber < 0) throw new ArgumentOutOfRangeException(nameof(blockNumber));
-            EnsureCommitSetExistsForBlock(blockNumber);
-
-            if (_logger.IsTrace) _logger.Trace($"Committing {nodeCommitInfo} at {blockNumber}");
-            if (!nodeCommitInfo.IsEmptyBlockMarker && !nodeCommitInfo.Node!.IsBoundaryProofNode)
-            {
-                TrieNode node = nodeCommitInfo.Node!;
-
-                if (CurrentPackage is null)
-                {
-                    throw new TrieStoreException($"{nameof(CurrentPackage)} is NULL when committing {node} at {blockNumber}.");
-                }
-
-                if (node!.LastSeen.HasValue)
-                {
-                    throw new TrieStoreException($"{nameof(TrieNode.LastSeen)} set on {node} committed at {blockNumber}.");
-                }
-
-                if (_useCommittedCache)
-                {
-                    //_committedNodes[GetProperColumn(nodeCommitInfo.Node.FullPath.Length)].AddNode(blockNumber, node);
                     StateColumns column = GetProperColumn(nodeCommitInfo.Node);
                     _committedNodes[column].AddNodeData(blockNumber, node);
                 }
@@ -191,7 +157,7 @@ namespace Nethermind.Trie.Pruning
             }
         }
 
-        public void FinishBlockCommit(TrieType trieType, long blockNumber, TrieNode? root, Keccak stateRootHash = null, WriteFlags writeFlags = WriteFlags.None)
+        public void FinishBlockCommit(TrieType trieType, long blockNumber, TrieNode? root, WriteFlags writeFlags = WriteFlags.None)
         {
             if (blockNumber < 0) throw new ArgumentOutOfRangeException(nameof(blockNumber));
             EnsureCommitSetExistsForBlock(blockNumber);
@@ -203,13 +169,8 @@ namespace Nethermind.Trie.Pruning
                     if (_useCommittedCache)
                     {
                         if (_logger.IsTrace) _logger.Trace($"Setting root hash {root?.Keccak} for block {blockNumber}");
-                        //_committedNodes[StateColumns.Storage].MoveTransientData(blockNumber, stateRootHash);
-
-                        //_committedNodes[StateColumns.State].EnsureStateHistoryExists(blockNumber, stateRootHash);
-                        //_committedNodes[StateColumns.Storage].EnsureStateHistoryExists(blockNumber, stateRootHash);
-                        _committedNodes[StateColumns.State].CloseContext(blockNumber, stateRootHash);
-                        _committedNodes[StateColumns.Storage].CloseContext(blockNumber, stateRootHash);
-                        //_committedNodes[column].SetRootHashForBlock(blockNumber, root?.Keccak);
+                        _committedNodes[StateColumns.State].CloseContext(blockNumber, root?.Keccak ?? Keccak.EmptyTreeHash);
+                        _committedNodes[StateColumns.Storage].CloseContext(blockNumber, root?.Keccak ?? Keccak.EmptyTreeHash);
                     }
 
                     if (_logger.IsTrace) _logger.Trace($"Enqueued blocks {_commitSetQueue.Count}");
@@ -222,41 +183,18 @@ namespace Nethermind.Trie.Pruning
                     }
                     if (blockNumber == 0) // special case for genesis
                     {
-                        Persist(0, stateRootHash);
+                        Persist(0);
                         AnnounceReorgBoundaries();
                     }
                     else
                     {
                         if (_useCommittedCache && _persistenceStrategy.ShouldPersist(set.BlockNumber, out long persistTarget))
                         {
-                            Persist(persistTarget, stateRootHash);
+                            Persist(persistTarget);
                             AnnounceReorgBoundaries();
                         }
                     }
-
-                    if (_useCommittedCache)
-                    {
-                        _committedNodes[StateColumns.State].OpenContext(stateRootHash);
-                        _committedNodes[StateColumns.Storage].OpenContext(stateRootHash);
-                    }
                 }
-                // set rootHash here to account for root hashes for the storage trees also in every block
-                // there needs to be a better way to handle this
-                StateColumns column = trieType switch
-                {
-                    TrieType.State => StateColumns.State,
-                    TrieType.Storage => StateColumns.Storage,
-                    _ => throw new NotImplementedException()
-                };
-
-
-
-                //if (_useCommittedCache)
-                //{
-                //    if (_logger.IsTrace) _logger.Trace($"Setting root hash {root?.Keccak} for block {blockNumber}");
-                //    _committedNodes[StateColumns.State].EnsureStateHistoryExists(blockNumber, root?.Keccak ?? Keccak.EmptyTreeHash);
-                //    //_committedNodes[column].SetRootHashForBlock(blockNumber, root?.Keccak);
-                //}
 
                 if (trieType == TrieType.State) CurrentPackage = null;
             }
@@ -458,7 +396,7 @@ namespace Nethermind.Trie.Pruning
         /// After this action we are sure that the full state is available for the block <paramref name="persistUntilBlock"/>.
         /// </summary>
         /// <param name="persistUntilBlock">Persist all the block changes until this block number</param>
-        private void Persist(long persistUntilBlock, Keccak stateRoot)
+        private void Persist(long persistUntilBlock)
         {
             try
             {
@@ -467,15 +405,14 @@ namespace Nethermind.Trie.Pruning
                 BlockCommitSet frontSet = null;
                 while (_commitSetQueue.TryPeek(out BlockCommitSet peekSet) && peekSet.BlockNumber <= persistUntilBlock)
                 {
-                    //LastPersistedBlockNumber = frontSet.BlockNumber;
                     _commitSetQueue.TryDequeue(out frontSet);
-                    if (_logger.IsTrace) _logger.Trace($"Persist target {persistUntilBlock} | persisting {frontSet.BlockNumber} / {frontSet.Root?.Keccak}");
                 }
+
+                if (_logger.IsTrace) _logger.Trace($"Persist target {persistUntilBlock} | persisting {frontSet.BlockNumber} / {frontSet.Root?.Keccak}");
 
                 foreach (StateColumns column in Enum.GetValues(typeof(StateColumns)))
                 {
                     _currentBatches[column] ??= _stateDb.GetColumnDb(column).StartBatch();
-                    //_committedNodes[column].PersistUntilBlock(persistUntilBlock, _currentBatches[column]);
                     _committedNodes[column].PersistUntilBlock(persistUntilBlock, frontSet?.Root?.Keccak ?? Keccak.EmptyTreeHash, _currentBatches[column]);
                 }
 
@@ -721,7 +658,7 @@ namespace Nethermind.Trie.Pruning
             _stateDb.GetColumnDb(column).DeleteByRange(startDbKey, endDbKey);
         }
 
-        public void MarkPrefixDeleted(long blockNumber, Keccak stateRoot, ReadOnlySpan<byte> keyPrefixNibbles)
+        public void MarkPrefixDeleted(long blockNumber, ReadOnlySpan<byte> keyPrefixNibbles)
         {
             if (_useCommittedCache)
             {

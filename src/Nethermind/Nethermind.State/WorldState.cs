@@ -34,7 +34,6 @@ namespace Nethermind.State
             get => _stateProvider.StateRoot;
             set
             {
-                _trieStore.OpenContext(value);
                 _stateProvider.StateRoot = value;
                 _persistentStorageProvider.StateRoot = value;
             }

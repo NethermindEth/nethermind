@@ -50,7 +50,7 @@ namespace Nethermind.Trie.Pruning
 
         public void CommitNode(long blockNumber, NodeCommitInfo nodeCommitInfo, WriteFlags flags = WriteFlags.None) { }
 
-        public void FinishBlockCommit(TrieType trieType, long blockNumber, TrieNode? root, Keccak stateRootHash = null, WriteFlags flags = WriteFlags.None) { }
+        public void FinishBlockCommit(TrieType trieType, long blockNumber, TrieNode? root, WriteFlags flags = WriteFlags.None) { }
 
         public event EventHandler<ReorgBoundaryReached> ReorgBoundaryReached
         {
@@ -84,7 +84,7 @@ namespace Nethermind.Trie.Pruning
         public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None) { }
 
         public bool CanAccessByPath() => _trieStore.CanAccessByPath();
-        public void MarkPrefixDeleted(long blockNumber, Keccak stateRoot, ReadOnlySpan<byte> keyPrefix)
+        public void MarkPrefixDeleted(long blockNumber, ReadOnlySpan<byte> keyPrefix)
         {
             throw new NotImplementedException();
         }

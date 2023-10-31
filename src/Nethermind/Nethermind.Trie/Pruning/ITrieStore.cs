@@ -11,9 +11,8 @@ namespace Nethermind.Trie.Pruning
     {
         void OpenContext(Keccak keccak);
         void CommitNode(long blockNumber, NodeCommitInfo nodeCommitInfo, WriteFlags writeFlags = WriteFlags.None);
-        void CommitNode(long blockNumber, Keccak rootHash, NodeCommitInfo nodeCommitInfo, WriteFlags writeFlags = WriteFlags.None);
 
-        void FinishBlockCommit(TrieType trieType, long blockNumber, TrieNode? root, Keccak stateRootHash = null, WriteFlags writeFlags = WriteFlags.None);
+        void FinishBlockCommit(TrieType trieType, long blockNumber, TrieNode? root, WriteFlags writeFlags = WriteFlags.None);
 
         bool IsPersisted(in ValueKeccak keccak);
 
@@ -27,7 +26,7 @@ namespace Nethermind.Trie.Pruning
 
         public void ClearCache();
 
-        void MarkPrefixDeleted(long blockNumber, Keccak rootHash, ReadOnlySpan<byte> keyPrefix);
+        void MarkPrefixDeleted(long blockNumber, ReadOnlySpan<byte> keyPrefix);
         void DeleteByRange(Span<byte> startKey, Span<byte> endKey);
 
         bool CanAccessByPath();

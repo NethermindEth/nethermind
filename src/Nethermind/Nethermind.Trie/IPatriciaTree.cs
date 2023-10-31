@@ -10,6 +10,7 @@ namespace Nethermind.Trie;
 public interface IPatriciaTree
 {
     Keccak RootHash { get; set; }
+    Keccak ParentStateRootHash { get; set; }
     TrieNode? RootRef { get; set; }
     byte[] StoreNibblePathPrefix { get; }
     void UpdateRootHash();
