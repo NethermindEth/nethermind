@@ -57,6 +57,8 @@ namespace Nethermind.Blockchain.Test
                             Hash256 stateRoot = (Hash256)info[1];
                             if (!_rootProcessed.Contains(stateRoot)) visitor.VisitMissingNode(stateRoot, new TrieVisitContext());
                         }));
+
+                    stateReader.HashStateForRoot(Arg.Any<Hash256>()).Returns(x => _rootProcessed.Contains(x[0]));
                 }
 
                 public void Allow(Hash256 hash)
