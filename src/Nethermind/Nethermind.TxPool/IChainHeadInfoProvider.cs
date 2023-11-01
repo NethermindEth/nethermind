@@ -14,9 +14,13 @@ namespace Nethermind.TxPool
 
         IAccountStateProvider AccountStateProvider { get; }
 
+        public long HeadNumber { get; }
+
         public long? BlockGasLimit { get; }
 
         public UInt256 CurrentBaseFee { get; }
+
+        public UInt256 CurrentPricePerBlobGas { get; }
 
         event EventHandler<BlockReplacementEventArgs> HeadChanged;
     }

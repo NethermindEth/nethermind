@@ -152,7 +152,7 @@ namespace Nethermind.Synchronization.StateSync
         /// Present an array of StateSyncItem[] as IReadOnlyList<Keccak> to avoid allocating secondary array
         /// Also Rent and Return cache for single item to try and avoid allocating the HashList in common case
         /// </summary>
-        private sealed class HashList : IReadOnlyList<Keccak>
+        private sealed class HashList : IReadOnlyList<Hash256>
         {
             private static HashList s_cache;
 
@@ -181,11 +181,11 @@ namespace Nethermind.Synchronization.StateSync
                 _items = null;
             }
 
-            public Keccak this[int index] => _items[index].Hash;
+            public Hash256 this[int index] => _items[index].Hash;
 
             public int Count => _items.Count;
 
-            public IEnumerator<Keccak> GetEnumerator()
+            public IEnumerator<Hash256> GetEnumerator()
             {
                 foreach (StateSyncItem item in _items)
                 {
@@ -199,7 +199,7 @@ namespace Nethermind.Synchronization.StateSync
         /// <summary>
         /// Transition class to prevent even larger change. Need to be removed later.
         /// </summary>
-        private sealed class KeccakToValueKeccakList : IReadOnlyList<ValueKeccak>
+        private sealed class KeccakToValueKeccakList : IReadOnlyList<ValueHash256>
         {
             private HashList _innerList;
 
@@ -208,9 +208,9 @@ namespace Nethermind.Synchronization.StateSync
                 _innerList = innerList;
             }
 
-            public IEnumerator<ValueKeccak> GetEnumerator()
+            public IEnumerator<ValueHash256> GetEnumerator()
             {
-                foreach (Keccak keccak in _innerList)
+                foreach (Hash256 keccak in _innerList)
                 {
                     yield return keccak;
                 }
@@ -223,7 +223,7 @@ namespace Nethermind.Synchronization.StateSync
 
             public int Count => _innerList.Count;
 
-            public ValueKeccak this[int index] => _innerList[index];
+            public ValueHash256 this[int index] => _innerList[index];
         }
     }
 }

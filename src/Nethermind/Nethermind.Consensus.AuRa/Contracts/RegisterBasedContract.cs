@@ -12,7 +12,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
     {
         private readonly IRegisterContract _registerContract;
         private readonly string _registryKey;
-        private Keccak _currentHashAddress = Keccak.Zero;
+        private Hash256 _currentHashAddress = Keccak.Zero;
 
         public RegisterBasedContract(
             IAbiEncoder abiEncoder,

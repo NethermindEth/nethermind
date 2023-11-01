@@ -44,7 +44,7 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams
 
     public UInt256 BaseFeePerGas { get; set; }
 
-    public Keccak BlockHash { get; set; } = Keccak.Zero;
+    public Hash256 BlockHash { get; set; } = Keccak.Zero;
 
     public long BlockNumber { get; set; }
 
@@ -58,13 +58,13 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams
 
     public Bloom LogsBloom { get; set; } = Bloom.Empty;
 
-    public Keccak ParentHash { get; set; } = Keccak.Zero;
+    public Hash256 ParentHash { get; set; } = Keccak.Zero;
 
-    public Keccak PrevRandao { get; set; } = Keccak.Zero;
+    public Hash256 PrevRandao { get; set; } = Keccak.Zero;
 
-    public Keccak ReceiptsRoot { get; set; } = Keccak.Zero;
+    public Hash256 ReceiptsRoot { get; set; } = Keccak.Zero;
 
-    public Keccak StateRoot { get; set; } = Keccak.Zero;
+    public Hash256 StateRoot { get; set; } = Keccak.Zero;
 
     public ulong Timestamp { get; set; }
 
@@ -109,7 +109,7 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams
     /// <see href="https://eips.ethereum.org/EIPS/eip-4788">EIP-4788</see>.
     /// </summary>
     [JsonIgnore]
-    public Keccak? ParentBeaconBlockRoot { get; set; }
+    public Hash256? ParentBeaconBlockRoot { get; set; }
 
     /// <summary>
     /// Creates the execution block from payload.
@@ -154,7 +154,6 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams
         catch (Exception)
         {
             block = null;
-
             return false;
         }
     }
@@ -167,8 +166,17 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams
     /// </summary>
     /// <returns>An RLP-decoded array of <see cref="Transaction"/>.</returns>
     public Transaction[] GetTransactions() => _transactions ??= Transactions
-        .Select(t => Rlp.Decode<Transaction>(t, RlpBehaviors.SkipTypedWrapping))
-        .ToArray();
+        .Select((t, i) =>
+        {
+            try
+            {
+                return Rlp.Decode<Transaction>(t, RlpBehaviors.SkipTypedWrapping);
+            }
+            catch (RlpException e)
+            {
+                throw new RlpException($"Transaction {i} is not valid", e);
+            }
+        }).ToArray();
 
     /// <summary>
     /// RLP-encodes and sets the transactions specified to <see cref="Transactions"/>.

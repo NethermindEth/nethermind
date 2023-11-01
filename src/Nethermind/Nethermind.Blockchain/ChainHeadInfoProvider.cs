@@ -6,6 +6,7 @@ using System.Runtime.CompilerServices;
 using Nethermind.Blockchain.Spec;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
+using Nethermind.Evm;
 using Nethermind.Int256;
 using Nethermind.State;
 using Nethermind.TxPool;
@@ -30,6 +31,7 @@ namespace Nethermind.Blockchain
         {
             SpecProvider = specProvider;
             AccountStateProvider = stateProvider;
+            HeadNumber = blockTree.BestKnownNumber;
 
             blockTree.BlockAddedToMain += OnHeadChanged;
         }
@@ -38,16 +40,25 @@ namespace Nethermind.Blockchain
 
         public IAccountStateProvider AccountStateProvider { get; }
 
+        public long HeadNumber { get; private set; }
+
         public long? BlockGasLimit { get; internal set; }
 
         public UInt256 CurrentBaseFee { get; private set; }
+
+        public UInt256 CurrentPricePerBlobGas { get; internal set; }
 
         public event EventHandler<BlockReplacementEventArgs>? HeadChanged;
 
         private void OnHeadChanged(object? sender, BlockReplacementEventArgs e)
         {
+            HeadNumber = e.Block.Number;
             BlockGasLimit = e.Block!.GasLimit;
             CurrentBaseFee = e.Block.Header.BaseFeePerGas;
+            CurrentPricePerBlobGas =
+                BlobGasCalculator.TryCalculateBlobGasPricePerUnit(e.Block.Header, out UInt256 currentPricePerBlobGas)
+                    ? currentPricePerBlobGas
+                    : UInt256.Zero;
             HeadChanged?.Invoke(sender, e);
         }
     }

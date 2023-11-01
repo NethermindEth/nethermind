@@ -62,7 +62,7 @@ namespace Nethermind.Blockchain.Find
                     $"Cannot find parent when parent hash is null on block with hash {block.Hash}.");
             }
 
-            return finder.FindBlock(block.Header.ParentHash, options);
+            return finder.FindBlock(block.Header.ParentHash, options, blockNumber: block.Header.Number - 1);
         }
 
         public static Block? FindParent(this IBlockFinder finder, BlockHeader blockHeader, BlockTreeLookupOptions options)
@@ -73,12 +73,12 @@ namespace Nethermind.Blockchain.Find
                     $"Cannot find parent when parent hash is null on block with hash {blockHeader.Hash}.");
             }
 
-            return finder.FindBlock(blockHeader.ParentHash, options);
+            return finder.FindBlock(blockHeader.ParentHash, options, blockNumber: blockHeader.Number - 1);
         }
 
         public static Block? RetrieveHeadBlock(this IBlockFinder finder)
         {
-            Keccak? headHash = finder.Head?.Hash;
+            Hash256? headHash = finder.Head?.Hash;
             return headHash is null ? null : finder.FindBlock(headHash, BlockTreeLookupOptions.None);
         }
     }

@@ -43,8 +43,7 @@ namespace Nethermind.TxPool.Filters
                     AcceptTxResult.InsufficientFunds.WithMessage($"Balance is {balance} less than sending value {tx.Value}");
             }
 
-            if (UInt256.MultiplyOverflow(tx.MaxFeePerGas, (UInt256)tx.GasLimit, out UInt256 txCostAndValue) ||
-                UInt256.AddOverflow(txCostAndValue, tx.Value, out txCostAndValue))
+            if (tx.IsOverflowInTxCostAndValue(out UInt256 txCostAndValue))
             {
                 Metrics.PendingTransactionsBalanceBelowValue++;
                 if (_logger.IsTrace)

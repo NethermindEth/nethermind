@@ -163,7 +163,7 @@ public class HeaderDecoderTests
     }
 
     [TestCaseSource(nameof(CancunFieldsSource))]
-    public void Can_encode_decode_with_cancun_fields(ulong? blobGasUsed, ulong? excessBlobGas, Keccak? parentBeaconBlockRoot)
+    public void Can_encode_decode_with_cancun_fields(ulong? blobGasUsed, ulong? excessBlobGas, Hash256? parentBeaconBlockRoot)
     {
         BlockHeader header = Build.A.BlockHeader
             .WithTimestamp(ulong.MaxValue)

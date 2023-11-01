@@ -122,6 +122,7 @@ namespace Nethermind.Api
         }
 
         public IAbiEncoder AbiEncoder { get; } = Nethermind.Abi.AbiEncoder.Instance;
+        public ITxStorage? BlobTxStorage { get; set; }
         public IBlockchainProcessor? BlockchainProcessor { get; set; }
         public CompositeBlockPreprocessorStep BlockPreprocessor { get; } = new();
         public IBlockProcessingQueue? BlockProcessingQueue { get; set; }
@@ -213,7 +214,7 @@ namespace Nethermind.Api
         public ITxPoolInfoProvider? TxPoolInfoProvider { get; set; }
         public IHealthHintService? HealthHintService { get; set; }
         public IRpcCapabilitiesProvider? RpcCapabilitiesProvider { get; set; }
-        public TxValidator? TxValidator { get; set; }
+        public ITxValidator? TxValidator { get; set; }
         public IBlockFinalizationManager? FinalizationManager { get; set; }
 
         public IGasLimitCalculator? GasLimitCalculator

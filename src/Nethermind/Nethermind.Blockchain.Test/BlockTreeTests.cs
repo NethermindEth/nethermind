@@ -3,11 +3,13 @@
 
 using System;
 using System.Collections.Generic;
+using System.Collections.Immutable;
 using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Find;
+using Nethermind.Blockchain.Headers;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Blockchain.Visitors;
 using Nethermind.Core;
@@ -248,9 +250,9 @@ namespace Nethermind.Blockchain.Test
             Assert.That(tree2.Head, Is.EqualTo(null), "head");
             Assert.That(tree2.BestSuggestedHeader!.Number, Is.EqualTo(0L), "suggested");
 
-            Assert.IsNull(blockStore.Get(block2.Hash!), "block 1");
-            Assert.IsNull(blockStore.Get(block2.Hash!), "block 2");
-            Assert.IsNull(blockStore.Get(block3.Hash!), "block 3");
+            Assert.IsNull(blockStore.Get(block2.Number, block2.Hash!), "block 1");
+            Assert.IsNull(blockStore.Get(block2.Number, block2.Hash!), "block 2");
+            Assert.IsNull(blockStore.Get(block3.Number, block3.Hash!), "block 3");
 
             Assert.IsNull(blockInfosDb.Get(2), "level 1");
             Assert.IsNull(blockInfosDb.Get(2), "level 2");
@@ -295,9 +297,9 @@ namespace Nethermind.Blockchain.Test
             Assert.That(tree2.Head, Is.EqualTo(null), "head");
             Assert.That(tree2.BestSuggestedHeader!.Hash, Is.EqualTo(block3B.Hash), "suggested");
 
-            blockStore.Get(block1.Hash!).Should().BeNull("block 1");
-            blockStore.Get(block2.Hash!).Should().BeNull("block 2");
-            blockStore.Get(block3.Hash!).Should().BeNull("block 3");
+            blockStore.Get(block1.Number, block1.Hash!).Should().BeNull("block 1");
+            blockStore.Get(block2.Number, block2.Hash!).Should().BeNull("block 2");
+            blockStore.Get(block3.Number, block3.Hash!).Should().BeNull("block 3");
 
             Assert.NotNull(blockInfosDb.Get(1), "level 1");
             Assert.NotNull(blockInfosDb.Get(2), "level 2");
@@ -755,8 +757,8 @@ namespace Nethermind.Blockchain.Test
         public void ForkChoiceUpdated_update_hashes()
         {
             BlockTree blockTree = BuildBlockTree();
-            Keccak finalizedBlockHash = TestItem.KeccakB;
-            Keccak safeBlockHash = TestItem.KeccakC;
+            Hash256 finalizedBlockHash = TestItem.KeccakB;
+            Hash256 safeBlockHash = TestItem.KeccakC;
             blockTree.ForkChoiceUpdated(finalizedBlockHash, safeBlockHash);
             Assert.That(blockTree.FinalizedHash, Is.EqualTo(finalizedBlockHash));
             Assert.That(blockTree.SafeHash, Is.EqualTo(safeBlockHash));
@@ -824,7 +826,7 @@ namespace Nethermind.Blockchain.Test
             AddToMain(blockTree, block0);
             AddToMain(blockTree, block1);
 
-            Keccak dec = new Keccak(blockInfosDb.Get(Keccak.Zero)!);
+            Hash256 dec = new Hash256(blockInfosDb.Get(Keccak.Zero)!);
             Assert.That(dec, Is.EqualTo(block1.Hash));
         }
 
@@ -931,7 +933,7 @@ namespace Nethermind.Blockchain.Test
             blockTree.SuggestBlock(block1);
             blockTree.UpdateMainChain(block1);
 
-            Keccak storedInDb = new(blockInfosDb.Get(Keccak.Zero)!);
+            Hash256 storedInDb = new(blockInfosDb.Get(Keccak.Zero)!);
             Assert.That(storedInDb, Is.EqualTo(block1.Hash));
         }
 
@@ -986,9 +988,9 @@ namespace Nethermind.Blockchain.Test
             Assert.That(tree.Head!.Number, Is.EqualTo(1L), "head");
             Assert.That(tree.BestSuggestedHeader!.Number, Is.EqualTo(1L), "suggested");
 
-            Assert.NotNull(blockStore.Get(block1.Hash!), "block 1");
-            Assert.IsNull(blockStore.Get(block2.Hash!), "block 2");
-            Assert.IsNull(blockStore.Get(block3.Hash!), "block 3");
+            Assert.NotNull(blockStore.Get(block1.Number, block1.Hash!), "block 1");
+            Assert.IsNull(blockStore.Get(block2.Number, block2.Hash!), "block 2");
+            Assert.IsNull(blockStore.Get(block3.Number, block3.Hash!), "block 3");
 
             Assert.NotNull(blockInfosDb.Get(1), "level 1");
             Assert.IsNull(blockInfosDb.Get(2), "level 2");
@@ -1034,12 +1036,12 @@ namespace Nethermind.Blockchain.Test
             Assert.That(tree.Head!.Number, Is.EqualTo(1L), "head");
             Assert.That(tree.BestSuggestedHeader!.Number, Is.EqualTo(1L), "suggested");
 
-            Assert.NotNull(blockStore.Get(block1.Hash!), "block 1");
-            Assert.NotNull(blockStore.Get(block2.Hash!), "block 2");
-            Assert.NotNull(blockStore.Get(block3.Hash!), "block 3");
-            Assert.Null(blockStore.Get(block1b.Hash!), "block 1b");
-            Assert.Null(blockStore.Get(block2b.Hash!), "block 2b");
-            Assert.Null(blockStore.Get(block3b.Hash!), "block 3b");
+            Assert.NotNull(blockStore.Get(block1.Number, block1.Hash!), "block 1");
+            Assert.NotNull(blockStore.Get(block2.Number, block2.Hash!), "block 2");
+            Assert.NotNull(blockStore.Get(block3.Number, block3.Hash!), "block 3");
+            Assert.Null(blockStore.Get(block1b.Number, block1b.Hash!), "block 1b");
+            Assert.Null(blockStore.Get(block2b.Number, block2b.Hash!), "block 2b");
+            Assert.Null(blockStore.Get(block3b.Number, block3b.Hash!), "block 3b");
 
             Assert.NotNull(blockInfosDb.Get(1), "level 1");
             Assert.NotNull(blockInfosDb.Get(2), "level 2");
@@ -1692,7 +1694,7 @@ namespace Nethermind.Blockchain.Test
                 {
                     for (int j = 0; j < level.BlockInfos.Length; j++)
                     {
-                        Keccak blockHash = level.BlockInfos[j].BlockHash;
+                        Hash256 blockHash = level.BlockInfos[j].BlockHash;
                         BlockHeader? header = blockTree.FindHeader(blockHash, BlockTreeLookupOptions.None);
                         if (header is not null)
                         {
@@ -1789,18 +1791,18 @@ namespace Nethermind.Blockchain.Test
         {
             get
             {
-                BlockHeader? FindHeader(BlockTree b, Keccak? h, BlockTreeLookupOptions o) => b.FindHeader(h, o);
-                BlockHeader? FindBlock(BlockTree b, Keccak? h, BlockTreeLookupOptions o) => b.FindBlock(h, o)?.Header;
+                BlockHeader? FindHeader(BlockTree b, Hash256? h, BlockTreeLookupOptions o) => b.FindHeader(h, o);
+                BlockHeader? FindBlock(BlockTree b, Hash256? h, BlockTreeLookupOptions o) => b.FindBlock(h, o)?.Header;
 
                 IReadOnlyList<BlockTreeLookupOptions> valueCombinations = EnumExtensions.AllValuesCombinations<BlockTreeLookupOptions>();
                 foreach (BlockTreeLookupOptions blockTreeLookupOptions in valueCombinations)
                 {
                     bool allowInvalid = (blockTreeLookupOptions & BlockTreeLookupOptions.AllowInvalid) == BlockTreeLookupOptions.AllowInvalid;
-                    yield return new TestCaseData((Func<BlockTree, Keccak?, BlockTreeLookupOptions, BlockHeader?>)FindHeader, blockTreeLookupOptions, allowInvalid)
+                    yield return new TestCaseData((Func<BlockTree, Hash256?, BlockTreeLookupOptions, BlockHeader?>)FindHeader, blockTreeLookupOptions, allowInvalid)
                     {
                         TestName = $"InvalidBlock_{nameof(FindHeader)}_({blockTreeLookupOptions})_{(allowInvalid ? "found" : "not_found")}"
                     };
-                    yield return new TestCaseData((Func<BlockTree, Keccak?, BlockTreeLookupOptions, BlockHeader?>)FindBlock, blockTreeLookupOptions, allowInvalid)
+                    yield return new TestCaseData((Func<BlockTree, Hash256?, BlockTreeLookupOptions, BlockHeader?>)FindBlock, blockTreeLookupOptions, allowInvalid)
                     {
                         TestName = $"InvalidBlock_{nameof(FindBlock)}_({blockTreeLookupOptions})_{(allowInvalid ? "found" : "not_found")}"
                     };
@@ -1809,13 +1811,103 @@ namespace Nethermind.Blockchain.Test
         }
 
         [TestCaseSource(nameof(InvalidBlockTestCases))]
-        public void Find_handles_invalid_blocks(Func<BlockTree, Keccak?, BlockTreeLookupOptions, BlockHeader?> findFunction, BlockTreeLookupOptions lookupOptions, bool foundInvalid)
+        public void Find_handles_invalid_blocks(Func<BlockTree, Hash256?, BlockTreeLookupOptions, BlockHeader?> findFunction, BlockTreeLookupOptions lookupOptions, bool foundInvalid)
         {
             BlockTree blockTree = Build.A.BlockTree().OfChainLength(3).TestObject;
             Block invalidBlock = Build.A.Block.WithNumber(4).WithParent(blockTree.Head!).TestObject;
             blockTree.SuggestBlock(invalidBlock);
             blockTree.DeleteInvalidBlock(invalidBlock);
             findFunction(blockTree, invalidBlock.Hash, lookupOptions).Should().Be(foundInvalid ? invalidBlock.Header : null);
+        }
+
+        [Test]
+        public void On_restart_loads_already_processed_genesis_block()
+        {
+            TestMemDb blocksDb = new();
+            TestMemDb headersDb = new();
+            TestMemDb blockNumberDb = new();
+            TestMemDb blocksInfosDb = new();
+            ChainLevelInfoRepository chainLevelInfoRepository = new(blocksInfosDb);
+
+            // First run
+            {
+                Hash256 uncleHash = new("0x1dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347");
+                BlockTree tree = Build.A.BlockTree(HoleskySpecProvider.Instance)
+                    .WithBlockStore(new BlockStore(blocksDb))
+                    .WithBlocksNumberDb(blockNumberDb)
+                    .WithHeadersDb(headersDb)
+                    .WithChainLevelInfoRepository(chainLevelInfoRepository)
+                    .WithoutSettingHead
+                    .TestObject;
+
+                // Holesky genesis
+                Block genesis = new(new(
+                    parentHash: Keccak.Zero,
+                    unclesHash: uncleHash,
+                    beneficiary: new Address(Keccak.Zero),
+                    difficulty: 1,
+                    number: 0,
+                    gasLimit: 25000000,
+                    timestamp: 1695902100,
+                    extraData: Array.Empty<byte>())
+                {
+                    Hash = new Hash256("0xb5f7f912443c940f21fd611f12828d75b534364ed9e95ca4e307729a4661bde4"),
+                    Bloom = Core.Bloom.Empty
+                });
+
+                // Second block
+                Block second = new(new(
+                    parentHash: genesis.Header.Hash!,
+                    unclesHash: uncleHash,
+                    beneficiary: new Address(Keccak.Zero),
+                    difficulty: 0,
+                    number: genesis.Header.Number + 1,
+                    gasLimit: 25000000,
+                    timestamp: genesis.Header.Timestamp + 100,
+                    extraData: Array.Empty<byte>())
+                {
+                    Hash = new Hash256("0x1111111111111111111111111111111111111111111111111111111111111111"),
+                    Bloom = Core.Bloom.Empty,
+                    StateRoot = genesis.Header.Hash,
+                });
+
+                // Third block
+                Block third = new(new(
+                    parentHash: second.Header.Hash!,
+                    unclesHash: uncleHash,
+                    beneficiary: new Address(Keccak.Zero),
+                    difficulty: 0,
+                    number: second.Header.Number + 1,
+                    gasLimit: 25000000,
+                    timestamp: second.Header.Timestamp + 100,
+                    extraData: Array.Empty<byte>())
+                {
+                    Hash = new Hash256("0x2222222222222222222222222222222222222222222222222222222222222222"),
+                    Bloom = Core.Bloom.Empty,
+                    StateRoot = genesis.Header.Hash,
+                });
+
+                tree.SuggestBlock(genesis);
+                tree.Genesis.Should().NotBeNull();
+
+                tree.UpdateMainChain(ImmutableList.Create(genesis), true);
+
+                tree.SuggestBlock(second);
+                tree.SuggestBlock(third);
+            }
+
+            // Assume Nethermind got restarted
+            {
+                BlockTree tree = Build.A.BlockTree(HoleskySpecProvider.Instance)
+                    .WithBlockStore(new BlockStore(blocksDb))
+                    .WithBlocksNumberDb(blockNumberDb)
+                    .WithHeadersDb(headersDb)
+                    .WithChainLevelInfoRepository(chainLevelInfoRepository)
+                    .WithoutSettingHead
+                    .TestObject;
+
+                tree.Genesis.Should().NotBeNull();
+            }
         }
 
         private class TestBlockTreeVisitor : IBlockTreeVisitor
@@ -1842,7 +1934,7 @@ namespace Nethermind.Blockchain.Test
                 return LevelVisitOutcome.None;
             }
 
-            public Task<bool> VisitMissing(Keccak hash, CancellationToken cancellationToken)
+            public Task<bool> VisitMissing(Hash256 hash, CancellationToken cancellationToken)
             {
                 return Task.FromResult(true);
             }

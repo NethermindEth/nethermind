@@ -93,7 +93,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
             {
             }
 
-            public void RefreshTotalDifficulty(ISyncPeer syncPeer, Keccak hash)
+            public void RefreshTotalDifficulty(ISyncPeer syncPeer, Hash256 hash)
             {
             }
 

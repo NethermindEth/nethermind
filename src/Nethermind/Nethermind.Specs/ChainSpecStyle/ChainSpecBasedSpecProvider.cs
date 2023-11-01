@@ -27,7 +27,9 @@ namespace Nethermind.Specs.ChainSpecStyle
             (_transitions, TransitionActivations, _firstTimestampActivation) = BuildTransitions();
         }
 
-        private ((ForkActivation, ReleaseSpec Spec)[], ForkActivation[], ForkActivation) BuildTransitions()
+        public bool GenesisStateUnavailable { get => _chainSpec.GenesisStateUnavailable; }
+
+        private void BuildTransitions()
         {
             SortedSet<long> transitionBlockNumbers = new();
             SortedSet<ulong> transitionTimestamps = new();

@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
+using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Receipts;
@@ -75,7 +76,7 @@ namespace Nethermind.Blockchain.Test.Receipts
         [Test, Timeout(Timeout.MaxTestTime)]
         public void Returns_null_for_missing_tx()
         {
-            Keccak blockHash = _storage.FindBlockHash(Keccak.Zero);
+            Hash256 blockHash = _storage.FindBlockHash(Keccak.Zero);
             blockHash.Should().BeNull();
         }
 
@@ -252,7 +253,7 @@ namespace Nethermind.Blockchain.Test.Receipts
             _storage.Insert(anotherBlock, new[] { Build.A.Receipt.TestObject }, ensureCanonical);
             _blockTree.FindBlockHash(anotherBlock.Number).Returns(anotherBlock.Hash);
 
-            Keccak findBlockHash = _storage.FindBlockHash(receipts[0].TxHash!);
+            Hash256 findBlockHash = _storage.FindBlockHash(receipts[0].TxHash!);
             if (ensureCanonical)
             {
                 findBlockHash.Should().Be(anotherBlock.Hash!);
@@ -336,6 +337,32 @@ namespace Nethermind.Blockchain.Test.Receipts
                 () => _receiptsDb.GetColumnDb(ReceiptsColumns.Transactions)[receipts[0].TxHash!.Bytes],
                 Is.Null.After(1000, 100)
                 );
+        }
+
+        [Test]
+        public async Task When_NewHeadBlock_Remove_TxIndex_OfRemovedBlock_Unless_ItsAlsoInNewBlock()
+        {
+            CreateStorage();
+            (Block block, TxReceipt[] receipts) = InsertBlock();
+
+            if (_receiptConfig.CompactTxIndex)
+            {
+                _receiptsDb.GetColumnDb(ReceiptsColumns.Transactions)[receipts[0].TxHash!.Bytes].Should().BeEquivalentTo(Rlp.Encode(block.Number).Bytes);
+            }
+            else
+            {
+                _receiptsDb.GetColumnDb(ReceiptsColumns.Transactions)[receipts[0].TxHash!.Bytes].Should().NotBeNull();
+            }
+
+            Block newHead = Build.A.Block
+                .WithNumber(1)
+                .WithTransactions(block.Transactions)
+                .TestObject;
+            _blockTree.FindBestSuggestedHeader().Returns(newHead.Header);
+            _blockTree.BlockAddedToMain += Raise.EventWith(new BlockReplacementEventArgs(newHead, block));
+
+            await Task.Delay(100);
+            _receiptsDb.GetColumnDb(ReceiptsColumns.Transactions)[receipts[0].TxHash!.Bytes].Should().NotBeNull();
         }
 
         [Test]

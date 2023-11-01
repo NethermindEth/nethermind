@@ -42,6 +42,6 @@ namespace Nethermind.Consensus.Processing
             TransactionProcessor = new TransactionProcessor(specProvider, StateProvider, machine, codeInfoRepository, logManager);
         }
 
-        public IReadOnlyTransactionProcessor Build(Keccak stateRoot) => new ReadOnlyTransactionProcessor(TransactionProcessor, StateProvider, stateRoot);
+        public IReadOnlyTransactionProcessor Build(Hash256 stateRoot) => new ReadOnlyTransactionProcessor(TransactionProcessor, StateProvider, stateRoot);
     }
 }

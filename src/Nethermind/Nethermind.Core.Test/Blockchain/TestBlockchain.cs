@@ -133,7 +133,7 @@ public class TestBlockchain : IDisposable
         State.CreateAccount(TestItem.AddressC, (initialValues ?? InitialValue));
 
         byte[] code = Bytes.FromHexString("0xabcd");
-        Keccak codeHash = Keccak.Compute(code);
+        Hash256 codeHash = Keccak.Compute(code);
         State.InsertCode(TestItem.AddressA, code, SpecProvider.GenesisSpec);
 
         State.Set(new StorageCell(TestItem.AddressA, UInt256.One), Bytes.FromHexString("0xabcdef"));
@@ -295,8 +295,9 @@ public class TestBlockchain : IDisposable
     protected virtual TxPool.TxPool CreateTxPool() =>
         new(
             EthereumEcdsa,
+            new BlobTxStorage(),
             new ChainHeadInfoProvider(new FixedForkActivationChainHeadSpecProvider(SpecProvider), BlockTree, ReadOnlyState),
-            new TxPoolConfig(),
+            new TxPoolConfig() { BlobSupportEnabled = true },
             new TxValidator(SpecProvider.ChainId),
             LogManager,
             TransactionComparerProvider.GetDefaultComparer());

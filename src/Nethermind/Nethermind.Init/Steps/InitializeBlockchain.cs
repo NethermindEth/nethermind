@@ -62,7 +62,7 @@ namespace Nethermind.Init.Steps
         }
 
         [Todo(Improve.Refactor, "Use chain spec for all chain configuration")]
-        private Task InitBlockchain()
+        protected virtual Task InitBlockchain()
         {
             InitBlockTraceDumper();
 
@@ -202,7 +202,7 @@ namespace Nethermind.Init.Steps
                 worldState.StateRoot = getApi.BlockTree.Head.StateRoot;
             }
 
-            TxValidator txValidator = setApi.TxValidator = new TxValidator(getApi.SpecProvider.ChainId);
+            setApi.TxValidator = new TxValidator(_api.SpecProvider!.ChainId);
 
             ITxPool txPool = _api.TxPool = CreateTxPool();
 
@@ -213,42 +213,15 @@ namespace Nethermind.Init.Steps
             _api.BlockPreprocessor.AddFirst(
                 new RecoverSignatures(getApi.EthereumEcdsa, txPool, getApi.SpecProvider, getApi.LogManager));
 
-            // blockchain processing
-            BlockhashProvider blockhashProvider = new(
-                getApi.BlockTree, getApi.LogManager);
+            _api.TransactionProcessor = CreateTransactionProcessor();
 
-            CodeInfoRepository codeInfoRepository = new();
-
-            VirtualMachine virtualMachine = new(
-                blockhashProvider,
-                getApi.SpecProvider,
-                codeInfoRepository,
-                getApi.LogManager);
-
-            _api.TransactionProcessor = new TransactionProcessor(
-                getApi.SpecProvider,
-                worldState,
-                virtualMachine,
-                codeInfoRepository,
-                getApi.LogManager);
 
             InitSealEngine();
             if (_api.SealValidator is null) throw new StepDependencyException(nameof(_api.SealValidator));
 
             setApi.HeaderValidator = CreateHeaderValidator();
-
-            IHeaderValidator? headerValidator = setApi.HeaderValidator;
-            IUnclesValidator unclesValidator = setApi.UnclesValidator = new UnclesValidator(
-                getApi.BlockTree,
-                headerValidator,
-                getApi.LogManager);
-
-            setApi.BlockValidator = new BlockValidator(
-                txValidator,
-                headerValidator,
-                unclesValidator,
-                getApi.SpecProvider,
-                getApi.LogManager);
+            setApi.UnclesValidator = CreateUnclesValidator();
+            setApi.BlockValidator = CreateBlockValidator();
 
             IChainHeadInfoProvider chainHeadInfoProvider =
                 new ChainHeadInfoProvider(getApi.SpecProvider, getApi.BlockTree, stateReader);
@@ -286,11 +259,64 @@ namespace Nethermind.Init.Steps
             IFilterStore filterStore = setApi.FilterStore = new FilterStore();
             setApi.FilterManager = new FilterManager(filterStore, mainBlockProcessor, txPool, getApi.LogManager);
             setApi.HealthHintService = CreateHealthHintService();
-            setApi.BlockProductionPolicy = new BlockProductionPolicy(miningConfig);
+            setApi.BlockProductionPolicy = CreateBlockProductionPolicy();
 
             InitializeFullPruning(pruningConfig, initConfig, _api, stateReader);
 
             return Task.CompletedTask;
+        }
+
+        protected virtual IBlockValidator CreateBlockValidator()
+        {
+            return new BlockValidator(
+                _api.TxValidator,
+                _api.HeaderValidator,
+                _api.UnclesValidator,
+                _api.SpecProvider,
+                _api.LogManager);
+        }
+
+        protected virtual IUnclesValidator CreateUnclesValidator()
+        {
+            return new UnclesValidator(
+                _api.BlockTree,
+                _api.HeaderValidator,
+                _api.LogManager);
+        }
+
+        protected virtual ITransactionProcessor CreateTransactionProcessor()
+        {
+            if (_api.SpecProvider is null) throw new StepDependencyException(nameof(_api.SpecProvider));
+            if (_api.WorldState is null) throw new StepDependencyException(nameof(_api.WorldState));
+
+            (VirtualMachine, CodeInfoRepository) (virtualMachine, codeInfoRepository) = CreateVirtualMachine();
+
+            _api.TransactionProcessor = new TransactionProcessor(
+                getApi.SpecProvider,
+                worldState,
+                virtualMachine,
+                codeInfoRepository,
+                getApi.LogManager);
+        }
+
+        protected virtual (VirtualMachine, CodeInfoRepository) CreateVirtualMachine()
+        {
+            if (_api.BlockTree is null) throw new StepDependencyException(nameof(_api.BlockTree));
+            if (_api.SpecProvider is null) throw new StepDependencyException(nameof(_api.SpecProvider));
+
+            // blockchain processing
+            BlockhashProvider blockhashProvider = new(
+                _api.BlockTree, _api.LogManager);
+
+            CodeInfoRepository codeInfoRepository = new();
+
+            VirtualMachine virtualMachine = new(
+                blockhashProvider,
+                getApi.SpecProvider,
+                codeInfoRepository,
+                getApi.LogManager);
+
+            return (virtualMachine, codeInfoRepository);
         }
 
         private static void InitializeFullPruning(
@@ -346,8 +372,12 @@ namespace Nethermind.Init.Steps
         protected virtual IHealthHintService CreateHealthHintService() =>
             new HealthHintService(_api.ChainSpec!);
 
+        protected virtual IBlockProductionPolicy CreateBlockProductionPolicy() =>
+            new BlockProductionPolicy(_api.Config<IMiningConfig>());
+
         protected virtual TxPool.TxPool CreateTxPool() =>
             new(_api.EthereumEcdsa!,
+                _api.BlobTxStorage ?? NullBlobTxStorage.Instance,
                 new ChainHeadInfoProvider(_api.SpecProvider!, _api.BlockTree!, _api.StateReader!),
                 _api.Config<ITxPoolConfig>(),
                 _api.TxValidator!,

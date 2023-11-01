@@ -74,6 +74,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                 .TestObject;
 
             _txPool = new TxPool.TxPool(_ethereumEcdsa,
+                new BlobTxStorage(),
                 new ChainHeadInfoProvider(new FixedForkActivationChainHeadSpecProvider(specProvider), _blockTree, stateProvider),
                 new TxPoolConfig(),
                 new TxValidator(specProvider.ChainId),
@@ -110,7 +111,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             transaction2.Signature.V = 37;
 
             Block genesis = Build.A.Block.Genesis
-                .WithStateRoot(new Keccak("0x1ef7300d8961797263939a3d29bbba4ccf1702fabf02d8ad7a20b454edb6fd2f"))
+                .WithStateRoot(new Hash256("0x1ef7300d8961797263939a3d29bbba4ccf1702fabf02d8ad7a20b454edb6fd2f"))
                 .TestObject;
 
             _blockTree.SuggestBlock(genesis);
@@ -118,7 +119,7 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             Block previousBlock = genesis;
             Block block = Build.A.Block.WithNumber(blockNumber).WithParent(previousBlock)
-                    .WithStateRoot(new Keccak("0x1ef7300d8961797263939a3d29bbba4ccf1702fabf02d8ad7a20b454edb6fd2f"))
+                    .WithStateRoot(new Hash256("0x1ef7300d8961797263939a3d29bbba4ccf1702fabf02d8ad7a20b454edb6fd2f"))
                     .WithTransactions(transaction1, transaction2, transaction3)
                     .TestObject;
 

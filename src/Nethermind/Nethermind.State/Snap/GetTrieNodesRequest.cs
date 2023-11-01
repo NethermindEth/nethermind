@@ -7,7 +7,7 @@ namespace Nethermind.State.Snap
 {
     public class GetTrieNodesRequest
     {
-        public ValueKeccak RootHash { get; set; }
+        public ValueHash256 RootHash { get; set; }
 
         public PathGroup[] AccountAndStoragePaths { get; set; }
     }

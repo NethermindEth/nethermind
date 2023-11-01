@@ -29,6 +29,7 @@ namespace Nethermind.Specs.ChainSpecStyle
 
         public NetworkNode[] Bootnodes { get; set; }
 
+        public bool GenesisStateUnavailable { get; set; }
         public Block Genesis { get; set; }
 
         public string SealEngineType { get; set; }
@@ -39,7 +40,9 @@ namespace Nethermind.Specs.ChainSpecStyle
 
         public EthashParameters Ethash { get; set; }
 
-        public ChainParameters Parameters { get; set; } = new();
+        public OptimismParameters Optimism { get; set; }
+
+        public ChainParameters Parameters { get; set; }
 
         public Dictionary<Address, ChainSpecAllocation> Allocations { get; set; }
 

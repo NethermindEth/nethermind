@@ -24,6 +24,8 @@ namespace Nethermind.JsonRpc.WebSockets
         private readonly long? _maxBatchResponseBodySize;
         private readonly JsonRpcContext _jsonRpcContext;
 
+        private readonly SemaphoreSlim _sendSemaphore = new(1, 1);
+
         public JsonRpcSocketsClient(
             string clientName,
             ISocketHandler handler,
@@ -46,6 +48,7 @@ namespace Nethermind.JsonRpc.WebSockets
         public override void Dispose()
         {
             base.Dispose();
+            _sendSemaphore.Dispose();
             Closed?.Invoke(this, EventArgs.Empty);
         }
 
@@ -111,53 +114,61 @@ namespace Nethermind.JsonRpc.WebSockets
 
         public virtual async Task<int> SendJsonRpcResult(JsonRpcResult result)
         {
-            await using Stream stream = _handler.SendUsingStream();
-            await using Stream buffered = new BufferedStream(stream);
-            await using CounterStream resultData = new CounterStream(buffered);
-
-            if (result.IsCollection)
+            await _sendSemaphore.WaitAsync();
+            try
             {
-                bool isFirst = true;
-                await resultData.WriteAsync(_jsonOpeningBracket);
-                JsonRpcBatchResultAsyncEnumerator enumerator = result.BatchedResponses!.GetAsyncEnumerator(CancellationToken.None);
-                try
-                {
-                    while (await enumerator.MoveNextAsync())
-                    {
-                        JsonRpcResult.Entry entry = enumerator.Current;
-                        using (entry)
-                        {
-                            if (!isFirst)
-                            {
-                                await resultData.WriteAsync(_jsonComma);
-                            }
-                            isFirst = false;
-                            SendJsonRpcResultEntry(resultData, entry);
-                            _ = _jsonRpcLocalStats.ReportCall(entry.Report);
+                await using Stream stream = _handler.SendUsingStream();
+                await using Stream buffered = new BufferedStream(stream);
+                await using CounterStream resultData = new CounterStream(buffered);
 
-                            // We reached the limit and don't want to responded to more request in the batch
-                            if (!_jsonRpcContext.IsAuthenticated && resultData.WrittenBytes > _maxBatchResponseBodySize)
+                if (result.IsCollection)
+                {
+                    bool isFirst = true;
+                    await resultData.WriteAsync(_jsonOpeningBracket);
+                    JsonRpcBatchResultAsyncEnumerator enumerator = result.BatchedResponses!.GetAsyncEnumerator(CancellationToken.None);
+                    try
+                    {
+                        while (await enumerator.MoveNextAsync())
+                        {
+                            JsonRpcResult.Entry entry = enumerator.Current;
+                            using (entry)
                             {
-                                enumerator.IsStopped = true;
+                                if (!isFirst)
+                                {
+                                    await resultData.WriteAsync(_jsonComma);
+                                }
+                                isFirst = false;
+                                SendJsonRpcResultEntry(resultData, entry);
+                                _ = _jsonRpcLocalStats.ReportCall(entry.Report);
+
+                                // We reached the limit and don't want to responded to more request in the batch
+                                if (!_jsonRpcContext.IsAuthenticated && resultData.WrittenBytes > _maxBatchResponseBodySize)
+                                {
+                                    enumerator.IsStopped = true;
+                                }
                             }
                         }
                     }
+                    finally
+                    {
+                        await enumerator.DisposeAsync();
+                    }
+
+                    await resultData.WriteAsync(_jsonClosingBracket);
                 }
-                finally
+                else
                 {
-                    await enumerator.DisposeAsync();
+                    SendJsonRpcResultEntry(resultData, result.SingleResponse!.Value);
                 }
 
-                await resultData.WriteAsync(_jsonClosingBracket);
+                // ? What if we write more than int.MaxValue.
+                // Result could be negative
+                return (int)resultData.WrittenBytes;
             }
-            else
+            finally
             {
-                SendJsonRpcResultEntry(resultData, result.SingleResponse!.Value);
+                _sendSemaphore.Release();
             }
-
-            // ? What if we write more than int.MaxValue.
-            // Result could be negative
-            return (int)resultData.WrittenBytes;
         }
 
         private void SendJsonRpcResultEntry(Stream dest, JsonRpcResult.Entry result)

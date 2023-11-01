@@ -14,9 +14,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Les
         public byte ProtocolVersion { get; set; }
         public long ChainId { get; set; }
         public BigInteger TotalDifficulty { get; set; }
-        public Keccak BestHash { get; set; }
+        public Hash256 BestHash { get; set; }
         public long HeadBlockNo { get; set; }
-        public Keccak GenesisHash { get; set; }
+        public Hash256 GenesisHash { get; set; }
         public byte AnnounceType { get; set; }
         public bool ServeHeaders { get; set; }
         public long? ServeChainSince { get; set; }

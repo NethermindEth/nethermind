@@ -254,8 +254,8 @@ namespace Nethermind.Facade.Test
         [TestCase(false, false)]
         public void GetReceiptAndGasInfo_returns_correct_results(bool isCanonical, bool postEip4844)
         {
-            Keccak txHash = TestItem.KeccakA;
-            Keccak blockHash = TestItem.KeccakB;
+            Hash256 txHash = TestItem.KeccakA;
+            Hash256 blockHash = TestItem.KeccakB;
             UInt256 effectiveGasPrice = 123;
 
             Transaction tx = postEip4844

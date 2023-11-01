@@ -79,7 +79,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             }
         }
 
-        private class CreateAccessListTxExecutor : TxExecutor<AccessListForRpc>
+        private class CreateAccessListTxExecutor : TxExecutor<AccessListForRpc?>
         {
             private readonly bool _optimize;
 
@@ -89,15 +89,19 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 _optimize = optimize;
             }
 
-            protected override ResultWrapper<AccessListForRpc> ExecuteTx(BlockHeader header, Transaction tx, CancellationToken token)
+            protected override ResultWrapper<AccessListForRpc?> ExecuteTx(BlockHeader header, Transaction tx, CancellationToken token)
             {
                 CallOutput result = _blockchainBridge.CreateAccessList(header, tx, token, _optimize);
 
-                return result.Error is null
-                    ? ResultWrapper<AccessListForRpc>.Success(new(GetResultAccessList(tx, result), GetResultGas(tx, result)))
-                    : TryGetInputError(result) ?? ResultWrapper<AccessListForRpc>.Fail(result.Error, ErrorCodes.ExecutionError, new AccessListForRpc(GetResultAccessList(tx, result), GetResultGas(tx, result)));
-            }
+                if (result.Error is null)
+                {
+                    return ResultWrapper<AccessListForRpc?>.Success(new(GetResultAccessList(tx, result), GetResultGas(tx, result)));
+                }
 
+                return result.InputError
+                    ? GetInputError(result)
+                    : ResultWrapper<AccessListForRpc?>.Fail(result.Error, ErrorCodes.ExecutionError, new AccessListForRpc(GetResultAccessList(tx, result), GetResultGas(tx, result)));
+            }
 
             private static IEnumerable<AccessListItemForRpc> GetResultAccessList(Transaction tx, CallOutput result)
             {

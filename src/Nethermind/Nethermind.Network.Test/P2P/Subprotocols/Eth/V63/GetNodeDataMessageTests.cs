@@ -16,7 +16,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
         [Test]
         public void Sets_values_from_constructor_argument()
         {
-            Keccak[] keys = { TestItem.KeccakA, TestItem.KeccakB };
+            Hash256[] keys = { TestItem.KeccakA, TestItem.KeccakB };
             GetNodeDataMessage message = new(keys);
             Assert.That(message.Hashes, Is.SameAs(keys));
         }
@@ -30,7 +30,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
         [Test]
         public void To_string()
         {
-            GetNodeDataMessage statusMessage = new(new List<Keccak>());
+            GetNodeDataMessage statusMessage = new(new List<Hash256>());
             _ = statusMessage.ToString();
         }
     }

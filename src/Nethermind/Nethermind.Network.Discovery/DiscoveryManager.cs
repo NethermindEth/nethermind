@@ -18,7 +18,7 @@ public class DiscoveryManager : IDiscoveryManager
     private readonly IDiscoveryConfig _discoveryConfig;
     private readonly ILogger _logger;
     private readonly INodeLifecycleManagerFactory _nodeLifecycleManagerFactory;
-    private readonly ConcurrentDictionary<Keccak, INodeLifecycleManager> _nodeLifecycleManagers = new();
+    private readonly ConcurrentDictionary<Hash256, INodeLifecycleManager> _nodeLifecycleManagers = new();
     private readonly INodeTable _nodeTable;
     private readonly INetworkStorage _discoveryStorage;
 
@@ -156,7 +156,7 @@ public class DiscoveryManager : IDiscoveryManager
         }
     }
 
-    public async Task<bool> WasMessageReceived(Keccak senderIdHash, MsgType msgType, int timeout)
+    public async Task<bool> WasMessageReceived(Hash256 senderIdHash, MsgType msgType, int timeout)
     {
         TaskCompletionSource<DiscoveryMsg> completionSource = GetCompletionSource(senderIdHash, (int)msgType);
         CancellationTokenSource delayCancellation = new();
@@ -225,14 +225,14 @@ public class DiscoveryManager : IDiscoveryManager
         completionSource?.TrySetResult(msg);
     }
 
-    private TaskCompletionSource<DiscoveryMsg> GetCompletionSource(Keccak senderAddressHash, int messageType)
+    private TaskCompletionSource<DiscoveryMsg> GetCompletionSource(Hash256 senderAddressHash, int messageType)
     {
         MessageTypeKey key = new(senderAddressHash, messageType);
         TaskCompletionSource<DiscoveryMsg> completionSource = _waitingEvents.GetOrAdd(key, new TaskCompletionSource<DiscoveryMsg>(TaskCreationOptions.RunContinuationsAsynchronously));
         return completionSource;
     }
 
-    private TaskCompletionSource<DiscoveryMsg>? RemoveCompletionSource(Keccak senderAddressHash, int messageType)
+    private TaskCompletionSource<DiscoveryMsg>? RemoveCompletionSource(Hash256 senderAddressHash, int messageType)
     {
         MessageTypeKey key = new(senderAddressHash, messageType);
         return _waitingEvents.TryRemove(key, out TaskCompletionSource<DiscoveryMsg>? completionSource) ? completionSource : null;
@@ -247,7 +247,7 @@ public class DiscoveryManager : IDiscoveryManager
         }
 
         int remainingToRemove = toRemove;
-        foreach ((Keccak key, INodeLifecycleManager value) in _nodeLifecycleManagers)
+        foreach ((Hash256 key, INodeLifecycleManager value) in _nodeLifecycleManagers)
         {
             if (value.State == NodeLifecycleState.ActiveExcluded)
             {
@@ -263,7 +263,7 @@ public class DiscoveryManager : IDiscoveryManager
             }
         }
 
-        foreach ((Keccak key, INodeLifecycleManager value) in _nodeLifecycleManagers)
+        foreach ((Hash256 key, INodeLifecycleManager value) in _nodeLifecycleManagers)
         {
             if (value.State == NodeLifecycleState.Unreachable)
             {
@@ -279,7 +279,7 @@ public class DiscoveryManager : IDiscoveryManager
             }
         }
         DateTime utcNow = DateTime.UtcNow;
-        foreach ((Keccak key, INodeLifecycleManager value) in _nodeLifecycleManagers.ToArray()
+        foreach ((Hash256 key, INodeLifecycleManager value) in _nodeLifecycleManagers.ToArray()
                      .OrderBy(x => x.Value.NodeStats.CurrentNodeReputation(utcNow)))
         {
             if (RemoveManager((key, value.ManagedNode.Id)))
@@ -296,7 +296,7 @@ public class DiscoveryManager : IDiscoveryManager
         if (_logger.IsDebug) _logger.Debug($"Cleaned up {toRemove - remainingToRemove} discovery lifecycle managers.");
     }
 
-    private bool RemoveManager((Keccak Hash, PublicKey Key) item)
+    private bool RemoveManager((Hash256 Hash, PublicKey Key) item)
     {
         if (_nodeLifecycleManagers.TryRemove(item.Hash, out _))
         {
@@ -309,11 +309,11 @@ public class DiscoveryManager : IDiscoveryManager
 
     private readonly struct MessageTypeKey : IEquatable<MessageTypeKey>
     {
-        public Keccak SenderAddressHash { get; }
+        public Hash256 SenderAddressHash { get; }
 
         public int MessageType { get; }
 
-        public MessageTypeKey(Keccak senderAddressHash, int messageType)
+        public MessageTypeKey(Hash256 senderAddressHash, int messageType)
         {
             SenderAddressHash = senderAddressHash;
             MessageType = messageType;

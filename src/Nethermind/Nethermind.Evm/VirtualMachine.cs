@@ -150,6 +150,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine
 
     private readonly IBlockhashProvider _blockhashProvider;
     private readonly ISpecProvider _specProvider;
+    private static readonly LruCache<ValueHash256, CodeInfo> _codeCache = new(MemoryAllowance.CodeCacheSize, MemoryAllowance.CodeCacheSize, "VM bytecodes");
     private readonly ILogger _logger;
     private IWorldState _state = null!;
     private readonly Stack<EvmState> _stateStack = new();
@@ -478,6 +479,59 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine
 
             _parityTouchBugAccount.ShouldDelete = false;
         }
+    }
+
+        Hash256 codeHash = worldState.GetCodeHash(codeSource);
+        CodeInfo cachedCodeInfo = _codeCache.Get(codeHash);
+        if (cachedCodeInfo is null)
+        {
+            byte[] code = worldState.GetCode(codeHash);
+
+            if (code is null)
+            {
+                throw new NullReferenceException($"Code {codeHash} missing in the state for address {codeSource}");
+            }
+
+            cachedCodeInfo = new CodeInfo(code);
+            _codeCache.Set(codeHash, cachedCodeInfo);
+        }
+        else
+        {
+            // need to touch code so that any collectors that track database access are informed
+            worldState.TouchCode(codeHash);
+        }
+
+        return cachedCodeInfo;
+    }
+
+    private void InitializePrecompiledContracts()
+    {
+        _precompiles = new Dictionary<Address, CodeInfo>
+        {
+            [EcRecoverPrecompile.Address] = new(EcRecoverPrecompile.Instance),
+            [Sha256Precompile.Address] = new(Sha256Precompile.Instance),
+            [Ripemd160Precompile.Address] = new(Ripemd160Precompile.Instance),
+            [IdentityPrecompile.Address] = new(IdentityPrecompile.Instance),
+
+            [Bn254AddPrecompile.Address] = new(Bn254AddPrecompile.Instance),
+            [Bn254MulPrecompile.Address] = new(Bn254MulPrecompile.Instance),
+            [Bn254PairingPrecompile.Address] = new(Bn254PairingPrecompile.Instance),
+            [ModExpPrecompile.Address] = new(ModExpPrecompile.Instance),
+
+            [Blake2FPrecompile.Address] = new(Blake2FPrecompile.Instance),
+
+            [G1AddPrecompile.Address] = new(G1AddPrecompile.Instance),
+            [G1MulPrecompile.Address] = new(G1MulPrecompile.Instance),
+            [G1MultiExpPrecompile.Address] = new(G1MultiExpPrecompile.Instance),
+            [G2AddPrecompile.Address] = new(G2AddPrecompile.Instance),
+            [G2MulPrecompile.Address] = new(G2MulPrecompile.Instance),
+            [G2MultiExpPrecompile.Address] = new(G2MultiExpPrecompile.Instance),
+            [PairingPrecompile.Address] = new(PairingPrecompile.Instance),
+            [MapToG1Precompile.Address] = new(MapToG1Precompile.Instance),
+            [MapToG2Precompile.Address] = new(MapToG2Precompile.Instance),
+
+            [PointEvaluationPrecompile.Address] = new(PointEvaluationPrecompile.Instance),
+        };
     }
 
     private static bool UpdateGas(long gasCost, ref long gasAvailable)
@@ -1374,7 +1428,7 @@ OutOfGas:
 
                         stack.PopUInt256(out a);
                         long number = a > long.MaxValue ? long.MaxValue : (long)a;
-                        Keccak blockHash = _blockhashProvider.GetBlockhash(blkCtx.Header, number);
+                        Hash256 blockHash = _blockhashProvider.GetBlockhash(blkCtx.Header, number);
                         stack.PushBytes(blockHash != null ? blockHash.Bytes : BytesZero32);
 
                         if (typeof(TLogger) == typeof(IsTracing))
@@ -2427,9 +2481,14 @@ ReturnFailure:
 
         _state.SubtractFromBalance(env.ExecutingAccount, value, spec);
 
-        ValueKeccak codeHash = ValueKeccak.Compute(initCode);
-
-        CodeInfo codeInfo = _codeInfoRepository.GetOrAdd(codeHash, initCode);
+        ValueHash256 codeHash = ValueKeccak.Compute(initCode);
+        // Prefer code from code cache (e.g. if create from a factory contract or copypasta)
+        if (!_codeCache.TryGet(codeHash, out CodeInfo codeInfo))
+        {
+            codeInfo = new(initCode.ToArray());
+            // Prime the code cache as likely to be used by more txs
+            _codeCache.Set(codeHash, codeInfo);
+        }
 
         ExecutionEnvironment callEnv = new
         (
@@ -2472,10 +2531,10 @@ ReturnFailure:
                 (long)length * GasCostOf.LogData, ref gasAvailable)) return false;
 
         ReadOnlyMemory<byte> data = vmState.Memory.Load(in position, length);
-        Keccak[] topics = new Keccak[topicsCount];
+        Hash256[] topics = new Hash256[topicsCount];
         for (int i = 0; i < topicsCount; i++)
         {
-            topics[i] = new Keccak(stack.PopWord256());
+            topics[i] = new Hash256(stack.PopWord256());
         }
 
         LogEntry logEntry = new(

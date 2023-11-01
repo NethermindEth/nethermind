@@ -25,7 +25,7 @@ namespace Nethermind.Stats.Model
         /// <summary>
         /// Hash of the node ID used extensively in discovery and kept here to avoid rehashing.
         /// </summary>
-        public Keccak IdHash { get; }
+        public Hash256 IdHash { get; }
 
         /// <summary>
         /// Host part of the network node.

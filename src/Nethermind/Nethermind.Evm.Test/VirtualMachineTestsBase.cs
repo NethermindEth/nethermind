@@ -312,7 +312,7 @@ public class VirtualMachineTestsBase
         Assert.That(TestState.Get(new StorageCell(Recipient, address)).PadLeft(32), Is.EqualTo(value.Bytes.PadLeft(32)), "storage");
     }
 
-    protected void AssertStorage(UInt256 address, Keccak value)
+    protected void AssertStorage(UInt256 address, Hash256 value)
     {
         Assert.That(TestState.Get(new StorageCell(Recipient, address)).PadLeft(32), Is.EqualTo(value.BytesToArray()), "storage");
     }
@@ -353,7 +353,7 @@ public class VirtualMachineTestsBase
         }
     }
 
-    protected void AssertCodeHash(Address address, Keccak codeHash)
+    protected void AssertCodeHash(Address address, Hash256 codeHash)
     {
         Assert.That(TestState.GetCodeHash(address), Is.EqualTo(codeHash), "code hash");
     }

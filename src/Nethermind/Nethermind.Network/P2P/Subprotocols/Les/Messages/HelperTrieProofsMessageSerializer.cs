@@ -11,11 +11,11 @@ namespace Nethermind.Network.P2P.Subprotocols.Les.Messages
     {
         public void Serialize(IByteBuffer byteBuffer, HelperTrieProofsMessage message)
         {
-            Keccak[] proofNodesKeccak = new Keccak[message.ProofNodes.Length];
+            Hash256[] proofNodesKeccak = new Hash256[message.ProofNodes.Length];
             int proofNodesContentLength = 0;
             for (int i = 0; i < message.ProofNodes.Length; i++)
             {
-                proofNodesKeccak[i] = new Keccak(message.ProofNodes[i]);
+                proofNodesKeccak[i] = new Hash256(message.ProofNodes[i]);
                 proofNodesContentLength += Rlp.LengthOf(proofNodesKeccak[i]);
             }
 

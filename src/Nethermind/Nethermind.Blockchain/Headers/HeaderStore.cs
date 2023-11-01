@@ -21,7 +21,7 @@ public class HeaderStore : IHeaderStore
     private readonly IDb _headerDb;
     private readonly IDb _blockNumberDb;
     private readonly HeaderDecoder _headerDecoder = new();
-    private readonly LruCache<ValueKeccak, BlockHeader> _headerCache =
+    private readonly LruCache<ValueHash256, BlockHeader> _headerCache =
         new(CacheSize, CacheSize, "headers");
 
     public HeaderStore(IDb headerDb, IDb blockNumberDb)
@@ -33,13 +33,11 @@ public class HeaderStore : IHeaderStore
     public void Insert(BlockHeader header)
     {
         using NettyRlpStream newRlp = _headerDecoder.EncodeToNewNettyStream(header);
-        Span<byte> blockNumberSpan = stackalloc byte[8];
-        header.Number.WriteBigEndian(blockNumberSpan);
         _headerDb.Set(header.Number, header.Hash, newRlp.AsSpan());
-        _blockNumberDb.Set(header.Hash, blockNumberSpan);
+        InsertBlockNumber(header.Hash, header.Number);
     }
 
-    public BlockHeader? Get(Keccak blockHash, bool shouldCache = false, long? blockNumber = null)
+    public BlockHeader? Get(Hash256 blockHash, bool shouldCache = false, long? blockNumber = null)
     {
         blockNumber ??= GetBlockNumberFromBlockNumberDb(blockHash);
 
@@ -56,7 +54,7 @@ public class HeaderStore : IHeaderStore
         _headerCache.Set(header.Hash, header);
     }
 
-    public void Delete(Keccak blockHash)
+    public void Delete(Hash256 blockHash)
     {
         long? blockNumber = GetBlockNumberFromBlockNumberDb(blockHash);
         if (blockNumber != null) _headerDb.Delete(blockNumber.Value, blockHash);
@@ -65,35 +63,38 @@ public class HeaderStore : IHeaderStore
         _headerCache.Delete(blockHash);
     }
 
-    private long? GetBlockNumberFromBlockNumberDb(Keccak blockHash)
+    public void InsertBlockNumber(Hash256 blockHash, long blockNumber)
     {
-        if (_blockNumberDb is IDbWithSpan spanDb)
+        Span<byte> blockNumberSpan = stackalloc byte[8];
+        blockNumber.WriteBigEndian(blockNumberSpan);
+        _blockNumberDb.Set(blockHash, blockNumberSpan);
+    }
+
+    public long? GetBlockNumber(Hash256 blockHash)
+    {
+        long? blockNumber = GetBlockNumberFromBlockNumberDb(blockHash);
+        if (blockNumber != null) return blockNumber.Value;
+
+        // Probably still hash based
+        return Get(blockHash)?.Number;
+    }
+
+    private long? GetBlockNumberFromBlockNumberDb(Hash256 blockHash)
+    {
+        Span<byte> numberSpan = _blockNumberDb.GetSpan(blockHash);
+        if (numberSpan.IsNullOrEmpty()) return null;
+        try
         {
-            Span<byte> numberSpan = spanDb.GetSpan(blockHash);
-            if (numberSpan.IsNullOrEmpty()) return null;
-            try
+            if (numberSpan.Length != 8)
             {
-                if (numberSpan.Length != 8)
-                {
-                    throw new InvalidDataException($"Unexpected number span length: {numberSpan.Length}");
-                }
+                throw new InvalidDataException($"Unexpected number span length: {numberSpan.Length}");
+            }
 
-                long num = BinaryPrimitives.ReadInt64BigEndian(numberSpan);
-                return num;
-            }
-            finally
-            {
-                spanDb.DangerousReleaseMemory(numberSpan);
-            }
+            return BinaryPrimitives.ReadInt64BigEndian(numberSpan);
         }
-
-        byte[] numberBytes = _blockNumberDb.Get(blockHash);
-        if (numberBytes == null) return null;
-        if (numberBytes.Length != 8)
+        finally
         {
-            throw new InvalidDataException($"Unexpected number span length: {numberBytes.Length}");
+            _blockNumberDb.DangerousReleaseMemory(numberSpan);
         }
-
-        return BinaryPrimitives.ReadInt64BigEndian(numberBytes);
     }
 }

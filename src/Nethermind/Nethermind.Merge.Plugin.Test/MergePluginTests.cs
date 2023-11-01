@@ -34,7 +34,7 @@ namespace Nethermind.Merge.Plugin.Test
         {
             _mergeConfig = new MergeConfig() { TerminalTotalDifficulty = "0" };
             BlocksConfig? miningConfig = new();
-            IJsonRpcConfig jsonRpcConfig = new JsonRpcConfig() { Enabled = true, EnabledModules = new[] { "engine" } };
+            IJsonRpcConfig jsonRpcConfig = new JsonRpcConfig() { Enabled = true, EnabledModules = new[] { ModuleType.Engine } };
 
             _context = Build.ContextWithMocks(SealEngineType.Clique);
             _context.ConfigProvider.GetConfig<IMergeConfig>().Returns(_mergeConfig);
@@ -57,6 +57,7 @@ namespace Nethermind.Merge.Plugin.Test
                 miningConfig,
                 _context.LogManager!);
             _context.ProcessExit = Substitute.For<IProcessExitSource>();
+            _context.ChainSpec.SealEngineType = SealEngineType.Clique;
             _context.ChainSpec!.Clique = new CliqueParameters()
             {
                 Epoch = CliqueConfig.Default.Epoch,

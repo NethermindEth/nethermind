@@ -23,7 +23,7 @@ namespace Nethermind.Synchronization.Test.Trie;
 public class HealingTreeTests
 {
     private static readonly byte[] _rlp = { 3, 4 };
-    private static readonly Keccak _key = Keccak.Compute(_rlp);
+    private static readonly Hash256 _key = Keccak.Compute(_rlp);
 
     [Test]
     public void get_state_tree_works()

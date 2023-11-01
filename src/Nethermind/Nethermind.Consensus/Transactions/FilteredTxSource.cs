@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Logging;
 using Nethermind.TxPool;
@@ -22,9 +23,9 @@ namespace Nethermind.Consensus.Transactions
             _logger = logManager?.GetClassLogger<FilteredTxSource<T>>() ?? throw new ArgumentNullException(nameof(logManager));
         }
 
-        public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit)
+        public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit, PayloadAttributes? payloadAttributes)
         {
-            foreach (Transaction tx in _innerSource.GetTransactions(parent, gasLimit))
+            foreach (Transaction tx in _innerSource.GetTransactions(parent, gasLimit, payloadAttributes))
             {
                 if (tx is T)
                 {
