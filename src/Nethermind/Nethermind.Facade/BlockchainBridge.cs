@@ -152,7 +152,7 @@ namespace Nethermind.Facade
             };
         }
 
-        public MultiCallOutput MultiCall(BlockHeader header, MultiCallPayload<Transaction> payload, CancellationToken cancellationToken)
+        public MultiCallOutput MultiCall(BlockHeader header, MultiCallPayload<TransactionWithSourceDetails> payload, CancellationToken cancellationToken)
         {
             MultiCallBlockTracer multiCallOutputTracer = new(payload.TraceTransfers);
             MultiCallOutput result = new();

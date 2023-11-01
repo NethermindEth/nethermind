@@ -1,7 +1,9 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
+using System.Drawing.Drawing2D;
 using System.Linq;
 using System.Threading;
 using Nethermind.Blockchain.Find;
@@ -11,30 +13,38 @@ using Nethermind.Facade.Multicall;
 using Nethermind.Facade.Proxy.Models;
 using Nethermind.Facade.Proxy.Models.MultiCall;
 using Nethermind.JsonRpc.Data;
+using static Microsoft.FSharp.Core.ByRefKinds;
 
 namespace Nethermind.JsonRpc.Modules.Eth;
 
-public class MultiCallTxExecutor : ExecutorBase<IReadOnlyList<MultiCallBlockResult>, MultiCallPayload<TransactionForRpc>, MultiCallPayload<Transaction>>
+public class MultiCallTxExecutor : ExecutorBase<IReadOnlyList<MultiCallBlockResult>, MultiCallPayload<TransactionForRpc>, MultiCallPayload<TransactionWithSourceDetails>>
 {
     public MultiCallTxExecutor(IBlockchainBridge blockchainBridge, IBlockFinder blockFinder, IJsonRpcConfig rpcConfig) :
         base(blockchainBridge, blockFinder, rpcConfig)
     { }
 
-    protected override MultiCallPayload<Transaction> Prepare(MultiCallPayload<TransactionForRpc> call)
+    protected override MultiCallPayload<TransactionWithSourceDetails> Prepare(MultiCallPayload<TransactionForRpc> call)
     {
-        MultiCallPayload<Transaction>? result = new()
+        MultiCallPayload<TransactionWithSourceDetails>? result = new()
         {
             TraceTransfers = call.TraceTransfers,
             Validation = call.Validation,
-            BlockStateCalls = call.BlockStateCalls?.Select(blockStateCall => new BlockStateCall<Transaction>
+            BlockStateCalls = call.BlockStateCalls?.Select(blockStateCall => new BlockStateCall<TransactionWithSourceDetails>
             {
                 BlockOverrides = blockStateCall.BlockOverrides,
                 StateOverrides = blockStateCall.StateOverrides,
                 Calls = blockStateCall.Calls?.Select(callTransactionModel =>
                 {
-                    callTransactionModel.EnsureDefaults(_rpcConfig.GasCap);
-                    //callTransactionModel.Type ??= TxType.EIP1559;
-                    return callTransactionModel.ToTransaction(_blockchainBridge.GetChainId());
+                    callTransactionModel.Type ??= TxType.EIP1559;
+
+                    TransactionWithSourceDetails? result = new()
+                    {
+                        HadGasLimitInRequest = callTransactionModel.Gas.HasValue,
+                        HadNonceInRequest = callTransactionModel.Nonce.HasValue,
+                        Transaction = callTransactionModel.ToTransaction(_blockchainBridge.GetChainId())
+                    };
+
+                    return result;
                 }).ToArray()
             }).ToArray()
         };
@@ -42,7 +52,7 @@ public class MultiCallTxExecutor : ExecutorBase<IReadOnlyList<MultiCallBlockResu
         return result;
     }
 
-    protected override ResultWrapper<IReadOnlyList<MultiCallBlockResult>> Execute(BlockHeader header, MultiCallPayload<Transaction> tx, CancellationToken token)
+    protected override ResultWrapper<IReadOnlyList<MultiCallBlockResult>> Execute(BlockHeader header, MultiCallPayload<TransactionWithSourceDetails> tx, CancellationToken token)
     {
         MultiCallOutput results = _blockchainBridge.MultiCall(header, tx, token);
 

@@ -84,18 +84,23 @@ contract EcrecoverProxy {
         };
 
         systemTransactionForModifiedVM.Hash = systemTransactionForModifiedVM.CalculateHash();
-
-        MultiCallPayload<Transaction> payload = new()
+        TransactionWithSourceDetails systemTransactionForModifiedVMDetails = new()
+        {
+            Transaction = systemTransactionForModifiedVM,
+            HadGasLimitInRequest = false,
+            HadNonceInRequest = false
+        };
+        MultiCallPayload<TransactionWithSourceDetails> payload = new()
         {
             BlockStateCalls = new[]
             {
-                new BlockStateCall<Transaction>()
+                new BlockStateCall<TransactionWithSourceDetails>()
                 {
                     StateOverrides = new Dictionary<Address, AccountOverride>()
                     {
                         { EcRecoverPrecompile.Address, new AccountOverride { Code = code } }
                     },
-                    Calls = new[] {  systemTransactionForModifiedVM  }
+                    Calls = new[] { systemTransactionForModifiedVMDetails }
                 }
             },
             TraceTransfers = true,

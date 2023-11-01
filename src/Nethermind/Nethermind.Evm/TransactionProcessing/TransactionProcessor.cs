@@ -59,13 +59,15 @@ namespace Nethermind.Evm.TransactionProcessing
             /// </summary>
             CommitAndRestore = Commit | Restore | NoValidation
         }
+        private readonly ExecutionOptions _executeOptions;
 
         public TransactionProcessor(
             ISpecProvider? specProvider,
             IWorldState? worldState,
             IVirtualMachine? virtualMachine,
             ICodeInfoRepository? codeInfoRepository,
-            ILogManager? logManager)
+            ILogManager? logManager,
+            bool forceNoValidationOnExecute = false)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
@@ -73,6 +75,11 @@ namespace Nethermind.Evm.TransactionProcessing
             _virtualMachine = virtualMachine ?? throw new ArgumentNullException(nameof(virtualMachine));
             _codeInfoRepository = codeInfoRepository ?? throw new ArgumentNullException(nameof(codeInfoRepository));
             _ecdsa = new EthereumEcdsa(specProvider.ChainId, logManager);
+            _executeOptions = ExecutionOptions.Commit;
+            if (forceNoValidationOnExecute)
+            {
+                _executeOptions |= ExecutionOptions.NoValidation;
+            }
         }
 
         public void CallAndRestore(Transaction transaction, BlockExecutionContext blCtx, ITxTracer txTracer)
@@ -90,7 +97,7 @@ namespace Nethermind.Evm.TransactionProcessing
 
         public void Execute(Transaction transaction, BlockExecutionContext blCtx, ITxTracer txTracer)
         {
-            Execute(transaction, blCtx, txTracer, ExecutionOptions.Commit);
+            Execute(transaction, blCtx, txTracer, _executeOptions);
         }
 
         public void Trace(Transaction transaction, BlockExecutionContext blCtx, ITxTracer txTracer)

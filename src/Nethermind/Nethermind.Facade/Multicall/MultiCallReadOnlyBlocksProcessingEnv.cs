@@ -10,6 +10,7 @@ using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
 using Nethermind.Db.Blooms;
@@ -30,13 +31,14 @@ public class MultiCallReadOnlyBlocksProcessingEnv : ReadOnlyTxProcessingEnvBase,
     public ISpecProvider SpecProvider { get; }
     public IVirtualMachine VirtualMachine { get; }
     public OverridableCodeInfoRepository CodeInfoRepository { get; }
-
+    private readonly bool _doValidation = false;
     // We need ability to get many instances that do not conflict in terms of editable tmp storage - thus we implement env cloning
     public static MultiCallReadOnlyBlocksProcessingEnv Create(
         bool traceTransfers,
         IReadOnlyDbProvider readOnlyDbProvider,
         ISpecProvider specProvider,
-        ILogManager? logManager = null)
+        ILogManager? logManager = null,
+        bool doValidation = false)
     {
         IReadOnlyDbProvider dbProvider = new ReadOnlyDbProvider(readOnlyDbProvider, true);
         TrieStore trieStore = new(readOnlyDbProvider.StateDb, logManager);
@@ -63,8 +65,8 @@ public class MultiCallReadOnlyBlocksProcessingEnv : ReadOnlyTxProcessingEnvBase,
             logManager);
     }
 
-    public MultiCallReadOnlyBlocksProcessingEnv Clone(bool traceTransfers) =>
-        Create(traceTransfers, DbProvider, SpecProvider, _logManager);
+    public MultiCallReadOnlyBlocksProcessingEnv Clone(bool traceTransfers, bool doValidation) =>
+        Create(traceTransfers, DbProvider, SpecProvider, _logManager, doValidation);
 
     private MultiCallReadOnlyBlocksProcessingEnv(
         bool traceTransfers,
@@ -72,13 +74,14 @@ public class MultiCallReadOnlyBlocksProcessingEnv : ReadOnlyTxProcessingEnvBase,
         ITrieStore trieStore,
         IBlockTree blockTree,
         ISpecProvider specProvider,
-        ILogManager? logManager = null)
+        ILogManager? logManager = null,
+        bool doValidation = false)
         : base(readOnlyDbProvider, trieStore, blockTree, logManager)
     {
         _trieStore = trieStore;
         _logManager = logManager;
         SpecProvider = specProvider;
-
+        _doValidation = doValidation;
         CodeInfoRepository = new OverridableCodeInfoRepository(new CodeInfoRepository());
 
         VirtualMachine = new VirtualMachine(BlockhashProvider, specProvider, CodeInfoRepository, logManager);
@@ -101,7 +104,7 @@ public class MultiCallReadOnlyBlocksProcessingEnv : ReadOnlyTxProcessingEnvBase,
 
     public IBlockProcessor GetProcessor()
     {
-        TransactionProcessor transactionProcessor = new(SpecProvider, StateProvider, VirtualMachine, CodeInfoRepository, _logManager);
+        TransactionProcessor transactionProcessor = new(SpecProvider, StateProvider, VirtualMachine, CodeInfoRepository, _logManager, _doValidation);
 
         return new BlockProcessor(SpecProvider,
             _blockValidator,
@@ -112,6 +115,8 @@ public class MultiCallReadOnlyBlocksProcessingEnv : ReadOnlyTxProcessingEnvBase,
             NullWitnessCollector.Instance,
             _logManager);
     }
+
+    public IReadOnlyTransactionProcessor Build(Keccak stateRoot) => new ReadOnlyTransactionProcessor(new TransactionProcessor(SpecProvider, StateProvider, VirtualMachine, CodeInfoRepository, _logManager), StateProvider, stateRoot);
 
     public void Dispose()
     {
