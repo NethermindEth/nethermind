@@ -62,6 +62,7 @@ namespace Nethermind.Blockchain.Synchronization
         public bool NonValidatorNode { get; set; } = false;
         public ITunableDb.TuneType TuneDbMode { get; set; } = ITunableDb.TuneType.HeavyWrite;
         public ITunableDb.TuneType BlocksDbTuneDbMode { get; set; } = ITunableDb.TuneType.EnableBlobFiles;
+        public ITunableDb.TuneType ReceiptsDbTuneDbMode { get; set; } = ITunableDb.TuneType.EnableBlobFiles;
         public int MaxProcessingThreads { get; set; }
         public bool ExitOnSynced { get; set; } = false;
         public int ExitOnSyncedWaitTimeSec { get; set; } = 60;

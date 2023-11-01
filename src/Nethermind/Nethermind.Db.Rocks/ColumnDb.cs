@@ -11,7 +11,7 @@ using IWriteBatch = Nethermind.Core.IWriteBatch;
 
 namespace Nethermind.Db.Rocks;
 
-public class ColumnDb : IDb
+public class ColumnDb : IDb, ITunableDb
 {
     private readonly RocksDb _rocksDb;
     private readonly DbOnTheRocks _mainDb;
@@ -125,6 +125,15 @@ public class ColumnDb : IDb
     public void Compact()
     {
         _rocksDb.CompactRange(Keccak.Zero.BytesToArray(), Keccak.MaxValue.BytesToArray(), _columnFamily);
+    }
+
+    private ITunableDb.TuneType _currentTune = ITunableDb.TuneType.Default;
+
+    public void Tune(ITunableDb.TuneType type)
+    {
+        if (_currentTune == type) return;
+        _mainDb.TuneColumn(type, _columnFamily);
+        _currentTune = type;
     }
 
     /// <summary>

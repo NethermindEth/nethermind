@@ -1064,7 +1064,20 @@ public class DbOnTheRocks : IDb, ITunableDb
     public virtual void Tune(ITunableDb.TuneType type)
     {
         if (_currentTune == type) return;
+        ApplyOptions(GetTuneOptions(type));
+        _currentTune = type;
+    }
 
+    public void TuneColumn(ITunableDb.TuneType type, ColumnFamilyHandle columnFamily)
+    {
+        IDictionary<string, string> options = GetTuneOptions(type);
+        string[] keys = options.Select<KeyValuePair<string, string>, string>(e => e.Key).ToArray();
+        string[] values = options.Select<KeyValuePair<string, string>, string>(e => e.Value).ToArray();
+        _rocksDbNative.rocksdb_set_options_cf(_db.Handle, columnFamily.Handle, keys.Length, keys, values);
+    }
+
+    private IDictionary<string, string> GetTuneOptions(ITunableDb.TuneType type)
+    {
         // See https://github.com/EighteenZi/rocksdb_wiki/blob/master/RocksDB-Tuning-Guide.md
         switch (type)
         {
@@ -1099,15 +1112,13 @@ public class DbOnTheRocks : IDb, ITunableDb
             case ITunableDb.TuneType.HeavyWrite:
                 // Compaction spikes are clear at this point. Will definitely affect attestation performance.
                 // Its unclear if it improve or slow down sync time. Seems to be the sweet spot.
-                ApplyOptions(GetHeavyWriteOptions(256));
-                break;
+                return GetHeavyWriteOptions(256);
             case ITunableDb.TuneType.AggressiveHeavyWrite:
                 // For when, you are desperate, but don't wanna disable compaction completely, because you don't want
                 // peers to drop. Tend to be faster than disabling compaction completely, except if your ratelimit
                 // is a bit low and your compaction is lagging behind, which will trigger slowdown, so sync will hang
                 // intermittently, but at least peer count is stable.
-                ApplyOptions(GetHeavyWriteOptions(1024));
-                break;
+                return GetHeavyWriteOptions(1024);
             case ITunableDb.TuneType.DisableCompaction:
                 // Completely disable compaction. On mainnet, max num of l0 files for state seems to be about 10800.
                 // Blocksdb are way more at 53000. Final compaction for state db need 30 minute, while blocks db need
@@ -1130,15 +1141,11 @@ public class DbOnTheRocks : IDb, ITunableDb
                 ApplyOptions(GetDisableCompactionOptions());
                 break;
             case ITunableDb.TuneType.EnableBlobFiles:
-                ApplyOptions(GetBlobFilesOptions());
-                break;
+                return GetBlobFilesOptions();
             case ITunableDb.TuneType.Default:
             default:
-                ApplyOptions(GetStandardOptions());
-                break;
+                return GetStandardOptions();
         }
-
-        _currentTune = type;
     }
 
     protected virtual void ApplyOptions(IDictionary<string, string> options)
@@ -1238,7 +1245,7 @@ public class DbOnTheRocks : IDb, ITunableDb
         // it may not even saturate a SATA SSD on a 1GBps internet.
 
         // You don't want to turn this on on other DB as it does add an indirection which take up an additional iop.
-        // But for large values like blocks (3MB decompressed to 8MB), the response time increase is negligible.
+        // But for large values like blocks (250KB on mainnet), the response time increase is negligible.
         // However without a large buffer size, it will create tens of thousands of small files. There are
         // various workaround it, but it all increase total writes, which defeats the purpose.
         // Additionally, as the `max_bytes_for_level_base` is set to very low, existing user will suddenly
