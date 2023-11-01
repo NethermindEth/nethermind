@@ -51,7 +51,7 @@ public class MultiCallBlockTracer : BlockTracer
             Number = (ulong)_currentBlock.Number,
             Hash = _currentBlock.Hash!,
             GasLimit = (ulong)_currentBlock.GasLimit,
-            GasUsed = (ulong)_currentBlock.GasUsed,
+            GasUsed = _txTracers.Aggregate(0ul, (s, t) => s + t.TraceResult!.GasUsed.Value),
             Timestamp = _currentBlock.Timestamp,
             FeeRecipient = _currentBlock.Beneficiary!,
             BaseFeePerGas = _currentBlock.BaseFeePerGas,

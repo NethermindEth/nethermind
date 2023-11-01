@@ -104,7 +104,7 @@ public class MultiCallReadOnlyBlocksProcessingEnv : ReadOnlyTxProcessingEnvBase,
 
     public IBlockProcessor GetProcessor()
     {
-        TransactionProcessor transactionProcessor = new(SpecProvider, StateProvider, VirtualMachine, CodeInfoRepository, _logManager, _doValidation);
+        TransactionProcessor transactionProcessor = new(SpecProvider, StateProvider, VirtualMachine, CodeInfoRepository, _logManager, !_doValidation);
 
         return new BlockProcessor(SpecProvider,
             _blockValidator,
@@ -116,7 +116,7 @@ public class MultiCallReadOnlyBlocksProcessingEnv : ReadOnlyTxProcessingEnvBase,
             _logManager);
     }
 
-    public IReadOnlyTransactionProcessor Build(Hash256 stateRoot) => new ReadOnlyTransactionProcessor(new TransactionProcessor(SpecProvider, StateProvider, VirtualMachine, CodeInfoRepository, _logManager), StateProvider, stateRoot);
+    public IReadOnlyTransactionProcessor Build(Hash256 stateRoot) => new ReadOnlyTransactionProcessor(new TransactionProcessor(SpecProvider, StateProvider, VirtualMachine, CodeInfoRepository, _logManager, !_doValidation), StateProvider, stateRoot);
 
     public void Dispose()
     {

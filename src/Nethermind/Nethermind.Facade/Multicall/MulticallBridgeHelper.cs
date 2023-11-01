@@ -170,8 +170,17 @@ public class MulticallBridgeHelper
                 suggestedBlocks.Clear();
                 suggestedBlocks.Add(currentBlock);
                 env.StateProvider.RecalculateStateRoot();
+                Block[]? currentBlocks = null;
+                try
+                {
+                    currentBlocks = processor.Process(env.StateProvider.StateRoot, suggestedBlocks,
+                        processingFlags, tracer);
+                }
+                catch (Exception)
+                {
+                    return (false, $"invalid on block {callHeader.Number}");
+                }
 
-                Block[]? currentBlocks = processor.Process(env.StateProvider.StateRoot, suggestedBlocks, processingFlags, tracer);
                 Block? processedBlock = currentBlocks[0];
                 parent = processedBlock.Header;
             }
