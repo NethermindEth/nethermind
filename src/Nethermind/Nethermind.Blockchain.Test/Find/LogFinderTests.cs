@@ -352,45 +352,23 @@ namespace Nethermind.Blockchain.Test.Find
             }
         }
 
-        [TestCaseSource(nameof(FilterByAddressTestsData))]
-        public void new_filtering_new_storage(Address[] addresses, int expectedCount, bool withBloomDb)
-        {
-            StoreTreeBlooms(withBloomDb);
-            var filterBuilder = AllBlockFilter();
-            filterBuilder = addresses.Length == 1
-                ? filterBuilder.WithAddress(addresses[0])
-                : filterBuilder.WithAddresses(addresses);
-            var logFilter = filterBuilder.Build();
-
-            var logs = _logFinder.FindLogs(logFilter).ToArray();
-
-            logs.Length.Should().Be(expectedCount);
-        }
-
-        public static IEnumerable FilterByAddressAndTopics
-        {
-            get
-            {
-                yield return new TestCaseData(TestItem.AddressA, TestItem.KeccakA);
-            }
-        }
-
-
-
-        private EliasFanoStorage setup_new_storage()
+        private EliasFanoStorage SetupEliasFanoStorage()
         {
             EliasFanoStorage storage = new EliasFanoStorage();
             storage.PutAll(TestItem.AddressA.Bytes, new List<ulong> { 1, 3, 5, 7, 10 });
             storage.PutAll(TestItem.KeccakA.Bytes.ToArray(), new List<ulong> { 1, 5, 7, 10});
             storage.PutAll(TestItem.KeccakB.Bytes.ToArray(), new List<ulong> { 1, 5});
             storage.PutAll(TestItem.KeccakC.Bytes.ToArray(), new List<ulong> { 1, 5, 10});
-
             // [Y] -> [ 1, 3, 4, 5, 7, 10 ]
             // [X] -> [ 1, 5, 7, 10 ]
             // [A] -> [ 1, 5 ]
             // [B] -> [ 10 ]
             // Y AND X AND (A OR B)
             // Output: [1, 5, 10]
+
+            storage.PutAll(TestItem.AddressB.Bytes, new List<ulong> { 27, 28, 29, 213 });
+            storage.PutAll(TestItem.AddressC.Bytes, new List<ulong> { 29, 51, 66, 77, 105, 111});
+            storage.PutAll(TestItem.KeccakD.Bytes.ToArray(), new List<ulong> { 15, 29, 31, 55, 63, 105 });
 
             return storage;
         }
@@ -406,33 +384,68 @@ namespace Nethermind.Blockchain.Test.Find
                     .WithTopicExpressions(TestTopicExpressions.Specific(TestItem.KeccakA), TestTopicExpressions.Or(TestItem.KeccakB, TestItem.KeccakC))
                     .WithAddresses(TestItem.AddressA).Build(), 2);
                 yield return new TestCaseData(FilterBuilder.New().FromBlock(5).ToBlock(9)
-                    .WithTopicExpressions(TestTopicExpressions.Specific(TestItem.KeccakA), TestTopicExpressions.Or(TestItem.KeccakB, TestItem.KeccakC))
+                    .WithTopicExpressions(TestTopicExpressions.Specific(TestItem.KeccakA),
+                        TestTopicExpressions.Or(TestItem.KeccakB, TestItem.KeccakC))
                     .WithAddresses(TestItem.AddressA).Build(), 1);
+                yield return new TestCaseData(FilterBuilder.New()
+                    .WithTopicExpressions(TestTopicExpressions.Specific(TestItem.KeccakD))
+                    .WithAddresses(new [] {TestItem.AddressB, TestItem.AddressC}).Build(), 2);
             }
         }
 
         [TestCaseSource(nameof(FilterEliasFanoTestCases))]
-        public void filter_with_address_and_topic_elias_fano(LogFilter filter, int expectedCount)
+        public void filter_elias_fano(LogFilter filter, int expectedCount)
         {
-            EliasFanoStorage storage = setup_new_storage();
-            // _logFinder = new LogFinder(_blockTree, _receiptStorage, _receiptStorage, storage, LimboLogs.Instance, _receiptsRecovery);
+            EliasFanoStorage storage = SetupEliasFanoStorage();
             IEnumerable<long> results = storage.Match(filter.FromBlock.BlockNumber, filter.ToBlock.BlockNumber, filter.AddressFilter.Addresses, filter.TopicsFilter.LogicalTopicsSequence);
-            // var logs = _logFinder.FindLogsEliasFano(filter).ToArray();
             results.Count().Should().Be(expectedCount);
         }
 
         [Test, Timeout(Timeout.MaxTestTime)]
-        public void filter_all_logs_elias_fano([ValueSource(nameof(WithBloomValues))] bool withBloomDb, [Values(false, true)] bool allowReceiptIterator)
+        public void filter_all_logs_elias_fano()
         {
-            // SetUp(allowReceiptIterator);
-            // StoreTreeBlooms(withBloomDb);
-            EliasFanoStorage storage = setup_new_storage();
-            var logFilter = AllBlockFilter().Build();
+            // InMemoryReceiptStorage receiptStorage = build_receipt_storage();
+            // IBlockFinder bf =  Build.A.BlockTree()
+            //     .WithTransactions(_receiptStorage, LogsForBlockBuilder)
+            //     .OfChainLength(out _headTestBlock, 15)
+            //     .TestObject;
+            EliasFanoStorage storage = SetupEliasFanoStorage();
+            var filter = FilterBuilder.New()
+                .WithTopicExpressions(TestTopicExpressions.Specific(TestItem.KeccakA)).WithAddresses(TestItem.AddressA).Build();
             LogFinder logFinder = new LogFinder(_blockTree, _receiptStorage, _receiptStorage, storage, LimboLogs.Instance, _receiptsRecovery);
-            var logs = logFinder.FindLogs(logFilter).ToArray();
-            logs.Length.Should().Be(5);
+            var logs = logFinder.FindLogsEliasFano(filter).ToArray();
             var indexes = logs.Select(l => (int)l.LogIndex).ToArray();
-            indexes.Should().BeEquivalentTo(new[] { 0, 1, 0, 1, 2 });
+            indexes.Should().BeEquivalentTo(new[] { 0, 1 });
+        }
+
+        // Not working yet
+        private EliasFanoStorage setup_new_storage_for_logs()
+        {
+            EliasFanoStorage storage = new EliasFanoStorage();
+            storage.PutAll(TestItem.AddressA.Bytes, new List<ulong> { 1, 4 });
+            storage.PutAll(TestItem.KeccakA.Bytes.ToArray(), new List<ulong> { 1, 4 });
+
+            return storage;
+        }
+
+        private InMemoryReceiptStorage build_receipt_storage()
+        {
+            LogEntry[] logs = new LogEntry[2];
+            logs[0] = Build.A.LogEntry.WithAddress(TestItem.AddressA).WithTopics(new Keccak[] {TestItem.KeccakA, TestItem.KeccakB, TestItem.KeccakC} ).TestObject;
+            logs[1] = Build.A.LogEntry.WithAddress(TestItem.AddressA).WithTopics(TestItem.KeccakA).TestObject;
+
+            TxReceipt receipt = Build.A.Receipt.WithTransactionHash(TestItem.KeccakH).WithBloom(new Core.Bloom()).WithLogs(logs).TestObject;
+
+            Block a = Build.A.Block.WithNumber(1).TestObject;
+            Block b = Build.A.Block.WithNumber(5).TestObject;
+            Block c = Build.A.Block.WithNumber(10).TestObject;
+            InMemoryReceiptStorage storage = new InMemoryReceiptStorage(true);
+            storage.Insert(a, new TxReceipt[] {receipt});
+            storage.Insert(b, new TxReceipt[] {receipt});
+            storage.Insert(c, new TxReceipt[] {receipt});
+
+
+            return storage;
         }
     }
 }
