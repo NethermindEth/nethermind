@@ -62,7 +62,8 @@ public class MultiCallReadOnlyBlocksProcessingEnv : ReadOnlyTxProcessingEnvBase,
             trieStore,
             blockTree,
             specProvider,
-            logManager);
+            logManager,
+            doValidation);
     }
 
     public MultiCallReadOnlyBlocksProcessingEnv Clone(bool traceTransfers, bool doValidation) =>
