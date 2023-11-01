@@ -127,7 +127,7 @@ public class TransactionForRpc
 
     public UInt256? ChainId { get; set; }
 
-    public TxType? Type { get; set; }
+    public TxType Type { get; set; }
 
     public IEnumerable<AccessListItemForRpc>? AccessList { get; set; }
 
@@ -160,7 +160,7 @@ public class TransactionForRpc
             SenderAddress = From,
             Value = Value ?? 0,
             Data = Input,
-            Type = Type!.Value,
+            Type = Type,
             AccessList = TryGetAccessList(),
             ChainId = chainId,
             DecodedMaxFeePerGas = MaxFeePerGas ?? 0,
@@ -196,7 +196,7 @@ public class TransactionForRpc
             SenderAddress = From,
             Value = Value ?? 0,
             Data = (Memory<byte>?)data,
-            Type = Type!.Value,
+            Type = Type,
             AccessList = TryGetAccessList(),
             ChainId = chainId,
         };
@@ -222,7 +222,7 @@ public class TransactionForRpc
     }
 
     private AccessList? TryGetAccessList() =>
-        !Type!.Value.IsTxTypeWithAccessList() || AccessList is null
+        !Type.IsTxTypeWithAccessList() || AccessList is null
             ? null
             : AccessListItemForRpc.ToAccessList(AccessList);
 

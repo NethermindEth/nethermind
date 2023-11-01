@@ -22,7 +22,7 @@ using static Microsoft.FSharp.Core.ByRefKinds;
 using System.Collections;
 using System.Globalization;
 using System.Numerics;
-
+using Nethermind.Serialization.Json.Nethermind.Serialization.Json;
 
 namespace Nethermind.Facade.Test.Proxy
 {
@@ -131,6 +131,7 @@ namespace Nethermind.Facade.Test.Proxy
             {
                 settings.Converters.Add(converter);
             }
+            settings.Converters.Add(new DictionaryWithSpecialUInt256KeyHash256ValConverter());
             var payload = JsonConvert.DeserializeObject<MultiCallPayload<CallTransaction>>(input, settings);
 
             BlockParameterModel blockParameter = BlockParameterModel.Latest;

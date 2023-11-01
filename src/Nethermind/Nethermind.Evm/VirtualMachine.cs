@@ -651,7 +651,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine
             }
         }
 
-        if (env.CodeInfo.MachineCode.Length == 0)
+        if (env.CodeInfo.MachineCode is { Length: 0 })
         {
             if (!vmState.IsTopLevel)
             {

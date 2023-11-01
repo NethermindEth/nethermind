@@ -35,7 +35,10 @@ public class MultiCallTxExecutor : ExecutorBase<IReadOnlyList<MultiCallBlockResu
                 StateOverrides = blockStateCall.StateOverrides,
                 Calls = blockStateCall.Calls?.Select(callTransactionModel =>
                 {
-                    callTransactionModel.Type ??= TxType.EIP1559;
+                    if (callTransactionModel.Type == TxType.Legacy)
+                    {
+                        callTransactionModel.Type = TxType.EIP1559;
+                    }
 
                     TransactionWithSourceDetails? result = new()
                     {

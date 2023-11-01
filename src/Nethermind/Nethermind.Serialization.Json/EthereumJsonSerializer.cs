@@ -8,6 +8,7 @@ using System.IO;
 using System.Linq;
 using System.Text;
 using Nethermind.Core.Collections;
+using Nethermind.Serialization.Json.Nethermind.Serialization.Json;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Serialization;
 
@@ -48,6 +49,7 @@ namespace Nethermind.Serialization.Json
                 new PublicKeyConverter(),
                 new TxTypeConverter(),
                 new MemoryByteConverter(),
+                new DictionaryWithSpecialUInt256KeyHash256ValConverter()
             });
 
         public IList<JsonConverter> BasicConverters { get; } = CommonConverters.ToList();
