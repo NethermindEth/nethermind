@@ -66,9 +66,9 @@ namespace Nethermind.State
 
         public bool HashStateForRoot(Hash256 stateRoot)
         {
-            RootCheckVisitor rootCheckVisitor = new();
-            RunTreeVisitor(rootCheckVisitor, stateRoot);
-            return rootCheckVisitor.HasRoot;
+            RootCheckVisitor visitor = new();
+            RunTreeVisitor(visitor, stateRoot);
+            return visitor.HasRoot;
         }
 
         public byte[] GetCode(Hash256 stateRoot, Address address)
