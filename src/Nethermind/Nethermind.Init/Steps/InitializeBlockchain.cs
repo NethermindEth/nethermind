@@ -289,14 +289,16 @@ namespace Nethermind.Init.Steps
             if (_api.SpecProvider is null) throw new StepDependencyException(nameof(_api.SpecProvider));
             if (_api.WorldState is null) throw new StepDependencyException(nameof(_api.WorldState));
 
-            (VirtualMachine, CodeInfoRepository) (virtualMachine, codeInfoRepository) = CreateVirtualMachine();
+            (VirtualMachine virtualMachine, CodeInfoRepository codeInfoRepository) = CreateVirtualMachine();
 
-            _api.TransactionProcessor = new TransactionProcessor(
-                getApi.SpecProvider,
-                worldState,
+            TransactionProcessor transactionProcessor = new(
+                _api.SpecProvider,
+                _api.WorldState,
                 virtualMachine,
                 codeInfoRepository,
-                getApi.LogManager);
+                _api.LogManager);
+
+            return transactionProcessor;
         }
 
         protected virtual (VirtualMachine, CodeInfoRepository) CreateVirtualMachine()
@@ -312,9 +314,9 @@ namespace Nethermind.Init.Steps
 
             VirtualMachine virtualMachine = new(
                 blockhashProvider,
-                getApi.SpecProvider,
+                _api.SpecProvider,
                 codeInfoRepository,
-                getApi.LogManager);
+                _api.LogManager);
 
             return (virtualMachine, codeInfoRepository);
         }

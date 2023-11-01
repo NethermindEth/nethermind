@@ -63,7 +63,7 @@ public class EthMultiCallTestsHiveBase
         Console.WriteLine("current test: multicallBasefeeTooLowWithValidation38012");
         var result = chain.EthRpcModule.eth_multicallV1(payload!, BlockParameter.Latest);
         Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success));
-        Assert.That(result.Data.First().PrevRandao, Is.EqualTo(new Keccak("0x0000000000000000000000000000000000000000000000000000000000000000").BytesToArray()));
+        Assert.That(result.Data.First().PrevRandao, Is.EqualTo(new Hash256("0x0000000000000000000000000000000000000000000000000000000000000000").BytesToArray()));
 
 
         Assert.IsNotNull(result.Data);

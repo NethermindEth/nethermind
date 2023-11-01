@@ -13,7 +13,7 @@ namespace Nethermind.Facade.Proxy.Models.MultiCall;
 public class MultiCallBlockResult
 {
     public ulong Number { get; set; }
-    public Keccak Hash { get; set; } = Keccak.Zero;
+    public Hash256 Hash { get; set; } = Keccak.Zero;
     public ulong Timestamp { get; set; }
     public ulong GasLimit { get; set; }
     public ulong GasUsed { get; set; }

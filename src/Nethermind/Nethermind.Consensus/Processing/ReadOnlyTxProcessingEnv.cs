@@ -18,7 +18,9 @@ namespace Nethermind.Consensus.Processing
     public class ReadOnlyTxProcessingEnv : ReadOnlyTxProcessingEnvBase, IReadOnlyTxProcessorSource
     {
         public ITransactionProcessor TransactionProcessor { get; set; }
+        public IVirtualMachine Machine { get; }
 
+        public ICodeInfoRepository CodeInfoRepository { get; }
         public ReadOnlyTxProcessingEnv(
             IDbProvider? dbProvider,
             IReadOnlyTrieStore? trieStore,
@@ -37,9 +39,9 @@ namespace Nethermind.Consensus.Processing
             ILogManager? logManager
             ) : base(readOnlyDbProvider, trieStore, blockTree, logManager)
         {
-            CodeInfoRepository codeInfoRepository = new();
-            IVirtualMachine machine = new VirtualMachine(BlockhashProvider, specProvider, codeInfoRepository, logManager);
-            TransactionProcessor = new TransactionProcessor(specProvider, StateProvider, machine, codeInfoRepository, logManager);
+            CodeInfoRepository = new CodeInfoRepository();
+            Machine = new VirtualMachine(BlockhashProvider, specProvider, CodeInfoRepository, logManager);
+            TransactionProcessor = new TransactionProcessor(specProvider, StateProvider, Machine, CodeInfoRepository, logManager);
         }
 
         public IReadOnlyTransactionProcessor Build(Hash256 stateRoot) => new ReadOnlyTransactionProcessor(TransactionProcessor, StateProvider, stateRoot);

@@ -13,5 +13,5 @@ namespace Nethermind.Evm;
 public interface ICodeInfoRepository
 {
     CodeInfo GetCachedCodeInfo(IWorldState worldState, Address codeSource, IReleaseSpec vmSpec);
-    CodeInfo GetOrAdd(ValueKeccak codeHash, Span<byte> initCode);
+    CodeInfo GetOrAdd(ValueHash256 codeHash, Span<byte> initCode);
 }

@@ -62,7 +62,7 @@ contract EcrecoverProxy {
         // Step 1: Take an account
         Address account = TestItem.AddressA;
         // Step 2: Hash the message
-        Keccak messageHash = Keccak.Compute("Hello, world!");
+        Hash256 messageHash = Keccak.Compute("Hello, world!");
         // Step 3: Sign the hash
         Signature signature = chain.EthereumEcdsa.Sign(TestItem.PrivateKeyA, messageHash);
 

@@ -42,6 +42,6 @@ public class OverridableCodeInfoRepository : ICodeInfoRepository
             ? result
             : _codeInfoRepository.GetCachedCodeInfo(worldState, codeSource, vmSpec);
 
-    public CodeInfo GetOrAdd(ValueKeccak codeHash, Span<byte> initCode) =>
+    public CodeInfo GetOrAdd(ValueHash256 codeHash, Span<byte> initCode) =>
         _codeInfoRepository.GetOrAdd(codeHash, initCode);
 }

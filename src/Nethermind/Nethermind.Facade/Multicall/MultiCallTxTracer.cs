@@ -16,7 +16,7 @@ namespace Nethermind.Facade.Multicall;
 
 internal sealed class MultiCallTxTracer : TxTracer, ILogsTxTracer
 {
-    private static readonly Keccak[] _topics = { Keccak.Zero };
+    private static readonly Hash256[] _topics = { Keccak.Zero };
 
     public MultiCallTxTracer(bool isTracingTransfers)
     {
@@ -26,7 +26,7 @@ internal sealed class MultiCallTxTracer : TxTracer, ILogsTxTracer
 
     public MultiCallCallResult? TraceResult { get; set; }
 
-    public override void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Keccak? stateRoot = null)
+    public override void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null)
     {
         TraceResult = new MultiCallCallResult()
         {
@@ -43,7 +43,7 @@ internal sealed class MultiCallTxTracer : TxTracer, ILogsTxTracer
         };
     }
 
-    public override void MarkAsFailed(Address recipient, long gasSpent, byte[] output, string error, Keccak? stateRoot = null)
+    public override void MarkAsFailed(Address recipient, long gasSpent, byte[] output, string error, Hash256? stateRoot = null)
     {
         TraceResult = new MultiCallCallResult()
         {

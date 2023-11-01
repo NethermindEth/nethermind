@@ -67,9 +67,9 @@ public static class StateOverridesExtensions
 
     private static void UpdateState(this IWorldState stateProvider, AccountOverride accountOverride, Address address)
     {
-        void ApplyState(Dictionary<UInt256, ValueKeccak> diff)
+        void ApplyState(Dictionary<UInt256, Hash256> diff)
         {
-            foreach (KeyValuePair<UInt256, ValueKeccak> storage in diff)
+            foreach (KeyValuePair<UInt256, Hash256> storage in diff)
             {
                 stateProvider.Set(new StorageCell(address, storage.Key), storage.Value.Bytes.WithoutLeadingZeros().ToArray());
             }

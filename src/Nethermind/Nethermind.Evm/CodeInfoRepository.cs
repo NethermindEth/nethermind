@@ -18,7 +18,7 @@ namespace Nethermind.Evm;
 public class CodeInfoRepository : ICodeInfoRepository
 {
     private static readonly Dictionary<Address, CodeInfo>? _precompiles;
-    private static readonly LruCache<ValueKeccak, CodeInfo> _codeCache = new(MemoryAllowance.CodeCacheSize, MemoryAllowance.CodeCacheSize, "VM bytecodes");
+    private static readonly LruCache<ValueHash256, CodeInfo> _codeCache = new(MemoryAllowance.CodeCacheSize, MemoryAllowance.CodeCacheSize, "VM bytecodes");
 
     static CodeInfoRepository()
     {
@@ -58,7 +58,7 @@ public class CodeInfoRepository : ICodeInfoRepository
             return _precompiles[codeSource];
         }
 
-        Keccak codeHash = worldState.GetCodeHash(codeSource);
+        Hash256 codeHash = worldState.GetCodeHash(codeSource);
         CodeInfo cachedCodeInfo = _codeCache.Get(codeHash);
         if (cachedCodeInfo is null)
         {
@@ -81,7 +81,7 @@ public class CodeInfoRepository : ICodeInfoRepository
         return cachedCodeInfo;
     }
 
-    public CodeInfo GetOrAdd(ValueKeccak codeHash, Span<byte> initCode)
+    public CodeInfo GetOrAdd(ValueHash256 codeHash, Span<byte> initCode)
     {
         if (!_codeCache.TryGet(codeHash, out CodeInfo codeInfo))
         {

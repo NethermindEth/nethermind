@@ -9,9 +9,9 @@ namespace Nethermind.Facade.Proxy.Models.MultiCall;
 public class Log
 {
     public ulong LogIndex { get; set; }
-    public Keccak BlockHash { get; set; }
+    public Hash256 BlockHash { get; set; }
     public ulong BlockNumber { get; set; }
     public Address Address { get; set; }
     public byte[] Data { get; set; }
-    public Keccak[] Topics { get; set; }
+    public Hash256[] Topics { get; set; }
 }

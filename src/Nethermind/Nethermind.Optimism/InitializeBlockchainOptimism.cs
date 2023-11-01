@@ -44,7 +44,7 @@ public class InitializeBlockchainOptimism : InitializeBlockchain
         if (_api.SpecHelper is null) throw new StepDependencyException(nameof(_api.SpecHelper));
         if (_api.L1CostHelper is null) throw new StepDependencyException(nameof(_api.L1CostHelper));
 
-        VirtualMachine virtualMachine = CreateVirtualMachine();
+        (VirtualMachine virtualMachine, CodeInfoRepository codeInfoRepository) = CreateVirtualMachine();
 
         return new OptimismTransactionProcessor(
             _api.SpecProvider,
@@ -52,7 +52,8 @@ public class InitializeBlockchainOptimism : InitializeBlockchain
             virtualMachine,
             _api.LogManager,
             _api.L1CostHelper,
-            _api.SpecHelper
+            _api.SpecHelper,
+            codeInfoRepository
         );
     }
 

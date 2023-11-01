@@ -58,8 +58,9 @@ public class OptimismBlockProducerEnvFactory : BlockProducerEnvFactory
     {
         ReadOnlyTxProcessingEnv result = new(readOnlyDbProvider, _readOnlyTrieStore,
             readOnlyBlockTree, _specProvider, _logManager);
+
         result.TransactionProcessor =
-            new OptimismTransactionProcessor(_specProvider, result.StateProvider, result.Machine, _logManager, _l1CostHelper, _specHelper);
+            new OptimismTransactionProcessor(_specProvider, result.StateProvider, result.Machine, _logManager, _l1CostHelper, _specHelper, result.CodeInfoRepository);
 
         return result;
     }

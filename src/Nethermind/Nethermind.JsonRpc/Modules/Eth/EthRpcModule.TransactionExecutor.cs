@@ -42,6 +42,9 @@ namespace Nethermind.JsonRpc.Modules.Eth
             public ResultWrapper<TResult> ExecuteTx(TransactionForRpc transactionCall, BlockParameter? blockParameter) => Execute(transactionCall, blockParameter);
 
             protected abstract ResultWrapper<TResult> ExecuteTx(BlockHeader header, Transaction tx, CancellationToken token);
+
+            protected ResultWrapper<TResult> GetInputError(CallOutput result) =>
+                ResultWrapper<TResult>.Fail(result.Error, ErrorCodes.InvalidInput);
         }
 
         private class CallTxExecutor : TxExecutor<string>

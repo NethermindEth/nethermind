@@ -19,7 +19,7 @@ namespace Nethermind.Facade.Proxy
         Task<RpcResult<UInt256?>> eth_getBalance(Address address, BlockParameterModel blockParameter = null);
         Task<RpcResult<UInt256>> eth_getTransactionCount(Address address, BlockParameterModel blockParameter = null);
         Task<RpcResult<ReceiptModel>> eth_getTransactionReceipt(Hash256 transactionHash);
-        Task<RpcResult<byte[]>> eth_call(CallTransactionModel transaction, BlockParameterModel blockParameter = null);
+        Task<RpcResult<byte[]>> eth_call(CallTransaction transaction, BlockParameterModel blockParameter = null);
         Task<RpcResult<IReadOnlyList<MultiCallBlockResult>>> eth_multicallV1(MultiCallPayload<CallTransaction> blockCalls, BlockParameterModel blockParameter = null);
 
         Task<RpcResult<byte[]>> eth_getCode(Address address, BlockParameterModel blockParameter = null);

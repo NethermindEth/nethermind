@@ -86,7 +86,7 @@ public class EthRpcMulticallTestsBase
     {
         // Step 1: Take an account
         // Step 2: Hash the message
-        Keccak messageHash = Keccak.Compute("Hello, world!");
+        Hash256 messageHash = Keccak.Compute("Hello, world!");
         // Step 3: Sign the hash
         Signature signature = chain.EthereumEcdsa.Sign(account, messageHash);
 
@@ -141,7 +141,7 @@ public class EthRpcMulticallTestsBase
         using SecureStringWrapper pass = new("testB");
         wallet.Import(fromPrivateKey.KeyBytes, pass.SecureData);
         wallet.UnlockAccount(fromPrivateKey.Address, pass.SecureData, TimeSpan.MaxValue);
-        (Keccak hash, AcceptTxResult? code) = await txSender.SendTransaction(tx,
+        (Hash256 hash, AcceptTxResult? code) = await txSender.SendTransaction(tx,
             TxHandlingOptions.ManagedNonce | TxHandlingOptions.PersistentBroadcast);
 
         code?.Should().Be(AcceptTxResult.Accepted);
@@ -163,7 +163,7 @@ public class EthRpcMulticallTestsBase
         return contractAddress1;
     }
 
-    public static byte[] GenerateTransactionDataForEcRecover(Keccak keccak, ulong @ulong, byte[] bytes1, byte[] bytes2,
+    public static byte[] GenerateTransactionDataForEcRecover(Hash256 keccak, ulong @ulong, byte[] bytes1, byte[] bytes2,
         string name = "recover")
     {
         AbiDefinitionParser parser = new();
