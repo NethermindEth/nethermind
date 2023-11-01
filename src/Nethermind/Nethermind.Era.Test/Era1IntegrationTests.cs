@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Diagnostics;
+using System.Security.Cryptography;
 using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Core;
@@ -96,6 +97,36 @@ public class Era1IntegrationTests
 
         Directory.Delete("temp", true);
     }
+
+    [Test]
+    public async Task ImportGethFiles()
+    {
+        var eraFiles = EraReader.GetAllEraFiles("geth", "mainnet");
+        Directory.CreateDirectory("temp");
+        try
+        {
+            var count = 0;
+
+            foreach (var era in eraFiles)
+            {
+                using var eraEnumerator = await EraReader.Create(era);
+
+                string tempEra = Path.Combine("temp", Path.GetFileName(era));
+                using var builder = EraBuilder.Create(tempEra);
+                await foreach ((Block b, TxReceipt[] r, UInt256 td) in eraEnumerator)
+                {
+                    count++;
+                    await builder.Add(b, r, td);
+                }
+                await builder.Finalize();
+            }
+        }
+        finally
+        {
+            Directory.Delete("temp", true);
+        }
+    }
+
 
     [Test]
     public async Task TestEraBuilderCreatesCorrectIndex()
