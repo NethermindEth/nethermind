@@ -16,11 +16,11 @@ namespace Nethermind.TxPool;
 
 public class BlobTxStorage : ITxStorage
 {
+    private static readonly TxDecoder _txDecoder = new();
+    private static readonly LightTxDecoder _lightTxDecoder = new();
     private readonly IDb _fullBlobTxsDb;
     private readonly IDb _lightBlobTxsDb;
     private readonly IDb _processedBlobTxsDb;
-    private static readonly TxDecoder _txDecoder = new();
-    private static readonly LightTxDecoder _lightTxDecoder = new();
 
     public BlobTxStorage()
     {
@@ -84,39 +84,6 @@ public class BlobTxStorage : ITxStorage
         _lightBlobTxsDb.Remove(hash.BytesAsSpan);
     }
 
-    private static bool TryDecodeFullTx(byte[]? txBytes, Address sender, out Transaction? transaction)
-    {
-        if (txBytes is not null)
-        {
-            RlpStream rlpStream = new(txBytes);
-            transaction = Rlp.Decode<Transaction>(rlpStream, RlpBehaviors.InMempoolForm);
-            transaction.SenderAddress = sender;
-            return true;
-        }
-
-        transaction = default;
-        return false;
-    }
-
-    private static bool TryDecodeLightTx(byte[]? txBytes, out LightTransaction? lightTx)
-    {
-        if (txBytes is not null)
-        {
-            lightTx = _lightTxDecoder.Decode(txBytes);
-            return true;
-        }
-
-        lightTx = default;
-        return false;
-    }
-
-    private void GetHashPrefixedByTimestamp(UInt256 timestamp, ValueHash256 hash, Span<byte> txHashPrefixed)
-    {
-        timestamp.WriteBigEndian(txHashPrefixed);
-        hash.Bytes.CopyTo(txHashPrefixed[32..]);
-    }
-
-
     public void AddBlobTransactionsFromBlock(long blockNumber, IList<Transaction> blockBlobTransactions)
     {
         if (blockBlobTransactions.Count == 0)
@@ -162,6 +129,38 @@ public class BlobTxStorage : ITxStorage
 
     public void DeleteBlobTransactionsFromBlock(long blockNumber)
         => _processedBlobTxsDb.Delete(blockNumber);
+
+    private static bool TryDecodeFullTx(byte[]? txBytes, Address sender, out Transaction? transaction)
+    {
+        if (txBytes is not null)
+        {
+            RlpStream rlpStream = new(txBytes);
+            transaction = Rlp.Decode<Transaction>(rlpStream, RlpBehaviors.InMempoolForm);
+            transaction.SenderAddress = sender;
+            return true;
+        }
+
+        transaction = default;
+        return false;
+    }
+
+    private static bool TryDecodeLightTx(byte[]? txBytes, out LightTransaction? lightTx)
+    {
+        if (txBytes is not null)
+        {
+            lightTx = _lightTxDecoder.Decode(txBytes);
+            return true;
+        }
+
+        lightTx = default;
+        return false;
+    }
+
+    private void GetHashPrefixedByTimestamp(UInt256 timestamp, ValueHash256 hash, Span<byte> txHashPrefixed)
+    {
+        timestamp.WriteBigEndian(txHashPrefixed);
+        hash.Bytes.CopyTo(txHashPrefixed[32..]);
+    }
 }
 
 internal static class UInt256Extensions
