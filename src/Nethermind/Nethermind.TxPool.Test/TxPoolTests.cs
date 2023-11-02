@@ -1803,11 +1803,11 @@ namespace Nethermind.TxPool.Test
                 .SignedAndResolved(_ethereumEcdsa, privateKey)
                 .TestObject;
 
-        private async Task RaiseBlockAddedToMainAndWaitForTransactions(int txCount)
+        private async Task RaiseBlockAddedToMainAndWaitForTransactions(int txCount, Block block = null)
         {
             SemaphoreSlim semaphoreSlim = new(0, txCount);
             _txPool.NewPending += (o, e) => semaphoreSlim.Release();
-            _blockTree.BlockAddedToMain += Raise.EventWith(new BlockReplacementEventArgs(Build.A.Block.TestObject));
+            _blockTree.BlockAddedToMain += Raise.EventWith(new BlockReplacementEventArgs(block ?? Build.A.Block.TestObject));
             for (int i = 0; i < txCount; i++)
             {
                 await semaphoreSlim.WaitAsync(10);

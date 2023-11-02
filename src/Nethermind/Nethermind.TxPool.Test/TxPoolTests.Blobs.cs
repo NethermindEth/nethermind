@@ -6,6 +6,7 @@ using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Crypto;
 using Nethermind.Evm;
 using Nethermind.Int256;
 using NUnit.Framework;
@@ -489,6 +490,54 @@ namespace Nethermind.TxPool.Test
                 .SignedAndResolved()
                 .TestObject;
             blobTx.GetLength().Should().Be(expectedLength);
+        }
+
+        [Test]
+        public async Task should_add_processed_txs_to_db()
+        {
+            Transaction GetTx(PrivateKey sender)
+            {
+                return Build.A.Transaction
+                    .WithShardBlobTxTypeAndFields()
+                    .WithMaxFeePerGas(1.GWei())
+                    .WithMaxPriorityFeePerGas(1.GWei())
+                    .WithNonce(UInt256.Zero)
+                    .SignedAndResolved(_ethereumEcdsa, sender).TestObject;
+            }
+
+            const long blockNumber = 358;
+
+            BlobTxStorage blobTxStorage = new();
+            _txPool = CreatePool(new TxPoolConfig(){ Size = 128, BlobSupportEnabled = true }, GetCancunSpecProvider(), txStorage: blobTxStorage);
+
+            EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
+            EnsureSenderBalance(TestItem.AddressB, UInt256.MaxValue);
+
+            Transaction[] txs = { GetTx(TestItem.PrivateKeyA), GetTx(TestItem.PrivateKeyB) };
+
+            _txPool.SubmitTx(txs[0], TxHandlingOptions.None).Should().Be(AcceptTxResult.Accepted);
+            _txPool.SubmitTx(txs[1], TxHandlingOptions.None).Should().Be(AcceptTxResult.Accepted);
+
+            _txPool.GetPendingTransactionsCount().Should().Be(0);
+            _txPool.GetPendingBlobTransactionsCount().Should().Be(txs.Length);
+            _stateProvider.IncrementNonce(TestItem.AddressA);
+            _stateProvider.IncrementNonce(TestItem.AddressB);
+
+            Block block = Build.A.Block.WithNumber(blockNumber).WithTransactions(txs).TestObject;
+
+            await RaiseBlockAddedToMainAndWaitForTransactions(txs.Length, block);
+
+            _txPool.GetPendingTransactionsCount().Should().Be(0);
+            _txPool.GetPendingBlobTransactionsCount().Should().Be(0);
+
+            blobTxStorage.TryGetBlobTransactionsFromBlock(blockNumber, out Transaction[] returnedTxs).Should().BeTrue();
+            returnedTxs.Length.Should().Be(txs.Length);
+            returnedTxs.Should().BeEquivalentTo(txs, options => options
+                .Excluding(t => t.GasBottleneck) // GasBottleneck is not encoded/decoded...
+                .Excluding(t => t.PoolIndex));   // ...as well as PoolIndex
+
+            blobTxStorage.DeleteBlobTransactionsFromBlock(blockNumber);
+            blobTxStorage.TryGetBlobTransactionsFromBlock(blockNumber, out returnedTxs).Should().BeFalse();
         }
     }
 }
