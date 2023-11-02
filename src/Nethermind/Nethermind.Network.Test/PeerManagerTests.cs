@@ -295,8 +295,8 @@ namespace Nethermind.Network.Test
             ctx.PeerPool.Start();
             ctx.PeerManager.Start();
 
-            TimeSpan prevConnectingDelay = StatsParameters.Instance.DelayDueToEvent[NodeStatsEventType.Connecting];
-            StatsParameters.Instance.DelayDueToEvent[NodeStatsEventType.Connecting] = TimeSpan.Zero;
+            TimeSpan prevConnectingDelay = StatsParameters.Instance.EventParams[NodeStatsEventType.Connecting].reconnectDelay;
+            StatsParameters.Instance.EventParams[NodeStatsEventType.Connecting] = (TimeSpan.Zero, 1.0);
             int[] prevDisconnectDelays = StatsParameters.Instance.DisconnectDelays;
             StatsParameters.Instance.DisconnectDelays = new[] { 0 };
 
@@ -312,7 +312,7 @@ namespace Nethermind.Network.Test
             }
             finally
             {
-                StatsParameters.Instance.DelayDueToEvent[NodeStatsEventType.Connecting] = prevConnectingDelay;
+                StatsParameters.Instance.EventParams[NodeStatsEventType.Connecting] = (prevConnectingDelay, 1.0);
                 StatsParameters.Instance.DisconnectDelays = prevDisconnectDelays;
             }
         }

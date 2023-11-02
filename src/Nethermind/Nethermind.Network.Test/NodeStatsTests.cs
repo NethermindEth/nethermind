@@ -104,5 +104,22 @@ namespace Nethermind.Network.Test
             (isConnDelayed, _) = _nodeStats.IsConnectionDelayed(DateTime.UtcNow);
             isConnDelayed.Should().Be(connectionDelayed);
         }
+
+        [TestCase(null, DisconnectReason.Other, 200)]
+        [TestCase(DisconnectType.Local, DisconnectReason.UselessPeer, 1)]
+        [TestCase(DisconnectType.Local, DisconnectReason.PeerRefreshFailed, 50)]
+        [TestCase(DisconnectType.Local, DisconnectReason.BreachOfProtocol, 1)]
+        [TestCase(DisconnectType.Remote, DisconnectReason.ClientQuitting, 10)]
+        [TestCase(DisconnectType.Remote, DisconnectReason.BreachOfProtocol, 1)]
+        public void DisconnectReputation(DisconnectType? disconnectType, DisconnectReason reason, int reputation)
+        {
+            _nodeStats = new NodeStatsLight(_node);
+            if (disconnectType != null)
+            {
+                _nodeStats.AddNodeStatsDisconnectEvent(disconnectType.Value, reason);
+            }
+
+            _nodeStats.CurrentNodeReputation().Should().Be(reputation);
+        }
     }
 }

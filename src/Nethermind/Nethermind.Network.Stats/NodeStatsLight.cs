@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading;
@@ -59,7 +60,7 @@ namespace Nethermind.Stats
 
         public long CurrentPersistedNodeReputation { get; set; }
 
-        public long NewPersistedNodeReputation(DateTime nowUTC) => IsReputationPenalized(nowUTC) ? -100 : (CurrentPersistedNodeReputation + CalculateSessionReputation()) / 2;
+        public long NewPersistedNodeReputation(DateTime nowUTC) => (CurrentPersistedNodeReputation + CalculateSessionReputation()) / 2;
 
         public P2PNodeDetails P2PNodeDetails { get; private set; }
 
@@ -83,9 +84,9 @@ namespace Nethermind.Stats
                 _lastFailedConnectionTime = DateTime.UtcNow;
             }
 
-            if (_statsParameters.DelayDueToEvent.TryGetValue(nodeStatsEventType, out TimeSpan delay))
+            if (_statsParameters.EventParams.TryGetValue(nodeStatsEventType, out (TimeSpan delay, double _) param))
             {
-                UpdateDelayConnectDeadline(DateTime.UtcNow, delay, nodeStatsEventType);
+                UpdateDelayConnectDeadline(DateTime.UtcNow, param.delay, nodeStatsEventType);
             }
 
             Increment(nodeStatsEventType);
@@ -111,16 +112,16 @@ namespace Nethermind.Stats
 
             if (disconnectType == DisconnectType.Local)
             {
-                if (_statsParameters.DelayDueToLocalDisconnect.TryGetValue(disconnectReason, out TimeSpan delay))
+                if (_statsParameters.LocalDisconnectParams.TryGetValue(disconnectReason, out (TimeSpan reconnectDelay, double reputationMultiplier) param) && param.reconnectDelay != TimeSpan.Zero)
                 {
-                    UpdateDelayConnectDeadline(nowUTC, delay, NodeStatsEventType.LocalDisconnectDelay);
+                    UpdateDelayConnectDeadline(nowUTC, param.reconnectDelay, NodeStatsEventType.LocalDisconnectDelay);
                 }
             }
             else if (disconnectType == DisconnectType.Remote)
             {
-                if (_statsParameters.DelayDueToRemoteDisconnect.TryGetValue(disconnectReason, out TimeSpan delay))
+                if (_statsParameters.RemoteDisconnectParams.TryGetValue(disconnectReason, out (TimeSpan reconnectDelay, double reputationMultiplier) param) && param.reconnectDelay != TimeSpan.Zero)
                 {
-                    UpdateDelayConnectDeadline(nowUTC, delay, NodeStatsEventType.RemoteDisconnectDelay);
+                    UpdateDelayConnectDeadline(nowUTC, param.reconnectDelay, NodeStatsEventType.RemoteDisconnectDelay);
                 }
             }
 
@@ -312,7 +313,7 @@ namespace Nethermind.Stats
 
         private long CalculateCurrentReputation(DateTime nowUTC)
         {
-            return IsReputationPenalized(nowUTC) ? -100 : CurrentPersistedNodeReputation / 2 + CalculateSessionReputation();
+            return CurrentPersistedNodeReputation / 2 + CalculateSessionReputation();
         }
 
         private bool HasDisconnectedOnce => _lastLocalDisconnect.HasValue || _lastRemoteDisconnect.HasValue;
@@ -325,8 +326,8 @@ namespace Nethermind.Stats
 
         private long CalculateSessionReputation()
         {
-            long discoveryReputation = 0;
-            long rlpxReputation = 0;
+            double discoveryReputation = 0;
+            double rlpxReputation = 1;
 
             discoveryReputation += Math.Min(GetStat(NodeStatsEventType.DiscoveryPingIn), 10) * (GetStat(NodeStatsEventType.DiscoveryPingIn) == GetStat(NodeStatsEventType.DiscoveryPingOut) ? 2 : 1);
             discoveryReputation += Math.Min(GetStat(NodeStatsEventType.DiscoveryNeighboursIn), 10) * 2;
@@ -338,76 +339,39 @@ namespace Nethermind.Stats
             rlpxReputation += GetStat(NodeStatsEventType.SyncStarted) > 0 ? 1000 : 0;
             rlpxReputation += (rlpxReputation != 0 && !HasDisconnectedOnce) ? 1 : 0;
 
-            if (HasDisconnectedOnce)
+            if (_lastLocalDisconnect != null)
             {
-                if (_lastLocalDisconnect == DisconnectReason.Other || _lastRemoteDisconnect == DisconnectReason.Other)
+                if (_statsParameters.LocalDisconnectParams.TryGetValue(_lastLocalDisconnect.Value, out (TimeSpan reconnectDelay, double reputationMultiplier) param))
                 {
-                    rlpxReputation = (long)(rlpxReputation * 0.3);
+                    rlpxReputation *= param.reputationMultiplier;
                 }
-                else if (_lastLocalDisconnect?.ToEthDisconnectReason() != EthDisconnectReason.DisconnectRequested)
+                else
                 {
-                    if (_lastRemoteDisconnect == DisconnectReason.TooManyPeers)
-                    {
-                        rlpxReputation = (long)(rlpxReputation * 0.3);
-                    }
-                    else if (_lastRemoteDisconnect?.ToEthDisconnectReason() != EthDisconnectReason.DisconnectRequested)
-                    {
-                        rlpxReputation = (long)(rlpxReputation * 0.2);
-                    }
+                    rlpxReputation *= _statsParameters.LocalDisconnectParams[DisconnectReason.Other].reputationMultiplier;
                 }
             }
 
-            if (DidEventHappen(NodeStatsEventType.ConnectionFailed))
+            if (_lastRemoteDisconnect != null)
             {
-                rlpxReputation = (long)(rlpxReputation * 0.2);
-            }
-
-            if (DidEventHappen(NodeStatsEventType.SyncInitFailed))
-            {
-                rlpxReputation = (long)(rlpxReputation * 0.3);
-            }
-
-            if (DidEventHappen(NodeStatsEventType.SyncFailed))
-            {
-                rlpxReputation = (long)(rlpxReputation * 0.4);
-            }
-
-            return discoveryReputation + 100 * rlpxReputation;
-        }
-
-        private bool IsReputationPenalized(DateTime nowUTC)
-        {
-            if (!HasDisconnectedOnce)
-            {
-                return false;
-            }
-
-
-            if (_lastLocalDisconnect.HasValue)
-            {
-                if (_statsParameters.PenalizedReputationLocalDisconnectReasons.Contains(_lastLocalDisconnect.Value))
+                if (_statsParameters.RemoteDisconnectParams.TryGetValue(_lastRemoteDisconnect.Value, out (TimeSpan reconnectDelay, double reputationMultiplier) param))
                 {
-                    return true;
+                    rlpxReputation *= param.reputationMultiplier;
+                }
+                else
+                {
+                    rlpxReputation *= _statsParameters.RemoteDisconnectParams[DisconnectReason.Other].reputationMultiplier;
                 }
             }
 
-            if (!_lastRemoteDisconnect.HasValue)
+            foreach (KeyValuePair<NodeStatsEventType,(TimeSpan reconnectDelay, double reputationMultiplier)> param in _statsParameters.EventParams)
             {
-                return false;
-            }
-
-            if (_statsParameters.PenalizedReputationRemoteDisconnectReasons.Contains(_lastRemoteDisconnect.Value))
-            {
-                if (_lastRemoteDisconnect == DisconnectReason.TooManyPeers || _lastRemoteDisconnect == DisconnectReason.AlreadyConnected)
+                if (DidEventHappen(param.Key))
                 {
-                    double timeFromLastDisconnect = nowUTC.Subtract(_lastDisconnectTime ?? DateTime.MinValue).TotalMilliseconds;
-                    return timeFromLastDisconnect < _statsParameters.PenalizedReputationTooManyPeersTimeout;
+                    rlpxReputation *= param.Value.reputationMultiplier;
                 }
-
-                return true;
             }
 
-            return false;
+            return (long)(discoveryReputation + 100 * rlpxReputation);
         }
     }
 }
