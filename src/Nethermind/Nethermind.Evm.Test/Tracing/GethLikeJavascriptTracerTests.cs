@@ -38,10 +38,14 @@ public class GethLikeJavascriptTracerTests : VirtualMachineTestsBase
 
     private GethLikeJavascriptTxTracer GetTracer(string userTracer)
     {
-        JavascriptConverter.CurrentEngine = new V8ScriptEngine();
-        new GlobalFunctions(JavascriptConverter.CurrentEngine, Shanghai.Instance);
+        const bool isDebugging = false;
+        V8ScriptEngine engine = new(isDebugging
+            ? V8ScriptEngineFlags.AwaitDebuggerAndPauseOnStart | V8ScriptEngineFlags.EnableDebugging
+            : V8ScriptEngineFlags.None);
+
+        JavascriptConverter.CurrentEngine = new Engine(engine, Shanghai.Instance);
         return new(TestItem.KeccakA,
-            JavascriptConverter.CurrentEngine,
+            JavascriptConverter.CurrentEngine.V8Engine,
             new Evm.Tracing.GethStyle.Javascript.Db(TestState),
             new Context() { gasPrice = 1 },
             GethTraceOptions.Default with { EnableMemory = true, Tracer = userTracer }

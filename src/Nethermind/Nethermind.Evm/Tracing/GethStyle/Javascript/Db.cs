@@ -21,13 +21,13 @@ public class Db
 
     public Db(IWorldState worldState) => WorldState = worldState;
 
-    public BigInteger getBalance(IList address) => (BigInteger)WorldState.GetBalance(address.ToAddress());
+    public BigInteger getBalance(object address) => (BigInteger)WorldState.GetBalance(address.ToAddress());
 
-    public ulong getNonce(IList address) => (ulong)WorldState.GetNonce(address.ToAddress());
+    public ulong getNonce(object address) => (ulong)WorldState.GetNonce(address.ToAddress());
 
-    public ScriptObject getCode(IList address) => WorldState.GetCode(address.ToAddress()).ToScriptArray();
+    public ITypedArray<byte> getCode(object address) => WorldState.GetCode(address.ToAddress()).ToScriptArray();
 
-    public ScriptObject getState(IList address, IList index) =>
+    public ITypedArray<byte> getState(object address, object index) =>
         WorldState.Get(new StorageCell(address.ToAddress(), index.GetUint256())).ToScriptArray();
 
     public bool exists(IList address) => !WorldState.GetAccount(address.ToAddress()).IsTotallyEmpty;

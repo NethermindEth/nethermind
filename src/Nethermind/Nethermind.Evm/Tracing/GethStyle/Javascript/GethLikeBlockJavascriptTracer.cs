@@ -12,7 +12,6 @@ namespace Nethermind.Evm.Tracing.GethStyle.Javascript;
 
 public class GethLikeBlockJavascriptTracer : BlockTracerBase<GethLikeTxTrace, GethLikeJavascriptTxTracer>
 {
-    private const bool IsDebugging = false;
     private readonly IReleaseSpec _spec;
     private readonly GethTraceOptions _options;
     private readonly Context _ctx;
@@ -37,12 +36,8 @@ public class GethLikeBlockJavascriptTracer : BlockTracerBase<GethLikeTxTrace, Ge
 
     protected override GethLikeJavascriptTxTracer OnStart(Transaction? tx)
     {
-        V8ScriptEngine engine = new(IsDebugging
-            ? V8ScriptEngineFlags.AwaitDebuggerAndPauseOnStart | V8ScriptEngineFlags.EnableDebugging
-            : V8ScriptEngineFlags.None);
-        new GlobalFunctions(engine, _spec);
-        JavascriptConverter.CurrentEngine = engine;
-        engine.Dispose();
+        V8ScriptEngine engine = new();
+        JavascriptConverter.CurrentEngine = new Engine(engine, _spec);
 
         _ctx.gasPrice = (ulong)tx!.GasPrice;
         _ctx.txIndex = _index++;
@@ -53,7 +48,6 @@ public class GethLikeBlockJavascriptTracer : BlockTracerBase<GethLikeTxTrace, Ge
     public override void EndBlockTrace()
     {
         base.EndBlockTrace();
-        JavascriptConverter.CurrentEngine?.Dispose();
         JavascriptConverter.CurrentEngine = null;
     }
 

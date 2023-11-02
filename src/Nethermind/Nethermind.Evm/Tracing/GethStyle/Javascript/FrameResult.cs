@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Microsoft.ClearScript;
+using Microsoft.ClearScript.JavaScript;
 using Microsoft.ClearScript.V8;
 
 namespace Nethermind.Evm.Tracing.GethStyle.Javascript;
@@ -12,6 +13,6 @@ public class FrameResult
     public byte[] Output { get; set; }
     public string? Error { get; set; }
     public long getGasUsed() => GasUsed;
-    public ScriptObject getOutput() => Output.ToScriptArray();
+    public ITypedArray<byte> getOutput() => Output.ToScriptArray();
     public string getError() => Error ?? string.Empty;
 }

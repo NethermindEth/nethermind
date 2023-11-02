@@ -48,7 +48,6 @@ public sealed class GethLikeJavascriptTxTracer : GethLikeTxTracer
         _frame = new CallFrame();
         _result = new FrameResult();
 
-        engine.Execute(BigIntegerJS.Code);
         engine.Execute(LoadJavascriptCode(options.Tracer));
         _tracer = engine.Script.tracer;
         _functions = GetAvailableFunctions(((IDictionary<string, object>)_tracer).Keys);

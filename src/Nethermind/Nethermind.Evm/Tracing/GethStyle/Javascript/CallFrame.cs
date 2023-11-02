@@ -3,6 +3,7 @@
 
 using System.Numerics;
 using Microsoft.ClearScript;
+using Microsoft.ClearScript.JavaScript;
 using Nethermind.Core;
 
 namespace Nethermind.Evm.Tracing.GethStyle.Javascript;
@@ -16,15 +17,15 @@ public record CallFrame
     public long Gas { get; set; }
     public BigInteger Value { get; set; }
 
-    private ScriptObject? _from = null;
-    private ScriptObject? _to = null;
-    private ScriptObject? _input = null;
+    private ITypedArray<byte>? _from = null;
+    private ITypedArray<byte>? _to = null;
+    private ITypedArray<byte>? _input = null;
 
     // ReSharper disable InconsistentNaming
     public string? getType() => Type;
-    public ScriptObject getFrom() => _from ??= From.Bytes.ToScriptArray();
-    public ScriptObject getTo() => _to ??= To.Bytes.ToScriptArray();
-    public ScriptObject getInput() => _input ??= Input.ToScriptArray();
+    public ITypedArray<byte> getFrom() => _from ??= From.Bytes.ToScriptArray();
+    public ITypedArray<byte> getTo() => _to ??= To.Bytes.ToScriptArray();
+    public ITypedArray<byte> getInput() => _input ??= Input.ToScriptArray();
     public long getGas() => Gas;
     public BigInteger getValue() => Value;
     // ReSharper restore InconsistentNaming

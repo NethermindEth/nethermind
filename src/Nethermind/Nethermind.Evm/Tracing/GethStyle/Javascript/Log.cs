@@ -8,6 +8,7 @@ using Nethermind.Int256;
 using System.Numerics;
 using System.Runtime.InteropServices;
 using Microsoft.ClearScript;
+using Microsoft.ClearScript.JavaScript;
 
 // ReSharper disable InconsistentNaming
 
@@ -62,7 +63,7 @@ namespace Nethermind.Evm.Tracing.GethStyle.Javascript
 
             public int length() => _memory.Count;
 
-            public ScriptObject slice(BigInteger start, BigInteger end)
+            public ITypedArray<byte> slice(BigInteger start, BigInteger end)
             {
                 if (start < 0 || end < start )
                 {
@@ -97,15 +98,15 @@ namespace Nethermind.Evm.Tracing.GethStyle.Javascript
         public struct Contract
         {
             private readonly UInt256 _value;
-            private readonly Address? _address;
+            private readonly Address _address;
             private readonly ReadOnlyMemory<byte> _input;
-            private ScriptObject? _callerConverted;
-            private ScriptObject? _addressConverted;
-            private ScriptObject? _inputConverted;
+            private ITypedArray<byte>? _callerConverted;
+            private ITypedArray<byte>? _addressConverted;
+            private ITypedArray<byte>? _inputConverted;
             private readonly Address _caller;
 
 
-            public Contract(Address caller, Address? address, UInt256 value, ReadOnlyMemory<byte> input)
+            public Contract(Address caller, Address address, UInt256 value, ReadOnlyMemory<byte> input)
             {
                 _caller = caller;
                 _address = address;
@@ -113,9 +114,9 @@ namespace Nethermind.Evm.Tracing.GethStyle.Javascript
                 _input = input;
             }
 
-            public ScriptObject? getAddress() => _addressConverted ??= _address?.Bytes.ToScriptArray();
-            public ScriptObject getCaller() => _callerConverted ??= _caller.Bytes.ToScriptArray();
-            public ScriptObject getInput() => _inputConverted ??= _input.ToArray().ToScriptArray();
+            public ITypedArray<byte> getAddress() => _addressConverted ??= _address.Bytes.ToScriptArray();
+            public ITypedArray<byte> getCaller() => _callerConverted ??= _caller.Bytes.ToScriptArray();
+            public ITypedArray<byte> getInput() => _inputConverted ??= _input.ToArray().ToScriptArray();
             public BigInteger getValue() => (BigInteger)_value;
         }
     }
