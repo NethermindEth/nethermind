@@ -8,6 +8,7 @@ using System;
 using Nethermind.AccountAbstraction.Data;
 using Nethermind.AccountAbstraction.Executor;
 using Nethermind.Consensus;
+using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -54,7 +55,7 @@ namespace Nethermind.AccountAbstraction.Source
             _logger = logger;
         }
 
-        public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit)
+        public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit, PayloadAttributes? payloadAttributes)
         {
             IDictionary<Address, HashSet<UInt256>> usedAccessList = new Dictionary<Address, HashSet<UInt256>>();
             // IList<UserOperation> userOperationsToInclude = new List<UserOperation>();
@@ -95,7 +96,7 @@ namespace Nethermind.AccountAbstraction.Source
                 if (userOperation.AccessList.AccessListOverlaps(usedAccessList)) continue;
 
                 // simulate again to make sure the op is still valid
-                ResultWrapper<Keccak> result = _userOperationSimulators[entryPoint].Simulate(userOperation, parent);
+                ResultWrapper<Hash256> result = _userOperationSimulators[entryPoint].Simulate(userOperation, parent);
                 if (result.Result != Result.Success)
                 {
                     //if (_logger.IsDebug) commented out for testing

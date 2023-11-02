@@ -29,7 +29,7 @@ namespace Nethermind.State
         // Note:
         // False negatives are fine as they will just result in a overwrite set
         // False positives would be problematic as the code _must_ be persisted
-        private readonly LruKeyCache<Keccak> _codeInsertFilter = new(2048, "Code Insert Filter");
+        private readonly LruKeyCache<Hash256> _codeInsertFilter = new(2048, "Code Insert Filter");
 
         private readonly List<Change> _keptInCache = new();
         private readonly ILogger _logger;
@@ -46,7 +46,7 @@ namespace Nethermind.State
             _tree = stateTree ?? new StateTree(trieStore, logManager);
         }
 
-        public void Accept(ITreeVisitor? visitor, Keccak? stateRoot, VisitingOptions? visitingOptions = null)
+        public void Accept(ITreeVisitor? visitor, Hash256? stateRoot, VisitingOptions? visitingOptions = null)
         {
             if (visitor is null) throw new ArgumentNullException(nameof(visitor));
             if (stateRoot is null) throw new ArgumentNullException(nameof(stateRoot));
@@ -62,7 +62,7 @@ namespace Nethermind.State
             _needsStateRootUpdate = false;
         }
 
-        public Keccak StateRoot
+        public Hash256 StateRoot
         {
             get
             {
@@ -127,7 +127,7 @@ namespace Nethermind.State
             return account?.Nonce ?? UInt256.Zero;
         }
 
-        public Keccak GetStorageRoot(Address address)
+        public Hash256 GetStorageRoot(Address address)
         {
             Account? account = GetThroughCache(address);
             if (account is null)
@@ -147,16 +147,16 @@ namespace Nethermind.State
         public void InsertCode(Address address, ReadOnlyMemory<byte> code, IReleaseSpec spec, bool isGenesis = false)
         {
             _needsStateRootUpdate = true;
-            Keccak codeHash = code.Length == 0 ? Keccak.OfAnEmptyString : Keccak.Compute(code.Span);
+            Hash256 codeHash = code.Length == 0 ? Keccak.OfAnEmptyString : Keccak.Compute(code.Span);
 
             // Don't reinsert if already inserted. This can be the case when the same
             // code is used by multiple deployments. Either from factory contracts (e.g. LPs)
             // or people copy and pasting popular contracts
             if (!_codeInsertFilter.Get(codeHash))
             {
-                if (_codeDb is IDbWithSpan dbWithSpan)
+                if (!_codeDb.PreferWriteByArray)
                 {
-                    dbWithSpan.PutSpan(codeHash.Bytes, code.Span);
+                    _codeDb.PutSpan(codeHash.Bytes, code.Span);
                 }
                 else if (MemoryMarshal.TryGetArray(code, out ArraySegment<byte> codeArray)
                         && codeArray.Offset == 0
@@ -218,14 +218,12 @@ namespace Nethermind.State
             bool isZero = balanceChange.IsZero;
             if (isZero)
             {
-                bool ignoreTouch = isSubtracting && !releaseSpec.AuRaSystemCalls;
-                if (releaseSpec.IsEip158Enabled && !ignoreTouch)
+                // this also works like this in Geth (they don't follow the spec ¯\_(*~*)_/¯)
+                // however we don't do it because of a consensus issue with Geth, just to avoid
+                // hitting non-existing account when substractin Zero-value from the sender
+                if (releaseSpec.IsEip158Enabled && !isSubtracting)
                 {
-                    Account touched = GetThroughCache(address);
-                    if (touched is null)
-                    {
-                        return;
-                    }
+                    Account touched = GetThroughCacheCheckExists();
                     if (_logger.IsTrace) _logger.Trace($"  Touch {address} (balance)");
                     if (touched!.IsEmpty)
                     {
@@ -268,7 +266,7 @@ namespace Nethermind.State
         /// </summary>
         /// <param name="address"></param>
         /// <param name="storageRoot"></param>
-        public void UpdateStorageRoot(Address address, Keccak storageRoot)
+        public void UpdateStorageRoot(Address address, Hash256 storageRoot)
         {
             _needsStateRootUpdate = true;
             Account? account = GetThroughCache(address);
@@ -313,7 +311,7 @@ namespace Nethermind.State
             PushUpdate(address, changedAccount);
         }
 
-        public void TouchCode(Keccak codeHash)
+        public void TouchCode(Hash256 codeHash)
         {
             if (_codeDb is WitnessingStore witnessingStore)
             {
@@ -321,13 +319,13 @@ namespace Nethermind.State
             }
         }
 
-        public Keccak GetCodeHash(Address address)
+        public Hash256 GetCodeHash(Address address)
         {
             Account? account = GetThroughCache(address);
             return account?.CodeHash ?? Keccak.OfAnEmptyString;
         }
 
-        public byte[] GetCode(Keccak codeHash)
+        public byte[] GetCode(Hash256 codeHash)
         {
             byte[]? code = codeHash == Keccak.OfAnEmptyString ? Array.Empty<byte>() : _codeDb[codeHash.Bytes];
             if (code is null)
@@ -634,8 +632,8 @@ namespace Nethermind.State
                 UInt256? beforeNonce = before?.Nonce;
                 UInt256? afterNonce = after?.Nonce;
 
-                Keccak? beforeCodeHash = before?.CodeHash;
-                Keccak? afterCodeHash = after?.CodeHash;
+                Hash256? beforeCodeHash = before?.CodeHash;
+                Hash256? afterCodeHash = after?.CodeHash;
 
                 if (beforeCodeHash != afterCodeHash)
                 {

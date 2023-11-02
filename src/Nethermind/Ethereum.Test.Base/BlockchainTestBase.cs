@@ -184,7 +184,7 @@ namespace Ethereum.Test.Base
             }
 
             Block genesisBlock = Rlp.Decode<Block>(test.GenesisRlp.Bytes);
-            Assert.That(genesisBlock.Header.Hash, Is.EqualTo(new Keccak(test.GenesisBlockHeader.Hash)));
+            Assert.That(genesisBlock.Header.Hash, Is.EqualTo(new Hash256(test.GenesisBlockHeader.Hash)));
 
             ManualResetEvent genesisProcessed = new(false);
             blockTree.NewHeadBlock += (_, args) =>
@@ -266,12 +266,12 @@ namespace Ethereum.Test.Base
 
                     if (testBlockJson.BlockHeader is not null)
                     {
-                        Assert.That(suggestedBlock.Header.Hash, Is.EqualTo(new Keccak(testBlockJson.BlockHeader.Hash)));
+                        Assert.That(suggestedBlock.Header.Hash, Is.EqualTo(new Hash256(testBlockJson.BlockHeader.Hash)));
 
 
                         for (int uncleIndex = 0; uncleIndex < suggestedBlock.Uncles.Length; uncleIndex++)
                         {
-                            Assert.That(suggestedBlock.Uncles[uncleIndex].Hash, Is.EqualTo(new Keccak(testBlockJson.UncleHeaders[uncleIndex].Hash)));
+                            Assert.That(suggestedBlock.Uncles[uncleIndex].Hash, Is.EqualTo(new Hash256(testBlockJson.UncleHeaders[uncleIndex].Hash)));
                         }
 
                         correctRlp.Add((suggestedBlock, testBlockJson.ExpectedException));
@@ -303,7 +303,7 @@ namespace Ethereum.Test.Base
             if (correctRlp.Count == 0)
             {
                 Assert.NotNull(test.GenesisBlockHeader);
-                Assert.That(test.LastBlockHash, Is.EqualTo(new Keccak(test.GenesisBlockHeader.Hash)));
+                Assert.That(test.LastBlockHash, Is.EqualTo(new Hash256(test.GenesisBlockHeader.Hash)));
             }
 
             return correctRlp;
@@ -343,7 +343,7 @@ namespace Ethereum.Test.Base
 
             TestBlockHeaderJson testHeaderJson = (test.Blocks?
                                                      .Where(b => b.BlockHeader != null)
-                                                     .SingleOrDefault(b => new Keccak(b.BlockHeader.Hash) == headBlock.Hash)?.BlockHeader) ?? test.GenesisBlockHeader;
+                                                     .SingleOrDefault(b => new Hash256(b.BlockHeader.Hash) == headBlock.Hash)?.BlockHeader) ?? test.GenesisBlockHeader;
             BlockHeader testHeader = JsonToEthereumTest.Convert(testHeaderJson);
             List<string> differences = new();
 

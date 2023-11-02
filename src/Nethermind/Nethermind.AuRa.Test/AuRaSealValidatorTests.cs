@@ -196,7 +196,7 @@ namespace Nethermind.AuRa.Test
                 .WithNumber(blockNumber)
                 .TestObject;
 
-            Keccak hash = block.CalculateHash(RlpBehaviors.ForSealing);
+            Hash256 hash = block.CalculateHash(RlpBehaviors.ForSealing);
             block.AuRaSignature = _wallet.Sign(hash, signedAddress).BytesWithRecovery;
             _ethereumEcdsa.RecoverAddress(Arg.Any<Signature>(), hash).Returns(recoveredAddress);
 

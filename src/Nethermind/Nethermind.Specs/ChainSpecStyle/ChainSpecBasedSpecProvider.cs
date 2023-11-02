@@ -29,6 +29,8 @@ namespace Nethermind.Specs.ChainSpecStyle
             BuildTransitions();
         }
 
+        public bool GenesisStateUnavailable { get => _chainSpec.GenesisStateUnavailable; }
+
         private void BuildTransitions()
         {
             SortedSet<long> transitionBlockNumbers = new();

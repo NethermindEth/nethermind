@@ -26,19 +26,19 @@ namespace Nethermind.Benchmarks.Core
         [Params(1, 2, 8, 32, 64)]
         public int ItemsCount { get; set; }
 
-        public Keccak[] Keys { get; set; } = new Keccak[64];
+        public Hash256[] Keys { get; set; } = new Hash256[64];
 
         public byte[] Value { get; set; } = new byte[0];
 
         [Benchmark]
-        public LruCache<ValueKeccak, byte[]> WithItems()
+        public LruCache<ValueHash256, byte[]> WithItems()
         {
-            LruCache<ValueKeccak, byte[]> cache = new LruCache<ValueKeccak, byte[]>(MaxCapacity, MaxCapacity, String.Empty);
+            LruCache<ValueHash256, byte[]> cache = new LruCache<ValueHash256, byte[]>(MaxCapacity, MaxCapacity, String.Empty);
             Fill(cache);
 
             return cache;
 
-            void Fill(LruCache<ValueKeccak, byte[]> cache)
+            void Fill(LruCache<ValueHash256, byte[]> cache)
             {
                 for (int j = 0; j < ItemsCount; j++)
                 {

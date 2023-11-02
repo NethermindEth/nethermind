@@ -219,13 +219,13 @@ namespace Nethermind.Blockchain.Contracts
             }
         }
 
-        protected LogEntry GetSearchLogEntry(string eventName, byte[] data = null, params Keccak[] topics)
+        protected LogEntry GetSearchLogEntry(string eventName, byte[] data = null, params Hash256[] topics)
         {
-            Keccak[] eventNameTopic = { AbiDefinition.GetEvent(eventName).GetHash() };
+            Hash256[] eventNameTopic = { AbiDefinition.GetEvent(eventName).GetHash() };
             topics = topics.Length == 0 ? eventNameTopic : eventNameTopic.Concat(topics).ToArray();
             return new LogEntry(ContractAddress, data ?? Array.Empty<byte>(), topics);
         }
 
-        protected LogEntry GetSearchLogEntry(string eventName, params Keccak[] topics) => GetSearchLogEntry(eventName, null, topics);
+        protected LogEntry GetSearchLogEntry(string eventName, params Hash256[] topics) => GetSearchLogEntry(eventName, null, topics);
     }
 }

@@ -172,7 +172,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
             });
 
             HandleIncomingStatusMessage();
-            ((ISyncPeer)_handler).GetBlockBodies(new List<Keccak>(new[] { Keccak.Zero }), CancellationToken.None);
+            ((ISyncPeer)_handler).GetBlockBodies(new List<Hash256>(new[] { Keccak.Zero }), CancellationToken.None);
             HandleZeroMessage(msg66, Eth66MessageCode.BlockBodies);
         }
 
@@ -233,7 +233,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
             });
 
             HandleIncomingStatusMessage();
-            ((ISyncPeer)_handler).GetNodeData(new List<Keccak>(new[] { Keccak.Zero }), CancellationToken.None);
+            ((ISyncPeer)_handler).GetNodeData(new List<Hash256>(new[] { Keccak.Zero }), CancellationToken.None);
             HandleZeroMessage(msg66, Eth66MessageCode.NodeData);
         }
 
@@ -272,7 +272,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
             });
 
             HandleIncomingStatusMessage();
-            ((ISyncPeer)_handler).GetReceipts(new List<Keccak>(new[] { Keccak.Zero }), CancellationToken.None);
+            ((ISyncPeer)_handler).GetReceipts(new List<Hash256>(new[] { Keccak.Zero }), CancellationToken.None);
             HandleZeroMessage(msg66, Eth66MessageCode.Receipts);
         }
 
@@ -309,11 +309,11 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
                 new ForkInfo(_specProvider, _genesisBlock.Header.Hash!),
                 LimboLogs.Instance);
 
-            List<Keccak> hashes = new(numberOfTransactions);
+            List<Hash256> hashes = new(numberOfTransactions);
 
             for (int i = 0; i < numberOfTransactions; i++)
             {
-                hashes.Add(new Keccak(i.ToString("X64")));
+                hashes.Add(new Hash256(i.ToString("X64")));
             }
 
             NewPooledTransactionHashesMessage hashesMsg = new(hashes);

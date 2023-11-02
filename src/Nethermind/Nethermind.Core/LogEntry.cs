@@ -8,7 +8,7 @@ namespace Nethermind.Core
 {
     public class LogEntry
     {
-        public LogEntry(Address address, byte[] data, Keccak[] topics)
+        public LogEntry(Address address, byte[] data, Hash256[] topics)
         {
             LoggersAddress = address;
             Data = data;
@@ -16,7 +16,7 @@ namespace Nethermind.Core
         }
 
         public Address LoggersAddress { get; }
-        public Keccak[] Topics { get; }
+        public Hash256[] Topics { get; }
         public byte[] Data { get; }
     }
 
@@ -40,7 +40,7 @@ namespace Nethermind.Core
             TopicsRlp = default;
         }
 
-        public Keccak[]? Topics { get; }
+        public Hash256[]? Topics { get; }
 
         /// <summary>
         /// Rlp encoded array of Keccak

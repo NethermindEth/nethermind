@@ -75,7 +75,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
         [TestCase(false)]
         public async Task Can_get_transaction(bool withHeader)
         {
-            Keccak txHash = _blockTree.FindBlock(1)!.Transactions[0].Hash!;
+            Hash256 txHash = _blockTree.FindBlock(1)!.Transactions[0].Hash!;
             TransactionWithProof txWithProof = _proofRpcModule.proof_getTransactionByHash(txHash, withHeader).Data;
             Assert.NotNull(txWithProof.Transaction);
             Assert.That(txWithProof.TxProof.Length, Is.EqualTo(2));
@@ -96,7 +96,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
         [TestCase(false)]
         public async Task When_getting_non_existing_tx_correct_error_code_is_returned(bool withHeader)
         {
-            Keccak txHash = TestItem.KeccakH;
+            Hash256 txHash = TestItem.KeccakH;
             string response = await RpcTest.TestSerializedRequest(_proofRpcModule, "proof_getTransactionByHash", $"{txHash}", $"{withHeader}");
             Assert.True(response.Contains($"{ErrorCodes.ResourceNotFound}"));
         }
@@ -105,7 +105,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
         [TestCase(false)]
         public async Task When_getting_non_existing_receipt_correct_error_code_is_returned(bool withHeader)
         {
-            Keccak txHash = TestItem.KeccakH;
+            Hash256 txHash = TestItem.KeccakH;
             string response = await RpcTest.TestSerializedRequest(_proofRpcModule, "proof_getTransactionReceipt", $"{txHash}", $"{withHeader}");
             Assert.True(response.Contains($"{ErrorCodes.ResourceNotFound}"));
         }
@@ -113,7 +113,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
         [TestCase]
         public async Task On_incorrect_params_returns_correct_error_code()
         {
-            Keccak txHash = TestItem.KeccakH;
+            Hash256 txHash = TestItem.KeccakH;
 
             // missing with header
             string response = await RpcTest.TestSerializedRequest(_proofRpcModule, "proof_getTransactionReceipt", $"{txHash}");
@@ -140,7 +140,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
         [TestCase(false, "{\"jsonrpc\":\"2.0\",\"result\":{\"receipt\":{\"transactionHash\":\"0x6db23e4d6e1f23a0f67ae8637cd675363ec59aea22acd86300ac1f1cb42c9011\",\"transactionIndex\":\"0x0\",\"blockHash\":\"0x77f368c23226eee1583f671719f117df588fc5bf19c2a73e190e404a8be570f1\",\"blockNumber\":\"0x1\",\"cumulativeGasUsed\":\"0x0\",\"gasUsed\":\"0x0\",\"effectiveGasPrice\":\"0x1\",\"to\":null,\"contractAddress\":null,\"logs\":[],\"logsBloom\":\"0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\",\"status\":\"0x0\",\"type\":\"0x0\"},\"txProof\":[\"0xf851a0e244ea69b68d9f3fd5eff812a4a7e1e105a8c1143ff82206458ad45fe1801c9b80808080808080a08a1641bd871a8d574e81653362ae89e549a9ab0660bd5b180328d00f13e9c6bb8080808080808080\",\"0xf86530b862f860800182520894000000000000000000000000000000000000000001818025a0e7b18371f1b94890bd11e7f67ba7e7a3a6b263d68b2d18e258f6e063d6abd90ea00a015b31944dee0bde211cec1636a3f05bfea0678e240ae8dfe309b2aac22d93\"],\"receiptProof\":[\"0xf851a053e4a8d7d8438fa45d6b75bbd6fb699b08049c1caf1c21ada42a746ddfb61d0b80808080808080a04de834bd23b53a3d82923ae5f359239b326c66758f2ae636ab934844dba2b9658080808080808080\",\"0xf9010f30b9010bf9010880825208b9010000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000c0\"]},\"id\":67}")]
         public async Task Can_get_receipt(bool withHeader, string expectedResult)
         {
-            Keccak txHash = _blockTree.FindBlock(1)!.Transactions[0].Hash!;
+            Hash256 txHash = _blockTree.FindBlock(1)!.Transactions[0].Hash!;
             ReceiptWithProof receiptWithProof = _proofRpcModule.proof_getTransactionReceipt(txHash, withHeader).Data;
             Assert.NotNull(receiptWithProof.Receipt);
             Assert.That(receiptWithProof.ReceiptProof.Length, Is.EqualTo(2));
@@ -198,11 +198,11 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
             };
 
             Block block = _blockTree.FindBlock(1)!;
-            Keccak txHash = _blockTree.FindBlock(1)!.Transactions[1].Hash!;
+            Hash256 txHash = _blockTree.FindBlock(1)!.Transactions[1].Hash!;
             TxReceipt[] receipts = { receipt1, receipt2 };
             _receiptFinder.Get(Arg.Any<Block>()).Returns(receipts);
-            _receiptFinder.Get(Arg.Any<Keccak>()).Returns(receipts);
-            _receiptFinder.FindBlockHash(Arg.Any<Keccak>()).Returns(_blockTree.FindBlock(1)!.Hash);
+            _receiptFinder.Get(Arg.Any<Hash256>()).Returns(receipts);
+            _receiptFinder.FindBlockHash(Arg.Any<Hash256>()).Returns(_blockTree.FindBlock(1)!.Hash);
 
             ProofModuleFactory moduleFactory = new ProofModuleFactory(
                 _dbProvider,
@@ -234,7 +234,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
         {
             WorldState stateProvider = CreateInitialState(null);
 
-            Keccak root = stateProvider.StateRoot;
+            Hash256 root = stateProvider.StateRoot;
             Block block = Build.A.Block.WithParent(_blockTree.Head!).WithStateRoot(root).TestObject;
             BlockTreeBuilder.AddBlock(_blockTree, block);
 
@@ -259,7 +259,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
         {
             WorldState stateProvider = CreateInitialState(null);
 
-            Keccak root = stateProvider.StateRoot;
+            Hash256 root = stateProvider.StateRoot;
             Block block = Build.A.Block.WithParent(_blockTree.Head!).WithStateRoot(root).TestObject;
             BlockTreeBuilder.AddBlock(_blockTree, block);
 
@@ -620,7 +620,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
                 .Op(Instruction.DELEGATECALL)
                 .Done;
             CallResultWithProof result = await TestCallWithCode(code);
-            Assert.That(result.Accounts.Length, Is.EqualTo(2 + (_createSystemAccount ? 1 : 0)));
+            Assert.That(result.Accounts.Length, Is.EqualTo(_createSystemAccount && _useNonZeroGasPrice ? 3 : 2));
         }
 
         [TestCase]
@@ -761,7 +761,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
         {
             WorldState stateProvider = CreateInitialState(code);
 
-            Keccak root = stateProvider.StateRoot;
+            Hash256 root = stateProvider.StateRoot;
             Block block = Build.A.Block.WithParent(_blockTree.Head!).WithStateRoot(root).WithBeneficiary(TestItem.AddressD).TestObject;
             BlockTreeBuilder.AddBlock(_blockTree, block);
             Block blockOnTop = Build.A.Block.WithParent(block).WithStateRoot(root).WithBeneficiary(TestItem.AddressD).TestObject;
@@ -807,7 +807,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
             stateProvider.Commit(MainnetSpecProvider.Instance.GenesisSpec, NullStateTracer.Instance);
             stateProvider.CommitTree(0);
 
-            Keccak root = stateProvider.StateRoot;
+            Hash256 root = stateProvider.StateRoot;
 
             Block block = Build.A.Block.WithParent(_blockTree.Head!).WithStateRoot(root).TestObject;
             BlockTreeBuilder.AddBlock(_blockTree, block);
@@ -831,15 +831,15 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
             // just the keys for debugging
             byte[] span = new byte[32];
             new UInt256(0).ToBigEndian(span);
-            Keccak unused = Keccak.Compute(span);
+            Hash256 unused = Keccak.Compute(span);
 
             // just the keys for debugging
             new UInt256(1).ToBigEndian(span);
-            Keccak unused1 = Keccak.Compute(span);
+            Hash256 unused1 = Keccak.Compute(span);
 
             // just the keys for debugging
             new UInt256(2).ToBigEndian(span);
-            Keccak unused2 = Keccak.Compute(span);
+            Hash256 unused2 = Keccak.Compute(span);
 
             foreach (AccountProof accountProof in callResultWithProof.Accounts)
             {

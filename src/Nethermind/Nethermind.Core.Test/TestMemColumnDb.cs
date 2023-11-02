@@ -9,7 +9,7 @@ namespace Nethermind.Core.Test;
 public class TestMemColumnsDb<TKey> : IColumnsDb<TKey>
     where TKey : notnull
 {
-    private readonly IDictionary<TKey, IDbWithSpan> _columnDbs = new Dictionary<TKey, IDbWithSpan>();
+    private readonly IDictionary<TKey, IDb> _columnDbs = new Dictionary<TKey, IDb>();
 
     public TestMemColumnsDb()
     {
@@ -23,11 +23,11 @@ public class TestMemColumnsDb<TKey> : IColumnsDb<TKey>
         }
     }
 
-    public IDbWithSpan GetColumnDb(TKey key) => !_columnDbs.TryGetValue(key, out var db) ? _columnDbs[key] = new TestMemDb() : db;
+    public IDb GetColumnDb(TKey key) => !_columnDbs.TryGetValue(key, out var db) ? _columnDbs[key] = new TestMemDb() : db;
     public IEnumerable<TKey> ColumnKeys => _columnDbs.Keys;
 
-    public IColumnsBatch<TKey> StartBatch()
+    public IColumnsWriteBatch<TKey> StartWriteBatch()
     {
-        return new InMemoryColumnBatch<TKey>(this);
+        return new InMemoryColumnWriteBatch<TKey>(this);
     }
 }

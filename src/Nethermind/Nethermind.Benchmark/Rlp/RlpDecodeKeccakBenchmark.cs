@@ -37,7 +37,7 @@ namespace Nethermind.Benchmarks.Rlp
         public int ScenarioIndex { get; set; }
 
         [Benchmark]
-        public Keccak Current()
+        public Hash256 Current()
         {
             return _scenariosContext[ScenarioIndex].DecodeKeccak();
         }

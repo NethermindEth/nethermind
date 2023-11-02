@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Find;
@@ -62,10 +63,10 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
 
         private void TryPublishReceiptsInBackground(BlockHeader blockHeader, Func<TxReceipt[]> getReceipts, string eventName, bool removed)
         {
-            ScheduleAction(() => TryPublishEvent(blockHeader, getReceipts(), eventName, removed));
+            ScheduleAction(async () => await TryPublishEvent(blockHeader, getReceipts(), eventName, removed));
         }
 
-        private void TryPublishEvent(BlockHeader blockHeader, TxReceipt[] receipts, string eventName, bool removed)
+        private async Task TryPublishEvent(BlockHeader blockHeader, TxReceipt[] receipts, string eventName, bool removed)
         {
             BlockHeader fromBlock = _blockTree.FindHeader(_filter.FromBlock);
             BlockHeader toBlock = _blockTree.FindHeader(_filter.ToBlock, true);
@@ -80,7 +81,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
                 foreach (var filterLog in filterLogs)
                 {
                     JsonRpcResult result = CreateSubscriptionMessage(filterLog);
-                    JsonRpcDuplexClient.SendJsonRpcResult(result);
+                    await JsonRpcDuplexClient.SendJsonRpcResult(result);
                     if (_logger.IsTrace) _logger.Trace($"Logs subscription {Id} printed new log.");
                 }
             }

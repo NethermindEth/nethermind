@@ -122,8 +122,8 @@ namespace Nethermind.Clique.Test
 
         private Block GetRinkebyGenesis()
         {
-            Keccak parentHash = Keccak.Zero;
-            Keccak unclesHash = Keccak.OfAnEmptySequenceRlp;
+            Hash256 parentHash = Keccak.Zero;
+            Hash256 unclesHash = Keccak.OfAnEmptySequenceRlp;
             Address beneficiary = Address.Zero;
             UInt256 difficulty = new(1);
             long number = 0L;
@@ -163,8 +163,8 @@ namespace Nethermind.Clique.Test
 
         private Block CreateBlock(int blockDifficulty, int blockNumber, Block lastBlock)
         {
-            Keccak parentHash = lastBlock.Hash;
-            Keccak unclesHash = Keccak.OfAnEmptySequenceRlp;
+            Hash256 parentHash = lastBlock.Hash;
+            Hash256 unclesHash = Keccak.OfAnEmptySequenceRlp;
             Address beneficiary = Address.Zero;
             UInt256 difficulty = (UInt256)blockDifficulty;
             long number = blockNumber;
@@ -192,11 +192,11 @@ namespace Nethermind.Clique.Test
         private static BlockHeader BuildCliqueBlock()
         {
             BlockHeader header = Build.A.BlockHeader
-                .WithParentHash(new Keccak("0x6d31ab6b6ee360d075bb032a094fb4ea52617268b760d15b47aa439604583453"))
+                .WithParentHash(new Hash256("0x6d31ab6b6ee360d075bb032a094fb4ea52617268b760d15b47aa439604583453"))
                 .WithUnclesHash(Keccak.OfAnEmptySequenceRlp)
                 .WithBeneficiary(Address.Zero)
                 .WithBloom(Bloom.Empty)
-                .WithStateRoot(new Keccak("0x9853b6c62bd454466f4843b73e2f0bdd655a4e754c259d6cc0ad4e580d788f43"))
+                .WithStateRoot(new Hash256("0x9853b6c62bd454466f4843b73e2f0bdd655a4e754c259d6cc0ad4e580d788f43"))
                 .WithTransactionsRoot(PatriciaTree.EmptyTreeHash)
                 .WithReceiptsRoot(PatriciaTree.EmptyTreeHash)
                 .WithDifficulty(2)
