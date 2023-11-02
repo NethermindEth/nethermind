@@ -374,9 +374,9 @@ namespace Nethermind.Facade
             _processingEnv.StateReader.RunTreeVisitor(treeVisitor, stateRoot);
         }
 
-        public bool HashStateForRoot(Hash256 stateRoot)
+        public bool HasStateForRoot(Hash256 stateRoot)
         {
-            return _processingEnv.StateReader.HashStateForRoot(stateRoot);
+            return _processingEnv.StateReader.HasStateForRoot(stateRoot);
         }
 
         public IEnumerable<FilterLog> FindLogs(LogFilter filter, CancellationToken cancellationToken = default)

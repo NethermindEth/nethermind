@@ -38,7 +38,7 @@ namespace Nethermind.State
 
         public static bool HasStateForBlock(this IStateReader stateReader, BlockHeader header)
         {
-            return stateReader.HashStateForRoot(header.StateRoot!);
+            return stateReader.HasStateForRoot(header.StateRoot!);
         }
     }
 }

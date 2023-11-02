@@ -135,7 +135,7 @@ namespace Nethermind.Mev
         private bool HasStateForBlock(BlockHeader header)
         {
             if (header.StateRoot is null) return false;
-            return _stateReader.HashStateForRoot(header.StateRoot!);
+            return _stateReader.HasStateForRoot(header.StateRoot!);
         }
     }
 }

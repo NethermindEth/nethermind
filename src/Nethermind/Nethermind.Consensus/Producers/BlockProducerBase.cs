@@ -235,7 +235,7 @@ namespace Nethermind.Consensus.Producers
         /// <remarks>Should be called inside <see cref="_producingBlockLock"/> lock.</remarks>
         protected bool TrySetState(Hash256? parentStateRoot)
         {
-            if (parentStateRoot is not null && StateProvider.HashStateForRoot(parentStateRoot))
+            if (parentStateRoot is not null && StateProvider.HasStateForRoot(parentStateRoot))
             {
                 StateProvider.StateRoot = parentStateRoot;
                 return true;

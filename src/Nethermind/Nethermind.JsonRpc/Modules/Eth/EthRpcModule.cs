@@ -56,7 +56,7 @@ public partial class EthRpcModule : IEthRpcModule
     private readonly IFeeHistoryOracle _feeHistoryOracle;
     private static bool HasStateForBlock(IBlockchainBridge blockchainBridge, BlockHeader header)
     {
-        return blockchainBridge.HashStateForRoot(header.StateRoot!);
+        return blockchainBridge.HasStateForRoot(header.StateRoot!);
     }
 
     public EthRpcModule(

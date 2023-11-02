@@ -64,7 +64,7 @@ namespace Nethermind.State
             _state.Accept(treeVisitor, rootHash, visitingOptions);
         }
 
-        public bool HashStateForRoot(Hash256 stateRoot)
+        public bool HasStateForRoot(Hash256 stateRoot)
         {
             RootCheckVisitor visitor = new();
             RunTreeVisitor(visitor, stateRoot);
