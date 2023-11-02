@@ -34,7 +34,7 @@ namespace Nethermind.Merge.Plugin.Test
         {
             _mergeConfig = new MergeConfig() { TerminalTotalDifficulty = "0" };
             BlocksConfig? miningConfig = new();
-            IJsonRpcConfig jsonRpcConfig = new JsonRpcConfig() { Enabled = true, EnabledModules = new[] { "engine" } };
+            IJsonRpcConfig jsonRpcConfig = new JsonRpcConfig() { Enabled = true, EnabledModules = new[] { ModuleType.Engine } };
 
             _context = Build.ContextWithMocks();
             _context.SealEngineType = SealEngineType.Clique;

@@ -31,7 +31,7 @@ namespace Nethermind.JsonRpc
 
         private void BuildUrls(bool includeWebSockets)
         {
-            bool isAuthenticated = _jsonRpcConfig.EnabledModules.Any(m => m.ToLower() == "engine");
+            bool isAuthenticated = _jsonRpcConfig.EnabledModules.Any(m => m.Equals(ModuleType.Engine, StringComparison.InvariantCultureIgnoreCase));
             JsonRpcUrl defaultUrl = new(Uri.UriSchemeHttp, _jsonRpcConfig.Host, _jsonRpcConfig.Port, RpcEndpoint.Http, isAuthenticated, _jsonRpcConfig.EnabledModules);
             string environmentVariableUrl = Environment.GetEnvironmentVariable(NethermindUrlVariable);
             if (!string.IsNullOrWhiteSpace(environmentVariableUrl))
@@ -81,7 +81,7 @@ namespace Nethermind.JsonRpc
             {
                 if (_logger.IsWarn) _logger.Warn("Json RPC EngineHost is set to null, " +
                     "please set it to 127.0.0.1 if your CL Client is on the same machine " +
-                    "or to 0.0.0.0 if your CL Client is on a seperate machine");
+                    "or to 0.0.0.0 if your CL Client is on a separate machine");
                 return;
             }
             JsonRpcUrl url = new(Uri.UriSchemeHttp, _jsonRpcConfig.EngineHost, _jsonRpcConfig.EnginePort.Value,

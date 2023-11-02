@@ -25,7 +25,6 @@ using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Db;
-using Nethermind.Db.Blooms;
 using Nethermind.Int256;
 using Nethermind.Evm;
 using Nethermind.Evm.TransactionProcessing;
@@ -34,7 +33,6 @@ using Nethermind.Serialization.Rlp;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
 using Nethermind.State;
-using Nethermind.State.Repositories;
 using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 using NUnit.Framework;
@@ -78,7 +76,9 @@ namespace Ethereum.Test.Base
 
         protected async Task<EthereumTestResult> RunTest(BlockchainTest test, Stopwatch? stopwatch = null, bool failOnInvalidRlp = true)
         {
-            TestContext.Write($"Running {test.Name} at {DateTime.UtcNow:HH:mm:ss.ffffff}");
+            TestContext.WriteLine($"Running {test.Name}, Network: [{test.Network.Name}] at {DateTime.UtcNow:HH:mm:ss.ffffff}");
+            if (test.NetworkAfterTransition is not null)
+                TestContext.WriteLine($"Network after transition: [{test.NetworkAfterTransition.Name}] at {test.TransitionForkActivation}");
             Assert.IsNull(test.LoadFailure, "test data loading failure");
 
             IDb stateDb = new MemDb();
@@ -102,6 +102,11 @@ namespace Ethereum.Test.Base
             if (specProvider.GenesisSpec != Frontier.Instance)
             {
                 Assert.Fail("Expected genesis spec to be Frontier for blockchain tests");
+            }
+
+            if (test.Network is Cancun || test.NetworkAfterTransition is Cancun)
+            {
+                await KzgPolynomialCommitments.InitializeAsync();
             }
 
             DifficultyCalculator.Wrapped = new EthashDifficultyCalculator(specProvider);
