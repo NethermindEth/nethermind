@@ -14,12 +14,12 @@ namespace Nethermind.Merge.Plugin;
 
 public class ProcessedTransactionsDbCleaner : IDisposable
 {
-    private readonly IManualBlockFinalizationManager _finalizationManager;
+    private readonly IBlockFinalizationManager _finalizationManager;
     private readonly IDb _processedTxsDb;
     private readonly ILogger _logger;
     private long _lastFinalizedBlock = 0;
 
-    public ProcessedTransactionsDbCleaner(IManualBlockFinalizationManager finalizationManager, IDb processedTxsDb, ILogManager logManager)
+    public ProcessedTransactionsDbCleaner(IBlockFinalizationManager finalizationManager, IDb processedTxsDb, ILogManager logManager)
     {
         _finalizationManager = finalizationManager ?? throw new ArgumentNullException(nameof(finalizationManager));
         _processedTxsDb = processedTxsDb ?? throw new ArgumentNullException(nameof(processedTxsDb));
