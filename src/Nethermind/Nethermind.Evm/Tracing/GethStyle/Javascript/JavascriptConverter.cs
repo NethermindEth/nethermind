@@ -18,16 +18,8 @@ namespace Nethermind.Evm.Tracing.GethStyle.Javascript;
 
 public static class JavascriptConverter
 {
-    public static string ToHexString(this IList? list)
-    {
-        if (list is null)
-        {
-            return "0x";
-        }
-
-        using ArrayPoolList<byte>? pooledList = new(list.Count, list.ToBytes());
-        return ((ReadOnlySpan<byte>)pooledList.AsSpan()).ToHexString(true);
-    }
+    public static string ToHexString(this IList? list) =>
+        list is null ? "0x" : list.ToBytes().ToHexString(true);
 
     // Slice
     public static byte[] Slice(this IList input, long startIndex, long endIndex)
@@ -51,34 +43,37 @@ public static class JavascriptConverter
         return input.ToBytes().Skip((int)startIndex).Take(length).ToArray();
     }
 
-    public static IEnumerable<byte> ToBytes(this IList list) => list.ToEnumerable().Select(Convert.ToByte);
-
-    public static byte[]? ToWord(this object input) => input switch
-    {
-        string hexString => Bytes.FromHexString(hexString, EvmPooledMemory.WordSize),
-        IList list => list.ToBytes()
-            .Concat(Enumerable.Repeat((byte)0, Math.Max(0, EvmPooledMemory.WordSize - list.Count)))
-            .Take(EvmPooledMemory.WordSize).ToArray(),
-        _ => null
-    };
-
-    public static byte[]? ToBytes(this object input) => input switch
+    public static byte[] ToBytes(this object input) => input switch
     {
         string hexString => Bytes.FromHexString(hexString),
         ITypedArray<byte> typedArray => typedArray.ToArray(),
-        IList list => list.ToBytes().ToArray(),
-        _ => null
+        IArrayBuffer arrayBuffer => arrayBuffer.GetBytes(),
+        IArrayBufferView arrayBufferView => arrayBufferView.GetBytes(),
+        IList list => list.ToEnumerable().Select(Convert.ToByte).ToArray(),
+        _ => throw new ArgumentException(nameof(input))
     };
 
-    public static Address ToAddress(this IList address) => new(address.ToBytes().ToArray());
+    public static byte[] ToWord(this object input) => input switch
+        {
+            string hexString => Bytes.FromHexString(hexString, EvmPooledMemory.WordSize),
+            _ => ListToWord(input)
+        };
+
+    private static byte[] ListToWord(object input)
+    {
+        byte[] bytes = input.ToBytes();
+        return bytes.Length == EvmPooledMemory.WordSize
+            ? bytes
+            : bytes
+                .Concat(Enumerable.Repeat((byte)0, Math.Max(0, EvmPooledMemory.WordSize - bytes.Length)))
+                .Take(EvmPooledMemory.WordSize).ToArray();
+    }
 
     public static Address ToAddress(this object address) => address switch
     {
         string hexString => Address.TryParseVariableLength(hexString, out Address parsedAddress)
             ? parsedAddress
             : throw new ArgumentException("Not correct address", nameof(address)),
-        ITypedArray<byte> typedArray => new Address(typedArray.ToArray()),
-        IList list => list.ToAddress(),
         _ => throw new ArgumentException("Not correct address", nameof(address))
     } ?? throw new ArgumentException("Not correct address", nameof(address));
 
@@ -94,7 +89,7 @@ public static class JavascriptConverter
         return new UInt256(indexSpan);
     }
 
-    public static ScriptObject ToScriptArray(this Array array)
+    public static ScriptObject ToScriptArray(this byte[] array)
         => CurrentEngine?.Script.Array.from(array) ?? throw new InvalidOperationException("No engine set");
 
     [field: ThreadStatic]
