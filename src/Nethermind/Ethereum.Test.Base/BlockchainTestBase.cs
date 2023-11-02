@@ -132,8 +132,6 @@ namespace Ethereum.Test.Base
             IBlockTree blockTree = new BlockTree(new MemDb(), new MemDb(), blockInfoDb, new ChainLevelInfoRepository(blockInfoDb), specProvider, NullBloomStorage.Instance, _logManager);
             ITransactionComparerProvider transactionComparerProvider = new TransactionComparerProvider(specProvider, blockTree);
             IStateReader stateReader = new StateReader(trieStore, codeDb, _logManager);
-            IChainHeadInfoProvider chainHeadInfoProvider = new ChainHeadInfoProvider(specProvider, blockTree, stateReader);
-            ITxPool transactionPool = new TxPool(ecdsa, chainHeadInfoProvider, new TxPoolConfig(), new TxValidator(specProvider.ChainId), _logManager, transactionComparerProvider.GetDefaultComparer());
 
             IReceiptStorage receiptStorage = NullReceiptStorage.Instance;
             IBlockhashProvider blockhashProvider = new BlockhashProvider(blockTree, _logManager);

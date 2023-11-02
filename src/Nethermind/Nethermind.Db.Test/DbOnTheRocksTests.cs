@@ -13,6 +13,7 @@ using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
 using Nethermind.Db.Rocks;
 using Nethermind.Db.Rocks.Config;
@@ -58,6 +59,22 @@ namespace Nethermind.Db.Test
             options = db.WriteFlagsToWriteOptions(WriteFlags.DisableWAL);
             Native.Instance.rocksdb_writeoptions_get_low_pri(options.Handle).Should().BeFalse();
             Native.Instance.rocksdb_writeoptions_get_disable_WAL(options.Handle).Should().BeTrue();
+        }
+
+        [Test]
+        public void Throws_whenMaxWriteBufferNumIs0()
+        {
+            IDbConfig config = new DbConfig();
+            RocksDbSettings settings = new("Blocks", DbPath)
+            {
+                BlockCacheSize = (ulong)1.KiB(),
+                CacheIndexAndFilterBlocks = false,
+                WriteBufferNumber = 0,
+                WriteBufferSize = (ulong)1.KiB()
+            };
+
+            Action act = () => new DbOnTheRocks(DbPath, settings, config, LimboLogs.Instance);
+            act.Should().Throw<InvalidConfigurationException>();
         }
 
         [Test]

@@ -16,5 +16,6 @@ namespace Nethermind.Db
         public const string Witness = "witness";
         public const string CHT = "canonicalHashTrie";
         public const string Metadata = "metadata";
+        public const string BlobTransactions = "blobTransactions";
     }
 }
