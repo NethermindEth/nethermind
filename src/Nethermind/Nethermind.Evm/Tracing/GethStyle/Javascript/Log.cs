@@ -21,9 +21,9 @@ namespace Nethermind.Evm.Tracing.GethStyle.Javascript
     public class Log
     {
         public Opcode? op { get; set; }
-        public Stack? stack { get; set; }
-        public Memory? memory { get; set; }
-        public Contract? contract { get; set; }
+        public Stack stack { get; set; }
+        public Memory memory { get; set; }
+        public Contract contract { get; set; }
         public long pc { get; set; }
 
         public long gas { get; set; }
