@@ -533,8 +533,9 @@ namespace Nethermind.TxPool.Test
             blobTxStorage.TryGetBlobTransactionsFromBlock(blockNumber, out Transaction[] returnedTxs).Should().BeTrue();
             returnedTxs.Length.Should().Be(txs.Length);
             returnedTxs.Should().BeEquivalentTo(txs, options => options
-                .Excluding(t => t.GasBottleneck) // GasBottleneck is not encoded/decoded...
-                .Excluding(t => t.PoolIndex));   // ...as well as PoolIndex
+                .Excluding(t => t.GasBottleneck)    // GasBottleneck is not encoded/decoded...
+                .Excluding(t => t.PoolIndex)        // ...as well as PoolIndex
+                .Excluding(t => t.SenderAddress));  // sender is recovered later, it is not returned from db
 
             blobTxStorage.DeleteBlobTransactionsFromBlock(blockNumber);
             blobTxStorage.TryGetBlobTransactionsFromBlock(blockNumber, out returnedTxs).Should().BeFalse();
