@@ -9,6 +9,7 @@ using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Numerics;
 using System.Runtime.InteropServices;
+using FastEnumUtility;
 using Microsoft.ClearScript;
 using Microsoft.ClearScript.V8;
 using Nethermind.Core;
@@ -21,17 +22,18 @@ using Nethermind.Evm.Precompiles;
 
 namespace Nethermind.Evm.Tracing.GethStyle.Javascript;
 
-public class GethLikeJavascriptTxTracer : GethLikeTxTracer<GethTxTraceEntry>
+public class GethLikeJavascriptTxTracer : GethLikeTxTracer
 {
     // private readonly V8ScriptEngine _engine = new(V8ScriptEngineFlags.AwaitDebuggerAndPauseOnStart | V8ScriptEngineFlags.EnableDebugging);
     private readonly V8ScriptEngine _engine = new();
     private readonly dynamic _tracer;
-    private readonly GethJavascriptStyleLog _log;
+    private readonly Log _log;
     private readonly List<byte> _memory = new();
-    private readonly GethJavascriptStyleDb _db;
+    private readonly Db _db;
+    private readonly CallFrame _frame;
 
     // Context is updated only of first ReportAction call.
-    private readonly GethJavascriptStyleCtx _ctx;
+    private readonly Context _ctx;
     private readonly bool _enterExit;
 
     // bigIntegerJS is the minified version of https://github.com/peterolson/BigInteger.js.
@@ -40,16 +42,16 @@ public class GethLikeJavascriptTxTracer : GethLikeTxTracer<GethTxTraceEntry>
 
     [SuppressMessage("ReSharper", "VirtualMemberCallInConstructor")]
     public GethLikeJavascriptTxTracer(Keccak txHash,
-        GethJavascriptStyleDb db,
-        GethJavascriptStyleCtx ctx,
+        Db db,
+        Context ctx,
         IReleaseSpec spec,
         GethTraceOptions options) : base(options)
     {
         _db = db;
         _ctx = ctx;
         _db.Engine = _engine;
-        _log = new() { memory = new GethJavascriptStyleLog.Memory(_engine, _memory) };
-        _engine.Execute(LoadJavascriptCode(options.Tracer));
+        _log = new() { memory = new Log.Memory(_engine, _memory) };
+        _frame = new CallFrame(_engine);
         _engine.Execute(BigIntegerJS);
         _engine.AddHostObject("toWord", new Func<object, object>(bytes => bytes.ToWord()?.ToScriptArray(_engine)));
         _engine.AddHostObject("toHex", new Func<IList, string>(bytes => bytes.ToHexString()));
@@ -59,6 +61,7 @@ public class GethLikeJavascriptTxTracer : GethLikeTxTracer<GethTxTraceEntry>
         _engine.AddHostObject("toContract", new Func<object, ulong, ScriptObject>(((from, nonce) => ContractAddress.From(from.ToAddress(), nonce).Bytes.ToScriptArray(_engine))));
         _engine.AddHostObject("toContract2", new Func<object, string, object, ScriptObject>(((from, salt, initcode) =>
             ContractAddress.From(from.ToAddress(), Bytes.FromHexString(salt), ValueKeccak.Compute(initcode.ToBytes()).Bytes).Bytes.ToScriptArray(_engine))));
+        _engine.Execute(LoadJavascriptCode(options.Tracer));
         _tracer = _engine.Script.tracer;
         IsTracingRefunds = true;
         IsTracingActions = true;
@@ -97,33 +100,26 @@ public class GethLikeJavascriptTxTracer : GethLikeTxTracer<GethTxTraceEntry>
 
     public override void StartOperation(int depth, long gas, Instruction opcode, int pc, bool isPostMerge = false)
     {
-        base.StartOperation(depth, gas, opcode, pc, isPostMerge);
-        if (CurrentTraceEntry is not null)
-        {
-            _log.pc = CurrentTraceEntry.ProgramCounter;
-            _log.op = new GethJavascriptStyleLog.Opcode(opcode);
-            _log.gas = CurrentTraceEntry.Gas;
-            _log.gasCost = CurrentTraceEntry.GasCost;
-            _log.depth = CurrentTraceEntry.Depth;
-            Step(_log, _db);
-        }
-    }
+        _log.pc = pc;
+        _log.op = new Log.Opcode(opcode);
+        _log.gas = gas;
+        _log.depth = depth;
 
-    private void Step(GethJavascriptStyleLog log, GethJavascriptStyleDb db)
-    {
         try
         {
-            _tracer.step(log, db);
+            _tracer.step(_log, _db);
         }
         catch (Exception ex) when (ex is IScriptEngineException)
         {
-            _tracer.fault(log, db);
+            _tracer.fault(_log, _db);
         }
     }
 
+    public override void ReportOperationRemainingGas(long gas) => _log.gasCost = _log.gas - gas;
+
     public override GethLikeTxTrace BuildResult()
     {
-        GethLikeTxTrace trace = base.BuildResult();
+        GethLikeTxTrace trace = Trace;
         trace.CustomTracerResult = _tracer.result(_ctx, _db);
         dynamic result = trace.CustomTracerResult;
         trace.CustomTracerResult = result;
@@ -133,24 +129,52 @@ public class GethLikeJavascriptTxTracer : GethLikeTxTracer<GethTxTraceEntry>
 
     public override void ReportAction(long gas, UInt256 value, Address from, Address? to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false)
     {
-        base.ReportAction(gas, value, from, to, input, callType, isPrecompileCall);
-        _log.contract = new GethJavascriptStyleLog.Contract(_engine, from, to, value, input);
-        if (callType == ExecutionType.Transaction)
+        _log.contract = new Log.Contract(_engine, from, to, value, input);
+        BigInteger valueBigInt = (BigInteger)value;
+        if (callType == ExecutionType.TRANSACTION)
         {
             _ctx.type = to is null ? "CALL" : "CREATE";
             _ctx.from = from.Bytes.ToScriptArray(_engine);
             _ctx.to = to?.Bytes.ToScriptArray(_engine);
             _ctx.input = input.ToArray().ToScriptArray(_engine);
-            _ctx.value = (BigInteger)value;
+            _ctx.value = valueBigInt;
             _ctx.gas = gas;
         }
-        // _customTraceEntry.ctx = new GethJavascriptStyleLog.CTX(_engine, GetCallType(callType), from, to, input, value, gas, 0, 0, 0, 0, new byte[0], DateTime.Now.ToString());
+        else if (_enterExit)
+        {
+            _frame.From = from;
+            _frame.To = to ?? Address.Zero; // TODO: contract creation
+            _frame.Input = input.ToArray();
+            _frame.Value = valueBigInt;
+            _frame.Gas = gas;
+            _frame.Type = callType.FastToString();
+        }
     }
 
     public override void ReportActionEnd(long gas, Address deploymentAddress, ReadOnlyMemory<byte> deployedCode)
     {
-        base.ReportActionEnd(gas, deploymentAddress, deployedCode);
         _ctx.to ??= deploymentAddress.Bytes.ToScriptArray(_engine);
+
+        if (_enterExit)
+        {
+
+        }
+    }
+
+    public override void ReportActionEnd(long gas, ReadOnlyMemory<byte> output)
+    {
+        if (_enterExit)
+        {
+
+        }
+    }
+
+    public override void ReportActionError(EvmExceptionType evmExceptionType)
+    {
+        if (_enterExit)
+        {
+
+        }
     }
 
     public override void MarkAsFailed(Address recipient, long gasSpent, byte[]? output, string error, Keccak? stateRoot = null)
@@ -181,24 +205,20 @@ public class GethLikeJavascriptTxTracer : GethLikeTxTracer<GethTxTraceEntry>
         }
 
         data.CopyTo(CollectionsMarshal.AsSpan(_memory).Slice((int)offset, (int)data.Length));
-        base.ReportMemoryChange(offset, in data);
     }
 
     public override void ReportOperationError(EvmExceptionType error)
     {
-        base.ReportOperationError(error);
-        _log.error = error.ToString();
+        _log.error = GetErrorDescription(error);
     }
 
     public override void SetOperationStack(TraceStack stack)
     {
-        base.SetOperationStack(stack);
-        _log.stack = new GethJavascriptStyleLog.Stack(stack);
+        _log.stack = new Log.Stack(stack);
     }
 
     public override void ReportRefund(long refund)
     {
-        base.ReportRefund(refund);
         _log.refund = refund;
     }
 }

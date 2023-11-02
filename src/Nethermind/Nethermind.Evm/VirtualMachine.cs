@@ -2504,7 +2504,7 @@ ReturnFailure:
         EvmState callState = new(
             callGas,
             callEnv,
-            instruction == Instruction.CREATE2 ? ExecutionType.Create2 : ExecutionType.Create,
+            instruction == Instruction.CREATE2 ? ExecutionType.CREATE2 : ExecutionType.CREATE,
             false,
             snapshot,
             0L,
@@ -2803,19 +2803,19 @@ ReturnFailure:
         ExecutionType executionType;
         if (instruction == Instruction.CALL)
         {
-            executionType = ExecutionType.Call;
+            executionType = ExecutionType.CALL;
         }
         else if (instruction == Instruction.DELEGATECALL)
         {
-            executionType = ExecutionType.DelegateCall;
+            executionType = ExecutionType.DELEGATECALL;
         }
         else if (instruction == Instruction.STATICCALL)
         {
-            executionType = ExecutionType.StaticCall;
+            executionType = ExecutionType.STATICCALL;
         }
         else if (instruction == Instruction.CALLCODE)
         {
-            executionType = ExecutionType.CallCode;
+            executionType = ExecutionType.CALLCODE;
         }
         else
         {

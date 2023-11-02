@@ -233,13 +233,13 @@ namespace Nethermind.Evm.Test
             parentEvmState is null
                 ? new EvmState(10000,
                     new ExecutionEnvironment(),
-                    ExecutionType.Call,
+                    ExecutionType.CALL,
                     true,
                     Snapshot.Empty,
                     isContinuation)
                 : new EvmState(10000,
                     new ExecutionEnvironment(),
-                    ExecutionType.Call,
+                    ExecutionType.CALL,
                     false,
                     Snapshot.Empty,
                     0,

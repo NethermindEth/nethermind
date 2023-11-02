@@ -12,7 +12,6 @@ using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
-using System.Runtime.InteropServices;
 
 namespace Nethermind.Evm.Tracing.GethStyle.Javascript;
 
@@ -94,5 +93,5 @@ public static class JavascriptConverter
         return new UInt256(indexSpan);
     }
 
-    public static dynamic ToScriptArray(this Array array, ScriptEngine engine) => engine.Script.Array.from(array);
+    public static ScriptObject ToScriptArray(this Array array, ScriptEngine engine) => engine.Script.Array.from(array);
 }

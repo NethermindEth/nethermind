@@ -7,7 +7,7 @@ using Microsoft.ClearScript.V8;
 
 namespace Nethermind.Evm.Tracing.GethStyle.Javascript;
 
-public class GethJavascriptStyleCtx
+public class Context
 {
     public string type { get; set; } = null!;
     public ScriptObject from { get; set; } = null!;

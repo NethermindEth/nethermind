@@ -15,12 +15,12 @@ using Nethermind.State;
 
 namespace Nethermind.Evm.Tracing.GethStyle.Javascript;
 
-public class GethJavascriptStyleDb
+public class Db
 {
     public V8ScriptEngine Engine { get; set; } = null!;
     public IWorldState WorldState { get; }
 
-    public GethJavascriptStyleDb(IWorldState worldState) => WorldState = worldState;
+    public Db(IWorldState worldState) => WorldState = worldState;
 
     public BigInteger getBalance(IList address) => (BigInteger)WorldState.GetBalance(address.ToAddress());
 

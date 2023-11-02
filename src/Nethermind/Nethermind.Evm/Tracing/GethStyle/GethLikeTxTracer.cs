@@ -2,15 +2,12 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
-using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 
 namespace Nethermind.Evm.Tracing.GethStyle;
 
-public abstract class GethLikeTxTracer<TEntry> : TxTracer where TEntry : GethTxTraceEntry, new()
+public abstract class GethLikeTxTracer : TxTracer
 {
     protected GethLikeTxTracer(GethTraceOptions options)
     {
@@ -22,14 +19,13 @@ public abstract class GethLikeTxTracer<TEntry> : TxTracer where TEntry : GethTxT
         IsTracing = IsTracing || IsTracingFullMemory;
     }
 
-    public sealed override bool IsTracingOpLevelStorage { get; protected set; }
+    protected GethLikeTxTrace Trace { get; } = new();
     public override bool IsTracingReceipt => true;
+    public sealed override bool IsTracingOpLevelStorage { get; protected set; }
     public sealed override bool IsTracingMemory { get; protected set; }
     public override bool IsTracingInstructions => true;
     public sealed override bool IsTracingStack { get; protected set; }
     protected bool IsTracingFullMemory { get; }
-    protected TEntry? CurrentTraceEntry { get; set; }
-    protected GethLikeTxTrace Trace { get; } = new();
 
     public override void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Keccak? stateRoot = null)
     {
@@ -41,20 +37,6 @@ public abstract class GethLikeTxTracer<TEntry> : TxTracer where TEntry : GethTxT
         Trace.Failed = true;
         Trace.ReturnValue = output ?? Array.Empty<byte>();
     }
-
-    public override void StartOperation(int depth, long gas, Instruction opcode, int pc, bool isPostMerge = false)
-    {
-        if (CurrentTraceEntry is not null)
-            AddTraceEntry(CurrentTraceEntry);
-
-        CurrentTraceEntry = CreateTraceEntry(opcode);
-        CurrentTraceEntry.Depth = depth;
-        CurrentTraceEntry.Gas = gas;
-        CurrentTraceEntry.Opcode = opcode.GetName(isPostMerge);
-        CurrentTraceEntry.ProgramCounter = pc;
-    }
-
-    public override void ReportOperationError(EvmExceptionType error) => CurrentTraceEntry.Error = GetErrorDescription(error);
 
     protected string? GetErrorDescription(EvmExceptionType evmExceptionType)
     {
@@ -74,6 +56,29 @@ public abstract class GethLikeTxTracer<TEntry> : TxTracer where TEntry : GethTxT
         };
     }
 
+    public virtual GethLikeTxTrace BuildResult() => Trace;
+}
+
+public abstract class GethLikeTxTracer<TEntry> : GethLikeTxTracer where TEntry : GethTxTraceEntry, new()
+{
+    protected TEntry? CurrentTraceEntry { get; set; }
+
+    protected GethLikeTxTracer(GethTraceOptions options) : base(options) { }
+
+    public override void StartOperation(int depth, long gas, Instruction opcode, int pc, bool isPostMerge = false)
+    {
+        if (CurrentTraceEntry is not null)
+            AddTraceEntry(CurrentTraceEntry);
+
+        CurrentTraceEntry = CreateTraceEntry(opcode);
+        CurrentTraceEntry.Depth = depth;
+        CurrentTraceEntry.Gas = gas;
+        CurrentTraceEntry.Opcode = opcode.GetName(isPostMerge);
+        CurrentTraceEntry.ProgramCounter = pc;
+    }
+
+    public override void ReportOperationError(EvmExceptionType error) => CurrentTraceEntry.Error = GetErrorDescription(error);
+
     public override void ReportOperationRemainingGas(long gas) => CurrentTraceEntry.GasCost = CurrentTraceEntry.Gas - gas;
 
     public override void SetOperationMemorySize(ulong newSize) => CurrentTraceEntry.UpdateMemorySize(newSize);
@@ -89,12 +94,12 @@ public abstract class GethLikeTxTracer<TEntry> : TxTracer where TEntry : GethTxT
             CurrentTraceEntry.Memory = memoryTrace.ToHexWordList();
     }
 
-    public virtual GethLikeTxTrace BuildResult()
+    public override GethLikeTxTrace BuildResult()
     {
         if (CurrentTraceEntry is not null)
             AddTraceEntry(CurrentTraceEntry);
 
-        return Trace;
+        return base.BuildResult();
     }
 
     protected virtual void AddTraceEntry(TEntry entry) => Trace.Entries.Add(entry);

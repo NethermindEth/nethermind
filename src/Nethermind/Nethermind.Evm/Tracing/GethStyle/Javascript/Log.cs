@@ -18,7 +18,7 @@ using Nethermind.Core.Extensions;
 
 namespace Nethermind.Evm.Tracing.GethStyle.Javascript
 {
-    public class GethJavascriptStyleLog
+    public class Log
     {
         public Opcode? op { get; set; }
         public Stack? stack { get; set; }

@@ -14,16 +14,16 @@ public class GethLikeBlockJavascriptTracer : BlockTracerBase<GethLikeTxTrace, Ge
 {
     private readonly IReleaseSpec _spec;
     private readonly GethTraceOptions _options;
-    private readonly GethJavascriptStyleCtx _ctx;
-    private readonly GethJavascriptStyleDb _db;
+    private readonly Context _ctx;
+    private readonly Db _db;
     private int _index;
 
     public GethLikeBlockJavascriptTracer(IWorldState worldState, IReleaseSpec spec, GethTraceOptions options) : base(options.TxHash)
     {
         _spec = spec;
         _options = options;
-        _ctx = new GethJavascriptStyleCtx();
-        _db = new GethJavascriptStyleDb(worldState);
+        _ctx = new Context();
+        _db = new Db(worldState);
     }
 
     public override void StartNewBlockTrace(Block block)
