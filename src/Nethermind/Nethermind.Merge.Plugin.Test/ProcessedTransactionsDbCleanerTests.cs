@@ -46,7 +46,7 @@ public class ProcessedTransactionsDbCleanerTests
         blobTxStorage.TryGetBlobTransactionsFromBlock(blockOfTxs, out Transaction[]? returnedTxs).Should().BeTrue();
         returnedTxs!.Length.Should().Be(2);
 
-        IManualBlockFinalizationManager finalizationManager = Substitute.For<IManualBlockFinalizationManager>();
+        IBlockFinalizationManager finalizationManager = Substitute.For<IBlockFinalizationManager>();
         ProcessedTransactionsDbCleaner dbCleaner = new(finalizationManager, columnsDb.GetColumnDb(BlobTxsColumns.ProcessedTxs), _logManager);
 
         finalizationManager.BlocksFinalized += Raise.EventWith(
