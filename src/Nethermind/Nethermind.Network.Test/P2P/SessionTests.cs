@@ -512,6 +512,21 @@ namespace Nethermind.Network.Test.P2P
             p2p.DidNotReceive().HandleMessage(Arg.Is<Packet>(p => p.Protocol == "p2p" && p.PacketType == 3));
         }
 
+        [Test]
+        public void DelayDisconnect_UntilAfterInitialize()
+        {
+            Session session = new(30312, new Node(TestItem.PublicKeyA, "127.0.0.1", 8545), _channel, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
+            session.Handshake(TestItem.PublicKeyA);
+            session.InitiateDisconnect(DisconnectReason.TooManyPeers);
+
+            IProtocolHandler p2p = BuildHandler("p2p", 10);
+            session.AddProtocolHandler(p2p);
+
+            session.Init(5, _channelHandlerContext, _packetSender);
+
+            p2p.Received().DisconnectProtocol(Arg.Any<DisconnectReason>(), Arg.Any<string?>());
+        }
+
         [Test, Retry(3)]
         [Parallelizable(ParallelScope.None)] // It touches global metrics
         public void Can_receive_messages()
