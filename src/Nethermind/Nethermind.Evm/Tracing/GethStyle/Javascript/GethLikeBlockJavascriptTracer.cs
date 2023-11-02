@@ -12,11 +12,13 @@ namespace Nethermind.Evm.Tracing.GethStyle.Javascript;
 
 public class GethLikeBlockJavascriptTracer : BlockTracerBase<GethLikeTxTrace, GethLikeJavascriptTxTracer>
 {
+    private const bool IsDebugging = false;
     private readonly IReleaseSpec _spec;
     private readonly GethTraceOptions _options;
     private readonly Context _ctx;
     private readonly Db _db;
     private int _index;
+    private Hash256 _blockHash = Keccak.Zero;
 
     public GethLikeBlockJavascriptTracer(IWorldState worldState, IReleaseSpec spec, GethTraceOptions options) : base(options.TxHash)
     {
@@ -29,15 +31,30 @@ public class GethLikeBlockJavascriptTracer : BlockTracerBase<GethLikeTxTrace, Ge
     public override void StartNewBlockTrace(Block block)
     {
         _ctx.block = block.Number;
-        // _ctx.blockHash = block.Hash
+        _blockHash = block.Hash ?? Keccak.Zero;
         base.StartNewBlockTrace(block);
     }
 
     protected override GethLikeJavascriptTxTracer OnStart(Transaction? tx)
     {
+        V8ScriptEngine engine = new(IsDebugging
+            ? V8ScriptEngineFlags.AwaitDebuggerAndPauseOnStart | V8ScriptEngineFlags.EnableDebugging
+            : V8ScriptEngineFlags.None);
+        new GlobalFunctions(engine, _spec);
+        JavascriptConverter.CurrentEngine = engine;
+        engine.Dispose();
+
         _ctx.gasPrice = (ulong)tx!.GasPrice;
         _ctx.txIndex = _index++;
-        return new GethLikeJavascriptTxTracer(tx.Hash!, _db, _ctx, _spec, _options);
+        _ctx.blockHash ??= _blockHash.BytesToArray().ToScriptArray();
+        return new GethLikeJavascriptTxTracer(tx.Hash!, engine, _db, _ctx, _options);
+    }
+
+    public override void EndBlockTrace()
+    {
+        base.EndBlockTrace();
+        JavascriptConverter.CurrentEngine?.Dispose();
+        JavascriptConverter.CurrentEngine = null;
     }
 
     protected override bool ShouldTraceTx(Transaction? tx) => base.ShouldTraceTx(tx) && tx is not null;

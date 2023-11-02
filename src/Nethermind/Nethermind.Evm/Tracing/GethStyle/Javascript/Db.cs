@@ -17,7 +17,6 @@ namespace Nethermind.Evm.Tracing.GethStyle.Javascript;
 
 public class Db
 {
-    public V8ScriptEngine Engine { get; set; } = null!;
     public IWorldState WorldState { get; }
 
     public Db(IWorldState worldState) => WorldState = worldState;
@@ -26,10 +25,10 @@ public class Db
 
     public ulong getNonce(IList address) => (ulong)WorldState.GetNonce(address.ToAddress());
 
-    public ScriptObject getCode(IList address) => WorldState.GetCode(address.ToAddress()).ToScriptArray(Engine);
+    public ScriptObject getCode(IList address) => WorldState.GetCode(address.ToAddress()).ToScriptArray();
 
     public ScriptObject getState(IList address, IList index) =>
-        WorldState.Get(new StorageCell(address.ToAddress(), index.GetUint256())).ToScriptArray(Engine);
+        WorldState.Get(new StorageCell(address.ToAddress(), index.GetUint256())).ToScriptArray();
 
     public bool exists(IList address) => !WorldState.GetAccount(address.ToAddress()).IsTotallyEmpty;
 }

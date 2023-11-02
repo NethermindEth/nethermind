@@ -8,12 +8,10 @@ namespace Nethermind.Evm.Tracing.GethStyle.Javascript;
 
 public class FrameResult
 {
-    private readonly V8ScriptEngine _engine;
-    public FrameResult(V8ScriptEngine engine) => _engine = engine;
     public long GasUsed { get; set; }
     public byte[] Output { get; set; }
     public string? Error { get; set; }
     public long getGasUsed() => GasUsed;
-    public ScriptObject getOutput() => Output.ToScriptArray(_engine);
+    public ScriptObject getOutput() => Output.ToScriptArray();
     public string getError() => Error ?? string.Empty;
 }

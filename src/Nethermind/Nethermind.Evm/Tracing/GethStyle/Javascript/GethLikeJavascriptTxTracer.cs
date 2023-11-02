@@ -2,10 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections;
 using System.IO;
 using System.Collections.Generic;
-using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Numerics;
 using System.Runtime.InteropServices;
@@ -13,19 +11,14 @@ using FastEnumUtility;
 using Microsoft.ClearScript;
 using Microsoft.ClearScript.V8;
 using Nethermind.Core;
-using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Specs;
-using Nethermind.Evm.Precompiles;
 
 namespace Nethermind.Evm.Tracing.GethStyle.Javascript;
 
 public sealed class GethLikeJavascriptTxTracer : GethLikeTxTracer
 {
-    // private readonly V8ScriptEngine _engine = new(V8ScriptEngineFlags.AwaitDebuggerAndPauseOnStart | V8ScriptEngineFlags.EnableDebugging);
-    private readonly V8ScriptEngine _engine = new();
     private readonly dynamic _tracer;
     private readonly Log _log;
     private readonly List<byte> _memory = new();
@@ -35,50 +28,34 @@ public sealed class GethLikeJavascriptTxTracer : GethLikeTxTracer
 
     // Context is updated only of first ReportAction call.
     private readonly Context _ctx;
-    private readonly bool _enterExit;
+    private readonly TracerFunctions _functions;
 
-    public GethLikeJavascriptTxTracer(Hash256 txHash,
+    public GethLikeJavascriptTxTracer(
+        Hash256 txHash,
+        V8ScriptEngine engine,
         Db db,
         Context ctx,
-        IReleaseSpec spec,
         GethTraceOptions options) : base(options)
     {
-        _db = db;
-        _ctx = ctx;
-        _db.Engine = _engine;
-        _log = new() { memory = new Log.Memory(_engine, _memory) };
-        _frame = new CallFrame(_engine);
-        _result = new FrameResult(_engine);
-        _engine.Execute(BigIntegerJS.Code);
-        _engine.AddHostObject("toWord", new Func<object, object>(bytes => bytes.ToWord()?.ToScriptArray(_engine)));
-        _engine.AddHostObject("toHex", new Func<IList, string>(bytes => bytes.ToHexString()));
-        _engine.AddHostObject("toAddress", new Func<object, object>(address => address.ToAddress().Bytes.ToScriptArray(_engine)));
-        _engine.AddHostObject("isPrecompiled", new Func<object, bool>(address => address.ToAddress().IsPrecompile(spec)));
-        _engine.AddHostObject("slice", new Func<IList, long, long, ScriptObject>(((input, start, end) => input.Slice(start, end).ToScriptArray(_engine))));
-        _engine.AddHostObject("toContract", new Func<object, ulong, ScriptObject>(((from, nonce) => ContractAddress.From(from.ToAddress(), nonce).Bytes.ToScriptArray(_engine))));
-        _engine.AddHostObject("toContract2", new Func<object, string, object, ScriptObject>(((from, salt, initcode) =>
-            ContractAddress.From(from.ToAddress(), Bytes.FromHexString(salt), ValueKeccak.Compute(initcode.ToBytes()).Bytes).Bytes.ToScriptArray(_engine))));
-        _engine.Execute(LoadJavascriptCode(options.Tracer));
-        _tracer = _engine.Script.tracer;
         IsTracingRefunds = true;
         IsTracingActions = true;
         IsTracingMemory = true;
-        _ctx.txHash = txHash.BytesToArray().ToScriptArray(_engine);
 
-        IDictionary<string, object> functionsDictionary = (IDictionary<string, object>)_tracer;
-        if (functionsDictionary.ContainsKey("setup"))
+        _db = db;
+        _ctx = ctx;
+        _ctx.txHash = txHash.BytesToArray().ToScriptArray();
+        _log = new() { memory = new Log.Memory(_memory) };
+        _frame = new CallFrame();
+        _result = new FrameResult();
+
+        engine.Execute(BigIntegerJS.Code);
+        engine.Execute(LoadJavascriptCode(options.Tracer));
+        _tracer = engine.Script.tracer;
+        _functions = GetAvailableFunctions(((IDictionary<string, object>)_tracer).Keys);
+        if (_functions.HasFlag(TracerFunctions.setup))
         {
             _tracer.setup(options.TracerConfig);
         }
-
-        bool enter = functionsDictionary.ContainsKey("enter");
-        bool exit = functionsDictionary.ContainsKey("exit");
-        if (enter != exit)
-        {
-            throw new ArgumentException("trace object must expose either both or none of enter() and exit()");
-        }
-
-        _enterExit = enter;
     }
 
     private string LoadJavascriptCode(string tracer) => "tracer = " + (tracer.StartsWith("{") && tracer.EndsWith("}") ? tracer : LoadJavascriptCodeFromFile(tracer));
@@ -101,14 +78,16 @@ public sealed class GethLikeJavascriptTxTracer : GethLikeTxTracer
         _log.op = new Log.Opcode(opcode);
         _log.gas = gas;
         _log.depth = depth;
-
-        try
+        if (_functions.HasFlag(TracerFunctions.step))
         {
-            _tracer.step(_log, _db);
-        }
-        catch (Exception ex) when (ex is IScriptEngineException)
-        {
-            _tracer.fault(_log, _db);
+            try
+            {
+                _tracer.step(_log, _db);
+            }
+            catch (Exception ex) when (ex is IScriptEngineException)
+            {
+                _tracer.fault(_log, _db);
+            }
         }
     }
 
@@ -123,18 +102,20 @@ public sealed class GethLikeJavascriptTxTracer : GethLikeTxTracer
 
     public override void ReportAction(long gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false)
     {
-        _log.contract = new Log.Contract(_engine, from, to, value, input);
+        base.ReportAction(gas, value, from, to, input, callType, isPrecompileCall);
+
+        _log.contract = new Log.Contract(from, to, value, input);
         BigInteger valueBigInt = (BigInteger)value;
         if (callType == ExecutionType.TRANSACTION)
         {
             _ctx.type = callType.IsAnyCreate() ? "CREATE" : "CALL";
-            _ctx.from = from.Bytes.ToScriptArray(_engine);
-            _ctx.to = to.Bytes.ToScriptArray(_engine);
-            _ctx.input = input.ToArray().ToScriptArray(_engine);
+            _ctx.from = from.Bytes.ToScriptArray();
+            _ctx.to = to.Bytes.ToScriptArray();
+            _ctx.input = input.ToArray().ToScriptArray();
             _ctx.value = valueBigInt;
             _ctx.gas = gas;
         }
-        else if (_enterExit)
+        else if (_functions.HasFlag(TracerFunctions.enter))
         {
             _frame.From = from;
             _frame.To = to;
@@ -150,7 +131,7 @@ public sealed class GethLikeJavascriptTxTracer : GethLikeTxTracer
     {
         base.ReportActionEnd(gas, deploymentAddress, deployedCode);
 
-        _ctx.to ??= deploymentAddress.Bytes.ToScriptArray(_engine);
+        _ctx.to ??= deploymentAddress.Bytes.ToScriptArray();
         InvokeExit(gas, deployedCode);
     }
 
@@ -168,7 +149,7 @@ public sealed class GethLikeJavascriptTxTracer : GethLikeTxTracer
 
     private void InvokeExit(long gas, ReadOnlyMemory<byte> output, string? error = null)
     {
-        if (_enterExit)
+        if (_functions.HasFlag(TracerFunctions.exit))
         {
             _result.GasUsed = gas;
             _result.Output = output.ToArray();
@@ -181,14 +162,14 @@ public sealed class GethLikeJavascriptTxTracer : GethLikeTxTracer
     {
         base.MarkAsFailed(recipient, gasSpent, output, error, stateRoot);
         _ctx.gasUsed = gasSpent;
-        _ctx.output = output?.ToScriptArray(_engine);
+        _ctx.output = output?.ToScriptArray();
     }
 
     public override void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null)
     {
         base.MarkAsSuccess(recipient, gasSpent, output, logs, stateRoot);
         _ctx.gasUsed = gasSpent;
-        _ctx.output = output.ToScriptArray(_engine);
+        _ctx.output = output.ToScriptArray();
     }
 
     public override void ReportMemoryChange(long offset, in ReadOnlySpan<byte> data)
@@ -212,7 +193,6 @@ public sealed class GethLikeJavascriptTxTracer : GethLikeTxTracer
     public override void ReportOperationError(EvmExceptionType error)
     {
         base.ReportOperationError(error);
-
         _log.error = GetErrorDescription(error);
     }
 
@@ -224,6 +204,48 @@ public sealed class GethLikeJavascriptTxTracer : GethLikeTxTracer
 
     public override void ReportRefund(long refund)
     {
+        base.ReportRefund(refund);
         _log.refund = refund;
+    }
+
+    private const TracerFunctions Required = TracerFunctions.result;
+
+    private TracerFunctions GetAvailableFunctions(ICollection<string> functions)
+    {
+        TracerFunctions result = TracerFunctions.none;
+
+        // skip none
+        foreach (TracerFunctions function in FastEnum.GetValues<TracerFunctions>().Skip(1))
+        {
+            string name = FastEnum.GetName(function);
+            if (functions.Contains(name))
+            {
+                result |= function;
+            }
+            else if (function <= Required)
+            {
+                throw new ArgumentException($"trace object must expose required function {name}");
+            }
+        }
+
+        if (result.HasFlag(TracerFunctions.enter) != result.HasFlag(TracerFunctions.exit))
+        {
+            throw new ArgumentException("trace object must expose either both or none of enter() and exit()");
+        }
+
+        return result;
+    }
+
+    // ReSharper disable InconsistentNaming
+    [Flags]
+    private enum TracerFunctions : byte
+    {
+        none = 0,
+        fault = 1,
+        result = 2,
+        enter = 4,
+        exit = 8,
+        step = 16,
+        setup = 32
     }
 }

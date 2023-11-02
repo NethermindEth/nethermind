@@ -8,6 +8,7 @@ using System.Linq;
 using System.Runtime.CompilerServices;
 using Microsoft.ClearScript;
 using Microsoft.ClearScript.JavaScript;
+using Microsoft.ClearScript.V8;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Extensions;
@@ -93,5 +94,9 @@ public static class JavascriptConverter
         return new UInt256(indexSpan);
     }
 
-    public static ScriptObject ToScriptArray(this Array array, ScriptEngine engine) => engine.Script.Array.from(array);
+    public static ScriptObject ToScriptArray(this Array array)
+        => CurrentEngine?.Script.Array.from(array) ?? throw new InvalidOperationException("No engine set");
+
+    [field: ThreadStatic]
+    public static V8ScriptEngine? CurrentEngine { get; set; }
 }

@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Microsoft.ClearScript.V8;
 using Nethermind.Core.Extensions;
 using Nethermind.Evm.Tracing.GethStyle;
 using NUnit.Framework;
@@ -35,13 +36,18 @@ public class GethLikeJavascriptTracerTests : VirtualMachineTestsBase
         Assert.That(traces.CustomTracerResult, Is.EqualTo(expectedStrings));
     }
 
-    private GethLikeJavascriptTxTracer GetTracer(string userTracer) =>
-        new(TestItem.KeccakA,
+    private GethLikeJavascriptTxTracer GetTracer(string userTracer)
+    {
+        JavascriptConverter.CurrentEngine = new V8ScriptEngine();
+        new GlobalFunctions(JavascriptConverter.CurrentEngine, Shanghai.Instance);
+        return new(TestItem.KeccakA,
+            JavascriptConverter.CurrentEngine,
             new Evm.Tracing.GethStyle.Javascript.Db(TestState),
             new Context() { gasPrice = 1 },
-            Cancun.Instance,
             GethTraceOptions.Default with { EnableMemory = true, Tracer = userTracer }
         );
+    }
+
 
     [Test]
     public void JS_tracers_log_op_functions()

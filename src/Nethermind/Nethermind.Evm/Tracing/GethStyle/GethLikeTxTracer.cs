@@ -13,9 +13,9 @@ public abstract class GethLikeTxTracer : TxTracer
     {
         ArgumentNullException.ThrowIfNull(options);
 
-        IsTracingFullMemory = options.EnableMemory;
         IsTracingOpLevelStorage = !options.DisableStorage;
         IsTracingStack = !options.DisableStack;
+        IsTracingFullMemory = options.EnableMemory;
         IsTracing = IsTracing || IsTracingFullMemory;
     }
 
@@ -38,7 +38,7 @@ public abstract class GethLikeTxTracer : TxTracer
         Trace.ReturnValue = output ?? Array.Empty<byte>();
     }
 
-    protected string? GetErrorDescription(EvmExceptionType evmExceptionType)
+    protected static string? GetErrorDescription(EvmExceptionType evmExceptionType)
     {
         return evmExceptionType switch
         {

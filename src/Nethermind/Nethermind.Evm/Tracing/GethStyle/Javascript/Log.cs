@@ -3,16 +3,11 @@
 
 using System;
 using System.Collections.Generic;
-using System.Globalization;
-using Microsoft.ClearScript.V8;
 using Nethermind.Core;
 using Nethermind.Int256;
-using System.Linq;
 using System.Numerics;
 using System.Runtime.InteropServices;
 using Microsoft.ClearScript;
-using Nethermind.Core.Extensions;
-
 
 // ReSharper disable InconsistentNaming
 
@@ -58,12 +53,10 @@ namespace Nethermind.Evm.Tracing.GethStyle.Javascript
 
         public readonly struct Memory
         {
-            private readonly V8ScriptEngine _engine;
             private readonly List<byte> _memory;
 
-            public Memory(V8ScriptEngine engine, List<byte> memory)
+            public Memory(List<byte> memory)
             {
-                _engine = engine;
                 _memory = memory;
             }
 
@@ -86,7 +79,7 @@ namespace Nethermind.Evm.Tracing.GethStyle.Javascript
                 Span<byte> slice = length == 0
                     ? Span<byte>.Empty
                     : CollectionsMarshal.AsSpan(_memory).Slice((int)start, length);
-                return slice.ToArray().ToScriptArray(_engine);
+                return slice.ToArray().ToScriptArray();
             }
 
             public BigInteger getUint(int offset)
@@ -103,7 +96,6 @@ namespace Nethermind.Evm.Tracing.GethStyle.Javascript
 
         public struct Contract
         {
-            private readonly V8ScriptEngine _engine;
             private readonly UInt256 _value;
             private readonly Address? _address;
             private readonly ReadOnlyMemory<byte> _input;
@@ -113,18 +105,17 @@ namespace Nethermind.Evm.Tracing.GethStyle.Javascript
             private readonly Address _caller;
 
 
-            public Contract(V8ScriptEngine engine, Address caller, Address? address, UInt256 value, ReadOnlyMemory<byte> input)
+            public Contract(Address caller, Address? address, UInt256 value, ReadOnlyMemory<byte> input)
             {
-                _engine = engine;
                 _caller = caller;
                 _address = address;
                 _value = value;
                 _input = input;
             }
 
-            public ScriptObject? getAddress() => _addressConverted ??= _address?.Bytes.ToScriptArray(_engine);
-            public ScriptObject getCaller() => _callerConverted ??= _caller.Bytes.ToScriptArray(_engine);
-            public ScriptObject getInput() => _inputConverted ??= _input.ToArray().ToScriptArray(_engine);
+            public ScriptObject? getAddress() => _addressConverted ??= _address?.Bytes.ToScriptArray();
+            public ScriptObject getCaller() => _callerConverted ??= _caller.Bytes.ToScriptArray();
+            public ScriptObject getInput() => _inputConverted ??= _input.ToArray().ToScriptArray();
             public BigInteger getValue() => (BigInteger)_value;
         }
     }
