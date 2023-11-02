@@ -285,7 +285,7 @@ namespace Nethermind.TxPool
 
                 if (transaction.SupportsBlobs)
                 {
-                    blobTxs ??= new List<Transaction>(Eip4844Constants.MaxBlobsPerBlock);
+                    blobTxs ??= new List<Transaction>(Eip4844Constants.GetMaxBlobsPerBlock());
                     blobTxs.Add(transaction);
 
                     blobs += transaction.BlobVersionedHashes?.Length ?? 0;
