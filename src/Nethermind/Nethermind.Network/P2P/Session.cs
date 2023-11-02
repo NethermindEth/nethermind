@@ -356,19 +356,6 @@ namespace Nethermind.Network.P2P
             DoInitiateDisconnect(disconnectReason, details);
         }
 
-        private void EnsureWillDisconnect()
-        {
-            Task.Factory.StartNew(async () =>
-            {
-                // We're not waiting for anything. Just in case something happen in between handshake to init.
-                await Task.Delay(100);
-                if (_disconnectAfterInitialized != null)
-                {
-                    DoInitiateDisconnect(_disconnectAfterInitialized.Value.Item1, _disconnectAfterInitialized.Value.Item2, true);
-                }
-            }, CancellationToken.None, TaskCreationOptions.None, TaskScheduler.Default);
-        }
-
         private void DoInitiateDisconnect(DisconnectReason disconnectReason, string? details = null, bool ignoreUninitialized = false)
         {
             EthDisconnectReason ethDisconnectReason = disconnectReason.ToEthDisconnectReason();
@@ -415,7 +402,6 @@ namespace Nethermind.Network.P2P
                     if (_disconnectAfterInitialized != null) return;
 
                     _disconnectAfterInitialized = (disconnectReason, details);
-                    EnsureWillDisconnect();
                     return;
                 }
 
