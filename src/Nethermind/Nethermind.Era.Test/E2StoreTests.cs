@@ -6,7 +6,9 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using DotNetty.Buffers;
 using FluentAssertions;
+using Nethermind.Serialization.Rlp;
 using Snappier;
 
 namespace Nethermind.Era1.Test;
@@ -115,11 +117,17 @@ internal class E2StoreTests
         using E2Store sut = new E2Store(stream);
         byte[] bytes = new byte[] { 0x0f, 0xf0, 0xff, 0xff };
         await sut.WriteEntry(EntryTypes.Accumulator, bytes);
-        byte[] buffer = new byte[bytes.Length];
+        IByteBuffer buffer = UnpooledByteBufferAllocator.Default.Buffer(bytes.Length);
+        try
+        {
+            int read = await sut.ReadEntryValue(buffer, new Entry(EntryTypes.Accumulator, 0, bytes.Length));
 
-        await sut.ReadEntryValue(buffer, new Entry(EntryTypes.Accumulator, 0, bytes.Length));
-
-        Assert.That(buffer, Is.EquivalentTo(bytes));
+            Assert.That(new ArraySegment<byte>(buffer.Array, buffer.ArrayOffset, read), Is.EquivalentTo(bytes));
+        }
+        finally
+        {
+            buffer.Release();
+        }
     }
 
     [Test]
@@ -129,7 +137,7 @@ internal class E2StoreTests
         using E2Store sut = new E2Store(stream);
         byte[] bytes = new byte[] { 0x0f, 0xf0, 0xff, 0xff };
         await sut.WriteEntry(EntryTypes.Accumulator, bytes);
-        byte[] buffer = new byte[bytes.Length];
+        IByteBuffer buffer = UnpooledByteBufferAllocator.Default.Buffer(bytes.Length);
 
         int result = await sut.ReadEntryValue(buffer, new Entry(EntryTypes.Accumulator, 0, bytes.Length));
 
@@ -148,11 +156,17 @@ internal class E2StoreTests
         snappy.Flush();
         byte[] compressedBytes = compressed.ToArray();
         await sut.WriteEntry(EntryTypes.CompressedHeader, compressedBytes);
-        byte[] buffer = new byte[32];
+        IByteBuffer buffer = UnpooledByteBufferAllocator.Default.Buffer(32);
+        try
+        {
+            int read = await sut.ReadEntryValueAsSnappy(buffer, new Entry(EntryTypes.CompressedHeader, 0, compressedBytes.Length));
 
-        int read = await sut.ReadEntryValueAsSnappy(buffer, new Entry(EntryTypes.CompressedHeader, 0, compressedBytes.Length));
-
-        Assert.That(new ArraySegment<byte>(buffer, 0, read), Is.EquivalentTo(bytes));
+            Assert.That(new ArraySegment<byte>(buffer.Array, 0, read), Is.EquivalentTo(bytes));
+        }
+        finally
+        {
+            buffer.Release();
+        }
     }
 
 

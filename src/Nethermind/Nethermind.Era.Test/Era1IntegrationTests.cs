@@ -217,7 +217,7 @@ public class Era1IntegrationTests
             Block expectedBlock = testBlockchain.BlockFinder.FindBlock(i) ?? throw new ArgumentException("Could not find required block?");
             TxReceipt[] expectedReceipts = testBlockchain.ReceiptStorage.Get(expectedBlock);
 
-            expectedBlock.Should().BeEquivalentTo(b);
+            b.Should().BeEquivalentTo(expectedBlock);
 
             Assert.That(r.Length, Is.EqualTo(expectedReceipts.Length), "Incorrect amount of receipts.");
 

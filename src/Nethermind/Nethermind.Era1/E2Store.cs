@@ -7,9 +7,11 @@ using System.Diagnostics;
 using System.Drawing;
 using System.IO.Compression;
 using System.Text;
+using DotNetty.Buffers;
 using Nethermind.Core.Crypto;
 using Newtonsoft.Json.Linq;
 using Snappier;
+using Snappy;
 
 namespace Nethermind.Era1;
 
@@ -62,7 +64,7 @@ internal class E2Store : IDisposable
         {
             //See https://github.com/google/snappy/blob/main/framing_format.txt
             if (asSnappy && bytes.Length > 0)
-            {
+            {                
                 //TODO find a way to write directly to file, and still return the number of bytes written
                 using MemoryStream memoryStream = new MemoryStream();
                 using SnappyStream snappyStream = new(memoryStream, CompressionMode.Compress, true);
@@ -81,8 +83,8 @@ internal class E2Store : IDisposable
             headerBuffer[6] = 0;
             headerBuffer[7] = 0;
 
-            await _stream.WriteAsync(headerBuffer, 0, HeaderSize, cancellation);
-            if (length > 0) await _stream.WriteAsync(bytes, 0, length, cancellation);
+            await _stream.WriteAsync(headerBuffer.AsMemory(0, HeaderSize), cancellation);
+            if (length > 0) await _stream.WriteAsync(bytes.AsMemory(0, length), cancellation);
 
             return length + HeaderSize;
         }
@@ -208,39 +210,40 @@ internal class E2Store : IDisposable
         return e;
     }
 
-    public Task<int> ReadEntryValueAsSnappy(byte[] buffer, Entry e, CancellationToken cancellation = default)
+    public Task<int> ReadEntryValueAsSnappy(IByteBuffer buffer, Entry e, CancellationToken cancellation = default)
     {
         return ReadEntryValueAsSnappy(buffer, 0, e, cancellation);
     }
-    public async Task<int> ReadEntryValueAsSnappy(byte[] buffer, int offset, Entry e, CancellationToken cancellation = default)
+    public async Task<int> ReadEntryValueAsSnappy(IByteBuffer buffer, int offset, Entry e, CancellationToken cancellation = default)
     {
         if (buffer is null) throw new ArgumentNullException(nameof(buffer));
         if (offset < 0) throw new ArgumentOutOfRangeException(nameof(offset), "Cannot be a negative number.");
-        if (offset >= buffer.Length) throw new ArgumentOutOfRangeException(nameof(offset), "Cannot exceed the length of the buffer.");
+        if (offset >= buffer.Capacity) throw new ArgumentOutOfRangeException(nameof(offset), "Cannot exceed the length of the buffer.");
         if (e.ValueOffset + e.Length > StreamLength) throw new EraFormatException($"Entry has a length ({e.Length}) and offset ({e.Offset}) that would read beyond the length of the stream.");
+
         using SnappyStream snappy = new(new StreamSegment(_stream, e.ValueOffset, e.Length), CompressionMode.Decompress, true);
         int totalRead = 0;
         int read = 0;
         do
-        {
-            read = await snappy.ReadAsync(buffer, offset + totalRead, buffer.Length - offset - totalRead, cancellation);
+        {            
+            read = await buffer.SetBytesAsync(offset + totalRead, snappy, buffer.Capacity - offset - totalRead, cancellation);
             totalRead += read;
         }
         while (read != 0);
         return totalRead;
     }
 
-    public async ValueTask<int> ReadEntryValue(byte[] buffer, Entry e, CancellationToken cancellation = default)
+    public async ValueTask<int> ReadEntryValue(IByteBuffer buffer, Entry e, CancellationToken cancellation = default)
     {
         if (buffer is null) throw new ArgumentNullException(nameof(buffer));
-        if (buffer.Length < e.Length) throw new ArgumentException($"Buffer must be at least {e.Length} long.", nameof(buffer));
+        if (buffer.Capacity < e.Length) throw new ArgumentException($"Buffer must be at least {e.Length} long.", nameof(buffer));
         if (e.ValueOffset + e.Length > StreamLength) throw new EraFormatException($"Entry has a length ({e.Length}) and offset ({e.Offset}) that would read beyond the length of the stream.");
 
         _stream.Position = e.ValueOffset;
-        int read = await _stream.ReadAsync(buffer, 0, (int)e.Length, cancellation);
+        int read = await buffer.SetBytesAsync(0, _stream, (int)e.Length, cancellation);
         //TODO not correct length, but can only happen if EOF or Entry is malformed
         if (read != e.Length)
-            throw new EraFormatException($"Invalid entry detected at offset {e.Offset}. Entry has a length of {e.Length}, but the stream .");
+            throw new EraFormatException($"Invalid entry detected at offset {e.Offset}.");
         return read;
     }
 
