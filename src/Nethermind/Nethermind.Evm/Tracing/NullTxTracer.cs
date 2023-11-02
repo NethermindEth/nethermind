@@ -22,12 +22,10 @@ public class NullTxTracer : TxTracer
     [StackTraceHidden]
     private static void ThrowInvalidOperationException() => throw new InvalidOperationException(ErrorMessage);
 
-    public override void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Keccak? stateRoot = null)
+    public override void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null)
         => ThrowInvalidOperationException();
-
-    public override void MarkAsFailed(Address recipient, long gasSpent, byte[] output, string error, Keccak? stateRoot = null)
+    public override void MarkAsFailed(Address recipient, long gasSpent, byte[] output, string error, Hash256? stateRoot = null)
         => ThrowInvalidOperationException();
-
     public override void StartOperation(int depth, long gas, Instruction opcode, int pc, bool isPostMerge = false)
         => ThrowInvalidOperationException();
 
@@ -93,10 +91,8 @@ public class NullTxTracer : TxTracer
 
     public override void ReportActionEnd(long gas, Address deploymentAddress, ReadOnlyMemory<byte> deployedCode)
         => ThrowInvalidOperationException();
-
-    public override void ReportBlockHash(Keccak blockHash)
+    public override void ReportBlockHash(Hash256 blockHash)
         => ThrowInvalidOperationException();
-
     public override void ReportByteCode(byte[] byteCode)
         => ThrowInvalidOperationException();
 

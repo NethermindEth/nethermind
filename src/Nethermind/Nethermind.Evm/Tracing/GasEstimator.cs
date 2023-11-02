@@ -87,7 +87,9 @@ namespace Nethermind.Evm.Tracing
             long originalGasLimit = transaction.GasLimit;
 
             transaction.GasLimit = gasLimit;
-            _transactionProcessor.CallAndRestore(transaction, block, tracer.WithCancellation(token));
+
+            BlockExecutionContext blCtx = new(block);
+            _transactionProcessor.CallAndRestore(transaction, blCtx, tracer.WithCancellation(token));
 
             transaction.GasLimit = originalGasLimit;
 
@@ -104,11 +106,11 @@ namespace Nethermind.Evm.Tracing
             public override bool IsTracingInstructions => true;
             public bool OutOfGas { get; private set; }
 
-            public override void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Keccak? stateRoot = null)
+            public override void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null)
             {
             }
 
-            public override void MarkAsFailed(Address recipient, long gasSpent, byte[] output, string error, Keccak? stateRoot = null)
+            public override void MarkAsFailed(Address recipient, long gasSpent, byte[] output, string error, Hash256? stateRoot = null)
             {
             }
 

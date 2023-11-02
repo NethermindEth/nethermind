@@ -25,7 +25,7 @@ namespace Nethermind.JsonRpc
         public static long JsonRpcErrors { get; set; }
 
         [CounterMetric]
-        [Description("Number of JSON RPC requests processed succesfully.")]
+        [Description("Number of JSON RPC requests processed successfully.")]
         public static long JsonRpcSuccesses { get; set; }
 
         [CounterMetric]

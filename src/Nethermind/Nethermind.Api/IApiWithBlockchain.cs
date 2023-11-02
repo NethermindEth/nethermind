@@ -74,7 +74,7 @@ namespace Nethermind.Api
         IHealthHintService? HealthHintService { get; set; }
         IRpcCapabilitiesProvider? RpcCapabilitiesProvider { get; set; }
         ITransactionComparerProvider? TransactionComparerProvider { get; set; }
-        TxValidator? TxValidator { get; set; }
+        ITxValidator? TxValidator { get; set; }
 
         /// <summary>
         /// Manager of block finalization

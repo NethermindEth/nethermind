@@ -11,6 +11,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
+using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
@@ -61,7 +62,7 @@ namespace Nethermind.AuRa.Test.Contract
             {
                 Value = 0,
                 Data = new byte[] { 0x75, 0x28, 0x62, 0x11 },
-                Hash = new Keccak("0x0652461cead47b6e1436fc631debe06bde8bcdd2dad3b9d21df5cf092078c6d3"),
+                Hash = new Hash256("0x0652461cead47b6e1436fc631debe06bde8bcdd2dad3b9d21df5cf092078c6d3"),
                 To = _contractAddress,
                 SenderAddress = Address.SystemUser,
                 GasLimit = Blockchain.Contracts.CallableContract.UnlimitedGas,
@@ -81,7 +82,7 @@ namespace Nethermind.AuRa.Test.Contract
             contract.FinalizeChange(_block.Header);
 
             _transactionProcessor.Received().Execute(
-                Arg.Is<Transaction>(t => IsEquivalentTo(expectation, t)), _block.Header, Arg.Any<ITxTracer>());
+                Arg.Is<Transaction>(t => IsEquivalentTo(expectation, t)), Arg.Is<BlockExecutionContext>(blkCtx => blkCtx.Header.Equals(_block.Header)), Arg.Any<ITxTracer>());
         }
 
         private static bool IsEquivalentTo(Transaction expected, Transaction item)

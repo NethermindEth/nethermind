@@ -11,8 +11,8 @@ namespace Nethermind.Blockchain.Test
 {
     public class ReadOnlyBlockTreeTests
     {
-        private IBlockTree _innerBlockTree;
-        private ReadOnlyBlockTree _blockTree;
+        private IBlockTree _innerBlockTree = null!;
+        private ReadOnlyBlockTree _blockTree = null!;
 
         [SetUp]
         public void SetUp()

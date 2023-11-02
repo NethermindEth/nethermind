@@ -28,8 +28,8 @@ namespace Nethermind.State.Proofs
         private List<byte[]> _accountProofItems = new();
         private List<byte[]>[] _storageProofItems;
 
-        private Dictionary<Keccak, StorageNodeInfo> _storageNodeInfos = new();
-        private HashSet<Keccak> _nodeToVisitFilter = new();
+        private Dictionary<Hash256, StorageNodeInfo> _storageNodeInfos = new();
+        private HashSet<Hash256> _nodeToVisitFilter = new();
 
         private class StorageNodeInfo
         {
@@ -42,7 +42,7 @@ namespace Nethermind.State.Proofs
             public List<int> StorageIndices { get; }
         }
 
-        private static Keccak ToKey(byte[] index)
+        private static Hash256 ToKey(byte[] index)
         {
             return Keccak.Compute(index);
         }
@@ -57,17 +57,17 @@ namespace Nethermind.State.Proofs
         /// <summary>
         /// Only for testing
         /// </summary>
-        public AccountProofCollector(ReadOnlySpan<byte> hashedAddress, Keccak[] keccakStorageKeys)
-            : this(hashedAddress, keccakStorageKeys.Select((keccak) => (ValueKeccak)keccak).ToArray())
+        public AccountProofCollector(ReadOnlySpan<byte> hashedAddress, Hash256[] keccakStorageKeys)
+            : this(hashedAddress, keccakStorageKeys.Select((keccak) => (ValueHash256)keccak).ToArray())
         {
         }
 
         /// <summary>
         /// Only for testing too
         /// </summary>
-        public AccountProofCollector(ReadOnlySpan<byte> hashedAddress, ValueKeccak[] keccakStorageKeys)
+        public AccountProofCollector(ReadOnlySpan<byte> hashedAddress, ValueHash256[] keccakStorageKeys)
         {
-            keccakStorageKeys ??= Array.Empty<ValueKeccak>();
+            keccakStorageKeys ??= Array.Empty<ValueHash256>();
 
             _fullAccountPath = Nibbles.FromBytes(hashedAddress);
 
@@ -98,7 +98,7 @@ namespace Nethermind.State.Proofs
             storageKeys ??= Array.Empty<byte[]>();
             _fullAccountPath = Nibbles.FromBytes(hashedAddress);
 
-            Keccak[] localStorageKeys = storageKeys.Select(ToKey).ToArray();
+            Hash256[] localStorageKeys = storageKeys.Select(ToKey).ToArray();
 
             _accountProof = new AccountProof();
             _accountProof.StorageProofs = new StorageProof[localStorageKeys.Length];
@@ -145,7 +145,7 @@ namespace Nethermind.State.Proofs
 
         public bool IsFullDbScan => false;
 
-        public bool ShouldVisit(Keccak nextNode)
+        public bool ShouldVisit(Hash256 nextNode)
         {
             if (_storageNodeInfos.TryGetValue(nextNode, out StorageNodeInfo value))
             {
@@ -155,11 +155,11 @@ namespace Nethermind.State.Proofs
             return _nodeToVisitFilter.Contains(nextNode);
         }
 
-        public void VisitTree(Keccak rootHash, TrieVisitContext trieVisitContext)
+        public void VisitTree(Hash256 rootHash, TrieVisitContext trieVisitContext)
         {
         }
 
-        public void VisitMissingNode(Keccak nodeHash, TrieVisitContext trieVisitContext)
+        public void VisitMissingNode(Hash256 nodeHash, TrieVisitContext trieVisitContext)
         {
         }
 
@@ -174,7 +174,7 @@ namespace Nethermind.State.Proofs
                 foreach (int storageIndex in _storageNodeInfos[node.Keccak].StorageIndices)
                 {
                     Nibble childIndex = _fullStoragePaths[storageIndex][_pathTraversalIndex];
-                    Keccak childHash = node.GetChildHash((byte)childIndex);
+                    Hash256 childHash = node.GetChildHash((byte)childIndex);
                     if (childHash is null)
                     {
                         AddEmpty(node, trieVisitContext);
@@ -210,7 +210,7 @@ namespace Nethermind.State.Proofs
             AddProofItem(node, trieVisitContext);
             _nodeToVisitFilter.Remove(node.Keccak);
 
-            Keccak childHash = node.GetChildHash(0);
+            Hash256 childHash = node.GetChildHash(0);
             if (trieVisitContext.IsStorage)
             {
                 _storageNodeInfos[childHash] = new StorageNodeInfo();
@@ -331,7 +331,7 @@ namespace Nethermind.State.Proofs
 
         private AccountDecoder _accountDecoder = new();
 
-        public void VisitCode(Keccak codeHash, TrieVisitContext trieVisitContext)
+        public void VisitCode(Hash256 codeHash, TrieVisitContext trieVisitContext)
         {
             throw new InvalidOperationException($"{nameof(AccountProofCollector)} does never expect to visit code");
         }

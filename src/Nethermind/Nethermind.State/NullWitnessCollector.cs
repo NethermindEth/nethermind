@@ -13,9 +13,9 @@ namespace Nethermind.State
 
         public static NullWitnessCollector Instance { get; } = new();
 
-        public IReadOnlyCollection<Keccak> Collected => Array.Empty<Keccak>();
+        public IReadOnlyCollection<Hash256> Collected => Array.Empty<Hash256>();
 
-        public void Add(Keccak hash)
+        public void Add(Hash256 hash)
         {
             throw new InvalidOperationException(
                 $"{nameof(NullWitnessCollector)} is not expected to receive {nameof(Add)} calls.");
@@ -23,7 +23,7 @@ namespace Nethermind.State
 
         public void Reset() { }
 
-        public void Persist(Keccak blockHash) { }
+        public void Persist(Hash256 blockHash) { }
 
         class EmptyDisposable : IDisposable
         {
@@ -34,13 +34,13 @@ namespace Nethermind.State
 
         public IDisposable TrackOnThisThread() { return new EmptyDisposable(); }
 
-        public Keccak[]? Load(Keccak blockHash)
+        public Hash256[]? Load(Hash256 blockHash)
         {
             throw new InvalidOperationException(
                 $"{nameof(NullWitnessCollector)} is not expected to receive {nameof(Load)} calls.");
         }
 
-        public void Delete(Keccak blockHash)
+        public void Delete(Hash256 blockHash)
         {
             throw new InvalidOperationException(
                 $"{nameof(NullWitnessCollector)} is not expected to receive {nameof(Delete)} calls.");

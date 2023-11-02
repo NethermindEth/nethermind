@@ -170,6 +170,16 @@ namespace Nethermind.Synchronization.FastBlocks
                 int added = InsertReceipts(batch);
                 return added == 0 ? SyncResponseHandlingResult.NoProgress : SyncResponseHandlingResult.OK;
             }
+            catch (Exception)
+            {
+                foreach (BlockInfo? batchInfo in batch.Infos)
+                {
+                    if (batchInfo is null) break;
+                    _syncStatusList.MarkPending(batchInfo);
+                }
+
+                throw;
+            }
             finally
             {
                 batch?.MarkHandlingEnd();
@@ -178,7 +188,7 @@ namespace Nethermind.Synchronization.FastBlocks
 
         private bool TryPrepareReceipts(BlockInfo blockInfo, TxReceipt[] receipts, out TxReceipt[]? preparedReceipts)
         {
-            BlockHeader? header = _blockTree.FindHeader(blockInfo.BlockHash);
+            BlockHeader? header = _blockTree.FindHeader(blockInfo.BlockHash, blockNumber: blockInfo.BlockNumber);
             if (header is null)
             {
                 if (_logger.IsWarn) _logger.Warn("Could not find header for requested blockhash.");

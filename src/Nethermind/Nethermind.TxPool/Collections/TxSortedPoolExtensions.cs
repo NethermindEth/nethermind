@@ -20,6 +20,9 @@ namespace Nethermind.TxPool.Collections
         public static IComparer<Transaction> GetReplacementComparer(this IComparer<Transaction> comparer)
             => CompareReplacedTxByFee.Instance.ThenBy(comparer);
 
+        public static IComparer<Transaction> GetBlobReplacementComparer(this IComparer<Transaction> comparer)
+            => CompareReplacedBlobTx.Instance.ThenBy(comparer);
+
         public static Address? MapTxToGroup(this Transaction value) => value.SenderAddress;
     }
 }

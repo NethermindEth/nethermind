@@ -108,14 +108,14 @@ namespace Nethermind.Mev
             return ResultWrapper<TxsResults>.Success(results);
         }
 
-        private static BundleTransaction[] Decode(byte[][] transactions, ISet<Keccak>? revertingTxHashes = null)
+        private static BundleTransaction[] Decode(byte[][] transactions, ISet<Hash256>? revertingTxHashes = null)
         {
-            revertingTxHashes ??= new HashSet<Keccak>();
+            revertingTxHashes ??= new HashSet<Hash256>();
             BundleTransaction[] txs = new BundleTransaction[transactions.Length];
             for (int i = 0; i < transactions.Length; i++)
             {
                 BundleTransaction bundleTransaction = Rlp.Decode<BundleTransaction>(transactions[i], RlpBehaviors.SkipTypedWrapping);
-                Keccak transactionHash = bundleTransaction.Hash!;
+                Hash256 transactionHash = bundleTransaction.Hash!;
                 bundleTransaction.CanRevert = revertingTxHashes.Contains(transactionHash);
                 revertingTxHashes.Remove(transactionHash);
 

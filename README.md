@@ -22,7 +22,7 @@ Nethermind documentation is available at [docs.nethermind.io](https://docs.nethe
 
 ### Supported networks
 
-**`Mainnet`** **`Goerli`** **`Sepolia`** **`Gnosis (xDai)`** **`Energy Web`** **`Volta`**
+**`Mainnet`** **`Goerli`** **`Sepolia`** **`Holesky`** **`Gnosis (xDai)`** **`Chiado`** **`Energy Web`** **`Volta`**
 
 ## Download and run
 
@@ -65,8 +65,8 @@ winget install Microsoft.VCRedist.2015+.x64
 #### Install using Windows Package Manager
 
 1. `winget install nethermind`
-2. To run directly: `nethermind.runner.exe -c mainnet` \
-   or with the assistant: `nethermind.launcher.exe` 
+2. To run directly: `nethermind.exe -c mainnet` \
+   or with the assistant: `nethermind-launcher.exe` 
 
 ### On macOS
 
@@ -106,7 +106,7 @@ Install [.NET SDK](https://dotnet.microsoft.com/en-us/download)
 ### Clone the repository
 
 ```sh
-git clone https://github.com/nethermindeth/nethermind --recursive
+git clone --recursive https://github.com/nethermindeth/nethermind.git
 ```
 
 ### Build and run

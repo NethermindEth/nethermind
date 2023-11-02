@@ -15,7 +15,7 @@ namespace Nethermind.Init.Steps
     [RunnerStepDependencies(typeof(StartBlockProcessor), typeof(SetupKeyStore), typeof(InitializeNetwork), typeof(ReviewBlockTree))]
     public class InitializeBlockProducer : IStep
     {
-        protected IApiWithBlockchain _api;
+        private IApiWithBlockchain _api;
 
         public InitializeBlockProducer(INethermindApi api)
         {

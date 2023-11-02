@@ -23,7 +23,7 @@ public class RecoveryTests
 {
     private byte[] _keyRlp = null!;
     private byte[] _returnedRlp = null!;
-    private Keccak _key = null!;
+    private Hash256 _key = null!;
     private ISyncPeer _syncPeerEth66 = null!;
     private PeerInfo _peerEth66 = null!;
     private ISyncPeer _syncPeerEth67 = null!;
@@ -41,7 +41,7 @@ public class RecoveryTests
         _key = Keccak.Compute(_keyRlp);
         _syncPeerEth66 = Substitute.For<ISyncPeer>();
         _syncPeerEth66.ProtocolVersion.Returns(EthVersions.Eth66);
-        _syncPeerEth66.GetNodeData(Arg.Is<IReadOnlyList<Keccak>>(l => l.Contains(_key)), Arg.Any<CancellationToken>())
+        _syncPeerEth66.GetNodeData(Arg.Is<IReadOnlyList<Hash256>>(l => l.Contains(_key)), Arg.Any<CancellationToken>())
             .Returns(_ => Task.FromResult(new[] { _returnedRlp }));
         _peerEth66 = new(_syncPeerEth66);
 
@@ -67,23 +67,23 @@ public class RecoveryTests
     [Test]
     public async Task can_recover_eth66()
     {
-        byte[]? rlp = await Recover(_nodeDataRecovery, new List<Keccak> { _key }, _peerEth66);
+        byte[]? rlp = await Recover(_nodeDataRecovery, new List<Hash256> { _key }, _peerEth66);
         rlp.Should().BeEquivalentTo(_keyRlp);
     }
 
     [Test]
     public async Task cannot_recover_eth66_no_peers()
     {
-        byte[]? rlp = await Recover(_nodeDataRecovery, new List<Keccak> { _key }, _peerEth67);
+        byte[]? rlp = await Recover(_nodeDataRecovery, new List<Hash256> { _key }, _peerEth67);
         rlp.Should().BeNull();
     }
 
     [Test]
     public async Task cannot_recover_eth66_empty_response()
     {
-        _syncPeerEth66.GetNodeData(Arg.Is<IReadOnlyList<Keccak>>(l => l.Contains(_key)), Arg.Any<CancellationToken>())
+        _syncPeerEth66.GetNodeData(Arg.Is<IReadOnlyList<Hash256>>(l => l.Contains(_key)), Arg.Any<CancellationToken>())
             .Returns(Task.FromResult(Array.Empty<byte[]>()));
-        byte[]? rlp = await Recover(_nodeDataRecovery, new List<Keccak> { _key }, _peerEth66);
+        byte[]? rlp = await Recover(_nodeDataRecovery, new List<Hash256> { _key }, _peerEth66);
         rlp.Should().BeNull();
     }
 
@@ -91,7 +91,7 @@ public class RecoveryTests
     public async Task cannot_recover_eth66_invalid_rlp()
     {
         _returnedRlp = new byte[] { 5, 6, 7 };
-        byte[]? rlp = await Recover(_nodeDataRecovery, new List<Keccak> { _key }, _peerEth66);
+        byte[]? rlp = await Recover(_nodeDataRecovery, new List<Hash256> { _key }, _peerEth66);
         rlp.Should().BeNull();
     }
 

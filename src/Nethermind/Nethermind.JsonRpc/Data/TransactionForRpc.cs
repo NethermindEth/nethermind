@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Eip2930;
@@ -13,10 +14,20 @@ namespace Nethermind.JsonRpc.Data;
 
 public class TransactionForRpc
 {
+    // HACK: To ensure that serialized Txs always have a `ChainId` we keep the last loaded `ChainSpec`.
+    // See: https://github.com/NethermindEth/nethermind/pull/6061#discussion_r1321634914
+    public static UInt256? DefaultChainId { get; set; }
+
     public TransactionForRpc(Transaction transaction) : this(null, null, null, transaction) { }
 
-    public TransactionForRpc(Keccak? blockHash, long? blockNumber, int? txIndex, Transaction transaction, UInt256? baseFee = null)
+    public TransactionForRpc(Hash256? blockHash, long? blockNumber, int? txIndex, Transaction transaction, UInt256? baseFee = null)
     {
+        if (transaction.Type == TxType.DepositTx)
+        {
+            SourceHash = transaction.SourceHash;
+            Mint = transaction.Mint;
+            IsSystemTx = transaction.IsOPSystemTransaction;
+        }
         Hash = transaction.Hash;
         Nonce = transaction.Nonce;
         BlockHash = blockHash;
@@ -36,7 +47,16 @@ public class TransactionForRpc
             MaxFeePerGas = transaction.MaxFeePerGas;
             MaxPriorityFeePerGas = transaction.MaxPriorityFeePerGas;
         }
-        ChainId = transaction.ChainId;
+        if (transaction.Type > TxType.Legacy)
+        {
+            ChainId = transaction.ChainId
+                      ?? DefaultChainId
+                      ?? BlockchainIds.Mainnet;
+        }
+        else
+        {
+            ChainId = transaction.ChainId;
+        }
         Type = transaction.Type;
         if (transaction.SupportsAccessList)
         {
@@ -67,11 +87,15 @@ public class TransactionForRpc
     {
     }
 
-    public Keccak? Hash { get; set; }
+    public Hash256? SourceHash { get; set; }
+    public UInt256? Mint { get; set; }
+    public bool? IsSystemTx { get; set; } // this is the IsOpSystemTransaction flag
+
+    public Hash256? Hash { get; set; }
     public UInt256? Nonce { get; set; }
 
     [JsonProperty(NullValueHandling = NullValueHandling.Include)]
-    public Keccak? BlockHash { get; set; }
+    public Hash256? BlockHash { get; set; }
 
     [JsonProperty(NullValueHandling = NullValueHandling.Include)]
     public long? BlockNumber { get; set; }
@@ -105,7 +129,7 @@ public class TransactionForRpc
 
     public TxType Type { get; set; }
 
-    public AccessListItemForRpc[]? AccessList { get; set; }
+    public IEnumerable<AccessListItemForRpc>? AccessList { get; set; }
 
 
     [JsonProperty(NullValueHandling = NullValueHandling.Ignore)]

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Net.Http;
 using System.Threading;
@@ -15,6 +16,7 @@ using Nethermind.Consensus;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Exceptions;
 using Nethermind.Db;
 using Nethermind.Facade.Proxy;
@@ -24,6 +26,7 @@ using Nethermind.JsonRpc.Modules;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.BlockProduction;
 using Nethermind.Merge.Plugin.BlockProduction.Boost;
+using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.GC;
 using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Merge.Plugin.InvalidChainTracker;
@@ -54,12 +57,8 @@ public partial class MergePlugin : IConsensusWrapperPlugin, ISynchronizationPlug
     public virtual string Description => "Merge plugin for ETH1-ETH2";
     public string Author => "Nethermind";
 
-    public virtual bool MergeEnabled => _mergeConfig.Enabled &&
-                                        !IsPreMergeConsensusAuRa(_api); // AuRa has dedicated plugin AuRaMergePlugin
-    protected bool IsPreMergeConsensusAuRa(INethermindApi api)
-    {
-        return api.ChainSpec?.SealEngineType == SealEngineType.AuRa;
-    }
+    protected virtual bool MergeEnabled => _mergeConfig.Enabled &&
+                                           _api.ChainSpec.SealEngineType is SealEngineType.BeaconChain or SealEngineType.Clique or SealEngineType.Ethash;
 
     // Don't remove default constructor. It is used by reflection when we're loading plugins
     public MergePlugin() { }
@@ -171,14 +170,14 @@ public partial class MergePlugin : IConsensusWrapperPlugin, ISynchronizationPlug
 
             EnsureEngineModuleIsConfigured();
 
-            if (!jsonRpcConfig.EnabledModules.Contains("engine"))
+            if (!jsonRpcConfig.EnabledModules.Contains(ModuleType.Engine, StringComparison.InvariantCultureIgnoreCase))
             {
                 // Disable it
                 jsonRpcConfig.EnabledModules = Array.Empty<string>();
             }
 
             jsonRpcConfig.AdditionalRpcUrls = jsonRpcConfig.AdditionalRpcUrls
-                .Where((url) => JsonRpcUrl.Parse(url).EnabledModules.Contains("engine"))
+                .Where((url) => JsonRpcUrl.Parse(url).EnabledModules.Contains(ModuleType.Engine, StringComparison.InvariantCultureIgnoreCase))
                 .ToArray();
         }
         else
@@ -192,7 +191,7 @@ public partial class MergePlugin : IConsensusWrapperPlugin, ISynchronizationPlug
         JsonRpcUrlCollection urlCollection = new(_api.LogManager, _api.Config<IJsonRpcConfig>(), false);
         bool hasEngineApiConfigured = urlCollection
             .Values
-            .Any(rpcUrl => rpcUrl.EnabledModules.Contains("engine"));
+            .Any(rpcUrl => rpcUrl.EnabledModules.Contains(ModuleType.Engine, StringComparison.InvariantCultureIgnoreCase));
 
         if (!hasEngineApiConfigured)
         {
@@ -255,7 +254,6 @@ public partial class MergePlugin : IConsensusWrapperPlugin, ISynchronizationPlug
     {
         if (MergeEnabled)
         {
-            if (_api.RpcModuleProvider is null) throw new ArgumentNullException(nameof(_api.RpcModuleProvider));
             if (_api.BlockTree is null) throw new ArgumentNullException(nameof(_api.BlockTree));
             if (_api.BlockchainProcessor is null) throw new ArgumentNullException(nameof(_api.BlockchainProcessor));
             if (_api.WorldState is null) throw new ArgumentNullException(nameof(_api.WorldState));
@@ -335,6 +333,7 @@ public partial class MergePlugin : IConsensusWrapperPlugin, ISynchronizationPlug
                     _beaconSync,
                     _beaconPivot,
                     _peerRefresher,
+                    _api.SpecProvider,
                     _api.LogManager),
                 new GetPayloadBodiesByHashV1Handler(_api.BlockTree, _api.LogManager),
                 new GetPayloadBodiesByRangeV1Handler(_api.BlockTree, _api.LogManager),
@@ -344,11 +343,18 @@ public partial class MergePlugin : IConsensusWrapperPlugin, ISynchronizationPlug
                 new GCKeeper(new NoSyncGcRegionStrategy(_api.SyncModeSelector, _mergeConfig), _api.LogManager),
                 _api.LogManager);
 
-            _api.RpcModuleProvider.RegisterSingle(engineRpcModule);
+            RegisterEngineRpcModule(engineRpcModule);
+
             if (_logger.IsInfo) _logger.Info("Engine Module has been enabled");
         }
 
         return Task.CompletedTask;
+    }
+
+    protected virtual void RegisterEngineRpcModule(IEngineRpcModule engineRpcModule)
+    {
+        ArgumentNullException.ThrowIfNull(_api.RpcModuleProvider);
+        _api.RpcModuleProvider.RegisterSingle(engineRpcModule);
     }
 
     public Task InitSynchronization()

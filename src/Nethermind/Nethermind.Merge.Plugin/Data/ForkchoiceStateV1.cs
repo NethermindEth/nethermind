@@ -12,7 +12,7 @@ namespace Nethermind.Merge.Plugin.Data;
 /// </summary>
 public class ForkchoiceStateV1
 {
-    public ForkchoiceStateV1(Keccak headBlockHash, Keccak finalizedBlockHash, Keccak safeBlockHash)
+    public ForkchoiceStateV1(Hash256 headBlockHash, Hash256 finalizedBlockHash, Hash256 safeBlockHash)
     {
         HeadBlockHash = headBlockHash;
         FinalizedBlockHash = finalizedBlockHash;
@@ -22,19 +22,19 @@ public class ForkchoiceStateV1
     /// <summary>
     /// Hash of the head of the canonical chain.
     /// </summary>
-    public Keccak HeadBlockHash { get; set; }
+    public Hash256 HeadBlockHash { get; set; }
 
     /// <summary>
     /// Safe block hash of the canonical chain under certain synchrony and honesty assumptions. This value MUST be either equal to or an ancestor of headBlockHash.
     /// </summary>
     /// <remarks>Can be <see cref="Keccak.Zero"/> when transition block is not finalized yet.</remarks>
-    public Keccak SafeBlockHash { get; set; }
+    public Hash256 SafeBlockHash { get; set; }
 
     /// <summary>
     /// Hash of the most recent finalized block
     /// </summary>
     /// <remarks>Can be <see cref="Keccak.Zero"/> when transition block is not finalized yet.</remarks>
-    public Keccak FinalizedBlockHash { get; set; }
+    public Hash256 FinalizedBlockHash { get; set; }
 
     public override string ToString() => $"ForkChoice: Head: {HeadBlockHash.ToShortString()}, Safe: {SafeBlockHash.ToShortString()}, Finalized: {FinalizedBlockHash.ToShortString()}";
     public string ToString(long? headNumber, long? safeNumber, long? finalizedNumber) =>

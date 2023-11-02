@@ -13,13 +13,16 @@ namespace Nethermind.EthStats
         [ConfigItem(Description = "EthStats server wss://hostname:port/api/", DefaultValue = "ws://localhost:3000/api")]
         string? Server { get; }
 
-        [ConfigItem(Description = "Node name displayed on the given ethstats server.", DefaultValue = "Nethermind")]
+        [ConfigItem(Description = "Node name displayed on the given EthStats server.", DefaultValue = "Nethermind")]
         string? Name { get; }
 
-        [ConfigItem(Description = "Password for publishing to a given ethstats server.", DefaultValue = "secret")]
+        [ConfigItem(Description = "Password for publishing to a given EthStats server.", DefaultValue = "secret")]
         string? Secret { get; }
 
-        [ConfigItem(Description = "Node owner contact details displayed on the ethstats page.", DefaultValue = "hello@nethermind.io")]
+        [ConfigItem(Description = "Node owner contact details displayed on the EthStats page.", DefaultValue = "hello@nethermind.io")]
         string? Contact { get; }
+
+        [ConfigItem(Description = "Time in seconds between statistics updates", DefaultValue = "15")]
+        int SendInterval { get; }
     }
 }
