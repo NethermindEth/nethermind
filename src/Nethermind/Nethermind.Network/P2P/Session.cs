@@ -353,11 +353,6 @@ namespace Nethermind.Network.P2P
 
         public void InitiateDisconnect(DisconnectReason disconnectReason, string? details = null)
         {
-            DoInitiateDisconnect(disconnectReason, details);
-        }
-
-        private void DoInitiateDisconnect(DisconnectReason disconnectReason, string? details = null, bool ignoreUninitialized = false)
-        {
             EthDisconnectReason ethDisconnectReason = disconnectReason.ToEthDisconnectReason();
 
             bool ShouldDisconnectStaticNode()
@@ -397,7 +392,7 @@ namespace Nethermind.Network.P2P
                     return;
                 }
 
-                if (!ignoreUninitialized && State == SessionState.HandshakeComplete)
+                if (State <= SessionState.HandshakeComplete)
                 {
                     if (_disconnectAfterInitialized != null) return;
 
