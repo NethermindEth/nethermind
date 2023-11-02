@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Numerics;
 using Nethermind.Core.Extensions;
 
 namespace Nethermind.Evm.Tracing;
@@ -63,5 +64,15 @@ public readonly struct TraceMemory
         }
 
         return span.Slice(start, length);
+    }
+
+    public BigInteger GetUint(int offset)
+    {
+        if (offset < 0 || (ulong)(offset + EvmPooledMemory.WordSize) > Size)
+        {
+            throw new ArgumentOutOfRangeException(nameof(offset), $"tracer accessed out of bound memory: available {Size}, offset {offset}, size {EvmPooledMemory.WordSize}");
+        }
+
+        return new BigInteger(Slice(offset, EvmPooledMemory.WordSize));
     }
 }

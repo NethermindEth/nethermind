@@ -18,7 +18,7 @@ namespace Nethermind.Evm.Tracing.GethStyle.Javascript
     {
         public Opcode? op { get; set; }
         public Stack stack { get; set; }
-        public Memory memory { get; set; }
+        public Memory memory { get; set; } = new();
         public Contract contract { get; set; }
         public long pc { get; set; }
 
@@ -52,16 +52,11 @@ namespace Nethermind.Evm.Tracing.GethStyle.Javascript
             public BigInteger peek(int index) => new(_items[^(index + 1)].Span);
         }
 
-        public readonly struct Memory
+        public class Memory
         {
-            private readonly List<byte> _memory;
+            public TraceMemory MemoryTrace;
 
-            public Memory(List<byte> memory)
-            {
-                _memory = memory;
-            }
-
-            public int length() => _memory.Count;
+            public int length() => (int)MemoryTrace.Size;
 
             public ITypedArray<byte> slice(BigInteger start, BigInteger end)
             {
@@ -70,29 +65,13 @@ namespace Nethermind.Evm.Tracing.GethStyle.Javascript
                     throw new ArgumentOutOfRangeException(nameof(start), $"tracer accessed out of bound memory: offset {start}, end {end}");
                 }
 
-                // TODO: Pad memory
-                if (end > _memory.Count)
-                {
-                    throw new ArgumentOutOfRangeException(nameof(end), "Invalid end.");
-                }
-
                 int length = (int)(end - start);
-                Span<byte> slice = length == 0
-                    ? Span<byte>.Empty
-                    : CollectionsMarshal.AsSpan(_memory).Slice((int)start, length);
-                return slice.ToArray().ToScriptArray();
+                return MemoryTrace.Slice((int)start, length)
+                    .ToArray()
+                    .ToScriptArray();
             }
 
-            public BigInteger getUint(int offset)
-            {
-                if (offset < 0 || offset + EvmPooledMemory.WordSize > _memory.Count)
-                {
-                    throw new ArgumentOutOfRangeException(nameof(offset), $"tracer accessed out of bound memory: available {_memory.Count}, offset {offset}, size {EvmPooledMemory.WordSize}");
-                }
-
-                ReadOnlySpan<byte> byteArray = CollectionsMarshal.AsSpan(_memory).Slice(offset, EvmPooledMemory.WordSize);
-                return new BigInteger(byteArray);
-            }
+            public BigInteger getUint(int offset) => MemoryTrace.GetUint(offset);
         }
 
         public struct Contract

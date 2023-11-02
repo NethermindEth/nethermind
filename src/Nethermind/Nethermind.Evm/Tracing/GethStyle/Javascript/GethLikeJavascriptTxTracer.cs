@@ -6,7 +6,6 @@ using System.IO;
 using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
-using System.Runtime.InteropServices;
 using FastEnumUtility;
 using Microsoft.ClearScript;
 using Microsoft.ClearScript.V8;
@@ -20,11 +19,10 @@ namespace Nethermind.Evm.Tracing.GethStyle.Javascript;
 public sealed class GethLikeJavascriptTxTracer : GethLikeTxTracer
 {
     private readonly dynamic _tracer;
-    private readonly Log _log;
-    private readonly List<byte> _memory = new();
+    private readonly Log _log = new();
     private readonly Db _db;
-    private readonly CallFrame _frame;
-    private readonly FrameResult _result;
+    private readonly CallFrame _frame = new();
+    private readonly FrameResult _result = new();
 
     // Context is updated only of first ReportAction call.
     private readonly Context _ctx;
@@ -44,10 +42,6 @@ public sealed class GethLikeJavascriptTxTracer : GethLikeTxTracer
         _db = db;
         _ctx = ctx;
         _ctx.txHash = txHash.BytesToArray().ToScriptArray();
-        _log = new() { memory = new Log.Memory(_memory) };
-        _frame = new CallFrame();
-        _result = new FrameResult();
-
         engine.Execute(LoadJavascriptCode(options.Tracer));
         _tracer = engine.Script.tracer;
         _functions = GetAvailableFunctions(((IDictionary<string, object>)_tracer).Keys);
@@ -171,22 +165,10 @@ public sealed class GethLikeJavascriptTxTracer : GethLikeTxTracer
         _ctx.output = output.ToScriptArray();
     }
 
-    public override void ReportMemoryChange(long offset, in ReadOnlySpan<byte> data)
+    public override void SetOperationMemory(TraceMemory memoryTrace)
     {
-        base.ReportMemoryChange(offset, data);
-
-        _memory.EnsureCapacity((int)(offset + data.Length));
-        if (_memory.Count < offset + data.Length)
-        {
-            _memory.AddRange(Enumerable.Repeat((byte)0, (int)(offset + data.Length) - _memory.Count));
-        }
-
-        if (offset < 0 || offset + data.Length > _memory.Capacity)
-        {
-            throw new ArgumentOutOfRangeException(nameof(offset), "Invalid memory access");
-        }
-
-        data.CopyTo(CollectionsMarshal.AsSpan(_memory).Slice((int)offset, (int)data.Length));
+        base.SetOperationMemory(memoryTrace);
+        _log.memory.MemoryTrace = memoryTrace;
     }
 
     public override void ReportOperationError(EvmExceptionType error)
