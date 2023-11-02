@@ -73,6 +73,7 @@ namespace Nethermind.Network.P2P
         }
 
         public bool IsClosing => State > SessionState.Initialized;
+        private bool IsClosed => State > SessionState.DisconnectingProtocols;
         public bool IsNetworkIdMatched { get; set; }
         public int LocalPort { get; set; }
         public PublicKey? RemoteNodeId { get; set; }
@@ -211,7 +212,9 @@ namespace Nethermind.Network.P2P
                     throw new InvalidOperationException($"{nameof(DeliverMessage)} called {this}");
                 }
 
-                if (IsClosing)
+                // Must allow sending out packet when `DisconnectingProtocols` so that we can send out disconnect reason
+                // and hello (part of protocol)
+                if (IsClosed)
                 {
                     return 1;
                 }
