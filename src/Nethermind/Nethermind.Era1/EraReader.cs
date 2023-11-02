@@ -90,7 +90,7 @@ internal class EraReader : IAsyncEnumerable<(Block, TxReceipt[], UInt256)>, IDis
     private async Task<(Block, TxReceipt[], UInt256)> ReadBlockAndReceipts(long blockNumber, CancellationToken cancellationToken)
     {
         long blockOffset = await SeekToBlock(blockNumber, cancellationToken);
-        byte[] buffer = ArrayPool<byte>.Shared.Rent(E2Store.ValueSizeLimit);
+        byte[] buffer = ArrayPool<byte>.Shared.Rent(1024 * 1024);
         try
         {
             Entry e = await _store.ReadEntryAt(blockOffset, cancellationToken);
