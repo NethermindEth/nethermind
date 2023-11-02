@@ -25,4 +25,15 @@ public class NullBlobTxStorage : ITxStorage
     public void Add(Transaction transaction) { }
 
     public void Delete(in ValueHash256 hash, in UInt256 timestamp) { }
+
+    public bool TryGetBlobTransactionsFromBlock(long blockNumber, out Transaction[]? blockBlobTransactions)
+    {
+        blockBlobTransactions = default;
+        return false;
+    }
+
+    public void AddBlobTransactionsFromBlock(long blockNumber, IList<Transaction> blockBlobTransactions) { }
+
+    public void DeleteBlobTransactionsFromBlock(long blockNumber)
+    { }
 }
