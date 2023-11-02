@@ -140,7 +140,7 @@ public class BlockReceiptsTracer : IBlockTracer, ITxTracer, IJournal<int>, ITxTr
     public void ReportStorageRead(in StorageCell storageCell) =>
         _currentTxTracer.ReportStorageRead(storageCell);
 
-    public void ReportAction(long gas, UInt256 value, Address from, Address? to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false) =>
+    public void ReportAction(long gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false) =>
         _currentTxTracer.ReportAction(gas, value, from, to, input, callType, isPrecompileCall);
 
     public void ReportActionEnd(long gas, ReadOnlyMemory<byte> output) =>

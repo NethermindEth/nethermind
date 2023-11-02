@@ -230,7 +230,7 @@ namespace Nethermind.Evm
         public int ProgramCounter { get; set; }
         public long Refund { get; set; }
 
-        public Address To => Env.CodeSource;
+        public Address To => Env.CodeSource ?? Env.ExecutingAccount;
         internal bool IsPrecompile => Env.CodeInfo.IsPrecompile;
         public readonly ExecutionEnvironment Env;
 

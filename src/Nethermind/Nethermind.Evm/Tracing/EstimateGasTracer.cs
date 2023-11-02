@@ -93,7 +93,7 @@ namespace Nethermind.Evm.Tracing
 
         private readonly Stack<GasAndNesting> _currentGasAndNesting = new();
 
-        public override void ReportAction(long gas, UInt256 value, Address from, Address? to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false)
+        public override void ReportAction(long gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false)
         {
             if (_currentNestingLevel == -1)
             {

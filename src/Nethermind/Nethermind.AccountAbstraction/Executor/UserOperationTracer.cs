@@ -186,7 +186,7 @@ namespace Nethermind.AccountAbstraction.Executor
             }
         }
 
-        public override void ReportAction(long gas, UInt256 value, Address from, Address? to, ReadOnlyMemory<byte> input,
+        public override void ReportAction(long gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input,
             ExecutionType callType,
             bool isPrecompileCall = false)
         {

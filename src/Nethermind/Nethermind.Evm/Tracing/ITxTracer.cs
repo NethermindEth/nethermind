@@ -247,7 +247,7 @@ public interface ITxTracer : IWorldStateTracer
     /// <remarks>Depends on <see cref="IsTracingInstructions"/></remarks>
     void ReportMemoryChange(UInt256 offset, in ReadOnlySpan<byte> data)
     {
-        if (offset.u1 <= 0 && offset.u2 <= 0 && offset.u3 <= 0 && offset.u0 <= long.MaxValue)
+        if (offset is { u1: <= 0, u2: <= 0, u3: <= 0, u0: <= long.MaxValue })
         {
             ReportMemoryChange((long)offset, data);
         }
@@ -333,7 +333,7 @@ public interface ITxTracer : IWorldStateTracer
     /// <param name="callType"></param>
     /// <param name="isPrecompileCall"></param>
     /// <remarks>Depends on <see cref="IsTracingActions"/></remarks>
-    void ReportAction(long gas, UInt256 value, Address @from, Address? to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false);
+    void ReportAction(long gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false);
 
     /// <summary>
     ///

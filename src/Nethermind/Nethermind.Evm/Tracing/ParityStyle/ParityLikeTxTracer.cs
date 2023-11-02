@@ -383,15 +383,16 @@ namespace Nethermind.Evm.Tracing.ParityStyle
             storage[storageCell.Index] = new ParityStateChange<byte[]>(before, after);
         }
 
-        public override void ReportAction(long gas, UInt256 value, Address from, Address? to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false)
+        public override void ReportAction(long gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false)
         {
+            bool isAnyCreate = callType.IsAnyCreate();
             ParityTraceAction action = new()
             {
                 IsPrecompiled = isPrecompileCall,
                 // ignore pre compile calls with Zero value that originates from contracts
                 IncludeInTrace = !(isPrecompileCall && callType != ExecutionType.TRANSACTION && value.IsZero),
                 From = from,
-                To = to,
+                To = isAnyCreate ? null : to,
                 Value = value,
                 Input = input.ToArray(),
                 Gas = gas,
@@ -400,7 +401,7 @@ namespace Nethermind.Evm.Tracing.ParityStyle
                 CreationMethod = GetCreateMethod(callType)
             };
 
-            if (_currentOperation is not null && callType.IsAnyCreate())
+            if (_currentOperation is not null && isAnyCreate)
             {
                 // another Parity quirkiness
                 _currentOperation.Cost += gas;

@@ -31,6 +31,7 @@ public sealed class GethLikeJavascriptTxTracer : GethLikeTxTracer
     private readonly List<byte> _memory = new();
     private readonly Db _db;
     private readonly CallFrame _frame;
+    private readonly FrameResult _result;
 
     // Context is updated only of first ReportAction call.
     private readonly Context _ctx;
@@ -47,6 +48,7 @@ public sealed class GethLikeJavascriptTxTracer : GethLikeTxTracer
         _db.Engine = _engine;
         _log = new() { memory = new Log.Memory(_engine, _memory) };
         _frame = new CallFrame(_engine);
+        _result = new FrameResult(_engine);
         _engine.Execute(BigIntegerJS.Code);
         _engine.AddHostObject("toWord", new Func<object, object>(bytes => bytes.ToWord()?.ToScriptArray(_engine)));
         _engine.AddHostObject("toHex", new Func<IList, string>(bytes => bytes.ToHexString()));
@@ -114,23 +116,20 @@ public sealed class GethLikeJavascriptTxTracer : GethLikeTxTracer
 
     public override GethLikeTxTrace BuildResult()
     {
-        GethLikeTxTrace trace = Trace;
+        GethLikeTxTrace trace = base.BuildResult();
         trace.CustomTracerResult = _tracer.result(_ctx, _db);
-        dynamic result = trace.CustomTracerResult;
-        trace.CustomTracerResult = result;
-        // Console.WriteLine("this is the result {0}", JArray.FromObject(result));
         return trace;
     }
 
-    public override void ReportAction(long gas, UInt256 value, Address from, Address? to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false)
+    public override void ReportAction(long gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false)
     {
         _log.contract = new Log.Contract(_engine, from, to, value, input);
         BigInteger valueBigInt = (BigInteger)value;
         if (callType == ExecutionType.TRANSACTION)
         {
-            _ctx.type = to is null ? "CALL" : "CREATE";
+            _ctx.type = callType.IsAnyCreate() ? "CREATE" : "CALL";
             _ctx.from = from.Bytes.ToScriptArray(_engine);
-            _ctx.to = to?.Bytes.ToScriptArray(_engine);
+            _ctx.to = to.Bytes.ToScriptArray(_engine);
             _ctx.input = input.ToArray().ToScriptArray(_engine);
             _ctx.value = valueBigInt;
             _ctx.gas = gas;
@@ -138,37 +137,43 @@ public sealed class GethLikeJavascriptTxTracer : GethLikeTxTracer
         else if (_enterExit)
         {
             _frame.From = from;
-            _frame.To = to ?? Address.Zero; // TODO: contract creation
+            _frame.To = to;
             _frame.Input = input.ToArray();
             _frame.Value = valueBigInt;
             _frame.Gas = gas;
             _frame.Type = callType.FastToString();
+            _tracer.enter(_frame);
         }
     }
 
     public override void ReportActionEnd(long gas, Address deploymentAddress, ReadOnlyMemory<byte> deployedCode)
     {
+        base.ReportActionEnd(gas, deploymentAddress, deployedCode);
+
         _ctx.to ??= deploymentAddress.Bytes.ToScriptArray(_engine);
-
-        if (_enterExit)
-        {
-
-        }
+        InvokeExit(gas, deployedCode);
     }
 
     public override void ReportActionEnd(long gas, ReadOnlyMemory<byte> output)
     {
-        if (_enterExit)
-        {
-
-        }
+        base.ReportActionEnd(gas, output);
+        InvokeExit(gas, output);
     }
 
     public override void ReportActionError(EvmExceptionType evmExceptionType)
     {
+        base.ReportActionError(evmExceptionType);
+        InvokeExit(0, Array.Empty<byte>(), GetErrorDescription(evmExceptionType));
+    }
+
+    private void InvokeExit(long gas, ReadOnlyMemory<byte> output, string? error = null)
+    {
         if (_enterExit)
         {
-
+            _result.GasUsed = gas;
+            _result.Output = output.ToArray();
+            _result.Error = error;
+            _tracer.exit(_result);
         }
     }
 
@@ -188,6 +193,8 @@ public sealed class GethLikeJavascriptTxTracer : GethLikeTxTracer
 
     public override void ReportMemoryChange(long offset, in ReadOnlySpan<byte> data)
     {
+        base.ReportMemoryChange(offset, data);
+
         _memory.EnsureCapacity((int)(offset + data.Length));
         if (_memory.Count < offset + data.Length)
         {
@@ -204,11 +211,14 @@ public sealed class GethLikeJavascriptTxTracer : GethLikeTxTracer
 
     public override void ReportOperationError(EvmExceptionType error)
     {
+        base.ReportOperationError(error);
+
         _log.error = GetErrorDescription(error);
     }
 
     public override void SetOperationStack(TraceStack stack)
     {
+        base.SetOperationStack(stack);
         _log.stack = new Log.Stack(stack);
     }
 

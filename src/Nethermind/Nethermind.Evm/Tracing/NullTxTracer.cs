@@ -80,7 +80,7 @@ public class NullTxTracer : TxTracer
     public override void ReportStorageRead(in StorageCell storageCell)
         => ThrowInvalidOperationException();
 
-    public override void ReportAction(long gas, UInt256 value, Address from, Address? to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false)
+    public override void ReportAction(long gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false)
         => ThrowInvalidOperationException();
 
     public override void ReportActionEnd(long gas, ReadOnlyMemory<byte> output)

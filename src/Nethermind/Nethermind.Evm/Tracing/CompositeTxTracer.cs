@@ -341,7 +341,7 @@ public class CompositeTxTracer : ITxTracer
         }
     }
 
-    public void ReportAction(long gas, UInt256 value, Address from, Address? to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false)
+    public void ReportAction(long gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false)
     {
         for (int index = 0; index < _txTracers.Count; index++)
         {

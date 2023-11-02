@@ -7,7 +7,7 @@ using Nethermind.Core;
 
 namespace Nethermind.Evm.Tracing.GethStyle.Javascript;
 
-public record class CallFrame
+public record CallFrame
 {
     private readonly ScriptEngine _engine;
 
