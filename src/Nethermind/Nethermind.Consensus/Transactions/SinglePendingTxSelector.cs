@@ -3,6 +3,7 @@
 
 using System.Collections.Generic;
 using System.Linq;
+using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 
 namespace Nethermind.Consensus.Transactions
@@ -16,13 +17,12 @@ namespace Nethermind.Consensus.Transactions
             _innerSource = innerSource;
         }
 
-        public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit) =>
-            _innerSource.GetTransactions(parent, gasLimit)
+        public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit, PayloadAttributes? payloadAttributes = null) =>
+            _innerSource.GetTransactions(parent, gasLimit, payloadAttributes)
                 .OrderBy(t => t.Nonce)
                 .ThenByDescending(t => t.Timestamp)
                 .Take(1);
 
         public override string ToString() => $"{nameof(SinglePendingTxSelector)} [ {_innerSource} ]";
-
     }
 }

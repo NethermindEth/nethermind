@@ -45,7 +45,7 @@ public class NodesLocator : INodesLocator
             throw new InvalidOperationException("Master node has not been initialized");
         }
 
-        ISet<Keccak> alreadyTriedNodes = new HashSet<Keccak>();
+        ISet<Hash256> alreadyTriedNodes = new HashSet<Hash256>();
 
         if (_logger.IsDebug) _logger.Debug($"Starting discovery process for node: {(searchedNodeId is not null ? $"randomNode: {new PublicKey(searchedNodeId).ToShortString()}" : $"masterNode: {_masterNode.Id}")}");
         int nodesCountBeforeDiscovery = NodesCountBeforeDiscovery;
@@ -146,7 +146,7 @@ public class NodesLocator : INodesLocator
     private IEnumerable<Task<Result>> SendFindNodes(
         byte[]? searchedNodeId,
         IEnumerable<Node?> nodesToSend,
-        ISet<Keccak> alreadyTriedNodes)
+        ISet<Hash256> alreadyTriedNodes)
     {
         foreach (Node? node in nodesToSend.Where(n => n is not null))
         {

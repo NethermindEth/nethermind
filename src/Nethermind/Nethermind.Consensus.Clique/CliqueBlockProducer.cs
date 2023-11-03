@@ -110,7 +110,7 @@ public class CliqueBlockProducer : ICliqueBlockProducer, IDisposable
         if (_logger.IsWarn) _logger.Warn($"Removed Clique vote for {signer}");
     }
 
-    public void ProduceOnTopOf(Keccak hash)
+    public void ProduceOnTopOf(Hash256 hash)
     {
         _signalsQueue.Add(_blockTree.FindBlock(hash, BlockTreeLookupOptions.None));
     }
@@ -335,7 +335,7 @@ public class CliqueBlockProducer : ICliqueBlockProducer, IDisposable
 
     public event EventHandler<BlockEventArgs>? BlockProduced;
 
-    private Keccak? _recentNotAllowedParent;
+    private Hash256? _recentNotAllowedParent;
 
     private Block? PrepareBlock(Block parentBlock)
     {

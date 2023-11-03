@@ -327,6 +327,17 @@ public class ChainSpecLoader : IChainSpecLoader
                 }
             }
         }
+        else if (chainSpecJson.Engine?.Optimism is not null)
+        {
+            chainSpec.SealEngineType = SealEngineType.Optimism;
+            chainSpec.Optimism = new OptimismParameters
+            {
+                RegolithTimestamp = chainSpecJson.Engine.Optimism.RegolithTimestamp,
+                BedrockBlockNumber = chainSpecJson.Engine.Optimism.BedrockBlockNumber,
+                L1FeeRecipient = chainSpecJson.Engine.Optimism.L1FeeRecipient,
+                L1BlockAddress = chainSpecJson.Engine.Optimism.L1BlockAddress
+            };
+        }
         else if (chainSpecJson.Engine?.NethDev is not null)
         {
             chainSpec.SealEngineType = SealEngineType.NethDev;
@@ -353,12 +364,12 @@ public class ChainSpecLoader : IChainSpecLoader
         }
 
         UInt256 nonce = chainSpecJson.Genesis.Seal?.Ethereum?.Nonce ?? 0;
-        Keccak mixHash = chainSpecJson.Genesis.Seal?.Ethereum?.MixHash ?? Keccak.Zero;
+        Hash256 mixHash = chainSpecJson.Genesis.Seal?.Ethereum?.MixHash ?? Keccak.Zero;
 
         byte[] auRaSignature = chainSpecJson.Genesis.Seal?.AuthorityRound?.Signature;
         long? step = chainSpecJson.Genesis.Seal?.AuthorityRound?.Step;
 
-        Keccak parentHash = chainSpecJson.Genesis.ParentHash ?? Keccak.Zero;
+        Hash256 parentHash = chainSpecJson.Genesis.ParentHash ?? Keccak.Zero;
         ulong timestamp = chainSpecJson.Genesis.Timestamp;
         UInt256 difficulty = chainSpecJson.Genesis.Difficulty;
         byte[] extraData = chainSpecJson.Genesis.ExtraData ?? Array.Empty<byte>();
@@ -369,6 +380,9 @@ public class ChainSpecLoader : IChainSpecLoader
             baseFee = chainSpecJson.Params.Eip1559Transition == 0
                 ? (chainSpecJson.Genesis.BaseFeePerGas ?? Eip1559Constants.DefaultForkBaseFee)
                 : UInt256.Zero;
+
+        Hash256 stateRoot = chainSpecJson.Genesis.StateRoot ?? Keccak.EmptyTreeHash;
+        chainSpec.GenesisStateUnavailable = chainSpecJson.Genesis.StateUnavailable;
 
         BlockHeader genesisHeader = new(
             parentHash,
@@ -386,7 +400,7 @@ public class ChainSpecLoader : IChainSpecLoader
         genesisHeader.MixHash = mixHash;
         genesisHeader.Nonce = (ulong)nonce;
         genesisHeader.ReceiptsRoot = Keccak.EmptyTreeHash;
-        genesisHeader.StateRoot = Keccak.EmptyTreeHash;
+        genesisHeader.StateRoot = stateRoot;
         genesisHeader.TxRoot = Keccak.EmptyTreeHash;
         genesisHeader.BaseFeePerGas = baseFee;
         bool withdrawalsEnabled = chainSpecJson.Params.Eip4895TransitionTimestamp != null && genesisHeader.Timestamp >= chainSpecJson.Params.Eip4895TransitionTimestamp;

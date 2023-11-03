@@ -115,6 +115,11 @@ public partial class EthRpcModule : IEthRpcModule
         return ResultWrapper<UInt256?>.Success(_gasPriceOracle.GetGasPriceEstimate());
     }
 
+    public ResultWrapper<GasPrices> eth_gasPrices()
+    {
+        return ResultWrapper<GasPrices>.Success(_gasPriceOracle.GetGasPricesEstimate());
+    }
+
     public ResultWrapper<UInt256?> eth_maxPriorityFeePerGas()
     {
         UInt256 gasPriceWithBaseFee = _gasPriceOracle.GetMaxPriorityGasFeeEstimate();
@@ -210,7 +215,7 @@ public partial class EthRpcModule : IEthRpcModule
         return Task.FromResult(ResultWrapper<UInt256>.Success(nonce));
     }
 
-    public ResultWrapper<UInt256?> eth_getBlockTransactionCountByHash(Keccak blockHash)
+    public ResultWrapper<UInt256?> eth_getBlockTransactionCountByHash(Hash256 blockHash)
     {
         SearchResult<Block> searchResult = _blockFinder.SearchForBlock(new BlockParameter(blockHash));
         return searchResult.IsError
@@ -226,7 +231,7 @@ public partial class EthRpcModule : IEthRpcModule
             : ResultWrapper<UInt256?>.Success((UInt256)searchResult.Object!.Transactions.Length);
     }
 
-    public ResultWrapper<UInt256?> eth_getUncleCountByBlockHash(Keccak blockHash)
+    public ResultWrapper<UInt256?> eth_getUncleCountByBlockHash(Hash256 blockHash)
     {
         SearchResult<Block> searchResult = _blockFinder.SearchForBlock(new BlockParameter(blockHash));
         return searchResult.IsError
@@ -290,14 +295,14 @@ public partial class EthRpcModule : IEthRpcModule
         return ResultWrapper<byte[]>.Success(sig.Bytes);
     }
 
-    public Task<ResultWrapper<Keccak>> eth_sendTransaction(TransactionForRpc rpcTx)
+    public Task<ResultWrapper<Hash256>> eth_sendTransaction(TransactionForRpc rpcTx)
     {
         Transaction tx = rpcTx.ToTransactionWithDefaults(_blockchainBridge.GetChainId());
         TxHandlingOptions options = rpcTx.Nonce is null ? TxHandlingOptions.ManagedNonce : TxHandlingOptions.None;
         return SendTx(tx, options);
     }
 
-    public async Task<ResultWrapper<Keccak>> eth_sendRawTransaction(byte[] transaction)
+    public async Task<ResultWrapper<Hash256>> eth_sendRawTransaction(byte[] transaction)
     {
         try
         {
@@ -307,30 +312,30 @@ public partial class EthRpcModule : IEthRpcModule
         }
         catch (RlpException)
         {
-            return ResultWrapper<Keccak>.Fail("Invalid RLP.", ErrorCodes.TransactionRejected);
+            return ResultWrapper<Hash256>.Fail("Invalid RLP.", ErrorCodes.TransactionRejected);
         }
     }
 
-    private async Task<ResultWrapper<Keccak>> SendTx(Transaction tx,
+    private async Task<ResultWrapper<Hash256>> SendTx(Transaction tx,
         TxHandlingOptions txHandlingOptions = TxHandlingOptions.None)
     {
         try
         {
-            (Keccak txHash, AcceptTxResult? acceptTxResult) =
+            (Hash256 txHash, AcceptTxResult? acceptTxResult) =
                 await _txSender.SendTransaction(tx, txHandlingOptions | TxHandlingOptions.PersistentBroadcast);
 
             return acceptTxResult.Equals(AcceptTxResult.Accepted)
-                ? ResultWrapper<Keccak>.Success(txHash)
-                : ResultWrapper<Keccak>.Fail(acceptTxResult?.ToString() ?? string.Empty, ErrorCodes.TransactionRejected);
+                ? ResultWrapper<Hash256>.Success(txHash)
+                : ResultWrapper<Hash256>.Fail(acceptTxResult?.ToString() ?? string.Empty, ErrorCodes.TransactionRejected);
         }
         catch (SecurityException e)
         {
-            return ResultWrapper<Keccak>.Fail(e.Message, ErrorCodes.AccountLocked);
+            return ResultWrapper<Hash256>.Fail(e.Message, ErrorCodes.AccountLocked);
         }
         catch (Exception e)
         {
             if (_logger.IsError) _logger.Error("Failed to send transaction.", e);
-            return ResultWrapper<Keccak>.Fail(e.Message, ErrorCodes.TransactionRejected);
+            return ResultWrapper<Hash256>.Fail(e.Message, ErrorCodes.TransactionRejected);
         }
     }
 
@@ -346,7 +351,7 @@ public partial class EthRpcModule : IEthRpcModule
         new CreateAccessListTxExecutor(_blockchainBridge, _blockFinder, _rpcConfig, optimize)
             .ExecuteTx(transactionCall, blockParameter);
 
-    public ResultWrapper<BlockForRpc> eth_getBlockByHash(Keccak blockHash, bool returnFullTransactionObjects)
+    public ResultWrapper<BlockForRpc> eth_getBlockByHash(Hash256 blockHash, bool returnFullTransactionObjects)
     {
         return GetBlock(new BlockParameter(blockHash), returnFullTransactionObjects);
     }
@@ -376,7 +381,7 @@ public partial class EthRpcModule : IEthRpcModule
             : new BlockForRpc(block, returnFullTransactionObjects, _specProvider));
     }
 
-    public Task<ResultWrapper<TransactionForRpc>> eth_getTransactionByHash(Keccak transactionHash)
+    public Task<ResultWrapper<TransactionForRpc>> eth_getTransactionByHash(Hash256 transactionHash)
     {
         UInt256? baseFee = null;
         _txPoolBridge.TryGetPendingTransaction(transactionHash, out Transaction transaction);
@@ -414,7 +419,7 @@ public partial class EthRpcModule : IEthRpcModule
         return ResultWrapper<TransactionForRpc[]>.Success(transactionsModels);
     }
 
-    public ResultWrapper<TransactionForRpc> eth_getTransactionByBlockHashAndIndex(Keccak blockHash,
+    public ResultWrapper<TransactionForRpc> eth_getTransactionByBlockHashAndIndex(Hash256 blockHash,
         UInt256 positionIndex)
     {
         SearchResult<Block> searchResult = _blockFinder.SearchForBlock(new BlockParameter(blockHash));
@@ -463,7 +468,7 @@ public partial class EthRpcModule : IEthRpcModule
         return ResultWrapper<TransactionForRpc>.Success(transactionModel);
     }
 
-    public Task<ResultWrapper<ReceiptForRpc>> eth_getTransactionReceipt(Keccak txHash)
+    public Task<ResultWrapper<ReceiptForRpc>> eth_getTransactionReceipt(Hash256 txHash)
     {
         (TxReceipt? receipt, TxGasInfo? gasInfo, int logIndexStart) = _blockchainBridge.GetReceiptAndGasInfo(txHash);
         if (receipt is null || gasInfo is null)
@@ -475,7 +480,7 @@ public partial class EthRpcModule : IEthRpcModule
         return Task.FromResult(ResultWrapper<ReceiptForRpc>.Success(new(txHash, receipt, gasInfo.Value, logIndexStart)));
     }
 
-    public ResultWrapper<BlockForRpc> eth_getUncleByBlockHashAndIndex(Keccak blockHash, UInt256 positionIndex)
+    public ResultWrapper<BlockForRpc> eth_getUncleByBlockHashAndIndex(Hash256 blockHash, UInt256 positionIndex)
     {
         return GetUncle(new BlockParameter(blockHash), positionIndex);
     }

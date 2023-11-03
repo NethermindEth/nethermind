@@ -21,7 +21,7 @@ public class BeaconBlockRootHandler : IBeaconBlockRootHandler
             block.Header.ParentBeaconBlockRoot is null) return;
 
         UInt256 timestamp = (UInt256)block.Timestamp;
-        Keccak parentBeaconBlockRoot = block.ParentBeaconBlockRoot;
+        Hash256 parentBeaconBlockRoot = block.ParentBeaconBlockRoot;
 
         UInt256.Mod(timestamp, HISTORICAL_ROOTS_LENGTH, out UInt256 timestampReduced);
         UInt256 rootIndex = timestampReduced + HISTORICAL_ROOTS_LENGTH;

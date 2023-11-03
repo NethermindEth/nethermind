@@ -9,6 +9,7 @@ using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
+using Nethermind.Evm;
 using Nethermind.Int256;
 using Nethermind.Logging;
 
@@ -48,7 +49,7 @@ namespace Nethermind.JsonRpc.Modules.Eth.GasPrice
                 return FallbackGasPrice();
             }
 
-            Keccak headBlockHash = headBlock.Hash!;
+            Hash256 headBlockHash = headBlock.Hash!;
             if (_gasPriceEstimation.TryGetPrice(headBlockHash, out UInt256? price))
             {
                 return price!.Value;
@@ -59,6 +60,27 @@ namespace Nethermind.JsonRpc.Modules.Eth.GasPrice
             gasPriceEstimate = UInt256.Min(gasPriceEstimate!, EthGasPriceConstants.MaxGasPrice);
             _gasPriceEstimation.Set(headBlockHash, gasPriceEstimate);
             return gasPriceEstimate!;
+        }
+
+        public GasPrices GetGasPricesEstimate()
+        {
+            return new GasPrices
+            {
+                Gas = GetGasPriceEstimate(),
+                BlobGas = GetBlobGasPriceEstimate(),
+            };
+        }
+
+        public UInt256 GetBlobGasPriceEstimate()
+        {
+            Block? headBlock = _blockFinder.Head;
+
+            if (headBlock is null)
+            {
+                return Eip4844Constants.MinBlobGasPrice;
+            }
+
+            return BlobGasCalculator.TryCalculateBlobGasPricePerUnit(headBlock.Header, out UInt256 result) ? result : 0;
         }
 
         internal IEnumerable<UInt256> GetSortedGasPricesFromRecentBlocks(long blockNumber) =>
@@ -73,7 +95,7 @@ namespace Nethermind.JsonRpc.Modules.Eth.GasPrice
                 return EthGasPriceConstants.FallbackMaxPriorityFeePerGas;
             }
 
-            Keccak headBlockHash = headBlock.Hash!;
+            Hash256 headBlockHash = headBlock.Hash!;
             if (_maxPriorityFeePerGasEstimation.TryGetPrice(headBlockHash, out UInt256? price))
             {
                 return price!.Value;
@@ -173,22 +195,22 @@ namespace Nethermind.JsonRpc.Modules.Eth.GasPrice
 
         internal struct PriceCache
         {
-            public PriceCache(Keccak? headHash, UInt256? price)
+            public PriceCache(Hash256? headHash, UInt256? price)
             {
                 LastHeadHash = headHash;
                 LastPrice = price;
             }
 
             public UInt256? LastPrice { get; private set; }
-            private Keccak? LastHeadHash { get; set; }
+            private Hash256? LastHeadHash { get; set; }
 
-            public void Set(Keccak headHash, UInt256 price)
+            public void Set(Hash256 headHash, UInt256 price)
             {
                 LastHeadHash = headHash;
                 LastPrice = price;
             }
 
-            public bool TryGetPrice(Keccak headHash, out UInt256? price)
+            public bool TryGetPrice(Hash256 headHash, out UInt256? price)
             {
                 if (headHash == LastHeadHash)
                 {

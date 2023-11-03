@@ -115,7 +115,7 @@ public class PointEvaluationPrecompileTests
                 "c00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"))
             {
 
-                TestName = "Commitment does not much hash"
+                TestName = "Hash256 does not much hash"
             };
             yield return new TestCaseData(CreateKzgTestInput(
                 "010657f37554c781402a22917dee2f75def7ab966d7b770905398eba3c444014",

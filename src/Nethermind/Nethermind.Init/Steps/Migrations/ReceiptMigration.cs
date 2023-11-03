@@ -51,8 +51,8 @@ namespace Nethermind.Init.Steps.Migrations
 
         private readonly IReceiptConfig _receiptConfig;
         private readonly IColumnsDb<ReceiptsColumns> _receiptsDb;
-        private readonly IDbWithSpan _txIndexDb;
-        private readonly IDbWithSpan _receiptsBlockDb;
+        private readonly IDb _txIndexDb;
+        private readonly IDb _receiptsBlockDb;
         private readonly IReceiptsRecovery _recovery;
 
         public ReceiptMigration(IApiWithNetwork api) : this(
@@ -208,7 +208,7 @@ namespace Nethermind.Init.Steps.Migrations
 
                 GetBlockBodiesForMigration(token).AsParallel().WithDegreeOfParallelism(parallelism).ForAll((item) =>
                 {
-                    (long blockNum, Keccak blockHash) = item;
+                    (long blockNum, Hash256 blockHash) = item;
                     Block? block = _blockTree.FindBlock(blockHash!, BlockTreeLookupOptions.None);
                     bool usingEmptyBlock = block == null;
                     if (usingEmptyBlock)
@@ -248,7 +248,7 @@ namespace Nethermind.Init.Steps.Migrations
             }
         }
 
-        Block GetMissingBlock(long i, Keccak? blockHash)
+        Block GetMissingBlock(long i, Hash256? blockHash)
         {
             if (_logger.IsDebug) _logger.Debug(GetLogMessage("warning", $"Block {i} not found. Logs will not be searchable for this block."));
             Block emptyBlock = EmptyBlock.Get();
@@ -262,9 +262,9 @@ namespace Nethermind.Init.Steps.Migrations
             EmptyBlock.Return(emptyBlock);
         }
 
-        IEnumerable<(long, Keccak)> GetBlockBodiesForMigration(CancellationToken token)
+        IEnumerable<(long, Hash256)> GetBlockBodiesForMigration(CancellationToken token)
         {
-            bool TryGetMainChainBlockHashFromLevel(long number, out Keccak? blockHash)
+            bool TryGetMainChainBlockHashFromLevel(long number, out Hash256? blockHash)
             {
                 using BatchWrite batch = _chainLevelInfoRepository.StartBatch();
                 ChainLevelInfo? level = _chainLevelInfoRepository.LoadLevel(number);
@@ -297,7 +297,7 @@ namespace Nethermind.Init.Steps.Migrations
                     yield break;
                 }
 
-                if (TryGetMainChainBlockHashFromLevel(i, out Keccak? blockHash))
+                if (TryGetMainChainBlockHashFromLevel(i, out Hash256? blockHash))
                 {
                     yield return (i, blockHash!);
                 }
@@ -322,10 +322,10 @@ namespace Nethermind.Init.Steps.Migrations
 
             // I guess some old schema need this
             {
-                using IBatch batch = _receiptsDb.StartBatch().GetColumnBatch(ReceiptsColumns.Transactions);
+                using IWriteBatch writeBatch = _receiptsDb.StartWriteBatch().GetColumnBatch(ReceiptsColumns.Transactions);
                 for (int i = 0; i < notNullReceipts.Length; i++)
                 {
-                    batch[notNullReceipts[i].TxHash!.Bytes] = null;
+                    writeBatch[notNullReceipts[i].TxHash!.Bytes] = null;
                 }
             }
 
@@ -337,10 +337,10 @@ namespace Nethermind.Init.Steps.Migrations
             bool neverIndexTx = _receiptConfig.TxLookupLimit == -1;
             if (neverIndexTx || txIndexExpired)
             {
-                using IBatch batch = _txIndexDb.StartBatch();
+                using IWriteBatch writeBatch = _txIndexDb.StartWriteBatch();
                 foreach (TxReceipt? receipt in notNullReceipts)
                 {
-                    batch[receipt.TxHash!.Bytes] = null;
+                    writeBatch[receipt.TxHash!.Bytes] = null;
                 }
             }
 
@@ -386,7 +386,7 @@ namespace Nethermind.Init.Steps.Migrations
             }
         }
 
-        private bool IsMigrationNeeded(long blockNumber, Keccak blockHash, TxReceipt[] receipts)
+        private bool IsMigrationNeeded(long blockNumber, Hash256 blockHash, TxReceipt[] receipts)
         {
             if (!_receiptConfig.CompactReceiptStore && _recovery.NeedRecover(receipts))
             {

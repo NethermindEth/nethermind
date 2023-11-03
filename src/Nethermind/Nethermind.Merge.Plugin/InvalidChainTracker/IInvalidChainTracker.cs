@@ -13,18 +13,18 @@ public interface IInvalidChainTracker : IDisposable
     /// </summary>
     /// <param name="child"></param>
     /// <param name="parent"></param>
-    void SetChildParent(Keccak child, Keccak parent);
+    void SetChildParent(Hash256 child, Hash256 parent);
 
     /// <summary>
     /// Mark the block hash as a failed block.
     /// </summary>
     /// <param name="failedBlock"></param>
     /// <param name="parent"></param>
-    void OnInvalidBlock(Keccak failedBlock, Keccak? parent);
+    void OnInvalidBlock(Hash256 failedBlock, Hash256? parent);
 
     /// <summary>
     /// Return last valid hash if this block is known to be on an invalid chain.
     /// Return null otherwise
     /// </summary>
-    bool IsOnKnownInvalidChain(Keccak blockHash, out Keccak? lastValidHash);
+    bool IsOnKnownInvalidChain(Hash256 blockHash, out Hash256? lastValidHash);
 }

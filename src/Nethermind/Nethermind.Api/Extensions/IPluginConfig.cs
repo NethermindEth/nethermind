@@ -7,6 +7,6 @@ namespace Nethermind.Api.Extensions;
 
 public interface IPluginConfig : IConfig
 {
-    [ConfigItem(Description = "Order of plugin initialization", DefaultValue = "[Clique, Aura, Ethash, AuRaMerge, Merge, MEV, HealthChecks, Hive]")]
+    [ConfigItem(Description = "Order of plugin initialization", DefaultValue = "[Clique, Aura, Ethash, Optimism, AuRaMerge, Merge, MEV, HealthChecks, Hive]")]
     string[] PluginOrder { get; set; }
 }

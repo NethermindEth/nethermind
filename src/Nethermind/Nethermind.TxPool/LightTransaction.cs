@@ -16,7 +16,7 @@ namespace Nethermind.TxPool;
 public class LightTransaction : Transaction
 {
     private static readonly Dictionary<int, byte[][]> _blobVersionedHashesCache =
-        Enumerable.Range(1, Eip4844Constants.MaxBlobsPerBlock).ToDictionary(i => i, i => new byte[i][]);
+        Enumerable.Range(1, Eip4844Constants.GetMaxBlobsPerBlock()).ToDictionary(i => i, i => new byte[i][]);
 
 
     public LightTransaction(Transaction fullTx)
@@ -41,7 +41,7 @@ public class LightTransaction : Transaction
         UInt256 timestamp,
         Address sender,
         UInt256 nonce,
-        Keccak hash,
+        Hash256 hash,
         UInt256 value,
         long gasLimit,
         UInt256 gasPrice,

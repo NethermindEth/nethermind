@@ -37,7 +37,7 @@ namespace Nethermind.Mev.Data
 
         public UInt256 MinTimestamp { get; }
 
-        public virtual Keccak Hash { get; }
+        public virtual Hash256 Hash { get; }
 
         public int SequenceNumber { get; }
 
