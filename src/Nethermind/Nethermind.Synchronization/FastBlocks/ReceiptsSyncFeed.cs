@@ -50,7 +50,8 @@ namespace Nethermind.Synchronization.FastBlocks
             || WithinOldBarrierDefault;
 
         // This property was introduced when we switched defaults of barriers on mainnet from 11052984 to 0 to not disturb existing node operators
-        private bool WithinOldBarrierDefault => _barrierWhenStarted == DepositContractBarrier
+        private bool WithinOldBarrierDefault => _specProvider.ChainId == BlockchainIds.Mainnet
+            && _barrierWhenStarted == DepositContractBarrier
             && _receiptStorage.LowestInsertedReceiptBlockNumber <= DepositContractBarrier
             && _receiptStorage.LowestInsertedReceiptBlockNumber > DepositContractBarrier - GethSyncLimits.MaxBodyFetch; // this is intentional. using this as an approxamation assuming a minimum of 1 receipt in per block
 
@@ -90,8 +91,6 @@ namespace Nethermind.Synchronization.FastBlocks
                 _barrier = _syncConfig.AncientReceiptsBarrierCalc;
                 if (_logger.IsInfo) _logger.Info($"Changed pivot in receipts sync. Now using pivot {_pivotNumber} and barrier {_barrier}");
                 ResetSyncStatusList();
-                if (_specProvider.ChainId != BlockchainIds.Mainnet)
-                    return;
                 if (!_receiptStorage.HasBlock(_syncConfig.PivotNumberParsed, _syncConfig.PivotHashParsed))
                 {
                     _barrierWhenStarted = _syncConfig.AncientReceiptsBarrierCalc;
@@ -101,10 +100,16 @@ namespace Nethermind.Synchronization.FastBlocks
                 {
                     _barrierWhenStarted = _metadataDb.Get(MetadataDbKeys.ReceiptsBarrierWhenStarted).ToLongFromBigEndianByteArrayWithoutLeadingZeros();
                 }
+                else if (_specProvider.ChainId == BlockchainIds.Mainnet)
+                {
+                    // Assume the receipts barrier was the previous defualt (deposit contract barrier) only for mainnet
+                    _barrierWhenStarted = DepositContractBarrier;
+                    _metadataDb.Set(MetadataDbKeys.ReceiptsBarrierWhenStarted, _barrierWhenStarted.Value.ToBigEndianByteArrayWithoutLeadingZeros());
+                }
                 else
                 {
-                    // Assume the receipts barrier was the previous defualt
-                    _barrierWhenStarted = DepositContractBarrier;
+                    _barrierWhenStarted = _barrier;
+                    _metadataDb.Set(MetadataDbKeys.ReceiptsBarrierWhenStarted, _barrierWhenStarted.Value.ToBigEndianByteArrayWithoutLeadingZeros());
                 }
             }
 
