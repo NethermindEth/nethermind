@@ -210,23 +210,20 @@ internal class E2Store : IDisposable
         return e;
     }
 
-    public Task<int> ReadEntryValueAsSnappy(IByteBuffer buffer, Entry e, CancellationToken cancellation = default)
-    {
-        return ReadEntryValueAsSnappy(buffer, 0, e, cancellation);
-    }
-    public async Task<int> ReadEntryValueAsSnappy(IByteBuffer buffer, int offset, Entry e, CancellationToken cancellation = default)
+    public async Task<int> ReadEntryValueAsSnappy(IByteBuffer buffer, Entry e, CancellationToken cancellation = default)
     {
         if (buffer is null) throw new ArgumentNullException(nameof(buffer));
-        if (offset < 0) throw new ArgumentOutOfRangeException(nameof(offset), "Cannot be a negative number.");
-        if (offset >= buffer.Capacity) throw new ArgumentOutOfRangeException(nameof(offset), "Cannot exceed the length of the buffer.");
         if (e.ValueOffset + e.Length > StreamLength) throw new EraFormatException($"Entry has a length ({e.Length}) and offset ({e.Offset}) that would read beyond the length of the stream.");
 
         using SnappyStream snappy = new(new StreamSegment(_stream, e.ValueOffset, e.Length), CompressionMode.Decompress, true);
         int totalRead = 0;
         int read = 0;
         do
-        {            
-            read = await buffer.SetBytesAsync(offset + totalRead, snappy, buffer.Capacity - offset - totalRead, cancellation);
+        {
+            int before = buffer.WriterIndex;
+            //We don't know the uncompressed length 
+            await buffer.WriteBytesAsync(snappy, (int)e.Length * 4, cancellation);
+            read = buffer.WriterIndex - before;
             totalRead += read;
         }
         while (read != 0);
@@ -240,11 +237,8 @@ internal class E2Store : IDisposable
         if (e.ValueOffset + e.Length > StreamLength) throw new EraFormatException($"Entry has a length ({e.Length}) and offset ({e.Offset}) that would read beyond the length of the stream.");
 
         _stream.Position = e.ValueOffset;
-        int read = await buffer.SetBytesAsync(0, _stream, (int)e.Length, cancellation);
-        //TODO not correct length, but can only happen if EOF or Entry is malformed
-        if (read != e.Length)
-            throw new EraFormatException($"Invalid entry detected at offset {e.Offset}.");
-        return read;
+        await buffer.WriteBytesAsync(_stream, (int)e.Length);
+        return (int)e.Length;
     }
 
     public Task Flush(CancellationToken cancellation = default)

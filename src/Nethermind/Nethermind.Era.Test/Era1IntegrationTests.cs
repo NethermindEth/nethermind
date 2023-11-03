@@ -5,11 +5,14 @@ using System.Diagnostics;
 using System.Security.Cryptography;
 using FluentAssertions;
 using Nethermind.Blockchain;
+using Nethermind.Consensus.Processing;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Era1;
+using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
 using NUnit.Framework.Constraints;
@@ -25,10 +28,15 @@ public class Era1IntegrationTests
         EraBuilder builder = EraBuilder.Create(stream);
         Block block0 = Build.A.Block
             .WithNumber(0)
-            .WithTotalDifficulty(BlockHeaderBuilder.DefaultDifficulty).TestObject;
+            .WithTotalDifficulty(BlockHeaderBuilder.DefaultDifficulty)
+            .WithTransactions(Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyA)
+                                                 .To(TestItem.GetRandomAddress()).TestObject)
+            .TestObject;
         Block block1 = Build.A.Block
             .WithNumber(1)
-            .WithTotalDifficulty(BlockHeaderBuilder.DefaultDifficulty).TestObject;
+            .WithTotalDifficulty(BlockHeaderBuilder.DefaultDifficulty)
+            .WithTransactions(Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyB)
+                                                 .To(TestItem.GetRandomAddress()).TestObject).TestObject;
         TxReceipt receipt0 = Build.A.Receipt
             .WithAllFieldsFilled
             .TestObject;
@@ -36,8 +44,8 @@ public class Era1IntegrationTests
             .WithAllFieldsFilled
             .TestObject;
 
-        await builder.Add(block0, new[] {receipt0} );
-        await builder.Add(block1, new[] {receipt1} );
+        await builder.Add(block0, new[] { receipt0 });
+        await builder.Add(block1, new[] { receipt1 });
         await builder.Finalize();
 
         EraReader reader = await EraReader.Create(stream);
@@ -67,35 +75,32 @@ public class Era1IntegrationTests
         var eraFiles = EraReader.GetAllEraFiles("data", "mainnet");
 
         Directory.CreateDirectory("temp");
-
-        foreach (var era in eraFiles)
+        try
         {
-            using var eraEnumerator = await EraReader.Create(era);
-
-            string tempEra = Path.Combine("temp", Path.GetFileName(era));
-            var builder = EraBuilder.Create(tempEra);
-
-            await foreach ((Block b, TxReceipt[] r, UInt256 td) in eraEnumerator)
+            foreach (var era in eraFiles)
             {
-                Debug.WriteLine($"Reencoding block");
+                using var eraEnumerator = await EraReader.Create(era);
 
-                Rlp encodedHeader = new HeaderDecoder().Encode(b.Header);
-                Rlp encodedBody = new BlockBodyDecoder().Encode(b.Body);
+                string tempEra = Path.Combine("temp", Path.GetFileName(era));
+                var builder = EraBuilder.Create(tempEra);
 
-                await builder.Add(b, r, td);
-            }
-            await builder.Finalize();
-            builder.Dispose();
+                await foreach ((Block b, TxReceipt[] r, UInt256 td) in eraEnumerator)
+                {
+                    await builder.Add(b, r, td);
+                }
+                await builder.Finalize();
+                builder.Dispose();
 
-            using var eraEnumeratorTemp = await EraReader.Create(tempEra);
-            await foreach ((Block b, TxReceipt[] r, UInt256 td) in eraEnumeratorTemp)
-            {
-                Rlp encodedHeader = new HeaderDecoder().Encode(b.Header);
-                Rlp encodedBody = new BlockBodyDecoder().Encode(b.Body);
+                using var eraEnumeratorTemp = await EraReader.Create(tempEra);
+                await foreach ((Block b, TxReceipt[] r, UInt256 td) in eraEnumeratorTemp)
+                {
+                }
             }
         }
-
-        Directory.Delete("temp", true);
+        finally
+        {
+            Directory.Delete("temp", true);
+        }
     }
 
     [Test]
@@ -140,7 +145,8 @@ public class Era1IntegrationTests
 
         await builder.Add(genesis, genesisReceipts);
 
-        testBlockchain.BlockProcessor.BlockProcessed += (sender, blockArgs) => {
+        testBlockchain.BlockProcessor.BlockProcessed += (sender, blockArgs) =>
+        {
             builder.Add(blockArgs.Block, blockArgs.TxReceipts).Wait();
         };
 
@@ -158,7 +164,7 @@ public class Era1IntegrationTests
         //Plus genesis block
         Assert.That(count, Is.EqualTo(numOfBlocks + 1));
         //Seek to start of block index
-        stream.Seek(-8 -8 - count * 8, SeekOrigin.End);
+        stream.Seek(-8 - 8 - count * 8, SeekOrigin.End);
         stream.Read(buffer, 0, 8);
 
         long startNumber = BitConverter.ToInt64(buffer, 0);
@@ -184,37 +190,63 @@ public class Era1IntegrationTests
         }
     }
 
-    [Test]  
+    [Test]
     public async Task TestExportImportHistory()
     {
-        BasicTestBlockchain testBlockchain = await BasicTestBlockchain.Create();
+        TestBlockchain testBlockchain = await BasicTestBlockchain.Create();
         using MemoryStream stream = new();
         EraBuilder builder = EraBuilder.Create(stream);
 
         Block genesis = testBlockchain.BlockFinder.FindBlock(0)!;
-        TxReceipt[] genesisReceipts = testBlockchain.ReceiptStorage.Get(genesis);
 
-        await builder.Add(genesis, genesisReceipts);
-
-        testBlockchain.BlockProcessor.BlockProcessed += (sender, blockArgs) => {
-            builder.Add(blockArgs.Block, blockArgs.TxReceipts).Wait();
+        int numOfBlocks = 32;
+        int numOfTx = 300;
+        UInt256 nonce = 0;
+        var blocks = new List<Block>
+        {
+            genesis
         };
+        for (int i = 0; i < numOfBlocks; i++)
+        {
+            Transaction[] transactions = new Transaction[numOfTx];
+            for (int y = 0; y < numOfTx; y++)
+            {
+                transactions[y] = Build.A.Transaction.WithTo(TestItem.GetRandomAddress())
+                                                     .WithNonce(nonce)
+                                                     .WithValue(1)
+                                                     .SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+                nonce++;
+            }
+            blocks.Add(Build.A.Block.WithTotalDifficulty(1000000L + blocks[i].TotalDifficulty)
+                                    .WithTransactions(transactions)
+                                    .WithParent(blocks[i])
+                                    .WithGasLimit(30_000_000).TestObject);
+        }
 
-        int numOfBlocks = 32 * 3 * 10;
-        await testBlockchain.BuildSomeBlocks(numOfBlocks);
+        testBlockchain.BlockProcessor.Process(genesis.StateRoot!, blocks, ProcessingOptions.NoValidation, new BlockReceiptsTracer());
+
+        foreach (var block in blocks)
+        {
+            await builder.Add(block, testBlockchain.ReceiptStorage.Get(block));
+        }
 
         await builder.Finalize();
 
         EraReader iterator = await EraReader.Create(stream);
 
         await using var enu = iterator.GetAsyncEnumerator();
-        for (int i = 0; i < numOfBlocks;i++)
+        for (int i = 0; i < numOfBlocks; i++)
         {
             Assert.That(await enu.MoveNextAsync(), Is.True, $"Expected block {i} from the iterator, but it returned false.");
             (Block b, TxReceipt[] r, UInt256 td) = enu.Current;
             b.Header.TotalDifficulty = td;
-                
-            Block expectedBlock = testBlockchain.BlockFinder.FindBlock(i) ?? throw new ArgumentException("Could not find required block?");
+
+            Block expectedBlock = blocks[i] ?? throw new ArgumentException("Could not find required block?");
+
+            //ignore these for comparison
+            expectedBlock.Header.MaybeParent = null;
+            expectedBlock.Transactions.All(t => { t.SenderAddress = null; return true; });
+
             TxReceipt[] expectedReceipts = testBlockchain.ReceiptStorage.Get(expectedBlock);
 
             b.Should().BeEquivalentTo(expectedBlock);
@@ -229,12 +261,12 @@ public class Era1IntegrationTests
                 Assert.That(r[y].Bloom, Is.EqualTo(expectedReceipts[y].Bloom));
                 Assert.That(r[y].Logs, Is.EquivalentTo(expectedReceipts[y].Logs));
                 if (expectedReceipts[y].Error == null)
-                    Assert.That(r[y].Error, new OrConstraint( Is.Null, Is.Empty));
+                    Assert.That(r[y].Error, new OrConstraint(Is.Null, Is.Empty));
                 else
                     Assert.That(r[y].Error, Is.EqualTo(expectedReceipts[y].Error));
             }
         }
-        
+
     }
 
 }
