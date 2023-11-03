@@ -15,7 +15,6 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
 using Nethermind.Logging;
-using Nethermind.Specs;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
@@ -50,8 +49,9 @@ namespace Nethermind.Synchronization.FastBlocks
         private bool AllDownloaded => _receiptStorage.LowestInsertedReceiptBlockNumber <= _barrier
             || WithinOldBarrierDefault;
 
-        // This property was introduced when we switched defaults of barriers from 11052984 to 0 to not disturb existing node operators
-        private bool WithinOldBarrierDefault => _receiptStorage.LowestInsertedReceiptBlockNumber <= DepositContractBarrier
+        // This property was introduced when we switched defaults of barriers on mainnet from 11052984 to 0 to not disturb existing node operators
+        private bool WithinOldBarrierDefault => _barrierWhenStarted == DepositContractBarrier
+            && _receiptStorage.LowestInsertedReceiptBlockNumber <= DepositContractBarrier
             && _receiptStorage.LowestInsertedReceiptBlockNumber > DepositContractBarrier - GethSyncLimits.MaxBodyFetch; // this is intentional. using this as an approxamation assuming a minimum of 1 receipt in per block
 
         public override bool IsFinished => AllReceiptsDownloaded;
@@ -92,18 +92,19 @@ namespace Nethermind.Synchronization.FastBlocks
                 ResetSyncStatusList();
                 if (specProvider.ChainId != BlockchainIds.Mainnet)
                     return;
-
-                if (_receiptStorage.LowestInsertedReceiptBlockNumber is null)
+                if (!_receiptStorage.HasBlock(_syncConfig.PivotNumberParsed, _syncConfig.PivotHashParsed))
                 {
-                    if (!_metadataDb.KeyExists(MetadataDbKeys.ReceiptsBarrierWhenStarted))
-                    {
-                        _barrierWhenStarted = _syncConfig.AncientReceiptsBarrier;
-                        _metadataDb.Set(MetadataDbKeys.ReceiptsBarrierWhenStarted, _barrierWhenStarted.Value.ToBigEndianByteArrayWithoutLeadingZeros());
-                    }
+                    _barrierWhenStarted = _syncConfig.AncientReceiptsBarrierCalc;
+                    _metadataDb.Set(MetadataDbKeys.ReceiptsBarrierWhenStarted, _barrierWhenStarted.Value.ToBigEndianByteArrayWithoutLeadingZeros());
                 }
-                if (_metadataDb.KeyExists(MetadataDbKeys.ReceiptsBarrierWhenStarted))
+                else if (_metadataDb.KeyExists(MetadataDbKeys.ReceiptsBarrierWhenStarted))
                 {
                     _barrierWhenStarted = _metadataDb.Get(MetadataDbKeys.ReceiptsBarrierWhenStarted).ToLongFromBigEndianByteArrayWithoutLeadingZeros();
+                }
+                else
+                {
+                    // Assume the receipts barrier was the previous defualt
+                    _barrierWhenStarted = DepositContractBarrier;
                 }
             }
 
