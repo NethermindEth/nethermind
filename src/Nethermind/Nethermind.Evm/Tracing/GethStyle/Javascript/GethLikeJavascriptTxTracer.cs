@@ -7,7 +7,6 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
 using FastEnumUtility;
-using Microsoft.ClearScript;
 using Microsoft.ClearScript.V8;
 using Nethermind.Core;
 using Nethermind.Int256;
@@ -23,6 +22,7 @@ public sealed class GethLikeJavascriptTxTracer : GethLikeTxTracer
     private readonly Db _db;
     private readonly CallFrame _frame = new();
     private readonly FrameResult _result = new();
+    private int _depth;
 
     // Context is updated only of first ReportAction call.
     private readonly Context _ctx;
@@ -65,27 +65,6 @@ public sealed class GethLikeJavascriptTxTracer : GethLikeTxTracer
         return jsCode;
     }
 
-    public override void StartOperation(int depth, long gas, Instruction opcode, int pc, bool isPostMerge = false)
-    {
-        _log.pc = pc;
-        _log.op = new Log.Opcode(opcode);
-        _log.gas = gas;
-        _log.depth = depth;
-        if (_functions.HasFlag(TracerFunctions.step))
-        {
-            try
-            {
-                _tracer.step(_log, _db);
-            }
-            catch (Exception ex) when (ex is IScriptEngineException)
-            {
-                _tracer.fault(_log, _db);
-            }
-        }
-    }
-
-    public override void ReportOperationRemainingGas(long gas) => _log.gasCost = _log.gas - gas;
-
     public override GethLikeTxTrace BuildResult()
     {
         GethLikeTxTrace trace = base.BuildResult();
@@ -118,6 +97,33 @@ public sealed class GethLikeJavascriptTxTracer : GethLikeTxTracer
             _frame.Type = callType.FastToString();
             _tracer.enter(_frame);
         }
+
+        _depth++;
+    }
+
+    public override void StartOperation(int depth, long gas, Instruction opcode, int pc, bool isPostMerge = false)
+    {
+        _log.pc = pc;
+        _log.op = new Log.Opcode(opcode);
+        _log.gas = gas;
+        _log.depth = depth;
+        _log.error = null;
+        if (_functions.HasFlag(TracerFunctions.step))
+        {
+            _tracer.step(_log, _db);
+        }
+    }
+
+    public override void ReportOperationRemainingGas(long gas)
+    {
+        _log.gasCost = _log.gas - gas;
+    }
+
+    public override void ReportOperationError(EvmExceptionType error)
+    {
+        base.ReportOperationError(error);
+        _log.error = GetErrorDescription(error);
+        _tracer.fault(_log, _db);
     }
 
     public override void ReportActionEnd(long gas, Address deploymentAddress, ReadOnlyMemory<byte> deployedCode)
@@ -142,7 +148,8 @@ public sealed class GethLikeJavascriptTxTracer : GethLikeTxTracer
 
     private void InvokeExit(long gas, ReadOnlyMemory<byte> output, string? error = null)
     {
-        if (_functions.HasFlag(TracerFunctions.exit))
+        _depth--;
+        if (_depth > 0 && _functions.HasFlag(TracerFunctions.exit))
         {
             _result.GasUsed = gas;
             _result.Output = output.ToArray();
@@ -169,12 +176,6 @@ public sealed class GethLikeJavascriptTxTracer : GethLikeTxTracer
     {
         base.SetOperationMemory(memoryTrace);
         _log.memory.MemoryTrace = memoryTrace;
-    }
-
-    public override void ReportOperationError(EvmExceptionType error)
-    {
-        base.ReportOperationError(error);
-        _log.error = GetErrorDescription(error);
     }
 
     public override void SetOperationStack(TraceStack stack)
