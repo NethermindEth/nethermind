@@ -21,7 +21,7 @@ namespace Nethermind.Stats
 
         public int[] DisconnectDelays { get; set; }
 
-        public Dictionary<DisconnectReason, (TimeSpan reconnectDelay, double reputationMultiplier)> LocalDisconnectParams { get; } = new()
+        public Dictionary<DisconnectReason, (TimeSpan ReconnectDelay, double ReputationMultiplier)> LocalDisconnectParams { get; } = new()
         {
             // Its actually protocol init timeout, when status message is not received in time.
             { DisconnectReason.ReceiveMessageTimeout, (TimeSpan.FromMinutes(5), 1.0)},
@@ -38,7 +38,7 @@ namespace Nethermind.Stats
             { DisconnectReason.BreachOfProtocol, (TimeSpan.FromMinutes(15), 0.01) }
         };
 
-        public Dictionary<DisconnectReason, (TimeSpan reconnectDelay, double reputationMultiplier)> RemoteDisconnectParams { get; } = new()
+        public Dictionary<DisconnectReason, (TimeSpan ReconnectDelay, double ReputationMultiplier)> RemoteDisconnectParams { get; } = new()
         {
             { DisconnectReason.ClientQuitting, (TimeSpan.FromMinutes(5), 0.1) },
             { DisconnectReason.TooManyPeers, (TimeSpan.FromMinutes(1), 0.3) },
@@ -53,7 +53,7 @@ namespace Nethermind.Stats
             { DisconnectReason.AlreadyConnected, (TimeSpan.Zero, 0.01) },
         };
 
-        public Dictionary<NodeStatsEventType, (TimeSpan reconnectDelay, double reputationMultiplier)> EventParams { get; } = new()
+        public Dictionary<NodeStatsEventType, (TimeSpan ReconnectDelay, double ReputationMultiplier)> EventParams { get; } = new()
         {
             // Geth have 30 second reconnect delay. So its useless to try again before that.
             { NodeStatsEventType.Connecting, (TimeSpan.FromSeconds(30), 1.0) },
