@@ -34,6 +34,5 @@ public class NullBlobTxStorage : ITxStorage
 
     public void AddBlobTransactionsFromBlock(long blockNumber, IList<Transaction> blockBlobTransactions) { }
 
-    public void DeleteBlobTransactionsFromBlock(long blockNumber)
-    { }
+    public void DeleteBlobTransactionsFromBlock(long blockNumber) { }
 }

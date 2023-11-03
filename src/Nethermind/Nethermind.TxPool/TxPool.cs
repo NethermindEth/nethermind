@@ -265,30 +265,33 @@ namespace Nethermind.TxPool
 
             for (int i = 0; i < blockTransactions.Length; i++)
             {
-                Transaction transaction = blockTransactions[i];
-                Hash256 txHash = transaction.Hash ?? throw new ArgumentException("Hash was unexpectedly null!");
+                Transaction blockTx = blockTransactions[i];
+                Hash256 txHash = blockTx.Hash ?? throw new ArgumentException("Hash was unexpectedly null!");
+
+                if (blockTx.Supports1559)
+                {
+                    eip1559Txs++;
+                }
+
+                if (blockTx.SupportsBlobs)
+                {
+                    blobs += blockTx.BlobVersionedHashes?.Length ?? 0;
+
+                    if (_blobTransactions.TryGetValue(blockTx.Hash, out Transaction? fullBlobTx))
+                    {
+                        blobTxs ??= new List<Transaction>(Eip4844Constants.GetMaxBlobsPerBlock());
+                        blobTxs.Add(fullBlobTx);
+                    }
+                }
 
                 if (!IsKnown(txHash))
                 {
                     discoveredForHashCache++;
                 }
 
-                if (!RemoveIncludedTransaction(transaction))
+                if (!RemoveIncludedTransaction(blockTx))
                 {
                     discoveredForPendingTxs++;
-                }
-
-                if (transaction.Supports1559)
-                {
-                    eip1559Txs++;
-                }
-
-                if (transaction.SupportsBlobs)
-                {
-                    blobTxs ??= new List<Transaction>(Eip4844Constants.GetMaxBlobsPerBlock());
-                    blobTxs.Add(transaction);
-
-                    blobs += transaction.BlobVersionedHashes?.Length ?? 0;
                 }
             }
 
