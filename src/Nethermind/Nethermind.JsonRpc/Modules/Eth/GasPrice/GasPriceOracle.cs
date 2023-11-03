@@ -9,6 +9,7 @@ using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
+using Nethermind.Evm;
 using Nethermind.Int256;
 using Nethermind.Logging;
 
@@ -59,6 +60,27 @@ namespace Nethermind.JsonRpc.Modules.Eth.GasPrice
             gasPriceEstimate = UInt256.Min(gasPriceEstimate!, EthGasPriceConstants.MaxGasPrice);
             _gasPriceEstimation.Set(headBlockHash, gasPriceEstimate);
             return gasPriceEstimate!;
+        }
+
+        public GasPrices GetGasPricesEstimate()
+        {
+            return new GasPrices
+            {
+                Gas = GetGasPriceEstimate(),
+                BlobGas = GetBlobGasPriceEstimate(),
+            };
+        }
+
+        public UInt256 GetBlobGasPriceEstimate()
+        {
+            Block? headBlock = _blockFinder.Head;
+
+            if (headBlock is null)
+            {
+                return Eip4844Constants.MinBlobGasPrice;
+            }
+
+            return BlobGasCalculator.TryCalculateBlobGasPricePerUnit(headBlock.Header, out UInt256 result) ? result : 0;
         }
 
         internal IEnumerable<UInt256> GetSortedGasPricesFromRecentBlocks(long blockNumber) =>

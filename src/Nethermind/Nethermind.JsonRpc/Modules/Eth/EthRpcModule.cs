@@ -115,6 +115,11 @@ public partial class EthRpcModule : IEthRpcModule
         return ResultWrapper<UInt256?>.Success(_gasPriceOracle.GetGasPriceEstimate());
     }
 
+    public ResultWrapper<GasPrices> eth_gasPrices()
+    {
+        return ResultWrapper<GasPrices>.Success(_gasPriceOracle.GetGasPricesEstimate());
+    }
+
     public ResultWrapper<UInt256?> eth_maxPriorityFeePerGas()
     {
         UInt256 gasPriceWithBaseFee = _gasPriceOracle.GetMaxPriorityGasFeeEstimate();
