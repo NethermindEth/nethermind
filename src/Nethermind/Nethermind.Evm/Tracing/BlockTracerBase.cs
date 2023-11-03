@@ -15,13 +15,13 @@ public abstract class BlockTracerBase<TTrace, TTracer> : IBlockTracer<TTrace> wh
 
     protected BlockTracerBase()
     {
-        TxTraces = new ResettableList<TTrace>();
+        TxTraces = new DisposableResettableList<TTrace>();
     }
 
     protected BlockTracerBase(Hash256? txHash)
     {
         _txHash = txHash;
-        TxTraces = new ResettableList<TTrace>();
+        TxTraces = new DisposableResettableList<TTrace>();
     }
 
     private TTracer? CurrentTxTracer { get; set; }
@@ -51,7 +51,7 @@ public abstract class BlockTracerBase<TTrace, TTracer> : IBlockTracer<TTrace> wh
         return NullTxTracer.Instance;
     }
 
-    void IBlockTracer.EndTxTrace()
+    public virtual void EndTxTrace()
     {
         if (CurrentTxTracer is null)
             return;
@@ -65,7 +65,7 @@ public abstract class BlockTracerBase<TTrace, TTracer> : IBlockTracer<TTrace> wh
 
     protected virtual bool ShouldTraceTx(Transaction? tx) => _txHash is null || tx?.Hash == _txHash;
 
-    protected ResettableList<TTrace> TxTraces { get; }
+    protected DisposableResettableList<TTrace> TxTraces { get; }
 
     public IReadOnlyCollection<TTrace> BuildResult() => TxTraces;
 

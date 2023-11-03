@@ -19,6 +19,7 @@ public sealed class GethLikeJavascriptTxTracer : GethLikeTxTracer
 {
     private readonly dynamic _tracer;
     private readonly Log _log = new();
+    private readonly V8ScriptEngine _engine;
     private readonly Db _db;
     private readonly CallFrame _frame = new();
     private readonly FrameResult _result = new();
@@ -38,6 +39,7 @@ public sealed class GethLikeJavascriptTxTracer : GethLikeTxTracer
         IsTracingActions = true;
         IsTracingMemory = true;
 
+        _engine = engine;
         _db = db;
         _ctx = ctx;
         engine.Execute(LoadJavascriptCode(options.Tracer));
@@ -63,12 +65,7 @@ public sealed class GethLikeJavascriptTxTracer : GethLikeTxTracer
         return jsCode;
     }
 
-    public override GethLikeTxTrace BuildResult()
-    {
-        GethLikeTxTrace trace = base.BuildResult();
-        trace.CustomTracerResult = _tracer.result(_ctx, _db);
-        return trace;
-    }
+    protected override GethLikeTxTrace CreateTrace() => new(_engine) { CustomTracerResult = _tracer.result(_ctx, _db) };
 
     public override void ReportAction(long gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false)
     {

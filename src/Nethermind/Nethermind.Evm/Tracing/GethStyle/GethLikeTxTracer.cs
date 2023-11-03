@@ -19,7 +19,9 @@ public abstract class GethLikeTxTracer : TxTracer
         IsTracing = IsTracing || IsTracingFullMemory;
     }
 
-    protected GethLikeTxTrace Trace { get; } = new();
+    private GethLikeTxTrace? _trace;
+    protected GethLikeTxTrace Trace => _trace ??= CreateTrace();
+    protected virtual GethLikeTxTrace CreateTrace() => new();
     public override bool IsTracingReceipt => true;
     public sealed override bool IsTracingOpLevelStorage { get; protected set; }
     public sealed override bool IsTracingMemory { get; protected set; }

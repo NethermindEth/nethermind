@@ -14,19 +14,8 @@ namespace Nethermind.Evm.Tracing.GethStyle.Javascript;
 
 public static class JavascriptConverter
 {
-    [ThreadStatic] private static Engine? _currentEngine;
-    public static Engine? CurrentEngine
-    {
-        get => _currentEngine;
-        set
-        {
-            if (_currentEngine != value)
-            {
-                _currentEngine?.Dispose();
-                _currentEngine = value;
-            }
-        }
-    }
+    [field: ThreadStatic]
+    public static Engine? CurrentEngine { get; set; }
 
     public static byte[] ToBytes(this object input) => input switch
     {

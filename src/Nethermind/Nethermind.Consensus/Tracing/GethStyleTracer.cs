@@ -123,14 +123,14 @@ public class GethStyleTracer : IGethStyleTracer
         return blockTracer.BuildResult().SingleOrDefault();
     }
 
-    public GethLikeTxTrace[] TraceBlock(BlockParameter blockParameter, GethTraceOptions options, CancellationToken cancellationToken)
+    public IReadOnlyCollection<GethLikeTxTrace> TraceBlock(BlockParameter blockParameter, GethTraceOptions options, CancellationToken cancellationToken)
     {
         var block = _blockTree.FindBlock(blockParameter);
 
         return TraceBlock(block, options, cancellationToken);
     }
 
-    public GethLikeTxTrace[] TraceBlock(Rlp blockRlp, GethTraceOptions options, CancellationToken cancellationToken)
+    public IReadOnlyCollection<GethLikeTxTrace> TraceBlock(Rlp blockRlp, GethTraceOptions options, CancellationToken cancellationToken)
     {
         return TraceBlock(GetBlockToTrace(blockRlp), options, cancellationToken);
     }
@@ -173,7 +173,7 @@ public class GethStyleTracer : IGethStyleTracer
             ? new GethLikeBlockJavascriptTracer(_worldState, _specProvider.GetSpec(block), options)
             : new GethLikeBlockMemoryTracer(options);
 
-    private GethLikeTxTrace[] TraceBlock(Block? block, GethTraceOptions options, CancellationToken cancellationToken)
+    private IReadOnlyCollection<GethLikeTxTrace> TraceBlock(Block? block, GethTraceOptions options, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(block);
 
@@ -190,7 +190,7 @@ public class GethStyleTracer : IGethStyleTracer
 
         IBlockTracer<GethLikeTxTrace> tracer = CreateOptionsTracer(block.Header, options);
         _processor.Process(block, ProcessingOptions.Trace, tracer.WithCancellation(cancellationToken));
-        return tracer.BuildResult().ToArray();
+        return tracer.BuildResult();
     }
 
     private static Block GetBlockToTrace(Rlp blockRlp)
