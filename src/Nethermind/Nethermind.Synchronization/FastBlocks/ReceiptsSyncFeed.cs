@@ -43,7 +43,7 @@ namespace Nethermind.Synchronization.FastBlocks
         private SyncStatusList _syncStatusList;
         private long _pivotNumber;
         private long _barrier;
-        private readonly long? _barrierWhenStarted;
+        private long? _barrierWhenStarted;
 
         private bool ShouldFinish => !_syncConfig.DownloadReceiptsInFastSync || AllDownloaded;
         private bool AllDownloaded => _receiptStorage.LowestInsertedReceiptBlockNumber <= _barrier
@@ -54,7 +54,7 @@ namespace Nethermind.Synchronization.FastBlocks
             && _receiptStorage.LowestInsertedReceiptBlockNumber <= DepositContractBarrier
             && _receiptStorage.LowestInsertedReceiptBlockNumber > DepositContractBarrier - GethSyncLimits.MaxBodyFetch; // this is intentional. using this as an approxamation assuming a minimum of 1 receipt in per block
 
-        public override bool IsFinished => AllReceiptsDownloaded;
+        public override bool IsFinished => AllDownloaded;
         public ReceiptsSyncFeed(
             ISpecProvider specProvider,
             IBlockTree blockTree,
@@ -90,7 +90,7 @@ namespace Nethermind.Synchronization.FastBlocks
                 _barrier = _syncConfig.AncientReceiptsBarrierCalc;
                 if (_logger.IsInfo) _logger.Info($"Changed pivot in receipts sync. Now using pivot {_pivotNumber} and barrier {_barrier}");
                 ResetSyncStatusList();
-                if (specProvider.ChainId != BlockchainIds.Mainnet)
+                if (_specProvider.ChainId != BlockchainIds.Mainnet)
                     return;
                 if (!_receiptStorage.HasBlock(_syncConfig.PivotNumberParsed, _syncConfig.PivotHashParsed))
                 {
