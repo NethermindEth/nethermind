@@ -58,15 +58,15 @@ namespace Nethermind.Evm.Tracing.GethStyle.Javascript
 
             public int length() => (int)MemoryTrace.Size;
 
-            public ITypedArray<byte> slice(BigInteger start, BigInteger end)
+            public ITypedArray<byte> slice(int start, int end)
             {
                 if (start < 0 || end < start )
                 {
                     throw new ArgumentOutOfRangeException(nameof(start), $"tracer accessed out of bound memory: offset {start}, end {end}");
                 }
 
-                int length = (int)(end - start);
-                return MemoryTrace.Slice((int)start, length)
+                int length = end - start;
+                return MemoryTrace.Slice(start, length)
                     .ToArray()
                     .ToScriptArray();
             }
