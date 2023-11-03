@@ -17,7 +17,6 @@ public class GethLikeBlockJavascriptTracer : BlockTracerBase<GethLikeTxTrace, Ge
     private readonly Context _ctx;
     private readonly Db _db;
     private int _index;
-    private Hash256 _blockHash = Keccak.Zero;
 
     public GethLikeBlockJavascriptTracer(IWorldState worldState, IReleaseSpec spec, GethTraceOptions options) : base(options.TxHash)
     {
@@ -30,7 +29,7 @@ public class GethLikeBlockJavascriptTracer : BlockTracerBase<GethLikeTxTrace, Ge
     public override void StartNewBlockTrace(Block block)
     {
         _ctx.block = block.Number;
-        _blockHash = block.Hash ?? Keccak.Zero;
+        _ctx.BlockHash = block.Hash;
         base.StartNewBlockTrace(block);
     }
 
@@ -40,9 +39,9 @@ public class GethLikeBlockJavascriptTracer : BlockTracerBase<GethLikeTxTrace, Ge
         JavascriptConverter.CurrentEngine = new Engine(engine, _spec);
 
         _ctx.gasPrice = (ulong)tx!.GasPrice;
-        _ctx.txIndex = _index++;
-        _ctx.blockHash ??= _blockHash.BytesToArray().ToScriptArray();
-        return new GethLikeJavascriptTxTracer(tx.Hash!, engine, _db, _ctx, _options);
+        _ctx.TxHash = tx.Hash;
+        _ctx.txIndex = tx.Hash is not null ? _index++ : null;
+        return new GethLikeJavascriptTxTracer(engine, _db, _ctx, _options);
     }
 
     public override void EndBlockTrace()

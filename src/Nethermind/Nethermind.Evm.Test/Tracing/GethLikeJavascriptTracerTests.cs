@@ -44,8 +44,7 @@ public class GethLikeJavascriptTracerTests : VirtualMachineTestsBase
             : V8ScriptEngineFlags.None);
 
         JavascriptConverter.CurrentEngine = new Engine(engine, Shanghai.Instance);
-        return new(TestItem.KeccakA,
-            JavascriptConverter.CurrentEngine.V8Engine,
+        return new(JavascriptConverter.CurrentEngine.V8Engine,
             new Evm.Tracing.GethStyle.Javascript.Db(TestState),
             new Context() { gasPrice = 1 },
             GethTraceOptions.Default with { EnableMemory = true, Tracer = userTracer }

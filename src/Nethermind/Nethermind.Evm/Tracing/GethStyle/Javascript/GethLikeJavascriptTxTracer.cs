@@ -29,7 +29,6 @@ public sealed class GethLikeJavascriptTxTracer : GethLikeTxTracer
     private readonly TracerFunctions _functions;
 
     public GethLikeJavascriptTxTracer(
-        Hash256 txHash,
         V8ScriptEngine engine,
         Db db,
         Context ctx,
@@ -41,7 +40,6 @@ public sealed class GethLikeJavascriptTxTracer : GethLikeTxTracer
 
         _db = db;
         _ctx = ctx;
-        _ctx.txHash = txHash.BytesToArray().ToScriptArray();
         engine.Execute(LoadJavascriptCode(options.Tracer));
         _tracer = engine.Script.tracer;
         _functions = GetAvailableFunctions(((IDictionary<string, object>)_tracer).Keys);
@@ -81,9 +79,9 @@ public sealed class GethLikeJavascriptTxTracer : GethLikeTxTracer
         if (callType == ExecutionType.TRANSACTION)
         {
             _ctx.type = callType.IsAnyCreate() ? "CREATE" : "CALL";
-            _ctx.from = from.Bytes.ToScriptArray();
-            _ctx.to = to.Bytes.ToScriptArray();
-            _ctx.input = input.ToArray().ToScriptArray();
+            _ctx.From = from;
+            _ctx.To = to;
+            _ctx.Input = input;
             _ctx.value = valueBigInt;
             _ctx.gas = gas;
         }
@@ -91,7 +89,7 @@ public sealed class GethLikeJavascriptTxTracer : GethLikeTxTracer
         {
             _frame.From = from;
             _frame.To = to;
-            _frame.Input = input.ToArray();
+            _frame.Input = input;
             _frame.Value = valueBigInt;
             _frame.Gas = gas;
             _frame.Type = callType.FastToString();
@@ -130,7 +128,7 @@ public sealed class GethLikeJavascriptTxTracer : GethLikeTxTracer
     {
         base.ReportActionEnd(gas, deploymentAddress, deployedCode);
 
-        _ctx.to ??= deploymentAddress.Bytes.ToScriptArray();
+        _ctx.To ??= deploymentAddress;
         InvokeExit(gas, deployedCode);
     }
 
@@ -162,14 +160,15 @@ public sealed class GethLikeJavascriptTxTracer : GethLikeTxTracer
     {
         base.MarkAsFailed(recipient, gasSpent, output, error, stateRoot);
         _ctx.gasUsed = gasSpent;
-        _ctx.output = output?.ToScriptArray();
+        _ctx.Output = output;
+        _ctx.error = error;
     }
 
     public override void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null)
     {
         base.MarkAsSuccess(recipient, gasSpent, output, logs, stateRoot);
         _ctx.gasUsed = gasSpent;
-        _ctx.output = output.ToScriptArray();
+        _ctx.Output = output;
     }
 
     public override void SetOperationMemory(TraceMemory memoryTrace)
