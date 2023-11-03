@@ -65,7 +65,14 @@ public sealed class GethLikeJavascriptTxTracer : GethLikeTxTracer
         return jsCode;
     }
 
-    protected override GethLikeTxTrace CreateTrace() => new(_engine) { CustomTracerResult = _tracer.result(_ctx, _db) };
+    protected override GethLikeTxTrace CreateTrace() => new(_engine);
+
+    public override GethLikeTxTrace BuildResult()
+    {
+        GethLikeTxTrace result = base.BuildResult();
+        result.CustomTracerResult = _tracer.result(_ctx, _db);
+        return result;
+    }
 
     public override void ReportAction(long gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false)
     {
