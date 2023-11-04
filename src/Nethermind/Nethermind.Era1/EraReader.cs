@@ -10,6 +10,8 @@ using System.Reflection.PortableExecutable;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading.Tasks;
+using DotNetty.Buffers;
+using DotNetty.Common.Utilities;
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Extensions;
@@ -35,7 +37,7 @@ internal class EraReader : IAsyncEnumerable<(Block, TxReceipt[], UInt256)>, IDis
     public async IAsyncEnumerator<(Block, TxReceipt[], UInt256)> GetAsyncEnumerator(CancellationToken cancellationToken = default)
     {
         (Block? b, TxReceipt[]? r, UInt256? td) = await Next(cancellationToken);
-        while(b != null && r != null && td != null)
+        while (b != null && r != null && td != null)
         {
             yield return (b, r, td.Value);
             (b, r, td) = await Next(cancellationToken);
@@ -54,17 +56,55 @@ internal class EraReader : IAsyncEnumerable<(Block, TxReceipt[], UInt256)>, IDis
         E2Store e2 = new E2Store(stream);
         await e2.SetMetaData(token);
         EraReader e = new EraReader(e2);
-        
+
         return e;
+    }
+    // Format: <network>-<epoch>-<hexroot>.era1
+    public static IEnumerable<string> GetAllEraFiles(string directoryPath, string network)
+    {
+        var entries = Directory.GetFiles(directoryPath, "*.era1");
+        if (!entries.Any())
+            yield break;
+
+        uint next = 0;
+
+        foreach (string file in entries)
+        {
+            string[] parts = Path.GetFileName(file).Split(new char[] { '-' });
+            if (parts.Length != 3 || parts[0] != network)
+            {
+                continue;
+            }
+            uint epoch;
+            if (!uint.TryParse(parts[1], out epoch))
+                throw new EraException($"Invalid era1 filename: {Path.GetFileName(file)}");
+            else if (epoch != next)
+                throw new EraException($"Epoch {epoch} is missing.");
+
+            next++;
+            yield return (file);
+        }
     }
     public async Task<byte[]> ReadAccumulator(CancellationToken cancellation = default)
     {
         _store.Seek(-32 - 8 * 4 - _store.Metadata.Count * 8, SeekOrigin.End);
         Entry accumulator = await _store.ReadEntryCurrentPosition(cancellation);
         CheckType(accumulator, EntryTypes.Accumulator);
-        byte[] buffer = new byte[32];
-        await _store.ReadEntryValue(buffer, accumulator, cancellation);
-        return buffer;
+        IByteBuffer buffer = PooledByteBufferAllocator.Default.Buffer(32);
+        try
+        {
+            int read = await _store.ReadEntryValue(buffer, accumulator, cancellation);
+            byte[] bytes = new byte[read];
+            for (int i = 0; i < read; i++)
+            {
+                bytes[i] = buffer.GetByte(buffer.ArrayOffset + i);
+            }
+            return bytes;
+        }
+        finally
+        {
+            buffer.Release();
+        }
     }
     public Task<(Block, TxReceipt[], UInt256)> GetBlockByNumber(long number, CancellationToken cancellation = default)
     {
@@ -90,29 +130,30 @@ internal class EraReader : IAsyncEnumerable<(Block, TxReceipt[], UInt256)>, IDis
     private async Task<(Block, TxReceipt[], UInt256)> ReadBlockAndReceipts(long blockNumber, CancellationToken cancellationToken)
     {
         long blockOffset = await SeekToBlock(blockNumber, cancellationToken);
-        byte[] buffer = ArrayPool<byte>.Shared.Rent(1024 * 1024);
+        IByteBuffer buffer = PooledByteBufferAllocator.Default.Buffer(1024 * 1024);
+
         try
         {
             Entry e = await _store.ReadEntryAt(blockOffset, cancellationToken);
             CheckType(e, EntryTypes.CompressedHeader);
-            BlockHeader header = await DecompressAndDecode<BlockHeader>(buffer, 0, e);
+            BlockHeader header = await DecompressAndDecode<BlockHeader>(buffer, e);
             
             e = await _store.ReadEntryCurrentPosition(cancellationToken);
             CheckType(e, EntryTypes.CompressedBody);
 
-            BlockBody body = await DecompressAndDecode<BlockBody>(buffer, 0, e);
+            BlockBody body = await DecompressAndDecode<BlockBody>(buffer, e);
 
             e = await _store.ReadEntryCurrentPosition(cancellationToken);
             CheckType(e, EntryTypes.CompressedReceipts);
 
-            int read = await Decompress(buffer, 0, e);
+            int read = await Decompress(buffer, e);
             TxReceipt[] receipts = DecodeReceipts(buffer, read);
 
             e = await _store.ReadEntryCurrentPosition(cancellationToken);
             CheckType(e, EntryTypes.TotalDifficulty);
             read = await _store.ReadEntryValue(buffer, e, cancellationToken);
 
-            UInt256 currentTotalDiffulty = new UInt256(new ArraySegment<byte>(buffer, 0, read));
+            UInt256 currentTotalDiffulty = new UInt256(buffer.ReadAllBytesAsSpan());
 
             Block block = new Block(header, body);
 
@@ -120,14 +161,13 @@ internal class EraReader : IAsyncEnumerable<(Block, TxReceipt[], UInt256)>, IDis
         }
         finally
         {
-            ArrayPool<byte>.Shared.Return(buffer);
+            buffer.Release();
         };
-    } 
+    }
 
-    private TxReceipt[] DecodeReceipts(byte[] buf, int count)
+    private TxReceipt[] DecodeReceipts(IByteBuffer buf, int count)
     {
-        //TODO optimize
-        return _receiptDecoder.DecodeArray(new CappedArray<byte>(buf, count).AsRlpStream());
+        return _receiptDecoder.DecodeArray(new NettyRlpStream(buf));
     }
 
     private async Task<long> SeekToBlock(long blockNumber, CancellationToken token = default)
@@ -135,7 +175,7 @@ internal class EraReader : IAsyncEnumerable<(Block, TxReceipt[], UInt256)>, IDis
         //Last 8 bytes is the count, so we skip them
         long startOfIndex = _store.Metadata.Length - 8 - _store.Metadata.Count * 8;
         long indexOffset = (blockNumber - _store.Metadata.Start) * 8;
-        long blockIndexOffset =  startOfIndex + indexOffset;
+        long blockIndexOffset = startOfIndex + indexOffset;
 
         long blockOffset = await _store.ReadValueAt(blockIndexOffset, token);
         return _store.Seek(blockOffset, SeekOrigin.Current);
@@ -150,23 +190,14 @@ internal class EraReader : IAsyncEnumerable<(Block, TxReceipt[], UInt256)>, IDis
     {
         if (e.Type != expected) throw new EraException($"Expected an entry of type {expected}, but got {e.Type}.");
     }
-    private Task<int> Decompress(byte[] buffer, int offset, Entry e, CancellationToken cancellation = default)
-    {
-        return _store.ReadEntryValueAsSnappy(buffer, offset, e, cancellation);
-    }
+    private Task<int> Decompress(IByteBuffer buffer, Entry e, CancellationToken cancellation = default) => _store.ReadEntryValueAsSnappy(buffer, e, cancellation);
 
-    private async Task<T> DecompressAndDecode<T>(byte[] buffer, int offset, Entry e, CancellationToken cancellation = default) where T : class
+    private async Task<T> DecompressAndDecode<T>(IByteBuffer buffer, Entry e, CancellationToken cancellation = default) where T : class
     {
         //TODO handle read more than buffer length
-        var bufferRead = await _store.ReadEntryValueAsSnappy(buffer, offset, e, cancellation);
-        T? decoded = RlpDecode<T>(buffer, 0, bufferRead);
-        return decoded;
-    }
-
-    private static T RlpDecode<T>(in byte[] buffer, int offset, int count)
-    {
-        T? decoded = Rlp.Decode<T>(new Span<byte>(buffer, offset, count));
-        return decoded;
+        buffer.EnsureWritable((int)e.Length * 2, true);
+        await _store.ReadEntryValueAsSnappy(buffer, e, cancellation);
+        return Rlp.Decode<T>(new NettyRlpStream(buffer));
     }
 
     private static bool IsValidFilename(string file)
@@ -178,11 +209,6 @@ internal class EraReader : IAsyncEnumerable<(Block, TxReceipt[], UInt256)>, IDis
         if (parts.Length != 3 || !uint.TryParse(parts[1], out epoch))
             return false;
         return true;
-    }
-
-    private static void ThrowInvalidFileName(string filename)
-    {
-        throw new EraException($"Invalid era1 filename: {filename}");
     }
 
     protected virtual void Dispose(bool disposing)
@@ -204,31 +230,5 @@ internal class EraReader : IAsyncEnumerable<(Block, TxReceipt[], UInt256)>, IDis
         GC.SuppressFinalize(this);
     }
 
-    // Format: <network>-<epoch>-<hexroot>.era1
-    public static IEnumerable<string> GetAllEraFiles(string directoryPath, string network)
-    {
-        var entries = Directory.GetFiles(directoryPath, "*.era1");
-        if (!entries.Any())
-            yield break;
 
-        uint next = 0;
-        List<string> files = new();
-
-        foreach (string file in entries)
-        {
-            string[] parts = Path.GetFileName(file).Split(new char[] { '-' });
-            if (parts.Length != 3 || parts[0] != network)
-            {
-                continue;
-            }
-            uint epoch;
-            if (!uint.TryParse(parts[1], out epoch))
-                throw new EraException($"Invalid era1 filename: {Path.GetFileName(file)}");
-            else if (epoch != next)
-                throw new EraException($"Epoch {epoch} is missing.");
-
-            next++;
-            yield return (file);    
-        }
-    }
 }

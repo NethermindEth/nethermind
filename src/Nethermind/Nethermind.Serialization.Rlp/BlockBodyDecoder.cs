@@ -84,7 +84,7 @@ namespace Nethermind.Serialization.Rlp
                 rlpStream.Check(blockCheck);
             }
 
-            return new(transactions.ToArray(), uncleHeaders.ToArray(), withdrawals.ToArray());
+            return new(transactions.ToArray(), uncleHeaders.ToArray(), withdrawals?.ToArray());
         }
 
         private (int Total, int Txs, int Uncles, int? Withdrawals) GetContentLength(BlockBody item, RlpBehaviors rlpBehaviors)
