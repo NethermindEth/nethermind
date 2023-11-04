@@ -64,8 +64,10 @@ internal class E2Store : IDisposable
         {
             //See https://github.com/google/snappy/blob/main/framing_format.txt
             if (asSnappy && bytes.Length > 0)
-            {                
+            {
                 //TODO find a way to write directly to file, and still return the number of bytes written
+
+                IByteBuffer buffer = PooledByteBufferAllocator.Default.Buffer();
                 using MemoryStream memoryStream = new MemoryStream();
                 using SnappyStream snappyStream = new(memoryStream, CompressionMode.Compress, true);
                 await snappyStream.WriteAsync(bytes, cancellation);
@@ -83,8 +85,8 @@ internal class E2Store : IDisposable
             headerBuffer[6] = 0;
             headerBuffer[7] = 0;
 
-            await _stream.WriteAsync(headerBuffer.AsMemory(0, HeaderSize), cancellation);
-            if (length > 0) await _stream.WriteAsync(bytes.AsMemory(0, length), cancellation);
+            await _stream.WriteAsync(headerBuffer, 0, HeaderSize, cancellation);
+            if (length > 0) await _stream.WriteAsync(bytes, 0, length, cancellation);
 
             return length + HeaderSize;
         }

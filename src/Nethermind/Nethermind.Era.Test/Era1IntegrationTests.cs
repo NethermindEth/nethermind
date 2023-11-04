@@ -30,12 +30,14 @@ public class Era1IntegrationTests
             .WithNumber(0)
             .WithTotalDifficulty(BlockHeaderBuilder.DefaultDifficulty)
             .WithTransactions(Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyA)
+                                                 .WithSenderAddress(null)
                                                  .To(TestItem.GetRandomAddress()).TestObject)
             .TestObject;
         Block block1 = Build.A.Block
             .WithNumber(1)
             .WithTotalDifficulty(BlockHeaderBuilder.DefaultDifficulty)
             .WithTransactions(Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyB)
+                                                 .WithSenderAddress(null)
                                                  .To(TestItem.GetRandomAddress()).TestObject).TestObject;
         TxReceipt receipt0 = Build.A.Receipt
             .WithAllFieldsFilled
@@ -191,7 +193,7 @@ public class Era1IntegrationTests
     }
 
     [Test]
-    public async Task TestExportImportHistory()
+    public async Task TestBigBlocksExportImportHistory()
     {
         TestBlockchain testBlockchain = await BasicTestBlockchain.Create();
         using MemoryStream stream = new();
@@ -199,8 +201,8 @@ public class Era1IntegrationTests
 
         Block genesis = testBlockchain.BlockFinder.FindBlock(0)!;
 
-        int numOfBlocks = 32;
-        int numOfTx = 300;
+        int numOfBlocks = 16;
+        int numOfTx = 1000;
         UInt256 nonce = 0;
         var blocks = new List<Block>
         {
@@ -214,10 +216,14 @@ public class Era1IntegrationTests
                 transactions[y] = Build.A.Transaction.WithTo(TestItem.GetRandomAddress())
                                                      .WithNonce(nonce)
                                                      .WithValue(1)
-                                                     .SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+                                                     .SignedAndResolved(TestItem.PrivateKeyA)
+                                                     .WithSenderAddress(null).TestObject;
                 nonce++;
             }
-            blocks.Add(Build.A.Block.WithTotalDifficulty(1000000L + blocks[i].TotalDifficulty)
+            blocks.Add(Build.A.Block.WithUncles(Build.A.Block.TestObject)
+                                    .WithBaseFeePerGas(1000)
+                                    .WithWithdrawals(100)
+                                    .WithTotalDifficulty(1000000L + blocks[i].Difficulty)
                                     .WithTransactions(transactions)
                                     .WithParent(blocks[i])
                                     .WithGasLimit(30_000_000).TestObject);
@@ -243,9 +249,8 @@ public class Era1IntegrationTests
 
             Block expectedBlock = blocks[i] ?? throw new ArgumentException("Could not find required block?");
 
-            //ignore these for comparison
+            //ignore this for comparison
             expectedBlock.Header.MaybeParent = null;
-            expectedBlock.Transactions.All(t => { t.SenderAddress = null; return true; });
 
             TxReceipt[] expectedReceipts = testBlockchain.ReceiptStorage.Get(expectedBlock);
 
