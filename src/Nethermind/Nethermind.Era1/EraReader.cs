@@ -26,13 +26,15 @@ internal class EraReader : IAsyncEnumerable<(Block, TxReceipt[], UInt256)>, IDis
     private long _currentBlockNumber;
     private ReceiptMessageDecoder _receiptDecoder = new();
     private E2Store _store;
+    private IByteBufferAllocator _byteBufferAllocator;
 
     public long CurrentBlockNumber => _currentBlockNumber;
 
-    private EraReader(E2Store e2)
+    private EraReader(E2Store e2, IByteBufferAllocator byteBufferAllocator)
     {
         _store = e2;
         _currentBlockNumber = e2.Metadata.Start;
+        _byteBufferAllocator = byteBufferAllocator;
     }
     public async IAsyncEnumerator<(Block, TxReceipt[], UInt256)> GetAsyncEnumerator(CancellationToken cancellationToken = default)
     {
@@ -43,19 +45,19 @@ internal class EraReader : IAsyncEnumerable<(Block, TxReceipt[], UInt256)>, IDis
             (b, r, td) = await Next(cancellationToken);
         }
     }
-    internal static Task<EraReader> Create(string file, CancellationToken token = default)
+    internal static Task<EraReader> Create(string file, IByteBufferAllocator? allocator = null, CancellationToken token = default)
     {
         if (string.IsNullOrEmpty(file)) throw new ArgumentException("Cannot be null or empty.", nameof(file));
-        return Create(File.OpenRead(file), token);
+        return Create(File.OpenRead(file), allocator, token);
     }
-    internal static async Task<EraReader> Create(Stream stream, CancellationToken token = default)
+    internal static async Task<EraReader> Create(Stream stream, IByteBufferAllocator? allocator = null, CancellationToken token = default)
     {
         if (stream == null) throw new ArgumentNullException(nameof(stream));
         if (!stream.CanRead) throw new ArgumentException("Provided stream is not readable.");
 
         E2Store e2 = new E2Store(stream);
         await e2.SetMetaData(token);
-        EraReader e = new EraReader(e2);
+        EraReader e = new EraReader(e2, allocator ?? PooledByteBufferAllocator.Default);
 
         return e;
     }
@@ -90,7 +92,7 @@ internal class EraReader : IAsyncEnumerable<(Block, TxReceipt[], UInt256)>, IDis
         _store.Seek(-32 - 8 * 4 - _store.Metadata.Count * 8, SeekOrigin.End);
         Entry accumulator = await _store.ReadEntryCurrentPosition(cancellation);
         CheckType(accumulator, EntryTypes.Accumulator);
-        IByteBuffer buffer = PooledByteBufferAllocator.Default.Buffer(32);
+        IByteBuffer buffer = _byteBufferAllocator.Buffer(32);
         try
         {
             int read = await _store.ReadEntryValue(buffer, accumulator, cancellation);
@@ -130,7 +132,7 @@ internal class EraReader : IAsyncEnumerable<(Block, TxReceipt[], UInt256)>, IDis
     private async Task<(Block, TxReceipt[], UInt256)> ReadBlockAndReceipts(long blockNumber, CancellationToken cancellationToken)
     {
         long blockOffset = await SeekToBlock(blockNumber, cancellationToken);
-        IByteBuffer buffer = PooledByteBufferAllocator.Default.Buffer(1024 * 1024);
+        IByteBuffer buffer = _byteBufferAllocator.Buffer(1024 * 1024);
 
         try
         {
