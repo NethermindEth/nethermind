@@ -36,7 +36,6 @@ namespace Nethermind.Synchronization.FastBlocks
         private readonly ISyncPeerPool _syncPeerPool;
         private readonly IDbMeta _blocksDb;
         private readonly IDb _metadataDb;
-        public override bool IsFinished => (_blockTree.LowestInsertedBodyNumber ?? long.MaxValue) <= _barrier;
 
         private long _pivotNumber;
         private long _barrier;
@@ -45,7 +44,7 @@ namespace Nethermind.Synchronization.FastBlocks
         private SyncStatusList _syncStatusList;
 
         private bool ShouldFinish => !_syncConfig.DownloadBodiesInFastSync || AllDownloaded;
-        private bool AllDownloaded => _blockTree.LowestInsertedBodyNumber <= _barrier
+        private bool AllDownloaded => (_blockTree.LowestInsertedBodyNumber ?? long.MaxValue) <= _barrier
             || WithinOldBarrierDefault;
 
         // This property was introduced when we switched defaults of barriers from 11052984 to 0 to not disturb existing node operators
@@ -54,6 +53,7 @@ namespace Nethermind.Synchronization.FastBlocks
             && _blockTree.LowestInsertedBodyNumber <= DepositContractBarrier
             && _blockTree.LowestInsertedBodyNumber > DepositContractBarrier - GethSyncLimits.MaxBodyFetch;
 
+        public override bool IsFinished => AllDownloaded;
         public BodiesSyncFeed(
             ISpecProvider specProvider,
             IBlockTree blockTree,

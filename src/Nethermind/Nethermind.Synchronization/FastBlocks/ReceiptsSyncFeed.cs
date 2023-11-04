@@ -46,7 +46,7 @@ namespace Nethermind.Synchronization.FastBlocks
         private long? _barrierWhenStarted;
 
         private bool ShouldFinish => !_syncConfig.DownloadReceiptsInFastSync || AllDownloaded;
-        private bool AllDownloaded => _receiptStorage.LowestInsertedReceiptBlockNumber <= _barrier
+        private bool AllDownloaded => (_receiptStorage.LowestInsertedReceiptBlockNumber ?? long.MaxValue) <= _barrier
             || WithinOldBarrierDefault;
 
         // This property was introduced when we switched defaults of barriers on mainnet from 11052984 to 0 to not disturb existing node operators
