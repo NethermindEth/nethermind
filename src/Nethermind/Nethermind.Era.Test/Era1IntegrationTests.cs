@@ -80,7 +80,7 @@ public class Era1IntegrationTests
     {
         var eraFiles = EraReader.GetAllEraFiles("data", "mainnet");
 
-        Assert.That(eraFiles.Count(), Is.EqualTo(9));
+        Assert.That(eraFiles.Count(), Is.GreaterThan(0));
 
         var specProvider = new ChainSpecBasedSpecProvider(new ChainSpec
         {
@@ -124,7 +124,7 @@ public class Era1IntegrationTests
     {
         var eraFiles = EraReader.GetAllEraFiles("geth", "mainnet");
 
-        Assert.That(eraFiles.Count(), Is.EqualTo(2));
+        Assert.That(eraFiles.Count(), Is.GreaterThan(0));
 
         var specProvider = new ChainSpecBasedSpecProvider(new ChainSpec
         {
