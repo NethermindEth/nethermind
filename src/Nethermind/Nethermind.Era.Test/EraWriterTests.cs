@@ -11,15 +11,18 @@ using NUnit.Framework.Internal;
 using Nethermind.Core.Test.Builders;
 using NSubstitute;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
+using Org.BouncyCastle.Utilities.Encoders;
+using Nethermind.Core.Specs;
 
 namespace Nethermind.Era1.Test;
-internal class EraBuilderTests
+internal class EraWriterTests
 {
     [Test]
     public void Add_TotalDifficultyIsLowerThanBlock_ThrowsException()
     {
         using MemoryStream stream = new();
-        EraBuilder sut = EraBuilder.Create(stream);
+        EraWriter sut = EraWriter.Create(stream, Substitute.For<ISpecProvider>());
 
         Assert.That(async () => await sut.Add(
             Keccak.Zero,
@@ -35,7 +38,7 @@ internal class EraBuilderTests
     public async Task Add_AddOneBlock_ReturnsTrue()
     {
         using MemoryStream stream = new();
-        EraBuilder sut = EraBuilder.Create(stream);
+        EraWriter sut = EraWriter.Create(stream, Substitute.For<ISpecProvider>());
         Block block1 = Build.A.Block.WithNumber(1)
             .WithTotalDifficulty(BlockHeaderBuilder.DefaultDifficulty).TestObject;
 
@@ -50,8 +53,8 @@ internal class EraBuilderTests
         using MemoryStream stream = Substitute.For<MemoryStream>();
         stream.WriteAsync(Arg.Any<byte[]>(), Arg.Any<int>(), Arg.Any<int>()).Returns(Task.CompletedTask);
 
-        EraBuilder sut = EraBuilder.Create(stream);
-        for (int i = 0; i < EraBuilder.MaxEra1Size; i++)
+        EraWriter sut = EraWriter.Create(stream, Substitute.For<ISpecProvider>());
+        for (int i = 0; i < EraWriter.MaxEra1Size; i++)
         {
             Block block = Build.A.Block.WithNumber(0)
             .WithTotalDifficulty(BlockHeaderBuilder.DefaultDifficulty).TestObject;
@@ -68,7 +71,7 @@ internal class EraBuilderTests
     public async Task Add_FinalizedCalled_ThrowsException()
     {
         using MemoryStream stream = new();
-        EraBuilder sut = EraBuilder.Create(stream);
+        EraWriter sut = EraWriter.Create(stream, Substitute.For<ISpecProvider>());
         Block block = Build.A.Block.WithNumber(1)
             .WithTotalDifficulty(BlockHeaderBuilder.DefaultDifficulty).TestObject;
 
@@ -82,7 +85,7 @@ internal class EraBuilderTests
     {
         using MemoryStream stream = new();
 
-        EraBuilder sut = EraBuilder.Create(stream);
+        EraWriter sut = EraWriter.Create(stream, Substitute.For<ISpecProvider>());
 
         Assert.That(async () => await sut.Finalize(), Throws.TypeOf<EraException>());
     }
@@ -91,7 +94,7 @@ internal class EraBuilderTests
     public async Task Finalize_AddOneBlock_WritesAccumulatorEntry()
     {
         using MemoryStream stream = new();
-        EraBuilder sut = EraBuilder.Create(stream);
+        EraWriter sut = EraWriter.Create(stream, Substitute.For<ISpecProvider>());
         await sut.Add(
             Keccak.Zero,
             Array.Empty<byte>(),
@@ -113,7 +116,7 @@ internal class EraBuilderTests
     public void Dispose_Disposed_InnerStreamIsDisposed()
     {
         using MemoryStream stream = new();
-        EraBuilder sut = EraBuilder.Create(stream);
+        EraWriter sut = EraWriter.Create(stream, Substitute.For<ISpecProvider>());
 
         sut.Dispose();
 
@@ -125,31 +128,30 @@ internal class EraBuilderTests
     [TestCase("sepolia", 2, "0x1122ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff", "sepolia-00002-1122ffff.era1")]
     public void Filename_ValidParameters_ReturnsExpected(string network, int epoch, string hash, string expected)
     {
-        Assert.That(EraBuilder.Filename(network, epoch, new Keccak(hash)), Is.EqualTo(expected));
+        Assert.That(EraWriter.Filename(network, epoch, new Keccak(hash)), Is.EqualTo(expected));
     }
 
     [Test]
     public void Filename_NetworkIsNull_ReturnsException()
     {
-        Assert.That(() => EraBuilder.Filename(null, 0, new Keccak("0x0000000000000000000000000000000000000000000000000000000000000000")), Throws.ArgumentException);
+        Assert.That(() => EraWriter.Filename(null, 0, new Keccak("0x0000000000000000000000000000000000000000000000000000000000000000")), Throws.ArgumentException);
     }
 
     [Test]
     public void Filename_NetworkIsEmpty_ReturnsException()
     {
-        Assert.That(() => EraBuilder.Filename("", 0, new Keccak("0x0000000000000000000000000000000000000000000000000000000000000000")), Throws.ArgumentException);
+        Assert.That(() => EraWriter.Filename("", 0, new Keccak("0x0000000000000000000000000000000000000000000000000000000000000000")), Throws.ArgumentException);
     }
 
     [Test]
     public void Filename_EpochIsNegative_ReturnsException()
     {
-        Assert.That(() => EraBuilder.Filename("test", -1, new Keccak("0x0000000000000000000000000000000000000000000000000000000000000000")), Throws.TypeOf<ArgumentOutOfRangeException>());
+        Assert.That(() => EraWriter.Filename("test", -1, new Keccak("0x0000000000000000000000000000000000000000000000000000000000000000")), Throws.TypeOf<ArgumentOutOfRangeException>());
     }
 
     [Test]
     public void Filename_RootIsNull_ReturnsException()
     {
-        Assert.That(() => EraBuilder.Filename("test", 0, null), Throws.ArgumentNullException);
+        Assert.That(() => EraWriter.Filename("test", 0, null), Throws.ArgumentNullException);
     }
-
 }

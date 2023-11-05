@@ -4,10 +4,12 @@
 using System.Diagnostics;
 using System.Security.Cryptography;
 using FluentAssertions;
+using MathNet.Numerics.LinearAlgebra.Solvers;
 using Nethermind.Blockchain;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
@@ -15,6 +17,8 @@ using Nethermind.Era1;
 using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Specs.ChainSpecStyle;
+using NSubstitute;
 using NUnit.Framework.Constraints;
 using Snappier;
 
@@ -25,7 +29,7 @@ public class Era1IntegrationTests
     public async Task ExportAndImportTwoBlocksAndReceipts()
     {
         using MemoryStream stream = new();
-        EraBuilder builder = EraBuilder.Create(stream);
+        EraWriter builder = EraWriter.Create(stream, Substitute.For<ISpecProvider>());
         Block block0 = Build.A.Block
             .WithNumber(0)
             .WithTotalDifficulty(BlockHeaderBuilder.DefaultDifficulty)
@@ -72,75 +76,168 @@ public class Era1IntegrationTests
     }
 
     [Test]
-    public async Task ImportFiles()
+    public async Task ImportAndExportFiles()
     {
         var eraFiles = EraReader.GetAllEraFiles("data", "mainnet");
 
-        Directory.CreateDirectory("temp");
-        try
+        Assert.That(eraFiles.Count(), Is.EqualTo(9));
+
+        var specProvider = new ChainSpecBasedSpecProvider(new ChainSpec
         {
-            foreach (var era in eraFiles)
+            SealEngineType = SealEngineType.BeaconChain,
+            Parameters = new ChainParameters()
+
+        });
+
+        foreach (var era in eraFiles)
+        {
+            using MemoryStream destination = new();
+            using var eraEnumerator = await EraReader.Create(era);
+
+            var readFromFile = new List<(Block b, TxReceipt[] r, UInt256 td)>();
+
+            var builder = EraWriter.Create(destination, specProvider);
+
+            await foreach ((Block b, TxReceipt[] r, UInt256 td) in eraEnumerator)
             {
-                using var eraEnumerator = await EraReader.Create(era);
-
-                string tempEra = Path.Combine("temp", Path.GetFileName(era));
-                var builder = EraBuilder.Create(tempEra);
-
-                await foreach ((Block b, TxReceipt[] r, UInt256 td) in eraEnumerator)
-                {
-                    await builder.Add(b, r, td);
-                }
-                await builder.Finalize();
-                builder.Dispose();
-
-                using var eraEnumeratorTemp = await EraReader.Create(tempEra);
-                await foreach ((Block b, TxReceipt[] r, UInt256 td) in eraEnumeratorTemp)
-                {
-                }
+                await builder.Add(b, r, td);
+                readFromFile.Add((b, r, td));
             }
-        }
-        finally
-        {
-            Directory.Delete("temp", true);
+            await builder.Finalize();
+
+            using var eraEnumeratorTemp = await EraReader.Create(destination);
+            int i = 0;
+            await foreach ((Block b, TxReceipt[] r, UInt256 td) in eraEnumeratorTemp)
+            {
+                Assert.That(i, Is.LessThan(readFromFile.Count()), "Exceeded the block count read from the file.");
+                b.Should().BeEquivalentTo(readFromFile[i].b);
+                r.Should().BeEquivalentTo(readFromFile[i].r);
+                Assert.That(td, Is.EqualTo(readFromFile[i].td));
+                i++;
+            }
+            builder.Dispose();
         }
     }
 
     [Test]
-    public async Task ImportGethFiles()
+    public async Task ImportAndExportGethFiles()
     {
         var eraFiles = EraReader.GetAllEraFiles("geth", "mainnet");
-        Directory.CreateDirectory("temp");
-        try
-        {
-            var count = 0;
 
-            foreach (var era in eraFiles)
+        Assert.That(eraFiles.Count(), Is.EqualTo(2));
+
+        var specProvider = new ChainSpecBasedSpecProvider(new ChainSpec
+        {
+            SealEngineType = SealEngineType.BeaconChain,
+            Parameters = new ChainParameters()
+        });
+
+        foreach (var era in eraFiles)
+        {
+            var readFromFile = new List<(Block b, TxReceipt[] r, UInt256 td)>();
+
+            using var eraEnumerator = await EraReader.Create(era);
+            using var destination = new MemoryStream();
+            using var builder = EraWriter.Create(destination, specProvider);
+            await foreach ((Block b, TxReceipt[] r, UInt256 td) in eraEnumerator)
             {
-                using var eraEnumerator = await EraReader.Create(era);
-
-                string tempEra = Path.Combine("temp", Path.GetFileName(era));
-                using var builder = EraBuilder.Create(tempEra);
-                await foreach ((Block b, TxReceipt[] r, UInt256 td) in eraEnumerator)
-                {
-                    count++;
-                    await builder.Add(b, r, td);
-                }
-                await builder.Finalize();
+                await builder.Add(b, r, td);
+                readFromFile.Add((b, r, td));
             }
-        }
-        finally
-        {
-            Directory.Delete("temp", true);
+            await builder.Finalize();
+
+            using EraReader exportedToImported = await EraReader.Create(destination);
+            int i = 0;
+            await foreach ((Block b, TxReceipt[] r, UInt256 td) in exportedToImported)
+            {
+                Assert.That(i, Is.LessThan(readFromFile.Count()), "Exceeded the block count read from the file.");
+                b.Should().BeEquivalentTo(readFromFile[i].b);
+                r.Should().BeEquivalentTo(readFromFile[i].r);
+                Assert.That(td, Is.EqualTo(readFromFile[i].td));
+                i++;
+            }
         }
     }
 
+    [TestCase("data")]
+    [TestCase("geth")]
+    public async Task VerifyAccumulatorsOnFiles(string dir)
+    {
+        var eraFiles = EraReader.GetAllEraFiles(dir, "mainnet");
+
+        IReceiptSpec receiptSpec = Substitute.For<IReceiptSpec>();
+        receiptSpec.IsEip658Enabled.Returns(true);
+
+        foreach (var era in eraFiles)
+        {
+            using MemoryStream destination = new();
+            using EraReader eraReader = await EraReader.Create(era);
+            var eraAccumulator = await eraReader.ReadAccumulator();
+
+            Assert.That(await eraReader.VerifyAccumulator(eraAccumulator, receiptSpec), Is.True);
+        }
+    }
+
+    [Test]
+    public async Task CreateEraAndVerifyAccumulators()
+    {
+        TestBlockchain testBlockchain = await BasicTestBlockchain.Create();
+        using MemoryStream stream = new();
+
+        Block genesis = testBlockchain.BlockFinder.FindBlock(0)!;
+
+        int numOfBlocks = 12;
+        int numOfTx = 2;
+        UInt256 nonce = 0;
+        var blocks = new List<Block>
+        {
+            genesis
+        };
+        for (int i = 0; i < numOfBlocks; i++)
+        {
+            Transaction[] transactions = new Transaction[numOfTx];
+            for (int y = 0; y < numOfTx; y++)
+            {
+                transactions[y] = Build.A.Transaction.WithTo(TestItem.GetRandomAddress())
+                                                     .WithNonce(nonce)
+                                                     .WithValue(TestItem.GetRandomAmount())
+                                                     .SignedAndResolved(TestItem.PrivateKeyA)
+                                                     .WithSenderAddress(null).TestObject;
+                nonce++;
+            }
+            blocks.Add(Build.A.Block.WithUncles(Build.A.Block.TestObject)
+                                    .WithBaseFeePerGas(1000)
+                                    .WithTotalDifficulty(blocks[i].TotalDifficulty + blocks[i].Difficulty)
+                                    .WithTransactions(transactions)
+                                    .WithParent(blocks[i]).TestObject);
+        }
+
+        testBlockchain.BlockProcessor.Process(genesis.StateRoot!, blocks, ProcessingOptions.NoValidation, new BlockReceiptsTracer());
+
+        EraWriter builder = EraWriter.Create(stream, Substitute.For<ISpecProvider>());
+
+        foreach (var block in blocks)
+        {
+            await builder.Add(block, testBlockchain.ReceiptStorage.Get(block));
+        }
+
+        await builder.Finalize();
+
+        using EraReader eraReader = await EraReader.Create(stream);
+
+        IReceiptSpec receiptSpec = Substitute.For<IReceiptSpec>();
+
+        var eraAccumulator = await eraReader.ReadAccumulator();
+
+        Assert.That(await eraReader.VerifyAccumulator(eraAccumulator, receiptSpec), Is.True);
+    }
 
     [Test]
     public async Task TestEraBuilderCreatesCorrectIndex()
     {
         BasicTestBlockchain testBlockchain = await BasicTestBlockchain.Create();
         using MemoryStream stream = new();
-        EraBuilder builder = EraBuilder.Create(stream);
+        EraWriter builder = EraWriter.Create(stream, Substitute.For<ISpecProvider>());
 
         Block genesis = testBlockchain.BlockFinder.FindBlock(0)!;
         TxReceipt[] genesisReceipts = testBlockchain.ReceiptStorage.Get(genesis);
@@ -197,7 +294,7 @@ public class Era1IntegrationTests
     {
         TestBlockchain testBlockchain = await BasicTestBlockchain.Create();
         using MemoryStream stream = new();
-        EraBuilder builder = EraBuilder.Create(stream);
+        EraWriter builder = EraWriter.Create(stream, Substitute.For<ISpecProvider>());
 
         Block genesis = testBlockchain.BlockFinder.FindBlock(0)!;
 
@@ -271,7 +368,5 @@ public class Era1IntegrationTests
                     Assert.That(r[y].Error, Is.EqualTo(expectedReceipts[y].Error));
             }
         }
-
     }
-
 }

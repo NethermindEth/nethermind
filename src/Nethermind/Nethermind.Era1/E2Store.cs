@@ -216,6 +216,8 @@ internal class E2Store : IDisposable
     {
         if (buffer is null) throw new ArgumentNullException(nameof(buffer));
         if (e.ValueOffset + e.Length > StreamLength) throw new EraFormatException($"Entry has a length ({e.Length}) and offset ({e.Offset}) that would read beyond the length of the stream.");
+        //TODO is this necessary?
+        //buffer.EnsureWritable((int)e.Length * 2, true);
 
         using SnappyStream snappy = new(new StreamSegment(_stream, e.ValueOffset, e.Length), CompressionMode.Decompress, true);
         int totalRead = 0;

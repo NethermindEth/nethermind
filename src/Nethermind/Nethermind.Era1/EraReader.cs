@@ -1,29 +1,22 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
-using System.Buffers;
-using System.Collections.Generic;
-using System.Diagnostics;
-using System.Linq;
-using System.Reflection.PortableExecutable;
-using System.Runtime.InteropServices;
-using System.Text;
-using System.Threading.Tasks;
+using System.Threading;
 using DotNetty.Buffers;
-using DotNetty.Common.Utilities;
 using Nethermind.Core;
-using Nethermind.Core.Buffers;
-using Nethermind.Core.Extensions;
+using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
+using Nethermind.Crypto;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
-using Snappier;
+using Nethermind.State.Proofs;
 
 namespace Nethermind.Era1;
 internal class EraReader : IAsyncEnumerable<(Block, TxReceipt[], UInt256)>, IDisposable
 {
     private bool _disposedValue;
     private long _currentBlockNumber;
+    private HeaderDecoder _headerDecoder = new();
     private ReceiptMessageDecoder _receiptDecoder = new();
     private E2Store _store;
     private IByteBufferAllocator _byteBufferAllocator;
@@ -33,24 +26,74 @@ internal class EraReader : IAsyncEnumerable<(Block, TxReceipt[], UInt256)>, IDis
     private EraReader(E2Store e2, IByteBufferAllocator byteBufferAllocator)
     {
         _store = e2;
-        _currentBlockNumber = e2.Metadata.Start;
         _byteBufferAllocator = byteBufferAllocator;
+        Reset();
     }
-    public async IAsyncEnumerator<(Block, TxReceipt[], UInt256)> GetAsyncEnumerator(CancellationToken cancellationToken = default)
+    public async IAsyncEnumerator<(Block, TxReceipt[], UInt256)> GetAsyncEnumerator(CancellationToken cancellation = default)
     {
-        (Block? b, TxReceipt[]? r, UInt256? td) = await Next(cancellationToken);
-        while (b != null && r != null && td != null)
+        Reset();
+        EntryReadResult? result;
+        while (true)
         {
-            yield return (b, r, td.Value);
-            (b, r, td) = await Next(cancellationToken);
+            result = await Next(false, cancellation);
+            if (result == null) break;
+            yield return (result.Block, result.Receipts, result.TotalDifficulty);
         }
     }
-    internal static Task<EraReader> Create(string file, IByteBufferAllocator? allocator = null, CancellationToken token = default)
+    /// <summary>
+    /// Verify that the accumulator matches the archive data. 
+    /// </summary>
+    /// <param name="cancellation"></param>
+    /// <returns>Returns <see cref="true"/> if the data matches the accumulator, and <see cref="false"/> if there is no match.</returns>
+    public async Task<bool> VerifyAccumulator(byte[] expectedAccumulator, IReceiptSpec receiptSpec, CancellationToken cancellation = default)
+    {
+        if (receiptSpec is null) throw new ArgumentNullException(nameof(receiptSpec));
+        UInt256 currentTd = await CalculateStartingTotalDiffulty(cancellation);
+        Reset();
+
+        int actualCount = 0;
+        EntryReadResult? result;
+        AccumulatorCalculator calculator = new();
+        while (true)
+        {
+            result = await Next(true, cancellation);
+            if (result == null) break;
+
+            if (result.Block.Header.Hash != result.ComputedHeaderHash)
+            {
+                return false;
+            }
+            Keccak txRoot = new TxTrie(result.Block.Transactions).RootHash;
+            if (result.Block.Header.TxRoot != txRoot)
+            {
+                return false;
+            }
+            Keccak receiptRoot = new ReceiptTrie(receiptSpec, result.Receipts).RootHash;
+            if (result.Block.Header.ReceiptsRoot != receiptRoot)
+            {
+                return false;
+            }
+            currentTd += result.Block.Difficulty;
+            calculator.Add(result.Block.Header.Hash!, currentTd);
+            actualCount++;
+        }
+
+        return Enumerable.SequenceEqual(expectedAccumulator, calculator.ComputeRoot().ToArray());
+    }
+
+    private async Task<UInt256> CalculateStartingTotalDiffulty(CancellationToken cancellation)
+    {
+        EntryReadResult? result = await ReadBlockAndReceipts(_store.Metadata.Start, true, cancellation);
+        if (result == null) throw new EraException("Invalid Era1 archive format.");
+        return result.TotalDifficulty - result.Block.Header.Difficulty;
+    }
+
+    public static Task<EraReader> Create(string file, IByteBufferAllocator? allocator = null, CancellationToken token = default)
     {
         if (string.IsNullOrEmpty(file)) throw new ArgumentException("Cannot be null or empty.", nameof(file));
         return Create(File.OpenRead(file), allocator, token);
     }
-    internal static async Task<EraReader> Create(Stream stream, IByteBufferAllocator? allocator = null, CancellationToken token = default)
+    public static async Task<EraReader> Create(Stream stream, IByteBufferAllocator? allocator = null, CancellationToken token = default)
     {
         if (stream == null) throw new ArgumentNullException(nameof(stream));
         if (!stream.CanRead) throw new ArgumentException("Provided stream is not readable.");
@@ -95,71 +138,68 @@ internal class EraReader : IAsyncEnumerable<(Block, TxReceipt[], UInt256)>, IDis
         IByteBuffer buffer = _byteBufferAllocator.Buffer(32);
         try
         {
-            int read = await _store.ReadEntryValue(buffer, accumulator, cancellation);
-            byte[] bytes = new byte[read];
-            for (int i = 0; i < read; i++)
-            {
-                bytes[i] = buffer.GetByte(buffer.ArrayOffset + i);
-            }
-            return bytes;
+            await _store.ReadEntryValue(buffer, accumulator, cancellation);
+            return buffer.ReadAllBytesAsArray();
         }
         finally
         {
             buffer.Release();
         }
     }
-    public Task<(Block, TxReceipt[], UInt256)> GetBlockByNumber(long number, CancellationToken cancellation = default)
+    public async Task<(Block, TxReceipt[], UInt256)> GetBlockByNumber(long number, CancellationToken cancellation = default)
     {
         if (number < _store.Metadata.Start)
             throw new ArgumentOutOfRangeException(nameof(number), $"Cannot be less than the first block number {_store.Metadata.Start}.");
         if (number > _store.Metadata.End)
             throw new ArgumentOutOfRangeException(nameof(number), $"Cannot be more than the last block number {_store.Metadata.End}.");
-        return ReadBlockAndReceipts(number, cancellation);
+        EntryReadResult result = await ReadBlockAndReceipts(number, false, cancellation);
+        return (result.Block, result.Receipts, result.TotalDifficulty);
     }
-    private async Task<(Block?, TxReceipt[]?, UInt256?)> Next(CancellationToken cancellationToken)
+    private async Task<EntryReadResult?> Next(bool computeHeaderHash, CancellationToken cancellationToken)
     {
         if (_store.Metadata.Start + _store.Metadata.Count <= _currentBlockNumber)
         {
             //TODO test enumerate more than once
             Reset();
-            return (null, null, null);
+            return null;
         }
-        (Block? b, TxReceipt[]? r, UInt256? td) = await ReadBlockAndReceipts(_currentBlockNumber, cancellationToken);
+        EntryReadResult result = await ReadBlockAndReceipts(_currentBlockNumber, computeHeaderHash, cancellationToken);
         _currentBlockNumber++;
-        return (b, r, td);
+        return result;
     }
 
-    private async Task<(Block, TxReceipt[], UInt256)> ReadBlockAndReceipts(long blockNumber, CancellationToken cancellationToken)
+    private async Task<EntryReadResult> ReadBlockAndReceipts(long blockNumber, bool computeHeaderHash, CancellationToken cancellationToken)
     {
+        if (blockNumber < _store.Metadata.Start
+            || blockNumber > _store.Metadata.Start + _store.Metadata.Count)
+            throw new ArgumentOutOfRangeException("Value is outside the range of the archive.", blockNumber, nameof(blockNumber));
         long blockOffset = await SeekToBlock(blockNumber, cancellationToken);
         IByteBuffer buffer = _byteBufferAllocator.Buffer(1024 * 1024);
 
         try
         {
-            Entry e = await _store.ReadEntryAt(blockOffset, cancellationToken);
-            CheckType(e, EntryTypes.CompressedHeader);
-            BlockHeader header = await DecompressAndDecode<BlockHeader>(buffer, e);
-            
-            e = await _store.ReadEntryCurrentPosition(cancellationToken);
-            CheckType(e, EntryTypes.CompressedBody);
+            await ReadEntry(blockOffset, buffer, EntryTypes.CompressedHeader, cancellationToken);
+            NettyRlpStream rlpStream = new NettyRlpStream(buffer);
+            Keccak? currentComputedHeaderHash = null;
+            if (computeHeaderHash)
+                currentComputedHeaderHash = _headerDecoder.ComputeHeaderHash(rlpStream);
+            BlockHeader header = Rlp.Decode<BlockHeader>(rlpStream);
 
-            BlockBody body = await DecompressAndDecode<BlockBody>(buffer, e);
+            await ReadEntry(buffer, EntryTypes.CompressedBody, cancellationToken);
+            BlockBody body = Rlp.Decode<BlockBody>(new NettyRlpStream(buffer));
 
-            e = await _store.ReadEntryCurrentPosition(cancellationToken);
-            CheckType(e, EntryTypes.CompressedReceipts);
+            await ReadEntry(buffer, EntryTypes.CompressedReceipts, cancellationToken);
+            TxReceipt[] receipts = DecodeReceipts(buffer);
 
-            int read = await Decompress(buffer, e);
-            TxReceipt[] receipts = DecodeReceipts(buffer, read);
-
-            e = await _store.ReadEntryCurrentPosition(cancellationToken);
+            Entry e = await _store.ReadEntryCurrentPosition(cancellationToken);
             CheckType(e, EntryTypes.TotalDifficulty);
-            read = await _store.ReadEntryValue(buffer, e, cancellationToken);
+            await _store.ReadEntryValue(buffer, e, cancellationToken);
 
             UInt256 currentTotalDiffulty = new UInt256(buffer.ReadAllBytesAsSpan());
 
             Block block = new Block(header, body);
 
-            return (block, receipts, currentTotalDiffulty);
+            return new EntryReadResult(block, receipts, currentTotalDiffulty, currentComputedHeaderHash);
         }
         finally
         {
@@ -167,12 +207,25 @@ internal class EraReader : IAsyncEnumerable<(Block, TxReceipt[], UInt256)>, IDis
         };
     }
 
-    private TxReceipt[] DecodeReceipts(IByteBuffer buf, int count)
+    private async Task ReadEntry(IByteBuffer buffer, ushort expectedType, CancellationToken cancellation)
+    {
+        Entry e = await _store.ReadEntryCurrentPosition(cancellation);
+        CheckType(e, expectedType);
+        await _store.ReadEntryValueAsSnappy(buffer, e, cancellation);
+    }
+    private async Task ReadEntry(long offset, IByteBuffer buffer, ushort expectedType, CancellationToken cancellation)
+    {
+        Entry e = await _store.ReadEntryAt(offset, cancellation);
+        CheckType(e, expectedType);
+        await _store.ReadEntryValueAsSnappy(buffer, e, cancellation);
+    }
+
+    private TxReceipt[] DecodeReceipts(IByteBuffer buf)
     {
         return _receiptDecoder.DecodeArray(new NettyRlpStream(buf));
     }
 
-    private async Task<long> SeekToBlock(long blockNumber, CancellationToken token = default)
+    private async Task<long> SeekToBlock(long blockNumber, CancellationToken token)
     {
         //Last 8 bytes is the count, so we skip them
         long startOfIndex = _store.Metadata.Length - 8 - _store.Metadata.Count * 8;
@@ -185,21 +238,12 @@ internal class EraReader : IAsyncEnumerable<(Block, TxReceipt[], UInt256)>, IDis
 
     private void Reset()
     {
-        _currentBlockNumber = 0;
+        _currentBlockNumber = _store.Metadata.Start;
     }
 
     private static void CheckType(Entry e, ushort expected)
     {
         if (e.Type != expected) throw new EraException($"Expected an entry of type {expected}, but got {e.Type}.");
-    }
-    private Task<int> Decompress(IByteBuffer buffer, Entry e, CancellationToken cancellation = default) => _store.ReadEntryValueAsSnappy(buffer, e, cancellation);
-
-    private async Task<T> DecompressAndDecode<T>(IByteBuffer buffer, Entry e, CancellationToken cancellation = default) where T : class
-    {
-        //TODO handle read more than buffer length
-        buffer.EnsureWritable((int)e.Length * 2, true);
-        await _store.ReadEntryValueAsSnappy(buffer, e, cancellation);
-        return Rlp.Decode<T>(new NettyRlpStream(buffer));
     }
 
     private static bool IsValidFilename(string file)
@@ -232,5 +276,18 @@ internal class EraReader : IAsyncEnumerable<(Block, TxReceipt[], UInt256)>, IDis
         GC.SuppressFinalize(this);
     }
 
-
+    private class EntryReadResult
+    {
+        public EntryReadResult(Block block, TxReceipt[] receipts, UInt256 totalDifficulty, Keccak? headerHash)
+        {
+            Block = block;
+            TotalDifficulty = totalDifficulty;
+            ComputedHeaderHash = headerHash;
+            Receipts = receipts;
+        }
+        public Block Block { get; }
+        public TxReceipt[] Receipts { get; }
+        public UInt256 TotalDifficulty { get; }
+        public Keccak? ComputedHeaderHash { get; }
+    }
 }

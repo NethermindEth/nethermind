@@ -258,6 +258,11 @@ namespace Nethermind.Serialization.Rlp
             return new Rlp(rlpStream.Data);
         }
 
+        public Keccak ComputeHeaderHash(RlpStream rlpStream)
+        {
+            return Keccak.Compute(rlpStream.PeekNextItem());
+        }
+
         private static int GetContentLength(BlockHeader? item, RlpBehaviors rlpBehaviors)
         {
             if (item is null)

@@ -171,5 +171,12 @@ namespace Nethermind.Core.Test.Builders
             byte[] value = accountDecoder.Encode(account).Bytes;
             return value;
         }
+
+        public static UInt256 GetRandomAmount(Random? random = null)
+        {
+            var buffer = new byte[32].AsSpan();
+            (random ?? Random).NextBytes(buffer);
+            return new UInt256(buffer);
+        }
     }
 }
