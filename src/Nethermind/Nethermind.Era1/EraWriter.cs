@@ -95,7 +95,7 @@ internal class EraWriter : IDisposable
     /// <exception cref="ArgumentOutOfRangeException"></exception>
     /// <exception cref="EraException"></exception>
     public async Task<bool> Add(
-        Keccak blockHash,
+        Hash256 blockHash,
         byte[] blockHeader,
         byte[] blockBody,
         byte[] receiptsArray,
@@ -215,7 +215,7 @@ internal class EraWriter : IDisposable
         GC.SuppressFinalize(this);
     }
 
-    public static string Filename(string network, int epoch, Keccak root)
+    public static string Filename(string network, int epoch, Hash256 root)
     {
         if (string.IsNullOrEmpty(network)) throw new ArgumentException($"'{nameof(network)}' cannot be null or empty.", nameof(network));
         if (root is null) throw new ArgumentNullException(nameof(root));

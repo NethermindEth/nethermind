@@ -34,6 +34,17 @@ namespace Nethermind.Db
             _registrations.Add(Action);
         }
 
+        protected void RegisterCustomColumnDb<T>(string dbName, Func<IColumnsDb<T>> dbFunc)
+        {
+            void Action()
+            {
+                IColumnsDb<T> db = dbFunc();
+                _dbProvider.RegisterColumnDb(dbName, db);
+            }
+
+            _registrations.Add(Action);
+        }
+
         protected void RegisterDb(RocksDbSettings settings) =>
             AddRegisterAction(settings.DbName, () => CreateDb(settings));
 
@@ -42,11 +53,13 @@ namespace Nethermind.Db
 
         private void AddRegisterAction(string dbName, Func<IDb> dbCreation) =>
             _registrations.Add(() => _dbProvider.RegisterDb(dbName, dbCreation()));
+        private void AddRegisterAction<T>(string dbName, Func<IColumnsDb<T>> dbCreation) =>
+            _registrations.Add(() => _dbProvider.RegisterColumnDb(dbName, dbCreation()));
 
         private IDb CreateDb(RocksDbSettings settings) =>
             PersistedDb ? RocksDbFactory.CreateDb(settings) : MemDbFactory.CreateDb(settings.DbName);
 
-        private IDb CreateColumnDb<T>(RocksDbSettings settings) where T : struct, Enum =>
+        private IColumnsDb<T> CreateColumnDb<T>(RocksDbSettings settings) where T : struct, Enum =>
             PersistedDb ? RocksDbFactory.CreateColumnsDb<T>(settings) : MemDbFactory.CreateColumnsDb<T>(settings.DbName);
 
         protected void InitAll()

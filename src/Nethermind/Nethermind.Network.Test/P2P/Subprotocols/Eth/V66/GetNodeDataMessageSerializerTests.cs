@@ -14,7 +14,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
         [Test]
         public void Roundtrip()
         {
-            Keccak[] keys = { new("0x00000000000000000000000000000000000000000000000000000000deadc0de"), new("0x00000000000000000000000000000000000000000000000000000000feedbeef") };
+            Hash256[] keys = { new("0x00000000000000000000000000000000000000000000000000000000deadc0de"), new("0x00000000000000000000000000000000000000000000000000000000feedbeef") };
 
             var ethMessage = new Network.P2P.Subprotocols.Eth.V63.Messages.GetNodeDataMessage(keys);
 

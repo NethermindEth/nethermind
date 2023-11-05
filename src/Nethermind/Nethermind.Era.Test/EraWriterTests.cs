@@ -128,30 +128,34 @@ internal class EraWriterTests
     [TestCase("sepolia", 2, "0x1122ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff", "sepolia-00002-1122ffff.era1")]
     public void Filename_ValidParameters_ReturnsExpected(string network, int epoch, string hash, string expected)
     {
-        Assert.That(EraWriter.Filename(network, epoch, new Keccak(hash)), Is.EqualTo(expected));
+        Assert.That(EraWriter.Filename(network, epoch, new Hash256(hash)), Is.EqualTo(expected));
     }
 
     [Test]
     public void Filename_NetworkIsNull_ReturnsException()
     {
-        Assert.That(() => EraWriter.Filename(null, 0, new Keccak("0x0000000000000000000000000000000000000000000000000000000000000000")), Throws.ArgumentException);
+#pragma warning disable CS8625 // Cannot convert null literal to non-nullable reference type.
+        Assert.That(() => EraWriter.Filename(null, 0, new Hash256("0x0000000000000000000000000000000000000000000000000000000000000000")), Throws.ArgumentException);
+#pragma warning restore CS8625 // Cannot convert null literal to non-nullable reference type.
     }
 
     [Test]
     public void Filename_NetworkIsEmpty_ReturnsException()
     {
-        Assert.That(() => EraWriter.Filename("", 0, new Keccak("0x0000000000000000000000000000000000000000000000000000000000000000")), Throws.ArgumentException);
+        Assert.That(() => EraWriter.Filename("", 0, new Hash256("0x0000000000000000000000000000000000000000000000000000000000000000")), Throws.ArgumentException);
     }
 
     [Test]
     public void Filename_EpochIsNegative_ReturnsException()
     {
-        Assert.That(() => EraWriter.Filename("test", -1, new Keccak("0x0000000000000000000000000000000000000000000000000000000000000000")), Throws.TypeOf<ArgumentOutOfRangeException>());
+        Assert.That(() => EraWriter.Filename("test", -1, new Hash256("0x0000000000000000000000000000000000000000000000000000000000000000")), Throws.TypeOf<ArgumentOutOfRangeException>());
     }
 
     [Test]
     public void Filename_RootIsNull_ReturnsException()
     {
+#pragma warning disable CS8625 // Cannot convert null literal to non-nullable reference type.
         Assert.That(() => EraWriter.Filename("test", 0, null), Throws.ArgumentNullException);
+#pragma warning restore CS8625 // Cannot convert null literal to non-nullable reference type.
     }
 }

@@ -71,7 +71,7 @@ namespace Nethermind.AccountAbstraction.Bundler
 
             if (result)
             {
-                if (_logger.IsDebug) _logger.Debug($"Bundle {bundle.Hash} from AA successfuly added to MEV bundle pool");
+                if (_logger.IsDebug) _logger.Debug($"Bundle {bundle.Hash} from AA successfully added to MEV bundle pool");
             }
             else if (_logger.IsDebug) _logger.Debug("Bundle from AA failed to be added to MEV bundle pool");
         }

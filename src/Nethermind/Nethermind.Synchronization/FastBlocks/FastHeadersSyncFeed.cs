@@ -43,7 +43,7 @@ namespace Nethermind.Synchronization.FastBlocks
         private readonly int _headersRequestSize = GethSyncLimits.MaxHeaderFetch;
         protected long _lowestRequestedHeaderNumber;
 
-        protected Keccak _nextHeaderHash;
+        protected Hash256 _nextHeaderHash;
         protected UInt256? _nextHeaderDiff;
 
         protected long _pivotNumber;

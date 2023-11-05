@@ -2,7 +2,7 @@ name: Publish Docker image
 
 on:
   push:
-    branches: [master]
+    branches: [master, release/*]
     paths:
       - 'src/Nethermind/**'
 
@@ -44,10 +44,14 @@ jobs:
         run: echo "${{ secrets.DOCKER_ACCESS_TOKEN }}" | docker login --username "${{ secrets.DOCKER_USERNAME }}" --password-stdin
       - name: Build and push image to Docker Hub (staging)
         run: |
+          branch=$(echo "${{ github.ref }}" | sed -e "s/refs\/heads\///g")
+          tag=${{ github.event.inputs.tag || '$branch' }}
           build_timestamp=$(date '+%s')
+          echo "Building image with tag $tag"
+
           docker buildx build --platform=linux/amd64,linux/arm64 \
             -f ${{ github.event.inputs.dockerfile || 'Dockerfile' }} \
-            -t "nethermindeth/${{ github.event.inputs.image-name }}:${{ github.event.inputs.tag || 'master' }}" \
+            -t "nethermindeth/${{ github.event.inputs.image-name || 'nethermind' }}:$tag" \
             --build-arg BUILD_CONFIG=${{ github.event.inputs.build-config || 'release' }} \
             --build-arg BUILD_TIMESTAMP=$build_timestamp \
             --build-arg COMMIT_HASH=$GITHUB_SHA . --push

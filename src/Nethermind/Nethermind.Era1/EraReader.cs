@@ -63,12 +63,12 @@ internal class EraReader : IAsyncEnumerable<(Block, TxReceipt[], UInt256)>, IDis
             {
                 return false;
             }
-            Keccak txRoot = new TxTrie(result.Block.Transactions).RootHash;
+            Hash256 txRoot = new TxTrie(result.Block.Transactions).RootHash;
             if (result.Block.Header.TxRoot != txRoot)
             {
                 return false;
             }
-            Keccak receiptRoot = new ReceiptTrie(receiptSpec, result.Receipts).RootHash;
+            Hash256 receiptRoot = new ReceiptTrie(receiptSpec, result.Receipts).RootHash;
             if (result.Block.Header.ReceiptsRoot != receiptRoot)
             {
                 return false;
@@ -180,7 +180,7 @@ internal class EraReader : IAsyncEnumerable<(Block, TxReceipt[], UInt256)>, IDis
         {
             await ReadEntry(blockOffset, buffer, EntryTypes.CompressedHeader, cancellationToken);
             NettyRlpStream rlpStream = new NettyRlpStream(buffer);
-            Keccak? currentComputedHeaderHash = null;
+            Hash256? currentComputedHeaderHash = null;
             if (computeHeaderHash)
                 currentComputedHeaderHash = _headerDecoder.ComputeHeaderHash(rlpStream);
             BlockHeader header = Rlp.Decode<BlockHeader>(rlpStream);
@@ -278,7 +278,7 @@ internal class EraReader : IAsyncEnumerable<(Block, TxReceipt[], UInt256)>, IDis
 
     private class EntryReadResult
     {
-        public EntryReadResult(Block block, TxReceipt[] receipts, UInt256 totalDifficulty, Keccak? headerHash)
+        public EntryReadResult(Block block, TxReceipt[] receipts, UInt256 totalDifficulty, Hash256? headerHash)
         {
             Block = block;
             TotalDifficulty = totalDifficulty;
@@ -288,6 +288,6 @@ internal class EraReader : IAsyncEnumerable<(Block, TxReceipt[], UInt256)>, IDis
         public Block Block { get; }
         public TxReceipt[] Receipts { get; }
         public UInt256 TotalDifficulty { get; }
-        public Keccak? ComputedHeaderHash { get; }
+        public Hash256? ComputedHeaderHash { get; }
     }
 }

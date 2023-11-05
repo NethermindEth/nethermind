@@ -12,7 +12,7 @@ namespace Nethermind.Blockchain.Receipts
         void Insert(Block block, TxReceipt[]? txReceipts, bool ensureCanonical);
         long? LowestInsertedReceiptBlockNumber { get; set; }
         long MigratedBlockNumber { get; set; }
-        bool HasBlock(long blockNumber, Keccak hash);
+        bool HasBlock(long blockNumber, Hash256 hash);
         void EnsureCanonical(Block block);
     }
 }

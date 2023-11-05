@@ -43,7 +43,7 @@ namespace Nethermind.Serialization.Rlp
             }
             else
             {
-                txReceipt.PostTransactionState = firstItem.Length == 0 ? null : new Keccak(firstItem);
+                txReceipt.PostTransactionState = firstItem.Length == 0 ? null : new Hash256(firstItem);
                 txReceipt.GasUsedTotal = (long)rlpStream.DecodeUBigInt();
             }
 

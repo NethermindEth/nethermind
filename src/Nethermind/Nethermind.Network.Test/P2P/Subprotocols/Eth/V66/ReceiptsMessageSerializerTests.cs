@@ -35,8 +35,8 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
             txReceipt.Bloom.Should().Be(Bloom.Empty);
 
             txReceipt.Logs[0].LoggersAddress.Should().BeEquivalentTo(new Address("0x0000000000000000000000000000000000000011"));
-            txReceipt.Logs[0].Topics[0].Should().BeEquivalentTo(new Keccak("0x000000000000000000000000000000000000000000000000000000000000dead"));
-            txReceipt.Logs[0].Topics[1].Should().BeEquivalentTo(new Keccak("0x000000000000000000000000000000000000000000000000000000000000beef"));
+            txReceipt.Logs[0].Topics[0].Should().BeEquivalentTo(new Hash256("0x000000000000000000000000000000000000000000000000000000000000dead"));
+            txReceipt.Logs[0].Topics[1].Should().BeEquivalentTo(new Hash256("0x000000000000000000000000000000000000000000000000000000000000beef"));
             txReceipt.Logs[0].Data.Should().BeEquivalentTo(Bytes.FromHexString("0x0100ff"));
             txReceipt.BlockNumber.Should().Be(0x0);
             txReceipt.TxHash.Should().BeNull();

@@ -134,8 +134,15 @@ namespace Nethermind.Synchronization
 
         private void SetupDbOptimizer()
         {
-            new SyncDbTuner(_syncConfig, _snapSyncFeed, _bodiesFeed, _receiptsFeed, _dbProvider.StateDb, _dbProvider.CodeDb,
-                _dbProvider.BlocksDb, _dbProvider.ReceiptsDb);
+            new SyncDbTuner(
+                _syncConfig,
+                _snapSyncFeed,
+                _bodiesFeed,
+                _receiptsFeed,
+                _dbProvider.StateDb as ITunableDb,
+                _dbProvider.CodeDb as ITunableDb,
+                _dbProvider.BlocksDb as ITunableDb,
+                _dbProvider.ReceiptsDb as ITunableDb);
         }
 
         private void StartFullSyncComponents()
@@ -260,7 +267,7 @@ namespace Nethermind.Synchronization
             {
                 if (_syncConfig.DownloadBodiesInFastSync)
                 {
-                    _bodiesFeed = new BodiesSyncFeed(_syncMode, _blockTree, _syncPeerPool, _syncConfig, _syncReport, _specProvider, _logManager);
+                    _bodiesFeed = new BodiesSyncFeed(_syncMode, _blockTree, _syncPeerPool, _syncConfig, _syncReport, _dbProvider.BlocksDb, _logManager);
 
                     SyncDispatcher<BodiesSyncBatch> bodiesDispatcher = CreateDispatcher(
                         _bodiesFeed,

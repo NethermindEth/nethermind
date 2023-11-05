@@ -17,7 +17,7 @@ public class TraceStorePlugin : INethermindPlugin
     private INethermindApi _api = null!;
     private ITraceStoreConfig _config = null!;
     private IJsonRpcConfig _jsonRpcConfig = null!;
-    private IDbWithSpan? _db;
+    private IDb? _db;
     private TraceStorePruner? _pruner;
     private ILogManager _logManager = null!;
     private ILogger _logger = null!;
@@ -41,7 +41,7 @@ public class TraceStorePlugin : INethermindPlugin
             _traceSerializer = new ParityLikeTraceSerializer(_logManager, _config.MaxDepth, _config.VerifySerialized);
 
             // Setup DB
-            _db = (IDbWithSpan)_api.RocksDbFactory!.CreateDb(new RocksDbSettings(DbName, DbName.ToLower()));
+            _db = _api.RocksDbFactory!.CreateDb(new RocksDbSettings(DbName, DbName.ToLower()));
             _api.DbProvider!.RegisterDb(DbName, _db);
 
             //Setup pruning if configured

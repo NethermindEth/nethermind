@@ -15,7 +15,9 @@ internal class StreamSegmentTests
     [Test]
     public void Constructor_StreamIsNull_ThrowException()
     {
+#pragma warning disable CS8625 // Cannot convert null literal to non-nullable reference type.
         Assert.That(() => new StreamSegment(null, 0, 1), Throws.TypeOf<ArgumentNullException>());
+#pragma warning restore CS8625 // Cannot convert null literal to non-nullable reference type.
     }
     [Test]
     public void Constructor_StreamIsNotReadable_ThrowException()

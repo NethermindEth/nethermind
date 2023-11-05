@@ -61,7 +61,7 @@ namespace Nethermind.Clique.Test
             ISnapshotManager snapshotManager = Substitute.For<ISnapshotManager>();
             IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
             BlockHeader header = Build.A.BlockHeader.TestObject;
-            blockFinder.FindHeader(Arg.Any<Keccak>()).Returns(header);
+            blockFinder.FindHeader(Arg.Any<Hash256>()).Returns(header);
             snapshotManager.GetBlockSealer(header).Returns(TestItem.AddressA);
             CliqueRpcModule rpcModule = new(Substitute.For<ICliqueBlockProducer>(), snapshotManager, blockFinder);
             rpcModule.clique_getBlockSigner(Keccak.Zero).Result.ResultType.Should().Be(ResultType.Success);
@@ -73,7 +73,7 @@ namespace Nethermind.Clique.Test
         {
             ISnapshotManager snapshotManager = Substitute.For<ISnapshotManager>();
             IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
-            blockFinder.FindHeader(Arg.Any<Keccak>()).Returns((BlockHeader)null);
+            blockFinder.FindHeader(Arg.Any<Hash256>()).Returns((BlockHeader)null);
             CliqueRpcModule rpcModule = new(Substitute.For<ICliqueBlockProducer>(), snapshotManager, blockFinder);
             rpcModule.clique_getBlockSigner(Keccak.Zero).Result.ResultType.Should().Be(ResultType.Failure);
         }

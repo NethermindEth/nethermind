@@ -15,7 +15,7 @@ namespace Nethermind.TxPool.Collections;
 public class PersistentBlobTxDistinctSortedPool : BlobTxDistinctSortedPool
 {
     private readonly ITxStorage _blobTxStorage;
-    private readonly LruCache<ValueKeccak, Transaction> _blobTxCache;
+    private readonly LruCache<ValueHash256, Transaction> _blobTxCache;
     private readonly ILogger _logger;
 
     public PersistentBlobTxDistinctSortedPool(ITxStorage blobTxStorage, ITxPoolConfig txPoolConfig, IComparer<Transaction> comparer, ILogManager logManager)
@@ -51,7 +51,7 @@ public class PersistentBlobTxDistinctSortedPool : BlobTxDistinctSortedPool
         stopwatch.Stop();
     }
 
-    public override bool TryInsert(ValueKeccak hash, Transaction fullBlobTx, out Transaction? removed)
+    public override bool TryInsert(ValueHash256 hash, Transaction fullBlobTx, out Transaction? removed)
     {
         if (base.TryInsert(fullBlobTx.Hash, new LightTransaction(fullBlobTx), out removed))
         {
@@ -63,7 +63,7 @@ public class PersistentBlobTxDistinctSortedPool : BlobTxDistinctSortedPool
         return false;
     }
 
-    public override bool TryGetValue(ValueKeccak hash, [NotNullWhen(true)] out Transaction? fullBlobTx)
+    public override bool TryGetValue(ValueHash256 hash, [NotNullWhen(true)] out Transaction? fullBlobTx)
     {
         // Firstly check if tx is present in in-memory collection of light blob txs (without actual blobs).
         // If not, just return false
@@ -88,7 +88,7 @@ public class PersistentBlobTxDistinctSortedPool : BlobTxDistinctSortedPool
         return false;
     }
 
-    protected override bool Remove(ValueKeccak hash, Transaction tx)
+    protected override bool Remove(ValueHash256 hash, Transaction tx)
     {
         _blobTxCache.Delete(hash);
         _blobTxStorage.Delete(hash, tx.Timestamp);

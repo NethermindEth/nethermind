@@ -62,7 +62,7 @@ namespace Nethermind.Synchronization.ParallelSync
             _receiptsBarrier = _syncConfig.AncientReceiptsBarrierCalc;
         }
 
-        private bool IsFullySynced(Keccak stateRoot)
+        private bool IsFullySynced(Hash256 stateRoot)
         {
             if (stateRoot == Keccak.EmptyTreeHash)
             {
@@ -143,7 +143,7 @@ namespace Nethermind.Synchronization.ParallelSync
 
         public UInt256 ChainDifficulty => _blockTree.BestSuggestedBody?.TotalDifficulty ?? UInt256.Zero;
 
-        public UInt256? GetTotalDifficulty(Keccak blockHash)
+        public UInt256? GetTotalDifficulty(Hash256 blockHash)
         {
             BlockHeader best = _blockTree.BestSuggestedHeader;
 

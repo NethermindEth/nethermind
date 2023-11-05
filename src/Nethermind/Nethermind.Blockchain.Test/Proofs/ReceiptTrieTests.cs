@@ -23,7 +23,7 @@ namespace Nethermind.Blockchain.Test.Proofs
         public void Can_calculate_root_no_eip_658()
         {
             TxReceipt receipt = Build.A.Receipt.WithAllFieldsFilled.TestObject;
-            Keccak rootHash = ReceiptTrie.CalculateRoot(MainnetSpecProvider.Instance.GetSpec((1, null)), new[] { receipt });
+            Hash256 rootHash = ReceiptTrie.CalculateRoot(MainnetSpecProvider.Instance.GetSpec((1, null)), new[] { receipt });
             Assert.That(rootHash.ToString(), Is.EqualTo("0xe51a2d9f986d68628990c9d65e45c36128ec7bb697bd426b0bb4d18a3f3321be"));
         }
 
@@ -31,7 +31,7 @@ namespace Nethermind.Blockchain.Test.Proofs
         public void Can_calculate_root()
         {
             TxReceipt receipt = Build.A.Receipt.WithAllFieldsFilled.TestObject;
-            Keccak rootHash = ReceiptTrie.CalculateRoot(MainnetSpecProvider.Instance.GetSpec((MainnetSpecProvider.MuirGlacierBlockNumber, null)), new[] { receipt });
+            Hash256 rootHash = ReceiptTrie.CalculateRoot(MainnetSpecProvider.Instance.GetSpec((MainnetSpecProvider.MuirGlacierBlockNumber, null)), new[] { receipt });
             Assert.That(rootHash.ToString(), Is.EqualTo("0x2e6d89c5b539e72409f2e587730643986c2ef33db5e817a4223aa1bb996476d5"));
         }
 
@@ -48,7 +48,7 @@ namespace Nethermind.Blockchain.Test.Proofs
             VerifyProof(proof, trie.RootHash);
         }
 
-        private static void VerifyProof(byte[][] proof, Keccak receiptRoot)
+        private static void VerifyProof(byte[][] proof, Hash256 receiptRoot)
         {
             TrieNode node = new(NodeType.Unknown, proof.Last());
             node.ResolveNode(Substitute.For<ITrieNodeResolver>());
@@ -57,7 +57,7 @@ namespace Nethermind.Blockchain.Test.Proofs
 
             for (int i = proof.Length; i > 0; i--)
             {
-                Keccak proofHash = Keccak.Compute(proof[i - 1]);
+                Hash256 proofHash = Keccak.Compute(proof[i - 1]);
                 if (i > 1)
                 {
                     if (!new Rlp(proof[i - 2]).ToString(false).Contains(proofHash.ToString(false)))

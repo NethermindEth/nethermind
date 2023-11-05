@@ -21,7 +21,7 @@ internal class AccumulatorCalculator
         _roots = new(EraWriter.MaxEra1Size);
     }
 
-    public void Add(Keccak headerHash, UInt256 td)
+    public void Add(Hash256 headerHash, UInt256 td)
     {
         if (headerHash is null) throw new ArgumentNullException(nameof(headerHash));
         SszTree tree = new( new SszContainer(new[]

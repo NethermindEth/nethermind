@@ -8,7 +8,7 @@ namespace Nethermind.Mev.Data
 {
     public partial class MevMegabundle
     {
-        private static Keccak GetHash(MevMegabundle bundle)
+        private static Hash256 GetHash(MevMegabundle bundle)
         {
             RlpStream stream = EncodeRlp(bundle);
             return Keccak.Compute(stream.Data);

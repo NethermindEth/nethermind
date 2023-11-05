@@ -34,21 +34,21 @@ namespace Nethermind.TxPool
 
         public void RemovePeer(PublicKey nodeId) { }
 
-        public bool ContainsTx(Keccak hash, TxType txType) => false;
+        public bool ContainsTx(Hash256 hash, TxType txType) => false;
 
         public AcceptTxResult SubmitTx(Transaction tx, TxHandlingOptions txHandlingOptions) => AcceptTxResult.Accepted;
 
-        public bool RemoveTransaction(Keccak? hash) => false;
+        public bool RemoveTransaction(Hash256? hash) => false;
 
-        public bool IsKnown(Keccak hash) => false;
+        public bool IsKnown(Hash256 hash) => false;
 
-        public bool TryGetPendingTransaction(Keccak hash, out Transaction? transaction)
+        public bool TryGetPendingTransaction(Hash256 hash, out Transaction? transaction)
         {
             transaction = null;
             return false;
         }
 
-        public bool TryGetPendingBlobTransaction(Keccak hash, [NotNullWhen(true)] out Transaction? blobTransaction)
+        public bool TryGetPendingBlobTransaction(Hash256 hash, [NotNullWhen(true)] out Transaction? blobTransaction)
         {
             blobTransaction = null;
             return false;

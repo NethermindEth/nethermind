@@ -92,8 +92,8 @@ namespace Nethermind.Clique.Test
 
         public static Block GetRinkebyGenesis()
         {
-            Keccak parentHash = Keccak.Zero;
-            Keccak unclesHash = Keccak.OfAnEmptySequenceRlp;
+            Hash256 parentHash = Keccak.Zero;
+            Hash256 unclesHash = Keccak.OfAnEmptySequenceRlp;
             Address beneficiary = Address.Zero;
             UInt256 difficulty = new(1);
             long number = 0L;
@@ -103,7 +103,7 @@ namespace Nethermind.Clique.Test
             BlockHeader header = new(parentHash, unclesHash, beneficiary, difficulty, number, gasLimit, timestamp, extraData);
             header.Bloom = Bloom.Empty;
             Block genesis = new(header);
-            genesis.Header.Hash = new Keccak("0x6341fd3daf94b748c72ced5a5b26028f2474f5f00d824504e4fa37a75767e177");
+            genesis.Header.Hash = new Hash256("0x6341fd3daf94b748c72ced5a5b26028f2474f5f00d824504e4fa37a75767e177");
             // this would need to be loaded from rinkeby chainspec to include allocations
             // Assert.AreEqual(new Keccak("0x6341fd3daf94b748c72ced5a5b26028f2474f5f00d824504e4fa37a75767e177"), genesis.Hash);
 
