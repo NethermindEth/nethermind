@@ -170,6 +170,16 @@ namespace Nethermind.Synchronization.FastBlocks
                 int added = InsertReceipts(batch);
                 return added == 0 ? SyncResponseHandlingResult.NoProgress : SyncResponseHandlingResult.OK;
             }
+            catch (Exception)
+            {
+                foreach (BlockInfo? batchInfo in batch.Infos)
+                {
+                    if (batchInfo is null) break;
+                    _syncStatusList.MarkPending(batchInfo);
+                }
+
+                throw;
+            }
             finally
             {
                 batch?.MarkHandlingEnd();

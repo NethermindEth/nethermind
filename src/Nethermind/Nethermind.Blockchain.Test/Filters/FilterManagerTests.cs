@@ -298,7 +298,7 @@ namespace Nethermind.Blockchain.Test.Filters
                     logsAssertion(logs);
                 }
 
-                Keccak[] hashes = _filterManager.GetBlocksHashes(blockFilter.Id);
+                Hash256[] hashes = _filterManager.GetBlocksHashes(blockFilter.Id);
                 NUnit.Framework.Assert.That(hashes.Length, Is.EqualTo(1));
             });
         }

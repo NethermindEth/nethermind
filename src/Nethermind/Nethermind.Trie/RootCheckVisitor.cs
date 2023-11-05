@@ -11,16 +11,16 @@ namespace Nethermind.Trie
 
         public bool IsFullDbScan => false;
 
-        public bool ShouldVisit(Keccak nextNode)
+        public bool ShouldVisit(Hash256 nextNode)
         {
             return false;
         }
 
-        public void VisitTree(Keccak rootHash, TrieVisitContext trieVisitContext)
+        public void VisitTree(Hash256 rootHash, TrieVisitContext trieVisitContext)
         {
         }
 
-        public void VisitMissingNode(Keccak nodeHash, TrieVisitContext trieVisitContext)
+        public void VisitMissingNode(Hash256 nodeHash, TrieVisitContext trieVisitContext)
         {
             HasRoot = false;
         }
@@ -37,7 +37,7 @@ namespace Nethermind.Trie
         {
         }
 
-        public void VisitCode(Keccak codeHash, TrieVisitContext trieVisitContext)
+        public void VisitCode(Hash256 codeHash, TrieVisitContext trieVisitContext)
         {
         }
     }

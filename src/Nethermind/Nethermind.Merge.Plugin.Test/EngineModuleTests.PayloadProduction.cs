@@ -27,6 +27,7 @@ using Nethermind.Merge.Plugin.Data;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
+using Nethermind.State.Repositories;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -40,7 +41,7 @@ public partial class EngineModuleTests
         using MergeTestBlockchain chain = await CreateBlockchain();
         IEngineRpcModule rpc = CreateEngineModule(chain);
 
-        Keccak startingHead = chain.BlockTree.HeadHash;
+        Hash256 startingHead = chain.BlockTree.HeadHash;
         ForkchoiceStateV1 forkchoiceState = new(startingHead, Keccak.Zero, startingHead);
         PayloadAttributes payload = new() { Timestamp = Timestamper.UnixTime.Seconds, SuggestedFeeRecipient = Address.Zero, PrevRandao = Keccak.Zero };
         Task<ResultWrapper<ForkchoiceUpdatedV1Result>> forkchoiceResponse = rpc.engine_forkchoiceUpdatedV1(forkchoiceState, payload);
@@ -70,9 +71,9 @@ public partial class EngineModuleTests
             timePerSlot);
 
         IEngineRpcModule rpc = CreateEngineModule(chain);
-        Keccak startingHead = chain.BlockTree.HeadHash;
+        Hash256 startingHead = chain.BlockTree.HeadHash;
         ulong timestamp = Timestamper.UnixTime.Seconds;
-        Keccak random = Keccak.Zero;
+        Hash256 random = Keccak.Zero;
         Address feeRecipient = Address.Zero;
 
         string payloadId = rpc.engine_forkchoiceUpdatedV1(new ForkchoiceStateV1(startingHead, Keccak.Zero, startingHead),
@@ -92,7 +93,7 @@ public partial class EngineModuleTests
         using SemaphoreSlim blockImprovementLock = new(0);
         using MergeTestBlockchain chain = await CreateBlockchain();
         IEngineRpcModule rpc = CreateEngineModule(chain);
-        Keccak startingHead = chain.BlockTree.HeadHash;
+        Hash256 startingHead = chain.BlockTree.HeadHash;
         uint count = 3;
         int value = 10;
         Address recipient = TestItem.AddressF;
@@ -148,7 +149,7 @@ public partial class EngineModuleTests
             TimeSpan.FromSeconds(10));
 
         IEngineRpcModule rpc = CreateEngineModule(chain);
-        Keccak startingHead = chain.BlockTree.HeadHash;
+        Hash256 startingHead = chain.BlockTree.HeadHash;
         uint count = 3;
         int value = 10;
         Address recipient = TestItem.AddressF;
@@ -170,8 +171,8 @@ public partial class EngineModuleTests
     {
         using MergeTestBlockchain chain = await CreateBlockchain();
         IEngineRpcModule rpc = CreateEngineModule(chain);
-        Keccak startingHead = chain.BlockTree.HeadHash;
-        Keccak? random = TestItem.KeccakF;
+        Hash256 startingHead = chain.BlockTree.HeadHash;
+        Hash256? random = TestItem.KeccakF;
         ulong timestamp = chain.BlockTree.Head!.Timestamp + 5;
         Address? suggestedFeeRecipient = TestItem.AddressC;
         PayloadAttributes? payloadAttributes = new() { PrevRandao = random, Timestamp = timestamp, SuggestedFeeRecipient = suggestedFeeRecipient };
@@ -195,9 +196,9 @@ public partial class EngineModuleTests
     {
         using MergeTestBlockchain chain = await CreateBlockchain();
         IEngineRpcModule rpc = CreateEngineModule(chain);
-        Keccak startingHead = chain.BlockTree.HeadHash;
+        Hash256 startingHead = chain.BlockTree.HeadHash;
         ulong timestamp = Timestamper.UnixTime.Seconds;
-        Keccak random = Keccak.Zero;
+        Hash256 random = Keccak.Zero;
         Address feeRecipient = Address.Zero;
         string _ = rpc.engine_forkchoiceUpdatedV1(new ForkchoiceStateV1(startingHead, Keccak.Zero, startingHead),
                 new PayloadAttributes { Timestamp = timestamp, SuggestedFeeRecipient = feeRecipient, PrevRandao = random }).Result.Data
@@ -288,9 +289,9 @@ public partial class EngineModuleTests
             minTimeForProduction: delay);
 
         IEngineRpcModule rpc = CreateEngineModule(chain);
-        Keccak startingHead = chain.BlockTree.HeadHash;
+        Hash256 startingHead = chain.BlockTree.HeadHash;
         ulong timestamp = Timestamper.UnixTime.Seconds;
-        Keccak random = Keccak.Zero;
+        Hash256 random = Keccak.Zero;
         Address feeRecipient = Address.Zero;
 
         string payloadId = rpc.engine_forkchoiceUpdatedV1(new ForkchoiceStateV1(startingHead, Keccak.Zero, startingHead),
@@ -324,7 +325,7 @@ public partial class EngineModuleTests
             minTimeForProduction: delay);
 
         IEngineRpcModule rpc = CreateEngineModule(chain);
-        Keccak startingHead = chain.BlockTree.HeadHash;
+        Hash256 startingHead = chain.BlockTree.HeadHash;
         chain.AddTransactions(BuildTransactions(chain, startingHead, TestItem.PrivateKeyB, TestItem.AddressF, 3, 10, out _, out _));
         chain.PayloadPreparationService!.BlockImproved += (_, _) => { blockImprovementLock.Release(1); };
         string? payloadId = rpc.engine_forkchoiceUpdatedV1(
@@ -370,7 +371,7 @@ public partial class EngineModuleTests
             minTimeForProduction: delay);
 
         IEngineRpcModule rpc = CreateEngineModule(chain);
-        Keccak startingHead = chain.BlockTree.HeadHash;
+        Hash256 startingHead = chain.BlockTree.HeadHash;
         chain.AddTransactions(BuildTransactions(chain, startingHead, TestItem.PrivateKeyB, TestItem.AddressF, 3, 10, out _, out _));
         chain.PayloadPreparationService!.BlockImproved += (_, _) => { blockImprovementLock.Release(1); };
         string? payloadId = rpc.engine_forkchoiceUpdatedV1(
@@ -396,6 +397,80 @@ public partial class EngineModuleTests
 
         getPayloadResult.GetTransactions().Should().HaveCount(3);
         cancelledContext?.Disposed.Should().BeTrue();
+    }
+
+    [Test]
+    public async Task Cannot_build_invalid_block_with_the_branch()
+    {
+        using SemaphoreSlim blockImprovementLock = new(0);
+        using MergeTestBlockchain chain = await CreateBlockchain(new TestSingleReleaseSpecProvider(London.Instance));
+        IEngineRpcModule rpc = CreateEngineModule(chain);
+
+        // creating chain with 30 blocks
+        await ProduceBranchV1(rpc, chain, 30, CreateParentBlockRequestOnHead(chain.BlockTree), true);
+        TimeSpan delay = TimeSpan.FromMilliseconds(10);
+        TimeSpan timePerSlot = 4 * delay;
+        StoringBlockImprovementContextFactory improvementContextFactory = new(new BlockImprovementContextFactory(chain.BlockProductionTrigger, TimeSpan.FromSeconds(chain.MergeConfig.SecondsPerSlot)));
+        chain.PayloadPreparationService = new PayloadPreparationService(
+            chain.PostMergeBlockProducer!,
+            improvementContextFactory,
+            TimerFactory.Default,
+            chain.LogManager,
+            timePerSlot,
+            improvementDelay: delay,
+            minTimeForProduction: delay);
+        chain.PayloadPreparationService!.BlockImproved += (_, _) => { blockImprovementLock.Release(1); };
+
+        Block block30 = chain.BlockTree.Head!;
+
+        // we added transactions
+        chain.AddTransactions(BuildTransactions(chain, block30.CalculateHash(), TestItem.PrivateKeyB, TestItem.AddressF, 3, 10, out _, out _));
+        PayloadAttributes payloadAttributesBlock31A = new PayloadAttributes
+        {
+            Timestamp = (ulong)DateTime.UtcNow.AddDays(3).Ticks,
+            PrevRandao = TestItem.KeccakA,
+            SuggestedFeeRecipient = Address.Zero
+        };
+        string? payloadIdBlock31A = rpc.engine_forkchoiceUpdatedV1(
+                new ForkchoiceStateV1(block30.GetOrCalculateHash(), Keccak.Zero, block30.GetOrCalculateHash()),
+                payloadAttributesBlock31A)
+            .Result.Data.PayloadId!;
+        await blockImprovementLock.WaitAsync(delay * 1000);
+
+        ExecutionPayload getPayloadResultBlock31A = (await rpc.engine_getPayloadV1(Bytes.FromHexString(payloadIdBlock31A))).Data!;
+        getPayloadResultBlock31A.Should().NotBeNull();
+        await rpc.engine_newPayloadV1(getPayloadResultBlock31A);
+
+        // current main chain block 30->31A, we start building payload 32A
+        await rpc.engine_forkchoiceUpdatedV1(new ForkchoiceStateV1(getPayloadResultBlock31A.BlockHash, Keccak.Zero, getPayloadResultBlock31A.BlockHash));
+        Block block31A = chain.BlockTree.Head!;
+        PayloadAttributes payloadAttributes = new()
+        {
+            Timestamp = (ulong)DateTime.UtcNow.AddDays(4).Ticks,
+            PrevRandao = TestItem.KeccakA,
+            SuggestedFeeRecipient = Address.Zero
+        };
+
+        // we build one more block on the same level
+        Block block31B = chain.PostMergeBlockProducer!.PrepareEmptyBlock(block30.Header, payloadAttributes);
+        await rpc.engine_newPayloadV1(new ExecutionPayload(block31B));
+
+        // ...and we change the main chain, so main chain now is 30->31B, block improvement for block 32A is still in progress
+        string? payloadId = rpc.engine_forkchoiceUpdatedV1(
+                new ForkchoiceStateV1(block31A.GetOrCalculateHash(), Keccak.Zero, block31A.GetOrCalculateHash()),
+                payloadAttributes)
+            .Result.Data.PayloadId!;
+        ForkchoiceUpdatedV1Result result = rpc.engine_forkchoiceUpdatedV1(
+            new ForkchoiceStateV1(block31B.GetOrCalculateHash(), Keccak.Zero, block31B.GetOrCalculateHash())).Result.Data;
+
+        // we added same transactions, so if we build on incorrect state root, we will end up with invalid block
+        chain.AddTransactions(BuildTransactions(chain, block31A.GetOrCalculateHash(), TestItem.PrivateKeyC, TestItem.AddressF, 3, 10, out _, out _));
+        await blockImprovementLock.WaitAsync(delay * 1000);
+        ExecutionPayload getPayloadResult = (await rpc.engine_getPayloadV1(Bytes.FromHexString(payloadId))).Data!;
+        getPayloadResult.Should().NotBeNull();
+
+        ResultWrapper<PayloadStatusV1> finalResult = await rpc.engine_newPayloadV1(getPayloadResult);
+        finalResult.Data.Status.Should().Be(PayloadStatus.Valid);
     }
 
     [Test, Repeat(100)]
@@ -428,7 +503,7 @@ public partial class EngineModuleTests
             minTimeForProduction: delay);
 
         IEngineRpcModule rpc = CreateEngineModule(chain);
-        Keccak blockX = chain.BlockTree.HeadHash;
+        Hash256 blockX = chain.BlockTree.HeadHash;
         chain.AddTransactions(BuildTransactions(chain, blockX, TestItem.PrivateKeyB, TestItem.AddressF, 3, 10, out _, out _));
         chain.PayloadPreparationService!.BlockImproved += (_, _) => { blockImprovementLock.Release(1); };
         string? payloadId = rpc.engine_forkchoiceUpdatedV1(
@@ -492,7 +567,7 @@ public partial class EngineModuleTests
         using SemaphoreSlim blockImprovementLock = new(0);
         using MergeTestBlockchain chain = await CreateBlockchain(new TestSingleReleaseSpecProvider(London.Instance));
         IEngineRpcModule rpc = CreateEngineModule(chain);
-        Keccak blockX = chain.BlockTree.HeadHash;
+        Hash256 blockX = chain.BlockTree.HeadHash;
         await rpc.engine_forkchoiceUpdatedV1(
             new ForkchoiceStateV1(blockX, Keccak.Zero, blockX));
 
@@ -508,7 +583,7 @@ public partial class EngineModuleTests
         using SemaphoreSlim blockImprovementLock = new(0);
         using MergeTestBlockchain chain = await CreateBlockchain(new TestSingleReleaseSpecProvider(Shanghai.Instance));
         IEngineRpcModule rpc = CreateEngineModule(chain);
-        Keccak blockX = chain.BlockTree.HeadHash;
+        Hash256 blockX = chain.BlockTree.HeadHash;
         await rpc.engine_forkchoiceUpdatedV2(
             new ForkchoiceStateV1(blockX, Keccak.Zero, blockX));
 

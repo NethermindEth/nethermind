@@ -11,13 +11,13 @@ namespace Nethermind.Evm.Tracing.ParityStyle
     {
         public byte[]? Output { get; set; }
 
-        public Keccak? BlockHash { get; set; }
+        public Hash256? BlockHash { get; set; }
 
         public long BlockNumber { get; set; }
 
         public int? TransactionPosition { get; set; }
 
-        public Keccak? TransactionHash { get; set; }
+        public Hash256? TransactionHash { get; set; }
 
         public ParityVmTrace? VmTrace { get; set; }
 

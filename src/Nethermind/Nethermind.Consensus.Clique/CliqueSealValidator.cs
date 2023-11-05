@@ -77,7 +77,7 @@ namespace Nethermind.Consensus.Clique
                 return false;
             }
 
-            if (isEpochTransition && singersBytes % Address.ByteLength != 0)
+            if (isEpochTransition && singersBytes % Address.Size != 0)
             {
                 if (_logger.IsWarn) _logger.Warn($"Invalid block nonce ({header.ExtraData}) - should contain a list of signers on checkpoints");
                 return false;
@@ -151,9 +151,9 @@ namespace Nethermind.Consensus.Clique
             // If the block is a checkpoint block, validate the signer list
             if (IsEpochTransition(number))
             {
-                byte[] signersBytes = new byte[snapshot.Signers.Count * Address.ByteLength];
+                byte[] signersBytes = new byte[snapshot.Signers.Count * Address.Size];
                 int signerIndex = 0;
-                foreach (Address signer in snapshot.Signers.Keys) Array.Copy(signer.Bytes, 0, signersBytes, signerIndex++ * Address.ByteLength, Address.ByteLength);
+                foreach (Address signer in snapshot.Signers.Keys) Array.Copy(signer.Bytes, 0, signersBytes, signerIndex++ * Address.Size, Address.Size);
 
                 int extraSuffix = header.ExtraData.Length - Clique.ExtraSealLength - Clique.ExtraVanityLength;
                 if (!header.ExtraData.AsSpan(Clique.ExtraVanityLength, extraSuffix).SequenceEqual(signersBytes))

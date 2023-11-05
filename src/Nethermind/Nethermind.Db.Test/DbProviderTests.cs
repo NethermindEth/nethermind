@@ -29,8 +29,8 @@ namespace Nethermind.Db.Test
             {
                 MemDbFactory memDbFactory = new MemDbFactory();
                 IColumnsDb<ReceiptsColumns> memSnapshotableDb = memDbFactory.CreateColumnsDb<ReceiptsColumns>("ColumnsDb");
-                dbProvider.RegisterDb("ColumnsDb", memSnapshotableDb);
-                IColumnsDb<ReceiptsColumns> columnsDb = dbProvider.GetDb<IColumnsDb<ReceiptsColumns>>("ColumnsDb");
+                dbProvider.RegisterColumnDb("ColumnsDb", memSnapshotableDb);
+                IColumnsDb<ReceiptsColumns> columnsDb = dbProvider.GetColumnDb<ReceiptsColumns>("ColumnsDb");
                 Assert.That(columnsDb, Is.EqualTo(memSnapshotableDb));
                 Assert.IsTrue(memSnapshotableDb is IColumnsDb<ReceiptsColumns>);
             }
@@ -43,8 +43,8 @@ namespace Nethermind.Db.Test
             {
                 MemDbFactory memDbFactory = new MemDbFactory();
                 IColumnsDb<ReceiptsColumns> memSnapshotableDb = memDbFactory.CreateColumnsDb<ReceiptsColumns>("ColumnsDb");
-                dbProvider.RegisterDb("ColumnsDb", memSnapshotableDb);
-                Assert.Throws<ArgumentException>(() => dbProvider.RegisterDb("columnsdb", new MemDb()));
+                dbProvider.RegisterColumnDb("ColumnsDb", memSnapshotableDb);
+                Assert.Throws<ArgumentException>(() => dbProvider.RegisterColumnDb("columnsdb", new MemColumnsDb<ReceiptsColumns>()));
             }
         }
 
@@ -55,8 +55,8 @@ namespace Nethermind.Db.Test
             {
                 MemDbFactory memDbFactory = new MemDbFactory();
                 IColumnsDb<ReceiptsColumns> memSnapshotableDb = memDbFactory.CreateColumnsDb<ReceiptsColumns>("ColumnsDb");
-                dbProvider.RegisterDb("ColumnsDb", memSnapshotableDb);
-                Assert.Throws<ArgumentException>(() => dbProvider.GetDb<IColumnsDb<ReceiptsColumns>>("differentdb"));
+                dbProvider.RegisterColumnDb("ColumnsDb", memSnapshotableDb);
+                Assert.Throws<ArgumentException>(() => dbProvider.GetColumnDb<ReceiptsColumns>("differentdb"));
             }
         }
     }

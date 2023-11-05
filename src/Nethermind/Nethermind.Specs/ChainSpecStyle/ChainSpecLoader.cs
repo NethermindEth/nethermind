@@ -156,6 +156,10 @@ public class ChainSpecLoader : IChainSpecLoader
             Eip1559FeeCollectorTransition = chainSpecJson.Params.Eip1559FeeCollectorTransition,
             Eip1559BaseFeeMinValueTransition = chainSpecJson.Params.Eip1559BaseFeeMinValueTransition,
             Eip1559BaseFeeMinValue = chainSpecJson.Params.Eip1559BaseFeeMinValue,
+            Eip4844BlobGasPriceUpdateFraction = chainSpecJson.Params.Eip4844BlobGasPriceUpdateFraction,
+            Eip4844MaxBlobGasPerBlock = chainSpecJson.Params.Eip4844MaxBlobGasPerBlock,
+            Eip4844MinBlobGasPrice = chainSpecJson.Params.Eip4844MinBlobGasPrice,
+            Eip4844TargetBlobGasPerBlock = chainSpecJson.Params.Eip4844TargetBlobGasPerBlock,
             MergeForkIdTransition = chainSpecJson.Params.MergeForkIdTransition,
             TerminalTotalDifficulty = chainSpecJson.Params.TerminalTotalDifficulty,
             TerminalPoWBlockNumber = chainSpecJson.Params.TerminalPoWBlockNumber
@@ -171,17 +175,11 @@ public class ChainSpecLoader : IChainSpecLoader
         Eip1559Constants.ForkBaseFee = chainSpec.Parameters.Eip1559BaseFeeInitialValue;
         Eip1559Constants.BaseFeeMaxChangeDenominator = chainSpec.Parameters.Eip1559BaseFeeMaxChangeDenominator;
 
-        if (chainSpecJson.Params.BlobGasPriceUpdateFraction.HasValue)
-            Eip4844Constants.OverrideBlobGasPriceUpdateFraction(chainSpecJson.Params.BlobGasPriceUpdateFraction.Value);
-
-        if (chainSpecJson.Params.MaxBlobGasPerBlock.HasValue)
-            Eip4844Constants.OverrideMaxBlobGasPerBlock(chainSpecJson.Params.MaxBlobGasPerBlock.Value);
-
-        if (chainSpecJson.Params.MinBlobGasPrice.HasValue)
-            Eip4844Constants.OverrideMinBlobGasPrice(chainSpecJson.Params.MinBlobGasPrice.Value);
-
-        if (chainSpecJson.Params.TargetBlobGasPerBlock.HasValue)
-            Eip4844Constants.OverrideTargetBlobGasPerBlock(chainSpecJson.Params.TargetBlobGasPerBlock.Value);
+        Eip4844Constants.OverrideIfAny(
+            chainSpec.Parameters.Eip4844BlobGasPriceUpdateFraction,
+            chainSpec.Parameters.Eip4844MaxBlobGasPerBlock,
+            chainSpec.Parameters.Eip4844MinBlobGasPrice,
+            chainSpec.Parameters.Eip4844TargetBlobGasPerBlock);
     }
 
     private static void ValidateParams(ChainSpecParamsJson parameters)
@@ -329,6 +327,17 @@ public class ChainSpecLoader : IChainSpecLoader
                 }
             }
         }
+        else if (chainSpecJson.Engine?.Optimism is not null)
+        {
+            chainSpec.SealEngineType = SealEngineType.Optimism;
+            chainSpec.Optimism = new OptimismParameters
+            {
+                RegolithTimestamp = chainSpecJson.Engine.Optimism.RegolithTimestamp,
+                BedrockBlockNumber = chainSpecJson.Engine.Optimism.BedrockBlockNumber,
+                L1FeeRecipient = chainSpecJson.Engine.Optimism.L1FeeRecipient,
+                L1BlockAddress = chainSpecJson.Engine.Optimism.L1BlockAddress
+            };
+        }
         else if (chainSpecJson.Engine?.NethDev is not null)
         {
             chainSpec.SealEngineType = SealEngineType.NethDev;
@@ -355,12 +364,12 @@ public class ChainSpecLoader : IChainSpecLoader
         }
 
         UInt256 nonce = chainSpecJson.Genesis.Seal?.Ethereum?.Nonce ?? 0;
-        Keccak mixHash = chainSpecJson.Genesis.Seal?.Ethereum?.MixHash ?? Keccak.Zero;
+        Hash256 mixHash = chainSpecJson.Genesis.Seal?.Ethereum?.MixHash ?? Keccak.Zero;
 
         byte[] auRaSignature = chainSpecJson.Genesis.Seal?.AuthorityRound?.Signature;
         long? step = chainSpecJson.Genesis.Seal?.AuthorityRound?.Step;
 
-        Keccak parentHash = chainSpecJson.Genesis.ParentHash ?? Keccak.Zero;
+        Hash256 parentHash = chainSpecJson.Genesis.ParentHash ?? Keccak.Zero;
         ulong timestamp = chainSpecJson.Genesis.Timestamp;
         UInt256 difficulty = chainSpecJson.Genesis.Difficulty;
         byte[] extraData = chainSpecJson.Genesis.ExtraData ?? Array.Empty<byte>();
@@ -371,6 +380,9 @@ public class ChainSpecLoader : IChainSpecLoader
             baseFee = chainSpecJson.Params.Eip1559Transition == 0
                 ? (chainSpecJson.Genesis.BaseFeePerGas ?? Eip1559Constants.DefaultForkBaseFee)
                 : UInt256.Zero;
+
+        Hash256 stateRoot = chainSpecJson.Genesis.StateRoot ?? Keccak.EmptyTreeHash;
+        chainSpec.GenesisStateUnavailable = chainSpecJson.Genesis.StateUnavailable;
 
         BlockHeader genesisHeader = new(
             parentHash,
@@ -388,7 +400,7 @@ public class ChainSpecLoader : IChainSpecLoader
         genesisHeader.MixHash = mixHash;
         genesisHeader.Nonce = (ulong)nonce;
         genesisHeader.ReceiptsRoot = Keccak.EmptyTreeHash;
-        genesisHeader.StateRoot = Keccak.EmptyTreeHash;
+        genesisHeader.StateRoot = stateRoot;
         genesisHeader.TxRoot = Keccak.EmptyTreeHash;
         genesisHeader.BaseFeePerGas = baseFee;
         bool withdrawalsEnabled = chainSpecJson.Params.Eip4895TransitionTimestamp != null && genesisHeader.Timestamp >= chainSpecJson.Params.Eip4895TransitionTimestamp;

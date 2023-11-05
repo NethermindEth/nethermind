@@ -10,6 +10,6 @@ public interface IReceiptRefDecoder
 {
     void DecodeStructRef(scoped ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors, out TxReceiptStructRef item);
     void DecodeLogEntryStructRef(scoped ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors none, out LogEntryStructRef current);
-    Keccak[] DecodeTopics(Rlp.ValueDecoderContext valueDecoderContext);
+    Hash256[] DecodeTopics(Rlp.ValueDecoderContext valueDecoderContext);
     bool CanDecodeBloom { get; }
 }

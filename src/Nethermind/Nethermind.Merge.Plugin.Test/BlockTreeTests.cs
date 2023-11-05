@@ -813,7 +813,7 @@ public partial class BlockTreeTests
             .InsertBeaconBlocks(5, 9);
 
         ChainLevelInfo? level6 = scenario.NotSyncedTree.FindLevel(6)!;
-        Keccak previousBlockHash = level6.BeaconMainChainBlock!.BlockHash;
+        Hash256 previousBlockHash = level6.BeaconMainChainBlock!.BlockHash;
 
         scenario.InsertFork(6, 8);
         level6 = scenario.NotSyncedTree.FindLevel(6);

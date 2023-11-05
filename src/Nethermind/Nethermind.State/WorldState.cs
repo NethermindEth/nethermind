@@ -28,7 +28,7 @@ namespace Nethermind.State
         internal readonly PersistentStorageProvider _persistentStorageProvider;
         private readonly TransientStorageProvider _transientStorageProvider;
 
-        public Keccak StateRoot
+        public Hash256 StateRoot
         {
             get => _stateProvider.StateRoot;
             set
@@ -122,7 +122,7 @@ namespace Nethermind.State
         {
             _stateProvider.SubtractFromBalance(address, balanceChange, spec);
         }
-        public void UpdateStorageRoot(Address address, Keccak storageRoot)
+        public void UpdateStorageRoot(Address address, Hash256 storageRoot)
         {
             _stateProvider.UpdateStorageRoot(address, storageRoot);
         }
@@ -142,7 +142,7 @@ namespace Nethermind.State
             _persistentStorageProvider.StateRoot = _stateProvider.StateRoot;
         }
 
-        public void TouchCode(Keccak codeHash)
+        public void TouchCode(Hash256 codeHash)
         {
             _stateProvider.TouchCode(codeHash);
         }
@@ -155,7 +155,7 @@ namespace Nethermind.State
         {
             return _stateProvider.GetBalance(address);
         }
-        public Keccak GetStorageRoot(Address address)
+        public Hash256 GetStorageRoot(Address address)
         {
             return _stateProvider.GetStorageRoot(address);
         }
@@ -163,15 +163,15 @@ namespace Nethermind.State
         {
             return _stateProvider.GetCode(address);
         }
-        public byte[] GetCode(Keccak codeHash)
+        public byte[] GetCode(Hash256 codeHash)
         {
             return _stateProvider.GetCode(codeHash);
         }
-        public Keccak GetCodeHash(Address address)
+        public Hash256 GetCodeHash(Address address)
         {
             return _stateProvider.GetCodeHash(address);
         }
-        public void Accept(ITreeVisitor visitor, Keccak stateRoot, VisitingOptions? visitingOptions = null)
+        public void Accept(ITreeVisitor visitor, Hash256 stateRoot, VisitingOptions? visitingOptions = null)
         {
             _stateProvider.Accept(visitor, stateRoot, visitingOptions);
         }

@@ -312,7 +312,7 @@ namespace Ethereum.Trie.Test
             PatriciaTree patriciaTree = new PatriciaTree(_db, Keccak.EmptyTreeHash, false, true, NullLogManager.Instance);
             patriciaTree.Set(Keccak.Compute("1123").Bytes, new byte[] { 1 });
             patriciaTree.Set(Keccak.Compute("1124").Bytes, new byte[] { 2 });
-            Keccak rootBefore = patriciaTree.RootHash;
+            Hash256 rootBefore = patriciaTree.RootHash;
             patriciaTree.Set(Keccak.Compute("1125").Bytes, new byte[0]);
             Assert.That(patriciaTree.RootHash, Is.EqualTo(rootBefore));
         }
@@ -324,7 +324,7 @@ namespace Ethereum.Trie.Test
             patriciaTree.Set(new Nibble[] { 1, 2, 3, 4 }.ToPackedByteArray(), new byte[] { 1 });
             patriciaTree.Set(new Nibble[] { 1, 2, 3, 4, 5 }.ToPackedByteArray(), new byte[] { 2 });
             patriciaTree.UpdateRootHash();
-            Keccak rootBefore = patriciaTree.RootHash;
+            Hash256 rootBefore = patriciaTree.RootHash;
             patriciaTree.Set(new Nibble[] { 1, 2, 3 }.ToPackedByteArray(), new byte[] { });
             patriciaTree.UpdateRootHash();
             Assert.That(patriciaTree.RootHash, Is.EqualTo(rootBefore));
@@ -337,7 +337,7 @@ namespace Ethereum.Trie.Test
             patriciaTree.Set(Keccak.Compute("1234567").Bytes, new byte[] { 1 });
             patriciaTree.Set(Keccak.Compute("1234501").Bytes, new byte[] { 2 });
             patriciaTree.UpdateRootHash();
-            Keccak rootBefore = patriciaTree.RootHash;
+            Hash256 rootBefore = patriciaTree.RootHash;
             patriciaTree.Set(Keccak.Compute("1234502").Bytes, new byte[0]);
             patriciaTree.UpdateRootHash();
             Assert.That(patriciaTree.RootHash, Is.EqualTo(rootBefore));

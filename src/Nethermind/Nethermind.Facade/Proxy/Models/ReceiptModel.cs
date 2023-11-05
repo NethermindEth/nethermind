@@ -9,7 +9,7 @@ namespace Nethermind.Facade.Proxy.Models
 {
     public class ReceiptModel
     {
-        public Keccak BlockHash { get; set; }
+        public Hash256 BlockHash { get; set; }
         public UInt256 BlockNumber { get; set; }
         public Address ContractAddress { get; set; }
         public UInt256 CumulativeGasUsed { get; set; }
@@ -21,7 +21,7 @@ namespace Nethermind.Facade.Proxy.Models
         public byte[]? LogsBloom { get; set; }
         public UInt256 Status { get; set; }
         public Address To { get; set; }
-        public Keccak TransactionHash { get; set; }
+        public Hash256 TransactionHash { get; set; }
         public UInt256 TransactionIndex { get; set; }
     }
 }

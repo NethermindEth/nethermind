@@ -17,8 +17,8 @@ public class BlockHeader
     internal BlockHeader() { }
 
     public BlockHeader(
-        Keccak parentHash,
-        Keccak unclesHash,
+        Hash256 parentHash,
+        Hash256 unclesHash,
         Address beneficiary,
         in UInt256 difficulty,
         long number,
@@ -27,7 +27,7 @@ public class BlockHeader
         byte[] extraData,
         ulong? blobGasUsed = null,
         ulong? excessBlobGas = null,
-        Keccak? parentBeaconBlockRoot = null)
+        Hash256? parentBeaconBlockRoot = null)
     {
         ParentHash = parentHash;
         UnclesHash = unclesHash;
@@ -44,14 +44,14 @@ public class BlockHeader
 
     public WeakReference<BlockHeader>? MaybeParent { get; set; }
     public bool IsGenesis => Number == 0L;
-    public Keccak? ParentHash { get; set; }
-    public Keccak? UnclesHash { get; set; }
+    public Hash256? ParentHash { get; set; }
+    public Hash256? UnclesHash { get; set; }
     public Address? Author { get; set; }
     public Address? Beneficiary { get; set; }
     public Address? GasBeneficiary => Author ?? Beneficiary;
-    public Keccak? StateRoot { get; set; }
-    public Keccak? TxRoot { get; set; }
-    public Keccak? ReceiptsRoot { get; set; }
+    public Hash256? StateRoot { get; set; }
+    public Hash256? TxRoot { get; set; }
+    public Hash256? ReceiptsRoot { get; set; }
     public Bloom? Bloom { get; set; }
     public UInt256 Difficulty { get; set; }
     public long Number { get; set; }
@@ -60,16 +60,16 @@ public class BlockHeader
     public ulong Timestamp { get; set; }
     public DateTime TimestampDate => DateTimeOffset.FromUnixTimeSeconds((long)Timestamp).LocalDateTime;
     public byte[] ExtraData { get; set; } = Array.Empty<byte>();
-    public Keccak? MixHash { get; set; }
-    public Keccak? Random => MixHash;
+    public Hash256? MixHash { get; set; }
+    public Hash256? Random => MixHash;
     public ulong Nonce { get; set; }
-    public Keccak? Hash { get; set; }
+    public Hash256? Hash { get; set; }
     public UInt256? TotalDifficulty { get; set; }
     public byte[]? AuRaSignature { get; set; }
     public long? AuRaStep { get; set; }
     public UInt256 BaseFeePerGas { get; set; }
-    public Keccak? WithdrawalsRoot { get; set; }
-    public Keccak? ParentBeaconBlockRoot { get; set; }
+    public Hash256? WithdrawalsRoot { get; set; }
+    public Hash256? ParentBeaconBlockRoot { get; set; }
     public ulong? BlobGasUsed { get; set; }
     public ulong? ExcessBlobGas { get; set; }
     public bool HasBody => (TxRoot is not null && TxRoot != Keccak.EmptyTreeHash)

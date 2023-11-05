@@ -12,15 +12,15 @@ public class NoopInvalidChainTracker : IInvalidChainTracker
     {
     }
 
-    public void SetChildParent(Keccak child, Keccak parent)
+    public void SetChildParent(Hash256 child, Hash256 parent)
     {
     }
 
-    public void OnInvalidBlock(Keccak failedBlock, Keccak? parent)
+    public void OnInvalidBlock(Hash256 failedBlock, Hash256? parent)
     {
     }
 
-    public bool IsOnKnownInvalidChain(Keccak blockHash, out Keccak? lastValidHash)
+    public bool IsOnKnownInvalidChain(Hash256 blockHash, out Hash256? lastValidHash)
     {
         lastValidHash = null;
         return false;
