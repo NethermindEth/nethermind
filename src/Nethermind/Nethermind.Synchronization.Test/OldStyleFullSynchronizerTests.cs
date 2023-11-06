@@ -19,6 +19,7 @@ using Nethermind.Core.Timers;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Specs;
+using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.State.Witnesses;
 using Nethermind.Stats;
 using Nethermind.Synchronization.Blocks;
@@ -54,31 +55,15 @@ namespace Nethermind.Synchronization.Test
             NodeStatsManager stats = new(timerFactory, LimboLogs.Instance);
             _pool = new SyncPeerPool(_blockTree, stats, new TotalDifficultyBetterPeerStrategy(LimboLogs.Instance), LimboLogs.Instance, 25);
             SyncConfig syncConfig = new();
-            ProgressTracker progressTracker = new(_blockTree, dbProvider.StateDb, LimboLogs.Instance);
-            SnapProvider snapProvider = new(progressTracker, dbProvider, LimboLogs.Instance);
 
             TrieStore trieStore = new(_stateDb, LimboLogs.Instance);
-            SyncProgressResolver resolver = new(
-                _blockTree,
-                _receiptStorage,
-                _stateDb,
-                trieStore,
-                progressTracker,
-                syncConfig,
-                LimboLogs.Instance);
             TotalDifficultyBetterPeerStrategy bestPeerStrategy = new(LimboLogs.Instance);
-            MultiSyncModeSelector syncModeSelector = new(resolver, _pool, syncConfig, No.BeaconSync, bestPeerStrategy, LimboLogs.Instance);
             Pivot pivot = new(syncConfig);
-            SyncReport syncReport = new(_pool, stats, syncModeSelector, syncConfig, pivot, LimboLogs.Instance);
             BlockDownloaderFactory blockDownloaderFactory = new(
                 MainnetSpecProvider.Instance,
-                _blockTree,
-                _receiptStorage,
                 Always.Valid,
                 Always.Valid,
-                _pool,
                 new TotalDifficultyBetterPeerStrategy(LimboLogs.Instance),
-                syncReport,
                 LimboLogs.Instance);
             _synchronizer = new Synchronizer(
                 dbProvider,
@@ -87,13 +72,13 @@ namespace Nethermind.Synchronization.Test
                 _receiptStorage,
                 _pool,
                 stats,
-                syncModeSelector,
                 syncConfig,
-                snapProvider,
                 blockDownloaderFactory,
                 pivot,
-                syncReport,
                 Substitute.For<IProcessExitSource>(),
+                trieStore.AsReadOnly(),
+                bestPeerStrategy,
+                new ChainSpec(),
                 LimboLogs.Instance);
             _syncServer = new SyncServer(
                 trieStore.AsKeyValueStore(),
@@ -103,7 +88,7 @@ namespace Nethermind.Synchronization.Test
                 Always.Valid,
                 Always.Valid,
                 _pool,
-                syncModeSelector,
+                _synchronizer.SyncModeSelector,
                 quickConfig,
                 new WitnessCollector(new MemDb(), LimboLogs.Instance),
                 Policy.FullGossip,
