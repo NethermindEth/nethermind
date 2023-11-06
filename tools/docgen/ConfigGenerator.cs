@@ -14,7 +14,7 @@ internal static class ConfigGenerator
         var startMark = "<!--[start autogen]-->";
         var endMark = "<!--[end autogen]-->";
         var fileName = "configuration.md";
-        var excluded = new[] { "AccountAbstraction", "Mev" };
+        var excluded = new[] { "AccountAbstraction", "Mev", "Plugin" };
 
         var types = Directory
             .GetFiles(AppDomain.CurrentDomain.BaseDirectory, "Nethermind.*.dll")
@@ -103,7 +103,7 @@ internal static class ConfigGenerator
             file.Write($"""
                 - **`--{moduleName}.{prop.Name} <value>`** `NETHERMIND_{moduleName.ToUpperInvariant()}CONFIG_{prop.Name.ToUpperInvariant()}`
 
-                  {itemAttr.Description}
+                  {itemAttr.Description.Replace("\n", "\n  ")}
                 """);
 
             var startsFromNewLine = WriteAllowedValues(file, prop.PropertyType);
@@ -167,7 +167,7 @@ internal static class ConfigGenerator
 
                   Defaults to:
 
-                  {attr.DefaultValue}
+                  {attr.DefaultValue.Replace("\n", "\n  ")}
                 """);
         else
             file.Write($"{(indentAsNewLine ? "  " : " ")}Defaults to `{attr.DefaultValue}`.");
