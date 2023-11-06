@@ -498,19 +498,19 @@ public class TxValidatorTests
                 TestName = "More than minimum BlobVersionedHashes",
                 ExpectedResult = true
             };
-            yield return new TestCaseData(MakeTestObject((int)(Eip4844Constants.MaxBlobGasPerBlock / Eip4844Constants.BlobGasPerBlob - 1))
+            yield return new TestCaseData(MakeTestObject((int)(Eip4844Constants.MaxBlobGasPerBlock / Eip4844Constants.GasPerBlob - 1))
                 .SignedAndResolved().TestObject)
             {
                 TestName = "Less than maximum BlobVersionedHashes",
                 ExpectedResult = true
             };
-            yield return new TestCaseData(MakeTestObject((int)(Eip4844Constants.MaxBlobGasPerBlock / Eip4844Constants.BlobGasPerBlob))
+            yield return new TestCaseData(MakeTestObject((int)(Eip4844Constants.MaxBlobGasPerBlock / Eip4844Constants.GasPerBlob))
                 .SignedAndResolved().TestObject)
             {
                 TestName = "Maximum BlobVersionedHashes",
                 ExpectedResult = true
             };
-            yield return new TestCaseData(MakeTestObject((int)(Eip4844Constants.MaxBlobGasPerBlock / Eip4844Constants.BlobGasPerBlob + 1))
+            yield return new TestCaseData(MakeTestObject((int)(Eip4844Constants.MaxBlobGasPerBlock / Eip4844Constants.GasPerBlob + 1))
                 .SignedAndResolved().TestObject)
             {
                 TestName = "Too many BlobVersionedHashes",

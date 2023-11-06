@@ -42,7 +42,7 @@ public class GethStyleTracer : IGethStyleTracer
         _fileSystem = fileSystem ?? throw new ArgumentNullException(nameof(fileSystem));
     }
 
-    public GethLikeTxTrace Trace(Keccak blockHash, int txIndex, GethTraceOptions options, CancellationToken cancellationToken)
+    public GethLikeTxTrace Trace(Hash256 blockHash, int txIndex, GethTraceOptions options, CancellationToken cancellationToken)
     {
         Block block = _blockTree.FindBlock(blockHash, BlockTreeLookupOptions.None);
         if (block is null) throw new InvalidOperationException("Only historical blocks");
@@ -52,7 +52,7 @@ public class GethStyleTracer : IGethStyleTracer
         return Trace(block, block.Transactions[txIndex].Hash, cancellationToken, options);
     }
 
-    public GethLikeTxTrace? Trace(Rlp block, Keccak txHash, GethTraceOptions options, CancellationToken cancellationToken)
+    public GethLikeTxTrace? Trace(Rlp block, Hash256 txHash, GethTraceOptions options, CancellationToken cancellationToken)
     {
         return TraceBlock(GetBlockToTrace(block), options with { TxHash = txHash }, cancellationToken).FirstOrDefault();
     }
@@ -76,9 +76,9 @@ public class GethStyleTracer : IGethStyleTracer
         }
     }
 
-    public GethLikeTxTrace? Trace(Keccak txHash, GethTraceOptions traceOptions, CancellationToken cancellationToken)
+    public GethLikeTxTrace? Trace(Hash256 txHash, GethTraceOptions traceOptions, CancellationToken cancellationToken)
     {
-        Keccak? blockHash = _receiptStorage.FindBlockHash(txHash);
+        Hash256? blockHash = _receiptStorage.FindBlockHash(txHash);
         if (blockHash is null)
         {
             return null;
@@ -126,7 +126,7 @@ public class GethStyleTracer : IGethStyleTracer
         return TraceBlock(GetBlockToTrace(blockRlp), options, cancellationToken);
     }
 
-    public IEnumerable<string> TraceBlockToFile(Keccak blockHash, GethTraceOptions options, CancellationToken cancellationToken)
+    public IEnumerable<string> TraceBlockToFile(Hash256 blockHash, GethTraceOptions options, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(blockHash);
         ArgumentNullException.ThrowIfNull(options);
@@ -148,7 +148,7 @@ public class GethStyleTracer : IGethStyleTracer
         return tracer.FileNames;
     }
 
-    private GethLikeTxTrace? Trace(Block block, Keccak? txHash, CancellationToken cancellationToken, GethTraceOptions options)
+    private GethLikeTxTrace? Trace(Block block, Hash256? txHash, CancellationToken cancellationToken, GethTraceOptions options)
     {
         ArgumentNullException.ThrowIfNull(txHash);
 

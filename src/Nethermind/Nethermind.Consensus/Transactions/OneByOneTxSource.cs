@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
+using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 
 namespace Nethermind.Consensus.Transactions
@@ -15,9 +16,9 @@ namespace Nethermind.Consensus.Transactions
             _txSource = txSource;
         }
 
-        public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit)
+        public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit, PayloadAttributes? payloadAttributes)
         {
-            foreach (Transaction transaction in _txSource.GetTransactions(parent, gasLimit))
+            foreach (Transaction transaction in _txSource.GetTransactions(parent, gasLimit, payloadAttributes))
             {
                 yield return transaction;
                 break;

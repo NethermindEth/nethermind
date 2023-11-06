@@ -8,6 +8,7 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
 
@@ -41,11 +42,12 @@ public class EraService
         string network,
         IBlockTree blockTree,
         IReceiptStorage receiptStorage,
+        ISpecProvider specProvider,
         long start,
         long count,
         CancellationToken cancellation = default)
     {
-        return Export(destinationPath, network, blockTree, receiptStorage, start, count, cancellation);
+        return Export(destinationPath, network, blockTree, receiptStorage, specProvider, start, count, cancellation);
     }
 
     //TODO cancellation
@@ -54,6 +56,7 @@ public class EraService
         string network,
         IBlockTree blockTree,
         IReceiptStorage receiptStorage,
+        ISpecProvider specProvder,
         long start,
         long count,
         CancellationToken cancellation = default)
@@ -71,8 +74,8 @@ public class EraService
         var currentEpoch = 0;
         string filePath = Path.Combine(
                             destinationPath,
-                    EraBuilder.Filename(network, currentEpoch, Keccak.Zero));
-        EraBuilder? builder = EraBuilder.Create(_fileSystem.File.Create(filePath));
+                    EraWriter.Filename(network, currentEpoch, Keccak.Zero));
+        EraWriter? builder = EraWriter.Create(_fileSystem.File.Create(filePath), specProvder);
 
         //TODO read directly from RocksDb with range reads
         for (var i = start; i < start + count; i++)
@@ -105,9 +108,9 @@ public class EraService
                 await builder.Finalize();
                 builder.Dispose();
                 currentEpoch++;
-                builder = EraBuilder.Create(Path.Combine(
+                builder = EraWriter.Create(Path.Combine(
                             destinationPath,
-                    EraBuilder.Filename(network, currentEpoch, Keccak.Zero)));
+                    EraWriter.Filename(network, currentEpoch, Keccak.Zero)), specProvder);
             }
         }
     }

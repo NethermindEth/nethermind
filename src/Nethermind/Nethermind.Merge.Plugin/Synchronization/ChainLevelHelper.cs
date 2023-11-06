@@ -154,7 +154,7 @@ public class ChainLevelHelper : IChainLevelHelper
         int offset = 0;
         while (offset != context.NonEmptyBlockHashes.Count)
         {
-            IReadOnlyList<Keccak> hashesToRequest = context.GetHashesByOffset(offset, maxCount);
+            IReadOnlyList<Hash256> hashesToRequest = context.GetHashesByOffset(offset, maxCount);
             for (int i = 0; i < hashesToRequest.Count; i++)
             {
                 Block? block = _blockTree.FindBlock(hashesToRequest[i], BlockTreeLookupOptions.None);
@@ -192,7 +192,7 @@ public class ChainLevelHelper : IChainLevelHelper
             return startingPoint;
         }
 
-        Keccak currentHash = beaconMainChainBlock.BlockHash;
+        Hash256 currentHash = beaconMainChainBlock.BlockHash;
         // in normal situation we will have one iteration of this loop, in some cases a few. Thanks to that we don't need to add extra pointer to manage forward syncing
         do
         {

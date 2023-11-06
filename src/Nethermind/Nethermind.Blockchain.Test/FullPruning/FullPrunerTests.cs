@@ -150,9 +150,9 @@ namespace Nethermind.Blockchain.Test.FullPruning
             byte[] key = { 0, 1, 2 };
             TestFullPruningDb.TestPruningContext context = test.WaitForPruningStart();
 
-            using (IBatch batch = test.FullPruningDb.StartBatch())
+            using (IWriteBatch writeBatch = test.FullPruningDb.StartWriteBatch())
             {
-                batch[key] = key;
+                writeBatch[key] = key;
             }
 
             await test.WaitForPruningEnd(context);
@@ -166,7 +166,7 @@ namespace Nethermind.Blockchain.Test.FullPruning
         private class TestContext
         {
             private readonly bool _clearPrunedDb;
-            private readonly Keccak _stateRoot;
+            private readonly Hash256 _stateRoot;
             private long _head;
             public TestFullPruningDb FullPruningDb { get; }
             public IPruningTrigger PruningTrigger { get; } = Substitute.For<IPruningTrigger>();

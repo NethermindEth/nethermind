@@ -34,9 +34,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Les.Messages
         public byte ProtocolVersion { get; set; }
         public UInt256 NetworkId { get; set; }
         public UInt256 TotalDifficulty { get; set; }
-        public Keccak BestHash { get; set; }
+        public Hash256 BestHash { get; set; }
         public long HeadBlockNo { get; set; }
-        public Keccak GenesisHash { get; set; }
+        public Hash256 GenesisHash { get; set; }
         #region optional
         public byte? AnnounceType { get; set; } // sent from client only
         public bool ServeHeaders { get; set; }

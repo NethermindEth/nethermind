@@ -6,8 +6,8 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.Mev.Data
 {
-    public class TxsResults : Dictionary<Keccak, TxResult>
+    public class TxsResults : Dictionary<Hash256, TxResult>
     {
-        public TxsResults(IDictionary<Keccak, TxResult> dictionary) : base(dictionary) { }
+        public TxsResults(IDictionary<Hash256, TxResult> dictionary) : base(dictionary) { }
     }
 }

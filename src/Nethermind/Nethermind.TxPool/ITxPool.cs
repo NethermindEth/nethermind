@@ -35,12 +35,12 @@ namespace Nethermind.TxPool
         Transaction[] GetPendingTransactionsBySender(Address address);
         void AddPeer(ITxPoolPeer peer);
         void RemovePeer(PublicKey nodeId);
-        bool ContainsTx(Keccak hash, TxType txType);
+        bool ContainsTx(Hash256 hash, TxType txType);
         AcceptTxResult SubmitTx(Transaction tx, TxHandlingOptions handlingOptions);
-        bool RemoveTransaction(Keccak? hash);
-        bool IsKnown(Keccak hash);
-        bool TryGetPendingTransaction(Keccak hash, out Transaction? transaction);
-        bool TryGetPendingBlobTransaction(Keccak hash, [NotNullWhen(true)] out Transaction? blobTransaction);
+        bool RemoveTransaction(Hash256? hash);
+        bool IsKnown(Hash256 hash);
+        bool TryGetPendingTransaction(Hash256 hash, out Transaction? transaction);
+        bool TryGetPendingBlobTransaction(Hash256 hash, [NotNullWhen(true)] out Transaction? blobTransaction);
         UInt256 GetLatestPendingNonce(Address address);
         event EventHandler<TxEventArgs> NewDiscovered;
         event EventHandler<TxEventArgs> NewPending;

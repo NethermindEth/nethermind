@@ -396,6 +396,12 @@ namespace Nethermind.Core.Test.Builders
             return this;
         }
 
+        public BlockTreeBuilder WithBlocksNumberDb(IDb blocksNumberDb)
+        {
+            BlockNumbersDb = blocksNumberDb;
+            return this;
+        }
+
         public BlockTreeBuilder WithBlockInfoDb(IDb blocksInfosDb)
         {
             BlockInfoDb = blocksInfosDb;

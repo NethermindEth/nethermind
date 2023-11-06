@@ -219,9 +219,9 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                             SyncProgressResolver.FindBestFullBlock().Returns(ChainHead.Number);
                             SyncProgressResolver.FindBestFullState().Returns(ChainHead.Number);
                             SyncProgressResolver.FindBestProcessedBlock().Returns(ChainHead.Number);
-                            SyncProgressResolver.GetTotalDifficulty(Arg.Any<Keccak>()).Returns(info =>
+                            SyncProgressResolver.GetTotalDifficulty(Arg.Any<Hash256>()).Returns(info =>
                             {
-                                var hash = info.Arg<Keccak>();
+                                var hash = info.Arg<Hash256>();
 
                                 foreach (BlockHeader scenarioHeader in ScenarioHeaders)
                                 {

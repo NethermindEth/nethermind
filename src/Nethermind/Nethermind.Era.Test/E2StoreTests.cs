@@ -223,7 +223,7 @@ internal class E2StoreTests
     }
 
     [Test]
-    public async Task Test()
+    public void Test()
     {
         //TODO possible optimization avoid alloc snappy stream by not disposing the stream and reusing like this
         using MemoryStream stream = new();
