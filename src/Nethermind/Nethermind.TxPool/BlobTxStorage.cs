@@ -8,6 +8,7 @@ using System.Diagnostics.CodeAnalysis;
 using DotNetty.Buffers;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
@@ -97,17 +98,15 @@ public class BlobTxStorage : ITxStorage
             contentLength += _txDecoder.GetLength(transaction, RlpBehaviors.InMempoolForm);
         }
 
-        RlpStream rlpStream = new(Rlp.LengthOfSequence(contentLength));
+        IByteBuffer byteBuffer = PooledByteBufferAllocator.Default.Buffer(Rlp.LengthOfSequence(contentLength));
+        using NettyRlpStream rlpStream = new(byteBuffer);
         rlpStream.StartSequence(contentLength);
         foreach (Transaction transaction in blockBlobTransactions)
         {
             _txDecoder.Encode(rlpStream, transaction, RlpBehaviors.InMempoolForm);
         }
 
-        if (rlpStream.Data is not null)
-        {
-            _processedBlobTxsDb.Set(blockNumber, rlpStream.Data);
-        }
+        _processedBlobTxsDb.Set(blockNumber, byteBuffer.Array);
     }
 
     public bool TryGetBlobTransactionsFromBlock(long blockNumber, out Transaction[]? blockBlobTransactions)
