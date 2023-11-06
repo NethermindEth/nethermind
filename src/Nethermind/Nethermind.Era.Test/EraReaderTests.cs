@@ -52,7 +52,7 @@ internal class EraReaderTests
         await builder.Finalize();
         EraReader sut = await EraReader.Create(stream);
 
-        (Block result,_,_) = await sut.GetBlockByNumber(number);
+        (Block result, _, _) = await sut.GetBlockByNumber(number);
 
         Assert.That(result.Number, Is.EqualTo(number));
     }

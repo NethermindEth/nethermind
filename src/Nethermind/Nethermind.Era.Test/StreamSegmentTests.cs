@@ -73,13 +73,13 @@ internal class StreamSegmentTests
     [Test]
     public async Task ReadAsync_OffsetIsSet_ReadsFromOffset()
     {
-        byte[] data = new byte[] {0xff, 0x00, 0x01, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff };
+        byte[] data = new byte[] { 0xff, 0x00, 0x01, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff };
         MemoryStream stream = new(data);
         byte[] buffer = new byte[2];
         StreamSegment sut = new(stream, 1, 3);
 
         await sut.ReadAsync(buffer, 0, 2);
-        
+
         Assert.That(buffer, Is.EquivalentTo(data[1..3]));
     }
 
