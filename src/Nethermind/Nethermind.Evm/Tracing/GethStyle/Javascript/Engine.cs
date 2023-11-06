@@ -2,20 +2,24 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections;
-using Microsoft.ClearScript;
+using System.IO;
+using System.Threading;
 using Microsoft.ClearScript.JavaScript;
 using Microsoft.ClearScript.V8;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.Precompiles;
+using Nethermind.Logging;
 
 namespace Nethermind.Evm.Tracing.GethStyle.Javascript;
 
 public class Engine : IDisposable
 {
-    public V8ScriptEngine V8Engine { get; }
+    private const bool IsDebugging = false;
+    private V8ScriptEngine V8Engine { get; } = new(IsDebugging
+        ? V8ScriptEngineFlags.AwaitDebuggerAndPauseOnStart | V8ScriptEngineFlags.EnableDebugging
+        : V8ScriptEngineFlags.None);
 
     // bigIntegerJS is the minified version of https://github.com/peterolson/BigInteger.js.
     private const string BigIntegerCode =
@@ -26,10 +30,16 @@ public class Engine : IDisposable
     private readonly IReleaseSpec _spec;
 
     private readonly dynamic _createUint8Array;
+    [ThreadStatic] private static Engine? _currentEngine;
 
-    public Engine(V8ScriptEngine v8Engine, IReleaseSpec spec)
+    public static Engine? CurrentEngine
     {
-        V8Engine = v8Engine;
+        get => _currentEngine;
+        set => _currentEngine = value;
+    }
+
+    public Engine(IReleaseSpec spec)
+    {
         _spec = spec;
 
         Func<object, ITypedArray<byte>> toWord = ToWord;
@@ -40,15 +50,17 @@ public class Engine : IDisposable
         Func<object, ulong, ITypedArray<byte>> toContract = ToContract;
         Func<object, string, object, ITypedArray<byte>> toContract2 = ToContract2;
 
-        v8Engine.AddHostObject(nameof(toWord), toWord);
-        v8Engine.AddHostObject(nameof(toHex), toHex);
-        v8Engine.AddHostObject(nameof(toAddress), toAddress);
-        v8Engine.AddHostObject(nameof(isPrecompiled), isPrecompiled);
-        v8Engine.AddHostObject(nameof(slice), slice);
-        v8Engine.AddHostObject(nameof(toContract), toContract);
-        v8Engine.AddHostObject(nameof(toContract2), toContract2);
-        v8Engine.Execute(BigIntegerCode);
-        _createUint8Array = v8Engine.Evaluate(CreateUint8ArrayCode);
+        V8Engine.AddHostObject(nameof(toWord), toWord);
+        V8Engine.AddHostObject(nameof(toHex), toHex);
+        V8Engine.AddHostObject(nameof(toAddress), toAddress);
+        V8Engine.AddHostObject(nameof(isPrecompiled), isPrecompiled);
+        V8Engine.AddHostObject(nameof(slice), slice);
+        V8Engine.AddHostObject(nameof(toContract), toContract);
+        V8Engine.AddHostObject(nameof(toContract2), toContract2);
+        V8Engine.Execute(BigIntegerCode);
+        _createUint8Array = V8Engine.Evaluate(CreateUint8ArrayCode);
+        Interlocked.CompareExchange(ref _currentEngine, this, null);
+        CurrentEngine = this;
     }
 
     private ITypedArray<byte> ToWord(object bytes) => bytes.ToWord().ToScriptArray();
@@ -70,10 +82,28 @@ public class Engine : IDisposable
     private ITypedArray<byte> ToContract2(object from, string salt, object initcode) =>
         ContractAddress.From(from.ToAddress(), Bytes.FromHexString(salt), ValueKeccak.Compute(initcode.ToBytes()).Bytes).Bytes.ToScriptArray();
 
-    public void Dispose() => V8Engine.Dispose();
-    public ITypedArray<byte> CreateUint8Array(byte[] buffer)
+    public void Dispose()
     {
-        ITypedArray<byte> uint8Array = _createUint8Array(buffer);
-        return uint8Array;
+        Interlocked.CompareExchange(ref _currentEngine, null, this);
+        V8Engine.Dispose();
+    }
+
+    public ITypedArray<byte> CreateUint8Array(byte[] buffer) => _createUint8Array(buffer);
+
+    public dynamic CreateTracer(string tracer)
+    {
+        static string LoadJavascriptCodeFromFile(string tracerFileName)
+        {
+            tracerFileName = Path.Combine("Data/JSTracers/", tracerFileName);
+            if (!Path.HasExtension(tracerFileName) || Path.GetExtension(tracerFileName) != "js")
+            {
+                tracerFileName = Path.ChangeExtension(tracerFileName, "js");
+            }
+            return File.ReadAllText(tracerFileName.GetApplicationResourcePath());
+        }
+
+        static string LoadJavascriptCode(string tracer) => "tracer = " + (tracer.StartsWith("{") && tracer.EndsWith("}") ? tracer : LoadJavascriptCodeFromFile(tracer));
+        V8Engine.Execute(LoadJavascriptCode(tracer));
+        return V8Engine.Script.tracer;
     }
 }

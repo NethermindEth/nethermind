@@ -14,9 +14,6 @@ namespace Nethermind.Evm.Tracing.GethStyle.Javascript;
 
 public static class JavascriptConverter
 {
-    [field: ThreadStatic]
-    public static Engine? CurrentEngine { get; set; }
-
     public static byte[] ToBytes(this object input) => input switch
     {
         string hexString => Bytes.FromHexString(hexString),
@@ -55,5 +52,5 @@ public static class JavascriptConverter
     public static UInt256 GetUint256(this object index) => new(index.ToBytes());
 
     public static ITypedArray<byte> ToScriptArray(this byte[] array)
-        => CurrentEngine?.CreateUint8Array(array) ?? throw new InvalidOperationException("No engine set");
+        => Engine.CurrentEngine?.CreateUint8Array(array) ?? throw new InvalidOperationException("No engine set");
 }

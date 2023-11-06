@@ -36,20 +36,12 @@ public class GethLikeJavascriptTracerTests : VirtualMachineTestsBase
         Assert.That(traces.CustomTracerResult, Is.EqualTo(expectedStrings));
     }
 
-    private GethLikeJavascriptTxTracer GetTracer(string userTracer)
-    {
-        const bool isDebugging = false;
-        V8ScriptEngine engine = new(isDebugging
-            ? V8ScriptEngineFlags.AwaitDebuggerAndPauseOnStart | V8ScriptEngineFlags.EnableDebugging
-            : V8ScriptEngineFlags.None);
-
-        JavascriptConverter.CurrentEngine = new Engine(engine, Shanghai.Instance);
-        return new(JavascriptConverter.CurrentEngine.V8Engine,
+    private GethLikeJavascriptTxTracer GetTracer(string userTracer) =>
+        new(new Engine(Shanghai.Instance),
             new Evm.Tracing.GethStyle.Javascript.Db(TestState),
             new Context() { gasPrice = 1 },
             GethTraceOptions.Default with { EnableMemory = true, Tracer = userTracer }
         );
-    }
 
 
     [Test]

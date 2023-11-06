@@ -19,7 +19,7 @@ public sealed class GethLikeJavascriptTxTracer : GethLikeTxTracer
 {
     private readonly dynamic _tracer;
     private readonly Log _log = new();
-    private readonly V8ScriptEngine _engine;
+    private readonly Engine _engine;
     private readonly Db _db;
     private readonly CallFrame _frame = new();
     private readonly FrameResult _result = new();
@@ -30,7 +30,7 @@ public sealed class GethLikeJavascriptTxTracer : GethLikeTxTracer
     private readonly TracerFunctions _functions;
 
     public GethLikeJavascriptTxTracer(
-        V8ScriptEngine engine,
+        Engine engine,
         Db db,
         Context ctx,
         GethTraceOptions options) : base(options)
@@ -42,27 +42,12 @@ public sealed class GethLikeJavascriptTxTracer : GethLikeTxTracer
         _engine = engine;
         _db = db;
         _ctx = ctx;
-        engine.Execute(LoadJavascriptCode(options.Tracer));
-        _tracer = engine.Script.tracer;
+        _tracer = engine.CreateTracer(options.Tracer);
         _functions = GetAvailableFunctions(((IDictionary<string, object>)_tracer).Keys);
         if (_functions.HasFlag(TracerFunctions.setup))
         {
             _tracer.setup(options.TracerConfig);
         }
-    }
-
-    private string LoadJavascriptCode(string tracer) => "tracer = " + (tracer.StartsWith("{") && tracer.EndsWith("}") ? tracer : LoadJavascriptCodeFromFile(tracer));
-
-    private string LoadJavascriptCodeFromFile(string tracerFileName)
-    {
-        if (!tracerFileName.EndsWith(".js", StringComparison.OrdinalIgnoreCase))
-        {
-            tracerFileName += ".js";
-        }
-
-        tracerFileName = "Data/JSTracers/" + tracerFileName;
-        string jsCode = File.ReadAllText(tracerFileName.GetApplicationResourcePath());
-        return jsCode;
     }
 
     protected override GethLikeTxTrace CreateTrace() => new(_engine);
