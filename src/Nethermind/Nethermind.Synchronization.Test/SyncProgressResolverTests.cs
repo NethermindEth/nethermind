@@ -183,7 +183,7 @@ namespace Nethermind.Synchronization.Test
                 syncConfig,
                 Substitute.For<ISyncFeed<HeadersSyncBatch?>>(),
                 Substitute.For<ISyncFeed<BodiesSyncBatch?>>(),
-                Substitute.For<ISyncFeed<ReceiptsSyncBatch?>>(),
+                receiptFeed,
                 Substitute.For<ISyncFeed<SnapSyncBatch?>>(),
                 limboLogs
             );
