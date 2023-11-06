@@ -36,7 +36,7 @@ public class MultiCallReadOnlyBlocksProcessingEnv : ReadOnlyTxProcessingEnvBase,
     public static MultiCallReadOnlyBlocksProcessingEnv Create(
         bool traceTransfers,
         IReadOnlyDbProvider readOnlyDbProvider,
-        ISpecProvider specProvider,
+        ISpecProvider? specProvider,
         ILogManager? logManager = null,
         bool doValidation = false)
     {
@@ -74,7 +74,7 @@ public class MultiCallReadOnlyBlocksProcessingEnv : ReadOnlyTxProcessingEnvBase,
         IReadOnlyDbProvider readOnlyDbProvider,
         ITrieStore trieStore,
         IBlockTree blockTree,
-        ISpecProvider specProvider,
+        ISpecProvider? specProvider,
         ILogManager? logManager = null,
         bool doValidation = false)
         : base(readOnlyDbProvider, trieStore, blockTree, logManager)
@@ -94,7 +94,7 @@ public class MultiCallReadOnlyBlocksProcessingEnv : ReadOnlyTxProcessingEnvBase,
             _logManager);
 
         BlockValidator blockValidator = new(
-            new TxValidator(SpecProvider.ChainId),
+            new TxValidator(SpecProvider!.ChainId),
             headerValidator,
             Always.Valid,
             SpecProvider,

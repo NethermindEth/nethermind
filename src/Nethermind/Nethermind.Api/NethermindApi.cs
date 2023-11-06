@@ -188,7 +188,7 @@ namespace Nethermind.Api
         }
 
         public ISessionMonitor? SessionMonitor { get; set; }
-        public ISpecProvider SpecProvider { get; set; }
+        public ISpecProvider? SpecProvider { get; set; }
         public IPoSSwitcher PoSSwitcher { get; set; } = NoPoS.Instance;
         public ISyncModeSelector SyncModeSelector { get; set; } = null!;
 
@@ -219,7 +219,7 @@ namespace Nethermind.Api
 
         public IGasLimitCalculator? GasLimitCalculator
         {
-            get => _gasLimitCalculator ??= new FollowOtherMiners(SpecProvider);
+            get => _gasLimitCalculator ??= new FollowOtherMiners(SpecProvider!);
             set => _gasLimitCalculator = value;
         }
 
@@ -243,6 +243,7 @@ namespace Nethermind.Api
         public ChainSpec ChainSpec { get; set; }
         public DisposableStack DisposeStack { get; } = new();
         public IReadOnlyList<INethermindPlugin> Plugins { get; } = new List<INethermindPlugin>();
+        public string SealEngineType { get; set; } = Nethermind.Core.SealEngineType.None;
         public IList<IPublisher> Publishers { get; } = new List<IPublisher>(); // this should be called publishers
         public CompositePruningTrigger PruningTrigger { get; } = new();
         public ISnapProvider? SnapProvider { get; set; }
