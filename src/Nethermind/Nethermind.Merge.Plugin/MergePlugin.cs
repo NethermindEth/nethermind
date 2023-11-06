@@ -33,6 +33,7 @@ using Nethermind.Merge.Plugin.InvalidChainTracker;
 using Nethermind.Merge.Plugin.Synchronization;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Reporting;
+using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Merge.Plugin;
 
@@ -262,10 +263,8 @@ public partial class MergePlugin : IConsensusWrapperPlugin, ISynchronizationPlug
             if (_api.Sealer is null) throw new ArgumentNullException(nameof(_api.Sealer));
             if (_api.BlockValidator is null) throw new ArgumentNullException(nameof(_api.BlockValidator));
             if (_api.BlockProcessingQueue is null) throw new ArgumentNullException(nameof(_api.BlockProcessingQueue));
-            if (_api.SyncProgressResolver is null) throw new ArgumentNullException(nameof(_api.SyncProgressResolver));
             if (_api.SpecProvider is null) throw new ArgumentNullException(nameof(_api.SpecProvider));
             if (_api.StateReader is null) throw new ArgumentNullException(nameof(_api.StateReader));
-            if (_api.SyncModeSelector is null) throw new ArgumentNullException(nameof(_api.SyncModeSelector));
             if (_beaconPivot is null) throw new ArgumentNullException(nameof(_beaconPivot));
             if (_beaconSync is null) throw new ArgumentNullException(nameof(_beaconSync));
             if (_blockProductionTrigger is null) throw new ArgumentNullException(nameof(_blockProductionTrigger));
@@ -365,7 +364,6 @@ public partial class MergePlugin : IConsensusWrapperPlugin, ISynchronizationPlug
             if (_api.SyncPeerPool is null) throw new ArgumentNullException(nameof(_api.SyncPeerPool));
             if (_api.BlockTree is null) throw new ArgumentNullException(nameof(_api.BlockTree));
             if (_api.DbProvider is null) throw new ArgumentNullException(nameof(_api.DbProvider));
-            if (_api.SyncProgressResolver is null) throw new ArgumentNullException(nameof(_api.SyncProgressResolver));
             if (_api.BlockProcessingQueue is null) throw new ArgumentNullException(nameof(_api.BlockProcessingQueue));
             if (_blockCacheService is null) throw new ArgumentNullException(nameof(_blockCacheService));
             if (_api.BetterPeerStrategy is null) throw new ArgumentNullException(nameof(_api.BetterPeerStrategy));
@@ -374,7 +372,6 @@ public partial class MergePlugin : IConsensusWrapperPlugin, ISynchronizationPlug
             if (_api.NodeStatsManager is null) throw new ArgumentNullException(nameof(_api.NodeStatsManager));
             if (_api.HeaderValidator is null) throw new ArgumentNullException(nameof(_api.HeaderValidator));
             if (_api.PeerDifficultyRefreshPool is null) throw new ArgumentNullException(nameof(_api.PeerDifficultyRefreshPool));
-            if (_api.SnapProvider is null) throw new ArgumentNullException(nameof(_api.SnapProvider));
 
             // ToDo strange place for validators initialization
             PeerRefresher peerRefresher = new(_api.PeerDifficultyRefreshPool, _api.TimerFactory, _api.LogManager);
@@ -409,60 +406,50 @@ public partial class MergePlugin : IConsensusWrapperPlugin, ISynchronizationPlug
 
             _api.BetterPeerStrategy = new MergeBetterPeerStrategy(_api.BetterPeerStrategy, _poSSwitcher, _beaconPivot, _api.LogManager);
 
-            _api.SyncModeSelector = new MultiSyncModeSelector(
-                _api.SyncProgressResolver,
-                _api.SyncPeerPool,
-                _syncConfig,
-                _beaconSync,
-                _api.BetterPeerStrategy!,
-                _api.LogManager);
             _api.Pivot = _beaconPivot;
 
-            PivotUpdator pivotUpdator = new(
-                _api.BlockTree,
-                _api.SyncModeSelector,
-                _api.SyncPeerPool,
-                _syncConfig,
-                _blockCacheService,
-                _beaconSync,
-                _api.DbProvider.MetadataDb,
-                _api.SyncProgressResolver,
-                _api.LogManager);
-
-            SyncReport syncReport = new(_api.SyncPeerPool, _api.NodeStatsManager, _api.SyncModeSelector, _syncConfig, _beaconPivot, _api.LogManager);
-
-            _api.BlockDownloaderFactory = new MergeBlockDownloaderFactory(
+            MergeBlockDownloaderFactory blockDownloaderFactory = new MergeBlockDownloaderFactory(
                 _poSSwitcher,
                 _beaconPivot,
                 _api.SpecProvider,
-                _api.BlockTree,
-                _api.ReceiptStorage!,
                 _api.BlockValidator!,
                 _api.SealValidator!,
-                _api.SyncPeerPool,
                 _syncConfig,
                 _api.BetterPeerStrategy!,
-                syncReport,
-                _api.SyncProgressResolver,
+                new FullStateFinder(_api.BlockTree, _api.DbProvider.StateDb, _api.TrieStore!.AsReadOnly()),
                 _api.LogManager);
-            _api.Synchronizer = new MergeSynchronizer(
+
+            MergeSynchronizer synchronizer = new MergeSynchronizer(
                 _api.DbProvider,
                 _api.SpecProvider!,
                 _api.BlockTree!,
                 _api.ReceiptStorage!,
                 _api.SyncPeerPool,
                 _api.NodeStatsManager!,
-                _api.SyncModeSelector,
                 _syncConfig,
-                _api.SnapProvider,
-                _api.BlockDownloaderFactory,
-                _api.Pivot,
+                blockDownloaderFactory,
+                _beaconPivot,
                 _poSSwitcher,
                 _mergeConfig,
                 _invalidChainTracker,
                 _api.ProcessExit!,
-                _api.LogManager,
-                syncReport);
+                _api.ReadOnlyTrieStore!,
+                _api.BetterPeerStrategy,
+                _api.ChainSpec,
+                _beaconSync,
+                _api.LogManager
+            );
+            _api.Synchronizer = synchronizer;
+
+            PivotUpdator pivotUpdator = new(
+                _api.BlockTree,
+                synchronizer.SyncModeSelector,
+                _api.SyncPeerPool,
+                _syncConfig,
+                _blockCacheService,
+                _beaconSync,
+                _api.DbProvider.MetadataDb,
+                _api.LogManager);
         }
 
         return Task.CompletedTask;

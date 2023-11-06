@@ -190,10 +190,10 @@ namespace Nethermind.Api
         public ISessionMonitor? SessionMonitor { get; set; }
         public ISpecProvider SpecProvider { get; set; }
         public IPoSSwitcher PoSSwitcher { get; set; } = NoPoS.Instance;
-        public ISyncModeSelector? SyncModeSelector { get; set; }
+        public ISyncModeSelector SyncModeSelector { get; set; } = null!;
+
         public ISyncProgressResolver? SyncProgressResolver { get; set; }
         public IBetterPeerStrategy? BetterPeerStrategy { get; set; }
-        public IBlockDownloaderFactory? BlockDownloaderFactory { get; set; }
         public IPivot? Pivot { get; set; }
         public ISyncPeerPool? SyncPeerPool { get; set; }
         public IPeerDifficultyRefreshPool? PeerDifficultyRefreshPool { get; set; }

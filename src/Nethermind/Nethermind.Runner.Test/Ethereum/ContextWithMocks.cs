@@ -95,7 +95,6 @@ namespace Nethermind.Runner.Test.Ethereum
                 RlpxPeer = Substitute.For<IRlpxHost>(),
                 SealValidator = Substitute.For<ISealValidator>(),
                 SessionMonitor = Substitute.For<ISessionMonitor>(),
-                SnapProvider = Substitute.For<ISnapProvider>(),
                 WorldState = Substitute.For<IWorldState>(),
                 StateReader = Substitute.For<IStateReader>(),
                 TransactionProcessor = Substitute.For<ITransactionProcessor>(),

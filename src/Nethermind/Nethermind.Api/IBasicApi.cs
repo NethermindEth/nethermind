@@ -39,9 +39,9 @@ namespace Nethermind.Api
         ILogManager LogManager { get; set; }
         ProtectedPrivateKey? OriginalSignerKey { get; set; }
         IReadOnlyList<INethermindPlugin> Plugins { get; }
-        string SealEngineType => ChainSpec.SealEngineType;
-        ISpecProvider SpecProvider { get; }
-        ISyncModeSelector? SyncModeSelector { get; set; }
+        string SealEngineType { get; set; }
+        ISpecProvider? SpecProvider { get; set; }
+        ISyncModeSelector SyncModeSelector { get; set; }
         ISyncProgressResolver? SyncProgressResolver { get; set; }
         IBetterPeerStrategy? BetterPeerStrategy { get; set; }
         ITimestamper Timestamper { get; }
