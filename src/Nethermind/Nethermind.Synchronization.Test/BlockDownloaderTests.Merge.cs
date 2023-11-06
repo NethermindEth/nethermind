@@ -331,13 +331,12 @@ public partial class BlockDownloaderTests
             BlockTreeScenario = blockTrees,
         };
 
-        ctx.Feed = new FastSyncFeed(ctx.SyncModeSelector,
-            new SyncConfig
-            {
-                NonValidatorNode = true,
-                DownloadBodiesInFastSync = false,
-                DownloadReceiptsInFastSync = false
-            }, LimboLogs.Instance)!;
+        ctx.Feed = new FastSyncFeed(new SyncConfig
+        {
+            NonValidatorNode = true,
+            DownloadBodiesInFastSync = false,
+            DownloadReceiptsInFastSync = false
+        })!;
 
         ctx.BeaconPivot.EnsurePivot(blockTrees.SyncedTree.FindHeader(64, BlockTreeLookupOptions.None));
 
