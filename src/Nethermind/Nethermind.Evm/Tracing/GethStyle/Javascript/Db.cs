@@ -30,5 +30,5 @@ public class Db
     public ITypedArray<byte> getState(object address, object index) =>
         WorldState.Get(new StorageCell(address.ToAddress(), index.GetUint256())).ToScriptArray();
 
-    public bool exists(IList address) => !WorldState.GetAccount(address.ToAddress()).IsTotallyEmpty;
+    public bool exists(object address) => !WorldState.GetAccount(address.ToAddress()).IsTotallyEmpty;
 }
