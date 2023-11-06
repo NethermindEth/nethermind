@@ -79,8 +79,6 @@ namespace Nethermind.Api
 
         private IReadOnlyDbProvider? _readOnlyDbProvider;
         private IReadOnlyDbProvider? _multiCallReadOnlyDbProvider;
-        private ISealEngine? _sealEngine;
-        private IGasLimitCalculator? _gasLimitCalculator;
 
         public IBlockchainBridge CreateBlockchainBridge()
         {
@@ -179,12 +177,20 @@ namespace Nethermind.Api
         public IRpcAuthentication? RpcAuthentication { get; set; }
         public IJsonRpcLocalStats? JsonRpcLocalStats { get; set; }
         public ISealer? Sealer { get; set; } = NullSealEngine.Instance;
+        public string SealEngineType { get; set; } = Nethermind.Core.SealEngineType.None;
         public ISealValidator? SealValidator { get; set; } = NullSealEngine.Instance;
-
+        private ISealEngine? _sealEngine;
         public ISealEngine SealEngine
         {
-            get => _sealEngine ??= new SealEngine(Sealer, SealValidator);
-            set => _sealEngine = value;
+            get
+            {
+                return _sealEngine ??= new SealEngine(Sealer, SealValidator);
+            }
+
+            set
+            {
+                _sealEngine = value;
+            }
         }
 
         public ISessionMonitor? SessionMonitor { get; set; }
@@ -203,8 +209,8 @@ namespace Nethermind.Api
         public IReadOnlyStateProvider? ChainHeadStateProvider { get; set; }
         public IStateReader? StateReader { get; set; }
         public IStaticNodesManager? StaticNodesManager { get; set; }
-        public ITimestamper Timestamper => Core.Timestamper.Default;
-        public ITimerFactory TimerFactory => Core.Timers.TimerFactory.Default;
+        public ITimestamper Timestamper { get; } = Core.Timestamper.Default;
+        public ITimerFactory TimerFactory { get; } = Core.Timers.TimerFactory.Default;
         public ITransactionProcessor? TransactionProcessor { get; set; }
         public ITrieStore? TrieStore { get; set; }
         public IReadOnlyTrieStore? ReadOnlyTrieStore { get; set; }
@@ -216,12 +222,7 @@ namespace Nethermind.Api
         public IRpcCapabilitiesProvider? RpcCapabilitiesProvider { get; set; }
         public ITxValidator? TxValidator { get; set; }
         public IBlockFinalizationManager? FinalizationManager { get; set; }
-
-        public IGasLimitCalculator? GasLimitCalculator
-        {
-            get => _gasLimitCalculator ??= new FollowOtherMiners(SpecProvider!);
-            set => _gasLimitCalculator = value;
-        }
+        public IGasLimitCalculator? GasLimitCalculator { get; set; }
 
         public IBlockProducerEnvFactory? BlockProducerEnvFactory { get; set; }
         public IGasPriceOracle? GasPriceOracle { get; set; }
@@ -243,7 +244,6 @@ namespace Nethermind.Api
         public ChainSpec ChainSpec { get; set; }
         public DisposableStack DisposeStack { get; } = new();
         public IReadOnlyList<INethermindPlugin> Plugins { get; } = new List<INethermindPlugin>();
-        public string SealEngineType { get; set; } = Nethermind.Core.SealEngineType.None;
         public IList<IPublisher> Publishers { get; } = new List<IPublisher>(); // this should be called publishers
         public CompositePruningTrigger PruningTrigger { get; } = new();
         public ISnapProvider? SnapProvider { get; set; }

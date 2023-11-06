@@ -215,7 +215,6 @@ namespace Nethermind.Init.Steps
 
             _api.TransactionProcessor = CreateTransactionProcessor();
 
-
             InitSealEngine();
             if (_api.SealValidator is null) throw new StepDependencyException(nameof(_api.SealValidator));
 

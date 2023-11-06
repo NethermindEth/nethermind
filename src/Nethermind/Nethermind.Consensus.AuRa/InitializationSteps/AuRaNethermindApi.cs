@@ -8,7 +8,6 @@ using Nethermind.Consensus.AuRa.Transactions;
 using Nethermind.Consensus.AuRa.Validators;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
@@ -18,11 +17,7 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
 {
     public class AuRaNethermindApi : NethermindApi
     {
-        public AuRaNethermindApi(
-            IConfigProvider configProvider,
-            IJsonSerializer jsonSerializer,
-            ILogManager logManager,
-            ChainSpec chainSpec)
+        public AuRaNethermindApi(IConfigProvider configProvider, IJsonSerializer jsonSerializer, ILogManager logManager, ChainSpec chainSpec)
             : base(configProvider, jsonSerializer, logManager, chainSpec)
         {
         }

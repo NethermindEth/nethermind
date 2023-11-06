@@ -135,6 +135,15 @@ namespace Nethermind.State
             _stateProvider.DecrementNonce(address, delta);
         }
 
+        public void IncrementNonce(Address address)
+        {
+            _stateProvider.IncrementNonce(address, 1);
+        }
+        public void DecrementNonce(Address address)
+        {
+            _stateProvider.DecrementNonce(address, 1);
+        }
+
         public void CommitTree(long blockNumber)
         {
             _persistentStorageProvider.CommitTrees(blockNumber);

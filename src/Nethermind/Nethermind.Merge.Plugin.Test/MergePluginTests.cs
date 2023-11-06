@@ -36,7 +36,8 @@ namespace Nethermind.Merge.Plugin.Test
             BlocksConfig? miningConfig = new();
             IJsonRpcConfig jsonRpcConfig = new JsonRpcConfig() { Enabled = true, EnabledModules = new[] { ModuleType.Engine } };
 
-            _context = Build.ContextWithMocks(SealEngineType.Clique);
+            _context = Build.ContextWithMocks();
+            _context.SealEngineType = SealEngineType.Clique;
             _context.ConfigProvider.GetConfig<IMergeConfig>().Returns(_mergeConfig);
             _context.ConfigProvider.GetConfig<ISyncConfig>().Returns(new SyncConfig());
             _context.ConfigProvider.GetConfig<IBlocksConfig>().Returns(miningConfig);

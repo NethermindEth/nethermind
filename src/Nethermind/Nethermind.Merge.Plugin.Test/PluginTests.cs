@@ -8,7 +8,6 @@ namespace Nethermind.Merge.Plugin.Test
 {
     [TestFixture]
     [Parallelizable(ParallelScope.All)]
-    [SetCulture("en-US")]
     public class PluginTests
     {
         [Test]
