@@ -23,6 +23,7 @@ using Nethermind.Merge.Plugin.Synchronization;
 using Nethermind.Synchronization.Reporting;
 using Nethermind.Synchronization.ParallelSync;
 using Autofac;
+using Nethermind.Consensus.Validators;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.HealthChecks;
 using Nethermind.Serialization.Json;
@@ -294,5 +295,11 @@ public class OptimismPlugin : Module, IConsensusPlugin, ISynchronizationPlugin, 
             .As<IOPConfigHelper>();
         builder.RegisterType<OptimismTransactionProcessor>()
             .As<ITransactionProcessor>();
+        builder.RegisterType<InvalidChainTracker>()
+            .As<IInvalidChainTracker>()
+            .SingleInstance();
+        builder.RegisterType<OptimismHeaderValidator>()
+            .As<IHeaderValidator>();
+        builder.RegisterDecorator<InvalidHeaderInterceptor, IHeaderValidator>();
     }
 }

@@ -34,19 +34,6 @@ public class InitializeBlockchainOptimism : InitializeBlockchain
         return base.InitBlockchain();
     }
 
-    protected override IHeaderValidator CreateHeaderValidator()
-    {
-        if (_api.InvalidChainTracker is null) throw new StepDependencyException(nameof(_api.InvalidChainTracker));
-
-        OptimismHeaderValidator opHeaderValidator = new(
-            _api.BlockTree,
-            _api.SealValidator,
-            _api.SpecProvider,
-            _api.LogManager);
-
-        return new InvalidHeaderInterceptor(opHeaderValidator, _api.InvalidChainTracker, _api.LogManager);
-    }
-
     protected override IBlockValidator CreateBlockValidator()
     {
         if (_api.InvalidChainTracker is null) throw new StepDependencyException(nameof(_api.InvalidChainTracker));
