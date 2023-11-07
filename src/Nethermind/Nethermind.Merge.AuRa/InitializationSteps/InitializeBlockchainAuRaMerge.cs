@@ -9,6 +9,7 @@ using Nethermind.Consensus.Transactions;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Merge.AuRa;
 using Nethermind.Merge.AuRa.Withdrawals;
+using Nethermind.State;
 
 namespace Nethermind.Merge.AuRa.InitializationSteps
 {
@@ -25,7 +26,7 @@ namespace Nethermind.Merge.AuRa.InitializationSteps
 
 public class AuraMergeBlockchainStack: AuraBlockchainStack
 {
-    public AuraMergeBlockchainStack(INethermindApi api, ITransactionProcessor transactionProcessor) : base(api, transactionProcessor)
+    public AuraMergeBlockchainStack(INethermindApi api, ITransactionProcessor transactionProcessor, IWorldState worldState) : base(api, transactionProcessor, worldState)
     {
     }
 
@@ -37,8 +38,8 @@ public class AuraMergeBlockchainStack: AuraBlockchainStack
             _api.SpecProvider!,
             _api.BlockValidator!,
             _api.RewardCalculatorSource!.Get(_transactionProcessor),
-            new BlockProcessor.BlockValidationTransactionsExecutor(_transactionProcessor, _api.WorldState!),
-            _api.WorldState!,
+            new BlockProcessor.BlockValidationTransactionsExecutor(_transactionProcessor, _worldState),
+            _worldState,
             _api.ReceiptStorage!,
             _api.LogManager,
             _api.BlockTree!,

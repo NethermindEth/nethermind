@@ -111,7 +111,7 @@ public class InitializeStateDb: IStep
                 getApi.LogManager);
         setApi.TrieStore = trieStore;
 
-        IWorldState worldState = setApi.WorldState = syncConfig.TrieHealing
+        IWorldState worldState = syncConfig.TrieHealing
             ? new HealingWorldState(
                 trieStore,
                 codeDb,
@@ -120,6 +120,8 @@ public class InitializeStateDb: IStep
                 trieStore,
                 codeDb,
                 getApi.LogManager);
+
+        setApi.WorldStateFactory = () => worldState;
 
         if (pruningConfig.Mode.IsFull())
         {

@@ -75,7 +75,7 @@ namespace Nethermind.Init.Steps
 
             ILifetimeScope statefulContainer = _api.Container.BeginLifetimeScope(NethermindScope.WorldState);
             _api.DisposeStack.Push((IDisposable)statefulContainer);
-            IBlockProcessor mainBlockProcessor = setApi.MainBlockProcessor = statefulContainer
+            IBlockProcessor mainBlockProcessor = statefulContainer
                 .ResolveKeyed<IBlockProcessor>(BlockProcessorType.Validating);
 
             IChainHeadInfoProvider chainHeadInfoProvider =

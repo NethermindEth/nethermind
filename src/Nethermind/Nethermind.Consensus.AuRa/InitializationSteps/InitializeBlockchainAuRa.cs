@@ -25,6 +25,7 @@ using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Init.Steps;
 using Nethermind.Logging;
 using Nethermind.Specs.ChainSpecStyle;
+using Nethermind.State;
 using Nethermind.TxPool;
 using Nethermind.TxPool.Comparison;
 
@@ -182,15 +183,18 @@ public class AuraBlockchainStack
     protected readonly AuRaNethermindApi _api;
     private readonly IAuraConfig _auraConfig;
     protected readonly ITransactionProcessor _transactionProcessor;
+    protected readonly IWorldState _worldState;
 
     public AuraBlockchainStack(
         INethermindApi api,
-        ITransactionProcessor transactionProcessor
+        ITransactionProcessor transactionProcessor,
+        IWorldState worldState
     )
     {
         _api = (AuRaNethermindApi) api;
         _auraConfig = api.Config<IAuraConfig>();
         _transactionProcessor = transactionProcessor;
+        _worldState = worldState;
     }
 
     public BlockProcessor CreateBlockProcessor()
@@ -200,7 +204,6 @@ public class AuraBlockchainStack
         if (_api.BlockValidator is null) throw new StepDependencyException(nameof(_api.BlockValidator));
         if (_api.RewardCalculatorSource is null) throw new StepDependencyException(nameof(_api.RewardCalculatorSource));
         if (_api.DbProvider is null) throw new StepDependencyException(nameof(_api.DbProvider));
-        if (_api.WorldState is null) throw new StepDependencyException(nameof(_api.WorldState));
         if (_api.TxPool is null) throw new StepDependencyException(nameof(_api.TxPool));
         if (_api.ReceiptStorage is null) throw new StepDependencyException(nameof(_api.ReceiptStorage));
         if (_api.BlockTree is null) throw new StepDependencyException(nameof(_api.BlockTree));
@@ -240,8 +243,8 @@ public class AuraBlockchainStack
             _api.SpecProvider,
             _api.BlockValidator,
             _api.RewardCalculatorSource.Get(_transactionProcessor),
-            new BlockProcessor.BlockValidationTransactionsExecutor(_transactionProcessor, _api.WorldState),
-            _api.WorldState,
+            new BlockProcessor.BlockValidationTransactionsExecutor(_transactionProcessor, _worldState),
+            _worldState,
             _api.ReceiptStorage,
             _api.LogManager,
             _api.BlockTree,
@@ -272,7 +275,7 @@ public class AuraBlockchainStack
             chainSpecAuRa.TwoThirdsMajorityTransition);
 
         IAuRaValidator validator = new AuRaValidatorFactory(_api.AbiEncoder,
-                _api.WorldState,
+                _worldState,
                 _transactionProcessor,
                 _api.BlockTree,
                 readOnlyTxProcessorSource,

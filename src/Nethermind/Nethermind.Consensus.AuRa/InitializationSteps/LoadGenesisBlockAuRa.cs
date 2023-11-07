@@ -2,10 +2,13 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Linq;
+using Autofac;
 using Nethermind.Core;
+using Nethermind.Init;
 using Nethermind.Init.Steps;
 using Nethermind.Int256;
 using Nethermind.Specs.Forks;
+using Nethermind.State;
 
 namespace Nethermind.Consensus.AuRa.InitializationSteps
 {
@@ -31,10 +34,10 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
             bool hasConstructorAllocation = _api.ChainSpec.Allocations.Values.Any(a => a.Constructor is not null);
             if (hasConstructorAllocation)
             {
-                if (_api.WorldState is null) throw new StepDependencyException(nameof(_api.WorldState));
-
-                _api.WorldState.CreateAccount(Address.Zero, UInt256.Zero);
-                _api.WorldState.Commit(Homestead.Instance);
+                using ILifetimeScope statefulContainer = _api.Container.BeginLifetimeScope(NethermindScope.WorldState);
+                IWorldState worldState = statefulContainer.Resolve<IWorldState>();
+                worldState.CreateAccount(Address.Zero, UInt256.Zero);
+                worldState.Commit(Homestead.Instance);
             }
         }
     }

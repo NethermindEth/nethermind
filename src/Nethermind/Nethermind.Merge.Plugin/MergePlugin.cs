@@ -259,7 +259,6 @@ public partial class MergePlugin : IModule, IConsensusWrapperPlugin, ISynchroniz
         {
             if (_api.BlockTree is null) throw new ArgumentNullException(nameof(_api.BlockTree));
             if (_api.BlockchainProcessor is null) throw new ArgumentNullException(nameof(_api.BlockchainProcessor));
-            if (_api.WorldState is null) throw new ArgumentNullException(nameof(_api.WorldState));
             if (_api.HeaderValidator is null) throw new ArgumentNullException(nameof(_api.HeaderValidator));
             if (_api.EthSyncingInfo is null) throw new ArgumentNullException(nameof(_api.EthSyncingInfo));
             if (_api.Sealer is null) throw new ArgumentNullException(nameof(_api.Sealer));
@@ -476,5 +475,6 @@ public partial class MergePlugin : IModule, IConsensusWrapperPlugin, ISynchroniz
     public bool MustInitialize { get => true; }
     public virtual void Configure(IComponentRegistryBuilder componentRegistry)
     {
+        new MergePluginModule().Configure(componentRegistry);
     }
 }

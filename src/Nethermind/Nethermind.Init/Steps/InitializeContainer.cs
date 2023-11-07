@@ -70,7 +70,7 @@ public class StateModule : Module
     {
         // Obviously this is still shared globally, but we can start detecting which part requires a world state as
         // without explicitly specifying a lifetime, it will crash.
-        builder.Register<IWorldState>(_ => _api.WorldState!)
+        builder.Register<IWorldState>(_ => _api.WorldStateFactory())
             .InstancePerMatchingLifetimeScope(NethermindScope.WorldState);
 
         builder.Register<IWitnessCollector>(_ => _api.WitnessCollector!);

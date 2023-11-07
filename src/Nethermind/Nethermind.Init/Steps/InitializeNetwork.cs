@@ -6,6 +6,8 @@ using System.Collections.Generic;
 using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
+using Autofac;
+using Autofac.Core.Lifetime;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Blockchain.Synchronization;
@@ -31,6 +33,7 @@ using Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages;
 using Nethermind.Network.Rlpx;
 using Nethermind.Network.Rlpx.Handshake;
 using Nethermind.Network.StaticNodes;
+using Nethermind.State;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.Blocks;
@@ -132,7 +135,9 @@ public class InitializeNetwork : IStep
             healingTrieStore.InitializeNetwork(new GetNodeDataTrieNodeRecovery(apiSyncPeerPool, _api.LogManager));
         }
 
-        if (_api.WorldState is HealingWorldState healingWorldState)
+        using ILifetimeScope statefulContainer = _api.Container.BeginLifetimeScope(NethermindScope.WorldState);
+        IWorldState worldState = statefulContainer.Resolve<IWorldState>();
+        if (worldState is HealingWorldState healingWorldState)
         {
             healingWorldState.InitializeNetwork(new SnapTrieNodeRecovery(apiSyncPeerPool, _api.LogManager));
         }
@@ -461,7 +466,6 @@ public class InitializeNetwork : IStep
         if (_api.Synchronizer is null) throw new StepDependencyException(nameof(_api.Synchronizer));
         if (_api.Enode is null) throw new StepDependencyException(nameof(_api.Enode));
         if (_api.NodeKey is null) throw new StepDependencyException(nameof(_api.NodeKey));
-        if (_api.MainBlockProcessor is null) throw new StepDependencyException(nameof(_api.MainBlockProcessor));
         if (_api.NodeStatsManager is null) throw new StepDependencyException(nameof(_api.NodeStatsManager));
         if (_api.KeyStore is null) throw new StepDependencyException(nameof(_api.KeyStore));
         if (_api.Wallet is null) throw new StepDependencyException(nameof(_api.Wallet));

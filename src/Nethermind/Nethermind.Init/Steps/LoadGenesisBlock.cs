@@ -59,7 +59,6 @@ namespace Nethermind.Init.Steps
         {
             if (_api.ChainSpec is null) throw new StepDependencyException(nameof(_api.ChainSpec));
             if (_api.BlockTree is null) throw new StepDependencyException(nameof(_api.BlockTree));
-            if (_api.WorldState is null) throw new StepDependencyException(nameof(_api.WorldState));
             if (_api.SpecProvider is null) throw new StepDependencyException(nameof(_api.SpecProvider));
             if (_api.DbProvider is null) throw new StepDependencyException(nameof(_api.DbProvider));
 
@@ -69,7 +68,7 @@ namespace Nethermind.Init.Steps
             Block genesis = new GenesisLoader(
                 _api.ChainSpec,
                 _api.SpecProvider,
-                _api.WorldState,
+                statefulContainer.Resolve<IWorldState>(),
                 transactionProcessor)
                 .Load();
 
@@ -98,13 +97,14 @@ namespace Nethermind.Init.Steps
         /// <param name="expectedGenesisHash"></param>
         private void ValidateGenesisHash(Hash256? expectedGenesisHash)
         {
-            if (_api.WorldState is null) throw new StepDependencyException(nameof(_api.WorldState));
             if (_api.BlockTree is null) throw new StepDependencyException(nameof(_api.BlockTree));
 
             BlockHeader genesis = _api.BlockTree.Genesis ?? throw new NullReferenceException("Genesis block is null");
             if (expectedGenesisHash is not null && genesis.Hash != expectedGenesisHash)
             {
-                if (_logger.IsWarn) _logger.Warn(_api.WorldState.DumpState());
+                using ILifetimeScope container = _api.Container.BeginLifetimeScope(NethermindScope.WorldState);
+                IWorldState worldState = container.Resolve<IWorldState>();
+                if (_logger.IsWarn) _logger.Warn(worldState.DumpState());
                 if (_logger.IsWarn) _logger.Warn(genesis.ToString(BlockHeader.Format.Full));
                 if (_logger.IsError) _logger.Error($"Unexpected genesis hash, expected {expectedGenesisHash}, but was {genesis.Hash}");
             }

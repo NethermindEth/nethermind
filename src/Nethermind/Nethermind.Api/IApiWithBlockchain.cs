@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 #nullable enable
+using System;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.FullPruning;
@@ -34,7 +35,6 @@ namespace Nethermind.Api
         IBlockchainProcessor? BlockchainProcessor { get; set; }
         CompositeBlockPreprocessorStep BlockPreprocessor { get; }
         IBlockProcessingQueue? BlockProcessingQueue { get; set; }
-        IBlockProcessor? MainBlockProcessor { get; set; }
         IBlockProducer? BlockProducer { get; set; }
         IBlockValidator? BlockValidator { get; set; }
         IEnode? Enode { get; set; }
@@ -52,6 +52,7 @@ namespace Nethermind.Api
         ISealer? Sealer { get; set; }
         ISealValidator? SealValidator { get; set; }
         ISealEngine SealEngine { get; set; }
+        /*
         /// <summary>
         /// Can be used only for processing blocks, on all other contexts use <see cref="StateReader"/> or <see cref="ChainHeadStateProvider"/>.
         /// </summary>
@@ -59,6 +60,10 @@ namespace Nethermind.Api
         /// DO NOT USE OUTSIDE OF PROCESSING BLOCK CONTEXT!
         /// </remarks>
         IWorldState? WorldState { get; set; }
+        */
+
+        Func<IWorldState> WorldStateFactory { get; set; }
+
         IKeyValueStoreWithBatching? MainStateDbWithCache { get; set; }
         IReadOnlyStateProvider? ChainHeadStateProvider { get; set; }
         IStateReader? StateReader { get; set; }
