@@ -24,7 +24,7 @@ jobs:
             checkpoint-sync-url: "http://139.144.26.89:4000/"
             cl-client: "lighthouse"
             el-client: "nethermind:current_branch_image"
-            agent: ubuntu-latest
+            agent: sync-agent-80gb
           - network: "sepolia"
             checkpoint-sync-url: "https://beaconstate-sepolia.chainsafe.io"
             cl-client: "lighthouse"
