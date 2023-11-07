@@ -131,10 +131,10 @@ public interface ISyncConfig : IConfig
     [ConfigItem(Description = "Enables healing trie from network when state is corrupted.", DefaultValue = "true", HiddenFromDocs = true)]
     public bool TrieHealing { get; set; }
 
-    [ConfigItem(Description = "Whether to shut down Nethermind once the sync is finished.", DefaultValue = "false")]
+    [ConfigItem(Description = "Whether to shut down Nethermind once sync is finished.", DefaultValue = "false")]
     public bool ExitOnSynced { get; set; }
 
-    [ConfigItem(Description = "The time to wait before shutting Nethermind down once sthe ync is finished.", DefaultValue = "60")]
+    [ConfigItem(Description = "The time, in seconds, to wait before shutting down Nethermind once sync is finished.", DefaultValue = "60")]
     public int ExitOnSyncedWaitTimeSec { get; set; }
 
     [ConfigItem(Description = "Interval, in seconds, between `malloc_trim` calls during sync.", DefaultValue = "300", HiddenFromDocs = true)]
