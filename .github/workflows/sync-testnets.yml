@@ -12,6 +12,7 @@ env:
 jobs:
   testnet-sync:
     strategy:
+      fail-fast: false
       matrix:
         include:
           - network: "chiado"
