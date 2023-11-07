@@ -100,13 +100,15 @@ internal static class ConfigGenerator
             if (itemAttr?.HiddenFromDocs ?? true)
                 continue;
 
+            var description = itemAttr.Description.Replace("\n", "\n  ").TrimEnd(' ');
+
             file.Write($"""
                 - **`--{moduleName}.{prop.Name} <value>`** `NETHERMIND_{moduleName.ToUpperInvariant()}CONFIG_{prop.Name.ToUpperInvariant()}`
 
-                  {itemAttr.Description.Replace("\n", "\n  ")}
+                  {description}
                 """);
 
-            var startsFromNewLine = WriteAllowedValues(file, prop.PropertyType);
+            var startsFromNewLine = WriteAllowedValues(file, prop.PropertyType) || description.EndsWith('\n');
 
             WriteDefaultValue(file, itemAttr, startsFromNewLine);
 
