@@ -19,6 +19,7 @@ using NUnit.Framework;
 namespace Nethermind.Merge.Plugin.Test;
 
 [TestFixture]
+[Parallelizable(ParallelScope.All)]
 public class ProcessedTransactionsDbCleanerTests
 {
     private readonly ILogManager _logManager = LimboLogs.Instance;
