@@ -7,6 +7,9 @@ using System.Linq;
 using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
+using Autofac;
+using Autofac.Core;
+using Autofac.Core.Registration;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Blockchain;
@@ -36,7 +39,7 @@ using Nethermind.Synchronization.Reporting;
 
 namespace Nethermind.Merge.Plugin;
 
-public partial class MergePlugin : IConsensusWrapperPlugin, ISynchronizationPlugin
+public partial class MergePlugin : IModule, IConsensusWrapperPlugin, ISynchronizationPlugin
 {
     protected INethermindApi _api = null!;
     private ILogger _logger = null!;
@@ -471,4 +474,7 @@ public partial class MergePlugin : IConsensusWrapperPlugin, ISynchronizationPlug
     public ValueTask DisposeAsync() => ValueTask.CompletedTask;
 
     public bool MustInitialize { get => true; }
+    public virtual void Configure(IComponentRegistryBuilder componentRegistry)
+    {
+    }
 }

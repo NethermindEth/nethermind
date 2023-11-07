@@ -2,10 +2,13 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Threading.Tasks;
+using Autofac.Core;
+using Autofac.Core.Registration;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Config;
 using Nethermind.Consensus;
+using Nethermind.Consensus.AuRa;
 using Nethermind.Consensus.AuRa.Config;
 using Nethermind.Consensus.AuRa.InitializationSteps;
 using Nethermind.Consensus.AuRa.Transactions;
@@ -19,7 +22,7 @@ namespace Nethermind.Merge.AuRa
     /// Plugin for AuRa -> PoS migration
     /// </summary>
     /// <remarks>IMPORTANT: this plugin should always come before MergePlugin</remarks>
-    public class AuRaMergePlugin : MergePlugin, IInitializationPlugin
+    public class AuRaMergePlugin : MergePlugin, IInitializationPlugin, IModule
     {
         private AuRaNethermindApi? _auraApi;
 
@@ -78,6 +81,13 @@ namespace Nethermind.Merge.AuRa
         {
             _mergeConfig = api.Config<IMergeConfig>();
             return _mergeConfig.Enabled && api.ChainSpec.SealEngineType == SealEngineType.AuRa;
+        }
+
+        public override void Configure(IComponentRegistryBuilder componentRegistry)
+        {
+            base.Configure(componentRegistry);
+            new AuraModule().Configure(componentRegistry);
+            new AuraMergeModule().Configure(componentRegistry);
         }
     }
 }

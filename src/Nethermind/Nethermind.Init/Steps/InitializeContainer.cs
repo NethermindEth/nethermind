@@ -11,8 +11,10 @@ using Nethermind.Api.Extensions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
+using Nethermind.Blockchain.Services;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Comparers;
+using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
@@ -103,7 +105,16 @@ public class BlockchainModule : Module
             .As<ITransactionProcessor>();
         builder.RegisterInstance(NullSealEngine.Instance)
             .As<ISealValidator>();
+        builder.RegisterInstance(NullSealEngine.Instance)
+            .As<ISealer>();
+        builder.RegisterInstance(NullSealEngine.Instance)
+            .As<ISealEngine>();
         builder.RegisterType<HeaderValidator>()
             .As<IHeaderValidator>();
+        builder.RegisterInstance(NoBlockRewards.Instance)
+            .As<IRewardCalculatorSource>();
+
+        builder.RegisterType<HealthHintService>()
+            .As<IHealthHintService>();
     }
 }

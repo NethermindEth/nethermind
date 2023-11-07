@@ -39,15 +39,5 @@ namespace Nethermind.Merge.AuRa.InitializationSteps
                 contractRewriter
             );
         }
-
-        protected override void InitSealEngine()
-        {
-            base.InitSealEngine();
-
-            if (_api.PoSSwitcher is null) throw new StepDependencyException(nameof(_api.PoSSwitcher));
-            if (_api.SealValidator is null) throw new StepDependencyException(nameof(_api.SealValidator));
-
-            _api.SealValidator = new Plugin.MergeSealValidator(_api.PoSSwitcher!, _api.SealValidator!);
-        }
     }
 }

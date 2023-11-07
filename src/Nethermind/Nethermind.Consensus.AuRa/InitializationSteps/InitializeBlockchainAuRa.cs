@@ -7,13 +7,10 @@ using System.Linq;
 using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Data;
-using Nethermind.Blockchain.Services;
 using Nethermind.Config;
 using Nethermind.Consensus.AuRa.Config;
 using Nethermind.Consensus.AuRa.Contracts;
 using Nethermind.Consensus.AuRa.Contracts.DataStore;
-using Nethermind.Consensus.AuRa.Rewards;
-using Nethermind.Consensus.AuRa.Services;
 using Nethermind.Consensus.AuRa.Transactions;
 using Nethermind.Consensus.AuRa.Validators;
 using Nethermind.Consensus.AuRa.Withdrawals;
@@ -37,8 +34,6 @@ public class InitializeBlockchainAuRa : InitializeBlockchain
     private readonly AuRaNethermindApi _api;
     private INethermindApi NethermindApi => _api;
 
-    private AuRaSealValidator? _sealValidator;
-    private IAuRaStepCalculator? _auRaStepCalculator;
     private readonly IAuraConfig _auraConfig;
 
     public InitializeBlockchainAuRa(AuRaNethermindApi api) : base(api)
@@ -79,10 +74,12 @@ public class InitializeBlockchainAuRa : InitializeBlockchain
         processor.AuRaValidator = auRaValidator;
         var reportingValidator = auRaValidator.GetReportingValidator();
         _api.ReportingValidator = reportingValidator;
+        /*
         if (_sealValidator is not null)
         {
             _sealValidator.ReportingValidator = reportingValidator;
         }
+        */
 
         return processor;
     }
@@ -107,10 +104,6 @@ public class InitializeBlockchainAuRa : InitializeBlockchain
 
     protected ReadOnlyTxProcessingEnv CreateReadOnlyTransactionProcessorSource() =>
         new ReadOnlyTxProcessingEnv(_api.DbProvider, _api.ReadOnlyTrieStore, _api.BlockTree, _api.SpecProvider, _api.LogManager);
-
-    protected override IHealthHintService CreateHealthHintService() =>
-        new AuraHealthHintService(_auRaStepCalculator, _api.ValidatorStore);
-
 
     private IAuRaValidator CreateAuRaValidator(IBlockProcessor processor, IReadOnlyTxProcessorSource readOnlyTxProcessorSource)
     {
@@ -185,23 +178,6 @@ public class InitializeBlockchainAuRa : InitializeBlockchain
 
         // do not return target gas limit calculator here - this is used for validation to check if the override should have been used
         return null;
-    }
-
-    protected override void InitSealEngine()
-    {
-        if (_api.DbProvider is null) throw new StepDependencyException(nameof(_api.DbProvider));
-        if (_api.ChainSpec is null) throw new StepDependencyException(nameof(_api.ChainSpec));
-        if (_api.EthereumEcdsa is null) throw new StepDependencyException(nameof(_api.EthereumEcdsa));
-        if (_api.BlockTree is null) throw new StepDependencyException(nameof(_api.BlockTree));
-
-        _api.ValidatorStore = new ValidatorStore(_api.DbProvider.BlockInfosDb);
-
-        ValidSealerStrategy validSealerStrategy = new ValidSealerStrategy();
-        AuRaStepCalculator auRaStepCalculator = new AuRaStepCalculator(_api.ChainSpec.AuRa.StepDuration, _api.Timestamper, _api.LogManager);
-        _api.SealValidator = _sealValidator = new AuRaSealValidator(_api.ChainSpec.AuRa, auRaStepCalculator, _api.BlockTree, _api.ValidatorStore, validSealerStrategy, _api.EthereumEcdsa, _api.LogManager);
-        _api.RewardCalculatorSource = AuRaRewardCalculator.GetSource(_api.ChainSpec.AuRa, _api.AbiEncoder);
-        _api.Sealer = new AuRaSealer(_api.BlockTree, _api.ValidatorStore, auRaStepCalculator, _api.EngineSigner, validSealerStrategy, _api.LogManager);
-        _auRaStepCalculator = auRaStepCalculator;
     }
 
     // private IReadOnlyTransactionProcessorSource GetReadOnlyTransactionProcessorSource() =>
@@ -295,10 +271,12 @@ public class InitializeBlockchainAuRa : InitializeBlockchain
 public class AuraBlockchainStack
 {
     private ChainSpec _chainSpec;
-    private BlockTree _blockTree;
     private ISealValidator _sealValidator;
-    private ISpecProvider _specProvider;
-    private ILogManager _logManager;
+
+    private readonly BlockTree _blockTree;
+    private readonly ISpecProvider _specProvider;
+    private readonly ILogManager _logManager;
+
     public AuraBlockchainStack(
         ChainSpec chainSpec,
         BlockTree blockTree,

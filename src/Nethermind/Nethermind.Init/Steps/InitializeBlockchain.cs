@@ -15,6 +15,7 @@ using Nethermind.Consensus;
 using Nethermind.Consensus.Comparers;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
+using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
@@ -68,11 +69,14 @@ namespace Nethermind.Init.Steps
             _api.BlockPreprocessor.AddFirst(
                 new RecoverSignatures(getApi.EthereumEcdsa, txPool, getApi.SpecProvider, getApi.LogManager));
             _api.TransactionProcessor = statefulContainer.Resolve<ITransactionProcessor>();
+            _api.SealEngine = _api.Container.Resolve<ISealEngine>();
+            _api.SealValidator = _api.Container.Resolve<ISealValidator>();
+            _api.Sealer = _api.Container.Resolve<ISealer>();
+            _api.RewardCalculatorSource = _api.Container.Resolve<IRewardCalculatorSource>();
 
-            InitSealEngine();
-            if (_api.SealValidator is null) throw new StepDependencyException(nameof(_api.SealValidator));
-
+            setApi.HealthHintService = _api.Container.Resolve<IHealthHintService>();
             setApi.HeaderValidator = _api.Container.Resolve<IHeaderValidator>();
+
             setApi.UnclesValidator = CreateUnclesValidator();
             setApi.BlockValidator = CreateBlockValidator();
 
@@ -111,7 +115,6 @@ namespace Nethermind.Init.Steps
 
             IFilterStore filterStore = setApi.FilterStore = new FilterStore();
             setApi.FilterManager = new FilterManager(filterStore, mainBlockProcessor, txPool, getApi.LogManager);
-            setApi.HealthHintService = CreateHealthHintService();
             setApi.BlockProductionPolicy = CreateBlockProductionPolicy();
 
             return Task.CompletedTask;
@@ -134,9 +137,6 @@ namespace Nethermind.Init.Steps
                 _api.HeaderValidator,
                 _api.LogManager);
         }
-
-        protected virtual IHealthHintService CreateHealthHintService() =>
-            new HealthHintService(_api.ChainSpec!);
 
         protected virtual IBlockProductionPolicy CreateBlockProductionPolicy() =>
             new BlockProductionPolicy(_api.Config<IMiningConfig>());
@@ -169,11 +169,6 @@ namespace Nethermind.Init.Steps
                 _api.ReceiptStorage,
                 _api.WitnessCollector,
                 _api.LogManager);
-        }
-
-        // TODO: remove from here - move to consensus?
-        protected virtual void InitSealEngine()
-        {
         }
     }
 }

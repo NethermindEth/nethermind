@@ -6,6 +6,8 @@ using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
 using Autofac;
+using Autofac.Core;
+using Autofac.Core.Registration;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
@@ -13,6 +15,7 @@ using Nethermind.Blockchain;
 using Nethermind.Config;
 using Nethermind.Consensus.AuRa.InitializationSteps;
 using Nethermind.Consensus.Producers;
+using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core.Specs;
@@ -27,7 +30,7 @@ namespace Nethermind.Consensus.AuRa
     /// <summary>
     /// Consensus plugin for AuRa setup.
     /// </summary>
-    public class AuRaPlugin : Module, IConsensusPlugin, ISynchronizationPlugin, IInitializationPlugin
+    public class AuRaPlugin : IModule, IConsensusPlugin, ISynchronizationPlugin, IInitializationPlugin
     {
         private AuRaNethermindApi? _nethermindApi;
         public string Name => SealEngineType;
@@ -89,12 +92,9 @@ namespace Nethermind.Consensus.AuRa
 
         public bool ShouldRunSteps(INethermindApi api) => api.ChainSpec.SealEngineType == SealEngineType;
 
-        protected override void Load(ContainerBuilder builder)
+        public void Configure(IComponentRegistryBuilder componentRegistry)
         {
-            builder.RegisterType<AuraBlockchainStack>();
-
-            builder.Register<AuraBlockchainStack, IHeaderValidator>(bStack => bStack.CreateHeaderValidator())
-                .As<IHeaderValidator>();
+            new AuraModule().Configure(componentRegistry);
         }
     }
 }

@@ -23,6 +23,7 @@ using Nethermind.Merge.Plugin.Synchronization;
 using Nethermind.Synchronization.Reporting;
 using Nethermind.Synchronization.ParallelSync;
 using Autofac;
+using Nethermind.Blockchain.Services;
 using Nethermind.Consensus.Validators;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.HealthChecks;
@@ -301,5 +302,8 @@ public class OptimismPlugin : Module, IConsensusPlugin, ISynchronizationPlugin, 
         builder.RegisterType<OptimismHeaderValidator>()
             .As<IHeaderValidator>();
         builder.RegisterDecorator<InvalidHeaderInterceptor, IHeaderValidator>();
+
+        builder.Register<BlocksConfig, IHealthHintService>((blocksConfig) =>
+            new ManualHealthHintService(blocksConfig.SecondsPerSlot * 6, HealthHintConstants.InfinityHint));
     }
 }
