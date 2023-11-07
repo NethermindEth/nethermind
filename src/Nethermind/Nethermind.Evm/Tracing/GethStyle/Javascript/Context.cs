@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections;
 using System.Numerics;
 using Microsoft.ClearScript;
 using Microsoft.ClearScript.JavaScript;
@@ -13,13 +14,12 @@ namespace Nethermind.Evm.Tracing.GethStyle.Javascript;
 
 public class Context
 {
-    private ITypedArray<byte>? _from;
-    private ITypedArray<byte>? _to;
-    private ITypedArray<byte>? _input;
-    private ITypedArray<byte>? _output;
-    private ITypedArray<byte>? _blockHash;
-    private ITypedArray<byte>? _txHash;
-
+    private IList? _blockHash;
+    private IList? _txHash;
+    private IList? _input;
+    private IList? _from;
+    private IList? _to;
+    private IList? _output;
     public Address? From { get; set; }
     public Address? To { get; set; }
     public ReadOnlyMemory<byte> Input { get; set; }
@@ -28,17 +28,17 @@ public class Context
     public Hash256? TxHash { get; set; }
 
     public string type { get; set; } = null!;
-    public ITypedArray<byte> from => _from ??= From!.Bytes.ToScriptArray();
-    public ITypedArray<byte>? to => _to ??= To!.Bytes.ToScriptArray();
-    public ITypedArray<byte> input => _input ??= Input.ToArray().ToScriptArray();
+    public IList? from => _from ??= From?.Bytes.ToUnTypedScriptArray();
+    public IList? to => _to ??= To?.Bytes.ToUnTypedScriptArray();
+    public IList? input => _input ??= Input.ToArray().ToUnTypedScriptArray();
     public long gas { get; set; }
     public long gasUsed { get; set; }
     public ulong gasPrice { get; set; }
     public BigInteger value { get; set; }
     public long block { get; set; }
-    public ITypedArray<byte>? output => _output ??= Output!.ToScriptArray();
-    public ITypedArray<byte>? blockHash => _blockHash ??= BlockHash!.BytesToArray().ToScriptArray();
+    public IList? output => _output ??= Output?.ToUnTypedScriptArray();
+    public IList? blockHash => _blockHash ??= BlockHash?.BytesToArray().ToUnTypedScriptArray();
     public int? txIndex { get; set; }
-    public ITypedArray<byte>? txHash => _txHash ??= TxHash!.BytesToArray().ToScriptArray();
+    public IList? txHash => _txHash ??= TxHash?.BytesToArray().ToUnTypedScriptArray();
     public string? error { get; set; }
 }

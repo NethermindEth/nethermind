@@ -218,6 +218,17 @@ public class DebugModuleTests
     }
 
     [Test]
+    public async Task Get_trace_with_javascript_setup()
+    {
+        GethTraceOptions passedOption = null!;
+        debugBridge.GetTransactionTrace(Arg.Any<Hash256>(), Arg.Any<CancellationToken>(), Arg.Do<GethTraceOptions>(arg => passedOption = arg))
+            .Returns(new GethLikeTxTrace());
+        DebugRpcModule rpcModule = new(LimboLogs.Instance, debugBridge, jsonRpcConfig);
+        await RpcTest.TestSerializedRequest<IDebugRpcModule>(DebugModuleFactory.Converters, rpcModule, "debug_traceTransaction", TestItem.KeccakA.ToString(true), "{disableStack : true, tracerConfig : { a : true } }");
+        passedOption.TracerConfig!.ToString().Should().Be("{\"a\":true}");
+    }
+
+    [Test]
     public void Debug_traceCall_test()
     {
         GethTxTraceEntry entry = new();

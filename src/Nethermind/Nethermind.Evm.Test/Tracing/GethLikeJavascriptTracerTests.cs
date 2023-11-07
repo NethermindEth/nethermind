@@ -12,6 +12,7 @@ using Nethermind.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.Tracing.GethStyle.Javascript;
 using Nethermind.Int256;
+using Nethermind.Serialization.Json;
 using Nethermind.Specs.Forks;
 
 namespace Nethermind.Evm.Test.Tracing;
@@ -346,6 +347,15 @@ public class GethLikeJavascriptTracerTests : VirtualMachineTestsBase
         Assert.That(JsonSerializer.Serialize(traces.CustomTracerResult), Is.EqualTo("{\"942921b14f1b1c385cd7e0cc2ef7abe5598c8358\":{\"balance\":\"0x56bc75e2d63100000\",\"nonce\":0,\"code\":\"60006000600060007376e68a8696537e4141926f3e528733af9e237d6961c350f400\",\"storage\":{}},\"76e68a8696537e4141926f3e528733af9e237d69\":{\"balance\":\"0xde0b6b3a7640000\",\"nonce\":0,\"code\":\"7f7f000000000000000000000000000000000000000000000000000000000000006000527f0060005260036000f30000000000000000000000000000000000000000000000602052602960006000f000\",\"storage\":{}},\"d75a3a95360e44a3874e691fb48d77855f127069\":{\"balance\":\"0x0\",\"nonce\":0,\"code\":\"\",\"storage\":{}},\"b7705ae4c6f81b66cdb323c65f4e8133690fc099\":{\"balance\":\"0x56bc75e2d63100000\",\"nonce\":0,\"code\":\"\",\"storage\":{}}}"));
     }
 
+    [Test]
+    public void multiple_prestate_tracer([Values(10)] int count)
+    {
+        for (int i = 0; i < count; i++)
+        {
+            calls_btn_contracts();
+        }
+    }
+
     private static byte[] MStore()
     {
         return Prepare.EvmCode
@@ -409,4 +419,130 @@ public class GethLikeJavascriptTracerTests : VirtualMachineTestsBase
             .Op(Instruction.STOP)
             .Done;
     }
+
+    [Test]
+    public void complex_tracer()
+    {
+        GethLikeTxTrace traces = ExecuteBlock(
+                GetTracer(ComplexTracer),
+                Array.Empty<byte>(),
+                MainnetSpecProvider.CancunActivation)
+            .BuildResult().First();
+
+        TestContext.WriteLine(new EthereumJsonSerializer().Serialize(traces.CustomTracerResult));
+    }
+
+    private const string ComplexTracer = """
+                                         {
+                                             trace: [],
+                                             randomAddress: Array(19).fill(87).concat([1]),
+                                             setup: function(config) {
+                                                 this.trace.push(config);
+                                                 this.hash = toWord(Array(31).fill(1).concat([1]));
+                                                 this.previousStackLength = 0;
+                                                 this.previousMemoryLength = 0;
+                                             },
+                                             enter: function(callFrame) {
+                                                 this.trace.push({
+                                                     "type": callFrame.getType(),
+                                                     "from": callFrame.getFrom(),
+                                                     "to": callFrame.getTo(),
+                                                     "input": callFrame.getInput(),
+                                                     "gas": callFrame.getGas(),
+                                                     "value": callFrame.getValue()
+                                                 });
+                                             },
+                                             exit: function(frameResult) {
+                                                 this.trace.push({
+                                                     "gasUsed": frameResult.getGasUsed(),
+                                                     "output": frameResult.getOutput(),
+                                                     "error": frameResult.getError()
+                                                 });
+                                             },
+                                             step: function(log, db) {
+                                                 if (log.getError() === undefined) {
+                                                     let contractAddress = log.contract.getAddress();
+                                                     let currentStackLength = log.stack.length();
+                                                     let topStackItem = currentStackLength > 0 ? log.stack.peek(0) : 0;
+                                                     let topStackItemValueOf = currentStackLength > 0 ? log.stack.peek(0).valueOf() : 0;
+                                                     let topStackItemToString = currentStackLength > 0 ? log.stack.peek(0).toString(16) : 0;
+                                                     let bottomStackItem = currentStackLength > 0 ? log.stack.peek(currentStackLength - 1) : 0;
+                                                     let currentMemoryLength = log.memory.length();
+                                                     let memoryExpanded = currentMemoryLength > this.previousMemoryLength;
+                                                     let newMemorySlice = memoryExpanded ? log.memory.slice(Math.max(this.previousMemoryLength, currentMemoryLength - 10), currentMemoryLength) : [];
+                                                     let newMemoryItem = memoryExpanded && currentMemoryLength >= 32 ? log.memory.getUint(currentMemoryLength - 32) : 0;
+                                                     this.trace.push({
+                                                         "op": {
+                                                             "isPush": log.op.isPush(),
+                                                             "asString": log.op.toString(),
+                                                             "asNumber": log.op.toNumber()
+                                                         },
+                                                         "stack": {
+                                                             "top": topStackItem,
+                                                             "topValueOf": topStackItemValueOf,
+                                                             "topToString": topStackItemToString,
+                                                             "bottom": bottomStackItem,
+                                                             "length": currentStackLength
+                                                         },
+                                                         "memory": {
+                                                             "newSlice": newMemorySlice,
+                                                             "newMemoryItem": newMemoryItem,
+                                                             "length": currentMemoryLength
+                                                         },
+                                                         "contract": {
+                                                             "caller": log.contract.getCaller(),
+                                                             "address": toAddress(toHex(contractAddress)),
+                                                             "value": log.contract.getValue(),
+                                                             "input": log.contract.getInput(),
+                                                             "balance": db.getBalance(contractAddress),
+                                                             "nonce": db.getNonce(contractAddress),
+                                                             "code": db.getCode(contractAddress),
+                                                             "state": db.getState(contractAddress, this.hash),
+                                                             "stateString": db.getState(contractAddress, this.hash).toString(16),
+                                                             "exists": db.exists(contractAddress),
+                                                             "randomexists": db.exists(this.randomAddress)
+                                                         },
+                                                         "pc": log.getPC(),
+                                                         "gas": log.getGas(),
+                                                         "cost": log.getCost(),
+                                                         "depth": log.getDepth(),
+                                                         "refund": log.getRefund()
+                                                     });
+                                                     this.previousStackLength = currentStackLength;
+                                                     this.previousMemoryLength = currentMemoryLength;
+                                                 }
+                                                 else {
+                                                     this.trace.push({"error": log.getError()});
+                                                 }
+                                             },
+                                             result: function(ctx, db) {
+                                                 let ctxToAddress = toAddress(toHex(ctx.to));
+                                                 this.trace.push({
+                                                     "ctx": {
+                                                         "type": ctx.type,
+                                                         "from": ctx.from,
+                                                         "to": ctx.to,
+                                                         "input": ctx.input,
+                                                         "gas": ctx.gas,
+                                                         "gasUsed": ctx.gasUsed,
+                                                         "gasPrice": ctx.gasPrice,
+                                                         "value": ctx.value,
+                                                         "block": ctx.block,
+                                                         "output": ctx.output,
+                                                         "error": ctx.error
+                                                     },
+                                                     "db": {
+                                                         "balance": db.getBalance(ctxToAddress),
+                                                         "nonce": db.getNonce(ctxToAddress),
+                                                         "code": db.getCode(ctxToAddress),
+                                                         "state": db.getState(ctxToAddress, this.hash),
+                                                         "exists": db.exists(ctxToAddress),
+                                                         "randomexists": db.exists(this.randomAddress)
+                                                     }
+                                                 });
+                                                 return this.trace;
+                                             },
+                                             fault: this.step
+                                         }
+                                         """;
 }

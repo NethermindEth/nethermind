@@ -2,11 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
-using System.Linq;
-using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.ClearScript.JavaScript;
@@ -36,6 +35,7 @@ public class Engine : IDisposable
     private readonly IReleaseSpec _spec;
 
     private readonly dynamic _createUint8Array;
+    private readonly dynamic _createUntypedArray;
     [ThreadStatic] private static Engine? _currentEngine;
 
     private static readonly V8Runtime _runtime = new();
@@ -101,12 +101,13 @@ public class Engine : IDisposable
         V8Engine.AddHostObject(nameof(toContract2), toContract2);
         V8Engine.Execute(LoadBuiltIn(nameof(BigIntegerCode), BigIntegerCode));
         _createUint8Array = V8Engine.Evaluate(LoadBuiltIn(nameof(CreateUint8ArrayCode), CreateUint8ArrayCode));
+        _createUntypedArray = V8Engine.Script.Array.from;
         Interlocked.CompareExchange(ref _currentEngine, this, null);
     }
 
-    private ITypedArray<byte> ToWord(object bytes) => bytes.ToWord().ToScriptArray();
+    private ITypedArray<byte> ToWord(object bytes) => bytes.ToWord().ToTypedScriptArray();
     private string ToHex(object? bytes) => bytes is null ? "0x" : bytes.ToBytes().ToHexString();
-    private ITypedArray<byte> ToAddress(object address) => address.ToAddress().Bytes.ToScriptArray();
+    private ITypedArray<byte> ToAddress(object address) => address.ToAddress().Bytes.ToTypedScriptArray();
     private bool IsPrecompiled(object address) => address.ToAddress().IsPrecompile(_spec);
     private ITypedArray<byte> Slice(object input, long start, long end)
     {
@@ -116,12 +117,12 @@ public class Engine : IDisposable
         }
 
         int length = (int)(end - start);
-        return input.ToBytes().Slice((int)start, length).ToScriptArray();
+        return input.ToBytes().Slice((int)start, length).ToTypedScriptArray();
     }
 
-    private ITypedArray<byte> ToContract(object from, ulong nonce) => ContractAddress.From(from.ToAddress(), nonce).Bytes.ToScriptArray();
+    private ITypedArray<byte> ToContract(object from, ulong nonce) => ContractAddress.From(from.ToAddress(), nonce).Bytes.ToTypedScriptArray();
     private ITypedArray<byte> ToContract2(object from, string salt, object initcode) =>
-        ContractAddress.From(from.ToAddress(), Bytes.FromHexString(salt), ValueKeccak.Compute(initcode.ToBytes()).Bytes).Bytes.ToScriptArray();
+        ContractAddress.From(from.ToAddress(), Bytes.FromHexString(salt), ValueKeccak.Compute(initcode.ToBytes()).Bytes).Bytes.ToTypedScriptArray();
 
     public void Dispose()
     {
@@ -130,6 +131,7 @@ public class Engine : IDisposable
     }
 
     public ITypedArray<byte> CreateUint8Array(byte[] buffer) => _createUint8Array(buffer);
+    public IList CreateUntypedArray(byte[] buffer) => _createUntypedArray(buffer);
 
     public dynamic CreateTracer(string tracer)
     {
@@ -166,7 +168,10 @@ public class Engine : IDisposable
                     tracer = Path.ChangeExtension(tracer, Extension);
                 }
 
-                return _builtInScripts.TryGetValue(tracer, out V8Script script) ? script : LoadBuiltIn(tracer, LoadJavascriptCodeFromFile(tracer));
+                return _builtInScripts.TryGetValue(tracer, out V8Script script)
+                    ? script
+                    // fallback, shouldn't happen if the tracers were initialized from file before
+                    : LoadBuiltIn(tracer, LoadJavascriptCodeFromFile(tracer));
             }
         }
 

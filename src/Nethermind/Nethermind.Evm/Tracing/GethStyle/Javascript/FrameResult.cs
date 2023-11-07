@@ -14,6 +14,6 @@ public class FrameResult
     public byte[] Output { get; set; }
     public string? Error { get; set; }
     public long getGasUsed() => GasUsed;
-    public ITypedArray<byte> getOutput() => output ??= Output.ToScriptArray();
+    public ITypedArray<byte> getOutput() => output ??= Output.ToTypedScriptArray();
     public string getError() => Error ?? string.Empty;
 }

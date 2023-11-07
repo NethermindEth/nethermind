@@ -58,17 +58,17 @@ namespace Nethermind.Evm.Tracing.GethStyle.Javascript
 
             public int length() => (int)MemoryTrace.Size;
 
-            public ITypedArray<byte> slice(int start, int end)
+            public ITypedArray<byte> slice(long start, long end)
             {
-                if (start < 0 || end < start)
+                if (start < 0 || end < start || end > Array.MaxLength)
                 {
                     throw new ArgumentOutOfRangeException(nameof(start), $"tracer accessed out of bound memory: offset {start}, end {end}");
                 }
 
-                int length = end - start;
-                return MemoryTrace.Slice(start, length)
+                long length = end - start;
+                return MemoryTrace.Slice((int)start, (int)length)
                     .ToArray()
-                    .ToScriptArray();
+                    .ToTypedScriptArray();
             }
 
             public BigInteger getUint(int offset) => MemoryTrace.GetUint(offset);
@@ -76,7 +76,7 @@ namespace Nethermind.Evm.Tracing.GethStyle.Javascript
 
         public struct Contract
         {
-            private readonly UInt256 _value;
+            private readonly BigInteger _value;
             private readonly Address _address;
             private readonly ReadOnlyMemory<byte> _input;
             private ITypedArray<byte>? _callerConverted;
@@ -89,14 +89,14 @@ namespace Nethermind.Evm.Tracing.GethStyle.Javascript
             {
                 _caller = caller;
                 _address = address;
-                _value = value;
+                _value = (BigInteger)value;
                 _input = input;
             }
 
-            public ITypedArray<byte> getAddress() => _addressConverted ??= _address.Bytes.ToScriptArray();
-            public ITypedArray<byte> getCaller() => _callerConverted ??= _caller.Bytes.ToScriptArray();
-            public ITypedArray<byte> getInput() => _inputConverted ??= _input.ToArray().ToScriptArray();
-            public BigInteger getValue() => (BigInteger)_value;
+            public ITypedArray<byte> getAddress() => _addressConverted ??= _address.Bytes.ToTypedScriptArray();
+            public ITypedArray<byte> getCaller() => _callerConverted ??= _caller.Bytes.ToTypedScriptArray();
+            public ITypedArray<byte> getInput() => _inputConverted ??= _input.ToArray().ToTypedScriptArray();
+            public BigInteger getValue() => _value;
         }
     }
 }

@@ -4,6 +4,7 @@
 using System;
 using Nethermind.Core.Crypto;
 using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
 
 namespace Nethermind.Evm.Tracing.GethStyle;
 
@@ -33,7 +34,8 @@ public record GethTraceOptions
     [JsonProperty("txHash")]
     public Hash256? TxHash { get; init; }
 
-    [JsonProperty("tracerConfig")] public dynamic TracerConfig { get; init; } = _emptyConfig;
+    [JsonProperty("tracerConfig")]
+    public JRaw? TracerConfig { get; init; }
 
     public static GethTraceOptions Default { get; } = new();
 }

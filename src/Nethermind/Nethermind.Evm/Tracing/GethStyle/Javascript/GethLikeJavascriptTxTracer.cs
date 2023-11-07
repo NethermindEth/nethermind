@@ -22,7 +22,7 @@ public sealed class GethLikeJavascriptTxTracer : GethLikeTxTracer
     private readonly CallFrame _frame = new();
     private readonly FrameResult _result = new();
     private int _depth;
-    private bool _resultConstructed = false;
+    private bool _resultConstructed;
 
     // Context is updated only of first ReportAction call.
     private readonly Context _ctx;
@@ -49,7 +49,7 @@ public sealed class GethLikeJavascriptTxTracer : GethLikeTxTracer
         _functions = GetAvailableFunctions(((IDictionary<string, object>)_tracer).Keys);
         if (_functions.HasFlag(TracerFunctions.setup))
         {
-            _tracer.setup(options.TracerConfig);
+            _tracer.setup(options.TracerConfig?.ToString() ?? "{}");
         }
     }
 
@@ -99,10 +99,6 @@ public sealed class GethLikeJavascriptTxTracer : GethLikeTxTracer
         _log.gas = gas;
         _log.depth = depth;
         _log.error = null;
-        if (!IsTracingMemory && !IsTracingStack && _functions.HasFlag(TracerFunctions.step))
-        {
-            _tracer.step(_log, _db);
-        }
     }
 
     public override void ReportOperationRemainingGas(long gas)
@@ -168,16 +164,13 @@ public sealed class GethLikeJavascriptTxTracer : GethLikeTxTracer
     {
         base.SetOperationMemory(memoryTrace);
         _log.memory.MemoryTrace = memoryTrace;
-        if (!IsTracingStack && _functions.HasFlag(TracerFunctions.step))
-        {
-            _tracer.step(_log, _db);
-        }
     }
 
     public override void SetOperationStack(TraceStack stack)
     {
         base.SetOperationStack(stack);
         _log.stack = new Log.Stack(stack);
+
         if (_functions.HasFlag(TracerFunctions.step))
         {
             _tracer.step(_log, _db);

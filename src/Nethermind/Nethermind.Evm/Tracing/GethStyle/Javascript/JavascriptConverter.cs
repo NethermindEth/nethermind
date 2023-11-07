@@ -51,6 +51,13 @@ public static class JavascriptConverter
     [SkipLocalsInit]
     public static UInt256 GetUint256(this object index) => new(index.ToBytes());
 
-    public static ITypedArray<byte> ToScriptArray(this byte[] array)
+    public static ITypedArray<byte> ToTypedScriptArray(this byte[] array)
         => Engine.CurrentEngine?.CreateUint8Array(array) ?? throw new InvalidOperationException("No engine set");
+
+    public static ITypedArray<byte> ToTypedScriptArray(this ReadOnlyMemory<byte> memory) => memory.ToArray().ToTypedScriptArray();
+
+    public static IList ToUnTypedScriptArray(this byte[] array)
+        => Engine.CurrentEngine?.CreateUntypedArray(array) ?? throw new InvalidOperationException("No engine set");
+
+
 }

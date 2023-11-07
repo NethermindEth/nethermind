@@ -24,9 +24,9 @@ public record CallFrame
 
     // ReSharper disable InconsistentNaming
     public string? getType() => Type;
-    public ITypedArray<byte> getFrom() => _from ??= From.Bytes.ToScriptArray();
-    public ITypedArray<byte> getTo() => _to ??= To.Bytes.ToScriptArray();
-    public ITypedArray<byte> getInput() => _input ??= Input.ToArray().ToScriptArray();
+    public ITypedArray<byte> getFrom() => _from ??= From.Bytes.ToTypedScriptArray();
+    public ITypedArray<byte> getTo() => _to ??= To.Bytes.ToTypedScriptArray();
+    public ITypedArray<byte> getInput() => _input ??= Input.ToTypedScriptArray();
     public long getGas() => Gas;
     public BigInteger getValue() => Value;
     // ReSharper restore InconsistentNaming
