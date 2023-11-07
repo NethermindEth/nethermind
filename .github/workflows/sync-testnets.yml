@@ -24,12 +24,12 @@ jobs:
             checkpoint-sync-url: "http://139.144.26.89:4000/"
             cl-client: "lighthouse"
             el-client: "nethermind:current_branch_image"
-            agent: sync-agent-80gb
+            agent: ubuntu-latest
           - network: "sepolia"
             checkpoint-sync-url: "https://beaconstate-sepolia.chainsafe.io"
             cl-client: "lighthouse"
             el-client: "nethermind:current_branch_image"
-            agent: sync-agent-80gb
+            agent: ubuntu-latest
     name: "Run sync of ${{ matrix.network }} testnet"
     runs-on: ${{ matrix.agent }}
     steps:
