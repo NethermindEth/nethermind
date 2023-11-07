@@ -38,6 +38,11 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v2
 
+      - name: Installing requirements
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y make build-essential jq screen lshw dmidecode fio
+
       - name: Install Docker
         run: |
           sudo apt update
