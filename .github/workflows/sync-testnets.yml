@@ -33,11 +33,6 @@ jobs:
         run: |
           echo "BUILD_TIMESTAMP=$(date '+%s')" >> $GITHUB_OUTPUT
           echo "COMMIT_HASH=$(git describe --always --exclude=* --abbrev=40)" >> $GITHUB_OUTPUT
-          
-      - name: Install Docker
-        run: |
-          apt-get install -y uidmap
-          curl -fsSL https://get.docker.com/rootless | sh
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v2
