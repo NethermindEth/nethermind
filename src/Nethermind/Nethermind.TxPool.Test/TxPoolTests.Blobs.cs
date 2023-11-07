@@ -508,7 +508,14 @@ namespace Nethermind.TxPool.Test
             const long blockNumber = 358;
 
             BlobTxStorage blobTxStorage = new();
-            _txPool = CreatePool(new TxPoolConfig() { Size = 128, BlobSupportEnabled = true }, GetCancunSpecProvider(), txStorage: blobTxStorage);
+            ITxPoolConfig txPoolConfig = new TxPoolConfig()
+            {
+                Size = 128,
+                BlobSupportEnabled = true,
+                PersistentBlobStorageEnabled = true,
+                BlobReorgsSupportEnabled = true
+            };
+            _txPool = CreatePool(txPoolConfig, GetCancunSpecProvider(), txStorage: blobTxStorage);
 
             EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
             EnsureSenderBalance(TestItem.AddressB, UInt256.MaxValue);
