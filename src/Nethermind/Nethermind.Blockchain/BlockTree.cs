@@ -711,14 +711,7 @@ namespace Nethermind.Blockchain
 
             if (_logger.IsDebug) _logger.Debug($"Deleting invalid block {invalidBlock.ToString(Block.Format.FullHashAndNumber)}");
 
-<<<<<<< HEAD
             _invalidBlocks.Set(invalidBlock.Hash, invalidBlock);
-=======
-            HashSet<Keccak>? invalidBlocksWithThisNumber = _invalidBlocks.Get(invalidBlock.Number) ?? new HashSet<Keccak>();
-            invalidBlocksWithThisNumber.Add(invalidBlock.Hash);
-
-            _invalidBlocks.Set(invalidBlock.Number, invalidBlocksWithThisNumber);
->>>>>>> 14447fb33f (remove rlp logging)
 
             BestSuggestedHeader = Head?.Header;
             BestSuggestedBody = Head;
