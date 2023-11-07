@@ -29,7 +29,7 @@ using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Init.Steps;
 
-[RunnerStepDependencies(typeof(InitializePlugins), typeof(InitializeBlockTree), typeof(InitializeContainer), typeof(SetupKeyStore))]
+[RunnerStepDependencies(typeof(InitializePlugins), typeof(InitializeBlockTree), typeof(SetupKeyStore))]
 public class InitializeStateDb: IStep
 {
     private readonly INethermindApi _api;

@@ -4,6 +4,7 @@
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
+using Autofac;
 using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Filters;
@@ -29,7 +30,6 @@ namespace Nethermind.Init.Steps
     public class InitializeBlockchain : IStep
     {
         private readonly INethermindApi _api;
-        private ILogger? _logger;
 
         // ReSharper disable once MemberCanBeProtected.Global
         public InitializeBlockchain(INethermindApi api)
@@ -52,12 +52,11 @@ namespace Nethermind.Init.Steps
             if (getApi.SpecProvider is null) throw new StepDependencyException(nameof(getApi.SpecProvider));
             if (getApi.BlockTree is null) throw new StepDependencyException(nameof(getApi.BlockTree));
 
-            _logger = getApi.LogManager.GetClassLogger();
             IInitConfig initConfig = getApi.Config<IInitConfig>();
             IBlocksConfig blocksConfig = getApi.Config<IBlocksConfig>();
             setApi.TransactionComparerProvider = new TransactionComparerProvider(getApi.SpecProvider!, getApi.BlockTree.AsReadOnly());
-            setApi.TxValidator = new TxValidator(_api.SpecProvider!.ChainId);
 
+            setApi.TxValidator = _api.Container.Resolve<TxValidator>();
             ITxPool txPool = _api.TxPool = CreateTxPool();
 
             ReceiptCanonicalityMonitor receiptCanonicalityMonitor = new(getApi.BlockTree, getApi.ReceiptStorage, _api.LogManager);
