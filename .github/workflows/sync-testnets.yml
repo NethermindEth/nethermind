@@ -16,7 +16,7 @@ jobs:
       matrix:
         include:
           - network: "holesky"
-            checkpoint-sync-url: "https://checkpoint-sync.holesky.ethpandaops.io/"
+            checkpoint-sync-url: "https://holesky.beaconstate.ethstaker.cc/"
             cl-client: "lighthouse"
             el-client: "nethermind:current_branch_image"
             agent: ubuntu-latest
