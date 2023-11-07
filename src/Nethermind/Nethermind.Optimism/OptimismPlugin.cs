@@ -13,7 +13,6 @@ using Nethermind.Merge.Plugin.BlockProduction;
 using Nethermind.Merge.Plugin.GC;
 using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.JsonRpc.Modules;
-using Nethermind.Core;
 using Nethermind.Config;
 using Nethermind.Logging;
 using Nethermind.Blockchain.Synchronization;
@@ -23,14 +22,15 @@ using Nethermind.Consensus.Rewards;
 using Nethermind.Merge.Plugin.Synchronization;
 using Nethermind.Synchronization.Reporting;
 using Nethermind.Synchronization.ParallelSync;
-using System.Threading;
+using Autofac;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.HealthChecks;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs.ChainSpecStyle;
 
 namespace Nethermind.Optimism;
 
-public class OptimismPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitializationPlugin
+public class OptimismPlugin : Module, IConsensusPlugin, ISynchronizationPlugin, IInitializationPlugin
 {
     public string Author => "Nethermind";
     public string Name => "Optimism";
@@ -285,4 +285,14 @@ public class OptimismPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitial
     public ValueTask DisposeAsync() => ValueTask.CompletedTask;
 
     public bool MustInitialize => true;
+
+    protected override void Load(ContainerBuilder builder)
+    {
+        builder.RegisterType<OPL1CostHelper>()
+            .As<IL1CostHelper>();
+        builder.RegisterType<OPSpecHelper>()
+            .As<IOPConfigHelper>();
+        builder.RegisterType<OptimismTransactionProcessor>()
+            .As<ITransactionProcessor>();
+    }
 }

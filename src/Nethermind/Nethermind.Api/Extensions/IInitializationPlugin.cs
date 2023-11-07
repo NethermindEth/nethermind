@@ -16,4 +16,9 @@ public interface IInitializationPlugin : INethermindPlugin
     /// look at the config.
     /// </summary>
     bool ShouldRunSteps(INethermindApi api);
+
+    bool INethermindPlugin.IsActive(INethermindApi api)
+    {
+        return ShouldRunSteps(api);
+    }
 }

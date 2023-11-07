@@ -21,5 +21,7 @@ namespace Nethermind.Api.Extensions
         Task InitRpcModules();
 
         bool MustInitialize { get => false; }
+
+        bool IsActive(INethermindApi api) => true;
     }
 }

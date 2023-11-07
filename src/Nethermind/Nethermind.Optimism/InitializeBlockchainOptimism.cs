@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Threading.Tasks;
+using Autofac;
 using Nethermind.Api;
 using Nethermind.Blockchain.Services;
 using Nethermind.Config;
@@ -27,33 +28,10 @@ public class InitializeBlockchainOptimism : InitializeBlockchain
 
     protected override Task InitBlockchain()
     {
-        _api.SpecHelper = new(
-            _api.ChainSpec.Optimism.RegolithTimestamp,
-            _api.ChainSpec.Optimism.BedrockBlockNumber,
-            _api.ChainSpec.Optimism.L1FeeRecipient
-        );
-        _api.L1CostHelper = new(_api.SpecHelper, _api.ChainSpec.Optimism.L1BlockAddress);
+        _api.SpecHelper = _api.Container.Resolve<OPSpecHelper>();
+        _api.L1CostHelper = _api.Container.Resolve<OPL1CostHelper>();
 
         return base.InitBlockchain();
-    }
-
-    protected override ITransactionProcessor CreateTransactionProcessor()
-    {
-        if (_api.SpecProvider is null) throw new StepDependencyException(nameof(_api.SpecProvider));
-        if (_api.WorldState is null) throw new StepDependencyException(nameof(_api.WorldState));
-        if (_api.SpecHelper is null) throw new StepDependencyException(nameof(_api.SpecHelper));
-        if (_api.L1CostHelper is null) throw new StepDependencyException(nameof(_api.L1CostHelper));
-
-        VirtualMachine virtualMachine = CreateVirtualMachine();
-
-        return new OptimismTransactionProcessor(
-            _api.SpecProvider,
-            _api.WorldState,
-            virtualMachine,
-            _api.LogManager,
-            _api.L1CostHelper,
-            _api.SpecHelper
-        );
     }
 
     protected override IHeaderValidator CreateHeaderValidator()

@@ -6,6 +6,7 @@ using Autofac.Core;
 using Autofac.Core.Registration;
 using Nethermind.Api;
 using Nethermind.Config;
+using Nethermind.Core.Specs;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 
@@ -16,14 +17,14 @@ namespace Nethermind.Init;
 /// </summary>
 public class CoreModule: Module
 {
-    private readonly INethermindApi _nethermindApi;
+    private readonly INethermindApi _api;
     private readonly IConfigProvider _configProvider;
     private readonly IJsonSerializer _jsonSerializer;
     private readonly ILogManager _logManager;
 
     public CoreModule(INethermindApi nethermindApi, IConfigProvider configProvider, IJsonSerializer jsonSerializer, ILogManager logManager)
     {
-        _nethermindApi = nethermindApi;
+        _api = nethermindApi;
         _configProvider = configProvider;
         _jsonSerializer = jsonSerializer;
         _logManager = logManager;
@@ -35,10 +36,7 @@ public class CoreModule: Module
         builder.RegisterInstance(_configProvider)
             .As<IConfigProvider>();
 
-        builder.RegisterInstance(_nethermindApi)
-            .As<INethermindApi>();
-
-        builder.RegisterInstance(_nethermindApi)
+        builder.RegisterInstance(_api)
             .As<INethermindApi>();
 
         builder.RegisterInstance(_jsonSerializer)
@@ -46,5 +44,9 @@ public class CoreModule: Module
 
         builder.RegisterInstance(_logManager)
             .As<ILogManager>();
+
+        builder.RegisterInstance(_api.ChainSpec!);
+        builder.RegisterInstance(_api.SpecProvider!)
+            .As<ISpecProvider>();
     }
 }

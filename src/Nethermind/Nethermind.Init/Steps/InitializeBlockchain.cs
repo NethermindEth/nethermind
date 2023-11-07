@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
@@ -23,6 +24,7 @@ using Nethermind.JsonRpc.Modules.Eth.GasPrice;
 using Nethermind.Logging;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
+using LifetimeScope = Autofac.Core.Lifetime.LifetimeScope;
 
 namespace Nethermind.Init.Steps
 {
@@ -60,10 +62,12 @@ namespace Nethermind.Init.Steps
             IBlocksConfig blocksConfig = getApi.Config<IBlocksConfig>();
             ITxPool txPool = _api.TxPool = CreateTxPool();
 
+            ILifetimeScope statefulContainer = _api.Container.BeginLifetimeScope(NethermindScope.WorldState);
+            _api.DisposeStack.Push((IDisposable)statefulContainer);
+
             _api.BlockPreprocessor.AddFirst(
                 new RecoverSignatures(getApi.EthereumEcdsa, txPool, getApi.SpecProvider, getApi.LogManager));
-
-            _api.TransactionProcessor = CreateTransactionProcessor();
+            _api.TransactionProcessor = statefulContainer.Resolve<ITransactionProcessor>();
 
             InitSealEngine();
             if (_api.SealValidator is null) throw new StepDependencyException(nameof(_api.SealValidator));
@@ -128,35 +132,6 @@ namespace Nethermind.Init.Steps
             return new UnclesValidator(
                 _api.BlockTree,
                 _api.HeaderValidator,
-                _api.LogManager);
-        }
-
-        protected virtual ITransactionProcessor CreateTransactionProcessor()
-        {
-            if (_api.SpecProvider is null) throw new StepDependencyException(nameof(_api.SpecProvider));
-            if (_api.WorldState is null) throw new StepDependencyException(nameof(_api.WorldState));
-
-            VirtualMachine virtualMachine = CreateVirtualMachine();
-
-            return new TransactionProcessor(
-                _api.SpecProvider,
-                _api.WorldState,
-                virtualMachine,
-                _api.LogManager);
-        }
-
-        protected virtual VirtualMachine CreateVirtualMachine()
-        {
-            if (_api.BlockTree is null) throw new StepDependencyException(nameof(_api.BlockTree));
-            if (_api.SpecProvider is null) throw new StepDependencyException(nameof(_api.SpecProvider));
-
-            // blockchain processing
-            BlockhashProvider blockhashProvider = new(
-                _api.BlockTree, _api.LogManager);
-
-            return new VirtualMachine(
-                blockhashProvider,
-                _api.SpecProvider,
                 _api.LogManager);
         }
 

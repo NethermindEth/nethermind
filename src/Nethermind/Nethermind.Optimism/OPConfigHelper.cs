@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
+using Nethermind.Specs.ChainSpecStyle;
 
 namespace Nethermind.Optimism;
 
@@ -11,6 +12,13 @@ public class OPSpecHelper : IOPConfigHelper
     private readonly long _bedrockBlockNumber;
 
     public Address L1FeeReceiver { get; init; }
+
+    public OPSpecHelper(ChainSpec spec) :this(
+        spec.Optimism.RegolithTimestamp,
+        spec.Optimism.BedrockBlockNumber,
+        spec.Optimism.L1FeeRecipient)
+    {
+    }
 
     public OPSpecHelper(ulong regolithTimestamp, long bedrockBlockNumber, Address l1FeeReceiver)
     {

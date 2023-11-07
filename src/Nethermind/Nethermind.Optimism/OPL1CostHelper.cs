@@ -7,6 +7,7 @@ using Nethermind.Core;
 using Nethermind.Evm;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.State;
 
 namespace Nethermind.Optimism;
@@ -18,6 +19,10 @@ public class OPL1CostHelper : IL1CostHelper
     private readonly StorageCell _l1BaseFeeSlot;
     private readonly StorageCell _overheadSlot;
     private readonly StorageCell _scalarSlot;
+
+    public OPL1CostHelper(IOPConfigHelper opConfigHelper, ChainSpec chainSpec): this(opConfigHelper, chainSpec.Optimism.L1BlockAddress)
+    {
+    }
 
     public OPL1CostHelper(IOPConfigHelper opConfigHelper, Address l1BlockAddr)
     {
