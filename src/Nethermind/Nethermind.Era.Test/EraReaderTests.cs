@@ -162,6 +162,33 @@ internal class EraReaderTests
 
         Assert.That(result, Is.True);
     }
+    [Test]
+    public async Task VerifyAccumulator_FirstVerifyThenEnumerateAll_AllBlocksEnumerated()
+    {
+        AccumulatorCalculator calculator = new();
+        using MemoryStream stream = new();
+        EraWriter builder = EraWriter.Create(stream, Substitute.For<ISpecProvider>());
+        Block block0 = Build.A.Block.WithNumber(0).WithTotalDifficulty(BlockHeaderBuilder.DefaultDifficulty).TestObject;
+        Block block1 = Build.A.Block.WithNumber(1).WithTotalDifficulty(block0.Difficulty + block0.TotalDifficulty).TestObject;
+        Block block2 = Build.A.Block.WithNumber(2).WithTotalDifficulty(block1.Difficulty + block1.TotalDifficulty).TestObject;
+        calculator.Add(block0.Hash!, block0.TotalDifficulty!.Value);
+        calculator.Add(block1.Hash!, block1.TotalDifficulty!.Value);
+        calculator.Add(block2.Hash!, block2.TotalDifficulty!.Value);
+        await builder.Add(block0, Array.Empty<TxReceipt>());
+        await builder.Add(block1, Array.Empty<TxReceipt>());
+        await builder.Add(block2, Array.Empty<TxReceipt>());
+        await builder.Finalize();
+        int count = 0;
+        EraReader sut = await EraReader.Create(stream);
+
+        await sut.VerifyAccumulator(calculator.ComputeRoot().ToArray(), Substitute.For<IReceiptSpec>());
+        await foreach (var item in sut)
+        {
+            count++;
+        }
+
+        Assert.That(count, Is.EqualTo(3));
+    }
 
     [Test]
     public async Task ReadAccumulator_CalculateWithAccumulatorCalculator_AccumulatorMatches()
