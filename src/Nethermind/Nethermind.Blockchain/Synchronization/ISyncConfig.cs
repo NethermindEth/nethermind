@@ -64,13 +64,29 @@ public interface ISyncConfig : IConfig
     [ConfigItem(Description = "The max number of attempts to update the pivot block based on the FCU message from the consensus client.", DefaultValue = "2147483647")]
     int MaxAttemptsToUpdatePivot { get; set; }
 
-    [ConfigItem(Description = $"_Experimental._ The earliest body downloaded with fast sync when `{nameof(DownloadBodiesInFastSync)}` is set to `true`. The actual value is determined from `max(1, min(PivotNumber, AncientBodiesBarrier))`.", DefaultValue = "0")]
+    [ConfigItem(Description = $$"""
+        _Experimental._ The earliest body downloaded with fast sync when `{{nameof(DownloadBodiesInFastSync)}}` is set to `true`. The actual value is determined as follows:
+
+        ```
+        max{ 1, min{ PivotNumber, AncientBodiesBarrier } }
+        ```
+
+        """,
+        DefaultValue = "0")]
     public long AncientBodiesBarrier { get; set; }
 
     [ConfigItem(DisabledForCli = true, HiddenFromDocs = true, DefaultValue = "1")]
     public long AncientBodiesBarrierCalc => Math.Max(1, Math.Min(PivotNumberParsed, AncientBodiesBarrier));
 
-    [ConfigItem(Description = $"_Experimental._ The earliest receipt downloaded with fast sync when `{nameof(DownloadReceiptsInFastSync)}` is set to `true`. The actual value is determined from `max(1, min(PivotNumber, max(AncientBodiesBarrier, AncientReceiptsBarrier)))`.", DefaultValue = "0")]
+    [ConfigItem(Description = $$"""
+        _Experimental._ The earliest receipt downloaded with fast sync when `{{nameof(DownloadReceiptsInFastSync)}}` is set to `true`. The actual value is determined as folows:
+
+        ```
+        max{ 1, min{ PivotNumber, max{ AncientBodiesBarrier, AncientReceiptsBarrier } } }
+        ```
+
+        """,
+        DefaultValue = "0")]
     public long AncientReceiptsBarrier { get; set; }
 
     [ConfigItem(DisabledForCli = true, HiddenFromDocs = true, DefaultValue = "1")]
