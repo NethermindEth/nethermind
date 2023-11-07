@@ -65,7 +65,7 @@ jobs:
       - name: Install Sedge environment
         run: |
           echo "Downloading sedge sources..."
-          git clone https://github.com/NethermindEth/sedge.git sedge --branch main --single-branch
+          git clone https://github.com/NethermindEth/sedge.git sedge --branch develop --single-branch
           echo "Sources downloaded."
           cd sedge
           echo "Building sedge..."
