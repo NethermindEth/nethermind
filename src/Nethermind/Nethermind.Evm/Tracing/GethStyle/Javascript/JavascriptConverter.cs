@@ -25,10 +25,10 @@ public static class JavascriptConverter
     };
 
     public static byte[] ToWord(this object input) => input switch
-        {
-            string hexString => Bytes.FromHexString(hexString, EvmPooledMemory.WordSize),
-            _ => ListToWord(input)
-        };
+    {
+        string hexString => Bytes.FromHexString(hexString, EvmPooledMemory.WordSize),
+        _ => ListToWord(input)
+    };
 
     private static byte[] ListToWord(object input)
     {

@@ -26,7 +26,7 @@ public readonly struct TraceStack
     public List<string> ToHexWordList()
     {
         List<string> hexWordList = new(Count);
-        for (int i = 0; i < Count; i+= 1)
+        for (int i = 0; i < Count; i += 1)
         {
             hexWordList.Add(this[i].Span.ToHexString(true, true));
         }

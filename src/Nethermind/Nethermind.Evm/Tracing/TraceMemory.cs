@@ -73,6 +73,6 @@ public readonly struct TraceMemory
             throw new ArgumentOutOfRangeException(nameof(offset), $"tracer accessed out of bound memory: available {Size}, offset {offset}, size {EvmPooledMemory.WordSize}");
         }
 
-        return new BigInteger(Slice(offset, EvmPooledMemory.WordSize));
+        return new BigInteger(Slice(offset, EvmPooledMemory.WordSize), true, true);
     }
 }

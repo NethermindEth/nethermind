@@ -2,15 +2,12 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.IO;
 using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
 using FastEnumUtility;
-using Microsoft.ClearScript.V8;
 using Nethermind.Core;
 using Nethermind.Int256;
-using Nethermind.Logging;
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.Evm.Tracing.GethStyle.Javascript;
@@ -19,17 +16,20 @@ public sealed class GethLikeJavascriptTxTracer : GethLikeTxTracer
 {
     private readonly dynamic _tracer;
     private readonly Log _log = new();
+    private readonly IDisposable _blockTracer;
     private readonly Engine _engine;
     private readonly Db _db;
     private readonly CallFrame _frame = new();
     private readonly FrameResult _result = new();
     private int _depth;
+    private bool _resultConstructed = false;
 
     // Context is updated only of first ReportAction call.
     private readonly Context _ctx;
     private readonly TracerFunctions _functions;
 
     public GethLikeJavascriptTxTracer(
+        IDisposable blockTracer,
         Engine engine,
         Db db,
         Context ctx,
@@ -38,10 +38,13 @@ public sealed class GethLikeJavascriptTxTracer : GethLikeTxTracer
         IsTracingRefunds = true;
         IsTracingActions = true;
         IsTracingMemory = true;
+        IsTracingStack = true;
 
+        _blockTracer = blockTracer;
         _engine = engine;
         _db = db;
         _ctx = ctx;
+
         _tracer = engine.CreateTracer(options.Tracer);
         _functions = GetAvailableFunctions(((IDictionary<string, object>)_tracer).Keys);
         if (_functions.HasFlag(TracerFunctions.setup))
@@ -56,6 +59,7 @@ public sealed class GethLikeJavascriptTxTracer : GethLikeTxTracer
     {
         GethLikeTxTrace result = base.BuildResult();
         result.CustomTracerResult = _tracer.result(_ctx, _db);
+        _resultConstructed = true;
         return result;
     }
 
@@ -95,7 +99,7 @@ public sealed class GethLikeJavascriptTxTracer : GethLikeTxTracer
         _log.gas = gas;
         _log.depth = depth;
         _log.error = null;
-        if (_functions.HasFlag(TracerFunctions.step))
+        if (!IsTracingMemory && !IsTracingStack && _functions.HasFlag(TracerFunctions.step))
         {
             _tracer.step(_log, _db);
         }
@@ -103,7 +107,7 @@ public sealed class GethLikeJavascriptTxTracer : GethLikeTxTracer
 
     public override void ReportOperationRemainingGas(long gas)
     {
-        _log.gasCost = _log.gas - gas;
+        // _log.gasCost = _log.gas - gas;
     }
 
     public override void ReportOperationError(EvmExceptionType error)
@@ -164,12 +168,20 @@ public sealed class GethLikeJavascriptTxTracer : GethLikeTxTracer
     {
         base.SetOperationMemory(memoryTrace);
         _log.memory.MemoryTrace = memoryTrace;
+        if (!IsTracingStack && _functions.HasFlag(TracerFunctions.step))
+        {
+            _tracer.step(_log, _db);
+        }
     }
 
     public override void SetOperationStack(TraceStack stack)
     {
         base.SetOperationStack(stack);
         _log.stack = new Log.Stack(stack);
+        if (_functions.HasFlag(TracerFunctions.step))
+        {
+            _tracer.step(_log, _db);
+        }
     }
 
     public override void ReportRefund(long refund)
@@ -204,6 +216,16 @@ public sealed class GethLikeJavascriptTxTracer : GethLikeTxTracer
         }
 
         return result;
+    }
+
+    public override void Dispose()
+    {
+        base.Dispose();
+
+        if (!_resultConstructed)
+        {
+            _blockTracer.Dispose();
+        }
     }
 
     // ReSharper disable InconsistentNaming

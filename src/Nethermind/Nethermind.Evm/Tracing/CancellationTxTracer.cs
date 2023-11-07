@@ -437,4 +437,9 @@ public class CancellationTxTracer : ITxTracer, ITxTracerWrapper
             _innerTracer.ReportFees(fees, burntFees);
         }
     }
+
+    public void Dispose()
+    {
+        _innerTracer.Dispose();
+    }
 }

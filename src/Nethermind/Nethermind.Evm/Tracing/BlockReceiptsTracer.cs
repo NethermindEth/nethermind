@@ -263,4 +263,9 @@ public class BlockReceiptsTracer : IBlockTracer, ITxTracer, IJournal<int>, ITxTr
     {
         _otherTracer = blockTracer;
     }
+
+    public void Dispose()
+    {
+        _currentTxTracer.Dispose();
+    }
 }

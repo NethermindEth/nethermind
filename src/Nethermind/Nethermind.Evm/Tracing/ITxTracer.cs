@@ -10,7 +10,7 @@ using Nethermind.State.Tracing;
 
 namespace Nethermind.Evm.Tracing;
 
-public interface ITxTracer : IWorldStateTracer
+public interface ITxTracer : IWorldStateTracer, IDisposable
 {
     /// <summary>
     /// Defines whether MarkAsSuccess or MarkAsFailed will be called

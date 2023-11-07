@@ -218,6 +218,13 @@ public ref struct EvmStack<TTracing>
         }
     }
 
+    public void PopSignedInt256(out Int256.Int256 result)
+    {
+        // tail call into UInt256
+        Unsafe.SkipInit(out result);
+        PopUInt256(out Unsafe.As<Int256.Int256, UInt256>(ref result));
+    }
+
     /// <summary>
     /// Pops an Uint256 written in big endian.
     /// </summary>

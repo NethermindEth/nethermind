@@ -439,8 +439,8 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine
 
                 if (txTracer.IsTracingInstructions)
                 {
-                    txTracer.ReportOperationError(ex is EvmException evmException ? evmException.ExceptionType : EvmExceptionType.Other);
                     txTracer.ReportOperationRemainingGas(0);
+                    txTracer.ReportOperationError(ex is EvmException evmException ? evmException.ExceptionType : EvmExceptionType.Other);
                 }
 
                 if (typeof(TTracingActions) == typeof(IsTracing))
@@ -784,7 +784,6 @@ OutOfGas:
 #if DEBUG
         DebugTracer? debugger = _txTracer.GetTracer<DebugTracer>();
 #endif
-        Span<byte> bytes;
         SkipInit(out UInt256 a);
         SkipInit(out UInt256 b);
         SkipInit(out UInt256 c);
@@ -805,6 +804,7 @@ OutOfGas:
                 StartInstructionTrace(instruction, vmState, gasAvailable, programCounter, in stack);
 
             programCounter++;
+            Span<byte> bytes;
             switch (instruction)
             {
                 case Instruction.STOP:
@@ -2805,8 +2805,8 @@ ReturnFailure:
     [MethodImpl(MethodImplOptions.NoInlining)]
     private void EndInstructionTraceError(long gasAvailable, EvmExceptionType evmExceptionType)
     {
-        _txTracer.ReportOperationError(evmExceptionType);
         _txTracer.ReportOperationRemainingGas(gasAvailable);
+        _txTracer.ReportOperationError(evmExceptionType);
     }
 
     private static ExecutionType GetCallExecutionType(Instruction instruction, bool isPostMerge = false)

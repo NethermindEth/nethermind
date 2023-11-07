@@ -49,7 +49,7 @@ namespace Nethermind.Evm.Tracing.GethStyle.Javascript
             private readonly TraceStack _items;
             public Stack(TraceStack items) => _items = items;
             public int length() => _items.Count;
-            public BigInteger peek(int index) => new(_items[^(index + 1)].Span);
+            public BigInteger peek(int index) => new(_items[^(index + 1)].Span, true, true);
         }
 
         public class Memory
@@ -60,7 +60,7 @@ namespace Nethermind.Evm.Tracing.GethStyle.Javascript
 
             public ITypedArray<byte> slice(int start, int end)
             {
-                if (start < 0 || end < start )
+                if (start < 0 || end < start)
                 {
                     throw new ArgumentOutOfRangeException(nameof(start), $"tracer accessed out of bound memory: offset {start}, end {end}");
                 }
