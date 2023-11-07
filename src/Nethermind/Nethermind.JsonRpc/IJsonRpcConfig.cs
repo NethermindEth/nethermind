@@ -37,7 +37,7 @@ public interface IJsonRpcConfig : IConfig
 
     [ConfigItem(
         Description = "The path to the base file for diagnostic recording.",
-        DefaultValue = "logs/rpc.<counter>.txt")]
+        DefaultValue = "logs/rpc.{counter}.txt")]
     string RpcRecorderBaseFilePath { get; set; }
 
     [ConfigItem(Description = "The diagnostic recording mode.", DefaultValue = "None")]
@@ -62,19 +62,22 @@ public interface IJsonRpcConfig : IConfig
             - `client`
             - `debug`
             - `engine`
-            - `eth` default
+            - `eth`
             - `evm`
-            - `health` default
-            - `net` default
-            - `parity` default
-            - `personal` default
-            - `proof` default
-            - `rpc` default
-            - `subscribe` default
-            - `trace` default
-            - `txpool` default
-            - `web3` default
-            """)]
+            - `health`
+            - `net`
+            - `parity`
+            - `personal`
+            - `proof`
+            - `rpc`
+            - `subscribe`
+            - `trace`
+            - `txpool`
+            - `web3`
+
+
+            """,
+        DefaultValue = "[Eth,Subscribe,Trace,TxPool,Web3,Personal,Proof,Net,Parity,Health,Rpc]")]
     string[] EnabledModules { get; set; }
 
     [ConfigItem(
@@ -132,13 +135,7 @@ public interface IJsonRpcConfig : IConfig
 
     [ConfigItem(
         Description = "An array of the method names not to log.",
-        DefaultValue = """
-            - `engine_newPayloadV1`
-            - `engine_newPayloadV2`
-            - `engine_newPayloadV3`
-            - `engine_forkchoiceUpdatedV1`
-            - `engine_forkchoiceUpdatedV2`
-            """)]
+        DefaultValue = "[engine_newPayloadV1,engine_newPayloadV2,engine_newPayloadV3,engine_forkchoiceUpdatedV1,engine_forkchoiceUpdatedV2]")]
     public string[]? MethodsLoggingFiltering { get; set; }
 
     [ConfigItem(Description = "The Engine API host.", DefaultValue = "127.0.0.1")]
@@ -149,7 +146,7 @@ public interface IJsonRpcConfig : IConfig
 
     [ConfigItem(
         Description = "An array of additional JSON-RPC URLs to listen at with protocol and JSON-RPC namespace list for Engine API.",
-        DefaultValue = "[engine,eth,net,subscribe,web3]")]
+        DefaultValue = "[Net,Eth,Subscribe,Web3]")]
     string[] EngineEnabledModules { get; set; }
 
     [ConfigItem(Description = "The max number of JSON-RPC requests in a batch.", DefaultValue = "1024")]

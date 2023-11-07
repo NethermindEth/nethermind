@@ -8,10 +8,10 @@ namespace Nethermind.Hive;
 [ConfigCategory(Description = "These settings are only needed when testing with Ethereum Foundation Hive.")]
 public interface IHiveConfig : IConfig
 {
-    [ConfigItem(Description = "The path to the test chain spec file.", DefaultValue = "chain.rlp")]
+    [ConfigItem(Description = "The path to the test chain spec file.", DefaultValue = "/chain.rlp")]
     string ChainFile { get; set; }
 
-    [ConfigItem(Description = "The path to the directory with additional blocks.", DefaultValue = "blocks")]
+    [ConfigItem(Description = "The path to the directory with additional blocks.", DefaultValue = "/blocks")]
     string BlocksDir { get; set; }
 
     [ConfigItem(Description = "The path to the keystore directory.", DefaultValue = "/keys")]

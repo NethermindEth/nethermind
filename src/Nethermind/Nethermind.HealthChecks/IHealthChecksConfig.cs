@@ -62,7 +62,7 @@ public interface IHealthChecksConfig : IConfig
                     },
                     {
                       "title": "description",
-                      "value": "The HealthCheck [[LIVENESS]] is recovered. All is up and running",
+                      "value": "The HealthCheck `[[LIVENESS]]` is recovered. Everything is up and running.",
                       "short": false
                     }
                   ]
