@@ -12,6 +12,7 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Trie.ByPath;
@@ -23,7 +24,6 @@ public class NodeData
 
     public NodeData(byte[] data, Keccak keccak) { RLP = data; Keccak = keccak; }
 }
-
 internal class PathDataCacheInstance
 {
     class StateId
@@ -433,6 +433,8 @@ internal class PathDataCacheInstance
             _removedPrefixes[keyPrefix] = destroyedAtStates;
         }
         destroyedAtStates.Add(_lastState.Id);
+
+        if (_logger.IsTrace) _logger.Trace($"Added prefix for removal {keyPrefix.ToHexString()} at block {_lastState.BlockNumber} / requested {blockNumber}");
     }
 
     public void AddNodeData(long blockNuber, TrieNode node)
@@ -608,40 +610,52 @@ internal class PathDataCacheInstance
 
     private void PersistUntilBlockInner(StateId? stateId, IBatch? batch = null)
     {
+        if (_logger.IsTrace)
+            _logger.Trace($"Persisting cache instance with latest state {_lastState?.BlockNumber} / {_lastState?.BlockStateRoot} until state {stateId?.BlockNumber} / {stateId?.BlockStateRoot}");
+
         ProcessDestroyed(stateId);
 
-        List<TrieNode> toPersist = new();
+        List<Tuple<byte[], int, byte[]>> toPersist = new();
         foreach (KeyValuePair<byte[], PathDataHistory> nodeVersion in _historyByPath)
         {
             PathDataAtState? nodeData = nodeVersion.Value.GetLatestUntil(stateId.Id);
             if (nodeData?.ShouldPersist == true)
             {
                 NodeData data = nodeData.Data;
-                TrieNode node;
-                if (nodeVersion.Key.Length >= 66)
+
+                //part of TrieNode ResolveNode to get path to node for leaves - should this just be a part of NodeData ?
+                int leafPathToNodeLength = -1;
+                RlpStream rlpStream = data.RLP.AsRlpStream();
+                rlpStream.ReadSequenceLength();
+                // micro optimization to prevent searches beyond 3 items for branches (search up to three)
+                int numberOfItems = rlpStream.PeekNumberOfItemsRemaining(null, 3);
+                if (numberOfItems == 2)
                 {
-                    byte[] prefix = nodeVersion.Key.Slice(0, 66);
-                    node = new(NodeType.Unknown, nodeVersion.Key.Slice(66), data.Keccak, data.RLP);
-                    node.StoreNibblePathPrefix = prefix;
-                }
-                else
-                {
-                    node = new(NodeType.Unknown, nodeVersion.Key, data.Keccak, data.RLP);
+                    (byte[] key, bool isLeaf) = HexPrefix.FromBytes(rlpStream.DecodeByteArraySpan());
+                    if (isLeaf)
+                        leafPathToNodeLength = 64 - key.Length;
                 }
 
-                if (data.RLP is not null)
+                var element = Tuple.Create(nodeVersion.Key, leafPathToNodeLength, data.RLP);
+
+                if (data.RLP is null) toPersist.Insert(0, element); else toPersist.Add(element);
+
+                if (_logger.IsTrace)
                 {
-                    node.ResolveNode(_trieStore);
-                    node.ResolveKey(_trieStore, nodeVersion.Key.Length == 0);
+                    //StateId? originalState = FindState(nodeData.StateId);
+                    //Span<byte> pathToNode = Array.Empty<byte>();
+                    //if (leafPathToNodeLength >= 0)
+                    //{
+                    //    pathToNode = nodeVersion.Key.Length >= 66 ? nodeVersion.Key[..(leafPathToNodeLength + 66)] : nodeVersion.Key[..(leafPathToNodeLength)];
+                    //}
+                    //_logger.Trace($"Persising node {pathToNode.ToHexString()} / {nodeVersion.Key.ToHexString()} with Keccak: {data.Keccak} from block {originalState?.BlockNumber} / {stateId.BlockStateRoot} Value: {data.RLP.ToArray()?.ToHexString()}");
                 }
-                if (data.RLP is null) toPersist.Insert(0, node); else toPersist.Add(node);
             }
         }
 
-        foreach (TrieNode node in toPersist)
+        foreach (var data in toPersist)
         {
-            _trieStore.SaveNodeDirectly(stateId.BlockNumber.Value, node, batch);
-            if (_logger.IsTrace) _logger.Trace($"Persising node {node.PathToNode.ToHexString()} / {node.FullPath.ToHexString()} with Keccak: {node.Keccak} at block {stateId.BlockNumber} / {stateId.BlockStateRoot} Value: {node.FullRlp.ToArray()?.ToHexString()}");
+            _trieStore.PersistNodeData(data.Item1, data.Item2, data.Item3, batch);
         }
     }
 
@@ -689,6 +703,9 @@ internal class PathDataCacheInstance
         foreach (byte[] path in paths)
         {
             (byte[] startKey, byte[] endKey) = TrieStoreByPath.GetDeleteKeyFromNibblePrefix(path);
+
+            if (_logger.IsTrace) _logger.Trace($"Requesting removal {startKey.ToHexString()} - {endKey.ToHexString()}");
+
             _trieStore.DeleteByRange(startKey, endKey);
         }
     }
@@ -710,6 +727,18 @@ internal class PathDataCacheInstance
         while (stateId is not null)
         {
             if (stateId.BlockStateRoot == rootHash && (stateId.BlockNumber == blockNumber || blockNumber == -1))
+                return stateId;
+            stateId = stateId.ParentBlock;
+        }
+        return null;
+    }
+
+    private StateId? FindState(int id)
+    {
+        StateId stateId = _lastState;
+        while (stateId is not null)
+        {
+            if (stateId.Id == id)
                 return stateId;
             stateId = stateId.ParentBlock;
         }
@@ -870,7 +899,7 @@ public class PathDataCache : IPathDataCache
         if (_openedInstance is not null)
             throw new ArgumentException($"Cannot open instance for {parentStateRoot} - already opened for {_openedInstance.LatestParentStateRootHash}");
 
-        if (_logger.IsInfo) _logger.Info($"Opening context for {parentStateRoot}");
+        if (_logger.IsTrace) _logger.Trace($"Opening context for {parentStateRoot}");
 
         _openedInstance = GetCacheInstanceForState(parentStateRoot);
     }
@@ -952,7 +981,7 @@ public class PathDataCache : IPathDataCache
         if (_mains.Count == 0)
             _mains.Add(new PathDataCacheInstance(_trieStore, _logger));
 
-        LogCache("After persisting");
+        LogCache($"After persisting block {blockNumber} / {rootHash}");
         return true;
     }
 
@@ -967,13 +996,12 @@ public class PathDataCache : IPathDataCache
     private PathDataCacheInstance? GetCacheInstanceForState(Keccak parentStateRoot)
     {
         PathDataCacheInstance newInstance = null;
-        foreach (var mainInstance in _mains)
+        foreach (PathDataCacheInstance mainInstance in _mains)
         {
             if ((newInstance = mainInstance.GetCacheInstanceForParent(parentStateRoot)) is not null)
                 break;
         }
-        if (newInstance is null)
-            newInstance = _mains[0].GetCacheInstanceForPersisted(parentStateRoot);
+        newInstance ??= _mains[0].GetCacheInstanceForPersisted(parentStateRoot);
 
         return newInstance;
     }
@@ -981,7 +1009,7 @@ public class PathDataCache : IPathDataCache
     private PathDataCacheInstance? FindCacheInstanceForStateRoot(Keccak stateRoot)
     {
         PathDataCacheInstance newInstance = null;
-        foreach (var mainInstance in _mains)
+        foreach (PathDataCacheInstance mainInstance in _mains)
         {
             if ((newInstance = mainInstance.FindCacheInstanceForStateRoot(stateRoot)) is not null)
                 break;
@@ -1007,7 +1035,7 @@ public class PathDataCache : IPathDataCache
 
         _logger.Trace(msg);
 
-        foreach (var mainInstance in _mains)
+        foreach (PathDataCacheInstance mainInstance in _mains)
             mainInstance.LogCacheContents(0);
     }
 }

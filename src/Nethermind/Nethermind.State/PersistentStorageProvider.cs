@@ -296,6 +296,8 @@ namespace Nethermind.State
             // they get committed to avoid reading uncleared data
             _storages[address].ClearedBySelfDestruct = true;
             _storages[address].ParentStateRootHash = stateRootHash ?? StateRoot;
+
+            if (_logger.IsTrace) _logger.Trace($"Clearing storage for address {address} - created new storage tree with parent state root hash context {_storages[address].ParentStateRootHash}");
         }
 
         private class StorageTreeFactory : IStorageTreeFactory

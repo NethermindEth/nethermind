@@ -844,10 +844,15 @@ namespace Nethermind.Trie.Pruning
             throw new NotImplementedException();
         }
 
-        public void SaveNodeDirectly(long blockNumber, TrieNode trieNode, IKeyValueStore? keyValueStore = null, bool withDelete = false, WriteFlags writeFlags = WriteFlags.None)
+        public void PersistNode(TrieNode trieNode, IKeyValueStore? keyValueStore = null, bool withDelete = false, WriteFlags writeFlags = WriteFlags.None)
         {
             keyValueStore ??= _keyValueStore;
             keyValueStore.Set(trieNode.Keccak.Bytes, trieNode.Value.ToArray(), writeFlags);
+        }
+
+        public void PersistNodeData(Span<byte> fullPath, int pathToNodeLength, byte[]? rlpData, IKeyValueStore? keyValueStore = null, WriteFlags writeFlags = WriteFlags.None)
+        {
+            throw new NotImplementedException();
         }
 
         public bool ExistsInDB(Keccak hash, byte[] nodePathNibbles)

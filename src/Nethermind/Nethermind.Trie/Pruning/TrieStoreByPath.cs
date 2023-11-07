@@ -3,7 +3,6 @@
 
 using System;
 using System.Collections.Concurrent;
-using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 using System.Threading;
@@ -15,7 +14,6 @@ using Nethermind.Db.ByPathState;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Trie.ByPath;
-using Newtonsoft.Json.Linq;
 
 namespace Nethermind.Trie.Pruning
 {
@@ -302,39 +300,22 @@ namespace Nethermind.Trie.Pruning
             node.ResolveNode(this);
             node.ResolveKey(this, nodePath.Length == 0);
             return node;
-
-            //TrieNode node = _committedNodes[column].GetNode(storagePrefix.ToArray().Concat(nodePath.ToArray()).ToArray(), keccak);
-            //if (node is null)
-            //{
-            //return new TrieNode(NodeType.Unknown, path: nodePath, keccak: keccak)
-            //    {
-            //        StoreNibblePathPrefix = storagePrefix.ToArray()
-            //    };
-            //}
-
-            //return node.FullRlp.IsNull ? null : node;
         }
 
         public TrieNode? FindCachedOrUnknown(Span<byte> nodePath, byte[] storagePrefix, Keccak? rootHash)
         {
             StateColumns column = storagePrefix.Length == 0 ? StateColumns.State : StateColumns.Storage;
-            //TrieNode node = storagePrefix.Length == 0
-            //    ? _committedNodes[column].GetNodeFromRoot(rootHash, nodePath)
-            //    : _committedNodes[column].GetNodeFromRoot(rootHash, Bytes.Concat(storagePrefix, nodePath));
 
             NodeData? nodeData = storagePrefix.Length == 0
                     ? _committedNodes[column].GetNodeDataAtRoot(rootHash, nodePath)
                     : _committedNodes[column].GetNodeDataAtRoot(rootHash, Bytes.Concat(storagePrefix, nodePath));
 
-            //if (node is null)
-            //    return new TrieNode(NodeType.Unknown, nodePath, storagePrefix);
             if (nodeData is null)
                 return new TrieNode(NodeType.Unknown, nodePath, storagePrefix);
 
             if (nodeData.RLP is null)
                 return null;
 
-            //return node.FullRlp.IsNull ? null : node;
             TrieNode node = new(NodeType.Unknown, nodePath.ToArray(), nodeData.Keccak, nodeData.RLP);
             node.StoreNibblePathPrefix = storagePrefix.ToArray();
             node.ResolveNode(this);
@@ -451,7 +432,7 @@ namespace Nethermind.Trie.Pruning
 
             if (_logger.IsTrace) _logger.Trace($"Persisting {nameof(TrieNode)} {currentNode} in snapshot {blockNumber}.");
 
-            SaveNodeDirectly(blockNumber, currentNode, _currentBatches[column]);
+            PersistNode(currentNode, _currentBatches[column]);
 
             currentNode.IsPersisted = true;
             currentNode.LastSeen = Math.Max(blockNumber, currentNode.LastSeen ?? 0);
@@ -554,7 +535,7 @@ namespace Nethermind.Trie.Pruning
 
         #endregion
 
-        public void SaveNodeDirectly(long blockNumber, TrieNode trieNode, IKeyValueStore? keyValueStore = null, bool withDelete = false, WriteFlags writeFlags = WriteFlags.None)
+        public void PersistNode(TrieNode trieNode, IKeyValueStore? keyValueStore = null, bool withDelete = false, WriteFlags writeFlags = WriteFlags.None)
         {
             keyValueStore ??= GetProperColumnDb(trieNode.FullPath.Length);
 
@@ -608,6 +589,40 @@ namespace Nethermind.Trie.Pruning
             keyValueStore.Set(pathBytes, trieNode.FullRlp.ToArray(), writeFlags);
         }
 
+        public void PersistNodeData(Span<byte> fullPath, int pathToNodeLength, byte[]? rlpData, IKeyValueStore? keyValueStore = null, WriteFlags writeFlags = WriteFlags.None)
+        {
+            keyValueStore ??= GetProperColumnDb(fullPath.Length);
+            int pathToNodeIndexWithPrefix = fullPath.Length >= 66 ? pathToNodeLength + 66 : pathToNodeLength;
+
+            byte[] pathBytes = Nibbles.NibblesToByteStorage(fullPath);
+            Span<byte> pathToNodeNibbles = pathToNodeLength >= 0 ? fullPath[..pathToNodeIndexWithPrefix] : Array.Empty<byte>();
+
+            if (_logger.IsTrace)
+                _logger.Trace($"Persisting node path to nibbles {pathToNodeNibbles.ToHexString()}, full path bytes: {pathBytes.ToHexString()}, rlp: {rlpData?.ToHexString()}");
+
+            if (pathToNodeLength >= 0)
+            {
+                byte[] pathToNodeBytes = Nibbles.NibblesToByteStorage(pathToNodeNibbles);
+
+                if (rlpData is null)
+                {
+                    keyValueStore.Set(pathToNodeBytes, null, writeFlags);
+                }
+                else
+                {
+                    if (pathToNodeLength < 64)
+                    {
+                        Span<byte> newPath = stackalloc byte[pathBytes.Length + 1];
+                        newPath[0] = PathMarker;
+                        pathBytes.CopyTo(newPath.Slice(1));
+                        keyValueStore.Set(pathToNodeBytes, newPath.ToArray(), writeFlags);
+                    }
+                }
+            }
+
+            keyValueStore.Set(pathBytes, rlpData, writeFlags);
+        }
+
         public bool ExistsInDB(Keccak hash, byte[] pathNibbles)
         {
             byte[]? rlp = TryLoadRlp(pathNibbles.AsSpan(), GetProperColumnDb(pathNibbles.Length));
@@ -641,15 +656,6 @@ namespace Nethermind.Trie.Pruning
             //_committedNodes[StateColumns.Storage].Clear();
         }
 
-        //public void ClearCacheAfter(Keccak rootHash)
-        //{
-        //    long blockNumber = _committedNodes[StateColumns.State].ClearAfter(rootHash);
-        //    if (blockNumber > 0)
-        //    {
-        //        _committedNodes[StateColumns.Storage].ClearAfter(blockNumber);
-        //    }
-        //}
-
         public void DeleteByRange(Span<byte> startKey, Span<byte> endKey)
         {
             StateColumns column = GetProperColumn(startKey.Length);
@@ -662,7 +668,6 @@ namespace Nethermind.Trie.Pruning
         {
             if (_useCommittedCache)
             {
-                //_committedNodes[StateColumns.Storage].AddRemovedPrefix(blockNumber, keyPrefixNibbles);
                 _committedNodes[StateColumns.Storage].AddRemovedPrefix(blockNumber, keyPrefixNibbles);
             }
             else

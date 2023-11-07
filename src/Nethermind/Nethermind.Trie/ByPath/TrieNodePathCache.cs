@@ -317,7 +317,7 @@ public class TrieNodePathCache : IPathTrieNodeCache
         {
             if (node.IsPersisted)
                 continue;
-            _trieStore.SaveNodeDirectly(blockNumber, node, batch);
+            _trieStore.PersistNode(node, batch);
             node.IsPersisted = true;
         }
 
