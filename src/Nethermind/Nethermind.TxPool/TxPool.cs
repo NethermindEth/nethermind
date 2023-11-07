@@ -47,6 +47,7 @@ namespace Nethermind.TxPool
         private readonly ITxStorage _blobTxStorage;
         private readonly IChainHeadInfoProvider _headInfo;
         private readonly ITxPoolConfig _txPoolConfig;
+        private readonly bool _blobReorgsSupportEnabled;
 
         private readonly ILogger _logger;
 
@@ -93,6 +94,7 @@ namespace Nethermind.TxPool
             _blobTxStorage = blobTxStorage ?? throw new ArgumentNullException(nameof(blobTxStorage));
             _headInfo = chainHeadInfoProvider ?? throw new ArgumentNullException(nameof(chainHeadInfoProvider));
             _txPoolConfig = txPoolConfig;
+            _blobReorgsSupportEnabled = txPoolConfig is { BlobSupportEnabled: true, PersistentBlobStorageEnabled: true, BlobReorgsSupportEnabled: true };
             _accounts = _headInfo.AccountStateProvider;
             _specProvider = _headInfo.SpecProvider;
 
@@ -240,7 +242,9 @@ namespace Nethermind.TxPool
                     SubmitTx(tx, isEip155Enabled ? TxHandlingOptions.None : TxHandlingOptions.PreEip155Signing);
                 }
 
-                if (_blobTxStorage.TryGetBlobTransactionsFromBlock(previousBlock.Number, out Transaction[]? blobTxs) && blobTxs is not null)
+                if (_blobReorgsSupportEnabled
+                    && _blobTxStorage.TryGetBlobTransactionsFromBlock(previousBlock.Number, out Transaction[]? blobTxs)
+                    && blobTxs is not null)
                 {
                     foreach (Transaction blobTx in blobTxs)
                     {
@@ -277,7 +281,8 @@ namespace Nethermind.TxPool
                 {
                     blobs += blockTx.BlobVersionedHashes?.Length ?? 0;
 
-                    if (_blobTransactions.TryGetValue(blockTx.Hash, out Transaction? fullBlobTx))
+                    if (_blobReorgsSupportEnabled
+                        && _blobTransactions.TryGetValue(blockTx.Hash, out Transaction? fullBlobTx))
                     {
                         blobTxs ??= new List<Transaction>(Eip4844Constants.GetMaxBlobsPerBlock());
                         blobTxs.Add(fullBlobTx);
