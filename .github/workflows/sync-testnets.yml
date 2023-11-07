@@ -15,6 +15,10 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          - network: "holesky"
+            checkpoint-sync-url: "https://checkpoint-sync.holesky.ethpandaops.io/"
+            cl-client: "lighthouse"
+            el-client: "nethermind:current_branch_image"
           - network: "chiado"
             checkpoint-sync-url: "http://139.144.26.89:4000/"
             cl-client: "lighthouse"
