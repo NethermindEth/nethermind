@@ -19,16 +19,19 @@ jobs:
             checkpoint-sync-url: "https://checkpoint-sync.holesky.ethpandaops.io/"
             cl-client: "lighthouse"
             el-client: "nethermind:current_branch_image"
+            agent: ubuntu-latest
           - network: "chiado"
             checkpoint-sync-url: "http://139.144.26.89:4000/"
             cl-client: "lighthouse"
             el-client: "nethermind:current_branch_image"
+            agent: sync-agent-80gb
           - network: "sepolia"
             checkpoint-sync-url: "https://beaconstate-sepolia.chainsafe.io"
             cl-client: "lighthouse"
             el-client: "nethermind:current_branch_image"
+            agent: sync-agent-80gb
     name: "Run sync of ${{ matrix.network }} testnet"
-    runs-on: sync-agent-80gb
+    runs-on: ${{ matrix.agent }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v3
