@@ -29,6 +29,7 @@ using Nethermind.Evm.TransactionProcessing;
 using Nethermind.HealthChecks;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs.ChainSpecStyle;
+using Nethermind.TxPool;
 
 namespace Nethermind.Optimism;
 
@@ -304,6 +305,8 @@ public class OptimismPlugin : Module, IConsensusPlugin, ISynchronizationPlugin, 
         builder.RegisterInstance(Always.Valid)
             .As<IUnclesValidator>();
         builder.RegisterDecorator<InvalidHeaderInterceptor, IHeaderValidator>();
+
+        builder.RegisterDecorator<OptimismTxValidator, ITxValidator>();
 
         builder.Register<BlocksConfig, IHealthHintService>((blocksConfig) =>
             new ManualHealthHintService(blocksConfig.SecondsPerSlot * 6, HealthHintConstants.InfinityHint));

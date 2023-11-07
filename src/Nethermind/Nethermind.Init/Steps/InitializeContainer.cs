@@ -21,6 +21,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.State;
+using Nethermind.TxPool;
 
 namespace Nethermind.Init.Steps;
 
@@ -84,7 +85,8 @@ public class BlockchainModule : Module
 
     protected override void Load(ContainerBuilder builder)
     {
-        builder.RegisterType<TxValidator>();
+        builder.RegisterType<TxValidator>()
+            .As<ITxValidator>();
 
         builder.RegisterInstance(_api.BlockTree!)
             .As<IBlockTree>();
@@ -113,6 +115,8 @@ public class BlockchainModule : Module
             .As<IHeaderValidator>();
         builder.RegisterType<UnclesValidator>()
             .As<IUnclesValidator>();
+        builder.RegisterType<BlockValidator>()
+            .As<IBlockValidator>();
         builder.RegisterInstance(NoBlockRewards.Instance)
             .As<IRewardCalculatorSource>();
 

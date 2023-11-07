@@ -18,12 +18,10 @@ namespace Nethermind.Optimism;
 public class InitializeBlockchainOptimism : InitializeBlockchain
 {
     private readonly OptimismNethermindApi _api;
-    private readonly IBlocksConfig _blocksConfig;
 
     public InitializeBlockchainOptimism(OptimismNethermindApi api) : base(api)
     {
         _api = api;
-        _blocksConfig = api.Config<IBlocksConfig>();
     }
 
     protected override Task InitBlockchain()
@@ -33,23 +31,6 @@ public class InitializeBlockchainOptimism : InitializeBlockchain
 
         return base.InitBlockchain();
     }
-
-    protected override IBlockValidator CreateBlockValidator()
-    {
-        if (_api.InvalidChainTracker is null) throw new StepDependencyException(nameof(_api.InvalidChainTracker));
-        if (_api.TxValidator is null) throw new StepDependencyException(nameof(_api.TxValidator));
-
-        OptimismTxValidator txValidator = new(_api.TxValidator);
-        BlockValidator blockValidator = new(
-            txValidator,
-            _api.HeaderValidator,
-            _api.UnclesValidator,
-            _api.SpecProvider,
-            _api.LogManager);
-
-        return new InvalidBlockInterceptor(blockValidator, _api.InvalidChainTracker, _api.LogManager);
-    }
-
 
     protected override IBlockProductionPolicy CreateBlockProductionPolicy() => AlwaysStartBlockProductionPolicy.Instance;
 }

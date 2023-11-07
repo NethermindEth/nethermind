@@ -56,7 +56,7 @@ namespace Nethermind.Init.Steps
             if (getApi.BlockTree is null) throw new StepDependencyException(nameof(getApi.BlockTree));
 
             setApi.TransactionComparerProvider = _api.Container.Resolve<ITransactionComparerProvider>();
-            setApi.TxValidator = _api.Container.Resolve<TxValidator>();
+            setApi.TxValidator = _api.Container.Resolve<ITxValidator>();
             _api.ReceiptMonitor = _api.Container.Resolve<IReceiptMonitor>();
 
             IInitConfig initConfig = getApi.Config<IInitConfig>();
@@ -73,8 +73,7 @@ namespace Nethermind.Init.Steps
             setApi.HealthHintService = _api.Container.Resolve<IHealthHintService>();
             setApi.HeaderValidator = _api.Container.Resolve<IHeaderValidator>();
             setApi.UnclesValidator = _api.Container.Resolve<IUnclesValidator>();
-
-            setApi.BlockValidator = CreateBlockValidator();
+            setApi.BlockValidator = _api.Container.Resolve<IBlockValidator>();
 
             ILifetimeScope statefulContainer = _api.Container.BeginLifetimeScope(NethermindScope.WorldState);
             _api.DisposeStack.Push((IDisposable)statefulContainer);
@@ -118,16 +117,6 @@ namespace Nethermind.Init.Steps
             setApi.BlockProductionPolicy = CreateBlockProductionPolicy();
 
             return Task.CompletedTask;
-        }
-
-        protected virtual IBlockValidator CreateBlockValidator()
-        {
-            return new BlockValidator(
-                _api.TxValidator,
-                _api.HeaderValidator,
-                _api.UnclesValidator,
-                _api.SpecProvider,
-                _api.LogManager);
         }
 
         protected virtual IBlockProductionPolicy CreateBlockProductionPolicy() =>
