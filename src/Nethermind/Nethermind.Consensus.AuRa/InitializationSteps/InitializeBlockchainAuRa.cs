@@ -22,9 +22,11 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
+using Nethermind.Core.Specs;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Init.Steps;
 using Nethermind.Logging;
+using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.TxPool;
 using Nethermind.TxPool.Comparison;
 
@@ -167,11 +169,11 @@ public class InitializeBlockchainAuRa : InitializeBlockchain
 
             AuRaContractGasLimitOverride gasLimitCalculator = new(
                 blockGasLimitContractTransitions.Select(blockGasLimitContractTransition =>
-                    new BlockGasLimitContract(
-                        _api.AbiEncoder,
-                        blockGasLimitContractTransition.Value,
-                        blockGasLimitContractTransition.Key,
-                        CreateReadOnlyTransactionProcessorSource()))
+                        new BlockGasLimitContract(
+                            _api.AbiEncoder,
+                            blockGasLimitContractTransition.Value,
+                            blockGasLimitContractTransition.Key,
+                            CreateReadOnlyTransactionProcessorSource()))
                     .ToArray<IBlockGasLimitContract>(),
                 _api.GasLimitCalculatorCache,
                 _auraConfig.Minimum2MlnGasPerBlockWhenUsingBlockGasLimitContract,
@@ -284,5 +286,49 @@ public class InitializeBlockchainAuRa : InitializeBlockchain
         {
             if (logger.IsInfo) logger.Info($"Using TxPriority rules from contract at address: {txPriorityContract.ContractAddress}.");
         }
+    }
+}
+
+/// <summary>
+/// A class used to aid migrating to DI
+/// </summary>
+public class AuraBlockchainStack
+{
+    private ChainSpec _chainSpec;
+    private BlockTree _blockTree;
+    private ISealValidator _sealValidator;
+    private ISpecProvider _specProvider;
+    private ILogManager _logManager;
+    public AuraBlockchainStack(
+        ChainSpec chainSpec,
+        BlockTree blockTree,
+        ISealValidator sealValidator,
+        ISpecProvider specProvider,
+        ILogManager logManager
+    )
+    {
+        _chainSpec = chainSpec;
+        _blockTree = blockTree;
+        _sealValidator = sealValidator;
+        _specProvider = specProvider;
+        _logManager = logManager;
+    }
+
+    public IHeaderValidator CreateHeaderValidator()
+    {
+        if (_chainSpec is null) throw new StepDependencyException(nameof(_chainSpec));
+        var blockGasLimitContractTransitions = _chainSpec.AuRa.BlockGasLimitContractTransitions;
+        return blockGasLimitContractTransitions?.Any() == true
+            ? new AuRaHeaderValidator(
+                _blockTree,
+                _sealValidator,
+                _specProvider,
+                _logManager,
+                blockGasLimitContractTransitions.Keys.ToArray())
+            : new HeaderValidator(
+                _blockTree,
+                _sealValidator,
+                _specProvider,
+                _logManager);
     }
 }

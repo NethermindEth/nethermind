@@ -91,35 +91,10 @@ namespace Nethermind.Consensus.AuRa
 
         protected override void Load(ContainerBuilder builder)
         {
-            builder.Register((c) => CreateHeaderValidator(
-                    c.Resolve<ChainSpec>(),
-                    c.Resolve<IBlockTree>(),
-                    c.Resolve<ISealValidator>(),
-                    c.Resolve<ISpecProvider>(),
-                    c.Resolve<ILogManager>(),
-                    c.Resolve<IHeaderValidator>
-                    ))
-                .As<IHeaderValidator>();
-        }
+            builder.RegisterType<AuraBlockchainStack>();
 
-        private IHeaderValidator CreateHeaderValidator(
-            ChainSpec chainSpec,
-            IBlockTree blockTree,
-            ISealValidator sealValidator,
-            ISpecProvider specProvider,
-            ILogManager logManager,
-            Func<IHeaderValidator> standardHeaderValidator
-        )
-        {
-            var blockGasLimitContractTransitions = chainSpec.AuRa.BlockGasLimitContractTransitions;
-            return blockGasLimitContractTransitions?.Any() == true
-                ? new AuRaHeaderValidator(
-                    blockTree,
-                    sealValidator,
-                    specProvider,
-                    logManager,
-                    blockGasLimitContractTransitions.Keys.ToArray())
-                : standardHeaderValidator.Invoke(); // TODO: need to check if it cause infinite loop
+            builder.Register<AuraBlockchainStack, IHeaderValidator>(bStack => bStack.CreateHeaderValidator())
+                .As<IHeaderValidator>();
         }
     }
 }
