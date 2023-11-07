@@ -15,13 +15,13 @@ using Nethermind.Network;
 namespace Nethermind.JsonRpc.Modules.Era1;
 internal class EraModule
 {
-    private EraService _eraService;
+    private IEraService _eraService;
     private Task _exportTask = Task.CompletedTask;
     private SemaphoreSlim _semaphoreSlim = new SemaphoreSlim(1);
 
-    public EraModule(IFileSystem fileSystem)
+    public EraModule(IEraService eraService)
     {
-        _eraService = new EraService(fileSystem); 
+        _eraService = eraService;
     }
     public async Task<ResultWrapper<string>> start_export_history(string destination, int blockStart, int count)
     {
@@ -32,7 +32,7 @@ internal class EraModule
             {
                 return ResultWrapper<string>.Fail("An export job is already running");
             }
-            _exportTask = _eraService.Export(destination, "", );
+            _exportTask = _eraService.Export(destination, "", blockStart, count);
             return ResultWrapper<string>.Success("");
         }
         finally

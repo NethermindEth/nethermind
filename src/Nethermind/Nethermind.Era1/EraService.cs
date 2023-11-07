@@ -13,14 +13,24 @@ using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Era1;
-public class EraService
+public class EraService : IEraService
 {
     private const int MergeBlock = 15537393;
     private readonly IFileSystem _fileSystem;
+    private readonly IBlockTree _blockTree;
+    private readonly IReceiptStorage _receiptStorage;
+    private readonly ISpecProvider _specProvider;
 
-    public EraService(IFileSystem fileSystem)
+    public EraService(
+        IFileSystem fileSystem,
+        IBlockTree blockTree,
+        IReceiptStorage receiptStorage,
+        ISpecProvider specProvider)
     {
         _fileSystem = fileSystem ?? throw new ArgumentNullException(nameof(fileSystem));
+        _blockTree = blockTree;
+        _receiptStorage = receiptStorage;
+        _specProvider = specProvider;
     }
 
     public async Task TestImport(string src, string network)
@@ -40,29 +50,23 @@ public class EraService
     public Task TestExport(
         string destinationPath,
         string network,
-        IBlockTree blockTree,
-        IReceiptStorage receiptStorage,
-        ISpecProvider specProvider,
+
         long start,
         long count,
         CancellationToken cancellation = default)
     {
-        return Export(destinationPath, network, blockTree, receiptStorage, specProvider, start, count, cancellation);
+        return Export(destinationPath, network, start, count, cancellation);
     }
 
     //TODO cancellation
     public async Task Export(
         string destinationPath,
         string network,
-        IBlockTree blockTree,
-        IReceiptStorage receiptStorage,
-        ISpecProvider specProvder,
         long start,
         long count,
         CancellationToken cancellation = default)
     {
         if (destinationPath is null) throw new ArgumentNullException(nameof(destinationPath));
-        if (blockTree is null) throw new ArgumentNullException(nameof(blockTree));
         if (_fileSystem.File.Exists(destinationPath)) throw new ArgumentException(nameof(destinationPath), $"Cannot be a file.");
 
         EnsureExistingEraFiles();
@@ -75,14 +79,14 @@ public class EraService
         string filePath = Path.Combine(
                             destinationPath,
                     EraWriter.Filename(network, currentEpoch, Keccak.Zero));
-        EraWriter? builder = EraWriter.Create(_fileSystem.File.Create(filePath), specProvder);
+        EraWriter? builder = EraWriter.Create(_fileSystem.File.Create(filePath), _specProvider);
 
         //TODO read directly from RocksDb with range reads
         for (var i = start; i < start + count; i++)
         {
 
             //TODO create level ??
-            var b = blockTree.FindBlock(i);
+            var b = _blockTree.FindBlock(i);
             if (b == null)
             {
                 //TODO handle missing block
@@ -97,7 +101,7 @@ public class EraService
             //    break;
             //}
 
-            TxReceipt[]? receipts = receiptStorage.Get(b);
+            TxReceipt[]? receipts = _receiptStorage.Get(b);
             if (receipts == null)
             {
                 //TODO  handle this scenario
@@ -110,7 +114,7 @@ public class EraService
                 currentEpoch++;
                 builder = EraWriter.Create(Path.Combine(
                             destinationPath,
-                    EraWriter.Filename(network, currentEpoch, Keccak.Zero)), specProvder);
+                    EraWriter.Filename(network, currentEpoch, Keccak.Zero)), _specProvider);
             }
         }
     }

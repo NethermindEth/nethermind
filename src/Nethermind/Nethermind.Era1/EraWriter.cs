@@ -18,7 +18,7 @@ using Nethermind.Serialization.Ssz;
 using Snappier;
 
 namespace Nethermind.Era1;
-internal class EraWriter : IDisposable
+public class EraWriter : IDisposable
 {
     public const int MaxEra1Size = 8192;
 
