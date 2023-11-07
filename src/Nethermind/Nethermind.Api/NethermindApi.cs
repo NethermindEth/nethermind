@@ -4,6 +4,7 @@
 using System.Collections.Generic;
 using System.IO.Abstractions;
 using System.Threading;
+using Autofac;
 using Nethermind.Abi;
 using Nethermind.Api.Extensions;
 using Nethermind.Blockchain;
@@ -233,6 +234,7 @@ namespace Nethermind.Api
         public CompositePruningTrigger PruningTrigger { get; } = new();
         public ISnapProvider? SnapProvider { get; set; }
         public IProcessExitSource? ProcessExit { get; set; }
+        public IContainer Container { get; set; } = null!;
         public CompositeTxGossipPolicy TxGossipPolicy { get; } = new();
     }
 }

@@ -9,6 +9,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="Autofac" />
     <PackageReference Include="FastEnum" />
     <PackageReference Include="Microsoft.Extensions.ObjectPool" />
     <PackageReference Include="Nethermind.Crypto.SecP256k1" />

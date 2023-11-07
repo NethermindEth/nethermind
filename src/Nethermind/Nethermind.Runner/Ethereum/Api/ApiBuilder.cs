@@ -6,11 +6,14 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Threading;
+using Autofac;
+using Autofac.Core;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Core;
+using Nethermind.Init;
 using Nethermind.JsonRpc.Data;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
@@ -36,10 +39,10 @@ namespace Nethermind.Runner.Ethereum.Api
             _jsonSerializer = new EthereumJsonSerializer();
         }
 
-        public INethermindApi Create(params IConsensusPlugin[] consensusPlugins) =>
-            Create((IEnumerable<IConsensusPlugin>)consensusPlugins);
+        public INethermindApi Create(params INethermindPlugin[] consensusPlugins) =>
+            Create((IEnumerable<INethermindPlugin>)consensusPlugins);
 
-        public INethermindApi Create(IEnumerable<IConsensusPlugin> consensusPlugins)
+        public INethermindApi Create(IEnumerable<INethermindPlugin> plugins)
         {
             ChainSpec chainSpec = LoadChainSpec(_jsonSerializer);
             bool wasCreated = Interlocked.CompareExchange(ref _apiCreated, 1, 0) == 1;
@@ -49,7 +52,7 @@ namespace Nethermind.Runner.Ethereum.Api
             }
 
             string engine = chainSpec.SealEngineType;
-            IConsensusPlugin? enginePlugin = consensusPlugins.FirstOrDefault(p => p.SealEngineType == engine);
+            IConsensusPlugin? enginePlugin = (IConsensusPlugin)plugins.FirstOrDefault(p => p is IConsensusPlugin consensus && consensus.SealEngineType == engine);
 
             INethermindApi nethermindApi =
                 enginePlugin?.CreateApi(_configProvider, _jsonSerializer, _logManager, chainSpec) ??
@@ -57,6 +60,20 @@ namespace Nethermind.Runner.Ethereum.Api
             nethermindApi.SealEngineType = engine;
             nethermindApi.SpecProvider = new ChainSpecBasedSpecProvider(chainSpec, _logManager);
             nethermindApi.GasLimitCalculator = new FollowOtherMiners(nethermindApi.SpecProvider);
+            ((List<INethermindPlugin>)nethermindApi.Plugins).AddRange(plugins);
+
+            ContainerBuilder builder = new ContainerBuilder();
+            builder.RegisterModule(new CoreModule(nethermindApi, _configProvider, _jsonSerializer, _logManager));
+
+            foreach (INethermindPlugin nethermindPlugin in plugins)
+            {
+                if (nethermindPlugin is IModule autofacModule)
+                {
+                    builder.RegisterModule(autofacModule);
+                }
+            }
+
+            nethermindApi.Container = builder.Build();
 
             SetLoggerVariables(chainSpec);
 

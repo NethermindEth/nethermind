@@ -186,8 +186,7 @@ public static class Program
                 }
             }
 
-            INethermindApi nethermindApi = apiBuilder.Create(plugins.OfType<IConsensusPlugin>());
-            ((List<INethermindPlugin>)nethermindApi.Plugins).AddRange(plugins);
+            INethermindApi nethermindApi = apiBuilder.Create(plugins);
             nethermindApi.ProcessExit = _processExitSource;
 
             _appClosed.Reset();

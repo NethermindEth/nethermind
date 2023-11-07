@@ -4,6 +4,7 @@
 using System.Collections.Generic;
 using System.IO.Abstractions;
 using System.Linq;
+using Autofac;
 using Nethermind.Abi;
 using Nethermind.Api.Extensions;
 using Nethermind.Config;
@@ -58,5 +59,7 @@ namespace Nethermind.Api
 
         public IEnumerable<ISynchronizationPlugin> GetSynchronizationPlugins() =>
             Plugins.OfType<ISynchronizationPlugin>();
+
+        IContainer Container { get; set; }
     }
 }
