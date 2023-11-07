@@ -19,10 +19,8 @@ using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
-using Nethermind.Evm;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.JsonRpc.Modules.Eth.GasPrice;
-using Nethermind.Logging;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
 using LifetimeScope = Autofac.Core.Lifetime.LifetimeScope;
@@ -77,7 +75,8 @@ namespace Nethermind.Init.Steps
 
             ILifetimeScope statefulContainer = _api.Container.BeginLifetimeScope(NethermindScope.WorldState);
             _api.DisposeStack.Push((IDisposable)statefulContainer);
-            _api.TransactionProcessor = statefulContainer.Resolve<ITransactionProcessor>();
+            IBlockProcessor mainBlockProcessor = setApi.MainBlockProcessor = statefulContainer
+                .ResolveKeyed<IBlockProcessor>(BlockProcessorType.Validating);
 
             IChainHeadInfoProvider chainHeadInfoProvider =
                 new ChainHeadInfoProvider(getApi.SpecProvider, getApi.BlockTree, setApi.StateReader!);
@@ -87,12 +86,9 @@ namespace Nethermind.Init.Steps
             TxSealer nonceReservingTxSealer =
                 new(txSigner, getApi.Timestamper);
             INonceManager nonceManager = new NonceManager(chainHeadInfoProvider.AccountStateProvider);
-            setApi.NonceManager = nonceManager;
             setApi.TxSender = new TxPoolSender(txPool, nonceReservingTxSealer, nonceManager, getApi.EthereumEcdsa!);
-
             setApi.TxPoolInfoProvider = new TxPoolInfoProvider(chainHeadInfoProvider.AccountStateProvider, txPool);
             setApi.GasPriceOracle = new GasPriceOracle(getApi.BlockTree, getApi.SpecProvider, _api.LogManager, blocksConfig.MinGasPrice);
-            IBlockProcessor mainBlockProcessor = setApi.MainBlockProcessor = CreateBlockProcessor();
 
             BlockchainProcessor blockchainProcessor = new(
                 getApi.BlockTree,
@@ -133,23 +129,5 @@ namespace Nethermind.Init.Steps
                 _api.TxGossipPolicy);
 
         protected IComparer<Transaction> CreateTxPoolTxComparer() => _api.TransactionComparerProvider!.GetDefaultComparer();
-
-        // TODO: remove from here - move to consensus?
-        protected virtual BlockProcessor CreateBlockProcessor()
-        {
-            if (_api.DbProvider is null) throw new StepDependencyException(nameof(_api.DbProvider));
-            if (_api.RewardCalculatorSource is null) throw new StepDependencyException(nameof(_api.RewardCalculatorSource));
-            if (_api.TransactionProcessor is null) throw new StepDependencyException(nameof(_api.TransactionProcessor));
-
-            return new BlockProcessor(
-                _api.SpecProvider,
-                _api.BlockValidator,
-                _api.RewardCalculatorSource.Get(_api.TransactionProcessor!),
-                new BlockProcessor.BlockValidationTransactionsExecutor(_api.TransactionProcessor, _api.WorldState!),
-                _api.WorldState,
-                _api.ReceiptStorage,
-                _api.WitnessCollector,
-                _api.LogManager);
-        }
     }
 }

@@ -5,6 +5,9 @@ using Autofac;
 using Autofac.Core;
 using Autofac.Core.Registration;
 using Nethermind.Api;
+using Nethermind.Blockchain;
+using Nethermind.Blockchain.Find;
+using Nethermind.Blockchain.Receipts;
 using Nethermind.Config;
 using Nethermind.Core.Specs;
 using Nethermind.Logging;
@@ -48,5 +51,12 @@ public class CoreModule: Module
         builder.RegisterInstance(_api.ChainSpec!);
         builder.RegisterInstance(_api.SpecProvider!)
             .As<ISpecProvider>();
+
+        builder.RegisterInstance(_api.BlockTree!)
+            .As<IBlockTree>();
+        builder.RegisterInstance(_api.BlockTree!.AsReadOnly())
+            .As<IBlockFinder>();
+        builder.RegisterInstance(_api.ReceiptStorage!)
+            .As<IReceiptStorage>();
     }
 }

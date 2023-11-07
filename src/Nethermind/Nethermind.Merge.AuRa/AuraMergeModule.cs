@@ -3,6 +3,7 @@
 
 using Autofac;
 using Nethermind.Consensus;
+using Nethermind.Consensus.AuRa.InitializationSteps;
 
 namespace Nethermind.Merge.AuRa;
 
@@ -12,5 +13,8 @@ public class AuraMergeModule: Module
     {
         builder.RegisterType<Plugin.MergeSealValidator>()
             .As<ISealValidator>();
+
+        builder.RegisterType<AuraMergeBlockchainStack>()
+            .As<AuraBlockchainStack>();
     }
 }

@@ -14,6 +14,7 @@ using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Services;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Comparers;
+using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
@@ -71,6 +72,8 @@ public class StateModule : Module
         // without explicitly specifying a lifetime, it will crash.
         builder.Register<IWorldState>(_ => _api.WorldState!)
             .InstancePerMatchingLifetimeScope(NethermindScope.WorldState);
+
+        builder.Register<IWitnessCollector>(_ => _api.WitnessCollector!);
     }
 }
 
@@ -87,14 +90,6 @@ public class BlockchainModule : Module
     {
         builder.RegisterType<TxValidator>()
             .As<ITxValidator>();
-
-        builder.RegisterInstance(_api.BlockTree!)
-            .As<IBlockTree>();
-        builder.RegisterInstance(_api.BlockTree!.AsReadOnly())
-            .As<IBlockFinder>();
-        builder.RegisterInstance(_api.ReceiptStorage!)
-            .As<IReceiptStorage>();
-
         builder.RegisterType<TransactionComparerProvider>()
             .As<ITransactionComparerProvider>();
         builder.RegisterType<ReceiptCanonicalityMonitor>()
@@ -122,5 +117,24 @@ public class BlockchainModule : Module
 
         builder.RegisterType<HealthHintService>()
             .As<IHealthHintService>();
+
+        builder.RegisterType<ReadOnlyTxProcessingEnv>()
+            .AsSelf()
+            .As<IReadOnlyTxProcessorSource>();
+
+        builder.RegisterType<BlockProcessor.BlockValidationTransactionsExecutor>()
+            .AsSelf();
+
+        builder.RegisterType<BlockProcessor>()
+            // Are there more cleaner way to do this?
+            .WithParameter(
+                (p, _) => p.ParameterType == typeof(IBlockProcessor.IBlockTransactionsExecutor),
+                (_, c) => c.Resolve<BlockProcessor.BlockValidationTransactionsExecutor>())
+            .AsSelf()
+            .Keyed<IBlockProcessor>(BlockProcessorType.Validating);
+
+        builder.Register<IRewardCalculatorSource, ITransactionProcessor, IRewardCalculator>(
+                (rewardSource, txProc) => rewardSource.Get(txProc))
+            .As<IRewardCalculator>();
     }
 }

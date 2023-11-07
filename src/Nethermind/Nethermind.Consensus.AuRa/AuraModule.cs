@@ -8,6 +8,7 @@ using Nethermind.Consensus.AuRa.InitializationSteps;
 using Nethermind.Consensus.AuRa.Rewards;
 using Nethermind.Consensus.AuRa.Services;
 using Nethermind.Consensus.AuRa.Validators;
+using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
 using Nethermind.Db;
@@ -19,10 +20,10 @@ public class AuraModule: Module
 {
     protected override void Load(ContainerBuilder builder)
     {
-        builder.RegisterType<AuraBlockchainStack>()
+        builder.RegisterType<AuraHeaderValidatorFactory>()
             .SingleInstance();
 
-        builder.Register<AuraBlockchainStack, IHeaderValidator>(bStack => bStack.CreateHeaderValidator())
+        builder.Register<AuraHeaderValidatorFactory, IHeaderValidator>(bStack => bStack.CreateHeaderValidator())
             .As<IHeaderValidator>();
 
         builder.Register<AuRaParameters, AbiEncoder, IRewardCalculatorSource>((auraParam, abiEncoder) => AuRaRewardCalculator.GetSource(auraParam, abiEncoder))
@@ -48,5 +49,11 @@ public class AuraModule: Module
 
         builder.RegisterType<AuraHealthHintService>()
             .As<IHealthHintService>();
+
+        builder.RegisterType<AuraBlockchainStack>()
+            .AsSelf();
+
+        builder.Register<AuraBlockchainStack, BlockProcessor>((stack) => stack.CreateBlockProcessor())
+            .As<IBlockProcessor>();
     }
 }

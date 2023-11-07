@@ -93,7 +93,6 @@ namespace Nethermind.Runner.Test.Ethereum
                 SnapProvider = Substitute.For<ISnapProvider>(),
                 WorldState = Substitute.For<IWorldState>(),
                 StateReader = Substitute.For<IStateReader>(),
-                TransactionProcessor = Substitute.For<ITransactionProcessor>(),
                 TxSender = Substitute.For<ITxSender>(),
                 BlockProcessingQueue = Substitute.For<IBlockProcessingQueue>(),
                 EngineSignerStore = Substitute.For<ISignerStore>(),

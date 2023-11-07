@@ -4,10 +4,12 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
+using Autofac;
 using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.State;
 
@@ -60,13 +62,15 @@ namespace Nethermind.Init.Steps
             if (_api.WorldState is null) throw new StepDependencyException(nameof(_api.WorldState));
             if (_api.SpecProvider is null) throw new StepDependencyException(nameof(_api.SpecProvider));
             if (_api.DbProvider is null) throw new StepDependencyException(nameof(_api.DbProvider));
-            if (_api.TransactionProcessor is null) throw new StepDependencyException(nameof(_api.TransactionProcessor));
+
+            using ILifetimeScope statefulContainer = _api.Container.BeginLifetimeScope(NethermindScope.WorldState);
+            ITransactionProcessor transactionProcessor = statefulContainer.Resolve<ITransactionProcessor>();
 
             Block genesis = new GenesisLoader(
                 _api.ChainSpec,
                 _api.SpecProvider,
                 _api.WorldState,
-                _api.TransactionProcessor)
+                transactionProcessor)
                 .Load();
 
             ManualResetEventSlim genesisProcessedEvent = new(false);
