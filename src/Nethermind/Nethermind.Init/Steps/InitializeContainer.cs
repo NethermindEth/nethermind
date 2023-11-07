@@ -7,6 +7,10 @@ using Autofac;
 using Autofac.Core;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
+using Nethermind.Blockchain;
+using Nethermind.Blockchain.Find;
+using Nethermind.Blockchain.Receipts;
+using Nethermind.Consensus.Comparers;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core.Specs;
 
@@ -55,5 +59,17 @@ public class BlockchainModule : Module
         builder.RegisterInstance(_api.SpecProvider!)
             .As<ISpecProvider>();
         builder.RegisterType<TxValidator>();
+
+        builder.RegisterInstance(_api.BlockTree!)
+            .As<IBlockTree>();
+        builder.RegisterInstance(_api.BlockTree!.AsReadOnly())
+            .As<IBlockFinder>();
+        builder.RegisterInstance(_api.ReceiptStorage!)
+            .As<IReceiptStorage>();
+
+        builder.RegisterType<TransactionComparerProvider>()
+            .As<ITransactionComparerProvider>();
+        builder.RegisterType<ReceiptCanonicalityMonitor>()
+            .As<IReceiptMonitor>();
     }
 }

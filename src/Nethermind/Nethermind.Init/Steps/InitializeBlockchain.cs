@@ -52,16 +52,13 @@ namespace Nethermind.Init.Steps
             if (getApi.SpecProvider is null) throw new StepDependencyException(nameof(getApi.SpecProvider));
             if (getApi.BlockTree is null) throw new StepDependencyException(nameof(getApi.BlockTree));
 
+            setApi.TransactionComparerProvider = _api.Container.Resolve<ITransactionComparerProvider>();
+            setApi.TxValidator = _api.Container.Resolve<TxValidator>();
+            _api.ReceiptMonitor = _api.Container.Resolve<IReceiptMonitor>();
+
             IInitConfig initConfig = getApi.Config<IInitConfig>();
             IBlocksConfig blocksConfig = getApi.Config<IBlocksConfig>();
-            setApi.TransactionComparerProvider = new TransactionComparerProvider(getApi.SpecProvider!, getApi.BlockTree.AsReadOnly());
-
-            setApi.TxValidator = _api.Container.Resolve<TxValidator>();
             ITxPool txPool = _api.TxPool = CreateTxPool();
-
-            ReceiptCanonicalityMonitor receiptCanonicalityMonitor = new(getApi.BlockTree, getApi.ReceiptStorage, _api.LogManager);
-            getApi.DisposeStack.Push(receiptCanonicalityMonitor);
-            _api.ReceiptMonitor = receiptCanonicalityMonitor;
 
             _api.BlockPreprocessor.AddFirst(
                 new RecoverSignatures(getApi.EthereumEcdsa, txPool, getApi.SpecProvider, getApi.LogManager));
