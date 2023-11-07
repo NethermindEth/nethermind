@@ -61,20 +61,6 @@ namespace Nethermind.Runner.Ethereum.Api
             nethermindApi.SpecProvider = new ChainSpecBasedSpecProvider(chainSpec, _logManager);
             nethermindApi.GasLimitCalculator = new FollowOtherMiners(nethermindApi.SpecProvider);
             ((List<INethermindPlugin>)nethermindApi.Plugins).AddRange(plugins);
-
-            ContainerBuilder builder = new ContainerBuilder();
-            builder.RegisterModule(new CoreModule(nethermindApi, _configProvider, _jsonSerializer, _logManager));
-
-            foreach (INethermindPlugin nethermindPlugin in plugins)
-            {
-                if (nethermindPlugin is IModule autofacModule)
-                {
-                    builder.RegisterModule(autofacModule);
-                }
-            }
-
-            nethermindApi.Container = builder.Build();
-
             SetLoggerVariables(chainSpec);
 
             return nethermindApi;
