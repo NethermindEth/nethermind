@@ -301,6 +301,8 @@ public class OptimismPlugin : Module, IConsensusPlugin, ISynchronizationPlugin, 
             .SingleInstance();
         builder.RegisterType<OptimismHeaderValidator>()
             .As<IHeaderValidator>();
+        builder.RegisterInstance(Always.Valid)
+            .As<IUnclesValidator>();
         builder.RegisterDecorator<InvalidHeaderInterceptor, IHeaderValidator>();
 
         builder.Register<BlocksConfig, IHealthHintService>((blocksConfig) =>

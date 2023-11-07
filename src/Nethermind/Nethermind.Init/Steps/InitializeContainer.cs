@@ -111,6 +111,8 @@ public class BlockchainModule : Module
             .As<ISealEngine>();
         builder.RegisterType<HeaderValidator>()
             .As<IHeaderValidator>();
+        builder.RegisterType<UnclesValidator>()
+            .As<IUnclesValidator>();
         builder.RegisterInstance(NoBlockRewards.Instance)
             .As<IRewardCalculatorSource>();
 

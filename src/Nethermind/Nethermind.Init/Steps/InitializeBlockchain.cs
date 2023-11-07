@@ -63,12 +63,8 @@ namespace Nethermind.Init.Steps
             IBlocksConfig blocksConfig = getApi.Config<IBlocksConfig>();
             ITxPool txPool = _api.TxPool = CreateTxPool();
 
-            ILifetimeScope statefulContainer = _api.Container.BeginLifetimeScope(NethermindScope.WorldState);
-            _api.DisposeStack.Push((IDisposable)statefulContainer);
-
             _api.BlockPreprocessor.AddFirst(
                 new RecoverSignatures(getApi.EthereumEcdsa, txPool, getApi.SpecProvider, getApi.LogManager));
-            _api.TransactionProcessor = statefulContainer.Resolve<ITransactionProcessor>();
             _api.SealEngine = _api.Container.Resolve<ISealEngine>();
             _api.SealValidator = _api.Container.Resolve<ISealValidator>();
             _api.Sealer = _api.Container.Resolve<ISealer>();
@@ -76,9 +72,13 @@ namespace Nethermind.Init.Steps
 
             setApi.HealthHintService = _api.Container.Resolve<IHealthHintService>();
             setApi.HeaderValidator = _api.Container.Resolve<IHeaderValidator>();
+            setApi.UnclesValidator = _api.Container.Resolve<IUnclesValidator>();
 
-            setApi.UnclesValidator = CreateUnclesValidator();
             setApi.BlockValidator = CreateBlockValidator();
+
+            ILifetimeScope statefulContainer = _api.Container.BeginLifetimeScope(NethermindScope.WorldState);
+            _api.DisposeStack.Push((IDisposable)statefulContainer);
+            _api.TransactionProcessor = statefulContainer.Resolve<ITransactionProcessor>();
 
             IChainHeadInfoProvider chainHeadInfoProvider =
                 new ChainHeadInfoProvider(getApi.SpecProvider, getApi.BlockTree, setApi.StateReader!);
@@ -127,14 +127,6 @@ namespace Nethermind.Init.Steps
                 _api.HeaderValidator,
                 _api.UnclesValidator,
                 _api.SpecProvider,
-                _api.LogManager);
-        }
-
-        protected virtual IUnclesValidator CreateUnclesValidator()
-        {
-            return new UnclesValidator(
-                _api.BlockTree,
-                _api.HeaderValidator,
                 _api.LogManager);
         }
 
