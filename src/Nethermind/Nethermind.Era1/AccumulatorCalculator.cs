@@ -24,7 +24,7 @@ internal class AccumulatorCalculator
     public void Add(Hash256 headerHash, UInt256 td)
     {
         if (headerHash is null) throw new ArgumentNullException(nameof(headerHash));
-        SszTree tree = new( new SszContainer(new[]
+        SszTree tree = new(new SszContainer(new[]
         {
             new SszBasicVector(headerHash.Bytes),
             new SszBasicVector(td.ToLittleEndian())

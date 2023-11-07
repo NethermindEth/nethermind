@@ -80,7 +80,7 @@ public class EraService
         //TODO read directly from RocksDb with range reads
         for (var i = start; i < start + count; i++)
         {
-            
+
             //TODO create level ??
             var b = blockTree.FindBlock(i);
             if (b == null)

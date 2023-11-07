@@ -22,7 +22,7 @@ internal class StreamSegment : Stream
         _streamOffset = offset;
         _streamLength = length;
         if (!stream.CanRead)
-            throw new ArgumentException("Must be a readable stream.",nameof(stream));
+            throw new ArgumentException("Must be a readable stream.", nameof(stream));
         if (_internalStream.Length < _streamOffset + _streamLength)
             throw new ArgumentOutOfRangeException(nameof(length), "Will exceed the length of the stream.");
         _internalStream.Position = offset;
@@ -66,7 +66,7 @@ internal class StreamSegment : Stream
             return Task.FromResult(0);
 
         long actualCount = count + _internalStream.Position > _streamLength + _streamOffset ? _streamLength + _streamOffset - _internalStream.Position : count;
-        return  _internalStream.ReadAsync(buffer, offset, (int)actualCount);
+        return _internalStream.ReadAsync(buffer, offset, (int)actualCount);
     }
 
     public override long Seek(long offset, SeekOrigin origin)

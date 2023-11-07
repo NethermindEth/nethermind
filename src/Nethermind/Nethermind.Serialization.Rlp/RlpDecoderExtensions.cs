@@ -52,7 +52,7 @@ namespace Nethermind.Serialization.Rlp
                 return Rlp.OfEmptySequence;
             }
 
-            Rlp[] rlpSequence = new Rlp[items.Length]; 
+            Rlp[] rlpSequence = new Rlp[items.Length];
             for (int i = 0; i < items.Length; i++)
             {
                 rlpSequence[i] = items[i] is null ? Rlp.OfEmptySequence : decoder.Encode(items[i], behaviors);

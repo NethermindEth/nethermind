@@ -162,7 +162,7 @@ namespace Nethermind.Serialization.Rlp
         {
             if (decoderContext.IsNextItemNull())
             {
-                decoderContext.ReadByte(); 
+                decoderContext.ReadByte();
                 return null;
             }
 

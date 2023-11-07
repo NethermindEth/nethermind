@@ -66,8 +66,6 @@ internal class E2Store : IDisposable
             if (asSnappy && bytes.Length > 0)
             {
                 //TODO find a way to write directly to file, and still return the number of bytes written
-
-                IByteBuffer buffer = PooledByteBufferAllocator.Default.Buffer();
                 using MemoryStream memoryStream = new MemoryStream();
                 using SnappyStream snappyStream = new(memoryStream, CompressionMode.Compress, true);
                 await snappyStream.WriteAsync(bytes, cancellation);

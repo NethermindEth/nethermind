@@ -72,8 +72,7 @@ internal class EraWriter : IDisposable
 
         Rlp encodedHeader = _headerDecoder.Encode(block.Header);
         Rlp encodedBody = _blockBodyDecoder.Encode(block.Body);
-        //Geth implementation treats pre and post EIP-658 receipts the same
-        //TODO Need to align the behavior
+        //Geth implementation has a byte array representing both TxPostState and StatusCode, and serializes whatever is set
         RlpBehaviors behaviors = _specProvider.GetSpec(block.Header).IsEip658Enabled ? RlpBehaviors.Eip658Receipts : RlpBehaviors.None;
         Rlp encodedReceipts = _receiptDecoder.Encode(receipts, behaviors);
 
