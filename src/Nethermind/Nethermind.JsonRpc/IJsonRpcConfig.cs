@@ -54,7 +54,7 @@ public interface IJsonRpcConfig : IConfig
 
     [ConfigItem(
         Description = """
-            An array of JSON-RPC namespaces to enable. For instance, `[engine,eth]`.
+            An array of JSON-RPC namespaces to enable. For instance, `[debug,eth]`.
 
             Built-in modules:
 
@@ -149,7 +149,7 @@ public interface IJsonRpcConfig : IConfig
 
     [ConfigItem(
         Description = "An array of additional JSON-RPC URLs to listen at with protocol and JSON-RPC namespace list for Engine API.",
-        DefaultValue = "[engine]")]
+        DefaultValue = "[engine,eth,net,subscribe,web3]")]
     string[] EngineEnabledModules { get; set; }
 
     [ConfigItem(Description = "The max number of JSON-RPC requests in a batch.", DefaultValue = "1024")]
