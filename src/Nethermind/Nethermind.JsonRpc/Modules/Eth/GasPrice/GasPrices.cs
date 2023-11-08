@@ -8,4 +8,5 @@ public class GasPrices
 {
     public UInt256 Gas { get; set; }
     public UInt256 BlobGas { get; set; }
+    public UInt256 MaxPriority { get; set; }
 }
