@@ -31,7 +31,7 @@ using Nethermind.Trie.Pruning;
 namespace Nethermind.Init;
 
 [RunnerStepDependencies(typeof(InitializePlugins), typeof(InitializeBlockTree), typeof(SetupKeyStore))]
-public class InitializeStateDb: IStep
+public class InitializeStateDb : IStep
 {
     private readonly INethermindApi _api;
     private ILogger? _logger;

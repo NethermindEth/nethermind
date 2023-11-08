@@ -276,13 +276,13 @@ public class TxPermissionFilterTest
 
             IReadOnlyTrieStore trieStore = new TrieStore(DbProvider.StateDb, LimboLogs.Instance).AsReadOnly();
             IReadOnlyTxProcessorSource txProcessorSource = new ReadOnlyTxProcessingEnv(
-                _readOnlyWorldStateManager,
+                WorldStateManager,
                 BlockTree,
                 SpecProvider,
                 LimboLogs.Instance);
 
             VersionedTransactionPermissionContract transactionPermissionContract = new(AbiEncoder.Instance, _contractAddress, 1,
-                new ReadOnlyTxProcessingEnv(_readOnlyWorldStateManager, BlockTree, SpecProvider, LimboLogs.Instance), TransactionPermissionContractVersions, LimboLogs.Instance, SpecProvider);
+                new ReadOnlyTxProcessingEnv(WorldStateManager, BlockTree, SpecProvider, LimboLogs.Instance), TransactionPermissionContractVersions, LimboLogs.Instance, SpecProvider);
 
             TxPermissionFilterCache = new PermissionBasedTxFilter.Cache();
             PermissionBasedTxFilter = new PermissionBasedTxFilter(transactionPermissionContract, TxPermissionFilterCache, LimboLogs.Instance);

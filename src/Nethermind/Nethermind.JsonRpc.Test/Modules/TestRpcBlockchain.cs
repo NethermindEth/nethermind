@@ -123,7 +123,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             IFilterManager filterManager = new FilterManager(filterStore, BlockProcessor, TxPool, LimboLogs.Instance);
 
             ReadOnlyTxProcessingEnv processingEnv = new(
-                _readOnlyWorldStateManager,
+                WorldStateManager,
                 new ReadOnlyBlockTree(BlockTree),
                 SpecProvider,
                 LimboLogs.Instance);

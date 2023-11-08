@@ -92,7 +92,7 @@ namespace Nethermind.Mev.Test
                 SpecProvider.UpdateMergeTransitionInfo(1, 0);
 
                 BlockProducerEnvFactory blockProducerEnvFactory = new(
-                    _readOnlyWorldStateManager,
+                    WorldStateManager,
                     BlockTree,
                     SpecProvider,
                     BlockValidator,
@@ -205,7 +205,7 @@ namespace Nethermind.Mev.Test
 
                 _tracerFactory = new TracerFactory(
                     BlockTree,
-                    _readOnlyWorldStateManager,
+                    WorldStateManager,
                     BlockPreprocessorStep,
                     SpecProvider,
                     LogManager,

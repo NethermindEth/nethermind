@@ -12,7 +12,7 @@ namespace Nethermind.State;
 /// <summary>
 /// Mainly to make it easier for test
 /// </summary>
-public class ReadOnlyWorldStateManager: IWorldStateManager
+public class ReadOnlyWorldStateManager : IWorldStateManager
 {
     private IReadOnlyTrieStore? _readOnlyTrieStore;
     private ILogManager _logManager;
@@ -47,7 +47,8 @@ public class ReadOnlyWorldStateManager: IWorldStateManager
             {
                 readOnlyDbProvider.ClearTempChanges();
                 codeDb.ClearTempChanges();
-            });
+            }
+        );
     }
 
     public virtual event EventHandler<ReorgBoundaryReached>? ReorgBoundaryReached
