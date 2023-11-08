@@ -115,7 +115,7 @@ public class InitializeStateDb: IStep
                 getApi.LogManager);
         setApi.TrieStore = trieStore;
 
-        IWorldState worldState = setApi.WorldState = syncConfig.TrieHealing
+        IWorldState worldState = syncConfig.TrieHealing
             ? new HealingWorldState(
                 trieStore,
                 codeDb,
@@ -135,13 +135,11 @@ public class InitializeStateDb: IStep
             };
         }
 
-        IReadOnlyTrieStore readOnlyTrieStore = setApi.ReadOnlyTrieStore = trieStore.AsReadOnly(cachedStateDb);
-
         IWorldStateManager stateManager = setApi.WorldStateManager = new WorldStateManager(
             worldState,
             trieStore,
             getApi.DbProvider,
-            readOnlyTrieStore,
+            trieStore.AsReadOnly(cachedStateDb),
             getApi.LogManager);
 
         // TODO: Don't forget this
@@ -149,6 +147,7 @@ public class InitializeStateDb: IStep
         getApi.DisposeStack.Push(trieStoreBoundaryWatcher);
         getApi.DisposeStack.Push(trieStore);
 
+        setApi.WorldState = stateManager.GlobalWorldState;
         setApi.ChainHeadStateProvider = new ChainHeadReadOnlyStateProvider(getApi.BlockTree, stateManager.GlobalStateReader);
 
         worldState.StateRoot = getApi.BlockTree!.Head?.StateRoot ?? Keccak.EmptyTreeHash;

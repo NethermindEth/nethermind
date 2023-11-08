@@ -85,9 +85,6 @@ namespace Nethermind.Synchronization
             SnapSyncFeed,
             _logManager);
 
-        private readonly IReadOnlyTrieStore _readOnlyTrieStore;
-
-
         protected ISyncModeSelector? _syncModeSelector;
         private readonly IStateReader _stateReader;
 
@@ -111,7 +108,6 @@ namespace Nethermind.Synchronization
             IBlockDownloaderFactory blockDownloaderFactory,
             IPivot pivot,
             IProcessExitSource processExitSource,
-            IReadOnlyTrieStore readOnlyTrieStore,
             IBetterPeerStrategy betterPeerStrategy,
             ChainSpec chainSpec,
             IStateReader stateReader,
@@ -131,8 +127,7 @@ namespace Nethermind.Synchronization
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
             _betterPeerStrategy = betterPeerStrategy ?? throw new ArgumentNullException(nameof(betterPeerStrategy));
             _chainSpec = chainSpec ?? throw new ArgumentNullException(nameof(chainSpec));
-            _readOnlyTrieStore = readOnlyTrieStore ?? throw new ArgumentNullException(nameof(readOnlyTrieStore));
-            _stateReader = stateReader ?? throw new ArgumentNullException(nameof(readOnlyTrieStore));
+            _stateReader = stateReader ?? throw new ArgumentNullException(nameof(_stateReader));
 
             _syncReport = new SyncReport(_syncPeerPool!, nodeStatsManager!, _syncConfig, _pivot, logManager);
 

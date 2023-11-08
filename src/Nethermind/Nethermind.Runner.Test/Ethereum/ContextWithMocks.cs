@@ -106,7 +106,6 @@ namespace Nethermind.Runner.Test.Ethereum
                 WebSocketsManager = Substitute.For<IWebSocketsManager>(),
                 ChainLevelInfoRepository = Substitute.For<IChainLevelInfoRepository>(),
                 TrieStore = Substitute.For<ITrieStore>(),
-                ReadOnlyTrieStore = Substitute.For<IReadOnlyTrieStore>(),
                 BlockProducerEnvFactory = Substitute.For<IBlockProducerEnvFactory>(),
                 TransactionComparerProvider = Substitute.For<ITransactionComparerProvider>(),
                 GasPriceOracle = Substitute.For<IGasPriceOracle>(),
@@ -121,7 +120,7 @@ namespace Nethermind.Runner.Test.Ethereum
                 WitnessRepository = Substitute.For<IWitnessRepository>()
             };
 
-            api.WorldStateManager = new ReadOnlyWorldStateManager(api.DbProvider, api.ReadOnlyTrieStore, LimboLogs.Instance);
+            api.WorldStateManager = new ReadOnlyWorldStateManager(api.DbProvider, Substitute.For<IReadOnlyTrieStore>(), LimboLogs.Instance);
             return api;
         }
     }

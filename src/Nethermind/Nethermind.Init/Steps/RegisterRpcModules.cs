@@ -88,7 +88,6 @@ public class RegisterRpcModules : IStep
         if (_api.ReceiptStorage is null) throw new StepDependencyException(nameof(_api.ReceiptStorage));
         if (_api.GasPriceOracle is null) throw new StepDependencyException(nameof(_api.GasPriceOracle));
         if (_api.EthSyncingInfo is null) throw new StepDependencyException(nameof(_api.EthSyncingInfo));
-        if (_api.ReadOnlyTrieStore is null) throw new StepDependencyException(nameof(_api.ReadOnlyTrieStore));
 
 
         EthModuleFactory ethModuleFactory = new(
@@ -129,7 +128,6 @@ public class RegisterRpcModules : IStep
             _api.RewardCalculatorSource,
             _api.ReceiptStorage,
             new ReceiptMigration(_api),
-            _api.ReadOnlyTrieStore,
             _api.ConfigProvider,
             _api.SpecProvider,
             _api.SyncModeSelector,

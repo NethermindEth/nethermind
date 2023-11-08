@@ -432,7 +432,6 @@ public partial class MergePlugin : IConsensusWrapperPlugin, ISynchronizationPlug
                 _mergeConfig,
                 _invalidChainTracker,
                 _api.ProcessExit!,
-                _api.ReadOnlyTrieStore!,
                 _api.BetterPeerStrategy,
                 _api.ChainSpec,
                 _beaconSync,
