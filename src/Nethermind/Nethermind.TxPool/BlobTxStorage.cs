@@ -8,7 +8,6 @@ using System.Diagnostics.CodeAnalysis;
 using DotNetty.Buffers;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
@@ -67,12 +66,7 @@ public class BlobTxStorage : ITxStorage
         Span<byte> txHashPrefixed = stackalloc byte[64];
         GetHashPrefixedByTimestamp(transaction.Timestamp, transaction.Hash, txHashPrefixed);
 
-        int length = _txDecoder.GetLength(transaction, RlpBehaviors.InMempoolForm);
-        IByteBuffer byteBuffer = PooledByteBufferAllocator.Default.Buffer(length);
-        using NettyRlpStream rlpStream = new(byteBuffer);
-        rlpStream.Encode(transaction, RlpBehaviors.InMempoolForm);
-
-        _fullBlobTxsDb.PutSpan(txHashPrefixed, byteBuffer.AsSpan());
+        _fullBlobTxsDb.PutSpan(txHashPrefixed, EncodeTx(transaction));
         _lightBlobTxsDb.Set(transaction.Hash, _lightTxDecoder.Encode(transaction));
     }
 
@@ -92,21 +86,7 @@ public class BlobTxStorage : ITxStorage
             return;
         }
 
-        int contentLength = 0;
-        foreach (Transaction transaction in blockBlobTransactions)
-        {
-            contentLength += _txDecoder.GetLength(transaction, RlpBehaviors.InMempoolForm);
-        }
-
-        IByteBuffer byteBuffer = PooledByteBufferAllocator.Default.Buffer(Rlp.LengthOfSequence(contentLength));
-        using NettyRlpStream rlpStream = new(byteBuffer);
-        rlpStream.StartSequence(contentLength);
-        foreach (Transaction transaction in blockBlobTransactions)
-        {
-            _txDecoder.Encode(rlpStream, transaction, RlpBehaviors.InMempoolForm);
-        }
-
-        _processedBlobTxsDb.Set(blockNumber, byteBuffer.Array);
+        _processedBlobTxsDb.Set(blockNumber, EncodeTxs(blockBlobTransactions));
     }
 
     public bool TryGetBlobTransactionsFromBlock(long blockNumber, out Transaction[]? blockBlobTransactions)
@@ -116,10 +96,8 @@ public class BlobTxStorage : ITxStorage
         if (bytes is not null)
         {
             RlpStream rlpStream = new(bytes);
-
             blockBlobTransactions = _txDecoder.DecodeArray(rlpStream, RlpBehaviors.InMempoolForm);
             return true;
-
         }
 
         blockBlobTransactions = default;
@@ -159,6 +137,42 @@ public class BlobTxStorage : ITxStorage
     {
         timestamp.WriteBigEndian(txHashPrefixed);
         hash.Bytes.CopyTo(txHashPrefixed[32..]);
+    }
+
+    private Span<byte> EncodeTx(Transaction transaction)
+    {
+        int length = _txDecoder.GetLength(transaction, RlpBehaviors.InMempoolForm);
+        IByteBuffer byteBuffer = PooledByteBufferAllocator.Default.Buffer(length);
+        using NettyRlpStream rlpStream = new(byteBuffer);
+        rlpStream.Encode(transaction, RlpBehaviors.InMempoolForm);
+
+        return byteBuffer.AsSpan();
+    }
+
+    private byte[] EncodeTxs(IList<Transaction> blockBlobTransactions)
+    {
+        int contentLength = GetLength(blockBlobTransactions);
+
+        IByteBuffer byteBuffer = PooledByteBufferAllocator.Default.Buffer(Rlp.LengthOfSequence(contentLength));
+        using NettyRlpStream rlpStream = new(byteBuffer);
+        rlpStream.StartSequence(contentLength);
+        foreach (Transaction transaction in blockBlobTransactions)
+        {
+            _txDecoder.Encode(rlpStream, transaction, RlpBehaviors.InMempoolForm);
+        }
+
+        return byteBuffer.Array;
+    }
+
+    private int GetLength(IList<Transaction> blockBlobTransactions)
+    {
+        int contentLength = 0;
+        foreach (Transaction transaction in blockBlobTransactions)
+        {
+            contentLength += _txDecoder.GetLength(transaction, RlpBehaviors.InMempoolForm);
+        }
+
+        return contentLength;
     }
 }
 
