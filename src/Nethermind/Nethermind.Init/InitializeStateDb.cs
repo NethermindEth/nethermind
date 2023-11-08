@@ -151,6 +151,7 @@ public class InitializeStateDb: IStep
         getApi.DisposeStack.Push(trieStore);
 
         setApi.WorldState = stateManager.GlobalWorldState;
+        setApi.StateReader = stateManager.GlobalStateReader;
         setApi.ChainHeadStateProvider = new ChainHeadReadOnlyStateProvider(getApi.BlockTree, stateManager.GlobalStateReader);
 
         worldState.StateRoot = getApi.BlockTree!.Head?.StateRoot ?? Keccak.EmptyTreeHash;
