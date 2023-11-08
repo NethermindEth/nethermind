@@ -9,6 +9,9 @@ using Nethermind.Trie.Pruning;
 
 namespace Nethermind.State;
 
+/// <summary>
+/// Mainly to make it easier for test
+/// </summary>
 public class ReadOnlyWorldStateManager: IWorldStateManager
 {
     private IReadOnlyTrieStore? _readOnlyTrieStore;
@@ -42,5 +45,11 @@ public class ReadOnlyWorldStateManager: IWorldStateManager
             new StateReader(_readOnlyTrieStore, codeDb, _logManager),
             readOnlyDbProvider.ClearTempChanges
         );
+    }
+
+    public virtual event EventHandler<ReorgBoundaryReached>? ReorgBoundaryReached
+    {
+        add => throw new InvalidOperationException("Unsupported operation");
+        remove => throw new InvalidOperationException("Unsupported operation");
     }
 }

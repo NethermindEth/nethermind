@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using Nethermind.Core;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Trie.Pruning;
@@ -12,16 +11,25 @@ namespace Nethermind.State;
 public class WorldStateManager: ReadOnlyWorldStateManager
 {
     private readonly IWorldState _worldState;
+    private readonly ITrieStore _trieStore;
 
     public WorldStateManager(
         IWorldState worldState,
+        ITrieStore trieStore,
         IDbProvider dbProvider,
         IReadOnlyTrieStore? readOnlyTrieStore,
         ILogManager logManager
     ) : base(dbProvider, readOnlyTrieStore, logManager)
     {
         _worldState = worldState;
+        _trieStore = trieStore;
     }
 
     public override IWorldState GlobalWorldState => _worldState;
+
+    public override event EventHandler<ReorgBoundaryReached>? ReorgBoundaryReached
+    {
+        add => _trieStore.ReorgBoundaryReached += value;
+        remove => _trieStore.ReorgBoundaryReached -= value;
+    }
 }
