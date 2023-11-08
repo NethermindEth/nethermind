@@ -49,7 +49,7 @@ namespace Nethermind.Evm.Tracing.GethStyle.Javascript
             private readonly TraceStack _items;
             public Stack(TraceStack items) => _items = items;
             public int length() => _items.Count;
-            public BigInteger peek(int index) => new(_items[^(index + 1)].Span, true, true);
+            public dynamic peek(int index) => new BigInteger(_items[^(index + 1)].Span, true, true).ToBigInteger();
         }
 
         public class Memory
@@ -58,32 +58,31 @@ namespace Nethermind.Evm.Tracing.GethStyle.Javascript
 
             public int length() => (int)MemoryTrace.Size;
 
-            public ITypedArray<byte> slice(BigInteger start, BigInteger end) => slice((int)start, (int)end);
-
-            public ITypedArray<byte> slice(int start, int end)
+            public ITypedArray<byte> slice(long start, long end)
             {
                 if (start < 0 || end < start || end > Array.MaxLength)
                 {
                     throw new ArgumentOutOfRangeException(nameof(start), $"tracer accessed out of bound memory: offset {start}, end {end}");
                 }
 
-                int length = end - start;
-                return MemoryTrace.Slice(start, length)
+                int length = (int)(end - start);
+                return MemoryTrace.Slice((int)start, length)
                     .ToArray()
                     .ToTypedScriptArray();
             }
 
-            public BigInteger getUint(int offset) => MemoryTrace.GetUint(offset);
+            public dynamic getUint(int offset) => MemoryTrace.GetUint(offset).ToBigInteger();
         }
 
         public struct Contract
         {
-            private readonly BigInteger _value;
+            private readonly UInt256 _value;
             private readonly Address _address;
             private readonly ReadOnlyMemory<byte> _input;
             private ITypedArray<byte>? _callerConverted;
             private ITypedArray<byte>? _addressConverted;
             private ITypedArray<byte>? _inputConverted;
+            private dynamic? _valueConverted;
             private readonly Address _caller;
 
 
@@ -91,14 +90,14 @@ namespace Nethermind.Evm.Tracing.GethStyle.Javascript
             {
                 _caller = caller;
                 _address = address;
-                _value = (BigInteger)value;
+                _value = value;
                 _input = input;
             }
 
             public ITypedArray<byte> getAddress() => _addressConverted ??= _address.Bytes.ToTypedScriptArray();
             public ITypedArray<byte> getCaller() => _callerConverted ??= _caller.Bytes.ToTypedScriptArray();
             public ITypedArray<byte> getInput() => _inputConverted ??= _input.ToArray().ToTypedScriptArray();
-            public BigInteger getValue() => _value;
+            public dynamic getValue() => _valueConverted ??= _value.ToBigInteger();
         }
     }
 }

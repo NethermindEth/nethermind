@@ -68,14 +68,13 @@ public sealed class GethLikeJavascriptTxTracer : GethLikeTxTracer
         base.ReportAction(gas, value, from, to, input, callType, isPrecompileCall);
 
         _log.contract = new Log.Contract(from, to, value, input);
-        BigInteger valueBigInt = (BigInteger)value;
         if (callType == ExecutionType.TRANSACTION)
         {
             _ctx.type = callType.IsAnyCreate() ? "CREATE" : "CALL";
             _ctx.From = from;
             _ctx.To = to;
             _ctx.Input = input;
-            _ctx.value = valueBigInt;
+            _ctx.Value = value;
             _ctx.gas = gas;
         }
         else if (_functions.HasFlag(TracerFunctions.enter))
@@ -83,7 +82,7 @@ public sealed class GethLikeJavascriptTxTracer : GethLikeTxTracer
             _frame.From = from;
             _frame.To = to;
             _frame.Input = input;
-            _frame.Value = valueBigInt;
+            _frame.Value = value;
             _frame.Gas = gas;
             _frame.Type = callType.FastToString();
             _tracer.enter(_frame);

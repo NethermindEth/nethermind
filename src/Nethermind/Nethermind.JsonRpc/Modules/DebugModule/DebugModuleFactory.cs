@@ -116,7 +116,7 @@ public class DebugModuleFactory : ModuleFactoryBase<IDebugRpcModule>
         return new DebugRpcModule(_logManager, debugBridge, _jsonRpcConfig);
     }
 
-    public static JsonConverter[] Converters = { new GethLikeTxTraceConverter() };
+    public static JsonConverter[] Converters = { new GethLikeTxTraceConverter(), new JavaScriptBigIntegerConverter() };
 
     public override IReadOnlyCollection<JsonConverter> GetConverters() => Converters;
 }

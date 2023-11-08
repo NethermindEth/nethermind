@@ -22,7 +22,7 @@ public class Db
 
     public Db(IWorldState worldState) => WorldState = worldState;
 
-    public BigInteger getBalance(object address) => (BigInteger)WorldState.GetBalance(address.ToAddress());
+    public dynamic getBalance(object address) => WorldState.GetBalance(address.ToAddress()).ToBigInteger();
 
     public ulong getNonce(object address) => (ulong)WorldState.GetNonce(address.ToAddress());
 

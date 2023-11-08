@@ -14,7 +14,7 @@ namespace Nethermind.Serialization.Json
         private readonly NumberConversion _conversion;
 
         public BigIntegerConverter()
-            : this(NumberConversion.Decimal)
+            : this(NumberConversion.Hex)
         {
         }
 

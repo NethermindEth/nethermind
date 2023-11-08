@@ -12,6 +12,7 @@ using Nethermind.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.Tracing.GethStyle.Javascript;
 using Nethermind.Int256;
+using Nethermind.JsonRpc.Modules.DebugModule;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs.Forks;
 
@@ -439,8 +440,11 @@ public class GethLikeJavascriptTracerTests : VirtualMachineTestsBase
                 MainnetSpecProvider.CancunActivation)
             .BuildResult().First();
 
-        TestContext.WriteLine(new EthereumJsonSerializer().Serialize(traces.CustomTracerResult));
+        TestContext.WriteLine(GetEthereumJsonSerializer().Serialize(traces.CustomTracerResult));
     }
+
+    private static EthereumJsonSerializer GetEthereumJsonSerializer() =>
+        new(null, new JavaScriptBigIntegerConverter());
 
     private const string ComplexTracer = """
                                          {

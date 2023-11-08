@@ -4,6 +4,7 @@
 using System;
 using System.Collections;
 using System.Linq;
+using System.Numerics;
 using System.Runtime.CompilerServices;
 using Microsoft.ClearScript.JavaScript;
 using Nethermind.Core;
@@ -48,16 +49,19 @@ public static class JavascriptConverter
         _ => new Address(address.ToBytes())
     } ?? throw new ArgumentException("Not correct address", nameof(address));
 
-    [SkipLocalsInit]
     public static UInt256 GetUint256(this object index) => new(index.ToBytes());
 
-    public static ITypedArray<byte> ToTypedScriptArray(this byte[] array)
-        => Engine.CurrentEngine?.CreateUint8Array(array) ?? throw new InvalidOperationException("No engine set");
+    private static Engine CurrentEngine => Engine.CurrentEngine ?? throw new InvalidOperationException("No engine set");
+
+    public static ITypedArray<byte> ToTypedScriptArray(this byte[] array) => CurrentEngine.CreateUint8Array(array);
 
     public static ITypedArray<byte> ToTypedScriptArray(this ReadOnlyMemory<byte> memory) => memory.ToArray().ToTypedScriptArray();
 
-    public static IList ToUnTypedScriptArray(this byte[] array)
-        => Engine.CurrentEngine?.CreateUntypedArray(array) ?? throw new InvalidOperationException("No engine set");
+    public static IList ToUnTypedScriptArray(this byte[] array) => CurrentEngine.CreateUntypedArray(array);
+
+    public static dynamic ToBigInteger(this BigInteger bigInteger) => CurrentEngine.CreateBigInteger(bigInteger);
+    public static dynamic ToBigInteger(this UInt256 bigInteger) => CurrentEngine.CreateBigInteger((BigInteger)bigInteger);
+
 
 
 }

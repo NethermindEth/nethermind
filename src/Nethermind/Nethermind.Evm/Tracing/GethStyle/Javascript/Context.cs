@@ -3,12 +3,9 @@
 
 using System;
 using System.Collections;
-using System.Numerics;
-using Microsoft.ClearScript;
-using Microsoft.ClearScript.JavaScript;
-using Microsoft.ClearScript.V8;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Int256;
 
 namespace Nethermind.Evm.Tracing.GethStyle.Javascript;
 
@@ -20,12 +17,14 @@ public class Context
     private IList? _from;
     private IList? _to;
     private IList? _output;
+    private dynamic? _value;
     public Address? From { get; set; }
     public Address? To { get; set; }
     public ReadOnlyMemory<byte> Input { get; set; }
     public byte[]? Output { get; set; }
     public Hash256? BlockHash { get; set; }
     public Hash256? TxHash { get; set; }
+    public UInt256 Value { get; set; }
 
     public string type { get; set; } = null!;
     public IList? from => _from ??= From?.Bytes.ToUnTypedScriptArray();
@@ -34,7 +33,7 @@ public class Context
     public long gas { get; set; }
     public long gasUsed { get; set; }
     public ulong gasPrice { get; set; }
-    public BigInteger value { get; set; }
+    public dynamic value => _value ??= Value.ToBigInteger();
     public long block { get; set; }
     public IList? output => _output ??= Output?.ToUnTypedScriptArray();
     public IList? blockHash => _blockHash ??= BlockHash?.BytesToArray().ToUnTypedScriptArray();
