@@ -120,15 +120,15 @@ namespace Nethermind.Consensus.Ethash
             return true;
         }
 
-        public static Keccak GetSeedHash(uint epoch)
+        public static Hash256 GetSeedHash(uint epoch)
         {
-            ValueKeccak seed = new ValueKeccak();
+            ValueHash256 seed = new ValueHash256();
             for (uint i = 0; i < epoch; i++)
             {
                 seed = ValueKeccak.Compute(seed.Bytes);
             }
 
-            return new Keccak(seed.Bytes);
+            return new Hash256(seed.Bytes);
         }
 
         private readonly BigInteger _2To256 = BigInteger.Pow(2, 256);
@@ -149,7 +149,7 @@ namespace Nethermind.Consensus.Ethash
             return (BigInteger)resultAsInteger <= target;
         }
 
-        public (Keccak MixHash, ulong Nonce) Mine(BlockHeader header, ulong? startNonce = null)
+        public (Hash256 MixHash, ulong Nonce) Mine(BlockHeader header, ulong? startNonce = null)
         {
             uint epoch = GetEpoch(header.Number);
             IEthashDataSet dataSet = _hintBasedCache.Get(epoch);
@@ -161,13 +161,13 @@ namespace Nethermind.Consensus.Ethash
 
             ulong fullSize = GetDataSize(epoch);
             ulong nonce = startNonce ?? GetRandomNonce();
-            Keccak headerHashed = GetTruncatedHash(header);
+            Hash256 headerHashed = GetTruncatedHash(header);
 
             // parallel for (just with ulong...) - adjust based on the available mining threads, low priority
             byte[] mixHash;
             while (true)
             {
-                ValueKeccak result;
+                ValueHash256 result;
                 (mixHash, result, _) = Hashimoto(fullSize, dataSet, headerHashed, null, nonce);
                 if (IsLessOrEqualThanTarget(result.Bytes, header.Difficulty))
                 {
@@ -180,7 +180,7 @@ namespace Nethermind.Consensus.Ethash
                 }
             }
 
-            return (new Keccak(mixHash), nonce);
+            return (new Hash256(mixHash), nonce);
         }
 
         internal const uint FnvPrime = 0x01000193;
@@ -227,8 +227,8 @@ namespace Nethermind.Consensus.Ethash
             }
 
             ulong fullSize = GetDataSize(epoch);
-            Keccak headerHashed = GetTruncatedHash(header);
-            (byte[] _, ValueKeccak result, bool isValid) = Hashimoto(fullSize, dataSet, headerHashed, header.MixHash, header.Nonce);
+            Hash256 headerHashed = GetTruncatedHash(header);
+            (byte[] _, ValueHash256 result, bool isValid) = Hashimoto(fullSize, dataSet, headerHashed, header.MixHash, header.Nonce);
             if (!isValid)
             {
                 return false;
@@ -242,7 +242,7 @@ namespace Nethermind.Consensus.Ethash
         private IEthashDataSet BuildCache(uint epoch)
         {
             uint cacheSize = GetCacheSize(epoch);
-            Keccak seed = GetSeedHash(epoch);
+            Hash256 seed = GetSeedHash(epoch);
             if (_logger.IsInfo) _logger.Info($"Building ethash cache for epoch {epoch}");
             _cacheStopwatch.Restart();
             IEthashDataSet dataSet = new EthashCache(cacheSize, seed.Bytes);
@@ -253,14 +253,14 @@ namespace Nethermind.Consensus.Ethash
 
         private static HeaderDecoder _headerDecoder = new();
 
-        private static Keccak GetTruncatedHash(BlockHeader header)
+        private static Hash256 GetTruncatedHash(BlockHeader header)
         {
             Rlp encoded = _headerDecoder.Encode(header, RlpBehaviors.ForSealing);
-            Keccak headerHashed = Keccak.Compute(encoded.Bytes); // sic! Keccak here not Keccak512
+            Hash256 headerHashed = Keccak.Compute(encoded.Bytes); // sic! Keccak here not Keccak512
             return headerHashed;
         }
 
-        public (byte[], ValueKeccak, bool) Hashimoto(ulong fullSize, IEthashDataSet dataSet, Keccak headerHash, Keccak expectedMixHash, ulong nonce)
+        public (byte[], ValueHash256, bool) Hashimoto(ulong fullSize, IEthashDataSet dataSet, Hash256 headerHash, Hash256 expectedMixHash, ulong nonce)
         {
             uint hashesInFull = (uint)(fullSize / HashBytes); // TODO: at current rate would cover around 200 years... but will the block rate change? what with private chains with shorter block times?
             const uint wordsInMix = MixBytes / WordBytes;

@@ -26,7 +26,7 @@ namespace Nethermind.Consensus.Clique
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
         }
 
-        public bool ProduceBlock(Keccak parentHash)
+        public bool ProduceBlock(Hash256 parentHash)
         {
             if (_cliqueBlockProducer is null)
             {
@@ -63,7 +63,7 @@ namespace Nethermind.Consensus.Clique
             return _snapshotManager.GetOrCreateSnapshot(head.Number, head.Hash);
         }
 
-        public Snapshot GetSnapshot(Keccak hash)
+        public Snapshot GetSnapshot(Hash256 hash)
         {
             BlockHeader head = _blockTree.FindHeader(hash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
             return _snapshotManager.GetOrCreateSnapshot(head.Number, head.Hash);
@@ -89,21 +89,21 @@ namespace Nethermind.Consensus.Clique
                 .Select(s => string.Concat(s.Key, $" ({KnownAddresses.GetDescription(s.Key)})")).ToArray();
         }
 
-        public Address[] GetSigners(Keccak hash)
+        public Address[] GetSigners(Hash256 hash)
         {
             BlockHeader header = _blockTree.FindHeader(hash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
             return _snapshotManager.GetOrCreateSnapshot(header.Number, header.Hash).Signers
                 .Select(s => s.Key).ToArray();
         }
 
-        public string[] GetSignersAnnotated(Keccak hash)
+        public string[] GetSignersAnnotated(Hash256 hash)
         {
             BlockHeader header = _blockTree.FindHeader(hash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
             return _snapshotManager.GetOrCreateSnapshot(header.Number, header.Hash).Signers
                 .Select(s => string.Concat(s.Key, $" ({KnownAddresses.GetDescription(s.Key)})")).ToArray();
         }
 
-        public ResultWrapper<bool> clique_produceBlock(Keccak parentHash)
+        public ResultWrapper<bool> clique_produceBlock(Hash256 parentHash)
         {
             return ResultWrapper<bool>.Success(ProduceBlock(parentHash));
         }
@@ -113,7 +113,7 @@ namespace Nethermind.Consensus.Clique
             return ResultWrapper<Snapshot>.Success(GetSnapshot());
         }
 
-        public ResultWrapper<Snapshot> clique_getSnapshotAtHash(Keccak hash)
+        public ResultWrapper<Snapshot> clique_getSnapshotAtHash(Hash256 hash)
         {
             return ResultWrapper<Snapshot>.Success(GetSnapshot(hash));
         }
@@ -123,7 +123,7 @@ namespace Nethermind.Consensus.Clique
             return ResultWrapper<Address[]>.Success(GetSigners().ToArray());
         }
 
-        public ResultWrapper<Address[]> clique_getSignersAtHash(Keccak hash)
+        public ResultWrapper<Address[]> clique_getSignersAtHash(Hash256 hash)
         {
             return ResultWrapper<Address[]>.Success(GetSigners(hash).ToArray());
         }
@@ -138,12 +138,12 @@ namespace Nethermind.Consensus.Clique
             return ResultWrapper<string[]>.Success(GetSignersAnnotated().ToArray());
         }
 
-        public ResultWrapper<string[]> clique_getSignersAtHashAnnotated(Keccak hash)
+        public ResultWrapper<string[]> clique_getSignersAtHashAnnotated(Hash256 hash)
         {
             return ResultWrapper<string[]>.Success(GetSignersAnnotated(hash).ToArray());
         }
 
-        public ResultWrapper<Address?> clique_getBlockSigner(Keccak? hash)
+        public ResultWrapper<Address?> clique_getBlockSigner(Hash256? hash)
         {
             if (hash is null)
             {

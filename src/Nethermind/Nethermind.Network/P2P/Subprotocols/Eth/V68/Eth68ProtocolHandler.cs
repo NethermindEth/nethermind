@@ -109,7 +109,7 @@ public class Eth68ProtocolHandler : Eth67ProtocolHandler
         }
         else
         {
-            SendMessage(new byte[] { (byte)tx.Type }, new int[] { tx.GetLength() }, new Keccak[] { tx.Hash });
+            SendMessage(new byte[] { (byte)tx.Type }, new int[] { tx.GetLength() }, new Hash256[] { tx.Hash });
         }
     }
 
@@ -123,7 +123,7 @@ public class Eth68ProtocolHandler : Eth67ProtocolHandler
 
         using ArrayPoolList<byte> types = new(NewPooledTransactionHashesMessage68.MaxCount);
         using ArrayPoolList<int> sizes = new(NewPooledTransactionHashesMessage68.MaxCount);
-        using ArrayPoolList<Keccak> hashes = new(NewPooledTransactionHashesMessage68.MaxCount);
+        using ArrayPoolList<Hash256> hashes = new(NewPooledTransactionHashesMessage68.MaxCount);
 
         foreach (Transaction tx in txs)
         {
@@ -150,7 +150,7 @@ public class Eth68ProtocolHandler : Eth67ProtocolHandler
         }
     }
 
-    private void SendMessage(IReadOnlyList<byte> types, IReadOnlyList<int> sizes, IReadOnlyList<Keccak> hashes)
+    private void SendMessage(IReadOnlyList<byte> types, IReadOnlyList<int> sizes, IReadOnlyList<Hash256> hashes)
     {
         NewPooledTransactionHashesMessage68 message = new(types, sizes, hashes);
         Metrics.Eth68NewPooledTransactionHashesSent++;

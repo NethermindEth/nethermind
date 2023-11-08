@@ -25,7 +25,7 @@ public class InvalidChainTracker : IInvalidChainTracker
     private readonly IBlockFinder _blockFinder;
     private readonly IBlockCacheService _blockCacheService;
     private readonly ILogger _logger;
-    private readonly LruCache<ValueKeccak, Node> _tree;
+    private readonly LruCache<ValueHash256, Node> _tree;
 
     // CompositeDisposable only available on System.Reactive. So this will do for now.
     private readonly List<Action> _disposables = new();
@@ -54,7 +54,7 @@ public class InvalidChainTracker : IInvalidChainTracker
 
     private void OnBlockchainProcessorInvalidBlock(object? sender, IBlockchainProcessor.InvalidBlockEventArgs args) => OnInvalidBlock(args.InvalidBlock.Hash!, args.InvalidBlock.ParentHash);
 
-    public void SetChildParent(Keccak child, Keccak parent)
+    public void SetChildParent(Hash256 child, Hash256 parent)
     {
         Node parentNode = GetNode(parent);
         bool needPropagate;
@@ -70,7 +70,7 @@ public class InvalidChainTracker : IInvalidChainTracker
         }
     }
 
-    private Node GetNode(Keccak hash)
+    private Node GetNode(Hash256 hash)
     {
         if (!_tree.TryGet(hash, out Node node))
         {
@@ -92,7 +92,7 @@ public class InvalidChainTracker : IInvalidChainTracker
             Node current = bfsQue.Dequeue();
             lock (current)
             {
-                foreach (Keccak nodeChild in current.Children)
+                foreach (Hash256 nodeChild in current.Children)
                 {
                     Node childNode = GetNode(nodeChild);
                     if (childNode.LastValidHash != current.LastValidHash)
@@ -110,7 +110,7 @@ public class InvalidChainTracker : IInvalidChainTracker
 
     }
 
-    private BlockHeader? TryGetBlockHeaderIncludingInvalid(Keccak hash)
+    private BlockHeader? TryGetBlockHeaderIncludingInvalid(Hash256 hash)
     {
         if (_blockCacheService.BlockCache.TryGetValue(hash, out Block? block))
         {
@@ -120,7 +120,7 @@ public class InvalidChainTracker : IInvalidChainTracker
         return _blockFinder.FindHeader(hash, BlockTreeLookupOptions.AllowInvalid | BlockTreeLookupOptions.TotalDifficultyNotNeeded | BlockTreeLookupOptions.DoNotCreateLevelIfMissing);
     }
 
-    public void OnInvalidBlock(Keccak failedBlock, Keccak? parent)
+    public void OnInvalidBlock(Hash256 failedBlock, Hash256? parent)
     {
         if (_logger.IsDebug) _logger.Debug($"OnInvalidBlock: {failedBlock} {parent}");
 
@@ -137,7 +137,7 @@ public class InvalidChainTracker : IInvalidChainTracker
             parent = failedBlockHeader.ParentHash!;
         }
 
-        Keccak effectiveParent = parent;
+        Hash256 effectiveParent = parent;
         BlockHeader? parentHeader = TryGetBlockHeaderIncludingInvalid(parent);
         if (parentHeader is not null)
         {
@@ -159,7 +159,7 @@ public class InvalidChainTracker : IInvalidChainTracker
         PropagateLastValidHash(failedBlockNode);
     }
 
-    public bool IsOnKnownInvalidChain(Keccak blockHash, out Keccak? lastValidHash)
+    public bool IsOnKnownInvalidChain(Hash256 blockHash, out Hash256? lastValidHash)
     {
         lastValidHash = null;
         Node node = GetNode(blockHash);
@@ -176,8 +176,8 @@ public class InvalidChainTracker : IInvalidChainTracker
 
     class Node
     {
-        public HashSet<Keccak> Children { get; } = new();
-        public Keccak? LastValidHash { get; set; }
+        public HashSet<Hash256> Children { get; } = new();
+        public Hash256? LastValidHash { get; set; }
     }
 
     public void Dispose()

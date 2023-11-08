@@ -23,7 +23,7 @@ namespace Nethermind.Clique.Test
         {
             SnapshotDecoder decoder = new();
             // Prepare snapshot
-            Keccak hash = new("0xa33ea6f6c0f1c80a6c7af308a30cb7a7affa4d0d51e6639b739727af0518b50e");
+            Hash256 hash = new("0xa33ea6f6c0f1c80a6c7af308a30cb7a7affa4d0d51e6639b739727af0518b50e");
             long number = 3305206L;
             Address candidate = new("0xbe1085bc3e0812f3df63deced87e29b3bc2db524");
             Snapshot expected = GenerateSnapshot(hash, number, candidate);
@@ -52,7 +52,7 @@ namespace Nethermind.Clique.Test
             }
         }
 
-        private Snapshot GenerateSnapshot(Keccak hash, long number, Address candidate)
+        private Snapshot GenerateSnapshot(Hash256 hash, long number, Address candidate)
         {
             SortedList<Address, long> signers = new(AddressComparer.Instance);
             signers.Add(_signer1, number - 2);

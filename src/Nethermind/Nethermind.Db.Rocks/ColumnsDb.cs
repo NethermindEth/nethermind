@@ -5,9 +5,11 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using FastEnumUtility;
+using Nethermind.Core;
 using Nethermind.Db.Rocks.Config;
 using Nethermind.Logging;
 using RocksDbSharp;
+using IWriteBatch = Nethermind.Core.IWriteBatch;
 
 namespace Nethermind.Db.Rocks;
 
@@ -42,13 +44,18 @@ public class ColumnsDb<T> : DbOnTheRocks, IColumnsDb<T> where T : struct, Enum
         options.SetCreateMissingColumnFamilies();
     }
 
-    public IDbWithSpan GetColumnDb(T key) => _columnDbs[key];
+    public IDb GetColumnDb(T key) => _columnDbs[key];
 
     public IEnumerable<T> ColumnKeys => _columnDbs.Keys;
 
-    public IReadOnlyDb CreateReadOnly(bool createInMemWriteStore)
+    public IReadOnlyColumnDb<T> CreateReadOnly(bool createInMemWriteStore)
     {
         return new ReadOnlyColumnsDb<T>(this, createInMemWriteStore);
+    }
+
+    public new IColumnsWriteBatch<T> StartWriteBatch()
+    {
+        return new RocksColumnsWriteBatch(this);
     }
 
     protected override void ApplyOptions(IDictionary<string, string> options)
@@ -60,5 +67,49 @@ public class ColumnsDb<T> : DbOnTheRocks, IColumnsDb<T> where T : struct, Enum
             _rocksDbNative.rocksdb_set_options_cf(_db.Handle, cols.Value._columnFamily.Handle, keys.Length, keys, values);
         }
         base.ApplyOptions(options);
+    }
+
+    private class RocksColumnsWriteBatch : IColumnsWriteBatch<T>
+    {
+        internal RocksDbWriteBatch _writeBatch;
+        private ColumnsDb<T> _columnsDb;
+
+        public RocksColumnsWriteBatch(ColumnsDb<T> columnsDb)
+        {
+            _writeBatch = new RocksDbWriteBatch(columnsDb);
+            _columnsDb = columnsDb;
+        }
+
+        public IWriteBatch GetColumnBatch(T key)
+        {
+            return new RocksColumnWriteBatch(_columnsDb._columnDbs[key], this);
+        }
+
+        public void Dispose()
+        {
+            _writeBatch.Dispose();
+        }
+    }
+
+    private class RocksColumnWriteBatch : IWriteBatch
+    {
+        private readonly ColumnDb _column;
+        private readonly RocksColumnsWriteBatch _writeBatch;
+
+        public RocksColumnWriteBatch(ColumnDb column, RocksColumnsWriteBatch writeBatch)
+        {
+            _column = column;
+            _writeBatch = writeBatch;
+        }
+
+        public void Dispose()
+        {
+            _writeBatch.Dispose();
+        }
+
+        public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None)
+        {
+            _writeBatch._writeBatch.Set(key, value, _column._columnFamily, flags);
+        }
     }
 }

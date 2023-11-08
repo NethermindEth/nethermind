@@ -115,7 +115,7 @@ public class PointEvaluationPrecompileTests
                 "c00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"))
             {
 
-                TestName = "Commitment does not much hash"
+                TestName = "Hash256 does not much hash"
             };
             yield return new TestCaseData(CreateKzgTestInput(
                 "010657f37554c781402a22917dee2f75def7ab966d7b770905398eba3c444014",
@@ -145,6 +145,16 @@ public class PointEvaluationPrecompileTests
                 "9418eb9a7cf2fa71125962f6662afeac10a7f1bbe26365995b13f6840946da49f79c7dfdd80b5b8a50bf44758cd2a96d"))
             {
                 TestName = "Incorrect proof 2"
+            };
+
+            yield return new TestCaseData(CreateKzgTestInput(
+                "01d18459b334ffe8e2226eef1db874fda6db2bdd9357268b39220af2d59464fb",
+                "564c0a11a0f704f4fc3e8acfe0f8245f0ad1347b378fbf96e206da11a5d36306",
+                "24d25032e67a7e6a4910df5834b8fe70e6bcfeeac0352434196bdf4b2485d5a1",
+                "978a0d595c823c05947b1156175e72634a377808384256e9921ebf72181890be2d6b58d4a73a880541d1656875654806",
+                "942307f266e636553e94006d11423f2688945ff3bdf515859eba1005c1a7708d620a94d91a1c0c285f9584e75ec2f82a"))
+            {
+                TestName = "Correct for the old setup, but not for the new one"
             };
         }
     }
@@ -204,11 +214,11 @@ public class PointEvaluationPrecompileTests
             };
 
             yield return new TestCaseData(CreateKzgTestInput(
-                "01d18459b334ffe8e2226eef1db874fda6db2bdd9357268b39220af2d59464fb",
+                "014edfed8547661f6cb416eba53061a2f6dce872c0497e6dd485a876fe2567f1",
                 "564c0a11a0f704f4fc3e8acfe0f8245f0ad1347b378fbf96e206da11a5d36306",
-                "24d25032e67a7e6a4910df5834b8fe70e6bcfeeac0352434196bdf4b2485d5a1",
-                "978a0d595c823c05947b1156175e72634a377808384256e9921ebf72181890be2d6b58d4a73a880541d1656875654806",
-                "942307f266e636553e94006d11423f2688945ff3bdf515859eba1005c1a7708d620a94d91a1c0c285f9584e75ec2f82a"))
+                "6d928e13fe443e957d82e3e71d48cb65d51028eb4483e719bf8efcdf12f7c321",
+                "a421e229565952cfff4ef3517100a97da1d4fe57956fa50a442f92af03b1bf37adacc8ad4ed209b31287ea5bb94d9d06",
+                "a444d6bb5aadc3ceb615b50d6606bd54bfe529f59247987cd1ab848d19de599a9052f1835fb0d0d44cf70183e19a68c9"))
             {
                 TestName = "Verification passes 6"
             };

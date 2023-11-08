@@ -38,7 +38,7 @@ namespace Nethermind.Mining.Test
             await ethashSealer.MineAsync(cancellationTokenSource.Token, block, validNonce - 3);
 
             Assert.That(block.Header.Nonce, Is.EqualTo(validNonce));
-            Assert.That(block.Header.MixHash, Is.EqualTo(new Keccak("0x52b96cf62447129c6bd81f835721ee145b948ae3b05ef6eae454cbf69a5bc05d")));
+            Assert.That(block.Header.MixHash, Is.EqualTo(new Hash256("0x52b96cf62447129c6bd81f835721ee145b948ae3b05ef6eae454cbf69a5bc05d")));
         }
 
         [Test]
@@ -71,7 +71,7 @@ namespace Nethermind.Mining.Test
 
             BlockHeader blockHeader = new(parentHeader.Hash, Keccak.OfAnEmptySequenceRlp, Address.Zero, 131136, 1, 21000, 1, new byte[] { });
             blockHeader.Nonce = 7217048144105167954;
-            blockHeader.MixHash = new Keccak("0x37d9fb46a55e9dbbffc428f3a1be6f191b3f8eaf52f2b6f53c4b9bae62937105");
+            blockHeader.MixHash = new Hash256("0x37d9fb46a55e9dbbffc428f3a1be6f191b3f8eaf52f2b6f53c4b9bae62937105");
             blockHeader.Hash = blockHeader.CalculateHash();
             Block block = new(blockHeader);
 

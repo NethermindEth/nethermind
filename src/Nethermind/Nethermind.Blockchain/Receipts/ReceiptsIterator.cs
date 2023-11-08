@@ -12,7 +12,7 @@ namespace Nethermind.Blockchain.Receipts
 {
     public ref struct ReceiptsIterator
     {
-        private readonly IDbWithSpan _blocksDb;
+        private readonly IDb _blocksDb;
         private readonly int _length;
         private Rlp.ValueDecoderContext _decoderContext;
         private int _startingPosition;
@@ -25,7 +25,7 @@ namespace Nethermind.Blockchain.Receipts
         private IReceiptRefDecoder _receiptRefDecoder;
         private bool _recoveryContextConfigured;
 
-        public ReceiptsIterator(scoped in Span<byte> receiptsData, IDbWithSpan blocksDb, Func<IReceiptsRecovery.IRecoveryContext?>? recoveryContextFactory, IReceiptRefDecoder receiptRefDecoder)
+        public ReceiptsIterator(scoped in Span<byte> receiptsData, IDb blocksDb, Func<IReceiptsRecovery.IRecoveryContext?>? recoveryContextFactory, IReceiptRefDecoder receiptRefDecoder)
         {
             _decoderContext = receiptsData.AsRlpValueContext();
             _blocksDb = blocksDb;
@@ -118,7 +118,7 @@ namespace Nethermind.Blockchain.Receipts
             return receipt.Logs is null ? new LogEntriesIterator(receipt.LogsRlp, _receiptRefDecoder) : new LogEntriesIterator(receipt.Logs);
         }
 
-        public Keccak[] DecodeTopics(Rlp.ValueDecoderContext valueDecoderContext)
+        public Hash256[] DecodeTopics(Rlp.ValueDecoderContext valueDecoderContext)
         {
             return _receiptRefDecoder.DecodeTopics(valueDecoderContext);
         }

@@ -31,6 +31,6 @@ public class BlobTxDistinctSortedPool : TxDistinctSortedPool
     /// <summary>
     /// For tests only - to test sorting
     /// </summary>
-    internal void TryGetBlobTxSortingEquivalent(Keccak hash, out Transaction? lightBlobTx)
+    internal void TryGetBlobTxSortingEquivalent(Hash256 hash, out Transaction? lightBlobTx)
         => base.TryGetValue(hash, out lightBlobTx);
 }

@@ -38,7 +38,7 @@ namespace Nethermind.Config.Test
         [TestCase(12ul, typeof(BlocksConfig), nameof(BlocksConfig.SecondsPerSlot))]
         [TestCase(false, typeof(BlocksConfig), nameof(BlocksConfig.RandomizedBlocks))]
         [TestCase("chainspec/foundation.json", typeof(InitConfig), nameof(InitConfig.ChainSpecPath))]
-        [TestCase(DumpOptions.Receipts, typeof(InitConfig), nameof(InitConfig.AutoDump))]
+        [TestCase(DumpOptions.Default, typeof(InitConfig), nameof(InitConfig.AutoDump))]
         public void Test_getDefaultValue<T>(T expected, Type type, string propName)
         {
             IConfig config = Activator.CreateInstance(type) as IConfig ?? throw new Exception("type is not IConfig");

@@ -3,7 +3,7 @@
 
 namespace Nethermind.Merge.Plugin.GC;
 
-class NoGCStrategy : IGCStrategy
+public class NoGCStrategy : IGCStrategy
 {
     public static readonly NoGCStrategy Instance = new();
     public int CollectionsPerDecommit => -1;

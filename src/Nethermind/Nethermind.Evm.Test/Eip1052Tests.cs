@@ -127,7 +127,7 @@ namespace Nethermind.Evm.Test
                 .Done;
 
             Execute(code);
-            Keccak codehash = Keccak.Compute("some code");
+            Hash256 codehash = Keccak.Compute("some code");
             AssertStorage(0, codehash.Bytes);
             AssertStorage(1, codehash.Bytes);
         }
@@ -258,7 +258,7 @@ namespace Nethermind.Evm.Test
         public void Create_returns_code_hash()
         {
             byte[] deployedCode = { 1, 2, 3 };
-            Keccak deployedCodeHash = Keccak.Compute(deployedCode);
+            Hash256 deployedCodeHash = Keccak.Compute(deployedCode);
 
             byte[] initCode = Prepare.EvmCode
                 .ForInitOf(deployedCode).Done;

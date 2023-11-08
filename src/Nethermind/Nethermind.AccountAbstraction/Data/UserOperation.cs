@@ -30,10 +30,10 @@ namespace Nethermind.AccountAbstraction.Data
             Signature = userOperationRpc.Signature;
 
             AccessList = UserOperationAccessList.Empty;
-            AddressesToCodeHashes = ImmutableDictionary<Address, Keccak>.Empty;
+            AddressesToCodeHashes = ImmutableDictionary<Address, Hash256>.Empty;
         }
 
-        private Keccak CalculateHash()
+        private Hash256 CalculateHash()
         {
             return Keccak.Compute(_packer.Pack(this));
         }
@@ -61,7 +61,7 @@ namespace Nethermind.AccountAbstraction.Data
             Signature = Signature!
         };
 
-        public Keccak? RequestId { get; set; }
+        public Hash256? RequestId { get; set; }
         public Address Sender { get; set; }
         public UInt256 Nonce { get; set; }
         public byte[] InitCode { get; set; }
@@ -75,7 +75,7 @@ namespace Nethermind.AccountAbstraction.Data
         public byte[] Signature { get; set; }
         public byte[] PaymasterData { get; set; }
         public UserOperationAccessList AccessList { get; set; }
-        public IDictionary<Address, Keccak> AddressesToCodeHashes { get; set; }
+        public IDictionary<Address, Hash256> AddressesToCodeHashes { get; set; }
         public bool AlreadySimulated { get; set; }
         public bool PassedBaseFee { get; set; } // if the MaxFeePerGas has ever exceeded the basefee
     }

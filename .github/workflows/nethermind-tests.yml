@@ -130,6 +130,7 @@ jobs:
           - Ethereum.Blockchain.Block.Legacy.Test
           - Ethereum.Blockchain.Block.Test
           - Ethereum.Blockchain.Legacy.Test
+          - Ethereum.Blockchain.Pyspec.Test
           - Ethereum.Blockchain.Test
           - Ethereum.Difficulty.Test
           - Ethereum.HexPrefix.Test
