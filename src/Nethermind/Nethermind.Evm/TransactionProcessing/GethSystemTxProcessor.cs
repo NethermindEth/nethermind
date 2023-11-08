@@ -24,15 +24,9 @@ namespace Nethermind.Evm.TransactionProcessing
 {
     public class GethSystemTxProcessor : AuraSystemTxProcessor
     {
-        public GethSystemTxProcessor(ISpecProvider? specProvider, IWorldState? worldState, IVirtualMachine? virtualMachine, EthereumEcdsa? ecdsa, ILogger? logger)
-            : base(specProvider, worldState, virtualMachine, ecdsa, logger)
+        public GethSystemTxProcessor(IReleaseSpec? spec, IWorldState? worldState, IVirtualMachine? virtualMachine, EthereumEcdsa? ecdsa, ILogger? logger)
+            : base(spec, worldState, virtualMachine, ecdsa, logger)
         {
-        }
-
-        protected override void GetSpecFromHeader(BlockExecutionContext blCtx, out BlockHeader header, out IReleaseSpec spec)
-        {
-            header = blCtx.Header;
-            spec = SpecProvider.GetSpec(header);
         }
 
         // TODO Should we remove this already

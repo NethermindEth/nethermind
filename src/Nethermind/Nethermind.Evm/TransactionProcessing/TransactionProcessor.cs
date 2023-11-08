@@ -186,8 +186,8 @@ namespace Nethermind.Evm.TransactionProcessing
         private ITransactionProcessor SelectSystemTxProcessor(IReleaseSpec spec)
         {
             return spec.AuRaSystemCalls
-                ? new AuraSystemTxProcessor(SpecProvider, WorldState, VirtualMachine, Ecdsa, Logger)
-                : new GethSystemTxProcessor(SpecProvider, WorldState, VirtualMachine, Ecdsa, Logger);
+                ? new AuraSystemTxProcessor(spec, WorldState, VirtualMachine, Ecdsa, Logger)
+                : new GethSystemTxProcessor(spec, WorldState, VirtualMachine, Ecdsa, Logger);
         }
 
         protected void QuickFail(Transaction tx, BlockHeader block, IReleaseSpec spec, ITxTracer txTracer, string? reason)

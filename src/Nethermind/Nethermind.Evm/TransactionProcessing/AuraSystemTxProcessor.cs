@@ -26,19 +26,19 @@ namespace Nethermind.Evm.TransactionProcessing
     {
         protected EthereumEcdsa Ecdsa { get; private init; }
         protected ILogger Logger { get; private init; }
-        protected ISpecProvider SpecProvider { get; private init; }
+        protected IReleaseSpec Spec { get; private init; }
         protected IWorldState WorldState { get; private init; }
         protected IVirtualMachine VirtualMachine { get; private init; }
 
         public AuraSystemTxProcessor(
-            ISpecProvider? specProvider,
+            IReleaseSpec? spec,
             IWorldState? worldState,
             IVirtualMachine? virtualMachine,
             EthereumEcdsa? ecdsa,
             ILogger? logger)
         {
             Logger = logger ?? throw new ArgumentNullException(nameof(logger));
-            SpecProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
+            Spec = spec ?? throw new ArgumentNullException(nameof(spec));
             WorldState = worldState ?? throw new ArgumentNullException(nameof(worldState));
             VirtualMachine = virtualMachine ?? throw new ArgumentNullException(nameof(virtualMachine));
             Ecdsa = ecdsa ?? throw new ArgumentNullException(nameof(ecdsa));
@@ -69,7 +69,7 @@ namespace Nethermind.Evm.TransactionProcessing
 
         protected virtual void Execute(Transaction tx, BlockExecutionContext blCtx, ITxTracer tracer, ExecutionOptions opts)
         {
-            GetSpecFromHeader(blCtx, out BlockHeader header, out IReleaseSpec  spec);
+            UpdateSpecBasedOnSystemProcessor(blCtx, out BlockHeader header, out IReleaseSpec  spec);
 
             // restore is CallAndRestore - previous call, we will restore state after the execution
             bool restore = opts.HasFlag(ExecutionOptions.Restore);
@@ -174,11 +174,10 @@ namespace Nethermind.Evm.TransactionProcessing
             }
         }
 
-        protected virtual void GetSpecFromHeader(BlockExecutionContext blCtx, out BlockHeader header, out IReleaseSpec spec)
+        protected virtual void UpdateSpecBasedOnSystemProcessor(BlockExecutionContext blCtx, out BlockHeader header, out IReleaseSpec spec)
         {
             header = blCtx.Header;
-            spec = SpecProvider.GetSpec(header);
-            spec = new SystemTransactionReleaseSpec(spec);
+            spec = new SystemTransactionReleaseSpec(Spec);
         }
 
         protected void QuickFail(Transaction tx, BlockHeader block, IReleaseSpec spec, ITxTracer txTracer, string? reason)
