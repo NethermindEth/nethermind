@@ -29,7 +29,6 @@ public class PivotUpdator
     private readonly IBlockCacheService _blockCacheService;
     private readonly IBeaconSyncStrategy _beaconSyncStrategy;
     private readonly IDb _metadataDb;
-    private readonly ISyncProgressResolver _syncProgressResolver;
     private readonly ILogger _logger;
 
     private readonly CancellationTokenSource _cancellation = new();
@@ -46,7 +45,6 @@ public class PivotUpdator
         IBlockCacheService blockCacheService,
         IBeaconSyncStrategy beaconSyncStrategy,
         IDb metadataDb,
-        ISyncProgressResolver syncProgressResolver,
         ILogManager logManager)
     {
         _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
@@ -56,7 +54,6 @@ public class PivotUpdator
         _blockCacheService = blockCacheService ?? throw new ArgumentNullException(nameof(blockCacheService));
         _beaconSyncStrategy = beaconSyncStrategy ?? throw new ArgumentNullException(nameof(beaconSyncStrategy));
         _metadataDb = metadataDb ?? throw new ArgumentNullException(nameof(metadataDb));
-        _syncProgressResolver = syncProgressResolver ?? throw new ArgumentNullException(nameof(syncProgressResolver));
         _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
 
         _maxAttempts = syncConfig.MaxAttemptsToUpdatePivot;
@@ -253,7 +250,6 @@ public class PivotUpdator
         _syncConfig.PivotHash = finalizedBlockHash.ToString();
         _syncConfig.PivotNumber = finalizedBlockNumber.ToString();
         _syncConfig.MaxAttemptsToUpdatePivot = 0;
-        _syncProgressResolver.UpdateBarriers();
     }
 
 }
