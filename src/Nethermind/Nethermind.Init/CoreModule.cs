@@ -12,6 +12,7 @@ using Nethermind.Config;
 using Nethermind.Core.Specs;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
+using Nethermind.State;
 
 namespace Nethermind.Init;
 
@@ -58,5 +59,12 @@ public class CoreModule: Module
             .As<IBlockFinder>();
         builder.RegisterInstance(_api.ReceiptStorage!)
             .As<IReceiptStorage>();
+
+        // Obviously this is still shared globally, but we can start detecting which part requires a world state as
+        // without explicitly specifying a lifetime, it will crash.
+        builder.Register<IWorldState>(_ => _api.WorldStateFactory())
+            .InstancePerMatchingLifetimeScope(NethermindScope.WorldState);
+
+        builder.Register<IWitnessCollector>(_ => _api.WitnessCollector!);
     }
 }

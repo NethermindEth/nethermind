@@ -9,19 +9,14 @@ using Autofac.Core;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Find;
-using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Services;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Comparers;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
-using Nethermind.Core;
-using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.Evm.TransactionProcessing;
-using Nethermind.State;
 using Nethermind.TxPool;
 
 namespace Nethermind.Init.Steps;
@@ -40,8 +35,7 @@ public class InitializeContainer: IStep
     {
         ContainerBuilder builder = new ContainerBuilder();
         builder.RegisterModule(new CoreModule(_api, _api.ConfigProvider, _api.EthereumJsonSerializer, _api.LogManager));
-        builder.RegisterModule(new BlockchainModule(_api));
-        builder.RegisterModule(new StateModule(_api));
+        builder.RegisterModule(new BlockchainModule());
 
         foreach (INethermindPlugin nethermindPlugin in _api.Plugins)
         {
@@ -57,35 +51,8 @@ public class InitializeContainer: IStep
     }
 }
 
-public class StateModule : Module
-{
-    private readonly INethermindApi _api;
-
-    public StateModule(INethermindApi api)
-    {
-        _api = api;
-    }
-
-    protected override void Load(ContainerBuilder builder)
-    {
-        // Obviously this is still shared globally, but we can start detecting which part requires a world state as
-        // without explicitly specifying a lifetime, it will crash.
-        builder.Register<IWorldState>(_ => _api.WorldStateFactory())
-            .InstancePerMatchingLifetimeScope(NethermindScope.WorldState);
-
-        builder.Register<IWitnessCollector>(_ => _api.WitnessCollector!);
-    }
-}
-
 public class BlockchainModule : Module
 {
-    private readonly INethermindApi _api;
-
-    public BlockchainModule(INethermindApi api)
-    {
-        _api = api;
-    }
-
     protected override void Load(ContainerBuilder builder)
     {
         builder.RegisterType<TxValidator>()
