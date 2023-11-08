@@ -475,7 +475,7 @@ namespace Nethermind.Trie
             Span<byte> nibbleBytes = stackalloc byte[StoreNibblePathPrefix.Length + rawKey.Length * 2];
             StoreNibblePathPrefix.CopyTo(nibbleBytes);
             Nibbles.BytesToNibbleBytes(rawKey, nibbleBytes[StoreNibblePathPrefix.Length..]);
-            TrieNode? node = TrieStore.FindCachedOrUnknown(nibbleBytes[StoreNibblePathPrefix.Length..], StoreNibblePathPrefix, ParentStateRootHash);
+            TrieNode? node = TrieStore.FindCachedOrUnknown(nibbleBytes[StoreNibblePathPrefix.Length..], StoreNibblePathPrefix, rootHash ?? ParentStateRootHash);
 
             if (node is null)
                 return null;

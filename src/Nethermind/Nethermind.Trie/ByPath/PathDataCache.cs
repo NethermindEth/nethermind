@@ -7,6 +7,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading;
+using System.Xml.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -471,7 +472,7 @@ internal class PathDataCacheInstance
                 latestDataHeld = pathHistory.GetLatestUntil(localState.Id);
             }
 
-            if (WasRemovedAfter(path, latestDataHeld?.StateId ?? -1))
+            if (WasRemovedBetween(path, latestDataHeld?.StateId ?? -1, localState.Id))
             {
                 Pruning.Metrics.LoadedFromCacheNodesCount++;
                 return new NodeData(null, Keccak.OfAnEmptySequenceRlp);
@@ -621,24 +622,31 @@ internal class PathDataCacheInstance
             PathDataAtState? nodeData = nodeVersion.Value.GetLatestUntil(stateId.Id);
             if (nodeData?.ShouldPersist == true)
             {
+                if (WasRemovedBetween(nodeVersion.Key, nodeData.StateId, stateId?.Id ?? 0))
+                    continue;
+
                 NodeData data = nodeData.Data;
 
-                //part of TrieNode ResolveNode to get path to node for leaves - should this just be a part of NodeData ?
                 int leafPathToNodeLength = -1;
-                RlpStream rlpStream = data.RLP.AsRlpStream();
-                rlpStream.ReadSequenceLength();
-                // micro optimization to prevent searches beyond 3 items for branches (search up to three)
-                int numberOfItems = rlpStream.PeekNumberOfItemsRemaining(null, 3);
-                if (numberOfItems == 2)
+                if (data.RLP is null)
                 {
-                    (byte[] key, bool isLeaf) = HexPrefix.FromBytes(rlpStream.DecodeByteArraySpan());
-                    if (isLeaf)
-                        leafPathToNodeLength = 64 - key.Length;
+                    toPersist.Insert(0, Tuple.Create(nodeVersion.Key, leafPathToNodeLength, data.RLP));
                 }
-
-                var element = Tuple.Create(nodeVersion.Key, leafPathToNodeLength, data.RLP);
-
-                if (data.RLP is null) toPersist.Insert(0, element); else toPersist.Add(element);
+                else
+                {
+                    //part of TrieNode ResolveNode to get path to node for leaves - should this just be a part of NodeData ?
+                    RlpStream rlpStream = data.RLP.AsRlpStream();
+                    rlpStream.ReadSequenceLength();
+                    // micro optimization to prevent searches beyond 3 items for branches (search up to three)
+                    int numberOfItems = rlpStream.PeekNumberOfItemsRemaining(null, 3);
+                    if (numberOfItems == 2)
+                    {
+                        (byte[] key, bool isLeaf) = HexPrefix.FromBytes(rlpStream.DecodeByteArraySpan());
+                        if (isLeaf)
+                            leafPathToNodeLength = 64 - key.Length;
+                    }
+                    toPersist.Add(Tuple.Create(nodeVersion.Key, leafPathToNodeLength, data.RLP));
+                }
 
                 if (_logger.IsTrace)
                 {
@@ -794,12 +802,12 @@ internal class PathDataCacheInstance
         _historyByPath[path] = history;
     }
 
-    private bool WasRemovedAfter(Span<byte> path, int stateId)
+    private bool WasRemovedBetween(Span<byte> path, int fromStateId, int toStateId)
     {
         if (path.Length >= PrefixLength && _removedPrefixes.TryGetValue(path[0..PrefixLength], out List<int> deletedAtStates))
         {
             for (int i = 0; i < deletedAtStates.Count; i++)
-                if (deletedAtStates[i] > stateId) return true;
+                if (deletedAtStates[i] > fromStateId && deletedAtStates[i] <= toStateId) return true;
         }
         return false;
     }
