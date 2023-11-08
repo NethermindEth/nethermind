@@ -263,10 +263,11 @@ namespace Nethermind.TxPool
         private void RemoveProcessedTransactions(Block block)
         {
             Transaction[] blockTransactions = block.Transactions;
-            List<Transaction>? blobTxs = null;
+            List<Transaction>? blobTxsToSave = null;
             long discoveredForPendingTxs = 0;
             long discoveredForHashCache = 0;
             long eip1559Txs = 0;
+            long blobTxs = 0;
             long blobs = 0;
 
             for (int i = 0; i < blockTransactions.Length; i++)
@@ -281,6 +282,7 @@ namespace Nethermind.TxPool
 
                 if (blockTx.SupportsBlobs)
                 {
+                    blobTxs++;
                     blobs += blockTx.BlobVersionedHashes?.Length ?? 0;
 
                     if (_blobReorgsSupportEnabled)
@@ -288,8 +290,8 @@ namespace Nethermind.TxPool
                         if (_blobTransactions.TryGetValue(blockTx.Hash, out Transaction? fullBlobTx))
                         {
                             if (_logger.IsTrace) _logger.Trace($"Saved processed blob tx {blockTx.Hash} from block {block.Number} to ProcessedTxs db");
-                            blobTxs ??= new List<Transaction>(Eip4844Constants.GetMaxBlobsPerBlock());
-                            blobTxs.Add(fullBlobTx);
+                            blobTxsToSave ??= new List<Transaction>(Eip4844Constants.GetMaxBlobsPerBlock());
+                            blobTxsToSave.Add(fullBlobTx);
                         }
                         else if (_logger.IsTrace) _logger.Trace($"Skipped adding processed blob tx {blockTx.Hash} from block {block.Number} to ProcessedTxs db - not found in blob pool");
                     }
@@ -306,9 +308,9 @@ namespace Nethermind.TxPool
                 }
             }
 
-            if (blobTxs is not null)
+            if (blobTxsToSave is not null)
             {
-                _blobTxStorage.AddBlobTransactionsFromBlock(block.Number, blobTxs);
+                _blobTxStorage.AddBlobTransactionsFromBlock(block.Number, blobTxsToSave);
             }
 
             long transactionsInBlock = blockTransactions.Length;
@@ -317,7 +319,7 @@ namespace Nethermind.TxPool
                 Metrics.DarkPoolRatioLevel1 = (float)discoveredForHashCache / transactionsInBlock;
                 Metrics.DarkPoolRatioLevel2 = (float)discoveredForPendingTxs / transactionsInBlock;
                 Metrics.Eip1559TransactionsRatio = (float)eip1559Txs / transactionsInBlock;
-                Metrics.BlobTransactionsInBlock = blobTxs?.Count ?? 0;
+                Metrics.BlobTransactionsInBlock = blobTxs;
                 Metrics.BlobsInBlock = blobs;
             }
         }
