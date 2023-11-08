@@ -35,6 +35,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v3
+        with:
+          clean: true
 
       - name: Configure settings
         id: settings
