@@ -348,6 +348,16 @@ public class GethLikeJavascriptTracerTests : VirtualMachineTestsBase
     }
 
     [Test]
+    public void call_tracer()
+    {
+        GethLikeTxTrace traces = ExecuteBlock(
+                GetTracer("callTracer"),
+                NestedCalls(),
+                MainnetSpecProvider.CancunActivation)
+            .BuildResult().First();
+    }
+
+    [Test]
     public void multiple_prestate_tracer([Values(10)] int count)
     {
         for (int i = 0; i < count; i++)

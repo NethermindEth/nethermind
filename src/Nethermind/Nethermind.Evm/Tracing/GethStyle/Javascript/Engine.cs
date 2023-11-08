@@ -88,7 +88,7 @@ public class Engine : IDisposable
         Func<object?, string> toHex = ToHex;
         Func<object, ITypedArray<byte>> toAddress = ToAddress;
         Func<object, bool> isPrecompiled = IsPrecompiled;
-        Func<object, long, long, ITypedArray<byte>> slice = Slice;
+        Func<object, int, int, ITypedArray<byte>> slice = Slice;
         Func<object, ulong, ITypedArray<byte>> toContract = ToContract;
         Func<object, string, object, ITypedArray<byte>> toContract2 = ToContract2;
 
@@ -109,15 +109,20 @@ public class Engine : IDisposable
     private string ToHex(object? bytes) => bytes is null ? "0x" : bytes.ToBytes().ToHexString();
     private ITypedArray<byte> ToAddress(object address) => address.ToAddress().Bytes.ToTypedScriptArray();
     private bool IsPrecompiled(object address) => address.ToAddress().IsPrecompile(_spec);
-    private ITypedArray<byte> Slice(object input, long start, long end)
+
+    private ITypedArray<byte> Slice(object input, int start, int end)
     {
         if (input == null)
         {
             throw new ArgumentNullException(nameof(input));
         }
 
-        int length = (int)(end - start);
-        return input.ToBytes().Slice((int)start, length).ToTypedScriptArray();
+        if (start < 0 || end < start || end > Array.MaxLength)
+        {
+            throw new ArgumentOutOfRangeException(nameof(start), $"tracer accessed out of bound memory: offset {start}, end {end}");
+        }
+
+        return input.ToBytes().Slice(start, end - start).ToTypedScriptArray();
     }
 
     private ITypedArray<byte> ToContract(object from, ulong nonce) => ContractAddress.From(from.ToAddress(), nonce).Bytes.ToTypedScriptArray();
