@@ -17,9 +17,8 @@ public class WorldStateManager: ReadOnlyWorldStateManager
         IWorldState worldState,
         ITrieStore trieStore,
         IDbProvider dbProvider,
-        IReadOnlyTrieStore? readOnlyTrieStore,
         ILogManager logManager
-    ) : base(dbProvider, readOnlyTrieStore, logManager)
+    ) : base(dbProvider, trieStore.AsReadOnly(), logManager)
     {
         _worldState = worldState;
         _trieStore = trieStore;

@@ -39,12 +39,15 @@ public class ReadOnlyWorldStateManager: IWorldStateManager
     public (IWorldState, IStateReader, Action) CreateResettableWorldState()
     {
         ReadOnlyDbProvider readOnlyDbProvider = _dbProvider.AsReadOnly(false);
-        IKeyValueStore codeDb = readOnlyDbProvider.GetDb<IDb>(DbNames.Code).AsReadOnly(true);
+        ReadOnlyDb codeDb = readOnlyDbProvider.GetDb<IDb>(DbNames.Code).AsReadOnly(true);
         return (
             new WorldState(_readOnlyTrieStore, codeDb, _logManager),
             new StateReader(_readOnlyTrieStore, codeDb, _logManager),
-            readOnlyDbProvider.ClearTempChanges
-        );
+            () =>
+            {
+                readOnlyDbProvider.ClearTempChanges();
+                codeDb.ClearTempChanges();
+            });
     }
 
     public virtual event EventHandler<ReorgBoundaryReached>? ReorgBoundaryReached

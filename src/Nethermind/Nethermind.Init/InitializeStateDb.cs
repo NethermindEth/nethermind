@@ -142,7 +142,6 @@ public class InitializeStateDb: IStep
             worldState,
             trieStore,
             getApi.DbProvider,
-            trieStore.AsReadOnly(cachedStateDb),
             getApi.LogManager);
 
         // TODO: Don't forget this
