@@ -363,6 +363,7 @@ namespace Nethermind.Synchronization.Test
                 trieStore.AsReadOnly(),
                 bestPeerStrategy,
                 new ChainSpec(),
+                stateReader,
                 logManager);
 
             ISyncModeSelector selector = synchronizer.SyncModeSelector;

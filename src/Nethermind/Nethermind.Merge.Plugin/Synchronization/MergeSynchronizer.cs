@@ -11,6 +11,7 @@ using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.InvalidChainTracker;
 using Nethermind.Specs.ChainSpecStyle;
+using Nethermind.State;
 using Nethermind.Stats;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.Blocks;
@@ -55,6 +56,7 @@ public class MergeSynchronizer : Synchronizer
         IBetterPeerStrategy betterPeerStrategy,
         ChainSpec chainSpec,
         IBeaconSyncStrategy beaconSync,
+        IStateReader stateReader,
         ILogManager logManager)
         : base(
             dbProvider,
@@ -70,6 +72,7 @@ public class MergeSynchronizer : Synchronizer
             readOnlyTrieStore,
             betterPeerStrategy,
             chainSpec,
+            stateReader,
             logManager)
     {
         _invalidChainTracker = invalidChainTracker;

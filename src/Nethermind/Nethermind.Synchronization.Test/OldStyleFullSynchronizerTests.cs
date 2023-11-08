@@ -20,6 +20,7 @@ using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Specs.ChainSpecStyle;
+using Nethermind.State;
 using Nethermind.State.Witnesses;
 using Nethermind.Stats;
 using Nethermind.Synchronization.Blocks;
@@ -65,6 +66,9 @@ namespace Nethermind.Synchronization.Test
                 Always.Valid,
                 new TotalDifficultyBetterPeerStrategy(LimboLogs.Instance),
                 LimboLogs.Instance);
+
+            IStateReader stateReader = new StateReader(trieStore, _codeDb, LimboLogs.Instance);
+
             _synchronizer = new Synchronizer(
                 dbProvider,
                 MainnetSpecProvider.Instance,
@@ -79,6 +83,7 @@ namespace Nethermind.Synchronization.Test
                 trieStore.AsReadOnly(),
                 bestPeerStrategy,
                 new ChainSpec(),
+                stateReader,
                 LimboLogs.Instance);
             _syncServer = new SyncServer(
                 trieStore.AsKeyValueStore(),

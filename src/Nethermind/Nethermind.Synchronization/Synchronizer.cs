@@ -14,6 +14,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Specs.ChainSpecStyle;
+using Nethermind.State;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization.Blocks;
@@ -76,7 +77,7 @@ namespace Nethermind.Synchronization
         private ISyncProgressResolver? _syncProgressResolver;
         public ISyncProgressResolver SyncProgressResolver => _syncProgressResolver ??= new SyncProgressResolver(
             _blockTree,
-            new FullStateFinder(_blockTree, _dbProvider.StateDb, _readOnlyTrieStore),
+            new FullStateFinder(_blockTree, _stateReader),
             _syncConfig,
             HeadersSyncFeed,
             BodiesSyncFeed,
@@ -88,6 +89,8 @@ namespace Nethermind.Synchronization
 
 
         protected ISyncModeSelector? _syncModeSelector;
+        private readonly IStateReader _stateReader;
+
         public virtual ISyncModeSelector SyncModeSelector => _syncModeSelector ??= new MultiSyncModeSelector(
             SyncProgressResolver,
             _syncPeerPool!,
@@ -111,6 +114,7 @@ namespace Nethermind.Synchronization
             IReadOnlyTrieStore readOnlyTrieStore,
             IBetterPeerStrategy betterPeerStrategy,
             ChainSpec chainSpec,
+            IStateReader stateReader,
             ILogManager logManager)
         {
             _dbProvider = dbProvider ?? throw new ArgumentNullException(nameof(dbProvider));
@@ -128,6 +132,7 @@ namespace Nethermind.Synchronization
             _betterPeerStrategy = betterPeerStrategy ?? throw new ArgumentNullException(nameof(betterPeerStrategy));
             _chainSpec = chainSpec ?? throw new ArgumentNullException(nameof(chainSpec));
             _readOnlyTrieStore = readOnlyTrieStore ?? throw new ArgumentNullException(nameof(readOnlyTrieStore));
+            _stateReader = stateReader ?? throw new ArgumentNullException(nameof(readOnlyTrieStore));
 
             _syncReport = new SyncReport(_syncPeerPool!, nodeStatsManager!, _syncConfig, _pivot, logManager);
 

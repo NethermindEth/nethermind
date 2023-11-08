@@ -32,6 +32,7 @@ using Nethermind.Merge.Plugin.InvalidChainTracker;
 using Nethermind.Merge.Plugin.Synchronization;
 using Nethermind.Merge.Plugin.Test;
 using Nethermind.Specs.ChainSpecStyle;
+using Nethermind.State;
 using Nethermind.State.Witnesses;
 using Nethermind.Synchronization.Blocks;
 using Nethermind.Synchronization.ParallelSync;
@@ -332,7 +333,9 @@ namespace Nethermind.Synchronization.Test
                     ? new MergeBetterPeerStrategy(totalDifficultyBetterPeerStrategy, poSSwitcher, beaconPivot, LimboLogs.Instance)
                     : totalDifficultyBetterPeerStrategy;
 
-                FullStateFinder fullStateFinder = new FullStateFinder(BlockTree, stateDb, trieStore);
+                StateReader reader = new StateReader(trieStore, codeDb, LimboLogs.Instance);
+
+                FullStateFinder fullStateFinder = new FullStateFinder(BlockTree, reader);
 
                 SyncPeerPool = new SyncPeerPool(BlockTree, stats, bestPeerStrategy, _logManager, 25);
                 Pivot pivot = new(syncConfig);
@@ -369,6 +372,7 @@ namespace Nethermind.Synchronization.Test
                         bestPeerStrategy,
                         new ChainSpec(),
                         No.BeaconSync,
+                        reader,
                         _logManager);
                 }
                 else
@@ -394,6 +398,7 @@ namespace Nethermind.Synchronization.Test
                         trieStore.AsReadOnly(),
                         bestPeerStrategy,
                         new ChainSpec(),
+                        reader,
                         _logManager);
                 }
 
