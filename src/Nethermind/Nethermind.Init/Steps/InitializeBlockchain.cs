@@ -150,7 +150,6 @@ namespace Nethermind.Init.Steps
         protected virtual ITransactionProcessor CreateTransactionProcessor()
         {
             if (_api.SpecProvider is null) throw new StepDependencyException(nameof(_api.SpecProvider));
-            if (_api.WorldState is null) throw new StepDependencyException(nameof(_api.WorldState));
 
             VirtualMachine virtualMachine = CreateVirtualMachine();
 
@@ -208,12 +207,14 @@ namespace Nethermind.Init.Steps
             if (_api.RewardCalculatorSource is null) throw new StepDependencyException(nameof(_api.RewardCalculatorSource));
             if (_api.TransactionProcessor is null) throw new StepDependencyException(nameof(_api.TransactionProcessor));
 
+            IWorldState worldState = _api.WorldState!;
+
             return new BlockProcessor(
                 _api.SpecProvider,
                 _api.BlockValidator,
                 _api.RewardCalculatorSource.Get(_api.TransactionProcessor!),
-                new BlockProcessor.BlockValidationTransactionsExecutor(_api.TransactionProcessor, _api.WorldState!),
-                _api.WorldState,
+                new BlockProcessor.BlockValidationTransactionsExecutor(_api.TransactionProcessor, worldState),
+                worldState,
                 _api.ReceiptStorage,
                 _api.WitnessCollector,
                 _api.LogManager);

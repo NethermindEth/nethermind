@@ -81,11 +81,10 @@ public class InitializeStateDb: IStep
 
         CachingStore cachedStateDb = getApi.DbProvider.StateDb
             .Cached(Trie.MemoryAllowance.TrieNodeCacheCount);
-        setApi.MainStateDbWithCache = cachedStateDb;
         IKeyValueStore codeDb = getApi.DbProvider.CodeDb
             .WitnessedBy(witnessCollector);
 
-        IKeyValueStoreWithBatching stateWitnessedBy = setApi.MainStateDbWithCache.WitnessedBy(witnessCollector);
+        IKeyValueStoreWithBatching stateWitnessedBy = cachedStateDb.WitnessedBy(witnessCollector);
         IPersistenceStrategy persistenceStrategy;
         IPruningStrategy pruningStrategy;
         if (pruningConfig.Mode.IsMemory())
