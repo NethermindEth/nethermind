@@ -115,7 +115,7 @@ public class MevPlugin : IConsensusWrapperPlugin
             MevModuleFactory mevModuleFactory = new(rpcConfig,
                 BundlePool,
                 getFromApi.BlockTree!,
-                getFromApi.StateReader!,
+                getFromApi.ReadOnlyWorldStateFactory!.CreateStateReader(),
                 TracerFactory,
                 getFromApi.SpecProvider!,
                 getFromApi.EngineSigner);

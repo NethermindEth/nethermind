@@ -263,7 +263,7 @@ public partial class MergePlugin : IConsensusWrapperPlugin, ISynchronizationPlug
             if (_api.BlockValidator is null) throw new ArgumentNullException(nameof(_api.BlockValidator));
             if (_api.BlockProcessingQueue is null) throw new ArgumentNullException(nameof(_api.BlockProcessingQueue));
             if (_api.SpecProvider is null) throw new ArgumentNullException(nameof(_api.SpecProvider));
-            if (_api.StateReader is null) throw new ArgumentNullException(nameof(_api.StateReader));
+            if (_api.ReadOnlyWorldStateFactory is null) throw new ArgumentNullException(nameof(_api.ReadOnlyWorldStateFactory));
             if (_beaconPivot is null) throw new ArgumentNullException(nameof(_beaconPivot));
             if (_beaconSync is null) throw new ArgumentNullException(nameof(_beaconSync));
             if (_blockProductionTrigger is null) throw new ArgumentNullException(nameof(_blockProductionTrigger));
@@ -289,7 +289,7 @@ public partial class MergePlugin : IConsensusWrapperPlugin, ISynchronizationPlug
             {
                 DefaultHttpClient httpClient = new(new HttpClient(), _api.EthereumJsonSerializer, _api.LogManager, retryDelayMilliseconds: 100);
                 IBoostRelay boostRelay = new BoostRelay(httpClient, _mergeConfig.BuilderRelayUrl);
-                BoostBlockImprovementContextFactory boostBlockImprovementContextFactory = new(_blockProductionTrigger, TimeSpan.FromSeconds(_blocksConfig.SecondsPerSlot), boostRelay, _api.StateReader);
+                BoostBlockImprovementContextFactory boostBlockImprovementContextFactory = new(_blockProductionTrigger, TimeSpan.FromSeconds(_blocksConfig.SecondsPerSlot), boostRelay, _api.ReadOnlyWorldStateFactory.CreateStateReader());
                 improvementContextFactory = boostBlockImprovementContextFactory;
             }
 

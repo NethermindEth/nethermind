@@ -10,9 +10,6 @@ using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.FullPruning;
 using Nethermind.Blockchain.Synchronization;
-using Nethermind.Config;
-using Nethermind.Consensus;
-using Nethermind.Consensus.Comparers;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -128,6 +125,8 @@ public class InitializeStateDb: IStep
                 codeDb,
                 getApi.LogManager);
 
+        WorldStateFactory stateFactory = new WorldStateFactory(trieStore, codeDb, getApi.LogManager);
+
         if (pruningConfig.Mode.IsFull())
         {
             IFullPruningDb fullPruningDb = (IFullPruningDb)getApi.DbProvider!.StateDb;
@@ -138,18 +137,20 @@ public class InitializeStateDb: IStep
             };
         }
 
+        // TODO: Don't forget this
         TrieStoreBoundaryWatcher trieStoreBoundaryWatcher = new(trieStore, _api.BlockTree!, _api.LogManager);
         getApi.DisposeStack.Push(trieStoreBoundaryWatcher);
         getApi.DisposeStack.Push(trieStore);
 
-        ITrieStore readOnlyTrieStore = setApi.ReadOnlyTrieStore = trieStore.AsReadOnly(cachedStateDb);
-
+        IReadOnlyTrieStore readOnlyTrieStore = setApi.ReadOnlyTrieStore = trieStore.AsReadOnly(cachedStateDb);
         ReadOnlyDbProvider readOnly = new(getApi.DbProvider, false);
 
-        IStateReader stateReader = setApi.StateReader = new StateReader(readOnlyTrieStore, readOnly.GetDb<IDb>(DbNames.Code), getApi.LogManager);
+        IWorldStateFactory readOnlyStateFactory = setApi.ReadOnlyWorldStateFactory = new ReadOnlyWorldStateFactory(
+            readOnlyTrieStore,
+            readOnly.GetDb<IDb>(DbNames.Code),
+            getApi.LogManager);
 
-        setApi.TransactionComparerProvider = new TransactionComparerProvider(getApi.SpecProvider!, getApi.BlockTree.AsReadOnly());
-        setApi.ChainHeadStateProvider = new ChainHeadReadOnlyStateProvider(getApi.BlockTree, stateReader);
+        setApi.ChainHeadStateProvider = new ChainHeadReadOnlyStateProvider(getApi.BlockTree, readOnlyStateFactory.CreateStateReader());
 
         worldState.StateRoot = getApi.BlockTree!.Head?.StateRoot ?? Keccak.EmptyTreeHash;
 
@@ -160,11 +161,8 @@ public class InitializeStateDb: IStep
                 try
                 {
                     _logger!.Info("Collecting trie stats and verifying that no nodes are missing...");
-                    TrieStore noPruningStore = new(stateWitnessedBy, No.Pruning, Persist.EveryBlock, getApi.LogManager);
-                    IWorldState diagStateProvider = new WorldState(noPruningStore, codeDb, getApi.LogManager)
-                    {
-                        StateRoot = getApi.BlockTree!.Head?.StateRoot ?? Keccak.EmptyTreeHash
-                    };
+                    IWorldState diagStateProvider = readOnlyStateFactory.CreateWorldState();
+                    diagStateProvider.StateRoot = getApi.BlockTree!.Head?.StateRoot ?? Keccak.EmptyTreeHash;
                     TrieStats stats = diagStateProvider.CollectStats(getApi.DbProvider.CodeDb, _api.LogManager);
                     _logger.Info($"Starting from {getApi.BlockTree.Head?.Number} {getApi.BlockTree.Head?.StateRoot}{Environment.NewLine}" + stats);
                 }
@@ -181,7 +179,7 @@ public class InitializeStateDb: IStep
             worldState.StateRoot = getApi.BlockTree.Head.StateRoot;
         }
 
-        InitializeFullPruning(pruningConfig, initConfig, _api, stateReader);
+        InitializeFullPruning(pruningConfig, initConfig, _api, readOnlyStateFactory.CreateStateReader());
 
         return Task.CompletedTask;
     }
@@ -235,5 +233,4 @@ public class InitializeStateDb: IStep
             }
         }
     }
-
 }

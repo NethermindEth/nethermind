@@ -91,7 +91,7 @@ namespace Nethermind.Analytics
         {
             var (getFromAPi, _) = _api.ForRpc;
             AnalyticsRpcModule analyticsRpcModule = new(
-                getFromAPi.BlockTree, getFromAPi.StateReader, getFromAPi.LogManager);
+                getFromAPi.BlockTree, getFromAPi.ReadOnlyWorldStateFactory!.CreateStateReader(), getFromAPi.LogManager);
             getFromAPi.RpcModuleProvider.Register(new SingletonModulePool<IAnalyticsRpcModule>(analyticsRpcModule));
             return Task.CompletedTask;
         }

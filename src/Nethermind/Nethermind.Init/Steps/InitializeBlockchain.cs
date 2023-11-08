@@ -64,12 +64,13 @@ namespace Nethermind.Init.Steps
         protected virtual Task InitBlockchain()
         {
             (IApiWithStores getApi, IApiWithBlockchain setApi) = _api.ForBlockchain;
+            setApi.TransactionComparerProvider = new TransactionComparerProvider(getApi.SpecProvider!, getApi.BlockTree!.AsReadOnly());
             setApi.TxValidator = new TxValidator(_api.SpecProvider!.ChainId);
 
             IInitConfig initConfig = getApi.Config<IInitConfig>();
             IBlocksConfig blocksConfig = getApi.Config<IBlocksConfig>();
 
-            IStateReader stateReader = setApi.StateReader!;
+            IStateReader stateReader = setApi.ReadOnlyWorldStateFactory!.CreateStateReader();
             ITxPool txPool = _api.TxPool = CreateTxPool();
 
             ReceiptCanonicalityMonitor receiptCanonicalityMonitor = new(getApi.BlockTree, getApi.ReceiptStorage, _api.LogManager);
@@ -184,7 +185,7 @@ namespace Nethermind.Init.Steps
         protected virtual TxPool.TxPool CreateTxPool() =>
             new(_api.EthereumEcdsa!,
                 _api.BlobTxStorage ?? NullBlobTxStorage.Instance,
-                new ChainHeadInfoProvider(_api.SpecProvider!, _api.BlockTree!, _api.StateReader!),
+                new ChainHeadInfoProvider(_api.SpecProvider!, _api.BlockTree!, _api.ReadOnlyWorldStateFactory!.CreateStateReader()!),
                 _api.Config<ITxPoolConfig>(),
                 _api.TxValidator!,
                 _api.LogManager,
