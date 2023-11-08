@@ -41,7 +41,7 @@ public class ProcessedTransactionsDbCleaner : IDisposable
     {
         try
         {
-            ArrayPoolList<long> blocksInDb = new();
+            List<long> blocksInDb = new();
             foreach (byte[] key in _processedTxsDb.GetAllKeys())
             {
                 blocksInDb.Add(key.ToLongFromBigEndianByteArrayWithoutLeadingZeros());
