@@ -191,8 +191,8 @@ namespace Nethermind.Evm.Test.Tracing
             testEnvironment.tracer.ReportAction(100, 0, Address.Zero, Address.Zero, Array.Empty<byte>(), _executionType, true);
 
             testEnvironment.tracer.ReportActionError(EvmExceptionType.OutOfGas); // precompile errors
-            testEnvironment.tracer.ReportActionEnd(63, Array.Empty<byte>()); // second level
-            testEnvironment.tracer.ReportActionEnd(65, Array.Empty<byte>());
+            testEnvironment.tracer.ReportActionError(EvmExceptionType.OutOfGas);
+            testEnvironment.tracer.ReportActionError(EvmExceptionType.OutOfGas); 
 
             testEnvironment.estimator.Estimate(tx, block.Header, testEnvironment.tracer).Should().Be(1);
         }
