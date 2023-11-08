@@ -113,6 +113,8 @@ public class InitializeStateDb: IStep
                 pruningStrategy,
                 persistenceStrategy,
                 getApi.LogManager);
+
+        // TODO: Needed by node serving. Probably should use `StateReader` instead.
         setApi.TrieStore = trieStore;
 
         IWorldState worldState = syncConfig.TrieHealing
@@ -135,6 +137,7 @@ public class InitializeStateDb: IStep
             };
         }
 
+        // This is probably the point where a different state implementation would switch.
         IWorldStateManager stateManager = setApi.WorldStateManager = new WorldStateManager(
             worldState,
             trieStore,
