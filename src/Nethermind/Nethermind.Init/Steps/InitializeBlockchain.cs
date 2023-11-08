@@ -70,7 +70,7 @@ namespace Nethermind.Init.Steps
             IInitConfig initConfig = getApi.Config<IInitConfig>();
             IBlocksConfig blocksConfig = getApi.Config<IBlocksConfig>();
 
-            IStateReader stateReader = setApi.ReadOnlyWorldStateFactory!.CreateStateReader();
+            IStateReader stateReader = setApi.WorldStateManager!.GlobalStateReader;
             ITxPool txPool = _api.TxPool = CreateTxPool();
 
             ReceiptCanonicalityMonitor receiptCanonicalityMonitor = new(getApi.BlockTree, getApi.ReceiptStorage, _api.LogManager);
@@ -185,7 +185,7 @@ namespace Nethermind.Init.Steps
         protected virtual TxPool.TxPool CreateTxPool() =>
             new(_api.EthereumEcdsa!,
                 _api.BlobTxStorage ?? NullBlobTxStorage.Instance,
-                new ChainHeadInfoProvider(_api.SpecProvider!, _api.BlockTree!, _api.ReadOnlyWorldStateFactory!.CreateStateReader()!),
+                new ChainHeadInfoProvider(_api.SpecProvider!, _api.BlockTree!, _api.WorldStateManager!.GlobalStateReader!),
                 _api.Config<ITxPoolConfig>(),
                 _api.TxValidator!,
                 _api.LogManager,

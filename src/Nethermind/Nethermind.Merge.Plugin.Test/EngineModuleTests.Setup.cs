@@ -188,7 +188,7 @@ public partial class EngineModuleTests
                 targetAdjustedGasLimitCalculator);
 
             BlockProducerEnvFactory blockProducerEnvFactory = new(
-                ReadOnlyWorldStateFactory!,
+                _readOnlyWorldStateManager!,
                 BlockTree,
                 SpecProvider,
                 BlockValidator,

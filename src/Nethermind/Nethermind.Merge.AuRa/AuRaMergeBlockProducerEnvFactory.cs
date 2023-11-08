@@ -30,7 +30,7 @@ public class AuRaMergeBlockProducerEnvFactory : BlockProducerEnvFactory
         AuRaNethermindApi auraApi,
         IAuraConfig auraConfig,
         DisposableStack disposeStack,
-        IWorldStateFactory worldStateFactory,
+        IWorldStateManager worldStateManager,
         IBlockTree blockTree,
         ISpecProvider specProvider,
         IBlockValidator blockValidator,
@@ -41,7 +41,7 @@ public class AuRaMergeBlockProducerEnvFactory : BlockProducerEnvFactory
         ITransactionComparerProvider transactionComparerProvider,
         IBlocksConfig blocksConfig,
         ILogManager logManager) : base(
-            worldStateFactory,
+            worldStateManager,
             blockTree,
             specProvider,
             blockValidator,
@@ -94,7 +94,7 @@ public class AuRaMergeBlockProducerEnvFactory : BlockProducerEnvFactory
         ILogManager logManager)
     {
         ReadOnlyTxProcessingEnv constantContractsProcessingEnv = CreateReadonlyTxProcessingEnv(
-            _worldStateFactory,
+            _worldStateManager,
             _blockTree.AsReadOnly());
 
         return new StartBlockProducerAuRa(_auraApi)

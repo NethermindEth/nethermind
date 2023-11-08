@@ -76,7 +76,7 @@ namespace Nethermind.Api
 
             // TODO: reuse the same trie cache here
             ReadOnlyTxProcessingEnv readOnlyTxProcessingEnv = new(
-                ReadOnlyWorldStateFactory!,
+                WorldStateManager!,
                 readOnlyTree,
                 SpecProvider,
                 LogManager);
@@ -187,7 +187,7 @@ namespace Nethermind.Api
         public ISyncServer? SyncServer { get; set; }
         public IWorldState? WorldState { get; set; }
         public IReadOnlyStateProvider? ChainHeadStateProvider { get; set; }
-        public IWorldStateFactory? ReadOnlyWorldStateFactory { get; set; }
+        public IWorldStateManager? WorldStateManager { get; set; }
         public IStateReader? StateReader { get; set; }
         public IStaticNodesManager? StaticNodesManager { get; set; }
         public ITimestamper Timestamper { get; } = Core.Timestamper.Default;

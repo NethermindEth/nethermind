@@ -121,7 +121,7 @@ namespace Nethermind.Runner.Test.Ethereum
                 WitnessRepository = Substitute.For<IWitnessRepository>()
             };
 
-            api.ReadOnlyWorldStateFactory = new ReadOnlyWorldStateFactory(api.DbProvider, api.ReadOnlyTrieStore, LimboLogs.Instance);
+            api.WorldStateManager = new ReadOnlyWorldStateManager(api.DbProvider, api.ReadOnlyTrieStore, LimboLogs.Instance);
             return api;
         }
     }

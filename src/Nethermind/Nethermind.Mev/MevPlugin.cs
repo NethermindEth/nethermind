@@ -91,7 +91,7 @@ public class MevPlugin : IConsensusWrapperPlugin
 
                 _tracerFactory = new TracerFactory(
                     getFromApi.BlockTree!,
-                    getFromApi.ReadOnlyWorldStateFactory!,
+                    getFromApi.WorldStateManager!,
                     getFromApi.BlockPreprocessor!,
                     getFromApi.SpecProvider!,
                     getFromApi.LogManager!,
@@ -114,7 +114,7 @@ public class MevPlugin : IConsensusWrapperPlugin
             MevModuleFactory mevModuleFactory = new(rpcConfig,
                 BundlePool,
                 getFromApi.BlockTree!,
-                getFromApi.ReadOnlyWorldStateFactory!.CreateStateReader(),
+                getFromApi.WorldStateManager!.GlobalStateReader,
                 TracerFactory,
                 getFromApi.SpecProvider!,
                 getFromApi.EngineSigner);

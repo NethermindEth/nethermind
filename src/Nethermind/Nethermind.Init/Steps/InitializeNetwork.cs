@@ -155,7 +155,7 @@ public class InitializeNetwork : IStep
                 _api.ReadOnlyTrieStore!,
                 _api.BetterPeerStrategy,
                 _api.ChainSpec,
-                _api.ReadOnlyWorldStateFactory!.CreateStateReader(),
+                _api.WorldStateManager!.GlobalStateReader,
                 _api.LogManager);
         }
 

@@ -25,24 +25,24 @@ namespace Nethermind.Consensus.Processing
         public Action ResetDb { get; }
 
         public ReadOnlyTxProcessingEnv(
-            IWorldStateFactory worldStateFactory,
+            IWorldStateManager worldStateManager,
             IBlockTree? blockTree,
             ISpecProvider? specProvider,
             ILogManager? logManager)
-            : this(worldStateFactory, blockTree?.AsReadOnly(), specProvider, logManager)
+            : this(worldStateManager, blockTree?.AsReadOnly(), specProvider, logManager)
         {
         }
 
         public ReadOnlyTxProcessingEnv(
-            IWorldStateFactory worldStateFactory,
+            IWorldStateManager worldStateManager,
             IReadOnlyBlockTree? readOnlyBlockTree,
             ISpecProvider? specProvider,
             ILogManager? logManager)
         {
             if (specProvider is null) throw new ArgumentNullException(nameof(specProvider));
-            if (worldStateFactory is null) throw new ArgumentNullException(nameof(worldStateFactory));
+            if (worldStateManager is null) throw new ArgumentNullException(nameof(worldStateManager));
 
-            (IWorldState worldState, IStateReader stateReader, Action reset) = worldStateFactory.CreateResettableWorldState();
+            (IWorldState worldState, IStateReader stateReader, Action reset) = worldStateManager.CreateResettableWorldState();
             StateReader = stateReader;
             StateProvider = worldState;
             ResetDb = reset;

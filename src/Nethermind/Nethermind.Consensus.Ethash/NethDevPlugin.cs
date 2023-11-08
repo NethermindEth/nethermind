@@ -64,7 +64,7 @@ namespace Nethermind.Consensus.Ethash
             if (logger.IsInfo) logger.Info("Starting Neth Dev block producer & sealer");
 
             ReadOnlyTxProcessingEnv producerEnv = new(
-                _nethermindApi.ReadOnlyWorldStateFactory!,
+                _nethermindApi.WorldStateManager!,
                 readOnlyBlockTree,
                 getFromApi.SpecProvider,
                 getFromApi.LogManager);
@@ -83,7 +83,7 @@ namespace Nethermind.Consensus.Ethash
                 readOnlyBlockTree,
                 producerProcessor,
                 getFromApi.BlockPreprocessor,
-                getFromApi.ReadOnlyWorldStateFactory!.CreateStateReader(),
+                getFromApi.WorldStateManager!.GlobalStateReader,
                 getFromApi.LogManager,
                 BlockchainProcessor.Options.NoReceipts);
 

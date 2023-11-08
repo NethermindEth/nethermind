@@ -44,7 +44,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
         private IBlockTree _blockTree = null!;
         private IDbProvider _dbProvider = null!;
         private TestSpecProvider _specProvider = null!;
-        private ReadOnlyWorldStateFactory _readOnlyWorldStateFactory = null!;
+        private ReadOnlyWorldStateManager _readOnlyWorldStateManager = null!;
 
         public ProofRpcModuleTests(bool createSystemAccount, bool useNonZeroGasPrice)
         {
@@ -61,10 +61,10 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
             _dbProvider = await TestMemDbProvider.InitAsync();
 
             ITrieStore trieStore = new TrieStore(_dbProvider.StateDb, LimboLogs.Instance);
-            _readOnlyWorldStateFactory = new ReadOnlyWorldStateFactory(_dbProvider, trieStore.AsReadOnly(), LimboLogs.Instance);
+            _readOnlyWorldStateManager = new ReadOnlyWorldStateManager(_dbProvider, trieStore.AsReadOnly(), LimboLogs.Instance);
 
             ProofModuleFactory moduleFactory = new(
-                _readOnlyWorldStateFactory,
+                _readOnlyWorldStateManager,
                 _blockTree,
                 new CompositeBlockPreprocessorStep(new RecoverSignatures(new EthereumEcdsa(TestBlockchainIds.ChainId, LimboLogs.Instance), NullTxPool.Instance, _specProvider, LimboLogs.Instance)),
                 receiptStorage,
@@ -208,7 +208,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
             _receiptFinder.FindBlockHash(Arg.Any<Hash256>()).Returns(_blockTree.FindBlock(1)!.Hash);
 
             ProofModuleFactory moduleFactory = new ProofModuleFactory(
-                _readOnlyWorldStateFactory,
+                _readOnlyWorldStateManager,
                 _blockTree,
                 new CompositeBlockPreprocessorStep(new RecoverSignatures(new EthereumEcdsa(TestBlockchainIds.ChainId, LimboLogs.Instance), NullTxPool.Instance, _specProvider, LimboLogs.Instance)),
                 _receiptFinder,

@@ -60,7 +60,7 @@ public class RegisterRpcModules : IStep
         if (_api.SpecProvider is null) throw new StepDependencyException(nameof(_api.SpecProvider));
         if (_api.SyncModeSelector is null) throw new StepDependencyException(nameof(_api.SyncModeSelector));
         if (_api.TxSender is null) throw new StepDependencyException(nameof(_api.TxSender));
-        if (_api.ReadOnlyWorldStateFactory is null) throw new StepDependencyException(nameof(_api.ReadOnlyWorldStateFactory));
+        if (_api.WorldStateManager is null) throw new StepDependencyException(nameof(_api.WorldStateManager));
         if (_api.PeerManager is null) throw new StepDependencyException(nameof(_api.PeerManager));
 
         if (jsonRpcConfig.Enabled)
@@ -98,7 +98,7 @@ public class RegisterRpcModules : IStep
             _api.BlockTree,
             rpcConfig,
             _api.LogManager,
-            _api.ReadOnlyWorldStateFactory.CreateStateReader(),
+            _api.WorldStateManager.GlobalStateReader,
             _api,
             _api.SpecProvider,
             _api.ReceiptStorage,
@@ -116,11 +116,11 @@ public class RegisterRpcModules : IStep
         if (_api.PeerPool is null) throw new StepDependencyException(nameof(_api.PeerPool));
         if (_api.WitnessRepository is null) throw new StepDependencyException(nameof(_api.WitnessRepository));
 
-        ProofModuleFactory proofModuleFactory = new(_api.ReadOnlyWorldStateFactory, _api.BlockTree, _api.BlockPreprocessor, _api.ReceiptFinder, _api.SpecProvider, _api.LogManager);
+        ProofModuleFactory proofModuleFactory = new(_api.WorldStateManager, _api.BlockTree, _api.BlockPreprocessor, _api.ReceiptFinder, _api.SpecProvider, _api.LogManager);
         rpcModuleProvider.RegisterBounded(proofModuleFactory, 2, rpcConfig.Timeout);
 
         DebugModuleFactory debugModuleFactory = new(
-            _api.ReadOnlyWorldStateFactory,
+            _api.WorldStateManager,
             _api.DbProvider,
             _api.BlockTree,
             rpcConfig,
@@ -138,7 +138,7 @@ public class RegisterRpcModules : IStep
         rpcModuleProvider.RegisterBoundedByCpuCount(debugModuleFactory, rpcConfig.Timeout);
 
         TraceModuleFactory traceModuleFactory = new(
-            _api.ReadOnlyWorldStateFactory,
+            _api.WorldStateManager,
             _api.BlockTree,
             rpcConfig,
             _api.BlockPreprocessor,

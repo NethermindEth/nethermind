@@ -9,13 +9,13 @@ using Nethermind.Trie.Pruning;
 
 namespace Nethermind.State;
 
-public class ReadOnlyWorldStateFactory: IWorldStateFactory
+public class ReadOnlyWorldStateManager: IWorldStateManager
 {
     private IReadOnlyTrieStore? _readOnlyTrieStore;
     private ILogManager _logManager;
     private readonly IDbProvider _dbProvider;
 
-    public ReadOnlyWorldStateFactory(
+    public ReadOnlyWorldStateManager(
         IDbProvider dbProvider,
         IReadOnlyTrieStore? readOnlyTrieStore,
         ILogManager logManager
@@ -24,19 +24,14 @@ public class ReadOnlyWorldStateFactory: IWorldStateFactory
         _readOnlyTrieStore = readOnlyTrieStore;
         _dbProvider = dbProvider;
         _logManager = logManager;
+
+        IKeyValueStore codeDb = _dbProvider.AsReadOnly(false).GetDb<IDb>(DbNames.Code);
+        GlobalStateReader = new StateReader(_readOnlyTrieStore, codeDb, _logManager);
     }
 
-    public IWorldState CreateWorldState()
-    {
-        IKeyValueStore codeDb = _dbProvider.AsReadOnly(false).GetDb<IDb>(DbNames.Code);
-        return new WorldState(_readOnlyTrieStore, codeDb, _logManager);
-    }
+    public virtual IWorldState GlobalWorldState => throw new InvalidOperationException("global world state not supported");
 
-    public IStateReader CreateStateReader()
-    {
-        IKeyValueStore codeDb = _dbProvider.AsReadOnly(false).GetDb<IDb>(DbNames.Code);
-        return new StateReader(_readOnlyTrieStore, codeDb, _logManager);
-    }
+    public IStateReader GlobalStateReader { get; }
 
     public (IWorldState, IStateReader, Action) CreateResettableWorldState()
     {

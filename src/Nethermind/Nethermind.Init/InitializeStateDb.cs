@@ -125,8 +125,6 @@ public class InitializeStateDb: IStep
                 codeDb,
                 getApi.LogManager);
 
-        WorldStateFactory stateFactory = new WorldStateFactory(trieStore, codeDb, getApi.LogManager);
-
         if (pruningConfig.Mode.IsFull())
         {
             IFullPruningDb fullPruningDb = (IFullPruningDb)getApi.DbProvider!.StateDb;
@@ -144,12 +142,13 @@ public class InitializeStateDb: IStep
 
         IReadOnlyTrieStore readOnlyTrieStore = setApi.ReadOnlyTrieStore = trieStore.AsReadOnly(cachedStateDb);
 
-        IWorldStateFactory readOnlyStateFactory = setApi.ReadOnlyWorldStateFactory = new ReadOnlyWorldStateFactory(
+        IWorldStateManager readOnlyStateManager = setApi.WorldStateManager = new WorldStateManager(
+            worldState,
             getApi.DbProvider,
             readOnlyTrieStore,
             getApi.LogManager);
 
-        setApi.ChainHeadStateProvider = new ChainHeadReadOnlyStateProvider(getApi.BlockTree, readOnlyStateFactory.CreateStateReader());
+        setApi.ChainHeadStateProvider = new ChainHeadReadOnlyStateProvider(getApi.BlockTree, readOnlyStateManager.GlobalStateReader);
 
         worldState.StateRoot = getApi.BlockTree!.Head?.StateRoot ?? Keccak.EmptyTreeHash;
 
@@ -160,7 +159,7 @@ public class InitializeStateDb: IStep
                 try
                 {
                     _logger!.Info("Collecting trie stats and verifying that no nodes are missing...");
-                    IWorldState diagStateProvider = readOnlyStateFactory.CreateWorldState();
+                    IWorldState diagStateProvider = readOnlyStateManager.GlobalWorldState;
                     diagStateProvider.StateRoot = getApi.BlockTree!.Head?.StateRoot ?? Keccak.EmptyTreeHash;
                     TrieStats stats = diagStateProvider.CollectStats(getApi.DbProvider.CodeDb, _api.LogManager);
                     _logger.Info($"Starting from {getApi.BlockTree.Head?.Number} {getApi.BlockTree.Head?.StateRoot}{Environment.NewLine}" + stats);
@@ -178,7 +177,7 @@ public class InitializeStateDb: IStep
             worldState.StateRoot = getApi.BlockTree.Head.StateRoot;
         }
 
-        InitializeFullPruning(pruningConfig, initConfig, _api, readOnlyStateFactory.CreateStateReader());
+        InitializeFullPruning(pruningConfig, initConfig, _api, readOnlyStateManager.GlobalStateReader);
 
         return Task.CompletedTask;
     }

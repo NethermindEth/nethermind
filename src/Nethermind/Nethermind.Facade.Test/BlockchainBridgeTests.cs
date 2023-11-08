@@ -64,11 +64,11 @@ namespace Nethermind.Facade.Test
             ReadOnlyDbProvider dbProvider = new ReadOnlyDbProvider(_dbProvider, false);
             IReadOnlyTrieStore trieStore = new TrieStore(_dbProvider.StateDb, LimboLogs.Instance).AsReadOnly();
 
-            IWorldStateFactory readOnlyWorldStateFactory =
-                new ReadOnlyWorldStateFactory(dbProvider, trieStore, LimboLogs.Instance);
+            IWorldStateManager readOnlyWorldStateManager =
+                new ReadOnlyWorldStateManager(dbProvider, trieStore, LimboLogs.Instance);
 
             ReadOnlyTxProcessingEnv processingEnv = new(
-                readOnlyWorldStateFactory,
+                readOnlyWorldStateManager,
                 new ReadOnlyBlockTree(_blockTree),
                 _specProvider,
                 LimboLogs.Instance);
@@ -213,11 +213,11 @@ namespace Nethermind.Facade.Test
             ReadOnlyDbProvider dbProvider = new ReadOnlyDbProvider(_dbProvider, false);
             IReadOnlyTrieStore trieStore = new TrieStore(_dbProvider.StateDb, LimboLogs.Instance).AsReadOnly();
 
-            IWorldStateFactory readOnlyWorldStateFactory =
-                new ReadOnlyWorldStateFactory(dbProvider, trieStore, LimboLogs.Instance);
+            IWorldStateManager readOnlyWorldStateManager =
+                new ReadOnlyWorldStateManager(dbProvider, trieStore, LimboLogs.Instance);
 
             ReadOnlyTxProcessingEnv processingEnv = new(
-                readOnlyWorldStateFactory,
+                readOnlyWorldStateManager,
                 new ReadOnlyBlockTree(_blockTree),
                 _specProvider,
                 LimboLogs.Instance);

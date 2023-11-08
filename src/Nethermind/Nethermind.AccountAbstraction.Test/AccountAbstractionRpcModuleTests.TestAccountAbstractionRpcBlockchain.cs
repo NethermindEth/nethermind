@@ -99,7 +99,7 @@ namespace Nethermind.AccountAbstraction.Test
                 SpecProvider.UpdateMergeTransitionInfo(1, 0);
 
                 BlockProducerEnvFactory blockProducerEnvFactory = new BlockProducerEnvFactory(
-                    ReadOnlyWorldStateFactory,
+                    _readOnlyWorldStateManager,
                     BlockTree,
                     SpecProvider,
                     BlockValidator,
@@ -211,7 +211,7 @@ namespace Nethermind.AccountAbstraction.Test
                     UserOperationSimulator[entryPoint] = new(
                         UserOperationTxBuilder[entryPoint],
                         ReadOnlyState,
-                        new ReadOnlyTxProcessingEnvFactory(ReadOnlyWorldStateFactory, BlockTree, SpecProvider, LogManager),
+                        new ReadOnlyTxProcessingEnvFactory(_readOnlyWorldStateManager, BlockTree, SpecProvider, LogManager),
                         EntryPointContractAbi,
                         entryPoint!,
                         WhitelistedPayamsters,

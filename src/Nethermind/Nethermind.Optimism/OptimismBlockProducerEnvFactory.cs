@@ -29,7 +29,7 @@ public class OptimismBlockProducerEnvFactory : BlockProducerEnvFactory
     private readonly OPL1CostHelper _l1CostHelper;
 
     public OptimismBlockProducerEnvFactory(
-        IWorldStateFactory worldStateFactory,
+        IWorldStateManager worldStateManager,
         ChainSpec chainSpec,
         IBlockTree blockTree,
         ISpecProvider specProvider,
@@ -42,7 +42,7 @@ public class OptimismBlockProducerEnvFactory : BlockProducerEnvFactory
         IBlocksConfig blocksConfig,
         OPSpecHelper specHelper,
         OPL1CostHelper l1CostHelper,
-        ILogManager logManager) : base(worldStateFactory,
+        ILogManager logManager) : base(worldStateManager,
         blockTree, specProvider, blockValidator,
         rewardCalculatorSource, receiptStorage, blockPreprocessorStep,
         txPool, transactionComparerProvider, blocksConfig, logManager)
@@ -53,10 +53,10 @@ public class OptimismBlockProducerEnvFactory : BlockProducerEnvFactory
         TransactionsExecutorFactory = new OptimismTransactionsExecutorFactory(specProvider, logManager);
     }
 
-    protected override ReadOnlyTxProcessingEnv CreateReadonlyTxProcessingEnv(IWorldStateFactory worldStateFactory,
+    protected override ReadOnlyTxProcessingEnv CreateReadonlyTxProcessingEnv(IWorldStateManager worldStateManager,
         ReadOnlyBlockTree readOnlyBlockTree)
     {
-        ReadOnlyTxProcessingEnv result = new(worldStateFactory,
+        ReadOnlyTxProcessingEnv result = new(worldStateManager,
             readOnlyBlockTree, _specProvider, _logManager);
         result.TransactionProcessor =
             new OptimismTransactionProcessor(_specProvider, result.StateProvider, result.Machine, _logManager, _l1CostHelper, _specHelper);

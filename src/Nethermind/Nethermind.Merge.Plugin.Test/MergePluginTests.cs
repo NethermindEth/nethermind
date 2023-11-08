@@ -45,7 +45,7 @@ public class MergePluginTests
         _context.BlockProcessingQueue?.IsEmpty.Returns(true);
         _context.MemDbFactory = new MemDbFactory();
         _context.BlockProducerEnvFactory = new BlockProducerEnvFactory(
-            _context.ReadOnlyWorldStateFactory!,
+            _context.WorldStateManager!,
             _context.BlockTree!,
             _context.SpecProvider!,
             _context.BlockValidator!,

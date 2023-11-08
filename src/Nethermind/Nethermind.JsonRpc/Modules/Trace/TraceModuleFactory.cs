@@ -21,7 +21,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
 {
     public class TraceModuleFactory : ModuleFactoryBase<ITraceRpcModule>
     {
-        private readonly IWorldStateFactory _worldStateFactory;
+        private readonly IWorldStateManager _worldStateManager;
         private readonly IReadOnlyBlockTree _blockTree;
         private readonly IJsonRpcConfig _jsonRpcConfig;
         private readonly IReceiptStorage _receiptStorage;
@@ -32,7 +32,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
         private readonly IPoSSwitcher _poSSwitcher;
 
         public TraceModuleFactory(
-            IWorldStateFactory worldStateFactory,
+            IWorldStateManager worldStateManager,
             IBlockTree blockTree,
             IJsonRpcConfig jsonRpcConfig,
             IBlockPreprocessorStep recoveryStep,
@@ -42,7 +42,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
             IPoSSwitcher poSSwitcher,
             ILogManager logManager)
         {
-            _worldStateFactory = worldStateFactory;
+            _worldStateManager = worldStateManager;
             _blockTree = blockTree.AsReadOnly();
             _jsonRpcConfig = jsonRpcConfig ?? throw new ArgumentNullException(nameof(jsonRpcConfig));
             _recoveryStep = recoveryStep ?? throw new ArgumentNullException(nameof(recoveryStep));
@@ -57,7 +57,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
         public override ITraceRpcModule Create()
         {
             ReadOnlyTxProcessingEnv txProcessingEnv =
-                new(_worldStateFactory, _blockTree, _specProvider, _logManager);
+                new(_worldStateManager, _blockTree, _specProvider, _logManager);
 
             IRewardCalculator rewardCalculator =
                 new MergeRpcRewardCalculator(_rewardCalculatorSource.Get(txProcessingEnv.TransactionProcessor),

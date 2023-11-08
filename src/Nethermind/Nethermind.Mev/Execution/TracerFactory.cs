@@ -23,11 +23,11 @@ namespace Nethermind.Mev.Execution
         private readonly ILogManager _logManager;
         private readonly ProcessingOptions _processingOptions;
         private readonly IReadOnlyBlockTree _blockTree;
-        private readonly IWorldStateFactory _worldStateFactory;
+        private readonly IWorldStateManager _worldStateManager;
 
         public TracerFactory(
             IBlockTree blockTree,
-            IWorldStateFactory worldStateFactory,
+            IWorldStateManager worldStateManager,
             IBlockPreprocessorStep recoveryStep,
             ISpecProvider specProvider,
             ILogManager logManager,
@@ -37,14 +37,14 @@ namespace Nethermind.Mev.Execution
             _processingOptions = processingOptions;
             _recoveryStep = recoveryStep ?? throw new ArgumentNullException(nameof(recoveryStep));
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
-            _worldStateFactory = worldStateFactory ?? throw new ArgumentNullException(nameof(worldStateFactory));
+            _worldStateManager = worldStateManager ?? throw new ArgumentNullException(nameof(worldStateManager));
             _blockTree = blockTree.AsReadOnly();
         }
 
         public ITracer Create()
         {
             ReadOnlyTxProcessingEnv txProcessingEnv = new(
-                _worldStateFactory, _blockTree, _specProvider, _logManager);
+                _worldStateManager, _blockTree, _specProvider, _logManager);
 
             ReadOnlyChainProcessingEnv chainProcessingEnv = new(
                 txProcessingEnv, Always.Valid, _recoveryStep, NoBlockRewards.Instance, new InMemoryReceiptStorage(), txProcessingEnv.ResetDb, _specProvider, _logManager);

@@ -5,9 +5,9 @@ using System;
 
 namespace Nethermind.State;
 
-public interface IWorldStateFactory
+public interface IWorldStateManager
 {
-    IWorldState CreateWorldState();
-    IStateReader CreateStateReader();
+    IWorldState GlobalWorldState { get; }
+    IStateReader GlobalStateReader { get; }
     (IWorldState, IStateReader, Action) CreateResettableWorldState();
 }

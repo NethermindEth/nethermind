@@ -60,7 +60,7 @@ namespace Nethermind.Api
         /// </remarks>
         IWorldState? WorldState { get; set; }
         IReadOnlyStateProvider? ChainHeadStateProvider { get; set; }
-        IWorldStateFactory? ReadOnlyWorldStateFactory { get; set; }
+        IWorldStateManager? WorldStateManager { get; set; }
         ITransactionProcessor? TransactionProcessor { get; set; }
         ITrieStore? TrieStore { get; set; }
         ITxSender? TxSender { get; set; }

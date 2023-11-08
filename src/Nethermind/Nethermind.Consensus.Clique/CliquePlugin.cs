@@ -94,7 +94,7 @@ namespace Nethermind.Consensus.Clique
             ITransactionComparerProvider transactionComparerProvider = getFromApi.TransactionComparerProvider;
 
             ReadOnlyTxProcessingEnv producerEnv = new(
-                _nethermindApi.ReadOnlyWorldStateFactory!,
+                _nethermindApi.WorldStateManager!,
                 readOnlyBlockTree,
                 getFromApi.SpecProvider,
                 getFromApi.LogManager);
@@ -114,7 +114,7 @@ namespace Nethermind.Consensus.Clique
                 readOnlyBlockTree,
                 producerProcessor,
                 getFromApi.BlockPreprocessor,
-                getFromApi.ReadOnlyWorldStateFactory!.CreateStateReader(),
+                getFromApi.WorldStateManager!.GlobalStateReader,
                 getFromApi.LogManager,
                 BlockchainProcessor.Options.NoReceipts);
 

@@ -12,31 +12,31 @@ namespace Nethermind.Consensus.Processing;
 
 public class ReadOnlyTxProcessingEnvFactory
 {
-    private readonly IWorldStateFactory _worldStateFactory;
+    private readonly IWorldStateManager _worldStateManager;
     private readonly IReadOnlyBlockTree? _readOnlyBlockTree;
     private readonly ISpecProvider? _specProvider;
     private readonly ILogManager? _logManager;
 
     public ReadOnlyTxProcessingEnvFactory(
-        IWorldStateFactory worldStateFactory,
+        IWorldStateManager worldStateManager,
         IBlockTree? blockTree,
         ISpecProvider? specProvider,
         ILogManager? logManager)
-        : this(worldStateFactory, blockTree?.AsReadOnly(), specProvider, logManager)
+        : this(worldStateManager, blockTree?.AsReadOnly(), specProvider, logManager)
     {
     }
 
     public ReadOnlyTxProcessingEnvFactory(
-        IWorldStateFactory worldStateFactory,
+        IWorldStateManager worldStateManager,
         IReadOnlyBlockTree? readOnlyBlockTree,
         ISpecProvider? specProvider,
         ILogManager? logManager)
     {
-        _worldStateFactory = worldStateFactory;
+        _worldStateManager = worldStateManager;
         _readOnlyBlockTree = readOnlyBlockTree;
         _specProvider = specProvider;
         _logManager = logManager;
     }
 
-    public ReadOnlyTxProcessingEnv Create() => new(_worldStateFactory, _readOnlyBlockTree, _specProvider, _logManager);
+    public ReadOnlyTxProcessingEnv Create() => new(_worldStateManager, _readOnlyBlockTree, _specProvider, _logManager);
 }
