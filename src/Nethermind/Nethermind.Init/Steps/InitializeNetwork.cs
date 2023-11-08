@@ -154,7 +154,7 @@ public class InitializeNetwork : IStep
                 _api.ProcessExit!,
                 _api.BetterPeerStrategy,
                 _api.ChainSpec,
-                _api.WorldStateManager!.GlobalStateReader,
+                _api.StateReader!,
                 _api.LogManager);
         }
 

@@ -114,7 +114,7 @@ namespace Nethermind.Consensus.Clique
                 readOnlyBlockTree,
                 producerProcessor,
                 getFromApi.BlockPreprocessor,
-                getFromApi.WorldStateManager!.GlobalStateReader,
+                getFromApi.StateReader,
                 getFromApi.LogManager,
                 BlockchainProcessor.Options.NoReceipts);
 

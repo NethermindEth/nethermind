@@ -60,6 +60,7 @@ public class RegisterRpcModules : IStep
         if (_api.SpecProvider is null) throw new StepDependencyException(nameof(_api.SpecProvider));
         if (_api.SyncModeSelector is null) throw new StepDependencyException(nameof(_api.SyncModeSelector));
         if (_api.TxSender is null) throw new StepDependencyException(nameof(_api.TxSender));
+        if (_api.StateReader is null) throw new StepDependencyException(nameof(_api.StateReader));
         if (_api.WorldStateManager is null) throw new StepDependencyException(nameof(_api.WorldStateManager));
         if (_api.PeerManager is null) throw new StepDependencyException(nameof(_api.PeerManager));
 
@@ -97,7 +98,7 @@ public class RegisterRpcModules : IStep
             _api.BlockTree,
             rpcConfig,
             _api.LogManager,
-            _api.WorldStateManager.GlobalStateReader,
+            _api.StateReader,
             _api,
             _api.SpecProvider,
             _api.ReceiptStorage,
