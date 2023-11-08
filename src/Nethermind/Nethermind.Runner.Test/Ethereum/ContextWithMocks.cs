@@ -49,8 +49,10 @@ namespace Nethermind.Runner.Test.Ethereum
 {
     public static class Build
     {
-        public static NethermindApi ContextWithMocks() =>
-            new(Substitute.For<IConfigProvider>(), Substitute.For<IJsonSerializer>(), LimboLogs.Instance, new ChainSpec())
+        public static NethermindApi ContextWithMocks()
+        {
+            var api = new NethermindApi(Substitute.For<IConfigProvider>(), Substitute.For<IJsonSerializer>(), LimboLogs.Instance,
+                new ChainSpec())
             {
                 Enode = Substitute.For<IEnode>(),
                 TxPool = Substitute.For<ITxPool>(),
@@ -118,5 +120,9 @@ namespace Nethermind.Runner.Test.Ethereum
                 ReceiptMonitor = Substitute.For<IReceiptMonitor>(),
                 WitnessRepository = Substitute.For<IWitnessRepository>()
             };
+
+            api.ReadOnlyWorldStateFactory = new ReadOnlyWorldStateFactory(api.DbProvider, api.ReadOnlyTrieStore, LimboLogs.Instance);
+            return api;
+        }
     }
 }

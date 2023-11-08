@@ -143,11 +143,10 @@ public class InitializeStateDb: IStep
         getApi.DisposeStack.Push(trieStore);
 
         IReadOnlyTrieStore readOnlyTrieStore = setApi.ReadOnlyTrieStore = trieStore.AsReadOnly(cachedStateDb);
-        ReadOnlyDbProvider readOnly = new(getApi.DbProvider, false);
 
         IWorldStateFactory readOnlyStateFactory = setApi.ReadOnlyWorldStateFactory = new ReadOnlyWorldStateFactory(
+            getApi.DbProvider,
             readOnlyTrieStore,
-            readOnly.GetDb<IDb>(DbNames.Code),
             getApi.LogManager);
 
         setApi.ChainHeadStateProvider = new ChainHeadReadOnlyStateProvider(getApi.BlockTree, readOnlyStateFactory.CreateStateReader());

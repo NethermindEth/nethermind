@@ -14,16 +14,14 @@ using Nethermind.Core.Specs;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.State;
-using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 
 namespace Nethermind.Consensus.Producers
 {
     public class BlockProducerEnvFactory : IBlockProducerEnvFactory
     {
-        protected readonly IDbProvider _dbProvider;
+        protected readonly IWorldStateFactory _worldStateFactory;
         protected readonly IBlockTree _blockTree;
-        protected readonly IReadOnlyTrieStore _readOnlyTrieStore;
         protected readonly ISpecProvider _specProvider;
         protected readonly IBlockValidator _blockValidator;
         protected readonly IRewardCalculatorSource _rewardCalculatorSource;
@@ -37,9 +35,8 @@ namespace Nethermind.Consensus.Producers
         public IBlockTransactionsExecutorFactory TransactionsExecutorFactory { get; set; }
 
         public BlockProducerEnvFactory(
-            IDbProvider dbProvider,
+            IWorldStateFactory worldStateFactory,
             IBlockTree blockTree,
-            IReadOnlyTrieStore readOnlyTrieStore,
             ISpecProvider specProvider,
             IBlockValidator blockValidator,
             IRewardCalculatorSource rewardCalculatorSource,
@@ -50,9 +47,8 @@ namespace Nethermind.Consensus.Producers
             IBlocksConfig blocksConfig,
             ILogManager logManager)
         {
-            _dbProvider = dbProvider;
+            _worldStateFactory = worldStateFactory;
             _blockTree = blockTree;
-            _readOnlyTrieStore = readOnlyTrieStore;
             _specProvider = specProvider;
             _blockValidator = blockValidator;
             _rewardCalculatorSource = rewardCalculatorSource;
@@ -68,11 +64,10 @@ namespace Nethermind.Consensus.Producers
 
         public virtual BlockProducerEnv Create(ITxSource? additionalTxSource = null)
         {
-            ReadOnlyDbProvider readOnlyDbProvider = _dbProvider.AsReadOnly(false);
             ReadOnlyBlockTree readOnlyBlockTree = _blockTree.AsReadOnly();
 
             ReadOnlyTxProcessingEnv txProcessingEnv =
-                CreateReadonlyTxProcessingEnv(readOnlyDbProvider, readOnlyBlockTree);
+                CreateReadonlyTxProcessingEnv(_worldStateFactory, readOnlyBlockTree);
 
             BlockProcessor blockProcessor =
                 CreateBlockProcessor(txProcessingEnv,
@@ -93,7 +88,7 @@ namespace Nethermind.Consensus.Producers
                     BlockchainProcessor.Options.NoReceipts);
 
             OneTimeChainProcessor chainProcessor = new(
-                readOnlyDbProvider,
+                txProcessingEnv.ResetDb,
                 blockchainProcessor);
 
             return new BlockProducerEnv
@@ -106,8 +101,8 @@ namespace Nethermind.Consensus.Producers
             };
         }
 
-        protected virtual ReadOnlyTxProcessingEnv CreateReadonlyTxProcessingEnv(ReadOnlyDbProvider readOnlyDbProvider, ReadOnlyBlockTree readOnlyBlockTree) =>
-            new(readOnlyDbProvider, _readOnlyTrieStore, readOnlyBlockTree, _specProvider, _logManager);
+        protected virtual ReadOnlyTxProcessingEnv CreateReadonlyTxProcessingEnv(IWorldStateFactory worldStateFactory, ReadOnlyBlockTree readOnlyBlockTree) =>
+            new(worldStateFactory, readOnlyBlockTree, _specProvider, _logManager);
 
         protected virtual ITxSource CreateTxSourceForProducer(
             ITxSource? additionalTxSource,

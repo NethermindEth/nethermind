@@ -44,6 +44,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
         private IBlockTree _blockTree = null!;
         private IDbProvider _dbProvider = null!;
         private TestSpecProvider _specProvider = null!;
+        private ReadOnlyWorldStateFactory _readOnlyWorldStateFactory = null!;
 
         public ProofRpcModuleTests(bool createSystemAccount, bool useNonZeroGasPrice)
         {
@@ -59,10 +60,12 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
             _blockTree = Build.A.BlockTree(_specProvider).WithTransactions(receiptStorage).OfChainLength(10).TestObject;
             _dbProvider = await TestMemDbProvider.InitAsync();
 
+            ITrieStore trieStore = new TrieStore(_dbProvider.StateDb, LimboLogs.Instance);
+            _readOnlyWorldStateFactory = new ReadOnlyWorldStateFactory(_dbProvider, trieStore.AsReadOnly(), LimboLogs.Instance);
+
             ProofModuleFactory moduleFactory = new(
-                _dbProvider,
+                _readOnlyWorldStateFactory,
                 _blockTree,
-                new TrieStore(_dbProvider.StateDb, LimboLogs.Instance).AsReadOnly(),
                 new CompositeBlockPreprocessorStep(new RecoverSignatures(new EthereumEcdsa(TestBlockchainIds.ChainId, LimboLogs.Instance), NullTxPool.Instance, _specProvider, LimboLogs.Instance)),
                 receiptStorage,
                 _specProvider,
@@ -205,9 +208,8 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
             _receiptFinder.FindBlockHash(Arg.Any<Hash256>()).Returns(_blockTree.FindBlock(1)!.Hash);
 
             ProofModuleFactory moduleFactory = new ProofModuleFactory(
-                _dbProvider,
+                _readOnlyWorldStateFactory,
                 _blockTree,
-                new TrieStore(_dbProvider.StateDb, LimboLogs.Instance).AsReadOnly(),
                 new CompositeBlockPreprocessorStep(new RecoverSignatures(new EthereumEcdsa(TestBlockchainIds.ChainId, LimboLogs.Instance), NullTxPool.Instance, _specProvider, LimboLogs.Instance)),
                 _receiptFinder,
                 _specProvider,

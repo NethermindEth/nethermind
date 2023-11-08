@@ -111,6 +111,7 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
                 BlockTree = BlockTree,
                 DbProvider = DbProvider,
                 ReadOnlyTrieStore = ReadOnlyTrieStore,
+                ReadOnlyWorldStateFactory = ReadOnlyWorldStateFactory,
                 SpecProvider = SpecProvider,
                 TransactionComparerProvider = TransactionComparerProvider,
                 TxPool = TxPool
@@ -157,9 +158,8 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
                 _api!,
                 new AuRaConfig(),
                 new DisposableStack(),
-                DbProvider,
+                ReadOnlyWorldStateFactory,
                 BlockTree,
-                ReadOnlyTrieStore,
                 SpecProvider,
                 BlockValidator,
                 NoBlockRewards.Instance,

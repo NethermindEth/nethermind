@@ -13,10 +13,9 @@ using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
-using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Merge.AuRa.Withdrawals;
-using Nethermind.Trie.Pruning;
+using Nethermind.State;
 using Nethermind.TxPool;
 
 namespace Nethermind.Merge.AuRa;
@@ -31,9 +30,8 @@ public class AuRaMergeBlockProducerEnvFactory : BlockProducerEnvFactory
         AuRaNethermindApi auraApi,
         IAuraConfig auraConfig,
         DisposableStack disposeStack,
-        IDbProvider dbProvider,
+        IWorldStateFactory worldStateFactory,
         IBlockTree blockTree,
-        IReadOnlyTrieStore readOnlyTrieStore,
         ISpecProvider specProvider,
         IBlockValidator blockValidator,
         IRewardCalculatorSource rewardCalculatorSource,
@@ -43,9 +41,8 @@ public class AuRaMergeBlockProducerEnvFactory : BlockProducerEnvFactory
         ITransactionComparerProvider transactionComparerProvider,
         IBlocksConfig blocksConfig,
         ILogManager logManager) : base(
-            dbProvider,
+            worldStateFactory,
             blockTree,
-            readOnlyTrieStore,
             specProvider,
             blockValidator,
             rewardCalculatorSource,
@@ -97,7 +94,7 @@ public class AuRaMergeBlockProducerEnvFactory : BlockProducerEnvFactory
         ILogManager logManager)
     {
         ReadOnlyTxProcessingEnv constantContractsProcessingEnv = CreateReadonlyTxProcessingEnv(
-            _dbProvider.AsReadOnly(false),
+            _worldStateFactory,
             _blockTree.AsReadOnly());
 
         return new StartBlockProducerAuRa(_auraApi)

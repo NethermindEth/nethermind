@@ -32,12 +32,12 @@ public class InitializeBlockProducerOptimism : InitializeBlockProducer
         if (_api.BlockValidator is null) throw new StepDependencyException(nameof(_api.BlockValidator));
         if (_api.SpecHelper is null) throw new StepDependencyException(nameof(_api.SpecHelper));
         if (_api.L1CostHelper is null) throw new StepDependencyException(nameof(_api.L1CostHelper));
+        if (_api.ReadOnlyWorldStateFactory is null) throw new StepDependencyException(nameof(_api.ReadOnlyWorldStateFactory));
 
         _api.BlockProducerEnvFactory = new OptimismBlockProducerEnvFactory(
+            _api.ReadOnlyWorldStateFactory,
             _api.ChainSpec,
-            _api.DbProvider,
             _api.BlockTree,
-            _api.ReadOnlyTrieStore,
             _api.SpecProvider,
             _api.BlockValidator,
             _api.RewardCalculatorSource,

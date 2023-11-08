@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Core;
 using Nethermind.Logging;
 using Nethermind.Trie.Pruning;
@@ -32,5 +33,10 @@ public class WorldStateFactory: IWorldStateFactory
     public IStateReader CreateStateReader()
     {
         return new StateReader(_trieStore, _codeDb, _logManager);
+    }
+
+    public (IWorldState, IStateReader, Action) CreateResettableWorldState()
+    {
+        throw new InvalidOperationException("Unsupported action");
     }
 }

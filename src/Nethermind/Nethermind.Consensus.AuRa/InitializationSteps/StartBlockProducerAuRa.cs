@@ -171,7 +171,7 @@ public class StartBlockProducerAuRa
     {
         // We need special one for TxPriority as its following Head separately with events and we want rules from Head, not produced block
         IReadOnlyTxProcessorSource readOnlyTxProcessorSourceForTxPriority =
-            new ReadOnlyTxProcessingEnv(_api.DbProvider, _api.ReadOnlyTrieStore, _api.BlockTree, _api.SpecProvider, _api.LogManager);
+            new ReadOnlyTxProcessingEnv(_api.ReadOnlyWorldStateFactory!, _api.BlockTree, _api.SpecProvider, _api.LogManager);
 
         (_txPriorityContract, _localDataSource) = TxAuRaFilterBuilders.CreateTxPrioritySources(_auraConfig, _api, readOnlyTxProcessorSourceForTxPriority);
 
@@ -228,18 +228,17 @@ public class StartBlockProducerAuRa
     // TODO: Use BlockProducerEnvFactory
     private BlockProducerEnv GetProducerChain(ITxSource? additionalTxSource)
     {
-        ReadOnlyTxProcessingEnv CreateReadonlyTxProcessingEnv(ReadOnlyDbProvider dbProvider, ReadOnlyBlockTree blockTree)
+        ReadOnlyTxProcessingEnv CreateReadonlyTxProcessingEnv(ReadOnlyBlockTree blockTree)
         {
-            return new(dbProvider, _api.ReadOnlyTrieStore, blockTree, _api.SpecProvider, _api.LogManager);
+            return new(_api.ReadOnlyWorldStateFactory!, blockTree, _api.SpecProvider, _api.LogManager);
         }
 
         BlockProducerEnv Create()
         {
-            ReadOnlyDbProvider dbProvider = _api.DbProvider.AsReadOnly(false);
             ReadOnlyBlockTree readOnlyBlockTree = _api.BlockTree.AsReadOnly();
 
-            ReadOnlyTxProcessingEnv txProcessingEnv = CreateReadonlyTxProcessingEnv(dbProvider, readOnlyBlockTree);
-            ReadOnlyTxProcessingEnv constantContractsProcessingEnv = CreateReadonlyTxProcessingEnv(dbProvider, readOnlyBlockTree);
+            ReadOnlyTxProcessingEnv txProcessingEnv = CreateReadonlyTxProcessingEnv(readOnlyBlockTree);
+            ReadOnlyTxProcessingEnv constantContractsProcessingEnv = CreateReadonlyTxProcessingEnv(readOnlyBlockTree);
             BlockProcessor blockProcessor = CreateBlockProcessor(txProcessingEnv, constantContractsProcessingEnv);
 
             IBlockchainProcessor blockchainProcessor =
@@ -252,7 +251,7 @@ public class StartBlockProducerAuRa
                     BlockchainProcessor.Options.NoReceipts);
 
             OneTimeChainProcessor chainProcessor = new(
-                dbProvider,
+                txProcessingEnv.ResetDb,
                 blockchainProcessor);
 
             return new BlockProducerEnv()

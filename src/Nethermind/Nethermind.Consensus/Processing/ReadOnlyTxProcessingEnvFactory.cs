@@ -5,41 +5,38 @@ using Nethermind.Blockchain;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
 using Nethermind.Logging;
+using Nethermind.State;
 using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Consensus.Processing;
 
 public class ReadOnlyTxProcessingEnvFactory
 {
-    private readonly IReadOnlyDbProvider? _readOnlyDbProvider;
-    private readonly IReadOnlyTrieStore? _readOnlyTrieStore;
+    private readonly IWorldStateFactory _worldStateFactory;
     private readonly IReadOnlyBlockTree? _readOnlyBlockTree;
     private readonly ISpecProvider? _specProvider;
     private readonly ILogManager? _logManager;
 
     public ReadOnlyTxProcessingEnvFactory(
-        IDbProvider? dbProvider,
-        IReadOnlyTrieStore? trieStore,
+        IWorldStateFactory worldStateFactory,
         IBlockTree? blockTree,
         ISpecProvider? specProvider,
         ILogManager? logManager)
-        : this(dbProvider?.AsReadOnly(false), trieStore, blockTree?.AsReadOnly(), specProvider, logManager)
+        : this(worldStateFactory, blockTree?.AsReadOnly(), specProvider, logManager)
     {
     }
 
     public ReadOnlyTxProcessingEnvFactory(
-        IReadOnlyDbProvider? readOnlyDbProvider,
-        IReadOnlyTrieStore? readOnlyTrieStore,
+        IWorldStateFactory worldStateFactory,
         IReadOnlyBlockTree? readOnlyBlockTree,
         ISpecProvider? specProvider,
         ILogManager? logManager)
     {
-        _readOnlyDbProvider = readOnlyDbProvider;
-        _readOnlyTrieStore = readOnlyTrieStore;
+        _worldStateFactory = worldStateFactory;
         _readOnlyBlockTree = readOnlyBlockTree;
         _specProvider = specProvider;
         _logManager = logManager;
     }
 
-    public ReadOnlyTxProcessingEnv Create() => new(_readOnlyDbProvider, _readOnlyTrieStore, _readOnlyBlockTree, _specProvider, _logManager);
+    public ReadOnlyTxProcessingEnv Create() => new(_worldStateFactory, _readOnlyBlockTree, _specProvider, _logManager);
 }

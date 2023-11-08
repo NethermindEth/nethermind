@@ -16,6 +16,7 @@ using Nethermind.Db;
 using Nethermind.Evm.Tracing.GethStyle.JavaScript;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
+using Nethermind.State;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Trie.Pruning;
 using Newtonsoft.Json;
@@ -24,6 +25,7 @@ namespace Nethermind.JsonRpc.Modules.DebugModule;
 
 public class DebugModuleFactory : ModuleFactoryBase<IDebugRpcModule>
 {
+    private readonly IWorldStateFactory _worldStateFactory;
     private readonly IJsonRpcConfig _jsonRpcConfig;
     private readonly IBlockValidator _blockValidator;
     private readonly IRewardCalculatorSource _rewardCalculatorSource;
@@ -41,6 +43,7 @@ public class DebugModuleFactory : ModuleFactoryBase<IDebugRpcModule>
     private ILogger _logger;
 
     public DebugModuleFactory(
+        IWorldStateFactory worldStateFactory,
         IDbProvider dbProvider,
         IBlockTree blockTree,
         IJsonRpcConfig jsonRpcConfig,
@@ -56,6 +59,7 @@ public class DebugModuleFactory : ModuleFactoryBase<IDebugRpcModule>
         IFileSystem fileSystem,
         ILogManager logManager)
     {
+        _worldStateFactory = worldStateFactory;
         _dbProvider = dbProvider.AsReadOnly(false);
         _blockTree = blockTree.AsReadOnly();
         _jsonRpcConfig = jsonRpcConfig ?? throw new ArgumentNullException(nameof(jsonRpcConfig));
@@ -76,8 +80,7 @@ public class DebugModuleFactory : ModuleFactoryBase<IDebugRpcModule>
     public override IDebugRpcModule Create()
     {
         ReadOnlyTxProcessingEnv txEnv = new(
-            _dbProvider,
-            _trieStore,
+            _worldStateFactory,
             _blockTree,
             _specProvider,
             _logManager);
@@ -90,7 +93,7 @@ public class DebugModuleFactory : ModuleFactoryBase<IDebugRpcModule>
             _recoveryStep,
             _rewardCalculatorSource.Get(txEnv.TransactionProcessor),
             _receiptStorage,
-            _dbProvider,
+            txEnv.ResetDb,
             _specProvider,
             _logManager,
             transactionsExecutor);

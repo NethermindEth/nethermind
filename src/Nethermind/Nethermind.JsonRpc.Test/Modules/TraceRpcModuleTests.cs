@@ -46,12 +46,11 @@ namespace Nethermind.JsonRpc.Test.Modules
                 await Blockchain.AddFunds(TestItem.AddressA, 1000.Ether());
                 await Blockchain.AddFunds(TestItem.AddressB, 1000.Ether());
                 await Blockchain.AddFunds(TestItem.AddressC, 1000.Ether());
-                ReadOnlyDbProvider? dbProvider = Blockchain.DbProvider.AsReadOnly(false);
                 ReceiptsRecovery receiptsRecovery =
                     new(Blockchain.EthereumEcdsa, Blockchain.SpecProvider);
                 IReceiptFinder receiptFinder = new FullInfoReceiptFinder(Blockchain.ReceiptStorage, receiptsRecovery, Blockchain.BlockFinder);
                 ReadOnlyTxProcessingEnv txProcessingEnv =
-                    new(dbProvider, Blockchain.ReadOnlyTrieStore, Blockchain.BlockTree.AsReadOnly(), Blockchain.SpecProvider, Blockchain.LogManager);
+                    new(Blockchain.ReadOnlyWorldStateFactory, Blockchain.BlockTree.AsReadOnly(), Blockchain.SpecProvider, Blockchain.LogManager);
                 RewardCalculator rewardCalculatorSource = new(Blockchain.SpecProvider);
 
                 IRewardCalculator rewardCalculator = rewardCalculatorSource.Get(txProcessingEnv.TransactionProcessor);
@@ -65,7 +64,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                     Blockchain.BlockPreprocessorStep,
                     rewardCalculator,
                     Blockchain.ReceiptStorage,
-                    dbProvider,
+                    txProcessingEnv.ResetDb,
                     Blockchain.SpecProvider,
                     Blockchain.LogManager,
                     transactionsExecutor);

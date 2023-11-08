@@ -70,17 +70,13 @@ namespace Nethermind.Api
             DisposeStack.Push(CryptoRandom);
         }
 
-        private IReadOnlyDbProvider? _readOnlyDbProvider;
-
         public IBlockchainBridge CreateBlockchainBridge()
         {
             ReadOnlyBlockTree readOnlyTree = BlockTree!.AsReadOnly();
-            LazyInitializer.EnsureInitialized(ref _readOnlyDbProvider, () => new ReadOnlyDbProvider(DbProvider, false));
 
             // TODO: reuse the same trie cache here
             ReadOnlyTxProcessingEnv readOnlyTxProcessingEnv = new(
-                _readOnlyDbProvider,
-                ReadOnlyTrieStore,
+                ReadOnlyWorldStateFactory!,
                 readOnlyTree,
                 SpecProvider,
                 LogManager);

@@ -13,6 +13,7 @@ using Nethermind.Consensus.Validators;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
 using Nethermind.Logging;
+using Nethermind.State;
 using Nethermind.Trie.Pruning;
 using Newtonsoft.Json;
 
@@ -20,9 +21,8 @@ namespace Nethermind.JsonRpc.Modules.Trace
 {
     public class TraceModuleFactory : ModuleFactoryBase<ITraceRpcModule>
     {
-        private readonly ReadOnlyDbProvider _dbProvider;
+        private readonly IWorldStateFactory _worldStateFactory;
         private readonly IReadOnlyBlockTree _blockTree;
-        private readonly IReadOnlyTrieStore _trieNodeResolver;
         private readonly IJsonRpcConfig _jsonRpcConfig;
         private readonly IReceiptStorage _receiptStorage;
         private readonly ISpecProvider _specProvider;
@@ -32,9 +32,8 @@ namespace Nethermind.JsonRpc.Modules.Trace
         private readonly IPoSSwitcher _poSSwitcher;
 
         public TraceModuleFactory(
-            IDbProvider dbProvider,
+            IWorldStateFactory worldStateFactory,
             IBlockTree blockTree,
-            IReadOnlyTrieStore trieNodeResolver,
             IJsonRpcConfig jsonRpcConfig,
             IBlockPreprocessorStep recoveryStep,
             IRewardCalculatorSource rewardCalculatorSource,
@@ -43,9 +42,8 @@ namespace Nethermind.JsonRpc.Modules.Trace
             IPoSSwitcher poSSwitcher,
             ILogManager logManager)
         {
-            _dbProvider = dbProvider.AsReadOnly(false);
+            _worldStateFactory = worldStateFactory;
             _blockTree = blockTree.AsReadOnly();
-            _trieNodeResolver = trieNodeResolver;
             _jsonRpcConfig = jsonRpcConfig ?? throw new ArgumentNullException(nameof(jsonRpcConfig));
             _recoveryStep = recoveryStep ?? throw new ArgumentNullException(nameof(recoveryStep));
             _rewardCalculatorSource = rewardCalculatorSource ?? throw new ArgumentNullException(nameof(rewardCalculatorSource));
@@ -59,7 +57,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
         public override ITraceRpcModule Create()
         {
             ReadOnlyTxProcessingEnv txProcessingEnv =
-                new(_dbProvider, _trieNodeResolver, _blockTree, _specProvider, _logManager);
+                new(_worldStateFactory, _blockTree, _specProvider, _logManager);
 
             IRewardCalculator rewardCalculator =
                 new MergeRpcRewardCalculator(_rewardCalculatorSource.Get(txProcessingEnv.TransactionProcessor),
@@ -75,7 +73,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
                 _recoveryStep,
                 rewardCalculator,
                 _receiptStorage,
-                _dbProvider,
+                txProcessingEnv.ResetDb,
                 _specProvider,
                 _logManager,
                 transactionsExecutor);
