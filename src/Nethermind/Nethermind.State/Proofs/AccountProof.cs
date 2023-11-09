@@ -98,7 +98,7 @@ namespace Nethermind.State.Proofs
             writer.WritePropertyName("balance"u8);
             uint256Converter.Write(writer, value.Balance, options);
 
-            JsonConverter<Keccak> keccakConverter = (JsonConverter<Keccak>)options.GetConverter(typeof(Keccak));
+            JsonConverter<Hash256> keccakConverter = (JsonConverter<Hash256>)options.GetConverter(typeof(Hash256));
             writer.WritePropertyName("codeHash"u8);
             keccakConverter.Write(writer, value.CodeHash, options);
 

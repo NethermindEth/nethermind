@@ -77,7 +77,7 @@ public class ContractBasedValidatorTests
         _transactionProcessor = Substitute.For<IReadOnlyTransactionProcessor>();
         _transactionProcessor.IsContractDeployed(_contractAddress).Returns(true);
         _readOnlyTxProcessorSource = Substitute.For<IReadOnlyTxProcessorSource>();
-        _readOnlyTxProcessorSource.Build(Arg.Any<Keccak>()).Returns(_transactionProcessor);
+        _readOnlyTxProcessorSource.Build(Arg.Any<Hash256>()).Returns(_transactionProcessor);
         _stateProvider.StateRoot.Returns(TestItem.KeccakA);
         _blockTree.Head.Returns(_block);
 
@@ -141,7 +141,7 @@ public class ContractBasedValidatorTests
 
         int blockNumber = 10;
         Address[] validators = TestItem.Addresses.Take(10).ToArray();
-        Keccak blockHash = Keccak.Compute("Test");
+        Hash256 blockHash = Keccak.Compute("Test");
         PendingValidators pendingValidators = new(blockNumber, blockHash, validators);
         _validatorStore.PendingValidators.Returns(pendingValidators);
         _blockTree.Head.Returns((Block)null);
@@ -506,7 +506,7 @@ public class ContractBasedValidatorTests
 
             TxReceipt[] txReceipts = test.GetReceipts(_validatorContract, _block, _contractAddress, _abiEncoder, SetupAbiAddresses);
 
-            Keccak? blockHashForClosure = _block.Hash;
+            Hash256? blockHashForClosure = _block.Hash;
             _receiptsStorage.Get(Arg.Is<Block>(b => b.Hash == blockHashForClosure)).Returns(txReceipts);
 
             _block.Header.Bloom = new Bloom(txReceipts.SelectMany(r => r.Logs).ToArray());

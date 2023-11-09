@@ -77,7 +77,6 @@ namespace Nethermind.Core.Crypto
     }
 
     [DebuggerStepThrough]
-    [JsonConverter(typeof(KeccakConverter))]
     public static class Keccak
     {
         public const int Size = 32;
@@ -140,20 +139,20 @@ namespace Nethermind.Core.Crypto
 
 namespace Nethermind.Serialization.Json
 {
-    public class KeccakConverter : JsonConverter<Keccak>
+    public class Hash256Converter : JsonConverter<Hash256>
     {
-        public override Keccak? Read(
+        public override Hash256? Read(
             ref Utf8JsonReader reader,
             Type typeToConvert,
             JsonSerializerOptions options)
         {
             byte[]? bytes = ByteArrayConverter.Convert(ref reader);
-            return bytes is null ? null : new Keccak(bytes);
+            return bytes is null ? null : new Hash256(bytes);
         }
 
         public override void Write(
             Utf8JsonWriter writer,
-            Keccak keccak,
+            Hash256 keccak,
             JsonSerializerOptions options)
         {
             ByteArrayConverter.Convert(writer, keccak.Bytes, skipLeadingZeros: false);

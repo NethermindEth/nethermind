@@ -151,7 +151,7 @@ namespace Nethermind.JsonRpc.Data
             if (tokenType == JsonTokenType.StartObject)
             {
                 bool requireCanonical = false;
-                Keccak blockHash = null;
+                Hash256 blockHash = null;
                 for (int i = 0; i < 2; i++)
                 {
                     reader.Read();
@@ -162,7 +162,7 @@ namespace Nethermind.JsonRpc.Data
                     }
                     else if (reader.ValueTextEquals("blockHash"u8))
                     {
-                        blockHash = JsonSerializer.Deserialize<Keccak>(ref reader, options);
+                        blockHash = JsonSerializer.Deserialize<Hash256>(ref reader, options);
                     }
                 }
 
@@ -222,7 +222,7 @@ namespace Nethermind.JsonRpc.Data
                 if (span.Length == 64)
                 {
                     byte[] bytes = Bytes.FromUtf8HexString(span);
-                    return new BlockParameter(new Keccak(bytes));
+                    return new BlockParameter(new Hash256(bytes));
                 }
 
                 int oddMod = span.Length % 2;
@@ -302,7 +302,7 @@ namespace Nethermind.JsonRpc.Data
                 case { } safe when safe.Equals("safe", StringComparison.InvariantCultureIgnoreCase):
                     return BlockParameter.Safe;
                 case { Length: 66 } hash when hash.StartsWith("0x"):
-                    return new BlockParameter(new Keccak(hash));
+                    return new BlockParameter(new Hash256(hash));
                 default:
                     return new BlockParameter(LongConverter.FromString(value));
             }

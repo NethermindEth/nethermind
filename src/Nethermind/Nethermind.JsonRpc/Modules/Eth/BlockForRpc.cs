@@ -139,6 +139,6 @@ public class BlockForRpc
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public ulong? ExcessBlobGas { get; set; }
 
-    [JsonProperty(NullValueHandling = NullValueHandling.Ignore)]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public Hash256? ParentBeaconBlockRoot { get; set; }
 }

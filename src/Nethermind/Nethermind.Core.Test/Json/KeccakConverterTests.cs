@@ -14,7 +14,7 @@ namespace Nethermind.Core.Test.Json
     [TestFixture]
     public class KeccakConverterTests
     {
-        static KeccakConverter converter = new();
+        static Hash256Converter converter = new();
         static JsonSerializerOptions options = new JsonSerializerOptions { Converters = { converter } };
 
         [Test]
