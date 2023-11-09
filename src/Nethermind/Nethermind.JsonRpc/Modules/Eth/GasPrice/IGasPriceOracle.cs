@@ -10,5 +10,6 @@ namespace Nethermind.JsonRpc.Modules.Eth.GasPrice
         UInt256 GetGasPriceEstimate();
         GasPrices GetGasPricesEstimate();
         UInt256 GetMaxPriorityGasFeeEstimate();
+        UInt256 GetBlobGasPriceEstimate();
     }
 }

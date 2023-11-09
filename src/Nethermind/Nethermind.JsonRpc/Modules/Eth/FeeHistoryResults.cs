@@ -9,15 +9,19 @@ namespace Nethermind.JsonRpc.Modules.Eth
     {
         public UInt256[]? BaseFeePerGas { get; }
         public double[]? GasUsedRatio { get; }
+        public UInt256[] BaseFeePerBlobGas { get; }
+        public double[] BlobGasUsedRatio { get; }
         public long OldestBlock { get; }
         public UInt256[][]? Reward { get; }
 
-        public FeeHistoryResults(long oldestBlock, UInt256[] baseFeePerGas, double[] gasUsedRatio, UInt256[][]? reward = null)
+        public FeeHistoryResults(long oldestBlock, UInt256[] baseFeePerGas, double[] gasUsedRatio, UInt256[] baseFeePerBlobGas, double[] blobGasUsedRatio, UInt256[][]? reward = null)
         {
             OldestBlock = oldestBlock;
             Reward = reward;
             BaseFeePerGas = baseFeePerGas;
             GasUsedRatio = gasUsedRatio;
+            BaseFeePerBlobGas = baseFeePerBlobGas;
+            BlobGasUsedRatio = blobGasUsedRatio;
         }
     }
 }

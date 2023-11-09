@@ -87,6 +87,11 @@ namespace Nethermind.JsonRpc.Modules.Eth
             throw new NotSupportedException();
         }
 
+        public ResultWrapper<UInt256?> eth_blobGasPrice()
+        {
+            throw new NotSupportedException();
+        }
+
         public ResultWrapper<IEnumerable<Address>> eth_accounts()
         {
             throw new NotSupportedException();
