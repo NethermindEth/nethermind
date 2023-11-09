@@ -940,10 +940,10 @@ namespace Nethermind.Trie.Pruning
 
         public IKeyValueStore AsKeyValueStore() => _publicStore;
 
-        public void OpenContext(Keccak keccak)
+        public void OpenContext(long blockNumber, Keccak keccak)
         {
-            _committedNodes[StateColumns.State].OpenContext(keccak);
-            _committedNodes[StateColumns.Storage].OpenContext(keccak);
+            _committedNodes[StateColumns.State].OpenContext(blockNumber, keccak);
+            _committedNodes[StateColumns.Storage].OpenContext(blockNumber, keccak);
         }
 
         private class TrieKeyValueStore : IKeyValueStore

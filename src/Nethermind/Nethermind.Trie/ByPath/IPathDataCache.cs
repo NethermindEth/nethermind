@@ -12,8 +12,8 @@ using Nethermind.Core.Crypto;
 namespace Nethermind.Trie.ByPath;
 public interface IPathDataCache
 {
-    void OpenContext(Keccak parentStateRoot);
-    void CloseContext(long blockNumber, Keccak newStatRoot);
+    void OpenContext(long blockNumber, Keccak parentStateRoot);
+    void CloseContext(long blockNumber, Keccak newStateRoot);
     void AddNodeData(long blockNuber, TrieNode node);
     NodeData? GetNodeDataAtRoot(Keccak? rootHash, Span<byte> path);
     NodeData? GetNodeData(Span<byte> path, Keccak? hash);

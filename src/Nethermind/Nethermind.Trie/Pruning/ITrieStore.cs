@@ -9,7 +9,7 @@ namespace Nethermind.Trie.Pruning
 {
     public interface ITrieStore : ITrieNodeResolver, IDisposable
     {
-        void OpenContext(Keccak keccak);
+        void OpenContext(long blockNumber, Keccak keccak);
         void CommitNode(long blockNumber, NodeCommitInfo nodeCommitInfo, WriteFlags writeFlags = WriteFlags.None);
 
         void FinishBlockCommit(TrieType trieType, long blockNumber, TrieNode? root, WriteFlags writeFlags = WriteFlags.None);

@@ -898,9 +898,7 @@ namespace Nethermind.Trie.Pruning
             CommitNode(blockNumber, nodeCommitInfo, writeFlags);
         }
 
-        public void OpenContext(Keccak keccak)
-        {
-        }
+        public void OpenContext(long blockNumber, Keccak keccak) { }
 
         private class TrieKeyValueStore : IKeyValueStore
         {

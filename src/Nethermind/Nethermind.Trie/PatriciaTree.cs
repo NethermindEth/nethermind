@@ -198,7 +198,7 @@ namespace Nethermind.Trie
             //process deletions - it can happend that a root is set too empty hash due to deletions - needs to be outside of root ref condition
             if (TrieStore.Capability == TrieNodeResolverCapability.Path)
             {
-                TrieStore.OpenContext(ParentStateRootHash);
+                TrieStore.OpenContext(blockNumber, ParentStateRootHash);
                 if (ClearedBySelfDestruct)
                     TrieStore.MarkPrefixDeleted(blockNumber, StoreNibblePathPrefix);
                 while (_deleteNodes != null && _deleteNodes.TryDequeue(out TrieNode delNode))
@@ -450,7 +450,6 @@ namespace Nethermind.Trie
 
         private byte[]? GetByPath(ReadOnlySpan<byte> rawKey, Keccak? rootHash = null)
         {
-            //Keccak cacheProbeRoot = rootHash;
             if (rootHash is null)
             {
                 if (RootRef is null) return null;
@@ -458,16 +457,6 @@ namespace Nethermind.Trie
                 {
                     if (_uncommitedPaths is null || _uncommitedPaths.Matches(rawKey) || ClearedBySelfDestruct)
                         return GetInternal(rawKey);
-                }
-                else
-                {
-                    //is it possible outside of unit tests?
-                    //if (RootRef.Keccak is null)
-                    //{
-                    //    RootRef.ResolveNode(TrieStore);
-                    //    RootRef.ResolveKey(TrieStore, true);
-                    //}
-                    //cacheProbeRoot = RootRef.Keccak;
                 }
             }
 

@@ -92,7 +92,7 @@ namespace Nethermind.Trie.Pruning
             throw new NotImplementedException();
         }
 
-        public void OpenContext(Keccak keccak)
+        public void OpenContext(long blockNumber, Keccak keccak)
         {
             throw new NotImplementedException();
         }
