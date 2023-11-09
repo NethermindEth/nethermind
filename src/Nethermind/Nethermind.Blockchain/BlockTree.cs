@@ -1612,17 +1612,7 @@ namespace Nethermind.Blockchain
         
         public Block[] GetInvalidBlocks()
         {
-            IList<Block> blockList = new List<Block>(); 
-            IDictionary<long, HashSet<Keccak>> tempDict = _invalidBlocks.Clone();
-            foreach (HashSet<Keccak> invalidBlockHashes in tempDict.Values)
-            {
-                foreach (Keccak? hash in invalidBlockHashes)
-                {
-                    blockList.Add(FindBlock(hash, BlockTreeLookupOptions.None));
-                }
-            }
-
-            return blockList.ToArray();
+            return _invalidBlocks.ToArray().Select(x => x.Value).ToArray();
         }
     }
 }

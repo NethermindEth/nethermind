@@ -8,8 +8,10 @@ using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Blocks;
+using Nethermind.Blockchain.Headers;
 using Nethermind.Blockchain.Find;
-using Nethermind.Blockchain.Processing;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
@@ -29,6 +31,7 @@ using Nethermind.Specs;
 using Nethermind.State.Repositories;
 using NSubstitute;
 using NUnit.Framework;
+using NSubstitute.ReturnsExtensions;
 
 namespace Nethermind.JsonRpc.Test.Modules;
 
@@ -38,10 +41,11 @@ public class DebugModuleTests
 {
     private IJsonRpcConfig jsonRpcConfig = new JsonRpcConfig();
     private IDebugBridge debugBridge = Substitute.For<IDebugBridge>();
-    private MemDb _blocksInfosDb;
-    private MemDb _headersDb;
-    private MemDb _blocksDb;
-    private ChainLevelInfoRepository _chainLevelInfoRepository;
+    private MemDb _blocksInfosDb = new();
+    private MemDb _headersDb = new();
+    private MemDb _blockNumberDb = new();
+    private MemDb _blocksDb = new();
+    private MemDb _metadataDb = new();
 
     [Test]
     public void Get_from_db()
@@ -224,11 +228,11 @@ public class DebugModuleTests
 
     private BlockTree BuildBlockTree()
     {
-        _blocksDb = new MemDb();
-        _headersDb = new MemDb();
-        _blocksInfosDb = new MemDb();
-        _chainLevelInfoRepository = new ChainLevelInfoRepository(_blocksInfosDb);
-        return new BlockTree(_blocksDb, _headersDb, _blocksInfosDb, _chainLevelInfoRepository, MainnetSpecProvider.Instance, NullBloomStorage.Instance, LimboLogs.Instance);
+        SyncConfig syncConfig = new();
+        BlockStore blockStore = new(_blocksDb);
+        HeaderStore headerStore = new(_headersDb, _blockNumberDb);
+        ChainLevelInfoRepository chainLevelInfoRepository = new(_blocksInfosDb);
+        return new BlockTree(blockStore, headerStore, _blocksInfosDb, _metadataDb, chainLevelInfoRepository, MainnetSpecProvider.Instance, NullBloomStorage.Instance, syncConfig, LimboLogs.Instance);
     }
 
     [Test]
@@ -248,17 +252,19 @@ public class DebugModuleTests
         
         blockTree.DeleteInvalidBlock(block1);
         BlockDecoder decoder = new();
-        _blocksDb.Set(block1.Hash, decoder.Encode(block1).Bytes);
+        _blocksDb.Set(block1.Hash ?? new Hash256("0x0"), decoder.Encode(block1).Bytes);
         debugBridge.GetBadBlocks().Returns(blockTree.GetInvalidBlocks());
+
         AddBlockResult result = blockTree.SuggestBlock(block1);
-        Assert.AreEqual(AddBlockResult.InvalidBlock, result);
+        Assert.That(result, Is.EqualTo(AddBlockResult.InvalidBlock));
 
         DebugRpcModule rpcModule = new(LimboLogs.Instance, debugBridge, jsonRpcConfig);
 
         ResultWrapper<Block[]> blocks = rpcModule.debug_getBadBlocks();
-        Assert.AreEqual(1, blocks.Data.Length);
-        Assert.AreEqual(block1.Hash, blocks.Data[0].Hash);
-        Assert.AreEqual(new UInt256(2), blocks.Data[0].Difficulty);
+
+        Assert.That(blocks.Data.Length, Is.EqualTo(1));
+        Assert.That(blocks.Data[0].Hash, Is.EqualTo(block1.Hash));
+        Assert.That(blocks.Data[0].Difficulty, Is.EqualTo(new UInt256(2)));
     }
 
     [Test]

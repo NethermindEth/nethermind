@@ -74,11 +74,11 @@ public class DebugBridge : IDebugBridge
         {
             _dbMappings[DbNames.Receipts + receiptsDbColumnKey] = receiptsDb.GetColumnDb(receiptsDbColumnKey);
         }
+    }
 
-        public Block[] GetBadBlocks()
-        {
-            return _blockTree.GetInvalidBlocks();
-        }
+    public Block[] GetBadBlocks()
+    {
+        return _blockTree.GetInvalidBlocks();
     }
 
     public byte[] GetDbValue(string dbName, byte[] key)
