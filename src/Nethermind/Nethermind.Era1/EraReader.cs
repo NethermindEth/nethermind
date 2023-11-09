@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Runtime.CompilerServices;
 using System.Threading;
 using DotNetty.Buffers;
 using Nethermind.Core;
@@ -52,7 +53,7 @@ public class EraReader : IAsyncEnumerable<(Block, TxReceipt[], UInt256)>, IDispo
         Reset();
 
         int actualCount = 0;
-        AccumulatorCalculator calculator = new();
+        using AccumulatorCalculator calculator = new();
         while (true)
         {
             EntryReadResult? result = await Next(true, cancellation);
@@ -87,7 +88,7 @@ public class EraReader : IAsyncEnumerable<(Block, TxReceipt[], UInt256)>, IDispo
         return result.Value.TotalDifficulty - result.Value.Block.Header.Difficulty;
     }
 
-    public static Task<EraReader> Create(string file, IByteBufferAllocator? allocator = null, CancellationToken token = default)
+    public static Task<EraReader> Create(string file, IByteBufferAllocator? allocator = null, in CancellationToken token = default)
     {
         if (string.IsNullOrEmpty(file)) throw new ArgumentException("Cannot be null or empty.", nameof(file));
         return Create(File.OpenRead(file), allocator, token);
@@ -181,7 +182,7 @@ public class EraReader : IAsyncEnumerable<(Block, TxReceipt[], UInt256)>, IDispo
             NettyRlpStream rlpStream = new NettyRlpStream(buffer);
             Hash256? currentComputedHeaderHash = null;
             if (computeHeaderHash)
-                currentComputedHeaderHash = _headerDecoder.ComputeHeaderHash(rlpStream);
+                currentComputedHeaderHash = rlpStream.ComputeNextItemHash();
             BlockHeader header = Rlp.Decode<BlockHeader>(rlpStream);
 
             await ReadEntry(buffer, EntryTypes.CompressedBody, cancellationToken);
@@ -235,12 +236,12 @@ public class EraReader : IAsyncEnumerable<(Block, TxReceipt[], UInt256)>, IDispo
         long blockOffset = await _store.ReadValueAt(blockIndexOffset, token);
         return _store.Seek(blockOffset, SeekOrigin.Current);
     }
-
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private void Reset()
     {
         _currentBlockNumber = _store.Metadata.Start;
     }
-
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static void CheckType(Entry e, ushort expected)
     {
         if (e.Type != expected) throw new EraException($"Expected an entry of type {expected}, but got {e.Type}.");

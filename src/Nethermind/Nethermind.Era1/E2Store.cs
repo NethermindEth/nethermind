@@ -8,11 +8,10 @@ using System.Drawing;
 using System.IO.Compression;
 using System.Text;
 using DotNetty.Buffers;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Newtonsoft.Json.Linq;
 using Snappier;
-using Snappy;
-
 namespace Nethermind.Era1;
 
 internal class E2Store : IDisposable
@@ -46,52 +45,44 @@ internal class E2Store : IDisposable
         _metadata = await ReadEraMetaData(token);
     }
 
-    public Task<int> WriteEntryAsSnappy(UInt16 type, byte[] bytes, CancellationToken cancellation = default)
+    public Task<int> WriteEntryAsSnappy(UInt16 type, Memory<byte> bytes, CancellationToken cancellation = default)
     {
         return WriteEntry(type, bytes, true, cancellation);
 
     }
-    public Task<int> WriteEntry(UInt16 type, byte[] bytes, CancellationToken cancellation = default)
+    public Task<int> WriteEntry(UInt16 type, Memory<byte> bytes, CancellationToken cancellation = default)
     {
         return WriteEntry(type, bytes, false, cancellation);
     }
 
-    private async Task<int> WriteEntry(UInt16 type, byte[] bytes, bool asSnappy, CancellationToken cancellation = default)
+    private async Task<int> WriteEntry(UInt16 type, Memory<byte> bytes, bool asSnappy, CancellationToken cancellation = default)
     {
-        //TODO refactor to sync and use span?
-        byte[] headerBuffer = ArrayPool<byte>.Shared.Rent(HeaderSize);
-        try
+        using ArrayPoolList<byte> headerBuffer = new(HeaderSize);
+        //See https://github.com/google/snappy/blob/main/framing_format.txt
+        if (asSnappy && bytes.Length > 0)
         {
-            //See https://github.com/google/snappy/blob/main/framing_format.txt
-            if (asSnappy && bytes.Length > 0)
-            {
-                //TODO find a way to write directly to file, and still return the number of bytes written
-                using MemoryStream memoryStream = new MemoryStream();
-                using SnappyStream snappyStream = new(memoryStream, CompressionMode.Compress, true);
-                await snappyStream.WriteAsync(bytes, cancellation);
-                await snappyStream.FlushAsync();
-                bytes = memoryStream.ToArray();
-            }
-
-            headerBuffer[0] = (byte)type;
-            headerBuffer[1] = (byte)(type >> 8);
-            int length = bytes.Length;
-            headerBuffer[2] = (byte)(length);
-            headerBuffer[3] = (byte)(length >> 8);
-            headerBuffer[4] = (byte)(length >> 16);
-            headerBuffer[5] = (byte)(length >> 24);
-            headerBuffer[6] = 0;
-            headerBuffer[7] = 0;
-
-            await _stream.WriteAsync(headerBuffer, 0, HeaderSize, cancellation);
-            if (length > 0) await _stream.WriteAsync(bytes, 0, length, cancellation);
-
-            return length + HeaderSize;
+            //TODO find a way to write directly to file, and still return the number of bytes written
+            using MemoryStream memoryStream = new MemoryStream();
+            using SnappyStream snappyStream = new(memoryStream, CompressionMode.Compress, true);
+            await snappyStream.WriteAsync(bytes, cancellation);
+            await snappyStream.FlushAsync();
+            bytes = memoryStream.ToArray();
         }
-        finally
-        {
-            ArrayPool<byte>.Shared.Return(headerBuffer);
-        }
+
+        headerBuffer.Add((byte)type);
+        headerBuffer.Add((byte)(type >> 8));
+        int length = bytes.Length;
+        headerBuffer.Add((byte)(length));
+        headerBuffer.Add((byte)(length >> 8));
+        headerBuffer.Add((byte)(length >> 16));
+        headerBuffer.Add((byte)(length >> 24));
+        headerBuffer.Add(0);
+        headerBuffer.Add(0);
+
+        await _stream.WriteAsync(headerBuffer.AsMemory(0, HeaderSize), cancellation);
+        if (length > 0) await _stream.WriteAsync(bytes, cancellation);
+
+        return length + HeaderSize;
     }
 
     private async Task<EraMetadata> ReadEraMetaData(CancellationToken token = default)
@@ -100,23 +91,18 @@ internal class E2Store : IDisposable
         if (_stream.Length < 16)
             throw new EraFormatException($"Data is not in a valid Era format.");
 
-        byte[] bytes = ArrayPool<byte>.Shared.Rent(16);
-        try
-        {
-            _stream.Position = _stream.Length - 8;
-            await _stream.ReadAsync(bytes, 0, 8, token);
-            long c = BitConverter.ToInt64(bytes);
+        using ArrayPoolList<byte> pooledBytes = new(16);
+        Memory<byte> bytes = pooledBytes.AsMemory(0, 16);
 
-            long indexOffset = l - 16L - c * 8;
-            _stream.Position = indexOffset;
-            await _stream.ReadAsync(bytes, 8, 8, token);
-            long s = BitConverter.ToInt64(bytes, 8);
-            return new EraMetadata(s, c, l);
-        }
-        finally
-        {
-            ArrayPool<byte>.Shared.Return(bytes);
-        }
+        _stream.Position = _stream.Length - 8;
+        await _stream.ReadAsync(bytes.Slice(0, 8), token);
+        long c = BitConverter.ToInt64(bytes.Span);
+
+        long indexOffset = l - 16L - c * 8;
+        _stream.Position = indexOffset;
+        await _stream.ReadAsync(bytes.Slice(8, 8), token);
+        long s = BitConverter.ToInt64(bytes.Slice(8).Span);
+        return new EraMetadata(s, c, l);
     }
 
     // Reads the header metadata at the given offset.

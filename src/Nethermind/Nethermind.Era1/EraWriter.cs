@@ -9,13 +9,13 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Threading.Tasks;
 using Cortex.SimpleSerialize;
+using DotNetty.Buffers;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
-using Nethermind.Serialization.Ssz;
-using Snappier;
 
 namespace Nethermind.Era1;
 public class EraWriter : IDisposable
@@ -25,11 +25,12 @@ public class EraWriter : IDisposable
     private long _startNumber;
     private bool _firstBlock = true;
     private long _totalWritten;
-    private readonly List<long> _entryIndexes = new();
+    private readonly ArrayPoolList<long> _entryIndexes;
 
     private readonly HeaderDecoder _headerDecoder = new();
     private readonly BlockBodyDecoder _blockBodyDecoder = new();
     private readonly ReceiptMessageDecoder _receiptDecoder = new();
+    private readonly IByteBufferAllocator _byteBufferAllocator;
 
     private readonly E2Store _e2Store;
     private readonly AccumulatorCalculator _accumulatorCalculator;
@@ -37,46 +38,68 @@ public class EraWriter : IDisposable
     private bool _disposedValue;
     private bool _finalized;
 
-    public static EraWriter Create(string path, ISpecProvider specProvider)
+    public static EraWriter Create(string path, ISpecProvider specProvider, IByteBufferAllocator? bufferAllocator = null)
     {
         if (string.IsNullOrWhiteSpace(path)) throw new ArgumentException($"'{nameof(path)}' cannot be null or whitespace.", nameof(path));
-        return Create(new FileStream(path, FileMode.Create), specProvider);
+        return Create(new FileStream(path, FileMode.Create), specProvider, bufferAllocator);
     }
-    public static EraWriter Create(Stream stream, ISpecProvider specProvider)
+    public static EraWriter Create(Stream stream, ISpecProvider specProvider, IByteBufferAllocator? bufferAllocator = null)
     {
         if (specProvider is null) throw new ArgumentNullException(nameof(specProvider));
 
-        EraWriter b = new(new E2Store(stream), specProvider);
+        EraWriter b = new(new E2Store(stream), specProvider, bufferAllocator);
         return b;
     }
 
-    private EraWriter(E2Store e2Store, ISpecProvider specProvider)
+    private EraWriter(E2Store e2Store, ISpecProvider specProvider, IByteBufferAllocator? bufferAllocator)
     {
         _e2Store = e2Store;
         _accumulatorCalculator = new();
         _specProvider = specProvider;
+        _byteBufferAllocator = bufferAllocator ?? PooledByteBufferAllocator.Default;
+        _entryIndexes = new(MaxEra1Size);
     }
 
-    public Task<bool> Add(Block block, TxReceipt[] receipts, CancellationToken cancellation = default)
+    public Task<bool> Add(Block block, TxReceipt[] receipts, in CancellationToken cancellation = default)
     {
         if (block.TotalDifficulty == null)
             throw new ArgumentException($"The block must have a {nameof(block.TotalDifficulty)}.", nameof(block));
         return Add(block, receipts, block.TotalDifficulty.Value, cancellation);
     }
-    public Task<bool> Add(Block block, TxReceipt[] receipts, UInt256 totalDifficulty, CancellationToken cancellation = default)
+    public Task<bool> Add(Block block, TxReceipt[] receipts, in UInt256 totalDifficulty, in CancellationToken cancellation = default)
     {
         if (block.Header == null)
             throw new ArgumentException("The block must have a header.", nameof(block));
         if (block.Hash == null)
             throw new ArgumentException("The block must have a hash.", nameof(block));
 
-        Rlp encodedHeader = _headerDecoder.Encode(block.Header);
-        Rlp encodedBody = _blockBodyDecoder.Encode(block.Body);
-        //Geth implementation has a byte array representing both TxPostState and StatusCode, and serializes whatever is set
+        int headerLength = _headerDecoder.GetLength(block.Header, RlpBehaviors.None);
+        int bodyLength = _blockBodyDecoder.GetLength(block.Body, RlpBehaviors.None);
         RlpBehaviors behaviors = _specProvider.GetSpec(block.Header).IsEip658Enabled ? RlpBehaviors.Eip658Receipts : RlpBehaviors.None;
-        Rlp encodedReceipts = _receiptDecoder.Encode(receipts, behaviors);
+        int receiptsLength = _receiptDecoder.GetLength(receipts, behaviors);
 
-        return Add(block.Hash, encodedHeader.Bytes, encodedBody.Bytes, encodedReceipts.Bytes, block.Number, block.Difficulty, totalDifficulty, cancellation);
+        IByteBuffer byteBuffer = _byteBufferAllocator.Buffer(headerLength + bodyLength + receiptsLength);
+        try
+        {
+            byteBuffer.EnsureWritable(headerLength + bodyLength + receiptsLength);
+
+            RlpStream rlpStream = new NettyRlpStream(byteBuffer);
+            rlpStream.Encode(block.Header);
+            Memory<byte> headerBytes = byteBuffer.ReadAllBytesAsMemory();
+
+            rlpStream.Encode(block.Body);
+            Memory<byte> bodyBytes = byteBuffer.ReadAllBytesAsMemory();
+
+            //Geth implementation has a byte array representing both TxPostState and StatusCode, and serializes whatever is set
+            rlpStream.Encode(receipts, behaviors);
+            Memory<byte> receiptBytes = byteBuffer.ReadAllBytesAsMemory();
+
+            return Add(block.Hash, headerBytes, bodyBytes, receiptBytes, block.Number, block.Difficulty, totalDifficulty, cancellation);
+        }
+        finally
+        {
+            byteBuffer.Release();
+        }
     }
     /// <summary>
     /// Write RLP encoded data to the underlying stream. 
@@ -95,18 +118,18 @@ public class EraWriter : IDisposable
     /// <exception cref="EraException"></exception>
     public async Task<bool> Add(
         Hash256 blockHash,
-        byte[] blockHeader,
-        byte[] blockBody,
-        byte[] receiptsArray,
+        Memory<byte> blockHeader,
+        Memory<byte> blockBody,
+        Memory<byte> receiptsArray,
         long blockNumber,
         UInt256 blockDifficulty,
         UInt256 totalDifficulty,
         CancellationToken cancellation = default)
     {
         if (blockHash is null) throw new ArgumentNullException(nameof(blockHash));
-        if (blockHeader is null) throw new ArgumentNullException(nameof(blockHeader));
-        if (blockBody is null) throw new ArgumentNullException(nameof(blockBody));
-        if (receiptsArray is null) throw new ArgumentNullException(nameof(receiptsArray));
+        if (blockHeader.Length == 0) throw new ArgumentException("Rlp encoded data cannot be empty.", nameof(blockHeader));
+        if (blockBody.Length == 0) throw new ArgumentException("Rlp encoded data cannot be empty.", nameof(blockBody));
+        if (receiptsArray.Length == 0) throw new ArgumentException("Rlp encoded data cannot be empty.", nameof(receiptsArray));
         if (totalDifficulty < blockDifficulty)
             throw new ArgumentOutOfRangeException(nameof(totalDifficulty), $"Cannot be less than the block difficulty.");
         if (_finalized)
@@ -199,10 +222,9 @@ public class EraWriter : IDisposable
             if (disposing)
             {
                 _e2Store?.Dispose();
+                _accumulatorCalculator?.Dispose();
+                _entryIndexes?.Dispose();
             }
-
-            // TODO: free unmanaged resources (unmanaged objects) and override finalizer
-            // TODO: set large fields to null
             _disposedValue = true;
         }
     }

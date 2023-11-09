@@ -13,6 +13,8 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
+using Nethermind.Serialization.Rlp;
+using Newtonsoft.Json.Linq;
 
 namespace Nethermind.Serialization.Rlp
 {
@@ -20,6 +22,7 @@ namespace Nethermind.Serialization.Rlp
     {
         private static readonly HeaderDecoder _headerDecoder = new();
         private static readonly BlockDecoder _blockDecoder = new();
+        private static readonly BlockBodyDecoder _blockBodyDecoder = new();
         private static readonly BlockInfoDecoder _blockInfoDecoder = new();
         private static readonly TxDecoder _txDecoder = new();
         private static readonly ReceiptMessageDecoder _receiptDecoder = new();
@@ -49,6 +52,11 @@ namespace Nethermind.Serialization.Rlp
             _blockDecoder.Encode(this, value);
         }
 
+        public void Encode(BlockBody value)
+        {
+            _blockBodyDecoder.Encode(this, value);
+        }
+
         public void Encode(BlockHeader value)
         {
             _headerDecoder.Encode(this, value);
@@ -58,7 +66,22 @@ namespace Nethermind.Serialization.Rlp
         {
             _txDecoder.Encode(this, value, rlpBehaviors);
         }
-
+        public void Encode(TxReceipt?[]? values, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        {
+            if (values is null)
+            {
+                EncodeNullObject();
+                return;
+            }
+            StartSequence(_receiptDecoder.GetContentLength(values, rlpBehaviors));
+            for (int i = 0; i < values.Length; i++)
+            {
+                if (values[i] is null)
+                    EncodeNullObject();
+                else
+                    _receiptDecoder.Encode(this, values[i], rlpBehaviors);
+            }
+        }
         public void Encode(TxReceipt value)
         {
             _receiptDecoder.Encode(this, value);

@@ -7,7 +7,7 @@ using Nethermind.Core.Extensions;
 
 namespace Nethermind.Serialization.Rlp
 {
-    public class ReceiptMessageDecoder : IRlpStreamDecoder<TxReceipt>, IRlpObjectDecoder<TxReceipt>
+    public class ReceiptMessageDecoder : IRlpStreamDecoder<TxReceipt>
     {
         static ReceiptMessageDecoder()
         {
@@ -173,13 +173,6 @@ namespace Nethermind.Serialization.Rlp
             {
                 rlpStream.Encode(item.Logs[i]);
             }
-        }
-
-        public Rlp Encode(TxReceipt? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-        {
-            RlpStream rlpStream = new(GetLength(item, rlpBehaviors));
-            Encode(rlpStream, item, rlpBehaviors);
-            return new Rlp(rlpStream.Data);
         }
     }
 }

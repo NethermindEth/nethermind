@@ -9,12 +9,12 @@
   <ItemGroup>
     <PackageReference Include="Cortex.SimpleSerialize" />
     <PackageReference Include="Snappier" />
-    <PackageReference Include="Snappy.Standard" />
   </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\Nethermind.Blockchain\Nethermind.Blockchain.csproj" />
     <ProjectReference Include="..\Nethermind.Core\Nethermind.Core.csproj" />
+    <ProjectReference Include="..\Nethermind.Network\Nethermind.Network.csproj" />
     <ProjectReference Include="..\Nethermind.Serialization.Rlp\Nethermind.Serialization.Rlp.csproj" />
     <ProjectReference Include="..\Nethermind.Serialization.Ssz\Nethermind.Serialization.Ssz.csproj" />
   </ItemGroup>
