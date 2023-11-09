@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Runtime.CompilerServices;
 using System.Threading;
 using DotNetty.Buffers;
 using Nethermind.Core;
@@ -12,7 +13,7 @@ using Nethermind.Serialization.Rlp;
 using Nethermind.State.Proofs;
 
 namespace Nethermind.Era1;
-internal class EraReader : IAsyncEnumerable<(Block, TxReceipt[], UInt256)>, IDisposable
+public class EraReader : IAsyncEnumerable<(Block, TxReceipt[], UInt256)>, IDisposable
 {
     private bool _disposedValue;
     private long _currentBlockNumber;
@@ -37,7 +38,7 @@ internal class EraReader : IAsyncEnumerable<(Block, TxReceipt[], UInt256)>, IDis
         {
             result = await Next(false, cancellation);
             if (result == null) break;
-            yield return (result.Block, result.Receipts, result.TotalDifficulty);
+            yield return (result.Value.Block, result.Value.Receipts, result.Value.TotalDifficulty);
         }
     }
     /// <summary>
@@ -52,29 +53,28 @@ internal class EraReader : IAsyncEnumerable<(Block, TxReceipt[], UInt256)>, IDis
         Reset();
 
         int actualCount = 0;
-        EntryReadResult? result;
-        AccumulatorCalculator calculator = new();
+        using AccumulatorCalculator calculator = new();
         while (true)
         {
-            result = await Next(true, cancellation);
+            EntryReadResult? result = await Next(true, cancellation);
             if (result == null) break;
-
-            if (result.Block.Header.Hash != result.ComputedHeaderHash)
+            EntryReadResult err = result.Value;
+            if (err.Block.Header.Hash != err.ComputedHeaderHash)
             {
                 return false;
             }
-            Hash256 txRoot = new TxTrie(result.Block.Transactions).RootHash;
-            if (result.Block.Header.TxRoot != txRoot)
+            Hash256 txRoot = new TxTrie(err.Block.Transactions).RootHash;
+            if (err.Block.Header.TxRoot != txRoot)
             {
                 return false;
             }
-            Hash256 receiptRoot = new ReceiptTrie(receiptSpec, result.Receipts).RootHash;
-            if (result.Block.Header.ReceiptsRoot != receiptRoot)
+            Hash256 receiptRoot = new ReceiptTrie(receiptSpec, err.Receipts).RootHash;
+            if (err.Block.Header.ReceiptsRoot != receiptRoot)
             {
                 return false;
             }
-            currentTd += result.Block.Difficulty;
-            calculator.Add(result.Block.Header.Hash!, currentTd);
+            currentTd += err.Block.Difficulty;
+            calculator.Add(err.Block.Header.Hash!, currentTd);
             actualCount++;
         }
 
@@ -85,10 +85,10 @@ internal class EraReader : IAsyncEnumerable<(Block, TxReceipt[], UInt256)>, IDis
     {
         EntryReadResult? result = await ReadBlockAndReceipts(_store.Metadata.Start, true, cancellation);
         if (result == null) throw new EraException("Invalid Era1 archive format.");
-        return result.TotalDifficulty - result.Block.Header.Difficulty;
+        return result.Value.TotalDifficulty - result.Value.Block.Header.Difficulty;
     }
 
-    public static Task<EraReader> Create(string file, IByteBufferAllocator? allocator = null, CancellationToken token = default)
+    public static Task<EraReader> Create(string file, IByteBufferAllocator? allocator = null, in CancellationToken token = default)
     {
         if (string.IsNullOrEmpty(file)) throw new ArgumentException("Cannot be null or empty.", nameof(file));
         return Create(File.OpenRead(file), allocator, token);
@@ -182,7 +182,7 @@ internal class EraReader : IAsyncEnumerable<(Block, TxReceipt[], UInt256)>, IDis
             NettyRlpStream rlpStream = new NettyRlpStream(buffer);
             Hash256? currentComputedHeaderHash = null;
             if (computeHeaderHash)
-                currentComputedHeaderHash = _headerDecoder.ComputeHeaderHash(rlpStream);
+                currentComputedHeaderHash = rlpStream.ComputeNextItemHash();
             BlockHeader header = Rlp.Decode<BlockHeader>(rlpStream);
 
             await ReadEntry(buffer, EntryTypes.CompressedBody, cancellationToken);
@@ -227,6 +227,7 @@ internal class EraReader : IAsyncEnumerable<(Block, TxReceipt[], UInt256)>, IDis
 
     private async Task<long> SeekToBlock(long blockNumber, CancellationToken token)
     {
+        //TODO if the whole index is read in one go it should avoid some random reads, at the cost of more memory
         //Last 8 bytes is the count, so we skip them
         long startOfIndex = _store.Metadata.Length - 8 - _store.Metadata.Count * 8;
         long indexOffset = (blockNumber - _store.Metadata.Start) * 8;
@@ -235,12 +236,12 @@ internal class EraReader : IAsyncEnumerable<(Block, TxReceipt[], UInt256)>, IDis
         long blockOffset = await _store.ReadValueAt(blockIndexOffset, token);
         return _store.Seek(blockOffset, SeekOrigin.Current);
     }
-
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private void Reset()
     {
         _currentBlockNumber = _store.Metadata.Start;
     }
-
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static void CheckType(Entry e, ushort expected)
     {
         if (e.Type != expected) throw new EraException($"Expected an entry of type {expected}, but got {e.Type}.");
@@ -276,7 +277,7 @@ internal class EraReader : IAsyncEnumerable<(Block, TxReceipt[], UInt256)>, IDis
         GC.SuppressFinalize(this);
     }
 
-    private class EntryReadResult
+    private struct EntryReadResult
     {
         public EntryReadResult(Block block, TxReceipt[] receipts, UInt256 totalDifficulty, Hash256? headerHash)
         {

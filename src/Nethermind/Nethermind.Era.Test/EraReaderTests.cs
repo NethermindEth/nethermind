@@ -22,11 +22,12 @@ internal class EraReaderTests
     {
         using MemoryStream stream = new();
         EraWriter builder = EraWriter.Create(stream, Substitute.For<ISpecProvider>());
+        byte[] dummy = new byte[] { 0x0 };
         await builder.Add(
             Keccak.Zero,
-            Array.Empty<byte>(),
-            Array.Empty<byte>(),
-            Array.Empty<byte>(),
+            dummy,
+            dummy,
+            dummy,
             0,
             0,
             0);
@@ -143,7 +144,7 @@ internal class EraReaderTests
     [Test]
     public async Task VerifyAccumulator_CreateBlocks_AccumulatorMatches()
     {
-        AccumulatorCalculator calculator = new();
+        using AccumulatorCalculator calculator = new();
         using MemoryStream stream = new();
         EraWriter builder = EraWriter.Create(stream, Substitute.For<ISpecProvider>());
         Block block0 = Build.A.Block.WithNumber(0).WithTotalDifficulty(BlockHeaderBuilder.DefaultDifficulty).TestObject;
@@ -165,7 +166,7 @@ internal class EraReaderTests
     [Test]
     public async Task VerifyAccumulator_FirstVerifyThenEnumerateAll_AllBlocksEnumerated()
     {
-        AccumulatorCalculator calculator = new();
+        using AccumulatorCalculator calculator = new();
         using MemoryStream stream = new();
         EraWriter builder = EraWriter.Create(stream, Substitute.For<ISpecProvider>());
         Block block0 = Build.A.Block.WithNumber(0).WithTotalDifficulty(BlockHeaderBuilder.DefaultDifficulty).TestObject;
@@ -193,7 +194,7 @@ internal class EraReaderTests
     [Test]
     public async Task ReadAccumulator_CalculateWithAccumulatorCalculator_AccumulatorMatches()
     {
-        AccumulatorCalculator calculator = new();
+        using AccumulatorCalculator calculator = new();
         using MemoryStream stream = new();
         EraWriter builder = EraWriter.Create(stream, Substitute.For<ISpecProvider>());
         Block block0 = Build.A.Block.WithNumber(0).WithTotalDifficulty(BlockHeaderBuilder.DefaultDifficulty).TestObject;
@@ -218,11 +219,12 @@ internal class EraReaderTests
     {
         using MemoryStream stream = new();
         EraWriter builder = EraWriter.Create(stream, Substitute.For<ISpecProvider>());
+        byte[] dummyData = new byte[] { (byte)0x00 };
         await builder.Add(
             Keccak.Zero,
-            Array.Empty<byte>(),
-            Array.Empty<byte>(),
-            Array.Empty<byte>(),
+            dummyData,
+            dummyData,
+            dummyData,
             0,
             0,
             0);

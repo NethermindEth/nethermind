@@ -174,7 +174,7 @@ namespace Nethermind.Core.Test.Builders
 
         public static UInt256 GetRandomAmount(Random? random = null)
         {
-            var buffer = new byte[32].AsSpan();
+            Span<byte> buffer = stackalloc byte[32];
             (random ?? Random).NextBytes(buffer);
             return new UInt256(buffer);
         }

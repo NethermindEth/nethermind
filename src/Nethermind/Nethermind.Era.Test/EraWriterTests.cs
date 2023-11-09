@@ -23,12 +23,13 @@ internal class EraWriterTests
     {
         using MemoryStream stream = new();
         EraWriter sut = EraWriter.Create(stream, Substitute.For<ISpecProvider>());
+        byte[] dummyData = new[] { (byte)0x00 };
 
         Assert.That(async () => await sut.Add(
             Keccak.Zero,
-            Array.Empty<byte>(),
-            Array.Empty<byte>(),
-            Array.Empty<byte>(),
+            dummyData,
+            dummyData,
+            dummyData,
             1,
             1,
             0), Throws.TypeOf<ArgumentOutOfRangeException>());
@@ -51,6 +52,7 @@ internal class EraWriterTests
     public async Task Add_AddMoreThanMaximumOf8192_ReturnsFalse()
     {
         using MemoryStream stream = Substitute.For<MemoryStream>();
+        stream.CanWrite.Returns(true);
         stream.WriteAsync(Arg.Any<byte[]>(), Arg.Any<int>(), Arg.Any<int>()).Returns(Task.CompletedTask);
 
         EraWriter sut = EraWriter.Create(stream, Substitute.For<ISpecProvider>());
@@ -95,15 +97,15 @@ internal class EraWriterTests
     {
         using MemoryStream stream = new();
         EraWriter sut = EraWriter.Create(stream, Substitute.For<ISpecProvider>());
+        byte[] buffer = new byte[40];
         await sut.Add(
             Keccak.Zero,
-            Array.Empty<byte>(),
-            Array.Empty<byte>(),
-            Array.Empty<byte>(),
+            buffer.AsMemory(0, 1),
+            buffer.AsMemory(0, 1),
+            buffer.AsMemory(0, 1),
             0,
             0,
             0);
-        byte[] buffer = new byte[40];
 
         await sut.Finalize();
         stream.Seek(-buffer.Length - 4 * 8, SeekOrigin.End);
