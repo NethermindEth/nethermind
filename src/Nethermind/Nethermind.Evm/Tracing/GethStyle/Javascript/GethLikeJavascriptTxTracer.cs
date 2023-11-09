@@ -98,11 +98,16 @@ public sealed class GethLikeJavascriptTxTracer : GethLikeTxTracer
         _log.gas = gas;
         _log.depth = depth;
         _log.error = null;
+        _log.gasCost = 0;
     }
 
     public override void ReportOperationRemainingGas(long gas)
     {
-        // _log.gasCost = _log.gas - gas;
+        _log.gasCost = _log.gas - gas;
+        if (_functions.HasFlag(TracerFunctions.postStep))
+        {
+            _tracer.postStep(_log, _db);
+        }
     }
 
     public override void ReportOperationError(EvmExceptionType error)
@@ -182,10 +187,10 @@ public sealed class GethLikeJavascriptTxTracer : GethLikeTxTracer
         _log.refund = refund;
     }
 
-    private const TracerFunctions Required = TracerFunctions.result;
-
     private TracerFunctions GetAvailableFunctions(ICollection<string> functions)
     {
+        const TracerFunctions required = TracerFunctions.result;
+
         TracerFunctions result = TracerFunctions.none;
 
         // skip none
@@ -196,7 +201,7 @@ public sealed class GethLikeJavascriptTxTracer : GethLikeTxTracer
             {
                 result |= function;
             }
-            else if (function <= Required)
+            else if (function <= required)
             {
                 throw new ArgumentException($"trace object must expose required function {name}");
             }
@@ -230,6 +235,7 @@ public sealed class GethLikeJavascriptTxTracer : GethLikeTxTracer
         enter = 4,
         exit = 8,
         step = 16,
-        setup = 32
+        postStep = 32,
+        setup = 64
     }
 }
