@@ -181,7 +181,7 @@ namespace Nethermind.Evm.TransactionProcessing
 
             if (tracer.IsTracingReceipt)
             {
-                Keccak stateRoot = null;
+                Hash256 stateRoot = null;
                 if (!spec.IsEip658Enabled)
                 {
                     WorldState.RecalculateStateRoot();
@@ -211,7 +211,7 @@ namespace Nethermind.Evm.TransactionProcessing
 
             if (txTracer.IsTracingReceipt)
             {
-                Keccak? stateRoot = null;
+                Hash256? stateRoot = null;
                 if (!spec.IsEip658Enabled)
                 {
                     WorldState.RecalculateStateRoot();

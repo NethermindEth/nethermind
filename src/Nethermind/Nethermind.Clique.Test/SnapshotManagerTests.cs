@@ -83,8 +83,8 @@ namespace Nethermind.Clique.Test
         {
             BlockHeader header = BuildCliqueBlock();
 
-            Keccak expectedHeaderHash = new("0x7b27b6add9e8d0184c722dde86a2a3f626630264bae3d62ffeea1585ce6e3cdd");
-            Keccak headerHash = SnapshotManager.CalculateCliqueHeaderHash(header);
+            Hash256 expectedHeaderHash = new("0x7b27b6add9e8d0184c722dde86a2a3f626630264bae3d62ffeea1585ce6e3cdd");
+            Hash256 headerHash = SnapshotManager.CalculateCliqueHeaderHash(header);
             Assert.That(headerHash, Is.EqualTo(expectedHeaderHash));
         }
 
@@ -112,11 +112,11 @@ namespace Nethermind.Clique.Test
         private static BlockHeader BuildCliqueBlock()
         {
             BlockHeader header = Build.A.BlockHeader
-                .WithParentHash(new Keccak("0x6d31ab6b6ee360d075bb032a094fb4ea52617268b760d15b47aa439604583453"))
+                .WithParentHash(new Hash256("0x6d31ab6b6ee360d075bb032a094fb4ea52617268b760d15b47aa439604583453"))
                 .WithUnclesHash(Keccak.OfAnEmptySequenceRlp)
                 .WithBeneficiary(Address.Zero)
                 .WithBloom(Bloom.Empty)
-                .WithStateRoot(new Keccak("0x9853b6c62bd454466f4843b73e2f0bdd655a4e754c259d6cc0ad4e580d788f43"))
+                .WithStateRoot(new Hash256("0x9853b6c62bd454466f4843b73e2f0bdd655a4e754c259d6cc0ad4e580d788f43"))
                 .WithTransactionsRoot(PatriciaTree.EmptyTreeHash)
                 .WithReceiptsRoot(PatriciaTree.EmptyTreeHash)
                 .WithDifficulty(2)

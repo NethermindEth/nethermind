@@ -11,6 +11,6 @@ namespace Nethermind.Consensus.Ethash
     {
         void HintRange(Guid guid, long start, long end);
         bool Validate(BlockHeader header);
-        (Keccak MixHash, ulong Nonce) Mine(BlockHeader header, ulong? startNonce = null); // TODO: for now only with cache
+        (Hash256 MixHash, ulong Nonce) Mine(BlockHeader header, ulong? startNonce = null); // TODO: for now only with cache
     }
 }

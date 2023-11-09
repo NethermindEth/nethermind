@@ -76,7 +76,7 @@ namespace Nethermind.Runner.Test.Ethereum.Steps.Migrations
             TxReceipt[] receipts = inMemoryReceiptStorage.Get(lastBlock);
             using (NettyRlpStream nettyStream = receiptArrayStorageDecoder.EncodeToNewNettyStream(receipts, RlpBehaviors.Storage))
             {
-                blocksDb.Set(Bytes.Concat(lastBlock.Number.ToBigEndianByteArray(), lastBlock.Hash.BytesToArray()), nettyStream.AsSpan());
+                ((IKeyValueStoreWithBatching)blocksDb).PutSpan(Bytes.Concat(lastBlock.Number.ToBigEndianByteArray(), lastBlock.Hash.BytesToArray()).AsSpan(), nettyStream.AsSpan());
             }
 
             ManualResetEvent guard = new(false);
@@ -130,14 +130,14 @@ namespace Nethermind.Runner.Test.Ethereum.Steps.Migrations
                 _outStorage = outStorage;
             }
 
-            public Keccak FindBlockHash(Keccak txHash) => _inStorage.FindBlockHash(txHash);
+            public Hash256 FindBlockHash(Hash256 txHash) => _inStorage.FindBlockHash(txHash);
 
             public TxReceipt[] Get(Block block) => _inStorage.Get(block);
 
-            public TxReceipt[] Get(Keccak blockHash) => _inStorage.Get(blockHash);
+            public TxReceipt[] Get(Hash256 blockHash) => _inStorage.Get(blockHash);
 
             public bool CanGetReceiptsByHash(long blockNumber) => _inStorage.CanGetReceiptsByHash(blockNumber);
-            public bool TryGetReceiptsIterator(long blockNumber, Keccak blockHash, out ReceiptsIterator iterator) => _inStorage.TryGetReceiptsIterator(blockNumber, blockHash, out iterator);
+            public bool TryGetReceiptsIterator(long blockNumber, Hash256 blockHash, out ReceiptsIterator iterator) => _inStorage.TryGetReceiptsIterator(blockNumber, blockHash, out iterator);
 
             public void Insert(Block block, TxReceipt[] txReceipts, bool ensureCanonical) => _outStorage.Insert(block, txReceipts);
 
@@ -152,7 +152,7 @@ namespace Nethermind.Runner.Test.Ethereum.Steps.Migrations
                 set => _outStorage.MigratedBlockNumber = value;
             }
 
-            public bool HasBlock(long blockNumber, Keccak hash)
+            public bool HasBlock(long blockNumber, Hash256 hash)
             {
                 return _outStorage.HasBlock(blockNumber, hash);
             }

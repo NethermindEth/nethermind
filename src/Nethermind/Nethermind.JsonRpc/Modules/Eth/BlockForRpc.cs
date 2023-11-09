@@ -93,12 +93,12 @@ public class BlockForRpc
     public long GasUsed { get; set; }
 
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
-    public Keccak Hash { get; set; }
+    public Hash256 Hash { get; set; }
 
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
     public Bloom LogsBloom { get; set; }
     public Address Miner { get; set; }
-    public Keccak MixHash { get; set; }
+    public Hash256 MixHash { get; set; }
 
     public bool ShouldSerializeMixHash() => !_isAuRaBlock && MixHash is not null;
 
@@ -109,13 +109,13 @@ public class BlockForRpc
 
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
     public long? Number { get; set; }
-    public Keccak ParentHash { get; set; }
-    public Keccak ReceiptsRoot { get; set; }
-    public Keccak Sha3Uncles { get; set; }
+    public Hash256 ParentHash { get; set; }
+    public Hash256 ReceiptsRoot { get; set; }
+    public Hash256 Sha3Uncles { get; set; }
     public byte[] Signature { get; set; }
     public bool ShouldSerializeSignature() => _isAuRaBlock;
     public long Size { get; set; }
-    public Keccak StateRoot { get; set; }
+    public Hash256 StateRoot { get; set; }
     [JsonConverter(typeof(NullableRawLongConverter))]
     public long? Step { get; set; }
     public bool ShouldSerializeStep() => _isAuRaBlock;
@@ -124,14 +124,14 @@ public class BlockForRpc
 
     public UInt256? BaseFeePerGas { get; set; }
     public IEnumerable<object> Transactions { get; set; }
-    public Keccak TransactionsRoot { get; set; }
-    public IEnumerable<Keccak> Uncles { get; set; }
+    public Hash256 TransactionsRoot { get; set; }
+    public IEnumerable<Hash256> Uncles { get; set; }
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public IEnumerable<Withdrawal>? Withdrawals { get; set; }
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    public Keccak? WithdrawalsRoot { get; set; }
+    public Hash256? WithdrawalsRoot { get; set; }
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public ulong? BlobGasUsed { get; set; }
@@ -139,6 +139,6 @@ public class BlockForRpc
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public ulong? ExcessBlobGas { get; set; }
 
-    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    public Keccak? ParentBeaconBlockRoot { get; set; }
+    [JsonProperty(NullValueHandling = NullValueHandling.Ignore)]
+    public Hash256? ParentBeaconBlockRoot { get; set; }
 }

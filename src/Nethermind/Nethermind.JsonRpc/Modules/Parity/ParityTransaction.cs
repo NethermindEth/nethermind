@@ -13,10 +13,10 @@ namespace Nethermind.JsonRpc.Modules.Parity
 {
     public class ParityTransaction
     {
-        public Keccak Hash { get; set; }
+        public Hash256 Hash { get; set; }
         public UInt256? Nonce { get; set; }
         [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
-        public Keccak BlockHash { get; set; }
+        public Hash256 BlockHash { get; set; }
         [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
         public UInt256? BlockNumber { get; set; }
         [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
@@ -45,7 +45,7 @@ namespace Nethermind.JsonRpc.Modules.Parity
         }
 
         public ParityTransaction(Transaction transaction, byte[] raw, PublicKey publicKey,
-            Keccak blockHash = null, UInt256? blockNumber = null, UInt256? txIndex = null)
+            Hash256 blockHash = null, UInt256? blockNumber = null, UInt256? txIndex = null)
         {
             Hash = transaction.Hash;
             Nonce = transaction.Nonce;

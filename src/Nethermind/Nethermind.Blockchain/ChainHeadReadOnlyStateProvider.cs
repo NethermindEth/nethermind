@@ -17,6 +17,6 @@ namespace Nethermind.Blockchain
             _blockFinder = blockFinder ?? throw new ArgumentNullException(nameof(blockFinder));
         }
 
-        public override Keccak StateRoot => _blockFinder.Head?.StateRoot ?? Keccak.EmptyTreeHash;
+        public override Hash256 StateRoot => _blockFinder.Head?.StateRoot ?? Keccak.EmptyTreeHash;
     }
 }

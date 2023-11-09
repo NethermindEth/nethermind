@@ -13,8 +13,8 @@ namespace Nethermind.AccountAbstraction.Source
 {
     public interface IUserOperationPool
     {
-        ResultWrapper<Keccak> AddUserOperation(UserOperation userOperation);
-        bool RemoveUserOperation(Keccak? userOperationHash);
+        ResultWrapper<Hash256> AddUserOperation(UserOperation userOperation);
+        bool RemoveUserOperation(Hash256? userOperationHash);
         IEnumerable<UserOperation> GetUserOperations();
         Address EntryPoint();
         bool IncludesUserOperationWithSenderAndNonce(Address sender, UInt256 nonce);

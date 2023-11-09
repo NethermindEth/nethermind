@@ -224,6 +224,9 @@ namespace Nethermind.Network.Test
             ctx.PeerManager.Start();
             Session session1 = new(30303, Substitute.For<IChannel>(), NullDisconnectsAnalyzer.Instance,
                 LimboLogs.Instance);
+            PacketSender packetSender = new PacketSender(Substitute.For<IMessageSerializationService>(), LimboLogs.Instance, TimeSpan.Zero);
+            IChannelHandlerContext context = Substitute.For<IChannelHandlerContext>();
+
             session1.RemoteHost = "1.2.3.4";
             session1.RemotePort = 12345;
             session1.RemoteNodeId =
@@ -231,12 +234,21 @@ namespace Nethermind.Network.Test
                     ? (shouldLose ? TestItem.PublicKeyA : TestItem.PublicKeyC)
                     : (shouldLose ? TestItem.PublicKeyC : TestItem.PublicKeyA);
 
+            void EnsureSession(ISession? session)
+            {
+                if (session is null) return;
+                if (session.State < SessionState.HandshakeComplete) session.Handshake(session.Node.Id);
+                session.Init(5, context, packetSender);
+            }
 
             if (firstDirection == ConnectionDirection.In)
             {
                 ctx.RlpxPeer.CreateIncoming(session1);
                 await ctx.RlpxPeer.ConnectAsync(session1.Node);
-                if (session1.State < SessionState.HandshakeComplete) session1.Handshake(session1.Node.Id);
+
+                EnsureSession(ctx.PeerManager.ActivePeers.First().OutSession);
+                EnsureSession(ctx.PeerManager.ActivePeers.First().InSession);
+
                 (ctx.PeerManager.ActivePeers.First().OutSession?.IsClosing ?? true).Should().Be(shouldLose);
                 (ctx.PeerManager.ActivePeers.First().InSession?.IsClosing ?? true).Should().Be(!shouldLose);
             }
@@ -246,6 +258,10 @@ namespace Nethermind.Network.Test
                 await ctx.RlpxPeer.ConnectAsync(session1.Node);
                 ctx.RlpxPeer.SessionCreated -= HandshakeOnCreate;
                 ctx.RlpxPeer.CreateIncoming(session1);
+
+                EnsureSession(ctx.PeerManager.ActivePeers.First().OutSession);
+                EnsureSession(ctx.PeerManager.ActivePeers.First().InSession);
+
                 (ctx.PeerManager.ActivePeers.First().OutSession?.IsClosing ?? true).Should().Be(!shouldLose);
                 (ctx.PeerManager.ActivePeers.First().InSession?.IsClosing ?? true).Should().Be(shouldLose);
             }

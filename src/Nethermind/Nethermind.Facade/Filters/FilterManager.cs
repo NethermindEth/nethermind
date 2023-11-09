@@ -20,13 +20,13 @@ namespace Nethermind.Blockchain.Filters
         private readonly ConcurrentDictionary<int, List<FilterLog>> _logs =
             new();
 
-        private readonly ConcurrentDictionary<int, List<Keccak>> _blockHashes =
+        private readonly ConcurrentDictionary<int, List<Hash256>> _blockHashes =
             new();
 
-        private readonly ConcurrentDictionary<int, List<Keccak>> _pendingTransactions =
+        private readonly ConcurrentDictionary<int, List<Hash256>> _pendingTransactions =
             new();
 
-        private Keccak _lastBlockHash;
+        private Hash256 _lastBlockHash;
         private readonly IFilterStore _filterStore;
         private readonly ILogger _logger;
         private long _logIndex;
@@ -76,7 +76,7 @@ namespace Nethermind.Blockchain.Filters
             foreach (PendingTransactionFilter filter in filters)
             {
                 int filterId = filter.Id;
-                List<Keccak> transactions = _pendingTransactions.GetOrAdd(filterId, _ => new List<Keccak>());
+                List<Hash256> transactions = _pendingTransactions.GetOrAdd(filterId, _ => new List<Hash256>());
                 transactions.Add(e.Transaction.Hash);
                 if (_logger.IsDebug) _logger.Debug($"Filter with id: {filterId} contains {transactions.Count} transactions.");
 
@@ -90,7 +90,7 @@ namespace Nethermind.Blockchain.Filters
             foreach (PendingTransactionFilter filter in filters)
             {
                 int filterId = filter.Id;
-                List<Keccak> transactions = _pendingTransactions.GetOrAdd(filterId, _ => new List<Keccak>());
+                List<Hash256> transactions = _pendingTransactions.GetOrAdd(filterId, _ => new List<Hash256>());
                 transactions.Remove(e.Transaction.Hash);
                 if (_logger.IsDebug) _logger.Debug($"Filter with id: {filterId} contains {transactions.Count} transactions.");
 
@@ -103,25 +103,25 @@ namespace Nethermind.Blockchain.Filters
             return logs?.ToArray() ?? Array.Empty<FilterLog>();
         }
 
-        public Keccak[] GetBlocksHashes(int filterId)
+        public Hash256[] GetBlocksHashes(int filterId)
         {
-            _blockHashes.TryGetValue(filterId, out List<Keccak> blockHashes);
-            return blockHashes?.ToArray() ?? Array.Empty<Keccak>();
+            _blockHashes.TryGetValue(filterId, out List<Hash256> blockHashes);
+            return blockHashes?.ToArray() ?? Array.Empty<Hash256>();
         }
 
         [Todo("Truffle sends transaction first and then polls so we hack it here for now")]
-        public Keccak[] PollBlockHashes(int filterId)
+        public Hash256[] PollBlockHashes(int filterId)
         {
             if (!_blockHashes.TryGetValue(filterId, out var blockHashes))
             {
                 if (_lastBlockHash is not null)
                 {
-                    Keccak[] hackedResult = { _lastBlockHash }; // truffle hack
+                    Hash256[] hackedResult = { _lastBlockHash }; // truffle hack
                     _lastBlockHash = null;
                     return hackedResult;
                 }
 
-                return Array.Empty<Keccak>();
+                return Array.Empty<Hash256>();
             }
 
             var existingBlockHashes = blockHashes.ToArray();
@@ -143,11 +143,11 @@ namespace Nethermind.Blockchain.Filters
             return existingLogs;
         }
 
-        public Keccak[] PollPendingTransactionHashes(int filterId)
+        public Hash256[] PollPendingTransactionHashes(int filterId)
         {
             if (!_pendingTransactions.TryGetValue(filterId, out var pendingTransactions))
             {
-                return Array.Empty<Keccak>();
+                return Array.Empty<Hash256>();
             }
 
             var existingPendingTransactions = pendingTransactions.ToArray();
@@ -192,7 +192,7 @@ namespace Nethermind.Blockchain.Filters
                 throw new InvalidOperationException("Cannot filter on blocks without calculated hashes");
             }
 
-            List<Keccak> blocks = _blockHashes.GetOrAdd(filter.Id, i => new List<Keccak>());
+            List<Hash256> blocks = _blockHashes.GetOrAdd(filter.Id, i => new List<Hash256>());
             blocks.Add(block.Hash);
             if (_logger.IsDebug) _logger.Debug($"Filter with id: {filter.Id} contains {blocks.Count} blocks.");
         }

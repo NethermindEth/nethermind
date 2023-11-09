@@ -41,8 +41,8 @@ public partial class EngineModuleTests
         using MergeTestBlockchain chain =
             await CreateBlockchain(Shanghai.Instance, new MergeConfig { TerminalTotalDifficulty = "0" });
         IEngineRpcModule rpc = CreateEngineModule(chain);
-        Keccak startingHead = chain.BlockTree.HeadHash;
-        Keccak prevRandao = Keccak.Zero;
+        Hash256 startingHead = chain.BlockTree.HeadHash;
+        Hash256 prevRandao = Keccak.Zero;
         Address feeRecipient = TestItem.AddressC;
         ulong timestamp = Timestamper.UnixTime.Seconds;
         var fcuState = new
@@ -87,7 +87,7 @@ public partial class EngineModuleTests
             }
         }));
 
-        Keccak expectedBlockHash = new(blockHash);
+        Hash256 expectedBlockHash = new(blockHash);
         Block block = new(
             new(
                 startingHead,
@@ -243,7 +243,7 @@ public partial class EngineModuleTests
         using MergeTestBlockchain chain = await CreateBlockchain();
         IEngineRpcModule rpc = CreateEngineModule(chain);
 
-        Keccak startingHead = chain.BlockTree.HeadHash;
+        Hash256 startingHead = chain.BlockTree.HeadHash;
 
         ForkchoiceStateV1 forkchoiceState = new(startingHead, Keccak.Zero, startingHead);
         PayloadAttributes payload = new()
@@ -271,7 +271,7 @@ public partial class EngineModuleTests
 
         Address feeRecipient = TestItem.AddressA;
 
-        Keccak startingHead = chain.BlockTree.HeadHash;
+        Hash256 startingHead = chain.BlockTree.HeadHash;
         uint count = 3;
         int value = 10;
 
@@ -334,7 +334,7 @@ public partial class EngineModuleTests
         chain.AddTransactions(txs);
 
         ExecutionPayload executionPayload2 = await BuildAndSendNewBlockV2(rpc, chain, true, withdrawals);
-        Keccak[] blockHashes = new Keccak[]
+        Hash256[] blockHashes = new Hash256[]
         {
             executionPayload1.BlockHash, TestItem.KeccakA, executionPayload2.BlockHash
         };
@@ -401,7 +401,7 @@ public partial class EngineModuleTests
     {
         using MergeTestBlockchain chain = await CreateBlockchain();
         IEngineRpcModule rpc = CreateEngineModule(chain);
-        Keccak[] hashes = Enumerable.Repeat(TestItem.KeccakA, 1025).ToArray();
+        Hash256[] hashes = Enumerable.Repeat(TestItem.KeccakA, 1025).ToArray();
         Task<ResultWrapper<IEnumerable<ExecutionPayloadBodyV1Result?>>> result =
             rpc.engine_getPayloadBodiesByHashV1(hashes);
 
@@ -576,9 +576,9 @@ public partial class EngineModuleTests
     {
         using MergeTestBlockchain chain = await CreateBlockchain(input.Spec);
         IEngineRpcModule rpcModule = CreateEngineModule(chain);
-        Keccak blockHash = new(input.BlockHash);
-        Keccak startingHead = chain.BlockTree.HeadHash;
-        Keccak prevRandao = Keccak.Zero;
+        Hash256 blockHash = new(input.BlockHash);
+        Hash256 startingHead = chain.BlockTree.HeadHash;
+        Hash256 prevRandao = Keccak.Zero;
         Address feeRecipient = TestItem.AddressC;
         ulong timestamp = Timestamper.UnixTime.Seconds;
         ExecutionPayload expectedPayload = new()
@@ -766,7 +766,7 @@ public partial class EngineModuleTests
     private static async Task<GetPayloadV2Result> BuildAndGetPayloadResultV2(
         IEngineRpcModule rpc, MergeTestBlockchain chain, PayloadAttributes payloadAttributes)
     {
-        Keccak currentHeadHash = chain.BlockTree.HeadHash;
+        Hash256 currentHeadHash = chain.BlockTree.HeadHash;
         ForkchoiceStateV1 forkchoiceState = new(currentHeadHash, currentHeadHash, currentHeadHash);
         string payloadId = rpc.engine_forkchoiceUpdatedV2(forkchoiceState, payloadAttributes).Result.Data.PayloadId!;
         ResultWrapper<GetPayloadV2Result?> getPayloadResult =
@@ -814,11 +814,11 @@ public partial class EngineModuleTests
     private async Task<ExecutionPayload> BuildAndGetPayloadResultV2(
         IEngineRpcModule rpc,
         MergeTestBlockchain chain,
-        Keccak headBlockHash,
-        Keccak finalizedBlockHash,
-        Keccak safeBlockHash,
+        Hash256 headBlockHash,
+        Hash256 finalizedBlockHash,
+        Hash256 safeBlockHash,
         ulong timestamp,
-        Keccak random,
+        Hash256 random,
         Address feeRecipient,
         IList<Withdrawal>? withdrawals,
         bool waitForBlockImprovement = true)
@@ -858,9 +858,9 @@ public partial class EngineModuleTests
         bool waitForBlockImprovement,
         IList<Withdrawal>? withdrawals)
     {
-        Keccak head = chain.BlockTree.HeadHash;
+        Hash256 head = chain.BlockTree.HeadHash;
         ulong timestamp = Timestamper.UnixTime.Seconds;
-        Keccak random = Keccak.Zero;
+        Hash256 random = Keccak.Zero;
         Address feeRecipient = Address.Zero;
         ExecutionPayload executionPayload = await BuildAndGetPayloadResultV2(rpc, chain, head,
             Keccak.Zero, head, timestamp, random, feeRecipient, withdrawals, waitForBlockImprovement);

@@ -28,7 +28,7 @@ public static class BlockTraceDumper
         if (toFile || toLog)
         {
             Rlp rlp = new BlockDecoder().Encode(block, RlpBehaviors.AllowExtraBytes);
-            Keccak blockHash = block.Hash;
+            Hash256 blockHash = block.Hash;
             if (toFile)
             {
                 string fileName = $"block_{blockHash}.rlp";
@@ -47,7 +47,7 @@ public static class BlockTraceDumper
 
     public static void LogDiagnosticTrace(
         IBlockTracer blockTracer,
-        Keccak blockHash,
+        Hash256 blockHash,
         ILogger logger)
     {
         string fileName = string.Empty;
@@ -97,7 +97,7 @@ public static class BlockTraceDumper
             FileMode.Create,
             FileAccess.Write);
 
-    public static void LogTraceFailure(IBlockTracer blockTracer, Keccak blockHash, Exception exception, ILogger logger)
+    public static void LogTraceFailure(IBlockTracer blockTracer, Hash256 blockHash, Exception exception, ILogger logger)
     {
         if (logger.IsError)
             logger.Error($"Cannot create trace of blocks starting from {blockHash} of type {blockTracer.GetType().Name}", exception);

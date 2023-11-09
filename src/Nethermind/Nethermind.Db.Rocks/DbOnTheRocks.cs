@@ -22,7 +22,7 @@ using IWriteBatch = Nethermind.Core.IWriteBatch;
 
 namespace Nethermind.Db.Rocks;
 
-public class DbOnTheRocks : IDbWithSpan, ITunableDb
+public class DbOnTheRocks : IDb, ITunableDb
 {
     private ILogger _logger;
 
@@ -509,7 +509,7 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
         SetWithColumnFamily(key, null, value, flags);
     }
 
-    internal void SetWithColumnFamily(ReadOnlySpan<byte> key, ColumnFamilyHandle? cf, byte[]? value, WriteFlags flags = WriteFlags.None)
+    internal void SetWithColumnFamily(ReadOnlySpan<byte> key, ColumnFamilyHandle? cf, ReadOnlySpan<byte> value, WriteFlags flags = WriteFlags.None)
     {
         if (_isDisposing)
         {
@@ -520,7 +520,7 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
 
         try
         {
-            if (value is null)
+            if (value.IsNull())
             {
                 _db.Remove(key, cf, WriteFlagsToWriteOptions(flags));
             }
@@ -573,7 +573,12 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
         }
     }
 
-    public Span<byte> GetSpan(ReadOnlySpan<byte> key)
+    public Span<byte> GetSpan(ReadOnlySpan<byte> key, ReadFlags flags)
+    {
+        return GetSpanWithColumnFamily(key, null);
+    }
+
+    internal Span<byte> GetSpanWithColumnFamily(ReadOnlySpan<byte> key, ColumnFamilyHandle? cf)
     {
         if (_isDisposing)
         {
@@ -584,7 +589,7 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
 
         try
         {
-            Span<byte> span = _db.GetSpan(key);
+            Span<byte> span = _db.GetSpan(key, cf);
             if (!span.IsNullOrEmpty())
                 GC.AddMemoryPressure(span.Length);
             return span;
@@ -596,24 +601,9 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
         }
     }
 
-    public void PutSpan(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value)
+    public void PutSpan(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags writeFlags)
     {
-        if (_isDisposing)
-        {
-            throw new ObjectDisposedException($"Attempted to write form a disposed database {Name}");
-        }
-
-        UpdateWriteMetrics();
-
-        try
-        {
-            _db.Put(key, value, null, WriteOptions);
-        }
-        catch (RocksDbSharpException e)
-        {
-            CreateMarkerIfCorrupt(e);
-            throw;
-        }
+        SetWithColumnFamily(key, null, value, writeFlags);
     }
 
     public void DangerousReleaseMemory(in Span<byte> span)
@@ -883,14 +873,21 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
             _rocksBatch.Delete(key, cf);
         }
 
-        public void Set(ReadOnlySpan<byte> key, byte[]? value, ColumnFamilyHandle? cf = null, WriteFlags flags = WriteFlags.None)
+        public void Set(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, ColumnFamilyHandle? cf = null, WriteFlags flags = WriteFlags.None)
         {
             if (_isDisposed)
             {
                 throw new ObjectDisposedException($"Attempted to write a disposed batch {_dbOnTheRocks.Name}");
             }
 
-            _rocksBatch.Put(key, value, cf);
+            if (value.IsNull())
+            {
+                _rocksBatch.Delete(key, cf);
+            }
+            else
+            {
+                _rocksBatch.Put(key, value, cf);
+            }
             _writeFlags = flags;
 
             if ((flags & WriteFlags.DisableWAL) != 0) FlushOnTooManyWrites();
@@ -898,15 +895,12 @@ public class DbOnTheRocks : IDbWithSpan, ITunableDb
 
         public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None)
         {
-            if (_isDisposed)
-            {
-                throw new ObjectDisposedException($"Attempted to write a disposed batch {_dbOnTheRocks.Name}");
-            }
+            Set(key, value, null, flags);
+        }
 
-            _rocksBatch.Put(key, value);
-            _writeFlags = flags;
-
-            if ((flags & WriteFlags.DisableWAL) != 0) FlushOnTooManyWrites();
+        public void PutSpan(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags flags = WriteFlags.None)
+        {
+            Set(key, value, null, flags);
         }
 
         private void FlushOnTooManyWrites()

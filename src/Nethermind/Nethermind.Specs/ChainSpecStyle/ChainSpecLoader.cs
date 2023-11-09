@@ -377,12 +377,12 @@ public class ChainSpecLoader : IChainSpecLoader
         }
 
         UInt256 nonce = chainSpecJson.Genesis.Seal?.Ethereum?.Nonce ?? 0;
-        Keccak mixHash = chainSpecJson.Genesis.Seal?.Ethereum?.MixHash ?? Keccak.Zero;
+        Hash256 mixHash = chainSpecJson.Genesis.Seal?.Ethereum?.MixHash ?? Keccak.Zero;
 
         byte[] auRaSignature = chainSpecJson.Genesis.Seal?.AuthorityRound?.Signature;
         long? step = chainSpecJson.Genesis.Seal?.AuthorityRound?.Step;
 
-        Keccak parentHash = chainSpecJson.Genesis.ParentHash ?? Keccak.Zero;
+        Hash256 parentHash = chainSpecJson.Genesis.ParentHash ?? Keccak.Zero;
         ulong timestamp = chainSpecJson.Genesis.Timestamp;
         UInt256 difficulty = chainSpecJson.Genesis.Difficulty;
         byte[] extraData = chainSpecJson.Genesis.ExtraData ?? Array.Empty<byte>();
@@ -394,7 +394,7 @@ public class ChainSpecLoader : IChainSpecLoader
                 ? (chainSpecJson.Genesis.BaseFeePerGas ?? Eip1559Constants.DefaultForkBaseFee)
                 : UInt256.Zero;
 
-        Keccak stateRoot = chainSpecJson.Genesis.StateRoot ?? Keccak.EmptyTreeHash;
+        Hash256 stateRoot = chainSpecJson.Genesis.StateRoot ?? Keccak.EmptyTreeHash;
         chainSpec.GenesisStateUnavailable = chainSpecJson.Genesis.StateUnavailable;
 
         BlockHeader genesisHeader = new(

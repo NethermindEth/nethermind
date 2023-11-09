@@ -116,7 +116,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
         public void Will_not_send_messages_larger_than_2MB()
         {
             Context ctx = new();
-            ctx.SyncServer.GetReceipts(Arg.Any<Keccak>()).Returns(
+            ctx.SyncServer.GetReceipts(Arg.Any<Hash256>()).Returns(
                 Enumerable.Repeat(Build.A.Receipt.WithAllFieldsFilled.TestObject, 512).ToArray());
 
             GetReceiptsMessage getReceiptsMessage = new(

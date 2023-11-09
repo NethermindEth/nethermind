@@ -164,7 +164,7 @@ public class DebugModuleTests
         trace.ReturnValue = Bytes.FromHexString("a2");
         trace.Entries.Add(entry);
 
-        debugBridge.GetTransactionTrace(Arg.Any<Keccak>(), Arg.Any<CancellationToken>(), Arg.Any<GethTraceOptions>()).Returns(trace);
+        debugBridge.GetTransactionTrace(Arg.Any<Hash256>(), Arg.Any<CancellationToken>(), Arg.Any<GethTraceOptions>()).Returns(trace);
 
         DebugRpcModule rpcModule = new(LimboLogs.Instance, debugBridge, jsonRpcConfig);
         string response = await RpcTest.TestSerializedRequest<IDebugRpcModule>(rpcModule, "debug_traceTransaction", TestItem.KeccakA.ToString(true), "{}");
@@ -201,7 +201,7 @@ public class DebugModuleTests
         trace.ReturnValue = Bytes.FromHexString("a2");
         trace.Entries.Add(entry);
 
-        debugBridge.GetTransactionTrace(Arg.Any<Keccak>(), Arg.Any<CancellationToken>(), Arg.Any<GethTraceOptions>()).Returns(trace);
+        debugBridge.GetTransactionTrace(Arg.Any<Hash256>(), Arg.Any<CancellationToken>(), Arg.Any<GethTraceOptions>()).Returns(trace);
 
         DebugRpcModule rpcModule = new(LimboLogs.Instance, debugBridge, jsonRpcConfig);
         string response = await RpcTest.TestSerializedRequest<IDebugRpcModule>(rpcModule, "debug_traceTransaction", TestItem.KeccakA.ToString(true), "{\"disableStack\" : true}");
@@ -297,7 +297,7 @@ public class DebugModuleTests
     [Test]
     public async Task Update_head_block()
     {
-        debugBridge.UpdateHeadBlock(Arg.Any<Keccak>());
+        debugBridge.UpdateHeadBlock(Arg.Any<Hash256>());
         IDebugRpcModule rpcModule = new DebugRpcModule(LimboLogs.Instance, debugBridge, jsonRpcConfig);
         await RpcTest.TestSerializedRequest(rpcModule, "debug_resetHead", TestItem.KeccakA.ToString());
         debugBridge.Received().UpdateHeadBlock(TestItem.KeccakA);
@@ -342,12 +342,12 @@ public class DebugModuleTests
     {
         var blockHash = Keccak.EmptyTreeHash;
 
-        static IEnumerable<string> GetFileNames(Keccak hash) =>
+        static IEnumerable<string> GetFileNames(Hash256 hash) =>
             new[] { $"block_{hash.ToShortString()}-0", $"block_{hash.ToShortString()}-1" };
 
         debugBridge
             .TraceBlockToFile(Arg.Is(blockHash), Arg.Any<CancellationToken>(), Arg.Any<GethTraceOptions>())
-            .Returns(c => GetFileNames(c.ArgAt<Keccak>(0)));
+            .Returns(c => GetFileNames(c.ArgAt<Hash256>(0)));
 
         var rpcModule = new DebugRpcModule(LimboLogs.Instance, debugBridge, jsonRpcConfig);
         var actual = rpcModule.debug_standardTraceBlockToFile(blockHash);

@@ -11,7 +11,7 @@ using IWriteBatch = Nethermind.Core.IWriteBatch;
 
 namespace Nethermind.Db.Rocks;
 
-public class ColumnDb : IDbWithSpan
+public class ColumnDb : IDb
 {
     private readonly RocksDb _rocksDb;
     private readonly DbOnTheRocks _mainDb;
@@ -40,9 +40,19 @@ public class ColumnDb : IDbWithSpan
         return _mainDb.GetWithColumnFamily(key, _columnFamily, _readaheadIterators, flags);
     }
 
+    public Span<byte> GetSpan(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
+    {
+        return _mainDb.GetSpanWithColumnFamily(key, _columnFamily);
+    }
+
     public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None)
     {
         _mainDb.SetWithColumnFamily(key, _columnFamily, value, flags);
+    }
+
+    public void PutSpan(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags writeFlags = WriteFlags.None)
+    {
+        _mainDb.SetWithColumnFamily(key, _columnFamily, value, writeFlags);
     }
 
     public KeyValuePair<byte[], byte[]?>[] this[byte[][] keys] =>
@@ -92,6 +102,11 @@ public class ColumnDb : IDbWithSpan
                 _underlyingWriteBatch.Set(key, value, _columnDb._columnFamily, flags);
             }
         }
+
+        public void PutSpan(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags flags = WriteFlags.None)
+        {
+            _underlyingWriteBatch.Set(key, value, _columnDb._columnFamily, flags);
+        }
     }
 
     public void Remove(ReadOnlySpan<byte> key)
@@ -121,18 +136,4 @@ public class ColumnDb : IDbWithSpan
     public long GetCacheSize() => _mainDb.GetCacheSize();
     public long GetIndexSize() => _mainDb.GetIndexSize();
     public long GetMemtableSize() => _mainDb.GetMemtableSize();
-
-    public Span<byte> GetSpan(ReadOnlySpan<byte> key)
-    {
-        _mainDb.UpdateReadMetrics();
-        return _rocksDb.GetSpan(key, _columnFamily);
-    }
-
-    public void PutSpan(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value)
-    {
-        _mainDb.UpdateWriteMetrics();
-        _rocksDb.Put(key, value, _columnFamily, _mainDb.WriteOptions);
-    }
-
-    public void DangerousReleaseMemory(in Span<byte> span) => _rocksDb.DangerousReleaseMemory(span);
 }

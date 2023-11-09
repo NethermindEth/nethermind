@@ -20,6 +20,6 @@ namespace Nethermind.JsonRpc.Modules.Parity
 
         [JsonPropertyName("head")]
         [JsonPropertyOrder(2)]
-        public Keccak HeadHash { get; set; }
+        public Hash256 HeadHash { get; set; }
     }
 }

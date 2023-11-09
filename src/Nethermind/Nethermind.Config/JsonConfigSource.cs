@@ -29,7 +29,7 @@ namespace Nethermind.Config
             }
             catch (Exception e)
             {
-                throw new System.Configuration.ConfigurationErrorsException($"Config is not correctly formed JSon. See inner exception for details.", e);
+                throw new System.Configuration.ConfigurationErrorsException($"Config is not correctly formed JSON. See inner exception for details.", e);
             }
         }
 

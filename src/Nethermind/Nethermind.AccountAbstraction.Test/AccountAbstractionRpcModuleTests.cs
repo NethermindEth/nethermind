@@ -189,8 +189,8 @@ public partial class AccountAbstractionRpcModuleTests
 
         Address entryPointId = new Address("0x90f3e1105e63c877bf9587de5388c23cdb702c6b");
         ulong chainId = 5;
-        Keccak idFromTransaction =
-            new Keccak("0x87c3605deda77b02b78e62157309985d94531cf7fbb13992c602c8555bece921");
+        Hash256 idFromTransaction =
+            new Hash256("0x87c3605deda77b02b78e62157309985d94531cf7fbb13992c602c8555bece921");
         createOp.CalculateRequestId(entryPointId, chainId);
         Assert.That(createOp.RequestId!, Is.EqualTo(idFromTransaction),
             "Request IDs do not match.");
@@ -509,7 +509,7 @@ public partial class AccountAbstractionRpcModuleTests
         op.CalculateRequestId(entryPointAddress, chainId);
 
         Signer signer = new(chainId, privateKey, NullLogManager.Instance);
-        Keccak hashedRequestId = Keccak.Compute(
+        Hash256 hashedRequestId = Keccak.Compute(
             Bytes.Concat(
                 Encoding.UTF8.GetBytes("\x19"),
                 Encoding.UTF8.GetBytes("Ethereum Signed Message:\n" + op.RequestId!.Bytes.Length),

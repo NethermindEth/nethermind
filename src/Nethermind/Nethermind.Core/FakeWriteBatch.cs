@@ -7,16 +7,16 @@ namespace Nethermind.Core
 {
     public class FakeWriteBatch : IWriteBatch
     {
-        private readonly IKeyValueStore _storePretendingToSupportBatches;
+        private readonly IWriteOnlyKeyValueStore _storePretendingToSupportBatches;
 
         private readonly Action? _onDispose;
 
-        public FakeWriteBatch(IKeyValueStore storePretendingToSupportBatches)
+        public FakeWriteBatch(IWriteOnlyKeyValueStore storePretendingToSupportBatches)
             : this(storePretendingToSupportBatches, null)
         {
         }
 
-        public FakeWriteBatch(IKeyValueStore storePretendingToSupportBatches, Action? onDispose)
+        public FakeWriteBatch(IWriteOnlyKeyValueStore storePretendingToSupportBatches, Action? onDispose)
         {
             _storePretendingToSupportBatches = storePretendingToSupportBatches;
             _onDispose = onDispose;

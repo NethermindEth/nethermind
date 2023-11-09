@@ -109,7 +109,7 @@ namespace Nethermind.Evm.Test
             TestState.Commit(Spec);
             TestState.CommitTree(0);
 
-            Keccak storageRoot = TestState.GetAccount(expectedAddress).StorageRoot;
+            Hash256 storageRoot = TestState.GetAccount(expectedAddress).StorageRoot;
             storageRoot.Should().NotBe(PatriciaTree.EmptyTreeHash);
 
             TestState.CreateAccount(TestItem.AddressC, 1.Ether());

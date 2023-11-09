@@ -27,7 +27,7 @@ namespace Nethermind.Abi
         public AbiEncodingInfo GetCallInfo(AbiEncodingStyle encodingStyle = AbiEncodingStyle.IncludeSignature) =>
             new(encodingStyle, _callSignature ??= new AbiSignature(Name, Inputs.Select(i => i.Type).ToArray()));
 
-        public Keccak GetHash() => GetCallInfo().Signature.Hash;
+        public Hash256 GetHash() => GetCallInfo().Signature.Hash;
 
     }
 }

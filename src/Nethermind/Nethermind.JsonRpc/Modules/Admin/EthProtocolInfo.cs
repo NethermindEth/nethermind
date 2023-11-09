@@ -15,10 +15,10 @@ namespace Nethermind.JsonRpc.Modules.Admin
         public UInt256 Difficulty { get; set; }
         [JsonPropertyName("genesis")]
         [JsonPropertyOrder(1)]
-        public Keccak GenesisHash { get; set; }
+        public Hash256 GenesisHash { get; set; }
         [JsonPropertyName("head")]
         [JsonPropertyOrder(2)]
-        public Keccak HeadHash { get; set; }
+        public Hash256 HeadHash { get; set; }
         [JsonPropertyName("network")]
         [JsonPropertyOrder(3)]
         public ulong ChainId { get; set; }

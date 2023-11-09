@@ -18,7 +18,7 @@ namespace Nethermind.Merge.Plugin.Data
     {
         public static readonly ResultWrapper<ForkchoiceUpdatedV1Result> Syncing = ResultWrapper<ForkchoiceUpdatedV1Result>.Success(new ForkchoiceUpdatedV1Result { PayloadId = null, PayloadStatus = PayloadStatusV1.Syncing });
 
-        public static ResultWrapper<ForkchoiceUpdatedV1Result> Valid(string? payloadId, Keccak? latestValidHash) =>
+        public static ResultWrapper<ForkchoiceUpdatedV1Result> Valid(string? payloadId, Hash256? latestValidHash) =>
             ResultWrapper<ForkchoiceUpdatedV1Result>.Success(
                 new ForkchoiceUpdatedV1Result
                 {
@@ -30,7 +30,7 @@ namespace Nethermind.Merge.Plugin.Data
                     }
                 });
 
-        public static ResultWrapper<ForkchoiceUpdatedV1Result> Invalid(Keccak? latestValidHash, string? validationError = null) =>
+        public static ResultWrapper<ForkchoiceUpdatedV1Result> Invalid(Hash256? latestValidHash, string? validationError = null) =>
             ResultWrapper<ForkchoiceUpdatedV1Result>.Success(
                 new ForkchoiceUpdatedV1Result
                 {

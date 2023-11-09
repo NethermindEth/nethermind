@@ -20,7 +20,7 @@ namespace Nethermind.Core.Test.Json
         [Test]
         public void Can_read_null()
         {
-            Keccak? result = JsonSerializer.Deserialize<Keccak>("null", options);
+            Hash256? result = JsonSerializer.Deserialize<Hash256>("null", options);
             Assert.That(result, Is.EqualTo(null));
         }
     }

@@ -64,7 +64,7 @@ public partial class EngineModuleTests
     }
 
     [TestCaseSource(nameof(CancunFieldsTestSource))]
-    public async Task<int> NewPayloadV2_should_decline_pre_cancun_with_cancun_fields(ulong? blobGasUsed, ulong? excessBlobGas, Keccak? parentBlockBeaconRoot)
+    public async Task<int> NewPayloadV2_should_decline_pre_cancun_with_cancun_fields(ulong? blobGasUsed, ulong? excessBlobGas, Hash256? parentBlockBeaconRoot)
     {
         MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Shanghai.Instance);
         IEngineRpcModule rpcModule = CreateEngineModule(chain);
@@ -204,7 +204,7 @@ public partial class EngineModuleTests
     {
         MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Cancun.Instance);
         IEngineRpcModule rpcModule = CreateEngineModule(chain);
-        JsonRpcConfig jsonRpcConfig = new() { EnabledModules = new[] { "Engine" } };
+        JsonRpcConfig jsonRpcConfig = new() { EnabledModules = new[] { ModuleType.Engine } };
         RpcModuleProvider moduleProvider = new(new FileSystem(), jsonRpcConfig, LimboLogs.Instance);
         moduleProvider.Register(new SingletonModulePool<IEngineRpcModule>(new SingletonFactory<IEngineRpcModule>(rpcModule), true));
 
@@ -307,7 +307,7 @@ public partial class EngineModuleTests
                  Substitute.For<IAsyncHandler<byte[], GetPayloadV3Result?>>(),
                  newPayloadHandlerMock,
                  Substitute.For<IForkchoiceUpdatedHandler>(),
-                 Substitute.For<IAsyncHandler<IList<Keccak>, IEnumerable<ExecutionPayloadBodyV1Result?>>>(),
+                 Substitute.For<IAsyncHandler<IList<Hash256>, IEnumerable<ExecutionPayloadBodyV1Result?>>>(),
                  Substitute.For<IGetPayloadBodiesByRangeV1Handler>(),
                  Substitute.For<IHandler<TransitionConfigurationV1, TransitionConfigurationV1>>(),
                  Substitute.For<IHandler<IEnumerable<string>, IEnumerable<string>>>(),
@@ -617,7 +617,7 @@ public partial class EngineModuleTests
             Withdrawals = new List<Withdrawal> { TestItem.WithdrawalA_1Eth },
             ParentBeaconBlockRoot = spec.IsBeaconBlockRootAvailable ? TestItem.KeccakE : null
         };
-        Keccak currentHeadHash = chain.BlockTree.HeadHash;
+        Hash256 currentHeadHash = chain.BlockTree.HeadHash;
         ForkchoiceStateV1 forkchoiceState = new(currentHeadHash, currentHeadHash, currentHeadHash);
         string payloadId = spec.IsBeaconBlockRootAvailable
             ? rpcModule.engine_forkchoiceUpdatedV3(forkchoiceState, payloadAttributes).Result.Data.PayloadId!

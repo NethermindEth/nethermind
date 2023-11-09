@@ -58,9 +58,9 @@ public partial class EngineModuleTests
             timePerSlot);
 
         IEngineRpcModule rpc = CreateEngineModule(chain);
-        Keccak startingHead = chain.BlockTree.HeadHash;
+        Hash256 startingHead = chain.BlockTree.HeadHash;
         ulong timestamp = Timestamper.UnixTime.Seconds;
-        Keccak random = Keccak.Zero;
+        Hash256 random = Keccak.Zero;
         Address feeRecipient = Address.Zero;
 
         BoostExecutionPayloadV1? sentItem = null;
@@ -161,7 +161,7 @@ public partial class EngineModuleTests
             timePerSlot);
 
         IEngineRpcModule rpc = CreateEngineModule(chain);
-        Keccak startingHead = chain.BlockTree.HeadHash;
+        Hash256 startingHead = chain.BlockTree.HeadHash;
 
         ManualResetEvent wait = new(false);
         chain.PayloadPreparationService.BlockImproved += (_, _) => wait.Set();
@@ -210,9 +210,9 @@ public partial class EngineModuleTests
             timePerSlot);
 
         IEngineRpcModule rpc = CreateEngineModule(chain);
-        Keccak startingHead = chain.BlockTree.HeadHash;
+        Hash256 startingHead = chain.BlockTree.HeadHash;
         ulong timestamp = Timestamper.UnixTime.Seconds;
-        Keccak random = Keccak.Zero;
+        Hash256 random = Keccak.Zero;
         Address feeRecipient = Address.Zero;
 
         string payloadId = rpc.engine_forkchoiceUpdatedV1(new ForkchoiceStateV1(startingHead, Keccak.Zero, startingHead),
