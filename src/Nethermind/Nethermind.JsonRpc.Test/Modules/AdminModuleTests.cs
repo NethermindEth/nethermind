@@ -11,11 +11,13 @@ using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Era1;
 using Nethermind.JsonRpc.Modules.Admin;
 using Nethermind.Network;
 using Nethermind.Network.Config;
 using Nethermind.Serialization.Json;
 using Nethermind.Stats.Model;
+using Nethermind.Trie;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using NSubstitute;
@@ -43,7 +45,7 @@ public class AdminModuleTests
         ConcurrentDictionary<PublicKey, Peer> dict = new();
         dict.TryAdd(TestItem.PublicKeyA, new Peer(new Node(TestItem.PublicKeyA, "127.0.0.1", 30303, true)));
         peerPool.ActivePeers.Returns(dict);
-
+        IEraService eraService = Substitute.For<IEraService>();
         IStaticNodesManager staticNodesManager = Substitute.For<IStaticNodesManager>();
         Enode enode = new(_enodeString);
         _adminRpcModule = new AdminRpcModule(
@@ -52,6 +54,7 @@ public class AdminModuleTests
             peerPool,
             staticNodesManager,
             enode,
+            eraService,
             _exampleDataDir,
             new ManualPruningTrigger());
 

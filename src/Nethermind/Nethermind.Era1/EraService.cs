@@ -10,6 +10,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
+using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Era1;
@@ -20,17 +21,20 @@ public class EraService : IEraService
     private readonly IBlockTree _blockTree;
     private readonly IReceiptStorage _receiptStorage;
     private readonly ISpecProvider _specProvider;
+    private readonly ILogger _logger;
 
     public EraService(
         IFileSystem fileSystem,
         IBlockTree blockTree,
         IReceiptStorage receiptStorage,
-        ISpecProvider specProvider)
+        ISpecProvider specProvider,
+        ILogManager logManager)
     {
         _fileSystem = fileSystem ?? throw new ArgumentNullException(nameof(fileSystem));
         _blockTree = blockTree;
         _receiptStorage = receiptStorage;
         _specProvider = specProvider;
+        _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
     }
 
     public async Task TestImport(string src, string network)

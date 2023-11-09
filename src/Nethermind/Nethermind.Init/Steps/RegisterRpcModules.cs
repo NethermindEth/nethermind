@@ -28,6 +28,8 @@ using Nethermind.JsonRpc.Modules.Witness;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
 using Nethermind.JsonRpc.Modules.Rpc;
+using Nethermind.Era1;
+using System.IO.Abstractions;
 
 namespace Nethermind.Init.Steps;
 
@@ -165,12 +167,14 @@ public class RegisterRpcModules : IStep
 
         ManualPruningTrigger pruningTrigger = new();
         _api.PruningTrigger.Add(pruningTrigger);
+        IEraService eraService = new EraService(new FileSystem(), _api.BlockTree, _api.ReceiptStorage, _api.SpecProvider);
         AdminRpcModule adminRpcModule = new(
             _api.BlockTree,
             networkConfig,
             _api.PeerPool,
             _api.StaticNodesManager,
             _api.Enode,
+            eraService,
             initConfig.BaseDbPath,
             pruningTrigger);
         rpcModuleProvider.RegisterSingle<IAdminRpcModule>(adminRpcModule);

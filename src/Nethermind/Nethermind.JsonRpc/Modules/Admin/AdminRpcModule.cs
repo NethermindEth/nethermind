@@ -30,7 +30,7 @@ public class AdminRpcModule : IAdminRpcModule
     private readonly string _dataDir;
     private readonly ManualPruningTrigger _pruningTrigger;
     private NodeInfo _nodeInfo = null!;
-    //private readonly IEraService _eraService;
+    private readonly IEraService _eraService;
 
     public AdminRpcModule(
         IBlockTree blockTree,
@@ -38,7 +38,7 @@ public class AdminRpcModule : IAdminRpcModule
         IPeerPool peerPool,
         IStaticNodesManager staticNodesManager,
         IEnode enode,
-        //IEraService eraService,
+        IEraService eraService,
         string dataDir,
         ManualPruningTrigger pruningTrigger)
     {
@@ -49,7 +49,7 @@ public class AdminRpcModule : IAdminRpcModule
         _networkConfig = networkConfig ?? throw new ArgumentNullException(nameof(networkConfig));
         _staticNodesManager = staticNodesManager ?? throw new ArgumentNullException(nameof(staticNodesManager));
         _pruningTrigger = pruningTrigger;
-        //_eraService = eraService;
+        _eraService = eraService;
         BuildNodeInfo();
     }
 
@@ -139,26 +139,26 @@ public class AdminRpcModule : IAdminRpcModule
     private Task _exportTask = Task.CompletedTask;
     private SemaphoreSlim _semaphoreSlim = new SemaphoreSlim(1);
 
-    //public async Task<ResultWrapper<string>> start_export_history(string destination, int blockStart, int count)
-    //{
-    //    await _semaphoreSlim.WaitAsync();
-    //    try
-    //    {
-    //        if (!_exportTask.IsCompleted)
-    //        {
-    //            return ResultWrapper<string>.Fail("An export job is already running");
-    //        }
-    //        //TODO correct network 
-    //        _exportTask = _eraService.Export(destination, "mainnet", blockStart, count);
-    //        return ResultWrapper<string>.Success("");
-    //    }
-    //    finally
-    //    {
-    //        _semaphoreSlim.Release();
-    //    }
-    //}
+    public async Task<ResultWrapper<string>> start_exportHistory(string destination, int blockStart, int count)
+    {
+        await _semaphoreSlim.WaitAsync();
+        try
+        {
+            if (!_exportTask.IsCompleted)
+            {
+                return ResultWrapper<string>.Fail("An export job is already running.");
+            }
+            //TODO correct network 
+            _exportTask = _eraService.Export(destination, "mainnet", blockStart, count);
+        }
+        finally
+        {
+            _semaphoreSlim.Release();
+        }
+        return ResultWrapper<string>.Success("");
+    }
 
-    //public async Task<ResultWrapper<string>> import_history(string enode, bool removeFromStaticNodes = false)
+    //public async Task<ResultWrapper<string>> import_history()
     //{
 
     //    return ResultWrapper<string>.Success(enode);
