@@ -116,7 +116,7 @@ namespace Nethermind.Core.Crypto
         public static bool operator >=(in ValueHash256 left, in ValueHash256 right) => left.CompareTo(in right) >= 0;
         public static bool operator <=(in ValueHash256 left, in ValueHash256 right) => left.CompareTo(in right) <= 0;
     }
-    
+
     [JsonConverter(typeof(Hash256Converter))]
     [DebuggerStepThrough]
     public class Hash256 : IEquatable<Hash256>, IComparable<Hash256>
