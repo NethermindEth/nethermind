@@ -248,12 +248,12 @@ namespace Nethermind.TxPool
                 {
                     foreach (Transaction blobTx in blobTxs)
                     {
-                        if (_logger.IsTrace) _logger.Trace($"Readded tx {blobTx.Hash} from reorged block {previousBlock.Number} (hash {previousBlock.Hash}) to blob pool");
+                        if (_logger.IsWarn) _logger.Warn($"Readded tx {blobTx.Hash} from reorged block {previousBlock.Number} (hash {previousBlock.Hash}) to blob pool");
                         _hashCache.Delete(blobTx.Hash!);
                         blobTx.SenderAddress ??= _ecdsa.RecoverAddress(blobTx);
                         SubmitTx(blobTx, isEip155Enabled ? TxHandlingOptions.None : TxHandlingOptions.PreEip155Signing);
                     }
-                    if (_logger.IsDebug) _logger.Debug($"Readded txs from reorged block {previousBlock.Number} (hash {previousBlock.Hash}) to blob pool");
+                    if (_logger.IsError) _logger.Error($"Readded txs from reorged block {previousBlock.Number} (hash {previousBlock.Hash}) to blob pool");
 
                     _blobTxStorage.DeleteBlobTransactionsFromBlock(previousBlock.Number);
                 }
@@ -287,11 +287,11 @@ namespace Nethermind.TxPool
                     {
                         if (_blobTransactions.TryGetValue(blockTx.Hash, out Transaction? fullBlobTx))
                         {
-                            if (_logger.IsTrace) _logger.Trace($"Saved processed blob tx {blockTx.Hash} from block {block.Number} to ProcessedTxs db");
+                            if (_logger.IsWarn) _logger.Warn($"Saved processed blob tx {blockTx.Hash} from block {block.Number} to ProcessedTxs db");
                             blobTxs ??= new List<Transaction>(Eip4844Constants.GetMaxBlobsPerBlock());
                             blobTxs.Add(fullBlobTx);
                         }
-                        else if (_logger.IsTrace) _logger.Trace($"Skipped adding processed blob tx {blockTx.Hash} from block {block.Number} to ProcessedTxs db - not found in blob pool");
+                        else if (_logger.IsWarn) _logger.Warn($"Skipped adding processed blob tx {blockTx.Hash} from block {block.Number} to ProcessedTxs db - not found in blob pool");
                     }
                 }
 

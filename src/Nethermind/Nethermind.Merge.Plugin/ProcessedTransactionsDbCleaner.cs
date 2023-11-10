@@ -46,16 +46,16 @@ public class ProcessedTransactionsDbCleaner : IDisposable
                 blocksInDb.Add(key.ToLongFromBigEndianByteArrayWithoutLeadingZeros());
             }
 
-            if (_logger.IsTrace) _logger.Trace($"There are processed blob txs from {blocksInDb.Count} blocks in ProcessedTxs db");
+            if (_logger.IsWarn) _logger.Warn($"There are processed blob txs from {blocksInDb.Count} blocks in ProcessedTxs db");
             foreach (long blockNumber in blocksInDb)
             {
                 if (newlyFinalizedBlockNumber >= blockNumber)
                 {
-                    if (_logger.IsTrace) _logger.Trace($"Cleaning processed blob txs from block {blockNumber}");
+                    if (_logger.IsWarn) _logger.Warn($"Cleaning processed blob txs from block {blockNumber}");
                     _processedTxsDb.Delete(blockNumber);
                 }
             }
-            if (_logger.IsDebug) _logger.Debug($"Cleaned processed blob txs from block {_lastFinalizedBlock} to block {newlyFinalizedBlockNumber}");
+            if (_logger.IsError) _logger.Error($"Cleaned processed blob txs from block {_lastFinalizedBlock} to block {newlyFinalizedBlockNumber}");
 
             _lastFinalizedBlock = newlyFinalizedBlockNumber;
         }
