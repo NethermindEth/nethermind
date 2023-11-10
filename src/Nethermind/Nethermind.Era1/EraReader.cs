@@ -98,8 +98,7 @@ public class EraReader : IAsyncEnumerable<(Block, TxReceipt[], UInt256)>, IDispo
         if (stream == null) throw new ArgumentNullException(nameof(stream));
         if (!stream.CanRead) throw new ArgumentException("Provided stream is not readable.");
 
-        E2Store e2 = new E2Store(stream);
-        await e2.SetMetaData(token);
+        E2Store e2 = await E2Store.ForRead(stream, token);
         EraReader e = new EraReader(e2, allocator ?? PooledByteBufferAllocator.Default);
 
         return e;
@@ -173,7 +172,7 @@ public class EraReader : IAsyncEnumerable<(Block, TxReceipt[], UInt256)>, IDispo
         if (blockNumber < _store.Metadata.Start
             || blockNumber > _store.Metadata.Start + _store.Metadata.Count)
             throw new ArgumentOutOfRangeException("Value is outside the range of the archive.", blockNumber, nameof(blockNumber));
-        long blockOffset = await SeekToBlock(blockNumber, cancellationToken);
+        long blockOffset = SeekToBlock(blockNumber);
         IByteBuffer buffer = _byteBufferAllocator.Buffer(1024 * 1024);
 
         try
@@ -225,16 +224,12 @@ public class EraReader : IAsyncEnumerable<(Block, TxReceipt[], UInt256)>, IDispo
         return _receiptDecoder.DecodeArray(new NettyRlpStream(buf));
     }
 
-    private async Task<long> SeekToBlock(long blockNumber, CancellationToken token)
+    private long SeekToBlock(long blockNumber)
     {
-        //TODO if the whole index is read in one go it should avoid some random reads, at the cost of more memory
-        //Last 8 bytes is the count, so we skip them
-        long startOfIndex = _store.Metadata.Length - 8 - _store.Metadata.Count * 8;
-        long indexOffset = (blockNumber - _store.Metadata.Start) * 8;
-        long blockIndexOffset = startOfIndex + indexOffset;
-
-        long blockOffset = await _store.ReadValueAt(blockIndexOffset, token);
-        return _store.Seek(blockOffset, SeekOrigin.Current);
+        long offset = _store.BlockOffset(blockNumber) - _store.Position;
+        if (offset == 0)
+            return 0;
+        return _store.Seek(offset, SeekOrigin.Current);
     }
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private void Reset()
