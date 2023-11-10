@@ -47,7 +47,7 @@ public class EraWriter : IDisposable
     {
         if (specProvider is null) throw new ArgumentNullException(nameof(specProvider));
 
-        EraWriter b = new(new E2Store(stream), specProvider, bufferAllocator);
+        EraWriter b = new(E2Store.ForWrite(stream), specProvider, bufferAllocator);
         return b;
     }
 

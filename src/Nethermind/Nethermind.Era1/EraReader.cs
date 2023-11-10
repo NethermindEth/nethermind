@@ -98,8 +98,7 @@ public class EraReader : IAsyncEnumerable<(Block, TxReceipt[], UInt256)>, IDispo
         if (stream == null) throw new ArgumentNullException(nameof(stream));
         if (!stream.CanRead) throw new ArgumentException("Provided stream is not readable.");
 
-        E2Store e2 = new E2Store(stream);
-        await e2.SetMetaData(token);
+        E2Store e2 = await E2Store.ForRead(stream, token);
         EraReader e = new EraReader(e2, allocator ?? PooledByteBufferAllocator.Default);
 
         return e;
@@ -173,22 +172,22 @@ public class EraReader : IAsyncEnumerable<(Block, TxReceipt[], UInt256)>, IDispo
         if (blockNumber < _store.Metadata.Start
             || blockNumber > _store.Metadata.Start + _store.Metadata.Count)
             throw new ArgumentOutOfRangeException("Value is outside the range of the archive.", blockNumber, nameof(blockNumber));
-        long blockOffset = await SeekToBlock(blockNumber, cancellationToken);
+        long seeked = SeekToBlock(blockNumber);
         IByteBuffer buffer = _byteBufferAllocator.Buffer(1024 * 1024);
 
         try
         {
-            await ReadEntry(blockOffset, buffer, EntryTypes.CompressedHeader, cancellationToken);
+            await ReadEntryHere(buffer, EntryTypes.CompressedHeader, cancellationToken);
             NettyRlpStream rlpStream = new NettyRlpStream(buffer);
             Hash256? currentComputedHeaderHash = null;
             if (computeHeaderHash)
                 currentComputedHeaderHash = rlpStream.ComputeNextItemHash();
             BlockHeader header = Rlp.Decode<BlockHeader>(rlpStream);
 
-            await ReadEntry(buffer, EntryTypes.CompressedBody, cancellationToken);
+            await ReadEntryHere(buffer, EntryTypes.CompressedBody, cancellationToken);
             BlockBody body = Rlp.Decode<BlockBody>(new NettyRlpStream(buffer));
 
-            await ReadEntry(buffer, EntryTypes.CompressedReceipts, cancellationToken);
+            await ReadEntryHere(buffer, EntryTypes.CompressedReceipts, cancellationToken);
             TxReceipt[] receipts = DecodeReceipts(buffer);
 
             Entry e = await _store.ReadEntryCurrentPosition(cancellationToken);
@@ -206,16 +205,16 @@ public class EraReader : IAsyncEnumerable<(Block, TxReceipt[], UInt256)>, IDispo
             buffer.Release();
         };
     }
-
-    private async Task ReadEntry(IByteBuffer buffer, ushort expectedType, CancellationToken cancellation)
+    /// <summary>
+    /// Reads an entry and loads it's value into <paramref name="buffer"/> from the current position in the stream.
+    /// </summary>
+    /// <param name="buffer"></param>
+    /// <param name="expectedType"></param>
+    /// <param name="cancellation"></param>
+    /// <returns></returns>
+    private async Task ReadEntryHere(IByteBuffer buffer, ushort expectedType, CancellationToken cancellation)
     {
         Entry e = await _store.ReadEntryCurrentPosition(cancellation);
-        CheckType(e, expectedType);
-        await _store.ReadEntryValueAsSnappy(buffer, e, cancellation);
-    }
-    private async Task ReadEntry(long offset, IByteBuffer buffer, ushort expectedType, CancellationToken cancellation)
-    {
-        Entry e = await _store.ReadEntryAt(offset, cancellation);
         CheckType(e, expectedType);
         await _store.ReadEntryValueAsSnappy(buffer, e, cancellation);
     }
@@ -225,16 +224,12 @@ public class EraReader : IAsyncEnumerable<(Block, TxReceipt[], UInt256)>, IDispo
         return _receiptDecoder.DecodeArray(new NettyRlpStream(buf));
     }
 
-    private async Task<long> SeekToBlock(long blockNumber, CancellationToken token)
+    private long SeekToBlock(long blockNumber)
     {
-        //TODO if the whole index is read in one go it should avoid some random reads, at the cost of more memory
-        //Last 8 bytes is the count, so we skip them
-        long startOfIndex = _store.Metadata.Length - 8 - _store.Metadata.Count * 8;
-        long indexOffset = (blockNumber - _store.Metadata.Start) * 8;
-        long blockIndexOffset = startOfIndex + indexOffset;
-
-        long blockOffset = await _store.ReadValueAt(blockIndexOffset, token);
-        return _store.Seek(blockOffset, SeekOrigin.Current);
+        long offset = _store.BlockOffset(blockNumber) - _store.Position;
+        if (offset == 0)
+            return 0;
+        return _store.Seek(offset, SeekOrigin.Current);
     }
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private void Reset()

@@ -272,5 +272,6 @@ public sealed class ArrayPoolList<T> : IList<T>, IList, IReadOnlyList<T>, IDispo
     }
 
     public Span<T> AsSpan() => _array.AsSpan(0, _count);
+    public Span<T> AsSpan(int start, int count) => _array.AsSpan(start, count);
     public Memory<T> AsMemory(int start, int length) => _array.AsMemory(start, length);
 }
