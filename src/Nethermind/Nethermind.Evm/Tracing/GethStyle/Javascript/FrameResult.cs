@@ -15,5 +15,5 @@ public class FrameResult
     public string? Error { get; set; }
     public long getGasUsed() => GasUsed;
     public ITypedArray<byte> getOutput() => output ??= Output.ToTypedScriptArray();
-    public string getError() => Error ?? string.Empty;
+    public dynamic getError() => !string.IsNullOrEmpty(Error) ? Error : Undefined.Value;
 }
