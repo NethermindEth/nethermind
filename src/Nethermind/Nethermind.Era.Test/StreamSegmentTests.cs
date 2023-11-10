@@ -23,6 +23,7 @@ internal class StreamSegmentTests
     public void Constructor_StreamIsNotReadable_ThrowException()
     {
         var stream = Substitute.For<Stream>();
+        stream.Length.Returns(1);
         stream.CanRead.Returns(false);
 
         Assert.That(() => new StreamSegment(stream, 0, 1), Throws.TypeOf<ArgumentException>());

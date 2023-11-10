@@ -6,6 +6,7 @@ using System.IO;
 using System.IO.Compression;
 using System.Runtime.CompilerServices;
 using DotNetty.Buffers;
+using MathNet.Numerics.Distributions;
 using Nethermind.Core.Collections;
 using Org.BouncyCastle.Asn1;
 using Snappier;
@@ -21,6 +22,11 @@ internal class E2Store : IDisposable
     private bool _disposedValue;
 
     private EraMetadata? _metadata;
+    private StreamSegment _streamSegment;
+    private SnappyStream _decompressor;
+    private SnappyStream _compressor;
+    private MemoryStream _compressedData;
+
     public long StreamLength => _stream.Length;
     public EraMetadata Metadata => GetMetadata();
 
@@ -76,11 +82,10 @@ internal class E2Store : IDisposable
         if (asSnappy && bytes.Length > 0)
         {
             //TODO find a way to write directly to file, and still return the number of bytes written
-            using MemoryStream memoryStream = new MemoryStream();
-            using SnappyStream snappyStream = new(memoryStream, CompressionMode.Compress, true);
-            await snappyStream.WriteAsync(bytes, cancellation);
-            await snappyStream.FlushAsync();
-            bytes = memoryStream.ToArray();
+            EnsureCompressorStream(bytes.Length);
+            await _compressor.WriteAsync(bytes, cancellation);
+            await _compressor.FlushAsync();
+            bytes = _compressedData.ToArray();
         }
 
         headerBuffer.Add((byte)type);
@@ -120,7 +125,7 @@ internal class E2Store : IDisposable
         try
         {
             _stream!.Position = offset;
-            var read = await _stream.ReadAsync(buf, 0, HeaderSize, token);
+            var read = await _stream.ReadAsync(buf.AsMemory( 0, HeaderSize), token);
             if (read != HeaderSize)
                 throw new EraFormatException($"Entry header could not be read at position {offset}.");
             if (buf[6] != 0 || buf[7] != 0)
@@ -183,21 +188,45 @@ internal class E2Store : IDisposable
         if (buffer is null) throw new ArgumentNullException(nameof(buffer));
         if (e.ValueOffset + e.Length > StreamLength) throw new EraFormatException($"Entry has a length ({e.Length}) and offset ({e.Offset}) that would read beyond the length of the stream.");
         //TODO is this necessary?
-        //buffer.EnsureWritable((int)e.Length * 2, true);
+        buffer.EnsureWritable((int)e.Length * 4, true);
 
-        using SnappyStream snappy = new(new StreamSegment(_stream, e.ValueOffset, e.Length), CompressionMode.Decompress, true);
+        EnsureDecompressorStream(e.ValueOffset, e.Length);
         int totalRead = 0;
         int read;
         do
         {
             int before = buffer.WriterIndex;
             //We don't know the uncompressed length 
-            await buffer.WriteBytesAsync(snappy, (int)e.Length * 4, cancellation);
+            await buffer.WriteBytesAsync(_decompressor, (int)e.Length * 4, cancellation);
             read = buffer.WriterIndex - before;
             totalRead += read;
         }
         while (read != 0);
         return totalRead;
+    }
+
+
+    private void EnsureCompressorStream(int minLength)
+    {
+        if (_compressedData == null)
+            _compressedData = new MemoryStream(minLength);
+        else
+            _compressedData.SetLength(0);
+        if (_compressor == null)
+            _compressor = new(_compressedData, CompressionMode.Compress, true);
+    }
+
+    private void EnsureDecompressorStream(long offset, long length)
+    {
+        if (_decompressor == null)
+        {
+            _streamSegment = new StreamSegment(_stream, offset, length);
+            _decompressor = new(_streamSegment, CompressionMode.Decompress, true);
+        }
+        else
+        {
+            _streamSegment.ShiftSegment(offset, length);
+        }
     }
 
     public async ValueTask<int> ReadEntryValue(IByteBuffer buffer, Entry e, CancellationToken cancellation = default)
@@ -223,7 +252,9 @@ internal class E2Store : IDisposable
             if (disposing)
             {
                 _stream?.Dispose();
-                _blockIndex?.Dispose();  
+                _decompressor?.Dispose();
+                _blockIndex?.Dispose();
+                _compressedData?.Dispose();
             }
             _disposedValue = true;
         }
@@ -234,7 +265,6 @@ internal class E2Store : IDisposable
         Dispose(disposing: true);
         GC.SuppressFinalize(this);
     }
-
     internal long Seek(long offset, SeekOrigin origin)
     {
         return _stream.Seek(offset, origin);
