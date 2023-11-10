@@ -75,7 +75,6 @@ public sealed class GethLikeJavascriptTxTracer : GethLikeTxTracer
             _ctx.To = to;
             _ctx.Input = input;
             _ctx.Value = value;
-            _ctx.gas = gas;
         }
         else if (_functions.HasFlag(TracerFunctions.enter))
         {

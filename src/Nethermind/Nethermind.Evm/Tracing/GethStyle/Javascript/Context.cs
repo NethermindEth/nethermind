@@ -18,6 +18,7 @@ public class Context
     private IList? _to;
     private IList? _output;
     private dynamic? _value;
+    private dynamic? _gasPrice;
     public Address? From { get; set; }
     public Address? To { get; set; }
     public ReadOnlyMemory<byte> Input { get; set; }
@@ -25,6 +26,7 @@ public class Context
     public Hash256? BlockHash { get; set; }
     public Hash256? TxHash { get; set; }
     public UInt256 Value { get; set; }
+    public UInt256 GasPrice { get; set; }
 
     public string type { get; set; } = null!;
     public IList? from => _from ??= From?.Bytes.ToUnTypedScriptArray();
@@ -32,7 +34,7 @@ public class Context
     public IList? input => _input ??= Input.ToArray().ToUnTypedScriptArray();
     public long gas { get; set; }
     public long gasUsed { get; set; }
-    public ulong gasPrice { get; set; }
+    public dynamic gasPrice => _gasPrice ??= GasPrice.ToBigInteger();
     public dynamic value => _value ??= Value.ToBigInteger();
     public long block { get; set; }
     public IList? output => _output ??= Output?.ToUnTypedScriptArray();

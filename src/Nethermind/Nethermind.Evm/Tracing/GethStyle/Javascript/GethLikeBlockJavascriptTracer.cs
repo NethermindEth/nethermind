@@ -8,6 +8,7 @@ using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Specs;
+using Nethermind.Int256;
 using Nethermind.State;
 
 namespace Nethermind.Evm.Tracing.GethStyle.Javascript;
@@ -20,6 +21,7 @@ public class GethLikeBlockJavascriptTracer : BlockTracerBase<GethLikeTxTrace, Ge
     private readonly Db _db;
     private int _index;
     private ArrayPoolList<IDisposable>? _engines;
+    private UInt256 _baseFee;
 
     public GethLikeBlockJavascriptTracer(IWorldState worldState, IReleaseSpec spec, GethTraceOptions options) : base(options.TxHash)
     {
@@ -34,14 +36,16 @@ public class GethLikeBlockJavascriptTracer : BlockTracerBase<GethLikeTxTrace, Ge
         _engines = new ArrayPoolList<IDisposable>(block.Transactions.Length + 1);
         _ctx.block = block.Number;
         _ctx.BlockHash = block.Hash;
+        _baseFee = block.BaseFeePerGas;
         base.StartNewBlockTrace(block);
     }
 
     protected override GethLikeJavascriptTxTracer OnStart(Transaction? tx)
     {
-        _ctx.gasPrice = (ulong)tx!.GasPrice;
+        _ctx.GasPrice = tx!.CalculateEffectiveGasPrice(_spec.IsEip1559Enabled, _baseFee);
         _ctx.TxHash = tx.Hash;
         _ctx.txIndex = tx.Hash is not null ? _index++ : null;
+        _ctx.gas = tx.GasLimit;
         Engine engine = new(_spec);
         _engines?.Add(engine);
         return new GethLikeJavascriptTxTracer(this, engine, _db, _ctx, _options);
