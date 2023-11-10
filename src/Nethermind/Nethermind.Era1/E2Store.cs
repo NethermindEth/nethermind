@@ -38,7 +38,7 @@ internal class E2Store : IDisposable
             throw new ArgumentException("Stream must be writeable.", nameof(stream));
         return new(stream);
     }
-    public static async Task<E2Store> ForRead(Stream stream,CancellationToken cancellation)
+    public static async Task<E2Store> ForRead(Stream stream, CancellationToken cancellation)
     {
         if (!stream.CanRead)
             throw new ArgumentException("Stream must be readable.", nameof(stream));
@@ -125,7 +125,7 @@ internal class E2Store : IDisposable
         try
         {
             _stream!.Position = offset;
-            var read = await _stream.ReadAsync(buf.AsMemory( 0, HeaderSize), token);
+            var read = await _stream.ReadAsync(buf.AsMemory(0, HeaderSize), token);
             if (read != HeaderSize)
                 throw new EraFormatException($"Entry header could not be read at position {offset}.");
             if (buf[6] != 0 || buf[7] != 0)
@@ -337,7 +337,7 @@ internal class E2Store : IDisposable
             stream.Position = startIndex;
             await stream.ReadAsync(blockIndex.AsMemory(0, indexLength), cancellation);
             long s = BitConverter.ToInt64(blockIndex.AsSpan(0, 8));
-            return new (blockIndex.AsSpan(0, indexLength), s, c, stream.Length);
+            return new(blockIndex.AsSpan(0, indexLength), s, c, stream.Length);
         }
         private void Dispose(bool disposing)
         {
