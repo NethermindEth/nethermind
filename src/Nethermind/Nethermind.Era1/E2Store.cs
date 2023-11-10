@@ -28,10 +28,14 @@ internal class E2Store : IDisposable
 
     public static E2Store ForWrite(Stream stream)
     {
+        if (!stream.CanWrite)
+            throw new ArgumentException("Stream must be writeable.", nameof(stream));
         return new(stream);
     }
     public static async Task<E2Store> ForRead(Stream stream,CancellationToken cancellation)
     {
+        if (!stream.CanRead)
+            throw new ArgumentException("Stream must be readable.", nameof(stream));
         E2Store store = new(stream);
         await store.SetMetaData(cancellation);
         return store;
@@ -127,7 +131,7 @@ internal class E2Store : IDisposable
                 Length = BitConverter.ToUInt32(buf, 2)
             };
             if (h.Length > StreamLength - offset)
-                throw new EraFormatException($"Invalid length of entry value was detected. Entry has a length of {h.Length} at position {offset}, and Stream has a length of {StreamLength}.");
+                throw new EraFormatException($"Entry has an invalid length of {h.Length} at position {offset}, which is longer than stream length of {StreamLength}.");
             return h;
         }
         finally
