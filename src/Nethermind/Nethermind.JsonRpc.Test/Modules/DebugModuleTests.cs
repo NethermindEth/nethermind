@@ -236,7 +236,7 @@ public class DebugModuleTests
     }
 
     [Test]
-    public void debug_getBadBlocks_test()
+    public void Debug_getBadBlocks_test()
     {
         BlockTree blockTree = BuildBlockTree();
 
@@ -251,17 +251,17 @@ public class DebugModuleTests
         blockTree.SuggestBlock(block3);
         
         blockTree.DeleteInvalidBlock(block1);
+
         BlockDecoder decoder = new();
         _blocksDb.Set(block1.Hash ?? new Hash256("0x0"), decoder.Encode(block1).Bytes);
+        
         debugBridge.GetBadBlocks().Returns(blockTree.GetInvalidBlocks());
 
         AddBlockResult result = blockTree.SuggestBlock(block1);
         Assert.That(result, Is.EqualTo(AddBlockResult.InvalidBlock));
 
         DebugRpcModule rpcModule = new(LimboLogs.Instance, debugBridge, jsonRpcConfig);
-
         ResultWrapper<Block[]> blocks = rpcModule.debug_getBadBlocks();
-
         Assert.That(blocks.Data.Length, Is.EqualTo(1));
         Assert.That(blocks.Data[0].Hash, Is.EqualTo(block1.Hash));
         Assert.That(blocks.Data[0].Difficulty, Is.EqualTo(new UInt256(2)));
