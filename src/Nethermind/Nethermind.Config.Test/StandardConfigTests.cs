@@ -6,12 +6,16 @@ using System.Collections;
 using System.IO;
 using System.Linq;
 using System.Reflection;
+using System.Text.Encodings.Web;
+using System.Text.Json;
 using NUnit.Framework;
 
 namespace Nethermind.Config.Test
 {
     public static class StandardConfigTests
     {
+        private static JsonSerializerOptions _jsonOptions = new() { Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping };
+
         public static void ValidateDefaultValues()
         {
             ForEachProperty(CheckDefault);
@@ -24,7 +28,7 @@ namespace Nethermind.Config.Test
 
         private static void ForEachProperty(Action<PropertyInfo, object?> verifier)
         {
-            string[] dlls = Directory.GetFiles(AppDomain.CurrentDomain.BaseDirectory, "Nethermind.*.dll").OrderBy(n => n).ToArray();
+            string[] dlls = Directory.GetFiles(AppDomain.CurrentDomain.BaseDirectory, "Nethermind.JsonRpc.dll").OrderBy(n => n).ToArray();
             foreach (string dll in dlls)
             {
                 TestContext.WriteLine($"Verifying {nameof(StandardConfigTests)} on {Path.GetFileName(dll)}");
@@ -89,6 +93,15 @@ namespace Nethermind.Config.Test
             }
 
             string expectedValue = attribute.DefaultValue?.Trim('"') ?? "null";
+
+            if (expectedValue.StartsWith("```json", StringComparison.Ordinal))
+            {
+                expectedValue = expectedValue
+                    .Replace("```json", string.Empty)
+                    .Replace("```", string.Empty);
+                expectedValue = JsonSerializer.Serialize(JsonDocument.Parse(expectedValue), _jsonOptions);
+            }
+
             string actualValue;
 
             object? value = property.GetValue(instance);

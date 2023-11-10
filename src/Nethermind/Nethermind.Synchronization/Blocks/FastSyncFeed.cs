@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Configuration;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Synchronization;
@@ -16,8 +17,7 @@ namespace Nethermind.Synchronization.Blocks
         private readonly ISyncConfig _syncConfig;
         private readonly BlocksRequest _blocksRequest;
 
-        public FastSyncFeed(ISyncModeSelector syncModeSelector, ISyncConfig syncConfig, ILogManager logManager)
-            : base(syncModeSelector)
+        public FastSyncFeed(ISyncConfig syncConfig)
         {
             _syncConfig = syncConfig ?? throw new ArgumentNullException(nameof(syncConfig));
             _blocksRequest = new BlocksRequest(BuildOptions(), MultiSyncModeSelector.FastSyncLag);
@@ -52,5 +52,6 @@ namespace Nethermind.Synchronization.Blocks
         public override bool IsMultiFeed => false;
 
         public override AllocationContexts Contexts => AllocationContexts.Blocks;
+        public override bool IsFinished => false; // Check MultiSyncModeSelector
     }
 }
