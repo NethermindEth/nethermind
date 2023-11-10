@@ -40,7 +40,7 @@ public class DiscoveryManager : IDiscoveryManager
         _nodeTable = nodeTable ?? throw new ArgumentNullException(nameof(nodeTable));
         _discoveryStorage = discoveryStorage ?? throw new ArgumentNullException(nameof(discoveryStorage));
         _nodeLifecycleManagerFactory.DiscoveryManager = this;
-        _outgoingMessageRateLimiter = new RateLimiter(discoveryConfig.OutgoingMessageRateLimit);
+        _outgoingMessageRateLimiter = new RateLimiter(discoveryConfig.MaxOutgoingMessagePerSecond);
     }
 
     public IMsgSender MsgSender

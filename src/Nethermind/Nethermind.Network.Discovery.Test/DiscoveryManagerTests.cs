@@ -197,7 +197,7 @@ namespace Nethermind.Network.Discovery.Test
         {
             SetupDiscoveryManager(new DiscoveryConfig()
             {
-                OutgoingMessageRateLimit = 5
+                MaxOutgoingMessagePerSecond = 5
             });
 
             Stopwatch sw = Stopwatch.StartNew();

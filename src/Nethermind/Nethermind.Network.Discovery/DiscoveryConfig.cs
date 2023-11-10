@@ -39,7 +39,7 @@ public class DiscoveryConfig : IDiscoveryConfig
 
     public float DropFullBucketNodeProbability { get; set; } = 0.05f;
 
-    public int OutgoingMessageRateLimit { get; set; } = 100;
+    public int MaxOutgoingMessagePerSecond { get; set; } = 100;
 
     public string Bootnodes { get; set; } = string.Empty;
 }
