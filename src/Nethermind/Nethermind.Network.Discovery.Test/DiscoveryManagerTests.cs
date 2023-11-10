@@ -3,9 +3,11 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Net;
 using System.Threading.Tasks;
+using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
@@ -43,12 +45,17 @@ namespace Nethermind.Network.Discovery.Test
         [SetUp]
         public void Initialize()
         {
+            SetupDiscoveryManager();
+        }
+
+        private void SetupDiscoveryManager(IDiscoveryConfig? config = null)
+        {
             NetworkNodeDecoder.Init();
             PrivateKey privateKey = new(TestPrivateKeyHex);
             _publicKey = privateKey.PublicKey;
             LimboLogs? logManager = LimboLogs.Instance;
 
-            IDiscoveryConfig discoveryConfig = new DiscoveryConfig();
+            IDiscoveryConfig discoveryConfig = config ?? new DiscoveryConfig();
             discoveryConfig.PongTimeout = 100;
 
             _msgSender = Substitute.For<IMsgSender>();
@@ -63,7 +70,7 @@ namespace Nethermind.Network.Discovery.Test
             EvictionManager evictionManager = new(_nodeTable, logManager);
             ITimerFactory timerFactory = Substitute.For<ITimerFactory>();
             NodeLifecycleManagerFactory lifecycleFactory = new(_nodeTable, evictionManager,
-                    new NodeStatsManager(timerFactory, logManager), new NodeRecord(), discoveryConfig, Timestamper.Default, logManager);
+                new NodeStatsManager(timerFactory, logManager), new NodeRecord(), discoveryConfig, Timestamper.Default, logManager);
 
             _nodes = new[] { new Node(TestItem.PublicKeyA, "192.168.1.18", 1), new Node(TestItem.PublicKeyB, "192.168.1.19", 2) };
 
@@ -182,6 +189,26 @@ namespace Nethermind.Network.Discovery.Test
             PongMsg pongMsg = new(_publicKey, GetExpirationTime(), Array.Empty<byte>());
             pongMsg.FarAddress = new IPEndPoint(IPAddress.Parse(Host), Port);
             _discoveryManager.OnIncomingMsg(pongMsg);
+        }
+
+        [Test]
+        [Repeat(10)]
+        public async Task RateLimitOutgoingMessage()
+        {
+            SetupDiscoveryManager(new DiscoveryConfig()
+            {
+                OutgoingMessageRateLimit = 5
+            });
+
+            Stopwatch sw = Stopwatch.StartNew();
+            FindNodeMsg msg = new(_publicKey, 0, Array.Empty<byte>());
+            await _discoveryManager.SendMessageAsync(msg);
+            await _discoveryManager.SendMessageAsync(msg);
+            await _discoveryManager.SendMessageAsync(msg);
+            await _discoveryManager.SendMessageAsync(msg);
+            await _discoveryManager.SendMessageAsync(msg);
+            await _discoveryManager.SendMessageAsync(msg);
+            sw.Elapsed.Should().BeGreaterOrEqualTo(TimeSpan.FromSeconds(1));
         }
     }
 }
