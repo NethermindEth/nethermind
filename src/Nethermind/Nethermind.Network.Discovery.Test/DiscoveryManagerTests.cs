@@ -81,10 +81,10 @@ namespace Nethermind.Network.Discovery.Test
             await Task.Delay(500);
 
             // expecting to send pong
-            _msgSender.Received(1).SendMsg(Arg.Is<PongMsg>(m => m.FarAddress!.Address.ToString() == Host && m.FarAddress.Port == Port));
+            await _msgSender.Received(1).SendMsg(Arg.Is<PongMsg>(m => m.FarAddress!.Address.ToString() == Host && m.FarAddress.Port == Port));
 
             // send pings to  new node
-            _msgSender.Received().SendMsg(Arg.Is<PingMsg>(m => m.FarAddress!.Address.ToString() == Host && m.FarAddress.Port == Port));
+            await _msgSender.Received().SendMsg(Arg.Is<PingMsg>(m => m.FarAddress!.Address.ToString() == Host && m.FarAddress.Port == Port));
         }
 
         [Test, Ignore("Add bonding"), Retry(3)]
@@ -163,8 +163,8 @@ namespace Nethermind.Network.Discovery.Test
             Assert.That(manager?.State, Is.EqualTo(NodeLifecycleState.Active));
 
             //sending FindNode to expect Neighbors
-            manager?.SendFindNode(_nodeTable.MasterNode!.Id.Bytes);
-            _msgSender.Received(1).SendMsg(Arg.Is<FindNodeMsg>(m => m.FarAddress!.Address.ToString() == Host && m.FarAddress.Port == Port));
+            await manager!.SendFindNode(_nodeTable.MasterNode!.Id.Bytes);
+            await _msgSender.Received(1).SendMsg(Arg.Is<FindNodeMsg>(m => m.FarAddress!.Address.ToString() == Host && m.FarAddress.Port == Port));
 
             //receiving findNode
             NeighborsMsg msg = new(_publicKey, GetExpirationTime(), _nodes);
@@ -173,8 +173,8 @@ namespace Nethermind.Network.Discovery.Test
 
             //expecting to send 3 pings to both nodes
             await Task.Delay(600);
-            _msgSender.Received(3).SendMsg(Arg.Is<PingMsg>(m => m.FarAddress!.Address.ToString() == _nodes[0].Host && m.FarAddress.Port == _nodes[0].Port));
-            _msgSender.Received(3).SendMsg(Arg.Is<PingMsg>(m => m.FarAddress!.Address.ToString() == _nodes[1].Host && m.FarAddress.Port == _nodes[1].Port));
+            await _msgSender.Received(3).SendMsg(Arg.Is<PingMsg>(m => m.FarAddress!.Address.ToString() == _nodes[0].Host && m.FarAddress.Port == _nodes[0].Port));
+            await _msgSender.Received(3).SendMsg(Arg.Is<PingMsg>(m => m.FarAddress!.Address.ToString() == _nodes[1].Host && m.FarAddress.Port == _nodes[1].Port));
         }
 
         private void ReceiveSomePong()

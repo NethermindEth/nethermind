@@ -36,7 +36,10 @@ public class DiscoveryConfig : IDiscoveryConfig
     public int MaxNodeLifecycleManagersCount { get; set; } = 8000;
 
     public int NodeLifecycleManagersCleanupCount { get; set; } = 4000;
+
     public float DropFullBucketNodeProbability { get; set; } = 0.05f;
+
+    public int OutgoingMessageRateLimit { get; set; } = 100;
 
     public string Bootnodes { get; set; } = string.Empty;
 }

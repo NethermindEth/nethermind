@@ -4,6 +4,7 @@
 using System.Collections.Concurrent;
 using System.Diagnostics.CodeAnalysis;
 using Nethermind.Config;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
 using Nethermind.Network.Discovery.Lifecycle;
@@ -16,6 +17,7 @@ namespace Nethermind.Network.Discovery;
 public class DiscoveryManager : IDiscoveryManager
 {
     private readonly IDiscoveryConfig _discoveryConfig;
+    private readonly RateLimiter _outgoingMessageRateLimiter;
     private readonly ILogger _logger;
     private readonly INodeLifecycleManagerFactory _nodeLifecycleManagerFactory;
     private readonly ConcurrentDictionary<Hash256, INodeLifecycleManager> _nodeLifecycleManagers = new();
@@ -38,6 +40,7 @@ public class DiscoveryManager : IDiscoveryManager
         _nodeTable = nodeTable ?? throw new ArgumentNullException(nameof(nodeTable));
         _discoveryStorage = discoveryStorage ?? throw new ArgumentNullException(nameof(discoveryStorage));
         _nodeLifecycleManagerFactory.DiscoveryManager = this;
+        _outgoingMessageRateLimiter = new RateLimiter(discoveryConfig.OutgoingMessageRateLimit);
     }
 
     public IMsgSender MsgSender
@@ -145,10 +148,19 @@ public class DiscoveryManager : IDiscoveryManager
 
     public void SendMessage(DiscoveryMsg discoveryMsg)
     {
+#pragma warning disable CS4014 // Because this call is not awaited, execution of the current method continues before the call is completed
+        SendMessageAsync(discoveryMsg);
+#pragma warning restore CS4014 // Because this call is not awaited, execution of the current method continues before the call is completed
+    }
+
+    public async Task SendMessageAsync(DiscoveryMsg discoveryMsg)
+    {
         if (_logger.IsTrace) _logger.Trace($"Sending msg: {discoveryMsg}");
         try
         {
-            _msgSender?.SendMsg(discoveryMsg);
+            if (_msgSender == null) return;
+            await _outgoingMessageRateLimiter.WaitAsync(CancellationToken.None);
+            await _msgSender.SendMsg(discoveryMsg);
         }
         catch (Exception e)
         {
