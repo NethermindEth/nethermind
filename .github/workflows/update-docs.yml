@@ -37,10 +37,12 @@ jobs:
       - name: Generate docs
         run: |
           mv d/docs/fundamentals/configuration.md n/docgen/configuration.md
+          mv d/docs/interacting/json-rpc-ns/eth_*.md n/docgen
           mv d/docs/monitoring/metrics/metrics.md n/docgen/metrics.md
           cd n/docgen && ./DocGen && cd ../..
           mv n/docgen/configuration.md d/docs/fundamentals/configuration.md
           rm -f d/docs/interacting/json-rpc-ns/*.md
+          mv n/docgen/eth_*.md d/docs/interacting/json-rpc-ns
           mv n/docgen/json-rpc-ns/*.md d/docs/interacting/json-rpc-ns
           mv n/docgen/metrics.md d/docs/monitoring/metrics/metrics.md
       - name: Tag a new version

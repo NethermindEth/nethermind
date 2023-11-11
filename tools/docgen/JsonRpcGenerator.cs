@@ -5,6 +5,7 @@ using System.Reflection;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Evm;
 using Nethermind.JsonRpc.Modules.Rpc;
+using Nethermind.JsonRpc.Modules.Subscribe;
 using Nethermind.JsonRpc.Modules.Witness;
 using Newtonsoft.Json;
 
@@ -17,15 +18,18 @@ internal static class JsonRpcGenerator
 
     internal static void Generate()
     {
+        var excluded = new[] {
+            typeof(IContextAwareRpcModule).FullName,
+            typeof(IEvmRpcModule).FullName,
+            typeof(IRpcModule).FullName,
+            typeof(IRpcRpcModule).FullName,
+            typeof(ISubscribeRpcModule).FullName,
+            typeof(IWitnessRpcModule).FullName
+        };
         var types = new[] { "Nethermind.JsonRpc", "Nethermind.Consensus.Clique" }
             .SelectMany(a => Assembly.Load(a).GetTypes())
-            .Where(t =>
-                t.IsInterface && t != typeof(IRpcModule) &&
-                typeof(IRpcModule).IsAssignableFrom(t) &&
-                !typeof(IContextAwareRpcModule).IsAssignableFrom(t) &&
-                !t.Name.Equals(nameof(IEvmRpcModule), StringComparison.Ordinal) &&
-                !t.Name.Equals(nameof(IRpcRpcModule), StringComparison.Ordinal) &&
-                !t.Name.Equals(nameof(IWitnessRpcModule), StringComparison.Ordinal))
+            .Where(t => t.IsInterface && typeof(IRpcModule).IsAssignableFrom(t) &&
+                !excluded.Any(x => x is not null && (t.FullName?.Contains(x, StringComparison.Ordinal) ?? false)))
             .OrderBy(t => t.Name);
 
         if (Directory.Exists(_directory))
@@ -58,9 +62,14 @@ internal static class JsonRpcGenerator
 
             """);
 
-        var methods = rpcType
-            .GetMethods(BindingFlags.Instance | BindingFlags.Public)
-            .OrderBy(m => m.Name);
+        IEnumerable<MethodInfo> methods = rpcType
+            .GetMethods(BindingFlags.Instance | BindingFlags.Public);
+
+        // Inject the `subscribe` methods into `eth`
+        if (rpcName.Equals("eth", StringComparison.Ordinal))
+            methods = methods.Concat(typeof(ISubscribeRpcModule).GetMethods(BindingFlags.Instance | BindingFlags.Public));
+
+        methods = methods.OrderBy(m => m.Name);
 
         foreach (var method in methods)
         {
@@ -68,6 +77,14 @@ internal static class JsonRpcGenerator
 
             if (attr is null || !attr.IsImplemented)
                 continue;
+
+            if (method.Name.Equals("eth_subscribe", StringComparison.Ordinal) ||
+                method.Name.Equals("eth_unsubscribe", StringComparison.Ordinal))
+            {
+                WriteFromFile(file, $"{method.Name}.md");
+
+                continue;
+            }
 
             file.WriteLine($"""
                 ### {method.Name}
@@ -235,6 +252,20 @@ internal static class JsonRpcGenerator
         }
     }
 
+    private static void WriteFromFile(StreamWriter file, string fileName)
+    {
+        file.Flush();
+
+        try
+        {
+            File.OpenRead(fileName).CopyTo(file.BaseStream);
+        }
+        catch (Exception)
+        {
+            Console.WriteLine($"Failed copying from '${fileName}'");
+        }
+    }
+
     private static string GetJsonTypeName(Type type)
     {
         var underlyingType = Nullable.GetUnderlyingType(type);
@@ -262,7 +293,7 @@ internal static class JsonRpcGenerator
                 or "Byte"
                 or "Byte[]" => "*string* (hex data)",
             "Boolean" => "*boolean*",
-            "Keccak" => "*string* (hash)",
+            "Hash256" => "*string* (hash)",
             "String" => "*string*",
             "TxType" => "*string* (transaction type)",
             _ => _objectTypeName
