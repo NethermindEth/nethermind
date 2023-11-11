@@ -289,18 +289,9 @@ internal class E2Store : IDisposable
         public long Start => _start;
         public long Count => _count;
 
-        public BlockIndex(Span<byte> index, long start, long count, long length)
+        public BlockIndex(ArrayPoolList<byte> index, long start, long count, long length)
         {
-            try
-            {
-                _index = new ArrayPoolList<byte>(index.Length);
-                index.CopyTo(_index.AsSpan(0, index.Length));
-            }
-            catch
-            {
-                _index?.Dispose();
-                throw;
-            }
+            _index = index;
             _start = start;
             _count = count;
             _length = length;
@@ -330,14 +321,24 @@ internal class E2Store : IDisposable
 
             int indexLength = 16 + 8 * (int)c;
 
-            using ArrayPoolList<byte> blockIndex = new(indexLength);
-            blockIndex.AddRange(bytes.Span);
+            ArrayPoolList<byte>? blockIndex = null;
+            long s;
+            try
+            {
+                blockIndex = new(indexLength);
+                blockIndex.AddRange(bytes.Span);
 
-            long startIndex = stream.Length - indexLength;
-            stream.Position = startIndex;
-            await stream.ReadAsync(blockIndex.AsMemory(0, indexLength), cancellation);
-            long s = BitConverter.ToInt64(blockIndex.AsSpan(0, 8));
-            return new(blockIndex.AsSpan(0, indexLength), s, c, stream.Length);
+                long startIndex = stream.Length - indexLength;
+                stream.Position = startIndex;
+                await stream.ReadAsync(blockIndex.AsMemory(0, indexLength), cancellation);
+                s = BitConverter.ToInt64(blockIndex.AsSpan(0, 8));
+            }
+            catch
+            {
+                blockIndex?.Dispose();
+                throw;
+            }
+            return new(blockIndex, s, c, stream.Length);
         }
         private void Dispose(bool disposing)
         {
