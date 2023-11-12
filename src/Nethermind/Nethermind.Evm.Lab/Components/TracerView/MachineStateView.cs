@@ -14,7 +14,7 @@ internal class MachineDataView : IComponent<GethTxTraceEntry>
     private FrameView? container = null;
     private (TableView? generalState, TableView? opcodeData) machinView = (null, null);
 
-    private static readonly string[] Columns_Overview = { "Pc", "Gas", "Depth", "Error" };
+    private static readonly string[] Columns_Overview = { "ProgramCounter", "Gas", "Depth", "Error" };
     private static readonly string[] Columns_Opcode = { "Opcode", "Operation", "GasCost" };
     public (View, Rectangle?) View(GethTxTraceEntry state, Rectangle? rect = null)
     {

@@ -77,7 +77,7 @@ internal class DebuggerView : IComponent<DebuggerState>
         var _component_foot = _components.FooterComponent;
         var _component_strace = _components.StacktraceComponent;
 
-        GethTxTraceEntry currentEntry = state.Tracer.GetCurrentEntry();
+        GethTxTraceEntry currentEntry = ((GethLikeTxMemoryTracer)state.Tracer.InnerTracer).BuildResult().Entries.LastOrDefault();
 
         MainPanel ??= new View()
         {

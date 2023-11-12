@@ -20,7 +20,7 @@ namespace Nethermind.Evm.Test
     {
         protected override long BlockNumber => 10000001;
 
-        protected override ISpecProvider SpecProvider => new CustomSpecProvider(
+        internal override ISpecProvider SpecProvider => new CustomSpecProvider(
             ((ForkActivation)0, Byzantium.Instance), ((ForkActivation)10000001, Constantinople.Instance));
 
         [Test]

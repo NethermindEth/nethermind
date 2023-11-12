@@ -58,7 +58,7 @@ namespace Nethermind.Evm.Test.Tracing
                 });
         }
 
-        protected override ISpecProvider SpecProvider => new TestSpecProvider(Berlin.Instance);
+        internal override ISpecProvider SpecProvider => new TestSpecProvider(Berlin.Instance);
 
         protected (AccessTxTracer trace, Block block, Transaction transaction) ExecuteAndTraceAccessCall(SenderRecipientAndMiner addresses, params byte[] code)
         {

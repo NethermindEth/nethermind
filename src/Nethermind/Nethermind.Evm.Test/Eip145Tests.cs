@@ -15,7 +15,7 @@ namespace Nethermind.Evm.Test
     {
         protected override long BlockNumber => 1;
 
-        protected override ISpecProvider SpecProvider => new CustomSpecProvider(
+        internal override ISpecProvider SpecProvider => new CustomSpecProvider(
             ((ForkActivation)0, Byzantium.Instance), ((ForkActivation)1, Constantinople.Instance));
 
         private void AssertEip145(TestAllTracerWithOutput receipt, string result)

@@ -13,7 +13,7 @@ namespace Nethermind.Evm.Test
     public class Eip2315Tests : VirtualMachineTestsBase
     {
         protected override long BlockNumber => MainnetSpecProvider.BerlinBlockNumber;
-        protected override ISpecProvider SpecProvider => MainnetSpecProvider.Instance;
+        internal override ISpecProvider SpecProvider => MainnetSpecProvider.Instance;
 
         [Test]
         public void Simple_routine()

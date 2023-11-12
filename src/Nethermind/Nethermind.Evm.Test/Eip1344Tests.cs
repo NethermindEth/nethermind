@@ -30,7 +30,7 @@ namespace Nethermind.Evm.Test
         private class Custom0 : Eip1344Tests
         {
             protected override long BlockNumber => MainnetSpecProvider.IstanbulBlockNumber;
-            protected override ISpecProvider SpecProvider => new CustomSpecProvider(((ForkActivation)0, Istanbul.Instance));
+            internal override ISpecProvider SpecProvider => new CustomSpecProvider(((ForkActivation)0, Istanbul.Instance));
 
             [Test]
             public void given_custom_0_network_chain_id_opcode_puts_expected_value_onto_the_stack()
@@ -42,7 +42,7 @@ namespace Nethermind.Evm.Test
         private class Custom32000 : Eip1344Tests
         {
             protected override long BlockNumber => MainnetSpecProvider.IstanbulBlockNumber;
-            protected override ISpecProvider SpecProvider => new CustomSpecProvider(((ForkActivation)0, Istanbul.Instance));
+            internal override ISpecProvider SpecProvider => new CustomSpecProvider(((ForkActivation)0, Istanbul.Instance));
 
             [Test]
             public void given_custom_custom_32000_network_chain_id_opcode_puts_expected_value_onto_the_stack()
@@ -54,7 +54,7 @@ namespace Nethermind.Evm.Test
         private class Goerli : Eip1344Tests
         {
             protected override long BlockNumber => GoerliSpecProvider.IstanbulBlockNumber;
-            protected override ISpecProvider SpecProvider => GoerliSpecProvider.Instance;
+            internal override ISpecProvider SpecProvider => GoerliSpecProvider.Instance;
 
             [Test]
             public void given_goerli_network_chain_id_opcode_puts_expected_value_onto_the_stack()
@@ -66,7 +66,7 @@ namespace Nethermind.Evm.Test
         private class Mainnet : Eip1344Tests
         {
             protected override long BlockNumber => MainnetSpecProvider.IstanbulBlockNumber;
-            protected override ISpecProvider SpecProvider => MainnetSpecProvider.Instance;
+            internal override ISpecProvider SpecProvider => MainnetSpecProvider.Instance;
 
             [Test]
             public void given_mainnet_network_chain_id_opcode_puts_expected_value_onto_the_stack()
@@ -78,7 +78,7 @@ namespace Nethermind.Evm.Test
         private class Rinkeby : Eip1344Tests
         {
             protected override long BlockNumber => RinkebySpecProvider.IstanbulBlockNumber;
-            protected override ISpecProvider SpecProvider => RinkebySpecProvider.Instance;
+            internal override ISpecProvider SpecProvider => RinkebySpecProvider.Instance;
 
             [Test]
             public void given_rinkeby_network_chain_id_opcode_puts_expected_value_onto_the_stack()

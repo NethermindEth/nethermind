@@ -15,7 +15,7 @@ namespace Nethermind.Evm.Test
     {
         protected override long BlockNumber => MainnetSpecProvider.IstanbulBlockNumber;
 
-        protected override ISpecProvider SpecProvider => MainnetSpecProvider.Instance;
+        internal override ISpecProvider SpecProvider => MainnetSpecProvider.Instance;
 
         [TestCase("0x60006000556000600055", 1612, 0, 0)]
         [TestCase("0x60006000556001600055", 20812, 0, 0)]

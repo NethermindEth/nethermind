@@ -77,9 +77,9 @@ namespace Nethermind.Evm.Lab
                 .Setup(); ;
         }
 
-        public DebuggerState Initialize(Keccak transactionHash, BlockParameter blkParam)
+        public DebuggerState Initialize(Hash256 transactionHash, BlockParameter blkParam)
         {
-            Keccak blockHash = context.NethermindApi.ReceiptFinder.FindBlockHash(transactionHash);
+            Hash256 blockHash = context.NethermindApi.ReceiptFinder.FindBlockHash(transactionHash);
             Transaction? tx = null;
             if (blockHash is not null)
             {

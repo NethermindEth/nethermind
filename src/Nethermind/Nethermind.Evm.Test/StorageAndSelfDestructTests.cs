@@ -20,7 +20,7 @@ namespace Nethermind.Evm.Test
     {
         protected override long BlockNumber => MainnetSpecProvider.MuirGlacierBlockNumber;
 
-        protected override ISpecProvider SpecProvider => MainnetSpecProvider.Instance;
+        internal override ISpecProvider SpecProvider => MainnetSpecProvider.Instance;
 
         [Test]
         public void Load_self_destruct()
