@@ -8,14 +8,32 @@ namespace Nethermind.Evm.CodeAnalysis
 {
     public class CodeInfo
     {
+        private static int ILAnalyzerTreshold = 23;
+
+
         private const int SampledCodeLength = 10_001;
         private const int PercentageOfPush1 = 40;
         private const int NumberOfSamples = 100;
         private static Random _rand = new();
 
+        private ILInfo? _iLInfo;
         public byte[] MachineCode { get; set; }
         public IPrecompile? Precompile { get; set; }
-        private ICodeInfoAnalyzer? _analyzer;
+        private ICodeInfoAnalyzer? _jumpAnalyzer;
+        private ILAnalizer? _ilAnalyzer;
+
+        public int callCount = 0;
+        public int CallCount {
+            get => callCount;
+            set
+            {
+                callCount = value;
+                if(callCount  > ILAnalyzerTreshold)
+                {
+                    _iLInfo = _ilAnalyzer.Analyze(MachineCode);
+                }
+            }
+        } 
 
         public CodeInfo(byte[] code)
         {
@@ -23,6 +41,7 @@ namespace Nethermind.Evm.CodeAnalysis
         }
 
         public bool IsPrecompile => Precompile is not null;
+        public bool IsILed => _iLInfo is not null;
 
         public CodeInfo(IPrecompile precompile)
         {
@@ -32,12 +51,12 @@ namespace Nethermind.Evm.CodeAnalysis
 
         public bool ValidateJump(int destination, bool isSubroutine)
         {
-            if (_analyzer is null)
+            if (_jumpAnalyzer is null)
             {
                 CreateAnalyzer();
             }
 
-            return _analyzer.ValidateJump(destination, isSubroutine);
+            return _jumpAnalyzer.ValidateJump(destination, isSubroutine);
         }
 
         /// <summary>
@@ -65,11 +84,11 @@ namespace Nethermind.Evm.CodeAnalysis
                 // If there are many PUSH1 ops then use the JUMPDEST analyzer.
                 // The JumpdestAnalyzer can perform up to 40% better than the default Code Data Analyzer
                 // in a scenario when the code consists only of PUSH1 instructions.
-                _analyzer = push1Count > PercentageOfPush1 ? new JumpdestAnalyzer(MachineCode) : new CodeDataAnalyzer(MachineCode);
+                _jumpAnalyzer = push1Count > PercentageOfPush1 ? new JumpdestAnalyzer(MachineCode) : new CodeDataAnalyzer(MachineCode);
             }
             else
             {
-                _analyzer = new CodeDataAnalyzer(MachineCode);
+                _jumpAnalyzer = new CodeDataAnalyzer(MachineCode);
             }
         }
     }

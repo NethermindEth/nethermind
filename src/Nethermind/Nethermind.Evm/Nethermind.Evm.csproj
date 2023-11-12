@@ -16,5 +16,6 @@
     <PackageReference Include="FastEnum" />
     <PackageReference Include="Nethermind.Crypto.Pairings" />
     <PackageReference Include="Nethermind.Gmp" />
+    <PackageReference Include="Sigil" />
   </ItemGroup>
 </Project>
