@@ -162,6 +162,27 @@ namespace Nethermind.Facade.Test.Eth
             ethSyncingInfo.UpdateAndGetSyncTime().TotalMicroseconds.Should().Be(0);
         }
 
+        [TestCase(6178001L, 6178000L)]
+        [TestCase(8001L, 8000L)]
+        public void IsSyncing_ReturnsFalseOnFastSyncWithoutPivot(long bestHeader, long currentHead)
+        {
+            IBlockTree blockTree = Substitute.For<IBlockTree>();
+            IReceiptStorage receiptStorage = Substitute.For<IReceiptStorage>();
+            blockTree.FindBestSuggestedHeader().Returns(Build.A.BlockHeader.WithNumber(bestHeader).TestObject);
+            blockTree.Head.Returns(Build.A.Block.WithHeader(Build.A.BlockHeader.WithNumber(currentHead).TestObject).TestObject);
+            SyncConfig syncConfig = new()
+            {
+                FastSync = true,
+                SnapSync = true,
+                FastBlocks = true,
+                PivotNumber = "0", // Equivalent to not having a pivot
+            };
+            EthSyncingInfo ethSyncingInfo = new(blockTree, receiptStorage, syncConfig, new StaticSelector(SyncMode.All), LimboLogs.Instance);
+            SyncingResult syncingResult = ethSyncingInfo.GetFullInfo();
+
+            Assert.That(syncingResult.IsSyncing, Is.False);
+        }
+
         private SyncingResult CreateSyncingResult(bool isSyncing, long currentBlock, long highestBlock, SyncMode syncMode)
         {
             if (!isSyncing) return SyncingResult.NotSyncing;

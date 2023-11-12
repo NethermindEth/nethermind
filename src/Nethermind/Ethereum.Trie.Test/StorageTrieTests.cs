@@ -17,11 +17,11 @@ namespace Ethereum.Trie.Test
         public void Storage_trie_set_reset_with_empty()
         {
             StorageTree tree = new StorageTree(new TrieStore(new MemDb(), LimboLogs.Instance), Keccak.EmptyTreeHash, LimboLogs.Instance);
-            Keccak rootBefore = tree.RootHash;
+            Hash256 rootBefore = tree.RootHash;
             tree.Set(1, new byte[] { 1 });
             tree.Set(1, new byte[] { });
             tree.UpdateRootHash();
-            Keccak rootAfter = tree.RootHash;
+            Hash256 rootAfter = tree.RootHash;
             Assert.That(rootAfter, Is.EqualTo(rootBefore));
         }
 
@@ -29,11 +29,11 @@ namespace Ethereum.Trie.Test
         public void Storage_trie_set_reset_with_long_zero()
         {
             StorageTree tree = new StorageTree(new TrieStore(new MemDb(), LimboLogs.Instance), Keccak.EmptyTreeHash, LimboLogs.Instance);
-            Keccak rootBefore = tree.RootHash;
+            Hash256 rootBefore = tree.RootHash;
             tree.Set(1, new byte[] { 1 });
             tree.Set(1, new byte[] { 0, 0, 0, 0, 0 });
             tree.UpdateRootHash();
-            Keccak rootAfter = tree.RootHash;
+            Hash256 rootAfter = tree.RootHash;
             Assert.That(rootAfter, Is.EqualTo(rootBefore));
         }
 
@@ -41,11 +41,11 @@ namespace Ethereum.Trie.Test
         public void Storage_trie_set_reset_with_short_zero()
         {
             StorageTree tree = new StorageTree(new TrieStore(new MemDb(), LimboLogs.Instance), Keccak.EmptyTreeHash, LimboLogs.Instance);
-            Keccak rootBefore = tree.RootHash;
+            Hash256 rootBefore = tree.RootHash;
             tree.Set(1, new byte[] { 1 });
             tree.Set(1, new byte[] { 0 });
             tree.UpdateRootHash();
-            Keccak rootAfter = tree.RootHash;
+            Hash256 rootAfter = tree.RootHash;
             Assert.That(rootAfter, Is.EqualTo(rootBefore));
         }
     }

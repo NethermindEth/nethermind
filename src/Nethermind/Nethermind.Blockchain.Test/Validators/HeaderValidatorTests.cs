@@ -48,7 +48,7 @@ namespace Nethermind.Blockchain.Test.Validators
             _parentBlock = Build.A.Block.WithDifficulty(1).TestObject;
             _block = Build.A.Block.WithParent(_parentBlock)
                 .WithDifficulty(131072)
-                .WithMixHash(new Keccak("0xd7db5fdd332d3a65d6ac9c4c530929369905734d3ef7a91e373e81d0f010b8e8"))
+                .WithMixHash(new Hash256("0xd7db5fdd332d3a65d6ac9c4c530929369905734d3ef7a91e373e81d0f010b8e8"))
                 .WithNonce(0).TestObject;
 
             _blockTree.SuggestBlock(_parentBlock);
@@ -211,7 +211,7 @@ namespace Nethermind.Blockchain.Test.Validators
                             .TestObject;
             _block = Build.A.Block.WithParent(_parentBlock)
                 .WithDifficulty(131072)
-                .WithMixHash(new Keccak("0xd7db5fdd332d3a65d6ac9c4c530929369905734d3ef7a91e373e81d0f010b8e8"))
+                .WithMixHash(new Hash256("0xd7db5fdd332d3a65d6ac9c4c530929369905734d3ef7a91e373e81d0f010b8e8"))
                 .WithGasLimit(gasLimit)
                 .WithNumber(_parentBlock.Number + 1)
                 .WithBaseFeePerGas(BaseFeeCalculator.Calculate(_parentBlock.Header, specProvider.GetSpec((ForkActivation)(_parentBlock.Number + 1))))
@@ -233,7 +233,7 @@ namespace Nethermind.Blockchain.Test.Validators
                 .TestObject;
             _block = Build.A.Block.WithParent(_parentBlock)
                 .WithDifficulty(131072)
-                .WithMixHash(new Keccak("0xd7db5fdd332d3a65d6ac9c4c530929369905734d3ef7a91e373e81d0f010b8e8"))
+                .WithMixHash(new Hash256("0xd7db5fdd332d3a65d6ac9c4c530929369905734d3ef7a91e373e81d0f010b8e8"))
                 .WithGasLimit(long.MaxValue)
                 .WithNumber(_parentBlock.Number + 1)
                 .WithNonce(0).TestObject;

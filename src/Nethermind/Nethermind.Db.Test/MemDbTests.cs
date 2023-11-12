@@ -3,6 +3,7 @@
 
 using System.Collections.Generic;
 using FluentAssertions;
+using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
 using NUnit.Framework;
 
@@ -54,7 +55,7 @@ namespace Nethermind.Db.Test
         public void Can_use_batches_without_issues()
         {
             MemDb memDb = new();
-            using (memDb.StartBatch())
+            using (memDb.StartWriteBatch())
             {
                 memDb.Set(TestItem.KeccakA, _sampleValue);
             }

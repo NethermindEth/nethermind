@@ -410,7 +410,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             Block largerBlock = Build.A.Block.WithTransactions(Enumerable.Repeat(signedTransaction, 1000).ToArray()).TestObject;
 
             BlockBodiesMessage largeMsg = new(Enumerable.Repeat(largerBlock, 100).ToArray());
-            List<Keccak> requests = Enumerable.Repeat(Keccak.Zero, 1000).ToList();
+            List<Hash256> requests = Enumerable.Repeat(Keccak.Zero, 1000).ToList();
 
             GetBlockBodiesMessage? getMsg = null;
 
@@ -444,7 +444,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             BlockBodiesMessage msg = new(Build.A.Block.TestObjectNTimes(3));
 
             HandleIncomingStatusMessage();
-            ((ISyncPeer)_handler).GetBlockBodies(new List<Keccak>(new[] { Keccak.Zero }), CancellationToken.None);
+            ((ISyncPeer)_handler).GetBlockBodies(new List<Hash256>(new[] { Keccak.Zero }), CancellationToken.None);
             HandleZeroMessage(msg, Eth62MessageCode.BlockBodies);
         }
 
@@ -452,7 +452,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         public async Task Get_block_bodies_returns_immediately_when_empty_hash_list()
         {
             OwnedBlockBodies bodies =
-                await ((ISyncPeer)_handler).GetBlockBodies(new List<Keccak>(), CancellationToken.None);
+                await ((ISyncPeer)_handler).GetBlockBodies(new List<Hash256>(), CancellationToken.None);
 
             bodies.Bodies.Should().HaveCount(0);
         }

@@ -40,13 +40,13 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
         protected ISyncServer SyncServer { get; }
 
         public long HeadNumber { get; set; }
-        public Keccak HeadHash { get; set; }
+        public Hash256 HeadHash { get; set; }
 
         // this means that we know what the number, hash, and total diff of the head block is
         public bool IsInitialized { get; set; }
         public override string ToString() => $"[Peer|{Name}|{HeadNumber,8}|{Node:a}|{Session?.Direction,4}]";
 
-        protected Keccak _remoteHeadBlockHash;
+        protected Hash256 _remoteHeadBlockHash;
         protected readonly ITimestamper _timestamper;
         protected readonly TxDecoder _txDecoder;
 
@@ -70,7 +70,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
             initialRequestSize: 4
         );
 
-        protected LruKeyCache<Keccak> NotifiedTransactions { get; } = new(2 * MemoryAllowance.MemPoolSize, "notifiedTransactions");
+        protected LruKeyCache<Hash256> NotifiedTransactions { get; } = new(2 * MemoryAllowance.MemPoolSize, "notifiedTransactions");
 
         protected SyncPeerProtocolHandlerBase(ISession session,
             IMessageSerializationService serializer,
@@ -92,7 +92,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
             Session.InitiateDisconnect(reason, details);
         }
 
-        async Task<OwnedBlockBodies> ISyncPeer.GetBlockBodies(IReadOnlyList<Keccak> blockHashes, CancellationToken token)
+        async Task<OwnedBlockBodies> ISyncPeer.GetBlockBodies(IReadOnlyList<Hash256> blockHashes, CancellationToken token)
         {
             if (blockHashes.Count == 0)
             {
@@ -158,7 +158,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
                 token);
         }
 
-        async Task<BlockHeader?> ISyncPeer.GetHeadBlockHeader(Keccak? hash, CancellationToken token)
+        async Task<BlockHeader?> ISyncPeer.GetHeadBlockHeader(Hash256? hash, CancellationToken token)
         {
             GetBlockHeadersMessage msg = new();
             msg.StartBlockHash = hash ?? _remoteHeadBlockHash;
@@ -170,7 +170,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
             return headers.Length > 0 ? headers[0] : null;
         }
 
-        async Task<BlockHeader[]> ISyncPeer.GetBlockHeaders(Keccak startHash, int maxBlocks, int skip, CancellationToken token)
+        async Task<BlockHeader[]> ISyncPeer.GetBlockHeaders(Hash256 startHash, int maxBlocks, int skip, CancellationToken token)
         {
             if (maxBlocks == 0)
             {
@@ -187,19 +187,19 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
             return headers;
         }
 
-        public virtual Task<TxReceipt[][]> GetReceipts(IReadOnlyList<Keccak> blockHash, CancellationToken token)
+        public virtual Task<TxReceipt[][]> GetReceipts(IReadOnlyList<Hash256> blockHash, CancellationToken token)
         {
             throw new NotSupportedException("Fast sync not supported by eth62 protocol");
         }
 
-        public virtual Task<byte[][]> GetNodeData(IReadOnlyList<Keccak> hashes, CancellationToken token)
+        public virtual Task<byte[][]> GetNodeData(IReadOnlyList<Hash256> hashes, CancellationToken token)
         {
             throw new NotSupportedException("Fast sync not supported by eth62 protocol");
         }
 
         public abstract void NotifyOfNewBlock(Block block, SendBlockMode mode);
 
-        private bool ShouldNotifyTransaction(Keccak? hash) => hash is not null && NotifiedTransactions.Set(hash);
+        private bool ShouldNotifyTransaction(Hash256? hash) => hash is not null && NotifiedTransactions.Set(hash);
 
         public void SendNewTransaction(Transaction tx)
         {
@@ -309,7 +309,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
                 throw new EthSyncException("Incoming headers request for more than 1024 headers");
             }
 
-            Keccak startingHash = msg.StartBlockHash;
+            Hash256 startingHash = msg.StartBlockHash;
             startingHash ??= SyncServer.FindHash(msg.StartBlockNumber);
 
             BlockHeader[] headers =
@@ -340,7 +340,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
 
         protected BlockBodiesMessage FulfillBlockBodiesRequest(GetBlockBodiesMessage getBlockBodiesMessage)
         {
-            IReadOnlyList<Keccak> hashes = getBlockBodiesMessage.BlockHashes;
+            IReadOnlyList<Hash256> hashes = getBlockBodiesMessage.BlockHashes;
             Block[] blocks = new Block[hashes.Count];
 
             ulong sizeEstimate = 0;

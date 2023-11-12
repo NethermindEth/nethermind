@@ -16,7 +16,7 @@ namespace Nethermind.Synchronization.SnapSync
 
         AddRangeResult AddStorageRange(StorageRange request, SlotsAndProofs response);
 
-        void AddCodes(ValueKeccak[] requestedHashes, byte[][] codes);
+        void AddCodes(ValueHash256[] requestedHashes, byte[][] codes);
 
         void RefreshAccounts(AccountsToRefreshRequest request, byte[][] response);
 

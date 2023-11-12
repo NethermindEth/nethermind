@@ -18,7 +18,7 @@ namespace Nethermind.Consensus.Clique
             // Block number
             long number = (long)rlpStream.DecodeUInt256();
             // Hash
-            Keccak hash = rlpStream.DecodeKeccak();
+            Hash256 hash = rlpStream.DecodeKeccak();
             // Signers
             SortedList<Address, long> signers = DecodeSigners(rlpStream);
             // Votes

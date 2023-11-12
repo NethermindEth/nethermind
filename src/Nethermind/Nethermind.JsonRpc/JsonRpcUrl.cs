@@ -6,6 +6,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using FastEnumUtility;
+using Nethermind.Config;
 using Nethermind.JsonRpc.Modules;
 
 namespace Nethermind.JsonRpc
@@ -57,7 +58,7 @@ namespace Nethermind.JsonRpc
             if (enabledModules.Length == 0)
                 throw new FormatException("Third part must contain at least one module delimited by ';'");
 
-            bool isAuthenticated = enabledModules.Any(m => m.ToLower() == "engine");
+            bool isAuthenticated = enabledModules.Contains(ModuleType.Engine, StringComparison.InvariantCultureIgnoreCase);
 
             // Check if authentication disabled for this url
             if (parts.Length == 4)

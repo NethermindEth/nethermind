@@ -411,12 +411,12 @@ namespace Nethermind.Trie.Test.Pruning
                 return _db[key.ToArray()];
             }
 
-            public IBatch StartBatch()
+            public IWriteBatch StartWriteBatch()
             {
-                return new BadBatch();
+                return new BadWriteBatch();
             }
 
-            private class BadBatch : IBatch
+            private class BadWriteBatch : IWriteBatch
             {
                 private Dictionary<byte[], byte[]> _inBatched = new();
 
@@ -426,18 +426,12 @@ namespace Nethermind.Trie.Test.Pruning
 
                 public byte[]? this[ReadOnlySpan<byte> key]
                 {
-                    get => Get(key);
                     set => Set(key, value);
                 }
 
                 public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None)
                 {
                     _inBatched[key.ToArray()] = value;
-                }
-
-                public byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
-                {
-                    return _inBatched[key.ToArray()];
                 }
             }
         }

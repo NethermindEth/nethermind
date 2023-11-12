@@ -359,8 +359,8 @@ namespace Nethermind.Runner.Test
             Test<INetworkConfig, int>(configWildcard, c => c.NettyArenaOrder, -1);
         }
 
-        [TestCase("chiado", 30_000_000L, 5ul)]
-        [TestCase("gnosis", 30_000_000L, 5ul)]
+        [TestCase("chiado", 17_000_000L, 5UL)]
+        [TestCase("gnosis", 17_000_000L, 5UL)]
         [TestCase("goerli", 30_000_000L)]
         [TestCase("mainnet", 30_000_000L)]
         [TestCase("sepolia", 30_000_000L)]

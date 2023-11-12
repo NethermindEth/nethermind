@@ -17,7 +17,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
             byte[] startingBytes = rlpStream.DecodeByteArray();
             if (startingBytes.Length == 32)
             {
-                message.StartBlockHash = new Keccak(startingBytes);
+                message.StartBlockHash = new Hash256(startingBytes);
             }
             else
             {

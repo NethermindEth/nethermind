@@ -144,7 +144,7 @@ namespace Nethermind.KeyStore
                     derivedKey = deriveBytes.GetBytes(256);
                     break;
                 default:
-                    return (null, Result.Fail($"Unsupported algoritm: {kdf}"));
+                    return (null, Result.Fail($"Unsupported algorithm: {kdf}"));
             }
 
             var restoredMac = Keccak.Compute(derivedKey.Slice(kdfParams.DkLen - 16, 16).Concat(cipher).ToArray()).Bytes;
