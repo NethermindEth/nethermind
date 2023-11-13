@@ -3,7 +3,6 @@
 
 using System.Threading;
 using System.Threading.Tasks;
-using Nethermind.Logging;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
 
@@ -11,13 +10,7 @@ namespace Nethermind.Synchronization.Blocks
 {
     public class FullSyncFeed : ActivatedSyncFeed<BlocksRequest?>
     {
-        private readonly BlocksRequest _blocksRequest;
-
-        public FullSyncFeed(ISyncModeSelector syncModeSelector, ILogManager logManager)
-            : base(syncModeSelector)
-        {
-            _blocksRequest = new BlocksRequest(BuildOptions());
-        }
+        private readonly BlocksRequest _blocksRequest = new(BuildOptions());
 
         protected override SyncMode ActivationSyncModes { get; } = SyncMode.Full;
 
@@ -35,5 +28,6 @@ namespace Nethermind.Synchronization.Blocks
         public override bool IsMultiFeed => false;
 
         public override AllocationContexts Contexts => AllocationContexts.Blocks;
+        public override bool IsFinished => false; // Check MultiSyncModeSelector
     }
 }

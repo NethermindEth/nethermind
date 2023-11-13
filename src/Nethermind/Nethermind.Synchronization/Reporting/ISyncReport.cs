@@ -3,11 +3,14 @@
 
 using System;
 using Nethermind.Core;
+using Nethermind.Synchronization.ParallelSync;
 
 namespace Nethermind.Synchronization.Reporting
 {
     public interface ISyncReport : IDisposable
     {
+        void SyncModeSelectorOnChanged(object? sender, SyncModeChangedEventArgs e);
+
         MeasuredProgress FullSyncBlocksDownloaded { get; }
 
         long FullSyncBlocksKnown { get; set; }
