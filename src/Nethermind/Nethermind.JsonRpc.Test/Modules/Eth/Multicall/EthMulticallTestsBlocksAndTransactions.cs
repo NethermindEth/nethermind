@@ -209,6 +209,8 @@ public class EthMulticallTestsBlocksAndTransactions
         //shall fail
         Transaction txAtoB2 =
             GetTransferTxData(nonceA + 2, chain.EthereumEcdsa, TestItem.PrivateKeyA, TestItem.AddressB, UInt256.MaxValue);
+        TransactionForRpc transactionForRpc = new(txAtoB2){Nonce = null};
+        TransactionForRpc transactionForRpc2 = new(txAtoB1) { Nonce = null };
         MultiCallPayload<TransactionForRpc> payload = new()
         {
             BlockStateCalls = new BlockStateCall<TransactionForRpc>[]
@@ -223,7 +225,7 @@ public class EthMulticallTestsBlocksAndTransactions
                             FeeRecipient = TestItem.AddressC,
                             BaseFeePerGas = 0
                         },
-                    Calls = new[] { new TransactionForRpc(txAtoB1) }
+                    Calls = new[] { transactionForRpc2 }
                 },
                 new()
                 {
@@ -235,10 +237,11 @@ public class EthMulticallTestsBlocksAndTransactions
                             FeeRecipient = TestItem.AddressC,
                             BaseFeePerGas = 0
                         },
-                    Calls = new[] { new TransactionForRpc(txAtoB2) }
+                    Calls = new[] { transactionForRpc }
                 }
             },
-            TraceTransfers = true
+            TraceTransfers = true,
+            Validation = true
         };
 
         //Test that transfer tx works on mainchain

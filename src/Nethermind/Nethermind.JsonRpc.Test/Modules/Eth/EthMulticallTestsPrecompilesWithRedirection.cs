@@ -2,12 +2,12 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
-using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm;
 using Nethermind.Evm.Precompiles;
@@ -82,10 +82,18 @@ public class EthMulticallTestsPrecompilesWithRedirection
 
         byte[] transactionData = EthRpcMulticallTestsBase.GetTxData(chain, TestItem.PrivateKeyA);
 
+        var headHash = chain.BlockFinder.Head!.Hash!;
         Address? contractAddress = await EthRpcMulticallTestsBase.DeployEcRecoverContract(chain, TestItem.PrivateKeyB,
             EthMulticallTestsSimplePrecompiles.EcRecoverCallerContractBytecode);
 
         EthRpcMulticallTestsBase.MainChainTransaction(transactionData, contractAddress, chain, TestItem.AddressB);
+
+        chain.BlockTree.UpdateMainChain(new List<Block> { chain.BlockFinder.Head! }, true, true);
+        chain.BlockTree.UpdateHeadBlock(chain.BlockFinder.Head!.Hash!);
+
+        var headHashAfterPost = chain.BlockFinder.Head!.Hash!;
+        Assert.That(headHash != headHashAfterPost);
+
 
         Transaction systemTransactionForModifiedVm = new()
         {
@@ -95,6 +103,8 @@ public class EthMulticallTestsPrecompilesWithRedirection
             GasLimit = 3_500_000,
             GasPrice = 20.GWei()
         };
+
+        TransactionForRpc transactionForRpc = new(systemTransactionForModifiedVm) { Nonce = null };
 
         MultiCallPayload<TransactionForRpc> payload = new()
         {
@@ -112,32 +122,28 @@ public class EthMulticallTestsPrecompilesWithRedirection
                                 MovePrecompileToAddress = new Address("0x0000000000000000000000000000000000000666"),
                             }
                         },
-                        {
-                            TestItem.AddressA,
-                            new AccountOverride
-                            {
-                                Balance = 10.Ether()
-                            }
-                        }
-                    },
+                    }, 
                     Calls = new[]
                     {
-                        new TransactionForRpc(systemTransactionForModifiedVm),
+                        transactionForRpc,
                     }
                 }
             },
-            TraceTransfers = true,
+            TraceTransfers = false,
             Validation = false
         };
 
         //will mock our GetCachedCodeInfo function - it shall be called 3 times if redirect is working, 2 times if not
         MultiCallTxExecutor executor = new(chain.Bridge, chain.BlockFinder, new JsonRpcConfig());
 
+        Debug.Assert(contractAddress != null, nameof(contractAddress) + " != null");
+
         ResultWrapper<IReadOnlyList<MultiCallBlockResult>> result = executor.Execute(payload, BlockParameter.Latest);
 
         //Check results
-        byte[] addressBytes = result.Data[0].Calls.First().ReturnData!.SliceWithZeroPaddingEmptyOnError(12, 20);
-        //Address resultingAddress = new(addressBytes);
-        //Assert.That(resultingAddress, Is.EqualTo(TestItem.AddressA))
+        byte[]? returnData = result.Data[0].Calls.First().ReturnData;
+        byte[] addressBytes = returnData!.SliceWithZeroPaddingEmptyOnError(12, 20);
+        Address resultingAddress = new(addressBytes);
+        Assert.That(resultingAddress, Is.EqualTo(TestItem.AddressA));
     }
 }

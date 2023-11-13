@@ -46,12 +46,8 @@ public class MulticallBridgeHelper
     public (bool Success, string Error) TryMultiCallTrace(BlockHeader parent, MultiCallPayload<TransactionWithSourceDetails> payload, IBlockTracer tracer)
     {
         using MultiCallReadOnlyBlocksProcessingEnv? env = _multiCallProcessingEnv.Clone(payload.TraceTransfers, payload.Validation);
-        Block? parentBlock = env.BlockTree.FindBlock(parent.Number);
-        if (parentBlock is not null)
-        {
-            env.BlockTree.UpdateMainChain(new[] { parentBlock }, true, true);
-            env.BlockTree.UpdateHeadBlock(parentBlock.Hash!);
-        }
+        env.StateProvider.StateRoot = parent.StateRoot;
+
 
         IBlockProcessor? processor = env.GetProcessor();
         BlockStateCall<TransactionWithSourceDetails>? firstBlock = payload.BlockStateCalls?.FirstOrDefault();
