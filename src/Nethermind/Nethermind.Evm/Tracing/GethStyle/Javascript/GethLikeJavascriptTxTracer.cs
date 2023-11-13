@@ -4,7 +4,6 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Numerics;
 using FastEnumUtility;
 using Nethermind.Core;
 using Nethermind.Int256;
@@ -21,8 +20,8 @@ public sealed class GethLikeJavascriptTxTracer : GethLikeTxTracer
     private readonly Db _db;
     private readonly CallFrame _frame = new();
     private readonly FrameResult _result = new();
-    private int _depth;
     private bool _resultConstructed;
+    private Stack<long>? _frameGas;
 
     // Context is updated only of first ReportAction call.
     private readonly Context _ctx;
@@ -85,9 +84,9 @@ public sealed class GethLikeJavascriptTxTracer : GethLikeTxTracer
             _frame.Gas = gas;
             _frame.Type = callType.FastToString();
             _tracer.enter(_frame);
+            _frameGas ??= new Stack<long>();
+            _frameGas.Push(gas);
         }
-
-        _depth++;
     }
 
     public override void StartOperation(int depth, long gas, Instruction opcode, int pc, bool isPostMerge = false)
@@ -139,10 +138,9 @@ public sealed class GethLikeJavascriptTxTracer : GethLikeTxTracer
 
     private void InvokeExit(long gas, ReadOnlyMemory<byte> output, string? error = null)
     {
-        _depth--;
-        if (_depth > 0 && _functions.HasFlag(TracerFunctions.exit))
+        if (_functions.HasFlag(TracerFunctions.exit) && _frameGas?.Count > 0)
         {
-            _result.GasUsed = gas;
+            _result.GasUsed = _frameGas.Pop() - gas;
             _result.Output = output.ToArray();
             _result.Error = error;
             _tracer.exit(_result);

@@ -10,6 +10,6 @@ public class GethLikeJavascriptTrace
 
     public override string ToString()
     {
-        return Value?.ToString() ?? string.Empty;
+        return Value.ToString() ?? string.Empty;
     }
 }
