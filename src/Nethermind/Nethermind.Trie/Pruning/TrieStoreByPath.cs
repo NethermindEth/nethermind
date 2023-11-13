@@ -383,6 +383,10 @@ namespace Nethermind.Trie.Pruning
             {
                 Stopwatch stopwatch = Stopwatch.StartNew();
 
+                int noOfBlocks = _commitSetQueue.ToList().Count((b) => b.BlockNumber == persistUntilBlock);
+                if (noOfBlocks > 1)
+                    throw new InvalidOperationException("Multiple blocks with same number - can't persist!");
+
                 BlockCommitSet frontSet = null;
                 while (_commitSetQueue.TryPeek(out BlockCommitSet peekSet) && peekSet.BlockNumber <= persistUntilBlock)
                 {
@@ -408,7 +412,7 @@ namespace Nethermind.Trie.Pruning
                 // Generally hanging nodes are not a problem in the DB but anything missing from the DB is.
                 foreach (StateColumns column in Enum.GetValues(typeof(StateColumns)))
                 {
-                    _currentBatches[column].Dispose();
+                    _currentBatches[column]?.Dispose();
                     _currentBatches[column] = null;
                 }
             }

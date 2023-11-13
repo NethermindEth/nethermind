@@ -401,6 +401,7 @@ internal class PathDataCacheInstance
         {
             _branches = branch._branches;
             _historyByPath = branch._historyByPath;
+            _removedPrefixes = branch._removedPrefixes;
             _lastState = branch._lastState;
         }
 
