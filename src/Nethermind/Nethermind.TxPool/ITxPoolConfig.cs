@@ -34,7 +34,7 @@ public interface ITxPoolConfig : IConfig
     [ConfigItem(DefaultValue = "16", Description = "The max number of pending blob transactions per single sender. `0` to lift the limit.")]
     int MaxPendingBlobTxsPerSender { get; set; }
 
-    [ConfigItem(DefaultValue = "7", Description = "Max number of days of waiting in blob pool for pending blob transactions until removal. `0` to lift the limit.")]
+    [ConfigItem(DefaultValue = "7", Description = "Max number of days of waiting in blob pool for pending blob transactions before being removed. `0` to lift the limit.")]
     int MaxDaysOfPendingInBlobPool { get; set; }
 
     [ConfigItem(DefaultValue = "524288",
