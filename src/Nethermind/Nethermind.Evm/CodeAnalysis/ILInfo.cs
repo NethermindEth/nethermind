@@ -9,8 +9,17 @@ using System.Threading.Tasks;
 using Sigil.NonGeneric;
 
 namespace Nethermind.Evm.CodeAnalysis;
-internal struct ILInfo
+
+/// <summary>
+/// Represents the IL-EVM information about the contract.
+/// </summary>
+internal class ILInfo
 {
+    /// <summary>
+    /// Represents an information about IL-EVM being not able to optimize the given <see cref="CodeInfo"/>.
+    /// </summary>
+    public static readonly ILInfo NoIlEVM = new();
+
     public ushort[] Pcs;
     public Emit[] IlMethod;
 

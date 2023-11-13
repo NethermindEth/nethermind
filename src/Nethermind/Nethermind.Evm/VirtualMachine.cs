@@ -724,7 +724,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine
             goto Empty;
         }
 
-        vmState.Env.CodeInfo.CallCount++;
+        vmState.Env.CodeInfo.NoticeExecution();
 
         vmState.InitStacks();
         EvmStack<TTracingInstructions> stack = new(vmState.DataStack.AsSpan(), vmState.DataStackHead, _txTracer);

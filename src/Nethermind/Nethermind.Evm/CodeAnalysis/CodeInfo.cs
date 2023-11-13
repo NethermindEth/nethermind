@@ -2,38 +2,38 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Threading;
 using Nethermind.Evm.Precompiles;
 
 namespace Nethermind.Evm.CodeAnalysis
 {
     public class CodeInfo
     {
-        private static int ILAnalyzerTreshold = 23;
-
-
         private const int SampledCodeLength = 10_001;
         private const int PercentageOfPush1 = 40;
         private const int NumberOfSamples = 100;
         private static Random _rand = new();
 
-        private ILInfo? _iLInfo;
         public byte[] MachineCode { get; set; }
         public IPrecompile? Precompile { get; set; }
         private ICodeInfoAnalyzer? _jumpAnalyzer;
-        private ILAnalizer? _ilAnalyzer;
 
-        public int callCount = 0;
-        public int CallCount {
-            get => callCount;
-            set
+        // IL-EVM
+        private volatile ILInfo? _il;
+        private int _callCount;
+
+        public void NoticeExecution()
+        {
+            // IL-EVM info already created
+            if (_il != null)
+                return;
+
+            // use Interlocked just in case of concurrent execution to run it only once
+            if (Interlocked.Increment(ref _callCount) == IlAnalyzer.IlAnalyzerThreshold)
             {
-                callCount = value;
-                if(callCount  > ILAnalyzerTreshold)
-                {
-                    _iLInfo = _ilAnalyzer.Analyze(MachineCode);
-                }
+                IlAnalyzer.StartAnalysis(MachineCode, this);
             }
-        } 
+        }
 
         public CodeInfo(byte[] code)
         {
@@ -41,7 +41,13 @@ namespace Nethermind.Evm.CodeAnalysis
         }
 
         public bool IsPrecompile => Precompile is not null;
-        public bool IsILed => _iLInfo is not null;
+        public bool IsILed
+        {
+            get
+            {
+                return _il != null && !ReferenceEquals(_il, ILInfo.NoIlEVM);
+            }
+        }
 
         public CodeInfo(IPrecompile precompile)
         {
@@ -56,7 +62,7 @@ namespace Nethermind.Evm.CodeAnalysis
                 CreateAnalyzer();
             }
 
-            return _jumpAnalyzer.ValidateJump(destination, isSubroutine);
+            return _jumpAnalyzer!.ValidateJump(destination, isSubroutine);
         }
 
         /// <summary>
@@ -91,5 +97,7 @@ namespace Nethermind.Evm.CodeAnalysis
                 _jumpAnalyzer = new CodeDataAnalyzer(MachineCode);
             }
         }
+
+        internal void SetIlInfo(ILInfo info) => _il = info;
     }
 }
