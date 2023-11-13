@@ -42,13 +42,26 @@ public class GethLikeBlockJavascriptTracer : BlockTracerBase<GethLikeTxTrace, Ge
 
     protected override GethLikeJavascriptTxTracer OnStart(Transaction? tx)
     {
+        SetTransactionCtx(tx);
+        Engine engine = new(_spec);
+        _engines?.Add(engine);
+        return new GethLikeJavascriptTxTracer(this, engine, _db, _ctx, _options);
+    }
+
+    private void SetTransactionCtx(Transaction? tx)
+    {
         _ctx.GasPrice = tx!.CalculateEffectiveGasPrice(_spec.IsEip1559Enabled, _baseFee);
         _ctx.TxHash = tx.Hash;
         _ctx.txIndex = tx.Hash is not null ? _index++ : null;
         _ctx.gas = tx.GasLimit;
-        Engine engine = new(_spec);
-        _engines?.Add(engine);
-        return new GethLikeJavascriptTxTracer(this, engine, _db, _ctx, _options);
+        _ctx.type = "CALL";
+        _ctx.From = tx.SenderAddress;
+        _ctx.To = tx.To;
+        _ctx.Value = tx.Value;
+        if (tx.Data is not null)
+        {
+            _ctx.Input = tx.Data.Value;
+        }
     }
 
     public override void EndBlockTrace()
