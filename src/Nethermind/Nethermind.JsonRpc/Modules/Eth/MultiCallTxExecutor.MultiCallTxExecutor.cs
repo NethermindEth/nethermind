@@ -8,6 +8,7 @@ using System.Linq;
 using System.Threading;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Facade;
 using Nethermind.Facade.Multicall;
 using Nethermind.Facade.Proxy.Models;
@@ -19,9 +20,13 @@ namespace Nethermind.JsonRpc.Modules.Eth;
 
 public class MultiCallTxExecutor : ExecutorBase<IReadOnlyList<MultiCallBlockResult>, MultiCallPayload<TransactionForRpc>, MultiCallPayload<TransactionWithSourceDetails>>
 {
+    private long gasCapBudget;
+
     public MultiCallTxExecutor(IBlockchainBridge blockchainBridge, IBlockFinder blockFinder, IJsonRpcConfig rpcConfig) :
         base(blockchainBridge, blockFinder, rpcConfig)
-    { }
+    {
+        gasCapBudget = rpcConfig.GasCap ?? long.MaxValue;
+    }
 
     protected override MultiCallPayload<TransactionWithSourceDetails> Prepare(MultiCallPayload<TransactionForRpc> call)
     {
@@ -29,26 +34,41 @@ public class MultiCallTxExecutor : ExecutorBase<IReadOnlyList<MultiCallBlockResu
         {
             TraceTransfers = call.TraceTransfers,
             Validation = call.Validation,
-            BlockStateCalls = call.BlockStateCalls?.Select(blockStateCall => new BlockStateCall<TransactionWithSourceDetails>
+            BlockStateCalls = call.BlockStateCalls?.Select(blockStateCall =>
             {
-                BlockOverrides = blockStateCall.BlockOverrides,
-                StateOverrides = blockStateCall.StateOverrides,
-                Calls = blockStateCall.Calls?.Select(callTransactionModel =>
+                if (blockStateCall.BlockOverrides?.GasLimit != null)
                 {
-                    if (callTransactionModel.Type == TxType.Legacy)
-                    {
-                        callTransactionModel.Type = TxType.EIP1559;
-                    }
+                    blockStateCall.BlockOverrides.GasLimit = (ulong)Math.Min((long)blockStateCall.BlockOverrides.GasLimit!.Value, gasCapBudget);
+                }
 
-                    TransactionWithSourceDetails? result = new()
+                return new BlockStateCall<TransactionWithSourceDetails>
+                {
+                    BlockOverrides = blockStateCall.BlockOverrides,
+                    StateOverrides = blockStateCall.StateOverrides,
+                    Calls = blockStateCall.Calls?.Select(callTransactionModel =>
                     {
-                        HadGasLimitInRequest = callTransactionModel.Gas.HasValue,
-                        HadNonceInRequest = callTransactionModel.Nonce.HasValue,
-                        Transaction = callTransactionModel.ToTransaction(_blockchainBridge.GetChainId())
-                    };
+                        if (callTransactionModel.Type == TxType.Legacy)
+                        {
+                            callTransactionModel.Type = TxType.EIP1559;
+                        }
 
-                    return result;
-                }).ToArray()
+                        bool hadGasLimitInRequest = callTransactionModel.Gas.HasValue;
+                        bool hadNonceInRequest = callTransactionModel.Nonce.HasValue;
+                        callTransactionModel.EnsureDefaults(gasCapBudget);
+                        gasCapBudget -= callTransactionModel.Gas!.Value;
+
+                        var tx = callTransactionModel.ToTransaction(_blockchainBridge.GetChainId());
+
+                        TransactionWithSourceDetails ? result = new()
+                        {
+                            HadGasLimitInRequest = hadGasLimitInRequest,
+                            HadNonceInRequest = hadNonceInRequest,
+                            Transaction = tx
+                        };
+
+                        return result;
+                    }).ToArray()
+                };
             }).ToArray()
         };
 
