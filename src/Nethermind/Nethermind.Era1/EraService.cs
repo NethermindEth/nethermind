@@ -9,6 +9,7 @@ using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
+using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
@@ -21,6 +22,7 @@ public class EraService : IEraService
     private readonly IBlockTree _blockTree;
     private readonly IReceiptStorage _receiptStorage;
     private readonly ISpecProvider _specProvider;
+    private readonly IDb _blockDb;
     private readonly ILogger _logger;
 
     public EraService(
@@ -28,13 +30,16 @@ public class EraService : IEraService
         IBlockTree blockTree,
         IReceiptStorage receiptStorage,
         ISpecProvider specProvider,
-        ILogManager logManager)
+        ILogManager logManager,
+        IDb blockDb)
     {
+        if (logManager is null) throw new ArgumentNullException(nameof(logManager));
         _fileSystem = fileSystem ?? throw new ArgumentNullException(nameof(fileSystem));
-        _blockTree = blockTree;
-        _receiptStorage = receiptStorage;
-        _specProvider = specProvider;
-        _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+        _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
+        _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
+        _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
+        _blockDb = blockDb;
+        _logger = logManager.GetClassLogger();
     }
 
     public async Task TestImport(string src, string network)
@@ -79,11 +84,19 @@ public class EraService : IEraService
             //TODO look into permission settings - should it be set?
             _fileSystem.Directory.CreateDirectory(destinationPath);
         }
+        
         var currentEpoch = 0;
         string filePath = Path.Combine(
                             destinationPath,
                     EraWriter.Filename(network, currentEpoch, Keccak.Zero));
         EraWriter? builder = EraWriter.Create(_fileSystem.File.Create(filePath), _specProvider);
+
+        
+        foreach ((byte[] key, byte[]? value) in _blockDb.GetAll(true))
+        {
+            _logger.Info("key length " + (key.Length));
+            _logger.Info("number " + BitConverter.ToInt64(key));
+        }
 
         //TODO read directly from RocksDb with range reads
         for (var i = start; i < start + count; i++)

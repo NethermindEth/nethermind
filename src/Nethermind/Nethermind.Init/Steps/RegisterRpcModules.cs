@@ -167,7 +167,7 @@ public class RegisterRpcModules : IStep
 
         ManualPruningTrigger pruningTrigger = new();
         _api.PruningTrigger.Add(pruningTrigger);
-        IEraService eraService = new EraService(new FileSystem(), _api.BlockTree, _api.ReceiptStorage, _api.SpecProvider);
+        IEraService eraService = new EraService(new FileSystem(), _api.BlockTree, _api.ReceiptStorage, _api.SpecProvider, _api.LogManager, _api.DbProvider.BlocksDb);
         AdminRpcModule adminRpcModule = new(
             _api.BlockTree,
             networkConfig,
@@ -183,7 +183,7 @@ public class RegisterRpcModules : IStep
 
         TxPoolRpcModule txPoolRpcModule = new(_api.TxPoolInfoProvider, _api.LogManager);
         rpcModuleProvider.RegisterSingle<ITxPoolRpcModule>(txPoolRpcModule);
-
+        
         if (_api.SyncServer is null) throw new StepDependencyException(nameof(_api.SyncServer));
         if (_api.EngineSignerStore is null) throw new StepDependencyException(nameof(_api.EngineSignerStore));
 

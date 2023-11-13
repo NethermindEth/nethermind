@@ -65,5 +65,11 @@ namespace Nethermind.JsonRpc.Modules.Admin
             ExampleResponse = "\"Starting\"",
             IsImplemented = true)]
         ResultWrapper<PruningStatus> admin_prune();
+
+        [JsonRpcMethod(Description = "Exports a range of blocks and receipts to the era1 format.",
+        EdgeCaseHint = "",
+        ExampleResponse = "\"Starting\"",
+        IsImplemented = true)]
+        Task<ResultWrapper<string>> admin_exportHistory(string destination, int blockStart, int count);
     }
 }

@@ -289,7 +289,7 @@ internal class E2Store : IDisposable
         public long Start => _start;
         public long Count => _count;
 
-        public BlockIndex(Span<byte> index, long start, long count, long length)
+        private BlockIndex(Span<byte> index, long start, long count, long length)
         {
             try
             {

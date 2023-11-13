@@ -139,8 +139,13 @@ public class AdminRpcModule : IAdminRpcModule
     private Task _exportTask = Task.CompletedTask;
     private SemaphoreSlim _semaphoreSlim = new SemaphoreSlim(1);
 
-    public async Task<ResultWrapper<string>> start_exportHistory(string destination, int blockStart, int count)
+    public async Task<ResultWrapper<string>> admin_exportHistory(string destination, int blockStart, int count)
     {
+        //TODO should always export to a static path inside datadir
+        if (blockStart < 0 || count < 0)
+        {
+            return ResultWrapper<string>.Fail("Block number and count cannot be negative.");
+        }
         await _semaphoreSlim.WaitAsync();
         try
         {
@@ -148,6 +153,12 @@ public class AdminRpcModule : IAdminRpcModule
             {
                 return ResultWrapper<string>.Fail("An export job is already running.");
             }
+            //TODO block bounds
+            long latest = _blockTree.FindLatestHeader().Number;
+            //if (blockStart + count > latest)
+            //{
+            //    return ResultWrapper<string>.Fail($"Latest known block number is {latest}.");
+            //}
             //TODO correct network 
             _exportTask = _eraService.Export(destination, "mainnet", blockStart, count);
         }
