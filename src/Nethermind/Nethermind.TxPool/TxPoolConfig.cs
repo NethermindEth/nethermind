@@ -16,6 +16,7 @@ namespace Nethermind.TxPool
         public int InMemoryBlobPoolSize { get; set; } = 512; // it is used when persistent pool is disabled
         public int MaxPendingTxsPerSender { get; set; } = 0;
         public int MaxPendingBlobTxsPerSender { get; set; } = 16;
+        public int MaxDaysOfPendingForBlobTxs { get; set; } = 7;
         public int HashCacheSize { get; set; } = 512 * 1024;
         public long? GasLimit { get; set; } = null;
         public int? ReportMinutes { get; set; } = null;

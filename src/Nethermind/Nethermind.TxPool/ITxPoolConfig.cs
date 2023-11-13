@@ -34,6 +34,9 @@ public interface ITxPoolConfig : IConfig
     [ConfigItem(DefaultValue = "16", Description = "The max number of pending blob transactions per single sender. `0` to lift the limit.")]
     int MaxPendingBlobTxsPerSender { get; set; }
 
+    [ConfigItem(DefaultValue = "7", Description = "Number of days for pending blob transactions to be included in the block, txs will be removed from blob pool after waiting for specified number of days. `0` to lift the limit.")]
+    int MaxDaysOfPendingForBlobTxs { get; set; }
+
     [ConfigItem(DefaultValue = "524288",
         Description = "The max number of cached hashes of already known transactions. Set automatically by the memory hint.")]
     int HashCacheSize { get; set; }
