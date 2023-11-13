@@ -13,7 +13,7 @@ using Nethermind.Evm.Tracing;
 
 namespace Nethermind.State.Test.Runner;
 
-public class StateTestTxTracer : ITxTracer
+public class StateTestTxTracer : ITxTracer, IDisposable
 {
     private StateTestTxTraceEntry _traceEntry;
     private StateTestTxTrace _trace = new();
@@ -247,4 +247,6 @@ public class StateTestTxTracer : ITxTracer
     {
         throw new NotImplementedException();
     }
+
+    public void Dispose() { }
 }
