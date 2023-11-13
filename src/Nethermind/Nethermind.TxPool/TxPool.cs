@@ -488,7 +488,9 @@ namespace Nethermind.TxPool
                             _headInfo.CurrentBaseFee, balance);
 
                     // remove old blob tx if max pending time has been reached
-                    if (tx.SupportsBlobs && tx.Timestamp + _maxSecondsOfPendingForBlobTxs > Timestamper.Default.UnixTime.Seconds)
+                    if (tx.SupportsBlobs
+                        && _maxSecondsOfPendingForBlobTxs != UInt256.Zero
+                        && tx.Timestamp + _maxSecondsOfPendingForBlobTxs > Timestamper.Default.UnixTime.Seconds)
                     {
                         yield return (tx, null);
                     }
