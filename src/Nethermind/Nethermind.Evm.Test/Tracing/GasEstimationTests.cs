@@ -155,19 +155,9 @@ namespace Nethermind.Evm.Test.Tracing
             testEnvironment.tracer.ReportAction(gasLeft, 0, Address.Zero, Address.Zero, Array.Empty<byte>(),
                 _executionType, false);
 
-            if (_executionType.IsAnyCreate())
-            {
-                testEnvironment.tracer.ReportActionError(EvmExceptionType.Revert, 96000000);
-                testEnvironment.tracer.ReportActionError(EvmExceptionType.Revert, 98000000);
-                testEnvironment.tracer.ReportActionError(EvmExceptionType.Revert, 99000000);
-            }
-            else
-            {
-                testEnvironment.tracer.ReportActionError(EvmExceptionType.Revert, 96000000);
-                testEnvironment.tracer.ReportActionError(EvmExceptionType.Revert, 98000000);
-                testEnvironment.tracer.ReportActionError(EvmExceptionType.Revert, 99000000);
-            }
-
+            testEnvironment.tracer.ReportActionError(EvmExceptionType.Revert, 96000000);
+            testEnvironment.tracer.ReportActionError(EvmExceptionType.Revert, 98000000);
+            testEnvironment.tracer.ReportActionError(EvmExceptionType.Revert, 99000000);
             testEnvironment.estimator.Estimate(tx, block.Header, testEnvironment.tracer).Should().Be(35146L);
         }
 
@@ -188,6 +178,25 @@ namespace Nethermind.Evm.Test.Tracing
 
             testEnvironment.estimator.Estimate(tx, block.Header, testEnvironment.tracer).Should().Be(1);
         }
+
+        [Test]
+        public void Handles_well_precompile_out_of_gas()
+        {
+            TestEnvironment testEnvironment = new();
+            Transaction tx = Build.A.Transaction.WithGasLimit(128).TestObject;
+            Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).TestObject;
+
+            testEnvironment.tracer.ReportAction(128, 0, Address.Zero, Address.Zero, Array.Empty<byte>(), ExecutionType.Transaction);
+            testEnvironment.tracer.ReportAction(100, 0, Address.Zero, Address.Zero, Array.Empty<byte>(), _executionType);
+            testEnvironment.tracer.ReportAction(100, 0, Address.Zero, Address.Zero, Array.Empty<byte>(), _executionType, true);
+
+            Action reportError = () => testEnvironment.tracer.ReportActionError(EvmExceptionType.OutOfGas);
+
+            reportError.Should().NotThrow();
+            reportError.Should().NotThrow();
+            reportError.Should().NotThrow();
+        }
+
 
         [Test]
         public void Handles_well_nested_calls_where_most_nested_defines_excess()
