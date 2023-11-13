@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json;
 using FluentAssertions;
@@ -46,7 +45,7 @@ public class GethLikeJavascriptTracerTests : VirtualMachineTestsBase
                 MainnetSpecProvider.CancunActivation)
             .BuildResult().First();
         string[] expectedStrings = { "0:PUSH32:0:79000:0", "33:PUSH1:0:78997:0", "35:MSTORE:0:78994:0", "36:PUSH32:0:78988:0", "69:PUSH1:0:78985:0", "71:MSTORE:0:78982:0", "72:STOP:0:78976:0" };
-        traces.CustomTracerResult.Should().BeEquivalentTo(expectedStrings);
+        traces.CustomTracerResult?.Value.Should().BeEquivalentTo(expectedStrings);
     }
 
     private GethLikeBlockJavascriptTracer GetTracer(string userTracer) => new(TestState, Shanghai.Instance, GethTraceOptions.Default with { EnableMemory = true, Tracer = userTracer });
@@ -67,7 +66,7 @@ public class GethLikeJavascriptTracerTests : VirtualMachineTestsBase
                 MainnetSpecProvider.CancunActivation)
             .BuildResult().First();
         string[] expectedStrings = { "PUSH32 : 127 : true", "PUSH1 : 96 : true", "MSTORE : 82 : false", "PUSH32 : 127 : true", "PUSH1 : 96 : true", "MSTORE : 82 : false", "STOP : 0 : false" };
-        traces.CustomTracerResult.Should().BeEquivalentTo(expectedStrings);
+        traces.CustomTracerResult?.Value.Should().BeEquivalentTo(expectedStrings);
     }
 
     [Test]
@@ -85,7 +84,7 @@ public class GethLikeJavascriptTracerTests : VirtualMachineTestsBase
                 MainnetSpecProvider.CancunActivation)
             .BuildResult().First();
         int[] expected = { 0, 1, 2, 0, 1, 2, 0 };
-        traces.CustomTracerResult.Should().BeEquivalentTo(expected);
+        traces.CustomTracerResult?.Value.Should().BeEquivalentTo(expected);
     }
 
     [Test]
@@ -109,7 +108,7 @@ public class GethLikeJavascriptTracerTests : VirtualMachineTestsBase
                 MainnetSpecProvider.CancunActivation)
             .BuildResult().First();
         int[] expectedResult = { 0, 32, 64 };
-        traces.CustomTracerResult.Should().BeEquivalentTo(expectedResult);
+        traces.CustomTracerResult?.Value.Should().BeEquivalentTo(expectedResult);
     }
 
     [Test]
@@ -136,7 +135,7 @@ public class GethLikeJavascriptTracerTests : VirtualMachineTestsBase
             "148,41,33,177,79,27,28,56,92,215,224,204,46,247,171,229,89,140,131,88:183,112,90,228,198,248,27,102,205,179,35,198,95,78,129,51,105,15,192,153:",
             "148,41,33,177,79,27,28,56,92,215,224,204,46,247,171,229,89,140,131,88:183,112,90,228,198,248,27,102,205,179,35,198,95,78,129,51,105,15,192,153:"
         };
-        traces.CustomTracerResult.Should().BeEquivalentTo(expectedStrings);
+        traces.CustomTracerResult?.Value.Should().BeEquivalentTo(expectedStrings);
     }
 
     [Test]
@@ -156,7 +155,7 @@ public class GethLikeJavascriptTracerTests : VirtualMachineTestsBase
                 MainnetSpecProvider.CancunActivation)
             .BuildResult().First();
         string[] expectedStrings = { "0:PUSH32", "33:PUSH1", "35:MSTORE", "36:PUSH32", "69:PUSH1", "71:MSTORE", "72:STOP" };
-        Assert.That(traces.CustomTracerResult, Is.EqualTo(expectedStrings));
+        Assert.That(traces.CustomTracerResult?.Value, Is.EqualTo(expectedStrings));
     }
 
     [Test]
@@ -180,7 +179,7 @@ public class GethLikeJavascriptTracerTests : VirtualMachineTestsBase
                 MainnetSpecProvider.CancunActivation)
             .BuildResult().First();
         string[] expectedStrings = { "33: PUSH1", "35: MSTORE", "69: PUSH1", "71: MSTORE" };
-        Assert.That(traces.CustomTracerResult, Is.EqualTo(expectedStrings));
+        Assert.That(traces.CustomTracerResult?.Value, Is.EqualTo(expectedStrings));
     }
 
     [Test]
@@ -209,7 +208,7 @@ public class GethLikeJavascriptTracerTests : VirtualMachineTestsBase
                 MainnetSpecProvider.CancunActivation)
             .BuildResult().First();
         string[] expectedStrings = { "35: SSTORE 0", "71: SSTORE 20", "107: SLOAD 0", "108: STOP a01234 <- a01234" };
-        Assert.That(traces.CustomTracerResult, Is.EqualTo(expectedStrings));
+        Assert.That(traces.CustomTracerResult?.Value, Is.EqualTo(expectedStrings));
     }
 
     [Test]
@@ -245,7 +244,7 @@ public class GethLikeJavascriptTracerTests : VirtualMachineTestsBase
                 MainnetSpecProvider.CancunActivation)
             .BuildResult().First();
         string[] expectedStrings = { "68 SSTORE 1 <- a01234", "104 SLOAD 1", "Result: a01234" };
-        Assert.That(traces.CustomTracerResult, Is.EqualTo(expectedStrings));
+        Assert.That(traces.CustomTracerResult?.Value, Is.EqualTo(expectedStrings));
     }
 
     [Test]
@@ -312,7 +311,7 @@ public class GethLikeJavascriptTracerTests : VirtualMachineTestsBase
                 MainnetSpecProvider.CancunActivation)
             .BuildResult().First();
         string[] expectedStrings = { "68: SSTORE 942921b14f1b1c385cd7e0cc2ef7abe5598c8358:1 <- a01234", "104: SLOAD 942921b14f1b1c385cd7e0cc2ef7abe5598c8358:1", "Result: 1" };
-        Assert.That(traces.CustomTracerResult, Is.EqualTo(expectedStrings));
+        Assert.That(traces.CustomTracerResult?.Value, Is.EqualTo(expectedStrings));
     }
 
     [Test]
@@ -323,7 +322,7 @@ public class GethLikeJavascriptTracerTests : VirtualMachineTestsBase
                 MStore(),
                 MainnetSpecProvider.CancunActivation)
             .BuildResult().First();
-        Assert.That(traces.CustomTracerResult, Has.All.Empty);
+        Assert.That(traces.CustomTracerResult?.Value, Has.All.Empty);
     }
 
     [Test]
@@ -334,7 +333,7 @@ public class GethLikeJavascriptTracerTests : VirtualMachineTestsBase
                 MStore(),
                 MainnetSpecProvider.CancunActivation)
             .BuildResult().First();
-        Assert.That(traces.CustomTracerResult, Is.EqualTo(7));
+        Assert.That(traces.CustomTracerResult?.Value, Is.EqualTo(7));
     }
 
     [Test]
@@ -346,7 +345,7 @@ public class GethLikeJavascriptTracerTests : VirtualMachineTestsBase
                 MainnetSpecProvider.CancunActivation)
             .BuildResult().First();
 
-        Assert.That(JsonSerializer.Serialize(traces.CustomTracerResult), Is.EqualTo("{\"942921b14f1b1c385cd7e0cc2ef7abe5598c8358\":{\"balance\":\"0x56bc75e2d63100000\",\"nonce\":0,\"code\":\"60006000600060007376e68a8696537e4141926f3e528733af9e237d6961c350f400\",\"storage\":{}},\"76e68a8696537e4141926f3e528733af9e237d69\":{\"balance\":\"0xde0b6b3a7640000\",\"nonce\":0,\"code\":\"7f7f000000000000000000000000000000000000000000000000000000000000006000527f0060005260036000f30000000000000000000000000000000000000000000000602052602960006000f000\",\"storage\":{}},\"d75a3a95360e44a3874e691fb48d77855f127069\":{\"balance\":\"0x0\",\"nonce\":0,\"code\":\"\",\"storage\":{}},\"b7705ae4c6f81b66cdb323c65f4e8133690fc099\":{\"balance\":\"0x56bc75e2d63100000\",\"nonce\":0,\"code\":\"\",\"storage\":{}}}"));
+        Assert.That(JsonSerializer.Serialize(traces.CustomTracerResult?.Value), Is.EqualTo("{\"942921b14f1b1c385cd7e0cc2ef7abe5598c8358\":{\"balance\":\"0x56bc75e2d63100000\",\"nonce\":0,\"code\":\"60006000600060007376e68a8696537e4141926f3e528733af9e237d6961c350f400\",\"storage\":{}},\"76e68a8696537e4141926f3e528733af9e237d69\":{\"balance\":\"0xde0b6b3a7640000\",\"nonce\":0,\"code\":\"7f7f000000000000000000000000000000000000000000000000000000000000006000527f0060005260036000f30000000000000000000000000000000000000000000000602052602960006000f000\",\"storage\":{}},\"d75a3a95360e44a3874e691fb48d77855f127069\":{\"balance\":\"0x0\",\"nonce\":0,\"code\":\"\",\"storage\":{}},\"b7705ae4c6f81b66cdb323c65f4e8133690fc099\":{\"balance\":\"0x56bc75e2d63100000\",\"nonce\":0,\"code\":\"\",\"storage\":{}}}"));
     }
 
     [Test]

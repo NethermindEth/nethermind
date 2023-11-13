@@ -13,12 +13,12 @@ namespace Nethermind.JsonRpc.Modules.DebugModule;
 public class JavaScriptBigIntegerConverter : JsonConverter
 {
     [ThreadStatic]
-    private static bool Disabled;
+    private static bool _disabled;
 
     public override bool CanRead => false;
 
     public override bool CanConvert(Type objectType) =>
-        Disabled ? (Disabled = false) : typeof(IJavaScriptObject).IsAssignableFrom(objectType);
+        _disabled ? (_disabled = false) : typeof(IJavaScriptObject).IsAssignableFrom(objectType);
 
     public override void WriteJson(JsonWriter writer, object? o, JsonSerializer serializer)
     {
@@ -31,14 +31,14 @@ public class JavaScriptBigIntegerConverter : JsonConverter
         }
         else
         {
-            Disabled = true;
+            _disabled = true;
             try
             {
                 serializer.Serialize(writer, o);
             }
             finally
             {
-                Disabled = false;
+                _disabled = false;
             }
         }
     }
