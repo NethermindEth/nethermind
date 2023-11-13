@@ -122,7 +122,7 @@ public class EthMulticallTestsPrecompilesWithRedirection
                                 MovePrecompileToAddress = new Address("0x0000000000000000000000000000000000000666"),
                             }
                         },
-                    }, 
+                    },
                     Calls = new[]
                     {
                         transactionForRpc,

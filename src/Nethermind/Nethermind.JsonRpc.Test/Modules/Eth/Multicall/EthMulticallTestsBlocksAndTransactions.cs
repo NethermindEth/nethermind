@@ -209,7 +209,7 @@ public class EthMulticallTestsBlocksAndTransactions
         //shall fail
         Transaction txAtoB2 =
             GetTransferTxData(nonceA + 2, chain.EthereumEcdsa, TestItem.PrivateKeyA, TestItem.AddressB, UInt256.MaxValue);
-        TransactionForRpc transactionForRpc = new(txAtoB2){Nonce = null};
+        TransactionForRpc transactionForRpc = new(txAtoB2) { Nonce = null };
         TransactionForRpc transactionForRpc2 = new(txAtoB1) { Nonce = null };
         MultiCallPayload<TransactionForRpc> payload = new()
         {

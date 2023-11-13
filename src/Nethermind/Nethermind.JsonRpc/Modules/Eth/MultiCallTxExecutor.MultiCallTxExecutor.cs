@@ -59,7 +59,7 @@ public class MultiCallTxExecutor : ExecutorBase<IReadOnlyList<MultiCallBlockResu
 
                         var tx = callTransactionModel.ToTransaction(_blockchainBridge.GetChainId());
 
-                        TransactionWithSourceDetails ? result = new()
+                        TransactionWithSourceDetails? result = new()
                         {
                             HadGasLimitInRequest = hadGasLimitInRequest,
                             HadNonceInRequest = hadNonceInRequest,
