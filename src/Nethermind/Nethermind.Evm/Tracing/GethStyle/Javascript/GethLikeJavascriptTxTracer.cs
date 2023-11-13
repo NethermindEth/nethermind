@@ -98,6 +98,7 @@ public sealed class GethLikeJavascriptTxTracer : GethLikeTxTracer
         _log.depth = depth;
         _log.error = null;
         _log.gasCost = 0;
+        _log.refund = 0;
     }
 
     public override void ReportOperationRemainingGas(long gas)
