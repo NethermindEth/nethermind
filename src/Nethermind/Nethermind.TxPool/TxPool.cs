@@ -45,6 +45,7 @@ namespace Nethermind.TxPool
         private readonly IAccountStateProvider _accounts;
         private readonly IChainHeadInfoProvider _headInfo;
         private readonly ITxPoolConfig _txPoolConfig;
+        private readonly UInt256 _maxSecondsOfPendingForBlobTxs;
 
         private readonly ILogger _logger;
 
@@ -89,6 +90,7 @@ namespace Nethermind.TxPool
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _headInfo = chainHeadInfoProvider ?? throw new ArgumentNullException(nameof(chainHeadInfoProvider));
             _txPoolConfig = txPoolConfig;
+            _maxSecondsOfPendingForBlobTxs = (UInt256)(txPoolConfig.MaxDaysOfPendingForBlobTxs * 86400);
             _accounts = _headInfo.AccountStateProvider;
             _specProvider = _headInfo.SpecProvider;
 
@@ -485,8 +487,13 @@ namespace Nethermind.TxPool
                     previousTxBottleneck ??= tx.CalculateAffordableGasPrice(_specProvider.GetCurrentHeadSpec().IsEip1559Enabled,
                             _headInfo.CurrentBaseFee, balance);
 
+                    // remove old blob tx if max pending time has been reached
+                    if (tx.SupportsBlobs && tx.Timestamp + _maxSecondsOfPendingForBlobTxs > Timestamper.Default.UnixTime.Seconds)
+                    {
+                        yield return (tx, null);
+                    }
                     // it is not affecting non-blob txs - for them MaxFeePerBlobGas is null so check is skipped
-                    if (tx.MaxFeePerBlobGas < _headInfo.CurrentPricePerBlobGas)
+                    else if (tx.MaxFeePerBlobGas < _headInfo.CurrentPricePerBlobGas)
                     {
                         gasBottleneck = UInt256.Zero;
                     }
