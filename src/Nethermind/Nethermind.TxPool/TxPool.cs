@@ -482,20 +482,21 @@ namespace Nethermind.TxPool
                     _broadcaster.StopBroadcast(tx.Hash!);
                     yield return (tx, null);
                 }
+                // remove old blob tx if max pending time has been reached
+                else if (tx.SupportsBlobs
+                         && _maxSecondsOfPendingForBlobTxs != UInt256.Zero
+                         && tx.Timestamp + _maxSecondsOfPendingForBlobTxs > Timestamper.Default.UnixTime.Seconds)
+                {
+                    _broadcaster.StopBroadcast(tx.Hash!);
+                    yield return (tx, null);
+                }
                 else
                 {
                     previousTxBottleneck ??= tx.CalculateAffordableGasPrice(_specProvider.GetCurrentHeadSpec().IsEip1559Enabled,
                             _headInfo.CurrentBaseFee, balance);
 
-                    // remove old blob tx if max pending time has been reached
-                    if (tx.SupportsBlobs
-                        && _maxSecondsOfPendingForBlobTxs != UInt256.Zero
-                        && tx.Timestamp + _maxSecondsOfPendingForBlobTxs > Timestamper.Default.UnixTime.Seconds)
-                    {
-                        yield return (tx, null);
-                    }
                     // it is not affecting non-blob txs - for them MaxFeePerBlobGas is null so check is skipped
-                    else if (tx.MaxFeePerBlobGas < _headInfo.CurrentPricePerBlobGas)
+                    if (tx.MaxFeePerBlobGas < _headInfo.CurrentPricePerBlobGas)
                     {
                         gasBottleneck = UInt256.Zero;
                     }
