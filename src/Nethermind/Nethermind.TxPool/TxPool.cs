@@ -90,7 +90,7 @@ namespace Nethermind.TxPool
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _headInfo = chainHeadInfoProvider ?? throw new ArgumentNullException(nameof(chainHeadInfoProvider));
             _txPoolConfig = txPoolConfig;
-            _maxSecondsOfPendingForBlobTxs = (UInt256)(txPoolConfig.MaxDaysOfPendingForBlobTxs * 86400);
+            _maxSecondsOfPendingForBlobTxs = (UInt256)(txPoolConfig.MaxDaysOfPendingInBlobPool * 86400);
             _accounts = _headInfo.AccountStateProvider;
             _specProvider = _headInfo.SpecProvider;
 
