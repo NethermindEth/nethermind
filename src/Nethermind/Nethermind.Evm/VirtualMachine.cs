@@ -20,6 +20,7 @@ using Nethermind.State;
 using System.Diagnostics.CodeAnalysis;
 using System.Diagnostics;
 using System.Runtime.Intrinsics;
+using Nethermind.Evm.CodeAnalysis.IL;
 using static Nethermind.Evm.VirtualMachine;
 using static System.Runtime.CompilerServices.Unsafe;
 
@@ -782,6 +783,12 @@ OutOfGas:
         ref readonly BlockExecutionContext blkCtx = ref txCtx.BlockExecutionContext;
         Span<byte> code = env.CodeInfo.MachineCode.AsSpan();
         EvmExceptionType exceptionType = EvmExceptionType.None;
+        IlInfo? ilInfo = (typeof(TTracingInstructions) == typeof(NotTracing) &&
+                          typeof(TTracingRefunds) == typeof(NotTracing) &&
+                          typeof(TTracingStorage) == typeof(NotTracing))
+            ? env.CodeInfo.IlInfo
+            : null;
+
         bool isRevert = false;
 #if DEBUG
         DebugTracer? debugger = _txTracer.GetTracer<DebugTracer>();
@@ -793,6 +800,7 @@ OutOfGas:
         SkipInit(out UInt256 result);
         SkipInit(out StorageCell storageCell);
         object returnData;
+
         ZeroPaddedSpan slice;
         uint codeLength = (uint)code.Length;
         while ((uint)programCounter < codeLength)
@@ -800,6 +808,13 @@ OutOfGas:
 #if DEBUG
             debugger?.TryWait(ref vmState, ref programCounter, ref gasAvailable, ref stack.Head);
 #endif
+
+            // try execute as many as possible
+            while ((ilInfo?.TryExecute(vmState, spec, ref programCounter, ref gasAvailable, ref stack))
+                   .GetValueOrDefault(false))
+            {
+            }
+
             Instruction instruction = (Instruction)code[programCounter];
 
             // Evaluated to constant at compile time and code elided if not tracing

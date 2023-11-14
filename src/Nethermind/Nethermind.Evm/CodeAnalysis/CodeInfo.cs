@@ -3,6 +3,8 @@
 
 using System;
 using System.Threading;
+using Nethermind.Core.Specs;
+using Nethermind.Evm.CodeAnalysis.IL;
 using Nethermind.Evm.Precompiles;
 
 namespace Nethermind.Evm.CodeAnalysis
@@ -19,7 +21,7 @@ namespace Nethermind.Evm.CodeAnalysis
         private ICodeInfoAnalyzer? _jumpAnalyzer;
 
         // IL-EVM
-        private volatile ILInfo? _il;
+        private volatile IlInfo? _il;
         private int _callCount;
 
         public void NoticeExecution()
@@ -41,11 +43,16 @@ namespace Nethermind.Evm.CodeAnalysis
         }
 
         public bool IsPrecompile => Precompile is not null;
-        public bool IsILed
+
+        /// <summary>
+        /// Gets information whether this code info has IL-EVM optimizations ready.
+        /// </summary>
+        internal IlInfo? IlInfo
         {
             get
             {
-                return _il != null && !ReferenceEquals(_il, ILInfo.NoIlEVM);
+                IlInfo? il = _il;
+                return il != null && !ReferenceEquals(il, IlInfo.NoIlEVM) ? il : null;
             }
         }
 
@@ -98,6 +105,6 @@ namespace Nethermind.Evm.CodeAnalysis
             }
         }
 
-        internal void SetIlInfo(ILInfo info) => _il = info;
+        internal void SetIlInfo(IlInfo info) => _il = info;
     }
 }

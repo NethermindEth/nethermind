@@ -1,9 +1,13 @@
-// SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
+﻿// SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Threading.Tasks;
 
-namespace Nethermind.Evm.CodeAnalysis;
+namespace Nethermind.Evm.CodeAnalysis.IL;
+
+/// <summary>
+/// Provides 
+/// </summary>
 internal static class IlAnalyzer
 {
     /// <summary>
@@ -15,7 +19,7 @@ internal static class IlAnalyzer
     {
         Task.Run(() =>
         {
-            ILInfo info = Analysis(machineCode);
+            IlInfo info = Analysis(machineCode);
             codeInfo.SetIlInfo(info);
         });
     }
@@ -23,10 +27,10 @@ internal static class IlAnalyzer
     /// <summary>
     /// For now, return null always to default to EVM.
     /// </summary>
-    private static ILInfo Analysis(byte[] machineCode)
+    private static IlInfo Analysis(byte[] machineCode)
     {
         // TODO: implement actual analysis.
-        return ILInfo.NoIlEVM;
+        return IlInfo.NoIlEVM;
     }
 
     /// <summary>
