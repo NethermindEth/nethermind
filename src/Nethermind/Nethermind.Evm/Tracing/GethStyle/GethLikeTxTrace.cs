@@ -16,6 +16,8 @@ public class GethLikeTxTrace : IDisposable
         _disposable = disposable;
     }
 
+    public GethLikeTxTrace() { }
+
     public Stack<Dictionary<string, string>> StoragesByDepth { get; } = new();
 
     public long Gas { get; set; }
