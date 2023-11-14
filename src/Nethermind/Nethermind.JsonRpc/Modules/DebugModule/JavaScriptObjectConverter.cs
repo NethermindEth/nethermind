@@ -10,7 +10,7 @@ using Newtonsoft.Json;
 
 namespace Nethermind.JsonRpc.Modules.DebugModule;
 
-public class JavaScriptBigIntegerConverter : JsonConverter
+public class JavaScriptObjectConverter : JsonConverter
 {
     [ThreadStatic]
     private static bool _disabled;
@@ -22,24 +22,31 @@ public class JavaScriptBigIntegerConverter : JsonConverter
 
     public override void WriteJson(JsonWriter writer, object? o, JsonSerializer serializer)
     {
-        // value is marshaled to BigInteger by ClearScript
-        if (o is IDictionary<string, object> dictionary
-            && dictionary.TryGetValue("value", out object? value)
-            && value is BigInteger bigInteger)
+        if (o is IDictionary<string, object> dictionary)
         {
-            writer.WriteValue(bigInteger.ToString());
+            // value is marshaled to BigInteger by ClearScript
+            if (dictionary.TryGetValue("value", out object? value) && value is BigInteger bigInteger)
+            {
+                writer.WriteValue(bigInteger.ToString());
+                return;
+            }
+
+            // remove undefined errors
+            if (dictionary.TryGetValue("error", out object? error) && error == Undefined.Value)
+            {
+                dictionary.Remove("error");
+            }
         }
-        else
+
+        // fallback to standard serialization
+        _disabled = true;
+        try
         {
-            _disabled = true;
-            try
-            {
-                serializer.Serialize(writer, o);
-            }
-            finally
-            {
-                _disabled = false;
-            }
+            serializer.Serialize(writer, o);
+        }
+        finally
+        {
+            _disabled = false;
         }
     }
 

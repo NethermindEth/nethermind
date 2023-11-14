@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections;
+using Microsoft.ClearScript;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
@@ -41,5 +42,5 @@ public class Context
     public IList? blockHash => _blockHash ??= BlockHash?.BytesToArray().ToUnTypedScriptArray();
     public int? txIndex { get; set; }
     public IList? txHash => _txHash ??= TxHash?.BytesToArray().ToUnTypedScriptArray();
-    public string? error { get; set; }
+    public dynamic? error { get; set; } = Undefined.Value;
 }
