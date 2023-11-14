@@ -15,6 +15,7 @@ using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Facade.Proxy.Models.MultiCall;
 using Nethermind.Int256;
+using Nethermind.State;
 
 namespace Nethermind.Facade.Multicall;
 
@@ -39,17 +40,18 @@ public class MulticallBridgeHelper
     private void UpdateStateByModifyingAccounts(BlockHeader blockHeader, BlockStateCall<TransactionWithSourceDetails> blockStateCall, MultiCallReadOnlyBlocksProcessingEnv env)
     {
         IReleaseSpec currentSpec = env.SpecProvider.GetSpec(blockHeader);
-        env.StateProvider.ApplyStateOverrides(_multiCallProcessingEnv.CodeInfoRepository, blockStateCall.StateOverrides, currentSpec, blockHeader.Number - 1);
+        env.StateProvider.ApplyStateOverrides(env.CodeInfoRepository, blockStateCall.StateOverrides, currentSpec, blockHeader.Number);
         blockHeader.StateRoot = env.StateProvider.StateRoot;
     }
 
     public (bool Success, string Error) TryMultiCallTrace(BlockHeader parent, MultiCallPayload<TransactionWithSourceDetails> payload, IBlockTracer tracer)
     {
         using MultiCallReadOnlyBlocksProcessingEnv? env = _multiCallProcessingEnv.Clone(payload.TraceTransfers, payload.Validation);
-        env.StateProvider.StateRoot = parent.StateRoot;
+        env.BlockTree.UpdateHeadBlock(parent.Hash!);
+        IWorldState stateProvider = env.StateProvider;
+        stateProvider.RecalculateStateRoot();
+        stateProvider.StateRoot = parent.StateRoot!;
 
-
-        IBlockProcessor? processor = env.GetProcessor();
         BlockStateCall<TransactionWithSourceDetails>? firstBlock = payload.BlockStateCalls?.FirstOrDefault();
         if (firstBlock?.BlockOverrides?.Number is > 0 and < long.MaxValue)
         {
@@ -165,11 +167,13 @@ public class MulticallBridgeHelper
 
                 suggestedBlocks.Clear();
                 suggestedBlocks.Add(currentBlock);
-                env.StateProvider.RecalculateStateRoot();
+
+                stateProvider.RecalculateStateRoot();
                 Block[]? currentBlocks = null;
                 try
                 {
-                    currentBlocks = processor.Process(env.StateProvider.StateRoot, suggestedBlocks,
+                    IBlockProcessor? processor = env.GetProcessor(currentBlock.StateRoot!);
+                    currentBlocks = processor.Process(stateProvider.StateRoot, suggestedBlocks,
                         processingFlags, tracer);
                 }
                 catch (Exception)
@@ -179,6 +183,11 @@ public class MulticallBridgeHelper
 
                 Block? processedBlock = currentBlocks[0];
                 parent = processedBlock.Header;
+                if (processedBlock is not null)
+                {
+                    //env.BlockTree.UpdateMainChain(new[] { currentBlock }, true, true);
+                    env.BlockTree.UpdateHeadBlock(currentBlock.Hash!);
+                }
             }
         }
 

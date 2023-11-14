@@ -86,14 +86,14 @@ public class EthMulticallTestsPrecompilesWithRedirection
         Address? contractAddress = await EthRpcMulticallTestsBase.DeployEcRecoverContract(chain, TestItem.PrivateKeyB,
             EthMulticallTestsSimplePrecompiles.EcRecoverCallerContractBytecode);
 
-        EthRpcMulticallTestsBase.MainChainTransaction(transactionData, contractAddress, chain, TestItem.AddressB);
+        var tst = EthRpcMulticallTestsBase.MainChainTransaction(transactionData, contractAddress, chain, TestItem.AddressB);
 
         chain.BlockTree.UpdateMainChain(new List<Block> { chain.BlockFinder.Head! }, true, true);
         chain.BlockTree.UpdateHeadBlock(chain.BlockFinder.Head!.Hash!);
 
         var headHashAfterPost = chain.BlockFinder.Head!.Hash!;
         Assert.That(headHash != headHashAfterPost);
-
+        chain.State.StateRoot = chain.BlockFinder.Head!.StateRoot!;
 
         Transaction systemTransactionForModifiedVm = new()
         {
@@ -137,7 +137,7 @@ public class EthMulticallTestsPrecompilesWithRedirection
         MultiCallTxExecutor executor = new(chain.Bridge, chain.BlockFinder, new JsonRpcConfig());
 
         Debug.Assert(contractAddress != null, nameof(contractAddress) + " != null");
-
+        Assert.IsTrue(chain.State.AccountExists(contractAddress));
         ResultWrapper<IReadOnlyList<MultiCallBlockResult>> result = executor.Execute(payload, BlockParameter.Latest);
 
         //Check results

@@ -103,9 +103,10 @@ public class MultiCallReadOnlyBlocksProcessingEnv : ReadOnlyTxProcessingEnvBase,
         _blockValidator = new MultiCallBlockValidatorProxy(blockValidator);
     }
 
-    public IBlockProcessor GetProcessor()
+    public IBlockProcessor GetProcessor(Hash256 stateRoot)
     {
-        TransactionProcessor transactionProcessor = new(SpecProvider, StateProvider, VirtualMachine, CodeInfoRepository, _logManager, !_doValidation);
+        //StateProvider.StateRoot = stateRoot;
+        IReadOnlyTransactionProcessor transactionProcessor = Build(stateRoot);
 
         return new BlockProcessor(SpecProvider,
             _blockValidator,
