@@ -22,6 +22,7 @@ public sealed class GethLikeJavascriptTxTracer : GethLikeTxTracer
     private readonly FrameResult _result = new();
     private bool _resultConstructed;
     private Stack<long>? _frameGas;
+    private Stack<Log.Contract> _contracts = new();
 
     // Context is updated only of first ReportAction call.
     private readonly Context _ctx;
@@ -66,10 +67,12 @@ public sealed class GethLikeJavascriptTxTracer : GethLikeTxTracer
     {
         base.ReportAction(gas, value, from, to, input, callType, isPrecompileCall);
 
-        _log.contract = new Log.Contract(from, to, value, input);
+        bool isAnyCreate = callType.IsAnyCreate();
+        _log.contract = new Log.Contract(from, to, value, isAnyCreate ? null : input);
+        _contracts.Push(_log.contract);
         if (callType == ExecutionType.TRANSACTION)
         {
-            _ctx.type = callType.IsAnyCreate() ? "CREATE" : "CALL";
+            _ctx.type = isAnyCreate ? "CREATE" : "CALL";
             _ctx.From = from;
             _ctx.To = to;
             _ctx.Input = input;
@@ -138,6 +141,7 @@ public sealed class GethLikeJavascriptTxTracer : GethLikeTxTracer
 
     private void InvokeExit(long gas, ReadOnlyMemory<byte> output, string? error = null)
     {
+        _log.contract = _contracts.Pop();
         if (_functions.HasFlag(TracerFunctions.exit) && _frameGas?.Count > 0)
         {
             _result.GasUsed = _frameGas.Pop() - gas;
