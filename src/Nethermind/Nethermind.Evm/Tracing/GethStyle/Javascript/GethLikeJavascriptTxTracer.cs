@@ -100,7 +100,6 @@ public sealed class GethLikeJavascriptTxTracer : GethLikeTxTracer
         _log.depth = depth;
         _log.error = null;
         _log.gasCost = null;
-        _log.refund = null;
     }
 
     public override void ReportOperationRemainingGas(long gas)
@@ -186,7 +185,7 @@ public sealed class GethLikeJavascriptTxTracer : GethLikeTxTracer
     public override void ReportRefund(long refund)
     {
         base.ReportRefund(refund);
-        _log.refund = refund;
+        _log.refund += refund;
     }
 
     private TracerFunctions GetAvailableFunctions(ICollection<string> functions)

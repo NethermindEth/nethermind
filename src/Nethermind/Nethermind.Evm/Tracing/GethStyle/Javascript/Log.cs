@@ -25,14 +25,14 @@ namespace Nethermind.Evm.Tracing.GethStyle.Javascript
         public long gas { get; set; }
         public long? gasCost { get; set; }
         public int depth { get; set; }
-        public long? refund { get; set; }
+        public long refund { get; set; }
         public string? error { get; set; }
 
         public ulong getPC() => (ulong)pc;
         public ulong getGas() => (ulong)gas;
         public ulong getCost() => (ulong)(gasCost ?? 0);
         public int getDepth() => depth;
-        public ulong getRefund() => (ulong)(refund ?? 0);
+        public ulong getRefund() => (ulong)refund;
         public dynamic getError() => !string.IsNullOrEmpty(error) ? error : Undefined.Value;
 
         public readonly struct Opcode
