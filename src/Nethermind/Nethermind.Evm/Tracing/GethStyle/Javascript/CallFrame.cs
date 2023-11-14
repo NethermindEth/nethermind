@@ -46,7 +46,7 @@ public record CallFrame
 
     public long Gas { get; set; }
 
-    public UInt256 Value
+    public UInt256? Value
     {
         get => _value;
         set
@@ -63,7 +63,7 @@ public record CallFrame
     private Address _from;
     private Address _to;
     private ReadOnlyMemory<byte> _input;
-    private UInt256 _value;
+    private UInt256? _value;
 
     // ReSharper disable InconsistentNaming
     public string? getType() => Type;
@@ -71,6 +71,6 @@ public record CallFrame
     public ITypedArray<byte> getTo() => _toConverted ??= To.Bytes.ToTypedScriptArray();
     public ITypedArray<byte> getInput() => _inputConverted ??= Input.ToTypedScriptArray();
     public long getGas() => Gas;
-    public dynamic getValue() => _valueConverted ??= Value.ToBigInteger();
+    public dynamic getValue() => (_valueConverted ??= Value?.ToBigInteger()) ?? Undefined.Value;
     // ReSharper restore InconsistentNaming
 }

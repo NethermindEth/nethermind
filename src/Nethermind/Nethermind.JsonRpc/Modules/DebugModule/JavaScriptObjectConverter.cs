@@ -24,11 +24,19 @@ public class JavaScriptObjectConverter : JsonConverter
     {
         if (o is IDictionary<string, object> dictionary)
         {
-            // value is marshaled to BigInteger by ClearScript
-            if (dictionary.TryGetValue("value", out object? value) && value is BigInteger bigInteger)
+            if (dictionary.TryGetValue("value", out object? value))
             {
-                writer.WriteValue(bigInteger.ToString());
-                return;
+                // value is marshaled to BigInteger by ClearScript
+                if (value is BigInteger bigInteger)
+                {
+                    writer.WriteValue(bigInteger.ToString());
+                    return;
+                }
+
+                if (value == Undefined.Value)
+                {
+                    dictionary.Remove("value");
+                }
             }
 
             // remove undefined errors

@@ -83,7 +83,7 @@ public sealed class GethLikeJavascriptTxTracer : GethLikeTxTracer
             _frame.From = from;
             _frame.To = to;
             _frame.Input = input;
-            _frame.Value = value;
+            _frame.Value = callType == ExecutionType.STATICCALL ? null : value;
             _frame.Gas = gas;
             _frame.Type = callType.FastToString();
             _tracer.enter(_frame);
