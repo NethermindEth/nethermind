@@ -96,13 +96,13 @@ public sealed class GethLikeJavascriptTxTracer : GethLikeTxTracer
         _log.gas = gas;
         _log.depth = depth;
         _log.error = null;
-        _log.gasCost = 0;
-        _log.refund = 0;
+        _log.gasCost = null;
+        _log.refund = null;
     }
 
     public override void ReportOperationRemainingGas(long gas)
     {
-        _log.gasCost = _log.gas - gas;
+        _log.gasCost ??= _log.gas - gas;
         if (_functions.HasFlag(TracerFunctions.postStep))
         {
             _tracer.postStep(_log, _db);
