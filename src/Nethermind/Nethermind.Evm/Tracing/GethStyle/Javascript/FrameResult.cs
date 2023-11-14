@@ -9,11 +9,22 @@ namespace Nethermind.Evm.Tracing.GethStyle.Javascript;
 
 public class FrameResult
 {
-    private ITypedArray<byte>? output;
+    private ITypedArray<byte>? _outputConverted;
+    private byte[] _output;
     public long GasUsed { get; set; }
-    public byte[] Output { get; set; }
+
+    public byte[] Output
+    {
+        get => _output;
+        set
+        {
+            _output = value;
+            _outputConverted = null;
+        }
+    }
+
     public string? Error { get; set; }
     public long getGasUsed() => GasUsed;
-    public ITypedArray<byte> getOutput() => output ??= Output.ToTypedScriptArray();
+    public ITypedArray<byte> getOutput() => _outputConverted ??= Output.ToTypedScriptArray();
     public dynamic getError() => !string.IsNullOrEmpty(Error) ? Error : Undefined.Value;
 }

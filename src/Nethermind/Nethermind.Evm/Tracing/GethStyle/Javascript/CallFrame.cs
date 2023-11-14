@@ -13,23 +13,64 @@ namespace Nethermind.Evm.Tracing.GethStyle.Javascript;
 public record CallFrame
 {
     public string? Type { get; set; }
-    public Address From { get; set; }
-    public Address To { get; set; }
-    public ReadOnlyMemory<byte> Input { get; set; }
-    public long Gas { get; set; }
-    public UInt256 Value { get; set; }
 
-    private ITypedArray<byte>? _from;
-    private ITypedArray<byte>? _to;
-    private ITypedArray<byte>? _input;
-    private dynamic? _value;
+    public Address From
+    {
+        get => _from;
+        set
+        {
+            _from = value;
+            _fromConverted = null;
+        }
+    }
+
+    public Address To
+    {
+        get => _to;
+        set
+        {
+            _to = value;
+            _toConverted = null;
+        }
+    }
+
+    public ReadOnlyMemory<byte> Input
+    {
+        get => _input;
+        set
+        {
+            _input = value;
+            _inputConverted = null;
+        }
+    }
+
+    public long Gas { get; set; }
+
+    public UInt256 Value
+    {
+        get => _value;
+        set
+        {
+            _value = value;
+            _valueConverted = null;
+        }
+    }
+
+    private ITypedArray<byte>? _fromConverted;
+    private ITypedArray<byte>? _toConverted;
+    private ITypedArray<byte>? _inputConverted;
+    private dynamic? _valueConverted;
+    private Address _from;
+    private Address _to;
+    private ReadOnlyMemory<byte> _input;
+    private UInt256 _value;
 
     // ReSharper disable InconsistentNaming
     public string? getType() => Type;
-    public ITypedArray<byte> getFrom() => _from ??= From.Bytes.ToTypedScriptArray();
-    public ITypedArray<byte> getTo() => _to ??= To.Bytes.ToTypedScriptArray();
-    public ITypedArray<byte> getInput() => _input ??= Input.ToTypedScriptArray();
+    public ITypedArray<byte> getFrom() => _fromConverted ??= From.Bytes.ToTypedScriptArray();
+    public ITypedArray<byte> getTo() => _toConverted ??= To.Bytes.ToTypedScriptArray();
+    public ITypedArray<byte> getInput() => _inputConverted ??= Input.ToTypedScriptArray();
     public long getGas() => Gas;
-    public dynamic getValue() => _value ??= Value.ToBigInteger();
+    public dynamic getValue() => _valueConverted ??= Value.ToBigInteger();
     // ReSharper restore InconsistentNaming
 }
