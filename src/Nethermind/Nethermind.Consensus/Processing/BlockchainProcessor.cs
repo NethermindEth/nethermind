@@ -5,6 +5,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
@@ -454,6 +455,11 @@ public class BlockchainProcessor : IBlockchainProcessor, IBlockProcessingQueue
             catch (InvalidBlockException ex)
             {
                 BlockTraceDumper.LogDiagnosticTrace(blockTracer, ex.InvalidBlock.Hash!, _logger);
+                Metrics.BadBlocks++;
+                if (Encoding.ASCII.GetString(ex.InvalidBlock.ExtraData) == "Nethermind")
+                {
+                    Metrics.BadBlocksByNethermindNodes++;
+                }
             }
             catch (Exception ex)
             {
