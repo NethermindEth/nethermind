@@ -42,7 +42,7 @@ namespace Nethermind.Blockchain.Test
             IWorldState stateProvider = new WorldState(trieStore, codeDb, LimboLogs.Instance);
             ITransactionProcessor transactionProcessor = Substitute.For<ITransactionProcessor>();
             BlockProcessor processor = new(
-                RinkebySpecProvider.Instance,
+                SepoliaSpecProvider.Instance,
                 TestBlockValidator.AlwaysValid,
                 NoBlockRewards.Instance,
                 new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor, stateProvider),
@@ -73,7 +73,7 @@ namespace Nethermind.Blockchain.Test
             ITransactionProcessor transactionProcessor = Substitute.For<ITransactionProcessor>();
             IWitnessCollector witnessCollector = Substitute.For<IWitnessCollector>();
             BlockProcessor processor = new(
-                RinkebySpecProvider.Instance,
+                SepoliaSpecProvider.Instance,
                 TestBlockValidator.AlwaysValid,
                 NoBlockRewards.Instance,
                 new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor, stateProvider),
@@ -102,7 +102,7 @@ namespace Nethermind.Blockchain.Test
             IWorldState stateProvider = new WorldState(trieStore, codeDb, LimboLogs.Instance);
             ITransactionProcessor transactionProcessor = Substitute.For<ITransactionProcessor>();
             BlockProcessor processor = new(
-                RinkebySpecProvider.Instance,
+                SepoliaSpecProvider.Instance,
                 TestBlockValidator.AlwaysValid,
                 new RewardCalculator(MainnetSpecProvider.Instance),
                 new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor, stateProvider),
