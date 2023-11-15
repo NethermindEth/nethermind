@@ -22,7 +22,7 @@ public sealed class GethLikeJavascriptTxTracer : GethLikeTxTracer
     private readonly FrameResult _result = new();
     private bool _resultConstructed;
     private Stack<long>? _frameGas;
-    private Stack<Log.Contract> _contracts = new();
+    private Stack<Log.Contract>? _contracts;
 
     // Context is updated only of first ReportAction call.
     private readonly Context _ctx;
@@ -68,8 +68,6 @@ public sealed class GethLikeJavascriptTxTracer : GethLikeTxTracer
         base.ReportAction(gas, value, from, to, input, callType, isPrecompileCall);
 
         bool isAnyCreate = callType.IsAnyCreate();
-        _log.contract = new Log.Contract(from, to, value, isAnyCreate ? null : input);
-        _contracts.Push(_log.contract);
         if (callType == ExecutionType.TRANSACTION)
         {
             _ctx.type = isAnyCreate ? "CREATE" : "CALL";
@@ -80,6 +78,8 @@ public sealed class GethLikeJavascriptTxTracer : GethLikeTxTracer
         }
         else if (_functions.HasFlag(TracerFunctions.enter))
         {
+            _contracts ??= new Stack<Log.Contract>();
+            _contracts.Push(_log.contract);
             _frame.From = from;
             _frame.To = to;
             _frame.Input = input;
@@ -90,6 +90,8 @@ public sealed class GethLikeJavascriptTxTracer : GethLikeTxTracer
             _frameGas ??= new Stack<long>();
             _frameGas.Push(gas);
         }
+
+        _log.contract = new Log.Contract(from, to, value, isAnyCreate ? null : input);
     }
 
     public override void StartOperation(int depth, long gas, Instruction opcode, int pc, bool isPostMerge = false)
@@ -140,7 +142,11 @@ public sealed class GethLikeJavascriptTxTracer : GethLikeTxTracer
 
     private void InvokeExit(long gas, ReadOnlyMemory<byte> output, string? error = null)
     {
-        _log.contract = _contracts.Pop();
+        if (_contracts?.TryPop(out Log.Contract contract) == true)
+        {
+            _log.contract = contract;
+        }
+
         if (_functions.HasFlag(TracerFunctions.exit) && _frameGas?.Count > 0)
         {
             _result.GasUsed = _frameGas.Pop() - gas;
