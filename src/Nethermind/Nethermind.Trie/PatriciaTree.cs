@@ -921,7 +921,7 @@ namespace Nethermind.Trie
                         return null;
                     }
 
-                    if(Capability == TrieNodeResolverCapability.Path) _deleteNodes?.Enqueue(node.CloneNodeForDeletion());
+                    if (Capability == TrieNodeResolverCapability.Path) _deleteNodes?.Enqueue(node.CloneNodeForDeletion());
                     ConnectNodes(null, in traverseContext);
                 }
                 else if (Bytes.AreEqual(traverseContext.UpdateValue, node.Value))
@@ -1025,7 +1025,7 @@ namespace Nethermind.Trie
 
                 if (traverseContext.IsDelete)
                 {
-                    if(Capability == TrieNodeResolverCapability.Path) _deleteNodes?.Enqueue(node.CloneNodeForDeletion());
+                    if (Capability == TrieNodeResolverCapability.Path) _deleteNodes?.Enqueue(node.CloneNodeForDeletion());
                     ConnectNodes(null, in traverseContext);
                     return traverseContext.UpdateValue;
                 }

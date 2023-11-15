@@ -373,7 +373,7 @@ namespace Nethermind.Synchronization.SnapSync
             public ITrieStore Create()
             {
                 //no in memory caching
-                return new TrieStoreByPath(_stateDb, _logManager); 
+                return new TrieStoreByPath(_stateDb, _logManager);
             }
 
             public bool Return(ITrieStore obj)

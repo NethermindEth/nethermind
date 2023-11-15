@@ -80,7 +80,8 @@ namespace Nethermind.State
 
                 return _tree.RootHash;
             }
-            set {
+            set
+            {
                 if (_trieStore.Capability == TrieNodeResolverCapability.Path)
                     _tree.ParentStateRootHash = value;
 

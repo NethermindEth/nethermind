@@ -49,7 +49,7 @@ namespace Nethermind.Store.Test.SnapSync
             DbProvider dbProvider = new(DbModeHint.Mem);
             dbProvider.RegisterDb(DbNames.PathState, new MemColumnsDb<StateColumns>());
             dbProvider.RegisterDb(DbNames.State, new MemDb());
-            
+
             ProgressTracker progressTracker = new(null, dbProvider.GetDb<IDb>(DbNames.State), LimboLogs.Instance);
             SnapProvider snapProvider = new(progressTracker, dbProvider, LimboLogs.Instance);
             PathWithAccount pWA = new PathWithAccount(TestItem.Tree.AccountAddress0, Build.A.Account.WithBalance(1).TestObject);

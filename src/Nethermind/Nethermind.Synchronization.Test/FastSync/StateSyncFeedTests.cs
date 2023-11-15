@@ -25,13 +25,13 @@ using NUnit.Framework;
 namespace Nethermind.Synchronization.Test.FastSync
 {
     [TestFixture(TrieNodeResolverCapability.Hash, 1, 0)]
-    [TestFixture(TrieNodeResolverCapability.Hash,1, 100)]
-    [TestFixture(TrieNodeResolverCapability.Hash,4, 0)]
-    [TestFixture(TrieNodeResolverCapability.Hash,4, 100)]
-    [TestFixture(TrieNodeResolverCapability.Path,1, 0)]
-    [TestFixture(TrieNodeResolverCapability.Path,1, 100)]
-    [TestFixture(TrieNodeResolverCapability.Path,4, 0)]
-    [TestFixture(TrieNodeResolverCapability.Path,4, 100)]
+    [TestFixture(TrieNodeResolverCapability.Hash, 1, 100)]
+    [TestFixture(TrieNodeResolverCapability.Hash, 4, 0)]
+    [TestFixture(TrieNodeResolverCapability.Hash, 4, 100)]
+    [TestFixture(TrieNodeResolverCapability.Path, 1, 0)]
+    [TestFixture(TrieNodeResolverCapability.Path, 1, 100)]
+    [TestFixture(TrieNodeResolverCapability.Path, 4, 0)]
+    [TestFixture(TrieNodeResolverCapability.Path, 4, 100)]
     [Parallelizable(ParallelScope.All)]
     public class StateSyncFeedTests : StateSyncFeedTestsBase
     {

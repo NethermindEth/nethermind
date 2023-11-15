@@ -764,7 +764,7 @@ namespace Nethermind.Synchronization.FastSync
                         {
                             Interlocked.Add(ref _data.DataSize, data.Length);
                             Interlocked.Increment(ref Metrics.SyncedStorageTrieNodes);
-                            switch (_stateStore.Capability )
+                            switch (_stateStore.Capability)
                             {
                                 case TrieNodeResolverCapability.Hash:
                                     _stateDb.Set(syncItem.Hash, data);
@@ -1146,7 +1146,7 @@ namespace Nethermind.Synchronization.FastSync
         {
             if (!node.IsBranch)
                 return;
-            
+
             for (int childIndex = 0; childIndex < 16; childIndex++)
             {
                 if (!node.IsChildNull(childIndex))

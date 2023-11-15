@@ -33,7 +33,7 @@ namespace Nethermind.Trie
                 }
 
                 if (tree.Capability == TrieNodeResolverCapability.Path) item.ResolveNode(tree);
-                
+
                 return item.NodeType switch
                 {
                     NodeType.Branch => RlpEncodeBranch(tree, item, bufferPool),

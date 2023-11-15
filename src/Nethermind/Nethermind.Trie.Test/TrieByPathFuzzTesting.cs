@@ -188,7 +188,7 @@ public class TrieByPathFuzzTesting
                         for (int j = 1; j < noOfStorage + 1; j++)
                         {
                             int index = _random.Next(1, 5000);
-                            byte[] storage = new byte[_random.Next(1,32)];
+                            byte[] storage = new byte[_random.Next(1, 32)];
                             _random.NextBytes(storage);
 
                             streamWriter.WriteLine($"{index} {storage.ToHexString()}");

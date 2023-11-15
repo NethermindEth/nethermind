@@ -688,7 +688,7 @@ namespace Nethermind.Trie.Pruning
             if (prefix.Length % 2 != 0)
                 throw new ArgumentException("Only even length prefixes supported");
 
-            Span<byte> fromKey = new (GC.AllocateUninitializedArray<byte>(prefix.Length));
+            Span<byte> fromKey = new(GC.AllocateUninitializedArray<byte>(prefix.Length));
             prefix.CopyTo(fromKey);
             Span<byte> toKey = new(GC.AllocateUninitializedArray<byte>(prefix.Length));
             prefix.CopyTo(toKey);
@@ -843,7 +843,7 @@ namespace Nethermind.Trie.Pruning
                     keyRanges[3] = EncodePathWithEnforcedOddity(childPathTo, fullKeyLength, 1, 0xff);
                 }
 
-                for (int i = 0; i < 4; i+=2)
+                for (int i = 0; i < 4; i += 2)
                 {
                     if (_logger.IsTrace) _logger.Trace($"Branch deletion for {branchNode.FullPath.ToHexString()} | from: {keyRanges[i].ToHexString()} to: {keyRanges[i + 1].ToHexString()}");
                     _pathStateDb?.EnqueueDeleteRange(fullKeyLength == 66 ? StateColumns.Storage : StateColumns.State, keyRanges[i], keyRanges[i + 1]);

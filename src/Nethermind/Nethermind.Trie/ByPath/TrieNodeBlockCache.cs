@@ -185,7 +185,7 @@ public class TrieNodeBlockCache : IPathTrieNodeCache
             currentBlockNumber++;
         }
         List<Keccak> removedRoots = new();
-        foreach(KeyValuePair<Keccak, HashSet<long>> kvp in _rootHashToBlock)
+        foreach (KeyValuePair<Keccak, HashSet<long>> kvp in _rootHashToBlock)
         {
             kvp.Value.RemoveWhere(blk => blk <= blockNumber);
             if (kvp.Value.Count == 0)

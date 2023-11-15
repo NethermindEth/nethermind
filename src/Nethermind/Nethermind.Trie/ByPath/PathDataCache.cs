@@ -481,7 +481,7 @@ internal class PathDataCacheInstance
 
         removedPaths.Clear();
         List<byte[]> paths = _removedPrefixes.Where(kvp => kvp.Value.Exists(st => st <= stateId.Id)).Select(kvp => kvp.Key).ToList();
-        
+
         foreach (byte[] path in paths)
         {
             List<int> states = _removedPrefixes[path];
@@ -795,7 +795,8 @@ public class PathDataCache : IPathDataCache
 
             LogCache($"After persisting block {blockNumber} / {rootHash}");
             return true;
-        } finally { _lock.ExitWriteLock(); }
+        }
+        finally { _lock.ExitWriteLock(); }
     }
 
     public void AddRemovedPrefix(long blockNumber, ReadOnlySpan<byte> keyPrefix)

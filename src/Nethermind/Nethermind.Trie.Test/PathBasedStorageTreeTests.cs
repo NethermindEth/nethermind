@@ -5,5 +5,5 @@ namespace Nethermind.Trie.Test;
 
 public class PathBasedStorageTreeTests
 {
-    
+
 }

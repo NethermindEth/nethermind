@@ -9,7 +9,7 @@ using Nethermind.Core.Extensions;
 
 namespace Nethermind.Synchronization.FastSync;
 
-public class StateSyncItemComparer: IEqualityComparer<StateSyncItem>
+public class StateSyncItemComparer : IEqualityComparer<StateSyncItem>
 {
     private StateSyncItemComparer()
     {
