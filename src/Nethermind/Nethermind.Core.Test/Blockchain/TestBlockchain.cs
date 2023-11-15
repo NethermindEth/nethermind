@@ -139,8 +139,7 @@ public class TestBlockchain : IDisposable
         State.Commit(SpecProvider.GenesisSpec);
         State.CommitTree(0);
 
-        //ReadOnlyTrieStore = TrieStore.AsReadOnly(StateDb);
-        ReadOnlyTrieStore = TrieStore.AsReadOnly(PathStateDb);
+        ReadOnlyTrieStore = usePathStateDb ? TrieStore.AsReadOnly(PathStateDb) : TrieStore.AsReadOnly(StateDb);
         StateReader = new StateReader(ReadOnlyTrieStore, CodeDb, LogManager);
 
         BlockTree = Builders.Build.A.BlockTree()

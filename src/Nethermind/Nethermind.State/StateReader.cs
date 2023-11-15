@@ -33,7 +33,7 @@ namespace Nethermind.State
             return GetState(stateRoot, address);
         }
 
-        public byte[]? GetStorage(Keccak storageRoot, Address accountAddress, in UInt256 index)
+        public byte[]? GetStorage(Keccak stateRoot, Keccak storageRoot, Address accountAddress, in UInt256 index)
         {
             if (storageRoot == Keccak.EmptyTreeHash)
             {
@@ -43,6 +43,7 @@ namespace Nethermind.State
             Metrics.StorageTreeReads++;
 
             StorageTree tree = new(_trieStore, storageRoot, NullLogManager.Instance, accountAddress);
+            tree.ParentStateRootHash = stateRoot;
             return tree.Get(index, storageRoot);
         }
 

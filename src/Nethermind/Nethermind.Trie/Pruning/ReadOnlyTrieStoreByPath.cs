@@ -87,15 +87,9 @@ namespace Nethermind.Trie.Pruning
 
         public IKeyValueStore AsKeyValueStore() => _publicStore;
 
-        public void CommitNode(long blockNumber, Keccak rootHash, NodeCommitInfo nodeCommitInfo, WriteFlags writeFlags = WriteFlags.None)
-        {
-            throw new NotImplementedException();
-        }
+        public void CommitNode(long blockNumber, Keccak rootHash, NodeCommitInfo nodeCommitInfo, WriteFlags writeFlags = WriteFlags.None) { }
 
-        public void OpenContext(long blockNumber, Keccak keccak)
-        {
-            throw new NotImplementedException();
-        }
+        public void OpenContext(long blockNumber, Keccak keccak) { }
 
         private class ReadOnlyValueStore : IKeyValueStore
         {

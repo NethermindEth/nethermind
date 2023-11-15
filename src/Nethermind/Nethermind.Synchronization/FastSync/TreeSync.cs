@@ -704,24 +704,8 @@ namespace Nethermind.Synchronization.FastSync
                                     _stateDb.Set(syncItem.Hash, data);
                                     break;
                                 case TrieNodeResolverCapability.Path:
-                                    if (node.IsBranch)
-                                    {
-                                        for (int childIndex = 0; childIndex < 16; childIndex++)
-                                        {
-                                            if (!node.IsChildNull(childIndex))
-                                            {
-                                                Keccak? childHash = node.GetChildHash(childIndex);
-                                                if (childHash is null)
-                                                {
-                                                    _logger.Warn($"TreeSync - processing branch with child as RLP {syncItem.PathNibbles.ToHexString()} - child {childIndex} - Prefix: {node.StoreNibblePathPrefix.ToHexString()}");
-                                                    TrieNode childNode = node.GetChild(_stateStore, childIndex);
-                                                    childNode.ResolveNode(_stateStore);
-                                                    _stateStore.PersistNode(childNode, withDelete: rootChanged);
-                                                }
-                                            }
-                                        }
-                                    }
 
+                                    PersistInlineBranchChildren(syncItem.PathNibbles, node);
                                     _stateStore.PersistNode(node, withDelete: rootChanged);
                                     if (node.IsLeaf && _additionalLeafNibbles.TryRemove(syncItem.Hash, out List<byte> additionalNibbles))
                                     {
@@ -786,24 +770,7 @@ namespace Nethermind.Synchronization.FastSync
                                     _stateDb.Set(syncItem.Hash, data);
                                     break;
                                 case TrieNodeResolverCapability.Path:
-                                    if (node.IsBranch)
-                                    {
-                                        for (int childIndex = 0; childIndex < 16; childIndex++)
-                                        {
-                                            if (!node.IsChildNull(childIndex))
-                                            {
-                                                Keccak? childHash = node.GetChildHash(childIndex);
-                                                if (childHash is null)
-                                                {
-                                                    _logger.Warn($"TreeSync - processing branch with child as RLP {syncItem.PathNibbles.ToHexString()} - child {childIndex} - Prefix: {node.StoreNibblePathPrefix.ToHexString()}");
-                                                    TrieNode childNode = node.GetChild(_stateStore, childIndex);
-                                                    childNode.ResolveNode(_stateStore);
-                                                    _stateStore.PersistNode(childNode, withDelete: rootChanged);
-                                                }
-                                            }
-                                        }
-                                    }
-
+                                    PersistInlineBranchChildren(syncItem.AccountPathNibbles, node);
                                     _stateStore.PersistNode(node, withDelete: rootChanged);
                                     if (node.IsLeaf && _additionalLeafNibbles.TryRemove(syncItem.Hash, out List<byte> additionalNibbles))
                                     {
@@ -1171,6 +1138,28 @@ namespace Nethermind.Synchronization.FastSync
                 foreach (StateSyncItem stateSyncItem in requestHashes)
                 {
                     _logger.Trace($"Requesting {stateSyncItem.Hash}");
+                }
+            }
+        }
+
+        private void PersistInlineBranchChildren(Span<byte> pathNibbles, TrieNode node)
+        {
+            if (!node.IsBranch)
+                return;
+            
+            for (int childIndex = 0; childIndex < 16; childIndex++)
+            {
+                if (!node.IsChildNull(childIndex))
+                {
+                    Keccak? childHash = node.GetChildHash(childIndex);
+                    if (childHash is null)
+                    {
+                        if (_logger.IsTrace)
+                            _logger.Trace($"TreeSync - processing branch with child as RLP {pathNibbles.ToHexString()} - child {childIndex} - Prefix: {node.StoreNibblePathPrefix.ToHexString()}");
+                        TrieNode childNode = node.GetChild(_stateStore, childIndex);
+                        childNode.ResolveNode(_stateStore);
+                        _stateStore.PersistNode(childNode, withDelete: rootChanged);
+                    }
                 }
             }
         }
