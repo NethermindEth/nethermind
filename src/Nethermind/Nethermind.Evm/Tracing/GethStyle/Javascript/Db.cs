@@ -28,12 +28,12 @@ public class Db
 
     public ITypedArray<byte> getCode(object address) => WorldState.GetCode(address.ToAddress()).ToTypedScriptArray();
 
-    public ITypedArray<byte> getState(object address, object index)
+    public ITypedArray<byte> getState(object address, object hash)
     {
         byte[] array = ArrayPool<byte>.Shared.Rent(32);
         try
         {
-            byte[] bytes = WorldState.Get(new StorageCell(address.ToAddress(), index.GetUint256()));
+            byte[] bytes = WorldState.Get(new StorageCell(address.ToAddress(), hash.GetHash()));
             bytes.CopyTo(array, array.Length - bytes.Length);
             return array.ToTypedScriptArray();
         }
