@@ -329,10 +329,6 @@ namespace Nethermind.Synchronization
                 {
                     sb.Append(value);
                 }
-                else if (KnownAddresses.RinkebyValidators.TryGetValue(block.Author, out value))
-                {
-                    sb.Append(value);
-                }
                 else
                 {
                     sb.Append(block.Author);
