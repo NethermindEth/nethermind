@@ -10,6 +10,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
+using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Crypto;
@@ -456,7 +457,7 @@ public class BlockchainProcessor : IBlockchainProcessor, IBlockProcessingQueue
             {
                 BlockTraceDumper.LogDiagnosticTrace(blockTracer, ex.InvalidBlock.Hash!, _logger);
                 Metrics.BadBlocks++;
-                if (Encoding.ASCII.GetString(ex.InvalidBlock.ExtraData) == "Nethermind")
+                if (ex.InvalidBlock.ExtraData == new BlocksConfig().GetExtraDataBytes())
                 {
                     Metrics.BadBlocksByNethermindNodes++;
                 }
