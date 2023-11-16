@@ -4,14 +4,14 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Linq;
 using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
+using Nethermind.Db.Rocks;
+using Nethermind.Db.Rocks.Config;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
@@ -887,7 +887,6 @@ public class TrieByPathTests
         int lookupLimit,
         int? seed)
     {
-        //seed = 1954984512;
         int usedSeed = seed ?? _random.Next(int.MaxValue);
         _random = new Random(usedSeed);
 
@@ -911,7 +910,16 @@ public class TrieByPathTests
         PatriciaTree hashTree = new(hashTrieStore, _logManager);
 
         MemColumnsDb<StateColumns> memDb = new();
-        using TrieStoreByPath trieStore = new(memDb, Persist.IfBlockOlderThan(lookupLimit), _logManager);
+
+        TestPathPersistanceStrategy strategy = new(lookupLimit, lookupLimit / 2);
+
+        Reorganization.MaxDepth = 1;
+        using TrieStoreByPath trieStore = new(memDb, strategy, _logManager);
+        trieStore.ReorgBoundaryReached += (object? sender, ReorgBoundaryReached e) =>
+        {
+            strategy.LastPersistedBlockNumber = e.BlockNumber;
+        };
+
         PatriciaTree patriciaTree = new(trieStore, _logManager);
 
         byte[][] accounts = new byte[accountsCount][];
@@ -1176,6 +1184,78 @@ public class TrieByPathTests
             }
 
             verifiedBlocks++;
+        }
+    }
+
+
+    [Test()]
+    [Explicit]
+    public void ClearStorageThenCreateOnRocksDb()
+    {
+        var dirInfo = Directory.CreateTempSubdirectory();
+        using ColumnsDb<StateColumns> stateDb = new(dirInfo.FullName, new RocksDbSettings("pathState", Path.Combine(dirInfo.FullName, "pathState")), new DbConfig(), _logManager, new StateColumns[] { StateColumns.State, StateColumns.Storage });
+
+        using TrieStoreByPath pathTrieStore = new(stateDb, Persist.IfBlockOlderThan(2), _logManager);
+        WorldState pathStateProvider = new(pathTrieStore, new MemDb(), _logManager);
+
+        pathStateProvider.CreateAccount(TestItem.AddressA, 100);
+        pathStateProvider.Set(new StorageCell(TestItem.AddressA, 100), new byte[] { 1 });
+        pathStateProvider.Set(new StorageCell(TestItem.AddressA, 200), new byte[] { 2 });
+        pathStateProvider.Set(new StorageCell(TestItem.AddressA, 300), new byte[] { 3 });
+
+        pathStateProvider.Commit(MuirGlacier.Instance);
+        pathStateProvider.CommitTree(1);
+
+        pathStateProvider.ClearStorage(TestItem.AddressA);
+        pathStateProvider.DeleteAccount(TestItem.AddressA);
+
+        pathStateProvider.Commit(MuirGlacier.Instance);
+        pathStateProvider.CommitTree(2);
+
+        pathStateProvider.ClearStorage(TestItem.AddressA);
+        pathStateProvider.CreateAccount(TestItem.AddressA, 200);
+        pathStateProvider.Set(new StorageCell(TestItem.AddressA, 100), new byte[] { 100 });
+
+        pathStateProvider.Commit(MuirGlacier.Instance);
+        pathStateProvider.CommitTree(3);
+
+        pathStateProvider.Commit(MuirGlacier.Instance);
+        pathStateProvider.CommitTree(4);
+
+        var data = pathStateProvider.Get(new StorageCell(TestItem.AddressA, 100));
+        Assert.That(data, Is.Not.Null);
+        Assert.That(data[0], Is.EqualTo(100));
+    }
+
+    private class TestPathPersistanceStrategy : IPersistenceStrategy
+    {
+        private int _delay;
+        private int _interval;
+        private long? _lastPersistedBlockNumber;
+        public long? LastPersistedBlockNumber { get => _lastPersistedBlockNumber; set => _lastPersistedBlockNumber = value; }
+
+        public TestPathPersistanceStrategy(int delay, int interval)
+        {
+            _delay = delay;
+            _interval = interval;
+        }
+
+        public bool ShouldPersist(long blockNumber)
+        {
+            return false;
+        }
+
+        public bool ShouldPersist(long currentBlockNumber, out long targetBlockNumber)
+        {
+            targetBlockNumber = -1;
+            long distanceToPersisted = currentBlockNumber - ((_lastPersistedBlockNumber ?? 0) + _delay);
+
+            if (distanceToPersisted > 0 && distanceToPersisted % _interval == 0)
+            {
+                targetBlockNumber = currentBlockNumber - _delay;
+                return true;
+            }
+            return false;
         }
     }
 }
