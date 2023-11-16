@@ -457,7 +457,7 @@ public class BlockchainProcessor : IBlockchainProcessor, IBlockProcessingQueue
             {
                 BlockTraceDumper.LogDiagnosticTrace(blockTracer, ex.InvalidBlock.Hash!, _logger);
                 Metrics.BadBlocks++;
-                if (ex.InvalidBlock.ExtraData == new BlocksConfig().GetExtraDataBytes())
+                if (Encoding.ASCII.GetString(ex.InvalidBlock.ExtraData).Contains(new BlocksConfig().ExtraData, StringComparison.InvariantCultureIgnoreCase))
                 {
                     Metrics.BadBlocksByNethermindNodes++;
                 }
