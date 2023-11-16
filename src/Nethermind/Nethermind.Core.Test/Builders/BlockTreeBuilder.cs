@@ -384,6 +384,12 @@ namespace Nethermind.Core.Test.Builders
             return this;
         }
 
+        public BlockTreeBuilder WithHeaderStore(IHeaderStore headerStore)
+        {
+            HeaderStore = headerStore;
+            return this;
+        }
+
         public BlockTreeBuilder WithBlocksDb(IDb blocksDb)
         {
             BlocksDb = blocksDb;

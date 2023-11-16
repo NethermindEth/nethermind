@@ -47,8 +47,6 @@ namespace Nethermind.Blockchain
         private readonly LruCache<ValueHash256, Block> _invalidBlocks =
             new(128, 128, "invalid blocks");
 
-        private readonly BlockDecoder _blockDecoder = new();
-        private readonly HeaderDecoder _headerDecoder = new();
         private readonly ILogger _logger;
         private readonly ISpecProvider _specProvider;
         private readonly IBloomStorage _bloomStorage;

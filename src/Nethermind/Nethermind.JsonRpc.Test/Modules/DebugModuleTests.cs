@@ -41,11 +41,7 @@ public class DebugModuleTests
 {
     private IJsonRpcConfig jsonRpcConfig = new JsonRpcConfig();
     private IDebugBridge debugBridge = Substitute.For<IDebugBridge>();
-    private MemDb _blocksInfosDb = new();
-    private MemDb _headersDb = new();
-    private MemDb _blockNumberDb = new();
     private MemDb _blocksDb = new();
-    private MemDb _metadataDb = new();
 
     [Test]
     public void Get_from_db()
@@ -228,11 +224,8 @@ public class DebugModuleTests
 
     private BlockTree BuildBlockTree()
     {
-        SyncConfig syncConfig = new();
         BlockStore blockStore = new(_blocksDb);
-        HeaderStore headerStore = new(_headersDb, _blockNumberDb);
-        ChainLevelInfoRepository chainLevelInfoRepository = new(_blocksInfosDb);
-        return new BlockTree(blockStore, headerStore, _blocksInfosDb, _metadataDb, chainLevelInfoRepository, MainnetSpecProvider.Instance, NullBloomStorage.Instance, syncConfig, LimboLogs.Instance);
+        return Build.A.BlockTree().WithBlocksDb(_blocksDb).WithBlockStore(blockStore).TestObject;
     }
 
     [Test]
