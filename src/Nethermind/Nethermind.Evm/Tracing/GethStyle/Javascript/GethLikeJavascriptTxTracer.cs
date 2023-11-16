@@ -91,7 +91,10 @@ public sealed class GethLikeJavascriptTxTracer : GethLikeTxTracer
             _frameGas.Push(gas);
         }
 
-        _log.contract = new Log.Contract(from, to, value, isAnyCreate ? null : input);
+        if (callType != ExecutionType.DELEGATECALL)
+        {
+            _log.contract = new Log.Contract(from, to, value, isAnyCreate ? null : input);
+        }
     }
 
     public override void StartOperation(int depth, long gas, Instruction opcode, int pc, bool isPostMerge = false)
