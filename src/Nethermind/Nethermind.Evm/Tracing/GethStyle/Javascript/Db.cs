@@ -34,6 +34,10 @@ public class Db
         try
         {
             byte[] bytes = WorldState.Get(new StorageCell(address.ToAddress(), hash.GetHash()));
+            if (bytes.Length < array.Length)
+            {
+                Array.Clear(array);
+            }
             bytes.CopyTo(array, array.Length - bytes.Length);
             return array.ToTypedScriptArray();
         }
