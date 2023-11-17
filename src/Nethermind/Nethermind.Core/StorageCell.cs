@@ -3,6 +3,8 @@
 
 using System;
 using System.Diagnostics;
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 
@@ -11,14 +13,15 @@ namespace Nethermind.Core
     [DebuggerDisplay("{Address}->{Index}")]
     public readonly struct StorageCell : IEquatable<StorageCell>
     {
-        private readonly ValueHash256? _hash;
-        private readonly UInt256? _index;
+        private readonly UInt256 _index;
+        private readonly bool _isHash;
 
         public Address Address { get; }
-        public UInt256 Index => _index ?? UInt256.Zero;
+        public UInt256 Index => _index;
 
-        public ValueHash256 Hash => _hash ?? GetHash();
-        public bool IsHash => _index is null;
+        public ValueHash256 Hash => _isHash ? Unsafe.As<UInt256, ValueHash256>(ref Unsafe.AsRef(in _index)) : GetHash();
+
+        public bool IsHash => _isHash;
 
         private ValueHash256 GetHash()
         {
@@ -33,15 +36,14 @@ namespace Nethermind.Core
             _index = index;
         }
 
-        public StorageCell(Address address, in ValueHash256 hash)
+        public StorageCell(Address address, ValueHash256 hash)
         {
             Address = address;
-            _hash = hash;
-            _index = null;
+            _index = Unsafe.As<ValueHash256, UInt256>(ref hash);
+            _isHash = true;
         }
 
-        public bool Equals(StorageCell other) =>
-            Address.Equals(other.Address) && (IsHash || other.IsHash ? Hash.Equals(other.Hash) : _index.Equals(other._index));
+        public bool Equals(StorageCell other) => Address.Equals(other.Address) && Index.Equals(other.Index);
 
         public override bool Equals(object? obj)
         {
