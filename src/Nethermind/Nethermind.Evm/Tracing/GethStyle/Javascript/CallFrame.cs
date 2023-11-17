@@ -71,6 +71,6 @@ public record CallFrame
     public ITypedArray<byte> getTo() => _toConverted ??= To.Bytes.ToTypedScriptArray();
     public ITypedArray<byte> getInput() => _inputConverted ??= Input.ToTypedScriptArray();
     public long getGas() => Gas;
-    public IJavaScriptObject getValue() => (_valueConverted ??= Value?.ToBigInteger()) ?? Undefined.Value;
+    public dynamic getValue() => (_valueConverted ??= Value?.ToBigInteger()) ?? Undefined.Value;
     // ReSharper restore InconsistentNaming
 }

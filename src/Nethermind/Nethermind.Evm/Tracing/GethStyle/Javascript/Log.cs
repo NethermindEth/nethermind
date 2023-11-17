@@ -82,7 +82,7 @@ namespace Nethermind.Evm.Tracing.GethStyle.Javascript
             private ITypedArray<byte>? _callerConverted;
             private ITypedArray<byte>? _addressConverted;
             private ITypedArray<byte>? _inputConverted;
-            private dynamic? _valueConverted;
+            private IJavaScriptObject? _valueConverted;
             private readonly Address _caller;
 
 
