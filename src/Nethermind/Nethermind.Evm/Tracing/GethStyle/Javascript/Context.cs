@@ -4,6 +4,7 @@
 using System;
 using System.Collections;
 using Microsoft.ClearScript;
+using Microsoft.ClearScript.JavaScript;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
@@ -115,8 +116,8 @@ public class Context
     public IList? input => _inputConverted ??= Input.ToArray().ToUnTypedScriptArray();
     public long gas { get; set; }
     public long gasUsed { get; set; }
-    public dynamic gasPrice => _gasPriceConverted ??= GasPrice.ToBigInteger();
-    public dynamic value => _valueConverted ??= Value.ToBigInteger();
+    public IJavaScriptObject gasPrice => _gasPriceConverted ??= GasPrice.ToBigInteger();
+    public IJavaScriptObject value => _valueConverted ??= Value.ToBigInteger();
     public long block { get; set; }
     public IList? output => _outputConverted ??= Output?.ToUnTypedScriptArray();
     public IList? blockHash => _blockHashConverted ??= BlockHash?.BytesToArray().ToUnTypedScriptArray();

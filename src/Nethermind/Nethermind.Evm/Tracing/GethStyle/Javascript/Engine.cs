@@ -146,10 +146,7 @@ public class Engine : IDisposable
 
     public ITypedArray<byte> CreateUint8Array(byte[] buffer) => _createUint8Array(buffer);
     public IList CreateUntypedArray(byte[] buffer) => _createUntypedArray(buffer);
-    public dynamic CreateBigInteger(BigInteger value)
-    {
-        return _bigInteger(value);
-    }
+    public IJavaScriptObject CreateBigInteger(BigInteger value) => _bigInteger(value);
 
     public dynamic CreateTracer(string tracer)
     {

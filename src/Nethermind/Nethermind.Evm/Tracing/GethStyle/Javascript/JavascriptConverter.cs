@@ -31,15 +31,7 @@ public static class JavascriptConverter
         _ => ListToWord(input)
     };
 
-    private static byte[] ListToWord(object input)
-    {
-        byte[] bytes = input.ToBytes();
-        return bytes.Length == EvmPooledMemory.WordSize
-            ? bytes
-            : bytes
-                .Concat(Enumerable.Repeat((byte)0, Math.Max(0, EvmPooledMemory.WordSize - bytes.Length)))
-                .Take(EvmPooledMemory.WordSize).ToArray();
-    }
+    private static byte[] ListToWord(object input) => input.ToBytes().PadLeft(EvmPooledMemory.WordSize);
 
     public static Address ToAddress(this object address) => address switch
     {
@@ -59,8 +51,8 @@ public static class JavascriptConverter
 
     public static IList ToUnTypedScriptArray(this byte[] array) => CurrentEngine.CreateUntypedArray(array);
 
-    public static dynamic ToBigInteger(this BigInteger bigInteger) => CurrentEngine.CreateBigInteger(bigInteger);
-    public static dynamic ToBigInteger(this UInt256 bigInteger) => CurrentEngine.CreateBigInteger((BigInteger)bigInteger);
+    public static IJavaScriptObject ToBigInteger(this BigInteger bigInteger) => CurrentEngine.CreateBigInteger(bigInteger);
+    public static IJavaScriptObject ToBigInteger(this UInt256 bigInteger) => CurrentEngine.CreateBigInteger((BigInteger)bigInteger);
 
 
 

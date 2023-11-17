@@ -115,8 +115,8 @@ public class GethLikeJavascriptTracerTests : VirtualMachineTestsBase
     public void log_contract_functions()
     {
         string userTracer = @"{
-                    retVal: [],
-                    step: function(log, db) { this.retVal.push(log.contract.getAddress() + ':' + log.contract.getCaller() + ':' + log.contract.getInput()) },
+                    retVal: '',
+                    step: function(log, db) { this.retVal = toHex(log.contract.getAddress()) + ':' + toHex(log.contract.getCaller()) + ':' + toHex(log.contract.getInput()) },
                     fault: function(log, db) { this.retVal.push('FAULT: ' + JSON.stringify(log)) },
                     result: function(ctx, db) { return this.retVal }
                 }";
@@ -125,28 +125,18 @@ public class GethLikeJavascriptTracerTests : VirtualMachineTestsBase
                 MStore(),
                 MainnetSpecProvider.CancunActivation)
             .BuildResult().First();
-        string[] expectedStrings =
-        {
-            "148,41,33,177,79,27,28,56,92,215,224,204,46,247,171,229,89,140,131,88:183,112,90,228,198,248,27,102,205,179,35,198,95,78,129,51,105,15,192,153:",
-            "148,41,33,177,79,27,28,56,92,215,224,204,46,247,171,229,89,140,131,88:183,112,90,228,198,248,27,102,205,179,35,198,95,78,129,51,105,15,192,153:",
-            "148,41,33,177,79,27,28,56,92,215,224,204,46,247,171,229,89,140,131,88:183,112,90,228,198,248,27,102,205,179,35,198,95,78,129,51,105,15,192,153:",
-            "148,41,33,177,79,27,28,56,92,215,224,204,46,247,171,229,89,140,131,88:183,112,90,228,198,248,27,102,205,179,35,198,95,78,129,51,105,15,192,153:",
-            "148,41,33,177,79,27,28,56,92,215,224,204,46,247,171,229,89,140,131,88:183,112,90,228,198,248,27,102,205,179,35,198,95,78,129,51,105,15,192,153:",
-            "148,41,33,177,79,27,28,56,92,215,224,204,46,247,171,229,89,140,131,88:183,112,90,228,198,248,27,102,205,179,35,198,95,78,129,51,105,15,192,153:",
-            "148,41,33,177,79,27,28,56,92,215,224,204,46,247,171,229,89,140,131,88:183,112,90,228,198,248,27,102,205,179,35,198,95,78,129,51,105,15,192,153:"
-        };
-        traces.CustomTracerResult?.Value.Should().BeEquivalentTo(expectedStrings);
+        traces.CustomTracerResult?.Value.Should().BeEquivalentTo("942921b14f1b1c385cd7e0cc2ef7abe5598c8358:b7705ae4c6f81b66cdb323c65f4e8133690fc099:");
     }
 
     [Test]
     public void Js_traces_simple_filter()
     {
-        string userTracer = "{" +
-                            "retVal: []," +
-                            "step: function(log, db) { this.retVal.push(log.getPC() + ':' + log.op.toString()) }," +
-                            "fault: function(log, db) { this.retVal.push('FAULT: ' + JSON.stringify(log)) }," +
-                            "result: function(ctx, db) { return this.retVal }" +
-                            "}";
+        string userTracer = @"{
+                                retVal: [],
+                                step: function(log, db) { this.retVal.push(log.getPC() + ':' + log.op.toString()) },
+                                fault: function(log, db) { this.retVal.push('FAULT: ' + JSON.stringify(log)) },
+                                result: function(ctx, db) { return this.retVal }
+                            }";
         ;
 
         GethLikeTxTrace traces = ExecuteBlock(
@@ -345,7 +335,7 @@ public class GethLikeJavascriptTracerTests : VirtualMachineTestsBase
                 MainnetSpecProvider.CancunActivation)
             .BuildResult().First();
 
-        Assert.That(JsonSerializer.Serialize(traces.CustomTracerResult?.Value), Is.EqualTo("{\"942921b14f1b1c385cd7e0cc2ef7abe5598c8358\":{\"balance\":\"0x56bc75e2d63100000\",\"nonce\":0,\"code\":\"60006000600060007376e68a8696537e4141926f3e528733af9e237d6961c350f400\",\"storage\":{}},\"76e68a8696537e4141926f3e528733af9e237d69\":{\"balance\":\"0xde0b6b3a7640000\",\"nonce\":0,\"code\":\"7f7f000000000000000000000000000000000000000000000000000000000000006000527f0060005260036000f30000000000000000000000000000000000000000000000602052602960006000f000\",\"storage\":{}},\"d75a3a95360e44a3874e691fb48d77855f127069\":{\"balance\":\"0x0\",\"nonce\":0,\"code\":\"\",\"storage\":{}},\"b7705ae4c6f81b66cdb323c65f4e8133690fc099\":{\"balance\":\"0x56bc75e2d63100000\",\"nonce\":0,\"code\":\"\",\"storage\":{}}}"));
+        Assert.That(JsonSerializer.Serialize(traces.CustomTracerResult?.Value), Is.EqualTo("{\"942921b14f1b1c385cd7e0cc2ef7abe5598c8358\":{\"balance\":\"0x56bc75e2d63100000\",\"nonce\":0,\"code\":\"60006000600060007376e68a8696537e4141926f3e528733af9e237d6961c350f400\",\"storage\":{}},\"76e68a8696537e4141926f3e528733af9e237d69\":{\"balance\":\"0xde0b6b3a7640000\",\"nonce\":0,\"code\":\"7f7f000000000000000000000000000000000000000000000000000000000000006000527f0060005260036000f30000000000000000000000000000000000000000000000602052602960006000f000\",\"storage\":{}},\"89aa9b2ce05aaef815f25b237238c0b4ffff6ae3\":{\"balance\":\"0x0\",\"nonce\":0,\"code\":\"\",\"storage\":{}},\"b7705ae4c6f81b66cdb323c65f4e8133690fc099\":{\"balance\":\"0x56bc75e2d63100000\",\"nonce\":0,\"code\":\"\",\"storage\":{}}}"));
     }
 
     [Test]

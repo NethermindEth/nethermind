@@ -49,7 +49,7 @@ namespace Nethermind.Evm.Tracing.GethStyle.Javascript
             private readonly TraceStack _items;
             public Stack(TraceStack items) => _items = items;
             public int length() => _items.Count;
-            public dynamic peek(int index) => new BigInteger(_items[^(index + 1)].Span, true, true).ToBigInteger();
+            public IJavaScriptObject peek(int index) => new BigInteger(_items[^(index + 1)].Span, true, true).ToBigInteger();
         }
 
         public class Memory
@@ -71,7 +71,7 @@ namespace Nethermind.Evm.Tracing.GethStyle.Javascript
                     .ToTypedScriptArray();
             }
 
-            public dynamic getUint(int offset) => MemoryTrace.GetUint(offset).ToBigInteger();
+            public IJavaScriptObject getUint(int offset) => MemoryTrace.GetUint(offset).ToBigInteger();
         }
 
         public struct Contract
@@ -97,7 +97,7 @@ namespace Nethermind.Evm.Tracing.GethStyle.Javascript
             public ITypedArray<byte> getAddress() => _addressConverted ??= _address.Bytes.ToTypedScriptArray();
             public ITypedArray<byte> getCaller() => _callerConverted ??= _caller.Bytes.ToTypedScriptArray();
             public object getInput() => (_inputConverted ??= _input?.ToArray().ToTypedScriptArray()) ?? (object)Undefined.Value;
-            public dynamic getValue() => _valueConverted ??= _value.ToBigInteger();
+            public IJavaScriptObject getValue() => _valueConverted ??= _value.ToBigInteger();
         }
     }
 }
