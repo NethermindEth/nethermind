@@ -238,7 +238,7 @@ namespace Nethermind.State
             StorageTree tree = GetOrCreateStorage(storageCell.Address);
 
             Db.Metrics.StorageTreeReads++;
-            byte[] value = tree.Get(storageCell.Index);
+            byte[] value = tree.Get(storageCell.Index, true);
             PushToRegistryOnly(storageCell, value);
             return value;
         }
