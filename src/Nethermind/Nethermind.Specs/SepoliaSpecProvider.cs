@@ -29,7 +29,7 @@ public class SepoliaSpecProvider : ISpecProvider
             TerminalTotalDifficulty = terminalTotalDifficulty;
     }
 
-    public ulong NetworkId => Core.BlockchainIds.Rinkeby;
+    public ulong NetworkId => Core.BlockchainIds.Sepolia;
     public ulong ChainId => NetworkId;
     public long? DaoBlockNumber => null;
     public ForkActivation? MergeBlockNumber { get; private set; } = null;

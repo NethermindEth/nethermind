@@ -88,7 +88,7 @@ namespace Nethermind.Clique.Test
                 MemDb stateDb = new();
                 MemDb codeDb = new();
 
-                ISpecProvider specProvider = RinkebySpecProvider.Instance;
+                ISpecProvider specProvider = GoerliSpecProvider.Instance;
 
                 var trieStore = new TrieStore(stateDb, nodeLogManager);
                 StateReader stateReader = new(trieStore, codeDb, nodeLogManager);

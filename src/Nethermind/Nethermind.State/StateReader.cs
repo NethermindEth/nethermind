@@ -64,6 +64,13 @@ namespace Nethermind.State
             _state.Accept(treeVisitor, rootHash, visitingOptions);
         }
 
+        public bool HasStateForRoot(Hash256 stateRoot)
+        {
+            RootCheckVisitor visitor = new();
+            RunTreeVisitor(visitor, stateRoot);
+            return visitor.HasRoot;
+        }
+
         public byte[] GetCode(Hash256 stateRoot, Address address)
         {
             Account? account = GetState(stateRoot, address);

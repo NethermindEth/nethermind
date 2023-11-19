@@ -12,8 +12,6 @@ namespace Nethermind.Evm.Test
     [TestFixture]
     public class CoinbaseTests : VirtualMachineTestsBase
     {
-        protected override long BlockNumber => RinkebySpecProvider.SpuriousDragonBlockNumber;
-
         private bool _setAuthor;
 
         protected override Block BuildBlock(ForkActivation activation, SenderRecipientAndMiner senderRecipientAndMiner, Transaction transaction, long blockGasLimit = DefaultBlockGasLimit, ulong exessBlobGas = 0)

@@ -27,6 +27,7 @@ using System.Threading;
 using Nethermind.HealthChecks;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs.ChainSpecStyle;
+using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Optimism;
 
@@ -149,28 +150,17 @@ public class OptimismPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitial
             _api.LogManager);
         _api.Pivot = _beaconPivot;
 
-        SyncReport syncReport = new(
-            _api.SyncPeerPool,
-            _api.NodeStatsManager,
-            _api.SyncModeSelector,
-            _syncConfig,
-            _beaconPivot,
-            _api.LogManager);
-
-        _api.BlockDownloaderFactory = new MergeBlockDownloaderFactory(
+        MergeBlockDownloaderFactory blockDownloaderFactory = new MergeBlockDownloaderFactory(
             _api.PoSSwitcher,
             _beaconPivot,
             _api.SpecProvider,
-            _api.BlockTree,
-            _api.ReceiptStorage!,
             _api.BlockValidator!,
             _api.SealValidator!,
-            _api.SyncPeerPool,
             _syncConfig,
             _api.BetterPeerStrategy!,
-            syncReport,
-            _api.SyncProgressResolver,
+            new FullStateFinder(_api.BlockTree, _api.DbProvider.StateDb, _api.TrieStore!.AsReadOnly()),
             _api.LogManager);
+
         _api.Synchronizer = new MergeSynchronizer(
             _api.DbProvider,
             _api.SpecProvider!,
@@ -178,17 +168,19 @@ public class OptimismPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitial
             _api.ReceiptStorage!,
             _api.SyncPeerPool,
             _api.NodeStatsManager!,
-            _api.SyncModeSelector,
             _syncConfig,
-            _api.SnapProvider,
-            _api.BlockDownloaderFactory,
-            _api.Pivot,
+            blockDownloaderFactory,
+            _beaconPivot,
             _api.PoSSwitcher,
             _mergeConfig,
             _invalidChainTracker,
             _api.ProcessExit!,
-            _api.LogManager,
-            syncReport);
+            _api.ReadOnlyTrieStore!,
+            _api.BetterPeerStrategy,
+            _api.ChainSpec,
+            _beaconSync,
+            _api.LogManager
+        );
 
         return Task.CompletedTask;
     }

@@ -197,7 +197,6 @@ namespace Nethermind.Core.Test
         {
             _ = KnownAddresses.GoerliValidators;
             _ = KnownAddresses.KnownMiners;
-            _ = KnownAddresses.RinkebyValidators;
         }
     }
 }

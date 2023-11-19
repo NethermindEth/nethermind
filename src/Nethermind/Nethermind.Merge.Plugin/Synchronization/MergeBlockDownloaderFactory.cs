@@ -23,63 +23,53 @@ namespace Nethermind.Merge.Plugin.Synchronization
         private readonly IPoSSwitcher _poSSwitcher;
         private readonly IBeaconPivot _beaconPivot;
         private readonly ISpecProvider _specProvider;
-        private readonly IBlockTree _blockTree;
-        private readonly IReceiptStorage _receiptStorage;
         private readonly IBlockValidator _blockValidator;
         private readonly ISealValidator _sealValidator;
-        private readonly ISyncPeerPool _syncPeerPool;
         private readonly IBetterPeerStrategy _betterPeerStrategy;
         private readonly ILogManager _logManager;
-        private readonly ISyncReport _syncReport;
-        private readonly ISyncProgressResolver _syncProgressResolver;
-        private readonly IChainLevelHelper _chainLevelHelper;
+        private readonly IFullStateFinder _fullStateFinder;
+        private readonly ISyncConfig _syncConfig;
 
         public MergeBlockDownloaderFactory(
             IPoSSwitcher poSSwitcher,
             IBeaconPivot beaconPivot,
             ISpecProvider specProvider,
-            IBlockTree blockTree,
-            IReceiptStorage receiptStorage,
             IBlockValidator blockValidator,
             ISealValidator sealValidator,
-            ISyncPeerPool peerPool,
             ISyncConfig syncConfig,
             IBetterPeerStrategy betterPeerStrategy,
-            ISyncReport syncReport,
-            ISyncProgressResolver syncProgressResolver,
+            IFullStateFinder fullStateFinder,
             ILogManager logManager)
         {
             _poSSwitcher = poSSwitcher ?? throw new ArgumentNullException(nameof(poSSwitcher));
             _beaconPivot = beaconPivot ?? throw new ArgumentNullException(nameof(beaconPivot));
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
-            _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
-            _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
             _blockValidator = blockValidator ?? throw new ArgumentNullException(nameof(blockValidator));
             _sealValidator = sealValidator ?? throw new ArgumentNullException(nameof(sealValidator));
-            _syncPeerPool = peerPool ?? throw new ArgumentNullException(nameof(peerPool));
             _betterPeerStrategy = betterPeerStrategy ?? throw new ArgumentNullException(nameof(betterPeerStrategy));
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
-            _syncReport = syncReport ?? throw new ArgumentNullException(nameof(syncReport));
-            _chainLevelHelper = new ChainLevelHelper(_blockTree, _beaconPivot, syncConfig, _logManager);
-            _syncProgressResolver = syncProgressResolver ?? throw new ArgumentNullException(nameof(syncProgressResolver)); ;
+            _fullStateFinder = fullStateFinder ?? throw new ArgumentNullException(nameof(fullStateFinder)); ;
+            _syncConfig = syncConfig ?? throw new ArgumentNullException(nameof(syncConfig)); ;
         }
 
-        public BlockDownloader Create(ISyncFeed<BlocksRequest?> syncFeed)
+        public BlockDownloader Create(ISyncFeed<BlocksRequest?> syncFeed, IBlockTree blockTree, IReceiptStorage receiptStorage,
+            ISyncPeerPool syncPeerPool, ISyncReport syncReport)
         {
+            ChainLevelHelper chainLevelHelper = new ChainLevelHelper(blockTree, _beaconPivot, _syncConfig, _logManager);
             return new MergeBlockDownloader(
                 _poSSwitcher,
                 _beaconPivot,
                 syncFeed,
-                _syncPeerPool,
-                _blockTree,
+                syncPeerPool,
+                blockTree,
                 _blockValidator,
                 _sealValidator,
-                _syncReport,
-                _receiptStorage,
+                syncReport,
+                receiptStorage,
                 _specProvider,
                 _betterPeerStrategy,
-                _chainLevelHelper,
-                _syncProgressResolver,
+                chainLevelHelper,
+                _fullStateFinder,
                 _logManager);
         }
 
