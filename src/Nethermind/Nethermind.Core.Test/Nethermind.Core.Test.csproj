@@ -36,7 +36,6 @@
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
     <None Remove="Specs\hive.json" />
-    <None Remove="Specs\rinkeby.json" />
     <None Update="TestFiles\BaseFeeTestCases.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>

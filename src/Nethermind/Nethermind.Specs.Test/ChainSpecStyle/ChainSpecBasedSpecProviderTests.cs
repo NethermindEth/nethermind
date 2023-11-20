@@ -175,35 +175,6 @@ public class ChainSpecBasedSpecProviderTests
     }
 
     [Test]
-    public void Rinkeby_loads_properly()
-    {
-        ChainSpecLoader loader = new(new EthereumJsonSerializer());
-        string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, "../../../../Chains/rinkeby.json");
-        ChainSpec chainSpec = loader.Load(File.ReadAllText(path));
-        chainSpec.Parameters.Eip2537Transition.Should().BeNull();
-
-        ChainSpecBasedSpecProvider provider = new(chainSpec);
-        RinkebySpecProvider rinkeby = RinkebySpecProvider.Instance;
-
-        List<ForkActivation> forkActivationsToTest = new()
-        {
-            (ForkActivation)RinkebySpecProvider.ByzantiumBlockNumber,
-            (ForkActivation)(RinkebySpecProvider.ConstantinopleFixBlockNumber - 1),
-            (ForkActivation)RinkebySpecProvider.ConstantinopleFixBlockNumber,
-            (ForkActivation)(RinkebySpecProvider.IstanbulBlockNumber - 1),
-            (ForkActivation)RinkebySpecProvider.IstanbulBlockNumber,
-            (ForkActivation)(RinkebySpecProvider.BerlinBlockNumber - 1),
-            (ForkActivation)RinkebySpecProvider.BerlinBlockNumber,
-            (ForkActivation)(RinkebySpecProvider.LondonBlockNumber - 1),
-            (ForkActivation)RinkebySpecProvider.LondonBlockNumber,
-            (ForkActivation)120_000_000, // far in the future
-        };
-
-        CompareSpecProviders(rinkeby, provider, forkActivationsToTest);
-        Assert.That(provider.GenesisSpec.Eip1559TransitionBlock, Is.EqualTo(RinkebySpecProvider.LondonBlockNumber));
-    }
-
-    [Test]
     public void Goerli_loads_properly()
     {
         ChainSpec chainSpec = LoadChainSpecFromChainFolder("goerli");
