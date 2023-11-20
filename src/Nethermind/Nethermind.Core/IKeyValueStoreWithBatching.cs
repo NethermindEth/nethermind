@@ -7,7 +7,7 @@ namespace Nethermind.Core
 {
     public interface IKeyValueStoreWithBatching : IKeyValueStore
     {
-        IBatch StartBatch();
+        IWriteBatch StartWriteBatch();
         void DeleteByRange(Span<byte> startKey, Span<byte> endKey);
     }
 }

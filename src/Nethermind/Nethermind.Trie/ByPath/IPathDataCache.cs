@@ -8,15 +8,16 @@ using System.Text;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Db;
 
 namespace Nethermind.Trie.ByPath;
 public interface IPathDataCache
 {
-    void OpenContext(long blockNumber, Keccak parentStateRoot);
-    void CloseContext(long blockNumber, Keccak newStateRoot);
+    void OpenContext(long blockNumber, Hash256 parentStateRoot);
+    void CloseContext(long blockNumber, Hash256 newStateRoot);
     void AddNodeData(long blockNuber, TrieNode node);
-    NodeData? GetNodeDataAtRoot(Keccak? rootHash, Span<byte> path);
-    NodeData? GetNodeData(Span<byte> path, Keccak? hash);
-    bool PersistUntilBlock(long blockNumber, Keccak rootHash, IBatch? batch = null);
+    NodeData? GetNodeDataAtRoot(Hash256? rootHash, Span<byte> path);
+    NodeData? GetNodeData(Span<byte> path, Hash256? hash);
+    bool PersistUntilBlock(long blockNumber, Hash256 rootHash, IColumnsWriteBatch<StateColumns>? batch = null);
     void AddRemovedPrefix(long blockNumber, ReadOnlySpan<byte> keyPrefix);
 }

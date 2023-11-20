@@ -71,7 +71,7 @@ namespace Nethermind.Store.Test
             stateTree.Set(TestItem.AddressA, account);
             stateTree.Commit(0);
 
-            Keccak rootHash = stateTree.RootHash;
+            Hash256 rootHash = stateTree.RootHash;
             stateTree.RootHash = null;
 
             stateTree.RootHash = rootHash;
@@ -91,16 +91,19 @@ namespace Nethermind.Store.Test
         [TestCase(false, true)]
         public void Commit_with_skip_root_should_skip_root(bool skipRoot, bool hasRoot)
         {
-            MemColumnsDb<StateColumns> db = new();
-            ITrieStore trieStore = _resolverCapability.CreateTrieStore(db, LimboLogs.Instance);
+            ITrieStore trieStore = _resolverCapability switch
+            {
+                TrieNodeResolverCapability.Hash => new TrieStore(new MemDb(), LimboLogs.Instance),
+                TrieNodeResolverCapability.Path => new TrieStoreByPath(new MemColumnsDb<StateColumns>(), LimboLogs.Instance),
+                _ => throw new Exception()
+            };
             Account account = new(1);
 
-            ITrieStore storagerTrieStore = _resolverCapability.CreateTrieStore(db, LimboLogs.Instance);
-
             IStateTree stateTree = _resolverCapability.CreateStateStore(trieStore, LimboLogs.Instance);
+
             stateTree.Set(TestItem.AddressA, account);
             stateTree.UpdateRootHash();
-            Keccak stateRoot = stateTree.RootHash;
+            Hash256 stateRoot = stateTree.RootHash;
             stateTree.Commit(0, skipRoot);
 
             switch (_resolverCapability)

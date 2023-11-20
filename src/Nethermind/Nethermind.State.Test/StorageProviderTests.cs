@@ -189,7 +189,7 @@ namespace Nethermind.Store.Test
             ctx.StateProvider.CommitTree(0);
 
             // block 2
-            Keccak stateRoot = ctx.StateProvider.StateRoot;
+            Hash256 stateRoot = ctx.StateProvider.StateRoot;
             storageProvider.Set(new StorageCell(ctx.Address1, 1), _values[2]);
             storageProvider.Commit(Frontier.Instance);
             ctx.StateProvider.Commit(Frontier.Instance);

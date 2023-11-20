@@ -91,7 +91,7 @@ public class GethLikeBlockFileTracer : BlockTracerBase<GethLikeTxTrace, GethLike
 
     private void DumpTraceEntry(GethTxFileTraceEntry entry) => JsonSerializer.Serialize(_jsonWriter, entry, _serializerOptions);
 
-    private string GetFileName(Keccak txHash)
+    private string GetFileName(Hash256 txHash)
     {
         var hash = txHash.Bytes[..4].ToHexString(true);
         var index = 0;

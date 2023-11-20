@@ -10,8 +10,8 @@ namespace Nethermind.Core
     {
         public static Account TotallyEmpty = new();
 
-        private readonly Keccak? _codeHash;
-        private readonly Keccak? _storageRoot;
+        private readonly Hash256? _codeHash;
+        private readonly Hash256? _storageRoot;
 
         public Account(in UInt256 balance)
         {
@@ -37,7 +37,7 @@ namespace Nethermind.Core
             Balance = default;
         }
 
-        public Account(in UInt256 nonce, in UInt256 balance, Keccak storageRoot, Keccak codeHash)
+        public Account(in UInt256 nonce, in UInt256 balance, Hash256 storageRoot, Hash256 codeHash)
         {
             _codeHash = codeHash == Keccak.OfAnEmptyString ? null : codeHash;
             _storageRoot = storageRoot == Keccak.EmptyTreeHash ? null : storageRoot;
@@ -45,7 +45,7 @@ namespace Nethermind.Core
             Balance = balance;
         }
 
-        private Account(Account account, Keccak? storageRoot)
+        private Account(Account account, Hash256? storageRoot)
         {
             _codeHash = account._codeHash;
             _storageRoot = storageRoot == Keccak.EmptyTreeHash ? null : storageRoot;
@@ -53,7 +53,7 @@ namespace Nethermind.Core
             Balance = account.Balance;
         }
 
-        private Account(Keccak? codeHash, Account account)
+        private Account(Hash256? codeHash, Account account)
         {
             _codeHash = codeHash == Keccak.OfAnEmptyString ? null : codeHash;
             _storageRoot = account._storageRoot;
@@ -75,8 +75,8 @@ namespace Nethermind.Core
 
         public UInt256 Nonce { get; }
         public UInt256 Balance { get; }
-        public Keccak StorageRoot => _storageRoot ?? Keccak.EmptyTreeHash;
-        public Keccak CodeHash => _codeHash ?? Keccak.OfAnEmptyString;
+        public Hash256 StorageRoot => _storageRoot ?? Keccak.EmptyTreeHash;
+        public Hash256 CodeHash => _codeHash ?? Keccak.OfAnEmptyString;
         public bool IsTotallyEmpty => _storageRoot is null && IsEmpty;
         public bool IsEmpty => _codeHash is null && Balance.IsZero && Nonce.IsZero;
         public bool IsContract => _codeHash is not null;
@@ -91,12 +91,12 @@ namespace Nethermind.Core
             return new(this, newNonce, Balance);
         }
 
-        public Account WithChangedStorageRoot(Keccak newStorageRoot)
+        public Account WithChangedStorageRoot(Hash256 newStorageRoot)
         {
             return new(this, newStorageRoot);
         }
 
-        public Account WithChangedCodeHash(Keccak newCodeHash)
+        public Account WithChangedCodeHash(Hash256 newCodeHash)
         {
             return new(newCodeHash, this);
         }

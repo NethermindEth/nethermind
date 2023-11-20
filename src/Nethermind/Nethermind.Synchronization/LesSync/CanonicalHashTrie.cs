@@ -12,6 +12,7 @@ using Nethermind.Logging;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Trie;
+using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Synchronization.LesSync
 {
@@ -23,12 +24,12 @@ namespace Nethermind.Synchronization.LesSync
         private static readonly byte[] MaxSectionKey = Encoding.ASCII.GetBytes("MaxSection");
 
         public CanonicalHashTrie(IKeyValueStoreWithBatching db)
-            : base(db, GetMaxRootHash(db), true, true, NullLogManager.Instance)
+            : base(new TrieStore(db, NullLogManager.Instance), GetMaxRootHash(db), true, true, NullLogManager.Instance)
         {
         }
 
-        public CanonicalHashTrie(IKeyValueStoreWithBatching db, Keccak rootHash)
-            : base(db, rootHash, true, true, NullLogManager.Instance)
+        public CanonicalHashTrie(IKeyValueStoreWithBatching db, Hash256 rootHash)
+            : base(new TrieStore(db, NullLogManager.Instance), rootHash, true, true, NullLogManager.Instance)
         {
         }
 
@@ -78,13 +79,13 @@ namespace Nethermind.Synchronization.LesSync
             return storeValue?.ToLongFromBigEndianByteArrayWithoutLeadingZeros() ?? -1L;
         }
 
-        private static Keccak GetRootHash(IKeyValueStore db, long sectionIndex)
+        private static Hash256 GetRootHash(IKeyValueStore db, long sectionIndex)
         {
             byte[]? hash = db[GetRootHashKey(sectionIndex)];
-            return hash == null ? EmptyTreeHash : new Keccak(hash);
+            return hash == null ? EmptyTreeHash : new Hash256(hash);
         }
 
-        private static Keccak GetMaxRootHash(IKeyValueStore db)
+        private static Hash256 GetMaxRootHash(IKeyValueStore db)
         {
             long maxSection = GetMaxSectionIndex(db);
             return maxSection == 0L ? EmptyTreeHash : GetRootHash(db, maxSection);
@@ -95,12 +96,12 @@ namespace Nethermind.Synchronization.LesSync
             Set(GetKey(header), GetValue(header));
         }
 
-        public (Keccak?, UInt256) Get(long key)
+        public (Hash256?, UInt256) Get(long key)
         {
             return Get(GetKey(key));
         }
 
-        public (Keccak?, UInt256) Get(Span<byte> key)
+        public (Hash256?, UInt256) Get(Span<byte> key)
         {
             byte[]? val = base.Get(key);
             if (val == null)
@@ -133,7 +134,7 @@ namespace Nethermind.Synchronization.LesSync
                 throw new ArgumentException("Trying to use a header with a null total difficulty in LES Canonical Hash Trie");
             }
 
-            (Keccak? Hash, UInt256 Value) item = (header.Hash, header.TotalDifficulty.Value);
+            (Hash256? Hash, UInt256 Value) item = (header.Hash, header.TotalDifficulty.Value);
             RlpStream stream = new(_decoder.GetLength(item, RlpBehaviors.None));
             _decoder.Encode(stream, item);
             return new Rlp(stream.Data);

@@ -11,14 +11,14 @@ namespace Nethermind.Evm.Tracing;
 
 public abstract class BlockTracerBase<TTrace, TTracer> : IBlockTracer where TTracer : class, ITxTracer
 {
-    private readonly Keccak? _txHash;
+    private readonly Hash256? _txHash;
 
     protected BlockTracerBase()
     {
         TxTraces = new ResettableList<TTrace>();
     }
 
-    protected BlockTracerBase(Keccak? txHash)
+    protected BlockTracerBase(Hash256? txHash)
     {
         _txHash = txHash;
         TxTraces = new ResettableList<TTrace>();

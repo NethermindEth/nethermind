@@ -37,7 +37,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
 
         public byte[]? Output { get; set; }
 
-        public Keccak? TransactionHash { get; set; }
+        public Hash256? TransactionHash { get; set; }
 
         public ParityVmTrace? VmTrace { get; set; }
 

@@ -46,7 +46,7 @@ public class PathDataCacheTests
         TrieNode node = CreateResolvedLeaf(path1, 160.ToByteArray(), 60);
         node.ResolveKey(NullTrieNodeResolver.Instance, false);
 
-        Keccak expectedKeccak = node.Keccak;
+        Hash256 expectedKeccak = node.Keccak;
 
         cache.AddNodeData(1, node);
         cache.AddNodeData(1, new TrieNode(NodeType.Branch, path: Nibbles.BytesToNibbleBytes(Bytes.FromHexString("0x000000000000000000000000000000000000000000000000000000000000123")), Array.Empty<byte>()));

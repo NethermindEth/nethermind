@@ -3,9 +3,11 @@
 
 using System;
 using System.Collections.Concurrent;
+using System.Data.Common;
 using System.Diagnostics;
 using System.Linq;
 using System.Threading;
+using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -26,7 +28,8 @@ namespace Nethermind.Trie.Pruning
         private const byte PathMarker = 128;
 
         private int _isFirst;
-        private ConcurrentDictionary<StateColumns, IBatch?> _currentBatches = null;
+        //private ConcurrentDictionary<StateColumns, IBatch?> _currentBatches = null;
+        private IColumnsWriteBatch<StateColumns>? _currentBatch = null;
         //private readonly ConcurrentDictionary<StateColumns, IPathTrieNodeCache> _committedNodes = null;
         private readonly ConcurrentDictionary<StateColumns, IPathDataCache> _committedNodes = null;
         private readonly IPersistenceStrategy _persistenceStrategy;
@@ -39,12 +42,12 @@ namespace Nethermind.Trie.Pruning
         private readonly TrieKeyValueStore _publicStore;
 
         public TrieStoreByPath(
-        IKeyValueStoreWithBatching stateDb,
+        IColumnsDb<StateColumns> stateDb,
         IPersistenceStrategy? persistenceStrategy,
         ILogManager? logManager)
         {
             _logger = logManager?.GetClassLogger<TrieStore>() ?? throw new ArgumentNullException(nameof(logManager));
-            _stateDb = stateDb as IColumnsDb<StateColumns> ?? throw new ArgumentNullException(nameof(stateDb));
+            _stateDb = stateDb ?? throw new ArgumentNullException(nameof(stateDb));
             _persistenceStrategy = persistenceStrategy ?? throw new ArgumentNullException(nameof(persistenceStrategy));
             _useCommittedCache = !(_persistenceStrategy is Archive);
             //_committedNodes = new ConcurrentDictionary<StateColumns, IPathTrieNodeCache>();
@@ -56,13 +59,13 @@ namespace Nethermind.Trie.Pruning
             _committedNodes.TryAdd(StateColumns.Storage, new PathDataCache(this, logManager));
             _destroyPrefixes = new ConcurrentQueue<byte[]>();
             _pathStateDb = stateDb as IByPathStateDb;
-            _currentBatches = new ConcurrentDictionary<StateColumns, IBatch?>();
-            _currentBatches.TryAdd(StateColumns.State, null);
-            _currentBatches.TryAdd(StateColumns.Storage, null);
+            //_currentBatches = new ConcurrentDictionary<StateColumns, IWriteBatch?>();
+            //_currentBatches.TryAdd(StateColumns.State, null);
+            //_currentBatches.TryAdd(StateColumns.Storage, null);
             _publicStore = new TrieKeyValueStore(this);
         }
 
-        public TrieStoreByPath(IKeyValueStoreWithBatching stateDb, ILogManager? logManager) : this(stateDb, Pruning.Persist.EveryBlock, logManager)
+        public TrieStoreByPath(IColumnsDb<StateColumns> stateDb, ILogManager? logManager) : this(stateDb, Pruning.Persist.EveryBlock, logManager)
         {
         }
 
@@ -198,11 +201,6 @@ namespace Nethermind.Trie.Pruning
             }
             finally
             {
-                foreach (StateColumns column in Enum.GetValues(typeof(StateColumns)))
-                {
-                    _currentBatches[column]?.Dispose();
-                    _currentBatches[column] = null;
-                }
             }
         }
 
@@ -215,20 +213,20 @@ namespace Nethermind.Trie.Pruning
             StateColumns column = GetProperColumn(path.Length);
 
             byte[] keyPath = Nibbles.NibblesToByteStorage(path);
-            byte[]? rlp = _currentBatches[column]?[keyPath] ?? keyValueStore[keyPath];
+            byte[]? rlp = keyValueStore[keyPath];
             if (rlp is null || rlp[0] != PathMarker)
                 return rlp;
 
-            rlp = _currentBatches[column]?[rlp.AsSpan()[1..]] ?? keyValueStore[rlp.AsSpan()[1..]];
+            rlp = keyValueStore[rlp.AsSpan()[1..]];
             return rlp;
         }
 
-        internal byte[] LoadRlp(Keccak keccak, IKeyValueStore? keyValueStore, ReadFlags flags = ReadFlags.None)
+        internal byte[] LoadRlp(Hash256 keccak, IKeyValueStore? keyValueStore, ReadFlags flags = ReadFlags.None)
         {
             return Array.Empty<byte>();
         }
 
-        private byte[] LoadRlp(Span<byte> path, IKeyValueStore? keyValueStore, Keccak rootHash = null)
+        private byte[] LoadRlp(Span<byte> path, IKeyValueStore? keyValueStore, Hash256 rootHash = null)
         {
             byte[]? rlp = TryLoadRlp(path, keyValueStore);
 
@@ -242,20 +240,20 @@ namespace Nethermind.Trie.Pruning
             return rlp;
         }
 
-        public byte[] LoadRlp(Keccak keccak, ReadFlags flags = ReadFlags.None) => LoadRlp(keccak, null, flags);
-        public byte[] LoadRlp(Span<byte> path, Keccak rootHash) => LoadRlp(path, null, rootHash);
+        public byte[] LoadRlp(Hash256 keccak, ReadFlags flags = ReadFlags.None) => LoadRlp(keccak, null, flags);
+        public byte[] LoadRlp(Span<byte> path, Hash256 rootHash) => LoadRlp(path, null, rootHash);
 
-        public bool IsPersisted(Keccak keccak)
+        public bool IsPersisted(Hash256 keccak)
         {
-            throw new InvalidOperationException("IsPersisted using Keccak has is not supported by path based storage");
+            throw new InvalidOperationException("IsPersisted using Hash256 has is not supported by path based storage");
         }
 
-        public bool IsPersisted(in ValueKeccak keccak)
+        public bool IsPersisted(in ValueHash256 keccak)
         {
-            throw new InvalidOperationException("IsPersisted using Keccak has is not supported by path based storage");
+            throw new InvalidOperationException("IsPersisted using Hash256 has is not supported by path based storage");
         }
 
-        public bool IsPersisted(Keccak keccak, byte[] childPath)
+        public bool IsPersisted(Hash256 keccak, byte[] childPath)
         {
             byte[]? rlp = TryLoadRlp(childPath, GetProperColumnDb(childPath.Length));
             if (rlp is null) return false;
@@ -274,12 +272,12 @@ namespace Nethermind.Trie.Pruning
             return new ReadOnlyTrieStoreByPath(this, keyValueStore);
         }
 
-        public TrieNode FindCachedOrUnknown(Keccak keccak)
+        public TrieNode FindCachedOrUnknown(Hash256 keccak)
         {
             return new TrieNode(NodeType.Unknown, keccak);
         }
 
-        public TrieNode? FindCachedOrUnknown(Keccak keccak, Span<byte> nodePath, Span<byte> storagePrefix)
+        public TrieNode? FindCachedOrUnknown(Hash256 keccak, Span<byte> nodePath, Span<byte> storagePrefix)
         {
             StateColumns column = storagePrefix.Length == 0 ? StateColumns.State : StateColumns.Storage;
 
@@ -302,7 +300,7 @@ namespace Nethermind.Trie.Pruning
             return node;
         }
 
-        public TrieNode? FindCachedOrUnknown(Span<byte> nodePath, byte[] storagePrefix, Keccak? rootHash)
+        public TrieNode? FindCachedOrUnknown(Span<byte> nodePath, byte[] storagePrefix, Hash256? rootHash)
         {
             StateColumns column = storagePrefix.Length == 0 ? StateColumns.State : StateColumns.Storage;
 
@@ -395,10 +393,10 @@ namespace Nethermind.Trie.Pruning
 
                 if (_logger.IsTrace) _logger.Trace($"Persist target {persistUntilBlock} | persisting {frontSet.BlockNumber} / {frontSet.Root?.Keccak}");
 
+                _currentBatch ??= _stateDb.StartWriteBatch();
                 foreach (StateColumns column in Enum.GetValues(typeof(StateColumns)))
                 {
-                    _currentBatches[column] ??= _stateDb.GetColumnDb(column).StartBatch();
-                    _committedNodes[column].PersistUntilBlock(persistUntilBlock, frontSet?.Root?.Keccak ?? Keccak.EmptyTreeHash, _currentBatches[column]);
+                    _committedNodes[column].PersistUntilBlock(persistUntilBlock, frontSet?.Root?.Keccak ?? Keccak.EmptyTreeHash, _currentBatch);
                 }
 
                 LastPersistedBlockNumber = frontSet.BlockNumber;
@@ -408,13 +406,7 @@ namespace Nethermind.Trie.Pruning
             }
             finally
             {
-                // For safety we prefer to commit half of the batch rather than not commit at all.
-                // Generally hanging nodes are not a problem in the DB but anything missing from the DB is.
-                foreach (StateColumns column in Enum.GetValues(typeof(StateColumns)))
-                {
-                    _currentBatches[column]?.Dispose();
-                    _currentBatches[column] = null;
-                }
+                _currentBatch?.Dispose();
             }
 
             PruneCurrentSet();
@@ -423,7 +415,7 @@ namespace Nethermind.Trie.Pruning
         private void Persist(TrieNode currentNode, long blockNumber, WriteFlags writeFlags = WriteFlags.None)
         {
             StateColumns column = GetProperColumn(currentNode);
-            _currentBatches[column] ??= _stateDb.GetColumnDb(column).StartBatch();
+            _currentBatch ??= _stateDb.StartWriteBatch();
             if (currentNode is null)
             {
                 throw new ArgumentNullException(nameof(currentNode));
@@ -436,7 +428,7 @@ namespace Nethermind.Trie.Pruning
 
             if (_logger.IsTrace) _logger.Trace($"Persisting {nameof(TrieNode)} {currentNode} in snapshot {blockNumber}.");
 
-            PersistNode(currentNode, _currentBatches[column]);
+            PersistNode(currentNode, _currentBatch);
 
             currentNode.IsPersisted = true;
             currentNode.LastSeen = Math.Max(blockNumber, currentNode.LastSeen ?? 0);
@@ -539,9 +531,9 @@ namespace Nethermind.Trie.Pruning
 
         #endregion
 
-        public void PersistNode(TrieNode trieNode, IKeyValueStore? keyValueStore = null, bool withDelete = false, WriteFlags writeFlags = WriteFlags.None)
+        public void PersistNode(TrieNode trieNode, IColumnsWriteBatch<StateColumns>? batch = null, bool withDelete = false, WriteFlags writeFlags = WriteFlags.None)
         {
-            keyValueStore ??= GetProperColumnDb(trieNode.FullPath.Length);
+            StateColumns column = GetProperColumn(trieNode.FullPath.Length);
 
             byte[] fullPath = trieNode.FullPath ?? throw new ArgumentNullException();
             byte[] pathBytes = Nibbles.NibblesToByteStorage(fullPath);
@@ -558,7 +550,7 @@ namespace Nethermind.Trie.Pruning
 
                 if (trieNode.FullRlp.IsNull)
                 {
-                    keyValueStore.Set(pathToNodeBytes, null, writeFlags);
+                    batch.GetColumnBatch(column).Set(pathToNodeBytes, null, writeFlags);
                 }
                 else
                 {
@@ -567,7 +559,7 @@ namespace Nethermind.Trie.Pruning
                         byte[] newPath = new byte[pathBytes.Length + 1];
                         Array.Copy(pathBytes, 0, newPath, 1, pathBytes.Length);
                         newPath[0] = PathMarker;
-                        keyValueStore.Set(pathToNodeBytes, newPath, writeFlags);
+                        batch.GetColumnBatch(column).Set(pathToNodeBytes, newPath, writeFlags);
 
                         if (withDelete)
                             RequestDeletionForLeaf(pathToNodeNibbles, trieNode.FullPath);
@@ -590,12 +582,12 @@ namespace Nethermind.Trie.Pruning
                 }
             }
 
-            keyValueStore.Set(pathBytes, trieNode.FullRlp.ToArray(), writeFlags);
+            batch.GetColumnBatch(column).Set(pathBytes, trieNode.FullRlp.ToArray(), writeFlags);
         }
 
-        public void PersistNodeData(Span<byte> fullPath, int pathToNodeLength, byte[]? rlpData, IKeyValueStore? keyValueStore = null, WriteFlags writeFlags = WriteFlags.None)
+        public void PersistNodeData(Span<byte> fullPath, int pathToNodeLength, byte[]? rlpData, IColumnsWriteBatch<StateColumns>? batch = null, WriteFlags writeFlags = WriteFlags.None)
         {
-            keyValueStore ??= GetProperColumnDb(fullPath.Length);
+            StateColumns column = GetProperColumn(fullPath.Length);
             int pathToNodeIndexWithPrefix = fullPath.Length >= 66 ? pathToNodeLength + 66 : pathToNodeLength;
 
             byte[] pathBytes = Nibbles.NibblesToByteStorage(fullPath);
@@ -610,7 +602,7 @@ namespace Nethermind.Trie.Pruning
 
                 if (rlpData is null)
                 {
-                    keyValueStore.Set(pathToNodeBytes, null, writeFlags);
+                    batch.GetColumnBatch(column).Set(pathToNodeBytes, null, writeFlags);
                 }
                 else
                 {
@@ -619,15 +611,15 @@ namespace Nethermind.Trie.Pruning
                         Span<byte> newPath = stackalloc byte[pathBytes.Length + 1];
                         newPath[0] = PathMarker;
                         pathBytes.CopyTo(newPath.Slice(1));
-                        keyValueStore.Set(pathToNodeBytes, newPath.ToArray(), writeFlags);
+                        batch.GetColumnBatch(column).Set(pathToNodeBytes, newPath.ToArray(), writeFlags);
                     }
                 }
             }
 
-            keyValueStore.Set(pathBytes, rlpData, writeFlags);
+            batch.GetColumnBatch(column).Set(pathBytes, rlpData, writeFlags);
         }
 
-        public bool ExistsInDB(Keccak hash, byte[] pathNibbles)
+        public bool ExistsInDB(Hash256 hash, byte[] pathNibbles)
         {
             byte[]? rlp = TryLoadRlp(pathNibbles.AsSpan(), GetProperColumnDb(pathNibbles.Length));
             if (rlp is not null)
@@ -647,8 +639,7 @@ namespace Nethermind.Trie.Pruning
 
         public byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
         {
-            StateColumns column = GetProperColumn(key.Length);
-            return _currentBatches[column]?.Get(key, flags) ?? _stateDb.GetColumnDb(column).Get(key, flags);
+            return _stateDb.GetColumnDb(GetProperColumn(key.Length)).Get(key, flags);
         }
 
         /// <summary>
@@ -944,7 +935,7 @@ namespace Nethermind.Trie.Pruning
 
         public IKeyValueStore AsKeyValueStore() => _publicStore;
 
-        public void OpenContext(long blockNumber, Keccak keccak)
+        public void OpenContext(long blockNumber, Hash256 keccak)
         {
             _committedNodes[StateColumns.State].OpenContext(blockNumber, keccak);
             _committedNodes[StateColumns.Storage].OpenContext(blockNumber, keccak);
@@ -962,7 +953,9 @@ namespace Nethermind.Trie.Pruning
             public byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None) => _trieStore.Get(key, flags);
 
             public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None)
-                => _trieStore._stateDb.Set(key, value, flags);
+            { 
+                //_trieStore._stateDb.Set(key, value, flags);
+            }
         }
     }
 }

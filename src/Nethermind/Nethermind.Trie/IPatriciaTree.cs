@@ -9,13 +9,13 @@ namespace Nethermind.Trie;
 
 public interface IPatriciaTree
 {
-    Keccak RootHash { get; set; }
-    Keccak ParentStateRootHash { get; set; }
+    Hash256 RootHash { get; set; }
+    Hash256 ParentStateRootHash { get; set; }
     TrieNode? RootRef { get; set; }
     byte[] StoreNibblePathPrefix { get; }
     void UpdateRootHash();
     void Commit(long blockNumber, bool skipRoot = false, WriteFlags writeFlags = WriteFlags.None);
 
     ITrieStore TrieStore { get; }
-    void Accept(ITreeVisitor visitor, Keccak rootHash, VisitingOptions? visitingOptions = null);
+    void Accept(ITreeVisitor visitor, Hash256 rootHash, VisitingOptions? visitingOptions = null);
 }

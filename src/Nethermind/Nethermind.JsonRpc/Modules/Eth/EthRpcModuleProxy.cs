@@ -101,7 +101,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
         public async Task<ResultWrapper<UInt256>> eth_getTransactionCount(Address address, BlockParameter blockParameter)
             => ResultWrapper<UInt256>.From(await _proxy.eth_getTransactionCount(address, MapBlockParameter(blockParameter)));
 
-        public ResultWrapper<UInt256?> eth_getBlockTransactionCountByHash(Keccak blockHash)
+        public ResultWrapper<UInt256?> eth_getBlockTransactionCountByHash(Hash256 blockHash)
         {
             throw new NotSupportedException();
         }
@@ -111,7 +111,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             throw new NotSupportedException();
         }
 
-        public ResultWrapper<UInt256?> eth_getUncleCountByBlockHash(Keccak blockHash)
+        public ResultWrapper<UInt256?> eth_getUncleCountByBlockHash(Hash256 blockHash)
         {
             throw new NotSupportedException();
         }
@@ -131,7 +131,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             throw new NotSupportedException();
         }
 
-        public async Task<ResultWrapper<Keccak>> eth_sendTransaction(TransactionForRpc rpcTx)
+        public async Task<ResultWrapper<Hash256>> eth_sendTransaction(TransactionForRpc rpcTx)
         {
             Transaction transaction = rpcTx.ToTransactionWithDefaults();
             if (transaction.Signature is null)
@@ -144,11 +144,11 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 _wallet.Sign(transaction, chainId);
             }
 
-            return ResultWrapper<Keccak>.From(await _proxy.eth_sendRawTransaction(Rlp.Encode(transaction).Bytes));
+            return ResultWrapper<Hash256>.From(await _proxy.eth_sendRawTransaction(Rlp.Encode(transaction).Bytes));
         }
 
-        public async Task<ResultWrapper<Keccak>> eth_sendRawTransaction(byte[] transaction)
-            => ResultWrapper<Keccak>.From(await _proxy.eth_sendRawTransaction(Rlp.Encode(transaction).Bytes));
+        public async Task<ResultWrapper<Hash256>> eth_sendRawTransaction(byte[] transaction)
+            => ResultWrapper<Hash256>.From(await _proxy.eth_sendRawTransaction(Rlp.Encode(transaction).Bytes));
 
 
         public ResultWrapper<string> eth_call(TransactionForRpc transactionCall, BlockParameter? blockParameter = null)
@@ -163,12 +163,12 @@ namespace Nethermind.JsonRpc.Modules.Eth
             throw new NotSupportedException();
         }
 
-        public ResultWrapper<AccessListForRpc> eth_createAccessList(TransactionForRpc transactionCall, BlockParameter? blockParameter = null, bool optimize = true)
+        public ResultWrapper<AccessListForRpc?> eth_createAccessList(TransactionForRpc transactionCall, BlockParameter? blockParameter = null, bool optimize = true)
         {
             throw new NotSupportedException();
         }
 
-        public ResultWrapper<BlockForRpc> eth_getBlockByHash(Keccak blockHash, bool returnFullTransactionObjects)
+        public ResultWrapper<BlockForRpc> eth_getBlockByHash(Hash256 blockHash, bool returnFullTransactionObjects)
         {
             throw new NotSupportedException();
         }
@@ -179,7 +179,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             throw new NotSupportedException();
         }
 
-        public async Task<ResultWrapper<TransactionForRpc>> eth_getTransactionByHash(Keccak transactionHash)
+        public async Task<ResultWrapper<TransactionForRpc>> eth_getTransactionByHash(Hash256 transactionHash)
         {
             RpcResult<TransactionModel> result = await _proxy.eth_getTransactionByHash(transactionHash);
             TransactionForRpc? transaction = MapTransaction(result.Result);
@@ -193,7 +193,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             throw new NotSupportedException();
         }
 
-        public ResultWrapper<TransactionForRpc> eth_getTransactionByBlockHashAndIndex(Keccak blockHash,
+        public ResultWrapper<TransactionForRpc> eth_getTransactionByBlockHashAndIndex(Hash256 blockHash,
             UInt256 positionIndex)
         {
             throw new NotSupportedException();
@@ -205,7 +205,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             throw new NotSupportedException();
         }
 
-        public async Task<ResultWrapper<ReceiptForRpc>> eth_getTransactionReceipt(Keccak txHashData)
+        public async Task<ResultWrapper<ReceiptForRpc>> eth_getTransactionReceipt(Hash256 txHashData)
         {
             RpcResult<ReceiptModel> result = await _proxy.eth_getTransactionReceipt(txHashData);
             ReceiptForRpc? receipt = MapReceipt(result.Result);
@@ -215,7 +215,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 : ResultWrapper<ReceiptForRpc>.Success(receipt);
         }
 
-        public ResultWrapper<BlockForRpc> eth_getUncleByBlockHashAndIndex(Keccak blockHashData, UInt256 positionIndex)
+        public ResultWrapper<BlockForRpc> eth_getUncleByBlockHashAndIndex(Hash256 blockHashData, UInt256 positionIndex)
         {
             throw new NotSupportedException();
         }
@@ -266,7 +266,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             throw new NotSupportedException();
         }
 
-        public ResultWrapper<bool?> eth_submitWork(byte[] nonce, Keccak headerPowHash, byte[] mixDigest)
+        public ResultWrapper<bool?> eth_submitWork(byte[] nonce, Hash256 headerPowHash, byte[] mixDigest)
         {
             throw new NotSupportedException();
         }

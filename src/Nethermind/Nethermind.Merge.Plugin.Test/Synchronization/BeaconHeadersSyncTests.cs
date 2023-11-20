@@ -84,7 +84,6 @@ public class BeaconHeadersSyncTests
         private BeaconHeadersSyncFeed? _feed;
         public BeaconHeadersSyncFeed Feed => _feed ??= new BeaconHeadersSyncFeed(
             PoSSwitcher,
-            Selector,
             BlockTree,
             PeerPool,
             SyncConfig,
@@ -94,32 +93,6 @@ public class BeaconHeadersSyncTests
             InvalidChainTracker,
             LimboLogs.Instance
         );
-
-        private MultiSyncModeSelector? _selector;
-        public MultiSyncModeSelector Selector
-        {
-            get
-            {
-                if (_selector is null)
-                {
-                    MemColumnsDb<StateColumns> stateDb = new();
-                    ProgressTracker progressTracker = new(BlockTree, stateDb, LimboLogs.Instance);
-                    SyncProgressResolver syncProgressResolver = new(
-                        BlockTree,
-                        NullReceiptStorage.Instance,
-                        stateDb,
-                        new TrieStoreByPath(stateDb, LimboLogs.Instance),
-                        progressTracker,
-                        SyncConfig,
-                        LimboLogs.Instance);
-                    TotalDifficultyBetterPeerStrategy bestPeerStrategy = new(LimboLogs.Instance);
-                    _selector = new MultiSyncModeSelector(syncProgressResolver, PeerPool, SyncConfig, BeaconSync,
-                        bestPeerStrategy, LimboLogs.Instance);
-                }
-
-                return _selector;
-            }
-        }
 
         private ISyncPeerPool? _peerPool;
         public ISyncPeerPool PeerPool => _peerPool ??= Substitute.For<ISyncPeerPool>();
@@ -320,11 +293,11 @@ public class BeaconHeadersSyncTests
         batch!.Response = syncedBlockTree.FindHeaders(syncedBlockTree.FindHeader(batch.StartNumber, BlockTreeLookupOptions.None)!.Hash, batch.RequestSize, 0, false);
         ctx.Feed.HandleResponse(batch);
 
-        Keccak lastHeader = syncedBlockTree.FindHeader(batch.EndNumber, BlockTreeLookupOptions.None)!.GetOrCalculateHash();
-        Keccak headerToInvalidate = syncedBlockTree.FindHeader(batch.StartNumber + 10, BlockTreeLookupOptions.None)!.GetOrCalculateHash();
-        Keccak lastValidHeader = syncedBlockTree.FindHeader(batch.StartNumber + 9, BlockTreeLookupOptions.None)!.GetOrCalculateHash();
+        Hash256 lastHeader = syncedBlockTree.FindHeader(batch.EndNumber, BlockTreeLookupOptions.None)!.GetOrCalculateHash();
+        Hash256 headerToInvalidate = syncedBlockTree.FindHeader(batch.StartNumber + 10, BlockTreeLookupOptions.None)!.GetOrCalculateHash();
+        Hash256 lastValidHeader = syncedBlockTree.FindHeader(batch.StartNumber + 9, BlockTreeLookupOptions.None)!.GetOrCalculateHash();
         invalidChainTracker.OnInvalidBlock(headerToInvalidate, lastValidHeader);
-        invalidChainTracker.IsOnKnownInvalidChain(lastHeader, out Keccak? storedLastValidHash).Should().BeTrue();
+        invalidChainTracker.IsOnKnownInvalidChain(lastHeader, out Hash256? storedLastValidHash).Should().BeTrue();
         storedLastValidHash.Should().Be(lastValidHeader);
     }
 

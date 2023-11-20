@@ -10,6 +10,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.State.Snap;
 using Nethermind.Synchronization.Trie;
@@ -24,7 +25,7 @@ namespace Nethermind.Synchronization.Test.Trie;
 public class HealingTreeTests
 {
     private static readonly byte[] _rlp = { 3, 4 };
-    private static readonly Keccak _key = Keccak.Compute(_rlp);
+    private static readonly Hash256 _key = Keccak.Compute(_rlp);
 
     [Test]
     public void get_state_tree_works()
@@ -140,14 +141,14 @@ public class HealingTreeTests
 
         public void Dispose() { }
 
-        public bool ExistsInDB(Keccak hash, byte[] nodePathNibbles) => false;
+        public bool ExistsInDB(Hash256 hash, byte[] nodePathNibbles) => false;
 
-        public TrieNode FindCachedOrUnknown(Keccak hash)
+        public TrieNode FindCachedOrUnknown(Hash256 hash)
         {
             return FindCachedOrUnknown(hash, Array.Empty<byte>(), Array.Empty<byte>());
         }
 
-        public TrieNode FindCachedOrUnknown(Keccak hash, Span<byte> nodePath, Span<byte> storagePrefix)
+        public TrieNode FindCachedOrUnknown(Hash256 hash, Span<byte> nodePath, Span<byte> storagePrefix)
         {
             _findCachedOrUnknownCallCount++;
 
@@ -160,7 +161,7 @@ public class HealingTreeTests
             return new TrieNode(NodeType.Unknown, hash);
         }
 
-        public TrieNode? FindCachedOrUnknown(Span<byte> nodePath, byte[] storagePrefix, Keccak? rootHash)
+        public TrieNode? FindCachedOrUnknown(Span<byte> nodePath, byte[] storagePrefix, Hash256? rootHash)
         {
             throw new NotImplementedException();
         }
@@ -171,19 +172,19 @@ public class HealingTreeTests
             ReorgBoundaryReached?.Invoke(this, new ReorgBoundaryReached(blockNumber));
         }
 
-        public bool IsPersisted(in ValueKeccak keccak) => false;
+        public bool IsPersisted(in ValueHash256 keccak) => false;
 
-        public byte[]? LoadRlp(Keccak hash, ReadFlags flags = ReadFlags.None) { return null; }
+        public byte[]? LoadRlp(Hash256 hash, ReadFlags flags = ReadFlags.None) { return null; }
 
-        public byte[]? LoadRlp(Span<byte> nodePath, Keccak? rootHash = null) { return null; }
+        public byte[]? LoadRlp(Span<byte> nodePath, Hash256? rootHash = null) { return null; }
 
         public void MarkPrefixDeleted(long blockNumber, ReadOnlySpan<byte> keyPrefix) { }
 
-        public void OpenContext(long blockNumber, Keccak keccak) { }
+        public void OpenContext(long blockNumber, Hash256 keccak) { }
 
-        public void PersistNode(TrieNode trieNode, IKeyValueStore? batch = null, bool withDelete = false, WriteFlags writeFlags = WriteFlags.None) { }
+        public void PersistNode(TrieNode trieNode, IColumnsWriteBatch<StateColumns>? batch = null, bool withDelete = false, WriteFlags writeFlags = WriteFlags.None) { }
 
-        public void PersistNodeData(Span<byte> fullPath, int pathToNodeLength, byte[]? rlpData, IKeyValueStore? keyValueStore = null, WriteFlags writeFlags = WriteFlags.None) { }
+        public void PersistNodeData(Span<byte> fullPath, int pathToNodeLength, byte[]? rlpData, IColumnsWriteBatch<StateColumns>? batch = null, WriteFlags writeFlags = WriteFlags.None) { }
 
         public byte[]? TryLoadRlp(Span<byte> path, IKeyValueStore? keyValueStore) { return null; }
     }

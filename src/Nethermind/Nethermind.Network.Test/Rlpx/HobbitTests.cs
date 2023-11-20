@@ -62,7 +62,7 @@ namespace Nethermind.Network.Test.Rlpx
         [TestCase(StackType.Zero, StackType.Zero, false)]
         public void Get_block_bodies_there_and_back(StackType inbound, StackType outbound, bool framingEnabled)
         {
-            var hashes = new Keccak[256];
+            var hashes = new Hash256[256];
             for (int i = 0; i < hashes.Length; i++)
             {
                 hashes[i] = Keccak.Compute(i.ToString());
@@ -116,7 +116,7 @@ namespace Nethermind.Network.Test.Rlpx
         [TestCase(StackType.Zero, StackType.Zero, false)]
         public void Receipts_message(StackType inbound, StackType outbound, bool framingEnabled)
         {
-            Keccak[] hashes = new Keccak[256];
+            Hash256[] hashes = new Hash256[256];
             for (int i = 0; i < hashes.Length; i++)
             {
                 hashes[i] = Keccak.Compute(i.ToString());

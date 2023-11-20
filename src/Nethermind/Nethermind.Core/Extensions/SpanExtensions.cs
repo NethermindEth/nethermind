@@ -137,6 +137,13 @@ namespace Nethermind.Core.Extensions
             return result;
         }
 
+        public static ReadOnlySpan<byte> TakeAndMove(this ref ReadOnlySpan<byte> span, int length)
+        {
+            ReadOnlySpan<byte> s = span[..length];
+            span = span[length..];
+            return s;
+        }
+
         public static bool IsNullOrEmpty<T>(this in Span<T> span) => span.Length == 0;
         public static bool IsNull<T>(this in Span<T> span) => Unsafe.IsNullRef(ref MemoryMarshal.GetReference(span));
         public static bool IsNullOrEmpty<T>(this in ReadOnlySpan<T> span) => span.Length == 0;

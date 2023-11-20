@@ -19,22 +19,22 @@ namespace Nethermind.Trie.Pruning
         }
         public TrieNodeResolverCapability Capability => TrieNodeResolverCapability.Hash;
 
-        public TrieNode FindCachedOrUnknown(Keccak hash) => new(NodeType.Unknown, hash);
-        public TrieNode FindCachedOrUnknown(Keccak hash, Span<byte> nodePath, Span<byte> storagePrefix) => new(NodeType.Unknown, nodePath, hash) { StoreNibblePathPrefix = storagePrefix.ToArray() };
+        public TrieNode FindCachedOrUnknown(Hash256 hash) => new(NodeType.Unknown, hash);
+        public TrieNode FindCachedOrUnknown(Hash256 hash, Span<byte> nodePath, Span<byte> storagePrefix) => new(NodeType.Unknown, nodePath, hash) { StoreNibblePathPrefix = storagePrefix.ToArray() };
 
-        public TrieNode? FindCachedOrUnknown(Span<byte> nodePath, byte[] storagePrefix, Keccak? rootHash)
+        public TrieNode? FindCachedOrUnknown(Span<byte> nodePath, byte[] storagePrefix, Hash256? rootHash)
         {
             throw new NotImplementedException();
         }
 
-        public byte[]? LoadRlp(Keccak hash, ReadFlags flags = ReadFlags.None) => null;
+        public byte[]? LoadRlp(Hash256 hash, ReadFlags flags = ReadFlags.None) => null;
 
-        public byte[]? LoadRlp(Span<byte> nodePath, Keccak rootHash)
+        public byte[]? LoadRlp(Span<byte> nodePath, Hash256 rootHash)
         {
             return null;
         }
 
-        public bool ExistsInDB(Keccak hash, byte[] nodePathNibbles)
+        public bool ExistsInDB(Hash256 hash, byte[] nodePathNibbles)
         {
             return false;
         }

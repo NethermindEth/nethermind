@@ -62,7 +62,7 @@ namespace Nethermind.Synchronization.Test.FastSync
             dbContext.CompareTrees("BEFORE FIRST SYNC", true);
 
             SafeContext ctx = PrepareDownloader(dbContext, mock =>
-                mock.SetFilter(((MemDb)dbContext.RemoteStateDb).Keys.Take(((MemDb)dbContext.RemoteStateDb).Keys.Count - 4).Select(k => new Keccak(k)).ToArray()));
+                mock.SetFilter(((MemDb)dbContext.RemoteStateDb).Keys.Take(((MemDb)dbContext.RemoteStateDb).Keys.Count - 4).Select(k => new Hash256(k)).ToArray()));
 
             await ActivateAndWait(ctx, dbContext, 1024);
 
@@ -212,7 +212,7 @@ namespace Nethermind.Synchronization.Test.FastSync
             dbContext.CompareTrees("BEFORE FIRST SYNC");
 
             SafeContext ctx = PrepareDownloader(dbContext, mock =>
-                mock.SetFilter(((MemDb)dbContext.RemoteStateDb).Keys.Take(((MemDb)dbContext.RemoteStateDb).Keys.Count - 1).Select(k => new Keccak(k)).ToArray()));
+                mock.SetFilter(((MemDb)dbContext.RemoteStateDb).Keys.Take(((MemDb)dbContext.RemoteStateDb).Keys.Count - 1).Select(k => new Hash256(k)).ToArray()));
             await ActivateAndWait(ctx, dbContext, 1024, false, 1000);
 
 
@@ -367,9 +367,9 @@ namespace Nethermind.Synchronization.Test.FastSync
 
             BlockTree blockTree = Build.A.BlockTree().OfChainLength((int)BlockTree.BestSuggestedHeader!.Number).TestObject;
 
-            ctx.SyncModeSelector = StaticSelector.StateNodesWithFastBlocks;
-            ctx.TreeFeed = new(SyncMode.StateNodes, dbContext.LocalCodeDb, dbContext.LocalStateDb, blockTree, TrieNodeResolverCapability.Path, _logManager);
-            ctx.Feed = new StateSyncFeed(ctx.SyncModeSelector, ctx.TreeFeed, _logManager);
+            ctx.TreeFeed = new(SyncMode.StateNodes, dbContext.LocalCodeDb, dbContext.LocalStateDb, blockTree, _logManager);
+            ctx.Feed = new StateSyncFeed(ctx.TreeFeed, _logManager);
+            ctx.Feed.SyncModeSelectorOnChanged(SyncMode.StateNodes | SyncMode.FastBlocks);
             ctx.TreeFeed.ResetStateRoot(100, dbContext.RemoteStateTree.RootHash, SyncFeedState.Dormant);
 
             StateSyncBatch? request = await ctx.Feed.PrepareRequest();
@@ -390,9 +390,9 @@ namespace Nethermind.Synchronization.Test.FastSync
 
             BlockTree blockTree = Build.A.BlockTree().OfChainLength((int)BlockTree.BestSuggestedHeader!.Number).TestObject;
 
-            ctx.SyncModeSelector = StaticSelector.StateNodesWithFastBlocks;
-            ctx.TreeFeed = new(SyncMode.StateNodes, dbContext.LocalCodeDb, dbContext.LocalStateDb, blockTree, TrieNodeResolverCapability.Path, _logManager);
-            ctx.Feed = new StateSyncFeed(ctx.SyncModeSelector, ctx.TreeFeed, _logManager);
+            ctx.TreeFeed = new(SyncMode.StateNodes, dbContext.LocalCodeDb, dbContext.LocalStateDb, blockTree, _logManager);
+            ctx.Feed = new StateSyncFeed(ctx.TreeFeed, _logManager);
+            ctx.Feed.SyncModeSelectorOnChanged(SyncMode.StateNodes | SyncMode.FastBlocks);
             ctx.TreeFeed.ResetStateRoot(100, dbContext.RemoteStateTree.RootHash, SyncFeedState.Dormant);
 
             StateSyncBatch? request = await ctx.Feed.PrepareRequest();
@@ -451,10 +451,10 @@ namespace Nethermind.Synchronization.Test.FastSync
             //B - - - - - - - - - - - - - - -
             //L L L - - - - - - - - - - - - -
             //Deleting one leaf at does not make any changes to tree - only remove leaf data
-            Keccak[] paths = new Keccak[3];
-            paths[0] = new Keccak("0xccccccccccccccccccccddddddddddddddddeeeeeeeeeeeeeeeeb12233445566");
-            paths[1] = new Keccak("0xccccccccccccccccccccddddddddddddddddeeeeeeeeeeeeeeeeb22233445566");
-            paths[2] = new Keccak("0xccccccccccccccccccccddddddddddddddddeeeeeeeeeeeeeeeeb32233445566");
+            Hash256[] paths = new Hash256[3];
+            paths[0] = new Hash256("0xccccccccccccccccccccddddddddddddddddeeeeeeeeeeeeeeeeb12233445566");
+            paths[1] = new Hash256("0xccccccccccccccccccccddddddddddddddddeeeeeeeeeeeeeeeeb22233445566");
+            paths[2] = new Hash256("0xccccccccccccccccccccddddddddddddddddeeeeeeeeeeeeeeeeb32233445566");
 
             dbContext.RemoteStateTree.Set(paths[0], Build.An.Account.WithBalance(0).TestObject);
             dbContext.RemoteStateTree.Set(paths[1], Build.An.Account.WithBalance(1).TestObject);
@@ -497,10 +497,10 @@ namespace Nethermind.Synchronization.Test.FastSync
             //L L - - - - - - - - - - - - - -
             //removing last leaf will cause remaining branch to be converted to leaf and then E->L to be converted into a single leaf
             //whole subtree needs to be cleaned
-            Keccak[] paths = new Keccak[3];
-            paths[0] = new Keccak("0xcccc100000000000000000000000000000000000000000000000000000000000");
-            paths[1] = new Keccak("0xcccc200000000000000000000000000000000000000000000000000000000000");
-            paths[2] = new Keccak("0xcccc200100000000000000000000000000000000000000000000000000000000");
+            Hash256[] paths = new Hash256[3];
+            paths[0] = new Hash256("0xcccc100000000000000000000000000000000000000000000000000000000000");
+            paths[1] = new Hash256("0xcccc200000000000000000000000000000000000000000000000000000000000");
+            paths[2] = new Hash256("0xcccc200100000000000000000000000000000000000000000000000000000000");
 
             dbContext.RemoteStateTree.Set(paths[0], Build.An.Account.WithBalance(0).TestObject);
             dbContext.RemoteStateTree.Set(paths[1], Build.An.Account.WithBalance(1).TestObject);
@@ -527,7 +527,7 @@ namespace Nethermind.Synchronization.Test.FastSync
             Assert.IsNull(localAccounts[2]);
         }
 
-        private Account?[] GetLocalAccounts(Keccak[] paths, DbContext dbContext)
+        private Account?[] GetLocalAccounts(Hash256[] paths, DbContext dbContext)
         {
             Account?[] accounts = new Account[paths.Length];
             for (int i = 0; i < paths.Length; i++)

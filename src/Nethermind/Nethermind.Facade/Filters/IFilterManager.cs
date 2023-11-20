@@ -10,8 +10,8 @@ namespace Nethermind.Blockchain.Filters
     {
         FilterLog[] GetLogs(int filterId);
         FilterLog[] PollLogs(int filterId);
-        Keccak[] GetBlocksHashes(int filterId);
-        Keccak[] PollBlockHashes(int filterId);
-        Keccak[] PollPendingTransactionHashes(int filterId);
+        Hash256[] GetBlocksHashes(int filterId);
+        Hash256[] PollBlockHashes(int filterId);
+        Hash256[] PollPendingTransactionHashes(int filterId);
     }
 }

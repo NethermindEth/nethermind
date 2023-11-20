@@ -138,6 +138,18 @@ public partial class EthRpcModuleTests
     }
 
     [Test]
+    public async Task Eth_call_create_tx_with_empty_data()
+    {
+        using Context ctx = await Context.Create();
+        TransactionForRpc transaction = new(Keccak.Zero, 1L, 1, new Transaction());
+        transaction.From = TestItem.AddressA;
+
+        string serialized =
+            await ctx.Test.TestEthRpc("eth_call", ctx.Test.JsonSerializer.Serialize(transaction), "latest");
+        serialized.Should().BeEquivalentTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32000,\"message\":\"Contract creation without any data provided.\"},\"id\":67}");
+    }
+
+    [Test]
     public async Task Eth_call_missing_state_after_fast_sync()
     {
         using Context ctx = await Context.Create();

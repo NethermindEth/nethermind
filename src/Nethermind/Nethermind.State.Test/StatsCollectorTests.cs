@@ -23,7 +23,7 @@ namespace Nethermind.Store.Test
         [Test]
         public void Can_collect_stats([Values(false, true)] bool parallel)
         {
-            MemColumnsDb<StateColumns> memDb = new();
+            MemDb memDb = new();
             IDb stateDb = memDb;
             TrieStore trieStore = new(stateDb, new MemoryLimit(0.MB()), Persist.EveryBlock, LimboLogs.Instance);
             WorldState stateProvider = new(trieStore, stateDb, LimboLogs.Instance);
@@ -46,7 +46,7 @@ namespace Nethermind.Store.Test
             stateProvider.CommitTree(1);
 
             memDb.Delete(Keccak.Compute(new byte[] { 1, 2, 3, 4 })); // missing code
-            Keccak storageKey = new("0x345e54154080bfa9e8f20c99d7a0139773926479bc59e5b4f830ad94b6425332");
+            Hash256 storageKey = new("0x345e54154080bfa9e8f20c99d7a0139773926479bc59e5b4f830ad94b6425332");
             memDb.Delete(storageKey); // deletes some storage
             trieStore.ClearCache();
 

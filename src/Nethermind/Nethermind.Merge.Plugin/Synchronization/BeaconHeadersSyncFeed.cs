@@ -43,7 +43,6 @@ public sealed class BeaconHeadersSyncFeed : HeadersSyncFeed
 
     public BeaconHeadersSyncFeed(
         IPoSSwitcher poSSwitcher,
-        ISyncModeSelector syncModeSelector,
         IBlockTree? blockTree,
         ISyncPeerPool? syncPeerPool,
         ISyncConfig? syncConfig,
@@ -52,8 +51,7 @@ public sealed class BeaconHeadersSyncFeed : HeadersSyncFeed
         IMergeConfig? mergeConfig,
         IInvalidChainTracker invalidChainTracker,
         ILogManager logManager)
-        : base(syncModeSelector, blockTree, syncPeerPool, syncConfig, syncReport, logManager,
-            true) // alwaysStartHeaderSync = true => for the merge we're forcing header sync start. It doesn't matter if it is archive sync or fast sync
+        : base(blockTree, syncPeerPool, syncConfig, syncReport, logManager, true) // alwaysStartHeaderSync = true => for the merge we're forcing header sync start. It doesn't matter if it is archive sync or fast sync
     {
         _poSSwitcher = poSSwitcher ?? throw new ArgumentNullException(nameof(poSSwitcher));
         _pivot = pivot ?? throw new ArgumentNullException(nameof(pivot));
@@ -72,7 +70,7 @@ public sealed class BeaconHeadersSyncFeed : HeadersSyncFeed
     private long ExpectedPivotNumber =>
         _pivot.PivotParentHash is not null ? _pivot.PivotNumber - 1 : _pivot.PivotNumber;
 
-    private Keccak ExpectedPivotHash => _pivot.PivotParentHash ?? _pivot.PivotHash ?? Keccak.Zero;
+    private Hash256 ExpectedPivotHash => _pivot.PivotParentHash ?? _pivot.PivotHash ?? Keccak.Zero;
 
     protected override void ResetPivot()
     {

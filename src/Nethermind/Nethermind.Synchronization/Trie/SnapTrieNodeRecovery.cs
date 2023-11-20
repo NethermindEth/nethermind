@@ -34,7 +34,7 @@ public class SnapTrieNodeRecovery : TrieNodeRecovery<GetTrieNodesRequest>
 
     protected override bool CanAllocatePeer(ISyncPeer peer) => peer.CanGetSnapData();
 
-    protected override async Task<byte[]?> RecoverRlpFromPeerBase(ValueKeccak rlpHash, ISyncPeer peer, GetTrieNodesRequest request, CancellationTokenSource cts)
+    protected override async Task<byte[]?> RecoverRlpFromPeerBase(ValueHash256 rlpHash, ISyncPeer peer, GetTrieNodesRequest request, CancellationTokenSource cts)
     {
         if (peer.TryGetSatelliteProtocol(Protocol.Snap, out ISnapSyncPeer? snapPeer))
         {

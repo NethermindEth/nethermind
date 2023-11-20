@@ -226,7 +226,7 @@ namespace Nethermind.JsonRpc.Test
             CollectionAssert.AreEquivalent(new Dictionary<int, JsonRpcUrl>()
             {
                 { 8545, new JsonRpcUrl("http", "127.0.0.1", 8545, RpcEndpoint.Http | RpcEndpoint.Ws, false, _enabledModules) },
-                { 8551, new JsonRpcUrl("http", "127.0.0.1", 8551, RpcEndpoint.Http | RpcEndpoint.Ws, true, new [] { "eth", "engine" }) },
+                { 8551, new JsonRpcUrl("http", "127.0.0.1", 8551, RpcEndpoint.Http | RpcEndpoint.Ws, true, new [] { ModuleType.Eth, ModuleType.Engine }) },
             }, urlCollection); ;
         }
 
@@ -251,8 +251,8 @@ namespace Nethermind.JsonRpc.Test
             CollectionAssert.AreEquivalent(new Dictionary<int, JsonRpcUrl>()
             {
                 { 8545, new JsonRpcUrl("http", "127.0.0.1", 8545, RpcEndpoint.Http, false, _enabledModules) },
-                { 8552, new JsonRpcUrl("http", "127.0.0.1", 8552, RpcEndpoint.Http, true, new [] { "eth", "engine" }) },
-                { 1234, new JsonRpcUrl("http", "127.0.0.1", 1234, RpcEndpoint.Http, false, new [] { "eth", "web3" })}
+                { 8552, new JsonRpcUrl("http", "127.0.0.1", 8552, RpcEndpoint.Http, true, new [] { ModuleType.Eth, ModuleType.Engine }) },
+                { 1234, new JsonRpcUrl("http", "127.0.0.1", 1234, RpcEndpoint.Http, false, new [] { ModuleType.Eth, ModuleType.Web3 })}
             }, urlCollection); ;
         }
     }

@@ -234,17 +234,9 @@ namespace Nethermind.Consensus.Producers
         /// <param name="parentStateRoot">Parent block state</param>
         /// <returns>True if succeeded, false otherwise</returns>
         /// <remarks>Should be called inside <see cref="_producingBlockLock"/> lock.</remarks>
-        protected bool TrySetState(Keccak? parentStateRoot)
+        protected bool TrySetState(Hash256? parentStateRoot)
         {
-            bool HasState(Keccak stateRoot)
-            {
-                Logger.Info($"HASH STATE: {stateRoot}");
-                RootCheckVisitor visitor = new();
-                StateProvider.Accept(visitor, stateRoot);
-                return visitor.HasRoot;
-            }
-
-            if (parentStateRoot is not null && HasState(parentStateRoot))
+            if (parentStateRoot is not null && StateProvider.HasStateForRoot(parentStateRoot))
             {
                 StateProvider.StateRoot = parentStateRoot;
                 return true;
@@ -270,12 +262,6 @@ namespace Nethermind.Consensus.Producers
             return true;
         }
 
-        private IEnumerable<Transaction> GetTransactions(BlockHeader parent)
-        {
-            long gasLimit = _gasLimitCalculator.GetGasLimit(parent);
-            return _txSource.GetTransactions(parent, gasLimit);
-        }
-
         protected virtual BlockHeader PrepareBlockHeader(BlockHeader parent,
             PayloadAttributes? payloadAttributes = null)
         {
@@ -287,7 +273,7 @@ namespace Nethermind.Consensus.Producers
                 blockAuthor,
                 UInt256.Zero,
                 parent.Number + 1,
-                payloadAttributes?.GasLimit ?? _gasLimitCalculator.GetGasLimit(parent),
+                payloadAttributes?.GetGasLimit() ?? _gasLimitCalculator.GetGasLimit(parent),
                 timestamp,
                 _blocksConfig.GetExtraDataBytes())
             {
@@ -311,7 +297,7 @@ namespace Nethermind.Consensus.Producers
         {
             BlockHeader header = PrepareBlockHeader(parent, payloadAttributes);
 
-            IEnumerable<Transaction> transactions = GetTransactions(parent);
+            IEnumerable<Transaction> transactions = _txSource.GetTransactions(parent, header.GasLimit, payloadAttributes);
 
             return new BlockToProduce(header, transactions, Array.Empty<BlockHeader>(), payloadAttributes?.Withdrawals);
         }

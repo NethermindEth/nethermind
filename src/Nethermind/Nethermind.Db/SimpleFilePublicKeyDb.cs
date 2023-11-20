@@ -101,7 +101,7 @@ namespace Nethermind.Db
 
         public IEnumerable<byte[]> GetAllValues(bool ordered = false) => _cache.Values;
 
-        public IBatch StartBatch()
+        public IWriteBatch StartWriteBatch()
         {
             return this.LikeABatch(CommitBatch);
         }

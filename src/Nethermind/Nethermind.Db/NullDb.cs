@@ -56,7 +56,7 @@ namespace Nethermind.Db
 
         public IEnumerable<byte[]> GetAllValues(bool ordered = false) => Enumerable.Empty<byte[]>();
 
-        public IBatch StartBatch()
+        public IWriteBatch StartWriteBatch()
         {
             throw new NotSupportedException();
         }

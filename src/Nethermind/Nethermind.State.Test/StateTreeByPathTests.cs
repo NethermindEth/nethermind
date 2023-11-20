@@ -37,8 +37,9 @@ namespace Nethermind.Store.Test
         [Test]
         public void No_reads_when_setting_on_empty()
         {
-            MemColumnsDb<StateColumns> db = new MemColumnsDb<StateColumns>();
-            StateTreeByPath tree = new(new TrieStoreByPath(db, LimboLogs.Instance), LimboLogs.Instance);
+            MemColumnsDb<StateColumns> stateDb = new();
+            MemDb db = (MemDb)stateDb.GetColumnDb(StateColumns.State);
+            StateTreeByPath tree = new(new TrieStoreByPath(stateDb, LimboLogs.Instance), LimboLogs.Instance);
             tree.Set(TestItem.AddressA, _account0);
             tree.Set(TestItem.AddressB, _account0);
             tree.Set(TestItem.AddressC, _account0);
@@ -65,14 +66,14 @@ namespace Nethermind.Store.Test
             MemColumnsDb<StateColumns> stateDb = new();
             MemDb db = (MemDb)stateDb.GetColumnDb(StateColumns.State);
             StateTreeByPath tree = new(new TrieStoreByPath(stateDb, LimboLogs.Instance), LimboLogs.Instance);
-            tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb00000000"), _account0);
-            tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb1eeeeeb0"), _account0);
-            tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb1eeeeeb1"), _account0);
+            tree.Set(new Hash256("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb00000000"), _account0);
+            tree.Set(new Hash256("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb1eeeeeb0"), _account0);
+            tree.Set(new Hash256("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb1eeeeeb1"), _account0);
             tree.Commit(0);
 
-            tree.Get(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb00000000")).Should().BeEquivalentTo(_account0);
-            tree.Get(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb1eeeeeb0")).Should().BeEquivalentTo(_account0);
-            tree.Get(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb1eeeeeb1")).Should().BeEquivalentTo(_account0);
+            tree.Get(new Hash256("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb00000000")).Should().BeEquivalentTo(_account0);
+            tree.Get(new Hash256("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb1eeeeeb0")).Should().BeEquivalentTo(_account0);
+            tree.Get(new Hash256("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb1eeeeeb1")).Should().BeEquivalentTo(_account0);
             Assert.That(db.WritesCount, Is.EqualTo(8), "writes"); // extension, branch, leaf, extension, branch, 2x same leaf
             Assert.That(Trie.Metrics.TreeNodeHashCalculations, Is.EqualTo(8), "hashes");
             Assert.That(Trie.Metrics.TreeNodeRlpEncodings, Is.EqualTo(7), "encodings");
@@ -84,10 +85,10 @@ namespace Nethermind.Store.Test
             MemColumnsDb<StateColumns> stateDb = new();
             MemDb db = (MemDb)stateDb.GetColumnDb(StateColumns.State);
             StateTreeByPath tree = new(new TrieStoreByPath(stateDb, LimboLogs.Instance), LimboLogs.Instance);
-            tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb00000000"), _account0);
-            tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb1eeeeeb0"), _account0);
-            tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb1eeeeeb1"), _account0);
-            tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb1eeeeeb1"), null);
+            tree.Set(new Hash256("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb00000000"), _account0);
+            tree.Set(new Hash256("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb1eeeeeb0"), _account0);
+            tree.Set(new Hash256("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb1eeeeeb1"), _account0);
+            tree.Set(new Hash256("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb1eeeeeb1"), null);
             tree.Commit(0);
             Assert.That(db.WritesCount, Is.EqualTo(12), "writes"); // extension, branch, 2x leaf (each node is 2 writes) + deletion writes (2)
             Assert.That(Trie.Metrics.TreeNodeHashCalculations, Is.EqualTo(4), "hashes");
@@ -100,11 +101,11 @@ namespace Nethermind.Store.Test
             MemColumnsDb<StateColumns> stateDb = new();
             MemDb db = (MemDb)stateDb.GetColumnDb(StateColumns.State);
             StateTreeByPath tree = new(new TrieStoreByPath(stateDb, LimboLogs.Instance), LimboLogs.Instance);
-            tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb00000000"), _account0);
-            tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb1eeeeeb0"), _account0);
-            tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb1eeeeeb1"), _account0);
-            tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb1eeeeeb0"), null);
-            tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb1eeeeeb1"), null);
+            tree.Set(new Hash256("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb00000000"), _account0);
+            tree.Set(new Hash256("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb1eeeeeb0"), _account0);
+            tree.Set(new Hash256("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb1eeeeeb1"), _account0);
+            tree.Set(new Hash256("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb1eeeeeb0"), null);
+            tree.Set(new Hash256("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb1eeeeeb1"), null);
             tree.Commit(0);
             Assert.That(db.WritesCount, Is.EqualTo(14), "writes"); // extension, branch, 2x leaf
             Assert.That(Trie.Metrics.TreeNodeHashCalculations, Is.EqualTo(1), "hashes");
@@ -114,14 +115,15 @@ namespace Nethermind.Store.Test
         [Test]
         public void Minimal_writes_when_setting_on_empty_scenario_5()
         {
-            MemColumnsDb<StateColumns> db = new MemColumnsDb<StateColumns>();
-            StateTreeByPath tree = new(new TrieStoreByPath(db, LimboLogs.Instance), LimboLogs.Instance);
-            tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb00000000"), _account0);
-            tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb1eeeeeb0"), _account0);
-            tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb1eeeeeb1"), _account0);
-            tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb1eeeeeb0"), null);
-            tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb1eeeeeb1"), null);
-            tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb00000000"), null);
+            MemColumnsDb<StateColumns> stateDb = new();
+            MemDb db = (MemDb)stateDb.GetColumnDb(StateColumns.State);
+            StateTreeByPath tree = new(new TrieStoreByPath(stateDb, LimboLogs.Instance), LimboLogs.Instance);
+            tree.Set(new Hash256("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb00000000"), _account0);
+            tree.Set(new Hash256("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb1eeeeeb0"), _account0);
+            tree.Set(new Hash256("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb1eeeeeb1"), _account0);
+            tree.Set(new Hash256("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb1eeeeeb0"), null);
+            tree.Set(new Hash256("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb1eeeeeb1"), null);
+            tree.Set(new Hash256("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb00000000"), null);
             tree.Commit(0);
             Assert.That(db.WritesCount, Is.EqualTo(0), "writes"); // extension, branch, 2x leaf
             Assert.That(Trie.Metrics.TreeNodeHashCalculations, Is.EqualTo(0), "hashes");
@@ -131,15 +133,16 @@ namespace Nethermind.Store.Test
         [Test]
         public void Scenario_traverse_extension_read_full_match()
         {
-            MemColumnsDb<StateColumns> db = new MemColumnsDb<StateColumns>();
-            StateTreeByPath tree = new(new TrieStoreByPath(db, LimboLogs.Instance), LimboLogs.Instance);
-            tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb00000000"), _account0);
-            tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb11111111"), _account1);
-            Account account = tree.Get(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb11111111"));
+            MemColumnsDb<StateColumns> stateDb = new();
+            MemDb db = (MemDb)stateDb.GetColumnDb(StateColumns.State);
+            StateTreeByPath tree = new(new TrieStoreByPath(stateDb, LimboLogs.Instance), LimboLogs.Instance);
+            tree.Set(new Hash256("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb00000000"), _account0);
+            tree.Set(new Hash256("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb11111111"), _account1);
+            Account account = tree.Get(new Hash256("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb11111111"));
             //Assert.AreEqual(0, db.ReadsCount);
             Assert.That(account.Balance, Is.EqualTo(_account1.Balance));
             tree.UpdateRootHash();
-            Keccak rootHash = tree.RootHash;
+            Hash256 rootHash = tree.RootHash;
             Assert.That(rootHash.ToString(true), Is.EqualTo("0xf99f1d3234bad8d63d818db36ff63eefc8916263e654db8b800d3bd03f6339a5"));
             tree.Commit(0);
             Assert.That(rootHash.ToString(true), Is.EqualTo("0xf99f1d3234bad8d63d818db36ff63eefc8916263e654db8b800d3bd03f6339a5"));
@@ -150,12 +153,12 @@ namespace Nethermind.Store.Test
         {
             MemColumnsDb<StateColumns> db = new MemColumnsDb<StateColumns>();
             StateTreeByPath tree = new(new TrieStoreByPath(db, LimboLogs.Instance), LimboLogs.Instance);
-            tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb00000000"), _account0);
-            tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb11111111"), _account1);
-            Account account = tree.Get(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeedddddddddddddddddddddddd"));
+            tree.Set(new Hash256("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb00000000"), _account0);
+            tree.Set(new Hash256("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb11111111"), _account1);
+            Account account = tree.Get(new Hash256("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeedddddddddddddddddddddddd"));
             Assert.Null(account);
             tree.UpdateRootHash();
-            Keccak rootHash = tree.RootHash;
+            Hash256 rootHash = tree.RootHash;
             Assert.That(rootHash.ToString(true), Is.EqualTo("0xf99f1d3234bad8d63d818db36ff63eefc8916263e654db8b800d3bd03f6339a5"));
             tree.Commit(0);
             Assert.That(rootHash.ToString(true), Is.EqualTo("0xf99f1d3234bad8d63d818db36ff63eefc8916263e654db8b800d3bd03f6339a5"));
@@ -166,11 +169,11 @@ namespace Nethermind.Store.Test
         {
             MemColumnsDb<StateColumns> db = new MemColumnsDb<StateColumns>();
             StateTreeByPath tree = new(new TrieStoreByPath(db, LimboLogs.Instance), LimboLogs.Instance);
-            tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb00000000"), _account0);
-            tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb11111111"), _account1);
-            tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeedddddddddddddddddddddddd"), _account2);
+            tree.Set(new Hash256("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb00000000"), _account0);
+            tree.Set(new Hash256("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb11111111"), _account1);
+            tree.Set(new Hash256("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeedddddddddddddddddddddddd"), _account2);
             tree.UpdateRootHash();
-            Keccak rootHash = tree.RootHash;
+            Hash256 rootHash = tree.RootHash;
             Assert.That(rootHash.ToString(true), Is.EqualTo("0x543c960143a2a06b685d6b92f0c37000273e616bc23888521e7edf15ad06da46"));
             tree.Commit(0);
             Assert.That(rootHash.ToString(true), Is.EqualTo("0x543c960143a2a06b685d6b92f0c37000273e616bc23888521e7edf15ad06da46"));
@@ -179,14 +182,15 @@ namespace Nethermind.Store.Test
         [Test]
         public void Scenario_traverse_extension_delete_missing()
         {
-            MemColumnsDb<StateColumns> db = new MemColumnsDb<StateColumns>();
-            StateTreeByPath tree = new(new TrieStoreByPath(db, LimboLogs.Instance), LimboLogs.Instance);
-            tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb00000000"), _account0);
-            tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb11111111"), _account1);
-            tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeddddddddddddddddddddddddd"), null);
+            MemColumnsDb<StateColumns> stateDb = new();
+            MemDb db = (MemDb)stateDb.GetColumnDb(StateColumns.State);
+            StateTreeByPath tree = new(new TrieStoreByPath(stateDb, LimboLogs.Instance), LimboLogs.Instance);
+            tree.Set(new Hash256("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb00000000"), _account0);
+            tree.Set(new Hash256("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb11111111"), _account1);
+            tree.Set(new Hash256("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeddddddddddddddddddddddddd"), null);
             Assert.That(db.ReadsCount, Is.EqualTo(0));
             tree.UpdateRootHash();
-            Keccak rootHash = tree.RootHash;
+            Hash256 rootHash = tree.RootHash;
             Assert.That(rootHash.ToString(true), Is.EqualTo("0xf99f1d3234bad8d63d818db36ff63eefc8916263e654db8b800d3bd03f6339a5"));
             tree.Commit(0);
             Assert.That(rootHash.ToString(true), Is.EqualTo("0xf99f1d3234bad8d63d818db36ff63eefc8916263e654db8b800d3bd03f6339a5"));
@@ -195,15 +199,16 @@ namespace Nethermind.Store.Test
         [Test]
         public void Scenario_traverse_extension_create_new_extension()
         {
-            MemColumnsDb<StateColumns> db = new MemColumnsDb<StateColumns>();
-            StateTreeByPath tree = new(new TrieStoreByPath(db, LimboLogs.Instance), LimboLogs.Instance);
-            tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb00000000"), _account0);
-            tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb11111111"), _account1);
-            tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeaaaaaaaaaaaaaaaab00000000"), _account2);
-            tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeaaaaaaaaaaaaaaaab11111111"), _account3);
+            MemColumnsDb<StateColumns> stateDb = new();
+            MemDb db = (MemDb)stateDb.GetColumnDb(StateColumns.State);
+            StateTreeByPath tree = new(new TrieStoreByPath(stateDb, LimboLogs.Instance), LimboLogs.Instance);
+            tree.Set(new Hash256("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb00000000"), _account0);
+            tree.Set(new Hash256("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb11111111"), _account1);
+            tree.Set(new Hash256("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeaaaaaaaaaaaaaaaab00000000"), _account2);
+            tree.Set(new Hash256("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeaaaaaaaaaaaaaaaab11111111"), _account3);
             Assert.That(db.ReadsCount, Is.EqualTo(0));
             tree.UpdateRootHash();
-            Keccak rootHash = tree.RootHash;
+            Hash256 rootHash = tree.RootHash;
             Assert.That(rootHash.ToString(true), Is.EqualTo("0x0918112fc898173562441709a2c1cbedb80d1aaecaeadf2f3e9492eeaa568c67"));
             tree.Commit(0);
             Assert.That(rootHash.ToString(true), Is.EqualTo("0x0918112fc898173562441709a2c1cbedb80d1aaecaeadf2f3e9492eeaa568c67"));
@@ -214,10 +219,10 @@ namespace Nethermind.Store.Test
         {
             MemColumnsDb<StateColumns> db = new MemColumnsDb<StateColumns>();
             StateTreeByPath tree = new(new TrieStoreByPath(db, LimboLogs.Instance), LimboLogs.Instance);
-            tree.Set(new Keccak("1111111111111111111111111111111111111111111111111111111111111111"), _account0);
-            tree.Set(new Keccak("1111111111111111111111111111111111111111111111111111111111111111"), _account1);
+            tree.Set(new Hash256("1111111111111111111111111111111111111111111111111111111111111111"), _account0);
+            tree.Set(new Hash256("1111111111111111111111111111111111111111111111111111111111111111"), _account1);
             tree.UpdateRootHash();
-            Keccak rootHash = tree.RootHash;
+            Hash256 rootHash = tree.RootHash;
             Assert.That(rootHash.ToString(true), Is.EqualTo("0xaa5c248d4b4b8c27a654296a8e0cc51131eb9011d9166fa0fca56a966489e169"));
             tree.Commit(0);
             Assert.That(rootHash.ToString(true), Is.EqualTo("0xaa5c248d4b4b8c27a654296a8e0cc51131eb9011d9166fa0fca56a966489e169"));
@@ -228,10 +233,10 @@ namespace Nethermind.Store.Test
         {
             MemColumnsDb<StateColumns> db = new MemColumnsDb<StateColumns>();
             StateTreeByPath tree = new(new TrieStoreByPath(db, LimboLogs.Instance), LimboLogs.Instance);
-            tree.Set(new Keccak("1111111111111111111111111111111111111111111111111111111111111111"), _account0);
-            tree.Set(new Keccak("1111111111111111111111111111111111111111111111111111111111111111"), _account0);
+            tree.Set(new Hash256("1111111111111111111111111111111111111111111111111111111111111111"), _account0);
+            tree.Set(new Hash256("1111111111111111111111111111111111111111111111111111111111111111"), _account0);
             tree.UpdateRootHash();
-            Keccak rootHash = tree.RootHash;
+            Hash256 rootHash = tree.RootHash;
             Assert.That(rootHash.ToString(true), Is.EqualTo("0x491fbb33aaff22c0a7ff68d5c81ec114dddf89d022ccdee838a0e9d6cd45cab4"));
             tree.Commit(0);
             Assert.That(rootHash.ToString(true), Is.EqualTo("0x491fbb33aaff22c0a7ff68d5c81ec114dddf89d022ccdee838a0e9d6cd45cab4"));
@@ -242,10 +247,10 @@ namespace Nethermind.Store.Test
         {
             MemColumnsDb<StateColumns> db = new MemColumnsDb<StateColumns>();
             StateTreeByPath tree = new(new TrieStoreByPath(db, LimboLogs.Instance), LimboLogs.Instance);
-            tree.Set(new Keccak("1111111111111111111111111111111111111111111111111111111111111111"), _account0);
-            tree.Set(new Keccak("1111111111111111111111111111111111111111111111111111111111111111"), null);
+            tree.Set(new Hash256("1111111111111111111111111111111111111111111111111111111111111111"), _account0);
+            tree.Set(new Hash256("1111111111111111111111111111111111111111111111111111111111111111"), null);
             tree.UpdateRootHash();
-            Keccak rootHash = tree.RootHash;
+            Hash256 rootHash = tree.RootHash;
             Assert.That(rootHash.ToString(true), Is.EqualTo("0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421"));
             tree.Commit(0);
             Assert.That(rootHash.ToString(true), Is.EqualTo("0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421"));
@@ -256,10 +261,10 @@ namespace Nethermind.Store.Test
         {
             MemColumnsDb<StateColumns> db = new MemColumnsDb<StateColumns>();
             StateTreeByPath tree = new(new TrieStoreByPath(db, LimboLogs.Instance), LimboLogs.Instance);
-            tree.Set(new Keccak("1111111111111111111111111111111111111111111111111111111111111111"), _account0);
-            tree.Set(new Keccak("1111111111111111111111111111111ddddddddddddddddddddddddddddddddd"), null);
+            tree.Set(new Hash256("1111111111111111111111111111111111111111111111111111111111111111"), _account0);
+            tree.Set(new Hash256("1111111111111111111111111111111ddddddddddddddddddddddddddddddddd"), null);
             tree.UpdateRootHash();
-            Keccak rootHash = tree.RootHash;
+            Hash256 rootHash = tree.RootHash;
             Assert.That(rootHash.ToString(true), Is.EqualTo("0x491fbb33aaff22c0a7ff68d5c81ec114dddf89d022ccdee838a0e9d6cd45cab4"));
             tree.Commit(0);
             Assert.That(rootHash.ToString(true), Is.EqualTo("0x491fbb33aaff22c0a7ff68d5c81ec114dddf89d022ccdee838a0e9d6cd45cab4"));
@@ -270,10 +275,10 @@ namespace Nethermind.Store.Test
         {
             MemColumnsDb<StateColumns> db = new MemColumnsDb<StateColumns>();
             StateTreeByPath tree = new(new TrieStoreByPath(db, LimboLogs.Instance), LimboLogs.Instance);
-            tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb11111111111111111111111111111111"), _account0);
-            tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb00000000000000000000000000000000"), _account1);
+            tree.Set(new Hash256("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb11111111111111111111111111111111"), _account0);
+            tree.Set(new Hash256("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb00000000000000000000000000000000"), _account1);
             tree.UpdateRootHash();
-            Keccak rootHash = tree.RootHash;
+            Hash256 rootHash = tree.RootHash;
             Assert.That(rootHash.ToString(true), Is.EqualTo("0x215a4bab4cf2d5ebbaa59c82ae94c9707fcf4cc0ca1fe7e18f918e46db428ef9"));
             tree.Commit(0);
             Assert.That(rootHash.ToString(true), Is.EqualTo("0x215a4bab4cf2d5ebbaa59c82ae94c9707fcf4cc0ca1fe7e18f918e46db428ef9"));
@@ -284,11 +289,11 @@ namespace Nethermind.Store.Test
         {
             MemColumnsDb<StateColumns> db = new MemColumnsDb<StateColumns>();
             StateTreeByPath tree = new(new TrieStoreByPath(db, LimboLogs.Instance), LimboLogs.Instance);
-            tree.Set(new Keccak("1111111111111111111111111111111111111111111111111111111111111111"), _account0);
-            Account account = tree.Get(new Keccak("1111111111111111111111111111111111111111111111111111111111111111"));
+            tree.Set(new Hash256("1111111111111111111111111111111111111111111111111111111111111111"), _account0);
+            Account account = tree.Get(new Hash256("1111111111111111111111111111111111111111111111111111111111111111"));
             Assert.NotNull(account);
             tree.UpdateRootHash();
-            Keccak rootHash = tree.RootHash;
+            Hash256 rootHash = tree.RootHash;
             Assert.That(rootHash.ToString(true), Is.EqualTo("0x491fbb33aaff22c0a7ff68d5c81ec114dddf89d022ccdee838a0e9d6cd45cab4"));
             tree.Commit(0);
             Assert.That(rootHash.ToString(true), Is.EqualTo("0x491fbb33aaff22c0a7ff68d5c81ec114dddf89d022ccdee838a0e9d6cd45cab4"));
@@ -299,11 +304,11 @@ namespace Nethermind.Store.Test
         {
             MemColumnsDb<StateColumns> db = new MemColumnsDb<StateColumns>();
             StateTreeByPath tree = new(new TrieStoreByPath(db, LimboLogs.Instance), LimboLogs.Instance);
-            tree.Set(new Keccak("1111111111111111111111111111111111111111111111111111111111111111"), _account0);
-            Account account = tree.Get(new Keccak("111111111111111111111111111111111111111111111111111111111ddddddd"));
+            tree.Set(new Hash256("1111111111111111111111111111111111111111111111111111111111111111"), _account0);
+            Account account = tree.Get(new Hash256("111111111111111111111111111111111111111111111111111111111ddddddd"));
             Assert.Null(account);
             tree.UpdateRootHash();
-            Keccak rootHash = tree.RootHash;
+            Hash256 rootHash = tree.RootHash;
             Assert.That(rootHash.ToString(true), Is.EqualTo("0x491fbb33aaff22c0a7ff68d5c81ec114dddf89d022ccdee838a0e9d6cd45cab4"));
             tree.Commit(0);
             Assert.That(rootHash.ToString(true), Is.EqualTo("0x491fbb33aaff22c0a7ff68d5c81ec114dddf89d022ccdee838a0e9d6cd45cab4"));
@@ -314,11 +319,11 @@ namespace Nethermind.Store.Test
         {
             MemColumnsDb<StateColumns> db = new MemColumnsDb<StateColumns>();
             StateTreeByPath tree = new(new TrieStoreByPath(db, LimboLogs.Instance), LimboLogs.Instance);
-            tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb00000"), _account0);
-            tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb11111"), _account1);
-            tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb22222"), _account2);
+            tree.Set(new Hash256("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb00000"), _account0);
+            tree.Set(new Hash256("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb11111"), _account1);
+            tree.Set(new Hash256("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb22222"), _account2);
             tree.UpdateRootHash();
-            Keccak rootHash = tree.RootHash;
+            Hash256 rootHash = tree.RootHash;
             Assert.That(rootHash.ToString(true), Is.EqualTo("0xc063af0bd3dd88320bc852ff8452049c42fbc06d1a69661567bd427572824cbf"));
             tree.Commit(0);
             Assert.That(rootHash.ToString(true), Is.EqualTo("0xc063af0bd3dd88320bc852ff8452049c42fbc06d1a69661567bd427572824cbf"));
@@ -329,12 +334,12 @@ namespace Nethermind.Store.Test
         {
             MemColumnsDb<StateColumns> db = new MemColumnsDb<StateColumns>();
             StateTreeByPath tree = new(new TrieStoreByPath(db, LimboLogs.Instance), LimboLogs.Instance);
-            tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb00000"), _account0);
-            tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb11111"), _account1);
-            Account account = tree.Get(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb22222"));
+            tree.Set(new Hash256("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb00000"), _account0);
+            tree.Set(new Hash256("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb11111"), _account1);
+            Account account = tree.Get(new Hash256("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb22222"));
             Assert.Null(account);
             tree.UpdateRootHash();
-            Keccak rootHash = tree.RootHash;
+            Hash256 rootHash = tree.RootHash;
             Assert.That(rootHash.ToString(true), Is.EqualTo("0x94a193704e99c219d9a21428eb37d6d2d71b3d2cea80c77ff0e201c0df70a283"));
             tree.Commit(0);
             Assert.That(rootHash.ToString(true), Is.EqualTo("0x94a193704e99c219d9a21428eb37d6d2d71b3d2cea80c77ff0e201c0df70a283"));
@@ -345,11 +350,11 @@ namespace Nethermind.Store.Test
         {
             MemColumnsDb<StateColumns> db = new MemColumnsDb<StateColumns>();
             StateTreeByPath tree = new(new TrieStoreByPath(db, LimboLogs.Instance), LimboLogs.Instance);
-            tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb00000"), _account0);
-            tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb11111"), _account1);
-            tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb22222"), null);
+            tree.Set(new Hash256("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb00000"), _account0);
+            tree.Set(new Hash256("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb11111"), _account1);
+            tree.Set(new Hash256("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb22222"), null);
             tree.UpdateRootHash();
-            Keccak rootHash = tree.RootHash;
+            Hash256 rootHash = tree.RootHash;
             Assert.That(rootHash.ToString(true), Is.EqualTo("0x94a193704e99c219d9a21428eb37d6d2d71b3d2cea80c77ff0e201c0df70a283"));
             tree.Commit(0);
             Assert.That(rootHash.ToString(true), Is.EqualTo("0x94a193704e99c219d9a21428eb37d6d2d71b3d2cea80c77ff0e201c0df70a283"));
@@ -413,23 +418,25 @@ namespace Nethermind.Store.Test
         public void No_writes_on_reverted_update()
         {
             MemColumnsDb<StateColumns> db = new MemColumnsDb<StateColumns>();
+            MemDb stateColumn = db.GetColumnDb(StateColumns.State) as MemDb;
             StateTreeByPath tree = new(new TrieStoreByPath(db, LimboLogs.Instance), LimboLogs.Instance);
             tree.Set(TestItem.AddressA, _account0);
             tree.Commit(0);
-            Assert.That(db.WritesCount, Is.EqualTo(1), "writes before"); // extension, branch, two leaves
+            Assert.That(stateColumn.WritesCount, Is.EqualTo(1), "writes before"); // extension, branch, two leaves
             tree.Set(TestItem.AddressA, _account1);
             tree.Set(TestItem.AddressA, _account0);
             tree.Commit(0);
-            Assert.That(db.WritesCount, Is.EqualTo(1), "writes after"); // extension, branch, two leaves
+            Assert.That(stateColumn.WritesCount, Is.EqualTo(1), "writes after"); // extension, branch, two leaves
         }
 
         [Test]
         public void No_writes_without_commit()
         {
             MemColumnsDb<StateColumns> db = new MemColumnsDb<StateColumns>();
+            MemDb stateColumn = db.GetColumnDb(StateColumns.State) as MemDb;
             StateTreeByPath tree = new(new TrieStoreByPath(db, LimboLogs.Instance), LimboLogs.Instance);
             tree.Set(TestItem.AddressA, _account0);
-            Assert.That(db.WritesCount, Is.EqualTo(0), "writes");
+            Assert.That(stateColumn.WritesCount, Is.EqualTo(0), "writes");
         }
 
         [Test]
@@ -447,22 +454,22 @@ namespace Nethermind.Store.Test
         {
             MemColumnsDb<StateColumns> db = new MemColumnsDb<StateColumns>();
             StateTreeByPath tree = new(new TrieStoreByPath(db, LimboLogs.Instance), LimboLogs.Instance);
-            tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb00000000"), _account0);
+            tree.Set(new Hash256("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb00000000"), _account0);
             tree.UpdateRootHash();
             Assert.That(tree.RootHash, Is.Not.EqualTo(PatriciaTree.EmptyTreeHash));
-            tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb1eeeeeb0"), _account0);
+            tree.Set(new Hash256("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb1eeeeeb0"), _account0);
             tree.UpdateRootHash();
             Assert.That(tree.RootHash, Is.Not.EqualTo(PatriciaTree.EmptyTreeHash));
-            tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb1eeeeeb1"), _account0);
+            tree.Set(new Hash256("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb1eeeeeb1"), _account0);
             tree.UpdateRootHash();
             Assert.That(tree.RootHash, Is.Not.EqualTo(PatriciaTree.EmptyTreeHash));
-            tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb1eeeeeb0"), null);
+            tree.Set(new Hash256("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb1eeeeeb0"), null);
             tree.UpdateRootHash();
             Assert.That(tree.RootHash, Is.Not.EqualTo(PatriciaTree.EmptyTreeHash));
-            tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb1eeeeeb1"), null);
+            tree.Set(new Hash256("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb1eeeeeb1"), null);
             tree.UpdateRootHash();
             Assert.That(tree.RootHash, Is.Not.EqualTo(PatriciaTree.EmptyTreeHash));
-            tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb00000000"), null);
+            tree.Set(new Hash256("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb00000000"), null);
             tree.UpdateRootHash();
             Assert.That(tree.RootHash, Is.EqualTo(PatriciaTree.EmptyTreeHash));
             tree.Commit(0);
@@ -498,10 +505,10 @@ namespace Nethermind.Store.Test
             StateTreeByPath tree = new(new TrieStoreByPath(db, Persist.IfBlockOlderThan(10), LimboLogs.Instance), LimboLogs.Instance);
             tree.Set(TestItem.AddressA, _account0);
             tree.Commit(0);
-            Keccak root0 = tree.RootHash;
+            Hash256 root0 = tree.RootHash;
             tree.Set(TestItem.AddressA, _account0.WithChangedBalance(20));
             tree.Commit(1);
-            Keccak root1 = tree.RootHash;
+            Hash256 root1 = tree.RootHash;
             Account a0 = tree.Get(TestItem.AddressA, root0);
             Account a1 = tree.Get(TestItem.AddressA, root1);
 
@@ -516,11 +523,11 @@ namespace Nethermind.Store.Test
             StateTreeByPath tree = new(new TrieStoreByPath(db, Persist.IfBlockOlderThan(10), LimboLogs.Instance), LimboLogs.Instance);
             tree.Set(TestItem.AddressB, _account0);
             tree.Commit(0);
-            Keccak root0 = tree.RootHash;
+            Hash256 root0 = tree.RootHash;
             tree.Set(TestItem.AddressA, _account0);
             tree.Set(TestItem.AddressB, _account0.WithChangedBalance(20));
             tree.Commit(1);
-            Keccak root1 = tree.RootHash;
+            Hash256 root1 = tree.RootHash;
             Account a0 = tree.Get(TestItem.AddressA, root0);
             Account a1 = tree.Get(TestItem.AddressA, root1);
             Account b1 = tree.Get(TestItem.AddressB, root1);
@@ -538,15 +545,15 @@ namespace Nethermind.Store.Test
             StateTreeByPath tree = new(new TrieStoreByPath(db, Persist.IfBlockOlderThan(10), LimboLogs.Instance), LimboLogs.Instance);
             tree.Set(TestItem.AddressA, _account0);
             tree.Commit(0);
-            Keccak root0 = tree.RootHash;
+            Hash256 root0 = tree.RootHash;
 
             tree.Set(TestItem.AddressB, _account1);
             tree.Commit(1);
-            Keccak root1 = tree.RootHash;
+            Hash256 root1 = tree.RootHash;
 
             tree.Set(TestItem.AddressA, _account0.WithChangedBalance(20));
             tree.Commit(2);
-            Keccak root2 = tree.RootHash;
+            Hash256 root2 = tree.RootHash;
 
             Account a0_0 = tree.Get(TestItem.AddressA, root0);
             Account a0_1 = tree.Get(TestItem.AddressA, root1);
@@ -567,15 +574,15 @@ namespace Nethermind.Store.Test
             tree.Set(TestItem.AddressB, _account1);
             tree.Set(TestItem.AddressC, _account2);
             tree.Commit(1);
-            Keccak root1 = tree.RootHash;
+            Hash256 root1 = tree.RootHash;
 
             tree.Set(TestItem.AddressB, _account1.WithChangedBalance(15));
             tree.Commit(2);
-            Keccak root2 = tree.RootHash;
+            Hash256 root2 = tree.RootHash;
 
             tree.Set(TestItem.AddressC, _account2.WithChangedBalance(20));
             tree.Commit(3);
-            Keccak root3 = tree.RootHash;
+            Hash256 root3 = tree.RootHash;
 
             Account a0_1 = tree.Get(TestItem.AddressA, root1);
             Account a0_2 = tree.Get(TestItem.AddressA, root2);
@@ -593,7 +600,7 @@ namespace Nethermind.Store.Test
             StateTreeByPath tree = new(new TrieStoreByPath(db, Persist.IfBlockOlderThan(10), LimboLogs.Instance), LimboLogs.Instance);
             tree.Set(TestItem.AddressA, _account0);
             tree.Commit(0);
-            Keccak root0 = tree.RootHash;
+            Hash256 root0 = tree.RootHash;
 
             tree.Set(TestItem.AddressB, _account1);
             tree.Commit(1);
@@ -615,8 +622,8 @@ namespace Nethermind.Store.Test
             StateTreeByPath tree = new(new TrieStoreByPath(db, Persist.IfBlockOlderThan(10), LimboLogs.Instance), LimboLogs.Instance);
             tree.Set(TestItem.AddressA, _account0);
             tree.Commit(0);
-            Keccak root0 = tree.RootHash;
-            Keccak root2 = null;
+            Hash256 root0 = tree.RootHash;
+            Hash256 root2 = null;
 
             for (int i = 1; i < 7; i++)
             {
@@ -649,20 +656,20 @@ namespace Nethermind.Store.Test
             logger.Warn($"Seed: {seed}");
             Random r = new Random(seed);
 
-            Keccak[] allPaths = new Keccak[numberOfAccounts];
+            Hash256[] allPaths = new Hash256[numberOfAccounts];
 
             for (int i = 0; i < numberOfAccounts; i++)
             {
                 byte[] key = new byte[32];
                 r.NextBytes(key);
-                Keccak keccak = new(key);
+                Hash256 keccak = new(key);
                 allPaths[i] = keccak;
 
                 tree.Set(keccak, TestItem.GenerateRandomAccount());
             }
             tree.Commit(0);
 
-            Keccak root0 = tree.RootHash;
+            Hash256 root0 = tree.RootHash;
 
             for (int i = 0; i < numberOfAccounts; i++)
             {
@@ -670,7 +677,7 @@ namespace Nethermind.Store.Test
             }
             tree.Commit(1);
 
-            Keccak rootEnd = tree.RootHash;
+            Hash256 rootEnd = tree.RootHash;
 
             MemDb stateDb = (MemDb)db.GetColumnDb(StateColumns.State);
             Assert.That(stateDb.GetAllValues().All(b => b is null), Is.True);
@@ -717,13 +724,13 @@ namespace Nethermind.Store.Test
             logger.Warn($"Seed: {seed}");
             Random _random = new Random(seed);
 
-            Keccak[] allPaths = new Keccak[numberOfAccounts];
+            Hash256[] allPaths = new Hash256[numberOfAccounts];
 
             for (int i = 0; i < numberOfAccounts; i++)
             {
                 byte[] key = new byte[32];
                 _random.NextBytes(key);
-                Keccak keccak = new(key);
+                Hash256 keccak = new(key);
                 allPaths[i] = keccak;
 
                 Account newAccount = TestItem.GenerateRandomAccount();
@@ -736,7 +743,7 @@ namespace Nethermind.Store.Test
             Assert.That(tree.RootHash, Is.EqualTo(hashStateTree.RootHash));
             CompareTrees(hashStateTree, tree);
 
-            Keccak prevRootHash = tree.RootHash;
+            Hash256 prevRootHash = tree.RootHash;
             for (int i = 1; i <= numberOfBlocks; i++)
             {
                 tree.RootHash = prevRootHash;
@@ -744,7 +751,7 @@ namespace Nethermind.Store.Test
                 for (int accountIndex = 0; accountIndex < numberOfUpdates; accountIndex++)
                 {
                     Account account = TestItem.GenerateRandomAccount();
-                    Keccak path = allPaths[_random.Next(numberOfAccounts - 1)];
+                    Hash256 path = allPaths[_random.Next(numberOfAccounts - 1)];
 
                     if (hashStateTree.Get(path) is not null)
                     {
@@ -790,7 +797,7 @@ namespace Nethermind.Store.Test
             tree.Set(TestItem.AddressA, TestItem.GenerateIndexedAccount(100));
             tree.Set(TestItem.AddressB, TestItem.GenerateIndexedAccount(200));
             tree.Commit(1);
-            Keccak root_1 = tree.RootHash;
+            Hash256 root_1 = tree.RootHash;
 
             Assert.That(tree.Get(TestItem.AddressA).Balance, Is.EqualTo((UInt256)100));
             Assert.That(tree.Get(TestItem.AddressB).Balance, Is.EqualTo((UInt256)200));
@@ -799,7 +806,7 @@ namespace Nethermind.Store.Test
 
             tree.Set(TestItem.AddressC, TestItem.GenerateIndexedAccount(300));
             tree.Commit(2); //persist here
-            Keccak root_2 = tree.RootHash;
+            Hash256 root_2 = tree.RootHash;
 
             Assert.That(tree.Get(TestItem.AddressA).Balance, Is.EqualTo((UInt256)100));
             Assert.That(tree.Get(TestItem.AddressC).Balance, Is.EqualTo((UInt256)300));
@@ -821,7 +828,7 @@ namespace Nethermind.Store.Test
             tree.Set(TestItem.AddressA, TestItem.GenerateIndexedAccount(100));
             tree.Set(TestItem.AddressB, TestItem.GenerateIndexedAccount(200));
             tree.Commit(1);
-            Keccak root_1 = tree.RootHash;
+            Hash256 root_1 = tree.RootHash;
 
             tree.Set(TestItem.AddressC, TestItem.GenerateIndexedAccount(300));
 
@@ -833,7 +840,7 @@ namespace Nethermind.Store.Test
             Assert.That(innerStateDb.ReadsCount, Is.EqualTo(0));
 
             tree.Commit(2); //persist here
-            Keccak root_2 = tree.RootHash;
+            Hash256 root_2 = tree.RootHash;
 
             //reset the trie and set context to latest root hash
             tree = new StateTreeByPath(pathStore, logManager);
@@ -863,7 +870,7 @@ namespace Nethermind.Store.Test
             tree.Set(TestItem.AddressA, TestItem.GenerateIndexedAccount(100));
             tree.Set(TestItem.AddressB, TestItem.GenerateIndexedAccount(200));
             tree.Commit(0); //block 0 is persisted
-            Keccak root_0 = tree.RootHash;
+            Hash256 root_0 = tree.RootHash;
 
             //block 1
             tree.Set(TestItem.AddressA, TestItem.GenerateIndexedAccount(101));
@@ -879,7 +886,7 @@ namespace Nethermind.Store.Test
             Assert.That(innerStateDb.ReadsCount, Is.EqualTo(expectedReads));
 
             tree.Commit(1); //not persisted
-            Keccak root_1 = tree.RootHash;
+            Hash256 root_1 = tree.RootHash;
 
             //reset the trie and set context to latest root hash (block 1 not persisted)
             tree = new StateTreeByPath(pathStore, logManager);
@@ -902,7 +909,7 @@ namespace Nethermind.Store.Test
             tree.Set(TestItem.AddressC, TestItem.GenerateIndexedAccount(302));
 
             tree.Commit(2); //not persisted
-            Keccak root_2 = tree.RootHash;
+            Hash256 root_2 = tree.RootHash;
 
             //reset the trie and set context to latest root hash (block 1 not persisted)
             tree = new StateTreeByPath(pathStore, logManager);

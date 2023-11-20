@@ -166,7 +166,7 @@ namespace Nethermind.Init.Steps.Migrations
 
                 IEnumerable<BlockHeader> GetHeadersForMigration()
                 {
-                    bool TryGetMainChainBlockHashFromLevel(long number, out Keccak? blockHash)
+                    bool TryGetMainChainBlockHashFromLevel(long number, out Hash256? blockHash)
                     {
                         using BatchWrite batch = chainLevelInfoRepository.StartBatch();
                         ChainLevelInfo? level = chainLevelInfoRepository.LoadLevel(number);
@@ -200,7 +200,7 @@ namespace Nethermind.Init.Steps.Migrations
                             yield break;
                         }
 
-                        if (TryGetMainChainBlockHashFromLevel(i, out Keccak? blockHash))
+                        if (TryGetMainChainBlockHashFromLevel(i, out Hash256? blockHash))
                         {
                             BlockHeader? header = blockTree.FindHeader(blockHash!, BlockTreeLookupOptions.None);
                             yield return header ?? GetMissingBlockHeader(i);

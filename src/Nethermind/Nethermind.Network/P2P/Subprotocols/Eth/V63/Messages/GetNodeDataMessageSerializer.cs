@@ -10,7 +10,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages
     {
         public override GetNodeDataMessage Deserialize(IByteBuffer byteBuffer)
         {
-            Keccak[] keys = DeserializeHashes(byteBuffer);
+            Hash256[] keys = DeserializeHashes(byteBuffer);
             return new GetNodeDataMessage(keys);
         }
     }

@@ -90,7 +90,7 @@ namespace Nethermind.AuRa.Test
         [Test]
         public void Should_rewrite_contracts()
         {
-            void Process(AuRaBlockProcessor auRaBlockProcessor, int blockNumber, Keccak stateRoot)
+            void Process(AuRaBlockProcessor auRaBlockProcessor, int blockNumber, Hash256 stateRoot)
             {
                 BlockHeader header = Build.A.BlockHeader.WithAuthor(TestItem.AddressD).WithNumber(blockNumber).TestObject;
                 Block block = Build.A.Block.WithHeader(header).TestObject;
@@ -145,13 +145,13 @@ namespace Nethermind.AuRa.Test
 
         private (AuRaBlockProcessor Processor, IWorldState StateProvider) CreateProcessor(ITxFilter? txFilter = null, ContractRewriter? contractRewriter = null)
         {
-            MemColumnsDb<StateColumns> stateDb = new();
+            MemDb stateDb = new();
             IDb codeDb = new MemDb();
             TrieStore trieStore = new(stateDb, LimboLogs.Instance);
             IWorldState stateProvider = new WorldState(trieStore, codeDb, LimboLogs.Instance);
             ITransactionProcessor transactionProcessor = Substitute.For<ITransactionProcessor>();
             AuRaBlockProcessor processor = new AuRaBlockProcessor(
-                RinkebySpecProvider.Instance,
+                GoerliSpecProvider.Instance,
                 TestBlockValidator.AlwaysValid,
                 NoBlockRewards.Instance,
                 new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor, stateProvider),

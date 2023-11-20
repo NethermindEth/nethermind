@@ -16,7 +16,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Wit
         public void Can_handle_zero()
         {
             BlockWitnessHashesMessageSerializer serializer = new();
-            BlockWitnessHashesMessage message = new(1, new Keccak[0]);
+            BlockWitnessHashesMessage message = new(1, new Hash256[0]);
             SerializerTester.TestZero(serializer, message);
         }
 

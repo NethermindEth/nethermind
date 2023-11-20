@@ -97,7 +97,7 @@ namespace Nethermind.JsonRpc.Modules
                 bool isStartingBlockOnMainChain = blockFinder.IsMainChain(startingBlock.Object.Header);
                 if (!isFinalBlockOnMainChain || !isStartingBlockOnMainChain)
                 {
-                    Keccak? notCanonicalBlockHash = isFinalBlockOnMainChain
+                    Hash256? notCanonicalBlockHash = isFinalBlockOnMainChain
                         ? startingBlock.Object.Hash
                         : finalBlockHeader.Object.Hash;
                     yield return new SearchResult<Block>($"{notCanonicalBlockHash} block is not canonical", ErrorCodes.InvalidInput);

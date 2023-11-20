@@ -259,7 +259,7 @@ namespace Nethermind.Blockchain.Test
         [TestCaseSource(nameof(EIP3860TestCases))]
         public void Proper_transactions_selected(TransactionSelectorTests.ProperTransactionsSelectedTestCase testCase)
         {
-            MemColumnsDb<StateColumns> stateDb = new();
+            MemDb stateDb = new();
             MemDb codeDb = new();
             TrieStore trieStore = new(stateDb, LimboLogs.Instance);
             WorldState stateProvider = new(trieStore, codeDb, LimboLogs.Instance);

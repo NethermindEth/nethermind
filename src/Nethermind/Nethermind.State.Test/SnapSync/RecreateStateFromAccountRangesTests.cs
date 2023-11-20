@@ -6,6 +6,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
@@ -33,7 +34,7 @@ namespace Nethermind.Store.Test.SnapSync
         //[Test]
         public void Test01()
         {
-            Keccak rootHash = _inputTree.RootHash;   // "0x8c81279168edc449089449bc0f2136fc72c9645642845755633cf259cd97988b"
+            Hash256 rootHash = _inputTree.RootHash;   // "0x8c81279168edc449089449bc0f2136fc72c9645642845755633cf259cd97988b"
 
             AccountProofCollector accountProofCollector = new(TestItem.Tree.AccountsWithPaths[0].Path.Bytes);
             _inputTree.Accept(accountProofCollector, _inputTree.RootHash);
@@ -43,7 +44,7 @@ namespace Nethermind.Store.Test.SnapSync
             _inputTree.Accept(accountProofCollector, _inputTree.RootHash);
             byte[][] lastProof = accountProofCollector.BuildResult().Proof;
 
-            MemDb db = new MemColumnsDb<StateColumns>();
+            MemDb db = new();
             TrieStore store = new(db, LimboLogs.Instance);
             StateTree tree = new(store, LimboLogs.Instance);
 
@@ -99,7 +100,7 @@ namespace Nethermind.Store.Test.SnapSync
         [TestCase(TrieNodeResolverCapability.Path, 14)]
         public void RecreateAccountStateFromOneRangeWithNonExistenceProof(TrieNodeResolverCapability resolverCapability, int expected)
         {
-            Keccak rootHash = _inputTree.RootHash;   // "0x8c81279168edc449089449bc0f2136fc72c9645642845755633cf259cd97988b"
+            Hash256 rootHash = _inputTree.RootHash;   // "0x8c81279168edc449089449bc0f2136fc72c9645642845755633cf259cd97988b"
 
             AccountProofCollector accountProofCollector = new(Keccak.Zero.Bytes);
             _inputTree.Accept(accountProofCollector, _inputTree.RootHash);
@@ -122,7 +123,7 @@ namespace Nethermind.Store.Test.SnapSync
         [TestCase(TrieNodeResolverCapability.Path, 14)]
         public void RecreateAccountStateFromOneRangeWithExistenceProof(TrieNodeResolverCapability resolverCapability, int expected)
         {
-            Keccak rootHash = _inputTree.RootHash;   // "0x8c81279168edc449089449bc0f2136fc72c9645642845755633cf259cd97988b"
+            Hash256 rootHash = _inputTree.RootHash;   // "0x8c81279168edc449089449bc0f2136fc72c9645642845755633cf259cd97988b"
 
             AccountProofCollector accountProofCollector = new(TestItem.Tree.AccountsWithPaths[0].Path.Bytes);
             _inputTree.Accept(accountProofCollector, _inputTree.RootHash);
@@ -145,7 +146,7 @@ namespace Nethermind.Store.Test.SnapSync
         [TestCase(TrieNodeResolverCapability.Path, 14)]
         public void RecreateAccountStateFromOneRangeWithoutProof(TrieNodeResolverCapability resolverCapability, int expected)
         {
-            Keccak rootHash = _inputTree.RootHash;   // "0x8c81279168edc449089449bc0f2136fc72c9645642845755633cf259cd97988b"
+            Hash256 rootHash = _inputTree.RootHash;   // "0x8c81279168edc449089449bc0f2136fc72c9645642845755633cf259cd97988b"
 
             (IFullDb stateDb, DbProvider dbProvider, ProgressTracker progressTracker) = InitDbs(resolverCapability);
 
@@ -161,7 +162,7 @@ namespace Nethermind.Store.Test.SnapSync
         [TestCase(TrieNodeResolverCapability.Path, 4, 9, 14)]
         public void RecreateAccountStateFromMultipleRange(TrieNodeResolverCapability resolverCapability, int expected1, int expected2, int expected3)
         {
-            Keccak rootHash = _inputTree.RootHash;   // "0x8c81279168edc449089449bc0f2136fc72c9645642845755633cf259cd97988b"
+            Hash256 rootHash = _inputTree.RootHash;   // "0x8c81279168edc449089449bc0f2136fc72c9645642845755633cf259cd97988b"
 
             // output state
             (IFullDb stateDb, DbProvider dbProvider, ProgressTracker progressTracker) = InitDbs(resolverCapability);
@@ -209,7 +210,7 @@ namespace Nethermind.Store.Test.SnapSync
         [TestCase(TrieNodeResolverCapability.Path, 4, 4, 8)]
         public void MissingAccountFromRange(TrieNodeResolverCapability resolverCapability, int expected1, int expected2, int expected3)
         {
-            Keccak rootHash = _inputTree.RootHash;   // "0x8c81279168edc449089449bc0f2136fc72c9645642845755633cf259cd97988b"
+            Hash256 rootHash = _inputTree.RootHash;   // "0x8c81279168edc449089449bc0f2136fc72c9645642845755633cf259cd97988b"
 
             // output state
             (IFullDb db, DbProvider dbProvider, ProgressTracker progressTracker) = InitDbs(resolverCapability);
@@ -265,7 +266,7 @@ namespace Nethermind.Store.Test.SnapSync
             };
 
             DbProvider dbProvider = new(DbModeHint.Mem);
-            dbProvider.RegisterDb(DbNames.PathState, pathDb);
+            dbProvider.RegisterColumnDb(DbNames.PathState, pathDb);
             dbProvider.RegisterDb(DbNames.State, stateDb);
 
             ProgressTracker progressTracker = resolverCapability switch

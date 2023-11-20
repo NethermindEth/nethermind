@@ -64,6 +64,19 @@ namespace Nethermind.Store.Test
         }
 
         [Test]
+        public void EOAWithSPan()
+        {
+            Context ctx = new();
+
+            Rlp encoded = new AccountDecoder().Encode((Account)new(1));
+            ctx.Compressed.PutSpan(Key, encoded.Bytes);
+
+            CollectionAssert.AreEqual(encoded.Bytes, ctx.Compressed[Key]);
+            CollectionAssert.AreEqual(encoded.Bytes, ctx.Compressed.GetSpan(Key).ToArray());
+            ctx.Wrapped[Key]!.Length.Should().Be(5);
+        }
+
+        [Test]
         public void Backward_compatible_read()
         {
             Context ctx = new();
@@ -79,9 +92,9 @@ namespace Nethermind.Store.Test
         {
             Context ctx = new();
 
-            using (IBatch batch = ctx.Compressed.StartBatch())
+            using (IWriteBatch writeBatch = ctx.Compressed.StartWriteBatch())
             {
-                batch[Key] = EOABytes;
+                writeBatch[Key] = EOABytes;
             }
 
             CollectionAssert.AreEqual(EOABytes, ctx.Compressed[Key]);

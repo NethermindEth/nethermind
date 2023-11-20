@@ -113,9 +113,9 @@ namespace Nethermind.Synchronization.Test.FastSync
                 ctx.Pool.AddPeer(syncPeer);
             }
 
-            ctx.SyncModeSelector = StaticSelector.StateNodesWithFastBlocks;
-            ctx.TreeFeed = new(SyncMode.StateNodes, dbContext.LocalCodeDb, dbContext.LocalStateDb, blockTree, dbContext.ResolverCapability, _logManager);
-            ctx.Feed = new StateSyncFeed(ctx.SyncModeSelector, ctx.TreeFeed, _logManager);
+            ctx.TreeFeed = new(SyncMode.StateNodes, dbContext.LocalCodeDb, dbContext.LocalStateDb, blockTree, _logManager);
+            ctx.Feed = new StateSyncFeed(ctx.TreeFeed, _logManager);
+            ctx.Feed.SyncModeSelectorOnChanged(SyncMode.StateNodes | SyncMode.FastBlocks);
             ctx.Downloader = new StateSyncDownloader(_logManager);
             ctx.StateSyncDispatcher = new SyncDispatcher<StateSyncBatch>(
                 0,
@@ -148,7 +148,6 @@ namespace Nethermind.Synchronization.Test.FastSync
 
         protected class SafeContext
         {
-            public ISyncModeSelector SyncModeSelector { get; set; } = null!;
             public SyncPeerMock[] SyncPeerMocks { get; set; } = null!;
             public ISyncPeerPool Pool { get; set; } = null!;
             public TreeSync TreeFeed { get; set; } = null!;
@@ -169,7 +168,8 @@ namespace Nethermind.Synchronization.Test.FastSync
                 RemoteDb = new MemDb();
                 LocalDb = new TestMemDb();
                 RemoteStateDb = RemoteDb;
-                LocalStateDb = new ByPathStateMemDb();
+                LocalStateDb = new MemDb();
+                LocalPathStateDb = new ByPathStateMemDb();
                 LocalCodeDb = new TestMemDb();
                 RemoteCodeDb = new MemDb();
                 RemoteTrieStore = new TrieStore(RemoteStateDb, logManager);
@@ -178,11 +178,10 @@ namespace Nethermind.Synchronization.Test.FastSync
 
                 ResolverCapability = capability;
 
-                ITrieStore localTrieStore = capability.CreateTrieStore(LocalStateDb, Nethermind.Trie.Pruning.No.Pruning, Persist.EveryBlock, logManager);
                 LocalStateTree = ResolverCapability switch
                 {
-                    TrieNodeResolverCapability.Hash => new StateTree(localTrieStore, logManager),
-                    TrieNodeResolverCapability.Path => new StateTreeByPath(localTrieStore, logManager),
+                    TrieNodeResolverCapability.Hash => new StateTree(new TrieStore(LocalStateDb, logManager), logManager),
+                    TrieNodeResolverCapability.Path => new StateTreeByPath(new TrieStoreByPath(LocalPathStateDb, logManager), logManager),
                     _ => throw new ArgumentOutOfRangeException(nameof(capability), capability, null)
                 };
             }
@@ -193,7 +192,8 @@ namespace Nethermind.Synchronization.Test.FastSync
             public TestMemDb LocalDb { get; }
             public ITrieStore RemoteTrieStore { get; }
             public IDb RemoteStateDb { get; }
-            public IByPathStateDb LocalStateDb { get; }
+            public IDb LocalStateDb { get; }
+            public IByPathStateDb LocalPathStateDb { get; }
             public StateTree RemoteStateTree { get; }
             public IStateTree LocalStateTree { get; }
             public TrieNodeResolverCapability ResolverCapability { get; }
@@ -224,14 +224,14 @@ namespace Nethermind.Synchronization.Test.FastSync
                 }
             }
 
-            public void LogRemoteTrieStats(Keccak? rootHash)
+            public void LogRemoteTrieStats(Hash256? rootHash)
             {
                 TrieStatsCollector collector = new(RemoteCodeDb, _logManager);
                 RemoteStateTree.Accept(collector, rootHash ?? RemoteStateTree.RootHash, new VisitingOptions { MaxDegreeOfParallelism = Environment.ProcessorCount });
                 _logger.Info($"REMOTE STATE: Starting from {rootHash ?? RemoteStateTree.RootHash} {Environment.NewLine}" + collector.Stats);
             }
 
-            public void LogLocalTrieStats(Keccak? rootHash)
+            public void LogLocalTrieStats(Hash256? rootHash)
             {
                 TrieStatsCollector collector = new(LocalCodeDb, _logManager);
                 RemoteStateTree.Accept(collector, rootHash ?? LocalStateTree.RootHash, new VisitingOptions { MaxDegreeOfParallelism = Environment.ProcessorCount });
@@ -252,14 +252,14 @@ namespace Nethermind.Synchronization.Test.FastSync
             private readonly IDb _codeDb;
             private readonly IDb _stateDb;
 
-            private Keccak[]? _filter;
-            private readonly Func<IReadOnlyList<Keccak>, Task<byte[][]>>? _executorResultFunction;
+            private Hash256[]? _filter;
+            private readonly Func<IReadOnlyList<Hash256>, Task<byte[][]>>? _executorResultFunction;
             private readonly long _maxRandomizedLatencyMs;
 
             public SyncPeerMock(
                 IDb stateDb,
                 IDb codeDb,
-                Func<IReadOnlyList<Keccak>, Task<byte[][]>>? executorResultFunction = null,
+                Func<IReadOnlyList<Hash256>, Task<byte[][]>>? executorResultFunction = null,
                 long? maxRandomizedLatencyMs = null,
                 Node? node = null
             )
@@ -273,7 +273,7 @@ namespace Nethermind.Synchronization.Test.FastSync
             }
 
             public int MaxResponseLength { get; set; } = int.MaxValue;
-            public Keccak HeadHash { get; set; } = null!;
+            public Hash256 HeadHash { get; set; } = null!;
             public string ProtocolCode { get; } = null!;
             public byte ProtocolVersion { get; } = default;
             public string ClientId => "executorMock";
@@ -285,7 +285,7 @@ namespace Nethermind.Synchronization.Test.FastSync
 
             public PublicKey Id => Node.Id;
 
-            public async Task<byte[][]> GetNodeData(IReadOnlyList<Keccak> hashes, CancellationToken token)
+            public async Task<byte[][]> GetNodeData(IReadOnlyList<Hash256> hashes, CancellationToken token)
             {
                 if (_maxRandomizedLatencyMs != 0)
                 {
@@ -297,7 +297,7 @@ namespace Nethermind.Synchronization.Test.FastSync
                 byte[][] responses = new byte[hashes.Count][];
 
                 int i = 0;
-                foreach (Keccak item in hashes)
+                foreach (Hash256 item in hashes)
                 {
                     if (i >= MaxResponseLength) break;
 
@@ -309,7 +309,7 @@ namespace Nethermind.Synchronization.Test.FastSync
                 return responses;
             }
 
-            public void SetFilter(Keccak[]? availableHashes)
+            public void SetFilter(Hash256[]? availableHashes)
             {
                 _filter = availableHashes;
             }
@@ -330,12 +330,12 @@ namespace Nethermind.Synchronization.Test.FastSync
                 throw new NotImplementedException();
             }
 
-            public Task<OwnedBlockBodies> GetBlockBodies(IReadOnlyList<Keccak> blockHashes, CancellationToken token)
+            public Task<OwnedBlockBodies> GetBlockBodies(IReadOnlyList<Hash256> blockHashes, CancellationToken token)
             {
                 throw new NotImplementedException();
             }
 
-            public Task<BlockHeader[]> GetBlockHeaders(Keccak blockHash, int maxBlocks, int skip, CancellationToken token)
+            public Task<BlockHeader[]> GetBlockHeaders(Hash256 blockHash, int maxBlocks, int skip, CancellationToken token)
             {
                 throw new NotImplementedException();
             }
@@ -345,7 +345,7 @@ namespace Nethermind.Synchronization.Test.FastSync
                 throw new NotImplementedException();
             }
 
-            public Task<BlockHeader?> GetHeadBlockHeader(Keccak? hash, CancellationToken token)
+            public Task<BlockHeader?> GetHeadBlockHeader(Hash256? hash, CancellationToken token)
             {
                 return Task.FromResult(BlockTree.Head?.Header);
             }
@@ -360,7 +360,7 @@ namespace Nethermind.Synchronization.Test.FastSync
                 throw new NotImplementedException();
             }
 
-            public Task<TxReceipt[]?[]> GetReceipts(IReadOnlyList<Keccak> blockHash, CancellationToken token)
+            public Task<TxReceipt[]?[]> GetReceipts(IReadOnlyList<Hash256> blockHash, CancellationToken token)
             {
                 throw new NotImplementedException();
             }

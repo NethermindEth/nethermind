@@ -57,14 +57,14 @@ namespace Nethermind.State.Witnesses
             _wrapped.DeleteByRange(startKey, endKey);
         }
 
-        public IBatch StartBatch()
+        public IWriteBatch StartWriteBatch()
         {
-            return _wrapped.StartBatch();
+            return _wrapped.StartWriteBatch();
         }
 
         public void Touch(ReadOnlySpan<byte> key)
         {
-            _witnessCollector.Add(new Keccak(key));
+            _witnessCollector.Add(new Hash256(key));
         }
     }
 }

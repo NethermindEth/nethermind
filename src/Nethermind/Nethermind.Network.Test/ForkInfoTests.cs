@@ -221,9 +221,6 @@ public class ForkInfoTests
     // 0xffffffff. Local needs software update, reject.
     [TestCase(7279999, 0ul, "0x5cddc0e1", 0ul, ValidationResult.IncompatibleOrStale)]
 
-    // Local is mainnet Petersburg, remote is Rinkeby Petersburg.
-    [TestCase(7987396, 0ul, "0xafec6b27", 0ul, ValidationResult.IncompatibleOrStale)]
-
     // Local is mainnet Byzantium. Remote is also in Byzantium, but announces Gopherium (non existing
     // fork) at block 7279999, before Petersburg. Local is incompatible.
     [TestCase(7279999, 0ul, "0xa00bc324", 7279999ul, ValidationResult.IncompatibleOrStale)]
@@ -337,13 +334,13 @@ public class ForkInfoTests
         provider.NetworkId.Should().Be(expectedNetworkId);
     }
 
-    private static void Test(long head, ulong headTimestamp, Keccak genesisHash, string forkHashHex, ulong next, string description, ISpecProvider specProvider, string chainSpec, string path = "../../../../Chains")
+    private static void Test(long head, ulong headTimestamp, Hash256 genesisHash, string forkHashHex, ulong next, string description, ISpecProvider specProvider, string chainSpec, string path = "../../../../Chains")
     {
         Test(head, headTimestamp, genesisHash, forkHashHex, next, description, specProvider);
         Test(head, headTimestamp, genesisHash, forkHashHex, next, description, chainSpec, path);
     }
 
-    private static void Test(long head, ulong headTimestamp, Keccak genesisHash, string forkHashHex, ulong next, string description, string chainSpec, string path = "../../../../Chains")
+    private static void Test(long head, ulong headTimestamp, Hash256 genesisHash, string forkHashHex, ulong next, string description, string chainSpec, string path = "../../../../Chains")
     {
         ChainSpecLoader loader = new ChainSpecLoader(new EthereumJsonSerializer());
         ChainSpec spec = loader.Load(File.ReadAllText(Path.Combine(path, chainSpec)));
@@ -351,7 +348,7 @@ public class ForkInfoTests
         Test(head, headTimestamp, genesisHash, forkHashHex, next, description, provider);
     }
 
-    private static void Test(long head, ulong headTimestamp, Keccak genesisHash, string forkHashHex, ulong next, string description, ISpecProvider specProvider)
+    private static void Test(long head, ulong headTimestamp, Hash256 genesisHash, string forkHashHex, ulong next, string description, ISpecProvider specProvider)
     {
         uint expectedForkHash = Bytes.ReadEthUInt32(Bytes.FromHexString(forkHashHex));
 

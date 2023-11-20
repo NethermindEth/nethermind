@@ -4,6 +4,7 @@
 using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Db;
 
 namespace Nethermind.Trie.Pruning
 {
@@ -23,19 +24,19 @@ namespace Nethermind.Trie.Pruning
             _publicStore = new ReadOnlyValueStore(_trieStore.AsKeyValueStore());
         }
 
-        public TrieNode FindCachedOrUnknown(Keccak hash) =>
+        public TrieNode FindCachedOrUnknown(Hash256 hash) =>
             _trieStore.FindCachedOrUnknown(hash, true);
 
-        public TrieNode FindCachedOrUnknown(Keccak hash, Span<byte> nodePath, Span<byte> storagePrefix) =>
+        public TrieNode FindCachedOrUnknown(Hash256 hash, Span<byte> nodePath, Span<byte> storagePrefix) =>
             _trieStore.FindCachedOrUnknown(hash, true);
-        public TrieNode FindCachedOrUnknown(Span<byte> nodePath, byte[] storagePrefix, Keccak rootHash)
+        public TrieNode FindCachedOrUnknown(Span<byte> nodePath, byte[] storagePrefix, Hash256 rootHash)
         {
             throw new NotImplementedException();
         }
 
-        public byte[] LoadRlp(Keccak hash, ReadFlags readFlags = ReadFlags.None) => _trieStore.LoadRlp(hash, _readOnlyStore, readFlags);
+        public byte[] LoadRlp(Hash256 hash, ReadFlags readFlags = ReadFlags.None) => _trieStore.LoadRlp(hash, _readOnlyStore, readFlags);
 
-        public bool IsPersisted(in ValueKeccak keccak) => _trieStore.IsPersisted(keccak);
+        public bool IsPersisted(in ValueHash256 keccak) => _trieStore.IsPersisted(keccak);
 
         public byte[]? TryLoadRlp(Span<byte> path, IKeyValueStore? keyValueStore)
         {
@@ -62,22 +63,22 @@ namespace Nethermind.Trie.Pruning
 
         public void Dispose() { }
 
-        public byte[]? LoadRlp(Span<byte> nodePath, Keccak rootHash)
+        public byte[]? LoadRlp(Span<byte> nodePath, Hash256 rootHash)
         {
             throw new NotImplementedException();
         }
 
-        public void PersistNode(TrieNode trieNode, IKeyValueStore? keyValueStore, bool withDelete = false, WriteFlags writeFlags = WriteFlags.None) { }
-        public void PersistNodeData(Span<byte> fullPath, int pathToNodeLength, byte[]? rlpData, IKeyValueStore? keyValueStore = null, WriteFlags writeFlags = WriteFlags.None) { }
+        public void PersistNode(TrieNode trieNode, IColumnsWriteBatch<StateColumns>? batch = null, bool withDelete = false, WriteFlags writeFlags = WriteFlags.None) { }
+        public void PersistNodeData(Span<byte> fullPath, int pathToNodeLength, byte[]? rlpData, IColumnsWriteBatch<StateColumns>? batch = null, WriteFlags writeFlags = WriteFlags.None) { }
 
         public void ClearCache()
         {
             _trieStore.ClearCache();
         }
 
-        public void ClearCacheAfter(Keccak rootHash) { }
+        public void ClearCacheAfter(Hash256 rootHash) { }
 
-        public bool ExistsInDB(Keccak hash, byte[] nodePathNibbles) => _trieStore.ExistsInDB(hash, nodePathNibbles);
+        public bool ExistsInDB(Hash256 hash, byte[] nodePathNibbles) => _trieStore.ExistsInDB(hash, nodePathNibbles);
 
         public byte[]? this[ReadOnlySpan<byte> key] => _trieStore[key];
         public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None) { }
@@ -90,12 +91,12 @@ namespace Nethermind.Trie.Pruning
 
         public void DeleteByRange(Span<byte> startKey, Span<byte> endKey) { }
 
-        public void CommitNode(long blockNumber, Keccak rootHash, NodeCommitInfo nodeCommitInfo, WriteFlags writeFlags = WriteFlags.None)
+        public void CommitNode(long blockNumber, Hash256 rootHash, NodeCommitInfo nodeCommitInfo, WriteFlags writeFlags = WriteFlags.None)
         {
             throw new NotImplementedException();
         }
 
-        public void OpenContext(long blockNumber, Keccak keccak)
+        public void OpenContext(long blockNumber, Hash256 keccak)
         {
             throw new NotImplementedException();
         }

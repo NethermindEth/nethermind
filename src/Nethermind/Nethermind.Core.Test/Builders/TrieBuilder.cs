@@ -6,6 +6,7 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Trie;
+using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Core.Test.Builders
 {
@@ -15,7 +16,7 @@ namespace Nethermind.Core.Test.Builders
 
         public TrieBuilder(IKeyValueStoreWithBatching db)
         {
-            TestObjectInternal = new PatriciaTree(db, Keccak.EmptyTreeHash, false, true, LimboLogs.Instance);
+            TestObjectInternal = new PatriciaTree(new TrieStore(db, LimboLogs.Instance), Keccak.EmptyTreeHash, false, true, LimboLogs.Instance);
         }
 
         public TrieBuilder WithAccountsByIndex(int start, int count)
@@ -23,14 +24,14 @@ namespace Nethermind.Core.Test.Builders
             int end = start + count;
             for (int j = start; j < end; j++)
             {
-                Keccak key = TestItem.Keccaks[j];
+                Hash256 key = TestItem.Keccaks[j];
                 byte[] value = GenerateIndexedAccountRlp(j);
                 TestObjectInternal.Set(key.Bytes, value);
             }
 
             for (int j = 0; j < end; j++)
             {
-                Keccak key = TestItem.Keccaks[j];
+                Hash256 key = TestItem.Keccaks[j];
                 byte[] value = GenerateIndexedAccountRlp(j + 1);
                 TestObjectInternal.Set(key.Bytes, value);
             }

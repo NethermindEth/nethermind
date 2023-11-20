@@ -113,7 +113,7 @@ public class TrieNodePathCache : IPathTrieNodeCache
             }
         }
 
-        public TrieNode? Get(Keccak keccak, long minBlockNumber = -1)
+        public TrieNode? Get(Hash256 keccak, long minBlockNumber = -1)
         {
             try
             {
@@ -198,7 +198,7 @@ public class TrieNodePathCache : IPathTrieNodeCache
     }
 
     private SpanConcurrentDictionary<byte, NodeVersions> _nodesByPath = new(Bytes.SpanNibbleEqualityComparer);
-    private ConcurrentDictionary<Keccak, HashSet<long>> _rootHashToBlock = new();
+    private ConcurrentDictionary<Hash256, HashSet<long>> _rootHashToBlock = new();
     private readonly ITrieStore _trieStore;
     private readonly SpanConcurrentDictionary<byte, long> _removedPrefixes;
     private int _count;
@@ -215,7 +215,7 @@ public class TrieNodePathCache : IPathTrieNodeCache
         PrefixLength = 66;
     }
 
-    public TrieNode? GetNode(Span<byte> path, Keccak keccak)
+    public TrieNode? GetNode(Span<byte> path, Hash256 keccak)
     {
         if (_nodesByPath.TryGetValue(path, out NodeVersions nodeVersions))
         {
@@ -225,7 +225,7 @@ public class TrieNodePathCache : IPathTrieNodeCache
         return null;
     }
 
-    public TrieNode? GetNodeFromRoot(Keccak? rootHash, Span<byte> path)
+    public TrieNode? GetNodeFromRoot(Hash256? rootHash, Span<byte> path)
     {
         if (_nodesByPath.TryGetValue(path, out NodeVersions nodeVersions))
         {
@@ -289,7 +289,7 @@ public class TrieNodePathCache : IPathTrieNodeCache
         if (_logger.IsTrace) _logger.Trace($"Added node for block {blockNumber} | node version for path {pathToNode.ToHexString()} : {nodeVersions.Count} | Paths cached: {_nodesByPath.Count}");
     }
 
-    public void SetRootHashForBlock(long blockNo, Keccak? rootHash)
+    public void SetRootHashForBlock(long blockNo, Hash256? rootHash)
     {
         rootHash ??= Keccak.EmptyTreeHash;
         if (_rootHashToBlock.TryGetValue(rootHash, out HashSet<long> blocks))
@@ -298,7 +298,7 @@ public class TrieNodePathCache : IPathTrieNodeCache
             _rootHashToBlock[rootHash] = new HashSet<long>(new[] { blockNo });
     }
 
-    public void PersistUntilBlock(long blockNumber, IBatch? batch = null)
+    public void PersistUntilBlock(long blockNumber, IColumnsWriteBatch<StateColumns>? batch = null)
     {
         List<TrieNode> toPersist = new();
 
@@ -327,7 +327,7 @@ public class TrieNodePathCache : IPathTrieNodeCache
     public void PruneUntil(long blockNumber)
     {
         List<byte[]> removedPaths = new();
-        List<Keccak> removedRoots = new();
+        List<Hash256> removedRoots = new();
         int newCount = 0;
 
         foreach (KeyValuePair<byte[], NodeVersions> nodeVersion in _nodesByPath)
@@ -343,13 +343,13 @@ public class TrieNodePathCache : IPathTrieNodeCache
         foreach (byte[] path in removedPaths)
             _nodesByPath.Remove(path, out _);
 
-        foreach (KeyValuePair<Keccak, HashSet<long>> kvp in _rootHashToBlock)
+        foreach (KeyValuePair<Hash256, HashSet<long>> kvp in _rootHashToBlock)
         {
             kvp.Value.RemoveWhere(blk => blk <= blockNumber);
             if (kvp.Value.Count == 0)
                 removedRoots.Add(kvp.Key);
         }
-        foreach (Keccak rootHash in removedRoots)
+        foreach (Hash256 rootHash in removedRoots)
             _rootHashToBlock.Remove(rootHash, out _);
 
         Interlocked.Exchange(ref _count, newCount);

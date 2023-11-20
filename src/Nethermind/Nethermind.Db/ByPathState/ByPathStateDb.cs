@@ -66,26 +66,9 @@ public class ByPathStateDb : IByPathStateDb
 
     public IEnumerable<StateColumns> ColumnKeys => throw new NotImplementedException();
 
-    public string Name => _currentDb.Name;
-
     public void Clear()
     {
         _currentDb.Clear();
-    }
-
-    public void DangerousReleaseMemory(in Span<byte> span)
-    {
-        _currentDb.DangerousReleaseMemory(span);
-    }
-
-    public void DeleteByRange(Span<byte> startKey, Span<byte> endKey)
-    {
-        _currentDb.DeleteByRange(startKey, endKey);
-    }
-
-    public void Dispose()
-    {
-        _currentDb?.Dispose();
     }
 
     public void Flush()
@@ -93,27 +76,12 @@ public class ByPathStateDb : IByPathStateDb
         _currentDb.Flush();
     }
 
-    public byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
-    {
-        return _currentDb.Get(key, flags);
-    }
-
-    public IEnumerable<KeyValuePair<byte[], byte[]?>> GetAll(bool ordered = false)
-    {
-        return _currentDb.GetAll(ordered);
-    }
-
-    public IEnumerable<byte[]> GetAllValues(bool ordered = false)
-    {
-        return _currentDb.GetAllValues(ordered);
-    }
-
     public long GetCacheSize()
     {
         return _currentDb.GetCacheSize();
     }
 
-    public IDbWithSpan GetColumnDb(StateColumns key)
+    public IDb GetColumnDb(StateColumns key)
     {
         return _currentDb.GetColumnDb(key);
     }
@@ -133,42 +101,17 @@ public class ByPathStateDb : IByPathStateDb
         return _currentDb.GetSize();
     }
 
-    public Span<byte> GetSpan(ReadOnlySpan<byte> key)
+    public IColumnsWriteBatch<StateColumns> StartWriteBatch()
     {
-        return _currentDb.GetSpan(key);
-    }
-
-    public bool KeyExists(ReadOnlySpan<byte> key)
-    {
-        return _currentDb.KeyExists(key);
-    }
-
-    public void PutSpan(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value)
-    {
-        _currentDb.PutSpan(key, value);
-    }
-
-    public void Remove(ReadOnlySpan<byte> key)
-    {
-        _currentDb.Remove(key);
-    }
-
-    public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None)
-    {
-        _currentDb.Set(key, value, flags);
-    }
-
-    public IBatch StartBatch()
-    {
-        return _currentDb.StartBatch();
+        return _currentDb.StartWriteBatch();
     }
     #endregion
 }
 
 public interface IByPathStateDb : IColumnsDb<StateColumns>
 {
-    IDbWithSpan GetStateDb() => GetColumnDb(StateColumns.State);
-    IDbWithSpan GetStorageDb() => GetColumnDb(StateColumns.Storage);
+    IDb GetStateDb() => GetColumnDb(StateColumns.State);
+    IDb GetStorageDb() => GetColumnDb(StateColumns.Storage);
 
     bool CanAccessByPath(StateColumns column);
     void EnqueueDeleteRange(StateColumns column, Span<byte> from, Span<byte> to);

@@ -31,7 +31,7 @@ namespace Nethermind.Synchronization.Test.FastSync
             DbContext dbContext = new DbContext(_resolverCapability, _logger, _logManager);
             TestItem.Tree.FillStateTreeWithTestAccounts(dbContext.RemoteStateTree);
 
-            Keccak rootHash = dbContext.RemoteStateTree.RootHash;
+            Hash256 rootHash = dbContext.RemoteStateTree.RootHash;
 
             ProcessAccountRange(dbContext.RemoteStateTree, dbContext.LocalStateTree, 1, rootHash, TestItem.Tree.AccountsWithPaths);
 
@@ -53,14 +53,14 @@ namespace Nethermind.Synchronization.Test.FastSync
             DbContext dbContext = new DbContext(_resolverCapability, _logger, _logManager);
 
             int pathPoolCount = 100_000;
-            Keccak[] pathPool = new Keccak[pathPoolCount];
-            SortedDictionary<Keccak, Account> accounts = new();
+            Hash256[] pathPool = new Hash256[pathPoolCount];
+            SortedDictionary<Hash256, Account> accounts = new();
 
             for (int i = 0; i < pathPoolCount; i++)
             {
                 byte[] key = new byte[32];
                 ((UInt256)i).ToBigEndian(key);
-                Keccak keccak = new Keccak(key);
+                Hash256 keccak = new Hash256(key);
                 pathPool[i] = keccak;
             }
 
@@ -68,7 +68,7 @@ namespace Nethermind.Synchronization.Test.FastSync
             for (int accountIndex = 0; accountIndex < 10000; accountIndex++)
             {
                 Account account = TestItem.GenerateRandomAccount();
-                Keccak path = pathPool[TestItem.Random.Next(pathPool.Length - 1)];
+                Hash256 path = pathPool[TestItem.Random.Next(pathPool.Length - 1)];
 
                 dbContext.RemoteStateTree.Set(path, account);
                 accounts[path] = account;
@@ -94,7 +94,7 @@ namespace Nethermind.Synchronization.Test.FastSync
                 for (int accountIndex = 0; accountIndex < 1000; accountIndex++)
                 {
                     Account account = TestItem.GenerateRandomAccount();
-                    Keccak path = pathPool[TestItem.Random.Next(pathPool.Length - 1)];
+                    Hash256 path = pathPool[TestItem.Random.Next(pathPool.Length - 1)];
 
                     if (accounts.ContainsKey(path))
                     {
@@ -159,9 +159,9 @@ namespace Nethermind.Synchronization.Test.FastSync
             int hashIndexJump = remoteTreeSize / 10;
             int pathPoolCount = 10 * remoteTreeSize;
 
-            Keccak[] pathPool = new Keccak[pathPoolCount];
-            SortedDictionary<Keccak, Account> accounts = new();
-            List<Keccak> deletedPaths = new List<Keccak>();
+            Hash256[] pathPool = new Hash256[pathPoolCount];
+            SortedDictionary<Hash256, Account> accounts = new();
+            List<Hash256> deletedPaths = new List<Hash256>();
 
             int updatesCount = 0;
 
@@ -169,7 +169,7 @@ namespace Nethermind.Synchronization.Test.FastSync
             {
                 byte[] key = new byte[32];
                 ((UInt256)i).ToBigEndian(key);
-                Keccak keccak = new Keccak(key);
+                Hash256 keccak = new Hash256(key);
                 pathPool[i] = keccak;
             }
 
@@ -178,7 +178,7 @@ namespace Nethermind.Synchronization.Test.FastSync
             {
                 Account account = TestItem.GenerateRandomAccount();
                 int index = TestItem.Random.Next(pathPool.Length - 1);
-                Keccak path = pathPool[index];
+                Hash256 path = pathPool[index];
 
                 dbContext.RemoteStateTree.Set(path, account);
                 accounts[path] = account;
@@ -207,7 +207,7 @@ namespace Nethermind.Synchronization.Test.FastSync
                 {
                     Account account = TestItem.GenerateRandomAccount();
                     int index = TestItem.Random.Next(pathPool.Length - 1);
-                    Keccak path = pathPool[index];
+                    Hash256 path = pathPool[index];
 
                     if (accounts.ContainsKey(path))
                     {
@@ -257,13 +257,13 @@ namespace Nethermind.Synchronization.Test.FastSync
             DetailedProgress data = ctx.TreeFeed.GetDetailedProgress();
             dbContext.LocalStateTree.UpdateRootHash();
 
-            dbContext.LocalStateDb.WaitForPrunning();
+            dbContext.LocalPathStateDb.WaitForPrunning();
 
             dbContext.CompareTrees("END");
 
             //check if healing removed deleted accounts
-            List<(Keccak, Account)> failedDeletions = new();
-            foreach (Keccak path in deletedPaths)
+            List<(Hash256, Account)> failedDeletions = new();
+            foreach (Hash256 path in deletedPaths)
             {
                 _logger.Info($"Deleted path {path}");
                 Account? remoteDeletedAccount = dbContext.RemoteStateTree.Get(path);
@@ -285,13 +285,13 @@ namespace Nethermind.Synchronization.Test.FastSync
             Assert.IsTrue(data.RequestedNodesCount < accounts.Count / 2);
         }
 
-        private static void ProcessAccountRange(IStateTree remoteStateTree, IStateTree localStateTree, int blockNumber, Keccak rootHash, PathWithAccount[] accounts)
+        private static void ProcessAccountRange(IStateTree remoteStateTree, IStateTree localStateTree, int blockNumber, Hash256 rootHash, PathWithAccount[] accounts)
         {
             if (accounts is null || accounts.Length == 0)
                 return;
-            ValueKeccak startingHash = accounts.First().Path;
-            ValueKeccak endHash = accounts.Last().Path;
-            Keccak limitHash = Keccak.MaxValue;
+            ValueHash256 startingHash = accounts.First().Path;
+            ValueHash256 endHash = accounts.Last().Path;
+            Hash256 limitHash = Keccak.MaxValue;
 
             AccountProofCollector accountProofCollector = new(startingHash.Bytes);
             remoteStateTree.Accept(accountProofCollector, remoteStateTree.RootHash);

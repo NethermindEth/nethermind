@@ -11,7 +11,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Les.Messages
     {
         public override int PacketType { get; } = LesMessageCode.Announce;
         public override string Protocol => Contract.P2P.Protocol.Les;
-        public Keccak HeadHash;
+        public Hash256 HeadHash;
         public long HeadBlockNo;
         public UInt256 TotalDifficulty;
         public long ReorgDepth;

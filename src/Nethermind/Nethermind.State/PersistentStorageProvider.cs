@@ -44,7 +44,7 @@ namespace Nethermind.State
             _storageTreeFactory = storageTreeFactory ?? new StorageTreeFactory();
         }
 
-        public Keccak StateRoot { get; set; } = null!;
+        public Hash256 StateRoot { get; set; } = null!;
 
         /// <summary>
         /// Reset the storage state
@@ -191,7 +191,7 @@ namespace Nethermind.State
                 // since the accounts could be empty accounts that are removing (EIP-158)
                 if (_stateProvider.AccountExists(address))
                 {
-                    Keccak root = RecalculateRootHash(address);
+                    Hash256 root = RecalculateRootHash(address);
 
                     // _logger.Warn($"Recalculating storage root {address}->{root} ({toUpdateRoots.Count})");
                     _stateProvider.UpdateStorageRoot(address, root);
@@ -269,7 +269,7 @@ namespace Nethermind.State
             }
         }
 
-        private Keccak RecalculateRootHash(Address address)
+        private Hash256 RecalculateRootHash(Address address)
         {
             StorageTree storageTree = GetOrCreateStorage(address);
             storageTree.UpdateRootHash();
@@ -288,7 +288,7 @@ namespace Nethermind.State
             // by means of CREATE 2 - notice that the cached trie may carry information about items that were not
             // touched in this block, hence were not zeroed above
             // TODO: how does it work with pruning?
-            Keccak stateRootHash = null;
+            Hash256 stateRootHash = null;
             if (_storages.ContainsKey(address))
                 stateRootHash = _storages[address].ParentStateRootHash;
             _storages[address] = new StorageTree(_trieStore, Keccak.EmptyTreeHash, _logManager, address);
@@ -302,7 +302,7 @@ namespace Nethermind.State
 
         private class StorageTreeFactory : IStorageTreeFactory
         {
-            public StorageTree Create(Address address, ITrieStore trieStore, Keccak storageRoot, Keccak stateRoot, ILogManager? logManager)
+            public StorageTree Create(Address address, ITrieStore trieStore, Hash256 storageRoot, Hash256 stateRoot, ILogManager? logManager)
             {
                 StorageTree st = new(trieStore, storageRoot, logManager, address);
                 st.ParentStateRootHash = stateRoot;

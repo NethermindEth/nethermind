@@ -172,7 +172,7 @@ namespace Nethermind.Trie
                         {
                             totalLength++;
                         }
-                        else if (item._data[i] is Keccak)
+                        else if (item._data[i] is Hash256)
                         {
                             totalLength += Rlp.LengthOfKeccakRlp;
                         }
@@ -214,9 +214,9 @@ namespace Nethermind.Trie
                         {
                             destination[position++] = 128;
                         }
-                        else if (item._data[i] is Keccak)
+                        else if (item._data[i] is Hash256)
                         {
-                            position = Rlp.Encode(destination, position, (item._data[i] as Keccak)!.Bytes);
+                            position = Rlp.Encode(destination, position, (item._data[i] as Hash256)!.Bytes);
                         }
                         else
                         {

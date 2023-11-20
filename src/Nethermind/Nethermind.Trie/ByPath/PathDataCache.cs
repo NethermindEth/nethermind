@@ -10,6 +10,7 @@ using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Trie.Pruning;
@@ -18,10 +19,10 @@ namespace Nethermind.Trie.ByPath;
 
 public class NodeData
 {
-    public Keccak Keccak { get; }
+    public Hash256 Keccak { get; }
     public byte[]? RLP { get; }
 
-    public NodeData(byte[] data, Keccak keccak) { RLP = data; Keccak = keccak; }
+    public NodeData(byte[] data, Hash256 keccak) { RLP = data; Keccak = keccak; }
 
     public TrieNode ToTrieNode(Span<byte> path)
     {
@@ -37,11 +38,11 @@ internal class PathDataCacheInstance
         static int _stateIdSeed = 0;
         public int Id { get; }
         public long? BlockNumber { get; set; }
-        public Keccak? BlockStateRoot { get; set; }
+        public Hash256? BlockStateRoot { get; set; }
         public StateId? ParentBlock { get; set; }
-        public Keccak? ParentStateHash { get; set; }
+        public Hash256? ParentStateHash { get; set; }
 
-        public StateId(long? blockNumber, Keccak? blockHash, Keccak parentStateRoot, StateId? parentBlock = null)
+        public StateId(long? blockNumber, Hash256? blockHash, Hash256 parentStateRoot, StateId? parentBlock = null)
         {
             Id = Interlocked.Increment(ref _stateIdSeed);
             BlockNumber = blockNumber;
@@ -50,7 +51,7 @@ internal class PathDataCacheInstance
             ParentBlock = parentBlock;
         }
 
-        private StateId(int id, long? blockNumber, Keccak blockHash, StateId? parentBlock = null)
+        private StateId(int id, long? blockNumber, Hash256 blockHash, StateId? parentBlock = null)
         {
             Id = id;
             BlockNumber = blockNumber;
@@ -107,7 +108,7 @@ internal class PathDataCacheInstance
             _nodes.Add(nad);
         }
 
-        public PathDataAtState? Get(Keccak keccak)
+        public PathDataAtState? Get(Hash256 keccak)
         {
             foreach (PathDataAtState nodeHist in _nodes)
             {
@@ -117,7 +118,7 @@ internal class PathDataCacheInstance
             return null;
         }
 
-        public PathDataAtState? Get(Keccak keccak, int highestStateId)
+        public PathDataAtState? Get(Hash256 keccak, int highestStateId)
         {
             if (_nodes.Count == 0) return null;
             if (highestStateId < _nodes.Min.StateId)
@@ -200,11 +201,11 @@ internal class PathDataCacheInstance
     public bool IsOpened => _lastState?.BlockStateRoot is null;
     public bool IsEmpty => _historyByPath.Count == 0 && _removedPrefixes.Count == 0;
 
-    public Keccak LatestParentStateRootHash => _lastState?.ParentStateHash;
+    public Hash256 LatestParentStateRootHash => _lastState?.ParentStateHash;
 
     public bool SingleBlockOnly => _lastState?.ParentBlock is null;
 
-    public void CloseState(Keccak newStateRootHash)
+    public void CloseState(Hash256 newStateRootHash)
     {
         if (IsOpened)
         {
@@ -221,7 +222,7 @@ internal class PathDataCacheInstance
         }
     }
 
-    public PathDataCacheInstance? GetCacheInstanceForParent(Keccak parentStateRoot, long blockNumber, out bool isParallelToExistingBranch)
+    public PathDataCacheInstance? GetCacheInstanceForParent(Hash256 parentStateRoot, long blockNumber, out bool isParallelToExistingBranch)
     {
         isParallelToExistingBranch = false;
         foreach (PathDataCacheInstance branch in _branches)
@@ -271,7 +272,7 @@ internal class PathDataCacheInstance
         return null;
     }
 
-    public PathDataCacheInstance? FindCacheInstanceForStateRoot(Keccak stateRoot)
+    public PathDataCacheInstance? FindCacheInstanceForStateRoot(Hash256 stateRoot)
     {
         StateId stateId = FindState(stateRoot);
         if (stateId is not null)
@@ -303,7 +304,7 @@ internal class PathDataCacheInstance
         if (!IsOpened)
             throw new ArgumentException("Can't add node to closed cache instance");
 
-        if (_logger.IsTrace) _logger.Trace($"Adding node {node.PathToNode.ToHexString()} / {node.FullPath.ToHexString()} with Keccak: {node.Keccak} at block {blockNuber}");
+        if (_logger.IsTrace) _logger.Trace($"Adding node {node.PathToNode.ToHexString()} / {node.FullPath.ToHexString()} with Hash256: {node.Keccak} at block {blockNuber}");
 
         NodeData nd = new(node.FullRlp.Array, node.Keccak);
         if (node.IsLeaf)
@@ -320,7 +321,7 @@ internal class PathDataCacheInstance
         _isDirty = true;
     }
 
-    public NodeData? GetNodeDataAtRoot(Keccak? rootHash, Span<byte> path)
+    public NodeData? GetNodeDataAtRoot(Hash256? rootHash, Span<byte> path)
     {
         rootHash ??= _lastState?.BlockStateRoot;
         StateId localState = FindState(rootHash);
@@ -347,7 +348,7 @@ internal class PathDataCacheInstance
         return _parentInstance?.GetNodeDataAtRoot(null, path);
     }
 
-    public NodeData? GetNodeData(Span<byte> path, Keccak? hash)
+    public NodeData? GetNodeData(Span<byte> path, Hash256? hash)
     {
         NodeData? data = null;
         if (_historyByPath.TryGetValue(path, out PathDataHistory history))
@@ -365,7 +366,7 @@ internal class PathDataCacheInstance
         return data;
     }
 
-    public bool PersistUntilBlock(long blockNumber, Keccak rootHash, IBatch? batch = null)
+    public bool PersistUntilBlock(long blockNumber, Hash256 rootHash, IColumnsWriteBatch<StateColumns>? batch = null)
     {
         Stack<PathDataCacheInstance> branches = new Stack<PathDataCacheInstance>();
         GetBranchesToProcess(blockNumber, rootHash, branches, true, out StateId? latestState);
@@ -383,7 +384,7 @@ internal class PathDataCacheInstance
         return true;
     }
 
-    public bool PruneUntil(long blockNumber, Keccak rootHash)
+    public bool PruneUntil(long blockNumber, Hash256 rootHash)
     {
         Stack<PathDataCacheInstance> branches = new Stack<PathDataCacheInstance>();
         GetBranchesToProcess(blockNumber, rootHash, branches, false, out StateId? latestState);
@@ -408,7 +409,7 @@ internal class PathDataCacheInstance
         return true;
     }
 
-    private void PersistUntilBlockInner(StateId? stateId, IBatch? batch = null)
+    private void PersistUntilBlockInner(StateId? stateId, IColumnsWriteBatch<StateColumns>? batch = null)
     {
         if (_logger.IsTrace)
             _logger.Trace($"Persisting cache instance with latest state {_lastState?.BlockNumber} / {_lastState?.BlockStateRoot} until state {stateId?.BlockNumber} / {stateId?.BlockStateRoot}");
@@ -455,7 +456,7 @@ internal class PathDataCacheInstance
                     //{
                     //    pathToNode = nodeVersion.Key.Length >= 66 ? nodeVersion.Key[..(leafPathToNodeLength + 66)] : nodeVersion.Key[..(leafPathToNodeLength)];
                     //}
-                    //_logger.Trace($"Persising node {pathToNode.ToHexString()} / {nodeVersion.Key.ToHexString()} with Keccak: {data.Keccak} from block {originalState?.BlockNumber} / {stateId.BlockStateRoot} Value: {data.RLP.ToArray()?.ToHexString()}");
+                    //_logger.Trace($"Persising node {pathToNode.ToHexString()} / {nodeVersion.Key.ToHexString()} with Hash256: {data.Hash256} from block {originalState?.BlockNumber} / {stateId.BlockStateRoot} Value: {data.RLP.ToArray()?.ToHexString()}");
                 }
             }
         }
@@ -528,7 +529,7 @@ internal class PathDataCacheInstance
         return history;
     }
 
-    private StateId? FindState(Keccak rootHash, long blockNumber = -1)
+    private StateId? FindState(Hash256 rootHash, long blockNumber = -1)
     {
         StateId stateId = _lastState;
         while (stateId is not null)
@@ -540,7 +541,7 @@ internal class PathDataCacheInstance
         return null;
     }
 
-    private bool GetBranchesToProcess(long blockNumber, Keccak stateRoot, Stack<PathDataCacheInstance> branches, bool filterDetached, out StateId? latestState)
+    private bool GetBranchesToProcess(long blockNumber, Hash256 stateRoot, Stack<PathDataCacheInstance> branches, bool filterDetached, out StateId? latestState)
     {
         StateId? localState = FindState(stateRoot);
         if (localState is not null)
@@ -562,7 +563,7 @@ internal class PathDataCacheInstance
         return false;
     }
 
-    private StateId? FindStateWithParent(Keccak rootHash, long? highestBlockNumber = null)
+    private StateId? FindStateWithParent(Hash256 rootHash, long? highestBlockNumber = null)
     {
         StateId stateId = _lastState;
         while (stateId.ParentBlock is not null)
@@ -667,7 +668,7 @@ public class PathDataCache : IPathDataCache
 
     public int PrefixLength { get; internal set; } = 66;
 
-    public void OpenContext(long blockNumber, Keccak parentStateRoot)
+    public void OpenContext(long blockNumber, Hash256 parentStateRoot)
     {
         try
         {
@@ -695,7 +696,7 @@ public class PathDataCache : IPathDataCache
         }
     }
 
-    public void CloseContext(long blockNumber, Keccak newStateRoot)
+    public void CloseContext(long blockNumber, Hash256 newStateRoot)
     {
         try
         {
@@ -742,7 +743,7 @@ public class PathDataCache : IPathDataCache
         finally { _lock.ExitWriteLock(); }
     }
 
-    public NodeData? GetNodeDataAtRoot(Keccak? rootHash, Span<byte> path)
+    public NodeData? GetNodeDataAtRoot(Hash256? rootHash, Span<byte> path)
     {
         try
         {
@@ -757,7 +758,7 @@ public class PathDataCache : IPathDataCache
         finally { _lock.ExitReadLock(); }
     }
 
-    public NodeData? GetNodeData(Span<byte> path, Keccak? hash)
+    public NodeData? GetNodeData(Span<byte> path, Hash256? hash)
     {
         try
         {
@@ -776,7 +777,7 @@ public class PathDataCache : IPathDataCache
         finally { _lock.ExitReadLock(); }
     }
 
-    public bool PersistUntilBlock(long blockNumber, Keccak rootHash, IBatch? batch = null)
+    public bool PersistUntilBlock(long blockNumber, Hash256 rootHash, IColumnsWriteBatch<StateColumns>? batch = null)
     {
         try
         {
@@ -813,7 +814,7 @@ public class PathDataCache : IPathDataCache
         finally { _lock.ExitWriteLock(); }
     }
 
-    private PathDataCacheInstance? GetCacheInstanceForState(Keccak parentStateRoot, long blockNumber)
+    private PathDataCacheInstance? GetCacheInstanceForState(Hash256 parentStateRoot, long blockNumber)
     {
         PathDataCacheInstance newInstance = _main.GetCacheInstanceForParent(parentStateRoot, blockNumber, out bool isParallelBranch);
         //PathDataCacheInstance newInstance = null;
@@ -827,7 +828,7 @@ public class PathDataCache : IPathDataCache
         return newInstance;
     }
 
-    private PathDataCacheInstance? FindCacheInstanceForStateRoot(Keccak stateRoot)
+    private PathDataCacheInstance? FindCacheInstanceForStateRoot(Hash256 stateRoot)
     {
         return _main.FindCacheInstanceForStateRoot(stateRoot);
     }

@@ -87,7 +87,7 @@ public class TrieByPathFuzzTesting
         using FileStream fileStream = new(fileName, FileMode.Create);
         using StreamWriter streamWriter = new(fileStream);
 
-        Queue<Keccak> rootQueue = new();
+        Queue<Hash256> rootQueue = new();
 
         //var dirInfo = Directory.CreateTempSubdirectory();
         //ColumnsDb<StateColumns> memDb = new ColumnsDb<StateColumns>(dirInfo.FullName, new RocksDbSettings("pathState", Path.Combine(dirInfo.FullName, "pathState")), new DbConfig(), _logManager, new StateColumns[] { StateColumns.State, StateColumns.Storage });
@@ -98,7 +98,7 @@ public class TrieByPathFuzzTesting
         using TrieStoreByPath pathTrieStore = new(memDb, Persist.IfBlockOlderThan(lookupLimit), _logManager);
         WorldState pathStateProvider = new(pathTrieStore, new MemDb(), _logManager);
 
-        using TrieStore trieStore = new(memDb, No.Pruning, Persist.IfBlockOlderThan(lookupLimit), _logManager);
+        using TrieStore trieStore = new(new MemDb(), No.Pruning, Persist.IfBlockOlderThan(lookupLimit), _logManager);
         WorldState stateProvider = new(trieStore, new MemDb(), _logManager);
 
         Account[] accounts = new Account[accountsCount];
@@ -212,9 +212,9 @@ public class TrieByPathFuzzTesting
         streamWriter.Flush();
         fileStream.Seek(0, SeekOrigin.Begin);
 
-        streamWriter.WriteLine($"DB size: {memDb.Keys.Count}");
+        //streamWriter.WriteLine($"DB size: {memDb.Keys.Count}");
 
-        _logger.Info($"DB size: {memDb.Keys.Count}");
+        //_logger.Info($"DB size: {memDb.Keys.Count}");
         _logger.Info($"DB path size state: {((IFullDb)memDb.GetColumnDb(StateColumns.State)).Keys.Count}");
         _logger.Info($"DB path size storage: {((IFullDb)memDb.GetColumnDb(StateColumns.Storage)).Keys.Count}");
 
@@ -223,11 +223,11 @@ public class TrieByPathFuzzTesting
         int verifiedBlocks = 0;
         do
         {
-            rootQueue.TryDequeue(out Keccak _);
+            rootQueue.TryDequeue(out Hash256 _);
             omitted++;
         } while (omitted < pathTrieStore.LastPersistedBlockNumber);
 
-        while (rootQueue.TryDequeue(out Keccak currentRoot))
+        while (rootQueue.TryDequeue(out Hash256 currentRoot))
         {
 
             stateProvider.Reset();
@@ -246,7 +246,7 @@ public class TrieByPathFuzzTesting
             verifiedBlocks++;
         }
 
-        memDb.Dispose();
+        //memDb.Dispose();
 
         Console.WriteLine($"Verified positive {verifiedBlocks}");
         _logger.Info($"Verified positive {verifiedBlocks}");

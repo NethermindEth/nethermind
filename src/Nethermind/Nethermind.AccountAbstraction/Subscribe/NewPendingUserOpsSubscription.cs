@@ -60,18 +60,13 @@ namespace Nethermind.AccountAbstraction.Subscribe
 
         private void OnNewPending(object? sender, UserOperationEventArgs e)
         {
-            ScheduleAction(() =>
+            ScheduleAction(async () =>
             {
                 JsonRpcResult result;
-                if (_includeUserOperations)
-                {
-                    result = CreateSubscriptionMessage(new { UserOperation = new UserOperationRpc(e.UserOperation), e.EntryPoint });
-                }
-                else
-                {
-                    result = CreateSubscriptionMessage(new { UserOperation = e.UserOperation.RequestId, e.EntryPoint });
-                }
-                JsonRpcDuplexClient.SendJsonRpcResult(result);
+                result = _includeUserOperations
+                    ? CreateSubscriptionMessage(new { UserOperation = new UserOperationRpc(e.UserOperation), e.EntryPoint })
+                    : CreateSubscriptionMessage(new { UserOperation = e.UserOperation.RequestId, e.EntryPoint });
+                await JsonRpcDuplexClient.SendJsonRpcResult(result);
                 if (_logger.IsTrace) _logger.Trace($"newPendingUserOperations subscription {Id} printed hash of newPendingUserOperations.");
             });
         }
@@ -89,5 +84,3 @@ namespace Nethermind.AccountAbstraction.Subscribe
         }
     }
 }
-
-

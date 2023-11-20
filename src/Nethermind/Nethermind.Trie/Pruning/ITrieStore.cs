@@ -4,17 +4,18 @@
 using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Db;
 
 namespace Nethermind.Trie.Pruning
 {
     public interface ITrieStore : ITrieNodeResolver, IDisposable
     {
-        void OpenContext(long blockNumber, Keccak keccak);
+        void OpenContext(long blockNumber, Hash256 keccak);
         void CommitNode(long blockNumber, NodeCommitInfo nodeCommitInfo, WriteFlags writeFlags = WriteFlags.None);
 
         void FinishBlockCommit(TrieType trieType, long blockNumber, TrieNode? root, WriteFlags writeFlags = WriteFlags.None);
 
-        bool IsPersisted(in ValueKeccak keccak);
+        bool IsPersisted(in ValueHash256 keccak);
 
         IReadOnlyTrieStore AsReadOnly(IKeyValueStore? keyValueStore);
 
@@ -22,8 +23,8 @@ namespace Nethermind.Trie.Pruning
 
         IKeyValueStore AsKeyValueStore();
 
-        void PersistNode(TrieNode trieNode, IKeyValueStore? batch = null, bool withDelete = false, WriteFlags writeFlags = WriteFlags.None);
-        void PersistNodeData(Span<byte> fullPath, int pathToNodeLength, byte[]? rlpData, IKeyValueStore? keyValueStore = null, WriteFlags writeFlags = WriteFlags.None);
+        void PersistNode(TrieNode trieNode, IColumnsWriteBatch<StateColumns>? batch = null, bool withDelete = false, WriteFlags writeFlags = WriteFlags.None);
+        void PersistNodeData(Span<byte> fullPath, int pathToNodeLength, byte[]? rlpData, IColumnsWriteBatch<StateColumns>? keyValueStore = null, WriteFlags writeFlags = WriteFlags.None);
 
         public void ClearCache();
 
