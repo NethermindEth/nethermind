@@ -51,6 +51,9 @@ namespace Nethermind.Synchronization.Test.FastSync.SnapProtocolTests
                 new StateSyncDispatcherTester(feed, new StateSyncDownloader(_logManager), _pool, new StateSyncAllocationStrategyFactory(), _logManager);
         }
 
+        [TearDown]
+        public void TearDown() => _pool?.Dispose();
+
         [Test]
         public async Task Eth66Peer_RunGetNodeData()
         {

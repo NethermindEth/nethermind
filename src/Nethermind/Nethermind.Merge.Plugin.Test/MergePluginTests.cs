@@ -26,7 +26,9 @@ namespace Nethermind.Merge.Plugin.Test
     {
         private MergeConfig _mergeConfig = null!;
         private NethermindApi _context = null!;
+#pragma warning disable NUnit1032
         private MergePlugin _plugin = null!;
+#pragma warning restore NUnit1032
         private CliquePlugin? _consensusPlugin = null;
 
         [SetUp]
@@ -68,6 +70,9 @@ namespace Nethermind.Merge.Plugin.Test
 
             _consensusPlugin = new();
         }
+
+        [TearDown]
+        public void TearDown() => _plugin.DisposeAsync();
 
         [Test]
         public void SlotPerSeconds_has_different_value_in_mergeConfig_and_blocksConfig()

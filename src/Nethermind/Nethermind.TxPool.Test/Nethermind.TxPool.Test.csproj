@@ -4,6 +4,7 @@
     <TargetFramework>$(TFM)</TargetFramework>
     <IsPackable>false</IsPackable>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <NoWarn>$(NoWarn);NUnit1032</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>

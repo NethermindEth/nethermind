@@ -70,6 +70,9 @@ public class VirtualMachineTestsBase
         _processor = new TransactionProcessor(SpecProvider, TestState, Machine, logManager);
     }
 
+    [TearDown]
+    public virtual void TearDown() => _stateDb?.Dispose();
+
     protected GethLikeTxTrace ExecuteAndTrace(params byte[] code)
     {
         GethLikeTxMemoryTracer tracer = new(GethTraceOptions.Default with { EnableMemory = true });

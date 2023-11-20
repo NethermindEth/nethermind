@@ -91,6 +91,9 @@ namespace Nethermind.Blockchain.Test
                 LimboLogs.Instance, BlockchainProcessor.Options.Default);
         }
 
+        [TearDown]
+        public void TearDown() => _blockchainProcessor?.Dispose();
+
         [Test, Timeout(Timeout.MaxTestTime)]
         [Retry(3)]
         public void Test()

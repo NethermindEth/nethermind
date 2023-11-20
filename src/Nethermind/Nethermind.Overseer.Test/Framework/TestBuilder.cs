@@ -33,6 +33,7 @@ namespace Nethermind.Overseer.Test.Framework
             }
         }
 
+#pragma warning disable NUnit1032
         /// <summary>
         /// Gets the task representing the fluent work.
         /// </summary>
@@ -40,6 +41,7 @@ namespace Nethermind.Overseer.Test.Framework
         /// The task.
         /// </value>
         public Task ScenarioCompletion { get; private set; }
+#pragma warning restore NUnit1032
 
         /// <summary>
         /// Queues up asynchronous work.

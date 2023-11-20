@@ -85,6 +85,9 @@ namespace Nethermind.JsonRpc.Test.Modules.Trace
             _tracer = new Tracer(stateProvider, _processor, _processor);
         }
 
+        [TearDown]
+        public void TearDown() => _processor?.Dispose();
+
         [Test]
         public void Can_trace_raw_parity_style()
         {

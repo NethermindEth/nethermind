@@ -4,6 +4,7 @@
     <TargetFramework>$(TFM)</TargetFramework>
     <Nullable>enable</Nullable>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <NoWarn>$(NoWarn);NUnit1032</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>
