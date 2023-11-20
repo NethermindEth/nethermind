@@ -71,10 +71,10 @@ namespace Nethermind.Db
             return this.LikeABatch();
         }
 
-        public long GetSize() => _wrappedDb.GetSize();
-        public long GetCacheSize() => _wrappedDb.GetCacheSize();
-        public long GetIndexSize() => _wrappedDb.GetIndexSize();
-        public long GetMemtableSize() => _wrappedDb.GetMemtableSize();
+        public long GetSize() => _memDb.GetSize() + _wrappedDb.GetSize();
+        public long GetCacheSize() => _memDb.GetCacheSize() + _wrappedDb.GetCacheSize();
+        public long GetIndexSize() => _memDb.GetIndexSize() + _wrappedDb.GetIndexSize();
+        public long GetMemtableSize() => _memDb.GetMemtableSize() + _wrappedDb.GetMemtableSize();
 
         public void Remove(ReadOnlySpan<byte> key) { }
 

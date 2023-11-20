@@ -10,7 +10,7 @@ namespace Nethermind.JsonRpc.Modules.Eth;
 
 public abstract class ExecutorBase<TResult, TRequest, TProcessing>
 {
-    private readonly IBlockFinder _blockFinder;
+    protected readonly IBlockFinder _blockFinder;
     protected readonly IBlockchainBridge _blockchainBridge;
     protected readonly IJsonRpcConfig _rpcConfig;
 

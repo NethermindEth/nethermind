@@ -74,6 +74,33 @@ public class MultiCallTxExecutor : ExecutorBase<IReadOnlyList<MultiCallBlockResu
 
         return result;
     }
+    public override ResultWrapper<IReadOnlyList<MultiCallBlockResult>> Execute(
+        MultiCallPayload<TransactionForRpc> call,
+        BlockParameter? blockParameter)
+    {
+        SearchResult<Block> searchResult = _blockFinder.SearchForBlock(blockParameter);
+
+        if (searchResult.IsError || searchResult.Object == null)
+        {
+            return ResultWrapper<IReadOnlyList<MultiCallBlockResult>>.Fail(searchResult);
+        }
+
+        BlockHeader header = searchResult.Object.Header;
+
+        if (blockParameter.Type == BlockParameterType.Latest)
+        {
+            header = _blockFinder.FindLatestBlock().Header;
+        }
+
+        if (!_blockchainBridge.HasStateForBlock(header!))
+        {
+            return ResultWrapper<IReadOnlyList<MultiCallBlockResult>>.Fail($"No state available for block {header.Hash}", ErrorCodes.ResourceUnavailable);
+        }
+
+        using CancellationTokenSource cancellationTokenSource = new(_rpcConfig.Timeout);
+        MultiCallPayload<TransactionWithSourceDetails>? toProcess = Prepare(call);
+        return Execute(header.Clone(), toProcess, cancellationTokenSource.Token);
+    }
 
     protected override ResultWrapper<IReadOnlyList<MultiCallBlockResult>> Execute(BlockHeader header, MultiCallPayload<TransactionWithSourceDetails> tx, CancellationToken token)
     {

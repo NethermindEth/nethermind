@@ -4,6 +4,9 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Microsoft.AspNetCore.Authorization;
+using Nethermind.Blockchain;
+using Nethermind.Blockchain.Find;
 using Nethermind.Config;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
@@ -47,18 +50,26 @@ public class MulticallBridgeHelper
     public (bool Success, string Error) TryMultiCallTrace(BlockHeader parent, MultiCallPayload<TransactionWithSourceDetails> payload, IBlockTracer tracer)
     {
         using MultiCallReadOnlyBlocksProcessingEnv? env = _multiCallProcessingEnv.Clone(payload.TraceTransfers, payload.Validation);
-        env.BlockTree.UpdateHeadBlock(parent.Hash!);
+ 
+        Block? latestPersistant = env.BlockTree.FindLatestBlock();
+        if (latestPersistant.Number < parent.Number)
+        {
+            parent = latestPersistant.Header;
+        }
+
         IWorldState stateProvider = env.StateProvider;
-        stateProvider.RecalculateStateRoot();
         stateProvider.StateRoot = parent.StateRoot!;
 
         BlockStateCall<TransactionWithSourceDetails>? firstBlock = payload.BlockStateCalls?.FirstOrDefault();
-        if (firstBlock?.BlockOverrides?.Number is > 0 and < long.MaxValue)
+
+        ulong lastKnown = (ulong)latestPersistant.Number;
+        if (firstBlock?.BlockOverrides?.Number > 0 && firstBlock?.BlockOverrides?.Number < lastKnown)
         {
-            BlockHeader? searchResult = env.BlockTree.FindHeader((long)firstBlock.BlockOverrides.Number);
+            Block? searchResult = env.BlockTree.FindBlock((long)firstBlock.BlockOverrides.Number);
             if (searchResult is not null)
             {
-                parent = searchResult;
+                parent = searchResult.Header;
+                stateProvider.StateRoot = parent.StateRoot!;
             }
         }
 
@@ -110,6 +121,7 @@ public class MulticallBridgeHelper
                     {
                         if (!nonceCache.TryGetValue(transaction.SenderAddress, out UInt256 cachedNonce))
                         {
+                            env.StateProvider.CreateAccountIfNotExists(transaction.SenderAddress, 0, 0);
                             cachedNonce = env.StateProvider.GetAccount(transaction.SenderAddress).Nonce;
                             nonceCache[transaction.SenderAddress] = cachedNonce;
                         }

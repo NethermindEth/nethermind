@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
@@ -21,6 +22,75 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth;
 
 public class EthMulticallTestsPrecompilesWithRedirection
 {
+    public static byte[] HexStringToByteArray(string hex)
+    {
+        if (hex.StartsWith("0x"))
+        {
+            hex = hex.Substring(2);
+        }
+
+        int NumberChars = hex.Length;
+        byte[] bytes = new byte[NumberChars / 2];
+        for (int i = 0; i < NumberChars; i += 2)
+        {
+            bytes[i / 2] = Convert.ToByte(hex.Substring(i, 2), 16);
+        }
+        return bytes;
+    }
+
+    [Test]
+    public async Task Test_eth_multicall_create()
+    {
+        TestRpcBlockchain chain = await EthRpcMulticallTestsBase.CreateChain();
+        
+        Transaction systemTransactionForModifiedVm = new()
+        {
+            SenderAddress = new Address("0xc000000000000000000000000000000000000000"),
+            Data = HexStringToByteArray("0xee82ac5e0000000000000000000000000000000000000000000000000000000000000001"),
+            To = new Address("0xc200000000000000000000000000000000000000"),
+            GasLimit = 3_500_000,
+            GasPrice = 20.GWei(),
+            
+        };
+
+        TransactionForRpc transactionForRpc = new(systemTransactionForModifiedVm) { Nonce = null };
+
+        MultiCallPayload<TransactionForRpc> payload = new()
+        {
+            BlockStateCalls = new BlockStateCall<TransactionForRpc>[]
+            {
+                new()
+                {
+                    StateOverrides = new Dictionary<Address, AccountOverride>
+                    {
+                        {
+                            new Address("0xc200000000000000000000000000000000000000"),
+                            new AccountOverride
+                            {
+                                Code = HexStringToByteArray("0x6080604052348015600f57600080fd5b506004361060285760003560e01c8063ee82ac5e14602d575b600080fd5b60436004803603810190603f91906098565b6057565b604051604e919060d7565b60405180910390f35b600081409050919050565b600080fd5b6000819050919050565b6078816067565b8114608257600080fd5b50565b6000813590506092816071565b92915050565b60006020828403121560ab5760aa6062565b5b600060b7848285016085565b91505092915050565b6000819050919050565b60d18160c0565b82525050565b600060208201905060ea600083018460ca565b9291505056fea2646970667358221220a4d7face162688805e99e86526524ac3dadfb01cc29366d0d68b70dadcf01afe64736f6c63430008120033")
+                            }
+                        },
+                    },
+                    Calls = new[]
+                    {
+                        transactionForRpc,
+                    }
+                }
+            },
+            TraceTransfers = false,
+            Validation = false
+        };
+
+        //will mock our GetCachedCodeInfo function - it shall be called 3 times if redirect is working, 2 times if not
+        MultiCallTxExecutor executor = new(chain.Bridge, chain.BlockFinder, new JsonRpcConfig());
+
+        ResultWrapper<IReadOnlyList<MultiCallBlockResult>> result = executor.Execute(payload, BlockParameter.Latest);
+
+        //Check results
+        byte[]? returnData = result.Data[0].Calls.First().ReturnData;
+    }
+
+
     /// <summary>
     ///     This test verifies that a temporary forked blockchain can redirect precompiles
     /// </summary>
