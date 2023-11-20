@@ -13,11 +13,11 @@ public class EIP4844blobtransactionsTests : GeneralStateTestBase
 {
     // Uncomment when stEIP4844 tests are merged
 
-    // [TestCaseSource(nameof(LoadTests))]
-    // public void Test(GeneralStateTest test)
-    // {
-    //     Assert.True(RunTest(test).Pass);
-    // }
+    [TestCaseSource(nameof(LoadTests))]
+    public void Test(GeneralStateTest test)
+    {
+        Assert.True(RunTest(test).Pass);
+    }
 
     public static IEnumerable<GeneralStateTest> LoadTests()
     {
