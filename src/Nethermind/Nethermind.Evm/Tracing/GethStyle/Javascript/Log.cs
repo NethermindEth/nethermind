@@ -83,20 +83,21 @@ namespace Nethermind.Evm.Tracing.GethStyle.Javascript
             private ITypedArray<byte>? _addressConverted;
             private ITypedArray<byte>? _inputConverted;
             private IJavaScriptObject? _valueConverted;
-            private readonly Address _caller;
+            public Address Caller { get; }
 
 
             public Contract(Address caller, Address address, UInt256 value, ReadOnlyMemory<byte>? input)
             {
-                _caller = caller;
+                Caller = caller;
                 _address = address;
                 _value = value;
                 _input = input;
             }
 
             public ITypedArray<byte> getAddress() => _addressConverted ??= _address.Bytes.ToTypedScriptArray();
-            public ITypedArray<byte> getCaller() => _callerConverted ??= _caller.Bytes.ToTypedScriptArray();
+            public ITypedArray<byte> getCaller() => _callerConverted ??= Caller.Bytes.ToTypedScriptArray();
             public object getInput() => (_inputConverted ??= _input?.ToArray().ToTypedScriptArray()) ?? (object)Undefined.Value;
+
             public IJavaScriptObject getValue() => _valueConverted ??= _value.ToBigInteger();
         }
     }
