@@ -14,6 +14,7 @@ on:
           - sepolia
           - goerli
           - chiado
+          - holesky
       cl_client:
         description: "Select Consensus Layer Client to run node against"
         default: ""
