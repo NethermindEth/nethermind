@@ -13,8 +13,6 @@ namespace Nethermind.Evm.Test
     [Parallelizable(ParallelScope.All)]
     public class Keccak256Tests : VirtualMachineTestsBase
     {
-        protected override long BlockNumber => RinkebySpecProvider.ConstantinopleFixBlockNumber;
-
         private bool _setAuthor;
 
         protected override Block BuildBlock(ForkActivation activation, SenderRecipientAndMiner senderRecipientAndMiner, Transaction transaction, long blockGasLimit = DefaultBlockGasLimit, ulong excessBlobGas = 0)
