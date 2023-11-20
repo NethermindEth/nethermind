@@ -94,6 +94,7 @@ namespace Ethereum.Test.Base
             header.Hash = header.CalculateHash();
             header.IsPostMerge = test.CurrentRandom is not null;
             header.MixHash = test.CurrentRandom;
+            header.WithdrawalsRoot = test.CurrentWithdrawalsRoot;
 
             Stopwatch stopwatch = Stopwatch.StartNew();
             TxValidator? txValidator = new((MainnetSpecProvider.Instance.ChainId));
