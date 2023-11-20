@@ -80,8 +80,15 @@ namespace Ethereum.Test.Base
 
             InitializeTestState(test, stateProvider, specProvider);
 
-            BlockHeader header = new(test.PreviousHash, Keccak.OfAnEmptySequenceRlp, test.CurrentCoinbase,
-                test.CurrentDifficulty, test.CurrentNumber, test.CurrentGasLimit, test.CurrentTimestamp, Array.Empty<byte>());
+            BlockHeader header = new(
+                test.PreviousHash,
+                Keccak.OfAnEmptySequenceRlp,
+                test.CurrentCoinbase,
+                test.CurrentDifficulty,
+                test.CurrentNumber,
+                test.CurrentGasLimit,
+                test.CurrentTimestamp,
+                Array.Empty<byte>());
             header.BaseFeePerGas = test.Fork.IsEip1559Enabled ? test.CurrentBaseFee ?? _defaultBaseFeeForStateTest : UInt256.Zero;
             header.StateRoot = test.PostHash;
             header.Hash = header.CalculateHash();
