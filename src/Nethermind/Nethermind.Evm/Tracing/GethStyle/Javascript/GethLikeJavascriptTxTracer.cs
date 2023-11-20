@@ -23,6 +23,7 @@ public sealed class GethLikeJavascriptTxTracer : GethLikeTxTracer
     private bool _resultConstructed;
     private Stack<long>? _frameGas;
     private Stack<Log.Contract>? _contracts;
+    private int _depth = -1;
 
     // Context is updated only of first ReportAction call.
     private readonly Context _ctx;
@@ -65,10 +66,12 @@ public sealed class GethLikeJavascriptTxTracer : GethLikeTxTracer
 
     public override void ReportAction(long gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false)
     {
+        _depth++;
+
         base.ReportAction(gas, value, from, to, input, callType, isPrecompileCall);
 
         bool isAnyCreate = callType.IsAnyCreate();
-        if (callType == ExecutionType.TRANSACTION)
+        if (_depth == 0)
         {
             _ctx.type = isAnyCreate ? "CREATE" : "CALL";
             _ctx.From = from;
@@ -157,6 +160,8 @@ public sealed class GethLikeJavascriptTxTracer : GethLikeTxTracer
             _result.Error = error;
             _tracer.exit(_result);
         }
+
+        _depth--;
     }
 
     public override void MarkAsFailed(Address recipient, long gasSpent, byte[]? output, string error, Hash256? stateRoot = null)
