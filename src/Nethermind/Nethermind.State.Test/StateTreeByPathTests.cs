@@ -710,10 +710,10 @@ namespace Nethermind.Store.Test
 
             int numberOfAccounts = 10000;
             int numberOfBlocks = 100;
-            int numberOfUpdates = numberOfAccounts / 100;
+            int numberOfUpdates = numberOfAccounts / 10;
 
             int seed = Environment.TickCount;
-            //int seed = 367667468;
+            //int seed = 185189906;
             logger.Warn($"Seed: {seed}");
             Random _random = new Random(seed);
 
@@ -739,8 +739,8 @@ namespace Nethermind.Store.Test
             Keccak prevRootHash = tree.RootHash;
             for (int i = 1; i <= numberOfBlocks; i++)
             {
-                tree = new StateTreeByPath(pathStore, LimboLogs.Instance);
                 tree.RootHash = prevRootHash;
+                tree.ParentStateRootHash = prevRootHash;
                 for (int accountIndex = 0; accountIndex < numberOfUpdates; accountIndex++)
                 {
                     Account account = TestItem.GenerateRandomAccount();
@@ -883,6 +883,7 @@ namespace Nethermind.Store.Test
 
             //reset the trie and set context to latest root hash (block 1 not persisted)
             tree = new StateTreeByPath(pathStore, logManager);
+            pathStore.OpenContext(2, root_1);
             tree.RootHash = root_1;
 
             Assert.That(tree.Get(TestItem.AddressA).Balance, Is.EqualTo((UInt256)101));
@@ -905,6 +906,7 @@ namespace Nethermind.Store.Test
 
             //reset the trie and set context to latest root hash (block 1 not persisted)
             tree = new StateTreeByPath(pathStore, logManager);
+            pathStore.OpenContext(3, root_1);
             tree.RootHash = root_1;
 
             //get items at current root hash - data at block 1 - all reads from cache

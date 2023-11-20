@@ -112,7 +112,7 @@ namespace Nethermind.Synchronization.Test.SnapSync
             Keccak rootHash = _inputStorageTree!.RootHash;   // "..."
 
             // output state
-            MemColumnsDb<StateColumns> db = new ();
+            MemColumnsDb<StateColumns> db = new();
             DbProvider dbProvider = new(DbModeHint.Mem);
             dbProvider.RegisterDb(DbNames.State, db);
             ProgressTracker progressTracker = new(null, dbProvider.GetDb<IDb>(DbNames.State), LimboLogs.Instance);

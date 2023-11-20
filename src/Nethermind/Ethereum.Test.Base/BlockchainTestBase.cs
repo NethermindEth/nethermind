@@ -134,7 +134,7 @@ namespace Ethereum.Test.Base
                 .WithoutSettingHead
                 .TestObject;
             ITransactionComparerProvider transactionComparerProvider = new TransactionComparerProvider(specProvider, blockTree);
-            IStateReader stateReader = new StateReader(trieStore, storageTrieStore, codeDb, _logManager);
+            IStateReader stateReader = new StateReader(trieStore, codeDb, _logManager);
             IChainHeadInfoProvider chainHeadInfoProvider = new ChainHeadInfoProvider(specProvider, blockTree, stateReader);
             ITxPool transactionPool = new TxPool(ecdsa, chainHeadInfoProvider, new TxPoolConfig(), new TxValidator(specProvider.ChainId), _logManager, transactionComparerProvider.GetDefaultComparer());
 

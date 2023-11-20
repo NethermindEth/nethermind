@@ -31,7 +31,7 @@ public static class TrieNodeResolverCapabilityStateExtension
         };
     }
 
-    public static IStateTree CreateStateStore(this TrieNodeResolverCapability capability,  IColumnsDb<StateColumns>? db, ILogManager? logManager)
+    public static IStateTree CreateStateStore(this TrieNodeResolverCapability capability, IColumnsDb<StateColumns>? db, ILogManager? logManager)
     {
         return capability switch
         {

@@ -67,14 +67,15 @@ namespace Nethermind.Trie.Pruning
             throw new NotImplementedException();
         }
 
-        public void SaveNodeDirectly(long blockNumber, TrieNode trieNode, IKeyValueStore? keyValueStore, bool withDelete = false, WriteFlags writeFlags = WriteFlags.None)
-        {
-            throw new NotImplementedException();
-        }
+        public void PersistNode(TrieNode trieNode, IKeyValueStore? keyValueStore, bool withDelete = false, WriteFlags writeFlags = WriteFlags.None) { }
+        public void PersistNodeData(Span<byte> fullPath, int pathToNodeLength, byte[]? rlpData, IKeyValueStore? keyValueStore = null, WriteFlags writeFlags = WriteFlags.None) { }
+
         public void ClearCache()
         {
             _trieStore.ClearCache();
         }
+
+        public void ClearCacheAfter(Keccak rootHash) { }
 
         public bool ExistsInDB(Keccak hash, byte[] nodePathNibbles) => _trieStore.ExistsInDB(hash, nodePathNibbles);
 
@@ -88,6 +89,16 @@ namespace Nethermind.Trie.Pruning
         }
 
         public void DeleteByRange(Span<byte> startKey, Span<byte> endKey) { }
+
+        public void CommitNode(long blockNumber, Keccak rootHash, NodeCommitInfo nodeCommitInfo, WriteFlags writeFlags = WriteFlags.None)
+        {
+            throw new NotImplementedException();
+        }
+
+        public void OpenContext(long blockNumber, Keccak keccak)
+        {
+            throw new NotImplementedException();
+        }
 
         private class ReadOnlyValueStore : IKeyValueStore
         {

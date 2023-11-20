@@ -12,7 +12,7 @@ namespace Nethermind.State
     {
         Account? GetAccount(Keccak stateRoot, Address address);
 
-        byte[]? GetStorage(Keccak stateRoot, Address address, in UInt256 index);
+        byte[]? GetStorage(Keccak stateRoot, Keccak storageRoot, Address address, in UInt256 index);
 
         byte[]? GetCode(Keccak codeHash);
 

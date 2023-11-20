@@ -39,7 +39,7 @@ namespace Nethermind.Trie.Pruning
 
         public TrieNode FindCachedOrUnknown(Keccak hash, Span<byte> nodePath, Span<byte> storagePrefix)
         {
-            return new(NodeType.Unknown, nodePath, hash){StoreNibblePathPrefix = storagePrefix.ToArray()};
+            return new(NodeType.Unknown, nodePath, hash) { StoreNibblePathPrefix = storagePrefix.ToArray() };
         }
 
         public TrieNode FindCachedOrUnknown(Span<byte> nodePath, byte[] storagePrefix, Keccak rootHash)
@@ -61,9 +61,11 @@ namespace Nethermind.Trie.Pruning
             return Array.Empty<byte>();
         }
 
-        public void SaveNodeDirectly(long blockNumber, TrieNode trieNode, IKeyValueStore? keyValueStore = null, bool withDelete = false, WriteFlags writeFlags = WriteFlags.None) { }
+        public void PersistNode(TrieNode trieNode, IKeyValueStore? keyValueStore = null, bool withDelete = false, WriteFlags writeFlags = WriteFlags.None) { }
+        public void PersistNodeData(Span<byte> fullPath, int pathToNodeLength, byte[]? rlpData, IKeyValueStore? keyValueStore = null, WriteFlags writeFlags = WriteFlags.None) { }
 
         public void ClearCache() { }
+        public void ClearCacheAfter(Keccak rootHash) { }
 
         public bool ExistsInDB(Keccak hash, byte[] nodePathNibbles) => false;
 
@@ -79,6 +81,16 @@ namespace Nethermind.Trie.Pruning
         }
 
         public byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
+        {
+            throw new NotImplementedException();
+        }
+
+        public void CommitNode(long blockNumber, Keccak rootHash, NodeCommitInfo nodeCommitInfo, WriteFlags writeFlags = WriteFlags.None)
+        {
+            throw new NotImplementedException();
+        }
+
+        public void OpenContext(long blockNumber, Keccak keccak)
         {
             throw new NotImplementedException();
         }

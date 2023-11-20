@@ -78,7 +78,7 @@ namespace Nethermind.Store.Test
             stateTree.Get(TestItem.AddressA);
             account = account.WithChangedBalance(2);
             stateTree.Set(TestItem.AddressA, account);
-            stateTree.Commit(0);
+            stateTree.Commit(1);
 
             Account a1 = stateTree.Get(TestItem.AddressA, rootHash);
             Account a2 = stateTree.Get(TestItem.AddressA);

@@ -173,7 +173,7 @@ public class TrieNodeBlockCache : IPathTrieNodeCache
                 IOrderedEnumerable<TrieNode> orderedValues = nodesByPath.Values.OrderBy(tn => tn.FullRlp.ToArray(), Bytes.Comparer);
                 foreach (TrieNode? node in orderedValues)
                 {
-                    _trieStore.SaveNodeDirectly(blockNumber, node, batch);
+                    _trieStore.PersistNode(node, batch);
                     node.IsPersisted = true;
                 }
                 // Parallel.ForEach(nodesByPath.Values, node =>
@@ -185,7 +185,7 @@ public class TrieNodeBlockCache : IPathTrieNodeCache
             currentBlockNumber++;
         }
         List<Keccak> removedRoots = new();
-        foreach(KeyValuePair<Keccak, HashSet<long>> kvp in _rootHashToBlock)
+        foreach (KeyValuePair<Keccak, HashSet<long>> kvp in _rootHashToBlock)
         {
             kvp.Value.RemoveWhere(blk => blk <= blockNumber);
             if (kvp.Value.Count == 0)

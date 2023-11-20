@@ -288,18 +288,26 @@ namespace Nethermind.State
             // by means of CREATE 2 - notice that the cached trie may carry information about items that were not
             // touched in this block, hence were not zeroed above
             // TODO: how does it work with pruning?
+            Keccak stateRootHash = null;
+            if (_storages.ContainsKey(address))
+                stateRootHash = _storages[address].ParentStateRootHash;
             _storages[address] = new StorageTree(_trieStore, Keccak.EmptyTreeHash, _logManager, address);
             // mark the tree as cleared by SD - will be used by path state to avoid reads from flat storage until
             // they get committed to avoid reading uncleared data
             _storages[address].ClearedBySelfDestruct = true;
+            _storages[address].ParentStateRootHash = stateRootHash ?? StateRoot;
 
-
+            if (_logger.IsTrace) _logger.Trace($"Clearing storage for address {address} - created new storage tree with parent state root hash context {_storages[address].ParentStateRootHash}");
         }
 
         private class StorageTreeFactory : IStorageTreeFactory
         {
             public StorageTree Create(Address address, ITrieStore trieStore, Keccak storageRoot, Keccak stateRoot, ILogManager? logManager)
-                => new(trieStore, storageRoot, logManager, address);
+            {
+                StorageTree st = new(trieStore, storageRoot, logManager, address);
+                st.ParentStateRootHash = stateRoot;
+                return st;
+            }
         }
     }
 }

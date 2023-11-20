@@ -556,6 +556,11 @@ namespace Nethermind.Trie.Pruning
         /// </summary>
         public void ClearCache() => _dirtyNodes.Clear();
 
+        public void ClearCacheAfter(Keccak rootHash)
+        {
+            throw new NotImplementedException();
+        }
+
         public void Dispose()
         {
             if (_logger.IsDebug) _logger.Debug("Disposing trie");
@@ -839,10 +844,15 @@ namespace Nethermind.Trie.Pruning
             throw new NotImplementedException();
         }
 
-        public void SaveNodeDirectly(long blockNumber, TrieNode trieNode, IKeyValueStore? keyValueStore = null, bool withDelete = false, WriteFlags writeFlags = WriteFlags.None)
+        public void PersistNode(TrieNode trieNode, IKeyValueStore? keyValueStore = null, bool withDelete = false, WriteFlags writeFlags = WriteFlags.None)
         {
             keyValueStore ??= _keyValueStore;
             keyValueStore.Set(trieNode.Keccak.Bytes, trieNode.Value.ToArray(), writeFlags);
+        }
+
+        public void PersistNodeData(Span<byte> fullPath, int pathToNodeLength, byte[]? rlpData, IKeyValueStore? keyValueStore = null, WriteFlags writeFlags = WriteFlags.None)
+        {
+            throw new NotImplementedException();
         }
 
         public bool ExistsInDB(Keccak hash, byte[] nodePathNibbles)
@@ -882,6 +892,13 @@ namespace Nethermind.Trie.Pruning
         }
 
         public IKeyValueStore AsKeyValueStore() => _publicStore;
+
+        public void CommitNode(long blockNumber, Keccak rootHash, NodeCommitInfo nodeCommitInfo, WriteFlags writeFlags = WriteFlags.None)
+        {
+            CommitNode(blockNumber, nodeCommitInfo, writeFlags);
+        }
+
+        public void OpenContext(long blockNumber, Keccak keccak) { }
 
         private class TrieKeyValueStore : IKeyValueStore
         {

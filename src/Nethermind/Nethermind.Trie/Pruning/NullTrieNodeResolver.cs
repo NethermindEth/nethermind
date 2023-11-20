@@ -20,7 +20,7 @@ namespace Nethermind.Trie.Pruning
         public TrieNodeResolverCapability Capability => TrieNodeResolverCapability.Hash;
 
         public TrieNode FindCachedOrUnknown(Keccak hash) => new(NodeType.Unknown, hash);
-        public TrieNode FindCachedOrUnknown(Keccak hash, Span<byte> nodePath, Span<byte> storagePrefix) => new(NodeType.Unknown, nodePath, hash){StoreNibblePathPrefix = storagePrefix.ToArray()};
+        public TrieNode FindCachedOrUnknown(Keccak hash, Span<byte> nodePath, Span<byte> storagePrefix) => new(NodeType.Unknown, nodePath, hash) { StoreNibblePathPrefix = storagePrefix.ToArray() };
 
         public TrieNode? FindCachedOrUnknown(Span<byte> nodePath, byte[] storagePrefix, Keccak? rootHash)
         {

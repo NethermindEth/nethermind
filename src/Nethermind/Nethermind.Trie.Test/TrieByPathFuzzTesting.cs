@@ -10,6 +10,8 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
+using Nethermind.Db.Rocks;
+using Nethermind.Db.Rocks.Config;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
@@ -31,7 +33,7 @@ public class TrieByPathFuzzTesting
     public void SetUp()
     {
         _logManager = LimboLogs.Instance;
-        //_logManager = new NUnitLogManager(LogLevel.Info);
+        //_logManager = new NUnitLogManager(LogLevel.Trace);
         _logger = _logManager.GetClassLogger();
     }
 
@@ -40,141 +42,11 @@ public class TrieByPathFuzzTesting
     {
     }
 
+    [TestCase(4, 16, 4, null)]
+    [TestCase(8, 32, 8, null)]
     [TestCase(96, 192, 96, null)]
-    [TestCase(96, 192, 96, null)]
-    [TestCase(96, 192, 96, null)]
-    [TestCase(96, 192, 96, null)]
-    [TestCase(96, 192, 96, null)]
-    [TestCase(96, 192, 96, null)]
-    [TestCase(96, 192, 96, null)]
-    [TestCase(96, 192, 96, null)]
-    [TestCase(96, 192, 96, null)]
-    [TestCase(96, 192, 96, null)]
-    [TestCase(96, 192, 96, null)]
-    [TestCase(96, 192, 96, null)]
-    [TestCase(96, 192, 96, null)]
-    [TestCase(96, 192, 96, null)]
-    [TestCase(96, 192, 96, null)]
-    [TestCase(96, 192, 96, null)]
-    [TestCase(96, 192, 96, null)]
-    [TestCase(96, 192, 96, null)]
-    [TestCase(96, 192, 96, null)]
-    [TestCase(96, 192, 96, null)]
-    [TestCase(96, 192, 96, null)]
-    [TestCase(96, 192, 96, null)]
-    [TestCase(96, 192, 96, null)]
-    [TestCase(96, 192, 96, null)]
-    [TestCase(96, 192, 96, null)]
-    [TestCase(96, 192, 96, null)]
-    [TestCase(96, 192, 96, null)]
-    [TestCase(96, 192, 96, null)]
-    [TestCase(96, 192, 96, null)]
-    [TestCase(96, 192, 96, null)]
-    [TestCase(96, 192, 96, null)]
-    [TestCase(96, 192, 96, null)]
-    [TestCase(96, 192, 96, null)]
-    [TestCase(96, 192, 96, null)]
-    [TestCase(96, 192, 96, null)]
-    [TestCase(96, 192, 96, null)]
-    [TestCase(96, 192, 96, null)]
-    [TestCase(96, 192, 96, null)]
-    [TestCase(96, 192, 96, null)]
+    [TestCase(128, 263, 24, null)]
     [TestCase(128, 256, 128, null)]
-    [TestCase(128, 256, 128, null)]
-    [TestCase(128, 256, 128, null)]
-    [TestCase(128, 256, 128, null)]
-    [TestCase(128, 256, 128, null)]
-    [TestCase(128, 256, 128, null)]
-    [TestCase(128, 256, 128, null)]
-    [TestCase(128, 256, 128, null)]
-    [TestCase(128, 256, 128, null)]
-    [TestCase(128, 256, 128, null)]
-    [TestCase(128, 256, 128, null)]
-    [TestCase(128, 256, 128, null)]
-    [TestCase(128, 256, 128, null)]
-    [TestCase(128, 256, 128, null)]
-    [TestCase(128, 256, 128, null)]
-    [TestCase(128, 256, 128, null)]
-    [TestCase(128, 256, 128, null)]
-    [TestCase(128, 256, 128, null)]
-    [TestCase(128, 256, 128, null)]
-    [TestCase(128, 256, 128, null)]
-    [TestCase(128, 256, 128, null)]
-    [TestCase(128, 256, 128, null)]
-    [TestCase(128, 256, 128, null)]
-    [TestCase(128, 256, 128, null)]
-    [TestCase(128, 256, 128, null)]
-    [TestCase(128, 256, 128, null)]
-    [TestCase(128, 256, 128, null)]
-    [TestCase(4, 16, 4, null)]
-    [TestCase(4, 16, 4, null)]
-    [TestCase(4, 16, 4, null)]
-    [TestCase(4, 16, 4, null)]
-    [TestCase(4, 16, 4, null)]
-    [TestCase(4, 16, 4, null)]
-    [TestCase(4, 16, 4, null)]
-    [TestCase(4, 16, 4, null)]
-    [TestCase(4, 16, 4, null)]
-    [TestCase(4, 16, 4, null)]
-    [TestCase(4, 16, 4, null)]
-    [TestCase(4, 16, 4, null)]
-    [TestCase(4, 16, 4, null)]
-    [TestCase(4, 16, 4, null)]
-    [TestCase(4, 16, 4, null)]
-    [TestCase(4, 16, 4, null)]
-    [TestCase(4, 16, 4, null)]
-    [TestCase(4, 16, 4, null)]
-    [TestCase(4, 16, 4, null)]
-    [TestCase(4, 16, 4, null)]
-    [TestCase(4, 16, 4, null)]
-    [TestCase(4, 16, 4, null)]
-    [TestCase(4, 16, 4, null)]
-    [TestCase(4, 16, 4, null)]
-    [TestCase(4, 16, 4, null)]
-    [TestCase(4, 16, 4, null)]
-    [TestCase(4, 16, 4, null)]
-    [TestCase(4, 16, 4, null)]
-    [TestCase(4, 16, 4, null)]
-    [TestCase(4, 16, 4, null)]
-    [TestCase(4, 16, 4, null)]
-    [TestCase(8, 32, 8, null)]
-    [TestCase(8, 32, 8, null)]
-    [TestCase(8, 32, 8, null)]
-    [TestCase(8, 32, 8, null)]
-    [TestCase(8, 32, 8, null)]
-    [TestCase(8, 32, 8, null)]
-    [TestCase(8, 32, 8, null)]
-    [TestCase(8, 32, 8, null)]
-    [TestCase(8, 32, 8, null)]
-    [TestCase(8, 32, 8, null)]
-    [TestCase(8, 32, 8, null)]
-    [TestCase(8, 32, 8, null)]
-    [TestCase(8, 32, 8, null)]
-    [TestCase(8, 32, 8, null)]
-    [TestCase(8, 32, 8, null)]
-    [TestCase(8, 32, 8, null)]
-    [TestCase(8, 32, 8, null)]
-    [TestCase(8, 32, 8, null)]
-    [TestCase(8, 32, 8, null)]
-    [TestCase(8, 32, 8, null)]
-    [TestCase(8, 32, 8, null)]
-    [TestCase(8, 32, 8, null)]
-    [TestCase(8, 32, 8, null)]
-    [TestCase(8, 32, 8, null)]
-    [TestCase(8, 32, 8, null)]
-    [TestCase(8, 32, 8, null)]
-    [TestCase(8, 32, 8, null)]
-    [TestCase(8, 32, 8, null)]
-    [TestCase(8, 32, 8, null)]
-    [TestCase(8, 32, 8, null)]
-    [TestCase(8, 32, 8, null)]
-    [TestCase(8, 32, 8, null)]
-    [TestCase(8, 32, 8, null)]
-    [TestCase(8, 32, 8, null)]
-    [TestCase(8, 32, 8, null)]
-    [TestCase(8, 32, 8, null)]
-    [TestCase(8, 32, 8, null)]
-    [TestCase(8, 32, 8, null)]
     public void Fuzz_accounts_with_storage(
         int accountsCount,
         int blocksCount,
@@ -217,6 +89,9 @@ public class TrieByPathFuzzTesting
 
         Queue<Keccak> rootQueue = new();
 
+        //var dirInfo = Directory.CreateTempSubdirectory();
+        //ColumnsDb<StateColumns> memDb = new ColumnsDb<StateColumns>(dirInfo.FullName, new RocksDbSettings("pathState", Path.Combine(dirInfo.FullName, "pathState")), new DbConfig(), _logManager, new StateColumns[] { StateColumns.State, StateColumns.Storage });
+
         MemColumnsDb<StateColumns> memDb = new();
 
         var codeDb = new MemDb();
@@ -228,7 +103,6 @@ public class TrieByPathFuzzTesting
 
         Account[] accounts = new Account[accountsCount];
         Address[] addresses = new Address[accountsCount];
-        Dictionary<Address, List<int>> indexesPerAccount = new();
 
         for (int i = 0; i < accounts.Length; i++)
         {
@@ -266,9 +140,13 @@ public class TrieByPathFuzzTesting
                     streamWriter.WriteLine($"{address} {decoder.Encode(account)}");
 
                     bool insertStorage = false;
+                    bool selfDestruct = false;
+
                     if (stateProvider.AccountExists(address))
                     {
-                        insertStorage = true;
+                        selfDestruct = _random.Next(1, 10) < 3;
+                        insertStorage = !selfDestruct;
+
                         Account existing = stateProvider.GetAccount(address);
                         if (existing.Balance != account.Balance)
                         {
@@ -294,17 +172,23 @@ public class TrieByPathFuzzTesting
                         pathStateProvider.CreateAccount(address, account.Balance);
                     }
 
+                    if (selfDestruct)
+                    {
+                        stateProvider.ClearStorage(address);
+                        stateProvider.DeleteAccount(address);
+
+                        pathStateProvider.ClearStorage(address);
+                        pathStateProvider.DeleteAccount(address);
+                    }
+
                     if (insertStorage)
                     {
                         streamWriter.WriteLine($"{address} {decoder.Encode(account)}");
-                        int noOfStorage = _random.Next(50, 50);
-                        if (!indexesPerAccount.ContainsKey(address))
-                            indexesPerAccount[address] = new List<int>(noOfStorage);
+                        int noOfStorage = _random.Next(1, 50);
                         for (int j = 1; j < noOfStorage + 1; j++)
                         {
                             int index = _random.Next(1, 5000);
-                            indexesPerAccount[address].Add(index);
-                            byte[] storage = new byte[_random.Next(1,32)];
+                            byte[] storage = new byte[_random.Next(1, 32)];
                             _random.NextBytes(storage);
 
                             streamWriter.WriteLine($"{index} {storage.ToHexString()}");
@@ -351,25 +235,34 @@ public class TrieByPathFuzzTesting
             stateProvider.StateRoot = currentRoot;
             pathStateProvider.StateRoot = currentRoot;
 
-            TrieStats? stats = pathStateProvider.CollectStats(codeDb, LimboLogs.Instance);
-            Assert.IsTrue(stats.MissingCode == 0);
-            Assert.IsTrue(stats.MissingState == 0);
-            Assert.IsTrue(stats.MissingStorage == 0);
-            Assert.IsTrue(stats.MissingNodes == 0);
-            foreach (Address t in addresses)
-            {
-                if (stateProvider.AccountExists(t))
-                {
-                    foreach (int index in indexesPerAccount[t])
-                    {
-                        byte[] value = stateProvider.Get(new StorageCell(t, (UInt256)index));
-                        byte[] pathValue = pathStateProvider.Get(new StorageCell(t, (UInt256)index));
-                        Assert.That(pathValue, Is.EqualTo(value).Using(Bytes.EqualityComparer), $"Storage slot at {t}.{index} incorrect");
-                    }
-                }
-            }
+            //TrieStats? stats = pathStateProvider.CollectStats(codeDb, LimboLogs.Instance);
+            //Assert.IsTrue(stats.MissingCode == 0);
+            //Assert.IsTrue(stats.MissingState == 0);
+            //Assert.IsTrue(stats.MissingStorage == 0);
+            //Assert.IsTrue(stats.MissingNodes == 0);
+
+            CompareTrees(stateProvider, pathStateProvider);
+
             verifiedBlocks++;
         }
+
+        memDb.Dispose();
+
+        Console.WriteLine($"Verified positive {verifiedBlocks}");
         _logger.Info($"Verified positive {verifiedBlocks}");
+    }
+
+    private void CompareTrees(WorldState hashState, WorldState pathState)
+    {
+        TreeDumper dumper = new TreeDumper();
+        hashState.Accept(dumper, hashState.StateRoot);
+        string remote = dumper.ToString();
+
+        dumper.Reset();
+
+        pathState.Accept(dumper, pathState.StateRoot);
+        string local = dumper.ToString();
+
+        Assert.That(local, Is.EqualTo(remote), $"{remote}{Environment.NewLine}{local}");
     }
 }

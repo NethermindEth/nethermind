@@ -68,7 +68,7 @@ namespace Nethermind.Synchronization.Test
                 PivotNumber = "1",
             };
             ProgressTracker progressTracker = new(blockTree, stateDb, LimboLogs.Instance);
-            TrieStoreByPath trieStore = new(stateDb, LimboLogs.Instance);
+            TrieStore trieStore = new(stateDb, LimboLogs.Instance);
 
             SyncProgressResolver syncProgressResolver = new(blockTree, receiptStorage, stateDb, trieStore, progressTracker, syncConfig, LimboLogs.Instance);
             Block head = Build.A.Block.WithHeader(Build.A.BlockHeader.WithNumber(5).WithStateRoot(TestItem.KeccakA).TestObject).TestObject;
@@ -89,7 +89,7 @@ namespace Nethermind.Synchronization.Test
                 PivotNumber = "1",
             };
             ProgressTracker progressTracker = new(blockTree, stateDb, LimboLogs.Instance);
-            TrieStoreByPath trieStore = new(stateDb, LimboLogs.Instance);
+            TrieStore trieStore = new(stateDb, LimboLogs.Instance);
 
             SyncProgressResolver syncProgressResolver = new(blockTree, receiptStorage, stateDb, trieStore, progressTracker, syncConfig, LimboLogs.Instance);
             Block head = Build.A.Block.WithHeader(Build.A.BlockHeader.WithNumber(5).WithStateRoot(TestItem.KeccakA).TestObject).TestObject;
@@ -114,7 +114,7 @@ namespace Nethermind.Synchronization.Test
                 PivotNumber = "1",
             };
             ProgressTracker progressTracker = new(blockTree, stateDb, LimboLogs.Instance);
-            TrieStoreByPath trieStore = new(stateDb, LimboLogs.Instance);
+            TrieStore trieStore = new(stateDb, LimboLogs.Instance);
 
             SyncProgressResolver syncProgressResolver = new(blockTree, receiptStorage, stateDb, trieStore, progressTracker, syncConfig, LimboLogs.Instance);
             Block head = Build.A.Block.WithHeader(Build.A.BlockHeader.WithNumber(5).WithStateRoot(TestItem.KeccakA).TestObject).TestObject;

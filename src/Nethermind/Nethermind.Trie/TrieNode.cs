@@ -1097,12 +1097,12 @@ namespace Nethermind.Trie
                                         child = tree.FindCachedOrUnknown(keccak!);
                                         break;
                                     case TrieNodeResolverCapability.Path:
-                                    {
-                                        Span<byte> childPath = stackalloc byte[GetChildPathLength()];
-                                        GetChildPath(i, childPath);
-                                        child = tree.FindCachedOrUnknown(keccak!, childPath, StoreNibblePathPrefix);
-                                        break;
-                                    }
+                                        {
+                                            Span<byte> childPath = stackalloc byte[GetChildPathLength()];
+                                            GetChildPath(i, childPath);
+                                            child = tree.FindCachedOrUnknown(keccak!, childPath, StoreNibblePathPrefix);
+                                            break;
+                                        }
                                     default:
                                         throw new ArgumentOutOfRangeException($"tree capability cannot be {tree.Capability}");
                                 }

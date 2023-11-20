@@ -53,7 +53,7 @@ namespace Nethermind.Trie
 
         public static byte[] BytesToNibbleBytes(Span<byte> bytes)
         {
-            Span<byte> nibbles =  stackalloc byte[2 * bytes.Length];
+            Span<byte> nibbles = stackalloc byte[2 * bytes.Length];
             BytesToNibbleBytes(bytes, nibbles);
             return nibbles.ToArray();
         }

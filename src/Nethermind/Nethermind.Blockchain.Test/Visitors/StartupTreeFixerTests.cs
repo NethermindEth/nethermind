@@ -111,9 +111,8 @@ namespace Nethermind.Blockchain.Test.Visitors
             newBlockchainProcessor.Start();
             testRpc.BlockchainProcessor = newBlockchainProcessor;
 
-            TrieStoreByPath trieStore = new TrieStoreByPath(testRpc.DbProvider.PathStateDb, LimboLogs.Instance);
             // fixing after restart
-            StartupBlockTreeFixer fixer = new(new SyncConfig(), tree, trieStore, LimboNoErrorLogger.Instance, 5);
+            StartupBlockTreeFixer fixer = new(new SyncConfig(), tree, testRpc.TrieStore, LimboNoErrorLogger.Instance, 5);
             await tree.Accept(fixer, CancellationToken.None);
 
             // waiting for N new heads

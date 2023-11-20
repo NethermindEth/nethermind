@@ -227,15 +227,15 @@ namespace Nethermind.Synchronization.Test.FastSync
             public void LogRemoteTrieStats(Keccak? rootHash)
             {
                 TrieStatsCollector collector = new(RemoteCodeDb, _logManager);
-                RemoteStateTree.Accept(collector, rootHash?? RemoteStateTree.RootHash, new VisitingOptions { MaxDegreeOfParallelism = Environment.ProcessorCount });
-                _logger.Info($"REMOTE STATE: Starting from {rootHash?? RemoteStateTree.RootHash} {Environment.NewLine}" + collector.Stats);
+                RemoteStateTree.Accept(collector, rootHash ?? RemoteStateTree.RootHash, new VisitingOptions { MaxDegreeOfParallelism = Environment.ProcessorCount });
+                _logger.Info($"REMOTE STATE: Starting from {rootHash ?? RemoteStateTree.RootHash} {Environment.NewLine}" + collector.Stats);
             }
 
             public void LogLocalTrieStats(Keccak? rootHash)
             {
                 TrieStatsCollector collector = new(LocalCodeDb, _logManager);
-                RemoteStateTree.Accept(collector, rootHash?? LocalStateTree.RootHash, new VisitingOptions { MaxDegreeOfParallelism = Environment.ProcessorCount });
-                _logger.Info($"LOCAL STATE: Starting from {rootHash?? LocalStateTree.RootHash} {Environment.NewLine}" + collector.Stats);
+                RemoteStateTree.Accept(collector, rootHash ?? LocalStateTree.RootHash, new VisitingOptions { MaxDegreeOfParallelism = Environment.ProcessorCount });
+                _logger.Info($"LOCAL STATE: Starting from {rootHash ?? LocalStateTree.RootHash} {Environment.NewLine}" + collector.Stats);
             }
 
             public void AssertFlushed()

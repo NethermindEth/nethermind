@@ -287,7 +287,7 @@ namespace Nethermind.Trie
                                     trieVisitContext.Level++;
                                     trieVisitContext.BranchChildIndex = null;
 
-                                    using (trieVisitContext.AbsolutePathNext(new byte[]{8,0}))
+                                    using (trieVisitContext.AbsolutePathNext(new byte[] { 8, 0 }))
                                     {
                                         ITrieNodeResolver storageNodeResolver = trieVisitContext.StorageTrieNodeResolver ?? nodeResolver;
                                         if (TryResolveStorageRoot(storageNodeResolver, CollectionsMarshal.AsSpan(trieVisitContext.AbsolutePathNibbles), out TrieNode? storageRoot))

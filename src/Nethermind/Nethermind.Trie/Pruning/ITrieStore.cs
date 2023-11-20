@@ -9,6 +9,7 @@ namespace Nethermind.Trie.Pruning
 {
     public interface ITrieStore : ITrieNodeResolver, IDisposable
     {
+        void OpenContext(long blockNumber, Keccak keccak);
         void CommitNode(long blockNumber, NodeCommitInfo nodeCommitInfo, WriteFlags writeFlags = WriteFlags.None);
 
         void FinishBlockCommit(TrieType trieType, long blockNumber, TrieNode? root, WriteFlags writeFlags = WriteFlags.None);
@@ -21,7 +22,8 @@ namespace Nethermind.Trie.Pruning
 
         IKeyValueStore AsKeyValueStore();
 
-        void SaveNodeDirectly(long blockNumber, TrieNode trieNode, IKeyValueStore? batch = null, bool withDelete = false, WriteFlags writeFlags = WriteFlags.None);
+        void PersistNode(TrieNode trieNode, IKeyValueStore? batch = null, bool withDelete = false, WriteFlags writeFlags = WriteFlags.None);
+        void PersistNodeData(Span<byte> fullPath, int pathToNodeLength, byte[]? rlpData, IKeyValueStore? keyValueStore = null, WriteFlags writeFlags = WriteFlags.None);
 
         public void ClearCache();
 
