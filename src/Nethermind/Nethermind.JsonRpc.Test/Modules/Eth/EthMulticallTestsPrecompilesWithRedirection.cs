@@ -42,7 +42,7 @@ public class EthMulticallTestsPrecompilesWithRedirection
     public async Task Test_eth_multicall_create()
     {
         TestRpcBlockchain chain = await EthRpcMulticallTestsBase.CreateChain();
-        
+
         Transaction systemTransactionForModifiedVm = new()
         {
             SenderAddress = new Address("0xc000000000000000000000000000000000000000"),
@@ -50,7 +50,7 @@ public class EthMulticallTestsPrecompilesWithRedirection
             To = new Address("0xc200000000000000000000000000000000000000"),
             GasLimit = 3_500_000,
             GasPrice = 20.GWei(),
-            
+
         };
 
         TransactionForRpc transactionForRpc = new(systemTransactionForModifiedVm) { Nonce = null };

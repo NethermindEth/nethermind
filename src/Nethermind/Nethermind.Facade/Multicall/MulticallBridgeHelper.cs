@@ -50,7 +50,7 @@ public class MulticallBridgeHelper
     public (bool Success, string Error) TryMultiCallTrace(BlockHeader parent, MultiCallPayload<TransactionWithSourceDetails> payload, IBlockTracer tracer)
     {
         using MultiCallReadOnlyBlocksProcessingEnv? env = _multiCallProcessingEnv.Clone(payload.TraceTransfers, payload.Validation);
- 
+
         Block? latestPersistant = env.BlockTree.FindLatestBlock();
         if (latestPersistant.Number < parent.Number)
         {
