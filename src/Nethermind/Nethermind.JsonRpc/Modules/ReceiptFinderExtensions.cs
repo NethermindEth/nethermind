@@ -28,7 +28,7 @@ namespace Nethermind.JsonRpc.Modules
             SearchResult<Block> searchResult = blockFinder.SearchForBlock(blockParameter);
             if (searchResult.IsError)
             {
-                return ResultWrapper<ReceiptForRpc[]>.Fail(searchResult);
+                return ResultWrapper<ReceiptForRpc[]>.Success(null);
             }
 
             Block block = searchResult.Object;
