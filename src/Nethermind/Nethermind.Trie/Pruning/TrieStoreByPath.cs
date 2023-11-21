@@ -144,13 +144,11 @@ namespace Nethermind.Trie.Pruning
 
                 if (_useCommittedCache)
                 {
-                    //_committedNodes[GetProperColumn(nodeCommitInfo.Node.FullPath.Length)].AddNode(blockNumber, node);
-                    StateColumns column = GetProperColumn(nodeCommitInfo.Node);
-                    _committedNodes[column].AddNodeData(blockNumber, node);
+                    _committedNodes[GetProperColumn(nodeCommitInfo.Node)].AddNodeData(blockNumber, node);
                 }
                 else
                 {
-                    Persist(nodeCommitInfo.Node, blockNumber, writeFlags);
+                    PersistNode(nodeCommitInfo.Node, blockNumber, writeFlags);
                 }
                 node.LastSeen = Math.Max(blockNumber, node.LastSeen ?? 0);
 
@@ -197,7 +195,11 @@ namespace Nethermind.Trie.Pruning
                     }
                 }
 
-                if (trieType == TrieType.State) CurrentPackage = null;
+                if (trieType == TrieType.State)
+                {
+                    _currentBatch?.Dispose();
+                    CurrentPackage = null;
+                }
             }
             finally
             {
@@ -403,16 +405,18 @@ namespace Nethermind.Trie.Pruning
 
                 stopwatch.Stop();
                 Metrics.SnapshotPersistenceTime = stopwatch.ElapsedMilliseconds;
+
+                _currentBatch?.Dispose();
+                _currentBatch = null;
             }
             finally
             {
-                _currentBatch?.Dispose();
             }
 
             PruneCurrentSet();
         }
 
-        private void Persist(TrieNode currentNode, long blockNumber, WriteFlags writeFlags = WriteFlags.None)
+        private void PersistNode(TrieNode currentNode, long blockNumber, WriteFlags writeFlags = WriteFlags.None)
         {
             StateColumns column = GetProperColumn(currentNode);
             _currentBatch ??= _stateDb.StartWriteBatch();
@@ -533,6 +537,9 @@ namespace Nethermind.Trie.Pruning
 
         public void PersistNode(TrieNode trieNode, IColumnsWriteBatch<StateColumns>? batch = null, bool withDelete = false, WriteFlags writeFlags = WriteFlags.None)
         {
+            bool shouldDispose = batch is null;
+            batch ??= _stateDb.StartWriteBatch();
+
             StateColumns column = GetProperColumn(trieNode.FullPath.Length);
 
             byte[] fullPath = trieNode.FullPath ?? throw new ArgumentNullException();
@@ -583,10 +590,16 @@ namespace Nethermind.Trie.Pruning
             }
 
             batch.GetColumnBatch(column).Set(pathBytes, trieNode.FullRlp.ToArray(), writeFlags);
+
+            if (shouldDispose)
+                batch.Dispose();
         }
 
         public void PersistNodeData(Span<byte> fullPath, int pathToNodeLength, byte[]? rlpData, IColumnsWriteBatch<StateColumns>? batch = null, WriteFlags writeFlags = WriteFlags.None)
         {
+            bool shouldDispose = batch is null;
+            batch ??= _stateDb.StartWriteBatch();
+
             StateColumns column = GetProperColumn(fullPath.Length);
             int pathToNodeIndexWithPrefix = fullPath.Length >= 66 ? pathToNodeLength + 66 : pathToNodeLength;
 
@@ -617,6 +630,9 @@ namespace Nethermind.Trie.Pruning
             }
 
             batch.GetColumnBatch(column).Set(pathBytes, rlpData, writeFlags);
+
+            if (shouldDispose)
+                batch.Dispose();
         }
 
         public bool ExistsInDB(Hash256 hash, byte[] pathNibbles)

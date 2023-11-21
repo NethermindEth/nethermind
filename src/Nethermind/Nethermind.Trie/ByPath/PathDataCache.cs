@@ -785,15 +785,6 @@ public class PathDataCache : IPathDataCache
 
             _main.PersistUntilBlock(blockNumber, rootHash, batch);
 
-            //for (int i = _mains.Count - 1; i >= 0; i--)
-            //{
-            //    if (!_mains[i].PersistUntilBlock(blockNumber, rootHash, batch))
-            //        _mains.RemoveAt(i);
-            //}
-
-            //if (_mains.Count == 0)
-            //    _mains.Add(new PathDataCacheInstance(_trieStore, _logger));
-
             LogCache($"After persisting block {blockNumber} / {rootHash}");
             return true;
         }

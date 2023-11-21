@@ -46,9 +46,7 @@ namespace Nethermind.Blockchain.Test.Producers
                 .WithoutSettingHead
                 .TestObject;
 
-            TrieStoreByPath trieStore = new(
-                (IColumnsDb<StateColumns>)dbProvider.RegisteredDbs[DbNames.PathState],
-                LimboLogs.Instance);
+            TrieStoreByPath trieStore = new(dbProvider.GetColumnDb<StateColumns>(DbNames.PathState), LimboLogs.Instance);
 
             WorldState stateProvider = new(
                 trieStore,

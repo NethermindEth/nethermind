@@ -112,8 +112,10 @@ namespace Nethermind.Synchronization.Test.FastSync
             {
                 ctx.Pool.AddPeer(syncPeer);
             }
-
-            ctx.TreeFeed = new(SyncMode.StateNodes, dbContext.LocalCodeDb, dbContext.LocalStateDb, blockTree, _logManager);
+            if (_resolverCapability == TrieNodeResolverCapability.Hash)
+                ctx.TreeFeed = new(SyncMode.StateNodes, dbContext.LocalCodeDb, dbContext.LocalStateDb, blockTree, _logManager);
+            else if (_resolverCapability == TrieNodeResolverCapability.Path)
+                ctx.TreeFeed = new(SyncMode.StateNodes, dbContext.LocalCodeDb, dbContext.LocalPathStateDb, blockTree, _logManager);
             ctx.Feed = new StateSyncFeed(ctx.TreeFeed, _logManager);
             ctx.Feed.SyncModeSelectorOnChanged(SyncMode.StateNodes | SyncMode.FastBlocks);
             ctx.Downloader = new StateSyncDownloader(_logManager);
@@ -166,9 +168,8 @@ namespace Nethermind.Synchronization.Test.FastSync
                 _logger = logger;
                 _logManager = logManager;
                 RemoteDb = new MemDb();
-                LocalDb = new TestMemDb();
                 RemoteStateDb = RemoteDb;
-                LocalStateDb = new MemDb();
+                LocalStateDb = new TestMemDb();
                 LocalPathStateDb = new ByPathStateMemDb();
                 LocalCodeDb = new TestMemDb();
                 RemoteCodeDb = new MemDb();
@@ -189,10 +190,9 @@ namespace Nethermind.Synchronization.Test.FastSync
             public MemDb RemoteCodeDb { get; }
             public TestMemDb LocalCodeDb { get; }
             public MemDb RemoteDb { get; }
-            public TestMemDb LocalDb { get; }
             public ITrieStore RemoteTrieStore { get; }
             public IDb RemoteStateDb { get; }
-            public IDb LocalStateDb { get; }
+            public TestMemDb LocalStateDb { get; }
             public IByPathStateDb LocalPathStateDb { get; }
             public StateTree RemoteStateTree { get; }
             public IStateTree LocalStateTree { get; }
@@ -240,7 +240,7 @@ namespace Nethermind.Synchronization.Test.FastSync
 
             public void AssertFlushed()
             {
-                LocalDb.WasFlushed.Should().BeTrue();
+                LocalStateDb.WasFlushed.Should().BeTrue();
                 LocalCodeDb.WasFlushed.Should().BeTrue();
             }
         }

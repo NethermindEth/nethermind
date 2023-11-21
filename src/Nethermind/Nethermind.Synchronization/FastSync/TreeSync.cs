@@ -836,7 +836,7 @@ namespace Nethermind.Synchronization.FastSync
 
                 _pathStateDb?.EndOfCleanupRequests();
 
-                _stateDb.Flush();
+                _stateDb?.Flush();
                 _codeDb.Flush();
 
                 Interlocked.Exchange(ref _rootSaved, 1);
@@ -1034,7 +1034,7 @@ namespace Nethermind.Synchronization.FastSync
                     if (nodeDataType == NodeDataType.State)
                     {
                         _pendingItems.MaxStateLevel = 64;
-                        DependentItem dependentItem = new(currentStateSyncItem, currentResponseItem, 2, true);
+                        DependentItem dependentItem = new(currentStateSyncItem, currentResponseItem, 2, true, trieNode);
                         (Hash256 codeHash, Hash256 storageRoot) = AccountDecoder.DecodeHashesOnly(new RlpStream(trieNode.Value.ToArray()));
                         if (codeHash != Keccak.OfAnEmptyString)
                         {

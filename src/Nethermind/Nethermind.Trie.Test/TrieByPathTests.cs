@@ -520,10 +520,8 @@ public class TrieByPathTests
 
     private static PatriciaTree CreateCheckTree(IColumnsDb<StateColumns> memDb, Hash256 root, ILogManager logManager)
     {
-        PatriciaTree checkTree = new(new TrieStoreByPath(memDb, logManager), logManager)
-        {
-            RootHash = root
-        };
+        PatriciaTree checkTree = new(new TrieStoreByPath(memDb, logManager), logManager);
+        checkTree.RootHash = root;
         return checkTree;
     }
 
