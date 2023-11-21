@@ -45,7 +45,8 @@ jobs:
       - name: Build and push image to Docker Hub (staging)
         run: |
           branch=$(echo "${{ github.ref }}" | sed -e "s/refs\/heads\///g")
-          tag=${{ github.event.inputs.tag || '$branch' }}
+          original_tag=${{ github.event.inputs.tag || '$branch' }}
+          tag=$(echo "$original_tag" | sed 's/\//-/g') # replace '/' with '-' in tag name
           build_timestamp=$(date '+%s')
           echo "Building image with tag $tag"
 
