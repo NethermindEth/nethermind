@@ -6,6 +6,9 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
+using System.Text.Json;
+using System.Text.Json.Nodes;
+
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 
@@ -48,6 +51,15 @@ public class AbiArray : AbiType
             case IList list:
                 length = list.Count;
                 encodedItems = EncodeSequence(length, ElementTypes, list.Cast<object?>(), packed, 1);
+                break;
+            case JsonElement element when element.ValueKind == JsonValueKind.Array:
+                length = element.GetArrayLength();
+                object[] jarray = new object[length];
+                for (int i = 0; i < length; i++)
+                {
+                    jarray[i] = element[i];
+                }
+                encodedItems = EncodeSequence(length, ElementTypes, jarray, packed, 1);
                 break;
             default:
                 throw new AbiException(AbiEncodingExceptionMessage);

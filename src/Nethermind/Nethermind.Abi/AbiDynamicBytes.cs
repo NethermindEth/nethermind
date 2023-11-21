@@ -4,6 +4,8 @@
 using System;
 using System.Numerics;
 using System.Text;
+using System.Text.Json;
+
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 
@@ -41,6 +43,11 @@ namespace Nethermind.Abi
             if (arg is string stringInput)
             {
                 return Encode(Encoding.ASCII.GetBytes(stringInput), packed);
+            }
+
+            if (arg is JsonElement element && element.ValueKind == JsonValueKind.String)
+            {
+                return Encode(Encoding.ASCII.GetBytes(element.GetString()!), packed);
             }
 
             throw new AbiException(AbiEncodingExceptionMessage);

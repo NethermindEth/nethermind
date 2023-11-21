@@ -4,6 +4,8 @@
 using System;
 using System.Buffers.Binary;
 using System.Numerics;
+using System.Text.Json;
+
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 
@@ -118,6 +120,11 @@ namespace Nethermind.Abi
             {
                 bytes = new byte[2];
                 BinaryPrimitives.WriteUInt16BigEndian(bytes, ushortInput);
+            }
+            else if (arg is JsonElement element && element.ValueKind == JsonValueKind.Number)
+            {
+                bytes = new byte[8];
+                BinaryPrimitives.WriteInt64BigEndian(bytes, element.GetInt64());
             }
             else
             {
