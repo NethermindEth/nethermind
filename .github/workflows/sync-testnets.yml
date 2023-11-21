@@ -1,8 +1,11 @@
 name: Sync Testnets
 
 on:
-  push:
-    branches: [master]
+  workflow_run:
+    workflows: ["Publish Docker image"]
+    branches: ["master"]
+    types:
+      - completed
   workflow_dispatch:
 
 env:
@@ -51,18 +54,6 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y make build-essential jq screen lshw dmidecode fio
-
-      - name: Install Docker
-        run: |
-          sudo apt update
-          sudo apt install apt-transport-https ca-certificates curl software-properties-common -y
-          curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo apt-key add -
-          sudo add-apt-repository "deb [arch=amd64] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable"
-          sudo apt update
-          sudo apt install docker-ce -y
-
-      - name: Build docker image
-        run: docker buildx build --platform=linux/amd64 -t current_branch_image -f Dockerfile --build-arg COMMIT_HASH=${{ steps.settings.outputs.COMMIT_HASH }} --build-arg BUILD_TIMESTAMP=${{ steps.settings.outputs.BUILD_TIMESTAMP}} --load .
 
       - name: Setup Go environment
         uses: actions/setup-go@v4.0.0
