@@ -134,6 +134,8 @@ namespace Ethereum.Test.Base
             transaction.Data = transactionJson.Data[postStateJson.Indexes.Data];
             transaction.SenderAddress = new PrivateKey(transactionJson.SecretKey).Address;
             transaction.Signature = new Signature(1, 1, 27);
+            transaction.BlobVersionedHashes = transactionJson.BlobVersionedHashes;
+            transaction.MaxFeePerBlobGas = transactionJson.MaxFeePerBlobGas;
             transaction.Hash = transaction.CalculateHash();
 
             AccessList.Builder builder = new();
