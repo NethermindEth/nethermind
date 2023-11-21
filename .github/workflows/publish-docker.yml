@@ -4,7 +4,7 @@ on:
   push:
     branches: [master, release/*]
     paths:
-      - "src/Nethermind/**"
+      - 'src/Nethermind/**'
 
   workflow_dispatch:
     inputs:
