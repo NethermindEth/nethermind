@@ -99,9 +99,13 @@ namespace Ethereum.PoW.Test
 
         private class EthashTestJson
         {
+            [JsonPropertyName("nonce")]
             public string Nonce { get; set; }
+            [JsonPropertyName("mixHash")]
             public string MixHash { get; set; }
+            [JsonPropertyName("header")]
             public string Header { get; set; }
+            [JsonPropertyName("seed")]
             public string Seed { get; set; }
 
             [JsonPropertyName("cache_size")]
@@ -116,6 +120,7 @@ namespace Ethereum.PoW.Test
             [JsonPropertyName("cache_hash")]
             public string CacheHash { get; set; }
 
+            [JsonPropertyName("result")]
             public string Result { get; set; }
         }
 

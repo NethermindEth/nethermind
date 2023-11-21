@@ -5,6 +5,8 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
+using System.Text.Json.Serialization;
+
 using Ethereum.Test.Base;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -354,13 +356,17 @@ namespace Ethereum.Trie.Test
 
         public class TrieTestJson
         {
+            [JsonPropertyName("in")]
             public Dictionary<string, string> In { get; set; }
+            [JsonPropertyName("root")]
             public string Root { get; set; }
         }
 
         public class TrieTestArraysJson
         {
+            [JsonPropertyName("in")]
             public string[][] In { get; set; }
+            [JsonPropertyName("root")]
             public string Root { get; set; }
         }
 

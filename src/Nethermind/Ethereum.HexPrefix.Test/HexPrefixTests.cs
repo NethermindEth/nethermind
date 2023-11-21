@@ -3,8 +3,11 @@
 
 using System.Collections.Generic;
 using System.Linq;
+using System.Text.Json.Serialization;
+
 using Ethereum.Test.Base;
 using Nethermind.Core.Extensions;
+
 using NUnit.Framework;
 
 namespace Ethereum.HexPrefix.Test
@@ -36,8 +39,11 @@ namespace Ethereum.HexPrefix.Test
 
         private class HexPrefixTestJson
         {
+            [JsonPropertyName("seq")]
             public byte[] Seq { get; set; }
+            [JsonPropertyName("term")]
             public bool Term { get; set; }
+            [JsonPropertyName("out")]
             public string Out { get; set; }
         }
 
