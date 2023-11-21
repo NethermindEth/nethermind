@@ -9,6 +9,7 @@ using System.Linq;
 using System.Numerics;
 using System.Reflection;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 
 using NUnit.Framework;
 
@@ -64,6 +65,11 @@ namespace Ethereum.Test.Base
                 throw new ArgumentException($"Cannot find test resource: {testFileName}");
             }
 
+            var jsonOptions = new JsonSerializerOptions()
+            {
+                PropertyNameCaseInsensitive = true,
+                NumberHandling = JsonNumberHandling.AllowReadingFromString
+            };
             using (Stream stream = assembly.GetManifestResourceStream(resourceName))
             {
                 Assert.NotNull(stream);
@@ -71,7 +77,7 @@ namespace Ethereum.Test.Base
                 {
                     string testJson = reader.ReadToEnd();
                     TContainer testSpecs =
-                        JsonSerializer.Deserialize<TContainer>(testJson);
+                        JsonSerializer.Deserialize<TContainer>(testJson, jsonOptions);
                     return testExtractor(testSpecs);
                 }
             }
