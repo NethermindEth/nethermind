@@ -21,17 +21,17 @@ jobs:
           - network: "holesky"
             checkpoint-sync-url: "https://holesky.beaconstate.ethstaker.cc/"
             cl-client: "lighthouse"
-            el-client: "nethermind:current_branch_image"
+            el-client: "nethermind:nethermindeth/nethermind:master"
             agent: ubuntu-latest
           - network: "chiado"
             checkpoint-sync-url: "http://139.144.26.89:4000/"
             cl-client: "lighthouse"
-            el-client: "nethermind:current_branch_image"
+            el-client: "nethermind:nethermindeth/nethermind:master"
             agent: sync-agent-80gb
           - network: "sepolia"
             checkpoint-sync-url: "https://beaconstate-sepolia.chainsafe.io"
             cl-client: "lighthouse"
-            el-client: "nethermind:current_branch_image"
+            el-client: "nethermind:nethermindeth/nethermind:master"
             agent: sync-agent-80gb
     name: "Run sync of ${{ matrix.network }} testnet"
     runs-on: ${{ matrix.agent }}
