@@ -152,6 +152,9 @@ namespace Ethereum.Test.Base
             if (transactionJson.MaxFeePerGas != null)
                 transaction.Type = TxType.EIP1559;
 
+            if (transaction.BlobVersionedHashes?.Length > 0)
+                transaction.Type = TxType.Blob;
+
             return transaction;
         }
 
