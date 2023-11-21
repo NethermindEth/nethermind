@@ -3,6 +3,8 @@
 
 using System.Collections.Generic;
 using System.Linq;
+using System.Text.Json.Serialization;
+
 using Ethereum.Test.Base;
 using Nethermind.Abi;
 using Nethermind.Core.Extensions;
@@ -55,8 +57,11 @@ namespace Ethereum.VM.Test
 
         public class AbiTestJson
         {
+            [JsonPropertyName("args")]
             public object[] Args { get; set; }
+            [JsonPropertyName("result")]
             public string Result { get; set; }
+            [JsonPropertyName("types")]
             public string[] Types { get; set; }
         }
 

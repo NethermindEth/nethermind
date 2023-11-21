@@ -3,12 +3,13 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Numerics;
 using System.Reflection;
-using Newtonsoft.Json;
-using Newtonsoft.Json.Linq;
+using System.Text.Json;
+
 using NUnit.Framework;
 
 namespace Ethereum.Test.Base
@@ -24,23 +25,28 @@ namespace Ethereum.Test.Base
                 input = bigInteger;
             }
 
-            if (input is JArray)
+            JsonElement token = (JsonElement)input;
+
+            if (token.ValueKind == JsonValueKind.Array)
             {
-                input = ((JArray)input).Select(PrepareInput).ToArray();
+                int length = token.GetArrayLength();
+                object[] array = new object[length];
+                for (int i = 0; i < array.Length; i++)
+                {
+                    array[i] = PrepareInput(token[i]);
+                }
+
+                input = array;
             }
 
-            JToken token = input as JToken;
-            if (token != null)
+            if (token.ValueKind == JsonValueKind.String)
             {
-                if (token.Type == JTokenType.String)
-                {
-                    return token.Value<string>();
-                }
+                return token.GetString();
+            }
 
-                if (token.Type == JTokenType.Integer)
-                {
-                    return token.Value<long>();
-                }
+            if (token.ValueKind == JsonValueKind.Number)
+            {
+                return token.GetInt64();
             }
 
             return input;
@@ -65,7 +71,7 @@ namespace Ethereum.Test.Base
                 {
                     string testJson = reader.ReadToEnd();
                     TContainer testSpecs =
-                        JsonConvert.DeserializeObject<TContainer>(testJson);
+                        JsonSerializer.Deserialize<TContainer>(testJson);
                     return testExtractor(testSpecs);
                 }
             }

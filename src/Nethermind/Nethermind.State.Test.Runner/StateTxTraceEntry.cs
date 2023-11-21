@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
-using Newtonsoft.Json;
+using System.Text.Json.Serialization;
 
 namespace Nethermind.State.Test.Runner
 {
@@ -13,37 +13,37 @@ namespace Nethermind.State.Test.Runner
             Stack = new List<string>();
         }
 
-        [JsonProperty(PropertyName = "pc")]
+        [JsonPropertyName("pc")]
         public int Pc { get; set; }
 
-        [JsonProperty(PropertyName = "op")]
+        [JsonPropertyName("op")]
         public byte Operation { get; set; }
 
-        [JsonProperty(PropertyName = "gas")]
+        [JsonPropertyName("gas")]
         public long Gas { get; set; }
 
-        [JsonProperty(PropertyName = "gasCost")]
+        [JsonPropertyName("gasCost")]
         public long GasCost { get; set; }
 
-        [JsonProperty(PropertyName = "memory")]
+        [JsonPropertyName("memory")]
         public string Memory { get; set; }
 
-        [JsonProperty(PropertyName = "memSize")]
+        [JsonPropertyName("memSize")]
         public int MemSize { get; set; }
 
-        [JsonProperty(PropertyName = "stack")]
+        [JsonPropertyName("stack")]
         public List<string> Stack { get; set; }
 
-        [JsonProperty(PropertyName = "depth")]
+        [JsonPropertyName("depth")]
         public int Depth { get; set; }
 
-        [JsonProperty(PropertyName = "refund")]
+        [JsonPropertyName("refund")]
         public int Refund { get; set; }
 
-        [JsonProperty(PropertyName = "opname")]
+        [JsonPropertyName("opname")]
         public string? OperationName { get; set; }
 
-        [JsonProperty(PropertyName = "error")]
+        [JsonPropertyName("error")]
         public string? Error { get; set; } = string.Empty;
 
         //        public Dictionary<string, string> Storage { get; set; }
