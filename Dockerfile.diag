@@ -1,0 +1,47 @@
+# SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+# SPDX-License-Identifier: LGPL-3.0-only
+
+FROM --platform=$BUILDPLATFORM mcr.microsoft.com/dotnet/sdk:8.0-jammy AS build
+
+ARG BUILD_CONFIG=release
+ARG BUILD_TIMESTAMP
+ARG CI
+ARG COMMIT_HASH
+ARG TARGETARCH
+ARG TARGETOS
+
+COPY . .
+
+RUN arch=$([ "$TARGETARCH" = "amd64" ] && echo "x64" || echo "$TARGETARCH") && \
+    dotnet tool install JetBrains.dotTrace.GlobalTools --version 2023.2.3 --tool-path /tmp && \
+    dotnet add src/Nethermind/Nethermind.Runner package JetBrains.dotMemory.Console.$TARGETOS-$arch \
+      --version 2023.2.3 --package-directory /tmp && \
+    dotnet publish src/Nethermind/Nethermind.Runner -c $BUILD_CONFIG -a $arch -o /publish --sc false \
+      -p:BuildTimestamp=$BUILD_TIMESTAMP -p:Commit=$COMMIT_HASH
+
+RUN dotnet tool install --tool-path /dotnetcore-tools dotnet-trace && \
+    dotnet tool install --tool-path /dotnetcore-tools dotnet-dump && \
+    dotnet tool install --tool-path /dotnetcore-tools dotnet-gcdump
+
+FROM --platform=$TARGETPLATFORM mcr.microsoft.com/dotnet/aspnet:8.0-jammy
+
+WORKDIR /nethermind
+
+VOLUME /nethermind/keystore
+VOLUME /nethermind/logs
+VOLUME /nethermind/nethermind_db
+
+EXPOSE 8545 8551 30303
+
+COPY --from=build /publish .
+COPY --from=build /dotnetcore-tools /opt/dotnetcore-tools
+COPY --from=build /tmp/jetbrains.dotmemory.console.* /opt/tools
+COPY --from=build /tmp/dottrace /opt/tools
+COPY --from=build /tmp/.store /opt/tools/.store
+
+ENV PATH="/opt/dotnetcore-tools:${PATH}"
+
+RUN apt-get update && apt-get -y install libsnappy-dev procps && \
+  rm -rf /var/lib/apt/lists/*
+
+ENTRYPOINT ["./nethermind"]
