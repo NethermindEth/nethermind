@@ -115,8 +115,8 @@ namespace Ethereum.Test.Base
                     extraData: Array.Empty<byte>()
                 )
                 {
-                    BlobGasUsed = (ulong) test.ParentBlobGasUsed,
-                    ExcessBlobGas = (ulong) test.ParentExcessBlobGas,
+                    BlobGasUsed = (ulong)test.ParentBlobGasUsed,
+                    ExcessBlobGas = (ulong)test.ParentExcessBlobGas,
                 };
                 header.ExcessBlobGas = BlobGasCalculator.CalculateExcessBlobGas(parent, spec);
             }
