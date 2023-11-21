@@ -81,10 +81,6 @@ public abstract class ConfigFileTestsBase
     protected IEnumerable<string> GoerliConfigs
         => Configs.Where(config => config.Contains("goerli"));
 
-    [ConfigFileGroup("rinkeby")]
-    protected IEnumerable<string> RinkebyConfigs
-        => Configs.Where(config => config.Contains("rinkeby"));
-
     [ConfigFileGroup("kovan")]
     protected IEnumerable<string> KovanConfigs
         => Configs.Where(config => config.Contains("kovan"));
@@ -116,7 +112,7 @@ public abstract class ConfigFileTestsBase
 
     [ConfigFileGroup("clique")]
     protected IEnumerable<string> CliqueConfigs
-        => RinkebyConfigs.Union(GoerliConfigs);
+        => GoerliConfigs;
 
     protected IEnumerable<string> Resolve(string configWildcard)
     {
