@@ -229,6 +229,10 @@ namespace Ethereum.Test.Base
                     test.CurrentTimestamp = testJson.Env.CurrentTimestamp;
                     test.CurrentBaseFee = testJson.Env.CurrentBaseFee;
                     test.CurrentRandom = testJson.Env.CurrentRandom;
+                    test.CurrentBeaconRoot = testJson.Env.CurrentBeaconRoot;
+                    test.CurrentWithdrawalsRoot = testJson.Env.CurrentWithdrawalsRoot;
+                    test.ParentBlobGasUsed = testJson.Env.ParentBlobGasUsed;
+                    test.ParentExcessBlobGas = testJson.Env.ParentExcessBlobGas;
                     test.PostReceiptsRoot = stateJson.Logs;
                     test.PostHash = stateJson.Hash;
                     test.Pre = testJson.Pre.ToDictionary(p => new Address(p.Key), p => Convert(p.Value));
