@@ -95,12 +95,31 @@ namespace Ethereum.Test.Base
             header.IsPostMerge = test.CurrentRandom is not null;
             header.MixHash = test.CurrentRandom;
             header.WithdrawalsRoot = test.CurrentWithdrawalsRoot;
+            header.ParentBeaconBlockRoot = test.CurrentBeaconRoot;
 
             Stopwatch stopwatch = Stopwatch.StartNew();
             TxValidator? txValidator = new((MainnetSpecProvider.Instance.ChainId));
             IReleaseSpec? spec = specProvider.GetSpec((ForkActivation)test.CurrentNumber);
             if (test.Transaction.ChainId == null)
                 test.Transaction.ChainId = MainnetSpecProvider.Instance.ChainId;
+            if (test.ParentBlobGasUsed is not null && test.ParentExcessBlobGas is not null)
+            {
+                BlockHeader parent = new(
+                    parentHash: null!,
+                    unclesHash: Keccak.OfAnEmptySequenceRlp,
+                    beneficiary: test.CurrentCoinbase,
+                    difficulty: test.CurrentDifficulty,
+                    number: test.CurrentNumber - 1,
+                    gasLimit: test.CurrentGasLimit,
+                    timestamp: test.CurrentTimestamp,
+                    extraData: Array.Empty<byte>()
+                )
+                {
+                    BlobGasUsed = (ulong) test.ParentBlobGasUsed,
+                    ExcessBlobGas = (ulong) test.ParentExcessBlobGas,
+                };
+                header.ExcessBlobGas = BlobGasCalculator.CalculateExcessBlobGas(parent, spec);
+            }
             bool isValid = txValidator.IsWellFormed(test.Transaction, spec);
             if (isValid)
                 transactionProcessor.Execute(test.Transaction, new BlockExecutionContext(header), txTracer);
