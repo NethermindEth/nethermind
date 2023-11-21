@@ -93,7 +93,7 @@ namespace Nethermind.Evm.Tracing
 
         private readonly Stack<GasAndNesting> _currentGasAndNesting = new();
 
-        public override void ReportAction(long gas, UInt256 value, Address @from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false)
+        public override void ReportAction(long gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false)
         {
             if (_currentNestingLevel == -1)
             {
@@ -113,26 +113,12 @@ namespace Nethermind.Evm.Tracing
 
         public override void ReportActionEnd(long gas, ReadOnlyMemory<byte> output)
         {
-            if (!_isInPrecompile)
-            {
-                UpdateAdditionalGas(gas);
-            }
-            else
-            {
-                _isInPrecompile = false;
-            }
+            UpdateAdditionalGas(gas);
         }
 
         public override void ReportActionEnd(long gas, Address deploymentAddress, ReadOnlyMemory<byte> deployedCode)
         {
-            if (!_isInPrecompile)
-            {
-                UpdateAdditionalGas(gas);
-            }
-            else
-            {
-                _isInPrecompile = false;
-            }
+            UpdateAdditionalGas(gas);
         }
 
         public override void ReportActionError(EvmExceptionType exceptionType)
@@ -147,19 +133,26 @@ namespace Nethermind.Evm.Tracing
 
         private void UpdateAdditionalGas(long? gasLeft = null)
         {
-            GasAndNesting current = _currentGasAndNesting.Pop();
-
-            if (gasLeft.HasValue)
+            if (_isInPrecompile)
             {
-                current.GasLeft = gasLeft.Value;
+                _isInPrecompile = false;
             }
-
-            _currentGasAndNesting.Peek().GasUsageFromChildren += current.AdditionalGasRequired;
-            _currentNestingLevel--;
-
-            if (_currentNestingLevel == -1)
+            else
             {
-                NonIntrinsicGasSpentBeforeRefund = IntrinsicGasAt - current.GasLeft;
+                GasAndNesting current = _currentGasAndNesting.Pop();
+
+                if (gasLeft.HasValue)
+                {
+                    current.GasLeft = gasLeft.Value;
+                }
+
+                _currentGasAndNesting.Peek().GasUsageFromChildren += current.AdditionalGasRequired;
+                _currentNestingLevel--;
+
+                if (_currentNestingLevel == -1)
+                {
+                    NonIntrinsicGasSpentBeforeRefund = IntrinsicGasAt - current.GasLeft;
+                }
             }
         }
 
