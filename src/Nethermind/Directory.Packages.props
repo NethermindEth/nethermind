@@ -63,7 +63,7 @@
     <PackageVersion Include="Pyroscope" Version="0.8.14" />
     <PackageVersion Include="ReadLine" Version="2.0.1" />
     <PackageVersion Include="RichardSzalay.MockHttp" Version="7.0.0" />
-    <PackageVersion Include="RocksDB" Version="8.6.7.43630" />
+    <PackageVersion Include="RocksDB" Version="8.7.3.43743" />
     <PackageVersion Include="SCrypt" Version="2.0.0.2" />
     <PackageVersion Include="Seq.Api" Version="2023.4.0" />
     <PackageVersion Include="SharpCompress" Version="0.34.1" />

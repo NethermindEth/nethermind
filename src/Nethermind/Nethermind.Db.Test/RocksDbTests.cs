@@ -11,5 +11,5 @@ namespace Nethermind.Db.Test;
 internal static class RocksDbTests
 {
     [Test]
-    public static void Should_have_required_version() => DbOnTheRocks.GetRocksDbVersion().Should().Be("8.6.7");
+    public static void Should_have_required_version() => DbOnTheRocks.GetRocksDbVersion().Should().Be("8.7.3");
 }
