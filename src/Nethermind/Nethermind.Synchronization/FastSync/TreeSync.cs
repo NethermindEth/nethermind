@@ -268,26 +268,29 @@ namespace Nethermind.Synchronization.FastSync
                         NodeDataType nodeDataType = currentStateSyncItem.NodeDataType;
                         if (nodeDataType == NodeDataType.Code)
                         {
-                            bool processAsStorage = false;
-                            lock (_codesSameAsNodes)
-                            {
-                                // It could be that a code request was sent before another branch found storage same as
-                                // code situation, in which case, the storage request (for later branch) would not get
-                                // sent out because of _dependencies check.
-                                processAsStorage = _codesSameAsNodes.Contains(currentStateSyncItem.Hash);
-                            }
+                            //    bool processAsStorage = false;
+                            //    lock (_codesSameAsNodes)
+                            //    {
+                            //        // It could be that a code request was sent before another branch found storage same as
+                            //        // code situation, in which case, the storage request (for later branch) would not get
+                            //        // sent out because of _dependencies check.
+                            //        processAsStorage = _codesSameAsNodes.Contains(currentStateSyncItem.Hash);
+                            //    }
 
-                            // It is possible that the _codesSameAsNode is populated during processing of the code
-                            // before its _dependencies record is removed. But this *should* be fairly rare, we dont
-                            // want to introduce more lock and when the state root change, the request would have been
-                            // re-sent for the storage. So user should not be blocked by this.
-                            if (!processAsStorage)
-                            {
-                                SaveNode(currentStateSyncItem, currentResponseItem, null);
-                                continue;
-                            }
+                            //    // It is possible that the _codesSameAsNode is populated during processing of the code
+                            //    // before its _dependencies record is removed. But this *should* be fairly rare, we dont
+                            //    // want to introduce more lock and when the state root change, the request would have been
+                            //    // re-sent for the storage. So user should not be blocked by this.
+                            //    if (!processAsStorage)
+                            //    {
+                            //        SaveNode(currentStateSyncItem, currentResponseItem, null);
+                            //        continue;
+                            //    }
 
-                            currentStateSyncItem = new StateSyncItem(currentStateSyncItem, NodeDataType.Storage);
+                            //    currentStateSyncItem = new StateSyncItem(currentStateSyncItem, NodeDataType.Storage);
+
+                            SaveNode(currentStateSyncItem, currentResponseItem, null);
+                            continue;
                         }
 
                         HandleTrieNode(currentStateSyncItem, currentResponseItem, ref invalidNodes);
@@ -1051,6 +1054,7 @@ namespace Nethermind.Synchronization.FastSync
                             }
                             else
                             {
+                                //AddNodeResult addCodeResult = AddNodeToPending(new StateSyncItem(codeHash, null, null, NodeDataType.Code, 0, currentStateSyncItem.Rightness), dependentItem, "code");
                                 AddNodeResult addCodeResult = AddNodeToPending(new StateSyncItem(codeHash, null, null, NodeDataType.Code, 0, currentStateSyncItem.Rightness), dependentItem, "code");
                                 if (addCodeResult == AddNodeResult.AlreadySaved) dependentItem.Counter--;
                             }
