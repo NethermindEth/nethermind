@@ -6,7 +6,6 @@ using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using RocksDbSharp;
 using IWriteBatch = Nethermind.Core.IWriteBatch;
 
@@ -104,25 +103,14 @@ public class ColumnDb : IDb
             }
         }
 
-        public void DeleteRange(byte[] startKey, byte[] endKey)
-        {
-            using Iterator iterator = _columnDb._mainDb._db.NewIterator(_columnDb._columnFamily);
-            iterator.Seek(startKey);
-            while (iterator.Valid())
-            {
-                if (Bytes.Comparer.Compare(iterator.Key(), endKey) >= 0)
-                    break;
-                //Console.WriteLine($"Removed: {iterator.Key().ToHexString()} | From: {startKey.ToHexString()} To: {endKey.ToHexString()}");
-                _underlyingWriteBatch.Delete(iterator.Key(), _columnDb._columnFamily);
-                iterator.Next();
-            }
-            //seems to be much less performant
-            //_underlyingBatch._rocksBatch.DeleteRange(startKey, Convert.ToUInt64(startKey.Length), endKey, Convert.ToUInt64(endKey.Length), _columnDb._columnFamily);
-        }
-
         public void PutSpan(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags flags = WriteFlags.None)
         {
             _underlyingWriteBatch.Set(key, value, _columnDb._columnFamily, flags);
+        }
+
+        public void DeleteByRange(Span<byte> startKey, Span<byte> endKey)
+        {
+            _underlyingWriteBatch.DeleteByRange(startKey, endKey);
         }
     }
 
@@ -130,6 +118,11 @@ public class ColumnDb : IDb
     {
         // TODO: this does not participate in batching?
         _rocksDb.Remove(key, _columnFamily, _mainDb.WriteOptions);
+    }
+
+    public void DeleteByRange(Span<byte> startKey, Span<byte> endKey)
+    {
+        _mainDb.DeleteByRange(startKey, endKey);
     }
 
     public bool KeyExists(ReadOnlySpan<byte> key) => _rocksDb.Get(key, _columnFamily) is not null;
@@ -153,9 +146,4 @@ public class ColumnDb : IDb
     public long GetCacheSize() => _mainDb.GetCacheSize();
     public long GetIndexSize() => _mainDb.GetIndexSize();
     public long GetMemtableSize() => _mainDb.GetMemtableSize();
-
-    public void DeleteByRange(Span<byte> startKey, Span<byte> endKey)
-    {
-        throw new NotImplementedException();
-    }
 }

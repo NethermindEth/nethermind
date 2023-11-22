@@ -8,6 +8,7 @@ using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
+using Newtonsoft.Json.Linq;
 
 namespace Nethermind.Db.FullPruning
 {
@@ -100,6 +101,12 @@ namespace Nethermind.Db.FullPruning
         private void Duplicate(IWriteOnlyKeyValueStore db, ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags flags)
         {
             db.PutSpan(key, value, flags);
+            _updateDuplicateWriteMetrics?.Invoke();
+        }
+
+        private void Duplicate(IWriteOnlyKeyValueStore db, Span<byte> startKey, Span<byte> endKey)
+        {
+            db.DeleteByRange(startKey, endKey);
             _updateDuplicateWriteMetrics?.Invoke();
         }
 
@@ -294,6 +301,11 @@ namespace Nethermind.Db.FullPruning
                     _disposed = true;
                 }
             }
+
+            public void DeleteByRange(Span<byte> startKey, Span<byte> endKey)
+            {
+                _db.DeleteByRange(startKey, endKey);
+            }
         }
 
         /// <summary>
@@ -313,6 +325,12 @@ namespace Nethermind.Db.FullPruning
                 _writeBatch = writeBatch;
                 _clonedWriteBatch = clonedWriteBatch;
                 _db = db;
+            }
+
+            public void DeleteByRange(Span<byte> startKey, Span<byte> endKey)
+            {
+                _writeBatch.DeleteByRange(startKey, endKey);
+                _db.Duplicate(_clonedWriteBatch, startKey, endKey);
             }
 
             public void Dispose()

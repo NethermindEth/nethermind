@@ -840,13 +840,13 @@ namespace Nethermind.Trie.Pruning
             throw new NotImplementedException();
         }
 
-        public void PersistNode(TrieNode trieNode, IColumnsWriteBatch<StateColumns> keyValueStore = null, bool withDelete = false, WriteFlags writeFlags = WriteFlags.None)
+        public void PersistNode(TrieNode trieNode, IWriteBatch? keyValueStore = null, bool withDelete = false, WriteFlags writeFlags = WriteFlags.None)
         {
             //keyValueStore ??= _keyValueStore;
             //keyValueStore.Set(trieNode.Keccak.Bytes, trieNode.Value.ToArray(), writeFlags);
         }
 
-        public void PersistNodeData(Span<byte> fullPath, int pathToNodeLength, byte[]? rlpData, IColumnsWriteBatch<StateColumns>? keyValueStore = null, WriteFlags writeFlags = WriteFlags.None)
+        public void PersistNodeData(Span<byte> fullPath, int pathToNodeLength, byte[]? rlpData, IWriteBatch? keyValueStore = null, WriteFlags writeFlags = WriteFlags.None)
         {
         }
 
@@ -871,7 +871,7 @@ namespace Nethermind.Trie.Pruning
                 : _keyValueStore.Get(key, flags);
         }
 
-        public void DeleteByRange(Span<byte> startKey, Span<byte> endKey)
+        public void DeleteByRange(Span<byte> startKey, Span<byte> endKey, IWriteBatch writeBatch = null)
         {
             _keyValueStore.DeleteByRange(startKey, endKey);
         }
@@ -903,6 +903,8 @@ namespace Nethermind.Trie.Pruning
             {
                 _trieStore = trieStore;
             }
+
+            public void DeleteByRange(Span<byte> startKey, Span<byte> endKey) => _trieStore.DeleteByRange(startKey, endKey);
 
             public byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None) => _trieStore.Get(key, flags);
 

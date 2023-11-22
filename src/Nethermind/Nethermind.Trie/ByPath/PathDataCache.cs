@@ -366,7 +366,7 @@ internal class PathDataCacheInstance
         return data;
     }
 
-    public bool PersistUntilBlock(long blockNumber, Hash256 rootHash, IColumnsWriteBatch<StateColumns>? batch = null)
+    public bool PersistUntilBlock(long blockNumber, Hash256 rootHash, IWriteBatch? batch = null)
     {
         Stack<PathDataCacheInstance> branches = new Stack<PathDataCacheInstance>();
         GetBranchesToProcess(blockNumber, rootHash, branches, true, out StateId? latestState);
@@ -409,12 +409,12 @@ internal class PathDataCacheInstance
         return true;
     }
 
-    private void PersistUntilBlockInner(StateId? stateId, IColumnsWriteBatch<StateColumns>? batch = null)
+    private void PersistUntilBlockInner(StateId? stateId, IWriteBatch? batch = null)
     {
         if (_logger.IsTrace)
             _logger.Trace($"Persisting cache instance with latest state {_lastState?.BlockNumber} / {_lastState?.BlockStateRoot} until state {stateId?.BlockNumber} / {stateId?.BlockStateRoot}");
 
-        ProcessDestroyed(stateId);
+        ProcessDestroyed(stateId, batch);
 
         List<Tuple<byte[], int, byte[]>> toPersist = new();
         foreach (KeyValuePair<byte[], PathDataHistory> nodeVersion in _historyByPath)
@@ -504,7 +504,7 @@ internal class PathDataCacheInstance
             _lastState = null;
     }
 
-    private void ProcessDestroyed(StateId stateId)
+    private void ProcessDestroyed(StateId stateId, IWriteBatch? writeBatch)
     {
         List<byte[]> paths = _removedPrefixes.Where(kvp => kvp.Value.Exists(st => st <= stateId.Id)).Select(kvp => kvp.Key).ToList();
 
@@ -514,7 +514,7 @@ internal class PathDataCacheInstance
 
             if (_logger.IsTrace) _logger.Trace($"Requesting removal {startKey.ToHexString()} - {endKey.ToHexString()}");
 
-            _trieStore.DeleteByRange(startKey, endKey);
+            _trieStore.DeleteByRange(startKey, endKey, writeBatch);
         }
     }
 
@@ -777,7 +777,7 @@ public class PathDataCache : IPathDataCache
         finally { _lock.ExitReadLock(); }
     }
 
-    public bool PersistUntilBlock(long blockNumber, Hash256 rootHash, IColumnsWriteBatch<StateColumns>? batch = null)
+    public bool PersistUntilBlock(long blockNumber, Hash256 rootHash, IWriteBatch? batch = null)
     {
         try
         {

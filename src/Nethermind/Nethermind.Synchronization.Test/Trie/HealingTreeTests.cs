@@ -137,7 +137,7 @@ public class HealingTreeTests
 
         public void CommitNode(long blockNumber, NodeCommitInfo nodeCommitInfo, WriteFlags writeFlags = WriteFlags.None) { }
 
-        public void DeleteByRange(Span<byte> startKey, Span<byte> endKey) { }
+        public void DeleteByRange(Span<byte> startKey, Span<byte> endKey, IWriteBatch? writeBatch = null) { }
 
         public void Dispose() { }
 
@@ -182,9 +182,9 @@ public class HealingTreeTests
 
         public void OpenContext(long blockNumber, Hash256 keccak) { }
 
-        public void PersistNode(TrieNode trieNode, IColumnsWriteBatch<StateColumns>? batch = null, bool withDelete = false, WriteFlags writeFlags = WriteFlags.None) { }
+        public void PersistNode(TrieNode trieNode, IWriteBatch? batch = null, bool withDelete = false, WriteFlags writeFlags = WriteFlags.None) { }
 
-        public void PersistNodeData(Span<byte> fullPath, int pathToNodeLength, byte[]? rlpData, IColumnsWriteBatch<StateColumns>? batch = null, WriteFlags writeFlags = WriteFlags.None) { }
+        public void PersistNodeData(Span<byte> fullPath, int pathToNodeLength, byte[]? rlpData, IWriteBatch? batch = null, WriteFlags writeFlags = WriteFlags.None) { }
 
         public byte[]? TryLoadRlp(Span<byte> path, IKeyValueStore? keyValueStore) { return null; }
     }

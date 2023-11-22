@@ -13,7 +13,7 @@ public interface IPathTrieNodeCache
     TrieNode? GetNodeFromRoot(Hash256? rootHash, Span<byte> path);
     TrieNode? GetNode(Span<byte> path, Hash256 keccak);
     void SetRootHashForBlock(long blockNumber, Hash256? rootHash);
-    void PersistUntilBlock(long blockNumber, IColumnsWriteBatch<StateColumns>? batch = null);
+    void PersistUntilBlock(long blockNumber, IWriteBatch? batch = null);
     void Clear();
     int Count { get; }
     void AddRemovedPrefix(long blockNumber, ReadOnlySpan<byte> keyPrefix);

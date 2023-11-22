@@ -62,15 +62,15 @@ namespace Nethermind.Trie.Pruning
             return Array.Empty<byte>();
         }
 
-        public void PersistNode(TrieNode trieNode, IColumnsWriteBatch<StateColumns>? batch = null, bool withDelete = false, WriteFlags writeFlags = WriteFlags.None) { }
-        public void PersistNodeData(Span<byte> fullPath, int pathToNodeLength, byte[]? rlpData, IColumnsWriteBatch<StateColumns>? batch = null, WriteFlags writeFlags = WriteFlags.None) { }
+        public void PersistNode(TrieNode trieNode, IWriteBatch? batch = null, bool withDelete = false, WriteFlags writeFlags = WriteFlags.None) { }
+        public void PersistNodeData(Span<byte> fullPath, int pathToNodeLength, byte[]? rlpData, IWriteBatch? batch = null, WriteFlags writeFlags = WriteFlags.None) { }
 
         public void ClearCache() { }
         public void ClearCacheAfter(Hash256 rootHash) { }
 
         public bool ExistsInDB(Hash256 hash, byte[] nodePathNibbles) => false;
 
-        public void DeleteByRange(Span<byte> startKey, Span<byte> endKey) { }
+        public void DeleteByRange(Span<byte> startKey, Span<byte> endKey, IWriteBatch? writeBatch = null) { }
         public void MarkPrefixDeleted(long blockNumber, ReadOnlySpan<byte> keyPrefix)
         {
             throw new NotImplementedException();

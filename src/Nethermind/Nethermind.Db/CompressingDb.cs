@@ -52,6 +52,11 @@ namespace Nethermind.Db
                     _wrapped.PutSpan(key, Compress(value, stackalloc byte[value.Length]), flags);
                 }
 
+                public void DeleteByRange(Span<byte> startKey, Span<byte> endKey)
+                {
+                    _wrapped.DeleteByRange(startKey, endKey);
+                }
+
                 public bool PreferWriteByArray => _wrapped.PreferWriteByArray;
 
                 public byte[]? this[ReadOnlySpan<byte> key]

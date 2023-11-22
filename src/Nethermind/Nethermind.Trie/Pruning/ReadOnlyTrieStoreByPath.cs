@@ -69,15 +69,15 @@ namespace Nethermind.Trie.Pruning
             return _trieStore.LoadRlp(nodePath, rootHash);
         }
 
-        public void PersistNode(TrieNode trieNode, IColumnsWriteBatch<StateColumns>? batch = null, bool withDelete = false, WriteFlags writeFlags = WriteFlags.None) { }
-        public void PersistNodeData(Span<byte> fullPath, int pathToNodeLength, byte[]? rlpData, IColumnsWriteBatch<StateColumns>? batch = null, WriteFlags writeFlags = WriteFlags.None) { }
+        public void PersistNode(TrieNode trieNode, IWriteBatch? batch = null, bool withDelete = false, WriteFlags writeFlags = WriteFlags.None) { }
+        public void PersistNodeData(Span<byte> fullPath, int pathToNodeLength, byte[]? rlpData, IWriteBatch? batch = null, WriteFlags writeFlags = WriteFlags.None) { }
 
         public void ClearCache() => _trieStore.ClearCache();
         public void ClearCacheAfter(Hash256 rootHash) { }
 
         public bool ExistsInDB(Hash256 hash, byte[] nodePathNibbles) => _trieStore.ExistsInDB(hash, nodePathNibbles);
 
-        public void DeleteByRange(Span<byte> startKey, Span<byte> endKey) { }
+        public void DeleteByRange(Span<byte> startKey, Span<byte> endKey, IWriteBatch writeBatch = null) { }
         public void MarkPrefixDeleted(long blockNumber, ReadOnlySpan<byte> keyPrefix) { }
 
         public bool CanAccessByPath() => _trieStore.CanAccessByPath();
@@ -104,6 +104,7 @@ namespace Nethermind.Trie.Pruning
             public byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None) => _keyValueStore.Get(key, flags);
 
             public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None) { }
+            public void DeleteByRange(Span<byte> startKey, Span<byte> endKey) { }
         }
     }
 }

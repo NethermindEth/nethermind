@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Data.Common;
 using System.Diagnostics;
 using System.Linq;
@@ -28,9 +29,8 @@ namespace Nethermind.Trie.Pruning
         private const byte PathMarker = 128;
 
         private int _isFirst;
-        //private ConcurrentDictionary<StateColumns, IBatch?> _currentBatches = null;
-        private IColumnsWriteBatch<StateColumns>? _currentBatch = null;
-        //private readonly ConcurrentDictionary<StateColumns, IPathTrieNodeCache> _committedNodes = null;
+        private IColumnsWriteBatch<StateColumns>? _columnsBatch = null;
+        private ConcurrentDictionary<StateColumns, IWriteBatch?> _currentWriteBatches = null;
         private readonly ConcurrentDictionary<StateColumns, IPathDataCache> _committedNodes = null;
         private readonly IPersistenceStrategy _persistenceStrategy;
 
@@ -50,18 +50,12 @@ namespace Nethermind.Trie.Pruning
             _stateDb = stateDb ?? throw new ArgumentNullException(nameof(stateDb));
             _persistenceStrategy = persistenceStrategy ?? throw new ArgumentNullException(nameof(persistenceStrategy));
             _useCommittedCache = !(_persistenceStrategy is Archive);
-            //_committedNodes = new ConcurrentDictionary<StateColumns, IPathTrieNodeCache>();
-            //_committedNodes.TryAdd(StateColumns.State, new TrieNodePathCache(this, logManager));
-            //_committedNodes.TryAdd(StateColumns.Storage, new TrieNodePathCache(this, logManager));
-
             _committedNodes = new ConcurrentDictionary<StateColumns, IPathDataCache>();
             _committedNodes.TryAdd(StateColumns.State, new PathDataCache(this, logManager));
             _committedNodes.TryAdd(StateColumns.Storage, new PathDataCache(this, logManager));
             _destroyPrefixes = new ConcurrentQueue<byte[]>();
             _pathStateDb = stateDb as IByPathStateDb;
-            //_currentBatches = new ConcurrentDictionary<StateColumns, IWriteBatch?>();
-            //_currentBatches.TryAdd(StateColumns.State, null);
-            //_currentBatches.TryAdd(StateColumns.Storage, null);
+            _currentWriteBatches = new ConcurrentDictionary<StateColumns, IWriteBatch?>();
             _publicStore = new TrieKeyValueStore(this);
         }
 
@@ -197,7 +191,7 @@ namespace Nethermind.Trie.Pruning
 
                 if (trieType == TrieType.State)
                 {
-                    _currentBatch?.Dispose();
+                    DisposeWriteBatches();
                     CurrentPackage = null;
                 }
             }
@@ -395,10 +389,10 @@ namespace Nethermind.Trie.Pruning
 
                 if (_logger.IsTrace) _logger.Trace($"Persist target {persistUntilBlock} | persisting {frontSet.BlockNumber} / {frontSet.Root?.Keccak}");
 
-                _currentBatch ??= _stateDb.StartWriteBatch();
+                PrepareWriteBatches();
                 foreach (StateColumns column in Enum.GetValues(typeof(StateColumns)))
                 {
-                    _committedNodes[column].PersistUntilBlock(persistUntilBlock, frontSet?.Root?.Keccak ?? Keccak.EmptyTreeHash, _currentBatch);
+                    _committedNodes[column].PersistUntilBlock(persistUntilBlock, frontSet?.Root?.Keccak ?? Keccak.EmptyTreeHash, _currentWriteBatches[column]);
                 }
 
                 LastPersistedBlockNumber = frontSet.BlockNumber;
@@ -406,8 +400,7 @@ namespace Nethermind.Trie.Pruning
                 stopwatch.Stop();
                 Metrics.SnapshotPersistenceTime = stopwatch.ElapsedMilliseconds;
 
-                _currentBatch?.Dispose();
-                _currentBatch = null;
+                DisposeWriteBatches();
             }
             finally
             {
@@ -419,7 +412,8 @@ namespace Nethermind.Trie.Pruning
         private void PersistNode(TrieNode currentNode, long blockNumber, WriteFlags writeFlags = WriteFlags.None)
         {
             StateColumns column = GetProperColumn(currentNode);
-            _currentBatch ??= _stateDb.StartWriteBatch();
+            PrepareWriteBatches();
+
             if (currentNode is null)
             {
                 throw new ArgumentNullException(nameof(currentNode));
@@ -432,7 +426,7 @@ namespace Nethermind.Trie.Pruning
 
             if (_logger.IsTrace) _logger.Trace($"Persisting {nameof(TrieNode)} {currentNode} in snapshot {blockNumber}.");
 
-            PersistNode(currentNode, _currentBatch);
+            PersistNode(currentNode, _currentWriteBatches[column]);
 
             currentNode.IsPersisted = true;
             currentNode.LastSeen = Math.Max(blockNumber, currentNode.LastSeen ?? 0);
@@ -440,11 +434,115 @@ namespace Nethermind.Trie.Pruning
             PersistedNodesCount++;
         }
 
-        private bool IsNoLongerNeeded(TrieNode node)
+        public void PersistNode(TrieNode trieNode, IWriteBatch? batch = null, bool withDelete = false, WriteFlags writeFlags = WriteFlags.None)
         {
-            Debug.Assert(node.LastSeen != TrieNode.LastSeenNotSet, $"Any node that is cache should have {nameof(TrieNode.LastSeen)} set.");
-            return node.LastSeen < LastPersistedBlockNumber
-                   && node.LastSeen < LatestCommittedBlockNumber - Reorganization.MaxDepth;
+            StateColumns column = GetProperColumn(trieNode.FullPath.Length);
+
+            bool shouldDispose = batch is null;
+            IColumnsWriteBatch<StateColumns> masterBatch = null;
+            if (batch is null)
+            {
+                masterBatch = _stateDb.StartWriteBatch();
+                batch ??= masterBatch.GetColumnBatch(column);
+            }
+
+            byte[] fullPath = trieNode.FullPath ?? throw new ArgumentNullException();
+            byte[] pathBytes = Nibbles.NibblesToByteStorage(fullPath);
+
+            if (trieNode.IsLeaf)
+            {
+                Span<byte> pathToNodeNibbles = stackalloc byte[trieNode.StoreNibblePathPrefix.Length + trieNode.PathToNode!.Length];
+                trieNode.StoreNibblePathPrefix.CopyTo(pathToNodeNibbles);
+                Span<byte> pathToNodeSlice = pathToNodeNibbles.Slice(trieNode.StoreNibblePathPrefix.Length);
+                trieNode.PathToNode.CopyTo(pathToNodeSlice);
+                byte[] pathToNodeBytes = Nibbles.NibblesToByteStorage(pathToNodeNibbles);
+
+                if (_logger.IsTrace) _logger.Trace($"Saving node {trieNode.NodeType} path to nibbles {pathToNodeNibbles.ToHexString()}, bytes: {pathToNodeBytes.ToHexString()}, full: {pathBytes.ToHexString()}");
+
+                if (trieNode.FullRlp.IsNull)
+                {
+                    batch.Set(pathToNodeBytes, null, writeFlags);
+                }
+                else
+                {
+                    if (trieNode.PathToNode.Length < 64)
+                    {
+                        byte[] newPath = new byte[pathBytes.Length + 1];
+                        Array.Copy(pathBytes, 0, newPath, 1, pathBytes.Length);
+                        newPath[0] = PathMarker;
+                        batch.Set(pathToNodeBytes, newPath, writeFlags);
+
+                        if (withDelete)
+                            RequestDeletionForLeaf(pathToNodeNibbles, trieNode.FullPath);
+                    }
+                }
+            }
+            else
+            {
+                if (_logger.IsTrace) _logger.Trace($"Saving node {trieNode.NodeType} full nibbles {fullPath.ToHexString()} full: {pathBytes.ToHexString()}");
+            }
+            if (withDelete)
+            {
+                if (trieNode.IsBranch)
+                {
+                    RequestDeletionForBranch(trieNode);
+                }
+                else if (trieNode.IsExtension)
+                {
+                    RequestDeletionForExtension(fullPath, trieNode.Key);
+                }
+            }
+
+            batch.Set(pathBytes, trieNode.FullRlp.ToArray(), writeFlags);
+
+            if (shouldDispose)
+                masterBatch.Dispose();
+        }
+
+        public void PersistNodeData(Span<byte> fullPath, int pathToNodeLength, byte[]? rlpData, IWriteBatch? batch = null, WriteFlags writeFlags = WriteFlags.None)
+        {
+            StateColumns column = GetProperColumn(fullPath.Length);
+
+            bool shouldDispose = batch is null;
+            IColumnsWriteBatch<StateColumns> masterBatch = null;
+            if (batch is null)
+            {
+                masterBatch = _stateDb.StartWriteBatch();
+                batch ??= masterBatch.GetColumnBatch(column);
+            }
+
+            int pathToNodeIndexWithPrefix = fullPath.Length >= 66 ? pathToNodeLength + 66 : pathToNodeLength;
+
+            byte[] pathBytes = Nibbles.NibblesToByteStorage(fullPath);
+            Span<byte> pathToNodeNibbles = pathToNodeLength >= 0 ? fullPath[..pathToNodeIndexWithPrefix] : Array.Empty<byte>();
+
+            if (_logger.IsTrace)
+                _logger.Trace($"Persisting node path to nibbles {pathToNodeNibbles.ToHexString()}, full path bytes: {pathBytes.ToHexString()}, rlp: {rlpData?.ToHexString()}");
+
+            if (pathToNodeLength >= 0)
+            {
+                byte[] pathToNodeBytes = Nibbles.NibblesToByteStorage(pathToNodeNibbles);
+
+                if (rlpData is null)
+                {
+                    batch.Set(pathToNodeBytes, null, writeFlags);
+                }
+                else
+                {
+                    if (pathToNodeLength < 64)
+                    {
+                        Span<byte> newPath = stackalloc byte[pathBytes.Length + 1];
+                        newPath[0] = PathMarker;
+                        pathBytes.CopyTo(newPath.Slice(1));
+                        batch.Set(pathToNodeBytes, newPath.ToArray(), writeFlags);
+                    }
+                }
+            }
+
+            batch.Set(pathBytes, rlpData, writeFlags);
+
+            if (shouldDispose)
+                masterBatch.Dispose();
         }
 
         private void DequeueOldCommitSets()
@@ -535,106 +633,6 @@ namespace Nethermind.Trie.Pruning
 
         #endregion
 
-        public void PersistNode(TrieNode trieNode, IColumnsWriteBatch<StateColumns>? batch = null, bool withDelete = false, WriteFlags writeFlags = WriteFlags.None)
-        {
-            bool shouldDispose = batch is null;
-            batch ??= _stateDb.StartWriteBatch();
-
-            StateColumns column = GetProperColumn(trieNode.FullPath.Length);
-
-            byte[] fullPath = trieNode.FullPath ?? throw new ArgumentNullException();
-            byte[] pathBytes = Nibbles.NibblesToByteStorage(fullPath);
-
-            if (trieNode.IsLeaf)
-            {
-                Span<byte> pathToNodeNibbles = stackalloc byte[trieNode.StoreNibblePathPrefix.Length + trieNode.PathToNode!.Length];
-                trieNode.StoreNibblePathPrefix.CopyTo(pathToNodeNibbles);
-                Span<byte> pathToNodeSlice = pathToNodeNibbles.Slice(trieNode.StoreNibblePathPrefix.Length);
-                trieNode.PathToNode.CopyTo(pathToNodeSlice);
-                byte[] pathToNodeBytes = Nibbles.NibblesToByteStorage(pathToNodeNibbles);
-
-                if (_logger.IsTrace) _logger.Trace($"Saving node {trieNode.NodeType} path to nibbles {pathToNodeNibbles.ToHexString()}, bytes: {pathToNodeBytes.ToHexString()}, full: {pathBytes.ToHexString()}");
-
-                if (trieNode.FullRlp.IsNull)
-                {
-                    batch.GetColumnBatch(column).Set(pathToNodeBytes, null, writeFlags);
-                }
-                else
-                {
-                    if (trieNode.PathToNode.Length < 64)
-                    {
-                        byte[] newPath = new byte[pathBytes.Length + 1];
-                        Array.Copy(pathBytes, 0, newPath, 1, pathBytes.Length);
-                        newPath[0] = PathMarker;
-                        batch.GetColumnBatch(column).Set(pathToNodeBytes, newPath, writeFlags);
-
-                        if (withDelete)
-                            RequestDeletionForLeaf(pathToNodeNibbles, trieNode.FullPath);
-                    }
-                }
-            }
-            else
-            {
-                if (_logger.IsTrace) _logger.Trace($"Saving node {trieNode.NodeType} full nibbles {fullPath.ToHexString()} full: {pathBytes.ToHexString()}");
-            }
-            if (withDelete)
-            {
-                if (trieNode.IsBranch)
-                {
-                    RequestDeletionForBranch(trieNode);
-                }
-                else if (trieNode.IsExtension)
-                {
-                    RequestDeletionForExtension(fullPath, trieNode.Key);
-                }
-            }
-
-            batch.GetColumnBatch(column).Set(pathBytes, trieNode.FullRlp.ToArray(), writeFlags);
-
-            if (shouldDispose)
-                batch.Dispose();
-        }
-
-        public void PersistNodeData(Span<byte> fullPath, int pathToNodeLength, byte[]? rlpData, IColumnsWriteBatch<StateColumns>? batch = null, WriteFlags writeFlags = WriteFlags.None)
-        {
-            bool shouldDispose = batch is null;
-            batch ??= _stateDb.StartWriteBatch();
-
-            StateColumns column = GetProperColumn(fullPath.Length);
-            int pathToNodeIndexWithPrefix = fullPath.Length >= 66 ? pathToNodeLength + 66 : pathToNodeLength;
-
-            byte[] pathBytes = Nibbles.NibblesToByteStorage(fullPath);
-            Span<byte> pathToNodeNibbles = pathToNodeLength >= 0 ? fullPath[..pathToNodeIndexWithPrefix] : Array.Empty<byte>();
-
-            if (_logger.IsTrace)
-                _logger.Trace($"Persisting node path to nibbles {pathToNodeNibbles.ToHexString()}, full path bytes: {pathBytes.ToHexString()}, rlp: {rlpData?.ToHexString()}");
-
-            if (pathToNodeLength >= 0)
-            {
-                byte[] pathToNodeBytes = Nibbles.NibblesToByteStorage(pathToNodeNibbles);
-
-                if (rlpData is null)
-                {
-                    batch.GetColumnBatch(column).Set(pathToNodeBytes, null, writeFlags);
-                }
-                else
-                {
-                    if (pathToNodeLength < 64)
-                    {
-                        Span<byte> newPath = stackalloc byte[pathBytes.Length + 1];
-                        newPath[0] = PathMarker;
-                        pathBytes.CopyTo(newPath.Slice(1));
-                        batch.GetColumnBatch(column).Set(pathToNodeBytes, newPath.ToArray(), writeFlags);
-                    }
-                }
-            }
-
-            batch.GetColumnBatch(column).Set(pathBytes, rlpData, writeFlags);
-
-            if (shouldDispose)
-                batch.Dispose();
-        }
-
         public bool ExistsInDB(Hash256 hash, byte[] pathNibbles)
         {
             byte[]? rlp = TryLoadRlp(pathNibbles.AsSpan(), GetProperColumnDb(pathNibbles.Length));
@@ -667,12 +665,16 @@ namespace Nethermind.Trie.Pruning
             //_committedNodes[StateColumns.Storage].Clear();
         }
 
-        public void DeleteByRange(Span<byte> startKey, Span<byte> endKey)
+        public void DeleteByRange(Span<byte> startKey, Span<byte> endKey, IWriteBatch writeBatch = null)
         {
             StateColumns column = GetProperColumn(startKey.Length);
             byte[] startDbKey = Nibbles.NibblesToByteStorage(startKey.ToArray());
             byte[] endDbKey = Nibbles.NibblesToByteStorage(endKey.ToArray());
-            _stateDb.GetColumnDb(column).DeleteByRange(startDbKey, endDbKey);
+
+            if (writeBatch is not null)
+                writeBatch.DeleteByRange(startDbKey, endDbKey);
+            else
+                _stateDb.GetColumnDb(column).DeleteByRange(startDbKey, endDbKey);
         }
 
         public void MarkPrefixDeleted(long blockNumber, ReadOnlySpan<byte> keyPrefixNibbles)
@@ -951,6 +953,27 @@ namespace Nethermind.Trie.Pruning
 
         public IKeyValueStore AsKeyValueStore() => _publicStore;
 
+        private void PrepareWriteBatches()
+        {
+            if (_columnsBatch is null)
+            {
+                _columnsBatch = _stateDb.StartWriteBatch();
+                _currentWriteBatches[StateColumns.State] = _columnsBatch.GetColumnBatch(StateColumns.State);
+                _currentWriteBatches[StateColumns.Storage] = _columnsBatch.GetColumnBatch(StateColumns.Storage);
+            }
+        }
+
+        private void DisposeWriteBatches()
+        {
+            if (_columnsBatch is not null)
+            {
+                _currentWriteBatches[StateColumns.State] = null;
+                _currentWriteBatches[StateColumns.Storage] = null;
+                _columnsBatch.Dispose();
+                _columnsBatch = null;
+            }
+        }
+
         public void OpenContext(long blockNumber, Hash256 keccak)
         {
             _committedNodes[StateColumns.State].OpenContext(blockNumber, keccak);
@@ -965,6 +988,8 @@ namespace Nethermind.Trie.Pruning
             {
                 _trieStore = trieStore;
             }
+
+            public void DeleteByRange(Span<byte> startKey, Span<byte> endKey) => _trieStore.DeleteByRange(startKey, endKey);
 
             public byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None) => _trieStore.Get(key, flags);
 

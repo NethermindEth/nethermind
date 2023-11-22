@@ -298,7 +298,7 @@ public class TrieNodePathCache : IPathTrieNodeCache
             _rootHashToBlock[rootHash] = new HashSet<long>(new[] { blockNo });
     }
 
-    public void PersistUntilBlock(long blockNumber, IColumnsWriteBatch<StateColumns>? batch = null)
+    public void PersistUntilBlock(long blockNumber, IWriteBatch? batch = null)
     {
         List<TrieNode> toPersist = new();
 

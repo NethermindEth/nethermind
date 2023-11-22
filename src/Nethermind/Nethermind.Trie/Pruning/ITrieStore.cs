@@ -23,13 +23,13 @@ namespace Nethermind.Trie.Pruning
 
         IKeyValueStore AsKeyValueStore();
 
-        void PersistNode(TrieNode trieNode, IColumnsWriteBatch<StateColumns>? batch = null, bool withDelete = false, WriteFlags writeFlags = WriteFlags.None);
-        void PersistNodeData(Span<byte> fullPath, int pathToNodeLength, byte[]? rlpData, IColumnsWriteBatch<StateColumns>? keyValueStore = null, WriteFlags writeFlags = WriteFlags.None);
+        void PersistNode(TrieNode trieNode, IWriteBatch? batch = null, bool withDelete = false, WriteFlags writeFlags = WriteFlags.None);
+        void PersistNodeData(Span<byte> fullPath, int pathToNodeLength, byte[]? rlpData, IWriteBatch? keyValueStore = null, WriteFlags writeFlags = WriteFlags.None);
 
         public void ClearCache();
 
         void MarkPrefixDeleted(long blockNumber, ReadOnlySpan<byte> keyPrefix);
-        void DeleteByRange(Span<byte> startKey, Span<byte> endKey);
+        void DeleteByRange(Span<byte> startKey, Span<byte> endKey, IWriteBatch writeBatch = null);
 
         bool CanAccessByPath();
     }

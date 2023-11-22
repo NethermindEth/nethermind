@@ -25,5 +25,10 @@ namespace Nethermind.Trie
         {
             throw new NotSupportedException();
         }
+
+        public void DeleteByRange(Span<byte> startKey, Span<byte> endKey)
+        {
+            throw new NotImplementedException();
+        }
     }
 }

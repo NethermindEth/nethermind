@@ -921,10 +921,9 @@ public class DbOnTheRocks : IDb, ITunableDb
             }
         }
 
-        public void DeleteRange(byte[] startKey, byte[] endKey)
+        public void DeleteByRange(Span<byte> startKey, Span<byte> endKey)
         {
             //_rocksBatch.DeleteRange(startKey, Convert.ToUInt64(startKey.Length), endKey, Convert.ToUInt64(endKey.Length));
-
             using Iterator iterator = _dbOnTheRocks._db.NewIterator();
             iterator.Seek(startKey);
             while (iterator.Valid())
@@ -1305,7 +1304,7 @@ public class DbOnTheRocks : IDb, ITunableDb
 
     public void DeleteByRange(Span<byte> startKey, Span<byte> endKey)
     {
-        //using RocksDbBatch batch = new(this);
-        //batch.DeleteRange(startKey.ToArray(), endKey.ToArray());
+        using RocksDbWriteBatch batch = new(this);
+        batch.DeleteByRange(startKey.ToArray(), endKey.ToArray());
     }
 }
