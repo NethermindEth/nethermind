@@ -238,9 +238,10 @@ namespace Nethermind.Synchronization.Test.FastSync
                 _logger.Info($"LOCAL STATE: Starting from {rootHash ?? LocalStateTree.RootHash} {Environment.NewLine}" + collector.Stats);
             }
 
-            public void AssertFlushed()
+            public void AssertFlushed(bool checkStateDb)
             {
-                LocalStateDb.WasFlushed.Should().BeTrue();
+                if (checkStateDb)
+                    LocalStateDb.WasFlushed.Should().BeTrue();
                 LocalCodeDb.WasFlushed.Should().BeTrue();
             }
         }
