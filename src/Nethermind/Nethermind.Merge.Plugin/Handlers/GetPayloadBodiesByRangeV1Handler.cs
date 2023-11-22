@@ -44,16 +44,20 @@ public class GetPayloadBodiesByRangeV1Handler : IGetPayloadBodiesByRangeV1Handle
             return ResultWrapper<IEnumerable<ExecutionPayloadBodyV1Result?>>.Fail(error, MergeErrorCodes.TooLargeRequest);
         }
 
+        return ResultWrapper<IEnumerable<ExecutionPayloadBodyV1Result?>>.Success(GetRequests(start, count));
+    }
+
+    private IEnumerable<ExecutionPayloadBodyV1Result?> GetRequests(long start, long count)
+    {
         var headNumber = _blockTree.Head?.Number ?? 0;
-        var payloadBodies = new List<ExecutionPayloadBodyV1Result?>((int)count);
 
         for (long i = start, c = Math.Min(start + count - 1, headNumber); i <= c; i++)
         {
             var block = _blockTree.FindBlock(i);
 
-            payloadBodies.Add(block is null ? null : new(block.Transactions, block.Withdrawals));
+            yield return (block is null ? null : new ExecutionPayloadBodyV1Result(block.Transactions, block.Withdrawals));
         }
 
-        return ResultWrapper<IEnumerable<ExecutionPayloadBodyV1Result?>>.Success(payloadBodies);
+        yield break;
     }
 }
