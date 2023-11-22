@@ -105,7 +105,7 @@ namespace Ethereum.Test.Base
             if (test.ParentBlobGasUsed is not null && test.ParentExcessBlobGas is not null)
             {
                 BlockHeader parent = new(
-                    parentHash: null!,
+                    parentHash: Keccak.Zero,
                     unclesHash: Keccak.OfAnEmptySequenceRlp,
                     beneficiary: test.CurrentCoinbase,
                     difficulty: test.CurrentDifficulty,

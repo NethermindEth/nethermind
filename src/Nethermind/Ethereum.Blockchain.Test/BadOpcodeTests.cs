@@ -22,7 +22,7 @@ namespace Ethereum.Blockchain.Test
         public static IEnumerable<GeneralStateTest> LoadTests()
         {
             var loader = new TestsSourceLoader(new LoadGeneralStateTestsStrategy(), "stBadOpcode");
-            return ((IEnumerable<GeneralStateTest>)loader.LoadTests());
+            return (IEnumerable<GeneralStateTest>)loader.LoadTests();
         }
     }
 }
