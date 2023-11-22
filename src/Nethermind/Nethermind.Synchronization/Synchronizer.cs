@@ -138,7 +138,7 @@ namespace Nethermind.Synchronization
                 dbProvider.StateDb,
                 logManager,
                 _syncConfig.SnapSyncAccountRangePartitionCount);
-            SnapProvider = new SnapProvider(progressTracker, dbProvider, logManager);
+            SnapProvider = new SnapProvider(progressTracker, dbProvider, logManager, readOnlyTrieStore.Capability);
         }
 
         public virtual void Start()

@@ -179,7 +179,7 @@ namespace Nethermind.Trie
                         else
                         {
                             TrieNode childNode = (TrieNode)item._data[i];
-                            childNode!.ResolveNode(tree);
+                            if (tree.Capability == TrieNodeResolverCapability.Path) childNode!.ResolveNode(tree);
                             childNode!.ResolveKey(tree, false, bufferPool: bufferPool);
                             totalLength += childNode.Keccak is null ? childNode.FullRlp.Length : Rlp.LengthOfKeccakRlp;
                         }
