@@ -62,9 +62,7 @@ public class EraWriter : IDisposable
 
     public Task<bool> Add(Block block, TxReceipt[] receipts, in CancellationToken cancellation = default)
     {
-        if (block.TotalDifficulty == null)
-            throw new ArgumentException($"The block must have a {nameof(block.TotalDifficulty)}.", nameof(block));
-        return Add(block, receipts, block.TotalDifficulty.Value, cancellation);
+        return Add(block, receipts, block.TotalDifficulty ?? 0, cancellation);
     }
     public Task<bool> Add(Block block, TxReceipt[] receipts, in UInt256 totalDifficulty, in CancellationToken cancellation = default)
     {
@@ -147,7 +145,6 @@ public class EraWriter : IDisposable
 
         _entryIndexes.Add(_totalWritten);
         _accumulatorCalculator.Add(blockHash, totalDifficulty);
-        //TODO possible optimize
 
         _totalWritten += await _e2Store.WriteEntryAsSnappy(EntryTypes.CompressedHeader, blockHeader, cancellation);
 
@@ -236,7 +233,7 @@ public class EraWriter : IDisposable
         GC.SuppressFinalize(this);
     }
 
-    public static string Filename(string network, int epoch, Hash256 root)
+    public static string Filename(string network, long epoch, Hash256 root)
     {
         if (string.IsNullOrEmpty(network)) throw new ArgumentException($"'{nameof(network)}' cannot be null or empty.", nameof(network));
         if (root is null) throw new ArgumentNullException(nameof(root));

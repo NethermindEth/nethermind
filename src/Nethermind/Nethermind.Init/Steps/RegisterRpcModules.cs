@@ -167,7 +167,8 @@ public class RegisterRpcModules : IStep
 
         ManualPruningTrigger pruningTrigger = new();
         _api.PruningTrigger.Add(pruningTrigger);
-        IEraService eraService = new EraService(new FileSystem(), _api.BlockTree, _api.ReceiptStorage, _api.SpecProvider, _api.LogManager, _api.DbProvider.BlocksDb);
+        
+        IEraService eraService = new EraService(new FileSystem(), _api.BlockTree, _api.BlockValidator, _api.ReceiptStorage, _api.SpecProvider, _api.LogManager);
         AdminRpcModule adminRpcModule = new(
             _api.BlockTree,
             networkConfig,
@@ -176,7 +177,8 @@ public class RegisterRpcModules : IStep
             _api.Enode,
             eraService,
             initConfig.BaseDbPath,
-            pruningTrigger);
+            pruningTrigger,
+            _api.ProcessExitToken!);
         rpcModuleProvider.RegisterSingle<IAdminRpcModule>(adminRpcModule);
 
         if (_api.TxPoolInfoProvider is null) throw new StepDependencyException(nameof(_api.TxPoolInfoProvider));

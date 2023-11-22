@@ -47,6 +47,7 @@ namespace Nethermind.Api
         ITimestamper Timestamper { get; }
         ITimerFactory TimerFactory { get; }
         IProcessExitSource? ProcessExit { get; set; }
+        IProcessExitToken? ProcessExitToken { get; set; }
 
         public IConsensusPlugin? GetConsensusPlugin() =>
             Plugins

@@ -6,6 +6,7 @@ using System.IO.Abstractions;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using MathNet.Numerics.LinearAlgebra.Factorization;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.FullPruning;
 using Nethermind.Blockchain.Receipts;
@@ -29,6 +30,7 @@ public class AdminRpcModule : IAdminRpcModule
     private readonly IEnode _enode;
     private readonly string _dataDir;
     private readonly ManualPruningTrigger _pruningTrigger;
+    private readonly IProcessExitToken _processExitToken;
     private NodeInfo _nodeInfo = null!;
     private readonly IEraService _eraService;
 
@@ -40,7 +42,8 @@ public class AdminRpcModule : IAdminRpcModule
         IEnode enode,
         IEraService eraService,
         string dataDir,
-        ManualPruningTrigger pruningTrigger)
+        ManualPruningTrigger pruningTrigger,
+        IProcessExitToken processExitToken)
     {
         _enode = enode ?? throw new ArgumentNullException(nameof(enode));
         _dataDir = dataDir ?? throw new ArgumentNullException(nameof(dataDir));
@@ -49,6 +52,7 @@ public class AdminRpcModule : IAdminRpcModule
         _networkConfig = networkConfig ?? throw new ArgumentNullException(nameof(networkConfig));
         _staticNodesManager = staticNodesManager ?? throw new ArgumentNullException(nameof(staticNodesManager));
         _pruningTrigger = pruningTrigger;
+        _processExitToken = processExitToken;
         _eraService = eraService;
         BuildNodeInfo();
     }
@@ -139,13 +143,33 @@ public class AdminRpcModule : IAdminRpcModule
     private Task _exportTask = Task.CompletedTask;
     private SemaphoreSlim _semaphoreSlim = new SemaphoreSlim(1);
 
-    public async Task<ResultWrapper<string>> admin_exportHistory(string destination, int blockStart, int count)
+    public async Task<ResultWrapper<string>> admin_exportHistory(string destination, int from, int to)
     {
-        //TODO should always export to a static path inside datadir
-        if (blockStart < 0 || count < 0)
+        //TODO sanitize destination path
+        if (from < 0 || to < 0)
         {
-            return ResultWrapper<string>.Fail("Block number and count cannot be negative.");
+            return ResultWrapper<string>.Fail("Block or count number cannot be negative.");
         }
+        if (to < from)
+        {
+            return ResultWrapper<string>.Fail($"Invalid range {from}-{to}.");
+        }
+        //TODO what is the correct bounds check? Should canonical be required?
+        Block? latestHead = _blockTree.Head;
+        if (latestHead == null)
+        {
+            return ResultWrapper<string>.Fail("Node is not ready.");
+        }
+        if (latestHead.Number < from || latestHead.Number < to)
+        {
+            return ResultWrapper<string>.Fail($"Cannot export beyond block head {latestHead.Number}.");
+        }
+        BlockHeader? earliest = _blockTree.FindEarliestHeader();
+        if (from < earliest.Number || to < earliest.Number )
+        {
+            return ResultWrapper<string>.Fail($"Cannot export below block {earliest.Number}.");
+        }
+
         await _semaphoreSlim.WaitAsync();
         try
         {
@@ -153,20 +177,15 @@ public class AdminRpcModule : IAdminRpcModule
             {
                 return ResultWrapper<string>.Fail("An export job is already running.");
             }
-            //TODO block bounds
-            long latest = _blockTree.FindLatestHeader().Number;
-            //if (blockStart + count > latest)
-            //{
-            //    return ResultWrapper<string>.Fail($"Latest known block number is {latest}.");
-            //}
             //TODO correct network 
-            _exportTask = _eraService.Export(destination, "mainnet", blockStart, count);
+            _exportTask = _eraService.Export(destination, "mainnet", from, to, EraWriter.MaxEra1Size, _processExitToken.Token);
         }
         finally
         {
             _semaphoreSlim.Release();
         }
-        return ResultWrapper<string>.Success("");
+        //TODO better message?
+        return ResultWrapper<string>.Success("Started export task");
     }
 
     //public async Task<ResultWrapper<string>> import_history()

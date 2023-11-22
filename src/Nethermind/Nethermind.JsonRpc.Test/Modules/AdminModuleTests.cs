@@ -47,6 +47,7 @@ public class AdminModuleTests
         peerPool.ActivePeers.Returns(dict);
         IEraService eraService = Substitute.For<IEraService>();
         IStaticNodesManager staticNodesManager = Substitute.For<IStaticNodesManager>();
+        IProcessExitToken exitToken = Substitute.For<IProcessExitToken>();
         Enode enode = new(_enodeString);
         _adminRpcModule = new AdminRpcModule(
             _blockTree,
@@ -56,7 +57,8 @@ public class AdminModuleTests
             enode,
             eraService,
             _exampleDataDir,
-            new ManualPruningTrigger());
+            new ManualPruningTrigger(),
+            exitToken);
 
         _serializer = new EthereumJsonSerializer();
     }
