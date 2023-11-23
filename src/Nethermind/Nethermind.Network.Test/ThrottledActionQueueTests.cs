@@ -3,7 +3,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Logging;
@@ -54,6 +53,7 @@ public class ThrottledActionQueueTests
         ran.Should().BeTrue();
     }
 
+    [TestCase(2, 0)]
     [TestCase(5, 100)]
     [TestCase(10, 500)]
     public void runs_tasks_throttled(int taskCount, int milliseconds)
