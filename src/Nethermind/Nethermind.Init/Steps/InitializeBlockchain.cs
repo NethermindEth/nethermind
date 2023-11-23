@@ -178,15 +178,17 @@ namespace Nethermind.Init.Steps
 
             ITrieStore readOnlyTrieStore = setApi.ReadOnlyTrieStore = trieStore.AsReadOnly(setApi.MainStateDbWithCache);
 
-            IWorldState worldState = setApi.WorldState = syncConfig.TrieHealing
-                    ? new HealingWorldState(
-                        trieStore,
-                        codeDb,
-                        getApi.LogManager)
-                    : new WorldState(
-                        trieStore,
-                        codeDb,
-                        getApi.LogManager);
+            //IWorldState worldState = setApi.WorldState = syncConfig.TrieHealing
+            //        ? new HealingWorldState(
+            //            trieStore,
+            //            codeDb,
+            //            getApi.LogManager)
+            //        : new WorldState(
+            //            trieStore,
+            //            codeDb,
+            //            getApi.LogManager);
+
+            IWorldState worldState = setApi.WorldState = new WorldState(trieStore, codeDb, getApi.LogManager);
 
             ReadOnlyDbProvider readOnly = new ReadOnlyDbProvider(getApi.DbProvider, false);
 
