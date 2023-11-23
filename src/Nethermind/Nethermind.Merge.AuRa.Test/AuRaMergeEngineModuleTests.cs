@@ -3,7 +3,10 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
+using FluentAssertions;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Consensus;
@@ -15,21 +18,29 @@ using Nethermind.Consensus.Comparers;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Rewards;
+using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Timers;
+using Nethermind.Crypto;
 using Nethermind.Facade.Eth;
 using Nethermind.Int256;
+using Nethermind.JsonRpc;
 using Nethermind.Logging;
+using Nethermind.Merge.AuRa.Shutter;
 using Nethermind.Merge.AuRa.Withdrawals;
 using Nethermind.Merge.Plugin;
 using Nethermind.Merge.Plugin.BlockProduction;
+using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Merge.Plugin.Test;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs;
 using Nethermind.Specs.ChainSpecStyle;
+using Nethermind.Specs.Forks;
 using Nethermind.State;
 using Nethermind.Synchronization.ParallelSync;
 using NSubstitute;
@@ -84,6 +95,106 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
     public override Task Can_apply_withdrawals_correctly((Withdrawal[][] Withdrawals, (Address Account, UInt256 BalanceIncrease)[] ExpectedAccountIncrease) input)
     {
         return base.Can_apply_withdrawals_correctly(input);
+    }
+
+    [Test]
+    public async Task Should_build_shuttered_block()
+    {
+        //using SemaphoreSlim blockImprovementLock = new(0);
+        using MergeTestBlockchain chain = await CreateBlockchain(new TestSingleReleaseSpecProvider(London.Instance));
+        IEngineRpcModule rpc = CreateEngineModule(chain);
+
+        // creating chain with 30 blocks
+        await ProduceBranchV1(rpc, chain, 30, CreateParentBlockRequestOnHead(chain.BlockTree), true);
+        TimeSpan delay = TimeSpan.FromMilliseconds(10);
+        TimeSpan timePerSlot = 4 * delay;
+        StoringBlockImprovementContextFactory improvementContextFactory = new(new BlockImprovementContextFactory(chain.BlockProductionTrigger, TimeSpan.FromSeconds(chain.MergeConfig.SecondsPerSlot)));
+        chain.PayloadPreparationService = new PayloadPreparationService(
+            chain.PostMergeBlockProducer!,
+            improvementContextFactory,
+            TimerFactory.Default,
+            chain.LogManager,
+            timePerSlot);
+        //chain.PayloadPreparationService!.BlockImproved += (_, _) => { blockImprovementLock.Release(1); };
+
+        Block block30 = chain.BlockTree.Head!;
+
+        // we added transactions
+        chain.AddTransactions(BuildTransactions(chain, block30.CalculateHash(), TestItem.PrivateKeyB, TestItem.AddressF, 3, 10, out _, out _));
+        PayloadAttributes payloadAttributesBlock31A = new PayloadAttributes
+        {
+            Timestamp = (ulong)DateTime.UtcNow.AddDays(3).Ticks,
+            PrevRandao = TestItem.KeccakA,
+            SuggestedFeeRecipient = Address.Zero
+        };
+        string? payloadIdBlock31A = rpc.engine_forkchoiceUpdatedV1(
+                new ForkchoiceStateV1(block30.GetOrCalculateHash(), Keccak.Zero, block30.GetOrCalculateHash()),
+                payloadAttributesBlock31A)
+            .Result.Data.PayloadId!;
+        //await blockImprovementLock.WaitAsync(delay * 1000);
+
+        ExecutionPayload getPayloadResultBlock31A = (await rpc.engine_getPayloadV1(Bytes.FromHexString(payloadIdBlock31A))).Data!;
+        getPayloadResultBlock31A.Should().NotBeNull();
+        await rpc.engine_newPayloadV1(getPayloadResultBlock31A);
+
+        // current main chain block 30->31A, we start building payload 32A
+        await rpc.engine_forkchoiceUpdatedV1(new ForkchoiceStateV1(getPayloadResultBlock31A.BlockHash, Keccak.Zero, getPayloadResultBlock31A.BlockHash));
+        Block block31A = chain.BlockTree.Head!;
+        PayloadAttributes payloadAttributes = new()
+        {
+            Timestamp = (ulong)DateTime.UtcNow.AddDays(4).Ticks,
+            PrevRandao = TestItem.KeccakA,
+            SuggestedFeeRecipient = Address.Zero
+        };
+
+        // we build one more block on the same level
+        Block block31B = chain.PostMergeBlockProducer!.PrepareEmptyBlock(block30.Header, payloadAttributes);
+        await rpc.engine_newPayloadV1(new ExecutionPayload(block31B));
+
+        // ...and we change the main chain, so main chain now is 30->31B, block improvement for block 32A is still in progress
+        string? payloadId = rpc.engine_forkchoiceUpdatedV1(
+                new ForkchoiceStateV1(block31A.GetOrCalculateHash(), Keccak.Zero, block31A.GetOrCalculateHash()),
+                payloadAttributes)
+            .Result.Data.PayloadId!;
+        ForkchoiceUpdatedV1Result result = rpc.engine_forkchoiceUpdatedV1(
+            new ForkchoiceStateV1(block31B.GetOrCalculateHash(), Keccak.Zero, block31B.GetOrCalculateHash())).Result.Data;
+
+        // we added same transactions, so if we build on incorrect state root, we will end up with invalid block
+        chain.AddTransactions(BuildTransactions(chain, block31A.GetOrCalculateHash(), TestItem.PrivateKeyC, TestItem.AddressF, 3, 10, out _, out _));
+        //await blockImprovementLock.WaitAsync(delay * 1000);
+        ExecutionPayload getPayloadResult = (await rpc.engine_getPayloadV1(Bytes.FromHexString(payloadId))).Data!;
+        getPayloadResult.Should().NotBeNull();
+
+        ResultWrapper<PayloadStatusV1> finalResult = await rpc.engine_newPayloadV1(getPayloadResult);
+        finalResult.Data.Status.Should().Be(PayloadStatus.Valid);
+    }
+
+    class ShutterTxSource : ITxSource
+    {
+        public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit)
+        {
+            //return Enumerable.Empty<Transaction>();
+            byte[] sigData = new byte[65];
+            sigData[31] = 1; // correct r
+            sigData[63] = 1; // correct s
+            sigData[64] = 27;
+            Signature signature = new(sigData);
+
+            return new[] {
+                Build.A.Transaction
+                .WithSenderAddress(TestItem.AddressA)
+                .WithValue(123)
+                .WithNonce(0)
+                .WithSignature(signature)
+                .TestObject,
+                Build.A.Transaction
+                .WithSenderAddress(TestItem.AddressA)
+                .WithValue(456)
+                .WithNonce(1)
+                .WithSignature(signature)
+                .TestObject
+            };
+        }
     }
 
     class MergeAuRaTestBlockchain : MergeTestBlockchain
@@ -171,7 +282,7 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
                 LogManager);
 
 
-            BlockProducerEnv blockProducerEnv = blockProducerEnvFactory.Create();
+            BlockProducerEnv blockProducerEnv = blockProducerEnvFactory.Create(new ShutterTxSource());
             PostMergeBlockProducer postMergeBlockProducer = blockProducerFactory.Create(blockProducerEnv, BlockProductionTrigger);
             PostMergeBlockProducer = postMergeBlockProducer;
             PayloadPreparationService ??= new PayloadPreparationService(

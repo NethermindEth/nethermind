@@ -1091,7 +1091,7 @@ public partial class EngineModuleTests
         }
     }
 
-    private async Task<IReadOnlyList<ExecutionPayload>> ProduceBranchV1(IEngineRpcModule rpc,
+    protected async Task<IReadOnlyList<ExecutionPayload>> ProduceBranchV1(IEngineRpcModule rpc,
         MergeTestBlockchain chain,
         int count, ExecutionPayload startingParentBlock, bool setHead, Keccak? random = null)
     {
