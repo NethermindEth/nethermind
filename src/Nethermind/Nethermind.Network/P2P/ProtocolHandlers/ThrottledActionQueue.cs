@@ -58,8 +58,8 @@ public class ThrottledActionQueue : IDisposable
 
     public void Dispose()
     {
-        _channel.Writer.Complete();
-        _processor!.Wait(-1);
+        _channel.Writer.TryComplete();
+        _processor?.Wait(-1);
         Interlocked.Exchange(ref _processor, null);
     }
 }

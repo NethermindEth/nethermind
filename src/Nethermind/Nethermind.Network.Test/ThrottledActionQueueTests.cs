@@ -85,4 +85,12 @@ public class ThrottledActionQueueTests
             last = current;
         }
     }
+
+    [Test]
+    public void supports_multiple_disposes()
+    {
+        ThrottledActionQueue queue = new(TimeSpan.Zero, LimboTraceLogger.Instance);
+        queue.Dispose();
+        queue.Dispose();
+    }
 }
