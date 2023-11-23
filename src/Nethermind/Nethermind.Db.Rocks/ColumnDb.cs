@@ -110,7 +110,7 @@ public class ColumnDb : IDb
 
         public void DeleteByRange(Span<byte> startKey, Span<byte> endKey)
         {
-            _underlyingWriteBatch.DeleteByRange(startKey, endKey);
+            _underlyingWriteBatch.DeleteByRange(startKey, endKey, _columnDb._columnFamily);
         }
     }
 
@@ -122,7 +122,7 @@ public class ColumnDb : IDb
 
     public void DeleteByRange(Span<byte> startKey, Span<byte> endKey)
     {
-        _mainDb.DeleteByRange(startKey, endKey);
+        _mainDb.DeleteByRange(startKey, endKey, _columnFamily);
     }
 
     public bool KeyExists(ReadOnlySpan<byte> key) => _rocksDb.Get(key, _columnFamily) is not null;

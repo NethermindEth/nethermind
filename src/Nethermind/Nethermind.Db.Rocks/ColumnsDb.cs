@@ -104,7 +104,7 @@ public class ColumnsDb<T> : DbOnTheRocks, IColumnsDb<T> where T : struct, Enum
 
         public void DeleteByRange(Span<byte> startKey, Span<byte> endKey)
         {
-            _writeBatch._writeBatch.DeleteByRange(startKey, endKey);
+            _writeBatch._writeBatch.DeleteByRange(startKey, endKey, _column._columnFamily);
         }
 
         public void Dispose()
