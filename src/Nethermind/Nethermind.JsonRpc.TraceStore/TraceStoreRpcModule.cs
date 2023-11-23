@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Text.Json;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
@@ -20,7 +19,7 @@ namespace Nethermind.JsonRpc.TraceStore;
 /// </summary>
 public class TraceStoreRpcModule : ITraceRpcModule
 {
-    private readonly IDbWithSpan _traceStore;
+    private readonly IDb _traceStore;
     private readonly ITraceRpcModule _traceModule;
     private readonly IBlockFinder _blockFinder;
     private readonly IReceiptFinder _receiptFinder;
@@ -36,7 +35,7 @@ public class TraceStoreRpcModule : ITraceRpcModule
     };
 
     public TraceStoreRpcModule(ITraceRpcModule traceModule,
-        IDbWithSpan traceStore,
+        IDb traceStore,
         IBlockFinder blockFinder,
         IReceiptFinder receiptFinder,
         ITraceSerializer<ParityLikeTxTrace> traceSerializer,
@@ -61,7 +60,7 @@ public class TraceStoreRpcModule : ITraceRpcModule
     public ResultWrapper<ParityTxTraceFromReplay> trace_rawTransaction(byte[] data, string[] traceTypes) =>
         _traceModule.trace_rawTransaction(data, traceTypes);
 
-    public ResultWrapper<ParityTxTraceFromReplay> trace_replayTransaction(Keccak txHash, params string[] traceTypes) =>
+    public ResultWrapper<ParityTxTraceFromReplay> trace_replayTransaction(Hash256 txHash, params string[] traceTypes) =>
         TryTraceTransaction(
             txHash,
             TraceRpcModule.GetParityTypes(traceTypes),
@@ -160,14 +159,14 @@ public class TraceStoreRpcModule : ITraceRpcModule
         return _traceModule.trace_block(blockParameter);
     }
 
-    public ResultWrapper<IEnumerable<ParityTxTraceFromStore>> trace_get(Keccak txHash, long[] positions)
+    public ResultWrapper<IEnumerable<ParityTxTraceFromStore>> trace_get(Hash256 txHash, long[] positions)
     {
         ResultWrapper<IEnumerable<ParityTxTraceFromStore>> traceTransaction = trace_transaction(txHash);
         List<ParityTxTraceFromStore> traces = TraceRpcModule.ExtractPositionsFromTxTrace(positions, traceTransaction);
         return ResultWrapper<IEnumerable<ParityTxTraceFromStore>>.Success(traces);
     }
 
-    public ResultWrapper<IEnumerable<ParityTxTraceFromStore>> trace_transaction(Keccak txHash) =>
+    public ResultWrapper<IEnumerable<ParityTxTraceFromStore>> trace_transaction(Hash256 txHash) =>
         TryTraceTransaction(
             txHash,
             ParityTraceTypes.Trace,
@@ -178,12 +177,12 @@ public class TraceStoreRpcModule : ITraceRpcModule
             : _traceModule.trace_transaction(txHash);
 
     private bool TryTraceTransaction<T>(
-        Keccak txHash,
+        Hash256 txHash,
         ParityTraceTypes traceTypes,
         Func<ParityLikeTxTrace, T> map,
         out ResultWrapper<T>? result)
     {
-        SearchResult<Keccak> blockHashSearch = _receiptFinder.SearchForReceiptBlockHash(txHash);
+        SearchResult<Hash256> blockHashSearch = _receiptFinder.SearchForReceiptBlockHash(txHash);
         if (blockHashSearch.IsError)
         {
             {
@@ -243,7 +242,7 @@ public class TraceStoreRpcModule : ITraceRpcModule
         }
     }
 
-    private ParityLikeTxTrace? GetTxTrace(Block block, Keccak txHash, List<ParityLikeTxTrace> traces)
+    private ParityLikeTxTrace? GetTxTrace(Block block, Hash256 txHash, List<ParityLikeTxTrace> traces)
     {
         int index = traces.FindIndex(t => t.TransactionHash == txHash);
         return index != -1 ? traces[index] : null;

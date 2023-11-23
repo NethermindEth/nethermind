@@ -6,10 +6,8 @@ using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
-using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Handlers;
-using Nethermind.Serialization.Rlp;
 using Nethermind.Synchronization;
 
 namespace Nethermind.Merge.Plugin.Synchronization
@@ -116,7 +114,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
             return null;
         }
 
-        public Keccak GetFinalizedHash()
+        public Hash256 GetFinalizedHash()
         {
             return _blockCacheService.FinalizedHash;
         }

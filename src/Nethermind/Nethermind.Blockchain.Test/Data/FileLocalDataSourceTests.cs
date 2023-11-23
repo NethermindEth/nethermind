@@ -12,8 +12,6 @@ using Nethermind.Blockchain.Data;
 using Nethermind.Core.Test.IO;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
-using NSubstitute;
-using NSubstitute.ExceptionExtensions;
 using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test.Data

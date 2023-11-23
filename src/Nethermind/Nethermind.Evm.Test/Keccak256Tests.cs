@@ -5,6 +5,7 @@ using Nethermind.Core;
 using Nethermind.Specs;
 using Nethermind.Core.Test.Builders;
 using NUnit.Framework;
+using Nethermind.Core.Specs;
 
 namespace Nethermind.Evm.Test
 {
@@ -12,13 +13,11 @@ namespace Nethermind.Evm.Test
     [Parallelizable(ParallelScope.All)]
     public class Keccak256Tests : VirtualMachineTestsBase
     {
-        protected override long BlockNumber => RinkebySpecProvider.ConstantinopleFixBlockNumber;
-
         private bool _setAuthor;
 
-        protected override Block BuildBlock(long blockNumber, SenderRecipientAndMiner senderRecipientAndMiner, Transaction transaction, long blockGasLimit = DefaultBlockGasLimit, ulong timestamp = 0)
+        protected override Block BuildBlock(ForkActivation activation, SenderRecipientAndMiner senderRecipientAndMiner, Transaction transaction, long blockGasLimit = DefaultBlockGasLimit, ulong excessBlobGas = 0)
         {
-            Block block = base.BuildBlock(blockNumber, senderRecipientAndMiner, transaction, blockGasLimit, timestamp);
+            Block block = base.BuildBlock(activation, senderRecipientAndMiner, transaction, blockGasLimit, excessBlobGas);
             if (_setAuthor) block.Header.Author = TestItem.AddressC;
             block.Header.Beneficiary = TestItem.AddressB;
             return block;
@@ -39,7 +38,7 @@ namespace Nethermind.Evm.Test
                 .Op(Instruction.JUMP)
                 .Done;
 
-            TestAllTracerWithOutput receipt = Execute(8000000, 8000000, code);
+            TestAllTracerWithOutput receipt = Execute((8000000, 0), 8000000, code);
 
             AssertGas(receipt, 8000000);
         }

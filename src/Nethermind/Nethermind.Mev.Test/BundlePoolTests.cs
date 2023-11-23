@@ -7,7 +7,6 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using Antlr4.Runtime.Atn;
 using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Consensus.Validators;
@@ -199,7 +198,7 @@ namespace Nethermind.Mev.Test
         {
             SemaphoreSlim ss = new SemaphoreSlim(0);
             var ecdsa = Substitute.For<IEthereumEcdsa>();
-            ecdsa.RecoverAddress(Arg.Any<Signature>(), Arg.Any<Keccak>()).Returns(
+            ecdsa.RecoverAddress(Arg.Any<Signature>(), Arg.Any<Hash256>()).Returns(
                 TestItem.AddressA,
                 TestItem.AddressB,
                 TestItem.AddressC
@@ -332,7 +331,7 @@ namespace Nethermind.Mev.Test
                 .Returns(Task.FromResult(successfulBundle));
 
             var ecdsa = Substitute.For<IEthereumEcdsa>();
-            ecdsa.RecoverAddress(Arg.Any<Signature>(), Arg.Any<Keccak>()).Returns(
+            ecdsa.RecoverAddress(Arg.Any<Signature>(), Arg.Any<Hash256>()).Returns(
                 TestItem.AddressA,
                 TestItem.AddressB,
                 TestItem.AddressC
@@ -414,7 +413,7 @@ namespace Nethermind.Mev.Test
         public void should_evict_megabundle_when_relay_sends_new_bundle()
         {
             var ecdsa = Substitute.For<IEthereumEcdsa>();
-            ecdsa.RecoverAddress(Arg.Any<Signature>(), Arg.Any<Keccak>()).Returns(
+            ecdsa.RecoverAddress(Arg.Any<Signature>(), Arg.Any<Hash256>()).Returns(
                 TestItem.AddressA,
                 TestItem.AddressB
             );
@@ -442,7 +441,7 @@ namespace Nethermind.Mev.Test
         public static void should_retrieve_megabundles_by_timestamp(uint timestamp, int expectedCount)
         {
             var ecdsa = Substitute.For<IEthereumEcdsa>();
-            ecdsa.RecoverAddress(Arg.Any<Signature>(), Arg.Any<Keccak>()).Returns(
+            ecdsa.RecoverAddress(Arg.Any<Signature>(), Arg.Any<Hash256>()).Returns(
                 TestItem.AddressA,
                 TestItem.AddressB,
                 TestItem.AddressC
@@ -510,7 +509,7 @@ namespace Nethermind.Mev.Test
                 }
                 else
                 {
-                    EthereumEcdsa.RecoverAddress(Arg.Any<Signature>(), Arg.Any<Keccak>()).Returns(TestItem.AddressA);
+                    EthereumEcdsa.RecoverAddress(Arg.Any<Signature>(), Arg.Any<Hash256>()).Returns(TestItem.AddressA);
                 }
 
                 BundlePool = new TestBundlePool(

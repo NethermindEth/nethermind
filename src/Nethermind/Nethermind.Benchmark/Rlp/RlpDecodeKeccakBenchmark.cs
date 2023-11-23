@@ -1,14 +1,10 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Linq;
 using BenchmarkDotNet.Attributes;
-using BenchmarkDotNet.Jobs;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Serialization.Rlp;
-using NUnit.Framework;
 
 namespace Nethermind.Benchmarks.Rlp
 {
@@ -41,7 +37,7 @@ namespace Nethermind.Benchmarks.Rlp
         public int ScenarioIndex { get; set; }
 
         [Benchmark]
-        public Keccak Current()
+        public Hash256 Current()
         {
             return _scenariosContext[ScenarioIndex].DecodeKeccak();
         }

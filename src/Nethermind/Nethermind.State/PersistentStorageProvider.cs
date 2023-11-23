@@ -25,20 +25,26 @@ namespace Nethermind.State
         private readonly ITrieStore _trieStore;
         private readonly StateProvider _stateProvider;
         private readonly ILogManager? _logManager;
+        internal readonly IStorageTreeFactory _storageTreeFactory;
         private readonly ResettableDictionary<Address, StorageTree> _storages = new();
+
         /// <summary>
         /// EIP-1283
         /// </summary>
         private readonly ResettableDictionary<StorageCell, byte[]> _originalValues = new();
+
         private readonly ResettableHashSet<StorageCell> _committedThisRound = new();
 
-        public PersistentStorageProvider(ITrieStore? trieStore, StateProvider? stateProvider, ILogManager? logManager)
+        public PersistentStorageProvider(ITrieStore? trieStore, StateProvider? stateProvider, ILogManager? logManager, IStorageTreeFactory? storageTreeFactory = null)
             : base(logManager)
         {
             _trieStore = trieStore ?? throw new ArgumentNullException(nameof(trieStore));
             _stateProvider = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
+            _storageTreeFactory = storageTreeFactory ?? new StorageTreeFactory();
         }
+
+        public Hash256 StateRoot { get; set; } = null!;
 
         /// <summary>
         /// Reset the storage state
@@ -185,7 +191,7 @@ namespace Nethermind.State
                 // since the accounts could be empty accounts that are removing (EIP-158)
                 if (_stateProvider.AccountExists(address))
                 {
-                    Keccak root = RecalculateRootHash(address);
+                    Hash256 root = RecalculateRootHash(address);
 
                     // _logger.Warn($"Recalculating storage root {address}->{root} ({toUpdateRoots.Count})");
                     _stateProvider.UpdateStorageRoot(address, root);
@@ -222,10 +228,12 @@ namespace Nethermind.State
 
         private StorageTree GetOrCreateStorage(Address address)
         {
-            if (_storages.TryGetValue(address, out StorageTree value)) return value;
-
-            StorageTree storageTree = new StorageTree(_trieStore, _stateProvider.GetStorageRoot(address), _logManager, address);
-            return _storages[address] = storageTree;
+            if (!_storages.ContainsKey(address))
+            {
+                StorageTree storageTree = _storageTreeFactory.Create(address, _trieStore, _stateProvider.GetStorageRoot(address), StateRoot, _logManager);
+                return _storages[address] = storageTree;
+            }
+            return _storages[address];
         }
 
         private byte[] LoadFromTree(in StorageCell storageCell)
@@ -261,7 +269,7 @@ namespace Nethermind.State
             }
         }
 
-        private Keccak RecalculateRootHash(Address address)
+        private Hash256 RecalculateRootHash(Address address)
         {
             StorageTree storageTree = GetOrCreateStorage(address);
             storageTree.UpdateRootHash();
@@ -280,12 +288,26 @@ namespace Nethermind.State
             // by means of CREATE 2 - notice that the cached trie may carry information about items that were not
             // touched in this block, hence were not zeroed above
             // TODO: how does it work with pruning?
+            Hash256 stateRootHash = null;
+            if (_storages.ContainsKey(address))
+                stateRootHash = _storages[address].ParentStateRootHash;
             _storages[address] = new StorageTree(_trieStore, Keccak.EmptyTreeHash, _logManager, address);
             // mark the tree as cleared by SD - will be used by path state to avoid reads from flat storage until
             // they get committed to avoid reading uncleared data
             _storages[address].ClearedBySelfDestruct = true;
+            _storages[address].ParentStateRootHash = stateRootHash ?? StateRoot;
 
+            if (_logger.IsTrace) _logger.Trace($"Clearing storage for address {address} - created new storage tree with parent state root hash context {_storages[address].ParentStateRootHash}");
+        }
 
+        private class StorageTreeFactory : IStorageTreeFactory
+        {
+            public StorageTree Create(Address address, ITrieStore trieStore, Hash256 storageRoot, Hash256 stateRoot, ILogManager? logManager)
+            {
+                StorageTree st = new(trieStore, storageRoot, logManager, address);
+                st.ParentStateRootHash = stateRoot;
+                return st;
+            }
         }
     }
 }

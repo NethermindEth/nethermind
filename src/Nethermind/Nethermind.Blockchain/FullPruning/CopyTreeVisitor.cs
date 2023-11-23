@@ -5,6 +5,7 @@ using System;
 using System.Diagnostics;
 using System.Threading;
 using Nethermind.Core;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Db.FullPruning;
 using Nethermind.Logging;
@@ -42,15 +43,15 @@ namespace Nethermind.Blockchain.FullPruning
         }
 
         public bool IsFullDbScan => true;
-        public bool ShouldVisit(Keccak nextNode) => !_cancellationToken.IsCancellationRequested;
+        public bool ShouldVisit(Hash256 nextNode) => !_cancellationToken.IsCancellationRequested;
 
-        public void VisitTree(Keccak rootHash, TrieVisitContext trieVisitContext)
+        public void VisitTree(Hash256 rootHash, TrieVisitContext trieVisitContext)
         {
             _stopwatch.Start();
             if (_logger.IsWarn) _logger.Warn($"Full Pruning Started on root hash {rootHash}: do not close the node until finished or progress will be lost.");
         }
 
-        public void VisitMissingNode(Keccak nodeHash, TrieVisitContext trieVisitContext)
+        public void VisitMissingNode(Hash256 nodeHash, TrieVisitContext trieVisitContext)
         {
             if (_logger.IsWarn)
             {
@@ -67,14 +68,14 @@ namespace Nethermind.Blockchain.FullPruning
 
         public void VisitLeaf(TrieNode node, TrieVisitContext trieVisitContext, byte[]? value = null) => PersistNode(node);
 
-        public void VisitCode(Keccak codeHash, TrieVisitContext trieVisitContext) { }
+        public void VisitCode(Hash256 codeHash, TrieVisitContext trieVisitContext) { }
 
         private void PersistNode(TrieNode node)
         {
             if (node.Keccak is not null)
             {
                 // simple copy of nodes RLP
-                _pruningContext.Set(node.Keccak.Bytes, node.FullRlp, _writeFlags);
+                _pruningContext.Set(node.Keccak.Bytes, node.FullRlp.ToArray(), _writeFlags);
                 Interlocked.Increment(ref _persistedNodes);
 
                 // log message every 1 mln nodes

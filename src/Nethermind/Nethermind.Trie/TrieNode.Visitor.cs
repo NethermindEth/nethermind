@@ -2,12 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
-using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Serialization.Rlp;
@@ -88,7 +86,7 @@ namespace Nethermind.Trie
 
                 case NodeType.Leaf:
                     {
-                        visitor.VisitLeaf(this, trieVisitContext.ToVisitContext(), Value);
+                        visitor.VisitLeaf(this, trieVisitContext.ToVisitContext(), Value.ToArray());
 
                         if (!trieVisitContext.IsStorage && trieVisitContext.ExpectAccounts) // can combine these conditions
                         {
@@ -149,7 +147,8 @@ namespace Nethermind.Trie
                         {
                             if (child is not null)
                             {
-                                child.ResolveNode(resolver);
+                                if (resolver.Capability == TrieNodeResolverCapability.Path)
+                                    child.ResolveNode(resolver);
                                 child.ResolveKey(resolver, false);
                                 if (v.ShouldVisit(child.Keccak!))
                                 {
@@ -172,12 +171,7 @@ namespace Nethermind.Trie
                             {
                                 using (trieVisitContext.AbsolutePathNext((byte)i))
                                 {
-                                    TrieNode? child = nodeResolver.Capability switch
-                                    {
-                                        TrieNodeResolverCapability.Hash => GetChild(trieNodeResolver, i),
-                                        TrieNodeResolverCapability.Path => GetChild(trieNodeResolver, CollectionsMarshal.AsSpan(trieVisitContext.AbsolutePathNibbles), i),
-                                        _ => throw new ArgumentOutOfRangeException()
-                                    };
+                                    TrieNode? child = GetChild(trieNodeResolver, i);
                                     VisitChild(i, child, trieNodeResolver, treeVisitor, visitContext);
                                 }
                             }
@@ -222,12 +216,7 @@ namespace Nethermind.Trie
                             {
                                 using (trieVisitContext.AbsolutePathNext((byte)i))
                                 {
-                                    children[i] = nodeResolver.Capability switch
-                                    {
-                                        TrieNodeResolverCapability.Hash => GetChild(nodeResolver, i),
-                                        TrieNodeResolverCapability.Path => GetChild(nodeResolver, CollectionsMarshal.AsSpan(trieVisitContext.AbsolutePathNibbles), i),
-                                        _ => throw new ArgumentOutOfRangeException()
-                                    };
+                                    children[i] = GetChild(nodeResolver, i);
                                 }
                             }
 
@@ -256,12 +245,7 @@ namespace Nethermind.Trie
                         trieVisitContext.AddVisited();
                         using (trieVisitContext.AbsolutePathNext(Key!))
                         {
-                            TrieNode child = nodeResolver.Capability switch
-                            {
-                                TrieNodeResolverCapability.Hash => GetChild(nodeResolver, 0),
-                                TrieNodeResolverCapability.Path => GetChild(nodeResolver, CollectionsMarshal.AsSpan(trieVisitContext.AbsolutePathNibbles), 0),
-                                _ => throw new ArgumentOutOfRangeException()
-                            };
+                            TrieNode child = GetChild(nodeResolver, 0);
                             if (child is null)
                             {
                                 throw new InvalidDataException($"Child of an extension {Key} should not be null.");
@@ -282,7 +266,7 @@ namespace Nethermind.Trie
 
                 case NodeType.Leaf:
                     {
-                        visitor.VisitLeaf(this, trieVisitContext, Value);
+                        visitor.VisitLeaf(this, trieVisitContext, Value.ToArray());
                         trieVisitContext.AddVisited();
                         using (trieVisitContext.AbsolutePathNext(Key!))
                         {
@@ -303,7 +287,7 @@ namespace Nethermind.Trie
                                     trieVisitContext.Level++;
                                     trieVisitContext.BranchChildIndex = null;
 
-                                    using (trieVisitContext.AbsolutePathNext(new byte[]{8,0}))
+                                    using (trieVisitContext.AbsolutePathNext(new byte[] { 8, 0 }))
                                     {
                                         ITrieNodeResolver storageNodeResolver = trieVisitContext.StorageTrieNodeResolver ?? nodeResolver;
                                         if (TryResolveStorageRoot(storageNodeResolver, CollectionsMarshal.AsSpan(trieVisitContext.AbsolutePathNibbles), out TrieNode? storageRoot))

@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core.Crypto;
 using Nethermind.JsonRpc.Modules.Trace;
@@ -92,7 +91,7 @@ namespace Nethermind.JsonRpc.Data
             if (reader.TokenType == JsonToken.StartObject)
             {
                 bool requireCanonical = false;
-                Keccak blockHash = null;
+                Hash256 blockHash = null;
                 for (int i = 0; i < 2; i++)
                 {
                     reader.Read();
@@ -102,7 +101,7 @@ namespace Nethermind.JsonRpc.Data
                     }
                     else if (string.Equals((string)reader.Value, "blockHash", StringComparison.InvariantCultureIgnoreCase))
                     {
-                        blockHash = new Keccak(reader.ReadAsString());
+                        blockHash = new Hash256(reader.ReadAsString());
                     }
                 }
 
@@ -141,7 +140,7 @@ namespace Nethermind.JsonRpc.Data
                 case { } safe when safe.Equals("safe", StringComparison.InvariantCultureIgnoreCase):
                     return BlockParameter.Safe;
                 case { Length: 66 } hash when hash.StartsWith("0x"):
-                    return new BlockParameter(new Keccak(hash));
+                    return new BlockParameter(new Hash256(hash));
                 default:
                     return new BlockParameter(LongConverter.FromString(value));
             }

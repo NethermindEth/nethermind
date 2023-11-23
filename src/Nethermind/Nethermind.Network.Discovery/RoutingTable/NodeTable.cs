@@ -29,7 +29,7 @@ public class NodeTable : INodeTable
         Buckets = new NodeBucket[_discoveryConfig.BucketsCount];
         for (int i = 0; i < Buckets.Length; i++)
         {
-            Buckets[i] = new NodeBucket(i, _discoveryConfig.BucketSize);
+            Buckets[i] = new NodeBucket(i, _discoveryConfig.BucketSize, _discoveryConfig.DropFullBucketNodeProbability);
         }
     }
 
@@ -102,7 +102,7 @@ public class NodeTable : INodeTable
     {
         CheckInitialization();
 
-        Keccak idHash = Keccak.Compute(nodeId);
+        Hash256 idHash = Keccak.Compute(nodeId);
         return Buckets.SelectMany(x => x.BondedItems)
             .Where(x => x.Node?.IdHash != idHash && x.Node is not null)
             .Select(x => new { x.Node, Distance = _nodeDistanceCalculator.CalculateDistance(x.Node!.Id.Bytes, nodeId) })

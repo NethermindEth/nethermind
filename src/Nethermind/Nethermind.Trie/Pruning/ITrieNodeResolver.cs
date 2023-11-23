@@ -18,55 +18,27 @@ namespace Nethermind.Trie.Pruning
         /// </summary>
         /// <param name="hash">Keccak hash of the RLP of the node.</param>
         /// <returns></returns>
-        TrieNode FindCachedOrUnknown(Keccak hash);
-        TrieNode FindCachedOrUnknown(Keccak hash, Span<byte> nodePath, Span<byte> storagePrefix);
-        TrieNode? FindCachedOrUnknown(Span<byte> nodePath, byte[] storagePrefix, Keccak? rootHash);
+        TrieNode FindCachedOrUnknown(Hash256 hash);
+        TrieNode FindCachedOrUnknown(Hash256 hash, Span<byte> nodePath, Span<byte> storagePrefix);
+        TrieNode? FindCachedOrUnknown(Span<byte> nodePath, byte[] storagePrefix, Hash256? rootHash);
 
         /// <summary>
         /// Loads RLP of the node.
         /// </summary>
         /// <param name="hash"></param>
         /// <returns></returns>
-        byte[]? LoadRlp(Keccak hash, ReadFlags flags = ReadFlags.None);
-        byte[]? LoadRlp(Span<byte> nodePath, Keccak rootHash = null);
+        byte[]? LoadRlp(Hash256 hash, ReadFlags flags = ReadFlags.None);
+        byte[]? LoadRlp(Span<byte> nodePath, Hash256 rootHash = null);
         byte[]? TryLoadRlp(Span<byte> path, IKeyValueStore? keyValueStore);
 
         TrieNodeResolverCapability Capability { get; }
 
-        bool ExistsInDB(Keccak hash, byte[] nodePathNibbles);
+        bool ExistsInDB(Hash256 hash, byte[] nodePathNibbles);
     }
 
     public enum TrieNodeResolverCapability
     {
         Hash,
         Path
-    }
-
-    public static class TrieNodeResolverCapabilityExtension
-    {
-        public static ITrieStore CreateTrieStore(this TrieNodeResolverCapability capability, IKeyValueStoreWithBatching? keyValueStore, ILogManager? logManager)
-        {
-            return capability switch
-            {
-                TrieNodeResolverCapability.Hash => new TrieStore(keyValueStore, logManager),
-                TrieNodeResolverCapability.Path => new TrieStoreByPath(keyValueStore, logManager),
-                _ => throw new ArgumentOutOfRangeException(nameof(capability), capability, null)
-            };
-        }
-
-        public static ITrieStore CreateTrieStore(
-            this TrieNodeResolverCapability capability,
-            IKeyValueStoreWithBatching? keyValueStore,
-            IPruningStrategy? pruningStrategy,
-            IPersistenceStrategy? persistenceStrategy,
-            ILogManager? logManager)
-        {
-            return capability switch
-            {
-                TrieNodeResolverCapability.Hash => new TrieStore(keyValueStore, pruningStrategy, persistenceStrategy, logManager),
-                TrieNodeResolverCapability.Path => new TrieStoreByPath(keyValueStore, persistenceStrategy, logManager),
-                _ => throw new ArgumentOutOfRangeException(nameof(capability), capability, null)
-            };
-        }
     }
 }

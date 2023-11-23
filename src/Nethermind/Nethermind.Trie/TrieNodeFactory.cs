@@ -3,7 +3,7 @@
 
 using System;
 using System.Diagnostics;
-using System.Xml.XPath;
+using Nethermind.Core.Buffers;
 
 namespace Nethermind.Trie
 {
@@ -23,7 +23,7 @@ namespace Nethermind.Trie
             return node;
         }
 
-        public static TrieNode CreateLeaf(byte[] path, byte[]? value)
+        public static TrieNode CreateLeaf(byte[] path, CappedArray<byte> value)
         {
             TrieNode node = new(NodeType.Leaf);
             node.Key = path;
@@ -31,7 +31,7 @@ namespace Nethermind.Trie
             return node;
         }
 
-        public static TrieNode CreateLeaf(byte[] path, byte[]? value, Span<byte> pathToNode, byte[] storagePrefix)
+        public static TrieNode CreateLeaf(byte[] path, CappedArray<byte> value, Span<byte> pathToNode, byte[] storagePrefix)
         {
             Debug.Assert(path.Length + pathToNode.Length == 64);
             return new(NodeType.Leaf)

@@ -3,8 +3,6 @@
 
 using System;
 using System.IO.Abstractions;
-using FluentAssertions;
-using MathGmp.Native;
 using Nethermind.Blockchain.FullPruning;
 using Nethermind.Core.Timers;
 using NSubstitute;
@@ -27,7 +25,6 @@ namespace Nethermind.Blockchain.Test.FullPruning
             string path = "path";
             IFileSystem fileSystem = Substitute.For<IFileSystem>();
             fileSystem.Path.GetFullPath(path).Returns(path);
-            fileSystem.Path.GetPathRoot(path).Returns(path);
             fileSystem.DriveInfo.New(path).AvailableFreeSpace.Returns(availableFreeSpace);
 
             bool triggered = false;

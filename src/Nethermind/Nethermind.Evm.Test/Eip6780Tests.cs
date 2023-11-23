@@ -1,16 +1,16 @@
 //  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
-// 
+//
 //  The Nethermind library is free software: you can redistribute it and/or modify
 //  it under the terms of the GNU Lesser General Public License as published by
 //  the Free Software Foundation, either version 3 of the License, or
 //  (at your option) any later version.
-// 
+//
 //  The Nethermind library is distributed in the hope that it will be useful,
 //  but WITHOUT ANY WARRANTY; without even the implied warranty of
 //  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 //  GNU Lesser General Public License for more details.
-// 
+//
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
@@ -77,6 +77,40 @@ namespace Nethermind.Evm.Test
 
             contractBalanceAfterInit.Should().Be(99.Ether());
             AssertSendAll();
+            if (onlyOnSameTransaction)
+                AssertNotDestroyed();
+            else
+                AssertDestroyed();
+        }
+
+        [TestCase(0ul, false)]
+        [TestCase(MainnetSpecProvider.CancunBlockTimestamp, true)]
+        public void self_destruct_not_in_same_transaction_should_not_burn(ulong timestamp, bool onlyOnSameTransaction)
+        {
+            _selfDestructCode = Prepare.EvmCode
+                .SELFDESTRUCT(_contractAddress)
+                .Done;
+            _initCode = Prepare.EvmCode
+                .ForInitOf(_selfDestructCode)
+                .Done;
+            byte[] contractCall = Prepare.EvmCode
+                .Call(_contractAddress, 100000)
+                .Op(Instruction.STOP).Done;
+            Transaction initTx = Build.A.Transaction.WithCode(_initCode).WithValue(99.Ether()).WithGasLimit(_gasLimit).SignedAndResolved(_ecdsa, TestItem.PrivateKeyA).TestObject;
+            Transaction tx1 = Build.A.Transaction.WithCode(contractCall).WithGasLimit(_gasLimit).WithNonce(1).SignedAndResolved(_ecdsa, TestItem.PrivateKeyA).TestObject;
+            Block block = Build.A.Block.WithNumber(BlockNumber)
+                .WithTimestamp(timestamp)
+                .WithTransactions(initTx, tx1).WithGasLimit(2 * _gasLimit).TestObject;
+
+            _processor.Execute(initTx, block.Header, NullTxTracer.Instance);
+            UInt256 contractBalanceAfterInit = TestState.GetBalance(_contractAddress);
+            _processor.Execute(tx1, block.Header, NullTxTracer.Instance);
+
+            contractBalanceAfterInit.Should().Be(99.Ether());
+            if (onlyOnSameTransaction)
+                TestState.GetBalance(_contractAddress).Should().Be(99.Ether()); // not burnt
+            else
+                TestState.GetBalance(_contractAddress).Should().Be(0); // burnt
             if (onlyOnSameTransaction)
                 AssertNotDestroyed();
             else

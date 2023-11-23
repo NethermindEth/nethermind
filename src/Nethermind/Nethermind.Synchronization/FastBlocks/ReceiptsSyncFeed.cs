@@ -36,13 +36,13 @@ namespace Nethermind.Synchronization.FastBlocks
 
         private SyncStatusList _syncStatusList;
         private long _pivotNumber;
-        private readonly long _barrier;
+        private long _barrier;
 
         private bool ShouldFinish => !_syncConfig.DownloadReceiptsInFastSync || AllReceiptsDownloaded;
         private bool AllReceiptsDownloaded => _receiptStorage.LowestInsertedReceiptBlockNumber <= _barrier;
+        public override bool IsFinished => AllReceiptsDownloaded;
 
         public ReceiptsSyncFeed(
-            ISyncModeSelector syncModeSelector,
             ISpecProvider specProvider,
             IBlockTree blockTree,
             IReceiptStorage receiptStorage,
@@ -50,7 +50,6 @@ namespace Nethermind.Synchronization.FastBlocks
             ISyncConfig syncConfig,
             ISyncReport syncReport,
             ILogManager logManager)
-            : base(syncModeSelector)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
@@ -65,19 +64,15 @@ namespace Nethermind.Synchronization.FastBlocks
                 throw new InvalidOperationException("Entered fast blocks mode without fast blocks enabled in configuration.");
             }
 
-            _pivotNumber = _syncConfig.PivotNumberParsed;
-            _barrier = _syncConfig.AncientReceiptsBarrierCalc;
-
-            if (_logger.IsInfo) _logger.Info($"Using pivot {_pivotNumber} and barrier {_barrier} in receipts sync");
-
-            ResetSyncStatusList();
+            _pivotNumber = -1; // First reset in `InitializeFeed`.
         }
 
         public override void InitializeFeed()
         {
-            if (_pivotNumber < _syncConfig.PivotNumberParsed)
+            if (_pivotNumber != _syncConfig.PivotNumberParsed || _barrier != _syncConfig.AncientReceiptsBarrierCalc)
             {
                 _pivotNumber = _syncConfig.PivotNumberParsed;
+                _barrier = _syncConfig.AncientReceiptsBarrierCalc;
                 if (_logger.IsInfo) _logger.Info($"Changed pivot in receipts sync. Now using pivot {_pivotNumber} and barrier {_barrier}");
                 ResetSyncStatusList();
             }
@@ -90,7 +85,8 @@ namespace Nethermind.Synchronization.FastBlocks
             _syncStatusList = new SyncStatusList(
                 _blockTree,
                 _pivotNumber,
-                _receiptStorage.LowestInsertedReceiptBlockNumber);
+                _receiptStorage.LowestInsertedReceiptBlockNumber,
+                _syncConfig.AncientReceiptsBarrier);
         }
 
         protected override SyncMode ActivationSyncModes { get; }
@@ -168,6 +164,16 @@ namespace Nethermind.Synchronization.FastBlocks
                 int added = InsertReceipts(batch);
                 return added == 0 ? SyncResponseHandlingResult.NoProgress : SyncResponseHandlingResult.OK;
             }
+            catch (Exception)
+            {
+                foreach (BlockInfo? batchInfo in batch.Infos)
+                {
+                    if (batchInfo is null) break;
+                    _syncStatusList.MarkPending(batchInfo);
+                }
+
+                throw;
+            }
             finally
             {
                 batch?.MarkHandlingEnd();
@@ -176,7 +182,7 @@ namespace Nethermind.Synchronization.FastBlocks
 
         private bool TryPrepareReceipts(BlockInfo blockInfo, TxReceipt[] receipts, out TxReceipt[]? preparedReceipts)
         {
-            BlockHeader? header = _blockTree.FindHeader(blockInfo.BlockHash);
+            BlockHeader? header = _blockTree.FindHeader(blockInfo.BlockHash, blockNumber: blockInfo.BlockNumber);
             if (header is null)
             {
                 if (_logger.IsWarn) _logger.Warn("Could not find header for requested blockhash.");

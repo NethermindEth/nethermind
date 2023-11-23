@@ -5,7 +5,6 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
-using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Threading;
 using Microsoft.Extensions.ObjectPool;
@@ -73,7 +72,7 @@ namespace Nethermind.Synchronization.SnapSync
             return result;
         }
 
-        public AddRangeResult AddAccountRange(long blockNumber, in ValueKeccak expectedRootHash, in ValueKeccak startingHash, PathWithAccount[] accounts, byte[][] proofs = null, in ValueKeccak? hashLimit = null!)
+        public AddRangeResult AddAccountRange(long blockNumber, in ValueHash256 expectedRootHash, in ValueHash256 startingHash, PathWithAccount[] accounts, byte[][] proofs = null, in ValueHash256? hashLimit = null!)
         {
             ITrieStore store = _trieStorePool.Get();
             try
@@ -85,9 +84,9 @@ namespace Nethermind.Synchronization.SnapSync
                     _ => throw new ArgumentOutOfRangeException()
                 };
 
-                ValueKeccak effectiveHashLimit = hashLimit.HasValue ? hashLimit.Value : ValueKeccak.MaxValue;
+                ValueHash256 effectiveHashLimit = hashLimit.HasValue ? hashLimit.Value : ValueKeccak.MaxValue;
 
-                (AddRangeResult result, bool moreChildrenToRight, List<PathWithAccount> accountsWithStorage, List<ValueKeccak> codeHashes) =
+                (AddRangeResult result, bool moreChildrenToRight, List<PathWithAccount> accountsWithStorage, List<ValueHash256> codeHashes) =
                     SnapProviderHelper.AddAccountRange(tree, blockNumber, expectedRootHash, startingHash, effectiveHashLimit, accounts, proofs);
 
                 if (result == AddRangeResult.OK)
@@ -169,7 +168,7 @@ namespace Nethermind.Synchronization.SnapSync
             return result;
         }
 
-        public AddRangeResult AddStorageRange(long blockNumber, PathWithAccount pathWithAccount, in ValueKeccak expectedRootHash, in ValueKeccak? startingHash, PathWithStorageSlot[] slots, byte[][]? proofs = null)
+        public AddRangeResult AddStorageRange(long blockNumber, PathWithAccount pathWithAccount, in ValueHash256 expectedRootHash, in ValueHash256? startingHash, PathWithStorageSlot[] slots, byte[][]? proofs = null)
         {
             if (pathWithAccount is null)
                 throw new TrieException("Not Allowed");
@@ -283,21 +282,21 @@ namespace Nethermind.Synchronization.SnapSync
             _progressTracker.EnqueueAccountRefresh(requestedPath.PathAndAccount, requestedPath.StorageStartingHash);
         }
 
-        public void AddCodes(ValueKeccak[] requestedHashes, byte[][] codes)
+        public void AddCodes(ValueHash256[] requestedHashes, byte[][] codes)
         {
-            HashSet<ValueKeccak> set = requestedHashes.ToHashSet();
+            HashSet<ValueHash256> set = requestedHashes.ToHashSet();
 
-            using (IBatch writeBatch = _dbProvider.CodeDb.StartBatch())
+            using (IWriteBatch writeWriteBatch = _dbProvider.CodeDb.StartWriteBatch())
             {
                 for (int i = 0; i < codes.Length; i++)
                 {
                     byte[] code = codes[i];
-                    ValueKeccak codeHash = ValueKeccak.Compute(code);
+                    ValueHash256 codeHash = ValueKeccak.Compute(code);
 
                     if (set.Remove(codeHash))
                     {
                         Interlocked.Add(ref Metrics.SnapStateSynced, code.Length);
-                        writeBatch[codeHash.Bytes] = code;
+                        writeWriteBatch[codeHash.Bytes] = code;
                     }
                 }
             }
@@ -349,7 +348,7 @@ namespace Nethermind.Synchronization.SnapSync
             {
                 return new TrieStore(
                     _stateDb,
-                    Trie.Pruning.No.Pruning,
+                    Nethermind.Trie.Pruning.No.Pruning,
                     Persist.EveryBlock,
                     _logManager);
             }
@@ -374,7 +373,7 @@ namespace Nethermind.Synchronization.SnapSync
             public ITrieStore Create()
             {
                 //no in memory caching
-                return new TrieStoreByPath(_stateDb, _logManager); 
+                return new TrieStoreByPath(_stateDb, _logManager);
             }
 
             public bool Return(ITrieStore obj)

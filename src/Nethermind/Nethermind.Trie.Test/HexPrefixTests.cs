@@ -213,7 +213,7 @@ namespace Nethermind.Trie.Test
 
             foreach (byte[]? key in keys)
             {
-                Span<byte> nibbles =  new byte[2 * key.Length];
+                Span<byte> nibbles = new byte[2 * key.Length];
 
                 Nibbles.BytesToNibbleBytes(key, nibbles);
                 Nibbles.ToBytes(nibbles).Should().BeEquivalentTo(key);
@@ -224,7 +224,7 @@ namespace Nethermind.Trie.Test
         public void StoragePrefixTests()
         {
             byte[] storagePrefixBytes = KeccakHash.ComputeHash(TestItem.AddressA.Bytes).ToArray();
-            Span<byte> storagePrefixNibbles= stackalloc byte[2 * storagePrefixBytes.Length];
+            Span<byte> storagePrefixNibbles = stackalloc byte[2 * storagePrefixBytes.Length];
             Nibbles.BytesToNibbleBytes(storagePrefixBytes, storagePrefixNibbles);
             Nibbles.ToBytes(storagePrefixNibbles).Should().BeEquivalentTo(storagePrefixBytes);
 

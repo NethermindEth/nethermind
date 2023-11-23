@@ -7,7 +7,6 @@ using DotNetty.Codecs.Base64;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Crypto;
-using Nethermind.Network.P2P;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.Enr;
@@ -21,7 +20,7 @@ public class NodeRecord
 
     private string? _enrString;
 
-    private Keccak? _contentHash;
+    private Hash256? _contentHash;
 
     private SortedDictionary<string, EnrContentEntry> Entries { get; } = new();
 
@@ -67,7 +66,7 @@ public class NodeRecord
     /// <summary>
     /// Hash of the content, i.e. Keccak([seq, k, v, ...]) as defined in https://eips.ethereum.org/EIPS/eip-778
     /// </summary>
-    public Keccak ContentHash
+    public Hash256 ContentHash
     {
         get
         {
@@ -75,7 +74,7 @@ public class NodeRecord
         }
     }
 
-    private Keccak CalculateContentHash()
+    private Hash256 CalculateContentHash()
     {
         KeccakRlpStream rlpStream = new();
         EncodeContent(rlpStream);

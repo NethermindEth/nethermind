@@ -34,11 +34,6 @@ configs = {
         "blockReduced": 8192,
         "multiplierRequirement": 10000
     },
-    "xdai": {
-        "url": "https://rpc.gnosischain.com",
-        "blockReduced": 8192,
-        "multiplierRequirement": 10000
-    },
     "chiado": {
         "url": "https://rpc.chiadochain.net",
         "blockReduced": 8192,

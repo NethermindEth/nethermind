@@ -134,12 +134,17 @@ namespace Nethermind.Synchronization.ParallelSync
         public void Update()
         {
             _pivotNumber = _syncConfig.PivotNumberParsed;
+            bool shouldBeInUpdatingPivot = ShouldBeInUpdatingPivot();
 
             SyncMode newModes;
             string reason = string.Empty;
             if (_syncProgressResolver.IsLoadingBlocksFromDb())
             {
                 newModes = SyncMode.DbLoad;
+                if (shouldBeInUpdatingPivot)
+                {
+                    newModes |= SyncMode.UpdatingPivot;
+                }
             }
             else if (!_syncConfig.SynchronizationEnabled)
             {
@@ -149,7 +154,6 @@ namespace Nethermind.Synchronization.ParallelSync
             else
             {
                 bool inBeaconControl = _beaconSyncStrategy.ShouldBeInBeaconModeControl();
-                bool shouldBeInUpdatingPivot = ShouldBeInUpdatingPivot();
                 (UInt256? peerDifficulty, long? peerBlock) = ReloadDataFromPeers();
                 // if there are no peers that we could use then we cannot sync
                 if (peerDifficulty is null || peerBlock is null || peerBlock == 0)

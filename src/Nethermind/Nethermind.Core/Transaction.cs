@@ -1,11 +1,11 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Buffers;
 using System;
+using System.Buffers;
 using System.Diagnostics;
-using System.Runtime.InteropServices;
 using System.Text;
+using Microsoft.Extensions.ObjectPool;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Eip2930;
 using Nethermind.Core.Extensions;
@@ -25,15 +25,23 @@ namespace Nethermind.Core
         /// </summary>
         public TxType Type { get; set; }
 
+        // Optimism deposit transaction fields
+        // SourceHash uniquely identifies the source of the deposit
+        public Hash256? SourceHash { get; set; }
+        // Mint is minted on L2, locked on L1, nil if no minting.
+        public UInt256 Mint { get; set; }
+        // Field indicating if this transaction is exempt from the L2 gas limit.
+        public bool IsOPSystemTransaction { get; set; }
+
         public UInt256 Nonce { get; set; }
         public UInt256 GasPrice { get; set; }
         public UInt256? GasBottleneck { get; set; }
         public UInt256 MaxPriorityFeePerGas => GasPrice;
         public UInt256 DecodedMaxFeePerGas { get; set; }
         public UInt256 MaxFeePerGas => Supports1559 ? DecodedMaxFeePerGas : GasPrice;
-        public bool SupportsAccessList => Type >= TxType.AccessList;
-        public bool Supports1559 => Type >= TxType.EIP1559;
-        public bool SupportsBlobs => Type == TxType.Blob;
+        public bool SupportsAccessList => Type >= TxType.AccessList && Type != TxType.DepositTx;
+        public bool Supports1559 => Type >= TxType.EIP1559 && Type != TxType.DepositTx;
+        public bool SupportsBlobs => Type == TxType.Blob && Type != TxType.DepositTx;
         public long GasLimit { get; set; }
         public Address? To { get; set; }
         public UInt256 Value { get; set; }
@@ -44,8 +52,8 @@ namespace Nethermind.Core
         public bool IsContractCreation => To is null;
         public bool IsMessageCall => To is not null;
 
-        private Keccak? _hash;
-        public Keccak? Hash
+        private Hash256? _hash;
+        public Hash256? Hash
         {
             get
             {
@@ -55,9 +63,9 @@ namespace Nethermind.Core
                 {
                     if (_hash is not null) return _hash;
 
-                    if (_preHash.Count > 0)
+                    if (_preHash.Length > 0)
                     {
-                        _hash = Keccak.Compute(_preHash.AsSpan());
+                        _hash = Keccak.Compute(_preHash.Span);
                         ClearPreHashInternal();
                     }
                 }
@@ -71,24 +79,38 @@ namespace Nethermind.Core
             }
         }
 
-        private ArraySegment<byte> _preHash;
+        private Memory<byte> _preHash;
+        private IMemoryOwner<byte>? _preHashMemoryOwner;
         public void SetPreHash(ReadOnlySpan<byte> transactionSequence)
         {
             lock (this)
             {
-                // Used to delay hash generation, as may be filtered as having too low gas etc
-                _hash = null;
-
-                int size = transactionSequence.Length;
-                byte[] preHash = ArrayPool<byte>.Shared.Rent(size);
-                transactionSequence.CopyTo(preHash);
-                _preHash = new ArraySegment<byte>(preHash, 0, size);
+                SetPreHashNoLock(transactionSequence);
             }
+        }
+
+        public void SetPreHashNoLock(ReadOnlySpan<byte> transactionSequence)
+        {
+            // Used to delay hash generation, as may be filtered as having too low gas etc
+            _hash = null;
+
+            int size = transactionSequence.Length;
+            _preHashMemoryOwner = MemoryPool<byte>.Shared.Rent(size);
+            _preHash = _preHashMemoryOwner.Memory[..size];
+            transactionSequence.CopyTo(_preHash.Span);
+        }
+
+        public void SetPreHashMemoryNoLock(Memory<byte> transactionSequence, IMemoryOwner<byte>? preHashMemoryOwner = null)
+        {
+            // Used to delay hash generation, as may be filtered as having too low gas etc
+            _hash = null;
+            _preHash = transactionSequence;
+            _preHashMemoryOwner = preHashMemoryOwner;
         }
 
         public void ClearPreHash()
         {
-            if (_preHash.Count > 0)
+            if (_preHash.Length > 0)
             {
                 lock (this)
                 {
@@ -99,9 +121,10 @@ namespace Nethermind.Core
 
         private void ClearPreHashInternal()
         {
-            if (_preHash.Count > 0)
+            if (_preHash.Length > 0)
             {
-                ArrayPool<byte>.Shared.Return(_preHash.Array!);
+                _preHashMemoryOwner?.Dispose();
+                _preHashMemoryOwner = null;
                 _preHash = default;
             }
         }
@@ -130,7 +153,8 @@ namespace Nethermind.Core
         /// <remarks>Used for sorting in edge cases.</remarks>
         public ulong PoolIndex { get; set; }
 
-        private int? _size = null;
+        protected int? _size = null;
+
         /// <summary>
         /// Encoded transaction length
         /// </summary>
@@ -152,6 +176,7 @@ namespace Nethermind.Core
             builder.AppendLine($"{indent}Hash:      {Hash}");
             builder.AppendLine($"{indent}From:      {SenderAddress}");
             builder.AppendLine($"{indent}To:        {To}");
+            builder.AppendLine($"{indent}TxType:    {Type}");
             if (Supports1559)
             {
                 builder.AppendLine($"{indent}MaxPriorityFeePerGas: {MaxPriorityFeePerGas}");
@@ -162,6 +187,9 @@ namespace Nethermind.Core
                 builder.AppendLine($"{indent}Gas Price: {GasPrice}");
             }
 
+            builder.AppendLine($"{indent}SourceHash: {SourceHash}");
+            builder.AppendLine($"{indent}Mint:      {Mint}");
+            builder.AppendLine($"{indent}OpSystem:  {IsOPSystemTransaction}");
             builder.AppendLine($"{indent}Gas Limit: {GasLimit}");
             builder.AppendLine($"{indent}Nonce:     {Nonce}");
             builder.AppendLine($"{indent}Value:     {Value}");
@@ -183,6 +211,42 @@ namespace Nethermind.Core
         public override string ToString() => ToString(string.Empty);
 
         public bool MayHaveNetworkForm => Type is TxType.Blob;
+
+        public class PoolPolicy : IPooledObjectPolicy<Transaction>
+        {
+            public Transaction Create()
+            {
+                return new Transaction();
+            }
+
+            public bool Return(Transaction obj)
+            {
+                obj.ClearPreHash();
+                obj.Hash = default;
+                obj.ChainId = default;
+                obj.Type = default;
+                obj.Nonce = default;
+                obj.GasPrice = default;
+                obj.GasBottleneck = default;
+                obj.DecodedMaxFeePerGas = default;
+                obj.GasLimit = default;
+                obj.To = default;
+                obj.Value = default;
+                obj.Data = default;
+                obj.SenderAddress = default;
+                obj.Signature = default;
+                obj.Timestamp = default;
+                obj.AccessList = default;
+                obj.MaxFeePerBlobGas = default;
+                obj.BlobVersionedHashes = default;
+                obj.NetworkWrapper = default;
+                obj.IsServiceTransaction = default;
+                obj.PoolIndex = default;
+                obj._size = default;
+
+                return true;
+            }
+        }
     }
 
     /// <summary>

@@ -7,7 +7,6 @@ using System.Linq;
 using Nethermind.Abi;
 using Nethermind.Api.Extensions;
 using Nethermind.Config;
-using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Timers;
@@ -42,7 +41,7 @@ namespace Nethermind.Api
         IReadOnlyList<INethermindPlugin> Plugins { get; }
         string SealEngineType { get; set; }
         ISpecProvider? SpecProvider { get; set; }
-        ISyncModeSelector? SyncModeSelector { get; set; }
+        ISyncModeSelector SyncModeSelector { get; set; }
         ISyncProgressResolver? SyncProgressResolver { get; set; }
         IBetterPeerStrategy? BetterPeerStrategy { get; set; }
         ITimestamper Timestamper { get; }

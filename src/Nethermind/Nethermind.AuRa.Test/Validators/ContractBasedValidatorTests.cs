@@ -20,7 +20,6 @@ using Nethermind.Specs.Forks;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Int256;
-using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
@@ -30,7 +29,7 @@ using Newtonsoft.Json;
 using NSubstitute;
 using NUnit.Framework;
 using BlockTree = Nethermind.Blockchain.BlockTree;
-using Nethermind.Core.Specs;
+using Nethermind.Evm;
 
 namespace Nethermind.AuRa.Test.Validators
 {
@@ -76,7 +75,7 @@ namespace Nethermind.AuRa.Test.Validators
             _transactionProcessor = Substitute.For<IReadOnlyTransactionProcessor>();
             _transactionProcessor.IsContractDeployed(_contractAddress).Returns(true);
             _readOnlyTxProcessorSource = Substitute.For<IReadOnlyTxProcessorSource>();
-            _readOnlyTxProcessorSource.Build(Arg.Any<Keccak>()).Returns(_transactionProcessor);
+            _readOnlyTxProcessorSource.Build(Arg.Any<Hash256>()).Returns(_transactionProcessor);
             _stateProvider.StateRoot.Returns(TestItem.KeccakA);
             _blockTree.Head.Returns(_block);
 
@@ -140,7 +139,7 @@ namespace Nethermind.AuRa.Test.Validators
 
             int blockNumber = 10;
             Address[] validators = TestItem.Addresses.Take(10).ToArray();
-            Keccak blockHash = Keccak.Compute("Test");
+            Hash256 blockHash = Keccak.Compute("Test");
             PendingValidators pendingValidators = new(blockNumber, blockHash, validators);
             _validatorStore.PendingValidators.Returns(pendingValidators);
             _blockTree.Head.Returns((Block)null);
@@ -177,13 +176,13 @@ namespace Nethermind.AuRa.Test.Validators
             _transactionProcessor.Received()
                 .CallAndRestore(
                     Arg.Is<Transaction>(t => CheckTransaction(t, _getValidatorsData)),
-                    _parentHeader,
+                    Arg.Is<BlockExecutionContext>(blkCtx => blkCtx.Header.Equals(_parentHeader)),
                     Arg.Is<ITxTracer>(t => t is CallOutputTracer));
 
             // finalizeChange should be called
             _transactionProcessor.Received(finalizeChangeCalled ? 1 : 0)
                 .Execute(Arg.Is<Transaction>(t => CheckTransaction(t, _finalizeChangeData)),
-                    block.Header,
+                    Arg.Is<BlockExecutionContext>(blkCtx => blkCtx.Header.Equals(block.Header)),
                     Arg.Is<ITxTracer>(t => t is CallOutputTracer));
 
             // initial validator should be true
@@ -505,7 +504,7 @@ namespace Nethermind.AuRa.Test.Validators
 
                 TxReceipt[] txReceipts = test.GetReceipts(_validatorContract, _block, _contractAddress, _abiEncoder, SetupAbiAddresses);
 
-                Keccak? blockHashForClosure = _block.Hash;
+                Hash256? blockHashForClosure = _block.Hash;
                 _receiptsStorage.Get(Arg.Is<Block>(b => b.Hash == blockHashForClosure)).Returns(txReceipts);
 
                 _block.Header.Bloom = new Bloom(txReceipts.SelectMany(r => r.Logs).ToArray());
@@ -596,7 +595,7 @@ namespace Nethermind.AuRa.Test.Validators
             // finalizeChange should be called or not based on test spec
             _transactionProcessor.Received(chain.ExpectedFinalizationCount)
                 .Execute(Arg.Is<Transaction>(t => CheckTransaction(t, _finalizeChangeData)),
-                    _block.Header,
+                    Arg.Is<BlockExecutionContext>(blkCtx => blkCtx.Header.Equals(_block.Header)),
                     Arg.Is<ITxTracer>(t => t is CallOutputTracer));
 
             _transactionProcessor.ClearReceivedCalls();
@@ -627,7 +626,7 @@ namespace Nethermind.AuRa.Test.Validators
 
             _transactionProcessor.When(x => x.CallAndRestore(
                     Arg.Is<Transaction>(t => CheckTransaction(t, _getValidatorsData)),
-                    Arg.Any<BlockHeader>(),
+                    Arg.Any<BlockExecutionContext>(),
                     Arg.Is<ITxTracer>(t => t is CallOutputTracer)))
                 .Do(args =>
                     args.Arg<ITxTracer>().MarkAsSuccess(

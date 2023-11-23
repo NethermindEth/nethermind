@@ -3,7 +3,6 @@
 
 using System.IO;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
 using Nethermind.Evm.TransactionProcessing;
@@ -57,7 +56,7 @@ public class GenesisLoaderTests
     {
         string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, chainspecPath);
         ChainSpec chainSpec = LoadChainSpec(path);
-        MemColumnsDb<StateColumns> stateDb = new();
+        MemDb stateDb = new();
         IDb codeDb = new MemDb();
         TrieStore trieStore = new(stateDb, LimboLogs.Instance);
         IWorldState stateProvider = new WorldState(trieStore, codeDb, LimboLogs.Instance);

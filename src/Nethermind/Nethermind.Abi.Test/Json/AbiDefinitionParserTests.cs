@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using FluentAssertions;
 using FluentAssertions.Json;
 using Nethermind.Blockchain.Contracts.Json;
 using Nethermind.Consensus.AuRa.Contracts;

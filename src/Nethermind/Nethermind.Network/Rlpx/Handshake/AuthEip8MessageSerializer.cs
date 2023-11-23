@@ -5,7 +5,6 @@ using System;
 using DotNetty.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using Nethermind.Network.P2P;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.Rlpx.Handshake
@@ -52,7 +51,6 @@ namespace Nethermind.Network.Rlpx.Handshake
             authMessage.Signature = signature;
             authMessage.PublicKey = new PublicKey(rlpStream.DecodeByteArraySpan());
             authMessage.Nonce = rlpStream.DecodeByteArray();
-            _ = rlpStream.DecodeInt();
             return authMessage;
         }
     }

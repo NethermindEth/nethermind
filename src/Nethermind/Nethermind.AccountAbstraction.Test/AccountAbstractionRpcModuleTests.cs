@@ -3,32 +3,25 @@
 
 using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
-using DotNetty.Common.Utilities;
 using FluentAssertions;
 using Nethermind.Abi;
 using Nethermind.AccountAbstraction.Contracts;
 using Nethermind.AccountAbstraction.Data;
 using Nethermind.AccountAbstraction.Test.TestContracts;
-using Nethermind.Blockchain.Contracts;
 using Nethermind.Blockchain.Contracts.Json;
 using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Eip2930;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Int256;
-using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Data;
 using Nethermind.JsonRpc.Test.Modules;
 using Nethermind.Logging;
-using Newtonsoft.Json;
-using Newtonsoft.Json.Linq;
 using NUnit.Framework;
 
 namespace Nethermind.AccountAbstraction.Test
@@ -192,8 +185,8 @@ namespace Nethermind.AccountAbstraction.Test
 
             Address entryPointId = new Address("0x90f3e1105e63c877bf9587de5388c23cdb702c6b");
             ulong chainId = 5;
-            Keccak idFromTransaction =
-                new Keccak("0x87c3605deda77b02b78e62157309985d94531cf7fbb13992c602c8555bece921");
+            Hash256 idFromTransaction =
+                new Hash256("0x87c3605deda77b02b78e62157309985d94531cf7fbb13992c602c8555bece921");
             createOp.CalculateRequestId(entryPointId, chainId);
             Assert.That(createOp.RequestId!, Is.EqualTo(idFromTransaction),
                 "Request IDs do not match.");
@@ -512,7 +505,7 @@ namespace Nethermind.AccountAbstraction.Test
             op.CalculateRequestId(entryPointAddress, chainId);
 
             Signer signer = new(chainId, privateKey, NullLogManager.Instance);
-            Keccak hashedRequestId = Keccak.Compute(
+            Hash256 hashedRequestId = Keccak.Compute(
                 Bytes.Concat(
                     Encoding.UTF8.GetBytes("\x19"),
                     Encoding.UTF8.GetBytes("Ethereum Signed Message:\n" + op.RequestId!.Bytes.Length),

@@ -9,7 +9,7 @@ namespace Nethermind.TxPool.Comparison
 {
     /// <summary>
     /// Comparer to check if two pending <see cref="Transaction"/>s compete with each other.
-    /// <see cref="Transaction"/>s compete with each other if they have same <see cref="Transaction.SenderAddress"/> and <see cref="Transaction.Nonce"/>. In that case only one transaction can go into chain. 
+    /// <see cref="Transaction"/>s compete with each other if they have same <see cref="Transaction.SenderAddress"/> and <see cref="Transaction.Nonce"/>. In that case only one transaction can go into chain.
     /// </summary>
     public class CompetingTransactionEqualityComparer : IEqualityComparer<Transaction?>
     {
@@ -17,8 +17,8 @@ namespace Nethermind.TxPool.Comparison
 
         private CompetingTransactionEqualityComparer() { }
 
-        public bool Equals(Transaction? x, Transaction? y) =>
-            ReferenceEquals(x, y) || !ReferenceEquals(x, null) && !ReferenceEquals(y, null) && x.SenderAddress == y.SenderAddress && x.Nonce == y.Nonce;
+        public bool Equals(Transaction? newTx, Transaction? oldTx) =>
+            ReferenceEquals(newTx, oldTx) || !ReferenceEquals(newTx, null) && !ReferenceEquals(oldTx, null) && newTx.SenderAddress == oldTx.SenderAddress && newTx.Nonce == oldTx.Nonce;
 
         public int GetHashCode(Transaction? obj) => HashCode.Combine(obj?.SenderAddress, obj?.Nonce);
     }

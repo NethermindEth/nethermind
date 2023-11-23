@@ -110,7 +110,7 @@ namespace Nethermind.Network.Discovery.Test
         }
 
         [Test]
-        public async Task handling_neighbour_msg_will_limit_result_to_12()
+        public async Task handling_findnode_msg_will_limit_result_to_12()
         {
             IDiscoveryConfig discoveryConfig = new DiscoveryConfig();
             discoveryConfig.PongTimeout = 50;
@@ -146,6 +146,48 @@ namespace Nethermind.Network.Discovery.Test
             Assert.IsNotNull(sentMsg);
             _nodeTable.Buckets[0].BondedItemsCount.Should().Be(32);
             sentMsg!.Nodes.Length.Should().Be(12);
+        }
+
+        [Test]
+        public async Task processNeighboursMessage_willCombineTwoSubsequentMessage()
+        {
+            IDiscoveryConfig discoveryConfig = new DiscoveryConfig();
+            discoveryConfig.PongTimeout = 50;
+            discoveryConfig.BucketSize = 32;
+            discoveryConfig.BucketsCount = 1;
+
+            _nodeTable = new NodeTable(new NodeDistanceCalculator(discoveryConfig), discoveryConfig, _networkConfig, LimboLogs.Instance);
+            _nodeTable.Initialize(TestItem.PublicKeyA);
+
+            Node node = new(TestItem.PublicKeyB, _host, _port);
+            NodeLifecycleManager nodeManager = new(node, _discoveryManagerMock, _nodeTable, _evictionManagerMock, _nodeStatsMock, new NodeRecord(), _discoveryConfigMock, Timestamper.Default, _loggerMock);
+
+            await BondWithSelf(nodeManager, node);
+
+            _discoveryManagerMock
+                .Received(0)
+                .GetNodeLifecycleManager(Arg.Any<Node>(), Arg.Any<bool>());
+
+            nodeManager.SendFindNode(Array.Empty<byte>());
+
+            Node[] firstNodes = TestItem.PublicKeys
+                .Take(12)
+                .Select(pubkey => new Node(pubkey, "127.0.0.2", 0))
+                .ToArray();
+            NeighborsMsg firstNodeMsg = new NeighborsMsg(TestItem.PublicKeyA, 1, firstNodes);
+            Node[] secondNodes = TestItem.PublicKeys
+                .Skip(12)
+                .Take(4)
+                .Select(pubkey => new Node(pubkey, "127.0.0.2", 0))
+                .ToArray();
+            NeighborsMsg secondNodeMsg = new NeighborsMsg(TestItem.PublicKeyA, 1, secondNodes);
+
+            nodeManager.ProcessNeighborsMsg(firstNodeMsg);
+            nodeManager.ProcessNeighborsMsg(secondNodeMsg);
+
+            _discoveryManagerMock
+                .Received(16)
+                .GetNodeLifecycleManager(Arg.Any<Node>(), Arg.Any<bool>());
         }
 
         [Test]

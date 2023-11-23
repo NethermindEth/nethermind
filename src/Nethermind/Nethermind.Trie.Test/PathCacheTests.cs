@@ -24,7 +24,7 @@ public class PathCacheTests
 {
     private static readonly ILogManager Logger = NUnitLogManager.Instance;
     private static readonly ITrieStore _trieStore = new TrieStoreByPath(new MemColumnsDb<StateColumns>(), Logger);
-    private static readonly int CacheSize = 5;
+    //private static readonly int CacheSize = 5;
 
     [TestCaseSource(typeof(Instances))]
     public void Get_node_latest_version(IPathTrieNodeCache cache)
@@ -98,9 +98,9 @@ public class PathCacheTests
 
         cache.AddRemovedPrefix(4, prefix);
 
-        Assert.That(cache.GetNodeFromRoot(null, path1)?.FullRlp, Is.Null);
-        Assert.That(cache.GetNodeFromRoot(null, path2)?.FullRlp, Is.Null);
-        Assert.That(cache.GetNodeFromRoot(null, path3).Value, Is.Not.Null);
+        Assert.That(cache.GetNodeFromRoot(null, path1).FullRlp.IsNull, Is.True);
+        Assert.That(cache.GetNodeFromRoot(null, path2).FullRlp.IsNull, Is.True);
+        Assert.That(cache.GetNodeFromRoot(null, path3).Value.ToArray(), Is.Not.Empty);
     }
 
     [TestCaseSource(typeof(Instances))]
@@ -162,15 +162,15 @@ public class PathCacheTests
         //should get nodes with null RLP as a marker for deleted data
         //null returned from cache means a miss in data and load from DB
         Assert.That(n1, Is.Not.Null);
-        Assert.That(n1.FullRlp, Is.Null);
+        Assert.That(n1.FullRlp.IsNull, Is.True);
 
         Assert.That(n2, Is.Not.Null);
-        Assert.That(n2.FullRlp, Is.Null);
+        Assert.That(n2.FullRlp.IsNull, Is.True);
 
         //add a node again under a prefix that has been marked as deleted
         cache.AddNode(5, CreateResolvedLeaf(path1, 64000.ToByteArray(), 60));
 
-        Assert.That(cache.GetNodeFromRoot(null, path1).Value, Is.Not.Null);
+        Assert.That(cache.GetNodeFromRoot(null, path1).Value.IsNotNull, Is.True);
     }
 
     [TestCaseSource(typeof(Instances))]
@@ -208,7 +208,7 @@ public class PathCacheTests
         TrieNode n = new(NodeType.Unknown, rlp);
         n.ResolveNode(_trieStore);
 
-        Assert.That(n.Value, Is.EqualTo(128000.ToByteArray()).Using<byte[]>(Bytes.Comparer));
+        Assert.That(n.Value.ToArray(), Is.EqualTo(128000.ToByteArray()).Using<byte[]>(Bytes.Comparer));
     }
 
     [TestCaseSource(typeof(Instances))]
@@ -246,7 +246,8 @@ public class PathCacheTests
         {
             get
             {
-                yield return new TestCaseData(new TrieNodeBlockCache(_trieStore, CacheSize, Logger));
+                //TODO - block->path cache not used right now
+                //yield return new TestCaseData(new TrieNodeBlockCache(_trieStore, CacheSize, Logger));
                 yield return new TestCaseData(new TrieNodePathCache(_trieStore, Logger));
             }
         }

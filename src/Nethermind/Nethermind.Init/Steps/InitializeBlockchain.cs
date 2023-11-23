@@ -37,7 +37,7 @@ using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.State;
 using Nethermind.State.Witnesses;
-using Nethermind.Synchronization.ParallelSync;
+using Nethermind.Synchronization.Trie;
 using Nethermind.Synchronization.Witness;
 using Nethermind.Trie;
 using Nethermind.Trie.ByPath;
@@ -65,7 +65,7 @@ namespace Nethermind.Init.Steps
         }
 
         [Todo(Improve.Refactor, "Use chain spec for all chain configuration")]
-        private Task InitBlockchain()
+        protected virtual Task InitBlockchain()
         {
             InitBlockTraceDumper();
 
@@ -107,13 +107,12 @@ namespace Nethermind.Init.Steps
                 .WitnessedBy(witnessCollector);
 
             ITrieStore trieStore;
-            ITrieStore storageTrieStore;
-            IKeyValueStoreWithBatching stateWitnessedBy;
+            IKeyValueStoreWithBatching? stateWitnessedBy = null;
 
             if (pathStateConfig.Enabled)
             {
-                setApi.MainStateDbWithCache = getApi.DbProvider.PathStateDb;
-                stateWitnessedBy = setApi.MainStateDbWithCache.WitnessedBy(witnessCollector);
+                //setApi.MainStateDbWithCache = getApi.DbProvider.PathStateDb;
+                //stateWitnessedBy = setApi.MainStateDbWithCache.WitnessedBy(witnessCollector);
 
                 setApi.TrieStore = trieStore = new TrieStoreByPath(
                     getApi.DbProvider.PathStateDb,
@@ -127,43 +126,50 @@ namespace Nethermind.Init.Steps
                 setApi.MainStateDbWithCache = cachedStateDb;
 
                 stateWitnessedBy = setApi.MainStateDbWithCache.WitnessedBy(witnessCollector);
+                IPersistenceStrategy persistenceStrategy;
+                IPruningStrategy pruningStrategy;
 
                 if (pruningConfig.Mode.IsMemory())
                 {
-                    IPersistenceStrategy persistenceStrategy = Persist.IfBlockOlderThan(pruningConfig.PersistenceInterval); // TODO: this should be based on time
+                    persistenceStrategy = Persist.IfBlockOlderThan(pruningConfig.PersistenceInterval); // TODO: this should be based on time
                     if (pruningConfig.Mode.IsFull())
                     {
                         PruningTriggerPersistenceStrategy triggerPersistenceStrategy = new((IFullPruningDb)getApi.DbProvider!.StateDb, getApi.BlockTree!, getApi.LogManager);
                         getApi.DisposeStack.Push(triggerPersistenceStrategy);
                         persistenceStrategy = persistenceStrategy.Or(triggerPersistenceStrategy);
                     }
-
-                    setApi.TrieStore = trieStore = new TrieStore(
-                        stateWitnessedBy,
-                        Prune.WhenCacheReaches(pruningConfig.CacheMb.MB()), // TODO: memory hint should define this
-                        persistenceStrategy,
-                        getApi.LogManager);
-
-                    if (pruningConfig.Mode.IsFull())
-                    {
-                        IFullPruningDb fullPruningDb = (IFullPruningDb)getApi.DbProvider!.StateDb;
-                        fullPruningDb.PruningStarted += (_, args) =>
-                        {
-                            cachedStateDb.PersistCache(args.Context);
-                            //TODO - move PersistCache to interface?
-                            ((TrieStore)trieStore).PersistCache(args.Context, args.Context.CancellationTokenSource.Token);
-                        };
-                    }
+                    pruningStrategy = Prune.WhenCacheReaches(pruningConfig.CacheMb.MB()); // TODO: memory hint should define this
                 }
                 else
                 {
-                    setApi.TrieStore = trieStore = new TrieStore(
-                        stateWitnessedBy,
-                        No.Pruning,
-                        Persist.EveryBlock,
-                        getApi.LogManager);
+                    pruningStrategy = No.Pruning;
+                    persistenceStrategy = Persist.EveryBlock;
                 }
-                storageTrieStore = setApi.TrieStore;
+
+                trieStore = syncConfig.TrieHealing
+                        ? new HealingTrieStore(
+                            stateWitnessedBy,
+                            pruningStrategy,
+                            persistenceStrategy,
+                            getApi.LogManager)
+                        : new TrieStore(
+                            stateWitnessedBy,
+                            pruningStrategy,
+                            persistenceStrategy,
+                            getApi.LogManager);
+                setApi.TrieStore = trieStore;
+
+
+                if (pruningConfig.Mode.IsFull())
+                {
+                    IFullPruningDb fullPruningDb = (IFullPruningDb)getApi.DbProvider!.StateDb;
+                    fullPruningDb.PruningStarted += (_, args) =>
+                    {
+                        cachedStateDb.PersistCache(args.Context);
+                        //TODO - move PersistCache to interface?
+                        ((TrieStore)trieStore).PersistCache(args.Context, args.Context.CancellationTokenSource.Token);
+                    };
+                }
             }
 
             TrieStoreBoundaryWatcher trieStoreBoundaryWatcher = new(trieStore, _api.BlockTree!, _api.LogManager);
@@ -172,10 +178,17 @@ namespace Nethermind.Init.Steps
 
             ITrieStore readOnlyTrieStore = setApi.ReadOnlyTrieStore = trieStore.AsReadOnly(setApi.MainStateDbWithCache);
 
-            IWorldState worldState = setApi.WorldState = new WorldState(
-                trieStore,
-                codeDb,
-                getApi.LogManager);
+            //IWorldState worldState = setApi.WorldState = syncConfig.TrieHealing
+            //        ? new HealingWorldState(
+            //            trieStore,
+            //            codeDb,
+            //            getApi.LogManager)
+            //        : new WorldState(
+            //            trieStore,
+            //            codeDb,
+            //            getApi.LogManager);
+
+            IWorldState worldState = setApi.WorldState = new WorldState(trieStore, codeDb, getApi.LogManager);
 
             ReadOnlyDbProvider readOnly = new ReadOnlyDbProvider(getApi.DbProvider, false);
 
@@ -225,7 +238,7 @@ namespace Nethermind.Init.Steps
                 worldState.StateRoot = getApi.BlockTree.Head.StateRoot;
             }
 
-            TxValidator txValidator = setApi.TxValidator = new TxValidator(getApi.SpecProvider.ChainId);
+            setApi.TxValidator = new TxValidator(_api.SpecProvider!.ChainId);
 
             ITxPool txPool = _api.TxPool = CreateTxPool();
 
@@ -236,44 +249,14 @@ namespace Nethermind.Init.Steps
             _api.BlockPreprocessor.AddFirst(
                 new RecoverSignatures(getApi.EthereumEcdsa, txPool, getApi.SpecProvider, getApi.LogManager));
 
-            //IStorageProvider storageProvider = setApi.StorageProvider = new StorageProvider(
-            //    //trieStore,
-            //    storageTrieStore,
-            //    stateProvider,
-            //    getApi.LogManager);
-
-            // blockchain processing
-            BlockhashProvider blockhashProvider = new(
-                getApi.BlockTree, getApi.LogManager);
-
-            VirtualMachine virtualMachine = new(
-                blockhashProvider,
-                getApi.SpecProvider,
-                getApi.LogManager);
-
-            _api.TransactionProcessor = new TransactionProcessor(
-                getApi.SpecProvider,
-                worldState,
-                virtualMachine,
-                getApi.LogManager);
+            _api.TransactionProcessor = CreateTransactionProcessor();
 
             InitSealEngine();
             if (_api.SealValidator is null) throw new StepDependencyException(nameof(_api.SealValidator));
 
             setApi.HeaderValidator = CreateHeaderValidator();
-
-            IHeaderValidator? headerValidator = setApi.HeaderValidator;
-            IUnclesValidator unclesValidator = setApi.UnclesValidator = new UnclesValidator(
-                getApi.BlockTree,
-                headerValidator,
-                getApi.LogManager);
-
-            setApi.BlockValidator = new BlockValidator(
-                txValidator,
-                headerValidator,
-                unclesValidator,
-                getApi.SpecProvider,
-                getApi.LogManager);
+            setApi.UnclesValidator = CreateUnclesValidator();
+            setApi.BlockValidator = CreateBlockValidator();
 
             IChainHeadInfoProvider chainHeadInfoProvider =
                 new ChainHeadInfoProvider(getApi.SpecProvider, getApi.BlockTree, stateReader);
@@ -300,7 +283,10 @@ namespace Nethermind.Init.Steps
                 {
                     StoreReceiptsByDefault = initConfig.StoreReceipts,
                     DumpOptions = initConfig.AutoDump
-                });
+                })
+            {
+                IsMainProcessor = true
+            };
 
             setApi.BlockProcessingQueue = blockchainProcessor;
             setApi.BlockchainProcessor = blockchainProcessor;
@@ -308,9 +294,56 @@ namespace Nethermind.Init.Steps
             IFilterStore filterStore = setApi.FilterStore = new FilterStore();
             setApi.FilterManager = new FilterManager(filterStore, mainBlockProcessor, txPool, getApi.LogManager);
             setApi.HealthHintService = CreateHealthHintService();
-            setApi.BlockProductionPolicy = new BlockProductionPolicy(miningConfig);
+            setApi.BlockProductionPolicy = CreateBlockProductionPolicy();
 
             return Task.CompletedTask;
+        }
+
+        protected virtual IBlockValidator CreateBlockValidator()
+        {
+            return new BlockValidator(
+                _api.TxValidator,
+                _api.HeaderValidator,
+                _api.UnclesValidator,
+                _api.SpecProvider,
+                _api.LogManager);
+        }
+
+        protected virtual IUnclesValidator CreateUnclesValidator()
+        {
+            return new UnclesValidator(
+                _api.BlockTree,
+                _api.HeaderValidator,
+                _api.LogManager);
+        }
+
+        protected virtual ITransactionProcessor CreateTransactionProcessor()
+        {
+            if (_api.SpecProvider is null) throw new StepDependencyException(nameof(_api.SpecProvider));
+            if (_api.WorldState is null) throw new StepDependencyException(nameof(_api.WorldState));
+
+            VirtualMachine virtualMachine = CreateVirtualMachine();
+
+            return new TransactionProcessor(
+                _api.SpecProvider,
+                _api.WorldState,
+                virtualMachine,
+                _api.LogManager);
+        }
+
+        protected virtual VirtualMachine CreateVirtualMachine()
+        {
+            if (_api.BlockTree is null) throw new StepDependencyException(nameof(_api.BlockTree));
+            if (_api.SpecProvider is null) throw new StepDependencyException(nameof(_api.SpecProvider));
+
+            // blockchain processing
+            BlockhashProvider blockhashProvider = new(
+                _api.BlockTree, _api.LogManager);
+
+            return new VirtualMachine(
+                blockhashProvider,
+                _api.SpecProvider,
+                _api.LogManager);
         }
 
         private static void InitializeFullPruning(
@@ -366,8 +399,12 @@ namespace Nethermind.Init.Steps
         protected virtual IHealthHintService CreateHealthHintService() =>
             new HealthHintService(_api.ChainSpec!);
 
+        protected virtual IBlockProductionPolicy CreateBlockProductionPolicy() =>
+            new BlockProductionPolicy(_api.Config<IMiningConfig>());
+
         protected virtual TxPool.TxPool CreateTxPool() =>
             new(_api.EthereumEcdsa!,
+                _api.BlobTxStorage ?? NullBlobTxStorage.Instance,
                 new ChainHeadInfoProvider(_api.SpecProvider!, _api.BlockTree!, _api.StateReader!),
                 _api.Config<ITxPoolConfig>(),
                 _api.TxValidator!,

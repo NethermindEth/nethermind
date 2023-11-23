@@ -1,9 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using Nethermind.Core.Specs;
 using Nethermind.Specs;
 using Nethermind.Core.Test.Builders;
 using NUnit.Framework;
@@ -44,14 +42,14 @@ namespace Nethermind.Evm.Test
                 .StoreDataInTransientStorage(1, 8)
                 .Done;
 
-            TestAllTracerWithOutput result = Execute(MainnetSpecProvider.GrayGlacierBlockNumber, 100000, code, timestamp: MainnetSpecProvider.CancunBlockTimestamp - 1);
+            TestAllTracerWithOutput result = Execute((MainnetSpecProvider.GrayGlacierBlockNumber, MainnetSpecProvider.CancunBlockTimestamp - 1), 100000, code);
             Assert.That(result.StatusCode, Is.EqualTo(StatusCode.Failure));
 
             code = Prepare.EvmCode
                 .LoadDataFromTransientStorage(1)
                 .Done;
 
-            result = Execute(MainnetSpecProvider.GrayGlacierBlockNumber, 100000, code, timestamp: MainnetSpecProvider.CancunBlockTimestamp - 1);
+            result = Execute((MainnetSpecProvider.GrayGlacierBlockNumber, MainnetSpecProvider.CancunBlockTimestamp - 1), 100000, code);
             Assert.That(result.StatusCode, Is.EqualTo(StatusCode.Failure));
         }
 
@@ -95,7 +93,7 @@ namespace Nethermind.Evm.Test
             byte[] code = prepare.Done;
 
             stopwatch.Start();
-            TestAllTracerWithOutput result = Execute(MainnetSpecProvider.GrayGlacierBlockNumber, blockGasLimit, code, blockGasLimit, Timestamp);
+            TestAllTracerWithOutput result = Execute((MainnetSpecProvider.GrayGlacierBlockNumber, Timestamp), blockGasLimit, code, blockGasLimit);
             Assert.That(result.StatusCode, Is.EqualTo(StatusCode.Success));
             stopwatch.Stop();
             Assert.IsTrue(stopwatch.ElapsedMilliseconds < 5000);

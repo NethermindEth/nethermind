@@ -2,30 +2,26 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Config;
-using Nethermind.Core;
 
-namespace Nethermind.Consensus.AuRa.Config
+namespace Nethermind.Consensus.AuRa.Config;
+
+public interface IAuraConfig : IConfig
 {
-    public interface IAuraConfig : IConfig
-    {
-        [ConfigItem(Description = "If 'true' then Nethermind if mining will seal empty blocks.", DefaultValue = "true")]
-        bool ForceSealing { get; set; }
+    [ConfigItem(Description = "Whether to seal empty blocks if mining.", DefaultValue = "true")]
+    bool ForceSealing { get; set; }
 
-        [ConfigItem(Description = "If 'true' then you can run Nethermind only private chains. Do not use with existing Parity AuRa chains.", DefaultValue = "false")]
-        bool AllowAuRaPrivateChains { get; set; }
+    [ConfigItem(Description = "Whether to allow private Aura-based chains only. Do not use with existing Aura-based chains.", DefaultValue = "false")]
+    bool AllowAuRaPrivateChains { get; set; }
 
-        [ConfigItem(Description = "If 'true' then when using BlockGasLimitContractTransitions if the contract returns less than 2mln gas, then 2 mln gas is used.", DefaultValue = "false")]
-        bool Minimum2MlnGasPerBlockWhenUsingBlockGasLimitContract { get; set; }
+    [ConfigItem(Description = "Whether to use 2M gas if the contract returns less than that when using `BlockGasLimitContractTransitions`.", DefaultValue = "false")]
+    bool Minimum2MlnGasPerBlockWhenUsingBlockGasLimitContract { get; set; }
 
-        [ConfigItem(Description = "If set then transaction priority contract is used when selecting transactions from transaction pool. " +
-                                  "See more at https://github.com/poanetwork/posdao-contracts/blob/master/contracts/TxPriority.sol",
-            DefaultValue = "null")]
+    [ConfigItem(Description = "The address of the transaction priority contract to use when selecting transactions from the transaction pool.",
+        DefaultValue = "null")]
 
-        string TxPriorityContractAddress { get; set; }
+    string TxPriorityContractAddress { get; set; }
 
-        [ConfigItem(Description = "If set then transaction priority rules are used when selecting transactions from transaction pool. This has higher priority then on chain contract rules. " +
-                                  "See more at contract details https://github.com/poanetwork/posdao-contracts/blob/master/contracts/TxPriority.sol",
-            DefaultValue = "null")]
-        string TxPriorityConfigFilePath { get; set; }
-    }
+    [ConfigItem(Description = "The path to the transaction priority rules file to use when selecting transactions from the transaction pool.",
+        DefaultValue = "null")]
+    string TxPriorityConfigFilePath { get; set; }
 }

@@ -15,7 +15,6 @@ using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Consensus.Validators;
-using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
@@ -28,9 +27,7 @@ using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
-using Nethermind.State.Repositories;
 using Nethermind.Stats;
-using Nethermind.Db.Blooms;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Synchronization.Blocks;
 using Nethermind.Synchronization.ParallelSync;
@@ -43,6 +40,7 @@ using NUnit.Framework;
 using BlockTree = Nethermind.Blockchain.BlockTree;
 using Nethermind.Synchronization.SnapSync;
 using Nethermind.Config;
+using Nethermind.Specs.ChainSpecStyle;
 
 namespace Nethermind.Synchronization.Test
 {
@@ -249,11 +247,8 @@ namespace Nethermind.Synchronization.Test
                 new(ConstantinopleFix.Instance, MainnetSpecProvider.Instance.NetworkId, MainnetSpecProvider.Instance.ChainId);
 
             IDbProvider dbProvider = TestMemDbProvider.Init();
-            IDb blockDb = dbProvider.BlocksDb;
-            IDb headerDb = dbProvider.HeadersDb;
-            IDb blockInfoDb = dbProvider.BlockInfosDb;
             IDb codeDb = dbProvider.CodeDb;
-            MemColumnsDb<StateColumns> stateDb = new();
+            MemDb stateDb = new();
 
             TrieStore trieStore = new(stateDb, LimboLogs.Instance);
             StateReader stateReader = new(trieStore, codeDb, logManager);
@@ -266,13 +261,17 @@ namespace Nethermind.Synchronization.Test
             InMemoryReceiptStorage receiptStorage = new();
 
             EthereumEcdsa ecdsa = new(specProvider.ChainId, logManager);
-            BlockTree tree = new(blockDb, headerDb, blockInfoDb, new ChainLevelInfoRepository(blockInfoDb),
-                specProvider, NullBloomStorage.Instance, logManager);
+            BlockTree tree = Build.A.BlockTree().WithoutSettingHead.TestObject;
             ITransactionComparerProvider transactionComparerProvider =
                 new TransactionComparerProvider(specProvider, tree);
 
-            TxPool.TxPool txPool = new(ecdsa, new ChainHeadInfoProvider(specProvider, tree, stateReader),
-                new TxPoolConfig(), new TxValidator(specProvider.ChainId), logManager, transactionComparerProvider.GetDefaultComparer());
+            TxPool.TxPool txPool = new(ecdsa,
+                new BlobTxStorage(),
+                new ChainHeadInfoProvider(specProvider, tree, stateReader),
+                new TxPoolConfig(),
+                new TxValidator(specProvider.ChainId),
+                logManager,
+                transactionComparerProvider.GetDefaultComparer());
             BlockhashProvider blockhashProvider = new(tree, LimboLogs.Instance);
             VirtualMachine virtualMachine = new(blockhashProvider, specProvider, logManager);
 
@@ -342,24 +341,13 @@ namespace Nethermind.Synchronization.Test
                 new BlocksConfig(),
                 logManager);
 
-            ProgressTracker progressTracker = new(tree, dbProvider.StateDb, LimboLogs.Instance);
-            SnapProvider snapProvider = new(progressTracker, dbProvider, LimboLogs.Instance);
-
-            SyncProgressResolver resolver = new(
-                tree, receiptStorage, stateDb, NullTrieNodeResolver.Instance, progressTracker, syncConfig, logManager);
             TotalDifficultyBetterPeerStrategy bestPeerStrategy = new(LimboLogs.Instance);
-            MultiSyncModeSelector selector = new(resolver, syncPeerPool, syncConfig, No.BeaconSync, bestPeerStrategy, logManager);
             Pivot pivot = new(syncConfig);
-            SyncReport syncReport = new(syncPeerPool, nodeStatsManager, selector, syncConfig, pivot, LimboLogs.Instance);
             BlockDownloaderFactory blockDownloaderFactory = new(
-            MainnetSpecProvider.Instance,
-                tree,
-                NullReceiptStorage.Instance,
+                MainnetSpecProvider.Instance,
                 blockValidator,
                 sealValidator,
-                syncPeerPool,
                 new TotalDifficultyBetterPeerStrategy(LimboLogs.Instance),
-                syncReport,
                 logManager);
             Synchronizer synchronizer = new(
                 dbProvider,
@@ -368,15 +356,18 @@ namespace Nethermind.Synchronization.Test
                 NullReceiptStorage.Instance,
                 syncPeerPool,
                 nodeStatsManager,
-                StaticSelector.Full,
                 syncConfig,
-                snapProvider,
                 blockDownloaderFactory,
                 pivot,
-                syncReport,
+                Substitute.For<IProcessExitSource>(),
+                trieStore.AsReadOnly(),
+                bestPeerStrategy,
+                new ChainSpec(),
                 logManager);
+
+            ISyncModeSelector selector = synchronizer.SyncModeSelector;
             SyncServer syncServer = new(
-                trieStore,
+                trieStore.AsKeyValueStore(),
                 codeDb,
                 tree,
                 receiptStorage,

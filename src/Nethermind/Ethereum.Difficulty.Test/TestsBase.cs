@@ -7,7 +7,6 @@ using System.Globalization;
 using System.Linq;
 using System.Numerics;
 using Ethereum.Test.Base;
-using Nethermind.Consensus;
 using Nethermind.Consensus.Ethash;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -63,7 +62,7 @@ namespace Ethereum.Difficulty.Test
 
         protected static DifficultyTests ToTest(string fileName, string name, DifficultyTestHexJson json)
         {
-            Keccak noUnclesHash = Keccak.OfAnEmptySequenceRlp;
+            Hash256 noUnclesHash = Keccak.OfAnEmptySequenceRlp;
 
             return new DifficultyTests(
                 fileName,
@@ -73,7 +72,7 @@ namespace Ethereum.Difficulty.Test
                 (ulong)ToUInt256(json.CurrentTimestamp),
                 (long)ToUInt256(json.CurrentBlockNumber),
                 ToUInt256(json.CurrentDifficulty),
-                !string.IsNullOrWhiteSpace(json.ParentUncles) && new Keccak(json.ParentUncles) != noUnclesHash);
+                !string.IsNullOrWhiteSpace(json.ParentUncles) && new Hash256(json.ParentUncles) != noUnclesHash);
         }
 
         protected void RunTest(DifficultyTests test, ISpecProvider specProvider)

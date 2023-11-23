@@ -11,7 +11,7 @@ namespace Nethermind.State;
 
 public interface IStateTree : IPatriciaTree
 {
-    Account? Get(Address address, Keccak? rootHash = null);
+    Account? Get(Address address, Hash256? rootHash = null);
     void Set(Address address, Account? account);
-    Rlp? Set(in ValueKeccak keccak, Account? account);
+    Rlp? Set(in ValueHash256 keccak, Account? account);
 }

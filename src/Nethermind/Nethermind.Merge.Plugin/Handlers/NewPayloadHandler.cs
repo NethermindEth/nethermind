@@ -42,7 +42,7 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
     private readonly IMergeSyncController _mergeSyncController;
     private readonly IInvalidChainTracker _invalidChainTracker;
     private readonly ILogger _logger;
-    private readonly LruCache<ValueKeccak, bool>? _latestBlocks;
+    private readonly LruCache<ValueHash256, bool>? _latestBlocks;
     private readonly ProcessingOptions _defaultProcessingOptions;
     private readonly TimeSpan _timeout;
 
@@ -103,7 +103,7 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
         }
 
         _invalidChainTracker.SetChildParent(block.Hash!, block.ParentHash!);
-        if (_invalidChainTracker.IsOnKnownInvalidChain(block.Hash!, out Keccak? lastValidHash))
+        if (_invalidChainTracker.IsOnKnownInvalidChain(block.Hash!, out Hash256? lastValidHash))
         {
             if (_logger.IsInfo) _logger.Info($"Invalid - block {request} is known to be a part of an invalid chain. The last valid is {lastValidHash}");
             return NewPayloadV1Result.Invalid(lastValidHash, $"Block {request} is known to be a part of an invalid chain.");
@@ -126,6 +126,12 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
         BlockHeader? parentHeader = _blockTree.FindHeader(block.ParentHash!, BlockTreeLookupOptions.DoNotCreateLevelIfMissing);
         if (parentHeader is null)
         {
+            if (!_blockValidator.ValidateOrphanedBlock(block!, out string? error))
+            {
+                if (_logger.IsWarn) _logger.Info($"Invalid block without parent. Result of {requestStr}.");
+                return NewPayloadV1Result.Invalid(null, $"Invalid block without parent: {error}.");
+            }
+
             // possible that headers sync finished before this was called, so blocks in cache weren't inserted
             if (!_beaconSyncStrategy.IsBeaconSyncFinished(parentHeader))
             {
@@ -398,7 +404,7 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
         {
             Status = PayloadStatus.Invalid,
             ValidationError = validationMessage,
-            LatestValidHash = _invalidChainTracker.IsOnKnownInvalidChain(request.BlockHash!, out Keccak? lastValidHash)
+            LatestValidHash = _invalidChainTracker.IsOnKnownInvalidChain(request.BlockHash!, out Hash256? lastValidHash)
                 ? lastValidHash
                 : request.ParentHash
         };
@@ -418,7 +424,7 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
             while (current != null)
             {
                 stack.Push(current);
-                Keccak currentHash = current.Hash!;
+                Hash256 currentHash = current.Hash!;
                 if (currentHash == _beaconPivot.PivotHash || _blockTree.IsKnownBeaconBlock(current.Number, currentHash))
                 {
                     break;

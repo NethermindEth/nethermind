@@ -16,7 +16,6 @@ using Nethermind.Crypto;
 using Nethermind.JsonRpc;
 using NUnit.Framework;
 using FluentAssertions;
-using Nethermind.Core.Eip2930;
 using Nethermind.Evm;
 using Nethermind.Mev.Data;
 using Nethermind.Specs.Forks;
@@ -28,7 +27,7 @@ namespace Nethermind.Mev.Test
     [Ignore("ToDo - it is failing after the merge changes on total difficulty checks in BlockTree and IBlockTree")]
     public partial class MevRpcModuleTests
     {
-        public static IEnumerable<Keccak?> GetHashes(IEnumerable<Transaction> bundle2Txs) => bundle2Txs.Select(t => t.Hash);
+        public static IEnumerable<Hash256?> GetHashes(IEnumerable<Transaction> bundle2Txs) => bundle2Txs.Select(t => t.Hash);
 
         public static class Contracts
         {
@@ -81,9 +80,9 @@ namespace Nethermind.Mev.Test
             }
         }
 
-        private static async Task<Keccak> SendSignedTransaction(TestMevRpcBlockchain chain, Transaction tx)
+        private static async Task<Hash256> SendSignedTransaction(TestMevRpcBlockchain chain, Transaction tx)
         {
-            ResultWrapper<Keccak> result = await chain.EthRpcModule.eth_sendRawTransaction(EncodeTx(tx).Bytes);
+            ResultWrapper<Hash256> result = await chain.EthRpcModule.eth_sendRawTransaction(EncodeTx(tx).Bytes);
             result.Result.Should().Be(Result.Success);
             return result.Data;
         }
@@ -105,7 +104,7 @@ namespace Nethermind.Mev.Test
         private static MevBundle SendBundle(TestMevRpcBlockchain chain, int blockNumber, BundleTransaction[] txs, bool success)
         {
             byte[][] bundleBytes = txs.Select(t => EncodeTx(t).Bytes).ToArray();
-            List<Keccak> revertingTxHashes = txs.Where(tx => tx.CanRevert).Select(tx => tx.Hash!).ToList();
+            List<Hash256> revertingTxHashes = txs.Where(tx => tx.CanRevert).Select(tx => tx.Hash!).ToList();
             MevBundleRpc mevBundleRpc = new() { BlockNumber = blockNumber, Txs = bundleBytes, RevertingTxHashes = revertingTxHashes.Count > 0 ? revertingTxHashes.ToArray() : null };
             ResultWrapper<bool> resultOfBundle = chain.MevRpcModule.eth_sendBundle(mevBundleRpc);
             resultOfBundle.Result.Should().Be(Result.Success);
@@ -116,7 +115,7 @@ namespace Nethermind.Mev.Test
         private static MevMegabundle SendMegabundle(TestMevRpcBlockchain chain, int blockNumber, PrivateKey privateKey, BundleTransaction[] txs, bool success)
         {
             byte[][] bundleBytes = txs.Select(t => EncodeTx(t).Bytes).ToArray();
-            List<Keccak> revertingTxHashes = txs.Where(tx => tx.CanRevert).Select(tx => tx.Hash!).ToList();
+            List<Hash256> revertingTxHashes = txs.Where(tx => tx.CanRevert).Select(tx => tx.Hash!).ToList();
             MevMegabundle mevMegabundle = new(blockNumber, txs, revertingTxHashes.ToArray());
             Signature relaySignature = chain.EthereumEcdsa.Sign(privateKey, mevMegabundle.Hash);
             mevMegabundle.RelaySignature = relaySignature;
@@ -143,7 +142,7 @@ namespace Nethermind.Mev.Test
             Transaction getTx = Build.A.Transaction.WithGasLimit(Contracts.LargeGasLimit).WithGasPrice(1ul).WithTo(contractAddress).WithData(Bytes.FromHexString(Contracts.CallableInvokeGet)).WithValue(0).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
             Transaction setTx = Build.A.Transaction.WithGasLimit(Contracts.LargeGasLimit).WithGasPrice(1ul).WithTo(contractAddress).WithData(Bytes.FromHexString(Contracts.CallableInvokeSet)).WithValue(0).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
             string parameters = $"{{\"txs\":[\"{EncodeTx(setTx).Bytes.ToHexString()}\",\"{EncodeTx(getTx).Bytes.ToHexString()}\"]}}";
-            string result = chain.TestSerializedRequest(chain.MevRpcModule, "eth_callBundle", parameters);
+            string result = await chain.TestSerializedRequest(chain.MevRpcModule, "eth_callBundle", parameters);
             result.Should().Be($"{{\"jsonrpc\":\"2.0\",\"result\":{{\"{setTx.Hash!}\":{{\"value\":\"0x\"}},\"{getTx.Hash!}\":{{\"value\":\"0x000000000000000000000000000000000000000000000000000000000000000f\"}}}},\"id\":67}}");
         }
 
@@ -156,7 +155,7 @@ namespace Nethermind.Mev.Test
             Transaction setTx = Build.A.Transaction.WithGasLimit(Contracts.LargeGasLimit).WithGasPrice(1ul).WithTo(contractAddress).WithData(Bytes.FromHexString(Contracts.CallableInvokeSet)).WithValue(0).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
             string parameters = $"{{\"txs\":[\"{EncodeTx(setTx).Bytes.ToHexString()}\",\"{EncodeTx(getTx).Bytes.ToHexString()}\"],\"blockNumber\":0x1}}";
             long headNumber = chain.BlockTree.Head!.Number;
-            chain.TestSerializedRequest(chain.MevRpcModule, "eth_callBundle", parameters);
+            await chain.TestSerializedRequest(chain.MevRpcModule, "eth_callBundle", parameters);
             chain.BlockTree.Head!.Number.Should().Be(headNumber);
         }
 
@@ -167,7 +166,7 @@ namespace Nethermind.Mev.Test
             Address reverterContractAddress = await Contracts.Deploy(chain, Contracts.ReverterCode);
             Transaction failedTx = Build.A.Transaction.WithGasLimit(Contracts.LargeGasLimit).WithGasPrice(1ul).WithTo(reverterContractAddress).WithData(Bytes.FromHexString(Contracts.ReverterInvokeFail)).SignedAndResolved(TestItem.PrivateKeyC).TestObject;
             string parameters = $"{{\"txs\":[\"{EncodeTx(failedTx).Bytes.ToHexString()}\"]}}";
-            string result = chain.TestSerializedRequest(chain.MevRpcModule, "eth_callBundle", parameters);
+            string result = await chain.TestSerializedRequest(chain.MevRpcModule, "eth_callBundle", parameters);
             result.Should().Be($"{{\"jsonrpc\":\"2.0\",\"result\":{{\"{failedTx.Hash!}\":{{\"error\":\"0x\"}}}},\"id\":67}}");
         }
 
@@ -181,7 +180,7 @@ namespace Nethermind.Mev.Test
             Transaction getTx = Build.A.Transaction.WithGasLimit(Contracts.LargeGasLimit).WithGasPrice(1ul).WithTo(contractAddress).WithData(Bytes.FromHexString(Contracts.CallableInvokeGet)).WithValue(0).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
             Transaction setTx = Build.A.Transaction.WithGasLimit(Contracts.LargeGasLimit).WithGasPrice(1ul).WithTo(contractAddress).WithData(Bytes.FromHexString(Contracts.CallableInvokeSet)).WithValue(0).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
             string parameters = $"{{\"txs\":[\"{EncodeTx(setTx).Bytes.ToHexString()}\",\"{EncodeTx(getTx).Bytes.ToHexString()}\"],\"blockNumber\":\"0x4\"}}";
-            string result = chain.TestSerializedRequest(chain.MevRpcModule, "eth_sendBundle", parameters);
+            string result = await chain.TestSerializedRequest(chain.MevRpcModule, "eth_sendBundle", parameters);
             result.Should().Be($"{{\"jsonrpc\":\"2.0\",\"result\":true,\"id\":67}}");
         }
 
@@ -209,7 +208,7 @@ namespace Nethermind.Mev.Test
 
             string parameters = $"{{\"txs\":[\"{EncodeTx(setTx).Bytes.ToHexString()}\",\"{EncodeTx(getTx).Bytes.ToHexString()}\"]," +
                                 $"\"blockNumber\":\"0x4\",\"relaySignature\":\"{relaySignature}\"}}";
-            string result = chain.TestSerializedRequest(chain.MevRpcModule, "eth_sendMegabundle", parameters);
+            string result = await chain.TestSerializedRequest(chain.MevRpcModule, "eth_sendMegabundle", parameters);
             result.Should().Be($"{{\"jsonrpc\":\"2.0\",\"result\":true,\"id\":67}}");
         }
 

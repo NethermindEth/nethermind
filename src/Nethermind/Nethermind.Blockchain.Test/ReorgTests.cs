@@ -2,16 +2,13 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
-using System.Threading;
 using FluentAssertions;
 using Nethermind.Blockchain.Receipts;
-using Nethermind.Blockchain.Spec;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus.Comparers;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
-using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
@@ -19,7 +16,6 @@ using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Db.Blooms;
 using Nethermind.Evm;
-using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.Specs;
@@ -28,7 +24,6 @@ using Nethermind.State.Repositories;
 using Nethermind.State.Witnesses;
 using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
-using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test
@@ -36,8 +31,8 @@ namespace Nethermind.Blockchain.Test
     [TestFixture]
     public class ReorgTests
     {
-        private BlockchainProcessor _blockchainProcessor;
-        private BlockTree _blockTree;
+        private BlockchainProcessor _blockchainProcessor = null!;
+        private BlockTree _blockTree = null!;
 
         [SetUp]
         public void Setup()
@@ -46,21 +41,19 @@ namespace Nethermind.Blockchain.Test
             TrieStore trieStore = new(new MemDb(), LimboLogs.Instance);
             WorldState stateProvider = new(trieStore, memDbProvider.CodeDb, LimboLogs.Instance);
             StateReader stateReader = new(trieStore, memDbProvider.CodeDb, LimboLogs.Instance);
-            ChainLevelInfoRepository chainLevelInfoRepository = new(memDbProvider);
             ISpecProvider specProvider = MainnetSpecProvider.Instance;
-            IBloomStorage bloomStorage = NullBloomStorage.Instance;
             EthereumEcdsa ecdsa = new(1, LimboLogs.Instance);
             ITransactionComparerProvider transactionComparerProvider =
                 new TransactionComparerProvider(specProvider, _blockTree);
-            _blockTree = new BlockTree(
-                memDbProvider,
-                chainLevelInfoRepository,
-                specProvider,
-                bloomStorage,
-                new SyncConfig(),
-                LimboLogs.Instance);
+
+            _blockTree = Build.A.BlockTree()
+                .WithoutSettingHead
+                .WithSpecProvider(specProvider)
+                .TestObject;
+
             TxPool.TxPool txPool = new(
                 ecdsa,
+                new BlobTxStorage(),
                 new ChainHeadInfoProvider(specProvider, _blockTree, stateProvider),
                 new TxPoolConfig(),
                 new TxValidator(specProvider.ChainId),
@@ -128,8 +121,8 @@ namespace Nethermind.Blockchain.Test
             Assert.That(() => _blockTree.Head, Is.EqualTo(block2B).After(10000, 500));
 
             events.Should().HaveCount(6);
-            events[4].Hash.Should().Be(block1B.Hash);
-            events[5].Hash.Should().Be(block2B.Hash);
+            events[4].Hash.Should().Be(block1B.Hash!);
+            events[5].Hash.Should().Be(block2B.Hash!);
         }
     }
 }

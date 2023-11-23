@@ -12,10 +12,8 @@ using Nethermind.Consensus.AuRa.Validators;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Logging;
-using Nethermind.Serialization.Rlp;
 using Nethermind.State.Repositories;
 using NSubstitute;
 using NUnit.Framework;
@@ -52,7 +50,7 @@ namespace Nethermind.AuRa.Test
             finalizationManager.LastFinalizedBlockLevel.Should().Be(1);
         }
 
-        private void FinalizeToLevel(long upperLevel, ChainLevelInfoRepository chainLevelInfoRepository)
+        private void FinalizeToLevel(long upperLevel, IChainLevelInfoRepository chainLevelInfoRepository)
         {
             for (long i = 0; i <= upperLevel; i++)
             {
@@ -102,7 +100,7 @@ namespace Nethermind.AuRa.Test
             int start = 0;
             for (int i = start; i < chainLength; i++)
             {
-                Keccak blockHash = blockTreeBuilder.ChainLevelInfoRepository.LoadLevel(i).MainChainBlock.BlockHash;
+                Hash256 blockHash = blockTreeBuilder.ChainLevelInfoRepository.LoadLevel(i).MainChainBlock.BlockHash;
                 Block? block = blockTreeBuilder.TestObject.FindBlock(blockHash, BlockTreeLookupOptions.None);
                 _blockProcessor.BlockProcessed += Raise.EventWith(new BlockProcessedEventArgs(block, Array.Empty<TxReceipt>()));
             }
@@ -133,7 +131,7 @@ namespace Nethermind.AuRa.Test
 
             void ProcessBlock(BlockTreeBuilder blockTreeBuilder1, int level, int index)
             {
-                Keccak blockHash = blockTreeBuilder1.ChainLevelInfoRepository.LoadLevel(level).BlockInfos[index].BlockHash;
+                Hash256 blockHash = blockTreeBuilder1.ChainLevelInfoRepository.LoadLevel(level).BlockInfos[index].BlockHash;
                 Block? block = blockTreeBuilder1.TestObject.FindBlock(blockHash, BlockTreeLookupOptions.None);
                 _blockProcessor.BlockProcessed += Raise.EventWith(new BlockProcessedEventArgs(block, Array.Empty<TxReceipt>()));
             }

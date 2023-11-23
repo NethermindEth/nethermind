@@ -34,25 +34,33 @@ namespace Nethermind.Db
                 set => _wrapped[key] = Compress(value);
             }
 
-            public IBatch StartBatch() => new Batch(_wrapped.StartBatch());
+            public IWriteBatch StartWriteBatch() => new WriteBatch(_wrapped.StartWriteBatch());
 
-            private class Batch : IBatch
+            private class WriteBatch : IWriteBatch
             {
-                private readonly IBatch _wrapped;
+                private readonly IWriteBatch _wrapped;
 
-                public Batch(IBatch wrapped) => _wrapped = wrapped;
+                public WriteBatch(IWriteBatch wrapped) => _wrapped = wrapped;
 
                 public void Dispose() => _wrapped.Dispose();
 
                 public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None)
                     => _wrapped.Set(key, Compress(value), flags);
 
-                public byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
-                    => Decompress(_wrapped.Get(key, flags));
+                public void PutSpan(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags flags = WriteFlags.None)
+                {
+                    _wrapped.PutSpan(key, Compress(value, stackalloc byte[value.Length]), flags);
+                }
+
+                public void DeleteByRange(Span<byte> startKey, Span<byte> endKey)
+                {
+                    _wrapped.DeleteByRange(startKey, endKey);
+                }
+
+                public bool PreferWriteByArray => _wrapped.PreferWriteByArray;
 
                 public byte[]? this[ReadOnlySpan<byte> key]
                 {
-                    get => Decompress(_wrapped[key]);
                     set => _wrapped[key] = Compress(value);
                 }
             }
@@ -74,25 +82,29 @@ namespace Nethermind.Db
 
             private static byte[]? Compress(byte[]? bytes)
             {
-                if (bytes == null)
+                if (bytes == null) return null;
+                return Compress(bytes, stackalloc byte[bytes.Length]).ToArray();
+            }
+
+            private static ReadOnlySpan<byte> Compress(ReadOnlySpan<byte> bytes, Span<byte> compressed)
+            {
+                if (bytes.IsNull())
                     return bytes;
 
                 // no suffix found, return as is
-                if (bytes.AsSpan().EndsWith(EmptyCodeHashStorageRoot) == false)
+                if (bytes.EndsWith(EmptyCodeHashStorageRoot) == false)
                 {
                     return bytes;
                 }
 
                 // compression, write [preamble, bytes[0], bytes[1], ...]
                 int storedLength = bytes.Length - EmptyCodeHashStorageRoot.Length;
-                byte[] compressed = new byte[storedLength + PreambleLength];
-
                 compressed[PreambleIndex] = PreambleValue;
+                bytes.Slice(0, storedLength).CopyTo(compressed.Slice(PreambleLength));
 
-                bytes.AsSpan(0, storedLength).CopyTo(compressed.AsSpan(PreambleLength));
-
-                return compressed;
+                return compressed.Slice(0, storedLength + PreambleLength);
             }
+
 
             private static byte[]? Decompress(byte[]? bytes)
             {
@@ -144,6 +156,21 @@ namespace Nethermind.Db
 
             public byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
                 => Decompress(_wrapped.Get(key, flags));
+
+
+            public void PutSpan(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags flags = WriteFlags.None)
+            {
+                _wrapped.PutSpan(key, Compress(value, stackalloc byte[value.Length]), flags);
+            }
+
+            public Span<byte> GetSpan(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
+            {
+                // Can't properly implement span for reading. As the decompressed span is different from the span
+                // from DB, it would crash on DangerouslyReleaseMemory.
+                return Decompress(Get(key, flags));
+            }
+
+            public bool PreferWriteByArray => _wrapped.PreferWriteByArray;
 
             public void Tune(ITunableDb.TuneType type)
             {

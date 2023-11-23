@@ -1,9 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Collections.Generic;
-using System.IO;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
@@ -20,7 +18,7 @@ namespace Nethermind.Consensus.Clique
             // Block number
             long number = (long)rlpStream.DecodeUInt256();
             // Hash
-            Keccak hash = rlpStream.DecodeKeccak();
+            Hash256 hash = rlpStream.DecodeKeccak();
             // Signers
             SortedList<Address, long> signers = DecodeSigners(rlpStream);
             // Votes

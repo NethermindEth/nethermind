@@ -6,7 +6,6 @@ using System.Collections.Generic;
 using System.IO;
 
 using Nethermind.Core.Extensions;
-using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.IO;
 using Nethermind.Logging;
 using NUnit.Framework;
@@ -38,7 +37,7 @@ namespace Nethermind.Db.Test
                 dict[key] = value;
             }
 
-            using (filePublicKeyDb.StartBatch())
+            using (filePublicKeyDb.StartWriteBatch())
             {
                 foreach (var kv in dict)
                 {

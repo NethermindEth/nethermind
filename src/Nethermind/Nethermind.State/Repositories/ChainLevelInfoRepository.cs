@@ -18,11 +18,6 @@ namespace Nethermind.State.Repositories
 
         private readonly IDb _blockInfoDb;
 
-        public ChainLevelInfoRepository(IDbProvider dbProvider)
-            : this(dbProvider.BlockInfosDb)
-        {
-        }
-
         public ChainLevelInfoRepository(IDb blockInfoDb)
         {
             _blockInfoDb = blockInfoDb ?? throw new ArgumentNullException(nameof(blockInfoDb));

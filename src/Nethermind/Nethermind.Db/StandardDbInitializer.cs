@@ -14,7 +14,6 @@ namespace Nethermind.Db
     public class StandardDbInitializer : RocksDbInitializer
     {
         private readonly IFileSystem _fileSystem;
-        private readonly bool _fullPruning;
         private readonly ILogManager _logManager;
 
         public StandardDbInitializer(
@@ -22,31 +21,30 @@ namespace Nethermind.Db
             IRocksDbFactory? rocksDbFactory,
             IMemDbFactory? memDbFactory,
             ILogManager logManager,
-            IFileSystem? fileSystem = null,
-            bool fullPruning = false)
+            IFileSystem? fileSystem = null)
             : base(dbProvider, rocksDbFactory, memDbFactory)
         {
             _fileSystem = fileSystem ?? new FileSystem();
-            _fullPruning = fullPruning;
             _logManager = logManager;
         }
 
-        public void InitStandardDbs(bool useReceiptsDb)
+        public void InitStandardDbs(bool useReceiptsDb, bool useBlobsDb = true)
         {
-            RegisterAll(useReceiptsDb);
+            RegisterAll(useReceiptsDb, useBlobsDb);
             InitAll();
         }
 
-        public async Task InitStandardDbsAsync(bool useReceiptsDb)
+        public async Task InitStandardDbsAsync(bool useReceiptsDb, bool useBlobsDb = true)
         {
-            RegisterAll(useReceiptsDb);
+            RegisterAll(useReceiptsDb, useBlobsDb);
             await InitAllAsync();
         }
 
-        private void RegisterAll(bool useReceiptsDb)
+        private void RegisterAll(bool useReceiptsDb, bool useBlobsDb)
         {
             RegisterDb(BuildRocksDbSettings(DbNames.Blocks, () => Metrics.BlocksDbReads++, () => Metrics.BlocksDbWrites++));
             RegisterDb(BuildRocksDbSettings(DbNames.Headers, () => Metrics.HeaderDbReads++, () => Metrics.HeaderDbWrites++));
+            RegisterDb(BuildRocksDbSettings(DbNames.BlockNumbers, () => Metrics.BlockNumberDbReads++, () => Metrics.BlockNumberDbWrites++));
             RegisterDb(BuildRocksDbSettings(DbNames.BlockInfos, () => Metrics.BlockInfosDbReads++, () => Metrics.BlockInfosDbWrites++));
 
             RocksDbSettings stateDbSettings = BuildRocksDbSettings(DbNames.State, () => Metrics.StateDbReads++, () => Metrics.StateDbWrites++);
@@ -58,7 +56,7 @@ namespace Nethermind.Db
                 () => Interlocked.Increment(ref Metrics.StateDbInPruningWrites)));
 
             RocksDbSettings pathStateDbSettings = BuildRocksDbSettings(DbNames.PathState, () => Metrics.StateDbReads++, () => Metrics.StateDbWrites++);
-            RegisterCustomDb(DbNames.PathState, () => new ByPathStateDb(
+            RegisterCustomColumnDb(DbNames.PathState, () => new ByPathStateDb(
                 pathStateDbSettings,
                 PersistedDb ? RocksDbFactory : new MemDbFactoryToRocksDbAdapter(MemDbFactory), _logManager));
 
@@ -72,9 +70,13 @@ namespace Nethermind.Db
             }
             else
             {
-                RegisterCustomDb(DbNames.Receipts, () => new ReadOnlyColumnsDb<ReceiptsColumns>(new MemColumnsDb<ReceiptsColumns>(), false));
+                RegisterCustomColumnDb(DbNames.Receipts, () => new ReadOnlyColumnsDb<ReceiptsColumns>(new MemColumnsDb<ReceiptsColumns>(), false));
             }
             RegisterDb(BuildRocksDbSettings(DbNames.Metadata, () => Metrics.MetadataDbReads++, () => Metrics.MetadataDbWrites++));
+            if (useBlobsDb)
+            {
+                RegisterColumnsDb<BlobTxsColumns>(BuildRocksDbSettings(DbNames.BlobTransactions, () => Metrics.BlobTransactionsDbReads++, () => Metrics.BlobTransactionsDbWrites++));
+            }
         }
 
         private RocksDbSettings BuildRocksDbSettings(string dbName, Action updateReadsMetrics, Action updateWriteMetrics, bool deleteOnStart = false)

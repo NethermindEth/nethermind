@@ -3,7 +3,6 @@
 
 using System.Threading.Tasks;
 using Nethermind.Blockchain.FullPruning;
-using Newtonsoft.Json;
 
 namespace Nethermind.JsonRpc.Modules.Admin
 {

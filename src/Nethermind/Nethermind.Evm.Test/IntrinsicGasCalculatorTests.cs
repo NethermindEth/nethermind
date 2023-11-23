@@ -49,7 +49,7 @@ namespace Nethermind.Evm.Test
         [TestCaseSource(nameof(AccessTestCaseSource))]
         public void Intrinsic_cost_is_calculated_properly((List<object> orderQueue, long Cost) testCase)
         {
-            AccessListBuilder accessListBuilder = new();
+            AccessList.Builder accessListBuilder = new();
             foreach (object o in testCase.orderQueue)
             {
                 if (o is Address address)
@@ -62,7 +62,7 @@ namespace Nethermind.Evm.Test
                 }
             }
 
-            AccessList accessList = accessListBuilder.ToAccessList();
+            AccessList accessList = accessListBuilder.Build();
             Transaction tx = Build.A.Transaction.SignedAndResolved().WithAccessList(accessList).TestObject;
 
             void Test(IReleaseSpec spec, bool supportsAccessLists)

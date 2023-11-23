@@ -36,7 +36,7 @@ namespace Nethermind.Synchronization.Test.FastSync
                 Blocks = new Block[_pivotNumber + 1];
                 Blocks[0] = Build.A.Block.Genesis.TestObject;
 
-                Block parent = Blocks[0];
+                Block parent = Blocks[0]!;
                 for (int blockNumber = 1; blockNumber <= _pivotNumber; blockNumber++)
                 {
                     Block block = Build.A.Block
@@ -56,34 +56,33 @@ namespace Nethermind.Synchronization.Test.FastSync
                     parent = block;
                 }
 
-                BlocksByHash = Blocks.Where(b => b is not null).ToDictionary(b => b.Hash!, b => b);
+                BlocksByHash = Blocks
+                    .Where(b => b is not null)
+                    .ToDictionary(b => b!.Hash!, b => b!);
             }
 
-            public Dictionary<Keccak, Block> BlocksByHash;
-
-            public Block[] Blocks;
-
-            public Block LowestInsertedBody;
+            public Dictionary<Hash256, Block> BlocksByHash { get; }
+            public Block?[] Blocks { get; }
+            public Block? LowestInsertedBody { get; }
         }
 
-        private static ISpecProvider _specProvider;
-        private IReceiptStorage _receiptStorage;
-        private ISyncPeerPool _syncPeerPool;
-        private ISyncModeSelector _selector;
-        private ReceiptsSyncFeed _feed;
-        private ISyncConfig _syncConfig;
-        private ISyncReport _syncReport;
-        private IBlockTree _blockTree;
+        private static readonly ISpecProvider _specProvider;
+        private IReceiptStorage _receiptStorage = null!;
+        private ISyncPeerPool _syncPeerPool = null!;
+        private ReceiptsSyncFeed _feed = null!;
+        private ISyncConfig _syncConfig = null!;
+        private ISyncReport _syncReport = null!;
+        private IBlockTree _blockTree = null!;
 
-        private static long _pivotNumber = 1024;
+        private static readonly long _pivotNumber = 1024;
 
-        private static Scenario _1024BodiesWithOneTxEach;
-        private static Scenario _256BodiesWithOneTxEach;
-        private static Scenario _64BodiesWithOneTxEach;
-        private static Scenario _64BodiesWithOneTxEachFollowedByEmpty;
+        private static readonly Scenario _1024BodiesWithOneTxEach;
+        private static readonly Scenario _256BodiesWithOneTxEach;
+        private static readonly Scenario _64BodiesWithOneTxEach;
+        private static readonly Scenario _64BodiesWithOneTxEachFollowedByEmpty;
 
-        private MeasuredProgress _measuredProgress;
-        private MeasuredProgress _measuredProgressQueue;
+        private MeasuredProgress _measuredProgress = null!;
+        private MeasuredProgress _measuredProgressQueue = null!;
 
         static ReceiptsSyncFeedTests()
         {
@@ -112,10 +111,12 @@ namespace Nethermind.Synchronization.Test.FastSync
             _syncReport.FastBlocksReceipts.Returns(_measuredProgress);
             _syncReport.ReceiptsInQueue.Returns(_measuredProgressQueue);
 
-            _selector = Substitute.For<ISyncModeSelector>();
+            _feed = CreateFeed();
+        }
 
-            _feed = new ReceiptsSyncFeed(
-                _selector,
+        private ReceiptsSyncFeed CreateFeed()
+        {
+            return new ReceiptsSyncFeed(
                 _specProvider,
                 _blockTree,
                 _receiptStorage,
@@ -131,7 +132,6 @@ namespace Nethermind.Synchronization.Test.FastSync
             _syncConfig = new SyncConfig { FastBlocks = false };
             Assert.Throws<InvalidOperationException>(
                 () => _feed = new ReceiptsSyncFeed(
-                    _selector,
                     _specProvider,
                     _blockTree,
                     _receiptStorage,
@@ -145,7 +145,6 @@ namespace Nethermind.Synchronization.Test.FastSync
         public async Task Should_finish_on_start_when_receipts_not_stored()
         {
             _feed = new ReceiptsSyncFeed(
-                _selector,
                 _specProvider,
                 _blockTree,
                 NullReceiptStorage.Instance,
@@ -153,8 +152,9 @@ namespace Nethermind.Synchronization.Test.FastSync
                 _syncConfig,
                 _syncReport,
                 LimboLogs.Instance);
+            _feed.InitializeFeed();
 
-            var request = await _feed.PrepareRequest();
+            ReceiptsSyncBatch? request = await _feed.PrepareRequest();
             request.Should().BeNull();
             _feed.CurrentState.Should().Be(SyncFeedState.Finished);
         }
@@ -181,20 +181,15 @@ namespace Nethermind.Synchronization.Test.FastSync
         public void When_activating_should_emit_an_event()
         {
             SyncFeedState state = SyncFeedState.Dormant;
-            _feed.StateChanged += (s, e) => state = e.NewState;
+            _feed.StateChanged += (_, e) => state = e.NewState;
             _feed.Activate();
             state.Should().Be(SyncFeedState.Active);
         }
 
         [Test]
-        public void Feed_id_should_not_be_zero()
-        {
-            _feed.FeedId.Should().NotBe(0);
-        }
-
-        [Test]
         public void When_no_bodies_downloaded_then_request_will_be_empty()
         {
+            _feed.InitializeFeed();
             _feed.PrepareRequest().Result.Should().BeNull();
         }
 
@@ -240,10 +235,9 @@ namespace Nethermind.Synchronization.Test.FastSync
         {
             _syncConfig = syncConfig;
             _syncConfig.PivotNumber = _pivotNumber.ToString();
-            _syncConfig.PivotHash = scenario.Blocks.Last().Hash?.ToString();
+            _syncConfig.PivotHash = scenario.Blocks.Last()?.Hash?.ToString();
 
             _feed = new ReceiptsSyncFeed(
-                _selector,
                 _specProvider,
                 _blockTree,
                 _receiptStorage,
@@ -251,33 +245,36 @@ namespace Nethermind.Synchronization.Test.FastSync
                 _syncConfig,
                 _syncReport,
                 LimboLogs.Instance);
+            _feed.InitializeFeed();
 
-            _blockTree.Genesis.Returns(scenario.Blocks[0].Header);
+            _blockTree.Genesis.Returns(scenario.Blocks[0]!.Header);
             _blockTree.FindCanonicalBlockInfo(Arg.Any<long>()).Returns(
                 ci =>
                 {
-                    Block block = scenario.Blocks[ci.Arg<long>()];
+                    Block? block = scenario.Blocks[ci.Arg<long>()];
                     if (block is null)
                     {
                         return null;
                     }
 
-                    BlockInfo blockInfo = new(block.Hash!, block.TotalDifficulty ?? 0);
-                    blockInfo.BlockNumber = ci.Arg<long>();
+                    BlockInfo blockInfo = new(block.Hash!, block.TotalDifficulty ?? 0)
+                    {
+                        BlockNumber = ci.Arg<long>(),
+                    };
                     return blockInfo;
                 });
 
             _blockTree.FindBlock(Keccak.Zero, BlockTreeLookupOptions.None)
                 .ReturnsForAnyArgs(ci =>
-                    scenario.BlocksByHash.TryGetValue(ci.Arg<Keccak>(), out Block? value) ? value : null);
+                    scenario.BlocksByHash.TryGetValue(ci.Arg<Hash256>(), out Block? value) ? value : null);
 
             _blockTree.FindHeader(Keccak.Zero, BlockTreeLookupOptions.None)
                 .ReturnsForAnyArgs(ci =>
-                    scenario.BlocksByHash.TryGetValue(ci.Arg<Keccak>(), out Block? value) ? value.Header
+                    scenario.BlocksByHash.TryGetValue(ci.Arg<Hash256>(), out Block? value) ? value.Header
                         : null);
 
             _receiptStorage.LowestInsertedReceiptBlockNumber.Returns((long?)null);
-            _blockTree.LowestInsertedBodyNumber.Returns(scenario.LowestInsertedBody.Number);
+            _blockTree.LowestInsertedBodyNumber.Returns(scenario.LowestInsertedBody!.Number);
         }
 
         [Test]
@@ -348,5 +345,51 @@ namespace Nethermind.Synchronization.Test.FastSync
 
             _feed.CurrentState.Should().Be(SyncFeedState.Finished);
         }
+
+        [Test]
+        public void Is_fast_block_receipts_finished_returns_false_when_receipts_not_downloaded()
+        {
+            _blockTree = Substitute.For<IBlockTree>();
+            _syncConfig = new SyncConfig()
+            {
+                FastBlocks = true,
+                FastSync = true,
+                DownloadBodiesInFastSync = true,
+                DownloadReceiptsInFastSync = true,
+                PivotNumber = "1",
+            };
+
+            _blockTree.LowestInsertedHeader.Returns(Build.A.BlockHeader.WithNumber(1).WithStateRoot(TestItem.KeccakA).TestObject);
+            _blockTree.LowestInsertedBodyNumber.Returns(1);
+
+            _receiptStorage = Substitute.For<IReceiptStorage>();
+            _receiptStorage.LowestInsertedReceiptBlockNumber.Returns(2);
+
+            ReceiptsSyncFeed feed = CreateFeed();
+            Assert.False(feed.IsFinished);
+        }
+
+        [Test]
+        public void Is_fast_block_bodies_finished_returns_true_when_bodies_not_downloaded_and_we_do_not_want_to_download_bodies()
+        {
+            _blockTree = Substitute.For<IBlockTree>();
+            _syncConfig = new SyncConfig()
+            {
+                FastBlocks = true,
+                DownloadBodiesInFastSync = false,
+                DownloadReceiptsInFastSync = true,
+                PivotNumber = "1",
+            };
+
+            _blockTree.LowestInsertedHeader.Returns(Build.A.BlockHeader.WithNumber(1).WithStateRoot(TestItem.KeccakA).TestObject);
+            _blockTree.LowestInsertedBodyNumber.Returns(2);
+            _receiptStorage = Substitute.For<IReceiptStorage>();
+            _receiptStorage.LowestInsertedReceiptBlockNumber.Returns(1);
+
+            ReceiptsSyncFeed feed = CreateFeed();
+            feed.InitializeFeed();
+            Assert.True(feed.IsFinished);
+        }
+
     }
 }

@@ -3,14 +3,12 @@
 
 using System.Threading;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
-using Nethermind.Int256;
 
 namespace Nethermind.Evm.Tracing
 {
-    public class AlwaysCancelBlockTracer : IBlockTracer
+    public class AlwaysCancelBlockTracer : BlockTracer
     {
-        private static AlwaysCancelBlockTracer _instance;
+        private static AlwaysCancelBlockTracer? _instance;
 
         private AlwaysCancelBlockTracer()
         {
@@ -21,27 +19,11 @@ namespace Nethermind.Evm.Tracing
             get { return LazyInitializer.EnsureInitialized(ref _instance, () => new AlwaysCancelBlockTracer()); }
         }
 
-        public bool IsTracingRewards => true;
+        public override bool IsTracingRewards => true;
 
-        public void ReportReward(Address author, string rewardType, UInt256 rewardValue)
-        {
-        }
-
-        public void StartNewBlockTrace(Block block)
-        {
-        }
-
-        public ITxTracer StartNewTxTrace(Transaction? tx)
+        public override ITxTracer StartNewTxTrace(Transaction? tx)
         {
             return AlwaysCancelTxTracer.Instance;
-        }
-
-        public void EndTxTrace()
-        {
-        }
-
-        public void EndBlockTrace()
-        {
         }
     }
 }

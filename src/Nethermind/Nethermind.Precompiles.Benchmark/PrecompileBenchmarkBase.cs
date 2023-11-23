@@ -10,7 +10,6 @@ using BenchmarkDotNet.Attributes;
 using Nethermind.Core.Extensions;
 using Nethermind.Evm.Precompiles;
 using Nethermind.Serialization.Json;
-using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 
 namespace Nethermind.Precompiles.Benchmark

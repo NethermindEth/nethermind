@@ -6,7 +6,6 @@ using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using Nethermind.Core.Resettables;
 using Nethermind.Core.Test.Builders;
 using Nethermind.State;
 using NUnit.Framework;
@@ -142,7 +141,7 @@ namespace Nethermind.Evm.Test
         public void Logs_are_committed()
         {
             EvmState parentEvmState = CreateEvmState();
-            LogEntry logEntry = new(Address.Zero, Bytes.Empty, Array.Empty<Keccak>());
+            LogEntry logEntry = new(Address.Zero, Bytes.Empty, Array.Empty<Hash256>());
             using (EvmState evmState = CreateEvmState(parentEvmState))
             {
                 evmState.Logs.Add(logEntry);
@@ -156,7 +155,7 @@ namespace Nethermind.Evm.Test
         public void Logs_are_restored()
         {
             EvmState parentEvmState = CreateEvmState();
-            LogEntry logEntry = new(Address.Zero, Bytes.Empty, Array.Empty<Keccak>());
+            LogEntry logEntry = new(Address.Zero, Bytes.Empty, Array.Empty<Hash256>());
             using (EvmState evmState = CreateEvmState(parentEvmState))
             {
                 evmState.Logs.Add(logEntry);

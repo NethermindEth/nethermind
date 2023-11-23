@@ -5,7 +5,6 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
@@ -15,6 +14,7 @@ using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.State;
+using Nethermind.Consensus.BeaconBlockRoot;
 
 namespace Nethermind.Blockchain
 {
@@ -24,6 +24,7 @@ namespace Nethermind.Blockchain
         private readonly ISpecProvider _specProvider;
         private readonly IWorldState _stateProvider;
         private readonly ITransactionProcessor _transactionProcessor;
+        private readonly BeaconBlockRootHandler _beaconBlockRootHandler;
 
         public GenesisLoader(
             ChainSpec chainSpec,
@@ -35,6 +36,7 @@ namespace Nethermind.Blockchain
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
             _stateProvider = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
             _transactionProcessor = transactionProcessor ?? throw new ArgumentNullException(nameof(transactionProcessor));
+            _beaconBlockRootHandler = new BeaconBlockRootHandler();
         }
 
         public Block Load()
@@ -45,11 +47,15 @@ namespace Nethermind.Blockchain
             // we no longer need the allocations - 0.5MB RAM, 9000 objects for mainnet
             _chainSpec.Allocations = null;
 
-            _stateProvider.Commit(_specProvider.GenesisSpec, true);
+            if (!_chainSpec.GenesisStateUnavailable)
+            {
+                _stateProvider.Commit(_specProvider.GenesisSpec, true);
 
-            _stateProvider.CommitTree(0);
+                _stateProvider.CommitTree(0);
 
-            genesis.Header.StateRoot = _stateProvider.StateRoot;
+                genesis.Header.StateRoot = _stateProvider.StateRoot;
+            }
+
             genesis.Header.Hash = genesis.Header.CalculateHash();
 
             return genesis;
@@ -85,7 +91,7 @@ namespace Nethermind.Blockchain
                     };
 
                     CallOutputTracer outputTracer = new();
-                    _transactionProcessor.Execute(constructorTransaction, genesis.Header, outputTracer);
+                    _transactionProcessor.Execute(constructorTransaction, new BlockExecutionContext(genesis.Header), outputTracer);
 
                     if (outputTracer.StatusCode != StatusCode.Success)
                     {

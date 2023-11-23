@@ -10,6 +10,7 @@ using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Trie.Pruning;
 
@@ -55,7 +56,7 @@ public class TrieNodeBlockCache : IPathTrieNodeCache
 
     private readonly ITrieStore _trieStore;
     private readonly NodesByBlock _nodesByBlock = new();
-    private readonly ConcurrentDictionary<Keccak, HashSet<long>> _rootHashToBlock = new();
+    private readonly ConcurrentDictionary<Hash256, HashSet<long>> _rootHashToBlock = new();
     private long _highestBlockNumberCached = -1;
     private int _maxNumberOfBlocks;
     private int _count;
@@ -74,7 +75,7 @@ public class TrieNodeBlockCache : IPathTrieNodeCache
         _logger = logManager?.GetClassLogger<TrieNodeBlockCache>() ?? throw new ArgumentNullException(nameof(logManager));
     }
 
-    public TrieNode? GetNode(Span<byte> path, Keccak keccak)
+    public TrieNode? GetNode(Span<byte> path, Hash256 keccak)
     {
         foreach (long blockNumber in _nodesByBlock.Keys.OrderByDescending(b => b))
         {
@@ -96,7 +97,7 @@ public class TrieNodeBlockCache : IPathTrieNodeCache
         return null;
     }
 
-    public TrieNode? GetNodeFromRoot(Keccak? rootHash, Span<byte> path)
+    public TrieNode? GetNodeFromRoot(Hash256? rootHash, Span<byte> path)
     {
         if (_nodesByBlock.Count == 0)
             return null;
@@ -140,7 +141,7 @@ public class TrieNodeBlockCache : IPathTrieNodeCache
         Interlocked.CompareExchange(ref _highestBlockNumberCached, blockNumber, _highestBlockNumberCached);
     }
 
-    public void SetRootHashForBlock(long blockNo, Keccak? rootHash)
+    public void SetRootHashForBlock(long blockNo, Hash256? rootHash)
     {
         if (_maxNumberOfBlocks == 0)
             return;
@@ -152,7 +153,7 @@ public class TrieNodeBlockCache : IPathTrieNodeCache
             _rootHashToBlock[rootHash] = new HashSet<long>(new[] { blockNo });
     }
 
-    public void PersistUntilBlock(long blockNumber, IBatch? batch = null)
+    public void PersistUntilBlock(long blockNumber, IWriteBatch? batch = null)
     {
         if (_nodesByBlock.IsEmpty) return;
 
@@ -170,10 +171,10 @@ public class TrieNodeBlockCache : IPathTrieNodeCache
             }
             if (_nodesByBlock.TryRemove(currentBlockNumber, out SpanConcurrentDictionary<byte, TrieNode> nodesByPath))
             {
-                IOrderedEnumerable<TrieNode> orderedValues = nodesByPath.Values.OrderBy(tn => tn.FullRlp, Bytes.Comparer);
+                IOrderedEnumerable<TrieNode> orderedValues = nodesByPath.Values.OrderBy(tn => tn.FullRlp.ToArray(), Bytes.Comparer);
                 foreach (TrieNode? node in orderedValues)
                 {
-                    _trieStore.SaveNodeDirectly(blockNumber, node, batch);
+                    _trieStore.PersistNode(node, batch);
                     node.IsPersisted = true;
                 }
                 // Parallel.ForEach(nodesByPath.Values, node =>
@@ -184,14 +185,14 @@ public class TrieNodeBlockCache : IPathTrieNodeCache
             }
             currentBlockNumber++;
         }
-        List<Keccak> removedRoots = new();
-        foreach(KeyValuePair<Keccak, HashSet<long>> kvp in _rootHashToBlock)
+        List<Hash256> removedRoots = new();
+        foreach (KeyValuePair<Hash256, HashSet<long>> kvp in _rootHashToBlock)
         {
             kvp.Value.RemoveWhere(blk => blk <= blockNumber);
             if (kvp.Value.Count == 0)
                 removedRoots.Add(kvp.Key);
         }
-        foreach (Keccak rootHash in removedRoots)
+        foreach (Hash256 rootHash in removedRoots)
             _rootHashToBlock.Remove(rootHash, out _);
     }
 
@@ -255,7 +256,7 @@ public class TrieNodeBlockCache : IPathTrieNodeCache
         for (int i = 0; i < 16; i++)
         {
             TrieNode childNode = node.GetData(i) as TrieNode;
-            if (childNode?.NodeType == NodeType.Leaf && childNode?.FullRlp?.Length < 32)
+            if (childNode?.NodeType == NodeType.Leaf && childNode?.FullRlp.Length < 32)
             {
                 _nodesByBlock.AddOrUpdate(blockNumber, childNode);
             }

@@ -5,6 +5,7 @@ using System.Buffers.Binary;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
+using System.Runtime.CompilerServices;
 using System.Text;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -19,15 +20,15 @@ public class PayloadAttributes
 {
     public ulong Timestamp { get; set; }
 
-    public Keccak PrevRandao { get; set; }
+    public Hash256 PrevRandao { get; set; }
 
     public Address SuggestedFeeRecipient { get; set; }
 
     public IList<Withdrawal>? Withdrawals { get; set; }
 
-    /// <summary>Gets or sets the gas limit.</summary>
-    /// <remarks>Used for MEV-Boost only.</remarks>
-    public long? GasLimit { get; set; }
+    public Hash256? ParentBeaconBlockRoot { get; set; }
+
+    public virtual long? GetGasLimit() => null;
 
     public override string ToString() => ToString(string.Empty);
 
@@ -43,65 +44,155 @@ public class PayloadAttributes
             sb.Append($", {nameof(Withdrawals)} count: {Withdrawals.Count}");
         }
 
+        if (ParentBeaconBlockRoot is not null)
+        {
+            sb.Append($", {nameof(ParentBeaconBlockRoot)} : {ParentBeaconBlockRoot}");
+        }
+
         sb.Append('}');
 
         return sb.ToString();
     }
-}
 
-public static class PayloadAttributesExtensions
-{
-    public static string ComputePayloadId(this PayloadAttributes payloadAttributes, BlockHeader parentHeader)
+
+    private string? _payloadId;
+
+    public string GetPayloadId(BlockHeader parentHeader) => _payloadId ??= ComputePayloadId(parentHeader);
+
+    private string ComputePayloadId(BlockHeader parentHeader)
     {
-        bool hasWithdrawals = payloadAttributes.Withdrawals is not null;
-        Span<byte> inputSpan = stackalloc byte[32 + 32 + 32 + 20 + (hasWithdrawals ? 32 : 0)];
+        int size = ComputePayloadIdMembersSize();
+        Span<byte> inputSpan = stackalloc byte[size];
+        WritePayloadIdMembers(parentHeader, inputSpan);
+        return ComputePayloadId(inputSpan);
+    }
 
-        parentHeader.Hash!.Bytes.CopyTo(inputSpan[..32]);
-        BinaryPrimitives.WriteUInt64BigEndian(inputSpan.Slice(56, 8), payloadAttributes.Timestamp);
-        payloadAttributes.PrevRandao.Bytes.CopyTo(inputSpan.Slice(64, 32));
-        payloadAttributes.SuggestedFeeRecipient.Bytes.CopyTo(inputSpan.Slice(96, 20));
+    protected virtual int ComputePayloadIdMembersSize() =>
+        Keccak.Size // parent hash
+        + sizeof(ulong) // timestamp
+        + Keccak.Size // prev randao
+        + Address.Size // suggested fee recipient
+        + (Withdrawals is null ? 0 : Keccak.Size) // withdrawals root hash
+        + (ParentBeaconBlockRoot is null ? 0 : Keccak.Size); // parent beacon block root
 
-        if (hasWithdrawals)
-        {
-            var withdrawalsRootHash = payloadAttributes.Withdrawals.Count == 0
-                ? PatriciaTree.EmptyTreeHash
-                : new WithdrawalTrie(payloadAttributes.Withdrawals).RootHash;
-
-            withdrawalsRootHash.Bytes.CopyTo(inputSpan[116..]);
-        }
-
-        ValueKeccak inputHash = ValueKeccak.Compute(inputSpan);
-
+    protected static string ComputePayloadId(Span<byte> inputSpan)
+    {
+        ValueHash256 inputHash = ValueKeccak.Compute(inputSpan);
         return inputHash.BytesAsSpan[..8].ToHexString(true);
     }
 
-    public static int GetVersion(this PayloadAttributes executionPayload) =>
-        executionPayload.Withdrawals is null ? 1 : 2;
-
-    public static bool Validate(
-        this PayloadAttributes payloadAttributes,
-        IReleaseSpec spec,
-        int version,
-        [NotNullWhen(false)] out string? error)
+    protected virtual int WritePayloadIdMembers(BlockHeader parentHeader, Span<byte> inputSpan)
     {
-        int actualVersion = payloadAttributes.GetVersion();
+        int position = 0;
 
-        error = actualVersion switch
+        parentHeader.Hash!.Bytes.CopyTo(inputSpan.Slice(position, Keccak.Size));
+        position += Keccak.Size;
+
+        BinaryPrimitives.WriteUInt64BigEndian(inputSpan.Slice(position, sizeof(ulong)), Timestamp);
+        position += sizeof(ulong);
+
+        PrevRandao.Bytes.CopyTo(inputSpan.Slice(position, Keccak.Size));
+        position += Keccak.Size;
+
+        SuggestedFeeRecipient.Bytes.CopyTo(inputSpan.Slice(position, Address.Size));
+        position += Address.Size;
+
+        if (Withdrawals is not null)
         {
-            1 when spec.WithdrawalsEnabled => "PayloadAttributesV2 expected",
-            > 1 when !spec.WithdrawalsEnabled => "PayloadAttributesV1 expected",
-            _ => actualVersion > version ? $"PayloadAttributesV{version} expected" : null
-        };
+            Hash256 withdrawalsRootHash = Withdrawals.Count == 0
+                ? PatriciaTree.EmptyTreeHash
+                : new WithdrawalTrie(Withdrawals).RootHash;
+            withdrawalsRootHash.Bytes.CopyTo(inputSpan.Slice(position, Keccak.Size));
+            position += Keccak.Size;
+        }
 
-        return error is null;
+        if (ParentBeaconBlockRoot is not null)
+        {
+            ParentBeaconBlockRoot.Bytes.CopyTo(inputSpan.Slice(position, Keccak.Size));
+            position += Keccak.Size;
+        }
+
+        return position;
     }
 
-    public static bool Validate(this PayloadAttributes payloadAttributes,
+    private static PayloadAttributesValidationResult ValidateVersion(
+        int apiVersion,
+        int actualVersion,
+        int expectedVersion,
+        string methodName,
+        [NotNullWhen(false)] out string? error)
+    {
+        if (apiVersion >= EngineApiVersions.Cancun)
+        {
+            if (actualVersion == apiVersion && expectedVersion != apiVersion)
+            {
+                error = $"{methodName}{expectedVersion} expected";
+                return PayloadAttributesValidationResult.UnsupportedFork;
+            }
+        }
+        else if (apiVersion == EngineApiVersions.Shanghai)
+        {
+            if (actualVersion == apiVersion && expectedVersion >= EngineApiVersions.Cancun)
+            {
+                error = $"{methodName}{expectedVersion} expected";
+                return PayloadAttributesValidationResult.UnsupportedFork;
+            }
+        }
+
+        if (actualVersion == expectedVersion)
+        {
+            if (apiVersion >= EngineApiVersions.Cancun)
+            {
+                if (actualVersion == apiVersion)
+                {
+                    error = null;
+                    return PayloadAttributesValidationResult.Success;
+                }
+            }
+            else
+            {
+                if (apiVersion >= actualVersion)
+                {
+                    error = null;
+                    return PayloadAttributesValidationResult.Success;
+                }
+            }
+        }
+
+        error = $"{methodName}{expectedVersion} expected";
+        return PayloadAttributesValidationResult.InvalidParams;
+    }
+
+    public virtual PayloadAttributesValidationResult Validate(
         ISpecProvider specProvider,
-        int version,
+        int apiVersion,
         [NotNullWhen(false)] out string? error) =>
-        payloadAttributes.Validate(
-            specProvider.GetSpec(ForkActivation.TimestampOnly(payloadAttributes.Timestamp)),
-            version,
+        ValidateVersion(
+            apiVersion: apiVersion,
+            actualVersion: this.GetVersion(),
+            expectedVersion: specProvider.GetSpec(ForkActivation.TimestampOnly(Timestamp))
+                .ExpectedEngineSpecVersion(),
+            "PayloadAttributesV",
             out error);
+}
+
+public enum PayloadAttributesValidationResult : byte { Success, InvalidParams, UnsupportedFork };
+
+public static class PayloadAttributesExtensions
+{
+    public static int GetVersion(this PayloadAttributes executionPayload) =>
+        executionPayload switch
+        {
+            { ParentBeaconBlockRoot: not null, Withdrawals: not null } => EngineApiVersions.Cancun,
+            { Withdrawals: not null } => EngineApiVersions.Shanghai,
+            _ => EngineApiVersions.Paris
+        };
+
+    public static int ExpectedEngineSpecVersion(this IReleaseSpec spec) =>
+        spec switch
+        {
+            { IsEip4844Enabled: true } => EngineApiVersions.Cancun,
+            { WithdrawalsEnabled: true } => EngineApiVersions.Shanghai,
+            _ => EngineApiVersions.Paris
+        };
 }

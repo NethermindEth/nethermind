@@ -6,7 +6,6 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Synchronization;
-using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
@@ -30,7 +29,7 @@ namespace Nethermind.Synchronization.FastBlocks
             batch.ResponseSourcePeer = peerInfo;
             batch.MarkSent();
 
-            using ArrayPoolList<Keccak> hashes = new(batch.Infos.Length);
+            using ArrayPoolList<Hash256> hashes = new(batch.Infos.Length);
             hashes.AddRange(batch.Infos.Where(i => i is not null).Select(i => i!.BlockHash));
             if (hashes.Count == 0)
             {

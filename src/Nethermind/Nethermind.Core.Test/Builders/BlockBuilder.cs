@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
@@ -113,7 +112,7 @@ namespace Nethermind.Core.Test.Builders
             return this;
         }
 
-        public BlockBuilder WithTxRoot(Keccak txRoot)
+        public BlockBuilder WithTxRoot(Hash256 txRoot)
         {
             TestObjectInternal.Header.TxRoot = txRoot;
             return this;
@@ -149,7 +148,7 @@ namespace Nethermind.Core.Test.Builders
             return this;
         }
 
-        public BlockBuilder WithMixHash(Keccak mixHash)
+        public BlockBuilder WithMixHash(Hash256 mixHash)
         {
             TestObjectInternal.Header.MixHash = mixHash;
             return this;
@@ -198,19 +197,19 @@ namespace Nethermind.Core.Test.Builders
             return this;
         }
 
-        public BlockBuilder WithParentHash(Keccak parent)
+        public BlockBuilder WithParentHash(Hash256 parent)
         {
             TestObjectInternal.Header.ParentHash = parent;
             return this;
         }
 
-        public BlockBuilder WithStateRoot(Keccak stateRoot)
+        public BlockBuilder WithStateRoot(Hash256 stateRoot)
         {
             TestObjectInternal.Header.StateRoot = stateRoot;
             return this;
         }
 
-        public BlockBuilder WithWithdrawalsRoot(Keccak? withdrawalsRoot)
+        public BlockBuilder WithWithdrawalsRoot(Hash256? withdrawalsRoot)
         {
             TestObjectInternal.Header.WithdrawalsRoot = withdrawalsRoot;
 
@@ -244,7 +243,7 @@ namespace Nethermind.Core.Test.Builders
             TestObjectInternal.Header.Hash = TestObjectInternal.Header.CalculateHash();
         }
 
-        public BlockBuilder WithReceiptsRoot(Keccak keccak)
+        public BlockBuilder WithReceiptsRoot(Hash256 keccak)
         {
             TestObjectInternal.Header.ReceiptsRoot = keccak;
             return this;
@@ -275,6 +274,12 @@ namespace Nethermind.Core.Test.Builders
                 ? null
                 : new WithdrawalTrie(withdrawals).RootHash;
 
+            return this;
+        }
+
+        public BlockBuilder WithParentBeaconBlockRoot(Hash256? parentBeaconBlockRoot)
+        {
+            TestObjectInternal.Header.ParentBeaconBlockRoot = parentBeaconBlockRoot;
             return this;
         }
     }

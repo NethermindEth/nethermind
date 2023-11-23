@@ -11,9 +11,9 @@ using Nethermind.Logging;
 
 namespace Nethermind.Evm.Precompiles
 {
-    public class EcRecoverPrecompile : IPrecompile
+    public class EcRecoverPrecompile : IPrecompile<EcRecoverPrecompile>
     {
-        public static readonly IPrecompile Instance = new EcRecoverPrecompile();
+        public static readonly EcRecoverPrecompile Instance = new EcRecoverPrecompile();
 
         private EcRecoverPrecompile()
         {
@@ -43,7 +43,7 @@ namespace Nethermind.Evm.Precompiles
             inputData.Span[..Math.Min(128, inputData.Length)]
                 .CopyTo(inputDataSpan[..Math.Min(128, inputData.Length)]);
 
-            Keccak hash = new(inputDataSpan[..32]);
+            Hash256 hash = new(inputDataSpan[..32]);
             Span<byte> vBytes = inputDataSpan.Slice(32, 32);
             Span<byte> r = inputDataSpan.Slice(64, 32);
             Span<byte> s = inputDataSpan.Slice(96, 32);

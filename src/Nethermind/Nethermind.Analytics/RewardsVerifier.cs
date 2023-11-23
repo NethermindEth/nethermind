@@ -7,7 +7,6 @@ using Nethermind.Blockchain.Visitors;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs;
@@ -57,7 +56,7 @@ namespace Nethermind.Analytics
         public Task<LevelVisitOutcome> VisitLevelStart(ChainLevelInfo chainLevelInfo, long levelNumber, CancellationToken cancellationToken)
             => Task.FromResult(LevelVisitOutcome.None);
 
-        public Task<bool> VisitMissing(Keccak hash, CancellationToken cancellationToken)
+        public Task<bool> VisitMissing(Hash256 hash, CancellationToken cancellationToken)
             => Task.FromResult(true);
 
         public Task<HeaderVisitOutcome> VisitHeader(BlockHeader header, CancellationToken cancellationToken)

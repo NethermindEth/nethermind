@@ -10,13 +10,11 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
 using Nethermind.Network.Contract.P2P;
-using Nethermind.Network.P2P.Subprotocols.Eth.V65;
 using Nethermind.Network.P2P.Subprotocols.Eth.V67;
 using Nethermind.Network.P2P.Subprotocols.Eth.V68.Messages;
 using Nethermind.Network.Rlpx;
 using Nethermind.Stats;
 using Nethermind.Synchronization;
-using Nethermind.Synchronization.ParallelSync;
 using Nethermind.TxPool;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V68;
@@ -90,12 +88,13 @@ public class Eth68ProtocolHandler : Eth67ProtocolHandler
         }
 
         Metrics.Eth68NewPooledTransactionHashesReceived++;
+        TxPool.Metrics.PendingTransactionsHashesReceived += message.Hashes.Count;
 
         AddNotifiedTransactions(message.Hashes);
 
         Stopwatch? stopwatch = isTrace ? Stopwatch.StartNew() : null;
 
-        _pooledTxsRequestor.RequestTransactionsEth68(_sendAction, message.Hashes, message.Sizes);
+        _pooledTxsRequestor.RequestTransactionsEth68(_sendAction, message.Hashes, message.Sizes, message.Types);
 
         stopwatch?.Stop();
 
@@ -110,7 +109,7 @@ public class Eth68ProtocolHandler : Eth67ProtocolHandler
         }
         else
         {
-            SendMessage(new byte[] { (byte)tx.Type }, new int[] { tx.GetLength() }, new Keccak[] { tx.Hash });
+            SendMessage(new byte[] { (byte)tx.Type }, new int[] { tx.GetLength() }, new Hash256[] { tx.Hash });
         }
     }
 
@@ -124,7 +123,7 @@ public class Eth68ProtocolHandler : Eth67ProtocolHandler
 
         using ArrayPoolList<byte> types = new(NewPooledTransactionHashesMessage68.MaxCount);
         using ArrayPoolList<int> sizes = new(NewPooledTransactionHashesMessage68.MaxCount);
-        using ArrayPoolList<Keccak> hashes = new(NewPooledTransactionHashesMessage68.MaxCount);
+        using ArrayPoolList<Hash256> hashes = new(NewPooledTransactionHashesMessage68.MaxCount);
 
         foreach (Transaction tx in txs)
         {
@@ -151,7 +150,7 @@ public class Eth68ProtocolHandler : Eth67ProtocolHandler
         }
     }
 
-    private void SendMessage(IReadOnlyList<byte> types, IReadOnlyList<int> sizes, IReadOnlyList<Keccak> hashes)
+    private void SendMessage(IReadOnlyList<byte> types, IReadOnlyList<int> sizes, IReadOnlyList<Hash256> hashes)
     {
         NewPooledTransactionHashesMessage68 message = new(types, sizes, hashes);
         Metrics.Eth68NewPooledTransactionHashesSent++;

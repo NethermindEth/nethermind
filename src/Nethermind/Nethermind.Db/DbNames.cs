@@ -11,11 +11,13 @@ namespace Nethermind.Db
         public const string Code = "code";
         public const string Blocks = "blocks";
         public const string Headers = "headers";
+        public const string BlockNumbers = "blockNumbers";
         public const string Receipts = "receipts";
         public const string BlockInfos = "blockInfos";
         public const string Bloom = "bloom";
         public const string Witness = "witness";
         public const string CHT = "canonicalHashTrie";
         public const string Metadata = "metadata";
+        public const string BlobTransactions = "blobTransactions";
     }
 }

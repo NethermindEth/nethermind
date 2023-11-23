@@ -15,7 +15,7 @@ namespace Nethermind.Evm.TransactionProcessing
             _transactionProcessor = transactionProcessor;
         }
 
-        public void Execute(Transaction transaction, BlockHeader block, ITxTracer txTracer) =>
-            _transactionProcessor.BuildUp(transaction, block, txTracer);
+        public void Execute(Transaction transaction, BlockExecutionContext blkCtx, ITxTracer txTracer) =>
+            _transactionProcessor.BuildUp(transaction, blkCtx, txTracer);
     }
 }

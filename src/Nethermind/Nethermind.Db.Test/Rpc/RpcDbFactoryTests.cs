@@ -4,7 +4,6 @@
 using System.IO.Abstractions;
 using FluentAssertions;
 using Nethermind.Db.FullPruning;
-using Nethermind.Db.Rocks;
 using Nethermind.Db.Rpc;
 using Nethermind.JsonRpc.Client;
 using Nethermind.Logging;
@@ -20,11 +19,11 @@ namespace Nethermind.Db.Test.Rpc
         [Test]
         public void ValidateDbs()
         {
-            void ValidateDb<T>(params IDb[] dbs) where T : IDb
+            void ValidateDb<T>(params object[] dbs)
             {
-                foreach (IDb db in dbs)
+                foreach (object db in dbs)
                 {
-                    db.Should().BeAssignableTo<T>(db.Name);
+                    db.Should().BeAssignableTo<T>();
                 }
             }
 
@@ -36,11 +35,13 @@ namespace Nethermind.Db.Test.Rpc
             StandardDbInitializer standardDbInitializer = new(memDbProvider, null, rpcDbFactory, LimboLogs.Instance, Substitute.For<IFileSystem>());
             standardDbInitializer.InitStandardDbs(true);
 
+            ValidateDb<ReadOnlyColumnsDb<ReceiptsColumns>>(
+                memDbProvider.ReceiptsDb);
+
             ValidateDb<ReadOnlyDb>(
                 memDbProvider.BlocksDb,
                 memDbProvider.BloomDb,
                 memDbProvider.HeadersDb,
-                memDbProvider.ReceiptsDb,
                 memDbProvider.BlockInfosDb);
 
             ValidateDb<ReadOnlyDb>(

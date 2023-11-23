@@ -15,13 +15,13 @@ namespace Nethermind.JsonRpc.TraceStore;
 /// </summary>
 /// <typeparam name="TTrace">Trace type</typeparam>
 /// <typeparam name="TTracer">Transaction tracer type</typeparam>
-public class DbPersistingBlockTracer<TTrace, TTracer> : IBlockTracer where TTracer : class, ITxTracer
+public class DbPersistingBlockTracer<TTrace, TTracer> : BlockTracer where TTracer : class, ITxTracer
 {
     private readonly IDb _db;
     private readonly ITraceSerializer<TTrace> _traceSerializer;
     private readonly IBlockTracer _blockTracer;
     private readonly BlockTracerBase<TTrace, TTracer> _tracerWithResults;
-    private Keccak _currentBlockHash = null!;
+    private Hash256 _currentBlockHash = null!;
     private long _currentBlockNumber;
     private readonly ILogger _logger;
 
@@ -43,27 +43,27 @@ public class DbPersistingBlockTracer<TTrace, TTracer> : IBlockTracer where TTrac
         _logger = logManager.GetClassLogger<DbPersistingBlockTracer<TTrace, TTracer>>();
     }
 
-    public bool IsTracingRewards => _blockTracer.IsTracingRewards;
+    public override bool IsTracingRewards => _blockTracer.IsTracingRewards;
 
-    public void ReportReward(Address author, string rewardType, UInt256 rewardValue) =>
+    public override void ReportReward(Address author, string rewardType, UInt256 rewardValue) =>
         _blockTracer.ReportReward(author, rewardType, rewardValue);
 
-    public void StartNewBlockTrace(Block block)
+    public override void StartNewBlockTrace(Block block)
     {
         _currentBlockHash = block.Hash!;
         _currentBlockNumber = block.Number;
         _blockTracer.StartNewBlockTrace(block);
     }
 
-    public ITxTracer StartNewTxTrace(Transaction? tx) => _blockTracer.StartNewTxTrace(tx);
+    public override ITxTracer StartNewTxTrace(Transaction? tx) => _blockTracer.StartNewTxTrace(tx);
 
-    public void EndTxTrace() => _blockTracer.EndTxTrace();
+    public override void EndTxTrace() => _blockTracer.EndTxTrace();
 
-    public void EndBlockTrace()
+    public override void EndBlockTrace()
     {
         _blockTracer.EndBlockTrace();
         IReadOnlyCollection<TTrace> result = _tracerWithResults.BuildResult();
-        Keccak currentBlockHash = _currentBlockHash;
+        Hash256 currentBlockHash = _currentBlockHash;
         long currentBlockNumber = _currentBlockNumber;
         try
         {

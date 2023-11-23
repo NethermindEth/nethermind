@@ -3,8 +3,6 @@
 
 using System.Linq;
 using DotNetty.Buffers;
-using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Snap;
 

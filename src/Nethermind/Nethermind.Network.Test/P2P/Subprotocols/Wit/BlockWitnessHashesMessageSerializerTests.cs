@@ -5,7 +5,6 @@ using FluentAssertions;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Network.P2P.Subprotocols.Wit.Messages;
-using Nethermind.Network.Test.P2P.Subprotocols.Eth.V62;
 using NUnit.Framework;
 
 namespace Nethermind.Network.Test.P2P.Subprotocols.Wit
@@ -17,7 +16,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Wit
         public void Can_handle_zero()
         {
             BlockWitnessHashesMessageSerializer serializer = new();
-            BlockWitnessHashesMessage message = new(1, new Keccak[0]);
+            BlockWitnessHashesMessage message = new(1, new Hash256[0]);
             SerializerTester.TestZero(serializer, message);
         }
 

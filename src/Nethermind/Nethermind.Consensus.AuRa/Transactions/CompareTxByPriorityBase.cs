@@ -3,14 +3,12 @@
 
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using Nethermind.Consensus.AuRa.Contracts;
 using Nethermind.Consensus.AuRa.Contracts.DataStore;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
-using Nethermind.TxPool;
 
 namespace Nethermind.Consensus.AuRa.Transactions
 {
@@ -18,7 +16,7 @@ namespace Nethermind.Consensus.AuRa.Transactions
     {
         private readonly IContractDataStore<Address> _sendersWhitelist;
         private readonly IDictionaryContractDataStore<TxPriorityContract.Destination> _priorities;
-        private Keccak _blockHash;
+        private Hash256 _blockHash;
         private ISet<Address> _sendersWhiteListSet;
 
         public CompareTxByPriorityBase(IContractDataStore<Address> sendersWhitelist, // expected HashSet based

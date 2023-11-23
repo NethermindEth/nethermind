@@ -108,4 +108,7 @@ public interface IDiscoveryConfig : IConfig
     /// </summary>
     [ConfigItem(DefaultValue = "4000")]
     int NodeLifecycleManagersCleanupCount { get; }
+
+    [ConfigItem(DefaultValue = "0.05")]
+    float DropFullBucketNodeProbability { get; set; }
 }

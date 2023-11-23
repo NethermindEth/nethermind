@@ -5,7 +5,6 @@ using System;
 using System.Net;
 using System.Threading.Tasks;
 using DotNetty.Buffers;
-using DotNetty.Codecs;
 using DotNetty.Common.Concurrency;
 using DotNetty.Transport.Channels;
 using FluentAssertions;
@@ -17,6 +16,7 @@ using Nethermind.Network.P2P.ProtocolHandlers;
 using Nethermind.Network.Rlpx;
 using Nethermind.Network.Rlpx.Handshake;
 using NSubstitute;
+using NSubstitute.ExceptionExtensions;
 using NUnit.Framework;
 
 namespace Nethermind.Network.Test.Rlpx.Handshake
@@ -65,6 +65,11 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
 
         private NettyHandshakeHandler CreateHandler(HandshakeRole handshakeRole = HandshakeRole.Recipient)
         {
+            if (handshakeRole == HandshakeRole.Recipient)
+            {
+                _session.Node.Throws(new InvalidOperationException("property throw on incoming connection before handshake"));
+                _session.RemoteNodeId.Returns((PublicKey)null); // Incoming connection have null remote node id until handshake finished
+            }
             return new NettyHandshakeHandler(_serializationService, _handshakeService, _session, handshakeRole, _logger, _group, TimeSpan.Zero);
         }
 
@@ -211,6 +216,17 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
 
             received.Should().BeTrue();
             _handshakeService.Received(1).Ack(Arg.Any<EncryptionHandshake>(), Arg.Any<Packet>());
+        }
+
+        [Test]
+        public async Task Handler_disconnect_on_exception()
+        {
+            NettyHandshakeHandler handler = CreateHandler();
+
+            IChannelHandlerContext context = Substitute.For<IChannelHandlerContext>();
+            handler.ExceptionCaught(context, new Exception("any exception"));
+
+            await context.Received().DisconnectAsync();
         }
     }
 }

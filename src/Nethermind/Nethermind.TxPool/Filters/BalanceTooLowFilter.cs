@@ -14,11 +14,13 @@ namespace Nethermind.TxPool.Filters
     internal sealed class BalanceTooLowFilter : IIncomingTxFilter
     {
         private readonly TxDistinctSortedPool _txs;
+        private readonly TxDistinctSortedPool _blobTxs;
         private readonly ILogger _logger;
 
-        public BalanceTooLowFilter(TxDistinctSortedPool txs, ILogger logger)
+        public BalanceTooLowFilter(TxDistinctSortedPool txs, TxDistinctSortedPool blobTxs, ILogger logger)
         {
             _txs = txs;
+            _blobTxs = blobTxs;
             _logger = logger;
         }
 
@@ -34,11 +36,14 @@ namespace Nethermind.TxPool.Filters
 
             UInt256 cumulativeCost = UInt256.Zero;
             bool overflow = false;
-            Transaction[] transactions = _txs.GetBucketSnapshot(tx.SenderAddress!); // since unknownSenderFilter will run before this one
+            Transaction[] sameTypeTxs = tx.SupportsBlobs
+                ? _blobTxs.GetBucketSnapshot(tx.SenderAddress!) // it will create a snapshot of light txs (without actual blobs)
+                : _txs.GetBucketSnapshot(tx.SenderAddress!);
+            // tx.SenderAddress! as unknownSenderFilter will run before this one
 
-            for (int i = 0; i < transactions.Length; i++)
+            for (int i = 0; i < sameTypeTxs.Length; i++)
             {
-                Transaction otherTx = transactions[i];
+                Transaction otherTx = sameTypeTxs[i];
                 if (otherTx.Nonce < account.Nonce)
                 {
                     continue;
@@ -46,9 +51,7 @@ namespace Nethermind.TxPool.Filters
 
                 if (otherTx.Nonce < tx.Nonce)
                 {
-                    overflow |= UInt256.MultiplyOverflow(otherTx.MaxFeePerGas, (UInt256)otherTx.GasLimit, out UInt256 maxTxCost);
-                    overflow |= UInt256.AddOverflow(cumulativeCost, maxTxCost, out cumulativeCost);
-                    overflow |= UInt256.AddOverflow(cumulativeCost, otherTx.Value, out cumulativeCost);
+                    overflow |= otherTx.IsOverflowWhenAddingTxCostToCumulative(cumulativeCost, out cumulativeCost);
                 }
                 else
                 {
@@ -56,9 +59,8 @@ namespace Nethermind.TxPool.Filters
                 }
             }
 
-            overflow |= UInt256.MultiplyOverflow(tx.MaxFeePerGas, (UInt256)tx.GasLimit, out UInt256 cost);
-            overflow |= UInt256.AddOverflow(cost, tx.Value, out cost);
-            overflow |= UInt256.AddOverflow(cost, cumulativeCost, out cumulativeCost);
+            overflow |= tx.IsOverflowWhenAddingTxCostToCumulative(cumulativeCost, out cumulativeCost);
+
             if (overflow)
             {
                 if (_logger.IsTrace)

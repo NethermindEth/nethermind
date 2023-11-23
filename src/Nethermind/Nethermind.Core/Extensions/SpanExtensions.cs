@@ -57,6 +57,7 @@ namespace Nethermind.Core.Extensions
             {
                 return ToHexStringWithEip55Checksum(bytes, withZeroX, skipLeadingZeros);
             }
+            if (bytes.Length == 0) return "";
 
             int leadingZeros = skipLeadingZeros ? Bytes.CountLeadingZeros(bytes) : 0;
             int length = bytes.Length * 2 + (withZeroX ? 2 : 0) - leadingZeros;
@@ -134,6 +135,13 @@ namespace Nethermind.Core.Extensions
             ArrayPool<char>.Shared.Return(charArray);
 
             return result;
+        }
+
+        public static ReadOnlySpan<byte> TakeAndMove(this ref ReadOnlySpan<byte> span, int length)
+        {
+            ReadOnlySpan<byte> s = span[..length];
+            span = span[length..];
+            return s;
         }
 
         public static bool IsNullOrEmpty<T>(this in Span<T> span) => span.Length == 0;

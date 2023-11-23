@@ -4,7 +4,6 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
-using System.IO;
 using System.Linq;
 using FluentAssertions;
 using Nethermind.Consensus.AuRa.Validators;
@@ -14,7 +13,6 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Serialization.Rlp;
-using Nethermind.Db.Blooms;
 using NUnit.Framework;
 
 namespace Nethermind.AuRa.Test.Validators
@@ -136,7 +134,7 @@ namespace Nethermind.AuRa.Test.Validators
 
         private static MemDb CreateMemDbWithValidators(IEnumerable<(long FinalizingBlock, Address[] Validators)> validators = null)
         {
-            Keccak GetKey(in long blockNumber) => Keccak.Compute("Validators" + blockNumber);
+            Hash256 GetKey(in long blockNumber) => Keccak.Compute("Validators" + blockNumber);
 
             validators ??= Array.Empty<(long FinalizingBlock, Address[] Validators)>();
             (long FinalizingBlock, Address[] Validators)[] ordered = validators.OrderByDescending(v => v.FinalizingBlock).ToArray();

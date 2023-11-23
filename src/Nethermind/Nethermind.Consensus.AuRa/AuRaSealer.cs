@@ -11,7 +11,6 @@ using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
-using Nethermind.Wallet;
 
 namespace Nethermind.Consensus.AuRa
 {
@@ -60,14 +59,14 @@ namespace Nethermind.Consensus.AuRa
                 return null;
             }
 
-            Keccak headerHash = block.Header.CalculateHash(RlpBehaviors.ForSealing);
+            Hash256 headerHash = block.Header.CalculateHash(RlpBehaviors.ForSealing);
             Signature signature = _signer.Sign(headerHash);
             block.Header.AuRaSignature = signature.BytesWithRecovery;
 
             return block;
         }
 
-        public bool CanSeal(long blockNumber, Keccak parentHash)
+        public bool CanSeal(long blockNumber, Hash256 parentHash)
         {
             bool StepNotYetProduced(long step) => !_blockTree.Head.Header.AuRaStep.HasValue
                 ? throw new InvalidOperationException("Head block doesn't have AuRaStep specified.'")

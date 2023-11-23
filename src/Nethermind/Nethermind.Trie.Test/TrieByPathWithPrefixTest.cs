@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using FluentAssertions;
-using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
@@ -12,7 +11,6 @@ using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
-using Nethermind.Specs.Forks;
 using Nethermind.State;
 using Nethermind.Trie.Pruning;
 using NUnit.Framework;
@@ -69,7 +67,7 @@ public class TrieByPathWithPrefixTest
         using TrieStoreByPath trieStore = new(memDb, _logManager);
         PatriciaTree patriciaTree = new(trieStore, _logManager)
         {
-            StorageBytePathPrefix = _keyAccountA.Concat(new[] {(byte)128}).ToArray()
+            StorageBytePathPrefix = _keyAccountA.Concat(new[] { (byte)128 }).ToArray()
         };
         patriciaTree.Set(_keyAccountA, _longLeaf1);
         patriciaTree.Commit(0);
@@ -85,7 +83,7 @@ public class TrieByPathWithPrefixTest
         using TrieStoreByPath trieStore = new(memDb, _logManager);
         PatriciaTree patriciaTree = new PatriciaTree(trieStore, _logManager)
         {
-            StorageBytePathPrefix = _keyAccountA.Concat(new[] {(byte)128}).ToArray()
+            StorageBytePathPrefix = _keyAccountA.Concat(new[] { (byte)128 }).ToArray()
         };
         patriciaTree.Set(_keyAccountA, _longLeaf1);
         patriciaTree.Set(_keyAccountA, _longLeaf2);
@@ -94,7 +92,7 @@ public class TrieByPathWithPrefixTest
         // (root) -> leaf | leaf
         // memDb.Keys.Should().HaveCount(2);
 
-        PatriciaTree checkTree = CreateCheckTree(memDb, patriciaTree);
+        PatriciaTree checkTree = CreateCheckTree(memDb, patriciaTree, LimboLogs.Instance);
         checkTree.Get(_keyAccountA).Should().NotBeEquivalentTo(_longLeaf1);
         checkTree.Get(_keyAccountA).Should().BeEquivalentTo(_longLeaf2);
     }
@@ -106,7 +104,7 @@ public class TrieByPathWithPrefixTest
         using TrieStoreByPath trieStore = new(memDb, _logManager);
         PatriciaTree patriciaTree = new(trieStore, _logManager)
         {
-            StorageBytePathPrefix = _keyAccountA.Concat(new[] {(byte)128}).ToArray()
+            StorageBytePathPrefix = _keyAccountA.Concat(new[] { (byte)128 }).ToArray()
         };
         patriciaTree.Set(_keyAccountA, _longLeaf1);
         patriciaTree.Commit(0);
@@ -119,7 +117,7 @@ public class TrieByPathWithPrefixTest
         // leaf (root)
         // memDb.Keys.Should().HaveCount(2);
 
-        PatriciaTree checkTree = CreateCheckTree(memDb, patriciaTree);
+        PatriciaTree checkTree = CreateCheckTree(memDb, patriciaTree, LimboLogs.Instance);
         checkTree.Get(_keyAccountA).Should().NotBeEquivalentTo(_longLeaf1);
         checkTree.Get(_keyAccountA).Should().BeEquivalentTo(_longLeaf2);
     }
@@ -131,7 +129,7 @@ public class TrieByPathWithPrefixTest
         using TrieStoreByPath trieStore = new(memDb, _logManager);
         PatriciaTree patriciaTree = new(trieStore, _logManager)
         {
-            StorageBytePathPrefix = _keyAccountA.Concat(new[] {(byte)128}).ToArray()
+            StorageBytePathPrefix = _keyAccountA.Concat(new[] { (byte)128 }).ToArray()
         };
         patriciaTree.Set(_keyAccountA, _longLeaf1);
         patriciaTree.Set(_keyAccountA, Array.Empty<byte>());
@@ -140,7 +138,7 @@ public class TrieByPathWithPrefixTest
         // leaf (root)
         // memDb.Keys.Should().HaveCount(0);
 
-        PatriciaTree checkTree = CreateCheckTree(memDb, patriciaTree);
+        PatriciaTree checkTree = CreateCheckTree(memDb, patriciaTree, LimboLogs.Instance);
         checkTree.Get(_keyAccountA).Should().BeNull();
     }
 
@@ -151,7 +149,7 @@ public class TrieByPathWithPrefixTest
         using TrieStoreByPath trieStore = new(memDb, _logManager);
         PatriciaTree patriciaTree = new(trieStore, _logManager)
         {
-            StorageBytePathPrefix = _keyAccountA.Concat(new[] {(byte)128}).ToArray()
+            StorageBytePathPrefix = _keyAccountA.Concat(new[] { (byte)128 }).ToArray()
         };
         patriciaTree.Set(_keyAccountA, _longLeaf1);
         patriciaTree.Commit(0);
@@ -162,7 +160,7 @@ public class TrieByPathWithPrefixTest
         // leaf (root)
         // memDb.Keys.Should().HaveCount(1);
 
-        PatriciaTree checkTree = CreateCheckTree(memDb, patriciaTree);
+        PatriciaTree checkTree = CreateCheckTree(memDb, patriciaTree, LimboLogs.Instance);
         checkTree.Get(_keyAccountA).Should().BeNull();
     }
 
@@ -173,7 +171,7 @@ public class TrieByPathWithPrefixTest
         using TrieStoreByPath trieStore = new(memDb, LimboLogs.Instance);
         PatriciaTree patriciaTree = new(trieStore, _logManager)
         {
-            StorageBytePathPrefix = _keyAccountA.Concat(new[] {(byte)128}).ToArray()
+            StorageBytePathPrefix = _keyAccountA.Concat(new[] { (byte)128 }).ToArray()
         };
         patriciaTree.Commit(0);
         patriciaTree.Commit(1);
@@ -198,7 +196,7 @@ public class TrieByPathWithPrefixTest
         // leaf (root)
         // memDb.Keys.Should().HaveCount(2);
 
-        PatriciaTree checkTree = CreateCheckTree(memDb, patriciaTree);
+        PatriciaTree checkTree = CreateCheckTree(memDb, patriciaTree, LimboLogs.Instance);
         checkTree.Get(_keyAccountA).Should().BeNull();
         checkTree.Get(_keyAccountB).Should().BeNull();
     }
@@ -210,7 +208,7 @@ public class TrieByPathWithPrefixTest
         using TrieStoreByPath trieStore = new(memDb, _logManager);
         PatriciaTree patriciaTree = new(trieStore, _logManager)
         {
-            StorageBytePathPrefix = _keyAccountA.Concat(new[] {(byte)128}).ToArray()
+            StorageBytePathPrefix = _keyAccountA.Concat(new[] { (byte)128 }).ToArray()
         };
         patriciaTree.Set(_keyAccountA, _longLeaf1);
         patriciaTree.Set(_keyAccountB, _longLeaf1);
@@ -219,7 +217,7 @@ public class TrieByPathWithPrefixTest
 
         // leaf (root)
         // memDb.Keys.Should().HaveCount(6);
-        PatriciaTree checkTree = CreateCheckTree(memDb, patriciaTree);
+        PatriciaTree checkTree = CreateCheckTree(memDb, patriciaTree, LimboLogs.Instance);
         checkTree.Get(_keyAccountA).Should().BeEquivalentTo(_longLeaf1);
         checkTree.Get(_keyAccountB).Should().BeEquivalentTo(_longLeaf1);
         checkTree.Get(_keyAccountC).Should().BeEquivalentTo(_longLeaf1);
@@ -244,7 +242,7 @@ public class TrieByPathWithPrefixTest
         using TrieStoreByPath trieStore = new(memDb, _logManager);
         PatriciaTree patriciaTree = new(trieStore, _logManager)
         {
-            StorageBytePathPrefix = _keyAccountA.Concat(new[] {(byte)128}).ToArray()
+            StorageBytePathPrefix = _keyAccountA.Concat(new[] { (byte)128 }).ToArray()
         };
         patriciaTree.Set(_keyAccountA, _longLeaf1);
         patriciaTree.Set(_keyAccountB, _longLeaf1);
@@ -258,7 +256,7 @@ public class TrieByPathWithPrefixTest
 
         // leaf (root)
         // memDb.Keys.Should().HaveCount(6);
-        PatriciaTree checkTree = CreateCheckTree(memDb, patriciaTree);
+        PatriciaTree checkTree = CreateCheckTree(memDb, patriciaTree, LimboLogs.Instance);
         checkTree.Get(_keyAccountA).Should().BeNull();
         checkTree.Get(_keyAccountB).Should().BeNull();
         checkTree.Get(_keyAccountC).Should().BeNull();
@@ -270,12 +268,12 @@ public class TrieByPathWithPrefixTest
         using TrieStoreByPath trieStore = new(memDb, _logManager);
         PatriciaTree patriciaTree = new(trieStore, Keccak.EmptyTreeHash, true, true, _logManager)
         {
-            StorageBytePathPrefix = _keyAccountA.Concat(new[] {(byte)128}).ToArray()
+            StorageBytePathPrefix = _keyAccountA.Concat(new[] { (byte)128 }).ToArray()
         };
 
         for (int j = 0; j < i; j++)
         {
-            Keccak key = TestItem.Keccaks[j];
+            Hash256 key = TestItem.Keccaks[j];
             byte[] value = TestItem.GenerateIndexedAccountRlp(j);
             patriciaTree.Set(key.Bytes, value);
         }
@@ -283,10 +281,10 @@ public class TrieByPathWithPrefixTest
         patriciaTree.Commit(0);
         patriciaTree.UpdateRootHash();
 
-        PatriciaTree checkTree = CreateCheckTree(memDb, patriciaTree);
+        PatriciaTree checkTree = CreateCheckTree(memDb, patriciaTree, LimboLogs.Instance);
         for (int j = 0; j < i; j++)
         {
-            Keccak key = TestItem.Keccaks[j];
+            Hash256 key = TestItem.Keccaks[j];
             byte[] value = TestItem.GenerateIndexedAccountRlp(j);
             checkTree.Get(key.Bytes).Should().BeEquivalentTo(value, $@"{i} {j}");
         }
@@ -298,12 +296,12 @@ public class TrieByPathWithPrefixTest
         using TrieStoreByPath trieStore = new(memDb, _logManager);
         PatriciaTree patriciaTree = new(trieStore, Keccak.EmptyTreeHash, true, true, _logManager)
         {
-            StorageBytePathPrefix = _keyAccountA.Concat(new[] {(byte)128}).ToArray()
+            StorageBytePathPrefix = _keyAccountA.Concat(new[] { (byte)128 }).ToArray()
         };
 
         for (int j = 0; j < i; j++)
         {
-            Keccak key = TestItem.Keccaks[j];
+            Hash256 key = TestItem.Keccaks[j];
             byte[] value = TestItem.GenerateIndexedAccountRlp(j);
             patriciaTree.Set(key.Bytes, value);
         }
@@ -311,19 +309,19 @@ public class TrieByPathWithPrefixTest
         // delete missing
         for (int j = 0; j < i; j++)
         {
-            Keccak key = TestItem.Keccaks[j + 100];
+            Hash256 key = TestItem.Keccaks[j + 100];
             patriciaTree.Set(key.Bytes, Array.Empty<byte>());
         }
 
         patriciaTree.Commit(0);
         patriciaTree.UpdateRootHash();
 
-        PatriciaTree checkTree = CreateCheckTree(memDb, patriciaTree);
+        PatriciaTree checkTree = CreateCheckTree(memDb, patriciaTree, LimboLogs.Instance);
 
         // confirm nothing deleted
         for (int j = 0; j < i; j++)
         {
-            Keccak key = TestItem.Keccaks[j];
+            Hash256 key = TestItem.Keccaks[j];
             byte[] value = TestItem.GenerateIndexedAccountRlp(j);
             checkTree.Get(key.Bytes).Should().BeEquivalentTo(value, $@"{i} {j}");
         }
@@ -331,7 +329,7 @@ public class TrieByPathWithPrefixTest
         // read missing
         for (int j = 0; j < i; j++)
         {
-            Keccak key = TestItem.Keccaks[j + 100];
+            Hash256 key = TestItem.Keccaks[j + 100];
             checkTree.Get(key.Bytes).Should().BeNull();
         }
     }
@@ -342,19 +340,19 @@ public class TrieByPathWithPrefixTest
         using TrieStoreByPath trieStore = new(memDb, _logManager);
         PatriciaTree patriciaTree = new(trieStore, _logManager)
         {
-            StorageBytePathPrefix = _keyAccountA.Concat(new[] {(byte)128}).ToArray()
+            StorageBytePathPrefix = _keyAccountA.Concat(new[] { (byte)128 }).ToArray()
         };
 
         for (int j = 0; j < i; j++)
         {
-            Keccak key = TestItem.Keccaks[j];
+            Hash256 key = TestItem.Keccaks[j];
             byte[] value = TestItem.GenerateIndexedAccountRlp(j);
             patriciaTree.Set(key.Bytes, value);
         }
 
         for (int j = 0; j < i; j++)
         {
-            Keccak key = TestItem.Keccaks[j];
+            Hash256 key = TestItem.Keccaks[j];
             byte[] value = TestItem.GenerateIndexedAccountRlp(j + 1);
             patriciaTree.Set(key.Bytes, value);
         }
@@ -362,10 +360,10 @@ public class TrieByPathWithPrefixTest
         patriciaTree.Commit(0);
         patriciaTree.UpdateRootHash();
 
-        PatriciaTree checkTree = CreateCheckTree(memDb, patriciaTree);
+        PatriciaTree checkTree = CreateCheckTree(memDb, patriciaTree, LimboLogs.Instance);
         for (int j = 0; j < i; j++)
         {
-            Keccak key = TestItem.Keccaks[j];
+            Hash256 key = TestItem.Keccaks[j];
             byte[] value = TestItem.GenerateIndexedAccountRlp(j + 1);
             checkTree.Get(key.Bytes).Should().BeEquivalentTo(value, $@"{i} {j}");
         }
@@ -377,12 +375,12 @@ public class TrieByPathWithPrefixTest
         using TrieStoreByPath trieStore = new(memDb, _logManager);
         PatriciaTree patriciaTree = new(trieStore, _logManager)
         {
-            StorageBytePathPrefix = _keyAccountA.Concat(new[] {(byte)128}).ToArray()
+            StorageBytePathPrefix = _keyAccountA.Concat(new[] { (byte)128 }).ToArray()
         };
 
         for (int j = 0; j < i; j++)
         {
-            Keccak key = TestItem.Keccaks[j];
+            Hash256 key = TestItem.Keccaks[j];
             byte[] value = TestItem.GenerateIndexedAccountRlp(j);
             patriciaTree.Set(key.Bytes, value);
         }
@@ -391,7 +389,7 @@ public class TrieByPathWithPrefixTest
 
         for (int j = 0; j < i; j++)
         {
-            Keccak key = TestItem.Keccaks[j];
+            Hash256 key = TestItem.Keccaks[j];
             byte[] value = TestItem.GenerateIndexedAccountRlp(j + 1);
             patriciaTree.Set(key.Bytes, value);
             _logger.Trace($"Setting {key.Bytes.ToHexString()} = {value.ToHexString()}");
@@ -400,10 +398,10 @@ public class TrieByPathWithPrefixTest
         patriciaTree.Commit(1);
         patriciaTree.UpdateRootHash();
 
-        PatriciaTree checkTree = CreateCheckTree(memDb, patriciaTree);
+        PatriciaTree checkTree = CreateCheckTree(memDb, patriciaTree, LimboLogs.Instance);
         for (int j = 0; j < i; j++)
         {
-            Keccak key = TestItem.Keccaks[j];
+            Hash256 key = TestItem.Keccaks[j];
             byte[] value = TestItem.GenerateIndexedAccountRlp(j + 1);
 
             _logger.Trace($"Checking {key.Bytes.ToHexString()} = {value.ToHexString()}");
@@ -417,13 +415,13 @@ public class TrieByPathWithPrefixTest
         using TrieStoreByPath trieStore = new(memDb, _logManager);
         PatriciaTree patriciaTree = new(trieStore, _logManager)
         {
-            StorageBytePathPrefix = _keyAccountA.Concat(new[] {(byte)128}).ToArray()
+            StorageBytePathPrefix = _keyAccountA.Concat(new[] { (byte)128 }).ToArray()
         };
 
         for (int j = 0; j < i; j++)
         {
             _logger.Trace($"  set {j}");
-            Keccak key = TestItem.Keccaks[j];
+            Hash256 key = TestItem.Keccaks[j];
             byte[] value = TestItem.GenerateIndexedAccountRlp(j);
             patriciaTree.Set(key.Bytes, value);
         }
@@ -431,17 +429,17 @@ public class TrieByPathWithPrefixTest
         for (int j = 0; j < i; j++)
         {
             _logger.Trace($"  delete {j}");
-            Keccak key = TestItem.Keccaks[j];
+            Hash256 key = TestItem.Keccaks[j];
             patriciaTree.Set(key.Bytes, Array.Empty<byte>());
         }
 
         patriciaTree.Commit(0);
         patriciaTree.UpdateRootHash();
 
-        PatriciaTree checkTree = CreateCheckTree(memDb, patriciaTree);
+        PatriciaTree checkTree = CreateCheckTree(memDb, patriciaTree, LimboLogs.Instance);
         for (int j = 0; j < i; j++)
         {
-            Keccak key = TestItem.Keccaks[j];
+            Hash256 key = TestItem.Keccaks[j];
             checkTree.Get(key.Bytes).Should().BeNull($@"{i} {j}");
         }
     }
@@ -452,12 +450,12 @@ public class TrieByPathWithPrefixTest
         using TrieStoreByPath trieStore = new(memDb, _logManager);
         PatriciaTree patriciaTree = new(trieStore, _logManager)
         {
-            StorageBytePathPrefix = _keyAccountA.Concat(new[] {(byte)128}).ToArray()
+            StorageBytePathPrefix = _keyAccountA.Concat(new[] { (byte)128 }).ToArray()
         };
 
         for (int j = 0; j < i; j++)
         {
-            Keccak key = TestItem.Keccaks[j];
+            Hash256 key = TestItem.Keccaks[j];
             byte[] value = TestItem.GenerateIndexedAccountRlp(j);
             patriciaTree.Set(key.Bytes, value);
         }
@@ -466,17 +464,17 @@ public class TrieByPathWithPrefixTest
 
         for (int j = 0; j < i; j++)
         {
-            Keccak key = TestItem.Keccaks[j];
+            Hash256 key = TestItem.Keccaks[j];
             patriciaTree.Set(key.Bytes, Array.Empty<byte>());
         }
 
         patriciaTree.Commit(1);
         patriciaTree.UpdateRootHash();
 
-        PatriciaTree checkTree = CreateCheckTree(memDb, patriciaTree);
+        PatriciaTree checkTree = CreateCheckTree(memDb, patriciaTree, LimboLogs.Instance);
         for (int j = 0; j < i; j++)
         {
-            Keccak key = TestItem.Keccaks[j];
+            Hash256 key = TestItem.Keccaks[j];
             checkTree.Get(key.Bytes).Should().BeNull($@"{i} {j}");
         }
     }
@@ -505,7 +503,7 @@ public class TrieByPathWithPrefixTest
         using TrieStoreByPath trieStore = new(memDb, _logManager);
         PatriciaTree patriciaTree = new(trieStore, _logManager)
         {
-            StorageBytePathPrefix = _keyAccountA.Concat(new[] {(byte)128}).ToArray()
+            StorageBytePathPrefix = _keyAccountA.Concat(new[] { (byte)128 }).ToArray()
         };
         patriciaTree.Set(_keyAccountA, _longLeaf1);
         patriciaTree.Set(_keyAccountB, _longLeaf1);
@@ -515,7 +513,7 @@ public class TrieByPathWithPrefixTest
 
         // leaf (root)
         // memDb.Keys.Should().HaveCount(5);
-        PatriciaTree checkTree = CreateCheckTree(memDb, patriciaTree);
+        PatriciaTree checkTree = CreateCheckTree(memDb, patriciaTree, LimboLogs.Instance);
         checkTree.Get(_keyAccountA).Should().BeEquivalentTo(_longLeaf1);
         checkTree.Get(_keyAccountB).Should().BeEquivalentTo(_longLeaf1);
         checkTree.Get(_keyAccountC).Should().BeEquivalentTo(_longLeaf1);
@@ -530,10 +528,8 @@ public class TrieByPathWithPrefixTest
 
         PatriciaTree patriciaTree = new PatriciaTree(trieStore, Keccak.EmptyTreeHash, true, true, _logManager)
         {
-            StorageBytePathPrefix = _keyAccountA.Concat(new[] {(byte)128}).ToArray()
-        };;
-
-
+            StorageBytePathPrefix = _keyAccountA.Concat(new[] { (byte)128 }).ToArray()
+        };
 
         patriciaTree.Set(_keyAccountA, _longLeaf1);
         patriciaTree.Set(_keyAccountB, _longLeaf1);
@@ -548,20 +544,30 @@ public class TrieByPathWithPrefixTest
 
         // leaf (root)
         // memDb.Keys.Should().HaveCount(6);
-        PatriciaTree checkTree = CreateCheckTree(memDb, patriciaTree);
+        PatriciaTree checkTree = CreateCheckTree(memDb, patriciaTree, LimboLogs.Instance);
         checkTree.Get(_keyAccountA).Should().BeNull();
         checkTree.Get(_keyAccountB).Should().BeEquivalentTo(_longLeaf1);
         // checkTree.Get(_keyAccountC).Should().BeEquivalentTo(_longLeaf1);
         // checkTree.Get(_keyAccountD).Should().BeEquivalentTo(_longLeaf1);
     }
 
-    private static PatriciaTree CreateCheckTree(MemDb memDb, PatriciaTree patriciaTree)
+    private static PatriciaTree CreateCheckTree(MemDb memDb, PatriciaTree tree, ILogManager logManager)
     {
-        PatriciaTree checkTree = new PatriciaTree(memDb, NUnitLogManager.Instance, patriciaTree.Capability)
+        PatriciaTree checkTree = new(new TrieStore(memDb, logManager), logManager)
         {
-            StorageBytePathPrefix = _keyAccountA.Concat(new[] {(byte)128}).ToArray()
-        };;
-        checkTree.RootHash = patriciaTree.RootHash;
+            StorageBytePathPrefix = Nibbles.ToBytes(tree.StoreNibblePathPrefix),
+            RootHash = tree.RootHash
+        };
+        return checkTree;
+    }
+
+    private static PatriciaTree CreateCheckTree(IColumnsDb<StateColumns> memDb, PatriciaTree tree, ILogManager logManager)
+    {
+        PatriciaTree checkTree = new(new TrieStoreByPath(memDb, logManager), logManager)
+        {
+            StorageBytePathPrefix = Nibbles.ToBytes(tree.StoreNibblePathPrefix),
+            RootHash = tree.RootHash,
+        };
         return checkTree;
     }
 
@@ -572,13 +578,13 @@ public class TrieByPathWithPrefixTest
         using TrieStoreByPath trieStore = new(memDb, _logManager);
         PatriciaTree patriciaTree = new(trieStore, _logManager)
         {
-            StorageBytePathPrefix = _keyAccountA.Concat(new[] {(byte)128}).ToArray()
+            StorageBytePathPrefix = _keyAccountA.Concat(new[] { (byte)128 }).ToArray()
         };
         patriciaTree.Set(_keyAccountA, _longLeaf1);
         patriciaTree.Set(_keyAccountB, _longLeaf2);
         patriciaTree.Commit(0);
         // memDb.Keys.Should().HaveCount(4);
-        PatriciaTree checkTree = CreateCheckTree(memDb, patriciaTree);
+        PatriciaTree checkTree = CreateCheckTree(memDb, patriciaTree, LimboLogs.Instance);
         checkTree.Get(_keyAccountA).Should().BeEquivalentTo(_longLeaf1);
         checkTree.Get(_keyAccountB).Should().BeEquivalentTo(_longLeaf2);
     }
@@ -590,13 +596,13 @@ public class TrieByPathWithPrefixTest
         using TrieStoreByPath trieStore = new(memDb, _logManager);
         PatriciaTree patriciaTree = new(trieStore, _logManager)
         {
-            StorageBytePathPrefix = _keyAccountA.Concat(new[] {(byte)128}).ToArray()
+            StorageBytePathPrefix = _keyAccountA.Concat(new[] { (byte)128 }).ToArray()
         };
         patriciaTree.Set(_keyAccountA, _longLeaf1);
         patriciaTree.Set(_keyAccountB, _longLeaf1);
         patriciaTree.Commit(0);
         // memDb.Keys.Should().HaveCount(4);
-        PatriciaTree checkTree = CreateCheckTree(memDb, patriciaTree);
+        PatriciaTree checkTree = CreateCheckTree(memDb, patriciaTree, LimboLogs.Instance);
         checkTree.Get(_keyAccountA).Should().BeEquivalentTo(_longLeaf1);
         checkTree.Get(_keyAccountB).Should().BeEquivalentTo(_longLeaf1);
     }
@@ -608,7 +614,7 @@ public class TrieByPathWithPrefixTest
         using TrieStoreByPath trieStore = new(memDb, _logManager);
         PatriciaTree patriciaTree = new(trieStore, _logManager)
         {
-            StorageBytePathPrefix = _keyAccountA.Concat(new[] {(byte)128}).ToArray()
+            StorageBytePathPrefix = _keyAccountA.Concat(new[] { (byte)128 }).ToArray()
         };
         patriciaTree.Set(_keyAccountA, _longLeaf1);
         patriciaTree.Set(_keyAccountB, _longLeaf2);
@@ -632,7 +638,7 @@ public class TrieByPathWithPrefixTest
         using TrieStoreByPath trieStore = new(memDb, _logManager);
         PatriciaTree patriciaTree = new(trieStore, _logManager)
         {
-            StorageBytePathPrefix = _keyAccountA.Concat(new[] {(byte)128}).ToArray()
+            StorageBytePathPrefix = _keyAccountA.Concat(new[] { (byte)128 }).ToArray()
         };
         patriciaTree.Set(_keyAccountA, _longLeaf1);
         patriciaTree.Set(_keyAccountB, _longLeaf1);
@@ -644,7 +650,7 @@ public class TrieByPathWithPrefixTest
         patriciaTree.Commit(1);
 
         // memDb.Keys.Should().HaveCount(4);
-        PatriciaTree checkTree = CreateCheckTree(memDb, patriciaTree);
+        PatriciaTree checkTree = CreateCheckTree(memDb, patriciaTree, LimboLogs.Instance);
         checkTree.Get(_keyAccountA).Should().BeEquivalentTo(_longLeaf1);
         checkTree.Get(_keyAccountB).Should().BeEquivalentTo(_longLeaf1);
     }
@@ -668,7 +674,7 @@ public class TrieByPathWithPrefixTest
         using TrieStoreByPath trieStore = new(memDb, _logManager);
         PatriciaTree patriciaTree = new(trieStore, _logManager)
         {
-            StorageBytePathPrefix = _keyAccountA.Concat(new[] {(byte)128}).ToArray()
+            StorageBytePathPrefix = _keyAccountA.Concat(new[] { (byte)128 }).ToArray()
         };
         patriciaTree.Set(key1, _longLeaf1);
         patriciaTree.Set(key2, _longLeaf1);
@@ -677,7 +683,7 @@ public class TrieByPathWithPrefixTest
         patriciaTree.Commit(0);
 
         // memDb.Keys.Should().HaveCount(7);
-        PatriciaTree checkTree = CreateCheckTree(memDb, patriciaTree);
+        PatriciaTree checkTree = CreateCheckTree(memDb, patriciaTree, LimboLogs.Instance);
         checkTree.Get(key1).Should().BeEquivalentTo(_longLeaf1);
         checkTree.Get(key2).Should().BeEquivalentTo(_longLeaf1);
         checkTree.Get(key3).Should().BeEquivalentTo(_longLeaf1);
@@ -719,7 +725,7 @@ public class TrieByPathWithPrefixTest
         using TrieStoreByPath trieStore = new(memDb, _logManager);
         PatriciaTree patriciaTree = new(trieStore, _logManager)
         {
-            StorageBytePathPrefix = _keyAccountA.Concat(new[] {(byte)128}).ToArray()
+            StorageBytePathPrefix = _keyAccountA.Concat(new[] { (byte)128 }).ToArray()
         };
         patriciaTree.Set(key1, _longLeaf1);
         patriciaTree.Set(key2, _longLeaf1);
@@ -731,7 +737,7 @@ public class TrieByPathWithPrefixTest
         patriciaTree.Commit(1);
 
         // memDb.Keys.Should().HaveCount(8);
-        PatriciaTree checkTree = CreateCheckTree(memDb, patriciaTree);
+        PatriciaTree checkTree = CreateCheckTree(memDb, patriciaTree, LimboLogs.Instance);
         checkTree.Get(key1).Should().BeEquivalentTo(_longLeaf1);
         checkTree.Get(key2).Should().BeEquivalentTo(_longLeaf1);
         checkTree.Get(key3).Should().BeNull();
@@ -744,7 +750,7 @@ public class TrieByPathWithPrefixTest
         using TrieStoreByPath trieStore = new(memDb, _logManager);
         PatriciaTree patriciaTree = new(trieStore, _logManager)
         {
-            StorageBytePathPrefix = _keyAccountA.Concat(new[] {(byte)128}).ToArray()
+            StorageBytePathPrefix = _keyAccountA.Concat(new[] { (byte)128 }).ToArray()
         };
         patriciaTree.Set(_keyAccountA, _longLeaf1);
         patriciaTree.Set(_keyAccountB, _longLeaf1);
@@ -758,7 +764,7 @@ public class TrieByPathWithPrefixTest
         patriciaTree.Commit(1);
 
         // memDb.Keys.Should().HaveCount(5);
-        PatriciaTree checkTree = CreateCheckTree(memDb, patriciaTree);
+        PatriciaTree checkTree = CreateCheckTree(memDb, patriciaTree, LimboLogs.Instance);
         checkTree.Get(_keyAccountA).Should().BeEquivalentTo(_longLeaf1);
         checkTree.Get(_keyAccountB).Should().BeEquivalentTo(_longLeaf1);
         checkTree.Get(_keyAccountC).Should().BeEquivalentTo(_longLeaf1);
@@ -785,7 +791,7 @@ public class TrieByPathWithPrefixTest
         using FileStream fileStream = new(fileName, FileMode.Create);
         using StreamWriter streamWriter = new(fileStream);
 
-        Queue<Keccak> rootQueue = new();
+        Queue<Hash256> rootQueue = new();
 
         MemColumnsDb<StateColumns> memDb = new();
 
@@ -850,12 +856,12 @@ public class TrieByPathWithPrefixTest
         streamWriter.Flush();
         fileStream.Seek(0, SeekOrigin.Begin);
 
-        streamWriter.WriteLine($"DB size: {memDb.Keys.Count}");
-        _logger.Info($"DB size: {memDb.Keys.Count}");
+        //streamWriter.WriteLine($"DB size: {memDb.Keys.Count}");
+        //_logger.Info($"DB size: {memDb.Keys.Count}");
 
         int verifiedBlocks = 0;
 
-        while (rootQueue.TryDequeue(out Keccak currentRoot))
+        while (rootQueue.TryDequeue(out Hash256 currentRoot))
         {
             try
             {
@@ -909,15 +915,15 @@ public class TrieByPathWithPrefixTest
         using FileStream fileStream = new(fileName, FileMode.Create);
         using StreamWriter streamWriter = new(fileStream);
 
-        Queue<Keccak> rootQueue = new();
-        Stack<Keccak> rootStack = new();
+        Queue<Hash256> rootQueue = new();
+        Stack<Hash256> rootStack = new();
 
         MemColumnsDb<StateColumns> memDb = new();
 
         using TrieStoreByPath trieStore = new(memDb, Persist.IfBlockOlderThan(lookupLimit), _logManager);
         PatriciaTree patriciaTree = new(trieStore, _logManager)
         {
-            StorageBytePathPrefix = _keyAccountA.Concat(new[] {(byte)128}).ToArray()
+            StorageBytePathPrefix = _keyAccountA.Concat(new[] { (byte)128 }).ToArray()
         };
 
         byte[][] accounts = new byte[accountsCount][];
@@ -999,13 +1005,13 @@ public class TrieByPathWithPrefixTest
         streamWriter.Flush();
         fileStream.Seek(0, SeekOrigin.Begin);
 
-        streamWriter.WriteLine($"DB size: {memDb.Keys.Count}");
-        _logger.Info($"DB size: {memDb.Keys.Count}");
+        //streamWriter.WriteLine($"DB size: {memDb.Keys.Count}");
+        //_logger.Info($"DB size: {memDb.Keys.Count}");
 
         int verifiedBlocks = 0;
 
         rootQueue.Clear();
-        Stack<Keccak> stackCopy = new();
+        Stack<Hash256> stackCopy = new();
         while (rootStack.Any())
         {
             stackCopy.Push(rootStack.Pop());
@@ -1013,7 +1019,7 @@ public class TrieByPathWithPrefixTest
 
         rootStack = stackCopy;
 
-        while (rootStack.TryPop(out Keccak currentRoot))
+        while (rootStack.TryPop(out Hash256 currentRoot))
         {
             try
             {

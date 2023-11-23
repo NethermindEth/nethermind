@@ -425,12 +425,12 @@ namespace Nethermind.Trie.Test.Pruning
                 }
             }
 
-            public IBatch StartBatch()
+            public IWriteBatch StartWriteBatch()
             {
-                return new BadBatch();
+                return new BadWriteBatch();
             }
 
-            private class BadBatch : IBatch
+            private class BadWriteBatch : IWriteBatch
             {
                 private Dictionary<byte[], byte[]> _inBatched = new();
 
@@ -440,7 +440,6 @@ namespace Nethermind.Trie.Test.Pruning
 
                 public byte[]? this[ReadOnlySpan<byte> key]
                 {
-                    get => Get(key);
                     set => Set(key, value);
                 }
 
@@ -449,9 +448,20 @@ namespace Nethermind.Trie.Test.Pruning
                     _inBatched[key.ToArray()] = value;
                 }
 
-                public byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
+                public void DeleteByRange(Span<byte> startKey, Span<byte> endKey)
                 {
-                    return _inBatched[key.ToArray()];
+                    if (Bytes.Comparer.Compare(startKey, endKey) == 0)
+                        _inBatched.Remove(startKey.ToArray(), out _);
+
+                    List<byte[]> keys = new();
+                    foreach (byte[] key in _inBatched.Keys)
+                    {
+                        if (Bytes.Comparer.Compare(key, startKey) >= 0 && Bytes.Comparer.Compare(key, endKey) < 0)
+                            keys.Add(key);
+                    }
+
+                    foreach (byte[] key in keys)
+                        _inBatched.Remove(key, out _);
                 }
             }
         }

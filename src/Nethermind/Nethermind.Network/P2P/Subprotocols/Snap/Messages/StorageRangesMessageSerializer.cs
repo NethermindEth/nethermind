@@ -1,10 +1,8 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Collections.Generic;
 using DotNetty.Buffers;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Snap;
 
@@ -82,7 +80,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
         private PathWithStorageSlot DecodeSlot(RlpStream stream)
         {
             stream.ReadSequenceLength();
-            Keccak path = stream.DecodeKeccak();
+            Hash256 path = stream.DecodeKeccak();
             byte[] value = stream.DecodeByteArray();
 
             PathWithStorageSlot data = new(path, value);

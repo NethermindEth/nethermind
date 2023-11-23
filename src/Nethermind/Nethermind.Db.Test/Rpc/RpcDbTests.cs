@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Linq;
 using FluentAssertions;
 using Nethermind.Core.Extensions;
 using Nethermind.Db.Rpc;

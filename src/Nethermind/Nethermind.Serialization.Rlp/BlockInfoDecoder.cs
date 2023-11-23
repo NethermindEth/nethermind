@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
@@ -20,7 +19,7 @@ namespace Nethermind.Serialization.Rlp
 
             int lastCheck = rlpStream.ReadSequenceLength() + rlpStream.Position;
 
-            Keccak? blockHash = rlpStream.DecodeKeccak();
+            Hash256? blockHash = rlpStream.DecodeKeccak();
 
             bool wasProcessed = rlpStream.DecodeBool();
             UInt256 totalDifficulty = rlpStream.DecodeUInt256();
@@ -103,7 +102,7 @@ namespace Nethermind.Serialization.Rlp
 
             int lastCheck = decoderContext.ReadSequenceLength() + decoderContext.Position;
 
-            Keccak? blockHash = decoderContext.DecodeKeccak();
+            Hash256? blockHash = decoderContext.DecodeKeccak();
             bool wasProcessed = decoderContext.DecodeBool();
             UInt256 totalDifficulty = decoderContext.DecodeUInt256();
 

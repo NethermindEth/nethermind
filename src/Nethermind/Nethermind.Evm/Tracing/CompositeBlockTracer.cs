@@ -2,17 +2,15 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
-using System.Collections.Immutable;
 using System.Linq;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 
 namespace Nethermind.Evm.Tracing
 {
     public class CompositeBlockTracer : IBlockTracer, ITracerBag
     {
-        private readonly List<IBlockTracer> _childTracers = new List<IBlockTracer>();
+        private readonly List<IBlockTracer> _childTracers = new();
         public bool IsTracingRewards { get; private set; }
 
         public CompositeBlockTracer()

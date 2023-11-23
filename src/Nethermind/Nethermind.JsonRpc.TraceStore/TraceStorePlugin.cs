@@ -1,11 +1,8 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Text.Json;
-using FastEnumUtility;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
-using Nethermind.Blockchain.Find;
 using Nethermind.Db;
 using Nethermind.Evm.Tracing.ParityStyle;
 using Nethermind.JsonRpc.Modules;
@@ -20,7 +17,7 @@ public class TraceStorePlugin : INethermindPlugin
     private INethermindApi _api = null!;
     private ITraceStoreConfig _config = null!;
     private IJsonRpcConfig _jsonRpcConfig = null!;
-    private IDbWithSpan? _db;
+    private IDb? _db;
     private TraceStorePruner? _pruner;
     private ILogManager _logManager = null!;
     private ILogger _logger = null!;
@@ -44,7 +41,7 @@ public class TraceStorePlugin : INethermindPlugin
             _traceSerializer = new ParityLikeTraceSerializer(_logManager, _config.MaxDepth, _config.VerifySerialized);
 
             // Setup DB
-            _db = (IDbWithSpan)_api.RocksDbFactory!.CreateDb(new RocksDbSettings(DbName, DbName.ToLower()));
+            _db = _api.RocksDbFactory!.CreateDb(new RocksDbSettings(DbName, DbName.ToLower()));
             _api.DbProvider!.RegisterDb(DbName, _db);
 
             //Setup pruning if configured
@@ -82,7 +79,7 @@ public class TraceStorePlugin : INethermindPlugin
             if (apiRpcModuleProvider.GetPool(ModuleType.Trace) is IRpcModulePool<ITraceRpcModule> traceModulePool)
             {
                 TraceStoreModuleFactory traceModuleFactory = new(traceModulePool.Factory, _db!, _api.BlockTree!, _api.ReceiptFinder!, _traceSerializer!, _logManager, _config.DeserializationParallelization);
-                apiRpcModuleProvider.RegisterBoundedByCpuCount(traceModuleFactory, _jsonRpcConfig.Timeout, _logManager);
+                apiRpcModuleProvider.RegisterBoundedByCpuCount(traceModuleFactory, _jsonRpcConfig.Timeout);
             }
         }
 

@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 using System.Threading;
@@ -12,12 +11,9 @@ using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Logging;
-using Nethermind.Merge.Plugin.Handlers;
-using Nethermind.Merge.Plugin.InvalidChainTracker;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.Blocks;
 using Nethermind.Synchronization.ParallelSync;
@@ -38,7 +34,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
         private readonly IReceiptStorage _receiptStorage;
         private readonly IChainLevelHelper _chainLevelHelper;
         private readonly IPoSSwitcher _poSSwitcher;
-        private readonly ISyncProgressResolver _syncProgressResolver;
+        private readonly IFullStateFinder _fullStateFinder;
 
         public MergeBlockDownloader(
             IPoSSwitcher posSwitcher,
@@ -53,7 +49,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
             ISpecProvider specProvider,
             IBetterPeerStrategy betterPeerStrategy,
             IChainLevelHelper chainLevelHelper,
-            ISyncProgressResolver syncProgressResolver,
+            IFullStateFinder fullStateFinder,
             ILogManager logManager,
             SyncBatchSize? syncBatchSize = null)
             : base(feed, syncPeerPool, blockTree, blockValidator, sealValidator, syncReport, receiptStorage,
@@ -68,7 +64,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
             _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
             _beaconPivot = beaconPivot;
             _receiptsRecovery = new ReceiptsRecovery(new EthereumEcdsa(specProvider.ChainId, logManager), specProvider);
-            _syncProgressResolver = syncProgressResolver ?? throw new ArgumentNullException(nameof(syncProgressResolver));
+            _fullStateFinder = fullStateFinder ?? throw new ArgumentNullException(nameof(fullStateFinder));
             _logger = logManager.GetClassLogger();
         }
 
@@ -233,7 +229,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
                         bool isFastSyncTransition = headIsGenesis && toBeProcessedIsNotBlockOne;
                         if (isFastSyncTransition)
                         {
-                            long bestFullState = _syncProgressResolver.FindBestFullState();
+                            long bestFullState = _fullStateFinder.FindBestFullState();
                             shouldProcess = currentBlock.Number > bestFullState && bestFullState != 0;
                             if (!shouldProcess)
                             {

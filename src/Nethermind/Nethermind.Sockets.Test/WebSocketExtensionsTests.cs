@@ -5,7 +5,6 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Net.WebSockets;
-using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core.Extensions;
@@ -17,7 +16,6 @@ using Nethermind.Serialization.Json;
 using NSubstitute;
 using NSubstitute.Extensions;
 using NUnit.Framework;
-using NUnit.Framework.Constraints;
 
 namespace Nethermind.Sockets.Test
 {

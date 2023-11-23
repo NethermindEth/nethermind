@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
-using DotNetty.Common.Utilities;
 using FluentAssertions;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -49,7 +48,7 @@ namespace Nethermind.Core.Test.Encoding
                 if (withNonEmptyTopic)
                 {
                     receiptBuilder.WithLogs(Build.A.LogEntry
-                        .WithTopics(new Keccak("0x00000000000000000000000000000000000000000000000000000000000000ff"))
+                        .WithTopics(new Hash256("0x00000000000000000000000000000000000000000000000000000000000000ff"))
                         .WithData(Bytes.FromHexString("0x0000000000ff0000000000"))
                         .TestObject);
                 }
@@ -66,7 +65,7 @@ namespace Nethermind.Core.Test.Encoding
                 if (withNonEmptyTopic)
                 {
                     receiptBuilder.WithLogs(Build.A.LogEntry
-                        .WithTopics(new Keccak("0x00000000000000000000000000000000000000000000000000000000000000ff"))
+                        .WithTopics(new Hash256("0x00000000000000000000000000000000000000000000000000000000000000ff"))
                         .WithData(Bytes.FromHexString("0x0000000000ff0000000000"))
                         .TestObject);
                 }

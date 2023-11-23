@@ -3,7 +3,6 @@
 
 using System;
 using FluentAssertions;
-using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
@@ -12,7 +11,6 @@ using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.State.Witnesses;
 using Nethermind.Trie;
-using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Store.Test.Witnesses

@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Eip2930;
 using Nethermind.Int256;
 using Nethermind.Serialization.Json;
@@ -12,38 +13,42 @@ using Newtonsoft.Json;
 
 namespace Nethermind.JsonRpc.Data
 {
-    public class AccessListItemForRpc
+    public struct AccessListItemForRpc : IEquatable<AccessListItemForRpc>
     {
-        public AccessListItemForRpc(Address address, IReadOnlyCollection<UInt256>? storageKeys)
+        public AccessListItemForRpc(Address address, IEnumerable<UInt256>? storageKeys)
         {
             Address = address;
-            StorageKeys = storageKeys?.ToArray() ?? Array.Empty<UInt256>();
+            StorageKeys = storageKeys;
         }
 
         public Address Address { get; set; }
 
         [JsonProperty(ItemConverterType = typeof(StorageCellIndexConverter))]
-        public UInt256[]? StorageKeys { get; set; }
+        public IEnumerable<UInt256>? StorageKeys { get; set; }
 
-        public static AccessListItemForRpc[] FromAccessList(AccessList accessList) =>
-            accessList.Data.Select(kvp => new AccessListItemForRpc(kvp.Key, kvp.Value)).ToArray();
+        public static IEnumerable<AccessListItemForRpc> FromAccessList(AccessList accessList) =>
+            accessList.Select(tuple => new AccessListItemForRpc(tuple.Address, tuple.StorageKeys));
 
-        public static AccessList ToAccessList(AccessListItemForRpc[] accessList)
+        public static AccessList ToAccessList(IEnumerable<AccessListItemForRpc> accessList)
         {
-            AccessListBuilder accessListBuilder = new();
-            for (int i = 0; i < accessList.Length; i++)
+            AccessList.Builder builder = new();
+            foreach (AccessListItemForRpc accessListItem in accessList)
             {
-                var accessListItem = accessList[i];
-                accessListBuilder.AddAddress(accessListItem.Address);
+                builder.AddAddress(accessListItem.Address);
                 if (accessListItem.StorageKeys is not null)
                 {
-                    for (int j = 0; j < accessListItem.StorageKeys.Length; j++)
+                    foreach (UInt256 index in accessListItem.StorageKeys)
                     {
-                        accessListBuilder.AddStorage(accessListItem.StorageKeys[j]);
+                        builder.AddStorage(index);
                     }
                 }
             }
-            return accessListBuilder.ToAccessList();
+
+            return builder.Build();
         }
+
+        public bool Equals(AccessListItemForRpc other) => Equals(Address, other.Address) && StorageKeys.NullableSequenceEqual(other.StorageKeys);
+        public override bool Equals(object? obj) => obj is AccessListItemForRpc other && Equals(other);
+        public override int GetHashCode() => HashCode.Combine(Address, StorageKeys);
     }
 }

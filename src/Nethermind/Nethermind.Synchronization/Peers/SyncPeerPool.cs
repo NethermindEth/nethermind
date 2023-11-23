@@ -15,13 +15,10 @@ using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.Logging;
-using Nethermind.Specs;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
-using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers.AllocationStrategies;
 using Timer = System.Timers.Timer;
 
@@ -215,7 +212,7 @@ namespace Nethermind.Synchronization.Peers
         public int PeerMaxCount { get; }
         private int PriorityPeerMaxCount { get; }
 
-        public void RefreshTotalDifficulty(ISyncPeer syncPeer, Keccak blockHash)
+        public void RefreshTotalDifficulty(ISyncPeer syncPeer, Hash256 blockHash)
         {
             RefreshTotalDiffTask task = new(blockHash, syncPeer);
             _peerRefreshQueue.Add(task);
@@ -325,18 +322,9 @@ namespace Nethermind.Synchronization.Peers
             SyncPeerAllocation allocation = new(peerAllocationStrategy, allocationContexts);
             while (true)
             {
-                lock (_isAllocatedChecks)
+                if (TryAllocateOnce(peerAllocationStrategy, allocationContexts, allocation))
                 {
-                    allocation.AllocateBestPeer(InitializedPeers.Where(p => p.CanBeAllocated(allocationContexts)), _stats, _blockTree);
-                    if (allocation.HasPeer)
-                    {
-                        if (peerAllocationStrategy.CanBeReplaced)
-                        {
-                            _replaceableAllocations.TryAdd(allocation, null);
-                        }
-
-                        return allocation;
-                    }
+                    return allocation;
                 }
 
                 bool timeoutReached = timeoutMilliseconds == 0
@@ -354,6 +342,25 @@ namespace Nethermind.Synchronization.Peers
                     }
                 }
             }
+        }
+
+        private bool TryAllocateOnce(IPeerAllocationStrategy peerAllocationStrategy, AllocationContexts allocationContexts, SyncPeerAllocation allocation)
+        {
+            lock (_isAllocatedChecks)
+            {
+                allocation.AllocateBestPeer(InitializedPeers.Where(p => p.CanBeAllocated(allocationContexts)), _stats, _blockTree);
+                if (allocation.HasPeer)
+                {
+                    if (peerAllocationStrategy.CanBeReplaced)
+                    {
+                        _replaceableAllocations.TryAdd(allocation, null);
+                    }
+
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         /// <summary>
@@ -678,13 +685,13 @@ namespace Nethermind.Synchronization.Peers
                 SyncPeer = syncPeer;
             }
 
-            public RefreshTotalDiffTask(Keccak blockHash, ISyncPeer syncPeer)
+            public RefreshTotalDiffTask(Hash256 blockHash, ISyncPeer syncPeer)
             {
                 BlockHash = blockHash;
                 SyncPeer = syncPeer;
             }
 
-            public Keccak? BlockHash { get; }
+            public Hash256? BlockHash { get; }
 
             public ISyncPeer SyncPeer { get; }
         }

@@ -3,7 +3,6 @@
 
 using System;
 using System.Text;
-using System.Timers;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Timers;
@@ -20,9 +19,9 @@ namespace Nethermind.Synchronization.Reporting
 
         private readonly ISyncPeerPool _syncPeerPool;
         private readonly ISyncConfig _syncConfig;
-        private readonly ISyncModeSelector _syncModeSelector;
         private readonly IPivot _pivot;
         private readonly ILogger _logger;
+        private SyncMode _currentMode = SyncMode.None;
 
         private readonly SyncPeersReport _syncPeersReport;
         private int _reportId;
@@ -34,12 +33,11 @@ namespace Nethermind.Synchronization.Reporting
         private static readonly TimeSpan _defaultReportingIntervals = TimeSpan.FromSeconds(5);
 
 
-        public SyncReport(ISyncPeerPool syncPeerPool, INodeStatsManager nodeStatsManager, ISyncModeSelector syncModeSelector, ISyncConfig syncConfig, IPivot pivot, ILogManager logManager, ITimerFactory? timerFactory = null, double tickTime = 1000)
+        public SyncReport(ISyncPeerPool syncPeerPool, INodeStatsManager nodeStatsManager, ISyncConfig syncConfig, IPivot pivot, ILogManager logManager, ITimerFactory? timerFactory = null, double tickTime = 1000)
         {
             _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _syncPeerPool = syncPeerPool ?? throw new ArgumentNullException(nameof(syncPeerPool));
             _syncConfig = syncConfig ?? throw new ArgumentNullException(nameof(syncConfig));
-            _syncModeSelector = syncModeSelector ?? throw new ArgumentNullException(nameof(syncModeSelector));
             _pivot = pivot ?? throw new ArgumentNullException(nameof(pivot));
             _syncPeersReport = new SyncPeersReport(syncPeerPool, nodeStatsManager, logManager);
             _timer = (timerFactory ?? TimerFactory.Default).CreateTimer(_defaultReportingIntervals);
@@ -53,12 +51,11 @@ namespace Nethermind.Synchronization.Reporting
             {
                 _timer.Start();
             }
-
-            _syncModeSelector.Changed += SyncModeSelectorOnChanged;
         }
 
-        private void SyncModeSelectorOnChanged(object? sender, SyncModeChangedEventArgs e)
+        public void SyncModeSelectorOnChanged(object? sender, SyncModeChangedEventArgs e)
         {
+            _currentMode = e.Current;
             if (e.Previous.NotSyncing() && e.Current == SyncMode.Full ||
                 e.Previous == SyncMode.Full && e.Current.NotSyncing())
             {
@@ -165,7 +162,7 @@ namespace Nethermind.Synchronization.Reporting
                 return;
             }
 
-            SyncMode currentSyncMode = _syncModeSelector.Current;
+            SyncMode currentSyncMode = _currentMode;
             if (_logger.IsDebug) WriteSyncConfigReport();
 
             if (!_reportedFastBlocksSummary && FastBlocksHeaders.HasEnded && FastBlocksBodies.HasEnded && FastBlocksReceipts.HasEnded)

@@ -76,8 +76,8 @@ namespace Nethermind.Blockchain
                 BlockchainIds.Mainnet => new ChainEstimations(
                     new LinearExtrapolation(167.GB(), 70.MB(), new DateTime(2023, 07, 14)),
                     new LinearExtrapolation(
-                        172553555637, new DateTime(2023, 05, 18, 18, 12, 0),
-                        177439054863, new DateTime(2023, 06, 8, 02, 36, 0))),
+                        177439054863, new DateTime(2023, 06, 8, 02, 36, 0),
+                        188742060333, new DateTime(2023, 09, 26, 19, 32, 0))),
                 BlockchainIds.Gnosis => new ChainEstimations(
                     new LinearExtrapolation(18000.MB(), 48.MB(), new DateTime(2021, 12, 7))),
                 BlockchainIds.EnergyWeb => new ChainEstimations(

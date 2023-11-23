@@ -35,7 +35,11 @@ namespace Ethereum.Test.Base
             network = network.Replace("Merge+3540+3670", "Shanghai");
             network = network.Replace("Shanghai+3855", "Shanghai");
             network = network.Replace("Shanghai+3860", "Shanghai");
+            network = network.Replace("GrayGlacier+1153", "Cancun");
+            network = network.Replace("Merge+1153", "Cancun");
             network = network.Replace("Shanghai+6780", "Cancun");
+            network = network.Replace("GrayGlacier+1153", "Cancun");
+            network = network.Replace("Merge+1153", "Cancun");
             return network switch
             {
                 "Frontier" => Frontier.Instance,
@@ -85,8 +89,8 @@ namespace Ethereum.Test.Base
             }
 
             BlockHeader header = new(
-                new Keccak(headerJson.ParentHash),
-                new Keccak(headerJson.UncleHash),
+                new Hash256(headerJson.ParentHash),
+                new Hash256(headerJson.UncleHash),
                 new Address(headerJson.Coinbase),
                 Bytes.FromHexString(headerJson.Difficulty).ToUInt256(),
                 (long)Bytes.FromHexString(headerJson.Number).ToUInt256(),
@@ -97,12 +101,12 @@ namespace Ethereum.Test.Base
 
             header.Bloom = new Bloom(Bytes.FromHexString(headerJson.Bloom));
             header.GasUsed = (long)Bytes.FromHexString(headerJson.GasUsed).ToUnsignedBigInteger();
-            header.Hash = new Keccak(headerJson.Hash);
-            header.MixHash = new Keccak(headerJson.MixHash);
+            header.Hash = new Hash256(headerJson.Hash);
+            header.MixHash = new Hash256(headerJson.MixHash);
             header.Nonce = (ulong)Bytes.FromHexString(headerJson.Nonce).ToUnsignedBigInteger();
-            header.ReceiptsRoot = new Keccak(headerJson.ReceiptTrie);
-            header.StateRoot = new Keccak(headerJson.StateRoot);
-            header.TxRoot = new Keccak(headerJson.TransactionsTrie);
+            header.ReceiptsRoot = new Hash256(headerJson.ReceiptTrie);
+            header.StateRoot = new Hash256(headerJson.StateRoot);
+            header.TxRoot = new Hash256(headerJson.TransactionsTrie);
             return header;
         }
 
@@ -132,13 +136,13 @@ namespace Ethereum.Test.Base
             transaction.Signature = new Signature(1, 1, 27);
             transaction.Hash = transaction.CalculateHash();
 
-            AccessListBuilder builder = new();
+            AccessList.Builder builder = new();
             ProcessAccessList(transactionJson.AccessLists is not null
                 ? transactionJson.AccessLists[postStateJson.Indexes.Data]
                 : transactionJson.AccessList, builder);
-            transaction.AccessList = builder.ToAccessList();
+            transaction.AccessList = builder.Build();
 
-            if (transaction.AccessList.Data.Count != 0)
+            if (transaction.AccessList.AsEnumerable().Count() != 0)
                 transaction.Type = TxType.AccessList;
             else
                 transaction.AccessList = null;
@@ -149,7 +153,7 @@ namespace Ethereum.Test.Base
             return transaction;
         }
 
-        private static void ProcessAccessList(AccessListItemJson[]? accessList, AccessListBuilder builder)
+        private static void ProcessAccessList(AccessListItemJson[]? accessList, AccessList.Builder builder)
         {
             foreach (AccessListItemJson accessListItemJson in accessList ?? Array.Empty<AccessListItemJson>())
             {
@@ -250,7 +254,7 @@ namespace Ethereum.Test.Base
             test.Network = testJson.EthereumNetwork;
             test.NetworkAfterTransition = testJson.EthereumNetworkAfterTransition;
             test.TransitionForkActivation = testJson.TransitionForkActivation;
-            test.LastBlockHash = new Keccak(testJson.LastBlockHash);
+            test.LastBlockHash = new Hash256(testJson.LastBlockHash);
             test.GenesisRlp = testJson.GenesisRlp == null ? null : new Rlp(Bytes.FromHexString(testJson.GenesisRlp));
             test.GenesisBlockHeader = testJson.GenesisBlockHeader;
             test.Blocks = testJson.Blocks;

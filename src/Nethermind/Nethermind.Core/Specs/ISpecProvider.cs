@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using Nethermind.Int256;
 
 namespace Nethermind.Core.Specs
@@ -41,6 +40,11 @@ namespace Nethermind.Core.Specs
         /// Retrieves the list of enabled EIPs at genesis block.
         /// </summary>
         IReleaseSpec GenesisSpec { get; }
+
+        /// <summary>
+        /// When true genesis state root calculation is disabled and spec state root is set.
+        /// </summary>
+        bool GenesisStateUnavailable { get => false; }
 
         /// <summary>
         /// Block number at which DAO happens (only relevant for mainnet)

@@ -4,9 +4,7 @@
 using Nethermind.Consensus.Ethash;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
-using Nethermind.Specs;
 using Nethermind.Specs.Forks;
-using Nethermind.Specs.Test;
 using NUnit.Framework;
 using NSubstitute;
 using Nethermind.Core;

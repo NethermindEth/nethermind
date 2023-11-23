@@ -14,6 +14,7 @@ using Nethermind.Db.Rocks.Config;
 using Nethermind.Db.Rpc;
 using Nethermind.JsonRpc.Client;
 using Nethermind.Logging;
+using Nethermind.TxPool;
 
 namespace Nethermind.Init.Steps
 {
@@ -27,7 +28,7 @@ namespace Nethermind.Init.Steps
             _api = api;
         }
 
-        public async Task Execute(CancellationToken _)
+        public virtual async Task Execute(CancellationToken _)
         {
             ILogger logger = _api.LogManager.GetClassLogger();
 
@@ -35,7 +36,7 @@ namespace Nethermind.Init.Steps
             IDbConfig dbConfig = _api.Config<IDbConfig>();
             ISyncConfig syncConfig = _api.Config<ISyncConfig>();
             IInitConfig initConfig = _api.Config<IInitConfig>();
-            IPruningConfig pruningConfig = _api.Config<IPruningConfig>();
+            ITxPoolConfig txPoolConfig = _api.Config<ITxPoolConfig>();
 
             foreach (PropertyInfo propertyInfo in typeof(IDbConfig).GetProperties())
             {
@@ -45,9 +46,13 @@ namespace Nethermind.Init.Steps
             try
             {
                 bool useReceiptsDb = initConfig.StoreReceipts || syncConfig.DownloadReceiptsInFastSync;
+                bool useBlobsDb = txPoolConfig is { BlobSupportEnabled: true, PersistentBlobStorageEnabled: true };
                 InitDbApi(initConfig, dbConfig, initConfig.StoreReceipts || syncConfig.DownloadReceiptsInFastSync);
-                StandardDbInitializer dbInitializer = new(_api.DbProvider, _api.RocksDbFactory, _api.MemDbFactory, _api.LogManager, _api.FileSystem, pruningConfig.Mode.IsFull());
-                await dbInitializer.InitStandardDbsAsync(useReceiptsDb);
+                StandardDbInitializer dbInitializer = new(_api.DbProvider, _api.RocksDbFactory, _api.MemDbFactory, _api.LogManager, _api.FileSystem);
+                await dbInitializer.InitStandardDbsAsync(useReceiptsDb, useBlobsDb);
+                _api.BlobTxStorage = useBlobsDb
+                    ? new BlobTxStorage(_api.DbProvider!.BlobTransactionsDb)
+                    : NullBlobTxStorage.Instance;
             }
             catch (TypeInitializationException ex)
             {

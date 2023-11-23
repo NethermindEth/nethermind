@@ -12,16 +12,13 @@ using Nethermind.Consensus.Clique;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using Nethermind.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
-using Nethermind.Db.Blooms;
 using Nethermind.Trie;
-using Nethermind.Wallet;
 using NUnit.Framework;
 using BlockTree = Nethermind.Blockchain.BlockTree;
 
@@ -57,7 +54,7 @@ namespace Nethermind.Clique.Test
             IDb db = new MemDb();
             // Import blocks
             _blockTree = Build.A.BlockTree().TestObject;
-            Block genesisBlock = GetRinkebyGenesis();
+            Block genesisBlock = GetGenesis();
             MineBlock(_blockTree, genesisBlock);
 
             Block block1 = Rlp.Decode<Block>(new Rlp(Bytes.FromHexString(Block1Rlp)));
@@ -101,13 +98,13 @@ namespace Nethermind.Clique.Test
 
         private CliqueSealer BuildSealer(int currentBlock, IDb db)
         {
-            IEthereumEcdsa ecdsa = new EthereumEcdsa(BlockchainIds.Rinkeby, LimboLogs.Instance);
+            IEthereumEcdsa ecdsa = new EthereumEcdsa(BlockchainIds.Goerli, LimboLogs.Instance);
             CliqueConfig config = new();
             int currentSignerIndex = (currentBlock % _signers.Count);
             _currentSigner = _signers[currentSignerIndex];
             _snapshotManager = new SnapshotManager(config, db, _blockTree, ecdsa, LimboLogs.Instance);
             _sealValidator = new CliqueSealValidator(config, _snapshotManager, LimboLogs.Instance);
-            _clique = new CliqueSealer(new Signer(BlockchainIds.Rinkeby, _currentSigner, LimboLogs.Instance), config,
+            _clique = new CliqueSealer(new Signer(BlockchainIds.Goerli, _currentSigner, LimboLogs.Instance), config,
                 _snapshotManager, LimboLogs.Instance);
             return _clique;
         }
@@ -123,10 +120,10 @@ namespace Nethermind.Clique.Test
             Assert.True(validSeal);
         }
 
-        private Block GetRinkebyGenesis()
+        private Block GetGenesis()
         {
-            Keccak parentHash = Keccak.Zero;
-            Keccak unclesHash = Keccak.OfAnEmptySequenceRlp;
+            Hash256 parentHash = Keccak.Zero;
+            Hash256 unclesHash = Keccak.OfAnEmptySequenceRlp;
             Address beneficiary = Address.Zero;
             UInt256 difficulty = new(1);
             long number = 0L;
@@ -139,10 +136,6 @@ namespace Nethermind.Clique.Test
             genesis.Header.Bloom = Bloom.Empty;
             genesis.Header.Hash = genesis.CalculateHash();
 
-            // this would need to be loaded from rinkeby chainspec to include allocations
-            //            Assert.AreEqual(new Keccak("0x6341fd3daf94b748c72ced5a5b26028f2474f5f00d824504e4fa37a75767e177"), genesis.Hash);
-
-            genesis.Header.Hash = genesis.Header.CalculateHash();
             return genesis;
         }
 
@@ -166,8 +159,8 @@ namespace Nethermind.Clique.Test
 
         private Block CreateBlock(int blockDifficulty, int blockNumber, Block lastBlock)
         {
-            Keccak parentHash = lastBlock.Hash;
-            Keccak unclesHash = Keccak.OfAnEmptySequenceRlp;
+            Hash256 parentHash = lastBlock.Hash;
+            Hash256 unclesHash = Keccak.OfAnEmptySequenceRlp;
             Address beneficiary = Address.Zero;
             UInt256 difficulty = (UInt256)blockDifficulty;
             long number = blockNumber;
@@ -195,11 +188,11 @@ namespace Nethermind.Clique.Test
         private static BlockHeader BuildCliqueBlock()
         {
             BlockHeader header = Build.A.BlockHeader
-                .WithParentHash(new Keccak("0x6d31ab6b6ee360d075bb032a094fb4ea52617268b760d15b47aa439604583453"))
+                .WithParentHash(new Hash256("0x6d31ab6b6ee360d075bb032a094fb4ea52617268b760d15b47aa439604583453"))
                 .WithUnclesHash(Keccak.OfAnEmptySequenceRlp)
                 .WithBeneficiary(Address.Zero)
                 .WithBloom(Bloom.Empty)
-                .WithStateRoot(new Keccak("0x9853b6c62bd454466f4843b73e2f0bdd655a4e754c259d6cc0ad4e580d788f43"))
+                .WithStateRoot(new Hash256("0x9853b6c62bd454466f4843b73e2f0bdd655a4e754c259d6cc0ad4e580d788f43"))
                 .WithTransactionsRoot(PatriciaTree.EmptyTreeHash)
                 .WithReceiptsRoot(PatriciaTree.EmptyTreeHash)
                 .WithDifficulty(2)

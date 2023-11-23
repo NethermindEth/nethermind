@@ -5,7 +5,6 @@ using System.Linq;
 using System.Reflection;
 using FluentAssertions;
 using Nethermind.Evm.CodeAnalysis;
-using NuGet.Frameworks;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test.CodeAnalysis

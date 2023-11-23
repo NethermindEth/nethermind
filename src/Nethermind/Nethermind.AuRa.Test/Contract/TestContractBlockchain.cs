@@ -3,7 +3,6 @@
 
 using System.IO;
 using System.Threading.Tasks;
-using Castle.Core.Internal;
 using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Specs;

@@ -5,6 +5,7 @@ using System;
 using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Consensus;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core.Specs;
 using Nethermind.JsonRpc;
@@ -28,28 +29,22 @@ public partial class EngineRpcModule : IEngineRpcModule
         TransitionConfigurationV1 beaconTransitionConfiguration) => _transitionConfigurationHandler.Handle(beaconTransitionConfiguration);
 
     public async Task<ResultWrapper<ForkchoiceUpdatedV1Result>> engine_forkchoiceUpdatedV1(ForkchoiceStateV1 forkchoiceState, PayloadAttributes? payloadAttributes = null)
-        => await ForkchoiceUpdated(forkchoiceState, payloadAttributes, 1);
+        => await ForkchoiceUpdated(forkchoiceState, payloadAttributes, EngineApiVersions.Paris);
 
     public Task<ResultWrapper<ExecutionPayload?>> engine_getPayloadV1(byte[] payloadId) =>
         _getPayloadHandlerV1.HandleAsync(payloadId);
 
     public async Task<ResultWrapper<PayloadStatusV1>> engine_newPayloadV1(ExecutionPayload executionPayload)
-        => await NewPayload(executionPayload, 1);
+        => await NewPayload(executionPayload, EngineApiVersions.Paris);
 
-    private async Task<ResultWrapper<ForkchoiceUpdatedV1Result>> ForkchoiceUpdated(ForkchoiceStateV1 forkchoiceState, PayloadAttributes? payloadAttributes, int version)
+    protected async Task<ResultWrapper<ForkchoiceUpdatedV1Result>> ForkchoiceUpdated(ForkchoiceStateV1 forkchoiceState, PayloadAttributes? payloadAttributes, int version)
     {
-        if (payloadAttributes?.Validate(_specProvider, version, out string? error) == false)
-        {
-            if (_logger.IsWarn) _logger.Warn(error);
-            return ResultWrapper<ForkchoiceUpdatedV1Result>.Fail(error, ErrorCodes.InvalidParams);
-        }
-
         if (await _locker.WaitAsync(_timeout))
         {
             Stopwatch watch = Stopwatch.StartNew();
             try
             {
-                return await _forkchoiceUpdatedV1Handler.Handle(forkchoiceState, payloadAttributes);
+                return await _forkchoiceUpdatedV1Handler.Handle(forkchoiceState, payloadAttributes, version);
             }
             finally
             {
@@ -65,7 +60,7 @@ public partial class EngineRpcModule : IEngineRpcModule
         }
     }
 
-    private async Task<ResultWrapper<PayloadStatusV1>> NewPayload(IExecutionPayloadParams executionPayloadParams, int version)
+    protected async Task<ResultWrapper<PayloadStatusV1>> NewPayload(IExecutionPayloadParams executionPayloadParams, int version)
     {
         ExecutionPayload executionPayload = executionPayloadParams.ExecutionPayload;
 

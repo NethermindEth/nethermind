@@ -113,7 +113,7 @@ namespace Nethermind.AccountAbstraction.Network
                 UserOperationWithEntryPoint uop = userOperations[i];
                 if (_userOperationPools.TryGetValue(uop.EntryPoint, out IUserOperationPool? pool))
                 {
-                    ResultWrapper<Keccak> result = pool.AddUserOperation(uop.UserOperation);
+                    ResultWrapper<Hash256> result = pool.AddUserOperation(uop.UserOperation);
                     if (Logger.IsTrace) Logger.Trace($"{_session.Node:c} sent {uop.UserOperation.RequestId!} uop to pool for entryPoint {uop.EntryPoint} and it was {result}");
                 }
                 else

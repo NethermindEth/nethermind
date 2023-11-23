@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
@@ -19,21 +18,10 @@ public class ExecutionPayloadV3 : ExecutionPayload
 
     public ExecutionPayloadV3(Block block) : base(block)
     {
+        ParentBeaconBlockRoot = block.ParentBeaconBlockRoot;
         BlobGasUsed = block.BlobGasUsed;
         ExcessBlobGas = block.ExcessBlobGas;
     }
-
-    /// <summary>
-    /// Gets or sets <see cref="Block.BlobGasUsed"/> as defined in
-    /// <see href="https://eips.ethereum.org/EIPS/eip-4844">EIP-4844</see>.
-    /// </summary>
-    public ulong? BlobGasUsed { get; set; }
-
-    /// <summary>
-    /// Gets or sets <see cref="Block.ExcessBlobGas"/> as defined in
-    /// <see href="https://eips.ethereum.org/EIPS/eip-4844">EIP-4844</see>.
-    /// </summary>
-    public ulong? ExcessBlobGas { get; set; }
 
     public override bool TryGetBlock(out Block? block, UInt256? totalDifficulty = null)
     {
@@ -42,8 +30,9 @@ public class ExecutionPayloadV3 : ExecutionPayload
             return false;
         }
 
+        block!.Header.ParentBeaconBlockRoot = ParentBeaconBlockRoot;
         block!.Header.BlobGasUsed = BlobGasUsed;
-        block.Header.ExcessBlobGas = ExcessBlobGas;
+        block!.Header.ExcessBlobGas = ExcessBlobGas;
         return true;
     }
 

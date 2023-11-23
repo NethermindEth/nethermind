@@ -225,13 +225,13 @@ public class StartBlockProducerAuRa
         }
     }
 
-        // TODO: Use BlockProducerEnvFactory
-        private BlockProducerEnv GetProducerChain(ITxSource? additionalTxSource)
+    // TODO: Use BlockProducerEnvFactory
+    private BlockProducerEnv GetProducerChain(ITxSource? additionalTxSource)
+    {
+        ReadOnlyTxProcessingEnv CreateReadonlyTxProcessingEnv(ReadOnlyDbProvider dbProvider, ReadOnlyBlockTree blockTree)
         {
-            ReadOnlyTxProcessingEnv CreateReadonlyTxProcessingEnv(ReadOnlyDbProvider dbProvider, ReadOnlyBlockTree blockTree)
-            {
-                return new(dbProvider, _api.ReadOnlyTrieStore, blockTree, _api.SpecProvider, _api.LogManager);
-            }
+            return new(dbProvider, _api.ReadOnlyTrieStore, blockTree, _api.SpecProvider, _api.LogManager);
+        }
 
         BlockProducerEnv Create()
         {

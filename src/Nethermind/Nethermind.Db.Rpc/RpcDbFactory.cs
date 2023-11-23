@@ -32,13 +32,15 @@ namespace Nethermind.Db.Rpc
 
         public IColumnsDb<T> CreateColumnsDb<T>(RocksDbSettings rocksDbSettings) where T : struct, Enum
         {
-            var rocksDb = _wrappedRocksDbFactory.CreateColumnsDb<T>(rocksDbSettings);
-            return new ReadOnlyColumnsDb<T>(new RpcColumnsDb<T>(rocksDbSettings.DbName, _jsonSerializer, _jsonRpcClient, _logManager, rocksDb), true);
+            IColumnsDb<T> rocksDb = _wrappedRocksDbFactory.CreateColumnsDb<T>(rocksDbSettings);
+            return new ReadOnlyColumnsDb<T>(
+                new RpcColumnsDb<T>(rocksDbSettings.DbName, _jsonSerializer, _jsonRpcClient, _logManager, rocksDb),
+                true);
         }
 
-        public IColumnsDb<T> CreateColumnsDb<T>(string dbName)
+        public IColumnsDb<T> CreateColumnsDb<T>(string dbName) where T : struct, Enum
         {
-            var memDb = _wrappedMemDbFactory.CreateColumnsDb<T>(dbName);
+            IColumnsDb<T> memDb = _wrappedMemDbFactory.CreateColumnsDb<T>(dbName);
             return new ReadOnlyColumnsDb<T>(new RpcColumnsDb<T>(dbName, _jsonSerializer, _jsonRpcClient, _logManager, memDb), true);
         }
 

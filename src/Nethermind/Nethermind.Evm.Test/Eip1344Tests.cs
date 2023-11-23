@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.Specs;
@@ -71,18 +70,6 @@ namespace Nethermind.Evm.Test
 
             [Test]
             public void given_mainnet_network_chain_id_opcode_puts_expected_value_onto_the_stack()
-            {
-                Test(SpecProvider.ChainId);
-            }
-        }
-
-        private class Rinkeby : Eip1344Tests
-        {
-            protected override long BlockNumber => RinkebySpecProvider.IstanbulBlockNumber;
-            protected override ISpecProvider SpecProvider => RinkebySpecProvider.Instance;
-
-            [Test]
-            public void given_rinkeby_network_chain_id_opcode_puts_expected_value_onto_the_stack()
             {
                 Test(SpecProvider.ChainId);
             }

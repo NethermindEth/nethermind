@@ -21,27 +21,27 @@ public class TrieNodeResolverWithReadFlags : ITrieNodeResolver
 
     public TrieNodeResolverCapability Capability => _baseResolver.Capability;
 
-    public bool ExistsInDB(Keccak hash, byte[] nodePathNibbles)
+    public bool ExistsInDB(Hash256 hash, byte[] nodePathNibbles)
     {
         return _baseResolver.ExistsInDB(hash, nodePathNibbles);
     }
 
-    public TrieNode FindCachedOrUnknown(Keccak hash)
+    public TrieNode FindCachedOrUnknown(Hash256 hash)
     {
         return _baseResolver.FindCachedOrUnknown(hash);
     }
 
-    public TrieNode FindCachedOrUnknown(Keccak hash, Span<byte> nodePath, Span<byte> storagePrefix)
+    public TrieNode FindCachedOrUnknown(Hash256 hash, Span<byte> nodePath, Span<byte> storagePrefix)
     {
         return _baseResolver.FindCachedOrUnknown(hash, nodePath, storagePrefix);
     }
 
-    public TrieNode? FindCachedOrUnknown(Span<byte> nodePath, byte[] storagePrefix, Keccak rootHash)
+    public TrieNode? FindCachedOrUnknown(Span<byte> nodePath, byte[] storagePrefix, Hash256 rootHash)
     {
         return _baseResolver.FindCachedOrUnknown(nodePath, storagePrefix, rootHash);
     }
 
-    public byte[]? LoadRlp(Keccak hash, ReadFlags flags = ReadFlags.None)
+    public byte[]? LoadRlp(Hash256 hash, ReadFlags flags = ReadFlags.None)
     {
         if (flags != ReadFlags.None)
         {
@@ -51,7 +51,7 @@ public class TrieNodeResolverWithReadFlags : ITrieNodeResolver
         return _baseResolver.LoadRlp(hash, _defaultFlags);
     }
 
-    public byte[]? LoadRlp(Span<byte> nodePath, Keccak rootHash = null)
+    public byte[]? LoadRlp(Span<byte> nodePath, Hash256 rootHash = null)
     {
         return _baseResolver.LoadRlp(nodePath, rootHash);
     }
