@@ -56,6 +56,40 @@ public class ThrottledActionQueueTests
     [TestCase(2, 0)]
     [TestCase(5, 100)]
     [TestCase(10, 500)]
+    public void runs_action_throttled(int taskCount, int milliseconds)
+    {
+        List<DateTime> times = new();
+
+        TimeSpan throttleTime = TimeSpan.FromMilliseconds(500);
+        TimeSpan epsilon = throttleTime * 0.01; // Margin of error
+
+        ThrottledActionQueue queue = new(throttleTime, LimboTraceLogger.Instance);
+        queue.Init();
+        for (int i = 0; i < taskCount; i++)
+        {
+            queue.Enqueue(() =>
+            {
+                times.Add(DateTime.UtcNow);
+                return Task.CompletedTask;
+            });
+        }
+        queue.Dispose();
+
+        DateTime last = times[0];
+        for (int i = 1; i < times.Count; i++)
+        {
+            DateTime current = times[i];
+
+            TimeSpan delta = (times[i] - last) + epsilon;
+            delta.Should().BeGreaterOrEqualTo(throttleTime);
+
+            last = current;
+        }
+    }
+
+    [TestCase(2, 0)]
+    [TestCase(5, 100)]
+    [TestCase(10, 500)]
     public void runs_tasks_throttled(int taskCount, int milliseconds)
     {
         List<DateTime> times = new();
