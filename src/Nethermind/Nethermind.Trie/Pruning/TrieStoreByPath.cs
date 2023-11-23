@@ -187,13 +187,11 @@ namespace Nethermind.Trie.Pruning
                             AnnounceReorgBoundaries();
                         }
                     }
-                }
 
-                if (trieType == TrieType.State)
-                {
-                    DisposeWriteBatches();
                     CurrentPackage = null;
                 }
+
+                DisposeWriteBatches();
             }
             finally
             {
