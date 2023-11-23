@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Logging;
@@ -92,5 +93,12 @@ public class ThrottledActionQueueTests
         ThrottledActionQueue queue = new(TimeSpan.Zero, LimboTraceLogger.Instance);
         queue.Dispose();
         queue.Dispose();
+    }
+
+    [Test]
+    public void supports_multiple_disposes_concurrent()
+    {
+        ThrottledActionQueue queue = new(TimeSpan.Zero, LimboTraceLogger.Instance);
+        Parallel.For(0, 10, _ => queue.Dispose());
     }
 }
