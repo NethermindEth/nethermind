@@ -60,7 +60,7 @@ public class ThrottledActionQueueTests
     {
         List<DateTime> times = new();
 
-        TimeSpan throttleTime = TimeSpan.FromMilliseconds(500);
+        TimeSpan throttleTime = TimeSpan.FromMilliseconds(milliseconds);
         TimeSpan epsilon = throttleTime * 0.01; // Margin of error
 
         ThrottledActionQueue queue = new(throttleTime, LimboTraceLogger.Instance);
@@ -94,7 +94,7 @@ public class ThrottledActionQueueTests
     {
         List<DateTime> times = new();
 
-        TimeSpan throttleTime = TimeSpan.FromMilliseconds(500);
+        TimeSpan throttleTime = TimeSpan.FromMilliseconds(milliseconds);
         TimeSpan epsilon = throttleTime * 0.01; // Margin of error
 
         ThrottledActionQueue queue = new(throttleTime, LimboTraceLogger.Instance);

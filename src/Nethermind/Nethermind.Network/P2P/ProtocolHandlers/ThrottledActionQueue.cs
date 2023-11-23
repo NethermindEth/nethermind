@@ -40,7 +40,11 @@ public class ThrottledActionQueue : IDisposable
                 {
                     try
                     {
-                        await Task.Delay((_throttleTime - lastExecutionDuration).Duration());
+                        TimeSpan delay = _throttleTime - lastExecutionDuration;
+                        if (delay > TimeSpan.Zero)
+                        {
+                            await Task.Delay(delay);
+                        }
                         Stopwatch watch = Stopwatch.StartNew();
                         await action();
                         lastExecutionDuration = TimeSpan.FromMilliseconds(watch.ElapsedMilliseconds);
