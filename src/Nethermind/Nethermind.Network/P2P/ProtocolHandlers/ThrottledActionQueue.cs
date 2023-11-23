@@ -40,14 +40,14 @@ public class ThrottledActionQueue : IDisposable
                 {
                     try
                     {
-                        await Task.Delay(_throttleTime - lastExecutionDuration);
+                        await Task.Delay((_throttleTime - lastExecutionDuration).Duration());
                         Stopwatch watch = Stopwatch.StartNew();
                         await action();
                         lastExecutionDuration = TimeSpan.FromMilliseconds(watch.ElapsedMilliseconds);
                     }
                     catch (Exception e)
                     {
-                        if (_logger.IsError) _logger.Error("TODO", e);
+                        if (_logger.IsError) _logger.Error($"Unhandled exception on ${nameof(ThrottledActionQueue)} processor loop", e);
                     }
                 }
             }
