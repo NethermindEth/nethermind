@@ -11,6 +11,7 @@ using Nethermind.Core.Collections;
 using Nethermind.Logging;
 using Nethermind.Network.Contract.P2P;
 using Nethermind.Network.P2P.Messages;
+using Nethermind.Network.P2P.ProtocolHandlers;
 using Nethermind.Network.P2P.Subprotocols.Eth.V65;
 using Nethermind.Network.P2P.Subprotocols.Eth.V65.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages;
@@ -33,6 +34,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
         private readonly MessageDictionary<GetNodeDataMessage, V63.Messages.GetNodeDataMessage, byte[][]> _nodeDataRequests66;
         private readonly MessageDictionary<GetReceiptsMessage, V63.Messages.GetReceiptsMessage, (TxReceipt[][], long)> _receiptsRequests66;
         private readonly IPooledTxsRequestor _pooledTxsRequestor;
+        private readonly ThrottledActionQueue _queue;
         private readonly Action<GetPooledTransactionsMessage> _sendAction;
 
         public Eth66ProtocolHandler(ISession session,
@@ -44,7 +46,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
             IGossipPolicy gossipPolicy,
             ForkInfo forkInfo,
             ILogManager logManager,
-            ITxGossipPolicy? transactionsGossipPolicy = null)
+            ITxGossipPolicy? transactionsGossipPolicy = null,
+            TimeSpan? throttleTime = null)
             : base(session, serializer, nodeStatsManager, syncServer, txPool, pooledTxsRequestor, gossipPolicy, forkInfo, logManager, transactionsGossipPolicy)
         {
             _headersRequests66 = new MessageDictionary<GetBlockHeadersMessage, V62.Messages.GetBlockHeadersMessage, BlockHeader[]>(Send);
@@ -52,6 +55,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
             _nodeDataRequests66 = new MessageDictionary<GetNodeDataMessage, V63.Messages.GetNodeDataMessage, byte[][]>(Send);
             _receiptsRequests66 = new MessageDictionary<GetReceiptsMessage, V63.Messages.GetReceiptsMessage, (TxReceipt[][], long)>(Send);
             _pooledTxsRequestor = pooledTxsRequestor;
+            _queue = new ThrottledActionQueue(throttleTime ?? TimeSpan.Zero, logManager.GetClassLogger<Eth66ProtocolHandler>());
             // Capture Action once rather than per call
             _sendAction = Send;
         }
@@ -59,6 +63,12 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
         public override string Name => "eth66";
 
         public override byte ProtocolVersion => EthVersions.Eth66;
+
+        public override void Init()
+        {
+            _queue.Init();
+            base.Init();
+        }
 
         public override void HandleMessage(ZeroPacket message)
         {
@@ -160,10 +170,15 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
 
         private void Handle(GetPooledTransactionsMessage getPooledTransactions)
         {
-            using ArrayPoolList<Transaction> txsToSend = new(1024);
+            _queue.Enqueue(() =>
+            {
+                using ArrayPoolList<Transaction> txsToSend = new(1024);
 
-            Send(new PooledTransactionsMessage(getPooledTransactions.RequestId,
-                FulfillPooledTransactionsRequest(getPooledTransactions.EthMessage, txsToSend)));
+                Send(new PooledTransactionsMessage(getPooledTransactions.RequestId,
+                    FulfillPooledTransactionsRequest(getPooledTransactions.EthMessage, txsToSend)));
+
+                return Task.CompletedTask;
+            });
         }
 
         private void Handle(GetReceiptsMessage getReceiptsMessage)
@@ -301,6 +316,12 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
             messageQueue.Send(request);
 
             return await HandleResponse(request, speedType, describeRequestFunc, token);
+        }
+
+        public override void Dispose()
+        {
+            _queue.Dispose();
+            base.Dispose();
         }
     }
 }

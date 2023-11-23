@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.Net;
 using System.Threading;
@@ -198,6 +199,37 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
             _session.Received().DeliverMessage(Arg.Any<Network.P2P.Subprotocols.Eth.V66.Messages.PooledTransactionsMessage>());
         }
 
+        [TestCase(5, 100)]
+        [TestCase(10, 500)]
+        public void Can_handle_get_pooled_transactions_throttled(int messageCount, int throttleTimeMillis)
+        {
+            _handler = new Eth66ProtocolHandler(
+                _session,
+                _svc,
+                new NodeStatsManager(_timerFactory, LimboLogs.Instance),
+                _syncManager,
+                _transactionPool,
+                new PooledTxsRequestor(_transactionPool, new TxPoolConfig()),
+                _gossipPolicy,
+                new ForkInfo(_specProvider, _genesisBlock.Header.Hash!),
+                LimboLogs.Instance,
+                throttleTime: TimeSpan.FromMilliseconds(throttleTimeMillis));
+            _handler.Init();
+
+            var msg65 = new GetPooledTransactionsMessage(new[] { Keccak.Zero, TestItem.KeccakA });
+            var msg66 = new Network.P2P.Subprotocols.Eth.V66.Messages.GetPooledTransactionsMessage(1111, msg65);
+
+            HandleIncomingStatusMessage();
+            for (int i = 0; i < messageCount; i++)
+            {
+                HandleZeroMessage(msg66, Eth66MessageCode.GetPooledTransactions);
+            }
+
+            _handler.Dispose();
+
+            _session.Received(messageCount).DeliverMessage(Arg.Any<Network.P2P.Subprotocols.Eth.V66.Messages.PooledTransactionsMessage>());
+        }
+
         [Test]
         public void Can_handle_pooled_transactions()
         {
@@ -308,6 +340,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
                 _gossipPolicy,
                 new ForkInfo(_specProvider, _genesisBlock.Header.Hash!),
                 LimboLogs.Instance);
+            _handler.Init();
 
             List<Hash256> hashes = new(numberOfTransactions);
 

@@ -207,6 +207,7 @@ public class Eth68ProtocolHandlerTests
             new ForkInfo(_specProvider, _genesisBlock.Header.Hash!),
             LimboLogs.Instance,
             _txGossipPolicy);
+        _handler.Init();
 
         int maxNumberOfTxsInOneMsg = sizeOfOneTx < TransactionsMessage.MaxPacketSize ? TransactionsMessage.MaxPacketSize / sizeOfOneTx : 1;
         int messagesCount = numberOfTransactions / maxNumberOfTxsInOneMsg + (numberOfTransactions % maxNumberOfTxsInOneMsg == 0 ? 0 : 1);
