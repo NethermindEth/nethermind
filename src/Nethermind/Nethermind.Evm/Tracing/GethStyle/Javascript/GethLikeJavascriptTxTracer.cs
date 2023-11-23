@@ -122,8 +122,31 @@ public sealed class GethLikeJavascriptTxTracer : GethLikeTxTracer
 
     public override void ReportOperationError(EvmExceptionType error)
     {
+        static string? GetJavascriptErrorDescription(EvmExceptionType evmExceptionType) =>
+            evmExceptionType switch
+            {
+                EvmExceptionType.None => null,
+                EvmExceptionType.BadInstruction => "invalid instruction",
+                EvmExceptionType.StackOverflow => "max call depth exceeded",
+                EvmExceptionType.StackUnderflow => "stack underflow",
+                EvmExceptionType.OutOfGas => "out of gas",
+                EvmExceptionType.GasUInt64Overflow => "gas uint64 overflow",
+                EvmExceptionType.InvalidSubroutineEntry => "invalid jump destination",
+                EvmExceptionType.InvalidSubroutineReturn => "invalid jump destination",
+                EvmExceptionType.InvalidJumpDestination => "invalid jump destination",
+                EvmExceptionType.AccessViolation => "return data out of bounds",
+                EvmExceptionType.StaticCallViolation => "write protection",
+                EvmExceptionType.PrecompileFailure => "precompile error",
+                EvmExceptionType.TransactionCollision => "contract address collision",
+                EvmExceptionType.NotEnoughBalance => "insufficient balance for transfer",
+                EvmExceptionType.Other => "error",
+                EvmExceptionType.Revert => "execution reverted",
+                EvmExceptionType.InvalidCode => "invalid code: must not begin with 0xef",
+                _ => "error"
+            };
+
         base.ReportOperationError(error);
-        _log.error = GetErrorDescription(error);
+        _log.error = GetJavascriptErrorDescription(error);
         _tracer.fault(_log, _db);
     }
 
@@ -194,6 +217,11 @@ public sealed class GethLikeJavascriptTxTracer : GethLikeTxTracer
         if (_functions.HasFlag(TracerFunctions.step))
         {
             _tracer.step(_log, _db);
+        }
+
+        if (_log.op?.Value == Instruction.REVERT)
+        {
+            ReportOperationError(EvmExceptionType.Revert);
         }
     }
 

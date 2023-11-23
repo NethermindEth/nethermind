@@ -37,11 +37,11 @@ namespace Nethermind.Evm.Tracing.GethStyle.Javascript
 
         public readonly struct Opcode
         {
-            private readonly Instruction _value;
-            public Opcode(Instruction value) => _value = value;
-            public int toNumber() => (int)_value;
-            public string? toString() => _value.GetName();
-            public bool isPush() => _value is >= Instruction.PUSH0 and <= Instruction.PUSH32;
+            public Instruction Value { get; }
+            public Opcode(Instruction value) => Value = value;
+            public int toNumber() => (int)Value;
+            public string? toString() => Value.GetName();
+            public bool isPush() => Value is >= Instruction.PUSH0 and <= Instruction.PUSH32;
         }
 
         public readonly struct Stack
