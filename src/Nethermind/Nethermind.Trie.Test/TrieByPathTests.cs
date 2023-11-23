@@ -748,7 +748,7 @@ public class TrieByPathTests
     {
         ByPathStateMemDb stateDb = new ByPathStateMemDb();
         using TrieStoreByPath trieStore = new(stateDb, _logManager);
-        IDbWithSpan db = stateDb.GetColumnDb(StateColumns.State);
+        MemDb db = stateDb.GetColumnDb(StateColumns.State) as MemDb;
 
         byte[] data = new byte[4] { 1, 2, 3, 4 };
 
@@ -784,7 +784,7 @@ public class TrieByPathTests
         Assert.That(rpd, Is.Not.Null);
         Assert.That(nld, Is.Not.Null);
 
-        Assert.That(db.GetAllValues().Count, Is.EqualTo(2));
+        Assert.That(db.Count, Is.EqualTo(2));
     }
 
     [Test]
@@ -804,7 +804,7 @@ public class TrieByPathTests
 
         byte[] newExtensionChild = Bytes.FromHexString("0x0a010b02040f05");
 
-        IDbWithSpan db = stateDb.GetColumnDb(StateColumns.State);
+        MemDb db = stateDb.GetColumnDb(StateColumns.State) as MemDb;
         db.Set(Nibbles.NibblesToByteStorage(oldPath1), data);
         db.Set(Nibbles.NibblesToByteStorage(oldPath2), data);
         db.Set(Nibbles.NibblesToByteStorage(oldLeaf), data);
@@ -830,7 +830,7 @@ public class TrieByPathTests
         Assert.That(rpd, Is.Not.Null);
         Assert.That(nld, Is.Not.Null);
 
-        Assert.That(db.GetAllValues().Count, Is.EqualTo(2));
+        Assert.That(db.Count, Is.EqualTo(2));
     }
 
     [Test]
@@ -859,7 +859,7 @@ public class TrieByPathTests
         byte[] oldPathc = Bytes.FromHexString("0x0a010b020c");
         byte[] oldPathc3 = Bytes.FromHexString("0x0a010b020c03");
 
-        IDbWithSpan db = stateDb.GetColumnDb(StateColumns.State);
+        MemDb db = stateDb.GetColumnDb(StateColumns.State) as MemDb;
         db.Set(Nibbles.NibblesToByteStorage(oldPath1), data);
         db.Set(Nibbles.NibblesToByteStorage(oldPath4), data);
         db.Set(Nibbles.NibblesToByteStorage(oldPathc), data);
@@ -890,7 +890,7 @@ public class TrieByPathTests
         Assert.That(c3d, Is.Not.Null);
         Assert.That(c6d, Is.Not.Null);
 
-        Assert.That(db.GetAllValues().Count, Is.EqualTo(4));
+        Assert.That(db.Count, Is.EqualTo(4));
     }
 
     [TestCase("0x0a010b02", new byte[] { 0, 3, 6 }, new byte[] { 1, 4, 10})]
@@ -902,7 +902,7 @@ public class TrieByPathTests
     {
         ByPathStateMemDb stateDb = new ByPathStateMemDb();
         using TrieStoreByPath trieStore = new(stateDb, _logManager);
-        IDbWithSpan db = stateDb.GetColumnDb(StateColumns.State);
+        MemDb db = stateDb.GetColumnDb(StateColumns.State) as MemDb;
 
         byte[] data = new byte[4] { 1, 2, 3, 4 };
 
@@ -956,7 +956,7 @@ public class TrieByPathTests
             Assert.That(db.Get(Nibbles.NibblesToByteStorage(childPath)), Is.Not.Null);
         }
 
-        Assert.That(db.GetAllValues().Count, Is.EqualTo(existingChildren.Length + 1));
+        Assert.That(db.Count, Is.EqualTo(existingChildren.Length + 1));
     }
 
     [TestCase(256, 128, 128, 32)]
