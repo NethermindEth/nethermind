@@ -22,12 +22,17 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V68;
 public class Eth68ProtocolHandler : Eth67ProtocolHandler
 {
     private readonly IPooledTxsRequestor _pooledTxsRequestor;
-
+    private readonly TimeSpan? _throttleTime;
     private readonly Action<V66.Messages.GetPooledTransactionsMessage> _sendAction;
+    private DateTime _lastMessageProcessedTimestamp = DateTime.UnixEpoch;
 
     public override string Name => "eth68";
 
     public override byte ProtocolVersion => EthVersions.Eth68;
+
+    private bool IsThrottled
+        => _throttleTime is not null
+           && (DateTime.Now - _lastMessageProcessedTimestamp).Duration() < _throttleTime;
 
     public Eth68ProtocolHandler(ISession session,
         IMessageSerializationService serializer,
@@ -38,13 +43,15 @@ public class Eth68ProtocolHandler : Eth67ProtocolHandler
         IGossipPolicy gossipPolicy,
         ForkInfo forkInfo,
         ILogManager logManager,
-        ITxGossipPolicy? transactionsGossipPolicy = null)
+        ITxGossipPolicy? transactionsGossipPolicy = null,
+        TimeSpan? throttleTime = null)
         : base(session, serializer, nodeStatsManager, syncServer, txPool, pooledTxsRequestor, gossipPolicy, forkInfo, logManager, transactionsGossipPolicy)
     {
         _pooledTxsRequestor = pooledTxsRequestor;
+        _throttleTime = throttleTime;
 
         // Capture Action once rather than per call
-        _sendAction = Send<V66.Messages.GetPooledTransactionsMessage>;
+        _sendAction = Send;
     }
 
     public override void HandleMessage(ZeroPacket message)
@@ -53,7 +60,7 @@ public class Eth68ProtocolHandler : Eth67ProtocolHandler
         switch (message.PacketType)
         {
             case Eth68MessageCode.NewPooledTransactionHashes:
-                if (CanReceiveTransactions)
+                if (CanReceiveTransactions && !IsThrottled)
                 {
                     NewPooledTransactionHashesMessage68 newPooledTxHashesMsg =
                         Deserialize<NewPooledTransactionHashesMessage68>(message.Content);
@@ -75,6 +82,8 @@ public class Eth68ProtocolHandler : Eth67ProtocolHandler
 
     private void Handle(NewPooledTransactionHashesMessage68 message)
     {
+        _lastMessageProcessedTimestamp = DateTime.Now;
+
         bool isTrace = Logger.IsTrace;
         if (message.Hashes.Count != message.Types.Count || message.Hashes.Count != message.Sizes.Count)
         {
@@ -109,7 +118,7 @@ public class Eth68ProtocolHandler : Eth67ProtocolHandler
         }
         else
         {
-            SendMessage(new byte[] { (byte)tx.Type }, new int[] { tx.GetLength() }, new Hash256[] { tx.Hash });
+            SendMessage(new[] { (byte)tx.Type }, new[] { tx.GetLength() }, new[] { tx.Hash });
         }
     }
 
