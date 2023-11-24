@@ -13,6 +13,9 @@ namespace Nethermind.Network.Test;
 
 public class ThrottledActionQueueTests
 {
+    // Due to timing inconsistencies we use a margin of error.
+    private readonly TimeSpan _epsilon = TimeSpan.FromMilliseconds(10);
+
     [TestCase(100)]
     [TestCase(200)]
     [TestCase(500)]
@@ -61,7 +64,6 @@ public class ThrottledActionQueueTests
         List<DateTime> times = new();
 
         TimeSpan throttleTime = TimeSpan.FromMilliseconds(milliseconds);
-        TimeSpan epsilon = throttleTime * 0.01; // Margin of error
 
         ThrottledActionQueue queue = new(throttleTime, LimboTraceLogger.Instance);
         queue.Init();
@@ -80,7 +82,7 @@ public class ThrottledActionQueueTests
         {
             DateTime current = times[i];
 
-            TimeSpan delta = (times[i] - last) + epsilon;
+            TimeSpan delta = (times[i] - last) + _epsilon;
             delta.Should().BeGreaterOrEqualTo(throttleTime);
 
             last = current;
@@ -95,7 +97,6 @@ public class ThrottledActionQueueTests
         List<DateTime> times = new();
 
         TimeSpan throttleTime = TimeSpan.FromMilliseconds(milliseconds);
-        TimeSpan epsilon = throttleTime * 0.01; // Margin of error
 
         ThrottledActionQueue queue = new(throttleTime, LimboTraceLogger.Instance);
         queue.Init();
@@ -114,7 +115,7 @@ public class ThrottledActionQueueTests
         {
             DateTime current = times[i];
 
-            TimeSpan delta = (times[i] - last) + epsilon;
+            TimeSpan delta = (times[i] - last) + _epsilon;
             delta.Should().BeGreaterOrEqualTo(throttleTime);
 
             last = current;
