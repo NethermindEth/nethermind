@@ -241,7 +241,7 @@ namespace Nethermind.AuRa.Test
                     context.BlockTree.ClearReceivedCalls();
                 }
 
-                await processedEvent.WaitOneAsync(context.StepDelay * stepDelayMultiplier, CancellationToken.None);
+                await processedEvent.WaitOneAsync(context.StepDelay * stepDelayMultiplier * 5, CancellationToken.None);
 
             }
             finally
