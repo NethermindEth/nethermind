@@ -96,7 +96,11 @@ public sealed class GethLikeJavascriptTxTracer : GethLikeTxTracer
 
         _log.contract = new Log.Contract(
             callType == ExecutionType.DELEGATECALL ? _log.contract.Caller : from,
-            to,
+            callType switch
+            {
+                ExecutionType.DELEGATECALL or ExecutionType.STATICCALL => from,
+                _ => to,
+            },
             value,
             isAnyCreate ? null : input);
     }
