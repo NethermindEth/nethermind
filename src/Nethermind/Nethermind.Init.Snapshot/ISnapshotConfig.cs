@@ -15,4 +15,10 @@ public interface ISnapshotConfig : IConfig
 
     [ConfigItem(Description = "The SHA-256 checksum of the snapshot file.", DefaultValue = "null")]
     public string? Checksum { get; set; }
+
+    [ConfigItem(Description = "Directory where snapshot will be stored.", DefaultValue = "snapshot")]
+    public string SnapshotDirectory { get; set; }
+
+    [ConfigItem(Description = "Snapshot file name.", DefaultValue = "snapshot.zip")]
+    public string SnapshotFileName { get; set; }
 }

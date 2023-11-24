@@ -57,8 +57,8 @@ public class InitDatabaseSnapshot : InitDatabase
         byte[]? snapshotChecksum =
             snapshotConfig.Checksum is null ? null : Bytes.FromHexString(snapshotConfig.Checksum);
 
-        // TODO: use a deterministic temp file name here to allow resuming the download
-        string snapshotFileName = Path.GetTempFileName();
+        string snapshotFileName = Path.Combine(snapshotConfig.SnapshotDirectory, snapshotConfig.SnapshotFileName);
+        Directory.CreateDirectory(snapshotConfig.SnapshotDirectory);
 
         await DownloadSnapshotTo(snapshotUrl, snapshotFileName, cancellationToken);
         // schedule the snapshot file deletion, but only if the download completed
@@ -96,13 +96,13 @@ public class InitDatabaseSnapshot : InitDatabase
     private async Task DownloadSnapshotTo(
         string snapshotUrl, string snapshotFileName, CancellationToken cancellationToken)
     {
+        FileInfo snapshotFileInfo = new(snapshotFileName);
         if (_logger.IsInfo)
-            _logger.Info($"Downloading snapshot from {snapshotUrl}");
+            _logger.Info($"Downloading snapshot from {snapshotUrl} to file {snapshotFileInfo.FullName}");
 
         using HttpClient httpClient = new();
 
         HttpRequestMessage request = new(HttpMethod.Get, snapshotUrl);
-        FileInfo snapshotFileInfo = new(snapshotFileName);
         if (snapshotFileInfo.Exists)
             request.Headers.Range = new RangeHeaderValue(snapshotFileInfo.Length, null);
 
@@ -114,7 +114,7 @@ public class InitDatabaseSnapshot : InitDatabase
         await using FileStream snapshotFileStream = new(
             snapshotFileName, FileMode.Append, FileAccess.Write, FileShare.None, BufferSize, true);
 
-        long totalBytesRead = snapshotFileInfo.Length;
+        long totalBytesRead = snapshotFileStream.Length;
         long? totalBytesToRead = response.Content.Headers.ContentLength;
 
         using ProgressTracker progressTracker = new(
