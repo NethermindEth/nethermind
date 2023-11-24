@@ -43,26 +43,25 @@ namespace Nethermind.AuRa.Test
         }
 
         [Test]
-        [Retry(1024)]
         public async Task should_not_cancel_block_production_trigger_on_next_step_finished()
         {
             List<BlockProductionEventArgs> args = new();
 
-            await using (BuildBlocksOnAuRaSteps buildBlocksOnAuRaSteps = new(new TestAuRaStepCalculator(), LimboLogs.Instance))
+            BuildBlocksOnAuRaSteps buildBlocksOnAuRaSteps = new(new TestAuRaStepCalculator(), LimboLogs.Instance);
+            buildBlocksOnAuRaSteps.TriggerBlockProduction += (o, e) =>
             {
-                buildBlocksOnAuRaSteps.TriggerBlockProduction += (o, e) =>
-                {
-                    args.Add(e);
-                };
+                args.Add(e);
+            };
 
-                while (args.Count < 2)
-                {
-                    await TaskExt.DelayAtLeast(TestAuRaStepCalculator.StepDurationTimeSpan);
-                }
+            while (args.Count < 2)
+            {
+                await TaskExt.DelayAtLeast(TestAuRaStepCalculator.StepDurationTimeSpan);
             }
 
-            IEnumerable<bool> enumerable = args.Select(e => e.CancellationToken.IsCancellationRequested);
+            IEnumerable<bool> enumerable = args.Select(e => e.CancellationToken.IsCancellationRequested).ToArray();
             enumerable.Should().AllBeEquivalentTo(false);
+
+            await buildBlocksOnAuRaSteps.DisposeAsync();
         }
 
         private class TestAuRaStepCalculator : IAuRaStepCalculator
