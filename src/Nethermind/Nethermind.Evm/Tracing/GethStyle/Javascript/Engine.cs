@@ -136,7 +136,7 @@ public class Engine : IDisposable
 
     private ITypedArray<byte> ToContract(object from, ulong nonce) => ContractAddress.From(from.ToAddress(), nonce).Bytes.ToTypedScriptArray();
     private ITypedArray<byte> ToContract2(object from, string salt, object initcode) =>
-        ContractAddress.From(from.ToAddress(), Bytes.FromHexString(salt), ValueKeccak.Compute(initcode.ToBytes()).Bytes).Bytes.ToTypedScriptArray();
+        ContractAddress.From(from.ToAddress(), Bytes.FromHexString(salt, EvmStack.WordSize), initcode.ToBytes()).Bytes.ToTypedScriptArray();
 
     public void Dispose()
     {
