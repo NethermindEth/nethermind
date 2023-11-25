@@ -19,7 +19,7 @@ namespace Nethermind.Consensus.Test
             Block containsNethermindBlock = Build.A.Block.WithExtraData(Encoding.ASCII.GetBytes("helloNeThErMiNdWorld!")).TestObject;
             Block randomExtraDataBlock = Build.A.Block.WithExtraData(new byte[] { 1, 2, 3 }).TestObject;
             Block nullExtraDataBlock = Build.A.Block.WithExtraData(null).TestObject;
-            
+
             Assert.That(defaultBlock.IsByNethermindNode());
             Assert.That(containsNethermindBlock.IsByNethermindNode());
             Assert.That(!randomExtraDataBlock.IsByNethermindNode());
