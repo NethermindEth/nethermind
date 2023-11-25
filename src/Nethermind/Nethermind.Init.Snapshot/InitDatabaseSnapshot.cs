@@ -115,7 +115,7 @@ public class InitDatabaseSnapshot : InitDatabase
             snapshotFileName, FileMode.Append, FileAccess.Write, FileShare.None, BufferSize, true);
 
         long totalBytesRead = snapshotFileStream.Length;
-        long? totalBytesToRead = response.Content.Headers.ContentLength;
+        long? totalBytesToRead = totalBytesRead + response.Content.Headers.ContentLength;
 
         using ProgressTracker progressTracker = new(
             _api.LogManager, _api.TimerFactory, TimeSpan.FromSeconds(5), totalBytesRead, totalBytesToRead);
