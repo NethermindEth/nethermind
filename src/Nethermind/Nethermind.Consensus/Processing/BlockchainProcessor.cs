@@ -441,21 +441,6 @@ public class BlockchainProcessor : IBlockchainProcessor, IBlockProcessingQueue
         return maxProcessingInterval is null || _lastProcessedBlock.AddSeconds(maxProcessingInterval.Value) > DateTime.UtcNow;
     }
 
-    private static bool IsNethermindBlock(Block block)
-    {
-        string extraData;
-        try
-        {
-            extraData = Encoding.ASCII.GetString(block.ExtraData);
-        }
-        catch (Exception)
-        {
-            return false;
-        }
-
-        return extraData.Contains(BlocksConfig.DefaultExtraData, StringComparison.InvariantCultureIgnoreCase);
-    }
-
     private void TraceFailingBranch(in ProcessingBranch processingBranch, ProcessingOptions options, IBlockTracer blockTracer, DumpOptions dumpType)
     {
         if ((_options.DumpOptions & dumpType) != 0)
@@ -472,7 +457,7 @@ public class BlockchainProcessor : IBlockchainProcessor, IBlockProcessingQueue
             {
                 BlockTraceDumper.LogDiagnosticTrace(blockTracer, ex.InvalidBlock.Hash!, _logger);
                 Metrics.BadBlocks++;
-                if (IsNethermindBlock(ex.InvalidBlock))
+                if (ex.InvalidBlock.IsByNethermindNode())
                 {
                     Metrics.BadBlocksByNethermindNodes++;
                 }

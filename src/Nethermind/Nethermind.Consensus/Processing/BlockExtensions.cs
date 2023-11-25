@@ -1,14 +1,17 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
+using System.Text;
+using Nethermind.Config;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.State.Proofs;
 
 namespace Nethermind.Consensus.Processing
 {
-    internal static class BlockExtensions
+    public static class BlockExtensions
     {
         public static Block CreateCopy(this Block block, BlockHeader header) =>
             block is BlockToProduce blockToProduce
@@ -31,6 +34,21 @@ namespace Nethermind.Consensus.Processing
             }
 
             return false;
+        }
+
+        public static bool IsByNethermindNode(this Block block)
+        {
+            string extraData;
+            try
+            {
+                extraData = Encoding.ASCII.GetString(block.ExtraData);
+            }
+            catch (Exception)
+            {
+                return false;
+            }
+
+            return extraData.Contains(BlocksConfig.DefaultExtraData, StringComparison.InvariantCultureIgnoreCase);
         }
     }
 }
