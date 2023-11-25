@@ -38,17 +38,14 @@ namespace Nethermind.Consensus.Processing
 
         public static bool IsByNethermindNode(this Block block)
         {
-            string extraData;
             try
             {
-                extraData = Encoding.ASCII.GetString(block.ExtraData);
+                return Encoding.ASCII.GetString(block.ExtraData).Contains(BlocksConfig.DefaultExtraData, StringComparison.InvariantCultureIgnoreCase);
             }
             catch (Exception)
             {
                 return false;
             }
-
-            return extraData.Contains(BlocksConfig.DefaultExtraData, StringComparison.InvariantCultureIgnoreCase);
         }
     }
 }
