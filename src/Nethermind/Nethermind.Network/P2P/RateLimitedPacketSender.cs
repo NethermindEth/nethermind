@@ -40,8 +40,8 @@ public class RateLimitedPacketSender : ChannelHandlerAdapter, IPacketSender, IDi
     {
         _processor = Task.Run(async () =>
         {
-            TimeSpan lastExecutionDuration = _throttleTime;
-            int lastSize = 0;
+            TimeSpan durationSoFar = TimeSpan.Zero;
+            int bytesSentSoFar = 0;
 
             while (await _channel.Reader.WaitToReadAsync())
             {
@@ -49,17 +49,20 @@ public class RateLimitedPacketSender : ChannelHandlerAdapter, IPacketSender, IDi
                 {
                     try
                     {
-                        TimeSpan delay = _throttleTime - lastExecutionDuration;
-                        int sizeBudget = _byteLimit - lastSize;
-                        if (sizeBudget <= 0 && delay > TimeSpan.Zero)
+                        int bytesToSend = buffer.ReadableBytes;
+                        if (bytesSentSoFar + bytesToSend > _byteLimit)
                         {
-                            await Task.Delay(delay);
-                            lastSize = 0;
+                            if (_throttleTime - durationSoFar > TimeSpan.Zero)
+                            {
+                                await Task.Delay(_throttleTime - durationSoFar);
+                                bytesSentSoFar = 0;
+                                durationSoFar = TimeSpan.Zero;
+                            }
                         }
-                        Stopwatch watch = Stopwatch.StartNew();
+                        Stopwatch stopwatch = Stopwatch.StartNew();
                         await _context!.WriteAndFlushAsync(buffer);
-                        lastExecutionDuration = TimeSpan.FromMilliseconds(watch.ElapsedMilliseconds);
-                        lastSize += buffer.ReadableBytes;
+                        durationSoFar += stopwatch.Elapsed;
+                        bytesSentSoFar += bytesToSend;
                     }
                     catch (Exception e)
                     {

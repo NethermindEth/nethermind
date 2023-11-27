@@ -21,6 +21,41 @@ public class RateLimitedPacketSenderTests
     // Due to timing inconsistencies we use a margin of error.
     private readonly TimeSpan _epsilon = TimeSpan.FromMilliseconds(10);
 
+    [TestCase(100, 200)]
+    [TestCase(200, 200)]
+    [TestCase(300, 200)]
+    public void first_message_is_always_sent_immediately(int messageSize, int byteBudget)
+    {
+        IByteBuffer serialized = Substitute.For<IByteBuffer>();
+        serialized.ReadableBytes.Returns(messageSize);
+        IMessageSerializationService serializer = Substitute.For<IMessageSerializationService>();
+        serializer.ZeroSerialize(PingMessage.Instance).Returns(serialized);
+
+        Stopwatch stopwatch = new();
+        TimeSpan? duration = null;
+        IChannelHandlerContext context = Substitute.For<IChannelHandlerContext>();
+        IChannel channel = Substitute.For<IChannel>();
+        channel.Active.Returns(true);
+        context.Channel.Returns(channel);
+        context
+            .When(c => c.WriteAndFlushAsync(Arg.Any<object>()))
+            .Do(_ => duration = stopwatch.Elapsed);
+
+        TimeSpan throttleTime = TimeSpan.FromMilliseconds(1000);
+        RateLimitedPacketSender packetSender = new(byteBudget, throttleTime, serializer, LimboLogs.Instance);
+
+        packetSender.Init();
+        packetSender.HandlerAdded(context);
+
+        stopwatch.Start();
+        packetSender.Enqueue(PingMessage.Instance);
+        packetSender.Dispose();
+        TimeSpan total = stopwatch.Elapsed;
+
+        context.Received(1).WriteAndFlushAsync(Arg.Any<IByteBuffer>());
+        (total - duration).Should().BeLessThanOrEqualTo(_epsilon);
+    }
+
     [TestCase(1, 10, 0)]
     [TestCase(1, 10, 10)]
     [TestCase(100, 500, 500)]
@@ -129,7 +164,7 @@ public class RateLimitedPacketSenderTests
 
         context.Received(3).WriteAndFlushAsync(Arg.Any<IByteBuffer>());
         (times[1] - times[0]).Should().BeLessThanOrEqualTo(_epsilon);
-        (times[2] - times[1]).Should().BeGreaterOrEqualTo(throttleTime);
+        (times[2] - times[1]).Should().BeGreaterOrEqualTo(throttleTime - _epsilon);
     }
 
     [TestCase(2, 500, 1000)]
