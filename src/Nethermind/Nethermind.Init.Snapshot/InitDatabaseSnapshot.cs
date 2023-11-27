@@ -54,8 +54,6 @@ public class InitDatabaseSnapshot : InitDatabase
         ISnapshotConfig snapshotConfig = _api.Config<ISnapshotConfig>();
         string snapshotUrl = snapshotConfig.DownloadUrl ??
                              throw new InvalidOperationException("Snapshot download URL is not configured");
-        byte[]? snapshotChecksum =
-            snapshotConfig.Checksum is null ? null : Bytes.FromHexString(snapshotConfig.Checksum);
 
         string snapshotFileName = Path.Combine(snapshotConfig.SnapshotDirectory, snapshotConfig.SnapshotFileName);
         Directory.CreateDirectory(snapshotConfig.SnapshotDirectory);
@@ -70,9 +68,9 @@ public class InitDatabaseSnapshot : InitDatabase
             File.Delete(snapshotFileName);
         });
 
-        if (snapshotChecksum is not null)
+        if (snapshotConfig.Checksum is not null)
         {
-            bool isChecksumValid = await VerifyChecksum(snapshotFileName, snapshotChecksum, cancellationToken);
+            bool isChecksumValid = await VerifyChecksum(snapshotFileName, snapshotConfig.Checksum, cancellationToken);
             if (!isChecksumValid)
             {
                 if (_logger.IsError)
@@ -136,21 +134,22 @@ public class InitDatabaseSnapshot : InitDatabase
     }
 
     private async Task<bool> VerifyChecksum(
-        string snapshotFilePath, byte[] snapshotChecksum, CancellationToken cancellationToken)
+        string snapshotFilePath, string snapshotChecksum, CancellationToken cancellationToken)
     {
+        byte[] checksumBytes = Bytes.FromHexString(snapshotChecksum);
         if (_logger.IsInfo)
             _logger.Info($"Verifying snapshot checksum {snapshotChecksum}.");
 
         await using FileStream fileStream = File.OpenRead(snapshotFilePath);
         byte[] hash = await SHA256.HashDataAsync(fileStream, cancellationToken);
-        return Bytes.AreEqual(hash, snapshotChecksum);
+        return Bytes.AreEqual(hash, checksumBytes);
     }
 
     private Task ExtractSnapshotTo(string snapshotPath, string dbPath, CancellationToken cancellationToken) =>
         Task.Run(() =>
         {
             if (_logger.IsInfo)
-                _logger.Info($"Extracting snapshot to {dbPath}.");
+                _logger.Info($"Extracting snapshot to {dbPath}. Do not interrupt!");
 
             ZipFile.ExtractToDirectory(snapshotPath, dbPath);
         }, cancellationToken);
