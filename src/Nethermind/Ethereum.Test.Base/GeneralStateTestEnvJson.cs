@@ -17,5 +17,9 @@ namespace Ethereum.Test.Base
         public UInt256? CurrentBaseFee { get; set; }
         public Hash256 PreviousHash { get; set; }
         public Hash256? CurrentRandom { get; set; }
+        public Hash256? CurrentBeaconRoot { get; set; }
+        public Hash256? CurrentWithdrawalsRoot { get; set; }
+        public UInt256? ParentBlobGasUsed { get; set; }
+        public UInt256? ParentExcessBlobGas { get; set; }
     }
 }

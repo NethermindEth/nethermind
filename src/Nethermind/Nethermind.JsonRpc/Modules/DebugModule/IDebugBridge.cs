@@ -26,9 +26,9 @@ public interface IDebugBridge
     byte[] GetBlockRlp(long number);
     byte[] GetDbValue(string dbName, byte[] key);
     object GetConfigValue(string category, string name);
-    public ChainLevelInfo GetLevelInfo(long number);
-    public int DeleteChainSlice(long startNumber);
-    public void UpdateHeadBlock(Hash256 blockHash);
+    ChainLevelInfo GetLevelInfo(long number);
+    int DeleteChainSlice(long startNumber, bool force = false);
+    void UpdateHeadBlock(Hash256 blockHash);
     Task<bool> MigrateReceipts(long blockNumber);
     void InsertReceipts(BlockParameter blockParameter, TxReceipt[] receipts);
     SyncReportSymmary GetCurrentSyncStage();
