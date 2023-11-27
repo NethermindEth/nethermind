@@ -19,6 +19,6 @@ public interface ISnapshotConfig : IConfig
     [ConfigItem(Description = "Directory where snapshot will be stored.", DefaultValue = "snapshot")]
     public string SnapshotDirectory { get; set; }
 
-    [ConfigItem(Description = "Snapshot file name.", DefaultValue = "snapshot.zip")]
+    [ConfigItem(Description = "The name of the snapshot file.", DefaultValue = "snapshot.zip")]
     public string SnapshotFileName { get; set; }
 }
