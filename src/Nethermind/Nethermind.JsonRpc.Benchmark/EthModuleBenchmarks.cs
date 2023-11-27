@@ -147,6 +147,7 @@ namespace Nethermind.JsonRpc.Benchmark
                 new JsonRpcConfig(),
                 bridge,
                 blockTree,
+                receiptStorage,
                 stateReader,
                 NullTxPool.Instance,
                 NullTxSender.Instance,
