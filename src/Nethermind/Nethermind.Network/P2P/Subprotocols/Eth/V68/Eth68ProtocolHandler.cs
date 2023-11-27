@@ -22,6 +22,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V68;
 public class Eth68ProtocolHandler : Eth67ProtocolHandler
 {
     private readonly IPooledTxsRequestor _pooledTxsRequestor;
+
     private readonly Action<V66.Messages.GetPooledTransactionsMessage> _sendAction;
 
     public override string Name => "eth68";
