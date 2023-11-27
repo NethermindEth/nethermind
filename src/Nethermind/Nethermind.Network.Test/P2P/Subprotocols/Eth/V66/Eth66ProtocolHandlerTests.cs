@@ -3,9 +3,11 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Net;
 using System.Threading;
 using DotNetty.Buffers;
+using DotNetty.Transport.Channels;
 using FluentAssertions;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus;
@@ -42,6 +44,7 @@ using GetReceiptsMessage = Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages.
 using NodeDataMessage = Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages.NodeDataMessage;
 using PooledTransactionsMessage = Nethermind.Network.P2P.Subprotocols.Eth.V65.Messages.PooledTransactionsMessage;
 using ReceiptsMessage = Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages.ReceiptsMessage;
+using PooledTransactionsMessage_V66 = Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages.PooledTransactionsMessage;
 
 namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
 {
@@ -234,10 +237,38 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
             _session.Received(messageCount).DeliverMessage(Arg.Any<Network.P2P.Subprotocols.Eth.V66.Messages.PooledTransactionsMessage>());
         }
 
-        [TestCase(5, 100)]
-        [TestCase(10, 500)]
-        public void Can_handle_get_pooled_transactions_throttled(int messageCount, int throttleTimeMillis)
+        [TestCase(5, 200, 100, 100)]
+        [TestCase(10, 500, 200, 500)]
+        public void Can_handle_get_pooled_transactions_throttled(int messageCount, int msgSize, int byteBudget, int throttleTimeMillis)
         {
+            TimeSpan throttleTime = TimeSpan.FromMilliseconds(throttleTimeMillis);
+            TimeSpan epsilon = TimeSpan.FromMilliseconds(10);
+            Stopwatch stopwatch = new();
+
+            IByteBuffer serialized = Substitute.For<IByteBuffer>();
+            serialized.ReadableBytes.Returns(msgSize);
+            IMessageSerializationService serializer = Substitute.For<IMessageSerializationService>();
+            serializer.ZeroSerialize(Arg.Any<PooledTransactionsMessage_V66>()).Returns(serialized);
+
+            List<TimeSpan> times = new();
+            IChannelHandlerContext context = Substitute.For<IChannelHandlerContext>();
+            IChannel channel = Substitute.For<IChannel>();
+            channel.Active.Returns(true);
+            context.Channel.Returns(channel);
+            context
+                .When(c => c.WriteAndFlushAsync(Arg.Any<object>()))
+                .Do(_ => times.Add(stopwatch.Elapsed));
+
+            RateLimitedPacketSender packetSender = new(byteBudget, throttleTime, serializer, LimboLogs.Instance);
+            packetSender.Init();
+            packetSender.HandlerAdded(context);
+
+            _session = Substitute.For<ISession>();
+            _session
+                .When(x => x.DeliverMessage(Arg.Any<PooledTransactionsMessage_V66>()))
+                // ReSharper disable once AccessToDisposedClosure
+                .Do(arg => packetSender.Enqueue(arg.Arg<PooledTransactionsMessage_V66>()));
+
             _handler = new Eth66ProtocolHandler(
                 _session,
                 _svc,
@@ -247,22 +278,32 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
                 new PooledTxsRequestor(_transactionPool, new TxPoolConfig()),
                 _gossipPolicy,
                 new ForkInfo(_specProvider, _genesisBlock.Header.Hash!),
-                LimboLogs.Instance,
-                throttleTime: TimeSpan.FromMilliseconds(throttleTimeMillis));
+                LimboLogs.Instance);
             _handler.Init();
 
             var msg65 = new GetPooledTransactionsMessage(new[] { Keccak.Zero, TestItem.KeccakA });
             var msg66 = new Network.P2P.Subprotocols.Eth.V66.Messages.GetPooledTransactionsMessage(1111, msg65);
 
-            HandleIncomingStatusMessage();
+            stopwatch.Start();
             for (int i = 0; i < messageCount; i++)
             {
                 HandleZeroMessage(msg66, Eth66MessageCode.GetPooledTransactions);
             }
 
             _handler.Dispose();
+            packetSender.Dispose();
 
-            _session.Received(messageCount).DeliverMessage(Arg.Any<Network.P2P.Subprotocols.Eth.V66.Messages.PooledTransactionsMessage>());
+            context.Received(messageCount).WriteAndFlushAsync(Arg.Any<IByteBuffer>());
+            TimeSpan last = times[0];
+            for (int i = 1; i < times.Count; i++)
+            {
+                TimeSpan current = times[i];
+
+                TimeSpan delta = (times[i] - last) + epsilon;
+                delta.Should().BeGreaterOrEqualTo(throttleTime);
+
+                last = current;
+            }
         }
 
         [Test]
