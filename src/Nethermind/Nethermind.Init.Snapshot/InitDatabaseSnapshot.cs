@@ -98,6 +98,14 @@ public class InitDatabaseSnapshot : InitDatabase
         if (_logger.IsInfo)
             _logger.Info($"Downloading snapshot from {snapshotUrl} to file {snapshotFileInfo.FullName}");
 
+        if (snapshotFileInfo.Exists)
+        {
+            if (_logger.IsWarn)
+                _logger.Warn($"The snapshot file already exists. Resuming download. To interrupt press Ctrl^C");
+            // Wait few seconds if user want's to stop download
+            await Task.Delay(TimeSpan.FromSeconds(5), cancellationToken);
+        }
+
         using HttpClient httpClient = new();
 
         HttpRequestMessage request = new(HttpMethod.Get, snapshotUrl);
