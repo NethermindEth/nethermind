@@ -3,7 +3,6 @@
 
 using System;
 using System.Globalization;
-using System.Threading;
 using Nethermind.Core.Extensions;
 using Newtonsoft.Json;
 

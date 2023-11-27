@@ -10,8 +10,6 @@ namespace Nethermind.Evm.Tracing.GethStyle;
 
 public record GethTraceOptions
 {
-    private static readonly object _emptyConfig = new();
-
     [JsonProperty("disableMemory")]
     [Obsolete("Use EnableMemory instead.")]
     public bool DisableMemory { get => !EnableMemory; init => EnableMemory = !value; }

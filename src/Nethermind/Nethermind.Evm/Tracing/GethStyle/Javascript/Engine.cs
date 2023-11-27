@@ -195,7 +195,6 @@ public class Engine : IDisposable
             tracer = tracer.Trim();
             if (tracer.StartsWith("{") && tracer.EndsWith("}"))
             {
-
                 return PackTracerCode(tracer);
             }
             else
