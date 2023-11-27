@@ -33,8 +33,10 @@ public class HeaderStore : IHeaderStore
     public void Insert(BlockHeader header)
     {
         using NettyRlpStream newRlp = _headerDecoder.EncodeToNewNettyStream(header);
-        _headerDb.Set(header.Number, header.Hash, newRlp.AsSpan());
-        InsertBlockNumber(header.Hash, header.Number);
+        // #6261: Disable prefixing key with block number until later version.
+        // _headerDb.Set(header.Number, header.Hash, newRlp.AsSpan());
+        // InsertBlockNumber(header.Hash, header.Number);
+        _headerDb.Set(header.Hash, newRlp.AsSpan());
     }
 
     public BlockHeader? Get(Hash256 blockHash, bool shouldCache = false, long? blockNumber = null)
