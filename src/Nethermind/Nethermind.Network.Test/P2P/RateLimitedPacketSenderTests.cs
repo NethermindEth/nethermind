@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Threading.Tasks;
 using DotNetty.Buffers;
 using DotNetty.Transport.Channels;
@@ -59,20 +60,22 @@ public class RateLimitedPacketSenderTests
         IMessageSerializationService serializer = Substitute.For<IMessageSerializationService>();
         serializer.ZeroSerialize(PingMessage.Instance).Returns(serialized);
 
+        List<TimeSpan> times = new();
+        Stopwatch stopwatch = new();
         IChannelHandlerContext context = Substitute.For<IChannelHandlerContext>();
         IChannel channel = Substitute.For<IChannel>();
         channel.Active.Returns(true);
         context.Channel.Returns(channel);
-        List<DateTime> times = new();
         context
             .When(c => c.WriteAndFlushAsync(Arg.Any<object>()))
-            .Do(_ => times.Add(DateTime.UtcNow));
+            .Do(_ => times.Add(stopwatch.Elapsed));
 
         TimeSpan throttleTime = TimeSpan.FromMilliseconds(500);
         RateLimitedPacketSender packetSender = new(byteBudget, throttleTime, serializer, LimboLogs.Instance);
 
         packetSender.Init();
         packetSender.HandlerAdded(context);
+        stopwatch.Start();
 
         for (int i = 0; i < messageCount; i++)
         {
@@ -81,10 +84,10 @@ public class RateLimitedPacketSenderTests
         packetSender.Dispose();
 
         context.Received(messageCount).WriteAndFlushAsync(Arg.Any<IByteBuffer>());
-        DateTime last = times[0];
+        TimeSpan last = times[0];
         for (int i = 1; i < times.Count; i++)
         {
-            DateTime current = times[i];
+            TimeSpan current = times[i];
 
             TimeSpan delta = (times[i] - last) + _epsilon;
             delta.Should().BeGreaterOrEqualTo(throttleTime);
@@ -102,14 +105,15 @@ public class RateLimitedPacketSenderTests
         IMessageSerializationService serializer = Substitute.For<IMessageSerializationService>();
         serializer.ZeroSerialize(PingMessage.Instance).Returns(serialized);
 
+        List<TimeSpan> times = new();
+        Stopwatch stopwatch = new();
         IChannelHandlerContext context = Substitute.For<IChannelHandlerContext>();
         IChannel channel = Substitute.For<IChannel>();
         channel.Active.Returns(true);
         context.Channel.Returns(channel);
-        List<DateTime> times = new();
         context
             .When(c => c.WriteAndFlushAsync(Arg.Any<object>()))
-            .Do(_ => times.Add(DateTime.UtcNow));
+            .Do(_ => times.Add(stopwatch.Elapsed));
 
         TimeSpan throttleTime = TimeSpan.FromMilliseconds(500);
         RateLimitedPacketSender packetSender = new(byteBudget, throttleTime, serializer, LimboLogs.Instance);
@@ -124,10 +128,10 @@ public class RateLimitedPacketSenderTests
         packetSender.Dispose();
 
         context.Received(messageCount).WriteAndFlushAsync(Arg.Any<IByteBuffer>());
-        DateTime last = times[0];
+        TimeSpan last = times[0];
         for (int i = 1; i < times.Count; i++)
         {
-            DateTime current = times[i];
+            TimeSpan current = times[i];
 
             TimeSpan delta = times[i] - last;
             delta.Should().BeLessThanOrEqualTo(_epsilon);
