@@ -120,6 +120,7 @@ public class RateLimitedPacketSenderTests
 
         packetSender.Init();
         packetSender.HandlerAdded(context);
+        stopwatch.Start();
 
         for (int i = 0; i < messageCount; i++)
         {
