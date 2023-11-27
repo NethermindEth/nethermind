@@ -1607,10 +1607,7 @@ namespace Nethermind.Blockchain
                 _metadataDb.Set(MetadataDbKeys.SafeBlockHash, Rlp.Encode(SafeHash!).Bytes);
             }
         }
-        
-        public Block[] GetInvalidBlocks()
-        {
-            return _invalidBlocks.ToArray().Select(x => x.Value).ToArray();
-        }
+
+        public Block[] GetInvalidBlocks() => _invalidBlocks.GetValues();
     }
 }

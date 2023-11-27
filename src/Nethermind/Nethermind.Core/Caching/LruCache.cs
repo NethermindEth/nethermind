@@ -133,6 +133,19 @@ namespace Nethermind.Core.Caching
             return array;
         }
 
+        [MethodImpl(MethodImplOptions.Synchronized)]
+        public TValue[] GetValues()
+        {
+            int i = 0;
+            TValue[] array = new TValue[_cacheMap.Count];
+            foreach (KeyValuePair<TKey, LinkedListNode<LruCacheItem>> kvp in _cacheMap)
+            {
+                array[i++] = kvp.Value.Value.Value;
+            }
+
+            return array;
+        }
+
         private void Replace(TKey key, TValue value)
         {
             LinkedListNode<LruCacheItem>? node = _leastRecentlyUsed;
