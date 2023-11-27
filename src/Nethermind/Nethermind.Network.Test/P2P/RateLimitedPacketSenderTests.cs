@@ -96,6 +96,42 @@ public class RateLimitedPacketSenderTests
         }
     }
 
+    [Test]
+    public void messages_are_partially_throttled_when_exceed_byte_budget()
+    {
+        IByteBuffer serialized = Substitute.For<IByteBuffer>();
+        serialized.ReadableBytes.Returns(200);
+        IMessageSerializationService serializer = Substitute.For<IMessageSerializationService>();
+        serializer.ZeroSerialize(PingMessage.Instance).Returns(serialized);
+
+        List<TimeSpan> times = new();
+        Stopwatch stopwatch = new();
+        IChannelHandlerContext context = Substitute.For<IChannelHandlerContext>();
+        IChannel channel = Substitute.For<IChannel>();
+        channel.Active.Returns(true);
+        context.Channel.Returns(channel);
+        context
+            .When(c => c.WriteAndFlushAsync(Arg.Any<object>()))
+            .Do(_ => times.Add(stopwatch.Elapsed));
+
+        TimeSpan throttleTime = TimeSpan.FromMilliseconds(500);
+        RateLimitedPacketSender packetSender = new(400, throttleTime, serializer, LimboLogs.Instance);
+
+        packetSender.Init();
+        packetSender.HandlerAdded(context);
+        stopwatch.Start();
+
+        packetSender.Enqueue(PingMessage.Instance);
+        packetSender.Enqueue(PingMessage.Instance);
+        packetSender.Enqueue(PingMessage.Instance);
+
+        packetSender.Dispose();
+
+        context.Received(3).WriteAndFlushAsync(Arg.Any<IByteBuffer>());
+        (times[1] - times[0]).Should().BeLessThanOrEqualTo(_epsilon);
+        (times[2] - times[1]).Should().BeGreaterOrEqualTo(throttleTime);
+    }
+
     [TestCase(2, 500, 1000)]
     [TestCase(4, 100, 500)]
     public void messages_are_not_throttled_when_within_byte_budget(int messageCount, int messageSize, int byteBudget)

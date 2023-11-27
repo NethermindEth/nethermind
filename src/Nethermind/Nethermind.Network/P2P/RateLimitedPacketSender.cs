@@ -54,11 +54,12 @@ public class RateLimitedPacketSender : ChannelHandlerAdapter, IPacketSender, IDi
                         if (sizeBudget <= 0 && delay > TimeSpan.Zero)
                         {
                             await Task.Delay(delay);
+                            lastSize = 0;
                         }
                         Stopwatch watch = Stopwatch.StartNew();
                         await _context!.WriteAndFlushAsync(buffer);
                         lastExecutionDuration = TimeSpan.FromMilliseconds(watch.ElapsedMilliseconds);
-                        lastSize = buffer.ReadableBytes;
+                        lastSize += buffer.ReadableBytes;
                     }
                     catch (Exception e)
                     {
