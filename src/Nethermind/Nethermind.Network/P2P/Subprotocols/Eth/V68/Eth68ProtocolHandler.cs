@@ -112,16 +112,7 @@ public class Eth68ProtocolHandler : Eth67ProtocolHandler
         }
         else
         {
-            SendMessage(new[]
-            {
-                (byte)tx.Type
-            }, new[]
-            {
-                tx.GetLength()
-            }, new[]
-            {
-                tx.Hash
-            });
+            SendMessage(new[] { (byte)tx.Type }, new[] { tx.GetLength() }, new[] { tx.Hash });
         }
     }
 
