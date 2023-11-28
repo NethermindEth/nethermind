@@ -70,6 +70,8 @@ public class DbOnTheRocks : IDb, ITunableDb
 
     private ManagedIterators _readaheadIterators = new();
 
+    internal long _allocatedSpan = 0;
+
     public DbOnTheRocks(
         string basePath,
         RocksDbSettings rocksDbSettings,
@@ -597,7 +599,10 @@ public class DbOnTheRocks : IDb, ITunableDb
         {
             Span<byte> span = _db.GetSpan(key, cf);
             if (!span.IsNullOrEmpty())
+            {
+                Interlocked.Increment(ref _allocatedSpan);
                 GC.AddMemoryPressure(span.Length);
+            }
             return span;
         }
         catch (RocksDbSharpException e)
@@ -615,7 +620,10 @@ public class DbOnTheRocks : IDb, ITunableDb
     public void DangerousReleaseMemory(in Span<byte> span)
     {
         if (!span.IsNullOrEmpty())
+        {
+            Interlocked.Decrement(ref _allocatedSpan);
             GC.RemoveMemoryPressure(span.Length);
+        }
         _db.DangerousReleaseMemory(span);
     }
 
