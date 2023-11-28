@@ -11,9 +11,9 @@ using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.State;
 
-namespace Nethermind.Evm.Tracing.GethStyle.Javascript;
+namespace Nethermind.Evm.Tracing.GethStyle.JavaScript;
 
-public class GethLikeBlockJavascriptTracer : BlockTracerBase<GethLikeTxTrace, GethLikeJavascriptTxTracer>, IDisposable
+public class GethLikeBlockJavaScriptTracer : BlockTracerBase<GethLikeTxTrace, GethLikeJavaScriptTxTracer>, IDisposable
 {
     private readonly IReleaseSpec _spec;
     private readonly GethTraceOptions _options;
@@ -23,7 +23,7 @@ public class GethLikeBlockJavascriptTracer : BlockTracerBase<GethLikeTxTrace, Ge
     private ArrayPoolList<IDisposable>? _engines;
     private UInt256 _baseFee;
 
-    public GethLikeBlockJavascriptTracer(IWorldState worldState, IReleaseSpec spec, GethTraceOptions options) : base(options.TxHash)
+    public GethLikeBlockJavaScriptTracer(IWorldState worldState, IReleaseSpec spec, GethTraceOptions options) : base(options.TxHash)
     {
         _spec = spec;
         _options = options;
@@ -40,12 +40,12 @@ public class GethLikeBlockJavascriptTracer : BlockTracerBase<GethLikeTxTrace, Ge
         base.StartNewBlockTrace(block);
     }
 
-    protected override GethLikeJavascriptTxTracer OnStart(Transaction? tx)
+    protected override GethLikeJavaScriptTxTracer OnStart(Transaction? tx)
     {
         SetTransactionCtx(tx);
         Engine engine = new(_spec);
         _engines?.Add(engine);
-        return new GethLikeJavascriptTxTracer(this, engine, _db, _ctx, _options);
+        return new GethLikeJavaScriptTxTracer(this, engine, _db, _ctx, _options);
     }
 
     private void SetTransactionCtx(Transaction? tx)
@@ -74,7 +74,7 @@ public class GethLikeBlockJavascriptTracer : BlockTracerBase<GethLikeTxTrace, Ge
 
     protected override bool ShouldTraceTx(Transaction? tx) => base.ShouldTraceTx(tx) && tx is not null;
 
-    protected override GethLikeTxTrace OnEnd(GethLikeJavascriptTxTracer txTracer) => txTracer.BuildResult();
+    protected override GethLikeTxTrace OnEnd(GethLikeJavaScriptTxTracer txTracer) => txTracer.BuildResult();
     public void Dispose()
     {
         ArrayPoolList<IDisposable>? list = Interlocked.Exchange(ref _engines, null);

@@ -9,9 +9,9 @@ using Nethermind.Core;
 using Nethermind.Int256;
 using Nethermind.Core.Crypto;
 
-namespace Nethermind.Evm.Tracing.GethStyle.Javascript;
+namespace Nethermind.Evm.Tracing.GethStyle.JavaScript;
 
-public sealed class GethLikeJavascriptTxTracer : GethLikeTxTracer, ITxTracer
+public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer, ITxTracer
 {
     private readonly dynamic _tracer;
     private readonly Log _log = new();
@@ -29,7 +29,7 @@ public sealed class GethLikeJavascriptTxTracer : GethLikeTxTracer, ITxTracer
     private readonly Context _ctx;
     private readonly TracerFunctions _functions;
 
-    public GethLikeJavascriptTxTracer(
+    public GethLikeJavaScriptTxTracer(
         IDisposable blockTracer,
         Engine engine,
         Db db,
@@ -59,7 +59,7 @@ public sealed class GethLikeJavascriptTxTracer : GethLikeTxTracer, ITxTracer
     public override GethLikeTxTrace BuildResult()
     {
         GethLikeTxTrace result = base.BuildResult();
-        result.CustomTracerResult = new GethLikeJavascriptTrace() { Value = _tracer.result(_ctx, _db) };
+        result.CustomTracerResult = new GethLikeJavaScriptTrace() { Value = _tracer.result(_ctx, _db) };
         _resultConstructed = true;
         return result;
     }
@@ -121,11 +121,11 @@ public sealed class GethLikeJavascriptTxTracer : GethLikeTxTracer, ITxTracer
     public override void ReportOperationError(EvmExceptionType error)
     {
         base.ReportOperationError(error);
-        _log.error = GetJavascriptErrorDescription(error);
+        _log.error = GetJavaScriptErrorDescription(error);
         _tracer.fault(_log, _db);
     }
 
-    private static string? GetJavascriptErrorDescription(EvmExceptionType evmExceptionType) =>
+    private static string? GetJavaScriptErrorDescription(EvmExceptionType evmExceptionType) =>
         evmExceptionType switch
         {
             EvmExceptionType.None => null,
@@ -165,13 +165,13 @@ public sealed class GethLikeJavascriptTxTracer : GethLikeTxTracer, ITxTracer
     public void ReportActionRevert(long gasLeft, byte[] output)
     {
         base.ReportActionError(EvmExceptionType.Revert);
-        InvokeExit(gasLeft, output, GetJavascriptErrorDescription(EvmExceptionType.Revert));
+        InvokeExit(gasLeft, output, GetJavaScriptErrorDescription(EvmExceptionType.Revert));
     }
 
     public override void ReportActionError(EvmExceptionType evmExceptionType)
     {
         base.ReportActionError(evmExceptionType);
-        InvokeExit(0, Array.Empty<byte>(), GetJavascriptErrorDescription(evmExceptionType));
+        InvokeExit(0, Array.Empty<byte>(), GetJavaScriptErrorDescription(evmExceptionType));
     }
 
     private void InvokeExit(long gas, ReadOnlyMemory<byte> output, string? error = null)

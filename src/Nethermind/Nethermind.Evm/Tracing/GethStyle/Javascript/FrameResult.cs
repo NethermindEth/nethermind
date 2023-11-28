@@ -5,7 +5,7 @@ using Microsoft.ClearScript;
 using Microsoft.ClearScript.JavaScript;
 using Microsoft.ClearScript.V8;
 
-namespace Nethermind.Evm.Tracing.GethStyle.Javascript;
+namespace Nethermind.Evm.Tracing.GethStyle.JavaScript;
 
 public class FrameResult
 {

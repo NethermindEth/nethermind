@@ -172,7 +172,7 @@ public class DebugModuleTests
     [Test]
     public async Task Get_js_trace()
     {
-        GethLikeTxTrace trace = new() { CustomTracerResult = new GethLikeJavascriptTrace() { Value = new { CustomProperty = 1 } } };
+        GethLikeTxTrace trace = new() { CustomTracerResult = new GethLikeJavaScriptTrace() { Value = new { CustomProperty = 1 } } };
 
         debugBridge.GetTransactionTrace(Arg.Any<Hash256>(), Arg.Any<CancellationToken>(), Arg.Any<GethTraceOptions>()).Returns(trace);
 

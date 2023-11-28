@@ -9,7 +9,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 
-namespace Nethermind.Evm.Tracing.GethStyle.Javascript;
+namespace Nethermind.Evm.Tracing.GethStyle.JavaScript;
 
 public class Context
 {

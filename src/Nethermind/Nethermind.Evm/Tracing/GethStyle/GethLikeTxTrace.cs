@@ -29,7 +29,7 @@ public class GethLikeTxTrace : IDisposable
     [JsonProperty(PropertyName = "structLogs")]
     public List<GethTxTraceEntry> Entries { get; set; } = new();
 
-    public GethLikeJavascriptTrace? CustomTracerResult { get; set; }
+    public GethLikeJavaScriptTrace? CustomTracerResult { get; set; }
     public void Dispose()
     {
         _disposable?.Dispose();

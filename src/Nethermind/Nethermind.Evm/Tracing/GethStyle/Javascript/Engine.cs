@@ -19,7 +19,7 @@ using Nethermind.Evm.Precompiles;
 using Nethermind.Logging;
 #pragma warning disable CS0162 // Unreachable code detected
 
-namespace Nethermind.Evm.Tracing.GethStyle.Javascript;
+namespace Nethermind.Evm.Tracing.GethStyle.JavaScript;
 
 public class Engine : IDisposable
 {
@@ -62,7 +62,7 @@ public class Engine : IDisposable
 
     private static void CompileStandardScripts()
     {
-        static IEnumerable<(string Name, string Code)> LoadJavascriptCodeFromFiles()
+        static IEnumerable<(string Name, string Code)> LoadJavaScriptCodeFromFiles()
         {
             foreach (string tracer in Directory.EnumerateFiles(TracersPath.GetApplicationResourcePath(), $"*.{Extension}", SearchOption.AllDirectories))
             {
@@ -72,7 +72,7 @@ public class Engine : IDisposable
 
         LoadBuiltIn(nameof(BigIntegerCode), BigIntegerCode);
         LoadBuiltIn(nameof(CreateUint8ArrayCode), CreateUint8ArrayCode);
-        foreach ((string Name, string Code) tracer in LoadJavascriptCodeFromFiles())
+        foreach ((string Name, string Code) tracer in LoadJavaScriptCodeFromFiles())
         {
             LoadBuiltIn(tracer.Name, tracer.Code);
         }
@@ -150,13 +150,13 @@ public class Engine : IDisposable
 
     public dynamic CreateTracer(string tracer)
     {
-        static string LoadJavascriptCodeFromFile(string tracerFileName)
+        static string LoadJavaScriptCodeFromFile(string tracerFileName)
         {
             tracerFileName = Path.Combine(TracersPath, tracerFileName);
             return PackTracerCode(File.ReadAllText(tracerFileName.GetApplicationResourcePath()));
         }
 
-        static V8Script LoadJavascriptCode(string tracer)
+        static V8Script LoadJavaScriptCode(string tracer)
         {
             tracer = tracer.Trim();
             if (tracer.StartsWith("{") && tracer.EndsWith("}"))
@@ -186,11 +186,11 @@ public class Engine : IDisposable
                 return _builtInScripts.TryGetValue(tracer, out V8Script script)
                     ? script
                     // fallback, shouldn't happen if the tracers were initialized from file before
-                    : LoadBuiltIn(tracer, LoadJavascriptCodeFromFile(tracer));
+                    : LoadBuiltIn(tracer, LoadJavaScriptCodeFromFile(tracer));
             }
         }
 
-        static string LoadJavascriptDebugCode(string tracer)
+        static string LoadJavaScriptDebugCode(string tracer)
         {
             tracer = tracer.Trim();
             if (tracer.StartsWith("{") && tracer.EndsWith("}"))
@@ -204,20 +204,20 @@ public class Engine : IDisposable
                     tracer = Path.ChangeExtension(tracer, Extension);
                 }
 
-                return LoadJavascriptCodeFromFile(tracer);
+                return LoadJavaScriptCodeFromFile(tracer);
             }
         }
 
         if (IsDebugging)
         {
-            object tracerObj = V8Engine.Evaluate(LoadJavascriptDebugCode(tracer));
+            object tracerObj = V8Engine.Evaluate(LoadJavaScriptDebugCode(tracer));
             _bigInteger = V8Engine.Evaluate(LoadBuiltIn(nameof(BigIntegerCode), BigIntegerCode));
             _createUint8Array = V8Engine.Evaluate(LoadBuiltIn(nameof(CreateUint8ArrayCode), CreateUint8ArrayCode));
             return tracerObj;
         }
         else
         {
-            return V8Engine.Evaluate(LoadJavascriptCode(tracer));
+            return V8Engine.Evaluate(LoadJavaScriptCode(tracer));
         }
     }
 }

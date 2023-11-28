@@ -3,7 +3,7 @@
 
 namespace Nethermind.Evm.Tracing.GethStyle;
 
-public class GethLikeJavascriptTrace
+public class GethLikeJavaScriptTrace
 {
     private static readonly object _empty = new { };
     public object Value { get; set; } = _empty;

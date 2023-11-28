@@ -5,13 +5,13 @@ using System;
 using Nethermind.Serialization.Json;
 using Newtonsoft.Json;
 
-namespace Nethermind.Evm.Tracing.GethStyle.Javascript;
+namespace Nethermind.Evm.Tracing.GethStyle.JavaScript;
 
-public class GethLikeJavascriptTraceConverter : JsonConverter<GethLikeJavascriptTrace>
+public class GethLikeJavaScriptTraceConverter : JsonConverter<GethLikeJavaScriptTrace>
 {
     public override bool CanRead => false;
 
-    public override void WriteJson(JsonWriter writer, GethLikeJavascriptTrace? value, JsonSerializer serializer)
+    public override void WriteJson(JsonWriter writer, GethLikeJavaScriptTrace? value, JsonSerializer serializer)
     {
         if (value is null)
         {
@@ -31,6 +31,6 @@ public class GethLikeJavascriptTraceConverter : JsonConverter<GethLikeJavascript
         }
     }
 
-    public override GethLikeJavascriptTrace? ReadJson(JsonReader reader, Type objectType, GethLikeJavascriptTrace? existingValue, bool hasExistingValue, JsonSerializer serializer) =>
+    public override GethLikeJavaScriptTrace? ReadJson(JsonReader reader, Type objectType, GethLikeJavaScriptTrace? existingValue, bool hasExistingValue, JsonSerializer serializer) =>
         throw new NotSupportedException();
 }

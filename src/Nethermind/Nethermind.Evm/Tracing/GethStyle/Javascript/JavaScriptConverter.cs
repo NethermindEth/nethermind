@@ -11,9 +11,9 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 
-namespace Nethermind.Evm.Tracing.GethStyle.Javascript;
+namespace Nethermind.Evm.Tracing.GethStyle.JavaScript;
 
-public static class JavascriptConverter
+public static class JavaScriptConverter
 {
     public static byte[] ToBytes(this object input) => input switch
     {

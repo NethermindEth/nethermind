@@ -14,7 +14,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 using Nethermind.State;
 
-namespace Nethermind.Evm.Tracing.GethStyle.Javascript;
+namespace Nethermind.Evm.Tracing.GethStyle.JavaScript;
 
 public class Db
 {

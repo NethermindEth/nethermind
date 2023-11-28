@@ -10,7 +10,7 @@ using Nethermind.Evm.Tracing.GethStyle;
 using NUnit.Framework;
 using Nethermind.Specs;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Evm.Tracing.GethStyle.Javascript;
+using Nethermind.Evm.Tracing.GethStyle.JavaScript;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Modules.DebugModule;
 using Nethermind.Serialization.Json;
@@ -18,7 +18,7 @@ using Nethermind.Specs.Forks;
 
 namespace Nethermind.Evm.Test.Tracing;
 
-public class GethLikeJavascriptTracerTests : VirtualMachineTestsBase
+public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
 {
     [TestCase("{ result: function(ctx, db) { return null } }", TestName = "fault")]
     [TestCase("{ fault: function(log, db) { } }", TestName = "result")]
@@ -48,7 +48,7 @@ public class GethLikeJavascriptTracerTests : VirtualMachineTestsBase
         traces.CustomTracerResult?.Value.Should().BeEquivalentTo(expectedStrings);
     }
 
-    private GethLikeBlockJavascriptTracer GetTracer(string userTracer) => new(TestState, Shanghai.Instance, GethTraceOptions.Default with { EnableMemory = true, Tracer = userTracer });
+    private GethLikeBlockJavaScriptTracer GetTracer(string userTracer) => new(TestState, Shanghai.Instance, GethTraceOptions.Default with { EnableMemory = true, Tracer = userTracer });
 
 
     [Test]
