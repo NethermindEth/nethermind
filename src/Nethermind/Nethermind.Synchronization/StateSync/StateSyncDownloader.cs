@@ -10,6 +10,7 @@ using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
+using Nethermind.Network.Contract.P2P;
 using Nethermind.State.Snap;
 using Nethermind.Synchronization.FastSync;
 using Nethermind.Synchronization.ParallelSync;
@@ -38,7 +39,7 @@ namespace Nethermind.Synchronization.StateSync
             Task<byte[][]> task = null;
             HashList? hashList = null;
             // Use GETNODEDATA if possible. Firstly via eth66
-            if (peerInfo.CanGetNodeData())
+            if (peer.ProtocolVersion < EthVersions.Eth67)
             {
                 hashList = HashList.Rent(batch.RequestedNodes);
                 task = peer.GetNodeData(hashList, cancellationToken);
