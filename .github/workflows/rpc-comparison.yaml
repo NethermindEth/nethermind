@@ -13,9 +13,14 @@ on:
         required: false
       what_to_compare:
         type: string
-        description: "A space-separated list of clients/branches. If 'infura' then current branch to infura will be compared. If two nethermind branches, then two version will be compared."
-        default: "infura"
-        required: true
+        description: "A space-separated list of branches. If empty, then selected branch will be used. If multiple specified, those will be compared to themselves."
+        default: ""
+        required: false
+      compare_with:
+        type: string
+        description: "A space-separated list of additional comparers. If empty, then nothing else will be added to comparision. Possible options: 'infura', 'archive', 'feature/branch'"
+        default: ""
+        required: false
 
 jobs:
   parse_input:
@@ -23,22 +28,44 @@ jobs:
     outputs:
       matrix: ${{ steps.set-matrix.outputs.matrix }}
     steps:
+      - name: Install jq
+        run: sudo apt-get install jq
+
       - name: Set matrix for branches
         id: set-matrix
         run: |
-          # what_to_compare="${{ github.event.inputs.what_to_compare }}"
-          what_to_compare="infura"
-          if [[ "$what_to_compare" == "infura" ]]; then
-            # Extract the current branch name from GITHUB_REF
+          #what_to_compare="${{ github.event.inputs.what_to_compare }}"
+          #compare_with="${{ github.event.inputs.compare_with }}"
+
+          what_to_compare=""
+          compare_with="infura"
+
+          # Determine the primary branches to compare
+          if [[ "$what_to_compare" == "" ]]; then
             current_branch=${GITHUB_REF#refs/heads/}
             branches=("$current_branch")
           else
-            # Split the input into an array
-            IFS=' ' read -r -a branches <<< "$what_to_compare"
+            readarray -t branches <<< "$what_to_compare"
           fi
+
+          # Add additional comparers if specified
+          if [[ "$compare_with" != "" ]]; then
+            IFS=' ' read -r -a additional_branches <<< "$compare_with"
+            for branch in "${additional_branches[@]}"; do
+              if [[ "$branch" != "infura" && "$branch" != "archive" ]]; then
+                # Treat as additional branch
+                branches+=("$branch")
+              fi
+            done
+          fi
+
+          # Convert array to JSON array string
           printf -v joined ',"%s"' "${branches[@]}"
-          json_array="[${joined:1}]"
-          echo "matrix=$json_array" >> $GITHUB_OUTPUT
+          MATRIX="[${joined:1}]"
+
+          echo $MATRIX > matrix.json
+          cat matrix.json
+          echo "matrix=$(jq -c . matrix.json)" >> $GITHUB_OUTPUT
 
   create_node:
     needs: parse_input
