@@ -72,7 +72,7 @@ namespace Nethermind.Evm.TransactionProcessing
 
             if(tx.IsSystem())
             {
-                ITransactionProcessor systemProcessor = SelectSystemTxProcessor(spec);
+                ITransactionProcessor systemProcessor = new SystemTxProcessor(spec, WorldState, VirtualMachine, Ecdsa, Logger);
 
                 systemProcessor.Execute(tx, blCtx, tracer);
                 return;
@@ -181,13 +181,6 @@ namespace Nethermind.Evm.TransactionProcessing
                     tracer.MarkAsSuccess(env.ExecutingAccount, spentGas, substate.Output.ToArray(), logs, stateRoot);
                 }
             }
-        }
-
-        private ITransactionProcessor SelectSystemTxProcessor(IReleaseSpec spec)
-        {
-            return spec.AuRaSystemCalls
-                ? new AuraSystemTxProcessor(spec, WorldState, VirtualMachine, Ecdsa, Logger)
-                : new GethSystemTxProcessor(spec, WorldState, VirtualMachine, Ecdsa, Logger);
         }
 
         protected void QuickFail(Transaction tx, BlockHeader block, IReleaseSpec spec, ITxTracer txTracer, string? reason)

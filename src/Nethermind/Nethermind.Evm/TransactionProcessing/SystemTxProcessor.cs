@@ -22,7 +22,7 @@ using static Nethermind.Evm.VirtualMachine;
 
 namespace Nethermind.Evm.TransactionProcessing
 {
-    public class AuraSystemTxProcessor : ITransactionProcessor
+    public class SystemTxProcessor : ITransactionProcessor
     {
         protected EthereumEcdsa Ecdsa { get; private init; }
         protected ILogger Logger { get; private init; }
@@ -30,7 +30,7 @@ namespace Nethermind.Evm.TransactionProcessing
         protected IWorldState WorldState { get; private init; }
         protected IVirtualMachine VirtualMachine { get; private init; }
 
-        public AuraSystemTxProcessor(
+        public SystemTxProcessor(
             IReleaseSpec? spec,
             IWorldState? worldState,
             IVirtualMachine? virtualMachine,
@@ -177,7 +177,13 @@ namespace Nethermind.Evm.TransactionProcessing
         protected virtual void UpdateSpecBasedOnSystemProcessor(BlockExecutionContext blCtx, out BlockHeader header, out IReleaseSpec spec)
         {
             header = blCtx.Header;
-            spec = new SystemTransactionReleaseSpec(Spec);
+            if(Spec.AuRaSystemCalls)
+            {
+                spec = new SystemTransactionReleaseSpec(Spec);
+            } else
+            {
+                spec = Spec;
+            }
         }
 
         protected void QuickFail(Transaction tx, BlockHeader block, IReleaseSpec spec, ITxTracer txTracer, string? reason)
@@ -261,7 +267,7 @@ namespace Nethermind.Evm.TransactionProcessing
 
             bool deleteCallerAccount = false;
 
-            if (!WorldState.AccountExists(tx.SenderAddress))
+            if (!WorldState.AccountExists(tx.SenderAddress) && !tx.IsGethStyleSystemCall(spec))
             {
                 if (Logger.IsDebug) Logger.Debug($"TX sender account does not exist {tx.SenderAddress} - trying to recover it");
 
