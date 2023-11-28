@@ -36,15 +36,15 @@ jobs:
             # Split the input into an array
             IFS=' ' read -r -a branches <<< "$what_to_compare"
           fi
-          echo ${branches}
-          echo "matrix=${branches}" >> $GITHUB_OUTPUT
+          printf -v joined ',"%s"' "${branches[@]}"
+          json_array="[${joined:1}]"
+          echo "matrix=$json_array" >> $GITHUB_OUTPUT
 
   create_node:
     needs: parse_input
     runs-on: ubuntu-latest
     strategy:
-      matrix:
-        branch: ${{fromJson(needs.parse_input.outputs.matrix)}}
+      matrix: ${{ fromJson(needs.parse_input.outputs.matrix) }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v2
