@@ -21,37 +21,29 @@ using Nethermind.Synchronization.SyncLimits;
 
 namespace Nethermind.Synchronization.FastBlocks
 {
-    public class BodiesSyncFeed : ActivatedSyncFeed<BodiesSyncBatch?>
+    public class BodiesSyncFeed : BarrierSyncFeed<BodiesSyncBatch?>
     {
-        internal const int DepositContractBarrier = 11052984;
+        protected override long? LowestInsertedNumber => _blockTree.LowestInsertedBodyNumber;
+        protected override int BarrierWhenStartedMetadataDbKey => MetadataDbKeys.BodiesBarrierWhenStarted;
+        protected override long SyncConfigBarrierCalc => _syncConfig.AncientBodiesBarrierCalc;
+        protected override Func<bool> HasPivot =>
+            () => _blockTree.LowestInsertedBodyNumber is not null && _blockTree.LowestInsertedBodyNumber <= _syncConfig.PivotNumberParsed;
+
         private int _requestSize = GethSyncLimits.MaxBodyFetch;
         private const long DefaultFlushDbInterval = 100000; // About every 10GB on mainnet
         private readonly long _flushDbInterval; // About every 10GB on mainnet
 
-        private readonly ILogger _logger;
         private readonly IBlockTree _blockTree;
         private readonly ISyncConfig _syncConfig;
         private readonly ISyncReport _syncReport;
-        private readonly ISpecProvider _specProvider;
         private readonly ISyncPeerPool _syncPeerPool;
         private readonly IDbMeta _blocksDb;
-        private readonly IDb _metadataDb;
-
-        private long _pivotNumber;
-        private long _barrier;
-        private long? _barrierWhenStarted;
 
         private SyncStatusList _syncStatusList;
 
         private bool ShouldFinish => !_syncConfig.DownloadBodiesInFastSync || AllDownloaded;
         private bool AllDownloaded => (_blockTree.LowestInsertedBodyNumber ?? long.MaxValue) <= _barrier
             || WithinOldBarrierDefault;
-
-        // This property was introduced when we switched defaults of barriers from 11052984 to 0 to not disturb existing node operators
-        private bool WithinOldBarrierDefault => _specProvider.ChainId == BlockchainIds.Mainnet
-            && _barrierWhenStarted == DepositContractBarrier
-            && _blockTree.LowestInsertedBodyNumber <= DepositContractBarrier
-            && _blockTree.LowestInsertedBodyNumber > DepositContractBarrier - GethSyncLimits.MaxBodyFetch;
 
         public override bool IsFinished => AllDownloaded;
         public BodiesSyncFeed(
@@ -64,15 +56,13 @@ namespace Nethermind.Synchronization.FastBlocks
             IDb metadataDb,
             ILogManager logManager,
             long flushDbInterval = DefaultFlushDbInterval)
+            : base(metadataDb, specProvider, logManager.GetClassLogger())
         {
-            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _syncPeerPool = syncPeerPool ?? throw new ArgumentNullException(nameof(syncPeerPool));
             _syncConfig = syncConfig ?? throw new ArgumentNullException(nameof(syncConfig));
             _syncReport = syncReport ?? throw new ArgumentNullException(nameof(syncReport));
             _blocksDb = blocksDb ?? throw new ArgumentNullException(nameof(blocksDb));
-            _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
-            _metadataDb = metadataDb ?? throw new ArgumentNullException(nameof(metadataDb));
             _flushDbInterval = flushDbInterval;
 
             if (!_syncConfig.FastBlocks)
@@ -92,26 +82,7 @@ namespace Nethermind.Synchronization.FastBlocks
                 _barrier = _syncConfig.AncientBodiesBarrierCalc;
                 if (_logger.IsInfo) _logger.Info($"Changed pivot in bodies sync. Now using pivot {_pivotNumber} and barrier {_barrier}");
                 ResetSyncStatusList();
-                if (_blockTree.LowestInsertedBodyNumber is null || _blockTree.LowestInsertedBodyNumber >= _syncConfig.PivotNumberParsed)
-                {
-                    _barrierWhenStarted = _syncConfig.AncientBodiesBarrierCalc;
-                    _metadataDb.Set(MetadataDbKeys.BodiesBarrierWhenStarted, _barrierWhenStarted.Value.ToBigEndianByteArrayWithoutLeadingZeros());
-                }
-                else if (_metadataDb.KeyExists(MetadataDbKeys.BodiesBarrierWhenStarted))
-                {
-                    _barrierWhenStarted = _metadataDb.Get(MetadataDbKeys.BodiesBarrierWhenStarted).ToLongFromBigEndianByteArrayWithoutLeadingZeros();
-                }
-                else if (_specProvider.ChainId == BlockchainIds.Mainnet)
-                {
-                    // Assume the bodies barrier was the previous defualt (deposit contract barrier) only for mainnet
-                    _barrierWhenStarted = DepositContractBarrier;
-                    _metadataDb.Set(MetadataDbKeys.BodiesBarrierWhenStarted, _barrierWhenStarted.Value.ToBigEndianByteArrayWithoutLeadingZeros());
-                }
-                else
-                {
-                    _barrierWhenStarted = _barrier;
-                    _metadataDb.Set(MetadataDbKeys.BodiesBarrierWhenStarted, _barrierWhenStarted.Value.ToBigEndianByteArrayWithoutLeadingZeros());
-                }
+                InitializeMetadataDb();
             }
             base.InitializeFeed();
         }

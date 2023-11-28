@@ -28,7 +28,7 @@ using Nethermind.Synchronization.Reporting;
 using NSubstitute;
 using NUnit.Framework;
 
-namespace Nethermind.Synchronization.Test.FastSync
+namespace Nethermind.Synchronization.Test.FastBlocks
 {
     [TestFixture]
     public class ReceiptsSyncFeedTests
@@ -48,14 +48,10 @@ namespace Nethermind.Synchronization.Test.FastSync
                         .WithTransactions(blockNumber > _pivotNumber - nonEmptyBlocks ? txPerBlock : 0, specProvider).TestObject;
 
                     if (blockNumber > _pivotNumber - nonEmptyBlocks - emptyBlocks)
-                    {
                         Blocks[blockNumber] = block;
-                    }
 
                     if (blockNumber == _pivotNumber - nonEmptyBlocks - emptyBlocks + 1)
-                    {
                         LowestInsertedBody = block;
-                    }
 
                     parent = block;
                 }
@@ -235,19 +231,19 @@ namespace Nethermind.Synchronization.Test.FastSync
             _measuredProgressQueue.HasEnded.Should().BeTrue();
         }
 
-        [TestCase(100, false, null, false)]
+        [TestCase(1024, false, null, false)]
         [TestCase(11052930, false, null, true)]
         [TestCase(11052984, false, null, true)]
         [TestCase(11052985, false, null, false)]
-        [TestCase(100, false, 11052984, false)]
+        [TestCase(1024, false, 11052984, false)]
         [TestCase(11052930, false, 11052984, true)]
         [TestCase(11052984, false, 11052984, true)]
         [TestCase(11052985, false, 11052984, false)]
-        [TestCase(100, true, null, false)]
+        [TestCase(1024, true, null, false)]
         [TestCase(11052930, true, null, false)]
         [TestCase(11052984, true, null, false)]
         [TestCase(11052985, true, null, false)]
-        [TestCase(100, false, 0, false)]
+        [TestCase(1024, false, 0, false)]
         [TestCase(11052930, false, 0, false)]
         [TestCase(11052984, false, 0, false)]
         [TestCase(11052985, false, 0, false)]
@@ -307,9 +303,7 @@ namespace Nethermind.Synchronization.Test.FastSync
                 {
                     Block? block = scenario.Blocks[ci.Arg<long>()];
                     if (block is null)
-                    {
                         return null;
-                    }
 
                     BlockInfo blockInfo = new(block.Hash!, block.TotalDifficulty ?? 0)
                     {

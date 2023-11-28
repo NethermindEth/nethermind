@@ -26,36 +26,30 @@ using Nethermind.Synchronization.SyncLimits;
 namespace Nethermind.Synchronization.FastBlocks
 {
 
-    public class ReceiptsSyncFeed : ActivatedSyncFeed<ReceiptsSyncBatch?>
+    public class ReceiptsSyncFeed : BarrierSyncFeed<ReceiptsSyncBatch?>
     {
-        internal const int DepositContractBarrier = 11052984;
+        protected override long? LowestInsertedNumber => _receiptStorage.LowestInsertedReceiptBlockNumber;
+        protected override int BarrierWhenStartedMetadataDbKey => MetadataDbKeys.ReceiptsBarrierWhenStarted;
+        protected override long SyncConfigBarrierCalc => _syncConfig.AncientReceiptsBarrierCalc;
+        protected override Func<bool> HasPivot =>
+            () => _receiptStorage.HasBlock(_syncConfig.PivotNumberParsed, _syncConfig.PivotHashParsed);
+
         private int _requestSize = GethSyncLimits.MaxReceiptFetch;
 
-        private readonly ILogger _logger;
         private readonly IBlockTree _blockTree;
         private readonly ISyncConfig _syncConfig;
         private readonly ISyncReport _syncReport;
-        private readonly ISpecProvider _specProvider;
         private readonly IReceiptStorage _receiptStorage;
         private readonly ISyncPeerPool _syncPeerPool;
-        private readonly IDb _metadataDb;
 
         private SyncStatusList _syncStatusList;
-        private long _pivotNumber;
-        private long _barrier;
-        private long? _barrierWhenStarted;
 
         private bool ShouldFinish => !_syncConfig.DownloadReceiptsInFastSync || AllDownloaded;
         private bool AllDownloaded => (_receiptStorage.LowestInsertedReceiptBlockNumber ?? long.MaxValue) <= _barrier
             || WithinOldBarrierDefault;
 
-        // This property was introduced when we switched defaults of barriers on mainnet from 11052984 to 0 to not disturb existing node operators
-        private bool WithinOldBarrierDefault => _specProvider.ChainId == BlockchainIds.Mainnet
-            && _barrierWhenStarted == DepositContractBarrier
-            && _receiptStorage.LowestInsertedReceiptBlockNumber <= DepositContractBarrier
-            && _receiptStorage.LowestInsertedReceiptBlockNumber > DepositContractBarrier - GethSyncLimits.MaxBodyFetch; // this is intentional. using this as an approxamation assuming a minimum of 1 receipt in per block
-
         public override bool IsFinished => AllDownloaded;
+
         public ReceiptsSyncFeed(
             ISpecProvider specProvider,
             IBlockTree blockTree,
@@ -65,15 +59,13 @@ namespace Nethermind.Synchronization.FastBlocks
             ISyncReport syncReport,
             IDb metadataDb,
             ILogManager logManager)
+            : base(metadataDb, specProvider, logManager?.GetClassLogger())
         {
-            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
-            _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
             _syncPeerPool = syncPeerPool ?? throw new ArgumentNullException(nameof(syncPeerPool));
             _syncConfig = syncConfig ?? throw new ArgumentNullException(nameof(syncConfig));
             _syncReport = syncReport ?? throw new ArgumentNullException(nameof(syncReport));
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
-            _metadataDb = metadataDb ?? throw new ArgumentNullException(nameof(metadataDb));
 
             if (!_syncConfig.FastBlocks)
             {
@@ -91,28 +83,8 @@ namespace Nethermind.Synchronization.FastBlocks
                 _barrier = _syncConfig.AncientReceiptsBarrierCalc;
                 if (_logger.IsInfo) _logger.Info($"Changed pivot in receipts sync. Now using pivot {_pivotNumber} and barrier {_barrier}");
                 ResetSyncStatusList();
-                if (!_receiptStorage.HasBlock(_syncConfig.PivotNumberParsed, _syncConfig.PivotHashParsed))
-                {
-                    _barrierWhenStarted = _syncConfig.AncientReceiptsBarrierCalc;
-                    _metadataDb.Set(MetadataDbKeys.ReceiptsBarrierWhenStarted, _barrierWhenStarted.Value.ToBigEndianByteArrayWithoutLeadingZeros());
-                }
-                else if (_metadataDb.KeyExists(MetadataDbKeys.ReceiptsBarrierWhenStarted))
-                {
-                    _barrierWhenStarted = _metadataDb.Get(MetadataDbKeys.ReceiptsBarrierWhenStarted).ToLongFromBigEndianByteArrayWithoutLeadingZeros();
-                }
-                else if (_specProvider.ChainId == BlockchainIds.Mainnet)
-                {
-                    // Assume the receipts barrier was the previous defualt (deposit contract barrier) only for mainnet
-                    _barrierWhenStarted = DepositContractBarrier;
-                    _metadataDb.Set(MetadataDbKeys.ReceiptsBarrierWhenStarted, _barrierWhenStarted.Value.ToBigEndianByteArrayWithoutLeadingZeros());
-                }
-                else
-                {
-                    _barrierWhenStarted = _barrier;
-                    _metadataDb.Set(MetadataDbKeys.ReceiptsBarrierWhenStarted, _barrierWhenStarted.Value.ToBigEndianByteArrayWithoutLeadingZeros());
-                }
+                InitializeMetadataDb();
             }
-
             base.InitializeFeed();
         }
 

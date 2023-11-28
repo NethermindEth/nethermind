@@ -120,9 +120,7 @@ public class BodiesSyncFeedTests
         {
             writeCount++;
             if (writeCount == 5)
-            {
                 throw new Exception("test failure");
-            }
             return true;
         };
 
@@ -134,19 +132,19 @@ public class BodiesSyncFeedTests
         req.Infos[0]!.BlockNumber.Should().Be(95);
     }
 
-    [TestCase(100, false, null, false)]
+    [TestCase(99, false, null, false)]
     [TestCase(11052930, false, null, true)]
     [TestCase(11052984, false, null, true)]
     [TestCase(11052985, false, null, false)]
-    [TestCase(100, false, 11052984, false)]
+    [TestCase(99, false, 11052984, false)]
     [TestCase(11052930, false, 11052984, true)]
     [TestCase(11052984, false, 11052984, true)]
     [TestCase(11052985, false, 11052984, false)]
-    [TestCase(100, true, null, false)]
+    [TestCase(99, true, null, false)]
     [TestCase(11052930, true, null, false)]
     [TestCase(11052984, true, null, false)]
     [TestCase(11052985, true, null, false)]
-    [TestCase(100, false, 0, false)]
+    [TestCase(99, false, 0, false)]
     [TestCase(11052930, false, 0, false)]
     [TestCase(11052984, false, 0, false)]
     [TestCase(11052985, false, 0, false)]
@@ -157,7 +155,7 @@ public class BodiesSyncFeedTests
             bool shouldfinish)
     {
         _syncConfig.AncientReceiptsBarrier = 0;
-        _syncingToBlockTree.LowestInsertedBodyNumber = JustStarted ? _pivotBlock.Number : _pivotBlock.Number - 1;
+        _syncingToBlockTree.LowestInsertedBodyNumber = JustStarted ? null : _pivotBlock.Number;
         if (previousBarrierInDb != null)
             _metadataDb.Set(MetadataDbKeys.BodiesBarrierWhenStarted, previousBarrierInDb.Value.ToBigEndianByteArrayWithoutLeadingZeros());
         _feed.InitializeFeed();
