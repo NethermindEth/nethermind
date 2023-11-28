@@ -150,7 +150,7 @@ public class AdminRpcModule : IAdminRpcModule
             try
             {
                 //TODO correct network 
-                _importExportTask = _eraService.Import(source, "mainnet", _processExitToken.Token);
+                _importExportTask = _eraService.Import(source, _processExitToken.Token);
             }
             finally
             {
@@ -193,7 +193,7 @@ public class AdminRpcModule : IAdminRpcModule
             try
             {
                 //TODO correct network 
-                _importExportTask = _eraService.Export(destination, "mainnet", from, to, EraWriter.MaxEra1Size, _processExitToken.Token);
+                _importExportTask = _eraService.Export(destination, from, to, EraWriter.MaxEra1Size, _processExitToken.Token);
             }
             finally
             {

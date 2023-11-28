@@ -168,7 +168,14 @@ public class RegisterRpcModules : IStep
         ManualPruningTrigger pruningTrigger = new();
         _api.PruningTrigger.Add(pruningTrigger);
         
-        IEraService eraService = new EraService(new FileSystem(), _api.BlockTree, _api.BlockValidator, _api.ReceiptStorage, _api.SpecProvider, _api.LogManager);
+        IEraService eraService = new EraService(
+            _api.FileSystem,
+            _api.BlockTree,
+            _api.BlockValidator,
+            _api.ReceiptStorage,
+            _api.SpecProvider,
+            BlockchainIds.GetBlockchainName(_api.SpecProvider.NetworkId),
+            _api.LogManager);
         AdminRpcModule adminRpcModule = new(
             _api.BlockTree,
             networkConfig,

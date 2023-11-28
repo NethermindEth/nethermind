@@ -31,6 +31,7 @@ public class EraService : IEraService
     private readonly IBlockValidator _blockValidator;
     private readonly IReceiptStorage _receiptStorage;
     private readonly ISpecProvider _specProvider;
+    private readonly string _networkName;
     private readonly ILogger _logger;
 
     public EraService(
@@ -39,6 +40,7 @@ public class EraService : IEraService
         IBlockValidator blockValidator,
         IReceiptStorage receiptStorage,
         ISpecProvider specProvider,
+        string networkName,
         ILogManager logManager)
     {
         if (logManager is null) throw new ArgumentNullException(nameof(logManager));
@@ -47,13 +49,14 @@ public class EraService : IEraService
         _blockValidator = blockValidator;
         _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
         _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
+        if (string.IsNullOrWhiteSpace(networkName)) throw new ArgumentException("Cannot be null or whitespace.",nameof(specProvider));
+        _networkName = networkName.Trim().ToLower();
         _logger = logManager.GetClassLogger();
     }
 
     //TODO cancellation
     public async Task Export(
         string destinationPath,
-        string network,
         long start,
         long end,
         int size = EraWriter.MaxEra1Size,
@@ -83,7 +86,7 @@ public class EraService : IEraService
             {
                 string filePath = Path.Combine(
                    destinationPath,
-                   EraWriter.Filename(network, i / size, Keccak.Zero));
+                   EraWriter.Filename(_networkName, i / size, Keccak.Zero));
                 using EraWriter? builder = EraWriter.Create(_fileSystem.File.Create(filePath), _specProvider);
 
                 //For compatibility reasons, we dont want to write a line termninator after the last checksum,
@@ -124,7 +127,7 @@ public class EraService : IEraService
                         builder.Dispose();
                         string rename = Path.Combine(
                                                 destinationPath,
-                                                EraWriter.Filename(network, i / size, new Hash256(root)));
+                                                EraWriter.Filename(_networkName, i / size, new Hash256(root)));
                         _fileSystem.File.Move(filePath,
                             rename, true);
                         await checksumWriter.WriteAsync(checksum.ToHexString(true));
@@ -156,7 +159,7 @@ public class EraService : IEraService
             throw;
         }
     }
-    public async Task Import(string src, string network, CancellationToken cancellation)
+    public async Task Import(string src, CancellationToken cancellation)
     {
         try
         {
@@ -164,7 +167,7 @@ public class EraService : IEraService
 
             DateTime lastProgress = DateTime.Now;
             int fileProcessed = 0;
-            var eraFiles = EraReader.GetAllEraFiles(src, network);
+            var eraFiles = EraReader.GetAllEraFiles(src, _networkName);
             int filesCount = eraFiles.Count();
             DateTime startTime = DateTime.Now;
             int totalCount = 0;
@@ -198,7 +201,7 @@ public class EraService : IEraService
                     {
                         if (_logger.IsInfo)
                         {
-                            _logger.Info($"Import progress: {fileProcessed,6}/{filesCount} files  |  elapsed {DateTime.Now.Subtract(startTime):hh\\:mm\\:ss}  |  {totalCount/DateTime.Now.Subtract(startTime).TotalSeconds,2:0.##} Blks/s");
+                            _logger.Info($"Import progress: {fileProcessed,6}/{filesCount} epochs  |  elapsed {DateTime.Now.Subtract(startTime):hh\\:mm\\:ss}  |  {totalCount/DateTime.Now.Subtract(startTime).TotalSeconds,2:0.##} Blks/s");
                         }
 
                         lastProgress = DateTime.Now;

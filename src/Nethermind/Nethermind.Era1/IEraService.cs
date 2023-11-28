@@ -5,7 +5,7 @@ namespace Nethermind.Era1;
 
 public interface IEraService
 {
-    Task Export(string destinationPath, string network, long start, long end, int size = EraWriter.MaxEra1Size, CancellationToken cancellation = default);
-    Task Import(string src, string network, CancellationToken cancellation);
+    Task Export(string destinationPath, long start, long end, int size = EraWriter.MaxEra1Size, CancellationToken cancellation = default);
+    Task Import(string src, CancellationToken cancellation);
     Task<bool> VerifyEraFiles(string path);
 }
