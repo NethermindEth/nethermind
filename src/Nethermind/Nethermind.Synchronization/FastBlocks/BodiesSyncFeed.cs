@@ -31,6 +31,7 @@ namespace Nethermind.Synchronization.FastBlocks
         private readonly ISyncReport _syncReport;
         private readonly ISyncPeerPool _syncPeerPool;
         private readonly IDbMeta _blocksDb;
+        public override bool IsFinished => (_blockTree.LowestInsertedBodyNumber ?? long.MaxValue) <= _barrier;
 
         private long _pivotNumber;
         private long _barrier;
@@ -38,14 +39,13 @@ namespace Nethermind.Synchronization.FastBlocks
         private SyncStatusList _syncStatusList;
 
         public BodiesSyncFeed(
-            ISyncModeSelector syncModeSelector,
             IBlockTree blockTree,
             ISyncPeerPool syncPeerPool,
             ISyncConfig syncConfig,
             ISyncReport syncReport,
             IDbMeta blocksDb,
             ILogManager logManager,
-            long flushDbInterval = DefaultFlushDbInterval) : base(syncModeSelector)
+            long flushDbInterval = DefaultFlushDbInterval)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
@@ -61,16 +61,12 @@ namespace Nethermind.Synchronization.FastBlocks
                     "Entered fast blocks mode without fast blocks enabled in configuration.");
             }
 
-            _pivotNumber = _syncConfig.PivotNumberParsed;
-            _barrier = _syncConfig.AncientBodiesBarrierCalc;
-            if (_logger.IsInfo) _logger.Info($"Using pivot {_pivotNumber} and barrier {_barrier} in bodies sync");
-
-            ResetSyncStatusList();
+            _pivotNumber = -1; // First reset in `InitializeFeed`.
         }
 
         public override void InitializeFeed()
         {
-            if (_pivotNumber < _syncConfig.PivotNumberParsed)
+            if (_pivotNumber != _syncConfig.PivotNumberParsed || _barrier != _syncConfig.AncientBodiesBarrierCalc)
             {
                 _pivotNumber = _syncConfig.PivotNumberParsed;
                 _barrier = _syncConfig.AncientBodiesBarrierCalc;

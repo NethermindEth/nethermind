@@ -180,11 +180,10 @@ namespace Nethermind.Api
         public ISessionMonitor? SessionMonitor { get; set; }
         public ISpecProvider? SpecProvider { get; set; }
         public IPoSSwitcher PoSSwitcher { get; set; } = NoPoS.Instance;
-        public ISyncModeSelector? SyncModeSelector { get; set; }
+        public ISyncModeSelector SyncModeSelector { get; set; } = null!;
 
         public ISyncProgressResolver? SyncProgressResolver { get; set; }
         public IBetterPeerStrategy? BetterPeerStrategy { get; set; }
-        public IBlockDownloaderFactory? BlockDownloaderFactory { get; set; }
         public IPivot? Pivot { get; set; }
         public ISyncPeerPool? SyncPeerPool { get; set; }
         public IPeerDifficultyRefreshPool? PeerDifficultyRefreshPool { get; set; }
@@ -231,7 +230,6 @@ namespace Nethermind.Api
         public IReadOnlyList<INethermindPlugin> Plugins { get; } = new List<INethermindPlugin>();
         public IList<IPublisher> Publishers { get; } = new List<IPublisher>(); // this should be called publishers
         public CompositePruningTrigger PruningTrigger { get; } = new();
-        public ISnapProvider? SnapProvider { get; set; }
         public IProcessExitSource? ProcessExit { get; set; }
         public IProcessExitToken? ProcessExitToken { get; set; }
         public CompositeTxGossipPolicy TxGossipPolicy { get; } = new();

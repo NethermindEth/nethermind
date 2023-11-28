@@ -1486,8 +1486,9 @@ namespace Nethermind.Blockchain
         /// </summary>
         /// <param name="startNumber">Start level of the slice to delete</param>
         /// <param name="endNumber">End level of the slice to delete</param>
+        /// <param name="force">Should it force of deletion of valid blocks</param>
         /// <exception cref="ArgumentException">Thrown when <paramref name="startNumber"/> ot <paramref name="endNumber"/> do not satisfy the slice position rules</exception>
-        public int DeleteChainSlice(in long startNumber, long? endNumber)
+        public int DeleteChainSlice(in long startNumber, long? endNumber = null, bool force = false)
         {
             int deleted = 0;
             endNumber ??= BestKnownNumber;
@@ -1512,7 +1513,7 @@ namespace Nethermind.Blockchain
             Block? newHeadBlock = null;
 
             // we are running these checks before all the deletes
-            if (Head.Number >= startNumber)
+            if (Head?.Number >= startNumber)
             {
                 // greater than zero so will not fail
                 ChainLevelInfo? chainLevelInfo = _chainLevelInfoRepository.LoadLevel(startNumber - 1);

@@ -57,7 +57,6 @@ public class BodiesSyncFeedTests
         };
 
         _syncFeed = new BodiesSyncFeed(
-            Substitute.For<ISyncModeSelector>(),
             syncingTooBlockTree,
             Substitute.For<ISyncPeerPool>(),
             syncConfig,
