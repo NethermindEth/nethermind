@@ -169,6 +169,38 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
         finalResult.Data.Status.Should().Be(PayloadStatus.Valid);
     }
 
+    [Test]
+    public async Task Can_include_shutter_transactions()
+    {
+        using MergeTestBlockchain chain = await CreateBlockchain(new TestSingleReleaseSpecProvider(London.Instance));
+
+        // add transaction to pool
+        byte[] sigData = new byte[65];
+        sigData[31] = 1; // correct r
+        sigData[63] = 1; // correct s
+        sigData[64] = 27;
+        Signature signature = new(sigData);
+
+        chain.TxPool.SubmitTx(Build.A.Transaction
+                .WithSenderAddress(TestItem.AddressA)
+                .WithValue(999)
+                .WithNonce(0)
+                .WithSignature(signature)
+                .TestObject, TxPool.TxHandlingOptions.None);
+
+        // create new source combining pool with shutter
+        ITxFilterPipeline txFilterPipeline = TxFilterPipelineBuilder.CreateStandardFilteringPipeline(chain.LogManager, chain.SpecProvider, new BlocksConfig());
+        TxPoolTxSource txPoolTxSource = new(chain.TxPool, chain.SpecProvider, chain.TransactionComparerProvider, chain.LogManager, txFilterPipeline);
+        ITxSource txSource = txPoolTxSource.Then(new ShutterTxSource());
+
+        // verify shutter txs included after those from pool
+        IEnumerable<Transaction> txs = txSource.GetTransactions(chain.BlockTree.Head!.Header, 9999999);
+        txs.Should().HaveCount(3);
+        txs.ElementAt(0).Value.Equals(999);
+        txs.ElementAt(1).Value.Equals(123);
+        txs.ElementAt(2).Value.Equals(456);
+    }
+
     class ShutterTxSource : ITxSource
     {
         public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit)
