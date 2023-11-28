@@ -795,9 +795,10 @@ namespace Nethermind.Trie
             trieNode.StoreNibblePathPrefix = (byte[])StoreNibblePathPrefix.Clone();
             if (Key is not null) trieNode.Key = (byte[])Key.Clone();
             trieNode._rlpStream = null;
-            IsDirty = true;
-            IsPersisted = false;
-            LastSeen = null;
+            //why was this introduced? modifies cloned node and can break processing for hash PT
+            //IsDirty = true;
+            //IsPersisted = false;
+            //LastSeen = null;
             return trieNode;
         }
 
