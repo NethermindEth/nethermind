@@ -79,6 +79,8 @@ jobs:
           ref: ${{ matrix.branch }}
       - name: Debug tree
         run: |
+          ls -la /home/runner/work/nethermind
+          ls -la /home/runner/work/nethermind/nethermind
           ls -la
       - name: Run create_node job
         uses: ./.github/workflows/run-a-single-node-from-branch.yml
