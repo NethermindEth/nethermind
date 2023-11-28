@@ -67,7 +67,8 @@ jobs:
           cat matrix.json
           echo "matrix=$(jq -c . matrix.json)" >> $GITHUB_OUTPUT
 
-  create_node: 
+  create_node:
+    needs: parse_input
     name: Create node from current branch
     uses: ./.github/workflows/run-a-single-node-from-branch.yml
     secrets: inherit
