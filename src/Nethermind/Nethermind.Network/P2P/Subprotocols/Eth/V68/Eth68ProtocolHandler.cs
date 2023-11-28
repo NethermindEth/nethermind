@@ -22,6 +22,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V68;
 public class Eth68ProtocolHandler : Eth67ProtocolHandler
 {
     private readonly IPooledTxsRequestor _pooledTxsRequestor;
+    private readonly IPacketAcceptanceStrategy? _acceptanceStrategy;
 
     private readonly Action<V66.Messages.GetPooledTransactionsMessage> _sendAction;
 
@@ -38,13 +39,15 @@ public class Eth68ProtocolHandler : Eth67ProtocolHandler
         IGossipPolicy gossipPolicy,
         ForkInfo forkInfo,
         ILogManager logManager,
-        ITxGossipPolicy? transactionsGossipPolicy = null)
+        ITxGossipPolicy? transactionsGossipPolicy = null,
+        (int byteLimit, TimeSpan throttle)? throttleOptions = null)
         : base(session, serializer, nodeStatsManager, syncServer, txPool, pooledTxsRequestor, gossipPolicy, forkInfo, logManager, transactionsGossipPolicy)
     {
         _pooledTxsRequestor = pooledTxsRequestor;
+        _acceptanceStrategy = throttleOptions is null ? null : new RateLimitedPacketAcceptanceStrategy(throttleOptions.Value.byteLimit, throttleOptions.Value.throttle);
 
         // Capture Action once rather than per call
-        _sendAction = Send<V66.Messages.GetPooledTransactionsMessage>;
+        _sendAction = Send;
     }
 
     public override void HandleMessage(ZeroPacket message)
@@ -53,7 +56,7 @@ public class Eth68ProtocolHandler : Eth67ProtocolHandler
         switch (message.PacketType)
         {
             case Eth68MessageCode.NewPooledTransactionHashes:
-                if (CanReceiveTransactions)
+                if (CanReceiveTransactions && (_acceptanceStrategy?.Accepts(message) ?? true))
                 {
                     NewPooledTransactionHashesMessage68 newPooledTxHashesMsg =
                         Deserialize<NewPooledTransactionHashesMessage68>(message.Content);
@@ -109,7 +112,16 @@ public class Eth68ProtocolHandler : Eth67ProtocolHandler
         }
         else
         {
-            SendMessage(new byte[] { (byte)tx.Type }, new int[] { tx.GetLength() }, new Hash256[] { tx.Hash });
+            SendMessage(new[]
+            {
+                (byte)tx.Type
+            }, new[]
+            {
+                tx.GetLength()
+            }, new[]
+            {
+                tx.Hash
+            });
         }
     }
 

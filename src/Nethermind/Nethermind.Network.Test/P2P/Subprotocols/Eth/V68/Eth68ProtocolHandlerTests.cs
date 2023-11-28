@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Net;
+using System.Threading.Tasks;
 using DotNetty.Buffers;
 using FluentAssertions;
 using Nethermind.Consensus;
@@ -29,6 +30,7 @@ using Nethermind.Stats.Model;
 using Nethermind.Synchronization;
 using Nethermind.TxPool;
 using NSubstitute;
+using NSubstitute.ReceivedExtensions;
 using NUnit.Framework;
 
 namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V68;
@@ -116,6 +118,128 @@ public class Eth68ProtocolHandlerTests
 
         _pooledTxsRequestor.Received(canGossipTransactions ? 1 : 0).RequestTransactionsEth68(Arg.Any<Action<GetPooledTransactionsMessage>>(),
             Arg.Any<IReadOnlyList<Hash256>>(), Arg.Any<IReadOnlyList<int>>(), Arg.Any<IReadOnlyList<byte>>());
+    }
+
+    [TestCase(2, 0)]
+    [TestCase(5, 100)]
+    [TestCase(10, 500)]
+    public async Task Can_handle_NewPooledTransactions_message_throttled(int msgCount, int throttleTimeMillis)
+    {
+        TimeSpan throttleTime = TimeSpan.FromMilliseconds(throttleTimeMillis);
+        TimeSpan epsilon = TimeSpan.FromMilliseconds(10);
+
+        _txGossipPolicy.ShouldListenToGossippedTransactions.Returns(true);
+
+        _handler = new Eth68ProtocolHandler(
+            _session,
+            _svc,
+            new NodeStatsManager(_timerFactory, LimboLogs.Instance),
+            _syncManager,
+            _transactionPool,
+            _pooledTxsRequestor,
+            _gossipPolicy,
+            new ForkInfo(_specProvider, _genesisBlock.Header.Hash!),
+            LimboLogs.Instance,
+            _txGossipPolicy,
+            throttleOptions: (300, throttleTime)
+        );
+        _handler.Init();
+
+        GenerateLists(10, out List<byte> types, out List<int> sizes, out List<Hash256> hashes);
+        NewPooledTransactionHashesMessage68 msg = new(types, sizes, hashes);
+        for (int i = 0; i < msgCount; i++)
+        {
+            HandleZeroMessage(msg, Eth68MessageCode.NewPooledTransactionHashes);
+            await Task.Delay(throttleTime + epsilon);
+        }
+        _handler.Dispose();
+
+        _pooledTxsRequestor.Received(msgCount).RequestTransactionsEth68(
+            Arg.Any<Action<GetPooledTransactionsMessage>>(),
+            Arg.Any<IReadOnlyList<Hash256>>(),
+            Arg.Any<IReadOnlyList<int>>(),
+            Arg.Any<IReadOnlyList<byte>>()
+        );
+    }
+
+    [TestCase(50, 500)]
+    [TestCase(100, 100)]
+    public void Drops_NewPooledTransactions_messages_when_throttled(int msgCount, int throttleTimeMillis)
+    {
+        TimeSpan throttleTime = TimeSpan.FromMilliseconds(throttleTimeMillis);
+
+        _txGossipPolicy.ShouldListenToGossippedTransactions.Returns(true);
+
+        _handler = new Eth68ProtocolHandler(
+            _session,
+            _svc,
+            new NodeStatsManager(_timerFactory, LimboLogs.Instance),
+            _syncManager,
+            _transactionPool,
+            _pooledTxsRequestor,
+            _gossipPolicy,
+            new ForkInfo(_specProvider, _genesisBlock.Header.Hash!),
+            LimboLogs.Instance,
+            _txGossipPolicy,
+            throttleOptions: (300, throttleTime)
+        );
+        _handler.Init();
+
+        GenerateLists(10, out List<byte> types, out List<int> sizes, out List<Hash256> hashes);
+        NewPooledTransactionHashesMessage68 msg = new(types, sizes, hashes);
+
+        for (int i = 0; i < msgCount; i++)
+        {
+            HandleZeroMessage(msg, Eth68MessageCode.NewPooledTransactionHashes);
+        }
+        _handler.Dispose();
+
+        _pooledTxsRequestor.Received(Quantity.Within(0, msgCount - 1)).RequestTransactionsEth68(
+            Arg.Any<Action<GetPooledTransactionsMessage>>(),
+            Arg.Any<IReadOnlyList<Hash256>>(),
+            Arg.Any<IReadOnlyList<int>>(),
+            Arg.Any<IReadOnlyList<byte>>()
+        );
+    }
+
+    [Test]
+    public async Task Drops_and_resumes_handling_NewPooledTransactions_messages_when_throttled()
+    {
+        TimeSpan throttleTime = TimeSpan.FromMilliseconds(500);
+        TimeSpan epsilon = TimeSpan.FromMilliseconds(10);
+
+        _txGossipPolicy.ShouldListenToGossippedTransactions.Returns(true);
+
+        _handler = new Eth68ProtocolHandler(
+            _session,
+            _svc,
+            new NodeStatsManager(_timerFactory, LimboLogs.Instance),
+            _syncManager,
+            _transactionPool,
+            _pooledTxsRequestor,
+            _gossipPolicy,
+            new ForkInfo(_specProvider, _genesisBlock.Header.Hash!),
+            LimboLogs.Instance,
+            _txGossipPolicy,
+            throttleOptions: (750, throttleTime) // 750 bytes are enough to process 2 messages
+        );
+        _handler.Init();
+
+        GenerateLists(10, out List<byte> types, out List<int> sizes, out List<Hash256> hashes);
+        NewPooledTransactionHashesMessage68 msg = new(types, sizes, hashes);
+
+        HandleZeroMessage(msg, Eth68MessageCode.NewPooledTransactionHashes); // Expected to be accepted
+        HandleZeroMessage(msg, Eth68MessageCode.NewPooledTransactionHashes); // Expected to be accepted
+        HandleZeroMessage(msg, Eth68MessageCode.NewPooledTransactionHashes); // Expected to be dropped
+        await Task.Delay(throttleTime + epsilon);
+        HandleZeroMessage(msg, Eth68MessageCode.NewPooledTransactionHashes); // Expected to be accepted again
+
+        _pooledTxsRequestor.Received(3).RequestTransactionsEth68(
+            Arg.Any<Action<GetPooledTransactionsMessage>>(),
+            Arg.Any<IReadOnlyList<Hash256>>(),
+            Arg.Any<IReadOnlyList<int>>(),
+            Arg.Any<IReadOnlyList<byte>>()
+        );
     }
 
     [TestCase(true)]
