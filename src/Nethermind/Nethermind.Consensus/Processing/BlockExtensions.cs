@@ -3,15 +3,18 @@
 
 using System;
 using System.Collections.Generic;
+using System.Runtime.CompilerServices;
 using System.Text;
 using Nethermind.Config;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.State.Proofs;
 
+[assembly: InternalsVisibleTo("Nethermind.Consensus.Test")]
+
 namespace Nethermind.Consensus.Processing
 {
-    public static class BlockExtensions
+    internal static class BlockExtensions
     {
         public static Block CreateCopy(this Block block, BlockHeader header) =>
             block is BlockToProduce blockToProduce
