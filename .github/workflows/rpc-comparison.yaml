@@ -78,7 +78,7 @@ jobs:
         with:
           ref: ${{ matrix.branch }}
       - name: Run create_node job
-        uses: ./.github/workflows/run-a-single-node-from-branch.yml@${{ matrix.branch }}
+        uses: NethermindEth/nethermind/.github/workflows/run-a-single-node-from-branch.yml
         with:
           allowed_ips: ${{ github.event.inputs.allowed_ips }}
           non_validator_mode: false
