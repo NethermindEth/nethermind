@@ -35,6 +35,7 @@ jobs:
             # Split the input into an array
             IFS=' ' read -r -a branches <<< "$what_to_compare"
           fi
+          echo ${branches}
           echo "matrix=${branches}" >> $GITHUB_OUTPUT
 
   create_node:
