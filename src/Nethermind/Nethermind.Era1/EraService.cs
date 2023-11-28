@@ -1,26 +1,26 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
-using System.Diagnostics;
 using System.IO.Abstractions;
+using System.Text;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
-using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
-using Nethermind.Serialization.Rlp;
 using Nethermind.State.Proofs;
-using Nethermind.State.Repositories;
-using Nethermind.Synchronization;
-using Nethermind.Synchronization.Blocks;
 using Nethermind.Synchronization.Peers;
+using Nethermind.Synchronization;
+using Org.BouncyCastle.Utilities.Encoders;
+using MathNet.Numerics.LinearAlgebra.Factorization;
+using System.Diagnostics;
+using System.Linq;
+using System.Buffers;
+using Nethermind.Core.Collections;
 
 namespace Nethermind.Era1;
 public class EraService : IEraService
@@ -50,20 +50,6 @@ public class EraService : IEraService
         _logger = logManager.GetClassLogger();
     }
 
-    public async Task Import(string src, string network)
-    {
-        var eraFiles = EraReader.GetAllEraFiles(src, network);
-        foreach (var era in eraFiles)
-        {
-            using var eraEnumerator = await EraReader.Create(era);
-
-            await foreach ((Block b, TxReceipt[] r, UInt256 td) in eraEnumerator)
-            {
-
-            }
-        }
-    }
-
     //TODO cancellation
     public async Task Export(
         string destinationPath,
@@ -77,17 +63,22 @@ public class EraService : IEraService
         if (_fileSystem.File.Exists(destinationPath)) throw new ArgumentException(nameof(destinationPath), $"Cannot be a file.");
 
         EnsureExistingEraFiles();
-        if (!_fileSystem.Directory.Exists(destinationPath))
-        {
-            //TODO look into permission settings - should it be set?
-            _fileSystem.Directory.CreateDirectory(destinationPath);
-        }
-        if (_logger.IsInfo) _logger.Info($"Starting history export from {start} to {end}");
-        DateTime startTime = DateTime.Now;
-        DateTime lastProgress = DateTime.Now;
-        int processed = 0;
+
         try
         {
+            if (!_fileSystem.Directory.Exists(destinationPath))
+            {
+                //TODO look into permission settings - should it be set?
+                _fileSystem.Directory.CreateDirectory(destinationPath);
+            }
+            if (_logger.IsInfo) _logger.Info($"Starting history export from {start} to {end}");
+
+            using StreamWriter checksumWriter = _fileSystem.File.CreateText(Path.Combine(destinationPath, "checksums.txt"));
+
+            DateTime startTime = DateTime.Now;
+            DateTime lastProgress = DateTime.Now;
+            int processed = 0;
+
             for (long i = start; i <= end; i += size)
             {
                 string filePath = Path.Combine(
@@ -95,8 +86,13 @@ public class EraService : IEraService
                    EraWriter.Filename(network, i / size, Keccak.Zero));
                 using EraWriter? builder = EraWriter.Create(_fileSystem.File.Create(filePath), _specProvider);
 
+                //For compatibility reasons, we dont want to write a line termninator after the last checksum,
+                //so we write one here instead, avoiding the last line
+                if (i != start)
+                    await checksumWriter.WriteLineAsync();
+
                 //TODO read directly from RocksDb with range reads
-                for (var y = i; y < end; y++)
+                for (var y = i; y <= end; y++)
                 {
                     //Naive lookup
                     ChainLevelInfo? chainlevel = _blockTree.FindLevel(y);
@@ -118,31 +114,37 @@ public class EraService : IEraService
                     TxReceipt[]? receipts = _receiptStorage.Get(block);
                     if (receipts == null)
                     {
-                        //TODO  handle this scenario
+                        //Can this even happen?
                         throw new EraException($"Could not find receipts for block {block.ToString(Block.Format.FullHashAndNumber)}");
                     }
-                    if (!await builder.Add(block, receipts, cancellation))
+                    if (!await builder.Add(block, receipts, cancellation) || y == end)
                     {
                         byte[] root = await builder.Finalize();
+                        byte[] checksum = builder.Checksum;
                         builder.Dispose();
                         string rename = Path.Combine(
                                                 destinationPath,
                                                 EraWriter.Filename(network, i / size, new Hash256(root)));
                         _fileSystem.File.Move(filePath,
                             rename, true);
+                        await checksumWriter.WriteAsync(checksum.ToHexString(true));
                         break;
                     }
                     processed++;
                     TimeSpan elapsed = DateTime.Now.Subtract(lastProgress);
                     if (elapsed.TotalSeconds > TimeSpan.FromSeconds(10).TotalSeconds)
                     {
-                        if (_logger.IsInfo) _logger.Info($"Export progress: {y,12}/{end}  |  elapsed {DateTime.Now.Subtract(startTime):hh\\:mm\\:ss}  |  {processed / elapsed.TotalSeconds,2:0.##} Blk/s");
+                        if (_logger.IsInfo) _logger.Info($"Export progress: {y,10}/{end}  |  elapsed {DateTime.Now.Subtract(startTime):hh\\:mm\\:ss}  |  {processed / elapsed.TotalSeconds,2:0.##} Blk/s");
                         lastProgress = DateTime.Now;
                         processed = 0;
                     }
                 }
             }
             if (_logger.IsInfo) _logger.Info($"Finished history export from {start} to {end}");
+        }
+        catch (EraException e)
+        {
+            _logger.Error("Import error", e);
         }
         catch (TaskCanceledException)
         {
@@ -154,108 +156,131 @@ public class EraService : IEraService
             throw;
         }
     }
-
-    private async Task ImportBlocks(Block[] blocks, TxReceipt[][] receipts, CancellationToken cancellation)
+    public async Task Import(string src, string network, CancellationToken cancellation)
     {
-        if (blocks.Length > 0)
-            throw new ArgumentException("Cannot be empty.", nameof(blocks));
-        if (receipts.Length > 0)
-            throw new ArgumentException("Cannot be empty.", nameof(receipts));
-        if (blocks.Length != receipts.Length)
-            throw new ArgumentException("Must have an equal amount of blocks and receipts.", nameof(blocks));
+        try
+        {
+            if (_logger.IsInfo) _logger.Info($"Starting importing blocks");
 
-        if (blocks[0] == null)
-            throw new ArgumentException("Cannot contain null.", nameof(blocks));
+            DateTime lastProgress = DateTime.Now;
+            int fileProcessed = 0;
+            var eraFiles = EraReader.GetAllEraFiles(src, network);
+            int filesCount = eraFiles.Count();
+            DateTime startTime = DateTime.Now;
+            int totalCount = 0;
 
-        //DownloaderOptions options = blocksRequest.Options;
-        //bool downloadReceipts = (options & DownloaderOptions.WithReceipts) == DownloaderOptions.WithReceipts;
-        //bool shouldProcess = (options & DownloaderOptions.Process) == DownloaderOptions.Process;
-        //bool shouldMoveToMain = (options & DownloaderOptions.MoveToMain) == DownloaderOptions.MoveToMain;
+            const int batchSize = 1024;
 
-        //int blocksSynced = 0;
-        //int ancestorLookupLevel = 0;
+            using ArrayPoolList<Block> blocks = new ArrayPoolList<Block>(batchSize);
+            using ArrayPoolList<TxReceipt[]> receipts = new ArrayPoolList<TxReceipt[]>(batchSize);
 
-        //long currentNumber = Math.Max(0, Math.Min(_blockTree.BestKnownNumber, bestPeer.HeadNumber - 1));
-        //// pivot number - 6 for uncle validation
-        //// long currentNumber = Math.Max(Math.Max(0, pivotNumber - 6), Math.Min(_blockTree.BestKnownNumber, bestPeer.HeadNumber - 1));
+            foreach (var era in eraFiles)
+            {
+                using var eraEnumerator = await EraReader.Create(era);
+                int count = 0;
+                await foreach ((Block b, TxReceipt[] r, UInt256 td) in eraEnumerator)
+                {
+                    blocks.Add(b);
+                    receipts.Add(r);
 
-        //if (cancellation.IsCancellationRequested) return blocksSynced; // check before every heavy operation
+                    count++;
+                    totalCount++;
+                    if (count == batchSize)
+                    {
+                        ImportBlocks(blocks, receipts, cancellation);
+                        blocks.Clear();
+                        receipts.Clear();
+                        count = 0;
+                    }
 
-        //Block firstBlock = blocks[0];
+                    TimeSpan elapsed = DateTime.Now.Subtract(lastProgress);
+                    if (elapsed.TotalSeconds > TimeSpan.FromSeconds(10).TotalSeconds)
+                    {
+                        if (_logger.IsInfo)
+                        {
+                            _logger.Info($"Import progress: {fileProcessed,6}/{filesCount} files  |  elapsed {DateTime.Now.Subtract(startTime):hh\\:mm\\:ss}  |  {totalCount/DateTime.Now.Subtract(startTime).TotalSeconds,2:0.##} Blks/s");
+                        }
 
+                        lastProgress = DateTime.Now;
+                    }
+                }
+                if (count > 0)
+                {
+                    ImportBlocks(blocks, receipts, cancellation);
+                }
+                fileProcessed++;
+            }
+            if (_logger.IsInfo) _logger.Info($"Finished importing {totalCount} blocks");
 
-        //bool parentIsKnown = _blockTree.IsKnownBlock(firstBlock.Number - 1, firstBlock.ParentHash);
-
-        //ancestorLookupLevel = 0;
-        //for (int blockIndex = 0; blockIndex < blocks.Length; blockIndex++)
-        //{
-        //    if (cancellation.IsCancellationRequested)
-        //    {
-        //        if (_logger.IsTrace) _logger.Trace("Peer sync cancelled");
-        //        break;
-        //    }
-
-        //    Block currentBlock = blocks[blockIndex];
-        //    TxReceipt[] currentReceipts = receipts[blockIndex];
-        //    //if (_logger.IsTrace) _logger.Trace($"Received {currentBlock} from {bestPeer}");
-
-        //    if (currentBlock.IsBodyMissing)
-        //    {
-        //        throw new InvalidOperationException($"A block without a body was passed.");
-        //    }
-
-        //    // can move this to block tree now?
-        //    if (!_blockValidator.ValidateSuggestedBlock(currentBlock))
-        //    {
-        //        throw new EraException($"Era1 archive contains an invalid block {currentBlock.ToString(Block.Format.Short)}.");
-        //    }
-
-        //    ValidateReceipts(currentBlock, currentReceipts);
-
-        //    //if (_logger.IsTrace) _logger.Trace($"BlockDownloader - SuggestBlock {currentBlock}, ShouldProcess: {true}");
-        //    var addResult = _blockTree.SuggestBlock(currentBlock, shouldProcess ? BlockTreeSuggestOptions.ForceSetAsMain ShouldProcess : BlockTreeSuggestOptions.None);
-
-        //if (HandleAddResult(bestPeer, currentBlock.Header, blockIndex == 0, _blockTree.SuggestBlock(currentBlock, shouldProcess ? BlockTreeSuggestOptions.ShouldProcess : BlockTreeSuggestOptions.None)))
-        //{
-        //    TryUpdateTerminalBlock(currentBlock.Header, shouldProcess);
-        //    if (downloadReceipts)
-        //    {
-        //        TxReceipt[]? contextReceiptsForBlock = context.ReceiptsForBlocks![blockIndex];
-        //        if (contextReceiptsForBlock is not null)
-        //        {
-        //            _receiptStorage.Insert(currentBlock, contextReceiptsForBlock);
-        //        }
-        //        else
-        //        {
-        //            // this shouldn't now happen with new validation above, still lets keep this check
-        //            if (currentBlock.Header.HasTransactions)
-        //            {
-        //                if (_logger.IsError) _logger.Error($"{currentBlock} is missing receipts");
-        //            }
-        //        }
-        //    }
-
-        //    blocksSynced++;
-        //}
-    //}
-
-//        if (shouldMoveToMain)
-//        {
-//            _blockTree.UpdateMainChain(new[] { currentBlock
-//          }, false);
-        
-
-//        currentNumber += 1;
-
-
-//        if (blocksSynced > 0)
-//        {
-//            _syncReport.FullSyncBlocksDownloaded.Update(_blockTree.BestSuggestedHeader?.Number ?? 0);
-//            _syncReport.FullSyncBlocksKnown = bestPeer.HeadNumber;
-//        }
-
+        }
+        catch (EraException e)
+        {
+            _logger.Error("Import error", e);
+        }
+        catch (TaskCanceledException)
+        {
+            _logger.Error($"A running import job was cancelled.");
+        }
+        catch (Exception e)
+        {
+            _logger.Error("Import error", e);
+            throw;
+        }
     }
+    private void ImportBlocks(ArrayPoolList<Block> blocks, ArrayPoolList<TxReceipt[]> receipts, CancellationToken cancellation)
+    {
+        if (!blocks.Any())
+            return;
 
+        if (blocks.Count != receipts.Count) throw new ArgumentException("There must be an equal amount of blocks and receipts.", nameof(blocks));
+        using ArrayPoolList<Block> addedBlocks = new ArrayPoolList<Block>(blocks.Count);
+
+        for (int i = 0; i < blocks.Count; i++)
+        {
+            Block block = blocks[i];
+            TxReceipt[] receipt = receipts[i];
+            if (block.IsGenesis)
+            {
+                continue;
+            }
+
+            cancellation.ThrowIfCancellationRequested();
+
+            if (block.IsBodyMissing)
+            {
+                throw new InvalidOperationException($"A block without a body was passed.");
+            }
+
+            if (!_blockValidator.ValidateSuggestedBlock(block))
+            {
+                throw new EraException($"Era1 archive contains an invalid block {block.ToString(Block.Format.Short)}.");
+            }
+
+            ValidateReceipts(block, receipt);
+
+            var addResult = _blockTree.SuggestBlock(block, BlockTreeSuggestOptions.ForceSetAsMain);
+            switch (addResult)
+            {
+                case AddBlockResult.AlreadyKnown:
+                    _blockTree.FindLevel
+                    return;
+                case AddBlockResult.CannotAccept:
+                    throw new EraException("Rejected block in Era1 archive");
+                case AddBlockResult.UnknownParent:
+                    throw new EraException("Unknown parent for block in Era1 archive");
+                case AddBlockResult.InvalidBlock:
+                    throw new EraException("Invalid block in Era1 archive");
+                case AddBlockResult.Added:
+                    _receiptStorage.Insert(block, receipt);
+                    addedBlocks.Add(block);
+                    break;
+                default:
+                    throw new NotSupportedException($"Not supported value of {nameof(AddBlockResult)} = {addResult}");
+            }
+        }
+        //TODO fast sync moves to main, so the same should apply here?
+        _blockTree.UpdateMainChain(addedBlocks, false);
+    }
     private void ValidateReceipts(Block block, TxReceipt[] blockReceipts)
     {
         Hash256 receiptsRoot = new ReceiptTrie(_specProvider.GetSpec(block.Header), blockReceipts).RootHash;
@@ -273,8 +298,10 @@ public class EraService : IEraService
         return 0;
     }
 
-    public bool VerifyEraFiles(string path)
+    public async Task<bool> VerifyEraFiles(string path)
     {
+        var eraFiles = EraReader.GetAllEraFiles(path, "mainnet");
+
         throw new NotImplementedException();
     }
 }

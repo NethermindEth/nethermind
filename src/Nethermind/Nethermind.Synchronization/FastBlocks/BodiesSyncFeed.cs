@@ -194,6 +194,7 @@ namespace Nethermind.Synchronization.FastBlocks
             Hash256 rootHash = TxTrie.CalculateRoot(blockBody.Transactions);
             bool txRootIsValid = rootHash == header.TxRoot;
             bool unclesHashIsValid = UnclesHash.Calculate(blockBody.Uncles) == header.UnclesHash;
+            //No withdrawals check?
             if (txRootIsValid && unclesHashIsValid)
             {
                 block = new Block(header, blockBody);

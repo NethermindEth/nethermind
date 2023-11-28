@@ -5,6 +5,7 @@ using System.Buffers;
 using System.IO;
 using System.IO.Compression;
 using System.Runtime.CompilerServices;
+using System.Security.Cryptography;
 using DotNetty.Buffers;
 using MathNet.Numerics.Distributions;
 using Nethermind.Core.Collections;
@@ -22,15 +23,18 @@ internal class E2Store : IDisposable
     private bool _disposedValue;
 
     private EraMetadata? _metadata;
-    private StreamSegment _streamSegment;
-    private SnappyStream _decompressor;
-    private SnappyStream _compressor;
-    private MemoryStream _compressedData;
+    private StreamSegment? _streamSegment;
+    private SnappyStream? _decompressor;
+    private SnappyStream? _compressor;
+    private MemoryStream? _compressedData;
+    private readonly IncrementalHash _incrementalHash;
 
     public long StreamLength => _stream.Length;
     public EraMetadata Metadata => GetMetadata();
 
     public long Position => _stream.Position;
+
+    public byte[] CurrentChecksum => _incrementalHash.GetCurrentHash();
 
     public static E2Store ForWrite(Stream stream)
     {
@@ -49,6 +53,7 @@ internal class E2Store : IDisposable
     internal E2Store(Stream stream)
     {
         _stream = stream;
+        _incrementalHash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
     }
 
     private EraMetadata GetMetadata()
@@ -68,7 +73,6 @@ internal class E2Store : IDisposable
     public Task<int> WriteEntryAsSnappy(UInt16 type, Memory<byte> bytes, CancellationToken cancellation = default)
     {
         return WriteEntry(type, bytes, true, cancellation);
-
     }
     public Task<int> WriteEntry(UInt16 type, Memory<byte> bytes, CancellationToken cancellation = default)
     {
@@ -83,9 +87,9 @@ internal class E2Store : IDisposable
         {
             //TODO find a way to write directly to file, and still return the number of bytes written
             EnsureCompressorStream(bytes.Length);
-            await _compressor.WriteAsync(bytes, cancellation);
+            await _compressor!.WriteAsync(bytes, cancellation);
             await _compressor.FlushAsync();
-            bytes = _compressedData.ToArray();
+            bytes = _compressedData!.ToArray();
         }
 
         headerBuffer.Add((byte)type);
@@ -98,8 +102,14 @@ internal class E2Store : IDisposable
         headerBuffer.Add(0);
         headerBuffer.Add(0);
 
-        await _stream.WriteAsync(headerBuffer.AsMemory(0, HeaderSize), cancellation);
-        if (length > 0) await _stream.WriteAsync(bytes, cancellation);
+        Memory<byte> headerMemory = headerBuffer.AsMemory(0, HeaderSize);
+        await _stream.WriteAsync(headerMemory, cancellation);
+        _incrementalHash.AppendData(headerMemory.Span);
+        if (length > 0)
+        {
+            await _stream.WriteAsync(bytes, cancellation);
+            _incrementalHash.AppendData(bytes.Span);
+        }
 
         return length + HeaderSize;
     }
@@ -218,7 +228,7 @@ internal class E2Store : IDisposable
 
     private void EnsureDecompressorStream(long offset, long length)
     {
-        if (_decompressor == null)
+        if (_decompressor == null||_streamSegment == null)
         {
             _streamSegment = new StreamSegment(_stream, offset, length);
             _decompressor = new(_streamSegment, CompressionMode.Decompress, true);
@@ -255,6 +265,7 @@ internal class E2Store : IDisposable
                 _decompressor?.Dispose();
                 _blockIndex?.Dispose();
                 _compressedData?.Dispose();
+                _incrementalHash?.Dispose();
             }
             _disposedValue = true;
         }

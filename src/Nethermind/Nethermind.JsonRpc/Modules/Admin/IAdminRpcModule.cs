@@ -71,5 +71,6 @@ namespace Nethermind.JsonRpc.Modules.Admin
         ExampleResponse = "\"Starting\"",
         IsImplemented = true)]
         Task<ResultWrapper<string>> admin_exportHistory(string destination, int blockStart, int count);
+        Task<ResultWrapper<string>> admin_importHistory(string source);
     }
 }

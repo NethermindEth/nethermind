@@ -20,43 +20,43 @@ public class EraReader : IAsyncEnumerable<(Block, TxReceipt[], UInt256)>, IDispo
     private ReceiptMessageDecoder _receiptDecoder = new();
     private E2Store _store;
     private IByteBufferAllocator _byteBufferAllocator;
-    private readonly bool _isReverseOrder;
+    private readonly bool _isDescendingOrder;
 
     public long CurrentBlockNumber => _currentBlockNumber;
 
-    private EraReader(E2Store e2, IByteBufferAllocator byteBufferAllocator, bool reverseOrder)
+    private EraReader(E2Store e2, IByteBufferAllocator byteBufferAllocator, bool descendingOrder)
     {
         _store = e2;
         _byteBufferAllocator = byteBufferAllocator;
-        _isReverseOrder = reverseOrder;
-        Reset(_isReverseOrder);
+        _isDescendingOrder = descendingOrder;
+        Reset(_isDescendingOrder);
     }
     public static Task<EraReader> Create(string file, IByteBufferAllocator? allocator = null, in CancellationToken token = default)
     {
         return Create(file, false, allocator, token);
     }
-    public static Task<EraReader> Create(string file, bool reverseOrder, IByteBufferAllocator? allocator = null, in CancellationToken token = default)
+    public static Task<EraReader> Create(string file, bool descendingOrder, IByteBufferAllocator? allocator = null, in CancellationToken token = default)
     {
         if (string.IsNullOrEmpty(file)) throw new ArgumentException("Cannot be null or empty.", nameof(file));
-        return Create(File.OpenRead(file), reverseOrder, allocator, token);
+        return Create(File.OpenRead(file), descendingOrder, allocator, token);
     }
     public static Task<EraReader> Create(Stream stream, IByteBufferAllocator? allocator = null, CancellationToken token = default)
     {
         return Create(stream, false, allocator, token);
     }
-    public static async Task<EraReader> Create(Stream stream, bool reverseOrder, IByteBufferAllocator? allocator = null, CancellationToken token = default)
+    public static async Task<EraReader> Create(Stream stream, bool descendingOrder, IByteBufferAllocator? allocator = null, CancellationToken token = default)
     {
         if (stream == null) throw new ArgumentNullException(nameof(stream));
         if (!stream.CanRead) throw new ArgumentException("Provided stream is not readable.", nameof(stream));
 
         E2Store e2 = await E2Store.ForRead(stream, token);
-        EraReader e = new EraReader(e2, allocator ?? PooledByteBufferAllocator.Default, reverseOrder);
+        EraReader e = new EraReader(e2, allocator ?? PooledByteBufferAllocator.Default, descendingOrder);
 
         return e;
     }
     public async IAsyncEnumerator<(Block, TxReceipt[], UInt256)> GetAsyncEnumerator(CancellationToken cancellation = default)
     {
-        Reset(_isReverseOrder);
+        Reset(_isDescendingOrder);
         EntryReadResult? result;
         while (true)
         {
@@ -131,8 +131,8 @@ public class EraReader : IAsyncEnumerable<(Block, TxReceipt[], UInt256)>, IDispo
             uint epoch;
             if (!uint.TryParse(parts[1], out epoch))
                 throw new EraException($"Invalid era1 filename: {Path.GetFileName(file)}");
-            else if (epoch != next)
-                throw new EraException($"Epoch {epoch} is missing.");
+            //else if (epoch != next)
+            //    throw new EraException($"Epoch {epoch} is missing.");
 
             next++;
             yield return (file);
@@ -165,12 +165,12 @@ public class EraReader : IAsyncEnumerable<(Block, TxReceipt[], UInt256)>, IDispo
     }
     private async Task<EntryReadResult?> Next(bool computeHeaderHash, CancellationToken cancellationToken)
     {
-        if (_isReverseOrder)
+        if (_isDescendingOrder)
         {
             if (_store.Metadata.Start  > _currentBlockNumber)
             {
                 //TODO test enumerate more than once
-                Reset(_isReverseOrder);
+                Reset(_isDescendingOrder);
                 return null;
             }
         }
@@ -179,13 +179,13 @@ public class EraReader : IAsyncEnumerable<(Block, TxReceipt[], UInt256)>, IDispo
             if (_store.Metadata.Start + _store.Metadata.Count <= _currentBlockNumber)
             {
                 //TODO test enumerate more than once
-                Reset(_isReverseOrder);
+                Reset(_isDescendingOrder);
                 return null;
             }
         }
         
         EntryReadResult result = await ReadBlockAndReceipts(_currentBlockNumber, computeHeaderHash, cancellationToken);
-        if (_isReverseOrder)
+        if (_isDescendingOrder)
             _currentBlockNumber--;
         else
             _currentBlockNumber++;
@@ -257,9 +257,9 @@ public class EraReader : IAsyncEnumerable<(Block, TxReceipt[], UInt256)>, IDispo
         return _store.Seek(offset, SeekOrigin.Current);
     }
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private void Reset(bool reverseOrder)
+    private void Reset(bool descendingOrder)
     {
-        if (reverseOrder)
+        if (descendingOrder)
         {
             _currentBlockNumber = _store.Metadata.Start + _store.Metadata.Count - 1;
         }

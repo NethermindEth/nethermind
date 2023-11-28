@@ -140,10 +140,28 @@ public class AdminRpcModule : IAdminRpcModule
         return ResultWrapper<PruningStatus>.Success(_pruningTrigger.Trigger());
     }
 
-    private Task _exportTask = Task.CompletedTask;
-    private SemaphoreSlim _semaphoreSlim = new SemaphoreSlim(1);
+    private Task _importExportTask = Task.CompletedTask;
+    private int _canEnter = 1;
 
-    public async Task<ResultWrapper<string>> admin_exportHistory(string destination, int from, int to)
+    public Task<ResultWrapper<string>> admin_importHistory(string source)
+    {
+        if (Interlocked.Exchange(ref _canEnter, 0) == 1 && _importExportTask.IsCompleted)
+        {
+            try
+            {
+                //TODO correct network 
+                _importExportTask = _eraService.Import(source, "mainnet", _processExitToken.Token);
+            }
+            finally
+            {
+                Interlocked.Exchange(ref _canEnter, 1);
+            }
+            //TODO better message?
+            return ResultWrapper<string>.Success("Started import task");
+        }
+        return ResultWrapper<string>.Fail("An import or export job is already running.");
+    }
+    public Task<ResultWrapper<string>> admin_exportHistory(string destination, int from, int to)
     {
         //TODO sanitize destination path
         if (from < 0 || to < 0)
@@ -158,39 +176,59 @@ public class AdminRpcModule : IAdminRpcModule
         Block? latestHead = _blockTree.Head;
         if (latestHead == null)
         {
-            return ResultWrapper<string>.Fail("Node is not ready.");
+            return ResultWrapper<string>.Fail("Node is still syncing.");
         }
         if (latestHead.Number < from || latestHead.Number < to)
         {
             return ResultWrapper<string>.Fail($"Cannot export beyond block head {latestHead.Number}.");
         }
         BlockHeader? earliest = _blockTree.FindEarliestHeader();
-        if (from < earliest.Number || to < earliest.Number )
+        if (from < earliest.Number || to < earliest.Number)
         {
             return ResultWrapper<string>.Fail($"Cannot export below block {earliest.Number}.");
         }
 
-        await _semaphoreSlim.WaitAsync();
+        if (Interlocked.Exchange(ref _canEnter, 0) == 1 && _importExportTask.IsCompleted)
+        {
+            try
+            {
+                //TODO correct network 
+                _importExportTask = _eraService.Export(destination, "mainnet", from, to, EraWriter.MaxEra1Size, _processExitToken.Token);
+            }
+            finally
+            {
+                Interlocked.Exchange(ref _canEnter, 1);
+            }
+
+            //TODO better message?
+            return ResultWrapper<string>.Success("Started export task");
+        }
+        else
+        {
+            return ResultWrapper<string>.Fail("An import or export job is already running.");
+        }
+    }
+
+    public Task<ResultWrapper<string>> admin_verifyEra1(string source)
+    {
         try
         {
-            if (!_exportTask.IsCompleted)
+            if (Interlocked.Exchange(ref _canEnter, 0) == 1 && _importExportTask.IsCompleted)
             {
-                return ResultWrapper<string>.Fail("An export job is already running.");
+                //TODO correct network 
+                _importExportTask = _eraService.VerifyEraFiles(source);
+
+                //TODO better message?
+                return ResultWrapper<string>.Success("Started export task");
             }
-            //TODO correct network 
-            _exportTask = _eraService.Export(destination, "mainnet", from, to, EraWriter.MaxEra1Size, _processExitToken.Token);
+            else
+            {
+                return ResultWrapper<string>.Fail("An import or export job is currently running.");
+            }
         }
         finally
         {
-            _semaphoreSlim.Release();
+            Interlocked.Exchange(ref _canEnter, 1);
         }
-        //TODO better message?
-        return ResultWrapper<string>.Success("Started export task");
     }
-
-    //public async Task<ResultWrapper<string>> import_history()
-    //{
-
-    //    return ResultWrapper<string>.Success(enode);
-    //}
 }
