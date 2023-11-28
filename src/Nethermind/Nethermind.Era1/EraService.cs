@@ -262,7 +262,6 @@ public class EraService : IEraService
             switch (addResult)
             {
                 case AddBlockResult.AlreadyKnown:
-                    _blockTree.FindLevel
                     return;
                 case AddBlockResult.CannotAccept:
                     throw new EraException("Rejected block in Era1 archive");
