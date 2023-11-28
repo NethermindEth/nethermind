@@ -59,9 +59,9 @@ jobs:
             done
           fi
 
-          # Convert array to JSON array string
-          printf -v joined ',"%s"' "${branches[@]}"
-          MATRIX="[${joined:1}]"
+          # Convert array to JSON object with named array
+          printf -v joined ', "%s"' "${branches[@]}"
+          MATRIX="{\"branch\": [${joined:2}]}"  # Ensure the key name 'branch' is used
 
           echo $MATRIX > matrix.json
           cat matrix.json
