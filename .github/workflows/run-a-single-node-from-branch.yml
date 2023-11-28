@@ -53,15 +53,19 @@ on:
         description: "Provide any additional flags to the CL client in space-separated format. Example: \"clflag1=1 clflag2=2\"."
         default: ""
         required: false
-      ssh_keys:
-        description: "SSH Keys to be installed in the smoke test nodes (separated by commas without space in-between commas) for example: key1,key2,key3"
-        default: ""
-        required: false
+      additional_options:
+        description: "A Json property which allows to customize node even more"
+        default: '{"timeout":"24", "default_dockerfile":"Dockerfile", "default_dockerfile_build_type":"release", "ssh_keys":"", "allowed_ips":""}'
   workflow_call:
     inputs:
       smoke_tests_ref:
         description: "Ref of the smoke tests repository to be used for smoke tests"
         default: "main"
+        required: false
+        type: string
+      nethermind_repo_ref:
+        description: "Ref of the nethermind repo in case it is needed to be changed"
+        default: ""
         required: false
         type: string
       network:
@@ -88,16 +92,6 @@ on:
         description: "If checked, node will be started in NonValidator mode (OldBodies and oldReceipts will not be synced)"
         default: true
         type: boolean
-      timeout:
-        description: "Timeout in hours before triggering the deletion of smoke test instances. Maximum time of node lifetime can be 72 hours."
-        default: "24"
-        required: false
-        type: string
-      volume:
-        description: "In case custom volume size needs to be applied, put value in GB here)"
-        required: false
-        default: ""
-        type: string
       additional_nethermind_flags:
         type: string
         description: "Provide any additional flags to the Nethermind in space-separated format. Example: \"JsonRpc.Enabled=false Sync.SnapSync=false\"."
@@ -108,15 +102,10 @@ on:
         description: "Provide any additional flags to the CL client in space-separated format. Example: \"clflag1=1 clflag2=2\"."
         default: ""
         required: false
-      ssh_keys:
+      additional_options:
         type: string
-        description: "SSH Keys to be installed in the smoke test nodes (separated by commas without space in-between commas) for example: key1,key2,key3"
-        default: ""
-        required: false
-      allowed_ips:
-        type: string
-        description: "A comma-separated list of ips allowed to connect to the node"
-        default: ""
+        description: "A Json property which allows to customize node even more"
+        default: '{"timeout":"24", "default_dockerfile":"Dockerfile", "default_dockerfile_build_type":"release", "ssh_keys":"", "allowed_ips":""}'
         required: false
     outputs:
       base_tag:
@@ -135,6 +124,8 @@ jobs:
     steps:
     - name: Checkout repository
       uses: actions/checkout@v3
+      with:
+        ref: ${{ inputs.nethermind_repo_ref }}
 
     - name: Prepare docker tag
       id: prepare_ref
@@ -204,6 +195,8 @@ jobs:
     steps:
     - name: Checkout repository
       uses: actions/checkout@v3
+      with:
+        ref: ${{ inputs.nethermind_repo_ref }}
 
     - name: Prepare docker tag
       id: prepare_ref
