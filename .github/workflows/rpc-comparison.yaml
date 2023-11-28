@@ -74,13 +74,9 @@ jobs:
       matrix: ${{ fromJson(needs.parse_input.outputs.matrix) }}
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           ref: ${{ matrix.branch }}
-      - name: Debug tree
-        run: |
-          ls -la /home/runner/work/nethermind/nethermind/.github
-          ls -la /home/runner/work/nethermind/nethermind/.github/workflows
       - name: Run create_node job
         uses: ./.github/workflows/run-a-single-node-from-branch.yml
         with:
