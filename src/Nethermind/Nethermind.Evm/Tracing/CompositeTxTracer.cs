@@ -377,14 +377,14 @@ public class CompositeTxTracer : ITxTracer
         }
     }
 
-    public void ReportActionError(EvmExceptionType evmExceptionType, long gasLeft)
+    public void ReportActionRevert(long gasLeft, byte[] output)
     {
         for (int index = 0; index < _txTracers.Count; index++)
         {
             ITxTracer innerTracer = _txTracers[index];
             if (innerTracer.IsTracingActions)
             {
-                innerTracer.ReportActionError(evmExceptionType, gasLeft);
+                innerTracer.ReportActionRevert(gasLeft, output);
             }
         }
     }

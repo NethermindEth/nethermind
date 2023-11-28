@@ -149,8 +149,8 @@ public class BlockReceiptsTracer : IBlockTracer, ITxTracer, IJournal<int>, ITxTr
     public void ReportActionError(EvmExceptionType exceptionType) =>
         _currentTxTracer.ReportActionError(exceptionType);
 
-    public void ReportActionError(EvmExceptionType exceptionType, long gasLeft) =>
-        _currentTxTracer.ReportActionError(exceptionType, gasLeft);
+    public void ReportActionRevert(long gasLeft, byte[] output) =>
+        _currentTxTracer.ReportActionRevert(gasLeft, output);
 
     public void ReportActionEnd(long gas, Address deploymentAddress, ReadOnlyMemory<byte> deployedCode) =>
         _currentTxTracer.ReportActionEnd(gas, deploymentAddress, deployedCode);

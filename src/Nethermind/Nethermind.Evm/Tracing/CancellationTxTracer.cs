@@ -357,12 +357,12 @@ public class CancellationTxTracer : ITxTracer, ITxTracerWrapper
         }
     }
 
-    public void ReportActionError(EvmExceptionType evmExceptionType, long gasLeft)
+    public void ReportActionRevert(long gasLeft, byte[] output)
     {
         _token.ThrowIfCancellationRequested();
         if (_innerTracer.IsTracingActions)
         {
-            _innerTracer.ReportActionError(evmExceptionType, gasLeft);
+            _innerTracer.ReportActionRevert(gasLeft, output);
         }
     }
 

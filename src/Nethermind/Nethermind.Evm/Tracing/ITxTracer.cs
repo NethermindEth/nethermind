@@ -346,10 +346,10 @@ public interface ITxTracer : IWorldStateTracer, IDisposable
     /// <summary>
     ///
     /// </summary>
-    /// <param name="evmExceptionType"></param>
     /// <param name="gasLeft"></param>
+    /// <param name="output"></param>
     /// <remarks>Depends on <see cref="IsTracingActions"/></remarks>
-    void ReportActionError(EvmExceptionType evmExceptionType, long gasLeft) => ReportActionError(evmExceptionType);
+    void ReportActionRevert(long gasLeft, byte[] output) => ReportActionError(EvmExceptionType.Revert);
 
     /// <summary>
     ///

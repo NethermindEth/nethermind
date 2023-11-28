@@ -287,14 +287,10 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine
                         }
                         else if (callResult.ShouldRevert)
                         {
-                            if (currentState.ExecutionType.IsAnyCreate())
-                            {
-                                _txTracer.ReportActionError(EvmExceptionType.Revert, currentState.GasAvailable - codeDepositGasCost);
-                            }
-                            else
-                            {
-                                _txTracer.ReportActionError(EvmExceptionType.Revert, currentState.GasAvailable);
-                            }
+                            _txTracer.ReportActionRevert(currentState.ExecutionType.IsAnyCreate()
+                                    ? currentState.GasAvailable - codeDepositGasCost
+                                    : currentState.GasAvailable,
+                                callResult.Output);
                         }
                         else
                         {
@@ -425,7 +421,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine
 
                     if (typeof(TTracingActions) == typeof(IsTracing))
                     {
-                        _txTracer.ReportActionError(EvmExceptionType.Revert, previousState.GasAvailable);
+                        _txTracer.ReportActionRevert(previousState.GasAvailable, callResult.Output);
                     }
                 }
             }
