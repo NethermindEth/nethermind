@@ -61,6 +61,9 @@ namespace Nethermind.Core
 
         public Address(string hexString) : this(Extensions.Bytes.FromHexString(hexString)) { }
 
+        /// <summary>
+        /// Parses string value to Address. String has to be exactly 20 bytes long.
+        /// </summary>
         public static bool TryParse(string? value, out Address? address)
         {
             if (value is not null)
@@ -81,6 +84,9 @@ namespace Nethermind.Core
             return false;
         }
 
+        /// <summary>
+        /// Parses string value to Address. String can be shorter than 20 bytes long, it is padded with leading 0's then.
+        /// </summary>
         public static bool TryParseVariableLength(string? value, out Address? address)
         {
             if (value is not null)

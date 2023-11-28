@@ -114,11 +114,29 @@ public class Engine : IDisposable
         Interlocked.CompareExchange(ref _currentEngine, this, null);
     }
 
+    /// <summary>
+    /// Converts input to 32 byte word
+    /// </summary>
     private ITypedArray<byte> ToWord(object bytes) => bytes.ToWord().ToTypedScriptArray();
+
+    /// <summary>
+    /// Converts input to hex string
+    /// </summary>
     private string ToHex(object? bytes) => bytes is null ? "0x" : bytes.ToBytes().ToHexString();
+
+    /// <summary>
+    /// Converts input to 20 byte Address byte representation
+    /// </summary>
     private ITypedArray<byte> ToAddress(object address) => address.ToAddress().Bytes.ToTypedScriptArray();
+
+    /// <summary>
+    /// Checks if contract at given address is a precompile
+    /// </summary>
     private bool IsPrecompiled(object address) => address.ToAddress().IsPrecompile(_spec);
 
+    /// <summary>
+    /// Returns a slice of input
+    /// </summary>
     private ITypedArray<byte> Slice(object input, int start, int end)
     {
         if (input == null)
@@ -134,7 +152,14 @@ public class Engine : IDisposable
         return input.ToBytes().Slice(start, end - start).ToTypedScriptArray();
     }
 
+    /// <summary>
+    /// Creates a contract address from sender and nonce (used for CREATE instruction)
+    /// </summary>
     private ITypedArray<byte> ToContract(object from, ulong nonce) => ContractAddress.From(from.ToAddress(), nonce).Bytes.ToTypedScriptArray();
+
+    /// <summary>
+    /// Creates a contract address from sender, salt and initcode (used for CREATE2 instruction)
+    /// </summary>
     private ITypedArray<byte> ToContract2(object from, string salt, object initcode) =>
         ContractAddress.From(from.ToAddress(), Bytes.FromHexString(salt, EvmStack.WordSize), initcode.ToBytes()).Bytes.ToTypedScriptArray();
 
@@ -144,10 +169,24 @@ public class Engine : IDisposable
         V8Engine.Dispose();
     }
 
+    /// <summary>
+    /// Creates a JavaScript V8Engine typed byte array
+    /// </summary>
     public ITypedArray<byte> CreateUint8Array(byte[] buffer) => _createUint8Array(buffer);
+
+    /// <summary>
+    /// Creates a JavaScript V8Engine untyped array with number values
+    /// </summary>
     public IList CreateUntypedArray(byte[] buffer) => _createUntypedArray(buffer);
+
+    /// <summary>
+    /// Creates a JavaScript BigInteger object
+    /// </summary>
     public IJavaScriptObject CreateBigInteger(BigInteger value) => _bigInteger(value);
 
+    /// <summary>
+    /// Creates a JavaScript tracer object from JavaScript code or name
+    /// </summary>
     public dynamic CreateTracer(string tracer)
     {
         static string LoadJavaScriptCodeFromFile(string tracerFileName)
