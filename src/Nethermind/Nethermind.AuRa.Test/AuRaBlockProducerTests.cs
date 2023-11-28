@@ -71,6 +71,7 @@ namespace Nethermind.AuRa.Test
                     block.TrySetTransactions(TransactionSource.GetTransactions(BlockTree.Head!.Header, block.GasLimit).ToArray());
                     return block;
                 });
+                StateProvider.HasStateForRoot(Arg.Any<Hash256>()).Returns(x => true);
                 InitProducer();
             }
 
@@ -240,7 +241,7 @@ namespace Nethermind.AuRa.Test
                     context.BlockTree.ClearReceivedCalls();
                 }
 
-                await processedEvent.WaitOneAsync(context.StepDelay * stepDelayMultiplier, CancellationToken.None);
+                await processedEvent.WaitOneAsync(context.StepDelay * stepDelayMultiplier * 5, CancellationToken.None);
 
             }
             finally

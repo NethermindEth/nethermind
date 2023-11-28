@@ -103,19 +103,6 @@ public class InitializeNetwork : IStep
 
         CanonicalHashTrie cht = new CanonicalHashTrie(_api.DbProvider!.ChtDb);
 
-        ProgressTracker progressTracker = new(_api.BlockTree, _api.DbProvider.StateDb, _api.LogManager, _syncConfig.SnapSyncAccountRangePartitionCount);
-        _api.SnapProvider = new SnapProvider(progressTracker, _api.DbProvider, _api.LogManager);
-
-        SyncProgressResolver syncProgressResolver = new(
-            _api.BlockTree,
-            _api.ReceiptStorage!,
-            _api.DbProvider.StateDb,
-            _api.ReadOnlyTrieStore!,
-            progressTracker,
-            _syncConfig,
-            _api.LogManager);
-
-        _api.SyncProgressResolver = syncProgressResolver;
         _api.BetterPeerStrategy = new TotalDifficultyBetterPeerStrategy(_api.LogManager);
 
         int maxPeersCount = _networkConfig.ActivePeersMaxCount;
@@ -143,28 +130,17 @@ public class InitializeNetwork : IStep
             await plugin.InitSynchronization();
         }
 
-        _api.SyncModeSelector ??= CreateMultiSyncModeSelector(syncProgressResolver);
-        _api.TxGossipPolicy.Policies.Add(new SyncedTxGossipPolicy(_api.SyncModeSelector));
-
-        _api.EthSyncingInfo = new EthSyncingInfo(_api.BlockTree, _api.ReceiptStorage!, _syncConfig, _api.SyncModeSelector, _api.LogManager);
-        _api.DisposeStack.Push(_api.SyncModeSelector);
-
         _api.Pivot ??= new Pivot(_syncConfig);
 
-        if (_api.BlockDownloaderFactory is null || _api.Synchronizer is null)
+        if (_api.Synchronizer is null)
         {
-            SyncReport syncReport = new(_api.SyncPeerPool!, _api.NodeStatsManager!, _api.SyncModeSelector, _syncConfig, _api.Pivot, _api.LogManager);
-
-            _api.BlockDownloaderFactory ??= new BlockDownloaderFactory(
+            BlockDownloaderFactory blockDownloaderFactory = new BlockDownloaderFactory(
                 _api.SpecProvider!,
-                _api.BlockTree,
-                _api.ReceiptStorage!,
                 _api.BlockValidator!,
                 _api.SealValidator!,
-                _api.SyncPeerPool!,
                 _api.BetterPeerStrategy!,
-                syncReport,
                 _api.LogManager);
+
             _api.Synchronizer ??= new Synchronizer(
                 _api.DbProvider,
                 _api.SpecProvider!,
@@ -172,16 +148,21 @@ public class InitializeNetwork : IStep
                 _api.ReceiptStorage!,
                 _api.SyncPeerPool,
                 _api.NodeStatsManager!,
-                _api.SyncModeSelector,
                 _syncConfig,
-                _api.SnapProvider,
-                _api.BlockDownloaderFactory,
+                blockDownloaderFactory,
                 _api.Pivot,
-                syncReport,
                 _api.ProcessExit!,
+                _api.ReadOnlyTrieStore!,
+                _api.BetterPeerStrategy,
+                _api.ChainSpec,
                 _api.LogManager);
         }
 
+        _api.SyncModeSelector = _api.Synchronizer.SyncModeSelector;
+
+        _api.EthSyncingInfo = new EthSyncingInfo(_api.BlockTree, _api.ReceiptStorage!, _syncConfig, _api.SyncModeSelector, _api.LogManager);
+        _api.TxGossipPolicy.Policies.Add(new SyncedTxGossipPolicy(_api.SyncModeSelector));
+        _api.DisposeStack.Push(_api.SyncModeSelector);
         _api.DisposeStack.Push(_api.Synchronizer);
 
         ISyncServer syncServer = _api.SyncServer = new SyncServer(
@@ -217,9 +198,18 @@ public class InitializeNetwork : IStep
             }
         });
 
-        bool stateSyncFinished = _api.SyncProgressResolver.FindBestFullState() != 0;
+        bool stateSyncFinished = _api.Synchronizer.SyncProgressResolver.FindBestFullState() != 0;
 
-        if (_syncConfig.SnapSync && !stateSyncFinished)
+        if (_syncConfig.SnapSync || stateSyncFinished || !_syncConfig.FastSync)
+        {
+            // we can't add eth67 capability as default, because it needs snap protocol for syncing (GetNodeData is
+            // no longer available). Eth67 should be added if snap is enabled OR sync is finished OR in archive nodes (no state sync)
+            _api.ProtocolsManager!.AddSupportedCapability(new Capability(Protocol.Eth, 67));
+            _api.ProtocolsManager!.AddSupportedCapability(new Capability(Protocol.Eth, 68));
+        }
+        else if (_logger.IsDebug) _logger.Debug("Skipped enabling eth67 & eth68 capabilities");
+
+        if (_syncConfig.SnapSync)
         {
             // TODO: Should we keep snap capability even after finishing sync?
             SnapCapabilitySwitcher snapCapabilitySwitcher = new(_api.ProtocolsManager, _api.SyncModeSelector, _api.LogManager);
@@ -277,9 +267,6 @@ public class InitializeNetwork : IStep
         ThisNodeInfo.AddInfo("This node    :", $"{_api.Enode.Info}");
         ThisNodeInfo.AddInfo("Node address :", $"{_api.Enode.Address} (do not use as an account)");
     }
-
-    protected virtual MultiSyncModeSelector CreateMultiSyncModeSelector(SyncProgressResolver syncProgressResolver)
-        => new(syncProgressResolver, _api.SyncPeerPool!, _syncConfig, No.BeaconSync, _api.BetterPeerStrategy!, _api.LogManager, _api.ChainSpec?.SealEngineType == SealEngineType.Clique);
 
     private Task StartDiscovery()
     {

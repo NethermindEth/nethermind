@@ -108,9 +108,9 @@ namespace Nethermind.Synchronization.Test.FastSync
                 ctx.Pool.AddPeer(syncPeer);
             }
 
-            ctx.SyncModeSelector = StaticSelector.StateNodesWithFastBlocks;
             ctx.TreeFeed = new(SyncMode.StateNodes, dbContext.LocalCodeDb, dbContext.LocalStateDb, blockTree, _logManager);
-            ctx.Feed = new StateSyncFeed(ctx.SyncModeSelector, ctx.TreeFeed, _logManager);
+            ctx.Feed = new StateSyncFeed(ctx.TreeFeed, _logManager);
+            ctx.Feed.SyncModeSelectorOnChanged(SyncMode.StateNodes | SyncMode.FastBlocks);
             ctx.Downloader = new StateSyncDownloader(_logManager);
             ctx.StateSyncDispatcher = new SyncDispatcher<StateSyncBatch>(
                 0,
@@ -144,7 +144,6 @@ namespace Nethermind.Synchronization.Test.FastSync
 
         protected class SafeContext
         {
-            public ISyncModeSelector SyncModeSelector { get; set; } = null!;
             public SyncPeerMock[] SyncPeerMocks { get; set; } = null!;
             public ISyncPeerPool Pool { get; set; } = null!;
             public TreeSync TreeFeed { get; set; } = null!;

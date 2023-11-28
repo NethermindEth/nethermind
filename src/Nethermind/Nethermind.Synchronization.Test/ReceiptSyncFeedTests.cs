@@ -57,7 +57,6 @@ public class ReceiptSyncFeedTests
 
         IReceiptStorage receiptStorage = Substitute.For<IReceiptStorage>();
         ReceiptsSyncFeed syncFeed = new ReceiptsSyncFeed(
-            Substitute.For<ISyncModeSelector>(),
             MainnetSpecProvider.Instance,
             syncingTooBlockTree,
             receiptStorage,

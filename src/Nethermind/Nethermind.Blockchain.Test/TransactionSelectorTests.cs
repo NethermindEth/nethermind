@@ -146,7 +146,6 @@ namespace Nethermind.Blockchain.Test
             }
         }
 
-
         public static IEnumerable EnoughShardBlobTransactionsSelectedTestCases
         {
             get

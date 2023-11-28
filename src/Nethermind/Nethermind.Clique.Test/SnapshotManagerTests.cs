@@ -44,7 +44,7 @@ namespace Nethermind.Clique.Test
             Block block3 = Rlp.Decode<Block>(new Rlp(Bytes.FromHexString(Block3Rlp)));
             Block block4 = Rlp.Decode<Block>(new Rlp(Bytes.FromHexString(Block4Rlp)));
             Block block5 = Rlp.Decode<Block>(new Rlp(Bytes.FromHexString(Block5Rlp)));
-            Block genesisBlock = CliqueTests.GetRinkebyGenesis();
+            Block genesisBlock = CliqueTests.GetGenesis();
             // Add blocks
             MineBlock(_blockTree, genesisBlock);
             MineBlock(_blockTree, block1);
@@ -58,7 +58,7 @@ namespace Nethermind.Clique.Test
         public void Creates_new_snapshot()
         {
             SnapshotManager snapshotManager = new(CliqueConfig.Default, _snapshotDb, _blockTree, NullEthereumEcdsa.Instance, LimboLogs.Instance);
-            Block genesis = CliqueTests.GetRinkebyGenesis();
+            Block genesis = CliqueTests.GetGenesis();
             Snapshot snapshot = snapshotManager.GetOrCreateSnapshot(0, genesis.Hash);
             Assert.That(snapshot.Hash, Is.EqualTo(genesis.Hash));
         }
@@ -67,7 +67,7 @@ namespace Nethermind.Clique.Test
         public void Loads_snapshot()
         {
             SnapshotManager snapshotManager = new(CliqueConfig.Default, _snapshotDb, _blockTree, NullEthereumEcdsa.Instance, LimboLogs.Instance);
-            Block genesis = CliqueTests.GetRinkebyGenesis();
+            Block genesis = CliqueTests.GetGenesis();
             Snapshot snapshot = snapshotManager.GetOrCreateSnapshot(0, genesis.Hash);
             Assert.NotNull(snapshot);
             Assert.That(snapshot.Hash, Is.EqualTo(genesis.Hash));
@@ -92,7 +92,7 @@ namespace Nethermind.Clique.Test
         public void Recognises_signer_turn()
         {
             SnapshotManager snapshotManager = new(CliqueConfig.Default, _snapshotDb, _blockTree, NullEthereumEcdsa.Instance, LimboLogs.Instance);
-            Block genesis = CliqueTests.GetRinkebyGenesis();
+            Block genesis = CliqueTests.GetGenesis();
             Snapshot snapshot = snapshotManager.GetOrCreateSnapshot(0, genesis.Hash);
             SnapshotManager manager = new(CliqueConfig.Default, _snapshotDb, _blockTree, new EthereumEcdsa(BlockchainIds.Goerli, LimboLogs.Instance), LimboLogs.Instance);
             // Block 1

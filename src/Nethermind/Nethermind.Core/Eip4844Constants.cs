@@ -19,12 +19,6 @@ public class Eip4844Constants
     public const ulong GasPerBlob = 131072;
 
     /// <summary>
-    /// Gets the <c>TARGET_BLOB_GAS_PER_BLOCK</c> parameter.
-    /// </summary>
-    /// <remarks>Defaults to 393216.</remarks>
-    public static ulong TargetBlobGasPerBlock { get; private set; } = MaxBlobGasPerBlock / 2;
-
-    /// <summary>
     /// Gets the <c>MAX_BLOB_GAS_PER_BLOCK</c> parameter.
     /// </summary>
     /// <remarks>Defaults to 786432.</remarks>
@@ -35,6 +29,12 @@ public class Eip4844Constants
     /// </summary>
     /// <remarks>The same as <see cref="MaxBlobGasPerBlock"/>.</remarks>
     public static ulong MaxBlobGasPerTransaction => MaxBlobGasPerBlock;
+
+    /// <summary>
+    /// Gets the <c>TARGET_BLOB_GAS_PER_BLOCK</c> parameter.
+    /// </summary>
+    /// <remarks>Defaults to 393216.</remarks>
+    public static ulong TargetBlobGasPerBlock { get; private set; } = MaxBlobGasPerBlock / 2;
 
     /// <summary>
     /// Gets the <c>BLOB_GASPRICE_UPDATE_FRACTION</c> parameter.

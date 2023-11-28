@@ -236,7 +236,13 @@ public class DbOnTheRocks : IDb, ITunableDb
     {
         try
         {
-            return long.TryParse(_db.GetProperty("rocksdb.total-sst-files-size"), out long size) ? size : 0;
+            long sstSize = long.TryParse(_db.GetProperty("rocksdb.total-sst-files-size"), out long totalSstFilesSize)
+                ? totalSstFilesSize
+                : 0;
+            long blobSize = long.TryParse(_db.GetProperty("rocksdb.total-blob-file-size"), out long totalBlobFileSize)
+                ? totalBlobFileSize
+                : 0;
+            return sstSize + blobSize;
         }
         catch (RocksDbSharpException e)
         {
