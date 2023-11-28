@@ -102,7 +102,7 @@ public class BlockForRpc
 
     public bool ShouldSerializeMixHash() => !_isAuRaBlock && MixHash is not null;
 
-    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
     public byte[] Nonce { get; set; }
 
     public bool ShouldSerializeNonce() => !_isAuRaBlock;

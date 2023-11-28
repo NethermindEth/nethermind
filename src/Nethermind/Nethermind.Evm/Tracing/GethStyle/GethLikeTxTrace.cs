@@ -42,12 +42,6 @@ public class GethLikeTxTraceJsonConverter : JsonConverter<GethLikeTxTrace>
     {
         writer.WriteStartObject();
 
-        if (value.StoragesByDepth.Count > 0)
-        {
-            writer.WritePropertyName("structLogs"u8);
-            JsonSerializer.Serialize(writer, value.StoragesByDepth, options);
-        }
-
         writer.WritePropertyName("gas"u8);
         JsonSerializer.Serialize(writer, value.Gas, options);
 
