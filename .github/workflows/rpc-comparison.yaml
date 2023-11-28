@@ -26,7 +26,8 @@ jobs:
       - name: Set matrix for branches
         id: set-matrix
         run: |
-          what_to_compare="${{ github.event.inputs.what_to_compare }}"
+          # what_to_compare="${{ github.event.inputs.what_to_compare }}"
+          what_to_compare="infura"
           if [[ "$what_to_compare" == "infura" ]]; then
             # Extract the current branch name from GITHUB_REF
             current_branch=${GITHUB_REF#refs/heads/}
