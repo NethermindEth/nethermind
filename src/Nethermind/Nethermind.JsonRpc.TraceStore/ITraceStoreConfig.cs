@@ -8,21 +8,21 @@ namespace Nethermind.JsonRpc.TraceStore;
 
 public interface ITraceStoreConfig : IConfig
 {
-    [ConfigItem(Description = "Defines whether the TraceStore plugin is enabled, if 'true' traces will come from DB if possible.", DefaultValue = "false")]
+    [ConfigItem(Description = "Whether to enable the TraceStore plugin. If enabled, traces come from the database whenever possible.", DefaultValue = "false")]
     public bool Enabled { get; set; }
 
-    [ConfigItem(Description = "Defines how many blocks counting from head are kept in the TraceStore, if '0' all traces of processed blocks will be kept.", DefaultValue = "10000")]
+    [ConfigItem(Description = "The number of blocks to store, counting from the head. If `0`, all traces of the processed blocks are stored.", DefaultValue = "10000")]
     public int BlocksToKeep { get; set; }
 
-    [ConfigItem(Description = "Defines what kind of traces are saved and kept in TraceStore. Available options are: Trace, Rewards, VmTrace, StateDiff or just All.", DefaultValue = "Trace, Rewards")]
+    [ConfigItem(Description = "The type of traces to store.", DefaultValue = "Trace, Rewards")]
     public ParityTraceTypes TraceTypes { get; set; }
 
-    [ConfigItem(Description = "Verifies all the serialized elements.", DefaultValue = "false", HiddenFromDocs = true)]
+    [ConfigItem(Description = "Whether to verify all serialized elements.", DefaultValue = "false", HiddenFromDocs = true)]
     bool VerifySerialized { get; set; }
 
-    [ConfigItem(Description = "Depth to deserialize traces.", DefaultValue = "1024", HiddenFromDocs = true)]
+    [ConfigItem(Description = "The max depth allowed when deserializing traces.", DefaultValue = "1024", HiddenFromDocs = true)]
     int MaxDepth { get; set; }
 
-    [ConfigItem(Description = "Maximum parallelization when deserializing requests for trace_filter. 0 defaults to logical cores, set to something low if you experience too big resource usage.", DefaultValue = "0")]
+    [ConfigItem(Description = "The max parallelization when deserialization requests the `trace_filter` method. `0` to use the number of logical processors. If you experience a resource shortage, set to a low number.", DefaultValue = "0")]
     int DeserializationParallelization { get; set; }
 }
