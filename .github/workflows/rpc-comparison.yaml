@@ -13,7 +13,7 @@ on:
         required: false
       what_to_compare:
         type: string
-        description: "A space-separated list of clients/branches. If "infura" then current branch to infura will be compared. If two nethermind branches, then two version will be compared."
+        description: "A space-separated list of clients/branches. If 'infura' then current branch to infura will be compared. If two nethermind branches, then two version will be compared."
         default: "infura"
         required: true
 
