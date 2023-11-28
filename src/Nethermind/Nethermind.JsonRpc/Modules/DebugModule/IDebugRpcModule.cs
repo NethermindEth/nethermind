@@ -18,7 +18,7 @@ public interface IDebugRpcModule : IRpcModule
     ResultWrapper<ChainLevelForRpc> debug_getChainLevel(in long number);
 
     [JsonRpcMethod(Description = "Deletes a slice of a chain from the tree on all branches (Nethermind specific).", IsImplemented = true, IsSharable = true)]
-    ResultWrapper<int> debug_deleteChainSlice(in long startNumber);
+    ResultWrapper<int> debug_deleteChainSlice(in long startNumber, bool force = false);
 
     [JsonRpcMethod(
         Description = "Updates / resets head block - use only when the node got stuck due to DB / memory corruption (Nethermind specific).",
