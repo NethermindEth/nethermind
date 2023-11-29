@@ -77,19 +77,19 @@ jobs:
           cat others_matrix.json
           echo "others_matrix=$(jq -c . others_matrix.json)" >> $GITHUB_OUTPUT
 
-  #create_node:
-  #  needs: parse_input
-  #  name: Create node from current branch
-  #  uses: ./.github/workflows/run-a-single-node-from-branch.yml
-  #  secrets: inherit
-  #  strategy:
-  #    matrix: ${{ fromJson(needs.parse_input.outputs.branch_matrix) }}
-  #  with:
-  #    additional_options: '{"timeout":"24", "default_dockerfile":"Dockerfile", "default_dockerfile_build_type":"release", "ssh_keys":"", "allowed_ips":"${{ inputs.allowed_ips }}"}' 
-  #    non_validator_mode: false
-  #    additional_nethermind_flags: Pruning.Mode=None
-  #    nethermind_repo_ref: ${{ matrix.branch }}
-  #    custom_run_id: ${{ github.run_id }}
+  create_node:
+    needs: parse_input
+    name: Create node from current branch
+    uses: ./.github/workflows/run-a-single-node-from-branch.yml
+    secrets: inherit
+    strategy:
+      matrix: ${{ fromJson(needs.parse_input.outputs.branch_matrix) }}
+    with:
+      additional_options: '{"timeout":"24", "default_dockerfile":"Dockerfile", "default_dockerfile_build_type":"release", "ssh_keys":"", "allowed_ips":"${{ inputs.allowed_ips }}"}' 
+      non_validator_mode: false
+      additional_nethermind_flags: Pruning.Mode=None
+      nethermind_repo_ref: ${{ matrix.branch }}
+      custom_run_id: ${{ github.run_id }}
 
   aggregate_rpcs:
     name: Collect all RPC Urls and pass it further
@@ -120,14 +120,12 @@ jobs:
           # Convert the JSON array to a Bash array
           branches=$(echo '${{ needs.parse_input.outputs.branch_matrix }}' | jq -r '.branch[]')
           echo $branches
-          run_id=7033188111
           for branch in $branches; do
-            artifact_name="rpc-url-$branch-$run_id"
-            #artifact_name="rpc-url-rpc-comparision-1.23.0-7033188111"
+            artifact_name="rpc-url-$branch-${{ github.run_id }}"
             mkdir -p artifacts/$branch
 
             echo "Downloading artifact: $artifact_name..."
-            gh run download --name "$artifact_name" --repo ${{ github.repository }} --dir artifacts/$branch
+            gh run download --name "$artifact_name" --repo ${{ github.repository }} --dir artifacts/$branch ${{ github.run_id }}
 
             echo "Processing artifact..."
             if [ -f "artifacts/$branch/$artifact_name.txt" ]; then
