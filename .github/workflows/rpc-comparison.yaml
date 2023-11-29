@@ -120,10 +120,7 @@ jobs:
           branches=${{ toJson(needs.parse_input.outputs.matrix.branch) }}
           for branch in $branches
           do
-            rpc_url_output="rpc_url_$branch"
-            if [ ! -z "${{ needs.extract_rpc_url.outputs.rpc_url[$rpc_url_output] }}" ]; then
-              rpc_urls+="${{ needs.extract_rpc_url.outputs.rpc_url[$rpc_url_output] }},"
-            fi
+            rpc_urls+="${{ needs.extract_rpc_url.outputs.rpc_url_$branch }},"
           done
           echo ${rpc_urls%?}
           echo "rpc_urls=${rpc_urls%?}" >> $GITHUB_OUTPUT         
