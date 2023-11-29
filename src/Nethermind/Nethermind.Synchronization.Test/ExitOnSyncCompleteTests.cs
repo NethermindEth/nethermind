@@ -26,7 +26,7 @@ public class ExitOnSyncCompleteTests
         exitSource.WatchForExit(syncMode, LimboLogs.Instance, exitConditionDuration: exitConditionDuration);
 
         syncMode.Changed += Raise.EventWith(this, new SyncModeChangedEventArgs(SyncMode.All, SyncMode.WaitingForBlock));
-        await Task.Delay(exitConditionDuration * 3);
+        await Task.Delay(exitConditionDuration * 2);
         syncMode.Changed += Raise.EventWith(this, new SyncModeChangedEventArgs(SyncMode.All, SyncMode.WaitingForBlock));
 
         exitSource.Received().Exit(0);
