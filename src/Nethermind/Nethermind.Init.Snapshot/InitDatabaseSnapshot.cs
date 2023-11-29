@@ -58,7 +58,21 @@ public class InitDatabaseSnapshot : InitDatabase
         string snapshotFileName = Path.Combine(snapshotConfig.SnapshotDirectory, snapshotConfig.SnapshotFileName);
         Directory.CreateDirectory(snapshotConfig.SnapshotDirectory);
 
-        await DownloadSnapshotTo(snapshotUrl, snapshotFileName, cancellationToken);
+        while (true)
+        {
+            try
+            {
+                await DownloadSnapshotTo(snapshotUrl, snapshotFileName, cancellationToken);
+                break;
+            }
+            catch (System.IO.IOException e)
+            {
+                if (_logger.IsError)
+                    _logger.Error($"Snapshot download failed. Retrying in 5 seconds. Error: {e}");
+                await Task.Delay(TimeSpan.FromSeconds(5), cancellationToken);
+            }
+            cancellationToken.ThrowIfCancellationRequested();
+        }
         // schedule the snapshot file deletion, but only if the download completed
         // otherwise leave it to resume the download later
         using Reactive.AnonymousDisposable deleteSnapshot = new(() =>
@@ -116,9 +130,17 @@ public class InitDatabaseSnapshot : InitDatabase
             (await httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken))
             .EnsureSuccessStatusCode();
 
+        FileMode snapshotFileMode = snapshotFileInfo.Exists ? FileMode.Append : FileMode.CreateNew;
+        if (snapshotFileInfo.Exists && response.StatusCode != System.Net.HttpStatusCode.PartialContent)
+        {
+            if (_logger.IsWarn)
+                _logger.Warn("Download couldn't be resumed. Starting from the beginning.");
+            snapshotFileMode = FileMode.Create;
+        }
+
         await using Stream contentStream = await response.Content.ReadAsStreamAsync(cancellationToken);
         await using FileStream snapshotFileStream = new(
-            snapshotFileName, FileMode.Append, FileAccess.Write, FileShare.None, BufferSize, true);
+            snapshotFileName, snapshotFileMode, FileAccess.Write, FileShare.None, BufferSize, true);
 
         long totalBytesRead = snapshotFileStream.Length;
         long? totalBytesToRead = totalBytesRead + response.Content.Headers.ContentLength;
