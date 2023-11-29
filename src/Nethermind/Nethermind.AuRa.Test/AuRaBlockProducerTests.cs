@@ -226,7 +226,8 @@ namespace Nethermind.AuRa.Test
             await context.AuRaBlockProducer.Start();
             await processedEvent.WaitOneAsync(context.StepDelay * stepDelayMultiplier * 5, CancellationToken.None);
             context.BlockTree.ClearReceivedCalls();
-            await Task.Delay(context.StepDelay * 3);
+            await Task.Delay(context.StepDelay);
+            processedEvent.Reset();
 
             try
             {
@@ -239,7 +240,7 @@ namespace Nethermind.AuRa.Test
                 {
                     context.BlockTree.NewBestSuggestedBlock += Raise.EventWith(new BlockEventArgs(Build.A.Block.TestObject));
                     context.BlockTree.ClearReceivedCalls();
-                    await Task.Delay(context.StepDelay * 3);
+                    processedEvent.Reset();
                 }
 
                 await processedEvent.WaitOneAsync(context.StepDelay * stepDelayMultiplier * 5, CancellationToken.None);
