@@ -278,7 +278,7 @@ jobs:
       run: |
         FILE=$(ls downloaded-artifacts/machine-details | head -n 1)
         cat "downloaded-artifacts/machine-details/$FILE" | tee spec-output.txt
-        rpc_url=$(grep -oP '\s{2,3}RPC URL: \K.+'' spec-output.txt)
+        rpc_url=$(grep -oP '\s{2,3}RPC URL: \K.+' spec-output.txt)
         echo "RPC URL extracted is: $rpc_url"
         echo "RPC_URL=$rpc_url" >> $GITHUB_ENV
 
