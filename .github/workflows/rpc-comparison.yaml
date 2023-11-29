@@ -107,24 +107,24 @@ jobs:
   #        echo $(cat ./terraform.tfstate | jq '.outputs.nodes_data.value[0].rpc_url')
   #        echo "rpc_url_${{ matrix.branch }}=$(cat ./terraform.tfstate | jq '.outputs.nodes_data.value[0].rpc_url')" >> $GITHUB_OUTPUT
 
-  aggregate_rpcs:
-    name: Collect all RPC Urls and pass it further
-    runs-on: ubuntu-latest
-    needs: extract_rpc_url
-    outputs:
-      rpc_urls: ${{ steps.aggregate_rpcs.outputs.rpc_urls }}
-    steps:
-      - name: Fetch urls
-        id: aggregate_rpcs
-        run: |
-          rpc_urls=""
-          branches=${{ toJson(needs.parse_input.outputs.matrix.branch) }}
-          for branch in $branches
-          do
-            rpc_urls+="${{ needs.extract_rpc_url.outputs.rpc_url_$branch }},"
-          done
-          echo ${rpc_urls%?}
-          echo "rpc_urls=${rpc_urls%?}" >> $GITHUB_OUTPUT         
+  #aggregate_rpcs:
+  #  name: Collect all RPC Urls and pass it further
+  #  runs-on: ubuntu-latest
+  #  needs: extract_rpc_url
+  #  outputs:
+  #    rpc_urls: ${{ steps.aggregate_rpcs.outputs.rpc_urls }}
+  #  steps:
+  #    - name: Fetch urls
+  #      id: aggregate_rpcs
+  #      run: |
+  #        rpc_urls=""
+  #        branches=${{ toJson(needs.parse_input.outputs.matrix.branch) }}
+  #        for branch in $branches
+  #        do
+  #          rpc_urls+="${{ needs.extract_rpc_url.outputs.rpc_url_$branch }},"
+  #        done
+  #        echo ${rpc_urls%?}
+  #        echo "rpc_urls=${rpc_urls%?}" >> $GITHUB_OUTPUT         
 
 
   # Should not be needed anymore since nodes are syncing much faster now
