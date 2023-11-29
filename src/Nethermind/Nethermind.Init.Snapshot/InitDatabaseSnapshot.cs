@@ -6,8 +6,8 @@ using Nethermind.Api;
 using Nethermind.Init.Steps;
 using Nethermind.Logging;
 using System.IO.Compression;
+using System.Net;
 using System.Security.Cryptography;
-using Nethermind.Core;
 using Nethermind.Core.Extensions;
 
 namespace Nethermind.Init.Snapshot;
@@ -65,7 +65,7 @@ public class InitDatabaseSnapshot : InitDatabase
                 await DownloadSnapshotTo(snapshotUrl, snapshotFileName, cancellationToken);
                 break;
             }
-            catch (System.IO.IOException e)
+            catch (IOException e)
             {
                 if (_logger.IsError)
                     _logger.Error($"Snapshot download failed. Retrying in 5 seconds. Error: {e}");
@@ -73,14 +73,6 @@ public class InitDatabaseSnapshot : InitDatabase
             }
             cancellationToken.ThrowIfCancellationRequested();
         }
-        // schedule the snapshot file deletion, but only if the download completed
-        // otherwise leave it to resume the download later
-        using Reactive.AnonymousDisposable deleteSnapshot = new(() =>
-        {
-            if (_logger.IsInfo)
-                _logger.Info($"Deleting snapshot file {snapshotFileName}.");
-            File.Delete(snapshotFileName);
-        });
 
         if (snapshotConfig.Checksum is not null)
         {
@@ -102,7 +94,12 @@ public class InitDatabaseSnapshot : InitDatabase
         await ExtractSnapshotTo(snapshotFileName, dbPath, cancellationToken);
 
         if (_logger.IsInfo)
+        {
             _logger.Info("Database successfully initialized from snapshot.");
+            _logger.Info($"Deleting snapshot file {snapshotFileName}.");
+        }
+
+        File.Delete(snapshotFileName);
     }
 
     private async Task DownloadSnapshotTo(
@@ -130,12 +127,15 @@ public class InitDatabaseSnapshot : InitDatabase
             (await httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken))
             .EnsureSuccessStatusCode();
 
-        FileMode snapshotFileMode = snapshotFileInfo.Exists ? FileMode.Append : FileMode.CreateNew;
-        if (snapshotFileInfo.Exists && response.StatusCode != System.Net.HttpStatusCode.PartialContent)
+        FileMode snapshotFileMode = FileMode.Append;
+        if (snapshotFileInfo.Exists && response.StatusCode != HttpStatusCode.PartialContent)
         {
             if (_logger.IsWarn)
                 _logger.Warn("Download couldn't be resumed. Starting from the beginning.");
-            snapshotFileMode = FileMode.Create;
+            snapshotFileMode = FileMode.Truncate;
+        } else if (response.StatusCode != HttpStatusCode.OK)
+        {
+            throw new IOException($"Unknown status code: {response.StatusCode}");
         }
 
         await using Stream contentStream = await response.Content.ReadAsStreamAsync(cancellationToken);
