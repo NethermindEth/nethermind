@@ -94,7 +94,7 @@ jobs:
   aggregate_rpcs:
     name: Collect all RPC Urls and pass it further
     runs-on: ubuntu-latest
-    needs: create_node
+    needs: [create_node, parse_input]
     outputs:
       rpc_urls: ${{ steps.aggregate_rpcs.outputs.rpc_urls }}
     steps: 
@@ -199,7 +199,7 @@ jobs:
   compare:
     name: Compare JSON-RPC responses between clients and versions
     runs-on: ubuntu-latest
-    needs: [wait_for_node_to_sync]
+    needs: [wait_for_node_to_sync, parse_input]
     strategy:
       matrix:
         rpc_to_compare: ${{ fromJson(needs.parse_input.outputs.others_matrix) }}
