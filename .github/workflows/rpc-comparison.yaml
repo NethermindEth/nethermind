@@ -87,7 +87,7 @@ jobs:
     strategy:
       matrix: ${{ fromJson(needs.parse_input.outputs.matrix) }}
     outputs:
-      rpc_url: ${{ steps.extract_rpc_url.outputs.rpc_url }}
+      rpc_url_${{ matrix.branch }}: ${{ steps.extract_rpc_url.outputs.rpc_url }}
     steps:
       - name: Download artifact
         id: download-artifact
@@ -102,7 +102,9 @@ jobs:
 
       - name: Get RPC url to the newly created node
         id: extract_rpc_url
-        run: echo "rpc_url=$(cat ./terraform.tfstate | jq '.outputs.nodes_data.value[0].rpc_url')" >> $GITHUB_OUTPUT
+        run: |
+          echo $(cat ./terraform.tfstate | jq '.outputs.nodes_data.value[0].rpc_url')
+          echo "rpc_url_${{ matrix.branch }}=$(cat ./terraform.tfstate | jq '.outputs.nodes_data.value[0].rpc_url')" >> $GITHUB_OUTPUT
 
   aggregate_rpcs:
     name: Collect all RPC Urls and pass it further
@@ -123,6 +125,7 @@ jobs:
               rpc_urls+="${{ needs.extract_rpc_url.outputs.rpc_url[$rpc_url_output] }},"
             fi
           done
+          echo ${rpc_urls%?}
           echo "rpc_urls=${rpc_urls%?}" >> $GITHUB_OUTPUT         
 
 
