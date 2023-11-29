@@ -21,12 +21,12 @@ public class ExitOnSyncCompleteTests
     {
         ISyncModeSelector syncMode = Substitute.For<ISyncModeSelector>();
         IProcessExitSource exitSource = Substitute.For<IProcessExitSource>();
-        TimeSpan exitConditionDuration = TimeSpan.FromMilliseconds(40);
+        TimeSpan exitConditionDuration = TimeSpan.FromMilliseconds(10);
 
         exitSource.WatchForExit(syncMode, LimboLogs.Instance, exitConditionDuration: exitConditionDuration);
 
         syncMode.Changed += Raise.EventWith(this, new SyncModeChangedEventArgs(SyncMode.All, SyncMode.WaitingForBlock));
-        await Task.Delay(exitConditionDuration);
+        await Task.Delay(exitConditionDuration * 3);
         syncMode.Changed += Raise.EventWith(this, new SyncModeChangedEventArgs(SyncMode.All, SyncMode.WaitingForBlock));
 
         exitSource.Received().Exit(0);
