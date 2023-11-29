@@ -127,16 +127,19 @@ public class InitDatabaseSnapshot : InitDatabase
             (await httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken))
             .EnsureSuccessStatusCode();
 
-        FileMode snapshotFileMode = FileMode.Append;
-        if (snapshotFileInfo.Exists && response.StatusCode != HttpStatusCode.PartialContent)
+        FileMode snapshotFileMode = FileMode.Create;
+        if (snapshotFileInfo.Exists && response.StatusCode == HttpStatusCode.PartialContent)
         {
-            if (_logger.IsWarn)
-                _logger.Warn("Download couldn't be resumed. Starting from the beginning.");
-            snapshotFileMode = FileMode.Truncate;
+            snapshotFileMode = FileMode.Append;
         }
-        else if (response.StatusCode != HttpStatusCode.OK)
+        else if (response.StatusCode == HttpStatusCode.OK)
         {
-            throw new IOException($"Unknown status code: {response.StatusCode}");
+            if (snapshotFileInfo.Exists && _logger.IsWarn)
+                _logger.Warn("Download couldn't be resumed. Starting from the beginning.");
+        }
+        else
+        {
+            throw new IOException($"Unexpected status code: {response.StatusCode}");
         }
 
         await using Stream contentStream = await response.Content.ReadAsStreamAsync(cancellationToken);
