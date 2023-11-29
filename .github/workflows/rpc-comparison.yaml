@@ -69,9 +69,13 @@ jobs:
           printf -v joinedothers ', "%s"' "${others[@]}"
           OTHERS_MATRIX="{\"other\": [${joinedothers:2}]}"  # Ensure the key name 'other' is used
 
-          echo $MATRIX > matrix.json
-          cat matrix.json
+          echo $BRANCH_MATRIX > branch_matrix.json
+          cat branch_matrix.json
           echo "branch_matrix=$(jq -c . matrix.json)" >> $GITHUB_OUTPUT
+
+          echo $OTHERS_MATRIX > others_matrix.json
+          cat others_matrix.json
+          echo "others_matrix=$(jq -c . others_matrix.json)" >> $GITHUB_OUTPUT
 
   create_node:
     needs: parse_input
