@@ -133,7 +133,8 @@ public class InitDatabaseSnapshot : InitDatabase
             if (_logger.IsWarn)
                 _logger.Warn("Download couldn't be resumed. Starting from the beginning.");
             snapshotFileMode = FileMode.Truncate;
-        } else if (response.StatusCode != HttpStatusCode.OK)
+        }
+        else if (response.StatusCode != HttpStatusCode.OK)
         {
             throw new IOException($"Unknown status code: {response.StatusCode}");
         }
