@@ -133,7 +133,12 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
         IEngineRpcModule rpc = CreateEngineModule(chain);
 
         // creating chain with 30 blocks
-        await ProduceBranchV1(rpc, chain, 30, CreateParentBlockRequestOnHead(chain.BlockTree), true);
+        IReadOnlyList<ExecutionPayload> executionPayloads = await ProduceBranchV1(rpc, chain, 30, CreateParentBlockRequestOnHead(chain.BlockTree), true);
+
+        // shutter transactions only included in first execution payload
+        executionPayloads[0].GetTransactions().Should().HaveCount(2);
+        executionPayloads[1].GetTransactions().Should().HaveCount(0);
+
         TimeSpan delay = TimeSpan.FromMilliseconds(10);
         TimeSpan timePerSlot = 4 * delay;
         StoringBlockImprovementContextFactory improvementContextFactory = new(new BlockImprovementContextFactory(chain.BlockProductionTrigger, TimeSpan.FromSeconds(chain.MergeConfig.SecondsPerSlot)));
