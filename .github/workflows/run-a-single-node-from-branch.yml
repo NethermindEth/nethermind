@@ -114,6 +114,9 @@ on:
       run_id:
         description: ""
         value: ${{ jobs.trigger_node_and_vm_creation.outputs.run_id }}
+      rpc_url_$nethermind_repo_ref:
+        description: ""
+        value: ${{ jobs.trigger_node_and_vm_creation.outputs.rpc_url }}
 
       
 jobs:
@@ -270,3 +273,6 @@ jobs:
       run: |
         FILE=$(ls downloaded-artifacts/machine-details | head -n 1)
         cat "downloaded-artifacts/machine-details/$FILE"
+        rpc_url=$(cat "downloaded-artifacts/machine-details/$FILE" | grep -oP '\s{2,3}RPC URL: \K.+' script-output.txt)
+        echo "RPC URL extracted is: rpc_url"
+        echo "RPC_URL_${{ inputs.nethermind_repo_ref }}=$rpc_url" >> $GITHUB_ENV
