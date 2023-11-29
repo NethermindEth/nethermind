@@ -39,7 +39,7 @@ jobs:
           #compare_with="${{ github.event.inputs.compare_with }}"
 
           what_to_compare=""
-          compare_with="infura"
+          compare_with="INFURA_ENDPOINT"
 
           # Determine the primary branches to compare
           if [[ "$what_to_compare" == "" ]]; then
