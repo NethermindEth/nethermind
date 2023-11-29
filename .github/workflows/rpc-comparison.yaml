@@ -97,7 +97,7 @@ jobs:
     needs: create_node
     outputs:
       rpc_urls: ${{ steps.aggregate_rpcs.outputs.rpc_urls }}
-    steps:
+    steps: 
       - name: Download artifacts using GitHub CLI
         id: aggregate_rpcs
         run: |
