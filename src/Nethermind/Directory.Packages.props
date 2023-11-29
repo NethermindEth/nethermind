@@ -49,7 +49,7 @@
     <PackageVersion Include="Nethermind.Numerics.Int256" Version="1.1.1" />
     <PackageVersion Include="Newtonsoft.Json" Version="13.0.3" />
     <PackageVersion Include="Nito.Collections.Deque" Version="1.1.1" />
-    <PackageVersion Include="NLog" Version="5.2.6" />
+    <PackageVersion Include="NLog" Version="5.2.7" />
     <PackageVersion Include="NLog.Targets.Seq" Version="3.0.0" />
     <PackageVersion Include="NSubstitute" Version="5.1.0" />
     <PackageVersion Include="NUnit" Version="3.14.0" />
@@ -58,12 +58,12 @@
     <PackageVersion Include="Open.NAT.Core" Version="2.1.0.5" />
     <PackageVersion Include="Polly" Version="8.2.0" />
     <PackageVersion Include="Portable.BouncyCastle" Version="1.9.0" />
-    <PackageVersion Include="prometheus-net" Version="8.1.0" />
-    <PackageVersion Include="prometheus-net.AspNetCore" Version="8.1.0" />
+    <PackageVersion Include="prometheus-net" Version="8.1.1" />
+    <PackageVersion Include="prometheus-net.AspNetCore" Version="8.1.1" />
     <PackageVersion Include="Pyroscope" Version="0.8.14" />
     <PackageVersion Include="ReadLine" Version="2.0.1" />
     <PackageVersion Include="RichardSzalay.MockHttp" Version="7.0.0" />
-    <PackageVersion Include="RocksDB" Version="8.7.3.43743" />
+    <PackageVersion Include="RocksDB" Version="8.8.1.43919" />
     <PackageVersion Include="SCrypt" Version="2.0.0.2" />
     <PackageVersion Include="Seq.Api" Version="2023.4.0" />
     <PackageVersion Include="SharpCompress" Version="0.34.1" />
