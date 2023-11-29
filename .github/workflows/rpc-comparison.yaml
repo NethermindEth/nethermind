@@ -118,7 +118,7 @@ jobs:
           
           rpc_urls=""
           # Convert the JSON array to a Bash array
-          branches=$(echo '${{ needs.parse_input.outputs.branch_matrix.branch }}' | jq -r '.[]')
+          branches=$(echo '${{ needs.parse_input.outputs.branch_matrix.branch }}' | jq -r '.branch[]')
           echo $branches
           run_id=7033188111
           for branch in $branches; do
