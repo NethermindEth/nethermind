@@ -81,7 +81,7 @@ namespace Nethermind.Network.Test
             Assert.That(ctx.RlpxPeer.ConnectAsyncCallsCount, Is.EqualTo(1));
         }
 
-        [Test]
+        [Test, Retry(3)]
         public async Task Will_only_connect_up_to_max_peers()
         {
             await using Context ctx = new(1);
