@@ -112,6 +112,7 @@ jobs:
           
           rpc_urls=""
           branches=${{ toJson(needs.parse_input.outputs.branch_matrix.branch) }}
+          echo $branches
           for branch in $branches; do
             artifact_name="rpc-url-$branch-${{ github.run_id }}"
             mkdir -p artifacts/$branch
