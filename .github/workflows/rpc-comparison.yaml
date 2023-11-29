@@ -71,7 +71,7 @@ jobs:
 
           echo $BRANCH_MATRIX > branch_matrix.json
           cat branch_matrix.json
-          echo "branch_matrix=$(jq -c . matrix.json)" >> $GITHUB_OUTPUT
+          echo "branch_matrix=$(jq -c . branch_matrix.json)" >> $GITHUB_OUTPUT
 
           echo $OTHERS_MATRIX > others_matrix.json
           cat others_matrix.json
