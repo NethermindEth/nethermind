@@ -68,6 +68,11 @@ on:
         default: ""
         required: false
         type: string
+      custom_run_id:
+        description: "Run ID used for artifacts save"
+        default: ""
+        required: false
+        type: string
       network:
         description: "Select a network on which You want to run a node"
         default: "mainnet"
@@ -114,7 +119,7 @@ on:
       run_id:
         description: ""
         value: ${{ jobs.trigger_node_and_vm_creation.outputs.run_id }}
-      rpc_url_$nethermind_repo_ref:
+      rpc_urly:
         description: ""
         value: ${{ jobs.trigger_node_and_vm_creation.outputs.rpc_url }}
 
@@ -274,5 +279,18 @@ jobs:
         FILE=$(ls downloaded-artifacts/machine-details | head -n 1)
         cat "downloaded-artifacts/machine-details/$FILE"
         rpc_url=$(cat "downloaded-artifacts/machine-details/$FILE" | grep -oP '\s{2,3}RPC URL: \K.+' script-output.txt)
-        echo "RPC URL extracted is: rpc_url"
-        echo "RPC_URL_${{ inputs.nethermind_repo_ref }}=$rpc_url" >> $GITHUB_ENV
+        echo "RPC URL extracted is: $rpc_url"
+        echo "RPC_URL=$rpc_url" >> $GITHUB_ENV
+
+    - name: Save RPC URL to file
+      if: inputs.custom_run_id != ''
+      run: |
+        workflow_id=${{ inputs.custom_run_id }}
+        echo "$(cat ./terraform.tfstate | jq -r '.outputs.nodes_data.value[0].rpc_url')" > rpc_url_${{ inputs.nethermind_repo_ref }}_${{ inputs.custom_run_id }}.txt
+
+    - name: Upload RPC URL
+      uses: actions/upload-artifact@v2
+      if: inputs.custom_run_id != ''
+      with:
+        name: rpc-url-${{ inputs.nethermind_repo_ref }}-${{ inputs.custom_run_id }}
+        path: rpc_url_${{ inputs.nethermind_repo_ref }}_${{ inputs.custom_run_id }}.txt
