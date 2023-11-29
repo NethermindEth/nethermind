@@ -128,6 +128,14 @@ public class TestBlockchain : IDisposable
         State.CreateAccount(TestItem.AddressA, (initialValues ?? InitialValue));
         State.CreateAccount(TestItem.AddressB, (initialValues ?? InitialValue));
         State.CreateAccount(TestItem.AddressC, (initialValues ?? InitialValue));
+        State.CreateAccount(TestItem.AddressD, (initialValues ?? InitialValue));
+        State.CreateAccount(TestItem.AddressE, (initialValues ?? InitialValue));
+        State.CreateAccount(TestItem.AddressF, (initialValues ?? InitialValue));
+
+        foreach(Address addr in TestItem.Addresses)
+        {
+            State.CreateAccount(addr, (initialValues ?? InitialValue));
+        }
 
         byte[] code = Bytes.FromHexString("0xabcd");
         Keccak codeHash = Keccak.Compute(code);

@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Transactions;
 using FluentAssertions;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
@@ -45,6 +46,7 @@ using Nethermind.State;
 using Nethermind.Synchronization.ParallelSync;
 using NSubstitute;
 using NUnit.Framework;
+using Transaction = Nethermind.Core.Transaction;
 
 namespace Nethermind.Merge.AuRa.Test;
 
@@ -97,10 +99,36 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
         return base.Can_apply_withdrawals_correctly(input);
     }
 
-    [Test]
-    public async Task Can_include_shutter_transactions()
+    private async Task<Transaction[]> BuildBlock(MergeTestBlockchain chain, IEngineRpcModule rpc, int id)
     {
-        //using SemaphoreSlim blockImprovementLock = new(0);
+        Block parent = chain.BlockTree.Head!;
+
+        // we added transactions
+        PayloadAttributes payloadAttributes = new PayloadAttributes
+        {
+            Timestamp = (ulong)DateTime.UtcNow.AddDays(id).Ticks,
+            PrevRandao = TestItem.KeccakA,
+            SuggestedFeeRecipient = Address.Zero
+        };
+        string? payloadId = rpc.engine_forkchoiceUpdatedV1(
+                new ForkchoiceStateV1(parent.GetOrCalculateHash(), Keccak.Zero, parent.GetOrCalculateHash()),
+                payloadAttributes)
+            .Result.Data.PayloadId!;
+
+        chain.AddTransactions(BuildTransactions(chain, parent.CalculateHash(), TestItem.PrivateKeys[id], TestItem.AddressF, 3, id, out _, out _));
+
+        ExecutionPayload getPayloadResult = (await rpc.engine_getPayloadV1(Bytes.FromHexString(payloadId))).Data!;
+        getPayloadResult.Should().NotBeNull();
+
+        ResultWrapper<PayloadStatusV1> finalResult = await rpc.engine_newPayloadV1(getPayloadResult);
+        finalResult.Data.Status.Should().Be(PayloadStatus.Valid);
+
+        return getPayloadResult.GetTransactions();
+    }
+
+    [Test]
+    public async Task Can_include_shutter_transactions_cool()
+    {
         using MergeTestBlockchain chain = await CreateBlockchain(new TestSingleReleaseSpecProvider(London.Instance));
         IEngineRpcModule rpc = CreateEngineModule(chain);
 
@@ -115,60 +143,20 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
             TimerFactory.Default,
             chain.LogManager,
             timePerSlot);
-        //chain.PayloadPreparationService!.BlockImproved += (_, _) => { blockImprovementLock.Release(1); };
 
-        Block block30 = chain.BlockTree.Head!;
+        // shutter transactions are not being included
+        // do we expect old transactions to be in every payload?
+        Transaction[] resultBlock31 = await BuildBlock(chain, rpc, 0);
+        resultBlock31.Should().HaveCount(0);
 
-        // we added transactions
-        chain.AddTransactions(BuildTransactions(chain, block30.CalculateHash(), TestItem.PrivateKeyB, TestItem.AddressF, 3, 10, out _, out _));
-        PayloadAttributes payloadAttributesBlock31A = new PayloadAttributes
-        {
-            Timestamp = (ulong)DateTime.UtcNow.AddDays(3).Ticks,
-            PrevRandao = TestItem.KeccakA,
-            SuggestedFeeRecipient = Address.Zero
-        };
-        string? payloadIdBlock31A = rpc.engine_forkchoiceUpdatedV1(
-                new ForkchoiceStateV1(block30.GetOrCalculateHash(), Keccak.Zero, block30.GetOrCalculateHash()),
-                payloadAttributesBlock31A)
-            .Result.Data.PayloadId!;
-        //await blockImprovementLock.WaitAsync(delay * 1000);
+        Transaction[] resultBlock32 = await BuildBlock(chain, rpc, 1);
+        resultBlock32.Should().HaveCount(3);
 
-        ExecutionPayload getPayloadResultBlock31A = (await rpc.engine_getPayloadV1(Bytes.FromHexString(payloadIdBlock31A))).Data!;
-        getPayloadResultBlock31A.Should().NotBeNull();
-        await rpc.engine_newPayloadV1(getPayloadResultBlock31A);
+        Transaction[] resultBlock33 = await BuildBlock(chain, rpc, 2);
+        resultBlock33.Should().HaveCount(6);
 
-        // current main chain block 30->31A, we start building payload 32A
-        await rpc.engine_forkchoiceUpdatedV1(new ForkchoiceStateV1(getPayloadResultBlock31A.BlockHash, Keccak.Zero, getPayloadResultBlock31A.BlockHash));
-        Block block31A = chain.BlockTree.Head!;
-        PayloadAttributes payloadAttributes = new()
-        {
-            Timestamp = (ulong)DateTime.UtcNow.AddDays(4).Ticks,
-            PrevRandao = TestItem.KeccakA,
-            SuggestedFeeRecipient = Address.Zero
-        };
-
-        // we build one more block on the same level
-        Block block31B = chain.PostMergeBlockProducer!.PrepareEmptyBlock(block30.Header, payloadAttributes);
-        await rpc.engine_newPayloadV1(new ExecutionPayload(block31B));
-
-        // ...and we change the main chain, so main chain now is 30->31B, block improvement for block 32A is still in progress
-        string? payloadId = rpc.engine_forkchoiceUpdatedV1(
-                new ForkchoiceStateV1(block31A.GetOrCalculateHash(), Keccak.Zero, block31A.GetOrCalculateHash()),
-                payloadAttributes)
-            .Result.Data.PayloadId!;
-        ForkchoiceUpdatedV1Result result = rpc.engine_forkchoiceUpdatedV1(
-            new ForkchoiceStateV1(block31B.GetOrCalculateHash(), Keccak.Zero, block31B.GetOrCalculateHash())).Result.Data;
-
-        // we added same transactions, so if we build on incorrect state root, we will end up with invalid block
-        chain.AddTransactions(BuildTransactions(chain, block31A.GetOrCalculateHash(), TestItem.PrivateKeyC, TestItem.AddressF, 3, 10, out _, out _));
-        //await blockImprovementLock.WaitAsync(delay * 1000);
-        ExecutionPayload getPayloadResult = (await rpc.engine_getPayloadV1(Bytes.FromHexString(payloadId))).Data!;
-        getPayloadResult.Should().NotBeNull();
-
-        ResultWrapper<PayloadStatusV1> finalResult = await rpc.engine_newPayloadV1(getPayloadResult);
-        finalResult.Data.Status.Should().Be(PayloadStatus.Valid);
-
-        getPayloadResult.GetTransactions().Should().HaveCount(5);
+        Transaction[] resultBlock34 = await BuildBlock(chain, rpc, 3);
+        resultBlock34.Should().HaveCount(9);
     }
 
     class ShutterTxSource : ITxSource
