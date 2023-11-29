@@ -94,7 +94,7 @@ jobs:
   aggregate_rpcs:
     name: Collect all RPC Urls and pass it further
     runs-on: ubuntu-latest
-    needs: create_node
+    #needs: create_node
     outputs:
       rpc_urls: ${{ steps.aggregate_rpcs.outputs.rpc_urls }}
     steps:
