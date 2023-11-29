@@ -18,7 +18,7 @@ on:
         required: false
       compare_with:
         type: string
-        description: "A space-separated list of additional comparers. If empty, then nothing else will be added to comparision. Possible options: 'infura', 'archive', 'feature/branch'"
+        description: "A space-separated list of additional comparers. If empty, then nothing else will be added to comparision. Possible options: 'INFURA_ENDPOINT', 'NETHERMIND_ARCHIVE_ENDPOINT', 'feature/branch'"
         default: ""
         required: false
 
@@ -26,7 +26,8 @@ jobs:
   parse_input:
     runs-on: ubuntu-latest
     outputs:
-      matrix: ${{ steps.set-matrix.outputs.matrix }}
+      branch_matrix: ${{ steps.set-matrix.outputs.branch_matrix }}
+      others_matrix: ${{ steps.set-matrix.outputs.others_matrix }}
     steps:
       - name: Install jq
         run: sudo apt-get install jq
@@ -52,20 +53,25 @@ jobs:
           if [[ "$compare_with" != "" ]]; then
             IFS=' ' read -r -a additional_branches <<< "$compare_with"
             for branch in "${additional_branches[@]}"; do
-              if [[ "$branch" != "infura" && "$branch" != "archive" ]]; then
+              if [[ "$branch" != "INFURA_ENDPOINT" && "$branch" != "NETHERMIND_ARCHIVE_ENDPOINT" ]]; then
                 # Treat as additional branch
                 branches+=("$branch")
+              else
+                others+=("$branch")
               fi
             done
           fi
 
           # Convert array to JSON object with named array
-          printf -v joined ', "%s"' "${branches[@]}"
-          MATRIX="{\"branch\": [${joined:2}]}"  # Ensure the key name 'branch' is used
+          printf -v joinedbranch ', "%s"' "${branches[@]}"
+          BRANCH_MATRIX="{\"branch\": [${joinedbranch:2}]}"  # Ensure the key name 'branch' is used
+
+          printf -v joinedothers ', "%s"' "${others[@]}"
+          OTHERS_MATRIX="{\"other\": [${joinedothers:2}]}"  # Ensure the key name 'other' is used
 
           echo $MATRIX > matrix.json
           cat matrix.json
-          echo "matrix=$(jq -c . matrix.json)" >> $GITHUB_OUTPUT
+          echo "branch_matrix=$(jq -c . matrix.json)" >> $GITHUB_OUTPUT
 
   create_node:
     needs: parse_input
@@ -73,7 +79,7 @@ jobs:
     uses: ./.github/workflows/run-a-single-node-from-branch.yml
     secrets: inherit
     strategy:
-      matrix: ${{ fromJson(needs.parse_input.outputs.matrix) }}
+      matrix: ${{ fromJson(needs.parse_input.outputs.branch_matrix) }}
     with:
       additional_options: '{"timeout":"24", "default_dockerfile":"Dockerfile", "default_dockerfile_build_type":"release", "ssh_keys":"", "allowed_ips":"${{ inputs.allowed_ips }}"}' 
       non_validator_mode: false
@@ -101,7 +107,7 @@ jobs:
           echo "${{ secrets.REPOSITORY_DISPATCH_TOKEN }}" | gh auth login --with-token
           
           rpc_urls=""
-          branches=${{ toJson(needs.parse_input.outputs.matrix.branch) }}
+          branches=${{ toJson(needs.parse_input.outputs.branch_matrix.branch) }}
           for branch in $branches; do
             artifact_name="rpc-url-$branch-${{ github.run_id }}"
             mkdir -p artifacts/$branch
@@ -111,7 +117,7 @@ jobs:
 
             if [ -f "artifacts/$branch/$artifact_name.txt" ]; then
               url_content=$(cat "artifacts/$branch/$artifact_name.txt")
-              rpc_urls+="${url_content},"
+              rpc_urls+="$branch::${url_content},"
             fi
           done
           rpc_urls=${rpc_urls%,}
@@ -144,7 +150,19 @@ jobs:
       - name: Wait for the nodes to sync
         timeout-minutes: 600
         run: |
-          rpc_urls=(${{ needs.extract_rpc_url.outputs.rpc_urls }})
+          rpc_urls_str="${{ needs.aggregate_rpcs.outputs.rpc_urls }}"
+          IFS=',' read -r -a rpc_urls_array <<< "$rpc_urls_str"
+          
+          # Loop through the array and strip the branch prefix
+          processed_rpc_urls=()
+          for url_entry in "${rpc_urls_array[@]}"; do
+            processed_url="${url_entry#*::}"  # Remove everything up to and including "::"
+            processed_rpc_urls+=("$processed_url")
+          done
+          
+          # Convert the processed URLs back to a comma-separated string
+          IFS=','; rpc_urls="${processed_rpc_urls[*]}"; unset IFS
+
           sync_complete_flag=0
 
           check_sync() {
@@ -171,7 +189,7 @@ jobs:
     needs: [wait_for_node_to_sync]
     strategy:
       matrix:
-        rpc_to_compare: [INFURA_ENDPOINT, NETHERMIND_ARCHIVE_ENDPOINT]
+        rpc_to_compare: ${{ fromJson(needs.parse_input.outputs.others_matrix) }}
     steps:
       - uses: actions/checkout@v3
       - name: Install flood
@@ -195,4 +213,18 @@ jobs:
           WIREGUARD_SERVER_PORT: '${{ secrets.WIREGUARD_SERVER_PORT }}'
   
       - name: Test equality of responses
-        run: flood all nethermind_current=${{ needs.extract_rpc_url.outputs.rpc_url }} ${{ matrix.rpc_to_compare }}=${{ secrets[matrix.rpc_to_compare] }} --equality
+        run: |
+          rpc_urls_str="${{ needs.aggregate_rpcs.outputs.rpc_urls }}"
+          IFS=',' read -r -a rpc_urls_array <<< "$rpc_urls_str"
+          
+          nethermind_urls=()
+          for url_entry in "${rpc_urls_array[@]}"; do
+            branch="${url_entry%%::*}"  # Extract the branch part
+            url="${url_entry#*::}"     # Extract the URL part
+            nethermind_urls_str+="nethermind_$branch=$url "
+          done
+          
+          # Remove trailing space
+          nethermind_urls_str="${nethermind_urls_str% }"
+
+          flood all $nethermind_urls_str ${{ matrix.other }}=${{ secrets[matrix.other] }} --equality
