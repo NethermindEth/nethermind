@@ -126,9 +126,13 @@ jobs:
             #artifact_name="rpc-url-rpc-comparision-1.23.0-7033188111"
             mkdir -p artifacts/$branch
 
-            echo "Downloading artifact: $artifact_name"
-            gh run download --name "$artifact_name" --repo ${{ github.repository }} --dir artifacts/$branch
+            echo "Check artifacts list..."
+            gh run list --repo ${{ github.repository }}
 
+            echo "Downloading artifact: $artifact_name ..."
+            gh run download --name "$artifact_name" --repo ${{ github.repository }} --dir artifacts/$branch --verbose
+
+            echo "Processing artifact..."
             if [ -f "artifacts/$branch/$artifact_name.txt" ]; then
               url_content=$(cat "artifacts/$branch/$artifact_name.txt")
               rpc_urls+="$branch::${url_content},"
