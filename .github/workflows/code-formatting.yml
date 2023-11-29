@@ -12,7 +12,7 @@ jobs:
       contents: read
     steps:
       - name: Check out repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
       - name: Set up .NET
         uses: actions/setup-dotnet@v3
       - name: Format

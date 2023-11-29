@@ -21,7 +21,7 @@ jobs:
         language: ['csharp']
     steps:
     - name: Check out repository
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
     - name: Update submodules
       run: git submodule update --init src/tests
     - name: Initialize CodeQL

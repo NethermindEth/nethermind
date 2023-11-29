@@ -16,12 +16,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Check out Nethermind repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           submodules: recursive
           path: nethermind
       - name: Check out posdao-test-setup repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           repository: NethermindEth/posdao-test-setup
           ref: ${{ github.event.inputs.branch }}

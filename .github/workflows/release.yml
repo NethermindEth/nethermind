@@ -28,11 +28,11 @@ jobs:
       prerelease: ${{ steps.build-runner.outputs.prerelease }}
     steps:
       - name: Check out Nethermind repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           path: nethermind
       - name: Check out Nethermind Launcher repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           repository: NethermindEth/nethermind.launcher
           path: launcher
@@ -130,7 +130,7 @@ jobs:
     needs: [approval, build]
     steps:
       - name: Check out Nethermind repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           path: nethermind
       - name: Download artifacts
@@ -155,7 +155,7 @@ jobs:
     if: needs.build.outputs.prerelease == 'false'
     steps:
       - name: Check out Nethermind repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           path: nethermind
       - name: Download artifacts
@@ -183,7 +183,7 @@ jobs:
     needs: [approval, build]
     steps:
       - name: Check out Nethermind repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
       - name: Set up Docker Buildx

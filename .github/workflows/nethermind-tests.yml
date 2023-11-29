@@ -75,7 +75,7 @@ jobs:
           - Nethermind.Wallet.Test
     steps:
     - name: Check out repository
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
     - name: Set up .NET
       uses: actions/setup-dotnet@v3
     - name: Install Linux packages
@@ -143,7 +143,7 @@ jobs:
           - Ethereum.VM.Test
     steps:
     - name: Check out repository
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
       with:
         submodules: recursive
     - name: Set up .NET
