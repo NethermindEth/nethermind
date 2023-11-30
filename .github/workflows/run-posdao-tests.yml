@@ -23,7 +23,7 @@ jobs:
     - id: set-matrix
       run: |
         if [ -z "${{ github.event.inputs.branch }}" ]; then
-          echo '{"branch":["master", "bd-test-merge"]}' > matrix.json
+          echo '{"branch":["master", "bc-test-merge"]}' > matrix.json
         else
           echo '{"branch":["${{ github.event.inputs.branch }}"]}' > matrix.json
         fi
