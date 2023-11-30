@@ -104,7 +104,7 @@ jobs:
           github_token: ${{ secrets.REPOSITORY_DISPATCH_TOKEN }}
           path: artifacts/
           run_id: ${{ github.run_id }}
-          search_artifact: true
+          search_artifacts: true
 
       - name: Process Artifacts Content
         run: |
