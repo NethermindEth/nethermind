@@ -38,7 +38,7 @@ jobs:
           #what_to_compare="${{ github.event.inputs.what_to_compare }}"
           #compare_with="${{ github.event.inputs.compare_with }}"
 
-          what_to_compare=""
+          what_to_compare="master"
           compare_with="INFURA_ENDPOINT"
 
           # Determine the primary branches to compare
@@ -102,11 +102,7 @@ jobs:
         uses: dawidd6/action-download-artifact@v2
         with:
           github_token: ${{ secrets.REPOSITORY_DISPATCH_TOKEN }}
-          name: ".*-${{ github.run_id }}"
-          name_is_regexp: true
           path: artifacts/
-          check_artifacts: true
-          workflow: run-a-single-node-from-branch.yml
           run_id: ${{ github.event.workflow_run.id }}
 
       - name: Process Artifacts Content
