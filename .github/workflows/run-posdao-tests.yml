@@ -2,6 +2,7 @@ name: '[RUN] POSDAO tests'
 
 on:
   push:
+    branches: [master, release/*]    
     tags:
     - '*'
   workflow_dispatch:
