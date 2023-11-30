@@ -97,44 +97,42 @@ jobs:
     needs: [create_node, parse_input]
     outputs:
       rpc_urls: ${{ steps.aggregate_rpcs.outputs.rpc_urls }}
-    steps: 
-      - name: Download artifacts using GitHub CLI
-        id: aggregate_rpcs
+    steps:
+      - name: Retrieve Artifact Names
+        id: retrieve_artifacts
         run: |
-          # Install GitHub CLI
-          echo "Installing Github CLI..."
-          curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | sudo dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg
-          echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null
-          sudo apt update
-          sudo apt install gh
-
-          # Install jq if not already available
           echo "Installing jq..."
           sudo apt-get install -y jq
 
-          # Authenticate GitHub CLI
-          echo "Login to Github with token..."
-          echo "${{ secrets.REPOSITORY_DISPATCH_TOKEN }}" | gh auth login --with-token
-          
-          rpc_urls=""
-          # Convert the JSON array to a Bash array
+          artifact_names=""
           branches=$(echo '${{ needs.parse_input.outputs.branch_matrix }}' | jq -r '.branch[]')
-          echo $branches
           for branch in $branches; do
             artifact_name="rpc-url-$branch-${{ github.run_id }}"
-            mkdir -p artifacts/$branch
+            artifact_names+="$artifact_name,"
+          done
+          artifact_names=${artifact_names%,}
+          echo "artifact_names=$artifact_names" >> $GITHUB_OUTPUT
 
-            echo "Downloading artifact: $artifact_name..."
-            gh run download --name "$artifact_name" --repo ${{ github.repository }} --dir artifacts/$branch ${{ github.run_id }}
+      - name: Download Artifacts
+        uses: dawidd6/action-download-artifact@v2
+        with:
+          github_token: ${{ secrets.REPOSITORY_DISPATCH_TOKEN }}
+          name: ".*-${{ github.run_id }}"
+          name_is_regexp: true
+          path: artifacts/
 
-            echo "Processing artifact..."
-            if [ -f "artifacts/$branch/$artifact_name.txt" ]; then
-              url_content=$(cat "artifacts/$branch/$artifact_name.txt")
-              rpc_urls+="$branch::${url_content},"
+      - name: Process Artifacts Content
+        run: |
+          rpc_urls=""
+          for file in artifacts/*; do
+            if [ -f "$file" ]; then
+              branch=$(basename $file | cut -d '-' -f 3)
+              url_content=$(cat "$file")
+              rpc_urls+="$branch::$url_content,"
             fi
           done
           rpc_urls=${rpc_urls%,}
-          echo "rpc_urls=$rpc_urls" >> $GITHUB_OUTPUT     
+          echo "rpc_urls=$rpc_urls" >> $GITHUB_OUTPUT
 
   wait_for_node_to_sync:
     name: Wait for the node to sync
