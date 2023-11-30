@@ -9,7 +9,8 @@ ARG CI
 ARG COMMIT_HASH
 ARG TARGETARCH
 
-COPY . .
+COPY .git .git
+COPY src/Nethermind src/Nethermind
 
 RUN arch=$([ "$TARGETARCH" = "amd64" ] && echo "x64" || echo "$TARGETARCH") && \
     dotnet publish src/Nethermind/Nethermind.Runner -c $BUILD_CONFIG -a $arch -o /publish --sc false \

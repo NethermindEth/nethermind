@@ -10,7 +10,8 @@ ARG COMMIT_HASH
 ARG TARGETARCH
 ARG TARGETOS
 
-COPY . .
+COPY .git .git
+COPY src/Nethermind src/Nethermind
 
 RUN arch=$([ "$TARGETARCH" = "amd64" ] && echo "x64" || echo "$TARGETARCH") && \
     dotnet tool install JetBrains.dotTrace.GlobalTools --version 2023.2.3 --tool-path /tmp && \
