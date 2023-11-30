@@ -69,12 +69,6 @@ winget install Microsoft.VCRedist.2015+.x64
 
 ### On macOS
 
-#### Prerequisites
-
-```sh
-brew install lz4 snappy zstd
-```
-
 #### Install using Homebrew
 
 1. `brew tap nethermindeth/nethermind`
