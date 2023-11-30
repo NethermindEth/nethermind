@@ -31,6 +31,10 @@ namespace Ethereum.Test.Base
         public string? LoadFailure { get; set; }
         public Transaction? Transaction { get; set; }
         public Hash256? CurrentRandom { get; set; }
+        public Hash256? CurrentBeaconRoot { get; set; }
+        public Hash256? CurrentWithdrawalsRoot { get; set; }
+        public UInt256? ParentBlobGasUsed { get; set; }
+        public UInt256? ParentExcessBlobGas { get; set; }
 
         public override string ToString()
         {

@@ -14,6 +14,7 @@ on:
           - sepolia
           - goerli
           - chiado
+          - holesky
       cl_client:
         description: "Select Consensus Layer Client to run node against"
         default: ""
@@ -157,9 +158,9 @@ jobs:
       id: extract_variables
       run: |
         echo "BASE_TAG=${{ needs.create_docker_image.outputs.base_tag }}" >> $GITHUB_ENV
-        echo "timeout=$(echo ${{ inputs.additional_options }} | jq -r .timeout)" >> $GITHUB_OUTPUT
-        echo "ssh_keys=$(echo ${{ inputs.additional_options }} | jq -r .ssh_keys)" >> $GITHUB_OUTPUT
-        echo "allowed_ips=$(echo ${{ inputs.additional_options }} | jq -r .allowed_ips)" >> $GITHUB_OUTPUT
+        echo "timeout=$(echo '${{ inputs.additional_options }}' | jq -r .timeout)" >> $GITHUB_OUTPUT
+        echo "ssh_keys=$(echo '${{ inputs.additional_options }}' | jq -r .ssh_keys)" >> $GITHUB_OUTPUT
+        echo "allowed_ips=$(echo '${{ inputs.additional_options }}' | jq -r .allowed_ips)" >> $GITHUB_OUTPUT
 
     - name: Trigger Node creation Repo Action
       uses: benc-uk/workflow-dispatch@v1

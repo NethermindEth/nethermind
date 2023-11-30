@@ -86,9 +86,9 @@ public class DebugBridge : IDebugBridge
         return _blockTree.FindLevel(number);
     }
 
-    public int DeleteChainSlice(long startNumber)
+    public int DeleteChainSlice(long startNumber, bool force = false)
     {
-        return _blockTree.DeleteChainSlice(startNumber);
+        return _blockTree.DeleteChainSlice(startNumber, force: force);
     }
 
     public void UpdateHeadBlock(Hash256 blockHash)

@@ -122,11 +122,9 @@ public class OptimismPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitial
         ArgumentNullException.ThrowIfNull(_api.SpecProvider);
         ArgumentNullException.ThrowIfNull(_api.BlockTree);
         ArgumentNullException.ThrowIfNull(_api.DbProvider);
-        ArgumentNullException.ThrowIfNull(_api.SnapProvider);
         ArgumentNullException.ThrowIfNull(_api.PeerDifficultyRefreshPool);
         ArgumentNullException.ThrowIfNull(_api.SyncPeerPool);
         ArgumentNullException.ThrowIfNull(_api.NodeStatsManager);
-        ArgumentNullException.ThrowIfNull(_api.SyncProgressResolver);
         ArgumentNullException.ThrowIfNull(_api.BlockchainProcessor);
 
         ArgumentNullException.ThrowIfNull(_blockCacheService);
@@ -140,14 +138,6 @@ public class OptimismPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitial
         _beaconPivot = new BeaconPivot(_syncConfig, _api.DbProvider.MetadataDb, _api.BlockTree, _api.LogManager);
         _beaconSync = new BeaconSync(_beaconPivot, _api.BlockTree, _syncConfig, _blockCacheService, _api.LogManager);
         _api.BetterPeerStrategy = new MergeBetterPeerStrategy(null!, _api.PoSSwitcher, _beaconPivot, _api.LogManager);
-
-        _api.SyncModeSelector = new MultiSyncModeSelector(
-            _api.SyncProgressResolver,
-            _api.SyncPeerPool,
-            _syncConfig,
-            _beaconSync,
-            _api.BetterPeerStrategy!,
-            _api.LogManager);
         _api.Pivot = _beaconPivot;
 
         MergeBlockDownloaderFactory blockDownloaderFactory = new MergeBlockDownloaderFactory(
