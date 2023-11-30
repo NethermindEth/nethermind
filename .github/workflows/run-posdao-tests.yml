@@ -2,6 +2,7 @@ name: POSDAO tests
 
 on:
   push:
+    branches: [master, release/*]
     tags: ['*']
   workflow_dispatch:
     inputs:
@@ -11,9 +12,30 @@ on:
         default: bc-test-merge
 
 jobs:
+  prepare-branches:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.set-matrix.outputs.matrix }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - id: set-matrix
+        run: |
+          if [ -z "${{ github.event.inputs.branch }}" ]; then
+            echo '{"branch":["master", "bc-test-merge"]}' > matrix.json
+          else
+            echo '{"branch":["${{ github.event.inputs.branch }}"]}' > matrix.json
+          fi
+          echo "matrix=$(cat matrix.json)" >> $GITHUB_OUTPUT
+        
+    name: Prepare branches
   run-posdao-tests:
     name: Run Nethermind POSDAO tests
+    needs: prepare-branches
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(needs.prepare-branches.outputs.matrix) }}
     steps:
       - name: Check out Nethermind repository
         uses: actions/checkout@v4
@@ -24,7 +46,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: NethermindEth/posdao-test-setup
-          ref: ${{ github.event.inputs.branch }}
+          ref: ${{ matrix.branch }}
           submodules: recursive
           path: posdao-test-setup
       - name: Install Linux packages
@@ -41,12 +63,12 @@ jobs:
           dotnet build Nethermind.sln -c release
           cp -r artifacts/bin/Nethermind.Runner/release/* $GITHUB_WORKSPACE/nethermind/bin/
       - name: Set up Node.js v12
-        if: ${{ !contains(github.event.inputs.branch, 'merge') }}
+        if: ${{ !contains(matrix.branch, 'merge') }}
         uses: actions/setup-node@v3
         with:
           node-version: 12
       - name: Set up Node.js v16
-        if: ${{ contains(github.event.inputs.branch, 'merge') }}
+        if: ${{ !contains(matrix.branch, 'merge') }}
         uses: actions/setup-node@v3
         with:
           node-version: 16
