@@ -127,17 +127,17 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
     }
 
     [Test]
-    public async Task Can_include_shutter_transactions_cool()
+    public async Task Can_include_shutter_transactions()
     {
         using MergeTestBlockchain chain = await CreateBlockchain(new TestSingleReleaseSpecProvider(London.Instance));
         IEngineRpcModule rpc = CreateEngineModule(chain);
 
-        // creating chain with 30 blocks
-        IReadOnlyList<ExecutionPayload> executionPayloads = await ProduceBranchV1(rpc, chain, 30, CreateParentBlockRequestOnHead(chain.BlockTree), true);
+        // creating chain with 3 blocks
+        IReadOnlyList<ExecutionPayload> executionPayloads = await ProduceBranchV1(rpc, chain, 3, CreateParentBlockRequestOnHead(chain.BlockTree), true);
 
-        // shutter transactions only included in first execution payload
-        executionPayloads[0].GetTransactions().Should().HaveCount(2);
-        executionPayloads[1].GetTransactions().Should().HaveCount(0);
+        executionPayloads[0].GetTransactions().Should().HaveCount(1);
+        executionPayloads[1].GetTransactions().Should().HaveCount(1);
+        executionPayloads[2].GetTransactions().Should().HaveCount(1);
 
         TimeSpan delay = TimeSpan.FromMilliseconds(10);
         TimeSpan timePerSlot = 4 * delay;
@@ -149,46 +149,54 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
             chain.LogManager,
             timePerSlot);
 
-        // shutter transactions are not being included
-        // do we expect old transactions to be in every payload?
+        // to fix:
+        // old transactions from txpool should not be included in new execution payloads
         Transaction[] resultBlock31 = await BuildBlock(chain, rpc, 0);
-        resultBlock31.Should().HaveCount(0);
+        resultBlock31.Should().HaveCount(1);
 
         Transaction[] resultBlock32 = await BuildBlock(chain, rpc, 1);
-        resultBlock32.Should().HaveCount(3);
+        resultBlock32.Should().HaveCount(4);
 
         Transaction[] resultBlock33 = await BuildBlock(chain, rpc, 2);
-        resultBlock33.Should().HaveCount(6);
+        resultBlock33.Should().HaveCount(7);
 
         Transaction[] resultBlock34 = await BuildBlock(chain, rpc, 3);
-        resultBlock34.Should().HaveCount(9);
+        resultBlock34.Should().HaveCount(10);
+
+        Transaction[] resultBlock35 = await BuildBlock(chain, rpc, 4);
+        resultBlock35.Should().HaveCount(13);
     }
 
     class ShutterTxSource : ITxSource
     {
+        private UInt256 _nonce = 0;
+        private Transaction? _transaction;
+        private Keccak? _lastParent;
+
+
         public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit)
         {
-            //return Enumerable.Empty<Transaction>();
-            byte[] sigData = new byte[65];
-            sigData[31] = 1; // correct r
-            sigData[63] = 1; // correct s
-            sigData[64] = 27;
-            Signature signature = new(sigData);
+            if (parent.Hash != _lastParent)
+            {
+                byte[] sigData = new byte[65];
+                sigData[31] = 1; // correct r
+                sigData[63] = 1; // correct s
+                sigData[64] = 27;
+                Signature signature = new(sigData);
 
-            return new[] {
-                Build.A.Transaction
-                .WithSenderAddress(TestItem.AddressA)
-                .WithValue(123)
-                .WithNonce(0)
-                .WithSignature(signature)
-                .TestObject,
-                Build.A.Transaction
-                .WithSenderAddress(TestItem.AddressA)
-                .WithValue(456)
-                .WithNonce(1)
-                .WithSignature(signature)
-                .TestObject
-            };
+                _transaction = Build.A.Transaction
+                    .WithSenderAddress(TestItem.AddressA)
+                    .WithValue(123 + _nonce)
+                    .WithNonce(_nonce)
+                    .WithSignature(signature)
+                    .TestObject;
+
+                _nonce++;
+            }
+
+            _lastParent = parent.Hash;
+
+            return new[] {_transaction!};
         }
     }
 
