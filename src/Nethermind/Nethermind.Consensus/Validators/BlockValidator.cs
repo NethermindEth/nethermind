@@ -306,17 +306,33 @@ public class BlockValidator : IBlockValidator
         return true;
     }
 
+    public static bool ValidateBodyForHeader(BlockHeader header, BlockBody toBeValidated)
+    {
+        return ValidateTxRootMatchesTxs(header, toBeValidated, out _) &&
+            ValidateUnclesHashMatches(header, toBeValidated, out _) &&
+            ValidateWithdrawalsHashMatches(header, toBeValidated, out _);
+    }
+
     public static bool ValidateTxRootMatchesTxs(Block block, out Hash256 txRoot)
     {
-        txRoot = new TxTrie(block.Transactions).RootHash;
-        return txRoot == block.Header.TxRoot;
+        return ValidateTxRootMatchesTxs(block.Header, block.Body, out txRoot);
+    }
+    public static bool ValidateTxRootMatchesTxs(BlockHeader header, BlockBody body, out Hash256 txRoot)
+    {
+        txRoot = new TxTrie(body.Transactions).RootHash;
+        return txRoot == header.TxRoot;
     }
 
     public static bool ValidateUnclesHashMatches(Block block, out Hash256 unclesHash)
     {
-        unclesHash = UnclesHash.Calculate(block);
+        return ValidateUnclesHashMatches(block.Header, block.Body, out unclesHash);
+    }
 
-        return block.Header.UnclesHash == unclesHash;
+    public static bool ValidateUnclesHashMatches(BlockHeader header, BlockBody body, out Hash256 unclesHash)
+    {
+        unclesHash = UnclesHash.Calculate(body.Uncles);
+
+        return header.UnclesHash == unclesHash;
     }
 
     public static bool ValidateWithdrawalsHashMatches(Block block, out Hash256? withdrawalsRoot)

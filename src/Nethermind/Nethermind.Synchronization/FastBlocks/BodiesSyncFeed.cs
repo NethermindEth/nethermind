@@ -192,7 +192,7 @@ namespace Nethermind.Synchronization.FastBlocks
             bool txRootIsValid = rootHash == header.TxRoot;
             bool unclesHashIsValid = UnclesHash.Calculate(blockBody.Uncles) == header.UnclesHash;
             bool withdrawalsRootIsValid = BlockValidator.ValidateWithdrawalsHashMatches(header, blockBody, out _);
-            if (txRootIsValid && unclesHashIsValid && withdrawalsRootIsValid)
+            if (BlockValidator.ValidateBodyForHeader(header, blockBody))
             {
                 block = new Block(header, blockBody);
             }
