@@ -762,9 +762,9 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine
                 ExecuteCode<TTracingInstructions, IsTracing, IsTracing>(vmState, ref stack, gasAvailable, spec) :
                 ExecuteCode<TTracingInstructions, IsTracing, NotTracing>(vmState, ref stack, gasAvailable, spec);
         }
-Empty:
+    Empty:
         return CallResult.Empty;
-OutOfGas:
+    OutOfGas:
         return CallResult.OutOfGasException;
     }
 
@@ -2090,21 +2090,21 @@ OutOfGas:
 
         goto EmptyReturnNoTrace;
 
-// Common exit errors, goto labels to reduce in loop code duplication and to keep loop body smaller
-EmptyReturn:
+    // Common exit errors, goto labels to reduce in loop code duplication and to keep loop body smaller
+    EmptyReturn:
         if (typeof(TTracingInstructions) == typeof(IsTracing)) EndInstructionTrace(gasAvailable, vmState.Memory?.Size ?? 0);
-EmptyReturnNoTrace:
-// Ensure gas is positive before updating state
+        EmptyReturnNoTrace:
+        // Ensure gas is positive before updating state
         if (gasAvailable < 0) goto OutOfGas;
         UpdateCurrentState(vmState, programCounter, gasAvailable, stack.Head);
 #if DEBUG
         debugger?.TryWait(ref vmState, ref programCounter, ref gasAvailable, ref stack.Head);
 #endif
         return CallResult.Empty;
-DataReturn:
+    DataReturn:
         if (typeof(TTracingInstructions) == typeof(IsTracing)) EndInstructionTrace(gasAvailable, vmState.Memory?.Size ?? 0);
-DataReturnNoTrace:
-// Ensure gas is positive before updating state
+        DataReturnNoTrace:
+        // Ensure gas is positive before updating state
         if (gasAvailable < 0) goto OutOfGas;
         UpdateCurrentState(vmState, programCounter, gasAvailable, stack.Head);
 
@@ -2114,30 +2114,30 @@ DataReturnNoTrace:
         }
         return new CallResult((byte[])returnData, null, shouldRevert: isRevert);
 
-OutOfGas:
+    OutOfGas:
         exceptionType = EvmExceptionType.OutOfGas;
         goto ReturnFailure;
-InvalidInstruction:
+    InvalidInstruction:
         exceptionType = EvmExceptionType.BadInstruction;
         goto ReturnFailure;
-StaticCallViolation:
+    StaticCallViolation:
         exceptionType = EvmExceptionType.StaticCallViolation;
         goto ReturnFailure;
-InvalidSubroutineEntry:
+    InvalidSubroutineEntry:
         exceptionType = EvmExceptionType.InvalidSubroutineEntry;
         goto ReturnFailure;
-InvalidSubroutineReturn:
+    InvalidSubroutineReturn:
         exceptionType = EvmExceptionType.InvalidSubroutineReturn;
         goto ReturnFailure;
-StackOverflow:
+    StackOverflow:
         exceptionType = EvmExceptionType.StackOverflow;
         goto ReturnFailure;
-InvalidJumpDestination:
+    InvalidJumpDestination:
         exceptionType = EvmExceptionType.InvalidJumpDestination;
         goto ReturnFailure;
-AccessViolation:
+    AccessViolation:
         exceptionType = EvmExceptionType.AccessViolation;
-ReturnFailure:
+    ReturnFailure:
         return GetFailureReturn<TTracingInstructions>(gasAvailable, exceptionType);
     }
 
