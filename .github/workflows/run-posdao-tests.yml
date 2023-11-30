@@ -2,7 +2,7 @@ name: '[RUN] POSDAO tests'
 
 on:
   push:
-    branches: [master, release/*, kch/make_posdao_more_frequent]    
+    branches: [master, release/*]    
     tags:
     - '*'
   workflow_dispatch:
@@ -34,6 +34,7 @@ jobs:
     needs: prepare-branches
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix: ${{fromJson(needs.prepare-branches.outputs.matrix)}}
     steps:
     - name: Install Linux packages
