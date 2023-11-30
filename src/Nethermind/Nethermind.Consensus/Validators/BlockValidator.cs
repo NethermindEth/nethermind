@@ -321,13 +321,18 @@ public class BlockValidator : IBlockValidator
 
     public static bool ValidateWithdrawalsHashMatches(Block block, out Hash256? withdrawalsRoot)
     {
+        return ValidateWithdrawalsHashMatches(block.Header, block.Body, out withdrawalsRoot);
+    }
+
+    public static bool ValidateWithdrawalsHashMatches(BlockHeader header, BlockBody body, out Hash256? withdrawalsRoot)
+    {
         withdrawalsRoot = null;
-        if (block.Withdrawals == null)
-            return block.Header.WithdrawalsRoot == null;
+        if (body.Withdrawals == null)
+            return header.WithdrawalsRoot == null;
 
-        withdrawalsRoot = new WithdrawalTrie(block.Withdrawals).RootHash;
+        withdrawalsRoot = new WithdrawalTrie(body.Withdrawals).RootHash;
 
-        return block.Header.WithdrawalsRoot == withdrawalsRoot;
+        return header.WithdrawalsRoot == withdrawalsRoot;
     }
 
     private static string Invalid(Block block) =>

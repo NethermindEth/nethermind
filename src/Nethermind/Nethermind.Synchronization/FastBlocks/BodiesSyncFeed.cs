@@ -6,6 +6,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
@@ -190,7 +191,8 @@ namespace Nethermind.Synchronization.FastBlocks
             Hash256 rootHash = TxTrie.CalculateRoot(blockBody.Transactions);
             bool txRootIsValid = rootHash == header.TxRoot;
             bool unclesHashIsValid = UnclesHash.Calculate(blockBody.Uncles) == header.UnclesHash;
-            if (txRootIsValid && unclesHashIsValid)
+            bool withdrawalsRootIsValid = BlockValidator.ValidateWithdrawalsHashMatches(header, blockBody, out _);
+            if (txRootIsValid && unclesHashIsValid && withdrawalsRootIsValid)
             {
                 block = new Block(header, blockBody);
             }
