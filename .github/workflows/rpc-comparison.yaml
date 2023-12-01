@@ -18,7 +18,7 @@ on:
         required: false
       compare_with:
         type: string
-        description: "A space-separated list of additional comparers. If empty, then nothing else will be added to comparision. Possible options: 'INFURA_ENDPOINT', 'NETHERMIND_ARCHIVE_ENDPOINT', 'feature/branch'"
+        description: "A space-separated list of additional comparers. If empty, then nothing else will be added to comparision. Possible options: 'INFURA_ENDPOINT', 'NETHERMIND_ARCHIVE_ENDPOINT'"
         default: ""
         required: false
 
@@ -85,7 +85,7 @@ jobs:
   aggregate_rpcs:
     name: Collect all RPC Urls and pass it further
     runs-on: ubuntu-latest
-    needs: [create_node, create_compare_node, parse_input]
+    needs: [create_main_node, create_compare_node, parse_input]
     outputs:
       rpc_urls: ${{ steps.aggregate_rpcs.outputs.rpc_urls }}
     steps:
@@ -178,10 +178,7 @@ jobs:
   compare:
     name: Compare JSON-RPC responses between clients and versions
     runs-on: ubuntu-latest
-    needs: [wait_for_node_to_sync, parse_input]
-    strategy:
-      matrix:
-        rpc_to_compare: ${{ fromJson(needs.parse_input.outputs.others_matrix) }}
+    needs: [wait_for_node_to_sync]
     steps:
       - uses: actions/checkout@v3
       - name: Install flood
@@ -207,16 +204,26 @@ jobs:
       - name: Test equality of responses
         run: |
           rpc_urls_str="${{ needs.aggregate_rpcs.outputs.rpc_urls }}"
-          IFS=',' read -r -a rpc_urls_array <<< "$rpc_urls_str"
-          
-          nethermind_urls=()
+          IFS=',' read -r -a rpc_urls_array <<< "$rpc_urls_str"; unset IFS
+
+          nethermind_urls_str=()
           for url_entry in "${rpc_urls_array[@]}"; do
             branch="${url_entry%%::*}"  # Extract the branch part
             url="${url_entry#*::}"     # Extract the URL part
             nethermind_urls_str+="nethermind_$branch=$url "
           done
+
+          others_str="${{ github.event.inputs.compare_with }}"
+          IFS=' ' read -r -a others_str_array <<< "$others_str"; unset IFS
+
+          others_prepared_str=()
+          for other in "${others_str_array[@]}"; do
+            others_prepared_str+="$other=${{ secrets[$other] }} "
+          done
           
           # Remove trailing space
           nethermind_urls_str="${nethermind_urls_str% }"
+          others_prepared_str="${others_prepared_str% }"
 
-          flood all $nethermind_urls_str ${{ matrix.other }}=${{ secrets[matrix.other] }} --equality
+          echo "flood all $nethermind_urls_str $others_prepared_str --equality""
+          flood all $nethermind_urls_str $others_prepared_str --equality
