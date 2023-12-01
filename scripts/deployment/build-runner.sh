@@ -22,7 +22,6 @@ do
     -p:IncludeAllContentForSelfExtract=true \
     -p:PublishSingleFile=true
 
-  cp -r configs $output_path/$rid
   mkdir $output_path/$rid/keystore
 
   # A temporary symlink for Linux and macOS to support existing scripts if any

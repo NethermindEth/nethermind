@@ -9,20 +9,20 @@ namespace Nethermind.Evm
     {
         // did not want to use flags here specifically
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static bool IsAnyCreate(this ExecutionType executionType)
-        {
-            return executionType == ExecutionType.Create || executionType == ExecutionType.Create2;
-        }
+        public static bool IsAnyCreate(this ExecutionType executionType) =>
+            executionType is ExecutionType.CREATE or ExecutionType.CREATE2;
     }
 
+    // ReSharper disable InconsistentNaming IdentifierTypo
     public enum ExecutionType
     {
-        Transaction,
-        Call,
-        StaticCall,
-        CallCode,
-        DelegateCall,
-        Create,
-        Create2
+        TRANSACTION,
+        CALL,
+        STATICCALL,
+        CALLCODE,
+        DELEGATECALL,
+        CREATE,
+        CREATE2
     }
+    // ReSharper restore IdentifierTypo InconsistentNaming
 }

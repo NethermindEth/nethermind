@@ -185,14 +185,14 @@ public class CompositeTxTracer : ITxTracer
         }
     }
 
-    public void SetOperationStack(List<string> stackTrace)
+    public void SetOperationStack(TraceStack stack)
     {
         for (int index = 0; index < _txTracers.Count; index++)
         {
             ITxTracer innerTracer = _txTracers[index];
             if (innerTracer.IsTracingStack)
             {
-                innerTracer.SetOperationStack(stackTrace);
+                innerTracer.SetOperationStack(stack);
             }
         }
     }
@@ -233,7 +233,7 @@ public class CompositeTxTracer : ITxTracer
         }
     }
 
-    public void SetOperationMemory(IEnumerable<string> memoryTrace)
+    public void SetOperationMemory(TraceMemory memoryTrace)
     {
         for (int index = 0; index < _txTracers.Count; index++)
         {
@@ -341,14 +341,14 @@ public class CompositeTxTracer : ITxTracer
         }
     }
 
-    public void ReportAction(long gas, UInt256 value, Address @from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false)
+    public void ReportAction(long gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false)
     {
         for (int index = 0; index < _txTracers.Count; index++)
         {
             ITxTracer innerTracer = _txTracers[index];
             if (innerTracer.IsTracingActions)
             {
-                innerTracer.ReportAction(gas, value, @from, to, input, callType, isPrecompileCall);
+                innerTracer.ReportAction(gas, value, from, to, input, callType, isPrecompileCall);
             }
         }
     }
@@ -377,14 +377,14 @@ public class CompositeTxTracer : ITxTracer
         }
     }
 
-    public void ReportActionError(EvmExceptionType evmExceptionType, long gasLeft)
+    public void ReportActionRevert(long gasLeft, byte[] output)
     {
         for (int index = 0; index < _txTracers.Count; index++)
         {
             ITxTracer innerTracer = _txTracers[index];
             if (innerTracer.IsTracingActions)
             {
-                innerTracer.ReportActionError(evmExceptionType, gasLeft);
+                innerTracer.ReportActionRevert(gasLeft, output);
             }
         }
     }
@@ -482,6 +482,14 @@ public class CompositeTxTracer : ITxTracer
             {
                 innerTracer.ReportFees(fees, burntFees);
             }
+        }
+    }
+
+    public void Dispose()
+    {
+        for (int index = 0; index < _txTracers.Count; index++)
+        {
+            _txTracers[index].Dispose();
         }
     }
 }

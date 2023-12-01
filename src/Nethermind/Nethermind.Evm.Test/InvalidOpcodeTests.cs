@@ -132,7 +132,7 @@ namespace Nethermind.Evm.Test
 
         private const string InvalidOpCodeErrorMessage = "BadInstruction";
 
-        private ILogManager _logManager;
+        private ILogManager _logManager = LimboLogs.Instance;
 
         protected override ILogManager GetLogManager()
         {
