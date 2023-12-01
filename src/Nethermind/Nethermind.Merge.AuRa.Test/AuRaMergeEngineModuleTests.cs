@@ -4,9 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Threading;
 using System.Threading.Tasks;
-using System.Transactions;
 using FluentAssertions;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
@@ -29,7 +27,6 @@ using Nethermind.Core.Timers;
 using Nethermind.Crypto;
 using Nethermind.Facade.Eth;
 using Nethermind.Int256;
-using Nethermind.JsonRpc;
 using Nethermind.Logging;
 using Nethermind.Merge.AuRa.Shutter;
 using Nethermind.Merge.AuRa.Withdrawals;
@@ -52,6 +49,9 @@ namespace Nethermind.Merge.AuRa.Test;
 
 public class AuRaMergeEngineModuleTests : EngineModuleTests
 {
+    private int _blocksProduced;
+    private ExecutionPayload? _parentPayload;
+
     protected override MergeTestBlockchain CreateBaseBlockchain(
         IMergeConfig? mergeConfig = null,
         IPayloadPreparationService? mockedPayloadService = null,
@@ -99,31 +99,19 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
         return base.Can_apply_withdrawals_correctly(input);
     }
 
-    private async Task<Transaction[]> BuildBlock(MergeTestBlockchain chain, IEngineRpcModule rpc, int id)
+    private async Task<ValueTuple<int, Transaction[]>> ProduceBlockWithTransactions(IEngineRpcModule rpc, MergeTestBlockchain chain, uint count)
     {
-        Block parent = chain.BlockTree.Head!;
+        int id = _blocksProduced;
 
-        // we added transactions
-        PayloadAttributes payloadAttributes = new PayloadAttributes
-        {
-            Timestamp = (ulong)DateTime.UtcNow.AddDays(id).Ticks,
-            PrevRandao = TestItem.KeccakA,
-            SuggestedFeeRecipient = Address.Zero
-        };
-        string? payloadId = rpc.engine_forkchoiceUpdatedV1(
-                new ForkchoiceStateV1(parent.GetOrCalculateHash(), Keccak.Zero, parent.GetOrCalculateHash()),
-                payloadAttributes)
-            .Result.Data.PayloadId!;
+        _parentPayload!.TryGetBlock(out Block? parentBlock);
+        chain.AddTransactions(BuildTransactions(chain, parentBlock!.CalculateHash(), TestItem.PrivateKeys[id], TestItem.AddressF, count, id, out _, out _));
 
-        chain.AddTransactions(BuildTransactions(chain, parent.CalculateHash(), TestItem.PrivateKeys[id], TestItem.AddressF, 3, id, out _, out _));
+        IReadOnlyList<ExecutionPayload> executionPayloads = await ProduceBranchV1(rpc, chain, 1, _parentPayload, true);
 
-        ExecutionPayload getPayloadResult = (await rpc.engine_getPayloadV1(Bytes.FromHexString(payloadId))).Data!;
-        getPayloadResult.Should().NotBeNull();
+        _parentPayload = executionPayloads[0];
+        _blocksProduced++;
 
-        ResultWrapper<PayloadStatusV1> finalResult = await rpc.engine_newPayloadV1(getPayloadResult);
-        finalResult.Data.Status.Should().Be(PayloadStatus.Valid);
-
-        return getPayloadResult.GetTransactions();
+        return (id, _parentPayload.GetTransactions());
     }
 
     [Test]
@@ -134,37 +122,48 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
 
         // creating chain with 3 blocks
         IReadOnlyList<ExecutionPayload> executionPayloads = await ProduceBranchV1(rpc, chain, 3, CreateParentBlockRequestOnHead(chain.BlockTree), true);
+        _parentPayload = executionPayloads.Last();
 
+        // should contain shutter transactions
         executionPayloads[0].GetTransactions().Should().HaveCount(1);
+        executionPayloads[0].GetTransactions()[0].Value.Should().Be(123);
+
         executionPayloads[1].GetTransactions().Should().HaveCount(1);
+        executionPayloads[1].GetTransactions()[0].Value.Should().Be(124);
+
         executionPayloads[2].GetTransactions().Should().HaveCount(1);
+        executionPayloads[2].GetTransactions()[0].Value.Should().Be(125);
 
-        TimeSpan delay = TimeSpan.FromMilliseconds(10);
-        TimeSpan timePerSlot = 4 * delay;
-        StoringBlockImprovementContextFactory improvementContextFactory = new(new BlockImprovementContextFactory(chain.BlockProductionTrigger, TimeSpan.FromSeconds(chain.MergeConfig.SecondsPerSlot)));
-        chain.PayloadPreparationService = new PayloadPreparationService(
-            chain.PostMergeBlockProducer!,
-            improvementContextFactory,
-            TimerFactory.Default,
-            chain.LogManager,
-            timePerSlot);
+        // build blocks with transactions from both shutter and TxPool
+        // id is used as value to differentiate between transactions
+        (int id31, Transaction[] transactions31) = await ProduceBlockWithTransactions(rpc, chain, 3);
+        transactions31.Should().HaveCount(4);
+        transactions31[0].Value.Should().Be(126);
+        transactions31[1].Value.Should().Be(id31.GWei());
+        transactions31[2].Value.Should().Be(id31.GWei());
+        transactions31[3].Value.Should().Be(id31.GWei());
 
-        // to fix:
-        // old transactions from txpool should not be included in new execution payloads
-        Transaction[] resultBlock31 = await BuildBlock(chain, rpc, 0);
-        resultBlock31.Should().HaveCount(1);
+        (int id32, Transaction[] transactions32) = await ProduceBlockWithTransactions(rpc, chain, 3);
+        transactions32.Should().HaveCount(4);
+        transactions32[0].Value.Should().Be(127);
+        transactions32[1].Value.Should().Be(id32.GWei());
+        transactions32[2].Value.Should().Be(id32.GWei());
+        transactions32[3].Value.Should().Be(id32.GWei());
 
-        Transaction[] resultBlock32 = await BuildBlock(chain, rpc, 1);
-        resultBlock32.Should().HaveCount(4);
+        (int id33, Transaction[] transactions33) = await ProduceBlockWithTransactions(rpc, chain, 1);
+        transactions33.Should().HaveCount(2);
+        transactions33[0].Value.Should().Be(128);
+        transactions33[1].Value.Should().Be(id33.GWei());
 
-        Transaction[] resultBlock33 = await BuildBlock(chain, rpc, 2);
-        resultBlock33.Should().HaveCount(7);
+        (int id34, Transaction[] transactions34) = await ProduceBlockWithTransactions(rpc, chain, 0);
+        transactions34.Should().HaveCount(1);
+        transactions34[0].Value.Should().Be(129);
 
-        Transaction[] resultBlock34 = await BuildBlock(chain, rpc, 3);
-        resultBlock34.Should().HaveCount(10);
-
-        Transaction[] resultBlock35 = await BuildBlock(chain, rpc, 4);
-        resultBlock35.Should().HaveCount(13);
+        (int id35, Transaction[] transactions35) = await ProduceBlockWithTransactions(rpc, chain, 2);
+        transactions35.Should().HaveCount(3);
+        transactions35[0].Value.Should().Be(130);
+        transactions35[1].Value.Should().Be(id35.GWei());
+        transactions35[2].Value.Should().Be(id35.GWei());
     }
 
     class ShutterTxSource : ITxSource
