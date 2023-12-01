@@ -220,7 +220,7 @@ jobs:
     - name: Prepare docker tag
       id: prepare_ref
       run: |
-        REF_NAME=${{ github.ref }}
+        REF_NAME=${{ inputs.nethermind_repo_ref || github.ref }}
         CLEAN_REF=$(echo "${REF_NAME/refs\/heads\//}" | sed 's/[^a-zA-Z0-9._-]/-/g')
 
         echo "CLEAN_REF=$CLEAN_REF" >> $GITHUB_ENV

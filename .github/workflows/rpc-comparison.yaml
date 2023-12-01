@@ -59,7 +59,6 @@ jobs:
           echo "others_matrix=$(jq -c . others_matrix.json)" >> $GITHUB_OUTPUT
 
   create_main_node:
-    needs: parse_input
     name: Create node from current branch
     uses: ./.github/workflows/run-a-single-node-from-branch.yml
     secrets: inherit
@@ -71,7 +70,6 @@ jobs:
       custom_run_id: ${{ github.run_id }}
 
   create_compare_node:
-    needs: parse_input
     name: Create node from branch to compare
     uses: ./.github/workflows/run-a-single-node-from-branch.yml
     #if: inputs.branch_to_compare != ''
