@@ -72,7 +72,7 @@ jobs:
 
   create_compare_node:
     needs: parse_input
-    name: Create node from current branch
+    name: Create node from branch to compare
     uses: ./.github/workflows/run-a-single-node-from-branch.yml
     #if: inputs.branch_to_compare != ''
     secrets: inherit
