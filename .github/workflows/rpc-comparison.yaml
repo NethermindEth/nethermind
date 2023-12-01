@@ -11,7 +11,7 @@ on:
         description: "A comma-separated list of ips allowed to connect to the node"
         default: ''
         required: false
-      what_to_compare:
+      branch_to_compare:
         type: string
         description: "A space-separated list of branches. If empty, then selected branch will be used. If multiple specified, those will be compared to themselves."
         default: ""
@@ -26,7 +26,6 @@ jobs:
   parse_input:
     runs-on: ubuntu-latest
     outputs:
-      branch_matrix: ${{ steps.set-matrix.outputs.branch_matrix }}
       others_matrix: ${{ steps.set-matrix.outputs.others_matrix }}
     steps:
       - name: Install jq
@@ -35,19 +34,9 @@ jobs:
       - name: Set matrix for branches
         id: set-matrix
         run: |
-          #what_to_compare="${{ github.event.inputs.what_to_compare }}"
           #compare_with="${{ github.event.inputs.compare_with }}"
 
-          what_to_compare="master"
           compare_with="INFURA_ENDPOINT"
-
-          # Determine the primary branches to compare
-          if [[ "$what_to_compare" == "" ]]; then
-            current_branch=${GITHUB_REF#refs/heads/}
-            branches=("$current_branch")
-          else
-            readarray -t branches <<< "$what_to_compare"
-          fi
 
           # Add additional comparers if specified
           if [[ "$compare_with" != "" ]]; then
@@ -62,69 +51,62 @@ jobs:
             done
           fi
 
-          # Convert array to JSON object with named array
-          printf -v joinedbranch ', "%s"' "${branches[@]}"
-          BRANCH_MATRIX="{\"branch\": [${joinedbranch:2}]}"  # Ensure the key name 'branch' is used
-
           printf -v joinedothers ', "%s"' "${others[@]}"
           OTHERS_MATRIX="{\"other\": [${joinedothers:2}]}"  # Ensure the key name 'other' is used
-
-          echo $BRANCH_MATRIX > branch_matrix.json
-          cat branch_matrix.json
-          echo "branch_matrix=$(jq -c . branch_matrix.json)" >> $GITHUB_OUTPUT
 
           echo $OTHERS_MATRIX > others_matrix.json
           cat others_matrix.json
           echo "others_matrix=$(jq -c . others_matrix.json)" >> $GITHUB_OUTPUT
 
-  create_node:
+  create_main_node:
     needs: parse_input
     name: Create node from current branch
     uses: ./.github/workflows/run-a-single-node-from-branch.yml
     secrets: inherit
-    strategy:
-      matrix: ${{ fromJson(needs.parse_input.outputs.branch_matrix) }}
     with:
       additional_options: '{"timeout":"1", "default_dockerfile":"Dockerfile", "default_dockerfile_build_type":"release", "ssh_keys":"", "allowed_ips":"${{ inputs.allowed_ips }}"}' 
       non_validator_mode: false
       additional_nethermind_flags: Pruning.Mode=None
-      nethermind_repo_ref: ${{ matrix.branch }}
+      nethermind_repo_ref: ${{ github.ref }}
+      custom_run_id: ${{ github.run_id }}
+
+  create_compare_node:
+    needs: parse_input
+    name: Create node from current branch
+    uses: ./.github/workflows/run-a-single-node-from-branch.yml
+    secrets: inherit
+    with:
+      additional_options: '{"timeout":"1", "default_dockerfile":"Dockerfile", "default_dockerfile_build_type":"release", "ssh_keys":"", "allowed_ips":"${{ inputs.allowed_ips }}"}' 
+      non_validator_mode: false
+      additional_nethermind_flags: Pruning.Mode=None
+      nethermind_repo_ref: master#${{ inputs.branch_to_compare }}
       custom_run_id: ${{ github.run_id }}
 
   aggregate_rpcs:
     name: Collect all RPC Urls and pass it further
     runs-on: ubuntu-latest
-    needs: [create_node, parse_input]
+    needs: [create_node, create_compare_node, parse_input]
     outputs:
       rpc_urls: ${{ steps.aggregate_rpcs.outputs.rpc_urls }}
     steps:
-      - name: Retrieve Artifact Names
-        id: retrieve_artifacts
-        run: |
-          echo "Installing jq..."
-          sudo apt-get install -y jq
 
-          artifact_names=""
-          branches=$(echo '${{ needs.parse_input.outputs.branch_matrix }}' | jq -r '.branch[]')
-          for branch in $branches; do
-            artifact_name="rpc-url::$branch::${{ github.run_id }}"
-            artifact_names+="$artifact_name "
-          done
-          artifact_names=${artifact_names% }
-          echo $artifact_names
-          echo "artifact_names=$artifact_names" >> $GITHUB_OUTPUT
-
-      - name: Download Artifacts
+      - name: Download RPC Artifact for current branch
         uses: actions/download-artifact@v3
         with:
-          name: ${{ steps.retrieve_artifacts.outputs.artifact_names }}
+          name: rpc-url___${{ github.ref }}___${{ github.run_id }}
+
+      - name: Download RPC Artifact for branch to comapre
+        if: inputs.branch_to_compare != ''
+        uses: actions/download-artifact@v3
+        with:
+          name: rpc-url___master___${{ github.run_id }} #rpc-url___${{ inputs.branch_to_compare }}___${{ github.run_id }}
 
       - name: Process Artifacts Content
         run: |
           rpc_urls=""
           for file in artifacts/*; do
             if [ -f "$file" ]; then
-              branch=$(basename $file | cut -d '::' -f 3)
+              branch=$(basename $file | cut -d '___' -f 3)
               url_content=$(cat "$file")
               rpc_urls+="$branch::$url_content,"
             fi

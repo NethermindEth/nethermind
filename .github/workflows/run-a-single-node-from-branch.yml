@@ -292,5 +292,5 @@ jobs:
       uses: actions/upload-artifact@v3
       if: inputs.custom_run_id != ''
       with:
-        name: rpc-url::${{ inputs.nethermind_repo_ref }}::${{ inputs.custom_run_id }}
+        name: rpc-url___${{ inputs.nethermind_repo_ref }}___${{ inputs.custom_run_id }}
         path: rpc_url_${{ inputs.nethermind_repo_ref }}_${{ inputs.custom_run_id }}.txt
