@@ -399,33 +399,33 @@ namespace Nethermind.Trie
         public virtual byte[]? Get(ReadOnlySpan<byte> rawKey, Hash256? rootHash = null)
         {
             //for diagnostics
-            if (Capability == TrieNodeResolverCapability.Path)
-            {
-                byte[] pathValue = GetByPath(rawKey, out PathReadDiagData pathDiagData, rootHash);
-                byte[] internalValue = GetInternal(rawKey, out InternalReadDiagData internalDiagData, rootHash);
-                if (!Bytes.SpanEqualityComparer.Equals(internalValue, pathValue))
-                {
-                    if (_logger.IsWarn)
-                    {
-                        _logger.Warn($"Difference for key: {rawKey.ToHexString()} | ST prefix: {StoreNibblePathPrefix?.ToHexString()} | internal: {internalValue?.ToHexString()} | path value: {pathValue?.ToHexString()}");
-                        _logger.Warn($"Path read for {pathDiagData.FullPath.ToHexString()} | Parent state root: {pathDiagData.ParentStateRoot} | loaded from db: {pathDiagData.LoadedFromDb} | dirty read (bloom): {pathDiagData.Dirty} | self-destruct: {pathDiagData.SelfDestruct}");
-                        _logger.Warn($"Internal read stack:");
-                        foreach (TrieNode node in internalDiagData.Stack)
-                        {
-                            _logger.Warn($"Node {node}");
-                        }
-                    }
-                    return internalValue;
-                }
-                return pathValue;
-            }
-            return GetInternal(rawKey, out _, rootHash);
-            //return Capability switch
+            //if (Capability == TrieNodeResolverCapability.Path)
             //{
-            //    TrieNodeResolverCapability.Hash => GetInternal(rawKey, rootHash),
-            //    TrieNodeResolverCapability.Path => TrieStore.CanAccessByPath() ? GetByPath(rawKey, rootHash) : GetInternal(rawKey, rootHash),
-            //    _ => throw new ArgumentOutOfRangeException()
-            //};
+            //    byte[] pathValue = GetByPath(rawKey, out PathReadDiagData pathDiagData, rootHash);
+            //    byte[] internalValue = GetInternal(rawKey, out InternalReadDiagData internalDiagData, rootHash);
+            //    if (!Bytes.SpanEqualityComparer.Equals(internalValue, pathValue))
+            //    {
+            //        if (_logger.IsWarn)
+            //        {
+            //            _logger.Warn($"Difference for key: {rawKey.ToHexString()} | ST prefix: {StoreNibblePathPrefix?.ToHexString()} | internal: {internalValue?.ToHexString()} | path value: {pathValue?.ToHexString()}");
+            //            _logger.Warn($"Path read for {pathDiagData.FullPath.ToHexString()} | Parent state root: {pathDiagData.ParentStateRoot} | loaded from db: {pathDiagData.LoadedFromDb} | dirty read (bloom): {pathDiagData.Dirty} | self-destruct: {pathDiagData.SelfDestruct}");
+            //            _logger.Warn($"Internal read stack:");
+            //            foreach (TrieNode node in internalDiagData.Stack)
+            //            {
+            //                _logger.Warn($"Node {node}");
+            //            }
+            //        }
+            //        return internalValue;
+            //    }
+            //    return pathValue;
+            //}
+            //return GetInternal(rawKey, out _, rootHash);
+            return Capability switch
+            {
+                TrieNodeResolverCapability.Hash => GetInternal(rawKey, out _, rootHash),
+                TrieNodeResolverCapability.Path => GetByPath(rawKey, out _, rootHash),
+                _ => throw new ArgumentOutOfRangeException()
+            };
         }
 
         private byte[]? GetByPath(ReadOnlySpan<byte> rawKey, out PathReadDiagData diagData, Hash256? rootHash = null)
@@ -460,23 +460,23 @@ namespace Nethermind.Trie
             if (node.NodeType == NodeType.Unknown)
             {
                 //check the root of the persisted nodes
-                if (rootHash is not null)
-                {
-                    Hash256? persistedRootHash;
-                    if (RootRef?.IsPersisted == true && RootRef?.NodeType == NodeType.Unknown)
-                    {
-                        RootRef.ResolveNode(TrieStore);
-                        RootRef.ResolveKey(TrieStore, true);
-                        persistedRootHash = RootRef.Keccak;
-                    }
-                    else
-                    {
-                        persistedRootHash = GetPersistedRoot();
-                    }
+                //if (rootHash is not null)
+                //{
+                //    Hash256? persistedRootHash;
+                //    if (RootRef?.IsPersisted == true && RootRef?.NodeType == NodeType.Unknown)
+                //    {
+                //        RootRef.ResolveNode(TrieStore);
+                //        RootRef.ResolveKey(TrieStore, true);
+                //        persistedRootHash = RootRef.Keccak;
+                //    }
+                //    else
+                //    {
+                //        persistedRootHash = GetPersistedRoot();
+                //    }
 
-                    if (rootHash != persistedRootHash)
-                        throw new InvalidOperationException($"Attempting to get data for state having different root than persisted. Trie type: {TrieType} | Data requested: {rawKey.ToHexString()} | Root requested: {rootHash} | Root at DB: {RootRef?.Keccak}");
-                }
+                //    if (rootHash != persistedRootHash)
+                //        throw new InvalidOperationException($"Attempting to get data for state having different root than persisted. Trie type: {TrieType} | Data requested: {rawKey.ToHexString()} | Root requested: {rootHash} | Root at DB: {RootRef?.Keccak}");
+                //}
 
                 byte[]? nodeData = TrieStore.TryLoadRlp(nibbleBytes, null);
                 if (nodeData is null) return null;
