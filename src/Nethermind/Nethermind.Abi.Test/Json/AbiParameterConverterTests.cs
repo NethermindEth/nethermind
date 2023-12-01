@@ -77,7 +77,7 @@ namespace Nethermind.Abi.Test.Json
             Utf8JsonReader jsonReader = new Utf8JsonReader(json);
             try
             {
-                var result = converter.Read(ref jsonReader, typeof(AbiParameter), null);
+                var result = converter.Read(ref jsonReader, typeof(AbiParameter), JsonSerializerOptions.Default);
                 var expectation = new AbiParameter() { Name = "theName", Type = expectedType };
                 expectedException.Should().BeNull();
                 result.Should().BeEquivalentTo(expectation);

@@ -19,8 +19,7 @@ namespace Ethereum.Test.Base
     {
         public static object PrepareInput(object input)
         {
-            string s = input as string;
-            if (s != null && s.StartsWith("#"))
+            if (input is string s && s.StartsWith("#"))
             {
                 BigInteger bigInteger = BigInteger.Parse(s.Substring(1));
                 input = bigInteger;
@@ -30,8 +29,7 @@ namespace Ethereum.Test.Base
 
             if (token.ValueKind == JsonValueKind.Array)
             {
-                int length = token.GetArrayLength();
-                object[] array = new object[length];
+                object[] array = new object[token.GetArrayLength()];
                 for (int i = 0; i < array.Length; i++)
                 {
                     array[i] = PrepareInput(token[i]);
@@ -42,7 +40,7 @@ namespace Ethereum.Test.Base
 
             if (token.ValueKind == JsonValueKind.String)
             {
-                return token.GetString();
+                return token.GetString()!;
             }
 
             if (token.ValueKind == JsonValueKind.Number)

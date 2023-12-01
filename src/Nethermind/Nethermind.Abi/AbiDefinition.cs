@@ -99,8 +99,8 @@ namespace Nethermind.Blockchain.Contracts.Json
             AbiDefinition value = new();
             if (!JsonDocument.TryParseValue(ref reader, out JsonDocument? document))
                 return null;
-            JsonElement topLevelToken, abiToken;
-            topLevelToken = document.RootElement;
+            JsonElement abiToken;
+            JsonElement topLevelToken = document.RootElement;
             if (topLevelToken.ValueKind == JsonValueKind.Object)
             {
                 abiToken = topLevelToken.GetProperty("abi"u8);
@@ -113,6 +113,7 @@ namespace Nethermind.Blockchain.Contracts.Json
             {
                 abiToken = topLevelToken;
             }
+
             foreach (JsonElement definitionToken in abiToken.EnumerateArray())
             {
                 if (!definitionToken.TryGetProperty("type"u8, out JsonElement typeToken))
@@ -137,6 +138,7 @@ namespace Nethermind.Blockchain.Contracts.Json
                         break;
                 }
             }
+
             return value;
         }
     }

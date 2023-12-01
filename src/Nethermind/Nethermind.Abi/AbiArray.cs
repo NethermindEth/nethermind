@@ -33,8 +33,7 @@ public class AbiArray : AbiType
 
     public override (object, int) Decode(byte[] data, int position, bool packed)
     {
-        UInt256 length;
-        (length, position) = UInt256.DecodeUInt(data, position, packed);
+        (UInt256 length, position) = UInt256.DecodeUInt(data, position, packed);
         return DecodeSequence(ElementType.CSharpType, (int)length, ElementTypes, data, packed, position);
     }
 
@@ -54,12 +53,12 @@ public class AbiArray : AbiType
                 break;
             case JsonElement element when element.ValueKind == JsonValueKind.Array:
                 length = element.GetArrayLength();
-                object[] jarray = new object[length];
+                object[] jArray = new object[length];
                 for (int i = 0; i < length; i++)
                 {
-                    jarray[i] = element[i];
+                    jArray[i] = element[i];
                 }
-                encodedItems = EncodeSequence(length, ElementTypes, jarray, packed, 1);
+                encodedItems = EncodeSequence(length, ElementTypes, jArray, packed, 1);
                 break;
             default:
                 throw new AbiException(AbiEncodingExceptionMessage);
