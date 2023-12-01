@@ -114,9 +114,12 @@ namespace Nethermind.Init.Steps
                 //setApi.MainStateDbWithCache = getApi.DbProvider.PathStateDb;
                 //stateWitnessedBy = setApi.MainStateDbWithCache.WitnessedBy(witnessCollector);
 
+                ByPathConstantPersistenceStrategy persistenceStrategy = new(getApi.DbProvider.PathStateDb as IByPathStateDb, getApi.BlockTree!, pathStateConfig.InMemHistoryBlocks, pathStateConfig.PersistenceInterval, getApi.LogManager);
+                _api.RegisterForBlockFinalized(persistenceStrategy.FinalizationManager_BlocksFinalized);
+
                 setApi.TrieStore = trieStore = new TrieStoreByPath(
                     getApi.DbProvider.PathStateDb,
-                    new ByPathConstantPersistenceStrategy(getApi.DbProvider.PathStateDb as IByPathStateDb, getApi.BlockTree!, pathStateConfig.InMemHistoryBlocks, pathStateConfig.PersistenceInterval, getApi.LogManager),
+                    persistenceStrategy,
                     getApi.LogManager);
             }
             else

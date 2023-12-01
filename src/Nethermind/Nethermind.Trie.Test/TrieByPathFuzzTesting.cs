@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Threading.Tasks.Dataflow;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -17,6 +18,7 @@ using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
+using Nethermind.State.Trie;
 using Nethermind.Trie.Pruning;
 using NUnit.Framework;
 
@@ -95,7 +97,8 @@ public class TrieByPathFuzzTesting
         MemColumnsDb<StateColumns> memDb = new();
 
         var codeDb = new MemDb();
-        using TrieStoreByPath pathTrieStore = new(memDb, Persist.IfBlockOlderThan(lookupLimit), _logManager);
+        TestPathPersistanceStrategy strategy = new(lookupLimit, lookupLimit / 2);
+        using TrieStoreByPath pathTrieStore = new(memDb, strategy, _logManager);
         WorldState pathStateProvider = new(pathTrieStore, new MemDb(), _logManager);
 
         using TrieStore trieStore = new(new MemDb(), No.Pruning, Persist.IfBlockOlderThan(lookupLimit), _logManager);
@@ -206,6 +209,13 @@ public class TrieByPathFuzzTesting
             Assert.That(pathStateProvider.StateRoot, Is.EqualTo(stateProvider.StateRoot), $"State root different at block {blockNumber}");
 
             rootQueue.Enqueue(stateProvider.StateRoot);
+
+            //finalize block
+            if (_random.Next(10) <= 2)
+            {
+                strategy.AddFinalized(blockNumber, pathStateProvider.StateRoot);
+            }
+
             streamWriter.WriteLine("#");
         }
 
@@ -264,5 +274,48 @@ public class TrieByPathFuzzTesting
         string local = dumper.ToString();
 
         Assert.That(local, Is.EqualTo(remote), $"{remote}{Environment.NewLine}{local}");
+    }
+
+    private class TestPathPersistanceStrategy : IByPathPersistenceStrategy
+    {
+        private int _delay;
+        private int _interval;
+        private long? _lastPersistedBlockNumber;
+        public long? LastPersistedBlockNumber { get => _lastPersistedBlockNumber; set => _lastPersistedBlockNumber = value; }
+
+        private SortedList<long, BlockHeader> _finalizedBlocks;
+
+        public TestPathPersistanceStrategy(int delay, int interval)
+        {
+            _delay = delay;
+            _interval = interval;
+            _finalizedBlocks = new SortedList<long, BlockHeader>();
+        }
+
+        public void AddFinalized(long blockNumber, Hash256 finalizedStateRoot)
+        {
+            BlockHeader blockHeader = new(Keccak.EmptyTreeHash, Keccak.EmptyTreeHash, TestItem.AddressF, 0, blockNumber, 0, 0, null)
+            {
+                StateRoot = finalizedStateRoot
+            };
+            _finalizedBlocks.Add(blockNumber, blockHeader);
+        }
+
+        public (long blockNumber, Hash256 stateRoot)? GetBlockToPersist(long currentBlockNumber, Hash256 currentStateRoot)
+        {
+            long distanceToPersisted = currentBlockNumber - ((_lastPersistedBlockNumber ?? 0) + _delay);
+
+            if (distanceToPersisted > 0 && distanceToPersisted % _interval == 0)
+            {
+                long targetBlockNumber = currentBlockNumber - _delay;
+
+                for (int i = _finalizedBlocks.Count - 1; i >= 0; i--)
+                {
+                    if (_finalizedBlocks.GetKeyAtIndex(i) <= targetBlockNumber)
+                        return (_finalizedBlocks.GetValueAtIndex(i).Number, _finalizedBlocks.GetValueAtIndex(i).StateRoot);
+                }
+            }
+            return null;
+        }
     }
 }

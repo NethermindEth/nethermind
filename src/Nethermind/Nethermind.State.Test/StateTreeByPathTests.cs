@@ -502,7 +502,7 @@ namespace Nethermind.Store.Test
         public void History_update_one_block()
         {
             MemColumnsDb<StateColumns> db = new MemColumnsDb<StateColumns>();
-            StateTreeByPath tree = new(new TrieStoreByPath(db, Persist.IfBlockOlderThan(10), LimboLogs.Instance), LimboLogs.Instance);
+            StateTreeByPath tree = new(new TrieStoreByPath(db, ByPathPersist.IfBlockOlderThan(10), LimboLogs.Instance), LimboLogs.Instance);
             tree.Set(TestItem.AddressA, _account0);
             tree.Commit(0);
             Hash256 root0 = tree.RootHash;
@@ -520,7 +520,7 @@ namespace Nethermind.Store.Test
         public void History_update_one_block_before_null()
         {
             MemColumnsDb<StateColumns> db = new MemColumnsDb<StateColumns>();
-            StateTreeByPath tree = new(new TrieStoreByPath(db, Persist.IfBlockOlderThan(10), LimboLogs.Instance), LimboLogs.Instance);
+            StateTreeByPath tree = new(new TrieStoreByPath(db, ByPathPersist.IfBlockOlderThan(10), LimboLogs.Instance), LimboLogs.Instance);
             tree.Set(TestItem.AddressB, _account0);
             tree.Commit(0);
             Hash256 root0 = tree.RootHash;
@@ -542,7 +542,7 @@ namespace Nethermind.Store.Test
         public void History_update_non_continous_blocks()
         {
             MemColumnsDb<StateColumns> db = new MemColumnsDb<StateColumns>();
-            StateTreeByPath tree = new(new TrieStoreByPath(db, Persist.IfBlockOlderThan(10), LimboLogs.Instance), LimboLogs.Instance);
+            StateTreeByPath tree = new(new TrieStoreByPath(db, ByPathPersist.IfBlockOlderThan(10), LimboLogs.Instance), LimboLogs.Instance);
             tree.Set(TestItem.AddressA, _account0);
             tree.Commit(0);
             Hash256 root0 = tree.RootHash;
@@ -569,7 +569,7 @@ namespace Nethermind.Store.Test
         public void History_get_cached_from_root_with_no_changes()
         {
             MemColumnsDb<StateColumns> db = new MemColumnsDb<StateColumns>();
-            StateTreeByPath tree = new(new TrieStoreByPath(db, Persist.IfBlockOlderThan(5), LimboLogs.Instance), LimboLogs.Instance);
+            StateTreeByPath tree = new(new TrieStoreByPath(db, ByPathPersist.IfBlockOlderThan(5), LimboLogs.Instance), LimboLogs.Instance);
             tree.Set(TestItem.AddressA, _account0);
             tree.Set(TestItem.AddressB, _account1);
             tree.Set(TestItem.AddressC, _account2);
@@ -597,7 +597,7 @@ namespace Nethermind.Store.Test
         public void History_get_on_block_when_account_not_existed()
         {
             MemColumnsDb<StateColumns> db = new MemColumnsDb<StateColumns>();
-            StateTreeByPath tree = new(new TrieStoreByPath(db, Persist.IfBlockOlderThan(10), LimboLogs.Instance), LimboLogs.Instance);
+            StateTreeByPath tree = new(new TrieStoreByPath(db, ByPathPersist.IfBlockOlderThan(10), LimboLogs.Instance), LimboLogs.Instance);
             tree.Set(TestItem.AddressA, _account0);
             tree.Commit(0);
             Hash256 root0 = tree.RootHash;
@@ -619,7 +619,7 @@ namespace Nethermind.Store.Test
         public void History_delete_when_max_number_blocks_exceeded()
         {
             MemColumnsDb<StateColumns> db = new MemColumnsDb<StateColumns>();
-            StateTreeByPath tree = new(new TrieStoreByPath(db, Persist.IfBlockOlderThan(10), LimboLogs.Instance), LimboLogs.Instance);
+            StateTreeByPath tree = new(new TrieStoreByPath(db, ByPathPersist.IfBlockOlderThan(10), LimboLogs.Instance), LimboLogs.Instance);
             tree.Set(TestItem.AddressA, _account0);
             tree.Commit(0);
             Hash256 root0 = tree.RootHash;
@@ -709,7 +709,7 @@ namespace Nethermind.Store.Test
             ILogger logger = logManager.GetLogger("");
 
             MemColumnsDb<StateColumns> pathDb = new MemColumnsDb<StateColumns>();
-            TrieStoreByPath pathStore = new(pathDb, Persist.IfBlockOlderThan(10), LimboLogs.Instance);
+            TrieStoreByPath pathStore = new(pathDb, ByPathPersist.IfBlockOlderThan(10), LimboLogs.Instance);
             StateTreeByPath tree = new(pathStore, LimboLogs.Instance);
 
             MemDb db = new MemDb();
@@ -790,7 +790,7 @@ namespace Nethermind.Store.Test
             ILogger logger = logManager.GetLogger("");
 
             MemColumnsDb<StateColumns> pathDb = new MemColumnsDb<StateColumns>();
-            TrieStoreByPath pathStore = new(pathDb, Persist.IfBlockOlderThan(2), logManager);
+            TrieStoreByPath pathStore = new(pathDb, ByPathPersist.IfBlockOlderThan(2), logManager);
             StateTreeByPath tree = new(pathStore, LimboLogs.Instance);
             MemDb innerStateDb = (MemDb)pathDb.GetColumnDb(StateColumns.State);
 
@@ -821,7 +821,7 @@ namespace Nethermind.Store.Test
             ILogger logger = logManager.GetLogger("");
 
             MemColumnsDb<StateColumns> pathDb = new MemColumnsDb<StateColumns>();
-            TrieStoreByPath pathStore = new(pathDb, Persist.IfBlockOlderThan(2), logManager);
+            TrieStoreByPath pathStore = new(pathDb, ByPathPersist.IfBlockOlderThan(2), logManager);
             StateTreeByPath tree = new(pathStore, LimboLogs.Instance);
             MemDb innerStateDb = (MemDb)pathDb.GetColumnDb(StateColumns.State);
 
@@ -862,7 +862,7 @@ namespace Nethermind.Store.Test
             ILogger logger = logManager.GetLogger("");
 
             MemColumnsDb<StateColumns> pathDb = new MemColumnsDb<StateColumns>();
-            TrieStoreByPath pathStore = new(pathDb, Persist.IfBlockOlderThan(4), logManager);
+            TrieStoreByPath pathStore = new(pathDb, ByPathPersist.IfBlockOlderThan(4), logManager);
             StateTreeByPath tree = new(pathStore, LimboLogs.Instance);
             MemDb innerStateDb = (MemDb)pathDb.GetColumnDb(StateColumns.State);
 

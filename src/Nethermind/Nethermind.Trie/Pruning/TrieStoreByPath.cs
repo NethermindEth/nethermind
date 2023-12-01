@@ -3,19 +3,15 @@
 
 using System;
 using System.Collections.Concurrent;
-using System.Collections.Generic;
-using System.Data.Common;
 using System.Diagnostics;
 using System.Linq;
 using System.Threading;
-using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Db;
 using Nethermind.Db.ByPathState;
 using Nethermind.Logging;
-using Nethermind.Serialization.Rlp;
 using Nethermind.Trie.ByPath;
 
 namespace Nethermind.Trie.Pruning
@@ -32,7 +28,7 @@ namespace Nethermind.Trie.Pruning
         private IColumnsWriteBatch<StateColumns>? _columnsBatch = null;
         private ConcurrentDictionary<StateColumns, IWriteBatch?> _currentWriteBatches = null;
         private readonly ConcurrentDictionary<StateColumns, IPathDataCache> _committedNodes = null;
-        private readonly IPersistenceStrategy _persistenceStrategy;
+        private readonly IByPathPersistenceStrategy _persistenceStrategy;
 
         private readonly ConcurrentQueue<byte[]> _destroyPrefixes;
 
@@ -43,13 +39,13 @@ namespace Nethermind.Trie.Pruning
 
         public TrieStoreByPath(
         IColumnsDb<StateColumns> stateDb,
-        IPersistenceStrategy? persistenceStrategy,
+        IByPathPersistenceStrategy? persistenceStrategy,
         ILogManager? logManager)
         {
             _logger = logManager?.GetClassLogger<TrieStore>() ?? throw new ArgumentNullException(nameof(logManager));
             _stateDb = stateDb ?? throw new ArgumentNullException(nameof(stateDb));
             _persistenceStrategy = persistenceStrategy ?? throw new ArgumentNullException(nameof(persistenceStrategy));
-            _useCommittedCache = !(_persistenceStrategy is Archive);
+            _useCommittedCache = _persistenceStrategy is not ByPathArchive;
             _committedNodes = new ConcurrentDictionary<StateColumns, IPathDataCache>();
             _committedNodes.TryAdd(StateColumns.State, new PathDataCache(this, logManager));
             _committedNodes.TryAdd(StateColumns.Storage, new PathDataCache(this, logManager));
@@ -59,7 +55,7 @@ namespace Nethermind.Trie.Pruning
             _publicStore = new TrieKeyValueStore(this);
         }
 
-        public TrieStoreByPath(IColumnsDb<StateColumns> stateDb, ILogManager? logManager) : this(stateDb, Pruning.Persist.EveryBlock, logManager)
+        public TrieStoreByPath(IColumnsDb<StateColumns> stateDb, ILogManager? logManager) : this(stateDb, ByPathPersist.EveryBlock, logManager)
         {
         }
 
@@ -176,15 +172,19 @@ namespace Nethermind.Trie.Pruning
                     }
                     if (blockNumber == 0) // special case for genesis
                     {
-                        Persist(0);
+                        Persist(0, null);
                         AnnounceReorgBoundaries();
                     }
                     else
                     {
-                        if (_useCommittedCache && _persistenceStrategy.ShouldPersist(set.BlockNumber, out long persistTarget))
+                        if (_useCommittedCache)
                         {
-                            Persist(persistTarget);
-                            AnnounceReorgBoundaries();
+                            (long blockNumber, Hash256 stateRoot)? persist = _persistenceStrategy.GetBlockToPersist(set.BlockNumber, set.Root?.Keccak ?? Keccak.EmptyTreeHash);
+                            if (persist is not null)
+                            {
+                                Persist(persist.Value.blockNumber, persist.Value.stateRoot);
+                                AnnounceReorgBoundaries();
+                            }
                         }
                     }
 
@@ -369,31 +369,30 @@ namespace Nethermind.Trie.Pruning
         /// After this action we are sure that the full state is available for the block <paramref name="persistUntilBlock"/>.
         /// </summary>
         /// <param name="persistUntilBlock">Persist all the block changes until this block number</param>
-        private void Persist(long persistUntilBlock)
+        private void Persist(long targetBlockNumber, Hash256? targetBlockHash)
         {
             try
             {
                 Stopwatch stopwatch = Stopwatch.StartNew();
 
-                int noOfBlocks = _commitSetQueue.ToList().Count((b) => b.BlockNumber == persistUntilBlock);
-                if (noOfBlocks > 1)
-                    throw new InvalidOperationException("Multiple blocks with same number - can't persist!");
+                if (targetBlockHash is null && targetBlockNumber > 0)
+                    throw new ArgumentException("Need to pass target state root to persist other than genesis");
 
                 BlockCommitSet frontSet = null;
-                while (_commitSetQueue.TryPeek(out BlockCommitSet peekSet) && peekSet.BlockNumber <= persistUntilBlock)
+                while (_commitSetQueue.TryPeek(out BlockCommitSet peekSet) && peekSet.BlockNumber <= targetBlockNumber)
                 {
                     _commitSetQueue.TryDequeue(out frontSet);
                 }
 
-                if (_logger.IsTrace) _logger.Trace($"Persist target {persistUntilBlock} | persisting {frontSet.BlockNumber} / {frontSet.Root?.Keccak}");
+                if (_logger.IsTrace) _logger.Trace($"Persist target {targetBlockNumber} | persisting {targetBlockNumber} / {targetBlockHash}");
 
                 PrepareWriteBatches();
                 foreach (StateColumns column in Enum.GetValues(typeof(StateColumns)))
                 {
-                    _committedNodes[column].PersistUntilBlock(persistUntilBlock, frontSet?.Root?.Keccak ?? Keccak.EmptyTreeHash, _currentWriteBatches[column]);
+                    _committedNodes[column].PersistUntilBlock(targetBlockNumber, targetBlockHash ?? frontSet.Root?.Keccak, _currentWriteBatches[column]);
                 }
 
-                LastPersistedBlockNumber = frontSet.BlockNumber;
+                LastPersistedBlockNumber = targetBlockNumber;
 
                 stopwatch.Stop();
                 Metrics.SnapshotPersistenceTime = stopwatch.ElapsedMilliseconds;
