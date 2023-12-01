@@ -38,7 +38,7 @@ jobs:
           #what_to_compare="${{ github.event.inputs.what_to_compare }}"
           #compare_with="${{ github.event.inputs.compare_with }}"
 
-          what_to_compare=""
+          what_to_compare="master"
           compare_with="INFURA_ENDPOINT"
 
           # Determine the primary branches to compare
@@ -106,7 +106,7 @@ jobs:
           artifact_names=""
           branches=$(echo '${{ needs.parse_input.outputs.branch_matrix }}' | jq -r '.branch[]')
           for branch in $branches; do
-            artifact_name="rpc-url-$branch-${{ github.run_id }}"
+            artifact_name="rpc-url::$branch::${{ github.run_id }}"
             artifact_names+="$artifact_name "
           done
           artifact_names=${artifact_names% }
@@ -114,18 +114,16 @@ jobs:
           echo "artifact_names=$artifact_names" >> $GITHUB_OUTPUT
 
       - name: Download Artifacts
-        uses: marcofaggian/action-download-multiple-artifacts@v1
+        uses: actions/download-artifact@v3
         with:
-          github_token: ${{ secrets.REPOSITORY_DISPATCH_TOKEN }}
-          names: ${{ steps.retrieve_artifacts.outputs.artifact_names }}
-          path: artifacts/
+          name: ${{ steps.retrieve_artifacts.outputs.artifact_names }}
 
       - name: Process Artifacts Content
         run: |
           rpc_urls=""
           for file in artifacts/*; do
             if [ -f "$file" ]; then
-              branch=$(basename $file | cut -d '-' -f 3)
+              branch=$(basename $file | cut -d '::' -f 3)
               url_content=$(cat "$file")
               rpc_urls+="$branch::$url_content,"
             fi
