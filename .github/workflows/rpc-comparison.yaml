@@ -89,6 +89,7 @@ jobs:
       non_validator_mode: false
       additional_nethermind_flags: Pruning.Mode=None
       nethermind_repo_ref: ${{ matrix.branch }}
+      custom_run_id: ${{ github.run_id }}
 
   aggregate_rpcs:
     name: Collect all RPC Urls and pass it further
