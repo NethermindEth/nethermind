@@ -229,46 +229,84 @@ internal class PathDataCacheInstance
         {
             PathDataCacheInstance innerCache = branch.GetCacheInstanceForParent(parentStateRoot, blockNumber, out isParallelToExistingBranch);
             if (innerCache is not null)
-            {
-                if (isParallelToExistingBranch)
-                    _branches.Add(innerCache);
                 return innerCache;
+        }
+
+        //try to find matching state starting from the latest
+        PathDataCacheInstance? instance = FindInstanceForParent(parentStateRoot, blockNumber);
+        if (instance is not null)
+            return instance;
+
+        foreach (PathDataCacheInstance branch in _branches)
+        {
+            PathDataCacheInstance innerCache = branch.SplitForParent(parentStateRoot, blockNumber);
+            if (innerCache is not null)
+                return innerCache;
+        }
+
+        if (_lastState is not null && parentStateRoot == _lastState.BlockStateRoot && blockNumber == _lastState.BlockNumber + 1 ||
+            _lastState is null && _parentInstance is null)
+        {
+            PathDataCacheInstance newBranch = new(_trieStore, _logger, new StateId(blockNumber, null, parentStateRoot), this, _prefixLength);
+            _branches.Add(newBranch);
+            return newBranch;
+        }
+
+        return SplitForParent(parentStateRoot, blockNumber);
+    }
+
+    private PathDataCacheInstance? FindInstanceForParent(Hash256 parentStateRoot, long blockNumber)
+    {
+        if (_branches.Count == 0)
+        {
+            //empty instance, 1st item
+            if (_lastState is null)
+            {
+                _lastState = new StateId(blockNumber, null, parentStateRoot);
+                return this;
+            }
+            //add new state and end of chain
+            if (_lastState is not null && parentStateRoot == _lastState.BlockStateRoot && blockNumber == _lastState.BlockNumber + 1)
+            {
+                _lastState = new StateId(blockNumber, null, parentStateRoot, _lastState);
+                return this;
             }
         }
 
-        if (_lastState is null)
+        foreach (PathDataCacheInstance branch in _branches)
         {
-            _lastState = new StateId(blockNumber, null, parentStateRoot);
-            return this;
+            PathDataCacheInstance innerCache = branch.FindInstanceForParent(parentStateRoot, blockNumber);
+            if (innerCache is not null)
+                return innerCache;
         }
+        return null;
+    }
 
-        if (parentStateRoot == _lastState.BlockStateRoot && blockNumber > _lastState.BlockNumber)
+    private PathDataCacheInstance? SplitForParent(Hash256 parentStateRoot, long blockNumber)
+    {
+        foreach (PathDataCacheInstance branch in _branches)
         {
-            _lastState = new StateId(blockNumber, null, parentStateRoot, _lastState);
-            return this;
+            PathDataCacheInstance innerCache = branch.SplitForParent(parentStateRoot, blockNumber);
+            if (innerCache is not null)
+                return innerCache;
         }
 
         StateId? splitState = _lastState;
         while (splitState is not null)
         {
-            if (splitState.ParentStateHash == parentStateRoot && splitState.BlockNumber <= blockNumber)
+            if (splitState.ParentBlock?.BlockStateRoot == parentStateRoot && splitState.BlockNumber <= blockNumber ||
+                splitState.ParentStateHash == parentStateRoot && splitState.BlockNumber == blockNumber && _parentInstance is null)
                 break;
             splitState = splitState.ParentBlock;
         }
 
         if (splitState is not null)
         {
-            if (splitState.ParentBlock is not null || (splitState.ParentBlock is null && _parentInstance is null))
-            {
-                PathDataCacheInstance newBranch = new(_trieStore, _logger, new StateId(blockNumber, null, parentStateRoot), this, _prefixLength);
-                SplitAt(splitState);
-                _branches.Add(newBranch);
-                return newBranch;
-            }
-            isParallelToExistingBranch = true;
-            return new(_trieStore, _logger, new StateId(blockNumber, null, parentStateRoot), _parentInstance, _prefixLength);
+            SplitAt(splitState);
+            PathDataCacheInstance newBranch = new(_trieStore, _logger, new StateId(blockNumber, null, parentStateRoot), this, _prefixLength);
+            _branches.Add(newBranch);
+            return newBranch;
         }
-
         return null;
     }
 
@@ -400,6 +438,9 @@ internal class PathDataCacheInstance
 
         if (branch != this)
         {
+            for (int i = 0; i < branch._branches.Count; i++)
+                branch._branches[i]._parentInstance = this;
+
             _branches = branch._branches;
             _historyByPath = branch._historyByPath;
             _removedPrefixes = branch._removedPrefixes;
@@ -543,7 +584,7 @@ internal class PathDataCacheInstance
 
     private bool GetBranchesToProcess(long blockNumber, Hash256 stateRoot, Stack<PathDataCacheInstance> branches, bool filterDetached, out StateId? latestState)
     {
-        StateId? localState = FindState(stateRoot);
+        StateId? localState = FindState(stateRoot, blockNumber);
         if (localState is not null)
         {
             branches.Push(this);
@@ -601,7 +642,6 @@ internal class PathDataCacheInstance
             if (newHist is not null)
                 newBranchExisting.Add(histEntry.Key, newHist);
         }
-        _branches.Clear();
         _branches.Add(newBranchExisting);
 
         _lastState = stateId.ParentBlock;
@@ -612,15 +652,17 @@ internal class PathDataCacheInstance
 
     public void RemoveDuplicatedInstance(PathDataCacheInstance newInstance)
     {
-        for (int i = _branches.Count - 1; i >= 0; i--)
+        if (newInstance._parentInstance is not null)
         {
-            _branches[i].RemoveDuplicatedInstance(newInstance);
-
-            if (_branches[i] != newInstance &&
-                _branches[i]._lastState.BlockStateRoot == newInstance._lastState.BlockStateRoot &&
-                _branches[i]._lastState.BlockNumber == newInstance._lastState.BlockNumber)
+            List<PathDataCacheInstance> siblings = newInstance._parentInstance._branches;
+            for (int i = siblings.Count - 1; i >= 0; i--)
             {
-                _branches.RemoveAt(i);
+                if (siblings[i] != newInstance)
+                {
+                    StateId sameState = siblings[i].FindState(newInstance._lastState.BlockStateRoot, newInstance._lastState.BlockNumber ?? -1);
+                    if (sameState?.ParentStateHash == newInstance._lastState.ParentStateHash)
+                        siblings.Remove(newInstance);
+                }
             }
         }
     }
@@ -686,7 +728,7 @@ public class PathDataCache : IPathDataCache
             if (_openedInstance is not null)
                 throw new ArgumentException($"Cannot open instance for {parentStateRoot} - already opened for {_openedInstance.LatestParentStateRootHash}");
 
-            if (_logger.IsTrace) _logger.Trace($"Opening context for {parentStateRoot}");
+            if (_logger.IsTrace) _logger.Trace($"Opening context for {parentStateRoot} at block {blockNumber}");
 
             _openedInstance = GetCacheInstanceForState(parentStateRoot, blockNumber);
         }
