@@ -200,6 +200,8 @@ jobs:
           WIREGUARD_ALLOWED_IPS: '${{ secrets.WIREGUARD_ALLOWED_IPS }}'
           WIREGUARD_SERVER_IP: '${{ secrets.WIREGUARD_SERVER_IP }}'
           WIREGUARD_SERVER_PORT: '${{ secrets.WIREGUARD_SERVER_PORT }}'
+          INFURA_ENDPOINT: '${{ secrets.INFURA_ENDPOINT }}'
+          NETHERMIND_ARCHIVE_ENDPOINT: '${{ secrets.NETHERMIND_ARCHIVE_ENDPOINT }}'
   
       - name: Test equality of responses
         run: |
@@ -218,7 +220,11 @@ jobs:
 
           others_prepared_str=()
           for other in "${others_str_array[@]}"; do
-            others_prepared_str+="$other=${{ secrets[$other] }} "
+            if [[ "$other" == "INFURA_ENDPOINT" ]]; then
+              others_prepared_str+="$other=${INFURA_ENDPOINT} "
+            else [[ "$other" == "NETHERMIND_ARCHIVE_ENDPOINT" ]]; then
+              others_prepared_str+="$other=${NETHERMIND_ARCHIVE_ENDPOINT} "
+            fi
           done
           
           # Remove trailing space
