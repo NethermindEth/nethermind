@@ -107,6 +107,7 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
         chain.AddTransactions(BuildTransactions(chain, parentBlock!.CalculateHash(), TestItem.PrivateKeys[id], TestItem.AddressF, count, id, out _, out _));
 
         IReadOnlyList<ExecutionPayload> executionPayloads = await ProduceBranchV1(rpc, chain, 1, _parentPayload, true);
+        executionPayloads.Should().HaveCount(1);
 
         _parentPayload = executionPayloads[0];
         _blocksProduced++;
@@ -136,34 +137,41 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
 
         // build blocks with transactions from both shutter and TxPool
         // id is used as value to differentiate between transactions
-        (int id31, Transaction[] transactions31) = await ProduceBlockWithTransactions(rpc, chain, 3);
-        transactions31.Should().HaveCount(4);
-        transactions31[0].Value.Should().Be(126);
-        transactions31[1].Value.Should().Be(id31.GWei());
-        transactions31[2].Value.Should().Be(id31.GWei());
-        transactions31[3].Value.Should().Be(id31.GWei());
+        (int id0, Transaction[] transactions0) = await ProduceBlockWithTransactions(rpc, chain, 3);
+        transactions0.Should().HaveCount(4);
+        transactions0[0].Value.Should().Be(126);
+        transactions0[1].Value.Should().Be(id0.GWei());
+        transactions0[2].Value.Should().Be(id0.GWei());
+        transactions0[3].Value.Should().Be(id0.GWei());
 
-        (int id32, Transaction[] transactions32) = await ProduceBlockWithTransactions(rpc, chain, 3);
-        transactions32.Should().HaveCount(4);
-        transactions32[0].Value.Should().Be(127);
-        transactions32[1].Value.Should().Be(id32.GWei());
-        transactions32[2].Value.Should().Be(id32.GWei());
-        transactions32[3].Value.Should().Be(id32.GWei());
+        (int id1, Transaction[] transactions1) = await ProduceBlockWithTransactions(rpc, chain, 3);
+        transactions1.Should().HaveCount(4);
+        transactions1[0].Value.Should().Be(127);
+        transactions1[1].Value.Should().Be(id1.GWei());
+        transactions1[2].Value.Should().Be(id1.GWei());
+        transactions1[3].Value.Should().Be(id1.GWei());
 
-        (int id33, Transaction[] transactions33) = await ProduceBlockWithTransactions(rpc, chain, 1);
-        transactions33.Should().HaveCount(2);
-        transactions33[0].Value.Should().Be(128);
-        transactions33[1].Value.Should().Be(id33.GWei());
+        (int id2, Transaction[] transactions2) = await ProduceBlockWithTransactions(rpc, chain, 1);
+        transactions2.Should().HaveCount(2);
+        transactions2[0].Value.Should().Be(128);
+        transactions2[1].Value.Should().Be(id2.GWei());
 
-        (int id34, Transaction[] transactions34) = await ProduceBlockWithTransactions(rpc, chain, 0);
-        transactions34.Should().HaveCount(1);
-        transactions34[0].Value.Should().Be(129);
+        (int id3, Transaction[] transactions3) = await ProduceBlockWithTransactions(rpc, chain, 0);
+        transactions3.Should().HaveCount(1);
+        transactions3[0].Value.Should().Be(129);
 
-        (int id35, Transaction[] transactions35) = await ProduceBlockWithTransactions(rpc, chain, 2);
-        transactions35.Should().HaveCount(3);
-        transactions35[0].Value.Should().Be(130);
-        transactions35[1].Value.Should().Be(id35.GWei());
-        transactions35[2].Value.Should().Be(id35.GWei());
+        (int id4, Transaction[] transactions4) = await ProduceBlockWithTransactions(rpc, chain, 2);
+        // bad shutter transaction excluded
+        transactions4[0].Value.Should().Be(id4.GWei());
+        transactions4[1].Value.Should().Be(id4.GWei());
+
+        (int id5, Transaction[] transactions5) = await ProduceBlockWithTransactions(rpc, chain, 4);
+        // bad shutter transaction excluded
+        transactions5.Should().HaveCount(4);
+        transactions5[0].Value.Should().Be(id5.GWei());
+        transactions5[1].Value.Should().Be(id5.GWei());
+        transactions5[2].Value.Should().Be(id5.GWei());
+        transactions5[3].Value.Should().Be(id5.GWei());
     }
 
     class ShutterTxSource : ITxSource
@@ -182,13 +190,27 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
                 sigData[63] = 1; // correct s
                 sigData[64] = 27;
                 Signature signature = new(sigData);
+                UInt256 value = 123 + _nonce;
 
-                _transaction = Build.A.Transaction
-                    .WithSenderAddress(TestItem.AddressA)
-                    .WithValue(123 + _nonce)
-                    .WithNonce(_nonce)
-                    .WithSignature(signature)
-                    .TestObject;
+                if (value == (UInt256) 130)
+                {
+                    // bad transaction (incorrect nonce)
+                    _transaction = Build.A.Transaction
+                        .WithSenderAddress(TestItem.AddressA)
+                        .WithValue(value)
+                        .WithNonce(_nonce - 5)
+                        .WithSignature(signature)
+                        .TestObject;
+                }
+                else
+                {
+                    _transaction = Build.A.Transaction
+                        .WithSenderAddress(TestItem.AddressA)
+                        .WithValue(value)
+                        .WithNonce(_nonce)
+                        .WithSignature(signature)
+                        .TestObject;
+                }
 
                 _nonce++;
             }
