@@ -790,7 +790,7 @@ namespace Nethermind.Evm.Test.Tracing
         public void Cannot_mark_as_failed_when_actions_stacked()
         {
             ParityLikeTxTracer tracer = new(Build.A.Block.TestObject, Build.A.Transaction.TestObject, ParityTraceTypes.All);
-            tracer.ReportAction(1000L, 10, Address.Zero, Address.Zero, Array.Empty<byte>(), ExecutionType.Call, false);
+            tracer.ReportAction(1000L, 10, Address.Zero, Address.Zero, Array.Empty<byte>(), ExecutionType.CALL, false);
             Assert.Throws<InvalidOperationException>(() => tracer.MarkAsFailed(TestItem.AddressA, 21000, Array.Empty<byte>(), "Error"));
         }
 
@@ -798,7 +798,7 @@ namespace Nethermind.Evm.Test.Tracing
         public void Cannot_mark_as_success_when_actions_stacked()
         {
             ParityLikeTxTracer tracer = new(Build.A.Block.TestObject, Build.A.Transaction.TestObject, ParityTraceTypes.All);
-            tracer.ReportAction(1000L, 10, Address.Zero, Address.Zero, Array.Empty<byte>(), ExecutionType.Call, false);
+            tracer.ReportAction(1000L, 10, Address.Zero, Address.Zero, Array.Empty<byte>(), ExecutionType.CALL, false);
             Assert.Throws<InvalidOperationException>(() => tracer.MarkAsSuccess(TestItem.AddressA, 21000, Array.Empty<byte>(), new LogEntry[] { }));
         }
 

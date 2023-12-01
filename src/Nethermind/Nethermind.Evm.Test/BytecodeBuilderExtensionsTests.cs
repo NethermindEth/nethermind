@@ -44,18 +44,18 @@ public class BytecodeBuilderExtensionsTests : VirtualMachineTestsBase
                 return true;
             }
 
-            // we check if opcode has a digit at its end 
-            bool hasDigits = false;
-            int i = opcodeAsString.Length - 1;
-            while (i > 0)
-            {
-                if (char.IsLetter(opcodeAsString[i]))
+                // we check if opcode has a digit at its end
+                bool hasDigits = false;
+                int i = opcodeAsString.Length - 1;
+                while (i > 0)
                 {
-                    break;
+                    if (char.IsLetter(opcodeAsString[i]))
+                    {
+                        break;
+                    }
+                    hasDigits = true;
+                    i--;
                 }
-                hasDigits = true;
-                i--;
-            }
 
             // length of prefix (excluding suffix number if it exists)
             prefixLen = i + 1;
@@ -119,13 +119,13 @@ public class BytecodeBuilderExtensionsTests : VirtualMachineTestsBase
             //we get MethodInfo of the function representing the opcode
             var method = GetFluentOpcodeFunction(opcode);
 
-            //we handle the cases requiring a byte differentiator 
-            initBytecode = opcode switch
-            {
-                >= Instruction.SWAP1 and <= Instruction.SWAP16 => (Prepare)method.Invoke(null, new object[] { initBytecode, (byte)(opcode - Instruction.SWAP1 + 1) }),
-                >= Instruction.DUP1 and <= Instruction.DUP16 => (Prepare)method.Invoke(null, new object[] { initBytecode, (byte)(opcode - Instruction.DUP1 + 1) }),
-                _ => (Prepare)method.Invoke(null, new object[] { initBytecode })
-            };
+                //we handle the cases requiring a byte differentiator
+                initBytecode = opcode switch
+                {
+                    >= Instruction.SWAP1 and <= Instruction.SWAP16 => (Prepare)method.Invoke(null, new object[] { initBytecode, (byte)(opcode - Instruction.SWAP1 + 1) }),
+                    >= Instruction.DUP1 and <= Instruction.DUP16 => (Prepare)method.Invoke(null, new object[] { initBytecode, (byte)(opcode - Instruction.DUP1 + 1) }),
+                    _ => (Prepare)method.Invoke(null, new object[] { initBytecode })
+                };
 
             yield return new TestCase()
             {
