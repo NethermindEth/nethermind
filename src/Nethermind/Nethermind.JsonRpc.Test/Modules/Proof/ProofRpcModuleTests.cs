@@ -27,6 +27,7 @@ using Nethermind.TxPool;
 using NUnit.Framework;
 using System.Threading.Tasks;
 using Nethermind.Consensus.Processing;
+using Nethermind.Db.ByPathState;
 using Nethermind.State.Tracing;
 using NSubstitute;
 
@@ -62,7 +63,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
             ProofModuleFactory moduleFactory = new(
                 _dbProvider,
                 _blockTree,
-                new TrieStoreByPath(_dbProvider.PathStateDb, LimboLogs.Instance).AsReadOnly(),
+                new TrieStoreByPath(new ByPathStateDb(_dbProvider.PathStateDb, LimboLogs.Instance), LimboLogs.Instance).AsReadOnly(),
                 new CompositeBlockPreprocessorStep(new RecoverSignatures(new EthereumEcdsa(TestBlockchainIds.ChainId, LimboLogs.Instance), NullTxPool.Instance, _specProvider, LimboLogs.Instance)),
                 receiptStorage,
                 _specProvider,
@@ -207,7 +208,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
             ProofModuleFactory moduleFactory = new ProofModuleFactory(
                 _dbProvider,
                 _blockTree,
-                new TrieStoreByPath(_dbProvider.PathStateDb, LimboLogs.Instance).AsReadOnly(),
+                new TrieStoreByPath(new ByPathStateDb(_dbProvider.PathStateDb, LimboLogs.Instance), LimboLogs.Instance).AsReadOnly(),
                 new CompositeBlockPreprocessorStep(new RecoverSignatures(new EthereumEcdsa(TestBlockchainIds.ChainId, LimboLogs.Instance), NullTxPool.Instance, _specProvider, LimboLogs.Instance)),
                 _receiptFinder,
                 _specProvider,
@@ -871,7 +872,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
         private WorldState CreateInitialState(byte[]? code)
         {
             //WorldState stateProvider = new(new TrieStore(_dbProvider.StateDb, LimboLogs.Instance), _dbProvider.CodeDb, LimboLogs.Instance);
-            WorldState stateProvider = new(new TrieStoreByPath(_dbProvider.PathStateDb, LimboLogs.Instance), _dbProvider.CodeDb, LimboLogs.Instance);
+            WorldState stateProvider = new(new TrieStoreByPath(new ByPathStateDb(_dbProvider.PathStateDb, LimboLogs.Instance), LimboLogs.Instance), _dbProvider.CodeDb, LimboLogs.Instance);
             AddAccount(stateProvider, TestItem.AddressA, 1.Ether());
             AddAccount(stateProvider, TestItem.AddressB, 1.Ether());
 

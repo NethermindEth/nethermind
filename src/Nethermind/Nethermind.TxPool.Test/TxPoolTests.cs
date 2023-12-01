@@ -20,6 +20,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Db;
+using Nethermind.Db.ByPathState;
 using Nethermind.Evm;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -52,7 +53,7 @@ namespace Nethermind.TxPool.Test
             _logManager = LimboLogs.Instance;
             _specProvider = MainnetSpecProvider.Instance;
             _ethereumEcdsa = new EthereumEcdsa(_specProvider.ChainId, _logManager);
-            var trieStore = new TrieStoreByPath(new MemColumnsDb<StateColumns>(), _logManager);
+            var trieStore = new TrieStoreByPath(new ByPathStateDb(new MemColumnsDb<StateColumns>(), _logManager), _logManager);
             var codeDb = new MemDb();
             _stateProvider = new WorldState(trieStore, codeDb, _logManager);
             _blockTree = Substitute.For<IBlockTree>();

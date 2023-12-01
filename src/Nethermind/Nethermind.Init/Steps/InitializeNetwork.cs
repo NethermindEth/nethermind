@@ -159,7 +159,8 @@ public class InitializeNetwork : IStep
                 _api.ReadOnlyTrieStore!,
                 _api.BetterPeerStrategy,
                 _api.ChainSpec,
-                _api.LogManager);
+                _api.LogManager,
+                _api.MainPathStateDbWithCache);
         }
 
         _api.SyncModeSelector = _api.Synchronizer.SyncModeSelector;

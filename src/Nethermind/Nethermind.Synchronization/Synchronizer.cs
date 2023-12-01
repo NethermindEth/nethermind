@@ -87,6 +87,7 @@ namespace Nethermind.Synchronization
             _logManager);
 
         private readonly IReadOnlyTrieStore _readOnlyTrieStore;
+        private readonly IByPathStateDb _byPathStateDb;
 
 
         protected ISyncModeSelector? _syncModeSelector;
@@ -113,7 +114,8 @@ namespace Nethermind.Synchronization
             IReadOnlyTrieStore readOnlyTrieStore,
             IBetterPeerStrategy betterPeerStrategy,
             ChainSpec chainSpec,
-            ILogManager logManager)
+            ILogManager logManager,
+            IByPathStateDb? pathStateDb = null)
         {
             _dbProvider = dbProvider ?? throw new ArgumentNullException(nameof(dbProvider));
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
@@ -130,6 +132,7 @@ namespace Nethermind.Synchronization
             _betterPeerStrategy = betterPeerStrategy ?? throw new ArgumentNullException(nameof(betterPeerStrategy));
             _chainSpec = chainSpec ?? throw new ArgumentNullException(nameof(chainSpec));
             _readOnlyTrieStore = readOnlyTrieStore ?? throw new ArgumentNullException(nameof(readOnlyTrieStore));
+            _byPathStateDb = pathStateDb;
 
             _syncReport = new SyncReport(_syncPeerPool!, nodeStatsManager!, _syncConfig, _pivot, logManager);
 
@@ -272,7 +275,7 @@ namespace Nethermind.Synchronization
 
         private void StartStateSyncComponents()
         {
-            TreeSync treeSync = new(SyncMode.StateNodes, _dbProvider.CodeDb, _dbProvider.PathStateDb as ByPathStateDb, _blockTree, _logManager);
+            TreeSync treeSync = new(SyncMode.StateNodes, _dbProvider.CodeDb, _byPathStateDb, _blockTree, _logManager);
             _stateSyncFeed = new StateSyncFeed(treeSync, _logManager);
             SyncDispatcher<StateSyncBatch> stateSyncDispatcher = CreateDispatcher(
                 _stateSyncFeed,

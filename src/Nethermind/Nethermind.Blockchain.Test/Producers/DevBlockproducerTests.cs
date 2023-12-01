@@ -15,6 +15,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Db.Blooms;
+using Nethermind.Db.ByPathState;
 using Nethermind.Evm;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
@@ -46,7 +47,7 @@ namespace Nethermind.Blockchain.Test.Producers
                 .WithoutSettingHead
                 .TestObject;
 
-            TrieStoreByPath trieStore = new(dbProvider.GetColumnDb<StateColumns>(DbNames.PathState), LimboLogs.Instance);
+            TrieStoreByPath trieStore = new(new ByPathStateDb(dbProvider.GetColumnDb<StateColumns>(DbNames.PathState), LimboLogs.Instance), LimboLogs.Instance);
 
             WorldState stateProvider = new(
                 trieStore,

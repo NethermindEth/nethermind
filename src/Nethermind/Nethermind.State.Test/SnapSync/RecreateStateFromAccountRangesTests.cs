@@ -272,7 +272,7 @@ namespace Nethermind.Store.Test.SnapSync
             ProgressTracker progressTracker = resolverCapability switch
             {
                 TrieNodeResolverCapability.Hash => new(null, dbProvider.GetDb<IDb>(DbNames.State), LimboLogs.Instance),
-                TrieNodeResolverCapability.Path => new(null, dbProvider.GetDb<IDb>(DbNames.PathState), LimboLogs.Instance),
+                TrieNodeResolverCapability.Path => new(null, dbProvider.GetColumnDb<StateColumns>(DbNames.PathState).GetColumnDb(StateColumns.State), LimboLogs.Instance),
                 _ => throw new ArgumentOutOfRangeException()
             };
 

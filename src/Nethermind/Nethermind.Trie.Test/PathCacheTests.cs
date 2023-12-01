@@ -12,6 +12,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
+using Nethermind.Db.ByPathState;
 using Nethermind.Logging;
 using Nethermind.Trie.ByPath;
 using Nethermind.Trie.Pruning;
@@ -23,7 +24,7 @@ namespace Nethermind.Trie.Test;
 public class PathCacheTests
 {
     private static readonly ILogManager Logger = NUnitLogManager.Instance;
-    private static readonly ITrieStore _trieStore = new TrieStoreByPath(new MemColumnsDb<StateColumns>(), Logger);
+    private static readonly ITrieStore _trieStore = new TrieStoreByPath(new ByPathStateDb(new MemColumnsDb<StateColumns>(), Logger), Logger);
     //private static readonly int CacheSize = 5;
 
     [TestCaseSource(typeof(Instances))]

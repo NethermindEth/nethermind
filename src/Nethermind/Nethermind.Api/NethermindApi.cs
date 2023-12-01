@@ -55,6 +55,7 @@ using Nethermind.Wallet;
 using Nethermind.Sockets;
 using Nethermind.Synchronization.SnapSync;
 using System;
+using Nethermind.Db.ByPathState;
 
 namespace Nethermind.Api
 {
@@ -142,6 +143,7 @@ namespace Nethermind.Api
         public ILogFinder? LogFinder { get; set; }
         public ILogManager LogManager { get; set; }
         public IKeyValueStoreWithBatching? MainStateDbWithCache { get; set; }
+        public IByPathStateDb? MainPathStateDbWithCache { get; set; }
         public IMessageSerializationService MessageSerializationService { get; } = new MessageSerializationService();
         public IGossipPolicy GossipPolicy { get; set; } = Policy.FullGossip;
         public IMonitoringService MonitoringService { get; set; } = NullMonitoringService.Instance;

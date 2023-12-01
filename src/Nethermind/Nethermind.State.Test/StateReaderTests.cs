@@ -17,6 +17,7 @@ using NSubstitute;
 using NUnit.Framework;
 using Nethermind.Core.Test;
 using System.Collections;
+using Nethermind.Db.ByPathState;
 
 namespace Nethermind.Store.Test
 {
@@ -240,7 +241,7 @@ namespace Nethermind.Store.Test
                 get
                 {
                     yield return new TestCaseData("Keccak Store", new TrieStore(new MemDb(), Logger));
-                    yield return new TestCaseData("Path Store", new TrieStoreByPath(new MemColumnsDb<StateColumns>(), ByPathPersist.IfBlockOlderThan(128), Logger));
+                    yield return new TestCaseData("Path Store", new TrieStoreByPath(new ByPathStateDb(new MemColumnsDb<StateColumns>(), Logger), ByPathPersist.IfBlockOlderThan(128), Logger));
                 }
             }
 

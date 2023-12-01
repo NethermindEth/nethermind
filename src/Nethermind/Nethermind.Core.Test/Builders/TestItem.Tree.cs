@@ -5,6 +5,7 @@
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Db;
+using Nethermind.Db.ByPathState;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State;
@@ -60,7 +61,7 @@ namespace Nethermind.Core.Test.Builders
 
             public static StateTreeByPath GetStateTreeByPath(ITrieStore? store)
             {
-                store ??= new TrieStoreByPath(new MemColumnsDb<StateColumns>(), LimboLogs.Instance);
+                store ??= new TrieStoreByPath(new ByPathStateDb(new MemColumnsDb<StateColumns>(), LimboLogs.Instance), LimboLogs.Instance);
 
                 var stateTree = new StateTreeByPath(store, LimboLogs.Instance);
 
@@ -105,7 +106,7 @@ namespace Nethermind.Core.Test.Builders
 
             public static (StateTreeByPath stateTree, StorageTree storageTree) GetTreesByPath(ITrieStore? store)
             {
-                store ??= new TrieStoreByPath(new MemColumnsDb<StateColumns>(), LimboLogs.Instance);
+                store ??= new TrieStoreByPath(new ByPathStateDb(new MemColumnsDb<StateColumns>(), LimboLogs.Instance), LimboLogs.Instance);
 
                 var storageTree = new StorageTree(store, LimboLogs.Instance, AccountAddress0);
 

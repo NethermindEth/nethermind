@@ -4,6 +4,7 @@
 using System;
 using Nethermind.Core;
 using Nethermind.Db;
+using Nethermind.Db.ByPathState;
 using Nethermind.Logging;
 using Nethermind.Trie.Pruning;
 
@@ -33,6 +34,6 @@ public static class TrieNodeResolverCapabilityStateExtension
 
     public static IStateTree CreateStateStore(this TrieNodeResolverCapability capability, IColumnsDb<StateColumns>? db, ILogManager? logManager)
     {
-        return new StateTreeByPath(new TrieStoreByPath(db, ByPathPersist.IfBlockOlderThan(128), logManager), logManager);
+        return new StateTreeByPath(new TrieStoreByPath(new ByPathStateDb(db, logManager), ByPathPersist.IfBlockOlderThan(128), logManager), logManager);
     }
 }

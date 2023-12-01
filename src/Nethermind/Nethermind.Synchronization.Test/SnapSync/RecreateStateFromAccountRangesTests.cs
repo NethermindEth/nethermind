@@ -11,6 +11,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
+using Nethermind.Db.ByPathState;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State;
@@ -331,7 +332,7 @@ namespace Nethermind.Synchronization.Test.SnapSync
             byte[][] lastProof = CreateProofForPath(TestItem.Tree.AccountsWithPaths[1].Path.Bytes);
             byte[][] proofs = firstProof.Concat(lastProof).ToArray();
 
-            StateTreeByPath newTree = new(new TrieStoreByPath(new MemColumnsDb<StateColumns>(), LimboLogs.Instance), LimboLogs.Instance);
+            StateTreeByPath newTree = new(new TrieStoreByPath(new ByPathStateDb(new MemColumnsDb<StateColumns>(), LimboLogs.Instance), LimboLogs.Instance), LimboLogs.Instance);
 
             PathWithAccount[] receiptAccounts = TestItem.Tree.AccountsWithPaths[0..2];
 
@@ -361,7 +362,7 @@ namespace Nethermind.Synchronization.Test.SnapSync
         [Test]
         public void CorrectlyDetermineMaxKeccakExist()
         {
-            StateTreeByPath tree = new StateTreeByPath(new TrieStoreByPath(new MemColumnsDb<StateColumns>(), LimboLogs.Instance), LimboLogs.Instance);
+            StateTreeByPath tree = new(new TrieStoreByPath(new ByPathStateDb(new MemColumnsDb<StateColumns>(), LimboLogs.Instance), LimboLogs.Instance), LimboLogs.Instance);
 
             PathWithAccount ac1 = new PathWithAccount(Keccak.Zero, Build.An.Account.WithBalance(1).TestObject);
             PathWithAccount ac2 = new PathWithAccount(Keccak.Compute("anything"), Build.An.Account.WithBalance(2).TestObject);
@@ -385,7 +386,7 @@ namespace Nethermind.Synchronization.Test.SnapSync
             byte[][] lastProof = CreateProofForPath(ac2.Path.Bytes, tree);
             byte[][] proofs = firstProof.Concat(lastProof).ToArray();
 
-            StateTreeByPath newTree = new(new TrieStoreByPath(new MemColumnsDb<StateColumns>(), LimboLogs.Instance), LimboLogs.Instance);
+            StateTreeByPath newTree = new(new TrieStoreByPath(new ByPathStateDb(new MemColumnsDb<StateColumns>(), LimboLogs.Instance), LimboLogs.Instance), LimboLogs.Instance);
 
             PathWithAccount[] receiptAccounts = { ac1, ac2 };
 

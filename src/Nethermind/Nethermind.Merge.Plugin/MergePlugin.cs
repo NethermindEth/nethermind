@@ -437,7 +437,8 @@ public partial class MergePlugin : IConsensusWrapperPlugin, ISynchronizationPlug
                 _api.BetterPeerStrategy,
                 _api.ChainSpec,
                 _beaconSync,
-                _api.LogManager
+                _api.LogManager,
+                _api.MainPathStateDbWithCache!
             );
             _api.Synchronizer = synchronizer;
 

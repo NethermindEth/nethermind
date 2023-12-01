@@ -8,6 +8,7 @@ using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
+using Nethermind.Db.ByPathState;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.InvalidChainTracker;
 using Nethermind.Specs.ChainSpecStyle;
@@ -18,9 +19,6 @@ using Nethermind.Synchronization.FastBlocks;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
 using Nethermind.Trie.Pruning;
-using Nethermind.Synchronization.Reporting;
-using Nethermind.Synchronization.SnapSync;
-using Nethermind.Trie.ByPath;
 
 namespace Nethermind.Merge.Plugin.Synchronization;
 
@@ -58,7 +56,8 @@ public class MergeSynchronizer : Synchronizer
         IBetterPeerStrategy betterPeerStrategy,
         ChainSpec chainSpec,
         IBeaconSyncStrategy beaconSync,
-        ILogManager logManager)
+        ILogManager logManager,
+        IByPathStateDb? pathStateDb = null)
         : base(
             dbProvider,
             specProvider,
@@ -73,7 +72,8 @@ public class MergeSynchronizer : Synchronizer
             readOnlyTrieStore,
             betterPeerStrategy,
             chainSpec,
-            logManager)
+            logManager,
+            pathStateDb)
     {
         _invalidChainTracker = invalidChainTracker;
         _poSSwitcher = poSSwitcher;

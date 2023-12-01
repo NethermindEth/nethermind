@@ -9,6 +9,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Db;
+using Nethermind.Db.ByPathState;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
@@ -35,7 +36,7 @@ public class TransactionProcessorFeeTests
         _spec = new(London.Instance);
         _specProvider = new TestSpecProvider(_spec);
 
-        TrieStoreByPath trieStore = new(new MemColumnsDb<StateColumns>(), LimboLogs.Instance);
+        TrieStoreByPath trieStore = new(new ByPathStateDb(new MemColumnsDb<StateColumns>(), LimboLogs.Instance), LimboLogs.Instance);
 
         _stateProvider = new WorldState(trieStore, new MemDb(), LimboLogs.Instance);
         _stateProvider.CreateAccount(TestItem.AddressA, 1.Ether());

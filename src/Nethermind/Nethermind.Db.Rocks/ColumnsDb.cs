@@ -8,6 +8,7 @@ using FastEnumUtility;
 using Nethermind.Core;
 using Nethermind.Db.Rocks.Config;
 using Nethermind.Logging;
+using Nethermind.Trie;
 using RocksDbSharp;
 using IWriteBatch = Nethermind.Core.IWriteBatch;
 
@@ -117,4 +118,22 @@ public class ColumnsDb<T> : DbOnTheRocks, IColumnsDb<T> where T : struct, Enum
             _writeBatch._writeBatch.Set(key, value, _column._columnFamily, flags);
         }
     }
+}
+
+public class CachedColumnsDb<T> : IColumnsDb<T> where T : struct, Enum
+{
+    protected readonly IDictionary<T, IDb> _columnCacheWrappers = new Dictionary<T, IDb>();
+    private readonly IColumnsDb<T> _wrappedDb;
+
+    public CachedColumnsDb(IColumnsDb<T> wrappedDb, int maxCapacity)
+    {
+        _wrappedDb = wrappedDb;
+
+        foreach (T key in Enum.GetValues(typeof(T)))
+            _columnCacheWrappers[key] = new CachingDb(wrappedDb.GetColumnDb(key), maxCapacity);
+    }
+
+    public IDb GetColumnDb(T key) => _columnCacheWrappers[key];
+    public IEnumerable<T> ColumnKeys => _wrappedDb.ColumnKeys;
+    public IColumnsWriteBatch<T> StartWriteBatch() => _wrappedDb.StartWriteBatch();
 }

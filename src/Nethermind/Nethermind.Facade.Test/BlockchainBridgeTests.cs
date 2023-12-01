@@ -28,6 +28,7 @@ using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
 using Nethermind.Config;
+using Nethermind.Db.ByPathState;
 using Nethermind.Evm;
 
 namespace Nethermind.Facade.Test
@@ -62,7 +63,7 @@ namespace Nethermind.Facade.Test
 
             ReadOnlyTxProcessingEnv processingEnv = new(
                 new ReadOnlyDbProvider(_dbProvider, false),
-                new TrieStoreByPath(_dbProvider.PathStateDb, LimboLogs.Instance).AsReadOnly(),
+                new TrieStoreByPath(new ByPathStateDb(_dbProvider.PathStateDb, LimboLogs.Instance), LimboLogs.Instance).AsReadOnly(),
                 new ReadOnlyBlockTree(_blockTree),
                 _specProvider,
                 LimboLogs.Instance);
@@ -206,7 +207,7 @@ namespace Nethermind.Facade.Test
         {
             ReadOnlyTxProcessingEnv processingEnv = new(
                 new ReadOnlyDbProvider(_dbProvider, false),
-                new TrieStoreByPath(_dbProvider.PathStateDb, LimboLogs.Instance).AsReadOnly(),
+                new TrieStoreByPath(new ByPathStateDb(_dbProvider.PathStateDb, LimboLogs.Instance), LimboLogs.Instance).AsReadOnly(),
                 new ReadOnlyBlockTree(_blockTree),
                 _specProvider,
                 LimboLogs.Instance);

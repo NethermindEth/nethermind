@@ -11,6 +11,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
+using Nethermind.Db.ByPathState;
 using Nethermind.Db.Rocks;
 using Nethermind.Db.Rocks.Config;
 using Nethermind.Int256;
@@ -98,7 +99,7 @@ public class TrieByPathFuzzTesting
 
         var codeDb = new MemDb();
         TestPathPersistanceStrategy strategy = new(lookupLimit, lookupLimit / 2);
-        using TrieStoreByPath pathTrieStore = new(memDb, strategy, _logManager);
+        using TrieStoreByPath pathTrieStore = new(new ByPathStateDb(memDb, _logManager), strategy, _logManager);
         WorldState pathStateProvider = new(pathTrieStore, new MemDb(), _logManager);
 
         using TrieStore trieStore = new(new MemDb(), No.Pruning, Persist.IfBlockOlderThan(lookupLimit), _logManager);
