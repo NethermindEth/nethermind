@@ -21,7 +21,7 @@ namespace Nethermind.Network.Test.P2P
         public void DefaultCapabilitiesToString_ReturnExpectedResult()
         {
             string result = P2PProtocolInfoProvider.DefaultCapabilitiesToString();
-            Assert.That(result, Is.EqualTo("eth/66"));
+            Assert.That(result, Is.EqualTo("eth/66,nodedata/1"));
         }
     }
 }

@@ -183,7 +183,7 @@ namespace Nethermind.Synchronization.FastSync
                 }
             }
 
-            // Take Stae Nodes if no codes queued up
+            // Take State Nodes if no codes queued up
             for (int i = 0; i < length; i++)
             {
                 if (TryTake(out StateSyncItem? requestItem))
