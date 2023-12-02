@@ -306,12 +306,10 @@ public class BlockValidator : IBlockValidator
         return true;
     }
 
-    public static bool ValidateBodyForHeader(BlockHeader header, BlockBody toBeValidated)
-    {
-        return ValidateTxRootMatchesTxs(header, toBeValidated, out _) &&
+    public static bool ValidateBodyAgainstHeader(BlockHeader header, BlockBody toBeValidated) =>
+        ValidateTxRootMatchesTxs(header, toBeValidated, out _) &&
             ValidateUnclesHashMatches(header, toBeValidated, out _) &&
             ValidateWithdrawalsHashMatches(header, toBeValidated, out _);
-    }
 
     public static bool ValidateTxRootMatchesTxs(Block block, out Hash256 txRoot)
     {
