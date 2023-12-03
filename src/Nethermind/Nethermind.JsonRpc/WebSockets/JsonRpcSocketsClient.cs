@@ -173,38 +173,9 @@ public class JsonRpcSocketsClient : SocketClient, IJsonRpcDuplexClient
 
     private async Task<int> SendJsonRpcResultEntry(JsonRpcResult.Entry result, bool endOfMessage = true)
     {
-        async ValueTask SerializeTimeoutException(MemoryStream stream)
-        {
-            JsonRpcErrorResponse error = _jsonRpcService.GetErrorResponse(ErrorCodes.Timeout, "Request was canceled due to enabled timeout.");
-            await _jsonSerializer.SerializeAsync(stream, error);
-        }
-
         using (result)
         {
-            await using MemoryStream resultData = new();
-            {
-
-                try
-                {
-                    await _jsonSerializer.SerializeAsync(resultData, result.Response);
-                }
-                catch (Exception e) when (e.InnerException is OperationCanceledException)
-                {
-                    await SerializeTimeoutException(resultData);
-                }
-                catch (OperationCanceledException)
-                {
-                    await SerializeTimeoutException(resultData);
-                }
-
-                if (resultData.TryGetBuffer(out ArraySegment<byte> data))
-                {
-                    await _handler.SendRawAsync(data, endOfMessage);
-                    return data.Count;
-                }
-
-                return (int)resultData.Length;
-            }
+            return (int)await _jsonSerializer.SerializeAsync(_handler.SendUsingStream(), result.Response);
         }
     }
 }

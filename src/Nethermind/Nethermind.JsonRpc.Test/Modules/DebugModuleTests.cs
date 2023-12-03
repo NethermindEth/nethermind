@@ -143,13 +143,13 @@ public class DebugModuleTests
             {"3".PadLeft(64, '0'), "4".PadLeft(64, '0')},
         };
 
-        entry.Memory = new List<string>
+        entry.Memory = new string[]
         {
             "5".PadLeft(64, '0'),
             "6".PadLeft(64, '0')
         };
 
-        entry.Stack = new List<string>
+        entry.Stack = new string[]
         {
             "7".PadLeft(64, '0'),
             "8".PadLeft(64, '0')
@@ -182,13 +182,13 @@ public class DebugModuleTests
             {"3".PadLeft(64, '0'), "4".PadLeft(64, '0')},
         };
 
-        entry.Memory = new List<string>
+        entry.Memory = new string[]
         {
             "5".PadLeft(64, '0'),
             "6".PadLeft(64, '0')
         };
 
-        entry.Stack = new List<string>
+        entry.Stack = new string[]
         {
         };
 
@@ -220,13 +220,13 @@ public class DebugModuleTests
             {"3".PadLeft(64, '0'), "4".PadLeft(64, '0')},
         };
 
-        entry.Memory = new List<string>
+        entry.Memory = new string[]
         {
             "5".PadLeft(64, '0'),
             "6".PadLeft(64, '0')
         };
 
-        entry.Stack = new List<string> { };
+        entry.Stack = new string[] { };
         entry.Opcode = "STOP";
         entry.Gas = 22000;
         entry.GasCost = 1;
@@ -256,7 +256,7 @@ public class DebugModuleTests
                         Gas = 22000,
                         GasCost = 1,
                         Depth = 1,
-                        Memory = new List<string>()
+                        Memory = new string[]
                         {
                             "0000000000000000000000000000000000000000000000000000000000000005",
                             "0000000000000000000000000000000000000000000000000000000000000006"
@@ -433,14 +433,14 @@ public class DebugModuleTests
             Depth = 1,
             Gas = 22000,
             GasCost = 1,
-            Memory = new List<string>
+            Memory = new string[]
             {
                 "5".PadLeft(64, '0'),
                 "6".PadLeft(64, '0')
             },
             Opcode = "STOP",
             ProgramCounter = 32,
-            Stack = new List<string>
+            Stack = new string[]
             {
                 "7".PadLeft(64, '0'),
                 "8".PadLeft(64, '0')

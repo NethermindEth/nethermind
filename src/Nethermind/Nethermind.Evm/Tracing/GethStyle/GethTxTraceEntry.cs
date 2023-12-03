@@ -35,9 +35,9 @@ public class GethTxTraceEntry
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
     public string? Error { get; set; }
 
-    public IList<string>? Stack { get; set; }
+    public string[]? Stack { get; set; }
 
-    public IList<string>? Memory { get; set; }
+    public string[]? Memory { get; set; }
 
     public Dictionary<string, string>? Storage { get; set; }
 

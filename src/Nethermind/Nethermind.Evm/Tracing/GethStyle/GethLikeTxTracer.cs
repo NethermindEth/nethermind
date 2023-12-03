@@ -77,12 +77,12 @@ public abstract class GethLikeTxTracer<TEntry> : TxTracer where TEntry : GethTxT
 
     public override void SetOperationMemorySize(ulong newSize) => CurrentTraceEntry.UpdateMemorySize(newSize);
 
-    public override void SetOperationStack(List<string> stackTrace) => CurrentTraceEntry.Stack = stackTrace;
+    public override void SetOperationStack(List<string> stackTrace) => CurrentTraceEntry.Stack = stackTrace.ToArray();
 
     public override void SetOperationMemory(IEnumerable<string> memoryTrace)
     {
         if (IsTracingFullMemory)
-            CurrentTraceEntry.Memory = memoryTrace.ToList();
+            CurrentTraceEntry.Memory = memoryTrace.ToArray();
     }
 
     public virtual GethLikeTxTrace BuildResult()

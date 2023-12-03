@@ -2,8 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Collections.Generic;
 using System.IO;
+using System.IO.Pipelines;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Threading;
@@ -100,76 +102,37 @@ namespace Nethermind.Serialization.Json
 
         public static JsonSerializerOptions JsonOptionsIndented { get; private set; } = CreateOptions(indented: true);
 
-        private static CountingStream GetStream(Stream stream)
+        private static StreamPipeWriterOptions options = new (pool: MemoryPool<byte>.Shared, minimumBufferSize: 4096, leaveOpen: true);
+        private static CountingStreamPipeWriter GetPipeWriter(Stream stream)
         {
-            return new CountingStream(stream);
+            return new CountingStreamPipeWriter(stream, options);
         }
 
         public long Serialize<T>(Stream stream, T value, bool indented = false)
         {
-            CountingStream countingStream = GetStream(stream);
-            JsonSerializer.Serialize(countingStream, value, indented ? JsonOptionsIndented : _jsonOptions);
-            long position = countingStream.Position;
-            return position;
+            var countingWriter = GetPipeWriter(stream);
+            using var writer = new Utf8JsonWriter(countingWriter, new JsonWriterOptions() { SkipValidation = true, Indented = indented });
+            JsonSerializer.Serialize(writer, value, indented ? JsonOptionsIndented : _jsonOptions);
+            countingWriter.Complete();
+
+            long outputCount = countingWriter.OutputCount;
+            return outputCount;
         }
 
         public async ValueTask<long> SerializeAsync<T>(Stream stream, T value, bool indented = false)
         {
-            CountingStream countingStream = GetStream(stream);
-            await JsonSerializer.SerializeAsync(countingStream, value, indented ? JsonOptionsIndented : _jsonOptions);
-            long position = countingStream.Position;
-            return position;
+            var countingWriter = GetPipeWriter(stream);
+            using var writer = new Utf8JsonWriter(countingWriter, new JsonWriterOptions() { SkipValidation = true, Indented = indented });
+            JsonSerializer.Serialize(writer, value, indented ? JsonOptionsIndented : _jsonOptions);
+            await countingWriter.CompleteAsync();
+
+            long outputCount = countingWriter.OutputCount;
+            return outputCount;
         }
 
         public static void SerializeToStream<T>(Stream stream, T value, bool indented = false)
         {
             JsonSerializer.Serialize(stream, value, indented ? JsonOptionsIndented : JsonOptions);
-        }
-
-        private sealed class CountingStream : Stream
-        {
-            private Stream _wrappedStream;
-            private long _position;
-
-            public CountingStream(Stream stream)
-            {
-                _wrappedStream = stream;
-            }
-
-            public override long Position { get => _position; set => throw new NotSupportedException(); }
-
-            public override void Flush() => _wrappedStream.Flush();
-
-            public override void Write(byte[] buffer, int offset, int count)
-            {
-                _position += count;
-                _wrappedStream.Write(buffer, offset, count);
-            }
-
-            public override void Write(ReadOnlySpan<byte> buffer)
-            {
-                _position += buffer.Length;
-                _wrappedStream.Write(buffer);
-            }
-            public override Task WriteAsync(byte[] buffer, int offset, int count, CancellationToken token)
-            {
-                _position += count;
-                return _wrappedStream.WriteAsync(buffer, offset, count, token);
-            }
-
-            public override ValueTask WriteAsync(ReadOnlyMemory<byte> buffer, CancellationToken token)
-            {
-                _position += buffer.Length;
-                return _wrappedStream.WriteAsync(buffer, token);
-            }
-
-            public override bool CanRead => _wrappedStream.CanRead;
-            public override bool CanSeek => _wrappedStream.CanSeek;
-            public override bool CanWrite => _wrappedStream.CanWrite;
-            public override long Length => _wrappedStream.Length;
-            public override int Read(byte[] buffer, int offset, int count) => throw new NotSupportedException();
-            public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
-            public override void SetLength(long value) => throw new NotSupportedException();
         }
     }
 
