@@ -17,8 +17,6 @@ using Nethermind.Db;
 using Nethermind.Db.FullPruning;
 using Nethermind.Init.Steps;
 using Nethermind.JsonRpc.Converters;
-using Nethermind.JsonRpc.Modules.DebugModule;
-using Nethermind.JsonRpc.Modules.Trace;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.State;
@@ -102,12 +100,12 @@ public class InitializeStateDb : IStep
 
         TrieStore trieStore = syncConfig.TrieHealing
             ? new HealingTrieStore(
-                stateWitnessedBy,
+                _api.NodeStorageFactory.WrapKeyValueStore(stateWitnessedBy),
                 pruningStrategy,
                 persistenceStrategy,
                 getApi.LogManager)
             : new TrieStore(
-                stateWitnessedBy,
+                _api.NodeStorageFactory.WrapKeyValueStore(stateWitnessedBy),
                 pruningStrategy,
                 persistenceStrategy,
                 getApi.LogManager);
@@ -130,7 +128,7 @@ public class InitializeStateDb : IStep
             IFullPruningDb fullPruningDb = (IFullPruningDb)getApi.DbProvider!.StateDb;
             fullPruningDb.PruningStarted += (_, args) =>
             {
-                trieStore.PersistCache(args.Context, args.Context.CancellationTokenSource.Token);
+                trieStore.PersistCache(_api.NodeStorageFactory.WrapKeyValueStore(args.Context), args.Context.CancellationTokenSource.Token);
             };
         }
 
@@ -221,7 +219,7 @@ public class InitializeStateDb : IStep
                 }
 
                 IDriveInfo? drive = api.FileSystem.GetDriveInfos(pruningDbPath).FirstOrDefault();
-                FullPruner pruner = new(fullPruningDb, api.PruningTrigger, pruningConfig, api.BlockTree!,
+                FullPruner pruner = new(fullPruningDb, api.NodeStorageFactory, api.PruningTrigger, pruningConfig, api.BlockTree!,
                     stateReader, api.ProcessExit!, ChainSizes.CreateChainSizeInfo(api.ChainSpec.ChainId),
                     drive, api.LogManager);
                 api.DisposeStack.Push(pruner);

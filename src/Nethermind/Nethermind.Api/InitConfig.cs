@@ -3,6 +3,7 @@
 
 using System;
 using Nethermind.Consensus.Processing;
+using Nethermind.Trie;
 
 namespace Nethermind.Api
 {
@@ -33,6 +34,7 @@ namespace Nethermind.Api
         public long? MemoryHint { get; set; }
         public bool DisableGcOnNewPayload { get; set; } = true;
         public bool DisableMallocOpts { get; set; } = false;
+        public INodeStorage.KeyScheme StateDbKeyScheme { get; set; } = INodeStorage.KeyScheme.HalfPath;
 
         [Obsolete("Use DiagnosticMode with MemDb instead")]
         public bool UseMemDb

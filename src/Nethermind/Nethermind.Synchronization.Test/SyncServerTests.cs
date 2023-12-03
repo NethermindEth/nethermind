@@ -661,8 +661,9 @@ namespace Nethermind.Synchronization.Test
 
             Hash256 nodeKey = TestItem.KeccakA;
             TrieNode node = new(NodeType.Leaf, nodeKey, TestItem.KeccakB.Bytes);
-            trieStore.CommitNode(1, new NodeCommitInfo(node));
-            trieStore.FinishBlockCommit(TrieType.State, 1, node);
+            IScopedTrieStore scopedTrieStore = trieStore.GetTrieStore(null);
+            scopedTrieStore.CommitNode(1, new NodeCommitInfo(node, TreePath.Empty));
+            scopedTrieStore.FinishBlockCommit(TrieType.State, 1, node);
 
             stateDb.KeyExists(nodeKey).Should().BeFalse();
             ctx.SyncServer.GetNodeData(new[] { nodeKey }, NodeDataType.All).Should().BeEquivalentTo(new[] { TestItem.KeccakB.BytesToArray() });

@@ -264,7 +264,7 @@ namespace Nethermind.Trie.Test
             //     B
             //  L1     L2
             // Then we read L2 from account 1 so that B is resolved from cache.
-            // When persisting account 2, storage should not get persisted again.
+            // When persisting account 2, storage should get persisted again.
 
             PruningContext.SnapshotEveryOtherBlockWithManualPruning
                 .CreateAccount(1)
@@ -290,7 +290,7 @@ namespace Nethermind.Trie.Test
                 .CommitEmptyBlock()
                 .PruneOldBlock()
                 .PruneOldBlock()
-                .VerifyPersisted(9);
+                .VerifyPersisted(12);
         }
 
         [Test]
@@ -348,7 +348,7 @@ namespace Nethermind.Trie.Test
         }
 
         [Test]
-        public void Two_accounts_adding_shared_storage_in_same_block()
+        public void Two_accounts_adding_same_storage_in_same_block()
         {
             PruningContext.SnapshotEveryOtherBlockWithManualPruning
                 .CreateAccount(1)
@@ -361,12 +361,12 @@ namespace Nethermind.Trie.Test
                 .CommitEmptyBlock()
                 .PruneOldBlock()
                 .PruneOldBlock()
-                .VerifyPersisted(6)
-                .VerifyCached(6);
+                .VerifyPersisted(9)
+                .VerifyCached(9);
         }
 
         [Test]
-        public void Two_accounts_adding_shared_storage_in_same_block_then_one_account_storage_is_cleared()
+        public void Two_accounts_adding_same_storage_in_same_block_then_one_account_storage_is_cleared()
         {
             PruningContext.SnapshotEveryOtherBlockWithManualPruning
                 .CreateAccount(1)
@@ -382,7 +382,7 @@ namespace Nethermind.Trie.Test
                 .PruneOldBlock()
                 .PruneOldBlock()
                 .VerifyPersisted(6)
-                .VerifyCached(8);
+                .VerifyCached(11);
         }
 
         [Test]

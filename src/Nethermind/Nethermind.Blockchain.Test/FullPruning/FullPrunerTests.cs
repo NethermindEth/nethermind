@@ -199,7 +199,7 @@ namespace Nethermind.Blockchain.Test.FullPruning
                 StateReader = new StateReader(new TrieStore(TrieDb, LimboLogs.Instance), new TestMemDb(), LimboLogs.Instance);
                 FullPruningDb = new TestFullPruningDb(new RocksDbSettings("test", "test"), rocksDbFactory, successfulPruning, clearPrunedDb);
 
-                Pruner = new(FullPruningDb, PruningTrigger, new PruningConfig()
+                Pruner = new(FullPruningDb, new NodeStorageFactory(INodeStorage.KeyScheme.HalfPath), PruningTrigger, new PruningConfig()
                 {
                     FullPruningMaxDegreeOfParallelism = degreeOfParallelism,
                     FullPruningMemoryBudgetMb = fullScanMemoryBudgetMb,

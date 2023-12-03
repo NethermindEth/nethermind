@@ -234,7 +234,7 @@ namespace Nethermind.Trie.Test
         {
             MemDb memDb = new();
             using TrieStore trieStore = new(memDb, new MemoryLimit(128.MB()), Persist.EveryBlock, _logManager);
-            PatriciaTree patriciaTree = new(trieStore, Keccak.EmptyTreeHash, true, true, _logManager);
+            PatriciaTree patriciaTree = new(trieStore.GetTrieStore(null), Keccak.EmptyTreeHash, true, true, _logManager);
 
             for (int j = 0; j < i; j++)
             {
@@ -259,7 +259,7 @@ namespace Nethermind.Trie.Test
         {
             MemDb memDb = new();
             using TrieStore trieStore = new(memDb, new MemoryLimit(128.MB()), Persist.EveryBlock, _logManager);
-            PatriciaTree patriciaTree = new(trieStore, Keccak.EmptyTreeHash, true, true, _logManager);
+            PatriciaTree patriciaTree = new(trieStore.GetTrieStore(null), Keccak.EmptyTreeHash, true, true, _logManager);
 
             for (int j = 0; j < i; j++)
             {
@@ -1049,7 +1049,11 @@ namespace Nethermind.Trie.Test
                 stateProvider.Commit(MuirGlacier.Instance);
 
                 stateProvider.CommitTree(blockNumber);
-                rootQueue.Enqueue(stateProvider.StateRoot);
+
+                if (blockNumber > blocksCount - Reorganization.MaxDepth)
+                {
+                    rootQueue.Enqueue(stateProvider.StateRoot);
+                }
             }
 
             streamWriter.Flush();

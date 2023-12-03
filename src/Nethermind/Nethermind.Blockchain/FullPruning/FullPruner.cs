@@ -14,6 +14,7 @@ using Nethermind.Db.FullPruning;
 using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.Trie;
+using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Blockchain.FullPruning
 {
@@ -23,6 +24,7 @@ namespace Nethermind.Blockchain.FullPruning
     public class FullPruner : IDisposable
     {
         private readonly IFullPruningDb _fullPruningDb;
+        private readonly INodeStorageFactory _nodeStorageFactory;
         private readonly IPruningTrigger _pruningTrigger;
         private readonly IPruningConfig _pruningConfig;
         private readonly IBlockTree _blockTree;
@@ -42,6 +44,7 @@ namespace Nethermind.Blockchain.FullPruning
 
         public FullPruner(
             IFullPruningDb fullPruningDb,
+            INodeStorageFactory nodeStorageFactory,
             IPruningTrigger pruningTrigger,
             IPruningConfig pruningConfig,
             IBlockTree blockTree,
@@ -52,6 +55,7 @@ namespace Nethermind.Blockchain.FullPruning
             ILogManager logManager)
         {
             _fullPruningDb = fullPruningDb;
+            _nodeStorageFactory = nodeStorageFactory;
             _pruningTrigger = pruningTrigger;
             _pruningConfig = pruningConfig;
             _blockTree = blockTree;
@@ -217,7 +221,8 @@ namespace Nethermind.Blockchain.FullPruning
                     writeFlags |= WriteFlags.LowPriority;
                 }
 
-                using CopyTreeVisitor copyTreeVisitor = new(pruning, writeFlags, _logManager);
+                INodeStorage nodeStorage = _nodeStorageFactory.WrapKeyValueStore(pruning);
+                using CopyTreeVisitor copyTreeVisitor = new(nodeStorage, pruning.CancellationTokenSource, writeFlags, _logManager);
                 VisitingOptions visitingOptions = new()
                 {
                     MaxDegreeOfParallelism = _pruningConfig.FullPruningMaxDegreeOfParallelism,

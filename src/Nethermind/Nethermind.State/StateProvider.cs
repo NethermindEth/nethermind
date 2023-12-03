@@ -40,7 +40,7 @@ namespace Nethermind.State
         private Change?[] _changes = new Change?[StartCapacity];
         private int _currentPosition = Resettable.EmptyPosition;
 
-        public StateProvider(ITrieStore? trieStore, IKeyValueStore? codeDb, ILogManager? logManager, StateTree? stateTree = null)
+        public StateProvider(IScopedTrieStore? trieStore, IKeyValueStore? codeDb, ILogManager? logManager, StateTree? stateTree = null)
         {
             _logger = logManager?.GetClassLogger<StateProvider>() ?? throw new ArgumentNullException(nameof(logManager));
             _codeDb = codeDb ?? throw new ArgumentNullException(nameof(codeDb));

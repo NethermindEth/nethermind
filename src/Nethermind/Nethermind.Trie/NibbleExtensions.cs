@@ -27,6 +27,13 @@ namespace Nethermind.Trie
             return nibbles;
         }
 
+        public static byte[] BytesToNibbleBytes(ReadOnlySpan<byte> bytes)
+        {
+            byte[] output = new byte[bytes.Length * 2];
+            BytesToNibbleBytes(bytes, output);
+            return output;
+        }
+
         public static void BytesToNibbleBytes(ReadOnlySpan<byte> bytes, Span<byte> nibbles)
         {
             if (nibbles.Length != 2 * bytes.Length)

@@ -7,7 +7,7 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.Trie.Pruning
 {
-    public class NullTrieStore : IReadOnlyTrieStore
+    public class NullTrieStore : IScopedTrieStore
     {
         private NullTrieStore() { }
 
@@ -17,8 +17,6 @@ namespace Nethermind.Trie.Pruning
 
         public void FinishBlockCommit(TrieType trieType, long blockNumber, TrieNode? root, WriteFlags flags = WriteFlags.None) { }
 
-        public IReadOnlyTrieStore AsReadOnly(IKeyValueStore keyValueStore) => this;
-
         public event EventHandler<ReorgBoundaryReached> ReorgBoundaryReached
         {
             add { }
@@ -27,11 +25,17 @@ namespace Nethermind.Trie.Pruning
 
         public IReadOnlyKeyValueStore TrieNodeRlpStore => null!;
 
-        public TrieNode FindCachedOrUnknown(Hash256 hash) => new(NodeType.Unknown, hash);
+        public TrieNode FindCachedOrUnknown(in TreePath treePath, Hash256 hash) => new(NodeType.Unknown, hash);
 
-        public byte[] LoadRlp(Hash256 hash, ReadFlags flags = ReadFlags.None) => Array.Empty<byte>();
+        public byte[] LoadRlp(in TreePath treePath, Hash256 hash, ReadFlags flags = ReadFlags.None) => Array.Empty<byte>();
+        public ITrieNodeResolver GetStorageTrieNodeResolver(Hash256 storageRoot)
+        {
+            return this;
+        }
 
-        public bool IsPersisted(in ValueHash256 keccak) => true;
+        public INodeStorage.KeyScheme Scheme => INodeStorage.KeyScheme.HalfPath;
+
+        public bool IsPersisted(in TreePath path, in ValueHash256 keccak) => true;
 
         public void Dispose() { }
 
