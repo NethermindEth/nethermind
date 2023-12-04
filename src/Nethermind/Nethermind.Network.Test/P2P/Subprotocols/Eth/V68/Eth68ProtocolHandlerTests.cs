@@ -242,6 +242,45 @@ public class Eth68ProtocolHandlerTests
         );
     }
 
+    [TestCase(5)]
+    [TestCase(10)]
+    [TestCase(20)]
+    public void Does_not_drop_messages_when_using_default_throttle_options(int msgCount)
+    {
+        _txGossipPolicy.ShouldListenToGossippedTransactions.Returns(true);
+
+        _handler = new Eth68ProtocolHandler(
+            _session,
+            _svc,
+            new NodeStatsManager(_timerFactory, LimboLogs.Instance),
+            _syncManager,
+            _transactionPool,
+            _pooledTxsRequestor,
+            _gossipPolicy,
+            new ForkInfo(_specProvider, _genesisBlock.Header.Hash!),
+            LimboLogs.Instance,
+            _txGossipPolicy,
+            throttleOptions: (default, default)
+        );
+        _handler.Init();
+
+        GenerateLists(10, out List<byte> types, out List<int> sizes, out List<Hash256> hashes);
+        NewPooledTransactionHashesMessage68 msg = new(types, sizes, hashes);
+
+        for (int i = 0; i < msgCount; i++)
+        {
+            HandleZeroMessage(msg, Eth68MessageCode.NewPooledTransactionHashes);
+        }
+        _handler.Dispose();
+
+        _pooledTxsRequestor.Received(msgCount).RequestTransactionsEth68(
+            Arg.Any<Action<GetPooledTransactionsMessage>>(),
+            Arg.Any<IReadOnlyList<Hash256>>(),
+            Arg.Any<IReadOnlyList<int>>(),
+            Arg.Any<IReadOnlyList<byte>>()
+        );
+    }
+
     [TestCase(true)]
     [TestCase(false)]
     public void Should_throw_when_sizes_doesnt_match(bool removeSize)
