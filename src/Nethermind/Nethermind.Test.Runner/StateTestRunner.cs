@@ -9,7 +9,7 @@ using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Serialization.Json;
 
-namespace Nethermind.State.Test.Runner
+namespace Nethermind.Test.Runner
 {
     public enum WhenTrace
     {
@@ -24,14 +24,16 @@ namespace Nethermind.State.Test.Runner
         private readonly WhenTrace _whenTrace;
         private readonly bool _traceMemory;
         private readonly bool _traceStack;
+        private readonly string? _filter;
         private static readonly IJsonSerializer _serializer = new EthereumJsonSerializer();
 
-        public StateTestsRunner(ITestSourceLoader testsSource, WhenTrace whenTrace, bool traceMemory, bool traceStack)
+        public StateTestsRunner(ITestSourceLoader testsSource, WhenTrace whenTrace, bool traceMemory, bool traceStack, string? filter = null)
         {
             _testsSource = testsSource ?? throw new ArgumentNullException(nameof(testsSource));
             _whenTrace = whenTrace;
             _traceMemory = traceMemory;
             _traceStack = traceStack;
+            _filter = filter;
             Setup(null);
         }
 
@@ -57,11 +59,11 @@ namespace Nethermind.State.Test.Runner
             IEnumerable<GeneralStateTest> tests = (IEnumerable<GeneralStateTest>)_testsSource.LoadTests();
             foreach (GeneralStateTest test in tests)
             {
+                if (_filter is not null && !test.Name.StartsWith(_filter))
+                    continue;
                 EthereumTestResult result = null;
                 if (_whenTrace != WhenTrace.Always)
-                {
                     result = RunTest(test, NullTxTracer.Instance);
-                }
 
                 if (_whenTrace != WhenTrace.Never && !(result?.Pass ?? false))
                 {
