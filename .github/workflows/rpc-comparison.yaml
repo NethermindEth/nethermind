@@ -33,7 +33,7 @@ jobs:
       additional_nethermind_flags: Pruning.Mode=None
       nethermind_repo_ref: ${{ github.ref }}
       custom_run_id: ${{ github.run_id }}
-      network: sepolia #to be removed
+      network: holesky #to be removed
   
   create_compare_node:
     name: Create node from branch to compare
@@ -46,7 +46,7 @@ jobs:
       additional_nethermind_flags: Pruning.Mode=None
       nethermind_repo_ref: master #${{ inputs.branch_to_compare }}
       custom_run_id: ${{ github.run_id }}
-      network: sepolia #to be removed
+      network: holesky #to be removed
 
   aggregate_rpcs:
     name: Collect all RPC Urls and pass it further
@@ -136,28 +136,39 @@ jobs:
             processed_rpc_urls+=("$processed_url")
           done
           
-          # Convert the processed URLs back to a comma-separated string
-          IFS=','; rpc_urls="${processed_rpc_urls[*]}"; unset IFS
-
+          # Assuming rpc_urls_str is a comma-separated string of URLs
+          rpc_urls_str="${{ needs.aggregate_rpcs.outputs.rpc_urls }}"
+          IFS=',' read -r -a rpc_urls_array <<< "$rpc_urls_str"
+          
+          # Loop through the array and strip the branch prefix
+          processed_rpc_urls=()
+          for url_entry in "${rpc_urls_array[@]}"; do
+            processed_url="${url_entry#*::}"  # Remove everything up to and including "::"
+            processed_rpc_urls+=("$processed_url")
+          done
+          
           sync_complete_flag=0
-
+          
           check_sync() {
             rpc_url=$1
-            while curl -X POST --data '{"jsonrpc":"2.0","method":"eth_syncing","params":[],"id":1}' $rpc_url | jq -e '.result'; do
-              sleep 300
+            while curl -X POST --data '{"jsonrpc":"2.0","method":"eth_syncing","params":[],"id":1}' "$rpc_url" | jq -e '.result'; do
+              echo "Still waiting for node to be sync at RPC: $rpc_url ."
+              sleep 60
             done
             echo "Node at $rpc_url synced."
             sync_complete_flag=$((sync_complete_flag+1))
           }
-
-          for url in "${rpc_urls[@]}"; do
+          
+          # Iterate over the processed array of URLs
+          for url in "${processed_rpc_urls[@]}"; do
             check_sync "$url" &
           done
-
+          
           # Wait for all nodes to sync
-          while [ $sync_complete_flag -ne ${#rpc_urls[@]} ]; do
+          while [ $sync_complete_flag -ne ${#processed_rpc_urls[@]} ]; do
             sleep 60
           done
+
 
   compare:
     name: Compare JSON-RPC responses between clients and versions
