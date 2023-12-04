@@ -100,61 +100,61 @@ jobs:
   #        echo $rpc_urls
   #        echo "rpc_urls=$rpc_urls" >> $GITHUB_OUTPUT
 
-  wait_for_node_to_sync:
-    name: Wait for the nodes to sync
-    runs-on: ubuntu-latest
-    #needs: [aggregate_rpcs]
-    timeout-minutes: 600
-    steps:
-      - uses: actions/checkout@v3
-      - name: Install WireGuard
-        run: |
-          sudo apt update
-          sudo apt install -y wireguard resolvconf
-          sudo mkdir -p /etc/wireguard
-          envsubst < scripts/wireguard.conf.template > wg0.conf
-          sudo wg-quick up ./wg0.conf
-        env:
-          WIREGUARD_PRIVKEY: '${{ secrets.WIREGUARD_PRIVKEY }}'
-          WIREGUARD_ADDRESS: '${{ secrets.WIREGUARD_ADDRESS }}'
-          WIREGUARD_DNS: '${{ secrets.WIREGUARD_DNS }}'
-          WIREGUARD_PUBKEY: '${{ secrets.WIREGUARD_PUBKEY }}'
-          WIREGUARD_PRESHAREDKEY: '${{ secrets.WIREGUARD_PRESHAREDKEY }}'
-          WIREGUARD_ALLOWED_IPS: '${{ secrets.WIREGUARD_ALLOWED_IPS }}'
-          WIREGUARD_SERVER_IP: '${{ secrets.WIREGUARD_SERVER_IP }}'
-          WIREGUARD_SERVER_PORT: '${{ secrets.WIREGUARD_SERVER_PORT }}'
-      
-      - name: Wait for the nodes to sync
-        timeout-minutes: 600
-        run: |          
-          # Assuming rpc_urls_str is a comma-separated string of URLs
-          #rpc_urls_str="${{ needs.aggregate_rpcs.outputs.rpc_urls }}"
-          rpc_urls_str="master::http://172.105.153.109:8545,rpc-comparision-1.23.0::http://172.105.153.200:8545"
-          IFS=',' read -r -a rpc_urls_array <<< "$rpc_urls_str"
-          
-          # Loop through the array and strip the branch prefix
-          processed_rpc_urls=()
-          for url_entry in "${rpc_urls_array[@]}"; do
-            processed_url="${url_entry#*::}"  # Remove everything up to and including "::"
-            processed_rpc_urls+=("$processed_url")
-          done
-          
-          sync_complete_flag=0
-          
-          check_sync() {
-            rpc_url=$1
-            while curl -X POST --data '{"jsonrpc":"2.0","method":"eth_syncing","params":[],"id":1}' "$rpc_url" | jq -e '.result'; do
-              echo "Still waiting for node to be synced at RPC: $rpc_url."
-              sleep 30
-            done
-            echo "Node at $rpc_url synced."
-            sync_complete_flag=$((sync_complete_flag+1))
-          }
-          
-          # Iterate over the processed array of URLs
-          for url in "${processed_rpc_urls[@]}"; do
-            check_sync "$url"
-          done
+  #wait_for_node_to_sync:
+  #  name: Wait for the nodes to sync
+  #  runs-on: ubuntu-latest
+  #  #needs: [aggregate_rpcs]
+  #  timeout-minutes: 600
+  #  steps:
+  #    - uses: actions/checkout@v3
+  #    - name: Install WireGuard
+  #      run: |
+  #        sudo apt update
+  #        sudo apt install -y wireguard resolvconf
+  #        sudo mkdir -p /etc/wireguard
+  #        envsubst < scripts/wireguard.conf.template > wg0.conf
+  #        sudo wg-quick up ./wg0.conf
+  #      env:
+  #        WIREGUARD_PRIVKEY: '${{ secrets.WIREGUARD_PRIVKEY }}'
+  #        WIREGUARD_ADDRESS: '${{ secrets.WIREGUARD_ADDRESS }}'
+  #        WIREGUARD_DNS: '${{ secrets.WIREGUARD_DNS }}'
+  #        WIREGUARD_PUBKEY: '${{ secrets.WIREGUARD_PUBKEY }}'
+  #        WIREGUARD_PRESHAREDKEY: '${{ secrets.WIREGUARD_PRESHAREDKEY }}'
+  #        WIREGUARD_ALLOWED_IPS: '${{ secrets.WIREGUARD_ALLOWED_IPS }}'
+  #        WIREGUARD_SERVER_IP: '${{ secrets.WIREGUARD_SERVER_IP }}'
+  #        WIREGUARD_SERVER_PORT: '${{ secrets.WIREGUARD_SERVER_PORT }}'
+  #    
+  #    - name: Wait for the nodes to sync
+  #      timeout-minutes: 600
+  #      run: |          
+  #        # Assuming rpc_urls_str is a comma-separated string of URLs
+  #        #rpc_urls_str="${{ needs.aggregate_rpcs.outputs.rpc_urls }}"
+  #        rpc_urls_str="master::http://172.105.153.109:8545,rpc-comparision-1.23.0::http://172.105.153.200:8545"
+  #        IFS=',' read -r -a rpc_urls_array <<< "$rpc_urls_str"
+  #        
+  #        # Loop through the array and strip the branch prefix
+  #        processed_rpc_urls=()
+  #        for url_entry in "${rpc_urls_array[@]}"; do
+  #          processed_url="${url_entry#*::}"  # Remove everything up to and including "::"
+  #          processed_rpc_urls+=("$processed_url")
+  #        done
+  #        
+  #        sync_complete_flag=0
+  #        
+  #        check_sync() {
+  #          rpc_url=$1
+  #          while curl -X POST --data '{"jsonrpc":"2.0","method":"eth_syncing","params":[],"id":1}' "$rpc_url" | jq -e '.result'; do
+  #            echo "Still waiting for node to be synced at RPC: $rpc_url."
+  #            sleep 30
+  #          done
+  #          echo "Node at $rpc_url synced."
+  #          sync_complete_flag=$((sync_complete_flag+1))
+  #        }
+  #        
+  #        # Iterate over the processed array of URLs
+  #        for url in "${processed_rpc_urls[@]}"; do
+  #          check_sync "$url"
+  #        done
 
 
   compare:
@@ -205,7 +205,7 @@ jobs:
           for other in "${others_str_array[@]}"; do
             if [[ "$other" == "INFURA_ENDPOINT" ]]; then
               others_prepared_str+="$other=${INFURA_ENDPOINT} "
-            else [[ "$other" == "NETHERMIND_ARCHIVE_ENDPOINT" ]]; then
+            elif [[ "$other" == "NETHERMIND_ARCHIVE_ENDPOINT" ]]; then  # Use 'elif' instead of 'else'
               others_prepared_str+="$other=${NETHERMIND_ARCHIVE_ENDPOINT} "
             fi
           done
