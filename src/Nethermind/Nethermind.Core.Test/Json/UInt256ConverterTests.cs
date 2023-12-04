@@ -38,7 +38,7 @@ namespace Nethermind.Core.Test.Json
                 () => TestConverter(int.MaxValue, (integer, bigInteger) => integer.Equals(bigInteger), converter));
             Assert.Throws<NotSupportedException>(
                 () => TestConverter(UInt256.One, (integer, bigInteger) => integer.Equals(bigInteger), converter));
-            
+
             ForcedNumberConversion.ForcedConversion.Value = NumberConversion.Hex;
         }
 
@@ -48,7 +48,7 @@ namespace Nethermind.Core.Test.Json
             ForcedNumberConversion.ForcedConversion.Value = NumberConversion.Raw;
             UInt256Converter converter = new();
             TestConverter(0, (integer, bigInteger) => integer.Equals(bigInteger), converter);
-            
+
             ForcedNumberConversion.ForcedConversion.Value = NumberConversion.Hex;
         }
 
