@@ -137,6 +137,12 @@ public class InitDatabaseSnapshot : InitDatabase
             if (snapshotFileInfo.Exists && _logger.IsWarn)
                 _logger.Warn("Download couldn't be resumed. Starting from the beginning.");
         }
+        else if (response.StatusCode == HttpStatusCode.NoContent) {
+            if (_logger.IsWarn) {
+                _logger.Warn("File is already downloaded, interrupting");
+            }
+            return;
+        }
         else
         {
             throw new IOException($"Unexpected status code: {response.StatusCode}");
