@@ -3,6 +3,7 @@
 
 using System;
 using System.Buffers;
+using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
@@ -87,5 +88,10 @@ public class BlockStore : IBlockStore
     public void Cache(Block block)
     {
         _blockCache.Set(block.Hash, block);
+    }
+
+    public Block[] GetAll()
+    {
+        return _blockDb.GetAllValues(true).Select(bytes => _blockDecoder.Decode(bytes.AsRlpStream())).ToArray();
     }
 }

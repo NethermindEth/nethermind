@@ -52,12 +52,14 @@ namespace Nethermind.Init.Steps
 
             IBlockStore blockStore = new BlockStore(_get.DbProvider.BlocksDb);
             IHeaderStore headerStore = new HeaderStore(_get.DbProvider.HeadersDb, _get.DbProvider.BlockNumbersDb);
+            IBlockStore badBlockStore = new BlockStore(_get.DbProvider.BadBlocksDb);
 
             IBlockTree blockTree = _set.BlockTree = new BlockTree(
                 blockStore,
                 headerStore,
                 _get.DbProvider.BlockInfosDb,
                 _get.DbProvider.MetadataDb,
+                badBlockStore,
                 chainLevelInfoRepository,
                 _get.SpecProvider,
                 bloomStorage,
