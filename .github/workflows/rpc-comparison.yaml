@@ -70,14 +70,16 @@ jobs:
           echo "CLEAN_COMPARE_REF=$CLEAN_REF" >> $GITHUB_ENV
       
       - name: Download RPC Artifact for current branch
-        uses: actions/download-artifact@v3
+        #uses: actions/download-artifact@v3
+        uses: dawidd6/action-download-artifact@v2
         with:
           #name: rpc-url___${{ env.CLEAN_MAIN_REF }}___${{ github.run_id }}
           name: artifacts/rpc-url___${{ env.CLEAN_MAIN_REF }}___7086240832
       
       - name: Download RPC Artifact for branch to compare 
         #if: inputs.branch_to_compare != ''
-        uses: actions/download-artifact@v3
+        #uses: actions/download-artifact@v3
+        uses: dawidd6/action-download-artifact@v2
         with:
           #name: rpc-url___master___${{ github.run_id }} #rpc-url___${{ env.CLEAN_COMPARE_REF }}___${{ github.run_id }}
           name: artifacts/rpc-url___master___7086240832 #rpc-url___${{ env.CLEAN_COMPARE_REF }}___${{ github.run_id }}
