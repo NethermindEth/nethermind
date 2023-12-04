@@ -33,6 +33,7 @@ jobs:
       additional_nethermind_flags: Pruning.Mode=None
       nethermind_repo_ref: ${{ github.ref }}
       custom_run_id: ${{ github.run_id }}
+      network: sepolia #to be removed
   
   create_compare_node:
     name: Create node from branch to compare
@@ -45,6 +46,7 @@ jobs:
       additional_nethermind_flags: Pruning.Mode=None
       nethermind_repo_ref: master #${{ inputs.branch_to_compare }}
       custom_run_id: ${{ github.run_id }}
+      network: sepolia #to be removed
 
   aggregate_rpcs:
     name: Collect all RPC Urls and pass it further
@@ -73,18 +75,19 @@ jobs:
         uses: actions/download-artifact@v3
         with:
           name: rpc-url___${{ env.CLEAN_MAIN_REF }}___${{ github.run_id }}
-          path: artifacts/rpc-url___${{ env.CLEAN_MAIN_REF }}___${{ github.run_id }}
+          path: artifacts
       
       - name: Download RPC Artifact for branch to compare 
         #if: inputs.branch_to_compare != ''
         uses: actions/download-artifact@v3
         with:
           name: rpc-url___master___${{ github.run_id }} #rpc-url___${{ env.CLEAN_COMPARE_REF }}___${{ github.run_id }}
-          path: artifacts/rpc-url___master___${{ github.run_id }} #rpc-url___${{ env.CLEAN_COMPARE_REF }}___${{ github.run_id }}
+          path: artifacts
 
       - name: Process Artifacts Content
         run: |
           rpc_urls=""
+          ls artifacts
           for file in artifacts/*; do
             if [ -f "$file" ]; then
               branch=$(basename $file | cut -d '___' -f 3)
