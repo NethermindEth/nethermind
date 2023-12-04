@@ -178,7 +178,7 @@ jobs:
         fi
 
         if 
-        [[ "${{ inputs.nethermind_repo_ref || github.ref }}" == "refs/heads/master" ]] && 
+        [[ "$ref" == "refs/heads/master" ]] && 
         [[ "${{ steps.extract_dockerfile.outputs.dockerfile }}" == "Dockerfile" ]] && 
         [[ "${{ steps.extract_dockerfile.outputs.build-config }}" == "release" ]]; then
           echo "skip_docker_build=true" >> $GITHUB_OUTPUT
