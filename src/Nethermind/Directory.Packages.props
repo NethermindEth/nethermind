@@ -32,12 +32,12 @@
     <PackageVersion Include="Microsoft.AspNetCore.DataProtection.Extensions" Version="8.0.0" />
     <PackageVersion Include="Microsoft.AspNetCore.Http.Abstractions" Version="2.2.0" />
     <PackageVersion Include="Microsoft.AspNetCore.WebSockets" Version="2.2.1" />
-    <PackageVersion Include="Microsoft.ClearScript.V8" Version="7.4.3" />
-    <PackageVersion Include="Microsoft.ClearScript.V8.Native.linux-arm64" Version="7.4.3" />
-    <PackageVersion Include="Microsoft.ClearScript.V8.Native.linux-x64" Version="7.4.3" />
-    <PackageVersion Include="Microsoft.ClearScript.V8.Native.osx-arm64" Version="7.4.3" />
-    <PackageVersion Include="Microsoft.ClearScript.V8.Native.osx-x64" Version="7.4.3" />
-    <PackageVersion Include="Microsoft.ClearScript.V8.Native.win-x64" Version="7.4.3" />
+    <PackageVersion Include="Microsoft.ClearScript.V8" Version="7.4.4" />
+    <PackageVersion Include="Microsoft.ClearScript.V8.Native.linux-arm64" Version="7.4.4" />
+    <PackageVersion Include="Microsoft.ClearScript.V8.Native.linux-x64" Version="7.4.4" />
+    <PackageVersion Include="Microsoft.ClearScript.V8.Native.osx-arm64" Version="7.4.4" />
+    <PackageVersion Include="Microsoft.ClearScript.V8.Native.osx-x64" Version="7.4.4" />
+    <PackageVersion Include="Microsoft.ClearScript.V8.Native.win-x64" Version="7.4.4" />
     <PackageVersion Include="Microsoft.Extensions.CommandLineUtils" Version="1.1.1" />
     <PackageVersion Include="Microsoft.Extensions.Hosting.Abstractions" Version="8.0.0" />
     <PackageVersion Include="Microsoft.Extensions.Logging" Version="8.0.0" />
@@ -54,7 +54,7 @@
     <PackageVersion Include="Nethermind.Gmp" Version="1.0.1" />
     <PackageVersion Include="Nethermind.Numerics.Int256" Version="1.1.1" />
     <PackageVersion Include="Newtonsoft.Json" Version="13.0.3" />
-    <PackageVersion Include="Nito.Collections.Deque" Version="1.1.1" />
+    <PackageVersion Include="Nito.Collections.Deque" Version="1.2.1" />
     <PackageVersion Include="NLog" Version="5.2.7" />
     <PackageVersion Include="NLog.Targets.Seq" Version="3.0.0" />
     <PackageVersion Include="NSubstitute" Version="5.1.0" />
@@ -69,7 +69,7 @@
     <PackageVersion Include="Pyroscope" Version="0.8.14" />
     <PackageVersion Include="ReadLine" Version="2.0.1" />
     <PackageVersion Include="RichardSzalay.MockHttp" Version="7.0.0" />
-    <PackageVersion Include="RocksDB" Version="8.8.1.43919" />
+    <PackageVersion Include="RocksDB" Version="8.3.2.39829" />
     <PackageVersion Include="SCrypt" Version="2.0.0.2" />
     <PackageVersion Include="Seq.Api" Version="2023.4.0" />
     <PackageVersion Include="SharpCompress" Version="0.34.1" />
