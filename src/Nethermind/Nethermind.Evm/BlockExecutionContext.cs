@@ -15,7 +15,7 @@ public readonly struct BlockExecutionContext
     public BlockExecutionContext(BlockHeader blockHeader)
     {
         Header = blockHeader;
-        if (!BlobGasCalculator.TryCalculateBlobGasPricePerUnit(blockHeader.ExcessBlobGas ?? 0, out UInt256 blobBaseFeeResult))
+        if (!BlobGasCalculator.TryCalculateBlobGasPricePerUnit(blockHeader?.ExcessBlobGas ?? 0, out UInt256 blobBaseFeeResult))
         {
             throw new OverflowException("Blob gas price calculation led to overflow.");
         }
