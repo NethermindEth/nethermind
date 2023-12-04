@@ -286,11 +286,11 @@ jobs:
       if: inputs.custom_run_id != ''
       run: |
         workflow_id=${{ inputs.custom_run_id }}
-        echo "${{ env.RPC_URL }}" > rpc_url_${{ inputs.nethermind_repo_ref }}_${{ inputs.custom_run_id }}.txt
+        echo "${{ env.RPC_URL }}" > rpc_url_${{ env.CLEAN_REF }}_${{ inputs.custom_run_id }}.txt
 
     - name: Upload RPC URL
       uses: actions/upload-artifact@v3
       if: inputs.custom_run_id != ''
       with:
-        name: rpc-url___${{ inputs.nethermind_repo_ref }}___${{ inputs.custom_run_id }}
-        path: rpc_url_${{ inputs.nethermind_repo_ref }}_${{ inputs.custom_run_id }}.txt
+        name: rpc-url___${{ env.CLEAN_REF }}___${{ inputs.custom_run_id }}
+        path: rpc_url_${{ env.CLEAN_REF }}_${{ inputs.custom_run_id }}.txt
