@@ -23,33 +23,33 @@ on:
         required: false
 
 jobs:
-  create_main_node:
-    name: Create node from current branch
-    uses: ./.github/workflows/run-a-single-node-from-branch.yml
-    secrets: inherit
-    with:
-      additional_options: '{"timeout":"1", "default_dockerfile":"Dockerfile", "default_dockerfile_build_type":"release", "ssh_keys":"", "allowed_ips":"${{ inputs.allowed_ips }}"}' 
-      non_validator_mode: false
-      additional_nethermind_flags: Pruning.Mode=None
-      nethermind_repo_ref: ${{ github.ref }}
-      custom_run_id: ${{ github.run_id }}
-
-  create_compare_node:
-    name: Create node from branch to compare
-    uses: ./.github/workflows/run-a-single-node-from-branch.yml
-    #if: inputs.branch_to_compare != ''
-    secrets: inherit
-    with:
-      additional_options: '{"timeout":"1", "default_dockerfile":"Dockerfile", "default_dockerfile_build_type":"release", "ssh_keys":"", "allowed_ips":"${{ inputs.allowed_ips }}"}' 
-      non_validator_mode: false
-      additional_nethermind_flags: Pruning.Mode=None
-      nethermind_repo_ref: master #${{ inputs.branch_to_compare }}
-      custom_run_id: ${{ github.run_id }}
+  #create_main_node:
+  #  name: Create node from current branch
+  #  uses: ./.github/workflows/run-a-single-node-from-branch.yml
+  #  secrets: inherit
+  #  with:
+  #    additional_options: '{"timeout":"1", "default_dockerfile":"Dockerfile", "default_dockerfile_build_type":"release", "ssh_keys":"", "allowed_ips":"${{ inputs.allowed_ips }}"}' 
+  #    non_validator_mode: false
+  #    additional_nethermind_flags: Pruning.Mode=None
+  #    nethermind_repo_ref: ${{ github.ref }}
+  #    custom_run_id: ${{ github.run_id }}
+  #
+  #create_compare_node:
+  #  name: Create node from branch to compare
+  #  uses: ./.github/workflows/run-a-single-node-from-branch.yml
+  #  #if: inputs.branch_to_compare != ''
+  #  secrets: inherit
+  #  with:
+  #    additional_options: '{"timeout":"1", "default_dockerfile":"Dockerfile", "default_dockerfile_build_type":"release", "ssh_keys":"", "allowed_ips":"${{ inputs.allowed_ips }}"}' 
+  #    non_validator_mode: false
+  #    additional_nethermind_flags: Pruning.Mode=None
+  #    nethermind_repo_ref: master #${{ inputs.branch_to_compare }}
+  #    custom_run_id: ${{ github.run_id }}
 
   aggregate_rpcs:
     name: Collect all RPC Urls and pass it further
     runs-on: ubuntu-latest
-    needs: [create_main_node, create_compare_node]
+    #needs: [create_main_node, create_compare_node]
     outputs:
       rpc_urls: ${{ steps.aggregate_rpcs.outputs.rpc_urls }}
     steps:
@@ -60,7 +60,7 @@ jobs:
           REF_NAME=${{ github.ref }}
           CLEAN_REF=$(echo "${REF_NAME/refs\/heads\//}" | sed 's/[^a-zA-Z0-9._-]/-/g')
           echo "CLEAN_MAIN_REF=$CLEAN_REF" >> $GITHUB_ENV
-
+      
       - name: Prepare clean compare ref
         id: prepare_compare_ref
         #if: inputs.branch_to_compare != ''
@@ -68,17 +68,19 @@ jobs:
           REF_NAME=${{ inputs.nethermind_repo_ref }}
           CLEAN_REF=$(echo "${REF_NAME/refs\/heads\//}" | sed 's/[^a-zA-Z0-9._-]/-/g')
           echo "CLEAN_COMPARE_REF=$CLEAN_REF" >> $GITHUB_ENV
-
+      
       - name: Download RPC Artifact for current branch
         uses: actions/download-artifact@v3
         with:
-          name: rpc-url___${{ env.CLEAN_MAIN_REF }}___${{ github.run_id }}
-
+          #name: rpc-url___${{ env.CLEAN_MAIN_REF }}___${{ github.run_id }}
+          name: artifacts/rpc-url___${{ env.CLEAN_MAIN_REF }}___7086240832
+      
       - name: Download RPC Artifact for branch to compare 
         #if: inputs.branch_to_compare != ''
         uses: actions/download-artifact@v3
         with:
-          name: rpc-url___master___${{ github.run_id }} #rpc-url___${{ env.CLEAN_COMPARE_REF }}___${{ github.run_id }}
+          #name: rpc-url___master___${{ github.run_id }} #rpc-url___${{ env.CLEAN_COMPARE_REF }}___${{ github.run_id }}
+          name: artifacts/rpc-url___master___7086240832 #rpc-url___${{ env.CLEAN_COMPARE_REF }}___${{ github.run_id }}
 
       - name: Process Artifacts Content
         run: |
@@ -95,7 +97,7 @@ jobs:
           echo "rpc_urls=$rpc_urls" >> $GITHUB_OUTPUT
 
   wait_for_node_to_sync:
-    name: Wait for the node to sync
+    name: Wait for the nodes to sync
     runs-on: ubuntu-latest
     needs: [aggregate_rpcs]
     timeout-minutes: 600
