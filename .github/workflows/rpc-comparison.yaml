@@ -90,7 +90,7 @@ jobs:
           ls artifacts
           for file in artifacts/*; do
             if [ -f "$file" ]; then
-              branch=$(basename $file | cut -d '___' -f 3)
+              branch=$(basename $file | cut -d '%' -f 2)
               url_content=$(cat "$file")
               rpc_urls+="$branch::$url_content,"
             fi
