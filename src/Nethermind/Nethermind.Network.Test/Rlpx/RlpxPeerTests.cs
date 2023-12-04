@@ -33,7 +33,8 @@ namespace Nethermind.Network.Test.Rlpx
                 Substitute.For<ISessionMonitor>(),
                 NullDisconnectsAnalyzer.Instance,
                 LimboLogs.Instance,
-                TimeSpan.Zero);
+                TimeSpan.Zero,
+                (default, default));
             await host.Init();
             await host.Shutdown();
         }
