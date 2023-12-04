@@ -33,5 +33,8 @@ public record GethTraceOptions
     [JsonPropertyName("txHash")]
     public Hash256? TxHash { get; init; }
 
+    [JsonPropertyName("tracerConfig")]
+    public JsonElement? TracerConfig { get; init; }
+
     public static GethTraceOptions Default { get; } = new();
 }

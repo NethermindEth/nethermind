@@ -20,11 +20,36 @@ namespace Nethermind.Core.Test.Json
 
         [TestCase(NumberConversion.Hex)]
         [TestCase(NumberConversion.Decimal)]
+        [TestCase(NumberConversion.Raw)]
         public void Test_roundtrip(NumberConversion numberConversion)
         {
             TestConverter(int.MaxValue, (integer, bigInteger) => integer.Equals(bigInteger), converter);
             TestConverter(UInt256.One, (integer, bigInteger) => integer.Equals(bigInteger), converter);
             TestConverter(UInt256.Zero, (integer, bigInteger) => integer.Equals(bigInteger), converter);
+        }
+
+        [TestCase((NumberConversion)99)]
+        public void Undefined_not_supported(NumberConversion notSupportedConversion)
+        {
+            ForcedNumberConversion.ForcedConversion.Value = notSupportedConversion;
+
+            UInt256Converter converter = new();
+            Assert.Throws<NotSupportedException>(
+                () => TestConverter(int.MaxValue, (integer, bigInteger) => integer.Equals(bigInteger), converter));
+            Assert.Throws<NotSupportedException>(
+                () => TestConverter(UInt256.One, (integer, bigInteger) => integer.Equals(bigInteger), converter));
+            
+            ForcedNumberConversion.ForcedConversion.Value = NumberConversion.Hex;
+        }
+
+        [Test]
+        public void Raw_works_with_zero_and_this_is_ok()
+        {
+            ForcedNumberConversion.ForcedConversion.Value = NumberConversion.Raw;
+            UInt256Converter converter = new();
+            TestConverter(0, (integer, bigInteger) => integer.Equals(bigInteger), converter);
+            
+            ForcedNumberConversion.ForcedConversion.Value = NumberConversion.Hex;
         }
 
         [Test]

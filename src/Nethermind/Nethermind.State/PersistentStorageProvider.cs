@@ -238,9 +238,15 @@ namespace Nethermind.State
             StorageTree tree = GetOrCreateStorage(storageCell.Address);
 
             Db.Metrics.StorageTreeReads++;
-            byte[] value = tree.Get(storageCell.Index);
-            PushToRegistryOnly(storageCell, value);
-            return value;
+
+            if (!storageCell.IsHash)
+            {
+                byte[] value = tree.Get(storageCell.Index);
+                PushToRegistryOnly(storageCell, value);
+                return value;
+            }
+
+            return tree.Get(storageCell.Hash.Bytes);
         }
 
         private void PushToRegistryOnly(in StorageCell cell, byte[] value)

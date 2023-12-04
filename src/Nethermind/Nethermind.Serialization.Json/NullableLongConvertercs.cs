@@ -2,16 +2,14 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace Nethermind.Serialization.Json
 {
-    using System.Buffers;
-    using System.Text.Json;
-    using System.Text.Json.Serialization;
-
     public class NullableLongConverter : JsonConverter<long?>
     {
-        private readonly LongConverter _converter = new();
+        private static readonly LongConverter _converter = new();
 
         public override long? Read(
             ref Utf8JsonReader reader,

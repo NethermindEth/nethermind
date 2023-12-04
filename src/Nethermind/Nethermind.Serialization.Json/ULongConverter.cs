@@ -8,9 +8,11 @@ namespace Nethermind.Serialization.Json
     using System.Buffers;
     using System.Buffers.Binary;
     using System.Buffers.Text;
+    using System.Globalization;
     using System.Runtime.CompilerServices;
     using System.Text.Json;
     using System.Text.Json.Serialization;
+    using Nethermind.Int256;
 
     public class ULongConverter : JsonConverter<ulong>
     {
@@ -43,6 +45,40 @@ namespace Nethermind.Serialization.Json
             throw new JsonException("hex to long");
         }
 
+        [SkipLocalsInit]
+        public override void Write(
+            Utf8JsonWriter writer,
+            ulong value,
+            JsonSerializerOptions options)
+        {
+            NumberConversion usedConversion = ForcedNumberConversion.GetFinalConversion();
+            switch (usedConversion)
+            {
+                case NumberConversion.Hex:
+                {
+                    if (value == 0)
+                    {
+                        writer.WriteRawValue("\"0x0\""u8, skipInputValidation: true);
+                    }
+                    else
+                    {
+                        Span<byte> bytes = stackalloc byte[8];
+                        BinaryPrimitives.WriteUInt64BigEndian(bytes, value);
+                        ByteArrayConverter.Convert(writer, bytes, skipLeadingZeros: true);
+                    }
+                    break;
+                }
+                case NumberConversion.Decimal:
+                    writer.WriteStringValue(value == 0 ? "0" : value.ToString(CultureInfo.InvariantCulture));
+                    break;
+                case NumberConversion.Raw:
+                    writer.WriteNumberValue(value);
+                    break;
+                default:
+                    throw new NotSupportedException();
+            }
+        }
+
         public override ulong Read(
             ref Utf8JsonReader reader,
             Type typeToConvert,
@@ -65,24 +101,6 @@ namespace Nethermind.Serialization.Json
             }
 
             throw new JsonException();
-        }
-
-        [SkipLocalsInit]
-        public override void Write(
-            Utf8JsonWriter writer,
-            ulong value,
-            JsonSerializerOptions options)
-        {
-            if (value == 0)
-            {
-                writer.WriteRawValue("\"0x0\""u8, skipInputValidation: true);
-            }
-            else
-            {
-                Span<byte> bytes = stackalloc byte[8];
-                BinaryPrimitives.WriteUInt64BigEndian(bytes, value);
-                ByteArrayConverter.Convert(writer, bytes, skipLeadingZeros: true);
-            }
         }
     }
 }

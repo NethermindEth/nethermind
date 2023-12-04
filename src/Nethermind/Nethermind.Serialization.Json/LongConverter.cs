@@ -3,7 +3,6 @@
 
 using System;
 using System.Globalization;
-using Nethermind.Core.Extensions;
 
 namespace Nethermind.Serialization.Json
 {
@@ -103,15 +102,29 @@ namespace Nethermind.Serialization.Json
             long value,
             JsonSerializerOptions options)
         {
-            if (value == 0)
+            switch (ForcedNumberConversion.GetFinalConversion())
             {
-                writer.WriteRawValue("\"0x0\""u8, skipInputValidation: true);
-            }
-            else
-            {
-                Span<byte> bytes = stackalloc byte[8];
-                BinaryPrimitives.WriteInt64BigEndian(bytes, value);
-                ByteArrayConverter.Convert(writer, bytes, skipLeadingZeros: true);
+                case NumberConversion.Hex:
+                    if (value == 0)
+                    {
+                        writer.WriteRawValue("\"0x0\""u8, skipInputValidation: true);
+                    }
+                    else
+                    {
+                        Span<byte> bytes = stackalloc byte[8];
+                        BinaryPrimitives.WriteInt64BigEndian(bytes, value);
+                        ByteArrayConverter.Convert(writer, bytes, skipLeadingZeros: true);
+                    }
+                    break;
+                case NumberConversion.Decimal:
+                    writer.WriteStringValue(value == 0 ? "0" : value.ToString(CultureInfo.InvariantCulture));
+                    break;
+                case NumberConversion.Raw:
+                    writer.WriteNumberValue(value);
+                    break;
+                default:
+                    throw new NotSupportedException();
+
             }
         }
     }

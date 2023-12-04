@@ -5,6 +5,8 @@ using System;
 using System.Buffers;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
+using System.Globalization;
+using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json;
@@ -72,10 +74,25 @@ public class UInt256Converter : JsonConverter<UInt256>
             writer.WriteRawValue("\"0x0\"");
             return;
         }
-
-        Span<byte> bytes = stackalloc byte[32];
-        value.ToBigEndian(bytes);
-        ByteArrayConverter.Convert(writer, bytes);
+        NumberConversion usedConversion = ForcedNumberConversion.GetFinalConversion();
+        switch (usedConversion)
+        {
+            case NumberConversion.Hex:
+                {
+                    Span<byte> bytes = stackalloc byte[32];
+                    value.ToBigEndian(bytes);
+                    ByteArrayConverter.Convert(writer, bytes);
+                }
+                break;
+            case NumberConversion.Decimal:
+                writer.WriteRawValue(value.ToString(CultureInfo.InvariantCulture));
+                break;
+            case NumberConversion.Raw:
+                writer.WriteStringValue(((BigInteger)value).ToString(CultureInfo.InvariantCulture));
+                break;
+            default:
+                throw new NotSupportedException($"{usedConversion} format is not supported for {nameof(UInt256)}");
+        }
     }
 
     [DoesNotReturn]

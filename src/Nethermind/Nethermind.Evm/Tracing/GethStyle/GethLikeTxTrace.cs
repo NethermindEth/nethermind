@@ -8,15 +8,19 @@ using System.Text.Json.Serialization;
 
 namespace Nethermind.Evm.Tracing.GethStyle;
 
-[JsonConverter(typeof(GethLikeTxTraceJsonConverter))]
-public class GethLikeTxTrace
+[JsonConverter(typeof(GethLikeTxTraceConverter))]
+public class GethLikeTxTrace : IDisposable
 {
-    public Stack<Dictionary<string, string>> StoragesByDepth { get; } = new();
+    private readonly IDisposable? _disposable;
 
-    public GethLikeTxTrace()
+    public GethLikeTxTrace(IDisposable? disposable = null)
     {
-        Entries = new List<GethTxTraceEntry>();
+        _disposable = disposable;
     }
+
+    public GethLikeTxTrace() { }
+
+    public Stack<Dictionary<string, string>> StoragesByDepth { get; } = new();
 
     public long Gas { get; set; }
 
@@ -24,36 +28,12 @@ public class GethLikeTxTrace
 
     public byte[] ReturnValue { get; set; } = Array.Empty<byte>();
 
-    [JsonPropertyName("structLogs")]
-    public List<GethTxTraceEntry> Entries { get; set; }
-}
+    public List<GethTxTraceEntry> Entries { get; set; } = new();
 
-public class GethLikeTxTraceJsonConverter : JsonConverter<GethLikeTxTrace>
-{
-    public override GethLikeTxTrace Read(
-        ref Utf8JsonReader reader,
-        Type typeToConvert,
-        JsonSerializerOptions options) => throw new NotImplementedException();
+    public GethLikeJavaScriptTrace? CustomTracerResult { get; set; }
 
-    public override void Write(
-        Utf8JsonWriter writer,
-        GethLikeTxTrace value,
-        JsonSerializerOptions options)
+    public void Dispose()
     {
-        writer.WriteStartObject();
-
-        writer.WritePropertyName("gas"u8);
-        JsonSerializer.Serialize(writer, value.Gas, options);
-
-        writer.WritePropertyName("failed"u8);
-        JsonSerializer.Serialize(writer, value.Failed, options);
-
-        writer.WritePropertyName("returnValue"u8);
-        JsonSerializer.Serialize(writer, value.ReturnValue, options);
-
-        writer.WritePropertyName("structLogs"u8);
-        JsonSerializer.Serialize(writer, value.Entries, options);
-
-        writer.WriteEndObject();
+        _disposable?.Dispose();
     }
 }
