@@ -23,87 +23,87 @@ on:
         required: false
 
 jobs:
-  create_main_node:
-    name: Create node from current branch
-    uses: ./.github/workflows/run-a-single-node-from-branch.yml
-    secrets: inherit
-    with:
-      additional_options: '{"timeout":"1", "default_dockerfile":"Dockerfile", "default_dockerfile_build_type":"release", "ssh_keys":"", "allowed_ips":"${{ inputs.allowed_ips }}"}' 
-      non_validator_mode: false
-      additional_nethermind_flags: Pruning.Mode=None
-      nethermind_repo_ref: ${{ github.ref }}
-      custom_run_id: ${{ github.run_id }}
-      network: holesky #to be removed
-  
-  create_compare_node:
-    name: Create node from branch to compare
-    uses: ./.github/workflows/run-a-single-node-from-branch.yml
-    #if: inputs.branch_to_compare != ''
-    secrets: inherit
-    with:
-      additional_options: '{"timeout":"1", "default_dockerfile":"Dockerfile", "default_dockerfile_build_type":"release", "ssh_keys":"", "allowed_ips":"${{ inputs.allowed_ips }}"}' 
-      non_validator_mode: false
-      additional_nethermind_flags: Pruning.Mode=None
-      nethermind_repo_ref: master #${{ inputs.branch_to_compare }}
-      custom_run_id: ${{ github.run_id }}
-      network: holesky #to be removed
-
-  aggregate_rpcs:
-    name: Collect all RPC Urls and pass it further
-    runs-on: ubuntu-latest
-    needs: [create_main_node, create_compare_node]
-    outputs:
-      rpc_urls: ${{ steps.process_artifacts.outputs.rpc_urls }}
-    steps:
-
-      - name: Prepare clean main ref
-        id: prepare_main_ref
-        run: |
-          REF_NAME=${{ github.ref }}
-          CLEAN_REF=$(echo "${REF_NAME/refs\/heads\//}" | sed 's/[^a-zA-Z0-9._-]/-/g')
-          echo "CLEAN_MAIN_REF=$CLEAN_REF" >> $GITHUB_ENV
-      
-      - name: Prepare clean compare ref
-        id: prepare_compare_ref
-        #if: inputs.branch_to_compare != ''
-        run: |
-          REF_NAME=${{ inputs.nethermind_repo_ref }}
-          CLEAN_REF=$(echo "${REF_NAME/refs\/heads\//}" | sed 's/[^a-zA-Z0-9._-]/-/g')
-          echo "CLEAN_COMPARE_REF=$CLEAN_REF" >> $GITHUB_ENV
-      
-      - name: Download RPC Artifact for current branch
-        uses: actions/download-artifact@v3
-        with:
-          name: rpc-url___${{ env.CLEAN_MAIN_REF }}___${{ github.run_id }}
-          path: artifacts
-      
-      - name: Download RPC Artifact for branch to compare 
-        #if: inputs.branch_to_compare != ''
-        uses: actions/download-artifact@v3
-        with:
-          name: rpc-url___master___${{ github.run_id }} #rpc-url___${{ env.CLEAN_COMPARE_REF }}___${{ github.run_id }}
-          path: artifacts
-
-      - name: Process Artifacts Content
-        id: process_artifacts
-        run: |
-          rpc_urls=""
-          ls artifacts
-          for file in artifacts/*; do
-            if [ -f "$file" ]; then
-              branch=$(basename $file | cut -d '%' -f 2)
-              url_content=$(cat "$file")
-              rpc_urls+="$branch::$url_content,"
-            fi
-          done
-          rpc_urls=${rpc_urls%,}
-          echo $rpc_urls
-          echo "rpc_urls=$rpc_urls" >> $GITHUB_OUTPUT
+  #create_main_node:
+  #  name: Create node from current branch
+  #  uses: ./.github/workflows/run-a-single-node-from-branch.yml
+  #  secrets: inherit
+  #  with:
+  #    additional_options: '{"timeout":"1", "default_dockerfile":"Dockerfile", "default_dockerfile_build_type":"release", "ssh_keys":"", "allowed_ips":"${{ inputs.allowed_ips }}"}' 
+  #    non_validator_mode: false
+  #    additional_nethermind_flags: Pruning.Mode=None
+  #    nethermind_repo_ref: ${{ github.ref }}
+  #    custom_run_id: ${{ github.run_id }}
+  #    network: holesky #to be removed
+  #
+  #create_compare_node:
+  #  name: Create node from branch to compare
+  #  uses: ./.github/workflows/run-a-single-node-from-branch.yml
+  #  #if: inputs.branch_to_compare != ''
+  #  secrets: inherit
+  #  with:
+  #    additional_options: '{"timeout":"1", "default_dockerfile":"Dockerfile", "default_dockerfile_build_type":"release", "ssh_keys":"", "allowed_ips":"${{ inputs.allowed_ips }}"}' 
+  #    non_validator_mode: false
+  #    additional_nethermind_flags: Pruning.Mode=None
+  #    nethermind_repo_ref: master #${{ inputs.branch_to_compare }}
+  #    custom_run_id: ${{ github.run_id }}
+  #    network: holesky #to be removed
+  #
+  #aggregate_rpcs:
+  #  name: Collect all RPC Urls and pass it further
+  #  runs-on: ubuntu-latest
+  #  needs: [create_main_node, create_compare_node]
+  #  outputs:
+  #    rpc_urls: ${{ steps.process_artifacts.outputs.rpc_urls }}
+  #  steps:
+  #
+  #    - name: Prepare clean main ref
+  #      id: prepare_main_ref
+  #      run: |
+  #        REF_NAME=${{ github.ref }}
+  #        CLEAN_REF=$(echo "${REF_NAME/refs\/heads\//}" | sed 's/[^a-zA-Z0-9._-]/-/g')
+  #        echo "CLEAN_MAIN_REF=$CLEAN_REF" >> $GITHUB_ENV
+  #    
+  #    - name: Prepare clean compare ref
+  #      id: prepare_compare_ref
+  #      #if: inputs.branch_to_compare != ''
+  #      run: |
+  #        REF_NAME=${{ inputs.nethermind_repo_ref }}
+  #        CLEAN_REF=$(echo "${REF_NAME/refs\/heads\//}" | sed 's/[^a-zA-Z0-9._-]/-/g')
+  #        echo "CLEAN_COMPARE_REF=$CLEAN_REF" >> $GITHUB_ENV
+  #    
+  #    - name: Download RPC Artifact for current branch
+  #      uses: actions/download-artifact@v3
+  #      with:
+  #        name: rpc-url___${{ env.CLEAN_MAIN_REF }}___${{ github.run_id }}
+  #        path: artifacts
+  #    
+  #    - name: Download RPC Artifact for branch to compare 
+  #      #if: inputs.branch_to_compare != ''
+  #      uses: actions/download-artifact@v3
+  #      with:
+  #        name: rpc-url___master___${{ github.run_id }} #rpc-url___${{ env.CLEAN_COMPARE_REF }}___${{ github.run_id }}
+  #        path: artifacts
+  #
+  #    - name: Process Artifacts Content
+  #      id: process_artifacts
+  #      run: |
+  #        rpc_urls=""
+  #        ls artifacts
+  #        for file in artifacts/*; do
+  #          if [ -f "$file" ]; then
+  #            branch=$(basename $file | cut -d '%' -f 2)
+  #            url_content=$(cat "$file")
+  #            rpc_urls+="$branch::$url_content,"
+  #          fi
+  #        done
+  #        rpc_urls=${rpc_urls%,}
+  #        echo $rpc_urls
+  #        echo "rpc_urls=$rpc_urls" >> $GITHUB_OUTPUT
 
   wait_for_node_to_sync:
     name: Wait for the nodes to sync
     runs-on: ubuntu-latest
-    needs: [aggregate_rpcs]
+    #needs: [aggregate_rpcs]
     timeout-minutes: 600
     steps:
       - uses: actions/checkout@v3
@@ -128,7 +128,8 @@ jobs:
         timeout-minutes: 600
         run: |          
           # Assuming rpc_urls_str is a comma-separated string of URLs
-          rpc_urls_str="${{ needs.aggregate_rpcs.outputs.rpc_urls }}"
+          #rpc_urls_str="${{ needs.aggregate_rpcs.outputs.rpc_urls }}"
+          rpc_urls_str="master::http://172.105.153.109:8545,rpc-comparision-1.23.0::http://172.105.153.200:8545"
           IFS=',' read -r -a rpc_urls_array <<< "$rpc_urls_str"
           
           # Loop through the array and strip the branch prefix
@@ -142,9 +143,9 @@ jobs:
           
           check_sync() {
             rpc_url=$1
-            while curl -X POST --data '{"jsonrpc":"2.0","method":"eth_syncing","params":[],"id":1}' "$rpc_url" | jq -e '.result'; do
-              echo "Still waiting for node to be sync at RPC: $rpc_url ."
-              sleep 60
+            while curl -X POST --data '{"jsonrpc":"2.0","method":"eth_syncing","params":[],"id":1}' "$rpc_url" > /dev/null 2>&1 | jq -e '.result'; do
+              echo "Still waiting for node to be synced at RPC: $rpc_url ."
+              sleep 30
             done
             echo "Node at $rpc_url synced."
             sync_complete_flag=$((sync_complete_flag+1))
@@ -191,7 +192,8 @@ jobs:
   
       - name: Test equality of responses
         run: |
-          rpc_urls_str="${{ needs.aggregate_rpcs.outputs.rpc_urls }}"
+          #rpc_urls_str="${{ needs.aggregate_rpcs.outputs.rpc_urls }}"
+          rpc_urls_str="master::http://172.105.153.109:8545,rpc-comparision-1.23.0::http://172.105.153.200:8545"
           IFS=',' read -r -a rpc_urls_array <<< "$rpc_urls_str"; unset IFS
 
           nethermind_urls_str=()
