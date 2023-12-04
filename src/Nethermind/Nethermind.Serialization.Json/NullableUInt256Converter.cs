@@ -3,15 +3,14 @@
 
 using System;
 using Nethermind.Int256;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace Nethermind.Serialization.Json
 {
-    using System.Text.Json;
-    using System.Text.Json.Serialization;
-
     public class NullableUInt256Converter : JsonConverter<UInt256?>
     {
-        private readonly UInt256Converter _converter = new();
+        private static readonly UInt256Converter _converter = new();
 
         public override UInt256? Read(
             ref Utf8JsonReader reader,

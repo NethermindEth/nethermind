@@ -3,24 +3,27 @@
 
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Numerics;
+using System.Text.Json;
+using System.Text.Json.Serialization;
+
 using Microsoft.ClearScript;
 using Microsoft.ClearScript.JavaScript;
-using Newtonsoft.Json;
 
-namespace Nethermind.JsonRpc.Modules.DebugModule;
+#nullable enable
 
-public class JavaScriptObjectConverter : JsonConverter
+namespace Nethermind.Serialization.Json;
+
+public class JavaScriptObjectConverter : JsonConverter<IJavaScriptObject>
 {
     [ThreadStatic]
     private static bool _disabled;
 
-    public override bool CanRead => false;
-
     public override bool CanConvert(Type objectType) =>
         _disabled ? (_disabled = false) : typeof(IJavaScriptObject).IsAssignableFrom(objectType);
 
-    public override void WriteJson(JsonWriter writer, object? o, JsonSerializer serializer)
+    public override void Write(Utf8JsonWriter writer, IJavaScriptObject o, JsonSerializerOptions options)
     {
         if (o is IDictionary<string, object> dictionary)
         {
@@ -29,7 +32,7 @@ public class JavaScriptObjectConverter : JsonConverter
                 // value is marshaled to BigInteger by ClearScript
                 if (value is BigInteger bigInteger)
                 {
-                    writer.WriteValue(bigInteger.ToString());
+                    writer.WriteStringValue(bigInteger.ToString(CultureInfo.InvariantCulture));
                     return;
                 }
 
@@ -50,7 +53,7 @@ public class JavaScriptObjectConverter : JsonConverter
         _disabled = true;
         try
         {
-            serializer.Serialize(writer, o);
+            JsonSerializer.Serialize(writer, o, options);
         }
         finally
         {
@@ -58,9 +61,8 @@ public class JavaScriptObjectConverter : JsonConverter
         }
     }
 
-    public override object? ReadJson(
-        JsonReader reader,
-        Type objectType,
-        object? o,
-        JsonSerializer jsonSerializer) => throw new NotSupportedException();
+    public override IJavaScriptObject? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+    {
+        throw new NotSupportedException();
+    }
 }

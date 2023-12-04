@@ -2,20 +2,20 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Text.Json;
+using System.Text.Json.Serialization;
+
 using Nethermind.Serialization.Json;
-using Newtonsoft.Json;
 
 namespace Nethermind.Evm.Tracing.GethStyle.JavaScript;
 
 public class GethLikeJavaScriptTraceConverter : JsonConverter<GethLikeJavaScriptTrace>
 {
-    public override bool CanRead => false;
-
-    public override void WriteJson(JsonWriter writer, GethLikeJavaScriptTrace? value, JsonSerializer serializer)
+    public override void Write(Utf8JsonWriter writer, GethLikeJavaScriptTrace value, JsonSerializerOptions options)
     {
         if (value is null)
         {
-            writer.WriteNull();
+            writer.WriteNullValue();
             return;
         }
 
@@ -23,7 +23,7 @@ public class GethLikeJavaScriptTraceConverter : JsonConverter<GethLikeJavaScript
         ForcedNumberConversion.ForcedConversion.Value = NumberConversion.Raw;
         try
         {
-            serializer.Serialize(writer, value.Value);
+            JsonSerializer.Serialize(writer, value.Value, options);
         }
         finally
         {
@@ -31,6 +31,8 @@ public class GethLikeJavaScriptTraceConverter : JsonConverter<GethLikeJavaScript
         }
     }
 
-    public override GethLikeJavaScriptTrace? ReadJson(JsonReader reader, Type objectType, GethLikeJavaScriptTrace? existingValue, bool hasExistingValue, JsonSerializer serializer) =>
+    public override GethLikeJavaScriptTrace? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+    {
         throw new NotSupportedException();
+    }
 }
