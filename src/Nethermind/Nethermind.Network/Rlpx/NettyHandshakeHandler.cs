@@ -34,6 +34,7 @@ namespace Nethermind.Network.Rlpx
         private readonly TaskCompletionSource<object> _initCompletionSource;
         private IChannel _channel;
         private TimeSpan _sendLatency;
+        private (int ByteLimit, TimeSpan Delay) _throttlingConfig;
 
         public NettyHandshakeHandler(
             IMessageSerializationService serializationService,
@@ -42,7 +43,8 @@ namespace Nethermind.Network.Rlpx
             HandshakeRole role,
             ILogManager logManager,
             IEventExecutorGroup group,
-            TimeSpan sendLatency)
+            TimeSpan sendLatency,
+            (int ByteLimit, TimeSpan Delay) throttlingConfig)
         {
             _serializationService = serializationService ?? throw new ArgumentNullException(nameof(serializationService));
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
@@ -53,6 +55,7 @@ namespace Nethermind.Network.Rlpx
             _session = session ?? throw new ArgumentNullException(nameof(session));
             _initCompletionSource = new TaskCompletionSource<object>();
             _sendLatency = sendLatency;
+            _throttlingConfig = throttlingConfig;
         }
 
         public override void ChannelActive(IChannelHandlerContext context)
@@ -180,9 +183,21 @@ namespace Nethermind.Network.Rlpx
             if (_logger.IsTrace) _logger.Trace($"Registering {nameof(ZeroPacketSplitter)} for {RemoteId} @ {context.Channel.RemoteAddress}");
             context.Channel.Pipeline.AddLast(new ZeroPacketSplitter(_logManager));
 
-            PacketSender packetSender = new(_serializationService, _logManager, _sendLatency);
-            if (_logger.IsTrace) _logger.Trace($"Registering {nameof(PacketSender)} for {_session.RemoteNodeId} @ {context.Channel.RemoteAddress}");
-            context.Channel.Pipeline.AddLast(packetSender);
+            IPacketSender packetSender;
+            if (_throttlingConfig.ByteLimit == default && _throttlingConfig.Delay == default)
+            {
+                PacketSender sender = new(_serializationService, _logManager, _sendLatency);
+                if (_logger.IsTrace) _logger.Trace($"Registering {nameof(PacketSender)} for {_session.RemoteNodeId} @ {context.Channel.RemoteAddress}");
+                context.Channel.Pipeline.AddLast(sender);
+                packetSender = sender;
+            }
+            else
+            {
+                RateLimitedPacketSender sender = new(_throttlingConfig.ByteLimit, _throttlingConfig.Delay, _serializationService, _logManager);
+                if (_logger.IsTrace) _logger.Trace($"Registering {nameof(RateLimitedPacketSender)} for {_session.RemoteNodeId} @ {context.Channel.RemoteAddress}");
+                context.Channel.Pipeline.AddLast(sender);
+                packetSender = sender;
+            }
 
             if (_logger.IsTrace) _logger.Trace($"Registering {nameof(ZeroNettyP2PHandler)} for {RemoteId} @ {context.Channel.RemoteAddress}");
             ZeroNettyP2PHandler handler = new(_session, _logManager);

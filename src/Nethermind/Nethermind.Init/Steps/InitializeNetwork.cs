@@ -487,7 +487,8 @@ public class InitializeNetwork : IStep
             _api.SessionMonitor,
             _api.DisconnectsAnalyzer,
             _api.LogManager,
-            TimeSpan.FromMilliseconds(_networkConfig.SimulateSendLatencyMs)
+            sendLatency: TimeSpan.FromMilliseconds(_networkConfig.SimulateSendLatencyMs),
+            throttlingConfig: (_networkConfig.ThrottlingByteLimit, TimeSpan.FromMilliseconds(_networkConfig.ThrottlingDelayMs))
         );
 
         await _api.RlpxPeer.Init();
