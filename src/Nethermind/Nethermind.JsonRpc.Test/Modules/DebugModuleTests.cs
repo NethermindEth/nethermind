@@ -242,12 +242,12 @@ public class DebugModuleTests
         blockTree.SuggestBlock(block1);
         blockTree.SuggestBlock(block2);
         blockTree.SuggestBlock(block3);
-        
+
         blockTree.DeleteInvalidBlock(block1);
 
         BlockDecoder decoder = new();
         _blocksDb.Set(block1.Hash ?? new Hash256("0x0"), decoder.Encode(block1).Bytes);
-        
+
         debugBridge.GetBadBlocks().Returns(blockTree.GetInvalidBlocks());
 
         AddBlockResult result = blockTree.SuggestBlock(block1);
