@@ -59,7 +59,7 @@ jobs:
         with:
           name: rpc-url___${{ github.ref }}___${{ github.run_id }}
 
-      - name: Download RPC Artifact for branch to comapre
+      - name: Download RPC Artifact for branch to compare 
         if: inputs.branch_to_compare != ''
         uses: actions/download-artifact@v3
         with:
