@@ -214,5 +214,5 @@ jobs:
           nethermind_urls_str="${nethermind_urls_str% }"
           others_prepared_str="${others_prepared_str% }"
 
-          echo "flood all $nethermind_urls_str $others_prepared_str --equality""
+          echo "flood all $nethermind_urls_str $others_prepared_str --equality"
           flood all $nethermind_urls_str $others_prepared_str --equality
