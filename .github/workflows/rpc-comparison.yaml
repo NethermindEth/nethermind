@@ -23,41 +23,6 @@ on:
         required: false
 
 jobs:
-  parse_input:
-    runs-on: ubuntu-latest
-    outputs:
-      others_matrix: ${{ steps.set-matrix.outputs.others_matrix }}
-    steps:
-      - name: Install jq
-        run: sudo apt-get install jq
-
-      - name: Set matrix for branches
-        id: set-matrix
-        run: |
-          #compare_with="${{ github.event.inputs.compare_with }}"
-
-          compare_with="INFURA_ENDPOINT"
-
-          # Add additional comparers if specified
-          if [[ "$compare_with" != "" ]]; then
-            IFS=' ' read -r -a additional_branches <<< "$compare_with"
-            for branch in "${additional_branches[@]}"; do
-              if [[ "$branch" != "INFURA_ENDPOINT" && "$branch" != "NETHERMIND_ARCHIVE_ENDPOINT" ]]; then
-                # Treat as additional branch
-                branches+=("$branch")
-              else
-                others+=("$branch")
-              fi
-            done
-          fi
-
-          printf -v joinedothers ', "%s"' "${others[@]}"
-          OTHERS_MATRIX="{\"other\": [${joinedothers:2}]}"  # Ensure the key name 'other' is used
-
-          echo $OTHERS_MATRIX > others_matrix.json
-          cat others_matrix.json
-          echo "others_matrix=$(jq -c . others_matrix.json)" >> $GITHUB_OUTPUT
-
   create_main_node:
     name: Create node from current branch
     uses: ./.github/workflows/run-a-single-node-from-branch.yml
@@ -84,7 +49,7 @@ jobs:
   aggregate_rpcs:
     name: Collect all RPC Urls and pass it further
     runs-on: ubuntu-latest
-    needs: [create_main_node, create_compare_node, parse_input]
+    needs: [create_main_node, create_compare_node]
     outputs:
       rpc_urls: ${{ steps.aggregate_rpcs.outputs.rpc_urls }}
     steps:
