@@ -12,21 +12,20 @@ namespace Nethermind.Test.Runner;
 
 public class BlockchainTestsRunner : BlockchainTestBase, IBlockchainTestRunner
 {
-    private ITestSourceLoader _testsSource;
+    private readonly ConsoleColor _defaultColour;
+    private readonly ITestSourceLoader _testsSource;
     private readonly string? _filter;
-    private ConsoleColor _defaultColour;
 
     public BlockchainTestsRunner(ITestSourceLoader testsSource, string? filter)
     {
         _testsSource = testsSource ?? throw new ArgumentNullException(nameof(testsSource));
-        _filter = filter;
         _defaultColour = Console.ForegroundColor;
+        _filter = filter;
     }
 
     public async Task<IEnumerable<EthereumTestResult>> RunTestsAsync()
     {
         List<EthereumTestResult> testResults = new();
-        string directoryName = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Desktop), "FailingTests");
         IEnumerable<BlockchainTest> tests = (IEnumerable<BlockchainTest>)_testsSource.LoadTests();
         foreach (BlockchainTest test in tests)
         {
@@ -47,13 +46,7 @@ public class BlockchainTestsRunner : BlockchainTestBase, IBlockchainTestRunner
                 if (result.Pass)
                     WriteGreen("PASS");
                 else
-                {
                     WriteRed("FAIL");
-                    if (!Directory.Exists(directoryName))
-                        Directory.CreateDirectory(directoryName);
-                    Setup();
-                    await RunTest(test);
-                }
             }
         }
 
