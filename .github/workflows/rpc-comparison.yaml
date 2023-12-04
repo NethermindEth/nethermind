@@ -143,7 +143,7 @@ jobs:
           
           check_sync() {
             rpc_url=$1
-            while curl -X POST --data '{"jsonrpc":"2.0","method":"eth_syncing","params":[],"id":1}' "$rpc_url" > /dev/null 2>&1 | jq -e '.result'; do
+            while curl -X POST --data '{"jsonrpc":"2.0","method":"eth_syncing","params":[],"id":1}' "$rpc_url" | jq -e '.result'; do
               echo "Still waiting for node to be synced at RPC: $rpc_url."
               sleep 30
             done
