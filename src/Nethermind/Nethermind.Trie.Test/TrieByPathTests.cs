@@ -8,6 +8,7 @@ using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Db.Rocks;
@@ -18,6 +19,7 @@ using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
+using Nethermind.State.Trie;
 using Nethermind.Trie.Pruning;
 using NUnit.Framework;
 
@@ -983,7 +985,7 @@ public class TrieByPathTests
 
         MemColumnsDb<StateColumns> memDb = new();
 
-        using TrieStoreByPath trieStore = new(memDb, Persist.IfBlockOlderThan(lookupLimit), _logManager);
+        using TrieStoreByPath trieStore = new(memDb, ByPathPersist.IfBlockOlderThan(lookupLimit), _logManager);
         StateTreeByPath patriciaTree = new(trieStore, _logManager);
 
         byte[][] accounts = new byte[accountsCount][];
@@ -1090,6 +1092,7 @@ public class TrieByPathTests
         int? seed)
     {
         int usedSeed = seed ?? _random.Next(int.MaxValue);
+        //usedSeed = 2125152780;
         _random = new Random(usedSeed);
 
         _logger.Info($"RANDOM SEED {usedSeed}");
@@ -1148,10 +1151,11 @@ public class TrieByPathTests
         }
 
         int blockCount = 0;
+        int lastFinalizedBlock = 0;
         for (int blockNumber = 0; blockNumber < blocksCount; blockNumber++)
         {
             _logger.Debug($"Starting loop {blockNumber}");
-            int reorgDepth = _random.Next(Math.Min(5, blockCount - (int)trieStore.LastPersistedBlockNumber));
+            int reorgDepth = _random.Next(Math.Min(5, blockCount - lastFinalizedBlock));
             _logger.Debug($"Reorganizing {reorgDepth}");
 
             for (int i = 0; i < reorgDepth; i++)
@@ -1198,6 +1202,14 @@ public class TrieByPathTests
 
             rootQueue.Enqueue(patriciaTree.RootHash);
             rootStack.Push(new Tuple<int, Hash256>(blockCount, patriciaTree.RootHash));
+
+            //finalize block
+            if (_random.Next(10) <= 2)
+            {
+                lastFinalizedBlock = blockCount;
+                strategy.AddFinalized(lastFinalizedBlock, patriciaTree.RootHash);
+            }
+
             blockCount++;
             _logger.Debug($"Setting block count to {blockCount}");
         }
@@ -1211,7 +1223,6 @@ public class TrieByPathTests
         int verifiedBlocks = 0;
         while (rootStack.TryPop(out Tuple<int, Hash256> currentRoot))
         {
-
             //don't check blocks prior to persisted - no history in DB
             if (currentRoot.Item1 < trieStore.LastPersistedBlockNumber)
                 continue;
@@ -1263,7 +1274,9 @@ public class TrieByPathTests
 
         MemColumnsDb<StateColumns> memDb = new();
 
-        using TrieStoreByPath trieStore = new(memDb, Persist.IfBlockOlderThan(lookupLimit), _logManager);
+        TestPathPersistanceStrategy strategy = new(lookupLimit, lookupLimit / 2);
+
+        using TrieStoreByPath trieStore = new(memDb, strategy, _logManager);
 
         WorldState stateProvider = new(trieStore, new MemDb(), _logManager);
 
@@ -1339,6 +1352,12 @@ public class TrieByPathTests
 
             stateProvider.CommitTree(blockNumber);
             rootQueue.Enqueue(stateProvider.StateRoot);
+
+            //finalize block
+            if (_random.Next(10) <= 2)
+            {
+                strategy.AddFinalized(blockNumber, stateProvider.StateRoot);
+            }
         }
 
         streamWriter.Flush();
@@ -1397,7 +1416,7 @@ public class TrieByPathTests
         var dirInfo = Directory.CreateTempSubdirectory();
         using ColumnsDb<StateColumns> stateDb = new(dirInfo.FullName, new RocksDbSettings("pathState", Path.Combine(dirInfo.FullName, "pathState")), new DbConfig(), _logManager, new StateColumns[] { StateColumns.State, StateColumns.Storage });
 
-        using TrieStoreByPath pathTrieStore = new(stateDb, Persist.IfBlockOlderThan(2), _logManager);
+        using TrieStoreByPath pathTrieStore = new(stateDb, ByPathPersist.IfBlockOlderThan(2), _logManager);
         WorldState pathStateProvider = new(pathTrieStore, new MemDb(), _logManager);
 
         pathStateProvider.CreateAccount(TestItem.AddressA, 100);
@@ -1429,35 +1448,46 @@ public class TrieByPathTests
         Assert.That(data[0], Is.EqualTo(100));
     }
 
-    private class TestPathPersistanceStrategy : IPersistenceStrategy
+    private class TestPathPersistanceStrategy : IByPathPersistenceStrategy
     {
         private int _delay;
         private int _interval;
         private long? _lastPersistedBlockNumber;
         public long? LastPersistedBlockNumber { get => _lastPersistedBlockNumber; set => _lastPersistedBlockNumber = value; }
 
+        private SortedList<long, BlockHeader> _finalizedBlocks;
+
         public TestPathPersistanceStrategy(int delay, int interval)
         {
             _delay = delay;
             _interval = interval;
+            _finalizedBlocks = new SortedList<long, BlockHeader>();
         }
 
-        public bool ShouldPersist(long blockNumber)
+        public void AddFinalized(long blockNumber, Hash256 finalizedStateRoot)
         {
-            return false;
+            BlockHeader blockHeader = new(Keccak.EmptyTreeHash, Keccak.EmptyTreeHash, TestItem.AddressF, 0, blockNumber, 0, 0, null)
+            {
+                StateRoot = finalizedStateRoot
+            };
+            _finalizedBlocks.Add(blockNumber, blockHeader);
         }
 
-        public bool ShouldPersist(long currentBlockNumber, out long targetBlockNumber)
+        public (long blockNumber, Hash256 stateRoot)? GetBlockToPersist(long currentBlockNumber, Hash256 currentStateRoot)
         {
-            targetBlockNumber = -1;
             long distanceToPersisted = currentBlockNumber - ((_lastPersistedBlockNumber ?? 0) + _delay);
 
             if (distanceToPersisted > 0 && distanceToPersisted % _interval == 0)
             {
-                targetBlockNumber = currentBlockNumber - _delay;
-                return true;
+                long targetBlockNumber = currentBlockNumber - _delay;
+
+                for (int i = _finalizedBlocks.Count - 1; i >= 0; i--)
+                {
+                    if (_finalizedBlocks.GetKeyAtIndex(i) <= targetBlockNumber)
+                        return (_finalizedBlocks.GetValueAtIndex(i).Number, _finalizedBlocks.GetValueAtIndex(i).StateRoot);
+                }
             }
-            return false;
+            return null;
         }
     }
 }

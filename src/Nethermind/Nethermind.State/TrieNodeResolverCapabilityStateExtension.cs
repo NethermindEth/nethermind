@@ -33,6 +33,6 @@ public static class TrieNodeResolverCapabilityStateExtension
 
     public static IStateTree CreateStateStore(this TrieNodeResolverCapability capability, IColumnsDb<StateColumns>? db, ILogManager? logManager)
     {
-        return new StateTreeByPath(new TrieStoreByPath(db, Persist.IfBlockOlderThan(128), logManager), logManager);
+        return new StateTreeByPath(new TrieStoreByPath(db, ByPathPersist.IfBlockOlderThan(128), logManager), logManager);
     }
 }

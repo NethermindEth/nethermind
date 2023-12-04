@@ -348,10 +348,11 @@ namespace Nethermind.Trie
 
         [SkipLocalsInit]
         [DebuggerStepThrough]
-        public virtual byte[]? GetInternal(ReadOnlySpan<byte> rawKey, Hash256? rootHash = null)
+        private byte[]? GetInternal(ReadOnlySpan<byte> rawKey, out InternalReadDiagData diagData, Hash256? rootHash = null)
         {
             try
             {
+                diagData = new InternalReadDiagData();
                 int nibblesCount = 2 * rawKey.Length;
                 byte[] array = null;
                 Span<byte> nibbles = (rawKey.Length <= MaxKeyStackAlloc
@@ -362,7 +363,7 @@ namespace Nethermind.Trie
                 try
                 {
                     Nibbles.BytesToNibbleBytes(rawKey, nibbles);
-                    return Run(nibbles, nibblesCount, new CappedArray<byte>(Array.Empty<byte>()), false, startRootHash: rootHash).ToArray();
+                    return Run(nibbles, nibblesCount, new CappedArray<byte>(Array.Empty<byte>()), false, diagData: diagData, startRootHash: rootHash).ToArray();
                 }
                 finally
                 {
@@ -398,32 +399,48 @@ namespace Nethermind.Trie
         public virtual byte[]? Get(ReadOnlySpan<byte> rawKey, Hash256? rootHash = null)
         {
             //for diagnostics
-            if (Capability == TrieNodeResolverCapability.Path)
-            {
-                byte[] pathValue = TrieStore.CanAccessByPath() ? GetByPath(rawKey, rootHash) : GetInternal(rawKey, rootHash);
-                byte[] internalValue = GetInternal(rawKey, rootHash);
-                if (!Bytes.EqualityComparer.Equals(internalValue, pathValue))
-                    if (_logger.IsWarn) _logger.Warn($"Difference for key: {rawKey.ToHexString()} | ST prefix: {StoreNibblePathPrefix?.ToHexString()} | internal: {internalValue?.ToHexString()} | path value: {pathValue?.ToHexString()}");
-                return pathValue;
-            }
-            return GetInternal(rawKey, rootHash);
-            //return Capability switch
+            //if (Capability == TrieNodeResolverCapability.Path)
             //{
-            //    TrieNodeResolverCapability.Hash => GetInternal(rawKey, rootHash),
-            //    TrieNodeResolverCapability.Path => TrieStore.CanAccessByPath() ? GetByPath(rawKey, rootHash) : GetInternal(rawKey, rootHash),
-            //    _ => throw new ArgumentOutOfRangeException()
-            //};
+            //    byte[] pathValue = GetByPath(rawKey, out PathReadDiagData pathDiagData, rootHash);
+            //    byte[] internalValue = GetInternal(rawKey, out InternalReadDiagData internalDiagData, rootHash);
+            //    if (!Bytes.SpanEqualityComparer.Equals(internalValue, pathValue))
+            //    {
+            //        if (_logger.IsWarn)
+            //        {
+            //            _logger.Warn($"Difference for key: {rawKey.ToHexString()} | ST prefix: {StoreNibblePathPrefix?.ToHexString()} | internal: {internalValue?.ToHexString()} | path value: {pathValue?.ToHexString()}");
+            //            _logger.Warn($"Path read for {pathDiagData.FullPath.ToHexString()} | Parent state root: {pathDiagData.ParentStateRoot} | loaded from db: {pathDiagData.LoadedFromDb} | dirty read (bloom): {pathDiagData.Dirty} | self-destruct: {pathDiagData.SelfDestruct}");
+            //            _logger.Warn($"Internal read stack:");
+            //            foreach (TrieNode node in internalDiagData.Stack)
+            //            {
+            //                _logger.Warn($"Node {node}");
+            //            }
+            //        }
+            //        return internalValue;
+            //    }
+            //    return pathValue;
+            //}
+            //return GetInternal(rawKey, out _, rootHash);
+            return Capability switch
+            {
+                TrieNodeResolverCapability.Hash => GetInternal(rawKey, out _, rootHash),
+                TrieNodeResolverCapability.Path => GetByPath(rawKey, out _, rootHash),
+                _ => throw new ArgumentOutOfRangeException()
+            };
         }
 
-        private byte[]? GetByPath(ReadOnlySpan<byte> rawKey, Hash256? rootHash = null)
+        private byte[]? GetByPath(ReadOnlySpan<byte> rawKey, out PathReadDiagData diagData, Hash256? rootHash = null)
         {
+            diagData = new PathReadDiagData();
             if (rootHash is null)
             {
                 if (RootRef is null) return null;
                 if (RootRef?.IsDirty == true)
                 {
-                    if (_uncommitedPaths is null || _uncommitedPaths.Matches(rawKey) || ClearedBySelfDestruct)
-                        return GetInternal(rawKey);
+                    if (_uncommitedPaths is null || _uncommitedPaths.Matches(rawKey) || ClearedBySelfDestruct) {
+                        diagData.Dirty = _uncommitedPaths is null || _uncommitedPaths.Matches(rawKey);
+                        diagData.SelfDestruct = ClearedBySelfDestruct;
+                        return GetInternal(rawKey, out _);
+                    }
                 }
             }
 
@@ -433,6 +450,9 @@ namespace Nethermind.Trie
             Nibbles.BytesToNibbleBytes(rawKey, nibbleBytes[StoreNibblePathPrefix.Length..]);
             TrieNode? node = TrieStore.FindCachedOrUnknown(nibbleBytes[StoreNibblePathPrefix.Length..], StoreNibblePathPrefix, TrieType == TrieType.State ? (rootHash ?? ParentStateRootHash) : ParentStateRootHash);
 
+            diagData.ParentStateRoot = TrieType == TrieType.State ? (rootHash ?? ParentStateRootHash) : ParentStateRootHash;
+            diagData.FullPath = nibbleBytes.ToArray();
+
             if (node is null)
                 return null;
 
@@ -440,29 +460,31 @@ namespace Nethermind.Trie
             if (node.NodeType == NodeType.Unknown)
             {
                 //check the root of the persisted nodes
-                if (rootHash is not null)
-                {
-                    Hash256? persistedRootHash;
-                    if (RootRef?.IsPersisted == true && RootRef?.NodeType == NodeType.Unknown)
-                    {
-                        RootRef.ResolveNode(TrieStore);
-                        RootRef.ResolveKey(TrieStore, true);
-                        persistedRootHash = RootRef.Keccak;
-                    }
-                    else
-                    {
-                        persistedRootHash = GetPersistedRoot();
-                    }
+                //if (rootHash is not null)
+                //{
+                //    Hash256? persistedRootHash;
+                //    if (RootRef?.IsPersisted == true && RootRef?.NodeType == NodeType.Unknown)
+                //    {
+                //        RootRef.ResolveNode(TrieStore);
+                //        RootRef.ResolveKey(TrieStore, true);
+                //        persistedRootHash = RootRef.Keccak;
+                //    }
+                //    else
+                //    {
+                //        persistedRootHash = GetPersistedRoot();
+                //    }
 
-                    if (rootHash != persistedRootHash)
-                        throw new InvalidOperationException($"Attempting to get data for state having different root than persisted. Trie type: {TrieType} | Data requested: {rawKey.ToHexString()} | Root requested: {rootHash} | Root at DB: {RootRef?.Keccak}");
-                }
+                //    if (rootHash != persistedRootHash)
+                //        throw new InvalidOperationException($"Attempting to get data for state having different root than persisted. Trie type: {TrieType} | Data requested: {rawKey.ToHexString()} | Root requested: {rootHash} | Root at DB: {RootRef?.Keccak}");
+                //}
 
                 byte[]? nodeData = TrieStore.TryLoadRlp(nibbleBytes, null);
                 if (nodeData is null) return null;
 
                 node = new TrieNode(NodeType.Unknown, nodeData);
                 node.ResolveNode(TrieStore);
+
+                diagData.LoadedFromDb = true;
             }
 
             return node.Value.ToArray();
@@ -502,7 +524,7 @@ namespace Nethermind.Trie
             try
             {
                 Nibbles.BytesToNibbleBytes(rawKey, nibbles);
-                Run(nibbles, nibblesCount, value, true);
+                Run(nibbles, nibblesCount, value, true, new InternalReadDiagData());
                 _uncommitedPaths?.Set(rawKey);
             }
             finally
@@ -522,6 +544,7 @@ namespace Nethermind.Trie
             int nibblesCount,
             CappedArray<byte> updateValue,
             bool isUpdate,
+            InternalReadDiagData diagData,
             bool ignoreMissingDelete = true,
             Hash256? startRootHash = null)
         {
@@ -552,7 +575,7 @@ namespace Nethermind.Trie
                 if (_logger.IsTrace) _logger.Trace($"Starting from {startRootHash} - {traverseContext.ToString()}");
                 TrieNode startNode = TrieStore.FindCachedOrUnknown(startRootHash, Array.Empty<byte>(), StoreNibblePathPrefix);
                 ResolveNode(startNode, in traverseContext);
-                result = TraverseNode(startNode, in traverseContext);
+                result = TraverseNode(startNode, in traverseContext, diagData);
             }
             else
             {
@@ -578,7 +601,7 @@ namespace Nethermind.Trie
                 {
                     ResolveNode(RootRef, in traverseContext);
                     if (_logger.IsTrace) _logger.Trace($"{traverseContext.ToString()}");
-                    result = TraverseNode(RootRef, in traverseContext);
+                    result = TraverseNode(RootRef, in traverseContext, diagData);
                 }
             }
 
@@ -597,17 +620,19 @@ namespace Nethermind.Trie
             }
         }
 
-        private CappedArray<byte> TraverseNode(TrieNode node, in TraverseContext traverseContext)
+        private CappedArray<byte> TraverseNode(TrieNode node, in TraverseContext traverseContext, in InternalReadDiagData diagData)
         {
             if (_logger.IsTrace)
                 _logger.Trace(
                     $"Traversing {node} to {(traverseContext.IsRead ? "READ" : traverseContext.IsDelete ? "DELETE" : "UPDATE")}");
 
+            diagData.Stack.Push(node);
+
             return node.NodeType switch
             {
-                NodeType.Branch => TraverseBranch(node, in traverseContext),
-                NodeType.Extension => TraverseExtension(node, in traverseContext),
-                NodeType.Leaf => TraverseLeaf(node, in traverseContext),
+                NodeType.Branch => TraverseBranch(node, in traverseContext, diagData),
+                NodeType.Extension => TraverseExtension(node, in traverseContext, diagData),
+                NodeType.Leaf => TraverseLeaf(node, in traverseContext, diagData),
                 NodeType.Unknown => throw new InvalidOperationException(
                     $"Cannot traverse unresolved node {node.Keccak}"),
                 _ => throw new NotSupportedException(
@@ -869,7 +894,7 @@ namespace Nethermind.Trie
             RootRef = nextNode;
         }
 
-        private CappedArray<byte> TraverseBranch(TrieNode node, in TraverseContext traverseContext)
+        private CappedArray<byte> TraverseBranch(TrieNode node, in TraverseContext traverseContext, in InternalReadDiagData diagData)
         {
             if (traverseContext.RemainingUpdatePathLength == 0)
             {
@@ -944,10 +969,10 @@ namespace Nethermind.Trie
             ResolveNode(childNode, in traverseContext);
             TrieNode nextNode = childNode;
 
-            return TraverseNext(in traverseContext, 1, nextNode);
+            return TraverseNext(in traverseContext, 1, nextNode, diagData);
         }
 
-        private CappedArray<byte> TraverseLeaf(TrieNode node, in TraverseContext traverseContext)
+        private CappedArray<byte> TraverseLeaf(TrieNode node, in TraverseContext traverseContext, in InternalReadDiagData diagData)
         {
             if (node.Key is null)
             {
@@ -1099,7 +1124,7 @@ namespace Nethermind.Trie
             return traverseContext.UpdateValue;
         }
 
-        private CappedArray<byte> TraverseExtension(TrieNode node, in TraverseContext traverseContext)
+        private CappedArray<byte> TraverseExtension(TrieNode node, in TraverseContext traverseContext, in InternalReadDiagData diagData)
         {
             if (node.Key is null)
             {
@@ -1127,7 +1152,7 @@ namespace Nethermind.Trie
 
                 ResolveNode(next, in traverseContext);
 
-                return TraverseNext(in traverseContext, extensionLength, next);
+                return TraverseNext(in traverseContext, extensionLength, next, diagData);
             }
 
             if (traverseContext.IsRead)
@@ -1212,12 +1237,12 @@ namespace Nethermind.Trie
             return traverseContext.UpdateValue;
         }
 
-        private CappedArray<byte> TraverseNext(in TraverseContext traverseContext, int extensionLength, TrieNode next)
+        private CappedArray<byte> TraverseNext(in TraverseContext traverseContext, int extensionLength, TrieNode next, InternalReadDiagData diagData)
         {
             // Move large struct creation out of flow so doesn't force additional stack space
             // in calling method even if not used
             TraverseContext newContext = traverseContext.WithNewIndex(traverseContext.CurrentIndex + extensionLength);
-            return TraverseNode(next, in newContext);
+            return TraverseNode(next, in newContext, diagData);
         }
 
         private static int FindCommonPrefixLength(ReadOnlySpan<byte> shorterPath, ReadOnlySpan<byte> longerPath)
@@ -1427,5 +1452,23 @@ namespace Nethermind.Trie
         {
             throw new MissingTrieNodeException(e.Message, e, traverseContext.UpdatePath.ToArray(), traverseContext.CurrentIndex);
         }
+    }
+
+    internal ref struct PathReadDiagData
+    {
+        public Span<byte> FullPath { get; set; }
+        public Hash256 ParentStateRoot { get; set; }
+        public bool LoadedFromDb { get; set; }
+        public bool Dirty { get; set; }
+        public bool SelfDestruct { get; set; }
+    }
+
+    internal ref struct InternalReadDiagData
+    {
+        public InternalReadDiagData()
+        {
+            Stack = new Stack<TrieNode>();
+        }
+        public Stack<TrieNode> Stack { get; set; }
     }
 }

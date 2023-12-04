@@ -1,18 +1,23 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Generic;
+using System.Linq;
+using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Db.ByPathState;
 using Nethermind.Logging;
 using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Blockchain.ByPathState;
-public class ByPathConstantPersistenceStrategy : IPersistenceStrategy
+public class ByPathConstantPersistenceStrategy : IByPathPersistenceStrategy
 {
     private readonly IByPathStateDb? _pathStateDb;
     private readonly IBlockTree _blockTree;
     private readonly ILogger _logger;
     private readonly int _minInMemBlocks;
     private readonly int _persistInterval;
+    private SortedDictionary<long, BlockHeader> _finalizedBlocks;
 
     public ByPathConstantPersistenceStrategy(IByPathStateDb? pathStateDb, IBlockTree blockTree, int minInMemBlocks, int persistInterval, ILogManager logManager)
     {
@@ -21,27 +26,35 @@ public class ByPathConstantPersistenceStrategy : IPersistenceStrategy
         _minInMemBlocks = minInMemBlocks;
         _persistInterval = persistInterval;
         _logger = logManager.GetClassLogger();
+        _finalizedBlocks = [];
     }
 
-    public bool ShouldPersist(long blockNumber)
+    public void FinalizationManager_BlocksFinalized(object? sender, FinalizeEventArgs e)
     {
-        return false;
+        foreach (BlockHeader b in e.FinalizedBlocks)
+        {
+            _finalizedBlocks[b.Number] = b;
+        }
     }
 
-    public bool ShouldPersist(long currentBlockNumber, out long targetBlockNumber)
+    public (long blockNumber, Hash256 stateRoot)? GetBlockToPersist(long currentBlockNumber, Hash256 currentStateRoot)
     {
-        targetBlockNumber = -1;
         //Cleaning of db data not finished
         if (_pathStateDb is not null && !(_pathStateDb.CanAccessByPath(Db.StateColumns.State) && _pathStateDb.CanAccessByPath(Db.StateColumns.Storage)))
-            return false;
+            return null;
 
         long distanceToPersisted = currentBlockNumber - ((_blockTree.BestPersistedState ?? 0) + _minInMemBlocks);
 
         if (distanceToPersisted > 0 && distanceToPersisted % _persistInterval == 0)
         {
-            targetBlockNumber = currentBlockNumber - _minInMemBlocks;
-            return true;
+            long targetBlockNumber = currentBlockNumber - _minInMemBlocks;
+
+            foreach (KeyValuePair<long, BlockHeader> block in _finalizedBlocks.Reverse())
+            {
+                if (block.Value.Number <= targetBlockNumber)
+                    return (block.Value.Number, block.Value.StateRoot);
+            }
         }
-        return false;
+        return null;
     }
 }

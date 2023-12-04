@@ -374,12 +374,13 @@ namespace Nethermind.Trie
                             FullRlp = tree.LoadRlp(FullPath);
                             //if node was created as unknown, the hash may be different and needs to be recalculated - maybe should throw an exception here?
                             //diagnostic code - check keccak of loaded RLP
-                            if (Keccak is not null)
-                            {
-                                Hash256 dbHash = Core.Crypto.Keccak.Compute(FullRlp.AsSpan());
-                                if (Keccak != dbHash)
-                                    throw new TrieException($"Hash mismatch - wanted {Keccak}, got {dbHash} for path {FullPath.ToHexString()}");
-                            }
+                            //if (Keccak is not null)
+                            //{
+                            //    Hash256 dbHash = Core.Crypto.Keccak.Compute(FullRlp.AsSpan());
+                            //    if (Keccak != dbHash)
+                            //        throw new TrieException($"Hash mismatch - wanted {Keccak}, got {dbHash} for path {FullPath.ToHexString()}");
+                            //}
+                            Keccak = null;
                         }
                         IsPersisted = true;
 
@@ -795,9 +796,10 @@ namespace Nethermind.Trie
             trieNode.StoreNibblePathPrefix = (byte[])StoreNibblePathPrefix.Clone();
             if (Key is not null) trieNode.Key = (byte[])Key.Clone();
             trieNode._rlpStream = null;
-            IsDirty = true;
-            IsPersisted = false;
-            LastSeen = null;
+            //why was this introduced? modifies cloned node and can break processing for hash PT
+            //IsDirty = true;
+            //IsPersisted = false;
+            //LastSeen = null;
             return trieNode;
         }
 
