@@ -100,4 +100,10 @@ public interface INetworkConfig : IConfig
 
     [ConfigItem(DefaultValue = "false", HiddenFromDocs = true, Description = "[TECHNICAL] Disable feeding ENR DNS records to discv4 table")]
     bool DisableDiscV4DnsFeeder { get; set; }
+
+    [ConfigItem(DefaultValue = "0", HiddenFromDocs = true, Description = $"[TECHNICAL] Introduce throttling to all messages being sent/received after exceeding a byte threshold in a given time span (see '{nameof(ThrottlingDelayMs)}')")]
+    int ThrottlingByteLimit { get; set; }
+
+    [ConfigItem(DefaultValue = "0", HiddenFromDocs = true, Description = $"[TECHNICAL] Introduce throttling to all messages being sent/received after exceeding a byte threshold in a given time span (see '{nameof(ThrottlingByteLimit)}')")]
+    int ThrottlingDelayMs { get; set; }
 }
