@@ -9,6 +9,7 @@ using Nethermind.Monitoring.Metrics;
 using Nethermind.Monitoring.Config;
 using System.Net.Sockets;
 using Prometheus;
+using System.Runtime.InteropServices;
 
 namespace Nethermind.Monitoring
 {
@@ -81,7 +82,9 @@ namespace Nethermind.Monitoring
             if (_exposePort is not null)
             {
                 // KestrelMetricServer intercept SIGTERM causing exitcode to be incorrect
-                IMetricServer metricServer = new MetricServer(_exposePort.Value);
+                IMetricServer metricServer = RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ?
+                    new KestrelMetricServer(_exposePort.Value) :
+                    new MetricServer(_exposePort.Value);
                 metricServer.Start();
             }
             await Task.Factory.StartNew(() => _metricsController.StartUpdating(), TaskCreationOptions.LongRunning);
