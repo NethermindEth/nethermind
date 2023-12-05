@@ -228,12 +228,12 @@ jobs:
           # Perform the comparisons
           if [ ${#nethermind_urls_str[@]} -gt 0 ]; then
             for (( i = 1; i < ${#nethermind_urls_str[@]}; i++ )); do
-              echo "flood all ${nethermind_urls_str[0]} ${nethermind_urls_str[i]}"
-              flood all "${nethermind_urls_str[0]}" "${nethermind_urls_str[i]}"
+              echo "flood all ${nethermind_urls_str[0]} ${nethermind_urls_str[i]} --equality"
+              flood all "${nethermind_urls_str[0]}" "${nethermind_urls_str[i]} --equality"
             done
           
             for (( j = 0; j < ${#others_prepared_str[@]}; j++ )); do
-              echo "flood all ${nethermind_urls_str[0]} ${others_prepared_str[j]}"
-              flood all "${nethermind_urls_str[0]}" "${others_prepared_str[j]}"
+              echo "flood all ${nethermind_urls_str[0]} ${others_prepared_str[j]} --equality"
+              flood all "${nethermind_urls_str[0]}" "${others_prepared_str[j]}" --equality
             done
           fi
