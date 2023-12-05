@@ -210,9 +210,9 @@ jobs:
           others_prepared_str=()
           for other in "${others_str_array[@]}"; do
             if [[ "$other" == "INFURA_ENDPOINT" ]]; then
-              others_prepared_str+="$other=${{ secrets["INFURA_ENDPOINT"] }} "
+              others_prepared_str+="$other=${{ secrets[INFURA_ENDPOINT] }} "
             elif [[ "$other" == "NETHERMIND_ARCHIVE_ENDPOINT" ]]; then  # Use 'elif' instead of 'else'
-              others_prepared_str+="$other=${{ secrets["NETHERMIND_ARCHIVE_ENDPOINT"] }} "
+              others_prepared_str+="$other=${{ secrets[NETHERMIND_ARCHIVE_ENDPOINT] }} "
             fi
           done
           
