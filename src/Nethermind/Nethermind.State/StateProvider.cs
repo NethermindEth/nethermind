@@ -223,7 +223,12 @@ namespace Nethermind.State
                 // hitting non-existing account when substractin Zero-value from the sender
                 if (releaseSpec.IsEip158Enabled && !isSubtracting)
                 {
-                    Account touched = GetThroughCacheCheckExists();
+                    Account touched = GetThroughCache(address);
+                    if (touched is null)
+                    {
+                        return;
+                    }
+
                     if (_logger.IsTrace) _logger.Trace($"  Touch {address} (balance)");
                     if (touched!.IsEmpty)
                     {
