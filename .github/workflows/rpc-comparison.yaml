@@ -95,13 +95,16 @@ jobs:
           # Check and add the main branch file
           if [ -f "artifacts/$main_branch_file" ]; then
             url_content=$(cat "artifacts/$main_branch_file")
+            echo $url_content
             rpc_urls+="${{ env.CLEAN_MAIN_REF }}::$url_content,"
           fi
   
           # Check and add the compare branch file
           if [ -f "artifacts/$compare_branch_file" ]; then
             url_content=$(cat "artifacts/$compare_branch_file")
-            rpc_urls+="${{ env.CLEAN_COMPARE_REF }}::$url_content,"
+            echo $url_content
+            #rpc_urls+="${{ env.CLEAN_COMPARE_REF }}::$url_content,"
+            rpc_urls+="master::$url_content,"
           fi
   
           rpc_urls=${rpc_urls%,}
