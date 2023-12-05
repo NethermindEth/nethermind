@@ -89,7 +89,7 @@ jobs:
         run: |
           rpc_urls=""
           main_branch_file="rpc-url___${{ env.CLEAN_MAIN_REF }}___${{ github.run_id }}"
-          compare_branch_file=or "rpc-url___master___${{ github.run_id }}" #"rpc-url___${{ env.CLEAN_COMPARE_REF }}___${{ github.run_id }}"
+          compare_branch_file="rpc-url___master___${{ github.run_id }}" #"rpc-url___${{ env.CLEAN_COMPARE_REF }}___${{ github.run_id }}"
 
           # Check and add the main branch file
           if [ -f "artifacts/$main_branch_file" ]; then
