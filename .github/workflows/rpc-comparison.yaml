@@ -193,6 +193,8 @@ jobs:
   
       - name: Test equality of responses
         run: |
+          #others_str="${{ github.event.inputs.compare_with }}"
+          others_str="INFURA_ENDPOINT NETHERMIND_ARCHIVE_ENDPOINT"
           rpc_urls_str="${{ needs.aggregate_rpcs.outputs.rpc_urls }}"
           IFS=',' read -r -a rpc_urls_array <<< "$rpc_urls_str"; unset IFS
 
@@ -203,16 +205,14 @@ jobs:
             nethermind_urls_str+="nethermind_$branch=$url "
           done
 
-          #others_str="${{ github.event.inputs.compare_with }}"
-          others_str="INFURA_ENDPOINT NETHERMIND_ARCHIVE_ENDPOINT"
           IFS=' ' read -r -a others_str_array <<< "$others_str"; unset IFS
 
           others_prepared_str=()
           for other in "${others_str_array[@]}"; do
             if [[ "$other" == "INFURA_ENDPOINT" ]]; then
-              others_prepared_str+="$other=${{ env.INFURA_ENDPOINT }} "
+              others_prepared_str+="$other=${{ secrets["INFURA_ENDPOINT"] }} "
             elif [[ "$other" == "NETHERMIND_ARCHIVE_ENDPOINT" ]]; then  # Use 'elif' instead of 'else'
-              others_prepared_str+="$other=${{ env.NETHERMIND_ARCHIVE_ENDPOINT }} "
+              others_prepared_str+="$other=${{ secrets["NETHERMIND_ARCHIVE_ENDPOINT"] }} "
             fi
           done
           
