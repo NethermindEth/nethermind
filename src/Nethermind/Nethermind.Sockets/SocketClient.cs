@@ -38,7 +38,7 @@ namespace Nethermind.Sockets
             if (message.Client == ClientName || string.IsNullOrWhiteSpace(ClientName) ||
                 string.IsNullOrWhiteSpace(message.Client))
             {
-                await _jsonSerializer.SerializeAsync(_handler.SendUsingStream(), new { type = message.Type, client = ClientName, data = message.Data });
+                await _jsonSerializer.SerializeAsync(_handler.SendUsingStream(), new { type = message.Type, client = ClientName, data = message.Data }, indented: false, leaveOpen: true);
             }
         }
 

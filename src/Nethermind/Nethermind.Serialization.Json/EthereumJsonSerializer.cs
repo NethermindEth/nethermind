@@ -105,16 +105,17 @@ namespace Nethermind.Serialization.Json
 
         public static JsonSerializerOptions JsonOptionsIndented { get; private set; } = CreateOptions(indented: true);
 
+        private static StreamPipeWriterOptions optionsLeaveOpen = new(pool: MemoryPool<byte>.Shared, minimumBufferSize: 4096, leaveOpen: true);
         private static StreamPipeWriterOptions options = new(pool: MemoryPool<byte>.Shared, minimumBufferSize: 4096, leaveOpen: false);
 
-        private static CountingStreamPipeWriter GetPipeWriter(Stream stream)
+        private static CountingStreamPipeWriter GetPipeWriter(Stream stream, bool leaveOpen)
         {
-            return new CountingStreamPipeWriter(stream, options);
+            return new CountingStreamPipeWriter(stream, leaveOpen ? optionsLeaveOpen : options);
         }
 
-        public long Serialize<T>(Stream stream, T value, bool indented = false)
+        public long Serialize<T>(Stream stream, T value, bool indented = false, bool leaveOpen = true)
         {
-            var countingWriter = GetPipeWriter(stream);
+            var countingWriter = GetPipeWriter(stream, leaveOpen);
             using var writer = new Utf8JsonWriter(countingWriter, new JsonWriterOptions() { SkipValidation = true, Indented = indented });
             JsonSerializer.Serialize(writer, value, indented ? JsonOptionsIndented : _jsonOptions);
             countingWriter.Complete();
@@ -123,9 +124,9 @@ namespace Nethermind.Serialization.Json
             return outputCount;
         }
 
-        public async ValueTask<long> SerializeAsync<T>(Stream stream, T value, bool indented = false)
+        public async ValueTask<long> SerializeAsync<T>(Stream stream, T value, bool indented = false, bool leaveOpen = true)
         {
-            var countingWriter = GetPipeWriter(stream);
+            var countingWriter = GetPipeWriter(stream, leaveOpen);
             using var writer = new Utf8JsonWriter(countingWriter, new JsonWriterOptions() { SkipValidation = true, Indented = indented });
             JsonSerializer.Serialize(writer, value, indented ? JsonOptionsIndented : _jsonOptions);
             await countingWriter.CompleteAsync();

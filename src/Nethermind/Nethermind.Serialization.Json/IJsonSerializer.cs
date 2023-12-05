@@ -11,7 +11,7 @@ namespace Nethermind.Serialization.Json
         T Deserialize<T>(Stream stream);
         T Deserialize<T>(string json);
         string Serialize<T>(T value, bool indented = false);
-        long Serialize<T>(Stream stream, T value, bool indented = false);
-        ValueTask<long> SerializeAsync<T>(Stream stream, T value, bool indented = false);
+        long Serialize<T>(Stream stream, T value, bool indented = false, bool leaveOpen = true);
+        ValueTask<long> SerializeAsync<T>(Stream stream, T value, bool indented = false, bool leaveOpen = true);
     }
 }

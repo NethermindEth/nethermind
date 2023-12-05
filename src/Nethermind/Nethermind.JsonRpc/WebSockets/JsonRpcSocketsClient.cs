@@ -175,7 +175,7 @@ public class JsonRpcSocketsClient : SocketClient, IJsonRpcDuplexClient
     {
         using (result)
         {
-            return (int)await _jsonSerializer.SerializeAsync(_handler.SendUsingStream(), result.Response);
+            return (int)await _jsonSerializer.SerializeAsync(_handler.SendUsingStream(), result.Response, indented: false, leaveOpen: !endOfMessage);
         }
     }
 }
