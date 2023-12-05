@@ -88,14 +88,21 @@ jobs:
         id: process_artifacts
         run: |
           rpc_urls=""
-          ls artifacts
-          for file in artifacts/*; do
-            if [ -f "$file" ]; then
-              branch=$(basename $file | cut -d '%' -f 2)
-              url_content=$(cat "$file")
-              rpc_urls+="$branch::$url_content,"
-            fi
-          done
+          main_branch_file="rpc-url___${{ env.CLEAN_MAIN_REF }}___${{ github.run_id }}"
+          compare_branch_file=or "rpc-url___master___${{ github.run_id }}" #"rpc-url___${{ env.CLEAN_COMPARE_REF }}___${{ github.run_id }}"
+
+          # Check and add the main branch file
+          if [ -f "artifacts/$main_branch_file" ]; then
+            url_content=$(cat "artifacts/$main_branch_file")
+            rpc_urls+="${{ env.CLEAN_MAIN_REF }}::$url_content,"
+          fi
+
+          # Check and add the compare branch file
+          if [ -f "artifacts/$compare_branch_file" ]; then
+            url_content=$(cat "artifacts/$compare_branch_file")
+            rpc_urls+="${{ env.CLEAN_COMPARE_REF }}::$url_content,"
+          fi
+
           rpc_urls=${rpc_urls%,}
           echo $rpc_urls
           echo "rpc_urls=$rpc_urls" >> $GITHUB_OUTPUT
@@ -186,8 +193,7 @@ jobs:
   
       - name: Test equality of responses
         run: |
-          #rpc_urls_str="${{ needs.aggregate_rpcs.outputs.rpc_urls }}"
-          rpc_urls_str="master::http://139.144.63.90:8545,rpc-comparision-1.23.0::http://45.79.192.245:8545"
+          rpc_urls_str="${{ needs.aggregate_rpcs.outputs.rpc_urls }}"
           IFS=',' read -r -a rpc_urls_array <<< "$rpc_urls_str"; unset IFS
 
           nethermind_urls_str=()
