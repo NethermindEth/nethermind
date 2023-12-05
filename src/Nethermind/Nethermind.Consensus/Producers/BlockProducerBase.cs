@@ -209,7 +209,7 @@ namespace Nethermind.Consensus.Producers
                             }
                             else if (t.IsFaulted)
                             {
-                                if (Logger.IsError) Logger.Error("Mining failed", t.Exception);
+                                if (Logger.IsError) Logger.Error("Producing failed", t.Exception);
                                 Metrics.FailedBlockSeals++;
                             }
                             else if (t.IsCanceled)
