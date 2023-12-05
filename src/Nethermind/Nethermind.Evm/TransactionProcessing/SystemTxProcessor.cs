@@ -394,7 +394,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 }
 
                 ExecutionType executionType =
-                    tx.IsContractCreation ? ExecutionType.Create : ExecutionType.Transaction;
+                    tx.IsContractCreation ? ExecutionType.CREATE : ExecutionType.TRANSACTION;
 
                 using (EvmState state = new(unspentGas, env, executionType, true, snapshot, false))
                 {
