@@ -66,6 +66,8 @@ namespace Ethereum.Test.Base
             var jsonOptions = new JsonSerializerOptions()
             {
                 PropertyNameCaseInsensitive = true,
+                PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+                DictionaryKeyPolicy = JsonNamingPolicy.CamelCase,
                 NumberHandling = JsonNumberHandling.AllowReadingFromString
             };
             using (Stream stream = assembly.GetManifestResourceStream(resourceName))

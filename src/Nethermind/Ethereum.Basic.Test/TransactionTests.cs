@@ -97,46 +97,28 @@ namespace Ethereum.Basic.Test
 
         private class TransactionTestJson
         {
-            [JsonPropertyName("key")]
             public string Key { get; set; }
-            [JsonPropertyName("nonce")]
             public long Nonce { get; set; }
-            [JsonPropertyName("gasPrice")]
             public long GasPrice { get; set; }
-            [JsonPropertyName("startGas")]
             public long StartGas { get; set; }
-            [JsonPropertyName("to")]
             public string To { get; set; }
-            [JsonPropertyName("value")]
             public long Value { get; set; }
-            [JsonPropertyName("data")]
             public string Data { get; set; }
-            [JsonPropertyName("unsigned")]
             public string Unsigned { get; set; }
-            [JsonPropertyName("signed")]
             public string Signed { get; set; }
         }
 
         [DebuggerDisplay("{PrivateKey}")]
         public class TransactionTest
         {
-            [JsonPropertyName("privateKey")]
             public PrivateKey PrivateKey { get; set; }
-            [JsonPropertyName("nonce")]
             public UInt256 Nonce { get; set; }
-            [JsonPropertyName("gasPrice")]
             public UInt256 GasPrice { get; set; }
-            [JsonPropertyName("startGas")]
             public long StartGas { get; set; }
-            [JsonPropertyName("to")]
             public Address To { get; set; }
-            [JsonPropertyName("value")]
             public UInt256 Value { get; set; }
-            [JsonPropertyName("data")]
             public byte[] Data { get; set; }
-            [JsonPropertyName("unsigned")]
             public Rlp Unsigned { get; set; }
-            [JsonPropertyName("signed")]
             public Rlp Signed { get; set; }
 
             public override string ToString()

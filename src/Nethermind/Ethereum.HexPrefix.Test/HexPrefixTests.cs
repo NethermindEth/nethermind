@@ -39,11 +39,8 @@ namespace Ethereum.HexPrefix.Test
 
         private class HexPrefixTestJson
         {
-            [JsonPropertyName("seq")]
             public int[] Seq { get; set; }
-            [JsonPropertyName("term")]
             public bool Term { get; set; }
-            [JsonPropertyName("out")]
             public string Out { get; set; }
         }
 

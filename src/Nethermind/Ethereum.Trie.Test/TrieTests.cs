@@ -356,17 +356,13 @@ namespace Ethereum.Trie.Test
 
         public class TrieTestJson
         {
-            [JsonPropertyName("in")]
             public Dictionary<string, string> In { get; set; }
-            [JsonPropertyName("root")]
             public string Root { get; set; }
         }
 
         public class TrieTestArraysJson
         {
-            [JsonPropertyName("in")]
             public string[][] In { get; set; }
-            [JsonPropertyName("root")]
             public string Root { get; set; }
         }
 

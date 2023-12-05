@@ -7,17 +7,11 @@ namespace Ethereum.Difficulty.Test
 {
     public class DifficultyTestHexJson
     {
-        [JsonPropertyName("parentTimestamp")]
         public string ParentTimestamp { get; set; }
-        [JsonPropertyName("parentDifficulty")]
         public string ParentDifficulty { get; set; }
-        [JsonPropertyName("parentUncles")]
         public string ParentUncles { get; set; }
-        [JsonPropertyName("currentTimestamp")]
         public string CurrentTimestamp { get; set; }
-        [JsonPropertyName("currentBlockNumber")]
         public string CurrentBlockNumber { get; set; }
-        [JsonPropertyName("currentDifficulty")]
         public string CurrentDifficulty { get; set; }
     }
 }
