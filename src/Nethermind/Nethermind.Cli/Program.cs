@@ -6,19 +6,15 @@ using System.Collections.Generic;
 using System.IO;
 using System.IO.Abstractions;
 using System.Runtime.CompilerServices;
-using System.Runtime.InteropServices;
 using System.Text;
 using Jint.Native;
 using Microsoft.Extensions.CommandLineUtils;
 using Nethermind.Cli.Console;
 using Nethermind.Cli.Modules;
 using Nethermind.Config;
-using Nethermind.Core;
-using Nethermind.Int256;
 using Nethermind.JsonRpc.Modules.Trace;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
-using Polly;
 
 [assembly: InternalsVisibleTo("Nethermind.Cli.Test")]
 namespace Nethermind.Cli
@@ -29,16 +25,8 @@ namespace Nethermind.Cli
                                                                                                 {"dracula", DraculaColorScheme.Instance }};
         private static readonly IJsonSerializer Serializer = new EthereumJsonSerializer();
 
-        private static List<StorageCell> storageCells = new List<StorageCell>();
         public static void Main(string[] args)
         {
-            for (int i = 0; i < 10000; ++i)
-            {
-                StorageCell storageCell = new StorageCell(Address.Zero, UInt256.MaxValue);
-                storageCells.Add(storageCell);
-            }
-
-            System.Console.WriteLine($"Size of MyClass object: {0} bytes");
             CommandLineApplication app = new() { Name = "Nethermind.Cli" };
             _ = app.HelpOption("-?|-h|--help");
 

@@ -280,7 +280,7 @@ public class CliqueBlockProducer : ICliqueBlockProducer, IDisposable
                         if (t.Result is not null)
                         {
                             if (_logger.IsInfo)
-                                _logger.Info($"Produced block {t.Result.ToString(Block.Format.HashNumberDiffAndTx)}");
+                                _logger.Info($"Sealed block {t.Result.ToString(Block.Format.HashNumberDiffAndTx)}");
                             _scheduledBlock = t.Result;
                             _lastProducedBlock = DateTime.UtcNow;
                             Metrics.BlocksSealed++;
@@ -289,7 +289,7 @@ public class CliqueBlockProducer : ICliqueBlockProducer, IDisposable
                         {
                             if (_logger.IsInfo)
                                 _logger.Info(
-                                    $"Failed to produce block {processedBlock.ToString(Block.Format.HashNumberDiffAndTx)} (null seal)");
+                                    $"Failed to seal block {processedBlock.ToString(Block.Format.HashNumberDiffAndTx)} (null seal)");
                             Metrics.FailedBlockSeals++;
                         }
                     }
@@ -300,7 +300,7 @@ public class CliqueBlockProducer : ICliqueBlockProducer, IDisposable
                     }
                     else if (t.IsCanceled)
                     {
-                        if (_logger.IsInfo) _logger.Info($"Producing block {processedBlock.Number} cancelled");
+                        if (_logger.IsInfo) _logger.Info($"Sealing block {processedBlock.Number} cancelled");
                         Metrics.FailedBlockSeals++;
                     }
                 }, _cancellationTokenSource.Token);

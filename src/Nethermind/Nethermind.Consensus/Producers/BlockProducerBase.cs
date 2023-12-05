@@ -194,7 +194,7 @@ namespace Nethermind.Consensus.Producers
                                 if (t.Result is not null)
                                 {
                                     if (Logger.IsInfo)
-                                        Logger.Info($"Produced block {t.Result.ToString(Block.Format.HashNumberDiffAndTx)}");
+                                        Logger.Info($"Sealed block {t.Result.ToString(Block.Format.HashNumberDiffAndTx)}");
                                     Metrics.BlocksSealed++;
                                     _lastProducedBlockDateTime = DateTime.UtcNow;
                                     return t.Result;
@@ -203,7 +203,7 @@ namespace Nethermind.Consensus.Producers
                                 {
                                     if (Logger.IsInfo)
                                         Logger.Info(
-                                            $"Failed to produce block {processedBlock.ToString(Block.Format.HashNumberDiffAndTx)} (null seal)");
+                                            $"Failed to seal block {processedBlock.ToString(Block.Format.HashNumberDiffAndTx)} (null seal)");
                                     Metrics.FailedBlockSeals++;
                                 }
                             }
@@ -214,7 +214,7 @@ namespace Nethermind.Consensus.Producers
                             }
                             else if (t.IsCanceled)
                             {
-                                if (Logger.IsInfo) Logger.Info($"Producing block {processedBlock.Number} cancelled");
+                                if (Logger.IsInfo) Logger.Info($"Sealing block {processedBlock.Number} cancelled");
                                 Metrics.FailedBlockSeals++;
                             }
 
