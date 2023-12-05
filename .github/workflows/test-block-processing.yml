@@ -40,7 +40,7 @@ jobs:
           #if [[ -n "${{ github.event.inputs.branches_to_compare }}" ]]; then
           #  branches+=",${{ github.event.inputs.branches_to_compare }}"
           #fi
-          
+           
           branches="kch/block_processing_benchmark"
           
           IFS=',' read -ra branch_array <<< "$branches"
