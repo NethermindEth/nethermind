@@ -316,12 +316,10 @@ public partial class BlockProcessor : IBlockProcessor
         {
             BlockReward reward = rewards[i];
 
-            ITxTracer txTracer = NullTxTracer.Instance;
-            if (tracer.IsTracingRewards)
-            {
-                // we need this tracer to be able to track any potential miner account creation
-                txTracer = tracer.StartNewTxTrace(null);
-            }
+            using ITxTracer txTracer = tracer.IsTracingRewards
+                ? // we need this tracer to be able to track any potential miner account creation
+                tracer.StartNewTxTrace(null)
+                : NullTxTracer.Instance;
 
             ApplyMinerReward(block, reward, spec);
 

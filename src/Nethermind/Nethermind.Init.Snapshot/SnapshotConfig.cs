@@ -10,4 +10,8 @@ public class SnapshotConfig : ISnapshotConfig
     public string? DownloadUrl { get; set; }
 
     public string? Checksum { get; set; }
+
+    public string SnapshotDirectory { get; set; } = "snapshot";
+
+    public string SnapshotFileName { get; set; } = "snapshot.zip";
 }

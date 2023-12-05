@@ -26,7 +26,7 @@ namespace Nethermind.JsonRpc
         [JsonIgnore]
         public string MethodName { get; set; }
 
-        public void Dispose()
+        public virtual void Dispose()
         {
             _disposableAction?.Invoke();
             _disposableAction = null;
@@ -40,6 +40,15 @@ namespace Nethermind.JsonRpc
 
         public JsonRpcSuccessResponse(Action? disposableAction = null) : base(disposableAction)
         {
+        }
+
+        public override void Dispose()
+        {
+            if (Result is IDisposable disposable)
+            {
+                disposable.Dispose();
+            }
+            base.Dispose();
         }
     }
 

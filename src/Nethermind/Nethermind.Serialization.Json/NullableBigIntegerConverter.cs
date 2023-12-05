@@ -9,7 +9,7 @@ namespace Nethermind.Serialization.Json
 {
     public class NullableBigIntegerConverter : JsonConverter<BigInteger?>
     {
-        private BigIntegerConverter _bigIntegerConverter;
+        private readonly BigIntegerConverter _bigIntegerConverter;
 
         public NullableBigIntegerConverter()
             : this(NumberConversion.Hex)

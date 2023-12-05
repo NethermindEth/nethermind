@@ -8,7 +8,7 @@ namespace Nethermind.Serialization.Json
 {
     public class NullableLongConverter : JsonConverter<long?>
     {
-        private LongConverter _longConverter;
+        private readonly LongConverter _longConverter;
 
         public NullableLongConverter()
             : this(NumberConversion.Hex)
