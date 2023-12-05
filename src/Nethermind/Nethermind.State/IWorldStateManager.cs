@@ -17,6 +17,6 @@ public interface IWorldStateManager
     /// The Action here is a resetter. Previously an explicit DbProvider's read only implementation need to be reset.
     /// </summary>
     /// <returns></returns>
-    (IWorldState, IStateReader, Action) CreateResettableWorldState();
+    IWorldState CreateResettableWorldState();
     event EventHandler<ReorgBoundaryReached>? ReorgBoundaryReached;
 }

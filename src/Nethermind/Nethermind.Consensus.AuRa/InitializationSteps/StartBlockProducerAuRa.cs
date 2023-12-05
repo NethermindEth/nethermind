@@ -251,7 +251,7 @@ public class StartBlockProducerAuRa
                     BlockchainProcessor.Options.NoReceipts);
 
             OneTimeChainProcessor chainProcessor = new(
-                txProcessingEnv.ResetDb,
+                txProcessingEnv.StateProvider,
                 blockchainProcessor);
 
             return new BlockProducerEnv()

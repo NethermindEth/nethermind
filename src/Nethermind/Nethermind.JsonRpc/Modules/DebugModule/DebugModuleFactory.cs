@@ -90,7 +90,6 @@ public class DebugModuleFactory : ModuleFactoryBase<IDebugRpcModule>
             _recoveryStep,
             _rewardCalculatorSource.Get(txEnv.TransactionProcessor),
             _receiptStorage,
-            txEnv.ResetDb,
             _specProvider,
             _logManager,
             transactionsExecutor);

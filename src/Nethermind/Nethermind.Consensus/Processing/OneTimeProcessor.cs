@@ -15,13 +15,13 @@ namespace Nethermind.Consensus.Processing
         public ITracerBag Tracers => _processor.Tracers;
 
         private readonly IBlockchainProcessor _processor;
-        private readonly Action _clearTemporaryState;
+        private readonly IWorldState _worldState;
 
         private object _lock = new();
 
-        public OneTimeChainProcessor(Action clearTemporaryState, IBlockchainProcessor processor)
+        public OneTimeChainProcessor(IWorldState worldState, IBlockchainProcessor processor)
         {
-            _clearTemporaryState = clearTemporaryState ?? throw new ArgumentNullException(nameof(clearTemporaryState));
+            _worldState = worldState ?? throw new ArgumentNullException(nameof(worldState));
             _processor = processor ?? throw new ArgumentNullException(nameof(processor));
         }
 
@@ -46,7 +46,7 @@ namespace Nethermind.Consensus.Processing
                 }
                 finally
                 {
-                    _clearTemporaryState.Invoke();
+                    _worldState.Reset();
                 }
 
                 return result;

@@ -73,7 +73,6 @@ namespace Nethermind.JsonRpc.Modules.Trace
                 _recoveryStep,
                 rewardCalculator,
                 _receiptStorage,
-                txProcessingEnv.ResetDb,
                 _specProvider,
                 _logManager,
                 transactionsExecutor);

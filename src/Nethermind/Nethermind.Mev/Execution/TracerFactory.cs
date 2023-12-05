@@ -47,7 +47,7 @@ namespace Nethermind.Mev.Execution
                 _worldStateManager, _blockTree, _specProvider, _logManager);
 
             ReadOnlyChainProcessingEnv chainProcessingEnv = new(
-                txProcessingEnv, Always.Valid, _recoveryStep, NoBlockRewards.Instance, new InMemoryReceiptStorage(), txProcessingEnv.ResetDb, _specProvider, _logManager);
+                txProcessingEnv, Always.Valid, _recoveryStep, NoBlockRewards.Instance, new InMemoryReceiptStorage(), _specProvider, _logManager);
 
             return CreateTracer(txProcessingEnv, chainProcessingEnv);
         }

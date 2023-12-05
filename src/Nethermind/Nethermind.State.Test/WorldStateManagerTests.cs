@@ -51,7 +51,8 @@ public class WorldStateManagerTests
         IDbProvider dbProvider = TestMemDbProvider.Init();
         WorldStateManager worldStateManager = new WorldStateManager(worldState, trieStore, dbProvider, LimboLogs.Instance);
 
-        (IWorldState tempWorldState, IStateReader stateReader, Action reset) = worldStateManager.CreateResettableWorldState();
+        IWorldState tempWorldState = worldStateManager.CreateResettableWorldState();
+        IStateReader stateReader = worldStateManager.GlobalStateReader;
 
         byte[] code = new byte[] { 1 };
         Hash256 codeHash = Keccak.Compute(code);
@@ -59,7 +60,7 @@ public class WorldStateManagerTests
         tempWorldState.InsertCode(Address.Zero, code, MainnetSpecProvider.Instance.GenesisSpec);
 
         stateReader.GetCode(codeHash).Should().NotBeNull();
-        reset();
+        tempWorldState.Reset();
         stateReader.GetCode(codeHash).Should().BeNull();
     }
 }

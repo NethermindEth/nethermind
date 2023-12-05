@@ -64,7 +64,6 @@ namespace Nethermind.JsonRpc.Test.Modules
                     Blockchain.BlockPreprocessorStep,
                     rewardCalculator,
                     Blockchain.ReceiptStorage,
-                    txProcessingEnv.ResetDb,
                     Blockchain.SpecProvider,
                     Blockchain.LogManager,
                     transactionsExecutor);
