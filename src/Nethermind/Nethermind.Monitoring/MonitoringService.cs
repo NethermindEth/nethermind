@@ -81,9 +81,11 @@ namespace Nethermind.Monitoring
             }
             if (_exposePort is not null)
             {
-                // KestrelMetricServer intercept SIGTERM causing exitcode to be incorrect
                 IMetricServer metricServer = RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ?
+                    // MetricServer uses HttpListener which on Windows either needs
+                    // permissions at OS or Admin mode, whereas KestrelMetricServer doesn't need those
                     new KestrelMetricServer(_exposePort.Value) :
+                    // KestrelMetricServer intercept SIGTERM causing exitcode to be incorrect
                     new MetricServer(_exposePort.Value);
                 metricServer.Start();
             }
