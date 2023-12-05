@@ -225,7 +225,7 @@ jobs:
           done
 
           # Flag for comparing to other branch
-          if [ ${#rpc_urls_array[@]} -gt 1 ]; then
+          if [ ${#nethermind_urls_str[@]} -gt 1 ]; then
             echo "compare_to_other_branch=true" >> $GITHUB_ENV
             echo "compare_to_other_branch_params=${nethermind_urls_str[0]} ${nethermind_urls_str[1]}" >> $GITHUB_ENV
           else
@@ -236,16 +236,16 @@ jobs:
           compare_to_infura=false
           compare_to_archive=false
           for (( j = 0; j < ${#others_prepared_str[@]}; j++ )); do
-            if [[ "$others_prepared_str[j]" == "INFURA_ENDPOINT" ]]; then
+            if [[ "${others_prepared_str[j]}" == "INFURA_ENDPOINT=${INFURA_ENDPOINT}" ]]; then
               compare_to_infura=true
-              echo "compare_to_infura_params=${nethermind_urls_str[0]} ${others_prepared_str[0]}" >> $GITHUB_ENV
-            elif [[ "$others_prepared_str[j]" == "NETHERMIND_ARCHIVE_ENDPOINT" ]]; then
+              echo "compare_to_infura_params=${nethermind_urls_str[0]} ${others_prepared_str[j]}" >> $GITHUB_ENV
+            elif [[ "${others_prepared_str[j]}" == "NETHERMIND_ARCHIVE_ENDPOINT=${NETHERMIND_ARCHIVE_ENDPOINT}" ]]; then
               compare_to_archive=true
               echo "compare_to_archive_params=${nethermind_urls_str[0]} ${others_prepared_str[j]}" >> $GITHUB_ENV
             fi
           done
           echo "compare_to_infura=$compare_to_infura" >> $GITHUB_ENV
-          echo "compare_to_archive=$compare_to_archive" >> $GITHUB_ENV          
+          echo "compare_to_archive=$compare_to_archive" >> $GITHUB_ENV               
 
       - name: Compare to Other Branch
         if: env.compare_to_other_branch == 'true'
