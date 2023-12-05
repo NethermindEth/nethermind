@@ -170,7 +170,7 @@ jobs:
     steps:
       - uses: actions/checkout@v3
       - name: Install flood
-        run: pip install git+https://github.com/piwonskp/flood.git
+        run: pip install git+https://github.com/kamilchodola/flood.git
   
       - name: Install WireGuard
         run: |
