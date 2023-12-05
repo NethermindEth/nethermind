@@ -21,9 +21,9 @@ public class TrieNodeResolverWithReadFlags : ITrieNodeResolver
 
     public TrieNodeResolverCapability Capability => _baseResolver.Capability;
 
-    public bool ExistsInDB(Hash256 hash, byte[] nodePathNibbles)
+    public bool IsPersisted(Hash256 hash, byte[] nodePathNibbles)
     {
-        return _baseResolver.ExistsInDB(hash, nodePathNibbles);
+        return _baseResolver.IsPersisted(hash, nodePathNibbles);
     }
 
     public TrieNode FindCachedOrUnknown(Hash256 hash)

@@ -54,6 +54,7 @@ namespace Nethermind.Trie.Pruning
         }
 
         public bool IsPersisted(in ValueHash256 keccak) => true;
+        public bool IsPersisted(Hash256 hash, byte[] nodePathNibbles) => false;
 
         public void Dispose() { }
 
@@ -67,8 +68,6 @@ namespace Nethermind.Trie.Pruning
 
         public void ClearCache() { }
         public void ClearCacheAfter(Hash256 rootHash) { }
-
-        public bool ExistsInDB(Hash256 hash, byte[] nodePathNibbles) => false;
 
         public void DeleteByRange(Span<byte> startKey, Span<byte> endKey, IWriteBatch? writeBatch = null) { }
         public void MarkPrefixDeleted(long blockNumber, ReadOnlySpan<byte> keyPrefix)

@@ -37,6 +37,7 @@ namespace Nethermind.Trie.Pruning
         public byte[] LoadRlp(Hash256 hash, ReadFlags readFlags = ReadFlags.None) => _trieStore.LoadRlp(hash, _readOnlyStore, readFlags);
 
         public bool IsPersisted(in ValueHash256 keccak) => _trieStore.IsPersisted(keccak);
+        public bool IsPersisted(Hash256 hash, byte[] nodePathNibbles) => _trieStore.IsPersisted(hash, nodePathNibbles);
 
         public byte[]? TryLoadRlp(Span<byte> path, IKeyValueStore? keyValueStore)
         {
@@ -77,8 +78,6 @@ namespace Nethermind.Trie.Pruning
         }
 
         public void ClearCacheAfter(Hash256 rootHash) { }
-
-        public bool ExistsInDB(Hash256 hash, byte[] nodePathNibbles) => _trieStore.ExistsInDB(hash, nodePathNibbles);
 
         public byte[]? this[ReadOnlySpan<byte> key] => _trieStore[key];
         public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None) { }

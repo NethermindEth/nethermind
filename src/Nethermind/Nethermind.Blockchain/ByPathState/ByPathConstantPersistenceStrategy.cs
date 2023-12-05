@@ -26,11 +26,12 @@ public class ByPathConstantPersistenceStrategy : IByPathPersistenceStrategy
         _minInMemBlocks = minInMemBlocks;
         _persistInterval = persistInterval;
         _logger = logManager.GetClassLogger();
-        _finalizedBlocks = [];
+        _finalizedBlocks = new SortedDictionary<long, BlockHeader>();
     }
 
     public void FinalizationManager_BlocksFinalized(object? sender, FinalizeEventArgs e)
     {
+        //TODO - when remove?
         foreach (BlockHeader b in e.FinalizedBlocks)
         {
             _finalizedBlocks[b.Number] = b;

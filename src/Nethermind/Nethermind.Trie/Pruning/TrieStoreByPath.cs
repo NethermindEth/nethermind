@@ -33,7 +33,7 @@ namespace Nethermind.Trie.Pruning
         private readonly ConcurrentQueue<byte[]> _destroyPrefixes;
 
         private bool _lastPersistedReachedReorgBoundary;
-        private bool _useCommittedCache = false;
+        private readonly bool _useCommittedCache = false;
 
         private readonly TrieKeyValueStore _publicStore;
 
@@ -345,6 +345,8 @@ namespace Nethermind.Trie.Pruning
         private long LatestCommittedBlockNumber { get; set; }
 
         public TrieNodeResolverCapability Capability => TrieNodeResolverCapability.Path;
+
+        public bool UseCommittedCache => _useCommittedCache;
 
         private void CreateCommitSet(long blockNumber)
         {

@@ -39,6 +39,7 @@ namespace Nethermind.Trie.Pruning
 
         public bool IsPersisted(Hash256 keccak) => _trieStore.IsPersisted(keccak);
         public bool IsPersisted(in ValueHash256 keccak) => _trieStore.IsPersisted(keccak);
+        public bool IsPersisted(Hash256 hash, byte[] nodePathNibbles) => _trieStore.IsPersisted(hash, nodePathNibbles);
 
         public byte[]? TryLoadRlp(Span<byte> path, IKeyValueStore? keyValueStore)
         {
@@ -74,8 +75,6 @@ namespace Nethermind.Trie.Pruning
 
         public void ClearCache() => _trieStore.ClearCache();
         public void ClearCacheAfter(Hash256 rootHash) { }
-
-        public bool ExistsInDB(Hash256 hash, byte[] nodePathNibbles) => _trieStore.ExistsInDB(hash, nodePathNibbles);
 
         public void DeleteByRange(Span<byte> startKey, Span<byte> endKey, IWriteBatch writeBatch = null) { }
         public void MarkPrefixDeleted(long blockNumber, ReadOnlySpan<byte> keyPrefix) { }

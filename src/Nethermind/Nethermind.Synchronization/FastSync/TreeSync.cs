@@ -413,7 +413,7 @@ namespace Nethermind.Synchronization.FastSync
                 rootNodeKeyExists = _stateStore.Capability switch
                 {
                     TrieNodeResolverCapability.Hash => _stateDb.KeyExists(_rootNode),
-                    TrieNodeResolverCapability.Path => _stateStore.ExistsInDB(_rootNode, Array.Empty<byte>()),
+                    TrieNodeResolverCapability.Path => _stateStore.IsPersisted(_rootNode, Array.Empty<byte>()),
                     _ => throw new ArgumentOutOfRangeException()
                 };
             }
@@ -598,7 +598,7 @@ namespace Nethermind.Synchronization.FastSync
                         switch (syncItem.NodeDataType)
                         {
                             case NodeDataType.State:
-                                keyExists = _stateStore.ExistsInDB(syncItem.Hash, syncItem.PathNibbles);
+                                keyExists = _stateStore.IsPersisted(syncItem.Hash, syncItem.PathNibbles);
                                 break;
                             case NodeDataType.Storage:
                                 Span<byte> storagePath = new byte[66 + syncItem.PathNibbles.Length];
@@ -606,7 +606,7 @@ namespace Nethermind.Synchronization.FastSync
                                 storagePath[64] = 8;
                                 storagePath[65] = 0;
                                 syncItem.PathNibbles.CopyTo(storagePath.Slice(66));
-                                keyExists = _stateStore.ExistsInDB(syncItem.Hash, storagePath.ToArray());
+                                keyExists = _stateStore.IsPersisted(syncItem.Hash, storagePath.ToArray());
                                 break;
                             case NodeDataType.None:
                             case NodeDataType.Code:
@@ -839,8 +839,8 @@ namespace Nethermind.Synchronization.FastSync
 
                 _pathStateDb?.EndOfCleanupRequests();
 
-                //waiting for the cleand up database here before any processing happens
-                //TrieStoreByPath prevents direct DB reads if cleanup has not finished, to avoiddirty reads,so this in theory should not be required.
+                //waiting for the clean up database here before any processing happens
+                //TrieStoreByPath prevents direct DB reads if cleanup has not finished, to avoid dirty reads,so this in theory should not be required.
                 //Is it safe to reads via traversing the trie while cleanup is still in progress.
                 _pathStateDb?.WaitForPrunning();
 

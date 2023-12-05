@@ -141,7 +141,7 @@ public class HealingTreeTests
 
         public void Dispose() { }
 
-        public bool ExistsInDB(Hash256 hash, byte[] nodePathNibbles) => false;
+        public bool IsPersisted(Hash256 hash, byte[] nodePathNibbles) => false;
 
         public TrieNode FindCachedOrUnknown(Hash256 hash)
         {

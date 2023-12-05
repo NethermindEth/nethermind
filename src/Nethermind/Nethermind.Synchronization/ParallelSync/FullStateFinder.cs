@@ -59,7 +59,7 @@ public class FullStateFinder : IFullStateFinder
             case TrieNodeResolverCapability.Path:
             {
                 stateRootIsInMemory = _trieNodeResolver.FindCachedOrUnknown(stateRoot, Span<byte>.Empty, Span<byte>.Empty).NodeType != NodeType.Unknown;
-                isPersisted = _trieNodeResolver.ExistsInDB(stateRoot, Array.Empty<byte>());
+                isPersisted = _trieNodeResolver.IsPersisted(stateRoot, Array.Empty<byte>());
                 break;
             }
         }

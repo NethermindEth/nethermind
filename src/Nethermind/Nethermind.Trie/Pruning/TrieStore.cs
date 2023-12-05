@@ -354,6 +354,8 @@ namespace Nethermind.Trie.Pruning
             return true;
         }
 
+        public bool IsPersisted(Hash256 hash, byte[] nodePathNibbles) => IsPersisted(hash);
+
         public IReadOnlyTrieStore AsReadOnly(IKeyValueStore? keyValueStore)
         {
             return new ReadOnlyTrieStore(this, keyValueStore);
@@ -848,11 +850,6 @@ namespace Nethermind.Trie.Pruning
 
         public void PersistNodeData(Span<byte> fullPath, int pathToNodeLength, byte[]? rlpData, IWriteBatch? keyValueStore = null, WriteFlags writeFlags = WriteFlags.None)
         {
-        }
-
-        public bool ExistsInDB(Hash256 hash, byte[] nodePathNibbles)
-        {
-            return _keyValueStore[hash.Bytes] is not null;
         }
 
         public byte[]? this[ReadOnlySpan<byte> key]
