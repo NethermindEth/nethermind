@@ -188,47 +188,48 @@ jobs:
           WIREGUARD_ALLOWED_IPS: '${{ secrets.WIREGUARD_ALLOWED_IPS }}'
           WIREGUARD_SERVER_IP: '${{ secrets.WIREGUARD_SERVER_IP }}'
           WIREGUARD_SERVER_PORT: '${{ secrets.WIREGUARD_SERVER_PORT }}'
-          INFURA_ENDPOINT: '${{ secrets.INFURA_ENDPOINT }}'
-          NETHERMIND_ARCHIVE_ENDPOINT: '${{ secrets.NETHERMIND_ARCHIVE_ENDPOINT }}'
   
       - name: Test equality of responses
+        env:          
+          INFURA_ENDPOINT: '${{ secrets.INFURA_ENDPOINT }}'
+          NETHERMIND_ARCHIVE_ENDPOINT: '${{ secrets.NETHERMIND_ARCHIVE_ENDPOINT }}'
         run: |
           #others_str="${{ github.event.inputs.compare_with }}"
           others_str="INFURA_ENDPOINT NETHERMIND_ARCHIVE_ENDPOINT"
           rpc_urls_str="${{ needs.aggregate_rpcs.outputs.rpc_urls }}"
-          IFS=',' read -r -a rpc_urls_array <<< "$rpc_urls_str"; unset IFS
-
+          # Convert rpc_urls_str into an array
+          IFS=',' read -r -a rpc_urls_array <<< "$rpc_urls_str"
+          unset IFS
+          
+          # Construct nethermind_urls_str as an array
           nethermind_urls_str=()
           for url_entry in "${rpc_urls_array[@]}"; do
             branch="${url_entry%%::*}"  # Extract the branch part
             url="${url_entry#*::}"     # Extract the URL part
-            nethermind_urls_str+="nethermind_$branch=$url "
+            nethermind_urls_str+=("nethermind_$branch=$url")
           done
-
-          IFS=' ' read -r -a others_str_array <<< "$others_str"; unset IFS
-
+          
+          # Convert others_str into an array
+          IFS=' ' read -r -a others_str_array <<< "$others_str"
+          unset IFS
+          
+          # Construct others_prepared_str as an array
           others_prepared_str=()
           for other in "${others_str_array[@]}"; do
             if [[ "$other" == "INFURA_ENDPOINT" ]]; then
-              others_prepared_str+="$other=${{ env.INFURA_ENDPOINT }} "
-            elif [[ "$other" == "NETHERMIND_ARCHIVE_ENDPOINT" ]]; then  # Use 'elif' instead of 'else'
-              others_prepared_str+="$other=${{ env.NETHERMIND_ARCHIVE_ENDPOINT }} "
+              others_prepared_str+=("$other=${INFURA_ENDPOINT}")
+            elif [[ "$other" == "NETHERMIND_ARCHIVE_ENDPOINT" ]]; then
+              others_prepared_str+=("$other=${NETHERMIND_ARCHIVE_ENDPOINT}")
             fi
           done
           
-          # Remove trailing space
-          nethermind_urls_str="${nethermind_urls_str% }"
-          others_prepared_str="${others_prepared_str% }"
-
-          # Check if there is at least one URL in rpc_urls_str
+          # Perform the comparisons
           if [ ${#nethermind_urls_str[@]} -gt 0 ]; then
-            # Compare the first rpc_url with each other rpc_url if there are more than one
             for (( i = 1; i < ${#nethermind_urls_str[@]}; i++ )); do
               echo "flood all ${nethermind_urls_str[0]} ${nethermind_urls_str[i]}"
               flood all "${nethermind_urls_str[0]}" "${nethermind_urls_str[i]}"
             done
           
-            # Compare the first rpc_url with each others_url
             for (( j = 0; j < ${#others_prepared_str[@]}; j++ )); do
               echo "flood all ${nethermind_urls_str[0]} ${others_prepared_str[j]}"
               flood all "${nethermind_urls_str[0]}" "${others_prepared_str[j]}"
