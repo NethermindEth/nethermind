@@ -6,37 +6,35 @@ using DotNetty.Buffers;
 using DotNetty.Codecs;
 using DotNetty.Transport.Channels;
 using Nethermind.Logging;
-using Snappy;
+using Snappier;
 
-namespace Nethermind.Network.Rlpx
+namespace Nethermind.Network.Rlpx;
+
+public class ZeroSnappyEncoder : MessageToByteEncoder<IByteBuffer>
 {
-    public class ZeroSnappyEncoder : MessageToByteEncoder<IByteBuffer>
+    private readonly ILogger _logger;
+
+    public ZeroSnappyEncoder(ILogManager logManager)
     {
-        private readonly ILogger _logger;
+        _logger = logManager?.GetClassLogger<ZeroSnappyEncoder>() ?? throw new ArgumentNullException(nameof(logManager));
+    }
 
-        public ZeroSnappyEncoder(ILogManager logManager)
-        {
-            _logger = logManager?.GetClassLogger<ZeroSnappyEncoder>() ?? throw new ArgumentNullException(nameof(logManager));
-        }
+    protected override void Encode(IChannelHandlerContext context, IByteBuffer input, IByteBuffer output)
+    {
+        byte packetType = input.ReadByte();
 
-        protected override void Encode(IChannelHandlerContext context, IByteBuffer input, IByteBuffer output)
-        {
-            byte packetType = input.ReadByte();
+        output.EnsureWritable(1, true);
+        output.WriteByte(packetType);
 
-            output.EnsureWritable(1, true);
-            output.WriteByte(packetType);
+        output.EnsureWritable(Snappy.GetMaxCompressedLength(input.ReadableBytes), true);
 
-            output.EnsureWritable(SnappyCodec.GetMaxCompressedLength(input.ReadableBytes), true);
-            if (_logger.IsTrace) _logger.Trace($"Compressing with Snappy a message of length {input.ReadableBytes}");
-            int length = SnappyCodec.Compress(
-                input.Array,
-                input.ArrayOffset + input.ReaderIndex,
-                input.ReadableBytes,
-                output.Array,
-                output.ArrayOffset + output.WriterIndex);
+        if (_logger.IsTrace) _logger.Trace($"Compressing with Snappy a message of length {input.ReadableBytes}");
 
-            input.SetReaderIndex(input.ReaderIndex + input.ReadableBytes);
-            output.SetWriterIndex(output.WriterIndex + length);
-        }
+        int length = Snappy.Compress(
+            input.Array.AsSpan(input.ArrayOffset + input.ReaderIndex, input.ReadableBytes),
+            output.Array.AsSpan(output.ArrayOffset + output.WriterIndex));
+
+        input.SetReaderIndex(input.ReaderIndex + input.ReadableBytes);
+        output.SetWriterIndex(output.WriterIndex + length);
     }
 }
