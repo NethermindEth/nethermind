@@ -122,6 +122,7 @@ namespace Nethermind.Synchronization.Test.FastBlocks
             _feed?.Dispose();
             _syncPeerPool?.Dispose();
             _syncReport?.Dispose();
+            _metadataDb?.Dispose();
         }
 
         private ReceiptsSyncFeed CreateFeed()

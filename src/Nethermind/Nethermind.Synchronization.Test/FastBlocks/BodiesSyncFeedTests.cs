@@ -81,7 +81,8 @@ public class BodiesSyncFeedTests
     public void TearDown()
     {
         _blocksDb?.Dispose();
-        _syncFeed?.Dispose();
+        _feed?.Dispose();
+        _metadataDb?.Dispose();
     }
 
     [Test]
