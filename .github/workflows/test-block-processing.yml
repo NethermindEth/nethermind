@@ -269,8 +269,8 @@ jobs:
           echo "Starting execution docker compose..."
           docker compose -f ${{ github.workspace }}/sedge-data/docker-compose.yml up -d execution
           
-          echo "Sleeping for 120 seconds..."
-          sleep 120
+          echo "Sleeping for 240 seconds..."
+          sleep 240
 
           echo "Running Nethermind Tools Kute..."
           if [ ! -d "$HOME/artifacts" ]; then
