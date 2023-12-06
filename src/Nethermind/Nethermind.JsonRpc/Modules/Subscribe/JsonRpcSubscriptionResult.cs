@@ -8,7 +8,6 @@ using Nethermind.Facade.Eth;
 
 namespace Nethermind.JsonRpc.Modules.Subscribe
 {
-    [JsonSerializable(typeof(SyncingResult))]
     public class JsonRpcSubscriptionResult
     {
         [JsonPropertyOrder(0)]

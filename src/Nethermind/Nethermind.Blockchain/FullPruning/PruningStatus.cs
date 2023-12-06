@@ -10,7 +10,7 @@ namespace Nethermind.Blockchain.FullPruning;
 /// <summary>
 /// Status of Full Pruning
 /// </summary>
-[JsonConverter(typeof(LowerCaseJsonStringEnumConverter))]
+[JsonConverter(typeof(LowerCaseJsonStringEnumConverter<PruningStatus>))]
 public enum PruningStatus
 {
     /// <summary>

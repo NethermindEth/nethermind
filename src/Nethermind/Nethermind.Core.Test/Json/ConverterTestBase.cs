@@ -12,7 +12,7 @@ namespace Nethermind.Core.Test.Json
 {
     public class ConverterTestBase<T>
     {
-        protected void TestConverter(T item, Func<T, T, bool> equalityComparer, JsonConverter<T> converter)
+        protected void TestConverter(T? item, Func<T, T, bool> equalityComparer, JsonConverter<T> converter)
         {
             var options = new JsonSerializerOptions
             {

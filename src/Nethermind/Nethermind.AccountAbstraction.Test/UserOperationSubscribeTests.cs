@@ -104,6 +104,13 @@ namespace Nethermind.AccountAbstraction.Test
             _subscribeRpcModule.Context = new JsonRpcContext(RpcEndpoint.Ws, _jsonRpcDuplexClient);
         }
 
+        [TearDown]
+        public void TearDown()
+        {
+            _jsonRpcDuplexClient?.Dispose();
+            _receiptCanonicalityMonitor?.Dispose();
+        }
+
         private JsonRpcResult GetNewPendingUserOpsResult(
             UserOperationEventArgs userOperationEventArgs,
             out string subscriptionId,

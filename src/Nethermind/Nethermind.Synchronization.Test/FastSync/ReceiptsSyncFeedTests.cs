@@ -114,6 +114,14 @@ namespace Nethermind.Synchronization.Test.FastSync
             _feed = CreateFeed();
         }
 
+        [TearDown]
+        public void TearDown()
+        {
+            _feed?.Dispose();
+            _syncPeerPool?.Dispose();
+            _syncReport?.Dispose();
+        }
+
         private ReceiptsSyncFeed CreateFeed()
         {
             return new ReceiptsSyncFeed(

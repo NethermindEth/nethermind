@@ -6,7 +6,7 @@ using Nethermind.Serialization.Json;
 
 namespace Nethermind.Abi
 {
-    [JsonConverter(typeof(LowerCaseJsonStringEnumConverter))]
+    [JsonConverter(typeof(LowerCaseJsonStringEnumConverter<StateMutability>))]
     public enum StateMutability
     {
         Pure,

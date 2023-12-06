@@ -28,6 +28,9 @@ namespace Ethereum.Trie.Test
             _db = new MemDb();
         }
 
+        [TearDown]
+        public void TearDown() => _db?.Dispose();
+
         private static IEnumerable<TrieTest> GetTestPermutations(IEnumerable<TrieTest> tests)
         {
             return tests.SelectMany(t =>

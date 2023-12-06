@@ -6,7 +6,7 @@ using System.Text.Json.Serialization;
 
 namespace Nethermind.Serialization.Json;
 
-public class LowerCaseJsonStringEnumConverter : JsonStringEnumConverter
+public class LowerCaseJsonStringEnumConverter<TEnum> : JsonStringEnumConverter<TEnum> where TEnum : struct, System.Enum
 {
     public LowerCaseJsonStringEnumConverter() : base(namingPolicy: LowerCaseJsonNamingPolicy.Default)
     {

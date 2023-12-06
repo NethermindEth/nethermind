@@ -7,7 +7,7 @@ using Nethermind.Serialization.Json;
 
 namespace Nethermind.Abi
 {
-    [JsonConverter(typeof(LowerCaseJsonStringEnumConverter))]
+    [JsonConverter(typeof(LowerCaseJsonStringEnumConverter<AbiDescriptionType>))]
     public enum AbiDescriptionType
     {
         Function,

@@ -92,12 +92,19 @@ public class ContractBasedValidatorTests
         _validatorContract = new ValidatorContract(_transactionProcessor, _abiEncoder, _contractAddress, _stateProvider, _readOnlyTxProcessorSource, new Signer(0, TestItem.PrivateKeyD, LimboLogs.Instance));
     }
 
-    [Test]
-    public void throws_ArgumentNullException_on_empty_validatorStore()
-    {
-        Action act = () => new ContractBasedValidator(_validatorContract, _blockTree, _receiptsStorage, null, _validSealerStrategy, _blockFinalizationManager, default, _logManager, 1);
-        act.Should().Throw<ArgumentNullException>();
-    }
+        [TearDown]
+        public void TearDown()
+        {
+            _blockFinalizationManager?.Dispose();
+            _transactionProcessor?.Dispose();
+        }
+
+        [Test]
+        public void throws_ArgumentNullException_on_empty_validatorStore()
+        {
+            Action act = () => new ContractBasedValidator(_validatorContract, _blockTree, _receiptsStorage, null, _validSealerStrategy, _blockFinalizationManager, default, _logManager, 1);
+            act.Should().Throw<ArgumentNullException>();
+        }
 
     [Test]
     public void throws_ArgumentNullException_on_empty_validSealearStrategy()
