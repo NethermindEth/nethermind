@@ -59,7 +59,7 @@ namespace Nethermind.Network
         private readonly IDictionary<string, Func<ISession, int, IProtocolHandler>> _protocolFactories;
         private readonly HashSet<Capability> _capabilities = new();
         private readonly Regex? _clientIdPattern;
-        private (int byteLimit, TimeSpan throttle)? _throttleOptions;
+        private readonly (int byteLimit, TimeSpan throttle)? _throttleOptions;
         public event EventHandler<ProtocolInitializedEventArgs>? P2PProtocolInitialized;
 
         public ProtocolsManager(
