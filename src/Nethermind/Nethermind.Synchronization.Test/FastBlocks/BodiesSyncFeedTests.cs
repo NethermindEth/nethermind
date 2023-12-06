@@ -77,6 +77,13 @@ public class BodiesSyncFeedTests
         );
     }
 
+    [TearDown]
+    public void TearDown()
+    {
+        _blocksDb?.Dispose();
+        _syncFeed?.Dispose();
+    }
+
     [Test]
     public async Task ShouldCallFlushPeriodically()
     {

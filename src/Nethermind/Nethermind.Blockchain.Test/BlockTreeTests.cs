@@ -40,6 +40,13 @@ namespace Nethermind.Blockchain.Test
         private TestMemDb _headersDb = null!;
         private TestMemDb _blocksDb = null!;
 
+        [TearDown]
+        public void TearDown()
+        {
+            _blocksDb?.Dispose();
+            _headersDb?.Dispose();
+        }
+
         private BlockTree BuildBlockTree()
         {
             _blocksDb = new TestMemDb();

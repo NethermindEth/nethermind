@@ -6,8 +6,8 @@ using Nethermind.Api;
 using Nethermind.Init.Steps;
 using Nethermind.Logging;
 using System.IO.Compression;
+using System.Net;
 using System.Security.Cryptography;
-using Nethermind.Core;
 using Nethermind.Core.Extensions;
 
 namespace Nethermind.Init.Snapshot;
@@ -58,15 +58,21 @@ public class InitDatabaseSnapshot : InitDatabase
         string snapshotFileName = Path.Combine(snapshotConfig.SnapshotDirectory, snapshotConfig.SnapshotFileName);
         Directory.CreateDirectory(snapshotConfig.SnapshotDirectory);
 
-        await DownloadSnapshotTo(snapshotUrl, snapshotFileName, cancellationToken);
-        // schedule the snapshot file deletion, but only if the download completed
-        // otherwise leave it to resume the download later
-        using Reactive.AnonymousDisposable deleteSnapshot = new(() =>
+        while (true)
         {
-            if (_logger.IsInfo)
-                _logger.Info($"Deleting snapshot file {snapshotFileName}.");
-            File.Delete(snapshotFileName);
-        });
+            try
+            {
+                await DownloadSnapshotTo(snapshotUrl, snapshotFileName, cancellationToken);
+                break;
+            }
+            catch (IOException e)
+            {
+                if (_logger.IsError)
+                    _logger.Error($"Snapshot download failed. Retrying in 5 seconds. Error: {e}");
+                await Task.Delay(TimeSpan.FromSeconds(5), cancellationToken);
+            }
+            cancellationToken.ThrowIfCancellationRequested();
+        }
 
         if (snapshotConfig.Checksum is not null)
         {
@@ -88,7 +94,12 @@ public class InitDatabaseSnapshot : InitDatabase
         await ExtractSnapshotTo(snapshotFileName, dbPath, cancellationToken);
 
         if (_logger.IsInfo)
+        {
             _logger.Info("Database successfully initialized from snapshot.");
+            _logger.Info($"Deleting snapshot file {snapshotFileName}.");
+        }
+
+        File.Delete(snapshotFileName);
     }
 
     private async Task DownloadSnapshotTo(
@@ -116,9 +127,24 @@ public class InitDatabaseSnapshot : InitDatabase
             (await httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken))
             .EnsureSuccessStatusCode();
 
+        FileMode snapshotFileMode = FileMode.Create;
+        if (snapshotFileInfo.Exists && response.StatusCode == HttpStatusCode.PartialContent)
+        {
+            snapshotFileMode = FileMode.Append;
+        }
+        else if (response.StatusCode == HttpStatusCode.OK)
+        {
+            if (snapshotFileInfo.Exists && _logger.IsWarn)
+                _logger.Warn("Download couldn't be resumed. Starting from the beginning.");
+        }
+        else
+        {
+            throw new IOException($"Unexpected status code: {response.StatusCode}");
+        }
+
         await using Stream contentStream = await response.Content.ReadAsStreamAsync(cancellationToken);
         await using FileStream snapshotFileStream = new(
-            snapshotFileName, FileMode.Append, FileAccess.Write, FileShare.None, BufferSize, true);
+            snapshotFileName, snapshotFileMode, FileAccess.Write, FileShare.None, BufferSize, true);
 
         long totalBytesRead = snapshotFileStream.Length;
         long? totalBytesToRead = totalBytesRead + response.Content.Headers.ContentLength;

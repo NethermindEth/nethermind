@@ -41,6 +41,9 @@ namespace Nethermind.AuRa.Test.Contract
             _stateProvider.StateRoot.Returns(TestItem.KeccakA);
         }
 
+        [TearDown]
+        public void TearDown() => _transactionProcessor?.Dispose();
+
         [Test]
         public void constructor_throws_ArgumentNullException_on_null_contractAddress()
         {

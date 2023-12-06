@@ -24,7 +24,7 @@ public class ULongConverter : JsonConverter<ulong>
 
     public override void WriteJson(JsonWriter writer, ulong value, JsonSerializer serializer)
     {
-        switch (_conversion)
+        switch (_conversion.GetFinalConversion())
         {
             case NumberConversion.Hex:
                 writer.WriteValue(value.ToHexString(true));
