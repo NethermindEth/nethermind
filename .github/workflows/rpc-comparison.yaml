@@ -40,7 +40,7 @@ jobs:
       additional_options: '{"timeout":"12", "default_dockerfile":"Dockerfile", "default_dockerfile_build_type":"release", "ssh_keys":"", "allowed_ips":"${{ inputs.allowed_ips }}"}' 
       non_validator_mode: false
       additional_nethermind_flags: Pruning.Mode=None JsonRpc.EnabledModules=[Eth,Subscribe,Trace,TxPool,Web3,Personal,Proof,Net,Parity,Health,Rpc,Debug,Admin]
-      nethermind_repo_ref: master #${{ inputs.branch_to_compare }}
+      nethermind_repo_ref: ${{ inputs.branch_to_compare }}
       custom_run_id: ${{ github.run_id }}
   
   aggregate_rpcs:
@@ -171,7 +171,7 @@ jobs:
     steps:
       - uses: actions/checkout@v3
       - name: Install flood
-        run: pip install git+https://github.com/paradigmxyz/flood.git
+        run: pip install git+https://github.com/piwonskp/flood.git
   
       - name: Install WireGuard
         run: |
