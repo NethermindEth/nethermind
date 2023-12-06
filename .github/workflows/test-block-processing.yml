@@ -94,7 +94,7 @@ jobs:
         uses: actions/checkout@v3.5.3
         if: matrix.artifactExists == false
         with:
-          ref: feature/replay_rpc
+          ref: master
           path: nethermind_master
           
       - name: Cleanup Docker
