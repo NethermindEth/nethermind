@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Text.RegularExpressions;
 using Ethereum.Test.Base;
 using Ethereum.Test.Base.Interfaces;
 using Nethermind.Evm;
@@ -59,7 +60,7 @@ namespace Nethermind.Test.Runner
             IEnumerable<GeneralStateTest> tests = (IEnumerable<GeneralStateTest>)_testsSource.LoadTests();
             foreach (GeneralStateTest test in tests)
             {
-                if (_filter is not null && !test.Name.StartsWith(_filter))
+                if (_filter is not null && !Regex.Match(test.Name, $"^({_filter})").Success)
                     continue;
                 EthereumTestResult result = null;
                 if (_whenTrace != WhenTrace.Always)

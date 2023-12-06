@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using Ethereum.Test.Base;
 using Ethereum.Test.Base.Interfaces;
@@ -29,7 +30,7 @@ public class BlockchainTestsRunner : BlockchainTestBase, IBlockchainTestRunner
         IEnumerable<BlockchainTest> tests = (IEnumerable<BlockchainTest>)_testsSource.LoadTests();
         foreach (BlockchainTest test in tests)
         {
-            if (_filter is not null && !test.Name.StartsWith(_filter))
+            if (_filter is not null && !Regex.Match(test.Name, $"^({_filter})").Success)
                 continue;
             Setup();
 
