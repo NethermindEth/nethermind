@@ -5,6 +5,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm;
 using Nethermind.Evm.Test;
+using Nethermind.Test.Runner;
 using NUnit.Framework;
 
 namespace Nethermind.State.Test.Runner.Test;

@@ -11,7 +11,7 @@ using Nethermind.Int256;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 
-namespace Nethermind.State.Test.Runner;
+namespace Nethermind.Test.Runner;
 
 public class StateTestTxTracer : ITxTracer, IDisposable
 {
@@ -98,9 +98,7 @@ public class StateTestTxTracer : ITxTracer, IDisposable
         {
             ReadOnlySpan<char> inProgress = s.AsSpan();
             if (s.StartsWith("0x"))
-            {
                 inProgress = inProgress.Slice(2);
-            }
 
             inProgress = inProgress.TrimStart('0');
 
@@ -112,9 +110,7 @@ public class StateTestTxTracer : ITxTracer, IDisposable
     public void SetOperationMemory(TraceMemory memoryTrace)
     {
         if (IsTracingDetailedMemory)
-        {
             _traceEntry.Memory = string.Concat("0x", string.Join("", memoryTrace.ToHexWordList().Select(mt => mt.Replace("0x", string.Empty))));
-        }
     }
 
     public void SetOperationMemorySize(ulong newSize)
@@ -124,9 +120,7 @@ public class StateTestTxTracer : ITxTracer, IDisposable
         {
             int diff = _traceEntry.MemSize * 2 - (_traceEntry.Memory.Length - 2);
             if (diff > 0)
-            {
                 _traceEntry.Memory += new string('0', diff);
-            }
         }
     }
 

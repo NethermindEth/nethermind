@@ -3,7 +3,7 @@
 
 using System.Collections.Generic;
 
-namespace Nethermind.State.Test.Runner
+namespace Nethermind.Test.Runner
 {
     public class StateTestTxTrace
     {

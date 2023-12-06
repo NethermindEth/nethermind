@@ -4,7 +4,7 @@
 using Nethermind.Core.Crypto;
 using Newtonsoft.Json;
 
-namespace Nethermind.State.Test.Runner
+namespace Nethermind.Test.Runner
 {
     public class StateTestTxTraceState
     {
