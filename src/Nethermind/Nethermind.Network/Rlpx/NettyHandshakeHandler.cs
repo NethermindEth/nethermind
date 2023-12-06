@@ -34,7 +34,7 @@ namespace Nethermind.Network.Rlpx
         private readonly TaskCompletionSource<object> _initCompletionSource;
         private IChannel _channel;
         private TimeSpan _sendLatency;
-        private (int ByteLimit, TimeSpan Delay) _throttlingConfig;
+        private readonly (int ByteLimit, TimeSpan Delay) _throttlingConfig;
 
         public NettyHandshakeHandler(
             IMessageSerializationService serializationService,
