@@ -47,13 +47,13 @@ public class BlockHeaderBuilder : BuilderBase<BlockHeader>
         return this;
     }
 
-    public BlockHeaderBuilder WithParentHash(Keccak parentHash)
+    public BlockHeaderBuilder WithParentHash(Hash256 parentHash)
     {
         TestObjectInternal.ParentHash = parentHash;
         return this;
     }
 
-    public BlockHeaderBuilder WithHash(Keccak hash)
+    public BlockHeaderBuilder WithHash(Hash256 hash)
     {
         TestObjectInternal.Hash = hash;
         _doNotCalculateHash = true;
@@ -62,7 +62,7 @@ public class BlockHeaderBuilder : BuilderBase<BlockHeader>
 
     private bool _doNotCalculateHash;
 
-    public BlockHeaderBuilder WithUnclesHash(Keccak unclesHash)
+    public BlockHeaderBuilder WithUnclesHash(Hash256 unclesHash)
     {
         TestObjectInternal.UnclesHash = unclesHash;
         return this;
@@ -92,19 +92,19 @@ public class BlockHeaderBuilder : BuilderBase<BlockHeader>
         return this;
     }
 
-    public BlockHeaderBuilder WithStateRoot(Keccak stateRoot)
+    public BlockHeaderBuilder WithStateRoot(Hash256 stateRoot)
     {
         TestObjectInternal.StateRoot = stateRoot;
         return this;
     }
 
-    public BlockHeaderBuilder WithTransactionsRoot(Keccak transactionsRoot)
+    public BlockHeaderBuilder WithTransactionsRoot(Hash256 transactionsRoot)
     {
         TestObjectInternal.TxRoot = transactionsRoot;
         return this;
     }
 
-    public BlockHeaderBuilder WithReceiptsRoot(Keccak receiptsRoot)
+    public BlockHeaderBuilder WithReceiptsRoot(Hash256 receiptsRoot)
     {
         TestObjectInternal.ReceiptsRoot = receiptsRoot;
         return this;
@@ -152,7 +152,7 @@ public class BlockHeaderBuilder : BuilderBase<BlockHeader>
         return this;
     }
 
-    public BlockHeaderBuilder WithMixHash(Keccak mixHash)
+    public BlockHeaderBuilder WithMixHash(Hash256 mixHash)
     {
         TestObjectInternal.MixHash = mixHash;
         return this;
@@ -171,7 +171,7 @@ public class BlockHeaderBuilder : BuilderBase<BlockHeader>
         return this;
     }
 
-    public BlockHeaderBuilder WithWithdrawalsRoot(Keccak? root)
+    public BlockHeaderBuilder WithWithdrawalsRoot(Hash256? root)
     {
         TestObjectInternal.WithdrawalsRoot = root;
 
@@ -190,7 +190,7 @@ public class BlockHeaderBuilder : BuilderBase<BlockHeader>
         return this;
     }
 
-    public BlockHeaderBuilder WithParentBeaconBlockRoot(Keccak? parentBeaconBlockRoot)
+    public BlockHeaderBuilder WithParentBeaconBlockRoot(Hash256? parentBeaconBlockRoot)
     {
         TestObjectInternal.ParentBeaconBlockRoot = parentBeaconBlockRoot;
         return this;

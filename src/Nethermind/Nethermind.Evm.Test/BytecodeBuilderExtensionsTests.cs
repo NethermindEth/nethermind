@@ -43,7 +43,7 @@ namespace Nethermind.Evm.Test
                     return true;
                 }
 
-                // we check if opcode has a digit at its end 
+                // we check if opcode has a digit at its end
                 bool hasDigits = false;
                 int i = opcodeAsString.Length - 1;
                 while (i > 0)
@@ -99,8 +99,6 @@ namespace Nethermind.Evm.Test
                     Instruction.PC,
                     Instruction.JUMPDEST,
                     Instruction.MSIZE,
-                    Instruction.BEGINSUB,
-                    Instruction.RETURNSUB,
                     Instruction.INVALID,
 
                     Instruction.SWAP1, Instruction.SWAP5, Instruction.SWAP9 , Instruction.SWAP13,
@@ -120,7 +118,7 @@ namespace Nethermind.Evm.Test
                 //we get MethodInfo of the function representing the opcode
                 var method = GetFluentOpcodeFunction(opcode);
 
-                //we handle the cases requiring a byte differentiator 
+                //we handle the cases requiring a byte differentiator
                 initBytecode = opcode switch
                 {
                     >= Instruction.SWAP1 and <= Instruction.SWAP16 => (Prepare)method.Invoke(null, new object[] { initBytecode, (byte)(opcode - Instruction.SWAP1 + 1) }),
@@ -159,8 +157,7 @@ namespace Nethermind.Evm.Test
                     Instruction.JUMP,
                     Instruction.SLOAD,
                     Instruction.TLOAD,
-                    Instruction.MLOAD,
-                    Instruction.JUMPSUB,
+                    Instruction.MLOAD
                 };
 
             foreach (Instruction opcode in address_opcodes)
@@ -213,7 +210,6 @@ namespace Nethermind.Evm.Test
                         Instruction.MSTORE,
                         Instruction.BYTE,
                         Instruction.MSTORE8,
-                        Instruction.TSTORE,
                         Instruction.SSTORE,
                         Instruction.JUMPI
             };

@@ -15,18 +15,18 @@ namespace Nethermind.Core
     [TypeConverter(typeof(AddressTypeConverter))]
     public class Address : IEquatable<Address>, IComparable<Address>
     {
-        public const int ByteLength = 20;
-        private const int HexCharsCount = 2 * ByteLength; // 5a4eab120fb44eb6684e5e32785702ff45ea344d
+        public const int Size = 20;
+        private const int HexCharsCount = 2 * Size; // 5a4eab120fb44eb6684e5e32785702ff45ea344d
         private const int PrefixedHexCharsCount = 2 + HexCharsCount; // 0x5a4eab120fb44eb6684e5e32785702ff45ea344d
 
-        public static Address Zero { get; } = new(new byte[ByteLength]);
+        public static Address Zero { get; } = new(new byte[Size]);
         public static Address SystemUser { get; } = new("0xfffffffffffffffffffffffffffffffffffffffe");
 
         public byte[] Bytes { get; }
 
-        public Address(Keccak keccak) : this(keccak.Bytes.Slice(12, ByteLength).ToArray()) { }
+        public Address(Hash256 keccak) : this(keccak.Bytes.Slice(12, Size).ToArray()) { }
 
-        public Address(in ValueKeccak keccak) : this(keccak.BytesAsSpan.Slice(12, ByteLength).ToArray()) { }
+        public Address(in ValueHash256 keccak) : this(keccak.BytesAsSpan.Slice(12, Size).ToArray()) { }
 
         public byte this[int index] => Bytes[index];
 
@@ -61,6 +61,9 @@ namespace Nethermind.Core
 
         public Address(string hexString) : this(Extensions.Bytes.FromHexString(hexString)) { }
 
+        /// <summary>
+        /// Parses string value to Address. String has to be exactly 20 bytes long.
+        /// </summary>
         public static bool TryParse(string? value, out Address? address)
         {
             if (value is not null)
@@ -68,11 +71,30 @@ namespace Nethermind.Core
                 try
                 {
                     byte[] bytes = Extensions.Bytes.FromHexString(value);
-                    if (bytes?.Length == ByteLength)
+                    if (bytes.Length == Size)
                     {
                         address = new Address(bytes);
                         return true;
                     }
+                }
+                catch (IndexOutOfRangeException) { }
+            }
+
+            address = default;
+            return false;
+        }
+
+        /// <summary>
+        /// Parses string value to Address. String can be shorter than 20 bytes long, it is padded with leading 0's then.
+        /// </summary>
+        public static bool TryParseVariableLength(string? value, out Address? address)
+        {
+            if (value is not null)
+            {
+                try
+                {
+                    address = new Address(Extensions.Bytes.FromHexString(value, Size));
+                    return true;
                 }
                 catch (IndexOutOfRangeException) { }
             }
@@ -88,10 +110,10 @@ namespace Nethermind.Core
                 throw new ArgumentNullException(nameof(bytes));
             }
 
-            if (bytes.Length != ByteLength)
+            if (bytes.Length != Size)
             {
                 throw new ArgumentException(
-                    $"{nameof(Address)} should be {ByteLength} bytes long and is {bytes.Length} bytes long",
+                    $"{nameof(Address)} should be {Size} bytes long and is {bytes.Length} bytes long",
                     nameof(bytes));
             }
 
@@ -200,9 +222,9 @@ namespace Nethermind.Core
 
         public Span<byte> Bytes { get; }
 
-        public AddressStructRef(KeccakStructRef keccak) : this(keccak.Bytes.Slice(12, ByteLength)) { }
+        public AddressStructRef(Hash256StructRef keccak) : this(keccak.Bytes.Slice(12, ByteLength)) { }
 
-        public AddressStructRef(in ValueKeccak keccak) : this(keccak.BytesAsSpan.Slice(12, ByteLength).ToArray()) { }
+        public AddressStructRef(in ValueHash256 keccak) : this(keccak.BytesAsSpan.Slice(12, ByteLength).ToArray()) { }
 
         public byte this[int index] => Bytes[index];
 

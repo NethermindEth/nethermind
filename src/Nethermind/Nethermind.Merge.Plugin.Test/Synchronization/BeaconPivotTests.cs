@@ -7,6 +7,7 @@ using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Synchronization;
@@ -37,7 +38,7 @@ public class BeaconPivotTests
     public void Beacon_pivot_defaults_to_sync_config_values_when_there_is_no_pivot()
     {
         IBeaconPivot pivot = new BeaconPivot(_syncConfig, new MemDb(), Substitute.For<IBlockTree>(), LimboLogs.Instance);
-        pivot.PivotHash.Should().Be(_syncConfig.PivotHashParsed);
+        pivot.PivotHash.Should().Be(_syncConfig.PivotHashParsed!);
         pivot.PivotNumber.Should().Be(_syncConfig.PivotNumberParsed);
         pivot.PivotDestinationNumber.Should().Be(0);
     }
@@ -51,9 +52,9 @@ public class BeaconPivotTests
             .TestObject;
         IBeaconPivot pivot = new BeaconPivot(_syncConfig, new MemDb(), blockTree, LimboLogs.Instance);
 
-        BlockHeader pivotHeader = blockTree.FindHeader(10, BlockTreeLookupOptions.AllowInvalid);
+        BlockHeader pivotHeader = blockTree.FindHeader(10, BlockTreeLookupOptions.AllowInvalid)!;
         pivot.EnsurePivot(pivotHeader);
-        pivot.PivotHash.Should().Be(pivotHeader.Hash);
+        pivot.PivotHash.Should().Be(pivotHeader.GetOrCalculateHash());
         pivot.PivotNumber.Should().Be(pivotHeader.Number);
         pivot.PivotDestinationNumber.Should().Be(expectedPivotDestinationNumber);
     }

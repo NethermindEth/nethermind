@@ -16,6 +16,7 @@ namespace Nethermind.Synchronization.FastBlocks
         private readonly FastBlockStatusList _statuses;
         private readonly LruCache<long, BlockInfo> _cache = new(maxCapacity: 64, startCapacity: 64, "blockInfo Cache");
         private long _lowestInsertWithoutGaps;
+        private readonly long _lowerBound;
 
         public long LowestInsertWithoutGaps
         {
@@ -25,19 +26,20 @@ namespace Nethermind.Synchronization.FastBlocks
 
         public long QueueSize => _queueSize;
 
-        public SyncStatusList(IBlockTree blockTree, long pivotNumber, long? lowestInserted)
+        public SyncStatusList(IBlockTree blockTree, long pivotNumber, long? lowestInserted, long lowerBound)
         {
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _statuses = new FastBlockStatusList(pivotNumber + 1);
 
             LowestInsertWithoutGaps = lowestInserted ?? pivotNumber;
+            _lowerBound = lowerBound;
         }
 
         public void GetInfosForBatch(BlockInfo?[] blockInfos)
         {
             int collected = 0;
             long currentNumber = Volatile.Read(ref _lowestInsertWithoutGaps);
-            while (collected < blockInfos.Length && currentNumber != 0)
+            while (collected < blockInfos.Length && currentNumber != 0 && currentNumber >= _lowerBound)
             {
                 if (blockInfos[collected] is not null)
                 {

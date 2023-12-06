@@ -36,7 +36,7 @@ public class PivotUpdator
     private static int _maxAttempts;
     private int _attemptsLeft;
     private int _updateInProgress;
-    private Keccak _alreadyAnnouncedNewPivotHash = Keccak.Zero;
+    private Hash256 _alreadyAnnouncedNewPivotHash = Keccak.Zero;
 
     public PivotUpdator(IBlockTree blockTree,
         ISyncModeSelector syncModeSelector,
@@ -74,11 +74,9 @@ public class PivotUpdator
                 byte[]? pivotFromDb = _metadataDb.Get(MetadataDbKeys.UpdatedPivotData);
                 RlpStream pivotStream = new(pivotFromDb!);
                 long updatedPivotBlockNumber = pivotStream.DecodeLong();
-                Keccak updatedPivotBlockHash = pivotStream.DecodeKeccak()!;
+                Hash256 updatedPivotBlockHash = pivotStream.DecodeKeccak()!;
 
-                _syncConfig.PivotNumber = updatedPivotBlockNumber.ToString();
-                _syncConfig.PivotHash = updatedPivotBlockHash.ToString();
-                _syncConfig.MaxAttemptsToUpdatePivot = 0;
+                UpdateConfigValues(updatedPivotBlockHash, updatedPivotBlockNumber);
 
                 if (_logger.IsInfo) _logger.Info($"Pivot block has been set based on data from db. Pivot block number: {updatedPivotBlockNumber}, hash: {updatedPivotBlockHash}");
                 return true;
@@ -123,7 +121,7 @@ public class PivotUpdator
 
     private async Task<bool> TrySetFreshPivot(CancellationToken cancellationToken)
     {
-        Keccak? finalizedBlockHash = TryGetFinalizedBlockHashFromCl();
+        Hash256? finalizedBlockHash = TryGetFinalizedBlockHashFromCl();
 
         if (finalizedBlockHash is null || finalizedBlockHash == Keccak.Zero)
         {
@@ -137,9 +135,9 @@ public class PivotUpdator
         return finalizedBlockNumber is not null && TryOverwritePivot(finalizedBlockHash, (long)finalizedBlockNumber);
     }
 
-    private Keccak? TryGetFinalizedBlockHashFromCl()
+    private Hash256? TryGetFinalizedBlockHashFromCl()
     {
-        Keccak? finalizedBlockHash = _beaconSyncStrategy.GetFinalizedHash();
+        Hash256? finalizedBlockHash = _beaconSyncStrategy.GetFinalizedHash();
 
         if (finalizedBlockHash is null || finalizedBlockHash == Keccak.Zero)
         {
@@ -157,7 +155,7 @@ public class PivotUpdator
         return finalizedBlockHash;
     }
 
-    private long? TryGetFinalizedBlockNumberFromBlockCache(Keccak finalizedBlockHash)
+    private long? TryGetFinalizedBlockNumberFromBlockCache(Hash256 finalizedBlockHash)
     {
         if (_logger.IsDebug) _logger.Debug("Looking for pivot block in block cache");
         if (_blockCacheService.BlockCache.TryGetValue(finalizedBlockHash, out Block? finalizedBlock))
@@ -173,7 +171,7 @@ public class PivotUpdator
         return null;
     }
 
-    private long? TryGetFinalizedBlockNumberFromBlockTree(Keccak finalizedBlockHash)
+    private long? TryGetFinalizedBlockNumberFromBlockTree(Hash256 finalizedBlockHash)
     {
         if (_logger.IsDebug) _logger.Debug("Looking for header of pivot block in blockTree");
         BlockHeader? finalizedHeader = _blockTree.FindHeader(finalizedBlockHash, BlockTreeLookupOptions.DoNotCreateLevelIfMissing);
@@ -190,7 +188,7 @@ public class PivotUpdator
         return null;
     }
 
-    private async Task<long?> TryGetFinalizedBlockNumberFromPeers(Keccak finalizedBlockHash, CancellationToken cancellationToken)
+    private async Task<long?> TryGetFinalizedBlockNumberFromPeers(Hash256 finalizedBlockHash, CancellationToken cancellationToken)
     {
         foreach (PeerInfo peer in _syncPeerPool.InitializedPeers)
         {
@@ -223,7 +221,7 @@ public class PivotUpdator
         return null;
     }
 
-    private bool TryOverwritePivot(Keccak finalizedBlockHash, long finalizedBlockNumber)
+    private bool TryOverwritePivot(Hash256 finalizedBlockHash, long finalizedBlockNumber)
     {
         long targetBlock = _beaconSyncStrategy.GetTargetBlockHeight() ?? 0;
         bool isCloseToHead = targetBlock <= finalizedBlockNumber || (targetBlock - finalizedBlockNumber) < Constants.MaxDistanceFromHead;
@@ -231,9 +229,7 @@ public class PivotUpdator
 
         if (isCloseToHead && newPivotHigherThanOld)
         {
-            _syncConfig.PivotHash = finalizedBlockHash.ToString();
-            _syncConfig.PivotNumber = finalizedBlockNumber.ToString();
-            _syncConfig.MaxAttemptsToUpdatePivot = 0;
+            UpdateConfigValues(finalizedBlockHash, finalizedBlockNumber);
 
             RlpStream pivotData = new(38); //1 byte (prefix) + 4 bytes (long) + 1 byte (prefix) + 32 bytes (Keccak)
             pivotData.Encode(finalizedBlockNumber);
@@ -248,4 +244,12 @@ public class PivotUpdator
         if (!newPivotHigherThanOld && _logger.IsInfo) _logger.Info($"Pivot block from Consensus Layer isn't higher than pivot from initial config. New PivotBlockNumber: {finalizedBlockNumber}, old: {_syncConfig.PivotNumber}");
         return false;
     }
+
+    private void UpdateConfigValues(Hash256 finalizedBlockHash, long finalizedBlockNumber)
+    {
+        _syncConfig.PivotHash = finalizedBlockHash.ToString();
+        _syncConfig.PivotNumber = finalizedBlockNumber.ToString();
+        _syncConfig.MaxAttemptsToUpdatePivot = 0;
+    }
+
 }

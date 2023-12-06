@@ -10,7 +10,7 @@ namespace Nethermind.Consensus
 {
     public interface IPoSSwitcher
     {
-        void ForkchoiceUpdated(BlockHeader newHeadHash, Keccak finalizedHash);
+        void ForkchoiceUpdated(BlockHeader newHeadHash, Hash256 finalizedHash);
 
         bool HasEverReachedTerminalBlock();
 
@@ -30,7 +30,7 @@ namespace Nethermind.Consensus
         UInt256? FinalTotalDifficulty { get; }
 
         bool TransitionFinished { get; }
-        public Keccak ConfiguredTerminalBlockHash { get; }
+        public Hash256? ConfiguredTerminalBlockHash { get; }
 
         public long? ConfiguredTerminalBlockNumber { get; }
 

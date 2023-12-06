@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Mev.Data;
@@ -26,7 +27,7 @@ namespace Nethermind.Mev.Source
             _timeout = timeout ?? DefaultTimeout;
         }
 
-        public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit)
+        public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit, PayloadAttributes? payloadAttributes)
         {
             using CancellationTokenSource cancellationTokenSource = new(_timeout);
             Task<IEnumerable<MevBundle>> bundlesTasks = _bundleSource.GetBundles(parent, _timestamper.UnixTime.Seconds, gasLimit, cancellationTokenSource.Token);

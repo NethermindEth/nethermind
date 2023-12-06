@@ -78,6 +78,17 @@ namespace Nethermind.Synchronization.Test.ParallelSync
         }
 
         [Test]
+        public void Load_from_without_merge_sync_pivot_resolved()
+        {
+            Scenario.GoesLikeThis(_needToWaitForHeaders)
+                .WhenMergeSyncPivotNotResolvedYet()
+                .WhateverThePeerPoolLooks()
+                .WhenThisNodeIsLoadingBlocksFromDb()
+                .ThenInAnyFastSyncConfiguration()
+                .TheSyncModeShouldBe(SyncMode.DbLoad | SyncMode.UpdatingPivot);
+        }
+
+        [Test]
         public void Simple_archive()
         {
             Scenario.GoesLikeThis(_needToWaitForHeaders)
@@ -603,7 +614,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
 
             syncPeers.Add(syncPeer);
             ISyncPeerPool syncPeerPool = Substitute.For<ISyncPeerPool>();
-            IEnumerable<PeerInfo> peerInfos = syncPeers.Select(p => new PeerInfo(p));
+            IEnumerable<PeerInfo> peerInfos = syncPeers.Select(p => new PeerInfo(p)).ToArray();
             syncPeerPool.InitializedPeers.Returns(peerInfos);
             syncPeerPool.AllPeers.Returns(peerInfos);
 
@@ -621,7 +632,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
             {
                 long number = header.Number + i;
                 syncPeer.HeadNumber.Returns(number);
-                syncPeer.TotalDifficulty.Returns(header.TotalDifficulty.Value + i);
+                syncPeer.TotalDifficulty.Returns(header.TotalDifficulty!.Value + i);
                 syncProgressResolver.FindBestHeader().Returns(number);
                 syncProgressResolver.FindBestFullBlock().Returns(number);
                 selector.Update();

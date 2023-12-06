@@ -21,7 +21,7 @@ namespace Nethermind.Network
         private (ForkActivation Activation, ForkId Id)[] Forks { get; }
         private readonly bool _hasTimestampFork;
 
-        public ForkInfo(ISpecProvider specProvider, Keccak genesisHash)
+        public ForkInfo(ISpecProvider specProvider, Hash256 genesisHash)
         {
             _hasTimestampFork = specProvider.TimestampFork != ISpecProvider.TimestampForkNever;
             ForkActivation[] transitionActivations = specProvider.TransitionActivations;

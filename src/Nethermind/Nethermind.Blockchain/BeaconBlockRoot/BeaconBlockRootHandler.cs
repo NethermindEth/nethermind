@@ -11,23 +11,26 @@ using Nethermind.Core.Extensions;
 namespace Nethermind.Consensus.BeaconBlockRoot;
 public class BeaconBlockRootHandler : IBeaconBlockRootHandler
 {
-    public static UInt256 HISTORICAL_ROOTS_LENGTH = 98304;
-    private static readonly Address DefaultPbbrContractAddress = Address.FromNumber(0x0b);
+    public static UInt256 HISTORICAL_ROOTS_LENGTH = 8191;
+    private static readonly Address DefaultPbbrContractAddress = new Address("0x000F3df6D732807Ef1319fB7B8bB8522d0Beac02");
 
     public void ApplyContractStateChanges(Block block, IReleaseSpec spec, IWorldState stateProvider)
     {
         if (!spec.IsBeaconBlockRootAvailable ||
             block.IsGenesis ||
             block.Header.ParentBeaconBlockRoot is null) return;
+        Address? eip4788Account = spec.Eip4788ContractAddress ?? DefaultPbbrContractAddress;
+        if (!stateProvider.AccountExists(eip4788Account))
+            return;
 
         UInt256 timestamp = (UInt256)block.Timestamp;
-        Keccak parentBeaconBlockRoot = block.ParentBeaconBlockRoot;
+        Hash256 parentBeaconBlockRoot = block.ParentBeaconBlockRoot;
 
         UInt256.Mod(timestamp, HISTORICAL_ROOTS_LENGTH, out UInt256 timestampReduced);
         UInt256 rootIndex = timestampReduced + HISTORICAL_ROOTS_LENGTH;
 
-        StorageCell tsStorageCell = new(spec.Eip4788ContractAddress ?? DefaultPbbrContractAddress, timestampReduced);
-        StorageCell brStorageCell = new(spec.Eip4788ContractAddress ?? DefaultPbbrContractAddress, rootIndex);
+        StorageCell tsStorageCell = new(eip4788Account, timestampReduced);
+        StorageCell brStorageCell = new(eip4788Account, rootIndex);
 
         stateProvider.Set(tsStorageCell, Bytes.WithoutLeadingZeros(timestamp.ToBigEndian()).ToArray());
         stateProvider.Set(brStorageCell, Bytes.WithoutLeadingZeros(parentBeaconBlockRoot.Bytes).ToArray());

@@ -3,6 +3,7 @@
 
 using System;
 using System.Globalization;
+using System.Numerics;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 using Newtonsoft.Json;
@@ -35,13 +36,16 @@ namespace Nethermind.Serialization.Json
                 ? value < int.MaxValue ? NumberConversion.Decimal : NumberConversion.Hex
                 : _conversion;
 
-            switch (usedConversion)
+            switch (usedConversion.GetFinalConversion())
             {
                 case NumberConversion.Hex:
                     writer.WriteValue(value.ToHexString(true));
                     break;
                 case NumberConversion.Decimal:
-                    writer.WriteRawValue(value.ToString());
+                    writer.WriteRawValue(value.ToString(CultureInfo.InvariantCulture));
+                    break;
+                case NumberConversion.Raw:
+                    writer.WriteValue((BigInteger)value);
                     break;
                 default:
                     throw new NotSupportedException($"{usedConversion} format is not supported for {nameof(UInt256)}");

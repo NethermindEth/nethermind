@@ -46,6 +46,10 @@ indent_size = 2
 [*.sh]
 indent_size = 2
 
+# YAML files
+[*.{yml,yaml}]
+indent_size = 2
+
 ###############################
 # Override Visual Studio      #
 ###############################

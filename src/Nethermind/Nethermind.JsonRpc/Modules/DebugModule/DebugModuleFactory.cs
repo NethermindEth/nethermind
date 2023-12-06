@@ -13,6 +13,7 @@ using Nethermind.Consensus.Tracing;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
+using Nethermind.Evm.Tracing.GethStyle.JavaScript;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.Synchronization.ParallelSync;
@@ -96,8 +97,10 @@ public class DebugModuleFactory : ModuleFactoryBase<IDebugRpcModule>
 
         GethStyleTracer tracer = new(
             chainProcessingEnv.ChainProcessor,
+            chainProcessingEnv.StateProvider,
             _receiptStorage,
             _blockTree,
+            _specProvider,
             transactionProcessorAdapter,
             _fileSystem);
 
@@ -114,7 +117,7 @@ public class DebugModuleFactory : ModuleFactoryBase<IDebugRpcModule>
         return new DebugRpcModule(_logManager, debugBridge, _jsonRpcConfig);
     }
 
-    public static JsonConverter[] Converters = { new GethLikeTxTraceConverter() };
+    public static JsonConverter[] Converters = { new GethLikeTxTraceConverter(), new JavaScriptObjectConverter(), new GethLikeJavaScriptTraceConverter() };
 
     public override IReadOnlyCollection<JsonConverter> GetConverters() => Converters;
 }

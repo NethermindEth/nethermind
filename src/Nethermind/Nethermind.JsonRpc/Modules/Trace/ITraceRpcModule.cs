@@ -27,7 +27,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
             IsImplemented = true,
             IsSharable = false,
             ExampleResponse = "{\"output\":\"0x\",\"stateDiff\":null,\"trace\":[{\"action\":{\"callType\":\"call\",\"from\":\"0x3c436c8ec40e0679fe64168545812ac13220f150\",\"gas\":\"0xc118\",\"input\":\"0xd46eb119\",\"to\":\"0x9e00de186f33e9fac9e28d69127f7f637b96c177\",\"value\":\"0xde0b6b3a7640000\"},\"result\":{\"gasUsed\":\"0xc118\",\"output\":\"0x\"},\"subtraces\":4,\"traceAddress\":[],\"type\":\"call\"},{\"action\":{\"callType\":\"call\",\"from\":\"0x9e00de186f33e9fac9e28d69127f7f637b96c177\",\"gas\":\"0xa965\",\"input\":\"0x40c10f190000000000000000000000009e00de186f33e9fac9e28d69127f7f637b96c1770000000000000000000000000000000000000000000000000de0b6b3a7640000\",\"to\":\"0x766cd52cb91f4d2d7ea8b4c175aff0aba3696be1\",\"value\":\"0x0\"},\"result\":{\"gasUsed\":\"0x76b8\",\"output\":\"0x\"},\"subtraces\":0,\"traceAddress\":[0],\"type\":\"call\"}, (...)}]}")]
-        ResultWrapper<ParityTxTraceFromReplay> trace_replayTransaction([JsonRpcParameter(ExampleValue = "[\"0x203abf19610ce15bc509d4b341e907ff8c5a8287ae61186fd4da82146408c28c\",[\"trace\"]]")] Keccak txHash, [JsonRpcParameter(Description = "Possible values : [\"VmTrace\", \"StateDiff\", \"Trace\", \"Rewards\", \"All\"]")] string[] traceTypes);
+        ResultWrapper<ParityTxTraceFromReplay> trace_replayTransaction([JsonRpcParameter(ExampleValue = "[\"0x203abf19610ce15bc509d4b341e907ff8c5a8287ae61186fd4da82146408c28c\",[\"trace\"]]")] Hash256 txHash, [JsonRpcParameter(Description = "Possible values : [\"VmTrace\", \"StateDiff\", \"Trace\", \"Rewards\", \"All\"]")] string[] traceTypes);
 
         [JsonRpcMethod(Description = "", IsImplemented = true, IsSharable = false, ExampleResponse = "[{\"output\":\"0x0000000000000000000000000000000000000000000000000000000000000001\",\"stateDiff\":null,\"trace\":[{\"action\":{\"callType\":\"call\",\"from\":\"0x37f207b3ebda37de11ad2b6d306464e313c4841a\",\"gas\":\"0x3c36\",\"input\":\"0xa9059cbb000000000000000000000000d20d2f4c0b595abedef821a4157b0b990a37dae60000000000000000000000000000000000000000000000008ac7230489e80000\",\"to\":\"0x59a524d1f5dcbde3224fd42171795283596a8103\",\"value\":\"0x0\"},\"result\":{\"gasUsed\":\"0x3c36\",\"output\":\"0x0000000000000000000000000000000000000000000000000000000000000001\"},\"subtraces\":0,\"traceAddress\":[],\"type\":\"call\"}],\"transactionHash\":\"0x17dc0fef36bb997c79ee2a0a126d059227000a2d47c9bbd1f49b5902a4e7385a\",\"vmTrace\":null}, (...)]")]
         ResultWrapper<IEnumerable<ParityTxTraceFromReplay>> trace_replayBlockTransactions([JsonRpcParameter(ExampleValue = "[\"0x88df42\",[\"trace\"]]")] BlockParameter blockParameter, [JsonRpcParameter(Description = "Possible values : [\"VmTrace\", \"StateDiff\", \"Trace\", \"Rewards\", \"All\"]")] string[] traceTypes);
@@ -42,11 +42,11 @@ namespace Nethermind.JsonRpc.Modules.Trace
         ResultWrapper<IEnumerable<ParityTxTraceFromStore>> trace_block([JsonRpcParameter(ExampleValue = "latest")] BlockParameter numberOrTag);
 
         [JsonRpcMethod(Description = "", IsImplemented = false, IsSharable = false)]
-        ResultWrapper<IEnumerable<ParityTxTraceFromStore>> trace_get(Keccak txHash, long[] positions);
+        ResultWrapper<IEnumerable<ParityTxTraceFromStore>> trace_get(Hash256 txHash, long[] positions);
 
         [JsonRpcMethod(Description = "", IsImplemented = true,
             IsSharable = false,
             ExampleResponse = "[{\"action\":{\"callType\":\"call\",\"from\":\"0x3c436c8ec40e0679fe64168545812ac13220f150\",\"gas\":\"0xc118\",\"input\":\"0xd46eb119\",\"to\":\"0x9e00de186f33e9fac9e28d69127f7f637b96c177\",\"value\":\"0xde0b6b3a7640000\"},\"blockHash\":\"0xf40b4c9faaeaf116a50380ce3795297bc02068b062f1797cd507875347c3372e\",\"blockNumber\":8970132,\"result\":{\"gasUsed\":\"0xc118\",\"output\":\"0x\"},\"subtraces\":4,\"traceAddress\":[],\"transactionHash\":\"0x203abf19610ce15bc509d4b341e907ff8c5a8287ae61186fd4da82146408c28c\",\"transactionPosition\":9,\"type\":\"call\"},(...)]")]
-        ResultWrapper<IEnumerable<ParityTxTraceFromStore>> trace_transaction([JsonRpcParameter(ExampleValue = "[\"0x203abf19610ce15bc509d4b341e907ff8c5a8287ae61186fd4da82146408c28c\"]")] Keccak txHash);
+        ResultWrapper<IEnumerable<ParityTxTraceFromStore>> trace_transaction([JsonRpcParameter(ExampleValue = "\"0x203abf19610ce15bc509d4b341e907ff8c5a8287ae61186fd4da82146408c28c\"")] Hash256 txHash);
     }
 }

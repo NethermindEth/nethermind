@@ -108,6 +108,7 @@ namespace Nethermind.Evm.Test
                     Instruction.TLOAD,
                     Instruction.MCOPY,
                     Instruction.BLOBHASH,
+                    Instruction.BLOBBASEFEE
                 }
             ).ToArray();
 
@@ -131,7 +132,7 @@ namespace Nethermind.Evm.Test
 
         private const string InvalidOpCodeErrorMessage = "BadInstruction";
 
-        private ILogManager _logManager;
+        private ILogManager _logManager = LimboLogs.Instance;
 
         protected override ILogManager GetLogManager()
         {
@@ -164,7 +165,7 @@ namespace Nethermind.Evm.Test
                     .Done;
 
                 bool isValidOpcode = ((Instruction)i != Instruction.INVALID) && validOpcodes.Contains((Instruction)i);
-                TestAllTracerWithOutput result = Execute(blockNumber, 1_000_000, code, timestamp: timestamp ?? 0);
+                TestAllTracerWithOutput result = Execute((blockNumber, timestamp ?? 0), 1_000_000, code);
 
                 if (isValidOpcode)
                 {

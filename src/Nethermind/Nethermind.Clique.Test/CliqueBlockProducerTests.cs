@@ -85,13 +85,10 @@ namespace Nethermind.Clique.Test
                 _blockEvents.Add(privateKey, newHeadBlockEvent);
 
                 MemDb blocksDb = new();
-                MemDb headersDb = new();
-                MemDb blockInfoDb = new();
-
                 MemDb stateDb = new();
                 MemDb codeDb = new();
 
-                ISpecProvider specProvider = RinkebySpecProvider.Instance;
+                ISpecProvider specProvider = GoerliSpecProvider.Instance;
 
                 var trieStore = new TrieStore(stateDb, nodeLogManager);
                 StateReader stateReader = new(trieStore, codeDb, nodeLogManager);
@@ -101,13 +98,23 @@ namespace Nethermind.Clique.Test
                 stateProvider.Commit(goerliSpecProvider.GenesisSpec);
                 stateProvider.CommitTree(0);
 
-                BlockTree blockTree = new(blocksDb, headersDb, blockInfoDb, new ChainLevelInfoRepository(blockInfoDb), goerliSpecProvider, NullBloomStorage.Instance, nodeLogManager);
+                BlockTree blockTree = Build.A.BlockTree()
+                    .WithSpecProvider(goerliSpecProvider)
+                    .WithBlocksDb(blocksDb)
+                    .WithoutSettingHead
+                    .TestObject;
 
                 blockTree.NewHeadBlock += (sender, args) => { _blockEvents[privateKey].Set(); };
                 ITransactionComparerProvider transactionComparerProvider =
                     new TransactionComparerProvider(specProvider, blockTree);
 
-                TxPool.TxPool txPool = new(_ethereumEcdsa, new ChainHeadInfoProvider(new FixedForkActivationChainHeadSpecProvider(GoerliSpecProvider.Instance), blockTree, stateProvider), new TxPoolConfig(), new TxValidator(goerliSpecProvider.ChainId), _logManager, transactionComparerProvider.GetDefaultComparer());
+                TxPool.TxPool txPool = new(_ethereumEcdsa,
+                    new BlobTxStorage(),
+                    new ChainHeadInfoProvider(new FixedForkActivationChainHeadSpecProvider(GoerliSpecProvider.Instance), blockTree, stateProvider),
+                    new TxPoolConfig(),
+                    new TxValidator(goerliSpecProvider.ChainId),
+                    _logManager,
+                    transactionComparerProvider.GetDefaultComparer());
                 _pools[privateKey] = txPool;
 
                 BlockhashProvider blockhashProvider = new(blockTree, LimboLogs.Instance);
@@ -197,8 +204,8 @@ namespace Nethermind.Clique.Test
 
             private Block GetGenesis(int validatorsCount = 2)
             {
-                Keccak parentHash = Keccak.Zero;
-                Keccak unclesHash = Keccak.OfAnEmptySequenceRlp;
+                Hash256 parentHash = Keccak.Zero;
+                Hash256 unclesHash = Keccak.OfAnEmptySequenceRlp;
                 Address beneficiary = Address.Zero;
                 UInt256 difficulty = new(1);
                 long number = 0L;
@@ -323,7 +330,7 @@ namespace Nethermind.Clique.Test
                     throw;
                 }
             }
-            public On AssertHeadBlockParentIs(PrivateKey nodeKey, Keccak hash)
+            public On AssertHeadBlockParentIs(PrivateKey nodeKey, Hash256 hash)
             {
                 if (_logger.IsInfo) _logger.Info($"ASSERTING HEAD PARENT HASH ON {nodeKey.Address}");
                 Assert.That(_blockTrees[nodeKey].Head.ParentHash, Is.EqualTo(hash), nodeKey.Address + " head parent hash");

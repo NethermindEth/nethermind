@@ -13,7 +13,7 @@ namespace Nethermind.Blockchain
         public long LastFinalizedBlockLevel { get; private set; } = 0;
 
         // We could save in DB, but its not really needed yet
-        public Keccak LastFinalizedHash { get; private set; } = Keccak.Zero;
+        public Hash256 LastFinalizedHash { get; private set; } = Keccak.Zero;
 
         public event EventHandler<FinalizeEventArgs>? BlocksFinalized;
 
@@ -29,7 +29,7 @@ namespace Nethermind.Blockchain
 
     public interface IManualBlockFinalizationManager : IBlockFinalizationManager
     {
-        Keccak LastFinalizedHash { get; }
+        Hash256 LastFinalizedHash { get; }
         void MarkFinalized(BlockHeader finalizingBlock, BlockHeader finalizedBlock);
     }
 }

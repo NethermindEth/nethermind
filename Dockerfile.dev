@@ -20,18 +20,21 @@ COPY . .
 
 RUN if [ "$TARGETARCH" = "amd64" ]; \
     then \
-      dotnet tool install JetBrains.dotTrace.GlobalTools --version 2022.3.3 --tool-path /tmp/ && \
+      dotnet tool install JetBrains.dotTrace.GlobalTools --version 2023.2.3 --tool-path /tmp/ && \
       dotnet add src/Nethermind/Nethermind.Runner package JetBrains.dotMemory.Console.$TARGETOS-x64 \
-        --version 2022.3.3 --package-directory /tmp/ && \
+        --version 2023.2.3 --package-directory /tmp/ && \
       dotnet publish src/Nethermind/Nethermind.Runner -c $BUILD_CONFIG -r $TARGETOS-x64 -o out --sc false \
         -p:BuildTimestamp=$BUILD_TIMESTAMP -p:Commit=$COMMIT_HASH ; \
     else \
-      dotnet tool install JetBrains.dotTrace.GlobalTools --version 2022.3.3 --tool-path /tmp/ && \
+      dotnet tool install JetBrains.dotTrace.GlobalTools --version 2023.2.3 --tool-path /tmp/ && \
       dotnet add src/Nethermind/Nethermind.Runner package JetBrains.dotMemory.Console.$TARGETOS-$TARGETARCH \
-        --version 2022.3.3 --package-directory /tmp/ && \
+        --version 2023.2.3 --package-directory /tmp/ && \
       dotnet publish src/Nethermind/Nethermind.Runner -c $BUILD_CONFIG -r $TARGETOS-$TARGETARCH -o out --sc false \
         -p:BuildTimestamp=$BUILD_TIMESTAMP -p:Commit=$COMMIT_HASH ; \
     fi
+
+# A temporary symlink to support the old executable name
+RUN ln -s -r out/nethermind out/Nethermind.Runner
 
 RUN dotnet tool install --tool-path /dotnetcore-tools dotnet-trace && \
     dotnet tool install --tool-path /dotnetcore-tools dotnet-dump && \

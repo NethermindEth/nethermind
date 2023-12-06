@@ -456,7 +456,7 @@ namespace Nethermind.Serialization.Rlp
             };
         }
 
-        public static Rlp Encode(Keccak? keccak)
+        public static Rlp Encode(Hash256? keccak)
         {
             if (keccak is null)
             {
@@ -479,7 +479,7 @@ namespace Nethermind.Serialization.Rlp
             return new Rlp(result);
         }
 
-        public static int StartSequence(byte[] buffer, int position, int sequenceLength)
+        public static int StartSequence(Span<byte> buffer, int position, int sequenceLength)
         {
             byte prefix;
             int beforeLength = position + 1;
@@ -813,10 +813,10 @@ namespace Nethermind.Serialization.Rlp
 
                 public override string Message => _message ??= ConstructMessage();
 
-                private string ConstructMessage() => $"Unexpected prefix of {_prefix} when decoding {nameof(Keccak)} at position {_position} in the message of length {_dataLength}.";
+                private string ConstructMessage() => $"Unexpected prefix of {_prefix} when decoding {nameof(Hash256)} at position {_position} in the message of length {_dataLength}.";
             }
 
-            public Keccak? DecodeKeccak()
+            public Hash256? DecodeKeccak()
             {
                 int prefix = ReadByte();
                 if (prefix == 128)
@@ -840,10 +840,10 @@ namespace Nethermind.Serialization.Rlp
                     return Keccak.EmptyTreeHash;
                 }
 
-                return new Keccak(keccakSpan);
+                return new Hash256(keccakSpan);
             }
 
-            public Keccak? DecodeZeroPrefixKeccak()
+            public Hash256? DecodeZeroPrefixKeccak()
             {
                 int prefix = PeekByte();
                 if (prefix == 128)
@@ -855,15 +855,15 @@ namespace Nethermind.Serialization.Rlp
                 ReadOnlySpan<byte> theSpan = DecodeByteArraySpan();
                 byte[] keccakByte = new byte[32];
                 theSpan.CopyTo(keccakByte.AsSpan(32 - theSpan.Length));
-                return new Keccak(keccakByte);
+                return new Hash256(keccakByte);
             }
 
-            public void DecodeKeccakStructRef(out KeccakStructRef keccak)
+            public void DecodeKeccakStructRef(out Hash256StructRef keccak)
             {
                 int prefix = ReadByte();
                 if (prefix == 128)
                 {
-                    keccak = new KeccakStructRef(Keccak.Zero.Bytes);
+                    keccak = new Hash256StructRef(Keccak.Zero.Bytes);
                 }
                 else if (prefix != 128 + 32)
                 {
@@ -874,26 +874,26 @@ namespace Nethermind.Serialization.Rlp
                     Span<byte> keccakSpan = Read(32);
                     if (keccakSpan.SequenceEqual(Keccak.OfAnEmptyString.Bytes))
                     {
-                        keccak = new KeccakStructRef(Keccak.OfAnEmptyString.Bytes);
+                        keccak = new Hash256StructRef(Keccak.OfAnEmptyString.Bytes);
                     }
                     else if (keccakSpan.SequenceEqual(Keccak.EmptyTreeHash.Bytes))
                     {
-                        keccak = new KeccakStructRef(Keccak.EmptyTreeHash.Bytes);
+                        keccak = new Hash256StructRef(Keccak.EmptyTreeHash.Bytes);
                     }
                     else
                     {
-                        keccak = new KeccakStructRef(keccakSpan);
+                        keccak = new Hash256StructRef(keccakSpan);
                     }
                 }
             }
 
-            public void DecodeZeroPrefixedKeccakStructRef(out KeccakStructRef keccak, Span<byte> buffer)
+            public void DecodeZeroPrefixedKeccakStructRef(out Hash256StructRef keccak, Span<byte> buffer)
             {
                 int prefix = PeekByte();
                 if (prefix == 128)
                 {
                     ReadByte();
-                    keccak = new KeccakStructRef(Keccak.Zero.Bytes);
+                    keccak = new Hash256StructRef(Keccak.Zero.Bytes);
                 }
                 else if (prefix > 128 + 32)
                 {
@@ -906,15 +906,15 @@ namespace Nethermind.Serialization.Rlp
                     Span<byte> keccakSpan = Read(32);
                     if (keccakSpan.SequenceEqual(Keccak.OfAnEmptyString.Bytes))
                     {
-                        keccak = new KeccakStructRef(Keccak.OfAnEmptyString.Bytes);
+                        keccak = new Hash256StructRef(Keccak.OfAnEmptyString.Bytes);
                     }
                     else if (keccakSpan.SequenceEqual(Keccak.EmptyTreeHash.Bytes))
                     {
-                        keccak = new KeccakStructRef(Keccak.EmptyTreeHash.Bytes);
+                        keccak = new Hash256StructRef(Keccak.EmptyTreeHash.Bytes);
                     }
                     else
                     {
-                        keccak = new KeccakStructRef(keccakSpan);
+                        keccak = new Hash256StructRef(keccakSpan);
                     }
                 }
                 else
@@ -925,7 +925,7 @@ namespace Nethermind.Serialization.Rlp
                         buffer[..(32 - theSpan.Length)].Clear();
                     }
                     theSpan.CopyTo(buffer[(32 - theSpan.Length)..]);
-                    keccak = new KeccakStructRef(buffer);
+                    keccak = new Hash256StructRef(buffer);
                 }
             }
 
@@ -939,7 +939,7 @@ namespace Nethermind.Serialization.Rlp
 
                 if (prefix != 128 + 20)
                 {
-                    throw new RlpException($"Unexpected prefix of {prefix} when decoding {nameof(Keccak)} at position {Position} in the message of length {Data.Length} starting with {Data[..Math.Min(DebugMessageContentLength, Data.Length)].ToHexString()}");
+                    throw new RlpException($"Unexpected prefix of {prefix} when decoding {nameof(Hash256)} at position {Position} in the message of length {Data.Length} starting with {Data[..Math.Min(DebugMessageContentLength, Data.Length)].ToHexString()}");
                 }
 
                 byte[] buffer = Read(20).ToArray();
@@ -955,7 +955,7 @@ namespace Nethermind.Serialization.Rlp
                 }
                 else if (prefix != 128 + 20)
                 {
-                    throw new RlpException($"Unexpected prefix of {prefix} when decoding {nameof(Keccak)} at position {Position} in the message of length {Data.Length} starting with {Data[..Math.Min(DebugMessageContentLength, Data.Length)].ToHexString()}");
+                    throw new RlpException($"Unexpected prefix of {prefix} when decoding {nameof(Hash256)} at position {Position} in the message of length {Data.Length} starting with {Data[..Math.Min(DebugMessageContentLength, Data.Length)].ToHexString()}");
                 }
                 else
                 {
@@ -1572,17 +1572,17 @@ namespace Nethermind.Serialization.Rlp
             return 5;
         }
 
-        public static int LengthOf(Keccak? item)
+        public static int LengthOf(Hash256? item)
         {
             return item is null ? 1 : 33;
         }
 
-        public static int LengthOf(in ValueKeccak? item)
+        public static int LengthOf(in ValueHash256? item)
         {
             return item is null ? 1 : 33;
         }
 
-        public static int LengthOf(Keccak[] keccaks, bool includeLengthOfSequenceStart = false)
+        public static int LengthOf(Hash256[] keccaks, bool includeLengthOfSequenceStart = false)
         {
             int value = keccaks?.Length * LengthOfKeccakRlp ?? 0;
 
@@ -1594,7 +1594,7 @@ namespace Nethermind.Serialization.Rlp
             return value;
         }
 
-        public static int LengthOf(ValueKeccak[] keccaks, bool includeLengthOfSequenceStart = false)
+        public static int LengthOf(ValueHash256[] keccaks, bool includeLengthOfSequenceStart = false)
         {
             int value = keccaks?.Length * LengthOfKeccakRlp ?? 0;
 
@@ -1606,7 +1606,7 @@ namespace Nethermind.Serialization.Rlp
             return value;
         }
 
-        public static int LengthOf(IReadOnlyList<Keccak> keccaks, bool includeLengthOfSequenceStart = false)
+        public static int LengthOf(IReadOnlyList<Hash256> keccaks, bool includeLengthOfSequenceStart = false)
         {
             int value = keccaks?.Count * LengthOfKeccakRlp ?? 0;
 
@@ -1618,7 +1618,7 @@ namespace Nethermind.Serialization.Rlp
             return value;
         }
 
-        public static int LengthOf(IReadOnlyList<ValueKeccak> keccaks, bool includeLengthOfSequenceStart = false)
+        public static int LengthOf(IReadOnlyList<ValueHash256> keccaks, bool includeLengthOfSequenceStart = false)
         {
             int value = keccaks?.Count * LengthOfKeccakRlp ?? 0;
 

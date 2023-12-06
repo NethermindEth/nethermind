@@ -88,7 +88,7 @@ public partial class EthRpcModuleTests
         using Context ctx = await Context.Create();
         TransactionForRpc transaction = new(Keccak.Zero, 1L, 1, new Transaction());
         transaction.From = TestItem.AddressA;
-        transaction.Data = new byte[] { 1, 2, 3 };
+        transaction.Input = new byte[] { 1, 2, 3 };
 
         string serialized =
             await ctx.Test.TestEthRpc("eth_call", ctx.Test.JsonSerializer.Serialize(transaction), "latest");
@@ -135,6 +135,18 @@ public partial class EthRpcModuleTests
         string serialized =
             await ctx.Test.TestEthRpc("eth_call", ctx.Test.JsonSerializer.Serialize(transaction), "latest");
         Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":\"0x\",\"id\":67}"));
+    }
+
+    [Test]
+    public async Task Eth_call_create_tx_with_empty_data()
+    {
+        using Context ctx = await Context.Create();
+        TransactionForRpc transaction = new(Keccak.Zero, 1L, 1, new Transaction());
+        transaction.From = TestItem.AddressA;
+
+        string serialized =
+            await ctx.Test.TestEthRpc("eth_call", ctx.Test.JsonSerializer.Serialize(transaction), "latest");
+        serialized.Should().BeEquivalentTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32000,\"message\":\"Contract creation without any data provided.\"},\"id\":67}");
     }
 
     [Test]

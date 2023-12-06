@@ -13,9 +13,9 @@ namespace Nethermind.Evm.TransactionProcessing
     {
         private readonly ITransactionProcessor _transactionProcessor;
         private readonly IWorldState _stateProvider;
-        private readonly Keccak _stateBefore;
+        private readonly Hash256 _stateBefore;
 
-        public ReadOnlyTransactionProcessor(ITransactionProcessor transactionProcessor, IWorldState stateProvider, Keccak startState)
+        public ReadOnlyTransactionProcessor(ITransactionProcessor transactionProcessor, IWorldState stateProvider, Hash256 startState)
         {
             _transactionProcessor = transactionProcessor ?? throw new ArgumentNullException(nameof(transactionProcessor));
             _stateProvider = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
@@ -23,17 +23,17 @@ namespace Nethermind.Evm.TransactionProcessing
             _stateProvider.StateRoot = startState ?? throw new ArgumentNullException(nameof(startState));
         }
 
-        public void Execute(Transaction transaction, BlockHeader block, ITxTracer txTracer) =>
-            _transactionProcessor.Execute(transaction, block, txTracer);
+        public void Execute(Transaction transaction, BlockExecutionContext blCtx, ITxTracer txTracer) =>
+            _transactionProcessor.Execute(transaction, blCtx, txTracer);
 
-        public void CallAndRestore(Transaction transaction, BlockHeader block, ITxTracer txTracer) =>
-            _transactionProcessor.CallAndRestore(transaction, block, txTracer);
+        public void CallAndRestore(Transaction transaction, BlockExecutionContext blCtx, ITxTracer txTracer) =>
+            _transactionProcessor.CallAndRestore(transaction, blCtx, txTracer);
 
-        public void BuildUp(Transaction transaction, BlockHeader block, ITxTracer txTracer) =>
-            _transactionProcessor.BuildUp(transaction, block, txTracer);
+        public void BuildUp(Transaction transaction, BlockExecutionContext blCtx, ITxTracer txTracer) =>
+            _transactionProcessor.BuildUp(transaction, blCtx, txTracer);
 
-        public void Trace(Transaction transaction, BlockHeader block, ITxTracer txTracer) =>
-            _transactionProcessor.Trace(transaction, block, txTracer);
+        public void Trace(Transaction transaction, BlockExecutionContext blCtx, ITxTracer txTracer) =>
+            _transactionProcessor.Trace(transaction, blCtx, txTracer);
 
 
         public bool IsContractDeployed(Address address) => _stateProvider.IsContract(address);

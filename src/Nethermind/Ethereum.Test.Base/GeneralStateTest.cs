@@ -24,13 +24,17 @@ namespace Ethereum.Test.Base
         public long CurrentGasLimit { get; set; }
         public long CurrentNumber { get; set; }
         public ulong CurrentTimestamp { get; set; }
-        public Keccak? PreviousHash { get; set; }
+        public Hash256? PreviousHash { get; set; }
         public Dictionary<Address, AccountState> Pre { get; set; }
-        public Keccak? PostHash { get; set; }
-        public Keccak? PostReceiptsRoot { get; set; }
+        public Hash256? PostHash { get; set; }
+        public Hash256? PostReceiptsRoot { get; set; }
         public string? LoadFailure { get; set; }
         public Transaction? Transaction { get; set; }
-        public Keccak? CurrentRandom { get; set; }
+        public Hash256? CurrentRandom { get; set; }
+        public Hash256? CurrentBeaconRoot { get; set; }
+        public Hash256? CurrentWithdrawalsRoot { get; set; }
+        public UInt256? ParentBlobGasUsed { get; set; }
+        public UInt256? ParentExcessBlobGas { get; set; }
 
         public override string ToString()
         {

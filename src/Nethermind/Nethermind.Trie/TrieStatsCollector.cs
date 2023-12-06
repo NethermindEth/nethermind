@@ -26,14 +26,14 @@ namespace Nethermind.Trie
 
         public bool IsFullDbScan => true;
 
-        public bool ShouldVisit(Keccak nextNode)
+        public bool ShouldVisit(Hash256 nextNode)
         {
             return true;
         }
 
-        public void VisitTree(Keccak rootHash, TrieVisitContext trieVisitContext) { }
+        public void VisitTree(Hash256 rootHash, TrieVisitContext trieVisitContext) { }
 
-        public void VisitMissingNode(Keccak nodeHash, TrieVisitContext trieVisitContext)
+        public void VisitMissingNode(Hash256 nodeHash, TrieVisitContext trieVisitContext)
         {
             if (trieVisitContext.IsStorage)
             {
@@ -51,12 +51,12 @@ namespace Nethermind.Trie
         {
             if (trieVisitContext.IsStorage)
             {
-                Interlocked.Add(ref Stats._storageSize, node.FullRlp?.Length ?? 0);
+                Interlocked.Add(ref Stats._storageSize, node.FullRlp.Length);
                 Interlocked.Increment(ref Stats._storageBranchCount);
             }
             else
             {
-                Interlocked.Add(ref Stats._stateSize, node.FullRlp?.Length ?? 0);
+                Interlocked.Add(ref Stats._stateSize, node.FullRlp.Length);
                 Interlocked.Increment(ref Stats._stateBranchCount);
             }
 
@@ -67,12 +67,12 @@ namespace Nethermind.Trie
         {
             if (trieVisitContext.IsStorage)
             {
-                Interlocked.Add(ref Stats._storageSize, node.FullRlp?.Length ?? 0);
+                Interlocked.Add(ref Stats._storageSize, node.FullRlp.Length);
                 Interlocked.Increment(ref Stats._storageExtensionCount);
             }
             else
             {
-                Interlocked.Add(ref Stats._stateSize, node.FullRlp?.Length ?? 0);
+                Interlocked.Add(ref Stats._stateSize, node.FullRlp.Length);
                 Interlocked.Increment(ref Stats._stateExtensionCount);
             }
 
@@ -89,19 +89,19 @@ namespace Nethermind.Trie
 
             if (trieVisitContext.IsStorage)
             {
-                Interlocked.Add(ref Stats._storageSize, node.FullRlp?.Length ?? 0);
+                Interlocked.Add(ref Stats._storageSize, node.FullRlp.Length);
                 Interlocked.Increment(ref Stats._storageLeafCount);
             }
             else
             {
-                Interlocked.Add(ref Stats._stateSize, node.FullRlp?.Length ?? 0);
+                Interlocked.Add(ref Stats._stateSize, node.FullRlp.Length);
                 Interlocked.Increment(ref Stats._accountCount);
             }
 
             IncrementLevel(trieVisitContext);
         }
 
-        public void VisitCode(Keccak codeHash, TrieVisitContext trieVisitContext)
+        public void VisitCode(Hash256 codeHash, TrieVisitContext trieVisitContext)
         {
             byte[] code = _codeKeyValueStore[codeHash.Bytes];
             if (code is not null)

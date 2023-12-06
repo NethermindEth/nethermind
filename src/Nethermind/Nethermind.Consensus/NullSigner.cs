@@ -10,17 +10,17 @@ namespace Nethermind.Consensus
 {
     public class NullSigner : ISigner, ISignerStore
     {
-        public static readonly NullSigner Instance = new();
+        public static NullSigner Instance { get; } = new();
 
-        public Address Address { get; } = Address.Zero; // TODO: why zero address 
+        public Address Address { get; } = Address.Zero; // TODO: why zero address
 
         public ValueTask Sign(Transaction tx) => default;
 
-        public Signature Sign(Keccak message) { return new(new byte[65]); }
+        public Signature Sign(Hash256 message) { return new(new byte[65]); }
 
         public bool CanSign { get; } = true; // TODO: why true?
 
-        public PrivateKey Key { get; }
+        public PrivateKey? Key { get; } = null;
 
         public void SetSigner(PrivateKey key) { }
 

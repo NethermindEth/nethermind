@@ -34,13 +34,7 @@ namespace Nethermind.Evm.Tracing.ParityStyle
             _parityTraceTypes = parityTraceTypes;
 
             _tx = tx;
-            _trace = new ParityLikeTxTrace
-            {
-                TransactionHash = tx?.Hash,
-                TransactionPosition = tx is null ? null : Array.IndexOf(block.Transactions!, tx),
-                BlockNumber = block.Number,
-                BlockHash = block.Hash!
-            };
+            _trace = new ParityLikeTxTrace { TransactionHash = tx?.Hash, TransactionPosition = tx is null ? null : Array.IndexOf(block.Transactions!, tx), BlockNumber = block.Number, BlockHash = block.Hash! };
 
             if ((_parityTraceTypes & ParityTraceTypes.StateDiff) != 0)
             {
@@ -75,19 +69,19 @@ namespace Nethermind.Evm.Tracing.ParityStyle
         {
             switch (executionType)
             {
-                case ExecutionType.Transaction:
+                case ExecutionType.TRANSACTION:
                     return "call";
-                case ExecutionType.Create:
+                case ExecutionType.CREATE:
                     return "create";
-                case ExecutionType.Create2:
+                case ExecutionType.CREATE2:
                     return "create";
-                case ExecutionType.Call:
+                case ExecutionType.CALL:
                     return "call";
-                case ExecutionType.DelegateCall:
+                case ExecutionType.DELEGATECALL:
                     return "delegatecall";
-                case ExecutionType.StaticCall:
+                case ExecutionType.STATICCALL:
                     return "staticcall";
-                case ExecutionType.CallCode:
+                case ExecutionType.CALLCODE:
                     return "callcode";
                 default:
                     throw new NotSupportedException($"Parity trace call type is undefined for {executionType}");
@@ -98,19 +92,19 @@ namespace Nethermind.Evm.Tracing.ParityStyle
         {
             switch (executionType)
             {
-                case ExecutionType.Transaction:
+                case ExecutionType.TRANSACTION:
                     return "call";
-                case ExecutionType.Create:
+                case ExecutionType.CREATE:
                     return "create";
-                case ExecutionType.Create2:
+                case ExecutionType.CREATE2:
                     return "create";
-                case ExecutionType.Call:
+                case ExecutionType.CALL:
                     return "call";
-                case ExecutionType.DelegateCall:
+                case ExecutionType.DELEGATECALL:
                     return "call";
-                case ExecutionType.StaticCall:
+                case ExecutionType.STATICCALL:
                     return "call";
-                case ExecutionType.CallCode:
+                case ExecutionType.CALLCODE:
                     return "call";
                 default:
                     return "call";
@@ -220,7 +214,7 @@ namespace Nethermind.Evm.Tracing.ParityStyle
             _currentAction = _actionStack.Count == 0 ? null : _actionStack.Peek();
         }
 
-        public override void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Keccak? stateRoot = null)
+        public override void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null)
         {
             if (_currentAction is not null)
             {
@@ -235,7 +229,7 @@ namespace Nethermind.Evm.Tracing.ParityStyle
             _trace.Action!.Result!.Output = output;
         }
 
-        public override void MarkAsFailed(Address recipient, long gasSpent, byte[] output, string error, Keccak? stateRoot = null)
+        public override void MarkAsFailed(Address recipient, long gasSpent, byte[] output, string error, Hash256? stateRoot = null)
         {
             if (_currentAction is not null)
             {
@@ -389,13 +383,13 @@ namespace Nethermind.Evm.Tracing.ParityStyle
             storage[storageCell.Index] = new ParityStateChange<byte[]>(before, after);
         }
 
-        public override void ReportAction(long gas, UInt256 value, Address @from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false)
+        public override void ReportAction(long gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false)
         {
             ParityTraceAction action = new()
             {
                 IsPrecompiled = isPrecompileCall,
                 // ignore pre compile calls with Zero value that originates from contracts
-                IncludeInTrace = !(isPrecompileCall && callType != ExecutionType.Transaction && value.IsZero),
+                IncludeInTrace = !(isPrecompileCall && callType != ExecutionType.TRANSACTION && value.IsZero),
                 From = from,
                 To = to,
                 Value = value,
@@ -419,9 +413,9 @@ namespace Nethermind.Evm.Tracing.ParityStyle
         {
             switch (callType)
             {
-                case ExecutionType.Create:
+                case ExecutionType.CREATE:
                     return "create";
-                case ExecutionType.Create2:
+                case ExecutionType.CREATE2:
                     return "create2";
                 default:
                     return null;

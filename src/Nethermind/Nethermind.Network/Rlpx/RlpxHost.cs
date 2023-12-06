@@ -222,11 +222,7 @@ namespace Nethermind.Network.Rlpx
 
             IChannelPipeline pipeline = channel.Pipeline;
             pipeline.AddLast(new LoggingHandler(session.Direction.ToString().ToUpper(), LogLevel.TRACE));
-
-            if (session.Direction == ConnectionDirection.Out)
-            {
-                pipeline.AddLast("enc-handshake-dec", new OneTimeLengthFieldBasedFrameDecoder());
-            }
+            pipeline.AddLast("enc-handshake-dec", new OneTimeLengthFieldBasedFrameDecoder());
             pipeline.AddLast("enc-handshake-handler", handshakeHandler);
 
             channel.CloseCompletion.ContinueWith(async x =>

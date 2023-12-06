@@ -26,7 +26,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Wit.Messages
             {
                 int hashesContentLength = message.Hashes?.Length * Rlp.LengthOfKeccakRlp ?? 0;
                 nettyRlpStream.StartSequence(hashesContentLength);
-                foreach (Keccak keccak in message.Hashes)
+                foreach (Hash256 keccak in message.Hashes)
                 {
                     nettyRlpStream.Encode(keccak);
                 }
@@ -54,7 +54,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Wit.Messages
             rlpStream.ReadSequenceLength();
             long requestId = rlpStream.DecodeLong();
             int sequenceLength = rlpStream.ReadSequenceLength();
-            Keccak[] hashes = new Keccak[sequenceLength / Rlp.LengthOfKeccakRlp];
+            Hash256[] hashes = new Hash256[sequenceLength / Rlp.LengthOfKeccakRlp];
             for (int i = 0; i < hashes.Length; i++)
             {
                 hashes[i] = rlpStream.DecodeKeccak();

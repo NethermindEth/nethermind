@@ -13,6 +13,12 @@
       <PrivateAssets>all</PrivateAssets>
     </PackageReference>
     <PackageReference Include="FluentAssertions" />
+    <PackageReference Include="Microsoft.ClearScript.V8" />
+    <PackageReference Include="Microsoft.ClearScript.V8.Native.linux-arm64" />
+    <PackageReference Include="Microsoft.ClearScript.V8.Native.linux-x64" />
+    <PackageReference Include="Microsoft.ClearScript.V8.Native.osx-arm64" />
+    <PackageReference Include="Microsoft.ClearScript.V8.Native.osx-x64" />
+    <PackageReference Include="Microsoft.ClearScript.V8.Native.win-x64" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" />
     <PackageReference Include="NSubstitute" />
     <PackageReference Include="NUnit" />
@@ -28,6 +34,7 @@
     <ProjectReference Include="..\Nethermind.Core.Test\Nethermind.Core.Test.csproj" />
     <ProjectReference Include="..\Nethermind.Core\Nethermind.Core.csproj" />
     <ProjectReference Include="..\Nethermind.Evm\Nethermind.Evm.csproj" />
+    <ProjectReference Include="..\Nethermind.JsonRpc\Nethermind.JsonRpc.csproj" />
     <ProjectReference Include="..\Nethermind.Synchronization\Nethermind.Synchronization.csproj" />
   </ItemGroup>
 </Project>

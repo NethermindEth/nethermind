@@ -12,7 +12,7 @@ namespace Nethermind.State.Snap
         /// <summary>
         /// Root hash of the account trie to serve
         /// </summary>
-        public ValueKeccak RootHash { get; set; }
+        public ValueHash256 RootHash { get; set; }
 
         /// <summary>
         /// Accounts of the storage tries to serve
@@ -22,12 +22,12 @@ namespace Nethermind.State.Snap
         /// <summary>
         /// Account hash of the first to retrieve
         /// </summary>
-        public ValueKeccak? StartingHash { get; set; }
+        public ValueHash256? StartingHash { get; set; }
 
         /// <summary>
         /// Account hash after which to stop serving data
         /// </summary>
-        public ValueKeccak? LimitHash { get; set; }
+        public ValueHash256? LimitHash { get; set; }
 
         public override string ToString()
         {

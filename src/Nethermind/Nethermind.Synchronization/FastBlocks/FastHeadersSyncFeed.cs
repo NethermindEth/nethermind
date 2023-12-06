@@ -43,7 +43,7 @@ namespace Nethermind.Synchronization.FastBlocks
         private readonly int _headersRequestSize = GethSyncLimits.MaxHeaderFetch;
         protected long _lowestRequestedHeaderNumber;
 
-        protected Keccak _nextHeaderHash;
+        protected Hash256 _nextHeaderHash;
         protected UInt256? _nextHeaderDiff;
 
         protected long _pivotNumber;
@@ -81,6 +81,8 @@ namespace Nethermind.Synchronization.FastBlocks
 
         protected virtual long HeadersDestinationNumber => 0;
         protected virtual bool AllHeadersDownloaded => (LowestInsertedBlockHeader?.Number ?? long.MaxValue) == 1;
+
+        public override bool IsFinished => AllHeadersDownloaded;
         private bool AnyHeaderDownloaded => LowestInsertedBlockHeader is not null;
 
         private long HeadersInQueue
@@ -159,14 +161,12 @@ namespace Nethermind.Synchronization.FastBlocks
         }
 
         public HeadersSyncFeed(
-            ISyncModeSelector syncModeSelector,
             IBlockTree? blockTree,
             ISyncPeerPool? syncPeerPool,
             ISyncConfig? syncConfig,
             ISyncReport? syncReport,
             ILogManager? logManager,
             bool alwaysStartHeaderSync = false)
-        : base(syncModeSelector)
         {
             _syncPeerPool = syncPeerPool ?? throw new ArgumentNullException(nameof(syncPeerPool));
             _syncReport = syncReport ?? throw new ArgumentNullException(nameof(syncReport));
@@ -394,7 +394,7 @@ namespace Nethermind.Synchronization.FastBlocks
             _resetLock.EnterReadLock();
             try
             {
-                if (!_sent.Contains(batch))
+                if (!_sent.TryRemove(batch))
                 {
                     if (_logger.IsDebug) _logger.Debug("Ignoring batch not in sent record");
                     return SyncResponseHandlingResult.Ignored;
@@ -426,7 +426,6 @@ namespace Nethermind.Synchronization.FastBlocks
                 finally
                 {
                     batch.MarkHandlingEnd();
-                    _sent.TryRemove(batch);
                 }
             }
             finally

@@ -45,7 +45,7 @@ namespace Nethermind.Consensus.Ethash
             return block;
         }
 
-        public bool CanSeal(long blockNumber, Keccak parentHash)
+        public bool CanSeal(long blockNumber, Hash256 parentHash)
         {
             return true;
         }
@@ -79,7 +79,7 @@ namespace Nethermind.Consensus.Ethash
 
         private Block Mine(Block block, ulong? startNonce)
         {
-            (Keccak MixHash, ulong Nonce) result = _ethash.Mine(block.Header, startNonce);
+            (Hash256 MixHash, ulong Nonce) result = _ethash.Mine(block.Header, startNonce);
             block.Header.Nonce = result.Nonce;
             block.Header.MixHash = result.MixHash;
             return block;
