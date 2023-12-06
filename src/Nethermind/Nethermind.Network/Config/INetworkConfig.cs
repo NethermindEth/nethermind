@@ -47,7 +47,10 @@ public interface INetworkConfig : IConfig
     [ConfigItem(DisabledForCli = true, HiddenFromDocs = true, DefaultValue = "10000")]
     int P2PPingInterval { get; }
 
-    [ConfigItem(Description = $"The UDP port number for incoming discovery connections. It's recommended to keep it the same as the TCP port (`{nameof(P2PPort)}`) because other values have not been tested yet.", DefaultValue = "30303")]
+    [ConfigItem(
+        Description =
+            $"The UDP port number for incoming discovery connections. It's recommended to keep it the same as the TCP port (`{nameof(P2PPort)}`) because other values have not been tested yet.",
+        DefaultValue = "30303")]
     int DiscoveryPort { get; set; }
 
     [ConfigItem(Description = "The TCP port for incoming P2P connections.", DefaultValue = "30303")]
@@ -71,7 +74,9 @@ public interface INetworkConfig : IConfig
     [ConfigItem(DefaultValue = "-1", Description = "The size of the DotNetty arena order. `-1` to depend on the memory hint.")]
     int NettyArenaOrder { get; set; }
 
-    [ConfigItem(DefaultValue = "8", Description = "The maximum DotNetty arena count. Increasing this on a high-core CPU without increasing the memory budget may reduce chunk size so much that it causes a huge memory allocation.")]
+    [ConfigItem(DefaultValue = "8",
+        Description =
+            "The maximum DotNetty arena count. Increasing this on a high-core CPU without increasing the memory budget may reduce chunk size so much that it causes a huge memory allocation.")]
     uint MaxNettyArenaCount { get; set; }
 
     [ConfigItem(DefaultValue = "", Description = "A comma-separated enode list to be used as boot nodes.")]
@@ -80,10 +85,13 @@ public interface INetworkConfig : IConfig
     [ConfigItem(DefaultValue = "false", Description = "Whether to enable automatic port forwarding via UPnP.")]
     bool EnableUPnP { get; set; }
 
-    [ConfigItem(DefaultValue = "0", HiddenFromDocs = true, Description = "[TECHNICAL] Introduce a fixed latency for all p2p message send. Useful for testing higher latency network or simulate slower network for testing purpose.")]
+    [ConfigItem(DefaultValue = "0", HiddenFromDocs = true,
+        Description = "[TECHNICAL] Introduce a fixed latency for all p2p message send. Useful for testing higher latency network or simulate slower network for testing purpose.")]
     long SimulateSendLatencyMs { get; set; }
 
-    [ConfigItem(DefaultValue = "0", HiddenFromDocs = true, Description = "[TECHNICAL] Number of concurrent outgoing connections. Reduce this if your ISP throttles from having open too many connections. Default is 0 which means same as processor count.")]
+    [ConfigItem(DefaultValue = "0", HiddenFromDocs = true,
+        Description =
+            "[TECHNICAL] Number of concurrent outgoing connections. Reduce this if your ISP throttles from having open too many connections. Default is 0 which means same as processor count.")]
     int NumConcurrentOutgoingConnects { get; set; }
 
     [ConfigItem(DefaultValue = "20", HiddenFromDocs = true, Description = "[TECHNICAL] Max number of new outgoing connections per second. Default is 20.")]
@@ -92,18 +100,20 @@ public interface INetworkConfig : IConfig
     [ConfigItem(DefaultValue = "2000", HiddenFromDocs = true, Description = "[TECHNICAL] Outgoing connection timeout in ms. Default is 2 seconds.")]
     int ConnectTimeoutMs { get; set; }
 
-    [ConfigItem(DefaultValue = "1", HiddenFromDocs = true, Description = "[TECHNICAL] Num of thread in final processing of network packet. Set to more than 1 if you have very fast internet.")]
+    [ConfigItem(DefaultValue = "1", HiddenFromDocs = true,
+        Description = "[TECHNICAL] Num of thread in final processing of network packet. Set to more than 1 if you have very fast internet.")]
     int ProcessingThreadCount { get; set; }
 
-    [ConfigItem(DefaultValue = null, HiddenFromDocs = true, Description = "[TECHNICAL] Only allow peer with clientId matching this regex. Useful for testing. eg: 'besu' to only connect to BeSU")]
+    [ConfigItem(DefaultValue = null, HiddenFromDocs = true,
+        Description = "[TECHNICAL] Only allow peer with clientId matching this regex. Useful for testing. eg: 'besu' to only connect to BeSU")]
     string? ClientIdMatcher { get; set; }
 
     [ConfigItem(DefaultValue = "false", HiddenFromDocs = true, Description = "[TECHNICAL] Disable feeding ENR DNS records to discv4 table")]
     bool DisableDiscV4DnsFeeder { get; set; }
 
-    [ConfigItem(DefaultValue = "0", HiddenFromDocs = true, Description = $"[TECHNICAL] Introduce throttling to all messages being sent/received after exceeding a byte threshold in a given time span (see '{nameof(ThrottlingDelayMs)}')")]
-    int ThrottlingByteLimit { get; set; }
+    [ConfigItem(DefaultValue = "0", HiddenFromDocs = true, Description = $"[TECHNICAL] Limit the number of bytes sent per second as part of P2P messages. Default is 0 (unlimited)")]
+    int PacketSenderThrottlingBytesPerSecond { get; set; }
 
-    [ConfigItem(DefaultValue = "0", HiddenFromDocs = true, Description = $"[TECHNICAL] Introduce throttling to all messages being sent/received after exceeding a byte threshold in a given time span (see '{nameof(ThrottlingByteLimit)}')")]
-    int ThrottlingDelayMs { get; set; }
+    [ConfigItem(DefaultValue = "0", HiddenFromDocs = true, Description = $"[TECHNICAL] Limit the number of bytes received per second as part of protocol packets. Default is 0 (unlimited)")]
+    int ProtocolHandlerThrottlingBytesPerSecond { get; set; }
 }
