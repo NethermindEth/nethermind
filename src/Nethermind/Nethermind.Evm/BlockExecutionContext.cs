@@ -15,11 +15,14 @@ public readonly struct BlockExecutionContext
     public BlockExecutionContext(BlockHeader blockHeader)
     {
         Header = blockHeader;
-        if (!BlobGasCalculator.TryCalculateBlobGasPricePerUnit(blockHeader?.ExcessBlobGas ?? 0, out UInt256 blobBaseFeeResult))
+        if (blockHeader?.ExcessBlobGas is not null)
         {
-            throw new OverflowException("Blob gas price calculation led to overflow.");
+            if (!BlobGasCalculator.TryCalculateBlobGasPricePerUnit(blockHeader.ExcessBlobGas.Value, out UInt256 blobBaseFeeResult))
+            {
+                throw new OverflowException("Blob gas price calculation led to overflow.");
+            }
+            BlobBaseFee = blobBaseFeeResult;
         }
-        BlobBaseFee = blobBaseFeeResult;
     }
 
     public static implicit operator BlockExecutionContext(BlockHeader header)

@@ -1542,7 +1542,7 @@ OutOfGas:
                     }
                 case Instruction.BLOBBASEFEE:
                     {
-                        if (!spec.BlobBaseFeeEnabled) goto InvalidInstruction;
+                        if (!spec.BlobBaseFeeEnabled || !blkCtx.BlobBaseFee.HasValue) goto InvalidInstruction;
 
                         gasAvailable -= GasCostOf.Base;
 

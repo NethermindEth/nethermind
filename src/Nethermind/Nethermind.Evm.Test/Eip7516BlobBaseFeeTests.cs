@@ -25,8 +25,7 @@ public class Eip7516BlobBaseFeeTests : VirtualMachineTestsBase
     [TestCase(true, 20ul)]
     [TestCase(false, 20ul)]
     [TestCase(false, 0ul)]
-    [TestCase(true, null)]
-    public void Blob_Base_fee_opcode_should_return_expected_results(bool eip7516Enabled, ulong? excessBlobGas)
+    public void Blob_Base_fee_opcode_should_return_expected_results(bool eip7516Enabled, ulong excessBlobGas)
     {
         _processor = new TransactionProcessor(SpecProvider, TestState, Machine, LimboLogs.Instance);
         byte[] code = Prepare.EvmCode
@@ -42,11 +41,7 @@ public class Eip7516BlobBaseFeeTests : VirtualMachineTestsBase
         TestAllTracerWithOutput tracer = CreateTracer();
         _processor.Execute(transaction, block.Header, tracer);
 
-        UInt256 expectedGasPrice = 1; // default value of gas price when excess is 0
-        if (excessBlobGas != null)
-        {
-            _ = BlobGasCalculator.TryCalculateBlobGasPricePerUnit(excessBlobGas.Value, out expectedGasPrice);
-        }
+        _ = BlobGasCalculator.TryCalculateBlobGasPricePerUnit(excessBlobGas, out UInt256 expectedGasPrice);
         if (eip7516Enabled)
         {
             AssertStorage((UInt256)0, expectedGasPrice);
