@@ -200,8 +200,16 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
 
         if (_blockTree.IsOnMainChainBehindHead(newHeadBlock))
         {
-            if (_logger.IsInfo) _logger.Info($"Valid. ForkChoiceUpdated ignored - already in canonical chain. Request: {requestStr}.");
-            return ForkchoiceUpdatedV1Result.Valid(null, forkchoiceState.HeadBlockHash);
+            if (payloadAttributes is null)
+            {
+                if (_logger.IsInfo)
+                    _logger.Info($"Valid. ForkChoiceUpdated ignored - already in canonical chain. Request: {requestStr}.");
+                return ForkchoiceUpdatedV1Result.Valid(null, forkchoiceState.HeadBlockHash);
+            }
+            else if (_logger.IsWarn)
+            {
+                _logger.Warn($"Building on top of old head. Possible reorg. Request: {requestStr}.");
+            }
         }
 
         bool newHeadTheSameAsCurrentHead = _blockTree.Head!.Hash == newHeadBlock.Hash;
