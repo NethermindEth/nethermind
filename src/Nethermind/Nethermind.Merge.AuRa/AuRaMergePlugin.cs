@@ -5,6 +5,8 @@ using System.Diagnostics;
 using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
+using Nethermind.Blockchain.Find;
+using Nethermind.Blockchain.Receipts;
 using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Consensus.AuRa.Config;
@@ -85,11 +87,12 @@ namespace Nethermind.Merge.AuRa
             Debug.Assert(_api?.BlockProducerEnvFactory is not null,
                 $"{nameof(_api.BlockProducerEnvFactory)} has not been initialized.");
 
-            ITxSource? encryptedTxSource = _auraConfig!.UseShutter
-                ? new EncryptedTxSource()
+            LogFinder logFinder = new(_api.BlockTree, _api.ReceiptFinder, _api.ReceiptStorage, _api.BloomStorage, _api.LogManager, new ReceiptsRecovery(_api.EthereumEcdsa, _api.SpecProvider));
+            ITxSource? shutterTxSource = _auraConfig!.UseShutter
+                ? new ShutterTxSource(logFinder, _api.FilterStore!)
                 : null;
 
-            return _api.BlockProducerEnvFactory.Create(encryptedTxSource);
+            return _api.BlockProducerEnvFactory.Create(shutterTxSource);
         }
 
         private bool ShouldBeEnabled(INethermindApi api) => _mergeConfig.Enabled && IsPreMergeConsensusAuRa(api);
