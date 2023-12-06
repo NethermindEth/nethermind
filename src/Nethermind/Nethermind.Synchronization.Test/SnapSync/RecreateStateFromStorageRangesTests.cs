@@ -31,6 +31,9 @@ namespace Nethermind.Synchronization.Test.SnapSync
             (_inputStateTree, _inputStorageTree) = TestItem.Tree.GetTrees(_store);
         }
 
+        [OneTimeTearDown]
+        public void TearDown() => _store?.Dispose();
+
         [Test]
         public void RecreateStorageStateFromOneRangeWithNonExistenceProof()
         {

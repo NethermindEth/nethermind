@@ -24,8 +24,6 @@ using Nethermind.Int256;
 using Nethermind.JsonRpc.Modules.Parity;
 using Nethermind.Logging;
 using Nethermind.State;
-using Nethermind.State.Repositories;
-using Nethermind.Db.Blooms;
 using Nethermind.KeyStore;
 using Nethermind.Network;
 using Nethermind.Network.Contract.P2P;
@@ -36,7 +34,7 @@ using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
-using BlockTree = Nethermind.Blockchain.BlockTree;
+using System;
 
 namespace Nethermind.JsonRpc.Test.Modules
 {
@@ -47,7 +45,9 @@ namespace Nethermind.JsonRpc.Test.Modules
         private IParityRpcModule _parityRpcModule = null!;
         private Signer _signerStore = null!;
         private EthereumEcdsa _ethereumEcdsa = null!;
+#pragma warning disable NUnit1032
         private ITxPool _txPool = null!;
+#pragma warning restore NUnit1032
         private IBlockTree _blockTree = null!;
         private IReceiptStorage _receiptStorage = null!;
 
@@ -178,6 +178,9 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             _receiptStorage.Insert(block, receipt1, receipt2, receipt3);
         }
+
+        [TearDown]
+        public void TearDown() => (_txPool as IDisposable)?.Dispose();
 
         private static Peer SetUpPeerA()
         {
