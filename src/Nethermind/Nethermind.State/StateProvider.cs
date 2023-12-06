@@ -194,22 +194,17 @@ namespace Nethermind.State
             }
         }
 
-        private void SetNewBalance(Address address, in UInt256 balanceChange, IReleaseSpec releaseSpec, bool isSubtracting)
+        private void SetNewBalance(Address address, in UInt256 balanceChange, IReleaseSpec releaseSpec, bool isSubtracting, bool isSystemCall = false)
         {
             _needsStateRootUpdate = true;
 
-            void ThrowNotExistingAccount()
-            {
-                if (_logger.IsError) _logger.Error("Updating balance of a non-existing account");
-                throw new InvalidOperationException("Updating balance of a non-existing account");
-            }
-
-            Account? GetThroughCacheCheckExists()
+            Account GetThroughCacheCheckExists()
             {
                 Account result = GetThroughCache(address);
                 if (result is null)
                 {
-                    ThrowNotExistingAccount();
+                    if (_logger.IsError) _logger.Error("Updating balance of a non-existing account");
+                    throw new InvalidOperationException("Updating balance of a non-existing account");
                 }
 
                 return result;
@@ -223,14 +218,11 @@ namespace Nethermind.State
                 // hitting non-existing account when substractin Zero-value from the sender
                 if (releaseSpec.IsEip158Enabled && !isSubtracting)
                 {
-                    Account touched = GetThroughCache(address);
-                    if (touched is null)
-                    {
-                        return;
-                    }
+                    Account touched = GetThroughCacheCheckExists();
+                    if (touched is null) return;
 
                     if (_logger.IsTrace) _logger.Trace($"  Touch {address} (balance)");
-                    if (touched!.IsEmpty)
+                    if (touched.IsEmpty)
                     {
                         PushTouch(address, touched, releaseSpec, true);
                     }
@@ -240,8 +232,9 @@ namespace Nethermind.State
             }
 
             Account account = GetThroughCacheCheckExists();
+            if (account is null) return;
 
-            if (isSubtracting && account!.Balance < balanceChange)
+            if (isSubtracting && account.Balance < balanceChange)
             {
                 throw new InsufficientBalanceException(address);
             }
@@ -253,16 +246,16 @@ namespace Nethermind.State
             PushUpdate(address, changedAccount);
         }
 
-        public void SubtractFromBalance(Address address, in UInt256 balanceChange, IReleaseSpec releaseSpec)
+        public void SubtractFromBalance(Address address, in UInt256 balanceChange, IReleaseSpec releaseSpec, bool isSystemCall = false)
         {
             _needsStateRootUpdate = true;
-            SetNewBalance(address, balanceChange, releaseSpec, true);
+            SetNewBalance(address, balanceChange, releaseSpec, true, isSystemCall);
         }
 
-        public void AddToBalance(Address address, in UInt256 balanceChange, IReleaseSpec releaseSpec)
+        public void AddToBalance(Address address, in UInt256 balanceChange, IReleaseSpec releaseSpec, bool isSystemCall = false)
         {
             _needsStateRootUpdate = true;
-            SetNewBalance(address, balanceChange, releaseSpec, false);
+            SetNewBalance(address, balanceChange, releaseSpec, false, isSystemCall);
         }
 
         /// <summary>

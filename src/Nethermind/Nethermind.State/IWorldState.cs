@@ -85,11 +85,11 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
 
     void InsertCode(Address address, ReadOnlyMemory<byte> code, IReleaseSpec spec, bool isGenesis = false);
 
-    void AddToBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec);
+    void AddToBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec, bool isSystemCall = false);
 
     void AddToBalanceAndCreateIfNotExists(Address address, in UInt256 balanceChange, IReleaseSpec spec);
 
-    void SubtractFromBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec);
+    void SubtractFromBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec, bool isSystemCall = false);
 
     void UpdateStorageRoot(Address address, Hash256 storageRoot);
 
