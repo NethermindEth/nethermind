@@ -17,7 +17,7 @@ namespace Nethermind.Test.Runner
             [Option('i', "input", Required = false, HelpText = "Set the state test input file or directory. Either 'input' or 'stdin' is required")]
             public string Input { get; set; }
 
-            [Option('f', "filter", Required = false, HelpText = "Set the state test name that you want to run.")]
+            [Option('f', "filter", Required = false, HelpText = "Set the test name that you want to run. Could also be a regular expression")]
             public string Filter { get; set; }
 
             [Option('b', "blockTest", Required = false, HelpText = "Set test as blockTest. if not, it will be by default assumed a state test.")]
