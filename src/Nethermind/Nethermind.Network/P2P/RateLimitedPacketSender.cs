@@ -55,9 +55,9 @@ public class RateLimitedPacketSender : ChannelHandlerAdapter, IPacketSender, IDi
                             if (_throttleTime - durationSoFar > TimeSpan.Zero)
                             {
                                 await Task.Delay(_throttleTime - durationSoFar);
-                                bytesSentSoFar = 0;
-                                durationSoFar = TimeSpan.Zero;
                             }
+                            bytesSentSoFar = 0;
+                            durationSoFar = TimeSpan.Zero;
                         }
                         Stopwatch stopwatch = Stopwatch.StartNew();
                         await _context!.WriteAndFlushAsync(buffer);

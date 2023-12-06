@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Threading;
 using System.Threading.Tasks;
 using DotNetty.Buffers;
 using DotNetty.Transport.Channels;
@@ -159,6 +160,49 @@ public class RateLimitedPacketSenderTests
         packetSender.Enqueue(PingMessage.Instance);
         packetSender.Enqueue(PingMessage.Instance);
         packetSender.Enqueue(PingMessage.Instance);
+
+        packetSender.Dispose();
+
+        context.Received(3).WriteAndFlushAsync(Arg.Any<IByteBuffer>());
+        (times[1] - times[0]).Should().BeLessThanOrEqualTo(_epsilon);
+        (times[2] - times[1]).Should().BeGreaterOrEqualTo(throttleTime - _epsilon);
+    }
+
+    [Test]
+    public void messages_are_partially_throttled_when_slow_message()
+    {
+        IByteBuffer buffer = Substitute.For<IByteBuffer>();
+        buffer.ReadableBytes.Returns(300);
+        IMessageSerializationService serializer = Substitute.For<IMessageSerializationService>();
+        serializer.ZeroSerialize(PingMessage.Instance).Returns(buffer);
+
+        List<TimeSpan> times = new();
+        Stopwatch stopwatch = new();
+        IChannelHandlerContext context = Substitute.For<IChannelHandlerContext>();
+        IChannel channel = Substitute.For<IChannel>();
+        channel.Active.Returns(true);
+        context.Channel.Returns(channel);
+        Action[] writeAndFlushDelays =
+        {
+            () => { Thread.Sleep(700); },
+            () => { },
+            () => { },
+        };
+        int delays = 0;
+        context
+            .When(c => c.WriteAndFlushAsync(Arg.Any<object>()))
+            .Do(_ => { writeAndFlushDelays[delays++](); times.Add(stopwatch.Elapsed); });
+
+        TimeSpan throttleTime = TimeSpan.FromMilliseconds(500);
+        RateLimitedPacketSender packetSender = new(400, throttleTime, serializer, LimboLogs.Instance);
+
+        packetSender.Init();
+        packetSender.HandlerAdded(context);
+        stopwatch.Start();
+
+        packetSender.Enqueue(PingMessage.Instance); // Send 300 bytes with delay
+        packetSender.Enqueue(PingMessage.Instance); // Send 300 bytes. Exceeds the limit, but do not wait since the previous message took so long
+        packetSender.Enqueue(PingMessage.Instance); // Send 300 bytes. Exceeds the limit, so wait the delay.
 
         packetSender.Dispose();
 
