@@ -13,6 +13,8 @@ using Nethermind.Blockchain.Find;
 using Nethermind.Facade.Filters;
 using Nethermind.Int256;
 using Nethermind.Core.Crypto;
+using System.Security.Policy;
+using Multiformats.Hash.Algorithms;
 
 namespace Nethermind.Merge.AuRa.Shutter;
 
@@ -46,9 +48,9 @@ public class ShutterTxSource : ITxSource
         public UInt64 Eon;
         public byte[]? EncryptedTransaction;
         public UInt256 GasLimit;
-        public object? Identity; // todo: create G1 field element type
+        public G1 Identity; // todo: create G1 field element type
 
-        public SequencedTransaction(UInt64 eon, byte[] encryptedTransaction, UInt256 gasLimit, object identity)
+        public SequencedTransaction(UInt64 eon, byte[] encryptedTransaction, UInt256 gasLimit, G1 identity)
         {
             Eon = eon;
             EncryptedTransaction = encryptedTransaction;
@@ -57,9 +59,37 @@ public class ShutterTxSource : ITxSource
         }
     }
 
-    private object ComputeIdentity(Bytes32 identityPrefix, Address sender)
+    // cyclic group defined on the curve alt_bn128
+    class G1
     {
-        return new();
+        private readonly UInt256 _x;
+        private readonly UInt256 _y;
+
+        private G1(UInt256 x, UInt256 y)
+        {
+            _x = x;
+            _y = y;
+        }
+
+        public G1 ScalarBaseMult(UInt256 i)
+        {
+            return new G1(_x * i, _y * i);
+        }
+
+        public static G1 Generator()
+        {
+            return new G1(1, 2);
+        }
+    }
+
+    private G1 ComputeIdentity(Bytes32 identityPrefix, Address sender)
+    {
+        byte[] tmp = new byte[52];
+        identityPrefix.Unwrap().CopyTo(tmp, 0);
+        sender.Bytes.CopyTo(tmp, 32);
+
+        Keccak hash = new(tmp);
+        return G1.Generator().ScalarBaseMult(new UInt256(hash.Bytes));
     }
 
     private IEnumerable<SequencedTransaction> GetNextTransactions(UInt64 eon, int txPointer)
