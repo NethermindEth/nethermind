@@ -36,6 +36,9 @@ public class PeerRefresherTests
         _peerRefresher = new PeerRefresher(_syncPeerPool, new TimerFactory(), new TestLogManager());
     }
 
+    [TearDown]
+    public void TearDown() => _peerRefresher.DisposeAsync();
+
     [Test]
     public async Task Given_allHeaderAvailable_thenShouldCallUpdateHeader_3Times()
     {

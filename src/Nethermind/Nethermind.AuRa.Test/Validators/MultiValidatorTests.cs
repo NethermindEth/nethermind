@@ -53,6 +53,9 @@ namespace Nethermind.AuRa.Test.Validators
             _block = new Block(Build.A.BlockHeader.WithNumber(1).TestObject, new BlockBody());
         }
 
+        [TearDown]
+        public void TearDown() => _finalizationManager?.Dispose();
+
         [Test]
         public void throws_ArgumentNullException_on_empty_validator()
         {
