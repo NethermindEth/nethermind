@@ -35,7 +35,14 @@ jobs:
             Config files included:
             - mainnet.cfg
             - goerli.cfg
+            - gnosis.cfg
+            - chiado.cfg
             - sepolia.cfg
+            - energyweb.cfg
+            - volta.cfg
+            - exosama.cfg
+            - joc-mainnet.cfg
+            - joc-testnet.cfg
 
             Properties refreshed:
             - PivotNumber
