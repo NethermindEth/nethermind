@@ -45,7 +45,7 @@ namespace Nethermind.TxPool
         private readonly IChainHeadSpecProvider _specProvider;
         private readonly IAccountStateProvider _accounts;
         private readonly IEthereumEcdsa _ecdsa;
-        private readonly ITxStorage _blobTxStorage;
+        private readonly IBlobTxStorage _blobTxStorage;
         private readonly IChainHeadInfoProvider _headInfo;
         private readonly ITxPoolConfig _txPoolConfig;
         private readonly bool _blobReorgsSupportEnabled;
@@ -80,7 +80,7 @@ namespace Nethermind.TxPool
         /// <param name="incomingTxFilter"></param>
         /// <param name="thereIsPriorityContract"></param>
         public TxPool(IEthereumEcdsa ecdsa,
-            ITxStorage blobTxStorage,
+            IBlobTxStorage blobTxStorage,
             IChainHeadInfoProvider chainHeadInfoProvider,
             ITxPoolConfig txPoolConfig,
             ITxValidator validator,

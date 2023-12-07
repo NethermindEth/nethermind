@@ -14,7 +14,7 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.TxPool;
 
-public class BlobTxStorage : ITxStorage
+public class BlobTxStorage : IBlobTxStorage
 {
     private static readonly TxDecoder _txDecoder = new();
     private static readonly LightTxDecoder _lightTxDecoder = new();

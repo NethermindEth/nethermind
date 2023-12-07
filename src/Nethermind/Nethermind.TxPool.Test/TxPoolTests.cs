@@ -1657,7 +1657,7 @@ namespace Nethermind.TxPool.Test
             ISpecProvider specProvider = null,
             ChainHeadInfoProvider chainHeadInfoProvider = null,
             IIncomingTxFilter incomingTxFilter = null,
-            ITxStorage txStorage = null,
+            IBlobTxStorage txStorage = null,
             bool thereIsPriorityContract = false)
         {
             specProvider ??= MainnetSpecProvider.Instance;

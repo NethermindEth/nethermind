@@ -10,7 +10,7 @@ using Nethermind.Int256;
 
 namespace Nethermind.TxPool;
 
-public class NullBlobTxStorage : ITxStorage
+public class NullBlobTxStorage : IBlobTxStorage
 {
     public static NullBlobTxStorage Instance { get; } = new();
 

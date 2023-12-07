@@ -15,7 +15,4 @@ public interface ITxStorage
     IEnumerable<LightTransaction> GetAll();
     void Add(Transaction transaction);
     void Delete(in ValueHash256 hash, in UInt256 timestamp);
-    bool TryGetBlobTransactionsFromBlock(long blockNumber, out Transaction[]? blockBlobTransactions);
-    void AddBlobTransactionsFromBlock(long blockNumber, IList<Transaction> blockBlobTransactions);
-    void DeleteBlobTransactionsFromBlock(long blockNumber);
 }
