@@ -70,6 +70,8 @@ public class DbOnTheRocks : IDb, ITunableDb
 
     private ManagedIterators _readaheadIterators = new();
 
+    internal long _allocatedSpan = 0;
+
     public DbOnTheRocks(
         string basePath,
         RocksDbSettings rocksDbSettings,
@@ -236,7 +238,13 @@ public class DbOnTheRocks : IDb, ITunableDb
     {
         try
         {
-            return long.TryParse(_db.GetProperty("rocksdb.total-sst-files-size"), out long size) ? size : 0;
+            long sstSize = long.TryParse(_db.GetProperty("rocksdb.total-sst-files-size"), out long totalSstFilesSize)
+                ? totalSstFilesSize
+                : 0;
+            long blobSize = long.TryParse(_db.GetProperty("rocksdb.total-blob-file-size"), out long totalBlobFileSize)
+                ? totalBlobFileSize
+                : 0;
+            return sstSize + blobSize;
         }
         catch (RocksDbSharpException e)
         {
@@ -591,7 +599,10 @@ public class DbOnTheRocks : IDb, ITunableDb
         {
             Span<byte> span = _db.GetSpan(key, cf);
             if (!span.IsNullOrEmpty())
+            {
+                Interlocked.Increment(ref _allocatedSpan);
                 GC.AddMemoryPressure(span.Length);
+            }
             return span;
         }
         catch (RocksDbSharpException e)
@@ -609,7 +620,10 @@ public class DbOnTheRocks : IDb, ITunableDb
     public void DangerousReleaseMemory(in Span<byte> span)
     {
         if (!span.IsNullOrEmpty())
+        {
+            Interlocked.Decrement(ref _allocatedSpan);
             GC.RemoveMemoryPressure(span.Length);
+        }
         _db.DangerousReleaseMemory(span);
     }
 

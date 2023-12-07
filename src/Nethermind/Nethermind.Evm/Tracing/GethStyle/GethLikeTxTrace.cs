@@ -7,9 +7,16 @@ using Newtonsoft.Json;
 
 namespace Nethermind.Evm.Tracing.GethStyle;
 
-public class GethLikeTxTrace
+public class GethLikeTxTrace : IDisposable
 {
-    public GethLikeTxTrace() => Entries = new List<GethTxTraceEntry>();
+    private readonly IDisposable? _disposable;
+
+    public GethLikeTxTrace(IDisposable? disposable = null)
+    {
+        _disposable = disposable;
+    }
+
+    public GethLikeTxTrace() { }
 
     public Stack<Dictionary<string, string>> StoragesByDepth { get; } = new();
 
@@ -20,5 +27,11 @@ public class GethLikeTxTrace
     public byte[] ReturnValue { get; set; } = Array.Empty<byte>();
 
     [JsonProperty(PropertyName = "structLogs")]
-    public List<GethTxTraceEntry> Entries { get; set; }
+    public List<GethTxTraceEntry> Entries { get; set; } = new();
+
+    public GethLikeJavaScriptTrace? CustomTracerResult { get; set; }
+    public void Dispose()
+    {
+        _disposable?.Dispose();
+    }
 }

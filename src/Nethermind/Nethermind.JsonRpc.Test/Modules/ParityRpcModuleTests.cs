@@ -34,6 +34,7 @@ using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
+using System;
 
 namespace Nethermind.JsonRpc.Test.Modules
 {
@@ -44,7 +45,9 @@ namespace Nethermind.JsonRpc.Test.Modules
         private IParityRpcModule _parityRpcModule = null!;
         private Signer _signerStore = null!;
         private EthereumEcdsa _ethereumEcdsa = null!;
+#pragma warning disable NUnit1032
         private ITxPool _txPool = null!;
+#pragma warning restore NUnit1032
         private IBlockTree _blockTree = null!;
         private IReceiptStorage _receiptStorage = null!;
 
@@ -175,6 +178,9 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             _receiptStorage.Insert(block, receipt1, receipt2, receipt3);
         }
+
+        [TearDown]
+        public void TearDown() => (_txPool as IDisposable)?.Dispose();
 
         private static Peer SetUpPeerA()
         {

@@ -43,6 +43,9 @@ namespace Nethermind.Network.Test.Rlpx
             _shortFrame[2] = ShortFrameSize - 15; // size (total - padding)
         }
 
+        [TearDown]
+        public void TearDown() => _macProcessor?.Dispose();
+
         [Test]
         public void Check_and_decrypt_block()
         {

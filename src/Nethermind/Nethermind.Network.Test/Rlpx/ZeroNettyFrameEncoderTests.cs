@@ -22,6 +22,9 @@ namespace Nethermind.Network.Test.Rlpx
             _macProcessor = new FrameMacProcessor(TestItem.IgnoredPublicKey, secrets.A);
         }
 
+        [TearDown]
+        public void TearDown() => _macProcessor?.Dispose();
+
         private IFrameCipher _frameCipher;
         private IFrameMacProcessor _macProcessor;
 

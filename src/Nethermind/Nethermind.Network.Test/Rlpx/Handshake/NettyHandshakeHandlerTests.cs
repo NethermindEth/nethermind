@@ -52,6 +52,9 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
             _session.RemoteNodeId.Returns(NetTestVectors.StaticKeyB.PublicKey);
         }
 
+        [TearDown]
+        public void TearDown() => _session?.Dispose();
+
         private readonly Packet _ackPacket = new(NetTestVectors.AckEip8);
         private readonly Packet _authPacket = new(NetTestVectors.AuthEip8);
         private IChannel _channel;

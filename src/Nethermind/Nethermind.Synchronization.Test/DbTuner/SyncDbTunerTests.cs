@@ -53,6 +53,15 @@ public class SyncDbTunerTests
             _receiptDb);
     }
 
+    [TearDown]
+    public void TearDown()
+    {
+        _blockDb?.Dispose();
+        _codeDb?.Dispose();
+        _receiptDb?.Dispose();
+        _stateDb?.Dispose();
+    }
+
     [Test]
     public void WhenSnapIsOn_TriggerStateDbTune()
     {

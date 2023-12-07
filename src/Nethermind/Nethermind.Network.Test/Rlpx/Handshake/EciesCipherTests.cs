@@ -31,6 +31,9 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
             _messageSerializationService = Build.A.SerializationService().WithEncryptionHandshake().TestObject;
         }
 
+        [TearDown]
+        public void TearDown() => _cryptoRandom?.Dispose();
+
         [Test]
         public void Can_decrypt_auth_eip8_message_with_additional_elements()
         {
