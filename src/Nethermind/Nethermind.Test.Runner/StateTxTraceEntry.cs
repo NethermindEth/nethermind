@@ -4,7 +4,7 @@
 using System.Collections.Generic;
 using System.Text.Json.Serialization;
 
-namespace Nethermind.State.Test.Runner
+namespace Nethermind.Test.Runner
 {
     public class StateTestTxTraceEntry
     {

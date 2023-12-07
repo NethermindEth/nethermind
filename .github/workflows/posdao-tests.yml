@@ -13,6 +13,7 @@ on:
 
 jobs:
   prepare-branches:
+    name: Prepare branches
     runs-on: ubuntu-latest
     outputs:
       matrix: ${{ steps.set-matrix.outputs.matrix }}
@@ -27,8 +28,7 @@ jobs:
             echo '{"branch":["${{ github.event.inputs.branch }}"]}' > matrix.json
           fi
           echo "matrix=$(cat matrix.json)" >> $GITHUB_OUTPUT
-        
-    name: Prepare branches
+
   run-posdao-tests:
     name: Run Nethermind POSDAO tests
     needs: prepare-branches
@@ -40,7 +40,6 @@ jobs:
       - name: Check out Nethermind repository
         uses: actions/checkout@v4
         with:
-          submodules: recursive
           path: nethermind
       - name: Check out posdao-test-setup repository
         uses: actions/checkout@v4
@@ -68,7 +67,7 @@ jobs:
         with:
           node-version: 12
       - name: Set up Node.js v16
-        if: ${{ !contains(matrix.branch, 'merge') }}
+        if: ${{ contains(matrix.branch, 'merge') }}
         uses: actions/setup-node@v3
         with:
           node-version: 16

@@ -5,7 +5,7 @@ using System.Text.Json.Serialization;
 
 using Nethermind.Core.Crypto;
 
-namespace Nethermind.State.Test.Runner
+namespace Nethermind.Test.Runner
 {
     public class StateTestTxTraceState
     {

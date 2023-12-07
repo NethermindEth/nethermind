@@ -9,10 +9,14 @@ using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
@@ -24,7 +28,7 @@ using Nethermind.Synchronization.Reporting;
 using NSubstitute;
 using NUnit.Framework;
 
-namespace Nethermind.Synchronization.Test.FastSync
+namespace Nethermind.Synchronization.Test.FastBlocks
 {
     [TestFixture]
     public class ReceiptsSyncFeedTests
@@ -44,14 +48,10 @@ namespace Nethermind.Synchronization.Test.FastSync
                         .WithTransactions(blockNumber > _pivotNumber - nonEmptyBlocks ? txPerBlock : 0, specProvider).TestObject;
 
                     if (blockNumber > _pivotNumber - nonEmptyBlocks - emptyBlocks)
-                    {
                         Blocks[blockNumber] = block;
-                    }
 
                     if (blockNumber == _pivotNumber - nonEmptyBlocks - emptyBlocks + 1)
-                    {
                         LowestInsertedBody = block;
-                    }
 
                     parent = block;
                 }
@@ -73,6 +73,7 @@ namespace Nethermind.Synchronization.Test.FastSync
         private ISyncConfig _syncConfig = null!;
         private ISyncReport _syncReport = null!;
         private IBlockTree _blockTree = null!;
+        private IDb _metadataDb = null!;
 
         private static readonly long _pivotNumber = 1024;
 
@@ -98,6 +99,7 @@ namespace Nethermind.Synchronization.Test.FastSync
         {
             _receiptStorage = Substitute.For<IReceiptStorage>();
             _blockTree = Substitute.For<IBlockTree>();
+            _metadataDb = new TestMemDb();
 
             _syncConfig = new SyncConfig { FastBlocks = true, FastSync = true };
             _syncConfig.PivotNumber = _pivotNumber.ToString();
@@ -120,6 +122,7 @@ namespace Nethermind.Synchronization.Test.FastSync
             _feed?.Dispose();
             _syncPeerPool?.Dispose();
             _syncReport?.Dispose();
+            _metadataDb?.Dispose();
         }
 
         private ReceiptsSyncFeed CreateFeed()
@@ -131,6 +134,7 @@ namespace Nethermind.Synchronization.Test.FastSync
                 _syncPeerPool,
                 _syncConfig,
                 _syncReport,
+                _metadataDb,
                 LimboLogs.Instance);
         }
 
@@ -146,6 +150,7 @@ namespace Nethermind.Synchronization.Test.FastSync
                     _syncPeerPool,
                     _syncConfig,
                     _syncReport,
+                    _metadataDb,
                     LimboLogs.Instance));
         }
 
@@ -159,6 +164,7 @@ namespace Nethermind.Synchronization.Test.FastSync
                 _syncPeerPool,
                 _syncConfig,
                 _syncReport,
+                _metadataDb,
                 LimboLogs.Instance);
             _feed.InitializeFeed();
 
@@ -234,6 +240,50 @@ namespace Nethermind.Synchronization.Test.FastSync
             _measuredProgressQueue.HasEnded.Should().BeTrue();
         }
 
+        [TestCase(1024, false, null, false)]
+        [TestCase(11052930, false, null, true)]
+        [TestCase(11052984, false, null, true)]
+        [TestCase(11052985, false, null, false)]
+        [TestCase(1024, false, 11052984, false)]
+        [TestCase(11052930, false, 11052984, true)]
+        [TestCase(11052984, false, 11052984, true)]
+        [TestCase(11052985, false, 11052984, false)]
+        [TestCase(1024, true, null, false)]
+        [TestCase(11052930, true, null, false)]
+        [TestCase(11052984, true, null, false)]
+        [TestCase(11052985, true, null, false)]
+        [TestCase(1024, false, 0, false)]
+        [TestCase(11052930, false, 0, false)]
+        [TestCase(11052984, false, 0, false)]
+        [TestCase(11052985, false, 0, false)]
+        public async Task When_finished_sync_with_old_default_barrier_then_finishes_imedietely(
+            long? lowestInsertedReceiptBlockNumber,
+            bool JustStarted,
+            long? previousBarrierInDb,
+            bool shouldfinish)
+        {
+            _syncConfig.AncientReceiptsBarrier = 0;
+            _receiptStorage.HasBlock(Arg.Is(_pivotNumber), Arg.Any<Hash256>()).Returns(!JustStarted);
+            if (previousBarrierInDb != null)
+                _metadataDb.Set(MetadataDbKeys.ReceiptsBarrierWhenStarted, previousBarrierInDb.Value.ToBigEndianByteArrayWithoutLeadingZeros());
+            LoadScenario(_256BodiesWithOneTxEach);
+            _receiptStorage.LowestInsertedReceiptBlockNumber.Returns(lowestInsertedReceiptBlockNumber);
+
+            ReceiptsSyncBatch? request = await _feed.PrepareRequest();
+            if (shouldfinish)
+            {
+                request.Should().BeNull();
+                _feed.CurrentState.Should().Be(SyncFeedState.Finished);
+            }
+            else
+            {
+                request.Should().NotBeNull();
+                _feed.CurrentState.Should().NotBe(SyncFeedState.Finished);
+            }
+            _measuredProgress.HasEnded.Should().Be(shouldfinish);
+            _measuredProgressQueue.HasEnded.Should().Be(shouldfinish);
+        }
+
         private void LoadScenario(Scenario scenario)
         {
             LoadScenario(scenario, _syncConfig);
@@ -252,6 +302,7 @@ namespace Nethermind.Synchronization.Test.FastSync
                 _syncPeerPool,
                 _syncConfig,
                 _syncReport,
+                _metadataDb,
                 LimboLogs.Instance);
             _feed.InitializeFeed();
 
@@ -261,9 +312,7 @@ namespace Nethermind.Synchronization.Test.FastSync
                 {
                     Block? block = scenario.Blocks[ci.Arg<long>()];
                     if (block is null)
-                    {
                         return null;
-                    }
 
                     BlockInfo blockInfo = new(block.Hash!, block.TotalDifficulty ?? 0)
                     {
