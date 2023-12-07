@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Extensions;
 using Nethermind.Db;
 using Nethermind.Logging;
@@ -40,19 +41,23 @@ public class ProcessedTransactionsDbCleaner : IDisposable
     {
         try
         {
-            List<long> blocksInDb = new();
+            ArrayPoolList<long> blocksInDb = new();
             foreach (byte[] key in _processedTxsDb.GetAllKeys())
             {
                 blocksInDb.Add(key.ToLongFromBigEndianByteArrayWithoutLeadingZeros());
             }
 
             if (_logger.IsTrace) _logger.Trace($"There are processed blob txs from {blocksInDb.Count} blocks in ProcessedTxs db");
-            foreach (long blockNumber in blocksInDb)
+
+            using (IWriteBatch writeBatch = _processedTxsDb.StartWriteBatch())
             {
-                if (newlyFinalizedBlockNumber >= blockNumber)
+                foreach (long blockNumber in blocksInDb)
                 {
-                    if (_logger.IsTrace) _logger.Trace($"Cleaning processed blob txs from block {blockNumber}");
-                    _processedTxsDb.Delete(blockNumber);
+                    if (newlyFinalizedBlockNumber >= blockNumber)
+                    {
+                        if (_logger.IsTrace) _logger.Trace($"Cleaning processed blob txs from block {blockNumber}");
+                        writeBatch.Delete(blockNumber);
+                    }
                 }
             }
             if (_logger.IsDebug) _logger.Debug($"Cleaned processed blob txs from block {_lastFinalizedBlock} to block {newlyFinalizedBlockNumber}");
