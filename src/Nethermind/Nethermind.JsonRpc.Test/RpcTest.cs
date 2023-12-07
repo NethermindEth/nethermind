@@ -2,14 +2,13 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text.Json;
-using System.Text.Json.Serialization;
 using System.Threading.Tasks;
 
 using FluentAssertions;
+
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Test.Modules;
 using Nethermind.Logging;
@@ -33,12 +32,9 @@ public static class RpcTest
         IJsonRpcService service = BuildRpcService(module);
         JsonRpcRequest request = GetJsonRequest(method, parameters);
 
-        JsonRpcContext context = new JsonRpcContext(RpcEndpoint.Http);
-        if (module is IContextAwareRpcModule contextAwareModule
-            && contextAwareModule.Context is not null)
-        {
-            context = contextAwareModule.Context;
-        }
+        JsonRpcContext context = (module is IContextAwareRpcModule contextAwareModule && contextAwareModule.Context is not null) ?
+            contextAwareModule.Context :
+            new JsonRpcContext(RpcEndpoint.Http);
         JsonRpcResponse response = await service.SendRequestAsync(request, context);
 
         EthereumJsonSerializer serializer = new();
@@ -52,8 +48,6 @@ public static class RpcTest
 
         stream.Seek(0, SeekOrigin.Begin);
         string serialized = new StreamReader(stream).ReadToEnd();
-        TestContext.Out?.WriteLine("Serialized:");
-        TestContext.Out?.WriteLine(serialized);
 
         size.Should().Be(serialized.Length);
 

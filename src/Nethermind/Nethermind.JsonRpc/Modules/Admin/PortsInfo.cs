@@ -9,10 +9,8 @@ namespace Nethermind.JsonRpc.Modules.Admin
     public class PortsInfo
     {
         [JsonPropertyName("discovery")]
-        [JsonPropertyOrder(0)]
         public int Discovery { get; set; }
         [JsonPropertyName("listener")]
-        [JsonPropertyOrder(1)]
         public int Listener { get; set; }
     }
 }

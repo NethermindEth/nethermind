@@ -41,30 +41,23 @@ public class NodeInfo
     }
 
     [JsonPropertyName("enode")]
-    [JsonPropertyOrder(0)]
     public string Enode { get; set; }
 
     [JsonPropertyName("id")]
-    [JsonPropertyOrder(1)]
     public string Id { get; set; }
 
     [JsonPropertyName("ip")]
-    [JsonPropertyOrder(2)]
     public string? Ip { get; set; }
 
     [JsonPropertyName("listenAddr")]
-    [JsonPropertyOrder(3)]
     public string ListenAddress { get; set; }
 
     [JsonPropertyName("name")]
-    [JsonPropertyOrder(4)]
     public string Name { get; set; }
 
     [JsonPropertyName("ports")]
-    [JsonPropertyOrder(5)]
     public PortsInfo Ports { get; set; }
 
     [JsonPropertyName("protocols")]
-    [JsonPropertyOrder(6)]
     public Dictionary<string, EthProtocolInfo> Protocols { get; set; }
 }

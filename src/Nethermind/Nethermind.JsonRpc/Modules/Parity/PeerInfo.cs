@@ -16,23 +16,18 @@ namespace Nethermind.JsonRpc.Modules.Parity
     public class PeerInfo
     {
         [JsonPropertyName("id")]
-        [JsonPropertyOrder(0)]
         public string Id { get; set; }
 
         [JsonPropertyName("name")]
-        [JsonPropertyOrder(1)]
         public string Name { get; set; }
 
         [JsonPropertyName("caps")]
-        [JsonPropertyOrder(2)]
         public List<string> Caps { get; set; }
 
         [JsonPropertyName("network")]
-        [JsonPropertyOrder(3)]
         public PeerNetworkInfo Network { get; set; }
 
         [JsonPropertyName("protocols")]
-        [JsonPropertyOrder(4)]
         public Dictionary<string, EthProtocolInfo> Protocols { get; set; }
 
         public PeerInfo(Peer peer)

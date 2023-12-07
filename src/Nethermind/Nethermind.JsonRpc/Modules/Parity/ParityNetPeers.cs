@@ -9,19 +9,15 @@ namespace Nethermind.JsonRpc.Modules.Parity
     public class ParityNetPeers
     {
         [JsonPropertyName("active")]
-        [JsonPropertyOrder(0)]
         public int Active { get; set; }
 
         [JsonPropertyName("connected")]
-        [JsonPropertyOrder(1)]
         public int Connected { get; set; }
 
         [JsonPropertyName("max")]
-        [JsonPropertyOrder(2)]
         public int Max { get; set; }
 
         [JsonPropertyName("peers")]
-        [JsonPropertyOrder(3)]
         public PeerInfo[] Peers { get; set; }
 
         public ParityNetPeers()

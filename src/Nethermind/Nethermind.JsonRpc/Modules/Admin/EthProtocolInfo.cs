@@ -11,16 +11,12 @@ namespace Nethermind.JsonRpc.Modules.Admin
     public class EthProtocolInfo
     {
         [JsonPropertyName("difficulty")]
-        [JsonPropertyOrder(0)]
         public UInt256 Difficulty { get; set; }
         [JsonPropertyName("genesis")]
-        [JsonPropertyOrder(1)]
         public Hash256 GenesisHash { get; set; }
         [JsonPropertyName("head")]
-        [JsonPropertyOrder(2)]
         public Hash256 HeadHash { get; set; }
         [JsonPropertyName("network")]
-        [JsonPropertyOrder(3)]
-        public ulong ChainId { get; set; }
+        public ulong NewtorkId { get; set; }
     }
 }

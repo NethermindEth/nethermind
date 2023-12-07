@@ -11,15 +11,12 @@ namespace Nethermind.JsonRpc.Modules.Parity
     public class EthProtocolInfo
     {
         [JsonPropertyName("version")]
-        [JsonPropertyOrder(0)]
         public byte Version { get; set; }
 
         [JsonPropertyName("difficulty")]
-        [JsonPropertyOrder(1)]
         public UInt256 Difficulty { get; set; }
 
         [JsonPropertyName("head")]
-        [JsonPropertyOrder(2)]
         public Hash256 HeadHash { get; set; }
     }
 }

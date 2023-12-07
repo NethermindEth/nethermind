@@ -9,23 +9,18 @@ namespace Nethermind.KeyStore
     public class KdfParams
     {
         [JsonPropertyName("dklen")]
-        [JsonPropertyOrder(0)]
         public int DkLen { get; set; }
 
         [JsonPropertyName("salt")]
-        [JsonPropertyOrder(1)]
         public string Salt { get; set; }
 
         [JsonPropertyName("n")]
-        [JsonPropertyOrder(2)]
         public int? N { get; set; }
 
         [JsonPropertyName("r")]
-        [JsonPropertyOrder(3)]
         public int? R { get; set; }
 
         [JsonPropertyName("p")]
-        [JsonPropertyOrder(4)]
         public int? P { get; set; }
 
         [JsonPropertyName("c")]
