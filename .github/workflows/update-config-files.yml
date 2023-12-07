@@ -50,7 +50,7 @@ jobs:
           committer: GitHub <noreply@github.com>
           branch: configs-update
           branch-suffix: short-commit-hash
-          base: master
+          base: ${{ github.ref }}
       - name: Check outputs
         run: |
           echo "Pull Request Number - ${{ env.PULL_REQUEST_NUMBER }}"
