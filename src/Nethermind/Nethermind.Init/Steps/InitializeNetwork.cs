@@ -488,7 +488,7 @@ public class InitializeNetwork : IStep
             _api.DisconnectsAnalyzer,
             _api.LogManager,
             sendLatency: TimeSpan.FromMilliseconds(_networkConfig.SimulateSendLatencyMs),
-            throttlingConfig: (_networkConfig.PacketSenderThrottlingBytesPerSecond, TimeSpan.FromSeconds(1))
+            throttlingConfig: (_networkConfig.MaxSentBytesPerSecond, TimeSpan.FromSeconds(1))
         );
 
         await _api.RlpxPeer.Init();
@@ -509,8 +509,8 @@ public class InitializeNetwork : IStep
 
         ProtocolValidator protocolValidator = new(_api.NodeStatsManager!, _api.BlockTree, forkInfo, _api.LogManager);
         PooledTxsRequestor pooledTxsRequestor = new(_api.TxPool!, _api.Config<ITxPoolConfig>());
-        (int, TimeSpan)? throttleOptions = _networkConfig.ProtocolHandlerThrottlingBytesPerSecond != 0
-            ? (_networkConfig.ProtocolHandlerThrottlingBytesPerSecond, TimeSpan.FromSeconds(1))
+        (int, TimeSpan)? throttleOptions = _networkConfig.MaxReceivedBytesPerSecond != 0
+            ? (_networkConfig.MaxReceivedBytesPerSecond, TimeSpan.FromSeconds(1))
             : null;
         _api.ProtocolsManager = new ProtocolsManager(
             _api.SyncPeerPool!,

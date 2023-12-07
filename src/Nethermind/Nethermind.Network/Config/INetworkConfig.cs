@@ -112,8 +112,8 @@ public interface INetworkConfig : IConfig
     bool DisableDiscV4DnsFeeder { get; set; }
 
     [ConfigItem(DefaultValue = "0", HiddenFromDocs = true, Description = $"[TECHNICAL] Limit the number of bytes sent per second as part of P2P messages. Default is 0 (unlimited)")]
-    int PacketSenderThrottlingBytesPerSecond { get; set; }
+    int MaxSentBytesPerSecond { get; set; }
 
     [ConfigItem(DefaultValue = "0", HiddenFromDocs = true, Description = $"[TECHNICAL] Limit the number of bytes received per second as part of protocol packets. Default is 0 (unlimited)")]
-    int ProtocolHandlerThrottlingBytesPerSecond { get; set; }
+    int MaxReceivedBytesPerSecond { get; set; }
 }
