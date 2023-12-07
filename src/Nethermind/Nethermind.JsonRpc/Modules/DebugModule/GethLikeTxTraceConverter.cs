@@ -24,19 +24,24 @@ public class GethLikeTxTraceConverter : JsonConverter<GethLikeTxTrace>
         if (value is null)
         {
             writer.WriteNull();
-            return;
         }
+        else if (value.CustomTracerResult is not null)
+        {
+            serializer.Serialize(writer, value.CustomTracerResult);
+        }
+        else
+        {
+            writer.WriteStartObject();
 
-        writer.WriteStartObject();
+            writer.WriteProperty("gas", value.Gas, serializer);
+            writer.WriteProperty("failed", value.Failed);
+            writer.WriteProperty("returnValue", value.ReturnValue, serializer);
 
-        writer.WriteProperty("gas", value.Gas, serializer);
-        writer.WriteProperty("failed", value.Failed);
-        writer.WriteProperty("returnValue", value.ReturnValue, serializer);
+            writer.WritePropertyName("structLogs");
+            WriteEntries(writer, value.Entries, serializer);
 
-        writer.WritePropertyName("structLogs");
-        WriteEntries(writer, value.Entries, serializer);
-
-        writer.WriteEndObject();
+            writer.WriteEndObject();
+        }
     }
 
     private static void WriteEntries(JsonWriter writer, List<GethTxTraceEntry> entries, JsonSerializer _)
