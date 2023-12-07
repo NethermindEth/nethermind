@@ -44,7 +44,9 @@ public class Eth68ProtocolHandler : Eth67ProtocolHandler
         : base(session, serializer, nodeStatsManager, syncServer, txPool, pooledTxsRequestor, gossipPolicy, forkInfo, logManager, transactionsGossipPolicy)
     {
         _pooledTxsRequestor = pooledTxsRequestor;
-        _acceptanceStrategy = throttleOptions is null ? null : new RateLimitedPacketAcceptanceStrategy(throttleOptions.Value.byteLimit, throttleOptions.Value.throttle);
+        _acceptanceStrategy = throttleOptions is null
+            ? null
+            : new ConcurrentPacketAcceptanceStrategy(new RateLimitedPacketAcceptanceStrategy(throttleOptions.Value.byteLimit, throttleOptions.Value.throttle));
 
         // Capture Action once rather than per call
         _sendAction = Send;
