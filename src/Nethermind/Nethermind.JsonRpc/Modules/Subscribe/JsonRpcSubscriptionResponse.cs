@@ -10,14 +10,17 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
     public class JsonRpcSubscriptionResponse : JsonRpcResponse
     {
         [JsonPropertyName("method")]
+        [JsonPropertyOrder(1)]
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public new string MethodName => "eth_subscription";
 
         [JsonPropertyName("params")]
+        [JsonPropertyOrder(2)]
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public JsonRpcSubscriptionResult Params { get; set; }
 
         [JsonPropertyName("id")]
+        [JsonPropertyOrder(3)]
         [JsonConverter(typeof(IdConverter))]
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public new object? Id { get { return base.Id; } set { base.Id = value; } }
