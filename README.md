@@ -14,7 +14,7 @@
 [![Ask on Discourse](https://img.shields.io/discourse/posts?style=social&label=Community&logo=discourse&server=https%3A%2F%2Fcommunity.nethermind.io)](https://community.nethermind.io/c/nethermind-client)
 [![GitPOAPs](https://public-api.gitpoap.io/v1/repo/NethermindEth/nethermind/badge)](https://www.gitpoap.io/gh/NethermindEth/nethermind)
 
-Nethermind is a high-performance, highly configurable full Ethereum protocol execution client built on .NET that runs on Linux, Windows, and macOS, and supports Clique, Aura, and Ethash. Nethermind offers very fast sync speeds and support for external plugins. Enjoy reliable access to rich on-chain data thanks to high-performance JSON-RPC based on the Kestrel web server. Healthy node monitoring is secured with Grafana analytics and Seq logging.
+Nethermind is a high-performance, highly configurable Ethereum execution client built on .NET that runs on Linux, Windows, and macOS and supports Clique, Aura, and Ethash. With breakneck sync speeds and support for external plugins, it provides reliable access to rich on-chain data thanks to a high-performance JSON-RPC interface and node health monitoring with Grafana and Seq.
 
 ## Documentation
 
@@ -50,14 +50,14 @@ Release builds are available on the [Releases page](https://github.com/nethermin
 1. `sudo add-apt-repository ppa:nethermindeth/nethermind` \
    If command not found: `sudo apt-get install software-properties-common`
 2. `sudo apt-get install nethermind`
-3. To run directly: `nethermind -c mainnet` \
-   or with the assistant: `nethermind`
+3. `nethermind -c mainnet`
 
 ### On Windows
 
 #### Prerequisites
 
-Install [Visual C++ Redistributable](https://aka.ms/vcredist):
+In some cases, [Visual C++ Redistributable](https://aka.ms/vcredist) may need an update:
+
 ```
 winget install Microsoft.VCRedist.2015+.x64
 ```
@@ -65,23 +65,15 @@ winget install Microsoft.VCRedist.2015+.x64
 #### Install using Windows Package Manager
 
 1. `winget install nethermind`
-2. To run directly: `nethermind.exe -c mainnet` \
-   or with the assistant: `nethermind-launcher.exe` 
+2. `nethermind -c mainnet`
 
 ### On macOS
-
-#### Prerequisites
-
-```sh
-brew install lz4 snappy zstd
-```
 
 #### Install using Homebrew
 
 1. `brew tap nethermindeth/nethermind`
 2. `brew install nethermind`
-3. To run directly: `nethermind -c mainnet` \
-   or with the assistant: `nethermind-launcher`
+3. `nethermind -c mainnet`
 
 ## Docker image
 

@@ -1,15 +1,9 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <OutputType>Exe</OutputType>
-    <TargetFramework>net7.0</TargetFramework>
     <AssemblyName>nethtest</AssemblyName>
     <Nullable>annotations</Nullable>
-  </PropertyGroup>
-
-  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">
-    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
-    <WarningsAsErrors />
   </PropertyGroup>
 
   <ItemGroup>
@@ -22,7 +16,11 @@
   </ItemGroup>
 
   <ItemGroup>
+    <None Remove="blockchainTest1.json" />
     <None Remove="statetest1.json" />
+    <Content Include="blockchainTest1.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
     <Content Include="statetest1.json">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </Content>

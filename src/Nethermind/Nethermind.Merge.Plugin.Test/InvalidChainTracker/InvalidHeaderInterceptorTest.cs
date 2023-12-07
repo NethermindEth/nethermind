@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -16,7 +17,9 @@ namespace Nethermind.Merge.Plugin.Test;
 public class InvalidHeaderInterceptorTest
 {
     private IHeaderValidator _baseValidator = null!;
+#pragma warning disable NUnit1032
     private IInvalidChainTracker _tracker = null!;
+#pragma warning restore NUnit1032
     private InvalidHeaderInterceptor _invalidHeaderInterceptor = null!;
 
     [SetUp]
@@ -29,6 +32,9 @@ public class InvalidHeaderInterceptorTest
             _tracker,
             NullLogManager.Instance);
     }
+
+    [TearDown]
+    public void TearDown() => (_invalidHeaderInterceptor as IDisposable)?.Dispose();
 
     [TestCase(true, false)]
     [TestCase(false, true)]

@@ -46,6 +46,7 @@ public class NodeDataProtocolHandlerTests
     public void TearDown()
     {
         _handler.Dispose();
+        _session.Dispose();
     }
 
     [Test]

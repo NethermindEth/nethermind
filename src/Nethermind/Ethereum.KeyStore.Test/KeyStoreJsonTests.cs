@@ -7,6 +7,7 @@ using System.Security;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Crypto;
+using Nethermind.Db;
 using Nethermind.KeyStore;
 using Nethermind.KeyStore.Config;
 using Nethermind.Logging;
@@ -45,6 +46,9 @@ namespace Ethereum.KeyStore.Test
             var testsContent = File.ReadAllText("basic_tests.json");
             _testsModel = _serializer.Deserialize<KeyStoreTestsModel>(testsContent);
         }
+
+        [TearDown]
+        public void TearDown() => _cryptoRandom?.Dispose();
 
         [Test]
         public void Test1Test()

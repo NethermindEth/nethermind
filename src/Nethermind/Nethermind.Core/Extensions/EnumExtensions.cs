@@ -32,7 +32,9 @@ public static class EnumExtensions
         }
 
         // TODO: in .net 7 rewrite with generic INumber based on FastEnum.GetUnderlyingType<T>()
+#pragma warning disable CA2021 // Do not call Enumerable.Cast<T> or Enumerable.OfType<T> with incompatible types
         int[] valuesBinary = values.Cast<int>().ToArray();
+#pragma warning restore CA2021 // Do not call Enumerable.Cast<T> or Enumerable.OfType<T> with incompatible types
 
         int[] valuesInverted = valuesBinary.Select(v => ~v).ToArray();
         int max = 0;

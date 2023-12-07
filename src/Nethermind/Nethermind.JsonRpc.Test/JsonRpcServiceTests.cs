@@ -136,7 +136,7 @@ namespace Nethermind.JsonRpc.Test
 
         [TestCase("")]
         [TestCase(null)]
-        public void Eth_call_is_working_with_explicit_null_as_the_last_argument(string nullValue)
+        public void Eth_call_is_working_with_explicit_null_as_the_last_argument(string? nullValue)
         {
             EthereumJsonSerializer serializer = new();
             IEthRpcModule ethRpcModule = Substitute.For<IEthRpcModule>();
@@ -144,7 +144,7 @@ namespace Nethermind.JsonRpc.Test
 
             string serialized = serializer.Serialize(new TransactionForRpc());
 
-            JsonRpcSuccessResponse? response = TestRequest(ethRpcModule, "eth_call", serialized, nullValue) as JsonRpcSuccessResponse;
+            JsonRpcSuccessResponse? response = TestRequest(ethRpcModule, "eth_call", serialized, nullValue!) as JsonRpcSuccessResponse;
             Assert.That(response?.Result, Is.EqualTo("0x"));
         }
 
