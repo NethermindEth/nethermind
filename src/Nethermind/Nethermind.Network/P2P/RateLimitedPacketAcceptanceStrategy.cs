@@ -20,6 +20,7 @@ public class RateLimitedPacketAcceptanceStrategy : IPacketAcceptanceStrategy
         _throttle = throttle;
         _timestamp = DateTime.UnixEpoch;
     }
+
     public bool Accepts(ZeroPacket packet)
     {
         int bytesToAccept = packet.Content.ReadableBytes;
