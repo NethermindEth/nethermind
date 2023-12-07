@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Numerics;
@@ -17,11 +18,7 @@ namespace Nethermind.Serialization.Json;
 
 public class JavaScriptObjectConverter : JsonConverter<IJavaScriptObject>
 {
-    [ThreadStatic]
-    private static bool _disabled;
-
-    public override bool CanConvert(Type objectType) =>
-        _disabled ? (_disabled = false) : typeof(IJavaScriptObject).IsAssignableFrom(objectType);
+    public override bool CanConvert(Type objectType) => typeof(IJavaScriptObject).IsAssignableFrom(objectType);
 
     public override void Write(Utf8JsonWriter writer, IJavaScriptObject o, JsonSerializerOptions options)
     {
@@ -47,18 +44,34 @@ public class JavaScriptObjectConverter : JsonConverter<IJavaScriptObject>
             {
                 dictionary.Remove("error");
             }
+
+            JsonSerializer.Serialize(writer, dictionary, options);
+            return;
+        }
+        else if (o is IList<object> list)
+        {
+            JsonSerializer.Serialize(writer, list, options);
+            return;
+        }
+        else if (o is IArrayBufferView buffer)
+        {
+            int size = (int)buffer.Size;
+            if (size == 0)
+            {
+                JsonSerializer.Serialize(writer, Array.Empty<int>(), options);
+                return;
+            }
+
+            byte[] array = ArrayPool<byte>.Shared.Rent(size);
+
+            buffer.ReadBytes(buffer.Offset, buffer.Size, array, 0);
+            JsonSerializer.Serialize(writer, array.AsMemory(0, size), options);
+
+            ArrayPool<byte>.Shared.Return(array);
+            return;
         }
 
-        // fallback to standard serialization
-        _disabled = true;
-        try
-        {
-            JsonSerializer.Serialize(writer, o, options);
-        }
-        finally
-        {
-            _disabled = false;
-        }
+        throw new NotSupportedException(o.GetType().ToString());
     }
 
     public override IJavaScriptObject? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
