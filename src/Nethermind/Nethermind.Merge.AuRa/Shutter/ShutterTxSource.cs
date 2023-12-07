@@ -3,7 +3,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Text;
 using System.Linq;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
@@ -13,8 +12,6 @@ using Nethermind.Blockchain.Find;
 using Nethermind.Facade.Filters;
 using Nethermind.Int256;
 using Nethermind.Core.Crypto;
-using System.Security.Policy;
-using Multiformats.Hash.Algorithms;
 
 namespace Nethermind.Merge.AuRa.Shutter;
 
@@ -48,7 +45,7 @@ public class ShutterTxSource : ITxSource
         public UInt64 Eon;
         public byte[]? EncryptedTransaction;
         public UInt256 GasLimit;
-        public G1 Identity; // todo: create G1 field element type
+        public G1 Identity;
 
         public SequencedTransaction(UInt64 eon, byte[] encryptedTransaction, UInt256 gasLimit, G1 identity)
         {
@@ -60,21 +57,27 @@ public class ShutterTxSource : ITxSource
     }
 
     // cyclic group defined on the curve alt_bn128
-    class G1
+    // https://github.com/ethereum/py_pairing/tree/master/py_ecc/bn128
+    class GroupElement
     {
-        private readonly UInt256 _x;
-        private readonly UInt256 _y;
+        protected readonly UInt256 _x;
+        protected readonly UInt256 _y;
 
-        private G1(UInt256 x, UInt256 y)
+        protected GroupElement(UInt256 x, UInt256 y)
         {
             _x = x;
             _y = y;
         }
 
-        public G1 ScalarBaseMult(UInt256 i)
+        public GroupElement ScalarBaseMult(UInt256 i)
         {
-            return new G1(_x * i, _y * i);
+            return new GroupElement(_x * i, _y * i);
         }
+    }
+
+    class G1 : GroupElement
+    {
+        private G1(UInt256 x, UInt256 y) : base(x, y) {}
 
         public static G1 Generator()
         {
@@ -88,8 +91,9 @@ public class ShutterTxSource : ITxSource
         identityPrefix.Unwrap().CopyTo(tmp, 0);
         sender.Bytes.CopyTo(tmp, 32);
 
+        // keccack256?
         Keccak hash = new(tmp);
-        return G1.Generator().ScalarBaseMult(new UInt256(hash.Bytes));
+        return (G1) G1.Generator().ScalarBaseMult(new UInt256(hash.Bytes, true));
     }
 
     private IEnumerable<SequencedTransaction> GetNextTransactions(UInt64 eon, int txPointer)
@@ -120,6 +124,16 @@ public class ShutterTxSource : ITxSource
         return txs;
     }
 
+    private byte[] RecoverSigma(byte[] encryptedMessage, G1 decryptionKey)
+    {
+        return new byte[0];
+    }
+
+    private byte[] Decrypt(byte[] encryptedMessage, G1 decryptionKey)
+    {
+        return new byte[0];
+    }
+
     public ShutterTxSource(ILogFinder logFinder, IFilterStore filterStore)
         : base()
     {
@@ -132,6 +146,9 @@ public class ShutterTxSource : ITxSource
     {
         // todo: get eon and txpointer
         IEnumerable<SequencedTransaction> encryptedTransactions = GetNextTransactions(0, 0);
+        
+        // todo: get decryption key from gossip layer
+        G1 decryptionKey = G1.Generator(); 
         // todo: decrypt transactions
         return Enumerable.Empty<Transaction>();
     }
