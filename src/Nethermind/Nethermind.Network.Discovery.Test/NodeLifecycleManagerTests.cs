@@ -97,7 +97,7 @@ namespace Nethermind.Network.Discovery.Test
 
             byte[] mdc = new byte[32];
             PingMsg? sentPing = null;
-            _discoveryManagerMock.SendMessage(Arg.Do<PingMsg>(msg =>
+            await _discoveryManagerMock.SendMessageAsync(Arg.Do<PingMsg>(msg =>
             {
                 msg.Mdc = mdc;
                 sentPing = msg;
@@ -168,7 +168,7 @@ namespace Nethermind.Network.Discovery.Test
                 .Received(0)
                 .GetNodeLifecycleManager(Arg.Any<Node>(), Arg.Any<bool>());
 
-            nodeManager.SendFindNode(Array.Empty<byte>());
+            await nodeManager.SendFindNode(Array.Empty<byte>());
 
             Node[] firstNodes = TestItem.PublicKeys
                 .Take(12)
@@ -388,7 +388,7 @@ namespace Nethermind.Network.Discovery.Test
         {
             byte[] mdc = new byte[32];
             PingMsg? sentPing = null;
-            _discoveryManagerMock.SendMessage(Arg.Do<PingMsg>(msg =>
+            await _discoveryManagerMock.SendMessageAsync(Arg.Do<PingMsg>(msg =>
             {
                 msg.Mdc = mdc;
                 sentPing = msg;

@@ -16,21 +16,20 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Check out Nethermind repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           ref: ${{ github.event.inputs.ref || github.ref }}
           path: n
       - name: Check out Nethermind docs repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           repository: NethermindEth/docs
-          ref: feature/docusaurus
           path: d
           token: ${{ secrets.REPOSITORY_DISPATCH_TOKEN }}
       - name: Set up .NET
         uses: actions/setup-dotnet@v3
         with:
-          dotnet-version: 7
+          global-json-file: n/global.json
       - name: Build DocGen
         working-directory: n
         run: dotnet build tools/docgen/DocGen.csproj -c release -o docgen

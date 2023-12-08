@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Linq;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
@@ -18,7 +19,9 @@ namespace Nethermind.Merge.Plugin.Test;
 public class InvalidBlockInterceptorTest
 {
     private IBlockValidator _baseValidator = null!;
+#pragma warning disable NUnit1032
     private IInvalidChainTracker _tracker = null!;
+#pragma warning restore NUnit1032
     private InvalidBlockInterceptor _invalidBlockInterceptor = null!;
 
     [SetUp]
@@ -31,6 +34,9 @@ public class InvalidBlockInterceptorTest
             _tracker,
             NullLogManager.Instance);
     }
+
+    [TearDown]
+    public void TearDown() => (_invalidBlockInterceptor as IDisposable)?.Dispose();
 
     [TestCase(true, false)]
     [TestCase(false, true)]
