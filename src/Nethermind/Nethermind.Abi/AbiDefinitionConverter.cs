@@ -39,7 +39,7 @@ public class AbiDefinitionConverter : JsonConverter<AbiDefinition>
         {
             abiToken = topLevelToken.GetProperty("abi"u8);
             if (topLevelToken.TryGetProperty("bytecode"u8, out JsonElement bytecodeBase64))
-            { 
+            {
                 value.SetBytecode(Bytes.FromHexString(bytecodeBase64.GetString()!));
             }
 
