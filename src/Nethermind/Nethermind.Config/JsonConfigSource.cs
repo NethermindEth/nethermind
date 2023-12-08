@@ -27,7 +27,7 @@ namespace Nethermind.Config
                     LoadModule(moduleEntry.Name, moduleEntry.Value);
                 }
             }
-            catch (Exception e)
+            catch (JsonException e)
             {
                 throw new System.Configuration.ConfigurationErrorsException($"Config is not correctly formed JSON. See inner exception for details.", e);
             }
@@ -82,8 +82,7 @@ namespace Nethermind.Config
                     {
                         itemsDict[key] = value.GetInt64().ToString();
                     }
-                    else
-                    if (value.ValueKind == JsonValueKind.True)
+                    else if (value.ValueKind == JsonValueKind.True)
                     {
                         itemsDict[key] = "true";
                     }
@@ -98,7 +97,7 @@ namespace Nethermind.Config
                 }
                 else
                 {
-                    throw new Exception($"Duplicated config value: {key}, module: {moduleName}");
+                    throw new System.Configuration.ConfigurationErrorsException($"Duplicated config value: {key}, module: {moduleName}");
                 }
             }
 

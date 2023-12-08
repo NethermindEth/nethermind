@@ -1,13 +1,9 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Buffers.Binary;
-using System;
 using System.Collections.Generic;
-using System.Linq;
-using System.Runtime.CompilerServices;
-using System.Text.Json;
 using System.Text.Json.Serialization;
+using Nethermind.Serialization.Json;
 
 namespace Nethermind.Evm.Tracing.GethStyle;
 
@@ -42,20 +38,4 @@ public class GethTxTraceEntry
     public Dictionary<string, string>? Storage { get; set; }
 
     internal virtual void UpdateMemorySize(ulong size) { }
-}
-
-public class LongRawJsonConverter : JsonConverter<long>
-{
-    public override long Read(
-        ref Utf8JsonReader reader,
-        Type typeToConvert,
-        JsonSerializerOptions options) => reader.GetInt64();
-
-    public override void Write(
-        Utf8JsonWriter writer,
-        long value,
-        JsonSerializerOptions options)
-    {
-        writer.WriteNumberValue(value);
-    }
 }

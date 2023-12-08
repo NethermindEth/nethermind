@@ -6,6 +6,7 @@ using System.Text.Json.Serialization;
 
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Serialization.Json;
 
 namespace Nethermind.Evm.Tracing.ParityStyle
 {

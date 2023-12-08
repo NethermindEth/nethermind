@@ -5,13 +5,6 @@ using System;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
-using System.Runtime.Intrinsics;
-using System.Text.Json.Serialization;
-using System.Text.Json;
-
-using Nethermind.Core.Extensions;
-using Nethermind.Core.Crypto;
-using Nethermind.Serialization.Json;
 
 namespace Nethermind.Core.Crypto
 {
@@ -133,29 +126,6 @@ namespace Nethermind.Core.Crypto
         public static Hash256 Compute(string input)
         {
             return new Hash256(ValueKeccak.Compute(input));
-        }
-    }
-}
-
-namespace Nethermind.Serialization.Json
-{
-    public class Hash256Converter : JsonConverter<Hash256>
-    {
-        public override Hash256? Read(
-            ref Utf8JsonReader reader,
-            Type typeToConvert,
-            JsonSerializerOptions options)
-        {
-            byte[]? bytes = ByteArrayConverter.Convert(ref reader);
-            return bytes is null ? null : new Hash256(bytes);
-        }
-
-        public override void Write(
-            Utf8JsonWriter writer,
-            Hash256 keccak,
-            JsonSerializerOptions options)
-        {
-            ByteArrayConverter.Convert(writer, keccak.Bytes, skipLeadingZeros: false);
         }
     }
 }
