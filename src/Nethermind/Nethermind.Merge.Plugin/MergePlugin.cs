@@ -29,8 +29,8 @@ using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Merge.Plugin.InvalidChainTracker;
 using Nethermind.Merge.Plugin.Synchronization;
 using Nethermind.Synchronization.ParallelSync;
-using Nethermind.Synchronization.Reporting;
 using Nethermind.Trie.Pruning;
+using Nethermind.TxPool;
 
 namespace Nethermind.Merge.Plugin;
 
@@ -41,6 +41,7 @@ public partial class MergePlugin : IConsensusWrapperPlugin, ISynchronizationPlug
     protected IMergeConfig _mergeConfig = null!;
     private ISyncConfig _syncConfig = null!;
     protected IBlocksConfig _blocksConfig = null!;
+    protected ITxPoolConfig _txPoolConfig = null!;
     protected IPoSSwitcher _poSSwitcher = NoPoS.Instance;
     private IBeaconPivot? _beaconPivot;
     private BeaconSync? _beaconSync;
@@ -67,6 +68,7 @@ public partial class MergePlugin : IConsensusWrapperPlugin, ISynchronizationPlug
         _mergeConfig = nethermindApi.Config<IMergeConfig>();
         _syncConfig = nethermindApi.Config<ISyncConfig>();
         _blocksConfig = nethermindApi.Config<IBlocksConfig>();
+        _txPoolConfig = nethermindApi.Config<ITxPoolConfig>();
 
         MigrateSecondsPerSlot(_blocksConfig, _mergeConfig);
 
@@ -99,8 +101,11 @@ public partial class MergePlugin : IConsensusWrapperPlugin, ISynchronizationPlug
             _api.PoSSwitcher = _poSSwitcher;
             _api.DisposeStack.Push(_invalidChainTracker);
             _blockFinalizationManager = new ManualBlockFinalizationManager();
-            ProcessedTransactionsDbCleaner processedTransactionsDbCleaner = new(_blockFinalizationManager, _api.DbProvider.BlobTransactionsDb.GetColumnDb(BlobTxsColumns.ProcessedTxs), _api.LogManager);
-            _api.DisposeStack.Push(processedTransactionsDbCleaner);
+            if (_txPoolConfig is { BlobSupportEnabled: true, PersistentBlobStorageEnabled: true, BlobReorgsSupportEnabled: true })
+            {
+                ProcessedTransactionsDbCleaner processedTransactionsDbCleaner = new(_blockFinalizationManager, _api.DbProvider.BlobTransactionsDb.GetColumnDb(BlobTxsColumns.ProcessedTxs), _api.LogManager);
+                _api.DisposeStack.Push(processedTransactionsDbCleaner);
+            }
 
             _api.RewardCalculatorSource = new MergeRewardCalculatorSource(
                _api.RewardCalculatorSource ?? NoBlockRewards.Instance, _poSSwitcher);
