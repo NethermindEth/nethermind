@@ -46,7 +46,6 @@ public class TraceRpcModuleTests
             await Blockchain.AddFunds(TestItem.AddressA, 1000.Ether());
             await Blockchain.AddFunds(TestItem.AddressB, 1000.Ether());
             await Blockchain.AddFunds(TestItem.AddressC, 1000.Ether());
-            ReadOnlyDbProvider? dbProvider = Blockchain.DbProvider.AsReadOnly(false);
             ReceiptsRecovery receiptsRecovery =
                 new(Blockchain.EthereumEcdsa, Blockchain.SpecProvider);
             IReceiptFinder receiptFinder = new FullInfoReceiptFinder(Blockchain.ReceiptStorage, receiptsRecovery, Blockchain.BlockFinder);
