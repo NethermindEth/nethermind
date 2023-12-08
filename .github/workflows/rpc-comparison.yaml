@@ -18,6 +18,16 @@ on:
         description: "A space-separated list of additional comparers. If empty, then nothing else will be added to comparision. Possible options: 'INFURA_ENDPOINT', 'NETHERMIND_ARCHIVE_ENDPOINT'"
         default: ""
         required: false
+      is_performance_check:
+        type: boolean
+        description: "When checked, attempts to check RPC performance (because of Linode limitations it would work on single VM). When not checked equality mode will be started."
+        default: false
+        required: false
+      is_performance_resync_needed:
+        type: boolean
+        description: "When checked, and performance_check also checked, it would sync from scratch node for each branch - would affect a execution time of a whole tests - if no DB structure change keep in unchecked."
+        default: false
+        required: false
 
 jobs:
   create_main_node:
@@ -104,6 +114,15 @@ jobs:
           rpc_urls=${rpc_urls%,}
           echo $rpc_urls
           echo "rpc_urls=$rpc_urls" >> $GITHUB_OUTPUT
+
+  wait_for_node_to_sync_pre_delay:
+    name: Wait for the nodes to sync - Extra wait before
+    runs-on: ubuntu-latest
+    needs: [aggregate_rpcs]
+    timeout-minutes: 600
+    steps:
+      - name: Wait for 3h
+        run: sleep 3h
             
   wait_for_node_to_sync:
     name: Wait for the nodes to sync
