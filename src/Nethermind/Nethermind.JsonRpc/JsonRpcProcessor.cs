@@ -118,14 +118,21 @@ public class JsonRpcProcessor : IJsonRpcProcessor
     {
         reader = await RecordRequest(reader);
         Stopwatch stopwatch = Stopwatch.StartNew();
+
+        // Initializes a buffer to store the data read from the reader.
         ReadOnlySequence<byte> buffer = default;
         try
         {
+            // Continuously read data from the PipeReader in a loop.
             while (true)
             {
+                // Asynchronously reads data from the PipeReader.
                 ReadResult readResult = await reader.ReadAsync();
                 buffer = readResult.Buffer;
+                // Placeholder for a result in case of deserialization failure.
                 JsonRpcResult? deserializationFailureResult = null;
+
+                // Processes the buffer while it's not empty; before going out to outer loop to get more data.
                 while (!buffer.IsEmpty)
                 {
                     JsonDocument? jsonDocument = null;
@@ -133,21 +140,27 @@ public class JsonRpcProcessor : IJsonRpcProcessor
                     ArrayPoolList<JsonRpcRequest>? collection = null;
                     try
                     {
+                        // Tries to parse the JSON from the buffer.
                         if (!TryParseJson(ref buffer, out jsonDocument))
                         {
+                            // More data needs to be read to complete a document
                             break;
                         }
 
+                        // Deserializes the JSON document into a request object or a collection of requests.
                         (model, collection) = DeserializeObjectOrArray(jsonDocument);
                     }
                     catch (BadHttpRequestException e)
                     {
+                        // Increments failure metric and logs the exception, then stops processing.
                         Metrics.JsonRpcRequestDeserializationFailures++;
                         if (_logger.IsDebug) _logger.Debug($"Couldn't read request.{Environment.NewLine}{e}");
                         yield break;
                     }
                     catch (Exception ex)
                     {
+                        // Handles general exceptions during parsing and validation.
+                        // Sends an error response and stops the stopwatch.
                         Metrics.JsonRpcRequestDeserializationFailures++;
                         if (_logger.IsError) _logger.Error($"Error during parsing/validation.", ex);
                         JsonRpcErrorResponse response = _jsonRpcService.GetErrorResponse(ErrorCodes.ParseError, "Incorrect message");
@@ -157,6 +170,7 @@ public class JsonRpcProcessor : IJsonRpcProcessor
                             RecordResponse(response, new RpcReport("# parsing error #", stopwatch.ElapsedMicroseconds(), false)));
                     }
 
+                    // Checks for deserialization failure and yields the result.
                     if (deserializationFailureResult.HasValue)
                     {
                         yield return deserializationFailureResult.Value;
@@ -164,20 +178,25 @@ public class JsonRpcProcessor : IJsonRpcProcessor
                     }
                     else
                     {
+                        // Handles a single JSON RPC request.
                         if (model is not null)
                         {
                             if (_logger.IsDebug) _logger.Debug($"JSON RPC request {model}");
 
+                            // Processes the individual request.
                             JsonRpcResult.Entry result = await HandleSingleRequest(model, context);
                             result.Response.Disposable = jsonDocument;
 
+                            // Returns the result of the processed request.
                             yield return JsonRpcResult.Single(RecordResponse(result));
                         }
 
+                        // Processes a collection of JSON RPC requests.
                         if (collection is not null)
                         {
                             if (_logger.IsDebug) _logger.Debug($"{collection.Count} JSON RPC requests");
 
+                            // Checks for authentication and batch size limit.
                             if (!context.IsAuthenticated && collection.Count > _jsonRpcConfig.MaxBatchSize)
                             {
                                 if (_logger.IsWarn) _logger.Warn($"The batch size limit was exceeded. The requested batch size {collection.Count}, and the current config setting is JsonRpc.{nameof(_jsonRpcConfig.MaxBatchSize)} = {_jsonRpcConfig.MaxBatchSize}.");
@@ -189,10 +208,12 @@ public class JsonRpcProcessor : IJsonRpcProcessor
                                 break;
                             }
 
+                            // Stops the stopwatch and yields the batch processing result.
                             stopwatch.Stop();
                             yield return JsonRpcResult.Collection(new JsonRpcBatchResult((e, c) => IterateRequest(collection, context, e).GetAsyncEnumerator(c)));
                         }
 
+                        // Handles invalid requests.
                         if (model is null && collection is null)
                         {
                             Metrics.JsonRpcInvalidRequests++;
@@ -209,11 +230,13 @@ public class JsonRpcProcessor : IJsonRpcProcessor
                     }
                 }
 
+                // Checks if the deserialization failed
                 if (deserializationFailureResult.HasValue)
                 {
                     break;
                 }
 
+                // Checks if the read operation is completed.
                 if (readResult.IsCompleted)
                 {
                     if (buffer.Length > 0 && (buffer.IsSingleSegment ? buffer.FirstSpan : buffer.ToArray()).IndexOfAnyExcept(WhiteSpace()) >= 0)
@@ -231,18 +254,21 @@ public class JsonRpcProcessor : IJsonRpcProcessor
                     break;
                 }
 
+                // Advances the reader to the next segment of the buffer.
                 reader.AdvanceTo(buffer.Start, buffer.End);
                 buffer = default;
             }
         }
         finally
         {
+            // Advances the reader to the end of the buffer if not null.
             if (!buffer.FirstSpan.IsNull())
             {
                 reader.AdvanceTo(buffer.End);
             }
         }
 
+        // Completes the PipeReader's asynchronous reading operation.
         await reader.CompleteAsync();
     }
 
