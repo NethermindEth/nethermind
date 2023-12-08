@@ -8,6 +8,7 @@ using System.Diagnostics;
 using System.IO;
 using System.IO.Abstractions;
 using System.IO.Pipelines;
+using System.Linq;
 using System.Numerics;
 using System.Text.Json;
 using System.Threading.Tasks;
@@ -110,15 +111,8 @@ public class JsonRpcProcessor : IJsonRpcProcessor
         };
     }
 
-    private ArrayPoolList<JsonRpcRequest> DeserializeArray(JsonElement element)
-    {
-        ArrayPoolList<JsonRpcRequest> requests = new(element.GetArrayLength());
-        foreach (var item in element.EnumerateArray())
-        {
-            requests.Add(DeserializeObject(item));
-        }
-        return requests;
-    }
+    private ArrayPoolList<JsonRpcRequest> DeserializeArray(JsonElement element) =>
+        new(element.GetArrayLength(), element.EnumerateArray().Select(DeserializeObject));
 
     public async IAsyncEnumerable<JsonRpcResult> ProcessAsync(PipeReader reader, JsonRpcContext context)
     {
