@@ -186,7 +186,7 @@ public class JsonRpcProcessor : IJsonRpcProcessor
 
                             // Processes the individual request.
                             JsonRpcResult.Entry result = await HandleSingleRequest(model, context);
-                            result.Response.Disposable = jsonDocument;
+                            result.Response.AddDisposable(() => jsonDocument.Dispose());
 
                             // Returns the result of the processed request.
                             yield return JsonRpcResult.Single(RecordResponse(result));
@@ -202,7 +202,7 @@ public class JsonRpcProcessor : IJsonRpcProcessor
                             {
                                 if (_logger.IsWarn) _logger.Warn($"The batch size limit was exceeded. The requested batch size {collection.Count}, and the current config setting is JsonRpc.{nameof(_jsonRpcConfig.MaxBatchSize)} = {_jsonRpcConfig.MaxBatchSize}.");
                                 JsonRpcErrorResponse? response = _jsonRpcService.GetErrorResponse(ErrorCodes.LimitExceeded, "Batch size limit exceeded");
-                                response.Disposable = jsonDocument;
+                                response.AddDisposable(() => jsonDocument.Dispose());
 
                                 deserializationFailureResult = JsonRpcResult.Single(RecordResponse(response, RpcReport.Error));
                                 yield return deserializationFailureResult.Value;
@@ -219,7 +219,7 @@ public class JsonRpcProcessor : IJsonRpcProcessor
                         {
                             Metrics.JsonRpcInvalidRequests++;
                             JsonRpcErrorResponse errorResponse = _jsonRpcService.GetErrorResponse(ErrorCodes.InvalidRequest, "Invalid request");
-                            errorResponse.Disposable = jsonDocument;
+                            errorResponse.AddDisposable(() => jsonDocument.Dispose());
 
                             TraceResult(errorResponse);
                             stopwatch.Stop();

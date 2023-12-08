@@ -19,12 +19,21 @@ namespace Nethermind.JsonRpc
     {
         private Action? _disposableAction;
 
-        [JsonIgnore]
-        public IDisposable? Disposable { get; set; }
-
         public JsonRpcResponse(Action? disposableAction = null)
         {
             _disposableAction = disposableAction;
+        }
+
+        public void AddDisposable(Action disposableAction)
+        {
+            if (_disposableAction is null)
+            {
+                _disposableAction = disposableAction;
+            }
+            else
+            {
+                _disposableAction += disposableAction;
+            }
         }
 
         [JsonPropertyName("jsonrpc")]
@@ -42,7 +51,6 @@ namespace Nethermind.JsonRpc
 
         public virtual void Dispose()
         {
-            Disposable?.Dispose();
             _disposableAction?.Invoke();
             _disposableAction = null;
         }
