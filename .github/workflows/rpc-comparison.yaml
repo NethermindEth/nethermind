@@ -84,7 +84,7 @@ jobs:
         run: |
           rpc_urls=""
           main_branch_file="rpc_url%${{ env.CLEAN_MAIN_REF }}%${{ github.run_id }}.txt"
-          compare_branch_file="rpc_url%${{ env.CLEAN_COMPARE_REF }}%${{ github.run_id }}"
+          compare_branch_file="rpc_url%${{ env.CLEAN_COMPARE_REF }}%${{ github.run_id }}.txt"
   
           ls artifacts
           # Check and add the main branch file
