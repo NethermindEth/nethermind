@@ -241,8 +241,8 @@ namespace Nethermind.Serialization.Rlp
             transaction.SourceHash = rlpStream.DecodeKeccak();
             transaction.SenderAddress = rlpStream.DecodeAddress();
             transaction.To = rlpStream.DecodeAddress();
-            transaction.Mint = rlpStream.DecodeUInt256(allowLeadingZeroBytes: false);
-            transaction.Value = rlpStream.DecodeUInt256(allowLeadingZeroBytes: false);
+            transaction.Mint = rlpStream.DecodeUInt256();
+            transaction.Value = rlpStream.DecodeUInt256();
             transaction.GasLimit = rlpStream.DecodeLong();
             transaction.IsOPSystemTransaction = rlpStream.DecodeBool();
             transaction.Data = rlpStream.DecodeByteArray();
@@ -311,8 +311,8 @@ namespace Nethermind.Serialization.Rlp
             transaction.SourceHash = decoderContext.DecodeKeccak();
             transaction.SenderAddress = decoderContext.DecodeAddress();
             transaction.To = decoderContext.DecodeAddress();
-            transaction.Mint = decoderContext.DecodeUInt256(allowLeadingZeroBytes: false);
-            transaction.Value = decoderContext.DecodeUInt256(allowLeadingZeroBytes: false);
+            transaction.Mint = decoderContext.DecodeUInt256();
+            transaction.Value = decoderContext.DecodeUInt256();
             transaction.GasLimit = decoderContext.DecodeLong();
             transaction.IsOPSystemTransaction = decoderContext.DecodeBool();
             transaction.Data = decoderContext.DecodeByteArray();
