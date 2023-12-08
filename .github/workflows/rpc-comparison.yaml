@@ -62,7 +62,7 @@ jobs:
         id: prepare_compare_ref
         if: inputs.branch_to_compare != ''
         run: |
-          REF_NAME=${{ inputs.nethermind_repo_ref }}
+          REF_NAME=${{ inputs.branch_to_compare }}
           CLEAN_REF=$(echo "${REF_NAME/refs\/heads\//}" | sed 's/[^a-zA-Z0-9._-]/-/g')
           echo "CLEAN_COMPARE_REF=$CLEAN_REF" >> $GITHUB_ENV
       
