@@ -56,7 +56,7 @@ public class JsonRpcProcessor : IJsonRpcProcessor
         }
         else
         {
-            throw new Exception("Invalid");
+            throw new JsonException("Invalid");
         }
     }
 
