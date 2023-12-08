@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Collections.Frozen;
 
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
@@ -13,7 +14,7 @@ namespace Nethermind.Abi
     public partial class AbiType
     {
         private static readonly object _registerLock = new();
-        private static Dictionary<Type, AbiType> _typeMappings = CreateTypeMappings();
+        private static FrozenDictionary<Type, AbiType> _typeMappings = CreateTypeMappings();
 
         protected static AbiType GetForCSharpType(Type type)
         {
@@ -62,11 +63,11 @@ namespace Nethermind.Abi
                     [typeof(T)] = abiType
                 };
 
-                _typeMappings = typeMappings;
+                _typeMappings = typeMappings.ToFrozenDictionary();
             }
         }
 
-        private static Dictionary<Type, AbiType> CreateTypeMappings()
+        private static FrozenDictionary<Type, AbiType> CreateTypeMappings()
         {
             Dictionary<Type, AbiType> typeMappings = new()
             {
@@ -86,7 +87,7 @@ namespace Nethermind.Abi
                 [typeof(byte[])] = AbiDynamicBytes.Instance
             };
 
-            return typeMappings;
+            return typeMappings.ToFrozenDictionary();
         }
     }
 }
