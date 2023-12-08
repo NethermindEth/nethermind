@@ -124,6 +124,7 @@ public class JsonRpcProcessor : IJsonRpcProcessor
         try
         {
             // Continuously read data from the PipeReader in a loop.
+            // Can read multiple requests, ends when there is no more requests to read or there is an error in deserialization.
             while (true)
             {
                 // Asynchronously reads data from the PipeReader.
