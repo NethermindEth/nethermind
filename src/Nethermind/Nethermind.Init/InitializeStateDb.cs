@@ -187,10 +187,7 @@ public class InitializeStateDb : IStep
 
     private static void InitBlockTraceDumper()
     {
-        BlockTraceDumper.Converters.AddRange(EthereumJsonSerializer.CommonConverters);
-        BlockTraceDumper.Converters.AddRange(DebugModuleFactory.Converters);
-        BlockTraceDumper.Converters.AddRange(TraceModuleFactory.Converters);
-        BlockTraceDumper.Converters.Add(new TxReceiptConverter());
+        EthereumJsonSerializer.AddConverter(new TxReceiptConverter());
     }
 
     private static void InitializeFullPruning(
