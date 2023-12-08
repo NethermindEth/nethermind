@@ -82,7 +82,7 @@ namespace Nethermind.Core.Test
         [TestCase("0x0000000000000000000000000000000000000000000000000000000000000000", "0x0000000000000000000000000000000000000000000000000000000000000000", 0)]
         [TestCase("0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470", "0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470", 0)]
         [TestCase("0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470", "0x0000000000000000000000000000000000000000000000000000000000000000", 1)]
-        public void Compare(string a, string b, int result)
+        public void Compare(string a, string? b, int result)
         {
 #pragma warning disable CS8600
             Hash256 keccakA = a is null ? null : new Hash256(a);

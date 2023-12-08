@@ -131,7 +131,6 @@ $tf/
 _ReSharper*/
 *.[Rr]e[Ss]harper
 *.DotSettings.user
-*.DotSettings
 
 # TeamCity is a build add-in
 _TeamCity*
@@ -379,10 +378,10 @@ FodyWeavers.xsd
 
 # VS Code files for those working on multiple tools
 .vscode/*
-!.vscode/settings.json
-!.vscode/tasks.json
-!.vscode/launch.json
-!.vscode/extensions.json
+#!.vscode/settings.json
+#!.vscode/tasks.json
+#!.vscode/launch.json
+#!.vscode/extensions.json
 *.code-workspace
 
 # Local History for Visual Studio Code
@@ -396,17 +395,12 @@ FodyWeavers.xsd
 *.msp
 
 # JetBrains Rider
-.idea/
 *.sln.iml
+.idea/
 
-# macOS
+## macOS
 .DS_Store
 
-# Nethermind
-!src/Nethermind/Nethermind.BeaconNode.Host/Certificates/*.pfx
-src/Nethermind/Nethermind.BeaconNode.Host/configuration/Output
-src/Nethermind/Nethermind.BeaconNode.Host/release
-src/Nethermind/Nethermind.Runner/git-hash
+## Nethermind
 keystore/
 /.githooks
-.vscode

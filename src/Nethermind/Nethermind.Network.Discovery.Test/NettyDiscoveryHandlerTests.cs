@@ -75,7 +75,7 @@ namespace Nethermind.Network.Discovery.Test
                 FarAddress = _address2
             };
 
-            _discoveryHandlers[0].SendMsg(msg);
+            await _discoveryHandlers[0].SendMsg(msg);
             await SleepWhileWaiting();
             _discoveryManagersMocks[1].Received(1).OnIncomingMsg(Arg.Is<DiscoveryMsg>(x => x.MsgType == MsgType.Ping));
 
@@ -84,7 +84,7 @@ namespace Nethermind.Network.Discovery.Test
                 FarAddress = _address
             };
 
-            _discoveryHandlers[1].SendMsg(msg2);
+            await _discoveryHandlers[1].SendMsg(msg2);
             await SleepWhileWaiting();
             _discoveryManagersMocks[0].Received(1).OnIncomingMsg(Arg.Is<DiscoveryMsg>(x => x.MsgType == MsgType.Ping));
 
@@ -102,7 +102,7 @@ namespace Nethermind.Network.Discovery.Test
                 FarAddress = _address2
             };
 
-            _discoveryHandlers[0].SendMsg(msg);
+            await _discoveryHandlers[0].SendMsg(msg);
             await SleepWhileWaiting();
             _discoveryManagersMocks[1].Received(1).OnIncomingMsg(Arg.Is<DiscoveryMsg>(x => x.MsgType == MsgType.Pong));
 
@@ -110,7 +110,7 @@ namespace Nethermind.Network.Discovery.Test
             {
                 FarAddress = _address
             };
-            _discoveryHandlers[1].SendMsg(msg2);
+            await _discoveryHandlers[1].SendMsg(msg2);
             await SleepWhileWaiting();
             _discoveryManagersMocks[0].Received(1).OnIncomingMsg(Arg.Is<DiscoveryMsg>(x => x.MsgType == MsgType.Pong));
 
@@ -128,7 +128,7 @@ namespace Nethermind.Network.Discovery.Test
                 FarAddress = _address2
             };
 
-            _discoveryHandlers[0].SendMsg(msg);
+            await _discoveryHandlers[0].SendMsg(msg);
             await SleepWhileWaiting();
             _discoveryManagersMocks[1].Received(1).OnIncomingMsg(Arg.Is<DiscoveryMsg>(x => x.MsgType == MsgType.FindNode));
 
@@ -137,7 +137,7 @@ namespace Nethermind.Network.Discovery.Test
                 FarAddress = _address
             };
 
-            _discoveryHandlers[1].SendMsg(msg2);
+            await _discoveryHandlers[1].SendMsg(msg2);
             await SleepWhileWaiting();
             _discoveryManagersMocks[0].Received(1).OnIncomingMsg(Arg.Is<DiscoveryMsg>(x => x.MsgType == MsgType.FindNode));
 
@@ -155,7 +155,7 @@ namespace Nethermind.Network.Discovery.Test
                 FarAddress = _address2
             };
 
-            _discoveryHandlers[0].SendMsg(msg);
+            await _discoveryHandlers[0].SendMsg(msg);
             await SleepWhileWaiting();
             _discoveryManagersMocks[1].Received(1).OnIncomingMsg(Arg.Is<DiscoveryMsg>(x => x.MsgType == MsgType.Neighbors));
 
@@ -164,7 +164,7 @@ namespace Nethermind.Network.Discovery.Test
                 FarAddress = _address,
             };
 
-            _discoveryHandlers[1].SendMsg(msg2);
+            await _discoveryHandlers[1].SendMsg(msg2);
             await SleepWhileWaiting();
             _discoveryManagersMocks[0].Received(1).OnIncomingMsg(Arg.Is<DiscoveryMsg>(x => x.MsgType == MsgType.Neighbors));
 

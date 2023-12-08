@@ -188,9 +188,9 @@ internal class BlobSender
                 string txRlp = Hex.ToHexString(txDecoder
                     .Encode(tx, RlpBehaviors.InMempoolForm | RlpBehaviors.SkipTypedWrapping).Bytes);
 
-                BlockModel<Keccak>? blockResult = null;
+                BlockModel<Hash256>? blockResult = null;
                 if (waitForBlock)
-                    blockResult = await _nodeManager.Post<BlockModel<Keccak>>("eth_getBlockByNumber", "latest", false);
+                    blockResult = await _nodeManager.Post<BlockModel<Hash256>>("eth_getBlockByNumber", "latest", false);
 
                 string? result = await _nodeManager.Post<string>("eth_sendRawTransaction", "0x" + txRlp);
 
@@ -205,7 +205,7 @@ internal class BlobSender
         }
     }
 
-    private async static Task WaitForBlobInclusion(INodeManager nodeManager, Keccak txHash, UInt256 lastBlockNumber)
+    private async static Task WaitForBlobInclusion(INodeManager nodeManager, Hash256 txHash, UInt256 lastBlockNumber)
     {
         Console.WriteLine("Waiting for blob transaction to be included in a block");
         int waitInMs = 2000;
@@ -213,7 +213,7 @@ internal class BlobSender
         int retryCount = (12 * 5 * 1000) / waitInMs;
         while (true)
         {
-            var blockResult = await nodeManager.Post<BlockModel<Keccak>>("eth_getBlockByNumber", lastBlockNumber, false);
+            var blockResult = await nodeManager.Post<BlockModel<Hash256>>("eth_getBlockByNumber", lastBlockNumber, false);
             if (blockResult != null)
             {
                 lastBlockNumber++;

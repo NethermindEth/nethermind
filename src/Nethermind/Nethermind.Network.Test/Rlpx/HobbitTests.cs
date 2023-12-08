@@ -58,6 +58,13 @@ namespace Nethermind.Network.Test.Rlpx
             ResourceLeakDetector.Level = ResourceLeakDetector.DetectionLevel.Paranoid;
         }
 
+        [TearDown]
+        public void TearDown()
+        {
+            _macProcessorA?.Dispose();
+            _macProcessorB?.Dispose();
+        }
+
         [TestCase(StackType.Zero, StackType.Zero, true)]
         [TestCase(StackType.Zero, StackType.Zero, false)]
         public void Get_block_bodies_there_and_back(StackType inbound, StackType outbound, bool framingEnabled)

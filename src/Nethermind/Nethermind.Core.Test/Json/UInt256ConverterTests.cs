@@ -16,6 +16,7 @@ namespace Nethermind.Core.Test.Json
     {
         [TestCase(NumberConversion.Hex)]
         [TestCase(NumberConversion.Decimal)]
+        [TestCase(NumberConversion.Raw)]
         public void Test_roundtrip(NumberConversion numberConversion)
         {
             UInt256Converter converter = new(numberConversion);
@@ -25,8 +26,7 @@ namespace Nethermind.Core.Test.Json
         }
 
         [TestCase((NumberConversion)99)]
-        [TestCase(NumberConversion.Raw)]
-        public void Raw_not_supported(NumberConversion notSupportedConversion)
+        public void Undefined_not_supported(NumberConversion notSupportedConversion)
         {
             UInt256Converter converter = new(notSupportedConversion);
             Assert.Throws<NotSupportedException>(

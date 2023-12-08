@@ -33,7 +33,9 @@ namespace Nethermind.AccountAbstraction.Test
     [TestFixture]
     public class UserOperationPoolTests
     {
+#pragma warning disable NUnit1032
         private IUserOperationPool _userOperationPool = Substitute.For<IUserOperationPool>();
+#pragma warning restore NUnit1032
         private IUserOperationSimulator _simulator = Substitute.For<IUserOperationSimulator>();
         private IBlockTree _blockTree = Substitute.For<IBlockTree>();
         private IReceiptFinder _receiptFinder = Substitute.For<IReceiptFinder>();

@@ -39,10 +39,6 @@ namespace Nethermind.Init.Steps
         private async Task RunBlockTreeInitTasks(CancellationToken cancellationToken)
         {
             ISyncConfig syncConfig = _api.Config<ISyncConfig>();
-            if (!syncConfig.SynchronizationEnabled)
-            {
-                return;
-            }
 
             if (_api.BlockTree is null) throw new StepDependencyException(nameof(_api.BlockTree));
 
