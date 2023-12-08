@@ -58,7 +58,6 @@ public partial class AccountAbstractionRpcModuleTests
 
         private AbiDefinition LoadContract(Type contractType)
         {
-            AbiTuple<UserOperationAbi>.EnsureMappingRegistered();
             AbiParameterConverter.RegisterFactory(new AbiTypeFactory(new AbiTuple<UserOperationAbi>()));
 
             var parser = new AbiDefinitionParser();

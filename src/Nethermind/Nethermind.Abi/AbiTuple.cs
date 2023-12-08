@@ -76,7 +76,7 @@ namespace Nethermind.Abi
 
     public class AbiTuple<T> : AbiType where T : new()
     {
-        public static void EnsureMappingRegistered()
+        static AbiTuple()
         {
             if (!IsMappingRegistered<T>())
             {
