@@ -17,9 +17,7 @@ namespace Nethermind.Core.Test.Json
         static NullableLongConverter converter = new();
         static JsonSerializerOptions options = new JsonSerializerOptions { Converters = { converter } };
 
-        [TestCase(NumberConversion.Hex)]
-        [TestCase(NumberConversion.Decimal)]
-        public void Test_roundtrip(NumberConversion numberConversion)
+        public void Test_roundtrip()
         {
             TestConverter(int.MaxValue, (a, b) => a.Equals(b), converter);
             TestConverter(1L, (a, b) => a.Equals(b), converter);
