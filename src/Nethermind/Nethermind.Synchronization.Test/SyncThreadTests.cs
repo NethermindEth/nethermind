@@ -360,9 +360,9 @@ namespace Nethermind.Synchronization.Test
                 blockDownloaderFactory,
                 pivot,
                 Substitute.For<IProcessExitSource>(),
-                trieStore.AsReadOnly(),
                 bestPeerStrategy,
                 new ChainSpec(),
+                stateReader,
                 logManager);
 
             ISyncModeSelector selector = synchronizer.SyncModeSelector;
