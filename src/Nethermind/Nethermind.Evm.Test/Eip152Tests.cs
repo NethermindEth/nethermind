@@ -16,8 +16,10 @@ namespace Nethermind.Evm.Test
         private int _blockNumberAdjustment;
 
         [TearDown]
-        public void TearDown()
+        public override void TearDown()
         {
+            base.TearDown();
+
             _blockNumberAdjustment = 0;
         }
 

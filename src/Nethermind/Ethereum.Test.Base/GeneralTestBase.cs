@@ -96,6 +96,7 @@ namespace Ethereum.Test.Base
             header.MixHash = test.CurrentRandom;
             header.WithdrawalsRoot = test.CurrentWithdrawalsRoot;
             header.ParentBeaconBlockRoot = test.CurrentBeaconRoot;
+            header.ExcessBlobGas = 0;
 
             Stopwatch stopwatch = Stopwatch.StartNew();
             TxValidator? txValidator = new((MainnetSpecProvider.Instance.ChainId));

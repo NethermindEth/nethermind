@@ -253,6 +253,7 @@ namespace Nethermind.Db.Test
         [TearDown]
         public void TearDown()
         {
+            _db?.Dispose();
             _dbDisposable?.Dispose();
         }
 

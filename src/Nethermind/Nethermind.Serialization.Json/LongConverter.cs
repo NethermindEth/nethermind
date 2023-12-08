@@ -24,7 +24,7 @@ namespace Nethermind.Serialization.Json
 
         public override void WriteJson(JsonWriter writer, long value, JsonSerializer serializer)
         {
-            switch (_conversion)
+            switch (_conversion.GetFinalConversion())
             {
                 case NumberConversion.Hex:
                     writer.WriteValue(value == 0L ? "0x0" : value.ToHexString(true));

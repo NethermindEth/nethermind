@@ -294,7 +294,7 @@ public abstract class MerkleTree : IMerkleList
 
         // MixIn count
         Hash(value.AsSpan(), proof[^1].AsSpan(), value);
-        return value.AsSpan().SequenceEqual(Root.AsSpan());
+        return value.AsSpan().SequenceEqual(Root!.AsSpan());
     }
 
     public IList<Bytes32> GetProof(in uint leafIndex)
@@ -356,7 +356,7 @@ public abstract class MerkleTree : IMerkleList
         return new Index(nodeIndex).Parent().NodeIndex;
     }
 
-    public Root Root { get; set; }
+    public Root? Root { get; set; }
 
     protected abstract void Hash(ReadOnlySpan<byte> a, ReadOnlySpan<byte> b, Span<byte> target);
 }

@@ -355,13 +355,13 @@ namespace Nethermind.Core.Collections
 
             goto ReturnNotFound;
 
-ConcurrentOperation:
+        ConcurrentOperation:
             throw new InvalidOperationException("Concurrent operations not supported");
-ReturnFound:
+        ReturnFound:
             ref TValue value = ref entry.value;
-Return:
+        Return:
             return ref value;
-ReturnNotFound:
+        ReturnNotFound:
             value = ref Unsafe.NullRef<TValue>();
             goto Return;
         }

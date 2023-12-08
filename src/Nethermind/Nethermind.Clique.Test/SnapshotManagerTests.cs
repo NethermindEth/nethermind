@@ -54,6 +54,9 @@ namespace Nethermind.Clique.Test
             MineBlock(_blockTree, block5);
         }
 
+        [OneTimeTearDown]
+        public void TearDown() => _snapshotDb?.Dispose();
+
         [Test]
         public void Creates_new_snapshot()
         {
