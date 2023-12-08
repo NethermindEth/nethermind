@@ -14,7 +14,7 @@ namespace Nethermind.State.Proofs
     /// <summary>
     /// EIP-1186 style account proof
     /// </summary>
-    /// 
+    ///
     [JsonConverter(typeof(ProofJsonConverter))]
     public class AccountProof
     {
@@ -44,7 +44,7 @@ namespace Nethermind.State.Proofs
     ///    "latest"
     ///  ]
     ///}
-    ///  
+    ///
     ///{
     ///  "id": 1,
     ///  "jsonrpc": "2.0",
@@ -98,15 +98,15 @@ namespace Nethermind.State.Proofs
             writer.WritePropertyName("balance"u8);
             uint256Converter.Write(writer, value.Balance, options);
 
-            JsonConverter<Hash256> keccakConverter = (JsonConverter<Hash256>)options.GetConverter(typeof(Hash256));
+            JsonConverter<Hash256> hashConverter = (JsonConverter<Hash256>)options.GetConverter(typeof(Hash256));
             writer.WritePropertyName("codeHash"u8);
-            keccakConverter.Write(writer, value.CodeHash, options);
+            hashConverter.Write(writer, value.CodeHash, options);
 
             writer.WritePropertyName("nonce"u8);
             uint256Converter.Write(writer, value.Nonce, options);
 
             writer.WritePropertyName("storageHash"u8);
-            keccakConverter.Write(writer, value.StorageRoot, options);
+            hashConverter.Write(writer, value.StorageRoot, options);
 
             writer.WritePropertyName("storageProof"u8);
             JsonSerializer.Serialize(writer, value.StorageProofs, options);

@@ -12,7 +12,7 @@ using NUnit.Framework;
 namespace Nethermind.Core.Test.Json
 {
     [TestFixture]
-    public class KeccakConverterTests
+    public class Hash256ConverterTests
     {
         static Hash256Converter converter = new();
         static JsonSerializerOptions options = new JsonSerializerOptions { Converters = { converter } };
