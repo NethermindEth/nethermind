@@ -62,8 +62,8 @@ namespace Nethermind.JsonRpc.Modules
             {
                 // FrozenDictionary can't be directly updated (which makes it fast for reading) so we combine the two sets of
                 // data as an Enumerable create an new FrozenDictionary from it and then update the reference
-                _pools = GetPools<T>(moduleType, pool).ToFrozenDictionary(StringComparer.InvariantCultureIgnoreCase);
-                _methods = _methods.Concat(GetMethods<T>(moduleType)).ToFrozenDictionary(StringComparer.InvariantCultureIgnoreCase);
+                _pools = GetPools<T>(moduleType, pool).ToFrozenDictionary(StringComparer.Ordinal);
+                _methods = _methods.Concat(GetMethods<T>(moduleType)).ToFrozenDictionary(StringComparer.Ordinal);
 
                 _modules.Add(moduleType);
 
