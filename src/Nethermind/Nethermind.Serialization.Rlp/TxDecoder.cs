@@ -168,7 +168,7 @@ namespace Nethermind.Serialization.Rlp
 
         }
 
-        private static Keccak CalculateHashForNetworkPayloadForm(TxType type, Span<byte> transactionSequence)
+        private static Hash256 CalculateHashForNetworkPayloadForm(TxType type, Span<byte> transactionSequence)
         {
             KeccakHash hash = KeccakHash.Create();
             Span<byte> txType = stackalloc byte[1];
