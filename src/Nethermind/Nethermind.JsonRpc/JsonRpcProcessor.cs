@@ -12,7 +12,7 @@ using System.Numerics;
 using System.Text.Json;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Http;
-using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
@@ -42,7 +42,7 @@ public class JsonRpcProcessor : IJsonRpcProcessor
         }
     }
 
-    private (JsonRpcRequest? Model, List<JsonRpcRequest>? Collection) DeserializeObjectOrArray(JsonDocument doc)
+    private (JsonRpcRequest? Model, ArrayPoolList<JsonRpcRequest>? Collection) DeserializeObjectOrArray(JsonDocument doc)
     {
         JsonValueKind type = doc.RootElement.ValueKind;
         if (type == JsonValueKind.Array)
@@ -96,24 +96,23 @@ public class JsonRpcProcessor : IJsonRpcProcessor
             method = methodElement.GetString();
         }
 
-        JsonElement paramsElement = default;
-        if (!element.TryGetProperty("params"u8, out paramsElement))
+        if (!element.TryGetProperty("params"u8, out JsonElement paramsElement))
         {
             paramsElement = default;
         }
 
         return new JsonRpcRequest
         {
-            JsonRpc = jsonRpc,
-            Id = id,
-            Method = method,
+            JsonRpc = jsonRpc!,
+            Id = id!,
+            Method = method!,
             Params = paramsElement
         };
     }
 
-    private List<JsonRpcRequest> DeserializeArray(JsonElement element)
+    private ArrayPoolList<JsonRpcRequest> DeserializeArray(JsonElement element)
     {
-        List<JsonRpcRequest> requests = new();
+        ArrayPoolList<JsonRpcRequest> requests = new(element.GetArrayLength());
         foreach (var item in element.EnumerateArray())
         {
             requests.Add(DeserializeObject(item));
@@ -137,7 +136,7 @@ public class JsonRpcProcessor : IJsonRpcProcessor
                 {
                     JsonDocument? jsonDocument = null;
                     JsonRpcRequest? model = null;
-                    List<JsonRpcRequest>? collection = null;
+                    ArrayPoolList<JsonRpcRequest>? collection = null;
                     try
                     {
                         if (!TryParseJson(ref buffer, out jsonDocument))
@@ -197,7 +196,7 @@ public class JsonRpcProcessor : IJsonRpcProcessor
                             }
 
                             stopwatch.Stop();
-                            yield return (JsonRpcResult.Collection(new JsonRpcBatchResult((e, c) => IterateRequest(collection, context, e).GetAsyncEnumerator(c))));
+                            yield return JsonRpcResult.Collection(new JsonRpcBatchResult((e, c) => IterateRequest(collection, context, e).GetAsyncEnumerator(c)));
                         }
 
                         if (model is null && collection is null)
@@ -250,39 +249,45 @@ public class JsonRpcProcessor : IJsonRpcProcessor
             }
         }
 
-        reader.Complete();
+        await reader.CompleteAsync();
     }
 
-    private static ReadOnlySpan<byte> WhiteSpace() => new byte[] { (byte)' ', (byte)'\n', (byte)'\r', (byte)'\t' };
+    private static ReadOnlySpan<byte> WhiteSpace() => " \n\r\t"u8;
 
     private async IAsyncEnumerable<JsonRpcResult.Entry> IterateRequest(
-        List<JsonRpcRequest> requests,
+        ArrayPoolList<JsonRpcRequest> requests,
         JsonRpcContext context,
         JsonRpcBatchResultAsyncEnumerator enumerator)
     {
-        Stopwatch stopwatch = Stopwatch.StartNew();
-
-        int requestIndex = 0;
-        for (int index = 0; index < requests.Count; index++)
+        try
         {
-            JsonRpcRequest jsonRpcRequest = requests[index];
+            Stopwatch stopwatch = Stopwatch.StartNew();
+            int requestIndex = 0;
+            for (int index = 0; index < requests.Count; index++)
+            {
+                JsonRpcRequest jsonRpcRequest = requests[index];
 
-            JsonRpcResult.Entry response = enumerator.IsStopped
-                ? new JsonRpcResult.Entry(
-                    _jsonRpcService.GetErrorResponse(
-                        ErrorCodes.LimitExceeded,
-                        jsonRpcRequest.Method,
-                        jsonRpcRequest.Id,
-                        $"{nameof(IJsonRpcConfig.MaxBatchResponseBodySize)} of {_jsonRpcConfig.MaxBatchResponseBodySize / 1.KB()}KB exceeded"),
-                    RpcReport.Error)
-                : await HandleSingleRequest(jsonRpcRequest, context);
+                JsonRpcResult.Entry response = enumerator.IsStopped
+                    ? new JsonRpcResult.Entry(
+                        _jsonRpcService.GetErrorResponse(
+                            ErrorCodes.LimitExceeded,
+                            jsonRpcRequest.Method,
+                            jsonRpcRequest.Id,
+                            $"{nameof(IJsonRpcConfig.MaxBatchResponseBodySize)} of {_jsonRpcConfig.MaxBatchResponseBodySize / 1.KB()}KB exceeded"),
+                        RpcReport.Error)
+                    : await HandleSingleRequest(jsonRpcRequest, context);
 
-            if (_logger.IsDebug) _logger.Debug($"  {++requestIndex}/{requests.Count} JSON RPC request - {jsonRpcRequest} handled after {response.Report.HandlingTimeMicroseconds}");
-            TraceResult(response);
-            yield return RecordResponse(response);
+                if (_logger.IsDebug) _logger.Debug($"  {++requestIndex}/{requests.Count} JSON RPC request - {jsonRpcRequest} handled after {response.Report.HandlingTimeMicroseconds}");
+                TraceResult(response);
+                yield return RecordResponse(response);
+            }
+
+            if (_logger.IsDebug) _logger.Debug($"  {requests.Count} requests handled in {stopwatch.Elapsed.TotalMilliseconds}ms");
         }
-
-        if (_logger.IsDebug) _logger.Debug($"  {requests.Count} requests handled in {stopwatch.Elapsed.TotalMilliseconds}ms");
+        finally
+        {
+            requests.Dispose();
+        }
     }
 
     private async Task<JsonRpcResult.Entry> HandleSingleRequest(JsonRpcRequest request, JsonRpcContext context)
