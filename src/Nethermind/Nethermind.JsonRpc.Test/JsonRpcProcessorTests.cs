@@ -66,7 +66,7 @@ public class JsonRpcProcessorTests
     {
         IList<JsonRpcResult> result = await ProcessAsync("{\"id\":12345678901234567890,\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionCount\",\"params\":[\"0x7f01d9b227593e033bf8d6fc86e634d27aa85568\",\"0x668c24\"]}");
         result.Should().HaveCount(1);
-        Assert.That(result[0].Response!.Id, Is.EqualTo(BigInteger.Parse("12345678901234567890")));
+        Assert.That(result[0].Response!.Id, Is.EqualTo(decimal.Parse("12345678901234567890")));
     }
 
     [Test]
