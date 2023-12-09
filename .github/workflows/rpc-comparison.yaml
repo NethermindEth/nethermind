@@ -127,7 +127,7 @@ jobs:
   wait_for_node_to_sync:
     name: Wait for the nodes to sync
     runs-on: ubuntu-latest
-    needs: [aggregate_rpcs]
+    needs: [wait_for_node_to_sync_pre_delay]
     timeout-minutes: 600
     steps:
       - uses: actions/checkout@v3
