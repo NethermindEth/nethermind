@@ -967,7 +967,8 @@ namespace Nethermind.Core.Extensions
 
             int oddMod = hexString.Length % 2;
             byte[] result = GC.AllocateUninitializedArray<byte>((hexString.Length >> 1) + oddMod);
-            return HexConverter.TryDecodeFromUtf8(hexString, result, oddMod == 1) ? result : throw new FormatException("Incorrect hex string");
+            FromUtf8HexString(hexString, result);
+            return result;
         }
 
         [DebuggerStepThrough]
@@ -981,6 +982,23 @@ namespace Nethermind.Core.Extensions
             }
 
             if (!HexConverter.TryDecodeFromUtf8(hexString, result, oddMod == 1))
+            {
+                ThrowFormatException_IncorrectHexString();
+            }
+
+            bool isSuccess;
+            if (oddMod == 0 &&
+                BitConverter.IsLittleEndian && (Ssse3.IsSupported || AdvSimd.Arm64.IsSupported) &&
+                hexString.Length >= Vector128<byte>.Count)
+            {
+                isSuccess = HexConverter.TryDecodeFromUtf8_Vector128(hexString, result);
+            }
+            else
+            {
+                isSuccess = HexConverter.TryDecodeFromUtf8(hexString, result, oddMod == 1);
+            }
+
+            if (!isSuccess)
             {
                 ThrowFormatException_IncorrectHexString();
             }
