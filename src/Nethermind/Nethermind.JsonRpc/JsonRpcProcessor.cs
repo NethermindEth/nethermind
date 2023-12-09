@@ -80,7 +80,7 @@ public class JsonRpcProcessor : IJsonRpcProcessor
                 {
                     id = idNumber;
                 }
-                else if (BigInteger.TryParse(idElement.GetRawText(), out var value))
+                else if (decimal.TryParse(idElement.GetRawText(), out var value))
                 {
                     id = value;
                 }
