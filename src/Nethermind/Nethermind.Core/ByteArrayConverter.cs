@@ -57,6 +57,8 @@ public class ByteArrayConverter : JsonConverter<byte[]>
             hex = hex[2..];
         }
 
+        if (hex.Length == 0) return Array.Empty<byte>();
+
         byte[] returnVal = Bytes.FromUtf8HexString(hex);
         if (bytes is not null)
         {
