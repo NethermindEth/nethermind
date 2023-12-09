@@ -981,11 +981,6 @@ namespace Nethermind.Core.Extensions
                 ThrowInvalidOperationException();
             }
 
-            if (!HexConverter.TryDecodeFromUtf8(hexString, result, oddMod == 1))
-            {
-                ThrowFormatException_IncorrectHexString();
-            }
-
             bool isSuccess;
             if (oddMod == 0 &&
                 BitConverter.IsLittleEndian && (Ssse3.IsSupported || AdvSimd.Arm64.IsSupported) &&
