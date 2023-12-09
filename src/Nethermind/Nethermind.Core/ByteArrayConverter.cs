@@ -6,6 +6,7 @@ using System.Buffers;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Nethermind.Core.Extensions;
@@ -14,6 +15,8 @@ namespace Nethermind.Serialization.Json;
 
 public class ByteArrayConverter : JsonConverter<byte[]>
 {
+    private readonly static ushort _hexPrefix = MemoryMarshal.Cast<byte, ushort>("0x"u8)[0];
+
     public override byte[]? Read(
         ref Utf8JsonReader reader,
         Type typeToConvert,
@@ -49,7 +52,7 @@ public class ByteArrayConverter : JsonConverter<byte[]>
         }
 
         ReadOnlySpan<byte> hex = bytes is null ? reader.ValueSpan : bytes.AsSpan(0, length);
-        if (hex.StartsWith("0x"u8))
+        if (length >= 2 && Unsafe.As<byte, ushort>(ref MemoryMarshal.GetReference(hex)) == _hexPrefix)
         {
             hex = hex[2..];
         }
