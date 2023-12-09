@@ -150,7 +150,7 @@ namespace Nethermind.Runner.JsonRpc
                     jsonRpcUrlCollection.TryGetValue(ctx.Connection.LocalPort, out JsonRpcUrl jsonRpcUrl) &&
                     jsonRpcUrl.RpcEndpoint.HasFlag(RpcEndpoint.Http))
                 {
-                    if (jsonRpcUrl.IsAuthenticated && !rpcAuthentication!.Authenticate(ctx.Request.Headers["Authorization"]))
+                    if (jsonRpcUrl.IsAuthenticated && !rpcAuthentication!.Authenticate(ctx.Request.Headers.Authorization))
                     {
                         JsonRpcErrorResponse? response = jsonRpcService.GetErrorResponse(ErrorCodes.InvalidRequest, "Authentication error");
                         ctx.Response.ContentType = "application/json";
