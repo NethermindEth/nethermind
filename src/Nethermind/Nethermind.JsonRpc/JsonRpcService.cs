@@ -322,6 +322,7 @@ public class JsonRpcService : IJsonRpcService
 
     private object[]? DeserializeParameters(ParameterInfo[] expectedParameters, JsonElement providedParameters, int missingParamsCount)
     {
+        const int parallelThreshold = 4;
         try
         {
             int arrayLength = providedParameters.GetArrayLength();
@@ -331,14 +332,17 @@ public class JsonRpcService : IJsonRpcService
 
             object[] executionParameters = new object[totalLength];
 
-            if (arrayLength == 1)
+            if (arrayLength <= parallelThreshold)
             {
-                JsonElement providedParameter = providedParameters[0];
-                ParameterInfo expectedParameter = expectedParameters[0];
+                for (int i = 0; i < parallelThreshold; i++)
+                {
+                    JsonElement providedParameter = providedParameters[i];
+                    ParameterInfo expectedParameter = expectedParameters[i];
 
-                executionParameters[0] = DeserializeParameter(providedParameter, expectedParameter);
+                    executionParameters[i] = DeserializeParameter(providedParameter, expectedParameter);
+                }
             }
-            else if (arrayLength > 1)
+            else if (arrayLength > parallelThreshold)
             {
                 Parallel.For(0, arrayLength, (int i) =>
                 {
