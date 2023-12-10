@@ -13,6 +13,7 @@ using System.Threading.Tasks;
 
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
+using Nethermind.Core.Collections;
 using Nethermind.JsonRpc.Data;
 using Nethermind.JsonRpc.Exceptions;
 using Nethermind.JsonRpc.Modules;
@@ -269,7 +270,7 @@ public class JsonRpcService : IJsonRpcService
     {
         try
         {
-            List<object> executionParameters = new List<object>();
+            ArrayPoolList<object> executionParameters = new ArrayPoolList<object>(expectedParameters.Length + missingParamsCount);
             int i = 0;
             foreach (JsonElement providedParameter in providedParameters.EnumerateArray())
             {
@@ -334,7 +335,10 @@ public class JsonRpcService : IJsonRpcService
                 executionParameters.Add(Type.Missing);
             }
 
-            return executionParameters.ToArray();
+            object[] returnArray = GC.AllocateUninitializedArray<object>(executionParameters.Count);
+            executionParameters.CopyTo(returnArray, 0);
+            executionParameters.Dispose();
+            return returnArray;
         }
         catch (Exception e)
         {
