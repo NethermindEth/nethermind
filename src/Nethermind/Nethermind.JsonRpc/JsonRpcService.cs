@@ -334,7 +334,7 @@ public class JsonRpcService : IJsonRpcService
 
             if (arrayLength <= parallelThreshold)
             {
-                for (int i = 0; i < parallelThreshold; i++)
+                for (int i = 0; i < arrayLength; i++)
                 {
                     JsonElement providedParameter = providedParameters[i];
                     ParameterInfo expectedParameter = expectedParameters[i];
