@@ -266,78 +266,95 @@ public class JsonRpcService : IJsonRpcService
         }
     }
 
+    private object? DeserializeParameter(JsonElement providedParameter, ParameterInfo expectedParameter)
+    {
+        Type paramType = expectedParameter.ParameterType;
+        if (paramType.IsByRef)
+        {
+            paramType = paramType.GetElementType();
+        }
+
+        if (providedParameter.ValueKind == JsonValueKind.Null || (providedParameter.ValueKind == JsonValueKind.String && providedParameter.ValueEquals(ReadOnlySpan<byte>.Empty)))
+        {
+            if (providedParameter.ValueKind == JsonValueKind.Null && IsNullableParameter(expectedParameter))
+            {
+                return null;
+            }
+            else
+            {
+                return Type.Missing;
+            }
+        }
+
+        object? executionParam;
+        if (paramType.IsAssignableTo(typeof(IJsonRpcParam)))
+        {
+            IJsonRpcParam jsonRpcParam = (IJsonRpcParam)Activator.CreateInstance(paramType);
+            jsonRpcParam!.ReadJson(providedParameter, EthereumJsonSerializer.JsonOptions);
+            executionParam = jsonRpcParam;
+        }
+        else if (paramType == typeof(string))
+        {
+            executionParam = providedParameter.GetString();
+        }
+        else
+        {
+            if (providedParameter.ValueKind == JsonValueKind.String)
+            {
+                JsonConverter converter = EthereumJsonSerializer.JsonOptions.GetConverter(paramType);
+                if (converter.GetType().FullName.StartsWith("System."))
+                {
+                    executionParam = JsonSerializer.Deserialize(providedParameter.GetString(), paramType, EthereumJsonSerializer.JsonOptions);
+                }
+                else
+                {
+                    executionParam = providedParameter.Deserialize(paramType, EthereumJsonSerializer.JsonOptions);
+                }
+            }
+            else
+            {
+                executionParam = providedParameter.Deserialize(paramType, EthereumJsonSerializer.JsonOptions);
+            }
+        }
+
+        return executionParam;
+    }
+
     private object[]? DeserializeParameters(ParameterInfo[] expectedParameters, JsonElement providedParameters, int missingParamsCount)
     {
         try
         {
-            using ArrayPoolList<object> executionParameters = new ArrayPoolList<object>(expectedParameters.Length + missingParamsCount);
-            int i = 0;
-            foreach (JsonElement providedParameter in providedParameters.EnumerateArray())
+            int arrayLength = providedParameters.GetArrayLength();
+            int totalLength = arrayLength + missingParamsCount;
+
+            if (totalLength == 0) return Array.Empty<object>();
+
+            object[] executionParameters = new object[totalLength];
+
+            if (arrayLength == 1)
             {
-                ParameterInfo expectedParameter = expectedParameters[i];
-                i++;
+                JsonElement providedParameter = providedParameters[0];
+                ParameterInfo expectedParameter = expectedParameters[0];
 
-                Type paramType = expectedParameter.ParameterType;
-                if (paramType.IsByRef)
+                executionParameters[0] = DeserializeParameter(providedParameter, expectedParameter);
+            }
+            else if (arrayLength > 1)
+            {
+                Parallel.For(0, arrayLength, (int i) =>
                 {
-                    paramType = paramType.GetElementType();
-                }
+                    JsonElement providedParameter = providedParameters[i];
+                    ParameterInfo expectedParameter = expectedParameters[i];
 
-                if (providedParameter.ValueKind == JsonValueKind.Null || (providedParameter.ValueKind == JsonValueKind.String && providedParameter.ValueEquals(ReadOnlySpan<byte>.Empty)))
-                {
-                    if (providedParameter.ValueKind == JsonValueKind.Null && IsNullableParameter(expectedParameter))
-                    {
-                        executionParameters.Add(null);
-                    }
-                    else
-                    {
-                        executionParameters.Add(Type.Missing);
-                    }
-                    continue;
-                }
-
-                object? executionParam;
-                if (paramType.IsAssignableTo(typeof(IJsonRpcParam)))
-                {
-                    IJsonRpcParam jsonRpcParam = (IJsonRpcParam)Activator.CreateInstance(paramType);
-                    jsonRpcParam!.ReadJson(providedParameter, EthereumJsonSerializer.JsonOptions);
-                    executionParam = jsonRpcParam;
-                }
-                else if (paramType == typeof(string))
-                {
-                    executionParam = providedParameter.GetString();
-                }
-                else
-                {
-                    if (providedParameter.ValueKind == JsonValueKind.String)
-                    {
-                        JsonConverter converter = EthereumJsonSerializer.JsonOptions.GetConverter(paramType);
-                        if (converter.GetType().FullName.StartsWith("System."))
-                        {
-                            executionParam = JsonSerializer.Deserialize(providedParameter.GetString(), paramType, EthereumJsonSerializer.JsonOptions);
-                        }
-                        else
-                        {
-                            executionParam = providedParameter.Deserialize(paramType, EthereumJsonSerializer.JsonOptions);
-                        }
-                    }
-                    else
-                    {
-                        executionParam = providedParameter.Deserialize(paramType, EthereumJsonSerializer.JsonOptions);
-                    }
-                }
-
-                executionParameters.Add(executionParam);
+                    executionParameters[i] = DeserializeParameter(providedParameter, expectedParameter);
+                });
             }
 
-            for (i = 0; i < missingParamsCount; i++)
+            for (int i = arrayLength; i < totalLength; i++)
             {
-                executionParameters.Add(Type.Missing);
+                executionParameters[i] = Type.Missing;
             }
 
-            object[] returnArray = GC.AllocateUninitializedArray<object>(executionParameters.Count);
-            executionParameters.CopyTo(returnArray, 0);
-            return returnArray;
+            return executionParameters;
         }
         catch (Exception e)
         {
