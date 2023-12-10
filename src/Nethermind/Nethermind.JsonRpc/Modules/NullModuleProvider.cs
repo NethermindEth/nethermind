@@ -32,7 +32,7 @@ namespace Nethermind.JsonRpc.Modules
 
         public ModuleResolution Check(string methodName, JsonRpcContext context) => ModuleResolution.Unknown;
 
-        public (MethodInfo, bool) Resolve(string methodName) => (null, false);
+        public (MethodInfo, ParameterInfo[], bool) Resolve(string methodName) => (null, Array.Empty<ParameterInfo>(), false);
 
         public Task<IRpcModule> Rent(string methodName, bool canBeShared) => Null;
 

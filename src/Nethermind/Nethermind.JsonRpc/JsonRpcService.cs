@@ -86,21 +86,20 @@ public class JsonRpcService : IJsonRpcService
     {
         string methodName = rpcRequest.Method.Trim();
 
-        (MethodInfo MethodInfo, bool ReadOnly) result = _rpcModuleProvider.Resolve(methodName);
+        (MethodInfo MethodInfo, ParameterInfo[] expectedParameters, bool ReadOnly) result = _rpcModuleProvider.Resolve(methodName);
         return result.MethodInfo is not null
             ? await ExecuteAsync(rpcRequest, methodName, result, context)
             : GetErrorResponse(methodName, ErrorCodes.MethodNotFound, "Method not found", $"{rpcRequest.Method}", rpcRequest.Id);
     }
 
     private async Task<JsonRpcResponse> ExecuteAsync(JsonRpcRequest request, string methodName,
-        (MethodInfo Info, bool ReadOnly) method, JsonRpcContext context)
+        (MethodInfo Info, ParameterInfo[] expectedParameters, bool ReadOnly) method, JsonRpcContext context)
     {
-        ParameterInfo[] expectedParameters = method.Info.GetParameters();
         JsonElement providedParameters = request.Params;
 
-        LogRequest(methodName, providedParameters, expectedParameters);
+        LogRequest(methodName, providedParameters, method.expectedParameters);
 
-        int missingParamsCount = expectedParameters.Length - providedParameters.GetArrayLength();
+        int missingParamsCount = method.expectedParameters.Length - providedParameters.GetArrayLength();
         foreach (JsonElement item in providedParameters.EnumerateArray())
         {
             if (item.ValueKind == JsonValueKind.Null || (item.ValueKind == JsonValueKind.String && item.ValueEquals(ReadOnlySpan<byte>.Empty)))
@@ -119,8 +118,8 @@ public class JsonRpcService : IJsonRpcService
                 hasIncorrectParameters = false;
                 for (int i = 0; i < missingParamsCount; i++)
                 {
-                    int parameterIndex = expectedParameters.Length - missingParamsCount + i;
-                    bool nullable = IsNullableParameter(expectedParameters[parameterIndex]);
+                    int parameterIndex = method.expectedParameters.Length - missingParamsCount + i;
+                    bool nullable = IsNullableParameter(method.expectedParameters[parameterIndex]);
 
                     // if the null is the default parameter it could be passed in an explicit way as "" or null
                     // or we can treat null as a missing parameter. Two tests for this cases:
@@ -130,7 +129,7 @@ public class JsonRpcService : IJsonRpcService
                     {
                         explicitNullableParamsCount += 1;
                     }
-                    if (!expectedParameters[expectedParameters.Length - missingParamsCount + i].IsOptional && !nullable)
+                    if (!method.expectedParameters[method.expectedParameters.Length - missingParamsCount + i].IsOptional && !nullable)
                     {
                         hasIncorrectParameters = true;
                         break;
@@ -140,7 +139,7 @@ public class JsonRpcService : IJsonRpcService
 
             if (hasIncorrectParameters)
             {
-                return GetErrorResponse(methodName, ErrorCodes.InvalidParams, "Invalid params", $"Incorrect parameters count, expected: {expectedParameters.Length}, actual: {expectedParameters.Length - missingParamsCount}", request.Id);
+                return GetErrorResponse(methodName, ErrorCodes.InvalidParams, "Invalid params", $"Incorrect parameters count, expected: {method.expectedParameters.Length}, actual: {method.expectedParameters.Length - missingParamsCount}", request.Id);
             }
         }
 
@@ -148,9 +147,9 @@ public class JsonRpcService : IJsonRpcService
 
         //prepare parameters
         object[]? parameters = null;
-        if (expectedParameters.Length > 0)
+        if (method.expectedParameters.Length > 0)
         {
-            parameters = DeserializeParameters(expectedParameters, providedParameters, missingParamsCount);
+            parameters = DeserializeParameters(method.expectedParameters, providedParameters, missingParamsCount);
             if (parameters is null)
             {
                 if (_logger.IsWarn) _logger.Warn($"Incorrect JSON RPC parameters when calling {methodName} with params [{string.Join(", ", providedParameters)}]");

@@ -62,7 +62,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         public IReadOnlyCollection<string> All => _provider.All;
         public ModuleResolution Check(string methodName, JsonRpcContext context) => _provider.Check(methodName, context);
 
-        public (MethodInfo, bool) Resolve(string methodName) => _provider.Resolve(methodName);
+        public (MethodInfo, ParameterInfo[], bool) Resolve(string methodName) => _provider.Resolve(methodName);
 
         public Task<IRpcModule> Rent(string methodName, bool readOnly) => _provider.Rent(methodName, readOnly);
 
