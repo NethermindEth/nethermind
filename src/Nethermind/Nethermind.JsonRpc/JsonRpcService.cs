@@ -270,13 +270,12 @@ public class JsonRpcService : IJsonRpcService
     {
         try
         {
-            ArrayPoolList<object> executionParameters = new ArrayPoolList<object>(expectedParameters.Length + missingParamsCount);
-            int i = 0;
-            foreach (JsonElement providedParameter in providedParameters.EnumerateArray())
+            object[] executionParameters = new object[expectedParameters.Length + missingParamsCount];
+            Parallel.For(0, expectedParameters.Length, (int i) =>
             {
+                JsonElement providedParameter = providedParameters[i];
                 ParameterInfo expectedParameter = expectedParameters[i];
-                i++;
-
+                
                 Type paramType = expectedParameter.ParameterType;
                 if (paramType.IsByRef)
                 {
@@ -287,13 +286,13 @@ public class JsonRpcService : IJsonRpcService
                 {
                     if (providedParameter.ValueKind == JsonValueKind.Null && IsNullableParameter(expectedParameter))
                     {
-                        executionParameters.Add(null);
+                        // Already null
                     }
                     else
                     {
-                        executionParameters.Add(Type.Missing);
+                        executionParameters[i] = Type.Missing;
                     }
-                    continue;
+                    return;
                 }
 
                 object? executionParam;
@@ -327,18 +326,17 @@ public class JsonRpcService : IJsonRpcService
                     }
                 }
 
-                executionParameters.Add(executionParam);
-            }
+                executionParameters[i] = executionParam;
+            });
 
-            for (i = 0; i < missingParamsCount; i++)
+            int i = expectedParameters.Length;
+            int end = i + missingParamsCount;
+            for (; i < end; i++)
             {
-                executionParameters.Add(Type.Missing);
+                executionParameters[i] = Type.Missing;
             }
 
-            object[] returnArray = GC.AllocateUninitializedArray<object>(executionParameters.Count);
-            executionParameters.CopyTo(returnArray, 0);
-            executionParameters.Dispose();
-            return returnArray;
+            return executionParameters;
         }
         catch (Exception e)
         {
