@@ -270,7 +270,7 @@ public class JsonRpcService : IJsonRpcService
     {
         try
         {
-            ArrayPoolList<object> executionParameters = new ArrayPoolList<object>(expectedParameters.Length + missingParamsCount);
+            using ArrayPoolList<object> executionParameters = new ArrayPoolList<object>(expectedParameters.Length + missingParamsCount);
             int i = 0;
             foreach (JsonElement providedParameter in providedParameters.EnumerateArray())
             {
@@ -337,7 +337,6 @@ public class JsonRpcService : IJsonRpcService
 
             object[] returnArray = GC.AllocateUninitializedArray<object>(executionParameters.Count);
             executionParameters.CopyTo(returnArray, 0);
-            executionParameters.Dispose();
             return returnArray;
         }
         catch (Exception e)
