@@ -264,7 +264,7 @@ namespace Nethermind.Core.Extensions
         public static bool TryDecodeFromUtf8_Vector128(ReadOnlySpan<byte> hex, Span<byte> bytes)
         {
             Debug.Assert(Ssse3.IsSupported || AdvSimd.Arm64.IsSupported);
-            Debug.Assert(hex.Length <= bytes.Length);
+            Debug.Assert((hex.Length / 2) + (hex.Length % 2) == bytes.Length);
             Debug.Assert(hex.Length >= Vector128<byte>.Count);
 
             nuint offset = 0;
