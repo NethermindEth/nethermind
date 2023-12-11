@@ -201,7 +201,7 @@ namespace Nethermind.Core.Collections
 
         public int Count => _dict.Count;
 
-        public bool IsReadOnly => _dict.IsReadOnly;
+        public bool IsReadOnly => false;
 
         void ICollection<T>.Add(T item)
         {

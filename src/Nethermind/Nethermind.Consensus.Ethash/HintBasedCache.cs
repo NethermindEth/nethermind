@@ -79,12 +79,12 @@ namespace Nethermind.Consensus.Ethash
                 if (alreadyCachedEpoch < startEpoch || alreadyCachedEpoch > endEpoch)
                 {
                     epochForGuid.Remove(alreadyCachedEpoch);
-                    if (!_epochRefs.TryGetValue(alreadyCachedEpoch, out var value))
+                    if (!_epochRefs.TryGetValue(alreadyCachedEpoch, out var epochValue))
                     {
                         throw new InvalidAsynchronousStateException("Epoch ref missing");
                     }
 
-                    _epochRefs[alreadyCachedEpoch] = value - 1;
+                    _epochRefs[alreadyCachedEpoch] = epochValue - 1;
                     if (_epochRefs[alreadyCachedEpoch] == 0)
                     {
                         // _logger.Warn($"Removing data set for epoch {alreadyCachedEpoch}");
@@ -100,16 +100,15 @@ namespace Nethermind.Consensus.Ethash
                 for (long i = startEpoch; i <= endEpoch; i++)
                 {
                     uint epoch = (uint)i;
-                    if (!epochForGuid.Contains(epoch))
+                    if (epochForGuid.Add(epoch))
                     {
-                        epochForGuid.Add(epoch);
-                        if (!_epochRefs.TryGetValue(epoch, out var value))
+                        if (!_epochRefs.TryGetValue(epoch, out var epochValue))
                         {
-                            value = 0;
-                            _epochRefs[epoch] = value;
+                            epochValue = 0;
+                            _epochRefs[epoch] = epochValue;
                         }
 
-                        _epochRefs[epoch] = value + 1;
+                        _epochRefs[epoch] = epochValue + 1;
                         if (_epochRefs[epoch] == 1)
                         {
                             // _logger.Warn($"Building data set for epoch {epoch}");
