@@ -79,6 +79,9 @@ public interface IInitConfig : IConfig
 
     [ConfigItem(Description = "[TECHNICAL] Disable setting malloc options. Set to true if using different memory allocator or manually setting malloc opts.", DefaultValue = "false", HiddenFromDocs = true)]
     bool DisableMallocOpts { get; set; }
+
+    [ConfigItem(Description = "Directory with era1 archives from which ancient blocks will be served.", DefaultValue = "", HiddenFromDocs = false)]
+    string AncientDataDirectory { get; set; }
 }
 
 public enum DiagnosticMode

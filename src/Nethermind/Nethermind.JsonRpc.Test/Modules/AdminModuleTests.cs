@@ -45,7 +45,7 @@ public class AdminModuleTests
         ConcurrentDictionary<PublicKey, Peer> dict = new();
         dict.TryAdd(TestItem.PublicKeyA, new Peer(new Node(TestItem.PublicKeyA, "127.0.0.1", 30303, true)));
         peerPool.ActivePeers.Returns(dict);
-        IEraService eraService = Substitute.For<IEraService>();
+        IEraExporter eraService = Substitute.For<IEraExporter>();
         IStaticNodesManager staticNodesManager = Substitute.For<IStaticNodesManager>();
         IProcessExitToken exitToken = Substitute.For<IProcessExitToken>();
         Enode enode = new(_enodeString);

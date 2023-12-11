@@ -41,5 +41,6 @@ namespace Nethermind.Api
             // ReSharper disable once ValueParameterNotUsed
             set => DiagnosticMode = DiagnosticMode.MemDb;
         }
+        public string AncientDataDirectory { get; set; } = string.Empty;
     }
 }

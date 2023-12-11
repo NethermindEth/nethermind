@@ -10,6 +10,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
 using Nethermind.State;
+using Nethermind.Synchronization;
 
 namespace Nethermind.Init.Steps
 {
@@ -28,7 +29,7 @@ namespace Nethermind.Init.Steps
             _logger = _api.LogManager.GetClassLogger();
         }
 
-        public async Task Execute(CancellationToken _)
+        public async Task Execute(CancellationToken cancellation)
         {
             _initConfig = _api.Config<IInitConfig>();
             Hash256? expectedGenesisHash = string.IsNullOrWhiteSpace(_initConfig.GenesisHash) ? null : new Hash256(_initConfig.GenesisHash);
@@ -43,6 +44,8 @@ namespace Nethermind.Init.Steps
             {
                 Load();
             }
+
+
 
             ValidateGenesisHash(expectedGenesisHash);
 

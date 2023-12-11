@@ -3,10 +3,10 @@
 
 namespace Nethermind.Era1;
 
-internal class EraMetadata
+public class EraMetadata
 {
     public long Start { get; }
-    public long End => Start + Count;
+    public long End => Start + Count - 1;
     public long Count { get; }
     public long Length { get; }
 

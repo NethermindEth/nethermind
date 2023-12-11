@@ -7,9 +7,8 @@ using System.IO.Compression;
 using System.Runtime.CompilerServices;
 using System.Security.Cryptography;
 using DotNetty.Buffers;
-using MathNet.Numerics.Distributions;
 using Nethermind.Core.Collections;
-using Org.BouncyCastle.Asn1;
+using Org.BouncyCastle.Asn1.Cms;
 using Snappier;
 namespace Nethermind.Era1;
 
@@ -17,6 +16,11 @@ internal class E2Store : IDisposable
 {
     internal const int HeaderSize = 8;
     internal const int ValueSizeLimit = 1024 * 1024 * 50;
+
+    private static ReadOnlySpan<byte> SnappyHeader => new byte[]
+      {
+            0xff, 0x06, 0x00, 0x00, 0x73, 0x4e, 0x61, 0x50, 0x70, 0x59
+      };
 
     private readonly Stream _stream;
     private BlockIndex? _blockIndex;
@@ -89,6 +93,7 @@ internal class E2Store : IDisposable
             EnsureCompressorStream(bytes.Length);
             await _compressor!.WriteAsync(bytes, cancellation);
             await _compressor.FlushAsync();
+            
             bytes = _compressedData!.ToArray();
         }
 
@@ -201,13 +206,15 @@ internal class E2Store : IDisposable
         buffer.EnsureWritable((int)e.Length * 4, true);
 
         EnsureDecompressorStream(e.ValueOffset, e.Length);
+        using StreamSegment streamSegment = new(_stream, e.ValueOffset, e.Length);
+        using SnappyStream decompressor = new(streamSegment, CompressionMode.Decompress, true);
         int totalRead = 0;
         int read;
         do
         {
             int before = buffer.WriterIndex;
             //We don't know the uncompressed length 
-            await buffer.WriteBytesAsync(_decompressor, (int)e.Length * 4, cancellation);
+            await buffer.WriteBytesAsync(decompressor, (int)e.Length * 4, cancellation);
             read = buffer.WriterIndex - before;
             totalRead += read;
         }
@@ -224,8 +231,13 @@ internal class E2Store : IDisposable
             _compressedData.SetLength(0);
         if (_compressor == null)
             _compressor = new(_compressedData, CompressionMode.Compress, true);
+        else
+            WriteStreamHeader();
     }
-
+    private void WriteStreamHeader()
+    {
+        _compressedData!.Write(SnappyHeader);
+    }
     private void EnsureDecompressorStream(long offset, long length)
     {
         if (_decompressor == null||_streamSegment == null)

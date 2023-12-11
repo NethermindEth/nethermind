@@ -139,4 +139,7 @@ public interface ISyncConfig : IConfig
 
     [ConfigItem(Description = "Interval, in seconds, between `malloc_trim` calls during sync.", DefaultValue = "300", HiddenFromDocs = true)]
     public int MallocTrimIntervalSec { get; set; }
+
+    [ConfigItem(Description = "Directory of era1 archives to be imported before starting in full sync mode.", DefaultValue = "", HiddenFromDocs = false)]
+    public string ImportDirectory { get; set; }
 }

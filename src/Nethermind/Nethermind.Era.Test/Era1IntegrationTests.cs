@@ -9,6 +9,7 @@ using Nethermind.Blockchain;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
@@ -165,8 +166,10 @@ public class Era1IntegrationTests
     {
         var eraFiles = EraReader.GetAllEraFiles(dir, "mainnet");
 
+        ISpecProvider specProvider = Substitute.For<ISpecProvider>();
         IReceiptSpec receiptSpec = Substitute.For<IReceiptSpec>();
         receiptSpec.IsEip658Enabled.Returns(true);
+        specProvider.GetReceiptSpec(Arg.Any<long>()).Returns(receiptSpec);
 
         foreach (var era in eraFiles)
         {
@@ -174,7 +177,7 @@ public class Era1IntegrationTests
             using EraReader eraReader = await EraReader.Create(era);
             var eraAccumulator = await eraReader.ReadAccumulator();
 
-            Assert.That(await eraReader.VerifyAccumulator(eraAccumulator, receiptSpec), Is.True);
+            Assert.That(await eraReader.VerifyAccumulator(eraAccumulator, specProvider), Is.True);
         }
     }
 
@@ -225,11 +228,9 @@ public class Era1IntegrationTests
 
         using EraReader eraReader = await EraReader.Create(stream);
 
-        IReceiptSpec receiptSpec = Substitute.For<IReceiptSpec>();
-
         var eraAccumulator = await eraReader.ReadAccumulator();
 
-        Assert.That(await eraReader.VerifyAccumulator(eraAccumulator, receiptSpec), Is.True);
+        Assert.That(await eraReader.VerifyAccumulator(eraAccumulator, Substitute.For<ISpecProvider>()), Is.True);
     }
 
     [Test]

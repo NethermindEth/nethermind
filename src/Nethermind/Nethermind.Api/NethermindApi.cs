@@ -233,5 +233,6 @@ namespace Nethermind.Api
         public IProcessExitSource? ProcessExit { get; set; }
         public IProcessExitToken? ProcessExitToken { get; set; }
         public CompositeTxGossipPolicy TxGossipPolicy { get; } = new();
+        public IEraStore? EraStore { get; set; }
     }
 }

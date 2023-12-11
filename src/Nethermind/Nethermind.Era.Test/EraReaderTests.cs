@@ -184,7 +184,7 @@ internal class EraReaderTests
         await builder.Finalize();
 
         EraReader sut = await EraReader.Create(stream);
-        bool result = await sut.VerifyAccumulator(calculator.ComputeRoot().ToArray(), Substitute.For<IReceiptSpec>());
+        bool result = await sut.VerifyAccumulator(calculator.ComputeRoot().ToArray(), Substitute.For<ISpecProvider>());
 
         Assert.That(result, Is.True);
     }
@@ -207,7 +207,7 @@ internal class EraReaderTests
         int count = 0;
         EraReader sut = await EraReader.Create(stream);
 
-        await sut.VerifyAccumulator(calculator.ComputeRoot().ToArray(), Substitute.For<IReceiptSpec>());
+        await sut.VerifyAccumulator(calculator.ComputeRoot().ToArray(), Substitute.For<ISpecProvider>());
         await foreach (var item in sut)
         {
             count++;

@@ -4,13 +4,10 @@
 namespace Nethermind.Era1;
 
 [Serializable]
-internal class EraException : Exception
+public class EraException : Exception
 {
     public EraException() { }
     public EraException(string message) : base(message) { }
     public EraException(string message, Exception inner) : base(message, inner) { }
-    protected EraException(
-      System.Runtime.Serialization.SerializationInfo info,
-      System.Runtime.Serialization.StreamingContext context) : base(info, context) { }
 
 }

@@ -1,11 +1,14 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Buffers;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using DotNetty.Buffers;
 using Nethermind.Core;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Int256;
@@ -23,6 +26,9 @@ public class EraReader : IAsyncEnumerable<(Block, TxReceipt[], UInt256)>, IDispo
     private readonly bool _isDescendingOrder;
 
     public long CurrentBlockNumber => _currentBlockNumber;
+    public EraMetadata EraMetadata => _store.Metadata;
+
+    private static readonly char[] separator = new char[] { '-' };
 
     private EraReader(E2Store e2, IByteBufferAllocator byteBufferAllocator, bool descendingOrder)
     {
@@ -31,7 +37,11 @@ public class EraReader : IAsyncEnumerable<(Block, TxReceipt[], UInt256)>, IDispo
         _isDescendingOrder = descendingOrder;
         Reset(_isDescendingOrder);
     }
-    public static Task<EraReader> Create(string file, IByteBufferAllocator? allocator = null, in CancellationToken token = default)
+    public static Task<EraReader> Create(string file, in CancellationToken token = default)
+    {
+        return Create(file, null, token);
+    }
+    public static Task<EraReader> Create(string file, IByteBufferAllocator? allocator, in CancellationToken token = default)
     {
         return Create(file, false, allocator, token);
     }
@@ -40,7 +50,11 @@ public class EraReader : IAsyncEnumerable<(Block, TxReceipt[], UInt256)>, IDispo
         if (string.IsNullOrEmpty(file)) throw new ArgumentException("Cannot be null or empty.", nameof(file));
         return Create(File.OpenRead(file), descendingOrder, allocator, token);
     }
-    public static Task<EraReader> Create(Stream stream, IByteBufferAllocator? allocator = null, CancellationToken token = default)
+    public static Task<EraReader> Create(Stream stream, CancellationToken token = default)
+    {
+        return Create(stream, false, null, token);
+    }
+    public static Task<EraReader> Create(Stream stream, IByteBufferAllocator? allocator, CancellationToken token = default)
     {
         return Create(stream, false, allocator, token);
     }
@@ -70,9 +84,9 @@ public class EraReader : IAsyncEnumerable<(Block, TxReceipt[], UInt256)>, IDispo
     /// </summary>
     /// <param name="cancellation"></param>
     /// <returns>Returns <see cref="true"/> if the data matches the accumulator, and <see cref="false"/> if there is no match.</returns>
-    public async Task<bool> VerifyAccumulator(byte[] expectedAccumulator, IReceiptSpec receiptSpec, CancellationToken cancellation = default)
+    public async Task<bool> VerifyAccumulator(byte[] expectedAccumulator, ISpecProvider specProvider, CancellationToken cancellation = default)
     {
-        if (receiptSpec is null) throw new ArgumentNullException(nameof(receiptSpec));
+        if (specProvider is null) throw new ArgumentNullException(nameof(specProvider));
         UInt256 currentTd = await CalculateStartingTotalDiffulty(cancellation);
         Reset(false);
 
@@ -92,7 +106,7 @@ public class EraReader : IAsyncEnumerable<(Block, TxReceipt[], UInt256)>, IDispo
             {
                 return false;
             }
-            Hash256 receiptRoot = new ReceiptTrie(receiptSpec, err.Receipts).RootHash;
+            Hash256 receiptRoot = new ReceiptTrie(specProvider.GetReceiptSpec(err.Block.Number), err.Receipts).RootHash;
             if (err.Block.Header.ReceiptsRoot != receiptRoot)
             {
                 return false;
@@ -115,16 +129,18 @@ public class EraReader : IAsyncEnumerable<(Block, TxReceipt[], UInt256)>, IDispo
     // Format: <network>-<epoch>-<hexroot>.era1
     public static IEnumerable<string> GetAllEraFiles(string directoryPath, string network)
     {
-        var entries = Directory.GetFiles(directoryPath, "*.era1");
+        if (directoryPath is null) throw new ArgumentNullException(nameof(directoryPath));
+        if (network is null) throw new ArgumentNullException(nameof(network));
+
+        var entries = Directory.GetFiles(directoryPath, "*.era1", new EnumerationOptions() { RecurseSubdirectories=false, MatchCasing=MatchCasing.PlatformDefault });
         if (!entries.Any())
             yield break;
 
         uint next = 0;
-
         foreach (string file in entries)
         {
-            string[] parts = Path.GetFileName(file).Split(new char[] { '-' });
-            if (parts.Length != 3 || parts[0] != network)
+            string[] parts = Path.GetFileName(file).Split(separator);
+            if (parts.Length != 3 || !network.Equals(parts[0], StringComparison.OrdinalIgnoreCase))
             {
                 continue;
             }
@@ -198,7 +214,8 @@ public class EraReader : IAsyncEnumerable<(Block, TxReceipt[], UInt256)>, IDispo
             || blockNumber > _store.Metadata.Start + _store.Metadata.Count)
             throw new ArgumentOutOfRangeException("Value is outside the range of the archive.", blockNumber, nameof(blockNumber));
         long seeked = SeekToBlock(blockNumber);
-        IByteBuffer buffer = _byteBufferAllocator.Buffer(1024 * 1024);
+        //Worst case scenario buffer 
+        IByteBuffer buffer = _byteBufferAllocator.Buffer(1024 * 1024 * 2);
 
         try
         {
@@ -210,6 +227,18 @@ public class EraReader : IAsyncEnumerable<(Block, TxReceipt[], UInt256)>, IDispo
             BlockHeader header = Rlp.Decode<BlockHeader>(rlpStream);
 
             await ReadEntryHere(buffer, EntryTypes.CompressedBody, cancellationToken);
+
+            //void Test()
+            //{
+            //    NettyBufferMemoryOwner memoryOwner = new(buffer);
+            //    Rlp.ValueDecoderContext ctx = new(memoryOwner.Memory, true);
+
+            //    var x = new BlockBodyDecoder();
+            //    x.Decode(ref ctx);
+            //}
+            //Test();
+
+
             BlockBody body = Rlp.Decode<BlockBody>(new NettyRlpStream(buffer));
 
             await ReadEntryHere(buffer, EntryTypes.CompressedReceipts, cancellationToken);
@@ -229,6 +258,91 @@ public class EraReader : IAsyncEnumerable<(Block, TxReceipt[], UInt256)>, IDispo
         {
             buffer.Release();
         };
+    }
+
+    private class BlockBodyDecoder : IRlpValueDecoder<BlockBody>
+    {
+        private readonly TxDecoder _txDecoder = new();
+        private readonly HeaderDecoder? _headerDecoder = new();
+        private readonly WithdrawalDecoder _withdrawalDecoderDecoder = new();
+
+        public int GetLength(BlockBody item, RlpBehaviors rlpBehaviors)
+        {
+            return Rlp.LengthOfSequence(GetBodyLength(item));
+        }
+
+        public int GetBodyLength(BlockBody b)
+        {
+            if (b.Withdrawals != null)
+            {
+                return Rlp.LengthOfSequence(GetTxLength(b.Transactions)) +
+                       Rlp.LengthOfSequence(GetUnclesLength(b.Uncles)) + Rlp.LengthOfSequence(GetWithdrawalsLength(b.Withdrawals));
+            }
+            return Rlp.LengthOfSequence(GetTxLength(b.Transactions)) +
+                   Rlp.LengthOfSequence(GetUnclesLength(b.Uncles));
+        }
+
+        private int GetTxLength(Transaction[] transactions)
+        {
+            return transactions.Sum(t => _txDecoder!.GetLength(t, RlpBehaviors.None));
+        }
+
+        private int GetUnclesLength(BlockHeader[] headers)
+        {
+            return headers.Sum(t => _headerDecoder!.GetLength(t, RlpBehaviors.None));
+        }
+
+        private int GetWithdrawalsLength(Withdrawal[] withdrawals)
+        {
+            return withdrawals.Sum(t => _withdrawalDecoderDecoder.GetLength(t, RlpBehaviors.None));
+        }
+
+        public BlockBody Decode(ref Rlp.ValueDecoderContext ctx, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        {
+            int sequenceLength = ctx.ReadSequenceLength();
+            int startingPosition = ctx.Position;
+            if (sequenceLength == 0)
+            {
+                return new BlockBody();
+            }
+
+            // quite significant allocations (>0.5%) here based on a sample 3M blocks sync
+            // (just on these delegates)
+            var transactions = ctx.DecodeArray(_txDecoder!);
+            var uncles = ctx.DecodeArray(_headerDecoder!);
+            Withdrawal?[]? withdrawals = null;
+            if (ctx.PeekNumberOfItemsRemaining(startingPosition + sequenceLength, 1) > 0)
+            {
+                withdrawals = ctx.DecodeArray(_withdrawalDecoderDecoder!);
+            }
+
+            return new BlockBody(transactions!, uncles!, withdrawals!);
+        }
+
+        public void Serialize(RlpStream stream, BlockBody body)
+        {
+            stream.StartSequence(GetBodyLength(body));
+            stream.StartSequence(GetTxLength(body.Transactions));
+            foreach (Transaction? txn in body.Transactions)
+            {
+                stream.Encode(txn);
+            }
+
+            stream.StartSequence(GetUnclesLength(body.Uncles));
+            foreach (BlockHeader? uncle in body.Uncles)
+            {
+                stream.Encode(uncle);
+            }
+
+            if (body.Withdrawals != null)
+            {
+                stream.StartSequence(GetWithdrawalsLength(body.Withdrawals));
+                foreach (Withdrawal? withdrawal in body.Withdrawals)
+                {
+                    stream.Encode(withdrawal);
+                }
+            }
+        }
     }
     /// <summary>
     /// Reads an entry and loads it's value into <paramref name="buffer"/> from the current position in the stream.

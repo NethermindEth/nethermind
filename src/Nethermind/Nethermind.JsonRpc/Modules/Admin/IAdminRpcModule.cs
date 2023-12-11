@@ -70,7 +70,7 @@ namespace Nethermind.JsonRpc.Modules.Admin
         EdgeCaseHint = "",
         ExampleResponse = "\"Starting\"",
         IsImplemented = true)]
-        Task<ResultWrapper<string>> admin_exportHistory(string destination, int blockStart, int count);
-        Task<ResultWrapper<string>> admin_importHistory(string source);
+        Task<ResultWrapper<string>> admin_exportHistory(string destination, int epochStart, int epochEnd);
+        Task<ResultWrapper<string>> admin_verifyHistory(string eraSource, string accumulatorFile);
     }
 }

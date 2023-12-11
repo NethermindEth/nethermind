@@ -28,8 +28,8 @@ using Nethermind.JsonRpc.Modules.Witness;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
 using Nethermind.JsonRpc.Modules.Rpc;
-using Nethermind.Era1;
 using System.IO.Abstractions;
+using Nethermind.Blockchain;
 
 namespace Nethermind.Init.Steps;
 
@@ -168,10 +168,9 @@ public class RegisterRpcModules : IStep
         ManualPruningTrigger pruningTrigger = new();
         _api.PruningTrigger.Add(pruningTrigger);
         
-        IEraService eraService = new EraService(
+        IEraExporter eraService = new EraExporter(
             _api.FileSystem,
             _api.BlockTree,
-            _api.BlockValidator,
             _api.ReceiptStorage,
             _api.SpecProvider,
             BlockchainIds.GetBlockchainName(_api.SpecProvider.NetworkId),

@@ -32,7 +32,7 @@ public class AdminRpcModule : IAdminRpcModule
     private readonly ManualPruningTrigger _pruningTrigger;
     private readonly IProcessExitToken _processExitToken;
     private NodeInfo _nodeInfo = null!;
-    private readonly IEraService _eraService;
+    private readonly IEraExporter _eraExporter;
 
     public AdminRpcModule(
         IBlockTree blockTree,
@@ -40,7 +40,7 @@ public class AdminRpcModule : IAdminRpcModule
         IPeerPool peerPool,
         IStaticNodesManager staticNodesManager,
         IEnode enode,
-        IEraService eraService,
+        IEraExporter eraService,
         string dataDir,
         ManualPruningTrigger pruningTrigger,
         IProcessExitToken processExitToken)
@@ -53,7 +53,7 @@ public class AdminRpcModule : IAdminRpcModule
         _staticNodesManager = staticNodesManager ?? throw new ArgumentNullException(nameof(staticNodesManager));
         _pruningTrigger = pruningTrigger;
         _processExitToken = processExitToken;
-        _eraService = eraService;
+        _eraExporter = eraService;
         BuildNodeInfo();
     }
 
@@ -140,60 +140,41 @@ public class AdminRpcModule : IAdminRpcModule
         return ResultWrapper<PruningStatus>.Success(_pruningTrigger.Trigger());
     }
 
-    private Task _importExportTask = Task.CompletedTask;
+    private Task _exportTask = Task.CompletedTask;
     private int _canEnter = 1;
 
-    public Task<ResultWrapper<string>> admin_importHistory(string source)
-    {
-        if (Interlocked.Exchange(ref _canEnter, 0) == 1 && _importExportTask.IsCompleted)
-        {
-            try
-            {
-                //TODO correct network 
-                _importExportTask = _eraService.Import(source, _processExitToken.Token);
-            }
-            finally
-            {
-                Interlocked.Exchange(ref _canEnter, 1);
-            }
-            //TODO better message?
-            return ResultWrapper<string>.Success("Started import task");
-        }
-        return ResultWrapper<string>.Fail("An import or export job is already running.");
-    }
-    public Task<ResultWrapper<string>> admin_exportHistory(string destination, int from, int to)
+    public Task<ResultWrapper<string>> admin_exportHistory(string destination, int epochFrom, int epochTo)
     {
         //TODO sanitize destination path
-        if (from < 0 || to < 0)
-        {
-            return ResultWrapper<string>.Fail("Block or count number cannot be negative.");
-        }
-        if (to < from)
-        {
-            return ResultWrapper<string>.Fail($"Invalid range {from}-{to}.");
-        }
+        if (epochFrom < 0 || epochTo < 0)
+            return ResultWrapper<string>.Fail("Epoch number cannot be negative.");
+        if (epochTo < epochFrom)
+            return ResultWrapper<string>.Fail($"Invalid range {epochFrom}-{epochTo}.");
+
         //TODO what is the correct bounds check? Should canonical be required?
         Block? latestHead = _blockTree.Head;
         if (latestHead == null)
-        {
-            return ResultWrapper<string>.Fail("Node is still syncing.");
-        }
-        if (latestHead.Number < from || latestHead.Number < to)
-        {
-            return ResultWrapper<string>.Fail($"Cannot export beyond block head {latestHead.Number}.");
-        }
-        BlockHeader? earliest = _blockTree.FindEarliestHeader();
-        if (from < earliest.Number || to < earliest.Number)
-        {
-            return ResultWrapper<string>.Fail($"Cannot export below block {earliest.Number}.");
-        }
+            return ResultWrapper<string>.Fail("Node is currently unable to export.");
 
-        if (Interlocked.Exchange(ref _canEnter, 0) == 1 && _importExportTask.IsCompleted)
+        int from = epochFrom * EraWriter.MaxEra1Size;
+        int to = epochTo * EraWriter.MaxEra1Size + EraWriter.MaxEra1Size - 1;
+        long remainingInEpoch = EraWriter.MaxEra1Size - latestHead.Number % EraWriter.MaxEra1Size;
+        long mostRecentFinishedEpoch = (latestHead.Number == 0 ? 0 : latestHead.Number / EraWriter.MaxEra1Size) - (remainingInEpoch == 0 ? 0 : 1);
+        if (mostRecentFinishedEpoch < 0)
+            return ResultWrapper<string>.Fail($"No epochs ready for export.");
+        if (mostRecentFinishedEpoch < epochFrom || mostRecentFinishedEpoch < epochTo)
+            return ResultWrapper<string>.Fail($"Cannot export beyond epoch {mostRecentFinishedEpoch}.");
+        
+        Block? earliest = _blockTree.FindBlock(from, BlockTreeLookupOptions.DoNotCreateLevelIfMissing);
+
+        if (earliest == null)
+            return ResultWrapper<string>.Fail($"Cannot export epoch {epochFrom}.");
+
+        if (Interlocked.Exchange(ref _canEnter, 0) == 1 && _exportTask.IsCompleted)
         {
             try
             {
-                //TODO correct network 
-                _importExportTask = _eraService.Export(destination, from, to, EraWriter.MaxEra1Size, _processExitToken.Token);
+                _exportTask = _eraExporter.Export(destination, from, to, EraWriter.MaxEra1Size, _processExitToken.Token);
             }
             finally
             {
@@ -205,25 +186,26 @@ public class AdminRpcModule : IAdminRpcModule
         }
         else
         {
-            return ResultWrapper<string>.Fail("An import or export job is already running.");
+            return ResultWrapper<string>.Fail("An export job is already running.");
         }
     }
 
-    public Task<ResultWrapper<string>> admin_verifyEra1(string source)
+    //TODO maybe move to cli?
+    public Task<ResultWrapper<string>> admin_verifyHistory(string eraSource, string accumulatorFile)
     {
         try
         {
-            if (Interlocked.Exchange(ref _canEnter, 0) == 1 && _importExportTask.IsCompleted)
+            if (Interlocked.Exchange(ref _canEnter, 0) == 1 && _exportTask.IsCompleted)
             {
                 //TODO correct network 
-                _importExportTask = _eraService.VerifyEraFiles(source);
+                //_importExportTask = _eraService.VerifyEraFiles(eraSource);
 
                 //TODO better message?
                 return ResultWrapper<string>.Success("Started export task");
             }
             else
             {
-                return ResultWrapper<string>.Fail("An import or export job is currently running.");
+                return ResultWrapper<string>.Fail("An export job is currently running.");
             }
         }
         finally
