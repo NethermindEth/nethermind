@@ -521,7 +521,10 @@ namespace Nethermind.Serialization.Rlp
             ulong v = rlpStream.DecodeULong();
             ReadOnlySpan<byte> rBytes = rlpStream.DecodeByteArraySpan();
             ReadOnlySpan<byte> sBytes = rlpStream.DecodeByteArraySpan();
-            ApplySignature(transaction, v, rBytes, sBytes, rlpBehaviors);
+            if (!(v == 0 && rBytes.IsEmpty && sBytes.IsEmpty))
+            {
+                ApplySignature(transaction, v, rBytes, sBytes, rlpBehaviors);
+            }
         }
 
         private static void DecodeSignature(
@@ -532,7 +535,10 @@ namespace Nethermind.Serialization.Rlp
             ulong v = decoderContext.DecodeULong();
             ReadOnlySpan<byte> rBytes = decoderContext.DecodeByteArraySpan();
             ReadOnlySpan<byte> sBytes = decoderContext.DecodeByteArraySpan();
-            ApplySignature(transaction, v, rBytes, sBytes, rlpBehaviors);
+            if (!(v == 0 && rBytes.IsEmpty && sBytes.IsEmpty))
+            {
+                ApplySignature(transaction, v, rBytes, sBytes, rlpBehaviors);
+            }
         }
 
         private static void ApplySignature(
