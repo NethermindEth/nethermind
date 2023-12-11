@@ -3,6 +3,8 @@
 
 using System;
 using System.Collections.Generic;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
@@ -28,7 +30,7 @@ using Nethermind.Facade.Eth;
 using Nethermind.JsonRpc.Modules.Subscribe;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.TxPool;
-using Newtonsoft.Json;
+
 
 namespace Nethermind.AccountAbstraction.Test
 {
@@ -67,9 +69,6 @@ namespace Nethermind.AccountAbstraction.Test
             _jsonRpcDuplexClient = Substitute.For<IJsonRpcDuplexClient>();
             _jsonSerializer = new EthereumJsonSerializer();
 
-            JsonSerializer jsonSerializer = new();
-            jsonSerializer.Converters.AddRange(EthereumJsonSerializer.CommonConverters);
-
             SubscriptionFactory subscriptionFactory = new(
                 _logManager,
                 _blockTree,
@@ -78,7 +77,7 @@ namespace Nethermind.AccountAbstraction.Test
                 _filterStore,
                 new EthSyncingInfo(_blockTree, _receiptStorage, _syncConfig, new StaticSelector(SyncMode.All), _logManager),
                 _specProvider,
-                jsonSerializer);
+                _jsonSerializer);
 
             subscriptionFactory.RegisterSubscriptionType<UserOperationSubscriptionParam?>(
                 "newPendingUserOperations",

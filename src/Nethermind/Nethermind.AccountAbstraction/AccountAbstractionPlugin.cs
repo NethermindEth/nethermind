@@ -388,8 +388,9 @@ public class AccountAbstractionPlugin : IConsensusWrapperPlugin
 
     private AbiDefinition LoadEntryPointContract()
     {
+        AbiParameterConverter.RegisterFactory(new AbiTypeFactory(new AbiTuple<UserOperationAbi>()));
+
         AbiDefinitionParser parser = new();
-        parser.RegisterAbiTypeFactory(new AbiTuple<UserOperationAbi>());
         string json = parser.LoadContract(typeof(EntryPoint));
         return parser.Parse(json);
     }

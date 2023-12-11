@@ -9,5 +9,5 @@ public static class ForcedNumberConversion
 {
     public static readonly AsyncLocal<NumberConversion?> ForcedConversion = new(null);
 
-    public static NumberConversion GetFinalConversion(this NumberConversion conversion) => ForcedConversion.Value ?? conversion;
+    public static NumberConversion GetFinalConversion() => ForcedConversion.Value ?? NumberConversion.Hex;
 }

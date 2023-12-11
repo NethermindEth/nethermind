@@ -19,7 +19,8 @@ using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Trie.Pruning;
-using Newtonsoft.Json;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace Nethermind.JsonRpc.Modules.DebugModule;
 
@@ -115,8 +116,4 @@ public class DebugModuleFactory : ModuleFactoryBase<IDebugRpcModule>
 
         return new DebugRpcModule(_logManager, debugBridge, _jsonRpcConfig);
     }
-
-    public static JsonConverter[] Converters = { new GethLikeTxTraceConverter(), new JavaScriptObjectConverter(), new GethLikeJavaScriptTraceConverter() };
-
-    public override IReadOnlyCollection<JsonConverter> GetConverters() => Converters;
 }

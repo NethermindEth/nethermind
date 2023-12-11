@@ -2,14 +2,52 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
-using System.Linq;
-using Nethermind.Evm.Tracing.GethStyle;
-using Nethermind.JsonRpc.Modules.Trace;
-using Newtonsoft.Json;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 
-namespace Nethermind.JsonRpc.Modules.DebugModule;
+namespace Nethermind.Evm.Tracing.GethStyle;
 
+public class GethLikeTxTraceConverter : JsonConverter<GethLikeTxTrace>
+{
+    public override GethLikeTxTrace Read(
+        ref Utf8JsonReader reader,
+        Type typeToConvert,
+        JsonSerializerOptions options) => throw new NotSupportedException();
+
+    public override void Write(
+        Utf8JsonWriter writer,
+        GethLikeTxTrace value,
+        JsonSerializerOptions options)
+    {
+        if (value is null)
+        {
+            writer.WriteNullValue();
+        }
+        else if (value.CustomTracerResult is not null)
+        {
+            JsonSerializer.Serialize(writer, value.CustomTracerResult, options);
+        }
+        else
+        {
+            writer.WriteStartObject();
+
+            writer.WritePropertyName("gas"u8);
+            JsonSerializer.Serialize(writer, value.Gas, options);
+
+            writer.WritePropertyName("failed"u8);
+            JsonSerializer.Serialize(writer, value.Failed, options);
+
+            writer.WritePropertyName("returnValue"u8);
+            JsonSerializer.Serialize(writer, value.ReturnValue, options);
+
+            writer.WritePropertyName("structLogs"u8);
+            JsonSerializer.Serialize(writer, value.Entries, options);
+
+            writer.WriteEndObject();
+        }
+    }
+}
+/*
 public class GethLikeTxTraceConverter : JsonConverter<GethLikeTxTrace>
 {
     public override GethLikeTxTrace ReadJson(
@@ -95,3 +133,4 @@ public class GethLikeTxTraceConverter : JsonConverter<GethLikeTxTrace>
         writer.WriteEndArray();
     }
 }
+*/

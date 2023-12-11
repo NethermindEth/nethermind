@@ -7,6 +7,8 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Numerics;
+using System.Text.Json.Serialization;
+
 using Ethereum.Test.Base;
 using Nethermind.Consensus.Ethash;
 using Nethermind.Core;
@@ -15,7 +17,6 @@ using Nethermind.Core.Extensions;
 using Nethermind.Crypto;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
-using Newtonsoft.Json;
 using NUnit.Framework;
 
 namespace Ethereum.PoW.Test
@@ -103,16 +104,16 @@ namespace Ethereum.PoW.Test
             public string Header { get; set; }
             public string Seed { get; set; }
 
-            [JsonProperty("cache_size")]
+            [JsonPropertyName("cache_size")]
             public int CacheSize { get; set; }
 
-            [JsonProperty("full_size")]
+            [JsonPropertyName("full_size")]
             public int FullSize { get; set; }
 
-            [JsonProperty("header_hash")]
+            [JsonPropertyName("header_hash")]
             public string HeaderHash { get; set; }
 
-            [JsonProperty("cache_hash")]
+            [JsonPropertyName("cache_hash")]
             public string CacheHash { get; set; }
 
             public string Result { get; set; }

@@ -2,12 +2,17 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Diagnostics;
 using System.IO;
+using System.IO.Pipelines;
 using System.Security.Authentication;
 using System.Text;
 using System.Threading;
+using System.Threading.Tasks;
+
 using HealthChecks.UI.Client;
+
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.AspNetCore.Hosting;
@@ -16,6 +21,7 @@ using Microsoft.AspNetCore.ResponseCompression;
 using Microsoft.AspNetCore.Server.Kestrel.Core;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+
 using Nethermind.Api;
 using Nethermind.Config;
 using Nethermind.Core.Authentication;
@@ -71,14 +77,10 @@ namespace Nethermind.Runner.JsonRpc
 
         public void Configure(IApplicationBuilder app, IWebHostEnvironment env, IJsonRpcProcessor jsonRpcProcessor, IJsonRpcService jsonRpcService, IJsonRpcLocalStats jsonRpcLocalStats, IJsonSerializer jsonSerializer)
         {
-            long SerializeTimeoutException(IJsonRpcService service, Stream resultStream, JsonRpcResult result)
+            ValueTask<long> SerializeTimeoutException(IJsonRpcService service, Stream resultStream)
             {
-                JsonRpcResponse response = result.SingleResponse?.Response;
-                return jsonSerializer.Serialize(resultStream, service.GetErrorResponse(
-                    ErrorCodes.Timeout,
-                    "Request was canceled due to enabled timeout.",
-                    response?.Id,
-                    response?.MethodName));
+                JsonRpcErrorResponse? error = service.GetErrorResponse(ErrorCodes.Timeout, "Request was canceled due to enabled timeout.");
+                return jsonSerializer.SerializeAsync(resultStream, error);
             }
 
             if (env.IsDevelopment())
@@ -149,18 +151,18 @@ namespace Nethermind.Runner.JsonRpc
                     jsonRpcUrlCollection.TryGetValue(ctx.Connection.LocalPort, out JsonRpcUrl jsonRpcUrl) &&
                     jsonRpcUrl.RpcEndpoint.HasFlag(RpcEndpoint.Http))
                 {
-                    if (jsonRpcUrl.IsAuthenticated && !rpcAuthentication!.Authenticate(ctx.Request.Headers["Authorization"]))
+                    if (jsonRpcUrl.IsAuthenticated && !rpcAuthentication!.Authenticate(ctx.Request.Headers.Authorization))
                     {
                         JsonRpcErrorResponse? response = jsonRpcService.GetErrorResponse(ErrorCodes.InvalidRequest, "Authentication error");
                         ctx.Response.ContentType = "application/json";
                         ctx.Response.StatusCode = StatusCodes.Status403Forbidden;
-                        jsonSerializer.Serialize(ctx.Response.Body, response);
+                        await jsonSerializer.SerializeAsync(ctx.Response.Body, response);
                         await ctx.Response.CompleteAsync();
                         return;
                     }
 
                     Stopwatch stopwatch = Stopwatch.StartNew();
-                    using CountingTextReader request = new(new StreamReader(ctx.Request.Body, Encoding.UTF8));
+                    CountingPipeReader request = new(ctx.Request.BodyReader);
                     try
                     {
                         JsonRpcContext jsonRpcContext = JsonRpcContext.Http(jsonRpcUrl);
@@ -194,7 +196,7 @@ namespace Nethermind.Runner.JsonRpc
                                                 }
 
                                                 first = false;
-                                                responseSize += jsonSerializer.SerializeWaitForEnumeration(resultStream, entry.Response);
+                                                responseSize += await jsonSerializer.SerializeAsync(resultStream, entry.Response);
                                                 _ = jsonRpcLocalStats.ReportCall(entry.Report);
 
                                                 // We reached the limit and don't want to responded to more request in the batch
@@ -218,7 +220,7 @@ namespace Nethermind.Runner.JsonRpc
                                 {
                                     using (result.Response)
                                     {
-                                        jsonSerializer.SerializeWaitForEnumeration(resultStream, result.Response);
+                                        await jsonSerializer.SerializeAsync(resultStream, result.Response);
                                     }
                                 }
 
@@ -231,11 +233,11 @@ namespace Nethermind.Runner.JsonRpc
                             }
                             catch (Exception e) when (e.InnerException is OperationCanceledException)
                             {
-                                responseSize = SerializeTimeoutException(jsonRpcService, resultStream, result);
+                                responseSize = await SerializeTimeoutException(jsonRpcService, resultStream);
                             }
                             catch (OperationCanceledException)
                             {
-                                responseSize = SerializeTimeoutException(jsonRpcService, resultStream, result);
+                                responseSize = await SerializeTimeoutException(jsonRpcService, resultStream);
                             }
                             finally
                             {
@@ -288,6 +290,60 @@ namespace Nethermind.Runner.JsonRpc
         {
             return response is JsonRpcErrorResponse { Error.Code: ErrorCodes.ModuleTimeout }
                         or JsonRpcErrorResponse { Error.Code: ErrorCodes.LimitExceeded };
+        }
+
+        private sealed class CountingPipeReader : PipeReader
+        {
+            private readonly PipeReader _wrappedReader;
+            private ReadOnlySequence<byte> _currentSequence;
+
+            public long Length { get; private set; }
+
+            public CountingPipeReader(PipeReader stream)
+            {
+                _wrappedReader = stream;
+            }
+
+            public override void AdvanceTo(SequencePosition consumed)
+            {
+                Length += _currentSequence.GetOffset(consumed);
+                _wrappedReader.AdvanceTo(consumed);
+            }
+
+            public override void AdvanceTo(SequencePosition consumed, SequencePosition examined)
+            {
+                Length += _currentSequence.GetOffset(consumed);
+                _wrappedReader.AdvanceTo(consumed, examined);
+            }
+
+            public override void CancelPendingRead()
+            {
+                _wrappedReader.CancelPendingRead();
+            }
+
+            public override void Complete(Exception? exception = null)
+            {
+                Length += _currentSequence.Length;
+                _wrappedReader.Complete(exception);
+            }
+
+            public override async ValueTask<ReadResult> ReadAsync(CancellationToken cancellationToken = default)
+            {
+                ReadResult result = await _wrappedReader.ReadAsync(cancellationToken);
+                _currentSequence = result.Buffer;
+                return result;
+            }
+
+            public override bool TryRead(out ReadResult result)
+            {
+                bool didRead = _wrappedReader.TryRead(out result);
+                if (didRead)
+                {
+                    _currentSequence = result.Buffer;
+                }
+
+                return didRead;
+            }
         }
     }
 }

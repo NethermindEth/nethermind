@@ -205,7 +205,7 @@ public class PayloadPreparationService : IPayloadPreparationService
         {
             using (blockContext)
             {
-                bool currentBestBlockIsEmpty = blockContext.CurrentBestBlock?.Transactions.Any() != true;
+                bool currentBestBlockIsEmpty = blockContext.CurrentBestBlock?.Transactions.Length == 0;
                 if (currentBestBlockIsEmpty && !blockContext.ImprovementTask.IsCompleted)
                 {
                     await Task.WhenAny(blockContext.ImprovementTask, Task.Delay(GetPayloadWaitForFullBlockMillisecondsDelay));

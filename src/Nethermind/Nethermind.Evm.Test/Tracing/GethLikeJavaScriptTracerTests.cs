@@ -446,8 +446,7 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
     }
 
 
-    private static EthereumJsonSerializer GetEthereumJsonSerializer() =>
-        new(null, new JavaScriptObjectConverter());
+    private static EthereumJsonSerializer GetEthereumJsonSerializer() => new();
 
     private const string ComplexTracer = """
                                          {

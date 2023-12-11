@@ -182,11 +182,11 @@ public class Engine : IDisposable
         static V8Script LoadJavaScriptCode(string tracer)
         {
             tracer = tracer.Trim();
-            if (tracer.StartsWith("_"))
+            if (tracer.StartsWith('_'))
             {
                 throw new ArgumentException($"Cannot access internal tracer '{tracer}'");
             }
-            else if (tracer.StartsWith("{") && tracer.EndsWith("}"))
+            else if (tracer.StartsWith('{') && tracer.EndsWith('}'))
             {
                 int hashCode = tracer.GetHashCode();
                 if (_runtimeScripts.TryGet(hashCode, out V8Script script))
@@ -220,7 +220,7 @@ public class Engine : IDisposable
         static string LoadJavaScriptDebugCode(string tracer)
         {
             tracer = tracer.Trim();
-            if (tracer.StartsWith("{") && tracer.EndsWith("}"))
+            if (tracer.StartsWith('{') && tracer.EndsWith('}'))
             {
                 return PackTracerCode(tracer);
             }
