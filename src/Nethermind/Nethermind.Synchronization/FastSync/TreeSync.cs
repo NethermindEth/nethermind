@@ -840,9 +840,9 @@ namespace Nethermind.Synchronization.FastSync
                 _pathStateDb?.EndOfCleanupRequests();
 
                 //waiting for the cleand up database here before any processing happens
-                //TrieStoreByPath prevents direct DB reads if cleanup has not finished, to avoiddirty reads,so this in theory should not be required.
-                //Is it safe to reads via traversing the trie while cleanup is still in progress.
-                _pathStateDb?.WaitForPrunning();
+                //TrieStoreByPath prevents direct DB reads if cleanup has not finished, to avoid dirty reads,so this in theory should not be required.
+                //Is it safe to reads via traversing the trie while cleanup is still in progress?
+                //_pathStateDb?.WaitForPrunning();
 
                 _stateDb?.Flush();
                 _codeDb.Flush();
