@@ -162,10 +162,7 @@ namespace Nethermind.Serialization.Rlp
                 transactionSequence = DecodeTxType(rlpStream, rlpStream.ReadPrefixAndContentLength().ContentLength, out txType);
             }
 
-
             return transactionSequence;
-
-
         }
 
         private static Hash256 CalculateHashForNetworkPayloadForm(TxType type, Span<byte> transactionSequence)
@@ -521,10 +518,7 @@ namespace Nethermind.Serialization.Rlp
             ulong v = rlpStream.DecodeULong();
             ReadOnlySpan<byte> rBytes = rlpStream.DecodeByteArraySpan();
             ReadOnlySpan<byte> sBytes = rlpStream.DecodeByteArraySpan();
-            if (!(v == 0 && rBytes.IsEmpty && sBytes.IsEmpty))
-            {
-                ApplySignature(transaction, v, rBytes, sBytes, rlpBehaviors);
-            }
+            ApplySignature(transaction, v, rBytes, sBytes, rlpBehaviors);
         }
 
         private static void DecodeSignature(
@@ -535,10 +529,7 @@ namespace Nethermind.Serialization.Rlp
             ulong v = decoderContext.DecodeULong();
             ReadOnlySpan<byte> rBytes = decoderContext.DecodeByteArraySpan();
             ReadOnlySpan<byte> sBytes = decoderContext.DecodeByteArraySpan();
-            if (!(v == 0 && rBytes.IsEmpty && sBytes.IsEmpty))
-            {
-                ApplySignature(transaction, v, rBytes, sBytes, rlpBehaviors);
-            }
+            ApplySignature(transaction, v, rBytes, sBytes, rlpBehaviors);
         }
 
         private static void ApplySignature(
@@ -548,6 +539,8 @@ namespace Nethermind.Serialization.Rlp
             ReadOnlySpan<byte> sBytes,
             RlpBehaviors rlpBehaviors)
         {
+            if (transaction.Type == TxType.DepositTx && v == 0 && rBytes.IsEmpty && sBytes.IsEmpty) return;
+
             bool allowUnsigned = (rlpBehaviors & RlpBehaviors.AllowUnsigned) == RlpBehaviors.AllowUnsigned;
             bool isSignatureOk = true;
             string signatureError = null;
