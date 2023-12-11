@@ -6,6 +6,7 @@ namespace Nethermind.TxPool
     public class TxPoolConfig : ITxPoolConfig
     {
         public int PeerNotificationThreshold { get; set; } = 5;
+        public int MinBaseFeeThreshold { get; set; } = 70;
         public int Size { get; set; } = 2048;
         public bool BlobSupportEnabled { get; set; } = false;
         public bool PersistentBlobStorageEnabled { get; set; } = false;

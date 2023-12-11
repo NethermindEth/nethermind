@@ -52,11 +52,18 @@ namespace Nethermind.TxPool
         /// </summary>
         private ResettableList<Transaction> _txsToSend;
 
+
+        /// <summary>
+        /// Minimal value of MaxFeePreGas of local tx to be broadcasted immediately after receiving it
+        /// </summary>
+        private UInt256 _baseFeeThreshold;
+
         /// <summary>
         /// Used to throttle tx broadcast. Particularly during forward sync where the head changes a lot which triggers
         /// a lot of broadcast. There are no transaction in pool but its quite spammy on the log.
         /// </summary>
         private DateTimeOffset _lastPersistedTxBroadcast = DateTimeOffset.UnixEpoch;
+
         private readonly TimeSpan _minTimeBetweenPersistedTxBroadcast = TimeSpan.FromSeconds(1);
 
         private readonly ILogger _logger;
@@ -99,12 +106,13 @@ namespace Nethermind.TxPool
 
         private void StartBroadcast(Transaction tx)
         {
-            // broadcast tx only if MaxFeePerGas is equal at least 70% of current base fee
+            // broadcast local tx only if MaxFeePerGas is equal at least 70% of current base fee
             // otherwise only add to persistent collection and broadcast when tx will be ready for inclusion
-            if (tx.MaxFeePerGas >= _headInfo.BaseFeeThreshold)
+            if (tx.MaxFeePerGas >= _baseFeeThreshold)
             {
                 NotifyPeersAboutLocalTx(tx);
             }
+
             if (tx.Hash is not null)
             {
                 _persistentTxs.TryInsert(tx.Hash, tx.SupportsBlobs ? new LightTransaction(tx) : tx);
@@ -127,7 +135,21 @@ namespace Nethermind.TxPool
             }
         }
 
-        public void BroadcastPersistentTxs()
+        public void OnNewHead()
+        {
+            SetBaseFeeThreshold();
+            BroadcastPersistentTxs();
+        }
+
+        private void SetBaseFeeThreshold()
+        {
+            bool overflow = UInt256.MultiplyOverflow(_headInfo.CurrentBaseFee, (UInt256)_txPoolConfig.MinBaseFeeThreshold, out UInt256 baseFeeThreshold);
+            UInt256.Divide(baseFeeThreshold, 100, out baseFeeThreshold);
+
+            _baseFeeThreshold = overflow ? _headInfo.CurrentBaseFee : baseFeeThreshold;
+        }
+
+        internal void BroadcastPersistentTxs()
         {
             if (_persistentTxs.Count == 0)
             {
