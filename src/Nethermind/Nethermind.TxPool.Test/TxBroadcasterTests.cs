@@ -711,12 +711,12 @@ public class TxBroadcasterTests
         _txPoolConfig = new TxPoolConfig() { MinBaseFeeThreshold = threshold };
         _broadcaster = new TxBroadcaster(_comparer, TimerFactory.Default, _txPoolConfig, _headInfo, _logManager);
 
-        UInt256.Divide(baseFee, 100, out UInt256 result);
-        bool overflow = UInt256.MultiplyOverflow(result, (UInt256)threshold, out result);
+        UInt256.Divide(baseFee, 100, out UInt256 onePercentOfBaseFee);
+        bool overflow = UInt256.MultiplyOverflow(onePercentOfBaseFee, (UInt256)threshold, out UInt256 lessAccurateBaseFeeThreshold);
 
         _broadcaster.CalculateBaseFeeThreshold().Should().Be(
             UInt256.MultiplyOverflow(baseFee, (UInt256)threshold, out UInt256 baseFeeThreshold)
-                ? overflow ? UInt256.MaxValue : result
+                ? overflow ? UInt256.MaxValue : lessAccurateBaseFeeThreshold
                 : baseFeeThreshold);
     }
 
