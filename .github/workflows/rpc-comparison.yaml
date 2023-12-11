@@ -46,6 +46,7 @@ jobs:
     uses: ./.github/workflows/run-a-single-node-from-branch.yml
     if: inputs.branch_to_compare != ''
     secrets: inherit
+    needs: [create_main_node]
     with:
       additional_options: '{"timeout":"12", "default_dockerfile":"Dockerfile", "default_dockerfile_build_type":"release", "ssh_keys":"", "allowed_ips":"${{ inputs.allowed_ips }}"}' 
       non_validator_mode: false
