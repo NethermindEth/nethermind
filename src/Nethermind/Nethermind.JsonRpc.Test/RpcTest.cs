@@ -63,9 +63,9 @@ public static class RpcTest
         return service;
     }
 
-    public static JsonRpcRequest GetJsonRequest(string method, params string[] parameters)
+    public static JsonRpcRequest GetJsonRequest(string method, params string[]? parameters)
     {
-        var doc = JsonDocument.Parse(JsonSerializer.Serialize(parameters?.ToArray() ?? Array.Empty<string>()));
+        var doc = JsonDocument.Parse(JsonSerializer.Serialize(parameters?.ToArray()));
         var request = new JsonRpcRequest()
         {
             JsonRpc = "2.0",
