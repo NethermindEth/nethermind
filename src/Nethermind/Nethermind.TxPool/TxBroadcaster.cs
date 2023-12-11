@@ -99,7 +99,12 @@ namespace Nethermind.TxPool
 
         private void StartBroadcast(Transaction tx)
         {
-            NotifyPeersAboutLocalTx(tx);
+            // broadcast tx only if MaxFeePerGas is equal at least 70% of current base fee
+            // otherwise only add to persistent collection and broadcast when tx will be ready for inclusion
+            if (tx.MaxFeePerGas >= _headInfo.CurrentBaseFee / 10 * 7)
+            {
+                NotifyPeersAboutLocalTx(tx);
+            }
             if (tx.Hash is not null)
             {
                 _persistentTxs.TryInsert(tx.Hash, tx.SupportsBlobs ? new LightTransaction(tx) : tx);
@@ -274,7 +279,6 @@ namespace Nethermind.TxPool
             {
                 try
                 {
-
                     peer.SendNewTransactions(txs.Where(t => _txGossipPolicy.ShouldGossipTransaction(t)), sendFullTx);
                     if (_logger.IsTrace) _logger.Trace($"Notified {peer} about transactions.");
                 }
