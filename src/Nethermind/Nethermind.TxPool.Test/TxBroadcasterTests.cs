@@ -334,6 +334,36 @@ public class TxBroadcasterTests
         expectedTxs.Should().BeEquivalentTo(pickedTxs);
     }
 
+    [TestCase(0, false)]
+    [TestCase(69, false)]
+    [TestCase(70, true)]
+    [TestCase(100, true)]
+    [TestCase(150, true)]
+    public void should_not_broadcast_tx_with_MaxFeePerGas_lower_than_70_percent_of_CurrentBaseFee(int maxFeePerGas, bool shouldBroadcast)
+    {
+        _headInfo.BaseFeeThreshold.Returns((UInt256)70);
+
+        _broadcaster = new TxBroadcaster(_comparer, TimerFactory.Default, _txPoolConfig, _headInfo, _logManager);
+
+        ITxPoolPeer peer = Substitute.For<ITxPoolPeer>();
+        peer.Id.Returns(TestItem.PublicKeyA);
+        _broadcaster.AddPeer(peer);
+
+        Transaction transaction = Build.A.Transaction
+            .WithType(TxType.EIP1559)
+            .WithMaxFeePerGas((UInt256)maxFeePerGas)
+            .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA)
+            .TestObject;
+
+        _broadcaster.Broadcast(transaction, true);
+
+        // tx should be immediately broadcasted only if MaxFeePerGas is equal at least 70% of current base fee
+        peer.Received(shouldBroadcast ? 1 : 0).SendNewTransaction(Arg.Any<Transaction>());
+
+        // tx should always be added to persistent collection, without any fee restrictions
+        _broadcaster.GetSnapshot().Length.Should().Be(1);
+    }
+
     [Test]
     public void should_not_pick_1559_txs_with_MaxFeePerGas_lower_than_CurrentBaseFee([Values(1, 2, 99, 100, 101, 1000)] int threshold)
     {
