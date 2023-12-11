@@ -54,6 +54,7 @@ namespace Nethermind.Runner.JsonRpc
 
             services.Configure<KestrelServerOptions>(options =>
             {
+                options.AllowSynchronousIO = true;
                 options.Limits.MaxRequestBodySize = jsonRpcConfig.MaxRequestBodySize;
                 options.ConfigureHttpsDefaults(co => co.SslProtocols |= SslProtocols.Tls13);
             });
