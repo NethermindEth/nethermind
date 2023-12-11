@@ -3,6 +3,7 @@
 
 using System;
 using System.Buffers;
+using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
@@ -90,8 +91,8 @@ public class BlockStore : IBlockStore
         _blockCache.Set(block.Hash, block);
     }
 
-    public Block[] GetAll()
+    public IEnumerable<Block> GetAll()
     {
-        return _blockDb.GetAllValues(true).Select(bytes => _blockDecoder.Decode(bytes.AsRlpStream())).ToArray();
+        return _blockDb.GetAllValues(true).Select(bytes => _blockDecoder.Decode(bytes.AsRlpStream()));
     }
 }

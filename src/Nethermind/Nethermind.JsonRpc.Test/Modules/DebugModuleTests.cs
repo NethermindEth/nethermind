@@ -254,10 +254,10 @@ public class DebugModuleTests
         Assert.That(result, Is.EqualTo(AddBlockResult.InvalidBlock));
 
         DebugRpcModule rpcModule = new(LimboLogs.Instance, debugBridge, jsonRpcConfig);
-        ResultWrapper<Block[]> blocks = rpcModule.debug_getBadBlocks();
-        Assert.That(blocks.Data.Length, Is.EqualTo(1));
-        Assert.That(blocks.Data[0].Hash, Is.EqualTo(block1.Hash));
-        Assert.That(blocks.Data[0].Difficulty, Is.EqualTo(new UInt256(2)));
+        ResultWrapper<IEnumerable<Block>> blocks = rpcModule.debug_getBadBlocks();
+        Assert.That(blocks.Data.Count, Is.EqualTo(1));
+        Assert.That(blocks.Data.ElementAt(0).Hash, Is.EqualTo(block1.Hash));
+        Assert.That(blocks.Data.ElementAt(0).Difficulty, Is.EqualTo(new UInt256(2)));
     }
 
     [Test]

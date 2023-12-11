@@ -1612,6 +1612,6 @@ namespace Nethermind.Blockchain
             }
         }
 
-        public Block[] GetInvalidBlocks() => _badBlockStore.GetAll();
+        public IEnumerable<Block> GetInvalidBlocks() => _badBlockStore.GetAll();
     }
 }

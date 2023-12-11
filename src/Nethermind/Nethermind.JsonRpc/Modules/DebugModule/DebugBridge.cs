@@ -76,7 +76,7 @@ public class DebugBridge : IDebugBridge
         }
     }
 
-    public Block[] GetBadBlocks()
+    public IEnumerable<Block> GetBadBlocks()
     {
         return _blockTree.GetInvalidBlocks();
     }

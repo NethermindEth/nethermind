@@ -151,7 +151,8 @@ namespace Nethermind.Blockchain
             add { }
             remove { }
         }
-        public Block[] GetInvalidBlocks()
+
+        public IEnumerable<Block> GetInvalidBlocks()
         {
             return _wrapped.GetInvalidBlocks();
         }
