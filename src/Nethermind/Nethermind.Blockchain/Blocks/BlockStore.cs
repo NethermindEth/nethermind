@@ -42,10 +42,10 @@ public class BlockStore : IBlockStore
 
     private void TruncateToMaxSize()
     {
-        int toDelete = (int) (_blockDb.GetSize() - _maxSize!);
+        int toDelete = (int)(_blockDb.GetSize() - _maxSize!);
         if (toDelete > 0)
         {
-            foreach (var blockToDelete in GetAll().Take(toDelete))
+            foreach (var blockToDelete in GetAll().OrderBy(block => block.Number).Take(toDelete))
             {
                 Delete(blockToDelete.Number, blockToDelete.Hash);
             }
