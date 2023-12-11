@@ -45,9 +45,9 @@ public class ShutterTxSource : ITxSource
         public UInt64 Eon;
         public byte[]? EncryptedTransaction;
         public UInt256 GasLimit;
-        public G1 Identity;
+        public object? Identity;
 
-        public SequencedTransaction(UInt64 eon, byte[] encryptedTransaction, UInt256 gasLimit, G1 identity)
+        public SequencedTransaction(UInt64 eon, byte[] encryptedTransaction, UInt256 gasLimit, object? identity)
         {
             Eon = eon;
             EncryptedTransaction = encryptedTransaction;
@@ -56,44 +56,9 @@ public class ShutterTxSource : ITxSource
         }
     }
 
-    // cyclic group defined on the curve alt_bn128
-    // https://github.com/ethereum/py_pairing/tree/master/py_ecc/bn128
-    class GroupElement
+    private object? ComputeIdentity(Bytes32 identityPrefix, Address sender)
     {
-        protected readonly UInt256 _x;
-        protected readonly UInt256 _y;
-
-        protected GroupElement(UInt256 x, UInt256 y)
-        {
-            _x = x;
-            _y = y;
-        }
-
-        public GroupElement ScalarBaseMult(UInt256 i)
-        {
-            return new GroupElement(_x * i, _y * i);
-        }
-    }
-
-    class G1 : GroupElement
-    {
-        private G1(UInt256 x, UInt256 y) : base(x, y) {}
-
-        public static G1 Generator()
-        {
-            return new G1(1, 2);
-        }
-    }
-
-    private G1 ComputeIdentity(Bytes32 identityPrefix, Address sender)
-    {
-        byte[] tmp = new byte[52];
-        identityPrefix.Unwrap().CopyTo(tmp, 0);
-        sender.Bytes.CopyTo(tmp, 32);
-
-        // keccack256?
-        Keccak hash = new(tmp);
-        return (G1) G1.Generator().ScalarBaseMult(new UInt256(hash.Bytes, true));
+        return null;
     }
 
     private IEnumerable<SequencedTransaction> GetNextTransactions(UInt64 eon, int txPointer)
@@ -124,16 +89,6 @@ public class ShutterTxSource : ITxSource
         return txs;
     }
 
-    private byte[] RecoverSigma(byte[] encryptedMessage, G1 decryptionKey)
-    {
-        return new byte[0];
-    }
-
-    private byte[] Decrypt(byte[] encryptedMessage, G1 decryptionKey)
-    {
-        return new byte[0];
-    }
-
     public ShutterTxSource(ILogFinder logFinder, IFilterStore filterStore)
         : base()
     {
@@ -147,9 +102,8 @@ public class ShutterTxSource : ITxSource
         // todo: get eon and txpointer
         IEnumerable<SequencedTransaction> encryptedTransactions = GetNextTransactions(0, 0);
         
-        // todo: get decryption key from gossip layer
-        G1 decryptionKey = G1.Generator(); 
-        // todo: decrypt transactions
+        // todo: get decryption key from gossip layer and decrypt transactions
+        
         return Enumerable.Empty<Transaction>();
     }
 }
