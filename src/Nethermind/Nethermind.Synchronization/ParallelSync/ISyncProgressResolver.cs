@@ -8,12 +8,8 @@ using Nethermind.Int256;
 [assembly: InternalsVisibleTo("DynamicProxyGenAssembly2")]
 namespace Nethermind.Synchronization.ParallelSync
 {
-    public interface ISyncProgressResolver
+    public interface ISyncProgressResolver : IFullStateFinder
     {
-        void UpdateBarriers();
-
-        long FindBestFullState();
-
         long FindBestHeader();
 
         long FindBestFullBlock();
@@ -33,7 +29,7 @@ namespace Nethermind.Synchronization.ParallelSync
 
         UInt256 ChainDifficulty { get; }
 
-        UInt256? GetTotalDifficulty(Keccak blockHash);
+        UInt256? GetTotalDifficulty(Hash256 blockHash);
 
         void RecalculateProgressPointers();
     }

@@ -18,7 +18,7 @@ public interface INodeLifecycleManager
     void ProcessFindNodeMsg(FindNodeMsg msg);
     void ProcessEnrRequestMsg(EnrRequestMsg enrRequestMessage);
     void ProcessEnrResponseMsg(EnrResponseMsg msg);
-    void SendFindNode(byte[] searchedNodeId);
+    Task SendFindNode(byte[] searchedNodeId);
     Task SendPingAsync();
 
     void StartEvictionProcess();

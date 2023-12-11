@@ -3,8 +3,10 @@
 
 using System;
 using System.IO;
+using System.Text.Json;
+
 using Nethermind.Serialization.Json;
-using Newtonsoft.Json;
+
 using NUnit.Framework;
 
 namespace Nethermind.Core.Test.Json
@@ -12,84 +14,56 @@ namespace Nethermind.Core.Test.Json
     [TestFixture]
     public class LongConverterTests : ConverterTestBase<long>
     {
-        [TestCase(NumberConversion.Hex)]
-        [TestCase(NumberConversion.Decimal)]
-        public void Test_roundtrip(NumberConversion numberConversion)
+        static LongConverter converter = new();
+        static JsonSerializerOptions options = new JsonSerializerOptions { Converters = { converter } };
+
+        public void Test_roundtrip()
         {
-            LongConverter converter = new(numberConversion);
             TestConverter(int.MaxValue, (a, b) => a.Equals(b), converter);
             TestConverter(1L, (a, b) => a.Equals(b), converter);
             TestConverter(0L, (a, b) => a.Equals(b), converter);
         }
 
-        [TestCase((NumberConversion)99)]
-        public void Unknown_not_supported(NumberConversion notSupportedConversion)
-        {
-            LongConverter converter = new(notSupportedConversion);
-            Assert.Throws<NotSupportedException>(
-                () => TestConverter(int.MaxValue, (a, b) => a.Equals(b), converter));
-            Assert.Throws<NotSupportedException>(
-                () => TestConverter(1L, (a, b) => a.Equals(b), converter));
-        }
-
         [Test]
         public void Regression_0xa00000()
         {
-            LongConverter converter = new();
-            JsonReader reader = new JsonTextReader(new StringReader("0xa00000"));
-            reader.ReadAsString();
-            long result = converter.ReadJson(reader, typeof(long), 0, false, JsonSerializer.CreateDefault());
+            long result = JsonSerializer.Deserialize<long>("\"0xa00000\"", options);
             Assert.That(result, Is.EqualTo(10485760));
         }
 
         [Test]
         public void Can_read_0x0()
         {
-            LongConverter converter = new();
-            JsonReader reader = new JsonTextReader(new StringReader("0x0"));
-            reader.ReadAsString();
-            long result = converter.ReadJson(reader, typeof(long), 0L, false, JsonSerializer.CreateDefault());
+            long result = JsonSerializer.Deserialize<long>("\"0x0\"", options);
             Assert.That(result, Is.EqualTo(long.Parse("0")));
         }
 
         [Test]
         public void Can_read_0x000()
         {
-            LongConverter converter = new();
-            JsonReader reader = new JsonTextReader(new StringReader("0x0000"));
-            reader.ReadAsString();
-            long result = converter.ReadJson(reader, typeof(long), 0L, false, JsonSerializer.CreateDefault());
+            long result = JsonSerializer.Deserialize<long>("\"0x0000\"", options);
             Assert.That(result, Is.EqualTo(long.Parse("0")));
         }
 
         [Test]
         public void Can_read_0()
         {
-            LongConverter converter = new();
-            JsonReader reader = new JsonTextReader(new StringReader("0"));
-            reader.ReadAsString();
-            long result = converter.ReadJson(reader, typeof(long), 0L, false, JsonSerializer.CreateDefault());
+            long result = JsonSerializer.Deserialize<long>("0", options);
             Assert.That(result, Is.EqualTo(long.Parse("0")));
         }
 
         [Test]
         public void Can_read_1()
         {
-            LongConverter converter = new();
-            JsonReader reader = new JsonTextReader(new StringReader("1"));
-            reader.ReadAsString();
-            long result = converter.ReadJson(reader, typeof(long), 0L, false, JsonSerializer.CreateDefault());
+            long result = JsonSerializer.Deserialize<long>("1", options);
             Assert.That(result, Is.EqualTo(long.Parse("1")));
         }
 
         [Test]
         public void Throws_on_null()
         {
-            LongConverter converter = new();
-            JsonReader reader = new JsonTextReader(new StringReader("null"));
-            reader.ReadAsString();
             Assert.Throws<JsonException>(
-                () => converter.ReadJson(reader, typeof(long), 0L, false, JsonSerializer.CreateDefault()));
+                () => JsonSerializer.Deserialize<long>("null", options));
         }
     }
 }

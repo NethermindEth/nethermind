@@ -10,7 +10,7 @@ using Nethermind.TxPool.Collections;
 
 namespace Nethermind.AccountAbstraction.Source
 {
-    public class UserOperationSortedPool : DistinctValueSortedPool<Keccak, UserOperation, Address>
+    public class UserOperationSortedPool : DistinctValueSortedPool<Hash256, UserOperation, Address>
     {
         private readonly int _maximumUserOperationPerSender;
 
@@ -31,7 +31,7 @@ namespace Nethermind.AccountAbstraction.Source
 
         protected override Address MapToGroup(UserOperation value) => value.Sender;
 
-        protected override Keccak GetKey(UserOperation value) => value.RequestId!;
+        protected override Hash256 GetKey(UserOperation value) => value.RequestId!;
 
         protected override bool AllowSameKeyReplacement => true;
 

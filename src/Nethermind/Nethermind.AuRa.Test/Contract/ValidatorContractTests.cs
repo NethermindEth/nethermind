@@ -41,6 +41,9 @@ namespace Nethermind.AuRa.Test.Contract
             _stateProvider.StateRoot.Returns(TestItem.KeccakA);
         }
 
+        [TearDown]
+        public void TearDown() => _transactionProcessor?.Dispose();
+
         [Test]
         public void constructor_throws_ArgumentNullException_on_null_contractAddress()
         {
@@ -62,7 +65,7 @@ namespace Nethermind.AuRa.Test.Contract
             {
                 Value = 0,
                 Data = new byte[] { 0x75, 0x28, 0x62, 0x11 },
-                Hash = new Keccak("0x0652461cead47b6e1436fc631debe06bde8bcdd2dad3b9d21df5cf092078c6d3"),
+                Hash = new Hash256("0x0652461cead47b6e1436fc631debe06bde8bcdd2dad3b9d21df5cf092078c6d3"),
                 To = _contractAddress,
                 SenderAddress = Address.SystemUser,
                 GasLimit = Blockchain.Contracts.CallableContract.UnlimitedGas,

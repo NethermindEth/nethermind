@@ -49,8 +49,10 @@ namespace Nethermind.Runner.Test.Ethereum
 {
     public static class Build
     {
-        public static NethermindApi ContextWithMocks() =>
-            new(Substitute.For<IConfigProvider>(), Substitute.For<IJsonSerializer>(), LimboLogs.Instance, new ChainSpec())
+        public static NethermindApi ContextWithMocks()
+        {
+            var api = new NethermindApi(Substitute.For<IConfigProvider>(), Substitute.For<IJsonSerializer>(), LimboLogs.Instance,
+                new ChainSpec())
             {
                 Enode = Substitute.For<IEnode>(),
                 TxPool = Substitute.For<ITxPool>(),
@@ -90,7 +92,6 @@ namespace Nethermind.Runner.Test.Ethereum
                 RlpxPeer = Substitute.For<IRlpxHost>(),
                 SealValidator = Substitute.For<ISealValidator>(),
                 SessionMonitor = Substitute.For<ISessionMonitor>(),
-                SnapProvider = Substitute.For<ISnapProvider>(),
                 WorldState = Substitute.For<IWorldState>(),
                 StateReader = Substitute.For<IStateReader>(),
                 TransactionProcessor = Substitute.For<ITransactionProcessor>(),
@@ -105,7 +106,6 @@ namespace Nethermind.Runner.Test.Ethereum
                 WebSocketsManager = Substitute.For<IWebSocketsManager>(),
                 ChainLevelInfoRepository = Substitute.For<IChainLevelInfoRepository>(),
                 TrieStore = Substitute.For<ITrieStore>(),
-                ReadOnlyTrieStore = Substitute.For<IReadOnlyTrieStore>(),
                 BlockProducerEnvFactory = Substitute.For<IBlockProducerEnvFactory>(),
                 TransactionComparerProvider = Substitute.For<ITransactionComparerProvider>(),
                 GasPriceOracle = Substitute.For<IGasPriceOracle>(),
@@ -119,5 +119,9 @@ namespace Nethermind.Runner.Test.Ethereum
                 ReceiptMonitor = Substitute.For<IReceiptMonitor>(),
                 WitnessRepository = Substitute.For<IWitnessRepository>()
             };
+
+            api.WorldStateManager = new ReadOnlyWorldStateManager(api.DbProvider, Substitute.For<IReadOnlyTrieStore>(), LimboLogs.Instance);
+            return api;
+        }
     }
 }

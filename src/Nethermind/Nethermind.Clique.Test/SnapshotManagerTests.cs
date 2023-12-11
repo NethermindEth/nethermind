@@ -44,7 +44,7 @@ namespace Nethermind.Clique.Test
             Block block3 = Rlp.Decode<Block>(new Rlp(Bytes.FromHexString(Block3Rlp)));
             Block block4 = Rlp.Decode<Block>(new Rlp(Bytes.FromHexString(Block4Rlp)));
             Block block5 = Rlp.Decode<Block>(new Rlp(Bytes.FromHexString(Block5Rlp)));
-            Block genesisBlock = CliqueTests.GetRinkebyGenesis();
+            Block genesisBlock = CliqueTests.GetGenesis();
             // Add blocks
             MineBlock(_blockTree, genesisBlock);
             MineBlock(_blockTree, block1);
@@ -54,11 +54,14 @@ namespace Nethermind.Clique.Test
             MineBlock(_blockTree, block5);
         }
 
+        [OneTimeTearDown]
+        public void TearDown() => _snapshotDb?.Dispose();
+
         [Test]
         public void Creates_new_snapshot()
         {
             SnapshotManager snapshotManager = new(CliqueConfig.Default, _snapshotDb, _blockTree, NullEthereumEcdsa.Instance, LimboLogs.Instance);
-            Block genesis = CliqueTests.GetRinkebyGenesis();
+            Block genesis = CliqueTests.GetGenesis();
             Snapshot snapshot = snapshotManager.GetOrCreateSnapshot(0, genesis.Hash);
             Assert.That(snapshot.Hash, Is.EqualTo(genesis.Hash));
         }
@@ -67,7 +70,7 @@ namespace Nethermind.Clique.Test
         public void Loads_snapshot()
         {
             SnapshotManager snapshotManager = new(CliqueConfig.Default, _snapshotDb, _blockTree, NullEthereumEcdsa.Instance, LimboLogs.Instance);
-            Block genesis = CliqueTests.GetRinkebyGenesis();
+            Block genesis = CliqueTests.GetGenesis();
             Snapshot snapshot = snapshotManager.GetOrCreateSnapshot(0, genesis.Hash);
             Assert.NotNull(snapshot);
             Assert.That(snapshot.Hash, Is.EqualTo(genesis.Hash));
@@ -83,8 +86,8 @@ namespace Nethermind.Clique.Test
         {
             BlockHeader header = BuildCliqueBlock();
 
-            Keccak expectedHeaderHash = new("0x7b27b6add9e8d0184c722dde86a2a3f626630264bae3d62ffeea1585ce6e3cdd");
-            Keccak headerHash = SnapshotManager.CalculateCliqueHeaderHash(header);
+            Hash256 expectedHeaderHash = new("0x7b27b6add9e8d0184c722dde86a2a3f626630264bae3d62ffeea1585ce6e3cdd");
+            Hash256 headerHash = SnapshotManager.CalculateCliqueHeaderHash(header);
             Assert.That(headerHash, Is.EqualTo(expectedHeaderHash));
         }
 
@@ -92,7 +95,7 @@ namespace Nethermind.Clique.Test
         public void Recognises_signer_turn()
         {
             SnapshotManager snapshotManager = new(CliqueConfig.Default, _snapshotDb, _blockTree, NullEthereumEcdsa.Instance, LimboLogs.Instance);
-            Block genesis = CliqueTests.GetRinkebyGenesis();
+            Block genesis = CliqueTests.GetGenesis();
             Snapshot snapshot = snapshotManager.GetOrCreateSnapshot(0, genesis.Hash);
             SnapshotManager manager = new(CliqueConfig.Default, _snapshotDb, _blockTree, new EthereumEcdsa(BlockchainIds.Goerli, LimboLogs.Instance), LimboLogs.Instance);
             // Block 1
@@ -112,11 +115,11 @@ namespace Nethermind.Clique.Test
         private static BlockHeader BuildCliqueBlock()
         {
             BlockHeader header = Build.A.BlockHeader
-                .WithParentHash(new Keccak("0x6d31ab6b6ee360d075bb032a094fb4ea52617268b760d15b47aa439604583453"))
+                .WithParentHash(new Hash256("0x6d31ab6b6ee360d075bb032a094fb4ea52617268b760d15b47aa439604583453"))
                 .WithUnclesHash(Keccak.OfAnEmptySequenceRlp)
                 .WithBeneficiary(Address.Zero)
                 .WithBloom(Bloom.Empty)
-                .WithStateRoot(new Keccak("0x9853b6c62bd454466f4843b73e2f0bdd655a4e754c259d6cc0ad4e580d788f43"))
+                .WithStateRoot(new Hash256("0x9853b6c62bd454466f4843b73e2f0bdd655a4e754c259d6cc0ad4e580d788f43"))
                 .WithTransactionsRoot(PatriciaTree.EmptyTreeHash)
                 .WithReceiptsRoot(PatriciaTree.EmptyTreeHash)
                 .WithDifficulty(2)

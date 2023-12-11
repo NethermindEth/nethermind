@@ -62,6 +62,9 @@ public class TxBroadcasterTests
         _headInfo = Substitute.For<IChainHeadInfoProvider>();
     }
 
+    [TearDown]
+    public void TearDown() => _broadcaster?.Dispose();
+
     [Test]
     public async Task should_not_broadcast_persisted_tx_to_peer_too_quickly()
     {
@@ -227,7 +230,7 @@ public class TxBroadcasterTests
         int expectedCountOfFullTxs = expectedCountTotal - expectedCountOfHashes;
 
         // prepare list of expected full transactions and hashes
-        (IList<Transaction> expectedFullTxs, IList<Keccak> expectedHashes) = GetTxsAndHashesExpectedToBroadcast(transactions, expectedCountTotal);
+        (IList<Transaction> expectedFullTxs, IList<Hash256> expectedHashes) = GetTxsAndHashesExpectedToBroadcast(transactions, expectedCountTotal);
 
         // get hashes and full transactions to broadcast
         (IList<Transaction> pickedFullTxs, IList<Transaction> pickedHashes) = _broadcaster.GetPersistentTxsToSend();
@@ -273,7 +276,7 @@ public class TxBroadcasterTests
         int expectedCountOfNonBlobTxs = expectedCountTotal - expectedCountOfBlobHashes;
 
         // prepare list of expected full transactions and hashes
-        (IList<Transaction> expectedFullTxs, IList<Keccak> expectedHashes) = GetTxsAndHashesExpectedToBroadcast(transactions, expectedCountTotal);
+        (IList<Transaction> expectedFullTxs, IList<Hash256> expectedHashes) = GetTxsAndHashesExpectedToBroadcast(transactions, expectedCountTotal);
 
         // get hashes and full transactions to broadcast
         (IList<Transaction> pickedFullTxs, IList<Transaction> pickedHashes) = _broadcaster.GetPersistentTxsToSend();
@@ -654,10 +657,10 @@ public class TxBroadcasterTests
         }
     }
 
-    private (IList<Transaction> expectedTxs, IList<Keccak> expectedHashes) GetTxsAndHashesExpectedToBroadcast(Transaction[] transactions, int expectedCountTotal)
+    private (IList<Transaction> expectedTxs, IList<Hash256> expectedHashes) GetTxsAndHashesExpectedToBroadcast(Transaction[] transactions, int expectedCountTotal)
     {
         List<Transaction> expectedTxs = new();
-        List<Keccak> expectedHashes = new();
+        List<Hash256> expectedHashes = new();
 
         for (int i = 0; i < expectedCountTotal; i++)
         {

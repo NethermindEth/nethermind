@@ -73,7 +73,6 @@ namespace Nethermind.Runner.Test
         }
 
         [TestCase("sepolia", "ws://localhost:3000/api")]
-        [TestCase("rinkeby", "ws://localhost:3000/api")]
         [TestCase("goerli", "wss://stats.goerli.net/api")]
         [TestCase("mainnet", "wss://ethstats.net/api")]
         [TestCase("poacore", "ws://localhost:3000/api")]
@@ -95,7 +94,6 @@ namespace Nethermind.Runner.Test
             Test<ISyncConfig, bool>(configWildcard, c => c.UseGethLimitsInFastBlocks, useGethLimitsInFastSync);
         }
 
-        [TestCase("rinkeby", "0x6341fd3daf94b748c72ced5a5b26028f2474f5f00d824504e4fa37a75767e177")]
         [TestCase("goerli", "0xbf7e331f7f7c1dd2e05159666b3bf8bc7a8a3a9eb1d518969eab529dd9b88c1a")]
         [TestCase("mainnet", "0xd4e56740f876aef8c010b86a40d5f56745a118d0906a34e69aec8c0db1cb8fa3")]
         [TestCase("poacore", "0x39f02c003dde5b073b3f6e1700fc0b84b4877f6839bb23edadd3d2d82a488634")]
@@ -151,8 +149,6 @@ namespace Nethermind.Runner.Test
         [TestCase("volta ^archive", 768000000)]
         [TestCase("goerli archive", 768000000)]
         [TestCase("goerli ^archive", 768000000)]
-        [TestCase("rinkeby archive", 1536000000)]
-        [TestCase("rinkeby ^archive", 1024000000)]
         [TestCase("gnosis archive", 1024000000)]
         [TestCase("gnosis ^archive", 768000000)]
         [TestCase("poacore archive", 1024000000)]
@@ -238,7 +234,6 @@ namespace Nethermind.Runner.Test
         [TestCase("archive", false)]
         [TestCase("mainnet.cfg", true)]
         [TestCase("goerli.cfg", true)]
-        [TestCase("rinkeby.cfg", false)]
         [TestCase("sepolia.cfg", true)]
         [TestCase("gnosis.cfg", false)]
         public void Snap_sync_settings_as_expected(string configWildcard, bool enabled)
@@ -248,7 +243,7 @@ namespace Nethermind.Runner.Test
 
         [TestCase("^aura ^sepolia ^goerli ^mainnet", false)]
         [TestCase("aura ^archive", true)]
-        [TestCase("^archive ^rinkeby ^spaceneth", true)]
+        [TestCase("^archive ^spaceneth", true)]
         [TestCase("sepolia ^archive", true)]
         [TestCase("goerli ^archive", true)]
         [TestCase("mainnet ^archive", true)]
@@ -272,7 +267,7 @@ namespace Nethermind.Runner.Test
         }
 
         [TestCase("^mainnet", 0)]
-        [TestCase("mainnet fast", 11052984)]
+        [TestCase("mainnet fast", 0)]
         public void Barriers_defaults_are_correct(string configWildcard, long barrier)
         {
             Test<ISyncConfig, long>(configWildcard, c => c.AncientBodiesBarrier, barrier);
@@ -306,7 +301,6 @@ namespace Nethermind.Runner.Test
             Test<ISyncConfig, int>(configWildcard, c => (int)(c.PivotNumberParsed % 30000L), (s, p) => p.Should().Be(0));
         }
 
-        [TestCase("rinkeby", false)]
         [TestCase("goerli", false)]
         [TestCase("mainnet_archive.cfg", true)]
         [TestCase("mainnet.cfg", true)]
@@ -330,7 +324,6 @@ namespace Nethermind.Runner.Test
         }
 
 
-        [TestCase("rinkeby")]
         [TestCase("goerli", new[] { 16, 16, 16, 16 })]
         [TestCase("mainnet")]
         [TestCase("poacore.cfg", new[] { 16, 16, 16, 16 })]
@@ -359,8 +352,8 @@ namespace Nethermind.Runner.Test
             Test<INetworkConfig, int>(configWildcard, c => c.NettyArenaOrder, -1);
         }
 
-        [TestCase("chiado", 30_000_000L, 5ul)]
-        [TestCase("gnosis", 30_000_000L, 5ul)]
+        [TestCase("chiado", 17_000_000L, 5UL)]
+        [TestCase("gnosis", 17_000_000L, 5UL)]
         [TestCase("goerli", 30_000_000L)]
         [TestCase("mainnet", 30_000_000L)]
         [TestCase("sepolia", 30_000_000L)]
@@ -413,8 +406,6 @@ namespace Nethermind.Runner.Test
 
         protected override IEnumerable<string> Configs { get; } = new HashSet<string>
         {
-            "rinkeby_archive.cfg",
-            "rinkeby.cfg",
             "goerli_archive.cfg",
             "goerli.cfg",
             "kovan.cfg",

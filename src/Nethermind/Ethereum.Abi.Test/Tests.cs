@@ -5,11 +5,12 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Text.Json;
+using System.Text.Json.Nodes;
+
 using FluentAssertions;
 using Nethermind.Abi;
 using Nethermind.Core.Extensions;
-using Newtonsoft.Json;
-using Newtonsoft.Json.Linq;
 using NUnit.Framework;
 
 namespace Ethereum.Abi.Test
@@ -56,7 +57,7 @@ namespace Ethereum.Abi.Test
                 }
             }
 
-            Dictionary<string, AbiTest> tests = JsonConvert.DeserializeObject<Dictionary<string, AbiTest>>(text);
+            Dictionary<string, AbiTest> tests = JsonSerializer.Deserialize<Dictionary<string, AbiTest>>(text);
             foreach ((string testName, AbiTest abiTest) in tests)
             {
                 AbiSignature signature = new(
@@ -71,9 +72,9 @@ namespace Ethereum.Abi.Test
 
         public object JsonToObject(object jsonObject)
         {
-            if (jsonObject is JArray array)
+            if (jsonObject is JsonArray array)
             {
-                return array.Select(t => t.Value<long>()).ToArray();
+                return array.Select(t => t.GetValue<long>()).ToArray();
             }
 
             return jsonObject;

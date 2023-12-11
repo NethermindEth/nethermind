@@ -58,7 +58,7 @@ namespace Nethermind.AuRa.Test
                 AuRaStepCalculator = Substitute.For<IAuRaStepCalculator>();
                 NodeAddress = TestItem.AddressA;
                 TransactionSource.GetTransactions(Arg.Any<BlockHeader>(), Arg.Any<long>()).Returns(Array.Empty<Transaction>());
-                Sealer.CanSeal(Arg.Any<long>(), Arg.Any<Keccak>()).Returns(true);
+                Sealer.CanSeal(Arg.Any<long>(), Arg.Any<Hash256>()).Returns(true);
                 Sealer.SealBlock(Arg.Any<Block>(), Arg.Any<CancellationToken>()).Returns(c => Task.FromResult(c.Arg<Block>()));
                 Sealer.Address.Returns(TestItem.AddressA);
                 BlockProcessingQueue.IsEmpty.Returns(true);
@@ -71,6 +71,7 @@ namespace Nethermind.AuRa.Test
                     block.TrySetTransactions(TransactionSource.GetTransactions(BlockTree.Head!.Header, block.GasLimit).ToArray());
                     return block;
                 });
+                StateProvider.HasStateForRoot(Arg.Any<Hash256>()).Returns(x => true);
                 InitProducer();
             }
 
@@ -151,7 +152,7 @@ namespace Nethermind.AuRa.Test
         public async Task Does_not_produce_block_when_cannot_seal()
         {
             Context context = new();
-            context.Sealer.CanSeal(Arg.Any<long>(), Arg.Any<Keccak>()).Returns(false);
+            context.Sealer.CanSeal(Arg.Any<long>(), Arg.Any<Hash256>()).Returns(false);
             (await StartStop(context)).ShouldProduceBlocks(Quantity.None());
         }
 
@@ -225,10 +226,11 @@ namespace Nethermind.AuRa.Test
             await context.AuRaBlockProducer.Start();
             await processedEvent.WaitOneAsync(context.StepDelay * stepDelayMultiplier * 5, CancellationToken.None);
             context.BlockTree.ClearReceivedCalls();
+            await Task.Delay(context.StepDelay);
+            processedEvent.Reset();
 
             try
             {
-                await Task.Delay(context.StepDelay);
                 if (processingQueueEmpty)
                 {
                     context.BlockProcessingQueue.ProcessingQueueEmpty += Raise.Event();
@@ -238,9 +240,10 @@ namespace Nethermind.AuRa.Test
                 {
                     context.BlockTree.NewBestSuggestedBlock += Raise.EventWith(new BlockEventArgs(Build.A.Block.TestObject));
                     context.BlockTree.ClearReceivedCalls();
+                    processedEvent.Reset();
                 }
 
-                await processedEvent.WaitOneAsync(context.StepDelay * stepDelayMultiplier, CancellationToken.None);
+                await processedEvent.WaitOneAsync(context.StepDelay * stepDelayMultiplier * 5, CancellationToken.None);
 
             }
             finally

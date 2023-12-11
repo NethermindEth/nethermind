@@ -46,7 +46,6 @@ namespace Nethermind.Cli
                 INodeManager nodeManager = new NodeManager(engine, Serializer, cliConsole, logManager);
                 var moduleLoader = new CliModuleLoader(engine, nodeManager, cliConsole);
 
-                RegisterConverters();
                 engine.JintEngine.SetValue("serialize", new Action<JsValue>(v =>
                 {
                     string text = Serializer.Serialize(v.ToObject(), true);
@@ -168,17 +167,6 @@ namespace Nethermind.Cli
                 cliConsole.WriteLessImportant("null");
                 cliConsole.WriteLine();
             }
-        }
-
-        private static void RegisterConverters()
-        {
-            Serializer.RegisterConverter(new ParityTxTraceFromReplayConverter());
-            Serializer.RegisterConverter(new ParityAccountStateChangeConverter());
-            Serializer.RegisterConverter(new ParityTraceActionConverter());
-            Serializer.RegisterConverter(new ParityTraceResultConverter());
-            Serializer.RegisterConverter(new ParityVmOperationTraceConverter());
-            Serializer.RegisterConverter(new ParityVmTraceConverter());
-            Serializer.RegisterConverter(new TransactionForRpcWithTraceTypesConverter());
         }
 
         private static ColorScheme? MapColorScheme(string colorSchemeOption)

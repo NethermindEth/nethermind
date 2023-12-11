@@ -45,7 +45,7 @@ public class SnapSyncBatchTests
     {
         SnapSyncBatch batch = new()
         {
-            CodesRequest = new ValueKeccak[9],
+            CodesRequest = new ValueHash256[9],
         };
 
         batch.ToString().Should().Be("CodesRequest: (9)");

@@ -14,6 +14,7 @@ using Nethermind.Core.Timers;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.TxPool.Collections;
+using ITimer = Nethermind.Core.Timers.ITimer;
 
 namespace Nethermind.TxPool
 {
@@ -221,7 +222,7 @@ namespace Nethermind.TxPool
             return (persistentTxsToSend, persistentHashesToSend);
         }
 
-        public void StopBroadcast(Keccak txHash)
+        public void StopBroadcast(Hash256 txHash)
         {
             if (_persistentTxs.Count != 0)
             {
@@ -304,7 +305,7 @@ namespace Nethermind.TxPool
             }
         }
 
-        public bool TryGetPersistentTx(Keccak hash, out Transaction? transaction)
+        public bool TryGetPersistentTx(Hash256 hash, out Transaction? transaction)
         {
             if (_persistentTxs.TryGetValue(hash, out transaction) && !transaction.SupportsBlobs)
             {
@@ -315,7 +316,7 @@ namespace Nethermind.TxPool
             return false;
         }
 
-        public bool ContainsTx(Keccak hash) => _persistentTxs.ContainsKey(hash);
+        public bool ContainsTx(Hash256 hash) => _persistentTxs.ContainsKey(hash);
 
         public bool AddPeer(ITxPoolPeer peer)
         {

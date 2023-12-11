@@ -32,18 +32,18 @@ namespace Nethermind.Db.Rpc
             _recordDb = recordDb;
         }
 
-        public IDbWithSpan GetColumnDb(T key)
+        public IDb GetColumnDb(T key)
         {
             string dbName = _dbName + key;
-            IDbWithSpan column = _recordDb.GetColumnDb(key);
+            IDb column = _recordDb.GetColumnDb(key);
             return new RpcDb(dbName, _jsonSerializer, _rpcClient, _logManager, column);
         }
 
         public IEnumerable<T> ColumnKeys => Enum.GetValues<T>();
 
-        public IColumnsBatch<T> StartBatch()
+        public IColumnsWriteBatch<T> StartWriteBatch()
         {
-            return new InMemoryColumnBatch<T>(this);
+            return new InMemoryColumnWriteBatch<T>(this);
         }
     }
 }

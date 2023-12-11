@@ -65,7 +65,7 @@ public class NettyDiscoveryHandler : SimpleChannelInboundHandler<DatagramPacket>
         context.Flush();
     }
 
-    public async void SendMsg(DiscoveryMsg discoveryMsg)
+    public async Task SendMsg(DiscoveryMsg discoveryMsg)
     {
         IByteBuffer msgBuffer;
         try

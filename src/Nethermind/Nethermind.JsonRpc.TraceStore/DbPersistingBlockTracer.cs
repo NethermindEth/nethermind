@@ -21,7 +21,7 @@ public class DbPersistingBlockTracer<TTrace, TTracer> : BlockTracer where TTrace
     private readonly ITraceSerializer<TTrace> _traceSerializer;
     private readonly IBlockTracer _blockTracer;
     private readonly BlockTracerBase<TTrace, TTracer> _tracerWithResults;
-    private Keccak _currentBlockHash = null!;
+    private Hash256 _currentBlockHash = null!;
     private long _currentBlockNumber;
     private readonly ILogger _logger;
 
@@ -63,7 +63,7 @@ public class DbPersistingBlockTracer<TTrace, TTracer> : BlockTracer where TTrace
     {
         _blockTracer.EndBlockTrace();
         IReadOnlyCollection<TTrace> result = _tracerWithResults.BuildResult();
-        Keccak currentBlockHash = _currentBlockHash;
+        Hash256 currentBlockHash = _currentBlockHash;
         long currentBlockNumber = _currentBlockNumber;
         try
         {

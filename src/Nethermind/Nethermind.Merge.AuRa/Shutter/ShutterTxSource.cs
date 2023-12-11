@@ -12,6 +12,7 @@ using Nethermind.Blockchain.Find;
 using Nethermind.Facade.Filters;
 using Nethermind.Int256;
 using Nethermind.Core.Crypto;
+using Nethermind.Consensus.Producers;
 
 namespace Nethermind.Merge.AuRa.Shutter;
 
@@ -20,17 +21,17 @@ public class ShutterTxSource : ITxSource
 
     private ILogFinder? _logFinder;
     private LogFilter? _logFilter;
-    private static readonly Address SEQUENCER_ADDRESS = new(new Keccak("0x0"));
+    private static readonly Address SEQUENCER_ADDRESS = new(new Hash256("0x0"));
     private static readonly UInt256 ENCRYPTED_GAS_LIMIT = 1000;
     private static readonly AbiSignature ABI_SIGNATURE = new AbiSignature(
         "TransactionSubmitted",
-        new AbiType[] {
+        [
             AbiType.UInt64,
             AbiType.Bytes32,
             AbiType.Address,
             AbiType.DynamicBytes,
             AbiType.UInt256
-        }
+        ]
     );
     
     class SequencedTransaction
@@ -114,7 +115,7 @@ public class ShutterTxSource : ITxSource
         _logFilter = filterStore.CreateLogFilter(BlockParameter.Earliest, BlockParameter.Latest, SEQUENCER_ADDRESS, topics);
     }
 
-    public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit)
+    public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit, PayloadAttributes? payloadAttributes = null)
     {
         // todo: get eon and txpointer
         ulong eon = 0;

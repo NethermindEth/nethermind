@@ -43,7 +43,7 @@ namespace Nethermind.Clique.Test
             Block block3 = Rlp.Decode<Block>(new Rlp(Bytes.FromHexString(Block3Rlp)));
             Block block4 = Rlp.Decode<Block>(new Rlp(Bytes.FromHexString(Block4Rlp)));
             Block block5 = Rlp.Decode<Block>(new Rlp(Bytes.FromHexString(Block5Rlp)));
-            Block genesisBlock = GetRinkebyGenesis();
+            Block genesisBlock = GetGenesis();
             // Add blocks
             MineBlock(_blockTree, genesisBlock);
             MineBlock(_blockTree, block1);
@@ -57,9 +57,9 @@ namespace Nethermind.Clique.Test
             MemDb db = new();
             CliqueConfig config = new();
 
-            _ecdsa = new EthereumEcdsa(BlockchainIds.Rinkeby, LimboLogs.Instance);
+            _ecdsa = new EthereumEcdsa(BlockchainIds.Goerli, LimboLogs.Instance);
             _snapshotManager = new SnapshotManager(config, db, _blockTree, _ecdsa, LimboLogs.Instance);
-            _clique = new CliqueSealer(new Signer(BlockchainIds.Rinkeby, key, LimboLogs.Instance), config, _snapshotManager, LimboLogs.Instance);
+            _clique = new CliqueSealer(new Signer(BlockchainIds.Goerli, key, LimboLogs.Instance), config, _snapshotManager, LimboLogs.Instance);
             _sealValidator = new CliqueSealValidator(config, _snapshotManager, LimboLogs.Instance);
         }
 
@@ -90,10 +90,10 @@ namespace Nethermind.Clique.Test
             Assert.True(validSeal);
         }
 
-        public static Block GetRinkebyGenesis()
+        public static Block GetGenesis()
         {
-            Keccak parentHash = Keccak.Zero;
-            Keccak unclesHash = Keccak.OfAnEmptySequenceRlp;
+            Hash256 parentHash = Keccak.Zero;
+            Hash256 unclesHash = Keccak.OfAnEmptySequenceRlp;
             Address beneficiary = Address.Zero;
             UInt256 difficulty = new(1);
             long number = 0L;
@@ -103,9 +103,7 @@ namespace Nethermind.Clique.Test
             BlockHeader header = new(parentHash, unclesHash, beneficiary, difficulty, number, gasLimit, timestamp, extraData);
             header.Bloom = Bloom.Empty;
             Block genesis = new(header);
-            genesis.Header.Hash = new Keccak("0x6341fd3daf94b748c72ced5a5b26028f2474f5f00d824504e4fa37a75767e177");
-            // this would need to be loaded from rinkeby chainspec to include allocations
-            // Assert.AreEqual(new Keccak("0x6341fd3daf94b748c72ced5a5b26028f2474f5f00d824504e4fa37a75767e177"), genesis.Hash);
+            genesis.Header.Hash = new Hash256("0x6341fd3daf94b748c72ced5a5b26028f2474f5f00d824504e4fa37a75767e177");
 
             return genesis;
         }

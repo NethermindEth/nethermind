@@ -33,7 +33,9 @@ namespace Nethermind.AccountAbstraction.Test
     [TestFixture]
     public class UserOperationPoolTests
     {
+#pragma warning disable NUnit1032
         private IUserOperationPool _userOperationPool = Substitute.For<IUserOperationPool>();
+#pragma warning restore NUnit1032
         private IUserOperationSimulator _simulator = Substitute.For<IUserOperationSimulator>();
         private IBlockTree _blockTree = Substitute.For<IBlockTree>();
         private IReceiptFinder _receiptFinder = Substitute.For<IReceiptFinder>();
@@ -41,7 +43,7 @@ namespace Nethermind.AccountAbstraction.Test
         private IWorldState _stateProvider = Substitute.For<IWorldState>();
         private ISpecProvider _specProvider = Substitute.For<ISpecProvider>();
         private readonly ISigner _signer = Substitute.For<ISigner>();
-        private readonly Keccak _userOperationEventTopic = new("0x33fd4d1f25a5461bea901784a6571de6debc16cd0831932c22c6969cd73ba994");
+        private readonly Hash256 _userOperationEventTopic = new("0x33fd4d1f25a5461bea901784a6571de6debc16cd0831932c22c6969cd73ba994");
         private readonly string _entryPointContractAddress = "0x8595dd9e0438640b5e1254f9df579ac12a86865f";
         private static Address _notAnAddress = new("0x373f2D08b1C195fF08B9AbEdE3C78575FAAC2aCf");
 
@@ -325,7 +327,7 @@ namespace Nethermind.AccountAbstraction.Test
             LogEntry[] logs = new LogEntry[uops.Length];
             for (int i = 0; i < uops.Length; i++)
             {
-                Keccak[] topics = new[] { _userOperationEventTopic, new Keccak(string.Concat("0x000000000000000000000000", senderAddress.ToString(false, false))), new Keccak(string.Concat("0x000000000000000000000000", uops[i].Paymaster.Bytes.ToHexString())) };
+                Hash256[] topics = new[] { _userOperationEventTopic, new Hash256(string.Concat("0x000000000000000000000000", senderAddress.ToString(false, false))), new Hash256(string.Concat("0x000000000000000000000000", uops[i].Paymaster.Bytes.ToHexString())) };
                 UInt256 nonce = (UInt256)i;
                 logs[i] = new LogEntry(senderAddress, nonce.ToBigEndian(), topics);
             }
@@ -348,7 +350,7 @@ namespace Nethermind.AccountAbstraction.Test
             BlockEventArgs blockEventArgs = new(block);
 
             ManualResetEvent manualResetEvent = new(false);
-            _userOperationPool.RemoveUserOperation(Arg.Do<Keccak>(o => manualResetEvent.Set()));
+            _userOperationPool.RemoveUserOperation(Arg.Do<Hash256>(o => manualResetEvent.Set()));
             _blockTree.NewHeadBlock += Raise.EventWith(new object(), blockEventArgs);
             manualResetEvent.WaitOne(500);
 
@@ -400,7 +402,7 @@ namespace Nethermind.AccountAbstraction.Test
             _stateProvider.IsContract(_notAnAddress).Returns(false);
 
             _simulator.Simulate(Arg.Any<UserOperation>(), Arg.Any<BlockHeader>())
-                .ReturnsForAnyArgs(x => ResultWrapper<Keccak>.Success(Keccak.Zero));
+                .ReturnsForAnyArgs(x => ResultWrapper<Hash256>.Success(Keccak.Zero));
 
             _blockTree.Head.Returns(Core.Test.Builders.Build.A.Block.TestObject);
 

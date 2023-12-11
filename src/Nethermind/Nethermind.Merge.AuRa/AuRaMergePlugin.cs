@@ -13,6 +13,7 @@ using Nethermind.Consensus.AuRa.Config;
 using Nethermind.Consensus.AuRa.InitializationSteps;
 using Nethermind.Consensus.AuRa.Transactions;
 using Nethermind.Consensus.Transactions;
+using Nethermind.Core;
 using Nethermind.Merge.AuRa.Shutter;
 using Nethermind.Merge.Plugin;
 using Nethermind.Merge.Plugin.BlockProduction;
@@ -29,9 +30,8 @@ namespace Nethermind.Merge.AuRa
         private IAuraConfig? _auraConfig;
 
         public override string Name => "AuRaMerge";
-        public override string Description => $"AuRa Merge plugin for ETH1-ETH2";
-
-        public override bool MergeEnabled => ShouldBeEnabled(_api);
+        public override string Description => "AuRa Merge plugin for ETH1-ETH2";
+        protected override bool MergeEnabled => ShouldRunSteps(_api);
 
         public override async Task Init(INethermindApi nethermindApi)
         {
@@ -58,9 +58,8 @@ namespace Nethermind.Merge.AuRa
                 _auraApi!,
                 _auraConfig!,
                 _api.DisposeStack,
-                _api.DbProvider!,
+                _api.WorldStateManager!,
                 _api.BlockTree!,
-                _api.ReadOnlyTrieStore!,
                 _api.SpecProvider!,
                 _api.BlockValidator!,
                 _api.RewardCalculatorSource!,
@@ -95,12 +94,10 @@ namespace Nethermind.Merge.AuRa
             return _api.BlockProducerEnvFactory.Create(shutterTxSource);
         }
 
-        private bool ShouldBeEnabled(INethermindApi api) => _mergeConfig.Enabled && IsPreMergeConsensusAuRa(api);
-
         public bool ShouldRunSteps(INethermindApi api)
         {
             _mergeConfig = api.Config<IMergeConfig>();
-            return ShouldBeEnabled(api);
+            return _mergeConfig.Enabled && api.ChainSpec.SealEngineType == SealEngineType.AuRa;
         }
     }
 }

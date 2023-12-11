@@ -37,30 +37,6 @@ public class HeaderDecoderTests
     }
 
     [Test]
-    public void Can_decode_tricky()
-    {
-        BlockHeader header = Build.A.BlockHeader
-            .WithMixHash(Keccak.Compute("mix_hash"))
-            .WithTimestamp(2730)
-            .WithNonce(1000)
-            .TestObject;
-
-        HeaderDecoder decoder = new();
-        Rlp rlp = decoder.Encode(header);
-        rlp.Bytes[2]++;
-        string bytesWithAAA = rlp.Bytes.ToHexString();
-        bytesWithAAA = bytesWithAAA.Replace("820aaa", "83000aaa");
-
-        rlp = new Rlp(Bytes.FromHexString(bytesWithAAA));
-
-        Rlp.ValueDecoderContext decoderContext = new(rlp.Bytes);
-        BlockHeader? decoded = decoder.Decode(ref decoderContext);
-        decoded!.Hash = decoded.CalculateHash();
-
-        Assert.That(decoded.Hash, Is.EqualTo(header.Hash), "hash");
-    }
-
-    [Test]
     public void Can_decode_aura()
     {
         var auRaSignature = new byte[64];
@@ -163,7 +139,7 @@ public class HeaderDecoderTests
     }
 
     [TestCaseSource(nameof(CancunFieldsSource))]
-    public void Can_encode_decode_with_cancun_fields(ulong? blobGasUsed, ulong? excessBlobGas, Keccak? parentBeaconBlockRoot)
+    public void Can_encode_decode_with_cancun_fields(ulong? blobGasUsed, ulong? excessBlobGas, Hash256? parentBeaconBlockRoot)
     {
         BlockHeader header = Build.A.BlockHeader
             .WithTimestamp(ulong.MaxValue)

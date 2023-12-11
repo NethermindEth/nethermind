@@ -13,7 +13,7 @@ using Nethermind.Serialization.Json;
 
 namespace Nethermind.Db.Rpc
 {
-    public class RpcDb : IDb, IDbWithSpan
+    public class RpcDb : IDb
     {
         private readonly string _dbName;
         private readonly IJsonSerializer _jsonSerializer;
@@ -79,7 +79,7 @@ namespace Nethermind.Db.Rpc
 
         public IEnumerable<byte[]> GetAllValues(bool ordered = false) => _recordDb.GetAllValues();
 
-        public IBatch StartBatch()
+        public IWriteBatch StartWriteBatch()
         {
             throw new InvalidOperationException("RPC DB does not support writes");
         }
@@ -107,9 +107,9 @@ namespace Nethermind.Db.Rpc
             return Get(key);
         }
 
-        public void PutSpan(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value)
+        public void PutSpan(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags writeFlags)
         {
-            Set(key, value.ToArray());
+            Set(key, value.ToArray(), writeFlags);
         }
 
         public void DangerousReleaseMemory(in Span<byte> span)

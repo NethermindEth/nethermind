@@ -33,6 +33,7 @@ namespace Nethermind.Overseer.Test.Framework
             }
         }
 
+#pragma warning disable NUnit1032
         /// <summary>
         /// Gets the task representing the fluent work.
         /// </summary>
@@ -40,6 +41,7 @@ namespace Nethermind.Overseer.Test.Framework
         /// The task.
         /// </value>
         public Task ScenarioCompletion { get; private set; }
+#pragma warning restore NUnit1032
 
         /// <summary>
         /// Queues up asynchronous work.
@@ -278,7 +280,7 @@ namespace Nethermind.Overseer.Test.Framework
 
         private void CopyRunnerFiles(string targetDirectory)
         {
-            string sourceDirectory = Path.Combine(Directory.GetCurrentDirectory(), $"../../../../Nethermind.Runner/bin/{buildConfiguration}/net7.0/");
+            string sourceDirectory = Path.Combine(Directory.GetCurrentDirectory(), $"../../../../artifacts/bin/Nethermind.Runner/{buildConfiguration}/");
             if (!Directory.Exists(sourceDirectory))
             {
                 throw new IOException($"Runner not found at {sourceDirectory}");

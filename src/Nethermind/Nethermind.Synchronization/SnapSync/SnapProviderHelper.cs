@@ -19,19 +19,19 @@ namespace Nethermind.Synchronization.SnapSync
 {
     public static class SnapProviderHelper
     {
-        public static (AddRangeResult result, bool moreChildrenToRight, List<PathWithAccount> storageRoots, List<ValueKeccak> codeHashes) AddAccountRange(
+        public static (AddRangeResult result, bool moreChildrenToRight, List<PathWithAccount> storageRoots, List<ValueHash256> codeHashes) AddAccountRange(
             StateTree tree,
             long blockNumber,
-            in ValueKeccak expectedRootHash,
-            in ValueKeccak startingHash,
-            in ValueKeccak limitHash,
+            in ValueHash256 expectedRootHash,
+            in ValueHash256 startingHash,
+            in ValueHash256 limitHash,
             PathWithAccount[] accounts,
             byte[][] proofs = null
         )
         {
             // TODO: Check the accounts boundaries and sorting
 
-            ValueKeccak lastHash = accounts[^1].Path;
+            ValueHash256 lastHash = accounts[^1].Path;
 
             (AddRangeResult result, List<TrieNode> sortedBoundaryList, bool moreChildrenToRight) =
                 FillBoundaryTree(tree, startingHash, lastHash, limitHash, expectedRootHash, proofs);
@@ -42,7 +42,7 @@ namespace Nethermind.Synchronization.SnapSync
             }
 
             List<PathWithAccount> accountsWithStorage = new();
-            List<ValueKeccak> codeHashes = new();
+            List<ValueHash256> codeHashes = new();
 
             for (var index = 0; index < accounts.Length; index++)
             {
@@ -81,15 +81,15 @@ namespace Nethermind.Synchronization.SnapSync
         public static (AddRangeResult result, bool moreChildrenToRight) AddStorageRange(
             StorageTree tree,
             long blockNumber,
-            in ValueKeccak? startingHash,
+            in ValueHash256? startingHash,
             PathWithStorageSlot[] slots,
-            in ValueKeccak expectedRootHash,
+            in ValueHash256 expectedRootHash,
             byte[][]? proofs = null
         )
         {
             // TODO: Check the slots boundaries and sorting
 
-            ValueKeccak lastHash = slots[^1].Path;
+            ValueHash256 lastHash = slots[^1].Path;
 
             (AddRangeResult result, List<TrieNode> sortedBoundaryList, bool moreChildrenToRight) = FillBoundaryTree(
                 tree, startingHash, lastHash, ValueKeccak.MaxValue, expectedRootHash, proofs);
@@ -123,10 +123,10 @@ namespace Nethermind.Synchronization.SnapSync
         [SkipLocalsInit]
         private static (AddRangeResult result, List<TrieNode> sortedBoundaryList, bool moreChildrenToRight) FillBoundaryTree(
             PatriciaTree tree,
-            in ValueKeccak? startingHash,
-            in ValueKeccak endHash,
-            in ValueKeccak limitHash,
-            in ValueKeccak expectedRootHash,
+            in ValueHash256? startingHash,
+            in ValueHash256 endHash,
+            in ValueHash256 limitHash,
+            in ValueHash256 expectedRootHash,
             byte[][]? proofs = null
         )
         {
@@ -140,10 +140,10 @@ namespace Nethermind.Synchronization.SnapSync
                 throw new ArgumentNullException(nameof(tree));
             }
 
-            ValueKeccak effectiveStartingHAsh = startingHash.HasValue ? startingHash.Value : ValueKeccak.Zero;
+            ValueHash256 effectiveStartingHAsh = startingHash.HasValue ? startingHash.Value : ValueKeccak.Zero;
             List<TrieNode> sortedBoundaryList = new();
 
-            Dictionary<ValueKeccak, TrieNode> dict = CreateProofDict(proofs, tree.TrieStore);
+            Dictionary<ValueHash256, TrieNode> dict = CreateProofDict(proofs, tree.TrieStore);
 
             if (!dict.TryGetValue(expectedRootHash, out TrieNode root))
             {
@@ -177,7 +177,7 @@ namespace Nethermind.Synchronization.SnapSync
 
                 if (node.IsExtension)
                 {
-                    if (node.GetChildHashAsValueKeccak(0, out ValueKeccak childKeccak))
+                    if (node.GetChildHashAsValueKeccak(0, out ValueHash256 childKeccak))
                     {
                         if (dict.TryGetValue(childKeccak, out TrieNode child))
                         {
@@ -197,7 +197,7 @@ namespace Nethermind.Synchronization.SnapSync
                             {
                                 for (int i = 0; i < 15; i++)
                                 {
-                                    if (parent.GetChildHashAsValueKeccak(i, out ValueKeccak kec) && kec == node.Keccak)
+                                    if (parent.GetChildHashAsValueKeccak(i, out ValueHash256 kec) && kec == node.Keccak)
                                     {
                                         parent.SetChild(i, null);
                                         break;
@@ -221,7 +221,7 @@ namespace Nethermind.Synchronization.SnapSync
 
                     for (int ci = left; ci <= maxIndex; ci++)
                     {
-                        bool hasKeccak = node.GetChildHashAsValueKeccak(ci, out ValueKeccak childKeccak);
+                        bool hasKeccak = node.GetChildHashAsValueKeccak(ci, out ValueHash256 childKeccak);
 
                         moreChildrenToRight |= hasKeccak && (ci > right && (ci < limit || noLimit));
 
@@ -253,9 +253,9 @@ namespace Nethermind.Synchronization.SnapSync
             return (AddRangeResult.OK, sortedBoundaryList, moreChildrenToRight);
         }
 
-        private static Dictionary<ValueKeccak, TrieNode> CreateProofDict(byte[][] proofs, ITrieStore store)
+        private static Dictionary<ValueHash256, TrieNode> CreateProofDict(byte[][] proofs, ITrieStore store)
         {
-            Dictionary<ValueKeccak, TrieNode> dict = new();
+            Dictionary<ValueHash256, TrieNode> dict = new();
 
             for (int i = 0; i < proofs.Length; i++)
             {
@@ -318,7 +318,7 @@ namespace Nethermind.Synchronization.SnapSync
                 return data.IsBoundaryProofNode == false;
             }
 
-            if (!node.GetChildHashAsValueKeccak(childIndex, out ValueKeccak childKeccak))
+            if (!node.GetChildHashAsValueKeccak(childIndex, out ValueHash256 childKeccak))
             {
                 return true;
             }
