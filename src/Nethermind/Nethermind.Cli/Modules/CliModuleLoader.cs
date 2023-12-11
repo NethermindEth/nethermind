@@ -93,14 +93,15 @@ namespace Nethermind.Cli.Modules
                 }
 
                 ObjectInstance instance;
-                if (!_objects.ContainsKey(objectName))
+                if (!_objects.TryGetValue(objectName, out ObjectInstance? value))
                 {
                     instance = _engine.JintEngine.Object.Construct(Arguments.Empty);
                     _engine.JintEngine.SetValue(objectName, instance);
-                    _objects[objectName] = instance;
+                    value = instance;
+                    _objects[objectName] = value;
                 }
 
-                instance = _objects[objectName];
+                instance = value;
                 var @delegate = CreateDelegate(methodInfo, module);
                 DelegateWrapper nativeDelegate = new DelegateWrapper(_engine.JintEngine, @delegate);
 

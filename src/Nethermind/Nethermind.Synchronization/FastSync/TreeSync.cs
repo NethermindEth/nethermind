@@ -973,12 +973,13 @@ namespace Nethermind.Synchronization.FastSync
         {
             lock (_dependencies)
             {
-                if (!_dependencies.ContainsKey(dependency))
+                if (!_dependencies.TryGetValue(dependency, out HashSet<DependentItem>? value))
                 {
-                    _dependencies[dependency] = new HashSet<DependentItem>(DependentItemComparer.Instance);
+                    value = new HashSet<DependentItem>(DependentItemComparer.Instance);
+                    _dependencies[dependency] = value;
                 }
 
-                _dependencies[dependency].Add(dependentItem);
+                value.Add(dependentItem);
             }
         }
 

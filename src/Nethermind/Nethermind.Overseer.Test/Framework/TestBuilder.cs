@@ -209,7 +209,7 @@ namespace Nethermind.Overseer.Test.Framework
 
         private NethermindProcessWrapper GetOrCreateNode(string name, string baseConfigFile, string key)
         {
-            if (!Nodes.ContainsKey(name))
+            if (!Nodes.TryGetValue(name, out NethermindProcessWrapper value))
             {
                 string bootnodes = string.Empty;
                 foreach ((_, NethermindProcessWrapper process) in Nodes)
@@ -227,11 +227,12 @@ namespace Nethermind.Overseer.Test.Framework
                 int p2pPort = _startPort + _nodeCounter;
                 int httpPort = _startHttpPort + _nodeCounter;
                 TestContext.WriteLine($"Creating {name} at {p2pPort}, http://localhost:{httpPort}");
-                Nodes[name] = _processBuilder.Create(name, _runnerDir, configPath, dbDir, httpPort, p2pPort, nodeKey, bootnodes);
+                value = _processBuilder.Create(name, _runnerDir, configPath, dbDir, httpPort, p2pPort, nodeKey, bootnodes);
+                Nodes[name] = value;
                 _nodeCounter++;
             }
 
-            return Nodes[name];
+            return value;
         }
 
         private string GetNodeKey(string key)

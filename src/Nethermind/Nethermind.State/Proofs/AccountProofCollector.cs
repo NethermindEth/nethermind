@@ -181,18 +181,19 @@ namespace Nethermind.State.Proofs
                     }
                     else
                     {
-                        if (!_storageNodeInfos.ContainsKey(childHash))
+                        if (!_storageNodeInfos.TryGetValue(childHash, out StorageNodeInfo? value))
                         {
-                            _storageNodeInfos[childHash] = new StorageNodeInfo();
+                            value = new StorageNodeInfo();
+                            _storageNodeInfos[childHash] = value;
                         }
 
                         if (!bumpedIndexes.Contains((byte)childIndex))
                         {
                             bumpedIndexes.Add((byte)childIndex);
-                            _storageNodeInfos[childHash].PathIndex = _pathTraversalIndex + 1;
+                            value.PathIndex = _pathTraversalIndex + 1;
                         }
 
-                        _storageNodeInfos[childHash].StorageIndices.Add(storageIndex);
+                        value.StorageIndices.Add(storageIndex);
                         _nodeToVisitFilter.Add(childHash);
                     }
                 }

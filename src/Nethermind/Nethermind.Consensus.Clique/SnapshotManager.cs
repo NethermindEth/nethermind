@@ -274,8 +274,8 @@ namespace Nethermind.Consensus.Clique
 
                 // Resolve the authorization key and check against signers
                 Address signer = header.Author;
-                if (!snapshot.Signers.ContainsKey(signer)) throw new InvalidOperationException("Unauthorized signer");
-                if (HasSignedRecently(snapshot, number, signer)) throw new InvalidOperationException($"Recently signed (trying to sign {number} when last signed {snapshot.Signers[signer]} with {snapshot.Signers.Count} signers)");
+                if (!snapshot.Signers.TryGetValue(signer, out var value)) throw new InvalidOperationException("Unauthorized signer");
+                if (HasSignedRecently(snapshot, number, signer)) throw new InvalidOperationException($"Recently signed (trying to sign {number} when last signed {value} with {snapshot.Signers.Count} signers)");
 
                 snapshot.Signers[signer] = number;
 
@@ -353,25 +353,24 @@ namespace Nethermind.Consensus.Clique
 
         private bool Cast(Snapshot snapshot, Address address, bool authorize)
         {
-            if (!snapshot.Tally.ContainsKey(address))
+            if (!snapshot.Tally.TryGetValue(address, out Tally? value))
             {
-                snapshot.Tally[address] = new Tally(authorize);
+                value = new Tally(authorize);
+                snapshot.Tally[address] = value;
             }
 
             // Ensure the vote is meaningful
             if (!IsValidVote(snapshot, address, authorize)) return false;
-
-            // Cast the vote into tally
-            snapshot.Tally[address].Votes++;
+            value.Votes++;
             return true;
         }
 
         private bool Uncast(Snapshot snapshot, Address address, bool authorize)
         {
             // If there's no tally, it's a dangling vote, just drop
-            if (!snapshot.Tally.ContainsKey(address)) return true;
+            if (!snapshot.Tally.TryGetValue(address, out Tally? value)) return true;
 
-            Tally tally = snapshot.Tally[address];
+            Tally tally = value;
             // Ensure we only revert counted votes
             if (tally.Authorize != authorize) return false;
 

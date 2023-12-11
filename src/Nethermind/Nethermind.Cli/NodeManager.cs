@@ -44,12 +44,13 @@ namespace Nethermind.Cli
         public void SwitchUri(Uri uri)
         {
             CurrentUri = uri.ToString();
-            if (!_clients.ContainsKey(uri))
+            if (!_clients.TryGetValue(uri, out IJsonRpcClient? value))
             {
-                _clients[uri] = new BasicJsonRpcClient(uri, _serializer, _logManager);
+                value = new BasicJsonRpcClient(uri, _serializer, _logManager);
+                _clients[uri] = value;
             }
 
-            _currentClient = _clients[uri];
+            _currentClient = value;
         }
 
         public void SwitchClient(IJsonRpcClient client)

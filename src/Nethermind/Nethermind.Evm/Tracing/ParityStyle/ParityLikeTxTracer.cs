@@ -320,13 +320,13 @@ namespace Nethermind.Evm.Tracing.ParityStyle
                 throw new InvalidOperationException($"{nameof(ParityLikeTxTracer)} did not expect state change report.");
             }
 
-            if (!_trace.StateChanges.ContainsKey(address))
+            if (!_trace.StateChanges.TryGetValue(address, out ParityAccountStateChange? value))
             {
                 _trace.StateChanges[address] = new ParityAccountStateChange();
             }
             else
             {
-                before = _trace.StateChanges[address].Balance?.Before ?? before;
+                before = value.Balance?.Before ?? before;
             }
 
             _trace.StateChanges[address].Balance = new ParityStateChange<UInt256?>(before, after);
@@ -339,13 +339,13 @@ namespace Nethermind.Evm.Tracing.ParityStyle
                 throw new InvalidOperationException($"{nameof(ParityLikeTxTracer)} did not expect state change report.");
             }
 
-            if (!_trace.StateChanges.ContainsKey(address))
+            if (!_trace.StateChanges.TryGetValue(address, out ParityAccountStateChange? value))
             {
                 _trace.StateChanges[address] = new ParityAccountStateChange();
             }
             else
             {
-                before = _trace.StateChanges[address].Code?.Before ?? before;
+                before = value.Code?.Before ?? before;
             }
 
             _trace.StateChanges[address].Code = new ParityStateChange<byte[]>(before, after);
@@ -353,13 +353,13 @@ namespace Nethermind.Evm.Tracing.ParityStyle
 
         public override void ReportNonceChange(Address address, UInt256? before, UInt256? after)
         {
-            if (!_trace.StateChanges!.ContainsKey(address))
+            if (!_trace.StateChanges!.TryGetValue(address, out ParityAccountStateChange? value))
             {
                 _trace.StateChanges[address] = new ParityAccountStateChange();
             }
             else
             {
-                before = _trace.StateChanges[address].Nonce?.Before ?? before;
+                before = value.Nonce?.Before ?? before;
             }
 
             _trace.StateChanges[address].Nonce = new ParityStateChange<UInt256?>(before, after);
@@ -367,17 +367,17 @@ namespace Nethermind.Evm.Tracing.ParityStyle
 
         public override void ReportStorageChange(in StorageCell storageCell, byte[] before, byte[] after)
         {
-            if (!_trace.StateChanges!.ContainsKey(storageCell.Address))
+            if (!_trace.StateChanges!.TryGetValue(storageCell.Address, out ParityAccountStateChange? value))
             {
-                _trace.StateChanges[storageCell.Address] = new ParityAccountStateChange();
+                value = new ParityAccountStateChange();
+                _trace.StateChanges[storageCell.Address] = value;
             }
 
-            Dictionary<UInt256, ParityStateChange<byte[]>> storage =
-                _trace.StateChanges[storageCell.Address].Storage ?? (_trace.StateChanges[storageCell.Address].Storage = new Dictionary<UInt256, ParityStateChange<byte[]>>());
+            Dictionary<UInt256, ParityStateChange<byte[]>> storage = value.Storage ?? (value.Storage = new Dictionary<UInt256, ParityStateChange<byte[]>>());
 
-            if (storage.TryGetValue(storageCell.Index, out ParityStateChange<byte[]> value))
+            if (storage.TryGetValue(storageCell.Index, out ParityStateChange<byte[]> change))
             {
-                before = value.Before ?? before;
+                before = change.Before ?? before;
             }
 
             storage[storageCell.Index] = new ParityStateChange<byte[]>(before, after);

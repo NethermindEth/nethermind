@@ -70,7 +70,7 @@ namespace Nethermind.State
         /// <returns></returns>
         public byte[] GetOriginal(in StorageCell storageCell)
         {
-            if (!_originalValues.ContainsKey(storageCell))
+            if (!_originalValues.TryGetValue(storageCell, out var value))
             {
                 throw new InvalidOperationException("Get original should only be called after get within the same caching round");
             }
@@ -86,7 +86,7 @@ namespace Nethermind.State
                 }
             }
 
-            return _originalValues[storageCell];
+            return value;
         }
 
 
@@ -224,13 +224,13 @@ namespace Nethermind.State
 
         private StorageTree GetOrCreateStorage(Address address)
         {
-            if (!_storages.ContainsKey(address))
+            if (!_storages.TryGetValue(address, out StorageTree? value))
             {
                 StorageTree storageTree = _storageTreeFactory.Create(address, _trieStore, _stateProvider.GetStorageRoot(address), StateRoot, _logManager);
                 return _storages[address] = storageTree;
             }
 
-            return _storages[address];
+            return value;
         }
 
         private byte[] LoadFromTree(in StorageCell storageCell)
