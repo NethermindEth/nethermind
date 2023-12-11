@@ -46,12 +46,19 @@ public class JavaScriptObjectConverter : JsonConverter<IJavaScriptObject>
             }
 
             JsonSerializer.Serialize(writer, dictionary, options);
-            return;
         }
         else if (o is IList<object> list)
         {
-            JsonSerializer.Serialize(writer, list, options);
-            return;
+            writer.WriteStartObject();
+
+            int length = list.Count;
+            for (int i = 0; i < length; i++)
+            {
+                writer.WritePropertyName(i.ToString(CultureInfo.InvariantCulture));
+                JsonSerializer.Serialize(writer, list[i], options);
+            }
+
+            writer.WriteEndObject();
         }
         else if (o is IArrayBufferView buffer)
         {
@@ -68,10 +75,11 @@ public class JavaScriptObjectConverter : JsonConverter<IJavaScriptObject>
             ByteArrayConverter.Convert(writer, array.AsSpan(0, size), skipLeadingZeros: false);
 
             ArrayPool<byte>.Shared.Return(array);
-            return;
         }
-
-        throw new NotSupportedException(o.GetType().ToString());
+        else
+        {
+            throw new NotSupportedException(o.GetType().ToString());
+        }
     }
 
     public override IJavaScriptObject? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
