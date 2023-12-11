@@ -109,10 +109,7 @@ namespace Nethermind.Core
 
         public Address(byte[] bytes)
         {
-            if (bytes is null)
-            {
-                throw new ArgumentNullException(nameof(bytes));
-            }
+            ArgumentNullException.ThrowIfNull(bytes);
 
             if (bytes.Length != Size)
             {
