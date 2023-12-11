@@ -108,8 +108,8 @@ namespace Nethermind.TxPool
 
         private void StartBroadcast(Transaction tx)
         {
-            // broadcast local tx only if MaxFeePerGas is equal at least 70% of current base fee
-            // otherwise only add to persistent collection and broadcast when tx will be ready for inclusion
+            // broadcast local tx only if MaxFeePerGas is not lower than configurable percent of current base fee
+            // (70% by default). Otherwise only add to persistent txs and broadcast when tx will be ready for inclusion
             if (tx.MaxFeePerGas >= _baseFeeThreshold)
             {
                 NotifyPeersAboutLocalTx(tx);
