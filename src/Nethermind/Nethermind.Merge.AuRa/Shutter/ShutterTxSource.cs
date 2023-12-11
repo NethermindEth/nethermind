@@ -32,18 +32,11 @@ public class ShutterTxSource : ITxSource
             AbiType.UInt256
         }
     );
-
-    // todo: create data class for log data ABI?
-    private IEnumerable<object[]> GetEvents()
-    {
-        IEnumerable<FilterLog> logs = _logFinder!.FindLogs(_logFilter!);
-        return logs.Select(log => AbiEncoder.Instance.Decode(AbiEncodingStyle.None, ABI_SIGNATURE, log.Data));
-    }
-
+    
     class SequencedTransaction
     {
         public UInt64 Eon;
-        public byte[]? EncryptedTransaction;
+        public byte[] EncryptedTransaction;
         public UInt256 GasLimit;
         public object? Identity;
 
@@ -56,6 +49,30 @@ public class ShutterTxSource : ITxSource
         }
     }
 
+    class TransactionSubmittedEvent
+    {
+        public UInt64 Eon;
+        public Bytes32 IdentityPrefix;
+        public Address Sender;
+        public byte[] EncryptedTransaction;
+        public UInt256 GasLimit;
+
+        public TransactionSubmittedEvent(object[] decodedEvent)
+        {
+            Eon = (UInt64)decodedEvent[1];
+            IdentityPrefix = (Bytes32)decodedEvent[2];
+            Sender = (Address)decodedEvent[3];
+            EncryptedTransaction = (byte[])decodedEvent[4];
+            GasLimit = (UInt256)decodedEvent[5];
+        }
+    }
+
+    private IEnumerable<TransactionSubmittedEvent> GetEvents()
+    {
+        IEnumerable<FilterLog> logs = _logFinder!.FindLogs(_logFilter!);
+        return logs.Select(log => new TransactionSubmittedEvent(AbiEncoder.Instance.Decode(AbiEncodingStyle.None, ABI_SIGNATURE, log.Data)));
+    }
+
     private object? ComputeIdentity(Bytes32 identityPrefix, Address sender)
     {
         return null;
@@ -63,27 +80,27 @@ public class ShutterTxSource : ITxSource
 
     private IEnumerable<SequencedTransaction> GetNextTransactions(UInt64 eon, int txPointer)
     {
-        IEnumerable<object[]> events = GetEvents();
-        events = events.Where(e => (UInt64) e[1] == eon).Skip(txPointer);
+        IEnumerable<TransactionSubmittedEvent> events = GetEvents();
+        events = events.Where(e => e.Eon == eon).Skip(txPointer);
 
         IEnumerable<SequencedTransaction> txs = new List<SequencedTransaction>();
         UInt256 totalGas = 0;
 
-        foreach(object[] e in events)
+        foreach(TransactionSubmittedEvent e in events)
         {
-            if (totalGas + (UInt256)e[5] > ENCRYPTED_GAS_LIMIT)
+            if (totalGas + e.GasLimit > ENCRYPTED_GAS_LIMIT)
             {
                 break;
             }
 
             txs.Append(new SequencedTransaction(
                 eon,
-                (byte[])e[4],
-                (UInt256)e[5],
-                ComputeIdentity((Bytes32) e[2], (Address)e[3])
+                e.EncryptedTransaction,
+                e.GasLimit,
+                ComputeIdentity(e.IdentityPrefix, e.Sender)
             ));
 
-            totalGas += (UInt256)e[5];
+            totalGas += e.GasLimit;
         }
 
         return txs;
@@ -100,10 +117,14 @@ public class ShutterTxSource : ITxSource
     public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit)
     {
         // todo: get eon and txpointer
-        IEnumerable<SequencedTransaction> encryptedTransactions = GetNextTransactions(0, 0);
+        ulong eon = 0;
+        int txPointer = 0;
+
+        // get encrypted transactions from event logs
+        IEnumerable<SequencedTransaction> encryptedTransactions = GetNextTransactions(eon, txPointer);
         
         // todo: get decryption key from gossip layer and decrypt transactions
-        
+
         return Enumerable.Empty<Transaction>();
     }
 }
