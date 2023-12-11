@@ -13,12 +13,12 @@ namespace Nethermind.Evm.Tracing.GethStyle.JavaScript;
 
 public class Context
 {
-    private IList? _blockHashConverted;
-    private IList? _txHashConverted;
-    private IList? _inputConverted;
-    private IList? _fromConverted;
-    private IList? _toConverted;
-    private IList? _outputConverted;
+    private ITypedArray<byte>? _blockHashConverted;
+    private ITypedArray<byte>? _txHashConverted;
+    private ITypedArray<byte>? _inputConverted;
+    private ITypedArray<byte>? _fromConverted;
+    private ITypedArray<byte>? _toConverted;
+    private ITypedArray<byte>? _outputConverted;
     private dynamic? _valueConverted;
     private dynamic? _gasPriceConverted;
     private Address? _from;
@@ -111,17 +111,17 @@ public class Context
     }
 
     public string type { get; set; } = null!;
-    public IList? from => _fromConverted ??= From?.Bytes.ToUnTypedScriptArray();
-    public IList? to => _toConverted ??= To?.Bytes.ToUnTypedScriptArray();
-    public IList? input => _inputConverted ??= Input.ToArray().ToUnTypedScriptArray();
+    public ITypedArray<byte>? from => _fromConverted ??= From?.Bytes.ToTypedScriptArray();
+    public ITypedArray<byte>? to => _toConverted ??= To?.Bytes.ToTypedScriptArray();
+    public ITypedArray<byte>? input => _inputConverted ??= Input.ToArray().ToTypedScriptArray();
     public long gas { get; set; }
     public long gasUsed { get; set; }
     public IJavaScriptObject gasPrice => _gasPriceConverted ??= GasPrice.ToBigInteger();
     public IJavaScriptObject value => _valueConverted ??= Value.ToBigInteger();
     public long block { get; set; }
-    public IList? output => _outputConverted ??= Output?.ToUnTypedScriptArray();
-    public IList? blockHash => _blockHashConverted ??= BlockHash?.BytesToArray().ToUnTypedScriptArray();
+    public ITypedArray<byte>? output => _outputConverted ??= Output?.ToTypedScriptArray();
+    public ITypedArray<byte>? blockHash => _blockHashConverted ??= BlockHash?.BytesToArray().ToTypedScriptArray();
     public int? txIndex { get; set; }
-    public IList? txHash => _txHashConverted ??= TxHash?.BytesToArray().ToUnTypedScriptArray();
+    public ITypedArray<byte>? txHash => _txHashConverted ??= TxHash?.BytesToArray().ToTypedScriptArray();
     public dynamic? error { get; set; } = Undefined.Value;
 }

@@ -33,7 +33,6 @@ public class Engine : IDisposable
 
     private readonly IReleaseSpec _spec;
 
-    private readonly dynamic _createUntypedArray;
     private dynamic _bigInteger;
     private dynamic _createUint8Array;
 
@@ -89,7 +88,7 @@ public class Engine : IDisposable
         Func<object?, string> toHex = ToHex;
         Func<object, ITypedArray<byte>> toAddress = ToAddress;
         Func<object, bool> isPrecompiled = IsPrecompiled;
-        Func<object, int, int, ITypedArray<byte>> slice = Slice;
+        Func<object, long, long, ITypedArray<byte>> slice = Slice;
         Func<object, ulong, ITypedArray<byte>> toContract = ToContract;
         Func<object, string, object, ITypedArray<byte>> toContract2 = ToContract2;
 
@@ -100,7 +99,6 @@ public class Engine : IDisposable
         V8Engine.AddHostObject(nameof(slice), slice);
         V8Engine.AddHostObject(nameof(toContract), toContract);
         V8Engine.AddHostObject(nameof(toContract2), toContract2);
-        _createUntypedArray = V8Engine.Script.Array.from;
 
         if (!IsDebugging)
         {
@@ -134,7 +132,7 @@ public class Engine : IDisposable
     /// <summary>
     /// Returns a slice of input
     /// </summary>
-    private ITypedArray<byte> Slice(object input, int start, int end)
+    private ITypedArray<byte> Slice(object input, long start, long end)
     {
         if (input == null)
         {
@@ -146,7 +144,7 @@ public class Engine : IDisposable
             throw new ArgumentOutOfRangeException(nameof(start), $"tracer accessed out of bound memory: offset {start}, end {end}");
         }
 
-        return input.ToBytes().Slice(start, end - start).ToTypedScriptArray();
+        return input.ToBytes().Slice((int)start, (int)(end - start)).ToTypedScriptArray();
     }
 
     /// <summary>
@@ -170,11 +168,6 @@ public class Engine : IDisposable
     /// Creates a JavaScript V8Engine typed byte array
     /// </summary>
     public ITypedArray<byte> CreateUint8Array(byte[] buffer) => _createUint8Array(buffer);
-
-    /// <summary>
-    /// Creates a JavaScript V8Engine untyped array with number values
-    /// </summary>
-    public IList CreateUntypedArray(byte[] buffer) => _createUntypedArray(buffer);
 
     /// <summary>
     /// Creates a JavaScript BigInteger object
