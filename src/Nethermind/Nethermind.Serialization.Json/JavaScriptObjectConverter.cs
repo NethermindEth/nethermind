@@ -65,7 +65,7 @@ public class JavaScriptObjectConverter : JsonConverter<IJavaScriptObject>
             byte[] array = ArrayPool<byte>.Shared.Rent(size);
 
             buffer.ReadBytes(buffer.Offset, buffer.Size, array, 0);
-            JsonSerializer.Serialize(writer, array.AsMemory(0, size), options);
+            ByteArrayConverter.Convert(writer, array.AsSpan(0, size), skipLeadingZeros: false);
 
             ArrayPool<byte>.Shared.Return(array);
             return;
