@@ -50,19 +50,19 @@ public class RateLimiter
 
     public async ValueTask WaitAsync(CancellationToken ctx)
     {
-        long originalNextSlot = _nextSlot;
+        long currentNextSlot = _nextSlot;
         while (true)
         {
-            long nextSlot = Interlocked.CompareExchange(ref _nextSlot, originalNextSlot + _delay, originalNextSlot);
-            if (nextSlot == originalNextSlot)
+            long nextSlot = Interlocked.CompareExchange(ref _nextSlot, currentNextSlot + _delay, currentNextSlot);
+            if (nextSlot == currentNextSlot)
             {
                 break;
             }
-            originalNextSlot = nextSlot;
+            currentNextSlot = nextSlot;
         }
 
         long now = GetCurrentTick();
-        long toWait = originalNextSlot - now;
+        long toWait = currentNextSlot - now;
 
         if (toWait <= 0) return;
 
