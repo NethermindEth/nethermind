@@ -36,7 +36,7 @@ namespace Nethermind.Serialization.Rlp
                 txReceipt.StatusCode = firstItem[0];
                 txReceipt.GasUsedTotal = (long)rlpStream.DecodeUBigInt();
             }
-            else if (firstItem.Length >= 1 && firstItem.Length <= 4)
+            else if (firstItem.Length is >= 1 and <= 4)
             {
                 txReceipt.GasUsedTotal = (long)firstItem.ToUnsignedBigInteger();
                 txReceipt.SkipStateAndStatusInRlp = true;
