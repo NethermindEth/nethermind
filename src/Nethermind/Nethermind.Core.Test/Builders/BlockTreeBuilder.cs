@@ -147,7 +147,7 @@ namespace Nethermind.Core.Test.Builders
         {
             get
             {
-                return _badBlockStore ??= new BlockStore(BadBlocksDb);
+                return _badBlockStore ??= new BlockStore(BadBlocksDb, 10);
             }
             set
             {

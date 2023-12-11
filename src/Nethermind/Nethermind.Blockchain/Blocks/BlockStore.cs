@@ -22,10 +22,12 @@ public class BlockStore : IBlockStore
 
     private readonly LruCache<ValueHash256, Block>
         _blockCache = new(CacheSize, CacheSize, "blocks");
+    private long? _maxSize;
 
-    public BlockStore(IDb blockDb)
+    public BlockStore(IDb blockDb, long? maxSize = null)
     {
         _blockDb = blockDb;
+        _maxSize = maxSize;
     }
 
     public void SetMetadata(byte[] key, byte[] value)
@@ -36,6 +38,18 @@ public class BlockStore : IBlockStore
     public byte[]? GetMetadata(byte[] key)
     {
         return _blockDb.Get(key);
+    }
+
+    private void TruncateToMaxSize()
+    {
+        int toDelete = (int) (_blockDb.GetSize() - _maxSize!);
+        if (toDelete > 0)
+        {
+            foreach (var blockToDelete in GetAll().Take(toDelete))
+            {
+                Delete(blockToDelete.Number, blockToDelete.Hash);
+            }
+        }
     }
 
     public void Insert(Block block, WriteFlags writeFlags = WriteFlags.None)
@@ -50,6 +64,11 @@ public class BlockStore : IBlockStore
         using NettyRlpStream newRlp = _blockDecoder.EncodeToNewNettyStream(block);
 
         _blockDb.Set(block.Number, block.Hash, newRlp.AsSpan(), writeFlags);
+
+        if (_maxSize != null)
+        {
+            TruncateToMaxSize();
+        }
     }
 
     private static void GetBlockNumPrefixedKey(long blockNumber, Hash256 blockHash, Span<byte> output)
