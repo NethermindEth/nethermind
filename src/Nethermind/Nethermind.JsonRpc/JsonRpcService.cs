@@ -236,7 +236,7 @@ public class JsonRpcService : IJsonRpcService
             int paramsCount = 0;
             const string separator = ", ";
 
-            if (providedParameters.ValueKind != JsonValueKind.Undefined && providedParameters.ValueKind != JsonValueKind.Null)
+            if (providedParameters.ValueKind == JsonValueKind.Array)
             {
                 foreach (JsonElement param in providedParameters.EnumerateArray())
                 {
