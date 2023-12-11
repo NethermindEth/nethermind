@@ -101,7 +101,7 @@ namespace Nethermind.TxPool
         {
             // broadcast tx only if MaxFeePerGas is equal at least 70% of current base fee
             // otherwise only add to persistent collection and broadcast when tx will be ready for inclusion
-            if (tx.MaxFeePerGas >= _headInfo.CurrentBaseFee / 10 * 7)
+            if (tx.MaxFeePerGas >= _headInfo.BaseFeeThreshold)
             {
                 NotifyPeersAboutLocalTx(tx);
             }
