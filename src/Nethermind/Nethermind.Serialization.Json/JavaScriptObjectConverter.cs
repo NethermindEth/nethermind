@@ -49,16 +49,7 @@ public class JavaScriptObjectConverter : JsonConverter<IJavaScriptObject>
         }
         else if (o is IList<object> list)
         {
-            writer.WriteStartObject();
-
-            int length = list.Count;
-            for (int i = 0; i < length; i++)
-            {
-                writer.WritePropertyName(i.ToString(CultureInfo.InvariantCulture));
-                JsonSerializer.Serialize(writer, list[i], options);
-            }
-
-            writer.WriteEndObject();
+            JsonSerializer.Serialize(writer, list, options);
         }
         else if (o is IArrayBufferView buffer)
         {
