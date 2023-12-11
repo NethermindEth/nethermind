@@ -99,12 +99,16 @@ public class JsonRpcService : IJsonRpcService
 
         LogRequest(methodName, providedParameters, method.expectedParameters);
 
-        int missingParamsCount = method.expectedParameters.Length - providedParameters.GetArrayLength();
-        foreach (JsonElement item in providedParameters.EnumerateArray())
+        var providedParametersLength = providedParameters.ValueKind == JsonValueKind.Array ? providedParameters.GetArrayLength() : 0;
+        int missingParamsCount = method.expectedParameters.Length - providedParametersLength;
+        if (providedParametersLength > 0)
         {
-            if (item.ValueKind == JsonValueKind.Null || (item.ValueKind == JsonValueKind.String && item.ValueEquals(ReadOnlySpan<byte>.Empty)))
+            foreach (JsonElement item in providedParameters.EnumerateArray())
             {
-                missingParamsCount++;
+                if (item.ValueKind == JsonValueKind.Null || (item.ValueKind == JsonValueKind.String && item.ValueEquals(ReadOnlySpan<byte>.Empty)))
+                {
+                    missingParamsCount++;
+                }
             }
         }
 
@@ -232,7 +236,7 @@ public class JsonRpcService : IJsonRpcService
             int paramsCount = 0;
             const string separator = ", ";
 
-            if (providedParameters.ValueKind != JsonValueKind.Undefined && providedParameters.ValueKind != JsonValueKind.Null)
+            if (providedParameters.ValueKind == JsonValueKind.Array)
             {
                 foreach (JsonElement param in providedParameters.EnumerateArray())
                 {
