@@ -54,7 +54,7 @@ namespace Nethermind.TxPool
 
 
         /// <summary>
-        /// Minimal value of MaxFeePreGas of local tx to be broadcasted immediately after receiving it
+        /// Minimal value of MaxFeePerGas of local tx to be broadcasted immediately after receiving it
         /// </summary>
         private UInt256 _baseFeeThreshold;
 
@@ -88,7 +88,7 @@ namespace Nethermind.TxPool
             _timer.AutoReset = false;
             _timer.Start();
 
-            SetBaseFeeThreshold();
+            _baseFeeThreshold = CalculateBaseFeeThreshold();
         }
 
         // only for testing reasons
@@ -139,16 +139,24 @@ namespace Nethermind.TxPool
 
         public void OnNewHead()
         {
-            SetBaseFeeThreshold();
+            _baseFeeThreshold = CalculateBaseFeeThreshold();
             BroadcastPersistentTxs();
         }
 
-        private void SetBaseFeeThreshold()
+        internal UInt256 CalculateBaseFeeThreshold()
         {
             bool overflow = UInt256.MultiplyOverflow(_headInfo.CurrentBaseFee, (UInt256)_txPoolConfig.MinBaseFeeThreshold, out UInt256 baseFeeThreshold);
             UInt256.Divide(baseFeeThreshold, 100, out baseFeeThreshold);
 
-            _baseFeeThreshold = overflow ? _headInfo.CurrentBaseFee : baseFeeThreshold;
+            if (overflow)
+            {
+                UInt256.Divide(_headInfo.CurrentBaseFee, 100, out baseFeeThreshold);
+                overflow = UInt256.MultiplyOverflow(baseFeeThreshold, (UInt256)_txPoolConfig.MinBaseFeeThreshold, out baseFeeThreshold);
+            }
+
+            // if there is still an overflow, it means that MinBaseFeeThreshold > 100
+            // we are returning max possible value of UInt256.MaxValue
+            return overflow ? UInt256.MaxValue : baseFeeThreshold;
         }
 
         internal void BroadcastPersistentTxs()

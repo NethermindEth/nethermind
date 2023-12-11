@@ -687,6 +687,39 @@ public class TxBroadcasterTests
         }
     }
 
+    [TestCase(0, 0)]
+    [TestCase(2, 1)]
+    [TestCase(3, 2)]
+    [TestCase(7, 4)]
+    [TestCase(8, 5)]
+    [TestCase(100, 70)]
+    [TestCase(9999, 6999)]
+    [TestCase(10000, 7000)]
+    public void should_calculate_baseFeeThreshold_correctly(int baseFee, int expectedThreshold)
+    {
+        _headInfo.CurrentBaseFee.Returns((UInt256)baseFee);
+        _broadcaster = new TxBroadcaster(_comparer, TimerFactory.Default, _txPoolConfig, _headInfo, _logManager);
+        _broadcaster.CalculateBaseFeeThreshold().Should().Be((UInt256)expectedThreshold);
+    }
+
+    [Test]
+    public void calculation_of_baseFeeThreshold_should_handle_overflow_correctly([Values(0, 70, 100, 101, 500)] int threshold, [Values(2, 3, 4, 5, 6, 7, 8, 9, 10, 11)] int divisor)
+    {
+        UInt256.Divide(UInt256.MaxValue, (UInt256)divisor, out UInt256 baseFee);
+        _headInfo.CurrentBaseFee.Returns(baseFee);
+
+        _txPoolConfig = new TxPoolConfig() { MinBaseFeeThreshold = threshold };
+        _broadcaster = new TxBroadcaster(_comparer, TimerFactory.Default, _txPoolConfig, _headInfo, _logManager);
+
+        UInt256.Divide(baseFee, 100, out UInt256 result);
+        bool overflow = UInt256.MultiplyOverflow(result, (UInt256)threshold, out result);
+
+        _broadcaster.CalculateBaseFeeThreshold().Should().Be(
+            UInt256.MultiplyOverflow(baseFee, (UInt256)threshold, out UInt256 baseFeeThreshold)
+                ? overflow ? UInt256.MaxValue : result
+                : baseFeeThreshold);
+    }
+
     private (IList<Transaction> expectedTxs, IList<Hash256> expectedHashes) GetTxsAndHashesExpectedToBroadcast(Transaction[] transactions, int expectedCountTotal)
     {
         List<Transaction> expectedTxs = new();
