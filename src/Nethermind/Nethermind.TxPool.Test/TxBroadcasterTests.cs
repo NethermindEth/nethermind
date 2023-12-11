@@ -341,7 +341,7 @@ public class TxBroadcasterTests
     [TestCase(150, true)]
     public void should_not_broadcast_tx_with_MaxFeePerGas_lower_than_70_percent_of_CurrentBaseFee(int maxFeePerGas, bool shouldBroadcast)
     {
-        _headInfo.BaseFeeThreshold.Returns((UInt256)70);
+        _headInfo.CurrentBaseFee.Returns((UInt256)100);
 
         _broadcaster = new TxBroadcaster(_comparer, TimerFactory.Default, _txPoolConfig, _headInfo, _logManager);
 

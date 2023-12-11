@@ -20,8 +20,6 @@ namespace Nethermind.TxPool
 
         public UInt256 CurrentBaseFee { get; }
 
-        UInt256 BaseFeeThreshold { get; }
-
         public UInt256 CurrentPricePerBlobGas { get; }
 
         event EventHandler<BlockReplacementEventArgs> HeadChanged;

@@ -87,6 +87,8 @@ namespace Nethermind.TxPool
             _timer.Elapsed += TimerOnElapsed;
             _timer.AutoReset = false;
             _timer.Start();
+
+            SetBaseFeeThreshold();
         }
 
         // only for testing reasons

@@ -46,8 +46,6 @@ namespace Nethermind.Blockchain
 
         public UInt256 CurrentBaseFee { get; private set; }
 
-        public UInt256 BaseFeeThreshold { get; private set; }
-
         public UInt256 CurrentPricePerBlobGas { get; internal set; }
 
         public event EventHandler<BlockReplacementEventArgs>? HeadChanged;
@@ -57,9 +55,6 @@ namespace Nethermind.Blockchain
             HeadNumber = e.Block.Number;
             BlockGasLimit = e.Block!.GasLimit;
             CurrentBaseFee = e.Block.Header.BaseFeePerGas;
-            BaseFeeThreshold = UInt256.MultiplyOverflow(CurrentBaseFee, 7, out UInt256 baseFeeThreshold)
-                ? CurrentBaseFee
-                : baseFeeThreshold;
             CurrentPricePerBlobGas =
                 BlobGasCalculator.TryCalculateBlobGasPricePerUnit(e.Block.Header, out UInt256 currentPricePerBlobGas)
                     ? currentPricePerBlobGas
