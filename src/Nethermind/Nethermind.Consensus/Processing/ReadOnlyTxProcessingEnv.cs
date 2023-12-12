@@ -38,8 +38,8 @@ namespace Nethermind.Consensus.Processing
             ISpecProvider? specProvider,
             ILogManager? logManager)
         {
-            if (specProvider is null) throw new ArgumentNullException(nameof(specProvider));
-            if (worldStateManager is null) throw new ArgumentNullException(nameof(worldStateManager));
+            ArgumentNullException.ThrowIfNull(specProvider);
+            ArgumentNullException.ThrowIfNull(worldStateManager);
 
             StateReader = worldStateManager.GlobalStateReader;
             StateProvider = worldStateManager.CreateResettableWorldState();

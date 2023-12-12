@@ -279,8 +279,8 @@ namespace Nethermind.Network.P2P
         {
             if (_logger.IsTrace) _logger.Trace($"{nameof(Init)} called on {this}");
 
-            if (context is null) throw new ArgumentNullException(nameof(context));
-            if (packetSender is null) throw new ArgumentNullException(nameof(packetSender));
+            ArgumentNullException.ThrowIfNull(context);
+            ArgumentNullException.ThrowIfNull(packetSender);
 
             P2PVersion = p2PVersion;
             lock (_sessionStateLock)

@@ -29,10 +29,7 @@ namespace Nethermind.Init.Steps
             INethermindApi context,
             ILogManager logManager)
         {
-            if (loader is null)
-            {
-                throw new ArgumentNullException(nameof(loader));
-            }
+            ArgumentNullException.ThrowIfNull(loader);
 
             _api = context ?? throw new ArgumentNullException(nameof(context));
             _logger = logManager?.GetClassLogger<EthereumStepsManager>()

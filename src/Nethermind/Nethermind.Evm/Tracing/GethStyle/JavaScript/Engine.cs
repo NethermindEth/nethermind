@@ -134,10 +134,7 @@ public class Engine : IDisposable
     /// </summary>
     private ITypedArray<byte> Slice(object input, long start, long end)
     {
-        if (input == null)
-        {
-            throw new ArgumentNullException(nameof(input));
-        }
+        ArgumentNullException.ThrowIfNull(input);
 
         if (start < 0 || end < start || end > Array.MaxLength)
         {
