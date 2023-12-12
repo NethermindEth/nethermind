@@ -248,7 +248,7 @@ jobs:
       with:
           workflow: run-single-node.yml
           repo: NethermindEth/post-merge-smoke-tests
-          ref: "kch/rpc_fixes"
+          ref: "kch/force_machine_type"
           token: "${{ secrets.REPOSITORY_DISPATCH_TOKEN }}"
           inputs: '{
                      "github_username": "${{ github.actor }}",
@@ -269,7 +269,7 @@ jobs:
         TIMEOUT: '20'
         ORG_NAME: 'NethermindEth'
         REPO_NAME: 'post-merge-smoke-tests'
-        REF: 'kch/rpc_fixes'
+        REF: 'kch/force_machine_type'
       run: |
         chmod +x scripts/wait-for-workflow-completed.sh
         ./scripts/wait-for-workflow-completed.sh | tee script-output.txt
