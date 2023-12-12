@@ -14,8 +14,8 @@ namespace Nethermind.Core.Test.Json
     [TestFixture]
     public class NullableBigIntegerConverterTests : ConverterTestBase<BigInteger?>
     {
-        static NullableBigIntegerConverter converter = new NullableBigIntegerConverter();
-        static JsonSerializerOptions options = new JsonSerializerOptions { Converters = { converter } };
+        static readonly NullableBigIntegerConverter converter = new NullableBigIntegerConverter();
+        static readonly JsonSerializerOptions options = new JsonSerializerOptions { Converters = { converter } };
         public void Test_roundtrip()
         {
             TestConverter(null, (integer, bigInteger) => integer.Equals(bigInteger), converter);

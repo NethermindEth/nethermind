@@ -10,7 +10,7 @@ namespace Nethermind.AccountAbstraction.Network
 {
     public class UserOperationsMessageSerializer : IZeroInnerMessageSerializer<UserOperationsMessage>
     {
-        private UserOperationDecoder _decoder = new();
+        private readonly UserOperationDecoder _decoder = new();
 
         public void Serialize(IByteBuffer byteBuffer, UserOperationsMessage message)
         {

@@ -45,7 +45,7 @@ public class ContractBasedValidatorTests
     private BlockHeader _parentHeader;
     private IReadOnlyTransactionProcessor _transactionProcessor;
     private IAuRaBlockFinalizationManager _blockFinalizationManager;
-    private static Address _contractAddress = Address.FromNumber(1000);
+    private static readonly Address _contractAddress = Address.FromNumber(1000);
     private (Address Sender, byte[] TransactionData) _getValidatorsData = (Address.Zero, new byte[] { 0, 1, 2 });
     private (Address Sender, byte[] TransactionData) _finalizeChangeData = (Address.SystemUser, new byte[] { 3, 4, 5 });
     private Address[] _initialValidators;

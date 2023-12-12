@@ -14,8 +14,8 @@ namespace Nethermind.Core.Test.Json
     [TestFixture]
     public class Hash256ConverterTests
     {
-        static Hash256Converter converter = new();
-        static JsonSerializerOptions options = new JsonSerializerOptions { Converters = { converter } };
+        static readonly Hash256Converter converter = new();
+        static readonly JsonSerializerOptions options = new JsonSerializerOptions { Converters = { converter } };
 
         [Test]
         public void Can_read_null()

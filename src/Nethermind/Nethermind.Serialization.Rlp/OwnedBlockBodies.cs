@@ -15,7 +15,7 @@ namespace Nethermind.Core;
 /// </summary>
 public class OwnedBlockBodies : IDisposable
 {
-    private BlockBody?[]? _rawBodies = null;
+    private readonly BlockBody?[]? _rawBodies = null;
 
     private IMemoryOwner<byte>? _memoryOwner = null;
 

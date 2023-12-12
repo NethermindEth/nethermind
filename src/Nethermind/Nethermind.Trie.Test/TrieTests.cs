@@ -49,10 +49,10 @@ namespace Nethermind.Trie.Test
         private static readonly byte[] _longLeaf3
             = Bytes.FromHexString("0000000000000000000000000000000000000000000000000000000000000000000000000000000003");
 
-        private static byte[] _keyA = Bytes.FromHexString("000000000000000aa");
-        private static byte[] _keyB = Bytes.FromHexString("000000000000000bb");
-        private static byte[] _keyC = Bytes.FromHexString("000000000000001aa");
-        private static byte[] _keyD = Bytes.FromHexString("000000000000001bb");
+        private static readonly byte[] _keyA = Bytes.FromHexString("000000000000000aa");
+        private static readonly byte[] _keyB = Bytes.FromHexString("000000000000000bb");
+        private static readonly byte[] _keyC = Bytes.FromHexString("000000000000001aa");
+        private static readonly byte[] _keyD = Bytes.FromHexString("000000000000001bb");
 
         [Test]
         public void Single_leaf()

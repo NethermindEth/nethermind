@@ -67,9 +67,9 @@ public class DbOnTheRocks : IDb, ITunableDb
 
     private string CorruptMarkerPath => Path.Join(_fullPath, "corrupt.marker");
 
-    private List<DbMetricsUpdater> _metricsUpdaters = new();
+    private readonly List<DbMetricsUpdater> _metricsUpdaters = new();
 
-    private ManagedIterators _readaheadIterators = new();
+    private readonly ManagedIterators _readaheadIterators = new();
 
     internal long _allocatedSpan = 0;
 

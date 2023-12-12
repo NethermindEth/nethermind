@@ -20,7 +20,7 @@ namespace Nethermind.Core.Crypto
         private Address? _address;
 
         private byte[]? _prefixedBytes;
-        private int _hashCode;
+        private readonly int _hashCode;
 
         public PublicKey(string? hexString)
             : this(Core.Extensions.Bytes.FromHexString(hexString ?? throw new ArgumentNullException(nameof(hexString))))

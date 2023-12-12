@@ -56,7 +56,7 @@ namespace Nethermind.Synchronization
         private FastSyncFeed? _fastSyncFeed;
         private StateSyncFeed? _stateSyncFeed;
         private FullSyncFeed? _fullSyncFeed;
-        private IProcessExitSource _exitSource;
+        private readonly IProcessExitSource _exitSource;
         protected IBetterPeerStrategy _betterPeerStrategy;
         private readonly ChainSpec _chainSpec;
 

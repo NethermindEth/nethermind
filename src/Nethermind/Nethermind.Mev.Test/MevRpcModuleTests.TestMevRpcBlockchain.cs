@@ -58,7 +58,7 @@ namespace Nethermind.Mev.Test
             private ITracerFactory _tracerFactory = null!;
             public TestBundlePool BundlePool { get; private set; } = null!;
 
-            private MevConfig _mevConfig;
+            private readonly MevConfig _mevConfig;
 
             public TestMevRpcBlockchain(int maxMergedBundles, UInt256? initialBaseFeePerGas, Address[]? relayAddresses)
             {
