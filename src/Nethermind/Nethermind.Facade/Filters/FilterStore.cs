@@ -18,7 +18,7 @@ namespace Nethermind.Blockchain.Filters
     public class FilterStore : IFilterStore
     {
         private int _currentFilterId = -1;
-        private object _locker = new object();
+        private readonly object _locker = new object();
 
         private readonly ConcurrentDictionary<int, FilterBase> _filters = new();
 

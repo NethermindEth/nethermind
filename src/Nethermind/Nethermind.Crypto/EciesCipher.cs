@@ -20,7 +20,7 @@ namespace Nethermind.Crypto
     {
         private const int KeySize = 128;
         private readonly ICryptoRandom _cryptoRandom;
-        private PrivateKeyGenerator _keyGenerator;
+        private readonly PrivateKeyGenerator _keyGenerator;
 
         public EciesCipher(ICryptoRandom cryptoRandom)
         {
@@ -68,7 +68,7 @@ namespace Nethermind.Crypto
             return outputArray;
         }
 
-        private OptimizedKdf _optimizedKdf = new();
+        private readonly OptimizedKdf _optimizedKdf = new();
 
         private byte[] Decrypt(PublicKey ephemeralPublicKey, PrivateKey privateKey, byte[] iv, byte[] ciphertextBody, byte[] macData)
         {
@@ -76,7 +76,7 @@ namespace Nethermind.Crypto
             return iesEngine.ProcessBlock(ciphertextBody, 0, ciphertextBody.Length, macData);
         }
 
-        private static IesParameters _iesParameters = new IesWithCipherParameters(Array.Empty<byte>(), Array.Empty<byte>(), KeySize, KeySize);
+        private static readonly IesParameters _iesParameters = new IesWithCipherParameters(Array.Empty<byte>(), Array.Empty<byte>(), KeySize, KeySize);
 
         private IIesEngine MakeIesEngine(bool isEncrypt, PublicKey publicKey, PrivateKey privateKey, byte[] iv)
         {

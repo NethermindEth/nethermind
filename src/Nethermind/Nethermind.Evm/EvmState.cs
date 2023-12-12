@@ -211,14 +211,14 @@ namespace Nethermind.Evm
             {
                 switch (ExecutionType)
                 {
-                    case ExecutionType.StaticCall:
-                    case ExecutionType.Call:
-                    case ExecutionType.CallCode:
-                    case ExecutionType.Create:
-                    case ExecutionType.Create2:
-                    case ExecutionType.Transaction:
+                    case ExecutionType.STATICCALL:
+                    case ExecutionType.CALL:
+                    case ExecutionType.CALLCODE:
+                    case ExecutionType.CREATE:
+                    case ExecutionType.CREATE2:
+                    case ExecutionType.TRANSACTION:
                         return Env.Caller;
-                    case ExecutionType.DelegateCall:
+                    case ExecutionType.DELEGATECALL:
                         return Env.ExecutingAccount;
                     default:
                         throw new ArgumentOutOfRangeException();
@@ -230,7 +230,7 @@ namespace Nethermind.Evm
         public int ProgramCounter { get; set; }
         public long Refund { get; set; }
 
-        public Address To => Env.CodeSource;
+        public Address To => Env.CodeSource ?? Env.ExecutingAccount;
         internal bool IsPrecompile => Env.CodeInfo.IsPrecompile;
         public readonly ExecutionEnvironment Env;
 

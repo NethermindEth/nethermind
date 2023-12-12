@@ -14,7 +14,7 @@ namespace Nethermind.Blockchain.Test.Consensus
 {
     public class SinglePendingTxSelectorTests
     {
-        private BlockHeader _anyParent = Build.A.BlockHeader.TestObject;
+        private readonly BlockHeader _anyParent = Build.A.BlockHeader.TestObject;
 
         [Test, Timeout(Timeout.MaxTestTime)]
         public void To_string_does_not_throw()

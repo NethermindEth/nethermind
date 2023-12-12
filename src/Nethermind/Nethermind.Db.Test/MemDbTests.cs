@@ -23,7 +23,7 @@ namespace Nethermind.Db.Test
             retrievedBytes.Should().BeEquivalentTo(bytes);
         }
 
-        private byte[] _sampleValue = { 1, 2, 3 };
+        private readonly byte[] _sampleValue = { 1, 2, 3 };
 
         [Test]
         public void Can_create_with_delays()

@@ -62,6 +62,9 @@ public class TxBroadcasterTests
         _headInfo = Substitute.For<IChainHeadInfoProvider>();
     }
 
+    [TearDown]
+    public void TearDown() => _broadcaster?.Dispose();
+
     [Test]
     public async Task should_not_broadcast_persisted_tx_to_peer_too_quickly()
     {

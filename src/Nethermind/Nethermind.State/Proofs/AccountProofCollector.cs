@@ -19,17 +19,17 @@ namespace Nethermind.State.Proofs
     public class AccountProofCollector : ITreeVisitor
     {
         private int _pathTraversalIndex;
-        private Address _address = Address.Zero;
-        private AccountProof _accountProof;
+        private readonly Address _address = Address.Zero;
+        private readonly AccountProof _accountProof;
 
-        private Nibble[] _fullAccountPath;
-        private Nibble[][] _fullStoragePaths;
+        private readonly Nibble[] _fullAccountPath;
+        private readonly Nibble[][] _fullStoragePaths;
 
-        private List<byte[]> _accountProofItems = new();
-        private List<byte[]>[] _storageProofItems;
+        private readonly List<byte[]> _accountProofItems = new();
+        private readonly List<byte[]>[] _storageProofItems;
 
-        private Dictionary<Hash256, StorageNodeInfo> _storageNodeInfos = new();
-        private HashSet<Hash256> _nodeToVisitFilter = new();
+        private readonly Dictionary<Hash256, StorageNodeInfo> _storageNodeInfos = new();
+        private readonly HashSet<Hash256> _nodeToVisitFilter = new();
 
         private class StorageNodeInfo
         {
@@ -329,7 +329,7 @@ namespace Nethermind.State.Proofs
             return isPathMatched;
         }
 
-        private AccountDecoder _accountDecoder = new();
+        private readonly AccountDecoder _accountDecoder = new();
 
         public void VisitCode(Hash256 codeHash, TrieVisitContext trieVisitContext)
         {

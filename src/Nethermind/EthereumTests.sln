@@ -47,7 +47,7 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Logging", "Nethe
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Nethermind", "Nethermind", "{199F75FD-E02D-4434-B4F0-0B35B63A1D77}"
 EndProject
-Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.State.Test.Runner", "Nethermind.State.Test.Runner\Nethermind.State.Test.Runner.csproj", "{92F00133-68A6-44C5-8CAD-BD4255FC51EA}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Test.Runner", "Nethermind.Test.Runner\Nethermind.Test.Runner.csproj", "{92F00133-68A6-44C5-8CAD-BD4255FC51EA}"
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Logging.NLog", "Nethermind.Logging.NLog\Nethermind.Logging.NLog.csproj", "{5880276D-35B7-4E79-AF0E-9B9E43A61012}"
 EndProject
@@ -95,7 +95,7 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Network.Stats", 
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Ethereum.KeyStore.Test", "Ethereum.KeyStore.Test\Ethereum.KeyStore.Test.csproj", "{320846D9-D733-4A58-A85D-638D36A08272}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ethereum.Blockchain.Pyspec.Test", "Ethereum.Blockchain.Pyspec.Test\Ethereum.Blockchain.Pyspec.Test.csproj", "{88E1E09E-A566-4165-9A3A-56C561BFEB0F}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Ethereum.Blockchain.Pyspec.Test", "Ethereum.Blockchain.Pyspec.Test\Ethereum.Blockchain.Pyspec.Test.csproj", "{88E1E09E-A566-4165-9A3A-56C561BFEB0F}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution

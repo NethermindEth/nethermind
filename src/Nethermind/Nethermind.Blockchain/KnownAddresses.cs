@@ -15,11 +15,6 @@ namespace Nethermind.Blockchain
                 return value;
             }
 
-            if (RinkebyValidators.TryGetValue(address, out value))
-            {
-                return value;
-            }
-
             return "?";
         }
 
@@ -63,16 +58,5 @@ namespace Nethermind.Blockchain
             { new Address("0xeea5b82b61424df8020f5fedd81767f2d0d25bfb"), "BTC.com Pool" }
         };
 
-        public static Dictionary<Address, string> RinkebyValidators = new()
-        {
-            // Oraclize, AKASHA, Foundation x3, Infura, Augur, Cotton Candy?
-            { new Address("0x42eb768f2244c8811c63729a21a3569731535f06"), "?" },
-            { new Address("0x6635f83421bf059cd8111f180f0727128685bae4"), "Infura" },
-            { new Address("0x7ffc57839b00206d1ad20c69a1981b489f772031"), "?" },
-            { new Address("0xb279182d99e65703f0076e4812653aab85fca0f0"), "?" },
-            { new Address("0xd6ae8250b8348c94847280928c79fb3b63ca453e"), "?" },
-            { new Address("0xfc18cbc391de84dbd87db83b20935d3e89f5dd91"), "?" },
-            { new Address("0xdA35deE8EDDeAA556e4c26268463e26FB91ff74f"), "Provable (Oraclize)" },
-        };
     }
 }

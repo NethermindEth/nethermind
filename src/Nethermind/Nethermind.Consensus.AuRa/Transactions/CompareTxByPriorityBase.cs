@@ -52,8 +52,8 @@ namespace Nethermind.Consensus.AuRa.Transactions
         public int Compare(Transaction x, Transaction y)
         {
             if (ReferenceEquals(x, y)) return 0;
-            if (ReferenceEquals(null, y)) return 1;
-            if (ReferenceEquals(null, x)) return -1;
+            if (y is null) return 1;
+            if (x is null) return -1;
 
             // we already have nonce ordered by previous code, we don't deal with it here
 

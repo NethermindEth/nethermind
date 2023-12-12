@@ -36,6 +36,9 @@ namespace Nethermind.Store.Test
             _codeDb = new MemDb();
         }
 
+        [TearDown]
+        public void TearDown() => _codeDb?.Dispose();
+
         [Test]
         public void Eip_158_zero_value_transfer_deletes()
         {

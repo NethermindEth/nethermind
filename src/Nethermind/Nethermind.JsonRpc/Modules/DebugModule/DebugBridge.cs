@@ -86,9 +86,9 @@ public class DebugBridge : IDebugBridge
         return _blockTree.FindLevel(number);
     }
 
-    public int DeleteChainSlice(long startNumber)
+    public int DeleteChainSlice(long startNumber, bool force = false)
     {
-        return _blockTree.DeleteChainSlice(startNumber);
+        return _blockTree.DeleteChainSlice(startNumber, force: force);
     }
 
     public void UpdateHeadBlock(Hash256 blockHash)
@@ -143,12 +143,12 @@ public class DebugBridge : IDebugBridge
         return _tracer.Trace(blockParameter, transaction, gethTraceOptions ?? GethTraceOptions.Default, cancellationToken);
     }
 
-    public GethLikeTxTrace[] GetBlockTrace(BlockParameter blockParameter, CancellationToken cancellationToken, GethTraceOptions gethTraceOptions = null)
+    public IReadOnlyCollection<GethLikeTxTrace> GetBlockTrace(BlockParameter blockParameter, CancellationToken cancellationToken, GethTraceOptions gethTraceOptions = null)
     {
         return _tracer.TraceBlock(blockParameter, gethTraceOptions ?? GethTraceOptions.Default, cancellationToken);
     }
 
-    public GethLikeTxTrace[] GetBlockTrace(Rlp blockRlp, CancellationToken cancellationToken, GethTraceOptions gethTraceOptions = null)
+    public IReadOnlyCollection<GethLikeTxTrace> GetBlockTrace(Rlp blockRlp, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null)
     {
         return _tracer.TraceBlock(blockRlp, gethTraceOptions ?? GethTraceOptions.Default, cancellationToken);
     }

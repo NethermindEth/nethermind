@@ -2,13 +2,13 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
-using Newtonsoft.Json;
+using System.Text.Json.Serialization;
 
 namespace Ethereum.Test.Base
 {
     public class GeneralStateTestJson
     {
-        [JsonProperty("_info")]
+        [JsonPropertyName("_info")]
         public GeneralStateTestInfoJson? Info { get; set; }
         public GeneralStateTestEnvJson? Env { get; set; }
         public Dictionary<string, PostStateJson[]>? Post { get; set; }

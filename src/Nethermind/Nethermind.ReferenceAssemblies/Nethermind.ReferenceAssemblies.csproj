@@ -1,7 +1,6 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>net7.0</TargetFramework>
     <IncludeBuildOutput>false</IncludeBuildOutput>
     <NoBuild>true</NoBuild>
     <NoWarn>$(NoWarn);NU5131;NU5017</NoWarn>
@@ -21,7 +20,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <Content Include="ref/**/*.dll" Pack="true" PackagePath="ref/net7.0">
+    <Content Include="ref/**/*.dll" Pack="true" PackagePath="ref/$(TFM)">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
   </ItemGroup>

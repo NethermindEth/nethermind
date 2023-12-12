@@ -10,6 +10,7 @@ using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Extensions;
+using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
 
 namespace Nethermind.Evm;
@@ -215,27 +216,7 @@ public class EvmPooledMemory : IEvmMemory
         return 0L;
     }
 
-    public IEnumerable<string> GetTrace()
-    {
-        int traceLocation = 0;
-
-        while ((ulong)traceLocation < Size)
-        {
-            int sizeAvailable = Math.Min(WordSize, (_memory?.Length ?? 0) - traceLocation);
-            if (sizeAvailable > 0)
-            {
-                Span<byte> bytes = _memory.AsSpan(traceLocation, sizeAvailable);
-
-                yield return bytes.ToHexString();
-            }
-            else // Memory might not be initialized
-            {
-                yield return Bytes.Zero32.ToHexString();
-            }
-
-            traceLocation += WordSize;
-        }
-    }
+    public TraceMemory GetTrace() => new(Size, _memory ??= Array.Empty<byte>());
 
     public void Dispose()
     {

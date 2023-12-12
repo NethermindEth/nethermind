@@ -26,16 +26,16 @@ namespace Nethermind.AccountAbstraction.Test
     [TestFixture]
     public class AccountAbstractionPeerManagerTests
     {
-        private IDictionary<Address, IUserOperationPool> _userOperationPools = new Dictionary<Address, IUserOperationPool>();
-        private IUserOperationSimulator _simulator = Substitute.For<IUserOperationSimulator>();
-        private IBlockTree _blockTree = Substitute.For<IBlockTree>();
-        private ILogger _logger = Substitute.For<ILogger>();
-        private ILogFinder _logFinder = Substitute.For<ILogFinder>();
-        private IWorldState _stateProvider = Substitute.For<IWorldState>();
-        private ISpecProvider _specProvider = Substitute.For<ISpecProvider>();
+        private readonly IDictionary<Address, IUserOperationPool> _userOperationPools = new Dictionary<Address, IUserOperationPool>();
+        private readonly IUserOperationSimulator _simulator = Substitute.For<IUserOperationSimulator>();
+        private readonly IBlockTree _blockTree = Substitute.For<IBlockTree>();
+        private readonly ILogger _logger = Substitute.For<ILogger>();
+        private readonly ILogFinder _logFinder = Substitute.For<ILogFinder>();
+        private readonly IWorldState _stateProvider = Substitute.For<IWorldState>();
+        private readonly ISpecProvider _specProvider = Substitute.For<ISpecProvider>();
         private readonly ISigner _signer = Substitute.For<ISigner>();
         private readonly string[] _entryPointContractAddress = { "0x8595dd9e0438640b5e1254f9df579ac12a86865f", "0x96cc609c8f5458fb8a7da4d94b678e38ebf3d04e" };
-        private static Address _notAnAddress = new("0x373f2D08b1C195fF08B9AbEdE3C78575FAAC2aCf");
+        private static readonly Address _notAnAddress = new("0x373f2D08b1C195fF08B9AbEdE3C78575FAAC2aCf");
 
         [Test]
         public void should_add_peers()

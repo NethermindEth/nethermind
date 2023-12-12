@@ -3,6 +3,8 @@
 
 using System;
 using System.Buffers.Binary;
+using System.Runtime.CompilerServices;
+
 using Nethermind.Int256;
 
 namespace Nethermind.Core.Extensions;
@@ -125,16 +127,12 @@ public static class Int64Extensions
 
         return bytes;
     }
-
     public static void WriteBigEndian(this long value, Span<byte> output)
     {
         BinaryPrimitives.WriteInt64BigEndian(output, value);
     }
 
-    [ThreadStatic]
-    private static byte[]? t_byteBuffer64;
-    private static byte[] GetByteBuffer64() => t_byteBuffer64 ??= new byte[8];
-
+    [SkipLocalsInit]
     public static string ToHexString(this long value, bool skipLeadingZeros)
     {
         if (value == 0L)
@@ -142,11 +140,12 @@ public static class Int64Extensions
             return "0x0";
         }
 
-        byte[] bytes = GetByteBuffer64();
+        Span<byte> bytes = stackalloc byte[8];
         BinaryPrimitives.WriteInt64BigEndian(bytes, value);
         return bytes.ToHexString(true, skipLeadingZeros, false);
     }
 
+    [SkipLocalsInit]
     public static string ToHexString(this ulong value, bool skipLeadingZeros)
     {
         if (value == 0UL)
@@ -154,20 +153,17 @@ public static class Int64Extensions
             return "0x0";
         }
 
-        byte[] bytes = GetByteBuffer64();
+        Span<byte> bytes = stackalloc byte[8];
         BinaryPrimitives.WriteUInt64BigEndian(bytes, value);
         return bytes.ToHexString(true, skipLeadingZeros, false);
     }
 
-    [ThreadStatic]
-    private static byte[]? t_byteBuffer256;
-    private static byte[] GetByteBuffer256() => t_byteBuffer256 ??= new byte[32];
-
+    [SkipLocalsInit]
     public static string ToHexString(this in UInt256 value, bool skipLeadingZeros)
     {
         if (skipLeadingZeros)
         {
-            if (value == UInt256.Zero)
+            if (value == default)
             {
                 return "0x0";
             }
@@ -178,7 +174,7 @@ public static class Int64Extensions
             }
         }
 
-        byte[] bytes = GetByteBuffer256();
+        Span<byte> bytes = stackalloc byte[32];
         value.ToBigEndian(bytes);
         return bytes.ToHexString(true, skipLeadingZeros, false);
     }
