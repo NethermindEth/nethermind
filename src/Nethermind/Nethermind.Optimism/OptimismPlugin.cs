@@ -148,7 +148,7 @@ public class OptimismPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitial
             _api.SealValidator!,
             _syncConfig,
             _api.BetterPeerStrategy!,
-            new FullStateFinder(_api.BlockTree, _api.DbProvider.StateDb, _api.TrieStore!.AsReadOnly()),
+            new FullStateFinder(_api.BlockTree, _api.StateReader!),
             _api.LogManager);
 
         _api.Synchronizer = new MergeSynchronizer(
@@ -165,10 +165,10 @@ public class OptimismPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitial
             _mergeConfig,
             _invalidChainTracker,
             _api.ProcessExit!,
-            _api.ReadOnlyTrieStore!,
             _api.BetterPeerStrategy,
             _api.ChainSpec,
             _beaconSync,
+            _api.StateReader!,
             _api.LogManager
         );
 

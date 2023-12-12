@@ -23,12 +23,12 @@ public readonly struct TraceStack
 
     public int Count => _stack.Length / EvmStack.WordSize;
 
-    public List<string> ToHexWordList()
+    public string[] ToHexWordList()
     {
-        List<string> hexWordList = new(Count);
-        for (int i = 0; i < Count; i += 1)
+        string[] hexWordList = new string[Count];
+        for (int i = 0; i < hexWordList.Length; i += 1)
         {
-            hexWordList.Add(this[i].Span.ToHexString(true, true));
+            hexWordList[i] = this[i].Span.ToHexString(true, true);
         }
 
         return hexWordList;

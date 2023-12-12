@@ -25,6 +25,8 @@ using Nethermind.Db.Blooms;
 using Nethermind.Runner.Ethereum.Api;
 using Nethermind.TxPool;
 using NUnit.Framework;
+using LogLevel = NLog.LogLevel;
+using Nethermind.Serialization.Json;
 
 namespace Nethermind.Runner.Test
 {

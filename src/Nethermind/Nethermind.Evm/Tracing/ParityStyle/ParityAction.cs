@@ -2,11 +2,14 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
+using System.Text.Json.Serialization;
+
 using Nethermind.Core;
 using Nethermind.Int256;
 
 namespace Nethermind.Evm.Tracing.ParityStyle
 {
+    [JsonConverter(typeof(ParityTraceActionConverter))]
     public class ParityTraceAction
     {
         public int[]? TraceAddress { get; set; }

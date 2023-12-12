@@ -12,7 +12,7 @@ namespace Nethermind.Consensus.AuRa.Validators
         public ListBasedValidator(AuRaParameters.Validator validator, IValidSealerStrategy validSealerStrategy, IValidatorStore validatorStore, ILogManager logManager, long startBlockNumber, bool forSealing = false)
             : base(validSealerStrategy, validatorStore, logManager, startBlockNumber, forSealing)
         {
-            if (validator is null) throw new ArgumentNullException(nameof(validator));
+            ArgumentNullException.ThrowIfNull(validator);
 
             Validators = validator.Addresses?.Length > 0
                 ? validator.Addresses

@@ -26,7 +26,7 @@ namespace Nethermind.Blockchain.FullPruning
         private readonly Stopwatch _stopwatch;
         private long _persistedNodes = 0;
         private bool _finished = false;
-        private WriteFlags _writeFlags;
+        private readonly WriteFlags _writeFlags;
         private readonly CancellationToken _cancellationToken;
         private const int Million = 1_000_000;
 

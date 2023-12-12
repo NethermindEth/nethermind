@@ -19,25 +19,27 @@ public readonly struct TraceMemory
         _memory = memory;
     }
 
-    public List<string> ToHexWordList()
+    public string[] ToHexWordList()
     {
-        List<string> memory = new(((int)Size / EvmPooledMemory.WordSize) + ((Size % EvmPooledMemory.WordSize == 0) ? 0 : 1));
+        string[] memory = new string[((int)Size / EvmPooledMemory.WordSize) + ((Size % EvmPooledMemory.WordSize == 0) ? 0 : 1)];
         int traceLocation = 0;
 
+        int i = 0;
         while ((ulong)traceLocation < Size)
         {
             int sizeAvailable = Math.Min(EvmPooledMemory.WordSize, _memory.Length - traceLocation);
             if (sizeAvailable > 0)
             {
                 ReadOnlySpan<byte> bytes = _memory.Slice(traceLocation, sizeAvailable).Span;
-                memory.Add(bytes.ToHexString());
+                memory[i] = bytes.ToHexString();
             }
             else // Memory might not be initialized
             {
-                memory.Add(Bytes.Zero32.ToHexString());
+                memory[i] = Bytes.Zero32.ToHexString();
             }
 
             traceLocation += EvmPooledMemory.WordSize;
+            i++;
         }
 
         return memory;

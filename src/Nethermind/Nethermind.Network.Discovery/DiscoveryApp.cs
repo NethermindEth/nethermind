@@ -227,7 +227,7 @@ public class DiscoveryApp : IDiscoveryApp
 
                 //Check if we were able to communicate with any trusted nodes or persisted nodes
                 //if so no need to replay bootstrapping, we can start discovery process
-                if (_discoveryManager.GetOrAddNodeLifecycleManagers(x => x.State == NodeLifecycleState.Active).Any())
+                if (_discoveryManager.GetOrAddNodeLifecycleManagers(x => x.State == NodeLifecycleState.Active).Count != 0)
                 {
                     break;
                 }
@@ -347,7 +347,7 @@ public class DiscoveryApp : IDiscoveryApp
     private async Task<bool> InitializeBootnodes(CancellationToken cancellationToken)
     {
         NetworkNode[] bootnodes = NetworkNode.ParseNodes(_discoveryConfig.Bootnodes, _logger);
-        if (!bootnodes.Any())
+        if (bootnodes.Length == 0)
         {
             if (_logger.IsWarn) _logger.Warn("No bootnodes specified in configuration");
             return true;
@@ -389,7 +389,7 @@ public class DiscoveryApp : IDiscoveryApp
                 break;
             }
 
-            if (_discoveryManager.GetOrAddNodeLifecycleManagers(x => x.State == NodeLifecycleState.Active).Any())
+            if (_discoveryManager.GetOrAddNodeLifecycleManagers(x => x.State == NodeLifecycleState.Active).Count != 0)
             {
                 if (_logger.IsTrace)
                     _logger.Trace(

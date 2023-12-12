@@ -8,7 +8,6 @@
 
   <ItemGroup>
     <PackageReference Include="CommandLineParser" />
-    <PackageReference Include="Newtonsoft.Json" />
   </ItemGroup>
 
   <ItemGroup>

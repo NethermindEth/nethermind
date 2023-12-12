@@ -1,22 +1,22 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Newtonsoft.Json;
+using System.Text.Json.Serialization;
 
 namespace Nethermind.Test.Runner
 {
     public class StateTestTxTraceResult
     {
-        [JsonProperty("output")]
+        [JsonPropertyName("output")]
         public byte[] Output { get; set; }
 
-        [JsonProperty("gasUsed")]
+        [JsonPropertyName("gasUsed")]
         public long GasUsed { get; set; }
 
-        [JsonProperty("time")]
+        [JsonPropertyName("time")]
         public int Time { get; set; }
 
-        [JsonProperty("error")]
+        [JsonPropertyName("error")]
         public string Error { get; set; }
     }
 }

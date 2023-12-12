@@ -23,7 +23,6 @@ public class InitializeBlockProducerOptimism : InitializeBlockProducer
     {
         if (_api.DbProvider is null) throw new StepDependencyException(nameof(_api.DbProvider));
         if (_api.BlockTree is null) throw new StepDependencyException(nameof(_api.BlockTree));
-        if (_api.ReadOnlyTrieStore is null) throw new StepDependencyException(nameof(_api.ReadOnlyTrieStore));
         if (_api.SpecProvider is null) throw new StepDependencyException(nameof(_api.SpecProvider));
         if (_api.RewardCalculatorSource is null) throw new StepDependencyException(nameof(_api.RewardCalculatorSource));
         if (_api.ReceiptStorage is null) throw new StepDependencyException(nameof(_api.ReceiptStorage));
@@ -32,12 +31,12 @@ public class InitializeBlockProducerOptimism : InitializeBlockProducer
         if (_api.BlockValidator is null) throw new StepDependencyException(nameof(_api.BlockValidator));
         if (_api.SpecHelper is null) throw new StepDependencyException(nameof(_api.SpecHelper));
         if (_api.L1CostHelper is null) throw new StepDependencyException(nameof(_api.L1CostHelper));
+        if (_api.WorldStateManager is null) throw new StepDependencyException(nameof(_api.WorldStateManager));
 
         _api.BlockProducerEnvFactory = new OptimismBlockProducerEnvFactory(
+            _api.WorldStateManager,
             _api.ChainSpec,
-            _api.DbProvider,
             _api.BlockTree,
-            _api.ReadOnlyTrieStore,
             _api.SpecProvider,
             _api.BlockValidator,
             _api.RewardCalculatorSource,

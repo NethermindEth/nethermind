@@ -4,11 +4,15 @@
 using System;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using System.Text.Json.Serialization;
 using System.Threading;
+
 using Nethermind.Core.Extensions;
+using Nethermind.Serialization.Json;
 
 namespace Nethermind.Core.Crypto
 {
+    [JsonConverter(typeof(PublicKeyConverter))]
     public class PublicKey : IEquatable<PublicKey>
     {
         public const int PrefixedLengthInBytes = 65;
@@ -16,7 +20,7 @@ namespace Nethermind.Core.Crypto
         private Address? _address;
 
         private byte[]? _prefixedBytes;
-        private int _hashCode;
+        private readonly int _hashCode;
 
         public PublicKey(string? hexString)
             : this(Core.Extensions.Bytes.FromHexString(hexString ?? throw new ArgumentNullException(nameof(hexString))))
@@ -134,12 +138,12 @@ namespace Nethermind.Core.Crypto
 
         public static bool operator ==(PublicKey? a, PublicKey? b)
         {
-            if (ReferenceEquals(a, null))
+            if (a is null)
             {
-                return ReferenceEquals(b, null);
+                return b is null;
             }
 
-            if (ReferenceEquals(b, null))
+            if (b is null)
             {
                 return false;
             }

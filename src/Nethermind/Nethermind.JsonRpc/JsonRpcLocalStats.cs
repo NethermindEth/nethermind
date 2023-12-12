@@ -133,7 +133,7 @@ namespace Nethermind.JsonRpc
 
                 Swap();
 
-                if (!_previousStats.Any())
+                if (_previousStats.IsEmpty)
                 {
                     return;
                 }

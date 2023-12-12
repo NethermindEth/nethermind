@@ -54,13 +54,13 @@ public class GethLikeTxFileTracerTests : VirtualMachineTestsBase
         var entries = new List<GethTxFileTraceEntry>();
         var trace = ExecuteAndTraceToFile(e => entries.Add(CloneTraceEntry(e)), GetBytecode(), GethTraceOptions.Default with { EnableMemory = true });
 
-        entries[0].Memory.Count.Should().Be(0);
-        entries[1].Memory.Count.Should().Be(0);
-        entries[2].Memory.Count.Should().Be(0);
-        entries[3].Memory.Count.Should().Be(1);
-        entries[4].Memory.Count.Should().Be(1);
-        entries[5].Memory.Count.Should().Be(1);
-        entries[6].Memory.Count.Should().Be(2);
+        entries[0].Memory.Length.Should().Be(0);
+        entries[1].Memory.Length.Should().Be(0);
+        entries[2].Memory.Length.Should().Be(0);
+        entries[3].Memory.Length.Should().Be(1);
+        entries[4].Memory.Length.Should().Be(1);
+        entries[5].Memory.Length.Should().Be(1);
+        entries[6].Memory.Length.Should().Be(2);
     }
 
     [Test]
@@ -69,13 +69,13 @@ public class GethLikeTxFileTracerTests : VirtualMachineTestsBase
         var entries = new List<GethTxFileTraceEntry>();
         var trace = ExecuteAndTraceToFile(e => entries.Add(CloneTraceEntry(e)), GetBytecode(), GethTraceOptions.Default);
 
-        entries[0].Stack.Count.Should().Be(0);
-        entries[1].Stack.Count.Should().Be(1);
-        entries[2].Stack.Count.Should().Be(2);
-        entries[3].Stack.Count.Should().Be(0);
-        entries[4].Stack.Count.Should().Be(1);
-        entries[5].Stack.Count.Should().Be(2);
-        entries[6].Stack.Count.Should().Be(0);
+        entries[0].Stack.Length.Should().Be(0);
+        entries[1].Stack.Length.Should().Be(1);
+        entries[2].Stack.Length.Should().Be(2);
+        entries[3].Stack.Length.Should().Be(0);
+        entries[4].Stack.Length.Should().Be(1);
+        entries[5].Stack.Length.Should().Be(2);
+        entries[6].Stack.Length.Should().Be(0);
     }
 
     [Test]

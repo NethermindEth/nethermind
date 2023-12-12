@@ -25,7 +25,7 @@ public static class EnumExtensions
         // This bit converts to int[]
         IReadOnlyList<T> values = FastEnum.GetValues<T>();
 
-        if (!typeof(T).GetCustomAttributes(typeof(FlagsAttribute), false).Any())
+        if (typeof(T).GetCustomAttributes(typeof(FlagsAttribute), false).Length == 0)
         {
             // We don't have flags so just return the result of GetValues
             return values;

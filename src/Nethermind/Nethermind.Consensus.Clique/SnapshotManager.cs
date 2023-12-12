@@ -21,15 +21,15 @@ namespace Nethermind.Consensus.Clique
 {
     public class SnapshotManager : ISnapshotManager
     {
-        private static byte[] _snapshotBytes = Encoding.UTF8.GetBytes("snapshot-");
+        private static readonly byte[] _snapshotBytes = Encoding.UTF8.GetBytes("snapshot-");
         private readonly IBlockTree _blockTree;
         private readonly ICliqueConfig _cliqueConfig;
         private readonly ILogger _logger;
         private readonly LruCache<ValueHash256, Address> _signatures;
         private readonly IEthereumEcdsa _ecdsa;
-        private IDb _blocksDb;
+        private readonly IDb _blocksDb;
         private ulong _lastSignersCount = 0;
-        private LruCache<ValueHash256, Snapshot> _snapshotCache = new(Clique.InMemorySnapshots, "clique snapshots");
+        private readonly LruCache<ValueHash256, Snapshot> _snapshotCache = new(Clique.InMemorySnapshots, "clique snapshots");
 
         public SnapshotManager(ICliqueConfig cliqueConfig, IDb blocksDb, IBlockTree blockTree, IEthereumEcdsa ecdsa, ILogManager logManager)
         {
@@ -84,7 +84,7 @@ namespace Nethermind.Consensus.Clique
             return sigHash;
         }
 
-        private object _snapshotCreationLock = new();
+        private readonly object _snapshotCreationLock = new();
 
         public ulong GetLastSignersCount() => _lastSignersCount;
 
@@ -226,7 +226,7 @@ namespace Nethermind.Consensus.Clique
             return new Hash256(keyBytes);
         }
 
-        private SnapshotDecoder _decoder = new();
+        private readonly SnapshotDecoder _decoder = new();
 
         [Todo(Improve.Refactor, "I guess it was only added here because of the use of blocksdb")]
         private Snapshot? LoadSnapshot(Hash256 hash)

@@ -15,7 +15,8 @@ using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
-using Newtonsoft.Json;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace Nethermind.JsonRpc.Modules.Eth
 {
@@ -79,13 +80,5 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 _ethSyncingInfo,
                  new FeeHistoryOracle(_blockTree, _receiptStorage, _specProvider));
         }
-
-        public static List<JsonConverter> Converters = new()
-        {
-            new SyncingResultConverter(),
-            new ProofConverter()
-        };
-
-        public override IReadOnlyCollection<JsonConverter> GetConverters() => Converters;
     }
 }
