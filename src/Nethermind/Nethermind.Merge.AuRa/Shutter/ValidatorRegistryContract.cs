@@ -8,19 +8,22 @@ using Nethermind.Blockchain.Contracts;
 using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Evm.TransactionProcessing;
+using Nethermind.TxPool;
 
 namespace Nethermind.Merge.AuRa.Shutter;
 
 public class ValidatorRegistryContract : CallableContract, IValidatorRegistryContract
 {
     private readonly ISigner _signer;
+    private readonly ITxSender _txSender;
     private static readonly string FUNCTION_NAME = "update";
     private static readonly byte VALIDATOR_REGISTRY_MESSAGE_VERSION = 0;
 
-    public ValidatorRegistryContract(ITransactionProcessor transactionProcessor, IAbiEncoder abiEncoder, Address contractAddress, ISigner signer)
+    public ValidatorRegistryContract(ITransactionProcessor transactionProcessor, IAbiEncoder abiEncoder, Address contractAddress, ISigner signer, ITxSender txSender)
         : base(transactionProcessor, abiEncoder, contractAddress)
     {
         _signer = signer;
+        _txSender = txSender;
     }
 
     // def compute_registration_message(validator_index: uint64, nonce: uint64):
@@ -58,8 +61,9 @@ public class ValidatorRegistryContract : CallableContract, IValidatorRegistryCon
         byte[] deregistrationMessage = ComputeRegistryMessagePrefix(nonce, validatorIndex, false);
 
         var transaction = GenerateTransaction<GeneratedTransaction>(FUNCTION_NAME, _signer.Address, deregistrationMessage);
-        // var transaction = GenerateTransaction<GeneratedTransaction>(FUNCTION_NAME, _signer.Address, gasLimit, blockHeader, arguments);
-        throw new NotImplementedException();
+        // sign transaction?
+
+        _txSender.SendTransaction(transaction, TxHandlingOptions.PersistentBroadcast);
     }
 
     public void Register(BlockHeader blockHeader, byte[] message, byte[] signature)
