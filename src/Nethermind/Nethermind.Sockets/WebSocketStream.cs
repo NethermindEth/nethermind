@@ -103,6 +103,6 @@ public class WebSocketStream : Stream
 
     private void ThrowIfDisposed()
     {
-        if (_socket == null) throw new ObjectDisposedException(nameof(_socket));
+        ObjectDisposedException.ThrowIf(_socket == null, _socket);
     }
 }

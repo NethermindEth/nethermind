@@ -39,10 +39,7 @@ namespace Nethermind.Core.Collections
 
         public SpanDictionary(int capacity, ISpanEqualityComparer<TKey> comparer)
         {
-            if (capacity < 0)
-            {
-                throw new ArgumentOutOfRangeException(nameof(capacity));
-            }
+            ArgumentOutOfRangeException.ThrowIfNegative(capacity);
 
             if (capacity > 0)
             {
@@ -946,10 +943,7 @@ namespace Nethermind.Core.Collections
         /// </summary>
         public int EnsureCapacity(int capacity)
         {
-            if (capacity < 0)
-            {
-                throw new ArgumentOutOfRangeException(nameof(capacity));
-            }
+            ArgumentOutOfRangeException.ThrowIfNegative(capacity);
 
             int currentCapacity = _entries == null ? 0 : _entries.Length;
             if (currentCapacity >= capacity)
@@ -992,10 +986,7 @@ namespace Nethermind.Core.Collections
         /// </remarks>
         public void TrimExcess(int capacity)
         {
-            if (capacity < Count)
-            {
-                throw new ArgumentOutOfRangeException(nameof(capacity));
-            }
+            ArgumentOutOfRangeException.ThrowIfLessThan(capacity, Count);
 
             int newSize = HashHelpers.GetPrime(capacity);
             Entry[]? oldEntries = _entries;

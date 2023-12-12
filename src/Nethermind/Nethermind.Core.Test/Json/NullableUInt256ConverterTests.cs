@@ -13,8 +13,8 @@ namespace Nethermind.Core.Test.Json
     [TestFixture]
     public class NullableUInt256ConverterTests : ConverterTestBase<UInt256?>
     {
-        static NullableUInt256Converter converter = new();
-        static JsonSerializerOptions options = new JsonSerializerOptions { Converters = { converter } };
+        static readonly NullableUInt256Converter converter = new();
+        static readonly JsonSerializerOptions options = new JsonSerializerOptions { Converters = { converter } };
 
         [TestCase(NumberConversion.Hex)]
         [TestCase(NumberConversion.Decimal)]

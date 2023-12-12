@@ -48,8 +48,8 @@ namespace Nethermind.State
 
         public void Accept(ITreeVisitor? visitor, Hash256? stateRoot, VisitingOptions? visitingOptions = null)
         {
-            if (visitor is null) throw new ArgumentNullException(nameof(visitor));
-            if (stateRoot is null) throw new ArgumentNullException(nameof(stateRoot));
+            ArgumentNullException.ThrowIfNull(visitor);
+            ArgumentNullException.ThrowIfNull(stateRoot);
 
             _tree.Accept(visitor, stateRoot, visitingOptions);
         }

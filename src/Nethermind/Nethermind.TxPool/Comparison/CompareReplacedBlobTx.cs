@@ -20,8 +20,8 @@ public class CompareReplacedBlobTx : IComparer<Transaction?>
     public int Compare(Transaction? newTx, Transaction? oldTx)
     {
         if (ReferenceEquals(newTx, oldTx)) return TxComparisonResult.NotDecided;
-        if (ReferenceEquals(null, oldTx)) return TxComparisonResult.KeepOld;
-        if (ReferenceEquals(null, newTx)) return TxComparisonResult.TakeNew;
+        if (oldTx is null) return TxComparisonResult.KeepOld;
+        if (newTx is null) return TxComparisonResult.TakeNew;
 
         // do not allow to replace blob tx by the one with lower number of blobs
         if (oldTx.BlobVersionedHashes is null || newTx.BlobVersionedHashes is null) return TxComparisonResult.KeepOld;

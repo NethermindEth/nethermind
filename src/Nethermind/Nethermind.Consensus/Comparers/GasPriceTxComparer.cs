@@ -23,8 +23,8 @@ namespace Nethermind.Consensus.Comparers
         public int Compare(Transaction? x, Transaction? y)
         {
             if (ReferenceEquals(x, y)) return 0;
-            if (ReferenceEquals(null, y)) return 1;
-            if (ReferenceEquals(null, x)) return -1;
+            if (y is null) return 1;
+            if (x is null) return -1;
 
             // if gas bottleneck was calculated, it's highest priority for sorting
             // if not, different method of sorting by gas price is needed

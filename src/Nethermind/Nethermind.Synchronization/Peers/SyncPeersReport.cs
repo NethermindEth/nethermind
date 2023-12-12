@@ -16,7 +16,7 @@ namespace Nethermind.Synchronization.Peers
     /// </summary>
     internal class SyncPeersReport
     {
-        private StringBuilder _stringBuilder = new();
+        private readonly StringBuilder _stringBuilder = new();
         private int _currentInitializedPeerCount;
 
         private readonly ISyncPeerPool _peerPool;
@@ -33,7 +33,7 @@ namespace Nethermind.Synchronization.Peers
             }
         }
 
-        private object _writeLock = new();
+        private readonly object _writeLock = new();
 
         private IEnumerable<PeerInfo> OrderedPeers => _peerPool.InitializedPeers
             .OrderByDescending(p => p.SyncPeer?.HeadNumber)

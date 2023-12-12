@@ -93,7 +93,7 @@ public class TestBlockchain : IDisposable
     public static Address AccountC = TestItem.AddressC;
     public SemaphoreSlim _resetEvent = null!;
     private ManualResetEvent _suggestedBlockResetEvent = null!;
-    private AutoResetEvent _oneAtATime = new(true);
+    private readonly AutoResetEvent _oneAtATime = new(true);
     private IBlockFinder _blockFinder = null!;
 
     public static readonly UInt256 InitialValue = 1000.Ether();

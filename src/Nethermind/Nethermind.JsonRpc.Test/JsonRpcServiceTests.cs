@@ -48,7 +48,7 @@ public class JsonRpcServiceTests
     private ILogManager _logManager = null!;
     private JsonRpcContext _context = null!;
 
-    private JsonRpcResponse TestRequest<T>(T module, string method, params string[] parameters) where T : IRpcModule
+    private JsonRpcResponse TestRequest<T>(T module, string method, params string[]? parameters) where T : IRpcModule
     {
         RpcModuleProvider moduleProvider = new(new FileSystem(), _configurationProvider.GetConfig<IJsonRpcConfig>(), LimboLogs.Instance);
         moduleProvider.Register(new SingletonModulePool<T>(new SingletonFactory<T>(module), true));
@@ -182,7 +182,7 @@ public class JsonRpcServiceTests
     {
         INetRpcModule netRpcModule = Substitute.For<INetRpcModule>();
         netRpcModule.net_version().ReturnsForAnyArgs(x => ResultWrapper<string>.Success("1"));
-        JsonRpcSuccessResponse? response = TestRequest(netRpcModule, "net_version") as JsonRpcSuccessResponse;
+        JsonRpcSuccessResponse? response = TestRequest(netRpcModule, "net_version", null) as JsonRpcSuccessResponse;
         Assert.That(response?.Result, Is.EqualTo("1"));
         Assert.IsNotInstanceOf<JsonRpcErrorResponse>(response);
     }
