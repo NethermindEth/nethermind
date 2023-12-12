@@ -155,7 +155,7 @@ public partial class EngineModuleTests
 
         ResultWrapper<PayloadStatusV1> result = await rpcModule.engine_newPayloadV3(payload, blobVersionedHashes, payload.ParentBeaconBlockRoot);
 
-        Assert.That(result.ErrorCode, Is.EqualTo(expectedPayloadStatus == PayloadStatus.Invalid ? ErrorCodes.InvalidParams : ErrorCodes.None));
+        Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.None));
         result.Data.Status.Should().Be(expectedPayloadStatus);
     }
 
@@ -179,7 +179,7 @@ public partial class EngineModuleTests
         byte[]?[] blobVersionedHashes = transactions.SelectMany(tx => tx.BlobVersionedHashes ?? Array.Empty<byte[]>()).ToArray();
         ResultWrapper<PayloadStatusV1> result = await prevRpcModule.engine_newPayloadV3(payload, blobVersionedHashes, payload.ParentBeaconBlockRoot);
 
-        Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.None));
+        Assert.That(result.ErrorCode, Is.EqualTo(expectedPayloadStatus == PayloadStatus.Invalid ? ErrorCodes.InvalidParams : ErrorCodes.None));
         result.Data.Status.Should().Be(expectedPayloadStatus);
     }
 
