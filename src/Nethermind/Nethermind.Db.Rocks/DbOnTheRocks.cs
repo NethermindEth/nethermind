@@ -183,7 +183,7 @@ public class DbOnTheRocks : IDb, ITunableDb
         }
         catch (RocksDbException x) when (x.Message.Contains("LOCK"))
         {
-            if (_logger.IsWarn) _logger.Warn("If your database did not close properly you need to call 'find -type f -name '*LOCK*' -delete' from the databse folder");
+            if (_logger.IsWarn) _logger.Warn("If your database did not close properly you need to call 'find -type f -name '*LOCK*' -delete' from the database folder");
             throw;
         }
         catch (RocksDbSharpException x)
