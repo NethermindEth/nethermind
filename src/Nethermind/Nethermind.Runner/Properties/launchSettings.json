@@ -154,6 +154,34 @@
         "ASPNETCORE_ENVIRONMENT": "Development"
       }
     },
+    "Joc-Mainnet": {
+      "commandName": "Project",
+      "commandLineArgs": "-c joc-mainnet -dd .data",
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development"
+      }
+    },
+    "Joc-Testnet": {
+      "commandName": "Project",
+      "commandLineArgs": "-c joc-testnet -dd .data",
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development"
+      }
+    },
+    "Joc-Mainnet (archive)": {
+      "commandName": "Project",
+      "commandLineArgs": "-c joc-mainnet_archive -dd .data",
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development"
+      }
+    },
+    "Joc-Testnet (archive)": {
+      "commandName": "Project",
+      "commandLineArgs": "-c joc-testnet_archive -dd .data",
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development"
+      }
+    },
     "Docker": {
       "commandName": "Docker",
       "commandLineArgs": "-c sepolia -dd /data --JsonRpc.EngineHost 0.0.0.0 --JsonRpc.EnginePort 8551 --JsonRpc.Host 0.0.0.0"

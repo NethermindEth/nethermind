@@ -316,7 +316,7 @@ namespace Nethermind.Merkleization
         //    merkleizer.CalculateRoot(out root);
         //}
 
-        private static UInt256 RootOfNull;
+        private static readonly UInt256 RootOfNull;
 
         //public static void Ize(out UInt256 root, ProposerSlashing container)
         //{

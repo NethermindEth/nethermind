@@ -40,7 +40,6 @@ public class InitializeBlockchainOptimism : InitializeBlockchain
     protected override ITransactionProcessor CreateTransactionProcessor()
     {
         if (_api.SpecProvider is null) throw new StepDependencyException(nameof(_api.SpecProvider));
-        if (_api.WorldState is null) throw new StepDependencyException(nameof(_api.WorldState));
         if (_api.SpecHelper is null) throw new StepDependencyException(nameof(_api.SpecHelper));
         if (_api.L1CostHelper is null) throw new StepDependencyException(nameof(_api.L1CostHelper));
 

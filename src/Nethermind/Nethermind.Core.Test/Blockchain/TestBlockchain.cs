@@ -36,6 +36,7 @@ using Nethermind.State.Repositories;
 using Nethermind.Synchronization;
 using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
+using NSubstitute;
 using BlockTree = Nethermind.Blockchain.BlockTree;
 
 namespace Nethermind.Core.Test.Blockchain;
@@ -50,6 +51,7 @@ public class TestBlockchain : IDisposable
     public IReceiptStorage ReceiptStorage { get; set; } = null!;
     public ITxPool TxPool { get; set; } = null!;
     public IDb CodeDb => DbProvider.CodeDb;
+    public IWorldStateManager WorldStateManager { get; set; } = null!;
     public IBlockProcessor BlockProcessor { get; set; } = null!;
     public IBlockchainProcessor BlockchainProcessor { get; set; } = null!;
 
@@ -91,7 +93,7 @@ public class TestBlockchain : IDisposable
     public static Address AccountC = TestItem.AddressC;
     public SemaphoreSlim _resetEvent = null!;
     private ManualResetEvent _suggestedBlockResetEvent = null!;
-    private AutoResetEvent _oneAtATime = new(true);
+    private readonly AutoResetEvent _oneAtATime = new(true);
     private IBlockFinder _blockFinder = null!;
 
     public static readonly UInt256 InitialValue = 1000.Ether();
@@ -141,6 +143,7 @@ public class TestBlockchain : IDisposable
         State.CommitTree(0);
 
         ReadOnlyTrieStore = TrieStore.AsReadOnly(StateDb);
+        WorldStateManager = new WorldStateManager(State, TrieStore, DbProvider, LimboLogs.Instance);
         StateReader = new StateReader(ReadOnlyTrieStore, CodeDb, LogManager);
 
         BlockTree = Builders.Build.A.BlockTree()
@@ -157,7 +160,7 @@ public class TestBlockchain : IDisposable
 
         NonceManager = new NonceManager(chainHeadInfoProvider.AccountStateProvider);
 
-        _trieStoreWatcher = new TrieStoreBoundaryWatcher(TrieStore, BlockTree, LogManager);
+        _trieStoreWatcher = new TrieStoreBoundaryWatcher(WorldStateManager, BlockTree, LogManager);
 
         ReceiptStorage = new InMemoryReceiptStorage();
         VirtualMachine virtualMachine = new(new BlockhashProvider(BlockTree, LogManager), SpecProvider, LogManager);
@@ -249,9 +252,8 @@ public class TestBlockchain : IDisposable
         BlocksConfig blocksConfig = new();
 
         BlockProducerEnvFactory blockProducerEnvFactory = new(
-            DbProvider,
+            WorldStateManager,
             BlockTree,
-            ReadOnlyTrieStore,
             SpecProvider,
             BlockValidator,
             NoBlockRewards.Instance,

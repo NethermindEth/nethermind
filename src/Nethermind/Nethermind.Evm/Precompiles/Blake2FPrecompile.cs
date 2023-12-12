@@ -13,7 +13,7 @@ namespace Nethermind.Evm.Precompiles
     {
         private const int RequiredInputLength = 213;
 
-        private Blake2Compression _blake = new();
+        private readonly Blake2Compression _blake = new();
 
         public static readonly Blake2FPrecompile Instance = new Blake2FPrecompile();
 

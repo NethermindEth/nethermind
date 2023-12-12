@@ -17,7 +17,7 @@ public class ColumnDb : IDb
     internal readonly DbOnTheRocks _mainDb;
     internal readonly ColumnFamilyHandle _columnFamily;
 
-    private DbOnTheRocks.ManagedIterators _readaheadIterators = new();
+    private readonly DbOnTheRocks.ManagedIterators _readaheadIterators = new();
 
     public ColumnDb(RocksDb rocksDb, DbOnTheRocks mainDb, string name)
     {

@@ -5,8 +5,10 @@ using Nethermind.Consensus.AuRa;
 using Nethermind.Consensus.AuRa.InitializationSteps;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Transactions;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Init.Steps;
 using Nethermind.Merge.AuRa.Withdrawals;
+using Nethermind.State;
 
 namespace Nethermind.Merge.AuRa.InitializationSteps
 {
@@ -21,20 +23,22 @@ namespace Nethermind.Merge.AuRa.InitializationSteps
 
         protected override BlockProcessor NewBlockProcessor(AuRaNethermindApi api, ITxFilter txFilter, ContractRewriter contractRewriter)
         {
-            var withdrawalContractFactory = new WithdrawalContractFactory(_api.ChainSpec!.AuRa, _api.AbiEncoder);
+            WithdrawalContractFactory withdrawalContractFactory = new WithdrawalContractFactory(_api.ChainSpec!.AuRa, _api.AbiEncoder);
+            IWorldState worldState = _api.WorldState!;
+            ITransactionProcessor transactionProcessor = _api.TransactionProcessor!;
 
             return new AuRaMergeBlockProcessor(
                 _api.SpecProvider!,
                 _api.BlockValidator!,
                 _api.RewardCalculatorSource!.Get(_api.TransactionProcessor!),
-                new BlockProcessor.BlockValidationTransactionsExecutor(_api.TransactionProcessor!, _api.WorldState!),
-                _api.WorldState!,
+                new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor!, worldState),
+                worldState,
                 _api.ReceiptStorage!,
                 _api.LogManager,
                 _api.BlockTree!,
                 new AuraWithdrawalProcessor(
-                    withdrawalContractFactory.Create(_api.TransactionProcessor!), _api.LogManager),
-                _api.TransactionProcessor!,
+                    withdrawalContractFactory.Create(transactionProcessor!), _api.LogManager),
+                _api.TransactionProcessor!
                 txFilter,
                 GetGasLimitCalculator(),
                 contractRewriter

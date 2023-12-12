@@ -4,6 +4,8 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Text.Json;
+
 using FluentAssertions;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -11,7 +13,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Int256;
-using Newtonsoft.Json;
+
 using NSubstitute;
 using NUnit.Framework;
 
@@ -152,7 +154,7 @@ public class BlockHeaderTests
     private static IEnumerable<(BaseFeeTestCases, string)> Eip1559BaseFeeTestSource()
     {
         string testCases = File.ReadAllText("TestFiles/BaseFeeTestCases.json");
-        BaseFeeTestCases[] deserializedTestCases = JsonConvert.DeserializeObject<BaseFeeTestCases[]>(testCases) ?? Array.Empty<BaseFeeTestCases>();
+        BaseFeeTestCases[] deserializedTestCases = JsonSerializer.Deserialize<BaseFeeTestCases[]>(testCases) ?? Array.Empty<BaseFeeTestCases>();
 
         for (int i = 0; i < deserializedTestCases.Length; ++i)
         {

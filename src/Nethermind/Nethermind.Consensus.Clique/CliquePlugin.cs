@@ -90,13 +90,11 @@ namespace Nethermind.Consensus.Clique
                 _snapshotManager!,
                 getFromApi.LogManager);
 
-            ReadOnlyDbProvider readOnlyDbProvider = getFromApi.DbProvider!.AsReadOnly(false);
             ReadOnlyBlockTree readOnlyBlockTree = getFromApi.BlockTree!.AsReadOnly();
             ITransactionComparerProvider transactionComparerProvider = getFromApi.TransactionComparerProvider;
 
             ReadOnlyTxProcessingEnv producerEnv = new(
-                readOnlyDbProvider,
-                getFromApi.ReadOnlyTrieStore,
+                _nethermindApi.WorldStateManager!,
                 readOnlyBlockTree,
                 getFromApi.SpecProvider,
                 getFromApi.LogManager);
@@ -122,7 +120,7 @@ namespace Nethermind.Consensus.Clique
                 BlockchainProcessor.Options.NoReceipts);
 
             OneTimeChainProcessor chainProcessor = new(
-                readOnlyDbProvider,
+                producerEnv.StateProvider,
                 producerChainProcessor);
 
             ITxFilterPipeline txFilterPipeline =

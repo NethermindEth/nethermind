@@ -15,7 +15,7 @@ namespace Nethermind.Synchronization.Test.DbTuner;
 public class SyncDbTunerTests
 {
     private ITunableDb.TuneType _tuneType = ITunableDb.TuneType.HeavyWrite;
-    private ITunableDb.TuneType _blocksTuneType = ITunableDb.TuneType.AggressiveHeavyWrite;
+    private readonly ITunableDb.TuneType _blocksTuneType = ITunableDb.TuneType.AggressiveHeavyWrite;
     private SyncConfig _syncConfig = null!;
     private ISyncFeed<SnapSyncBatch> _snapSyncFeed = null!;
     private ISyncFeed<BodiesSyncBatch> _bodiesSyncFeed = null!;

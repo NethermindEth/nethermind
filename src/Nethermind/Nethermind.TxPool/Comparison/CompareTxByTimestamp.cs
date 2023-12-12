@@ -18,8 +18,8 @@ namespace Nethermind.TxPool.Comparison
         public int Compare(Transaction? newTx, Transaction? oldTx)
         {
             if (ReferenceEquals(newTx, oldTx)) return TxComparisonResult.NotDecided;
-            if (ReferenceEquals(null, oldTx)) return TxComparisonResult.KeepOld;
-            if (ReferenceEquals(null, newTx)) return TxComparisonResult.TakeNew;
+            if (oldTx is null) return TxComparisonResult.KeepOld;
+            if (newTx is null) return TxComparisonResult.TakeNew;
 
             return newTx.Timestamp.CompareTo(oldTx.Timestamp);
         }

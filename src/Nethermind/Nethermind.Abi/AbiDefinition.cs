@@ -2,9 +2,13 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
+using System.Text.Json.Serialization;
+
+using Nethermind.Blockchain.Contracts.Json;
 
 namespace Nethermind.Abi
 {
+    [JsonConverter(typeof(AbiDefinitionConverter))]
     public class AbiDefinition
     {
         private readonly List<AbiFunctionDescription> _constructors = new();

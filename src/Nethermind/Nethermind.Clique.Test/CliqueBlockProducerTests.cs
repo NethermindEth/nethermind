@@ -46,18 +46,18 @@ namespace Nethermind.Clique.Test
     {
         private class On
         {
-            private ILogManager _logManager = LimboLogs.Instance;
+            private readonly ILogManager _logManager = LimboLogs.Instance;
             //            private ILogManager _logManager = new OneLoggerLogManager(new ConsoleAsyncLogger(LogLevel.Debug));
-            private ILogger _logger;
-            private static ITimestamper _timestamper = Timestamper.Default;
-            private CliqueConfig _cliqueConfig;
-            private EthereumEcdsa _ethereumEcdsa = new(BlockchainIds.Goerli, LimboLogs.Instance);
-            private Dictionary<PrivateKey, ILogManager> _logManagers = new();
-            private Dictionary<PrivateKey, ISnapshotManager> _snapshotManager = new();
-            private Dictionary<PrivateKey, BlockTree> _blockTrees = new();
-            private Dictionary<PrivateKey, AutoResetEvent> _blockEvents = new();
-            private Dictionary<PrivateKey, CliqueBlockProducer> _producers = new();
-            private Dictionary<PrivateKey, TxPool.TxPool> _pools = new();
+            private readonly ILogger _logger;
+            private static readonly ITimestamper _timestamper = Timestamper.Default;
+            private readonly CliqueConfig _cliqueConfig;
+            private readonly EthereumEcdsa _ethereumEcdsa = new(BlockchainIds.Goerli, LimboLogs.Instance);
+            private readonly Dictionary<PrivateKey, ILogManager> _logManagers = new();
+            private readonly Dictionary<PrivateKey, ISnapshotManager> _snapshotManager = new();
+            private readonly Dictionary<PrivateKey, BlockTree> _blockTrees = new();
+            private readonly Dictionary<PrivateKey, AutoResetEvent> _blockEvents = new();
+            private readonly Dictionary<PrivateKey, CliqueBlockProducer> _producers = new();
+            private readonly Dictionary<PrivateKey, TxPool.TxPool> _pools = new();
 
             private On()
                 : this(15)
@@ -200,9 +200,9 @@ namespace Nethermind.Clique.Test
 
             public static On FastGoerli => new(1);
 
-            private Block _genesis3Validators;
+            private readonly Block _genesis3Validators;
 
-            private Block _genesis;
+            private readonly Block _genesis;
 
             private Block GetGenesis(int validatorsCount = 2)
             {
@@ -440,7 +440,7 @@ namespace Nethermind.Clique.Test
                 return this;
             }
 
-            private UInt256 _currentNonce = 0;
+            private readonly UInt256 _currentNonce = 0;
 
             public On AddPendingTransaction(PrivateKey nodeKey)
             {
@@ -555,7 +555,7 @@ namespace Nethermind.Clique.Test
             }
         }
 
-        private static int _timeout = 2000; // this has to cover block period of second + wiggle of up to 500ms * (signers - 1) + 100ms delay of the block readiness check
+        private static readonly int _timeout = 2000; // this has to cover block period of second + wiggle of up to 500ms * (signers - 1) + 100ms delay of the block readiness check
 
         [Test]
         public async Task Can_produce_block_with_transactions()

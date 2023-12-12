@@ -33,7 +33,6 @@ public class Engine : IDisposable
 
     private readonly IReleaseSpec _spec;
 
-    private readonly dynamic _createUntypedArray;
     private dynamic _bigInteger;
     private dynamic _createUint8Array;
 
@@ -89,7 +88,7 @@ public class Engine : IDisposable
         Func<object?, string> toHex = ToHex;
         Func<object, ITypedArray<byte>> toAddress = ToAddress;
         Func<object, bool> isPrecompiled = IsPrecompiled;
-        Func<object, int, int, ITypedArray<byte>> slice = Slice;
+        Func<object, long, long, ITypedArray<byte>> slice = Slice;
         Func<object, ulong, ITypedArray<byte>> toContract = ToContract;
         Func<object, string, object, ITypedArray<byte>> toContract2 = ToContract2;
 
@@ -100,7 +99,6 @@ public class Engine : IDisposable
         V8Engine.AddHostObject(nameof(slice), slice);
         V8Engine.AddHostObject(nameof(toContract), toContract);
         V8Engine.AddHostObject(nameof(toContract2), toContract2);
-        _createUntypedArray = V8Engine.Script.Array.from;
 
         if (!IsDebugging)
         {
@@ -134,19 +132,16 @@ public class Engine : IDisposable
     /// <summary>
     /// Returns a slice of input
     /// </summary>
-    private ITypedArray<byte> Slice(object input, int start, int end)
+    private ITypedArray<byte> Slice(object input, long start, long end)
     {
-        if (input == null)
-        {
-            throw new ArgumentNullException(nameof(input));
-        }
+        ArgumentNullException.ThrowIfNull(input);
 
         if (start < 0 || end < start || end > Array.MaxLength)
         {
             throw new ArgumentOutOfRangeException(nameof(start), $"tracer accessed out of bound memory: offset {start}, end {end}");
         }
 
-        return input.ToBytes().Slice(start, end - start).ToTypedScriptArray();
+        return input.ToBytes().Slice((int)start, (int)(end - start)).ToTypedScriptArray();
     }
 
     /// <summary>
@@ -172,11 +167,6 @@ public class Engine : IDisposable
     public ITypedArray<byte> CreateUint8Array(byte[] buffer) => _createUint8Array(buffer);
 
     /// <summary>
-    /// Creates a JavaScript V8Engine untyped array with number values
-    /// </summary>
-    public IList CreateUntypedArray(byte[] buffer) => _createUntypedArray(buffer);
-
-    /// <summary>
     /// Creates a JavaScript BigInteger object
     /// </summary>
     public IJavaScriptObject CreateBigInteger(BigInteger value) => _bigInteger(value);
@@ -189,11 +179,11 @@ public class Engine : IDisposable
         static V8Script LoadJavaScriptCode(string tracer)
         {
             tracer = tracer.Trim();
-            if (tracer.StartsWith("_"))
+            if (tracer.StartsWith('_'))
             {
                 throw new ArgumentException($"Cannot access internal tracer '{tracer}'");
             }
-            else if (tracer.StartsWith("{") && tracer.EndsWith("}"))
+            else if (tracer.StartsWith('{') && tracer.EndsWith('}'))
             {
                 int hashCode = tracer.GetHashCode();
                 if (_runtimeScripts.TryGet(hashCode, out V8Script script))
@@ -227,7 +217,7 @@ public class Engine : IDisposable
         static string LoadJavaScriptDebugCode(string tracer)
         {
             tracer = tracer.Trim();
-            if (tracer.StartsWith("{") && tracer.EndsWith("}"))
+            if (tracer.StartsWith('{') && tracer.EndsWith('}'))
             {
                 return PackTracerCode(tracer);
             }

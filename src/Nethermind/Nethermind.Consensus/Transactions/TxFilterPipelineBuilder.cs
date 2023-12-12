@@ -17,7 +17,7 @@ namespace Nethermind.Consensus.Transactions
             ISpecProvider? specProvider,
             IBlocksConfig blocksConfig)
         {
-            if (specProvider is null) throw new ArgumentNullException(nameof(specProvider));
+            ArgumentNullException.ThrowIfNull(specProvider);
 
             return new TxFilterPipelineBuilder(logManager)
                 .WithMinGasPriceFilter(blocksConfig, specProvider)
