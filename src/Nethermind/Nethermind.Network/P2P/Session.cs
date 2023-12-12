@@ -405,7 +405,7 @@ namespace Nethermind.Network.P2P
 
             if (_logger.IsDebug) _logger.Debug($"{this} initiating disconnect because {disconnectReason}, details: {details}");
             //Trigger disconnect on each protocol handler (if p2p is initialized it will send disconnect message to the peer)
-            if (_protocols.Any())
+            if (!_protocols.IsEmpty)
             {
                 foreach (IProtocolHandler protocolHandler in _protocols.Values)
                 {

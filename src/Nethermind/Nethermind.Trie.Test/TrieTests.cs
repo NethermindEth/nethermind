@@ -910,7 +910,7 @@ namespace Nethermind.Trie.Test
 
             rootQueue.Clear();
             Stack<Hash256> stackCopy = new();
-            while (rootStack.Any())
+            while (rootStack.Count != 0)
             {
                 stackCopy.Push(rootStack.Pop());
             }

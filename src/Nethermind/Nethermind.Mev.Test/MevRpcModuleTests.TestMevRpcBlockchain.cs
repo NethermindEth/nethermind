@@ -146,7 +146,7 @@ namespace Nethermind.Mev.Test
                     return new MevBlockProducer.MevBlockProducerInfo(producer, manualTrigger, new BeneficiaryTracer());
                 }
 
-                int megabundleProducerCount = _relayAddresses.Any() ? 1 : 0;
+                int megabundleProducerCount = _relayAddresses.Length != 0 ? 1 : 0;
                 List<MevBlockProducer.MevBlockProducerInfo> blockProducers =
                     new(_maxMergedBundles + megabundleProducerCount + 1);
 
