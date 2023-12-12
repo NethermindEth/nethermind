@@ -560,7 +560,7 @@ namespace Nethermind.Blockchain
             {
                 static BlockHeader[] FindHeadersReversedFast(BlockTree tree, BlockHeader startHeader, int numberOfBlocks, bool reverse = false)
                 {
-                    if (startHeader is null) throw new ArgumentNullException(nameof(startHeader));
+                    ArgumentNullException.ThrowIfNull(startHeader);
                     if (numberOfBlocks == 1)
                     {
                         return new[] { startHeader };

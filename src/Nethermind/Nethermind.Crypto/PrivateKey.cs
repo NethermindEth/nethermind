@@ -27,10 +27,7 @@ namespace Nethermind.Crypto
 
         public PrivateKey(byte[] keyBytes)
         {
-            if (keyBytes is null)
-            {
-                throw new ArgumentNullException(nameof(keyBytes));
-            }
+            ArgumentNullException.ThrowIfNull(keyBytes);
 
             if (!SecP256k1.VerifyPrivateKey(keyBytes))
             {
