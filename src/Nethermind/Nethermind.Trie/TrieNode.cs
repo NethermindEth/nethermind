@@ -528,7 +528,7 @@ namespace Nethermind.Trie
             object childOrRef = ResolveChild(tree, childIndex);
 
             TrieNode? child;
-            if (ReferenceEquals(childOrRef, _nullNode) || ReferenceEquals(childOrRef, null))
+            if (ReferenceEquals(childOrRef, _nullNode) || childOrRef is null)
             {
                 child = null;
             }

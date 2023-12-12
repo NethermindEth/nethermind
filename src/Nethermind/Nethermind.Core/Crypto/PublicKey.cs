@@ -138,12 +138,12 @@ namespace Nethermind.Core.Crypto
 
         public static bool operator ==(PublicKey? a, PublicKey? b)
         {
-            if (ReferenceEquals(a, null))
+            if (a is null)
             {
-                return ReferenceEquals(b, null);
+                return b is null;
             }
 
-            if (ReferenceEquals(b, null))
+            if (b is null)
             {
                 return false;
             }
