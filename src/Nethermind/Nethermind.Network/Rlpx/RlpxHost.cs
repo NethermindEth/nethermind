@@ -43,6 +43,7 @@ namespace Nethermind.Network.Rlpx
         private IEventExecutorGroup _group;
         private TimeSpan _sendLatency;
         private readonly TimeSpan _connectTimeout;
+        private readonly (int ByteLimit, TimeSpan Delay) _throttlingConfig;
 
         public RlpxHost(IMessageSerializationService serializationService,
             PublicKey localNodeId,
@@ -54,8 +55,8 @@ namespace Nethermind.Network.Rlpx
             ISessionMonitor sessionMonitor,
             IDisconnectsAnalyzer disconnectsAnalyzer,
             ILogManager logManager,
-            TimeSpan sendLatency
-        )
+            TimeSpan sendLatency,
+            (int ByteLimit, TimeSpan Delay) throttlingConfig)
         {
             // .NET Core definitely got the easy logging setup right :D
             // ResourceLeakDetector.Level = ResourceLeakDetector.DetectionLevel.Paranoid;
@@ -90,6 +91,7 @@ namespace Nethermind.Network.Rlpx
             LocalPort = localPort;
             LocalIp = localIp;
             _sendLatency = sendLatency;
+            _throttlingConfig = throttlingConfig;
             _connectTimeout = TimeSpan.FromMilliseconds(connectTimeoutMs);
         }
 
@@ -218,7 +220,7 @@ namespace Nethermind.Network.Rlpx
             SessionCreated?.Invoke(this, new SessionEventArgs(session));
 
             HandshakeRole role = session.Direction == ConnectionDirection.In ? HandshakeRole.Recipient : HandshakeRole.Initiator;
-            NettyHandshakeHandler handshakeHandler = new(_serializationService, _handshakeService, session, role, _logManager, _group, _sendLatency);
+            NettyHandshakeHandler handshakeHandler = new(_serializationService, _handshakeService, session, role, _logManager, _group, _sendLatency, _throttlingConfig);
 
             IChannelPipeline pipeline = channel.Pipeline;
             pipeline.AddLast(new LoggingHandler(session.Direction.ToString().ToUpper(), LogLevel.TRACE));

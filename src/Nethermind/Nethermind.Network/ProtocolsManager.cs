@@ -60,6 +60,7 @@ namespace Nethermind.Network
         private readonly IDictionary<string, Func<ISession, int, IProtocolHandler>> _protocolFactories;
         private readonly HashSet<Capability> _capabilities = new();
         private readonly Regex? _clientIdPattern;
+        private readonly (int byteLimit, TimeSpan throttle)? _throttleOptions;
         public event EventHandler<ProtocolInitializedEventArgs>? P2PProtocolInitialized;
 
         public ProtocolsManager(
@@ -77,7 +78,8 @@ namespace Nethermind.Network
             IGossipPolicy gossipPolicy,
             INetworkConfig networkConfig,
             ILogManager logManager,
-            ITxGossipPolicy? transactionsGossipPolicy = null)
+            ITxGossipPolicy? transactionsGossipPolicy = null,
+            (int byteLimit, TimeSpan throttle)? throttleOptions = null)
         {
             _syncPool = syncPeerPool ?? throw new ArgumentNullException(nameof(syncPeerPool));
             _syncServer = syncServer ?? throw new ArgumentNullException(nameof(syncServer));
@@ -93,6 +95,7 @@ namespace Nethermind.Network
             _gossipPolicy = gossipPolicy ?? throw new ArgumentNullException(nameof(gossipPolicy));
             _txGossipPolicy = transactionsGossipPolicy ?? ShouldGossip.Instance;
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
+            _throttleOptions = throttleOptions;
             _networkConfig = networkConfig ?? throw new ArgumentNullException(nameof(networkConfig));
             _logger = _logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
 
@@ -201,7 +204,7 @@ namespace Nethermind.Network
                     {
                         66 => new Eth66ProtocolHandler(session, _serializer, _stats, _syncServer, _txPool, _pooledTxsRequestor, _gossipPolicy, _forkInfo, _logManager, _txGossipPolicy),
                         67 => new Eth67ProtocolHandler(session, _serializer, _stats, _syncServer, _txPool, _pooledTxsRequestor, _gossipPolicy, _forkInfo, _logManager, _txGossipPolicy),
-                        68 => new Eth68ProtocolHandler(session, _serializer, _stats, _syncServer, _txPool, _pooledTxsRequestor, _gossipPolicy, _forkInfo, _logManager, _txGossipPolicy),
+                        68 => new Eth68ProtocolHandler(session, _serializer, _stats, _syncServer, _txPool, _pooledTxsRequestor, _gossipPolicy, _forkInfo, _logManager, _txGossipPolicy, _throttleOptions),
                         _ => throw new NotSupportedException($"Eth protocol version {version} is not supported.")
                     };
 

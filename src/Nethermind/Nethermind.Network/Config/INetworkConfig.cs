@@ -100,4 +100,10 @@ public interface INetworkConfig : IConfig
 
     [ConfigItem(DefaultValue = "false", HiddenFromDocs = true, Description = "[TECHNICAL] Disable feeding ENR DNS records to discv4 table")]
     bool DisableDiscV4DnsFeeder { get; set; }
+
+    [ConfigItem(DefaultValue = "0", HiddenFromDocs = true, Description = $"[TECHNICAL] Limit the number of bytes sent per second as part of P2P messages. Default is 0 (unlimited)")]
+    int MaxSentBytesPerSecond { get; set; }
+
+    [ConfigItem(DefaultValue = "0", HiddenFromDocs = true, Description = $"[TECHNICAL] Limit the number of bytes received per second as part of protocol packets. Default is 0 (unlimited)")]
+    int MaxReceivedBytesPerSecond { get; set; }
 }
