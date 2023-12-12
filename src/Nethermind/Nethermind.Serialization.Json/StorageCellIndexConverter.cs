@@ -16,7 +16,7 @@ namespace Nethermind.Serialization.Json
 
     public class StorageCellIndexConverter : JsonConverter<IEnumerable<UInt256>?>
     {
-        private UInt256Converter _converter = new();
+        private readonly UInt256Converter _converter = new();
 
         public override IEnumerable<UInt256>? Read(
             ref Utf8JsonReader reader,

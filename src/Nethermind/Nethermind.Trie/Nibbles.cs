@@ -10,7 +10,7 @@ namespace Nethermind.Trie
     public struct Nibble
     {
         // ReSharper disable once FieldCanBeMadeReadOnly.Local
-        private byte _nibble;
+        private readonly byte _nibble;
 
         public Nibble(char hexChar)
         {

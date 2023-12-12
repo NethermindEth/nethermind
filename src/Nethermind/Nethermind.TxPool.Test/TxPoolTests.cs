@@ -44,7 +44,7 @@ namespace Nethermind.TxPool.Test
         private IWorldState _stateProvider;
         private IBlockTree _blockTree;
 
-        private int _txGasLimit = 1_000_000;
+        private readonly int _txGasLimit = 1_000_000;
 
         [SetUp]
         public void Setup()

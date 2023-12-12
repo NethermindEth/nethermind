@@ -129,9 +129,9 @@ public class VirtualMachine : IVirtualMachine
 internal sealed class VirtualMachine<TLogger> : IVirtualMachine
     where TLogger : struct, IIsTracing
 {
-    private UInt256 P255Int = (UInt256)System.Numerics.BigInteger.Pow(2, 255);
+    private readonly UInt256 P255Int = (UInt256)System.Numerics.BigInteger.Pow(2, 255);
     private UInt256 P255 => P255Int;
-    private UInt256 BigInt256 = 256;
+    private readonly UInt256 BigInt256 = 256;
     public UInt256 BigInt32 = 32;
 
     internal byte[] BytesZero = { 0 };

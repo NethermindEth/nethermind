@@ -1215,7 +1215,7 @@ namespace Nethermind.Blockchain.Test
         }
 
 
-        private static object[] SourceOfBSearchTestCases =
+        private static readonly object[] SourceOfBSearchTestCases =
         {
             new object[] {1L, 0L},
             new object[] {1L, 1L},

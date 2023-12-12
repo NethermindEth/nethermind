@@ -111,9 +111,9 @@ namespace Nethermind.Overseer.Test.Framework
 
         private readonly ProcessBuilder _processBuilder;
 
-        private static string _runnerDir;
-        private static string _dbsDir;
-        private static string _configsDir;
+        private static readonly string _runnerDir;
+        private static readonly string _dbsDir;
+        private static readonly string _configsDir;
 
         static TestBuilder()
         {

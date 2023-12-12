@@ -28,8 +28,8 @@ namespace Nethermind.JsonRpc.Test.Modules;
 [TestFixture]
 public class DebugModuleTests
 {
-    private IJsonRpcConfig jsonRpcConfig = new JsonRpcConfig();
-    private IDebugBridge debugBridge = Substitute.For<IDebugBridge>();
+    private readonly IJsonRpcConfig jsonRpcConfig = new JsonRpcConfig();
+    private readonly IDebugBridge debugBridge = Substitute.For<IDebugBridge>();
 
     [Test]
     public async Task Get_from_db()

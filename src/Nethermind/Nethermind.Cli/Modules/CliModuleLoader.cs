@@ -217,7 +217,7 @@ namespace Nethermind.Cli.Modules
             }
         }
 
-        private Dictionary<string, ObjectInstance> _objects = new Dictionary<string, ObjectInstance>();
+        private readonly Dictionary<string, ObjectInstance> _objects = new Dictionary<string, ObjectInstance>();
 
         private static void AddMethod(ObjectInstance instance, string name, DelegateWrapper delegateWrapper)
         {

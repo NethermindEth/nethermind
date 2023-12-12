@@ -35,8 +35,8 @@ namespace Nethermind.Runner.Ethereum
         private readonly IWebSocketsManager _webSocketsManager;
         private readonly IJsonRpcConfig _jsonRpcConfig;
         private IWebHost? _webHost;
-        private IInitConfig _initConfig;
-        private INethermindApi _api;
+        private readonly IInitConfig _initConfig;
+        private readonly INethermindApi _api;
 
         public JsonRpcRunner(
             IJsonRpcProcessor jsonRpcProcessor,

@@ -14,7 +14,7 @@ namespace Nethermind.JsonRpc.Modules
     public class NullModuleProvider : IRpcModuleProvider
     {
         public static NullModuleProvider Instance = new();
-        private static Task<IRpcModule> Null = Task.FromResult(default(IRpcModule));
+        private static readonly Task<IRpcModule> Null = Task.FromResult(default(IRpcModule));
 
         private NullModuleProvider()
         {

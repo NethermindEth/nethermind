@@ -80,7 +80,7 @@ namespace Nethermind.AccountAbstraction.Test
 
             public IAccountAbstractionRpcModule AccountAbstractionRpcModule { get; set; } = Substitute.For<IAccountAbstractionRpcModule>();
             public ManualGasLimitCalculator GasLimitCalculator = new() { GasLimit = 10_000_000 };
-            private AccountAbstractionConfig _accountAbstractionConfig = new AccountAbstractionConfig()
+            private readonly AccountAbstractionConfig _accountAbstractionConfig = new AccountAbstractionConfig()
             {
                 Enabled = true,
                 EntryPointContractAddresses = "0xb0894727fe4ff102e1f1c8a16f38afc7b859f215,0x96cc609c8f5458fb8a7da4d94b678e38ebf3d04e",

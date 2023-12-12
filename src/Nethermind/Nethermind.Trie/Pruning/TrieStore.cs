@@ -131,7 +131,7 @@ namespace Nethermind.Trie.Pruning
 
         private bool _lastPersistedReachedReorgBoundary;
         private Task _pruningTask = Task.CompletedTask;
-        private CancellationTokenSource _pruningTaskCancellationTokenSource = new();
+        private readonly CancellationTokenSource _pruningTaskCancellationTokenSource = new();
 
         public TrieStore(IKeyValueStoreWithBatching? keyValueStore, ILogManager? logManager)
             : this(keyValueStore, No.Pruning, Pruning.Persist.EveryBlock, logManager)

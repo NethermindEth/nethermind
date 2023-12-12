@@ -28,7 +28,7 @@ public ref struct Merkleizer
         _filled &= ~((ulong)1 << k);
     }
 
-    private Span<UInt256> _chunks;
+    private readonly Span<UInt256> _chunks;
     private ulong _filled;
 
     public UInt256 PartChunk

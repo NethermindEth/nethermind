@@ -9,9 +9,9 @@ namespace Nethermind.Merge.Plugin.InvalidChainTracker;
 
 public class InvalidBlockInterceptor : IBlockValidator
 {
-    private IBlockValidator _baseValidator;
-    private IInvalidChainTracker _invalidChainTracker;
-    private ILogger _logger;
+    private readonly IBlockValidator _baseValidator;
+    private readonly IInvalidChainTracker _invalidChainTracker;
+    private readonly ILogger _logger;
 
     public InvalidBlockInterceptor(
         IBlockValidator headerValidator,

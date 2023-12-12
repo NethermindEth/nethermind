@@ -33,7 +33,7 @@ namespace Nethermind.Blockchain
     {
         // there is not much logic in the addressing here
         public static readonly byte[] LowestInsertedBodyNumberDbEntryAddress = ((long)0).ToBigEndianByteArrayWithoutLeadingZeros();
-        private static byte[] StateHeadHashDbEntryAddress = new byte[16];
+        private static readonly byte[] StateHeadHashDbEntryAddress = new byte[16];
         internal static Hash256 DeletePointerAddressInDb = new(new BitArray(32 * 8, true).ToBytes());
         internal static Hash256 HeadAddressInDb = Keccak.Zero;
 

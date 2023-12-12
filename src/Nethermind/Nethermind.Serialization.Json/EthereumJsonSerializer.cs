@@ -17,7 +17,7 @@ namespace Nethermind.Serialization.Json
 {
     public class EthereumJsonSerializer : IJsonSerializer
     {
-        private JsonSerializerOptions _jsonOptions;
+        private readonly JsonSerializerOptions _jsonOptions;
 
         public EthereumJsonSerializer(int? maxDepth = null)
         {
@@ -93,7 +93,7 @@ namespace Nethermind.Serialization.Json
             return options;
         }
 
-        private static List<JsonConverter> _additionalConverters = new();
+        private static readonly List<JsonConverter> _additionalConverters = new();
         public static void AddConverter(JsonConverter converter)
         {
             _additionalConverters.Add(converter);
@@ -106,8 +106,8 @@ namespace Nethermind.Serialization.Json
 
         public static JsonSerializerOptions JsonOptionsIndented { get; private set; } = CreateOptions(indented: true);
 
-        private static StreamPipeWriterOptions optionsLeaveOpen = new(pool: MemoryPool<byte>.Shared, minimumBufferSize: 4096, leaveOpen: true);
-        private static StreamPipeWriterOptions options = new(pool: MemoryPool<byte>.Shared, minimumBufferSize: 4096, leaveOpen: false);
+        private static readonly StreamPipeWriterOptions optionsLeaveOpen = new(pool: MemoryPool<byte>.Shared, minimumBufferSize: 4096, leaveOpen: true);
+        private static readonly StreamPipeWriterOptions options = new(pool: MemoryPool<byte>.Shared, minimumBufferSize: 4096, leaveOpen: false);
 
         private static CountingStreamPipeWriter GetPipeWriter(Stream stream, bool leaveOpen)
         {
