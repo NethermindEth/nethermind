@@ -100,7 +100,7 @@ namespace Nethermind.Core
 
         public bool Equals(Bloom? other)
         {
-            if (ReferenceEquals(null, other)) return false;
+            if (other is null) return false;
             if (ReferenceEquals(this, other)) return true;
 
             return Nethermind.Core.Extensions.Bytes.AreEqual(Bytes, other.Bytes);
@@ -108,7 +108,7 @@ namespace Nethermind.Core
 
         public override bool Equals(object? obj)
         {
-            if (ReferenceEquals(null, obj)) return false;
+            if (obj is null) return false;
             if (ReferenceEquals(this, obj)) return true;
             if (obj.GetType() != GetType()) return false;
             return Equals((Bloom)obj);
@@ -284,7 +284,7 @@ namespace Nethermind.Core
 
         public bool Equals(Bloom? other)
         {
-            if (ReferenceEquals(null, other)) return false;
+            if (other is null) return false;
             return Nethermind.Core.Extensions.Bytes.AreEqual(Bytes, other.Bytes);
         }
 
@@ -296,7 +296,7 @@ namespace Nethermind.Core
 
         public override bool Equals(object? obj)
         {
-            if (ReferenceEquals(null, obj)) return false;
+            if (obj is null) return false;
             if (obj.GetType() != typeof(BloomStructRef)) return false;
             return Equals((Bloom)obj);
         }
