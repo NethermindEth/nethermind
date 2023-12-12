@@ -27,7 +27,7 @@ public abstract class EvmMemoryTestsBase
         UInt256 dest = UInt256.Zero;
         memory.SaveWord(in dest, new byte[EvmPooledMemory.WordSize]);
         var trace = memory.GetTrace();
-        Assert.That(trace.Count(), Is.EqualTo(1));
+        Assert.That(trace.ToHexWordList().Count, Is.EqualTo(1));
     }
 
     [Test]
@@ -37,7 +37,7 @@ public abstract class EvmMemoryTestsBase
         UInt256 dest = EvmPooledMemory.WordSize;
         memory.SaveWord(in dest, new byte[EvmPooledMemory.WordSize]);
         var trace = memory.GetTrace();
-        Assert.That(trace.Count(), Is.EqualTo(2));
+        Assert.That(trace.ToHexWordList().Count, Is.EqualTo(2));
     }
 
     [Test]
@@ -48,7 +48,7 @@ public abstract class EvmMemoryTestsBase
         memory.SaveWord(in dest, new byte[EvmPooledMemory.WordSize]);
         memory.SaveWord(in dest, new byte[EvmPooledMemory.WordSize]);
         var trace = memory.GetTrace();
-        Assert.That(trace.Count(), Is.EqualTo(2));
+        Assert.That(trace.ToHexWordList().Count, Is.EqualTo(2));
     }
 
     [Test]
@@ -58,7 +58,7 @@ public abstract class EvmMemoryTestsBase
         UInt256 dest = EvmPooledMemory.WordSize / 2;
         memory.SaveByte(in dest, 1);
         var trace = memory.GetTrace();
-        Assert.That(trace.Count(), Is.EqualTo(1));
+        Assert.That(trace.ToHexWordList().Count, Is.EqualTo(1));
     }
 
     [Test]
@@ -66,9 +66,9 @@ public abstract class EvmMemoryTestsBase
     {
         IEvmMemory memory = CreateEvmMemory();
         UInt256 dest = UInt256.One;
-        long cost1 = memory.CalculateMemoryCost(in dest, UInt256.One);
-        long cost2 = memory.CalculateMemoryCost(in dest, UInt256.One);
-        Assert.That(cost2, Is.EqualTo(0L));
+        memory.CalculateMemoryCost(in dest, UInt256.One);
+        long cost = memory.CalculateMemoryCost(in dest, UInt256.One);
+        Assert.That(cost, Is.EqualTo(0L));
     }
 
     [Test]

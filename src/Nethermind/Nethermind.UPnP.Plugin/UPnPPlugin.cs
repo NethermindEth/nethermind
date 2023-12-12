@@ -18,7 +18,7 @@ public class UPnPPlugin : INethermindPlugin
     // Routers tend to clean mapping, so we need to periodically
     private readonly TimeSpan ExpirationRate = TimeSpan.FromMinutes(10);
     private PeriodicTimer? _timer = null;
-    private CancellationTokenSource _cancellationTokenSource = new();
+    private readonly CancellationTokenSource _cancellationTokenSource = new();
     private INetworkConfig _networkConfig = new NetworkConfig();
     private ILogger _logger = NullLogger.Instance;
 

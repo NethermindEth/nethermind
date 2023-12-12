@@ -6,8 +6,8 @@ using Nethermind.Api;
 using Nethermind.Init.Steps;
 using Nethermind.Logging;
 using System.IO.Compression;
+using System.Net;
 using System.Security.Cryptography;
-using Nethermind.Core;
 using Nethermind.Core.Extensions;
 
 namespace Nethermind.Init.Snapshot;
@@ -54,25 +54,29 @@ public class InitDatabaseSnapshot : InitDatabase
         ISnapshotConfig snapshotConfig = _api.Config<ISnapshotConfig>();
         string snapshotUrl = snapshotConfig.DownloadUrl ??
                              throw new InvalidOperationException("Snapshot download URL is not configured");
-        byte[]? snapshotChecksum =
-            snapshotConfig.Checksum is null ? null : Bytes.FromHexString(snapshotConfig.Checksum);
 
-        // TODO: use a deterministic temp file name here to allow resuming the download
-        string snapshotFileName = Path.GetTempFileName();
+        string snapshotFileName = Path.Combine(snapshotConfig.SnapshotDirectory, snapshotConfig.SnapshotFileName);
+        Directory.CreateDirectory(snapshotConfig.SnapshotDirectory);
 
-        await DownloadSnapshotTo(snapshotUrl, snapshotFileName, cancellationToken);
-        // schedule the snapshot file deletion, but only if the download completed
-        // otherwise leave it to resume the download later
-        using Reactive.AnonymousDisposable deleteSnapshot = new(() =>
+        while (true)
         {
-            if (_logger.IsInfo)
-                _logger.Info($"Deleting snapshot file {snapshotFileName}.");
-            File.Delete(snapshotFileName);
-        });
+            try
+            {
+                await DownloadSnapshotTo(snapshotUrl, snapshotFileName, cancellationToken);
+                break;
+            }
+            catch (IOException e)
+            {
+                if (_logger.IsError)
+                    _logger.Error($"Snapshot download failed. Retrying in 5 seconds. Error: {e}");
+                await Task.Delay(TimeSpan.FromSeconds(5), cancellationToken);
+            }
+            cancellationToken.ThrowIfCancellationRequested();
+        }
 
-        if (snapshotChecksum is not null)
+        if (snapshotConfig.Checksum is not null)
         {
-            bool isChecksumValid = await VerifyChecksum(snapshotFileName, snapshotChecksum, cancellationToken);
+            bool isChecksumValid = await VerifyChecksum(snapshotFileName, snapshotConfig.Checksum, cancellationToken);
             if (!isChecksumValid)
             {
                 if (_logger.IsError)
@@ -90,19 +94,32 @@ public class InitDatabaseSnapshot : InitDatabase
         await ExtractSnapshotTo(snapshotFileName, dbPath, cancellationToken);
 
         if (_logger.IsInfo)
+        {
             _logger.Info("Database successfully initialized from snapshot.");
+            _logger.Info($"Deleting snapshot file {snapshotFileName}.");
+        }
+
+        File.Delete(snapshotFileName);
     }
 
     private async Task DownloadSnapshotTo(
         string snapshotUrl, string snapshotFileName, CancellationToken cancellationToken)
     {
+        FileInfo snapshotFileInfo = new(snapshotFileName);
         if (_logger.IsInfo)
-            _logger.Info($"Downloading snapshot from {snapshotUrl}");
+            _logger.Info($"Downloading snapshot from {snapshotUrl} to file {snapshotFileInfo.FullName}");
+
+        if (snapshotFileInfo.Exists)
+        {
+            if (_logger.IsWarn)
+                _logger.Warn($"The snapshot file already exists. Resuming download. To interrupt press Ctrl^C");
+            // Wait few seconds if user want's to stop download
+            await Task.Delay(TimeSpan.FromSeconds(5), cancellationToken);
+        }
 
         using HttpClient httpClient = new();
 
         HttpRequestMessage request = new(HttpMethod.Get, snapshotUrl);
-        FileInfo snapshotFileInfo = new(snapshotFileName);
         if (snapshotFileInfo.Exists)
             request.Headers.Range = new RangeHeaderValue(snapshotFileInfo.Length, null);
 
@@ -110,12 +127,27 @@ public class InitDatabaseSnapshot : InitDatabase
             (await httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken))
             .EnsureSuccessStatusCode();
 
+        FileMode snapshotFileMode = FileMode.Create;
+        if (snapshotFileInfo.Exists && response.StatusCode == HttpStatusCode.PartialContent)
+        {
+            snapshotFileMode = FileMode.Append;
+        }
+        else if (response.StatusCode == HttpStatusCode.OK)
+        {
+            if (snapshotFileInfo.Exists && _logger.IsWarn)
+                _logger.Warn("Download couldn't be resumed. Starting from the beginning.");
+        }
+        else
+        {
+            throw new IOException($"Unexpected status code: {response.StatusCode}");
+        }
+
         await using Stream contentStream = await response.Content.ReadAsStreamAsync(cancellationToken);
         await using FileStream snapshotFileStream = new(
-            snapshotFileName, FileMode.Append, FileAccess.Write, FileShare.None, BufferSize, true);
+            snapshotFileName, snapshotFileMode, FileAccess.Write, FileShare.None, BufferSize, true);
 
-        long totalBytesRead = snapshotFileInfo.Length;
-        long? totalBytesToRead = response.Content.Headers.ContentLength;
+        long totalBytesRead = snapshotFileStream.Length;
+        long? totalBytesToRead = totalBytesRead + response.Content.Headers.ContentLength;
 
         using ProgressTracker progressTracker = new(
             _api.LogManager, _api.TimerFactory, TimeSpan.FromSeconds(5), totalBytesRead, totalBytesToRead);
@@ -136,21 +168,22 @@ public class InitDatabaseSnapshot : InitDatabase
     }
 
     private async Task<bool> VerifyChecksum(
-        string snapshotFilePath, byte[] snapshotChecksum, CancellationToken cancellationToken)
+        string snapshotFilePath, string snapshotChecksum, CancellationToken cancellationToken)
     {
+        byte[] checksumBytes = Bytes.FromHexString(snapshotChecksum);
         if (_logger.IsInfo)
             _logger.Info($"Verifying snapshot checksum {snapshotChecksum}.");
 
         await using FileStream fileStream = File.OpenRead(snapshotFilePath);
         byte[] hash = await SHA256.HashDataAsync(fileStream, cancellationToken);
-        return Bytes.AreEqual(hash, snapshotChecksum);
+        return Bytes.AreEqual(hash, checksumBytes);
     }
 
     private Task ExtractSnapshotTo(string snapshotPath, string dbPath, CancellationToken cancellationToken) =>
         Task.Run(() =>
         {
             if (_logger.IsInfo)
-                _logger.Info($"Extracting snapshot to {dbPath}.");
+                _logger.Info($"Extracting snapshot to {dbPath}. Do not interrupt!");
 
             ZipFile.ExtractToDirectory(snapshotPath, dbPath);
         }, cancellationToken);

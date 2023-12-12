@@ -72,7 +72,7 @@ public class ColumnsDb<T> : DbOnTheRocks, IColumnsDb<T> where T : struct, Enum
     private class RocksColumnsWriteBatch : IColumnsWriteBatch<T>
     {
         internal RocksDbWriteBatch _writeBatch;
-        private ColumnsDb<T> _columnsDb;
+        private readonly ColumnsDb<T> _columnsDb;
 
         public RocksColumnsWriteBatch(ColumnsDb<T> columnsDb)
         {

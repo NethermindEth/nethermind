@@ -8,7 +8,7 @@ namespace Nethermind.Db
 {
     public class InMemoryColumnWriteBatch<TKey> : IColumnsWriteBatch<TKey>
     {
-        private IList<IWriteBatch> _underlyingBatch = new List<IWriteBatch>();
+        private readonly IList<IWriteBatch> _underlyingBatch = new List<IWriteBatch>();
         private readonly IColumnsDb<TKey> _columnsDb;
 
         public InMemoryColumnWriteBatch(IColumnsDb<TKey> columnsDb)

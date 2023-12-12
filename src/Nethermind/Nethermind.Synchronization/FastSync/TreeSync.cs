@@ -43,7 +43,7 @@ namespace Nethermind.Synchronization.FastSync
         private long _currentSyncStartSecondsInSync;
 
         private DateTime _lastResetRoot = DateTime.UtcNow - TimeSpan.FromHours(1);
-        private TimeSpan _minTimeBetweenReset = TimeSpan.FromMinutes(2);
+        private readonly TimeSpan _minTimeBetweenReset = TimeSpan.FromMinutes(2);
 
         private readonly ReaderWriterLockSlim _stateDbLock = new();
         private readonly ReaderWriterLockSlim _codeDbLock = new();
@@ -66,14 +66,14 @@ namespace Nethermind.Synchronization.FastSync
         private readonly ReaderWriterLockSlim _syncStateLock = new();
         private readonly ConcurrentDictionary<StateSyncBatch, object?> _pendingRequests = new();
         private Dictionary<Hash256, HashSet<DependentItem>> _dependencies = new();
-        private LruKeyCache<Hash256> _alreadySavedNode = new(AlreadySavedCapacity, "saved nodes");
-        private LruKeyCache<Hash256> _alreadySavedCode = new(AlreadySavedCapacity, "saved nodes");
+        private readonly LruKeyCache<Hash256> _alreadySavedNode = new(AlreadySavedCapacity, "saved nodes");
+        private readonly LruKeyCache<Hash256> _alreadySavedCode = new(AlreadySavedCapacity, "saved nodes");
         private readonly HashSet<Hash256> _codesSameAsNodes = new();
 
         private BranchProgress _branchProgress;
         private int _hintsToResetRoot;
         private long _blockNumber;
-        private SyncMode _syncMode;
+        private readonly SyncMode _syncMode;
 
         public TreeSync(SyncMode syncMode, IDb codeDb, IDb stateDb, IBlockTree blockTree, ILogManager logManager)
         {

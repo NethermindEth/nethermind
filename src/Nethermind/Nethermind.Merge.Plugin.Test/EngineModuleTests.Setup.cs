@@ -188,9 +188,8 @@ public partial class EngineModuleTests
                 targetAdjustedGasLimitCalculator);
 
             BlockProducerEnvFactory blockProducerEnvFactory = new(
-                DbProvider,
+                WorldStateManager!,
                 BlockTree,
-                ReadOnlyTrieStore,
                 SpecProvider,
                 BlockValidator,
                 NoBlockRewards.Instance,

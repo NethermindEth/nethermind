@@ -34,6 +34,41 @@ public class ThrowHelper
     [StackTraceHidden]
     internal static void ThrowNotSupportedException()
     {
-        throw new NotImplementedException();
+        throw new NotSupportedException();
+    }
+
+    [DoesNotReturn]
+    [StackTraceHidden]
+    public static void ThrowInvalidOperationException_NoWritingAllowed()
+    {
+        throw new InvalidOperationException("No Writing Allowed");
+    }
+
+    [DoesNotReturn]
+    [StackTraceHidden]
+    public static void ThrowArgumentOutOfRangeException_SizeHint()
+    {
+        throw new ArgumentOutOfRangeException("sizeHint");
+    }
+
+    [DoesNotReturn]
+    [StackTraceHidden]
+    public static void ThrowArgumentNullException_Options()
+    {
+        throw new ArgumentNullException("options");
+    }
+
+    [DoesNotReturn]
+    [StackTraceHidden]
+    public static void ThrowArgumentNullException_WritingStream()
+    {
+        throw new ArgumentNullException("writingStream");
+    }
+
+    [DoesNotReturn]
+    [StackTraceHidden]
+    public static void ThrowArgumentOutOfRangeException_Bytes()
+    {
+        throw new ArgumentOutOfRangeException("bytes");
     }
 }

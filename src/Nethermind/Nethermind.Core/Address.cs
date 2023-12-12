@@ -6,12 +6,16 @@ using System.ComponentModel;
 using System.Globalization;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using System.Text.Json.Serialization;
+
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
+using Nethermind.Serialization.Json;
 
 namespace Nethermind.Core
 {
+    [JsonConverter(typeof(AddressConverter))]
     [TypeConverter(typeof(AddressTypeConverter))]
     public class Address : IEquatable<Address>, IComparable<Address>
     {
@@ -61,6 +65,9 @@ namespace Nethermind.Core
 
         public Address(string hexString) : this(Extensions.Bytes.FromHexString(hexString)) { }
 
+        /// <summary>
+        /// Parses string value to Address. String has to be exactly 20 bytes long.
+        /// </summary>
         public static bool TryParse(string? value, out Address? address)
         {
             if (value is not null)
@@ -68,7 +75,7 @@ namespace Nethermind.Core
                 try
                 {
                     byte[] bytes = Extensions.Bytes.FromHexString(value);
-                    if (bytes?.Length == Size)
+                    if (bytes.Length == Size)
                     {
                         address = new Address(bytes);
                         return true;
@@ -81,12 +88,28 @@ namespace Nethermind.Core
             return false;
         }
 
+        /// <summary>
+        /// Parses string value to Address. String can be shorter than 20 bytes long, it is padded with leading 0's then.
+        /// </summary>
+        public static bool TryParseVariableLength(string? value, out Address? address)
+        {
+            if (value is not null)
+            {
+                try
+                {
+                    address = new Address(Extensions.Bytes.FromHexString(value, Size));
+                    return true;
+                }
+                catch (IndexOutOfRangeException) { }
+            }
+
+            address = default;
+            return false;
+        }
+
         public Address(byte[] bytes)
         {
-            if (bytes is null)
-            {
-                throw new ArgumentNullException(nameof(bytes));
-            }
+            ArgumentNullException.ThrowIfNull(bytes);
 
             if (bytes.Length != Size)
             {
@@ -100,7 +123,7 @@ namespace Nethermind.Core
 
         public bool Equals(Address? other)
         {
-            if (ReferenceEquals(null, other))
+            if (other is null)
             {
                 return false;
             }
@@ -136,7 +159,7 @@ namespace Nethermind.Core
 
         public override bool Equals(object? obj)
         {
-            if (ReferenceEquals(null, obj))
+            if (obj is null)
             {
                 return false;
             }
@@ -270,13 +293,13 @@ namespace Nethermind.Core
         /// <returns></returns>
         public string ToString(bool withZeroX, bool withEip55Checksum) => Bytes.ToHexString(withZeroX, false, withEip55Checksum);
 
-        public bool Equals(Address? other) => !ReferenceEquals(null, other) && Nethermind.Core.Extensions.Bytes.AreEqual(Bytes, other.Bytes);
+        public bool Equals(Address? other) => other is not null && Nethermind.Core.Extensions.Bytes.AreEqual(Bytes, other.Bytes);
 
         public bool Equals(AddressStructRef other) => Nethermind.Core.Extensions.Bytes.AreEqual(Bytes, other.Bytes);
 
         public override bool Equals(object? obj)
         {
-            if (ReferenceEquals(null, obj))
+            if (obj is null)
             {
                 return false;
             }

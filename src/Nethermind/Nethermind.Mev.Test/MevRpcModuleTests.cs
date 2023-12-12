@@ -65,7 +65,7 @@ namespace Nethermind.Mev.Test
 
             // WARNING be careful when using PrivateKeyC
             // make sure keys from A to D are funded with test ether
-            private static PrivateKey ContractCreatorPrivateKey = TestItem.PrivateKeyC;
+            private static readonly PrivateKey ContractCreatorPrivateKey = TestItem.PrivateKeyC;
 
             public static async Task<Address> Deploy(TestMevRpcBlockchain chain, string code, ulong nonce = 0, int value = 1)
             {

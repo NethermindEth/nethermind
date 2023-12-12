@@ -11,6 +11,8 @@ namespace Nethermind.Serialization.Rlp.Eip2930
 {
     public class AccessListDecoder : IRlpStreamDecoder<AccessList?>, IRlpValueDecoder<AccessList?>
     {
+        private const int IndexLength = 32;
+
         /// <summary>
         /// We pay a high code quality tax for the performance optimization on RLP.
         /// Adding more RLP decoders is costly (time wise) but the path taken saves a lot of allocations and GC.
@@ -48,8 +50,8 @@ namespace Nethermind.Serialization.Rlp.Eip2930
                     int storagesCheck = rlpStream.Position + storagesLength;
                     while (rlpStream.Position < storagesCheck)
                     {
-                        int storageItemCheck = rlpStream.Position + 33;
-                        UInt256 index = rlpStream.DecodeUInt256();
+                        int storageItemCheck = rlpStream.Position + IndexLength + 1;
+                        UInt256 index = rlpStream.DecodeUInt256(IndexLength);
                         accessListBuilder.AddStorage(index);
                         if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) != RlpBehaviors.AllowExtraBytes)
                         {
@@ -113,8 +115,8 @@ namespace Nethermind.Serialization.Rlp.Eip2930
                     int storagesCheck = decoderContext.Position + storagesLength;
                     while (decoderContext.Position < storagesCheck)
                     {
-                        int storageItemCheck = decoderContext.Position + 33;
-                        UInt256 index = decoderContext.DecodeUInt256();
+                        int storageItemCheck = decoderContext.Position + IndexLength + 1;
+                        UInt256 index = decoderContext.DecodeUInt256(IndexLength);
                         accessListBuilder.AddStorage(index);
                         if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) != RlpBehaviors.AllowExtraBytes)
                         {
@@ -167,7 +169,7 @@ namespace Nethermind.Serialization.Rlp.Eip2930
                         foreach (UInt256 index in storageKeys)
                         {
                             // storage indices are encoded as 32 bytes data arrays
-                            stream.Encode(index, 32);
+                            stream.Encode(index, IndexLength);
                         }
                     }
                 }

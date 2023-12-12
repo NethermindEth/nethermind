@@ -4,10 +4,12 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Text.Json;
+
 using FluentAssertions;
 using Nethermind.Evm.Tracing.ParityStyle;
 using Nethermind.Logging;
-using Newtonsoft.Json;
+
 using NUnit.Framework;
 
 namespace Nethermind.JsonRpc.TraceStore.Tests;
@@ -25,7 +27,7 @@ public class TraceSerializerTests
     public void cant_deserialize_deep_graph()
     {
         Func<List<ParityLikeTxTrace>?> traces = () => Deserialize(new ParityLikeTraceSerializer(LimboLogs.Instance, 128));
-        traces.Should().Throw<JsonReaderException>();
+        traces.Should().Throw<JsonException>();
     }
 
     private List<ParityLikeTxTrace>? Deserialize(ITraceSerializer<ParityLikeTxTrace> serializer)

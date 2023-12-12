@@ -16,9 +16,9 @@ public class InvalidHeaderSealInterceptorTest
 {
     private class Context
     {
-        private BlockHeader _blockHeader = Build.A.BlockHeader.TestObject;
-        private ISealValidator _baseValidator = Substitute.For<ISealValidator>();
-        private IInvalidChainTracker _invalidChainTracker = Substitute.For<IInvalidChainTracker>();
+        private readonly BlockHeader _blockHeader = Build.A.BlockHeader.TestObject;
+        private readonly ISealValidator _baseValidator = Substitute.For<ISealValidator>();
+        private readonly IInvalidChainTracker _invalidChainTracker = Substitute.For<IInvalidChainTracker>();
 
         public Context OnValidateSeal()
         {

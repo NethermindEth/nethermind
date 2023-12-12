@@ -16,10 +16,10 @@ namespace Nethermind.Core.Test;
 /// </summary>
 public class TestMemDb : MemDb, ITunableDb
 {
-    private List<(byte[], ReadFlags)> _readKeys = new();
-    private List<((byte[], byte[]?), WriteFlags)> _writes = new();
-    private List<byte[]> _removedKeys = new();
-    private List<ITunableDb.TuneType> _tuneTypes = new();
+    private readonly List<(byte[], ReadFlags)> _readKeys = new();
+    private readonly List<((byte[], byte[]?), WriteFlags)> _writes = new();
+    private readonly List<byte[]> _removedKeys = new();
+    private readonly List<ITunableDb.TuneType> _tuneTypes = new();
 
     public Func<byte[], byte[]>? ReadFunc { get; set; }
     public Func<byte[], byte[]?, bool>? WriteFunc { get; set; }

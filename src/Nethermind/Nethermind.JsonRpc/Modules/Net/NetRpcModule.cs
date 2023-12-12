@@ -10,7 +10,7 @@ namespace Nethermind.JsonRpc.Modules.Net
     public class NetRpcModule : INetRpcModule
     {
         private readonly INetBridge _netBridge;
-        private string _netVersionString;
+        private readonly string _netVersionString;
 
         public NetRpcModule(ILogManager logManager, INetBridge netBridge)
         {

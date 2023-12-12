@@ -10,14 +10,14 @@ namespace Nethermind.JsonRpc
 {
     internal class Recorder
     {
-        private string _recorderBaseFilePath;
+        private readonly string _recorderBaseFilePath;
         private readonly IFileSystem _fileSystem;
         private readonly ILogger _logger;
         private int _recorderFileCounter;
         private string _currentRecorderFilePath;
         private int _currentRecorderFileLength;
         private bool _isEnabled = true;
-        private object _recorderSync = new();
+        private readonly object _recorderSync = new();
 
         public Recorder(string basePath, IFileSystem fileSystem, ILogger logger)
         {

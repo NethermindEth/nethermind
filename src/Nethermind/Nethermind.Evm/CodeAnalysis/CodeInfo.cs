@@ -11,7 +11,7 @@ namespace Nethermind.Evm.CodeAnalysis
         private const int SampledCodeLength = 10_001;
         private const int PercentageOfPush1 = 40;
         private const int NumberOfSamples = 100;
-        private static Random _rand = new();
+        private static readonly Random _rand = new();
 
         public byte[] MachineCode { get; set; }
         public IPrecompile? Precompile { get; set; }

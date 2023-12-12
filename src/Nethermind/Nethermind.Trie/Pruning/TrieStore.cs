@@ -131,7 +131,7 @@ namespace Nethermind.Trie.Pruning
 
         private bool _lastPersistedReachedReorgBoundary;
         private Task _pruningTask = Task.CompletedTask;
-        private CancellationTokenSource _pruningTaskCancellationTokenSource = new();
+        private readonly CancellationTokenSource _pruningTaskCancellationTokenSource = new();
 
         public TrieStore(IKeyValueStoreWithBatching? keyValueStore, ILogManager? logManager)
             : this(keyValueStore, No.Pruning, Pruning.Persist.EveryBlock, logManager)
@@ -207,7 +207,7 @@ namespace Nethermind.Trie.Pruning
 
         public void CommitNode(long blockNumber, NodeCommitInfo nodeCommitInfo, WriteFlags writeFlags = WriteFlags.None)
         {
-            if (blockNumber < 0) throw new ArgumentOutOfRangeException(nameof(blockNumber));
+            ArgumentOutOfRangeException.ThrowIfNegative(blockNumber);
             EnsureCommitSetExistsForBlock(blockNumber);
 
             if (_logger.IsTrace) _logger.Trace($"Committing {nodeCommitInfo} at {blockNumber}");
@@ -278,7 +278,7 @@ namespace Nethermind.Trie.Pruning
 
         public void FinishBlockCommit(TrieType trieType, long blockNumber, TrieNode? root, WriteFlags writeFlags = WriteFlags.None)
         {
-            if (blockNumber < 0) throw new ArgumentOutOfRangeException(nameof(blockNumber));
+            ArgumentOutOfRangeException.ThrowIfNegative(blockNumber);
             EnsureCommitSetExistsForBlock(blockNumber);
 
             try
@@ -367,10 +367,7 @@ namespace Nethermind.Trie.Pruning
 
         internal TrieNode FindCachedOrUnknown(Hash256? hash, bool isReadOnly)
         {
-            if (hash is null)
-            {
-                throw new ArgumentNullException(nameof(hash));
-            }
+            ArgumentNullException.ThrowIfNull(hash);
 
             if (!_pruningStrategy.PruningEnabled)
             {
@@ -638,10 +635,7 @@ namespace Nethermind.Trie.Pruning
         private void Persist(TrieNode currentNode, long blockNumber, WriteFlags writeFlags = WriteFlags.None)
         {
             _currentBatch ??= _keyValueStore.StartWriteBatch();
-            if (currentNode is null)
-            {
-                throw new ArgumentNullException(nameof(currentNode));
-            }
+            ArgumentNullException.ThrowIfNull(currentNode);
 
             if (currentNode.Keccak is not null)
             {

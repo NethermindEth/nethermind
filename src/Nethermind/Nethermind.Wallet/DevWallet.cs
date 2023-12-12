@@ -17,11 +17,11 @@ namespace Nethermind.Wallet
     public class DevWallet : IWallet
     {
         private const string AnyPassword = "#DEV_ACCOUNT_NETHERMIND_ANY_PASSWORD#";
-        private static byte[] _keySeed = new byte[32];
+        private static readonly byte[] _keySeed = new byte[32];
         private readonly ILogger _logger;
-        private Dictionary<Address, bool> _isUnlocked = new Dictionary<Address, bool>();
-        private Dictionary<Address, PrivateKey> _keys = new Dictionary<Address, PrivateKey>();
-        private Dictionary<Address, string> _passwords = new Dictionary<Address, string>();
+        private readonly Dictionary<Address, bool> _isUnlocked = new Dictionary<Address, bool>();
+        private readonly Dictionary<Address, PrivateKey> _keys = new Dictionary<Address, PrivateKey>();
+        private readonly Dictionary<Address, string> _passwords = new Dictionary<Address, string>();
         public event EventHandler<AccountLockedEventArgs> AccountLocked;
         public event EventHandler<AccountUnlockedEventArgs> AccountUnlocked;
 
