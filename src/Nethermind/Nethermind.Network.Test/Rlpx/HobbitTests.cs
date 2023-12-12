@@ -179,7 +179,7 @@ namespace Nethermind.Network.Test.Rlpx
                     embeddedChannel.WriteOutbound(packet);
                 }
 
-                while (embeddedChannel.OutboundMessages.Any())
+                while (embeddedChannel.OutboundMessages.Count != 0)
                 {
                     IByteBuffer encodedPacket = embeddedChannel.ReadOutbound<IByteBuffer>();
                     embeddedChannel.WriteInbound(encodedPacket);

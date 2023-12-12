@@ -62,7 +62,7 @@ namespace Nethermind.Sockets.Test
                     }
                 }
 
-                if (!_receiveResults.Any() && ReturnTaskWithFaultOnEmptyQueue)
+                if (_receiveResults.Count == 0 && ReturnTaskWithFaultOnEmptyQueue)
                 {
                     Task<WebSocketReceiveResult> a = new Task<WebSocketReceiveResult>(() => throw new Exception());
                     a.Start();

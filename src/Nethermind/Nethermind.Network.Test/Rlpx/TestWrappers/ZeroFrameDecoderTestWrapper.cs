@@ -37,7 +37,7 @@ namespace Nethermind.Network.Test.Rlpx.TestWrappers
                 }
             }
 
-            if (result.Any())
+            if (result.Count != 0)
             {
                 return (IByteBuffer)result[0];
             }
