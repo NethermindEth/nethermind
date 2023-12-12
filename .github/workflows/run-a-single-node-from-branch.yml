@@ -110,7 +110,7 @@ on:
       additional_options:
         type: string
         description: "A Json property which allows to customize node even more"
-        default: '{"timeout":"24", "default_dockerfile":"Dockerfile", "default_dockerfile_build_type":"release", "ssh_keys":"", "allowed_ips":""}'
+        default: '{"timeout":"24", "default_dockerfile":"Dockerfile", "default_dockerfile_build_type":"release", "ssh_keys":"", "allowed_ips":"", "custom_machine_type": ""}'
         required: false
     outputs:
       base_tag:
@@ -241,6 +241,7 @@ jobs:
         echo "timeout=$(echo '${{ inputs.additional_options }}' | jq -r .timeout)" >> $GITHUB_OUTPUT
         echo "ssh_keys=$(echo '${{ inputs.additional_options }}' | jq -r .ssh_keys)" >> $GITHUB_OUTPUT
         echo "allowed_ips=$(echo '${{ inputs.additional_options }}' | jq -r .allowed_ips)" >> $GITHUB_OUTPUT
+        echo "custom_machine_type=$(echo '${{ inputs.additional_options }}' | jq -r .custom_machine_type)" >> $GITHUB_OUTPUT
 
     - name: Trigger Node creation Repo Action
       uses: benc-uk/workflow-dispatch@v1
@@ -256,7 +257,7 @@ jobs:
                      "nethermind_branch": "${{ env.CLEAN_REF }}",
                      "network": "${{ inputs.network }}",
                      "cl_client": "${{ inputs.cl_client }}",
-                     "additional_options": "{\"cl_custom_image\":\"${{ inputs.cl_custom_image }}\", \"timeout\":\"${{ steps.extract_variables.outputs.timeout }}\", \"non_validator_mode\":${{ inputs.non_validator_mode }}, \"additional_nethermind_flags\":\"${{ inputs.additional_nethermind_flags }}\", \"additional_cl_flags\":\"${{ inputs.additional_cl_flags }}\", \"ssh_keys\":\"${{ steps.extract_variables.outputs.ssh_keys }}\", \"allowed_ips\":\"${{ steps.extract_variables.outputs.allowed_ips }}\"}"
+                     "additional_options": "{\"cl_custom_image\":\"${{ inputs.cl_custom_image }}\", \"timeout\":\"${{ steps.extract_variables.outputs.timeout }}\", \"non_validator_mode\":${{ inputs.non_validator_mode }}, \"additional_nethermind_flags\":\"${{ inputs.additional_nethermind_flags }}\", \"additional_cl_flags\":\"${{ inputs.additional_cl_flags }}\", \"ssh_keys\":\"${{ steps.extract_variables.outputs.ssh_keys }}\", \"allowed_ips\":\"${{ steps.extract_variables.outputs.allowed_ips }}\", \"custom_machine_type\":\"${{ steps.extract_variables.outputs.custom_machine_type }}\"}"
                    }'
 
     - name: Wait for creation of node
@@ -268,7 +269,7 @@ jobs:
         TIMEOUT: '20'
         ORG_NAME: 'NethermindEth'
         REPO_NAME: 'post-merge-smoke-tests'
-        REF: 'main'
+        REF: 'kch/rpc_fixes'
       run: |
         chmod +x scripts/wait-for-workflow-completed.sh
         ./scripts/wait-for-workflow-completed.sh | tee script-output.txt

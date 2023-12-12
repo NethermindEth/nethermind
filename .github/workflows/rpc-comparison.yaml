@@ -23,19 +23,39 @@ on:
         description: "When checked, attempts to check RPC performance (because of Linode limitations it would work on single VM). When not checked equality mode will be started."
         default: false
         required: false
-      is_performance_resync_needed:
-        type: boolean
-        description: "When checked, and performance_check also checked, it would sync from scratch node for each branch - would affect a execution time of a whole tests - if no DB structure change keep in unchecked."
-        default: false
-        required: false
 
 jobs:
+  verify_correctness_of_setup:
+    name: Verify if inputs are correct
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify if inputs are correct
+        run: |
+          if [ "${{ inputs.is_performance_check }}" == "true" ] && [ -z "${{ inputs.branch_to_compare }}" ]; then
+            echo "Error: 'branch_to_compare' must be provided when 'is_performance_check' is set to true."
+            exit 1
+          fi
+
+          if [ "${{ inputs.is_performance_check }}" == "false" ] && [ -z "${{ inputs.branch_to_compare }}" ] && [ -z "${{ inputs.compare_with }}" ]; then
+            echo "Error: Either 'branch_to_compare' or 'compare_with' must be provided when 'is_performance_check' is set to false."
+            exit 1
+          fi
+
   create_main_node:
     name: Create node from current branch
     uses: ./.github/workflows/run-a-single-node-from-branch.yml
+    needs: [verify_correctness_of_setup]
     secrets: inherit
     with:
-      additional_options: '{"timeout":"12", "default_dockerfile":"Dockerfile", "default_dockerfile_build_type":"release", "ssh_keys":"", "allowed_ips":"${{ inputs.allowed_ips }}"}' 
+      additional_options: >-
+        {
+          "timeout": "12",
+          "default_dockerfile": "Dockerfile",
+          "default_dockerfile_build_type": "release",
+          "ssh_keys": "",
+          "allowed_ips": "${{ inputs.allowed_ips }}",
+          "custom_machine_type": "${{ inputs.is_performance_check == 'true' && 'g7-premium-32' || '' }}"
+        }
       non_validator_mode: false
       additional_nethermind_flags: Pruning.Mode=None JsonRpc.EnabledModules=[Eth,Subscribe,Trace,TxPool,Web3,Personal,Proof,Net,Parity,Health,Rpc,Debug,Admin]
       nethermind_repo_ref: ${{ github.ref }}
@@ -46,9 +66,17 @@ jobs:
     uses: ./.github/workflows/run-a-single-node-from-branch.yml
     if: inputs.branch_to_compare != ''
     secrets: inherit
-    needs: [create_main_node]
+    needs: [create_main_node, verify_correctness_of_setup]
     with:
-      additional_options: '{"timeout":"12", "default_dockerfile":"Dockerfile", "default_dockerfile_build_type":"release", "ssh_keys":"", "allowed_ips":"${{ inputs.allowed_ips }}"}' 
+      additional_options: >-
+        {
+          "timeout": "12",
+          "default_dockerfile": "Dockerfile",
+          "default_dockerfile_build_type": "release",
+          "ssh_keys": "",
+          "allowed_ips": "${{ inputs.allowed_ips }}",
+          "custom_machine_type": "${{ inputs.is_performance_check == 'true' && 'g7-premium-32' || '' }}"
+        }
       non_validator_mode: false
       additional_nethermind_flags: Pruning.Mode=None JsonRpc.EnabledModules=[Eth,Subscribe,Trace,TxPool,Web3,Personal,Proof,Net,Parity,Health,Rpc,Debug,Admin]
       nethermind_repo_ref: ${{ inputs.branch_to_compare }}
@@ -268,14 +296,27 @@ jobs:
       - name: Compare to Other Branch
         if: env.compare_to_other_branch == 'true'
         run: |
-          flood all ${compare_to_other_branch_params} --equality
+          if [ "${{ inputs.is_performance_check }}" == "true" ]; then
+            flood all ${compare_to_other_branch_params} --rates 10 100 1000 --duration 30 | tee output_other_branch.txt
+          else
+            flood all ${compare_to_other_branch_params} --equality | tee output_other_branch.txt
+          fi
       
       - name: Compare to INFURA Endpoint
-        if: env.compare_to_infura == 'true'
+        if: env.compare_to_infura == 'true' && ${{ inputs.is_performance_check }} != 'true'
         run: |
-          flood all ${compare_to_infura_params} --equality
+          flood all ${compare_to_infura_params} --equality | tee output_infura.txt
       
       - name: Compare to Nethermind Archive Endpoint
-        if: env.compare_to_archive == 'true'
+        if: env.compare_to_archive == 'true' && ${{ inputs.is_performance_check }} != 'true'
         run: |
-          flood all ${compare_to_archive_params} --equality
+          flood all ${compare_to_archive_params} --equality | tee output_archive.txt
+
+      - name: Upload results as files
+        uses: actions/upload-artifact@v3
+        with:
+          name: flood-results
+          path:
+            output_other_branch.txt
+            output_infura.txt
+            output_archive.txt
