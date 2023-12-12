@@ -1611,7 +1611,5 @@ namespace Nethermind.Blockchain
                 _metadataDb.Set(MetadataDbKeys.SafeBlockHash, Rlp.Encode(SafeHash!).Bytes);
             }
         }
-
-        public IEnumerable<Block> GetInvalidBlocks() => _badBlockStore.GetAll();
     }
 }

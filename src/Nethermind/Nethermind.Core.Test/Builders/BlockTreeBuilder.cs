@@ -399,6 +399,12 @@ namespace Nethermind.Core.Test.Builders
             return this;
         }
 
+        public BlockTreeBuilder WithBadBlockStore(IBlockStore blockStore)
+        {
+            BadBlockStore = blockStore;
+            return this;
+        }
+
         public BlockTreeBuilder WithHeaderStore(IHeaderStore headerStore)
         {
             HeaderStore = headerStore;

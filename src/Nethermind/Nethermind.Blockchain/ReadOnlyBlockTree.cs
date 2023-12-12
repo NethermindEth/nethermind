@@ -152,11 +152,6 @@ namespace Nethermind.Blockchain
             remove { }
         }
 
-        public IEnumerable<Block> GetInvalidBlocks()
-        {
-            return _wrapped.GetInvalidBlocks();
-        }
-
         public int DeleteChainSlice(in long startNumber, long? endNumber = null, bool force = false)
         {
             var bestKnownNumber = BestKnownNumber;

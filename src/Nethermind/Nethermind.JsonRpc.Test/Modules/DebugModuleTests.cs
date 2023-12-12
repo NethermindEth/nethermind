@@ -222,16 +222,18 @@ public class DebugModuleTests
         Assert.That(response, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":{\"gas\":\"0x0\",\"failed\":false,\"returnValue\":\"0xa2\",\"structLogs\":[{\"pc\":0,\"op\":\"STOP\",\"gas\":22000,\"gasCost\":1,\"depth\":1,\"error\":null,\"stack\":[],\"memory\":[\"0000000000000000000000000000000000000000000000000000000000000005\",\"0000000000000000000000000000000000000000000000000000000000000006\"],\"storage\":{\"0000000000000000000000000000000000000000000000000000000000000001\":\"0000000000000000000000000000000000000000000000000000000000000002\",\"0000000000000000000000000000000000000000000000000000000000000003\":\"0000000000000000000000000000000000000000000000000000000000000004\"}}]},\"id\":67}"));
     }
 
-    private BlockTree BuildBlockTree()
+    private BlockTree BuildBlockTree(Func<BlockTreeBuilder, BlockTreeBuilder>? builderOptions = null)
     {
-        BlockStore blockStore = new(_blocksDb);
-        return Build.A.BlockTree().WithBlocksDb(_blocksDb).WithBlockStore(blockStore).TestObject;
+        BlockTreeBuilder builder = Build.A.BlockTree().WithBlocksDb(_blocksDb).WithBlockStore(new BlockStore(_blocksDb));
+        builder = builderOptions?.Invoke(builder) ?? builder;
+        return builder.TestObject;
     }
 
     [Test]
     public void Debug_getBadBlocks_test()
     {
-        BlockTree blockTree = BuildBlockTree();
+        IBlockStore badBlocksStore = null!;
+        BlockTree blockTree = BuildBlockTree(b => b.WithBadBlockStore(badBlocksStore = new BlockStore(b.BadBlocksDb)));
 
         Block block0 = Build.A.Block.WithNumber(0).WithDifficulty(1).TestObject;
         Block block1 = Build.A.Block.WithNumber(1).WithDifficulty(2).WithParent(block0).TestObject;
@@ -248,7 +250,7 @@ public class DebugModuleTests
         BlockDecoder decoder = new();
         _blocksDb.Set(block1.Hash ?? new Hash256("0x0"), decoder.Encode(block1).Bytes);
 
-        debugBridge.GetBadBlocks().Returns(blockTree.GetInvalidBlocks());
+        debugBridge.GetBadBlocks().Returns(badBlocksStore.GetAll());
 
         AddBlockResult result = blockTree.SuggestBlock(block1);
         Assert.That(result, Is.EqualTo(AddBlockResult.InvalidBlock));
