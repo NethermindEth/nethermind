@@ -97,7 +97,7 @@ public struct BitVector
     public void SetBit(int k, bool bit)
     {
         if (k < 0 || k >= Length)
-            throw new ArgumentOutOfRangeException(nameof(k), "Invalid position");
+            throw new EliasFanoBuilderException($"BitVector:SetBit InvalidPosition k:{k} Length:{Length}");
 
         int word = Math.DivRem(k, WordLen, out int posInWord);
         Words[word] &= ~((ulong)1 << posInWord);
@@ -146,7 +146,7 @@ public struct BitVector
 
     public void PushBits(ulong bits, int len)
     {
-        if (WordLen < len) throw new ArgumentException();
+        if (WordLen < len) throw new EliasFanoBuilderException($"BitVector => WordLen:{WordLen}<len:{len}");
         if (len == 0) return;
 
         ulong mask = len < WordLen ? ((ulong)1 << len) - 1 : ulong.MaxValue;

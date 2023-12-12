@@ -32,7 +32,7 @@ public struct EliasFano
     /// <exception cref="ArgumentException"></exception>
     public int Rank(ulong num)
     {
-        if (_universe < num) throw new ArgumentException();
+        if (_universe < num) throw new EliasFanoQueryException($"Trying to query rank with num:{num} > _universe:{_universe}!");
         if (_universe == num) return _highBits._indexSet.NumPositions;
 
         int hRank = (int)(num >> _lowLen);
