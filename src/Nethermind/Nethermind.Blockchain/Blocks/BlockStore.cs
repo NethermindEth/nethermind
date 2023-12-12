@@ -45,7 +45,7 @@ public class BlockStore : IBlockStore
         int toDelete = (int)(_blockDb.GetSize() - _maxSize!);
         if (toDelete > 0)
         {
-            foreach (var blockToDelete in GetAll().OrderBy(block => block.Number).Take(toDelete))
+            foreach (var blockToDelete in GetAll().Take(toDelete))
             {
                 Delete(blockToDelete.Number, blockToDelete.Hash);
             }
@@ -65,7 +65,7 @@ public class BlockStore : IBlockStore
 
         _blockDb.Set(block.Number, block.Hash, newRlp.AsSpan(), writeFlags);
 
-        if (_maxSize != null)
+        if (_maxSize is not null)
         {
             TruncateToMaxSize();
         }

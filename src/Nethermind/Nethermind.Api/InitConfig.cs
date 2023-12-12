@@ -31,7 +31,7 @@ namespace Nethermind.Api
 
         public string RpcDbUrl { get; set; } = String.Empty;
         public long? MemoryHint { get; set; }
-        public long? BadBlocksStored { get; set; }
+        public long? BadBlocksStored { get; set; } = 100;
         public bool DisableGcOnNewPayload { get; set; } = true;
         public bool DisableMallocOpts { get; set; } = false;
 
