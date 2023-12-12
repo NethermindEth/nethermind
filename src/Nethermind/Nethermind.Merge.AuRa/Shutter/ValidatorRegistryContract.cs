@@ -5,6 +5,7 @@ using System;
 using System.Buffers.Binary;
 using Nethermind.Abi;
 using Nethermind.Blockchain.Contracts;
+using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Evm.TransactionProcessing;
 
@@ -12,12 +13,14 @@ namespace Nethermind.Merge.AuRa.Shutter;
 
 public class ValidatorRegistryContract : CallableContract, IValidatorRegistryContract
 {
+    private readonly ISigner _signer;
     private static readonly string FUNCTION_NAME = "update";
     private static readonly byte VALIDATOR_REGISTRY_MESSAGE_VERSION = 0;
 
-    public ValidatorRegistryContract(ITransactionProcessor transactionProcessor, IAbiEncoder abiEncoder, Address contractAddress)
+    public ValidatorRegistryContract(ITransactionProcessor transactionProcessor, IAbiEncoder abiEncoder, Address contractAddress, ISigner signer)
         : base(transactionProcessor, abiEncoder, contractAddress)
     {
+        _signer = signer;
     }
 
     // def compute_registration_message(validator_index: uint64, nonce: uint64):
@@ -50,11 +53,12 @@ public class ValidatorRegistryContract : CallableContract, IValidatorRegistryCon
 
     public void Deregister(BlockHeader blockHeader, byte[] message, byte[] signature)
     {
-        Address sender = new("0x0");
-        long gasLimit = 100;
-        object[] arguments = new object[0];
+        UInt64 nonce = 0; // load nonce from disk
+        UInt64 validatorIndex = 0;
+        byte[] deregistrationMessage = ComputeRegistryMessagePrefix(nonce, validatorIndex, false);
 
-        var transaction = GenerateTransaction<GeneratedTransaction>(FUNCTION_NAME, sender, gasLimit, blockHeader, arguments);
+        var transaction = GenerateTransaction<GeneratedTransaction>(FUNCTION_NAME, _signer.Address, deregistrationMessage);
+        // var transaction = GenerateTransaction<GeneratedTransaction>(FUNCTION_NAME, _signer.Address, gasLimit, blockHeader, arguments);
         throw new NotImplementedException();
     }
 
