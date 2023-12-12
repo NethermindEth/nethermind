@@ -212,7 +212,7 @@ namespace Nethermind.Synchronization.Peers
         public int PeerMaxCount { get; }
         private int PriorityPeerMaxCount { get; }
 
-        public void RefreshTotalDifficulty(ISyncPeer syncPeer, Keccak blockHash)
+        public void RefreshTotalDifficulty(ISyncPeer syncPeer, Hash256 blockHash)
         {
             RefreshTotalDiffTask task = new(blockHash, syncPeer);
             _peerRefreshQueue.Add(task);
@@ -685,13 +685,13 @@ namespace Nethermind.Synchronization.Peers
                 SyncPeer = syncPeer;
             }
 
-            public RefreshTotalDiffTask(Keccak blockHash, ISyncPeer syncPeer)
+            public RefreshTotalDiffTask(Hash256 blockHash, ISyncPeer syncPeer)
             {
                 BlockHash = blockHash;
                 SyncPeer = syncPeer;
             }
 
-            public Keccak? BlockHash { get; }
+            public Hash256? BlockHash { get; }
 
             public ISyncPeer SyncPeer { get; }
         }

@@ -134,7 +134,7 @@ namespace Nethermind.AuRa.Test.Validators
 
         private static MemDb CreateMemDbWithValidators(IEnumerable<(long FinalizingBlock, Address[] Validators)> validators = null)
         {
-            Keccak GetKey(in long blockNumber) => Keccak.Compute("Validators" + blockNumber);
+            Hash256 GetKey(in long blockNumber) => Keccak.Compute("Validators" + blockNumber);
 
             validators ??= Array.Empty<(long FinalizingBlock, Address[] Validators)>();
             (long FinalizingBlock, Address[] Validators)[] ordered = validators.OrderByDescending(v => v.FinalizingBlock).ToArray();

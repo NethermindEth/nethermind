@@ -15,7 +15,7 @@ namespace Nethermind.JsonRpc.Modules.Witness
             ExampleResponse =
                 "\"0x1\"",
             IsImplemented = true)]
-        Task<ResultWrapper<Keccak[]>> get_witnesses([JsonRpcParameter(Description = "Block to get witness",
+        Task<ResultWrapper<Hash256[]>> get_witnesses([JsonRpcParameter(Description = "Block to get witness",
                 ExampleValue = "{\"jsonrpc\":\"2.0\",\"result\":[\"0xa2a9f03b9493046696099d27b2612b99497aa1f392ec966716ab393c715a5bb6\"],\"id\":67}")]
             BlockParameter blockParameter);
     }

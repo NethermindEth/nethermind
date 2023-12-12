@@ -3,15 +3,18 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.Merge.Plugin.Handlers;
+using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Proofs;
-using Newtonsoft.Json;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace Nethermind.Merge.Plugin.Data;
 
@@ -44,7 +47,7 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams
 
     public UInt256 BaseFeePerGas { get; set; }
 
-    public Keccak BlockHash { get; set; } = Keccak.Zero;
+    public Hash256 BlockHash { get; set; } = Keccak.Zero;
 
     public long BlockNumber { get; set; }
 
@@ -58,13 +61,13 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams
 
     public Bloom LogsBloom { get; set; } = Bloom.Empty;
 
-    public Keccak ParentHash { get; set; } = Keccak.Zero;
+    public Hash256 ParentHash { get; set; } = Keccak.Zero;
 
-    public Keccak PrevRandao { get; set; } = Keccak.Zero;
+    public Hash256 PrevRandao { get; set; } = Keccak.Zero;
 
-    public Keccak ReceiptsRoot { get; set; } = Keccak.Zero;
+    public Hash256 ReceiptsRoot { get; set; } = Keccak.Zero;
 
-    public Keccak StateRoot { get; set; } = Keccak.Zero;
+    public Hash256 StateRoot { get; set; } = Keccak.Zero;
 
     public ulong Timestamp { get; set; }
 
@@ -96,12 +99,14 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams
     /// Gets or sets <see cref="Block.BlobGasUsed"/> as defined in
     /// <see href="https://eips.ethereum.org/EIPS/eip-4844">EIP-4844</see>.
     /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public ulong? BlobGasUsed { get; set; }
 
     /// <summary>
     /// Gets or sets <see cref="Block.ExcessBlobGas"/> as defined in
     /// <see href="https://eips.ethereum.org/EIPS/eip-4844">EIP-4844</see>.
     /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public ulong? ExcessBlobGas { get; set; }
 
     /// <summary>
@@ -109,7 +114,7 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams
     /// <see href="https://eips.ethereum.org/EIPS/eip-4788">EIP-4788</see>.
     /// </summary>
     [JsonIgnore]
-    public Keccak? ParentBeaconBlockRoot { get; set; }
+    public Hash256? ParentBeaconBlockRoot { get; set; }
 
     /// <summary>
     /// Creates the execution block from payload.
@@ -154,11 +159,9 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams
         catch (Exception)
         {
             block = null;
-
             return false;
         }
     }
-
 
     private Transaction[]? _transactions = null;
 
@@ -167,8 +170,17 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams
     /// </summary>
     /// <returns>An RLP-decoded array of <see cref="Transaction"/>.</returns>
     public Transaction[] GetTransactions() => _transactions ??= Transactions
-        .Select(t => Rlp.Decode<Transaction>(t, RlpBehaviors.SkipTypedWrapping))
-        .ToArray();
+        .Select((t, i) =>
+        {
+            try
+            {
+                return Rlp.Decode<Transaction>(t, RlpBehaviors.SkipTypedWrapping);
+            }
+            catch (RlpException e)
+            {
+                throw new RlpException($"Transaction {i} is not valid", e);
+            }
+        }).ToArray();
 
     /// <summary>
     /// RLP-encodes and sets the transactions specified to <see cref="Transactions"/>.

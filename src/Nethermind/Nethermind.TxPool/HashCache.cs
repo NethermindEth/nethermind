@@ -23,37 +23,37 @@ namespace Nethermind.TxPool
     {
         private const int SafeCapacity = 1024 * 16;
 
-        private readonly LruKeyCache<ValueKeccak> _longTermCache = new(
+        private readonly LruKeyCache<ValueHash256> _longTermCache = new(
             MemoryAllowance.TxHashCacheSize,
             Math.Min(SafeCapacity, MemoryAllowance.TxHashCacheSize),
             "long term hash cache");
 
-        private readonly LruKeyCache<ValueKeccak> _currentBlockCache = new(
+        private readonly LruKeyCache<ValueHash256> _currentBlockCache = new(
             SafeCapacity,
             Math.Min(SafeCapacity, MemoryAllowance.TxHashCacheSize),
             "current block hash cache");
 
-        public bool Get(Keccak hash)
+        public bool Get(Hash256 hash)
         {
             return _currentBlockCache.Get(hash) || _longTermCache.Get(hash);
         }
 
-        public void SetLongTerm(Keccak hash)
+        public void SetLongTerm(Hash256 hash)
         {
             _longTermCache.Set(hash);
         }
 
-        public void SetForCurrentBlock(Keccak hash)
+        public void SetForCurrentBlock(Hash256 hash)
         {
             _currentBlockCache.Set(hash);
         }
 
-        public void DeleteFromLongTerm(Keccak hash)
+        public void DeleteFromLongTerm(Hash256 hash)
         {
             _longTermCache.Delete(hash);
         }
 
-        public void Delete(Keccak hash)
+        public void Delete(Hash256 hash)
         {
             _longTermCache.Delete(hash);
             _currentBlockCache.Delete(hash);

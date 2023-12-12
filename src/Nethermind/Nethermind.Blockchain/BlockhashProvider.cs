@@ -23,7 +23,7 @@ namespace Nethermind.Blockchain
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         }
 
-        public Keccak GetBlockhash(BlockHeader currentBlock, in long number)
+        public Hash256 GetBlockhash(BlockHeader currentBlock, in long number)
         {
             long current = currentBlock.Number;
             if (number >= current || number < current - Math.Min(current, _maxDepth))

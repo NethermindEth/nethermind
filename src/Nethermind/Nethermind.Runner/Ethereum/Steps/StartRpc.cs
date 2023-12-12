@@ -17,7 +17,7 @@ using Nethermind.Serialization.Json;
 
 namespace Nethermind.Runner.Ethereum.Steps
 {
-    [RunnerStepDependencies(typeof(InitializeNetwork), typeof(RegisterRpcModules))]
+    [RunnerStepDependencies(typeof(InitializeNetwork), typeof(RegisterRpcModules), typeof(RegisterPluginRpcModules))]
     public class StartRpc : IStep
     {
         private readonly INethermindApi _api;
@@ -40,7 +40,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                 IRpcModuleProvider rpcModuleProvider = _api.RpcModuleProvider!;
                 JsonRpcService jsonRpcService = new(rpcModuleProvider, _api.LogManager, jsonRpcConfig);
 
-                IJsonSerializer jsonSerializer = CreateJsonSerializer(jsonRpcService);
+                IJsonSerializer jsonSerializer = new EthereumJsonSerializer();
                 IRpcAuthentication auth = jsonRpcConfig.UnsecureDevNoRpcAuthentication || !jsonRpcUrlCollection.Values.Any(u => u.IsAuthenticated)
                     ? NoAuthentication.Instance
                     : JwtAuthentication.FromFile(jsonRpcConfig.JwtSecretFile, _api.Timestamper, logger);
@@ -48,7 +48,6 @@ namespace Nethermind.Runner.Ethereum.Steps
 
                 JsonRpcProcessor jsonRpcProcessor = new(
                     jsonRpcService,
-                    jsonSerializer,
                     jsonRpcConfig,
                     _api.FileSystem,
                     _api.LogManager);
@@ -104,13 +103,6 @@ namespace Nethermind.Runner.Ethereum.Steps
             {
                 if (logger.IsInfo) logger.Info("Json RPC is disabled");
             }
-        }
-
-        private IJsonSerializer CreateJsonSerializer(JsonRpcService jsonRpcService)
-        {
-            IJsonSerializer serializer = new EthereumJsonSerializer();
-            serializer.RegisterConverters(jsonRpcService.Converters);
-            return serializer;
         }
     }
 }

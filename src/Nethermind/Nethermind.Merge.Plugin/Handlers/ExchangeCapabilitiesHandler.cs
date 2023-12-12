@@ -50,7 +50,7 @@ public class ExchangeCapabilitiesHandler : IHandler<IEnumerable<string>, IEnumer
                 missing.Add(capability.Key);
         }
 
-        if (missing.Any())
+        if (missing.Count > 0)
         {
             if (_logger.IsWarn) _logger.Warn($"Consensus client missing capabilities: {string.Join(", ", missing)}");
         }

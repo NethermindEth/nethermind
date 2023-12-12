@@ -11,10 +11,7 @@ namespace Nethermind.Crypto
     {
         public static byte[] ToByteArray(this SecureString secureString, System.Text.Encoding encoding = null)
         {
-            if (secureString is null)
-            {
-                throw new ArgumentNullException(nameof(secureString));
-            }
+            ArgumentNullException.ThrowIfNull(secureString);
 
             encoding ??= System.Text.Encoding.UTF8;
 
@@ -35,10 +32,7 @@ namespace Nethermind.Crypto
 
         public static string Unsecure(this SecureString secureString)
         {
-            if (secureString is null)
-            {
-                throw new ArgumentNullException(nameof(secureString));
-            }
+            ArgumentNullException.ThrowIfNull(secureString);
 
             IntPtr unmanagedString = IntPtr.Zero;
             try

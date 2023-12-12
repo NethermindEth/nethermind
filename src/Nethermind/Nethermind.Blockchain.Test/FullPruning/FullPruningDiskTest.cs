@@ -61,7 +61,7 @@ namespace Nethermind.Blockchain.Test.FullPruning
             {
                 IDbProvider dbProvider = new DbProvider(DbModeHint.Persisted);
                 RocksDbFactory rocksDbFactory = new(new DbConfig(), LogManager, TempDirectory.Path);
-                StandardDbInitializer standardDbInitializer = new(dbProvider, rocksDbFactory, new MemDbFactory(), new FileSystem(), true);
+                StandardDbInitializer standardDbInitializer = new(dbProvider, rocksDbFactory, new MemDbFactory(), new FileSystem());
                 await standardDbInitializer.InitStandardDbsAsync(true);
                 return dbProvider;
             }
@@ -99,7 +99,7 @@ namespace Nethermind.Blockchain.Test.FullPruning
                 {
                 }
 
-                protected override void RunPruning(IPruningContext pruning, Keccak stateRoot)
+                protected override void RunPruning(IPruningContext pruning, Hash256 stateRoot)
                 {
                     base.RunPruning(pruning, stateRoot);
                     WaitHandle.Set();

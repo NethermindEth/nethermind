@@ -45,10 +45,7 @@ namespace Nethermind.Cli.Modules
         /// <exception cref="ArgumentNullException"></exception>
         private static Delegate CreateDelegate(MethodInfo methodInfo, CliModuleBase module)
         {
-            if (methodInfo is null)
-            {
-                throw new ArgumentNullException(nameof(methodInfo));
-            }
+            ArgumentNullException.ThrowIfNull(methodInfo);
 
             ParameterInfo[] parameterInfos = methodInfo.GetParameters();
             Type[] types = new Type[parameterInfos.Length + 1];

@@ -43,7 +43,7 @@ public abstract class DiscoveryMsgSerializerBase
         byteBuffer.WriteBytes(data.ToArray(), 0, data.Length);
 
         byteBuffer.SetReaderIndex(startReadIndex + 32 + 65);
-        Keccak toSign = Keccak.Compute(byteBuffer.ReadAllBytesAsSpan());
+        Hash256 toSign = Keccak.Compute(byteBuffer.ReadAllBytesAsSpan());
         byteBuffer.SetReaderIndex(startReadIndex);
 
         Signature signature = _ecdsa.Sign(_privateKey, toSign);
@@ -53,7 +53,7 @@ public abstract class DiscoveryMsgSerializerBase
 
         byteBuffer.SetReaderIndex(startReadIndex + 32);
         byteBuffer.SetWriterIndex(startWriteIndex + length);
-        ValueKeccak mdc = ValueKeccak.Compute(byteBuffer.ReadAllBytesAsSpan());
+        ValueHash256 mdc = ValueKeccak.Compute(byteBuffer.ReadAllBytesAsSpan());
         byteBuffer.SetReaderIndex(startReadIndex);
 
         byteBuffer.SetWriterIndex(startWriteIndex);
@@ -71,7 +71,7 @@ public abstract class DiscoveryMsgSerializerBase
 
         byteBuffer.SetWriterIndex(startWriteIndex + length);
         byteBuffer.SetReaderIndex(startReadIndex + 32 + 65);
-        Keccak toSign = Keccak.Compute(byteBuffer.ReadAllBytesAsSpan());
+        Hash256 toSign = Keccak.Compute(byteBuffer.ReadAllBytesAsSpan());
         byteBuffer.SetReaderIndex(startReadIndex);
 
         Signature signature = _ecdsa.Sign(_privateKey, toSign);
@@ -81,7 +81,7 @@ public abstract class DiscoveryMsgSerializerBase
 
         byteBuffer.SetWriterIndex(startWriteIndex + length);
         byteBuffer.SetReaderIndex(startReadIndex + 32);
-        ValueKeccak mdc = ValueKeccak.Compute(byteBuffer.ReadAllBytesAsSpan());
+        ValueHash256 mdc = ValueKeccak.Compute(byteBuffer.ReadAllBytesAsSpan());
         byteBuffer.SetReaderIndex(startReadIndex);
 
         byteBuffer.SetWriterIndex(startWriteIndex);

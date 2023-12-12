@@ -27,6 +27,7 @@ using Nethermind.Core;
 using Nethermind.Core.Exceptions;
 using Nethermind.Db.Rocks;
 using Nethermind.Hive;
+using Nethermind.Init.Snapshot;
 using Nethermind.KeyStore.Config;
 using Nethermind.Logging;
 using Nethermind.Logging.NLog;
@@ -51,9 +52,6 @@ public static class Program
     private static ILogger _logger = SimpleConsoleLogger.Instance;
 
     private static readonly ProcessExitSource _processExitSource = new();
-    private static readonly TaskCompletionSource<object?> _cancelKeySource = new();
-    private static readonly TaskCompletionSource<object?> _processExit = new();
-    private static readonly TaskCompletionSource<object?> _exitSourceExit = new();
     private static readonly ManualResetEventSlim _appClosed = new(true);
 
     public static void Main(string[] args)
@@ -153,13 +151,14 @@ public static class Program
             IConfigProvider configProvider = BuildConfigProvider(app, loggerConfigSource, logLevelOverride, configsDirectory, configFile);
             IInitConfig initConfig = configProvider.GetConfig<IInitConfig>();
             IKeyStoreConfig keyStoreConfig = configProvider.GetConfig<IKeyStoreConfig>();
+            ISnapshotConfig snapshotConfig = configProvider.GetConfig<ISnapshotConfig>();
             IPluginConfig pluginConfig = configProvider.GetConfig<IPluginConfig>();
 
             pluginLoader.OrderPlugins(pluginConfig);
             Console.Title = initConfig.LogFileName;
             Console.CancelKeyPress += ConsoleOnCancelKeyPress;
 
-            SetFinalDataDirectory(dataDir.HasValue() ? dataDir.Value() : null, initConfig, keyStoreConfig);
+            SetFinalDataDirectory(dataDir.HasValue() ? dataDir.Value() : null, initConfig, keyStoreConfig, snapshotConfig);
             NLogManager logManager = new(initConfig.LogFileName, initConfig.LogDirectory, initConfig.LogRules);
 
             _logger = logManager.GetClassLogger();
@@ -199,7 +198,7 @@ public static class Program
             {
                 await ethereumRunner.Start(_processExitSource.Token);
 
-                _ = await Task.WhenAny(_cancelKeySource.Task, _processExit.Task, _processExitSource.ExitTask);
+                await _processExitSource.ExitTask;
             }
             catch (TaskCanceledException)
             {
@@ -456,8 +455,7 @@ public static class Program
 
     private static void CurrentDomainOnProcessExit(object? sender, EventArgs e)
     {
-        _processExitSource.Exit(ExitCodes.Ok);
-        _processExit.SetResult(null);
+        _processExitSource.Exit(ExitCodes.SigTerm);
         _appClosed.Wait();
     }
 
@@ -485,24 +483,30 @@ public static class Program
         }
     }
 
-    private static void SetFinalDataDirectory(string? dataDir, IInitConfig initConfig, IKeyStoreConfig keyStoreConfig)
+    private static void SetFinalDataDirectory(string? dataDir, IInitConfig initConfig, IKeyStoreConfig keyStoreConfig, ISnapshotConfig snapshotConfig)
     {
         if (!string.IsNullOrWhiteSpace(dataDir))
         {
             string newDbPath = initConfig.BaseDbPath.GetApplicationResourcePath(dataDir);
             string newKeyStorePath = keyStoreConfig.KeyStoreDirectory.GetApplicationResourcePath(dataDir);
             string newLogDirectory = initConfig.LogDirectory.GetApplicationResourcePath(dataDir);
+            string newSnapshotPath = snapshotConfig.SnapshotDirectory.GetApplicationResourcePath(dataDir);
 
             if (_logger.IsInfo)
             {
                 _logger.Info($"Setting BaseDbPath to: {newDbPath}, from: {initConfig.BaseDbPath}");
                 _logger.Info($"Setting KeyStoreDirectory to: {newKeyStorePath}, from: {keyStoreConfig.KeyStoreDirectory}");
                 _logger.Info($"Setting LogDirectory to: {newLogDirectory}, from: {initConfig.LogDirectory}");
+                if (snapshotConfig.Enabled)
+                {
+                    _logger.Info($"Setting SnapshotPath to: {newSnapshotPath}");
+                }
             }
 
             initConfig.BaseDbPath = newDbPath;
             keyStoreConfig.KeyStoreDirectory = newKeyStorePath;
             initConfig.LogDirectory = newLogDirectory;
+            snapshotConfig.SnapshotDirectory = newSnapshotPath;
         }
         else
         {
@@ -514,8 +518,7 @@ public static class Program
 
     private static void ConsoleOnCancelKeyPress(object? sender, ConsoleCancelEventArgs e)
     {
-        _processExitSource.Exit(ExitCodes.Ok);
-        _ = _cancelKeySource.TrySetResult(null);
+        _processExitSource.Exit(ExitCodes.SigInt);
         e.Cancel = true;
     }
 

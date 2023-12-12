@@ -5,11 +5,11 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
+using System.Net.WebSockets;
 using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
@@ -18,20 +18,19 @@ using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Db;
-using Nethermind.Db.Blooms;
 using Nethermind.Facade.Eth;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.JsonRpc.Modules.Subscribe;
+using Nethermind.JsonRpc.WebSockets;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
+using Nethermind.Sockets;
 using Nethermind.Specs;
-using Nethermind.State.Repositories;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.TxPool;
-using Newtonsoft.Json;
+
 using NSubstitute;
 using NUnit.Framework;
 
@@ -68,8 +67,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             _receiptCanonicalityMonitor = new ReceiptCanonicalityMonitor(_blockTree, _receiptStorage, _logManager);
             _syncConfig = new SyncConfig();
 
-            JsonSerializer jsonSerializer = new();
-            jsonSerializer.Converters.AddRange(EthereumJsonSerializer.CommonConverters);
+            IJsonSerializer jsonSerializer = new EthereumJsonSerializer();
 
             SubscriptionFactory subscriptionFactory = new(
                 _logManager,
@@ -93,6 +91,13 @@ namespace Nethermind.JsonRpc.Test.Modules
             BlockHeader toBlock = Build.A.BlockHeader.WithNumber(77777).TestObject;
             _blockTree.FindHeader(Arg.Any<BlockParameter>()).Returns(fromBlock);
             _blockTree.FindHeader(Arg.Any<BlockParameter>(), true).Returns(toBlock);
+        }
+
+        [TearDown]
+        public void TearDown()
+        {
+            _jsonRpcDuplexClient?.Dispose();
+            _receiptCanonicalityMonitor?.Dispose();
         }
 
         private JsonRpcResult GetBlockAddedToMainResult(BlockReplacementEventArgs blockReplacementEventArgs, out string subscriptionId, TransactionsOption? options = null, bool shouldReceiveResult = true)
@@ -239,9 +244,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         }
 
         [TestCase("true")]
-        [TestCase("True")]
         [TestCase("false")]
-        [TestCase("False")]
         public async Task NewHeadSubscription_with_bool_arg(string boolArg)
         {
             string serialized = await RpcTest.TestSerializedRequest(_subscribeRpcModule, "eth_subscribe", "newHeads", boolArg);
@@ -502,10 +505,10 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             TxReceipt[] txReceipts =
             {
-                Build.A.Receipt.WithBlockNumber(blockNumber).WithIndex(11).WithLogs(logEntryA).TestObject,
-                Build.A.Receipt.WithBlockNumber(blockNumber).WithIndex(22).WithLogs(logEntryA, logEntryB).TestObject,
-                Build.A.Receipt.WithBlockNumber(blockNumber).WithIndex(33).WithLogs(logEntryB, logEntryC).TestObject
-            };
+            Build.A.Receipt.WithBlockNumber(blockNumber).WithIndex(11).WithLogs(logEntryA).TestObject,
+            Build.A.Receipt.WithBlockNumber(blockNumber).WithIndex(22).WithLogs(logEntryA, logEntryB).TestObject,
+            Build.A.Receipt.WithBlockNumber(blockNumber).WithIndex(33).WithLogs(logEntryB, logEntryC).TestObject
+        };
 
             _receiptStorage.Get(Arg.Any<Block>()).Returns(txReceipts);
 
@@ -554,12 +557,12 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             TxReceipt[] txReceipts =
             {
-                Build.A.Receipt.WithBlockNumber(blockNumber).WithLogs(logEntryA, logEntryB, logEntryC).TestObject,
-                Build.A.Receipt.WithBlockNumber(blockNumber).WithLogs().TestObject,
-                Build.A.Receipt.WithBlockNumber(blockNumber).WithLogs(logEntryB).TestObject,
-                Build.A.Receipt.WithBlockNumber(blockNumber).WithLogs(logEntryC, logEntryC, logEntryB, logEntryC, logEntryC, logEntryB).TestObject,
-                Build.A.Receipt.WithBlockNumber(blockNumber).WithLogs(logEntryA, logEntryC, logEntryB, logEntryA, logEntryC).TestObject,
-            };
+            Build.A.Receipt.WithBlockNumber(blockNumber).WithLogs(logEntryA, logEntryB, logEntryC).TestObject,
+            Build.A.Receipt.WithBlockNumber(blockNumber).WithLogs().TestObject,
+            Build.A.Receipt.WithBlockNumber(blockNumber).WithLogs(logEntryB).TestObject,
+            Build.A.Receipt.WithBlockNumber(blockNumber).WithLogs(logEntryC, logEntryC, logEntryB, logEntryC, logEntryC, logEntryB).TestObject,
+            Build.A.Receipt.WithBlockNumber(blockNumber).WithLogs(logEntryA, logEntryC, logEntryB, logEntryA, logEntryC).TestObject,
+        };
 
             _receiptStorage.Get(Arg.Any<Block>()).Returns(txReceipts);
 
@@ -602,12 +605,12 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             TxReceipt[] txReceipts =
             {
-                Build.A.Receipt.WithBlockNumber(blockNumber).WithLogs(logEntryA, logEntryB, logEntryC).TestObject,
-                Build.A.Receipt.WithBlockNumber(blockNumber).WithLogs().TestObject,
-                Build.A.Receipt.WithBlockNumber(blockNumber).WithLogs(logEntryB).TestObject,
-                Build.A.Receipt.WithBlockNumber(blockNumber).WithLogs(logEntryC, logEntryC, logEntryB, logEntryC, logEntryC, logEntryB).TestObject,
-                Build.A.Receipt.WithBlockNumber(blockNumber).WithLogs(logEntryA, logEntryC, logEntryB, logEntryA, logEntryC).TestObject,
-            };
+            Build.A.Receipt.WithBlockNumber(blockNumber).WithLogs(logEntryA, logEntryB, logEntryC).TestObject,
+            Build.A.Receipt.WithBlockNumber(blockNumber).WithLogs().TestObject,
+            Build.A.Receipt.WithBlockNumber(blockNumber).WithLogs(logEntryB).TestObject,
+            Build.A.Receipt.WithBlockNumber(blockNumber).WithLogs(logEntryC, logEntryC, logEntryB, logEntryC, logEntryC, logEntryB).TestObject,
+            Build.A.Receipt.WithBlockNumber(blockNumber).WithLogs(logEntryA, logEntryC, logEntryB, logEntryA, logEntryC).TestObject,
+        };
 
             _receiptStorage.Get(Arg.Any<Block>()).Returns(txReceipts);
 
@@ -652,12 +655,12 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             TxReceipt[] txReceipts =
             {
-                Build.A.Receipt.WithBlockNumber(blockNumber).WithLogs(logEntryA, logEntryB, logEntryC).TestObject,
-                Build.A.Receipt.WithBlockNumber(blockNumber).WithLogs().TestObject,
-                Build.A.Receipt.WithBlockNumber(blockNumber).WithLogs(logEntryB).TestObject,
-                Build.A.Receipt.WithBlockNumber(blockNumber).WithLogs(logEntryE, logEntryE, logEntryB, logEntryD, logEntryE, logEntryB).TestObject,
-                Build.A.Receipt.WithBlockNumber(blockNumber).WithLogs(logEntryC, logEntryB, logEntryE, logEntryA, logEntryB).TestObject,
-            };
+            Build.A.Receipt.WithBlockNumber(blockNumber).WithLogs(logEntryA, logEntryB, logEntryC).TestObject,
+            Build.A.Receipt.WithBlockNumber(blockNumber).WithLogs().TestObject,
+            Build.A.Receipt.WithBlockNumber(blockNumber).WithLogs(logEntryB).TestObject,
+            Build.A.Receipt.WithBlockNumber(blockNumber).WithLogs(logEntryE, logEntryE, logEntryB, logEntryD, logEntryE, logEntryB).TestObject,
+            Build.A.Receipt.WithBlockNumber(blockNumber).WithLogs(logEntryC, logEntryB, logEntryE, logEntryA, logEntryB).TestObject,
+        };
 
             _receiptStorage.Get(Arg.Any<Block>()).Returns(txReceipts);
 
@@ -735,9 +738,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         }
 
         [TestCase("true")]
-        [TestCase("True")]
         [TestCase("false")]
-        [TestCase("False")]
         public async Task NewPendingTransactionsSubscription_creating_result_with_bool_arg(string boolArg)
         {
             string serialized = await RpcTest.TestSerializedRequest(_subscribeRpcModule, "eth_subscribe", "newPendingTransactions", boolArg);
@@ -803,6 +804,101 @@ namespace Nethermind.JsonRpc.Test.Modules
             string serialized = _jsonSerializer.Serialize(jsonRpcResult.Response);
             var expectedResult = string.Concat("{\"jsonrpc\":\"2.0\",\"method\":\"eth_subscription\",\"params\":{\"subscription\":\"", subscriptionId, "\",\"result\":{\"nonce\":\"0x0\",\"blockHash\":null,\"blockNumber\":null,\"transactionIndex\":null,\"to\":\"0x0000000000000000000000000000000000000000\",\"value\":\"0x1\",\"gasPrice\":\"0x1\",\"gas\":\"0x5208\",\"input\":\"0x\",\"type\":\"0x0\"}}}");
             expectedResult.Should().Be(serialized);
+        }
+
+        [TestCase(2)]
+        [TestCase(5)]
+        [TestCase(10)]
+        [Explicit("Requires a WS server running")]
+        public async Task NewPendingTransactionSubscription_multiple_fast_messages(int messages)
+        {
+            ITxPool txPool = Substitute.For<ITxPool>();
+
+            using ClientWebSocket socket = new();
+            await socket.ConnectAsync(new Uri("ws://localhost:1337/"), CancellationToken.None);
+
+            using ISocketHandler handler = new WebSocketHandler(socket, NullLogManager.Instance);
+            using JsonRpcSocketsClient client = new(
+                clientName: "TestClient",
+                handler: handler,
+                endpointType: RpcEndpoint.Ws,
+                jsonRpcProcessor: null!,
+                jsonRpcService: null!,
+                jsonRpcLocalStats: new NullJsonRpcLocalStats(),
+                jsonSerializer: new EthereumJsonSerializer()
+            );
+
+            using NewPendingTransactionsSubscription subscription = new(
+                jsonRpcDuplexClient: client,
+                txPool: txPool,
+                logManager: LimboLogs.Instance);
+
+            for (int i = 0; i < messages; i++)
+            {
+                Transaction tx = new();
+                txPool.NewPending += Raise.EventWith(new TxEventArgs(tx));
+            }
+
+            // Wait until all messages are sent
+            await Task.Delay(1_000);
+        }
+
+        [TestCase(2)]
+        [TestCase(5)]
+        [TestCase(10)]
+        [Explicit("Requires a WS server running")]
+        public async Task MultipleSubscriptions_concurrent_fast_messages(int messages)
+        {
+            using ClientWebSocket socket = new();
+            await socket.ConnectAsync(new Uri("ws://localhost:1337/"), CancellationToken.None);
+
+            using ISocketHandler handler = new WebSocketHandler(socket, NullLogManager.Instance);
+            using JsonRpcSocketsClient client = new(
+                clientName: "TestClient",
+                handler: handler,
+                endpointType: RpcEndpoint.Ws,
+                jsonRpcProcessor: null!,
+                jsonRpcService: null!,
+                jsonRpcLocalStats: new NullJsonRpcLocalStats(),
+                jsonSerializer: new EthereumJsonSerializer()
+            );
+
+            Task subA = Task.Run(() =>
+            {
+                ITxPool txPool = Substitute.For<ITxPool>();
+                using NewPendingTransactionsSubscription subscription = new(
+                    // ReSharper disable once AccessToDisposedClosure
+                    jsonRpcDuplexClient: client,
+                    txPool: txPool,
+                    logManager: LimboLogs.Instance);
+
+                for (int i = 0; i < messages; i++)
+                {
+                    Transaction tx = new();
+                    txPool.NewPending += Raise.EventWith(new TxEventArgs(tx));
+                }
+            });
+            Task subB = Task.Run(() =>
+            {
+                IBlockTree blockTree = Substitute.For<IBlockTree>();
+                using NewHeadSubscription subscription = new(
+                    // ReSharper disable once AccessToDisposedClosure
+                    jsonRpcDuplexClient: client,
+                    blockTree: blockTree,
+                    specProvider: new TestSpecProvider(new ReleaseSpec()),
+                    logManager: LimboLogs.Instance);
+
+                for (int i = 0; i < messages; i++)
+                {
+                    BlockReplacementEventArgs eventArgs = new(Build.A.Block.TestObject);
+                    blockTree.BlockAddedToMain += Raise.EventWith(eventArgs);
+                }
+            });
+
+            await Task.WhenAll(subA, subB);
+
+            // Wait until all messages are sent
+            await Task.Delay(1_000);
         }
 
         [Test]
@@ -961,7 +1057,7 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             jsonRpcResult.Response.Should().NotBeNull();
             string serialized = _jsonSerializer.Serialize(jsonRpcResult.Response);
-            var expectedResult = string.Concat("{\"jsonrpc\":\"2.0\",\"method\":\"eth_subscription\",\"params\":{\"subscription\":\"", syncingSubscription.Id, "\",\"result\":{\"isSyncing\":true,\"startingBlock\":\"0x0\",\"currentBlock\":\"0x2728\",\"highestBlock\":\"0x273a\"}}}");
+            var expectedResult = string.Concat("{\"jsonrpc\":\"2.0\",\"method\":\"eth_subscription\",\"params\":{\"subscription\":\"", syncingSubscription.Id, "\",\"result\":{\"startingBlock\":\"0x0\",\"currentBlock\":\"0x2728\",\"highestBlock\":\"0x273a\"}}}");
             expectedResult.Should().Be(serialized);
         }
 
@@ -979,7 +1075,7 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             jsonRpcResult.Response.Should().NotBeNull();
             string serialized = _jsonSerializer.Serialize(jsonRpcResult.Response);
-            var expectedResult = string.Concat("{\"jsonrpc\":\"2.0\",\"method\":\"eth_subscription\",\"params\":{\"subscription\":\"", syncingSubscription.Id, "\",\"result\":{\"isSyncing\":true,\"startingBlock\":\"0x0\",\"currentBlock\":\"0x2738\",\"highestBlock\":\"0x2773\"}}}");
+            var expectedResult = string.Concat("{\"jsonrpc\":\"2.0\",\"method\":\"eth_subscription\",\"params\":{\"subscription\":\"", syncingSubscription.Id, "\",\"result\":{\"startingBlock\":\"0x0\",\"currentBlock\":\"0x2738\",\"highestBlock\":\"0x2773\"}}}");
             expectedResult.Should().Be(serialized);
         }
 

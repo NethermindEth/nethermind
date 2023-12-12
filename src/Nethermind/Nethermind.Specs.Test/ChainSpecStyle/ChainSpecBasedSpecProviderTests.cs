@@ -8,6 +8,7 @@ using System.Linq;
 using System.Reflection;
 using FluentAssertions;
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -36,7 +37,8 @@ public class ChainSpecBasedSpecProviderTests
     public void Timstamp_activation_equal_to_genesis_timestamp_loads_correctly(long blockNumber, ulong? timestamp, bool isEip3855Enabled)
     {
         ChainSpecLoader loader = new(new EthereumJsonSerializer());
-        string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, "../../../Specs/Timstamp_activation_equal_to_genesis_timestamp_test.json");
+        string path = Path.Combine(TestContext.CurrentContext.WorkDirectory,
+            $"../../../../{Assembly.GetExecutingAssembly().GetName().Name}/Specs/Timstamp_activation_equal_to_genesis_timestamp_test.json");
         ChainSpec chainSpec = loader.Load(File.ReadAllText(path));
         chainSpec.Parameters.Eip2537Transition.Should().BeNull();
         var logger = Substitute.ForPartsOf<LimboTraceLogger>();
@@ -81,7 +83,8 @@ public class ChainSpecBasedSpecProviderTests
     public void Logs_warning_when_timestampActivation_happens_before_blockActivation(long blockNumber, ulong? timestamp, bool isEip3855Enabled, bool isEip3198Enabled, bool receivesWarning)
     {
         ChainSpecLoader loader = new(new EthereumJsonSerializer());
-        string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, "../../../Specs/Logs_warning_when_timestampActivation_happens_before_blockActivation_test.json");
+        string path = Path.Combine(TestContext.CurrentContext.WorkDirectory,
+            $"../../../../{Assembly.GetExecutingAssembly().GetName().Name}/Specs/Logs_warning_when_timestampActivation_happens_before_blockActivation_test.json");
         ChainSpec chainSpec = loader.Load(File.ReadAllText(path));
         chainSpec.Parameters.Eip2537Transition.Should().BeNull();
         var logger = Substitute.For<ILogger>();
@@ -172,35 +175,6 @@ public class ChainSpecBasedSpecProviderTests
     }
 
     [Test]
-    public void Rinkeby_loads_properly()
-    {
-        ChainSpecLoader loader = new(new EthereumJsonSerializer());
-        string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, "../../../../Chains/rinkeby.json");
-        ChainSpec chainSpec = loader.Load(File.ReadAllText(path));
-        chainSpec.Parameters.Eip2537Transition.Should().BeNull();
-
-        ChainSpecBasedSpecProvider provider = new(chainSpec);
-        RinkebySpecProvider rinkeby = RinkebySpecProvider.Instance;
-
-        List<ForkActivation> forkActivationsToTest = new()
-        {
-            (ForkActivation)RinkebySpecProvider.ByzantiumBlockNumber,
-            (ForkActivation)(RinkebySpecProvider.ConstantinopleFixBlockNumber - 1),
-            (ForkActivation)RinkebySpecProvider.ConstantinopleFixBlockNumber,
-            (ForkActivation)(RinkebySpecProvider.IstanbulBlockNumber - 1),
-            (ForkActivation)RinkebySpecProvider.IstanbulBlockNumber,
-            (ForkActivation)(RinkebySpecProvider.BerlinBlockNumber - 1),
-            (ForkActivation)RinkebySpecProvider.BerlinBlockNumber,
-            (ForkActivation)(RinkebySpecProvider.LondonBlockNumber - 1),
-            (ForkActivation)RinkebySpecProvider.LondonBlockNumber,
-            (ForkActivation)120_000_000, // far in the future
-        };
-
-        CompareSpecProviders(rinkeby, provider, forkActivationsToTest);
-        Assert.That(provider.GenesisSpec.Eip1559TransitionBlock, Is.EqualTo(RinkebySpecProvider.LondonBlockNumber));
-    }
-
-    [Test]
     public void Goerli_loads_properly()
     {
         ChainSpec chainSpec = LoadChainSpecFromChainFolder("goerli");
@@ -258,6 +232,14 @@ public class ChainSpecBasedSpecProviderTests
         VerifyGnosisShanghaiExceptions(preShanghaiSpec, postShanghaiSpec);
         GetTransitionTimestamps(chainSpec.Parameters).Should().AllSatisfy(
             t => ValidateSlotByTimestamp(t, ChiadoSpecProvider.BeaconChainGenesisTimestamp, GnosisBlockTime).Should().BeTrue());
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(Eip4844Constants.BlobGasPriceUpdateFraction, Is.EqualTo((UInt256)1112826));
+            Assert.That(Eip4844Constants.MaxBlobGasPerBlock, Is.EqualTo(262144));
+            Assert.That(Eip4844Constants.MinBlobGasPrice, Is.EqualTo(1.GWei()));
+            Assert.That(Eip4844Constants.TargetBlobGasPerBlock, Is.EqualTo(131072));
+        });
     }
 
     [Test]
@@ -301,6 +283,14 @@ public class ChainSpecBasedSpecProviderTests
         VerifyGnosisShanghaiExceptions(preShanghaiSpec, postShanghaiSpec);
         GetTransitionTimestamps(chainSpec.Parameters).Should().AllSatisfy(
             t => ValidateSlotByTimestamp(t, GnosisSpecProvider.BeaconChainGenesisTimestamp, GnosisBlockTime).Should().BeTrue());
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(Eip4844Constants.BlobGasPriceUpdateFraction, Is.EqualTo((UInt256)1112826));
+            Assert.That(Eip4844Constants.MaxBlobGasPerBlock, Is.EqualTo(262144));
+            Assert.That(Eip4844Constants.MinBlobGasPrice, Is.EqualTo(1.GWei()));
+            Assert.That(Eip4844Constants.TargetBlobGasPerBlock, Is.EqualTo(131072));
+        });
     }
 
     private void VerifyGnosisShanghaiExceptions(IReleaseSpec preShanghaiSpec, IReleaseSpec postShanghaiSpec)
@@ -452,6 +442,12 @@ public class ChainSpecBasedSpecProviderTests
                      .Where(p => p.Name != nameof(IReleaseSpec.Eip1559TransitionBlock))
                      .Where(p => p.Name != nameof(IReleaseSpec.WithdrawalTimestamp))
                      .Where(p => p.Name != nameof(IReleaseSpec.Eip4844TransitionTimestamp))
+
+                     // Skip EIP-4844 parameter validation
+                     .Where(p => p.Name != nameof(Eip4844Constants.BlobGasPriceUpdateFraction))
+                     .Where(p => p.Name != nameof(Eip4844Constants.MaxBlobGasPerBlock))
+                     .Where(p => p.Name != nameof(Eip4844Constants.MinBlobGasPrice))
+                     .Where(p => p.Name != nameof(Eip4844Constants.TargetBlobGasPerBlock))
 
                      // handle gnosis specific exceptions
                      .Where(p => !isGnosis || p.Name != nameof(IReleaseSpec.MaxCodeSize))

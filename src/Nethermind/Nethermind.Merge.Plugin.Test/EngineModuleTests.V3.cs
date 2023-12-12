@@ -5,6 +5,8 @@ using System;
 using System.Collections.Generic;
 using System.IO.Abstractions;
 using System.Linq;
+using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
@@ -28,7 +30,6 @@ using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
-using Newtonsoft.Json.Linq;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -63,7 +64,7 @@ public partial class EngineModuleTests
     }
 
     [TestCaseSource(nameof(CancunFieldsTestSource))]
-    public async Task<int> NewPayloadV2_should_decline_pre_cancun_with_cancun_fields(ulong? blobGasUsed, ulong? excessBlobGas, Keccak? parentBlockBeaconRoot)
+    public async Task<int> NewPayloadV2_should_decline_pre_cancun_with_cancun_fields(ulong? blobGasUsed, ulong? excessBlobGas, Hash256? parentBlockBeaconRoot)
     {
         MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Shanghai.Instance);
         IEngineRpcModule rpcModule = CreateEngineModule(chain);
@@ -203,7 +204,7 @@ public partial class EngineModuleTests
     {
         MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Cancun.Instance);
         IEngineRpcModule rpcModule = CreateEngineModule(chain);
-        JsonRpcConfig jsonRpcConfig = new() { EnabledModules = new[] { "Engine" } };
+        JsonRpcConfig jsonRpcConfig = new() { EnabledModules = new[] { ModuleType.Engine } };
         RpcModuleProvider moduleProvider = new(new FileSystem(), jsonRpcConfig, LimboLogs.Instance);
         moduleProvider.Register(new SingletonModulePool<IEngineRpcModule>(new SingletonFactory<IEngineRpcModule>(rpcModule), true));
 
@@ -221,22 +222,22 @@ public partial class EngineModuleTests
 
         string executionPayloadString = serializer.Serialize(executionPayload);
         string blobsString = serializer.Serialize(Array.Empty<byte[]>());
-        string parentBeaconBlockRootString = serializer.Serialize(TestItem.KeccakA.BytesToArray());
+        string parentBeaconBlockRootString = TestItem.KeccakA.ToString();
 
         {
-            JObject executionPayloadAsJObject = serializer.Deserialize<JObject>(executionPayloadString);
+            JsonObject executionPayloadAsJObject = serializer.Deserialize<JsonObject>(executionPayloadString);
             JsonRpcRequest request = RpcTest.GetJsonRequest(nameof(IEngineRpcModule.engine_newPayloadV3),
                 serializer.Serialize(executionPayloadAsJObject), blobsString, parentBeaconBlockRootString);
             JsonRpcResponse response = await jsonRpcService.SendRequestAsync(request, context);
             Assert.That(response is JsonRpcSuccessResponse);
         }
 
-        string[] props = serializer.Deserialize<JObject>(serializer.Serialize(new ExecutionPayload()))
-            .Properties().Select(prop => prop.Name).ToArray();
+        string[] props = serializer.Deserialize<JsonObject>(serializer.Serialize(new ExecutionPayload()))
+            .Select(prop => prop.Key).ToArray();
 
         foreach (string prop in props)
         {
-            JObject executionPayloadAsJObject = serializer.Deserialize<JObject>(executionPayloadString);
+            JsonObject executionPayloadAsJObject = serializer.Deserialize<JsonObject>(executionPayloadString);
             executionPayloadAsJObject[prop] = null;
 
             JsonRpcRequest request = RpcTest.GetJsonRequest(nameof(IEngineRpcModule.engine_newPayloadV3),
@@ -248,7 +249,7 @@ public partial class EngineModuleTests
 
         foreach (string prop in props)
         {
-            JObject executionPayloadAsJObject = serializer.Deserialize<JObject>(executionPayloadString);
+            JsonObject executionPayloadAsJObject = serializer.Deserialize<JsonObject>(executionPayloadString);
             executionPayloadAsJObject.Remove(prop);
 
             JsonRpcRequest request = RpcTest.GetJsonRequest(nameof(IEngineRpcModule.engine_newPayloadV3),
@@ -306,7 +307,7 @@ public partial class EngineModuleTests
                  Substitute.For<IAsyncHandler<byte[], GetPayloadV3Result?>>(),
                  newPayloadHandlerMock,
                  Substitute.For<IForkchoiceUpdatedHandler>(),
-                 Substitute.For<IAsyncHandler<IList<Keccak>, IEnumerable<ExecutionPayloadBodyV1Result?>>>(),
+                 Substitute.For<IAsyncHandler<IList<Hash256>, IEnumerable<ExecutionPayloadBodyV1Result?>>>(),
                  Substitute.For<IGetPayloadBodiesByRangeV1Handler>(),
                  Substitute.For<IHandler<TransitionConfigurationV1, TransitionConfigurationV1>>(),
                  Substitute.For<IHandler<IEnumerable<string>, IEnumerable<string>>>(),
@@ -616,7 +617,7 @@ public partial class EngineModuleTests
             Withdrawals = new List<Withdrawal> { TestItem.WithdrawalA_1Eth },
             ParentBeaconBlockRoot = spec.IsBeaconBlockRootAvailable ? TestItem.KeccakE : null
         };
-        Keccak currentHeadHash = chain.BlockTree.HeadHash;
+        Hash256 currentHeadHash = chain.BlockTree.HeadHash;
         ForkchoiceStateV1 forkchoiceState = new(currentHeadHash, currentHeadHash, currentHeadHash);
         string payloadId = spec.IsBeaconBlockRootAvailable
             ? rpcModule.engine_forkchoiceUpdatedV3(forkchoiceState, payloadAttributes).Result.Data.PayloadId!

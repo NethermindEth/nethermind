@@ -25,19 +25,19 @@ namespace Nethermind.Blockchain.Filters
             return Array.Empty<FilterLog>();
         }
 
-        public Keccak[] GetBlocksHashes(int filterId)
+        public Hash256[] GetBlocksHashes(int filterId)
         {
-            return Array.Empty<Keccak>();
+            return Array.Empty<Hash256>();
         }
 
-        public Keccak[] PollBlockHashes(int filterId)
+        public Hash256[] PollBlockHashes(int filterId)
         {
-            return Array.Empty<Keccak>();
+            return Array.Empty<Hash256>();
         }
 
-        public Keccak[] PollPendingTransactionHashes(int filterId)
+        public Hash256[] PollPendingTransactionHashes(int filterId)
         {
-            return Array.Empty<Keccak>();
+            return Array.Empty<Hash256>();
         }
     }
 }

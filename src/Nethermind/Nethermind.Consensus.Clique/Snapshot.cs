@@ -11,13 +11,13 @@ namespace Nethermind.Consensus.Clique
     public class Snapshot : ICloneable
     {
         public long Number { get; set; }
-        public Keccak Hash { get; set; }
+        public Hash256 Hash { get; set; }
         public SortedList<Address, long> Signers { get; }
 
         public List<Vote> Votes;
         internal Dictionary<Address, Tally> Tally { get; }
 
-        internal Snapshot(long number, Keccak hash, SortedList<Address, long> signers, Dictionary<Address, Tally> tally)
+        internal Snapshot(long number, Hash256 hash, SortedList<Address, long> signers, Dictionary<Address, Tally> tally)
         {
             Number = number;
             Hash = hash;
@@ -26,7 +26,7 @@ namespace Nethermind.Consensus.Clique
             Tally = tally;
         }
 
-        internal Snapshot(long number, Keccak hash, SortedList<Address, long> signers)
+        internal Snapshot(long number, Hash256 hash, SortedList<Address, long> signers)
             : this(number, hash, signers, new Dictionary<Address, Tally>())
         {
         }

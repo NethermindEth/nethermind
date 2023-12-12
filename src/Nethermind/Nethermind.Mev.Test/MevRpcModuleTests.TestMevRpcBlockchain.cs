@@ -92,9 +92,8 @@ namespace Nethermind.Mev.Test
                 SpecProvider.UpdateMergeTransitionInfo(1, 0);
 
                 BlockProducerEnvFactory blockProducerEnvFactory = new(
-                    DbProvider,
+                    WorldStateManager,
                     BlockTree,
-                    ReadOnlyTrieStore,
                     SpecProvider,
                     BlockValidator,
                     NoBlockRewards.Instance,
@@ -205,9 +204,8 @@ namespace Nethermind.Mev.Test
                     LogManager);
 
                 _tracerFactory = new TracerFactory(
-                    DbProvider,
                     BlockTree,
-                    ReadOnlyTrieStore,
+                    WorldStateManager,
                     BlockPreprocessorStep,
                     SpecProvider,
                     LogManager,
@@ -253,7 +251,7 @@ namespace Nethermind.Mev.Test
             public MevBundle SendBundle(int blockNumber, params BundleTransaction[] txs)
             {
                 byte[][] bundleBytes = txs.Select(t => Rlp.Encode(t, RlpBehaviors.SkipTypedWrapping).Bytes).ToArray();
-                Keccak[] revertingTxHashes = txs.Where(t => t.CanRevert).Select(t => t.Hash!).ToArray();
+                Hash256[] revertingTxHashes = txs.Where(t => t.CanRevert).Select(t => t.Hash!).ToArray();
                 MevBundleRpc mevBundleRpc = new()
                 {
                     BlockNumber = blockNumber,

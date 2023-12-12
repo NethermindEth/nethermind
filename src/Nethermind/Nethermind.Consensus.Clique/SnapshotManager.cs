@@ -25,11 +25,11 @@ namespace Nethermind.Consensus.Clique
         private readonly IBlockTree _blockTree;
         private readonly ICliqueConfig _cliqueConfig;
         private readonly ILogger _logger;
-        private readonly LruCache<ValueKeccak, Address> _signatures;
+        private readonly LruCache<ValueHash256, Address> _signatures;
         private readonly IEthereumEcdsa _ecdsa;
         private IDb _blocksDb;
         private ulong _lastSignersCount = 0;
-        private LruCache<ValueKeccak, Snapshot> _snapshotCache = new(Clique.InMemorySnapshots, "clique snapshots");
+        private LruCache<ValueHash256, Snapshot> _snapshotCache = new(Clique.InMemorySnapshots, "clique snapshots");
 
         public SnapshotManager(ICliqueConfig cliqueConfig, IDb blocksDb, IBlockTree blockTree, IEthereumEcdsa ecdsa, ILogManager logManager)
         {
@@ -58,7 +58,7 @@ namespace Nethermind.Consensus.Clique
             Span<byte> signatureBytes = header.ExtraData.AsSpan(header.ExtraData.Length - extraSeal, extraSeal);
             Signature signature = new(signatureBytes);
             signature.V += Signature.VOffset;
-            Keccak message = CalculateCliqueHeaderHash(header);
+            Hash256 message = CalculateCliqueHeaderHash(header);
             Address address = _ecdsa.RecoverAddress(signatureBytes, message);
             _signatures.Set(header.Hash, address);
             return address;
@@ -67,19 +67,19 @@ namespace Nethermind.Consensus.Clique
         private int CalculateSignersCount(BlockHeader blockHeader)
         {
             int signersCount = (blockHeader.ExtraData.Length - Clique.ExtraVanityLength - Clique.ExtraSealLength) /
-                               Address.ByteLength;
+                               Address.Size;
             _lastSignersCount = signersCount > 0 ? (ulong)signersCount : 1;
             return signersCount;
         }
 
-        public static Keccak CalculateCliqueHeaderHash(BlockHeader blockHeader)
+        public static Hash256 CalculateCliqueHeaderHash(BlockHeader blockHeader)
         {
             int extraSeal = 65;
             int shortExtraLength = blockHeader.ExtraData.Length - extraSeal;
             byte[] fullExtraData = blockHeader.ExtraData;
             byte[] shortExtraData = blockHeader.ExtraData.Slice(0, shortExtraLength);
             blockHeader.ExtraData = shortExtraData;
-            Keccak sigHash = blockHeader.CalculateHash();
+            Hash256 sigHash = blockHeader.CalculateHash();
             blockHeader.ExtraData = fullExtraData;
             return sigHash;
         }
@@ -88,7 +88,7 @@ namespace Nethermind.Consensus.Clique
 
         public ulong GetLastSignersCount() => _lastSignersCount;
 
-        public Snapshot GetOrCreateSnapshot(long number, Keccak hash)
+        public Snapshot GetOrCreateSnapshot(long number, Hash256 hash)
         {
             Snapshot? snapshot = GetSnapshot(number, hash);
             if (snapshot is not null)
@@ -116,7 +116,7 @@ namespace Nethermind.Consensus.Clique
 
                     if (header.Hash is null) throw new InvalidOperationException("Block tree block without hash set");
 
-                    Keccak parentHash = header.ParentHash;
+                    Hash256 parentHash = header.ParentHash;
                     if (IsEpochTransition(number))
                     {
                         Snapshot? parentSnapshot = GetSnapshot(number - 1, parentHash);
@@ -127,7 +127,7 @@ namespace Nethermind.Consensus.Clique
                         Address epochSigner = GetBlockSealer(header);
                         for (int i = 0; i < signersCount; i++)
                         {
-                            Address signer = new(header.ExtraData.Slice(Clique.ExtraVanityLength + i * Address.ByteLength, Address.ByteLength));
+                            Address signer = new(header.ExtraData.Slice(Clique.ExtraVanityLength + i * Address.Size, Address.Size));
                             signers.Add(signer, signer == epochSigner ? number : parentSnapshot is null ? 0L : parentSnapshot.Signers.TryGetValue(signer, out long value) ? value : 0L);
                         }
 
@@ -200,7 +200,7 @@ namespace Nethermind.Consensus.Clique
             return (ulong)number % _cliqueConfig.Epoch == 0;
         }
 
-        private Snapshot? GetSnapshot(long number, Keccak hash)
+        private Snapshot? GetSnapshot(long number, Hash256 hash)
         {
             if (_logger.IsTrace) _logger.Trace($"Getting snapshot for {number}");
             // If an in-memory snapshot was found, use that
@@ -217,21 +217,21 @@ namespace Nethermind.Consensus.Clique
             return null;
         }
 
-        private static Keccak GetSnapshotKey(Keccak blockHash)
+        private static Hash256 GetSnapshotKey(Hash256 blockHash)
         {
             Span<byte> hashBytes = blockHash.Bytes;
             byte[] keyBytes = new byte[hashBytes.Length];
             for (int i = 0; i < _snapshotBytes.Length; i++) keyBytes[i] = (byte)(hashBytes[i] ^ _snapshotBytes[i]);
 
-            return new Keccak(keyBytes);
+            return new Hash256(keyBytes);
         }
 
         private SnapshotDecoder _decoder = new();
 
         [Todo(Improve.Refactor, "I guess it was only added here because of the use of blocksdb")]
-        private Snapshot? LoadSnapshot(Keccak hash)
+        private Snapshot? LoadSnapshot(Hash256 hash)
         {
-            Keccak key = GetSnapshotKey(hash);
+            Hash256 key = GetSnapshotKey(hash);
             byte[]? bytes = _blocksDb.Get(key);
             if (bytes is null) return null;
 
@@ -242,7 +242,7 @@ namespace Nethermind.Consensus.Clique
         {
             RlpStream stream = new(_decoder.GetLength(snapshot, RlpBehaviors.None));
             _decoder.Encode(stream, snapshot);
-            Keccak key = GetSnapshotKey(snapshot.Hash);
+            Hash256 key = GetSnapshotKey(snapshot.Hash);
             _blocksDb.Set(key, stream.Data);
         }
 

@@ -23,6 +23,7 @@ using Nethermind.TxPool.Comparison;
 using NSubstitute;
 using NUnit.Framework;
 using Nethermind.Config;
+using Nethermind.Core.Crypto;
 
 namespace Nethermind.Blockchain.Test
 {
@@ -145,7 +146,6 @@ namespace Nethermind.Blockchain.Test
             }
         }
 
-
         public static IEnumerable EnoughShardBlobTransactionsSelectedTestCases
         {
             get
@@ -160,7 +160,7 @@ namespace Nethermind.Blockchain.Test
                     tx.MaxFeePerBlobGas = 1;
                 });
                 maxTransactionsSelected.Transactions[1].BlobVersionedHashes =
-                    new byte[Eip4844Constants.MaxBlobGasPerTransaction / Eip4844Constants.BlobGasPerBlob - 1][];
+                    new byte[Eip4844Constants.MaxBlobGasPerTransaction / Eip4844Constants.GasPerBlob - 1][];
                 maxTransactionsSelected.ExpectedSelectedTransactions.AddRange(
                     maxTransactionsSelected.Transactions.OrderBy(t => t.Nonce).Take(2));
                 yield return new TestCaseData(maxTransactionsSelected).SetName("Enough transactions selected");
@@ -174,7 +174,7 @@ namespace Nethermind.Blockchain.Test
                     enoughTransactionsSelected.Transactions.OrderBy(t => t.Nonce).ToArray();
                 expectedSelectedTransactions[0].Type = TxType.Blob;
                 expectedSelectedTransactions[0].BlobVersionedHashes =
-                    new byte[Eip4844Constants.MaxBlobGasPerTransaction / Eip4844Constants.BlobGasPerBlob][];
+                    new byte[Eip4844Constants.MaxBlobGasPerTransaction / Eip4844Constants.GasPerBlob][];
                 expectedSelectedTransactions[0].MaxFeePerBlobGas = 1;
                 expectedSelectedTransactions[1].Type = TxType.Blob;
                 expectedSelectedTransactions[1].BlobVersionedHashes = new byte[1][];
@@ -229,13 +229,30 @@ namespace Nethermind.Blockchain.Test
                 new(specProvider, blockTree);
             IComparer<Transaction> defaultComparer = transactionComparerProvider.GetDefaultComparer();
             IComparer<Transaction> comparer = CompareTxByNonce.Instance.ThenBy(defaultComparer);
-            Dictionary<Address, Transaction[]> transactions = testCase.Transactions
-                .Where(t => t.SenderAddress is not null)
-                .GroupBy(t => t.SenderAddress)
-                .ToDictionary(
-                    g => g.Key!,
-                    g => g.OrderBy(t => t, comparer).ToArray());
+
+            Dictionary<Address, Transaction[]> GroupTransactions(bool supportBlobs) =>
+                testCase.Transactions
+                    .Where(t => t.SenderAddress is not null)
+                    .Where(t => t.SupportsBlobs == supportBlobs)
+                    .GroupBy(t => t.SenderAddress)
+                    .ToDictionary(
+                        g => g.Key!,
+                        g => g.OrderBy(t => t, comparer).ToArray());
+
+            Dictionary<Address, Transaction[]> transactions = GroupTransactions(false);
+            Dictionary<Address, Transaction[]> blobTransactions = GroupTransactions(true);
             transactionPool.GetPendingTransactionsBySender().Returns(transactions);
+            transactionPool.GetPendingLightBlobTransactionsBySender().Returns(blobTransactions);
+            foreach (Transaction blobTx in blobTransactions.SelectMany(kvp => kvp.Value))
+            {
+                transactionPool.TryGetPendingBlobTransaction(Arg.Is<Hash256>(h => h == blobTx.Hash),
+                    out Arg.Any<Transaction?>()).Returns(x =>
+                {
+                    x[1] = blobTx;
+                    return true;
+                });
+            }
+
             BlocksConfig blocksConfig = new() { MinGasPrice = testCase.MinGasPriceForMining };
             ITxFilterPipeline txFilterPipeline = new TxFilterPipelineBuilder(LimboLogs.Instance)
                 .WithMinGasPriceFilter(blocksConfig, specProvider)
@@ -252,6 +269,7 @@ namespace Nethermind.Blockchain.Test
             {
                 parentHeader = parentHeader.WithExcessBlobGas(0);
             }
+
             IEnumerable<Transaction> selectedTransactions =
                 poolTxSource.GetTransactions(parentHeader.TestObject,
                     testCase.GasLimit);

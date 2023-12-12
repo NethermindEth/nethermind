@@ -21,9 +21,9 @@ namespace Nethermind.Facade
         bool IsMining { get; }
         void RecoverTxSenders(Block block);
         Address? RecoverTxSender(Transaction tx);
-        TxReceipt GetReceipt(Keccak txHash);
-        (TxReceipt? Receipt, TxGasInfo? GasInfo, int LogIndexStart) GetReceiptAndGasInfo(Keccak txHash);
-        (TxReceipt? Receipt, Transaction Transaction, UInt256? baseFee) GetTransaction(Keccak txHash);
+        TxReceipt GetReceipt(Hash256 txHash);
+        (TxReceipt? Receipt, TxGasInfo? GasInfo, int LogIndexStart) GetReceiptAndGasInfo(Hash256 txHash);
+        (TxReceipt? Receipt, Transaction Transaction, UInt256? baseFee) GetTransaction(Hash256 txHash);
         BlockchainBridge.CallOutput Call(BlockHeader header, Transaction tx, CancellationToken cancellationToken);
         BlockchainBridge.CallOutput EstimateGas(BlockHeader header, Transaction tx, CancellationToken cancellationToken);
         BlockchainBridge.CallOutput CreateAccessList(BlockHeader header, Transaction tx, CancellationToken cancellationToken, bool optimize);
@@ -34,8 +34,8 @@ namespace Nethermind.Facade
         int NewFilter(BlockParameter? fromBlock, BlockParameter? toBlock, object? address = null, IEnumerable<object>? topics = null);
         void UninstallFilter(int filterId);
         bool FilterExists(int filterId);
-        Keccak[] GetBlockFilterChanges(int filterId);
-        Keccak[] GetPendingTransactionFilterChanges(int filterId);
+        Hash256[] GetBlockFilterChanges(int filterId);
+        Hash256[] GetPendingTransactionFilterChanges(int filterId);
         FilterLog[] GetLogFilterChanges(int filterId);
 
         FilterType GetFilterType(int filterId);
@@ -43,7 +43,7 @@ namespace Nethermind.Facade
 
         IEnumerable<FilterLog> GetLogs(BlockParameter fromBlock, BlockParameter toBlock, object? address = null, IEnumerable<object>? topics = null, CancellationToken cancellationToken = default);
         bool TryGetLogs(int filterId, out IEnumerable<FilterLog> filterLogs, CancellationToken cancellationToken = default);
-        void RunTreeVisitor(ITreeVisitor treeVisitor, Keccak stateRoot);
-
+        void RunTreeVisitor(ITreeVisitor treeVisitor, Hash256 stateRoot);
+        bool HasStateForRoot(Hash256 stateRoot);
     }
 }

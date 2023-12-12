@@ -100,7 +100,7 @@ public class TotalDifficultyFixMigration : IDatabaseMigration
     UInt256? FindParentTd(BlockHeader blockHeader, long level)
     {
         if (blockHeader.ParentHash is null) return null;
-        Keccak? parentHash = _blockTree.FindHeader(blockHeader.ParentHash)?.Hash;
+        Hash256? parentHash = _blockTree.FindHeader(blockHeader.ParentHash)?.Hash;
         if (parentHash is null) return null;
         ChainLevelInfo levelInfo = _chainLevelInfoRepository.LoadLevel(level - 1)!;
         foreach (BlockInfo blockInfo in levelInfo.BlockInfos)

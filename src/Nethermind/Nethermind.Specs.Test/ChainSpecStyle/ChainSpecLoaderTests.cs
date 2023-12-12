@@ -90,7 +90,7 @@ public class ChainSpecLoaderTests
         Assert.That(chainSpec.Parameters.MinGasLimit, Is.EqualTo((long?)0x1388L), "min gas limit");
         Assert.That(chainSpec.Parameters.Registrar, Is.EqualTo(new Address("0xe3389675d0338462dC76C6f9A3e432550c36A142")), "registrar");
         Assert.That(chainSpec.Parameters.ForkBlock, Is.EqualTo((long?)0x1d4c00L), "fork block");
-        Assert.That(chainSpec.Parameters.ForkCanonHash, Is.EqualTo(new Keccak("0x4985f5ca3d2afbec36529aa96f74de3cc10a2a4a6c44f2157a57d2c6059a11bb")), "fork block");
+        Assert.That(chainSpec.Parameters.ForkCanonHash, Is.EqualTo(new Hash256("0x4985f5ca3d2afbec36529aa96f74de3cc10a2a4a6c44f2157a57d2c6059a11bb")), "fork block");
 
         Assert.That(chainSpec.Parameters.Eip150Transition, Is.EqualTo((long?)0L), "eip150");
         Assert.That(chainSpec.Parameters.Eip160Transition, Is.EqualTo((long?)0L), "eip160");
@@ -192,30 +192,6 @@ public class ChainSpecLoaderTests
         chainSpec.ShanghaiTimestamp.Should().Be(ChiadoSpecProvider.ShanghaiTimestamp);
         chainSpec.ShanghaiTimestamp.Should().Be(ChiadoSpecProvider.Instance.TimestampFork);
 
-    }
-
-    [Test]
-    public void Can_load_rinkeby()
-    {
-        string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, "../../../../", "Chains/rinkeby.json");
-        ChainSpec chainSpec = LoadChainSpec(path);
-
-        Assert.That(chainSpec.Parameters.Eip1559BaseFeeInitialValue, Is.EqualTo(1.GWei()), $"fork base fee");
-        Assert.That(chainSpec.NetworkId, Is.EqualTo(4), $"{nameof(chainSpec.NetworkId)}");
-        Assert.That(chainSpec.Name, Is.EqualTo("Rinkeby"), $"{nameof(chainSpec.Name)}");
-        Assert.That(chainSpec.SealEngineType, Is.EqualTo(SealEngineType.Clique), "engine");
-        Assert.That(chainSpec.IstanbulBlockNumber, Is.EqualTo((long?)5435345), "istanbul no");
-
-        // chainSpec.HomesteadBlockNumber.Should().Be(RinkebySpecProvider.HomesteadBlockNumber);
-        chainSpec.DaoForkBlockNumber.Should().Be(null);
-        chainSpec.TangerineWhistleBlockNumber.Should().Be(RinkebySpecProvider.TangerineWhistleBlockNumber);
-        chainSpec.SpuriousDragonBlockNumber.Should().Be(RinkebySpecProvider.SpuriousDragonBlockNumber);
-        chainSpec.ByzantiumBlockNumber.Should().Be(RinkebySpecProvider.ByzantiumBlockNumber);
-        chainSpec.ConstantinopleBlockNumber.Should().Be(RinkebySpecProvider.ConstantinopleBlockNumber);
-        chainSpec.ConstantinopleFixBlockNumber.Should().Be(RinkebySpecProvider.ConstantinopleFixBlockNumber);
-        chainSpec.IstanbulBlockNumber.Should().Be(RinkebySpecProvider.IstanbulBlockNumber);
-        chainSpec.BerlinBlockNumber.Should().Be(RinkebySpecProvider.BerlinBlockNumber);
-        chainSpec.LondonBlockNumber.Should().Be(RinkebySpecProvider.LondonBlockNumber);
     }
 
     [Test]

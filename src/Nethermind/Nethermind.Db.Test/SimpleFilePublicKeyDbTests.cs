@@ -37,7 +37,7 @@ namespace Nethermind.Db.Test
                 dict[key] = value;
             }
 
-            using (filePublicKeyDb.StartBatch())
+            using (filePublicKeyDb.StartWriteBatch())
             {
                 foreach (var kv in dict)
                 {

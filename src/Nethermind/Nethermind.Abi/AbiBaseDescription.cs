@@ -3,10 +3,15 @@
 
 using System;
 using System.Linq;
+using System.Text.Json.Serialization;
+
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.Abi
 {
+    [JsonDerivedType(typeof(AbiEventDescription))]
+    [JsonDerivedType(typeof(AbiFunctionDescription))]
+    [JsonDerivedType(typeof(AbiErrorDescription))]
     public abstract class AbiBaseDescription
     {
         public AbiDescriptionType Type { get; set; } = AbiDescriptionType.Function;
@@ -22,7 +27,7 @@ namespace Nethermind.Abi
         public AbiEncodingInfo GetCallInfo(AbiEncodingStyle encodingStyle = AbiEncodingStyle.IncludeSignature) =>
             new(encodingStyle, _callSignature ??= new AbiSignature(Name, Inputs.Select(i => i.Type).ToArray()));
 
-        public Keccak GetHash() => GetCallInfo().Signature.Hash;
+        public Hash256 GetHash() => GetCallInfo().Signature.Hash;
 
     }
 }

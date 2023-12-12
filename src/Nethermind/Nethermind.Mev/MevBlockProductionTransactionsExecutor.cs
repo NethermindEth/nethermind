@@ -53,7 +53,7 @@ namespace Nethermind.Mev
             IEnumerable<Transaction> transactions = GetTransactions(block);
             LinkedHashSet<Transaction> transactionsInBlock = new(ByHashTxComparer.Instance);
             List<BundleTransaction> bundleTransactions = new();
-            Keccak? bundleHash = null;
+            Hash256? bundleHash = null;
             BlockExecutionContext blkCtx = new(block.Header);
             foreach (Transaction currentTx in transactions)
             {

@@ -14,13 +14,13 @@ namespace Nethermind.JsonRpc.Test
 {
     public partial class ConsensusHelperTests
     {
-        private class ReceiptsJsonRpcDataSource : JsonRpcDataSource<IEnumerable<ReceiptForRpc>>, IConsensusDataSource<IEnumerable<ReceiptForRpc>>, IConsensusDataSourceWithParameter<Keccak>
+        private class ReceiptsJsonRpcDataSource : JsonRpcDataSource<IEnumerable<ReceiptForRpc>>, IConsensusDataSource<IEnumerable<ReceiptForRpc>>, IConsensusDataSourceWithParameter<Hash256>
         {
             public ReceiptsJsonRpcDataSource(Uri uri, IJsonSerializer serializer) : base(uri, serializer)
             {
             }
 
-            public Keccak Parameter { get; set; } = null!;
+            public Hash256 Parameter { get; set; } = null!;
 
             public override async Task<string> GetJsonData() => GetJson(await GetJsonDatas());
 

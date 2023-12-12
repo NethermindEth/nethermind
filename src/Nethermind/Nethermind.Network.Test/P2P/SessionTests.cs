@@ -14,6 +14,7 @@ using Nethermind.Network.P2P.ProtocolHandlers;
 using Nethermind.Network.Rlpx;
 using Nethermind.Stats.Model;
 using NSubstitute;
+using NSubstitute.ReceivedExtensions;
 using NUnit.Framework;
 
 namespace Nethermind.Network.Test.P2P
@@ -510,6 +511,45 @@ namespace Nethermind.Network.Test.P2P
 
             session.ReceiveMessage(new Packet("p2p", 3, Array.Empty<byte>()));
             p2p.DidNotReceive().HandleMessage(Arg.Is<Packet>(p => p.Protocol == "p2p" && p.PacketType == 3));
+        }
+
+        [Test]
+        public void Delay_disconnect_until_after_initialize()
+        {
+            Session session = new(30312, new Node(TestItem.PublicKeyA, "127.0.0.1", 8545), _channel, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
+            session.Handshake(TestItem.PublicKeyA);
+            session.InitiateDisconnect(DisconnectReason.TooManyPeers);
+
+            IProtocolHandler p2p = BuildHandler("p2p", 10);
+            session.AddProtocolHandler(p2p);
+
+            session.Init(5, _channelHandlerContext, _packetSender);
+
+            p2p.Received().DisconnectProtocol(Arg.Any<DisconnectReason>(), Arg.Any<string?>());
+        }
+
+        [Test]
+        public void Protocol_handler_can_send_message_on_disconnect()
+        {
+            Session session = new(30312, new Node(TestItem.PublicKeyA, "127.0.0.1", 8545), _channel, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
+            session.Handshake(TestItem.PublicKeyA);
+            session.InitiateDisconnect(DisconnectReason.TooManyPeers);
+
+            IProtocolHandler p2p = BuildHandler("p2p", 10);
+            session.AddProtocolHandler(p2p);
+
+            p2p.When(it => it.DisconnectProtocol(Arg.Any<DisconnectReason>(), Arg.Any<string>()))
+                .Do((_) =>
+                {
+                    session.DeliverMessage(PingMessage.Instance);
+                });
+
+            session.Init(5, _channelHandlerContext, _packetSender);
+            session.InitiateDisconnect(DisconnectReason.Other);
+
+            _packetSender
+                .Received()
+                .Enqueue(PingMessage.Instance);
         }
 
         [Test, Retry(3)]
