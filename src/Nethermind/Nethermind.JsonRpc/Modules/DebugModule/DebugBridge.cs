@@ -118,7 +118,7 @@ public class DebugBridge : IDebugBridge
         _receiptStorage.Insert(block, txReceipts);
     }
 
-    public TxReceipt[]? GetReceiptsForBlock(BlockParameter blockParam) 
+    public TxReceipt[]? GetReceiptsForBlock(BlockParameter blockParam)
     {
         SearchResult<Block> searchResult = _blockTree.SearchForBlock(blockParam);
         if (searchResult.IsError)

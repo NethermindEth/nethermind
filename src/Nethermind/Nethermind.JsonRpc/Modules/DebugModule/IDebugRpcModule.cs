@@ -87,16 +87,16 @@ public interface IDebugRpcModule : IRpcModule
 
     [JsonRpcMethod(Description = "Insert receipts for the block after verifying receipts root correctness.")]
     Task<ResultWrapper<bool>> debug_insertReceipts(BlockParameter blockParameter, ReceiptForRpc[] receiptForRpc);
-    
+
     [JsonRpcMethod(Description = "Get Raw Block format.")]
     ResultWrapper<byte[]> debug_getRawBlock(long blockNumber);
-        
+
     [JsonRpcMethod(Description = "Get Raw Receipt format.")]
     ResultWrapper<byte[][]> debug_getRawReceipts(long blockNumber);
-        
+
     [JsonRpcMethod(Description = "Get Raw Header format.")]
     ResultWrapper<byte[]> debug_getRawHeader(long blockNumber);
-        
+
     [JsonRpcMethod(Description = "Get Raw Transaction format.")]
     ResultWrapper<byte[]> debug_getRawTransaction(Hash256 transactionHash);
 

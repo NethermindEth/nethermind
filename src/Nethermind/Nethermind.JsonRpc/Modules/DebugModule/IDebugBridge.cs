@@ -23,7 +23,7 @@ public interface IDebugBridge
     IReadOnlyCollection<GethLikeTxTrace> GetBlockTrace(BlockParameter blockParameter, CancellationToken cancellationToken, GethTraceOptions gethTraceOptions = null);
     IReadOnlyCollection<GethLikeTxTrace> GetBlockTrace(Rlp blockRlp, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null);
     byte[] GetBlockRlp(BlockParameter param);
-    Block? GetBlock(BlockParameter param); 
+    Block? GetBlock(BlockParameter param);
     byte[] GetBlockRlp(Hash256 blockHash);
     byte[] GetBlockRlp(long number);
     byte[] GetDbValue(string dbName, byte[] key);
