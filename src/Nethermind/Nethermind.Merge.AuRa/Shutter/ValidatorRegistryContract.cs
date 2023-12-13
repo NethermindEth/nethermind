@@ -10,6 +10,8 @@ using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Facade;
+using Nethermind.Int256;
 using Nethermind.TxPool;
 
 namespace Nethermind.Merge.AuRa.Shutter;
@@ -19,9 +21,12 @@ public class ValidatorRegistryContract : CallableContract, IValidatorRegistryCon
     private readonly ISigner _signer;
     private readonly ITxSender _txSender;
     private readonly ITxSealer _txSealer;
+    private readonly IBlockchainBridge _blockchainBridge;
     private UInt64 _nonce;
     private readonly UInt64 _validatorIndex;
-    private static readonly string FUNCTION_NAME = "update";
+    private static readonly string UPDATE = "update";
+    private static readonly string GET_NUM_UPDATES = "getNumUpdates";
+    private static readonly string GET_UPDATE = "getUpdate";
     private static readonly byte VALIDATOR_REGISTRY_MESSAGE_VERSION = 0;
 
     private class Message
@@ -81,16 +86,43 @@ public class ValidatorRegistryContract : CallableContract, IValidatorRegistryCon
         }
     }
 
-    public ValidatorRegistryContract(ITransactionProcessor transactionProcessor, IAbiEncoder abiEncoder, Address contractAddress, ISigner signer, ITxSender txSender, ITxSealer txSealer)
+    private UInt256 GetNumUpdates(BlockHeader blockHeader)
+    {
+        Transaction transaction = GenerateTransaction<SystemTransaction>(GET_NUM_UPDATES, _signer.Address, Array.Empty<object>());
+        BlockchainBridge.CallOutput res = _blockchainBridge.Call(blockHeader, transaction, new System.Threading.CancellationToken());
+        return new UInt256(res.OutputData, true);
+    }
+
+    private Message GetUpdateMessage(BlockHeader blockHeader, UInt256 i)
+    {
+        Transaction transaction = GenerateTransaction<SystemTransaction>(GET_UPDATE, _signer.Address, new[] {i});
+        BlockchainBridge.CallOutput res = _blockchainBridge.Call(blockHeader, transaction, new System.Threading.CancellationToken());
+        Span<byte> encodedMessage = res.OutputData;
+        // ignore signature for now, maybe should verify?
+        return new Message(encodedMessage.Slice(0, 46));
+    }
+
+    public ValidatorRegistryContract(ITransactionProcessor transactionProcessor, IAbiEncoder abiEncoder, Address contractAddress, ISigner signer, ITxSender txSender, ITxSealer txSealer, IBlockchainBridge blockchainBridge, BlockHeader blockHeader)
         : base(transactionProcessor, abiEncoder, contractAddress)
     {
         _signer = signer;
         _txSender = txSender;
         _txSealer = txSealer;
+        _blockchainBridge = blockchainBridge;
+        _validatorIndex = 0; // what is this?
 
-        _nonce = _validatorIndex = 0;
-        // todo: look back through contract updates to calculate correct nonce
-        // what is validator index?
+        // set nonce based on last nonce observed from this address
+        _nonce = 0;
+        UInt256 update = GetNumUpdates(blockHeader);
+        for (UInt256 i = update - 1; i >= 0; i -= 1)
+        {
+            Message m = GetUpdateMessage(blockHeader, i);
+            if (m.Sender == ContractAddress!)
+            {
+                _nonce = m.Nonce + 1;
+                break;
+            }
+        }
     }
 
     private byte[] Sign(byte[] message)
@@ -99,9 +131,9 @@ public class ValidatorRegistryContract : CallableContract, IValidatorRegistryCon
         return _signer.Sign(Keccak.Compute(message)).Bytes;
     }
 
-    private async ValueTask<AcceptTxResult?> CallUpdate(byte[] message, byte[] signature)
+    private async ValueTask<AcceptTxResult?> Update(byte[] message, byte[] signature)
     {
-        Transaction transaction = GenerateTransaction<GeneratedTransaction>(FUNCTION_NAME, _signer.Address, new[] {message, signature});
+        Transaction transaction = GenerateTransaction<GeneratedTransaction>(UPDATE, _signer.Address, new[] {message, signature});
         await _txSealer.Seal(transaction, TxHandlingOptions.AllowReplacingSignature);
         (Hash256 _, AcceptTxResult? res) = await _txSender.SendTransaction(transaction, TxHandlingOptions.PersistentBroadcast);
         return res;
@@ -110,7 +142,7 @@ public class ValidatorRegistryContract : CallableContract, IValidatorRegistryCon
     public async ValueTask<AcceptTxResult?> Deregister(BlockHeader blockHeader)
     {
         byte[] deregistrationMessage = new Message(ContractAddress!, _validatorIndex, _nonce).ComputeDeregistrationMessage();
-        AcceptTxResult? res = await CallUpdate(deregistrationMessage, Sign(deregistrationMessage));
+        AcceptTxResult? res = await Update(deregistrationMessage, Sign(deregistrationMessage));
 
         if (res == AcceptTxResult.Accepted)
         {
@@ -123,7 +155,7 @@ public class ValidatorRegistryContract : CallableContract, IValidatorRegistryCon
     public async ValueTask<AcceptTxResult?> Register(BlockHeader blockHeader)
     {
         byte[] registrationMessage = new Message(ContractAddress!, _validatorIndex, _nonce).ComputeRegistrationMessage();
-        AcceptTxResult? res = await CallUpdate(registrationMessage, Sign(registrationMessage));
+        AcceptTxResult? res = await Update(registrationMessage, Sign(registrationMessage));
 
         if (res == AcceptTxResult.Accepted)
         {
