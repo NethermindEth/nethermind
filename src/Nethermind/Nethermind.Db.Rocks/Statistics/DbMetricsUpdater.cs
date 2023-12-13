@@ -79,7 +79,7 @@ public partial class DbMetricsUpdater
         }
         else
         {
-            _logger.Warn($"No RocksDB compaction stats available for {_dbName} databse.");
+            _logger.Warn($"No RocksDB compaction stats available for {_dbName} database.");
         }
     }
 
