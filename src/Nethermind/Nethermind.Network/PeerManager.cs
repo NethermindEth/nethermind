@@ -272,7 +272,7 @@ namespace Nethermind.Network
                     if (remainingCandidates.Count == 0)
                     {
                         // Delay to prevent high CPU use. There is a shortcut path for newly discovered peer, so having
-                        // a lower delay probably wont do much.
+                        // a lower delay probably won't do much.
                         await Task.Delay(TimeSpan.FromSeconds(1));
                         continue;
                     }
