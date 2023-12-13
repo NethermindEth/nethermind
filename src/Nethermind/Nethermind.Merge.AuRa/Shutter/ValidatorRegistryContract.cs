@@ -54,20 +54,20 @@ public class ValidatorRegistryContract : CallableContract, IValidatorRegistryCon
             }
 
             Version = encodedMessage[0];
-            ChainId = BinaryPrimitives.ReadUInt64BigEndian(encodedMessage.Slice(3));
-            Sender = new Address(encodedMessage.Slice(9, 20).ToArray());
-            ValidatorIndex = BinaryPrimitives.ReadUInt64BigEndian(encodedMessage.Slice(31));
-            Nonce = BinaryPrimitives.ReadUInt64BigEndian(encodedMessage.Slice(39));
+            ChainId = BinaryPrimitives.ReadUInt64BigEndian(encodedMessage[3..]);
+            Sender = new Address(encodedMessage[9..29].ToArray());
+            ValidatorIndex = BinaryPrimitives.ReadUInt64BigEndian(encodedMessage[31..]);
+            Nonce = BinaryPrimitives.ReadUInt64BigEndian(encodedMessage[39..]);
         }
 
         private void ComputeRegistryMessagePrefix(Span<byte> registryMessagePrefix)
         {
             registryMessagePrefix[0] = Version;
-            BinaryPrimitives.WriteUInt64BigEndian(registryMessagePrefix.Slice(3), ChainId);
-            Span<byte> addressSpan = registryMessagePrefix.Slice(9);
+            BinaryPrimitives.WriteUInt64BigEndian(registryMessagePrefix[3..], ChainId);
+            Span<byte> addressSpan = registryMessagePrefix[9..];
             addressSpan = Sender.Bytes;
-            BinaryPrimitives.WriteUInt64BigEndian(registryMessagePrefix.Slice(31), ValidatorIndex);
-            BinaryPrimitives.WriteUInt64BigEndian(registryMessagePrefix.Slice(39), Nonce);
+            BinaryPrimitives.WriteUInt64BigEndian(registryMessagePrefix[31..], ValidatorIndex);
+            BinaryPrimitives.WriteUInt64BigEndian(registryMessagePrefix[39..], Nonce);
         }
 
         public byte[] ComputeDeregistrationMessage()
@@ -99,7 +99,7 @@ public class ValidatorRegistryContract : CallableContract, IValidatorRegistryCon
         BlockchainBridge.CallOutput res = _blockchainBridge.Call(blockHeader, transaction, new System.Threading.CancellationToken());
         Span<byte> encodedMessage = res.OutputData;
         // ignore signature for now, maybe should verify?
-        return new Message(encodedMessage.Slice(0, 46));
+        return new Message(encodedMessage[..46]);
     }
 
     public ValidatorRegistryContract(ITransactionProcessor transactionProcessor, IAbiEncoder abiEncoder, Address contractAddress, ISigner signer, ITxSender txSender, ITxSealer txSealer, IBlockchainBridge blockchainBridge, BlockHeader blockHeader)
