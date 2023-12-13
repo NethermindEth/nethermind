@@ -3,6 +3,7 @@
 
 using System;
 using System.Buffers.Binary;
+using System.Threading.Tasks;
 using Nethermind.Abi;
 using Nethermind.Blockchain.Contracts;
 using Nethermind.Consensus;
@@ -16,14 +17,16 @@ public class ValidatorRegistryContract : CallableContract, IValidatorRegistryCon
 {
     private readonly ISigner _signer;
     private readonly ITxSender _txSender;
+    private readonly ITxSealer _txSealer;
     private static readonly string FUNCTION_NAME = "update";
     private static readonly byte VALIDATOR_REGISTRY_MESSAGE_VERSION = 0;
 
-    public ValidatorRegistryContract(ITransactionProcessor transactionProcessor, IAbiEncoder abiEncoder, Address contractAddress, ISigner signer, ITxSender txSender)
+    public ValidatorRegistryContract(ITransactionProcessor transactionProcessor, IAbiEncoder abiEncoder, Address contractAddress, ISigner signer, ITxSender txSender, ITxSealer txSealer)
         : base(transactionProcessor, abiEncoder, contractAddress)
     {
         _signer = signer;
         _txSender = txSender;
+        _txSealer = txSealer;
     }
 
     private void ComputeRegistryMessagePrefix(UInt64 validatorIndex, UInt64 nonce, Span<byte> registryMessagePrefix)
@@ -51,25 +54,32 @@ public class ValidatorRegistryContract : CallableContract, IValidatorRegistryCon
         return registryMessagePrefix.ToArray();
     }
 
-    private void SendMessage(byte[] message)
+    private async ValueTask<AcceptTxResult?> SendMessage(byte[] message)
     {
         var transaction = GenerateTransaction<GeneratedTransaction>(FUNCTION_NAME, _signer.Address, message);
 
-        // sign transaction?
+        await _txSealer.Seal(transaction, TxHandlingOptions.AllowReplacingSignature);
 
-        _txSender.SendTransaction(transaction, TxHandlingOptions.PersistentBroadcast);
+        var (_, res) = await _txSender.SendTransaction(transaction, TxHandlingOptions.PersistentBroadcast);
+
+        return res;
     }
 
-    public void Deregister(BlockHeader blockHeader)
+    public async ValueTask<AcceptTxResult?> Deregister(BlockHeader blockHeader)
     {
         UInt64 nonce = 0; // load nonce from disk
         UInt64 validatorIndex = 0;
         byte[] deregistrationMessage = ComputeDeregistrationMessage(nonce, validatorIndex);
-        SendMessage(deregistrationMessage);
+        AcceptTxResult? res = await SendMessage(deregistrationMessage);
+        return res;
     }
 
-    public void Register(BlockHeader blockHeader)
+    public async ValueTask<AcceptTxResult?> Register(BlockHeader blockHeader)
     {
-        throw new NotImplementedException();
+        UInt64 nonce = 0; // load nonce from disk
+        UInt64 validatorIndex = 0;
+        byte[] registrationMessage = ComputeRegistrationMessage(nonce, validatorIndex);
+        AcceptTxResult? res = await SendMessage(registrationMessage);
+        return res;
     }
 }
