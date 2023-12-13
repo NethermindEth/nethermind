@@ -17,7 +17,7 @@ public static class NewPayloadV1Result
 
     public static ResultWrapper<PayloadStatusV1> Invalid(Hash256? latestValidHash, string? validationError = null)
     {
-        return ResultWrapper<PayloadStatusV1>.Fail("Invalid Params", ErrorCodes.InvalidParams, new PayloadStatusV1() { Status = PayloadStatus.Invalid, LatestValidHash = latestValidHash, ValidationError = validationError });
+        return ResultWrapper<PayloadStatusV1>.Success(new PayloadStatusV1() { Status = PayloadStatus.Invalid, LatestValidHash = latestValidHash, ValidationError = validationError });
     }
 
     public static ResultWrapper<PayloadStatusV1> Valid(Hash256? latestValidHash)
