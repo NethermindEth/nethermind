@@ -8,6 +8,7 @@ using Nethermind.Abi;
 using Nethermind.Blockchain.Contracts;
 using Nethermind.Consensus;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.TxPool;
 
@@ -60,18 +61,24 @@ public class ValidatorRegistryContract : CallableContract, IValidatorRegistryCon
         return registryMessagePrefix.ToArray();
     }
 
-    private async ValueTask<AcceptTxResult?> SendMessage(byte[] message)
+    private byte[] Sign(byte[] message)
     {
-        var transaction = GenerateTransaction<GeneratedTransaction>(FUNCTION_NAME, _signer.Address, message);
+        // todo: this uses secp256k1, we want BLS
+        return _signer.Sign(Keccak.Compute(message)).Bytes;
+    }
+
+    private async ValueTask<AcceptTxResult?> CallUpdate(byte[] message, byte[] signature)
+    {
+        Transaction transaction = GenerateTransaction<GeneratedTransaction>(FUNCTION_NAME, _signer.Address, new[] {message, signature});
         await _txSealer.Seal(transaction, TxHandlingOptions.AllowReplacingSignature);
-        var (_, res) = await _txSender.SendTransaction(transaction, TxHandlingOptions.PersistentBroadcast);
+        (Hash256 _, AcceptTxResult? res) = await _txSender.SendTransaction(transaction, TxHandlingOptions.PersistentBroadcast);
         return res;
     }
 
     public async ValueTask<AcceptTxResult?> Deregister(BlockHeader blockHeader)
     {
         byte[] deregistrationMessage = ComputeDeregistrationMessage(_nonce);
-        AcceptTxResult? res = await SendMessage(deregistrationMessage);
+        AcceptTxResult? res = await CallUpdate(deregistrationMessage, Sign(deregistrationMessage));
 
         if (res == AcceptTxResult.Accepted)
         {
@@ -84,7 +91,7 @@ public class ValidatorRegistryContract : CallableContract, IValidatorRegistryCon
     public async ValueTask<AcceptTxResult?> Register(BlockHeader blockHeader)
     {
         byte[] registrationMessage = ComputeRegistrationMessage(_nonce);
-        AcceptTxResult? res = await SendMessage(registrationMessage);
+        AcceptTxResult? res = await CallUpdate(registrationMessage, Sign(registrationMessage));
 
         if (res == AcceptTxResult.Accepted)
         {
