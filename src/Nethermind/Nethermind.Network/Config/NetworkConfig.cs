@@ -36,5 +36,8 @@ namespace Nethermind.Network.Config
         public long SimulateSendLatencyMs { get; set; } = 0;
         public int NumConcurrentOutgoingConnects { get; set; } = 0;
         public int ConnectTimeoutMs { get; set; } = 2000;
+        public int ProcessingThreadCount { get; set; } = 1;
+        public string? ClientIdMatcher { get; set; } = null;
+        public bool DisableDiscV4DnsFeeder { get; set; } = false;
     }
 }
