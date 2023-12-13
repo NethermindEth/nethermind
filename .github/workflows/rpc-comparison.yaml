@@ -306,12 +306,12 @@ jobs:
           fi
       
       - name: Compare to INFURA Endpoint
-        if: env.compare_to_infura == 'true' && inputs.is_performance_check != 'true'
+        if: env.compare_to_infura == 'true' && inputs.is_performance_check != true
         run: |
           flood all ${compare_to_infura_params} --equality | tee output_infura.txt
       
       - name: Compare to Nethermind Archive Endpoint
-        if: env.compare_to_archive == 'true' && inputs.is_performance_check != 'true'
+        if: env.compare_to_archive == 'true' && inputs.is_performance_check != true
         run: |
           flood all ${compare_to_archive_params} --equality | tee output_archive.txt
 
