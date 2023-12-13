@@ -37,9 +37,9 @@ namespace Nethermind.Runner.JsonRpc
 {
     public class Startup
     {
-        private static ReadOnlySpan<byte> _jsonOpeningBracket => new byte[]{ (byte)'[' };
-        private static ReadOnlySpan<byte> _jsonComma => new byte[]{ (byte)',' };
-        private static ReadOnlySpan<byte> _jsonClosingBracket => new byte[]{ (byte)']' };
+        private static ReadOnlySpan<byte> _jsonOpeningBracket => new byte[] { (byte)'[' };
+        private static ReadOnlySpan<byte> _jsonComma => new byte[] { (byte)',' };
+        private static ReadOnlySpan<byte> _jsonClosingBracket => new byte[] { (byte)']' };
 
         public void ConfigureServices(IServiceCollection services)
         {
