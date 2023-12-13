@@ -15,6 +15,7 @@ using System.Threading.Tasks;
 using Microsoft.AspNetCore.Http;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Resettables;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 
@@ -369,7 +370,7 @@ public class JsonRpcProcessor : IJsonRpcProcessor
     {
         if ((_jsonRpcConfig.RpcRecorderState & RpcRecorderState.Request) != 0)
         {
-            Stream memoryStream = new MemoryStream();
+            using Stream memoryStream = RecyclableStream.GetStream();
             await reader.CopyToAsync(memoryStream);
             memoryStream.Seek(0, SeekOrigin.Begin);
 
