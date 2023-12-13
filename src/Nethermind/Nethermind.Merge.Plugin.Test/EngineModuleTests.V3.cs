@@ -5,12 +5,10 @@ using System;
 using System.Collections.Generic;
 using System.IO.Abstractions;
 using System.Linq;
-using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
-using k8s.Models;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -28,7 +26,6 @@ using Nethermind.Merge.Plugin.GC;
 using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
-using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using NSubstitute;
 using NUnit.Framework;
@@ -190,7 +187,6 @@ public partial class EngineModuleTests
             = await PreparePayloadRequestEnv();
 
         string executionPayloadString = serializer.Serialize(executionPayload);
-        string blobsString = serializer.Serialize(Array.Empty<byte[]>());
 
         JsonRpcRequest request = RpcTest.GetJsonRequest(nameof(IEngineRpcModule.engine_newPayloadV3),
             executionPayloadString, null!);
@@ -202,7 +198,7 @@ public partial class EngineModuleTests
     [Test]
     public async Task NewPayloadV3_invalidblockhash()
     {
-        (JsonRpcService jsonRpcService, JsonRpcContext context, EthereumJsonSerializer serializer, ExecutionPayloadV3 executionPayload)
+        (JsonRpcService jsonRpcService, JsonRpcContext context, EthereumJsonSerializer _, ExecutionPayloadV3 _)
             = await PreparePayloadRequestEnv();
 
         string requestStr = """
