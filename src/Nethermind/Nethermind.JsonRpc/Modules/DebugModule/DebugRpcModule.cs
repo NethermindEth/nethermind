@@ -206,27 +206,27 @@ public class DebugRpcModule : IDebugRpcModule
         throw new NotImplementedException();
     }
 
-        public ResultWrapper<byte[]> debug_getBlockRlp(long blockNumber)
+    public ResultWrapper<byte[]> debug_getBlockRlp(long blockNumber)
+    {
+        byte[] rlp = _debugBridge.GetBlockRlp(new BlockParameter(blockNumber));
+        if (rlp is null)
         {
-            byte[] rlp = _debugBridge.GetBlockRlp(new BlockParameter(blockNumber));
-            if (rlp == null)
-            {
-                return ResultWrapper<byte[]>.Fail($"Block {blockNumber} was not found", ErrorCodes.ResourceNotFound);    
-            }
-            
-            return ResultWrapper<byte[]>.Success(rlp);
+            return ResultWrapper<byte[]>.Fail($"Block {blockNumber} was not found", ErrorCodes.ResourceNotFound);    
         }
+            
+        return ResultWrapper<byte[]>.Success(rlp);
+    }
         
-        public ResultWrapper<byte[]> debug_getBlockRlpByHash(Hash256 hash)
+    public ResultWrapper<byte[]> debug_getBlockRlpByHash(Hash256 hash)
+    {
+        byte[] rlp = _debugBridge.GetBlockRlp(new BlockParameter(hash));
+        if (rlp is null)
         {
-            byte[] rlp = _debugBridge.GetBlockRlp(new BlockParameter(hash));
-            if (rlp == null)
-            {
-                return ResultWrapper<byte[]>.Fail($"Block {hash} was not found", ErrorCodes.ResourceNotFound);    
-            }
-            
-            return ResultWrapper<byte[]>.Success(rlp);
+            return ResultWrapper<byte[]>.Fail($"Block {hash} was not found", ErrorCodes.ResourceNotFound);    
         }
+            
+        return ResultWrapper<byte[]>.Success(rlp);
+    }
 
     public ResultWrapper<MemStats> debug_memStats(BlockParameter blockParameter)
     {

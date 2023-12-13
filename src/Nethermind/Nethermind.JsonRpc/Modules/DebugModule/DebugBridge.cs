@@ -179,17 +179,16 @@ public class DebugBridge : IDebugBridge
     }
 
 
-    public byte[] GetBlockRlp(BlockParameter parameter)
+    public byte[]? GetBlockRlp(BlockParameter parameter)
     {
         if (parameter.BlockHash is Hash256 hash)
         {
-            return _dbMappings[DbNames.Blocks].Get(hash);
+            return GetBlockRlp(hash);
 
         }
         if (parameter.BlockNumber is long num)
         {
-            var blockHash = _blockTree.FindHash(num);
-            return GetBlockRlp(new BlockParameter(blockHash));
+            return GetBlockRlp(num);
         }
         return null;
     }
