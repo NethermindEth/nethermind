@@ -433,6 +433,13 @@ namespace Nethermind.Trie
         private byte[]? GetByPath(ReadOnlySpan<byte> rawKey, out PathReadDiagData diagData, Hash256? rootHash = null)
         {
             diagData = new PathReadDiagData();
+
+            if (!TrieStore.CanAccessByPath())
+            {
+                diagData.Fallback = true;
+                return GetInternal(rawKey, out _);
+            }
+
             if (rootHash is null)
             {
                 if (RootRef is null) return null;
@@ -1478,6 +1485,7 @@ namespace Nethermind.Trie
         public bool LoadedFromDb { get; set; }
         public bool Dirty { get; set; }
         public bool SelfDestruct { get; set; }
+        public bool Fallback { get; set; }
     }
 
     internal ref struct InternalReadDiagData

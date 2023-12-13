@@ -17,7 +17,7 @@ public class ByPathConstantPersistenceStrategy : IByPathPersistenceStrategy
     private readonly ILogger _logger;
     private readonly int _minInMemBlocks;
     private readonly int _persistInterval;
-    private SortedDictionary<long, BlockHeader> _finalizedBlocks;
+    private readonly SortedDictionary<long, BlockHeader> _finalizedBlocks = new();
 
     public ByPathConstantPersistenceStrategy(IByPathStateDb? pathStateDb, IBlockTree blockTree, int minInMemBlocks, int persistInterval, ILogManager logManager)
     {
@@ -26,7 +26,6 @@ public class ByPathConstantPersistenceStrategy : IByPathPersistenceStrategy
         _minInMemBlocks = minInMemBlocks;
         _persistInterval = persistInterval;
         _logger = logManager.GetClassLogger();
-        _finalizedBlocks = new SortedDictionary<long, BlockHeader>();
     }
 
     public void FinalizationManager_BlocksFinalized(object? sender, FinalizeEventArgs e)

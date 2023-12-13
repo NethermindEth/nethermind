@@ -841,8 +841,8 @@ namespace Nethermind.Synchronization.FastSync
 
                 //waiting for the clean up database here before any processing happens
                 //TrieStoreByPath prevents direct DB reads if cleanup has not finished, to avoid dirty reads,so this in theory should not be required.
-                //Is it safe to reads via traversing the trie while cleanup is still in progress.
-                _pathStateDb?.WaitForPrunning();
+                //Is it safe to reads via traversing the trie while cleanup is still in progress?
+                //_pathStateDb?.WaitForPrunning();
 
                 _stateDb?.Flush();
                 _codeDb.Flush();
