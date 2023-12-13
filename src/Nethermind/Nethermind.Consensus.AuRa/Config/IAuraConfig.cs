@@ -25,4 +25,5 @@ public interface IAuraConfig : IConfig
     string TxPriorityConfigFilePath { get; set; }
 
     [ConfigItem(Description = "Whether to enable shuttering.", DefaultValue = "false")]
-        bool UseShutter { get; set; }}
+    bool UseShutter { get; set; }
+}
