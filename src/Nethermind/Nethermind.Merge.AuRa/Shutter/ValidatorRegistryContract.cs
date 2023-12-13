@@ -24,6 +24,63 @@ public class ValidatorRegistryContract : CallableContract, IValidatorRegistryCon
     private static readonly string FUNCTION_NAME = "update";
     private static readonly byte VALIDATOR_REGISTRY_MESSAGE_VERSION = 0;
 
+    private class Message
+    {
+        public readonly byte Version;
+        public readonly UInt64 ChainId;
+        public readonly Address Sender;
+        public readonly UInt64 ValidatorIndex;
+        public readonly UInt64 Nonce;
+
+        public Message(Address sender, UInt64 validatorIndex, UInt64 nonce)
+        {
+            Version = VALIDATOR_REGISTRY_MESSAGE_VERSION;
+            ChainId = BlockchainIds.Gnosis;
+            Sender = sender;
+            ValidatorIndex = validatorIndex;
+            Nonce = nonce;
+        }
+
+        public Message(Span<byte> encodedMessage)
+        {
+            if (encodedMessage.Length != 46)
+            {
+                throw new Exception("Encoded validator registry contract message was malformed.");
+            }
+
+            Version = encodedMessage[0];
+            ChainId = BinaryPrimitives.ReadUInt64BigEndian(encodedMessage.Slice(3));
+            Sender = new Address(encodedMessage.Slice(9, 20).ToArray());
+            ValidatorIndex = BinaryPrimitives.ReadUInt64BigEndian(encodedMessage.Slice(31));
+            Nonce = BinaryPrimitives.ReadUInt64BigEndian(encodedMessage.Slice(39));
+        }
+
+        private void ComputeRegistryMessagePrefix(Span<byte> registryMessagePrefix)
+        {
+            registryMessagePrefix[0] = Version;
+            BinaryPrimitives.WriteUInt64BigEndian(registryMessagePrefix.Slice(3), ChainId);
+            Span<byte> addressSpan = registryMessagePrefix.Slice(9);
+            addressSpan = Sender.Bytes;
+            BinaryPrimitives.WriteUInt64BigEndian(registryMessagePrefix.Slice(31), ValidatorIndex);
+            BinaryPrimitives.WriteUInt64BigEndian(registryMessagePrefix.Slice(39), Nonce);
+        }
+
+        public byte[] ComputeDeregistrationMessage()
+        {
+            Span<byte> registryMessagePrefix = stackalloc byte[46];
+            ComputeRegistryMessagePrefix(registryMessagePrefix);
+            return registryMessagePrefix.ToArray();
+        }
+
+        public byte[] ComputeRegistrationMessage()
+        {
+            Span<byte> registryMessagePrefix = stackalloc byte[46];
+            ComputeRegistryMessagePrefix(registryMessagePrefix);
+            registryMessagePrefix[45] = 1;
+            return registryMessagePrefix.ToArray();
+        }
+    }
+
     public ValidatorRegistryContract(ITransactionProcessor transactionProcessor, IAbiEncoder abiEncoder, Address contractAddress, ISigner signer, ITxSender txSender, ITxSealer txSealer)
         : base(transactionProcessor, abiEncoder, contractAddress)
     {
@@ -34,31 +91,6 @@ public class ValidatorRegistryContract : CallableContract, IValidatorRegistryCon
         _nonce = _validatorIndex = 0;
         // todo: look back through contract updates to calculate correct nonce
         // what is validator index?
-    }
-
-    private void ComputeRegistryMessagePrefix(UInt64 nonce, Span<byte> registryMessagePrefix)
-    {
-        registryMessagePrefix[0] = VALIDATOR_REGISTRY_MESSAGE_VERSION;
-        BinaryPrimitives.WriteUInt64BigEndian(registryMessagePrefix.Slice(3), BlockchainIds.Gnosis);
-        Span<byte> addressSpan = registryMessagePrefix.Slice(9);
-        addressSpan = ContractAddress!.Bytes;
-        BinaryPrimitives.WriteUInt64BigEndian(registryMessagePrefix.Slice(31), _validatorIndex);
-        BinaryPrimitives.WriteUInt64BigEndian(registryMessagePrefix.Slice(39), nonce);
-    }
-
-    private byte[] ComputeDeregistrationMessage(UInt64 nonce)
-    {
-        Span<byte> registryMessagePrefix = stackalloc byte[46];
-        ComputeRegistryMessagePrefix(nonce, registryMessagePrefix);
-        return registryMessagePrefix.ToArray();
-    }
-
-    private byte[] ComputeRegistrationMessage(UInt64 nonce)
-    {
-        Span<byte> registryMessagePrefix = stackalloc byte[46];
-        ComputeRegistryMessagePrefix(nonce, registryMessagePrefix);
-        registryMessagePrefix[45] = 1;
-        return registryMessagePrefix.ToArray();
     }
 
     private byte[] Sign(byte[] message)
@@ -77,7 +109,7 @@ public class ValidatorRegistryContract : CallableContract, IValidatorRegistryCon
 
     public async ValueTask<AcceptTxResult?> Deregister(BlockHeader blockHeader)
     {
-        byte[] deregistrationMessage = ComputeDeregistrationMessage(_nonce);
+        byte[] deregistrationMessage = new Message(ContractAddress!, _validatorIndex, _nonce).ComputeDeregistrationMessage();
         AcceptTxResult? res = await CallUpdate(deregistrationMessage, Sign(deregistrationMessage));
 
         if (res == AcceptTxResult.Accepted)
@@ -90,7 +122,7 @@ public class ValidatorRegistryContract : CallableContract, IValidatorRegistryCon
 
     public async ValueTask<AcceptTxResult?> Register(BlockHeader blockHeader)
     {
-        byte[] registrationMessage = ComputeRegistrationMessage(_nonce);
+        byte[] registrationMessage = new Message(ContractAddress!, _validatorIndex, _nonce).ComputeRegistrationMessage();
         AcceptTxResult? res = await CallUpdate(registrationMessage, Sign(registrationMessage));
 
         if (res == AcceptTxResult.Accepted)
