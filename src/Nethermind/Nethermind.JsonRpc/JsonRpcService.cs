@@ -183,11 +183,6 @@ public class JsonRpcService : IJsonRpcService
                     resultWrapper = task.GetType().GetProperty("Result")?.GetValue(task) as IResultWrapper;
                     break;
             }
-
-            if (methodName == "engine_newPayloadV3" && resultWrapper.Data.GetType().GetProperty("Status")?.GetValue(resultWrapper.Data) as string == "INVALID")
-            {
-                return GetErrorResponse(methodName, ErrorCodes.InvalidParams, "Invalid params", null, request.Id, returnAction);
-            }
         }
         catch (Exception e) when (e is TargetParameterCountException || e is ArgumentException)
         {
