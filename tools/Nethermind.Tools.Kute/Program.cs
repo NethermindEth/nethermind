@@ -66,13 +66,22 @@ static class Program
             )
         );
         collection.AddSingleton<IJsonRpcSubmitter>(provider =>
-            config.DryRun
-                ? new NullJsonRpcSubmitter(provider.GetRequiredService<IAuth>())
-                : new HttpJsonRpcSubmitter(
+        {
+            if (!config.DryRun)
+            {
+                return new HttpJsonRpcSubmitter(
                     provider.GetRequiredService<HttpClient>(),
                     provider.GetRequiredService<IAuth>(),
                     config.HostAddress
-                ));
+                );
+            }
+
+            // For dry runs we still want to trigger the generation of an AuthToken
+            // This is to ensure that all parameters required for the generation are correct,
+            // and not require a real run to verify that this is the case.
+            string _  = provider.GetRequiredService<IAuth>().AuthToken;
+            return new NullJsonRpcSubmitter();
+        });
         collection.AddSingleton<IResponseTracer>(
             config is { DryRun: false, ResponsesTraceFile: not null }
                 ? new FileResponseTracer(config.ResponsesTraceFile)
