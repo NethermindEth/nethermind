@@ -11,15 +11,11 @@ public interface IValidatorRegistryContract
     /// Removes a validator from the validator registry.
     /// </summary>
     /// <param name="blockHeader"></param>
-    /// <param name="message"></param>
-    /// <param name="signature"></param>
-    void Deregister(BlockHeader blockHeader, byte[] message, byte[] signature);
+    void Deregister(BlockHeader blockHeader);
 
     /// <summary>
     /// Adds a validator to the validator registry.
     /// </summary>
     /// <param name="blockHeader"></param>
-    /// <param name="message"></param>
-    /// <param name="signature"></param>
-    void Register(BlockHeader blockHeader, byte[] message, byte[] signature);
+    void Register(BlockHeader blockHeader);
 }

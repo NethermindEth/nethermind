@@ -26,47 +26,49 @@ public class ValidatorRegistryContract : CallableContract, IValidatorRegistryCon
         _txSender = txSender;
     }
 
-    // def compute_registration_message(validator_index: uint64, nonce: uint64):
-    //     return compute_registry_message_prefix(validator_index, nonce) + b"\x01"
-
-    // def compute_deregistration_message(validator_index: uint64, nonce: uint64):
-    //     return compute_registry_message_prefix(validator_index, nonce) + b"\x00"
-
-    // def compute_registry_message_prefix(validator_index: uint64, nonce: uint64):
-    //     return VALIDATOR_REGISTRY_MESSAGE_VERSION + CHAIN_ID.to_bytes(8, "big") + VALIDATOR_REGISTRY_ADDRESS + validator_index.to_bytes(8, "big") + nonce.to_bytes(8, "big")
-
-    private byte[] ComputeRegistryMessagePrefix(UInt64 validatorIndex, UInt64 nonce, bool isRegistration)
+    private void ComputeRegistryMessagePrefix(UInt64 validatorIndex, UInt64 nonce, Span<byte> registryMessagePrefix)
     {
-        Span<byte> registryMessagePrefix = stackalloc byte[46];
-
         registryMessagePrefix[0] = VALIDATOR_REGISTRY_MESSAGE_VERSION;
         BinaryPrimitives.WriteUInt64BigEndian(registryMessagePrefix.Slice(3), BlockchainIds.Gnosis);
         Span<byte> addressSpan = registryMessagePrefix.Slice(9);
         addressSpan = ContractAddress!.Bytes;
         BinaryPrimitives.WriteUInt64BigEndian(registryMessagePrefix.Slice(31), validatorIndex);
         BinaryPrimitives.WriteUInt64BigEndian(registryMessagePrefix.Slice(39), nonce);
+    }
 
-        if (isRegistration)
-        {
-            registryMessagePrefix[45] = 1;
-        }
-
+    private byte[] ComputeDeregistrationMessage(UInt64 validatorIndex, UInt64 nonce)
+    {
+        Span<byte> registryMessagePrefix = stackalloc byte[46];
+        ComputeRegistryMessagePrefix(validatorIndex, nonce, registryMessagePrefix);
         return registryMessagePrefix.ToArray();
     }
 
-    public void Deregister(BlockHeader blockHeader, byte[] message, byte[] signature)
+    private byte[] ComputeRegistrationMessage(UInt64 validatorIndex, UInt64 nonce)
     {
-        UInt64 nonce = 0; // load nonce from disk
-        UInt64 validatorIndex = 0;
-        byte[] deregistrationMessage = ComputeRegistryMessagePrefix(nonce, validatorIndex, false);
+        Span<byte> registryMessagePrefix = stackalloc byte[46];
+        ComputeRegistryMessagePrefix(validatorIndex, nonce, registryMessagePrefix);
+        registryMessagePrefix[45] = 1;
+        return registryMessagePrefix.ToArray();
+    }
 
-        var transaction = GenerateTransaction<GeneratedTransaction>(FUNCTION_NAME, _signer.Address, deregistrationMessage);
+    private void SendMessage(byte[] message)
+    {
+        var transaction = GenerateTransaction<GeneratedTransaction>(FUNCTION_NAME, _signer.Address, message);
+
         // sign transaction?
 
         _txSender.SendTransaction(transaction, TxHandlingOptions.PersistentBroadcast);
     }
 
-    public void Register(BlockHeader blockHeader, byte[] message, byte[] signature)
+    public void Deregister(BlockHeader blockHeader)
+    {
+        UInt64 nonce = 0; // load nonce from disk
+        UInt64 validatorIndex = 0;
+        byte[] deregistrationMessage = ComputeDeregistrationMessage(nonce, validatorIndex);
+        SendMessage(deregistrationMessage);
+    }
+
+    public void Register(BlockHeader blockHeader)
     {
         throw new NotImplementedException();
     }
