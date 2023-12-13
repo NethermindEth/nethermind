@@ -18,8 +18,8 @@ public class ExecutionPayloadV3 : ExecutionPayload
     public ExecutionPayloadV3(Block block) : base(block)
     {
         ParentBeaconBlockRoot = block.ParentBeaconBlockRoot;
-        base.BlobGasUsed = block.BlobGasUsed;
-        base.ExcessBlobGas = block.ExcessBlobGas;
+        BlobGasUsed = block.BlobGasUsed;
+        ExcessBlobGas = block.ExcessBlobGas;
     }
 
     public override bool TryGetBlock(out Block? block, UInt256? totalDifficulty = null)
@@ -43,20 +43,12 @@ public class ExecutionPayloadV3 : ExecutionPayload
     /// <see href="https://eips.ethereum.org/EIPS/eip-4844">EIP-4844</see>.
     /// </summary>
     [JsonRequired]
-    public new ulong BlobGasUsed
-    {
-        get => base.BlobGasUsed ?? 0;
-        set => base.BlobGasUsed = value;
-    }
+    public override ulong? BlobGasUsed { get; set; }
 
     /// <summary>
     /// Gets or sets <see cref="Block.ExcessBlobGas"/> as defined in
     /// <see href="https://eips.ethereum.org/EIPS/eip-4844">EIP-4844</see>.
     /// </summary>
     [JsonRequired]
-    public new ulong ExcessBlobGas
-    {
-        get => base.ExcessBlobGas ?? 0;
-        set => base.ExcessBlobGas = value;
-    }
+    public override ulong? ExcessBlobGas { get; set; }
 }
