@@ -22,7 +22,7 @@ Nethermind documentation is available at [docs.nethermind.io](https://docs.nethe
 
 ### Supported networks
 
-**`Mainnet`** **`Goerli`** **`Sepolia`** **`Holesky`** **`Base`** **`Energy Web`** **`Gnosis`** **`JOC`** **`Optimism`**
+**`Mainnet`** **`Goerli`** **`Sepolia`** **`Holesky`** **`Base`** **`Energy Web`** **`Gnosis`** **`Optimism`**
 
 ## Download and run
 
@@ -93,7 +93,7 @@ The output should show the image digest, and then you can copy that to the `FROM
 
 ### Prerequisites
 
-Install [.NET SDK](https://dotnet.microsoft.com/en-us/download)
+Install [.NET SDK](https://dotnet.microsoft.com/en-us/download).
 
 ### Clone the repository
 
