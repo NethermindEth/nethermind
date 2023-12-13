@@ -56,7 +56,7 @@ public interface IJsonRpcConfig : IConfig
         Description = """
             An array of JSON-RPC namespaces to enable. For instance, `[debug,eth]`.
 
-            Built-in modules:
+            Built-in namespaces:
 
             - `admin`
             - `client`
