@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Generic;
@@ -34,13 +21,13 @@ namespace Nethermind.KeyStore.Test
                                             .OrReadFromConsole("Test1");
 
             Assert.IsTrue(consolePasswordProvider1 is FilePasswordProvider);
-            Assert.AreEqual("Test1", ((ConsolePasswordProvider)consolePasswordProvider1.AlternativeProvider).Message);
+            Assert.That(((ConsolePasswordProvider)consolePasswordProvider1.AlternativeProvider).Message, Is.EqualTo("Test1"));
 
             var consolePasswordProvider2 = consolePasswordProvider1
                                             .OrReadFromConsole("Test2");
 
             Assert.IsTrue(consolePasswordProvider2 is FilePasswordProvider);
-            Assert.AreEqual("Test2", ((ConsolePasswordProvider)consolePasswordProvider2.AlternativeProvider).Message);
+            Assert.That(((ConsolePasswordProvider)consolePasswordProvider2.AlternativeProvider).Message, Is.EqualTo("Test2"));
         }
 
         [Test]
@@ -49,14 +36,16 @@ namespace Nethermind.KeyStore.Test
             IConsoleWrapper consoleWrapper = Substitute.For<IConsoleWrapper>();
             var chars = test.InputChars;
             var iterator = 0;
-            consoleWrapper.ReadKey(true).Returns(s => { ConsoleKeyInfo key = chars[iterator];
+            consoleWrapper.ReadKey(true).Returns(s =>
+            {
+                ConsoleKeyInfo key = chars[iterator];
                 ++iterator;
                 return key;
             });
             var passwordProvider = new ConsolePasswordProvider(new ConsoleUtils(consoleWrapper));
             var password = passwordProvider.GetPassword(Address.Zero);
             Assert.IsTrue(password.IsReadOnly());
-            Assert.AreEqual(test.ExpectedPassword, password.Unsecure());
+            Assert.That(password.Unsecure(), Is.EqualTo(test.ExpectedPassword));
         }
 
         public static IEnumerable<ConsolePasswordProviderTest> PasswordProviderTestCases

@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Threading;
 using System.Threading.Tasks;
@@ -27,7 +14,7 @@ namespace Nethermind.Init.Steps
     public class ReviewBlockTree : IStep
     {
         private readonly IApiWithBlockchain _api;
-        private ILogger _logger;
+        private readonly ILogger _logger;
 
         public ReviewBlockTree(INethermindApi api)
         {
@@ -37,8 +24,8 @@ namespace Nethermind.Init.Steps
 
         public Task Execute(CancellationToken cancellationToken)
         {
-            if (_api.BlockTree == null) throw new StepDependencyException(nameof(_api.DbProvider));
-            
+            if (_api.BlockTree is null) throw new StepDependencyException(nameof(_api.DbProvider));
+
             if (_api.Config<IInitConfig>().ProcessingEnabled)
             {
                 return RunBlockTreeInitTasks(cancellationToken);
@@ -52,12 +39,8 @@ namespace Nethermind.Init.Steps
         private async Task RunBlockTreeInitTasks(CancellationToken cancellationToken)
         {
             ISyncConfig syncConfig = _api.Config<ISyncConfig>();
-            if (!syncConfig.SynchronizationEnabled)
-            {
-                return;
-            }
-            
-            if (_api.BlockTree == null) throw new StepDependencyException(nameof(_api.BlockTree));
+
+            if (_api.BlockTree is null) throw new StepDependencyException(nameof(_api.BlockTree));
 
             if (!syncConfig.FastSync)
             {
@@ -76,7 +59,7 @@ namespace Nethermind.Init.Steps
             }
             else
             {
-                StartupBlockTreeFixer fixer = new(syncConfig, _api.BlockTree, _api.DbProvider!.StateDb, _logger!);
+                StartupBlockTreeFixer fixer = new(syncConfig, _api.BlockTree, _api.WorldStateManager!.GlobalStateReader, _logger!);
                 await _api.BlockTree.Accept(fixer, cancellationToken).ContinueWith(t =>
                 {
                     if (t.IsFaulted)

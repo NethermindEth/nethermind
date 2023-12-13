@@ -1,23 +1,9 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.Collections.ObjectModel;
 using System.IO;
 using System.Linq;
 using System.Text.RegularExpressions;
@@ -28,11 +14,20 @@ using Level = NLog.LogLevel;
 
 namespace Nethermind.Logging.NLog
 {
-    public class NLogManager : ILogManager
+    public class NLogManager : ILogManager, IDisposable
     {
         private const string DefaultFileTargetName = "file-async_wrapped";
-        
+        private const string DefaultFolder = "logs";
+
         public NLogManager(string logFileName, string logDirectory = null, string logRules = null)
+        {
+            Setup(logFileName, logDirectory, logRules);
+            // Required since 'NLog.config' could change during runtime, we need to re-apply the configuration
+            _logManagerOnConfigurationChanged = (sender, args) => Setup(logFileName, logDirectory, logRules);
+            LogManager.ConfigurationChanged += _logManagerOnConfigurationChanged;
+        }
+
+        private void Setup(string logFileName, string logDirectory = null, string logRules = null)
         {
             logDirectory = SetupLogDirectory(logDirectory);
             SetupLogFile(logFileName, logDirectory);
@@ -41,7 +36,7 @@ namespace Nethermind.Logging.NLog
 
         private static void SetupLogFile(string logFileName, string logDirectory)
         {
-            if (LogManager.Configuration?.AllTargets != null)
+            if (LogManager.Configuration?.AllTargets is not null)
             {
                 foreach (FileTarget target in LogManager.Configuration?.AllTargets.OfType<FileTarget>())
                 {
@@ -53,7 +48,7 @@ namespace Nethermind.Logging.NLog
 
         private static string SetupLogDirectory(string logDirectory)
         {
-            logDirectory = (string.IsNullOrEmpty(logDirectory) ? "logs" : logDirectory).GetApplicationResourcePath();
+            logDirectory = (string.IsNullOrEmpty(logDirectory) ? DefaultFolder : logDirectory).GetApplicationResourcePath();
             if (!Directory.Exists(logDirectory))
             {
                 Directory.CreateDirectory(logDirectory);
@@ -62,7 +57,8 @@ namespace Nethermind.Logging.NLog
             return logDirectory;
         }
 
-        private ConcurrentDictionary<Type, NLogLogger> _loggers = new();
+        private readonly ConcurrentDictionary<Type, NLogLogger> _loggers = new();
+        private readonly EventHandler<LoggingConfigurationChangedEventArgs> _logManagerOnConfigurationChanged;
 
         private NLogLogger BuildLogger(Type type) => new(type);
 
@@ -78,11 +74,11 @@ namespace Nethermind.Logging.NLog
         {
             GlobalDiagnosticsContext.Set(name, value);
         }
-        
+
         private void SetupLogRules(string logRules)
         {
             //Add rules here for e.g. 'JsonRpc.*: Warn; Block.*: Error;',
-            if (logRules != null)
+            if (logRules is not null)
             {
                 IList<LoggingRule> configurationLoggingRules = LogManager.Configuration.LoggingRules;
                 lock (configurationLoggingRules)
@@ -98,7 +94,7 @@ namespace Nethermind.Logging.NLog
             }
         }
 
-        private Target[] GetTargets(IList<LoggingRule> configurationLoggingRules) => 
+        private Target[] GetTargets(IList<LoggingRule> configurationLoggingRules) =>
             configurationLoggingRules.SelectMany(r => r.Targets).Distinct().ToArray();
 
         private void RemoveOverridenRules(IList<LoggingRule> configurationLoggingRules, LoggingRule loggingRule)
@@ -141,7 +137,7 @@ namespace Nethermind.Logging.NLog
                 {
                     throw new ArgumentException($"Invalid rule '{rule}' in InitConfig.LogRules '{logRules}'", e);
                 }
-                
+
                 yield return CreateLoggingRule(targets, logLevel, loggerNamePattern);
             }
         }
@@ -160,6 +156,11 @@ namespace Nethermind.Logging.NLog
         public static void Shutdown()
         {
             LogManager.Shutdown();
+        }
+
+        public void Dispose()
+        {
+            LogManager.ConfigurationChanged -= _logManagerOnConfigurationChanged;
         }
     }
 }

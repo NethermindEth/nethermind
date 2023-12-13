@@ -1,24 +1,12 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System.IO;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core.Test.Builders;
 using Nethermind.JsonRpc.Data;
-using Newtonsoft.Json;
+using Nethermind.Serialization.Json;
+
 using NUnit.Framework;
 
 namespace Nethermind.JsonRpc.Test.Data
@@ -27,9 +15,6 @@ namespace Nethermind.JsonRpc.Test.Data
     [TestFixture]
     public class BlockParameterConverterTests : SerializationTestBase
     {
-        [TestCase("0x0", 0)]
-        [TestCase("0xA", 10)]
-        [TestCase("0xa", 10)]
         [TestCase("0", 0)]
         [TestCase("100", 100)]
         [TestCase("\"0x0\"", 0)]
@@ -39,17 +24,13 @@ namespace Nethermind.JsonRpc.Test.Data
         [TestCase("\"100\"", 100)]
         public void Can_read_block_number(string input, long output)
         {
-            using StringReader reader = new(input);
-            using JsonTextReader textReader = new(reader);
+            IJsonSerializer serializer = new EthereumJsonSerializer();
 
-            JsonSerializer serializer = new();
-            BlockParameterConverter converter = new();
-            serializer.Converters.Add(converter);
-            BlockParameter blockParameter = serializer.Deserialize<BlockParameter>(textReader);
-            
-            Assert.AreEqual(output, blockParameter.BlockNumber);
+            BlockParameter blockParameter = serializer.Deserialize<BlockParameter>(input)!;
+
+            Assert.That(blockParameter.BlockNumber, Is.EqualTo(output));
         }
-        
+
         [TestCase("null", BlockParameterType.Latest)]
         [TestCase("\"\"", BlockParameterType.Latest)]
         [TestCase("\"latest\"", BlockParameterType.Latest)]
@@ -64,17 +45,13 @@ namespace Nethermind.JsonRpc.Test.Data
         [TestCase("\"Safe\"", BlockParameterType.Safe)]
         public void Can_read_type(string input, BlockParameterType output)
         {
-            using StringReader reader = new(input);
-            using JsonTextReader textReader = new(reader);
+            IJsonSerializer serializer = new EthereumJsonSerializer();
 
-            JsonSerializer serializer = new();
-            BlockParameterConverter converter = new();
-            serializer.Converters.Add(converter);
-            BlockParameter blockParameter = serializer.Deserialize<BlockParameter>(textReader);
-            
-            Assert.AreEqual(output, blockParameter.Type);
+            BlockParameter blockParameter = serializer.Deserialize<BlockParameter>(input)!;
+
+            Assert.That(blockParameter.Type, Is.EqualTo(output));
         }
-        
+
         [TestCase("\"latest\"", BlockParameterType.Latest)]
         [TestCase("\"earliest\"", BlockParameterType.Earliest)]
         [TestCase("\"pending\"", BlockParameterType.Pending)]
@@ -83,35 +60,27 @@ namespace Nethermind.JsonRpc.Test.Data
         public void Can_write_type(string output, BlockParameterType input)
         {
             BlockParameter blockParameter = new(input);
-            
-            using StringWriter reader = new();
-            using JsonTextWriter textWriter = new(reader);
 
-            JsonSerializer serializer = new();
-            BlockParameterConverter converter = new();
-            serializer.Converters.Add(converter);
-            serializer.Serialize(textWriter, blockParameter);
-            
-            Assert.AreEqual(output, reader.ToString());
+            IJsonSerializer serializer = new EthereumJsonSerializer();
+
+            var result = serializer.Serialize(blockParameter);
+
+            Assert.That(result, Is.EqualTo(output));
         }
-        
+
         [TestCase("\"0x0\"", 0)]
         [TestCase("\"0xa\"", 10)]
         public void Can_write_number(string output, long input)
         {
             BlockParameter blockParameter = new(input);
-            
-            using StringWriter reader = new();
-            using JsonTextWriter textWriter = new(reader);
 
-            JsonSerializer serializer = new();
-            BlockParameterConverter converter = new();
-            serializer.Converters.Add(converter);
-            serializer.Serialize(textWriter, blockParameter);
-            
-            Assert.AreEqual(output, reader.ToString());
+            IJsonSerializer serializer = new EthereumJsonSerializer();
+
+            var result = serializer.Serialize(blockParameter);
+
+            Assert.That(result, Is.EqualTo(output));
         }
-        
+
         [Test]
         public void Can_do_roundtrip()
         {

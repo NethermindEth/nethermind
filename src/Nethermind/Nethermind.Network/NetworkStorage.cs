@@ -1,22 +1,10 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Generic;
 using System.Text;
+
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -29,10 +17,13 @@ namespace Nethermind.Network
 {
     public class NetworkStorage : INetworkStorage
     {
+        private readonly object _lock = new();
         private readonly IFullDb _fullDb;
         private readonly ILogger _logger;
+        private readonly Dictionary<PublicKey, NetworkNode> _nodesDict = new();
         private long _updateCounter;
         private long _removeCounter;
+        private NetworkNode[]? _nodes;
 
         public NetworkStorage(IFullDb? fullDb, ILogManager? logManager)
         {
@@ -40,62 +31,123 @@ namespace Nethermind.Network
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         }
 
-        public int PersistedNodesCount
-        {
-            get
-            {
-                return _fullDb.Values.Count;
-            }
-        }
+        public int PersistedNodesCount => GetPersistedNodes().Length;
 
         public NetworkNode[] GetPersistedNodes()
         {
-            List<NetworkNode> nodes = new();
+            NetworkNode[] nodes = _nodes;
+            return nodes ?? GenerateNodes();
+        }
+
+        private NetworkNode[] GenerateNodes()
+        {
+            lock (_lock)
+            {
+                NetworkNode[]? nodes = _nodes;
+                if (nodes is not null)
+                {
+                    // Already updated
+                    return nodes;
+                }
+
+                if (_nodesDict.Count == 0)
+                {
+                    LoadFromDb();
+                }
+
+                return _nodesDict.Count == 0 ? Array.Empty<NetworkNode>() : CopyDictToArray();
+            }
+        }
+
+        private NetworkNode[] CopyDictToArray()
+        {
+            NetworkNode[] nodes = new NetworkNode[_nodesDict.Count];
+            _nodesDict.Values.CopyTo(nodes, 0);
+            return (_nodes = nodes);
+        }
+
+        private void LoadFromDb()
+        {
             foreach (byte[]? nodeRlp in _fullDb.Values)
             {
-                if (nodeRlp == null)
+                if (nodeRlp is null)
                 {
                     continue;
                 }
-                
+
                 try
                 {
-                    nodes.Add(GetNode(nodeRlp));
+                    NetworkNode node = GetNode(nodeRlp);
+                    _nodesDict[node.NodeId] = node;
                 }
                 catch (Exception e)
                 {
                     if (_logger.IsDebug) _logger.Debug($"Failed to add one of the persisted nodes (with RLP {nodeRlp.ToHexString()}), {e.Message}");
                 }
             }
-
-            return nodes.ToArray();
         }
 
         public void UpdateNode(NetworkNode node)
         {
-            (_currentBatch ?? (IKeyValueStore)_fullDb)[node.NodeId.Bytes] = Rlp.Encode(node).Bytes;
+            lock (_lock)
+            {
+                UpdateNodeImpl(node);
+            }
+        }
+
+        private void UpdateNodeImpl(NetworkNode node)
+        {
+            (_currentBatch ?? (IWriteOnlyKeyValueStore)_fullDb)[node.NodeId.Bytes] = Rlp.Encode(node).Bytes;
             _updateCounter++;
+
+            if (!_nodesDict.ContainsKey(node.NodeId))
+            {
+                _nodesDict[node.NodeId] = node;
+                // New node, clear the cache
+                _nodes = null;
+            }
+            else
+            {
+                _nodesDict[node.NodeId] = node;
+            }
         }
 
         public void UpdateNodes(IEnumerable<NetworkNode> nodes)
         {
-            foreach (NetworkNode node in nodes)
+            lock (_lock)
             {
-                UpdateNode(node);
+                foreach (NetworkNode node in nodes)
+                {
+                    UpdateNodeImpl(node);
+                }
             }
         }
 
         public void RemoveNode(PublicKey nodeId)
         {
-            (_currentBatch ?? (IKeyValueStore)_fullDb)[nodeId.Bytes] = null;
+            (_currentBatch ?? (IWriteOnlyKeyValueStore)_fullDb)[nodeId.Bytes] = null;
             _removeCounter++;
+
+            RemoveLocal(nodeId);
         }
 
-        private IBatch? _currentBatch;
-        
+        private void RemoveLocal(PublicKey nodeId)
+        {
+            lock (_lock)
+            {
+                if (_nodesDict.Remove(nodeId))
+                {
+                    // Clear the cache
+                    _nodes = null;
+                }
+            }
+        }
+
+        private IWriteBatch? _currentBatch;
+
         public void StartBatch()
         {
-            _currentBatch = _fullDb.StartBatch();
+            _currentBatch = _fullDb.StartWriteBatch();
             _updateCounter = 0;
             _removeCounter = 0;
         }

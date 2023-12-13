@@ -1,19 +1,5 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-//
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-//
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-//
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-//
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Generic;
@@ -39,14 +25,16 @@ public static class EnumExtensions
         // This bit converts to int[]
         IReadOnlyList<T> values = FastEnum.GetValues<T>();
 
-        if (!typeof(T).GetCustomAttributes(typeof(FlagsAttribute), false).Any())
+        if (typeof(T).GetCustomAttributes(typeof(FlagsAttribute), false).Length == 0)
         {
             // We don't have flags so just return the result of GetValues
             return values;
         }
 
         // TODO: in .net 7 rewrite with generic INumber based on FastEnum.GetUnderlyingType<T>()
+#pragma warning disable CA2021 // Do not call Enumerable.Cast<T> or Enumerable.OfType<T> with incompatible types
         int[] valuesBinary = values.Cast<int>().ToArray();
+#pragma warning restore CA2021 // Do not call Enumerable.Cast<T> or Enumerable.OfType<T> with incompatible types
 
         int[] valuesInverted = valuesBinary.Select(v => ~v).ToArray();
         int max = 0;

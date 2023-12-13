@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
 using Nethermind.Core.Specs;
@@ -22,7 +9,7 @@ namespace Nethermind.Specs
 {
     public class ReleaseSpec : IReleaseSpec
     {
-        public string Name => "Custom";
+        public string Name { get; set; } = "Custom";
         public long MaximumExtraDataSize { get; set; }
         public long MaxCodeSize { get; set; }
         public long MinGasLimit { get; set; }
@@ -65,7 +52,14 @@ namespace Nethermind.Specs
         public bool IsEip2565Enabled { get; set; }
         public bool IsEip2929Enabled { get; set; }
         public bool IsEip2930Enabled { get; set; }
-        public bool IsEip158IgnoredAccount(Address address) => address == Address.SystemUser;
+        public virtual bool IsEip158IgnoredAccount(Address address) => address == Address.SystemUser;
+
+        // used only in testing
+        public ReleaseSpec Clone()
+        {
+            return (ReleaseSpec)MemberwiseClone();
+        }
+
         public bool IsEip1559Enabled { get; set; }
         public bool IsEip3198Enabled { get; set; }
         public bool IsEip3529Enabled { get; set; }
@@ -74,8 +68,25 @@ namespace Nethermind.Specs
         public bool ValidateChainId { get; set; }
         public bool ValidateReceipts { get; set; }
         public long Eip1559TransitionBlock { get; set; }
+        public ulong WithdrawalTimestamp { get; set; }
+        public ulong Eip4844TransitionTimestamp { get; set; }
         public Address Eip1559FeeCollector { get; set; }
         public UInt256? Eip1559BaseFeeMinValue { get; set; }
         public bool IsEip1153Enabled { get; set; }
+        public bool IsEip3651Enabled { get; set; }
+        public bool IsEip3855Enabled { get; set; }
+        public bool IsEip3860Enabled { get; set; }
+        public bool IsEip4895Enabled { get; set; }
+        public bool IsEip4844Enabled { get; set; }
+        public bool IsEip5656Enabled { get; set; }
+        public bool IsEip6780Enabled { get; set; }
+        public bool IsEip4788Enabled { get; set; }
+
+        private Address _eip4788ContractAddress;
+        public Address Eip4788ContractAddress
+        {
+            get => IsEip4788Enabled ? _eip4788ContractAddress : null;
+            set => _eip4788ContractAddress = value;
+        }
     }
 }

@@ -1,45 +1,35 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Filters;
+using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
+using Nethermind.Consensus.Processing;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Db;
-using Nethermind.Int256;
 using Nethermind.Evm.Tracing;
+using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs;
+using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
-using System.Threading;
-using Nethermind.Blockchain.Find;
-using Nethermind.Trie.Pruning;
-using System.Threading.Tasks;
-using Nethermind.Consensus.Processing;
-using Nethermind.Core.Crypto;
-using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Config;
+using Nethermind.Evm;
+using Nethermind.State;
 
 namespace Nethermind.Facade.Test
 {
@@ -71,9 +61,14 @@ namespace Nethermind.Facade.Test
             _ethereumEcdsa = Substitute.For<IEthereumEcdsa>();
             _specProvider = MainnetSpecProvider.Instance;
 
+            ReadOnlyDbProvider dbProvider = new ReadOnlyDbProvider(_dbProvider, false);
+            IReadOnlyTrieStore trieStore = new TrieStore(_dbProvider.StateDb, LimboLogs.Instance).AsReadOnly();
+
+            IWorldStateManager readOnlyWorldStateManager =
+                new ReadOnlyWorldStateManager(dbProvider, trieStore, LimboLogs.Instance);
+
             ReadOnlyTxProcessingEnv processingEnv = new(
-                new ReadOnlyDbProvider(_dbProvider, false),
-                new TrieStore(_dbProvider.StateDb, LimboLogs.Instance).AsReadOnly(),
+                readOnlyWorldStateManager,
                 new ReadOnlyBlockTree(_blockTree),
                 _specProvider,
                 LimboLogs.Instance);
@@ -90,6 +85,7 @@ namespace Nethermind.Facade.Test
                 _timestamper,
                 Substitute.For<ILogFinder>(),
                 _specProvider,
+                new BlocksConfig(),
                 false);
         }
 
@@ -122,7 +118,7 @@ namespace Nethermind.Facade.Test
                 .TestObject;
             _blockTree.FindBlock(TestItem.KeccakB, Arg.Any<BlockTreeLookupOptions>()).Returns(block);
             _receiptStorage.FindBlockHash(TestItem.KeccakA).Returns(TestItem.KeccakB);
-            _receiptStorage.Get(block).Returns(new[] {receipt});
+            _receiptStorage.Get(block).Returns(new[] { receipt });
             _blockchainBridge.GetTransaction(TestItem.KeccakA).Should()
                 .BeEquivalentTo((receipt, Build.A.Transaction.WithNonce((UInt256)index).TestObject));
         }
@@ -142,9 +138,27 @@ namespace Nethermind.Facade.Test
 
             _transactionProcessor.Received().CallAndRestore(
                 tx,
-                Arg.Is<BlockHeader>(bh =>
-                    bh.Number == 11 && bh.Timestamp == ((ITimestamper)_timestamper).UnixTime.Seconds),
+                Arg.Is<BlockExecutionContext>(blkCtx =>
+                    blkCtx.Header.Number == 11 && blkCtx.Header.Timestamp == ((ITimestamper)_timestamper).UnixTime.Seconds),
                 Arg.Is<CancellationTxTracer>(t => t.InnerTracer is EstimateGasTracer));
+        }
+
+        [Test]
+        public void Call_uses_valid_post_merge_and_random_value()
+        {
+            BlockHeader header = Build.A.BlockHeader
+                .WithDifficulty(0)
+                .WithMixHash(TestItem.KeccakA)
+                .TestObject;
+
+            Transaction tx = Build.A.Transaction.TestObject;
+
+            _blockchainBridge.Call(header, tx, CancellationToken.None);
+            _transactionProcessor.Received().CallAndRestore(
+                tx,
+                Arg.Is<BlockExecutionContext>(blkCtx =>
+                blkCtx.Header.IsPostMerge && blkCtx.Header.Random == TestItem.KeccakA),
+                Arg.Any<ITxTracer>());
         }
 
         [Test]
@@ -153,13 +167,42 @@ namespace Nethermind.Facade.Test
             _timestamper.UtcNow = DateTime.MinValue;
             _timestamper.Add(TimeSpan.FromDays(123));
             BlockHeader header = Build.A.BlockHeader.WithNumber(10).TestObject;
-            Transaction tx = new();
-            tx.GasLimit = Transaction.BaseTxGasCost;
+            Transaction tx = new() { GasLimit = Transaction.BaseTxGasCost };
 
             _blockchainBridge.Call(header, tx, CancellationToken.None);
             _transactionProcessor.Received().CallAndRestore(
                 tx,
-                Arg.Is<BlockHeader>(bh => bh.Number == 10),
+                Arg.Is<BlockExecutionContext>(blkCtx => blkCtx.Header.Number == 10),
+                Arg.Any<ITxTracer>());
+        }
+
+        [Test]
+        public void Call_uses_valid_mix_hash()
+        {
+            _timestamper.UtcNow = DateTime.MinValue;
+            _timestamper.Add(TimeSpan.FromDays(123));
+            BlockHeader header = Build.A.BlockHeader.WithMixHash(TestItem.KeccakA).TestObject;
+            Transaction tx = new() { GasLimit = Transaction.BaseTxGasCost };
+
+            _blockchainBridge.Call(header, tx, CancellationToken.None);
+            _transactionProcessor.Received().CallAndRestore(
+                tx,
+                Arg.Is<BlockExecutionContext>(blkCtx => blkCtx.Header.MixHash == TestItem.KeccakA),
+                Arg.Any<ITxTracer>());
+        }
+
+        [Test]
+        public void Call_uses_valid_beneficiary()
+        {
+            _timestamper.UtcNow = DateTime.MinValue;
+            _timestamper.Add(TimeSpan.FromDays(123));
+            BlockHeader header = Build.A.BlockHeader.WithBeneficiary(TestItem.AddressB).TestObject;
+            Transaction tx = new() { GasLimit = Transaction.BaseTxGasCost };
+
+            _blockchainBridge.Call(header, tx, CancellationToken.None);
+            _transactionProcessor.Received().CallAndRestore(
+                tx,
+                Arg.Is<BlockExecutionContext>(blkCtx => blkCtx.Header.Beneficiary == TestItem.AddressB),
                 Arg.Any<ITxTracer>());
         }
 
@@ -167,9 +210,14 @@ namespace Nethermind.Facade.Test
         [TestCase(0)]
         public void Bridge_head_is_correct(long headNumber)
         {
+            ReadOnlyDbProvider dbProvider = new ReadOnlyDbProvider(_dbProvider, false);
+            IReadOnlyTrieStore trieStore = new TrieStore(_dbProvider.StateDb, LimboLogs.Instance).AsReadOnly();
+
+            IWorldStateManager readOnlyWorldStateManager =
+                new ReadOnlyWorldStateManager(dbProvider, trieStore, LimboLogs.Instance);
+
             ReadOnlyTxProcessingEnv processingEnv = new(
-                new ReadOnlyDbProvider(_dbProvider, false),
-                new TrieStore(_dbProvider.StateDb, LimboLogs.Instance).AsReadOnly(),
+                readOnlyWorldStateManager,
                 new ReadOnlyBlockTree(_blockTree),
                 _specProvider,
                 LimboLogs.Instance);
@@ -190,25 +238,40 @@ namespace Nethermind.Facade.Test
                 _timestamper,
                 Substitute.For<ILogFinder>(),
                 _specProvider,
+                new BlocksConfig(),
                 false);
 
             _blockchainBridge.HeadBlock.Should().Be(head);
         }
 
-        [TestCase(true)]
-        [TestCase(false)]
-        public void GetReceiptAndEffectiveGasPrice_returns_correct_results(bool isCanonical)
+        [TestCase(true, true)]
+        [TestCase(false, true)]
+        [TestCase(true, false)]
+        [TestCase(false, false)]
+        public void GetReceiptAndGasInfo_returns_correct_results(bool isCanonical, bool postEip4844)
         {
-            Keccak txHash = TestItem.KeccakA;
-            Keccak blockHash = TestItem.KeccakB;
+            Hash256 txHash = TestItem.KeccakA;
+            Hash256 blockHash = TestItem.KeccakB;
             UInt256 effectiveGasPrice = 123;
-            
-            Transaction tx = Build.A.Transaction
-                .WithGasPrice(effectiveGasPrice)
-                .TestObject;
-            Block block = Build.A.Block
-                .WithTransactions(tx)
-                .TestObject;
+
+            Transaction tx = postEip4844
+                ? Build.A.Transaction
+                    .WithGasPrice(effectiveGasPrice)
+                    .WithType(TxType.Blob)
+                    .WithMaxFeePerBlobGas(2)
+                    .WithBlobVersionedHashes(2)
+                    .TestObject
+                : Build.A.Transaction
+                    .WithGasPrice(effectiveGasPrice)
+                    .TestObject;
+            Block block = postEip4844
+                ? Build.A.Block
+                    .WithTransactions(tx)
+                    .WithExcessBlobGas(2)
+                    .TestObject
+                : Build.A.Block
+                    .WithTransactions(tx)
+                    .TestObject;
             TxReceipt receipt = Build.A.Receipt
                 .WithBlockHash(blockHash)
                 .WithTransactionHash(txHash)
@@ -217,10 +280,18 @@ namespace Nethermind.Facade.Test
             _blockTree.FindBlock(blockHash, Arg.Is(BlockTreeLookupOptions.RequireCanonical)).Returns(isCanonical ? block : null);
             _blockTree.FindBlock(blockHash, Arg.Is(BlockTreeLookupOptions.TotalDifficultyNotNeeded)).Returns(block);
             _receiptStorage.FindBlockHash(txHash).Returns(blockHash);
-            _receiptStorage.Get(block).Returns(new[] {receipt});
+            _receiptStorage.Get(block).Returns(new[] { receipt });
 
-            (TxReceipt Receipt, UInt256? EffectiveGasPrice, int LogIndexStart) result = isCanonical ? (receipt, effectiveGasPrice, 0) : (null, null, 0);
-            _blockchainBridge.GetReceiptAndEffectiveGasPrice(txHash).Should().BeEquivalentTo(result);
+            (TxReceipt? Receipt, TxGasInfo? GasInfo, int LogIndexStart) result = postEip4844
+                ? (receipt, new(effectiveGasPrice, 1, 262144), 0)
+                : (receipt, new(effectiveGasPrice), 0);
+
+            if (!isCanonical)
+            {
+                result = (null, null, 0);
+            }
+
+            _blockchainBridge.GetReceiptAndGasInfo(txHash).Should().BeEquivalentTo(result);
         }
     }
 }

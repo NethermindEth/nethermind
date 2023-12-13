@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using Nethermind.Consensus.Processing;
@@ -26,44 +13,48 @@ namespace Nethermind.Consensus.Tracing
 {
     public class Tracer : ITracer
     {
-        private readonly IStateProvider _stateProvider;
-        private readonly IBlockchainProcessor _blockProcessor;
+        private readonly IWorldState _stateProvider;
+        private readonly IBlockchainProcessor _traceProcessor;
+        private readonly IBlockchainProcessor _executeProcessor;
         private readonly ProcessingOptions _processingOptions;
 
-        public Tracer(IStateProvider stateProvider, IBlockchainProcessor blockProcessor, ProcessingOptions processingOptions = ProcessingOptions.Trace)
+        public Tracer(IWorldState stateProvider, IBlockchainProcessor traceProcessor, IBlockchainProcessor executeProcessor,
+            ProcessingOptions processingOptions = ProcessingOptions.Trace)
         {
-            _stateProvider = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
-            _blockProcessor = blockProcessor ?? throw new ArgumentNullException(nameof(blockProcessor));
+            _traceProcessor = traceProcessor;
+            _executeProcessor = executeProcessor;
+            _stateProvider = stateProvider;
             _processingOptions = processingOptions;
         }
 
-        public Block? Trace(Block block, IBlockTracer blockTracer)
+        private void Process(Block block, IBlockTracer blockTracer, IBlockchainProcessor processor)
         {
             /* We force process since we want to process a block that has already been processed in the past and normally it would be ignored.
                We also want to make it read only so the state is not modified persistently in any way. */
 
             blockTracer.StartNewBlockTrace(block);
 
-            Block? processedBlock = null;
             try
             {
-                processedBlock = _blockProcessor.Process(block, _processingOptions, blockTracer);
+                processor.Process(block, _processingOptions, blockTracer);
             }
             catch (Exception)
             {
                 _stateProvider.Reset();
                 throw;
             }
-            
-            blockTracer.EndBlockTrace();
 
-            return processedBlock;
+            blockTracer.EndBlockTrace();
         }
 
-        public void Accept(ITreeVisitor visitor, Keccak stateRoot)
+        public void Trace(Block block, IBlockTracer tracer) => Process(block, tracer, _traceProcessor);
+
+        public void Execute(Block block, IBlockTracer tracer) => Process(block, tracer, _executeProcessor);
+
+        public void Accept(ITreeVisitor visitor, Hash256 stateRoot)
         {
-            if (visitor == null) throw new ArgumentNullException(nameof(visitor));
-            if (stateRoot == null) throw new ArgumentNullException(nameof(stateRoot));
+            ArgumentNullException.ThrowIfNull(visitor);
+            ArgumentNullException.ThrowIfNull(stateRoot);
 
             _stateProvider.Accept(visitor, stateRoot);
         }

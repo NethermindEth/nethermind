@@ -1,28 +1,20 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-//
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-//
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-//
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Consensus.Validators;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.State.Proofs;
+using Nethermind.Stats.Model;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
 using Nethermind.Synchronization.Reporting;
@@ -30,37 +22,49 @@ using Nethermind.Synchronization.SyncLimits;
 
 namespace Nethermind.Synchronization.FastBlocks
 {
-    public class BodiesSyncFeed : ActivatedSyncFeed<BodiesSyncBatch?>
+    public class BodiesSyncFeed : BarrierSyncFeed<BodiesSyncBatch?>
     {
-        private int _requestSize = GethSyncLimits.MaxBodyFetch;
+        protected override long? LowestInsertedNumber => _blockTree.LowestInsertedBodyNumber;
+        protected override int BarrierWhenStartedMetadataDbKey => MetadataDbKeys.BodiesBarrierWhenStarted;
+        protected override long SyncConfigBarrierCalc => _syncConfig.AncientBodiesBarrierCalc;
+        protected override Func<bool> HasPivot =>
+            () => _blockTree.LowestInsertedBodyNumber is not null && _blockTree.LowestInsertedBodyNumber <= _syncConfig.PivotNumberParsed;
 
-        private readonly ILogger _logger;
+        private int _requestSize = GethSyncLimits.MaxBodyFetch;
+        private const long DefaultFlushDbInterval = 100000; // About every 10GB on mainnet
+        private readonly long _flushDbInterval; // About every 10GB on mainnet
+
         private readonly IBlockTree _blockTree;
         private readonly ISyncConfig _syncConfig;
         private readonly ISyncReport _syncReport;
-        private readonly ISpecProvider _specProvider;
         private readonly ISyncPeerPool _syncPeerPool;
-
-        private readonly long _pivotNumber;
-        private readonly long _barrier;
+        private readonly IDbMeta _blocksDb;
 
         private SyncStatusList _syncStatusList;
 
+        private bool ShouldFinish => !_syncConfig.DownloadBodiesInFastSync || AllDownloaded;
+        private bool AllDownloaded => (_blockTree.LowestInsertedBodyNumber ?? long.MaxValue) <= _barrier
+            || WithinOldBarrierDefault;
+
+        public override bool IsFinished => AllDownloaded;
         public BodiesSyncFeed(
-            ISyncModeSelector syncModeSelector,
+            ISpecProvider specProvider,
             IBlockTree blockTree,
             ISyncPeerPool syncPeerPool,
             ISyncConfig syncConfig,
             ISyncReport syncReport,
-            ISpecProvider specProvider,
-            ILogManager logManager) : base(syncModeSelector)
+            IDbMeta blocksDb,
+            IDb metadataDb,
+            ILogManager logManager,
+            long flushDbInterval = DefaultFlushDbInterval)
+            : base(metadataDb, specProvider, logManager.GetClassLogger())
         {
-            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _syncPeerPool = syncPeerPool ?? throw new ArgumentNullException(nameof(syncPeerPool));
             _syncConfig = syncConfig ?? throw new ArgumentNullException(nameof(syncConfig));
             _syncReport = syncReport ?? throw new ArgumentNullException(nameof(syncReport));
-            _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
+            _blocksDb = blocksDb ?? throw new ArgumentNullException(nameof(blocksDb));
+            _flushDbInterval = flushDbInterval;
 
             if (!_syncConfig.FastBlocks)
             {
@@ -68,14 +72,29 @@ namespace Nethermind.Synchronization.FastBlocks
                     "Entered fast blocks mode without fast blocks enabled in configuration.");
             }
 
-            _pivotNumber = _syncConfig.PivotNumberParsed;
-            _barrier = _barrier = _syncConfig.AncientBodiesBarrierCalc;
-            if(_logger.IsInfo) _logger.Info($"Using pivot {_pivotNumber} and barrier {_barrier} in bodies sync");
+            _pivotNumber = -1; // First reset in `InitializeFeed`.
+        }
 
+        public override void InitializeFeed()
+        {
+            if (_pivotNumber != _syncConfig.PivotNumberParsed || _barrier != _syncConfig.AncientBodiesBarrierCalc)
+            {
+                _pivotNumber = _syncConfig.PivotNumberParsed;
+                _barrier = _syncConfig.AncientBodiesBarrierCalc;
+                if (_logger.IsInfo) _logger.Info($"Changed pivot in bodies sync. Now using pivot {_pivotNumber} and barrier {_barrier}");
+                ResetSyncStatusList();
+                InitializeMetadataDb();
+            }
+            base.InitializeFeed();
+        }
+
+        private void ResetSyncStatusList()
+        {
             _syncStatusList = new SyncStatusList(
                 _blockTree,
                 _pivotNumber,
-                _blockTree.LowestInsertedBodyNumber);
+                _blockTree.LowestInsertedBodyNumber,
+                _syncConfig.AncientBodiesBarrier);
         }
 
         protected override SyncMode ActivationSyncModes { get; } = SyncMode.FastBodies & ~SyncMode.FastBlocks;
@@ -86,17 +105,14 @@ namespace Nethermind.Synchronization.FastBlocks
 
         private bool ShouldBuildANewBatch()
         {
-            bool shouldDownloadBodies = _syncConfig.DownloadBodiesInFastSync;
-            bool allBodiesDownloaded = _syncStatusList.LowestInsertWithoutGaps <= _barrier;
-            bool shouldFinish = !shouldDownloadBodies || allBodiesDownloaded;
-            if (shouldFinish)
+            if (ShouldFinish)
             {
+                ResetSyncStatusList();
                 Finish();
                 PostFinishCleanUp();
 
                 return false;
             }
-
             return true;
         }
 
@@ -106,6 +122,7 @@ namespace Nethermind.Synchronization.FastBlocks
             _syncReport.FastBlocksBodies.MarkEnd();
             _syncReport.BodiesInQueue.Update(0);
             _syncReport.BodiesInQueue.MarkEnd();
+            Flush();
         }
 
         public override Task<BodiesSyncBatch?> PrepareRequest(CancellationToken token = default)
@@ -115,7 +132,7 @@ namespace Nethermind.Synchronization.FastBlocks
             {
                 BlockInfo?[] infos = new BlockInfo[_requestSize];
                 _syncStatusList.GetInfosForBatch(infos);
-                if (infos[0] != null)
+                if (infos[0] is not null)
                 {
                     batch = new BodiesSyncBatch(infos);
                     batch.MinNumber = infos[0].BlockNumber;
@@ -123,9 +140,22 @@ namespace Nethermind.Synchronization.FastBlocks
                 }
             }
 
-            _blockTree.LowestInsertedBodyNumber = _syncStatusList.LowestInsertWithoutGaps;
+            if (
+                (_blockTree.LowestInsertedBodyNumber ?? long.MaxValue) - _syncStatusList.LowestInsertWithoutGaps > _flushDbInterval ||
+                _syncStatusList.LowestInsertWithoutGaps <= _barrier // Other state depends on LowestInsertedBodyNumber, so this need to flush or it wont finish
+            )
+            {
+                Flush();
+            }
 
             return Task.FromResult(batch);
+        }
+
+        private void Flush()
+        {
+            long lowestInsertedAtPoint = _syncStatusList.LowestInsertWithoutGaps;
+            _blocksDb.Flush();
+            _blockTree.LowestInsertedBodyNumber = lowestInsertedAtPoint;
         }
 
         public override SyncResponseHandlingResult HandleResponse(BodiesSyncBatch? batch, PeerInfo peer = null)
@@ -133,9 +163,9 @@ namespace Nethermind.Synchronization.FastBlocks
             batch?.MarkHandlingStart();
             try
             {
-                if (batch == null)
+                if (batch is null)
                 {
-                    if(_logger.IsDebug) _logger.Debug("Received a NULL batch as a response");
+                    if (_logger.IsDebug) _logger.Debug("Received a NULL batch as a response");
                     return SyncResponseHandlingResult.InternalError;
                 }
 
@@ -144,18 +174,27 @@ namespace Nethermind.Synchronization.FastBlocks
                     ? SyncResponseHandlingResult.NoProgress
                     : SyncResponseHandlingResult.OK;
             }
+            catch (Exception)
+            {
+                foreach (BlockInfo? batchInfo in batch.Infos)
+                {
+                    if (batchInfo is null) break;
+                    _syncStatusList.MarkPending(batchInfo);
+                }
+
+                throw;
+            }
             finally
             {
+                batch.Response?.Dispose();
                 batch?.MarkHandlingEnd();
             }
         }
 
         private bool TryPrepareBlock(BlockInfo blockInfo, BlockBody blockBody, out Block? block)
         {
-            BlockHeader header = _blockTree.FindHeader(blockInfo.BlockHash);
-            bool txRootIsValid = new TxTrie(blockBody.Transactions).RootHash == header.TxRoot;
-            bool unclesHashIsValid = UnclesHash.Calculate(blockBody.Uncles) == header.UnclesHash;
-            if (txRootIsValid && unclesHashIsValid)
+            BlockHeader header = _blockTree.FindHeader(blockInfo.BlockHash, blockNumber: blockInfo.BlockNumber);
+            if (BlockValidator.ValidateBodyAgainstHeader(header, blockBody))
             {
                 block = new Block(header, blockBody);
             }
@@ -164,28 +203,29 @@ namespace Nethermind.Synchronization.FastBlocks
                 block = null;
             }
 
-            return block != null;
+            return block is not null;
         }
 
         private int InsertBodies(BodiesSyncBatch batch)
         {
             bool hasBreachedProtocol = false;
             int validResponsesCount = 0;
+            BlockBody[]? responses = batch.Response?.Bodies ?? Array.Empty<BlockBody>();
 
             for (int i = 0; i < batch.Infos.Length; i++)
             {
                 BlockInfo? blockInfo = batch.Infos[i];
-                BlockBody? body = (batch.Response?.Length ?? 0) <= i
+                BlockBody? body = responses.Length <= i
                     ? null
-                    : batch.Response![i];
+                    : responses[i];
 
                 // last batch
-                if (blockInfo == null)
+                if (blockInfo is null)
                 {
                     break;
                 }
 
-                if (body != null)
+                if (body is not null)
                 {
                     Block? block = null;
                     bool isValid = !hasBreachedProtocol && TryPrepareBlock(blockInfo, body, out block);
@@ -199,17 +239,17 @@ namespace Nethermind.Synchronization.FastBlocks
                         hasBreachedProtocol = true;
                         if (_logger.IsDebug) _logger.Debug($"{batch} - reporting INVALID - tx or uncles");
 
-                        if (batch.ResponseSourcePeer != null)
+                        if (batch.ResponseSourcePeer is not null)
                         {
-                            _syncPeerPool.ReportBreachOfProtocol(batch.ResponseSourcePeer, "invalid tx or uncles root");
+                            _syncPeerPool.ReportBreachOfProtocol(batch.ResponseSourcePeer, DisconnectReason.InvalidTxOrUncle, "invalid tx or uncles root");
                         }
 
-                        _syncStatusList.MarkUnknown(blockInfo.BlockNumber);
+                        _syncStatusList.MarkPending(blockInfo);
                     }
                 }
                 else
                 {
-                    _syncStatusList.MarkUnknown(blockInfo.BlockNumber);
+                    _syncStatusList.MarkPending(blockInfo);
                 }
             }
 
@@ -222,7 +262,7 @@ namespace Nethermind.Synchronization.FastBlocks
 
         private void InsertOneBlock(Block block)
         {
-            _blockTree.Insert(block, BlockTreeInsertBlockOptions.SkipCanAcceptNewBlocks);
+            _blockTree.Insert(block, BlockTreeInsertBlockOptions.SkipCanAcceptNewBlocks, bodiesWriteFlags: WriteFlags.DisableWAL);
             _syncStatusList.MarkInserted(block.Number);
         }
 

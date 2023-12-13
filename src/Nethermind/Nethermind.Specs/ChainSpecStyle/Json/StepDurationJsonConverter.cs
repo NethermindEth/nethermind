@@ -1,52 +1,64 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-// 
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
-using Nethermind.Serialization.Json;
-using Newtonsoft.Json;
+
+using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace Nethermind.Specs.ChainSpecStyle.Json
 {
     internal class StepDurationJsonConverter : JsonConverter<ChainSpecJson.AuraEngineParamsJson.StepDurationJson>
     {
-        public override void WriteJson(JsonWriter writer, ChainSpecJson.AuraEngineParamsJson.StepDurationJson value, JsonSerializer serializer)
+        public override void Write(Utf8JsonWriter writer, ChainSpecJson.AuraEngineParamsJson.StepDurationJson value, JsonSerializerOptions options)
         {
             throw new NotSupportedException();
         }
 
-        public override ChainSpecJson.AuraEngineParamsJson.StepDurationJson ReadJson(JsonReader reader, Type objectType, ChainSpecJson.AuraEngineParamsJson.StepDurationJson existingValue, bool hasExistingValue, JsonSerializer serializer)
+        public override ChainSpecJson.AuraEngineParamsJson.StepDurationJson Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
         {
-            existingValue ??= new ChainSpecJson.AuraEngineParamsJson.StepDurationJson();
-            if (reader.TokenType == JsonToken.String || reader.TokenType == JsonToken.Integer)
+            var value = new ChainSpecJson.AuraEngineParamsJson.StepDurationJson();
+            if (reader.TokenType == JsonTokenType.String)
             {
-                var stepDuration = serializer.Deserialize<long>(reader);
-                existingValue.Add(0, stepDuration);
+                value.Add(0, JsonSerializer.Deserialize<long>(ref reader, options));
+            }
+            else if (reader.TokenType == JsonTokenType.Number)
+            {
+                value.Add(0, reader.GetInt64());
+            }
+            else if (reader.TokenType == JsonTokenType.StartObject)
+            {
+                reader.Read();
+                while (reader.TokenType != JsonTokenType.EndObject)
+                {
+                    if (reader.TokenType != JsonTokenType.PropertyName)
+                    {
+                        throw new ArgumentException("Cannot deserialize BlockReward.");
+                    }
+                    var key = long.Parse(reader.GetString());
+                    reader.Read();
+                    if (reader.TokenType == JsonTokenType.String)
+                    {
+                        value.Add(key, long.Parse(reader.GetString()));
+                    }
+                    else if (reader.TokenType == JsonTokenType.Number)
+                    {
+                        value.Add(key, reader.GetInt64());
+                    }
+                    else
+                    {
+                        throw new ArgumentException("Cannot deserialize BlockReward.");
+                    }
+
+                    reader.Read();
+                }
             }
             else
             {
-                var stepDurations = serializer.Deserialize<Dictionary<string, long>>(reader);
-                foreach (var stepDuration in stepDurations ?? throw new ArgumentException("Cannot deserialize StepDuration."))
-                {
-                    existingValue.Add(LongConverter.FromString(stepDuration.Key), stepDuration.Value);
-                }
+                throw new ArgumentException("Cannot deserialize BlockReward.");
             }
 
-            return existingValue;
+            return value;
         }
     }
 }

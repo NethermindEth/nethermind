@@ -1,8 +1,7 @@
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
 using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Logging;
@@ -32,7 +31,7 @@ namespace Nethermind.Synchronization.SnapSync
 
         public BlockHeader GetPivotHeader()
         {
-            if(_bestHeader is null || _blockTree.BestSuggestedHeader?.Number - _bestHeader.Number >= Constants.MaxDistanceFromHead - 35)
+            if (_bestHeader is null || _blockTree.BestSuggestedHeader?.Number - _bestHeader.Number >= Constants.MaxDistanceFromHead - 35)
             {
                 LogPivotChanged($"distance from HEAD:{Diff}");
                 _bestHeader = _blockTree.BestSuggestedHeader;
@@ -52,14 +51,14 @@ namespace Nethermind.Synchronization.SnapSync
 
         private void LogPivotChanged(string msg)
         {
-            _logger.Info($"SNAP - {msg} - Pivot changed from {_bestHeader?.Number} to {_blockTree.BestSuggestedHeader?.Number}");
+            _logger.Info($"Snap - {msg} - Pivot changed from {_bestHeader?.Number} to {_blockTree.BestSuggestedHeader?.Number}");
         }
 
         public void UpdateHeaderForcefully()
         {
             if (_blockTree.BestSuggestedHeader?.Number > _bestHeader.Number)
             {
-                LogPivotChanged("to many empty responses");
+                LogPivotChanged("too many empty responses");
                 _bestHeader = _blockTree.BestSuggestedHeader;
             }
         }

@@ -1,28 +1,13 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-//
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-//
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-//
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-//
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Blockchain.Find;
-using Nethermind.Consensus;
+using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -51,7 +36,7 @@ namespace Nethermind.JsonRpc.Modules.Eth.GasPrice
         {
             _blockFinder = blockFinder;
             _logger = logManager.GetClassLogger();
-            _minGasPrice = minGasPrice ?? new MiningConfig().MinGasPrice;
+            _minGasPrice = minGasPrice ?? new BlocksConfig().MinGasPrice;
             SpecProvider = specProvider;
         }
 
@@ -63,7 +48,7 @@ namespace Nethermind.JsonRpc.Modules.Eth.GasPrice
                 return FallbackGasPrice();
             }
 
-            Keccak headBlockHash = headBlock.Hash!;
+            Hash256 headBlockHash = headBlock.Hash!;
             if (_gasPriceEstimation.TryGetPrice(headBlockHash, out UInt256? price))
             {
                 return price!.Value;
@@ -88,7 +73,7 @@ namespace Nethermind.JsonRpc.Modules.Eth.GasPrice
                 return EthGasPriceConstants.FallbackMaxPriorityFeePerGas;
             }
 
-            Keccak headBlockHash = headBlock.Hash!;
+            Hash256 headBlockHash = headBlock.Hash!;
             if (_maxPriorityFeePerGasEstimation.TryGetPrice(headBlockHash, out UInt256? price))
             {
                 return price!.Value;
@@ -132,7 +117,7 @@ namespace Nethermind.JsonRpc.Modules.Eth.GasPrice
             {
                 Transaction[] currentBlockTransactions = currentBlock.Transactions;
                 int txFromCurrentBlock = 0;
-                bool eip1559Enabled = SpecProvider.GetSpec(currentBlock.Number).IsEip1559Enabled;
+                bool eip1559Enabled = SpecProvider.GetSpec(currentBlock.Header).IsEip1559Enabled;
                 UInt256 baseFee = currentBlock.BaseFeePerGas;
                 IEnumerable<UInt256> effectiveGasPrices = currentBlockTransactions.Where(tx => tx.SenderAddress != currentBlock.Beneficiary)
                         .Select(tx => calculateGasFromTransaction(tx, eip1559Enabled, baseFee))
@@ -182,28 +167,28 @@ namespace Nethermind.JsonRpc.Modules.Eth.GasPrice
         {
             int lastIndex = count - 1;
             float percentileOfLastIndex = lastIndex * ((float)EthGasPriceConstants.PercentileOfSortedTxs / 100);
-            int roundedIndex = (int) Math.Round(percentileOfLastIndex);
+            int roundedIndex = (int)Math.Round(percentileOfLastIndex);
             return roundedIndex;
         }
 
         internal struct PriceCache
         {
-            public PriceCache(Keccak? headHash, UInt256? price)
+            public PriceCache(Hash256? headHash, UInt256? price)
             {
                 LastHeadHash = headHash;
                 LastPrice = price;
             }
 
             public UInt256? LastPrice { get; private set; }
-            private Keccak? LastHeadHash { get; set; }
+            private Hash256? LastHeadHash { get; set; }
 
-            public void Set(Keccak headHash, UInt256 price)
+            public void Set(Hash256 headHash, UInt256 price)
             {
                 LastHeadHash = headHash;
                 LastPrice = price;
             }
 
-            public bool TryGetPrice(Keccak headHash, out UInt256? price)
+            public bool TryGetPrice(Hash256 headHash, out UInt256? price)
             {
                 if (headHash == LastHeadHash)
                 {

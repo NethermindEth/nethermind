@@ -1,30 +1,21 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-//
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-//
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-//
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Generic;
+using System.Collections.Immutable;
 using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
+using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Find;
+using Nethermind.Blockchain.Headers;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Blockchain.Visitors;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Test;
 using Nethermind.Core.Specs;
 using Nethermind.Specs;
 using Nethermind.Core.Test.Builders;
@@ -36,7 +27,7 @@ using Nethermind.State.Repositories;
 using Nethermind.Db.Blooms;
 using Nethermind.Int256;
 using Nethermind.Specs.Forks;
-using Nethermind.TxPool;
+using Nethermind.Specs.Test;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -45,63 +36,74 @@ namespace Nethermind.Blockchain.Test
     [TestFixture]
     public class BlockTreeTests
     {
-        private MemDb _blocksInfosDb;
-        private MemDb _headersDb;
-        private MemDb _blocksDb;
+        private TestMemDb _blocksInfosDb = null!;
+        private TestMemDb _headersDb = null!;
+        private TestMemDb _blocksDb = null!;
+
+        [TearDown]
+        public void TearDown()
+        {
+            _blocksDb?.Dispose();
+            _headersDb?.Dispose();
+        }
 
         private BlockTree BuildBlockTree()
         {
-            _blocksDb = new MemDb();
-            _headersDb = new MemDb();
-            _blocksInfosDb = new MemDb();
-            _chainLevelInfoRepository = new ChainLevelInfoRepository(_blocksInfosDb);
-            return new BlockTree(_blocksDb, _headersDb, _blocksInfosDb, _chainLevelInfoRepository, MainnetSpecProvider.Instance, NullBloomStorage.Instance, LimboLogs.Instance);
+            _blocksDb = new TestMemDb();
+            _headersDb = new TestMemDb();
+            _blocksInfosDb = new TestMemDb();
+            BlockTreeBuilder builder = Build.A.BlockTree()
+                .WithBlocksDb(_blocksDb)
+                .WithHeadersDb(_headersDb)
+                .WithBlockInfoDb(_blocksInfosDb)
+                .WithoutSettingHead;
+            return builder.TestObject;
         }
 
         private static void AddToMain(BlockTree blockTree, Block block0)
         {
             blockTree.SuggestBlock(block0);
-            blockTree.UpdateMainChain(new[] {block0}, true);
+            blockTree.UpdateMainChain(new[] { block0 }, true);
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Add_genesis_shall_notify()
         {
             bool hasNotified = false;
             BlockTree blockTree = BuildBlockTree();
-            blockTree.NewHeadBlock += (sender, args) => { hasNotified = true; };
+            blockTree.NewHeadBlock += (_, _) => { hasNotified = true; };
 
             bool hasNotifiedNewSuggested = false;
-            blockTree.NewSuggestedBlock += (sender, args) => { hasNotifiedNewSuggested = true; };
+            blockTree.NewSuggestedBlock += (_, _) => { hasNotifiedNewSuggested = true; };
 
             Block block = Build.A.Block.WithNumber(0).TestObject;
             AddBlockResult result = blockTree.SuggestBlock(block);
             blockTree.UpdateMainChain(block);
 
             Assert.True(hasNotified, "notification");
-            Assert.AreEqual(AddBlockResult.Added, result, "result");
+            Assert.That(result, Is.EqualTo(AddBlockResult.Added), "result");
             Assert.True(hasNotifiedNewSuggested, "NewSuggestedBlock");
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Add_genesis_shall_work_even_with_0_difficulty()
         {
             bool hasNotified = false;
             BlockTree blockTree = BuildBlockTree();
-            blockTree.NewBestSuggestedBlock += (sender, args) => { hasNotified = true; };
+            blockTree.NewBestSuggestedBlock += (_, _) => { hasNotified = true; };
 
             bool hasNotifiedNewSuggested = false;
-            blockTree.NewSuggestedBlock += (sender, args) => { hasNotifiedNewSuggested = true; };
+            blockTree.NewSuggestedBlock += (_, _) => { hasNotifiedNewSuggested = true; };
 
             Block block = Build.A.Block.WithNumber(0).WithDifficulty(0).TestObject;
             AddBlockResult result = blockTree.SuggestBlock(block);
 
             Assert.True(hasNotified, "notification");
-            Assert.AreEqual(AddBlockResult.Added, result, "result");
+            Assert.That(result, Is.EqualTo(AddBlockResult.Added), "result");
             Assert.True(hasNotifiedNewSuggested, "NewSuggestedBlock");
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Suggesting_genesis_many_times_does_not_cause_any_trouble()
         {
             BlockTree blockTree = BuildBlockTree();
@@ -111,7 +113,7 @@ namespace Nethermind.Blockchain.Test
             blockTree.SuggestBlock(blockB).Should().Be(AddBlockResult.AlreadyKnown);
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Shall_notify_on_new_head_block_after_genesis()
         {
             bool hasNotified = false;
@@ -119,20 +121,20 @@ namespace Nethermind.Blockchain.Test
             Block block0 = Build.A.Block.WithNumber(0).WithDifficulty(1).TestObject;
             Block block1 = Build.A.Block.WithNumber(1).WithDifficulty(2).WithParent(block0).TestObject;
             blockTree.SuggestBlock(block0);
-            blockTree.NewHeadBlock += (sender, args) => { hasNotified = true; };
+            blockTree.NewHeadBlock += (_, _) => { hasNotified = true; };
 
             bool hasNotifiedNewSuggested = false;
-            blockTree.NewSuggestedBlock += (sender, args) => { hasNotifiedNewSuggested = true; };
+            blockTree.NewSuggestedBlock += (_, _) => { hasNotifiedNewSuggested = true; };
 
             AddBlockResult result = blockTree.SuggestBlock(block1);
             blockTree.UpdateMainChain(block1);
 
             Assert.True(hasNotified, "notification");
-            Assert.AreEqual(AddBlockResult.Added, result, "result");
+            Assert.That(result, Is.EqualTo(AddBlockResult.Added), "result");
             Assert.True(hasNotifiedNewSuggested, "NewSuggestedBlock");
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Shall_notify_new_head_block_once_and_block_added_to_main_multiple_times_when_adding_multiple_blocks_at_once()
         {
             int newHeadBlockNotifications = 0;
@@ -145,19 +147,19 @@ namespace Nethermind.Blockchain.Test
             Block block3 = Build.A.Block.WithNumber(3).WithDifficulty(0).WithParent(block2).TestObject;
 
             blockTree.SuggestBlock(block0);
-            blockTree.NewHeadBlock += (sender, args) => { newHeadBlockNotifications++; };
-            blockTree.BlockAddedToMain += (sender, args) => { blockAddedToMainNotifications++; };
+            blockTree.NewHeadBlock += (_, _) => { newHeadBlockNotifications++; };
+            blockTree.BlockAddedToMain += (_, _) => { blockAddedToMainNotifications++; };
 
             blockTree.SuggestBlock(block1);
             blockTree.SuggestBlock(block2);
             blockTree.SuggestBlock(block3);
-            blockTree.UpdateMainChain(new Block[] {block1, block2, block3}, true);
+            blockTree.UpdateMainChain(new[] { block1, block2, block3 }, true);
 
             newHeadBlockNotifications.Should().Be(1, "new head block");
             blockAddedToMainNotifications.Should().Be(3, "block added to main");
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Shall_notify_on_new_suggested_block_after_genesis()
         {
             bool hasNotified = false;
@@ -165,19 +167,19 @@ namespace Nethermind.Blockchain.Test
             Block block0 = Build.A.Block.WithNumber(0).WithDifficulty(1).TestObject;
             Block block1 = Build.A.Block.WithNumber(1).WithDifficulty(2).WithParent(block0).TestObject;
             blockTree.SuggestBlock(block0);
-            blockTree.NewBestSuggestedBlock += (sender, args) => { hasNotified = true; };
+            blockTree.NewBestSuggestedBlock += (_, _) => { hasNotified = true; };
 
             bool hasNotifiedNewSuggested = false;
-            blockTree.NewSuggestedBlock += (sender, args) => { hasNotifiedNewSuggested = true; };
+            blockTree.NewSuggestedBlock += (_, _) => { hasNotifiedNewSuggested = true; };
 
             AddBlockResult result = blockTree.SuggestBlock(block1);
 
             Assert.True(hasNotified, "notification");
-            Assert.AreEqual(AddBlockResult.Added, result, "result");
+            Assert.That(result, Is.EqualTo(AddBlockResult.Added), "result");
             Assert.True(hasNotifiedNewSuggested, "NewSuggestedBlock");
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Shall_not_notify_but_add_on_lower_difficulty()
         {
             bool hasNotifiedBest = false;
@@ -188,21 +190,21 @@ namespace Nethermind.Blockchain.Test
             Block block2 = Build.A.Block.WithNumber(1).WithDifficulty(2).WithParent(block0).TestObject;
             blockTree.SuggestBlock(block0);
             blockTree.SuggestBlock(block1);
-            blockTree.NewHeadBlock += (sender, args) => { hasNotifiedHead = true; };
-            blockTree.NewBestSuggestedBlock += (sender, args) => { hasNotifiedBest = true; };
+            blockTree.NewHeadBlock += (_, _) => { hasNotifiedHead = true; };
+            blockTree.NewBestSuggestedBlock += (_, _) => { hasNotifiedBest = true; };
 
             bool hasNotifiedNewSuggested = false;
-            blockTree.NewSuggestedBlock += (sender, args) => { hasNotifiedNewSuggested = true; };
+            blockTree.NewSuggestedBlock += (_, _) => { hasNotifiedNewSuggested = true; };
 
             AddBlockResult result = blockTree.SuggestBlock(block2);
 
             Assert.False(hasNotifiedBest, "notification best");
             Assert.False(hasNotifiedHead, "notification head");
-            Assert.AreEqual(AddBlockResult.Added, result, "result");
+            Assert.That(result, Is.EqualTo(AddBlockResult.Added), "result");
             Assert.True(hasNotifiedNewSuggested, "NewSuggestedBlock");
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Shall_ignore_orphans()
         {
             BlockTree blockTree = BuildBlockTree();
@@ -210,10 +212,10 @@ namespace Nethermind.Blockchain.Test
             Block block2 = Build.A.Block.WithNumber(2).WithDifficulty(3).TestObject;
             blockTree.SuggestBlock(block0);
             AddBlockResult result = blockTree.SuggestBlock(block2);
-            Assert.AreEqual(AddBlockResult.UnknownParent, result);
+            Assert.That(result, Is.EqualTo(AddBlockResult.UnknownParent));
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Shall_ignore_known()
         {
             BlockTree blockTree = BuildBlockTree();
@@ -222,16 +224,19 @@ namespace Nethermind.Blockchain.Test
             blockTree.SuggestBlock(block0);
             blockTree.SuggestBlock(block1);
             AddBlockResult result = blockTree.SuggestBlock(block1);
-            Assert.AreEqual(AddBlockResult.AlreadyKnown, result);
+            Assert.That(result, Is.EqualTo(AddBlockResult.AlreadyKnown));
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Cleans_invalid_blocks_before_starting()
         {
-            MemDb blocksDb = new();
-            MemDb blockInfosDb = new();
-            MemDb headersDb = new();
-            BlockTree tree = new(blocksDb, headersDb, blockInfosDb, new ChainLevelInfoRepository(blockInfosDb), MainnetSpecProvider.Instance, NullBloomStorage.Instance, LimboLogs.Instance);
+            MemDb blockInfosDb = new MemDb();
+            BlockTreeBuilder builder = Build.A.BlockTree()
+                .WithBlockInfoDb(blockInfosDb)
+                .WithoutSettingHead;
+            IBlockStore blockStore = builder.BlockStore;
+            BlockTree tree = builder.TestObject;
+
             Block block0 = Build.A.Block.WithNumber(0).WithDifficulty(1).TestObject;
             Block block1 = Build.A.Block.WithNumber(1).WithDifficulty(2).WithParent(block0).TestObject;
             Block block2 = Build.A.Block.WithNumber(2).WithDifficulty(3).WithParent(block1).TestObject;
@@ -242,29 +247,35 @@ namespace Nethermind.Blockchain.Test
             tree.SuggestBlock(block2);
             tree.SuggestBlock(block3);
 
-            blockInfosDb.Set(BlockTree.DeletePointerAddressInDb, block1.Hash.Bytes);
-            BlockTree tree2 = new(blocksDb, headersDb, blockInfosDb, new ChainLevelInfoRepository(blockInfosDb), MainnetSpecProvider.Instance, NullBloomStorage.Instance, LimboLogs.Instance);
+            blockInfosDb.Set(BlockTree.DeletePointerAddressInDb, block1.Hash!.Bytes);
+            BlockTree tree2 = Build.A.BlockTree()
+                .WithoutSettingHead
+                .WithDatabaseFrom(builder)
+                .TestObject;
 
-            Assert.AreEqual(0L, tree2.BestKnownNumber, "best known");
-            Assert.AreEqual(null, tree2.Head, "head");
-            Assert.AreEqual(0L, tree2.BestSuggestedHeader.Number, "suggested");
+            Assert.That(tree2.BestKnownNumber, Is.EqualTo(0L), "best known");
+            Assert.That(tree2.Head, Is.EqualTo(null), "head");
+            Assert.That(tree2.BestSuggestedHeader!.Number, Is.EqualTo(0L), "suggested");
 
-            Assert.IsNull(blocksDb.Get(block2.Hash), "block 1");
-            Assert.IsNull(blocksDb.Get(block2.Hash), "block 2");
-            Assert.IsNull(blocksDb.Get(block3.Hash), "block 3");
+            Assert.IsNull(blockStore.Get(block2.Number, block2.Hash!), "block 1");
+            Assert.IsNull(blockStore.Get(block2.Number, block2.Hash!), "block 2");
+            Assert.IsNull(blockStore.Get(block3.Number, block3.Hash!), "block 3");
 
             Assert.IsNull(blockInfosDb.Get(2), "level 1");
             Assert.IsNull(blockInfosDb.Get(2), "level 2");
             Assert.IsNull(blockInfosDb.Get(3), "level 3");
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void When_cleaning_descendants_of_invalid_does_not_touch_other_branches()
         {
-            MemDb blocksDb = new();
             MemDb blockInfosDb = new();
-            MemDb headersDb = new();
-            BlockTree tree = new(blocksDb, headersDb, blockInfosDb, new ChainLevelInfoRepository(blockInfosDb), MainnetSpecProvider.Instance, NullBloomStorage.Instance, LimboLogs.Instance);
+            BlockTreeBuilder builder = Build.A.BlockTree()
+                .WithBlockInfoDb(blockInfosDb)
+                .WithoutSettingHead;
+            IBlockStore blockStore = builder.BlockStore;
+            BlockTree tree = builder.TestObject;
+
             Block block0 = Build.A.Block.WithNumber(0).WithDifficulty(1).TestObject;
             Block block1 = Build.A.Block.WithNumber(1).WithDifficulty(2).WithParent(block0).TestObject;
             Block block2 = Build.A.Block.WithNumber(2).WithDifficulty(3).WithParent(block1).TestObject;
@@ -283,89 +294,104 @@ namespace Nethermind.Blockchain.Test
             tree.SuggestBlock(block2B);
             tree.SuggestBlock(block3B);
 
-            blockInfosDb.Set(BlockTree.DeletePointerAddressInDb, block1.Hash.Bytes);
-            BlockTree tree2 = new(blocksDb, headersDb, blockInfosDb, new ChainLevelInfoRepository(blockInfosDb), MainnetSpecProvider.Instance, NullBloomStorage.Instance, LimboLogs.Instance);
+            blockInfosDb.Set(BlockTree.DeletePointerAddressInDb, block1.Hash!.Bytes);
+            BlockTree tree2 = Build.A.BlockTree()
+                .WithoutSettingHead
+                .WithDatabaseFrom(builder)
+                .TestObject;
 
-            Assert.AreEqual(3L, tree2.BestKnownNumber, "best known");
-            Assert.AreEqual(null, tree2.Head, "head");
-            Assert.AreEqual(block3B.Hash, tree2.BestSuggestedHeader.Hash, "suggested");
+            Assert.That(tree2.BestKnownNumber, Is.EqualTo(3L), "best known");
+            Assert.That(tree2.Head, Is.EqualTo(null), "head");
+            Assert.That(tree2.BestSuggestedHeader!.Hash, Is.EqualTo(block3B.Hash), "suggested");
 
-            blocksDb.Get(block1.Hash).Should().BeNull("block 1");
-            blocksDb.Get(block2.Hash).Should().BeNull("block 2");
-            blocksDb.Get(block3.Hash).Should().BeNull("block 3");
+            blockStore.Get(block1.Number, block1.Hash!).Should().BeNull("block 1");
+            blockStore.Get(block2.Number, block2.Hash!).Should().BeNull("block 2");
+            blockStore.Get(block3.Number, block3.Hash!).Should().BeNull("block 3");
 
             Assert.NotNull(blockInfosDb.Get(1), "level 1");
             Assert.NotNull(blockInfosDb.Get(2), "level 2");
             Assert.NotNull(blockInfosDb.Get(3), "level 3");
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Can_load_best_known_up_to_256million()
         {
-            _blocksDb = new MemDb();
-            _headersDb = new MemDb();
-            IDb blocksInfosDb = Substitute.For<IDb>();
+            _blocksDb = new TestMemDb();
+            _headersDb = new TestMemDb();
+            TestMemDb blocksInfosDb = new TestMemDb();
 
             Rlp chainLevel = Rlp.Encode(new ChainLevelInfo(true, new BlockInfo(TestItem.KeccakA, 1)));
-            blocksInfosDb[BlockTree.DeletePointerAddressInDb.Bytes].Returns((byte[]) null);
-            blocksInfosDb[Arg.Is<byte[]>(b => !Bytes.AreEqual(b, BlockTree.DeletePointerAddressInDb.Bytes))].Returns(chainLevel.Bytes);
+            blocksInfosDb.ReadFunc = (key) =>
+            {
+                if (!Bytes.AreEqual(key, BlockTree.DeletePointerAddressInDb.Bytes))
+                {
+                    return chainLevel.Bytes;
+                }
 
-            BlockTree blockTree = new(_blocksDb, _headersDb, blocksInfosDb, new ChainLevelInfoRepository(blocksInfosDb), MainnetSpecProvider.Instance, NullBloomStorage.Instance, LimboLogs.Instance);
+                return null!;
+            };
 
-            Assert.AreEqual(256000000, blockTree.BestKnownNumber);
+            BlockTree blockTree = Build.A.BlockTree()
+                .WithoutSettingHead
+                .WithBlocksDb(_blocksDb)
+                .WithHeadersDb(_headersDb)
+                .WithBlockInfoDb(blocksInfosDb)
+                .TestObject;
+
+            Assert.That(blockTree.BestKnownNumber, Is.EqualTo(256000000));
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Add_and_find_branch()
         {
             BlockTree blockTree = BuildBlockTree();
             Block block = Build.A.Block.TestObject;
             blockTree.SuggestBlock(block);
-            Block found = blockTree.FindBlock(block.Hash, BlockTreeLookupOptions.None);
-            Assert.AreEqual(block.Hash, found.Header.CalculateHash());
+            Block? found = blockTree.FindBlock(block.Hash, BlockTreeLookupOptions.None);
+            Assert.That(found?.Header.CalculateHash(), Is.EqualTo(block.Hash));
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Add_on_branch_move_find()
         {
             BlockTree blockTree = BuildBlockTree();
             Block block = Build.A.Block.TestObject;
             AddToMain(blockTree, block);
-            Block found = blockTree.FindBlock(block.Hash, BlockTreeLookupOptions.RequireCanonical);
-            Assert.AreEqual(block.Hash, found.Header.CalculateHash());
+            Block? found = blockTree.FindBlock(block.Hash, BlockTreeLookupOptions.RequireCanonical);
+            Assert.That(found?.Header.CalculateHash(), Is.EqualTo(block.Hash));
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Add_on_branch_move_find_via_block_finder_interface()
         {
             BlockTree blockTree = BuildBlockTree();
             Block block = Build.A.Block.TestObject;
             AddToMain(blockTree, block);
-            Block found = ((IBlockFinder) blockTree).FindBlock(new BlockParameter(block.Hash, true));
-            Assert.AreEqual(block.Hash, found.Header.CalculateHash());
+            Block? found = ((IBlockFinder)blockTree).FindBlock(new BlockParameter(block.Hash!, true));
+            Assert.That(found?.Header.CalculateHash(), Is.EqualTo(block.Hash));
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Add_on_branch_and_not_find_on_main()
         {
             BlockTree blockTree = BuildBlockTree();
             Block block = Build.A.Block.TestObject;
             blockTree.SuggestBlock(block);
-            Block found = blockTree.FindBlock(block.Hash, BlockTreeLookupOptions.RequireCanonical);
+            Block? found = blockTree.FindBlock(block.Hash, BlockTreeLookupOptions.RequireCanonical);
             Assert.IsNull(found);
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Add_on_branch_and_not_find_on_main_via_block_finder_interface()
         {
             BlockTree blockTree = BuildBlockTree();
             Block block = Build.A.Block.TestObject;
             blockTree.SuggestBlock(block);
-            Block found = ((IBlockFinder) blockTree).FindBlock(new BlockParameter(block.Hash, true));
+            Block? found = ((IBlockFinder)blockTree).FindBlock(new BlockParameter(block.Hash!, true));
             Assert.IsNull(found);
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Find_by_number_basic()
         {
             BlockTree blockTree = BuildBlockTree();
@@ -376,11 +402,11 @@ namespace Nethermind.Blockchain.Test
             AddToMain(blockTree, block1);
             AddToMain(blockTree, block2);
 
-            Block found = blockTree.FindBlock(2, BlockTreeLookupOptions.None);
-            Assert.AreEqual(block2.Hash, found.Header.CalculateHash());
+            Block? found = blockTree.FindBlock(2, BlockTreeLookupOptions.None);
+            Assert.That(found?.Header.CalculateHash(), Is.EqualTo(block2.Hash));
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Find_by_number_beyond_what_is_known_returns_null()
         {
             BlockTree blockTree = BuildBlockTree();
@@ -391,11 +417,11 @@ namespace Nethermind.Blockchain.Test
             AddToMain(blockTree, block1);
             AddToMain(blockTree, block2);
 
-            Block found = blockTree.FindBlock(1920000, BlockTreeLookupOptions.None);
+            Block? found = blockTree.FindBlock(1920000, BlockTreeLookupOptions.None);
             Assert.Null(found);
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Find_by_number_returns_null_when_block_is_missing()
         {
             BlockTree blockTree = BuildBlockTree();
@@ -404,11 +430,11 @@ namespace Nethermind.Blockchain.Test
             AddToMain(blockTree, block0);
             AddToMain(blockTree, block1);
 
-            Block found = blockTree.FindBlock(5, BlockTreeLookupOptions.None);
+            Block? found = blockTree.FindBlock(5, BlockTreeLookupOptions.None);
             Assert.IsNull(found);
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Find_headers_basic()
         {
             BlockTree blockTree = BuildBlockTree();
@@ -420,12 +446,12 @@ namespace Nethermind.Blockchain.Test
             AddToMain(blockTree, block2);
 
             BlockHeader[] headers = blockTree.FindHeaders(block0.Hash, 2, 0, false);
-            Assert.AreEqual(2, headers.Length);
-            Assert.AreEqual(block0.Hash, headers[0].Hash);
-            Assert.AreEqual(block1.Hash, headers[1].Hash);
+            Assert.That(headers.Length, Is.EqualTo(2));
+            Assert.That(headers[0].Hash, Is.EqualTo(block0.Hash));
+            Assert.That(headers[1].Hash, Is.EqualTo(block1.Hash));
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Find_headers_skip()
         {
             BlockTree blockTree = BuildBlockTree();
@@ -437,29 +463,33 @@ namespace Nethermind.Blockchain.Test
             AddToMain(blockTree, block2);
 
             BlockHeader[] headers = blockTree.FindHeaders(block0.Hash, 2, 1, false);
-            Assert.AreEqual(2, headers.Length);
-            Assert.AreEqual(block0.Hash, headers[0].Hash);
-            Assert.AreEqual(block2.Hash, headers[1].Hash);
+            Assert.That(headers.Length, Is.EqualTo(2));
+            Assert.That(headers[0].Hash, Is.EqualTo(block0.Hash));
+            Assert.That(headers[1].Hash, Is.EqualTo(block2.Hash));
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Find_headers_reverse()
         {
             BlockTree blockTree = BuildBlockTree();
             Block block0 = Build.A.Block.WithNumber(0).TestObject;
             Block block1 = Build.A.Block.WithNumber(1).WithParent(block0).TestObject;
             Block block2 = Build.A.Block.WithNumber(2).WithParent(block1).TestObject;
+            Block block3 = Build.A.Block.WithNumber(3).WithParent(block2).TestObject;
+            Block block4 = Build.A.Block.WithNumber(4).WithParent(block3).TestObject;
             AddToMain(blockTree, block0);
             AddToMain(blockTree, block1);
             AddToMain(blockTree, block2);
+            AddToMain(blockTree, block3);
+            AddToMain(blockTree, block4);
 
             BlockHeader[] headers = blockTree.FindHeaders(block2.Hash, 2, 0, true);
-            Assert.AreEqual(2, headers.Length);
-            Assert.AreEqual(block2.Hash, headers[0].Hash);
-            Assert.AreEqual(block1.Hash, headers[1].Hash);
+            Assert.That(headers.Length, Is.EqualTo(2));
+            Assert.That(headers[0].Hash, Is.EqualTo(block2.Hash));
+            Assert.That(headers[1].Hash, Is.EqualTo(block1.Hash));
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Find_headers_reverse_skip()
         {
             BlockTree blockTree = BuildBlockTree();
@@ -471,12 +501,12 @@ namespace Nethermind.Blockchain.Test
             AddToMain(blockTree, block2);
 
             BlockHeader[] headers = blockTree.FindHeaders(block2.Hash, 2, 1, true);
-            Assert.AreEqual(2, headers.Length);
-            Assert.AreEqual(block2.Hash, headers[0].Hash);
-            Assert.AreEqual(block0.Hash, headers[1].Hash);
+            Assert.That(headers.Length, Is.EqualTo(2));
+            Assert.That(headers[0].Hash, Is.EqualTo(block2.Hash));
+            Assert.That(headers[1].Hash, Is.EqualTo(block0.Hash));
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Find_headers_reverse_below_zero()
         {
             BlockTree blockTree = BuildBlockTree();
@@ -488,12 +518,12 @@ namespace Nethermind.Blockchain.Test
             AddToMain(blockTree, block2);
 
             BlockHeader[] headers = blockTree.FindHeaders(block0.Hash, 2, 1, true);
-            Assert.AreEqual(2, headers.Length);
-            Assert.AreEqual(block0.Hash, headers[0].Hash);
+            Assert.That(headers.Length, Is.EqualTo(2));
+            Assert.That(headers[0].Hash, Is.EqualTo(block0.Hash));
             Assert.Null(headers[1]);
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void When_finding_headers_does_not_find_a_header_it_breaks_the_loop()
         {
             BlockTree blockTree = BuildBlockTree();
@@ -505,14 +535,14 @@ namespace Nethermind.Blockchain.Test
             AddToMain(blockTree, block2);
 
             BlockHeader[] headers = blockTree.FindHeaders(block0.Hash, 100, 0, false);
-            Assert.AreEqual(100, headers.Length);
-            Assert.AreEqual(block0.Hash, headers[0].Hash);
+            Assert.That(headers.Length, Is.EqualTo(100));
+            Assert.That(headers[0].Hash, Is.EqualTo(block0.Hash));
             Assert.Null(headers[3]);
 
-            Assert.AreEqual(0, _headersDb.ReadsCount);
+            Assert.That(_headersDb.ReadsCount, Is.EqualTo(0));
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void When_finding_blocks_does_not_find_a_block_it_breaks_the_loop()
         {
             BlockTree blockTree = BuildBlockTree();
@@ -524,14 +554,14 @@ namespace Nethermind.Blockchain.Test
             AddToMain(blockTree, block2);
 
             BlockHeader[] headers = blockTree.FindHeaders(block0.Hash, 100, 0, false);
-            Assert.AreEqual(100, headers.Length);
-            Assert.AreEqual(block0.Hash, headers[0].Hash);
+            Assert.That(headers.Length, Is.EqualTo(100));
+            Assert.That(headers[0].Hash, Is.EqualTo(block0.Hash));
             Assert.Null(headers[3]);
 
-            Assert.AreEqual(0, _headersDb.ReadsCount);
+            Assert.That(_headersDb.ReadsCount, Is.EqualTo(0));
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Find_sequence_basic_longer()
         {
             BlockTree blockTree = BuildBlockTree();
@@ -544,13 +574,13 @@ namespace Nethermind.Blockchain.Test
 
             int length = 256;
             BlockHeader[] blocks = blockTree.FindHeaders(block0.Hash, length, 0, false);
-            Assert.AreEqual(length, blocks.Length);
-            Assert.AreEqual(block0.Hash, blocks[0].CalculateHash());
-            Assert.AreEqual(block1.Hash, blocks[1].CalculateHash());
-            Assert.AreEqual(block2.Hash, blocks[2].CalculateHash());
+            Assert.That(blocks.Length, Is.EqualTo(length));
+            Assert.That(blocks[0].CalculateHash(), Is.EqualTo(block0.Hash));
+            Assert.That(blocks[1].CalculateHash(), Is.EqualTo(block1.Hash));
+            Assert.That(blocks[2].CalculateHash(), Is.EqualTo(block2.Hash));
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Find_sequence_basic_shorter()
         {
             BlockTree blockTree = BuildBlockTree();
@@ -563,12 +593,12 @@ namespace Nethermind.Blockchain.Test
 
             int length = 2;
             BlockHeader[] blocks = blockTree.FindHeaders(block1.Hash, length, 0, false);
-            Assert.AreEqual(length, blocks.Length);
-            Assert.AreEqual(block1.Hash, blocks[0].CalculateHash());
-            Assert.AreEqual(block2.Hash, blocks[1].CalculateHash());
+            Assert.That(blocks.Length, Is.EqualTo(length));
+            Assert.That(blocks[0].CalculateHash(), Is.EqualTo(block1.Hash));
+            Assert.That(blocks[1].CalculateHash(), Is.EqualTo(block2.Hash));
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Find_sequence_basic()
         {
             BlockTree blockTree = BuildBlockTree();
@@ -581,13 +611,13 @@ namespace Nethermind.Blockchain.Test
 
             int length = 3;
             BlockHeader[] blocks = blockTree.FindHeaders(block0.Hash, length, 0, false);
-            Assert.AreEqual(length, blocks.Length);
-            Assert.AreEqual(block0.Hash, blocks[0].CalculateHash());
-            Assert.AreEqual(block1.Hash, blocks[1].CalculateHash());
-            Assert.AreEqual(block2.Hash, blocks[2].CalculateHash());
+            Assert.That(blocks.Length, Is.EqualTo(length));
+            Assert.That(blocks[0].CalculateHash(), Is.EqualTo(block0.Hash));
+            Assert.That(blocks[1].CalculateHash(), Is.EqualTo(block1.Hash));
+            Assert.That(blocks[2].CalculateHash(), Is.EqualTo(block2.Hash));
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Find_sequence_reverse()
         {
             BlockTree blockTree = BuildBlockTree();
@@ -599,14 +629,14 @@ namespace Nethermind.Blockchain.Test
             AddToMain(blockTree, block2);
 
             BlockHeader[] blocks = blockTree.FindHeaders(block2.Hash, 3, 0, true);
-            Assert.AreEqual(3, blocks.Length);
+            Assert.That(blocks.Length, Is.EqualTo(3));
 
-            Assert.AreEqual(block2.Hash, blocks[0].CalculateHash());
-            Assert.AreEqual(block0.Hash, blocks[2].CalculateHash());
+            Assert.That(blocks[0].CalculateHash(), Is.EqualTo(block2.Hash));
+            Assert.That(blocks[2].CalculateHash(), Is.EqualTo(block0.Hash));
         }
 
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Find_sequence_zero_blocks()
         {
             BlockTree blockTree = BuildBlockTree();
@@ -618,10 +648,10 @@ namespace Nethermind.Blockchain.Test
             AddToMain(blockTree, block2);
 
             BlockHeader[] blocks = blockTree.FindHeaders(block0.Hash, 0, 0, false);
-            Assert.AreEqual(0, blocks.Length);
+            Assert.That(blocks.Length, Is.EqualTo(0));
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Find_sequence_one_block()
         {
             BlockTree blockTree = BuildBlockTree();
@@ -633,10 +663,10 @@ namespace Nethermind.Blockchain.Test
             AddToMain(blockTree, block2);
 
             BlockHeader[] blocks = blockTree.FindHeaders(block2.Hash, 1, 0, false);
-            Assert.AreEqual(1, blocks.Length);
+            Assert.That(blocks.Length, Is.EqualTo(1));
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Find_sequence_basic_skip()
         {
             BlockTree blockTree = BuildBlockTree();
@@ -648,12 +678,12 @@ namespace Nethermind.Blockchain.Test
             AddToMain(blockTree, block2);
 
             BlockHeader[] blocks = blockTree.FindHeaders(block0.Hash, 2, 1, false);
-            Assert.AreEqual(2, blocks.Length, "length");
-            Assert.AreEqual(block0.Hash, blocks[0].CalculateHash());
-            Assert.AreEqual(block2.Hash, blocks[1].CalculateHash());
+            Assert.That(blocks.Length, Is.EqualTo(2), "length");
+            Assert.That(blocks[0].CalculateHash(), Is.EqualTo(block0.Hash));
+            Assert.That(blocks[1].CalculateHash(), Is.EqualTo(block2.Hash));
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Find_sequence_some_empty()
         {
             BlockTree blockTree = BuildBlockTree();
@@ -665,24 +695,24 @@ namespace Nethermind.Blockchain.Test
             AddToMain(blockTree, block2);
 
             BlockHeader[] blocks = blockTree.FindHeaders(block0.Hash, 4, 0, false);
-            Assert.AreEqual(4, blocks.Length);
+            Assert.That(blocks.Length, Is.EqualTo(4));
             Assert.IsNull(blocks[3]);
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Total_difficulty_is_calculated_when_exists_parent_with_total_difficulty()
         {
             BlockTree blockTree = BuildBlockTree();
 
             Block block0 = Build.A.Block.WithNumber(0).WithDifficulty(1).TestObject;
             blockTree.SuggestBlock(block0);
-            Block block1 = Build.A.Block.WithNumber(1).WithParentHash(block0.Hash).WithDifficulty(2).TestObject;
+            Block block1 = Build.A.Block.WithNumber(1).WithParentHash(block0.Hash!).WithDifficulty(2).TestObject;
             blockTree.SuggestBlock(block1);
             block1.TotalDifficulty.Should().NotBeNull();
-            Assert.AreEqual(3, (int) block1.TotalDifficulty!);
+            Assert.That((int)block1.TotalDifficulty!, Is.EqualTo(3));
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Total_difficulty_is_null_when_no_parent()
         {
             BlockTree blockTree = BuildBlockTree();
@@ -692,10 +722,10 @@ namespace Nethermind.Blockchain.Test
 
             Block block2 = Build.A.Block.WithNumber(1).WithDifficulty(3).WithParentHash(Keccak.Zero).TestObject;
             blockTree.SuggestBlock(block2);
-            Assert.AreEqual(null, block2.TotalDifficulty);
+            Assert.That(block2.TotalDifficulty, Is.EqualTo(null));
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Head_block_gets_updated()
         {
             BlockTree blockTree = BuildBlockTree();
@@ -704,10 +734,10 @@ namespace Nethermind.Blockchain.Test
             AddToMain(blockTree, block0);
             AddToMain(blockTree, block1);
 
-            Assert.AreEqual(block1.Hash, blockTree.Head.CalculateHash());
+            Assert.That(blockTree.Head!.CalculateHash(), Is.EqualTo(block1.Hash));
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Best_suggested_block_gets_updated()
         {
             BlockTree blockTree = BuildBlockTree();
@@ -716,32 +746,32 @@ namespace Nethermind.Blockchain.Test
             AddToMain(blockTree, block0);
             blockTree.SuggestBlock(block1);
 
-            Assert.AreEqual(block0.Hash, blockTree.Head.CalculateHash(), "head block");
-            Assert.AreEqual(block1.Hash, blockTree.BestSuggestedHeader.CalculateHash(), "best suggested");
+            Assert.That(blockTree.Head!.CalculateHash(), Is.EqualTo(block0.Hash), "head block");
+            Assert.That(blockTree.BestSuggestedHeader!.CalculateHash(), Is.EqualTo(block1.Hash), "best suggested");
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Sets_genesis_block()
         {
             BlockTree blockTree = BuildBlockTree();
             Block block0 = Build.A.Block.WithNumber(0).WithDifficulty(1).TestObject;
             AddToMain(blockTree, block0);
 
-            Assert.AreEqual(block0.Hash, blockTree.Genesis.CalculateHash());
+            Assert.That(blockTree.Genesis!.CalculateHash(), Is.EqualTo(block0.Hash));
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void ForkChoiceUpdated_update_hashes()
         {
             BlockTree blockTree = BuildBlockTree();
-            Keccak finalizedBlockHash = TestItem.KeccakB;
-            Keccak safeBlockHash = TestItem.KeccakC;
-            blockTree.ForkChoiceUpdated(finalizedBlockHash,safeBlockHash);
-            Assert.AreEqual(finalizedBlockHash, blockTree.FinalizedHash);
-            Assert.AreEqual(safeBlockHash, blockTree.SafeHash);
+            Hash256 finalizedBlockHash = TestItem.KeccakB;
+            Hash256 safeBlockHash = TestItem.KeccakC;
+            blockTree.ForkChoiceUpdated(finalizedBlockHash, safeBlockHash);
+            Assert.That(blockTree.FinalizedHash, Is.EqualTo(finalizedBlockHash));
+            Assert.That(blockTree.SafeHash, Is.EqualTo(safeBlockHash));
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Stores_multiple_blocks_per_level()
         {
             BlockTree blockTree = BuildBlockTree();
@@ -752,49 +782,50 @@ namespace Nethermind.Blockchain.Test
             AddToMain(blockTree, block1);
             blockTree.SuggestBlock(block1B);
 
-            Block found = blockTree.FindBlock(block1B.Hash, BlockTreeLookupOptions.None);
+            Block? found = blockTree.FindBlock(block1B.Hash, BlockTreeLookupOptions.None);
 
-            Assert.AreEqual(block1B.Hash, found.Header.CalculateHash());
+            Assert.That(found?.Header.CalculateHash(), Is.EqualTo(block1B.Hash));
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Can_init_head_block_from_db_by_hash()
         {
             Block genesisBlock = Build.A.Block.Genesis.TestObject;
             Block headBlock = genesisBlock;
 
-            MemDb blocksDb = new();
-            MemDb headersDb = new();
-            blocksDb.Set(genesisBlock.Hash, Rlp.Encode(genesisBlock).Bytes);
-            headersDb.Set(genesisBlock.Hash, Rlp.Encode(genesisBlock.Header).Bytes);
+            BlockStore blockStore = new BlockStore(new MemDb());
+            blockStore.Insert(genesisBlock);
 
-            MemDb blockInfosDb = new();
-            blockInfosDb.Set(Keccak.Zero, genesisBlock.Hash.Bytes);
-            ChainLevelInfo level = new(true, new BlockInfo(headBlock.Hash, headBlock.Difficulty));
+            TestMemDb headersDb = new();
+            headersDb.Set(genesisBlock.Hash!, Rlp.Encode(genesisBlock.Header).Bytes);
+
+            TestMemDb blockInfosDb = new();
+            blockInfosDb.Set(Keccak.Zero, genesisBlock.Hash!.Bytes);
+            ChainLevelInfo level = new(true, new BlockInfo(headBlock.Hash!, headBlock.Difficulty));
             level.BlockInfos[0].WasProcessed = true;
 
             blockInfosDb.Set(0, Rlp.Encode(level).Bytes);
 
-            BlockTree blockTree = new(blocksDb, headersDb, blockInfosDb, new ChainLevelInfoRepository(blockInfosDb), OlympicSpecProvider.Instance, NullBloomStorage.Instance, LimboLogs.Instance);
-            Assert.AreEqual(headBlock.Hash, blockTree.Head?.Hash, "head");
-            Assert.AreEqual(headBlock.Hash, blockTree.Genesis?.Hash, "genesis");
+            BlockTree blockTree = Build.A.BlockTree()
+                .WithoutSettingHead
+                .WithBlockStore(blockStore)
+                .WithHeadersDb(headersDb)
+                .WithBlockInfoDb(blockInfosDb)
+                .WithSpecProvider(OlympicSpecProvider.Instance)
+                .TestObject;
+            Assert.That(blockTree.Head?.Hash, Is.EqualTo(headBlock.Hash), "head");
+            Assert.That(blockTree.Genesis?.Hash, Is.EqualTo(headBlock.Hash), "genesis");
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Sets_head_block_hash_in_db_on_new_head_block()
         {
-            MemDb blocksDb = new();
-            MemDb blockInfosDb = new();
-            MemDb headersDb = new();
+            TestMemDb blockInfosDb = new();
 
-            BlockTree blockTree = new(
-                blocksDb,
-                headersDb,
-                blockInfosDb,
-                new ChainLevelInfoRepository(blockInfosDb),
-                OlympicSpecProvider.Instance,
-                NullBloomStorage.Instance,
-                LimboLogs.Instance);
+            BlockTree blockTree = Build.A.BlockTree()
+                .WithoutSettingHead
+                .WithBlockInfoDb(blockInfosDb)
+                .TestObject;
 
             Block block0 = Build.A.Block.WithNumber(0).WithDifficulty(1).TestObject;
             Block block1 = Build.A.Block.WithNumber(1).WithDifficulty(2).WithParent(block0).TestObject;
@@ -802,11 +833,11 @@ namespace Nethermind.Blockchain.Test
             AddToMain(blockTree, block0);
             AddToMain(blockTree, block1);
 
-            Keccak dec = new Keccak(blockInfosDb.Get(Keccak.Zero));
-            Assert.AreEqual(block1.Hash, dec);
+            Hash256 dec = new Hash256(blockInfosDb.Get(Keccak.Zero)!);
+            Assert.That(dec, Is.EqualTo(block1.Hash));
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Can_check_if_block_was_processed()
         {
             Block block0 = Build.A.Block.WithNumber(0).WithDifficulty(1).TestObject;
@@ -815,12 +846,12 @@ namespace Nethermind.Blockchain.Test
             BlockTree blockTree = BuildBlockTree();
             blockTree.SuggestBlock(block0);
             blockTree.SuggestBlock(block1);
-            Assert.False(blockTree.WasProcessed(block1.Number, block1.Hash), "before");
-            blockTree.UpdateMainChain(new[] {block0, block1}, true);
-            Assert.True(blockTree.WasProcessed(block1.Number, block1.Hash), "after");
+            Assert.False(blockTree.WasProcessed(block1.Number, block1.Hash!), "before");
+            blockTree.UpdateMainChain(new[] { block0, block1 }, true);
+            Assert.True(blockTree.WasProcessed(block1.Number, block1.Hash!), "after");
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Best_known_number_is_set()
         {
             Block block0 = Build.A.Block.WithNumber(0).WithDifficulty(1).TestObject;
@@ -829,10 +860,10 @@ namespace Nethermind.Blockchain.Test
             BlockTree blockTree = BuildBlockTree();
             blockTree.SuggestBlock(block0);
             blockTree.SuggestBlock(block1);
-            Assert.AreEqual(1L, blockTree.BestKnownNumber);
+            Assert.That(blockTree.BestKnownNumber, Is.EqualTo(1L));
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Is_main_chain_returns_false_when_on_branch()
         {
             Block block0 = Build.A.Block.WithNumber(0).WithDifficulty(1).TestObject;
@@ -841,10 +872,10 @@ namespace Nethermind.Blockchain.Test
             BlockTree blockTree = BuildBlockTree();
             blockTree.SuggestBlock(block0);
             blockTree.SuggestBlock(block1);
-            Assert.False(blockTree.IsMainChain(block1.Hash));
+            Assert.False(blockTree.IsMainChain(block1.Hash!));
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Is_main_chain_returns_true_when_on_main()
         {
             Block block0 = Build.A.Block.WithNumber(0).WithDifficulty(1).TestObject;
@@ -854,10 +885,10 @@ namespace Nethermind.Blockchain.Test
             blockTree.SuggestBlock(block0);
             blockTree.SuggestBlock(block1);
             blockTree.UpdateMainChain(block1);
-            Assert.True(blockTree.IsMainChain(block1.Hash));
+            Assert.True(blockTree.IsMainChain(block1.Hash!));
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Pending_returns_head()
         {
             Block block0 = Build.A.Block.WithNumber(0).WithDifficulty(1).TestObject;
@@ -868,21 +899,21 @@ namespace Nethermind.Blockchain.Test
             blockTree.SuggestBlock(block1);
             blockTree.UpdateMainChain(block0);
             blockTree.BestSuggestedHeader.Should().Be(block1.Header);
-            blockTree.PendingHash.Should().Be(block0.Hash);
-            ((IBlockFinder) blockTree).FindPendingHeader().Should().BeSameAs(block0.Header);
-            ((IBlockFinder) blockTree).FindPendingBlock().Should().BeSameAs(block0);
+            blockTree.PendingHash.Should().Be(block0.Hash!);
+            ((IBlockFinder)blockTree).FindPendingHeader().Should().BeSameAs(block0.Header);
+            ((IBlockFinder)blockTree).FindPendingBlock().Should().BeSameAs(block0);
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Is_main_chain_returns_true_on_fast_sync_block()
         {
             Block block0 = Build.A.Block.WithNumber(0).WithDifficulty(1).TestObject;
             BlockTree blockTree = BuildBlockTree();
             blockTree.SuggestBlock(block0, BlockTreeSuggestOptions.None);
-            blockTree.IsMainChain(block0.Hash).Should().BeTrue();
+            blockTree.IsMainChain(block0.Hash!).Should().BeTrue();
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Was_processed_returns_true_on_fast_sync_block()
         {
             Block block0 = Build.A.Block.WithNumber(0).WithDifficulty(1).TestObject;
@@ -890,14 +921,15 @@ namespace Nethermind.Blockchain.Test
             blockTree.SuggestBlock(block0, BlockTreeSuggestOptions.None);
         }
 
-        [Test(Description = "There was a bug where we switched positions and used the index from before the positions were switched")]
+        [Test(Description = "There was a bug where we switched positions and used the index from before the positions were switched"), Timeout(Timeout.MaxTestTime)]
         public void When_moving_to_main_one_of_the_two_blocks_at_given_level_the_was_processed_check_is_executed_on_the_correct_block_index_regression()
         {
-            MemDb blocksDb = new();
-            MemDb blockInfosDb = new();
-            MemDb headersDb = new();
+            TestMemDb blockInfosDb = new();
 
-            BlockTree blockTree = new(blocksDb, headersDb, blockInfosDb, new ChainLevelInfoRepository(blockInfosDb), OlympicSpecProvider.Instance, NullBloomStorage.Instance, LimboLogs.Instance);
+            BlockTree blockTree = Build.A.BlockTree()
+                .WithoutSettingHead
+                .WithBlockInfoDb(blockInfosDb)
+                .TestObject;
             Block block0 = Build.A.Block.WithNumber(0).WithDifficulty(1).TestObject;
             Block block1 = Build.A.Block.WithNumber(1).WithDifficulty(2).WithParent(block0).TestObject;
             Block block2 = Build.A.Block.WithNumber(1).WithDifficulty(3).WithParent(block0).TestObject;
@@ -908,11 +940,11 @@ namespace Nethermind.Blockchain.Test
             blockTree.SuggestBlock(block1);
             blockTree.UpdateMainChain(block1);
 
-            Keccak storedInDb = new(blockInfosDb.Get(Keccak.Zero));
-            Assert.AreEqual(block1.Hash, storedInDb);
+            Hash256 storedInDb = new(blockInfosDb.Get(Keccak.Zero)!);
+            Assert.That(storedInDb, Is.EqualTo(block1.Hash));
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void When_deleting_invalid_block_sets_head_bestKnown_and_suggested_right()
         {
             BlockTree tree = BuildBlockTree();
@@ -930,18 +962,21 @@ namespace Nethermind.Blockchain.Test
             tree.UpdateMainChain(block1);
             tree.DeleteInvalidBlock(block2);
 
-            Assert.AreEqual(block1.Number, tree.BestKnownNumber);
-            Assert.AreEqual(block1.Header, tree.Head?.Header);
-            Assert.AreEqual(block1.Header, tree.BestSuggestedHeader);
+            Assert.That(tree.BestKnownNumber, Is.EqualTo(block1.Number));
+            Assert.That(tree.Head?.Header, Is.EqualTo(block1.Header));
+            Assert.That(tree.BestSuggestedHeader, Is.EqualTo(block1.Header));
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void When_deleting_invalid_block_deletes_its_descendants()
         {
-            MemDb blocksDb = new();
+            BlockStore blockStore = new(new MemDb());
             MemDb blockInfosDb = new();
-            MemDb headersDb = new();
-            BlockTree tree = new(blocksDb, headersDb, blockInfosDb, new ChainLevelInfoRepository(blockInfosDb), MainnetSpecProvider.Instance, NullBloomStorage.Instance, LimboLogs.Instance);
+            BlockTree tree = Build.A.BlockTree()
+                .WithoutSettingHead
+                .WithBlockInfoDb(blockInfosDb)
+                .WithBlockStore(blockStore)
+                .TestObject;
             Block block0 = Build.A.Block.WithNumber(0).WithDifficulty(1).TestObject;
             Block block1 = Build.A.Block.WithNumber(1).WithDifficulty(2).WithParent(block0).TestObject;
             Block block2 = Build.A.Block.WithNumber(2).WithDifficulty(3).WithParent(block1).TestObject;
@@ -956,35 +991,40 @@ namespace Nethermind.Blockchain.Test
             tree.UpdateMainChain(block1);
             tree.DeleteInvalidBlock(block2);
 
-            Assert.AreEqual(1L, tree.BestKnownNumber, "best known");
-            Assert.AreEqual(1L, tree.Head.Number, "head");
-            Assert.AreEqual(1L, tree.BestSuggestedHeader.Number, "suggested");
+            Assert.That(tree.BestKnownNumber, Is.EqualTo(1L), "best known");
+            Assert.That(tree.Head!.Number, Is.EqualTo(1L), "head");
+            Assert.That(tree.BestSuggestedHeader!.Number, Is.EqualTo(1L), "suggested");
 
-            Assert.NotNull(blocksDb.Get(block1.Hash), "block 1");
-            Assert.IsNull(blocksDb.Get(block2.Hash), "block 2");
-            Assert.IsNull(blocksDb.Get(block3.Hash), "block 3");
+            Assert.NotNull(blockStore.Get(block1.Number, block1.Hash!), "block 1");
+            Assert.IsNull(blockStore.Get(block2.Number, block2.Hash!), "block 2");
+            Assert.IsNull(blockStore.Get(block3.Number, block3.Hash!), "block 3");
 
             Assert.NotNull(blockInfosDb.Get(1), "level 1");
             Assert.IsNull(blockInfosDb.Get(2), "level 2");
             Assert.IsNull(blockInfosDb.Get(3), "level 3");
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void When_deleting_invalid_block_deletes_its_descendants_even_if_not_first()
         {
-            MemDb blocksDb = new();
+            BlockStore blockStore = new(new MemDb());
             MemDb blockInfosDb = new();
-            MemDb headersDb = new();
             ChainLevelInfoRepository repository = new(blockInfosDb);
-            BlockTree tree = new(blocksDb, headersDb, blockInfosDb, repository, MainnetSpecProvider.Instance, NullBloomStorage.Instance, LimboLogs.Instance);
+
+            BlockTree tree = Build.A.BlockTree()
+                .WithoutSettingHead
+                .WithBlockInfoDb(blockInfosDb)
+                .WithBlockStore(blockStore)
+                .TestObject;
+
             Block block0 = Build.A.Block.WithNumber(0).WithDifficulty(1).TestObject;
             Block block1 = Build.A.Block.WithNumber(1).WithDifficulty(2).WithParent(block0).TestObject;
             Block block2 = Build.A.Block.WithNumber(2).WithDifficulty(3).WithParent(block1).TestObject;
             Block block3 = Build.A.Block.WithNumber(3).WithDifficulty(4).WithParent(block2).TestObject;
 
-            Block block1b = Build.A.Block.WithNumber(1).WithDifficulty(2).WithExtraData(new byte[] {1}).WithParent(block0).TestObject;
-            Block block2b = Build.A.Block.WithNumber(2).WithDifficulty(3).WithExtraData(new byte[] {1}).WithParent(block1b).TestObject;
-            Block block3b = Build.A.Block.WithNumber(3).WithDifficulty(4).WithExtraData(new byte[] {1}).WithParent(block2b).TestObject;
+            Block block1b = Build.A.Block.WithNumber(1).WithDifficulty(2).WithExtraData(new byte[] { 1 }).WithParent(block0).TestObject;
+            Block block2b = Build.A.Block.WithNumber(2).WithDifficulty(3).WithExtraData(new byte[] { 1 }).WithParent(block1b).TestObject;
+            Block block3b = Build.A.Block.WithNumber(3).WithDifficulty(4).WithExtraData(new byte[] { 1 }).WithParent(block2b).TestObject;
 
             tree.SuggestBlock(block0);
             tree.SuggestBlock(block1);
@@ -999,16 +1039,16 @@ namespace Nethermind.Blockchain.Test
             tree.UpdateMainChain(block1);
             tree.DeleteInvalidBlock(block1b);
 
-            Assert.AreEqual(3L, tree.BestKnownNumber, "best known");
-            Assert.AreEqual(1L, tree.Head.Number, "head");
-            Assert.AreEqual(1L, tree.BestSuggestedHeader.Number, "suggested");
+            Assert.That(tree.BestKnownNumber, Is.EqualTo(3L), "best known");
+            Assert.That(tree.Head!.Number, Is.EqualTo(1L), "head");
+            Assert.That(tree.BestSuggestedHeader!.Number, Is.EqualTo(1L), "suggested");
 
-            Assert.NotNull(blocksDb.Get(block1.Hash), "block 1");
-            Assert.NotNull(blocksDb.Get(block2.Hash), "block 2");
-            Assert.NotNull(blocksDb.Get(block3.Hash), "block 3");
-            Assert.Null(blocksDb.Get(block1b.Hash), "block 1b");
-            Assert.Null(blocksDb.Get(block2b.Hash), "block 2b");
-            Assert.Null(blocksDb.Get(block3b.Hash), "block 3b");
+            Assert.NotNull(blockStore.Get(block1.Number, block1.Hash!), "block 1");
+            Assert.NotNull(blockStore.Get(block2.Number, block2.Hash!), "block 2");
+            Assert.NotNull(blockStore.Get(block3.Number, block3.Hash!), "block 3");
+            Assert.Null(blockStore.Get(block1b.Number, block1b.Hash!), "block 1b");
+            Assert.Null(blockStore.Get(block2b.Number, block2b.Hash!), "block 2b");
+            Assert.Null(blockStore.Get(block3b.Number, block3b.Hash!), "block 3b");
 
             Assert.NotNull(blockInfosDb.Get(1), "level 1");
             Assert.NotNull(blockInfosDb.Get(2), "level 2");
@@ -1018,18 +1058,18 @@ namespace Nethermind.Blockchain.Test
             Assert.NotNull(blockInfosDb.Get(2), "level 2b");
             Assert.NotNull(blockInfosDb.Get(3), "level 3b");
 
-            repository.LoadLevel(1).BlockInfos.Length.Should().Be(1);
-            repository.LoadLevel(2).BlockInfos.Length.Should().Be(1);
-            repository.LoadLevel(3).BlockInfos.Length.Should().Be(1);
+            repository.LoadLevel(1)!.BlockInfos.Length.Should().Be(1);
+            repository.LoadLevel(2)!.BlockInfos.Length.Should().Be(1);
+            repository.LoadLevel(3)!.BlockInfos.Length.Should().Be(1);
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void After_removing_invalid_block_will_not_accept_it_again()
         {
-            MemDb blocksDb = new();
-            MemDb blockInfosDb = new();
-            MemDb headersDb = new();
-            BlockTree tree = new(blocksDb, headersDb, blockInfosDb, new ChainLevelInfoRepository(blockInfosDb), MainnetSpecProvider.Instance, NullBloomStorage.Instance, LimboLogs.Instance);
+            BlockTree tree = Build.A.BlockTree()
+                .WithoutSettingHead
+                .TestObject;
+
             Block block0 = Build.A.Block.WithNumber(0).WithDifficulty(1).TestObject;
             Block block1 = Build.A.Block.WithNumber(1).WithDifficulty(2).WithParent(block0).TestObject;
             Block block2 = Build.A.Block.WithNumber(2).WithDifficulty(3).WithParent(block1).TestObject;
@@ -1042,16 +1082,16 @@ namespace Nethermind.Blockchain.Test
 
             tree.DeleteInvalidBlock(block1);
             AddBlockResult result = tree.SuggestBlock(block1);
-            Assert.AreEqual(AddBlockResult.InvalidBlock, result);
+            Assert.That(result, Is.EqualTo(AddBlockResult.InvalidBlock));
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void After_deleting_invalid_block_will_accept_other_blocks()
         {
-            MemDb blocksDb = new();
-            MemDb blockInfosDb = new();
-            MemDb headersDb = new();
-            BlockTree tree = new(blocksDb, headersDb, blockInfosDb, new ChainLevelInfoRepository(blockInfosDb), MainnetSpecProvider.Instance, NullBloomStorage.Instance, LimboLogs.Instance);
+            BlockTree tree = Build.A.BlockTree()
+                .WithoutSettingHead
+                .TestObject;
+
             Block block0 = Build.A.Block.WithNumber(0).WithDifficulty(1).TestObject;
             Block block1 = Build.A.Block.WithNumber(1).WithDifficulty(2).WithParent(block0).TestObject;
             Block block2 = Build.A.Block.WithNumber(2).WithDifficulty(3).WithParent(block1).TestObject;
@@ -1066,16 +1106,16 @@ namespace Nethermind.Blockchain.Test
 
             tree.DeleteInvalidBlock(block1);
             AddBlockResult result = tree.SuggestBlock(block1B);
-            Assert.AreEqual(AddBlockResult.Added, result);
+            Assert.That(result, Is.EqualTo(AddBlockResult.Added));
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void When_deleting_invalid_block_does_not_delete_blocks_that_are_not_its_descendants()
         {
-            MemDb blocksDb = new();
-            MemDb blockInfosDb = new();
-            MemDb headersDb = new();
-            BlockTree tree = new(blocksDb, headersDb, blockInfosDb, new ChainLevelInfoRepository(blockInfosDb), MainnetSpecProvider.Instance, NullBloomStorage.Instance, LimboLogs.Instance);
+            BlockTree tree = Build.A.BlockTree()
+                .WithoutSettingHead
+                .TestObject;
+
             Block block0 = Build.A.Block.WithNumber(0).WithDifficulty(1).TestObject;
             Block block1 = Build.A.Block.WithNumber(1).WithDifficulty(2).WithParent(block0).TestObject;
             Block block2 = Build.A.Block.WithNumber(2).WithDifficulty(3).WithParent(block1).TestObject;
@@ -1097,25 +1137,27 @@ namespace Nethermind.Blockchain.Test
             tree.UpdateMainChain(block5);
             tree.DeleteInvalidBlock(block3bad);
 
-            Assert.AreEqual(5L, tree.BestKnownNumber, "best known");
-            Assert.AreEqual(block5.Header, tree.Head?.Header, "head");
-            Assert.AreEqual(block5.Hash, tree.BestSuggestedHeader.Hash, "suggested");
+            Assert.That(tree.BestKnownNumber, Is.EqualTo(5L), "best known");
+            Assert.That(tree.Head?.Header, Is.EqualTo(block5.Header), "head");
+            Assert.That(tree.BestSuggestedHeader!.Hash, Is.EqualTo(block5.Hash), "suggested");
         }
 
-        [Test, TestCaseSource("SourceOfBSearchTestCases")]
+        [Test, Timeout(Timeout.MaxTestTime), TestCaseSource(nameof(SourceOfBSearchTestCases))]
         public void Loads_lowest_inserted_header_correctly(long beginIndex, long insertedBlocks)
         {
-            long? expectedResult = insertedBlocks == 0L ? (long?) null : beginIndex - insertedBlocks + 1L;
+            long? expectedResult = insertedBlocks == 0L ? null : beginIndex - insertedBlocks + 1L;
 
-            MemDb blocksDb = new();
-            MemDb blockInfosDb = new();
-            MemDb headersDb = new();
-            MemDb metadataDb = new();
+            SyncConfig syncConfig = new()
+            {
+                FastSync = true,
+                PivotNumber = beginIndex.ToString(),
+            };
 
-            SyncConfig syncConfig = new();
-            syncConfig.PivotNumber = beginIndex.ToString();
-
-            BlockTree tree = new(blocksDb, headersDb, blockInfosDb, metadataDb, new ChainLevelInfoRepository(blockInfosDb), MainnetSpecProvider.Instance, NullBloomStorage.Instance, syncConfig, LimboLogs.Instance);
+            BlockTreeBuilder builder = Build.A
+                .BlockTree()
+                .WithSyncConfig(syncConfig)
+                .WithoutSettingHead;
+            BlockTree tree = builder.TestObject;
             tree.SuggestBlock(Build.A.Block.Genesis.TestObject);
 
             for (long i = beginIndex; i > beginIndex - insertedBlocks; i--)
@@ -1123,30 +1165,36 @@ namespace Nethermind.Blockchain.Test
                 tree.Insert(Build.A.BlockHeader.WithNumber(i).WithTotalDifficulty(i).TestObject);
             }
 
-            BlockTree loadedTree = new(blocksDb, headersDb, blockInfosDb, metadataDb, new ChainLevelInfoRepository(blockInfosDb), MainnetSpecProvider.Instance, NullBloomStorage.Instance, syncConfig, LimboLogs.Instance);
+            BlockTree loadedTree = Build.A.BlockTree()
+                .WithDatabaseFrom(builder)
+                .WithSyncConfig(syncConfig)
+                .TestObject;
 
-            Assert.AreEqual(expectedResult, tree.LowestInsertedHeader?.Number, "tree");
-            Assert.AreEqual(expectedResult, loadedTree.LowestInsertedHeader?.Number, "loaded tree");
+            Assert.That(tree.LowestInsertedHeader?.Number, Is.EqualTo(expectedResult), "tree");
+            Assert.That(loadedTree.LowestInsertedHeader?.Number, Is.EqualTo(expectedResult), "loaded tree");
         }
 
-        [Test, TestCaseSource("SourceOfBSearchTestCases")]
+        [Test, Timeout(Timeout.MaxTestTime), TestCaseSource(nameof(SourceOfBSearchTestCases))]
         public void Loads_lowest_inserted_body_correctly(long beginIndex, long insertedBlocks)
         {
             // left old code to prove that it does not matter for the result nowadays
             // we store and no longer binary search lowest body number
 
             MemDb blocksDb = new();
-            MemDb blockInfosDb = new();
-            MemDb headersDb = new();
-            MemDb metadataDb = new();
+            blocksDb.Set(BlockTree.LowestInsertedBodyNumberDbEntryAddress, Rlp.Encode(1L).Bytes);
 
-            blocksDb.Set(0, Rlp.Encode(1L).Bytes);
+            SyncConfig syncConfig = new()
+            {
+                PivotNumber = beginIndex.ToString(),
+            };
 
-            SyncConfig syncConfig = new();
-            syncConfig.PivotNumber = beginIndex.ToString();
+            BlockTreeBuilder builder = Build.A.BlockTree()
+                .WithBlocksDb(blocksDb)
+                .WithSyncConfig(syncConfig)
+                .WithoutSettingHead;
 
-            ChainLevelInfoRepository repo = new ChainLevelInfoRepository(blockInfosDb);
-            BlockTree tree = new(blocksDb, headersDb, blockInfosDb, metadataDb, repo, MainnetSpecProvider.Instance, NullBloomStorage.Instance, syncConfig, LimboLogs.Instance);
+            BlockTree tree = builder.TestObject;
+
             tree.SuggestBlock(Build.A.Block.Genesis.TestObject);
 
             for (long i = beginIndex; i > beginIndex - insertedBlocks; i--)
@@ -1156,15 +1204,18 @@ namespace Nethermind.Blockchain.Test
                 tree.Insert(block);
             }
 
-            ChainLevelInfoRepository loadedRepo = new ChainLevelInfoRepository(blockInfosDb);
-            BlockTree loadedTree = new(blocksDb, headersDb, blockInfosDb, metadataDb, loadedRepo, MainnetSpecProvider.Instance, NullBloomStorage.Instance, syncConfig, LimboLogs.Instance);
+            BlockTree loadedTree = Build.A.BlockTree()
+                .WithoutSettingHead
+                .WithDatabaseFrom(builder)
+                .WithSyncConfig(syncConfig)
+                .TestObject;
 
-            Assert.AreEqual(null, tree.LowestInsertedBodyNumber, "tree");
-            Assert.AreEqual(1, loadedTree.LowestInsertedBodyNumber, "loaded tree");
+            Assert.That(tree.LowestInsertedBodyNumber, Is.EqualTo(null), "tree");
+            Assert.That(loadedTree.LowestInsertedBodyNumber, Is.EqualTo(1), "loaded tree");
         }
 
 
-        private static object[] SourceOfBSearchTestCases =
+        private static readonly object[] SourceOfBSearchTestCases =
         {
             new object[] {1L, 0L},
             new object[] {1L, 1L},
@@ -1190,22 +1241,23 @@ namespace Nethermind.Blockchain.Test
             new object[] {7280000L, 1L}
         };
 
-        private ChainLevelInfoRepository _chainLevelInfoRepository;
-
-        [Test, TestCaseSource(nameof(SourceOfBSearchTestCases))]
+        [Test, Timeout(Timeout.MaxTestTime), TestCaseSource(nameof(SourceOfBSearchTestCases))]
         public void Loads_best_known_correctly_on_inserts(long beginIndex, long insertedBlocks)
         {
             long expectedResult = insertedBlocks == 0L ? 0L : beginIndex;
 
-            MemDb blocksDb = new();
-            MemDb blockInfosDb = new();
-            MemDb headersDb = new();
-            MemDb metadataDb = new();
+            SyncConfig syncConfig = new()
+            {
+                PivotNumber = beginIndex.ToString(),
+                FastSync = true,
+            };
 
-            SyncConfig syncConfig = new();
-            syncConfig.PivotNumber = beginIndex.ToString();
+            BlockTreeBuilder builder = Build.A.BlockTree()
+                .WithoutSettingHead
+                .WithSyncConfig(syncConfig);
 
-            BlockTree tree = new(blocksDb, headersDb, blockInfosDb, metadataDb, new ChainLevelInfoRepository(blockInfosDb), MainnetSpecProvider.Instance, NullBloomStorage.Instance, syncConfig, LimboLogs.Instance);
+            BlockTree tree = builder.TestObject;
+
             tree.SuggestBlock(Build.A.Block.Genesis.TestObject);
 
             for (long i = beginIndex; i > beginIndex - insertedBlocks; i--)
@@ -1215,38 +1267,88 @@ namespace Nethermind.Blockchain.Test
                 tree.Insert(block);
             }
 
-            BlockTree loadedTree = new(
-                blocksDb,
-                headersDb,
-                blockInfosDb,
-                metadataDb,
-                new ChainLevelInfoRepository(blockInfosDb),
-                MainnetSpecProvider.Instance,
-                NullBloomStorage.Instance,
-                syncConfig,
-                LimboLogs.Instance);
+            BlockTree loadedTree = Build.A.BlockTree()
+                .WithoutSettingHead
+                .WithDatabaseFrom(builder)
+                .WithSyncConfig(syncConfig)
+                .TestObject;
 
-            Assert.AreEqual(expectedResult, tree.BestKnownNumber, "tree");
-            Assert.AreEqual(expectedResult, loadedTree.BestKnownNumber, "loaded tree");
+            Assert.That(tree.BestKnownNumber, Is.EqualTo(expectedResult), "tree");
+            Assert.That(loadedTree.BestKnownNumber, Is.EqualTo(expectedResult), "loaded tree");
         }
 
+        [Test]
+        public void Loads_best_head_up_to_best_persisted_state()
+        {
+            MemDb metadataDb = new();
+            metadataDb.Set(MetadataDbKeys.BeaconSyncPivotNumber, Rlp.Encode(51).Bytes);
+
+            SyncConfig syncConfig = new()
+            {
+                PivotNumber = "0",
+                FastSync = true,
+            };
+
+            BlockTreeBuilder builder = Build.A.BlockTree()
+                .WithoutSettingHead
+                .WithMetadataDb(metadataDb)
+                .WithSyncConfig(syncConfig);
+
+            BlockTree tree = builder.TestObject;
+            Block genesis = Build.A.Block.Genesis.TestObject;
+            tree.SuggestBlock(genesis);
+            Block parent = genesis;
+
+            List<Block> blocks = new() { genesis };
+
+            for (long i = 1; i < 100; i++)
+            {
+                Block block = Build.A.Block
+                    .WithNumber(i)
+                    .WithParent(parent)
+                    .WithTotalDifficulty(i).TestObject;
+                blocks.Add(block);
+                parent = block;
+                if (i <= 50)
+                {
+                    // tree.Insert(block.Header);
+                    tree.SuggestBlock(block);
+                }
+                else
+                {
+                    tree.Insert(block, BlockTreeInsertBlockOptions.SaveHeader, BlockTreeInsertHeaderOptions.BeaconBodyMetadata);
+                }
+            }
+            tree.UpdateMainChain(blocks.ToArray(), true);
+            tree.BestPersistedState = 50;
+
+            BlockTree loadedTree = Build.A.BlockTree()
+                .WithoutSettingHead
+                .WithDatabaseFrom(builder)
+                .WithSyncConfig(syncConfig)
+                .TestObject;
+
+            Assert.That(loadedTree.Head?.Number, Is.EqualTo(50));
+        }
+
+        [Timeout(Timeout.MaxTestTime)]
         [TestCase(1L)]
         [TestCase(2L)]
         [TestCase(3L)]
         public void Loads_best_known_correctly_on_inserts_followed_by_suggests(long pivotNumber)
         {
-            MemDb blocksDb = new();
-            MemDb blockInfosDb = new();
-            MemDb headersDb = new();
-            MemDb metadataDb = new();
+            SyncConfig syncConfig = new()
+            {
+                PivotNumber = pivotNumber.ToString(),
+            };
+            BlockTreeBuilder builder = Build.A.BlockTree()
+                .WithoutSettingHead
+                .WithSyncConfig(syncConfig);
 
-            SyncConfig syncConfig = new();
-            syncConfig.PivotNumber = pivotNumber.ToString();
-
-            BlockTree tree = new(blocksDb, headersDb, blockInfosDb, metadataDb, new ChainLevelInfoRepository(blockInfosDb), MainnetSpecProvider.Instance, NullBloomStorage.Instance, syncConfig, LimboLogs.Instance);
+            BlockTree tree = builder.TestObject;
             tree.SuggestBlock(Build.A.Block.Genesis.TestObject);
 
-            Block pivotBlock = null;
+            Block? pivotBlock = null;
             for (long i = pivotNumber; i > 0; i--)
             {
                 Block block = Build.A.Block.WithNumber(i).WithTotalDifficulty(i).TestObject;
@@ -1256,101 +1358,107 @@ namespace Nethermind.Blockchain.Test
 
             tree.SuggestHeader(Build.A.BlockHeader.WithNumber(pivotNumber + 1).WithParent(pivotBlock!.Header).TestObject);
 
-            BlockTree loadedTree = new(blocksDb, headersDb, blockInfosDb, metadataDb, new ChainLevelInfoRepository(blockInfosDb), MainnetSpecProvider.Instance, NullBloomStorage.Instance, syncConfig, LimboLogs.Instance);
+            BlockTree loadedTree = Build.A.BlockTree()
+                .WithoutSettingHead
+                .WithDatabaseFrom(builder)
+                .WithSyncConfig(syncConfig)
+                .TestObject;
 
-            Assert.AreEqual(pivotNumber + 1, tree.BestKnownNumber, "tree");
-            Assert.AreEqual(1, tree.LowestInsertedHeader?.Number, "loaded tree - lowest header");
-            Assert.AreEqual(null, tree.LowestInsertedBodyNumber, "loaded tree - lowest body");
-            Assert.AreEqual(pivotNumber + 1, loadedTree.BestKnownNumber, "loaded tree");
+            Assert.That(tree.BestKnownNumber, Is.EqualTo(pivotNumber + 1), "tree");
+            Assert.That(tree.LowestInsertedHeader?.Number, Is.EqualTo(1), "loaded tree - lowest header");
+            Assert.That(tree.LowestInsertedBodyNumber, Is.EqualTo(null), "loaded tree - lowest body");
+            Assert.That(loadedTree.BestKnownNumber, Is.EqualTo(pivotNumber + 1), "loaded tree");
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Loads_best_known_correctly_when_head_before_pivot()
         {
             int pivotNumber = 1000;
             int head = 10;
-            SyncConfig syncConfig = new() {PivotNumber = pivotNumber.ToString()};
+            SyncConfig syncConfig = new()
+            {
+                PivotNumber = pivotNumber.ToString()
+            };
 
             BlockTreeBuilder treeBuilder = Build.A.BlockTree().OfChainLength(head + 1);
 
-            BlockTree loadedTree = new(
-                treeBuilder.BlocksDb,
-                treeBuilder.HeadersDb,
-                treeBuilder.BlockInfoDb,
-                treeBuilder.MetadataDb,
-                treeBuilder.ChainLevelInfoRepository,
-                MainnetSpecProvider.Instance,
-                NullBloomStorage.Instance,
-                syncConfig,
-                LimboLogs.Instance);
+            BlockTree loadedTree = Build.A.BlockTree()
+                .WithoutSettingHead
+                .WithDatabaseFrom(treeBuilder)
+                .WithSyncConfig(syncConfig)
+                .TestObject;
 
-            Assert.AreEqual(head, loadedTree.BestKnownNumber, "loaded tree");
+            Assert.That(loadedTree.BestKnownNumber, Is.EqualTo(head), "loaded tree");
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Cannot_insert_genesis()
         {
-            MemDb blocksDb = new();
-            MemDb blockInfosDb = new();
-            MemDb headersDb = new();
-            MemDb metadataDb = new();
-
             long pivotNumber = 0L;
 
-            SyncConfig syncConfig = new();
-            syncConfig.PivotNumber = pivotNumber.ToString();
+            SyncConfig syncConfig = new()
+            {
+                PivotNumber = pivotNumber.ToString(),
+            };
 
-            BlockTree tree = new(blocksDb, headersDb, blockInfosDb, metadataDb, new ChainLevelInfoRepository(blockInfosDb), MainnetSpecProvider.Instance, NullBloomStorage.Instance, syncConfig, LimboLogs.Instance);
+            BlockTree tree = Build.A.BlockTree()
+                .WithoutSettingHead
+                .WithSyncConfig(syncConfig)
+                .TestObject;
+
             Block genesis = Build.A.Block.Genesis.TestObject;
             tree.SuggestBlock(genesis);
             Assert.Throws<InvalidOperationException>(() => tree.Insert(genesis));
             Assert.Throws<InvalidOperationException>(() => tree.Insert(genesis.Header));
-            Assert.Throws<InvalidOperationException>(() => tree.Insert(new[] {genesis}));
         }
 
-        [Test]
-        public void Can_batch_insert_blocks()
+        [Test, Timeout(Timeout.MaxTestTime)]
+        public void Should_set_zero_total_difficulty()
         {
-            MemDb blocksDb = new();
-            MemDb blockInfosDb = new();
-            MemDb headersDb = new();
-            MemDb metadataDb = new();
+            long pivotNumber = 0L;
 
-            long pivotNumber = 5L;
-
-            SyncConfig syncConfig = new();
-            syncConfig.PivotNumber = pivotNumber.ToString();
-
-            BlockTree tree = new(blocksDb, headersDb, blockInfosDb, metadataDb, new ChainLevelInfoRepository(blockInfosDb), MainnetSpecProvider.Instance, NullBloomStorage.Instance, syncConfig, LimboLogs.Instance);
-            tree.SuggestBlock(Build.A.Block.Genesis.TestObject);
-
-            List<Block> blocks = new();
-            for (long i = 5; i > 0; i--)
+            SyncConfig syncConfig = new()
             {
-                Block block = Build.A.Block.WithNumber(i).WithTotalDifficulty(1L).TestObject;
-                tree.Insert(block.Header);
-                blocks.Add(block);
-            }
+                PivotNumber = pivotNumber.ToString(),
+            };
 
-            tree.Insert(blocks);
+            CustomSpecProvider specProvider = new(((ForkActivation)0, London.Instance));
+            specProvider.UpdateMergeTransitionInfo(null, 0);
+
+            BlockTree tree = Build.A.BlockTree()
+                .WithoutSettingHead
+                .WithSyncConfig(syncConfig)
+                .WithSpecProvider(specProvider)
+                .TestObject;
+
+            Block genesis = Build.A.Block.WithDifficulty(0).TestObject;
+            tree.SuggestBlock(genesis).Should().Be(AddBlockResult.Added);
+            tree.FindBlock(genesis.Hash, BlockTreeLookupOptions.None)!.TotalDifficulty.Should().Be(UInt256.Zero);
+
+            Block A = Build.A.Block.WithParent(genesis).WithDifficulty(0).TestObject;
+            tree.SuggestBlock(A).Should().Be(AddBlockResult.Added);
+            tree.FindBlock(A.Hash, BlockTreeLookupOptions.None)!.TotalDifficulty.Should().Be(UInt256.Zero);
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Inserts_blooms()
         {
-            MemDb blocksDb = new();
-            MemDb blockInfosDb = new();
-            MemDb headersDb = new();
-            MemDb metadataDb = new();
-
             long pivotNumber = 5L;
 
-            SyncConfig syncConfig = new();
-            syncConfig.PivotNumber = pivotNumber.ToString();
+            SyncConfig syncConfig = new()
+            {
+                PivotNumber = pivotNumber.ToString(),
+            };
 
             IBloomStorage bloomStorage = Substitute.For<IBloomStorage>();
             IChainLevelInfoRepository chainLevelInfoRepository = Substitute.For<IChainLevelInfoRepository>();
-            BlockTree tree = new(blocksDb, headersDb, blockInfosDb, metadataDb, chainLevelInfoRepository, MainnetSpecProvider.Instance, bloomStorage, syncConfig, LimboLogs.Instance);
+
+            BlockTree tree = Build.A.BlockTree()
+                .WithChainLevelInfoRepository(chainLevelInfoRepository)
+                .WithBloomStorage(bloomStorage)
+                .WithSyncConfig(syncConfig)
+                .TestObject;
+
             tree.SuggestBlock(Build.A.Block.Genesis.TestObject);
 
             for (long i = 5; i > 0; i--)
@@ -1365,19 +1473,20 @@ namespace Nethermind.Blockchain.Test
             }
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Block_loading_is_lazy()
         {
-            MemDb blocksDb = new();
-            MemDb blockInfosDb = new();
-            MemDb headersDb = new();
-            MemDb metadataDb = new();
+            SyncConfig syncConfig = new()
+            {
+                PivotNumber = 0L.ToString(),
+            };
 
-            SyncConfig syncConfig = new();
-            syncConfig.PivotNumber = 0L.ToString();
+            BlockTreeBuilder builder = Build.A.BlockTree()
+                .WithSyncConfig(syncConfig);
+            BlockTree tree = builder
+                .TestObject;
 
             Block genesis = Build.A.Block.Genesis.TestObject;
-            BlockTree tree = new(blocksDb, headersDb, blockInfosDb, metadataDb, new ChainLevelInfoRepository(blockInfosDb), MainnetSpecProvider.Instance, NullBloomStorage.Instance, syncConfig, LimboLogs.Instance);
             tree.SuggestBlock(genesis);
 
             Block previousBlock = genesis;
@@ -1390,22 +1499,26 @@ namespace Nethermind.Blockchain.Test
 
             Block lastBlock = previousBlock;
 
-            BlockTree loadedTree = new(blocksDb, headersDb, blockInfosDb, metadataDb, new ChainLevelInfoRepository(blockInfosDb), MainnetSpecProvider.Instance, NullBloomStorage.Instance, syncConfig, LimboLogs.Instance);
+            BlockTree loadedTree = Build.A.BlockTree()
+                .WithoutSettingHead
+                .WithSyncConfig(syncConfig)
+                .WithDatabaseFrom(builder)
+                .TestObject;
             loadedTree.FindHeader(lastBlock.Hash, BlockTreeLookupOptions.None);
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void When_block_is_moved_to_main_blooms_are_stored()
         {
-            MemDb blocksDb = new();
-            MemDb headersDb = new();
-            MemDb blockInfosDb = new();
-
             Transaction t1 = Build.A.Transaction.TestObject;
             Transaction t2 = Build.A.Transaction.TestObject;
 
             IBloomStorage bloomStorage = Substitute.For<IBloomStorage>();
-            BlockTree blockTree = new(blocksDb, headersDb, blockInfosDb, new ChainLevelInfoRepository(blockInfosDb), OlympicSpecProvider.Instance, bloomStorage, LimboLogs.Instance);
+            BlockTree blockTree = Build.A.BlockTree()
+                .WithoutSettingHead
+                .WithBloomStorage(bloomStorage)
+                .TestObject;
+            // new(blocksDb, headersDb, blockInfosDb, new ChainLevelInfoRepository(blockInfosDb), OlympicSpecProvider.Instance, bloomStorage, LimboLogs.Instance);
             Block block0 = Build.A.Block.WithNumber(0).WithDifficulty(1).TestObject;
             Block block1A = Build.A.Block.WithNumber(1).WithDifficulty(2).WithTransactions(t1).WithParent(block0).TestObject;
             Block block1B = Build.A.Block.WithNumber(1).WithDifficulty(3).WithTransactions(t2).WithParent(block0).TestObject;
@@ -1416,45 +1529,45 @@ namespace Nethermind.Blockchain.Test
             blockTree.SuggestBlock(block1A);
             blockTree.UpdateMainChain(block1A);
 
-            bloomStorage.Received().Store(block1A.Number, block1A.Bloom);
+            bloomStorage.Received().Store(block1A.Number, block1A.Bloom!);
         }
 
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Can_find_genesis_level()
         {
             BlockTree blockTree = Build.A.BlockTree().OfChainLength(3).TestObject;
-            ChainLevelInfo info = blockTree.FindLevel(0);
+            ChainLevelInfo info = blockTree.FindLevel(0)!;
             Assert.True(info.HasBlockOnMainChain);
-            Assert.AreEqual(1, info.BlockInfos.Length);
+            Assert.That(info.BlockInfos.Length, Is.EqualTo(1));
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Can_find_some_level()
         {
             BlockTree blockTree = Build.A.BlockTree().OfChainLength(3).TestObject;
-            ChainLevelInfo info = blockTree.FindLevel(1);
+            ChainLevelInfo info = blockTree.FindLevel(1)!;
             Assert.True(info.HasBlockOnMainChain);
-            Assert.AreEqual(1, info.BlockInfos.Length);
+            Assert.That(info.BlockInfos.Length, Is.EqualTo(1));
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Cannot_find_future_level()
         {
             BlockTree blockTree = Build.A.BlockTree().OfChainLength(3).TestObject;
-            ChainLevelInfo info = blockTree.FindLevel(1000);
+            ChainLevelInfo info = blockTree.FindLevel(1000)!;
             Assert.IsNull(info);
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Can_delete_a_future_slice()
         {
             BlockTree blockTree = Build.A.BlockTree().OfChainLength(3).TestObject;
             blockTree.DeleteChainSlice(1000, 2000);
-            Assert.AreEqual(2, blockTree.Head.Number);
+            Assert.That(blockTree.Head!.Number, Is.EqualTo(2));
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Can_delete_slice()
         {
             BlockTree blockTree = Build.A.BlockTree().OfChainLength(3).TestObject;
@@ -1464,7 +1577,7 @@ namespace Nethermind.Blockchain.Test
             Assert.Null(blockTree.FindLevel(2));
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Does_not_delete_outside_of_the_slice()
         {
             BlockTree blockTree = Build.A.BlockTree().OfChainLength(3).TestObject;
@@ -1474,15 +1587,15 @@ namespace Nethermind.Blockchain.Test
             Assert.NotNull(blockTree.FindLevel(1));
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Can_delete_one_block()
         {
             BlockTree blockTree = Build.A.BlockTree().OfChainLength(3).TestObject;
             blockTree.DeleteChainSlice(2, 2);
-            Assert.AreEqual(1, blockTree.Head.Number);
+            Assert.That(blockTree.Head!.Number, Is.EqualTo(1));
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Can_delete_two_blocks()
         {
             BlockTree blockTree = Build.A.BlockTree().OfChainLength(3).TestObject;
@@ -1491,42 +1604,42 @@ namespace Nethermind.Blockchain.Test
             Assert.Null(blockTree.FindLevel(2));
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Can_delete_in_the_middle()
         {
             BlockTree blockTree = Build.A.BlockTree().OfChainLength(3).TestObject;
             blockTree.DeleteChainSlice(1, 1);
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Throws_when_start_after_end()
         {
             BlockTree blockTree = Build.A.BlockTree().OfChainLength(3).TestObject;
             Assert.Throws<ArgumentException>(() => blockTree.DeleteChainSlice(2, 1));
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Throws_when_start_at_zero()
         {
             BlockTree blockTree = Build.A.BlockTree().OfChainLength(3).TestObject;
             Assert.Throws<ArgumentException>(() => blockTree.DeleteChainSlice(0, 1));
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Throws_when_start_below_zero()
         {
             BlockTree blockTree = Build.A.BlockTree().OfChainLength(3).TestObject;
             Assert.Throws<ArgumentException>(() => blockTree.DeleteChainSlice(-1, 1));
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Cannot_delete_too_many()
         {
             BlockTree blockTree = Build.A.BlockTree().OfChainLength(3).TestObject;
             Assert.Throws<ArgumentException>(() => blockTree.DeleteChainSlice(1000, 52001));
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Cannot_add_blocks_when_blocked()
         {
             BlockTree blockTree = Build.A.BlockTree().OfChainLength(3).TestObject;
@@ -1534,7 +1647,7 @@ namespace Nethermind.Blockchain.Test
             blockTree.SuggestBlock(Build.A.Block.WithNumber(3).TestObject).Should().Be(AddBlockResult.CannotAccept);
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void When_block_cannot_insert_blocks()
         {
             BlockTree blockTree = Build.A.BlockTree().OfChainLength(3).TestObject;
@@ -1546,7 +1659,7 @@ namespace Nethermind.Blockchain.Test
             result.Should().Be(AddBlockResult.CannotAccept);
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Can_skip_blocked_tree()
         {
             BlockTree blockTree = Build.A.BlockTree().OfChainLength(3).TestObject;
@@ -1558,7 +1671,7 @@ namespace Nethermind.Blockchain.Test
             result.Should().Be(AddBlockResult.Added);
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Can_block_and_unblock_adding_blocks()
         {
             BlockTree blockTree = Build.A.BlockTree().OfChainLength(3).TestObject;
@@ -1572,14 +1685,15 @@ namespace Nethermind.Blockchain.Test
             blockTree.CanAcceptNewBlocks.Should().BeTrue();
         }
 
-        [TestCase(10, 10000000ul)]
-        [TestCase(4, 4000000ul)]
-        [TestCase(10, null)]
-        public void Recovers_total_difficulty(int chainLength, ulong? expectedTotalDifficulty)
+        [Timeout(Timeout.MaxTestTime)]
+        [TestCase(10, false, 10000000ul)]
+        [TestCase(4, false, 4000000ul)]
+        [TestCase(10, true, 10000000ul)]
+        public void Recovers_total_difficulty(int chainLength, bool deleteAllLevels, ulong expectedTotalDifficulty)
         {
             BlockTreeBuilder blockTreeBuilder = Build.A.BlockTree().OfChainLength(chainLength);
             BlockTree blockTree = blockTreeBuilder.TestObject;
-            int chainLeft = expectedTotalDifficulty.HasValue ? 1 : 0;
+            int chainLeft = deleteAllLevels ? 0 : 1;
             for (int i = chainLength - 1; i >= chainLeft; i--)
             {
                 ChainLevelInfo? level = blockTreeBuilder.ChainLevelInfoRepository.LoadLevel(i);
@@ -1587,7 +1701,7 @@ namespace Nethermind.Blockchain.Test
                 {
                     for (int j = 0; j < level.BlockInfos.Length; j++)
                     {
-                        Keccak blockHash = level.BlockInfos[j].BlockHash;
+                        Hash256 blockHash = level.BlockInfos[j].BlockHash;
                         BlockHeader? header = blockTree.FindHeader(blockHash, BlockTreeLookupOptions.None);
                         if (header is not null)
                         {
@@ -1599,24 +1713,19 @@ namespace Nethermind.Blockchain.Test
                 }
             }
 
-            if (expectedTotalDifficulty.HasValue)
+            blockTree.FindBlock(blockTree.Head!.Hash, BlockTreeLookupOptions.None)!.TotalDifficulty.Should()
+                .Be(new UInt256(expectedTotalDifficulty));
+
+            for (int i = chainLength - 1; i >= 0; i--)
             {
-                blockTree.FindBlock(blockTree.Head!.Hash, BlockTreeLookupOptions.None)!.TotalDifficulty.Should().Be(new UInt256(expectedTotalDifficulty.Value));
-                for (int i = chainLength - 1; i >= chainLeft; i--)
-                {
-                    ChainLevelInfo? level = blockTreeBuilder.ChainLevelInfoRepository.LoadLevel(i);
-                    level.Should().NotBeNull();
-                    level.BlockInfos.Should().HaveCount(1);
-                }
-            }
-            else
-            {
-                Action action = () => blockTree.FindBlock(blockTree.Head!.Hash, BlockTreeLookupOptions.None);
-                action.Should().Throw<InvalidOperationException>();
+                ChainLevelInfo? level = blockTreeBuilder.ChainLevelInfoRepository.LoadLevel(i);
+
+                level.Should().NotBeNull();
+                level!.BlockInfos.Should().HaveCount(1);
             }
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public async Task Visitor_can_block_adding_blocks()
         {
             BlockTree blockTree = Build.A.BlockTree().OfChainLength(3).TestObject;
@@ -1627,7 +1736,7 @@ namespace Nethermind.Blockchain.Test
             await acceptTask;
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public async Task SuggestBlockAsync_should_wait_for_blockTree_unlock()
         {
             BlockTree blockTree = Build.A.BlockTree().OfChainLength(3).TestObject;
@@ -1639,7 +1748,7 @@ namespace Nethermind.Blockchain.Test
             suggest.IsCompleted.Should().Be(true);
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public async Task SuggestBlockAsync_works_well_with_multiple_locks_and_unlocks()
         {
             BlockTree blockTree = Build.A.BlockTree().OfChainLength(3).TestObject;
@@ -1663,7 +1772,7 @@ namespace Nethermind.Blockchain.Test
             suggest.IsCompleted.Should().Be(true);
         }
 
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public async Task SuggestBlockAsync_works_well_when_there_are_no_blockades()
         {
             BlockTree blockTree = Build.A.BlockTree().OfChainLength(3).TestObject;
@@ -1672,22 +1781,35 @@ namespace Nethermind.Blockchain.Test
             suggest.IsCompleted.Should().Be(true);
         }
 
+        [Test, Timeout(Timeout.MaxTestTime)]
+        public void SuggestBlock_should_work_with_zero_difficulty()
+        {
+            Block genesisWithZeroDifficulty = Build.A.Block.WithDifficulty(0).WithNumber(0).TestObject;
+            CustomSpecProvider specProvider = new(((ForkActivation)0, GrayGlacier.Instance));
+            specProvider.UpdateMergeTransitionInfo(null, 0);
+            BlockTree blockTree = Build.A.BlockTree(genesisWithZeroDifficulty, specProvider).OfChainLength(1).TestObject;
+
+            Block block = Build.A.Block.WithDifficulty(0).WithParent(genesisWithZeroDifficulty).TestObject;
+            blockTree.SuggestBlock(block).Should().Be(AddBlockResult.Added);
+            blockTree.SuggestBlock(Build.A.Block.WithParent(block).WithDifficulty(0).TestObject).Should().Be(AddBlockResult.Added);
+        }
+
         public static IEnumerable<TestCaseData> InvalidBlockTestCases
         {
             get
             {
-                BlockHeader? FindHeader(BlockTree b, Keccak? h, BlockTreeLookupOptions o) => b.FindHeader(h, o);
-                BlockHeader? FindBlock(BlockTree b, Keccak? h, BlockTreeLookupOptions o) => b.FindBlock(h, o)?.Header;
+                BlockHeader? FindHeader(BlockTree b, Hash256? h, BlockTreeLookupOptions o) => b.FindHeader(h, o);
+                BlockHeader? FindBlock(BlockTree b, Hash256? h, BlockTreeLookupOptions o) => b.FindBlock(h, o)?.Header;
 
                 IReadOnlyList<BlockTreeLookupOptions> valueCombinations = EnumExtensions.AllValuesCombinations<BlockTreeLookupOptions>();
                 foreach (BlockTreeLookupOptions blockTreeLookupOptions in valueCombinations)
                 {
                     bool allowInvalid = (blockTreeLookupOptions & BlockTreeLookupOptions.AllowInvalid) == BlockTreeLookupOptions.AllowInvalid;
-                    yield return new TestCaseData(FindHeader, blockTreeLookupOptions, allowInvalid)
+                    yield return new TestCaseData((Func<BlockTree, Hash256?, BlockTreeLookupOptions, BlockHeader?>)FindHeader, blockTreeLookupOptions, allowInvalid)
                     {
                         TestName = $"InvalidBlock_{nameof(FindHeader)}_({blockTreeLookupOptions})_{(allowInvalid ? "found" : "not_found")}"
                     };
-                    yield return new TestCaseData(FindBlock, blockTreeLookupOptions, allowInvalid)
+                    yield return new TestCaseData((Func<BlockTree, Hash256?, BlockTreeLookupOptions, BlockHeader?>)FindBlock, blockTreeLookupOptions, allowInvalid)
                     {
                         TestName = $"InvalidBlock_{nameof(FindBlock)}_({blockTreeLookupOptions})_{(allowInvalid ? "found" : "not_found")}"
                     };
@@ -1696,13 +1818,103 @@ namespace Nethermind.Blockchain.Test
         }
 
         [TestCaseSource(nameof(InvalidBlockTestCases))]
-        public void Find_handles_invalid_blocks(Func<BlockTree, Keccak?, BlockTreeLookupOptions, BlockHeader?> findFunction, BlockTreeLookupOptions lookupOptions, bool foundInvalid)
+        public void Find_handles_invalid_blocks(Func<BlockTree, Hash256?, BlockTreeLookupOptions, BlockHeader?> findFunction, BlockTreeLookupOptions lookupOptions, bool foundInvalid)
         {
             BlockTree blockTree = Build.A.BlockTree().OfChainLength(3).TestObject;
             Block invalidBlock = Build.A.Block.WithNumber(4).WithParent(blockTree.Head!).TestObject;
             blockTree.SuggestBlock(invalidBlock);
             blockTree.DeleteInvalidBlock(invalidBlock);
             findFunction(blockTree, invalidBlock.Hash, lookupOptions).Should().Be(foundInvalid ? invalidBlock.Header : null);
+        }
+
+        [Test]
+        public void On_restart_loads_already_processed_genesis_block()
+        {
+            TestMemDb blocksDb = new();
+            TestMemDb headersDb = new();
+            TestMemDb blockNumberDb = new();
+            TestMemDb blocksInfosDb = new();
+            ChainLevelInfoRepository chainLevelInfoRepository = new(blocksInfosDb);
+
+            // First run
+            {
+                Hash256 uncleHash = new("0x1dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347");
+                BlockTree tree = Build.A.BlockTree(HoleskySpecProvider.Instance)
+                    .WithBlockStore(new BlockStore(blocksDb))
+                    .WithBlocksNumberDb(blockNumberDb)
+                    .WithHeadersDb(headersDb)
+                    .WithChainLevelInfoRepository(chainLevelInfoRepository)
+                    .WithoutSettingHead
+                    .TestObject;
+
+                // Holesky genesis
+                Block genesis = new(new(
+                    parentHash: Keccak.Zero,
+                    unclesHash: uncleHash,
+                    beneficiary: new Address(Keccak.Zero),
+                    difficulty: 1,
+                    number: 0,
+                    gasLimit: 25000000,
+                    timestamp: 1695902100,
+                    extraData: Array.Empty<byte>())
+                {
+                    Hash = new Hash256("0xb5f7f912443c940f21fd611f12828d75b534364ed9e95ca4e307729a4661bde4"),
+                    Bloom = Core.Bloom.Empty
+                });
+
+                // Second block
+                Block second = new(new(
+                    parentHash: genesis.Header.Hash!,
+                    unclesHash: uncleHash,
+                    beneficiary: new Address(Keccak.Zero),
+                    difficulty: 0,
+                    number: genesis.Header.Number + 1,
+                    gasLimit: 25000000,
+                    timestamp: genesis.Header.Timestamp + 100,
+                    extraData: Array.Empty<byte>())
+                {
+                    Hash = new Hash256("0x1111111111111111111111111111111111111111111111111111111111111111"),
+                    Bloom = Core.Bloom.Empty,
+                    StateRoot = genesis.Header.Hash,
+                });
+
+                // Third block
+                Block third = new(new(
+                    parentHash: second.Header.Hash!,
+                    unclesHash: uncleHash,
+                    beneficiary: new Address(Keccak.Zero),
+                    difficulty: 0,
+                    number: second.Header.Number + 1,
+                    gasLimit: 25000000,
+                    timestamp: second.Header.Timestamp + 100,
+                    extraData: Array.Empty<byte>())
+                {
+                    Hash = new Hash256("0x2222222222222222222222222222222222222222222222222222222222222222"),
+                    Bloom = Core.Bloom.Empty,
+                    StateRoot = genesis.Header.Hash,
+                });
+
+                tree.SuggestBlock(genesis);
+                tree.Genesis.Should().NotBeNull();
+
+                tree.UpdateMainChain(ImmutableList.Create(genesis), true);
+
+                tree.SuggestBlock(second);
+                tree.SuggestBlock(third);
+            }
+
+            // Assume Nethermind got restarted
+            {
+                BlockTree tree = Build.A.BlockTree(HoleskySpecProvider.Instance)
+                    .WithBlockStore(new BlockStore(blocksDb))
+                    .WithBlocksNumberDb(blockNumberDb)
+                    .WithHeadersDb(headersDb)
+                    .WithChainLevelInfoRepository(chainLevelInfoRepository)
+                    .WithoutSettingHead
+                    .TestObject;
+
+                tree.Genesis.Should().NotBeNull();
+            }
         }
 
         private class TestBlockTreeVisitor : IBlockTreeVisitor
@@ -1715,9 +1927,9 @@ namespace Nethermind.Blockchain.Test
                 _manualResetEvent = manualResetEvent;
             }
 
-            public bool PreventsAcceptingNewBlocks { get; } = true;
-            public long StartLevelInclusive { get; } = 0;
-            public long EndLevelExclusive { get; } = 3;
+            public bool PreventsAcceptingNewBlocks => true;
+            public long StartLevelInclusive => 0;
+            public long EndLevelExclusive => 3;
             public async Task<LevelVisitOutcome> VisitLevelStart(ChainLevelInfo chainLevelInfo, long levelNumber, CancellationToken cancellationToken)
             {
                 if (_wait)
@@ -1729,7 +1941,7 @@ namespace Nethermind.Blockchain.Test
                 return LevelVisitOutcome.None;
             }
 
-            public Task<bool> VisitMissing(Keccak hash, CancellationToken cancellationToken)
+            public Task<bool> VisitMissing(Hash256 hash, CancellationToken cancellationToken)
             {
                 return Task.FromResult(true);
             }

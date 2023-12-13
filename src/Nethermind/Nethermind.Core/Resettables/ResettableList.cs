@@ -1,19 +1,5 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-// 
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections;
@@ -21,9 +7,9 @@ using System.Collections.Generic;
 
 namespace Nethermind.Core.Resettables;
 
-public class ResettableList<T> : IList<T>
+public class ResettableList<T> : IList<T>, IReadOnlyCollection<T>
 {
-    private List<T> _wrapped;
+    private readonly List<T> _wrapped;
     private readonly int _startCapacity;
     private readonly int _resetRatio;
     private int _currentCapacity;
@@ -35,7 +21,7 @@ public class ResettableList<T> : IList<T>
         _resetRatio = resetRatio;
         _currentCapacity = _startCapacity;
     }
-    
+
     public IEnumerator<T> GetEnumerator() => _wrapped.GetEnumerator();
 
     IEnumerator IEnumerable.GetEnumerator() => ((IEnumerable)_wrapped).GetEnumerator();
@@ -67,7 +53,7 @@ public class ResettableList<T> : IList<T>
         get => _wrapped[index];
         set => _wrapped[index] = value;
     }
-    
+
     public void Reset()
     {
         if (_wrapped.Count < _currentCapacity / _resetRatio && _currentCapacity != _startCapacity)
@@ -82,7 +68,7 @@ public class ResettableList<T> : IList<T>
                 _currentCapacity *= _resetRatio;
             }
         }
-        
+
         _wrapped.Clear();
     }
 }

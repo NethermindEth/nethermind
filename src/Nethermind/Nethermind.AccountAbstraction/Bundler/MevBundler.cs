@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
 using System.Linq;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Mev.Data;
@@ -9,10 +12,10 @@ namespace Nethermind.AccountAbstraction.Bundler
 {
     public class MevBundler : IBundler
     {
-        private IBundleTrigger _trigger;
-        private ITxSource _txSource;
-        private IBundlePool _bundlePool;
-        private ILogger _logger;
+        private readonly IBundleTrigger _trigger;
+        private readonly ITxSource _txSource;
+        private readonly IBundlePool _bundlePool;
+        private readonly ILogger _logger;
 
         public MevBundler(IBundleTrigger trigger, ITxSource txSource, IBundlePool bundlePool, ILogger logger)
         {
@@ -52,7 +55,6 @@ namespace Nethermind.AccountAbstraction.Bundler
                     SenderAddress = tx.SenderAddress,
                     Signature = tx.Signature,
                     Hash = tx.Hash,
-                    DeliveredBy = tx.DeliveredBy,
                     Timestamp = tx.Timestamp,
                     AccessList = tx.AccessList,
                 })
@@ -69,7 +71,7 @@ namespace Nethermind.AccountAbstraction.Bundler
 
             if (result)
             {
-                if (_logger.IsDebug) _logger.Debug($"Bundle {bundle.Hash} from AA successfuly added to MEV bundle pool");
+                if (_logger.IsDebug) _logger.Debug($"Bundle {bundle.Hash} from AA successfully added to MEV bundle pool");
             }
             else if (_logger.IsDebug) _logger.Debug("Bundle from AA failed to be added to MEV bundle pool");
         }

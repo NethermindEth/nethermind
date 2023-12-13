@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-//
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-//
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-//
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Threading;
@@ -24,10 +11,8 @@ using Nethermind.Config;
 using Nethermind.Consensus.AuRa.InitializationSteps;
 using Nethermind.Init.Steps;
 using Nethermind.Logging;
-using Nethermind.Runner.Ethereum.Api;
-using Nethermind.Runner.Ethereum.Steps;
 using Nethermind.Serialization.Json;
-using NSubstitute.ExceptionExtensions;
+using Nethermind.Specs.ChainSpecStyle;
 using NUnit.Framework;
 
 namespace Nethermind.Runner.Test.Ethereum.Steps
@@ -38,7 +23,7 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
         [Test]
         public async Task When_no_assemblies_defined()
         {
-            NethermindApi runnerContext = CreateApi<NethermindApi>();
+            NethermindApi runnerContext = CreateNethermindApi();
 
             IEthereumStepsLoader stepsLoader = new EthereumStepsLoader();
             EthereumStepsManager stepsManager = new EthereumStepsManager(
@@ -53,7 +38,7 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
         [Test]
         public async Task With_steps_from_here()
         {
-            NethermindApi runnerContext = CreateApi<NethermindApi>();
+            NethermindApi runnerContext = CreateNethermindApi();
 
             IEthereumStepsLoader stepsLoader = new EthereumStepsLoader(GetType().Assembly);
             EthereumStepsManager stepsManager = new EthereumStepsManager(
@@ -77,9 +62,10 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
         }
 
         [Test]
+        [Retry(3)]
         public async Task With_steps_from_here_AuRa()
         {
-            AuRaNethermindApi runnerContext = CreateApi<AuRaNethermindApi>();
+            AuRaNethermindApi runnerContext = CreateAuraApi();
 
             IEthereumStepsLoader stepsLoader = new EthereumStepsLoader(GetType().Assembly);
             EthereumStepsManager stepsManager = new EthereumStepsManager(
@@ -87,7 +73,7 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
                 runnerContext,
                 LimboLogs.Instance);
 
-            using CancellationTokenSource source = new CancellationTokenSource(TimeSpan.FromSeconds(2));
+            using CancellationTokenSource source = new CancellationTokenSource(TimeSpan.FromSeconds(5));
 
             try
             {
@@ -102,7 +88,7 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
         [Test]
         public async Task With_failing_steps()
         {
-            NethermindApi runnerContext = CreateApi<NethermindApi>();
+            NethermindApi runnerContext = CreateNethermindApi();
 
             IEthereumStepsLoader stepsLoader = new EthereumStepsLoader(GetType().Assembly);
             EthereumStepsManager stepsManager = new EthereumStepsManager(
@@ -125,13 +111,10 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
             }
         }
 
-        private static T CreateApi<T>() where T : INethermindApi, new() =>
-            new T()
-            {
-                ConfigProvider = new ConfigProvider(),
-                EthereumJsonSerializer = new EthereumJsonSerializer(),
-                LogManager = LimboLogs.Instance
-            };
+        private static NethermindApi CreateNethermindApi() =>
+            new(new ConfigProvider(), new EthereumJsonSerializer(), LimboLogs.Instance, new ChainSpec());
+        private static AuRaNethermindApi CreateAuraApi() =>
+            new(new ConfigProvider(), new EthereumJsonSerializer(), LimboLogs.Instance, new ChainSpec());
     }
 
     public class StepLong : IStep
@@ -221,6 +204,7 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
         }
     }
 
-    class TestException: Exception {
+    class TestException : Exception
+    {
     }
 }

@@ -1,24 +1,11 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-// 
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Threading;
 using Nethermind.Blockchain;
 using Nethermind.Core;
+using Nethermind.Core.Caching;
 
 namespace Nethermind.Synchronization.FastBlocks
 {
@@ -26,82 +13,84 @@ namespace Nethermind.Synchronization.FastBlocks
     {
         private long _queueSize;
         private readonly IBlockTree _blockTree;
-        private readonly FastBlockStatus[] _statuses;
-        
-        public long LowestInsertWithoutGaps { get; private set; }
+        private readonly FastBlockStatusList _statuses;
+        private readonly LruCache<long, BlockInfo> _cache = new(maxCapacity: 64, startCapacity: 64, "blockInfo Cache");
+        private long _lowestInsertWithoutGaps;
+        private readonly long _lowerBound;
+
+        public long LowestInsertWithoutGaps
+        {
+            get => _lowestInsertWithoutGaps;
+            private init => _lowestInsertWithoutGaps = value;
+        }
+
         public long QueueSize => _queueSize;
 
-        public SyncStatusList(IBlockTree blockTree, long pivotNumber, long? lowestInserted)
+        public SyncStatusList(IBlockTree blockTree, long pivotNumber, long? lowestInserted, long lowerBound)
         {
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
-            _statuses = new FastBlockStatus[pivotNumber + 1];
-            
+            _statuses = new FastBlockStatusList(pivotNumber + 1);
+
             LowestInsertWithoutGaps = lowestInserted ?? pivotNumber;
+            _lowerBound = lowerBound;
         }
 
         public void GetInfosForBatch(BlockInfo?[] blockInfos)
         {
             int collected = 0;
-
-            long currentNumber = LowestInsertWithoutGaps;
-            lock (_statuses)
+            long currentNumber = Volatile.Read(ref _lowestInsertWithoutGaps);
+            while (collected < blockInfos.Length && currentNumber != 0 && currentNumber >= _lowerBound)
             {
-                while (collected < blockInfos.Length && currentNumber != 0)
+                if (blockInfos[collected] is not null)
                 {
-                    if (blockInfos[collected] != null)
-                    {
-                        collected++;
-                        continue;
-                    }
-                    
-                    switch (_statuses[currentNumber])
-                    {
-                        case FastBlockStatus.Unknown:
-                            blockInfos[collected] = _blockTree.FindCanonicalBlockInfo(currentNumber);
-                            _statuses[currentNumber] = FastBlockStatus.Sent;
-                            collected++;
-                            break;
-                        case FastBlockStatus.Inserted:
-                            if (currentNumber == LowestInsertWithoutGaps)
-                            {
-                                LowestInsertWithoutGaps--;
-                                Interlocked.Decrement(ref _queueSize);
-                            }
-
-                            break;
-                        case FastBlockStatus.Sent:
-                            break;
-                        default:
-                            throw new ArgumentOutOfRangeException();
-                    }
-
-                    currentNumber--;
+                    collected++;
+                    continue;
                 }
+
+                if (_statuses.TrySet(currentNumber, FastBlockStatus.Sent, out FastBlockStatus status))
+                {
+                    if (_cache.TryGet(currentNumber, out BlockInfo blockInfo))
+                    {
+                        _cache.Delete(currentNumber);
+                    }
+                    else
+                    {
+                        blockInfo = _blockTree.FindCanonicalBlockInfo(currentNumber);
+                    }
+
+                    blockInfos[collected] = blockInfo;
+                    collected++;
+                }
+                else if (status == FastBlockStatus.Inserted)
+                {
+                    long currentLowest = Volatile.Read(ref _lowestInsertWithoutGaps);
+                    if (currentNumber == currentLowest)
+                    {
+                        if (Interlocked.CompareExchange(ref _lowestInsertWithoutGaps, currentLowest - 1, currentLowest) == currentLowest)
+                        {
+                            Interlocked.Decrement(ref _queueSize);
+                        }
+                    }
+                }
+
+                currentNumber--;
             }
         }
 
-        public void MarkInserted(in long blockNumber)
+        public void MarkInserted(long blockNumber)
         {
-            Interlocked.Increment(ref _queueSize);
-            lock (_statuses)
+            if (_statuses.TrySet(blockNumber, FastBlockStatus.Inserted))
             {
-                _statuses[blockNumber] = FastBlockStatus.Inserted;
+                Interlocked.Increment(ref _queueSize);
             }
         }
 
-        public void MarkUnknown(in long blockNumber)
+        public void MarkPending(BlockInfo blockInfo)
         {
-            lock (_statuses)
+            if (_statuses.TrySet(blockInfo.BlockNumber, FastBlockStatus.Pending))
             {
-                _statuses[blockNumber] = FastBlockStatus.Unknown;
+                _cache.Set(blockInfo.BlockNumber, blockInfo);
             }
-        }
-        
-        private enum FastBlockStatus : byte
-        {
-            Unknown = 0,
-            Sent = 1,
-            Inserted = 2,
         }
     }
 }

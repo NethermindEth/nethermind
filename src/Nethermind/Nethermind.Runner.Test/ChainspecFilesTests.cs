@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-//
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-//
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-//
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System.IO;
 using FluentAssertions;
@@ -20,7 +7,6 @@ using Nethermind.Logging;
 using NUnit.Framework;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Serialization.Json;
-using NSubstitute.ExceptionExtensions;
 
 namespace Nethermind.Runner.Test
 {
@@ -29,8 +15,8 @@ namespace Nethermind.Runner.Test
     public class ChainspecFilesTests
     {
 
-        private IJsonSerializer _jsonSerializer = new EthereumJsonSerializer();
-        private IChainSpecLoader _loader;
+        private readonly IJsonSerializer _jsonSerializer = new EthereumJsonSerializer();
+        private readonly IChainSpecLoader _loader;
         public ILogger _logger;
         public ChainspecFilesTests()
         {
@@ -64,7 +50,7 @@ namespace Nethermind.Runner.Test
         [TestCase("chainspec/custom_chainspec_that_does_not_exist.json")]
         public void ChainspecNotFound(string chainspecPath)
         {
-            _loader.Invoking(l=>l.LoadEmbeddedOrFromFile(chainspecPath, _logger))
+            _loader.Invoking(l => l.LoadEmbeddedOrFromFile(chainspecPath, _logger))
                 .Should().Throw<FileNotFoundException>();
         }
 

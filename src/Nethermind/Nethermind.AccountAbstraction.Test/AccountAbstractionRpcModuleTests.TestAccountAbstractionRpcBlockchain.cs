@@ -1,19 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-// 
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
 using System.Linq;
@@ -38,7 +24,6 @@ using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
-using Nethermind.Core.Test;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.Tracing;
@@ -47,12 +32,11 @@ using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Test.Modules;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.BlockProduction;
-using Nethermind.Merge.Plugin.Data;
-using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
 using NSubstitute;
+using Nethermind.Config;
 
 namespace Nethermind.AccountAbstraction.Test
 {
@@ -65,7 +49,6 @@ namespace Nethermind.AccountAbstraction.Test
             TestSpecProvider testSpecProvider = releaseSpec is not null
                 ? new TestSpecProvider(releaseSpec)
                 : new TestSpecProvider(London.Instance);
-            testSpecProvider.ChainId = 1;
             return TestRpcBlockchain.ForTest(testMevRpcBlockchain).Build(testSpecProvider);
         }
 
@@ -85,40 +68,39 @@ namespace Nethermind.AccountAbstraction.Test
             public UserOperationTxSource UserOperationTxSource { get; private set; } = null!;
             public Address[] EntryPointAddresses { get; private set; } = null!;
             public Address[] WhitelistedPayamsters { get; private set; } = null!;
-            
+
             public TestAccountAbstractionRpcBlockchain(UInt256? initialBaseFeePerGas)
             {
                 Signer = new Signer(1, TestItem.PrivateKeyD, LogManager);
                 GenesisBlockBuilder = Core.Test.Builders.Build.A.Block.Genesis.Genesis
-                    .WithTimestamp(UInt256.One)
+                    .WithTimestamp(1UL)
                     .WithGasLimit(GasLimitCalculator.GasLimit)
                     .WithBaseFeePerGas(initialBaseFeePerGas ?? 0);
             }
-            
+
             public IAccountAbstractionRpcModule AccountAbstractionRpcModule { get; set; } = Substitute.For<IAccountAbstractionRpcModule>();
-            public ManualGasLimitCalculator GasLimitCalculator = new() {GasLimit = 10_000_000};
-            private AccountAbstractionConfig _accountAbstractionConfig = new AccountAbstractionConfig() 
-                {
-                    Enabled = true, 
-                    EntryPointContractAddresses = "0xb0894727fe4ff102e1f1c8a16f38afc7b859f215,0x96cc609c8f5458fb8a7da4d94b678e38ebf3d04e",
-                    UserOperationPoolSize = 200,
-                    WhitelistedPaymasters = ""
-                };
+            public ManualGasLimitCalculator GasLimitCalculator = new() { GasLimit = 10_000_000 };
+            private readonly AccountAbstractionConfig _accountAbstractionConfig = new AccountAbstractionConfig()
+            {
+                Enabled = true,
+                EntryPointContractAddresses = "0xb0894727fe4ff102e1f1c8a16f38afc7b859f215,0x96cc609c8f5458fb8a7da4d94b678e38ebf3d04e",
+                UserOperationPoolSize = 200,
+                WhitelistedPaymasters = ""
+            };
             public Address MinerAddress => TestItem.PrivateKeyD.Address;
             private ISigner Signer { get; }
 
-            public override ILogManager LogManager => NUnitLogManager.Instance;
+            public override ILogManager LogManager => LimboLogs.Instance;
 
             protected override IBlockProducer CreateTestBlockProducer(TxPoolTxSource txPoolTxSource, ISealer sealer,
                 ITransactionComparerProvider transactionComparerProvider)
             {
-                MiningConfig miningConfig = new() { MinGasPrice = UInt256.One };
+                BlocksConfig blocksConfig = new() { MinGasPrice = UInt256.One };
                 SpecProvider.UpdateMergeTransitionInfo(1, 0);
 
                 BlockProducerEnvFactory blockProducerEnvFactory = new BlockProducerEnvFactory(
-                    DbProvider,
+                    WorldStateManager,
                     BlockTree,
-                    ReadOnlyTrieStore,
                     SpecProvider,
                     BlockValidator,
                     NoBlockRewards.Instance,
@@ -126,7 +108,7 @@ namespace Nethermind.AccountAbstraction.Test
                     BlockPreprocessorStep,
                     TxPool,
                     transactionComparerProvider,
-                    miningConfig,
+                    blocksConfig,
                     LogManager)
                 {
                     TransactionsExecutorFactory =
@@ -143,7 +125,7 @@ namespace Nethermind.AccountAbstraction.Test
                     ITxSource? txSource = null)
                 {
                     var blockProducerEnv = blockProducerEnvFactory.Create(txSource);
-                    return new PostMergeBlockProducerFactory(SpecProvider, SealEngine, Timestamper, miningConfig,
+                    return new PostMergeBlockProducerFactory(SpecProvider, SealEngine, Timestamper, blocksConfig,
                         LogManager, GasLimitCalculator).Create(
                         blockProducerEnv, blockProductionTrigger);
                 }
@@ -185,10 +167,11 @@ namespace Nethermind.AccountAbstraction.Test
                 }
 
                 EntryPointAddresses = entryPointContractAddresses.ToArray();
-                
+
                 IList<Address> whitelistedPaymasters = new List<Address>();
                 IList<string> whitelistedPaymastersString = _accountAbstractionConfig.GetWhitelistedPaymasters().ToList();
-                foreach (string addressString in whitelistedPaymastersString){
+                foreach (string addressString in whitelistedPaymastersString)
+                {
                     bool parsed = Address.TryParse(
                         addressString,
                         out Address? whitelistedPaymaster);
@@ -196,8 +179,8 @@ namespace Nethermind.AccountAbstraction.Test
                 }
 
                 WhitelistedPayamsters = whitelistedPaymasters.ToArray();
-                
-                
+
+
                 BlockValidator = CreateBlockValidator();
                 BlockProcessor blockProcessor = new(
                     SpecProvider,
@@ -205,13 +188,13 @@ namespace Nethermind.AccountAbstraction.Test
                     NoBlockRewards.Instance,
                     new BlockProcessor.BlockValidationTransactionsExecutor(TxProcessor, State),
                     State,
-                    Storage,
                     ReceiptStorage,
                     NullWitnessCollector.Instance,
                     LogManager);
 
+                AbiParameterConverter.RegisterFactory(new AbiTypeFactory(new AbiTuple<UserOperationAbi>()));
+
                 var parser = new AbiDefinitionParser();
-                parser.RegisterAbiTypeFactory(new AbiTuple<UserOperationAbi>());
                 var json = parser.LoadContract(typeof(EntryPoint));
                 EntryPointContractAbi = parser.Parse(json);
 
@@ -223,19 +206,20 @@ namespace Nethermind.AccountAbstraction.Test
                         entryPoint!,
                         SpecProvider);
                 }
-
+                BlocksConfig blocksConfig = new();
                 foreach (Address entryPoint in entryPointContractAddresses)
                 {
                     UserOperationSimulator[entryPoint] = new(
                         UserOperationTxBuilder[entryPoint],
                         ReadOnlyState,
-                        new ReadOnlyTxProcessingEnvFactory(DbProvider, ReadOnlyTrieStore, BlockTree, SpecProvider, LogManager),
+                        new ReadOnlyTxProcessingEnvFactory(WorldStateManager, BlockTree, SpecProvider, LogManager),
                         EntryPointContractAbi,
                         entryPoint!,
                         WhitelistedPayamsters,
-                        SpecProvider, 
+                        SpecProvider,
                         Timestamper,
-                        LogManager);
+                        LogManager,
+                        blocksConfig);
                 }
 
                 IUserOperationBroadcaster broadcaster = new UserOperationBroadcaster(LogManager.GetClassLogger());
@@ -247,13 +231,13 @@ namespace Nethermind.AccountAbstraction.Test
                         BlockTree,
                         entryPoint!,
                         LogManager.GetClassLogger(),
-                        new PaymasterThrottler(), 
-                        LogFinder, 
-                        Signer, 
-                        State, 
+                        new PaymasterThrottler(),
+                        LogFinder,
+                        Signer,
+                        State,
                         SpecProvider,
-                        Timestamper, 
-                        UserOperationSimulator[entryPoint], 
+                        Timestamper,
+                        UserOperationSimulator[entryPoint],
                         new UserOperationSortedPool(
                             _accountAbstractionConfig.UserOperationPoolSize,
                             new CompareUserOperationsByDecreasingGasPrice(),
@@ -267,7 +251,7 @@ namespace Nethermind.AccountAbstraction.Test
             }
 
             protected override async Task<TestBlockchain> Build(ISpecProvider? specProvider = null,
-                UInt256? initialValues = null)
+                UInt256? initialValues = null, bool addBlockOnStart = true)
             {
                 TestBlockchain chain = await base.Build(specProvider, initialValues);
                 IList<Address> entryPointContractAddresses = new List<Address>();
@@ -303,30 +287,26 @@ namespace Nethermind.AccountAbstraction.Test
 
             public void SendUserOperation(Address entryPoint, UserOperation userOperation)
             {
-                ResultWrapper<Keccak> resultOfUserOperation = UserOperationPool[entryPoint].AddUserOperation(userOperation);
-                resultOfUserOperation.GetResult().ResultType.Should().NotBe(ResultType.Failure, resultOfUserOperation.Result.Error);
-                resultOfUserOperation.GetData().Should().Be(userOperation.RequestId!);
+                ResultWrapper<Hash256> resultOfUserOperation = UserOperationPool[entryPoint].AddUserOperation(userOperation);
+                resultOfUserOperation.Result.Should().Be(Result.Success, resultOfUserOperation.Result.Error);
+                resultOfUserOperation.Data.Should().Be(userOperation.RequestId!);
             }
 
             public void SupportedEntryPoints()
             {
                 ResultWrapper<Address[]> resultOfEntryPoints = AccountAbstractionRpcModule.eth_supportedEntryPoints();
-                resultOfEntryPoints.GetResult().ResultType.Should()
-                    .NotBe(ResultType.Failure, resultOfEntryPoints.Result.Error);
+                resultOfEntryPoints.Result.Should().Be(Result.Success, resultOfEntryPoints.Result.Error);
                 IList<Address> entryPointContractAddresses = new List<Address>();
-                IList<string> _entryPointContractAddressesString =
-                    _accountAbstractionConfig.GetEntryPointAddresses().ToList();
-                foreach (string _addressString in _entryPointContractAddressesString)
+                IList<string> entryPointContractAddressesString = _accountAbstractionConfig.GetEntryPointAddresses().ToList();
+                foreach (string addressString in entryPointContractAddressesString)
                 {
-                    bool parsed = Address.TryParse(
-                        _addressString,
-                        out Address? entryPointContractAddress);
+                    Address.TryParse(addressString, out Address? entryPointContractAddress);
                     entryPointContractAddresses.Add(entryPointContractAddress!);
                 }
 
                 Address[] eps = entryPointContractAddresses.ToArray();
-                Address[] recieved_eps = (Address[])(resultOfEntryPoints.GetData()!);
-                Assert.AreEqual(eps, recieved_eps);
+                Address[] receivedEps = resultOfEntryPoints.Data;
+                Assert.That(receivedEps, Is.EqualTo(eps));
             }
         }
     }

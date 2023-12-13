@@ -1,11 +1,9 @@
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
 using System;
 using System.Buffers;
-using System.Collections.Generic;
-using System.Diagnostics;
 using System.IO;
-using System.Linq;
-using System.Runtime.CompilerServices;
-using System.Text;
 using System.Threading.Tasks;
 using Nethermind.Serialization.Json;
 
@@ -30,25 +28,18 @@ namespace Nethermind.Sockets
 
         public virtual Task ProcessAsync(ArraySegment<byte> data) => Task.CompletedTask;
 
-        public virtual Task SendAsync(SocketsMessage message)
+        public virtual async Task SendAsync(SocketsMessage message)
         {
             if (message is null)
             {
-                return Task.CompletedTask;
+                return;
             }
 
             if (message.Client == ClientName || string.IsNullOrWhiteSpace(ClientName) ||
                 string.IsNullOrWhiteSpace(message.Client))
             {
-                using MemoryStream memoryStream = new();
-                _jsonSerializer.Serialize(memoryStream, new { type = message.Type, client = ClientName, data = message.Data });
-                if (memoryStream.TryGetBuffer(out ArraySegment<byte> data))
-                {
-                    return _handler.SendRawAsync(data);
-                }
+                await _jsonSerializer.SerializeAsync(_handler.SendUsingStream(), new { type = message.Type, client = ClientName, data = message.Data }, indented: false, leaveOpen: true);
             }
-
-            return Task.CompletedTask;
         }
 
         public async Task ReceiveAsync()
@@ -75,7 +66,7 @@ namespace Nethermind.Sockets
                         // process the already filled bytes
                         await ProcessAsync(new ArraySegment<byte>(buffer, 0, currentMessageLength));
                         currentMessageLength = 0; // reset message length
-                        
+
                         // if we grew the buffer too big lets reset it
                         if (buffer.Length > 2 * standardBufferLength)
                         {

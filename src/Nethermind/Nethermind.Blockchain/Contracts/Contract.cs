@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Linq;
@@ -32,8 +19,8 @@ namespace Nethermind.Blockchain.Contracts
     /// Base class for contracts that will be interacted by the node engine.
     /// </summary>
     /// <remarks>
-    /// This class is intended to be inherited and concrete contract class should provide contract specific methods to be able for the node to use the contract. 
-    /// 
+    /// This class is intended to be inherited and concrete contract class should provide contract specific methods to be able for the node to use the contract.
+    ///
     /// There are 3 main ways a node can interact with contract:
     /// 1. It can <see cref="GenerateTransaction{T}(string,Nethermind.Core.Address,object[])"/> that will be added to a block.
     /// 2. It can <see cref="CallableContract.Call(Nethermind.Core.BlockHeader,string,Nethermind.Core.Address,object[])"/> contract and modify current state of execution.
@@ -42,7 +29,7 @@ namespace Nethermind.Blockchain.Contracts
     public abstract partial class Contract
     {
         /// <summary>
-        /// Default gas limit of transactions generated from contract. 
+        /// Default gas limit of transactions generated from contract.
         /// </summary>
         public const long DefaultContractGasLimit = 1_600_000L;
 
@@ -62,9 +49,9 @@ namespace Nethermind.Blockchain.Contracts
             ContractAddress = contractAddress;
             AbiDefinition = abiDefinition ?? new AbiDefinitionParser().Parse(GetType());
         }
-        
+
         protected virtual Transaction GenerateTransaction<T>(Address? contractAddress, byte[] transactionData, Address sender, long gasLimit = DefaultContractGasLimit, BlockHeader header = null)
-            where T : Transaction, new() => 
+            where T : Transaction, new() =>
             GenerateTransaction<T>(contractAddress, transactionData, sender, gasLimit);
 
         protected Transaction GenerateTransaction<T>(Address? contractAddress, byte[] transactionData, Address? sender, long gasLimit = DefaultContractGasLimit) where T : Transaction, new()
@@ -78,7 +65,7 @@ namespace Nethermind.Blockchain.Contracts
                 GasLimit = gasLimit,
                 GasPrice = UInt256.Zero,
             };
-                
+
             transaction.Hash = transaction.CalculateHash();
 
             return transaction;
@@ -128,7 +115,7 @@ namespace Nethermind.Blockchain.Contracts
         /// <returns>Transaction.</returns>
         protected Transaction GenerateTransaction<T>(Address? contractAddress, string functionName, Address sender, long gasLimit, params object[] arguments) where T : Transaction, new()
             => GenerateTransaction<T>(contractAddress, AbiEncoder.Encode(AbiDefinition.GetFunction(functionName).GetCallInfo(), arguments), sender, gasLimit);
-        
+
         /// <summary>
         /// Generates transaction.
         /// That transaction can be added to a produced block or broadcasted - if <see cref="GeneratedTransaction"/> is used as <see cref="T"/>.
@@ -169,7 +156,7 @@ namespace Nethermind.Blockchain.Contracts
         /// <typeparam name="T">Type of <see cref="Transaction"/>.</typeparam>
         /// <returns>Transaction.</returns>
         protected Transaction GenerateTransaction<T>(string functionName, Address sender, long gasLimit, params object[] arguments) where T : Transaction, new()
-            => GenerateTransaction<T>(ContractAddress, AbiEncoder.Encode(AbiDefinition.GetFunction(functionName).GetCallInfo(), arguments), sender, gasLimit);        
+            => GenerateTransaction<T>(ContractAddress, AbiEncoder.Encode(AbiDefinition.GetFunction(functionName).GetCallInfo(), arguments), sender, gasLimit);
 
         /// <summary>
         /// Helper method that actually does the actual call to <see cref="ITransactionProcessor"/>.
@@ -184,27 +171,27 @@ namespace Nethermind.Blockchain.Contracts
         protected byte[] CallCore(ITransactionProcessor transactionProcessor, BlockHeader header, string functionName, Transaction transaction, bool callAndRestore = false)
         {
             bool failure;
-            
+
             CallOutputTracer tracer = new();
-            
+
             try
             {
                 if (callAndRestore)
                 {
-                    transactionProcessor.CallAndRestore(transaction, header, tracer);
+                    transactionProcessor.CallAndRestore(transaction, new BlockExecutionContext(header), tracer);
                 }
                 else
                 {
-                    transactionProcessor.Execute(transaction, header, tracer);
+                    transactionProcessor.Execute(transaction, new BlockExecutionContext(header), tracer);
                 }
-                
+
                 failure = tracer.StatusCode != StatusCode.Success;
             }
             catch (Exception e)
             {
                 throw new AbiException($"System call to {AbiDefinition.Name}.{functionName} returned an exception '{e.Message}' at block {header.Number}.", e);
             }
-           
+
             if (failure)
             {
                 throw new AbiException($"System call to {AbiDefinition.Name}.{functionName} returned error '{tracer.Error}' at block {header.Number}.");
@@ -233,13 +220,13 @@ namespace Nethermind.Blockchain.Contracts
             }
         }
 
-        protected LogEntry GetSearchLogEntry(string eventName, byte[] data = null, params Keccak[] topics)
+        protected LogEntry GetSearchLogEntry(string eventName, byte[] data = null, params Hash256[] topics)
         {
-            Keccak[] eventNameTopic = {AbiDefinition.GetEvent(eventName).GetHash()};
+            Hash256[] eventNameTopic = { AbiDefinition.GetEvent(eventName).GetHash() };
             topics = topics.Length == 0 ? eventNameTopic : eventNameTopic.Concat(topics).ToArray();
             return new LogEntry(ContractAddress, data ?? Array.Empty<byte>(), topics);
         }
 
-        protected LogEntry GetSearchLogEntry(string eventName, params Keccak[] topics) => GetSearchLogEntry(eventName, null, topics);
+        protected LogEntry GetSearchLogEntry(string eventName, params Hash256[] topics) => GetSearchLogEntry(eventName, null, topics);
     }
 }

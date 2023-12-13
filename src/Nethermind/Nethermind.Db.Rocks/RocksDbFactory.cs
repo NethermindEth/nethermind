@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using Nethermind.Db.Rocks.Config;
@@ -23,23 +10,34 @@ namespace Nethermind.Db.Rocks;
 public class RocksDbFactory : IRocksDbFactory
 {
     private readonly IDbConfig _dbConfig;
-    
+
     private readonly ILogManager _logManager;
-    
+
     private readonly string _basePath;
-    
+
+    private readonly IntPtr _sharedCache;
+
     public RocksDbFactory(IDbConfig dbConfig, ILogManager logManager, string basePath)
     {
         _dbConfig = dbConfig;
         _logManager = logManager;
         _basePath = basePath;
+
+        ILogger logger = _logManager.GetClassLogger<RocksDbFactory>();
+
+        if (logger.IsDebug)
+        {
+            logger.Debug($"Shared memory size is {dbConfig.SharedBlockCacheSize}");
+        }
+
+        _sharedCache = RocksDbSharp.Native.Instance.rocksdb_cache_create_lru(new UIntPtr(dbConfig.SharedBlockCacheSize));
     }
 
-    public IDb CreateDb(RocksDbSettings rocksDbSettings) => 
-        new DbOnTheRocks(_basePath, rocksDbSettings, _dbConfig, _logManager);
+    public IDb CreateDb(RocksDbSettings rocksDbSettings) =>
+        new DbOnTheRocks(_basePath, rocksDbSettings, _dbConfig, _logManager, sharedCache: _sharedCache);
 
     public IColumnsDb<T> CreateColumnsDb<T>(RocksDbSettings rocksDbSettings) where T : struct, Enum =>
-        new ColumnsDb<T>(_basePath, rocksDbSettings, _dbConfig, _logManager, Array.Empty<T>());
-    
+        new ColumnsDb<T>(_basePath, rocksDbSettings, _dbConfig, _logManager, Array.Empty<T>(), sharedCache: _sharedCache);
+
     public string GetFullDbPath(RocksDbSettings rocksDbSettings) => DbOnTheRocks.GetFullDbPath(rocksDbSettings.DbPath, _basePath);
 }

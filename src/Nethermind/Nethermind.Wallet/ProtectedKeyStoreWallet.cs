@@ -1,22 +1,8 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-//
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-//
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-//
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Linq;
-using System.Runtime.Caching;
 using System.Security;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
@@ -24,7 +10,6 @@ using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
 using Nethermind.KeyStore;
 using Nethermind.Logging;
-using Nethermind.Secp256k1;
 
 namespace Nethermind.Wallet
 {
@@ -99,20 +84,20 @@ namespace Nethermind.Wallet
 
         public bool IsUnlocked(Address address) => _unlockedAccounts.Contains(address.ToString());
 
-        public Signature Sign(Keccak message, Address address, SecureString passphrase)
+        public Signature Sign(Hash256 message, Address address, SecureString passphrase)
             => SignCore(message, address, () =>
             {
-                if (passphrase == null) throw new SecurityException("Passphrase missing when trying to sign a message");
+                if (passphrase is null) throw new SecurityException("Passphrase missing when trying to sign a message");
                 return _keyStore.GetKey(address, passphrase).PrivateKey;
             });
 
-        public Signature Sign(Keccak message, Address address) => SignCore(message, address, () => throw new SecurityException("Can only sign without passphrase when account is unlocked."));
+        public Signature Sign(Hash256 message, Address address) => SignCore(message, address, () => throw new SecurityException("Can only sign without passphrase when account is unlocked."));
 
-        private Signature SignCore(Keccak message, Address address, Func<PrivateKey> getPrivateKeyWhenNotFound)
+        private Signature SignCore(Hash256 message, Address address, Func<PrivateKey> getPrivateKeyWhenNotFound)
         {
-            var protectedPrivateKey = (ProtectedPrivateKey) _unlockedAccounts.Get(address.ToString());
-            using PrivateKey key = protectedPrivateKey != null ? protectedPrivateKey.Unprotect() : getPrivateKeyWhenNotFound();
-            var rs = Proxy.SignCompact(message.Bytes, key.KeyBytes, out int v);
+            var protectedPrivateKey = (ProtectedPrivateKey)_unlockedAccounts.Get(address.ToString());
+            using PrivateKey key = protectedPrivateKey is not null ? protectedPrivateKey.Unprotect() : getPrivateKeyWhenNotFound();
+            var rs = SpanSecP256k1.SignCompact(message.Bytes, key.KeyBytes, out int v);
             return new Signature(rs, v);
         }
     }

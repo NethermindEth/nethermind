@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using Nethermind.Core;
@@ -25,7 +12,7 @@ namespace Nethermind.Consensus.Clique
     {
         private readonly ICliqueConfig _cliqueConfig;
         private readonly ISnapshotManager _snapshotManager;
-        private ILogger _logger;
+        private readonly ILogger _logger;
 
         public CliqueSealValidator(ICliqueConfig cliqueConfig, ISnapshotManager snapshotManager, ILogManager logManager)
         {
@@ -34,7 +21,7 @@ namespace Nethermind.Consensus.Clique
             _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         }
 
-        public bool ValidateParams(BlockHeader parent, BlockHeader header)
+        public bool ValidateParams(BlockHeader parent, BlockHeader header, bool isUncle = false)
         {
             long number = header.Number;
             // Retrieve the snapshot needed to validate this header and cache it
@@ -67,7 +54,7 @@ namespace Nethermind.Consensus.Clique
                 if (_logger.IsWarn) _logger.Warn($"Invalid block difficulty {header.Difficulty} - should be no-turn {Clique.DifficultyNoTurn}");
                 return false;
             }
-            
+
             bool isEpochTransition = IsEpochTransition(header.Number);
             // Checkpoint blocks need to enforce zero beneficiary
             if (isEpochTransition && header.Beneficiary != Address.Zero)
@@ -90,7 +77,7 @@ namespace Nethermind.Consensus.Clique
                 return false;
             }
 
-            if (isEpochTransition && singersBytes % Address.ByteLength != 0)
+            if (isEpochTransition && singersBytes % Address.Size != 0)
             {
                 if (_logger.IsWarn) _logger.Warn($"Invalid block nonce ({header.ExtraData}) - should contain a list of signers on checkpoints");
                 return false;
@@ -141,12 +128,12 @@ namespace Nethermind.Consensus.Clique
         public bool ValidateSeal(BlockHeader header, bool force)
         {
             header.Author ??= _snapshotManager.GetBlockSealer(header);
-            return header.Author != null;
+            return header.Author is not null;
         }
 
         private bool IsEpochTransition(long number)
         {
-            return (ulong) number % _cliqueConfig.Epoch == 0;
+            return (ulong)number % _cliqueConfig.Epoch == 0;
         }
 
         private bool ValidateCascadingFields(BlockHeader parent, BlockHeader header)
@@ -164,9 +151,9 @@ namespace Nethermind.Consensus.Clique
             // If the block is a checkpoint block, validate the signer list
             if (IsEpochTransition(number))
             {
-                byte[] signersBytes = new byte[snapshot.Signers.Count * Address.ByteLength];
+                byte[] signersBytes = new byte[snapshot.Signers.Count * Address.Size];
                 int signerIndex = 0;
-                foreach (Address signer in snapshot.Signers.Keys) Array.Copy(signer.Bytes, 0, signersBytes, signerIndex++ * Address.ByteLength, Address.ByteLength);
+                foreach (Address signer in snapshot.Signers.Keys) Array.Copy(signer.Bytes, 0, signersBytes, signerIndex++ * Address.Size, Address.Size);
 
                 int extraSuffix = header.ExtraData.Length - Clique.ExtraSealLength - Clique.ExtraVanityLength;
                 if (!header.ExtraData.AsSpan(Clique.ExtraVanityLength, extraSuffix).SequenceEqual(signersBytes))

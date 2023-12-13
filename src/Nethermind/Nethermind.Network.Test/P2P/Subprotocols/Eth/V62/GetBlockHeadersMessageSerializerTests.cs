@@ -1,18 +1,5 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -39,11 +26,11 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             Assert.True(Bytes.AreEqual(bytes, expectedBytes), "bytes");
 
             GetBlockHeadersMessage deserialized = serializer.Deserialize(bytes);
-            Assert.AreEqual(message.StartBlockHash, deserialized.StartBlockHash, $"{nameof(message.StartBlockHash)}");
-            Assert.AreEqual(message.MaxHeaders, deserialized.MaxHeaders, $"{nameof(message.MaxHeaders)}");
-            Assert.AreEqual(message.Reverse, deserialized.Reverse, $"{nameof(message.Reverse)}");
-            Assert.AreEqual(message.Skip, deserialized.Skip, $"{nameof(message.Skip)}");
-            
+            Assert.That(deserialized.StartBlockHash, Is.EqualTo(message.StartBlockHash), $"{nameof(message.StartBlockHash)}");
+            Assert.That(deserialized.MaxHeaders, Is.EqualTo(message.MaxHeaders), $"{nameof(message.MaxHeaders)}");
+            Assert.That(deserialized.Reverse, Is.EqualTo(message.Reverse), $"{nameof(message.Reverse)}");
+            Assert.That(deserialized.Skip, Is.EqualTo(message.Skip), $"{nameof(message.Skip)}");
+
             SerializerTester.TestZero(serializer, message);
         }
 
@@ -62,14 +49,14 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             Assert.True(Bytes.AreEqual(bytes, expectedBytes), "bytes");
 
             GetBlockHeadersMessage deserialized = serializer.Deserialize(bytes);
-            Assert.AreEqual(message.StartBlockNumber, deserialized.StartBlockNumber, $"{nameof(message.StartBlockNumber)}");
-            Assert.AreEqual(message.MaxHeaders, deserialized.MaxHeaders, $"{nameof(message.MaxHeaders)}");
-            Assert.AreEqual(message.Reverse, deserialized.Reverse, $"{nameof(message.Reverse)}");
-            Assert.AreEqual(message.Skip, deserialized.Skip, $"{nameof(message.Skip)}");
-            
+            Assert.That(deserialized.StartBlockNumber, Is.EqualTo(message.StartBlockNumber), $"{nameof(message.StartBlockNumber)}");
+            Assert.That(deserialized.MaxHeaders, Is.EqualTo(message.MaxHeaders), $"{nameof(message.MaxHeaders)}");
+            Assert.That(deserialized.Reverse, Is.EqualTo(message.Reverse), $"{nameof(message.Reverse)}");
+            Assert.That(deserialized.Skip, Is.EqualTo(message.Skip), $"{nameof(message.Skip)}");
+
             SerializerTester.TestZero(serializer, message);
         }
-        
+
         [Test]
         public void Roundtrip_zero()
         {
@@ -79,21 +66,21 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             message.Reverse = 0;
             message.StartBlockNumber = 100;
             GetBlockHeadersMessageSerializer serializer = new();
-            
+
             byte[] bytes = serializer.Serialize(message);
             byte[] expectedBytes = Bytes.FromHexString("c464010280");
 
-            Assert.AreEqual(expectedBytes, bytes, "bytes");
+            Assert.That(bytes, Is.EqualTo(expectedBytes), "bytes");
 
             GetBlockHeadersMessage deserialized = serializer.Deserialize(bytes);
-            Assert.AreEqual(message.StartBlockNumber, deserialized.StartBlockNumber, $"{nameof(message.StartBlockNumber)}");
-            Assert.AreEqual(message.MaxHeaders, deserialized.MaxHeaders, $"{nameof(message.MaxHeaders)}");
-            Assert.AreEqual(message.Reverse, deserialized.Reverse, $"{nameof(message.Reverse)}");
-            Assert.AreEqual(message.Skip, deserialized.Skip, $"{nameof(message.Skip)}");
-            
+            Assert.That(deserialized.StartBlockNumber, Is.EqualTo(message.StartBlockNumber), $"{nameof(message.StartBlockNumber)}");
+            Assert.That(deserialized.MaxHeaders, Is.EqualTo(message.MaxHeaders), $"{nameof(message.MaxHeaders)}");
+            Assert.That(deserialized.Reverse, Is.EqualTo(message.Reverse), $"{nameof(message.Reverse)}");
+            Assert.That(deserialized.Skip, Is.EqualTo(message.Skip), $"{nameof(message.Skip)}");
+
             SerializerTester.TestZero(serializer, message);
         }
-        
+
         [Test]
         public void To_string()
         {

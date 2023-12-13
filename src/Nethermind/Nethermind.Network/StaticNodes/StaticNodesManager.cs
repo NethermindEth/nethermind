@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Concurrent;
@@ -20,12 +7,14 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Net.Sockets;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using System.Threading.Tasks;
 using Nethermind.Config;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
+using Nethermind.Serialization.Json;
 using Nethermind.Stats.Model;
-using Newtonsoft.Json;
 
 namespace Nethermind.Network.StaticNodes
 {
@@ -84,11 +73,11 @@ namespace Nethermind.Network.StaticNodes
             string[] nodes;
             try
             {
-                nodes = JsonConvert.DeserializeObject<string[]>(data) ?? Array.Empty<string>();
+                nodes = JsonSerializer.Deserialize<string[]>(data) ?? Array.Empty<string>();
             }
             catch (JsonException)
             {
-                nodes = data.Split(new[] {'\r', '\n'}, StringSplitOptions.RemoveEmptyEntries);
+                nodes = data.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
             }
 
             return nodes.Distinct().ToArray();
@@ -143,7 +132,7 @@ namespace Nethermind.Network.StaticNodes
 
         private Task SaveFileAsync()
             => File.WriteAllTextAsync(_staticNodesPath,
-                JsonConvert.SerializeObject(_nodes.Select(n => n.Value.ToString()), Formatting.Indented));
+                JsonSerializer.Serialize(_nodes.Select(n => n.Value.ToString()), EthereumJsonSerializer.JsonOptionsIndented));
 
         public List<Node> LoadInitialList()
         {
@@ -151,7 +140,7 @@ namespace Nethermind.Network.StaticNodes
         }
 
         public event EventHandler<NodeEventArgs>? NodeAdded;
-        
+
         public event EventHandler<NodeEventArgs>? NodeRemoved;
     }
 }

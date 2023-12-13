@@ -1,26 +1,13 @@
-//  Copyright (c) 2020 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Threading;
 using System.Threading.Tasks;
-using DotNetty.Common.Utilities;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
+using Nethermind.Network.Contract.P2P;
 using Nethermind.Network.P2P.EventArg;
 using Nethermind.Network.P2P.ProtocolHandlers;
 using Nethermind.Network.P2P.Subprotocols.Wit.Messages;
@@ -35,8 +22,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Wit
     {
         private readonly ISyncServer _syncServer;
 
-        private readonly MessageQueue<GetBlockWitnessHashesMessage, Keccak[]> _witnessRequests;
-        
+        private readonly MessageQueue<GetBlockWitnessHashesMessage, Hash256[]> _witnessRequests;
+
         public WitProtocolHandler(ISession session,
             IMessageSerializationService serializer,
             INodeStatsManager nodeStats,
@@ -44,17 +31,17 @@ namespace Nethermind.Network.P2P.Subprotocols.Wit
             ILogManager logManager) : base(session, nodeStats, serializer, logManager)
         {
             _syncServer = syncServer ?? throw new ArgumentNullException(nameof(syncServer));
-            _witnessRequests = new MessageQueue<GetBlockWitnessHashesMessage, Keccak[]>(Send);
+            _witnessRequests = new MessageQueue<GetBlockWitnessHashesMessage, Hash256[]>(Send);
         }
 
         public override byte ProtocolVersion => 0;
-        
+
         public override string ProtocolCode => Protocol.Wit;
-        
+
         public override int MessageIdSpaceSize => 3;
-        
+
         public override string Name => "wit0";
-        
+
         protected override TimeSpan InitTimeout => Timeouts.Eth;
 
         public override event EventHandler<ProtocolInitializedEventArgs> ProtocolInitialized;
@@ -79,12 +66,12 @@ namespace Nethermind.Network.P2P.Subprotocols.Wit
             {
                 case WitMessageCode.GetBlockWitnessHashes:
                     GetBlockWitnessHashesMessage requestMsg = Deserialize<GetBlockWitnessHashesMessage>(message.Content);
-                    ReportIn(requestMsg);
+                    ReportIn(requestMsg, size);
                     Handle(requestMsg);
                     break;
                 case WitMessageCode.BlockWitnessHashes:
                     BlockWitnessHashesMessage responseMsg = Deserialize<BlockWitnessHashesMessage>(message.Content);
-                    ReportIn(responseMsg);
+                    ReportIn(responseMsg, size);
                     Handle(responseMsg, size);
                     break;
             }
@@ -92,7 +79,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Wit
 
         private void Handle(GetBlockWitnessHashesMessage requestMsg)
         {
-            Keccak[] hashes = _syncServer.GetBlockWitnessHashes(requestMsg.BlockHash);
+            Hash256[] hashes = _syncServer.GetBlockWitnessHashes(requestMsg.BlockHash);
             BlockWitnessHashesMessage msg = new(requestMsg.RequestId, hashes);
             Send(msg);
         }
@@ -103,29 +90,29 @@ namespace Nethermind.Network.P2P.Subprotocols.Wit
         }
 
         private static long _requestId;
-        
-        public async Task<Keccak[]> GetBlockWitnessHashes(Keccak blockHash, CancellationToken token)
+
+        public async Task<Hash256[]> GetBlockWitnessHashes(Hash256 blockHash, CancellationToken token)
         {
             long requestId = Interlocked.Increment(ref _requestId);
             GetBlockWitnessHashesMessage msg = new(requestId, blockHash);
 
             if (Logger.IsTrace) Logger.Trace(
                 $"{Counter:D5} {nameof(WitMessageCode.GetBlockWitnessHashes)} to {Session}");
-            Keccak[] witnessHashes = await SendRequest(msg, token);
+            Hash256[] witnessHashes = await SendRequest(msg, token);
             return witnessHashes;
         }
-        
-        private async Task<Keccak[]> SendRequest(GetBlockWitnessHashesMessage message, CancellationToken token)
+
+        private async Task<Hash256[]> SendRequest(GetBlockWitnessHashesMessage message, CancellationToken token)
         {
             if (Logger.IsTrace)
             {
                 Logger.Trace($"Sending block witness hashes request: {message.BlockHash}");
             }
 
-            Request<GetBlockWitnessHashesMessage, Keccak[]> request = new(message);
+            Request<GetBlockWitnessHashesMessage, Hash256[]> request = new(message);
             _witnessRequests.Send(request);
 
-            Task<Keccak[]> task = request.CompletionSource.Task;
+            Task<Hash256[]> task = request.CompletionSource.Task;
             using CancellationTokenSource delayCancellation = new();
             using CancellationTokenSource compositeCancellation = CancellationTokenSource.CreateLinkedTokenSource(token, delayCancellation.Token);
             Task firstTask = await Task.WhenAny(task, Task.Delay(Timeouts.Eth, compositeCancellation.Token));
@@ -139,14 +126,14 @@ namespace Nethermind.Network.P2P.Subprotocols.Wit
                 delayCancellation.Cancel();
                 return task.Result;
             }
-            
+
             throw new TimeoutException($"{Session} Request timeout in {nameof(GetBlockWitnessHashes)} for {message.BlockHash}");
         }
-        
+
         #region Cleanup
 
         private int _isDisposed;
-        
+
         public override void DisconnectProtocol(DisconnectReason disconnectReason, string details)
         {
             Dispose();

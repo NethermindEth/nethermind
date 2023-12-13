@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -10,7 +13,7 @@ namespace Ethereum.Test.Base
         public IEnumerable<IEthereumTest> Load(string testName, string? wildcard = null)
         {
             //in case user wants to give test file other than the ones in ethereum tests submodule 
-            if(File.Exists(testName))
+            if (File.Exists(testName))
             {
                 FileTestsSource fileTestsSource = new(testName, wildcard);
                 IEnumerable<GeneralStateTest> tests = fileTestsSource.LoadGeneralStateTests();
@@ -36,7 +39,7 @@ namespace Ethereum.Test.Base
                 }
                 catch (Exception e)
                 {
-                    generalStateTests.Add(new GeneralStateTest {Name = testFile, LoadFailure = $"Failed to load: {e}"});
+                    generalStateTests.Add(new GeneralStateTest { Name = testFile, LoadFailure = $"Failed to load: {e}" });
                 }
             }
 

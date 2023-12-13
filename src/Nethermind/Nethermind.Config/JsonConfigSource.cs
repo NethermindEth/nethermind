@@ -1,24 +1,11 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Text;
-using Newtonsoft.Json.Linq;
+using System.Text.Json;
 using System.Linq;
 
 namespace Nethermind.Config
@@ -34,15 +21,15 @@ namespace Nethermind.Config
         {
             try
             {
-                var json = (JObject)JToken.Parse(jsonContent);
-                foreach (var moduleEntry in json)
+                using var json = JsonDocument.Parse(jsonContent);
+                foreach (var moduleEntry in json.RootElement.EnumerateObject())
                 {
-                    LoadModule(moduleEntry.Key, (JObject)moduleEntry.Value);
+                    LoadModule(moduleEntry.Name, moduleEntry.Value);
                 }
             }
-            catch (Newtonsoft.Json.JsonReaderException e)
+            catch (JsonException e)
             {
-                throw new System.Configuration.ConfigurationErrorsException($"Config is not correctly formed JSon. See inner exception for details.", e);
+                throw new System.Configuration.ConfigurationErrorsException($"Config is not correctly formed JSON. See inner exception for details.", e);
             }
         }
 
@@ -57,12 +44,12 @@ namespace Nethermind.Config
                     directory = Path.IsPathRooted(configFilePath)
                         ? directory
                         : Path.Combine(AppDomain.CurrentDomain.BaseDirectory, directory);
-                    
+
                     missingConfigFileMessage.AppendLine().AppendLine($"Search directory: {directory}");
-                    
+
                     string[] configFiles = Directory.GetFiles(directory, "*.cfg");
                     if (configFiles.Length > 0)
-                    {   
+                    {
                         missingConfigFileMessage.AppendLine("Found the following config files:");
                         for (int i = 0; i < configFiles.Length; i++)
                         {
@@ -74,29 +61,43 @@ namespace Nethermind.Config
                 {
                     // do nothing - the lines above just give extra info and config is loaded at the beginning so unlikely we have any catastrophic errors here
                 }
-                finally
-                {
-                    throw new IOException(missingConfigFileMessage.ToString());
-                }
+
+                throw new IOException(missingConfigFileMessage.ToString());
             }
 
             ApplyJsonConfig(File.ReadAllText(configFilePath));
         }
 
-        private void LoadModule(string moduleName, JObject value)
+        private void LoadModule(string moduleName, JsonElement configItems)
         {
-            var configItems = value;
             var itemsDict = new Dictionary<string, string>(StringComparer.InvariantCultureIgnoreCase);
 
-            foreach (var configItem in configItems)
+            foreach (var configItem in configItems.EnumerateObject())
             {
-                if (!itemsDict.ContainsKey(configItem.Key))
+                var key = configItem.Name;
+                if (!itemsDict.ContainsKey(key))
                 {
-                    itemsDict[configItem.Key] = configItem.Value.ToString();
+                    var value = configItem.Value;
+                    if (value.ValueKind == JsonValueKind.Number)
+                    {
+                        itemsDict[key] = value.GetInt64().ToString();
+                    }
+                    else if (value.ValueKind == JsonValueKind.True)
+                    {
+                        itemsDict[key] = "true";
+                    }
+                    else if (value.ValueKind == JsonValueKind.False)
+                    {
+                        itemsDict[key] = "false";
+                    }
+                    else
+                    {
+                        itemsDict[key] = configItem.Value.ToString();
+                    }
                 }
                 else
                 {
-                    throw new Exception($"Duplicated config value: {configItem.Key}, module: {moduleName}");
+                    throw new System.Configuration.ConfigurationErrorsException($"Duplicated config value: {key}, module: {moduleName}");
                 }
             }
 
@@ -111,9 +112,9 @@ namespace Nethermind.Config
         {
             if (!configModule.EndsWith("Config"))
             {
-                configModule = configModule + "Config";
+                configModule += "Config";
             }
-            
+
             _values[configModule] = items;
             _parsedValues[configModule] = new Dictionary<string, object>(StringComparer.InvariantCultureIgnoreCase);
         }
@@ -133,7 +134,7 @@ namespace Nethermind.Config
                 {
                     ParseValue(type, category, name);
                 }
-                
+
                 return (true, _parsedValues[category][name]);
             }
 
@@ -142,7 +143,7 @@ namespace Nethermind.Config
 
         public (bool IsSet, string Value) GetRawValue(string category, string name)
         {
-            if(string.IsNullOrEmpty(category) || string.IsNullOrEmpty(name))
+            if (string.IsNullOrEmpty(category) || string.IsNullOrEmpty(name))
             {
                 return (false, null);
             }

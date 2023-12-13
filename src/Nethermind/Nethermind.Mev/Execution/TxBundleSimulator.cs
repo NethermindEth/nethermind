@@ -1,32 +1,14 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-// 
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections;
-using System.Collections.Generic;
-using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using Nethermind.Blockchain;
 using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
-using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
 using Nethermind.Mev.Data;
@@ -71,18 +53,19 @@ namespace Nethermind.Mev.Execution
             for (int i = 0; i < bundle.Transactions.Count; i++)
             {
                 BundleTransaction tx = bundle.Transactions[i];
-
+                if (tx.Hash is null)
+                    throw new ArgumentException("transaction hash was unexpectedly null while processing bundle!");
                 tx.SimulatedBundleGasUsed = (UInt256)tracer.GasUsed;
 
                 success &= tracer.TransactionResults[i];
-                
+
                 totalGasFeePayment += tracer.TxFees[i];
                 if (!_txPool.IsKnown(tx.Hash))
                 {
                     eligibleGasFeePayment += tracer.TxFees[i];
                 }
             }
-            
+
             for (int i = 0; i < bundle.Transactions.Count; i++)
             {
                 bundle.Transactions[i].SimulatedBundleFee = totalGasFeePayment + tracer.CoinbasePayments;
@@ -102,18 +85,18 @@ namespace Nethermind.Mev.Execution
 
         protected override BundleBlockTracer CreateBlockTracer(MevBundle mevBundle) => new(_gasLimit, Beneficiary, mevBundle.Transactions.Count);
 
-        public class BundleBlockTracer : IBlockTracer
+        public class BundleBlockTracer : BlockTracer
         {
             private readonly long _gasLimit;
             private readonly Address _beneficiary;
 
             private BundleTxTracer? _tracer;
             private Block? _block;
-            
+
             private UInt256? _beneficiaryBalanceBefore;
             private UInt256? _beneficiaryBalanceAfter;
-            private int _index = 0;
-            
+            private int _index;
+
             public long GasUsed { get; private set; }
 
             public BundleBlockTracer(long gasLimit, Address beneficiary, int txCount)
@@ -124,7 +107,7 @@ namespace Nethermind.Mev.Execution
                 TransactionResults = new BitArray(txCount);
             }
 
-            public bool IsTracingRewards => true;
+            public override bool IsTracingRewards => true;
             public UInt256 BundleFee { get; private set; }
 
             public UInt256[] TxFees { get; }
@@ -136,16 +119,16 @@ namespace Nethermind.Mev.Execution
                     UInt256 beneficiaryBalanceAfter = _beneficiaryBalanceAfter ?? UInt256.Zero;
                     UInt256 beneficiaryBalanceBefore = _beneficiaryBalanceBefore ?? UInt256.Zero;
                     return beneficiaryBalanceAfter > (beneficiaryBalanceBefore + BundleFee)
-                        ? beneficiaryBalanceAfter - beneficiaryBalanceBefore - BundleFee 
+                        ? beneficiaryBalanceAfter - beneficiaryBalanceBefore - BundleFee
                         : UInt256.Zero;
                 }
             }
 
             public UInt256 Reward { get; private set; }
-            
+
             public BitArray TransactionResults { get; }
 
-            public void ReportReward(Address author, string rewardType, UInt256 rewardValue)
+            public override void ReportReward(Address author, string rewardType, UInt256 rewardValue)
             {
                 if (author == _beneficiary)
                 {
@@ -153,24 +136,24 @@ namespace Nethermind.Mev.Execution
                 }
             }
 
-            public void StartNewBlockTrace(Block block)
+            public override void StartNewBlockTrace(Block block)
             {
                 _block = block;
             }
-            public ITxTracer StartNewTxTrace(Transaction? tx)
+            public override ITxTracer StartNewTxTrace(Transaction? tx)
             {
-                return tx is null 
-                    ? new BundleTxTracer(_beneficiary, null, -1) 
+                return tx is null
+                    ? new BundleTxTracer(_beneficiary, null, -1)
                     : _tracer = new BundleTxTracer(_beneficiary, tx, _index++);
             }
 
-            public void EndTxTrace()
+            public override void EndTxTrace()
             {
                 GasUsed += _tracer!.GasSpent;
-                
+
                 _beneficiaryBalanceBefore ??= (_tracer.BeneficiaryBalanceBefore ?? 0);
                 _beneficiaryBalanceAfter = _tracer.BeneficiaryBalanceAfter;
-                
+
                 Transaction? tx = _tracer.Transaction;
                 if (tx is not null)
                 {
@@ -180,10 +163,10 @@ namespace Nethermind.Mev.Execution
                         BundleFee += txFee;
                         TxFees[_tracer.Index] = txFee;
                     }
-                    
-                    TransactionResults[_tracer.Index] = 
-                        _tracer.Success || 
-                        (tx is BundleTransaction {CanRevert: true} && _tracer.Error == "revert");
+
+                    TransactionResults[_tracer.Index] =
+                        _tracer.Success ||
+                        (tx is BundleTransaction { CanRevert: true } && _tracer.Error == "revert");
                 }
 
                 if (GasUsed > _gasLimit)
@@ -191,13 +174,9 @@ namespace Nethermind.Mev.Execution
                     throw new OperationCanceledException("Block gas limit exceeded.");
                 }
             }
-            
-            public void EndBlockTrace()
-            {
-            }
         }
 
-        public class BundleTxTracer : ITxTracer
+        private class BundleTxTracer : TxTracer
         {
             public Transaction? Transaction { get; }
             public int Index { get; }
@@ -210,178 +189,34 @@ namespace Nethermind.Mev.Execution
                 _beneficiary = beneficiary;
             }
 
-            public bool IsTracingReceipt => true;
-            public bool IsTracingActions => false;
-            public bool IsTracingOpLevelStorage => false;
-            public bool IsTracingMemory => false;
-            public bool IsTracingInstructions => false;
-            public bool IsTracingRefunds => false;
-            public bool IsTracingCode => false;
-            public bool IsTracingStack => false;
-            public bool IsTracingState => true;
-            public bool IsTracingStorage => false;
-            public bool IsTracingBlockHash => false;
-            public bool IsTracingAccess => false;
-            public long GasSpent { get; set; }
+            public override bool IsTracingReceipt => true;
+            public override bool IsTracingState => true;
+            public long GasSpent { get; private set; }
             public UInt256? BeneficiaryBalanceBefore { get; private set; }
             public UInt256? BeneficiaryBalanceAfter { get; private set; }
-            
             public bool Success { get; private set; }
             public string? Error { get; private set; }
-            
-            public void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Keccak? stateRoot = null)
+
+            public override void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null)
             {
                 GasSpent = gasSpent;
                 Success = true;
             }
 
-            public void MarkAsFailed(Address recipient, long gasSpent, byte[] output, string error, Keccak? stateRoot = null)
+            public override void MarkAsFailed(Address recipient, long gasSpent, byte[] output, string error, Hash256? stateRoot = null)
             {
                 GasSpent = gasSpent;
                 Success = false;
                 Error = error;
             }
 
-            public void StartOperation(int depth, long gas, Instruction opcode, int pc, bool isPostMerge = false)
-            {
-                throw new NotSupportedException();
-            }
-
-            public void ReportOperationError(EvmExceptionType error)
-            {
-                throw new NotSupportedException();
-            }
-
-            public void ReportOperationRemainingGas(long gas)
-            {
-                throw new NotSupportedException();
-            }
-
-            public void SetOperationStack(List<string> stackTrace)
-            {
-                throw new NotSupportedException();
-            }
-
-            public void ReportStackPush(in ReadOnlySpan<byte> stackItem)
-            {
-                throw new NotSupportedException();
-            }
-
-            public void SetOperationMemory(List<string> memoryTrace)
-            {
-                throw new NotSupportedException();
-            }
-
-            public void SetOperationMemorySize(ulong newSize)
-            {
-                throw new NotSupportedException();
-            }
-
-            public void ReportMemoryChange(long offset, in ReadOnlySpan<byte> data)
-            {
-                throw new NotSupportedException();
-            }
-
-            public void ReportStorageChange(in ReadOnlySpan<byte> key, in ReadOnlySpan<byte> value)
-            {
-                throw new NotSupportedException();
-            }
-
-            public void SetOperationStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> newValue, ReadOnlySpan<byte> currentValue)
-            {
-                throw new NotSupportedException();
-            }
-
-            public void LoadOperationStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> value)
-            {
-                throw new NotSupportedException();
-            }
-
-            public void ReportSelfDestruct(Address address, UInt256 balance, Address refundAddress)
-            {
-                throw new NotSupportedException();
-            }
-
-            public void ReportBalanceChange(Address address, UInt256? before, UInt256? after)
+            public override void ReportBalanceChange(Address address, UInt256? before, UInt256? after)
             {
                 if (address == _beneficiary)
                 {
                     BeneficiaryBalanceBefore ??= before;
                     BeneficiaryBalanceAfter = after;
                 }
-            }
-
-            public void ReportCodeChange(Address address, byte[]? before, byte[]? after)
-            {
-                throw new NotSupportedException();
-            }
-
-            public void ReportNonceChange(Address address, UInt256? before, UInt256? after)
-            {
-            }
-
-            public void ReportAccountRead(Address address)
-            {
-            }
-
-            public void ReportStorageChange(StorageCell storageCell, byte[] before, byte[] after)
-            {
-                throw new NotSupportedException();
-            }
-
-            public void ReportStorageRead(StorageCell storageCell)
-            {
-                throw new NotImplementedException();
-            }
-
-            public void ReportAction(long gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false)
-            {
-                throw new NotSupportedException();
-            }
-
-            public void ReportActionEnd(long gas, ReadOnlyMemory<byte> output)
-            {
-                throw new NotSupportedException();
-            }
-
-            public void ReportActionError(EvmExceptionType exceptionType)
-            {
-                throw new NotSupportedException();
-            }
-
-            public void ReportActionEnd(long gas, Address deploymentAddress, ReadOnlyMemory<byte> deployedCode)
-            {
-                throw new NotSupportedException();
-            }
-
-            public void ReportBlockHash(Keccak blockHash)
-            {
-                throw new NotSupportedException();
-            }
-
-            public void ReportByteCode(byte[] byteCode)
-            {
-                throw new NotSupportedException();
-            }
-
-            public void ReportGasUpdateForVmTrace(long refund, long gasAvailable)
-            {
-                throw new NotSupportedException();
-            }
-
-            public void ReportRefund(long refund)
-            {
-                throw new NotSupportedException();
-            }
-
-            public void ReportExtraGasPressure(long extraGasPressure)
-            {
-                throw new NotImplementedException();
-            }
-
-            public void ReportAccess(IReadOnlySet<Address> accessedAddresses, IReadOnlySet<StorageCell> accessedStorageCells)
-            {
-                throw new NotImplementedException();
             }
         }
     }

@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Concurrent;
@@ -42,7 +29,7 @@ namespace Nethermind.Consensus.Clique;
 public class CliqueBlockProducer : ICliqueBlockProducer, IDisposable
 {
     private readonly IBlockTree _blockTree;
-    private readonly IStateProvider _stateProvider;
+    private readonly IWorldState _stateProvider;
     private readonly ITimestamper _timestamper;
     private readonly ILogger _logger;
     private readonly ICryptoRandom _cryptoRandom;
@@ -55,7 +42,7 @@ public class CliqueBlockProducer : ICliqueBlockProducer, IDisposable
     private readonly ISpecProvider _specProvider;
     private readonly ISnapshotManager _snapshotManager;
     private readonly ICliqueConfig _config;
-    
+
     private readonly ConcurrentDictionary<Address, bool> _proposals = new();
 
     private readonly CancellationTokenSource _cancellationTokenSource = new();
@@ -65,7 +52,7 @@ public class CliqueBlockProducer : ICliqueBlockProducer, IDisposable
     public CliqueBlockProducer(
         ITxSource txSource,
         IBlockchainProcessor blockchainProcessor,
-        IStateProvider stateProvider,
+        IWorldState stateProvider,
         IBlockTree blockTree,
         ITimestamper timestamper,
         ICryptoRandom cryptoRandom,
@@ -123,7 +110,7 @@ public class CliqueBlockProducer : ICliqueBlockProducer, IDisposable
         if (_logger.IsWarn) _logger.Warn($"Removed Clique vote for {signer}");
     }
 
-    public void ProduceOnTopOf(Keccak hash)
+    public void ProduceOnTopOf(Hash256 hash)
     {
         _signalsQueue.Add(_blockTree.FindBlock(hash, BlockTreeLookupOptions.None));
     }
@@ -132,14 +119,14 @@ public class CliqueBlockProducer : ICliqueBlockProducer, IDisposable
     {
         try
         {
-            if (_blockTree.Head == null)
+            if (_blockTree.Head is null)
             {
                 _timer.Enabled = true;
                 return;
             }
 
             Block? scheduledBlock = _scheduledBlock;
-            if (scheduledBlock == null)
+            if (scheduledBlock is null)
             {
                 if (_blockTree.Head.Timestamp + _config.BlockPeriod < _timestamper.UnixTime.Seconds)
                 {
@@ -204,26 +191,43 @@ public class CliqueBlockProducer : ICliqueBlockProducer, IDisposable
     public Task Start()
     {
         _blockTree.NewHeadBlock += BlockTreeOnNewHeadBlock;
-        _producerTask = Task.Factory.StartNew(
-            ConsumeSignal,
-            _cancellationTokenSource.Token,
-            TaskCreationOptions.LongRunning,
-            TaskScheduler.Default).ContinueWith(t =>
+        _producerTask = RunConsumeSignal();
+        return Task.CompletedTask;
+    }
+
+    private Task RunConsumeSignal()
+    {
+        TaskCompletionSource tcs = new();
+
+        Thread thread = new(() =>
         {
-            if (t.IsFaulted)
+            try
             {
-                if (_logger.IsError) _logger.Error("Clique block producer encountered an exception.", t.Exception);
+                ConsumeSignal();
+                if (_logger.IsDebug) _logger.Debug("Clique block producer complete.");
             }
-            else if (t.IsCanceled)
+            catch (OperationCanceledException)
             {
                 if (_logger.IsDebug) _logger.Debug("Clique block producer stopped.");
             }
-            else if (t.IsCompleted)
+            catch (Exception ex)
             {
-                if (_logger.IsDebug) _logger.Debug("Clique block producer complete.");
+                if (_logger.IsError) _logger.Error("Clique block producer encountered an exception.", ex);
             }
-        });
-        return Task.CompletedTask;
+            finally
+            {
+                tcs.SetResult();
+            }
+        })
+        {
+            IsBackground = true,
+            Name = "Clique block producer",
+            // Boost priority to make sure we process blocks as fast as possible
+            Priority = ThreadPriority.AboveNormal,
+        };
+        thread.Start();
+
+        return tcs.Task;
     }
 
     private void BlockTreeOnNewHeadBlock(object? sender, BlockEventArgs e)
@@ -273,7 +277,7 @@ public class CliqueBlockProducer : ICliqueBlockProducer, IDisposable
                 {
                     if (t.IsCompletedSuccessfully)
                     {
-                        if (t.Result != null)
+                        if (t.Result is not null)
                         {
                             if (_logger.IsInfo)
                                 _logger.Info($"Sealed block {t.Result.ToString(Block.Format.HashNumberDiffAndTx)}");
@@ -321,9 +325,9 @@ public class CliqueBlockProducer : ICliqueBlockProducer, IDisposable
 
     bool IBlockProducer.IsProducingBlocks(ulong? maxProducingInterval)
     {
-        if (_producerTask == null || _producerTask.IsCompleted)
+        if (_producerTask is null || _producerTask.IsCompleted)
             return false;
-        if (maxProducingInterval != null)
+        if (maxProducingInterval is not null)
             return _lastProducedBlock.AddSeconds(maxProducingInterval.Value) > DateTime.UtcNow;
         else
             return true;
@@ -331,12 +335,12 @@ public class CliqueBlockProducer : ICliqueBlockProducer, IDisposable
 
     public event EventHandler<BlockEventArgs>? BlockProduced;
 
-    private Keccak? _recentNotAllowedParent;
+    private Hash256? _recentNotAllowedParent;
 
     private Block? PrepareBlock(Block parentBlock)
     {
         BlockHeader parentHeader = parentBlock.Header;
-        if (parentHeader.Hash == null)
+        if (parentHeader.Hash is null)
         {
             if (_logger.IsError) _logger.Error(
                 $"Preparing new block on top of {parentHeader.ToString(BlockHeader.Format.Short)} - parent header hash is null");
@@ -358,10 +362,9 @@ public class CliqueBlockProducer : ICliqueBlockProducer, IDisposable
         if (_logger.IsInfo)
             _logger.Info($"Preparing new block on top of {parentBlock.ToString(Block.Format.Short)}");
 
-        UInt256 timestamp = _timestamper.UnixTime.Seconds;
-        IReleaseSpec spec = _specProvider.GetSpec(parentHeader.Number + 1);
+        ulong timestamp = _timestamper.UnixTime.Seconds;
 
-        BlockHeader header = new (
+        BlockHeader header = new(
             parentHeader.Hash,
             Keccak.OfAnEmptySequenceRlp,
             Address.Zero,
@@ -376,7 +379,7 @@ public class CliqueBlockProducer : ICliqueBlockProducer, IDisposable
         // Assemble the voting snapshot to check which votes make sense
         Snapshot snapshot = _snapshotManager.GetOrCreateSnapshot(number - 1, parentHeader.Hash);
         bool isEpochBlock = (ulong)number % 30000 == 0;
-        if (!isEpochBlock && _proposals.Any())
+        if (!isEpochBlock && !_proposals.IsEmpty)
         {
             // Gather all the proposals that make sense voting on
             List<Address> addresses = new();
@@ -399,8 +402,13 @@ public class CliqueBlockProducer : ICliqueBlockProducer, IDisposable
             }
         }
 
+        // Ensure the timestamp has the correct delay
+        header.Timestamp = Math.Max(parentBlock.Timestamp + _config.BlockPeriod, _timestamper.UnixTime.Seconds);
+
+        var spec = _specProvider.GetSpec(header);
+
+        header.BaseFeePerGas = BaseFeeCalculator.Calculate(parentHeader, spec);
         // Set the correct difficulty
-        header.BaseFeePerGas = BaseFeeCalculator.Calculate(parentHeader, _specProvider.GetSpec(header.Number));
         header.Difficulty = CalculateDifficulty(snapshot, _sealer.Address);
         header.TotalDifficulty = parentBlock.TotalDifficulty + header.Difficulty;
         if (_logger.IsDebug)
@@ -428,17 +436,17 @@ public class CliqueBlockProducer : ICliqueBlockProducer, IDisposable
 
         // Mix digest is reserved for now, set to empty
         header.MixHash = Keccak.Zero;
-        // Ensure the timestamp has the correct delay
-        header.Timestamp = parentBlock.Timestamp + _config.BlockPeriod;
-        if (header.Timestamp < _timestamper.UnixTime.Seconds)
-        {
-            header.Timestamp = new UInt256(_timestamper.UnixTime.Seconds);
-        }
+        header.WithdrawalsRoot = spec.WithdrawalsEnabled ? Keccak.EmptyTreeHash : null;
 
         _stateProvider.StateRoot = parentHeader.StateRoot!;
-        
+
         IEnumerable<Transaction> selectedTxs = _txSource.GetTransactions(parentBlock.Header, header.GasLimit);
-        Block block = new BlockToProduce(header, selectedTxs, Array.Empty<BlockHeader>());
+        Block block = new BlockToProduce(
+            header,
+            selectedTxs,
+            Array.Empty<BlockHeader>(),
+            spec.WithdrawalsEnabled ? Enumerable.Empty<Withdrawal>() : null
+            );
         header.TxRoot = new TxTrie(block.Transactions).RootHash;
         block.Header.Author = _sealer.Address;
         return block;

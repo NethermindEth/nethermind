@@ -1,18 +1,5 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Numerics;
@@ -25,7 +12,6 @@ using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
 using Nethermind.Int256;
 using Nethermind.Logging;
-using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Mining.Test
@@ -39,7 +25,7 @@ namespace Nethermind.Mining.Test
         {
             ulong validNonce = 971086423715460064;
 
-            BlockHeader header = new(Keccak.Zero, Keccak.OfAnEmptySequenceRlp, Address.Zero, 27, 1, 21000, 1, new byte[] {1, 2, 3});
+            BlockHeader header = new(Keccak.Zero, Keccak.OfAnEmptySequenceRlp, Address.Zero, 27, 1, 21000, 1, new byte[] { 1, 2, 3 });
             header.TxRoot = Keccak.Zero;
             header.ReceiptsRoot = Keccak.Zero;
             header.UnclesHash = Keccak.Zero;
@@ -51,8 +37,8 @@ namespace Nethermind.Mining.Test
             using CancellationTokenSource cancellationTokenSource = new(TimeSpan.FromSeconds(600));
             await ethashSealer.MineAsync(cancellationTokenSource.Token, block, validNonce - 3);
 
-            Assert.AreEqual(validNonce, block.Header.Nonce);
-            Assert.AreEqual(new Keccak("0x52b96cf62447129c6bd81f835721ee145b948ae3b05ef6eae454cbf69a5bc05d"), block.Header.MixHash);
+            Assert.That(block.Header.Nonce, Is.EqualTo(validNonce));
+            Assert.That(block.Header.MixHash, Is.EqualTo(new Hash256("0x52b96cf62447129c6bd81f835721ee145b948ae3b05ef6eae454cbf69a5bc05d")));
         }
 
         [Test]
@@ -60,7 +46,7 @@ namespace Nethermind.Mining.Test
         {
             ulong badNonce = 971086423715459953; // change if valid
 
-            BlockHeader header = new(Keccak.Zero, Keccak.OfAnEmptySequenceRlp, Address.Zero, (UInt256)BigInteger.Pow(2, 32), 1, 21000, 1, new byte[] {1, 2, 3});
+            BlockHeader header = new(Keccak.Zero, Keccak.OfAnEmptySequenceRlp, Address.Zero, (UInt256)BigInteger.Pow(2, 32), 1, 21000, 1, new byte[] { 1, 2, 3 });
             header.TxRoot = Keccak.Zero;
             header.ReceiptsRoot = Keccak.Zero;
             header.UnclesHash = Keccak.Zero;
@@ -85,7 +71,7 @@ namespace Nethermind.Mining.Test
 
             BlockHeader blockHeader = new(parentHeader.Hash, Keccak.OfAnEmptySequenceRlp, Address.Zero, 131136, 1, 21000, 1, new byte[] { });
             blockHeader.Nonce = 7217048144105167954;
-            blockHeader.MixHash = new Keccak("0x37d9fb46a55e9dbbffc428f3a1be6f191b3f8eaf52f2b6f53c4b9bae62937105");
+            blockHeader.MixHash = new Hash256("0x37d9fb46a55e9dbbffc428f3a1be6f191b3f8eaf52f2b6f53c4b9bae62937105");
             blockHeader.Hash = blockHeader.CalculateHash();
             Block block = new(blockHeader);
 

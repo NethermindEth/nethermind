@@ -1,19 +1,5 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-//
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-//
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-//
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-//
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using Nethermind.Blockchain;
@@ -23,8 +9,6 @@ using Nethermind.Consensus;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core.Specs;
 using Nethermind.Logging;
-using Nethermind.Merge.Plugin.Handlers;
-using Nethermind.Merge.Plugin.InvalidChainTracker;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.Blocks;
 using Nethermind.Synchronization.ParallelSync;
@@ -39,52 +23,59 @@ namespace Nethermind.Merge.Plugin.Synchronization
         private readonly IPoSSwitcher _poSSwitcher;
         private readonly IBeaconPivot _beaconPivot;
         private readonly ISpecProvider _specProvider;
-        private readonly IBlockTree _blockTree;
-        private readonly IReceiptStorage _receiptStorage;
         private readonly IBlockValidator _blockValidator;
         private readonly ISealValidator _sealValidator;
-        private readonly ISyncPeerPool _syncPeerPool;
         private readonly IBetterPeerStrategy _betterPeerStrategy;
         private readonly ILogManager _logManager;
-        private readonly ISyncReport _syncReport;
-        private readonly ISyncProgressResolver _syncProgressResolver;
-        private readonly IChainLevelHelper _chainLevelHelper;
+        private readonly IFullStateFinder _fullStateFinder;
+        private readonly ISyncConfig _syncConfig;
 
-        public MergeBlockDownloaderFactory(IPoSSwitcher poSSwitcher,
+        public MergeBlockDownloaderFactory(
+            IPoSSwitcher poSSwitcher,
             IBeaconPivot beaconPivot,
             ISpecProvider specProvider,
-            IBlockTree blockTree,
-            IBlockCacheService blockCacheService,
-            IReceiptStorage receiptStorage,
             IBlockValidator blockValidator,
             ISealValidator sealValidator,
-            ISyncPeerPool peerPool,
             ISyncConfig syncConfig,
             IBetterPeerStrategy betterPeerStrategy,
-            ISyncReport syncReport,
-            ISyncProgressResolver syncProgressResolver,
+            IFullStateFinder fullStateFinder,
             ILogManager logManager)
         {
             _poSSwitcher = poSSwitcher ?? throw new ArgumentNullException(nameof(poSSwitcher));
             _beaconPivot = beaconPivot ?? throw new ArgumentNullException(nameof(beaconPivot));
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
-            _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
-            _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
             _blockValidator = blockValidator ?? throw new ArgumentNullException(nameof(blockValidator));
             _sealValidator = sealValidator ?? throw new ArgumentNullException(nameof(sealValidator));
-            _syncPeerPool = peerPool ?? throw new ArgumentNullException(nameof(peerPool));
             _betterPeerStrategy = betterPeerStrategy ?? throw new ArgumentNullException(nameof(betterPeerStrategy));
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
-            _syncReport = syncReport ?? throw new ArgumentNullException(nameof(syncReport));
-            _chainLevelHelper = new ChainLevelHelper(_blockTree, _beaconPivot, syncConfig, _logManager);
-            _syncProgressResolver = syncProgressResolver ?? throw new ArgumentNullException(nameof(syncProgressResolver));;
+            _fullStateFinder = fullStateFinder ?? throw new ArgumentNullException(nameof(fullStateFinder)); ;
+            _syncConfig = syncConfig ?? throw new ArgumentNullException(nameof(syncConfig)); ;
         }
 
-        public BlockDownloader Create(ISyncFeed<BlocksRequest?> syncFeed)
+        public BlockDownloader Create(ISyncFeed<BlocksRequest?> syncFeed, IBlockTree blockTree, IReceiptStorage receiptStorage,
+            ISyncPeerPool syncPeerPool, ISyncReport syncReport)
         {
-            return new MergeBlockDownloader(_poSSwitcher, _beaconPivot, syncFeed, _syncPeerPool, _blockTree, _blockValidator,
-                _sealValidator, _syncReport, _receiptStorage, _specProvider, _betterPeerStrategy, _chainLevelHelper,
-                _syncProgressResolver, _logManager);
+            ChainLevelHelper chainLevelHelper = new ChainLevelHelper(blockTree, _beaconPivot, _syncConfig, _logManager);
+            return new MergeBlockDownloader(
+                _poSSwitcher,
+                _beaconPivot,
+                syncFeed,
+                syncPeerPool,
+                blockTree,
+                _blockValidator,
+                _sealValidator,
+                syncReport,
+                receiptStorage,
+                _specProvider,
+                _betterPeerStrategy,
+                chainLevelHelper,
+                _fullStateFinder,
+                _logManager);
+        }
+
+        public IPeerAllocationStrategyFactory<BlocksRequest> CreateAllocationStrategyFactory()
+        {
+            return new MergeBlocksSyncPeerAllocationStrategyFactory(_poSSwitcher, _beaconPivot, _logManager);
         }
     }
 }

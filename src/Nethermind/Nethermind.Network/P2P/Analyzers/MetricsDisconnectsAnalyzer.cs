@@ -1,20 +1,7 @@
-//  Copyright (c) 2018 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-// 
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Core.Collections;
 using Nethermind.Stats.Model;
 
 namespace Nethermind.Network.P2P.Analyzers
@@ -23,44 +10,48 @@ namespace Nethermind.Network.P2P.Analyzers
     {
         public void ReportDisconnect(DisconnectReason reason, DisconnectType type, string details)
         {
+            EthDisconnectReason ethReason = reason.ToEthDisconnectReason();
+
             if (type == DisconnectType.Remote)
             {
-                switch (reason)
+                Metrics.RemoteDisconnectsTotal.Increment(reason);
+
+                switch (ethReason)
                 {
-                    case DisconnectReason.BreachOfProtocol:
+                    case EthDisconnectReason.BreachOfProtocol:
                         Metrics.BreachOfProtocolDisconnects++;
                         break;
-                    case DisconnectReason.UselessPeer:
+                    case EthDisconnectReason.UselessPeer:
                         Metrics.UselessPeerDisconnects++;
                         break;
-                    case DisconnectReason.TooManyPeers:
+                    case EthDisconnectReason.TooManyPeers:
                         Metrics.TooManyPeersDisconnects++;
                         break;
-                    case DisconnectReason.AlreadyConnected:
+                    case EthDisconnectReason.AlreadyConnected:
                         Metrics.AlreadyConnectedDisconnects++;
                         break;
-                    case DisconnectReason.IncompatibleP2PVersion:
+                    case EthDisconnectReason.IncompatibleP2PVersion:
                         Metrics.IncompatibleP2PDisconnects++;
                         break;
-                    case DisconnectReason.NullNodeIdentityReceived:
+                    case EthDisconnectReason.NullNodeIdentityReceived:
                         Metrics.NullNodeIdentityDisconnects++;
                         break;
-                    case DisconnectReason.ClientQuitting:
+                    case EthDisconnectReason.ClientQuitting:
                         Metrics.ClientQuittingDisconnects++;
                         break;
-                    case DisconnectReason.UnexpectedIdentity:
+                    case EthDisconnectReason.UnexpectedIdentity:
                         Metrics.UnexpectedIdentityDisconnects++;
                         break;
-                    case DisconnectReason.ReceiveMessageTimeout:
+                    case EthDisconnectReason.ReceiveMessageTimeout:
                         Metrics.ReceiveMessageTimeoutDisconnects++;
                         break;
-                    case DisconnectReason.DisconnectRequested:
+                    case EthDisconnectReason.DisconnectRequested:
                         Metrics.DisconnectRequestedDisconnects++;
                         break;
-                    case DisconnectReason.IdentitySameAsSelf:
+                    case EthDisconnectReason.IdentitySameAsSelf:
                         Metrics.SameAsSelfDisconnects++;
                         break;
-                    case DisconnectReason.TcpSubSystemError:
+                    case EthDisconnectReason.TcpSubSystemError:
                         Metrics.TcpSubsystemErrorDisconnects++;
                         break;
                     default:
@@ -71,42 +62,44 @@ namespace Nethermind.Network.P2P.Analyzers
 
             if (type == DisconnectType.Local)
             {
-                switch (reason)
+                Metrics.LocalDisconnectsTotal.Increment(reason);
+
+                switch (ethReason)
                 {
-                    case DisconnectReason.BreachOfProtocol:
+                    case EthDisconnectReason.BreachOfProtocol:
                         Metrics.LocalBreachOfProtocolDisconnects++;
                         break;
-                    case DisconnectReason.UselessPeer:
+                    case EthDisconnectReason.UselessPeer:
                         Metrics.LocalUselessPeerDisconnects++;
                         break;
-                    case DisconnectReason.TooManyPeers:
+                    case EthDisconnectReason.TooManyPeers:
                         Metrics.LocalTooManyPeersDisconnects++;
                         break;
-                    case DisconnectReason.AlreadyConnected:
+                    case EthDisconnectReason.AlreadyConnected:
                         Metrics.LocalAlreadyConnectedDisconnects++;
                         break;
-                    case DisconnectReason.IncompatibleP2PVersion:
+                    case EthDisconnectReason.IncompatibleP2PVersion:
                         Metrics.LocalIncompatibleP2PDisconnects++;
                         break;
-                    case DisconnectReason.NullNodeIdentityReceived:
+                    case EthDisconnectReason.NullNodeIdentityReceived:
                         Metrics.LocalNullNodeIdentityDisconnects++;
                         break;
-                    case DisconnectReason.ClientQuitting:
+                    case EthDisconnectReason.ClientQuitting:
                         Metrics.LocalClientQuittingDisconnects++;
                         break;
-                    case DisconnectReason.UnexpectedIdentity:
+                    case EthDisconnectReason.UnexpectedIdentity:
                         Metrics.LocalUnexpectedIdentityDisconnects++;
                         break;
-                    case DisconnectReason.ReceiveMessageTimeout:
+                    case EthDisconnectReason.ReceiveMessageTimeout:
                         Metrics.LocalReceiveMessageTimeoutDisconnects++;
                         break;
-                    case DisconnectReason.DisconnectRequested:
+                    case EthDisconnectReason.DisconnectRequested:
                         Metrics.LocalDisconnectRequestedDisconnects++;
                         break;
-                    case DisconnectReason.IdentitySameAsSelf:
+                    case EthDisconnectReason.IdentitySameAsSelf:
                         Metrics.LocalSameAsSelfDisconnects++;
                         break;
-                    case DisconnectReason.TcpSubSystemError:
+                    case EthDisconnectReason.TcpSubSystemError:
                         Metrics.LocalTcpSubsystemErrorDisconnects++;
                         break;
                     default:

@@ -1,35 +1,71 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-// 
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
-using Newtonsoft.Json;
+
+#nullable enable
 
 namespace Nethermind.Serialization.Json
 {
-    public class StorageCellIndexConverter : JsonConverter<UInt256>
+    using System.Collections.Generic;
+    using System.Runtime.CompilerServices;
+    using System.Text.Json;
+    using System.Text.Json.Serialization;
+
+    public class StorageCellIndexConverter : JsonConverter<IEnumerable<UInt256>?>
     {
-        public override void WriteJson(JsonWriter writer, UInt256 value, JsonSerializer serializer)
+        private readonly UInt256Converter _converter = new();
+
+        public override IEnumerable<UInt256>? Read(
+            ref Utf8JsonReader reader,
+            Type typeToConvert,
+            JsonSerializerOptions options)
         {
-            writer.WriteValue(value.ToHexString(false));
+            if (reader.TokenType == JsonTokenType.Null)
+            {
+                return Array.Empty<UInt256>();
+            }
+
+            if (reader.TokenType != JsonTokenType.StartArray)
+            {
+                throw new JsonException();
+            }
+
+            reader.Read();
+            List<UInt256>? value = null;
+            while (reader.TokenType != JsonTokenType.EndArray)
+            {
+                value ??= new();
+                value.Add(_converter.Read(ref reader, typeToConvert, options));
+                reader.Read();
+            }
+
+            return value?.ToArray() ?? Array.Empty<UInt256>();
         }
 
-        public override UInt256 ReadJson(JsonReader reader, Type objectType, UInt256 existingValue, bool hasExistingValue, JsonSerializer serializer) => 
-            UInt256Converter.ReaderJson(reader);
+        [SkipLocalsInit]
+        public override void Write(
+            Utf8JsonWriter writer,
+            IEnumerable<UInt256>? values,
+            JsonSerializerOptions options)
+        {
+            if (values is null)
+            {
+                writer.WriteNullValue();
+                return;
+            }
+
+            writer.WriteStartArray();
+            Span<byte> bytes = stackalloc byte[32];
+
+            foreach (var value in values)
+            {
+                value.ToBigEndian(bytes);
+                ByteArrayConverter.Convert(writer, bytes, skipLeadingZeros: false);
+            }
+            writer.WriteEndArray();
+        }
     }
 }

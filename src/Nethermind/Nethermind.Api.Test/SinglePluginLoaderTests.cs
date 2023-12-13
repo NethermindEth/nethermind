@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
 using System.Linq;
 using FluentAssertions;
 using Nethermind.Api.Extensions;
@@ -13,7 +16,7 @@ namespace Nethermind.Api.Test
         {
             SinglePluginLoader<TestPlugin>.Instance.Load(LimboLogs.Instance);
         }
-        
+
         [Test]
         public void Returns_correct_plugin()
         {

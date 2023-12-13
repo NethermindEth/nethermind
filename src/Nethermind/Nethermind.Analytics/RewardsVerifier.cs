@@ -1,19 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-// 
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Threading;
 using System.Threading.Tasks;
@@ -21,7 +7,6 @@ using Nethermind.Blockchain.Visitors;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs;
@@ -30,14 +15,14 @@ namespace Nethermind.Analytics
 {
     public class RewardsVerifier : IBlockTreeVisitor
     {
-        private ILogger _logger;
+        private readonly ILogger _logger;
         public bool PreventsAcceptingNewBlocks => true;
         public long StartLevelInclusive => 0;
         public long EndLevelExclusive { get; }
 
-        private UInt256 _genesisAllocations = UInt256.Parse("72009990499480000000000000");
+        private readonly UInt256 _genesisAllocations = UInt256.Parse("72009990499480000000000000");
         private UInt256 _uncles;
-        
+
         public UInt256 BlockRewards { get; private set; }
 
         public RewardsVerifier(ILogManager logManager, long endLevelExclusive)
@@ -71,12 +56,12 @@ namespace Nethermind.Analytics
         public Task<LevelVisitOutcome> VisitLevelStart(ChainLevelInfo chainLevelInfo, long levelNumber, CancellationToken cancellationToken)
             => Task.FromResult(LevelVisitOutcome.None);
 
-        public Task<bool> VisitMissing(Keccak hash, CancellationToken cancellationToken)
+        public Task<bool> VisitMissing(Hash256 hash, CancellationToken cancellationToken)
             => Task.FromResult(true);
 
         public Task<HeaderVisitOutcome> VisitHeader(BlockHeader header, CancellationToken cancellationToken)
             => Task.FromResult(HeaderVisitOutcome.None);
-        
+
         public Task<LevelVisitOutcome> VisitLevelEnd(ChainLevelInfo chainLevelInfo, long levelNumber, CancellationToken cancellationToken)
             => Task.FromResult(LevelVisitOutcome.None);
     }

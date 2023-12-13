@@ -1,30 +1,21 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-// 
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Generic;
+using System.Collections.Frozen;
+
+using Nethermind.Core;
 using Nethermind.Core.Extensions;
 
 namespace Nethermind.Abi
 {
+    using Nethermind.Int256;
     public partial class AbiType
     {
-        private static readonly IDictionary<Type, AbiType> _typeMappings = new Dictionary<Type, AbiType>();
-        
+        private static readonly object _registerLock = new();
+        private static FrozenDictionary<Type, AbiType> _typeMappings = CreateTypeMappings();
+
         protected static AbiType GetForCSharpType(Type type)
         {
             if (_typeMappings.TryGetValue(type, out AbiType? abiTYpe))
@@ -37,7 +28,7 @@ namespace Nethermind.Abi
                 {
                     return DynamicBytes;
                 }
-                
+
                 Type elementType = type.GetElementType()!;
                 return new AbiArray(GetForCSharpType(elementType));
             }
@@ -58,19 +49,45 @@ namespace Nethermind.Abi
             }
         }
 
-        protected static void RegisterMapping<T>(AbiType abiType)
+        protected static bool IsMappingRegistered<T>()
         {
-            _typeMappings[typeof(T)] = abiType;
+            return _typeMappings.ContainsKey(typeof(T));
         }
 
-        static AbiType()
+        protected static void RegisterMapping<T>(AbiType abiType)
         {
-            AbiType type = AbiAddress.Instance;
-            type = AbiBool.Instance;
-            type = AbiDynamicBytes.Instance;
-            type = AbiInt.Int8;
-            type = AbiString.Instance;
-            type = AbiUInt.UInt8;
+            lock (_registerLock)
+            {
+                Dictionary<Type, AbiType> typeMappings = new(_typeMappings)
+                {
+                    [typeof(T)] = abiType
+                };
+
+                _typeMappings = typeMappings.ToFrozenDictionary();
+            }
+        }
+
+        private static FrozenDictionary<Type, AbiType> CreateTypeMappings()
+        {
+            Dictionary<Type, AbiType> typeMappings = new()
+            {
+                [typeof(bool)] = AbiBool.Instance,
+                [typeof(byte)] = AbiUInt.UInt8,
+                [typeof(sbyte)] = AbiInt.Int8,
+                [typeof(ushort)] = AbiUInt.UInt16,
+                [typeof(short)] = AbiInt.Int16,
+                [typeof(uint)] = AbiUInt.UInt32,
+                [typeof(int)] = AbiInt.Int32,
+                [typeof(ulong)] = AbiUInt.UInt64,
+                [typeof(long)] = AbiInt.Int64,
+                [typeof(UInt256)] = AbiUInt.UInt256,
+                [typeof(Int256)] = AbiInt.Int256,
+                [typeof(Address)] = AbiAddress.Instance,
+                [typeof(string)] = AbiString.Instance,
+                [typeof(byte[])] = AbiDynamicBytes.Instance
+            };
+
+            return typeMappings.ToFrozenDictionary();
         }
     }
 }

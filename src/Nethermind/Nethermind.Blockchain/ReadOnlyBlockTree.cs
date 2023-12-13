@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-//
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-//
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-//
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Generic;
@@ -38,6 +25,7 @@ namespace Nethermind.Blockchain
             _wrapped = wrapped;
         }
 
+        public ulong NetworkId => _wrapped.NetworkId;
         public ulong ChainId => _wrapped.ChainId;
         public BlockHeader Genesis => _wrapped.Genesis;
         public BlockHeader BestSuggestedHeader => _wrapped.BestSuggestedHeader;
@@ -46,8 +34,8 @@ namespace Nethermind.Blockchain
 
         public long? LowestInsertedBodyNumber
         {
-          get => _wrapped.LowestInsertedBodyNumber;
-          set => _wrapped.LowestInsertedBodyNumber = value;
+            get => _wrapped.LowestInsertedBodyNumber;
+            set => _wrapped.LowestInsertedBodyNumber = value;
         }
 
         public long? BestPersistedState
@@ -67,9 +55,8 @@ namespace Nethermind.Blockchain
         public long BestKnownNumber => _wrapped.BestKnownNumber;
         public long BestKnownBeaconNumber => _wrapped.BestKnownBeaconNumber;
         public Block Head => _wrapped.Head;
-        public void MarkChainAsProcessed(IReadOnlyList<Block> blocks) =>  throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} does not expect {nameof(MarkChainAsProcessed)} calls");
-        public UInt256? BackFillTotalDifficulty(long startNumber, long endNumber, long batchSize, UInt256? startingTotalDifficulty = null) => throw new InvalidOperationException();
-        public (BlockInfo Info, ChainLevelInfo Level) GetInfo(long number, Keccak blockHash) => _wrapped.GetInfo(number, blockHash);
+        public void MarkChainAsProcessed(IReadOnlyList<Block> blocks) => throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} does not expect {nameof(MarkChainAsProcessed)} calls");
+        public (BlockInfo Info, ChainLevelInfo Level) GetInfo(long number, Hash256 blockHash) => _wrapped.GetInfo(number, blockHash);
         public UInt256? UpdateTotalDifficulty(Block block, UInt256 totalDifficulty) => throw new InvalidOperationException();
         public bool CanAcceptNewBlocks { get; } = false;
 
@@ -81,12 +68,12 @@ namespace Nethermind.Blockchain
         public ChainLevelInfo FindLevel(long number) => _wrapped.FindLevel(number);
         public BlockInfo FindCanonicalBlockInfo(long blockNumber) => _wrapped.FindCanonicalBlockInfo(blockNumber);
 
-        public AddBlockResult Insert(Block block, BlockTreeInsertBlockOptions insertBlockOptions = BlockTreeInsertBlockOptions.None, BlockTreeInsertHeaderOptions insertHeaderOptions = BlockTreeInsertHeaderOptions.None) =>
+        public AddBlockResult Insert(Block block, BlockTreeInsertBlockOptions insertBlockOptions = BlockTreeInsertBlockOptions.None, BlockTreeInsertHeaderOptions insertHeaderOptions = BlockTreeInsertHeaderOptions.None, WriteFlags blockWriteFlags = WriteFlags.None) =>
             throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} does not expect {nameof(Insert)} calls");
 
         public void Insert(IEnumerable<Block> blocks) => throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} does not expect {nameof(Insert)} calls");
 
-        public void UpdateHeadBlock(Keccak blockHash)
+        public void UpdateHeadBlock(Hash256 blockHash)
         {
             // hacky while there is not special tree for RPC
             _wrapped.UpdateHeadBlock(blockHash);
@@ -100,24 +87,24 @@ namespace Nethermind.Blockchain
 
         public AddBlockResult SuggestHeader(BlockHeader header) => throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} does not expect {nameof(SuggestHeader)} calls");
 
-        public Keccak HeadHash => _wrapped.HeadHash;
-        public Keccak GenesisHash => _wrapped.GenesisHash;
-        public Keccak PendingHash => _wrapped.PendingHash;
-        public Keccak FinalizedHash => _wrapped.FinalizedHash;
-        public Keccak SafeHash => _wrapped.SafeHash;
+        public Hash256 HeadHash => _wrapped.HeadHash;
+        public Hash256 GenesisHash => _wrapped.GenesisHash;
+        public Hash256 PendingHash => _wrapped.PendingHash;
+        public Hash256 FinalizedHash => _wrapped.FinalizedHash;
+        public Hash256 SafeHash => _wrapped.SafeHash;
 
-        public Block FindBlock(Keccak blockHash, BlockTreeLookupOptions options) => _wrapped.FindBlock(blockHash, options);
+        public Block FindBlock(Hash256 blockHash, BlockTreeLookupOptions options, long? blockNumber = null) => _wrapped.FindBlock(blockHash, options, blockNumber);
 
-        public BlockHeader FindHeader(Keccak blockHash, BlockTreeLookupOptions options) => _wrapped.FindHeader(blockHash, options);
+        public BlockHeader FindHeader(Hash256 blockHash, BlockTreeLookupOptions options, long? blockNumber = null) => _wrapped.FindHeader(blockHash, options, blockNumber: blockNumber);
 
         public BlockHeader FindHeader(long blockNumber, BlockTreeLookupOptions options) => _wrapped.FindHeader(blockNumber, options);
-        public Keccak FindBlockHash(long blockNumber) => _wrapped.FindBlockHash(blockNumber);
+        public Hash256 FindBlockHash(long blockNumber) => _wrapped.FindBlockHash(blockNumber);
 
         public bool IsMainChain(BlockHeader blockHeader) => _wrapped.IsMainChain(blockHeader);
 
-        public Keccak FindHash(long blockNumber) => _wrapped.FindHash(blockNumber);
+        public Hash256 FindHash(long blockNumber) => _wrapped.FindHash(blockNumber);
 
-        public BlockHeader[] FindHeaders(Keccak hash, int numberOfBlocks, int skip, bool reverse) => _wrapped.FindHeaders(hash, numberOfBlocks, skip, reverse);
+        public BlockHeader[] FindHeaders(Hash256 hash, int numberOfBlocks, int skip, bool reverse) => _wrapped.FindHeaders(hash, numberOfBlocks, skip, reverse);
 
         public BlockHeader FindLowestCommonAncestor(BlockHeader firstDescendant, BlockHeader secondDescendant, long maxSearchDepth) => _wrapped.FindLowestCommonAncestor(firstDescendant, secondDescendant, maxSearchDepth);
 
@@ -125,17 +112,15 @@ namespace Nethermind.Blockchain
 
         public void DeleteInvalidBlock(Block invalidBlock) => throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} does not expect {nameof(DeleteInvalidBlock)} calls");
 
-        public bool IsMainChain(Keccak blockHash) => _wrapped.IsMainChain(blockHash);
+        public bool IsMainChain(Hash256 blockHash) => _wrapped.IsMainChain(blockHash);
 
         public BlockHeader FindBestSuggestedHeader() => _wrapped.FindBestSuggestedHeader();
 
-        public bool IsKnownBlock(long number, Keccak blockHash) => _wrapped.IsKnownBlock(number, blockHash);
+        public bool IsKnownBlock(long number, Hash256 blockHash) => _wrapped.IsKnownBlock(number, blockHash);
 
-        public bool IsKnownBeaconBlock(long number, Keccak blockHash) => _wrapped.IsKnownBeaconBlock(number, blockHash);
+        public bool IsKnownBeaconBlock(long number, Hash256 blockHash) => _wrapped.IsKnownBeaconBlock(number, blockHash);
 
-        public bool WasProcessed(long number, Keccak blockHash) => _wrapped.WasProcessed(number, blockHash);
-
-        public void LoadLowestInsertedBeaconHeader() =>_wrapped.LoadLowestInsertedBeaconHeader();
+        public bool WasProcessed(long number, Hash256 blockHash) => _wrapped.WasProcessed(number, blockHash);
 
         public event EventHandler<BlockEventArgs> NewBestSuggestedBlock
         {
@@ -161,10 +146,16 @@ namespace Nethermind.Blockchain
             remove { }
         }
 
-        public int DeleteChainSlice(in long startNumber, long? endNumber = null)
+        public event EventHandler<OnUpdateMainChainArgs>? OnUpdateMainChain
+        {
+            add { }
+            remove { }
+        }
+
+        public int DeleteChainSlice(in long startNumber, long? endNumber = null, bool force = false)
         {
             var bestKnownNumber = BestKnownNumber;
-            if (endNumber == null || endNumber == bestKnownNumber)
+            if (endNumber is null || endNumber == bestKnownNumber)
             {
                 if (Head?.Number > 0)
                 {
@@ -173,7 +164,7 @@ namespace Nethermind.Blockchain
                         const long searchLimit = 2;
                         long endSearch = Math.Min(bestKnownNumber, startNumber + searchLimit - 1);
 
-                        IEnumerable<BlockHeader> GetPotentiallyCorruptedBlocks(long start)
+                        IEnumerable<BlockHeader?> GetPotentiallyCorruptedBlocks(long start)
                         {
                             for (long i = start; i <= endSearch; i++)
                             {
@@ -181,9 +172,9 @@ namespace Nethermind.Blockchain
                             }
                         }
 
-                        if (GetPotentiallyCorruptedBlocks(startNumber).Any(b => b == null))
+                        if (force || GetPotentiallyCorruptedBlocks(startNumber).Any(b => b is null))
                         {
-                            return _wrapped.DeleteChainSlice(startNumber);
+                            return _wrapped.DeleteChainSlice(startNumber, endNumber, force);
                         }
 
                         throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} cannot {nameof(DeleteChainSlice)} if searched blocks [{startNumber}, {endSearch}] are not corrupted.");
@@ -201,9 +192,10 @@ namespace Nethermind.Blockchain
 
         public bool IsBetterThanHead(BlockHeader? header) => _wrapped.IsBetterThanHead(header);
         public void UpdateBeaconMainChain(BlockInfo[]? blockInfos, long clearBeaconMainChainStartPoint) => throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} does not expect {nameof(UpdateBeaconMainChain)} calls");
+        public void RecalculateTreeLevels() => throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} does not expect {nameof(RecalculateTreeLevels)} calls");
 
         public void UpdateMainChain(IReadOnlyList<Block> blocks, bool wereProcessed, bool forceHeadBlock = false) => throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} does not expect {nameof(UpdateMainChain)} calls");
 
-        public void ForkChoiceUpdated(Keccak? finalizedBlockHash, Keccak? safeBlockBlockHash) =>  throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} does not expect {nameof(ForkChoiceUpdated)} calls");
+        public void ForkChoiceUpdated(Hash256? finalizedBlockHash, Hash256? safeBlockBlockHash) => throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} does not expect {nameof(ForkChoiceUpdated)} calls");
     }
 }

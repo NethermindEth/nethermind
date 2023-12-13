@@ -1,104 +1,147 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Generic;
-using System.Numerics;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Int256;
 
-namespace Nethermind.Evm
+namespace Nethermind.Evm;
+
+public class TransactionSubstate
 {
-    public class TransactionSubstate
+    private static readonly List<Address> _emptyDestroyList = new(0);
+    private static readonly List<LogEntry> _emptyLogs = new(0);
+
+    private const string SomeError = "error";
+    private const string Revert = "revert";
+
+    private const int RevertPrefix = 4;
+    private const int WordSize = EvmPooledMemory.WordSize;
+
+    private const string RevertedErrorMessagePrefix = "Reverted ";
+    private readonly byte[] ErrorFunctionSelector = Keccak.Compute("Error(string)").BytesToArray()[..RevertPrefix];
+    private readonly byte[] PanicFunctionSelector = Keccak.Compute("Panic(uint256)").BytesToArray()[..RevertPrefix];
+
+    private readonly IDictionary<UInt256, string> PanicReasons = new Dictionary<UInt256, string>
     {
-        private static List<Address> _emptyDestroyList = new(0);
-        private static List<LogEntry> _emptyLogs = new(0);
+        { 0x00, "generic panic" },
+        { 0x01, "assert(false)" },
+        { 0x11, "arithmetic underflow or overflow" },
+        { 0x12, "division or modulo by zero" },
+        { 0x21, "enum overflow" },
+        { 0x22, "invalid encoded storage byte array accessed" },
+        { 0x31, "out-of-bounds array access; popping on an empty array" },
+        { 0x32, "out-of-bounds access of an array or bytesN" },
+        { 0x41, "out of memory" },
+        { 0x51, "uninitialized function" },
+    };
 
-        private const string SomeError = "error";
-        private const string Revert = "revert";
-        
-        public TransactionSubstate(EvmExceptionType exceptionType, bool isTracerConnected)
+    public bool IsError => Error is not null && !ShouldRevert;
+    public string? Error { get; }
+    public ReadOnlyMemory<byte> Output { get; }
+    public bool ShouldRevert { get; }
+    public long Refund { get; }
+    public IReadOnlyCollection<LogEntry> Logs { get; }
+    public IReadOnlyCollection<Address> DestroyList { get; }
+
+    public TransactionSubstate(EvmExceptionType exceptionType, bool isTracerConnected)
+    {
+        Error = isTracerConnected ? exceptionType.ToString() : SomeError;
+        Refund = 0;
+        DestroyList = _emptyDestroyList;
+        Logs = _emptyLogs;
+        ShouldRevert = false;
+    }
+
+    public TransactionSubstate(
+        ReadOnlyMemory<byte> output,
+        long refund,
+        IReadOnlyCollection<Address> destroyList,
+        IReadOnlyCollection<LogEntry> logs,
+        bool shouldRevert,
+        bool isTracerConnected)
+    {
+        Output = output;
+        Refund = refund;
+        DestroyList = destroyList;
+        Logs = logs;
+        ShouldRevert = shouldRevert;
+
+        if (!ShouldRevert)
         {
-            Error = isTracerConnected ? exceptionType.ToString() : SomeError;
-            Refund = 0;
-            DestroyList = _emptyDestroyList;
-            Logs = _emptyLogs;
-            ShouldRevert = false;
+            Error = null;
+            return;
         }
 
-        public TransactionSubstate(
-            ReadOnlyMemory<byte> output,
-            long refund,
-            IReadOnlyCollection<Address> destroyList,
-            IReadOnlyCollection<LogEntry> logs,
-            bool shouldRevert,
-            bool isTracerConnected)
+        Error = Revert;
+
+        if (!isTracerConnected)
+            return;
+
+        if (Output.Length <= 0)
+            return;
+
+        ReadOnlySpan<byte> span = Output.Span;
+        Error = string.Concat(
+            RevertedErrorMessagePrefix,
+            TryGetErrorMessage(span) ?? DefaultErrorMessage(span)
+        );
+    }
+
+    private string DefaultErrorMessage(ReadOnlySpan<byte> span) => span.ToHexString(true);
+
+    private string? TryGetErrorMessage(ReadOnlySpan<byte> span)
+    {
+        if (span.Length < RevertPrefix) { return null; }
+        ReadOnlySpan<byte> prefix = span.TakeAndMove(RevertPrefix);
+
+        if (prefix.SequenceEqual(PanicFunctionSelector))
         {
-            Output = output;
-            Refund = refund;
-            DestroyList = destroyList;
-            Logs = logs;
-            ShouldRevert = shouldRevert;
-            if (ShouldRevert)
+            if (span.Length < WordSize) { return null; }
+
+            UInt256 panicCode = new(span.TakeAndMove(WordSize), isBigEndian: true);
+            if (!PanicReasons.TryGetValue(panicCode, out string panicReason))
             {
-                // TODO: is this invoked even if there is no tracer? why would we construct error messages then?
-                Error = Revert;
-                if (isTracerConnected)
-                {
-                    if (Output.Length > 0)
-                    {
-                        try
-                        {
-                            BigInteger start = Output.Span.Slice(4, 32).ToUnsignedBigInteger();
-                            BigInteger length = Output.Slice((int) start + 4, 32).Span.ToUnsignedBigInteger();
-                            Error = string.Concat("Reverted ",
-                                Output.Slice((int)start + 32 + 4, (int)length).ToArray().ToHexString(true));
-                        }
-                        catch (Exception)
-                        {
-                            try
-                            {
-                                Error = string.Concat("Reverted ", Output.ToArray().ToHexString(true));
-                            }
-                            catch
-                            {
-                                // ignore
-                            }
-                        }
-                    }
-                }
+                return $"unknown panic code ({panicCode.ToHexString(skipLeadingZeros: true)})";
             }
-            else
-            {
-                Error = null;
-            }
+
+            return panicReason;
         }
 
-        public bool IsError => Error != null && !ShouldRevert;
+        if (prefix.SequenceEqual(ErrorFunctionSelector))
+        {
+            if (span.Length < WordSize * 2) { return null; }
 
-        public string Error { get; }
+            int start = (int)new UInt256(span.TakeAndMove(WordSize), isBigEndian: true);
+            if (start != WordSize) { return null; }
 
-        public ReadOnlyMemory<byte> Output { get; }
+            int length = (int)new UInt256(span.TakeAndMove(WordSize), isBigEndian: true);
+            if (length > span.Length) { return null; }
 
-        public bool ShouldRevert { get; }
+            ReadOnlySpan<byte> binaryMessage = span.TakeAndMove(length);
+            string message = System.Text.Encoding.UTF8.GetString(binaryMessage);
 
-        public long Refund { get; }
+            return message;
+        }
 
-        public IReadOnlyCollection<LogEntry> Logs { get; }
+        try
+        {
+            if (span.Length < WordSize * 2) { return null; }
 
-        public IReadOnlyCollection<Address> DestroyList { get; }
+            int start = (int)new UInt256(span.Slice(0, WordSize), isBigEndian: true);
+            if (checked(start + WordSize) > span.Length) { return null; }
+
+            int length = (int)new UInt256(span.Slice(start, WordSize), isBigEndian: true);
+            if (checked(start + WordSize + length) != span.Length) { return null; }
+
+            return span.Slice(start + WordSize, length).ToHexString(true);
+        }
+        catch (OverflowException)
+        {
+            return null;
+        }
     }
 }

@@ -1,46 +1,59 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+
 using Nethermind.Core.Extensions;
-using Newtonsoft.Json;
 
 namespace Nethermind.Serialization.Json
 {
+    using System.Buffers;
+    using System.Runtime.CompilerServices;
+    using System.Text.Json;
+    using System.Text.Json.Serialization;
+
     public class Bytes32Converter : JsonConverter<byte[]>
     {
-        public override void WriteJson(JsonWriter writer, byte[] value, JsonSerializer serializer)
+        [SkipLocalsInit]
+        public override byte[] Read(
+            ref Utf8JsonReader reader,
+            Type typeToConvert,
+            JsonSerializerOptions options)
         {
-            writer.WriteValue(string.Concat("0x", value.ToHexString(false).PadLeft(64, '0')));
+            ReadOnlySpan<byte> hex = reader.HasValueSequence ? reader.ValueSequence.ToArray() : reader.ValueSpan;
+            if (hex.StartsWith("0x"u8))
+            {
+                hex = hex[2..];
+            }
+
+            if (hex.Length > 64)
+            {
+                throw new JsonException();
+            }
+
+            if (hex.Length < 64)
+            {
+                Span<byte> hex32 = stackalloc byte[64];
+                hex32.Fill((byte)'0');
+                hex.CopyTo(hex32[(64 - hex.Length)..]);
+                return Bytes.FromUtf8HexString(hex32);
+            }
+
+            return Bytes.FromUtf8HexString(hex);
         }
 
-        public override byte[] ReadJson(
-            JsonReader reader,
-            Type objectType,
-            byte[] existingValue,
-            bool hasExistingValue,
-            JsonSerializer serializer)
+        public override void Write(
+            Utf8JsonWriter writer,
+            byte[] bytes,
+            JsonSerializerOptions options)
         {
-            string s = (string) reader.Value;
-            if (s is null)
+            Span<byte> data = (bytes is null || bytes.Length < 32) ? stackalloc byte[32] : bytes;
+            if (bytes is not null && bytes.Length < 32)
             {
-                return null;
+                bytes.AsSpan().CopyTo(data[(32 - bytes.Length)..]);
             }
-            
-            return Bytes.FromHexString(s);
+
+            ByteArrayConverter.Convert(writer, data, skipLeadingZeros: false);
         }
     }
 }

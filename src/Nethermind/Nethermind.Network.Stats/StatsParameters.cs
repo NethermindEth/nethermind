@@ -1,19 +1,7 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using Nethermind.Stats.Model;
 
@@ -23,36 +11,65 @@ namespace Nethermind.Stats
     {
         private StatsParameters()
         {
-            FailedConnectionDelays = new[] {100, 200, 500, 1000, 2000, 5000, 10000, 15000, 30000, 60000, 60000 * 5};
-            DisconnectDelays = new[] {100, 200, 500, 1000, 2000, 5000, 10000, 15000, 30000, 60000, 60000 * 5};
+            FailedConnectionDelays = new[] { 100, 200, 500, 1000, 2000, 5000, 10000, 15000, 30000, 60000, 60000 * 5 };
+            DisconnectDelays = new[] { 100, 200, 500, 1000, 2000, 5000, 10000, 15000, 30000, 60000, 60000 * 5 };
         }
 
         public static StatsParameters Instance { get; } = new StatsParameters();
 
-        public HashSet<DisconnectReason> PenalizedReputationLocalDisconnectReasons { get; set; } =
-            new HashSet<DisconnectReason>
-            {
-                DisconnectReason.UnexpectedIdentity,
-                DisconnectReason.IncompatibleP2PVersion,
-                DisconnectReason.UselessPeer,
-                DisconnectReason.BreachOfProtocol
-            };
-
-        public HashSet<DisconnectReason> PenalizedReputationRemoteDisconnectReasons { get; set; } =
-            new HashSet<DisconnectReason>
-            {
-                DisconnectReason.UnexpectedIdentity,
-                DisconnectReason.IncompatibleP2PVersion,
-                DisconnectReason.UselessPeer,
-                DisconnectReason.BreachOfProtocol,
-                DisconnectReason.TooManyPeers,
-                DisconnectReason.AlreadyConnected
-            };
-
-        public long PenalizedReputationTooManyPeersTimeout { get; } = 10 * 1000;
-
         public int[] FailedConnectionDelays { get; }
 
-        public int[] DisconnectDelays { get; }
+        public int[] DisconnectDelays { get; set; }
+
+        public Dictionary<DisconnectReason, (TimeSpan ReconnectDelay, long ReputationScore)> LocalDisconnectParams { get; } = new()
+        {
+            // Its actually protocol init timeout, when status message is not received in time.
+            { DisconnectReason.ReceiveMessageTimeout, (TimeSpan.FromMinutes(5), 0)},
+
+            // Failed could be just timeout, or not synced.
+            { DisconnectReason.PeerRefreshFailed, (TimeSpan.FromMinutes(5), -500)},
+
+            { DisconnectReason.Other, (TimeSpan.Zero, -200)},
+
+            // These are like, very bad
+            { DisconnectReason.UnexpectedIdentity, (TimeSpan.FromMinutes(15), -10000) },
+            { DisconnectReason.IncompatibleP2PVersion, (TimeSpan.FromMinutes(15), -10000) },
+            { DisconnectReason.UselessPeer, (TimeSpan.FromMinutes(15), -10000) },
+            { DisconnectReason.BreachOfProtocol, (TimeSpan.FromMinutes(15), -10000) }
+        };
+
+        public Dictionary<DisconnectReason, (TimeSpan ReconnectDelay, long ReputationScore)> RemoteDisconnectParams { get; } = new()
+        {
+            { DisconnectReason.ClientQuitting, (TimeSpan.FromMinutes(5), -1000) },
+            { DisconnectReason.TooManyPeers, (TimeSpan.FromMinutes(1), -300) },
+
+            { DisconnectReason.Other, (TimeSpan.Zero, -200)},
+
+            // These are like, very bad
+            { DisconnectReason.UnexpectedIdentity, (TimeSpan.FromMinutes(15), -10000) },
+            { DisconnectReason.IncompatibleP2PVersion, (TimeSpan.FromMinutes(15), -10000) },
+            { DisconnectReason.UselessPeer, (TimeSpan.FromMinutes(15), -10000) },
+            { DisconnectReason.BreachOfProtocol, (TimeSpan.FromMinutes(15), -10000) },
+            { DisconnectReason.AlreadyConnected, (TimeSpan.Zero, -10000) },
+        };
+
+        public Dictionary<NodeStatsEventType, (TimeSpan ReconnectDelay, long ReputationScore)> EventParams { get; } = new()
+        {
+            // Geth have 30 second reconnect delay. So its useless to try again before that.
+            { NodeStatsEventType.Connecting, (TimeSpan.FromSeconds(30), 0) },
+
+            { NodeStatsEventType.ConnectionFailedTargetUnreachable, (TimeSpan.FromMinutes(15), 0) },
+            { NodeStatsEventType.ConnectionFailed, (TimeSpan.FromMinutes(5), -1000) },
+            { NodeStatsEventType.SyncInitFailed, (TimeSpan.Zero, -300) },
+            { NodeStatsEventType.SyncFailed, (TimeSpan.Zero, -500) },
+
+            // These are positive
+            { NodeStatsEventType.HandshakeCompleted, (TimeSpan.Zero, 10) },
+            { NodeStatsEventType.P2PInitialized, (TimeSpan.Zero, 10) },
+            { NodeStatsEventType.Eth62Initialized, (TimeSpan.Zero, 20) },
+            { NodeStatsEventType.SyncStarted, (TimeSpan.Zero, 1000) },
+            { NodeStatsEventType.DiscoveryPingIn, (TimeSpan.Zero, 500) },
+            { NodeStatsEventType.DiscoveryNeighboursIn, (TimeSpan.Zero, 500) },
+        };
     }
 }

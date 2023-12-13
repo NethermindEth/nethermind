@@ -1,26 +1,10 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.IO;
 using System.Linq;
-using System.Timers;
-using Nethermind.Core.Caching;
 using Nethermind.Core.Timers;
 using Nethermind.Logging;
 using Nethermind.Stats.Model;
@@ -31,29 +15,12 @@ namespace Nethermind.Stats
     {
         private class NodeComparer : IEqualityComparer<Node>
         {
-            public bool Equals(Node x, Node y)
-            {
-                if (ReferenceEquals(x, null))
-                {
-                    return ReferenceEquals(y, null);
-                }
-
-                if (ReferenceEquals(y, null))
-                {
-                    return false;
-                }
-
-                return x.Id == y.Id;
-            }
-
-            public int GetHashCode(Node obj)
-            {
-                return obj?.GetHashCode() ?? 0;
-            }
+            public bool Equals(Node x, Node y) => ReferenceEquals(x, y) || x.Id == y.Id;
+            public int GetHashCode(Node obj) => obj.GetHashCode();
         }
-        
+
         private readonly ILogger _logger;
-        private readonly ConcurrentDictionary<Node, INodeStats> _nodeStats = new ConcurrentDictionary<Node, INodeStats>(new NodeComparer());
+        private readonly ConcurrentDictionary<Node, INodeStats> _nodeStats = new(new NodeComparer());
         private readonly ITimer _cleanupTimer;
         private readonly int _maxCount;
 
@@ -69,12 +36,15 @@ namespace Nethermind.Stats
 
         private void CleanupTimerOnElapsed(object sender, EventArgs e)
         {
+            _cleanupTimer.Stop();
+
             int deleteCount = _nodeStats.Count - _maxCount;
 
             if (deleteCount > 0)
             {
+                DateTime utcNow = DateTime.UtcNow;
                 IEnumerable<Node> toDelete = _nodeStats
-                    .OrderBy(n => n.Value.CurrentNodeReputation)
+                    .OrderBy(n => n.Value.CurrentNodeReputation(utcNow))
                     .Select(n => n.Key)
                     .Take(_nodeStats.Count - _maxCount);
 
@@ -84,19 +54,21 @@ namespace Nethermind.Stats
                     _nodeStats.TryRemove(node, out _);
                     i++;
                 }
-                
+
                 if (_logger.IsDebug) _logger.Debug($"Removed {i} node stats.");
             }
+
+            _cleanupTimer.Start();
         }
 
         private INodeStats AddStats(Node node)
         {
             return new NodeStatsLight(node);
         }
-        
+
         public INodeStats GetOrAdd(Node node)
         {
-            if (node == null)
+            if (node is null)
             {
                 return null;
             }
@@ -106,7 +78,7 @@ namespace Nethermind.Stats
             {
                 return stats;
             }
-            
+
             return _nodeStats.GetOrAdd(node, AddStats);
         }
 
@@ -121,7 +93,7 @@ namespace Nethermind.Stats
             INodeStats stats = GetOrAdd(node);
             stats.AddNodeStatsSyncEvent(nodeStatsEvent);
         }
-        
+
         public void ReportEvent(Node node, NodeStatsEventType eventType)
         {
             INodeStats stats = GetOrAdd(node);
@@ -131,7 +103,7 @@ namespace Nethermind.Stats
         public (bool Result, NodeStatsEventType? DelayReason) IsConnectionDelayed(Node node)
         {
             INodeStats stats = GetOrAdd(node);
-            return stats.IsConnectionDelayed();
+            return stats.IsConnectionDelayed(DateTime.UtcNow);
         }
 
         public CompatibilityValidationType? FindCompatibilityValidationResult(Node node)
@@ -143,7 +115,7 @@ namespace Nethermind.Stats
         public long GetCurrentReputation(Node node)
         {
             INodeStats stats = GetOrAdd(node);
-            return stats.CurrentNodeReputation;
+            return stats.CurrentNodeReputation(DateTime.UtcNow);
         }
 
         public void ReportP2PInitializationEvent(Node node, P2PNodeDetails p2PNodeDetails)
@@ -178,7 +150,7 @@ namespace Nethermind.Stats
         public long GetNewPersistedReputation(Node node)
         {
             INodeStats stats = GetOrAdd(node);
-            return stats.NewPersistedNodeReputation;
+            return stats.NewPersistedNodeReputation(DateTime.UtcNow);
         }
 
         public long GetCurrentPersistedReputation(Node node)
@@ -190,7 +162,7 @@ namespace Nethermind.Stats
         public bool HasFailedValidation(Node node)
         {
             INodeStats stats = GetOrAdd(node);
-            return stats.FailedCompatibilityValidation != null;
+            return stats.FailedCompatibilityValidation is not null;
         }
 
         public void ReportTransferSpeedEvent(Node node, TransferSpeedType type, long value)

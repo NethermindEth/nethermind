@@ -2,6 +2,11 @@
 
   <PropertyGroup>
     <Configuration Condition="'$(Configuration)' == ''">Debug</Configuration>
+    <ContinuousIntegrationBuild Condition="'$(CI)' == 'true'">true</ContinuousIntegrationBuild>
+    <LangVersion>latest</LangVersion>
+    <TargetFramework>net8.0</TargetFramework>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <UseArtifactsOutput>true</UseArtifactsOutput>
   </PropertyGroup>
 
   <PropertyGroup Label="ProductInfo">
@@ -9,8 +14,8 @@
     <Copyright>Demerzel Solutions Limited</Copyright>
     <Product>Nethermind</Product>
     <SourceRevisionId Condition="'$(Commit)' != ''">$(Commit.Substring(0, 8))</SourceRevisionId>
-    <!-- Fallback if not specified -->
-    <Version Condition="'$(Version)' == ''">0.0.0</Version>
+    <VersionPrefix>1.24.0</VersionPrefix>
+    <VersionSuffix>unstable</VersionSuffix>
   </PropertyGroup>
 
   <ItemGroup Label="AssemblyCustomMetadata">
@@ -23,5 +28,5 @@
       <_Parameter2>$(Commit)</_Parameter2>
     </AssemblyAttribute>
   </ItemGroup>
-  
+
 </Project>

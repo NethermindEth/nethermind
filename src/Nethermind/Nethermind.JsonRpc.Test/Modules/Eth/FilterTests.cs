@@ -1,25 +1,15 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections;
+using System.Text.Json;
+
 using FluentAssertions;
 using Nethermind.Blockchain.Find;
 using Nethermind.JsonRpc.Data;
 using Nethermind.JsonRpc.Modules.Eth;
-using Newtonsoft.Json;
+using Nethermind.Serialization.Json;
+
 using NUnit.Framework;
 
 namespace Nethermind.JsonRpc.Test.Modules.Eth;
@@ -38,7 +28,7 @@ public class FilterTests
                 });
 
             yield return new TestCaseData(
-                JsonConvert.SerializeObject(
+                JsonSerializer.Serialize(
                     new
                     {
                         fromBlock = "earliest",
@@ -71,7 +61,7 @@ public class FilterTests
                 });
 
             yield return new TestCaseData(
-                JsonConvert.SerializeObject(
+                JsonSerializer.Serialize(
                     new
                     {
                         address = "0xc2d77d118326c33bbe36ebeabf4f7ed6bc2dda5c",
@@ -103,7 +93,7 @@ public class FilterTests
             var blockParam = BlockParameterConverter.GetBlockParameter(blockHash);
 
             yield return new TestCaseData(
-                JsonConvert.SerializeObject(new { blockHash }),
+                JsonSerializer.Serialize(new { blockHash }),
                 new Filter
                 {
                     FromBlock = blockParam,
@@ -116,7 +106,8 @@ public class FilterTests
     public void FromJson_parses_correctly(string json, Filter expectation)
     {
         Filter filter = new();
-        filter.ReadJson(JsonSerializer.CreateDefault(), json);
+        using JsonDocument doc = JsonDocument.Parse(json);
+        filter.ReadJson(doc.RootElement, EthereumJsonSerializer.JsonOptions);
         filter.Should().BeEquivalentTo(expectation);
     }
 }

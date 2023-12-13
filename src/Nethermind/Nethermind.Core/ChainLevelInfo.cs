@@ -1,21 +1,10 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-//
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-//
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-//
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Diagnostics;
 using System.Linq;
+using Nethermind.Core.Crypto;
 
 namespace Nethermind.Core
 {
@@ -53,6 +42,78 @@ namespace Nethermind.Core
                 // Note: The first block info is main
                 return BlockInfos[0];
             }
+        }
+
+        public int? FindBlockInfoIndex(Hash256 blockHash)
+        {
+            for (int i = 0; i < BlockInfos.Length; i++)
+            {
+                Hash256 hashAtIndex = BlockInfos[i].BlockHash;
+                if (hashAtIndex.Equals(blockHash))
+                {
+                    return i;
+                }
+            }
+
+            return null;
+        }
+
+        public int? FindIndex(Hash256 blockHash)
+        {
+            for (int i = 0; i < BlockInfos.Length; i++)
+            {
+                Hash256 hashAtIndex = BlockInfos[i].BlockHash;
+                if (hashAtIndex.Equals(blockHash))
+                {
+                    return i;
+                }
+            }
+
+            return null;
+        }
+
+        public BlockInfo? FindBlockInfo(Hash256 blockHash)
+        {
+            int? index = FindIndex(blockHash);
+            return index.HasValue ? BlockInfos[index.Value] : null;
+        }
+
+        public void InsertBlockInfo(Hash256 hash, BlockInfo blockInfo, bool setAsMain)
+        {
+            BlockInfo[] blockInfos = BlockInfos;
+
+            int? foundIndex = FindIndex(hash);
+            if (foundIndex is null)
+            {
+                Array.Resize(ref blockInfos, blockInfos.Length + 1);
+            }
+            else
+            {
+                if (blockInfo.IsBeaconInfo && blockInfos[foundIndex.Value].IsBeaconMainChain)
+                    blockInfo.Metadata |= BlockMetadata.BeaconMainChain;
+
+                if (blockInfo.EqualsIgnoringWasProcessed(blockInfos[foundIndex.Value]))
+                    blockInfo.WasProcessed |= blockInfos[foundIndex.Value].WasProcessed;
+            }
+
+            int index = foundIndex ?? blockInfos.Length - 1;
+
+            if (setAsMain)
+            {
+                blockInfos[index] = blockInfos[0];
+                blockInfos[0] = blockInfo;
+            }
+            else
+            {
+                blockInfos[index] = blockInfo;
+            }
+
+            BlockInfos = blockInfos;
+        }
+
+        public void SwapToMain(int index)
+        {
+            (BlockInfos[index], BlockInfos[0]) = (BlockInfos[0], BlockInfos[index]);
         }
     }
 }

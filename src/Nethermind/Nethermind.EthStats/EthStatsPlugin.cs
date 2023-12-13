@@ -1,21 +1,8 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Threading.Tasks;
-using Grpc.Core.Logging;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Core;
@@ -62,14 +49,14 @@ public class EthStatsPlugin : INethermindPlugin
 
         if (!_isOn)
         {
-           
+
             if (!initConfig.WebSocketsEnabled)
             {
                 _logger.Warn($"{nameof(EthStatsPlugin)} disabled due to {nameof(initConfig.WebSocketsEnabled)} set to false");
             }
             else
             {
-                _logger.Warn($"{nameof(EthStatsPlugin)} plugin disabled due to {nameof(EthStatsConfig)} settings set to false");
+                if (_logger.IsDebug) _logger.Debug($"{nameof(EthStatsPlugin)} plugin disabled due to {nameof(EthStatsConfig)} settings set to false");
             }
         }
 
@@ -78,7 +65,7 @@ public class EthStatsPlugin : INethermindPlugin
 
     public async Task InitNetworkProtocol()
     {
-        var (getFromAPi, _) = _api.ForNetwork;
+        (IApiWithNetwork getFromAPi, _) = _api.ForNetwork;
         INetworkConfig networkConfig = _api.Config<INetworkConfig>();
         IInitConfig initConfig = _api.Config<IInitConfig>();
 
@@ -96,7 +83,7 @@ public class EthStatsPlugin : INethermindPlugin
             const bool canUpdateHistory = false;
             string node = ProductInfo.ClientId;
             int port = networkConfig.P2PPort;
-            string network = _api.SpecProvider!.ChainId.ToString();
+            string network = _api.SpecProvider!.NetworkId.ToString();
             string protocol = $"{P2PProtocolInfoProvider.DefaultCapabilitiesToString()}";
 
             _ethStatsClient = new EthStatsClient(
@@ -118,12 +105,13 @@ public class EthStatsPlugin : INethermindPlugin
                 _ethStatsConfig.Secret!,
                 _ethStatsClient,
                 sender,
-                getFromAPi.TxPool,
-                getFromAPi.BlockTree,
-                getFromAPi.PeerManager,
-                getFromAPi.GasPriceOracle,
+                getFromAPi.TxPool!,
+                getFromAPi.BlockTree!,
+                getFromAPi.PeerManager!,
+                getFromAPi.GasPriceOracle!,
                 getFromAPi.EthSyncingInfo!,
                 initConfig.IsMining,
+                TimeSpan.FromSeconds(_ethStatsConfig.SendInterval),
                 getFromAPi.LogManager);
 
             await _ethStatsIntegration.InitAsync();

@@ -1,4 +1,7 @@
 #!/bin/bash
+# SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+# SPDX-License-Identifier: LGPL-3.0-only
+
 sudo apt-get update
 
 echo =======================================================
@@ -10,7 +13,7 @@ sudo dpkg -i packages-microsoft-prod.deb
 sudo apt-get update; \
   sudo apt-get install -y apt-transport-https && \
   sudo apt-get update && \
-  sudo apt-get install -y dotnet-sdk-6.0
+  sudo apt-get install -y dotnet-sdk-7.0
 sudo apt-get install -y jq libsnappy-dev libc6-dev libc6 moreutils
 
 echo =======================================================

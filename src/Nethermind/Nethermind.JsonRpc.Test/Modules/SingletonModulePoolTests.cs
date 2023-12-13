@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using Nethermind.Blockchain.Synchronization;
@@ -33,6 +20,7 @@ using NUnit.Framework;
 using BlockTree = Nethermind.Blockchain.BlockTree;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Receipts;
+using Nethermind.Core.Test.Builders;
 using Nethermind.Facade.Eth;
 using Nethermind.JsonRpc.Modules.Eth.GasPrice;
 
@@ -42,16 +30,17 @@ namespace Nethermind.JsonRpc.Test.Modules
     [TestFixture]
     public class SingletonModulePoolTests
     {
-        private SingletonModulePool<IEthRpcModule> _modulePool;
-        private EthModuleFactory _factory;
+        private SingletonModulePool<IEthRpcModule> _modulePool = null!;
+        private EthModuleFactory _factory = null!;
 
         [SetUp]
-        public async Task Initialize()
+        public Task Initialize()
         {
-            ISpecProvider specProvider = MainnetSpecProvider.Instance;
             ITxPool txPool = NullTxPool.Instance;
-            IDbProvider dbProvider = await TestMemDbProvider.InitAsync();
-            BlockTree blockTree = new(dbProvider, new ChainLevelInfoRepository(dbProvider.BlockInfosDb), specProvider, NullBloomStorage.Instance, new SyncConfig(), LimboLogs.Instance);
+
+            BlockTree blockTree = Build.A.BlockTree()
+                .TestObject;
+
             _factory = new EthModuleFactory(
                 txPool,
                 Substitute.For<ITxSender>(),
@@ -62,9 +51,10 @@ namespace Nethermind.JsonRpc.Test.Modules
                 Substitute.For<IStateReader>(),
                 Substitute.For<IBlockchainBridgeFactory>(),
                 Substitute.For<ISpecProvider>(),
-                Substitute.For<IReceiptStorage>(),			
+                Substitute.For<IReceiptStorage>(),
                 Substitute.For<IGasPriceOracle>(),
                 Substitute.For<IEthSyncingInfo>());
+            return Task.CompletedTask;
         }
 
         [Test]
@@ -73,14 +63,14 @@ namespace Nethermind.JsonRpc.Test.Modules
             _modulePool = new SingletonModulePool<IEthRpcModule>(_factory.Create(), false);
             Assert.Throws<InvalidOperationException>(() => _modulePool.GetModule(false));
         }
-        
+
         [Test]
         public void Can_return_exclusive_if_allowed()
         {
             _modulePool = new SingletonModulePool<IEthRpcModule>(_factory.Create(), true);
             _modulePool.GetModule(false);
         }
-        
+
         [Test]
         public void Ensure_unlimited_shared()
         {

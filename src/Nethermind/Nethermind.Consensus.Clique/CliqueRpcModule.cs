@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Linq;
@@ -39,9 +26,9 @@ namespace Nethermind.Consensus.Clique
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
         }
 
-        public bool ProduceBlock(Keccak parentHash)
+        public bool ProduceBlock(Hash256 parentHash)
         {
-            if (_cliqueBlockProducer == null)
+            if (_cliqueBlockProducer is null)
             {
                 return false;
             }
@@ -52,7 +39,7 @@ namespace Nethermind.Consensus.Clique
 
         public void CastVote(Address signer, bool vote)
         {
-            if (_cliqueBlockProducer == null)
+            if (_cliqueBlockProducer is null)
             {
                 throw new InvalidOperationException(CannotVoteOnNonValidatorMessage);
             }
@@ -62,7 +49,7 @@ namespace Nethermind.Consensus.Clique
 
         public void UncastVote(Address signer)
         {
-            if (_cliqueBlockProducer == null)
+            if (_cliqueBlockProducer is null)
             {
                 throw new InvalidOperationException(CannotVoteOnNonValidatorMessage);
             }
@@ -76,7 +63,7 @@ namespace Nethermind.Consensus.Clique
             return _snapshotManager.GetOrCreateSnapshot(head.Number, head.Hash);
         }
 
-        public Snapshot GetSnapshot(Keccak hash)
+        public Snapshot GetSnapshot(Hash256 hash)
         {
             BlockHeader head = _blockTree.FindHeader(hash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
             return _snapshotManager.GetOrCreateSnapshot(head.Number, head.Hash);
@@ -102,21 +89,21 @@ namespace Nethermind.Consensus.Clique
                 .Select(s => string.Concat(s.Key, $" ({KnownAddresses.GetDescription(s.Key)})")).ToArray();
         }
 
-        public Address[] GetSigners(Keccak hash)
+        public Address[] GetSigners(Hash256 hash)
         {
             BlockHeader header = _blockTree.FindHeader(hash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
             return _snapshotManager.GetOrCreateSnapshot(header.Number, header.Hash).Signers
                 .Select(s => s.Key).ToArray();
         }
 
-        public string[] GetSignersAnnotated(Keccak hash)
+        public string[] GetSignersAnnotated(Hash256 hash)
         {
             BlockHeader header = _blockTree.FindHeader(hash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
             return _snapshotManager.GetOrCreateSnapshot(header.Number, header.Hash).Signers
                 .Select(s => string.Concat(s.Key, $" ({KnownAddresses.GetDescription(s.Key)})")).ToArray();
         }
 
-        public ResultWrapper<bool> clique_produceBlock(Keccak parentHash)
+        public ResultWrapper<bool> clique_produceBlock(Hash256 parentHash)
         {
             return ResultWrapper<bool>.Success(ProduceBlock(parentHash));
         }
@@ -126,7 +113,7 @@ namespace Nethermind.Consensus.Clique
             return ResultWrapper<Snapshot>.Success(GetSnapshot());
         }
 
-        public ResultWrapper<Snapshot> clique_getSnapshotAtHash(Keccak hash)
+        public ResultWrapper<Snapshot> clique_getSnapshotAtHash(Hash256 hash)
         {
             return ResultWrapper<Snapshot>.Success(GetSnapshot(hash));
         }
@@ -136,7 +123,7 @@ namespace Nethermind.Consensus.Clique
             return ResultWrapper<Address[]>.Success(GetSigners().ToArray());
         }
 
-        public ResultWrapper<Address[]> clique_getSignersAtHash(Keccak hash)
+        public ResultWrapper<Address[]> clique_getSignersAtHash(Hash256 hash)
         {
             return ResultWrapper<Address[]>.Success(GetSigners(hash).ToArray());
         }
@@ -151,24 +138,24 @@ namespace Nethermind.Consensus.Clique
             return ResultWrapper<string[]>.Success(GetSignersAnnotated().ToArray());
         }
 
-        public ResultWrapper<string[]> clique_getSignersAtHashAnnotated(Keccak hash)
+        public ResultWrapper<string[]> clique_getSignersAtHashAnnotated(Hash256 hash)
         {
             return ResultWrapper<string[]>.Success(GetSignersAnnotated(hash).ToArray());
         }
-        
-        public ResultWrapper<Address?> clique_getBlockSigner(Keccak? hash)
+
+        public ResultWrapper<Address?> clique_getBlockSigner(Hash256? hash)
         {
             if (hash is null)
             {
-                return ResultWrapper<Address>.Fail($"Hash parameter cannot be null");    
+                return ResultWrapper<Address>.Fail($"Hash parameter cannot be null");
             }
-            
+
             BlockHeader? header = _blockTree.FindHeader(hash);
-            if (header == null)
+            if (header is null)
             {
-                return ResultWrapper<Address>.Fail($"Could not find block with hash {hash}");    
+                return ResultWrapper<Address>.Fail($"Could not find block with hash {hash}");
             }
-            
+
             header.Author ??= _snapshotManager.GetBlockSealer(header);
             return ResultWrapper<Address>.Success(header.Author);
         }

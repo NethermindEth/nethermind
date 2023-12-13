@@ -1,19 +1,7 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Find;
@@ -21,28 +9,32 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Evm.Tracing.GethStyle;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Synchronization.Reporting;
 
-namespace Nethermind.JsonRpc.Modules.DebugModule
+namespace Nethermind.JsonRpc.Modules.DebugModule;
+
+public interface IDebugBridge
 {
-    public interface IDebugBridge
-    {
-        GethLikeTxTrace GetTransactionTrace(Keccak transactionHash, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null);
-        GethLikeTxTrace GetTransactionTrace(long blockNumber, int index, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null);
-        GethLikeTxTrace GetTransactionTrace(Keccak blockHash, int index, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null);
-        GethLikeTxTrace GetTransactionTrace(Rlp blockRlp, Keccak transactionHash, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null);
-        GethLikeTxTrace? GetTransactionTrace(Transaction transaction, BlockParameter blockParameter, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null);
-        GethLikeTxTrace[] GetBlockTrace(BlockParameter blockParameter, CancellationToken cancellationToken, GethTraceOptions gethTraceOptions = null);
-        GethLikeTxTrace[] GetBlockTrace(Rlp blockRlp, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null);
-        byte[] GetBlockRlp(BlockParameter param);
-        Block? GetBlock(BlockParameter param);
-        byte[] GetDbValue(string dbName, byte[] key);
-        object GetConfigValue(string category, string name);
-        public ChainLevelInfo GetLevelInfo(long number);
-        public int DeleteChainSlice(long startNumber);
-        public void UpdateHeadBlock(Keccak blockHash);
-        Task<bool> MigrateReceipts(long blockNumber);
-        void InsertReceipts(BlockParameter blockParameter, TxReceipt[] receipts);
-        TxReceipt[]? GetReceiptsForBlock(BlockParameter param);
-        Transaction? GetTransactionFromHash(Keccak hash);
-    }
+    GethLikeTxTrace GetTransactionTrace(Hash256 transactionHash, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null);
+    GethLikeTxTrace GetTransactionTrace(long blockNumber, int index, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null);
+    GethLikeTxTrace GetTransactionTrace(Hash256 blockHash, int index, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null);
+    GethLikeTxTrace GetTransactionTrace(Rlp blockRlp, Hash256 transactionHash, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null);
+    GethLikeTxTrace? GetTransactionTrace(Transaction transaction, BlockParameter blockParameter, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null);
+    IReadOnlyCollection<GethLikeTxTrace> GetBlockTrace(BlockParameter blockParameter, CancellationToken cancellationToken, GethTraceOptions gethTraceOptions = null);
+    IReadOnlyCollection<GethLikeTxTrace> GetBlockTrace(Rlp blockRlp, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null);
+    byte[] GetBlockRlp(BlockParameter param);
+    Block? GetBlock(BlockParameter param); 
+    byte[] GetBlockRlp(Hash256 blockHash);
+    byte[] GetBlockRlp(long number);
+    byte[] GetDbValue(string dbName, byte[] key);
+    object GetConfigValue(string category, string name);
+    ChainLevelInfo GetLevelInfo(long number);
+    int DeleteChainSlice(long startNumber, bool force = false);
+    void UpdateHeadBlock(Hash256 blockHash);
+    Task<bool> MigrateReceipts(long blockNumber);
+    void InsertReceipts(BlockParameter blockParameter, TxReceipt[] receipts);
+    SyncReportSymmary GetCurrentSyncStage();
+    IEnumerable<string> TraceBlockToFile(Hash256 blockHash, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null);
+    TxReceipt[]? GetReceiptsForBlock(BlockParameter param);
+    Transaction? GetTransactionFromHash(Hash256 hash);
 }

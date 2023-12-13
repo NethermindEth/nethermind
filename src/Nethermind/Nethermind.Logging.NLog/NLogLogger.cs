@@ -1,25 +1,8 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.IO;
-using System.Linq;
-using System.Runtime.CompilerServices;
 using NLog;
-using NLog.Targets;
 
 namespace Nethermind.Logging.NLog
 {
@@ -30,7 +13,7 @@ namespace Nethermind.Logging.NLog
         public bool IsInfo { get; }
         public bool IsDebug { get; }
         public bool IsTrace { get; }
-        
+
         public string Name { get; }
 
         private readonly Logger _logger;
@@ -43,7 +26,7 @@ namespace Nethermind.Logging.NLog
         {
             loggerName = string.IsNullOrEmpty(loggerName) ? GetTypeName(StackTraceUsageUtils.GetClassFullName()) : loggerName;
             _logger = LogManager.GetLogger(loggerName);
-            
+
             /* NOTE: minor perf gain - not planning to switch logging levels while app is running */
             // TODO: review the behaviour on log levels switching
             IsInfo = _logger.IsInfoEnabled;
@@ -58,27 +41,32 @@ namespace Nethermind.Logging.NLog
 
         public void Info(string text)
         {
-            _logger.Info(text);
+            if (IsInfo)
+                _logger.Info(text);
         }
 
         public void Warn(string text)
         {
-            _logger.Warn(text);
+            if (IsWarn)
+                _logger.Warn(text);
         }
 
         public void Debug(string text)
         {
-            _logger.Debug(text);
+            if (IsDebug)
+                _logger.Debug(text);
         }
 
         public void Trace(string text)
         {
-            _logger.Trace(text);
+            if (IsTrace)
+                _logger.Trace(text);
         }
 
         public void Error(string text, Exception ex = null)
         {
-            _logger.Error(ex, text);
+            if (IsError)
+                _logger.Error(ex, text);
         }
     }
 }

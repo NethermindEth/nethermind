@@ -1,30 +1,12 @@
-//  Copyright (c) 2020 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-//
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-//
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-//
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.Linq;
 using FluentAssertions;
-using FluentAssertions.Numeric;
-using MathNet.Numerics.LinearAlgebra;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
-using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -48,66 +30,70 @@ namespace Nethermind.Trie.Test
         public class PruningContext
         {
             private long _blockNumber = 1;
-            private Dictionary<string, (long blockNumber, Keccak rootHash)> _branchingPoints = new();
-            private IDbProvider _dbProvider;
-            private IStateProvider _stateProvider;
+            private readonly Dictionary<string, (long blockNumber, Hash256 rootHash)> _branchingPoints = new();
+            private readonly IDbProvider _dbProvider;
+            private IWorldState _stateProvider;
             private IStateReader _stateReader;
-            private IStorageProvider _storageProvider;
-            private ILogManager _logManager;
-            private ILogger _logger;
+            private readonly ILogManager _logManager;
+            private readonly ILogger _logger;
             private TrieStore _trieStore;
-            private IPersistenceStrategy _persistenceStrategy;
-            private TestPruningStrategy _pruningStrategy;
+            private readonly IPersistenceStrategy _persistenceStrategy;
+            private readonly TestPruningStrategy _pruningStrategy;
 
             [DebuggerStepThrough]
             private PruningContext(TestPruningStrategy pruningStrategy, IPersistenceStrategy persistenceStrategy)
             {
-                _logManager = new TestLogManager(LogLevel.Trace);
+                _logManager = LimboLogs.Instance;
+                //new TestLogManager(LogLevel.Trace);
                 _logger = _logManager.GetClassLogger();
                 _dbProvider = TestMemDbProvider.Init();
                 _persistenceStrategy = persistenceStrategy;
                 _pruningStrategy = pruningStrategy;
                 _trieStore = new TrieStore(_dbProvider.StateDb, _pruningStrategy, _persistenceStrategy, _logManager);
-                _stateProvider = new StateProvider(_trieStore, _dbProvider.CodeDb, _logManager);
-                _storageProvider = new StorageProvider(_trieStore, _stateProvider, _logManager);
+                _stateProvider = new WorldState(_trieStore, _dbProvider.CodeDb, _logManager);
                 _stateReader = new StateReader(_trieStore, _dbProvider.CodeDb, _logManager);
             }
 
 
             public static PruningContext ArchiveWithManualPruning
             {
-                [DebuggerStepThrough] get => new(new TestPruningStrategy(true), Persist.EveryBlock);
+                [DebuggerStepThrough]
+                get => new(new TestPruningStrategy(true), Persist.EveryBlock);
             }
 
             public static PruningContext SnapshotEveryOtherBlockWithManualPruning
             {
-                [DebuggerStepThrough] get => new(new TestPruningStrategy(true), new ConstantInterval(2));
+                [DebuggerStepThrough]
+                get => new(new TestPruningStrategy(true), new ConstantInterval(2));
             }
 
             public static PruningContext InMemory
             {
-                [DebuggerStepThrough] get => new(new TestPruningStrategy(true), No.Persistence);
+                [DebuggerStepThrough]
+                get => new(new TestPruningStrategy(true), No.Persistence);
             }
 
             public static PruningContext InMemoryAlwaysPrune
             {
-                [DebuggerStepThrough] get => new(new TestPruningStrategy(true, true), No.Persistence);
+                [DebuggerStepThrough]
+                get => new(new TestPruningStrategy(true, true), No.Persistence);
             }
 
             public static PruningContext SetupWithPersistenceEveryEightBlocks
             {
-                [DebuggerStepThrough] get => new(new TestPruningStrategy(true), new ConstantInterval(8));
+                [DebuggerStepThrough]
+                get => new(new TestPruningStrategy(true), new ConstantInterval(8));
             }
 
             public PruningContext CreateAccount(int accountIndex)
             {
-                _stateProvider.CreateAccount(Address.FromNumber((UInt256) accountIndex), 1);
+                _stateProvider.CreateAccount(Address.FromNumber((UInt256)accountIndex), 1);
                 return this;
             }
 
             public PruningContext SetAccountBalance(int accountIndex, UInt256 balance)
             {
-                _stateProvider.CreateAccount(Address.FromNumber((UInt256) accountIndex), balance);
+                _stateProvider.CreateAccount(Address.FromNumber((UInt256)accountIndex), balance);
                 return this;
             }
 
@@ -140,9 +126,9 @@ namespace Nethermind.Trie.Test
 
             public PruningContext SetStorage(int accountIndex, int storageKey, int storageValue = 1)
             {
-                _storageProvider.Set(
-                    new StorageCell(Address.FromNumber((UInt256) accountIndex), (UInt256) storageKey),
-                    ((UInt256) storageValue).ToBigEndian());
+                _stateProvider.Set(
+                    new StorageCell(Address.FromNumber((UInt256)accountIndex), (UInt256)storageKey),
+                    ((UInt256)storageValue).ToBigEndian());
                 return this;
             }
 
@@ -157,8 +143,8 @@ namespace Nethermind.Trie.Test
             {
                 _logger.Info($"READ   STORAGE {accountIndex}.{storageKey}");
                 StorageCell storageCell =
-                    new(Address.FromNumber((UInt256) accountIndex), (UInt256) storageKey);
-                _storageProvider.Get(storageCell);
+                    new(Address.FromNumber((UInt256)accountIndex), (UInt256)storageKey);
+                _stateProvider.Get(storageCell);
                 return this;
             }
 
@@ -185,8 +171,6 @@ namespace Nethermind.Trie.Test
 
             public PruningContext Commit()
             {
-                _storageProvider.Commit();
-                _storageProvider.CommitTrees(_blockNumber);
                 _stateProvider.Commit(MuirGlacier.Instance);
                 _stateProvider.CommitTree(_blockNumber);
                 _blockNumber++;
@@ -203,8 +187,7 @@ namespace Nethermind.Trie.Test
             {
                 _trieStore.Dispose();
                 _trieStore = new TrieStore(_dbProvider.StateDb, _pruningStrategy, _persistenceStrategy, _logManager);
-                _stateProvider = new StateProvider(_trieStore, _dbProvider.CodeDb, _logManager);
-                _storageProvider = new StorageProvider(_trieStore, _stateProvider, _logManager);
+                _stateProvider = new WorldState(_trieStore, _dbProvider.CodeDb, _logManager);
                 _stateReader = new StateReader(_trieStore, _dbProvider.CodeDb, _logManager);
                 return this;
             }
@@ -230,8 +213,8 @@ namespace Nethermind.Trie.Test
 
             public PruningContext VerifyStorageValue(int account, UInt256 index, int value)
             {
-                _storageProvider.Get(new StorageCell(Address.FromNumber((UInt256)account), index))
-                    .Should().BeEquivalentTo(((UInt256) value).ToBigEndian());
+                _stateProvider.Get(new StorageCell(Address.FromNumber((UInt256)account), index))
+                    .Should().BeEquivalentTo(((UInt256)value).ToBigEndian());
                 return this;
             }
 
@@ -259,10 +242,9 @@ namespace Nethermind.Trie.Test
 
             public PruningContext RestoreBranchingPoint(string name)
             {
-                (long blockNumber, Keccak rootHash) branchPoint = _branchingPoints[name];
+                (long blockNumber, Hash256 rootHash) branchPoint = _branchingPoints[name];
                 _blockNumber = branchPoint.blockNumber;
-                Keccak rootHash = branchPoint.rootHash;
-                _storageProvider.Reset();
+                Hash256 rootHash = branchPoint.rootHash;
                 _stateProvider.Reset();
                 _stateProvider.StateRoot = rootHash;
                 return this;
@@ -668,7 +650,7 @@ namespace Nethermind.Trie.Test
                 .SaveBranchingPoint("main")
 
                     .RestoreBranchingPoint("revert_main") // Go back to block 3
-                    // Block 4 - 2
+                                                          // Block 4 - 2
                     .SetStorage(3, 1, 1)
                     .Commit()
                     .RestoreBranchingPoint("main") // Go back to block 4 on main

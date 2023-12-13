@@ -1,18 +1,5 @@
-// //  Copyright (c) 2021 Demerzel Solutions Limited
-// //  This file is part of the Nethermind library.
-// // 
-// //  The Nethermind library is free software: you can redistribute it and/or modify
-// //  it under the terms of the GNU Lesser General Public License as published by
-// //  the Free Software Foundation, either version 3 of the License, or
-// //  (at your option) any later version.
-// // 
-// //  The Nethermind library is distributed in the hope that it will be useful,
-// //  but WITHOUT ANY WARRANTY; without even the implied warranty of
-// //  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-// //  GNU Lesser General Public License for more details.
-// // 
-// //  You should have received a copy of the GNU Lesser General Public License
-// //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 //
 // using System;
 // using System.Collections.Generic;
@@ -113,7 +100,7 @@
 //                 .Do(ci =>
 //                 {
 //                     LatencySyncPeerMock mock = (LatencySyncPeerMock) ci.Arg<PeerInfo>()?.SyncPeer;
-//                     if (mock != null)
+//                     if (mock is not null)
 //                     {
 //                         mock.BusyUntil = _time + 5000;
 //                         mock.IsReported = true;
@@ -124,7 +111,7 @@
 //                 .Do(ci =>
 //                 {
 //                     LatencySyncPeerMock mock = (LatencySyncPeerMock) ci.Arg<PeerInfo>()?.SyncPeer;
-//                     if (mock != null)
+//                     if (mock is not null)
 //                     {
 //                         mock.BusyUntil = _time + 30000;
 //                         mock.IsReported = true;
@@ -720,7 +707,7 @@
 //                 {
 //                     Block expectedBlock = _localBlockTree.FindBlock(nextHash, BlockTreeLookupOptions.None);
 //                     Assert.AreEqual(nextHash, expectedBlock?.Hash, $"hash difference {tree.Head.Number - i}");
-//                     if (expectedBlock != null)
+//                     if (expectedBlock is not null)
 //                     {
 //                         Block actualBlock = tree.FindBlock(expectedBlock.Hash, BlockTreeLookupOptions.None);
 //                         Rlp saved = Rlp.Encode(actualBlock);
@@ -769,18 +756,18 @@
 //                 if (_pendingResponses.Count < _syncPeers.Count(p => !p.IsReported))
 //                 {
 //                     FastBlocksBatch batch = _feed.PrepareRequest();
-//                     if (batch == null && _pendingResponses.Count == 0)
+//                     if (batch is null && _pendingResponses.Count == 0)
 //                     {
 //                         TestContext.WriteLine($"STOP - NULL BATCH AND NO PENDING");
 //                         break;
 //                     }
 //
-//                     if (batch != null)
+//                     if (batch is not null)
 //                     {
 //                         bool wasAssigned = false;
 //                         foreach (LatencySyncPeerMock syncPeer in _syncPeers)
 //                         {
-//                             if (syncPeer.BusyUntil == null
+//                             if (syncPeer.BusyUntil is null
 //                                 && _peerTrees[syncPeer].Head.Number >= (batch.MinNumber ?? 0))
 //                             {
 //                                 syncPeer.BusyUntil = _time + syncPeer.Latency;
@@ -811,7 +798,7 @@
 //                     {
 //                         intSyncPeerMock.BusyUntil = null;
 //                         FastBlocksBatch responseBatch = CreateResponse(intSyncPeerMock);
-//                         if (responseBatch != null)
+//                         if (responseBatch is not null)
 //                         {
 //                             _feed.HandleResponse(responseBatch);
 //                         }
@@ -960,7 +947,7 @@
 //
 //         private void PrepareHeadersResponse(HeadersSyncBatch headersSyncBatch, LatencySyncPeerMock syncPeer, IBlockTree tree)
 //         {
-//             if (headersSyncBatch != null)
+//             if (headersSyncBatch is not null)
 //             {
 //                 long startNumber = headersSyncBatch.StartNumber;
 //                 if (_maliciousByShiftedOneBack.Contains(syncPeer))
@@ -976,7 +963,7 @@
 //
 //                 Keccak hash = tree.FindHash(startNumber);
 //
-//                 if (hash == null)
+//                 if (hash is null)
 //                 {
 //                     TestContext.WriteLine($"{_time,6} | SYNC PEER {syncPeer.Node:s} CANNOT FIND {headersSyncBatch.StartNumber}");
 //                     return;

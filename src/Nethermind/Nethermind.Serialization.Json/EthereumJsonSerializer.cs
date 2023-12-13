@@ -1,166 +1,169 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using System.Buffers;
 using System.Collections.Generic;
-using System.Collections.ObjectModel;
-using System.Globalization;
 using System.IO;
-using System.Linq;
-using System.Text;
-using Newtonsoft.Json;
-using Newtonsoft.Json.Serialization;
+using System.IO.Pipelines;
+using System.Text.Json;
+using System.Text.Json.Serialization;
+using System.Threading;
+using System.Threading.Tasks;
+
+using Nethermind.Core.Collections;
 
 namespace Nethermind.Serialization.Json
 {
     public class EthereumJsonSerializer : IJsonSerializer
     {
-        private JsonSerializer _internalSerializer;
-        private JsonSerializer _internalReadableSerializer;
+        private readonly JsonSerializerOptions _jsonOptions;
 
-        private JsonSerializerSettings _settings;
-        private JsonSerializerSettings _readableSettings;
-
-        public EthereumJsonSerializer()
+        public EthereumJsonSerializer(int? maxDepth = null)
         {
-            RebuildSerializers();
-        }
-
-        public static IReadOnlyList<JsonConverter> CommonConverters { get; } = new ReadOnlyCollection<JsonConverter>(
-            new List<JsonConverter>
+            if (maxDepth.HasValue)
             {
-                new AddressConverter(),
-                new KeccakConverter(),
-                new BloomConverter(),
-                new ByteArrayConverter(),
-                new LongConverter(),
-                new ULongConverter(),
-                new NullableLongConverter(),
-                new NullableULongConverter(),
-                new UInt256Converter(),
-                new NullableUInt256Converter(),
-                new BigIntegerConverter(),
-                new NullableBigIntegerConverter(),
-                new PublicKeyConverter(),
-                new TxTypeConverter()
-            });
-
-        public IList<JsonConverter> BasicConverters { get; } = CommonConverters.ToList();
-
-        private IList<JsonConverter> ReadableConverters { get; } = new List<JsonConverter>
-        {
-            new AddressConverter(),
-            new KeccakConverter(),
-            new BloomConverter(),
-            new ByteArrayConverter(),
-            new LongConverter(NumberConversion.Decimal),
-            new ULongConverter(NumberConversion.Decimal),
-            new NullableLongConverter(NumberConversion.Decimal),
-            new NullableULongConverter(NumberConversion.Decimal),
-            new UInt256Converter(NumberConversion.Decimal),
-            new NullableUInt256Converter(NumberConversion.Decimal),
-            new BigIntegerConverter(NumberConversion.Decimal),
-            new NullableBigIntegerConverter(NumberConversion.Decimal),
-            new PublicKeyConverter(),
-            new TxTypeConverter()
-        };
+                _jsonOptions = CreateOptions(indented: false, maxDepth.Value);
+            }
+            else
+            {
+                _jsonOptions = JsonOptions;
+            }
+        }
 
         public T Deserialize<T>(Stream stream)
         {
-            using StreamReader reader = new(stream);
-            return Deserialize<T>(reader);
-        }
-        
-        public T Deserialize<T>(string json)
-        {
-            using StringReader reader = new(json);
-            return Deserialize<T>(reader);
-        }
-        
-        private T Deserialize<T>(TextReader reader)
-        {
-            using JsonReader jsonReader = new JsonTextReader(reader);
-            return _internalSerializer.Deserialize<T>(jsonReader);
+            return JsonSerializer.Deserialize<T>(stream, _jsonOptions);
         }
 
+        public T Deserialize<T>(string json)
+        {
+            return JsonSerializer.Deserialize<T>(json, _jsonOptions);
+        }
+
+        public T Deserialize<T>(ref Utf8JsonReader json)
+        {
+            return JsonSerializer.Deserialize<T>(ref json, _jsonOptions);
+        }
 
         public string Serialize<T>(T value, bool indented = false)
         {
-            StringWriter stringWriter = new(new StringBuilder(256), CultureInfo.InvariantCulture);
-            using JsonTextWriter jsonTextWriter = new(stringWriter);
-            if (indented)
-            {
-                jsonTextWriter.Formatting = _internalReadableSerializer.Formatting;
-                _internalReadableSerializer.Serialize(jsonTextWriter, value, typeof(T));
-            }
-            else
-            {
-                jsonTextWriter.Formatting = _internalSerializer.Formatting;
-                _internalSerializer.Serialize(jsonTextWriter, value, typeof(T));
-            }
-
-            return stringWriter.ToString();
+            return JsonSerializer.Serialize<T>(value, indented ? JsonOptionsIndented : _jsonOptions);
         }
 
-        public long Serialize<T>(Stream stream, T value, bool indented = false)
+        private static JsonSerializerOptions CreateOptions(bool indented, int maxDepth = 64)
         {
-            using StreamWriter streamWriter = new(stream, leaveOpen: true);
-            using CountingTextWriter countingTextWriter = new(streamWriter);
-            using JsonTextWriter jsonTextWriter = new(countingTextWriter);
-            if (indented)
+            var options = new JsonSerializerOptions
             {
-                jsonTextWriter.Formatting = _internalReadableSerializer.Formatting;
-                _internalReadableSerializer.Serialize(jsonTextWriter, value, typeof(T));
-            }
-            else
-            {
-                jsonTextWriter.Formatting = _internalSerializer.Formatting;
-                _internalSerializer.Serialize(jsonTextWriter, value, typeof(T));
-            }
-
-            return countingTextWriter.Size;
-        }
-
-        public void RegisterConverter(JsonConverter converter)
-        {
-            BasicConverters.Add(converter);
-            ReadableConverters.Add(converter);
-
-            RebuildSerializers();
-        }
-
-        private void RebuildSerializers()
-        {
-            _readableSettings = new JsonSerializerSettings
-            {
-                ContractResolver = new CamelCasePropertyNamesContractResolver(),
-                NullValueHandling = NullValueHandling.Ignore,
-                Formatting = Formatting.Indented,
-                Converters = ReadableConverters
+                WriteIndented = indented,
+                IncludeFields = true,
+                DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
+                PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+                DictionaryKeyPolicy = JsonNamingPolicy.CamelCase,
+                PropertyNameCaseInsensitive = true,
+                MaxDepth = maxDepth,
+                Converters =
+                {
+                    new LongConverter(),
+                    new UInt256Converter(),
+                    new ULongConverter(),
+                    new IntConverter(),
+                    new ByteArrayConverter(),
+                    new NullableLongConverter(),
+                    new NullableULongConverter(),
+                    new NullableUInt256Converter(),
+                    new NullableIntConverter(),
+                    new TxTypeConverter(),
+                    new DoubleConverter(),
+                    new DoubleArrayConverter(),
+                    new BooleanConverter(),
+                    new DictionaryAddressKeyConverter(),
+                    new MemoryByteConverter(),
+                    new BigIntegerConverter(),
+                    new NullableBigIntegerConverter(),
+                    new JavaScriptObjectConverter(),
+                }
             };
 
-            _settings = new JsonSerializerSettings
+            foreach (var converter in _additionalConverters)
             {
-                ContractResolver = new CamelCasePropertyNamesContractResolver(),
-                NullValueHandling = NullValueHandling.Ignore,
-                Formatting = Formatting.None,
-                Converters = BasicConverters,
-            };
+                options.Converters.Add(converter);
+            }
 
-            _internalSerializer = JsonSerializer.Create(_settings);
-            _internalReadableSerializer = JsonSerializer.Create(_readableSettings);
+            return options;
+        }
+
+        private static readonly List<JsonConverter> _additionalConverters = new();
+        public static void AddConverter(JsonConverter converter)
+        {
+            _additionalConverters.Add(converter);
+
+            JsonOptions = CreateOptions(indented: false);
+            JsonOptionsIndented = CreateOptions(indented: true);
+        }
+
+        public static JsonSerializerOptions JsonOptions { get; private set; } = CreateOptions(indented: false);
+
+        public static JsonSerializerOptions JsonOptionsIndented { get; private set; } = CreateOptions(indented: true);
+
+        private static readonly StreamPipeWriterOptions optionsLeaveOpen = new(pool: MemoryPool<byte>.Shared, minimumBufferSize: 4096, leaveOpen: true);
+        private static readonly StreamPipeWriterOptions options = new(pool: MemoryPool<byte>.Shared, minimumBufferSize: 4096, leaveOpen: false);
+
+        private static CountingStreamPipeWriter GetPipeWriter(Stream stream, bool leaveOpen)
+        {
+            return new CountingStreamPipeWriter(stream, leaveOpen ? optionsLeaveOpen : options);
+        }
+
+        public long Serialize<T>(Stream stream, T value, bool indented = false, bool leaveOpen = true)
+        {
+            var countingWriter = GetPipeWriter(stream, leaveOpen);
+            using var writer = new Utf8JsonWriter(countingWriter, new JsonWriterOptions() { SkipValidation = true, Indented = indented });
+            JsonSerializer.Serialize(writer, value, indented ? JsonOptionsIndented : _jsonOptions);
+            countingWriter.Complete();
+
+            long outputCount = countingWriter.OutputCount;
+            return outputCount;
+        }
+
+        public async ValueTask<long> SerializeAsync<T>(Stream stream, T value, bool indented = false, bool leaveOpen = true)
+        {
+            var countingWriter = GetPipeWriter(stream, leaveOpen);
+            using var writer = new Utf8JsonWriter(countingWriter, new JsonWriterOptions() { SkipValidation = true, Indented = indented });
+            JsonSerializer.Serialize(writer, value, indented ? JsonOptionsIndented : _jsonOptions);
+            await countingWriter.CompleteAsync();
+
+            long outputCount = countingWriter.OutputCount;
+            return outputCount;
+        }
+
+        public static void SerializeToStream<T>(Stream stream, T value, bool indented = false)
+        {
+            JsonSerializer.Serialize(stream, value, indented ? JsonOptionsIndented : JsonOptions);
+        }
+    }
+
+    public static class JsonElementExtensions
+    {
+        public static bool TryGetSubProperty(this JsonElement element, string innerPath, out JsonElement value)
+        {
+            ArgumentNullException.ThrowIfNullOrEmpty(innerPath);
+
+            if (innerPath.Contains('.'))
+            {
+                string[] parts = innerPath.Split('.');
+                JsonElement currentElement = element;
+                for (int i = 0; i < parts.Length - 1; i++)
+                {
+                    if (!currentElement.TryGetProperty(parts[i], out currentElement))
+                    {
+                        value = default;
+                        return false;
+                    }
+                }
+                return currentElement.TryGetProperty(parts[^1], out value);
+            }
+
+            return element.TryGetProperty(innerPath.AsSpan(), out value);
         }
     }
 }

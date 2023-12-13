@@ -1,18 +1,5 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Int256;
 
@@ -23,12 +10,14 @@ namespace Nethermind.Core.Specs
     /// </summary>
     public interface ISpecProvider
     {
+        public const ulong TimestampForkNever = ulong.MaxValue;
+
         /// <summary>
         /// The merge block number is different from the rest forks because we don't know the merge block before it happens.
         /// This function handles change of the merge block
         /// </summary>
         void UpdateMergeTransitionInfo(long? blockNumber, UInt256? terminalTotalDifficulty = null);
-        
+
         /// <summary>
         /// We have two different block numbers for merge transition:
         /// https://github.com/ethereum/EIPs/blob/d896145678bd65d3eafd8749690c1b5228875c39/EIPS/eip-3675.md#definitions
@@ -38,14 +27,24 @@ namespace Nethermind.Core.Specs
         /// It affects all post-merge logic, for example, difficulty opcode, post-merge block rewards.
         /// This block number doesn't affect fork_id calculation and it isn't included in ISpecProvider.TransitionsBlocks
         /// </summary>
-        long? MergeBlockNumber { get; }
-        
+        ForkActivation? MergeBlockNumber { get; }
+
+        /// <summary>
+        /// Gets the first time the fork is activated by timestamp
+        /// </summary>
+        ulong TimestampFork { get; }
+
         UInt256? TerminalTotalDifficulty { get; }
 
         /// <summary>
         /// Retrieves the list of enabled EIPs at genesis block.
         /// </summary>
         IReleaseSpec GenesisSpec { get; }
+
+        /// <summary>
+        /// When true genesis state root calculation is disabled and spec state root is set.
+        /// </summary>
+        bool GenesisStateUnavailable { get => false; }
 
         /// <summary>
         /// Block number at which DAO happens (only relevant for mainnet)
@@ -56,18 +55,34 @@ namespace Nethermind.Core.Specs
         /// Unique identifier of the chain that allows to sign messages for the specified chain only.
         /// It is also used when verifying if sync peers are on the same chain.
         /// </summary>
+        ulong NetworkId { get; }
+
+        /// <summary>
+        /// Additional identifier of the chain to mitigate risks described in 155
+        /// </summary>
         ulong ChainId { get; }
 
         /// <summary>
         /// All block numbers at which a change in spec (a fork) happens.
         /// </summary>
-        long[] TransitionBlocks { get; }
+        ForkActivation[] TransitionActivations { get; }
 
         /// <summary>
         /// Resolves a spec for the given block number.
         /// </summary>
-        /// <param name="blockNumber"></param>
+        /// <param name="forkActivation"></param>
         /// <returns>A spec that is valid at the given chain height</returns>
-        IReleaseSpec GetSpec(long blockNumber);
+        IReleaseSpec GetSpec(ForkActivation forkActivation);
+        IReleaseSpec GetSpec(long blockNumber, ulong? timestamp) => GetSpec((blockNumber, timestamp));
+        IReleaseSpec GetSpec(BlockHeader blockHeader) => GetSpec((blockHeader.Number, blockHeader.Timestamp));
+
+        /// <summary>
+        /// Resolves a spec for all planned forks applied.
+        /// </summary>
+        /// <returns>A spec for all planned forks applied</
+        /// <remarks> The default value is long.MaxValue for block numbers and ulong.MaxValue for timestamps
+        /// for every new not yet scheduled EIP. Because of that we can't use long.MaxValue and
+        /// ulong.MaxValue for GetFinalSpec that is why we have long.MaxValue-1, ulong.MaxValue-1 </remarks>
+        IReleaseSpec GetFinalSpec() => GetSpec(long.MaxValue - 1, ulong.MaxValue - 1);
     }
 }

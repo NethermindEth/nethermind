@@ -1,26 +1,18 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using System.Text.Json.Serialization;
 using System.Threading;
+
 using Nethermind.Core.Extensions;
+using Nethermind.Serialization.Json;
 
 namespace Nethermind.Core.Crypto
 {
+    [JsonConverter(typeof(PublicKeyConverter))]
     public class PublicKey : IEquatable<PublicKey>
     {
         public const int PrefixedLengthInBytes = 65;
@@ -28,6 +20,7 @@ namespace Nethermind.Core.Crypto
         private Address? _address;
 
         private byte[]? _prefixedBytes;
+        private readonly int _hashCode;
 
         public PublicKey(string? hexString)
             : this(Core.Extensions.Bytes.FromHexString(hexString ?? throw new ArgumentNullException(nameof(hexString))))
@@ -49,6 +42,7 @@ namespace Nethermind.Core.Crypto
             }
 
             Bytes = bytes.Slice(bytes.Length - 64, 64).ToArray();
+            _hashCode = GetHashCode(Bytes);
         }
 
         public Address Address
@@ -93,13 +87,13 @@ namespace Nethermind.Core.Crypto
         private Address ComputeAddress()
         {
             Span<byte> hash = ValueKeccak.Compute(Bytes).BytesAsSpan;
-            return new Address(hash.Slice(12).ToArray());
+            return new Address(hash[12..].ToArray());
         }
 
         public static Address ComputeAddress(ReadOnlySpan<byte> publicKeyBytes)
         {
             Span<byte> hash = ValueKeccak.Compute(publicKeyBytes).BytesAsSpan;
-            return new Address(hash.Slice(12).ToArray());
+            return new Address(hash[12..].ToArray());
         }
 
         public override bool Equals(object? obj)
@@ -109,7 +103,21 @@ namespace Nethermind.Core.Crypto
 
         public override int GetHashCode()
         {
-            return MemoryMarshal.Read<int>(Bytes);
+            return _hashCode;
+        }
+
+        private static int GetHashCode(byte[] bytes)
+        {
+            long l0 = Unsafe.ReadUnaligned<long>(ref MemoryMarshal.GetArrayDataReference(bytes));
+            long l1 = Unsafe.ReadUnaligned<long>(ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(bytes), sizeof(long)));
+            long l2 = Unsafe.ReadUnaligned<long>(ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(bytes), sizeof(long) * 2));
+            long l3 = Unsafe.ReadUnaligned<long>(ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(bytes), sizeof(long) * 3));
+            long l4 = Unsafe.ReadUnaligned<long>(ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(bytes), sizeof(long) * 4));
+            long l5 = Unsafe.ReadUnaligned<long>(ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(bytes), sizeof(long) * 5));
+            long l6 = Unsafe.ReadUnaligned<long>(ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(bytes), sizeof(long) * 6));
+            long l7 = Unsafe.ReadUnaligned<long>(ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(bytes), sizeof(long) * 7));
+            l0 ^= l1 ^ l2 ^ l3 ^ l4 ^ l5 ^ l6 ^ l7;
+            return (int)(l0 ^ (l0 >> 32));
         }
 
         public override string ToString()
@@ -125,17 +133,17 @@ namespace Nethermind.Core.Crypto
         public string ToShortString()
         {
             string value = Bytes.ToHexString(false);
-            return $"{value.Substring(0, 6)}...{value.Substring(value.Length - 6)}";
+            return $"{value[..6]}...{value[^6..]}";
         }
 
         public static bool operator ==(PublicKey? a, PublicKey? b)
         {
-            if (ReferenceEquals(a, null))
+            if (a is null)
             {
-                return ReferenceEquals(b, null);
+                return b is null;
             }
 
-            if (ReferenceEquals(b, null))
+            if (b is null)
             {
                 return false;
             }

@@ -1,21 +1,9 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Diagnostics;
 using Nethermind.Core;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Logging;
@@ -32,8 +20,8 @@ namespace Nethermind.State
         private static readonly Rlp EmptyAccountRlp = Rlp.Encode(Account.TotallyEmpty);
 
         [DebuggerStepThrough]
-        public StateTree()
-            : base(new MemDb(), Keccak.EmptyTreeHash, true, true, NullLogManager.Instance)
+        public StateTree(ICappedArrayPool? bufferPool = null)
+            : base(new MemDb(), Keccak.EmptyTreeHash, true, true, NullLogManager.Instance, bufferPool: bufferPool)
         {
             TrieType = TrieType.State;
         }
@@ -46,37 +34,35 @@ namespace Nethermind.State
         }
 
         [DebuggerStepThrough]
-        public Account? Get(Address address, Keccak? rootHash = null)
+        public Account? Get(Address address, Hash256? rootHash = null)
         {
             byte[]? bytes = Get(ValueKeccak.Compute(address.Bytes).BytesAsSpan, rootHash);
-            if (bytes is null)
-            {
-                return null;
-            }
-
-            return _decoder.Decode(bytes.AsRlpStream());
+            return bytes is null ? null : _decoder.Decode(bytes.AsRlpStream());
         }
 
         [DebuggerStepThrough]
-        internal Account? Get(Keccak keccak) // for testing
+        internal Account? Get(Hash256 keccak) // for testing
         {
             byte[]? bytes = Get(keccak.Bytes);
-            if (bytes is null)
-            {
-                return null;
-            }
-
-            return _decoder.Decode(bytes.AsRlpStream());
+            return bytes is null ? null : _decoder.Decode(bytes.AsRlpStream());
         }
 
         public void Set(Address address, Account? account)
         {
-            ValueKeccak keccak = ValueKeccak.Compute(address.Bytes);
+            ValueHash256 keccak = ValueKeccak.Compute(address.Bytes);
             Set(keccak.BytesAsSpan, account is null ? null : account.IsTotallyEmpty ? EmptyAccountRlp : Rlp.Encode(account));
         }
-        
+
         [DebuggerStepThrough]
-        public Rlp? Set(Keccak keccak, Account? account) 
+        public Rlp? Set(Hash256 keccak, Account? account)
+        {
+            Rlp rlp = account is null ? null : account.IsTotallyEmpty ? EmptyAccountRlp : Rlp.Encode(account);
+
+            Set(keccak.Bytes, rlp);
+            return rlp;
+        }
+
+        public Rlp? Set(in ValueHash256 keccak, Account? account)
         {
             Rlp rlp = account is null ? null : account.IsTotallyEmpty ? EmptyAccountRlp : Rlp.Encode(account);
 

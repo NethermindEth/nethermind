@@ -1,41 +1,26 @@
 #!/bin/bash
-#exit when any command fails
+# SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+# SPDX-License-Identifier: LGPL-3.0-only
+
 set -e
-CLI_PATH=$RELEASE_DIRECTORY/nethermind/src/Nethermind/Nethermind.Cli
-PUBLISH_PATH=bin/release/net6.0
-OUT=out
 
-cd $CLI_PATH
+output_path=$GITHUB_WORKSPACE/$PUB_DIR
 
-echo =======================================================
-echo Publishing Nethermind Cli for different platforms...
-echo =======================================================
-echo Nethermind Cli path: $CLI_PATH
+cd $GITHUB_WORKSPACE/nethermind/src/Nethermind/Nethermind.Cli
 
-dotnet publish -c release -r $LINUX --self-contained true -p:PublishSingleFile=true -p:IncludeAllContentForSelfExtract=true -o $OUT/$LIN_RELEASE
-dotnet publish -c release -r $OSX --self-contained true -p:PublishSingleFile=true -p:IncludeAllContentForSelfExtract=true -o $OUT/$OSX_RELEASE
-dotnet publish -c release -r $WIN10 --self-contained true -p:PublishSingleFile=true -p:IncludeAllContentForSelfExtract=true -o $OUT/$WIN_RELEASE
-dotnet publish -c release -r $LINUX_ARM64 --self-contained true -p:PublishSingleFile=true -p:IncludeAllContentForSelfExtract=true -o $OUT/$LIN_ARM64_RELEASE
-dotnet publish -c release -r $OSX_ARM64 --self-contained true -p:PublishSingleFile=true -p:IncludeAllContentForSelfExtract=true -o $OUT/$OSX_ARM64_RELEASE
+echo "Building Nethermind CLI"
 
-echo =======================================================
-echo Packing Nethermind Cli for different platforms...
-echo =======================================================
+for rid in "linux-x64" "linux-arm64" "win-x64" "osx-x64" "osx-arm64"
+do
+  echo "  Publishing for $rid"
 
-rm $OUT/$LIN_RELEASE/*.pdb
-rm $OUT/$OSX_RELEASE/*.pdb
-rm $OUT/$WIN_RELEASE/*.pdb
-rm $OUT/$LIN_ARM64_RELEASE/*.pdb
-rm $OUT/$OSX_ARM64_RELEASE/*.pdb
+  dotnet publish -c release -r $rid -o $output_path/$rid --sc true \
+    -p:BuildTimestamp=$2 \
+    -p:Commit=$1 \
+    -p:DebugType=none \
+    -p:Deterministic=true \
+    -p:IncludeAllContentForSelfExtract=true \
+    -p:PublishSingleFile=true
+done
 
-cp -r $OUT/$LIN_RELEASE $RELEASE_DIRECTORY
-cp -r $OUT/$OSX_RELEASE $RELEASE_DIRECTORY
-cp -r $OUT/$WIN_RELEASE $RELEASE_DIRECTORY
-cp -r $OUT/$LIN_ARM64_RELEASE $RELEASE_DIRECTORY
-cp -r $OUT/$OSX_ARM64_RELEASE $RELEASE_DIRECTORY
-
-rm -rf $OUT
-
-echo =======================================================
-echo Building Nethermind Cli completed
-echo =======================================================
+echo "Build completed"

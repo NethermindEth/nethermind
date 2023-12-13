@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+# SPDX-License-Identifier: LGPL-3.0-only
+
 import json
 import subprocess
 import emoji
@@ -24,30 +27,15 @@ configs = {
     "goerli": {
         "url": "api-goerli.etherscan.io",
         "blockReduced": 8192,
-        "multiplierRequirement": 30000 
-    },
-    "ropsten": {
-        "url": "api-ropsten.etherscan.io",
-        "blockReduced": 8192,
-        "multiplierRequirement": 10000
-    },
-    "rinkeby": {
-        "url": "api-rinkeby.etherscan.io",
-        "blockReduced": 8192,
         "multiplierRequirement": 30000
     },
-    "kovan": {
-        "url": "api-kovan.etherscan.io",
-        "blockReduced": 8192,
-        "multiplierRequirement": 10000
-    },     
-    "poacore": {
-        "url": "https://core.poa.network",
+    "gnosis": {
+        "url": "https://rpc.gnosischain.com",
         "blockReduced": 8192,
         "multiplierRequirement": 10000
     },
-    "xdai": {
-        "url": "https://rpc.gnosischain.com",
+    "chiado": {
+        "url": "https://rpc.chiadochain.net",
         "blockReduced": 8192,
         "multiplierRequirement": 10000
     },
@@ -55,11 +43,6 @@ configs = {
         "url": "api-sepolia.etherscan.io",
         "blockReduced": 1000,
         "multiplierRequirement": 1000
-    },
-    "sokol": {
-        "url": "https://sokol.poa.network",
-        "blockReduced": 8192,
-        "multiplierRequirement": 10000
     },
     "energyweb": {
         "url": "https://rpc.energyweb.org",
@@ -70,36 +53,19 @@ configs = {
         "url": "https://volta-rpc.energyweb.org",
         "blockReduced": 8192,
         "multiplierRequirement": 10000
-    },   
-    # mev section
-    "mainnet_mev": {
-        "url": "api.etherscan.io",
-        "blockReduced": 1000,
-        "multiplierRequirement": 1000
     },
-    "goerli_mev": {
-        "url": "api-goerli.etherscan.io",
-        "blockReduced": 8192,
-        "multiplierRequirement": 30000 
-    },
-    "xdai_mev": {
-        "url": "https://rpc.gnosischain.com",
+    "exosama": {
+        "url": "https://rpc.exosama.com",
         "blockReduced": 8192,
         "multiplierRequirement": 10000
     },
-    # aa section
-    "mainnet_aa": {
-        "url": "api.etherscan.io",
-        "blockReduced": 1000,
-        "multiplierRequirement": 1000
-    },
-    "goerli_aa": {
-        "url": "api-goerli.etherscan.io",
+    "joc-mainnet": {
+        "url": "https://rpc-1.japanopenchain.org:8545",
         "blockReduced": 8192,
-        "multiplierRequirement": 30000 
+        "multiplierRequirement": 10000
     },
-    "xdai_aa": {
-        "url": "https://rpc.gnosischain.com",
+    "joc-testnet": {
+        "url": "https://rpc-1.testnet.japanopenchain.org:8545",
         "blockReduced": 8192,
         "multiplierRequirement": 10000
     }

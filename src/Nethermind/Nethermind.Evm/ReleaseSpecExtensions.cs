@@ -1,19 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-// 
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using Nethermind.Core.Specs;
@@ -30,7 +16,7 @@ namespace Nethermind.Evm
                     : spec.UseConstantinopleNetGasMetering
                         ? RefundOf.SResetReversedEip1283
                         : throw new InvalidOperationException("Asking about the net metered cost when net metering not enabled");
-        
+
         public static long GetSetReversalRefund(this IReleaseSpec spec) =>
             spec.UseHotAndColdStorage
                 ? RefundOf.SSetReversedHotCold
@@ -44,7 +30,7 @@ namespace Nethermind.Evm
             spec.UseHotAndColdStorage
                 ? GasCostOf.SReset - GasCostOf.ColdSLoad
                 : GasCostOf.SReset;
-        
+
         public static long GetNetMeteredSStoreCost(this IReleaseSpec spec) =>
             spec.UseHotAndColdStorage
                 ? GasCostOf.WarmStateRead
@@ -78,14 +64,14 @@ namespace Nethermind.Evm
                 : spec.UseLargeStateDDosProtection
                     ? GasCostOf.ExtCodeHashEip1884
                     : GasCostOf.ExtCodeHash;
-        
+
         public static long GetExtCodeCost(this IReleaseSpec spec) =>
             spec.UseHotAndColdStorage
                 ? 0L
                 : spec.UseShanghaiDDosProtection
                     ? GasCostOf.ExtCodeEip150
                     : GasCostOf.ExtCode;
-        
+
         public static long GetCallCost(this IReleaseSpec spec) =>
             spec.UseHotAndColdStorage
                 ? 0L

@@ -1,40 +1,40 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
-using Newtonsoft.Json;
+using System;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 
-namespace Nethermind.Evm.Tracing.GethStyle
+using Nethermind.Core.Crypto;
+
+namespace Nethermind.Evm.Tracing.GethStyle;
+
+public record GethTraceOptions
 {
-    public class GethTraceOptions
-    {
-        [JsonProperty("disableStorage")]
-        public bool DisableStorage { get; set; }
-        
-        [JsonProperty("disableMemory")]
-        public bool DisableMemory { get; set; }
-        
-        [JsonProperty("disableStack")]
-        public bool DisableStack { get; set; }
-        
-        [JsonProperty("tracer")]
-        public string Tracer { get; set; }
-        
-        [JsonProperty("timeout")]
-        public string Timeout { get; set; }
-        
-        public static GethTraceOptions Default = new();
-    }
+    [JsonPropertyName("disableMemory")]
+    [Obsolete("Use EnableMemory instead.")]
+    public bool DisableMemory { get => !EnableMemory; init => EnableMemory = !value; }
+
+    [JsonPropertyName("disableStorage")]
+    public bool DisableStorage { get; init; }
+
+    [JsonPropertyName("enableMemory")]
+    public bool EnableMemory { get; init; }
+
+    [JsonPropertyName("disableStack")]
+    public bool DisableStack { get; init; }
+
+    [JsonPropertyName("timeout")]
+    public string Timeout { get; init; }
+
+    [JsonPropertyName("tracer")]
+    public string Tracer { get; init; }
+
+    [JsonPropertyName("txHash")]
+    public Hash256? TxHash { get; init; }
+
+    [JsonPropertyName("tracerConfig")]
+    public JsonElement? TracerConfig { get; init; }
+
+    public static GethTraceOptions Default { get; } = new();
 }

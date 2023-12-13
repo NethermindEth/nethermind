@@ -1,24 +1,12 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Text.Json;
 using System.Threading.Tasks;
 using Nethermind.Overseer.Test.Framework.Steps;
 using Nethermind.Overseer.Test.JsonRpc;
-using Newtonsoft.Json;
+
 using NUnit.Framework;
 
 namespace Nethermind.Overseer.Test.Framework
@@ -38,12 +26,12 @@ namespace Nethermind.Overseer.Test.Framework
             TestBuilder.SwitchNode(node);
             return (TContext)this;
         }
-        
+
         public TestBuilder LeaveContext()
         {
             return TestBuilder;
         }
-        
+
         public TContext Wait(int delay = 5000, string name = "Wait")
             => Add(new WaitTestStep($"name {delay}", delay));
 
@@ -53,7 +41,7 @@ namespace Nethermind.Overseer.Test.Framework
             => Add(new JsonRpcTestStep<TResult>(name,
                 async () =>
                 {
-                    
+
                     var result = await ExecuteJsonRpcAsync(methodName, func);
                     if (result.IsValid)
                     {
@@ -66,7 +54,7 @@ namespace Nethermind.Overseer.Test.Framework
         protected TContext Add(TestStepBase step)
         {
             TestBuilder.QueueWork(step);
-            return (TContext) this;
+            return (TContext)this;
         }
 
         private async Task<JsonRpcResponse<TResult>> ExecuteJsonRpcAsync<TResult>(
@@ -86,7 +74,7 @@ namespace Nethermind.Overseer.Test.Framework
             var result = await funcTask;
 
             TestContext.WriteLine($"Received a response for JSON RPC call '{methodName}'." +
-                                   $"{Environment.NewLine}{JsonConvert.SerializeObject(result)}");
+                                   $"{Environment.NewLine}{JsonSerializer.Serialize(result)}");
 
             return await funcTask;
         }

@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Runtime.CompilerServices;
@@ -22,7 +9,6 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
 using Nethermind.Logging;
-using Nethermind.Wallet;
 
 [assembly: InternalsVisibleTo("Nethermind.Clique.Test")]
 
@@ -62,7 +48,7 @@ namespace Nethermind.Consensus.Clique
                 if (_logger.IsInfo) _logger.Info($"Not authorized to seal the block {block.ToString(Block.Format.Short)}");
                 return null;
             }
-            
+
             BlockHeader header = block.Header;
 
             // Sealing the genesis block is not supported
@@ -77,19 +63,19 @@ namespace Nethermind.Consensus.Clique
             }
 
             // Sign all the things!
-            Keccak headerHash = SnapshotManager.CalculateCliqueHeaderHash(header);
+            Hash256 headerHash = SnapshotManager.CalculateCliqueHeaderHash(header);
             Signature signature = _signer.Sign(headerHash);
             // Copy signature bytes (R and S)
             byte[] signatureBytes = signature.Bytes;
             Array.Copy(signatureBytes, 0, header.ExtraData, header.ExtraData.Length - Clique.ExtraSealLength, signatureBytes.Length);
             // Copy signature's recovery id (V)
             byte recoveryId = signature.RecoveryId;
-            header.ExtraData[header.ExtraData.Length - 1] = recoveryId;
+            header.ExtraData[^1] = recoveryId;
 
             return block;
         }
 
-        public bool CanSeal(long blockNumber, Keccak parentHash)
+        public bool CanSeal(long blockNumber, Hash256 parentHash)
         {
             Snapshot snapshot = _snapshotManager.GetOrCreateSnapshot(blockNumber - 1, parentHash);
             if (!_signer.CanSign)
@@ -97,7 +83,7 @@ namespace Nethermind.Consensus.Clique
                 if (_logger.IsTrace) _logger.Trace("Signer cannot sing any blocks");
                 return false;
             }
-            
+
             if (!snapshot.Signers.ContainsKey(_signer.Address))
             {
                 if (_logger.IsTrace) _logger.Trace("Not on the signers list");
@@ -112,7 +98,7 @@ namespace Nethermind.Consensus.Clique
                     return false;
                 }
             }
-            
+
             // If we're amongst the recent signers, wait for the next block
             if (_snapshotManager.HasSignedRecently(snapshot, blockNumber, _signer.Address))
             {

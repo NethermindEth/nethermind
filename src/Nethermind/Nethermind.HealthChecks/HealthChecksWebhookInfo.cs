@@ -2,7 +2,6 @@
 
 using System.Net;
 using System;
-using Nethermind.Monitoring.Metrics;
 using Nethermind.Monitoring.Config;
 using Nethermind.Network;
 
@@ -18,7 +17,7 @@ namespace Nethermind.HealthChecks
         public HealthChecksWebhookInfo(string description, IIPResolver ipResolver, IMetricsConfig metricsConfig, string hostname)
         {
             _description = description;
-            _hostname = hostname; 
+            _hostname = hostname;
             IPAddress externalIp = ipResolver.ExternalIp;
             _ip = externalIp.ToString();
             _nodeName = metricsConfig.NodeName;

@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Threading;
@@ -37,14 +24,16 @@ namespace Nethermind.Trie
 
         public TrieStats Stats { get; } = new();
 
-        public bool ShouldVisit(Keccak nextNode)
+        public bool IsFullDbScan => true;
+
+        public bool ShouldVisit(Hash256 nextNode)
         {
             return true;
         }
 
-        public void VisitTree(Keccak rootHash, TrieVisitContext trieVisitContext) { }
+        public void VisitTree(Hash256 rootHash, TrieVisitContext trieVisitContext) { }
 
-        public void VisitMissingNode(Keccak nodeHash, TrieVisitContext trieVisitContext)
+        public void VisitMissingNode(Hash256 nodeHash, TrieVisitContext trieVisitContext)
         {
             if (trieVisitContext.IsStorage)
             {
@@ -54,7 +43,7 @@ namespace Nethermind.Trie
             {
                 Interlocked.Increment(ref Stats._missingState);
             }
-            
+
             IncrementLevel(trieVisitContext);
         }
 
@@ -62,15 +51,15 @@ namespace Nethermind.Trie
         {
             if (trieVisitContext.IsStorage)
             {
-                Interlocked.Add(ref Stats._storageSize, node.FullRlp?.Length ?? 0);
+                Interlocked.Add(ref Stats._storageSize, node.FullRlp.Length);
                 Interlocked.Increment(ref Stats._storageBranchCount);
             }
             else
             {
-                Interlocked.Add(ref Stats._stateSize, node.FullRlp?.Length ?? 0);
+                Interlocked.Add(ref Stats._stateSize, node.FullRlp.Length);
                 Interlocked.Increment(ref Stats._stateBranchCount);
             }
-            
+
             IncrementLevel(trieVisitContext);
         }
 
@@ -78,15 +67,15 @@ namespace Nethermind.Trie
         {
             if (trieVisitContext.IsStorage)
             {
-                Interlocked.Add(ref Stats._storageSize, node.FullRlp?.Length ?? 0);
+                Interlocked.Add(ref Stats._storageSize, node.FullRlp.Length);
                 Interlocked.Increment(ref Stats._storageExtensionCount);
             }
             else
             {
-                Interlocked.Add(ref Stats._stateSize, node.FullRlp?.Length ?? 0);
+                Interlocked.Add(ref Stats._stateSize, node.FullRlp.Length);
                 Interlocked.Increment(ref Stats._stateExtensionCount);
             }
-            
+
             IncrementLevel(trieVisitContext);
         }
 
@@ -100,22 +89,22 @@ namespace Nethermind.Trie
 
             if (trieVisitContext.IsStorage)
             {
-                Interlocked.Add(ref Stats._storageSize, node.FullRlp?.Length ?? 0);
+                Interlocked.Add(ref Stats._storageSize, node.FullRlp.Length);
                 Interlocked.Increment(ref Stats._storageLeafCount);
             }
             else
             {
-                Interlocked.Add(ref Stats._stateSize, node.FullRlp?.Length ?? 0);
+                Interlocked.Add(ref Stats._stateSize, node.FullRlp.Length);
                 Interlocked.Increment(ref Stats._accountCount);
             }
-            
+
             IncrementLevel(trieVisitContext);
         }
 
-        public void VisitCode(Keccak codeHash, TrieVisitContext trieVisitContext)
+        public void VisitCode(Hash256 codeHash, TrieVisitContext trieVisitContext)
         {
             byte[] code = _codeKeyValueStore[codeHash.Bytes];
-            if (code != null)
+            if (code is not null)
             {
                 Interlocked.Add(ref Stats._codeSize, code.Length);
                 Interlocked.Increment(ref Stats._codeCount);
@@ -124,10 +113,10 @@ namespace Nethermind.Trie
             {
                 Interlocked.Increment(ref Stats._missingCode);
             }
-            
+
             IncrementLevel(trieVisitContext, Stats._codeLevels);
         }
-        
+
         private void IncrementLevel(TrieVisitContext trieVisitContext)
         {
             int[] levels = trieVisitContext.IsStorage ? Stats._storageLevels : Stats._stateLevels;

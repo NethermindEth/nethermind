@@ -1,5 +1,0 @@
-name: web_sockets_test
-scheme: ws
-host: test.com
-type: websockets
-resource: test

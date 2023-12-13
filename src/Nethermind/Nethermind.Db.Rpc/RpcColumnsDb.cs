@@ -1,45 +1,49 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Generic;
-using Nethermind.Core.Attributes;
 using Nethermind.JsonRpc.Client;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 
 namespace Nethermind.Db.Rpc
 {
-    public class RpcColumnsDb<T> : RpcDb, IColumnsDb<T>
+    public class RpcColumnsDb<T> : IColumnsDb<T> where T : struct, Enum
     {
-        public RpcColumnsDb(string dbName, IJsonSerializer jsonSerializer, IJsonRpcClient rpcClient, ILogManager logManager, IDb recordDb) : base(dbName, jsonSerializer, rpcClient, logManager, recordDb)
+        private readonly string _dbName;
+        private readonly IJsonSerializer _jsonSerializer;
+        private readonly IJsonRpcClient _rpcClient;
+        private readonly ILogManager _logManager;
+        private readonly IColumnsDb<T> _recordDb;
+
+        public RpcColumnsDb(
+            string dbName,
+            IJsonSerializer jsonSerializer,
+            IJsonRpcClient rpcClient,
+            ILogManager logManager,
+            IColumnsDb<T> recordDb
+        )
         {
+            _dbName = dbName;
+            _jsonSerializer = jsonSerializer;
+            _rpcClient = rpcClient;
+            _logManager = logManager;
+            _recordDb = recordDb;
         }
 
-        [Todo(Improve.MissingFunctionality, "Need to implement RPC method for column DB's")]
-        public IDbWithSpan GetColumnDb(T key) => this;
-
-        [Todo(Improve.MissingFunctionality, "Need to implement RPC method for column DB's")]
-        public IEnumerable<T> ColumnKeys { get; } = Array.Empty<T>();
-
-        public Span<byte> GetSpan(byte[] key) => this[key].AsSpan();
-
-        public void DangerousReleaseMemory(in Span<byte> span)
+        public IDb GetColumnDb(T key)
         {
-            
+            string dbName = _dbName + key;
+            IDb column = _recordDb.GetColumnDb(key);
+            return new RpcDb(dbName, _jsonSerializer, _rpcClient, _logManager, column);
+        }
+
+        public IEnumerable<T> ColumnKeys => Enum.GetValues<T>();
+
+        public IColumnsWriteBatch<T> StartWriteBatch()
+        {
+            return new InMemoryColumnWriteBatch<T>(this);
         }
     }
 }

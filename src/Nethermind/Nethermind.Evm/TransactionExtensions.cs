@@ -1,20 +1,7 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-// 
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Core;
 using Nethermind.Int256;
 
@@ -23,10 +10,54 @@ namespace Nethermind.Evm
     public static class TransactionExtensions
     {
         public static Address? GetRecipient(this Transaction tx, in UInt256 nonce) =>
-            tx.To != null
+            tx.To is not null
                 ? tx.To
                 : tx.IsSystem()
                     ? tx.SenderAddress
                     : ContractAddress.From(tx.SenderAddress, nonce > 0 ? nonce - 1 : nonce);
+
+        public static TxGasInfo GetGasInfo(this Transaction tx, bool is1559Enabled, BlockHeader header)
+        {
+            UInt256 effectiveGasPrice = tx.CalculateEffectiveGasPrice(is1559Enabled, header.BaseFeePerGas);
+
+            if (tx.SupportsBlobs)
+            {
+                if (header.ExcessBlobGas is null)
+                {
+                    throw new ArgumentException($"Block that contains Shard Blob Transactions should have {nameof(header.ExcessBlobGas)} set.", nameof(header.ExcessBlobGas));
+                }
+
+                if (!BlobGasCalculator.TryCalculateBlobGasPricePerUnit(header, out UInt256 blobGasPrice))
+                {
+                    throw new OverflowException("Blob gas price calculation led to overflow.");
+                }
+                ulong blobGas = BlobGasCalculator.CalculateBlobGas(tx);
+
+                return new(effectiveGasPrice, blobGasPrice, blobGas);
+            }
+
+            return new(effectiveGasPrice, null, null);
+        }
+    }
+
+    public struct TxGasInfo
+    {
+        public TxGasInfo() { }
+
+        public TxGasInfo(UInt256? effectiveGasPrice, UInt256? blobGasPrice, ulong? blobGasUsed)
+        {
+            EffectiveGasPrice = effectiveGasPrice;
+            BlobGasPrice = blobGasPrice;
+            BlobGasUsed = blobGasUsed;
+        }
+
+        public TxGasInfo(UInt256? effectiveGasPrice)
+        {
+            EffectiveGasPrice = effectiveGasPrice;
+        }
+
+        public UInt256? EffectiveGasPrice { get; private set; }
+        public UInt256? BlobGasPrice { get; private set; }
+        public ulong? BlobGasUsed { get; private set; }
     }
 }

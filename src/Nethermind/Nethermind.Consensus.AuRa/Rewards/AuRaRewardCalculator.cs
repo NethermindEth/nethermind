@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Generic;
@@ -21,9 +8,6 @@ using Nethermind.Abi;
 using Nethermind.Consensus.AuRa.Contracts;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Core;
-using Nethermind.Core.Extensions;
-using Nethermind.Evm;
-using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Specs.ChainSpecStyle;
 
@@ -33,38 +17,38 @@ namespace Nethermind.Consensus.AuRa.Rewards
     {
         private readonly StaticRewardCalculator _blockRewardCalculator;
         private readonly IList<IRewardContract> _contracts;
-        
+
         public AuRaRewardCalculator(AuRaParameters auRaParameters, IAbiEncoder abiEncoder, ITransactionProcessor transactionProcessor)
         {
-            if (auRaParameters == null) throw new ArgumentNullException(nameof(auRaParameters));
-            if (abiEncoder == null) throw new ArgumentNullException(nameof(abiEncoder));
-            if (transactionProcessor == null) throw new ArgumentNullException(nameof(transactionProcessor));
+            ArgumentNullException.ThrowIfNull(auRaParameters);
+            ArgumentNullException.ThrowIfNull(abiEncoder);
+            ArgumentNullException.ThrowIfNull(transactionProcessor);
 
             IList<IRewardContract> BuildTransitions()
             {
                 var contracts = new List<IRewardContract>();
 
-                if (auRaParameters.BlockRewardContractTransitions != null)
+                if (auRaParameters.BlockRewardContractTransitions is not null)
                 {
                     contracts.AddRange(auRaParameters.BlockRewardContractTransitions.Select(t => new RewardContract(transactionProcessor, abiEncoder, t.Value, t.Key)));
                     contracts.Sort((a, b) => a.Activation.CompareTo(b.Activation));
                 }
 
-                if (auRaParameters.BlockRewardContractAddress != null)
+                if (auRaParameters.BlockRewardContractAddress is not null)
                 {
                     var contractTransition = auRaParameters.BlockRewardContractTransition ?? 0;
                     if (contractTransition > (contracts.FirstOrDefault()?.Activation ?? long.MaxValue))
                     {
                         throw new ArgumentException($"{nameof(auRaParameters.BlockRewardContractTransition)} provided for {nameof(auRaParameters.BlockRewardContractAddress)} is higher than first {nameof(auRaParameters.BlockRewardContractTransitions)}.");
                     }
-                    
+
                     contracts.Insert(0, new RewardContract(transactionProcessor, abiEncoder, auRaParameters.BlockRewardContractAddress, contractTransition));
                 }
 
                 return contracts;
             }
 
-            if (auRaParameters == null) throw new ArgumentNullException(nameof(AuRaParameters));
+            ArgumentNullException.ThrowIfNull(auRaParameters);
             _contracts = BuildTransitions();
             _blockRewardCalculator = new StaticRewardCalculator(auRaParameters.BlockReward);
         }
@@ -75,24 +59,24 @@ namespace Nethermind.Consensus.AuRa.Rewards
             {
                 return Array.Empty<BlockReward>();
             }
-            
+
             return _contracts.TryGetForBlock(block.Number, out var contract)
                 ? CalculateRewardsWithContract(block, contract)
                 : _blockRewardCalculator.CalculateRewards(block);
         }
-            
-        
+
+
         private BlockReward[] CalculateRewardsWithContract(Block block, IRewardContract contract)
         {
             (Address[] beneficieries, ushort[] kinds) GetBeneficiaries()
             {
                 var length = block.Uncles.Length + 1;
-                
+
                 Address[] beneficiariesList = new Address[length];
                 ushort[] kindsList = new ushort[length];
                 beneficiariesList[0] = block.Beneficiary;
                 kindsList[0] = BenefactorKind.Author;
-                
+
                 for (int i = 0; i < block.Uncles.Length; i++)
                 {
                     var uncle = block.Uncles[i];
@@ -134,7 +118,7 @@ namespace Nethermind.Consensus.AuRa.Rewards
 
             public IRewardCalculator Get(ITransactionProcessor processor) => new AuRaRewardCalculator(_auRaParameters, _abiEncoder, processor);
         }
-        
+
         public static class BenefactorKind
         {
             public const ushort Author = 0;
@@ -148,7 +132,7 @@ namespace Nethermind.Consensus.AuRa.Rewards
             {
                 if (IsValidDistance(distance))
                 {
-                    kind = (ushort) (uncleOffset + distance);
+                    kind = (ushort)(uncleOffset + distance);
                     return true;
                 }
 
@@ -172,7 +156,7 @@ namespace Nethermind.Consensus.AuRa.Rewards
                         throw new ArgumentException($"Invalid BlockRewardType for kind {kind}", nameof(kind));
                 }
             }
-                
+
             private static bool IsValidDistance(long distance)
             {
                 return distance >= minDistance && distance <= maxDistance;

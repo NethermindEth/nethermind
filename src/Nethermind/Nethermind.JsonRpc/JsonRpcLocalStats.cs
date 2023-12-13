@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Concurrent;
@@ -21,6 +8,7 @@ using System.Diagnostics.Contracts;
 using System.Globalization;
 using System.Linq;
 using System.Text;
+using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Logging;
 
@@ -29,54 +17,51 @@ namespace Nethermind.JsonRpc
     public class JsonRpcLocalStats : IJsonRpcLocalStats
     {
         private readonly ITimestamper _timestamper;
-        private readonly IJsonRpcConfig _jsonRpcConfig;
         private readonly TimeSpan _reportingInterval;
-
         private ConcurrentDictionary<string, MethodStats> _currentStats = new();
         private ConcurrentDictionary<string, MethodStats> _previousStats = new();
-        private DateTime _lastReport = DateTime.MinValue;
+        private readonly ConcurrentDictionary<string, MethodStats> _allTimeStats = new();
+        private DateTime _lastReport;
         private readonly ILogger _logger;
+        private readonly StringBuilder _reportStringBuilder = new();
 
         public JsonRpcLocalStats(ITimestamper timestamper, IJsonRpcConfig jsonRpcConfig, ILogManager logManager)
         {
             _timestamper = timestamper ?? throw new ArgumentNullException(nameof(timestamper));
-            _jsonRpcConfig = jsonRpcConfig ?? throw new ArgumentNullException(nameof(jsonRpcConfig));
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _reportingInterval = TimeSpan.FromSeconds(jsonRpcConfig.ReportIntervalSeconds);
+            _lastReport = timestamper.UtcNow;
         }
 
-        private class MethodStats
-        {
-            public int Successes { get; set; }
-            public int Errors { get; set; }
-            public decimal AvgTimeOfErrors { get; set; }
-            public decimal AvgTimeOfSuccesses { get; set; }
-            public long MaxTimeOfError { get; set; }
-            public long MaxTimeOfSuccess { get; set; }
-            public decimal TotalSize { get; set; }
-            public decimal AvgSize => Calls == 0 ? 0 : TotalSize / Calls;
-            public int Calls => Successes + Errors;
-        }
+        public MethodStats GetMethodStats(string methodName) => _allTimeStats.GetValueOrDefault(methodName, new MethodStats());
 
-        public void ReportCall(string method, long handlingTimeMicroseconds, bool success) =>
+        public Task ReportCall(string method, long handlingTimeMicroseconds, bool success) =>
             ReportCall(new RpcReport(method, handlingTimeMicroseconds, success));
-        
-        public void ReportCall(in RpcReport report, long elapsedMicroseconds = 0, long? size = null)
+
+        public Task ReportCall(RpcReport report, long elapsedMicroseconds = 0, long? size = null)
         {
-            if(string.IsNullOrWhiteSpace(report.Method))
+            if (string.IsNullOrWhiteSpace(report.Method))
             {
-                return;
-            }
-            
-            DateTime thisTime = _timestamper.UtcNow;
-            if (thisTime - _lastReport > _reportingInterval)
-            {
-                _lastReport = thisTime;
-                BuildReport();
+                return Task.CompletedTask;
             }
 
-            _currentStats.TryGetValue(report.Method, out MethodStats methodStats);
-            methodStats ??= _currentStats.GetOrAdd(report.Method, m => new MethodStats());
+            if (!_logger.IsInfo)
+            {
+                return Task.CompletedTask;
+            }
+
+            return ReportCallInternal(report, elapsedMicroseconds, size);
+        }
+
+        private async Task ReportCallInternal(RpcReport report, long elapsedMicroseconds, long? size)
+        {
+            // we don't want to block RPC calls any longer than required
+            await Task.Yield();
+
+            BuildReport();
+
+            MethodStats methodStats = _currentStats.GetOrAdd(report.Method, _ => new MethodStats());
+            MethodStats allTimeMethodStats = _allTimeStats.GetOrAdd(report.Method, _ => new MethodStats());
 
             long reportHandlingTimeMicroseconds = elapsedMicroseconds == 0 ? report.HandlingTimeMicroseconds : elapsedMicroseconds;
 
@@ -86,97 +71,121 @@ namespace Nethermind.JsonRpc
             {
                 if (report.Success)
                 {
-                    methodStats.AvgTimeOfSuccesses = (methodStats.Successes * methodStats.AvgTimeOfSuccesses + reportHandlingTimeMicroseconds) / ++methodStats.Successes;
-                    methodStats.MaxTimeOfSuccess = Math.Max(methodStats.MaxTimeOfSuccess, reportHandlingTimeMicroseconds);
+                    methodStats.AvgTimeOfSuccesses =
+                        (methodStats.Successes * methodStats.AvgTimeOfSuccesses + reportHandlingTimeMicroseconds) /
+                        ++methodStats.Successes;
+                    methodStats.MaxTimeOfSuccess =
+                        Math.Max(methodStats.MaxTimeOfSuccess, reportHandlingTimeMicroseconds);
+
+                    allTimeMethodStats.AvgTimeOfSuccesses =
+                        (allTimeMethodStats.Successes * allTimeMethodStats.AvgTimeOfSuccesses +
+                            reportHandlingTimeMicroseconds) /
+                        ++allTimeMethodStats.Successes;
+                    allTimeMethodStats.MaxTimeOfSuccess =
+                        Math.Max(allTimeMethodStats.MaxTimeOfSuccess, reportHandlingTimeMicroseconds);
                 }
                 else
                 {
-                    methodStats.AvgTimeOfErrors = (methodStats.Errors * methodStats.AvgTimeOfErrors + reportHandlingTimeMicroseconds) / ++methodStats.Errors;
+                    methodStats.AvgTimeOfErrors =
+                        (methodStats.Errors * methodStats.AvgTimeOfErrors + reportHandlingTimeMicroseconds) /
+                        ++methodStats.Errors;
                     methodStats.MaxTimeOfError = Math.Max(methodStats.MaxTimeOfError, reportHandlingTimeMicroseconds);
+
+                    allTimeMethodStats.AvgTimeOfErrors =
+                        (allTimeMethodStats.Errors * allTimeMethodStats.AvgTimeOfErrors + reportHandlingTimeMicroseconds) /
+                        ++allTimeMethodStats.Errors;
+                    allTimeMethodStats.MaxTimeOfError = Math.Max(allTimeMethodStats.MaxTimeOfError, reportHandlingTimeMicroseconds);
                 }
 
                 methodStats.TotalSize += sizeDec;
+                allTimeMethodStats.TotalSize += sizeDec;
             }
         }
 
+        private const string ReportHeader = "method                                  | " +
+                                            "successes | " +
+                                            " avg time (µs) | " +
+                                            " max time (µs) | " +
+                                            "   errors | " +
+                                            " avg time (µs) | " +
+                                            " max time (µs) |" +
+                                            " avg size |" +
+                                            " total size |";
+
+        private static readonly string _divider = new('-', ReportHeader.Length);
+
         private void BuildReport()
         {
-            if (!_logger.IsInfo)
+            DateTime thisTime = _timestamper.UtcNow;
+            if (thisTime - _lastReport <= _reportingInterval)
             {
                 return;
             }
 
-            Swap();
-
-            if (!_previousStats.Any())
+            lock (_logger)
             {
-                return;
+                if (thisTime - _lastReport <= _reportingInterval)
+                {
+                    return;
+                }
+
+                _lastReport = thisTime;
+
+                Swap();
+
+                if (_previousStats.IsEmpty)
+                {
+                    return;
+                }
+
+                _reportStringBuilder.AppendLine("***** JSON RPC report *****");
+                _reportStringBuilder.AppendLine(_divider);
+                _reportStringBuilder.AppendLine(ReportHeader);
+                _reportStringBuilder.AppendLine(_divider);
+                MethodStats total = new();
+                foreach (KeyValuePair<string, MethodStats> methodStats in _previousStats.OrderBy(kv => kv.Key))
+                {
+                    total.AvgTimeOfSuccesses = total.Successes + methodStats.Value.Successes == 0
+                        ? 0
+                        : (total.AvgTimeOfSuccesses * total.Successes + methodStats.Value.Successes * methodStats.Value.AvgTimeOfSuccesses)
+                          / (total.Successes + methodStats.Value.Successes);
+                    total.AvgTimeOfErrors = total.Errors + methodStats.Value.Errors == 0
+                        ? 0
+                        : (total.AvgTimeOfErrors * total.Errors + methodStats.Value.Errors * methodStats.Value.AvgTimeOfErrors)
+                          / (total.Errors + methodStats.Value.Errors);
+                    total.Successes += methodStats.Value.Successes;
+                    total.Errors += methodStats.Value.Errors;
+                    total.MaxTimeOfSuccess = Math.Max(total.MaxTimeOfSuccess, methodStats.Value.MaxTimeOfSuccess);
+                    total.MaxTimeOfError = Math.Max(total.MaxTimeOfError, methodStats.Value.MaxTimeOfError);
+                    total.TotalSize += methodStats.Value.TotalSize;
+                    _reportStringBuilder.AppendLine(PrepareReportLine(methodStats.Key, methodStats.Value));
+                }
+
+                _reportStringBuilder.AppendLine(_divider);
+                _reportStringBuilder.AppendLine(PrepareReportLine("TOTAL", total));
+                _reportStringBuilder.AppendLine(_divider);
+
+                _logger.Info(_reportStringBuilder.ToString());
+                _reportStringBuilder.Clear();
+                _previousStats.Clear();
             }
-
-            const string reportHeader = "method                                  | " +
-                                        "successes | " +
-                                        " avg time | " +
-                                        " max time | " +
-                                        "   errors | " +
-                                        " avg time | " +
-                                        " max time |" +
-                                        " avg size |" +
-                                        " total size |";
-
-            StringBuilder stringBuilder = new();
-            stringBuilder.AppendLine("***** JSON RPC report *****");
-            string divider = new(Enumerable.Repeat('-', reportHeader.Length).ToArray());
-            stringBuilder.AppendLine(divider);
-            stringBuilder.AppendLine(reportHeader);
-            stringBuilder.AppendLine(divider);
-            MethodStats total = new();
-            foreach (KeyValuePair<string, MethodStats> methodStats in _previousStats.OrderBy(kv => kv.Key))
-            {
-                total.AvgTimeOfSuccesses = total.Successes + methodStats.Value.Successes == 0
-                    ? 0
-                    : (total.AvgTimeOfSuccesses * total.Successes + methodStats.Value.Successes * methodStats.Value.AvgTimeOfSuccesses)
-                      / (total.Successes + methodStats.Value.Successes);
-                total.AvgTimeOfErrors = total.Errors + methodStats.Value.Errors == 0
-                    ? 0
-                    : (total.AvgTimeOfErrors * total.Errors + methodStats.Value.Errors * methodStats.Value.AvgTimeOfErrors)
-                      / (total.Errors + methodStats.Value.Errors);
-                total.Successes += methodStats.Value.Successes;
-                total.Errors += methodStats.Value.Errors;
-                total.MaxTimeOfSuccess = Math.Max(total.MaxTimeOfSuccess, methodStats.Value.MaxTimeOfSuccess);
-                total.MaxTimeOfError = Math.Max(total.MaxTimeOfError, methodStats.Value.MaxTimeOfError);
-                total.TotalSize += methodStats.Value.TotalSize;
-                stringBuilder.AppendLine(PrepareReportLine(methodStats.Key, methodStats.Value));
-            }
-
-            stringBuilder.AppendLine(divider);
-            stringBuilder.AppendLine(PrepareReportLine("TOTAL", total));
-            stringBuilder.AppendLine(divider);
-
-            _logger.Info(stringBuilder.ToString());
-            _previousStats.Clear();
         }
 
         private void Swap()
         {
-            var temp = _currentStats;
-            _currentStats = _previousStats;
-            _previousStats = temp;
+            (_currentStats, _previousStats) = (_previousStats, _currentStats);
         }
 
         [Pure]
-        private string PrepareReportLine(in string key, MethodStats methodStats)
-        {
-            string reportLine = $"{key.PadRight(40)}| " +
-                                $"{methodStats.Successes.ToString().PadLeft(9)} | " +
-                                $"{methodStats.AvgTimeOfSuccesses.ToString("0", CultureInfo.InvariantCulture).PadLeft(9)} | " +
-                                $"{methodStats.MaxTimeOfSuccess.ToString(CultureInfo.InvariantCulture).PadLeft(9)} | " +
-                                $"{methodStats.Errors.ToString().PadLeft(9)} | " +
-                                $"{methodStats.AvgTimeOfErrors.ToString("0", CultureInfo.InvariantCulture).PadLeft(9)} | " +
-                                $"{methodStats.MaxTimeOfError.ToString(CultureInfo.InvariantCulture).PadLeft(9)} | " +
-                                $"{methodStats.AvgSize.ToString("0", CultureInfo.InvariantCulture).PadLeft(8)} | " +
-                                $"{methodStats.TotalSize.ToString("0", CultureInfo.InvariantCulture).PadLeft(10)} | ";
-
-            return reportLine;
-        }
+        private string PrepareReportLine(in string key, MethodStats methodStats) =>
+            $"{key,-40}| " +
+            $"{methodStats.Successes.ToString(),9} | " +
+            $"{methodStats.AvgTimeOfSuccesses.ToString("0", CultureInfo.InvariantCulture),14} | " +
+            $"{methodStats.MaxTimeOfSuccess.ToString(CultureInfo.InvariantCulture),14} | " +
+            $"{methodStats.Errors.ToString(),9} | " +
+            $"{methodStats.AvgTimeOfErrors.ToString("0", CultureInfo.InvariantCulture),14} | " +
+            $"{methodStats.MaxTimeOfError.ToString(CultureInfo.InvariantCulture),14} | " +
+            $"{methodStats.AvgSize.ToString("0", CultureInfo.InvariantCulture),8} | " +
+            $"{methodStats.TotalSize.ToString("0", CultureInfo.InvariantCulture),10} | ";
     }
 }

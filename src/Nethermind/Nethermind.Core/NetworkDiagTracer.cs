@@ -1,25 +1,11 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.Net;
-using System.Runtime.CompilerServices;
 using System.Text;
 using System.Timers;
 using Nethermind.Logging;
@@ -43,7 +29,7 @@ namespace Nethermind.Core
             _logger = logManager.GetClassLogger();
             Timer timer = new();
             timer.Interval = 60000;
-            timer.Elapsed += (_, _) => DumpEvents(); 
+            timer.Elapsed += (_, _) => DumpEvents();
             timer.Start();
         }
 
@@ -56,7 +42,7 @@ namespace Nethermind.Core
                 stringBuilder.AppendLine(keyValuePair.Key);
                 foreach (string s in keyValuePair.Value)
                 {
-                    stringBuilder.AppendLine("  " + s);    
+                    stringBuilder.AppendLine("  " + s);
                 }
             }
 
@@ -67,44 +53,40 @@ namespace Nethermind.Core
             _logger?.Info(contents);
         }
 
-        [MethodImpl(MethodImplOptions.Synchronized)]
         private static void Add(IPEndPoint? farAddress, string line)
         {
             string address = farAddress?.Address.MapToIPv4().ToString() ?? "null";
-            _events.AddOrUpdate(address, _ => new ConcurrentQueue<string>(), (_, list) =>
-            {
-                list.Enqueue(line);
-                return list;
-            });
+            ConcurrentQueue<string> queue = _events.GetOrAdd(address, _ => new ConcurrentQueue<string>());
+            queue.Enqueue(line);
         }
 
-        public static void ReportOutgoingMessage(IPEndPoint? nodeInfo, string protocol, string messageCode)
+        public static void ReportOutgoingMessage(IPEndPoint? nodeInfo, string protocol, string info, int size)
         {
-            if(!IsEnabled) return;
-            Add(nodeInfo, $"{DateTime.UtcNow:HH:mm:ss.ffffff} <<< {protocol} {messageCode}");
+            if (!IsEnabled) return;
+            Add(nodeInfo, $"{DateTime.UtcNow:HH:mm:ss.ffffff} <<< {protocol,7} {size,6} {info}");
         }
-        
-        public static void ReportIncomingMessage(IPEndPoint? nodeInfo, string protocol, string info)
+
+        public static void ReportIncomingMessage(IPEndPoint? nodeInfo, string protocol, string info, int size)
         {
-            if(!IsEnabled) return;
-            Add(nodeInfo, $"{DateTime.UtcNow:HH:mm:ss.ffffff} >>> {protocol} {info}");
+            if (!IsEnabled) return;
+            Add(nodeInfo, $"{DateTime.UtcNow:HH:mm:ss.ffffff} >>> {protocol,7} {size,6} {info}");
         }
-        
+
         public static void ReportConnect(IPEndPoint? nodeInfo, string clientId)
         {
-            if(!IsEnabled) return;
+            if (!IsEnabled) return;
             Add(nodeInfo, $"{DateTime.UtcNow:HH:mm:ss.ffffff} CONNECT {clientId}");
         }
-        
+
         public static void ReportDisconnect(IPEndPoint? nodeInfo, string details)
         {
-            if(!IsEnabled) return;
+            if (!IsEnabled) return;
             Add(nodeInfo, $"{DateTime.UtcNow:HH:mm:ss.ffffff} DISCONNECT {details}");
         }
-        
+
         public static void ReportInterestingEvent(IPEndPoint? nodeInfo, string details)
         {
-            if(!IsEnabled) return;
+            if (!IsEnabled) return;
             Add(nodeInfo, $"{DateTime.UtcNow:HH:mm:ss.ffffff} {details}");
         }
     }

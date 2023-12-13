@@ -1,21 +1,9 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using DotNetty.Buffers;
+using DotNetty.Common.Utilities;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Network.Rlpx;
@@ -38,7 +26,7 @@ namespace Nethermind.Network.Test.Rlpx
         private byte[] _frame;
         private byte[] _shortFrame;
         private IFrameCipher _frameCipher;
-        private IFrameMacProcessor _macProcessor;
+        private FrameMacProcessor _macProcessor;
 
         [SetUp]
         public void Setup()
@@ -54,6 +42,9 @@ namespace Nethermind.Network.Test.Rlpx
             _shortFrame = new byte[16 + 16 + 1 + ShortFrameSize + 15 + 16]; //  header | header MAC | packet type | data | padding | frame MAC
             _shortFrame[2] = ShortFrameSize - 15; // size (total - padding)
         }
+
+        [TearDown]
+        public void TearDown() => _macProcessor?.Dispose();
 
         [Test]
         public void Check_and_decrypt_block()
@@ -72,7 +63,7 @@ namespace Nethermind.Network.Test.Rlpx
         {
             Test(BigNewBlockSingleFrame, DeliverAllAtOnce, BigNewBlockSingleFrameDecrypted);
         }
-        
+
         [Test]
         public void Check_and_decrypt_big_frame_delivered_all_at_once_and_followed_by_a_corrupted_header()
         {
@@ -88,10 +79,10 @@ namespace Nethermind.Network.Test.Rlpx
         private void Test(string frame, Func<byte[], IByteBuffer, ZeroFrameDecoderTestWrapper, IByteBuffer> deliveryStrategy, string expectedOutput)
         {
             byte[] frameBytes = Bytes.FromHexString(frame);
-            IByteBuffer input = Unpooled.Buffer(256);
+            IByteBuffer input = ReferenceCountUtil.ReleaseLater(Unpooled.Buffer(256));
             ZeroFrameDecoderTestWrapper zeroFrameDecoderTestWrapper = new(_frameCipher, _macProcessor);
 
-            IByteBuffer result = deliveryStrategy(frameBytes, input, zeroFrameDecoderTestWrapper);
+            IByteBuffer result = ReferenceCountUtil.ReleaseLater(deliveryStrategy(frameBytes, input, zeroFrameDecoderTestWrapper));
             Assert.NotNull(result, "did not decode frame");
 
             byte[] resultBytes = new byte[result.ReadableBytes];
@@ -99,8 +90,8 @@ namespace Nethermind.Network.Test.Rlpx
             TestContext.WriteLine(resultBytes.ToHexString());
             string expected = expectedOutput;
             TestContext.WriteLine(resultBytes.ToHexString());
-            Assert.AreEqual(expected, resultBytes.ToHexString());
-            Assert.AreEqual(input.ReaderIndex, input.WriterIndex, "reader index == writer index");
+            Assert.That(resultBytes.ToHexString(), Is.EqualTo(expected));
+            Assert.That(input.WriterIndex, Is.EqualTo(input.ReaderIndex), "reader index == writer index");
         }
 
         private static IByteBuffer DeliverAllAtOnce(byte[] frame, IByteBuffer input, ZeroFrameDecoderTestWrapper zeroFrameDecoderTestWrapper)
@@ -123,7 +114,7 @@ namespace Nethermind.Network.Test.Rlpx
             {
                 input.WriteByte(frame[i]);
                 result = zeroFrameDecoderTestWrapper.Decode(input);
-                if (result != null)
+                if (result is not null)
                 {
                     break;
                 }
@@ -139,7 +130,7 @@ namespace Nethermind.Network.Test.Rlpx
             {
                 input.WriteBytes(frame.Slice(i, 16));
                 result = zeroFrameDecoderTestWrapper.Decode(input);
-                if (result != null)
+                if (result is not null)
                 {
                     break;
                 }

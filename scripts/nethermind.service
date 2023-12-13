@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+# SPDX-License-Identifier: LGPL-3.0-only
+
 [Unit]
 Description=Nethermind Node
 Documentation=https://docs.nethermind.io
@@ -8,7 +11,7 @@ User=nethermind
 Group=nethermind
 EnvironmentFile=/home/nethermind/.env
 WorkingDirectory=/home/nethermind
-ExecStart=/home/nethermind/build/Nethermind.Runner --datadir /home/nethermind/data
+ExecStart=/home/nethermind/build/nethermind -dd /home/nethermind/data
 Restart=on-failure
 LimitNOFILE=1000000
 

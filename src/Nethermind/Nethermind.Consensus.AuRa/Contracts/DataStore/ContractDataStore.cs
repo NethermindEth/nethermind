@@ -1,28 +1,12 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-// 
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
 using Nethermind.Abi;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -36,13 +20,13 @@ namespace Nethermind.Consensus.AuRa.Contracts.DataStore
         private readonly IDataContract<T> _dataContract;
         private readonly IReceiptFinder _receiptFinder;
         private readonly IBlockTree _blockTree;
-        private Keccak _lastHash;
+        private Hash256 _lastHash;
         private readonly object _lock = new object();
         private readonly ILogger _logger;
 
         protected internal ContractDataStore(IContractDataStoreCollection<T> collection, IDataContract<T> dataContract, IBlockTree blockTree, IReceiptFinder receiptFinder, ILogManager logManager)
         {
-            Collection = collection == null || collection is ThreadSafeContractDataStoreCollectionDecorator<T> ? collection : new ThreadSafeContractDataStoreCollectionDecorator<T>(collection);
+            Collection = collection is null || collection is ThreadSafeContractDataStoreCollectionDecorator<T> ? collection : new ThreadSafeContractDataStoreCollectionDecorator<T>(collection);
             _dataContract = dataContract ?? throw new ArgumentNullException(nameof(dataContract));
             _receiptFinder = receiptFinder ?? throw new ArgumentNullException(nameof(receiptFinder));
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
@@ -73,10 +57,10 @@ namespace Nethermind.Consensus.AuRa.Contracts.DataStore
         {
             GetItemsFromContractAtBlock(block.Header, block.Header.ParentHash == _lastHash, _receiptFinder.Get(block));
         }
-        
+
         private void GetItemsFromContractAtBlock(BlockHeader blockHeader, bool isConsecutiveBlock, TxReceipt[] receipts = null)
         {
-            bool fromReceipts = receipts != null;
+            bool fromReceipts = receipts is not null;
             if (fromReceipts || !isConsecutiveBlock)
             {
                 bool incrementalChanges = _dataContract.IncrementalChanges;
@@ -117,7 +101,7 @@ namespace Nethermind.Consensus.AuRa.Contracts.DataStore
                     }
 
                     _lastHash = blockHeader.Hash;
-                    
+
                     if (_logger.IsTrace) _logger.Trace($"{GetType()} trying to {nameof(GetItemsFromContractAtBlock)} with params " +
                                                        $"{nameof(canGetFullStateFromReceipts)}:{canGetFullStateFromReceipts}, " +
                                                        $"{nameof(fromReceipts)}:{fromReceipts}, " +

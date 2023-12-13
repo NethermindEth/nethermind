@@ -1,26 +1,16 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.IO;
 using System.Net.Sockets;
 using DotNetty.Buffers;
 using DotNetty.Common.Utilities;
 using DotNetty.Transport.Channels;
+using Nethermind.Core.Exceptions;
 using Nethermind.Logging;
 using Nethermind.Network.Rlpx;
+using Nethermind.Stats.Model;
 using Snappy;
 
 namespace Nethermind.Network.P2P.ProtocolHandlers
@@ -62,7 +52,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
 
                 if (content.ReadableBytes > SnappyParameters.MaxSnappyLength / 4)
                 {
-                    if (_logger.IsWarn) _logger.Warn($"Big Snappy message of length {content.ReadableBytes}");
+                    if (_logger.IsTrace) _logger.Trace($"Big Snappy message of length {content.ReadableBytes}");
                 }
                 else
                 {
@@ -70,26 +60,26 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
                 }
 
 
-                IByteBuffer output = PooledByteBufferAllocator.Default.Buffer(uncompressedLength);
+                IByteBuffer output = ctx.Allocator.Buffer(uncompressedLength);
 
                 try
                 {
-                    int length = SnappyCodec.Uncompress(content.Array, content.ArrayOffset + content.ReaderIndex, content.ReadableBytes, output.Array, output.ArrayOffset);
+                    int length = SnappyCodec.Uncompress(content.Array, content.ArrayOffset + content.ReaderIndex,
+                        content.ReadableBytes, output.Array, output.ArrayOffset + output.WriterIndex);
                     output.SetWriterIndex(output.WriterIndex + length);
+                }
+                catch (InvalidDataException)
+                {
+                    output.SafeRelease();
+                    // Data is not compressed sometimes, so we pass directly.
+                    _session.ReceiveMessage(input);
+                    return;
                 }
                 catch (Exception)
                 {
-                    if (content.ReadableBytes == 2 && content.ReadByte() == 193)
-                    {
-                        // this is a Parity disconnect sent as a non-snappy-encoded message
-                        // e.g. 0xc103
-                    }
-                    else
-                    {
-                        content.SkipBytes(content.ReadableBytes);
-                        output.SafeRelease();
-                        throw;
-                    }
+                    content.SkipBytes(content.ReadableBytes);
+                    output.SafeRelease();
+                    throw;
                 }
 
                 content.SkipBytes(content.ReadableBytes);
@@ -113,7 +103,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
         public override void ExceptionCaught(IChannelHandlerContext context, Exception exception)
         {
             //In case of SocketException we log it as debug to avoid noise
-            string clientId = _session?.Node?.ToString("c") ?? $"unknown {_session?.RemoteHost}";
+            string clientId = _session?.Node?.ToString(Node.Format.Console) ?? $"unknown {_session?.RemoteHost}";
             if (exception is SocketException)
             {
                 if (_logger.IsTrace) _logger.Trace($"Error in communication with {clientId} (SocketException): {exception}");
@@ -123,7 +113,11 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
                 if (_logger.IsDebug) _logger.Debug($"Error in communication with {clientId}: {exception}");
             }
 
-            if (_session?.Node?.IsStatic != true)
+            if (exception is IInternalNethermindException)
+            {
+                // Do nothing as we don't want to drop peer for internal issue.
+            }
+            else if (_session?.Node?.IsStatic != true)
             {
                 context.DisconnectAsync().ContinueWith(x =>
                 {

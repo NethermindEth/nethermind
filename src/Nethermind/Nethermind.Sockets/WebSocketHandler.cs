@@ -1,4 +1,8 @@
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
 using System;
+using System.IO;
 using System.Net.Sockets;
 using System.Net.WebSockets;
 using System.Threading;
@@ -15,13 +19,13 @@ namespace Nethermind.Sockets
         public WebSocketHandler(WebSocket webSocket, ILogManager logManager)
         {
             _webSocket = webSocket;
-            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         }
 
-        public Task SendRawAsync(ArraySegment<byte> data) => 
-            _webSocket.State != WebSocketState.Open 
-                ? Task.CompletedTask 
-                : _webSocket.SendAsync(data, WebSocketMessageType.Text, true, CancellationToken.None);
+        public Task SendRawAsync(ArraySegment<byte> data, bool endOfMessage = true) =>
+            _webSocket.State != WebSocketState.Open
+                ? Task.CompletedTask
+                : _webSocket.SendAsync(data, WebSocketMessageType.Text, endOfMessage, CancellationToken.None);
 
         public async Task<ReceiveResult?> GetReceiveResult(ArraySegment<byte> buffer)
         {
@@ -35,7 +39,7 @@ namespace Nethermind.Sockets
                     if (t.IsFaulted)
                     {
                         Exception? innerException = t.Exception;
-                        while (innerException?.InnerException != null)
+                        while (innerException?.InnerException is not null)
                         {
                             innerException = innerException.InnerException;
                         }
@@ -51,7 +55,7 @@ namespace Nethermind.Sockets
                                 if (_logger.IsInfo) _logger.Info($"Not able to read from WebSockets ({socketException.SocketErrorCode}: {socketException.ErrorCode}). {innerException.Message}");
                             }
                         }
-                        else if(innerException is WebSocketException webSocketException)
+                        else if (innerException is WebSocketException webSocketException)
                         {
                             if (webSocketException.WebSocketErrorCode == WebSocketError.ConnectionClosedPrematurely)
                             {
@@ -61,7 +65,7 @@ namespace Nethermind.Sockets
                             {
                                 if (_logger.IsInfo) _logger.Info($"Not able to read from WebSockets ({webSocketException.WebSocketErrorCode}: {webSocketException.ErrorCode}). {innerException.Message}");
                             }
-                        } 
+                        }
                         else
                         {
                             if (_logger.IsInfo) _logger.Info($"Not able to read from WebSockets. {innerException?.Message}");
@@ -101,13 +105,18 @@ namespace Nethermind.Sockets
                 return _webSocket.CloseOutputAsync(WebSocketCloseStatus.NormalClosure, result?.CloseStatusDescription,
                     CancellationToken.None);
             }
-            
+
             return Task.CompletedTask;
+        }
+
+        public Stream SendUsingStream()
+        {
+            return new WebSocketStream(_webSocket, WebSocketMessageType.Text);
         }
 
         public void Dispose()
         {
-            _webSocket?.Dispose();
+            _webSocket.Dispose();
         }
     }
 }

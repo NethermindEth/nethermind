@@ -1,27 +1,11 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-// 
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Linq.Expressions;
 using System.Threading.Tasks;
-using System.Threading.Tasks;
-using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
@@ -35,9 +19,11 @@ using Nethermind.Int256;
 using Nethermind.JsonRpc.Test.Modules;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
-using Nethermind.JsonRpc;
-using Nethermind.Merge.Plugin.Data.V1;
 using Nethermind.State;
+using Nethermind.Core.Specs;
+using Nethermind.Consensus.BeaconBlockRoot;
+using Nethermind.Consensus.Withdrawals;
+using Nethermind.Core.Test.Blockchain;
 
 namespace Nethermind.Merge.Plugin.Test
 {
@@ -45,30 +31,27 @@ namespace Nethermind.Merge.Plugin.Test
     public partial class EngineModuleTests
     {
         private static readonly DateTime Timestamp = DateTimeOffset.FromUnixTimeSeconds(1000).UtcDateTime;
+        private static readonly IBeaconBlockRootHandler _beaconBlockRootHandler = new BeaconBlockRootHandler();
         private ITimestamper Timestamper { get; } = new ManualTimestamper(Timestamp);
-        
-        private void AssertExecutionStatusChanged(IEngineRpcModule rpc, Keccak headBlockHash, Keccak finalizedBlockHash,
-             Keccak safeBlockHash)
+        private void AssertExecutionStatusChanged(IBlockFinder blockFinder, Hash256 headBlockHash, Hash256 finalizedBlockHash,
+             Hash256 safeBlockHash)
         {
-            ExecutionStatusResult? result = rpc.engine_executionStatus().Data;
-            Assert.AreEqual(headBlockHash, result.HeadBlockHash);
-            Assert.AreEqual(finalizedBlockHash, result.FinalizedBlockHash);
-             Assert.AreEqual(safeBlockHash, result.SafeBlockHash);
-        }
-        
-        private (UInt256, UInt256) AddTransactions(MergeTestBlockchain chain, ExecutionPayloadV1 executePayloadRequest,
-            PrivateKey from, Address to, uint count, int value, out BlockHeader parentHeader)
-        {
-            Transaction[] transactions = BuildTransactions(chain, executePayloadRequest.ParentHash, from, to, count, value,
-                out Account accountFrom, out parentHeader);
-            executePayloadRequest.SetTransactions(transactions);
-            UInt256 totalValue = ((int)(count * value)).GWei();
-            return (accountFrom.Balance - totalValue,
-                chain.StateReader.GetBalance(parentHeader.StateRoot!, to) + totalValue);
+            Assert.That(blockFinder.HeadHash, Is.EqualTo(headBlockHash));
+            Assert.That(blockFinder.FinalizedHash, Is.EqualTo(finalizedBlockHash));
+            Assert.That(blockFinder.SafeHash, Is.EqualTo(safeBlockHash));
         }
 
-        private Transaction[] BuildTransactions(MergeTestBlockchain chain, Keccak parentHash, PrivateKey from,
-            Address to, uint count, int value, out Account accountFrom, out BlockHeader parentHeader)
+        private (UInt256, UInt256) AddTransactions(MergeTestBlockchain chain, ExecutionPayload executePayloadRequest,
+            PrivateKey from, Address to, uint count, int value, out BlockHeader parentHeader)
+        {
+            Transaction[] transactions = BuildTransactions(chain, executePayloadRequest.ParentHash, from, to, count, value, out Account accountFrom, out parentHeader);
+            executePayloadRequest.SetTransactions(transactions);
+            UInt256 totalValue = ((int)(count * value)).GWei();
+            return (accountFrom.Balance - totalValue, chain.StateReader.GetBalance(parentHeader.StateRoot!, to) + totalValue);
+        }
+
+        private Transaction[] BuildTransactions(MergeTestBlockchain chain, Hash256 parentHash, PrivateKey from,
+            Address to, uint count, int value, out Account accountFrom, out BlockHeader parentHeader, int blobCountPerTx = 0)
         {
             Transaction BuildTransaction(uint index, Account senderAccount) =>
                 Build.A.Transaction.WithNonce(senderAccount.Nonce + index)
@@ -78,30 +61,76 @@ namespace Nethermind.Merge.Plugin.Test
                     .WithGasPrice(1.GWei())
                     .WithChainId(chain.SpecProvider.ChainId)
                     .WithSenderAddress(from.Address)
-                    .SignedAndResolved(from)
-                    .TestObject;
+                    .WithShardBlobTxTypeAndFields(blobCountPerTx)
+                    .WithMaxFeePerGasIfSupports1559(1.GWei())
+                    .SignedAndResolved(from).TestObject;
 
             parentHeader = chain.BlockTree.FindHeader(parentHash, BlockTreeLookupOptions.None)!;
-            Account account = chain.StateReader.GetAccount(parentHeader.StateRoot!, @from.Address)!;
+            Account account = chain.StateReader.GetAccount(parentHeader.StateRoot!, from.Address)!;
             accountFrom = account;
 
-            return Enumerable.Range(0, (int)count)
-                .Select(i => BuildTransaction((uint)i, account)).ToArray();
+            return Enumerable.Range(0, (int)count).Select(i => BuildTransaction((uint)i, account)).ToArray();
         }
 
-        private ExecutionPayloadV1 CreateParentBlockRequestOnHead(IBlockTree blockTree)
+        private ExecutionPayload CreateParentBlockRequestOnHead(IBlockTree blockTree)
         {
             Block? head = blockTree.Head;
-            if (head == null) throw new NotSupportedException();
-            return new ExecutionPayloadV1()
+            if (head is null) throw new NotSupportedException();
+            return new ExecutionPayload()
             {
-                BlockNumber = head.Number, BlockHash = head.Hash!, StateRoot = head.StateRoot!, ReceiptsRoot = head.ReceiptsRoot!, GasLimit = head.GasLimit, Timestamp = (ulong)head.Timestamp
+                BlockNumber = head.Number,
+                BlockHash = head.Hash!,
+                StateRoot = head.StateRoot!,
+                ReceiptsRoot = head.ReceiptsRoot!,
+                GasLimit = head.GasLimit,
+                Timestamp = head.Timestamp,
+                BaseFeePerGas = head.BaseFeePerGas,
             };
         }
 
-        private static ExecutionPayloadV1 CreateBlockRequest(ExecutionPayloadV1 parent, Address miner)
+        private static ExecutionPayload CreateBlockRequest(MergeTestBlockchain chain, ExecutionPayload parent, Address miner, IList<Withdrawal>? withdrawals = null,
+               ulong? blobGasUsed = null, ulong? excessBlobGas = null, Transaction[]? transactions = null, Hash256? parentBeaconBlockRoot = null)
         {
-            ExecutionPayloadV1 blockRequest = new()
+            ExecutionPayload blockRequest = CreateBlockRequestInternal<ExecutionPayload>(parent, miner, withdrawals, blobGasUsed, excessBlobGas, transactions: transactions, parentBeaconBlockRoot: parentBeaconBlockRoot);
+            blockRequest.TryGetBlock(out Block? block);
+
+            Snapshot before = chain.State.TakeSnapshot();
+            chain.WithdrawalProcessor?.ProcessWithdrawals(block!, chain.SpecProvider.GenesisSpec);
+
+            chain.State.Commit(chain.SpecProvider.GenesisSpec);
+            chain.State.RecalculateStateRoot();
+            blockRequest.StateRoot = chain.State.StateRoot;
+            chain.State.Restore(before);
+
+            TryCalculateHash(blockRequest, out Hash256? hash);
+            blockRequest.BlockHash = hash;
+            return blockRequest;
+        }
+
+        private static ExecutionPayloadV3 CreateBlockRequestV3(MergeTestBlockchain chain, ExecutionPayload parent, Address miner, IList<Withdrawal>? withdrawals = null,
+                ulong? blobGasUsed = null, ulong? excessBlobGas = null, Transaction[]? transactions = null, Hash256? parentBeaconBlockRoot = null)
+        {
+            ExecutionPayloadV3 blockRequestV3 = CreateBlockRequestInternal<ExecutionPayloadV3>(parent, miner, withdrawals, blobGasUsed, excessBlobGas, transactions: transactions, parentBeaconBlockRoot: parentBeaconBlockRoot);
+            blockRequestV3.TryGetBlock(out Block? block);
+
+            Snapshot before = chain.State.TakeSnapshot();
+            _beaconBlockRootHandler.ApplyContractStateChanges(block!, chain.SpecProvider.GenesisSpec, chain.State);
+            chain.WithdrawalProcessor?.ProcessWithdrawals(block!, chain.SpecProvider.GenesisSpec);
+
+            chain.State.Commit(chain.SpecProvider.GenesisSpec);
+            chain.State.RecalculateStateRoot();
+            blockRequestV3.StateRoot = chain.State.StateRoot;
+            chain.State.Restore(before);
+
+            TryCalculateHash(blockRequestV3, out Hash256? hash);
+            blockRequestV3.BlockHash = hash;
+            return blockRequestV3;
+        }
+
+        private static T CreateBlockRequestInternal<T>(ExecutionPayload parent, Address miner, IList<Withdrawal>? withdrawals = null,
+                ulong? blobGasUsed = null, ulong? excessBlobGas = null, Transaction[]? transactions = null, Hash256? parentBeaconBlockRoot = null) where T : ExecutionPayload, new()
+        {
+            T blockRequest = new()
             {
                 ParentHash = parent.BlockHash,
                 FeeRecipient = miner,
@@ -112,32 +141,35 @@ namespace Nethermind.Merge.Plugin.Test
                 ReceiptsRoot = Keccak.EmptyTreeHash,
                 LogsBloom = Bloom.Empty,
                 Timestamp = parent.Timestamp + 1,
+                Withdrawals = withdrawals,
+                BlobGasUsed = blobGasUsed,
+                ExcessBlobGas = excessBlobGas,
+                ParentBeaconBlockRoot = parentBeaconBlockRoot,
             };
 
-            blockRequest.SetTransactions(Array.Empty<Transaction>());
-            TryCalculateHash(blockRequest, out Keccak? hash);
+            blockRequest.SetTransactions(transactions ?? Array.Empty<Transaction>());
+            TryCalculateHash(blockRequest, out Hash256? hash);
             blockRequest.BlockHash = hash;
             return blockRequest;
         }
 
-        private static ExecutionPayloadV1[] CreateBlockRequestBranch(ExecutionPayloadV1 parent, Address miner, int count)
+        private static ExecutionPayload[] CreateBlockRequestBranch(MergeTestBlockchain chain, ExecutionPayload parent, Address miner, int count)
         {
-            ExecutionPayloadV1 currentBlock = parent;
-            ExecutionPayloadV1[] blockRequests = new ExecutionPayloadV1[count];
+            ExecutionPayload currentBlock = parent;
+            ExecutionPayload[] blockRequests = new ExecutionPayload[count];
             for (int i = 0; i < count; i++)
             {
-                currentBlock = CreateBlockRequest(currentBlock, miner);
+                currentBlock = CreateBlockRequest(chain, currentBlock, miner);
                 blockRequests[i] = currentBlock;
             }
 
             return blockRequests;
         }
 
-        private Block? RunForAllBlocksInBranch(IBlockTree blockTree, Keccak blockHash, Func<Block, bool> shouldStop,
+        private Block? RunForAllBlocksInBranch(IBlockTree blockTree, Hash256 blockHash, Func<Block, bool> shouldStop,
             bool requireCanonical)
         {
-            BlockTreeLookupOptions options =
-                requireCanonical ? BlockTreeLookupOptions.RequireCanonical : BlockTreeLookupOptions.None;
+            BlockTreeLookupOptions options = requireCanonical ? BlockTreeLookupOptions.RequireCanonical : BlockTreeLookupOptions.None;
             Block? current = blockTree.FindBlock(blockHash, options);
             while (current is not null && !shouldStop(current))
             {
@@ -148,21 +180,20 @@ namespace Nethermind.Merge.Plugin.Test
         }
 
         private static TestCaseData GetNewBlockRequestBadDataTestCase<T>(
-            Expression<Func<ExecutionPayloadV1, T>> propertyAccess, T wrongValue)
+            Expression<Func<ExecutionPayload, T>> propertyAccess, T wrongValue)
         {
-            Action<ExecutionPayloadV1, T> setter = propertyAccess.GetSetter();
+            Action<ExecutionPayload, T> setter = propertyAccess.GetSetter();
             // ReSharper disable once ConvertToLocalFunction
-            Action<ExecutionPayloadV1> wrongValueSetter = r => setter(r, wrongValue);
+            Action<ExecutionPayload> wrongValueSetter = r => setter(r, wrongValue);
             return new TestCaseData(wrongValueSetter)
             {
-                TestName =
-                    $"executePayload_rejects_incorrect_{propertyAccess.GetName().ToLower()}({wrongValue?.ToString()})"
+                TestName = $"executePayload_rejects_incorrect_{propertyAccess.GetName().ToLower()}({wrongValue?.ToString()})"
             };
         }
 
-        private static bool TryCalculateHash(ExecutionPayloadV1 request, out Keccak hash)
+        private static bool TryCalculateHash(ExecutionPayload request, out Hash256 hash)
         {
-            if (request.TryGetBlock(out Block? block) && block != null)
+            if (request.TryGetBlock(out Block? block) && block is not null)
             {
                 hash = block.CalculateHash();
                 return true;
@@ -173,14 +204,14 @@ namespace Nethermind.Merge.Plugin.Test
                 return false;
             }
         }
-        
+
         private async Task<TestRpcBlockchain> CreateTestRpc(MergeTestBlockchain chain)
         {
-            SingleReleaseSpecProvider spec = new(London.Instance, 1);
+            TestSingleReleaseSpecProvider spec = new(London.Instance);
             TestRpcBlockchain testRpc = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
                 .WithBlockFinder(chain.BlockFinder)
                 .Build(spec);
             return testRpc;
         }
     }
-}      
+}

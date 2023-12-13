@@ -1,22 +1,19 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
-using Nethermind.Blockchain.Synchronization;
+using System;
+using FluentAssertions;
+using Nethermind.Blockchain;
+using Nethermind.Core;
+using Nethermind.Core.Test.Builders;
 using Nethermind.Logging;
+using Nethermind.Network;
+using Nethermind.Network.P2P;
+using Nethermind.Network.P2P.EventArg;
+using Nethermind.Network.P2P.ProtocolHandlers;
+using Nethermind.Network.Rlpx;
 using Nethermind.Stats;
+using Nethermind.Stats.Model;
 using Nethermind.Synchronization.Peers;
 using NSubstitute;
 using NUnit.Framework;
@@ -32,7 +29,7 @@ namespace Nethermind.Synchronization.Test
         {
             ISyncPeerPool syncPeerPool = Substitute.For<ISyncPeerPool>();
             SyncPeersReport report = new(syncPeerPool, Substitute.For<INodeStatsManager>(), NoErrorLimboLogs.Instance);
-            report.WriteShortReport();
+            report.WriteAllocatedReport();
             report.WriteFullReport();
         }
 
@@ -41,13 +38,13 @@ namespace Nethermind.Synchronization.Test
         {
             ISyncPeerPool syncPeerPool = Substitute.For<ISyncPeerPool>();
 
-            var syncPeer = BuildPeer(false);
+            PeerInfo syncPeer = BuildPeer(false);
 
-            var peers = new[] {syncPeer};
+            PeerInfo[] peers = { syncPeer };
             syncPeerPool.PeerCount.Returns(peers.Length);
 
             SyncPeersReport report = new(syncPeerPool, Substitute.For<INodeStatsManager>(), NoErrorLimboLogs.Instance);
-            report.WriteShortReport();
+            report.WriteAllocatedReport();
             report.WriteFullReport();
         }
 
@@ -55,15 +52,15 @@ namespace Nethermind.Synchronization.Test
         public void Can_write_one_uninitialized_one_initialized()
         {
             ISyncPeerPool syncPeerPool = Substitute.For<ISyncPeerPool>();
-            var syncPeer = BuildPeer(false);
-            var syncPeer2 = BuildPeer(true);
+            PeerInfo syncPeer = BuildPeer(false);
+            PeerInfo syncPeer2 = BuildPeer(true);
 
-            var peers = new[] {syncPeer, syncPeer2};
-            
+            PeerInfo[] peers = { syncPeer, syncPeer2 };
+
             syncPeerPool.PeerCount.Returns(peers.Length);
 
             SyncPeersReport report = new(syncPeerPool, Substitute.For<INodeStatsManager>(), NoErrorLimboLogs.Instance);
-            report.WriteShortReport();
+            report.WriteAllocatedReport();
             report.WriteFullReport();
         }
 
@@ -72,51 +69,147 @@ namespace Nethermind.Synchronization.Test
         {
             ISyncPeerPool syncPeerPool = Substitute.For<ISyncPeerPool>();
 
-            var syncPeer = BuildPeer(false);
-            var syncPeer2 = BuildPeer(true);
+            (PeerInfo syncPeer, StubSyncPeer syncPeerSyncPeer) = BuildPeerWithStubSyncPeer(false);
+            PeerInfo syncPeer2 = BuildPeer(true);
 
-            var peers = new[] {syncPeer, syncPeer2};
-            
+            PeerInfo[] peers = { syncPeer, syncPeer2 };
+
             syncPeerPool.PeerCount.Returns(peers.Length);
 
             syncPeerPool.AllPeers.Returns(peers);
 
             SyncPeersReport report = new(syncPeerPool, Substitute.For<INodeStatsManager>(), NoErrorLimboLogs.Instance);
-            report.WriteShortReport();
+            report.WriteAllocatedReport();
             report.WriteFullReport();
 
-            syncPeer.IsInitialized.Returns(true);
-            report.WriteShortReport();
+            syncPeerSyncPeer.IsInitialized = true;
+            report.WriteAllocatedReport();
             report.WriteFullReport();
         }
 
-        private static PeerInfo BuildPeer(bool initialized)
+        private static PeerInfo BuildPeer(
+            bool initialized,
+            string ip = "127.0.0.1",
+            int port = 3030,
+            ConnectionDirection direction = ConnectionDirection.Out,
+            int head = 9999,
+            string protocolVersion = "eth99"
+        )
         {
-            ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
-            PeerInfo peer = new(syncPeer);
-            syncPeer.IsInitialized.Returns(initialized);
+            (PeerInfo peer, StubSyncPeer _) =
+                BuildPeerWithStubSyncPeer(initialized, ip, port, direction, head, protocolVersion);
             return peer;
+        }
+
+        private static (PeerInfo, StubSyncPeer) BuildPeerWithStubSyncPeer(
+            bool initialized,
+            string ip = "127.0.0.1",
+            int port = 3030,
+            ConnectionDirection direction = ConnectionDirection.Out,
+            int head = 9999,
+            string protocolVersion = "eth99"
+        )
+        {
+            ISession session = Substitute.For<ISession>();
+            session.Node.Returns(new Node(TestItem.PublicKeyA, ip, port));
+            session.Direction.Returns(direction);
+
+            IMessageSerializationService serializer = Substitute.For<IMessageSerializationService>();
+            INodeStatsManager nodeStatsManager = Substitute.For<INodeStatsManager>();
+            ISyncServer syncServer = Substitute.For<ISyncServer>();
+            StubSyncPeer syncPeer = new StubSyncPeer(initialized, protocolVersion, session, serializer, nodeStatsManager, syncServer);
+
+            syncPeer.HeadNumber = head;
+
+            PeerInfo peer = new(syncPeer);
+            return (peer, syncPeer);
         }
 
         [Test]
         public void Can_write_report_update_with_allocations()
         {
             ISyncPeerPool syncPeerPool = Substitute.For<ISyncPeerPool>();
-            var syncPeer = BuildPeer(false);
-            var syncPeer2 = BuildPeer(true);
+            (PeerInfo syncPeer, StubSyncPeer syncPeerSyncPeer) = BuildPeerWithStubSyncPeer(false);
+            PeerInfo syncPeer2 = BuildPeer(true);
 
-            var peers = new[] {syncPeer, syncPeer2};
+            PeerInfo[] peers = { syncPeer, syncPeer2 };
             syncPeerPool.PeerCount.Returns(peers.Length);
-
             syncPeerPool.AllPeers.Returns(peers);
 
             SyncPeersReport report = new(syncPeerPool, Substitute.For<INodeStatsManager>(), NoErrorLimboLogs.Instance);
-            report.WriteShortReport();
+            report.WriteAllocatedReport();
             report.WriteFullReport();
 
-            syncPeer.IsInitialized.Returns(true);
-            report.WriteShortReport();
+            syncPeerSyncPeer.IsInitialized = true;
+            report.WriteAllocatedReport();
             report.WriteFullReport();
+        }
+
+        [Test]
+        public void PeerFormatIsCorrect()
+        {
+            PeerInfo syncPeer = BuildPeer(false);
+            syncPeer.TryAllocate(AllocationContexts.All);
+
+            PeerInfo syncPeer2 = BuildPeer(true, direction: ConnectionDirection.In);
+            syncPeer2.PutToSleep(AllocationContexts.All, DateTime.Now);
+
+            PeerInfo[] peers = { syncPeer, syncPeer2 };
+
+            ISyncPeerPool syncPeerPool = Substitute.For<ISyncPeerPool>();
+            syncPeerPool.PeerCount.Returns(peers.Length);
+            syncPeerPool.AllPeers.Returns(peers);
+
+            string expectedResult =
+                "== Header ==" + Environment.NewLine +
+                "===[Active][Sleep ][Peer(ProtocolVersion/Head/Host:Port/Direction)][Transfer Speeds (L/H/B/R/N/S)      ][Client Info (Name/Version/Operating System/Language)     ]" + Environment.NewLine +
+                "--------------------------------------------------------------------------------------------------------------------------------------------------------------" + Environment.NewLine +
+                "   [HBRNSW][      ][Peer|eth99|    9999|      127.0.0.1: 3030| Out][     |     |     |     |     |     ][]" + Environment.NewLine +
+                "   [      ][HBRNSW][Peer|eth99|    9999|      127.0.0.1: 3030|  In][     |     |     |     |     |     ][]";
+
+            SyncPeersReport report = new(syncPeerPool, Substitute.For<INodeStatsManager>(), NoErrorLimboLogs.Instance);
+            string reportStr = report.MakeReportForPeers(peers, "== Header ==");
+            reportStr.Should().Be(expectedResult);
+        }
+
+        private class StubSyncPeer : SyncPeerProtocolHandlerBase
+        {
+            public StubSyncPeer(bool initialized, string protocolVersion, ISession session,
+                IMessageSerializationService serializer, INodeStatsManager statsManager, ISyncServer syncServer) :
+                base(
+                    session,
+                    serializer,
+                    statsManager,
+                    syncServer,
+                    NoErrorLimboLogs.Instance)
+            {
+                IsInitialized = initialized;
+                Name = protocolVersion;
+            }
+
+            public override string Name { get; }
+            public override byte ProtocolVersion { get; } = default;
+            public override string ProtocolCode { get; } = default!;
+            public override int MessageIdSpaceSize { get; } = default;
+            protected override TimeSpan InitTimeout { get; } = default;
+            public override event EventHandler<ProtocolInitializedEventArgs> ProtocolInitialized = delegate { };
+            public override event EventHandler<ProtocolEventArgs> SubprotocolRequested = delegate { };
+            public override void Init()
+            {
+                throw new NotImplementedException();
+            }
+            public override void HandleMessage(ZeroPacket message)
+            {
+                throw new NotImplementedException();
+            }
+            public override void NotifyOfNewBlock(Block block, SendBlockMode mode)
+            {
+                throw new NotImplementedException();
+            }
+            protected override void OnDisposed()
+            {
+                throw new NotImplementedException();
+            }
         }
     }
 }

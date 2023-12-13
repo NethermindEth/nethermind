@@ -1,28 +1,88 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-//
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-//
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-//
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+using System;
+using System.Buffers;
+using Nethermind.Core.Buffers;
+using Nethermind.Core.Extensions;
 
 namespace Nethermind.Core
 {
-    public interface IKeyValueStore : IReadOnlyKeyValueStore
+    public interface IKeyValueStore : IReadOnlyKeyValueStore, IWriteOnlyKeyValueStore
     {
-        new byte[]? this[byte[] key] { get; set; }
+        new byte[]? this[ReadOnlySpan<byte> key]
+        {
+            get => Get(key);
+            set => Set(key, value);
+        }
     }
 
     public interface IReadOnlyKeyValueStore
     {
-        byte[]? this[byte[] key] { get; }
+        byte[]? this[ReadOnlySpan<byte> key] => Get(key);
+
+        byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None);
+
+        /// <summary>
+        /// Return span. Must call `DangerousReleaseMemory` or there can be some leak.
+        /// </summary>
+        /// <param name="key"></param>
+        /// <returns>Can return null or empty Span on missing key</returns>
+        Span<byte> GetSpan(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None) => Get(key, flags);
+
+        bool KeyExists(ReadOnlySpan<byte> key)
+        {
+            Span<byte> span = GetSpan(key);
+            bool result = span.IsNull();
+            DangerousReleaseMemory(span);
+            return result;
+        }
+
+        void DangerousReleaseMemory(in Span<byte> span) { }
+    }
+
+    public interface IWriteOnlyKeyValueStore
+    {
+        byte[]? this[ReadOnlySpan<byte> key]
+        {
+            set => Set(key, value);
+        }
+
+        void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None);
+
+        /// <summary>
+        /// Some store keep the input array directly. (eg: CachingStore), and therefore passing the value by array
+        /// is preferable. Unless you plan to reuse the array somehow (pool), then you'd just use span.
+        /// </summary>
+        public bool PreferWriteByArray => false;
+        void PutSpan(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags flags = WriteFlags.None) => Set(key, value.ToArray(), flags);
+        void Remove(ReadOnlySpan<byte> key) => Set(key, null);
+    }
+
+    [Flags]
+    public enum ReadFlags
+    {
+        None = 0,
+
+        // Hint that the workload is likely to not going to benefit from caching and should skip any cache handling
+        // to reduce CPU usage
+        HintCacheMiss = 1,
+
+        // Hint that the workload is likely to need the next value in the sequence and should prefetch it.
+        HintReadAhead = 2,
+    }
+
+    [Flags]
+    public enum WriteFlags
+    {
+        None = 0,
+
+        // Hint that this is a low priority write
+        LowPriority = 1,
+
+        // Hint that this write does not require durable writes, as if it crash, it'll start over anyway.
+        DisableWAL = 2,
+
+        LowPriorityAndNoWAL = LowPriority | DisableWAL,
     }
 }

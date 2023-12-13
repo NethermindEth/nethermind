@@ -1,19 +1,5 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-// 
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
 using Nethermind.Blockchain.Services;
@@ -25,7 +11,7 @@ namespace Nethermind.Blockchain.Test.Services
 {
     public class HealthHintServiceTests
     {
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void GetBlockProcessorAndProducerIntervalHint_returns_expected_result(
             [ValueSource(nameof(BlockProcessorIntervalHintTestCases))]
             BlockProcessorIntervalHint test)
@@ -33,17 +19,15 @@ namespace Nethermind.Blockchain.Test.Services
             IHealthHintService healthHintService = new HealthHintService(test.ChainSpec);
             ulong? actualProcessing = healthHintService.MaxSecondsIntervalForProcessingBlocksHint();
             ulong? actualProducing = healthHintService.MaxSecondsIntervalForProducingBlocksHint();
-            Assert.AreEqual(test.ExpectedProcessingHint, actualProcessing);
-            Assert.AreEqual(test.ExpectedProducingHint, actualProducing);
+            Assert.That(actualProcessing, Is.EqualTo(test.ExpectedProcessingHint));
+            Assert.That(actualProducing, Is.EqualTo(test.ExpectedProducingHint));
         }
 
         public class BlockProcessorIntervalHint
         {
-            public ChainSpec ChainSpec { get; set; }
-
-            public ulong? ExpectedProcessingHint { get; set; }
-
-            public ulong? ExpectedProducingHint { get; set; }
+            public required ChainSpec ChainSpec { get; init; }
+            public ulong? ExpectedProcessingHint { get; init; }
+            public ulong? ExpectedProducingHint { get => null; }
 
             public override string ToString() =>
                 $"SealEngineType: {ChainSpec.SealEngineType}, ExpectedProcessingHint: {ExpectedProcessingHint}, ExpectedProducingHint: {ExpectedProducingHint}";
@@ -53,22 +37,22 @@ namespace Nethermind.Blockchain.Test.Services
         {
             get
             {
-                yield return new BlockProcessorIntervalHint()
+                yield return new BlockProcessorIntervalHint
                 {
-                    ChainSpec = new ChainSpec() {SealEngineType = SealEngineType.NethDev,}
+                    ChainSpec = new ChainSpec { SealEngineType = SealEngineType.NethDev, }
                 };
-                yield return new BlockProcessorIntervalHint()
+                yield return new BlockProcessorIntervalHint
                 {
-                    ChainSpec = new ChainSpec() {SealEngineType = SealEngineType.Ethash },
+                    ChainSpec = new ChainSpec { SealEngineType = SealEngineType.Ethash },
                     ExpectedProcessingHint = 180
                 };
-                yield return new BlockProcessorIntervalHint()
+                yield return new BlockProcessorIntervalHint
                 {
-                    ChainSpec = new ChainSpec() {SealEngineType = "Interval" }
+                    ChainSpec = new ChainSpec { SealEngineType = "Interval" }
                 };
-                yield return new BlockProcessorIntervalHint()
+                yield return new BlockProcessorIntervalHint
                 {
-                    ChainSpec = new ChainSpec() {SealEngineType = SealEngineType.None }
+                    ChainSpec = new ChainSpec { SealEngineType = SealEngineType.None }
                 };
             }
         }

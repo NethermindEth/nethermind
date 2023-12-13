@@ -1,28 +1,13 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-// 
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Generic;
-using System.Collections.Immutable;
 using System.Linq;
 using System.Threading;
 using Nethermind.Abi;
 using Nethermind.AccountAbstraction.Data;
-using Nethermind.Blockchain;
+using Nethermind.Config;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
@@ -30,7 +15,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
-using Nethermind.Db;
+using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Facade;
@@ -38,7 +23,6 @@ using Nethermind.Int256;
 using Nethermind.JsonRpc;
 using Nethermind.Logging;
 using Nethermind.State;
-using Nethermind.Trie.Pruning;
 
 namespace Nethermind.AccountAbstraction.Executor
 {
@@ -52,6 +36,7 @@ namespace Nethermind.AccountAbstraction.Executor
         private readonly IReadOnlyStateProvider _stateProvider;
         private readonly ReadOnlyTxProcessingEnvFactory _readOnlyTxProcessingEnvFactory;
         private readonly ITimestamper _timestamper;
+        private readonly IBlocksConfig _blocksConfig;
         private readonly IAbiEncoder _abiEncoder;
         private readonly ILogger _logger;
 
@@ -64,7 +49,8 @@ namespace Nethermind.AccountAbstraction.Executor
             Address[] whitelistedPaymasters,
             ISpecProvider specProvider,
             ITimestamper timestamper,
-            ILogManager logManager)
+            ILogManager logManager,
+            IBlocksConfig blocksConfig)
         {
             _userOperationTxBuilder = userOperationTxBuilder;
             _stateProvider = stateProvider;
@@ -74,12 +60,13 @@ namespace Nethermind.AccountAbstraction.Executor
             _whitelistedPaymasters = whitelistedPaymasters;
             _specProvider = specProvider;
             _timestamper = timestamper;
+            _blocksConfig = blocksConfig;
             _logger = logManager.GetClassLogger<UserOperationSimulator>();
 
             _abiEncoder = new AbiEncoder();
         }
 
-        public ResultWrapper<Keccak> Simulate(UserOperation userOperation,
+        public ResultWrapper<Hash256> Simulate(UserOperation userOperation,
             BlockHeader parent,
             UInt256? timestamp = null,
             CancellationToken cancellationToken = default)
@@ -87,35 +74,35 @@ namespace Nethermind.AccountAbstraction.Executor
             if (userOperation.AlreadySimulated)
             {
                 // codehash of all accessed addresses should not change between calls
-                foreach (KeyValuePair<Address, Keccak> kv in userOperation.AddressesToCodeHashes)
+                foreach (KeyValuePair<Address, Hash256> kv in userOperation.AddressesToCodeHashes)
                 {
-                    (Address address, Keccak expectedCodeHash) = kv;
-                    Keccak codeHash = _stateProvider.GetCodeHash(address);
+                    (Address address, Hash256 expectedCodeHash) = kv;
+                    Hash256 codeHash = _stateProvider.GetCodeHash(address);
                     if (codeHash != expectedCodeHash)
                     {
-                        return ResultWrapper<Keccak>.Fail($"codehash of address {address} changed since initial simulation");
+                        return ResultWrapper<Hash256>.Fail($"codehash of address {address} changed since initial simulation");
                     }
                 }
             }
-            
-            IReleaseSpec currentSpec = _specProvider.GetSpec(parent.Number + 1);
+
+            IEip1559Spec specFor1559 = _specProvider.GetSpecFor1559(parent.Number + 1);
             ReadOnlyTxProcessingEnv txProcessingEnv = _readOnlyTxProcessingEnvFactory.Create();
             ITransactionProcessor transactionProcessor = txProcessingEnv.Build(_stateProvider.StateRoot);
 
             // wrap userOp into a tx calling the simulateWallet function off-chain from zero-address (look at EntryPoint.sol for more context)
             Transaction simulateValidationTransaction =
-                BuildSimulateValidationTransaction(userOperation, parent, currentSpec);
-            
+                BuildSimulateValidationTransaction(userOperation, parent, specFor1559);
+
             UserOperationSimulationResult simulationResult = SimulateValidation(simulateValidationTransaction, userOperation, parent, transactionProcessor);
 
             if (!simulationResult.Success)
-                return ResultWrapper<Keccak>.Fail(simulationResult.Error ?? "unknown simulation failure");
+                return ResultWrapper<Hash256>.Fail(simulationResult.Error ?? "unknown simulation failure");
 
             if (userOperation.AlreadySimulated)
             {
                 // if previously simulated we must make sure it doesn't access any more than it did on the first round
                 if (!userOperation.AccessList.AccessListContains(simulationResult.AccessList.Data))
-                    return ResultWrapper<Keccak>.Fail("access list exceeded");
+                    return ResultWrapper<Hash256>.Fail("access list exceeded");
             }
             else
             {
@@ -124,26 +111,24 @@ namespace Nethermind.AccountAbstraction.Executor
                 userOperation.AlreadySimulated = true;
             }
 
-            return ResultWrapper<Keccak>.Success(userOperation.RequestId!);
+            return ResultWrapper<Hash256>.Success(userOperation.RequestId!);
         }
 
         private UserOperationSimulationResult SimulateValidation(
-            Transaction transaction, 
-            UserOperation userOperation, 
+            Transaction transaction,
+            UserOperation userOperation,
             BlockHeader parent,
             ITransactionProcessor transactionProcessor)
         {
             bool paymasterWhitelisted = _whitelistedPaymasters.Contains(userOperation.Paymaster);
-            UserOperationTxTracer txTracer = new(
-                transaction,
-                paymasterWhitelisted,
+            UserOperationTxTracer txTracer = new(paymasterWhitelisted,
                 userOperation.InitCode != Bytes.Empty, userOperation.Sender,
                 userOperation.Paymaster,
                 _entryPointContractAddress,
                 _logger
             );
 
-            transactionProcessor.Trace(transaction, parent, txTracer);
+            transactionProcessor.Trace(transaction, new BlockExecutionContext(parent), txTracer);
 
             FailedOp? failedOp = _userOperationTxBuilder.DecodeEntryPointOutputError(txTracer.Output);
 
@@ -159,8 +144,8 @@ namespace Nethermind.AccountAbstraction.Executor
             }
 
             UserOperationAccessList userOperationAccessList = new(txTracer.AccessedStorage);
-            
-            IDictionary<Address, Keccak> addressesToCodeHashes = new Dictionary<Address, Keccak>();
+
+            IDictionary<Address, Hash256> addressesToCodeHashes = new Dictionary<Address, Hash256>();
             foreach (Address accessedAddress in txTracer.AccessedAddresses)
             {
                 addressesToCodeHashes[accessedAddress] = _stateProvider.GetCodeHash(accessedAddress);
@@ -178,7 +163,7 @@ namespace Nethermind.AccountAbstraction.Executor
         private Transaction BuildSimulateValidationTransaction(
             UserOperation userOperation,
             BlockHeader parent,
-            IReleaseSpec spec)
+            IEip1559Spec specfor1559)
         {
             AbiSignature abiSignature = _entryPointContractAbi.Functions["simulateValidation"].GetCallInfo().Signature;
             UserOperationAbi userOperationAbi = userOperation.Abi;
@@ -188,11 +173,11 @@ namespace Nethermind.AccountAbstraction.Executor
                 abiSignature,
                 userOperationAbi);
 
-            Transaction transaction = _userOperationTxBuilder.BuildTransaction((long)userOperation.PreVerificationGas + (long)userOperation.VerificationGas, 
+            Transaction transaction = _userOperationTxBuilder.BuildTransaction((long)userOperation.PreVerificationGas + (long)userOperation.VerificationGas,
                 computedCallData,
-                Address.Zero, 
-                parent, 
-                spec, 
+                Address.Zero,
+                parent,
+                specfor1559,
                 _stateProvider.GetNonce(Address.Zero),
                 true);
 
@@ -204,31 +189,31 @@ namespace Nethermind.AccountAbstraction.Executor
         {
             ReadOnlyTxProcessingEnv txProcessingEnv = _readOnlyTxProcessingEnvFactory.Create();
             using IReadOnlyTransactionProcessor transactionProcessor = txProcessingEnv.Build(header.StateRoot!);
-            
+
             EstimateGasTracer estimateGasTracer = new();
             (bool Success, string Error) tryCallResult = TryCallAndRestore(
                 transactionProcessor,
                 header,
-                UInt256.Max(header.Timestamp + 1, _timestamper.UnixTime.Seconds),
+                Math.Max(header.Timestamp + 1, _timestamper.UnixTime.Seconds),
                 tx,
                 true,
                 estimateGasTracer.WithCancellation(cancellationToken));
 
-            GasEstimator gasEstimator = new(transactionProcessor, _stateProvider, _specProvider);
-            long estimate = gasEstimator.Estimate(tx, header, estimateGasTracer);
+            GasEstimator gasEstimator = new(transactionProcessor, _stateProvider, _specProvider, _blocksConfig);
+            long estimate = gasEstimator.Estimate(tx, header, estimateGasTracer, cancellationToken);
 
-            return new BlockchainBridge.CallOutput 
+            return new BlockchainBridge.CallOutput
             {
-                Error = tryCallResult.Success ? estimateGasTracer.Error : tryCallResult.Error, 
-                GasSpent = estimate, 
+                Error = tryCallResult.Success ? estimateGasTracer.Error : tryCallResult.Error,
+                GasSpent = estimate,
                 InputError = !tryCallResult.Success
             };
         }
-        
+
         private (bool Success, string Error) TryCallAndRestore(
             ITransactionProcessor transactionProcessor,
             BlockHeader blockHeader,
-            in UInt256 timestamp,
+            ulong timestamp,
             Transaction transaction,
             bool treatBlockHeaderAsParentBlock,
             ITxTracer tracer)
@@ -247,16 +232,13 @@ namespace Nethermind.AccountAbstraction.Executor
         private void CallAndRestore(
             ITransactionProcessor transactionProcessor,
             BlockHeader blockHeader,
-            in UInt256 timestamp,
+            ulong timestamp,
             Transaction transaction,
             bool treatBlockHeaderAsParentBlock,
             ITxTracer tracer)
         {
-            if (transaction.SenderAddress == null)
-            {
-                transaction.SenderAddress = Address.SystemUser;
-            }
-            
+            transaction.SenderAddress ??= Address.SystemUser;
+
             if (transaction.Nonce == 0)
             {
                 transaction.Nonce = _stateProvider.GetNonce(transaction.SenderAddress);
@@ -273,11 +255,11 @@ namespace Nethermind.AccountAbstraction.Executor
                 Array.Empty<byte>());
 
             callHeader.BaseFeePerGas = treatBlockHeaderAsParentBlock
-                ? BaseFeeCalculator.Calculate(blockHeader, _specProvider.GetSpec(callHeader.Number))
+                ? BaseFeeCalculator.Calculate(blockHeader, _specProvider.GetSpec(callHeader))
                 : blockHeader.BaseFeePerGas;
 
             transaction.Hash = transaction.CalculateHash();
-            transactionProcessor.CallAndRestore(transaction, callHeader, tracer);
+            transactionProcessor.CallAndRestore(transaction, new BlockExecutionContext(callHeader), tracer);
         }
     }
 }

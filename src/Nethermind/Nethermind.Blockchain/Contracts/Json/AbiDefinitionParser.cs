@@ -1,51 +1,37 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Text;
+using System.Text.Json;
+using System.Text.Json.Serialization;
+
 using Nethermind.Abi;
-using Nethermind.Serialization.Json;
-using Newtonsoft.Json;
-using Newtonsoft.Json.Converters;
-using Newtonsoft.Json.Serialization;
 
 namespace Nethermind.Blockchain.Contracts.Json
 {
-    public class AbiDefinitionParser : IAbiDefinitionParser
+    public partial class AbiDefinitionParser : IAbiDefinitionParser
     {
-        private readonly JsonSerializer _serializer;
-        private readonly IList<IAbiTypeFactory> _abiTypeFactories = new List<IAbiTypeFactory>(); 
+        private readonly IList<IAbiTypeFactory> _abiTypeFactories = new List<IAbiTypeFactory>();
 
         public AbiDefinitionParser()
         {
-            _serializer = JsonSerializer.CreateDefault(GetJsonSerializerSettings());
         }
 
         public AbiDefinition Parse(string json, string name = null)
         {
-            using var reader = new StringReader(json);
-            return Parse(reader, name);
+            AbiDefinition definition = JsonSerializer.Deserialize<AbiDefinition>(json, SourceGenerationContext.Default.AbiDefinition);
+            definition.Name = name;
+            return definition;
         }
 
         public AbiDefinition Parse(Type type)
         {
             using var reader = LoadResource(type);
-            return Parse(reader, type.Name);
+            AbiDefinition definition = JsonSerializer.Deserialize<AbiDefinition>(reader, SourceGenerationContext.Default.AbiDefinition);
+            definition.Name = type.Name;
+            return definition;
         }
 
         public void RegisterAbiTypeFactory(IAbiTypeFactory abiTypeFactory)
@@ -55,47 +41,36 @@ namespace Nethermind.Blockchain.Contracts.Json
 
         public string LoadContract(Type type)
         {
-            using var reader = LoadResource(type);
+            using var reader = new StreamReader(LoadResource(type));
             return reader.ReadToEnd();
         }
 
         public string Serialize(AbiDefinition contract)
         {
-            var builder = new StringBuilder();
-            using var writer = new StringWriter(builder);
-            _serializer.Serialize(writer, contract);
-            return builder.ToString();
+            return JsonSerializer.Serialize(contract, SourceGenerationContext.Default.AbiDefinition);
         }
 
-        private AbiDefinition Parse(TextReader textReader, string name)
-        {
-            using var reader = new JsonTextReader(textReader);
-            var definition = _serializer.Deserialize<AbiDefinition>(reader);
-            definition.Name = name;
-            return definition;
-        }
-
-        private static StreamReader LoadResource(Type type)
+        private static Stream LoadResource(Type type)
         {
             var jsonResource = type.FullName.Replace("+", ".") + ".json";
 #if DEBUG
             var names = type.Assembly.GetManifestResourceNames();
 #endif
             var stream = type.Assembly.GetManifestResourceStream(jsonResource) ?? throw new ArgumentException($"Resource for {jsonResource} not found.");
-            return new StreamReader(stream);
+            return stream;
         }
 
-        private JsonSerializerSettings GetJsonSerializerSettings()
+        [JsonSourceGenerationOptions(WriteIndented = true, PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase)]
+        [JsonSerializable(typeof(AbiDefinition))]
+        [JsonSerializable(typeof(AbiFunctionDescription))]
+        [JsonSerializable(typeof(AbiParameter))]
+        [JsonSerializable(typeof(AbiEventParameter))]
+        [JsonSerializable(typeof(AbiBaseDescription))]
+        [JsonSerializable(typeof(AbiEventDescription))]
+        [JsonSerializable(typeof(AbiFunctionDescription))]
+        [JsonSerializable(typeof(AbiErrorDescription))]
+        internal partial class SourceGenerationContext : JsonSerializerContext
         {
-            var jsonSerializerSettings = new JsonSerializerSettings();
-            jsonSerializerSettings.Converters.Add(new AbiDefinitionConverter());
-            jsonSerializerSettings.Converters.Add(new AbiEventParameterConverter(_abiTypeFactories));
-            jsonSerializerSettings.Converters.Add(new AbiParameterConverter(_abiTypeFactories));
-            jsonSerializerSettings.Converters.Add(new StringEnumConverter() {NamingStrategy = new LowerCaseNamingStrategy()});
-            jsonSerializerSettings.Converters.Add(new AbiTypeConverter());
-            jsonSerializerSettings.Formatting = Formatting.Indented;
-            jsonSerializerSettings.ContractResolver = new CamelCasePropertyNamesContractResolver();
-            return jsonSerializerSettings;
         }
     }
 }

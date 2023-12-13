@@ -1,56 +1,43 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-// 
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
 
 namespace Nethermind.Core.Test
 {
-    public class FixedBlockChainHeadSpecProvider : IChainHeadSpecProvider
+    public class FixedForkActivationChainHeadSpecProvider : IChainHeadSpecProvider
     {
         public void UpdateMergeTransitionInfo(long? blockNumber, UInt256? terminalTotalDifficulty = null)
         {
             _specProvider.UpdateMergeTransitionInfo(blockNumber, terminalTotalDifficulty);
         }
 
-        public long? MergeBlockNumber => _specProvider.MergeBlockNumber;
+        public ForkActivation? MergeBlockNumber => _specProvider.MergeBlockNumber;
+        public ulong TimestampFork => _specProvider.TimestampFork;
         public UInt256? TerminalTotalDifficulty => _specProvider.TerminalTotalDifficulty;
         private readonly ISpecProvider _specProvider;
         private readonly long _fixedBlock;
+        private readonly ulong? _timestamp;
 
-        public FixedBlockChainHeadSpecProvider(ISpecProvider specProvider, long fixedBlock = 10_000_000)
+        public FixedForkActivationChainHeadSpecProvider(ISpecProvider specProvider, long fixedBlock = 10_000_000, ulong? timestamp = null)
         {
             _specProvider = specProvider;
             _fixedBlock = fixedBlock;
+            _timestamp = timestamp;
         }
 
         public IReleaseSpec GenesisSpec => _specProvider.GenesisSpec;
 
-        public IReleaseSpec GetSpec(long blockNumber)
-        {
-            return _specProvider.GetSpec(blockNumber);
-        }
+        public IReleaseSpec GetSpec(ForkActivation forkActivation) => _specProvider.GetSpec(forkActivation);
 
         public long? DaoBlockNumber => _specProvider.DaoBlockNumber;
 
+        public ulong NetworkId => _specProvider.NetworkId;
         public ulong ChainId => _specProvider.ChainId;
 
-        public long[] TransitionBlocks => _specProvider.TransitionBlocks;
-        
-        public IReleaseSpec GetCurrentHeadSpec() => GetSpec(_fixedBlock);
+        public ForkActivation[] TransitionActivations => _specProvider.TransitionActivations;
+
+        public IReleaseSpec GetCurrentHeadSpec() => GetSpec((_fixedBlock, _timestamp));
     }
 }

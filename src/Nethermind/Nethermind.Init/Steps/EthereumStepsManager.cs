@@ -1,24 +1,12 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-//
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-//
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-//
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
+using System.Runtime.ExceptionServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Api;
@@ -29,9 +17,9 @@ namespace Nethermind.Init.Steps
 {
     public class EthereumStepsManager
     {
-        private ILogger _logger;
+        private readonly ILogger _logger;
 
-        private AutoResetEvent _autoResetEvent = new AutoResetEvent(true);
+        private readonly AutoResetEvent _autoResetEvent = new AutoResetEvent(true);
         private readonly INethermindApi _api;
         private readonly List<StepInfo> _allSteps;
         private readonly Dictionary<Type, StepInfo> _allStepsByBaseType;
@@ -41,10 +29,7 @@ namespace Nethermind.Init.Steps
             INethermindApi context,
             ILogManager logManager)
         {
-            if (loader == null)
-            {
-                throw new ArgumentNullException(nameof(loader));
-            }
+            ArgumentNullException.ThrowIfNull(loader);
 
             _api = context ?? throw new ArgumentNullException(nameof(context));
             _logger = logManager?.GetClassLogger<EthereumStepsManager>()
@@ -107,6 +92,7 @@ namespace Nethermind.Init.Steps
 
                 RunOneRoundOfInitialization(cancellationToken);
                 await ReviewDependencies(cancellationToken);
+                ReviewFailedAndThrow();
             }
 
             await Task.WhenAll(_allPending);
@@ -127,7 +113,7 @@ namespace Nethermind.Init.Steps
                 }
 
                 IStep? step = CreateStepInstance(stepInfo);
-                if (step == null)
+                if (step is null)
                 {
                     if (_logger.IsError) _logger.Error($"Unable to create instance of Ethereum runner step {stepInfo}");
                     continue;
@@ -169,6 +155,8 @@ namespace Nethermind.Init.Steps
                 if (_logger.IsDebug)
                     _logger.Debug(
                         $"Step {step.GetType().Name.PadRight(24)} executed in {stopwatch.ElapsedMilliseconds}ms");
+
+                stepInfo.Stage = StepInitializationStage.Complete;
             }
             catch (Exception exception)
             {
@@ -179,6 +167,7 @@ namespace Nethermind.Init.Steps
                             $"Step {step.GetType().Name.PadRight(24)} failed after {stopwatch.ElapsedMilliseconds}ms",
                             exception);
 
+                    stepInfo.Stage = StepInitializationStage.Failed;
                     throw;
                 }
 
@@ -187,12 +176,11 @@ namespace Nethermind.Init.Steps
                     _logger.Warn(
                         $"Step {step.GetType().Name.PadRight(24)} failed after {stopwatch.ElapsedMilliseconds}ms {exception}");
                 }
+                stepInfo.Stage = StepInitializationStage.Complete;
             }
             finally
             {
                 stopwatch.Stop();
-
-                stepInfo.Stage = StepInitializationStage.Complete;
                 _autoResetEvent.Set();
 
                 if (_logger.IsDebug) _logger.Debug($"{step.GetType().Name.PadRight(24)} complete");
@@ -215,5 +203,12 @@ namespace Nethermind.Init.Steps
         }
 
         private int _foreverLoop;
+
+        private void ReviewFailedAndThrow()
+        {
+            Task? anyFaulted = _allPending.FirstOrDefault(t => t.IsFaulted);
+            if (anyFaulted?.IsFaulted == true && anyFaulted?.Exception is not null)
+                ExceptionDispatchInfo.Capture(anyFaulted.Exception.GetBaseException()).Throw();
+        }
     }
 }

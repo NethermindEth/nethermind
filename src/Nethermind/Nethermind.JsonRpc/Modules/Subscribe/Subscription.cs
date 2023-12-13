@@ -1,19 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-// 
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Threading.Channels;
@@ -25,7 +11,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
     public abstract class Subscription : IDisposable
     {
         protected ILogger _logger;
-        
+
         protected Subscription(IJsonRpcDuplexClient jsonRpcDuplexClient)
         {
             Id = string.Concat("0x", Guid.NewGuid().ToString("N"));
@@ -36,13 +22,13 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
         public string Id { get; }
         public abstract string Type { get; }
         public IJsonRpcDuplexClient JsonRpcDuplexClient { get; }
-        private Channel<Action> SendChannel { get; } = Channel.CreateUnbounded<Action>(new UnboundedChannelOptions() { SingleReader = true });
+        private Channel<Func<Task>> SendChannel { get; } = Channel.CreateUnbounded<Func<Task>>(new UnboundedChannelOptions { SingleReader = true });
 
         public virtual void Dispose()
         {
             SendChannel.Writer.Complete();
         }
-        
+
         protected JsonRpcResult CreateSubscriptionMessage(object result)
         {
             return JsonRpcResult.Single(
@@ -56,24 +42,24 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
                 }, default);
         }
 
-        protected void ScheduleAction(Action action)
+        protected void ScheduleAction(Func<Task> action)
         {
             SendChannel.Writer.TryWrite(action);
         }
 
-        protected string GetErrorMsg() =>  $"{Type} subscription with ID {Id} failed.";
-        
+        protected string GetErrorMsg() => $"{Type} subscription with ID {Id} failed.";
+
         private void ProcessMessages()
         {
             Task.Factory.StartNew(async () =>
             {
                 while (await SendChannel.Reader.WaitToReadAsync())
                 {
-                    while (SendChannel.Reader.TryRead(out Action action))
+                    while (SendChannel.Reader.TryRead(out Func<Task> action))
                     {
                         try
                         {
-                            action();
+                            await action();
                         }
                         catch (Exception e)
                         {

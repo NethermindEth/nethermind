@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using Nethermind.Core;
@@ -28,12 +15,12 @@ namespace Nethermind.State
 {
     public class StateReader : IStateReader
     {
-        private readonly IDb _codeDb;
+        private readonly IKeyValueStore _codeDb;
         private readonly ILogger _logger;
         private readonly StateTree _state;
         private readonly StorageTree _storage;
 
-        public StateReader(ITrieStore? trieStore, IDb? codeDb, ILogManager? logManager)
+        public StateReader(ITrieStore? trieStore, IKeyValueStore? codeDb, ILogManager? logManager)
         {
             _logger = logManager?.GetClassLogger<StateReader>() ?? throw new ArgumentNullException(nameof(logManager));
             _codeDb = codeDb ?? throw new ArgumentNullException(nameof(codeDb));
@@ -41,28 +28,28 @@ namespace Nethermind.State
             _storage = new StorageTree(trieStore, Keccak.EmptyTreeHash, logManager);
         }
 
-        public Account? GetAccount(Keccak stateRoot, Address address)
+        public Account? GetAccount(Hash256 stateRoot, Address address)
         {
             return GetState(stateRoot, address);
         }
 
-        public byte[] GetStorage(Keccak storageRoot, in UInt256 index)
+        public byte[] GetStorage(Hash256 storageRoot, in UInt256 index)
         {
             if (storageRoot == Keccak.EmptyTreeHash)
             {
-                return new byte[] {0};
+                return new byte[] { 0 };
             }
 
             Metrics.StorageTreeReads++;
             return _storage.Get(index, storageRoot);
         }
 
-        public UInt256 GetBalance(Keccak stateRoot, Address address)
+        public UInt256 GetBalance(Hash256 stateRoot, Address address)
         {
             return GetState(stateRoot, address)?.Balance ?? UInt256.Zero;
         }
 
-        public byte[]? GetCode(Keccak codeHash)
+        public byte[]? GetCode(Hash256 codeHash)
         {
             if (codeHash == Keccak.OfAnEmptyString)
             {
@@ -72,18 +59,25 @@ namespace Nethermind.State
             return _codeDb[codeHash.Bytes];
         }
 
-        public void RunTreeVisitor(ITreeVisitor treeVisitor, Keccak rootHash, VisitingOptions? visitingOptions = null)
+        public void RunTreeVisitor(ITreeVisitor treeVisitor, Hash256 rootHash, VisitingOptions? visitingOptions = null)
         {
             _state.Accept(treeVisitor, rootHash, visitingOptions);
         }
 
-        public byte[] GetCode(Keccak stateRoot, Address address)
+        public bool HasStateForRoot(Hash256 stateRoot)
+        {
+            RootCheckVisitor visitor = new();
+            RunTreeVisitor(visitor, stateRoot);
+            return visitor.HasRoot;
+        }
+
+        public byte[] GetCode(Hash256 stateRoot, Address address)
         {
             Account? account = GetState(stateRoot, address);
             return account is null ? Array.Empty<byte>() : GetCode(account.CodeHash);
         }
 
-        private Account? GetState(Keccak stateRoot, Address address)
+        private Account? GetState(Hash256 stateRoot, Address address)
         {
             if (stateRoot == Keccak.EmptyTreeHash)
             {

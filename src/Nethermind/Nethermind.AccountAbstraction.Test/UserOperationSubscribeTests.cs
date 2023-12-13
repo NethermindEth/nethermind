@@ -1,23 +1,12 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-//
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-//
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-//
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-//
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Generic;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using System.Threading;
+using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.AccountAbstraction.Data;
 using Nethermind.AccountAbstraction.Source;
@@ -39,8 +28,9 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Facade.Eth;
 using Nethermind.JsonRpc.Modules.Subscribe;
+using Nethermind.Synchronization.ParallelSync;
 using Nethermind.TxPool;
-using Newtonsoft.Json;
+
 
 namespace Nethermind.AccountAbstraction.Test
 {
@@ -59,11 +49,11 @@ namespace Nethermind.AccountAbstraction.Test
         private IJsonRpcDuplexClient _jsonRpcDuplexClient = null!;
         private IJsonSerializer _jsonSerializer = null!;
         private ISpecProvider _specProvider = null!;
-        private ISyncConfig _syncConfig = new SyncConfig();
-        private IDictionary<Address, IUserOperationPool> _userOperationPools = new Dictionary<Address, IUserOperationPool>();
+        private readonly ISyncConfig _syncConfig = new SyncConfig();
+        private readonly IDictionary<Address, IUserOperationPool> _userOperationPools = new Dictionary<Address, IUserOperationPool>();
         //Any test pool and entry point addresses should work for testing.
-        private Address _testPoolAddress = Address.Zero;
-        private Address _entryPointAddress = new("0x90f3e1105e63c877bf9587de5388c23cdb702c6b");
+        private readonly Address _testPoolAddress = Address.Zero;
+        private readonly Address _entryPointAddress = new("0x90f3e1105e63c877bf9587de5388c23cdb702c6b");
 
         [SetUp]
         public void Setup()
@@ -79,22 +69,19 @@ namespace Nethermind.AccountAbstraction.Test
             _jsonRpcDuplexClient = Substitute.For<IJsonRpcDuplexClient>();
             _jsonSerializer = new EthereumJsonSerializer();
 
-            JsonSerializer jsonSerializer = new();
-            jsonSerializer.Converters.AddRange(EthereumJsonSerializer.CommonConverters);
-
             SubscriptionFactory subscriptionFactory = new(
                 _logManager,
                 _blockTree,
                 _txPool,
                 _receiptCanonicalityMonitor,
                 _filterStore,
-                new EthSyncingInfo(_blockTree, _receiptStorage, _syncConfig, _logManager),
+                new EthSyncingInfo(_blockTree, _receiptStorage, _syncConfig, new StaticSelector(SyncMode.All), _logManager),
                 _specProvider,
-                jsonSerializer);
+                _jsonSerializer);
 
             subscriptionFactory.RegisterSubscriptionType<UserOperationSubscriptionParam?>(
                 "newPendingUserOperations",
-                (jsonRpcDuplexClient,entryPoints) => new NewPendingUserOpsSubscription(
+                (jsonRpcDuplexClient, entryPoints) => new NewPendingUserOpsSubscription(
                     jsonRpcDuplexClient,
                     _userOperationPools,
                     _logManager,
@@ -102,7 +89,7 @@ namespace Nethermind.AccountAbstraction.Test
             );
             subscriptionFactory.RegisterSubscriptionType<UserOperationSubscriptionParam?>(
                 "newReceivedUserOperations",
-                (jsonRpcDuplexClient,entryPoints) => new NewReceivedUserOpsSubscription(
+                (jsonRpcDuplexClient, entryPoints) => new NewReceivedUserOpsSubscription(
                     jsonRpcDuplexClient,
                     _userOperationPools,
                     _logManager,
@@ -117,12 +104,19 @@ namespace Nethermind.AccountAbstraction.Test
             _subscribeRpcModule.Context = new JsonRpcContext(RpcEndpoint.Ws, _jsonRpcDuplexClient);
         }
 
+        [TearDown]
+        public void TearDown()
+        {
+            _jsonRpcDuplexClient?.Dispose();
+            _receiptCanonicalityMonitor?.Dispose();
+        }
+
         private JsonRpcResult GetNewPendingUserOpsResult(
             UserOperationEventArgs userOperationEventArgs,
             out string subscriptionId,
             bool includeUserOperations = false)
         {
-            UserOperationSubscriptionParam param = new() {IncludeUserOperations = includeUserOperations};
+            UserOperationSubscriptionParam param = new() { IncludeUserOperations = includeUserOperations };
 
             NewPendingUserOpsSubscription newPendingUserOpsSubscription =
                 new(_jsonRpcDuplexClient, _userOperationPools, _logManager, param);
@@ -147,7 +141,7 @@ namespace Nethermind.AccountAbstraction.Test
             out string subscriptionId,
             bool includeUserOperations = false)
         {
-            UserOperationSubscriptionParam param = new() {IncludeUserOperations = includeUserOperations};
+            UserOperationSubscriptionParam param = new() { IncludeUserOperations = includeUserOperations };
 
             NewReceivedUserOpsSubscription newReceivedUserOpsSubscription =
                 new(_jsonRpcDuplexClient, _userOperationPools, _logManager, param);
@@ -168,42 +162,42 @@ namespace Nethermind.AccountAbstraction.Test
         }
 
         [Test]
-        public void NewPendingUserOperationsSubscription_creating_result()
+        public async Task NewPendingUserOperationsSubscription_creating_result()
         {
-            string serialized = RpcTest.TestSerializedRequest(_subscribeRpcModule, "eth_subscribe", "newPendingUserOperations");
-            string expectedResult = string.Concat("{\"jsonrpc\":\"2.0\",\"result\":\"", serialized.Substring(serialized.Length - 44,34), "\",\"id\":67}");
+            string serialized = await RpcTest.TestSerializedRequest(_subscribeRpcModule, "eth_subscribe", "newPendingUserOperations");
+            string expectedResult = string.Concat("{\"jsonrpc\":\"2.0\",\"result\":\"", serialized.Substring(serialized.Length - 44, 34), "\",\"id\":67}");
             expectedResult.Should().Be(serialized);
         }
 
         [Test]
-        public void NewPendingUserOperationsSubscription_creating_result_with_custom_entryPoints()
+        public async Task NewPendingUserOperationsSubscription_creating_result_with_custom_entryPoints()
         {
-            string serialized = RpcTest.TestSerializedRequest(
+            string serialized = await RpcTest.TestSerializedRequest(
                 _subscribeRpcModule,
                 "eth_subscribe",
                 "newPendingUserOperations",
                 "{\"entryPoints\":[\"" + _entryPointAddress + "\", \"" + Address.Zero + "\"]}");
-            string expectedResult = string.Concat("{\"jsonrpc\":\"2.0\",\"result\":\"", serialized.Substring(serialized.Length - 44,34), "\",\"id\":67}");
+            string expectedResult = string.Concat("{\"jsonrpc\":\"2.0\",\"result\":\"", serialized.Substring(serialized.Length - 44, 34), "\",\"id\":67}");
             expectedResult.Should().Be(serialized);
         }
 
         [Test]
-        public void NewPendingUserOperationsSubscription_creating_result_with_wrong_entryPoints()
+        public async Task NewPendingUserOperationsSubscription_creating_result_with_wrong_entryPoints()
         {
-            string serialized = RpcTest.TestSerializedRequest(
+            string serialized = await RpcTest.TestSerializedRequest(
                 _subscribeRpcModule,
                 "eth_subscribe",
                 "newPendingUserOperations", "{\"entryPoints\":[\"" + _entryPointAddress + "\", \"" + "0x123" + "\"]}");
 
             string beginningOfExpectedResult = "{\"jsonrpc\":\"2.0\",\"error\":";
-            beginningOfExpectedResult.Should().Be(serialized.Substring(0,beginningOfExpectedResult.Length));
+            beginningOfExpectedResult.Should().Be(serialized[..beginningOfExpectedResult.Length]);
         }
 
         [Test]
         public void NewPendingUserOperationsSubscription_on_NewPending_event()
         {
             UserOperation userOperation = Build.A.UserOperation.TestObject;
-            userOperation.CalculateRequestId(_entryPointAddress, 1);
+            userOperation.CalculateRequestId(_entryPointAddress, TestBlockchainIds.ChainId);
             UserOperationEventArgs userOperationEventArgs = new(userOperation, _entryPointAddress);
 
             JsonRpcResult jsonRpcResult = GetNewPendingUserOpsResult(userOperationEventArgs, out var subscriptionId, true);
@@ -218,10 +212,10 @@ namespace Nethermind.AccountAbstraction.Test
         public void NewPendingUserOperationsSubscription_on_NewPending_event_without_full_user_operations()
         {
             UserOperation userOperation = Build.A.UserOperation.TestObject;
-            userOperation.CalculateRequestId(_entryPointAddress, 1);
+            userOperation.CalculateRequestId(_entryPointAddress, TestBlockchainIds.ChainId);
             UserOperationEventArgs userOperationEventArgs = new(userOperation, _entryPointAddress);
 
-            JsonRpcResult jsonRpcResult = GetNewPendingUserOpsResult(userOperationEventArgs, out var subscriptionId, false);
+            JsonRpcResult jsonRpcResult = GetNewPendingUserOpsResult(userOperationEventArgs, out string subscriptionId, false);
 
             jsonRpcResult.Response.Should().NotBeNull();
             string serialized = _jsonSerializer.Serialize(jsonRpcResult.Response);
@@ -230,41 +224,41 @@ namespace Nethermind.AccountAbstraction.Test
         }
 
         [Test]
-        public void NewReceivedUserOperationsSubscription_creating_result()
+        public async Task NewReceivedUserOperationsSubscription_creating_result()
         {
-            string serialized = RpcTest.TestSerializedRequest(_subscribeRpcModule, "eth_subscribe", "newReceivedUserOperations");
-            var expectedResult = string.Concat("{\"jsonrpc\":\"2.0\",\"result\":\"", serialized.Substring(serialized.Length - 44,34), "\",\"id\":67}");
+            string serialized = await RpcTest.TestSerializedRequest(_subscribeRpcModule, "eth_subscribe", "newReceivedUserOperations");
+            var expectedResult = string.Concat("{\"jsonrpc\":\"2.0\",\"result\":\"", serialized.Substring(serialized.Length - 44, 34), "\",\"id\":67}");
             expectedResult.Should().Be(serialized);
         }
 
         [Test]
-        public void NewReceivedUserOperationsSubscription_creating_result_with_custom_entryPoints()
+        public async Task NewReceivedUserOperationsSubscription_creating_result_with_custom_entryPoints()
         {
-            string serialized = RpcTest.TestSerializedRequest(
+            string serialized = await RpcTest.TestSerializedRequest(
                 _subscribeRpcModule,
                 "eth_subscribe",
                 "newReceivedUserOperations",
                 "{\"entryPoints\":[\"" + _entryPointAddress + "\", \"" + Address.Zero + "\"]}");
-            string expectedResult = string.Concat("{\"jsonrpc\":\"2.0\",\"result\":\"", serialized.Substring(serialized.Length - 44,34), "\",\"id\":67}");
+            string expectedResult = string.Concat("{\"jsonrpc\":\"2.0\",\"result\":\"", serialized.Substring(serialized.Length - 44, 34), "\",\"id\":67}");
             expectedResult.Should().Be(serialized);
         }
 
         [Test]
-        public void NewReceivedUserOperationsSubscription_creating_result_with_wrong_entryPoints()
+        public async Task NewReceivedUserOperationsSubscription_creating_result_with_wrong_entryPoints()
         {
-            string serialized = RpcTest.TestSerializedRequest(
+            string serialized = await RpcTest.TestSerializedRequest(
                 _subscribeRpcModule,
                 "eth_subscribe",
                 "newPendingUserOperations", "{\"entryPoints\":[\"" + _entryPointAddress + "\", \"" + "0x123" + "\"]}");
             string beginningOfExpectedResult = "{\"jsonrpc\":\"2.0\",\"error\":";
-            beginningOfExpectedResult.Should().Be(serialized.Substring(0,beginningOfExpectedResult.Length));
+            beginningOfExpectedResult.Should().Be(serialized[..beginningOfExpectedResult.Length]);
         }
 
         [Test]
         public void NewReceivedUserOperationsSubscription_on_NewPending_event()
         {
             UserOperation userOperation = Build.A.UserOperation.TestObject;
-            userOperation.CalculateRequestId(_entryPointAddress, 1);
+            userOperation.CalculateRequestId(_entryPointAddress, TestBlockchainIds.ChainId);
             UserOperationEventArgs userOperationEventArgs = new(userOperation, _entryPointAddress);
 
             JsonRpcResult jsonRpcResult = GetNewReceivedUserOpsResult(userOperationEventArgs, out var subscriptionId, true);
@@ -279,7 +273,7 @@ namespace Nethermind.AccountAbstraction.Test
         public void NewReceivedUserOperationsSubscription_on_NewPending_event_without_full_user_operations()
         {
             UserOperation userOperation = Build.A.UserOperation.TestObject;
-            userOperation.CalculateRequestId(_entryPointAddress, 1);
+            userOperation.CalculateRequestId(_entryPointAddress, TestBlockchainIds.ChainId);
             UserOperationEventArgs userOperationEventArgs = new(userOperation, _entryPointAddress);
 
             JsonRpcResult jsonRpcResult = GetNewReceivedUserOpsResult(userOperationEventArgs, out var subscriptionId, false);
@@ -291,30 +285,30 @@ namespace Nethermind.AccountAbstraction.Test
         }
 
         [Test]
-        public void Eth_unsubscribe_success()
+        public async Task Eth_unsubscribe_success()
         {
-            string serializedSub = RpcTest.TestSerializedRequest(_subscribeRpcModule, "eth_subscribe", "newPendingUserOperations");
+            string serializedSub = await RpcTest.TestSerializedRequest(_subscribeRpcModule, "eth_subscribe", "newPendingUserOperations");
             string subscriptionId = serializedSub.Substring(serializedSub.Length - 44, 34);
             string expectedSub = string.Concat("{\"jsonrpc\":\"2.0\",\"result\":\"", subscriptionId, "\",\"id\":67}");
             expectedSub.Should().Be(serializedSub);
 
-            string serializedUnsub = RpcTest.TestSerializedRequest(_subscribeRpcModule, "eth_unsubscribe", subscriptionId);
+            string serializedUnsub = await RpcTest.TestSerializedRequest(_subscribeRpcModule, "eth_unsubscribe", subscriptionId);
             string expectedUnsub = "{\"jsonrpc\":\"2.0\",\"result\":true,\"id\":67}";
 
             expectedUnsub.Should().Be(serializedUnsub);
         }
 
         [Test]
-        public void Subscriptions_remove_after_closing_websockets_client()
+        public async Task Subscriptions_remove_after_closing_websockets_client()
         {
-            string serialized = RpcTest.TestSerializedRequest(_subscribeRpcModule, "eth_subscribe", "newPendingUserOperations");
+            string serialized = await RpcTest.TestSerializedRequest(_subscribeRpcModule, "eth_subscribe", "newPendingUserOperations");
             string subscriptionId = serialized.Substring(serialized.Length - 44, 34);
             string expectedId = string.Concat("{\"jsonrpc\":\"2.0\",\"result\":\"", subscriptionId, "\",\"id\":67}");
             expectedId.Should().Be(serialized);
 
             _jsonRpcDuplexClient.Closed += Raise.Event();
 
-            string serializedLogsUnsub = RpcTest.TestSerializedRequest(_subscribeRpcModule, "eth_unsubscribe", subscriptionId);
+            string serializedLogsUnsub = await RpcTest.TestSerializedRequest(_subscribeRpcModule, "eth_unsubscribe", subscriptionId);
             string expectedLogsUnsub =
                 string.Concat("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32603,\"message\":\"Failed to unsubscribe: ",
                     subscriptionId, ".\",\"data\":false},\"id\":67}");

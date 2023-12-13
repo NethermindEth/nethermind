@@ -1,19 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-//
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-//
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-//
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-//
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Generic;
@@ -33,13 +19,13 @@ namespace Nethermind.Merge.Plugin.InvalidChainTracker;
 /// Tracks if a given hash is on a known invalid chain, as one if it's ancestor have been reported to be invalid.
 ///
 /// </summary>
-public class InvalidChainTracker: IInvalidChainTracker
+public class InvalidChainTracker : IInvalidChainTracker
 {
     private readonly IPoSSwitcher _poSSwitcher;
     private readonly IBlockFinder _blockFinder;
     private readonly IBlockCacheService _blockCacheService;
     private readonly ILogger _logger;
-    private readonly LruCache<Keccak, Node> _tree;
+    private readonly LruCache<ValueHash256, Node> _tree;
 
     // CompositeDisposable only available on System.Reactive. So this will do for now.
     private readonly List<Action> _disposables = new();
@@ -52,7 +38,7 @@ public class InvalidChainTracker: IInvalidChainTracker
     {
         _poSSwitcher = poSSwitcher;
         _blockFinder = blockFinder;
-        _tree = new LruCache<Keccak, Node>(1024, nameof(InvalidChainTracker));
+        _tree = new(1024, nameof(InvalidChainTracker));
         _logger = logManager.GetClassLogger<InvalidChainTracker>();
         _blockCacheService = blockCacheService;
     }
@@ -68,14 +54,14 @@ public class InvalidChainTracker: IInvalidChainTracker
 
     private void OnBlockchainProcessorInvalidBlock(object? sender, IBlockchainProcessor.InvalidBlockEventArgs args) => OnInvalidBlock(args.InvalidBlock.Hash!, args.InvalidBlock.ParentHash);
 
-    public void SetChildParent(Keccak child, Keccak parent)
+    public void SetChildParent(Hash256 child, Hash256 parent)
     {
         Node parentNode = GetNode(parent);
         bool needPropagate;
         lock (parentNode)
         {
             parentNode.Children.Add(child);
-            needPropagate = parentNode.LastValidHash != null;
+            needPropagate = parentNode.LastValidHash is not null;
         }
 
         if (needPropagate)
@@ -84,7 +70,7 @@ public class InvalidChainTracker: IInvalidChainTracker
         }
     }
 
-    private Node GetNode(Keccak hash)
+    private Node GetNode(Hash256 hash)
     {
         if (!_tree.TryGet(hash, out Node node))
         {
@@ -106,7 +92,7 @@ public class InvalidChainTracker: IInvalidChainTracker
             Node current = bfsQue.Dequeue();
             lock (current)
             {
-                foreach (Keccak nodeChild in current.Children)
+                foreach (Hash256 nodeChild in current.Children)
                 {
                     Node childNode = GetNode(nodeChild);
                     if (childNode.LastValidHash != current.LastValidHash)
@@ -124,7 +110,7 @@ public class InvalidChainTracker: IInvalidChainTracker
 
     }
 
-    private BlockHeader? TryGetBlockHeaderIncludingInvalid(Keccak hash)
+    private BlockHeader? TryGetBlockHeaderIncludingInvalid(Hash256 hash)
     {
         if (_blockCacheService.BlockCache.TryGetValue(hash, out Block? block))
         {
@@ -134,26 +120,26 @@ public class InvalidChainTracker: IInvalidChainTracker
         return _blockFinder.FindHeader(hash, BlockTreeLookupOptions.AllowInvalid | BlockTreeLookupOptions.TotalDifficultyNotNeeded | BlockTreeLookupOptions.DoNotCreateLevelIfMissing);
     }
 
-    public void OnInvalidBlock(Keccak failedBlock, Keccak? parent)
+    public void OnInvalidBlock(Hash256 failedBlock, Hash256? parent)
     {
-        if(_logger.IsDebug) _logger.Debug($"OnInvalidBlock: {failedBlock} {parent}");
+        if (_logger.IsDebug) _logger.Debug($"OnInvalidBlock: {failedBlock} {parent}");
 
         // TODO: This port can now be removed? We should never get null here?
-        if (parent == null)
+        if (parent is null)
         {
             BlockHeader? failedBlockHeader = TryGetBlockHeaderIncludingInvalid(failedBlock);
-            if (failedBlockHeader == null)
+            if (failedBlockHeader is null)
             {
-                if(_logger.IsWarn) _logger.Warn($"Unable to resolve block to determine parent. Block {failedBlock}");
+                if (_logger.IsWarn) _logger.Warn($"Unable to resolve block to determine parent. Block {failedBlock}");
                 return;
             }
 
             parent = failedBlockHeader.ParentHash!;
         }
 
-        Keccak effectiveParent = parent;
+        Hash256 effectiveParent = parent;
         BlockHeader? parentHeader = TryGetBlockHeaderIncludingInvalid(parent);
-        if (parentHeader != null)
+        if (parentHeader is not null)
         {
             if (!_poSSwitcher.IsPostMerge(parentHeader))
             {
@@ -162,7 +148,7 @@ public class InvalidChainTracker: IInvalidChainTracker
         }
         else
         {
-            if(_logger.IsTrace) _logger.Trace($"Unable to resolve parent to determine if it is post merge. Assuming post merge. Block {parent}");
+            if (_logger.IsTrace) _logger.Trace($"Unable to resolve parent to determine if it is post merge. Assuming post merge. Block {parent}");
         }
 
         Node failedBlockNode = GetNode(failedBlock);
@@ -173,25 +159,25 @@ public class InvalidChainTracker: IInvalidChainTracker
         PropagateLastValidHash(failedBlockNode);
     }
 
-    public bool IsOnKnownInvalidChain(Keccak blockHash, out Keccak? lastValidHash)
+    public bool IsOnKnownInvalidChain(Hash256 blockHash, out Hash256? lastValidHash)
     {
         lastValidHash = null;
         Node node = GetNode(blockHash);
         lock (node)
         {
-            if (node.LastValidHash != null)
+            if (node.LastValidHash is not null)
             {
                 lastValidHash = node.LastValidHash;
             }
 
-            return node.LastValidHash != null;
+            return node.LastValidHash is not null;
         }
     }
 
     class Node
     {
-        public HashSet<Keccak> Children { get; } = new();
-        public Keccak? LastValidHash { get; set; }
+        public HashSet<Hash256> Children { get; } = new();
+        public Hash256? LastValidHash { get; set; }
     }
 
     public void Dispose()

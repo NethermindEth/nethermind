@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Linq;
@@ -30,7 +17,7 @@ namespace Nethermind.Blockchain.Filters.Topics
             _subexpressions = subexpressions;
         }
 
-        public override bool Accepts(Keccak topic)
+        public override bool Accepts(Hash256 topic)
         {
             for (int i = 0; i < _subexpressions.Length; i++)
             {
@@ -43,7 +30,7 @@ namespace Nethermind.Blockchain.Filters.Topics
             return false;
         }
 
-        public override bool Accepts(ref KeccakStructRef topic)
+        public override bool Accepts(ref Hash256StructRef topic)
         {
             for (int i = 0; i < _subexpressions.Length; i++)
             {
@@ -66,7 +53,7 @@ namespace Nethermind.Blockchain.Filters.Topics
                 }
             }
 
-            return false;            
+            return false;
         }
 
         public override bool Matches(ref BloomStructRef bloom)
@@ -79,12 +66,12 @@ namespace Nethermind.Blockchain.Filters.Topics
                 }
             }
 
-            return false;            
+            return false;
         }
 
         public override bool Equals(object? obj)
         {
-            if (ReferenceEquals(null, obj)) return false;
+            if (obj is null) return false;
             if (ReferenceEquals(this, obj)) return true;
             return Equals(obj as OrExpression);
         }
@@ -102,11 +89,11 @@ namespace Nethermind.Blockchain.Filters.Topics
 
         public bool Equals(OrExpression? other)
         {
-            if (ReferenceEquals(null, other)) return false;
+            if (other is null) return false;
             if (ReferenceEquals(this, other)) return true;
             return _subexpressions.SequenceEqual(other._subexpressions);
         }
-        
+
         public override string ToString() => $"[{string.Join<TopicExpression>(',', _subexpressions)}]";
     }
 }

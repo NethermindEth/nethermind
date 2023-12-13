@@ -1,18 +1,5 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Diagnostics;
 using Nethermind.Stats.Model;
@@ -24,19 +11,21 @@ public class NodeBucket
 {
     private readonly object _nodeBucketLock = new();
     private readonly LinkedList<NodeBucketItem> _items;
+    private readonly float _dropFullBucketProbability;
 
-    public NodeBucket(int distance, int bucketSize)
+    public NodeBucket(int distance, int bucketSize, float dropFullBucketProbability = 0.0f)
     {
         _items = new LinkedList<NodeBucketItem>();
         Distance = distance;
         BucketSize = bucketSize;
+        _dropFullBucketProbability = dropFullBucketProbability;
     }
 
     /// <summary>
     /// Distance from Master Node
     /// </summary>
     public int Distance { get; }
-        
+
     public int BucketSize { get; }
 
     public IEnumerable<NodeBucketItem> BondedItems
@@ -46,9 +35,10 @@ public class NodeBucket
             lock (_nodeBucketLock)
             {
                 LinkedListNode<NodeBucketItem>? node = _items.Last;
-                while (node != null)
+                DateTime utcNow = DateTime.UtcNow;
+                while (node is not null)
                 {
-                    if (!node.Value.IsBonded)
+                    if (!node.Value.IsBonded(utcNow))
                     {
                         break;
                     }
@@ -59,7 +49,7 @@ public class NodeBucket
             }
         }
     }
-        
+
     public int BondedItemsCount
     {
         get
@@ -68,13 +58,14 @@ public class NodeBucket
             {
                 int result = _items.Count;
                 LinkedListNode<NodeBucketItem>? node = _items.Last;
-                while (node != null)
+                DateTime utcNow = DateTime.UtcNow;
+                while (node is not null)
                 {
-                    if (node.Value.IsBonded)
+                    if (node.Value.IsBonded(utcNow))
                     {
                         break;
                     }
-                        
+
                     node = node.Previous;
                     result--;
                 }
@@ -95,13 +86,25 @@ public class NodeBucket
                 {
                     _items.AddFirst(item);
                 }
-                    
+
                 return NodeAddResult.Added();
+            }
+
+            if (Random.Shared.NextSingle() < _dropFullBucketProbability)
+            {
+                NodeBucketItem item = new(node, DateTime.UtcNow);
+                if (!_items.Contains(item))
+                {
+                    _items.AddFirst(item);
+                    _items.RemoveLast();
+                }
+
+                return NodeAddResult.Dropped();
             }
 
             NodeBucketItem evictionCandidate = GetEvictionCandidate();
             return NodeAddResult.Full(evictionCandidate);
-        }  
+        }
     }
 
     public void ReplaceNode(Node nodeToRemove, Node nodeToAdd)
@@ -114,11 +117,6 @@ public class NodeBucket
                 _items.Remove(item);
                 AddNode(nodeToAdd);
             }
-            else
-            {
-                throw new InvalidOperationException(
-                    "Cannot replace non-existing node in the node table bucket");
-            }
         }
     }
 
@@ -128,7 +126,7 @@ public class NodeBucket
         {
             NodeBucketItem item = new(node, DateTime.UtcNow);
             LinkedListNode<NodeBucketItem>? bucketItem = _items.Find(item);
-            if (bucketItem != null)
+            if (bucketItem is not null)
             {
                 bucketItem.Value.OnContactReceived();
                 _items.Remove(item);

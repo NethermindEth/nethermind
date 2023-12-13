@@ -1,19 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-// 
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Threading;
 using System.Threading.Tasks;
@@ -50,14 +36,14 @@ namespace Nethermind.Runner.Ethereum.Steps
                     if (x.IsFaulted && logger.IsError)
                         logger.Error("Error during GRPC runner start", x.Exception);
                 }, cancellationToken);
-            
+
                 _api.GrpcServer = grpcServer;
-                
+
                 GrpcPublisher grpcPublisher = new(_api.GrpcServer);
                 _api.Publishers.Add(grpcPublisher);
-                
+
                 _api.DisposeStack.Push(grpcPublisher);
-                
+
 #pragma warning disable 4014
                 _api.DisposeStack.Push(new Reactive.AnonymousDisposable(() => grpcRunner.StopAsync())); // do not await
 #pragma warning restore 4014

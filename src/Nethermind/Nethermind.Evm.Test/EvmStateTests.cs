@@ -1,26 +1,11 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-// 
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using Nethermind.Core.Resettables;
 using Nethermind.Core.Test.Builders;
 using Nethermind.State;
 using NUnit.Framework;
@@ -44,7 +29,7 @@ namespace Nethermind.Evm.Test
             evmState.IsCold(TestItem.AddressA).Should().BeTrue();
             evmState.IsCold(storageCell).Should().BeTrue();
         }
-        
+
         [Test]
         public void Can_warm_address_up_twice()
         {
@@ -54,7 +39,7 @@ namespace Nethermind.Evm.Test
             evmState.WarmUp(address);
             evmState.IsCold(address).Should().BeFalse();
         }
-        
+
         [Test]
         public void Can_warm_up_many()
         {
@@ -64,14 +49,14 @@ namespace Nethermind.Evm.Test
                 evmState.WarmUp(TestItem.Addresses[i]);
                 evmState.WarmUp(new StorageCell(TestItem.Addresses[i], 1));
             }
-            
+
             for (int i = 0; i < TestItem.Addresses.Length; i++)
             {
                 evmState.IsCold(TestItem.Addresses[i]).Should().BeFalse();
                 evmState.IsCold(new StorageCell(TestItem.Addresses[i], 1)).Should().BeFalse();
             }
         }
-        
+
         [Test]
         public void Can_warm_storage_up_twice()
         {
@@ -82,7 +67,7 @@ namespace Nethermind.Evm.Test
             evmState.WarmUp(storageCell);
             evmState.IsCold(storageCell).Should().BeFalse();
         }
-        
+
         [Test]
         public void Nothing_to_commit()
         {
@@ -92,14 +77,14 @@ namespace Nethermind.Evm.Test
                 evmState.CommitToParent(parentEvmState);
             }
         }
-        
+
         [Test]
         public void Nothing_to_restore()
         {
             EvmState parentEvmState = CreateEvmState();
             using EvmState evmState = CreateEvmState(parentEvmState);
         }
-        
+
         [Test]
         public void Address_to_commit_keeps_it_warm()
         {
@@ -112,7 +97,7 @@ namespace Nethermind.Evm.Test
 
             parentEvmState.IsCold(TestItem.AddressA).Should().BeFalse();
         }
-        
+
         [Test]
         public void Address_to_restore_keeps_it_cold()
         {
@@ -124,7 +109,7 @@ namespace Nethermind.Evm.Test
 
             parentEvmState.IsCold(TestItem.AddressA).Should().BeTrue();
         }
-        
+
         [Test]
         public void Storage_to_commit_keeps_it_warm()
         {
@@ -138,7 +123,7 @@ namespace Nethermind.Evm.Test
 
             parentEvmState.IsCold(storageCell).Should().BeFalse();
         }
-        
+
         [Test]
         public void Storage_to_restore_keeps_it_cold()
         {
@@ -151,12 +136,12 @@ namespace Nethermind.Evm.Test
 
             parentEvmState.IsCold(storageCell).Should().BeTrue();
         }
-        
+
         [Test]
         public void Logs_are_committed()
         {
             EvmState parentEvmState = CreateEvmState();
-            LogEntry logEntry = new(Address.Zero, Bytes.Empty, Array.Empty<Keccak>());
+            LogEntry logEntry = new(Address.Zero, Bytes.Empty, Array.Empty<Hash256>());
             using (EvmState evmState = CreateEvmState(parentEvmState))
             {
                 evmState.Logs.Add(logEntry);
@@ -165,12 +150,12 @@ namespace Nethermind.Evm.Test
 
             parentEvmState.Logs.Contains(logEntry).Should().BeTrue();
         }
-        
+
         [Test]
         public void Logs_are_restored()
         {
             EvmState parentEvmState = CreateEvmState();
-            LogEntry logEntry = new(Address.Zero, Bytes.Empty, Array.Empty<Keccak>());
+            LogEntry logEntry = new(Address.Zero, Bytes.Empty, Array.Empty<Hash256>());
             using (EvmState evmState = CreateEvmState(parentEvmState))
             {
                 evmState.Logs.Add(logEntry);
@@ -178,7 +163,7 @@ namespace Nethermind.Evm.Test
 
             parentEvmState.Logs.Contains(logEntry).Should().BeFalse();
         }
-        
+
         [Test]
         public void Destroy_list_is_committed()
         {
@@ -191,7 +176,7 @@ namespace Nethermind.Evm.Test
 
             parentEvmState.DestroyList.Contains(Address.Zero).Should().BeTrue();
         }
-        
+
         [Test]
         public void Destroy_list_is_restored()
         {
@@ -203,7 +188,7 @@ namespace Nethermind.Evm.Test
 
             parentEvmState.DestroyList.Contains(Address.Zero).Should().BeFalse();
         }
-        
+
         [Test]
         public void Commit_adds_refunds()
         {
@@ -216,7 +201,7 @@ namespace Nethermind.Evm.Test
 
             parentEvmState.Refund.Should().Be(333);
         }
-        
+
         [Test]
         public void Restore_doesnt_add_refunds()
         {
@@ -228,14 +213,14 @@ namespace Nethermind.Evm.Test
 
             parentEvmState.Refund.Should().Be(0);
         }
-        
+
         [Test]
         public void Can_dispose_without_init()
         {
             EvmState evmState = CreateEvmState();
             evmState.Dispose();
         }
-        
+
         [Test]
         public void Can_dispose_after_init()
         {
@@ -248,13 +233,13 @@ namespace Nethermind.Evm.Test
             parentEvmState is null
                 ? new EvmState(10000,
                     new ExecutionEnvironment(),
-                    ExecutionType.Call,
+                    ExecutionType.CALL,
                     true,
                     Snapshot.Empty,
                     isContinuation)
                 : new EvmState(10000,
                     new ExecutionEnvironment(),
-                    ExecutionType.Call,
+                    ExecutionType.CALL,
                     false,
                     Snapshot.Empty,
                     0,

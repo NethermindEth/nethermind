@@ -1,3 +1,7 @@
+#!/bin/bash
+# SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+# SPDX-License-Identifier: LGPL-3.0-only
+
 if [ "$1" != "" ]; then
     CONFIG=$(echo "$1" | tr '[:upper:]' '[:lower:]')
 else
@@ -14,4 +18,4 @@ cp ~/$CONFIG.key ~/nethermind_$CONFIG/keystore/node.key.plain
 DB_PATH="/root/db/$CONFIG"
 echo "DB PATH: " $DB_PATH
 cat ~/$CONFIG.cfg | jq '.Init.BaseDbPath = "'$DB_PATH'"' | sponge ~/$CONFIG.cfg
-dotnet Nethermind.Runner.dll --config ../$CONFIG.cfg
+dotnet nethermind.dll -c ../$CONFIG.cfg

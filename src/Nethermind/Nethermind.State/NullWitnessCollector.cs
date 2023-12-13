@@ -1,19 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-// 
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Generic;
@@ -26,35 +12,35 @@ namespace Nethermind.State
         private NullWitnessCollector() { }
 
         public static NullWitnessCollector Instance { get; } = new();
-        
-        public IReadOnlyCollection<Keccak> Collected => Array.Empty<Keccak>();
 
-        public void Add(Keccak hash)
+        public IReadOnlyCollection<Hash256> Collected => Array.Empty<Hash256>();
+
+        public void Add(Hash256 hash)
         {
             throw new InvalidOperationException(
                 $"{nameof(NullWitnessCollector)} is not expected to receive {nameof(Add)} calls.");
         }
 
         public void Reset() { }
-        
-        public void Persist(Keccak blockHash) { }
 
-        class EmptyDisposable: IDisposable
+        public void Persist(Hash256 blockHash) { }
+
+        class EmptyDisposable : IDisposable
         {
             public void Dispose()
             {
             }
         }
-        
+
         public IDisposable TrackOnThisThread() { return new EmptyDisposable(); }
 
-        public Keccak[]? Load(Keccak blockHash)
+        public Hash256[]? Load(Hash256 blockHash)
         {
             throw new InvalidOperationException(
                 $"{nameof(NullWitnessCollector)} is not expected to receive {nameof(Load)} calls.");
         }
 
-        public void Delete(Keccak blockHash)
+        public void Delete(Hash256 blockHash)
         {
             throw new InvalidOperationException(
                 $"{nameof(NullWitnessCollector)} is not expected to receive {nameof(Delete)} calls.");

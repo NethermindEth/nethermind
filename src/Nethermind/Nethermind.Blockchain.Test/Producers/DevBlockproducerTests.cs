@@ -1,24 +1,10 @@
-//  Copyright (c) 2018 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-// 
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Threading;
 using FluentAssertions;
 using Nethermind.Blockchain.Receipts;
-using Nethermind.Consensus;
+using Nethermind.Config;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Rewards;
@@ -43,7 +29,7 @@ namespace Nethermind.Blockchain.Test.Producers
     [TestFixture]
     public class DevBlockProducerTests
     {
-        [Test]
+        [Test, Timeout(Timeout.MaxTestTime)]
         public void Test()
         {
             ISpecProvider specProvider = MainnetSpecProvider.Instance;
@@ -55,23 +41,20 @@ namespace Nethermind.Blockchain.Test.Producers
             dbProvider.RegisterDb(DbNames.Code, new MemDb());
             dbProvider.RegisterDb(DbNames.Metadata, new MemDb());
 
-            BlockTree blockTree = new(
-                dbProvider,
-                new ChainLevelInfoRepository(dbProvider),
-                specProvider,
-                NullBloomStorage.Instance,
-                LimboLogs.Instance);
+            BlockTree blockTree = Build.A.BlockTree()
+                .WithoutSettingHead
+                .TestObject;
+
             TrieStore trieStore = new(
                 dbProvider.RegisteredDbs[DbNames.State],
                 NoPruning.Instance,
                 Archive.Instance,
                 LimboLogs.Instance);
-            StateProvider stateProvider = new(
+            WorldState stateProvider = new(
                 trieStore,
                 dbProvider.RegisteredDbs[DbNames.Code],
                 LimboLogs.Instance);
             StateReader stateReader = new(trieStore, dbProvider.GetDb<IDb>(DbNames.State), LimboLogs.Instance);
-            StorageProvider storageProvider = new(trieStore, stateProvider, LimboLogs.Instance);
             BlockhashProvider blockhashProvider = new(blockTree, LimboLogs.Instance);
             VirtualMachine virtualMachine = new(
                 blockhashProvider,
@@ -80,7 +63,6 @@ namespace Nethermind.Blockchain.Test.Producers
             TransactionProcessor txProcessor = new(
                 specProvider,
                 stateProvider,
-                storageProvider,
                 virtualMachine,
                 LimboLogs.Instance);
             BlockProcessor blockProcessor = new(
@@ -89,7 +71,6 @@ namespace Nethermind.Blockchain.Test.Producers
                 NoBlockRewards.Instance,
                 new BlockProcessor.BlockValidationTransactionsExecutor(txProcessor, stateProvider),
                 stateProvider,
-                storageProvider,
                 NullReceiptStorage.Instance,
                 NullWitnessCollector.Instance,
                 LimboLogs.Instance);
@@ -110,23 +91,23 @@ namespace Nethermind.Blockchain.Test.Producers
                 trigger,
                 timestamper,
                 specProvider,
-                new MiningConfig {Enabled = true},
+                new BlocksConfig(),
                 LimboLogs.Instance);
 
             blockchainProcessor.Start();
             devBlockProducer.Start();
-            ProducedBlockSuggester suggester = new ProducedBlockSuggester(blockTree, devBlockProducer);
-            
+            ProducedBlockSuggester _ = new ProducedBlockSuggester(blockTree, devBlockProducer);
+
             AutoResetEvent autoResetEvent = new(false);
 
-            blockTree.NewHeadBlock += (s, e) => autoResetEvent.Set();
+            blockTree.NewHeadBlock += (_, _) => autoResetEvent.Set();
             blockTree.SuggestBlock(Build.A.Block.Genesis.TestObject);
 
             autoResetEvent.WaitOne(1000).Should().BeTrue("genesis");
 
             trigger.BuildBlock();
             autoResetEvent.WaitOne(1000).Should().BeTrue("1");
-            blockTree.Head.Number.Should().Be(1);
+            blockTree.Head!.Number.Should().Be(1);
         }
     }
 }

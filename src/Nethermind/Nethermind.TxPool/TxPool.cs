@@ -1,29 +1,16 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-//
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-//
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-//
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.Linq;
+using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Timers;
@@ -32,6 +19,7 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.TxPool.Collections;
 using Nethermind.TxPool.Filters;
+using ITimer = Nethermind.Core.Timers.ITimer;
 
 [assembly: InternalsVisibleTo("Nethermind.Blockchain.Test")]
 
@@ -41,24 +29,21 @@ namespace Nethermind.TxPool
     /// Stores all pending transactions. These will be used by block producer if this node is a miner / validator
     /// or simply for broadcasting and tracing in other cases.
     /// </summary>
-    public partial class TxPool : ITxPool, IDisposable
+    public class TxPool : ITxPool, IDisposable
     {
         private readonly object _locker = new();
 
-        private readonly ConcurrentDictionary<Address, AddressNonces> _nonces = new();
-
-        private readonly List<IIncomingTxFilter> _filterPipeline = new();
+        private readonly IIncomingTxFilter[] _preHashFilters;
+        private readonly IIncomingTxFilter[] _postHashFilters;
 
         private readonly HashCache _hashCache = new();
-
         private readonly TxBroadcaster _broadcaster;
 
         private readonly TxDistinctSortedPool _transactions;
+        private readonly BlobTxDistinctSortedPool _blobTransactions;
 
         private readonly IChainHeadSpecProvider _specProvider;
-
         private readonly IAccountStateProvider _accounts;
-
         private readonly IChainHeadInfoProvider _headInfo;
         private readonly ITxPoolConfig _txPoolConfig;
 
@@ -66,32 +51,41 @@ namespace Nethermind.TxPool
 
         private readonly Channel<BlockReplacementEventArgs> _headBlocksChannel = Channel.CreateUnbounded<BlockReplacementEventArgs>(new UnboundedChannelOptions() { SingleReader = true, SingleWriter = true });
 
+        private readonly Func<Address, Account, EnhancedSortedSet<Transaction>, IEnumerable<(Transaction Tx, UInt256? changedGasBottleneck)>> _updateBucket;
+
         /// <summary>
         /// Indexes transactions
         /// </summary>
         private ulong _txIndex;
 
+        private readonly ITimer? _timer;
+        private Transaction[]? _transactionSnapshot;
+        private Transaction[]? _blobTransactionSnapshot;
 
         /// <summary>
         /// This class stores all known pending transactions that can be used for block production
         /// (by miners or validators) or simply informing other nodes about known pending transactions (broadcasting).
         /// </summary>
-        /// <param name="txStorage">Tx storage used to reject known transactions.</param>
         /// <param name="ecdsa">Used to recover sender addresses from transaction signatures.</param>
+        /// <param name="blobTxStorage"></param>
         /// <param name="chainHeadInfoProvider"></param>
         /// <param name="txPoolConfig"></param>
         /// <param name="validator"></param>
         /// <param name="logManager"></param>
         /// <param name="comparer"></param>
+        /// <param name="transactionsGossipPolicy"></param>
         /// <param name="incomingTxFilter"></param>
-        public TxPool(
-            IEthereumEcdsa ecdsa,
+        /// <param name="thereIsPriorityContract"></param>
+        public TxPool(IEthereumEcdsa ecdsa,
+            ITxStorage blobTxStorage,
             IChainHeadInfoProvider chainHeadInfoProvider,
             ITxPoolConfig txPoolConfig,
             ITxValidator validator,
             ILogManager? logManager,
             IComparer<Transaction> comparer,
-            IIncomingTxFilter? incomingTxFilter = null)
+            ITxGossipPolicy? transactionsGossipPolicy = null,
+            IIncomingTxFilter? incomingTxFilter = null,
+            bool thereIsPriorityContract = false)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _headInfo = chainHeadInfoProvider ?? throw new ArgumentNullException(nameof(chainHeadInfoProvider));
@@ -99,29 +93,60 @@ namespace Nethermind.TxPool
             _accounts = _headInfo.AccountStateProvider;
             _specProvider = _headInfo.SpecProvider;
 
-
             MemoryAllowance.MemPoolSize = txPoolConfig.Size;
             AddNodeInfoEntryForTxPool();
 
+            // Capture closures once rather than per invocation
+            _updateBucket = UpdateBucket;
+
+            _broadcaster = new TxBroadcaster(comparer, TimerFactory.Default, txPoolConfig, chainHeadInfoProvider, logManager, transactionsGossipPolicy);
+
             _transactions = new TxDistinctSortedPool(MemoryAllowance.MemPoolSize, comparer, logManager);
-            _broadcaster = new TxBroadcaster(comparer, TimerFactory.Default, txPoolConfig, chainHeadInfoProvider, logManager);
+            _blobTransactions = txPoolConfig is { BlobSupportEnabled: true, PersistentBlobStorageEnabled: true }
+                ? new PersistentBlobTxDistinctSortedPool(blobTxStorage, _txPoolConfig, comparer, logManager)
+                : new BlobTxDistinctSortedPool(txPoolConfig.BlobSupportEnabled ? _txPoolConfig.InMemoryBlobPoolSize : 0, comparer, logManager);
+            if (_blobTransactions.Count > 0) _blobTransactions.UpdatePool(_accounts, _updateBucket);
 
             _headInfo.HeadChanged += OnHeadChange;
 
-            _filterPipeline.Add(new NullHashTxFilter());
-            _filterPipeline.Add(new AlreadyKnownTxFilter(_hashCache));
-            _filterPipeline.Add(new MalformedTxFilter(_specProvider, validator, _logger));
-            _filterPipeline.Add(new GasLimitTxFilter(_headInfo, txPoolConfig, _logger));
-            _filterPipeline.Add(new UnknownSenderFilter(ecdsa, _logger));
-            _filterPipeline.Add(new DeployedCodeFilter(_specProvider, _accounts)); // has to be after UnknownSenderFilter as it uses sender
-            _filterPipeline.Add(new LowNonceFilter(_accounts, _logger));
-            _filterPipeline.Add(new GapNonceFilter(_accounts, _transactions, _logger));
-            _filterPipeline.Add(new TooExpensiveTxFilter(_headInfo, _accounts, _transactions, _logger));
-            _filterPipeline.Add(new FeeTooLowFilter(_headInfo, _accounts, _transactions, logManager));
-            _filterPipeline.Add(new ReusedOwnNonceTxFilter(_accounts, _nonces, _logger));
+            _preHashFilters = new IIncomingTxFilter[]
+            {
+                new NotSupportedTxFilter(txPoolConfig, _logger),
+                new GasLimitTxFilter(_headInfo, txPoolConfig, _logger),
+                new PriorityFeeTooLowFilter(_logger),
+                new FeeTooLowFilter(_headInfo, _transactions, _blobTransactions, thereIsPriorityContract, _logger),
+                new MalformedTxFilter(_specProvider, validator, _logger)
+            };
+
+            List<IIncomingTxFilter> postHashFilters = new()
+            {
+                new NullHashTxFilter(), // needs to be first as it assigns the hash
+                new AlreadyKnownTxFilter(_hashCache, _logger),
+                new UnknownSenderFilter(ecdsa, _logger),
+                new TxTypeTxFilter(_transactions, _blobTransactions), // has to be after UnknownSenderFilter as it uses sender
+                new BalanceZeroFilter(thereIsPriorityContract, _logger),
+                new BalanceTooLowFilter(_transactions, _blobTransactions, _logger),
+                new LowNonceFilter(_logger), // has to be after UnknownSenderFilter as it uses sender
+                new FutureNonceFilter(txPoolConfig),
+                new GapNonceFilter(_transactions, _blobTransactions, _logger),
+            };
+
             if (incomingTxFilter is not null)
             {
-                _filterPipeline.Add(incomingTxFilter);
+                postHashFilters.Add(incomingTxFilter);
+            }
+
+            postHashFilters.Add(new DeployedCodeFilter(_specProvider));
+
+            _postHashFilters = postHashFilters.ToArray();
+
+            int? reportMinutes = txPoolConfig.ReportMinutes;
+            if (_logger.IsInfo && reportMinutes.HasValue)
+            {
+                _timer = TimerFactory.Default.CreateTimer(TimeSpan.FromMinutes(reportMinutes.Value));
+                _timer.AutoReset = false;
+                _timer.Elapsed += TimerOnElapsed;
+                _timer.Start();
             }
 
             ProcessNewHeads();
@@ -137,13 +162,24 @@ namespace Nethermind.TxPool
         public Transaction[] GetPendingTransactionsBySender(Address address) =>
             _transactions.GetBucketSnapshot(address);
 
+        public IDictionary<Address, Transaction[]> GetPendingLightBlobTransactionsBySender() =>
+            _blobTransactions.GetBucketSnapshot();
+
+        public Transaction[] GetPendingTransactionsBySender(Address address) =>
+            _transactions.GetBucketSnapshot(address);
+
+        // only for testing reasons
         internal Transaction[] GetOwnPendingTransactions() => _broadcaster.GetSnapshot();
+
+        public int GetPendingBlobTransactionsCount() => _blobTransactions.Count;
 
         private void OnHeadChange(object? sender, BlockReplacementEventArgs e)
         {
-            // TODO: I think this is dangerous if many blocks are processed one after another
             try
             {
+                // Clear snapshot
+                _transactionSnapshot = null;
+                _blobTransactionSnapshot = null;
                 _hashCache.ClearCurrentBlockCache();
                 _headBlocksChannel.Writer.TryWrite(e);
             }
@@ -161,7 +197,7 @@ namespace Nethermind.TxPool
             {
                 while (await _headBlocksChannel.Reader.WaitToReadAsync())
                 {
-                    while (_headBlocksChannel.Reader.TryRead(out BlockReplacementEventArgs args))
+                    while (_headBlocksChannel.Reader.TryRead(out BlockReplacementEventArgs? args))
                     {
                         try
                         {
@@ -170,6 +206,7 @@ namespace Nethermind.TxPool
                             UpdateBuckets();
                             _broadcaster.BroadcastPersistentTxs();
                             Metrics.TransactionCount = _transactions.Count;
+                            Metrics.BlobTransactionCount = _blobTransactions.Count;
                         }
                         catch (Exception e)
                         {
@@ -190,48 +227,64 @@ namespace Nethermind.TxPool
         {
             if (previousBlock is not null)
             {
-                bool isEip155Enabled = _specProvider.GetSpec(previousBlock.Number).IsEip155Enabled;
-                for (int i = 0; i < previousBlock.Transactions.Length; i++)
+                bool isEip155Enabled = _specProvider.GetSpec(previousBlock.Header).IsEip155Enabled;
+                Transaction[] txs = previousBlock.Transactions;
+                for (int i = 0; i < txs.Length; i++)
                 {
-                    Transaction tx = previousBlock.Transactions[i];
+                    Transaction tx = txs[i];
+                    if (tx.SupportsBlobs)
+                    {
+                        continue;
+                    }
                     _hashCache.Delete(tx.Hash!);
                     SubmitTx(tx, isEip155Enabled ? TxHandlingOptions.None : TxHandlingOptions.PreEip155Signing);
                 }
             }
         }
 
-        private void RemoveProcessedTransactions(IReadOnlyList<Transaction> blockTransactions)
+        private void RemoveProcessedTransactions(Transaction[] blockTransactions)
         {
-            long transactionsInBlock = blockTransactions.Count;
             long discoveredForPendingTxs = 0;
             long discoveredForHashCache = 0;
             long eip1559Txs = 0;
+            long blobTxs = 0;
+            long blobs = 0;
 
-            for (int i = 0; i < transactionsInBlock; i++)
+            for (int i = 0; i < blockTransactions.Length; i++)
             {
-                Keccak txHash = blockTransactions[i].Hash;
+                Transaction transaction = blockTransactions[i];
+                Hash256 txHash = transaction.Hash ?? throw new ArgumentException("Hash was unexpectedly null!");
 
-                if (!IsKnown(txHash!))
+                if (!IsKnown(txHash))
                 {
                     discoveredForHashCache++;
                 }
 
-                if (!RemoveIncludedTransaction(blockTransactions[i]))
+                if (!RemoveIncludedTransaction(transaction))
                 {
                     discoveredForPendingTxs++;
                 }
 
-                if (blockTransactions[i].IsEip1559)
+                if (transaction.Supports1559)
                 {
                     eip1559Txs++;
                 }
+
+                if (transaction.SupportsBlobs)
+                {
+                    blobTxs++;
+                    blobs += transaction.BlobVersionedHashes?.Length ?? 0;
+                }
             }
 
+            long transactionsInBlock = blockTransactions.Length;
             if (transactionsInBlock != 0)
             {
                 Metrics.DarkPoolRatioLevel1 = (float)discoveredForHashCache / transactionsInBlock;
                 Metrics.DarkPoolRatioLevel2 = (float)discoveredForPendingTxs / transactionsInBlock;
                 Metrics.Eip1559TransactionsRatio = (float)eip1559Txs / transactionsInBlock;
+                Metrics.BlobTransactionsInBlock = blobTxs;
+                Metrics.BlobsInBlock = blobs;
             }
         }
 
@@ -244,12 +297,23 @@ namespace Nethermind.TxPool
 
         public void AddPeer(ITxPoolPeer peer)
         {
-            PeerInfo peerInfo = new(peer);
-            if (_broadcaster.AddPeer(peerInfo))
+            if (_broadcaster.AddPeer(peer))
             {
-                _broadcaster.BroadcastOnce(peerInfo, _transactions.GetSnapshot());
-
                 if (_logger.IsTrace) _logger.Trace($"Added a peer to TX pool: {peer}");
+
+                // Announce txs to newly connected peer only if we are synced. If chain head of the peer is higher by
+                // more than 16 blocks than our head, skip announcing txs as some of them are probably already processed
+                // Also skip announcing if peer's head number is shown as 0 as then we don't know peer's head block yet
+                if (peer.HeadNumber != 0 && peer.HeadNumber < _headInfo.HeadNumber + 16)
+                {
+                    _broadcaster.AnnounceOnce(peer, _transactionSnapshot ??= _transactions.GetSnapshot());
+                    _broadcaster.AnnounceOnce(peer, _blobTransactionSnapshot ??= _blobTransactions.GetSnapshot());
+                    if (_logger.IsTrace) _logger.Trace($"Announced {_transactionSnapshot.Length} txs and {_blobTransactionSnapshot.Length} blob txs to peer {peer}");
+                }
+                else
+                {
+                    if (_logger.IsTrace) _logger.Trace($"Skipped announcing txs to peer {peer} because of syncing. Peer is on head {peer.HeadNumber}, we are at {_headInfo.HeadNumber}");
+                }
             }
         }
 
@@ -279,48 +343,104 @@ namespace Nethermind.TxPool
                 _logger.Trace(
                     $"Adding transaction {tx.ToString("  ")} - managed nonce: {managedNonce} | persistent broadcast {startBroadcast}");
 
-            for (int i = 0; i < _filterPipeline.Count; i++)
+            TxFilteringState state = new(tx, _accounts);
+
+            AcceptTxResult accepted = FilterTransactions(tx, handlingOptions, state);
+
+            if (!accepted)
             {
-                IIncomingTxFilter incomingTxFilter = _filterPipeline[i];
-                AcceptTxResult accepted = incomingTxFilter.Accept(tx, handlingOptions);
+                Metrics.PendingTransactionsDiscarded++;
+            }
+            else
+            {
+                accepted = AddCore(tx, state, startBroadcast);
+                if (accepted)
+                {
+                    // Clear proper snapshot
+                    if (tx.SupportsBlobs)
+                        _blobTransactionSnapshot = null;
+                    else
+                        _transactionSnapshot = null;
+                }
+            }
+
+            return accepted;
+        }
+
+        private AcceptTxResult FilterTransactions(Transaction tx, TxHandlingOptions handlingOptions, TxFilteringState state)
+        {
+            IIncomingTxFilter[] filters = _preHashFilters;
+            for (int i = 0; i < filters.Length; i++)
+            {
+                AcceptTxResult accepted = filters[i].Accept(tx, state, handlingOptions);
+
                 if (!accepted)
                 {
-                    Metrics.PendingTransactionsDiscarded++;
+                    tx.ClearPreHash();
                     return accepted;
                 }
             }
 
-            return AddCore(tx, startBroadcast);
+            filters = _postHashFilters;
+            for (int i = 0; i < filters.Length; i++)
+            {
+                AcceptTxResult accepted = filters[i].Accept(tx, state, handlingOptions);
+
+                if (!accepted) return accepted;
+            }
+
+            return AcceptTxResult.Accepted;
         }
 
-        private AcceptTxResult AddCore(Transaction tx, bool isPersistentBroadcast)
+        private AcceptTxResult AddCore(Transaction tx, TxFilteringState state, bool isPersistentBroadcast)
         {
             lock (_locker)
             {
                 bool eip1559Enabled = _specProvider.GetCurrentHeadSpec().IsEip1559Enabled;
+                UInt256 effectiveGasPrice = tx.CalculateEffectiveGasPrice(eip1559Enabled, _headInfo.CurrentBaseFee);
+                TxDistinctSortedPool relevantPool = (tx.SupportsBlobs ? _blobTransactions : _transactions);
 
-                tx.GasBottleneck = tx.CalculateEffectiveGasPrice(eip1559Enabled, _headInfo.CurrentBaseFee);
-                bool inserted = _transactions.TryInsert(tx.Hash, tx, out Transaction? removed);
-                if (inserted)
+                relevantPool.TryGetBucketsWorstValue(tx.SenderAddress!, out Transaction? worstTx);
+                tx.GasBottleneck = (worstTx is null || effectiveGasPrice <= worstTx.GasBottleneck)
+                    ? effectiveGasPrice
+                    : worstTx.GasBottleneck;
+
+                bool inserted = relevantPool.TryInsert(tx.Hash!, tx, out Transaction? removed);
+
+                if (!inserted)
                 {
-                    _transactions.UpdateGroup(tx.SenderAddress!, UpdateBucketWithAddedTransaction);
-                    Metrics.PendingTransactionsAdded++;
-                    if (tx.IsEip1559) { Metrics.Pending1559TransactionsAdded++; }
-
-                    if (removed != null)
-                    {
-                        EvictedPending?.Invoke(this, new TxEventArgs(removed));
-                        // transaction which was on last position in sorted TxPool and was deleted to give
-                        // a place for a newly added tx (with higher priority) is now removed from hashCache
-                        // to give it opportunity to come back to TxPool in the future, when fees drops
-                        _hashCache.DeleteFromLongTerm(removed.Hash!);
-                        Metrics.PendingTransactionsEvicted++;
-                    }
+                    // it means it failed on adding to the pool - it is possible when new tx has the same sender
+                    // and nonce as already existent tx and is not good enough to replace it
+                    Metrics.PendingTransactionsPassedFiltersButCannotReplace++;
+                    return AcceptTxResult.ReplacementNotAllowed;
                 }
-                else
+
+                if (tx.Hash == removed?.Hash)
                 {
-                    Metrics.PendingTransactionsTooLowFee++;
+                    // it means it was added and immediately evicted - pool was full of better txs
+                    if (isPersistentBroadcast)
+                    {
+                        // we are adding only to persistent broadcast - not good enough for standard pool,
+                        // but can be good enough for TxBroadcaster pool - for local txs only
+                        _broadcaster.Broadcast(tx, isPersistentBroadcast);
+                    }
+                    Metrics.PendingTransactionsPassedFiltersButCannotCompeteOnFees++;
                     return AcceptTxResult.FeeTooLowToCompete;
+                }
+
+                relevantPool.UpdateGroup(tx.SenderAddress!, state.SenderAccount, UpdateBucketWithAddedTransaction);
+                Metrics.PendingTransactionsAdded++;
+                if (tx.Supports1559) { Metrics.Pending1559TransactionsAdded++; }
+                if (tx.SupportsBlobs) { Metrics.PendingBlobTransactionsAdded++; }
+
+                if (removed is not null)
+                {
+                    EvictedPending?.Invoke(this, new TxEventArgs(removed));
+                    // transaction which was on last position in sorted TxPool and was deleted to give
+                    // a place for a newly added tx (with higher priority) is now removed from hashCache
+                    // to give it opportunity to come back to TxPool in the future, when fees drops
+                    _hashCache.DeleteFromLongTerm(removed.Hash!);
+                    Metrics.PendingTransactionsEvicted++;
                 }
             }
 
@@ -329,15 +449,15 @@ namespace Nethermind.TxPool
             _hashCache.SetLongTerm(tx.Hash!);
             NewPending?.Invoke(this, new TxEventArgs(tx));
             Metrics.TransactionCount = _transactions.Count;
+            Metrics.BlobTransactionCount = _blobTransactions.Count;
             return AcceptTxResult.Accepted;
         }
 
-        private IEnumerable<(Transaction Tx, Action<Transaction>? Change)> UpdateBucketWithAddedTransaction(
-            Address address, IReadOnlyCollection<Transaction> transactions)
+        private IEnumerable<(Transaction Tx, UInt256? changedGasBottleneck)> UpdateBucketWithAddedTransaction(
+            Address address, Account account, EnhancedSortedSet<Transaction> transactions)
         {
             if (transactions.Count != 0)
             {
-                Account account = _accounts.GetAccount(address);
                 UInt256 balance = account.Balance;
                 long currentNonce = (long)(account.Nonce);
 
@@ -348,11 +468,12 @@ namespace Nethermind.TxPool
             }
         }
 
-        private IEnumerable<(Transaction Tx, Action<Transaction>? Change)> UpdateGasBottleneck(
-            IReadOnlyCollection<Transaction> transactions, long currentNonce, UInt256 balance)
+        private IEnumerable<(Transaction Tx, UInt256? changedGasBottleneck)> UpdateGasBottleneck(
+            EnhancedSortedSet<Transaction> transactions, long currentNonce, UInt256 balance)
         {
             UInt256? previousTxBottleneck = null;
             int i = 0;
+            UInt256 cumulativeCost = 0;
 
             foreach (Transaction tx in transactions)
             {
@@ -365,23 +486,32 @@ namespace Nethermind.TxPool
                 }
                 else
                 {
-                    if (previousTxBottleneck == null)
-                    {
-                        previousTxBottleneck = tx.CalculateAffordableGasPrice(_specProvider.GetCurrentHeadSpec().IsEip1559Enabled,
+                    previousTxBottleneck ??= tx.CalculateAffordableGasPrice(_specProvider.GetCurrentHeadSpec().IsEip1559Enabled,
                             _headInfo.CurrentBaseFee, balance);
-                    }
 
-                    if (tx.Nonce == currentNonce + i)
+                    // it is not affecting non-blob txs - for them MaxFeePerBlobGas is null so check is skipped
+                    if (tx.MaxFeePerBlobGas < _headInfo.CurrentPricePerBlobGas)
+                    {
+                        gasBottleneck = UInt256.Zero;
+                    }
+                    else if (tx.Nonce == currentNonce + i)
                     {
                         UInt256 effectiveGasPrice =
                             tx.CalculateEffectiveGasPrice(_specProvider.GetCurrentHeadSpec().IsEip1559Enabled,
                                 _headInfo.CurrentBaseFee);
+
+                        if (tx.CheckForNotEnoughBalance(cumulativeCost, balance, out cumulativeCost))
+                        {
+                            // balance too low, remove tx from the pool
+                            _broadcaster.StopBroadcast(tx.Hash!);
+                            yield return (tx, null);
+                        }
                         gasBottleneck = UInt256.Min(effectiveGasPrice, previousTxBottleneck ?? 0);
                     }
 
                     if (tx.GasBottleneck != gasBottleneck)
                     {
-                        yield return (tx, SetGasBottleneckChange(gasBottleneck));
+                        yield return (tx, gasBottleneck);
                     }
 
                     previousTxBottleneck = gasBottleneck;
@@ -390,30 +520,34 @@ namespace Nethermind.TxPool
             }
         }
 
-        private static Action<Transaction> SetGasBottleneckChange(UInt256 gasBottleneck)
-        {
-            return t => t.GasBottleneck = gasBottleneck;
-        }
-
         private void UpdateBuckets()
         {
             lock (_locker)
             {
-                // ensure the capacity of the pool
-                if (_transactions.Count > _txPoolConfig.Size)
-                    if (_logger.IsWarn) _logger.Warn($"TxPool exceeds the config size {_transactions.Count}/{_txPoolConfig.Size}");
-                _transactions.UpdatePool(UpdateBucket);
+                _transactions.VerifyCapacity();
+                _transactions.UpdatePool(_accounts, _updateBucket);
+
+                _blobTransactions.VerifyCapacity();
+                _blobTransactions.UpdatePool(_accounts, _updateBucket);
             }
         }
 
-        private IEnumerable<(Transaction Tx, Action<Transaction>? Change)> UpdateBucket(Address address, IReadOnlyCollection<Transaction> transactions)
+        private IEnumerable<(Transaction Tx, UInt256? changedGasBottleneck)> UpdateBucket(Address address, Account account, EnhancedSortedSet<Transaction> transactions)
         {
             if (transactions.Count != 0)
             {
-                Account? account = _accounts.GetAccount(address);
                 UInt256 balance = account.Balance;
                 long currentNonce = (long)(account.Nonce);
-                Transaction tx = transactions.FirstOrDefault(t => t.Nonce == currentNonce);
+                Transaction? tx = null;
+                foreach (Transaction txn in transactions)
+                {
+                    if (txn.Nonce == currentNonce)
+                    {
+                        tx = txn;
+                        break;
+                    }
+                }
+
                 bool shouldBeDumped = false;
 
                 if (tx is null)
@@ -424,7 +558,7 @@ namespace Nethermind.TxPool
                 {
                     shouldBeDumped = true;
                 }
-                else if (!tx.IsEip1559)
+                else if (!tx.Supports1559)
                 {
                     shouldBeDumped = UInt256.MultiplyOverflow(tx.GasPrice, (UInt256)tx.GasLimit, out UInt256 cost);
                     shouldBeDumped |= UInt256.AddOverflow(cost, tx.Value, out cost);
@@ -451,7 +585,7 @@ namespace Nethermind.TxPool
             }
         }
 
-        public bool RemoveTransaction(Keccak? hash)
+        public bool RemoveTransaction(Hash256? hash)
         {
             if (hash is null)
             {
@@ -461,19 +595,13 @@ namespace Nethermind.TxPool
             bool hasBeenRemoved;
             lock (_locker)
             {
-                hasBeenRemoved = _transactions.TryRemove(hash, out Transaction transaction);
+                hasBeenRemoved = _transactions.TryRemove(hash, out Transaction? transaction)
+                                 || _blobTransactions.TryRemove(hash, out transaction);
+
+                if (transaction is null || !hasBeenRemoved)
+                    return false;
                 if (hasBeenRemoved)
                 {
-                    Address address = transaction.SenderAddress;
-                    if (_nonces.TryGetValue(address!, out AddressNonces addressNonces))
-                    {
-                        addressNonces.Nonces.TryRemove(transaction.Nonce, out _);
-                        if (addressNonces.Nonces.IsEmpty)
-                        {
-                            _nonces.Remove(address, out _);
-                        }
-                    }
-
                     RemovedPending?.Invoke(this, new TxEventArgs(transaction));
                 }
 
@@ -485,49 +613,48 @@ namespace Nethermind.TxPool
             return hasBeenRemoved;
         }
 
-        public bool TryGetPendingTransaction(Keccak hash, out Transaction transaction)
+        public bool ContainsTx(Hash256 hash, TxType txType) => txType == TxType.Blob
+            ? _blobTransactions.ContainsKey(hash)
+            : _transactions.ContainsKey(hash) || _broadcaster.ContainsTx(hash);
+
+        public bool TryGetPendingTransaction(Hash256 hash, out Transaction? transaction)
         {
             lock (_locker)
             {
-                if (!_transactions.TryGetValue(hash, out transaction))
-                {
-                    _broadcaster.TryGetPersistentTx(hash, out transaction);
-
-                    // commented out as it puts too much pressure on the database
-                    // and it not really required in any scenario
-                    // * tx recovery usually will fetch from pending
-                    // * get tx via RPC usually will fetch from block or from pending
-                    // * internal tx pool scenarios are handled directly elsewhere
-                    // transaction = _txStorage.Get(hash);
-                }
+                return _transactions.TryGetValue(hash, out transaction)
+                       || _blobTransactions.TryGetValue(hash, out transaction)
+                       || _broadcaster.TryGetPersistentTx(hash, out transaction);
             }
-
-            return transaction != null;
         }
 
-        // TODO: Ensure that nonce is always valid in case of sending own transactions from different nodes.
-        public UInt256 ReserveOwnTransactionNonce(Address address)
+        public bool TryGetPendingBlobTransaction(Hash256 hash, [NotNullWhen(true)] out Transaction? blobTransaction)
         {
-            UInt256 currentNonce = 0;
-            _nonces.AddOrUpdate(address, a =>
+            lock (_locker)
             {
-                currentNonce = _accounts.GetAccount(address).Nonce;
-                return new AddressNonces(currentNonce);
-            }, (a, n) =>
-            {
-                currentNonce = n.ReserveNonce().Value;
-                return n;
-            });
-
-            return currentNonce;
+                return _blobTransactions.TryGetValue(hash, out blobTransaction);
+            }
         }
 
+        // only for tests - to test sorting
+        internal void TryGetBlobTxSortingEquivalent(Hash256 hash, out Transaction? transaction)
+            => _blobTransactions.TryGetBlobTxSortingEquivalent(hash, out transaction);
+
+        // should own transactions (in broadcaster) be also checked here?
+        // maybe it should use NonceManager, as it already has info about local txs?
         public UInt256 GetLatestPendingNonce(Address address)
         {
             UInt256 maxPendingNonce = _accounts.GetAccount(address).Nonce;
 
+            bool hasPendingTxs = _transactions.GetBucketCount(address) > 0;
+            if (!hasPendingTxs && !(_blobTransactions.GetBucketCount(address) > 0))
+            {
+                // sender doesn't have txs in any pool, quick return
+                return maxPendingNonce;
+            }
+
+            TxDistinctSortedPool relevantPool = (hasPendingTxs ? _transactions : _blobTransactions);
             // we are not doing any updating, but lets just use a thread-safe method without any data copying like snapshot
-            _transactions.UpdateGroup(address, (_, transactions) =>
+            relevantPool.UpdateGroup(address, (_, transactions) =>
             {
                 // This is under the assumption that the addressTransactions are sorted by Nonce.
                 if (transactions.Count > 0)
@@ -563,7 +690,7 @@ namespace Nethermind.TxPool
             return maxPendingNonce;
         }
 
-        public bool IsKnown(Keccak hash) => _hashCache.Get(hash);
+        public bool IsKnown(Hash256? hash) => hash != null ? _hashCache.Get(hash) : false;
 
         public event EventHandler<TxEventArgs>? NewDiscovered;
         public event EventHandler<TxEventArgs>? NewPending;
@@ -572,6 +699,7 @@ namespace Nethermind.TxPool
 
         public void Dispose()
         {
+            _timer?.Dispose();
             _broadcaster.Dispose();
             _headInfo.HeadChanged -= OnHeadChange;
             _headBlocksChannel.Writer.Complete();
@@ -583,8 +711,89 @@ namespace Nethermind.TxPool
         private static void AddNodeInfoEntryForTxPool()
         {
             ThisNodeInfo.AddInfo("Mem est tx   :",
-                $"{(LruCache<Keccak, object>.CalculateMemorySize(32, MemoryAllowance.TxHashCacheSize) + LruCache<Keccak, Transaction>.CalculateMemorySize(4096, MemoryAllowance.MemPoolSize)) / 1000 / 1000}MB"
+                $"{(LruCache<ValueHash256, object>.CalculateMemorySize(32, MemoryAllowance.TxHashCacheSize) + LruCache<Hash256, Transaction>.CalculateMemorySize(4096, MemoryAllowance.MemPoolSize)) / 1000 / 1000} MB"
                     .PadLeft(8));
+        }
+
+        private void TimerOnElapsed(object? sender, EventArgs e)
+        {
+            WriteTxPoolReport(_logger);
+
+            _timer!.Enabled = true;
+        }
+
+        private static void WriteTxPoolReport(ILogger logger)
+        {
+            if (!logger.IsInfo)
+            {
+                return;
+            }
+
+            float preStateDiscards = (float)(Metrics.PendingTransactionsTooLowFee + Metrics.PendingTransactionsKnown + Metrics.PendingTransactionsGasLimitTooHigh) / Metrics.PendingTransactionsDiscarded;
+            float receivedDiscarded = (float)Metrics.PendingTransactionsDiscarded / Metrics.PendingTransactionsReceived;
+
+            // Set divisions by zero to 0
+            if (float.IsNaN(preStateDiscards)) preStateDiscards = 0;
+            if (float.IsNaN(receivedDiscarded)) receivedDiscarded = 0;
+
+            logger.Info(@$"
+------------------------------------------------
+TxPool: {Metrics.TransactionCount:N0} txns queued
+BlobPool: {Metrics.BlobTransactionCount:N0} txns queued
+------------------------------------------------
+Sent
+* Transactions:         {Metrics.PendingTransactionsSent,24:N0}
+* Hashes:               {Metrics.PendingTransactionsHashesSent,24:N0}
+------------------------------------------------
+Received
+* Transactions:         {Metrics.PendingTransactionsReceived,24:N0}
+* Hashes:               {Metrics.PendingTransactionsHashesReceived,24:N0}
+------------------------------------------------
+Discarded at Filter Stage:
+1.  NotSupportedTxType  {Metrics.PendingTransactionsNotSupportedTxType,24:N0}
+2.  GasLimitTooHigh:    {Metrics.PendingTransactionsGasLimitTooHigh,24:N0}
+3.  TooLow PriorityFee: {Metrics.PendingTransactionsTooLowPriorityFee,24:N0}
+4.  Too Low Fee:        {Metrics.PendingTransactionsTooLowFee,24:N0}
+5.  Malformed           {Metrics.PendingTransactionsMalformed,24:N0}
+6.  Duplicate:          {Metrics.PendingTransactionsKnown,24:N0}
+7.  Unknown Sender:     {Metrics.PendingTransactionsUnresolvableSender,24:N0}
+8.  Conflicting TxType  {Metrics.PendingTransactionsConflictingTxType,24:N0}
+9.  NonceTooFarInFuture {Metrics.PendingTransactionsNonceTooFarInFuture,24:N0}
+10. Zero Balance:       {Metrics.PendingTransactionsZeroBalance,24:N0}
+11. Balance < tx.value: {Metrics.PendingTransactionsBalanceBelowValue,24:N0}
+12. Balance Too Low:    {Metrics.PendingTransactionsTooLowBalance,24:N0}
+13. Nonce used:         {Metrics.PendingTransactionsLowNonce,24:N0}
+14. Nonces skipped:     {Metrics.PendingTransactionsNonceGap,24:N0}
+15. Failed replacement  {Metrics.PendingTransactionsPassedFiltersButCannotReplace,24:N0}
+16. Cannot Compete:     {Metrics.PendingTransactionsPassedFiltersButCannotCompeteOnFees,24:N0}
+------------------------------------------------
+Validated via State:    {Metrics.PendingTransactionsWithExpensiveFiltering,24:N0}
+------------------------------------------------
+Total Discarded:        {Metrics.PendingTransactionsDiscarded,24:N0}
+------------------------------------------------
+Discard Ratios:
+* Pre-state Discards:   {preStateDiscards,24:P5}
+* Received Discarded:   {receivedDiscarded,24:P5}
+------------------------------------------------
+Total Added:            {Metrics.PendingTransactionsAdded,24:N0}
+* Eip1559 Added:        {Metrics.Pending1559TransactionsAdded,24:N0}
+* Blob Added:           {Metrics.PendingBlobTransactionsAdded,24:N0}
+------------------------------------------------
+Total Evicted:          {Metrics.PendingTransactionsEvicted,24:N0}
+------------------------------------------------
+Ratios in last block:
+* Eip1559 Transactions: {Metrics.Eip1559TransactionsRatio,24:P5}
+* DarkPool Level1:      {Metrics.DarkPoolRatioLevel1,24:P5}
+* DarkPool Level2:      {Metrics.DarkPoolRatioLevel2,24:P5}
+Amounts:
+* Blob txs:             {Metrics.BlobTransactionsInBlock,24:N0}
+* Blobs:                {Metrics.BlobsInBlock,24:N0}
+------------------------------------------------
+Db usage:
+* BlobDb writes:        {Db.Metrics.BlobTransactionsDbWrites,24:N0}
+* BlobDb reads:         {Db.Metrics.BlobTransactionsDbReads,24:N0}
+------------------------------------------------
+");
         }
     }
 }

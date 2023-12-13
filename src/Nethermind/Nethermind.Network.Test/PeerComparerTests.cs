@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
 using Nethermind.Core.Test.Builders;
@@ -52,15 +39,15 @@ namespace Nethermind.Network.Test
             _statsManager.GetCurrentReputation(a).Returns(100);
             _statsManager.GetCurrentReputation(b).Returns(50);
             _statsManager.GetCurrentReputation(c).Returns(200);
-            
+
             _statsManager.UpdateCurrentReputation(a, b, c);
 
-            Assert.AreEqual(-1, _comparer.Compare(peerA, peerB));
-            Assert.AreEqual(1, _comparer.Compare(peerA, peerC));
-            Assert.AreEqual(1, _comparer.Compare(peerB, peerC));
-            Assert.AreEqual(0, _comparer.Compare(peerA, peerA));
-            Assert.AreEqual(0, _comparer.Compare(peerB, peerB));
-            Assert.AreEqual(0, _comparer.Compare(peerC, peerC));
+            Assert.That(_comparer.Compare(peerA, peerB), Is.EqualTo(-1));
+            Assert.That(_comparer.Compare(peerA, peerC), Is.EqualTo(1));
+            Assert.That(_comparer.Compare(peerB, peerC), Is.EqualTo(1));
+            Assert.That(_comparer.Compare(peerA, peerA), Is.EqualTo(0));
+            Assert.That(_comparer.Compare(peerB, peerB), Is.EqualTo(0));
+            Assert.That(_comparer.Compare(peerC, peerC), Is.EqualTo(0));
         }
 
         [Test]
@@ -74,7 +61,7 @@ namespace Nethermind.Network.Test
 
             Node c = new(TestItem.PublicKeyC, "127.0.0.1", 30305);
             Peer peerC = new(c);
-            
+
             Node d = new(TestItem.PublicKeyD, "127.0.0.1", 30306);
             Peer peerD = new(d);
             Peer peerE = null;
@@ -84,16 +71,16 @@ namespace Nethermind.Network.Test
             _statsManager.GetCurrentReputation(c).Returns(200);
             _statsManager.GetCurrentReputation(d).Returns(10);
 
-            List<Peer> peers = new() {peerA, peerB, peerC, peerD, peerE};
-            
+            List<Peer> peers = new() { peerA, peerB, peerC, peerD, peerE };
+
             _statsManager.UpdateCurrentReputation(peers);
             peers.Sort(_comparer);
-            
-            Assert.AreEqual(peerC, peers[0]);
-            Assert.AreEqual(peerA, peers[1]);
-            Assert.AreEqual(peerB, peers[2]);
-            Assert.AreEqual(peerD, peers[3]);
-            Assert.AreEqual(peerE, peers[4]);
+
+            Assert.That(peers[0], Is.EqualTo(peerC));
+            Assert.That(peers[1], Is.EqualTo(peerA));
+            Assert.That(peers[2], Is.EqualTo(peerB));
+            Assert.That(peers[3], Is.EqualTo(peerD));
+            Assert.That(peers[4], Is.EqualTo(peerE));
         }
     }
 }

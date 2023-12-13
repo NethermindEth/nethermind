@@ -1,39 +1,39 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-// 
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Runtime.InteropServices;
+using System.Text.Json;
+using System.Text.Json.Serialization;
+
 using Nethermind.Core;
-using Newtonsoft.Json;
 
 namespace Nethermind.Serialization.Json
 {
+
     public class TxTypeConverter : JsonConverter<TxType>
     {
-        public override void WriteJson(JsonWriter writer, TxType txTypeValue, JsonSerializer serializer)
+        public override TxType Read(
+            ref Utf8JsonReader reader,
+            Type typeToConvert,
+            JsonSerializerOptions options)
         {
-            byte byteValue = (byte)txTypeValue;
-            writer.WriteValue(string.Concat("0x", byteValue.ToString("X")));
+            return (TxType)Convert.ToByte(reader.GetString(), 16);
         }
 
-        public override TxType ReadJson(JsonReader reader, Type objectType, TxType existingValue, bool hasExistingValue,
-            JsonSerializer serializer)
+        public override void Write(
+            Utf8JsonWriter writer,
+            TxType txTypeValue,
+            JsonSerializerOptions options)
         {
-            string s = (string) reader.Value;
-            return (TxType)Convert.ToByte(s, 16);
+            if (txTypeValue == TxType.Legacy)
+            {
+                writer.WriteRawValue("\"0x0\""u8, skipInputValidation: true);
+                return;
+            }
+
+            byte byteValue = (byte)txTypeValue;
+            ByteArrayConverter.Convert(writer, MemoryMarshal.CreateReadOnlySpan(ref byteValue, 1), skipLeadingZeros: true);
         }
     }
 }

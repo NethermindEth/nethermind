@@ -1,23 +1,9 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Linq;
 using System.Runtime.InteropServices;
-using System.Threading;
 using System.Threading.Tasks;
 using System.Timers;
 using Nethermind.Blockchain;
@@ -59,12 +45,13 @@ namespace Nethermind.EthStats.Integrations
         private readonly IGasPriceOracle _gasPriceOracle;
         private readonly IEthSyncingInfo _ethSyncingInfo;
         private readonly bool _isMining;
+        private readonly TimeSpan _sendStatsInterval;
+
         private IWebsocketClient? _websocketClient;
         private bool _connected;
         private long _lastBlockProcessedTimestamp;
         private Timer? _timer;
         private const int ThrottlingThreshold = 250;
-        private const int SendStatsInterval = 1000;
 
         public EthStatsIntegration(
             string name,
@@ -77,15 +64,16 @@ namespace Nethermind.EthStats.Integrations
             string contact,
             bool canUpdateHistory,
             string secret,
-            IEthStatsClient? ethStatsClient,
-            IMessageSender? sender,
-            ITxPool? txPool,
-            IBlockTree? blockTree,
-            IPeerManager? peerManager,
-            IGasPriceOracle? gasPriceOracle,
+            IEthStatsClient ethStatsClient,
+            IMessageSender sender,
+            ITxPool txPool,
+            IBlockTree blockTree,
+            IPeerManager peerManager,
+            IGasPriceOracle gasPriceOracle,
             IEthSyncingInfo ethSyncingInfo,
             bool isMining,
-            ILogManager? logManager)
+            TimeSpan sendStatsInterval,
+            ILogManager logManager)
         {
             _name = name;
             _node = node;
@@ -97,20 +85,23 @@ namespace Nethermind.EthStats.Integrations
             _contact = contact;
             _canUpdateHistory = canUpdateHistory;
             _secret = secret;
-            _ethStatsClient = ethStatsClient ?? throw new ArgumentNullException(nameof(ethStatsClient));
-            _sender = sender ?? throw new ArgumentNullException(nameof(sender));
-            _txPool = txPool ?? throw new ArgumentNullException(nameof(txPool));
-            _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
-            _peerManager = peerManager ?? throw new ArgumentNullException(nameof(peerManager));
-            _gasPriceOracle = gasPriceOracle ?? throw new ArgumentNullException(nameof(gasPriceOracle));
-            _ethSyncingInfo = ethSyncingInfo ?? throw new ArgumentNullException(nameof(ethSyncingInfo));
+            _ethStatsClient = ethStatsClient;
+            _sender = sender;
+            _txPool = txPool;
+            _blockTree = blockTree;
+            _peerManager = peerManager;
+            _gasPriceOracle = gasPriceOracle;
+            _ethSyncingInfo = ethSyncingInfo;
             _isMining = isMining;
-            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            _sendStatsInterval = sendStatsInterval > TimeSpan.Zero
+                ? sendStatsInterval
+                : throw new ArgumentOutOfRangeException(nameof(sendStatsInterval));
+            _logger = logManager.GetClassLogger();
         }
 
         public async Task InitAsync()
         {
-            _timer = new Timer {Interval = SendStatsInterval};
+            _timer = new Timer { Interval = _sendStatsInterval.TotalMilliseconds };
             _timer.Elapsed += TimerOnElapsed;
             _blockTree.NewHeadBlock += BlockTreeOnNewHeadBlock;
             _websocketClient = await _ethStatsClient.InitAsync();
@@ -125,10 +116,10 @@ namespace Nethermind.EthStats.Integrations
         {
             if (_websocketClient is null)
             {
-                if(_logger.IsError) _logger.Error("WebSocket client initialization failed");
+                if (_logger.IsError) _logger.Error("WebSocket client initialization failed");
                 return;
             }
-            
+
             _websocketClient.ReconnectionHappened.Subscribe(async _ =>
             {
                 if (_logger.IsInfo) _logger.Info("ETH Stats reconnected, sending 'hello' message...");
@@ -151,7 +142,7 @@ namespace Nethermind.EthStats.Integrations
             {
                 if (_logger.IsDebug) _logger.Debug("ETH Stats sending 'stats' message...");
                 SendStatsAsync();
-                SendPendingAsync(_txPool.GetPendingTransactionsCount());
+                SendPendingAsync(_txPool.GetPendingTransactionsCount() + _txPool.GetPendingBlobTransactionsCount());
             }
         }
 
@@ -170,7 +161,7 @@ namespace Nethermind.EthStats.Integrations
                 return;
             }
 
-            if (block == null)
+            if (block is null)
             {
                 _logger.Error($"{nameof(EthStatsIntegration)} received null as the new head block.");
                 return;
@@ -192,7 +183,7 @@ namespace Nethermind.EthStats.Integrations
                 timer.Stop();
                 timer.Dispose();
             }
-            
+
             _websocketClient?.Dispose();
         }
 
@@ -207,7 +198,7 @@ namespace Nethermind.EthStats.Integrations
             => _sender.SendAsync(_websocketClient!, new BlockMessage(
                 new Messages.Models.Block(
                     block.Number,
-                    (block.Hash ?? Keccak.Zero).ToString() ,
+                    (block.Hash ?? Keccak.Zero).ToString(),
                     (block.ParentHash ?? Keccak.Zero).ToString(),
                     (long)block.Timestamp,
                     (block.Author ?? block.Beneficiary ?? Address.Zero).ToString(),
@@ -234,7 +225,7 @@ namespace Nethermind.EthStats.Integrations
                 if (_logger.IsTrace) _logger.Trace($"Gas price beyond the eth stats expected scope {gasPrice}");
                 gasPrice = long.MaxValue;
             }
-            
+
             return _sender.SendAsync(_websocketClient!, new StatsMessage(new Messages.Models.Stats(true, _ethSyncingInfo.IsSyncing(), _isMining, 0,
                 _peerManager.ActivePeers.Count, (long)gasPrice, 100)));
         }

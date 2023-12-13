@@ -1,19 +1,5 @@
-﻿//  Copyright (c) 2022 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-// 
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using FluentAssertions;
 using Nethermind.Blockchain.Receipts;
@@ -28,18 +14,19 @@ namespace Nethermind.Blockchain.Test.Receipts;
 
 public class ReceiptsRecoveryTests
 {
-    private IReceiptsRecovery _receiptsRecovery;
-    
+    private IReceiptsRecovery _receiptsRecovery = null!;
+
     [SetUp]
     public void Setup()
     {
-        RopstenSpecProvider specProvider = RopstenSpecProvider.Instance;
+        MainnetSpecProvider specProvider = MainnetSpecProvider.Instance;
         EthereumEcdsa ethereumEcdsa = new(specProvider.ChainId, LimboLogs.Instance);
 
         _receiptsRecovery = new ReceiptsRecovery(ethereumEcdsa, specProvider);
     }
 
-    [TestCase(5, 5, true, ReceiptsRecoveryResult.Success)]
+    [Timeout(Timeout.MaxTestTime)]
+    [TestCase(5, 5, true, ReceiptsRecoveryResult.NeedReinsert)]
     [TestCase(5, 5, false, ReceiptsRecoveryResult.Skipped)]
     [TestCase(0, 0, true, ReceiptsRecoveryResult.Skipped)]
     [TestCase(1, 0, true, ReceiptsRecoveryResult.Fail)]
@@ -63,5 +50,21 @@ public class ReceiptsRecoveryTests
         }
 
         _receiptsRecovery.TryRecover(block, receipts, forceRecoverSender).Should().Be(expected);
+    }
+
+    [Test]
+    public void TryRecover_should_recover_contract_address()
+    {
+        Transaction tx = Build.A.Transaction.WithSenderAddress(null).WithTo(null).Signed().TestObject;
+        Block block = Build.A.Block.WithTransactions(tx).TestObject;
+        TxReceipt receipt = Build.A.Receipt.WithBlockHash(block.Hash!).TestObject;
+
+        tx.SenderAddress.Should().BeNull();
+        receipt.ContractAddress.Should().BeNull();
+
+        ReceiptsRecoveryResult result = _receiptsRecovery.TryRecover(block, new[] { receipt });
+
+        result.Should().Be(ReceiptsRecoveryResult.NeedReinsert);
+        receipt.ContractAddress.Should().Be(new Address("0x3a6e7897affdf344781bb9098a605e9839ac131b"));
     }
 }

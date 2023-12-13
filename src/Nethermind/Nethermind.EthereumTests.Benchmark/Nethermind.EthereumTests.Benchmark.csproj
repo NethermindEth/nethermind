@@ -1,31 +1,21 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
-    <PropertyGroup>
-        <TargetFramework>net6.0</TargetFramework>
-        <LangVersion>latest</LangVersion>
-    </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="BenchmarkDotNet" />
+  </ItemGroup>
 
-    <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">
-      <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
-      <WarningsAsErrors />
-    </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Ethereum.Test.Base\Ethereum.Test.Base.csproj" />
+  </ItemGroup>
 
-    <ItemGroup>
-      <PackageReference Include="BenchmarkDotNet" Version="0.13.1" />
-    </ItemGroup>
-
-    <ItemGroup>
-      <ProjectReference Include="..\Ethereum.Test.Base\Ethereum.Test.Base.csproj" />
-    </ItemGroup>
-  
-      <ItemGroup>
-        <Content Include="..\..\tests\GeneralStateTests\st*\**\*.*">
-          <Link>EthereumTestFiles\%(RecursiveDir)%(FileName)%(Extension)</Link>
-          <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-        </Content>
-        <Content Include="..\..\tests\GeneralStateTests\VMTests\**\*.*">
-          <Link>EthereumTestFiles\%(RecursiveDir)%(FileName)%(Extension)</Link>
-          <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-        </Content>
-      </ItemGroup>
+  <ItemGroup>
+    <Content Include="..\..\tests\GeneralStateTests\st*\**\*.*">
+      <Link>EthereumTestFiles\%(RecursiveDir)%(FileName)%(Extension)</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="..\..\tests\GeneralStateTests\VMTests\**\*.*">
+      <Link>EthereumTestFiles\%(RecursiveDir)%(FileName)%(Extension)</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
 </Project>

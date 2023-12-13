@@ -1,23 +1,9 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-//
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-//
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-//
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
@@ -26,16 +12,15 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Network.Contract.P2P;
 using Nethermind.Network.P2P.EventArg;
 using Nethermind.Network.P2P.ProtocolHandlers;
 using Nethermind.Network.P2P.Subprotocols.Les.Messages;
 using Nethermind.Network.Rlpx;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Stats;
-using Nethermind.Stats.Model;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.FastSync;
-using Nethermind.TxPool;
 using CancellationToken = System.Threading.CancellationToken;
 
 namespace Nethermind.Network.P2P.Subprotocols.Les
@@ -50,7 +35,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Les
             IMessageSerializationService serializer,
             INodeStatsManager statsManager,
             ISyncServer syncServer,
-            ILogManager logManager): base(session, serializer, statsManager, syncServer, logManager)
+            ILogManager logManager) : base(session, serializer, statsManager, syncServer, logManager)
         {
             _lastSentBlock = SyncServer.Head;
         }
@@ -58,7 +43,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Les
         public override void Init()
         {
             if (Logger.IsTrace) Logger.Trace($"{ProtocolCode} v{ProtocolVersion} subprotocol initializing with {Session.Node:c}");
-            if (SyncServer.Head == null)
+            if (SyncServer.Head is null)
             {
                 throw new InvalidOperationException($"Cannot initialize {ProtocolCode} v{ProtocolVersion} protocol without the head block set");
             }
@@ -67,7 +52,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Les
             StatusMessage statusMessage = new()
             {
                 ProtocolVersion = ProtocolVersion,
-                ChainId = (UInt256)SyncServer.ChainId,
+                NetworkId = (UInt256)SyncServer.NetworkId,
                 TotalDifficulty = head.TotalDifficulty ?? head.Difficulty,
                 BestHash = head.Hash,
                 HeadBlockNo = head.Number,
@@ -76,10 +61,10 @@ namespace Nethermind.Network.P2P.Subprotocols.Les
                 // TODO - implement config option for these
                 ServeHeaders = true,
                 ServeChainSince = 0x00,
-                //if (config.recentchain != null)
+                //if (config.recentchain is not null)
                 //    ServeRecentChain = Config.recentchain
                 ServeStateSince = 0x00,
-                //if (Config.serverecentstate != null)
+                //if (Config.serverecentstate is not null)
                 //    ServeRecentState = Config.RecentState
                 TxRelay = true,
                 // TODO - should allow setting to infinite
@@ -88,7 +73,6 @@ namespace Nethermind.Network.P2P.Subprotocols.Les
             };
             Send(statusMessage);
 
-            if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportOutgoingMessage(Session.Node.Address, Name, statusMessage.ToString());
             Metrics.LesStatusesSent++;
 
             CheckProtocolInitTimeout().ContinueWith(x =>
@@ -113,7 +97,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Les
 
         public override event EventHandler<ProtocolInitializedEventArgs> ProtocolInitialized;
         public override event EventHandler<ProtocolEventArgs> SubprotocolRequested
-         {
+        {
             add { }
             remove { }
         }
@@ -132,32 +116,32 @@ namespace Nethermind.Network.P2P.Subprotocols.Les
             {
                 case LesMessageCode.Status:
                     StatusMessage statusMessage = Deserialize<StatusMessage>(message.Content);
-                    if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(Session.Node.Address, Name, statusMessage.ToString());
+                    if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(Session.Node.Address, Name, statusMessage.ToString(), size);
                     Handle(statusMessage);
                     break;
                 case LesMessageCode.GetBlockHeaders:
                     GetBlockHeadersMessage getBlockHeadersMessage = Deserialize<GetBlockHeadersMessage>(message.Content);
-                    if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(Session.Node.Address, Name, getBlockHeadersMessage.ToString());
+                    if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(Session.Node.Address, Name, getBlockHeadersMessage.ToString(), size);
                     Handle(getBlockHeadersMessage);
                     break;
                 case LesMessageCode.GetBlockBodies:
                     GetBlockBodiesMessage getBlockBodiesMessage = Deserialize<GetBlockBodiesMessage>(message.Content);
-                    if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(Session.Node.Address, Name, getBlockBodiesMessage.ToString());
+                    if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(Session.Node.Address, Name, getBlockBodiesMessage.ToString(), size);
                     Handle(getBlockBodiesMessage);
                     break;
                 case LesMessageCode.GetReceipts:
                     GetReceiptsMessage getReceiptsMessage = Deserialize<GetReceiptsMessage>(message.Content);
-                    if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(Session.Node.Address, Name, getReceiptsMessage.ToString());
+                    if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(Session.Node.Address, Name, getReceiptsMessage.ToString(), size);
                     Handle(getReceiptsMessage);
                     break;
                 case LesMessageCode.GetContractCodes:
                     GetContractCodesMessage getContractCodesMessage = Deserialize<GetContractCodesMessage>(message.Content);
-                    if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(Session.Node.Address, Name, getContractCodesMessage.ToString());
+                    if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(Session.Node.Address, Name, getContractCodesMessage.ToString(), size);
                     Handle(getContractCodesMessage);
                     break;
                 case LesMessageCode.GetHelperTrieProofs:
                     GetHelperTrieProofsMessage getHelperTrieProofsMessage = Deserialize<GetHelperTrieProofsMessage>(message.Content);
-                    if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(Session.Node.Address, Name, getHelperTrieProofsMessage.ToString());
+                    if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(Session.Node.Address, Name, getHelperTrieProofsMessage.ToString(), size);
                     Handle(getHelperTrieProofsMessage);
                     break;
             }
@@ -179,7 +163,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Les
             if (Logger.IsTrace)
                 Logger.Trace($"LES received status from {Session.Node:c} with" +
                              Environment.NewLine + $" prot version\t{status.ProtocolVersion}" +
-                             Environment.NewLine + $" network ID\t{status.ChainId}," +
+                             Environment.NewLine + $" network ID\t{status.NetworkId}," +
                              Environment.NewLine + $" genesis hash\t{status.GenesisHash}," +
                              Environment.NewLine + $" best hash\t{status.BestHash}," +
                              Environment.NewLine + $" head blockno\t{status.HeadBlockNo}," +
@@ -200,7 +184,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Les
             ReceivedProtocolInitMsg(status);
             SyncPeerProtocolInitializedEventArgs eventArgs = new(this)
             {
-                ChainId = (ulong)status.ChainId,
+                NetworkId = (ulong)status.NetworkId,
                 BestHash = status.BestHash,
                 GenesisHash = status.GenesisHash,
                 Protocol = status.Protocol,
@@ -269,12 +253,12 @@ namespace Nethermind.Network.P2P.Subprotocols.Les
             // todo - enum?
             if (request.AuxiliaryData == 1)
             {
-                auxData.Add(cht.RootHash.Bytes);
+                auxData.Add(cht.RootHash.BytesToArray());
                 return;
             }
             else if (request.AuxiliaryData == 2)
             {
-                (Keccak hash, _) = cht.Get(request.Key);
+                (Hash256 hash, _) = cht.Get(request.Key);
                 var headerResult = SyncServer.FindHeaders(hash, 1, 0, false);
                 if (headerResult.Length != 1) throw new SubprotocolException($"Unable to find header for block {request.Key.WithoutLeadingZeros().ToArray().ToLongFromBigEndianByteArrayWithoutLeadingZeros()} for GetHelperProofs response.");
                 auxData.Add(Rlp.Encode(headerResult[0]).Bytes);
@@ -298,12 +282,12 @@ namespace Nethermind.Network.P2P.Subprotocols.Les
             announceMessage.HeadHash = block.Hash;
             announceMessage.HeadBlockNo = block.Number;
             announceMessage.TotalDifficulty = block.TotalDifficulty.Value;
-            if (_lastSentBlock == null || block.ParentHash == _lastSentBlock.Hash)
+            if (_lastSentBlock is null || block.ParentHash == _lastSentBlock.Hash)
                 announceMessage.ReorgDepth = 0;
             else
             {
                 BlockHeader firstCommonAncestor = SyncServer.FindLowestCommonAncestor(block.Header, _lastSentBlock);
-                if (firstCommonAncestor == null)
+                if (firstCommonAncestor is null)
                     throw new SubprotocolException($"Unable to send announcment to LES peer - No common ancestor found between {block.Header} and {_lastSentBlock}");
                 announceMessage.ReorgDepth = _lastSentBlock.Number - firstCommonAncestor.Number;
             }
@@ -313,7 +297,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Les
             Send(announceMessage);
         }
 
-        Task<BlockHeader?> ISyncPeer.GetHeadBlockHeader(Keccak? hash, CancellationToken token)
+        Task<BlockHeader?> ISyncPeer.GetHeadBlockHeader(Hash256? hash, CancellationToken token)
         {
             return Task.FromResult(_lastSentBlock);
         }

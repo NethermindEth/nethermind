@@ -1,37 +1,26 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Numerics;
+using System.Text.RegularExpressions;
 using Nethermind.Config;
 using Nethermind.Consensus;
-using Nethermind.Core.Specs;
 using Nethermind.Logging;
+using Nethermind.Network.Config;
+using Nethermind.Network.Contract.P2P;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.EventArg;
 using Nethermind.Network.P2P.Messages;
 using Nethermind.Network.P2P.ProtocolHandlers;
-using Nethermind.Network.P2P.Subprotocols.Eth.V62;
-using Nethermind.Network.P2P.Subprotocols.Eth.V63;
-using Nethermind.Network.P2P.Subprotocols.Eth.V64;
-using Nethermind.Network.P2P.Subprotocols.Eth.V65;
+using Nethermind.Network.P2P.Subprotocols.Eth;
 using Nethermind.Network.P2P.Subprotocols.Eth.V66;
+using Nethermind.Network.P2P.Subprotocols.Eth.V67;
+using Nethermind.Network.P2P.Subprotocols.Eth.V68;
 using Nethermind.Network.P2P.Subprotocols.Les;
+using Nethermind.Network.P2P.Subprotocols.NodeData;
 using Nethermind.Network.P2P.Subprotocols.Snap;
 using Nethermind.Network.P2P.Subprotocols.Wit;
 using Nethermind.Network.Rlpx;
@@ -40,6 +29,7 @@ using Nethermind.Stats.Model;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.Peers;
 using Nethermind.TxPool;
+using ShouldGossip = Nethermind.TxPool.ShouldGossip;
 
 namespace Nethermind.Network
 {
@@ -49,7 +39,7 @@ namespace Nethermind.Network
 
         private readonly ConcurrentDictionary<Node, ConcurrentDictionary<Guid, ProtocolHandlerBase>> _hangingSatelliteProtocols =
             new();
-        
+
         private readonly ConcurrentDictionary<Guid, ISession> _sessions = new();
         private readonly ISyncPeerPool _syncPool;
         private readonly ISyncServer _syncServer;
@@ -61,13 +51,16 @@ namespace Nethermind.Network
         private readonly INodeStatsManager _stats;
         private readonly IProtocolValidator _protocolValidator;
         private readonly INetworkStorage _peerStorage;
-        private readonly ISpecProvider _specProvider;
+        private readonly ForkInfo _forkInfo;
         private readonly IGossipPolicy _gossipPolicy;
+        private readonly ITxGossipPolicy _txGossipPolicy;
+        private readonly INetworkConfig _networkConfig;
         private readonly ILogManager _logManager;
         private readonly ILogger _logger;
         private readonly IDictionary<string, Func<ISession, int, IProtocolHandler>> _protocolFactories;
         private readonly HashSet<Capability> _capabilities = new();
-        public event EventHandler<ProtocolInitializedEventArgs> P2PProtocolInitialized;
+        private readonly Regex? _clientIdPattern;
+        public event EventHandler<ProtocolInitializedEventArgs>? P2PProtocolInitialized;
 
         public ProtocolsManager(
             ISyncPeerPool syncPeerPool,
@@ -80,9 +73,11 @@ namespace Nethermind.Network
             INodeStatsManager nodeStatsManager,
             IProtocolValidator protocolValidator,
             INetworkStorage peerStorage,
-            ISpecProvider specProvider,
+            ForkInfo forkInfo,
             IGossipPolicy gossipPolicy,
-            ILogManager logManager)
+            INetworkConfig networkConfig,
+            ILogManager logManager,
+            ITxGossipPolicy? transactionsGossipPolicy = null)
         {
             _syncPool = syncPeerPool ?? throw new ArgumentNullException(nameof(syncPeerPool));
             _syncServer = syncServer ?? throw new ArgumentNullException(nameof(syncServer));
@@ -94,10 +89,17 @@ namespace Nethermind.Network
             _stats = nodeStatsManager ?? throw new ArgumentNullException(nameof(nodeStatsManager));
             _protocolValidator = protocolValidator ?? throw new ArgumentNullException(nameof(protocolValidator));
             _peerStorage = peerStorage ?? throw new ArgumentNullException(nameof(peerStorage));
-            _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
+            _forkInfo = forkInfo ?? throw new ArgumentNullException(nameof(forkInfo));
             _gossipPolicy = gossipPolicy ?? throw new ArgumentNullException(nameof(gossipPolicy));
+            _txGossipPolicy = transactionsGossipPolicy ?? ShouldGossip.Instance;
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
+            _networkConfig = networkConfig ?? throw new ArgumentNullException(nameof(networkConfig));
             _logger = _logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+
+            if (networkConfig.ClientIdMatcher != null)
+            {
+                _clientIdPattern = new Regex(networkConfig.ClientIdMatcher, RegexOptions.Compiled);
+            }
 
             _protocolFactories = GetProtocolFactories();
             rlpxHost.SessionCreated += SessionCreated;
@@ -112,7 +114,7 @@ namespace Nethermind.Network
 
         private void SessionDisconnected(object sender, DisconnectEventArgs e)
         {
-            ISession session = (ISession) sender;
+            ISession session = (ISession)sender;
             session.Initialized -= SessionInitialized;
             session.Disconnected -= SessionDisconnected;
 
@@ -130,13 +132,13 @@ namespace Nethermind.Network
             {
                 registrations.TryRemove(session.SessionId, out _);
             }
-            
+
             _sessions.TryRemove(session.SessionId, out session);
         }
 
         private void SessionInitialized(object sender, EventArgs e)
         {
-            ISession session = (ISession) sender;
+            ISession session = (ISession)sender;
             InitProtocol(session, Protocol.P2P, session.P2PVersion, true);
         }
 
@@ -187,7 +189,7 @@ namespace Nethermind.Network
             {
                 [Protocol.P2P] = (session, _) =>
                 {
-                    P2PProtocolHandler handler = new(session, _rlpxHost.LocalNodeId, _stats, _serializer, _logManager);
+                    P2PProtocolHandler handler = new(session, _rlpxHost.LocalNodeId, _stats, _serializer, _clientIdPattern, _logManager);
                     session.PingSender = handler;
                     InitP2PProtocol(session, handler);
 
@@ -197,11 +199,9 @@ namespace Nethermind.Network
                 {
                     var ethHandler = version switch
                     {
-                        62 => new Eth62ProtocolHandler(session, _serializer, _stats, _syncServer, _txPool, _gossipPolicy, _logManager),
-                        63 => new Eth63ProtocolHandler(session, _serializer, _stats, _syncServer, _txPool, _gossipPolicy, _logManager),
-                        64 => new Eth64ProtocolHandler(session, _serializer, _stats, _syncServer, _txPool, _gossipPolicy, _specProvider, _logManager),
-                        65 => new Eth65ProtocolHandler(session, _serializer, _stats, _syncServer, _txPool, _pooledTxsRequestor, _gossipPolicy, _specProvider, _logManager),
-                        66 => new Eth66ProtocolHandler(session, _serializer, _stats, _syncServer, _txPool, _pooledTxsRequestor, _gossipPolicy, _specProvider, _logManager),
+                        66 => new Eth66ProtocolHandler(session, _serializer, _stats, _syncServer, _txPool, _pooledTxsRequestor, _gossipPolicy, _forkInfo, _logManager, _txGossipPolicy),
+                        67 => new Eth67ProtocolHandler(session, _serializer, _stats, _syncServer, _txPool, _pooledTxsRequestor, _gossipPolicy, _forkInfo, _logManager, _txGossipPolicy),
+                        68 => new Eth68ProtocolHandler(session, _serializer, _stats, _syncServer, _txPool, _pooledTxsRequestor, _gossipPolicy, _forkInfo, _logManager, _txGossipPolicy),
                         _ => throw new NotSupportedException($"Eth protocol version {version} is not supported.")
                     };
 
@@ -214,6 +214,17 @@ namespace Nethermind.Network
                     {
                         1 => new SnapProtocolHandler(session, _stats, _serializer, _logManager),
                         _ => throw new NotSupportedException($"{Protocol.Snap}.{version} is not supported.")
+                    };
+                    InitSatelliteProtocol(session, handler);
+
+                    return handler;
+                },
+                [Protocol.NodeData] = (session, version) =>
+                {
+                    var handler = version switch
+                    {
+                        1 => new NodeDataProtocolHandler(session, _serializer, _stats, _syncServer, _logManager),
+                        _ => throw new NotSupportedException($"{Protocol.NodeData}.{version} is not supported.")
                     };
                     InitSatelliteProtocol(session, handler);
 
@@ -248,7 +259,7 @@ namespace Nethermind.Network
                 // SyncPeerProtocolInitializedEventArgs typedArgs = (SyncPeerProtocolInitializedEventArgs)args;
                 // _stats.ReportSyncPeerInitializeEvent(handler.ProtocolCode, session.Node, new SyncPeerNodeDetails
                 // {
-                //     ChainId = typedArgs.ChainId,
+                //     NetworkId = typedArgs.NetworkId,
                 //     BestHash = typedArgs.BestHash,
                 //     GenesisHash = typedArgs.GenesisHash,
                 //     ProtocolVersion = typedArgs.ProtocolVersion,
@@ -258,7 +269,7 @@ namespace Nethermind.Network
                 if (isValid)
                 {
                     var peer = _syncPool.GetPeer(session.Node);
-                    if (peer != null)
+                    if (peer is not null)
                     {
                         peer.SyncPeer.RegisterSatelliteProtocol(handler.ProtocolCode, handler);
                         if (handler.IsPriority) _syncPool.SetPeerPriority(session.Node.Id);
@@ -266,15 +277,15 @@ namespace Nethermind.Network
                     }
                     else
                     {
-                        _hangingSatelliteProtocols.AddOrUpdate(session.Node, 
-                            new ConcurrentDictionary<Guid, ProtocolHandlerBase>(new[] {new KeyValuePair<Guid, ProtocolHandlerBase>(session.SessionId, handler)}),
+                        _hangingSatelliteProtocols.AddOrUpdate(session.Node,
+                            new ConcurrentDictionary<Guid, ProtocolHandlerBase>(new[] { new KeyValuePair<Guid, ProtocolHandlerBase>(session.SessionId, handler) }),
                             (node, dict) =>
                         {
                             dict[session.SessionId] = handler;
                             return dict;
                         });
-                        
-                        if (_logger.IsDebug) _logger.Debug($"{handler.ProtocolCode} satellite protocol sync peer {session} not found.");
+
+                        if (_logger.IsTrace) _logger.Trace($"{handler.ProtocolCode} satellite protocol sync peer {session} not found.");
                     }
 
                     if (_logger.IsTrace) _logger.Trace($"Finalized {handler.ProtocolCode.ToUpper()} protocol initialization on {session} - adding sync peer {session.Node:s}");
@@ -290,7 +301,7 @@ namespace Nethermind.Network
         {
             handler.ProtocolInitialized += (sender, args) =>
             {
-                P2PProtocolInitializedEventArgs typedArgs = (P2PProtocolInitializedEventArgs) args;
+                P2PProtocolInitializedEventArgs typedArgs = (P2PProtocolInitializedEventArgs)args;
                 if (!RunBasicChecks(session, Protocol.P2P, handler.ProtocolVersion)) return;
 
                 if (handler.ProtocolVersion >= 5)
@@ -329,7 +340,7 @@ namespace Nethermind.Network
                 SyncPeerProtocolInitializedEventArgs typedArgs = (SyncPeerProtocolInitializedEventArgs)args;
                 _stats.ReportSyncPeerInitializeEvent(handler.ProtocolCode, session.Node, new SyncPeerNodeDetails
                 {
-                    ChainId = typedArgs.ChainId,
+                    NetworkId = typedArgs.NetworkId,
                     BestHash = typedArgs.BestHash,
                     GenesisHash = typedArgs.GenesisHash,
                     ProtocolVersion = typedArgs.ProtocolVersion,
@@ -349,7 +360,7 @@ namespace Nethermind.Network
                                 if (_logger.IsDebug) _logger.Debug($"{handler.ProtocolCode} satellite protocol registered for sync peer {session}. Sync peer has priority: {handler.IsPriority}");
                             }
                         }
-                        
+
                         _syncPool.AddPeer(handler);
                         if (handler.IncludeInTxPool) _txPool.AddPeer(handler);
                         if (_logger.IsDebug) _logger.Debug($"{handler.ClientId} sync peer {session} created.");
@@ -357,13 +368,13 @@ namespace Nethermind.Network
                     else
                     {
                         if (_logger.IsTrace) _logger.Trace($"Not able to add a sync peer on {session} for {session.Node:s}");
-                        session.InitiateDisconnect(DisconnectReason.AlreadyConnected, "sync peer");
+                        session.InitiateDisconnect(DisconnectReason.SessionIdAlreadyExists, "sync peer");
                     }
 
                     if (_logger.IsTrace) _logger.Trace($"Finalized {handler.ProtocolCode.ToUpper()} protocol initialization on {session} - adding sync peer {session.Node:s}");
 
                     //Add/Update peer to the storage and to sync manager
-                    _peerStorage.UpdateNode(new NetworkNode(session.Node.Id, session.Node.Host, session.Node.Port, _stats.GetOrAdd(session.Node).NewPersistedNodeReputation));
+                    _peerStorage.UpdateNode(new NetworkNode(session.Node.Id, session.Node.Host, session.Node.Port, _stats.GetOrAdd(session.Node).NewPersistedNodeReputation(DateTime.UtcNow)));
                 }
                 else
                 {
@@ -400,7 +411,7 @@ namespace Nethermind.Network
                 if (_logger.IsDebug) _logger.Debug($"Updating listen port for {session:s} to: {eventArgs.ListenPort}");
                 session.Node.Port = eventArgs.ListenPort;
             }
-            
+
             //In case peer was initiated outside of discovery and discovery is enabled, we are adding it to discovery for future use (e.g. trusted peer)
             _discoveryApp.AddNodeToDiscovery(session.Node);
         }
@@ -409,7 +420,7 @@ namespace Nethermind.Network
         {
             _capabilities.Add(capability);
         }
-        
+
         public void RemoveSupportedCapability(Capability capability)
         {
             if (_capabilities.Remove(capability))

@@ -1,19 +1,5 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-// 
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Generic;
@@ -28,14 +14,14 @@ namespace Nethermind.JsonRpc.Test
 {
     public partial class ConsensusHelperTests
     {
-        private class ReceiptsJsonRpcDataSource : JsonRpcDataSource<IEnumerable<ReceiptForRpc>>, IConsensusDataSource<IEnumerable<ReceiptForRpc>>, IConsensusDataSourceWithParameter<Keccak>
+        private class ReceiptsJsonRpcDataSource : JsonRpcDataSource<IEnumerable<ReceiptForRpc>>, IConsensusDataSource<IEnumerable<ReceiptForRpc>>, IConsensusDataSourceWithParameter<Hash256>
         {
             public ReceiptsJsonRpcDataSource(Uri uri, IJsonSerializer serializer) : base(uri, serializer)
             {
             }
 
-            public Keccak Parameter { get; set; }
-            
+            public Hash256 Parameter { get; set; } = null!;
+
             public override async Task<string> GetJsonData() => GetJson(await GetJsonDatas());
 
             private string GetJson(IEnumerable<string> jsons) => $"[{string.Join(',', jsons)}]";
@@ -45,7 +31,7 @@ namespace Nethermind.JsonRpc.Test
                 JsonRpcRequest request = CreateRequest("eth_getBlockByHash", Parameter.ToString(), false);
                 string blockJson = await SendRequest(request);
                 BlockForRpcTxHashes block = _serializer.Deserialize<JsonRpcSuccessResponse<BlockForRpcTxHashes>>(blockJson).Result;
-                List<string> transactionsJsons = new(block.Transactions.Length);
+                List<string> transactionsJsons = new(block.Transactions!.Length);
                 foreach (string tx in block.Transactions)
                 {
                     transactionsJsons.Add(await SendRequest(CreateRequest("eth_getTransactionReceipt", tx)));
@@ -62,7 +48,7 @@ namespace Nethermind.JsonRpc.Test
 
             private class BlockForRpcTxHashes : BlockForRpc
             {
-                public new string[] Transactions { get; set; }
+                public new string[]? Transactions { get; set; }
             }
         }
     }

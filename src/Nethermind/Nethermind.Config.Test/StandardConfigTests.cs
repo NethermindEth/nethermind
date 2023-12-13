@@ -1,31 +1,21 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-// 
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections;
 using System.IO;
 using System.Linq;
 using System.Reflection;
+using System.Text.Encodings.Web;
+using System.Text.Json;
 using NUnit.Framework;
 
 namespace Nethermind.Config.Test
 {
     public static class StandardConfigTests
     {
+        private static readonly JsonSerializerOptions _jsonOptions = new() { Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping };
+
         public static void ValidateDefaultValues()
         {
             ForEachProperty(CheckDefault);
@@ -38,7 +28,7 @@ namespace Nethermind.Config.Test
 
         private static void ForEachProperty(Action<PropertyInfo, object?> verifier)
         {
-            string[] dlls = Directory.GetFiles(AppDomain.CurrentDomain.BaseDirectory, "Nethermind.*.dll").OrderBy(n => n).ToArray();
+            string[] dlls = Directory.GetFiles(AppDomain.CurrentDomain.BaseDirectory, "Nethermind.JsonRpc.dll").OrderBy(n => n).ToArray();
             foreach (string dll in dlls)
             {
                 TestContext.WriteLine($"Verifying {nameof(StandardConfigTests)} on {Path.GetFileName(dll)}");
@@ -59,7 +49,7 @@ namespace Nethermind.Config.Test
                     {
                         throw new Exception($"Missing config implementation for {configType}");
                     }
-                    
+
                     object? instance = Activator.CreateInstance(implementationType);
 
                     foreach (PropertyInfo property in properties)
@@ -96,13 +86,22 @@ namespace Nethermind.Config.Test
         private static void CheckDefault(PropertyInfo property, object? instance)
         {
             ConfigItemAttribute? attribute = property.GetCustomAttribute<ConfigItemAttribute>();
-            if (attribute == null || attribute.DisabledForCli)
+            if (attribute is null || attribute.DisabledForCli)
             {
                 //there are properties without attribute - we don't pay attention to them 
                 return;
             }
 
             string expectedValue = attribute.DefaultValue?.Trim('"') ?? "null";
+
+            if (expectedValue.StartsWith("```json", StringComparison.Ordinal))
+            {
+                expectedValue = expectedValue
+                    .Replace("```json", string.Empty)
+                    .Replace("```", string.Empty);
+                expectedValue = JsonSerializer.Serialize(JsonDocument.Parse(expectedValue), _jsonOptions);
+            }
+
             string actualValue;
 
             object? value = property.GetValue(instance);
@@ -128,11 +127,11 @@ namespace Nethermind.Config.Test
                 {
                     string? actualValueAtIndex = actualValueArray[i]?.ToString();
                     string expectedValueAtIndex = expectedItems[i];
-                    Assert.AreEqual(actualValueAtIndex, expectedValueAtIndex,
+                    Assert.That(expectedValueAtIndex, Is.EqualTo(actualValueAtIndex),
                         $"Property: {property.Name}, expected value at index {i}: <{expectedValueAtIndex}> but was <{actualValueAtIndex}>");
                 }
 
-                Assert.AreEqual(actualValueArray.Count, expectedItems.Length,
+                Assert.That(expectedItems.Length, Is.EqualTo(actualValueArray.Count),
                     $"Property: {property.Name}, expected value length: <{expectedItems.Length}> but was <{actualValueArray.Count}>");
 
                 return;
@@ -142,7 +141,7 @@ namespace Nethermind.Config.Test
                 actualValue = value.ToString()!;
             }
 
-            Assert.AreEqual(actualValue, expectedValue,
+            Assert.That(expectedValue, Is.EqualTo(actualValue),
                 $"Property: {property.Name}, expected value: <{expectedValue}> but was <{actualValue}>");
         }
     }

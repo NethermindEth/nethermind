@@ -1,19 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-// 
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using Nethermind.Blockchain;
@@ -58,14 +44,11 @@ namespace Nethermind.Synchronization.FastSync
 
         internal (DateTime small, DateTime full) LastReportTime = (DateTime.MinValue, DateTime.MinValue);
 
-        private Known.SizeInfo? _chainSizeInfo;
+        private readonly IChainEstimations _chainEstimations;
 
-        public DetailedProgress(ulong chainId, byte[] serializedInitialState)
+        public DetailedProgress(ulong chainId, byte[]? serializedInitialState)
         {
-            if (Known.ChainSize.ContainsKey(chainId))
-            {
-                _chainSizeInfo = Known.ChainSize[chainId];
-            }
+            _chainEstimations = ChainSizes.CreateChainSizeInfo(chainId);
 
             LoadFromSerialized(serializedInitialState);
         }
@@ -86,13 +69,13 @@ namespace Nethermind.Synchronization.FastSync
                 // if (_logger.IsInfo) _logger.Info($"Time {TimeSpan.FromSeconds(_secondsInSync):dd\\.hh\\:mm\\:ss} | {(decimal) _dataSize / 1000 / 1000,6:F2}MB | kBps: {savedKBytesPerSecond,5:F0} | P: {_pendingRequests.Count} | acc {_savedAccounts} | queues {StreamsDescription} | db {_averageTimeInHandler:f2}ms");
 
                 Metrics.StateSynced = DataSize;
-                string dataSizeInfo = $"{(decimal)DataSize / 1000 / 1000,6:F2}MB";
-                if (_chainSizeInfo != null)
+                string dataSizeInfo = $"{(decimal)DataSize / 1000 / 1000,6:F2} MB";
+                if (_chainEstimations.StateSize is not null)
                 {
-                    decimal percentage = Math.Min(1, (decimal)DataSize / _chainSizeInfo.Value.Current);
+                    decimal percentage = Math.Min(1, (decimal)DataSize / _chainEstimations.StateSize.Value);
                     dataSizeInfo = string.Concat(
                         $"~{percentage:P2} | ", dataSizeInfo,
-                        $" / ~{(decimal)_chainSizeInfo.Value.Current / 1000 / 1000,6:F2}MB");
+                        $" / ~{(decimal)_chainEstimations.StateSize.Value / 1000 / 1000,6:F2} MB");
                 }
 
                 if (logger.IsInfo) logger.Info(
@@ -117,48 +100,71 @@ namespace Nethermind.Synchronization.FastSync
             }
         }
 
-        private void LoadFromSerialized(byte[] serializedData)
+        private void LoadFromSerialized(byte[]? serializedData)
         {
-            if (serializedData != null)
+            if (serializedData == null)
             {
-                RlpStream rlpStream = new(serializedData);
-                rlpStream.ReadSequenceLength();
-                ConsumedNodesCount = rlpStream.DecodeLong();
-                SavedStorageCount = rlpStream.DecodeLong();
-                SavedStateCount = rlpStream.DecodeLong();
-                SavedNodesCount = rlpStream.DecodeLong();
-                SavedAccounts = rlpStream.DecodeLong();
-                SavedCode = rlpStream.DecodeLong();
-                RequestedNodesCount = rlpStream.DecodeLong();
-                DbChecks = rlpStream.DecodeLong();
-                StateWasThere = rlpStream.DecodeLong();
-                StateWasNotThere = rlpStream.DecodeLong();
-                DataSize = rlpStream.DecodeLong();
+                return;
+            }
 
-                if (rlpStream.Position != rlpStream.Length)
-                {
-                    SecondsInSync = rlpStream.DecodeLong();
-                }
+            RlpStream rlpStream = new(serializedData);
+            rlpStream.ReadSequenceLength();
+            ConsumedNodesCount = rlpStream.DecodeLong();
+            SavedStorageCount = rlpStream.DecodeLong();
+            SavedStateCount = rlpStream.DecodeLong();
+            SavedNodesCount = rlpStream.DecodeLong();
+            SavedAccounts = rlpStream.DecodeLong();
+            SavedCode = rlpStream.DecodeLong();
+            RequestedNodesCount = rlpStream.DecodeLong();
+            DbChecks = rlpStream.DecodeLong();
+            StateWasThere = rlpStream.DecodeLong();
+            StateWasNotThere = rlpStream.DecodeLong();
+            DataSize = rlpStream.DecodeLong();
+
+            if (rlpStream.Position != rlpStream.Length)
+            {
+                SecondsInSync = rlpStream.DecodeLong();
             }
         }
 
         public byte[] Serialize()
         {
-            Rlp rlp = Rlp.Encode(
-                Rlp.Encode(ConsumedNodesCount),
-                Rlp.Encode(SavedStorageCount),
-                Rlp.Encode(SavedStateCount),
-                Rlp.Encode(SavedNodesCount),
-                Rlp.Encode(SavedAccounts),
-                Rlp.Encode(SavedCode),
-                Rlp.Encode(RequestedNodesCount),
-                Rlp.Encode(DbChecks),
-                Rlp.Encode(StateWasThere),
-                Rlp.Encode(StateWasNotThere),
-                Rlp.Encode(DataSize),
-                Rlp.Encode(SecondsInSync));
+            Span<long> progress = stackalloc[]
+            {
+                ConsumedNodesCount,
+                SavedStorageCount,
+                SavedStateCount,
+                SavedNodesCount,
+                SavedAccounts,
+                SavedCode,
+                RequestedNodesCount,
+                DbChecks,
+                StateWasThere,
+                StateWasNotThere,
+                DataSize,
+                SecondsInSync
+            };
 
-            return rlp.Bytes;
+            int contentLength = GetLength(progress);
+            RlpStream stream = new RlpStream(Rlp.LengthOfSequence(contentLength));
+            stream.StartSequence(contentLength);
+            foreach (long entry in progress)
+            {
+                stream.Encode(entry);
+            }
+            return stream.Data;
+        }
+
+        private static int GetLength(Span<long> progress)
+        {
+            int sum = 0;
+
+            for (int index = 0; index < progress.Length; index++)
+            {
+                sum += Rlp.LengthOf(progress[index]);
+            }
+
+            return sum;
         }
     }
 }

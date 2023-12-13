@@ -1,0 +1,25 @@
+[
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "maxNumberOfFailedWithdrawalsToProcess",
+        "type": "uint256"
+      },
+      {
+        "internalType": "uint64[]",
+        "name": "amounts",
+        "type": "uint64[]"
+      },
+      {
+        "internalType": "address[]",
+        "name": "addresses",
+        "type": "address[]"
+      }
+    ],
+    "name": "executeSystemWithdrawals",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  }
+]

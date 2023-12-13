@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.IO.Abstractions;
@@ -25,42 +12,42 @@ namespace Nethermind.Db
     public class StandardDbInitializer : RocksDbInitializer
     {
         private readonly IFileSystem _fileSystem;
-        private readonly bool _fullPruning;
 
         public StandardDbInitializer(
-            IDbProvider? dbProvider, 
-            IRocksDbFactory? rocksDbFactory, 
+            IDbProvider? dbProvider,
+            IRocksDbFactory? rocksDbFactory,
             IMemDbFactory? memDbFactory,
-            IFileSystem? fileSystem = null,
-            bool fullPruning = false)
+            IFileSystem? fileSystem = null)
             : base(dbProvider, rocksDbFactory, memDbFactory)
         {
             _fileSystem = fileSystem ?? new FileSystem();
-            _fullPruning = fullPruning;
         }
 
-        public void InitStandardDbs(bool useReceiptsDb)
+        public void InitStandardDbs(bool useReceiptsDb, bool useBlobsDb = true)
         {
-            RegisterAll(useReceiptsDb);
+            RegisterAll(useReceiptsDb, useBlobsDb);
             InitAll();
         }
 
-        public async Task InitStandardDbsAsync(bool useReceiptsDb)
+        public async Task InitStandardDbsAsync(bool useReceiptsDb, bool useBlobsDb = true)
         {
-            RegisterAll(useReceiptsDb);
+            RegisterAll(useReceiptsDb, useBlobsDb);
             await InitAllAsync();
         }
 
-        private void RegisterAll(bool useReceiptsDb)
+        private void RegisterAll(bool useReceiptsDb, bool useBlobsDb)
         {
             RegisterDb(BuildRocksDbSettings(DbNames.Blocks, () => Metrics.BlocksDbReads++, () => Metrics.BlocksDbWrites++));
             RegisterDb(BuildRocksDbSettings(DbNames.Headers, () => Metrics.HeaderDbReads++, () => Metrics.HeaderDbWrites++));
+            RegisterDb(BuildRocksDbSettings(DbNames.BlockNumbers, () => Metrics.BlockNumberDbReads++, () => Metrics.BlockNumberDbWrites++));
             RegisterDb(BuildRocksDbSettings(DbNames.BlockInfos, () => Metrics.BlockInfosDbReads++, () => Metrics.BlockInfosDbWrites++));
 
             RocksDbSettings stateDbSettings = BuildRocksDbSettings(DbNames.State, () => Metrics.StateDbReads++, () => Metrics.StateDbWrites++);
             RegisterCustomDb(DbNames.State, () => new FullPruningDb(
                 stateDbSettings,
-                PersistedDb ? new FullPruningInnerDbFactory(RocksDbFactory, _fileSystem, stateDbSettings.DbPath) : new MemDbFactoryToRocksDbAdapter(MemDbFactory),
+                PersistedDb
+                    ? new FullPruningInnerDbFactory(RocksDbFactory, _fileSystem, stateDbSettings.DbPath)
+                    : new MemDbFactoryToRocksDbAdapter(MemDbFactory),
                 () => Interlocked.Increment(ref Metrics.StateDbInPruningWrites)));
 
             RegisterDb(BuildRocksDbSettings(DbNames.Code, () => Metrics.CodeDbReads++, () => Metrics.CodeDbWrites++));
@@ -73,9 +60,13 @@ namespace Nethermind.Db
             }
             else
             {
-                RegisterCustomDb(DbNames.Receipts, () => new ReadOnlyColumnsDb<ReceiptsColumns>(new MemColumnsDb<ReceiptsColumns>(), false));
+                RegisterCustomColumnDb(DbNames.Receipts, () => new ReadOnlyColumnsDb<ReceiptsColumns>(new MemColumnsDb<ReceiptsColumns>(), false));
             }
             RegisterDb(BuildRocksDbSettings(DbNames.Metadata, () => Metrics.MetadataDbReads++, () => Metrics.MetadataDbWrites++));
+            if (useBlobsDb)
+            {
+                RegisterColumnsDb<BlobTxsColumns>(BuildRocksDbSettings(DbNames.BlobTransactions, () => Metrics.BlobTransactionsDbReads++, () => Metrics.BlobTransactionsDbWrites++));
+            }
         }
 
         private RocksDbSettings BuildRocksDbSettings(string dbName, Action updateReadsMetrics, Action updateWriteMetrics, bool deleteOnStart = false)

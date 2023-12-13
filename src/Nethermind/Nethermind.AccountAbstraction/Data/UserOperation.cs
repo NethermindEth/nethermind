@@ -1,19 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-// 
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
 using System.Collections.Immutable;
@@ -44,16 +30,16 @@ namespace Nethermind.AccountAbstraction.Data
             Signature = userOperationRpc.Signature;
 
             AccessList = UserOperationAccessList.Empty;
-            AddressesToCodeHashes = ImmutableDictionary<Address, Keccak>.Empty;
+            AddressesToCodeHashes = ImmutableDictionary<Address, Hash256>.Empty;
         }
 
-        private Keccak CalculateHash()
+        private Hash256 CalculateHash()
         {
             return Keccak.Compute(_packer.Pack(this));
         }
 
         private readonly AbiSignature _idSignature = new AbiSignature("RequestId", AbiType.Bytes32, AbiAddress.Instance, AbiType.UInt256);
-        
+
         public void CalculateRequestId(Address entryPointAddress, ulong chainId)
         {
             RequestId = Keccak.Compute(_abiEncoder.Encode(AbiEncodingStyle.None, _idSignature, CalculateHash(), entryPointAddress, chainId));
@@ -74,8 +60,8 @@ namespace Nethermind.AccountAbstraction.Data
             PaymasterData = PaymasterData,
             Signature = Signature!
         };
-        
-        public Keccak? RequestId { get; set; }
+
+        public Hash256? RequestId { get; set; }
         public Address Sender { get; set; }
         public UInt256 Nonce { get; set; }
         public byte[] InitCode { get; set; }
@@ -89,7 +75,7 @@ namespace Nethermind.AccountAbstraction.Data
         public byte[] Signature { get; set; }
         public byte[] PaymasterData { get; set; }
         public UserOperationAccessList AccessList { get; set; }
-        public IDictionary<Address, Keccak> AddressesToCodeHashes { get; set; }
+        public IDictionary<Address, Hash256> AddressesToCodeHashes { get; set; }
         public bool AlreadySimulated { get; set; }
         public bool PassedBaseFee { get; set; } // if the MaxFeePerGas has ever exceeded the basefee
     }

@@ -1,18 +1,5 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Numerics;
 using System.Runtime.CompilerServices;
@@ -38,27 +25,27 @@ namespace Nethermind.Consensus.Ethash
         }
 
         private const long OfGenesisBlock = 131_072;
-        
+
         public UInt256 Calculate(BlockHeader header, BlockHeader parent) =>
-            Calculate(parent.Difficulty, 
-                parent.Timestamp, 
+            Calculate(parent.Difficulty,
+                parent.Timestamp,
                 header.Timestamp,
                 header.Number,
                 parent.UnclesHash != Keccak.OfAnEmptySequenceRlp);
 
         public UInt256 Calculate(
             in UInt256 parentDifficulty,
-            in UInt256 parentTimestamp,
-            in UInt256 currentTimestamp,
+            ulong parentTimestamp,
+            ulong currentTimestamp,
             long blockNumber,
             bool parentHasUncles)
         {
-            IReleaseSpec spec = _specProvider.GetSpec(blockNumber);
-            if (spec.FixedDifficulty != null && blockNumber != 0)
+            IReleaseSpec spec = _specProvider.GetSpec(blockNumber, currentTimestamp);
+            if (spec.FixedDifficulty is not null && blockNumber != 0)
             {
                 return (UInt256)spec.FixedDifficulty.Value;
             }
-            
+
             BigInteger baseIncrease = BigInteger.Divide((BigInteger)parentDifficulty, spec.DifficultyBoundDivisor);
             BigInteger timeAdjustment = TimeAdjustment(spec, (BigInteger)parentTimestamp, (BigInteger)currentTimestamp, parentHasUncles);
             BigInteger timeBomb = TimeBomb(spec, blockNumber);
@@ -79,24 +66,24 @@ namespace Nethermind.Consensus.Ethash
             {
                 return BigInteger.Max((parentHasUncles ? 2 : BigInteger.One) - BigInteger.Divide(currentTimestamp - parentTimestamp, 9), -99);
             }
-            
-            if(spec.IsEip2Enabled)
+
+            if (spec.IsEip2Enabled)
             {
-                return BigInteger.Max(BigInteger.One - BigInteger.Divide(currentTimestamp - parentTimestamp, 10), -99);    
+                return BigInteger.Max(BigInteger.One - BigInteger.Divide(currentTimestamp - parentTimestamp, 10), -99);
             }
-            
+
             if (spec.IsTimeAdjustmentPostOlympic)
             {
-                return currentTimestamp < parentTimestamp + 13 ? BigInteger.One : BigInteger.MinusOne;                
+                return currentTimestamp < parentTimestamp + 13 ? BigInteger.One : BigInteger.MinusOne;
             }
-            
+
             return currentTimestamp < parentTimestamp + 7 ? BigInteger.One : BigInteger.MinusOne;
         }
 
         private BigInteger TimeBomb(IReleaseSpec spec, long blockNumber)
         {
-            blockNumber = blockNumber - spec.DifficultyBombDelay;
-            
+            blockNumber -= spec.DifficultyBombDelay;
+
             return blockNumber < InitialDifficultyBombBlock ? BigInteger.Zero : BigInteger.Pow(2, (int)(BigInteger.Divide(blockNumber, 100000) - 2));
         }
     }

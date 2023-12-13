@@ -1,19 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-// 
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.IO;
@@ -26,6 +12,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Logging;
+using Nethermind.State;
 
 namespace Nethermind.Blockchain.Visitors
 {
@@ -33,10 +20,10 @@ namespace Nethermind.Blockchain.Visitors
     {
         public const int DefaultBatchSize = 4000;
         private readonly IBlockTree _blockTree;
-        private readonly IDb _stateDb;
+        private readonly IStateReader _stateReader;
         private readonly ILogger _logger;
-        private long _startNumber;
-        private long _blocksToLoad;
+        private readonly long _startNumber;
+        private readonly long _blocksToLoad;
 
         private ChainLevelInfo _currentLevel;
         private long _currentLevelNumber;
@@ -54,14 +41,14 @@ namespace Nethermind.Blockchain.Visitors
         private readonly long _batchSize;
 
         public StartupBlockTreeFixer(
-            ISyncConfig syncConfig, 
+            ISyncConfig syncConfig,
             IBlockTree blockTree,
-            IDb stateDb,
+            IStateReader stateReader,
             ILogger logger,
             long batchSize = DefaultBatchSize)
         {
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
-            _stateDb = stateDb;
+            _stateReader = stateReader;
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
 
             _batchSize = batchSize;
@@ -80,7 +67,7 @@ namespace Nethermind.Blockchain.Visitors
 
         private void BlockTreeOnNewHeadBlock(object sender, BlockEventArgs e)
         {
-            if (_dbBatchProcessed != null)
+            if (_dbBatchProcessed is not null)
             {
                 if (e.Block.Number == _currentDbLoadBatchEnd)
                 {
@@ -92,6 +79,7 @@ namespace Nethermind.Blockchain.Visitors
         }
 
         public bool PreventsAcceptingNewBlocks => true;
+        public bool CalculateTotalDifficultyIfMissing => true;
         public long StartLevelInclusive => _startNumber;
 
         public long EndLevelExclusive => _startNumber + _blocksToLoad;
@@ -112,16 +100,16 @@ namespace Nethermind.Blockchain.Visitors
 
             if ((_currentLevelNumber - StartLevelInclusive) % 1000 == 0)
             {
-                if(_logger.IsInfo) _logger.Info($"Reviewed {_currentLevelNumber - StartLevelInclusive} blocks out of {EndLevelExclusive - StartLevelInclusive}");
+                if (_logger.IsInfo) _logger.Info($"Reviewed {_currentLevelNumber - StartLevelInclusive} blocks out of {EndLevelExclusive - StartLevelInclusive}");
             }
-            
-            if (_gapStart != null)
+
+            if (_gapStart is not null)
             {
                 _currentLevel = null;
                 return Task.FromResult(LevelVisitOutcome.DeleteLevel);
             }
 
-            if (chainLevelInfo == null)
+            if (chainLevelInfo is null)
             {
                 _gapStart = _currentLevelNumber;
             }
@@ -135,7 +123,7 @@ namespace Nethermind.Blockchain.Visitors
             bool thisLevelWasProcessed = chainLevelInfo?.BlockInfos.Any(b => b.WasProcessed) ?? false;
             if (thisLevelWasProcessed)
             {
-                if (_processingGapStart != null)
+                if (_processingGapStart is not null)
                 {
                     if (_logger.IsWarn)
                         _logger.Warn(
@@ -151,7 +139,7 @@ namespace Nethermind.Blockchain.Visitors
             }
         }
 
-        Task<bool> IBlockTreeVisitor.VisitMissing(Keccak hash, CancellationToken cancellationToken)
+        Task<bool> IBlockTreeVisitor.VisitMissing(Hash256 hash, CancellationToken cancellationToken)
         {
             AssertNotVisitingAfterGap();
             _blocksCheckedInCurrentLevel++;
@@ -173,14 +161,14 @@ namespace Nethermind.Blockchain.Visitors
             AssertNotVisitingAfterGap();
             _blocksCheckedInCurrentLevel++;
             _bodiesInCurrentLevel++;
-            
+
             if (_firstBlockVisited)
             {
                 _suggestBlocks = CanSuggestBlocks(block);
             }
 
             if (!_suggestBlocks) return BlockVisitOutcome.None;
-            
+
             long i = block.Number - StartLevelInclusive;
             if (i % _batchSize == _batchSize - 1 && i != _blocksToLoad - 1 &&
                 _blockTree.Head.Number + _batchSize < block.Number)
@@ -190,7 +178,7 @@ namespace Nethermind.Blockchain.Visitors
                     _logger.Info(
                         $"Loaded {i + 1} out of {_blocksToLoad} blocks from DB into processing queue, waiting for processor before loading more.");
                 }
-            
+
                 _dbBatchProcessed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
                 await using (cancellationToken.Register(() => _dbBatchProcessed.SetCanceled()))
                 {
@@ -198,7 +186,7 @@ namespace Nethermind.Blockchain.Visitors
                     await _dbBatchProcessed.Task;
                 }
             }
-            
+
             return BlockVisitOutcome.Suggest;
 
         }
@@ -219,7 +207,7 @@ namespace Nethermind.Blockchain.Visitors
                     $"Invalid bodies count at level {_currentLevelNumber}: {_bodiesInCurrentLevel}/{expectedVisitedBlocksCount}");
             }
 
-            if (_gapStart != null)
+            if (_gapStart is not null)
             {
                 if (_logger.IsWarn)
                     _logger.Warn(
@@ -241,7 +229,7 @@ namespace Nethermind.Blockchain.Visitors
 
         private void AssertNotVisitingAfterGap()
         {
-            if (_gapStart != null)
+            if (_gapStart is not null)
             {
                 throw new InvalidOperationException(
                     $"Not expecting to visit block at {_currentLevelNumber} because the gap has already been identified.");
@@ -251,11 +239,11 @@ namespace Nethermind.Blockchain.Visitors
         private bool CanSuggestBlocks(Block block)
         {
             _firstBlockVisited = false;
-            if (block?.ParentHash != null)
+            if (block?.ParentHash is not null)
             {
                 BlockHeader? parentHeader = _blockTree.FindParentHeader(block.Header, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
-                if (parentHeader == null || parentHeader.StateRoot == null ||
-                    _stateDb.Get(parentHeader.StateRoot) == null)
+                if (parentHeader is null || parentHeader.StateRoot is null ||
+                    !_stateReader.HasStateForRoot(parentHeader.StateRoot))
                     return false;
             }
             else

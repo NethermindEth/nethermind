@@ -1,35 +1,21 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Config;
 
-namespace Nethermind.Db.Blooms
+namespace Nethermind.Db.Blooms;
+
+public interface IBloomConfig : IConfig
 {
-    public interface IBloomConfig : IConfig
-    {
-        [ConfigItem(Description = "Defines whether the Bloom index is used. Bloom index speeds up rpc log searches.", DefaultValue = "true")]
-        bool Index { get; set; }
-        
-        [ConfigItem(Description = "Defines multipliers for index levels. Can be tweaked per chain to boost performance.", DefaultValue = "[4, 8, 8]")]
-        int[] IndexLevelBucketSizes { get; set; }
-        
-        [ConfigItem(Description = "Defines if migration statistics are to be calculated and output.", DefaultValue = "false")]
-        bool MigrationStatistics { get; set; }
-        
-        [ConfigItem(Description = "Defines if migration of previously downloaded blocks to Bloom index will be done.", DefaultValue = "false")]
-        bool Migration { get; set; }
-    }
+    [ConfigItem(Description = "Whether to use the Bloom index. The Bloom index speeds up the RPC log searches.", DefaultValue = "true")]
+    bool Index { get; set; }
+
+    [ConfigItem(Description = "An array of multipliers for index levels. Can be tweaked per chain to boost performance.", DefaultValue = "[4, 8, 8]")]
+    int[] IndexLevelBucketSizes { get; set; }
+
+    [ConfigItem(Description = "Whether the migration statistics should be calculated and output.", DefaultValue = "false")]
+    bool MigrationStatistics { get; set; }
+
+    [ConfigItem(Description = "Whether to migrate the previously downloaded blocks to the Bloom index.", DefaultValue = "false")]
+    bool Migration { get; set; }
 }

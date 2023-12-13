@@ -1,20 +1,5 @@
-﻿/*
- * Copyright (c) 2021 Demerzel Solutions Limited
- * This file is part of the Nethermind library.
- *
- * The Nethermind library is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Lesser General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * The Nethermind library is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU Lesser General Public License for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
- */
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Numerics;
 using Nethermind.Core;
@@ -30,15 +15,15 @@ namespace Ethereum.Test.Base
         public byte[] ExtraData { get; set; }
         public BigInteger GasLimit { get; set; }
         public BigInteger GasUsed { get; set; }
-        public Keccak Hash { get; set; }
-        public Keccak MixHash { get; set; }
+        public Hash256 Hash { get; set; }
+        public Hash256 MixHash { get; set; }
         public BigInteger Nonce { get; set; }
         public BigInteger Number { get; set; }
-        public Keccak ParentHash { get; set; }
-        public Keccak ReceiptTrie { get; set; }
-        public Keccak StateRoot { get; set; }
+        public Hash256 ParentHash { get; set; }
+        public Hash256 ReceiptTrie { get; set; }
+        public Hash256 StateRoot { get; set; }
         public BigInteger Timestamp { get; set; }
-        public Keccak TransactionsTrie { get; set; }
-        public Keccak UncleHash { get; set; }
+        public Hash256 TransactionsTrie { get; set; }
+        public Hash256 UncleHash { get; set; }
     }
 }

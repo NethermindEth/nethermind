@@ -1,26 +1,10 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-// 
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Buffers.Text;
 using System.Net;
 using DnsClient;
 using DotNetty.Buffers;
 using Nethermind.Core.Crypto;
-using Nethermind.Crypto;
 using Nethermind.Logging;
 using Nethermind.Network.Enr;
 using Nethermind.Stats.Model;
@@ -37,7 +21,7 @@ public class EnrDiscovery : INodeSource
     {
         _parser = parser;
         _logger = logManager.GetClassLogger();
-        _crawler = new EnrTreeCrawler();
+        _crawler = new EnrTreeCrawler(_logger);
     }
 
     public async Task SearchTree(string domain)
@@ -78,8 +62,8 @@ public class EnrDiscovery : INodeSource
         CompressedPublicKey? compressedPublicKey = nodeRecord.GetObj<CompressedPublicKey>(EnrContentKey.Secp256K1);
         IPAddress? ipAddress = nodeRecord.GetObj<IPAddress>(EnrContentKey.Ip);
         int? port = nodeRecord.GetValue<int>(EnrContentKey.Tcp) ?? nodeRecord.GetValue<int>(EnrContentKey.Udp);
-        return compressedPublicKey is not null && ipAddress is not null && port is not null 
-            ? new(compressedPublicKey.Decompress(), ipAddress.ToString(), port.Value) 
+        return compressedPublicKey is not null && ipAddress is not null && port is not null
+            ? new(compressedPublicKey.Decompress(), ipAddress.ToString(), port.Value)
             : null;
     }
 

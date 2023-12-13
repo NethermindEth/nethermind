@@ -1,22 +1,7 @@
-//  Copyright (c) 2020 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-//
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-//
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-//
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-//
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Reflection.Metadata.Ecma335;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 
@@ -29,38 +14,55 @@ namespace Nethermind.Trie.Pruning
     {
         private readonly TrieStore _trieStore;
         private readonly IKeyValueStore? _readOnlyStore;
+        private readonly ReadOnlyValueStore _publicStore;
 
         public ReadOnlyTrieStore(TrieStore trieStore, IKeyValueStore? readOnlyStore)
         {
             _trieStore = trieStore ?? throw new ArgumentNullException(nameof(trieStore));
             _readOnlyStore = readOnlyStore;
+            _publicStore = new ReadOnlyValueStore(_trieStore.AsKeyValueStore());
         }
 
-        public TrieNode FindCachedOrUnknown(Keccak hash) =>
+        public TrieNode FindCachedOrUnknown(Hash256 hash) =>
             _trieStore.FindCachedOrUnknown(hash, true);
 
-        public byte[] LoadRlp(Keccak hash) => _trieStore.LoadRlp(hash, _readOnlyStore);
+        public byte[] LoadRlp(Hash256 hash, ReadFlags flags) => _trieStore.LoadRlp(hash, _readOnlyStore, flags);
 
-        public bool IsPersisted(Keccak keccak) => _trieStore.IsPersisted(keccak);
+        public bool IsPersisted(in ValueHash256 keccak) => _trieStore.IsPersisted(keccak);
 
         public IReadOnlyTrieStore AsReadOnly(IKeyValueStore keyValueStore)
         {
             return new ReadOnlyTrieStore(_trieStore, keyValueStore);
         }
 
-        public void CommitNode(long blockNumber, NodeCommitInfo nodeCommitInfo) { }
+        public void CommitNode(long blockNumber, NodeCommitInfo nodeCommitInfo, WriteFlags flags = WriteFlags.None) { }
 
-        public void FinishBlockCommit(TrieType trieType, long blockNumber, TrieNode? root) { }
-
-        public void HackPersistOnShutdown() { }
+        public void FinishBlockCommit(TrieType trieType, long blockNumber, TrieNode? root, WriteFlags flags = WriteFlags.None) { }
 
         public event EventHandler<ReorgBoundaryReached> ReorgBoundaryReached
         {
             add { }
             remove { }
         }
+
+        public IKeyValueStore AsKeyValueStore() => _publicStore;
+
         public void Dispose() { }
 
-        public byte[]? this[byte[] key] => _trieStore[key];
+        public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None) { }
+
+        private class ReadOnlyValueStore : IKeyValueStore
+        {
+            private readonly IKeyValueStore _keyValueStore;
+
+            public ReadOnlyValueStore(IKeyValueStore keyValueStore)
+            {
+                _keyValueStore = keyValueStore;
+            }
+
+            public byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None) => _keyValueStore.Get(key, flags);
+
+            public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None) { }
+        }
     }
 }

@@ -1,46 +1,24 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Numerics;
 using Nethermind.Core.Extensions;
-using Nethermind.Int256;
 
 namespace Nethermind.Abi
 {
+    using Nethermind.Int256;
     public class AbiInt : AbiType
     {
         private const int MaxSize = 256;
         private const int MinSize = 0;
-        
+
         public static new readonly AbiInt Int8 = new(8);
         public static new readonly AbiInt Int16 = new(16);
         public static new readonly AbiInt Int32 = new(32);
         public static new readonly AbiInt Int64 = new(64);
         public static new readonly AbiInt Int96 = new(96);
         public static new readonly AbiInt Int256 = new(256);
-
-        static AbiInt()
-        {
-            RegisterMapping<sbyte>(Int8);
-            RegisterMapping<short>(Int16);
-            RegisterMapping<int>(Int32);
-            RegisterMapping<long>(Int64);
-            RegisterMapping<Int256.Int256>(Int256);
-        }
 
         public AbiInt(int length)
         {
@@ -72,21 +50,21 @@ namespace Nethermind.Abi
         public int LengthInBytes => Length / 8;
 
         public override string Name { get; }
-        
+
         public override (object, int) Decode(byte[] data, int position, bool packed)
         {
             var (value, length) = DecodeInt(data, position, packed);
-            
+
             switch (Length)
             {
                 case { } n when n <= 8:
-                    return ((sbyte) value, length);
+                    return ((sbyte)value, length);
                 case { } n when n <= 16:
-                    return ((short) value, length);
+                    return ((short)value, length);
                 case { } n when n <= 32:
-                    return ((int) value, length);
+                    return ((int)value, length);
                 case { } n when n <= 64:
-                    return ((long) value, length);
+                    return ((long)value, length);
                 default:
                     return (value, length);
             }
@@ -110,7 +88,7 @@ namespace Nethermind.Abi
         }
 
         public override Type CSharpType { get; } = typeof(BigInteger);
-        
+
         private Type GetCSharpType()
         {
             switch (Length)

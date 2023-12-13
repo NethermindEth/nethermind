@@ -1,98 +1,105 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-// 
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Generic;
 using System.IO;
+
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.Tracing.GethStyle;
 using Nethermind.Evm.Tracing.ParityStyle;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
-using Newtonsoft.Json;
+using Nethermind.Serialization.Rlp;
 
-namespace Nethermind.Blockchain
+namespace Nethermind.Blockchain;
+
+public static class BlockTraceDumper
 {
-    public static class BlockTraceDumper
+    public static void LogDiagnosticRlp(
+        Block block,
+        ILogger logger,
+        bool toFile,
+        bool toLog)
     {
-        public static List<JsonConverter> Converters { get; } = new List<JsonConverter>();
-        
-        public static void LogDiagnosticTrace(
-            IBlockTracer blockTracer,
-            Keccak blockHash,
-            ILogger logger)
+        if (toFile || toLog)
         {
-            static FileStream GetFileStream(string name) =>
-                new(
-                    Path.Combine(Path.GetTempPath(), name),
-                    FileMode.Create,
-                    FileAccess.Write);
-            
-            string fileName = string.Empty;
-
-            try
+            Rlp rlp = new BlockDecoder().Encode(block, RlpBehaviors.AllowExtraBytes);
+            Hash256 blockHash = block.Hash;
+            if (toFile)
             {
-                IJsonSerializer serializer = new EthereumJsonSerializer();
-                serializer.RegisterConverters(Converters);
-
-                if (blockTracer is BlockReceiptsTracer receiptsTracer)
-                {
-                    fileName = $"receipts_{blockHash}.txt";
-                    using FileStream diagnosticFile = GetFileStream(fileName);               
-                    IReadOnlyList<TxReceipt> receipts = receiptsTracer.TxReceipts;
-                    serializer.Serialize(diagnosticFile, receipts, true);
-                    if (logger.IsInfo)
-                        logger.Info($"Created a Receipts trace of block {blockHash} in file {diagnosticFile.Name}");
-
-                }
-                
-                if (blockTracer is GethLikeBlockTracer gethTracer)
-                {
-                    fileName = $"gethStyle_{blockHash}.txt";
-                    using FileStream diagnosticFile = GetFileStream(fileName);
-                    IReadOnlyCollection<GethLikeTxTrace> trace = gethTracer.BuildResult();
-                    serializer.Serialize(diagnosticFile, trace, true);
-                    if (logger.IsInfo)
-                        logger.Info($"Created a Geth-style trace of block {blockHash} in file {diagnosticFile.Name}");
-                }
-
-                if (blockTracer is ParityLikeBlockTracer parityTracer)
-                {
-                    fileName = $"parityStyle_{blockHash}.txt";
-                    using FileStream diagnosticFile = GetFileStream(fileName);
-                    IReadOnlyCollection<ParityLikeTxTrace> trace = parityTracer.BuildResult();
-                    serializer.Serialize(diagnosticFile, trace, true);
-                    if (logger.IsInfo)
-                        logger.Info($"Created a Parity-style trace of block {blockHash} in file {diagnosticFile.Name}");
-                }
+                string fileName = $"block_{blockHash}.rlp";
+                using FileStream diagnosticFile = GetFileStream(fileName);
+                diagnosticFile.Write(rlp.Bytes);
+                if (logger.IsInfo)
+                    logger.Info($"Created a RLP dump of invalid block {blockHash} in file {diagnosticFile.Name}");
             }
-            catch (IOException e)
+
+            if (toLog)
             {
-                if (logger.IsError)
-                    logger.Error($"Cannot save trace of block {blockHash} in file {fileName}", e);
+                if (logger.IsInfo) logger.Info($"RLP dump of invalid block {blockHash} is {rlp.Bytes.ToHexString()}");
             }
         }
+    }
 
-        public static void LogTraceFailure(IBlockTracer blockTracer, Keccak blockHash, Exception exception, ILogger logger)
+    public static void LogDiagnosticTrace(
+        IBlockTracer blockTracer,
+        Hash256 blockHash,
+        ILogger logger)
+    {
+        string fileName = string.Empty;
+
+        try
+        {
+            if (blockTracer is BlockReceiptsTracer receiptsTracer)
+            {
+                fileName = $"receipts_{blockHash}.txt";
+                using FileStream diagnosticFile = GetFileStream(fileName);
+                IReadOnlyList<TxReceipt> receipts = receiptsTracer.TxReceipts;
+                EthereumJsonSerializer.SerializeToStream(diagnosticFile, receipts, true);
+                if (logger.IsInfo)
+                    logger.Info($"Created a Receipts trace of invalid block {blockHash} in file {diagnosticFile.Name}");
+            }
+
+            if (blockTracer is GethLikeBlockMemoryTracer gethTracer)
+            {
+                fileName = $"gethStyle_{blockHash}.txt";
+                using FileStream diagnosticFile = GetFileStream(fileName);
+                IReadOnlyCollection<GethLikeTxTrace> trace = gethTracer.BuildResult();
+                EthereumJsonSerializer.SerializeToStream(diagnosticFile, trace, true);
+                if (logger.IsInfo)
+                    logger.Info($"Created a Geth-style trace of invalid block {blockHash} in file {diagnosticFile.Name}");
+            }
+
+            if (blockTracer is ParityLikeBlockTracer parityTracer)
+            {
+                fileName = $"parityStyle_{blockHash}.txt";
+                using FileStream diagnosticFile = GetFileStream(fileName);
+                IReadOnlyCollection<ParityLikeTxTrace> trace = parityTracer.BuildResult();
+                EthereumJsonSerializer.SerializeToStream(diagnosticFile, trace, true);
+                if (logger.IsInfo)
+                    logger.Info($"Created a Parity-style trace of invalid block {blockHash} in file {diagnosticFile.Name}");
+            }
+        }
+        catch (IOException e)
         {
             if (logger.IsError)
-                logger.Error($"Cannot create trace of blocks starting from {blockHash} of type {blockTracer.GetType().Name}", exception);
+                logger.Error($"Cannot save trace of block {blockHash} in file {fileName}", e);
         }
+    }
+
+    private static FileStream GetFileStream(string name) =>
+        new(
+            Path.Combine(Path.GetTempPath(), name),
+            FileMode.Create,
+            FileAccess.Write);
+
+    public static void LogTraceFailure(IBlockTracer blockTracer, Hash256 blockHash, Exception exception, ILogger logger)
+    {
+        if (logger.IsError)
+            logger.Error($"Cannot create trace of blocks starting from {blockHash} of type {blockTracer.GetType().Name}", exception);
     }
 }

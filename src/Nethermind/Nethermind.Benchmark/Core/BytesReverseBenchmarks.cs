@@ -1,18 +1,5 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Buffers.Binary;
@@ -33,8 +20,8 @@ namespace Nethermind.Benchmarks.Core
 
         private byte[][] _scenarios = new[]
         {
-            Keccak.Zero.Bytes,
-            Keccak.EmptyTreeHash.Bytes,
+            Keccak.Zero.BytesToArray(),
+            Keccak.EmptyTreeHash.BytesToArray(),
             TestItem.AddressA.Bytes
         };
 
@@ -53,7 +40,7 @@ namespace Nethermind.Benchmarks.Core
                     _shuffleMask = Avx2.LoadVector256(ptr_mask);
                 }
             }
-            
+
             _a = _scenarios[ScenarioIndex];
         }
 
@@ -68,7 +55,7 @@ namespace Nethermind.Benchmarks.Core
         {
             _a.AsSpan().Reverse();
         }
-        
+
         [Benchmark]
         public void SwapVersion()
         {
@@ -80,13 +67,13 @@ namespace Nethermind.Benchmarks.Core
             {
                 Span<byte> bytesPadded = stackalloc byte[32];
                 _a.CopyTo(bytesPadded);
-                
+
                 Swap(bytesPadded);
-                
+
                 bytesPadded.Slice(32 - _a.Length);
             }
         }
-        
+
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static void Swap(Span<byte> bytes)
         {
@@ -94,8 +81,8 @@ namespace Nethermind.Benchmarks.Core
             (ulongs[0], ulongs[3]) = (BinaryPrimitives.ReverseEndianness(ulongs[3]), BinaryPrimitives.ReverseEndianness(ulongs[0]));
             (ulongs[1], ulongs[2]) = (BinaryPrimitives.ReverseEndianness(ulongs[2]), BinaryPrimitives.ReverseEndianness(ulongs[1]));
         }
-        
-        private static byte[] _reverseMask = {15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0};
+
+        private static byte[] _reverseMask = { 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0 };
 
         [Benchmark]
         public void Avx2Version()

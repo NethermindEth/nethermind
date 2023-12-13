@@ -1,18 +1,5 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 namespace Nethermind.TxPool
 {
@@ -20,7 +7,17 @@ namespace Nethermind.TxPool
     {
         public int PeerNotificationThreshold { get; set; } = 5;
         public int Size { get; set; } = 2048;
+        public bool BlobSupportEnabled { get; set; } = false;
+        public bool PersistentBlobStorageEnabled { get; set; } = false;
+        public int PersistentBlobStorageSize { get; set; } = 16 * 1024; // theoretical max - 13GB (128KB * 6 * 16384); for one-blob txs - 2GB (128KB * 1 * 16384);
+                                                                        // practical max - something between, but closer to 2GB than 12GB. Geth is limiting it to 10GB.
+                                                                        // every day about 21600 blobs will be included (7200 blocks per day * 3 blob target)
+        public int BlobCacheSize { get; set; } = 256;
+        public int InMemoryBlobPoolSize { get; set; } = 512; // it is used when persistent pool is disabled
+        public int MaxPendingTxsPerSender { get; set; } = 0;
+        public int MaxPendingBlobTxsPerSender { get; set; } = 16;
         public int HashCacheSize { get; set; } = 512 * 1024;
         public long? GasLimit { get; set; } = null;
+        public int? ReportMinutes { get; set; } = null;
     }
 }

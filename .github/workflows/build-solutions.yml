@@ -1,0 +1,43 @@
+name: Build solutions
+
+on:
+  pull_request:
+    branches: [master]
+  push:
+    branches: [master]
+
+defaults:
+  run:
+    working-directory: src/Nethermind
+
+env:
+  BUILD_CONFIG: release
+  DOTNET_SYSTEM_CONSOLE_ALLOW_ANSI_COLOR_REDIRECTION: 1
+  TERM: xterm
+
+jobs:
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          submodules: true
+      - name: Install Linux packages
+        run: sudo apt-get update && sudo apt-get install libsnappy-dev
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v3
+      - name: Install dependencies
+        run: |
+          dotnet restore Nethermind.sln
+          dotnet restore EthereumTests.sln
+          dotnet restore Benchmarks.sln
+      - name: Build Nethermind.sln
+        run: dotnet build Nethermind.sln -c ${{ env.BUILD_CONFIG }} --no-restore
+      - name: Build EthereumTests.sln
+        run: dotnet build EthereumTests.sln -c ${{ env.BUILD_CONFIG }} --no-restore
+      - name: Build Benchmarks.sln
+        run: dotnet build Benchmarks.sln -c ${{ env.BUILD_CONFIG }} --no-restore

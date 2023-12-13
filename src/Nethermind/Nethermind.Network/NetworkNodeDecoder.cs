@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.IO;
@@ -54,7 +41,13 @@ namespace Nethermind.Network
 
         public void Encode(RlpStream stream, NetworkNode item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            throw new NotImplementedException();
+            int contentLength = GetContentLength(item, rlpBehaviors);
+            stream.StartSequence(contentLength);
+            stream.Encode(item.NodeId.Bytes);
+            stream.Encode(item.Host);
+            stream.Encode(item.Port);
+            stream.Encode(string.Empty);
+            stream.Encode(item.Reputation);
         }
 
         public Rlp Encode(NetworkNode item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
@@ -83,7 +76,6 @@ namespace Nethermind.Network
         private int GetContentLength(NetworkNode item, RlpBehaviors rlpBehaviors)
         {
             return Rlp.LengthOf(item.NodeId.Bytes)
-                   + Rlp.LengthOf(item.NodeId.Bytes)
                    + Rlp.LengthOf(item.Host)
                    + Rlp.LengthOf(item.Port)
                    + 1

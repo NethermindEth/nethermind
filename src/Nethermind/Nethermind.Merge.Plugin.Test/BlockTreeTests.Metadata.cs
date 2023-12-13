@@ -1,19 +1,5 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-// 
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
 using NUnit.Framework;
@@ -34,7 +20,7 @@ public partial class BlockTreeTests
             .AssertMetadata(5, 6, BlockMetadata.BeaconHeader | BlockMetadata.BeaconMainChain)
             .AssertMetadata(7, 9, BlockMetadata.BeaconBody | BlockMetadata.BeaconHeader | BlockMetadata.BeaconMainChain);
     }
-    
+
     [Test]
     public void Should_set_correct_metadata_after_suggest_blocks_using_chain_levels()
     {
@@ -46,7 +32,7 @@ public partial class BlockTreeTests
             .SuggestBlocksUsingChainLevels()
             .AssertMetadata(0, 9, BlockMetadata.None);
     }
-    
+
     [Test]
     public void Should_fill_beacon_block_metadata_when_not_moved_to_main_chain()
     {
@@ -58,24 +44,24 @@ public partial class BlockTreeTests
             .SuggestBlocksUsingChainLevels()
             .AssertMetadata(0, 9, BlockMetadata.None);
     }
-    
+
     [Test]
     public void Removing_beacon_metadata()
     {
         BlockMetadata metadata = BlockMetadata.BeaconBody | BlockMetadata.BeaconHeader;
         metadata = metadata & ~(BlockMetadata.BeaconBody | BlockMetadata.BeaconHeader);
-        Assert.AreEqual(BlockMetadata.None, metadata);
-        
+        Assert.That(metadata, Is.EqualTo(BlockMetadata.None));
+
         BlockMetadata metadata2 = BlockMetadata.BeaconBody | BlockMetadata.BeaconHeader | BlockMetadata.Finalized | BlockMetadata.Invalid;
         metadata2 = metadata2 & ~(BlockMetadata.BeaconBody | BlockMetadata.BeaconHeader);
-        Assert.AreEqual(BlockMetadata.Finalized | BlockMetadata.Invalid, metadata2);
-        
+        Assert.That(metadata2, Is.EqualTo(BlockMetadata.Finalized | BlockMetadata.Invalid));
+
         BlockMetadata metadata3 = BlockMetadata.None;
         metadata3 &= ~(BlockMetadata.BeaconBody | BlockMetadata.BeaconHeader);
-        Assert.AreEqual(BlockMetadata.None, metadata3);
-        
+        Assert.That(metadata3, Is.EqualTo(BlockMetadata.None));
+
         BlockMetadata metadata4 = BlockMetadata.BeaconHeader;
         metadata4 |= BlockMetadata.BeaconMainChain;
-        Assert.AreEqual(BlockMetadata.BeaconHeader | BlockMetadata.BeaconMainChain, metadata4);
+        Assert.That(metadata4, Is.EqualTo(BlockMetadata.BeaconHeader | BlockMetadata.BeaconMainChain));
     }
 }

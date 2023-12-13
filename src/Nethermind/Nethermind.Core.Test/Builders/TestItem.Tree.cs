@@ -1,27 +1,10 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 
-using System;
-using System.Net;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using Nethermind.Crypto;
 using Nethermind.Db;
-using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State;
@@ -34,7 +17,7 @@ namespace Nethermind.Core.Test.Builders
     {
         public static class Tree
         {
-            public static Keccak AccountAddress0 = new Keccak("0000000000000000000000000000000000000000000000000000000001101234");
+            public static Hash256 AccountAddress0 = new Hash256("0000000000000000000000000000000000000000000000000000000001101234");
 
             private static readonly Account _account0 = Build.An.Account.WithBalance(0).TestObject;
             private static readonly Account _account1 = Build.An.Account.WithBalance(1).TestObject;
@@ -46,21 +29,21 @@ namespace Nethermind.Core.Test.Builders
             public static PathWithAccount[] AccountsWithPaths = new PathWithAccount[]
                 {
                 new PathWithAccount(AccountAddress0, _account0),
-                new PathWithAccount(new Keccak("0000000000000000000000000000000000000000000000000000000001112345"), _account1),
-                new PathWithAccount(new Keccak("0000000000000000000000000000000000000000000000000000000001113456"), _account2),
-                new PathWithAccount(new Keccak("0000000000000000000000000000000000000000000000000000000001114567"), _account3),
-                new PathWithAccount(new Keccak("0000000000000000000000000000000000000000000000000000000001123456"), _account4),
-                new PathWithAccount(new Keccak("0000000000000000000000000000000000000000000000000000000001123457"), _account5),
+                new PathWithAccount(new Hash256("0000000000000000000000000000000000000000000000000000000001112345"), _account1),
+                new PathWithAccount(new Hash256("0000000000000000000000000000000000000000000000000000000001113456"), _account2),
+                new PathWithAccount(new Hash256("0000000000000000000000000000000000000000000000000000000001114567"), _account3),
+                new PathWithAccount(new Hash256("0000000000000000000000000000000000000000000000000000000001123456"), _account4),
+                new PathWithAccount(new Hash256("0000000000000000000000000000000000000000000000000000000001123457"), _account5),
                 };
 
             public static PathWithStorageSlot[] SlotsWithPaths = new PathWithStorageSlot[]
             {
-                new PathWithStorageSlot(new Keccak("0000000000000000000000000000000000000000000000000000000001101234"), Rlp.Encode(Bytes.FromHexString("0xab12000000000000000000000000000000000000000000000000000000000000000000000000000000")).Bytes),
-                new PathWithStorageSlot(new Keccak("0000000000000000000000000000000000000000000000000000000001112345"), Rlp.Encode(Bytes.FromHexString("0xab34000000000000000000000000000000000000000000000000000000000000000000000000000000")).Bytes),
-                new PathWithStorageSlot(new Keccak("0000000000000000000000000000000000000000000000000000000001113456"), Rlp.Encode(Bytes.FromHexString("0xab56000000000000000000000000000000000000000000000000000000000000000000000000000000")).Bytes),
-                new PathWithStorageSlot(new Keccak("0000000000000000000000000000000000000000000000000000000001114567"), Rlp.Encode(Bytes.FromHexString("0xab78000000000000000000000000000000000000000000000000000000000000000000000000000000")).Bytes),
-                new PathWithStorageSlot(new Keccak("0000000000000000000000000000000000000000000000000000000001123456"), Rlp.Encode(Bytes.FromHexString("0xab90000000000000000000000000000000000000000000000000000000000000000000000000000000")).Bytes),
-                new PathWithStorageSlot(new Keccak("0000000000000000000000000000000000000000000000000000000001123457"), Rlp.Encode(Bytes.FromHexString("0xab9a000000000000000000000000000000000000000000000000000000000000000000000000000000")).Bytes),
+                new PathWithStorageSlot(new Hash256("0000000000000000000000000000000000000000000000000000000001101234"), Rlp.Encode(Bytes.FromHexString("0xab12000000000000000000000000000000000000000000000000000000000000000000000000000000")).Bytes),
+                new PathWithStorageSlot(new Hash256("0000000000000000000000000000000000000000000000000000000001112345"), Rlp.Encode(Bytes.FromHexString("0xab34000000000000000000000000000000000000000000000000000000000000000000000000000000")).Bytes),
+                new PathWithStorageSlot(new Hash256("0000000000000000000000000000000000000000000000000000000001113456"), Rlp.Encode(Bytes.FromHexString("0xab56000000000000000000000000000000000000000000000000000000000000000000000000000000")).Bytes),
+                new PathWithStorageSlot(new Hash256("0000000000000000000000000000000000000000000000000000000001114567"), Rlp.Encode(Bytes.FromHexString("0xab78000000000000000000000000000000000000000000000000000000000000000000000000000000")).Bytes),
+                new PathWithStorageSlot(new Hash256("0000000000000000000000000000000000000000000000000000000001123456"), Rlp.Encode(Bytes.FromHexString("0xab90000000000000000000000000000000000000000000000000000000000000000000000000000000")).Bytes),
+                new PathWithStorageSlot(new Hash256("0000000000000000000000000000000000000000000000000000000001123457"), Rlp.Encode(Bytes.FromHexString("0xab9a000000000000000000000000000000000000000000000000000000000000000000000000000000")).Bytes),
             };
 
             public static StateTree GetStateTree(ITrieStore? store)

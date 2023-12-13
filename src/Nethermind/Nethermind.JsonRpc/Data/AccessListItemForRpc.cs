@@ -1,63 +1,57 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-// 
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Eip2930;
 using Nethermind.Int256;
 using Nethermind.Serialization.Json;
-using Newtonsoft.Json;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace Nethermind.JsonRpc.Data
 {
-    public class AccessListItemForRpc
+    public struct AccessListItemForRpc : IEquatable<AccessListItemForRpc>
     {
-        public AccessListItemForRpc(Address address, IReadOnlyCollection<UInt256>? storageKeys)
+        [JsonConstructor]
+        public AccessListItemForRpc() { }
+
+        public AccessListItemForRpc(Address address, IEnumerable<UInt256>? storageKeys)
         {
             Address = address;
-            StorageKeys = storageKeys?.ToArray() ?? Array.Empty<UInt256>();
+            StorageKeys = storageKeys;
         }
-        
+
         public Address Address { get; set; }
-        
-        [JsonProperty(ItemConverterType = typeof(StorageCellIndexConverter))]
-        public UInt256[]? StorageKeys { get; set; }
+        [JsonConverter(typeof(StorageCellIndexConverter))]
+        public IEnumerable<UInt256>? StorageKeys { get; set; }
 
-        public static AccessListItemForRpc[] FromAccessList(AccessList accessList) => 
-            accessList.Data.Select(kvp => new AccessListItemForRpc(kvp.Key, kvp.Value)).ToArray();
+        public static IEnumerable<AccessListItemForRpc> FromAccessList(AccessList accessList) =>
+            accessList.Select(tuple => new AccessListItemForRpc(tuple.Address, tuple.StorageKeys));
 
-        public static AccessList ToAccessList(AccessListItemForRpc[] accessList)
+        public static AccessList ToAccessList(IEnumerable<AccessListItemForRpc> accessList)
         {
-            AccessListBuilder accessListBuilder = new();
-            for (int i = 0; i < accessList.Length; i++)
+            AccessList.Builder builder = new();
+            foreach (AccessListItemForRpc accessListItem in accessList)
             {
-                var accessListItem = accessList[i];
-                accessListBuilder.AddAddress(accessListItem.Address);
+                builder.AddAddress(accessListItem.Address);
                 if (accessListItem.StorageKeys is not null)
                 {
-                    for (int j = 0; j < accessListItem.StorageKeys.Length; j++)
+                    foreach (UInt256 index in accessListItem.StorageKeys)
                     {
-                        accessListBuilder.AddStorage(accessListItem.StorageKeys[j]);
+                        builder.AddStorage(index);
                     }
                 }
             }
-            return accessListBuilder.ToAccessList();
+
+            return builder.Build();
         }
+
+        public bool Equals(AccessListItemForRpc other) => Equals(Address, other.Address) && StorageKeys.NullableSequenceEqual(other.StorageKeys);
+        public override bool Equals(object? obj) => obj is AccessListItemForRpc other && Equals(other);
+        public override int GetHashCode() => HashCode.Combine(Address, StorageKeys);
     }
 }

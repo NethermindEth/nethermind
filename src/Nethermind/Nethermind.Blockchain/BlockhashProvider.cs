@@ -1,18 +1,5 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.IO;
@@ -26,7 +13,7 @@ namespace Nethermind.Blockchain
 {
     public class BlockhashProvider : IBlockhashProvider
     {
-        private static int _maxDepth = 256;
+        private static readonly int _maxDepth = 256;
         private readonly IBlockTree _blockTree;
         private readonly ILogger _logger;
 
@@ -36,7 +23,7 @@ namespace Nethermind.Blockchain
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         }
 
-        public Keccak GetBlockhash(BlockHeader currentBlock, in long number)
+        public Hash256 GetBlockhash(BlockHeader currentBlock, in long number)
         {
             long current = currentBlock.Number;
             if (number >= current || number < current - Math.Min(current, _maxDepth))
@@ -47,32 +34,32 @@ namespace Nethermind.Blockchain
             bool isFastSyncSearch = false;
 
             BlockHeader header = _blockTree.FindParentHeader(currentBlock, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
-            if (header == null)
+            if (header is null)
             {
                 throw new InvalidDataException("Parent header cannot be found when executing BLOCKHASH operation");
             }
-            
+
             for (var i = 0; i < _maxDepth; i++)
             {
                 if (number == header.Number)
                 {
-                    if(_logger.IsTrace) _logger.Trace($"BLOCKHASH opcode returning {header.Number},{header.Hash} for {currentBlock.Number} -> {number}");
+                    if (_logger.IsTrace) _logger.Trace($"BLOCKHASH opcode returning {header.Number},{header.Hash} for {currentBlock.Number} -> {number}");
                     return header.Hash;
                 }
 
                 header = _blockTree.FindParentHeader(header, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
-                if (header == null)
+                if (header is null)
                 {
                     throw new InvalidDataException("Parent header cannot be found when executing BLOCKHASH operation");
                 }
-                
+
                 if (_blockTree.IsMainChain(header.Hash) && !isFastSyncSearch)
                 {
                     try
                     {
                         BlockHeader currentHeader = header;
                         header = _blockTree.FindHeader(number, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
-                        if (header == null)
+                        if (header is null)
                         {
                             isFastSyncSearch = true;
                             header = currentHeader;
@@ -93,7 +80,7 @@ namespace Nethermind.Blockchain
                 }
             }
 
-            if(_logger.IsTrace) _logger.Trace($"BLOCKHASH opcode returning null for {currentBlock.Number} -> {number}");
+            if (_logger.IsTrace) _logger.Trace($"BLOCKHASH opcode returning null for {currentBlock.Number} -> {number}");
             return null;
         }
     }

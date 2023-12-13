@@ -1,19 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-// 
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 #nullable enable
 using System.Threading.Tasks;
@@ -40,12 +26,12 @@ public partial class EthRpcModuleTests
         GasPriceOracle gasPriceOracle = new(blockTree, GetSpecProviderWithEip1559EnabledAs(eip1559Enabled), LimboLogs.Instance);
         ctx.Test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithBlockFinder(blockTree).WithGasPriceOracle(gasPriceOracle)
             .Build();
-        
-        string serialized = ctx.Test.TestEthRpc("eth_gasPrice");  
-        
-        Assert.AreEqual($"{{\"jsonrpc\":\"2.0\",\"result\":\"{expected}\",\"id\":67}}", serialized);
+
+        string serialized = await ctx.Test.TestEthRpc("eth_gasPrice");
+
+        Assert.That(serialized, Is.EqualTo($"{{\"jsonrpc\":\"2.0\",\"result\":\"{expected}\",\"id\":67}}"));
     }
-    
+
     [TestCase(true, "0x3")] //Gas Prices: 1,2,3,3,4,5 | Max Index: 5 | 60th Percentile: 5 * (3/5) = 3 | Result: 3 (0x3)
     [TestCase(false, "0x2")] //Gas Prices: 0,1,1,2,2,3 | Max Index: 5 | 60th Percentile: 5 * (3/5) = 3 | Result: 2 (0x2)
     public async Task Eth_gasPrice_BlocksAvailableLessThanBlocksToCheckWith1559Tx_ShouldGiveCorrectResult(bool eip1559Enabled, string expected)
@@ -56,12 +42,12 @@ public partial class EthRpcModuleTests
         GasPriceOracle gasPriceOracle = new(blockTree, GetSpecProviderWithEip1559EnabledAs(eip1559Enabled), LimboLogs.Instance);
         ctx.Test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithBlockFinder(blockTree).WithGasPriceOracle(gasPriceOracle)
             .Build();
-        
-        string serialized = ctx.Test.TestEthRpc("eth_gasPrice");
-        
-        Assert.AreEqual($"{{\"jsonrpc\":\"2.0\",\"result\":\"{expected}\",\"id\":67}}", serialized);
+
+        string serialized = await ctx.Test.TestEthRpc("eth_gasPrice");
+
+        Assert.That(serialized, Is.EqualTo($"{{\"jsonrpc\":\"2.0\",\"result\":\"{expected}\",\"id\":67}}"));
     }
-    
+
 
     private static Block[] GetThreeTestBlocks()
     {
@@ -79,8 +65,8 @@ public partial class EthRpcModuleTests
             Build.A.Transaction.WithGasPrice(5).SignedAndResolved(TestItem.PrivateKeyA).WithNonce(1).TestObject,
             Build.A.Transaction.WithGasPrice(6).SignedAndResolved(TestItem.PrivateKeyB).WithNonce(1).TestObject
         ).TestObject;
-       
-        return new[]{firstBlock, secondBlock, thirdBlock};
+
+        return new[] { firstBlock, secondBlock, thirdBlock };
     }
 
     private static Block[] GetThreeTestBlocksWith1559Tx()
@@ -99,7 +85,7 @@ public partial class EthRpcModuleTests
             Build.A.Transaction.WithMaxFeePerGas(5).WithMaxPriorityFeePerGas(1).SignedAndResolved(TestItem.PrivateKeyA).WithNonce(1).WithType(TxType.EIP1559).TestObject, //Min(5, 1 + 3) = 4
             Build.A.Transaction.WithMaxFeePerGas(6).WithMaxPriorityFeePerGas(2).SignedAndResolved(TestItem.PrivateKeyB).WithNonce(1).WithType(TxType.EIP1559).TestObject  //Min(6, 2 + 3) = 5
         ).TestObject;
-       
-        return new[]{firstBlock, secondBlock, thirdBlock};
+
+        return new[] { firstBlock, secondBlock, thirdBlock };
     }
 }

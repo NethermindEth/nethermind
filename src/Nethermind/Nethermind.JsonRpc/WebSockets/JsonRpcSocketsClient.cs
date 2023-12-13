@@ -1,165 +1,181 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Buffers;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
-using System.Linq;
-using System.Runtime.InteropServices;
+using System.IO.Pipelines;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
-using Nethermind.Core;
+
 using Nethermind.Core.Extensions;
 using Nethermind.JsonRpc.Modules;
-using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.Sockets;
 
-namespace Nethermind.JsonRpc.WebSockets
+namespace Nethermind.JsonRpc.WebSockets;
+
+public class JsonRpcSocketsClient : SocketClient, IJsonRpcDuplexClient
 {
-    public class JsonRpcSocketsClient : SocketClient, IJsonRpcDuplexClient
+    public event EventHandler? Closed;
+
+    private readonly IJsonRpcProcessor _jsonRpcProcessor;
+    private readonly IJsonRpcService _jsonRpcService;
+    private readonly IJsonRpcLocalStats _jsonRpcLocalStats;
+    private readonly long? _maxBatchResponseBodySize;
+    private readonly JsonRpcContext _jsonRpcContext;
+
+    private readonly SemaphoreSlim _sendSemaphore = new(1, 1);
+
+    public JsonRpcSocketsClient(
+        string clientName,
+        ISocketHandler handler,
+        RpcEndpoint endpointType,
+        IJsonRpcProcessor jsonRpcProcessor,
+        IJsonRpcService jsonRpcService,
+        IJsonRpcLocalStats jsonRpcLocalStats,
+        IJsonSerializer jsonSerializer,
+        JsonRpcUrl? url = null,
+        long? maxBatchResponseBodySize = null)
+        : base(clientName, handler, jsonSerializer)
     {
-        public event EventHandler Closed;
+        _jsonRpcProcessor = jsonRpcProcessor;
+        _jsonRpcService = jsonRpcService;
+        _jsonRpcLocalStats = jsonRpcLocalStats;
+        _maxBatchResponseBodySize = maxBatchResponseBodySize;
+        _jsonRpcContext = new JsonRpcContext(endpointType, this, url);
+    }
 
-        private readonly IJsonRpcProcessor _jsonRpcProcessor;
-        private readonly IJsonRpcService _jsonRpcService;
-        private readonly IJsonRpcLocalStats _jsonRpcLocalStats;
-        private readonly JsonRpcContext _jsonRpcContext;
+    public override void Dispose()
+    {
+        base.Dispose();
+        _sendSemaphore.Dispose();
+        Closed?.Invoke(this, EventArgs.Empty);
+    }
 
-        public JsonRpcSocketsClient(
-            string clientName,
-            ISocketHandler handler,
-            RpcEndpoint endpointType,
-            IJsonRpcProcessor jsonRpcProcessor,
-            IJsonRpcService jsonRpcService,
-            IJsonRpcLocalStats jsonRpcLocalStats,
-            IJsonSerializer jsonSerializer,
-            JsonRpcUrl? url = null)
-            : base(clientName, handler, jsonSerializer)
+    private static readonly byte[] _jsonOpeningBracket = { Convert.ToByte('[') };
+    private static readonly byte[] _jsonComma = { Convert.ToByte(',') };
+    private static readonly byte[] _jsonClosingBracket = { Convert.ToByte(']') };
+
+    public override async Task ProcessAsync(ArraySegment<byte> data)
+    {
+        Stopwatch stopwatch = Stopwatch.StartNew();
+        IncrementBytesReceivedMetric(data.Count);
+        PipeReader request = PipeReader.Create(new MemoryStream(data.Array!, data.Offset, data.Count));
+        int allResponsesSize = 0;
+
+        await foreach (JsonRpcResult result in _jsonRpcProcessor.ProcessAsync(request, _jsonRpcContext))
         {
-            _jsonRpcProcessor = jsonRpcProcessor;
-            _jsonRpcService = jsonRpcService;
-            _jsonRpcLocalStats = jsonRpcLocalStats;
-            _jsonRpcContext = new JsonRpcContext(endpointType, this, url);
-        }
+            stopwatch.Restart();
 
-        public override void Dispose()
-        {
-            base.Dispose();
-            Closed?.Invoke(this, EventArgs.Empty);
-        }
+            int singleResponseSize = await SendJsonRpcResult(result);
+            allResponsesSize += singleResponseSize;
 
-        public override async Task ProcessAsync(ArraySegment<byte> data)
-        {
-            Stopwatch stopwatch = Stopwatch.StartNew();
-            IncrementBytesReceivedMetric(data.Count);
-            using TextReader request = new StreamReader(new MemoryStream(data.Array!, data.Offset, data.Count), Encoding.UTF8);
-            int allResponsesSize = 0;
-            await foreach (JsonRpcResult result in _jsonRpcProcessor.ProcessAsync(request, _jsonRpcContext))
+            if (result.IsCollection)
             {
-                using (result)
+                long handlingTimeMicroseconds = stopwatch.ElapsedMicroseconds();
+                _ = _jsonRpcLocalStats.ReportCall(new RpcReport("# collection serialization #", handlingTimeMicroseconds, true), handlingTimeMicroseconds, singleResponseSize);
+            }
+            else
+            {
+                long handlingTimeMicroseconds = stopwatch.ElapsedMicroseconds();
+                _ = _jsonRpcLocalStats.ReportCall(result.Report!.Value, handlingTimeMicroseconds, singleResponseSize);
+            }
+            stopwatch.Restart();
+        }
+
+        IncrementBytesSentMetric(allResponsesSize);
+    }
+
+    private void IncrementBytesReceivedMetric(int size)
+    {
+        if (_jsonRpcContext.RpcEndpoint == RpcEndpoint.Ws)
+        {
+            Interlocked.Add(ref Metrics.JsonRpcBytesReceivedWebSockets, size);
+        }
+
+        if (_jsonRpcContext.RpcEndpoint == RpcEndpoint.IPC)
+        {
+            Interlocked.Add(ref Metrics.JsonRpcBytesReceivedIpc, size);
+        }
+    }
+
+    private void IncrementBytesSentMetric(int size)
+    {
+        if (_jsonRpcContext.RpcEndpoint == RpcEndpoint.Ws)
+        {
+            Interlocked.Add(ref Metrics.JsonRpcBytesSentWebSockets, size);
+        }
+
+        if (_jsonRpcContext.RpcEndpoint == RpcEndpoint.IPC)
+        {
+            Interlocked.Add(ref Metrics.JsonRpcBytesSentIpc, size);
+        }
+    }
+
+    public virtual async Task<int> SendJsonRpcResult(JsonRpcResult result)
+    {
+        await _sendSemaphore.WaitAsync();
+        try
+        {
+            if (result.IsCollection)
+            {
+                int singleResponseSize = 1;
+                bool isFirst = true;
+                await _handler.SendRawAsync(_jsonOpeningBracket, false);
+                JsonRpcBatchResultAsyncEnumerator enumerator = result.BatchedResponses!.GetAsyncEnumerator(CancellationToken.None);
+                try
                 {
-                    int singleResponseSize = await SendJsonRpcResult(result);
-                    allResponsesSize += singleResponseSize;
-                    if (result.IsCollection)
+                    while (await enumerator.MoveNextAsync())
                     {
-                        _jsonRpcLocalStats.ReportCalls(result.Reports);
+                        JsonRpcResult.Entry entry = enumerator.Current;
+                        using (entry)
+                        {
+                            if (!isFirst)
+                            {
+                                await _handler.SendRawAsync(_jsonComma, false);
+                                singleResponseSize += 1;
+                            }
+                            isFirst = false;
+                            singleResponseSize += await SendJsonRpcResultEntry(entry, false);
+                            _ = _jsonRpcLocalStats.ReportCall(entry.Report);
 
-                        long handlingTimeMicroseconds = stopwatch.ElapsedMicroseconds();
-                        _jsonRpcLocalStats.ReportCall(new RpcReport("# collection serialization #", handlingTimeMicroseconds, true), handlingTimeMicroseconds, singleResponseSize);
-                        stopwatch.Restart();
+                            // We reached the limit and don't want to responded to more request in the batch
+                            if (!_jsonRpcContext.IsAuthenticated && singleResponseSize > _maxBatchResponseBodySize)
+                            {
+                                enumerator.IsStopped = true;
+                            }
+                        }
                     }
-                    else
-                    {
-                        long handlingTimeMicroseconds = stopwatch.ElapsedMicroseconds();
-                        _jsonRpcLocalStats.ReportCall(result.Report, handlingTimeMicroseconds, singleResponseSize);
-                        stopwatch.Restart();
-                    }
                 }
-            }
-
-            IncrementBytesSentMetric(allResponsesSize);
-        }
-
-        private void IncrementBytesReceivedMetric(int size)
-        {
-            if (_jsonRpcContext.RpcEndpoint == RpcEndpoint.Ws)
-            {
-                Interlocked.Add(ref Metrics.JsonRpcBytesReceivedWebSockets, size);
-            }
-
-            if (_jsonRpcContext.RpcEndpoint == RpcEndpoint.IPC)
-            {
-                Interlocked.Add(ref Metrics.JsonRpcBytesReceivedIpc, size);
-            }
-        }
-        
-        private void IncrementBytesSentMetric(int size)
-        {
-            if (_jsonRpcContext.RpcEndpoint == RpcEndpoint.Ws)
-            {
-                Interlocked.Add(ref Metrics.JsonRpcBytesSentWebSockets, size);
-            }
-
-            if (_jsonRpcContext.RpcEndpoint == RpcEndpoint.IPC)
-            {
-                Interlocked.Add(ref Metrics.JsonRpcBytesSentIpc, size);
-            }
-        }
-
-        public virtual async Task<int> SendJsonRpcResult(JsonRpcResult result)
-        {
-            void SerializeTimeoutException(MemoryStream stream)
-            {
-                JsonRpcErrorResponse error = _jsonRpcService.GetErrorResponse(ErrorCodes.Timeout, "Request was canceled due to enabled timeout.");
-                _jsonSerializer.Serialize(stream, error);
-            }
-
-            await using MemoryStream resultData = new();
-
-            try
-            {
-                if (result.IsCollection)
+                finally
                 {
-                    _jsonSerializer.Serialize(resultData, result.Responses);
+                    await enumerator.DisposeAsync();
                 }
-                else
-                {
-                    _jsonSerializer.Serialize(resultData, result.Response);
-                }
-            }
-            catch (Exception e) when (e.InnerException is OperationCanceledException)
-            {
-                SerializeTimeoutException(resultData);
-            }
-            catch (OperationCanceledException)
-            {
-                SerializeTimeoutException(resultData);
-            }
 
-            if (resultData.TryGetBuffer(out ArraySegment<byte> data))
-            {
-                await _handler.SendRawAsync(data);
-                return data.Count;
-            }
+                await _handler.SendRawAsync(_jsonClosingBracket, true);
+                singleResponseSize += 1;
 
-            return (int)resultData.Length;
+                return singleResponseSize;
+            }
+            else
+            {
+                return await SendJsonRpcResultEntry(result.SingleResponse!.Value);
+            }
+        }
+        finally
+        {
+            _sendSemaphore.Release();
+        }
+    }
+
+    private async Task<int> SendJsonRpcResultEntry(JsonRpcResult.Entry result, bool endOfMessage = true)
+    {
+        using (result)
+        {
+            return (int)await _jsonSerializer.SerializeAsync(_handler.SendUsingStream(), result.Response, indented: false, leaveOpen: !endOfMessage);
         }
     }
 }

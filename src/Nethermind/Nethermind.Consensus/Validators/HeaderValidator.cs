@@ -1,29 +1,14 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-//
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-//
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-//
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
-using System.Linq;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
+using Nethermind.Evm;
 using Nethermind.Int256;
 using Nethermind.Logging;
 
@@ -75,9 +60,9 @@ namespace Nethermind.Consensus.Validators
                 if (_logger.IsWarn) _logger.Warn($"Invalid block header ({header.Hash}) - invalid block hash");
             }
 
-            IReleaseSpec spec = _specProvider.GetSpec(header.Number);
+            IReleaseSpec spec = _specProvider.GetSpec(header);
             bool extraDataValid = ValidateExtraData(header, parent, spec, isUncle);
-            if (parent == null)
+            if (parent is null)
             {
                 if (header.Number == 0)
                 {
@@ -96,10 +81,10 @@ namespace Nethermind.Consensus.Validators
 
             bool totalDifficultyCorrect = ValidateTotalDifficulty(parent, header);
 
-            bool sealParamsCorrect = _sealValidator.ValidateParams(parent, header);
+            bool sealParamsCorrect = _sealValidator.ValidateParams(parent, header, isUncle);
             if (!sealParamsCorrect)
             {
-                 if (_logger.IsWarn) _logger.Warn($"Invalid block header ({header.Hash}) - seal parameters incorrect");
+                if (_logger.IsWarn) _logger.Warn($"Invalid block header ({header.Hash}) - seal parameters incorrect");
             }
 
             bool gasUsedBelowLimit = header.GasUsed <= header.GasLimit;
@@ -136,6 +121,8 @@ namespace Nethermind.Consensus.Validators
                 }
             }
 
+            bool eip4844Valid = ValidateBlobGasFields(header, parent, spec);
+
             return
                 totalDifficultyCorrect &&
                 gasUsedBelowLimit &&
@@ -146,7 +133,8 @@ namespace Nethermind.Consensus.Validators
                 numberIsParentPlusOne &&
                 hashAsExpected &&
                 extraDataValid &&
-                eip1559Valid;
+                eip1559Valid &&
+                eip4844Valid;
         }
 
         private bool ValidateFieldLimit(BlockHeader blockHeader)
@@ -177,9 +165,9 @@ namespace Nethermind.Consensus.Validators
 
         protected virtual bool ValidateExtraData(BlockHeader header, BlockHeader? parent, IReleaseSpec spec, bool isUncle = false)
         {
-            bool extraDataValid =  header.ExtraData.Length <= spec.MaximumExtraDataSize
+            bool extraDataValid = header.ExtraData.Length <= spec.MaximumExtraDataSize
                                    && (isUncle
-                                       || _daoBlockNumber == null
+                                       || _daoBlockNumber is null
                                        || header.Number < _daoBlockNumber
                                        || header.Number >= _daoBlockNumber + 10
                                        || Bytes.AreEqual(header.ExtraData, DaoExtraData));
@@ -227,7 +215,7 @@ namespace Nethermind.Consensus.Validators
             return gasLimitNotTooHigh && gasLimitNotTooLow;
         }
 
-        private bool ValidateTimestamp(BlockHeader parent,BlockHeader header)
+        private bool ValidateTimestamp(BlockHeader parent, BlockHeader header)
         {
             bool timestampMoreThanAtParent = header.Timestamp > parent.Timestamp;
             if (!timestampMoreThanAtParent)
@@ -239,12 +227,28 @@ namespace Nethermind.Consensus.Validators
 
         protected virtual bool ValidateTotalDifficulty(BlockHeader parent, BlockHeader header)
         {
+            if (header.TotalDifficulty is null)
+            {
+                return true;
+            }
+
             bool totalDifficultyCorrect = true;
-            if (header.IsNonZeroTotalDifficulty())
+            if (header.TotalDifficulty == 0)
+            {
+                // Same as in BlockTree.SetTotalDifficulty
+                if (!(_blockTree.Genesis!.Difficulty == 0 && _specProvider.TerminalTotalDifficulty == 0))
+                {
+                    if (_logger.IsDebug)
+                        _logger.Debug($"Invalid block header ({header.Hash}) - zero total difficulty when genesis or ttd is not zero");
+                    totalDifficultyCorrect = false;
+                }
+            }
+            else
             {
                 if (parent.TotalDifficulty + header.Difficulty != header.TotalDifficulty)
                 {
-                    if (_logger.IsDebug) _logger.Debug($"Invalid block header ({header.Hash}) - incorrect total difficulty");
+                    if (_logger.IsDebug)
+                        _logger.Debug($"Invalid block header ({header.Hash}) - incorrect total difficulty");
                     totalDifficultyCorrect = false;
                 }
             }
@@ -273,6 +277,47 @@ namespace Nethermind.Consensus.Validators
                 header.Number == 0 &&
                 header.Bloom is not null &&
                 header.ExtraData.Length <= _specProvider.GenesisSpec.MaximumExtraDataSize;
+        }
+
+        private bool ValidateBlobGasFields(BlockHeader header, BlockHeader parentHeader, IReleaseSpec spec)
+        {
+            if (!spec.IsEip4844Enabled)
+            {
+                if (header.BlobGasUsed is not null)
+                {
+                    if (_logger.IsWarn) _logger.Warn($"BlobGasUsed field should not have value.");
+                    return false;
+                }
+
+                if (header.ExcessBlobGas is not null)
+                {
+                    if (_logger.IsWarn) _logger.Warn($"ExcessBlobGas field should not have value.");
+                    return false;
+                }
+
+                return true;
+            }
+
+            if (header.BlobGasUsed is null)
+            {
+                if (_logger.IsWarn) _logger.Warn($"BlobGasUsed field is not set.");
+                return false;
+            }
+
+            if (header.ExcessBlobGas is null)
+            {
+                if (_logger.IsWarn) _logger.Warn($"ExcessBlobGas field is not set.");
+                return false;
+            }
+
+            UInt256? expectedExcessBlobGas = BlobGasCalculator.CalculateExcessBlobGas(parentHeader, spec);
+
+            if (header.ExcessBlobGas != expectedExcessBlobGas)
+            {
+                if (_logger.IsWarn) _logger.Warn($"ExcessBlobGas field is incorrect: {header.ExcessBlobGas}, should be {expectedExcessBlobGas}.");
+                return false;
+            }
+            return true;
         }
     }
 }

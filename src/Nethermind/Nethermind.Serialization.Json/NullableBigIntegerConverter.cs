@@ -1,52 +1,33 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Numerics;
-using Newtonsoft.Json;
+using System.Reflection.PortableExecutable;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace Nethermind.Serialization.Json
 {
     public class NullableBigIntegerConverter : JsonConverter<BigInteger?>
     {
-        private BigIntegerConverter _bigIntegerConverter;
-        
-        public NullableBigIntegerConverter()
-            : this(NumberConversion.Hex)
+        private static readonly BigIntegerConverter _bigIntegerConverter = new();
+
+        public override BigInteger? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
         {
+            if (reader.TokenType == JsonTokenType.Null) { return null; }
+
+            return _bigIntegerConverter.Read(ref reader, typeToConvert, options);
         }
 
-        public NullableBigIntegerConverter(NumberConversion conversion)
+        public override void Write(Utf8JsonWriter writer, BigInteger? value, JsonSerializerOptions options)
         {
-            _bigIntegerConverter = new BigIntegerConverter(conversion);
-        }
-
-        public override void WriteJson(JsonWriter writer, BigInteger? value, JsonSerializer serializer)
-        {
-            _bigIntegerConverter.WriteJson(writer, value.Value, serializer);
-        }
-
-        public override BigInteger? ReadJson(JsonReader reader, Type objectType, BigInteger? existingValue, bool hasExistingValue, JsonSerializer serializer)
-        {
-            if (reader.TokenType == JsonToken.Null || reader.Value is null)
+            if (value is null)
             {
-                return null;
+                writer.WriteNullValue();
             }
-            
-            return _bigIntegerConverter.ReadJson(reader, objectType, existingValue ?? 0, hasExistingValue, serializer);
+
+            _bigIntegerConverter.Write(writer, value.GetValueOrDefault(), options);
         }
     }
 }

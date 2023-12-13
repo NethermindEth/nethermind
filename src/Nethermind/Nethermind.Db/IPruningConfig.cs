@@ -1,71 +1,95 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-// 
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using Nethermind.Config;
 
-namespace Nethermind.Db
+namespace Nethermind.Db;
+
+[ConfigCategory(Description = "Configuration of the pruning parameters (pruning is the process of removing some of the intermediary state nodes - it saves some disk space but makes most of the historical state queries fail).")]
+public interface IPruningConfig : IConfig
 {
-    [ConfigCategory(Description = "Configuration of the pruning parameters (pruning is the process of removing some of the intermediary state nodes - it saves some disk space but makes most of the historical state queries fail).")]
-    public interface IPruningConfig : IConfig
-    {
-        [ConfigItem(Description = "Enables in-memory pruning. Obsolete, use Mode instead.", DefaultValue = "true", HiddenFromDocs = true)]
-        [Obsolete]
-        public bool Enabled { get; set; }
-        
-        [ConfigItem(Description = "Sets pruning mode. Possible values: 'None', 'Memory', 'Full', 'Hybrid'.", DefaultValue = "Hybrid")]
-        PruningMode Mode { get; set; }
-        
-        [ConfigItem(Description = "'Memory' pruning: Pruning cache size in MB (amount if historical nodes data to store in cache - the bigger the cache the bigger the disk space savings).", DefaultValue = "1024")]
-        long CacheMb { get; set; }
-        
-        [ConfigItem(
-            Description = "'Memory' pruning: Defines how often blocks will be persisted even if not required by cache memory usage (the bigger the value the bigger the disk space savings)",
-            DefaultValue = "8192")]
-        long PersistenceInterval { get; set; }
-        
-        [ConfigItem(
-            Description = "'Full' pruning: Defines threshold in MB to trigger full pruning, depends on 'Mode' and 'FullPruningTrigger'.",
-            DefaultValue = "256000")]
-        long FullPruningThresholdMb { get; set; }
-        
-        [ConfigItem(
-            Description = "'Full' pruning: Defines trigger for full pruning, manuel trigger is always supported via admin_prune RPC call. " +
-                          "Either size of StateDB or free space left on Volume where StateDB is located can be configured as auto triggers. " +
-                          "Possible values: 'Manual', 'StateDbSize', 'VolumeFreeSpace'.",
-            DefaultValue = "Manual")]
-        FullPruningTrigger FullPruningTrigger { get; set; }        
+    [ConfigItem(Description = "Enables in-memory pruning. Obsolete, use Mode instead.", DefaultValue = "true", HiddenFromDocs = true)]
+    [Obsolete]
+    public bool Enabled { get; set; }
 
-        [ConfigItem(
-            Description = "'Full' pruning: Defines how many parallel tasks and potentially used threads can be created by full pruning. 0 - number of logical processors, 1 - full pruning will run on single thread. " +
-                          "Recommended value depends on the type of the node. If the node needs to be responsive (its RPC or Validator node) then recommended value is below the number of logical processors. " +
-                          "If the node doesn't have much other responsibilities but needs to be reliably be able to follow the chain without any delays and produce live logs - the default value is recommended. " + 
-                          "If the node doesn't have to be responsive, has very fast I/O (like NVME) and the shortest pruning time is to be achieved, this can be set to 2-3x of the number of logical processors.",
-            DefaultValue = "0")]
-        int FullPruningMaxDegreeOfParallelism { get; set; }
+    [ConfigItem(
+        Description = """
+            The pruning mode:
 
-        [ConfigItem(Description = "In order to not exhaust disk writes, there is a minimum delay between allowed full pruning operations.", DefaultValue = "240")]
-        int FullPruningMinimumDelayHours { get; set; }
+            - `None`: No pruning (full archive)
+            - `Memory`: In-memory pruning
+            - `Full`: Full pruning
+            - `Hybrid`: Combined in-memory and full pruning
+            """, DefaultValue = "Hybrid")]
+    PruningMode Mode { get; set; }
 
-        [ConfigItem(Description = "Determines what to do after Nethermind completes a full prune. " +
-                                  "'None': does not take any special action. " +
-                                  "'ShutdownOnSuccess': shuts Nethermind down if the full prune succeeded. " +
-                                  "'AlwaysShutdown': shuts Nethermind down once the prune completes, whether it succeeded or failed.",
-            DefaultValue = "None")]
-        FullPruningCompletionBehavior FullPruningCompletionBehavior { get; set; }
-    }
+    [ConfigItem(Description = "The in-memory cache size, in MB. The bigger the cache size, the bigger the disk space savings.", DefaultValue = "1024")]
+    long CacheMb { get; set; }
+
+    [ConfigItem(
+        Description = "The block persistence frequency. If set to `N`, it caches after each `Nth` block even if not required by cache memory usage.",
+        DefaultValue = "8192")]
+    long PersistenceInterval { get; set; }
+
+    [ConfigItem(
+        Description = $"The threshold, in MB, to trigger full pruning. Depends on `{nameof(Mode)}` and `{nameof(FullPruningTrigger)}`.",
+        DefaultValue = "256000")]
+    long FullPruningThresholdMb { get; set; }
+
+    [ConfigItem(
+        Description = """
+            The full pruning trigger:
+
+            - `Manual`: Triggered manually.
+            - `StateDbSize`: Trigger when the state DB size is above the threshold.
+            - `VolumeFreeSpace`: Trigger when the free disk space where the state DB is stored is below the threshold.
+            """,
+        DefaultValue = "Manual")]
+    FullPruningTrigger FullPruningTrigger { get; set; }
+
+    [ConfigItem(
+        Description = """
+            The max number of parallel tasks that can be used by full pruning:
+
+            Allowed values:
+
+            - `-1` to use the number of logical processors
+            - `0` to use 25% of logical processors
+            - `1` to run on single thread
+
+            The recommended value depends on the type of the node:
+
+            - If the node needs to be responsive (serves for RPC or validator), then the recommended value is `0` or `-1`.
+            - If the node doesn't have many other responsibilities but needs to be able to follow the chain reliably without any delays and produce live logs, the `0` or `1` is recommended.
+            - If the node doesn't have to be responsive, has very fast I/O (like NVMe) and the shortest pruning time is to be achieved, then `-1` is recommended.
+            """,
+        DefaultValue = "0")]
+    int FullPruningMaxDegreeOfParallelism { get; set; }
+
+    [ConfigItem(
+        Description = "The memory budget, in MB, used for the trie visit. Increasing this value significantly reduces the IOPS requirement at the expense of memory usage. `0` to disable.",
+        DefaultValue = "4000")]
+    int FullPruningMemoryBudgetMb { get; set; }
+
+    [ConfigItem(
+        Description = "Whether to disable low-priority for pruning writes. Full pruning uses low-priority write operations to prevent blocking block processing. If block processing is not high-priority, set this option to `true` for faster pruning.",
+        DefaultValue = "false")]
+    bool FullPruningDisableLowPriorityWrites { get; set; }
+
+    [ConfigItem(Description = "The minimum delay, in hours, between full pruning operations not to exhaust disk writes.", DefaultValue = "240")]
+    int FullPruningMinimumDelayHours { get; set; }
+
+    [ConfigItem(Description = """
+            The behavior after pruning completion:
+
+            - `None`: Do nothing.
+            - `ShutdownOnSuccess`: Shut Nethermind down if pruning has succeeded but leave it running if failed.
+            - `AlwaysShutdown`: Shut Nethermind down when pruning completes, regardless of its status.
+            """,
+        DefaultValue = "None")]
+    FullPruningCompletionBehavior FullPruningCompletionBehavior { get; set; }
+
+    [ConfigItem(Description = "Whether to enables available disk space check.", DefaultValue = "true")]
+    bool AvailableSpaceCheckEnabled { get; set; }
 }

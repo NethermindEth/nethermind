@@ -1,44 +1,37 @@
-FROM --platform=$BUILDPLATFORM mcr.microsoft.com/dotnet/sdk:6.0-jammy AS build
+# SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+# SPDX-License-Identifier: LGPL-3.0-only
 
-ARG TARGETPLATFORM
-ARG TARGETOS
+FROM --platform=$BUILDPLATFORM mcr.microsoft.com/dotnet/sdk:8.0-jammy AS build
+
+ARG BUILD_CONFIG=release
+ARG BUILD_TIMESTAMP
+ARG CI
+ARG COMMIT_HASH
 ARG TARGETARCH
-ARG BUILDPLATFORM
 
-COPY . .
+COPY .git .git
+COPY src/Nethermind src/Nethermind
 
-RUN if [ "$TARGETARCH" = "amd64" ] ; \
-    then dotnet publish src/Nethermind/Nethermind.Runner -r $TARGETOS-x64 -c release -o out ; \
-    else dotnet publish src/Nethermind/Nethermind.Runner -r $TARGETOS-$TARGETARCH -c release -o out ; \
-    fi
+RUN arch=$([ "$TARGETARCH" = "amd64" ] && echo "x64" || echo "$TARGETARCH") && \
+    dotnet publish src/Nethermind/Nethermind.Runner -c $BUILD_CONFIG -a $arch -o /publish --sc false \
+      -p:BuildTimestamp=$BUILD_TIMESTAMP -p:Commit=$COMMIT_HASH
 
-FROM --platform=$TARGETPLATFORM mcr.microsoft.com/dotnet/aspnet:6.0-jammy
+# A temporary symlink to support the old executable name
+RUN ln -s -r /publish/nethermind /publish/Nethermind.Runner
 
-ARG TARGETPLATFORM
-ARG TARGETOS
-ARG TARGETARCH
-ARG BUILDPLATFORM
-
-RUN apt-get update && apt-get -y install libsnappy-dev libc6-dev libc6
-
-# Fix rocksdb issue in ubuntu 22.04
-RUN if [ "$TARGETARCH" = "amd64" ] ; \
-    then ln -s /usr/lib/x86_64-linux-gnu/libdl.so.2 /usr/lib/x86_64-linux-gnu/libdl.so > /dev/null 2>&1 ; \
-    else ln -s /usr/lib/aarch64-linux-gnu/libdl.so.2 /usr/lib/aarch64-linux-gnu/libdl.so > /dev/null 2>&1  && apt-get -y install libgflags-dev > /dev/null 2>&1 ; \
-    fi
+FROM --platform=$TARGETPLATFORM mcr.microsoft.com/dotnet/aspnet:8.0-jammy
 
 WORKDIR /nethermind
 
-COPY --from=build /out .
-
-ARG GIT_COMMIT=unspecified
-LABEL git_commit=$GIT_COMMIT
-
-EXPOSE 8545
-EXPOSE 30303
-
-VOLUME /nethermind/nethermind_db
-VOLUME /nethermind/logs
 VOLUME /nethermind/keystore
+VOLUME /nethermind/logs
+VOLUME /nethermind/nethermind_db
 
-ENTRYPOINT ["./Nethermind.Runner"]
+EXPOSE 8545 8551 30303
+
+COPY --from=build /publish .
+
+RUN apt-get update && apt-get -y install libsnappy-dev && \
+  rm -rf /var/lib/apt/lists/*
+
+ENTRYPOINT ["./nethermind"]

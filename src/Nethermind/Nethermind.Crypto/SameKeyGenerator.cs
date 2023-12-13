@@ -8,7 +8,7 @@ namespace Nethermind.Crypto
         {
             _privateKey = privateKey;
         }
-        
+
         public PrivateKey Generate()
         {
             return _privateKey;

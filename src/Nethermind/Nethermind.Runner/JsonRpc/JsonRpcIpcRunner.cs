@@ -1,13 +1,12 @@
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
 using System;
-using System.Collections.Generic;
 using System.IO;
 using System.IO.Abstractions;
-using System.Linq;
 using System.Net.Sockets;
-using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
-using Nethermind.Api;
 using Nethermind.Config;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
@@ -15,7 +14,9 @@ using Nethermind.JsonRpc.WebSockets;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.Sockets;
-using Newtonsoft.Json;
+
+using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace Nethermind.Runner.JsonRpc
 {
@@ -86,7 +87,7 @@ namespace Nethermind.Runner.JsonRpc
                     _resetEvent.WaitOne();
                 }
             }
-            catch (IOException exc) when (exc.InnerException != null && exc.InnerException is SocketException se && se.SocketErrorCode == SocketError.ConnectionReset)
+            catch (IOException exc) when (exc.InnerException is not null && exc.InnerException is SocketException se && se.SocketErrorCode == SocketError.ConnectionReset)
             {
                 LogDebug("Client disconnected.");
             }
@@ -100,7 +101,7 @@ namespace Nethermind.Runner.JsonRpc
             }
             catch (Exception exc)
             {
-                _logger.Error($"Error when starting IPC server over '{ _path}' path.", exc);
+                _logger.Error($"Error when starting IPC server over '{_path}' path.", exc);
             }
             finally
             {
@@ -127,11 +128,12 @@ namespace Nethermind.Runner.JsonRpc
                     _jsonRpcProcessor,
                     _jsonRpcService,
                     _jsonRpcLocalStats,
-                    _jsonSerializer);
+                    _jsonSerializer,
+                    maxBatchResponseBodySize: _jsonRpcConfig.MaxBatchResponseBodySize);
 
                 await socketsClient.ReceiveAsync();
             }
-            catch (IOException exc) when (exc.InnerException != null && exc.InnerException is SocketException se && se.SocketErrorCode == SocketError.ConnectionReset)
+            catch (IOException exc) when (exc.InnerException is not null && exc.InnerException is SocketException se && se.SocketErrorCode == SocketError.ConnectionReset)
             {
                 LogDebug("Client disconnected.");
             }

@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Config;
 
@@ -24,11 +11,11 @@ public interface IDiscoveryConfig : IConfig
     /// <summary>
     /// Kademlia - k
     /// </summary>
-    [ConfigItem(DisabledForCli = true)]
+    [ConfigItem(DefaultValue = "16")]
     int BucketSize { get; set; }
 
     /// <summary>
-    /// Buckets count
+    /// Buckets count.
     /// </summary>
     [ConfigItem(DisabledForCli = true)]
     int BucketsCount { get; set; }
@@ -36,7 +23,7 @@ public interface IDiscoveryConfig : IConfig
     /// <summary>
     /// Kademlia - alpha
     /// </summary>
-    [ConfigItem(DisabledForCli = true)]
+    [ConfigItem(DefaultValue = "3")]
     int Concurrency { get; }
 
     /// <summary>
@@ -48,55 +35,55 @@ public interface IDiscoveryConfig : IConfig
     /// <summary>
     /// Max Discovery Rounds
     /// </summary>
-    [ConfigItem(DisabledForCli = true)]
+    [ConfigItem(DefaultValue = "8")]
     int MaxDiscoveryRounds { get; }
 
     /// <summary>
     /// Eviction check interval in ms
     /// </summary>
-    [ConfigItem(DisabledForCli = true)]
+    [ConfigItem(DefaultValue = "75")]
     int EvictionCheckInterval { get; }
 
     /// <summary>
     /// Send Node Timeout in ms
     /// </summary>
-    [ConfigItem(DisabledForCli = true)]
+    [ConfigItem(DefaultValue = "500")]
     int SendNodeTimeout { get; }
 
     /// <summary>
     /// Pong Timeout in ms
     /// </summary>
-    [ConfigItem(DisabledForCli = true)]
+    [ConfigItem(DefaultValue = "15000")]
     int PongTimeout { get; set; }
 
     /// <summary>
     /// Boot Node Pong Timeout in ms
     /// </summary>
-    [ConfigItem(DisabledForCli = true)]
+    [ConfigItem(DefaultValue = "100000")]
     int BootnodePongTimeout { get; }
 
     /// <summary>
     /// Pong Timeout in ms
     /// </summary>
-    [ConfigItem(DisabledForCli = true)]
+    [ConfigItem(DefaultValue = "3")]
     int PingRetryCount { get; }
 
     /// <summary>
     /// Time between running discovery processes in milliseconds
     /// </summary>
-    [ConfigItem(DisabledForCli = true)]
+    [ConfigItem(DefaultValue = "30000")]
     int DiscoveryInterval { get; }
 
     /// <summary>
     /// Time between persisting discovered nodes in milliseconds
     /// </summary>
-    [ConfigItem(DisabledForCli = true)]
+    [ConfigItem(DefaultValue = "180000")]
     int DiscoveryPersistenceInterval { get; }
 
     /// <summary>
     /// Time between discovery cycles in milliseconds
     /// </summary>
-    [ConfigItem(DisabledForCli = true)]
+    [ConfigItem(DefaultValue = "50")]
     int DiscoveryNewCycleWaitTime { get; }
 
     /// <summary>
@@ -107,18 +94,24 @@ public interface IDiscoveryConfig : IConfig
     /// <summary>
     /// Timeout for closing UDP channel in milliseconds
     /// </summary>
-    [ConfigItem(DisabledForCli = true)]
+    [ConfigItem(DefaultValue = "5000")]
     int UdpChannelCloseTimeout { get; }
 
     /// <summary>
     /// Maximum count of NodeLifecycleManagers stored in memory
     /// </summary>
-    [ConfigItem(DisabledForCli = true)]
+    [ConfigItem(DefaultValue = "8000")]
     int MaxNodeLifecycleManagersCount { get; }
 
     /// <summary>
     /// Count of NodeLifecycleManagers to remove in one cleanup cycle
     /// </summary>
-    [ConfigItem(DisabledForCli = true)]
+    [ConfigItem(DefaultValue = "4000")]
     int NodeLifecycleManagersCleanupCount { get; }
+
+    [ConfigItem(DefaultValue = "0.05")]
+    float DropFullBucketNodeProbability { get; set; }
+
+    [ConfigItem(Description = "Limit number of outgoing discovery message per second.", DefaultValue = "100", HiddenFromDocs = true)]
+    int MaxOutgoingMessagePerSecond { get; set; }
 }

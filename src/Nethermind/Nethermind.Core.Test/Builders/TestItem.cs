@@ -1,18 +1,5 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.IO;
@@ -27,8 +14,8 @@ namespace Nethermind.Core.Test.Builders
 {
     public static partial class TestItem
     {
-        public static Random Random { get; } = new();
-        private static AccountDecoder _accountDecoder = new();
+        public static Random Random { get; } = new(1337); // 1337 - to make tests predictable, reproducible
+        private static readonly AccountDecoder _accountDecoder = new();
 
         static TestItem()
         {
@@ -38,7 +25,8 @@ namespace Nethermind.Core.Test.Builders
             PrivateKeys = new PrivateKey[255];
             PublicKeys = new PublicKey[255];
             Addresses = new Address[255];
-            Keccaks = new Keccak[255];
+            Keccaks = new Hash256[255];
+            ValueKeccaks = new ValueHash256[255];
 
             for (byte i = 1; i > 0; i++) // this will wrap around
             {
@@ -48,29 +36,31 @@ namespace Nethermind.Core.Test.Builders
                 PublicKeys[i - 1] = PrivateKeys[i - 1].PublicKey;
                 Addresses[i - 1] = PublicKeys[i - 1].Address;
                 Keccaks[i - 1] = Keccak.Compute(PublicKeys[i - 1].Bytes);
+                ValueKeccaks[i - 1] = Keccaks[i - 1];
             }
         }
 
-        public static Keccak KeccakFromNumber(int i)
+        public static Hash256 KeccakFromNumber(int i)
         {
             UInt256 keccakNumber = (UInt256)i;
             byte[] keccakBytes = new byte[32];
             keccakNumber.ToBigEndian(keccakBytes);
-            return new Keccak(keccakBytes);
+            return new Hash256(keccakBytes);
         }
 
         public static byte[] RandomDataA = { 1, 2, 3 };
         public static byte[] RandomDataB = { 4, 5, 6, 7 };
         public static byte[] RandomDataC = { 1, 2, 8, 9, 10 };
+        public static byte[] RandomDataD = { 1, 2, 8, 9, 10, 17 };
 
-        public static Keccak KeccakA = Keccak.Compute("A");
-        public static Keccak KeccakB = Keccak.Compute("B");
-        public static Keccak KeccakC = Keccak.Compute("C");
-        public static Keccak KeccakD = Keccak.Compute("D");
-        public static Keccak KeccakE = Keccak.Compute("E");
-        public static Keccak KeccakF = Keccak.Compute("F");
-        public static Keccak KeccakG = Keccak.Compute("G");
-        public static Keccak KeccakH = Keccak.Compute("H");
+        public static Hash256 KeccakA = Keccak.Compute("A");
+        public static Hash256 KeccakB = Keccak.Compute("B");
+        public static Hash256 KeccakC = Keccak.Compute("C");
+        public static Hash256 KeccakD = Keccak.Compute("D");
+        public static Hash256 KeccakE = Keccak.Compute("E");
+        public static Hash256 KeccakF = Keccak.Compute("F");
+        public static Hash256 KeccakG = Keccak.Compute("G");
+        public static Hash256 KeccakH = Keccak.Compute("H");
 
         public static PrivateKey PrivateKeyA = new("010102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f");
         public static PrivateKey PrivateKeyB = new("020102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f");
@@ -92,7 +82,8 @@ namespace Nethermind.Core.Test.Builders
         public static PrivateKey[] PrivateKeys;
         public static PublicKey[] PublicKeys;
         public static Address[] Addresses;
-        public static Keccak[] Keccaks;
+        public static Hash256[] Keccaks;
+        public static ValueHash256[] ValueKeccaks;
 
         public static Address AddressA = PublicKeyA.Address;
         public static Address AddressB = PublicKeyB.Address;
@@ -100,6 +91,13 @@ namespace Nethermind.Core.Test.Builders
         public static Address AddressD = PublicKeyD.Address;
         public static Address AddressE = PublicKeyE.Address;
         public static Address AddressF = PublicKeyF.Address;
+
+        public static Withdrawal WithdrawalA_1Eth = new() { Address = AddressA, Index = 1, ValidatorIndex = 2001, AmountInGwei = 1_000_000_000 };
+        public static Withdrawal WithdrawalB_2Eth = new() { Address = AddressB, Index = 2, ValidatorIndex = 2002, AmountInGwei = 2_000_000_000 };
+        public static Withdrawal WithdrawalC_3Eth = new() { Address = AddressC, Index = 3, ValidatorIndex = 2003, AmountInGwei = 3_000_000_000 };
+        public static Withdrawal WithdrawalD_4Eth = new() { Address = AddressD, Index = 4, ValidatorIndex = 2004, AmountInGwei = 4_000_000_000 };
+        public static Withdrawal WithdrawalE_5Eth = new() { Address = AddressE, Index = 5, ValidatorIndex = 2005, AmountInGwei = 5_000_000_000 };
+        public static Withdrawal WithdrawalF_6Eth = new() { Address = AddressF, Index = 6, ValidatorIndex = 2006, AmountInGwei = 6_000_000_000 };
 
         public static IPEndPoint IPEndPointA = IPEndPoint.Parse("10.0.0.1");
         public static IPEndPoint IPEndPointB = IPEndPoint.Parse("10.0.0.2");
@@ -112,13 +110,8 @@ namespace Nethermind.Core.Test.Builders
 
         public static T CloneObject<T>(T value)
         {
-            using var stream = new MemoryStream();
-
-            JsonSerializer.Serialize(stream, value);
-
-            stream.Position = 0;
-
-            return JsonSerializer.Deserialize<T>(stream)!;
+            string data = Newtonsoft.Json.JsonConvert.SerializeObject(value);
+            return Newtonsoft.Json.JsonConvert.DeserializeObject<T>(data)!;
         }
 
         public static Address GetRandomAddress(Random? random = null)
@@ -128,11 +121,11 @@ namespace Nethermind.Core.Test.Builders
             return new Address(bytes);
         }
 
-        public static Keccak GetRandomKeccak(Random? random = null)
+        public static Hash256 GetRandomKeccak(Random? random = null)
         {
             byte[] bytes = new byte[32];
             (random ?? Random).NextBytes(bytes);
-            return new Keccak(bytes);
+            return new Hash256(bytes);
         }
 
         public static Account GenerateRandomAccount(Random? random = null)
@@ -160,9 +153,7 @@ namespace Nethermind.Core.Test.Builders
         {
             Account account = new(
                 (UInt256)index,
-                (UInt256)index,
-                Keccak.EmptyTreeHash,
-                Keccak.OfAnEmptyString);
+                (UInt256)index);
 
             return account;
         }
