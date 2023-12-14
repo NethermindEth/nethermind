@@ -252,9 +252,9 @@ namespace Nethermind.State
 
         private void PushToRegistryOnly(in StorageCell cell, byte[] value)
         {
-            SetupRegistry(cell);
+            StackList<int> stack = SetupRegistry(cell);
             IncrementChangePosition();
-            _intraBlockCache[cell].Push(_currentPosition);
+            stack.Push(_currentPosition);
             _originalValues[cell] = value;
             _changes[_currentPosition] = new Change(ChangeType.JustCache, cell, value);
         }
