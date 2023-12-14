@@ -362,6 +362,8 @@ namespace Nethermind.Consensus.Clique
 
             // Ensure the vote is meaningful
             if (!IsValidVote(snapshot, address, authorize)) return false;
+
+            // Cast the vote into tally ref
             value.Votes++;
             return true;
         }
