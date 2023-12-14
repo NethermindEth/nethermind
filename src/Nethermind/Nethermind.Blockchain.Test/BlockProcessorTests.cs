@@ -26,6 +26,7 @@ using FluentAssertions;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Core.Test.Blockchain;
+using Nethermind.Db.ByPathState;
 using Nethermind.Evm.TransactionProcessing;
 
 namespace Nethermind.Blockchain.Test
@@ -67,7 +68,7 @@ namespace Nethermind.Blockchain.Test
         {
             MemColumnsDb<StateColumns> stateDb = new();
             IDb codeDb = new MemDb();
-            TrieStoreByPath trieStore = new TrieStoreByPath(stateDb, LimboLogs.Instance);
+            TrieStoreByPath trieStore = new(new ByPathStateDb(stateDb, LimboLogs.Instance), LimboLogs.Instance);
 
             IWorldState stateProvider = new WorldState(trieStore, codeDb, LimboLogs.Instance);
             ITransactionProcessor transactionProcessor = Substitute.For<ITransactionProcessor>();

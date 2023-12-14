@@ -8,6 +8,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
+using Nethermind.Db.ByPathState;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
@@ -64,7 +65,7 @@ public class TrieByPathWithPrefixTest
     public void Single_leaf()
     {
         MemColumnsDb<StateColumns> memDb = new();
-        using TrieStoreByPath trieStore = new(memDb, _logManager);
+        using TrieStoreByPath trieStore = new(new ByPathStateDb(memDb, _logManager), _logManager);
         PatriciaTree patriciaTree = new(trieStore, _logManager)
         {
             StorageBytePathPrefix = _keyAccountA.Concat(new[] { (byte)128 }).ToArray()
@@ -80,7 +81,7 @@ public class TrieByPathWithPrefixTest
     public void Single_leaf_update_same_block()
     {
         MemColumnsDb<StateColumns> memDb = new();
-        using TrieStoreByPath trieStore = new(memDb, _logManager);
+        using TrieStoreByPath trieStore = new(new ByPathStateDb(memDb, _logManager), _logManager);
         PatriciaTree patriciaTree = new PatriciaTree(trieStore, _logManager)
         {
             StorageBytePathPrefix = _keyAccountA.Concat(new[] { (byte)128 }).ToArray()
@@ -101,7 +102,7 @@ public class TrieByPathWithPrefixTest
     public void Single_leaf_update_next_blocks()
     {
         MemColumnsDb<StateColumns> memDb = new();
-        using TrieStoreByPath trieStore = new(memDb, _logManager);
+        using TrieStoreByPath trieStore = new(new ByPathStateDb(memDb, _logManager), _logManager);
         PatriciaTree patriciaTree = new(trieStore, _logManager)
         {
             StorageBytePathPrefix = _keyAccountA.Concat(new[] { (byte)128 }).ToArray()
@@ -126,7 +127,7 @@ public class TrieByPathWithPrefixTest
     public void Single_leaf_delete_same_block()
     {
         MemColumnsDb<StateColumns> memDb = new();
-        using TrieStoreByPath trieStore = new(memDb, _logManager);
+        using TrieStoreByPath trieStore = new(new ByPathStateDb(memDb, _logManager), _logManager);
         PatriciaTree patriciaTree = new(trieStore, _logManager)
         {
             StorageBytePathPrefix = _keyAccountA.Concat(new[] { (byte)128 }).ToArray()
@@ -146,7 +147,7 @@ public class TrieByPathWithPrefixTest
     public void Single_leaf_delete_next_block()
     {
         MemColumnsDb<StateColumns> memDb = new();
-        using TrieStoreByPath trieStore = new(memDb, _logManager);
+        using TrieStoreByPath trieStore = new(new ByPathStateDb(memDb, _logManager), _logManager);
         PatriciaTree patriciaTree = new(trieStore, _logManager)
         {
             StorageBytePathPrefix = _keyAccountA.Concat(new[] { (byte)128 }).ToArray()
@@ -168,7 +169,7 @@ public class TrieByPathWithPrefixTest
     public void Single_leaf_and_keep_for_multiple_dispatches_then_delete()
     {
         MemColumnsDb<StateColumns> memDb = new();
-        using TrieStoreByPath trieStore = new(memDb, LimboLogs.Instance);
+        using TrieStoreByPath trieStore = new(new ByPathStateDb(memDb, _logManager), _logManager);
         PatriciaTree patriciaTree = new(trieStore, _logManager)
         {
             StorageBytePathPrefix = _keyAccountA.Concat(new[] { (byte)128 }).ToArray()
@@ -205,7 +206,7 @@ public class TrieByPathWithPrefixTest
     public void Branch_with_branch_and_leaf()
     {
         MemColumnsDb<StateColumns> memDb = new();
-        using TrieStoreByPath trieStore = new(memDb, _logManager);
+        using TrieStoreByPath trieStore = new(new ByPathStateDb(memDb, _logManager), _logManager);
         PatriciaTree patriciaTree = new(trieStore, _logManager)
         {
             StorageBytePathPrefix = _keyAccountA.Concat(new[] { (byte)128 }).ToArray()
@@ -239,7 +240,7 @@ public class TrieByPathWithPrefixTest
     public void Branch_with_branch_and_leaf_then_deleted()
     {
         MemColumnsDb<StateColumns> memDb = new();
-        using TrieStoreByPath trieStore = new(memDb, _logManager);
+        using TrieStoreByPath trieStore = new(new ByPathStateDb(memDb, _logManager), _logManager);
         PatriciaTree patriciaTree = new(trieStore, _logManager)
         {
             StorageBytePathPrefix = _keyAccountA.Concat(new[] { (byte)128 }).ToArray()
@@ -265,7 +266,7 @@ public class TrieByPathWithPrefixTest
     public void Test_add_many(int i)
     {
         MemColumnsDb<StateColumns> memDb = new();
-        using TrieStoreByPath trieStore = new(memDb, _logManager);
+        using TrieStoreByPath trieStore = new(new ByPathStateDb(memDb, _logManager), _logManager);
         PatriciaTree patriciaTree = new(trieStore, Keccak.EmptyTreeHash, true, true, _logManager)
         {
             StorageBytePathPrefix = _keyAccountA.Concat(new[] { (byte)128 }).ToArray()
@@ -293,7 +294,7 @@ public class TrieByPathWithPrefixTest
     public void Test_try_delete_and_read_missing_nodes(int i)
     {
         MemColumnsDb<StateColumns> memDb = new();
-        using TrieStoreByPath trieStore = new(memDb, _logManager);
+        using TrieStoreByPath trieStore = new(new ByPathStateDb(memDb, _logManager), _logManager);
         PatriciaTree patriciaTree = new(trieStore, Keccak.EmptyTreeHash, true, true, _logManager)
         {
             StorageBytePathPrefix = _keyAccountA.Concat(new[] { (byte)128 }).ToArray()
@@ -337,7 +338,7 @@ public class TrieByPathWithPrefixTest
     public void Test_update_many(int i)
     {
         MemColumnsDb<StateColumns> memDb = new();
-        using TrieStoreByPath trieStore = new(memDb, _logManager);
+        using TrieStoreByPath trieStore = new(new ByPathStateDb(memDb, _logManager), _logManager);
         PatriciaTree patriciaTree = new(trieStore, _logManager)
         {
             StorageBytePathPrefix = _keyAccountA.Concat(new[] { (byte)128 }).ToArray()
@@ -372,7 +373,7 @@ public class TrieByPathWithPrefixTest
     private void Test_update_many_next_block(int i)
     {
         MemColumnsDb<StateColumns> memDb = new();
-        using TrieStoreByPath trieStore = new(memDb, _logManager);
+        using TrieStoreByPath trieStore = new(new ByPathStateDb(memDb, _logManager), _logManager);
         PatriciaTree patriciaTree = new(trieStore, _logManager)
         {
             StorageBytePathPrefix = _keyAccountA.Concat(new[] { (byte)128 }).ToArray()
@@ -412,7 +413,7 @@ public class TrieByPathWithPrefixTest
     public void Test_add_and_delete_many_same_block(int i)
     {
         MemColumnsDb<StateColumns> memDb = new();
-        using TrieStoreByPath trieStore = new(memDb, _logManager);
+        using TrieStoreByPath trieStore = new(new ByPathStateDb(memDb, _logManager), _logManager);
         PatriciaTree patriciaTree = new(trieStore, _logManager)
         {
             StorageBytePathPrefix = _keyAccountA.Concat(new[] { (byte)128 }).ToArray()
@@ -447,7 +448,7 @@ public class TrieByPathWithPrefixTest
     public void Test_add_and_delete_many_next_block(int i)
     {
         MemColumnsDb<StateColumns> memDb = new();
-        using TrieStoreByPath trieStore = new(memDb, _logManager);
+        using TrieStoreByPath trieStore = new(new ByPathStateDb(memDb, _logManager), _logManager);
         PatriciaTree patriciaTree = new(trieStore, _logManager)
         {
             StorageBytePathPrefix = _keyAccountA.Concat(new[] { (byte)128 }).ToArray()
@@ -500,7 +501,7 @@ public class TrieByPathWithPrefixTest
     public void Two_branches_exactly_same_leaf()
     {
         MemColumnsDb<StateColumns> memDb = new();
-        using TrieStoreByPath trieStore = new(memDb, _logManager);
+        using TrieStoreByPath trieStore = new(new ByPathStateDb(memDb, _logManager), _logManager);
         PatriciaTree patriciaTree = new(trieStore, _logManager)
         {
             StorageBytePathPrefix = _keyAccountA.Concat(new[] { (byte)128 }).ToArray()
@@ -524,7 +525,7 @@ public class TrieByPathWithPrefixTest
     public void Two_branches_exactly_same_leaf_then_one_removed()
     {
         MemColumnsDb<StateColumns> memDb = new();
-        using TrieStoreByPath trieStore = new TrieStoreByPath(memDb, LimboLogs.Instance);
+        using TrieStoreByPath trieStore = new(new ByPathStateDb(memDb, _logManager), LimboLogs.Instance);
 
         PatriciaTree patriciaTree = new PatriciaTree(trieStore, Keccak.EmptyTreeHash, true, true, _logManager)
         {
@@ -563,7 +564,7 @@ public class TrieByPathWithPrefixTest
 
     private static PatriciaTree CreateCheckTree(IColumnsDb<StateColumns> memDb, PatriciaTree tree, ILogManager logManager)
     {
-        PatriciaTree checkTree = new(new TrieStoreByPath(memDb, logManager), logManager)
+        PatriciaTree checkTree = new(new TrieStoreByPath(new ByPathStateDb(memDb, logManager), logManager), logManager)
         {
             StorageBytePathPrefix = Nibbles.ToBytes(tree.StoreNibblePathPrefix),
             RootHash = tree.RootHash,
@@ -575,7 +576,7 @@ public class TrieByPathWithPrefixTest
     public void Extension_with_branch_with_two_different_children()
     {
         MemColumnsDb<StateColumns> memDb = new();
-        using TrieStoreByPath trieStore = new(memDb, _logManager);
+        using TrieStoreByPath trieStore = new(new ByPathStateDb(memDb, _logManager), _logManager);
         PatriciaTree patriciaTree = new(trieStore, _logManager)
         {
             StorageBytePathPrefix = _keyAccountA.Concat(new[] { (byte)128 }).ToArray()
@@ -593,7 +594,7 @@ public class TrieByPathWithPrefixTest
     public void Extension_with_branch_with_two_same_children()
     {
         MemColumnsDb<StateColumns> memDb = new();
-        using TrieStoreByPath trieStore = new(memDb, _logManager);
+        using TrieStoreByPath trieStore = new(new ByPathStateDb(memDb, _logManager), _logManager);
         PatriciaTree patriciaTree = new(trieStore, _logManager)
         {
             StorageBytePathPrefix = _keyAccountA.Concat(new[] { (byte)128 }).ToArray()
@@ -611,7 +612,7 @@ public class TrieByPathWithPrefixTest
     public void When_branch_with_two_different_children_change_one_and_change_back_next_block()
     {
         MemColumnsDb<StateColumns> memDb = new();
-        using TrieStoreByPath trieStore = new(memDb, _logManager);
+        using TrieStoreByPath trieStore = new(new ByPathStateDb(memDb, _logManager), _logManager);
         PatriciaTree patriciaTree = new(trieStore, _logManager)
         {
             StorageBytePathPrefix = _keyAccountA.Concat(new[] { (byte)128 }).ToArray()
@@ -635,7 +636,7 @@ public class TrieByPathWithPrefixTest
     public void When_branch_with_two_same_children_change_one_and_change_back_next_block()
     {
         MemColumnsDb<StateColumns> memDb = new();
-        using TrieStoreByPath trieStore = new(memDb, _logManager);
+        using TrieStoreByPath trieStore = new(new ByPathStateDb(memDb, _logManager), _logManager);
         PatriciaTree patriciaTree = new(trieStore, _logManager)
         {
             StorageBytePathPrefix = _keyAccountA.Concat(new[] { (byte)128 }).ToArray()
@@ -671,7 +672,7 @@ public class TrieByPathWithPrefixTest
         byte[] key3 = Bytes.FromHexString("000000200000000cc").PadLeft(32);
 
         MemColumnsDb<StateColumns> memDb = new();
-        using TrieStoreByPath trieStore = new(memDb, _logManager);
+        using TrieStoreByPath trieStore = new(new ByPathStateDb(memDb, _logManager), _logManager);
         PatriciaTree patriciaTree = new(trieStore, _logManager)
         {
             StorageBytePathPrefix = _keyAccountA.Concat(new[] { (byte)128 }).ToArray()
@@ -722,7 +723,7 @@ public class TrieByPathWithPrefixTest
         byte[] key3 = Bytes.FromHexString("000000200000000cc").PadLeft(32);
 
         MemColumnsDb<StateColumns> memDb = new();
-        using TrieStoreByPath trieStore = new(memDb, _logManager);
+        using TrieStoreByPath trieStore = new(new ByPathStateDb(memDb, _logManager), _logManager);
         PatriciaTree patriciaTree = new(trieStore, _logManager)
         {
             StorageBytePathPrefix = _keyAccountA.Concat(new[] { (byte)128 }).ToArray()
@@ -747,7 +748,7 @@ public class TrieByPathWithPrefixTest
     public void When_two_branches_with_two_same_children_change_one_and_change_back_next_block()
     {
         MemColumnsDb<StateColumns> memDb = new();
-        using TrieStoreByPath trieStore = new(memDb, _logManager);
+        using TrieStoreByPath trieStore = new(new ByPathStateDb(memDb, _logManager), _logManager);
         PatriciaTree patriciaTree = new(trieStore, _logManager)
         {
             StorageBytePathPrefix = _keyAccountA.Concat(new[] { (byte)128 }).ToArray()
@@ -794,8 +795,7 @@ public class TrieByPathWithPrefixTest
         Queue<Hash256> rootQueue = new();
 
         MemColumnsDb<StateColumns> memDb = new();
-
-        using TrieStoreByPath trieStore = new(memDb, ByPathPersist.IfBlockOlderThan(lookupLimit), _logManager);
+        using TrieStoreByPath trieStore = new(new ByPathStateDb(memDb, _logManager), ByPathPersist.IfBlockOlderThan(lookupLimit), _logManager);
         StateTreeByPath patriciaTree = new(trieStore, _logManager);
 
         byte[][] accounts = new byte[accountsCount][];
@@ -919,8 +919,7 @@ public class TrieByPathWithPrefixTest
         Stack<Hash256> rootStack = new();
 
         MemColumnsDb<StateColumns> memDb = new();
-
-        using TrieStoreByPath trieStore = new(memDb, ByPathPersist.IfBlockOlderThan(lookupLimit), _logManager);
+        using TrieStoreByPath trieStore = new(new ByPathStateDb(memDb, _logManager), ByPathPersist.IfBlockOlderThan(lookupLimit), _logManager);
         PatriciaTree patriciaTree = new(trieStore, _logManager)
         {
             StorageBytePathPrefix = _keyAccountA.Concat(new[] { (byte)128 }).ToArray()

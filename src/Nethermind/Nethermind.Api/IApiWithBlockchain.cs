@@ -15,6 +15,7 @@ using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
+using Nethermind.Db.ByPathState;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Facade;
 using Nethermind.Facade.Eth;
@@ -63,6 +64,7 @@ namespace Nethermind.Api
         /// </remarks>
         IWorldState? WorldState { get; set; }
         IKeyValueStoreWithBatching? MainStateDbWithCache { get; set; }
+        IByPathStateDb? MainPathStateDbWithCache { get; set; }
         IReadOnlyStateProvider? ChainHeadStateProvider { get; set; }
         IStateReader? StateReader { get; set; }
         ITransactionProcessor? TransactionProcessor { get; set; }

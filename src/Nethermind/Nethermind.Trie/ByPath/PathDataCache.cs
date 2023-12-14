@@ -218,7 +218,7 @@ internal class PathDataCacheInstance
     {
         if (IsOpened && !_isDirty)
         {
-            _lastState = _lastState.ParentBlock;
+            _lastState = _lastState?.ParentBlock;
         }
     }
 

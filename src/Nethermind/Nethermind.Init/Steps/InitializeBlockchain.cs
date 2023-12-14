@@ -27,6 +27,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Db;
 using Nethermind.Db.ByPathState;
 using Nethermind.Db.FullPruning;
+using Nethermind.Db.Rocks;
 using Nethermind.Evm;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.JsonRpc.Converters;
@@ -111,14 +112,16 @@ namespace Nethermind.Init.Steps
 
             if (pathStateConfig.Enabled)
             {
-                //setApi.MainStateDbWithCache = getApi.DbProvider.PathStateDb;
                 //stateWitnessedBy = setApi.MainStateDbWithCache.WitnessedBy(witnessCollector);
 
-                ByPathConstantPersistenceStrategy persistenceStrategy = new(getApi.DbProvider.PathStateDb as IByPathStateDb, getApi.BlockTree!, pathStateConfig.InMemHistoryBlocks, pathStateConfig.PersistenceInterval, getApi.LogManager);
+                CachedColumnsDb<StateColumns> cachedPathStateDb = new(getApi.DbProvider.PathStateDb, Trie.MemoryAllowance.TrieNodeCacheCount);
+                setApi.MainPathStateDbWithCache = new ByPathStateDb(cachedPathStateDb, getApi.LogManager);
+
+                ByPathConstantPersistenceStrategy persistenceStrategy = new(setApi.MainPathStateDbWithCache, getApi.BlockTree!, pathStateConfig.InMemHistoryBlocks, pathStateConfig.PersistenceInterval, getApi.LogManager);
                 _api.RegisterForBlockFinalized(persistenceStrategy.FinalizationManager_BlocksFinalized);
 
                 setApi.TrieStore = trieStore = new TrieStoreByPath(
-                    getApi.DbProvider.PathStateDb,
+                    setApi.MainPathStateDbWithCache,
                     persistenceStrategy,
                     getApi.LogManager);
             }
@@ -208,7 +211,7 @@ namespace Nethermind.Init.Steps
                 {
                     _logger!.Info("Collecting trie stats and verifying that no nodes are missing...");
                     ITrieStore noPruningStore = pathStateConfig.Enabled
-                        ? new TrieStoreByPath(getApi.DbProvider.PathStateDb, getApi.LogManager)
+                        ? new TrieStoreByPath(setApi.MainPathStateDbWithCache!, getApi.LogManager)
                         : new TrieStore(stateWitnessedBy, No.Pruning, Persist.EveryBlock, getApi.LogManager);
                     IWorldState diagStateProvider = new WorldState(noPruningStore, codeDb, getApi.LogManager)
                     {

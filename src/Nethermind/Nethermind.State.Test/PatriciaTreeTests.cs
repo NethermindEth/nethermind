@@ -7,6 +7,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
+using Nethermind.Db.ByPathState;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
@@ -94,7 +95,7 @@ namespace Nethermind.Store.Test
             ITrieStore trieStore = _resolverCapability switch
             {
                 TrieNodeResolverCapability.Hash => new TrieStore(new MemDb(), LimboLogs.Instance),
-                TrieNodeResolverCapability.Path => new TrieStoreByPath(new MemColumnsDb<StateColumns>(), LimboLogs.Instance),
+                TrieNodeResolverCapability.Path => new TrieStoreByPath(new ByPathStateDb(new MemColumnsDb<StateColumns>(), LimboLogs.Instance), LimboLogs.Instance),
                 _ => throw new Exception()
             };
             Account account = new(1);

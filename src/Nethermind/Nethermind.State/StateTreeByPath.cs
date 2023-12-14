@@ -9,6 +9,7 @@ using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Db;
+using Nethermind.Db.ByPathState;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
@@ -44,7 +45,7 @@ namespace Nethermind.State
 
         [DebuggerStepThrough]
         public StateTreeByPath(ICappedArrayPool? bufferPool = null)
-            : base(new TrieStoreByPath(new MemColumnsDb<StateColumns>(), NullLogManager.Instance), Keccak.EmptyTreeHash, true, true, NullLogManager.Instance, bufferPool)
+            : base(new TrieStoreByPath(new ByPathStateDb(new MemColumnsDb<StateColumns>(), NullLogManager.Instance), NullLogManager.Instance), Keccak.EmptyTreeHash, true, true, NullLogManager.Instance, bufferPool)
         {
             TrieType = TrieType.State;
         }

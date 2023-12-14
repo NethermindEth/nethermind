@@ -8,6 +8,7 @@ using System.Linq;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
+using Nethermind.Db.ByPathState;
 using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.State.Proofs;
@@ -40,7 +41,7 @@ namespace Nethermind.Synchronization.Test.SnapSync
             _store = _resolverCapability switch
             {
                 TrieNodeResolverCapability.Hash => new TrieStore(new MemDb(), LimboLogs.Instance),
-                TrieNodeResolverCapability.Path => new TrieStoreByPath(new MemColumnsDb<StateColumns>(), LimboLogs.Instance),
+                TrieNodeResolverCapability.Path => new TrieStoreByPath(new ByPathStateDb(new MemColumnsDb<StateColumns>(), LimboLogs.Instance), LimboLogs.Instance),
                 _ => throw new Exception()
             };
             if (_resolverCapability == TrieNodeResolverCapability.Hash)

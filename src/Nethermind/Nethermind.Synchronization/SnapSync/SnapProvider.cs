@@ -12,6 +12,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Db;
+using Nethermind.Db.ByPathState;
 using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.State.Snap;
@@ -373,7 +374,7 @@ namespace Nethermind.Synchronization.SnapSync
             public ITrieStore Create()
             {
                 //no in memory caching
-                return new TrieStoreByPath(_stateDb, _logManager);
+                return new TrieStoreByPath(new ByPathStateDb(_stateDb, _logManager), _logManager);
             }
 
             public bool Return(ITrieStore obj)

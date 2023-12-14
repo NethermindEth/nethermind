@@ -24,6 +24,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Db.Blooms;
+using Nethermind.Db.ByPathState;
 using Nethermind.Evm;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
@@ -116,7 +117,7 @@ public class TestBlockchain : IDisposable
         SpecProvider = CreateSpecProvider(specProvider ?? MainnetSpecProvider.Instance);
         EthereumEcdsa = new EthereumEcdsa(SpecProvider.ChainId, LogManager);
         DbProvider = await CreateDbProvider();
-        TrieStore = usePathStateDb ? new TrieStoreByPath(PathStateDb, LogManager) : new TrieStore(StateDb, LogManager);
+        TrieStore = usePathStateDb ? new TrieStoreByPath(new ByPathStateDb(PathStateDb, LogManager), LogManager) : new TrieStore(StateDb, LogManager);
 
         State = new WorldState(TrieStore, DbProvider.CodeDb, LogManager);
 

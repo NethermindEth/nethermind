@@ -2,29 +2,19 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections;
 using System.Collections.Generic;
-using System.Linq;
-using System.Runtime;
-using System.Text;
-using System.Threading.Tasks;
-using Nethermind.Core;
 using Nethermind.Logging;
 
 namespace Nethermind.Db.ByPathState;
+
 public class ByPathStateDb : IByPathStateDb
 {
-    private readonly RocksDbSettings _settings;
-    private readonly IRocksDbFactory _dbFactory;
+    private readonly IColumnsDb<StateColumns> _currentDb;
+    private readonly Dictionary<StateColumns, ByPathStateDbPrunner> _prunners;
 
-    private IColumnsDb<StateColumns> _currentDb;
-    private Dictionary<StateColumns, ByPathStateDbPrunner> _prunners;
-
-    public ByPathStateDb(RocksDbSettings settings, IRocksDbFactory dbFactory, ILogManager logManager)
+    public ByPathStateDb(IColumnsDb<StateColumns> currentDb, ILogManager logManager)
     {
-        _settings = settings;
-        _dbFactory = dbFactory;
-        _currentDb = _dbFactory.CreateColumnsDb<StateColumns>(_settings);
+        _currentDb = currentDb;
         _prunners = new Dictionary<StateColumns, ByPathStateDbPrunner>()
         {
             { StateColumns.State, new ByPathStateDbPrunner(_currentDb.GetColumnDb(StateColumns.State), logManager)},

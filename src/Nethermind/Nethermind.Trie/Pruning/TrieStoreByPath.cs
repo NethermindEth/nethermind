@@ -38,24 +38,23 @@ namespace Nethermind.Trie.Pruning
         private readonly TrieKeyValueStore _publicStore;
 
         public TrieStoreByPath(
-        IColumnsDb<StateColumns> stateDb,
+        IByPathStateDb stateDb,
         IByPathPersistenceStrategy? persistenceStrategy,
         ILogManager? logManager)
         {
+            _stateDb = stateDb;
             _logger = logManager?.GetClassLogger<TrieStore>() ?? throw new ArgumentNullException(nameof(logManager));
-            _stateDb = stateDb ?? throw new ArgumentNullException(nameof(stateDb));
             _persistenceStrategy = persistenceStrategy ?? throw new ArgumentNullException(nameof(persistenceStrategy));
             _useCommittedCache = _persistenceStrategy is not ByPathArchive;
             _committedNodes = new ConcurrentDictionary<StateColumns, IPathDataCache>();
             _committedNodes.TryAdd(StateColumns.State, new PathDataCache(this, logManager));
             _committedNodes.TryAdd(StateColumns.Storage, new PathDataCache(this, logManager));
             _destroyPrefixes = new ConcurrentQueue<byte[]>();
-            _pathStateDb = stateDb as IByPathStateDb;
             _currentWriteBatches = new ConcurrentDictionary<StateColumns, IWriteBatch?>();
             _publicStore = new TrieKeyValueStore(this);
         }
 
-        public TrieStoreByPath(IColumnsDb<StateColumns> stateDb, ILogManager? logManager) : this(stateDb, ByPathPersist.EveryBlock, logManager)
+        public TrieStoreByPath(IByPathStateDb stateDb, ILogManager? logManager) : this(stateDb, ByPathPersist.EveryBlock, logManager)
         {
         }
 
@@ -290,7 +289,7 @@ namespace Nethermind.Trie.Pruning
             TrieNode node = new(NodeType.Unknown, nodePath.ToArray(), nodeData.Keccak, nodeData.RLP);
             node.StoreNibblePathPrefix = storagePrefix.ToArray();
             node.ResolveNode(this);
-            node.ResolveKey(this, nodePath.Length == 0);
+            //node.ResolveKey(this, nodePath.Length == 0);
             return node;
         }
 
@@ -311,7 +310,7 @@ namespace Nethermind.Trie.Pruning
             TrieNode node = new(NodeType.Unknown, nodePath.ToArray(), nodeData.Keccak, nodeData.RLP);
             node.StoreNibblePathPrefix = storagePrefix.ToArray();
             node.ResolveNode(this);
-            node.ResolveKey(this, nodePath.Length == 0);
+            //node.ResolveKey(this, nodePath.Length == 0);
             return node;
         }
 
@@ -323,8 +322,7 @@ namespace Nethermind.Trie.Pruning
 
         #region Private
 
-        protected readonly IColumnsDb<StateColumns> _stateDb;
-        private readonly IByPathStateDb _pathStateDb;
+        private readonly IByPathStateDb _stateDb;
 
         private readonly ILogger _logger;
 
@@ -795,11 +793,11 @@ namespace Nethermind.Trie.Pruning
             {
                 (from, to) = GetDeleteKeyFromNibbles(fromNibblesKey, fullPathNibbles, 0);
                 if (_logger.IsTrace) _logger.Trace($"Leaf deletion for {pathToNodeNibbles.ToHexString()} | from: {from.ToHexString()} to: {to.ToHexString()}");
-                _pathStateDb?.EnqueueDeleteRange(column, from, to);
+                _stateDb?.EnqueueDeleteRange(column, from, to);
 
                 (from, to) = GetDeleteKeyFromNibbles(fromNibblesKey, fullPathNibbles, 1);
                 if (_logger.IsTrace) _logger.Trace($"Leaf deletion for {pathToNodeNibbles.ToHexString()} | from: {from.ToHexString()} to: {to.ToHexString()}");
-                _pathStateDb?.EnqueueDeleteRange(column, from, to);
+                _stateDb?.EnqueueDeleteRange(column, from, to);
             }
 
             if (keySlice.IndexOfAnyExcept((byte)0xf) >= 0)
@@ -809,11 +807,11 @@ namespace Nethermind.Trie.Pruning
                 Span<byte> endNibbles = fromNibblesKey.Slice(0, pathToNodeNibbles.Length).IncrementNibble(true);
                 (from, to) = GetDeleteKeyFromNibbles(fullPathIncremented.IncrementNibble(), endNibbles, 0);
                 if (_logger.IsTrace) _logger.Trace($"Leaf deletion for {pathToNodeNibbles.ToHexString()} | from: {from.ToHexString()} to: {to.ToHexString()}");
-                _pathStateDb?.EnqueueDeleteRange(column, from, to);
+                _stateDb?.EnqueueDeleteRange(column, from, to);
 
                 (from, to) = GetDeleteKeyFromNibbles(fullPathIncremented, endNibbles, 1);
                 if (_logger.IsTrace) _logger.Trace($"Leaf deletion for {pathToNodeNibbles.ToHexString()} | from: {from.ToHexString()} to: {to.ToHexString()}");
-                _pathStateDb?.EnqueueDeleteRange(column, from, to);
+                _stateDb?.EnqueueDeleteRange(column, from, to);
             }
         }
 
@@ -852,7 +850,7 @@ namespace Nethermind.Trie.Pruning
                 for (int i = 0; i < 4; i += 2)
                 {
                     if (_logger.IsTrace) _logger.Trace($"Branch deletion for {branchNode.FullPath.ToHexString()} | from: {keyRanges[i].ToHexString()} to: {keyRanges[i + 1].ToHexString()}");
-                    _pathStateDb?.EnqueueDeleteRange(fullKeyLength == 66 ? StateColumns.Storage : StateColumns.State, keyRanges[i], keyRanges[i + 1]);
+                    _stateDb?.EnqueueDeleteRange(fullKeyLength == 66 ? StateColumns.Storage : StateColumns.State, keyRanges[i], keyRanges[i + 1]);
                 }
             }
 
@@ -904,10 +902,10 @@ namespace Nethermind.Trie.Pruning
             if (!key.IsZero())
             {
                 (from, to) = GetDeleteKeyFromNibbles(fromNibblesKey, fullPathAndKey, 0);
-                _pathStateDb?.EnqueueDeleteRange(column, from, to);
+                _stateDb?.EnqueueDeleteRange(column, from, to);
 
                 (from, to) = GetDeleteKeyFromNibbles(fromNibblesKey, fullPathAndKey, 1);
-                _pathStateDb?.EnqueueDeleteRange(column, from, to);
+                _stateDb?.EnqueueDeleteRange(column, from, to);
             }
 
             if (key.IndexOfAnyExcept((byte)0xf) >= 0)
@@ -918,17 +916,17 @@ namespace Nethermind.Trie.Pruning
                 Span<byte> endNibbles = fromNibblesKey[..fullPathNibbles.Length].IncrementNibble(true);
 
                 (from, to) = GetDeleteKeyFromNibbles(fullPathAndKey, endNibbles, 0);
-                _pathStateDb?.EnqueueDeleteRange(column, from, to);
+                _stateDb?.EnqueueDeleteRange(column, from, to);
 
                 (from, to) = GetDeleteKeyFromNibbles(fullPathAndKey, endNibbles, 1);
-                _pathStateDb?.EnqueueDeleteRange(column, from, to);
+                _stateDb?.EnqueueDeleteRange(column, from, to);
             }
         }
 
         public bool CanAccessByPath()
         {
-            return _pathStateDb is null ? true :
-                _pathStateDb.CanAccessByPath(Db.StateColumns.State) && _pathStateDb.CanAccessByPath(Db.StateColumns.Storage);
+            return _stateDb is null ? true :
+                _stateDb.CanAccessByPath(Db.StateColumns.State) && _stateDb.CanAccessByPath(Db.StateColumns.Storage);
         }
 
         private IKeyValueStoreWithBatching GetProperColumnDb(int pathLength)
@@ -991,8 +989,9 @@ namespace Nethermind.Trie.Pruning
             public byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None) => _trieStore.Get(key, flags);
 
             public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None)
-            { 
-                //_trieStore._stateDb.Set(key, value, flags);
+            {
+                StateColumns column = key.Length >= 66 ? StateColumns.Storage : StateColumns.State;
+                _trieStore._stateDb.GetColumnDb(column).Set(key, value, flags);
             }
         }
     }

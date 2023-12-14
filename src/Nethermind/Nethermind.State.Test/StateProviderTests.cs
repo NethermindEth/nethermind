@@ -19,6 +19,7 @@ using Nethermind.Trie.Pruning;
 using NSubstitute;
 using NUnit.Framework;
 using System.Threading;
+using Nethermind.Db.ByPathState;
 
 namespace Nethermind.Store.Test
 {
@@ -44,11 +45,11 @@ namespace Nethermind.Store.Test
         public static (string Name, ITrieStore TrieStore)[] InitVariants()
         {
             TrieStore ts = new TrieStore(new MemDb(), Logger);
-            MemColumnsDb<StateColumns> memDb = new MemColumnsDb<StateColumns>();
+            MemColumnsDb<StateColumns> memDb = new();
             return new (string, ITrieStore)[]
             {
                 ("Keccak Store", ts),
-                ("Path Store", new TrieStoreByPath(memDb, Logger))
+                ("Path Store", new TrieStoreByPath(new ByPathStateDb(memDb, Logger), Logger))
             };
         }
 

@@ -7,6 +7,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
+using Nethermind.Db.ByPathState;
 using Nethermind.Logging;
 using Nethermind.Trie.ByPath;
 using Nethermind.Trie.Pruning;
@@ -22,7 +23,7 @@ public class PathDataCacheTests
     [Test()]
     public void Get_node_latest_version()
     {
-        PathDataCache cache = new PathDataCache(new TrieStoreByPath(new MemColumnsDb<StateColumns>(), Logger), Logger);
+        PathDataCache cache = new(new TrieStoreByPath(new ByPathStateDb(new MemColumnsDb<StateColumns>(), Logger), Logger), Logger);
 
         byte[] path1 = Nibbles.BytesToNibbleBytes(Bytes.FromHexString("0x0000000000000000000000000000000000000000000000000000000000001234"));
         TrieNode node = CreateResolvedLeaf(path1, 160.ToByteArray(), 60);
@@ -40,7 +41,7 @@ public class PathDataCacheTests
     [Test()]
     public void Get_node_using_path_and_keccak()
     {
-        PathDataCache cache = new PathDataCache(new TrieStoreByPath(new MemColumnsDb<StateColumns>(), Logger), Logger);
+        PathDataCache cache = new(new TrieStoreByPath(new ByPathStateDb(new MemColumnsDb<StateColumns>(), Logger), Logger), Logger);
 
         byte[] path1 = Nibbles.BytesToNibbleBytes(Bytes.FromHexString("0x0000000000000000000000000000000000000000000000000000000000001234"));
         TrieNode node = CreateResolvedLeaf(path1, 160.ToByteArray(), 60);
@@ -65,7 +66,7 @@ public class PathDataCacheTests
     [Test()]
     public void Get_node_using_root_hash()
     {
-        PathDataCache cache = new PathDataCache(new TrieStoreByPath(new MemColumnsDb<StateColumns>(), Logger), Logger);
+        PathDataCache cache = new(new TrieStoreByPath(new ByPathStateDb(new MemColumnsDb<StateColumns>(), Logger), Logger), Logger);
 
         byte[] path1 = Nibbles.BytesToNibbleBytes(Bytes.FromHexString("0x0000000000000000000000000000000000000000000000000000000000001234"));
 
@@ -92,7 +93,7 @@ public class PathDataCacheTests
     [Test()]
     public void Add_deleted_prefix_get_node()
     {
-        PathDataCache cache = new(new TrieStoreByPath(new MemColumnsDb<StateColumns>(), Logger), Logger, 4);
+        PathDataCache cache = new(new TrieStoreByPath(new ByPathStateDb(new MemColumnsDb<StateColumns>(), Logger), Logger), Logger, 4);
 
         byte[] path1 = Nibbles.BytesToNibbleBytes(Bytes.FromHexString("0x1acf000000000000000000000000000000000000000000000000000000091234"));
         byte[] path2 = Nibbles.BytesToNibbleBytes(Bytes.FromHexString("0x1acf100000000000000000000000000000000000000000000000000000091234"));
@@ -123,7 +124,7 @@ public class PathDataCacheTests
     [Test()]
     public void Add_deleted_prefix_persist_get_node()
     {
-        ITrieStore trieStore = new TrieStoreByPath(new MemColumnsDb<StateColumns>(), Logger);
+        ITrieStore trieStore = new TrieStoreByPath(new ByPathStateDb(new MemColumnsDb<StateColumns>(), Logger), Logger);
         PathDataCache cache = new(trieStore, Logger, 4);
 
         byte[] path1 = Nibbles.BytesToNibbleBytes(Bytes.FromHexString("0x1acf000000000000000000000000000000000000000000000000000000091234"));
@@ -159,7 +160,7 @@ public class PathDataCacheTests
     [Test()]
     public void Add_deleted_prefix_persist_get_node_2()
     {
-        PathDataCache cache = new(new TrieStoreByPath(new MemColumnsDb<StateColumns>(), Logger), Logger, 4);
+        PathDataCache cache = new(new TrieStoreByPath(new ByPathStateDb(new MemColumnsDb<StateColumns>(), Logger), Logger), Logger, 4);
 
         byte[] path1 = Nibbles.BytesToNibbleBytes(Bytes.FromHexString("0x1acf000000000000000000000000000000000000000000000000000000091234"));
         byte[] path2 = Nibbles.BytesToNibbleBytes(Bytes.FromHexString("0x1acf100000000000000000000000000000000000000000000000000000091234"));
@@ -208,8 +209,8 @@ public class PathDataCacheTests
     [Test()]
     public void Test_persist_until_block_1()
     {
-        ITrieStore trieStore = new TrieStoreByPath(new MemColumnsDb<StateColumns>(), Logger);
-        PathDataCache cache = new(trieStore, Logger);
+        ITrieStore trieStore = new TrieStoreByPath(new ByPathStateDb(new MemColumnsDb<StateColumns>(), Logger), Logger);
+        PathDataCache cache = new(trieStore, Logger, 4);
 
         byte[] path1 = Nibbles.BytesToNibbleBytes(Bytes.FromHexString("0x1ac0000000000000000000000000000000000000000000000000000000091234"));
         byte[] path2 = Nibbles.BytesToNibbleBytes(Bytes.FromHexString("0x1ac1000000000000000000000000000000000000000000000000000000091234"));
@@ -237,7 +238,7 @@ public class PathDataCacheTests
     [Test()]
     public void Test_persist_until_block_2()
     {
-        ITrieStore trieStore = new TrieStoreByPath(new MemColumnsDb<StateColumns>(), Logger);
+        ITrieStore trieStore = new TrieStoreByPath(new ByPathStateDb(new MemColumnsDb<StateColumns>(), Logger), Logger);
         PathDataCache cache = new(trieStore, Logger);
 
         byte[] path1 = Nibbles.BytesToNibbleBytes(Bytes.FromHexString("0x1ac0000000000000000000000000000000000000000000000000000000091234"));
@@ -268,7 +269,7 @@ public class PathDataCacheTests
     [Test()]
     public void Test_persist_until_block_3()
     {
-        PathDataCache cache = new(new TrieStoreByPath(new MemColumnsDb<StateColumns>(), Logger), Logger, 4);
+        PathDataCache cache = new(new TrieStoreByPath(new ByPathStateDb(new MemColumnsDb<StateColumns>(), Logger), Logger), Logger, 4);
 
         byte[] path1 = Nibbles.BytesToNibbleBytes(Bytes.FromHexString("0x1ac0000000000000000000000000000000000000000000000000000000091234"));
 
