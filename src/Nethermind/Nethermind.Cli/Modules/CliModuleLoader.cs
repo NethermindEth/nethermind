@@ -7,6 +7,7 @@ using System.IO;
 using System.Linq;
 using System.Linq.Expressions;
 using System.Reflection;
+using System.Runtime.InteropServices;
 using System.Runtime.Loader;
 using Jint.Native;
 using Jint.Native.Object;
@@ -92,17 +93,14 @@ namespace Nethermind.Cli.Modules
                     throw new InvalidDataException($"Method {methodInfo.Name} of {module.GetType().Name} should be decorated with one of {nameof(CliPropertyAttribute)} or {nameof(CliFunctionAttribute)}");
                 }
 
-                ObjectInstance instance;
-                if (!_objects.TryGetValue(objectName, out ObjectInstance? value))
+                ref ObjectInstance? instance = ref CollectionsMarshal.GetValueRefOrAddDefault(_objects, objectName, out bool exists);
+                if (!exists)
                 {
                     instance = _engine.JintEngine.Object.Construct(Arguments.Empty);
                     _engine.JintEngine.SetValue(objectName, instance);
-                    value = instance;
-                    _objects[objectName] = value;
                 }
 
-                instance = value;
-                var @delegate = CreateDelegate(methodInfo, module);
+                Delegate @delegate = CreateDelegate(methodInfo, module);
                 DelegateWrapper nativeDelegate = new DelegateWrapper(_engine.JintEngine, @delegate);
 
                 if (itemName is not null)
@@ -113,7 +111,7 @@ namespace Nethermind.Cli.Modules
                         _cliConsole.WriteLine($".{itemName}");
 
                         MethodsByModules[objectName].Add(itemName);
-                        AddProperty(instance, itemName, nativeDelegate);
+                        AddProperty(instance!, itemName, nativeDelegate);
                     }
                     else
                     {
@@ -121,7 +119,7 @@ namespace Nethermind.Cli.Modules
                         _cliConsole.WriteLine($".{itemName}({string.Join(", ", methodInfo.GetParameters().Select(p => p.Name))})");
 
                         MethodsByModules[objectName].Add(itemName + "(");
-                        AddMethod(instance, itemName, nativeDelegate);
+                        AddMethod(instance!, itemName, nativeDelegate);
                     }
                 }
             }

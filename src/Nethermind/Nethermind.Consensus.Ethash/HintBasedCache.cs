@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.ComponentModel;
 using System.Linq;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Logging;
@@ -55,10 +56,10 @@ namespace Nethermind.Consensus.Ethash
                 throw new InvalidOperationException("Hint too wide");
             }
 
-            if (!_epochsPerGuid.TryGetValue(guid, out HashSet<uint>? value))
+            ref HashSet<uint>? value = ref CollectionsMarshal.GetValueRefOrAddDefault(_epochsPerGuid, guid, out bool exists);
+            if (!exists)
             {
                 value = new HashSet<uint>();
-                _epochsPerGuid[guid] = value;
             }
 
             HashSet<uint> epochForGuid = value;

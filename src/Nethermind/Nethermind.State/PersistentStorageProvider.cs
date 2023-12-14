@@ -224,10 +224,11 @@ namespace Nethermind.State
 
         private StorageTree GetOrCreateStorage(Address address)
         {
-            if (!_storages.TryGetValue(address, out StorageTree? value))
+            ref StorageTree? value = ref _storages.GetValueRefOrAddDefault(address, out bool exists);
+            if (!exists)
             {
-                StorageTree storageTree = _storageTreeFactory.Create(address, _trieStore, _stateProvider.GetStorageRoot(address), StateRoot, _logManager);
-                return _storages[address] = storageTree;
+                value = _storageTreeFactory.Create(address, _trieStore, _stateProvider.GetStorageRoot(address), StateRoot, _logManager);
+                return value;
             }
 
             return value;

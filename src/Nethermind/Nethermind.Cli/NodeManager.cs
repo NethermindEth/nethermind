@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Net.Http;
+using System.Runtime.InteropServices;
 using System.Threading.Tasks;
 using Jint.Native;
 using Jint.Native.Json;
@@ -44,10 +45,10 @@ namespace Nethermind.Cli
         public void SwitchUri(Uri uri)
         {
             CurrentUri = uri.ToString();
-            if (!_clients.TryGetValue(uri, out IJsonRpcClient? value))
+            ref IJsonRpcClient? value = ref CollectionsMarshal.GetValueRefOrAddDefault(_clients, uri, out bool exists);
+            if (!exists)
             {
                 value = new BasicJsonRpcClient(uri, _serializer, _logManager);
-                _clients[uri] = value;
             }
 
             _currentClient = value;

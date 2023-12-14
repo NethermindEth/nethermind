@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -320,16 +321,17 @@ namespace Nethermind.Evm.Tracing.ParityStyle
                 throw new InvalidOperationException($"{nameof(ParityLikeTxTracer)} did not expect state change report.");
             }
 
-            if (!_trace.StateChanges.TryGetValue(address, out ParityAccountStateChange? value))
+            ref ParityAccountStateChange? value = ref CollectionsMarshal.GetValueRefOrAddDefault(_trace.StateChanges, address, out bool exists);
+            if (!exists)
             {
-                _trace.StateChanges[address] = new ParityAccountStateChange();
+                value = new ParityAccountStateChange();
             }
             else
             {
                 before = value.Balance?.Before ?? before;
             }
 
-            _trace.StateChanges[address].Balance = new ParityStateChange<UInt256?>(before, after);
+            value.Balance = new ParityStateChange<UInt256?>(before, after);
         }
 
         public override void ReportCodeChange(Address address, byte[] before, byte[] after)
@@ -353,34 +355,35 @@ namespace Nethermind.Evm.Tracing.ParityStyle
 
         public override void ReportNonceChange(Address address, UInt256? before, UInt256? after)
         {
-            if (!_trace.StateChanges!.TryGetValue(address, out ParityAccountStateChange? value))
+            ref ParityAccountStateChange? value = ref CollectionsMarshal.GetValueRefOrAddDefault(_trace.StateChanges, address, out bool exists);
+            if (!exists)
             {
-                _trace.StateChanges[address] = new ParityAccountStateChange();
+                value = new ParityAccountStateChange();
             }
             else
             {
                 before = value.Nonce?.Before ?? before;
             }
 
-            _trace.StateChanges[address].Nonce = new ParityStateChange<UInt256?>(before, after);
+            value.Nonce = new ParityStateChange<UInt256?>(before, after);
         }
 
         public override void ReportStorageChange(in StorageCell storageCell, byte[] before, byte[] after)
         {
-            if (!_trace.StateChanges!.TryGetValue(storageCell.Address, out ParityAccountStateChange? value))
+            ref ParityAccountStateChange? value = ref CollectionsMarshal.GetValueRefOrAddDefault(_trace.StateChanges, storageCell.Address, out bool exists);
+            if (!exists)
             {
                 value = new ParityAccountStateChange();
-                _trace.StateChanges[storageCell.Address] = value;
             }
 
-            Dictionary<UInt256, ParityStateChange<byte[]>> storage = value.Storage ?? (value.Storage = new Dictionary<UInt256, ParityStateChange<byte[]>>());
-
-            if (storage.TryGetValue(storageCell.Index, out ParityStateChange<byte[]> change))
+            Dictionary<UInt256, ParityStateChange<byte[]>> storage = value.Storage ??= [];
+            ref ParityStateChange<byte[]>? change = ref CollectionsMarshal.GetValueRefOrAddDefault(storage, storageCell.Index, out exists);
+            if (exists)
             {
                 before = change.Before ?? before;
             }
 
-            storage[storageCell.Index] = new ParityStateChange<byte[]>(before, after);
+            change = new ParityStateChange<byte[]>(before, after);
         }
 
         public override void ReportAction(long gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false)

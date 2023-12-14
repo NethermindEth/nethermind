@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Text;
 using Nethermind.Blockchain;
 using Nethermind.Core;
@@ -353,10 +354,10 @@ namespace Nethermind.Consensus.Clique
 
         private bool Cast(Snapshot snapshot, Address address, bool authorize)
         {
-            if (!snapshot.Tally.TryGetValue(address, out Tally? value))
+            ref Tally? value = ref CollectionsMarshal.GetValueRefOrAddDefault(snapshot.Tally, address, out bool exists);
+            if (!exists)
             {
                 value = new Tally(authorize);
-                snapshot.Tally[address] = value;
             }
 
             // Ensure the vote is meaningful
