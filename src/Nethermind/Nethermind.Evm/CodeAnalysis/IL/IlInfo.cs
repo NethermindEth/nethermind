@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Runtime.CompilerServices;
 using Nethermind.Core.Specs;
 
@@ -45,7 +45,7 @@ internal class IlInfo
         if (at == NotFound)
             return false;
 
-        _chunks[at](vmState, spec, ref programCounter, ref gasAvailable, ref stack);
+        _chunks[at].Invoke(vmState, spec, ref programCounter, ref gasAvailable, ref stack);
         return true;
     }
 }
