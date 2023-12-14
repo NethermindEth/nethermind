@@ -165,12 +165,10 @@ namespace Nethermind.Runner.JsonRpc
                     try
                     {
                         JsonRpcContext jsonRpcContext = JsonRpcContext.Http(jsonRpcUrl);
-                        long totalResponseSize = 0;
                         await foreach (JsonRpcResult result in jsonRpcProcessor.ProcessAsync(request, jsonRpcContext))
                         {
                             Stream stream = jsonRpcConfig.BufferResponses ? new MemoryStream() : null;
                             ICountingBufferWriter resultWriter = stream is not null ? new CountingStreamPipeWriter(stream) : new CountingPipeWriter(ctx.Response.BodyWriter);
-
                             try
                             {
                                 ctx.Response.ContentType = "application/json";
@@ -198,7 +196,7 @@ namespace Nethermind.Runner.JsonRpc
                                                 _ = jsonRpcLocalStats.ReportCall(entry.Report);
 
                                                 // We reached the limit and don't want to responded to more request in the batch
-                                                if (!jsonRpcContext.IsAuthenticated && totalResponseSize > jsonRpcConfig.MaxBatchResponseBodySize)
+                                                if (!jsonRpcContext.IsAuthenticated && resultWriter.WrittenCount > jsonRpcConfig.MaxBatchResponseBodySize)
                                                 {
                                                     if (logger.IsWarn) logger.Warn($"The max batch response body size exceeded. The current response size {totalResponseSize}, and the config setting is JsonRpc.{nameof(jsonRpcConfig.MaxBatchResponseBodySize)} = {jsonRpcConfig.MaxBatchResponseBodySize}");
                                                     enumerator.IsStopped = true;
@@ -246,7 +244,6 @@ namespace Nethermind.Runner.JsonRpc
                                 ? new RpcReport("# collection serialization #", handlingTimeMicroseconds, true)
                                 : result.Report.Value, handlingTimeMicroseconds, resultWriter.WrittenCount);
 
-                            totalResponseSize += resultWriter.WrittenCount;
                             Interlocked.Add(ref Metrics.JsonRpcBytesSentHttp, resultWriter.WrittenCount);
 
                             // There should be only one response because we don't expect multiple JSON tokens in the request
