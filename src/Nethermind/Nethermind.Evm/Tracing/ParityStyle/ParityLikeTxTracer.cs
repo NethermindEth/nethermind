@@ -341,16 +341,17 @@ namespace Nethermind.Evm.Tracing.ParityStyle
                 throw new InvalidOperationException($"{nameof(ParityLikeTxTracer)} did not expect state change report.");
             }
 
-            if (!_trace.StateChanges.TryGetValue(address, out ParityAccountStateChange? value))
+            ref ParityAccountStateChange? value = ref CollectionsMarshal.GetValueRefOrAddDefault(_trace.StateChanges, address, out bool exists);
+            if (!exists)
             {
-                _trace.StateChanges[address] = new ParityAccountStateChange();
+                value = new ParityAccountStateChange();
             }
             else
             {
                 before = value.Code?.Before ?? before;
             }
 
-            _trace.StateChanges[address].Code = new ParityStateChange<byte[]>(before, after);
+            value.Code = new ParityStateChange<byte[]>(before, after);
         }
 
         public override void ReportNonceChange(Address address, UInt256? before, UInt256? after)
