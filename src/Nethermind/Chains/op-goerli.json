@@ -6,6 +6,7 @@
       "params": {
         "regolithTimestamp": "0x6414B8B0",
         "bedrockBlockNumber": "0x0",
+        "canyonTimestamp": "0x6553a790",
         "l1FeeRecipient": "0x420000000000000000000000000000000000001A",
         "l1BlockAddress": "0x4200000000000000000000000000000000000015"
       }
@@ -51,6 +52,11 @@
     "eip3198Transition": "0x3df828",
     "eip3529Transition": "0x3df828",
     "eip3541Transition": "0x3df828",
+
+    "eip4895TransitionTimestamp": "0x6553a790",
+    "eip3651TransitionTimestamp": "0x6553a790",
+    "eip3855TransitionTimestamp": "0x6553a790",
+    "eip3860TransitionTimestamp": "0x6553a790",
 
     "terminalTotalDifficulty": "0"
   },

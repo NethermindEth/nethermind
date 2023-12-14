@@ -30,46 +30,48 @@ public class BlockReceiptsTracer : IBlockTracer, ITxTracer, IJournal<int>, ITxTr
 
     private IBlockTracer _otherTracer = NullBlockTracer.Instance;
 
-    public void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null)
+    public void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null, ulong? depositNonce = null, ulong? depositReceiptVersion = null)
     {
-        _txReceipts.Add(BuildReceipt(recipient, gasSpent, StatusCode.Success, logs, stateRoot));
+        _txReceipts.Add(BuildReceipt(recipient, gasSpent, StatusCode.Success, logs, stateRoot, depositNonce, depositReceiptVersion));
 
         // hacky way to support nested receipt tracers
         if (_otherTracer is ITxTracer otherTxTracer)
         {
-            otherTxTracer.MarkAsSuccess(recipient, gasSpent, output, logs, stateRoot);
+            otherTxTracer.MarkAsSuccess(recipient, gasSpent, output, logs, stateRoot, depositNonce, depositReceiptVersion);
         }
 
         if (_currentTxTracer.IsTracingReceipt)
         {
-            _currentTxTracer.MarkAsSuccess(recipient, gasSpent, output, logs);
+            // TODO: is no stateRoot a bug?
+            _currentTxTracer.MarkAsSuccess(recipient, gasSpent, output, logs, null, depositNonce, depositReceiptVersion);
         }
     }
 
-    public void MarkAsFailed(Address recipient, long gasSpent, byte[] output, string error, Hash256? stateRoot = null)
+    public void MarkAsFailed(Address recipient, long gasSpent, byte[] output, string error, Hash256? stateRoot = null, ulong? depositNonce = null, ulong? depositReceiptVersion = null)
     {
-        _txReceipts.Add(BuildFailedReceipt(recipient, gasSpent, error, stateRoot));
+        _txReceipts.Add(BuildFailedReceipt(recipient, gasSpent, error, stateRoot, depositNonce, depositReceiptVersion));
 
         // hacky way to support nested receipt tracers
         if (_otherTracer is ITxTracer otherTxTracer)
         {
-            otherTxTracer.MarkAsFailed(recipient, gasSpent, output, error, stateRoot);
+            otherTxTracer.MarkAsFailed(recipient, gasSpent, output, error, stateRoot, depositNonce, depositReceiptVersion);
         }
 
         if (_currentTxTracer.IsTracingReceipt)
         {
-            _currentTxTracer.MarkAsFailed(recipient, gasSpent, output, error);
+            // TODO: is no stateRoot a bug?
+            _currentTxTracer.MarkAsFailed(recipient, gasSpent, output, error, null, depositNonce, depositReceiptVersion);
         }
     }
 
-    private TxReceipt BuildFailedReceipt(Address recipient, long gasSpent, string error, Hash256? stateRoot = null)
+    private TxReceipt BuildFailedReceipt(Address recipient, long gasSpent, string error, Hash256? stateRoot, ulong? depositNonce, ulong? depositReceiptVersion)
     {
-        TxReceipt receipt = BuildReceipt(recipient, gasSpent, StatusCode.Failure, Array.Empty<LogEntry>(), stateRoot);
+        TxReceipt receipt = BuildReceipt(recipient, gasSpent, StatusCode.Failure, Array.Empty<LogEntry>(), stateRoot, depositNonce, depositReceiptVersion);
         receipt.Error = error;
         return receipt;
     }
 
-    private TxReceipt BuildReceipt(Address recipient, long spentGas, byte statusCode, LogEntry[] logEntries, Hash256? stateRoot = null)
+    private TxReceipt BuildReceipt(Address recipient, long spentGas, byte statusCode, LogEntry[] logEntries, Hash256? stateRoot, ulong? depositNonce, ulong? depositReceiptVersion)
     {
         Transaction transaction = _currentTx!;
         TxReceipt txReceipt = new()
@@ -87,7 +89,9 @@ public class BlockReceiptsTracer : IBlockTracer, ITxTracer, IJournal<int>, ITxTr
             Sender = transaction.SenderAddress,
             ContractAddress = transaction.IsContractCreation ? recipient : null,
             TxHash = transaction.Hash,
-            PostTransactionState = stateRoot
+            PostTransactionState = stateRoot,
+            DepositNonce = depositNonce,
+            DepositReceiptVersion = depositReceiptVersion
         };
 
         return txReceipt;

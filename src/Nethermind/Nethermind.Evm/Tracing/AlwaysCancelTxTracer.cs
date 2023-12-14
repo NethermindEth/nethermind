@@ -42,9 +42,9 @@ public class AlwaysCancelTxTracer : ITxTracer
     public bool IsTracingAccess => true;
     public bool IsTracingFees => true;
 
-    public void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null) => throw new OperationCanceledException(ErrorMessage);
+    public void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null, ulong? depositNonce = null, ulong? depositReceiptVersion = null) => throw new OperationCanceledException(ErrorMessage);
 
-    public void MarkAsFailed(Address recipient, long gasSpent, byte[] output, string error, Hash256? stateRoot = null) => throw new OperationCanceledException(ErrorMessage);
+    public void MarkAsFailed(Address recipient, long gasSpent, byte[] output, string error, Hash256? stateRoot = null, ulong? depositNonce = null, ulong? depositReceiptVersion = null) => throw new OperationCanceledException(ErrorMessage);
 
     public void StartOperation(int depth, long gas, Instruction opcode, int pc, bool isPostMerge = false) => throw new OperationCanceledException(ErrorMessage);
 

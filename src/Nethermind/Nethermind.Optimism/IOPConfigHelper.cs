@@ -11,4 +11,5 @@ public interface IOPConfigHelper
 
     bool IsBedrock(BlockHeader header);
     bool IsRegolith(BlockHeader header);
+    bool IsCanyon(BlockHeader header);
 }

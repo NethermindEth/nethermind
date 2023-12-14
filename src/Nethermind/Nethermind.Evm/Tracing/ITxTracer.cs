@@ -146,7 +146,7 @@ public interface ITxTracer : IWorldStateTracer, IDisposable
     /// <param name="logs">Logs for transaction</param>
     /// <param name="stateRoot">State root after transaction, depends on EIP-658</param>
     /// <remarks>Depends on <see cref="IsTracingReceipt"/></remarks>
-    void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null);
+    void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null, ulong? depositNonce = null, ulong? depositReceiptVersion = null);
 
     /// <summary>
     /// Transaction failed
@@ -157,7 +157,7 @@ public interface ITxTracer : IWorldStateTracer, IDisposable
     /// <param name="error">Error that failed the transaction</param>
     /// <param name="stateRoot">State root after transaction, depends on EIP-658</param>
     /// <remarks>Depends on <see cref="IsTracingReceipt"/></remarks>
-    void MarkAsFailed(Address recipient, long gasSpent, byte[] output, string error, Hash256? stateRoot = null);
+    void MarkAsFailed(Address recipient, long gasSpent, byte[] output, string error, Hash256? stateRoot = null, ulong? depositNonce = null, ulong? depositReceiptVersion = null);
 
     /// <summary>
     ///

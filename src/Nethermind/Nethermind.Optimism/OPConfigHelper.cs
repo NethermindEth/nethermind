@@ -9,13 +9,15 @@ public class OPSpecHelper : IOPConfigHelper
 {
     private readonly ulong _regolithTimestamp;
     private readonly long _bedrockBlockNumber;
+    private readonly ulong _canyonTimestamp;
 
     public Address L1FeeReceiver { get; init; }
 
-    public OPSpecHelper(ulong regolithTimestamp, long bedrockBlockNumber, Address l1FeeReceiver)
+    public OPSpecHelper(ulong regolithTimestamp, long bedrockBlockNumber, ulong canyonTimestamp, Address l1FeeReceiver)
     {
         _regolithTimestamp = regolithTimestamp;
         _bedrockBlockNumber = bedrockBlockNumber;
+        _canyonTimestamp = canyonTimestamp;
         L1FeeReceiver = l1FeeReceiver;
     }
 
@@ -27,5 +29,10 @@ public class OPSpecHelper : IOPConfigHelper
     public bool IsBedrock(BlockHeader header)
     {
         return header.Number >= _bedrockBlockNumber;
+    }
+
+    public bool IsCanyon(BlockHeader header)
+    {
+        return header.Timestamp >= _canyonTimestamp;
     }
 }

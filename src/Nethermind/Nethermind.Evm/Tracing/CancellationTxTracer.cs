@@ -168,21 +168,21 @@ public class CancellationTxTracer : ITxTracer, ITxTracerWrapper
         }
     }
 
-    public void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null)
+    public void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null, ulong? depositNonce = null, ulong? depositReceiptVersion = null)
     {
         _token.ThrowIfCancellationRequested();
         if (_innerTracer.IsTracingReceipt)
         {
-            _innerTracer.MarkAsSuccess(recipient, gasSpent, output, logs, stateRoot);
+            _innerTracer.MarkAsSuccess(recipient, gasSpent, output, logs, stateRoot, depositNonce, depositReceiptVersion);
         }
     }
 
-    public void MarkAsFailed(Address recipient, long gasSpent, byte[] output, string error, Hash256? stateRoot = null)
+    public void MarkAsFailed(Address recipient, long gasSpent, byte[] output, string error, Hash256? stateRoot = null, ulong? depositNonce = null, ulong? depositReceiptVersion = null)
     {
         _token.ThrowIfCancellationRequested();
         if (_innerTracer.IsTracingReceipt)
         {
-            _innerTracer.MarkAsFailed(recipient, gasSpent, output, error, stateRoot);
+            _innerTracer.MarkAsFailed(recipient, gasSpent, output, error, stateRoot, depositNonce, depositReceiptVersion);
         }
     }
 

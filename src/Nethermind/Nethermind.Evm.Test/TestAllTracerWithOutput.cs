@@ -42,14 +42,14 @@ namespace Nethermind.Evm.Test
 
         public List<EvmExceptionType> ReportedActionErrors { get; set; } = new List<EvmExceptionType>();
 
-        public override void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null)
+        public override void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null, ulong? depositNonce = null, ulong? depositReceiptVersion = null)
         {
             GasSpent = gasSpent;
             ReturnValue = output;
             StatusCode = Evm.StatusCode.Success;
         }
 
-        public override void MarkAsFailed(Address recipient, long gasSpent, byte[]? output, string error, Hash256? stateRoot = null)
+        public override void MarkAsFailed(Address recipient, long gasSpent, byte[]? output, string error, Hash256? stateRoot = null, ulong? depositNonce = null, ulong? depositReceiptVersion = null)
         {
             GasSpent = gasSpent;
             Error = error;

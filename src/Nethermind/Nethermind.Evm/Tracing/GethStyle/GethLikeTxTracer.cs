@@ -29,12 +29,12 @@ public abstract class GethLikeTxTracer : TxTracer
     public sealed override bool IsTracingStack { get; protected set; }
     protected bool IsTracingFullMemory { get; }
 
-    public override void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null)
+    public override void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null, ulong? depositNonce = null, ulong? depositReceiptVersion = null)
     {
         Trace.ReturnValue = output;
     }
 
-    public override void MarkAsFailed(Address recipient, long gasSpent, byte[]? output, string error, Hash256? stateRoot = null)
+    public override void MarkAsFailed(Address recipient, long gasSpent, byte[]? output, string error, Hash256? stateRoot = null, ulong? depositNonce = null, ulong? depositReceiptVersion = null)
     {
         Trace.Failed = true;
         Trace.ReturnValue = output ?? Array.Empty<byte>();

@@ -70,13 +70,13 @@ namespace Nethermind.AccountAbstraction.Executor
         public override bool IsTracingAccess => true;
 
         public override void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs,
-            Hash256? stateRoot = null)
+            Hash256? stateRoot = null, ulong? depositNonce = null, ulong? depositReceiptVersion = null)
         {
             Output = output;
         }
 
         public override void MarkAsFailed(Address recipient, long gasSpent, byte[] output, string error,
-            Hash256? stateRoot = null)
+            Hash256? stateRoot = null, ulong? depositNonce = null, ulong? depositReceiptVersion = null)
         {
             Success = false;
             Error = error;

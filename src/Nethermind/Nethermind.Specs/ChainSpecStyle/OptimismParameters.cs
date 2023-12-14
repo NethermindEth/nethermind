@@ -13,6 +13,8 @@ namespace Nethermind.Specs.ChainSpecStyle
 
         public long BedrockBlockNumber { get; set; }
 
+        public ulong CanyonTimestamp { get; set; }
+
         public Address L1FeeRecipient { get; set; }
 
         public Address L1BlockAddress { get; set; }

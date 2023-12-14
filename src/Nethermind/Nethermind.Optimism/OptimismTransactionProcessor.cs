@@ -47,6 +47,45 @@ public class OptimismTransactionProcessor : TransactionProcessor
         base.Execute(tx, blCtx, tracer, opts);
     }
 
+    private (ulong?, ulong?) GetDepositReceiptData(Transaction tx, BlockHeader header)
+    {
+        ulong? depositNonce = null;
+        ulong? version = null;
+
+        if (tx.IsDeposit())
+        {
+            depositNonce = WorldState.GetNonce(tx.SenderAddress!).ToUInt64(null);
+            if (_opConfigHelper.IsCanyon(header))
+            {
+                version = 1;
+            }
+        }
+
+        return (depositNonce == 0 ? 0 : depositNonce - 1, version);
+    }
+
+    protected override void TraceReceiptFailure(ITxTracer tracer, Transaction tx, BlockHeader header, Address executingAccount, long spentGas, byte[] output, string error, IReleaseSpec spec)
+    {
+        // TODO: tx.Sender == executingAccount?
+        if (tracer.IsTracingReceipt)
+        {
+            (ulong? depositNonce, ulong? version) = GetDepositReceiptData(tx, header);
+
+            tracer.MarkAsFailed(executingAccount, spentGas, output, error, null, depositNonce, version);
+        }
+    }
+
+    protected override void TraceReceiptSuccess(ITxTracer tracer, Transaction tx, BlockHeader header, Address executingAccount, long spentGas, byte[] output, LogEntry[] logs, IReleaseSpec spec)
+    {
+        // TODO: tx.Sender == executingAccount?
+        if (tracer.IsTracingReceipt)
+        {
+            (ulong? depositNonce, ulong? version) = GetDepositReceiptData(tx, header);
+
+            tracer.MarkAsSuccess(executingAccount, spentGas, output, logs, null, depositNonce, version);
+        }
+    }
+
     protected override bool ValidateStatic(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer, ExecutionOptions opts,
         out long intrinsicGas)
     {

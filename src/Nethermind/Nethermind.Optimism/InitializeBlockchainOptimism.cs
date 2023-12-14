@@ -30,6 +30,7 @@ public class InitializeBlockchainOptimism : InitializeBlockchain
         _api.SpecHelper = new(
             _api.ChainSpec.Optimism.RegolithTimestamp,
             _api.ChainSpec.Optimism.BedrockBlockNumber,
+            _api.ChainSpec.Optimism.CanyonTimestamp,
             _api.ChainSpec.Optimism.L1FeeRecipient
         );
         _api.L1CostHelper = new(_api.SpecHelper, _api.ChainSpec.Optimism.L1BlockAddress);

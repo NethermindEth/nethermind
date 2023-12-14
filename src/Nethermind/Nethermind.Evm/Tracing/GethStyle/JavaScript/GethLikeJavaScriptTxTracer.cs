@@ -192,17 +192,17 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer, ITxTracer
         _depth--;
     }
 
-    public override void MarkAsFailed(Address recipient, long gasSpent, byte[]? output, string error, Hash256? stateRoot = null)
+    public override void MarkAsFailed(Address recipient, long gasSpent, byte[]? output, string error, Hash256? stateRoot = null, ulong? depositNonce = null, ulong? depositReceiptVersion = null)
     {
-        base.MarkAsFailed(recipient, gasSpent, output, error, stateRoot);
+        base.MarkAsFailed(recipient, gasSpent, output, error, stateRoot, depositNonce, depositReceiptVersion);
         _ctx.gasUsed = gasSpent;
         _ctx.Output = output;
         _ctx.error = error;
     }
 
-    public override void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null)
+    public override void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null, ulong? depositNonce = null, ulong? depositReceiptVersion = null)
     {
-        base.MarkAsSuccess(recipient, gasSpent, output, logs, stateRoot);
+        base.MarkAsSuccess(recipient, gasSpent, output, logs, stateRoot, depositNonce, depositReceiptVersion);
         _ctx.gasUsed = gasSpent;
         _ctx.Output = output;
     }

@@ -179,6 +179,20 @@ namespace Nethermind.Evm.TransactionProcessing
                 WorldState.Commit(spec, tracer.IsTracingState ? tracer : NullStateTracer.Instance);
             }
 
+            if (statusCode == StatusCode.Failure)
+            {
+                byte[] output = (substate?.ShouldRevert ?? false) ? substate.Output.ToArray() : Array.Empty<byte>();
+                TraceReceiptFailure(tracer, tx, header, env.ExecutingAccount, spentGas, output, substate?.Error ?? "invalid", spec);
+            }
+            else
+            {
+                LogEntry[] logs = substate.Logs.Count != 0 ? substate.Logs.ToArray() : Array.Empty<LogEntry>();
+                TraceReceiptSuccess(tracer, tx, header, env.ExecutingAccount, spentGas, substate.Output.ToArray(), logs, spec);
+            }
+        }
+
+        protected virtual void TraceReceiptFailure(ITxTracer tracer, Transaction tx, BlockHeader header, Address executingAccount, long spentGas, byte[] output, string error, IReleaseSpec spec)
+        {
             if (tracer.IsTracingReceipt)
             {
                 Hash256 stateRoot = null;
@@ -188,38 +202,34 @@ namespace Nethermind.Evm.TransactionProcessing
                     stateRoot = WorldState.StateRoot;
                 }
 
-                if (statusCode == StatusCode.Failure)
-                {
-                    byte[] output = (substate?.ShouldRevert ?? false) ? substate.Output.ToArray() : Array.Empty<byte>();
-                    tracer.MarkAsFailed(env.ExecutingAccount, spentGas, output, substate?.Error, stateRoot);
-                }
-                else
-                {
-                    LogEntry[] logs = substate.Logs.Count != 0 ? substate.Logs.ToArray() : Array.Empty<LogEntry>();
-                    tracer.MarkAsSuccess(env.ExecutingAccount, spentGas, substate.Output.ToArray(), logs, stateRoot);
-                }
+                tracer.MarkAsFailed(executingAccount, spentGas, output, error, stateRoot);
             }
         }
 
-        protected void QuickFail(Transaction tx, BlockHeader block, IReleaseSpec spec, ITxTracer txTracer, string? reason)
+        protected virtual void TraceReceiptSuccess(ITxTracer tracer, Transaction tx, BlockHeader header, Address executingAccount, long spentGas, byte[] output, LogEntry[] logs, IReleaseSpec spec)
         {
-            block.GasUsed += tx.GasLimit;
-
-            Address recipient = tx.To ?? ContractAddress.From(
-                tx.SenderAddress ?? Address.Zero,
-                WorldState.GetNonce(tx.SenderAddress ?? Address.Zero));
-
-            if (txTracer.IsTracingReceipt)
+            if (tracer.IsTracingReceipt)
             {
-                Hash256? stateRoot = null;
+                Hash256 stateRoot = null;
                 if (!spec.IsEip658Enabled)
                 {
                     WorldState.RecalculateStateRoot();
                     stateRoot = WorldState.StateRoot;
                 }
 
-                txTracer.MarkAsFailed(recipient, tx.GasLimit, Array.Empty<byte>(), reason ?? "invalid", stateRoot);
+                tracer.MarkAsSuccess(executingAccount, spentGas, output, logs, stateRoot);
             }
+        }
+
+        protected void QuickFail(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer txTracer, string? reason)
+        {
+            header.GasUsed += tx.GasLimit;
+
+            Address recipient = tx.To ?? ContractAddress.From(
+                tx.SenderAddress ?? Address.Zero,
+                WorldState.GetNonce(tx.SenderAddress ?? Address.Zero));
+
+            TraceReceiptFailure(txTracer, tx, header, recipient, tx.GasLimit, Array.Empty<byte>(), reason ?? "invalid", spec);
         }
 
 

@@ -48,8 +48,8 @@ public class TxTracer : ITxTracer
     public virtual void ReportStorageChange(in ReadOnlySpan<byte> key, in ReadOnlySpan<byte> value) { }
     public virtual void ReportStorageChange(in StorageCell storageCell, byte[] before, byte[] after) { }
     public virtual void ReportStorageRead(in StorageCell storageCell) { }
-    public virtual void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null) { }
-    public virtual void MarkAsFailed(Address recipient, long gasSpent, byte[] output, string error, Hash256? stateRoot = null) { }
+    public virtual void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null, ulong? depositNonce = null, ulong? depositReceiptVersion = null) { }
+    public virtual void MarkAsFailed(Address recipient, long gasSpent, byte[] output, string error, Hash256? stateRoot = null, ulong? depositNonce = null, ulong? depositReceiptVersion = null) { }
     public virtual void StartOperation(int depth, long gas, Instruction opcode, int pc, bool isPostMerge = false) { }
     public virtual void ReportOperationError(EvmExceptionType error) { }
     public virtual void ReportOperationRemainingGas(long gas) { }
