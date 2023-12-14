@@ -6,11 +6,11 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Core;
-using Nethermind.Core.Buffers;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -973,12 +973,13 @@ namespace Nethermind.Synchronization.FastSync
         {
             lock (_dependencies)
             {
-                if (!_dependencies.ContainsKey(dependency))
+                ref HashSet<DependentItem>? value = ref CollectionsMarshal.GetValueRefOrAddDefault(_dependencies, dependency, out bool exists);
+                if (!exists)
                 {
-                    _dependencies[dependency] = new HashSet<DependentItem>(DependentItemComparer.Instance);
+                    value = new HashSet<DependentItem>(DependentItemComparer.Instance);
                 }
 
-                _dependencies[dependency].Add(dependentItem);
+                value.Add(dependentItem);
             }
         }
 

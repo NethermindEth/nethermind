@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.ComponentModel;
 using System.Linq;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Logging;
@@ -55,12 +56,13 @@ namespace Nethermind.Consensus.Ethash
                 throw new InvalidOperationException("Hint too wide");
             }
 
-            if (!_epochsPerGuid.ContainsKey(guid))
+            ref HashSet<uint>? value = ref CollectionsMarshal.GetValueRefOrAddDefault(_epochsPerGuid, guid, out bool exists);
+            if (!exists)
             {
-                _epochsPerGuid[guid] = new HashSet<uint>();
+                value = new HashSet<uint>();
             }
 
-            HashSet<uint> epochForGuid = _epochsPerGuid[guid];
+            HashSet<uint> epochForGuid = value;
             uint currentMin = uint.MaxValue;
             uint currentMax = 0;
             foreach (uint alreadyCachedEpoch in epochForGuid.ToList())
@@ -78,12 +80,12 @@ namespace Nethermind.Consensus.Ethash
                 if (alreadyCachedEpoch < startEpoch || alreadyCachedEpoch > endEpoch)
                 {
                     epochForGuid.Remove(alreadyCachedEpoch);
-                    if (!_epochRefs.ContainsKey(alreadyCachedEpoch))
+                    if (!_epochRefs.TryGetValue(alreadyCachedEpoch, out var epochValue))
                     {
                         throw new InvalidAsynchronousStateException("Epoch ref missing");
                     }
 
-                    _epochRefs[alreadyCachedEpoch] = _epochRefs[alreadyCachedEpoch] - 1;
+                    _epochRefs[alreadyCachedEpoch] = epochValue - 1;
                     if (_epochRefs[alreadyCachedEpoch] == 0)
                     {
                         // _logger.Warn($"Removing data set for epoch {alreadyCachedEpoch}");
@@ -99,15 +101,15 @@ namespace Nethermind.Consensus.Ethash
                 for (long i = startEpoch; i <= endEpoch; i++)
                 {
                     uint epoch = (uint)i;
-                    if (!epochForGuid.Contains(epoch))
+                    if (epochForGuid.Add(epoch))
                     {
-                        epochForGuid.Add(epoch);
-                        if (!_epochRefs.ContainsKey(epoch))
+                        if (!_epochRefs.TryGetValue(epoch, out var epochValue))
                         {
-                            _epochRefs[epoch] = 0;
+                            epochValue = 0;
+                            _epochRefs[epoch] = epochValue;
                         }
 
-                        _epochRefs[epoch] = _epochRefs[epoch] + 1;
+                        _epochRefs[epoch] = epochValue + 1;
                         if (_epochRefs[epoch] == 1)
                         {
                             // _logger.Warn($"Building data set for epoch {epoch}");
