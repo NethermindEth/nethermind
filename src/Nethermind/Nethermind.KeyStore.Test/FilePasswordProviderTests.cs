@@ -11,7 +11,7 @@ namespace Nethermind.KeyStore.Test
 {
     public class FilePasswordProviderTests
     {
-        private static List<(string Name, string Content)> _files = new List<(string Name, string Content)>()
+        private static readonly List<(string Name, string Content)> _files = new List<(string Name, string Content)>()
         {
             ("TestingPasswordProviderFileF1", "PF1"),
             ("TestingPasswordProviderFileF2", "P    F2"),

@@ -7,7 +7,7 @@ namespace Nethermind.Config
 {
     public class JsonConfigProvider : IConfigProvider
     {
-        private ConfigProvider _provider = new();
+        private readonly ConfigProvider _provider = new();
 
         public JsonConfigProvider(string jsonConfigFile)
         {

@@ -78,7 +78,7 @@ namespace Nethermind.Blockchain.Filters
                 int filterId = filter.Id;
                 List<Hash256> transactions = _pendingTransactions.GetOrAdd(filterId, _ => new List<Hash256>());
                 transactions.Add(e.Transaction.Hash);
-                if (_logger.IsDebug) _logger.Debug($"Filter with id: '{filterId}' contains {transactions.Count} transactions.");
+                if (_logger.IsDebug) _logger.Debug($"Filter with id: {filterId} contains {transactions.Count} transactions.");
 
             }
         }
@@ -92,7 +92,7 @@ namespace Nethermind.Blockchain.Filters
                 int filterId = filter.Id;
                 List<Hash256> transactions = _pendingTransactions.GetOrAdd(filterId, _ => new List<Hash256>());
                 transactions.Remove(e.Transaction.Hash);
-                if (_logger.IsDebug) _logger.Debug($"Filter with id: '{filterId}' contains {transactions.Count} transactions.");
+                if (_logger.IsDebug) _logger.Debug($"Filter with id: {filterId} contains {transactions.Count} transactions.");
 
             }
         }
@@ -158,10 +158,7 @@ namespace Nethermind.Blockchain.Filters
 
         private void AddReceipts(TxReceipt txReceipt)
         {
-            if (txReceipt is null)
-            {
-                throw new ArgumentNullException(nameof(txReceipt));
-            }
+            ArgumentNullException.ThrowIfNull(txReceipt);
 
             IEnumerable<LogFilter> filters = _filterStore.GetFilters<LogFilter>();
             foreach (LogFilter filter in filters)
@@ -172,10 +169,7 @@ namespace Nethermind.Blockchain.Filters
 
         private void AddBlock(Block block)
         {
-            if (block is null)
-            {
-                throw new ArgumentNullException(nameof(block));
-            }
+            ArgumentNullException.ThrowIfNull(block);
 
             IEnumerable<BlockFilter> filters = _filterStore.GetFilters<BlockFilter>();
 
@@ -194,7 +188,7 @@ namespace Nethermind.Blockchain.Filters
 
             List<Hash256> blocks = _blockHashes.GetOrAdd(filter.Id, i => new List<Hash256>());
             blocks.Add(block.Hash);
-            if (_logger.IsDebug) _logger.Debug($"Filter with id: '{filter.Id}' contains {blocks.Count} blocks.");
+            if (_logger.IsDebug) _logger.Debug($"Filter with id: {filter.Id} contains {blocks.Count} blocks.");
         }
 
         private void StoreLogs(LogFilter filter, TxReceipt txReceipt, ref long logIndex)
@@ -220,7 +214,7 @@ namespace Nethermind.Blockchain.Filters
                 return;
             }
 
-            if (_logger.IsDebug) _logger.Debug($"Filter with id: '{filter.Id}' contains {logs.Count} logs.");
+            if (_logger.IsDebug) _logger.Debug($"Filter with id: {filter.Id} contains {logs.Count} logs.");
         }
 
         private FilterLog? CreateLog(LogFilter logFilter, TxReceipt txReceipt, LogEntry logEntry, long index, int transactionLogIndex)

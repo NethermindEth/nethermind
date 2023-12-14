@@ -6,8 +6,10 @@ using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
+using System.Text.Json.Serialization;
 
 using Nethermind.Core.Extensions;
+using Nethermind.Serialization.Json;
 
 namespace Nethermind.Core.Crypto
 {
@@ -115,6 +117,7 @@ namespace Nethermind.Core.Crypto
         public static bool operator <=(in ValueHash256 left, in ValueHash256 right) => left.CompareTo(in right) <= 0;
     }
 
+    [JsonConverter(typeof(Hash256Converter))]
     [DebuggerStepThrough]
     public class Hash256 : IEquatable<Hash256>, IComparable<Hash256>
     {

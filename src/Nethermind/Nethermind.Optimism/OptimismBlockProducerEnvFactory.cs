@@ -16,6 +16,7 @@ using Nethermind.Db;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.Specs.ChainSpecStyle;
+using Nethermind.State;
 using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 
@@ -28,10 +29,9 @@ public class OptimismBlockProducerEnvFactory : BlockProducerEnvFactory
     private readonly OPL1CostHelper _l1CostHelper;
 
     public OptimismBlockProducerEnvFactory(
+        IWorldStateManager worldStateManager,
         ChainSpec chainSpec,
-        IDbProvider dbProvider,
         IBlockTree blockTree,
-        IReadOnlyTrieStore readOnlyTrieStore,
         ISpecProvider specProvider,
         IBlockValidator blockValidator,
         IRewardCalculatorSource rewardCalculatorSource,
@@ -42,8 +42,8 @@ public class OptimismBlockProducerEnvFactory : BlockProducerEnvFactory
         IBlocksConfig blocksConfig,
         OPSpecHelper specHelper,
         OPL1CostHelper l1CostHelper,
-        ILogManager logManager) : base(dbProvider,
-        blockTree, readOnlyTrieStore, specProvider, blockValidator,
+        ILogManager logManager) : base(worldStateManager,
+        blockTree, specProvider, blockValidator,
         rewardCalculatorSource, receiptStorage, blockPreprocessorStep,
         txPool, transactionComparerProvider, blocksConfig, logManager)
     {
@@ -53,10 +53,10 @@ public class OptimismBlockProducerEnvFactory : BlockProducerEnvFactory
         TransactionsExecutorFactory = new OptimismTransactionsExecutorFactory(specProvider, logManager);
     }
 
-    protected override ReadOnlyTxProcessingEnv CreateReadonlyTxProcessingEnv(ReadOnlyDbProvider readOnlyDbProvider,
+    protected override ReadOnlyTxProcessingEnv CreateReadonlyTxProcessingEnv(IWorldStateManager worldStateManager,
         ReadOnlyBlockTree readOnlyBlockTree)
     {
-        ReadOnlyTxProcessingEnv result = new(readOnlyDbProvider, _readOnlyTrieStore,
+        ReadOnlyTxProcessingEnv result = new(worldStateManager,
             readOnlyBlockTree, _specProvider, _logManager);
         result.TransactionProcessor =
             new OptimismTransactionProcessor(_specProvider, result.StateProvider, result.Machine, _logManager, _l1CostHelper, _specHelper);

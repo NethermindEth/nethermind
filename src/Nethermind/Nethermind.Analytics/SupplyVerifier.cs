@@ -14,7 +14,7 @@ namespace Nethermind.Analytics
     public class SupplyVerifier : ITreeVisitor
     {
         private readonly ILogger _logger;
-        private HashSet<Hash256> _ignoreThisOne = new HashSet<Hash256>();
+        private readonly HashSet<Hash256> _ignoreThisOne = new HashSet<Hash256>();
         private int _accountsVisited;
         private int _nodesVisited;
 

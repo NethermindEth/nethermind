@@ -14,8 +14,10 @@ public class Eip1108Tests : VirtualMachineTestsBase
     private int _blockNumberAdjustment;
 
     [TearDown]
-    public void TearDown()
+    public override void TearDown()
     {
+        base.TearDown();
+
         _blockNumberAdjustment = 0;
     }
 

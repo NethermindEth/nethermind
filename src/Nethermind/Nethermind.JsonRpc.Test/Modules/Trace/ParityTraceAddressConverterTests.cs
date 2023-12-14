@@ -32,7 +32,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Trace
                 return true;
             }
 
-            TestRoundtrip(new[] { 1, 2, 3, 1000, 10000 }, Comparer, new ParityTraceAddressConverter());
+            TestRoundtrip(new[] { 1, 2, 3, 1000, 10000 }, Comparer, null);
         }
     }
 }

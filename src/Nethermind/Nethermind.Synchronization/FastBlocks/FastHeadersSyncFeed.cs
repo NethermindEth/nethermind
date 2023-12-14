@@ -25,7 +25,7 @@ namespace Nethermind.Synchronization.FastBlocks
 {
     public class HeadersSyncFeed : ActivatedSyncFeed<HeadersSyncBatch?>
     {
-        private readonly IDictionary<ulong, IDictionary<long, ulong>> _historicalOverrides = new Dictionary<ulong, IDictionary<long, ulong>>()
+        private readonly Dictionary<ulong, IDictionary<long, ulong>> _historicalOverrides = new Dictionary<ulong, IDictionary<long, ulong>>()
         {
             // Kovan has some wrong difficulty in early blocks before using proper AuRa difficulty calculation
             // In order to support that we need to support another pivot

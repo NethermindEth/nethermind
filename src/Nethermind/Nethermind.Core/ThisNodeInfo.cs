@@ -9,7 +9,7 @@ namespace Nethermind.Core
 {
     public static class ThisNodeInfo
     {
-        private static ConcurrentDictionary<string, string> _nodeInfoItems = new();
+        private static readonly ConcurrentDictionary<string, string> _nodeInfoItems = new();
 
         public static void AddInfo(string infoDescription, string value)
         {

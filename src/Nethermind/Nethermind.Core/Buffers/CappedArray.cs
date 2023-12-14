@@ -15,7 +15,7 @@ namespace Nethermind.Core.Buffers;
 /// </summary>
 public struct CappedArray<T>
 {
-    private T[]? _array = null;
+    private readonly T[]? _array = null;
     private int _length = 0;
 
     public CappedArray(T[]? array, int length)

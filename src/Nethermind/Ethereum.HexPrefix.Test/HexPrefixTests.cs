@@ -3,8 +3,11 @@
 
 using System.Collections.Generic;
 using System.Linq;
+using System.Text.Json.Serialization;
+
 using Ethereum.Test.Base;
 using Nethermind.Core.Extensions;
+
 using NUnit.Framework;
 
 namespace Ethereum.HexPrefix.Test
@@ -18,7 +21,7 @@ namespace Ethereum.HexPrefix.Test
         {
             return TestLoader.LoadFromFile<Dictionary<string, HexPrefixTestJson>, HexPrefixTest>(
                 "hexencodetest.json",
-                c => c.Select(p => new HexPrefixTest(p.Key, p.Value.Seq, p.Value.Term, p.Value.Out)));
+                c => c.Select(p => new HexPrefixTest(p.Key, p.Value.Seq.Select(x => (byte)x).ToArray(), p.Value.Term, p.Value.Out)));
         }
 
         [TestCaseSource(nameof(LoadTests))]
@@ -36,7 +39,7 @@ namespace Ethereum.HexPrefix.Test
 
         private class HexPrefixTestJson
         {
-            public byte[] Seq { get; set; }
+            public int[] Seq { get; set; }
             public bool Term { get; set; }
             public string Out { get; set; }
         }

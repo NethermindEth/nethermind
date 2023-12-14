@@ -22,8 +22,8 @@ namespace Nethermind.Init
     /// </summary>
     public class MemoryHintMan
     {
-        private ILogger _logger;
-        private MallocHelper _mallocHelper;
+        private readonly ILogger _logger;
+        private readonly MallocHelper _mallocHelper;
 
         public MemoryHintMan(ILogManager logManager, MallocHelper? mallocHelper = null)
         {

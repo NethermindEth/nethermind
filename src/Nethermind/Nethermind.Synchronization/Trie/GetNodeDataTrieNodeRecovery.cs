@@ -7,6 +7,7 @@ using System.Threading.Tasks;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
+using Nethermind.Network.Contract.P2P;
 using Nethermind.Synchronization.Peers;
 using Nethermind.Synchronization.StateSync;
 
@@ -24,7 +25,10 @@ public class GetNodeDataTrieNodeRecovery : TrieNodeRecovery<IReadOnlyList<Hash25
 
     protected override async Task<byte[]?> RecoverRlpFromPeerBase(ValueHash256 rlpHash, ISyncPeer peer, IReadOnlyList<Hash256> request, CancellationTokenSource cts)
     {
-        byte[][] rlp = await peer.GetNodeData(request, cts.Token);
+        byte[][] rlp = await (peer.TryGetSatelliteProtocol(Protocol.NodeData, out INodeDataPeer nodeDataHandler)
+            ? nodeDataHandler.GetNodeData(request, cts.Token)
+            : peer.GetNodeData(request, cts.Token));
+
         if (rlp.Length == 1)
         {
             byte[] recoveredRlp = rlp[0];

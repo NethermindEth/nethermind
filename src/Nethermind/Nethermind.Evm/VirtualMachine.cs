@@ -130,9 +130,9 @@ public class VirtualMachine : IVirtualMachine
 internal sealed class VirtualMachine<TLogger> : IVirtualMachine
     where TLogger : struct, IIsTracing
 {
-    private UInt256 P255Int = (UInt256)System.Numerics.BigInteger.Pow(2, 255);
+    private readonly UInt256 P255Int = (UInt256)System.Numerics.BigInteger.Pow(2, 255);
     private UInt256 P255 => P255Int;
-    private UInt256 BigInt256 = 256;
+    private readonly UInt256 BigInt256 = 256;
     public UInt256 BigInt32 = 32;
 
     internal byte[] BytesZero = { 0 };
@@ -288,14 +288,10 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine
                         }
                         else if (callResult.ShouldRevert)
                         {
-                            if (currentState.ExecutionType.IsAnyCreate())
-                            {
-                                _txTracer.ReportActionError(EvmExceptionType.Revert, currentState.GasAvailable - codeDepositGasCost);
-                            }
-                            else
-                            {
-                                _txTracer.ReportActionError(EvmExceptionType.Revert, currentState.GasAvailable);
-                            }
+                            _txTracer.ReportActionRevert(currentState.ExecutionType.IsAnyCreate()
+                                    ? currentState.GasAvailable - codeDepositGasCost
+                                    : currentState.GasAvailable,
+                                callResult.Output);
                         }
                         else
                         {
@@ -426,7 +422,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine
 
                     if (typeof(TTracingActions) == typeof(IsTracing))
                     {
-                        _txTracer.ReportActionError(EvmExceptionType.Revert, previousState.GasAvailable);
+                        _txTracer.ReportActionRevert(previousState.GasAvailable, callResult.Output);
                     }
                 }
             }
@@ -440,8 +436,8 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine
 
                 if (txTracer.IsTracingInstructions)
                 {
-                    txTracer.ReportOperationError(ex is EvmException evmException ? evmException.ExceptionType : EvmExceptionType.Other);
                     txTracer.ReportOperationRemainingGas(0);
+                    txTracer.ReportOperationError(ex is EvmException evmException ? evmException.ExceptionType : EvmExceptionType.Other);
                 }
 
                 if (typeof(TTracingActions) == typeof(IsTracing))
@@ -765,9 +761,9 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine
                 ExecuteCode<TTracingInstructions, IsTracing, IsTracing>(vmState, ref stack, gasAvailable, spec) :
                 ExecuteCode<TTracingInstructions, IsTracing, NotTracing>(vmState, ref stack, gasAvailable, spec);
         }
-Empty:
+    Empty:
         return CallResult.Empty;
-OutOfGas:
+    OutOfGas:
         return CallResult.OutOfGasException;
     }
 
@@ -793,7 +789,6 @@ OutOfGas:
 #if DEBUG
         DebugTracer? debugger = _txTracer.GetTracer<DebugTracer>();
 #endif
-        Span<byte> bytes;
         SkipInit(out UInt256 a);
         SkipInit(out UInt256 b);
         SkipInit(out UInt256 c);
@@ -822,6 +817,7 @@ OutOfGas:
                 StartInstructionTrace(instruction, vmState, gasAvailable, programCounter, in stack);
 
             programCounter++;
+            Span<byte> bytes;
             switch (instruction)
             {
                 case Instruction.STOP:
@@ -2107,21 +2103,21 @@ OutOfGas:
 
         goto EmptyReturnNoTrace;
 
-// Common exit errors, goto labels to reduce in loop code duplication and to keep loop body smaller
-EmptyReturn:
+    // Common exit errors, goto labels to reduce in loop code duplication and to keep loop body smaller
+    EmptyReturn:
         if (typeof(TTracingInstructions) == typeof(IsTracing)) EndInstructionTrace(gasAvailable, vmState.Memory?.Size ?? 0);
-EmptyReturnNoTrace:
-// Ensure gas is positive before updating state
+        EmptyReturnNoTrace:
+        // Ensure gas is positive before updating state
         if (gasAvailable < 0) goto OutOfGas;
         UpdateCurrentState(vmState, programCounter, gasAvailable, stack.Head);
 #if DEBUG
         debugger?.TryWait(ref vmState, ref programCounter, ref gasAvailable, ref stack.Head);
 #endif
         return CallResult.Empty;
-DataReturn:
+    DataReturn:
         if (typeof(TTracingInstructions) == typeof(IsTracing)) EndInstructionTrace(gasAvailable, vmState.Memory?.Size ?? 0);
-DataReturnNoTrace:
-// Ensure gas is positive before updating state
+        DataReturnNoTrace:
+        // Ensure gas is positive before updating state
         if (gasAvailable < 0) goto OutOfGas;
         UpdateCurrentState(vmState, programCounter, gasAvailable, stack.Head);
 
@@ -2131,30 +2127,30 @@ DataReturnNoTrace:
         }
         return new CallResult((byte[])returnData, null, shouldRevert: isRevert);
 
-OutOfGas:
+    OutOfGas:
         exceptionType = EvmExceptionType.OutOfGas;
         goto ReturnFailure;
-InvalidInstruction:
+    InvalidInstruction:
         exceptionType = EvmExceptionType.BadInstruction;
         goto ReturnFailure;
-StaticCallViolation:
+    StaticCallViolation:
         exceptionType = EvmExceptionType.StaticCallViolation;
         goto ReturnFailure;
-InvalidSubroutineEntry:
+    InvalidSubroutineEntry:
         exceptionType = EvmExceptionType.InvalidSubroutineEntry;
         goto ReturnFailure;
-InvalidSubroutineReturn:
+    InvalidSubroutineReturn:
         exceptionType = EvmExceptionType.InvalidSubroutineReturn;
         goto ReturnFailure;
-StackOverflow:
+    StackOverflow:
         exceptionType = EvmExceptionType.StackOverflow;
         goto ReturnFailure;
-InvalidJumpDestination:
+    InvalidJumpDestination:
         exceptionType = EvmExceptionType.InvalidJumpDestination;
         goto ReturnFailure;
-AccessViolation:
+    AccessViolation:
         exceptionType = EvmExceptionType.AccessViolation;
-ReturnFailure:
+    ReturnFailure:
         return GetFailureReturn<TTracingInstructions>(gasAvailable, exceptionType);
     }
 
@@ -2532,7 +2528,7 @@ ReturnFailure:
         EvmState callState = new(
             callGas,
             callEnv,
-            instruction == Instruction.CREATE2 ? ExecutionType.Create2 : ExecutionType.Create,
+            instruction == Instruction.CREATE2 ? ExecutionType.CREATE2 : ExecutionType.CREATE,
             false,
             snapshot,
             0L,
@@ -2802,13 +2798,14 @@ ReturnFailure:
         _txTracer.StartOperation(vmState.Env.CallDepth + 1, gasAvailable, instruction, programCounter, vmState.Env.TxExecutionContext.BlockExecutionContext.Header.IsPostMerge);
         if (_txTracer.IsTracingMemory)
         {
-            _txTracer.SetOperationMemory(vmState.Memory?.GetTrace() ?? Enumerable.Empty<string>());
+            _txTracer.SetOperationMemory(vmState.Memory?.GetTrace() ?? new TraceMemory());
             _txTracer.SetOperationMemorySize(vmState.Memory?.Size ?? 0);
         }
 
         if (_txTracer.IsTracingStack)
         {
-            _txTracer.SetOperationStack(stackValue.GetStackTrace());
+            Memory<byte> stackMemory = vmState.DataStack.AsMemory().Slice(0, stackValue.Head * EvmStack<TIsTracing>.WordSize);
+            _txTracer.SetOperationStack(new TraceStack(stackMemory));
         }
     }
 
@@ -2821,8 +2818,8 @@ ReturnFailure:
     [MethodImpl(MethodImplOptions.NoInlining)]
     private void EndInstructionTraceError(long gasAvailable, EvmExceptionType evmExceptionType)
     {
-        _txTracer.ReportOperationError(evmExceptionType);
         _txTracer.ReportOperationRemainingGas(gasAvailable);
+        _txTracer.ReportOperationError(evmExceptionType);
     }
 
     private static ExecutionType GetCallExecutionType(Instruction instruction, bool isPostMerge = false)
@@ -2830,19 +2827,19 @@ ReturnFailure:
         ExecutionType executionType;
         if (instruction == Instruction.CALL)
         {
-            executionType = ExecutionType.Call;
+            executionType = ExecutionType.CALL;
         }
         else if (instruction == Instruction.DELEGATECALL)
         {
-            executionType = ExecutionType.DelegateCall;
+            executionType = ExecutionType.DELEGATECALL;
         }
         else if (instruction == Instruction.STATICCALL)
         {
-            executionType = ExecutionType.StaticCall;
+            executionType = ExecutionType.STATICCALL;
         }
         else if (instruction == Instruction.CALLCODE)
         {
-            executionType = ExecutionType.CallCode;
+            executionType = ExecutionType.CALLCODE;
         }
         else
         {

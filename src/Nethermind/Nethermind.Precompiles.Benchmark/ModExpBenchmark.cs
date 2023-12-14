@@ -16,7 +16,9 @@ namespace Nethermind.Precompiles.Benchmark
         [Benchmark]
         public (ReadOnlyMemory<byte>, bool) BigInt()
         {
+#pragma warning disable CS0618 // Type or member is obsolete
             return ModExpPrecompile.OldRun(Input.Bytes);
+#pragma warning restore CS0618 // Type or member is obsolete
         }
     }
 }

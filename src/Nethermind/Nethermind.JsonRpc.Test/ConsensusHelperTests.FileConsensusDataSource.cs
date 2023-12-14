@@ -4,6 +4,7 @@
 using System;
 using System.IO;
 using System.Threading.Tasks;
+
 using Nethermind.Serialization.Json;
 
 namespace Nethermind.JsonRpc.Test

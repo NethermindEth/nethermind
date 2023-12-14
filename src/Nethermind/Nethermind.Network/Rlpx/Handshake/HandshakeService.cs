@@ -18,8 +18,8 @@ namespace Nethermind.Network.Rlpx.Handshake
     /// </summary>
     public class HandshakeService : IHandshakeService
     {
-        private static int MacBitsSize = 256;
-        private static int MacBytesSize = MacBitsSize / 8;
+        private static readonly int MacBitsSize = 256;
+        private static readonly int MacBytesSize = MacBitsSize / 8;
 
         private readonly IPrivateKeyGenerator _ephemeralGenerator;
         private readonly ICryptoRandom _cryptoRandom;

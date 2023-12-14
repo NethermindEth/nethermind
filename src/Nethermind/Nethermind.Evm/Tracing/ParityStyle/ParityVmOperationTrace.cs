@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Text.Json.Serialization;
+
 namespace Nethermind.Evm.Tracing.ParityStyle
 {
     //        {
@@ -14,6 +16,7 @@ namespace Nethermind.Evm.Tracing.ParityStyle
     //            "pc": 526.0,
     //            "sub": null
     //        }
+    [JsonConverter(typeof(ParityVmOperationTraceConverter))]
     public class ParityVmOperationTrace
     {
         public long Cost { get; set; }

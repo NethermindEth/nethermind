@@ -37,7 +37,8 @@ public class ChainSpecBasedSpecProviderTests
     public void Timstamp_activation_equal_to_genesis_timestamp_loads_correctly(long blockNumber, ulong? timestamp, bool isEip3855Enabled)
     {
         ChainSpecLoader loader = new(new EthereumJsonSerializer());
-        string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, "../../../Specs/Timstamp_activation_equal_to_genesis_timestamp_test.json");
+        string path = Path.Combine(TestContext.CurrentContext.WorkDirectory,
+            $"../../../../{Assembly.GetExecutingAssembly().GetName().Name}/Specs/Timstamp_activation_equal_to_genesis_timestamp_test.json");
         ChainSpec chainSpec = loader.Load(File.ReadAllText(path));
         chainSpec.Parameters.Eip2537Transition.Should().BeNull();
         var logger = Substitute.ForPartsOf<LimboTraceLogger>();
@@ -82,7 +83,8 @@ public class ChainSpecBasedSpecProviderTests
     public void Logs_warning_when_timestampActivation_happens_before_blockActivation(long blockNumber, ulong? timestamp, bool isEip3855Enabled, bool isEip3198Enabled, bool receivesWarning)
     {
         ChainSpecLoader loader = new(new EthereumJsonSerializer());
-        string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, "../../../Specs/Logs_warning_when_timestampActivation_happens_before_blockActivation_test.json");
+        string path = Path.Combine(TestContext.CurrentContext.WorkDirectory,
+            $"../../../../{Assembly.GetExecutingAssembly().GetName().Name}/Specs/Logs_warning_when_timestampActivation_happens_before_blockActivation_test.json");
         ChainSpec chainSpec = loader.Load(File.ReadAllText(path));
         chainSpec.Parameters.Eip2537Transition.Should().BeNull();
         var logger = Substitute.For<ILogger>();
@@ -170,35 +172,6 @@ public class ChainSpecBasedSpecProviderTests
         // because genesis time for holesky is set 5 minutes before the launch of the chain. this test fails.
         //GetTransitionTimestamps(chainSpec.Parameters).Should().AllSatisfy(
         //    t => ValidateSlotByTimestamp(t, HoleskySpecProvider.GenesisTimestamp).Should().BeTrue());
-    }
-
-    [Test]
-    public void Rinkeby_loads_properly()
-    {
-        ChainSpecLoader loader = new(new EthereumJsonSerializer());
-        string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, "../../../../Chains/rinkeby.json");
-        ChainSpec chainSpec = loader.Load(File.ReadAllText(path));
-        chainSpec.Parameters.Eip2537Transition.Should().BeNull();
-
-        ChainSpecBasedSpecProvider provider = new(chainSpec);
-        RinkebySpecProvider rinkeby = RinkebySpecProvider.Instance;
-
-        List<ForkActivation> forkActivationsToTest = new()
-        {
-            (ForkActivation)RinkebySpecProvider.ByzantiumBlockNumber,
-            (ForkActivation)(RinkebySpecProvider.ConstantinopleFixBlockNumber - 1),
-            (ForkActivation)RinkebySpecProvider.ConstantinopleFixBlockNumber,
-            (ForkActivation)(RinkebySpecProvider.IstanbulBlockNumber - 1),
-            (ForkActivation)RinkebySpecProvider.IstanbulBlockNumber,
-            (ForkActivation)(RinkebySpecProvider.BerlinBlockNumber - 1),
-            (ForkActivation)RinkebySpecProvider.BerlinBlockNumber,
-            (ForkActivation)(RinkebySpecProvider.LondonBlockNumber - 1),
-            (ForkActivation)RinkebySpecProvider.LondonBlockNumber,
-            (ForkActivation)120_000_000, // far in the future
-        };
-
-        CompareSpecProviders(rinkeby, provider, forkActivationsToTest);
-        Assert.That(provider.GenesisSpec.Eip1559TransitionBlock, Is.EqualTo(RinkebySpecProvider.LondonBlockNumber));
     }
 
     [Test]
