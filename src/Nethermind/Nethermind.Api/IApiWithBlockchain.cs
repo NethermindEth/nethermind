@@ -45,8 +45,6 @@ namespace Nethermind.Api
         IUnclesValidator? UnclesValidator { get; set; }
         IHeaderValidator? HeaderValidator { get; set; }
         IManualBlockProductionTrigger ManualBlockProductionTrigger { get; }
-        IReadOnlyTrieStore? ReadOnlyTrieStore { get; set; }
-        IReadOnlyTrieStore? ReadOnlyStorageTrieStore { get; set; }
         IRewardCalculatorSource? RewardCalculatorSource { get; set; }
         /// <summary>
         /// PoS switcher for The Merge
@@ -62,9 +60,9 @@ namespace Nethermind.Api
         /// DO NOT USE OUTSIDE OF PROCESSING BLOCK CONTEXT!
         /// </remarks>
         IWorldState? WorldState { get; set; }
-        IKeyValueStoreWithBatching? MainStateDbWithCache { get; set; }
         IReadOnlyStateProvider? ChainHeadStateProvider { get; set; }
         IStateReader? StateReader { get; set; }
+        IWorldStateManager? WorldStateManager { get; set; }
         ITransactionProcessor? TransactionProcessor { get; set; }
         ITrieStore? TrieStore { get; set; }
         ITxSender? TxSender { get; set; }

@@ -135,10 +135,7 @@ namespace Nethermind.Synchronization.SnapSync
                 return (AddRangeResult.OK, null, false);
             }
 
-            if (tree is null)
-            {
-                throw new ArgumentNullException(nameof(tree));
-            }
+            ArgumentNullException.ThrowIfNull(tree);
 
             ValueHash256 effectiveStartingHAsh = startingHash.HasValue ? startingHash.Value : ValueKeccak.Zero;
             List<TrieNode> sortedBoundaryList = new();

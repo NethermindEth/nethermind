@@ -393,7 +393,7 @@ namespace Nethermind.Trie.Test.Pruning
 
         private class BadDb : IKeyValueStoreWithBatching
         {
-            private Dictionary<byte[], byte[]> _db = new();
+            private readonly Dictionary<byte[], byte[]> _db = new();
 
             public byte[]? this[ReadOnlySpan<byte> key]
             {
@@ -432,7 +432,7 @@ namespace Nethermind.Trie.Test.Pruning
 
             private class BadWriteBatch : IWriteBatch
             {
-                private Dictionary<byte[], byte[]> _inBatched = new();
+                private readonly Dictionary<byte[], byte[]> _inBatched = new();
 
                 public void Dispose()
                 {
@@ -476,7 +476,7 @@ namespace Nethermind.Trie.Test.Pruning
             tree.Set(TestItem.AddressB, Build.A.Account.WithBalance(1000).TestObject);
         }
 
-        private AccountDecoder _accountDecoder = new();
+        private readonly AccountDecoder _accountDecoder = new();
 
         [Test]
         public void Will_store_storage_on_snapshot()

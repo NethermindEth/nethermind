@@ -4,7 +4,8 @@
 using System;
 using System.Collections.Generic;
 using System.Reflection;
-using Newtonsoft.Json;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace Nethermind.JsonRpc.Modules
 {
@@ -26,17 +27,9 @@ namespace Nethermind.JsonRpc.Modules
             ModuleType = attribute.ModuleType;
         }
 
-        // ReSharper disable once StaticMemberInGenericType
-        private static IReadOnlyCollection<JsonConverter> _noConverters = new List<JsonConverter>();
-
         public abstract T Create();
 
         public string ModuleType { get; }
-
-        public virtual IReadOnlyCollection<JsonConverter> GetConverters()
-        {
-            return _noConverters;
-        }
     }
 
     public class SingletonFactory<T> : ModuleFactoryBase<T> where T : IRpcModule

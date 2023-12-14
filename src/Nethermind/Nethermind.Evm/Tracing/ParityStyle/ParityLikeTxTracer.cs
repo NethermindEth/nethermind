@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -34,13 +35,7 @@ namespace Nethermind.Evm.Tracing.ParityStyle
             _parityTraceTypes = parityTraceTypes;
 
             _tx = tx;
-            _trace = new ParityLikeTxTrace
-            {
-                TransactionHash = tx?.Hash,
-                TransactionPosition = tx is null ? null : Array.IndexOf(block.Transactions!, tx),
-                BlockNumber = block.Number,
-                BlockHash = block.Hash!
-            };
+            _trace = new ParityLikeTxTrace { TransactionHash = tx?.Hash, TransactionPosition = tx is null ? null : Array.IndexOf(block.Transactions!, tx), BlockNumber = block.Number, BlockHash = block.Hash! };
 
             if ((_parityTraceTypes & ParityTraceTypes.StateDiff) != 0)
             {
@@ -75,19 +70,19 @@ namespace Nethermind.Evm.Tracing.ParityStyle
         {
             switch (executionType)
             {
-                case ExecutionType.Transaction:
+                case ExecutionType.TRANSACTION:
                     return "call";
-                case ExecutionType.Create:
+                case ExecutionType.CREATE:
                     return "create";
-                case ExecutionType.Create2:
+                case ExecutionType.CREATE2:
                     return "create";
-                case ExecutionType.Call:
+                case ExecutionType.CALL:
                     return "call";
-                case ExecutionType.DelegateCall:
+                case ExecutionType.DELEGATECALL:
                     return "delegatecall";
-                case ExecutionType.StaticCall:
+                case ExecutionType.STATICCALL:
                     return "staticcall";
-                case ExecutionType.CallCode:
+                case ExecutionType.CALLCODE:
                     return "callcode";
                 default:
                     throw new NotSupportedException($"Parity trace call type is undefined for {executionType}");
@@ -98,19 +93,19 @@ namespace Nethermind.Evm.Tracing.ParityStyle
         {
             switch (executionType)
             {
-                case ExecutionType.Transaction:
+                case ExecutionType.TRANSACTION:
                     return "call";
-                case ExecutionType.Create:
+                case ExecutionType.CREATE:
                     return "create";
-                case ExecutionType.Create2:
+                case ExecutionType.CREATE2:
                     return "create";
-                case ExecutionType.Call:
+                case ExecutionType.CALL:
                     return "call";
-                case ExecutionType.DelegateCall:
+                case ExecutionType.DELEGATECALL:
                     return "call";
-                case ExecutionType.StaticCall:
+                case ExecutionType.STATICCALL:
                     return "call";
-                case ExecutionType.CallCode:
+                case ExecutionType.CALLCODE:
                     return "call";
                 default:
                     return "call";
@@ -326,16 +321,17 @@ namespace Nethermind.Evm.Tracing.ParityStyle
                 throw new InvalidOperationException($"{nameof(ParityLikeTxTracer)} did not expect state change report.");
             }
 
-            if (!_trace.StateChanges.ContainsKey(address))
+            ref ParityAccountStateChange? value = ref CollectionsMarshal.GetValueRefOrAddDefault(_trace.StateChanges, address, out bool exists);
+            if (!exists)
             {
-                _trace.StateChanges[address] = new ParityAccountStateChange();
+                value = new ParityAccountStateChange();
             }
             else
             {
-                before = _trace.StateChanges[address].Balance?.Before ?? before;
+                before = value.Balance?.Before ?? before;
             }
 
-            _trace.StateChanges[address].Balance = new ParityStateChange<UInt256?>(before, after);
+            value.Balance = new ParityStateChange<UInt256?>(before, after);
         }
 
         public override void ReportCodeChange(Address address, byte[] before, byte[] after)
@@ -345,57 +341,59 @@ namespace Nethermind.Evm.Tracing.ParityStyle
                 throw new InvalidOperationException($"{nameof(ParityLikeTxTracer)} did not expect state change report.");
             }
 
-            if (!_trace.StateChanges.ContainsKey(address))
+            ref ParityAccountStateChange? value = ref CollectionsMarshal.GetValueRefOrAddDefault(_trace.StateChanges, address, out bool exists);
+            if (!exists)
             {
-                _trace.StateChanges[address] = new ParityAccountStateChange();
+                value = new ParityAccountStateChange();
             }
             else
             {
-                before = _trace.StateChanges[address].Code?.Before ?? before;
+                before = value.Code?.Before ?? before;
             }
 
-            _trace.StateChanges[address].Code = new ParityStateChange<byte[]>(before, after);
+            value.Code = new ParityStateChange<byte[]>(before, after);
         }
 
         public override void ReportNonceChange(Address address, UInt256? before, UInt256? after)
         {
-            if (!_trace.StateChanges!.ContainsKey(address))
+            ref ParityAccountStateChange? value = ref CollectionsMarshal.GetValueRefOrAddDefault(_trace.StateChanges, address, out bool exists);
+            if (!exists)
             {
-                _trace.StateChanges[address] = new ParityAccountStateChange();
+                value = new ParityAccountStateChange();
             }
             else
             {
-                before = _trace.StateChanges[address].Nonce?.Before ?? before;
+                before = value.Nonce?.Before ?? before;
             }
 
-            _trace.StateChanges[address].Nonce = new ParityStateChange<UInt256?>(before, after);
+            value.Nonce = new ParityStateChange<UInt256?>(before, after);
         }
 
         public override void ReportStorageChange(in StorageCell storageCell, byte[] before, byte[] after)
         {
-            if (!_trace.StateChanges!.ContainsKey(storageCell.Address))
+            ref ParityAccountStateChange? value = ref CollectionsMarshal.GetValueRefOrAddDefault(_trace.StateChanges, storageCell.Address, out bool exists);
+            if (!exists)
             {
-                _trace.StateChanges[storageCell.Address] = new ParityAccountStateChange();
+                value = new ParityAccountStateChange();
             }
 
-            Dictionary<UInt256, ParityStateChange<byte[]>> storage =
-                _trace.StateChanges[storageCell.Address].Storage ?? (_trace.StateChanges[storageCell.Address].Storage = new Dictionary<UInt256, ParityStateChange<byte[]>>());
-
-            if (storage.TryGetValue(storageCell.Index, out ParityStateChange<byte[]> value))
+            Dictionary<UInt256, ParityStateChange<byte[]>> storage = value.Storage ??= [];
+            ref ParityStateChange<byte[]>? change = ref CollectionsMarshal.GetValueRefOrAddDefault(storage, storageCell.Index, out exists);
+            if (exists)
             {
-                before = value.Before ?? before;
+                before = change.Before ?? before;
             }
 
-            storage[storageCell.Index] = new ParityStateChange<byte[]>(before, after);
+            change = new ParityStateChange<byte[]>(before, after);
         }
 
-        public override void ReportAction(long gas, UInt256 value, Address @from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false)
+        public override void ReportAction(long gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false)
         {
             ParityTraceAction action = new()
             {
                 IsPrecompiled = isPrecompileCall,
                 // ignore pre compile calls with Zero value that originates from contracts
-                IncludeInTrace = !(isPrecompileCall && callType != ExecutionType.Transaction && value.IsZero),
+                IncludeInTrace = !(isPrecompileCall && callType != ExecutionType.TRANSACTION && value.IsZero),
                 From = from,
                 To = to,
                 Value = value,
@@ -419,9 +417,9 @@ namespace Nethermind.Evm.Tracing.ParityStyle
         {
             switch (callType)
             {
-                case ExecutionType.Create:
+                case ExecutionType.CREATE:
                     return "create";
-                case ExecutionType.Create2:
+                case ExecutionType.CREATE2:
                     return "create2";
                 default:
                     return null;

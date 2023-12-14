@@ -25,7 +25,7 @@ namespace Nethermind.Evm
         /// Temporary to handle old invocations
         /// </summary>
         /// <returns></returns>
-        public readonly byte[] ToArray()
+        public byte[] ToArray()
         {
             byte[] result = new byte[Span.Length + PaddingLength];
             Span.CopyTo(result.AsSpan(PadDirection == PadDirection.Right ? 0 : PaddingLength, Span.Length));

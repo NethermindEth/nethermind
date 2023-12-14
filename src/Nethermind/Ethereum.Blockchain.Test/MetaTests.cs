@@ -21,7 +21,8 @@ namespace Ethereum.Blockchain.Test
             "runtimes",
             "ref",
             "TestFiles",
-            "Blockhash"
+            "Blockhash",
+            "Data"
         };
 
         [Test]

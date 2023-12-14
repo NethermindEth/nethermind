@@ -72,7 +72,7 @@ namespace Nethermind.State
         /// <returns></returns>
         public byte[] GetOriginal(in StorageCell storageCell)
         {
-            if (!_originalValues.ContainsKey(storageCell))
+            if (!_originalValues.TryGetValue(storageCell, out var value))
             {
                 throw new InvalidOperationException("Get original should only be called after get within the same caching round");
             }
@@ -88,7 +88,7 @@ namespace Nethermind.State
                 }
             }
 
-            return _originalValues[storageCell];
+            return value;
         }
 
 
@@ -228,12 +228,14 @@ namespace Nethermind.State
 
         private StorageTree GetOrCreateStorage(Address address)
         {
-            if (!_storages.ContainsKey(address))
+            ref StorageTree? value = ref _storages.GetValueRefOrAddDefault(address, out bool exists);
+            if (!exists)
             {
-                StorageTree storageTree = _storageTreeFactory.Create(address, _trieStore, _stateProvider.GetStorageRoot(address), StateRoot, _logManager);
-                return _storages[address] = storageTree;
+                value = _storageTreeFactory.Create(address, _trieStore, _stateProvider.GetStorageRoot(address), StateRoot, _logManager);
+                return value;
             }
-            return _storages[address];
+
+            return value;
         }
 
         private byte[] LoadFromTree(in StorageCell storageCell)
@@ -241,16 +243,22 @@ namespace Nethermind.State
             StorageTree tree = GetOrCreateStorage(storageCell.Address);
 
             Db.Metrics.StorageTreeReads++;
-            byte[] value = tree.Get(storageCell.Index);
-            PushToRegistryOnly(storageCell, value);
-            return value;
+
+            if (!storageCell.IsHash)
+            {
+                byte[] value = tree.Get(storageCell.Index);
+                PushToRegistryOnly(storageCell, value);
+                return value;
+            }
+
+            return tree.Get(storageCell.Hash.Bytes);
         }
 
         private void PushToRegistryOnly(in StorageCell cell, byte[] value)
         {
-            SetupRegistry(cell);
+            StackList<int> stack = SetupRegistry(cell);
             IncrementChangePosition();
-            _intraBlockCache[cell].Push(_currentPosition);
+            stack.Push(_currentPosition);
             _originalValues[cell] = value;
             _changes[_currentPosition] = new Change(ChangeType.JustCache, cell, value);
         }

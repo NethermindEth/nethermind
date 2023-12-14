@@ -64,6 +64,7 @@ namespace Nethermind.AccountAbstraction.Test.Network
         public void TearDown()
         {
             _handler!.Dispose();
+            _session?.Dispose();
         }
 
         [Test]

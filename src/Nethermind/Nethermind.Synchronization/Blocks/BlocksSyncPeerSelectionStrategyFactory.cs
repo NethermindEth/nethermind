@@ -12,11 +12,7 @@ namespace Nethermind.Synchronization.Blocks
         public IPeerAllocationStrategy Create(BlocksRequest? request)
         {
             // because of the way the generics cannot handle T / T?
-            if (request is null)
-            {
-                throw new ArgumentNullException(
-                    $"NULL received for allocation in {nameof(BlocksSyncPeerAllocationStrategyFactory)}");
-            }
+            ArgumentNullException.ThrowIfNull(request);
 
             IPeerAllocationStrategy baseStrategy = new BlocksSyncPeerAllocationStrategy(request.NumberOfLatestBlocksToBeIgnored);
 

@@ -8,6 +8,7 @@ using System.Linq;
 using Ethereum.Test.Base;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
+using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
 
@@ -116,14 +117,14 @@ namespace Ethereum.Rlp.Test
             Assert.That(Nethermind.Serialization.Rlp.Rlp.Encode(1UL).Bytes, Is.EqualTo(expected), "ulong bytes");
 
             byte[] expectedNonce = new byte[] { 136, 0, 0, 0, 0, 0, 0, 0, 1 };
-            Assert.That(Nethermind.Serialization.Rlp.Rlp.EncodeNonce(1UL).Bytes, Is.EqualTo(expectedNonce), "nonce bytes");
+            Assert.That(Nethermind.Serialization.Rlp.Rlp.Encode((UInt256)1UL, HeaderDecoder.NonceLength).Bytes, Is.EqualTo(expectedNonce), "nonce bytes");
         }
 
         [Test]
         public void TestNonce()
         {
             byte[] expected = { 136, 0, 0, 0, 0, 0, 0, 0, 42 };
-            Assert.That(Nethermind.Serialization.Rlp.Rlp.EncodeNonce(42UL).Bytes, Is.EqualTo(expected));
+            Assert.That(Nethermind.Serialization.Rlp.Rlp.Encode((UInt256)42UL, HeaderDecoder.NonceLength).Bytes, Is.EqualTo(expected));
         }
 
         //[Ignore("placeholder for various rlp tests")]

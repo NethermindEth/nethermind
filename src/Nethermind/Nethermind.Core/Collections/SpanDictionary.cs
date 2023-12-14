@@ -39,10 +39,7 @@ namespace Nethermind.Core.Collections
 
         public SpanDictionary(int capacity, ISpanEqualityComparer<TKey> comparer)
         {
-            if (capacity < 0)
-            {
-                throw new ArgumentOutOfRangeException(nameof(capacity));
-            }
+            ArgumentOutOfRangeException.ThrowIfNegative(capacity);
 
             if (capacity > 0)
             {
@@ -355,13 +352,13 @@ namespace Nethermind.Core.Collections
 
             goto ReturnNotFound;
 
-ConcurrentOperation:
+        ConcurrentOperation:
             throw new InvalidOperationException("Concurrent operations not supported");
-ReturnFound:
+        ReturnFound:
             ref TValue value = ref entry.value;
-Return:
+        Return:
             return ref value;
-ReturnNotFound:
+        ReturnNotFound:
             value = ref Unsafe.NullRef<TValue>();
             goto Return;
         }
@@ -946,10 +943,7 @@ ReturnNotFound:
         /// </summary>
         public int EnsureCapacity(int capacity)
         {
-            if (capacity < 0)
-            {
-                throw new ArgumentOutOfRangeException(nameof(capacity));
-            }
+            ArgumentOutOfRangeException.ThrowIfNegative(capacity);
 
             int currentCapacity = _entries == null ? 0 : _entries.Length;
             if (currentCapacity >= capacity)
@@ -992,10 +986,7 @@ ReturnNotFound:
         /// </remarks>
         public void TrimExcess(int capacity)
         {
-            if (capacity < Count)
-            {
-                throw new ArgumentOutOfRangeException(nameof(capacity));
-            }
+            ArgumentOutOfRangeException.ThrowIfLessThan(capacity, Count);
 
             int newSize = HashHelpers.GetPrime(capacity);
             Entry[]? oldEntries = _entries;

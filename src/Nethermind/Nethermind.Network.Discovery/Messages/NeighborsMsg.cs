@@ -23,7 +23,7 @@ public class NeighborsMsg : DiscoveryMsg
 
     public override string ToString()
     {
-        return base.ToString() + $", Nodes: {(Nodes.Any() ? string.Join(",", Nodes.Select(x => x.ToString())) : "empty")}";
+        return base.ToString() + $", Nodes: {(Nodes.Length != 0 ? string.Join(",", Nodes.Select(x => x.ToString())) : "empty")}";
     }
 
     public override MsgType MsgType => MsgType.Neighbors;

@@ -6,6 +6,8 @@ using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
+using Nethermind.Logging;
+using Nethermind.State;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 
@@ -17,18 +19,15 @@ public class FullStateFinder : IFullStateFinder
     // then we will never have to look 128 back again
     // note that we will be doing that every second or so
     private const int MaxLookupBack = 192;
-    private readonly IDb _stateDb;
-    private readonly ITrieNodeResolver _trieNodeResolver;
+    private readonly IStateReader _stateReader;
     private readonly IBlockTree _blockTree;
 
     public FullStateFinder(
         IBlockTree blockTree,
-        IDb stateDb,
-        ITrieNodeResolver trieNodeResolver)
+        IStateReader stateReader)
     {
         _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
-        _stateDb = stateDb ?? throw new ArgumentNullException(nameof(stateDb));
-        _trieNodeResolver = trieNodeResolver ?? throw new ArgumentNullException(nameof(trieNodeResolver));
+        _stateReader = stateReader ?? throw new ArgumentNullException(nameof(stateReader));
     }
 
     private bool IsFullySynced(Hash256 stateRoot)
@@ -38,33 +37,7 @@ public class FullStateFinder : IFullStateFinder
             return true;
         }
 
-        // We check whether one of below happened:
-        //   1) the block has been processed but not yet persisted (pruning) OR
-        //   2) the block has been persisted and removed from cache already OR
-        //   3) the full block state has been synced in the state nodes sync (fast sync)
-        // In 2) and 3) the state root will be saved in the database.
-        // In fast sync we never save the state root unless all the descendant nodes have been stored in the DB.
-
-        bool stateRootIsInMemory = false;
-        bool isPersisted = false;
-
-        switch (_trieNodeResolver.Capability)
-        {
-            case TrieNodeResolverCapability.Hash:
-            {
-                stateRootIsInMemory = _trieNodeResolver.FindCachedOrUnknown(stateRoot).NodeType != NodeType.Unknown;
-                isPersisted = _stateDb.Get(stateRoot) is not null;
-                break;
-            }
-            case TrieNodeResolverCapability.Path:
-            {
-                stateRootIsInMemory = _trieNodeResolver.FindCachedOrUnknown(stateRoot, Span<byte>.Empty, Span<byte>.Empty).NodeType != NodeType.Unknown;
-                isPersisted = _trieNodeResolver.ExistsInDB(stateRoot, Array.Empty<byte>());
-                break;
-            }
-        }
-
-        return stateRootIsInMemory || isPersisted;
+        return _stateReader.HasStateForRoot(stateRoot);
     }
 
     public long FindBestFullState()

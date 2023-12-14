@@ -21,9 +21,9 @@ namespace Nethermind.Crypto
     {
         private bool _forEncryption;
         private byte[] _kdfKey;
-        private IDigest _hash;
-        private IMac _mac;
-        private BufferedBlockCipher _cipher;
+        private readonly IDigest _hash;
+        private readonly IMac _mac;
+        private readonly BufferedBlockCipher _cipher;
         private IesParameters _iesParameters;
         private byte[] _iv;
 

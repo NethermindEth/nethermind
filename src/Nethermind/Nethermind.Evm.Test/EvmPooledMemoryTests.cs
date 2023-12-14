@@ -93,7 +93,7 @@ namespace Nethermind.Evm.Test
         {
             EvmPooledMemory memory = new();
             memory.CalculateMemoryCost(0, 32);
-            memory.GetTrace().Should().BeEquivalentTo(new string[] { "0000000000000000000000000000000000000000000000000000000000000000" });
+            memory.GetTrace().ToHexWordList().Should().BeEquivalentTo(new string[] { "0000000000000000000000000000000000000000000000000000000000000000" });
         }
     }
 }

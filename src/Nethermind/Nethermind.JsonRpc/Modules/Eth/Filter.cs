@@ -2,10 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
+using System.Text.Json;
+
 using Nethermind.Blockchain.Find;
 using Nethermind.JsonRpc.Data;
-using Newtonsoft.Json;
-using Newtonsoft.Json.Linq;
 
 namespace Nethermind.JsonRpc.Modules.Eth;
 
@@ -19,46 +19,74 @@ public class Filter : IJsonRpcParam
 
     public IEnumerable<object?>? Topics { get; set; }
 
-    public void ReadJson(JsonSerializer serializer, string json)
+    public void ReadJson(JsonElement filter, JsonSerializerOptions options)
     {
-        var filter = serializer.Deserialize<JObject>(json.ToJsonTextReader());
-        var blockHash = filter["blockHash"]?.Value<string>();
-
-        if (blockHash is null)
+        JsonDocument doc = null;
+        string blockHash = null;
+        try
         {
-            FromBlock = BlockParameterConverter.GetBlockParameter(filter["fromBlock"]?.Value<string>());
-            ToBlock = BlockParameterConverter.GetBlockParameter(filter["toBlock"]?.Value<string>());
+            if (filter.ValueKind == JsonValueKind.String)
+            {
+                doc = JsonDocument.Parse(filter.GetString());
+                filter = doc.RootElement;
+            }
+
+            if (filter.TryGetProperty("blockHash"u8, out JsonElement blockHashElement))
+            {
+                blockHash = blockHashElement.GetString();
+            }
+
+            if (blockHash is null)
+            {
+                filter.TryGetProperty("fromBlock"u8, out JsonElement fromBlockElement);
+                FromBlock = BlockParameterConverter.GetBlockParameter(fromBlockElement.ToString());
+                filter.TryGetProperty("toBlock"u8, out JsonElement toBlockElement);
+                ToBlock = BlockParameterConverter.GetBlockParameter(toBlockElement.ToString());
+            }
+            else
+            {
+                FromBlock = ToBlock = BlockParameterConverter.GetBlockParameter(blockHash);
+            }
+
+            filter.TryGetProperty("address"u8, out JsonElement addressElement);
+            Address = GetAddress(addressElement, options);
+
+            if (filter.TryGetProperty("topics"u8, out JsonElement topicsElement) && topicsElement.ValueKind == JsonValueKind.Array)
+            {
+                Topics = GetTopics(topicsElement, options);
+            }
+            else
+            {
+                Topics = null;
+            }
         }
-        else
-            FromBlock =
-                ToBlock = BlockParameterConverter.GetBlockParameter(blockHash);
-
-        Address = GetAddress(filter["address"]);
-
-        var topics = filter["topics"] as JArray;
-
-        Topics = topics is null ? null : GetTopics(filter["topics"] as JArray);
+        finally
+        {
+            doc?.Dispose();
+        }
     }
 
-    private static object? GetAddress(JToken? token) => GetSingleOrMany(token);
+    private static object? GetAddress(JsonElement? token, JsonSerializerOptions options) => GetSingleOrMany(token, options);
 
-    private static IEnumerable<object?> GetTopics(JArray? array)
+    private static IEnumerable<object?> GetTopics(JsonElement? array, JsonSerializerOptions options)
     {
         if (array is null)
         {
             yield break;
         }
 
-        foreach (JToken token in array)
+        foreach (var token in array.GetValueOrDefault().EnumerateArray())
         {
-            yield return GetSingleOrMany(token);
+            yield return GetSingleOrMany(token, options);
         }
     }
 
-    private static object? GetSingleOrMany(JToken? token) => token switch
+    private static object? GetSingleOrMany(JsonElement? token, JsonSerializerOptions options) => token switch
     {
         null => null,
-        JArray _ => token.ToObject<IEnumerable<string>>(),
-        _ => token.Value<string>(),
+        { ValueKind: JsonValueKind.Undefined } _ => null,
+        { ValueKind: JsonValueKind.Null } _ => null,
+        { ValueKind: JsonValueKind.Array } _ => token.GetValueOrDefault().Deserialize<string[]>(options),
+        _ => token.GetValueOrDefault().GetString(),
     };
 }

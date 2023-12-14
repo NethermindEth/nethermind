@@ -52,6 +52,9 @@ namespace Nethermind.Store.Test
             };
         }
 
+        [TearDown]
+        public void TearDown() => _codeDb?.Dispose();
+
         [Test]
         [TestCaseSource(nameof(Variants))]
         public void Eip_158_zero_value_transfer_deletes((string Name, ITrieStore TrieStore) testCase)

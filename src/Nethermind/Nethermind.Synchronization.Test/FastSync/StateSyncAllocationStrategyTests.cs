@@ -21,7 +21,7 @@ namespace Nethermind.Synchronization.Test.FastSync;
 
 public class StateSyncAllocationStrategyTests
 {
-    private static IPeerAllocationStrategy _strategy = new StateSyncAllocationStrategyFactory.AllocationStrategy(new NoopAllocationStrategy());
+    private static readonly IPeerAllocationStrategy _strategy = new StateSyncAllocationStrategyFactory.AllocationStrategy(new NoopAllocationStrategy());
 
     [Test]
     public void Can_allocate_node_with_snap()

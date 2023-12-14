@@ -30,6 +30,13 @@ namespace Nethermind.Db.Test.Rpc
             _rpcDb = new RpcDb("Name", _jsonSerializer, _jsonRpcClient, LimboLogs.Instance, _recordDb);
         }
 
+        [TearDown]
+        public void TearDown()
+        {
+            _recordDb?.Dispose();
+            _rpcDb?.Dispose();
+        }
+
         [Test]
         public void gets_through_rpc()
         {

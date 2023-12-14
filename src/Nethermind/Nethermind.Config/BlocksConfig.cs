@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Reflection.Metadata;
 using System.Text;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
@@ -10,8 +11,9 @@ namespace Nethermind.Config
 {
     public class BlocksConfig : IBlocksConfig
     {
-        private byte[] _extraDataBytes = Encoding.UTF8.GetBytes("Nethermind");
-        private string _extraDataString = "Nethermind";
+        public const string DefaultExtraData = "Nethermind";
+        private byte[] _extraDataBytes = Encoding.UTF8.GetBytes(DefaultExtraData);
+        private string _extraDataString = DefaultExtraData;
 
         public bool Enabled { get; set; }
         public long? TargetBlockGasLimit { get; set; } = null;

@@ -15,14 +15,14 @@ namespace Nethermind.Blockchain.Receipts
         private readonly IDb _blocksDb;
         private readonly int _length;
         private Rlp.ValueDecoderContext _decoderContext;
-        private int _startingPosition;
+        private readonly int _startingPosition;
 
         private readonly TxReceipt[]? _receipts;
         private int _receiptIndex;
 
         private readonly Func<IReceiptsRecovery.IRecoveryContext>? _recoveryContextFactory;
         private IReceiptsRecovery.IRecoveryContext? _recoveryContext;
-        private IReceiptRefDecoder _receiptRefDecoder;
+        private readonly IReceiptRefDecoder _receiptRefDecoder;
         private bool _recoveryContextConfigured;
 
         public ReceiptsIterator(scoped in Span<byte> receiptsData, IDb blocksDb, Func<IReceiptsRecovery.IRecoveryContext?>? recoveryContextFactory, IReceiptRefDecoder receiptRefDecoder)

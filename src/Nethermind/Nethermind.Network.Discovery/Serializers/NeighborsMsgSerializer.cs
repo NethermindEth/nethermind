@@ -27,7 +27,7 @@ public class NeighborsMsgSerializer : DiscoveryMsgSerializerBase, IZeroInnerMess
         PrepareBufferForSerialization(byteBuffer, totalLength, (byte)msg.MsgType);
         NettyRlpStream stream = new(byteBuffer);
         stream.StartSequence(contentLength);
-        if (msg.Nodes.Any())
+        if (msg.Nodes.Length != 0)
         {
             stream.StartSequence(nodesContentLength);
             for (int i = 0; i < msg.Nodes.Length; i++)
@@ -100,7 +100,7 @@ public class NeighborsMsgSerializer : DiscoveryMsgSerializerBase, IZeroInnerMess
     {
         int nodesContentLength = 0;
         int contentLength = 0;
-        if (msg.Nodes.Any())
+        if (msg.Nodes.Length != 0)
         {
             contentLength += GetNodesLength(msg.Nodes, out nodesContentLength);
         }

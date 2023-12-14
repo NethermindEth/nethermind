@@ -60,10 +60,7 @@ namespace Nethermind.Trie
 
         public static Nibble[] FromHexString(string hexString)
         {
-            if (hexString is null)
-            {
-                throw new ArgumentNullException($"{nameof(hexString)}");
-            }
+            ArgumentNullException.ThrowIfNull(hexString);
 
             int startIndex = hexString.StartsWith("0x") ? 2 : 0;
             int numberChars = hexString.Length - startIndex;

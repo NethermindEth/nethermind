@@ -2,33 +2,40 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using Nethermind.Core.Extensions;
-using Newtonsoft.Json;
 
 namespace Nethermind.Serialization.Json;
 
 public class MemoryByteConverter : JsonConverter<Memory<byte>>
 {
-    public override void WriteJson(JsonWriter writer, Memory<byte> value, JsonSerializer serializer)
+    public override void Write(Utf8JsonWriter writer, Memory<byte> value, JsonSerializerOptions options)
     {
         if (value.IsEmpty)
         {
-            writer.WriteNull();
+            writer.WriteNullValue();
         }
         else
         {
-            writer.WriteValue(Bytes.ByteArrayToHexViaLookup32Safe(value, true));
+            ByteArrayConverter.Convert(writer, value.Span);
         }
     }
 
-    public override Memory<byte> ReadJson(JsonReader reader, Type objectType, Memory<byte> existingValue, bool hasExistingValue, JsonSerializer serializer)
+    public override Memory<byte> Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
     {
-        if (reader.TokenType == JsonToken.Null)
+        if (reader.TokenType == JsonTokenType.Null)
         {
-            return null;
+            return default;
         }
 
-        string s = (string)reader.Value;
-        return Bytes.FromHexString(s);
+        ReadOnlySpan<byte> hex = reader.HasValueSequence ? reader.ValueSequence.ToArray() : reader.ValueSpan;
+        if (hex.StartsWith("0x"u8))
+        {
+            hex = hex[2..];
+        }
+
+        return Bytes.FromUtf8HexString(hex);
     }
 }

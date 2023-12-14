@@ -14,7 +14,7 @@ namespace Nethermind.Config.Test
 {
     public static class StandardConfigTests
     {
-        private static JsonSerializerOptions _jsonOptions = new() { Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping };
+        private static readonly JsonSerializerOptions _jsonOptions = new() { Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping };
 
         public static void ValidateDefaultValues()
         {

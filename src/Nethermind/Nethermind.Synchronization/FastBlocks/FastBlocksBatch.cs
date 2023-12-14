@@ -8,7 +8,7 @@ namespace Nethermind.Synchronization.FastBlocks
 {
     public abstract class FastBlocksBatch
     {
-        private Stopwatch _stopwatch = new();
+        private readonly Stopwatch _stopwatch = new();
         private long? _scheduledLastTime;
         private long? _requestSentTime;
         private long? _validationStartTime;
