@@ -24,6 +24,7 @@ using Nethermind.Merge.Plugin.Synchronization;
 using Nethermind.Synchronization.Reporting;
 using Nethermind.Synchronization.ParallelSync;
 using System.Threading;
+using Nethermind.Db.ByPathState;
 using Nethermind.HealthChecks;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs.ChainSpecStyle;
@@ -169,6 +170,7 @@ public class OptimismPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitial
             _api.ChainSpec,
             _beaconSync,
             _api.StateReader!,
+            _api.Config<IByPathStateConfig>(),
             _api.LogManager
         );
 

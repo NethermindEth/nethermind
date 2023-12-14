@@ -8,7 +8,6 @@ using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
-using Newtonsoft.Json.Linq;
 
 namespace Nethermind.Db.FullPruning
 {

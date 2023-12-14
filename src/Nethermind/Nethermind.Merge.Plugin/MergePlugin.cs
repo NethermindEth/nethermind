@@ -19,6 +19,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Exceptions;
 using Nethermind.Db;
+using Nethermind.Db.ByPathState;
 using Nethermind.Facade.Proxy;
 using Nethermind.HealthChecks;
 using Nethermind.JsonRpc;
@@ -437,6 +438,7 @@ public partial class MergePlugin : IConsensusWrapperPlugin, ISynchronizationPlug
                 _api.ChainSpec,
                 _beaconSync,
                 _api.StateReader,
+                _api.Config<IByPathStateConfig>(),
                 _api.LogManager
             );
             _api.Synchronizer = synchronizer;

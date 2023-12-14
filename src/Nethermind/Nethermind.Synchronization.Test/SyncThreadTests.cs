@@ -41,6 +41,7 @@ using BlockTree = Nethermind.Blockchain.BlockTree;
 using Nethermind.Synchronization.SnapSync;
 using Nethermind.Config;
 using Nethermind.Specs.ChainSpecStyle;
+using Nethermind.Db.ByPathState;
 
 namespace Nethermind.Synchronization.Test
 {
@@ -249,6 +250,13 @@ namespace Nethermind.Synchronization.Test
             IDbProvider dbProvider = TestMemDbProvider.Init();
             IDb codeDb = dbProvider.CodeDb;
             MemDb stateDb = new();
+            //TODO - add param in tests
+            ByPathStateConfig byPathStateConfig = new()
+            {
+                Enabled = false,
+                InMemHistoryBlocks = 128,
+                PersistenceInterval = 64
+            };
 
             TrieStore trieStore = new(stateDb, LimboLogs.Instance);
             StateReader stateReader = new(trieStore, codeDb, logManager);
@@ -363,6 +371,7 @@ namespace Nethermind.Synchronization.Test
                 bestPeerStrategy,
                 new ChainSpec(),
                 stateReader,
+                byPathStateConfig,
                 logManager);
 
             ISyncModeSelector selector = synchronizer.SyncModeSelector;

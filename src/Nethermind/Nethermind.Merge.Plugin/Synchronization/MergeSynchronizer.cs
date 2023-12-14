@@ -22,6 +22,7 @@ using Nethermind.Trie.Pruning;
 using Nethermind.Synchronization.Reporting;
 using Nethermind.Synchronization.SnapSync;
 using Nethermind.Trie.ByPath;
+using Nethermind.Db.ByPathState;
 
 namespace Nethermind.Merge.Plugin.Synchronization;
 
@@ -59,6 +60,7 @@ public class MergeSynchronizer : Synchronizer
         ChainSpec chainSpec,
         IBeaconSyncStrategy beaconSync,
         IStateReader stateReader,
+        IByPathStateConfig pathStateConfig,
         ILogManager logManager)
         : base(
             dbProvider,
@@ -74,6 +76,7 @@ public class MergeSynchronizer : Synchronizer
             betterPeerStrategy,
             chainSpec,
             stateReader,
+            pathStateConfig,
             logManager)
     {
         _invalidChainTracker = invalidChainTracker;

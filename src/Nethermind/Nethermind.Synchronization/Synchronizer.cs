@@ -27,7 +27,6 @@ using Nethermind.Synchronization.Peers;
 using Nethermind.Synchronization.Reporting;
 using Nethermind.Synchronization.SnapSync;
 using Nethermind.Synchronization.StateSync;
-using Nethermind.Trie.ByPath;
 using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Synchronization
@@ -113,6 +112,7 @@ namespace Nethermind.Synchronization
             IBetterPeerStrategy betterPeerStrategy,
             ChainSpec chainSpec,
             IStateReader stateReader,
+            IByPathStateConfig pathStateConfig,
             ILogManager logManager)
         {
             _dbProvider = dbProvider ?? throw new ArgumentNullException(nameof(dbProvider));
@@ -138,7 +138,7 @@ namespace Nethermind.Synchronization
                 dbProvider.StateDb,
                 logManager,
                 _syncConfig.SnapSyncAccountRangePartitionCount);
-            SnapProvider = new SnapProvider(progressTracker, dbProvider, logManager, readOnlyTrieStore.Capability);
+            SnapProvider = new SnapProvider(progressTracker, dbProvider, logManager, pathStateConfig.Enabled ? TrieNodeResolverCapability.Path : TrieNodeResolverCapability.Hash);
         }
 
         public virtual void Start()

@@ -17,6 +17,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Timers;
 using Nethermind.Db;
+using Nethermind.Db.ByPathState;
 using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Specs.ChainSpecStyle;
@@ -68,6 +69,13 @@ namespace Nethermind.Synchronization.Test
                 LimboLogs.Instance);
 
             IStateReader stateReader = new StateReader(trieStore, _codeDb, LimboLogs.Instance);
+            //TODO - add param in tests
+            ByPathStateConfig byPathStateConfig = new()
+            {
+                Enabled = false,
+                InMemHistoryBlocks = 128,
+                PersistenceInterval = 64
+            };
 
             _synchronizer = new Synchronizer(
                 dbProvider,
@@ -83,6 +91,7 @@ namespace Nethermind.Synchronization.Test
                 bestPeerStrategy,
                 new ChainSpec(),
                 stateReader,
+                byPathStateConfig,
                 LimboLogs.Instance);
             _syncServer = new SyncServer(
                 trieStore.AsKeyValueStore(),
