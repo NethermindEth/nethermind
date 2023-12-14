@@ -3,6 +3,7 @@
 
 using System;
 using System.Buffers.Binary;
+using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
 using Nethermind.Abi;
 using Nethermind.Blockchain.Contracts;
@@ -14,6 +15,8 @@ using Nethermind.Facade;
 using Nethermind.Int256;
 using Nethermind.TxPool;
 
+[assembly: InternalsVisibleTo("Nethermind.Merge.AuRa.Test")]
+
 namespace Nethermind.Merge.AuRa.Shutter;
 
 public class ValidatorRegistryContract : CallableContract, IValidatorRegistryContract
@@ -24,18 +27,19 @@ public class ValidatorRegistryContract : CallableContract, IValidatorRegistryCon
     private readonly IBlockchainBridge _blockchainBridge;
     private UInt64 _nonce;
     private readonly UInt64 _validatorIndex;
-    private static readonly string UPDATE = "update";
-    private static readonly string GET_NUM_UPDATES = "getNumUpdates";
-    private static readonly string GET_UPDATE = "getUpdate";
-    private static readonly byte VALIDATOR_REGISTRY_MESSAGE_VERSION = 0;
+    public static readonly string UPDATE = "update";
+    public static readonly string GET_NUM_UPDATES = "getNumUpdates";
+    public static readonly string GET_UPDATE = "getUpdate";
+    public static readonly byte VALIDATOR_REGISTRY_MESSAGE_VERSION = 0;
 
-    private class Message
+    internal class Message
     {
         public readonly byte Version;
         public readonly UInt64 ChainId;
         public readonly Address Sender;
         public readonly UInt64 ValidatorIndex;
         public readonly UInt64 Nonce;
+        public readonly bool IsRegistration;
 
         public Message(Address sender, UInt64 validatorIndex, UInt64 nonce)
         {
@@ -54,20 +58,20 @@ public class ValidatorRegistryContract : CallableContract, IValidatorRegistryCon
             }
 
             Version = encodedMessage[0];
-            ChainId = BinaryPrimitives.ReadUInt64BigEndian(encodedMessage[3..]);
+            ChainId = BinaryPrimitives.ReadUInt64BigEndian(encodedMessage[1..]);
             Sender = new Address(encodedMessage[9..29].ToArray());
-            ValidatorIndex = BinaryPrimitives.ReadUInt64BigEndian(encodedMessage[31..]);
-            Nonce = BinaryPrimitives.ReadUInt64BigEndian(encodedMessage[39..]);
+            ValidatorIndex = BinaryPrimitives.ReadUInt64BigEndian(encodedMessage[29..]);
+            Nonce = BinaryPrimitives.ReadUInt64BigEndian(encodedMessage[37..]);
+            IsRegistration = encodedMessage[45] == 1;
         }
 
         private void ComputeRegistryMessagePrefix(Span<byte> registryMessagePrefix)
         {
             registryMessagePrefix[0] = Version;
-            BinaryPrimitives.WriteUInt64BigEndian(registryMessagePrefix[3..], ChainId);
-            Span<byte> addressSpan = registryMessagePrefix[9..];
-            addressSpan = Sender.Bytes;
-            BinaryPrimitives.WriteUInt64BigEndian(registryMessagePrefix[31..], ValidatorIndex);
-            BinaryPrimitives.WriteUInt64BigEndian(registryMessagePrefix[39..], Nonce);
+            BinaryPrimitives.WriteUInt64BigEndian(registryMessagePrefix[1..], ChainId);
+            Sender.Bytes.CopyTo(registryMessagePrefix[9..]);
+            BinaryPrimitives.WriteUInt64BigEndian(registryMessagePrefix[29..], ValidatorIndex);
+            BinaryPrimitives.WriteUInt64BigEndian(registryMessagePrefix[37..], Nonce);
         }
 
         public byte[] ComputeDeregistrationMessage()

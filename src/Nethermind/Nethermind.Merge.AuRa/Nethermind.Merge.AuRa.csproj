@@ -7,10 +7,12 @@
 
   <ItemGroup>
     <None Remove="Contracts\WithdrawalContract.json" />
+    <None Remove="Shutter\ValidatorRegistryContract.json" />
   </ItemGroup>
 
   <ItemGroup>
     <EmbeddedResource Include="Contracts\WithdrawalContract.json" />
+    <EmbeddedResource Include="Shutter\ValidatorRegistryContract.json" />
   </ItemGroup>
 
   <ItemGroup>
