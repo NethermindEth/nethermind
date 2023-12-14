@@ -52,64 +52,6 @@ public class ValidatorRegistryContract : CallableContract, IValidatorRegistryCon
         }
     }
 
-    internal class Message
-    {
-        public readonly byte Version;
-        public readonly ulong ChainId;
-        public readonly Address Sender;
-        public readonly ulong ValidatorIndex;
-        public readonly ulong Nonce;
-        public readonly bool IsRegistration;
-
-        public Message(Address sender, ulong validatorIndex, ulong nonce)
-        {
-            Version = validatorRegistryMessageVersion;
-            ChainId = BlockchainIds.Gnosis;
-            Sender = sender;
-            ValidatorIndex = validatorIndex;
-            Nonce = nonce;
-        }
-
-        public Message(Span<byte> encodedMessage)
-        {
-            if (encodedMessage.Length != 46)
-            {
-                throw new Exception("Encoded validator registry contract message was malformed.");
-            }
-
-            Version = encodedMessage[0];
-            ChainId = BinaryPrimitives.ReadUInt64BigEndian(encodedMessage[1..]);
-            Sender = new Address(encodedMessage[9..29].ToArray());
-            ValidatorIndex = BinaryPrimitives.ReadUInt64BigEndian(encodedMessage[29..]);
-            Nonce = BinaryPrimitives.ReadUInt64BigEndian(encodedMessage[37..]);
-            IsRegistration = encodedMessage[45] == 1;
-        }
-
-        private void ComputeRegistryMessagePrefix(Span<byte> registryMessagePrefix)
-        {
-            registryMessagePrefix[0] = Version;
-            BinaryPrimitives.WriteUInt64BigEndian(registryMessagePrefix[1..], ChainId);
-            Sender.Bytes.CopyTo(registryMessagePrefix[9..]);
-            BinaryPrimitives.WriteUInt64BigEndian(registryMessagePrefix[29..], ValidatorIndex);
-            BinaryPrimitives.WriteUInt64BigEndian(registryMessagePrefix[37..], Nonce);
-        }
-
-        public byte[] ComputeDeregistrationMessage()
-        {
-            Span<byte> registryMessagePrefix = stackalloc byte[46];
-            ComputeRegistryMessagePrefix(registryMessagePrefix);
-            return registryMessagePrefix.ToArray();
-        }
-
-        public byte[] ComputeRegistrationMessage()
-        {
-            Span<byte> registryMessagePrefix = stackalloc byte[46];
-            ComputeRegistryMessagePrefix(registryMessagePrefix);
-            registryMessagePrefix[45] = 1;
-            return registryMessagePrefix.ToArray();
-        }
-    }
-
     public UInt256 GetNumUpdates(BlockHeader blockHeader)
     {
         object[] res = Call(blockHeader, getNumUpdates, Address.Zero, Array.Empty<object>());
@@ -168,4 +110,63 @@ public class ValidatorRegistryContract : CallableContract, IValidatorRegistryCon
 
         return res;
     }
+
+    internal class Message
+    {
+        public readonly byte Version;
+        public readonly ulong ChainId;
+        public readonly Address Sender;
+        public readonly ulong ValidatorIndex;
+        public readonly ulong Nonce;
+        public readonly bool IsRegistration;
+
+        public Message(Address sender, ulong validatorIndex, ulong nonce)
+        {
+            Version = validatorRegistryMessageVersion;
+            ChainId = BlockchainIds.Gnosis;
+            Sender = sender;
+            ValidatorIndex = validatorIndex;
+            Nonce = nonce;
+        }
+
+        public Message(Span<byte> encodedMessage)
+        {
+            if (encodedMessage.Length != 46)
+            {
+                throw new Exception("Encoded validator registry contract message was malformed.");
+            }
+
+            Version = encodedMessage[0];
+            ChainId = BinaryPrimitives.ReadUInt64BigEndian(encodedMessage[1..]);
+            Sender = new Address(encodedMessage[9..29].ToArray());
+            ValidatorIndex = BinaryPrimitives.ReadUInt64BigEndian(encodedMessage[29..]);
+            Nonce = BinaryPrimitives.ReadUInt64BigEndian(encodedMessage[37..]);
+            IsRegistration = encodedMessage[45] == 1;
+        }
+
+        private void ComputeRegistryMessagePrefix(Span<byte> registryMessagePrefix)
+        {
+            registryMessagePrefix[0] = Version;
+            BinaryPrimitives.WriteUInt64BigEndian(registryMessagePrefix[1..], ChainId);
+            Sender.Bytes.CopyTo(registryMessagePrefix[9..]);
+            BinaryPrimitives.WriteUInt64BigEndian(registryMessagePrefix[29..], ValidatorIndex);
+            BinaryPrimitives.WriteUInt64BigEndian(registryMessagePrefix[37..], Nonce);
+        }
+
+        public byte[] ComputeDeregistrationMessage()
+        {
+            Span<byte> registryMessagePrefix = stackalloc byte[46];
+            ComputeRegistryMessagePrefix(registryMessagePrefix);
+            return registryMessagePrefix.ToArray();
+        }
+
+        public byte[] ComputeRegistrationMessage()
+        {
+            Span<byte> registryMessagePrefix = stackalloc byte[46];
+            ComputeRegistryMessagePrefix(registryMessagePrefix);
+            registryMessagePrefix[45] = 1;
+            return registryMessagePrefix.ToArray();
+        }
+    }
+
 }
