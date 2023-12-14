@@ -3,6 +3,7 @@
 
 using System.Threading.Tasks;
 using Nethermind.Core;
+using Nethermind.Int256;
 using Nethermind.TxPool;
 
 namespace Nethermind.Merge.AuRa.Shutter;
@@ -20,4 +21,17 @@ public interface IValidatorRegistryContract
     /// </summary>
     /// <param name="blockHeader"></param>
     ValueTask<AcceptTxResult?> Register(BlockHeader blockHeader);
+
+    /// <summary>
+    /// Returns the number of previous updates to the registry.
+    /// </summary>
+    /// <param name="blockHeader"></param>
+    UInt256 GetNumUpdates(BlockHeader blockHeader);
+
+    /// <summary>
+    /// Retrieves the ith update to the registry.
+    /// </summary>
+    /// <param name="blockHeader"></param>
+    /// <param name="i"></param>
+    (byte[], byte[]) GetUpdate(BlockHeader blockHeader, in UInt256 i);
 }

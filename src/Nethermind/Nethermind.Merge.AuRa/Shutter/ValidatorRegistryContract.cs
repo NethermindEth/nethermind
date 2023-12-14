@@ -11,7 +11,6 @@ using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Evm.TransactionProcessing;
-using Nethermind.Facade;
 using Nethermind.Int256;
 using Nethermind.TxPool;
 
@@ -24,26 +23,47 @@ public class ValidatorRegistryContract : CallableContract, IValidatorRegistryCon
     private readonly ISigner _signer;
     private readonly ITxSender _txSender;
     private readonly ITxSealer _txSealer;
-    private readonly IBlockchainBridge _blockchainBridge;
-    private UInt64 _nonce;
-    private readonly UInt64 _validatorIndex;
-    public static readonly string UPDATE = "update";
-    public static readonly string GET_NUM_UPDATES = "getNumUpdates";
-    public static readonly string GET_UPDATE = "getUpdate";
-    public static readonly byte VALIDATOR_REGISTRY_MESSAGE_VERSION = 0;
+    private ulong _nonce;
+    private readonly ulong _validatorIndex;
+    private const string update = "update";
+    private const string getNumUpdates = "getNumUpdates";
+    private const string getUpate = "getUpdate";
+    internal const byte validatorRegistryMessageVersion = 0;
+
+    public ValidatorRegistryContract(ITransactionProcessor transactionProcessor, IAbiEncoder abiEncoder, Address contractAddress, ISigner signer, ITxSender txSender, ITxSealer txSealer, BlockHeader blockHeader)
+        : base(transactionProcessor, abiEncoder, contractAddress)
+    {
+        _signer = signer;
+        _txSender = txSender;
+        _txSealer = txSealer;
+        _validatorIndex = 0; // what is this?
+
+        // set nonce based on last nonce observed from this address
+        _nonce = 0;
+        UInt256 update = GetNumUpdates(blockHeader);
+        for (UInt256 i = update - 1; i >= 0; i -= 1)
+        {
+            Message m = GetUpdateMessage(blockHeader, i);
+            if (m.Sender == ContractAddress!)
+            {
+                _nonce = m.Nonce + 1;
+                break;
+            }
+        }
+    }
 
     internal class Message
     {
         public readonly byte Version;
-        public readonly UInt64 ChainId;
+        public readonly ulong ChainId;
         public readonly Address Sender;
-        public readonly UInt64 ValidatorIndex;
-        public readonly UInt64 Nonce;
+        public readonly ulong ValidatorIndex;
+        public readonly ulong Nonce;
         public readonly bool IsRegistration;
 
-        public Message(Address sender, UInt64 validatorIndex, UInt64 nonce)
+        public Message(Address sender, ulong validatorIndex, ulong nonce)
         {
-            Version = VALIDATOR_REGISTRY_MESSAGE_VERSION;
+            Version = validatorRegistryMessageVersion;
             ChainId = BlockchainIds.Gnosis;
             Sender = sender;
             ValidatorIndex = validatorIndex;
@@ -90,43 +110,23 @@ public class ValidatorRegistryContract : CallableContract, IValidatorRegistryCon
         }
     }
 
-    private UInt256 GetNumUpdates(BlockHeader blockHeader)
+    public UInt256 GetNumUpdates(BlockHeader blockHeader)
     {
-        Transaction transaction = GenerateTransaction<SystemTransaction>(GET_NUM_UPDATES, _signer.Address, Array.Empty<object>());
-        BlockchainBridge.CallOutput res = _blockchainBridge.Call(blockHeader, transaction, new System.Threading.CancellationToken());
-        return new UInt256(res.OutputData, true);
+        object[] res = Call(blockHeader, getNumUpdates, Address.Zero, Array.Empty<object>());
+        return new UInt256((byte[])res[0], true);
+    }
+
+    public (byte[], byte[]) GetUpdate(BlockHeader blockHeader, in UInt256 i)
+    {
+        object[] res = Call(blockHeader, getUpate, Address.Zero, new[] {i});
+        return ((byte[])res[0], (byte[])res[1]);
     }
 
     private Message GetUpdateMessage(BlockHeader blockHeader, UInt256 i)
     {
-        Transaction transaction = GenerateTransaction<SystemTransaction>(GET_UPDATE, _signer.Address, new[] {i});
-        BlockchainBridge.CallOutput res = _blockchainBridge.Call(blockHeader, transaction, new System.Threading.CancellationToken());
-        Span<byte> encodedMessage = res.OutputData;
+        (byte[] encodedMessage, _) = GetUpdate(blockHeader, i);
         // ignore signature for now, maybe should verify?
         return new Message(encodedMessage[..46]);
-    }
-
-    public ValidatorRegistryContract(ITransactionProcessor transactionProcessor, IAbiEncoder abiEncoder, Address contractAddress, ISigner signer, ITxSender txSender, ITxSealer txSealer, IBlockchainBridge blockchainBridge, BlockHeader blockHeader)
-        : base(transactionProcessor, abiEncoder, contractAddress)
-    {
-        _signer = signer;
-        _txSender = txSender;
-        _txSealer = txSealer;
-        _blockchainBridge = blockchainBridge;
-        _validatorIndex = 0; // what is this?
-
-        // set nonce based on last nonce observed from this address
-        _nonce = 0;
-        UInt256 update = GetNumUpdates(blockHeader);
-        for (UInt256 i = update - 1; i >= 0; i -= 1)
-        {
-            Message m = GetUpdateMessage(blockHeader, i);
-            if (m.Sender == ContractAddress!)
-            {
-                _nonce = m.Nonce + 1;
-                break;
-            }
-        }
     }
 
     private byte[] Sign(byte[] message)
@@ -137,7 +137,7 @@ public class ValidatorRegistryContract : CallableContract, IValidatorRegistryCon
 
     private async ValueTask<AcceptTxResult?> Update(byte[] message, byte[] signature)
     {
-        Transaction transaction = GenerateTransaction<GeneratedTransaction>(UPDATE, _signer.Address, new[] {message, signature});
+        Transaction transaction = GenerateTransaction<GeneratedTransaction>(update, _signer.Address, new[] {message, signature});
         await _txSealer.Seal(transaction, TxHandlingOptions.AllowReplacingSignature);
         (Hash256 _, AcceptTxResult? res) = await _txSender.SendTransaction(transaction, TxHandlingOptions.PersistentBroadcast);
         return res;
