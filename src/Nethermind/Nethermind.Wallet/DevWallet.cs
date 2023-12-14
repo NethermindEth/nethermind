@@ -103,7 +103,7 @@ namespace Nethermind.Wallet
         {
             if (!_isUnlocked.TryGetValue(address, out var value)) throw new SecurityException("Account does not exist.");
 
-            if (_isUnlocked[address] = !value && !CheckPassword(address, passphrase)) throw new SecurityException("Cannot sign without password or unlocked account.");
+            if (!value && !CheckPassword(address, passphrase)) throw new SecurityException("Cannot sign without password or unlocked account.");
 
             return Sign(message, address);
         }
