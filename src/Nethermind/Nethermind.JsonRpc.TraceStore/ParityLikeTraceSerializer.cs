@@ -51,8 +51,8 @@ public class ParityLikeTraceSerializer : ITraceSerializer<ParityLikeTxTrace>
 
         CheckDepth(traces);
 
-        using MemoryStream output = RecyclableStream.GetStream();
-        using (GZipStream compressionStream = new(output, CompressionMode.Compress))
+        using MemoryStream output = RecyclableStream.GetStream("Parity");
+        using (GZipStream compressionStream = new(output, CompressionMode.Compress, leaveOpen: true))
         {
             _jsonSerializer.Serialize(compressionStream, traces);
         }

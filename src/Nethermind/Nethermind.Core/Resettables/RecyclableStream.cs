@@ -8,5 +8,5 @@ namespace Nethermind.Core.Resettables;
 public class RecyclableStream
 {
     private static readonly RecyclableMemoryStreamManager _manager = new RecyclableMemoryStreamManager();
-    public static RecyclableMemoryStream GetStream() => _manager.GetStream();
+    public static RecyclableMemoryStream GetStream(string tag) => _manager.GetStream(tag);
 }

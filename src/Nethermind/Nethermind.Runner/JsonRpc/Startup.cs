@@ -169,7 +169,7 @@ namespace Nethermind.Runner.JsonRpc
                         long totalResponseSize = 0;
                         await foreach (JsonRpcResult result in jsonRpcProcessor.ProcessAsync(request, jsonRpcContext))
                         {
-                            using Stream stream = jsonRpcConfig.BufferResponses ? RecyclableStream.GetStream() : null;
+                            using Stream stream = jsonRpcConfig.BufferResponses ? RecyclableStream.GetStream("http") : null;
                             ICountingBufferWriter resultWriter = stream is not null ? new CountingStreamPipeWriter(stream) : new CountingPipeWriter(ctx.Response.BodyWriter);
 
                             try
