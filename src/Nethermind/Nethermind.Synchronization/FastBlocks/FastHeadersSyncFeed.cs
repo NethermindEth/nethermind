@@ -320,7 +320,10 @@ namespace Nethermind.Synchronization.FastBlocks
 
                 if (batch is not null)
                 {
-                    _sent.Add(batch);
+                    lock (_handlerLock)
+                    {
+                        _sent.Add(batch);
+                    }
                     if (batch.StartNumber >= (LowestInsertedBlockHeader?.Number ?? 0) - FastBlocksPriorities.ForHeaders)
                     {
                         batch.Prioritized = true;
