@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Frozen;
 using System.Runtime.CompilerServices;
 using Nethermind.Core.Specs;
 
@@ -9,7 +10,7 @@ namespace Nethermind.Evm.CodeAnalysis.IL;
 /// </summary>
 internal class IlInfo
 {
-    private const int NotFound = -1;
+    public static FrozenDictionary<byte[], InstructionChunk> Patterns { get; } = FrozenDictionary<byte[], InstructionChunk>.Empty;
 
     /// <summary>
     /// Represents an information about IL-EVM being not able to optimize the given <see cref="CodeInfo"/>.
@@ -21,19 +22,16 @@ internal class IlInfo
     /// </summary>
     private IlInfo()
     {
-        _pCs = Array.Empty<ushort>();
-        _chunks = Array.Empty<InstructionChunk>();
+        _chunks = FrozenDictionary<ushort, InstructionChunk>.Empty;
     }
 
-    public IlInfo(ushort[] pcs, InstructionChunk[] chunks)
+    public IlInfo(FrozenDictionary<ushort, InstructionChunk> mappedOpcodes)
     {
-        _pCs = pcs;
-        _chunks = chunks;
+        _chunks = mappedOpcodes;
     }
 
     // assumes small number of ILed
-    private readonly ushort[] _pCs;
-    private readonly InstructionChunk[] _chunks;
+    private readonly FrozenDictionary<ushort, InstructionChunk> _chunks;
 
     public bool TryExecute<TTracingInstructions>(EvmState vmState, IReleaseSpec spec, ref int programCounter, ref long gasAvailable, ref EvmStack<TTracingInstructions> stack)
         where TTracingInstructions : struct, VirtualMachine.IIsTracing
@@ -41,11 +39,11 @@ internal class IlInfo
         if (programCounter > ushort.MaxValue)
             return false;
 
-        int at = _pCs.AsSpan().IndexOf((ushort)programCounter);
-        if (at == NotFound)
+        bool hasProgramCounter = _chunks.ContainsKey((ushort)programCounter);
+        if (!hasProgramCounter)
             return false;
 
-        _chunks[at].Invoke(vmState, spec, ref programCounter, ref gasAvailable, ref stack);
+        _chunks[(ushort)programCounter].Invoke(vmState, spec, ref programCounter, ref gasAvailable, ref stack);
         return true;
     }
 }

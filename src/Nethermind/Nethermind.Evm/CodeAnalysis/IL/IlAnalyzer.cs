@@ -1,7 +1,13 @@
-﻿// SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using System.Collections.Frozen;
+using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Tasks;
+using static System.Net.Mime.MediaTypeNames;
+using static System.Runtime.InteropServices.JavaScript.JSType;
 
 namespace Nethermind.Evm.CodeAnalysis.IL;
 
@@ -10,6 +16,7 @@ namespace Nethermind.Evm.CodeAnalysis.IL;
 /// </summary>
 internal static class IlAnalyzer
 {
+
     /// <summary>
     /// Starts the analyzing in a background task and outputs the value in the <paramref name="codeInfo"/>.
     /// </summary>
@@ -29,8 +36,48 @@ internal static class IlAnalyzer
     /// </summary>
     private static IlInfo Analysis(byte[] machineCode)
     {
+        byte[] StripByteCode(byte[] machineCode)
+        {
+            byte[] opcodes = new byte[machineCode.Length];
+            int j = 0;
+            for (int i = 0; i < machineCode.Length; i++, j++)
+            {
+                Instruction opcode = (Instruction)machineCode[i];
+                opcodes[i] = (byte)opcode;
+                if (opcode is > Instruction.PUSH0 and <= Instruction.PUSH32)
+                {
+                    int immediatesCount = opcode - Instruction.PUSH0;
+                    i += immediatesCount;
+                }
+            }
+            return opcodes[..j];
+        }
+
+        byte[] strippedBytecode = StripByteCode(machineCode);
+        Dictionary<ushort, InstructionChunk> patternFound = new Dictionary<ushort, InstructionChunk>();
+
+        foreach (var (pattern, mapping) in IlInfo.Patterns)
+        {
+
+            for (int i = 0; i < strippedBytecode.Length - pattern.Length + 1; i++)
+            {
+                bool found = true;
+                for (int j = 0; j < pattern.Length && found; j++)
+                {
+                    found = strippedBytecode[i + j] == pattern[j];
+
+                }
+
+                if (found)
+                {
+                    patternFound.Add((ushort)i, mapping);
+                    i += pattern.Length;
+                }
+            }
+        }
+
         // TODO: implement actual analysis.
-        return IlInfo.NoIlEVM;
+        return new IlInfo(patternFound.ToFrozenDictionary());
     }
 
     /// <summary>
