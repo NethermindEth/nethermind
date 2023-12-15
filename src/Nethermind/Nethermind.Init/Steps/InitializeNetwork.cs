@@ -156,9 +156,10 @@ public class InitializeNetwork : IStep
                 blockDownloaderFactory,
                 _api.Pivot,
                 _api.ProcessExit!,
-                _api.ReadOnlyTrieStore!,
                 _api.BetterPeerStrategy,
                 _api.ChainSpec,
+                _api.StateReader!,
+                _pathStateConfig,
                 _api.LogManager);
         }
 

@@ -469,23 +469,23 @@ namespace Nethermind.Trie
             if (node.NodeType == NodeType.Unknown)
             {
                 //check the root of the persisted nodes
-                //if (rootHash is not null)
-                //{
-                //    Hash256? persistedRootHash;
-                //    if (RootRef?.IsPersisted == true && RootRef?.NodeType == NodeType.Unknown)
-                //    {
-                //        RootRef.ResolveNode(TrieStore);
-                //        RootRef.ResolveKey(TrieStore, true);
-                //        persistedRootHash = RootRef.Keccak;
-                //    }
-                //    else
-                //    {
-                //        persistedRootHash = GetPersistedRoot();
-                //    }
+                if (rootHash is not null)
+                {
+                    Hash256? persistedRootHash;
+                    if (RootRef?.IsPersisted == true && RootRef?.NodeType == NodeType.Unknown)
+                    {
+                        RootRef.ResolveNode(TrieStore);
+                        RootRef.ResolveKey(TrieStore, true);
+                        persistedRootHash = RootRef.Keccak;
+                    }
+                    else
+                    {
+                        persistedRootHash = GetPersistedRoot();
+                    }
 
-                //    if (rootHash != persistedRootHash)
-                //        throw new InvalidOperationException($"Attempting to get data for state having different root than persisted. Trie type: {TrieType} | Data requested: {rawKey.ToHexString()} | Root requested: {rootHash} | Root at DB: {RootRef?.Keccak}");
-                //}
+                    if (rootHash != persistedRootHash)
+                        throw new InvalidOperationException($"Attempting to get data for state having different root than persisted. Trie type: {TrieType} | Data requested: {rawKey.ToHexString()} | Root requested: {rootHash} | Root at DB: {RootRef?.Keccak}");
+                }
 
                 byte[]? nodeData = TrieStore.TryLoadRlp(nibbleBytes, null);
                 if (nodeData is null) return null;
@@ -1361,8 +1361,8 @@ namespace Nethermind.Trie
 
         public void Accept(ITreeVisitor visitor, Hash256 rootHash, VisitingOptions? visitingOptions = null)
         {
-            if (visitor is null) throw new ArgumentNullException(nameof(visitor));
-            if (rootHash is null) throw new ArgumentNullException(nameof(rootHash));
+            ArgumentNullException.ThrowIfNull(visitor);
+            ArgumentNullException.ThrowIfNull(rootHash);
             visitingOptions ??= VisitingOptions.Default;
 
             using TrieVisitContext trieVisitContext = new()
@@ -1405,8 +1405,10 @@ namespace Nethermind.Trie
                                 rootRef!.ResolveKey(TrieStore, true);
                                 if (rootRef.Keccak != rootHash)
                                 {
-                                    if (_logger.IsWarn) _logger.Warn($"PatriciaTree.Accept - requested root: {rootHash} resolved root: {rootRef.Keccak}");
-                                    throw new TrieException("Root ref hash mismatch!");
+                                    //if (_logger.IsWarn) _logger.Warn($"PatriciaTree.Accept - requested root: {rootHash} resolved root: {rootRef.Keccak}");
+                                    //throw new TrieException("Root ref hash mismatch!");
+                                    visitor.VisitMissingNode(rootHash, trieVisitContext);
+                                    return;
                                 }
                             }
                         }

@@ -101,7 +101,7 @@ namespace Nethermind.Evm.Benchmark
                 inputData: default
             );
 
-            _evmState = new EvmState(100_000_000L, _environment, ExecutionType.Transaction, true, _stateProvider.TakeSnapshot(), false);
+            _evmState = new EvmState(100_000_000L, _environment, ExecutionType.TRANSACTION, true, _stateProvider.TakeSnapshot(), false);
         }
 
         [Benchmark(Baseline = true)]

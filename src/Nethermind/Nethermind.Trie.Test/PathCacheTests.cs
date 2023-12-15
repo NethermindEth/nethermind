@@ -240,6 +240,12 @@ public class PathCacheTests
         return trieNode;
     }
 
+    [OneTimeTearDown]
+    public void TearDown()
+    {
+        _trieStore.Dispose();
+    }
+
     internal class Instances : IEnumerable
     {
         public static IEnumerable TestCases

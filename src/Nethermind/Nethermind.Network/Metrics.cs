@@ -9,7 +9,7 @@ using Nethermind.Stats.Model;
 
 namespace Nethermind.Network
 {
-    //TODO: consult on use of metric disabeling flags!
+    //TODO: consult on use of metric disabling flags!
     public static class Metrics
     {
         [KeyIsLabel("reason")]
@@ -327,6 +327,14 @@ namespace Nethermind.Network
         [CounterMetric]
         [Description("Number of SNAP TrieNodes messages received")]
         public static long SnapTrieNodesReceived { get; set; }
+
+        [CounterMetric]
+        [Description("Number of GetNodeData messages received via NodeData protocol")]
+        public static long GetNodeDataReceived { get; set; }
+
+        [CounterMetric]
+        [Description("Number of NodeData messages received via NodeData protocol")]
+        public static long NodeDataReceived { get; set; }
 
         [CounterMetric]
         [Description("Number of bytes sent through P2P (TCP).")]

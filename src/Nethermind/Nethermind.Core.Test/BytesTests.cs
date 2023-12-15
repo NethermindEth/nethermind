@@ -50,9 +50,9 @@ namespace Nethermind.Core.Test
         }
 
         [TestCase(null)]
-        public void FromHexStringThrows(string hexString)
+        public void FromHexStringThrows(string? hexString)
         {
-            Assert.That(() => Bytes.FromHexString(hexString), Throws.TypeOf<ArgumentNullException>());
+            Assert.That(() => Bytes.FromHexString(hexString!), Throws.TypeOf<ArgumentNullException>());
         }
 
         [TestCase("0x07", "0x7", true, true)]

@@ -25,7 +25,7 @@ namespace Nethermind.Synchronization.FastSync
 
     internal class PendingSyncItems : IPendingSyncItems
     {
-        private ConcurrentStack<StateSyncItem>[] _allStacks = new ConcurrentStack<StateSyncItem>[7];
+        private readonly ConcurrentStack<StateSyncItem>[] _allStacks = new ConcurrentStack<StateSyncItem>[7];
 
         private ConcurrentStack<StateSyncItem> CodeItems => _allStacks[0];
 
@@ -183,7 +183,7 @@ namespace Nethermind.Synchronization.FastSync
                 }
             }
 
-            // Take Stae Nodes if no codes queued up
+            // Take State Nodes if no codes queued up
             for (int i = 0; i < length; i++)
             {
                 if (TryTake(out StateSyncItem? requestItem))

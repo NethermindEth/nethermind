@@ -62,6 +62,11 @@ namespace Nethermind.Core.Extensions
             int leadingZeros = skipLeadingZeros ? Bytes.CountLeadingZeros(bytes) : 0;
             int length = bytes.Length * 2 + (withZeroX ? 2 : 0) - leadingZeros;
 
+            if (skipLeadingZeros && length == (withZeroX ? 2 : 0))
+            {
+                return withZeroX ? "0x0" : "0";
+            }
+
             char[] charArray = ArrayPool<char>.Shared.Rent(length);
 
             ref byte input = ref Unsafe.Add(ref MemoryMarshal.GetReference(bytes), leadingZeros / 2);

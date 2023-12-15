@@ -223,7 +223,7 @@ public class NodeLifecycleManager : INodeLifecycleManager
 
     private long _lastEnrSequence;
 
-    public void SendFindNode(byte[] searchedNodeId)
+    public async Task SendFindNode(byte[] searchedNodeId)
     {
         if (!IsBonded)
         {
@@ -237,7 +237,7 @@ public class NodeLifecycleManager : INodeLifecycleManager
 
         FindNodeMsg msg = new(ManagedNode.Address, CalculateExpirationTime(), searchedNodeId);
         _isNeighborsExpected = true;
-        _discoveryManager.SendMessage(msg);
+        await _discoveryManager.SendMessageAsync(msg);
         NodeStats.AddNodeStatsEvent(NodeStatsEventType.DiscoveryFindNodeOut);
     }
 
@@ -365,7 +365,7 @@ public class NodeLifecycleManager : INodeLifecycleManager
         try
         {
             _lastSentPing = msg;
-            _discoveryManager.SendMessage(msg);
+            await _discoveryManager.SendMessageAsync(msg);
             NodeStats.AddNodeStatsEvent(NodeStatsEventType.DiscoveryPingOut);
 
             bool result = await _discoveryManager.WasMessageReceived(ManagedNode.IdHash, MsgType.Pong, _discoveryConfig.PongTimeout);

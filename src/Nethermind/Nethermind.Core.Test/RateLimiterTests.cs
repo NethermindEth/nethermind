@@ -23,14 +23,13 @@ public class RateLimiterTests
     {
         RateLimiter rateLimiter = new(eventPerSec);
 
-        TimeSpan duration = TimeSpan.FromMilliseconds(durationMs);
-        DateTimeOffset startTime = DateTimeOffset.Now;
-        DateTimeOffset deadline = startTime + duration;
+        long startTime = Environment.TickCount64;
+        long deadline = startTime + durationMs;
         long counter = 0;
 
         Task[] tasks = Enumerable.Range(0, concurrency).Select(async (_) =>
         {
-            while (DateTimeOffset.Now < deadline)
+            while (Environment.TickCount64 < deadline)
             {
                 Interlocked.Increment(ref counter);
                 await rateLimiter.WaitAsync(CancellationToken.None);
@@ -39,7 +38,7 @@ public class RateLimiterTests
 
         await Task.WhenAll(tasks);
 
-        int effectivePerSec = (int)(counter / (DateTimeOffset.Now - startTime).TotalSeconds);
+        int effectivePerSec = (int)(counter / ((Environment.TickCount64 - startTime) / 1000.0));
         effectivePerSec.Should().BeInRange((int)(eventPerSec * 0.5), (int)(eventPerSec * 1.1));
     }
 

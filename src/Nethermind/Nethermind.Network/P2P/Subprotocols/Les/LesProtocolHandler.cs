@@ -288,7 +288,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Les
             {
                 BlockHeader firstCommonAncestor = SyncServer.FindLowestCommonAncestor(block.Header, _lastSentBlock);
                 if (firstCommonAncestor is null)
-                    throw new SubprotocolException($"Unable to send announcment to LES peer - No common ancestor found between {block.Header} and {_lastSentBlock}");
+                    throw new SubprotocolException($"Unable to send announcement to LES peer - No common ancestor found between {block.Header} and {_lastSentBlock}");
                 announceMessage.ReorgDepth = _lastSentBlock.Number - firstCommonAncestor.Number;
             }
 

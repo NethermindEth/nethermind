@@ -53,6 +53,9 @@ namespace Nethermind.Synchronization.Test.SnapSync
             }
         }
 
+        [OneTimeTearDown]
+        public void TearDown() => _store?.Dispose();
+
         [Test]
         public void RecreateStorageStateFromOneRangeWithNonExistenceProof()
         {

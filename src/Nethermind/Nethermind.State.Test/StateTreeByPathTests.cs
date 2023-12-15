@@ -890,8 +890,8 @@ namespace Nethermind.Store.Test
 
             //reset the trie and set context to latest root hash (block 1 not persisted)
             tree = new StateTreeByPath(pathStore, logManager);
-            pathStore.OpenContext(2, root_1);
             tree.RootHash = root_1;
+            tree.ParentStateRootHash = root_1;
 
             Assert.That(tree.Get(TestItem.AddressA).Balance, Is.EqualTo((UInt256)101));
             Assert.That(tree.Get(TestItem.AddressC).Balance, Is.EqualTo((UInt256)301));
@@ -913,8 +913,8 @@ namespace Nethermind.Store.Test
 
             //reset the trie and set context to latest root hash (block 1 not persisted)
             tree = new StateTreeByPath(pathStore, logManager);
-            pathStore.OpenContext(3, root_1);
             tree.RootHash = root_1;
+            tree.ParentStateRootHash = root_1;
 
             //get items at current root hash - data at block 1 - all reads from cache
             Assert.That(tree.Get(TestItem.AddressA).Balance, Is.EqualTo((UInt256)101));

@@ -19,6 +19,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Exceptions;
 using Nethermind.Db;
+using Nethermind.Db.ByPathState;
 using Nethermind.Facade.Proxy;
 using Nethermind.HealthChecks;
 using Nethermind.JsonRpc;
@@ -257,7 +258,6 @@ public partial class MergePlugin : IConsensusWrapperPlugin, ISynchronizationPlug
         {
             if (_api.BlockTree is null) throw new ArgumentNullException(nameof(_api.BlockTree));
             if (_api.BlockchainProcessor is null) throw new ArgumentNullException(nameof(_api.BlockchainProcessor));
-            if (_api.WorldState is null) throw new ArgumentNullException(nameof(_api.WorldState));
             if (_api.HeaderValidator is null) throw new ArgumentNullException(nameof(_api.HeaderValidator));
             if (_api.EthSyncingInfo is null) throw new ArgumentNullException(nameof(_api.EthSyncingInfo));
             if (_api.Sealer is null) throw new ArgumentNullException(nameof(_api.Sealer));
@@ -372,6 +372,7 @@ public partial class MergePlugin : IConsensusWrapperPlugin, ISynchronizationPlug
             if (_api.NodeStatsManager is null) throw new ArgumentNullException(nameof(_api.NodeStatsManager));
             if (_api.HeaderValidator is null) throw new ArgumentNullException(nameof(_api.HeaderValidator));
             if (_api.PeerDifficultyRefreshPool is null) throw new ArgumentNullException(nameof(_api.PeerDifficultyRefreshPool));
+            if (_api.StateReader is null) throw new ArgumentNullException(nameof(_api.StateReader));
 
             // ToDo strange place for validators initialization
             PeerRefresher peerRefresher = new(_api.PeerDifficultyRefreshPool, _api.TimerFactory, _api.LogManager);
@@ -416,7 +417,7 @@ public partial class MergePlugin : IConsensusWrapperPlugin, ISynchronizationPlug
                 _api.SealValidator!,
                 _syncConfig,
                 _api.BetterPeerStrategy!,
-                new FullStateFinder(_api.BlockTree, _api.DbProvider.StateDb, _api.TrieStore!.AsReadOnly()),
+                new FullStateFinder(_api.BlockTree, _api.StateReader),
                 _api.LogManager);
 
             MergeSynchronizer synchronizer = new MergeSynchronizer(
@@ -433,10 +434,11 @@ public partial class MergePlugin : IConsensusWrapperPlugin, ISynchronizationPlug
                 _mergeConfig,
                 _invalidChainTracker,
                 _api.ProcessExit!,
-                _api.ReadOnlyTrieStore!,
                 _api.BetterPeerStrategy,
                 _api.ChainSpec,
                 _beaconSync,
+                _api.StateReader,
+                _api.Config<IByPathStateConfig>(),
                 _api.LogManager
             );
             _api.Synchronizer = synchronizer;

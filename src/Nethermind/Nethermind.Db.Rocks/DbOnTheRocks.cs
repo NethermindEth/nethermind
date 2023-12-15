@@ -6,6 +6,7 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.IO.Abstractions;
+using System.Net.Sockets;
 using System.Reflection;
 using System.Threading;
 using ConcurrentCollections;
@@ -66,9 +67,11 @@ public class DbOnTheRocks : IDb, ITunableDb
 
     private string CorruptMarkerPath => Path.Join(_fullPath, "corrupt.marker");
 
-    private List<DbMetricsUpdater> _metricsUpdaters = new();
+    private readonly List<DbMetricsUpdater> _metricsUpdaters = new();
 
-    private ManagedIterators _readaheadIterators = new();
+    private readonly ManagedIterators _readaheadIterators = new();
+
+    internal long _allocatedSpan = 0;
 
     public DbOnTheRocks(
         string basePath,
@@ -180,7 +183,7 @@ public class DbOnTheRocks : IDb, ITunableDb
         }
         catch (RocksDbException x) when (x.Message.Contains("LOCK"))
         {
-            if (_logger.IsWarn) _logger.Warn("If your database did not close properly you need to call 'find -type f -name '*LOCK*' -delete' from the databse folder");
+            if (_logger.IsWarn) _logger.Warn("If your database did not close properly you need to call 'find -type f -name '*LOCK*' -delete' from the database folder");
             throw;
         }
         catch (RocksDbSharpException x)
@@ -236,7 +239,13 @@ public class DbOnTheRocks : IDb, ITunableDb
     {
         try
         {
-            return long.TryParse(_db.GetProperty("rocksdb.total-sst-files-size"), out long size) ? size : 0;
+            long sstSize = long.TryParse(_db.GetProperty("rocksdb.total-sst-files-size"), out long totalSstFilesSize)
+                ? totalSstFilesSize
+                : 0;
+            long blobSize = long.TryParse(_db.GetProperty("rocksdb.total-blob-file-size"), out long totalBlobFileSize)
+                ? totalBlobFileSize
+                : 0;
+            return sstSize + blobSize;
         }
         catch (RocksDbSharpException e)
         {
@@ -471,10 +480,7 @@ public class DbOnTheRocks : IDb, ITunableDb
 
     internal byte[]? GetWithColumnFamily(ReadOnlySpan<byte> key, ColumnFamilyHandle? cf, ManagedIterators readaheadIterators, ReadFlags flags = ReadFlags.None)
     {
-        if (_isDisposing)
-        {
-            throw new ObjectDisposedException($"Attempted to read form a disposed database {Name}");
-        }
+        ObjectDisposedException.ThrowIf(_isDisposing, this);
 
         UpdateReadMetrics();
 
@@ -511,10 +517,7 @@ public class DbOnTheRocks : IDb, ITunableDb
 
     internal void SetWithColumnFamily(ReadOnlySpan<byte> key, ColumnFamilyHandle? cf, ReadOnlySpan<byte> value, WriteFlags flags = WriteFlags.None)
     {
-        if (_isDisposing)
-        {
-            throw new ObjectDisposedException($"Attempted to write to a disposed database {Name}");
-        }
+        ObjectDisposedException.ThrowIf(_isDisposing, this);
 
         UpdateWriteMetrics();
 
@@ -580,10 +583,7 @@ public class DbOnTheRocks : IDb, ITunableDb
 
     internal Span<byte> GetSpanWithColumnFamily(ReadOnlySpan<byte> key, ColumnFamilyHandle? cf)
     {
-        if (_isDisposing)
-        {
-            throw new ObjectDisposedException($"Attempted to read form a disposed database {Name}");
-        }
+        ObjectDisposedException.ThrowIf(_isDisposing, this);
 
         UpdateReadMetrics();
 
@@ -591,7 +591,10 @@ public class DbOnTheRocks : IDb, ITunableDb
         {
             Span<byte> span = _db.GetSpan(key, cf);
             if (!span.IsNullOrEmpty())
+            {
+                Interlocked.Increment(ref _allocatedSpan);
                 GC.AddMemoryPressure(span.Length);
+            }
             return span;
         }
         catch (RocksDbSharpException e)
@@ -609,16 +612,16 @@ public class DbOnTheRocks : IDb, ITunableDb
     public void DangerousReleaseMemory(in Span<byte> span)
     {
         if (!span.IsNullOrEmpty())
+        {
+            Interlocked.Decrement(ref _allocatedSpan);
             GC.RemoveMemoryPressure(span.Length);
+        }
         _db.DangerousReleaseMemory(span);
     }
 
     public void Remove(ReadOnlySpan<byte> key)
     {
-        if (_isDisposing)
-        {
-            throw new ObjectDisposedException($"Attempted to delete form a disposed database {Name}");
-        }
+        ObjectDisposedException.ThrowIf(_isDisposing, this);
 
         try
         {
@@ -643,10 +646,7 @@ public class DbOnTheRocks : IDb, ITunableDb
 
     public IEnumerable<KeyValuePair<byte[], byte[]?>> GetAll(bool ordered = false)
     {
-        if (_isDisposing)
-        {
-            throw new ObjectDisposedException($"Attempted to create an iterator on a disposed database {Name}");
-        }
+        ObjectDisposedException.ThrowIf(_isDisposing, this);
 
         Iterator iterator = CreateIterator(ordered);
         return GetAllCore(iterator);
@@ -670,10 +670,7 @@ public class DbOnTheRocks : IDb, ITunableDb
 
     public IEnumerable<byte[]> GetAllValues(bool ordered = false)
     {
-        if (_isDisposing)
-        {
-            throw new ObjectDisposedException($"Attempted to read form a disposed database {Name}");
-        }
+        ObjectDisposedException.ThrowIf(_isDisposing, this);
 
         Iterator iterator = CreateIterator(ordered);
         return GetAllValuesCore(iterator);
@@ -725,10 +722,7 @@ public class DbOnTheRocks : IDb, ITunableDb
     {
         try
         {
-            if (_isDisposing)
-            {
-                throw new ObjectDisposedException($"Attempted to read form a disposed database {Name}");
-            }
+            ObjectDisposedException.ThrowIf(_isDisposing, this);
 
             try
             {
@@ -771,10 +765,7 @@ public class DbOnTheRocks : IDb, ITunableDb
 
     public bool KeyExists(ReadOnlySpan<byte> key)
     {
-        if (_isDisposing)
-        {
-            throw new ObjectDisposedException($"Attempted to read form a disposed database {Name}");
-        }
+        ObjectDisposedException.ThrowIf(_isDisposing, this);
 
         try
         {
@@ -819,10 +810,7 @@ public class DbOnTheRocks : IDb, ITunableDb
             _dbOnTheRocks = dbOnTheRocks;
             _rocksBatch = CreateWriteBatch();
 
-            if (_dbOnTheRocks._isDisposing)
-            {
-                throw new ObjectDisposedException($"Attempted to create a batch on a disposed database {_dbOnTheRocks.Name}");
-            }
+            ObjectDisposedException.ThrowIf(_dbOnTheRocks._isDisposing, _dbOnTheRocks);
         }
 
         private static WriteBatch CreateWriteBatch()
@@ -849,10 +837,7 @@ public class DbOnTheRocks : IDb, ITunableDb
 
         public void Dispose()
         {
-            if (_dbOnTheRocks._isDisposed)
-            {
-                throw new ObjectDisposedException($"Attempted to commit a batch on a disposed database {_dbOnTheRocks.Name}");
-            }
+            ObjectDisposedException.ThrowIf(_dbOnTheRocks._isDisposed, _dbOnTheRocks);
 
             if (_isDisposed)
             {
@@ -875,20 +860,14 @@ public class DbOnTheRocks : IDb, ITunableDb
 
         public void Delete(ReadOnlySpan<byte> key, ColumnFamilyHandle? cf = null)
         {
-            if (_isDisposed)
-            {
-                throw new ObjectDisposedException($"Attempted to write a disposed batch {_dbOnTheRocks.Name}");
-            }
+            ObjectDisposedException.ThrowIf(_isDisposed, this);
 
             _rocksBatch.Delete(key, cf);
         }
 
         public void Set(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, ColumnFamilyHandle? cf = null, WriteFlags flags = WriteFlags.None)
         {
-            if (_isDisposed)
-            {
-                throw new ObjectDisposedException($"Attempted to write a disposed batch {_dbOnTheRocks.Name}");
-            }
+            ObjectDisposedException.ThrowIf(_isDisposed, this);
 
             if (value.IsNull())
             {
@@ -954,10 +933,7 @@ public class DbOnTheRocks : IDb, ITunableDb
 
     public void Flush()
     {
-        if (_isDisposing)
-        {
-            throw new ObjectDisposedException($"Attempted to flush a disposed database {Name}");
-        }
+        ObjectDisposedException.ThrowIf(_isDisposing, this);
 
         InnerFlush();
     }

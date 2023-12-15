@@ -5,12 +5,10 @@ using System;
 using Nethermind.Blockchain;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
-using Nethermind.Db;
 using Nethermind.Evm;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.State;
-using Nethermind.Trie.Pruning;
 
 // ReSharper disable MemberCanBePrivate.Global
 // ReSharper disable UnusedAutoPropertyAccessor.Global
@@ -22,34 +20,29 @@ namespace Nethermind.Consensus.Processing
         public IWorldState StateProvider { get; }
         public ITransactionProcessor TransactionProcessor { get; set; }
         public IBlockTree BlockTree { get; }
-        public IReadOnlyDbProvider DbProvider { get; }
         public IBlockhashProvider BlockhashProvider { get; }
         public IVirtualMachine Machine { get; }
 
         public ReadOnlyTxProcessingEnv(
-            IDbProvider? dbProvider,
-            IReadOnlyTrieStore? trieStore,
+            IWorldStateManager worldStateManager,
             IBlockTree? blockTree,
             ISpecProvider? specProvider,
             ILogManager? logManager)
-            : this(dbProvider?.AsReadOnly(false), trieStore, blockTree?.AsReadOnly(), specProvider, logManager)
+            : this(worldStateManager, blockTree?.AsReadOnly(), specProvider, logManager)
         {
         }
 
         public ReadOnlyTxProcessingEnv(
-            IReadOnlyDbProvider? readOnlyDbProvider,
-            IReadOnlyTrieStore? readOnlyTrieStore,
+            IWorldStateManager worldStateManager,
             IReadOnlyBlockTree? readOnlyBlockTree,
             ISpecProvider? specProvider,
             ILogManager? logManager)
         {
-            if (specProvider is null) throw new ArgumentNullException(nameof(specProvider));
+            ArgumentNullException.ThrowIfNull(specProvider);
+            ArgumentNullException.ThrowIfNull(worldStateManager);
 
-            DbProvider = readOnlyDbProvider ?? throw new ArgumentNullException(nameof(readOnlyDbProvider));
-            ReadOnlyDb codeDb = readOnlyDbProvider.CodeDb.AsReadOnly(true);
-
-            StateReader = new StateReader(readOnlyTrieStore, codeDb, logManager);
-            StateProvider = new WorldState(readOnlyTrieStore, codeDb, logManager);
+            StateReader = worldStateManager.GlobalStateReader;
+            StateProvider = worldStateManager.CreateResettableWorldState();
 
             BlockTree = readOnlyBlockTree ?? throw new ArgumentNullException(nameof(readOnlyBlockTree));
             BlockhashProvider = new BlockhashProvider(BlockTree, logManager);

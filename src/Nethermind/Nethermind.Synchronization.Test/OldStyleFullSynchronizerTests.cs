@@ -17,9 +17,11 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Timers;
 using Nethermind.Db;
+using Nethermind.Db.ByPathState;
 using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Specs.ChainSpecStyle;
+using Nethermind.State;
 using Nethermind.State.Witnesses;
 using Nethermind.Stats;
 using Nethermind.Synchronization.Blocks;
@@ -65,6 +67,16 @@ namespace Nethermind.Synchronization.Test
                 Always.Valid,
                 new TotalDifficultyBetterPeerStrategy(LimboLogs.Instance),
                 LimboLogs.Instance);
+
+            IStateReader stateReader = new StateReader(trieStore, _codeDb, LimboLogs.Instance);
+            //TODO - add param in tests
+            ByPathStateConfig byPathStateConfig = new()
+            {
+                Enabled = false,
+                InMemHistoryBlocks = 128,
+                PersistenceInterval = 64
+            };
+
             _synchronizer = new Synchronizer(
                 dbProvider,
                 MainnetSpecProvider.Instance,
@@ -76,9 +88,10 @@ namespace Nethermind.Synchronization.Test
                 blockDownloaderFactory,
                 pivot,
                 Substitute.For<IProcessExitSource>(),
-                trieStore.AsReadOnly(),
                 bestPeerStrategy,
                 new ChainSpec(),
+                stateReader,
+                byPathStateConfig,
                 LimboLogs.Instance);
             _syncServer = new SyncServer(
                 trieStore.AsKeyValueStore(),
@@ -101,6 +114,10 @@ namespace Nethermind.Synchronization.Test
         {
             await _pool.StopAsync();
             await _synchronizer.StopAsync();
+
+            _pool.Dispose();
+            _synchronizer.Dispose();
+            _syncServer.Dispose();
         }
 
         private IDb _stateDb = null!;

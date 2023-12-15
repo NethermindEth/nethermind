@@ -87,6 +87,12 @@ namespace Nethermind.Network.Test.Builders
                 .With(new Network.P2P.Subprotocols.Eth.V68.Messages.NewPooledTransactionHashesMessageSerializer());
         }
 
+        public SerializationBuilder WithNodeData()
+        {
+            return With(new Network.P2P.Subprotocols.NodeData.Messages.GetNodeDataMessageSerializer())
+                .With(new Network.P2P.Subprotocols.NodeData.Messages.NodeDataMessageSerializer());
+        }
+
         public SerializationBuilder WithDiscovery(PrivateKey privateKey)
         {
             Ecdsa ecdsa = new();

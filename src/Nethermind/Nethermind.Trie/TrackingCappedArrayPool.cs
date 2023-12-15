@@ -14,8 +14,8 @@ namespace Nethermind.Trie;
 /// </summary>
 public class TrackingCappedArrayPool : ICappedArrayPool
 {
-    private List<CappedArray<byte>> _rentedBuffers;
-    private ArrayPool<byte> _arrayPool;
+    private readonly List<CappedArray<byte>> _rentedBuffers;
+    private readonly ArrayPool<byte> _arrayPool;
 
     public TrackingCappedArrayPool() : this(0)
     {

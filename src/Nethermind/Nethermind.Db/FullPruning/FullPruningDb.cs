@@ -8,7 +8,6 @@ using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
-using Newtonsoft.Json.Linq;
 
 namespace Nethermind.Db.FullPruning
 {
@@ -231,7 +230,7 @@ namespace Nethermind.Db.FullPruning
             private readonly FullPruningDb _db;
 
             private long _counter = 0;
-            private ConcurrentQueue<IWriteBatch> _batches = new();
+            private readonly ConcurrentQueue<IWriteBatch> _batches = new();
 
             public PruningContext(FullPruningDb db, IDb cloningDb, bool duplicateReads)
             {

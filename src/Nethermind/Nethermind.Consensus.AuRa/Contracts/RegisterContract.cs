@@ -21,7 +21,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
     /// </summary>
     public class RegisterContract : Contract, IRegisterContract
     {
-        private static Address MissingAddress = Address.Zero;
+        private static readonly Address MissingAddress = Address.Zero;
         private static readonly object[] MissingGetAddressResult = { MissingAddress };
 
         /// <summary>

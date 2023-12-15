@@ -20,7 +20,7 @@ namespace Nethermind.Evm.Precompiles.Bls
             };
         }
 
-        private static Dictionary<int, int> _discountTable = new()
+        private static readonly Dictionary<int, int> _discountTable = new()
         {
             { 1, 1200 },
             { 2, 888 },

@@ -32,6 +32,7 @@ using Nethermind.Merge.Plugin.InvalidChainTracker;
 using Nethermind.Merge.Plugin.Synchronization;
 using Nethermind.Merge.Plugin.Test;
 using Nethermind.Specs.ChainSpecStyle;
+using Nethermind.State;
 using Nethermind.State.Witnesses;
 using Nethermind.Synchronization.Blocks;
 using Nethermind.Synchronization.ParallelSync;
@@ -41,6 +42,7 @@ using Nethermind.Trie.Pruning;
 using NSubstitute;
 using NUnit.Framework;
 using Nethermind.Synchronization.SnapSync;
+using Nethermind.Db.ByPathState;
 
 namespace Nethermind.Synchronization.Test
 {
@@ -332,10 +334,19 @@ namespace Nethermind.Synchronization.Test
                     ? new MergeBetterPeerStrategy(totalDifficultyBetterPeerStrategy, poSSwitcher, beaconPivot, LimboLogs.Instance)
                     : totalDifficultyBetterPeerStrategy;
 
-                FullStateFinder fullStateFinder = new FullStateFinder(BlockTree, stateDb, trieStore);
+                StateReader reader = new StateReader(trieStore, codeDb, LimboLogs.Instance);
+
+                FullStateFinder fullStateFinder = new FullStateFinder(BlockTree, reader);
 
                 SyncPeerPool = new SyncPeerPool(BlockTree, stats, bestPeerStrategy, _logManager, 25);
                 Pivot pivot = new(syncConfig);
+                //TODO - add param in tests
+                ByPathStateConfig byPathStateConfig = new()
+                {
+                    Enabled = false,
+                    InMemHistoryBlocks = 128,
+                    PersistenceInterval = 64
+                };
 
                 IInvalidChainTracker invalidChainTracker = new NoopInvalidChainTracker();
                 if (IsMerge(synchronizerType))
@@ -365,10 +376,11 @@ namespace Nethermind.Synchronization.Test
                         mergeConfig,
                         invalidChainTracker,
                         Substitute.For<IProcessExitSource>(),
-                        trieStore.AsReadOnly(),
                         bestPeerStrategy,
                         new ChainSpec(),
                         No.BeaconSync,
+                        reader,
+                        byPathStateConfig,
                         _logManager);
                 }
                 else
@@ -391,9 +403,10 @@ namespace Nethermind.Synchronization.Test
                         blockDownloaderFactory,
                         pivot,
                         Substitute.For<IProcessExitSource>(),
-                        trieStore.AsReadOnly(),
                         bestPeerStrategy,
                         new ChainSpec(),
+                        reader,
+                        byPathStateConfig,
                         _logManager);
                 }
 

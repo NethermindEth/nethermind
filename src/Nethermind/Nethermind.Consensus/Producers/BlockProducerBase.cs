@@ -195,7 +195,7 @@ namespace Nethermind.Consensus.Producers
                                 if (t.Result is not null)
                                 {
                                     if (Logger.IsInfo)
-                                        Logger.Info($"Sealed block {t.Result.ToString(Block.Format.HashNumberDiffAndTx)}");
+                                        Logger.Info($"Produced block {t.Result.ToString(Block.Format.HashNumberDiffAndTx)}");
                                     Metrics.BlocksSealed++;
                                     _lastProducedBlockDateTime = DateTime.UtcNow;
                                     return t.Result;
@@ -204,18 +204,18 @@ namespace Nethermind.Consensus.Producers
                                 {
                                     if (Logger.IsInfo)
                                         Logger.Info(
-                                            $"Failed to seal block {processedBlock.ToString(Block.Format.HashNumberDiffAndTx)} (null seal)");
+                                            $"Failed to produce block {processedBlock.ToString(Block.Format.HashNumberDiffAndTx)} (null seal)");
                                     Metrics.FailedBlockSeals++;
                                 }
                             }
                             else if (t.IsFaulted)
                             {
-                                if (Logger.IsError) Logger.Error("Mining failed", t.Exception);
+                                if (Logger.IsError) Logger.Error("Producing failed", t.Exception);
                                 Metrics.FailedBlockSeals++;
                             }
                             else if (t.IsCanceled)
                             {
-                                if (Logger.IsInfo) Logger.Info($"Sealing block {processedBlock.Number} cancelled");
+                                if (Logger.IsInfo) Logger.Info($"Producing block {processedBlock.Number} cancelled");
                                 Metrics.FailedBlockSeals++;
                             }
 

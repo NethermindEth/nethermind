@@ -43,6 +43,13 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             _controller = new TxFloodController(_handler, _timestamper, LimboNoErrorLogger.Instance);
         }
 
+        [TearDown]
+        public void TearDown()
+        {
+            _handler?.Dispose();
+            _session?.Dispose();
+        }
+
         [Test]
         public void Is_allowed_will_be_true_unless_misbehaving()
         {

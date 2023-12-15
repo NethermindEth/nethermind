@@ -36,17 +36,17 @@ namespace Nethermind.Blockchain.Test
         private static readonly ILogManager _logManager = new NUnitLogManager(LogLevel.Trace);
         private class ProcessingTestContext
         {
-            private ILogManager _logManager = BlockchainProcessorTests._logManager;
+            private readonly ILogManager _logManager = LimboLogs.Instance;
 
             private class BlockProcessorMock : IBlockProcessor
             {
-                private ILogger _logger;
+                private readonly ILogger _logger;
 
-                private HashSet<Hash256> _allowed = new();
+                private readonly HashSet<Hash256> _allowed = new();
 
-                private HashSet<Hash256> _allowedToFail = new();
+                private readonly HashSet<Hash256> _allowedToFail = new();
 
-                private HashSet<Hash256> _rootProcessed = new();
+                private readonly HashSet<Hash256> _rootProcessed = new();
 
                 public BlockProcessorMock(ILogManager logManager, IStateReader stateReader)
                 {

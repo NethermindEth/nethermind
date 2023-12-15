@@ -15,7 +15,7 @@ public class RocksDbFactory : IRocksDbFactory
 
     private readonly string _basePath;
 
-    private IntPtr _sharedCache;
+    private readonly IntPtr _sharedCache;
 
     public RocksDbFactory(IDbConfig dbConfig, ILogManager logManager, string basePath)
     {

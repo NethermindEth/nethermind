@@ -24,7 +24,7 @@ namespace Nethermind.Consensus.Ethash
 {
     internal class Ethash : IEthash
     {
-        private HintBasedCache _hintBasedCache;
+        private readonly HintBasedCache _hintBasedCache;
 
         private readonly ILogger _logger;
 
@@ -208,7 +208,7 @@ namespace Nethermind.Consensus.Ethash
             _hintBasedCache.Hint(guid, start, end);
         }
 
-        private Guid _hintBasedCacheUser = Guid.Empty;
+        private readonly Guid _hintBasedCacheUser = Guid.Empty;
 
         public bool Validate(BlockHeader header)
         {
@@ -251,7 +251,7 @@ namespace Nethermind.Consensus.Ethash
             return dataSet;
         }
 
-        private static HeaderDecoder _headerDecoder = new();
+        private static readonly HeaderDecoder _headerDecoder = new();
 
         private static Hash256 GetTruncatedHash(BlockHeader header)
         {

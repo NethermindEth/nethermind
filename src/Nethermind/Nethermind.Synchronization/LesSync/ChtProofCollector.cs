@@ -8,7 +8,7 @@ namespace Nethermind.Synchronization.LesSync
 {
     class ChtProofCollector : ProofCollector
     {
-        long _fromLevel;
+        readonly long _fromLevel;
         long _level;
         public ChtProofCollector(byte[] key, long fromLevel) : base(key)
         {

@@ -87,7 +87,7 @@ public class Bytes32 : IEquatable<Bytes32>
 
     public bool Equals(Bytes32? other)
     {
-        if (ReferenceEquals(null, other)) return false;
+        if (other is null) return false;
         if (ReferenceEquals(this, other)) return true;
         return _bytes.SequenceEqual(other._bytes);
     }

@@ -2,38 +2,63 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
 using Nethermind.Int256;
+
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using Nethermind.Serialization.Json;
-using Newtonsoft.Json;
+using System.Buffers;
 
 namespace Nethermind.Specs.ChainSpecStyle.Json
 {
     internal class BlockRewardJsonConverter : JsonConverter<ChainSpecJson.BlockRewardJson>
     {
-        public override void WriteJson(JsonWriter writer, ChainSpecJson.BlockRewardJson value, JsonSerializer serializer)
+        public override void Write(Utf8JsonWriter writer, ChainSpecJson.BlockRewardJson value, JsonSerializerOptions options)
         {
-            throw new NotImplementedException();
+            throw new NotSupportedException();
         }
 
-        public override ChainSpecJson.BlockRewardJson ReadJson(JsonReader reader, Type objectType, ChainSpecJson.BlockRewardJson existingValue, bool hasExistingValue, JsonSerializer serializer)
+        public override ChainSpecJson.BlockRewardJson Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
         {
-            existingValue ??= new ChainSpecJson.BlockRewardJson();
-            if (reader.TokenType == JsonToken.String || reader.TokenType == JsonToken.Integer)
+            var value = new ChainSpecJson.BlockRewardJson();
+            if (reader.TokenType == JsonTokenType.String)
             {
-                var blockReward = serializer.Deserialize<UInt256>(reader);
-                existingValue.Add(0, blockReward);
+                var blockReward = JsonSerializer.Deserialize<UInt256>(ref reader, options);
+                value.Add(0, blockReward);
+            }
+            else if (reader.TokenType == JsonTokenType.Number)
+            {
+                value.Add(0, new UInt256(reader.GetUInt64()));
+            }
+            else if (reader.TokenType == JsonTokenType.StartObject)
+            {
+                reader.Read();
+                while (reader.TokenType != JsonTokenType.EndObject)
+                {
+                    if (reader.TokenType != JsonTokenType.PropertyName)
+                    {
+                        throw new ArgumentException("Cannot deserialize BlockReward.");
+                    }
+                    var property = UInt256Converter.Read(reader.HasValueSequence ? reader.ValueSequence.ToArray() : reader.ValueSpan);
+                    var key = (long)property;
+                    reader.Read();
+                    if (reader.TokenType != JsonTokenType.String)
+                    {
+                        throw new ArgumentException("Cannot deserialize BlockReward.");
+                    }
+
+                    var blockReward = UInt256Converter.Read(reader.HasValueSequence ? reader.ValueSequence.ToArray() : reader.ValueSpan);
+                    value.Add(key, blockReward);
+
+                    reader.Read();
+                }
             }
             else
             {
-                var blockRewards = serializer.Deserialize<Dictionary<string, UInt256>>(reader);
-                foreach (var blockReward in blockRewards ?? throw new ArgumentException("Cannot deserialize BlockReward."))
-                {
-                    existingValue.Add(LongConverter.FromString(blockReward.Key), blockReward.Value);
-                }
+                throw new ArgumentException("Cannot deserialize BlockReward.");
             }
 
-            return existingValue;
+            return value;
         }
     }
 }

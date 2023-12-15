@@ -16,7 +16,7 @@ namespace Nethermind.Synchronization.FastBlocks
 {
     public class BodiesSyncDownloader : ISyncDownloader<BodiesSyncBatch>
     {
-        private ILogger Logger;
+        private readonly ILogger Logger;
 
         public BodiesSyncDownloader(ILogManager logManager)
         {

@@ -15,6 +15,7 @@ using Nethermind.Db;
 using Nethermind.Db.ByPathState;
 using Nethermind.Logging;
 using Nethermind.Specs.ChainSpecStyle;
+using Nethermind.State;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization.Blocks;
@@ -26,7 +27,6 @@ using Nethermind.Synchronization.Peers;
 using Nethermind.Synchronization.Reporting;
 using Nethermind.Synchronization.SnapSync;
 using Nethermind.Synchronization.StateSync;
-using Nethermind.Trie.ByPath;
 using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Synchronization
@@ -57,7 +57,7 @@ namespace Nethermind.Synchronization
         private FastSyncFeed? _fastSyncFeed;
         private StateSyncFeed? _stateSyncFeed;
         private FullSyncFeed? _fullSyncFeed;
-        private IProcessExitSource _exitSource;
+        private readonly IProcessExitSource _exitSource;
         protected IBetterPeerStrategy _betterPeerStrategy;
         private readonly ChainSpec _chainSpec;
 
@@ -78,7 +78,7 @@ namespace Nethermind.Synchronization
         private ISyncProgressResolver? _syncProgressResolver;
         public ISyncProgressResolver SyncProgressResolver => _syncProgressResolver ??= new SyncProgressResolver(
             _blockTree,
-            new FullStateFinder(_blockTree, _dbProvider.StateDb, _readOnlyTrieStore),
+            new FullStateFinder(_blockTree, _stateReader),
             _syncConfig,
             HeadersSyncFeed,
             BodiesSyncFeed,
@@ -86,10 +86,9 @@ namespace Nethermind.Synchronization
             SnapSyncFeed,
             _logManager);
 
-        private readonly IReadOnlyTrieStore _readOnlyTrieStore;
-
-
         protected ISyncModeSelector? _syncModeSelector;
+        private readonly IStateReader _stateReader;
+
         public virtual ISyncModeSelector SyncModeSelector => _syncModeSelector ??= new MultiSyncModeSelector(
             SyncProgressResolver,
             _syncPeerPool!,
@@ -110,9 +109,10 @@ namespace Nethermind.Synchronization
             IBlockDownloaderFactory blockDownloaderFactory,
             IPivot pivot,
             IProcessExitSource processExitSource,
-            IReadOnlyTrieStore readOnlyTrieStore,
             IBetterPeerStrategy betterPeerStrategy,
             ChainSpec chainSpec,
+            IStateReader stateReader,
+            IByPathStateConfig pathStateConfig,
             ILogManager logManager)
         {
             _dbProvider = dbProvider ?? throw new ArgumentNullException(nameof(dbProvider));
@@ -129,7 +129,7 @@ namespace Nethermind.Synchronization
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
             _betterPeerStrategy = betterPeerStrategy ?? throw new ArgumentNullException(nameof(betterPeerStrategy));
             _chainSpec = chainSpec ?? throw new ArgumentNullException(nameof(chainSpec));
-            _readOnlyTrieStore = readOnlyTrieStore ?? throw new ArgumentNullException(nameof(readOnlyTrieStore));
+            _stateReader = stateReader ?? throw new ArgumentNullException(nameof(_stateReader));
 
             _syncReport = new SyncReport(_syncPeerPool!, nodeStatsManager!, _syncConfig, _pivot, logManager);
 
@@ -138,7 +138,7 @@ namespace Nethermind.Synchronization
                 dbProvider.StateDb,
                 logManager,
                 _syncConfig.SnapSyncAccountRangePartitionCount);
-            SnapProvider = new SnapProvider(progressTracker, dbProvider, logManager, readOnlyTrieStore.Capability);
+            SnapProvider = new SnapProvider(progressTracker, dbProvider, logManager, pathStateConfig.Enabled ? TrieNodeResolverCapability.Path : TrieNodeResolverCapability.Hash);
         }
 
         public virtual void Start()
@@ -192,13 +192,13 @@ namespace Nethermind.Synchronization
         private BodiesSyncFeed? CreateBodiesSyncFeed()
         {
             if (!_syncConfig.FastSync || !_syncConfig.FastBlocks || !_syncConfig.DownloadHeadersInFastSync || !_syncConfig.DownloadBodiesInFastSync) return null;
-            return new BodiesSyncFeed(_blockTree, _syncPeerPool, _syncConfig, _syncReport, _dbProvider.BlocksDb, _logManager);
+            return new BodiesSyncFeed(_specProvider, _blockTree, _syncPeerPool, _syncConfig, _syncReport, _dbProvider.BlocksDb, _dbProvider.MetadataDb, _logManager);
         }
 
         private ReceiptsSyncFeed? CreateReceiptsSyncFeed()
         {
             if (!_syncConfig.FastSync || !_syncConfig.FastBlocks || !_syncConfig.DownloadHeadersInFastSync || !_syncConfig.DownloadBodiesInFastSync || !_syncConfig.DownloadReceiptsInFastSync) return null;
-            return new ReceiptsSyncFeed(_specProvider, _blockTree, _receiptStorage, _syncPeerPool, _syncConfig, _syncReport, _logManager);
+            return new ReceiptsSyncFeed(_specProvider, _blockTree, _receiptStorage, _syncPeerPool, _syncConfig, _syncReport, _dbProvider.MetadataDb, _logManager);
         }
 
         private SnapSyncFeed? CreateSnapSyncFeed()

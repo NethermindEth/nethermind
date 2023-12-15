@@ -70,17 +70,13 @@ namespace Nethermind.Api
             DisposeStack.Push(CryptoRandom);
         }
 
-        private IReadOnlyDbProvider? _readOnlyDbProvider;
-
         public IBlockchainBridge CreateBlockchainBridge()
         {
             ReadOnlyBlockTree readOnlyTree = BlockTree!.AsReadOnly();
-            LazyInitializer.EnsureInitialized(ref _readOnlyDbProvider, () => new ReadOnlyDbProvider(DbProvider, false));
 
             // TODO: reuse the same trie cache here
             ReadOnlyTxProcessingEnv readOnlyTxProcessingEnv = new(
-                _readOnlyDbProvider,
-                ReadOnlyTrieStore,
+                WorldStateManager!,
                 readOnlyTree,
                 SpecProvider,
                 LogManager);
@@ -191,14 +187,13 @@ namespace Nethermind.Api
         public ISyncServer? SyncServer { get; set; }
         public IWorldState? WorldState { get; set; }
         public IReadOnlyStateProvider? ChainHeadStateProvider { get; set; }
+        public IWorldStateManager? WorldStateManager { get; set; }
         public IStateReader? StateReader { get; set; }
         public IStaticNodesManager? StaticNodesManager { get; set; }
         public ITimestamper Timestamper { get; } = Core.Timestamper.Default;
         public ITimerFactory TimerFactory { get; } = Core.Timers.TimerFactory.Default;
         public ITransactionProcessor? TransactionProcessor { get; set; }
         public ITrieStore? TrieStore { get; set; }
-        public IReadOnlyTrieStore? ReadOnlyTrieStore { get; set; }
-        public IReadOnlyTrieStore? ReadOnlyStorageTrieStore { get; set; }
         public ITxSender? TxSender { get; set; }
         public INonceManager? NonceManager { get; set; }
         public ITxPool? TxPool { get; set; }
@@ -263,7 +258,6 @@ namespace Nethermind.Api
         public IReadOnlyList<INethermindPlugin> Plugins { get; } = new List<INethermindPlugin>();
         public IList<IPublisher> Publishers { get; } = new List<IPublisher>(); // this should be called publishers
         public CompositePruningTrigger PruningTrigger { get; } = new();
-        public ISnapProvider? SnapProvider { get; set; }
         public IProcessExitSource? ProcessExit { get; set; }
         public CompositeTxGossipPolicy TxGossipPolicy { get; } = new();
     }

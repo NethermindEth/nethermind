@@ -11,7 +11,7 @@ namespace Nethermind.Trie
 {
     public class TreeDumper : ITreeVisitor
     {
-        private StringBuilder _builder = new();
+        private readonly StringBuilder _builder = new();
 
         public void Reset()
         {
@@ -57,7 +57,7 @@ namespace Nethermind.Trie
             _builder.AppendLine($"{GetPrefix(trieVisitContext)}EXTENSION {Nibbles.FromBytes(node.Key).ToPackedByteArray().ToHexString(false)} -> {KeccakOrRlpStringOfNode(node)}");
         }
 
-        private AccountDecoder decoder = new();
+        private readonly AccountDecoder decoder = new();
 
         public void VisitLeaf(TrieNode node, TrieVisitContext trieVisitContext, byte[] value = null)
         {
