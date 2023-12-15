@@ -1389,7 +1389,9 @@ namespace Nethermind.Trie
                                 if (rootRef.Keccak != rootHash)
                                 {
                                     //if (_logger.IsWarn) _logger.Warn($"PatriciaTree.Accept - requested root: {rootHash} resolved root: {rootRef.Keccak}");
-                                    throw new TrieException("Root ref hash mismatch!");
+                                    //throw new TrieException("Root ref hash mismatch!");
+                                    visitor.VisitMissingNode(rootHash, trieVisitContext);
+                                    return;
                                 }
                             }
                         }
