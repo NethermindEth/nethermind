@@ -96,7 +96,7 @@ namespace Nethermind.KeyStore
             }
         }
 
-        private byte[] Execute(ICryptoTransform cryptoTransform, byte[] data)
+        private static byte[] Execute(ICryptoTransform cryptoTransform, byte[] data)
         {
             using (var memoryStream = RecyclableStream.GetStream(nameof(AesEncrypter)))
             {

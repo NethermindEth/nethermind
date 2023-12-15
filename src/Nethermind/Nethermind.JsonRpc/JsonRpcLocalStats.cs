@@ -177,7 +177,7 @@ namespace Nethermind.JsonRpc
         }
 
         [Pure]
-        private string PrepareReportLine(in string key, MethodStats methodStats) =>
+        private static string PrepareReportLine(in string key, MethodStats methodStats) =>
             $"{key,-40}| " +
             $"{methodStats.Successes.ToString(),9} | " +
             $"{methodStats.AvgTimeOfSuccesses.ToString("0", CultureInfo.InvariantCulture),14} | " +

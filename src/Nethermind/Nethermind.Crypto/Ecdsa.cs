@@ -72,7 +72,7 @@ namespace Nethermind.Crypto
             return new CompressedPublicKey(publicKey);
         }
 
-        public PublicKey Decompress(CompressedPublicKey compressedPublicKey)
+        public static PublicKey Decompress(CompressedPublicKey compressedPublicKey)
         {
             byte[] deserialized = SecP256k1.Decompress(compressedPublicKey.Bytes);
             return new PublicKey(deserialized);

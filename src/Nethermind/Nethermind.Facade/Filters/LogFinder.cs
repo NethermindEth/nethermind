@@ -84,7 +84,7 @@ namespace Nethermind.Blockchain.Find
                 : FilterLogsIteratively(filter, fromBlock, toBlock, cancellationToken);
         }
 
-        private bool ShouldUseBloomDatabase(BlockHeader fromBlock, BlockHeader toBlock)
+        private static bool ShouldUseBloomDatabase(BlockHeader fromBlock, BlockHeader toBlock)
         {
             var blocksToSearch = toBlock.Number - fromBlock.Number + 1;
             return blocksToSearch > 1; // if we are searching only in 1 block skip bloom index altogether, this can be tweaked

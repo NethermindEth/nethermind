@@ -35,7 +35,7 @@ public class TrackingCappedArrayPool : ICappedArrayPool
         }
 
         CappedArray<byte> rented = new CappedArray<byte>(_arrayPool.Rent(size), size);
-        rented.AsSpan().Fill(0);
+        rented.AsSpan().Clear();
         _rentedBuffers.Add(rented);
         return rented;
     }

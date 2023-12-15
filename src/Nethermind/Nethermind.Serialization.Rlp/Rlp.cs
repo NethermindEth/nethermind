@@ -565,15 +565,15 @@ namespace Nethermind.Serialization.Rlp
 
             public Span<byte> Data { get; }
 
-            public bool IsEmpty => Data.IsEmpty;
+            public readonly bool IsEmpty => Data.IsEmpty;
 
             public int Position { get; set; }
 
-            public int Length => Data.Length;
+            public readonly int Length => Data.Length;
 
-            public bool ShouldSliceMemory => _sliceMemory;
+            public readonly bool ShouldSliceMemory => _sliceMemory;
 
-            public bool IsSequenceNext()
+            public readonly bool IsSequenceNext()
             {
                 return Data[Position] >= 192;
             }
@@ -782,7 +782,7 @@ namespace Nethermind.Serialization.Rlp
                 return data;
             }
 
-            public void Check(int nextCheck)
+            public readonly void Check(int nextCheck)
             {
                 if (Position != nextCheck)
                 {
@@ -1065,7 +1065,7 @@ namespace Nethermind.Serialization.Rlp
                 return item;
             }
 
-            public bool IsNextItemNull()
+            public readonly bool IsNextItemNull()
             {
                 return Data[Position] == 192;
             }
@@ -1269,12 +1269,12 @@ namespace Nethermind.Serialization.Rlp
 
             private string Description => Data[..Math.Min(DebugMessageContentLength, Length)].ToHexString();
 
-            public byte PeekByte()
+            public readonly byte PeekByte()
             {
                 return Data[Position];
             }
 
-            private byte PeekByte(int offset)
+            private readonly byte PeekByte(int offset)
             {
                 return Data[Position + offset];
             }

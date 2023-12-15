@@ -19,7 +19,7 @@ namespace Nethermind.Mev.Execution
 
         protected override TxsResults BuildResult(MevBundle bundle, BlockCallOutputTracer tracer)
         {
-            TxResult ToTxResult(CallOutputTracer callOutputTracer)
+            static TxResult ToTxResult(CallOutputTracer callOutputTracer)
             {
                 TxResult result = new();
                 if (callOutputTracer.StatusCode == StatusCode.Success)
