@@ -112,11 +112,6 @@ namespace Nethermind.Hive
             }
         }
 
-        public static async Task StopAsync()
-        {
-            await Task.CompletedTask;
-        }
-
         private async Task InitializeBlocks(string blocksDir, CancellationToken cancellationToken)
         {
             if (!Directory.Exists(blocksDir))
