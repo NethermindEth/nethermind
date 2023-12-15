@@ -87,9 +87,6 @@ public class GCKeeper
 
         public void Dispose()
         {
-            // SustainedLowLatency is used rather than NoGCRegion
-            // due to runtime bug https://github.com/dotnet/runtime/issues/84096
-            // The code is left in as comments so it can be reverted when the bug is fixed
             if (_failCause == FailCause.None)
             {
                 if (GCSettings.LatencyMode == GCLatencyMode.NoGCRegion)
