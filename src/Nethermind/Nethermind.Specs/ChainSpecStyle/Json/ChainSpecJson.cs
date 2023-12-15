@@ -7,6 +7,7 @@ using System.Diagnostics.CodeAnalysis;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 
 namespace Nethermind.Specs.ChainSpecStyle.Json
@@ -174,6 +175,9 @@ namespace Nethermind.Specs.ChainSpecStyle.Json
             public ulong CanyonTimestamp => Params.CanyonTimestamp;
             public Address L1FeeRecipient => Params.L1FeeRecipient;
             public Address L1BlockAddress => Params.L1BlockAddress;
+            public Address Create2DeployerAddress => Params.Create2DeployerAddress;
+            public Hash256 Create2DeployerCodeHash => Params.Create2DeployerCodeHash;
+            public byte[] Create2DeployerCode => Params.Create2DeployerCode;
             public OptimismEngineParamsJson Params { get; set; }
         }
 
@@ -184,6 +188,9 @@ namespace Nethermind.Specs.ChainSpecStyle.Json
             public ulong CanyonTimestamp { get; set; }
             public Address L1FeeRecipient { get; set; }
             public Address L1BlockAddress { get; set; }
+            public Address Create2DeployerAddress { get; set; }
+            public Hash256 Create2DeployerCodeHash { get; set; }
+            public byte[] Create2DeployerCode { get; set; }
         }
 
         internal class NethDevJson

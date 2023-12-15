@@ -349,7 +349,10 @@ public class ChainSpecLoader : IChainSpecLoader
                 BedrockBlockNumber = chainSpecJson.Engine.Optimism.BedrockBlockNumber,
                 CanyonTimestamp = chainSpecJson.Engine.Optimism.CanyonTimestamp,
                 L1FeeRecipient = chainSpecJson.Engine.Optimism.L1FeeRecipient,
-                L1BlockAddress = chainSpecJson.Engine.Optimism.L1BlockAddress
+                L1BlockAddress = chainSpecJson.Engine.Optimism.L1BlockAddress,
+                Create2DeployerAddress = chainSpecJson.Engine.Optimism.Create2DeployerAddress,
+                Create2DeployerCodeHash = chainSpecJson.Engine.Optimism.Create2DeployerCodeHash,
+                Create2DeployerCode = chainSpecJson.Engine.Optimism.Create2DeployerCode
             };
         }
         else if (chainSpecJson.Engine?.NethDev is not null)

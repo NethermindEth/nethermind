@@ -1,9 +1,8 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Collections.Generic;
 using Nethermind.Core;
-using Nethermind.Int256;
+using Nethermind.Core.Crypto;
 
 namespace Nethermind.Specs.ChainSpecStyle
 {
@@ -18,5 +17,11 @@ namespace Nethermind.Specs.ChainSpecStyle
         public Address L1FeeRecipient { get; set; }
 
         public Address L1BlockAddress { get; set; }
+
+        public Address Create2DeployerAddress { get; set; }
+
+        public Hash256 Create2DeployerCodeHash { get; set; }
+
+        public byte[] Create2DeployerCode { get; set; }
     }
 }

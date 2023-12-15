@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
@@ -33,11 +34,11 @@ public class OptimismTransactionProcessor : TransactionProcessor
 
     protected override void Execute(Transaction tx, BlockExecutionContext blCtx, ITxTracer tracer, ExecutionOptions opts)
     {
+        IReleaseSpec spec = SpecProvider.GetSpec(blCtx.Header);
+        ApplyCanyonTransition(blCtx.Header, spec);
         _currentTxL1Cost = null;
         if (tx.IsDeposit())
         {
-            IReleaseSpec spec = SpecProvider.GetSpec(blCtx.Header);
-
             WorldState.AddToBalanceAndCreateIfNotExists(tx.SenderAddress!, tx.Mint, spec);
 
             if (opts.HasFlag(ExecutionOptions.Commit) || !spec.IsEip658Enabled)
@@ -45,6 +46,20 @@ public class OptimismTransactionProcessor : TransactionProcessor
         }
 
         base.Execute(tx, blCtx, tracer, opts);
+    }
+
+    private void ApplyCanyonTransition(BlockHeader header, IReleaseSpec spec)
+    {
+        // TODO: create OpBlockProcessor
+        if (_opConfigHelper.IsCanyon(header))
+        {
+            Hash256 currentHash = WorldState.GetCodeHash(_opConfigHelper.Create2DeployerAddress);
+
+            if (currentHash != _opConfigHelper.Create2DeployerCodeHash)
+            {
+                WorldState.InsertCode(_opConfigHelper.Create2DeployerAddress, _opConfigHelper.Create2DeployerCode, spec);
+            }
+        }
     }
 
     private (ulong?, ulong?) GetDepositReceiptData(Transaction tx, BlockHeader header)
