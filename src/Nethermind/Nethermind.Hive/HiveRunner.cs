@@ -112,7 +112,7 @@ namespace Nethermind.Hive
             }
         }
 
-        public async Task StopAsync()
+        public static async Task StopAsync()
         {
             await Task.CompletedTask;
         }
@@ -191,7 +191,7 @@ namespace Nethermind.Hive
             return Rlp.Decode<Block>(blockRlp);
         }
 
-        private async Task WaitForBlockProcessing(SemaphoreSlim semaphore)
+        private static async Task WaitForBlockProcessing(SemaphoreSlim semaphore)
         {
             if (!await semaphore.WaitAsync(5000))
             {

@@ -134,7 +134,7 @@ namespace Nethermind.JsonRpc.Modules
 
         public IRpcModulePool? GetPool(string moduleType) => _pools.TryGetValue(moduleType, out var poolInfo) ? poolInfo.ModulePool : null;
 
-        private IDictionary<string, (MethodInfo, bool, RpcEndpoint)> GetMethodDict(Type type)
+        private static IDictionary<string, (MethodInfo, bool, RpcEndpoint)> GetMethodDict(Type type)
         {
             var methods = type.GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly);
             return methods.ToDictionary(

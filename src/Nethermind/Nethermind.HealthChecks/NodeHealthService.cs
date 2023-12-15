@@ -144,7 +144,7 @@ namespace Nethermind.HealthChecks
                    _healthHintService.MaxSecondsIntervalForProducingBlocksHint();
         }
 
-        private bool CheckSyncPostMerge(ICollection<(string Description, string LongDescription)> messages,
+        private static bool CheckSyncPostMerge(ICollection<(string Description, string LongDescription)> messages,
             ICollection<string> errors, SyncingResult syncingResult)
         {
             if (syncingResult.IsSyncing)

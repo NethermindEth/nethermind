@@ -37,7 +37,7 @@ namespace Nethermind.Blockchain.Receipts
 
         public long MigratedBlockNumber { get; set; } = 0;
 
-        public event EventHandler<ReceiptsEventArgs> ReceiptsInserted
+        public static event EventHandler<ReceiptsEventArgs> ReceiptsInserted
         {
             add { }
             remove { }

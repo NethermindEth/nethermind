@@ -150,12 +150,12 @@ public class ReceiptArrayStorageDecoder : IRlpStreamDecoder<TxReceipt[]>
         }
     }
 
-    public bool IsCompactEncoding(Span<byte> receiptsData)
+    public static bool IsCompactEncoding(Span<byte> receiptsData)
     {
         return receiptsData.Length > 0 && receiptsData[0] == CompactEncoding;
     }
 
-    public IReceiptRefDecoder GetRefDecoder(Span<byte> receiptsData)
+    public static IReceiptRefDecoder GetRefDecoder(Span<byte> receiptsData)
     {
         if (IsCompactEncoding(receiptsData))
         {

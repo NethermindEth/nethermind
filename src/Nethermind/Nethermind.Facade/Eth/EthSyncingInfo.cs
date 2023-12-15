@@ -75,7 +75,7 @@ namespace Nethermind.Facade.Eth
             return SyncingResult.NotSyncing;
         }
 
-        private SyncingResult ReturnSyncing(long headNumberOrZero, long bestSuggestedNumber, SyncMode syncMode)
+        private static SyncingResult ReturnSyncing(long headNumberOrZero, long bestSuggestedNumber, SyncMode syncMode)
         {
             return new SyncingResult
             {

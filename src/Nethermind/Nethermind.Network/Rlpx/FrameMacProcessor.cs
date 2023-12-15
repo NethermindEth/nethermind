@@ -207,7 +207,7 @@ namespace Nethermind.Network.Rlpx
             }
         }
 
-        private void DoFinalNoReset(KeccakHash mac, KeccakHash macCopy, byte[] output)
+        private static void DoFinalNoReset(KeccakHash mac, KeccakHash macCopy, byte[] output)
         {
             macCopy.ResetTo(mac);
             macCopy.UpdateFinalTo(output);

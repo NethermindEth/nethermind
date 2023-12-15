@@ -690,7 +690,7 @@ public partial class EthRpcModule : IEthRpcModule
         transaction.SenderAddress ??= _blockchainBridge.RecoverTxSender(transaction);
     }
 
-    private IEnumerable<FilterLog> GetLogs(IEnumerable<FilterLog> logs, CancellationTokenSource cancellationTokenSource)
+    private static IEnumerable<FilterLog> GetLogs(IEnumerable<FilterLog> logs, CancellationTokenSource cancellationTokenSource)
     {
         using (cancellationTokenSource)
         {

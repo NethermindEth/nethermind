@@ -45,17 +45,16 @@ public struct CappedArray<T>
     }
 
     public int Length
-    {
-        get => _length;
+    { readonly get => _length;
         set => _length = value;
     }
 
-    public T[]? Array => _array;
-    public bool IsUncapped => _length == _array?.Length;
-    public bool IsNull => _array is null;
-    public bool IsNotNull => _array is not null;
+    public readonly T[]? Array => _array;
+    public readonly bool IsUncapped => _length == _array?.Length;
+    public readonly bool IsNull => _array is null;
+    public readonly bool IsNotNull => _array is not null;
 
-    public Span<T> AsSpan()
+    public readonly Span<T> AsSpan()
     {
         return _array.AsSpan()[..Length];
     }

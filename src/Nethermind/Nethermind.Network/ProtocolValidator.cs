@@ -83,7 +83,7 @@ namespace Nethermind.Network
             return false;
         }
 
-        private bool ValidateP2PVersion(byte p2PVersion) => p2PVersion is 4 or 5;
+        private static bool ValidateP2PVersion(byte p2PVersion) => p2PVersion is 4 or 5;
 
         private bool ValidateNetworkId(ulong networkId) => networkId == _blockTree.NetworkId;
     }

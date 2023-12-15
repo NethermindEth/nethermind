@@ -28,5 +28,5 @@ public class BoostRelay : IBoostRelay
     public Task SendPayload(BoostExecutionPayloadV1 executionPayloadV1, CancellationToken cancellationToken) =>
         _httpClient.PostJsonAsync<object>(GetUri(_relayUrl, SendPayloadPath), executionPayloadV1, cancellationToken);
 
-    private string GetUri(string relayUrl, string relativeUrl) => relayUrl + relativeUrl;
+    private static string GetUri(string relayUrl, string relativeUrl) => relayUrl + relativeUrl;
 }

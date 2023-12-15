@@ -41,7 +41,7 @@ namespace Nethermind.Logging
             WriteEntry(text + " " + ex);
         }
 
-        private void WriteEntry(string text)
+        private static void WriteEntry(string text)
         {
             Console.WriteLine(DateTime.Now.ToString("yyyy-MM-dd HH-mm-ss.ffff|") + text);
         }

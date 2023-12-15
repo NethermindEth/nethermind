@@ -35,7 +35,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
             return new ByteCodesMessage(result) { RequestId = requestId };
         }
 
-        public (int contentLength, int codesLength) GetLength(ByteCodesMessage message)
+        public static (int contentLength, int codesLength) GetLength(ByteCodesMessage message)
         {
             int codesLength = 0;
             for (int i = 0; i < message.Codes.Length; i++)
