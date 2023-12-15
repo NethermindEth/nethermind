@@ -45,7 +45,8 @@ public struct CappedArray<T>
     }
 
     public int Length
-    { readonly get => _length;
+    {
+        readonly get => _length;
         set => _length = value;
     }
 
