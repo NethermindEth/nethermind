@@ -29,9 +29,9 @@ namespace Nethermind.Trie
         public bool IsBoundaryProofNode { get; set; }
 
         private TrieNode? _storageRoot;
-        private static object _nullNode = new();
-        private static TrieNodeDecoder _nodeDecoder = new();
-        private static AccountDecoder _accountDecoder = new();
+        private static readonly object _nullNode = new();
+        private static readonly TrieNodeDecoder _nodeDecoder = new();
+        private static readonly AccountDecoder _accountDecoder = new();
         private static Action<TrieNode> _markPersisted => tn => tn.IsPersisted = true;
         private RlpStream? _rlpStream;
         private object?[]? _data;
@@ -420,7 +420,7 @@ namespace Nethermind.Trie
 
         internal CappedArray<byte> RlpEncode(ITrieNodeResolver tree, ICappedArrayPool? bufferPool = null)
         {
-            CappedArray<byte> rlp = _nodeDecoder.Encode(tree, this, bufferPool);
+            CappedArray<byte> rlp = TrieNodeDecoder.Encode(tree, this, bufferPool);
             // just included here to improve the class reading
             // after some analysis I believe that any non-test Ethereum cases of a trie ever have nodes with RLP shorter than 32 bytes
             // if (rlp.Bytes.Length < 32)
@@ -528,7 +528,7 @@ namespace Nethermind.Trie
             object childOrRef = ResolveChild(tree, childIndex);
 
             TrieNode? child;
-            if (ReferenceEquals(childOrRef, _nullNode) || ReferenceEquals(childOrRef, null))
+            if (ReferenceEquals(childOrRef, _nullNode) || childOrRef is null)
             {
                 child = null;
             }

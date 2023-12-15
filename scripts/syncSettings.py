@@ -58,6 +58,16 @@ configs = {
         "url": "https://rpc.exosama.com",
         "blockReduced": 8192,
         "multiplierRequirement": 10000
+    },
+    "joc-mainnet": {
+        "url": "https://rpc-1.japanopenchain.org:8545",
+        "blockReduced": 8192,
+        "multiplierRequirement": 10000
+    },
+    "joc-testnet": {
+        "url": "https://rpc-1.testnet.japanopenchain.org:8545",
+        "blockReduced": 8192,
+        "multiplierRequirement": 10000
     }
 }
 

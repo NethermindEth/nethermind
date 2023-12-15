@@ -6,7 +6,7 @@ using Nethermind.Int256;
 
 namespace Nethermind.JsonRpc.Data
 {
-    public struct AccessListForRpc
+    public readonly struct AccessListForRpc
     {
         public AccessListForRpc(IEnumerable<AccessListItemForRpc> accessList, in UInt256 gasUsed)
         {

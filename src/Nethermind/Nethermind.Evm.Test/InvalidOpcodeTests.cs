@@ -112,7 +112,7 @@ namespace Nethermind.Evm.Test
                 }
             ).ToArray();
 
-        private Dictionary<ForkActivation, Instruction[]> _validOpcodes
+        private readonly Dictionary<ForkActivation, Instruction[]> _validOpcodes
             = new()
             {
                 {(ForkActivation)0, FrontierInstructions},
@@ -132,7 +132,7 @@ namespace Nethermind.Evm.Test
 
         private const string InvalidOpCodeErrorMessage = "BadInstruction";
 
-        private ILogManager _logManager;
+        private ILogManager _logManager = LimboLogs.Instance;
 
         protected override ILogManager GetLogManager()
         {

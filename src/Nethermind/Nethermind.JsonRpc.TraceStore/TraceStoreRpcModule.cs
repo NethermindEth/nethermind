@@ -242,13 +242,13 @@ public class TraceStoreRpcModule : ITraceRpcModule
         }
     }
 
-    private ParityLikeTxTrace? GetTxTrace(Block block, Hash256 txHash, List<ParityLikeTxTrace> traces)
+    private static ParityLikeTxTrace? GetTxTrace(Block block, Hash256 txHash, List<ParityLikeTxTrace> traces)
     {
         int index = traces.FindIndex(t => t.TransactionHash == txHash);
         return index != -1 ? traces[index] : null;
     }
 
-    private void FilterTraces(List<ParityLikeTxTrace> traces, ParityTraceTypes traceTypes)
+    private static void FilterTraces(List<ParityLikeTxTrace> traces, ParityTraceTypes traceTypes)
     {
         for (int i = 0; i < traces.Count; i++)
         {

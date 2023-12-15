@@ -70,10 +70,12 @@ public class AccessList : IEnumerable<(Address Address, AccessList.StorageKeysEn
         }
 
         public void Reset() => _index = -1;
-        public (Address Address, StorageKeysEnumerable StorageKeys) Current => ((Address)_items[_index], new StorageKeysEnumerable(_items, _index));
-        (Address Address, IEnumerable<UInt256> StorageKeys) IEnumerator<(Address Address, IEnumerable<UInt256> StorageKeys)>.Current => Current;
-        object IEnumerator.Current => Current;
-        public void Dispose() { }
+        public readonly (Address Address, StorageKeysEnumerable StorageKeys) Current => ((Address)_items[_index], new StorageKeysEnumerable(_items, _index));
+
+        readonly (Address Address, IEnumerable<UInt256> StorageKeys) IEnumerator<(Address Address, IEnumerable<UInt256> StorageKeys)>.Current => Current;
+
+        readonly object IEnumerator.Current => Current;
+        public readonly void Dispose() { }
     }
 
     public readonly struct StorageKeysEnumerable : IEnumerable<UInt256>
@@ -106,8 +108,9 @@ public class AccessList : IEnumerable<(Address Address, AccessList.StorageKeysEn
 
         public bool MoveNext() => ++_index < _items.Count && _items[_index] is UInt256;
         public void Reset() => _index = _startingIndex;
-        public UInt256 Current => (UInt256)_items[_index];
-        object IEnumerator.Current => Current;
-        public void Dispose() { }
+        public readonly UInt256 Current => (UInt256)_items[_index];
+
+        readonly object IEnumerator.Current => Current;
+        public readonly void Dispose() { }
     }
 }

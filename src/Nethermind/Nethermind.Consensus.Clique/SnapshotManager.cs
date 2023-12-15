@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Text;
 using Nethermind.Blockchain;
 using Nethermind.Core;
@@ -21,15 +22,15 @@ namespace Nethermind.Consensus.Clique
 {
     public class SnapshotManager : ISnapshotManager
     {
-        private static byte[] _snapshotBytes = Encoding.UTF8.GetBytes("snapshot-");
+        private static readonly byte[] _snapshotBytes = Encoding.UTF8.GetBytes("snapshot-");
         private readonly IBlockTree _blockTree;
         private readonly ICliqueConfig _cliqueConfig;
         private readonly ILogger _logger;
         private readonly LruCache<ValueHash256, Address> _signatures;
         private readonly IEthereumEcdsa _ecdsa;
-        private IDb _blocksDb;
+        private readonly IDb _blocksDb;
         private ulong _lastSignersCount = 0;
-        private LruCache<ValueHash256, Snapshot> _snapshotCache = new(Clique.InMemorySnapshots, "clique snapshots");
+        private readonly LruCache<ValueHash256, Snapshot> _snapshotCache = new(Clique.InMemorySnapshots, "clique snapshots");
 
         public SnapshotManager(ICliqueConfig cliqueConfig, IDb blocksDb, IBlockTree blockTree, IEthereumEcdsa ecdsa, ILogManager logManager)
         {
@@ -84,7 +85,7 @@ namespace Nethermind.Consensus.Clique
             return sigHash;
         }
 
-        private object _snapshotCreationLock = new();
+        private readonly object _snapshotCreationLock = new();
 
         public ulong GetLastSignersCount() => _lastSignersCount;
 
@@ -226,7 +227,7 @@ namespace Nethermind.Consensus.Clique
             return new Hash256(keyBytes);
         }
 
-        private SnapshotDecoder _decoder = new();
+        private readonly SnapshotDecoder _decoder = new();
 
         [Todo(Improve.Refactor, "I guess it was only added here because of the use of blocksdb")]
         private Snapshot? LoadSnapshot(Hash256 hash)
@@ -274,8 +275,8 @@ namespace Nethermind.Consensus.Clique
 
                 // Resolve the authorization key and check against signers
                 Address signer = header.Author;
-                if (!snapshot.Signers.ContainsKey(signer)) throw new InvalidOperationException("Unauthorized signer");
-                if (HasSignedRecently(snapshot, number, signer)) throw new InvalidOperationException($"Recently signed (trying to sign {number} when last signed {snapshot.Signers[signer]} with {snapshot.Signers.Count} signers)");
+                if (!snapshot.Signers.TryGetValue(signer, out var value)) throw new InvalidOperationException("Unauthorized signer");
+                if (HasSignedRecently(snapshot, number, signer)) throw new InvalidOperationException($"Recently signed (trying to sign {number} when last signed {value} with {snapshot.Signers.Count} signers)");
 
                 snapshot.Signers[signer] = number;
 
@@ -353,25 +354,26 @@ namespace Nethermind.Consensus.Clique
 
         private bool Cast(Snapshot snapshot, Address address, bool authorize)
         {
-            if (!snapshot.Tally.ContainsKey(address))
+            ref Tally? value = ref CollectionsMarshal.GetValueRefOrAddDefault(snapshot.Tally, address, out bool exists);
+            if (!exists)
             {
-                snapshot.Tally[address] = new Tally(authorize);
+                value = new Tally(authorize);
             }
 
             // Ensure the vote is meaningful
             if (!IsValidVote(snapshot, address, authorize)) return false;
 
-            // Cast the vote into tally
-            snapshot.Tally[address].Votes++;
+            // Cast the vote into tally ref
+            value.Votes++;
             return true;
         }
 
-        private bool Uncast(Snapshot snapshot, Address address, bool authorize)
+        private static bool Uncast(Snapshot snapshot, Address address, bool authorize)
         {
             // If there's no tally, it's a dangling vote, just drop
-            if (!snapshot.Tally.ContainsKey(address)) return true;
+            if (!snapshot.Tally.TryGetValue(address, out Tally? value)) return true;
 
-            Tally tally = snapshot.Tally[address];
+            Tally tally = value;
             // Ensure we only revert counted votes
             if (tally.Authorize != authorize) return false;
 

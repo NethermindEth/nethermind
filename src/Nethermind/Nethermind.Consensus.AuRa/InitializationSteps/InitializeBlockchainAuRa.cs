@@ -25,6 +25,7 @@ using Nethermind.Core;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Init.Steps;
 using Nethermind.Logging;
+using Nethermind.State;
 using Nethermind.TxPool;
 using Nethermind.TxPool.Comparison;
 
@@ -53,7 +54,6 @@ public class InitializeBlockchainAuRa : InitializeBlockchain
         if (_api.RewardCalculatorSource is null) throw new StepDependencyException(nameof(_api.RewardCalculatorSource));
         if (_api.TransactionProcessor is null) throw new StepDependencyException(nameof(_api.TransactionProcessor));
         if (_api.DbProvider is null) throw new StepDependencyException(nameof(_api.DbProvider));
-        if (_api.WorldState is null) throw new StepDependencyException(nameof(_api.WorldState));
         if (_api.TxPool is null) throw new StepDependencyException(nameof(_api.TxPool));
         if (_api.ReceiptStorage is null) throw new StepDependencyException(nameof(_api.ReceiptStorage));
         if (_api.BlockTree is null) throw new StepDependencyException(nameof(_api.BlockTree));
@@ -87,12 +87,14 @@ public class InitializeBlockchainAuRa : InitializeBlockchain
 
     protected virtual BlockProcessor NewBlockProcessor(AuRaNethermindApi api, ITxFilter txFilter, ContractRewriter contractRewriter)
     {
+        IWorldState worldState = _api.WorldState!;
+
         return new AuRaBlockProcessor(
             _api.SpecProvider,
             _api.BlockValidator,
             _api.RewardCalculatorSource.Get(_api.TransactionProcessor),
-            new BlockProcessor.BlockValidationTransactionsExecutor(_api.TransactionProcessor, _api.WorldState),
-            _api.WorldState,
+            new BlockProcessor.BlockValidationTransactionsExecutor(_api.TransactionProcessor, worldState),
+            worldState,
             _api.ReceiptStorage,
             _api.LogManager,
             _api.BlockTree,
@@ -104,7 +106,7 @@ public class InitializeBlockchainAuRa : InitializeBlockchain
     }
 
     protected ReadOnlyTxProcessingEnv CreateReadOnlyTransactionProcessorSource() =>
-        new ReadOnlyTxProcessingEnv(_api.DbProvider, _api.ReadOnlyTrieStore, _api.BlockTree, _api.SpecProvider, _api.LogManager);
+        new ReadOnlyTxProcessingEnv(_api.WorldStateManager!, _api.BlockTree, _api.SpecProvider, _api.LogManager);
 
     protected override IHealthHintService CreateHealthHintService() =>
         new AuraHealthHintService(_auRaStepCalculator, _api.ValidatorStore);
@@ -129,8 +131,10 @@ public class InitializeBlockchainAuRa : InitializeBlockchain
             _api.LogManager,
             chainSpecAuRa.TwoThirdsMajorityTransition);
 
+        IWorldState worldState = _api.WorldState!;
+
         IAuRaValidator validator = new AuRaValidatorFactory(_api.AbiEncoder,
-                _api.WorldState,
+                worldState,
                 _api.TransactionProcessor,
                 _api.BlockTree,
                 readOnlyTxProcessorSource,

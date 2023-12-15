@@ -13,7 +13,10 @@ using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs.ChainSpecStyle.Json;
-using Newtonsoft.Json.Linq;
+
+using System.Text.Json;
+using System.Text.Json.Serialization;
+using System.Globalization;
 
 namespace Nethermind.Specs.ChainSpecStyle;
 
@@ -27,8 +30,6 @@ public class ChainSpecLoader : IChainSpecLoader
     public ChainSpecLoader(IJsonSerializer serializer)
     {
         _serializer = serializer;
-        _serializer.RegisterConverter(new StepDurationJsonConverter());
-        _serializer.RegisterConverter(new BlockRewardJsonConverter());
     }
 
     public ChainSpec Load(byte[] data) => Load(Encoding.UTF8.GetString(data));
@@ -61,11 +62,11 @@ public class ChainSpecLoader : IChainSpecLoader
 
     private void LoadParameters(ChainSpecJson chainSpecJson, ChainSpec chainSpec)
     {
-        long? GetTransitions(string builtInName, Predicate<KeyValuePair<string, JObject>> predicate)
+        long? GetTransitions(string builtInName, Predicate<KeyValuePair<string, JsonElement>> predicate)
         {
             var allocation = chainSpecJson.Accounts?.Values.FirstOrDefault(v => v.BuiltIn?.Name.Equals(builtInName, StringComparison.InvariantCultureIgnoreCase) == true);
             if (allocation is null) return null;
-            KeyValuePair<string, JObject>[] pricing = allocation.BuiltIn.Pricing.Where(o => predicate(o)).ToArray();
+            KeyValuePair<string, JsonElement>[] pricing = allocation.BuiltIn.Pricing.Where(o => predicate(o)).ToArray();
             if (pricing.Length > 0)
             {
                 string key = pricing[0].Key;
@@ -77,13 +78,21 @@ public class ChainSpecLoader : IChainSpecLoader
 
         long? GetTransitionForExpectedPricing(string builtInName, string innerPath, long expectedValue)
         {
-            bool GetForExpectedPricing(KeyValuePair<string, JObject> o) => o.Value.SelectToken(innerPath)?.Value<long>() == expectedValue;
+            bool GetForExpectedPricing(KeyValuePair<string, JsonElement> o)
+            {
+                return o.Value.TryGetSubProperty(innerPath, out JsonElement value) ? value.GetInt64() == expectedValue : false;
+            }
+
             return GetTransitions(builtInName, GetForExpectedPricing);
         }
 
         long? GetTransitionIfInnerPathExists(string builtInName, string innerPath)
         {
-            bool GetForInnerPathExistence(KeyValuePair<string, JObject> o) => o.Value.SelectToken(innerPath) is not null;
+            bool GetForInnerPathExistence(KeyValuePair<string, JsonElement> o)
+            {
+                return o.Value.TryGetSubProperty(innerPath, out _);
+            }
+
             return GetTransitions(builtInName, GetForInnerPathExistence);
         }
 
@@ -323,7 +332,11 @@ public class ChainSpecLoader : IChainSpecLoader
             {
                 foreach (KeyValuePair<string, long> reward in chainSpecJson.Engine.Ethash.DifficultyBombDelays)
                 {
-                    chainSpec.Ethash.DifficultyBombDelays.Add(LongConverter.FromString(reward.Key), reward.Value);
+                    long key = reward.Key.StartsWith("0x") ?
+                        long.Parse(reward.Key.AsSpan(2), NumberStyles.HexNumber) :
+                        long.Parse(reward.Key);
+
+                    chainSpec.Ethash.DifficultyBombDelays.Add(key, reward.Value);
                 }
             }
         }

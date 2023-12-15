@@ -3,20 +3,19 @@
 
 using Nethermind.Config;
 
-namespace Nethermind.Db.Blooms
+namespace Nethermind.Db.Blooms;
+
+public interface IBloomConfig : IConfig
 {
-    public interface IBloomConfig : IConfig
-    {
-        [ConfigItem(Description = "Defines whether the Bloom index is used. Bloom index speeds up rpc log searches.", DefaultValue = "true")]
-        bool Index { get; set; }
+    [ConfigItem(Description = "Whether to use the Bloom index. The Bloom index speeds up the RPC log searches.", DefaultValue = "true")]
+    bool Index { get; set; }
 
-        [ConfigItem(Description = "Defines multipliers for index levels. Can be tweaked per chain to boost performance.", DefaultValue = "[4, 8, 8]")]
-        int[] IndexLevelBucketSizes { get; set; }
+    [ConfigItem(Description = "An array of multipliers for index levels. Can be tweaked per chain to boost performance.", DefaultValue = "[4, 8, 8]")]
+    int[] IndexLevelBucketSizes { get; set; }
 
-        [ConfigItem(Description = "Defines if migration statistics are to be calculated and output.", DefaultValue = "false")]
-        bool MigrationStatistics { get; set; }
+    [ConfigItem(Description = "Whether the migration statistics should be calculated and output.", DefaultValue = "false")]
+    bool MigrationStatistics { get; set; }
 
-        [ConfigItem(Description = "Defines if migration of previously downloaded blocks to Bloom index will be done.", DefaultValue = "false")]
-        bool Migration { get; set; }
-    }
+    [ConfigItem(Description = "Whether to migrate the previously downloaded blocks to the Bloom index.", DefaultValue = "false")]
+    bool Migration { get; set; }
 }

@@ -27,7 +27,7 @@ namespace Nethermind.Crypto
         /// </summary>
         /// <param name="key">The base key to derive another key from.</param>
         /// <returns>Returns the key derived from the provided base key and hash algorithm.</returns>
-        public byte[] Derive(byte[] key)
+        public static byte[] Derive(byte[] key)
         {
             byte[] dataToHash = _dataToHash.Value;
             key.AsSpan().CopyTo(dataToHash.AsSpan(4, 32));

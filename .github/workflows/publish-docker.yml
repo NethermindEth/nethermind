@@ -34,7 +34,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
       - name: Set up Docker Buildx
@@ -45,7 +45,8 @@ jobs:
       - name: Build and push image to Docker Hub (staging)
         run: |
           branch=$(echo "${{ github.ref }}" | sed -e "s/refs\/heads\///g")
-          tag=${{ github.event.inputs.tag || '$branch' }}
+          original_tag=${{ github.event.inputs.tag || '$branch' }}
+          tag=$(echo "$original_tag" | sed 's/\//-/g') # replace '/' with '-' in tag name
           build_timestamp=$(date '+%s')
           echo "Building image with tag $tag"
 
@@ -54,7 +55,9 @@ jobs:
             -t "nethermindeth/${{ github.event.inputs.image-name || 'nethermind' }}:$tag" \
             --build-arg BUILD_CONFIG=${{ github.event.inputs.build-config || 'release' }} \
             --build-arg BUILD_TIMESTAMP=$build_timestamp \
-            --build-arg COMMIT_HASH=$GITHUB_SHA . --push
+            --build-arg CI=$CI \
+            --build-arg COMMIT_HASH=$GITHUB_SHA \
+            . --push
       - name: Clear Docker cache
         if: always()
         run: rm -f $HOME/.docker/config.json

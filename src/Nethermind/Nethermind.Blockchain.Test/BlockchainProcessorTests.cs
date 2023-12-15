@@ -33,17 +33,17 @@ namespace Nethermind.Blockchain.Test
     {
         private class ProcessingTestContext
         {
-            private ILogManager _logManager = LimboLogs.Instance;
+            private readonly ILogManager _logManager = LimboLogs.Instance;
 
             private class BlockProcessorMock : IBlockProcessor
             {
-                private ILogger _logger;
+                private readonly ILogger _logger;
 
-                private HashSet<Hash256> _allowed = new();
+                private readonly HashSet<Hash256> _allowed = new();
 
-                private HashSet<Hash256> _allowedToFail = new();
+                private readonly HashSet<Hash256> _allowedToFail = new();
 
-                private HashSet<Hash256> _rootProcessed = new();
+                private readonly HashSet<Hash256> _rootProcessed = new();
 
                 public BlockProcessorMock(ILogManager logManager, IStateReader stateReader)
                 {
@@ -57,6 +57,8 @@ namespace Nethermind.Blockchain.Test
                             Hash256 stateRoot = (Hash256)info[1];
                             if (!_rootProcessed.Contains(stateRoot)) visitor.VisitMissingNode(stateRoot, new TrieVisitContext());
                         }));
+
+                    stateReader.HasStateForRoot(Arg.Any<Hash256>()).Returns(x => _rootProcessed.Contains(x[0]));
                 }
 
                 public void Allow(Hash256 hash)

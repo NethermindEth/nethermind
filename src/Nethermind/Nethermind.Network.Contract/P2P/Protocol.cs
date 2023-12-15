@@ -18,6 +18,10 @@ namespace Nethermind.Network.Contract.P2P
         /// </summary>
         public const string Snap = "snap";
         /// <summary>
+        /// Node Data
+        /// </summary>
+        public const string NodeData = "nodedata";
+        /// <summary>
         /// Whisper
         /// </summary>
         public const string Shh = "shh";

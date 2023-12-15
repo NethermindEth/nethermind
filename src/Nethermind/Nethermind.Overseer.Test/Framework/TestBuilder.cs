@@ -33,6 +33,7 @@ namespace Nethermind.Overseer.Test.Framework
             }
         }
 
+#pragma warning disable NUnit1032
         /// <summary>
         /// Gets the task representing the fluent work.
         /// </summary>
@@ -40,6 +41,7 @@ namespace Nethermind.Overseer.Test.Framework
         /// The task.
         /// </value>
         public Task ScenarioCompletion { get; private set; }
+#pragma warning restore NUnit1032
 
         /// <summary>
         /// Queues up asynchronous work.
@@ -109,9 +111,9 @@ namespace Nethermind.Overseer.Test.Framework
 
         private readonly ProcessBuilder _processBuilder;
 
-        private static string _runnerDir;
-        private static string _dbsDir;
-        private static string _configsDir;
+        private static readonly string _runnerDir;
+        private static readonly string _dbsDir;
+        private static readonly string _configsDir;
 
         static TestBuilder()
         {
@@ -207,7 +209,7 @@ namespace Nethermind.Overseer.Test.Framework
 
         private NethermindProcessWrapper GetOrCreateNode(string name, string baseConfigFile, string key)
         {
-            if (!Nodes.ContainsKey(name))
+            if (!Nodes.TryGetValue(name, out NethermindProcessWrapper value))
             {
                 string bootnodes = string.Empty;
                 foreach ((_, NethermindProcessWrapper process) in Nodes)
@@ -225,11 +227,12 @@ namespace Nethermind.Overseer.Test.Framework
                 int p2pPort = _startPort + _nodeCounter;
                 int httpPort = _startHttpPort + _nodeCounter;
                 TestContext.WriteLine($"Creating {name} at {p2pPort}, http://localhost:{httpPort}");
-                Nodes[name] = _processBuilder.Create(name, _runnerDir, configPath, dbDir, httpPort, p2pPort, nodeKey, bootnodes);
+                value = _processBuilder.Create(name, _runnerDir, configPath, dbDir, httpPort, p2pPort, nodeKey, bootnodes);
+                Nodes[name] = value;
                 _nodeCounter++;
             }
 
-            return Nodes[name];
+            return value;
         }
 
         private string GetNodeKey(string key)
@@ -278,7 +281,7 @@ namespace Nethermind.Overseer.Test.Framework
 
         private void CopyRunnerFiles(string targetDirectory)
         {
-            string sourceDirectory = Path.Combine(Directory.GetCurrentDirectory(), $"../../../../Nethermind.Runner/bin/{buildConfiguration}/net7.0/");
+            string sourceDirectory = Path.Combine(Directory.GetCurrentDirectory(), $"../../../../artifacts/bin/Nethermind.Runner/{buildConfiguration}/");
             if (!Directory.Exists(sourceDirectory))
             {
                 throw new IOException($"Runner not found at {sourceDirectory}");

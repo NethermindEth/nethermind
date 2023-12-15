@@ -9,7 +9,7 @@ namespace Nethermind.Config
 {
     public class EnvConfigSource : IConfigSource
     {
-        private IEnvironment _environmentWrapper;
+        private readonly IEnvironment _environmentWrapper;
 
         public EnvConfigSource() : this(new EnvironmentWrapper())
         {

@@ -41,6 +41,13 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
             _ack = null;
         }
 
+        [TearDown]
+        public void TearDown()
+        {
+            _testRandom?.Dispose();
+            _trueCryptoRandom?.Dispose();
+        }
+
         private readonly IEthereumEcdsa _ecdsa = new EthereumEcdsa(BlockchainIds.Sepolia, LimboLogs.Instance); // TODO: separate general crypto signer from Ethereum transaction signing
 
         private IMessageSerializationService _messageSerializationService;

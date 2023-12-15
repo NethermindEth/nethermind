@@ -25,7 +25,6 @@ namespace Nethermind.Synchronization.Test
         [TestCase(false, false)]
         public void Smoke(bool fastSync, bool fastBlocks)
         {
-            ISyncModeSelector selector = Substitute.For<ISyncModeSelector>();
             ISyncPeerPool pool = Substitute.For<ISyncPeerPool>();
             pool.InitializedPeersCount.Returns(1);
             ITimerFactory timerFactory = Substitute.For<ITimerFactory>();
@@ -46,11 +45,19 @@ namespace Nethermind.Synchronization.Test
                 FastSync = fastSync,
             };
 
-            SyncReport syncReport = new(pool, Substitute.For<INodeStatsManager>(), selector, syncConfig, Substitute.For<IPivot>(), LimboLogs.Instance, timerFactory);
-            selector.Current.Returns(_ => syncModes.Count > 0 ? syncModes.Dequeue() : SyncMode.Full);
+            SyncReport syncReport = new(pool, Substitute.For<INodeStatsManager>(), syncConfig, Substitute.For<IPivot>(), LimboLogs.Instance, timerFactory);
+
+            void UpdateMode()
+            {
+                syncReport.SyncModeSelectorOnChanged(null, new SyncModeChangedEventArgs(SyncMode.None, syncModes.Count > 0 ? syncModes.Dequeue() : SyncMode.Full));
+            }
+
             timer.Elapsed += Raise.Event();
+            UpdateMode();
             syncReport.FastBlocksHeaders.MarkEnd();
+            UpdateMode();
             syncReport.FastBlocksBodies.MarkEnd();
+            UpdateMode();
             syncReport.FastBlocksReceipts.MarkEnd();
             timer.Elapsed += Raise.Event();
         }
@@ -60,7 +67,6 @@ namespace Nethermind.Synchronization.Test
         public void Ancient_bodies_and_receipts_are_reported_correctly(bool setBarriers)
         {
             CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;
-            ISyncModeSelector selector = Substitute.For<ISyncModeSelector>();
             ISyncPeerPool pool = Substitute.For<ISyncPeerPool>();
             pool.InitializedPeersCount.Returns(1);
             ITimerFactory timerFactory = Substitute.For<ITimerFactory>();
@@ -88,8 +94,8 @@ namespace Nethermind.Synchronization.Test
                 syncConfig.AncientReceiptsBarrier = 35;
             }
 
-            SyncReport _ = new(pool, Substitute.For<INodeStatsManager>(), selector, syncConfig, Substitute.For<IPivot>(), logManager, timerFactory);
-            selector.Current.Returns(_ => SyncMode.FastHeaders | SyncMode.FastBodies | SyncMode.FastReceipts);
+            SyncReport syncReport = new(pool, Substitute.For<INodeStatsManager>(), syncConfig, Substitute.For<IPivot>(), logManager, timerFactory);
+            syncReport.SyncModeSelectorOnChanged(null, new SyncModeChangedEventArgs(SyncMode.None, SyncMode.FastHeaders | SyncMode.FastBodies | SyncMode.FastReceipts));
             timer.Elapsed += Raise.Event();
 
             if (setBarriers)

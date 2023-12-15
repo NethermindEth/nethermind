@@ -121,8 +121,7 @@ public class AccountAbstractionPlugin : IConsensusWrapperPlugin
         var (getFromApi, _) = _nethermindApi!.ForProducer;
 
         ReadOnlyTxProcessingEnvFactory readOnlyTxProcessingEnvFactory = new(
-            getFromApi.DbProvider,
-            getFromApi.ReadOnlyTrieStore,
+            getFromApi.WorldStateManager!,
             getFromApi.BlockTree,
             getFromApi.SpecProvider,
             getFromApi.LogManager);
@@ -387,11 +386,12 @@ public class AccountAbstractionPlugin : IConsensusWrapperPlugin
     public bool BundleMiningEnabled => _accountAbstractionConfig.Enabled && (_nethermindApi.Config<IInitConfig>().IsMining || _nethermindApi.Config<IMiningConfig>().Enabled);
     public bool Enabled => BundleMiningEnabled && !MevPluginEnabled; // IConsensusWrapperPlugin.Enabled
 
-    private AbiDefinition LoadEntryPointContract()
+    private static AbiDefinition LoadEntryPointContract()
     {
+        AbiParameterConverter.RegisterFactory(new AbiTypeFactory(new AbiTuple<UserOperationAbi>()));
+
         AbiDefinitionParser parser = new();
-        parser.RegisterAbiTypeFactory(new AbiTuple<UserOperationAbi>());
-        string json = parser.LoadContract(typeof(EntryPoint));
+        string json = AbiDefinitionParser.LoadContract(typeof(EntryPoint));
         return parser.Parse(json);
     }
 }

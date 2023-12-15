@@ -2,8 +2,11 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
+using System.Text.Json.Serialization;
+
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Serialization.Json;
 
 namespace Nethermind.Evm.Tracing.ParityStyle
 {
@@ -13,6 +16,7 @@ namespace Nethermind.Evm.Tracing.ParityStyle
 
         public Hash256? BlockHash { get; set; }
 
+        [JsonConverter(typeof(LongRawJsonConverter))]
         public long BlockNumber { get; set; }
 
         public int? TransactionPosition { get; set; }

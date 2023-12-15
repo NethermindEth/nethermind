@@ -14,10 +14,13 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.Tracing.ParityStyle;
+using Nethermind.Facade;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Data;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
+using Nethermind.State;
+using Nethermind.Trie;
 
 namespace Nethermind.JsonRpc.Modules.Trace
 {
@@ -40,8 +43,9 @@ namespace Nethermind.JsonRpc.Modules.Trace
         private readonly ILogger _logger;
         private readonly ISpecProvider _specProvider;
         private readonly TimeSpan _cancellationTokenTimeout;
+        private readonly IStateReader _stateReader;
 
-        public TraceRpcModule(IReceiptFinder? receiptFinder, ITracer? tracer, IBlockFinder? blockFinder, IJsonRpcConfig? jsonRpcConfig, ISpecProvider? specProvider, ILogManager? logManager)
+        public TraceRpcModule(IReceiptFinder? receiptFinder, ITracer? tracer, IBlockFinder? blockFinder, IJsonRpcConfig? jsonRpcConfig, ISpecProvider? specProvider, ILogManager? logManager, IStateReader stateReader)
         {
             _receiptFinder = receiptFinder ?? throw new ArgumentNullException(nameof(receiptFinder));
             _tracer = tracer ?? throw new ArgumentNullException(nameof(tracer));
@@ -49,10 +53,10 @@ namespace Nethermind.JsonRpc.Modules.Trace
             _jsonRpcConfig = jsonRpcConfig ?? throw new ArgumentNullException(nameof(jsonRpcConfig));
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
+            _stateReader = stateReader ?? throw new ArgumentNullException(nameof(stateReader));
             _logger = logManager.GetClassLogger();
             _cancellationTokenTimeout = TimeSpan.FromMilliseconds(_jsonRpcConfig.Timeout);
         }
-
         public static ParityTraceTypes GetParityTypes(string[] types) =>
             types.Select(s => FastEnum.Parse<ParityTraceTypes>(s, true)).Aggregate((t1, t2) => t1 | t2);
 
@@ -80,6 +84,11 @@ namespace Nethermind.JsonRpc.Modules.Trace
             if (headerSearch.IsError)
             {
                 return ResultWrapper<IEnumerable<ParityTxTraceFromReplay>>.Fail(headerSearch);
+            }
+
+            if (!_stateReader.HasStateForBlock(headerSearch.Object))
+            {
+                return GetStateFailureResult<IEnumerable<ParityTxTraceFromReplay>>(headerSearch.Object);
             }
 
             Dictionary<Hash256, ParityTraceTypes> traceTypeByTransaction = new(calls.Length);
@@ -172,6 +181,10 @@ namespace Nethermind.JsonRpc.Modules.Trace
             }
 
             Block block = blockSearch.Object!;
+            if (!_stateReader.HasStateForBlock(block.Header))
+            {
+                return GetStateFailureResult<ParityTxTraceFromReplay>(block.Header);
+            }
 
             IReadOnlyCollection<ParityLikeTxTrace>? txTrace = ExecuteBlock(block, new ParityLikeBlockTracer(txHash, GetParityTypes(traceTypes)));
             return ResultWrapper<ParityTxTraceFromReplay>.Success(new ParityTxTraceFromReplay(txTrace));
@@ -189,6 +202,11 @@ namespace Nethermind.JsonRpc.Modules.Trace
             }
 
             Block block = blockSearch.Object!;
+
+            if (!_stateReader.HasStateForBlock(block.Header))
+            {
+                return GetStateFailureResult<IEnumerable<ParityTxTraceFromReplay>>(block.Header);
+            }
 
             ParityTraceTypes traceTypes1 = GetParityTypes(traceTypes);
             IReadOnlyCollection<ParityLikeTxTrace> txTraces = ExecuteBlock(block, new(traceTypes1));
@@ -215,6 +233,11 @@ namespace Nethermind.JsonRpc.Modules.Trace
                 }
 
                 Block block = blockSearch.Object;
+                if (!_stateReader.HasStateForBlock(block.Header))
+                {
+                    return GetStateFailureResult<IEnumerable<ParityTxTraceFromStore>>(block.Header);
+                }
+
                 IReadOnlyCollection<ParityLikeTxTrace> txTracesFromOneBlock = ExecuteBlock(block!, new((ParityTraceTypes)(ParityTraceTypes.Trace | ParityTraceTypes.Rewards)));
                 txTraces.AddRange(txTracesFromOneBlock);
             }
@@ -234,6 +257,12 @@ namespace Nethermind.JsonRpc.Modules.Trace
             }
 
             Block block = blockSearch.Object!;
+
+            if (!_stateReader.HasStateForBlock(block.Header))
+            {
+                return GetStateFailureResult<IEnumerable<ParityTxTraceFromStore>>(block.Header);
+            }
+
             IReadOnlyCollection<ParityLikeTxTrace> txTraces = ExecuteBlock(block, new((ParityTraceTypes)(ParityTraceTypes.Trace | ParityTraceTypes.Rewards)));
             return ResultWrapper<IEnumerable<ParityTxTraceFromStore>>.Success(txTraces.SelectMany(ParityTxTraceFromStore.FromTxTrace));
         }
@@ -284,6 +313,11 @@ namespace Nethermind.JsonRpc.Modules.Trace
 
             Block block = blockSearch.Object!;
 
+            if (!_stateReader.HasStateForBlock(block.Header))
+            {
+                return GetStateFailureResult<IEnumerable<ParityTxTraceFromStore>>(block.Header);
+            }
+
             IReadOnlyCollection<ParityLikeTxTrace> txTrace = ExecuteBlock(block, new(txHash, ParityTraceTypes.Trace));
             return ResultWrapper<IEnumerable<ParityTxTraceFromStore>>.Success(ParityTxTraceFromStore.FromTxTrace(txTrace));
         }
@@ -303,5 +337,8 @@ namespace Nethermind.JsonRpc.Modules.Trace
             _tracer.Execute(block, tracer.WithCancellation(cancellationToken));
             return tracer.BuildResult();
         }
+
+        private static ResultWrapper<TResult> GetStateFailureResult<TResult>(BlockHeader header) =>
+        ResultWrapper<TResult>.Fail($"No state available for block {header.ToString(BlockHeader.Format.FullHashAndNumber)}", ErrorCodes.ResourceUnavailable);
     }
 }

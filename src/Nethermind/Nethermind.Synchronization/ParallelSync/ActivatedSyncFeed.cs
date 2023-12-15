@@ -7,12 +7,10 @@ namespace Nethermind.Synchronization.ParallelSync
 {
     public abstract class ActivatedSyncFeed<T> : SyncFeed<T>, IDisposable
     {
-        private readonly ISyncModeSelector _syncModeSelector;
+        private readonly bool _disposed = false;
 
-        protected ActivatedSyncFeed(ISyncModeSelector syncModeSelector)
+        protected ActivatedSyncFeed()
         {
-            _syncModeSelector = syncModeSelector ?? throw new ArgumentNullException(nameof(syncModeSelector));
-            _syncModeSelector.Changed += SyncModeSelectorOnChanged;
             StateChanged += OnStateChanged;
         }
 
@@ -24,15 +22,16 @@ namespace Nethermind.Synchronization.ParallelSync
             }
         }
 
-        private void SyncModeSelectorOnChanged(object? sender, SyncModeChangedEventArgs e)
+        public override void SyncModeSelectorOnChanged(SyncMode current)
         {
-            if (ShouldBeActive(e.Current))
+            if (_disposed) return;
+            if (ShouldBeActive(current))
             {
                 InitializeFeed();
                 Activate();
             }
 
-            if (ShouldBeDormant(e.Current))
+            if (ShouldBeDormant(current))
             {
                 FallAsleep();
             }
@@ -48,7 +47,6 @@ namespace Nethermind.Synchronization.ParallelSync
 
         public virtual void Dispose()
         {
-            _syncModeSelector.Changed -= SyncModeSelectorOnChanged;
             StateChanged -= OnStateChanged;
         }
 

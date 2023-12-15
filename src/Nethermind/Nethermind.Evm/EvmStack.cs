@@ -3,11 +3,9 @@
 
 using System;
 using System.Buffers.Binary;
-using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Nethermind.Core;
-using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 using Nethermind.Evm.Tracing;
 using System.Diagnostics.CodeAnalysis;
@@ -17,18 +15,15 @@ using System.Runtime.Intrinsics.X86;
 
 namespace Nethermind.Evm;
 
-using static Nethermind.Evm.VirtualMachine;
-
+using static VirtualMachine;
 using Word = Vector256<byte>;
 
 public ref struct EvmStack<TTracing>
     where TTracing : struct, IIsTracing
 {
-    public const int RegisterLength = 1;
-    public const int MaxStackSize = 1025;
-    public const int ReturnStackSize = 1023;
-    public const int WordSize = 32;
-    public const int AddressSize = 20;
+    public const int MaxStackSize = EvmStack.MaxStackSize;
+    public const int WordSize = EvmStack.WordSize;
+    public const int AddressSize = EvmStack.AddressSize;
 
     public EvmStack(scoped in Span<byte> bytes, scoped in int head, ITxTracer txTracer)
     {
@@ -39,9 +34,9 @@ public ref struct EvmStack<TTracing>
 
     public int Head;
 
-    private Span<byte> _bytes;
+    private readonly Span<byte> _bytes;
 
-    private ITxTracer _tracer;
+    private readonly ITxTracer _tracer;
 
     public void PushBytes(scoped in Span<byte> value)
     {
@@ -170,7 +165,7 @@ public ref struct EvmStack<TTracing>
 
         if (Avx2.IsSupported)
         {
-            Vector256<ulong> permute = Unsafe.As<UInt256, Vector256<ulong>>(ref Unsafe.AsRef(value));
+            Vector256<ulong> permute = Unsafe.As<UInt256, Vector256<ulong>>(ref Unsafe.AsRef(in value));
             Vector256<ulong> convert = Avx2.Permute4x64(permute, 0b_01_00_11_10);
             Word shuffle = Vector256.Create(
                 (byte)
@@ -278,7 +273,7 @@ public ref struct EvmStack<TTracing>
         }
     }
 
-    public bool PeekUInt256IsZero()
+    public readonly bool PeekUInt256IsZero()
     {
         int head = Head;
         if (head-- == 0)
@@ -418,18 +413,6 @@ public ref struct EvmStack<TTracing>
         }
     }
 
-    public readonly List<string> GetStackTrace()
-    {
-        List<string> stackTrace = new();
-        for (int i = 0; i < Head; i++)
-        {
-            Span<byte> stackItem = _bytes.Slice(i * WordSize, WordSize);
-            stackTrace.Add(stackItem.ToArray().ToHexString(true, true));
-        }
-
-        return stackTrace;
-    }
-
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private readonly void ClearWordAtHead()
     {
@@ -442,6 +425,9 @@ public static class EvmStack
     public const int RegisterLength = 1;
     public const int MaxStackSize = 1025;
     public const int ReturnStackSize = 1023;
+    public const int WordSize = 32;
+    public const int AddressSize = 20;
+
 
     [StackTraceHidden]
     [DoesNotReturn]

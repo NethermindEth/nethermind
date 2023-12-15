@@ -26,7 +26,7 @@ namespace Nethermind.AccountAbstraction.Network
     public class AaProtocolHandler : ProtocolHandlerBase, IZeroProtocolHandler, IUserOperationPoolPeer
     {
         private readonly ISession _session;
-        private IDictionary<Address, IUserOperationPool> _userOperationPools;
+        private readonly IDictionary<Address, IUserOperationPool> _userOperationPools;
         private readonly IAccountAbstractionPeerManager _peerManager;
 
         public AaProtocolHandler(ISession session,

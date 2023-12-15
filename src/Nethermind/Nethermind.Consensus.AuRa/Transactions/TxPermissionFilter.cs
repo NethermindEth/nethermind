@@ -92,7 +92,7 @@ namespace Nethermind.Consensus.AuRa.Transactions
         private ITransactionPermissionContract? GetVersionedContract(BlockHeader blockHeader)
             => _contract.ResolveVersion(blockHeader);
 
-        private ITransactionPermissionContract.TxPermissions GetTxType(Transaction tx, bool contractExists) =>
+        private static ITransactionPermissionContract.TxPermissions GetTxType(Transaction tx, bool contractExists) =>
             tx.IsContractCreation
                 ? ITransactionPermissionContract.TxPermissions.Create
                 : contractExists

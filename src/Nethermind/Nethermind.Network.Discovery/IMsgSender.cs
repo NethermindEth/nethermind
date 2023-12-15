@@ -7,5 +7,5 @@ namespace Nethermind.Network.Discovery;
 
 public interface IMsgSender
 {
-    void SendMsg(DiscoveryMsg discoveryMsg);
+    Task SendMsg(DiscoveryMsg discoveryMsg);
 }

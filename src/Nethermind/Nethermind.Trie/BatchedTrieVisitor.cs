@@ -40,8 +40,8 @@ namespace Nethermind.Trie;
 public class BatchedTrieVisitor
 {
     // Not using shared pool so GC can reclaim them later.
-    private ArrayPool<Job> _jobArrayPool = ArrayPool<Job>.Create();
-    private ArrayPool<(TrieNode, SmallTrieVisitContext)> _trieNodePool = ArrayPool<(TrieNode, SmallTrieVisitContext)>.Create();
+    private readonly ArrayPool<Job> _jobArrayPool = ArrayPool<Job>.Create();
+    private readonly ArrayPool<(TrieNode, SmallTrieVisitContext)> _trieNodePool = ArrayPool<(TrieNode, SmallTrieVisitContext)>.Create();
 
     private readonly int _maxBatchSize;
     private readonly long _partitionCount;
@@ -52,7 +52,7 @@ public class BatchedTrieVisitor
     private long _queuedJobs;
     private bool _failed;
     private long _currentPointer;
-    private long _readAheadThreshold;
+    private readonly long _readAheadThreshold;
 
     private readonly ITrieNodeResolver _resolver;
     private readonly ITreeVisitor _visitor;

@@ -9,8 +9,8 @@ public class NodeAddResult
 
     public NodeBucketItem? EvictionCandidate { get; private init; }
 
-    private static NodeAddResult? _added = null;
-    private static NodeAddResult? _dropped = null;
+    private static readonly NodeAddResult? _added = null;
+    private static readonly NodeAddResult? _dropped = null;
 
     public static NodeAddResult Added()
     {

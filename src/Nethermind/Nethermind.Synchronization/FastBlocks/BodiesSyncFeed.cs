@@ -6,8 +6,11 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.State.Proofs;
@@ -19,35 +22,43 @@ using Nethermind.Synchronization.SyncLimits;
 
 namespace Nethermind.Synchronization.FastBlocks
 {
-    public class BodiesSyncFeed : ActivatedSyncFeed<BodiesSyncBatch?>
+    public class BodiesSyncFeed : BarrierSyncFeed<BodiesSyncBatch?>
     {
+        protected override long? LowestInsertedNumber => _blockTree.LowestInsertedBodyNumber;
+        protected override int BarrierWhenStartedMetadataDbKey => MetadataDbKeys.BodiesBarrierWhenStarted;
+        protected override long SyncConfigBarrierCalc => _syncConfig.AncientBodiesBarrierCalc;
+        protected override Func<bool> HasPivot =>
+            () => _blockTree.LowestInsertedBodyNumber is not null && _blockTree.LowestInsertedBodyNumber <= _syncConfig.PivotNumberParsed;
+
         private int _requestSize = GethSyncLimits.MaxBodyFetch;
         private const long DefaultFlushDbInterval = 100000; // About every 10GB on mainnet
         private readonly long _flushDbInterval; // About every 10GB on mainnet
 
-        private readonly ILogger _logger;
         private readonly IBlockTree _blockTree;
         private readonly ISyncConfig _syncConfig;
         private readonly ISyncReport _syncReport;
         private readonly ISyncPeerPool _syncPeerPool;
         private readonly IDbMeta _blocksDb;
 
-        private long _pivotNumber;
-        private long _barrier;
-
         private SyncStatusList _syncStatusList;
 
+        private bool ShouldFinish => !_syncConfig.DownloadBodiesInFastSync || AllDownloaded;
+        private bool AllDownloaded => (_blockTree.LowestInsertedBodyNumber ?? long.MaxValue) <= _barrier
+            || WithinOldBarrierDefault;
+
+        public override bool IsFinished => AllDownloaded;
         public BodiesSyncFeed(
-            ISyncModeSelector syncModeSelector,
+            ISpecProvider specProvider,
             IBlockTree blockTree,
             ISyncPeerPool syncPeerPool,
             ISyncConfig syncConfig,
             ISyncReport syncReport,
             IDbMeta blocksDb,
+            IDb metadataDb,
             ILogManager logManager,
-            long flushDbInterval = DefaultFlushDbInterval) : base(syncModeSelector)
+            long flushDbInterval = DefaultFlushDbInterval)
+            : base(metadataDb, specProvider, logManager.GetClassLogger())
         {
-            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _syncPeerPool = syncPeerPool ?? throw new ArgumentNullException(nameof(syncPeerPool));
             _syncConfig = syncConfig ?? throw new ArgumentNullException(nameof(syncConfig));
@@ -61,23 +72,19 @@ namespace Nethermind.Synchronization.FastBlocks
                     "Entered fast blocks mode without fast blocks enabled in configuration.");
             }
 
-            _pivotNumber = _syncConfig.PivotNumberParsed;
-            _barrier = _syncConfig.AncientBodiesBarrierCalc;
-            if (_logger.IsInfo) _logger.Info($"Using pivot {_pivotNumber} and barrier {_barrier} in bodies sync");
-
-            ResetSyncStatusList();
+            _pivotNumber = -1; // First reset in `InitializeFeed`.
         }
 
         public override void InitializeFeed()
         {
-            if (_pivotNumber < _syncConfig.PivotNumberParsed)
+            if (_pivotNumber != _syncConfig.PivotNumberParsed || _barrier != _syncConfig.AncientBodiesBarrierCalc)
             {
                 _pivotNumber = _syncConfig.PivotNumberParsed;
                 _barrier = _syncConfig.AncientBodiesBarrierCalc;
                 if (_logger.IsInfo) _logger.Info($"Changed pivot in bodies sync. Now using pivot {_pivotNumber} and barrier {_barrier}");
                 ResetSyncStatusList();
+                InitializeMetadataDb();
             }
-
             base.InitializeFeed();
         }
 
@@ -98,10 +105,7 @@ namespace Nethermind.Synchronization.FastBlocks
 
         private bool ShouldBuildANewBatch()
         {
-            bool shouldDownloadBodies = _syncConfig.DownloadBodiesInFastSync;
-            bool allBodiesDownloaded = _syncStatusList.LowestInsertWithoutGaps <= _barrier;
-            bool shouldFinish = !shouldDownloadBodies || allBodiesDownloaded;
-            if (shouldFinish)
+            if (ShouldFinish)
             {
                 ResetSyncStatusList();
                 Finish();
@@ -109,7 +113,6 @@ namespace Nethermind.Synchronization.FastBlocks
 
                 return false;
             }
-
             return true;
         }
 
@@ -191,10 +194,7 @@ namespace Nethermind.Synchronization.FastBlocks
         private bool TryPrepareBlock(BlockInfo blockInfo, BlockBody blockBody, out Block? block)
         {
             BlockHeader header = _blockTree.FindHeader(blockInfo.BlockHash, blockNumber: blockInfo.BlockNumber);
-            Hash256 rootHash = TxTrie.CalculateRoot(blockBody.Transactions);
-            bool txRootIsValid = rootHash == header.TxRoot;
-            bool unclesHashIsValid = UnclesHash.Calculate(blockBody.Uncles) == header.UnclesHash;
-            if (txRootIsValid && unclesHashIsValid)
+            if (BlockValidator.ValidateBodyAgainstHeader(header, blockBody))
             {
                 block = new Block(header, blockBody);
             }

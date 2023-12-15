@@ -57,7 +57,6 @@ namespace Nethermind.Blockchain
         public Block Head => _wrapped.Head;
         public void MarkChainAsProcessed(IReadOnlyList<Block> blocks) => throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} does not expect {nameof(MarkChainAsProcessed)} calls");
         public (BlockInfo Info, ChainLevelInfo Level) GetInfo(long number, Hash256 blockHash) => _wrapped.GetInfo(number, blockHash);
-        public UInt256? UpdateTotalDifficulty(Block block, UInt256 totalDifficulty) => throw new InvalidOperationException();
         public bool CanAcceptNewBlocks { get; } = false;
 
         public async Task Accept(IBlockTreeVisitor blockTreeVisitor, CancellationToken cancellationToken)
@@ -152,7 +151,7 @@ namespace Nethermind.Blockchain
             remove { }
         }
 
-        public int DeleteChainSlice(in long startNumber, long? endNumber = null)
+        public int DeleteChainSlice(in long startNumber, long? endNumber = null, bool force = false)
         {
             var bestKnownNumber = BestKnownNumber;
             if (endNumber is null || endNumber == bestKnownNumber)
@@ -164,7 +163,7 @@ namespace Nethermind.Blockchain
                         const long searchLimit = 2;
                         long endSearch = Math.Min(bestKnownNumber, startNumber + searchLimit - 1);
 
-                        IEnumerable<BlockHeader> GetPotentiallyCorruptedBlocks(long start)
+                        IEnumerable<BlockHeader?> GetPotentiallyCorruptedBlocks(long start)
                         {
                             for (long i = start; i <= endSearch; i++)
                             {
@@ -172,9 +171,9 @@ namespace Nethermind.Blockchain
                             }
                         }
 
-                        if (GetPotentiallyCorruptedBlocks(startNumber).Any(b => b is null))
+                        if (force || GetPotentiallyCorruptedBlocks(startNumber).Any(b => b is null))
                         {
-                            return _wrapped.DeleteChainSlice(startNumber);
+                            return _wrapped.DeleteChainSlice(startNumber, endNumber, force);
                         }
 
                         throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} cannot {nameof(DeleteChainSlice)} if searched blocks [{startNumber}, {endSearch}] are not corrupted.");
