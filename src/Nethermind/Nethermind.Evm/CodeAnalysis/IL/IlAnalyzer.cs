@@ -16,15 +16,16 @@ namespace Nethermind.Evm.CodeAnalysis.IL;
 /// </summary>
 internal static class IlAnalyzer
 {
+    public static FrozenDictionary<byte[], InstructionChunk> Patterns = FrozenDictionary<byte[], InstructionChunk>.Empty;
 
     /// <summary>
     /// Starts the analyzing in a background task and outputs the value in the <paramref name="codeInfo"/>.
     /// </summary>
     /// <param name="machineCode">The code to analyze.</param>
     /// <param name="codeInfo">The destination output.</param>
-    public static void StartAnalysis(byte[] machineCode, CodeInfo codeInfo)
+    public static Task StartAnalysis(byte[] machineCode, CodeInfo codeInfo)
     {
-        Task.Run(() =>
+        return Task.Run(() =>
         {
             IlInfo info = Analysis(machineCode);
             codeInfo.SetIlInfo(info);
@@ -43,7 +44,7 @@ internal static class IlAnalyzer
             for (int i = 0; i < machineCode.Length; i++, j++)
             {
                 Instruction opcode = (Instruction)machineCode[i];
-                opcodes[i] = (byte)opcode;
+                opcodes[j] = (byte)opcode;
                 if (opcode is > Instruction.PUSH0 and <= Instruction.PUSH32)
                 {
                     int immediatesCount = opcode - Instruction.PUSH0;
@@ -56,7 +57,7 @@ internal static class IlAnalyzer
         byte[] strippedBytecode = StripByteCode(machineCode);
         Dictionary<ushort, InstructionChunk> patternFound = new Dictionary<ushort, InstructionChunk>();
 
-        foreach (var (pattern, mapping) in IlInfo.Patterns)
+        foreach (var (pattern, mapping) in Patterns)
         {
 
             for (int i = 0; i < strippedBytecode.Length - pattern.Length + 1; i++)
@@ -71,7 +72,7 @@ internal static class IlAnalyzer
                 if (found)
                 {
                     patternFound.Add((ushort)i, mapping);
-                    i += pattern.Length;
+                    i += pattern.Length - 1;
                 }
             }
         }

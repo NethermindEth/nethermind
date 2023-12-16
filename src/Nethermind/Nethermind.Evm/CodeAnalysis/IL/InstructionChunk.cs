@@ -15,5 +15,4 @@ interface InstructionChunk
     void Invoke<T>(EvmState vmState, IReleaseSpec spec, ref int programCounter,
         ref long gasAvailable,
         ref EvmStack<T> stack) where T : struct, IIsTracing;
-
 }
