@@ -339,7 +339,7 @@ namespace Nethermind.Trie
 
         private static void EnhanceException(ReadOnlySpan<byte> rawKey, ValueHash256 rootHash, TrieException baseException)
         {
-            TrieNodeException? GetTrieNodeException(TrieException? exception) =>
+            static TrieNodeException? GetTrieNodeException(TrieException? exception) =>
                 exception switch
                 {
                     null => null,

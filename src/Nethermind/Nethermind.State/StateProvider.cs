@@ -824,7 +824,7 @@ namespace Nethermind.State
             _tree.Commit(blockNumber);
         }
 
-        public void CommitBranch()
+        public static void CommitBranch()
         {
             // placeholder for the three level Commit->CommitBlock->CommitBranch
         }

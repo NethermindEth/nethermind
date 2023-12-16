@@ -89,7 +89,7 @@ namespace Nethermind.Evm.Tracing.ParityStyle
             }
         }
 
-        private string GetActionType(ExecutionType executionType)
+        private static string GetActionType(ExecutionType executionType)
         {
             switch (executionType)
             {
@@ -413,7 +413,7 @@ namespace Nethermind.Evm.Tracing.ParityStyle
             PushAction(action);
         }
 
-        private string? GetCreateMethod(ExecutionType callType)
+        private static string? GetCreateMethod(ExecutionType callType)
         {
             switch (callType)
             {

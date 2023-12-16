@@ -50,8 +50,8 @@ namespace Nethermind.JsonRpc.Data
             return builder.Build();
         }
 
-        public bool Equals(AccessListItemForRpc other) => Equals(Address, other.Address) && StorageKeys.NullableSequenceEqual(other.StorageKeys);
+        public readonly bool Equals(AccessListItemForRpc other) => Equals(Address, other.Address) && StorageKeys.NullableSequenceEqual(other.StorageKeys);
         public override bool Equals(object? obj) => obj is AccessListItemForRpc other && Equals(other);
-        public override int GetHashCode() => HashCode.Combine(Address, StorageKeys);
+        public override readonly int GetHashCode() => HashCode.Combine(Address, StorageKeys);
     }
 }

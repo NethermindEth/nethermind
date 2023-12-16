@@ -49,7 +49,7 @@ namespace Nethermind.Trie.Pruning
 
         public void Dispose() { }
 
-        public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None) { }
+        public static void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None) { }
 
         private class ReadOnlyValueStore : IKeyValueStore
         {

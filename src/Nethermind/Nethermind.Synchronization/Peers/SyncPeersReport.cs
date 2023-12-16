@@ -189,7 +189,7 @@ namespace Nethermind.Synchronization.Peers
             _stringBuilder.Append('[').Append(peerInfo.SyncPeer.ClientId).Append(']');
         }
 
-        private string GetPaddedAverageTransferSpeed(INodeStats nodeStats, TransferSpeedType transferSpeedType)
+        private static string GetPaddedAverageTransferSpeed(INodeStats nodeStats, TransferSpeedType transferSpeedType)
         {
             long? speed = nodeStats.GetAverageTransferSpeed(transferSpeedType);
             if (speed is null)
@@ -230,7 +230,7 @@ namespace Nethermind.Synchronization.Peers
             public int Snap { get; set; }
             public int Total { get; set; }
 
-            public void AppendTo(StringBuilder sb, string allText)
+            public readonly void AppendTo(StringBuilder sb, string allText)
             {
                 if (Total == None)
                 {
@@ -248,7 +248,7 @@ namespace Nethermind.Synchronization.Peers
                 if (Witness > 0) AddComma(sb, ref added).Append(Witness).Append(" Witness");
                 if (Snap > 0) AddComma(sb, ref added).Append(Snap).Append(" Snap");
 
-                StringBuilder AddComma(StringBuilder sb, ref bool itemAdded)
+                static StringBuilder AddComma(StringBuilder sb, ref bool itemAdded)
                 {
                     if (itemAdded)
                     {

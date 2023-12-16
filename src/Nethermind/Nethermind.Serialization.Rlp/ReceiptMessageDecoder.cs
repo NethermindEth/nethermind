@@ -63,7 +63,7 @@ namespace Nethermind.Serialization.Rlp
             return txReceipt;
         }
 
-        private (int Total, int Logs) GetContentLength(TxReceipt item, RlpBehaviors rlpBehaviors)
+        private static (int Total, int Logs) GetContentLength(TxReceipt item, RlpBehaviors rlpBehaviors)
         {
             if (item is null)
             {
@@ -95,7 +95,7 @@ namespace Nethermind.Serialization.Rlp
             return (contentLength, logsLength);
         }
 
-        private int GetLogsLength(TxReceipt item)
+        private static int GetLogsLength(TxReceipt item)
         {
             int logsLength = 0;
             for (var i = 0; i < item.Logs.Length; i++)

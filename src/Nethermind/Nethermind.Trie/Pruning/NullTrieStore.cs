@@ -17,7 +17,7 @@ namespace Nethermind.Trie.Pruning
 
         public void FinishBlockCommit(TrieType trieType, long blockNumber, TrieNode? root, WriteFlags flags = WriteFlags.None) { }
 
-        public void HackPersistOnShutdown() { }
+        public static void HackPersistOnShutdown() { }
 
         public IReadOnlyTrieStore AsReadOnly(IKeyValueStore keyValueStore) => this;
 
@@ -37,6 +37,6 @@ namespace Nethermind.Trie.Pruning
 
         public void Dispose() { }
 
-        public byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None) => null;
+        public static byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None) => null;
     }
 }

@@ -32,7 +32,7 @@ namespace Nethermind.Network.P2P.Messages
 
             return new AddCapabilityMessage(new Capability(protocolCode, version));
         }
-        private int GetLength(AddCapabilityMessage msg, out int contentLength)
+        private static int GetLength(AddCapabilityMessage msg, out int contentLength)
         {
             contentLength = Rlp.LengthOf(msg.Capability.ProtocolCode.ToLowerInvariant());
             contentLength += Rlp.LengthOf(msg.Capability.Version);
