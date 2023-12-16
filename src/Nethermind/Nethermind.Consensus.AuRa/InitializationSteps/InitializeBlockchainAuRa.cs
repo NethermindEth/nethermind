@@ -69,7 +69,7 @@ public class InitializeBlockchainAuRa : InitializeBlockchain
             new ServiceTxFilter(_api.SpecProvider));
 
         IDictionary<long, IDictionary<Address, byte[]>> rewriteBytecode = _api.ChainSpec.AuRa.RewriteBytecode;
-        ContractRewriter? contractRewriter = rewriteBytecode?.Count > 0 ? new ContractRewriter(rewriteBytecode) : null;
+        AuraContractRewriter? contractRewriter = rewriteBytecode?.Count > 0 ? new AuraContractRewriter(rewriteBytecode) : null;
 
         var processor = (AuRaBlockProcessor)NewBlockProcessor(_api, auRaTxFilter, contractRewriter);
 
@@ -85,7 +85,7 @@ public class InitializeBlockchainAuRa : InitializeBlockchain
         return processor;
     }
 
-    protected virtual BlockProcessor NewBlockProcessor(AuRaNethermindApi api, ITxFilter txFilter, ContractRewriter contractRewriter)
+    protected virtual BlockProcessor NewBlockProcessor(AuRaNethermindApi api, ITxFilter txFilter, AuraContractRewriter contractRewriter)
     {
         IWorldState worldState = _api.WorldState!;
 

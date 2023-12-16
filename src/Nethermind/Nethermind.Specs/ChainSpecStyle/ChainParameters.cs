@@ -4,6 +4,7 @@
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
+using System.Collections.Generic;
 
 namespace Nethermind.Specs.ChainSpecStyle;
 
