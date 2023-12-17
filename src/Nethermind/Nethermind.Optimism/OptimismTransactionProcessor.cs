@@ -53,7 +53,9 @@ public class OptimismTransactionProcessor : TransactionProcessor
         // TODO: create OpBlockProcessor
         if (_opConfigHelper.IsCanyon(header))
         {
-            Hash256 currentHash = WorldState.GetCodeHash(_opConfigHelper.Create2DeployerAddress);
+            Hash256? currentHash = WorldState.AccountExists(_opConfigHelper.Create2DeployerAddress)
+                ? WorldState.GetCodeHash(_opConfigHelper.Create2DeployerAddress)
+                : null;
 
             if (currentHash != _opConfigHelper.Create2DeployerCodeHash)
             {

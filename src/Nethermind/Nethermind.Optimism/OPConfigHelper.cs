@@ -11,7 +11,7 @@ public class OPSpecHelper : IOPConfigHelper
 {
     private readonly ulong _regolithTimestamp;
     private readonly long _bedrockBlockNumber;
-    private readonly ulong _canyonTimestamp;
+    private readonly ulong? _canyonTimestamp;
 
     public Address L1FeeReceiver { get; init; }
 
@@ -38,7 +38,7 @@ public class OPSpecHelper : IOPConfigHelper
 
     public bool IsCanyon(BlockHeader header)
     {
-        return header.Timestamp >= _canyonTimestamp;
+        return header.Timestamp >= (_canyonTimestamp ?? long.MaxValue);
     }
 
     public Address Create2DeployerAddress { get; }
