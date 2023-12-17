@@ -175,6 +175,7 @@ namespace Nethermind.Specs.ChainSpecStyle.Json
             public ulong? CanyonTimestamp => Params.CanyonTimestamp;
             public Address L1FeeRecipient => Params.L1FeeRecipient;
             public Address L1BlockAddress => Params.L1BlockAddress;
+            public UInt256 CanyonBaseFeeChangeDenominator => Params.CanyonBaseFeeChangeDenominator;
             public Address Create2DeployerAddress => Params.Create2DeployerAddress;
             public Hash256 Create2DeployerCodeHash => Params.Create2DeployerCodeHash;
             public byte[] Create2DeployerCode => Params.Create2DeployerCode;
@@ -188,6 +189,7 @@ namespace Nethermind.Specs.ChainSpecStyle.Json
             public ulong? CanyonTimestamp { get; set; }
             public Address L1FeeRecipient { get; set; }
             public Address L1BlockAddress { get; set; }
+            public UInt256 CanyonBaseFeeChangeDenominator { get; set; }
             public Address Create2DeployerAddress { get; set; }
             public Hash256 Create2DeployerCodeHash { get; set; }
             public byte[] Create2DeployerCode { get; set; }

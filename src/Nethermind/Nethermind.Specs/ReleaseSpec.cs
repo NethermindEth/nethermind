@@ -72,6 +72,9 @@ namespace Nethermind.Specs
         public ulong Eip4844TransitionTimestamp { get; set; }
         public Address Eip1559FeeCollector { get; set; }
         public UInt256? Eip1559BaseFeeMinValue { get; set; }
+        public UInt256 ForkBaseFee { get; set; }
+        public UInt256 BaseFeeMaxChangeDenominator { get; set; }
+        public long ElasticityMultiplier { get; set; }
         public bool IsEip1153Enabled { get; set; }
         public bool IsEip3651Enabled { get; set; }
         public bool IsEip3855Enabled { get; set; }

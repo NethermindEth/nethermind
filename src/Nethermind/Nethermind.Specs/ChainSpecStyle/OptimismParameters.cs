@@ -3,6 +3,7 @@
 
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Int256;
 
 namespace Nethermind.Specs.ChainSpecStyle
 {
@@ -17,6 +18,8 @@ namespace Nethermind.Specs.ChainSpecStyle
         public Address L1FeeRecipient { get; set; }
 
         public Address L1BlockAddress { get; set; }
+
+        public UInt256 CanyonBaseFeeChangeDenominator { get; set; }
 
         public Address Create2DeployerAddress { get; set; }
 
