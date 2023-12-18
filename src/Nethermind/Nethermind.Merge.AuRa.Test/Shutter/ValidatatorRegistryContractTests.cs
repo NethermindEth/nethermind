@@ -3,11 +3,13 @@
 
 using FluentAssertions;
 using Nethermind.Abi;
+using Nethermind.Blockchain.Contracts.Json;
 using Nethermind.Consensus;
 using Nethermind.Consensus.AuRa.Contracts;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.Tracing;
+using Nethermind.Evm.Tracing.GethStyle.JavaScript;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Merge.AuRa.Shutter;
 using Nethermind.TxPool;
@@ -40,12 +42,18 @@ class ValidatorRegistryContractTests
     [SetUp]
     public void SetUp()
     {
+        _abiEncoder = new AbiEncoder();
         _transactionProcessor = Substitute.For<IReadOnlyTransactionProcessor>();
-        _abiEncoder = Substitute.For<IAbiEncoder>();
         _signer = Substitute.For<ISigner>();
         _txSender = Substitute.For<ITxSender>();
         _txSealer = Substitute.For<ITxSealer>();
         _validatorContract = Substitute.For<IValidatorContract>();
+
+        AbiDefinition abiDefinition = new AbiDefinitionParser().Parse(typeof(ValidatorRegistryContract));
+        AbiFunctionDescription getNumUpdatesDef = abiDefinition.GetFunction("getNumUpdates");
+        byte[] getNumUpdatesSig = getNumUpdatesDef.GetHash().ToBytes()[..4];
+        AbiFunctionDescription getUpdateDef = abiDefinition.GetFunction("getUpdate");
+        byte[] getUpdateSig = getUpdateDef.GetHash().ToBytes()[..4];
 
         // validator index = 2
         _validatorContract.GetValidators(_blockHeader).Returns(new Address[] {Address.Zero, Address.Zero, _contractAddress, Address.Zero});
@@ -53,9 +61,20 @@ class ValidatorRegistryContractTests
         // fake execution of contract
         _transactionProcessor.When(x => x.Execute(Arg.Any<Transaction>(), Arg.Any<Evm.BlockExecutionContext>(), Arg.Any<CallOutputTracer>())).Do(x => {
             Transaction transaction = x.Arg<Transaction>();
+            byte[] functionSig = transaction.Data!.Value[..4].ToArray();
             CallOutputTracer tracer = x.Arg<CallOutputTracer>();
+
+            if (functionSig == getNumUpdatesSig)
+            {
+                tracer.ReturnValue = _abiEncoder.Encode(getNumUpdatesDef.GetReturnInfo(), [10]);
+            }
+            else if (functionSig == getUpdateSig)
+            {
+                // encode update
+                tracer.ReturnValue = _abiEncoder.Encode(getNumUpdatesDef.GetReturnInfo(), [10]);
+            }
+
             tracer.StatusCode = Evm.StatusCode.Success;
-            tracer.ReturnValue = new byte[] {10, 100};
         });
     }
 

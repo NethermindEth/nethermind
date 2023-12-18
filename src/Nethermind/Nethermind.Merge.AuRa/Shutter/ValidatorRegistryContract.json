@@ -11,5 +11,19 @@
     ],
     "stateMutability": "view",
     "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "i",
+        "type": "uint256"
+      }
+    ],
+    "name": "getUpdate",
+    "outputs": [
+    ],
+    "stateMutability": "view",
+    "type": "function"
   }
 ]

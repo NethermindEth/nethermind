@@ -28,7 +28,7 @@ public class ValidatorRegistryContract : CallableContract, IValidatorRegistryCon
     private readonly ulong _validatorIndex;
     private const string update = "update";
     private const string getNumUpdates = "getNumUpdates";
-    private const string getUpate = "getUpdate";
+    private const string getUpdate = "getUpdate";
     internal const byte validatorRegistryMessageVersion = 0;
 
     public ValidatorRegistryContract(ITransactionProcessor transactionProcessor, IAbiEncoder abiEncoder, Address contractAddress, ISigner signer, ITxSender txSender, ITxSealer txSealer, IValidatorContract validatorContract, BlockHeader blockHeader)
@@ -44,12 +44,12 @@ public class ValidatorRegistryContract : CallableContract, IValidatorRegistryCon
     public UInt256 GetNumUpdates(BlockHeader blockHeader)
     {
         object[] res = Call(blockHeader, getNumUpdates, Address.Zero, Array.Empty<object>());
-        return new UInt256((byte[])res[0], true);
+        return (UInt256)res[0];
     }
 
     public (byte[], byte[]) GetUpdate(BlockHeader blockHeader, in UInt256 i)
     {
-        object[] res = Call(blockHeader, getUpate, Address.Zero, new[] {i});
+        object[] res = Call(blockHeader, getUpdate, Address.Zero, [i]);
         return ((byte[])res[0], (byte[])res[1]);
     }
 
