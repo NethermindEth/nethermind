@@ -10,12 +10,12 @@ public class ByPathStateMemDb : MemColumnsDb<StateColumns>, IByPathStateDb
 {
     private Dictionary<StateColumns, ByPathStateDbPrunner> _prunners;
 
-    public ByPathStateMemDb() : base()
+    public ByPathStateMemDb(ILogManager logManager) : base()
     {
         _prunners = new Dictionary<StateColumns, ByPathStateDbPrunner>()
         {
-            { StateColumns.State, new ByPathStateDbPrunner(GetColumnDb(StateColumns.State), LimboLogs.Instance)},
-            { StateColumns.Storage, new ByPathStateDbPrunner(GetColumnDb(StateColumns.Storage), LimboLogs.Instance)}
+            { StateColumns.State, new ByPathStateDbPrunner(StateColumns.State, GetColumnDb(StateColumns.State), logManager)},
+            { StateColumns.Storage, new ByPathStateDbPrunner(StateColumns.Storage, GetColumnDb(StateColumns.Storage), logManager)}
         };
     }
 

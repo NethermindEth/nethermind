@@ -27,8 +27,8 @@ public class ByPathStateDb : IByPathStateDb
         _currentDb = _dbFactory.CreateColumnsDb<StateColumns>(_settings);
         _prunners = new Dictionary<StateColumns, ByPathStateDbPrunner>()
         {
-            { StateColumns.State, new ByPathStateDbPrunner(_currentDb.GetColumnDb(StateColumns.State), logManager)},
-            { StateColumns.Storage, new ByPathStateDbPrunner(_currentDb.GetColumnDb(StateColumns.Storage), logManager)}
+            { StateColumns.State, new ByPathStateDbPrunner(StateColumns.State, _currentDb.GetColumnDb(StateColumns.State), logManager)},
+            { StateColumns.Storage, new ByPathStateDbPrunner(StateColumns.Storage, _currentDb.GetColumnDb(StateColumns.Storage), logManager)}
         };
     }
 

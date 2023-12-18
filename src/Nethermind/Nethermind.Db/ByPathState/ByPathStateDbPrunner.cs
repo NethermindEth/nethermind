@@ -13,15 +13,22 @@ using Nethermind.Logging;
 namespace Nethermind.Db.ByPathState;
 public class ByPathStateDbPrunner
 {
+    private StateColumns _column;
     private Task? _pruneTask;
     private CancellationTokenSource _pruningTaskCancellationTokenSource = new();
     private IKeyValueStoreWithBatching _keyValueStore;
-    private BlockingCollection<KeyRange> _cleanupQueue;
+    private BlockingCollection<KeyRange>? _cleanupQueue;
     private readonly ILogger _logger;
+    private int _totalCleanupRequests;
+    private readonly System.Timers.Timer _logTimer;
+    private DateTime _cleanUpStart;
 
-    public ByPathStateDbPrunner(IKeyValueStoreWithBatching keyValueStore, ILogManager? logManager)
+    public ByPathStateDbPrunner(StateColumns column, IKeyValueStoreWithBatching keyValueStore, ILogManager? logManager)
     {
+        _column = column;
         _keyValueStore = keyValueStore;
+        _logTimer = new System.Timers.Timer(TimeSpan.FromSeconds(3));
+        _logTimer.Elapsed += _logTimer_Elapsed;
         _logger = logManager?.GetClassLogger<ByPathStateDbPrunner>() ?? throw new ArgumentNullException(nameof(logManager));
     }
 
@@ -29,7 +36,7 @@ public class ByPathStateDbPrunner
     {
         if (_cleanupQueue is null)
         {
-            if (_logger.IsInfo) _logger.Info("Cleanup queue not available");
+            if (_logger.IsInfo) _logger.Info($"{_column} -  Cleanup queue not available");
             return;
         }
         if (_logger.IsTrace) _logger.Trace($"Enqueueing range for deletions - from: {from.ToHexString()} | to: {to.ToHexString()}");
@@ -40,10 +47,10 @@ public class ByPathStateDbPrunner
     {
         if (_cleanupQueue is null)
         {
-            if (_logger.IsInfo) _logger.Info("Cleanup queue not available");
+            if (_logger.IsInfo) _logger.Info($"{_column} - Cleanup queue not available");
             return;
         }
-        if (_logger.IsInfo) _logger.Info($"Cleanup requests completed - queue size {_cleanupQueue.Count}");
+        if (_logger.IsInfo) _logger.Info($"{_column} - Cleanup requests completed - queue size {_cleanupQueue.Count}");
         _cleanupQueue.CompleteAdding();
     }
 
@@ -51,7 +58,7 @@ public class ByPathStateDbPrunner
     {
         if (_pruneTask?.IsCompleted == false)
         {
-            if (_logger.IsWarn) _logger.Warn($"Cleanup task not finished - cancelling - queue size {_cleanupQueue.Count}");
+            if (_logger.IsWarn) _logger.Warn($"{_column} - Cleanup task not finished - cancelling - queue size {_cleanupQueue.Count}");
             _pruningTaskCancellationTokenSource.Cancel();
             _pruneTask.Wait();
         }
@@ -62,11 +69,14 @@ public class ByPathStateDbPrunner
 
         if (_pruneTask is null)
         {
-            if (_logger.IsWarn) _logger.Warn($"Staring new db cleanup task");
+            if (_logger.IsWarn) _logger.Warn($"{_column} - Staring new db cleanup task");
             _cleanupQueue = new BlockingCollection<KeyRange>();
             _pruningTaskCancellationTokenSource = new();
             _pruneTask = BuildCleaningTask();
             _pruneTask.Start();
+            _cleanUpStart = DateTime.Now;
+            Interlocked.Exchange(ref _totalCleanupRequests, 0);
+            _logTimer.Start();
         }
     }
 
@@ -76,17 +86,22 @@ public class ByPathStateDbPrunner
     {
         if (_pruneTask is not null)
         {
-            if (_logger.IsInfo) _logger.Info($"Waiting for cleanup task to finish");
+            if (_logger.IsInfo) _logger.Info($"{_column} - Waiting for cleanup task to finish");
             _pruneTask.Wait();
         }
+    }
+
+    private void _logTimer_Elapsed(object? sender, System.Timers.ElapsedEventArgs e)
+    {
+        TimeSpan sinceStart = DateTime.Now - _cleanUpStart;
+        int processed = (int)(_totalCleanupRequests / sinceStart.TotalSeconds);
+        if (_logger.IsInfo) _logger.Info($"Processing db deletion for {_column} at {processed} requests / s");
     }
 
     private Task BuildCleaningTask()
     {
         return new Task(() =>
         {
-            int removed = 0;
-            Stopwatch sw = new();
             while (!_cleanupQueue.IsCompleted)
             {
                 KeyRange toBeRemoved = null;
@@ -97,24 +112,17 @@ public class ByPathStateDbPrunner
                 catch (InvalidOperationException) { }
                 catch (OperationCanceledException)
                 {
-                    if (_logger.IsWarn) _logger.Warn($"Cleanup taks cancelled");
+                    if (_logger.IsWarn) _logger.Warn($"{_column} - Cleanup task cancelled");
                     break;
                 }
 
-                if (toBeRemoved is not null)
-                {
-                    _keyValueStore.DeleteByRange(toBeRemoved.From, toBeRemoved.To);
-                    Interlocked.Increment(ref removed);
-                    if (removed > 10_000)
-                    {
-                        if (_logger.IsInfo) _logger.Info($"Executed 10 000 deletions in {sw.ElapsedMilliseconds} ms");
-                        sw.Restart();
-                        Interlocked.Exchange(ref removed, 0);
-                    }
-                }
+                if (toBeRemoved is null) continue;
+
+                _keyValueStore.DeleteByRange(toBeRemoved.From, toBeRemoved.To);
+                Interlocked.Increment(ref _totalCleanupRequests);
             }
-            sw.Stop();
-            if (_logger.IsInfo) _logger.Info($"Executed {removed} deletions in {sw.ElapsedMilliseconds} ms");
+            if (_logger.IsInfo) _logger.Info($"Processed {_column} db deletion - total {_totalCleanupRequests} at {(int)(_totalCleanupRequests / (DateTime.Now - _cleanUpStart).TotalSeconds)} requests / s");
+            _logTimer.Stop();
         });
     }
 
