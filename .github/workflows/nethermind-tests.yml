@@ -111,7 +111,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - name: Download test outcomes
-      uses: actions/download-artifact@v3
+      uses: actions/download-artifact@v4
     - name: Ensure tests passed
       run: |
         data=$(cat **/nethermind.outcome) && data=${data%?}
@@ -181,7 +181,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - name: Download test outcomes
-      uses: actions/download-artifact@v3
+      uses: actions/download-artifact@v4
     - name: Ensure tests passed
       run: |
         data=$(cat **/ethereum.outcome) && data=${data%?}
@@ -195,7 +195,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Download coverage reports
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           path: .coverage
       - name: Upload coverage reports to Codecov
