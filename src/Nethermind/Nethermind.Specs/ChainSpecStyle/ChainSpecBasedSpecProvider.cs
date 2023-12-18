@@ -214,6 +214,11 @@ namespace Nethermind.Specs.ChainSpecStyle
             releaseSpec.ForkBaseFee = chainSpec.Parameters.Eip1559BaseFeeInitialValue;
             releaseSpec.BaseFeeMaxChangeDenominator = chainSpec.Parameters.Eip1559BaseFeeMaxChangeDenominator;
 
+            if (chainSpec.Optimism.CanyonTimestamp <= releaseStartTimestamp)
+            {
+                releaseSpec.BaseFeeMaxChangeDenominator = chainSpec.Optimism.CanyonBaseFeeChangeDenominator;
+            }
+
 
             if (chainSpec.Ethash is not null)
             {
