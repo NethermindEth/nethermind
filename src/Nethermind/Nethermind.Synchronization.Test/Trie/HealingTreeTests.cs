@@ -83,7 +83,7 @@ public class HealingTreeTests
             k => throw new MissingTrieNodeException("", new TrieNodeException("", _key), path, 1),
             k => new TrieNode(NodeType.Leaf) { Key = path });
         TestMemDb db = new();
-        trieStore.AsKeyValueStore().Returns(db);
+        trieStore.GetByHashKeyValueStore().Returns(db);
 
         ITrieNodeRecovery<GetTrieNodesRequest> recovery = Substitute.For<ITrieNodeRecovery<GetTrieNodesRequest>>();
         recovery.CanRecover.Returns(isMainThread);

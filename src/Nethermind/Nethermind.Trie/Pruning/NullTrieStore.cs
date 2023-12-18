@@ -17,8 +17,6 @@ namespace Nethermind.Trie.Pruning
 
         public void FinishBlockCommit(TrieType trieType, long blockNumber, TrieNode? root, WriteFlags flags = WriteFlags.None) { }
 
-        public static void HackPersistOnShutdown() { }
-
         public IReadOnlyTrieStore AsReadOnly(IKeyValueStore keyValueStore) => this;
 
         public event EventHandler<ReorgBoundaryReached> ReorgBoundaryReached
@@ -27,7 +25,7 @@ namespace Nethermind.Trie.Pruning
             remove { }
         }
 
-        public IKeyValueStore AsKeyValueStore() => null!;
+        public IReadOnlyKeyValueStore GetByHashKeyValueStore() => null!;
 
         public TrieNode FindCachedOrUnknown(Hash256 hash) => new(NodeType.Unknown, hash);
 
@@ -37,6 +35,8 @@ namespace Nethermind.Trie.Pruning
 
         public void Dispose() { }
 
-        public static byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None) => null;
+        public void Set(in ValueHash256 hash, byte[] rlp)
+        {
+        }
     }
 }

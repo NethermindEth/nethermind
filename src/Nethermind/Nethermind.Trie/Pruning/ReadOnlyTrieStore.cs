@@ -14,13 +14,13 @@ namespace Nethermind.Trie.Pruning
     {
         private readonly TrieStore _trieStore;
         private readonly IKeyValueStore? _readOnlyStore;
-        private readonly ReadOnlyValueStore _publicStore;
+        private readonly IReadOnlyKeyValueStore _publicStore;
 
         public ReadOnlyTrieStore(TrieStore trieStore, IKeyValueStore? readOnlyStore)
         {
             _trieStore = trieStore ?? throw new ArgumentNullException(nameof(trieStore));
             _readOnlyStore = readOnlyStore;
-            _publicStore = new ReadOnlyValueStore(_trieStore.AsKeyValueStore());
+            _publicStore = _trieStore.GetByHashKeyValueStore();
         }
 
         public TrieNode FindCachedOrUnknown(Hash256 hash) =>
@@ -45,24 +45,11 @@ namespace Nethermind.Trie.Pruning
             remove { }
         }
 
-        public IKeyValueStore AsKeyValueStore() => _publicStore;
+        public IReadOnlyKeyValueStore GetByHashKeyValueStore() => _publicStore;
+        public void Set(in ValueHash256 hash, byte[] rlp)
+        {
+        }
 
         public void Dispose() { }
-
-        public static void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None) { }
-
-        private class ReadOnlyValueStore : IKeyValueStore
-        {
-            private readonly IKeyValueStore _keyValueStore;
-
-            public ReadOnlyValueStore(IKeyValueStore keyValueStore)
-            {
-                _keyValueStore = keyValueStore;
-            }
-
-            public byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None) => _keyValueStore.Get(key, flags);
-
-            public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None) { }
-        }
     }
 }
