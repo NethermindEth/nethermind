@@ -53,7 +53,7 @@ public class ValidatorRegistryContract : CallableContract, IValidatorRegistryCon
         return ((byte[])res[0], (byte[])res[1]);
     }
 
-    private ulong GetNonce(BlockHeader blockHeader)
+    internal ulong GetNonce(BlockHeader blockHeader)
     {
         UInt256 update = GetNumUpdates(blockHeader);
         for (UInt256 i = update - 1; i >= 0; i -= 1)
@@ -67,7 +67,7 @@ public class ValidatorRegistryContract : CallableContract, IValidatorRegistryCon
         return 0;
     }
 
-    private ulong GetValidatorIndex(BlockHeader blockHeader, IValidatorContract validatorContract)
+    internal ulong GetValidatorIndex(BlockHeader blockHeader, IValidatorContract validatorContract)
     {
         Address[] validators = validatorContract.GetValidators(blockHeader);
         for (int i = 0; i < validators.Length; i++)

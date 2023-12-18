@@ -7,6 +7,7 @@ using Nethermind.Consensus;
 using Nethermind.Consensus.AuRa.Contracts;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Merge.AuRa.Shutter;
 using Nethermind.TxPool;
@@ -46,9 +47,16 @@ class ValidatorRegistryContractTests
         _txSealer = Substitute.For<ITxSealer>();
         _validatorContract = Substitute.For<IValidatorContract>();
 
-        // fake out eth_call
-        // Transaction getNumUpdatesTx = GenerateTransaction<SystemTransaction>(ValidatorRegistryContract.GET_NUM_UPDATES, _signer.Address, Array.Empty<object>());
-        // _blockchainBridge.Call(_blockHeader, getNumUpdatesTx)
+        // validator index = 2
+        _validatorContract.GetValidators(_blockHeader).Returns(new Address[] {Address.Zero, Address.Zero, _contractAddress, Address.Zero});
+
+        // fake execution of contract
+        _transactionProcessor.When(x => x.Execute(Arg.Any<Transaction>(), Arg.Any<Evm.BlockExecutionContext>(), Arg.Any<CallOutputTracer>())).Do(x => {
+            Transaction transaction = x.Arg<Transaction>();
+            CallOutputTracer tracer = x.Arg<CallOutputTracer>();
+            tracer.StatusCode = Evm.StatusCode.Success;
+            tracer.ReturnValue = new byte[] {10, 100};
+        });
     }
 
     [TearDown]
@@ -74,9 +82,17 @@ class ValidatorRegistryContractTests
     }
 
     [Test]
-    public void Can_calculate_nonce()
+    public void Can_calculate_validator_index()
     {
         ValidatorRegistryContract contract = new(_transactionProcessor, _abiEncoder, _contractAddress, _signer, _txSender, _txSealer, _validatorContract, _blockHeader);
+        ulong validatorIndex = contract.GetValidatorIndex(_blockHeader, _validatorContract);
+        validatorIndex.Should().Be(2);
+    }
+
+    [Test]
+    public void Can_calculate_nonce()
+    {
+        // ValidatorRegistryContract contract = new(_transactionProcessor, _abiEncoder, _contractAddress, _signer, _txSender, _txSealer, _validatorContract, _blockHeader);
     }
 
     [Test]
