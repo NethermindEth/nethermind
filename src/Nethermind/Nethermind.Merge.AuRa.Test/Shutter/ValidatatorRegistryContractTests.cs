@@ -4,6 +4,7 @@
 using FluentAssertions;
 using Nethermind.Abi;
 using Nethermind.Consensus;
+using Nethermind.Consensus.AuRa.Contracts;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.TransactionProcessing;
@@ -33,6 +34,7 @@ class ValidatorRegistryContractTests
     private ISigner _signer;
     private ITxSender _txSender;
     private ITxSealer _txSealer;
+    private IValidatorContract _validatorContract;
 
     [SetUp]
     public void SetUp()
@@ -42,6 +44,7 @@ class ValidatorRegistryContractTests
         _signer = Substitute.For<ISigner>();
         _txSender = Substitute.For<ITxSender>();
         _txSealer = Substitute.For<ITxSealer>();
+        _validatorContract = Substitute.For<IValidatorContract>();
 
         // fake out eth_call
         // Transaction getNumUpdatesTx = GenerateTransaction<SystemTransaction>(ValidatorRegistryContract.GET_NUM_UPDATES, _signer.Address, Array.Empty<object>());
@@ -73,7 +76,7 @@ class ValidatorRegistryContractTests
     [Test]
     public void Can_calculate_nonce()
     {
-        ValidatorRegistryContract contract = new(_transactionProcessor, _abiEncoder, _contractAddress, _signer, _txSender, _txSealer, _blockHeader);
+        ValidatorRegistryContract contract = new(_transactionProcessor, _abiEncoder, _contractAddress, _signer, _txSender, _txSealer, _validatorContract, _blockHeader);
     }
 
     [Test]

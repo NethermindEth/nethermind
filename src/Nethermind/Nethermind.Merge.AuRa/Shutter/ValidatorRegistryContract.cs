@@ -8,6 +8,7 @@ using System.Threading.Tasks;
 using Nethermind.Abi;
 using Nethermind.Blockchain.Contracts;
 using Nethermind.Consensus;
+using Nethermind.Consensus.AuRa.Contracts;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Evm.TransactionProcessing;
@@ -30,26 +31,14 @@ public class ValidatorRegistryContract : CallableContract, IValidatorRegistryCon
     private const string getUpate = "getUpdate";
     internal const byte validatorRegistryMessageVersion = 0;
 
-    public ValidatorRegistryContract(ITransactionProcessor transactionProcessor, IAbiEncoder abiEncoder, Address contractAddress, ISigner signer, ITxSender txSender, ITxSealer txSealer, BlockHeader blockHeader)
+    public ValidatorRegistryContract(ITransactionProcessor transactionProcessor, IAbiEncoder abiEncoder, Address contractAddress, ISigner signer, ITxSender txSender, ITxSealer txSealer, IValidatorContract validatorContract, BlockHeader blockHeader)
         : base(transactionProcessor, abiEncoder, contractAddress)
     {
         _signer = signer;
         _txSender = txSender;
         _txSealer = txSealer;
-        _validatorIndex = 0; // what is this?
-
-        // set nonce based on last nonce observed from this address
-        _nonce = 0;
-        UInt256 update = GetNumUpdates(blockHeader);
-        for (UInt256 i = update - 1; i >= 0; i -= 1)
-        {
-            Message m = GetUpdateMessage(blockHeader, i);
-            if (m.Sender == ContractAddress!)
-            {
-                _nonce = m.Nonce + 1;
-                break;
-            }
-        }
+        _validatorIndex = GetValidatorIndex(blockHeader, validatorContract);
+        _nonce = GetNonce(blockHeader);
     }
 
     public UInt256 GetNumUpdates(BlockHeader blockHeader)
@@ -62,6 +51,34 @@ public class ValidatorRegistryContract : CallableContract, IValidatorRegistryCon
     {
         object[] res = Call(blockHeader, getUpate, Address.Zero, new[] {i});
         return ((byte[])res[0], (byte[])res[1]);
+    }
+
+    private ulong GetNonce(BlockHeader blockHeader)
+    {
+        UInt256 update = GetNumUpdates(blockHeader);
+        for (UInt256 i = update - 1; i >= 0; i -= 1)
+        {
+            Message m = GetUpdateMessage(blockHeader, i);
+            if (m.Sender == ContractAddress!)
+            {
+                return m.Nonce + 1;
+            }
+        }
+        return 0;
+    }
+
+    private ulong GetValidatorIndex(BlockHeader blockHeader, IValidatorContract validatorContract)
+    {
+        Address[] validators = validatorContract.GetValidators(blockHeader);
+        for (int i = 0; i < validators.Length; i++)
+        {
+            if (validators[i] == ContractAddress!)
+            {
+                return (ulong)i;
+            }
+        }
+
+        throw new Exception("Not registered as validator on beacon chain, cannot be Shutter validator.");
     }
 
     private Message GetUpdateMessage(BlockHeader blockHeader, UInt256 i)
@@ -144,15 +161,6 @@ public class ValidatorRegistryContract : CallableContract, IValidatorRegistryCon
             IsRegistration = encodedMessage[45] == 1;
         }
 
-        private void ComputeRegistryMessagePrefix(Span<byte> registryMessagePrefix)
-        {
-            registryMessagePrefix[0] = Version;
-            BinaryPrimitives.WriteUInt64BigEndian(registryMessagePrefix[1..], ChainId);
-            Sender.Bytes.CopyTo(registryMessagePrefix[9..]);
-            BinaryPrimitives.WriteUInt64BigEndian(registryMessagePrefix[29..], ValidatorIndex);
-            BinaryPrimitives.WriteUInt64BigEndian(registryMessagePrefix[37..], Nonce);
-        }
-
         public byte[] ComputeDeregistrationMessage()
         {
             Span<byte> registryMessagePrefix = stackalloc byte[46];
@@ -167,6 +175,15 @@ public class ValidatorRegistryContract : CallableContract, IValidatorRegistryCon
             registryMessagePrefix[45] = 1;
             return registryMessagePrefix.ToArray();
         }
-    }
 
+        private void ComputeRegistryMessagePrefix(Span<byte> registryMessagePrefix)
+        {
+            registryMessagePrefix[0] = Version;
+            BinaryPrimitives.WriteUInt64BigEndian(registryMessagePrefix[1..], ChainId);
+            Sender.Bytes.CopyTo(registryMessagePrefix[9..]);
+            BinaryPrimitives.WriteUInt64BigEndian(registryMessagePrefix[29..], ValidatorIndex);
+            BinaryPrimitives.WriteUInt64BigEndian(registryMessagePrefix[37..], Nonce);
+        }
+
+    }
 }
