@@ -28,8 +28,7 @@ using Nethermind.JsonRpc.Modules.Witness;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
 using Nethermind.JsonRpc.Modules.Rpc;
-using System.IO.Abstractions;
-using Nethermind.Blockchain;
+using Nethermind.Serialization.Json;
 
 namespace Nethermind.Init.Steps;
 
@@ -63,6 +62,7 @@ public class RegisterRpcModules : IStep
         if (_api.SyncModeSelector is null) throw new StepDependencyException(nameof(_api.SyncModeSelector));
         if (_api.TxSender is null) throw new StepDependencyException(nameof(_api.TxSender));
         if (_api.StateReader is null) throw new StepDependencyException(nameof(_api.StateReader));
+        if (_api.WorldStateManager is null) throw new StepDependencyException(nameof(_api.WorldStateManager));
         if (_api.PeerManager is null) throw new StepDependencyException(nameof(_api.PeerManager));
 
         if (jsonRpcConfig.Enabled)
@@ -90,7 +90,6 @@ public class RegisterRpcModules : IStep
         if (_api.ReceiptStorage is null) throw new StepDependencyException(nameof(_api.ReceiptStorage));
         if (_api.GasPriceOracle is null) throw new StepDependencyException(nameof(_api.GasPriceOracle));
         if (_api.EthSyncingInfo is null) throw new StepDependencyException(nameof(_api.EthSyncingInfo));
-        if (_api.ReadOnlyTrieStore is null) throw new StepDependencyException(nameof(_api.ReadOnlyTrieStore));
 
 
         EthModuleFactory ethModuleFactory = new(
@@ -118,10 +117,11 @@ public class RegisterRpcModules : IStep
         if (_api.PeerPool is null) throw new StepDependencyException(nameof(_api.PeerPool));
         if (_api.WitnessRepository is null) throw new StepDependencyException(nameof(_api.WitnessRepository));
 
-        ProofModuleFactory proofModuleFactory = new(_api.DbProvider, _api.BlockTree, _api.ReadOnlyTrieStore, _api.BlockPreprocessor, _api.ReceiptFinder, _api.SpecProvider, _api.LogManager);
+        ProofModuleFactory proofModuleFactory = new(_api.WorldStateManager, _api.BlockTree, _api.BlockPreprocessor, _api.ReceiptFinder, _api.SpecProvider, _api.LogManager);
         rpcModuleProvider.RegisterBounded(proofModuleFactory, 2, rpcConfig.Timeout);
 
         DebugModuleFactory debugModuleFactory = new(
+            _api.WorldStateManager,
             _api.DbProvider,
             _api.BlockTree,
             rpcConfig,
@@ -130,7 +130,6 @@ public class RegisterRpcModules : IStep
             _api.RewardCalculatorSource,
             _api.ReceiptStorage,
             new ReceiptMigration(_api),
-            _api.ReadOnlyTrieStore,
             _api.ConfigProvider,
             _api.SpecProvider,
             _api.SyncModeSelector,
@@ -139,9 +138,8 @@ public class RegisterRpcModules : IStep
         rpcModuleProvider.RegisterBoundedByCpuCount(debugModuleFactory, rpcConfig.Timeout);
 
         TraceModuleFactory traceModuleFactory = new(
-            _api.DbProvider,
+            _api.WorldStateManager,
             _api.BlockTree,
-            _api.ReadOnlyTrieStore,
             rpcConfig,
             _api.BlockPreprocessor,
             _api.RewardCalculatorSource,

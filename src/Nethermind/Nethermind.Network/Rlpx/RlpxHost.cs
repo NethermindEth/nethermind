@@ -40,8 +40,8 @@ namespace Nethermind.Network.Rlpx
         private readonly ILogger _logger;
         private readonly ISessionMonitor _sessionMonitor;
         private readonly IDisconnectsAnalyzer _disconnectsAnalyzer;
-        private IEventExecutorGroup _group;
-        private TimeSpan _sendLatency;
+        private readonly IEventExecutorGroup _group;
+        private readonly TimeSpan _sendLatency;
         private readonly TimeSpan _connectTimeout;
 
         public RlpxHost(IMessageSerializationService serializationService,

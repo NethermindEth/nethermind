@@ -825,7 +825,7 @@ namespace Nethermind.Network
 
         private string GetIncompatibleDesc(IReadOnlyCollection<Peer> incompatibleNodes)
         {
-            if (!incompatibleNodes.Any())
+            if (incompatibleNodes.Count == 0)
             {
                 return "0";
             }

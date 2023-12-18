@@ -14,10 +14,10 @@ namespace Nethermind.Consensus.Ethash
 {
     internal class HintBasedCache
     {
-        private Dictionary<Guid, HashSet<uint>> _epochsPerGuid = new();
-        private Dictionary<uint, int> _epochRefs = new();
-        private Dictionary<uint, Task<IEthashDataSet>> _cachedSets = new();
-        private Dictionary<uint, DataSetWithTime> _recent = new();
+        private readonly Dictionary<Guid, HashSet<uint>> _epochsPerGuid = new();
+        private readonly Dictionary<uint, int> _epochRefs = new();
+        private readonly Dictionary<uint, Task<IEthashDataSet>> _cachedSets = new();
+        private readonly Dictionary<uint, DataSetWithTime> _recent = new();
 
         private struct DataSetWithTime
         {
@@ -36,7 +36,7 @@ namespace Nethermind.Consensus.Ethash
         public int CachedEpochsCount => _cachedEpochsCount;
 
         private readonly Func<uint, IEthashDataSet> _createDataSet;
-        private ILogger _logger;
+        private readonly ILogger _logger;
 
         public HintBasedCache(Func<uint, IEthashDataSet> createDataSet, ILogManager logManager)
         {

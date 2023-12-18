@@ -14,7 +14,7 @@ namespace Nethermind.Blockchain.Test.Validators
         public static TestTxValidator NeverValid = new(false);
 
         private readonly Queue<bool> _validationResults = new();
-        private bool? _alwaysSameResult;
+        private readonly bool? _alwaysSameResult;
 
         public TestTxValidator(Queue<bool> validationResults)
         {

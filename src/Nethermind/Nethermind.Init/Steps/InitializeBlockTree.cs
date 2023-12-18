@@ -123,8 +123,15 @@ namespace Nethermind.Init.Steps
                 return null;
             }
 
-            string[] erafiles =
-                EraReader.GetAllEraFiles(initConfig.AncientDataDirectory, networkName.ToLower()).ToArray();
+            string[] erafiles;
+            try
+            {
+                erafiles = EraReader.GetAllEraFiles(initConfig.AncientDataDirectory, networkName.ToLower()).ToArray();
+            }
+            catch (DirectoryNotFoundException)
+            {
+                throw new InvalidConfigurationException($"The configured directory '{initConfig.AncientDataDirectory}' does not exist.", ExitCodes.GeneralError);
+            }
 
             if (!erafiles.Any())
                 throw new InvalidConfigurationException($"The configured directory '{initConfig.AncientDataDirectory}' for ancient data contains no era1 files for {networkName}.", ExitCodes.GeneralError);

@@ -19,7 +19,7 @@ namespace Nethermind.Cli.Test
 {
     public class ProofCliModuleTests
     {
-        private ICliConsole _cliConsole = Substitute.For<ICliConsole>();
+        private readonly ICliConsole _cliConsole = Substitute.For<ICliConsole>();
         private EthereumJsonSerializer _serializer;
         private IJsonRpcClient _jsonRpcClient;
         private CliEngine _engine;

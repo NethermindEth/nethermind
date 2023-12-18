@@ -17,7 +17,7 @@ namespace Nethermind.Blockchain.Test.Receipts;
 
 public class ReceiptsIteratorTests
 {
-    ReceiptArrayStorageDecoder _decoder = ReceiptArrayStorageDecoder.Instance;
+    readonly ReceiptArrayStorageDecoder _decoder = ReceiptArrayStorageDecoder.Instance;
 
     [Test]
     public void SmokeTestWithRecovery()

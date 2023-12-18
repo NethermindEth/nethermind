@@ -8,10 +8,12 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
+using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Crypto;
 using Nethermind.Db;
+using Nethermind.Era1;
 using Nethermind.Facade.Eth;
 using Nethermind.Logging;
 using Nethermind.Network;
@@ -41,7 +43,7 @@ using Nethermind.Synchronization.Reporting;
 using Nethermind.Synchronization.SnapSync;
 using Nethermind.Synchronization.Trie;
 using Nethermind.TxPool;
-
+using System.Linq;
 namespace Nethermind.Init.Steps;
 
 public static class NettyMemoryEstimator
@@ -152,9 +154,9 @@ public class InitializeNetwork : IStep
                 blockDownloaderFactory,
                 _api.Pivot,
                 _api.ProcessExit!,
-                _api.ReadOnlyTrieStore!,
                 _api.BetterPeerStrategy,
                 _api.ChainSpec,
+                _api.StateReader!,
                 _api.LogManager);
         }
 
@@ -222,6 +224,8 @@ public class InitializeNetwork : IStep
             return;
         }
 
+        await CheckAndStartEraImport(_api, cancellationToken);
+
         await StartSync().ContinueWith(initNetTask =>
         {
             if (initNetTask.IsFaulted)
@@ -266,6 +270,98 @@ public class InitializeNetwork : IStep
         ThisNodeInfo.AddInfo("Client id    :", ProductInfo.ClientId);
         ThisNodeInfo.AddInfo("This node    :", $"{_api.Enode.Info}");
         ThisNodeInfo.AddInfo("Node address :", $"{_api.Enode.Address} (do not use as an account)");
+    }
+
+    private async Task CheckAndStartEraImport(IApiWithNetwork api, CancellationToken cancellation)
+    {
+        //TODO remove?
+        if (api.BlockTree is null)
+            throw new StepDependencyException(nameof(_api.BlockTree));
+        if (api.BlockValidator is null)
+            throw new StepDependencyException(nameof(_api.BlockValidator));
+        if (api.ReceiptStorage is null)
+            throw new StepDependencyException(nameof(_api.ReceiptStorage));
+        if (api.SpecProvider is null)
+            throw new StepDependencyException(nameof(_api.SpecProvider));
+
+        ISyncConfig syncConfig = api.Config<ISyncConfig>();
+        if (string.IsNullOrEmpty(syncConfig.ImportDirectory))
+        {
+            return;
+        }
+        //TODO some guard checks for directory
+        if (!api.FileSystem.Directory.Exists(syncConfig.ImportDirectory))
+        {
+            _logger.Warn($"The directory given for import '{syncConfig.ImportDirectory}' does not exist.");
+            return;
+        }
+
+        //TODO check best known number and compare with era files
+        var networkName = BlockchainIds.GetBlockchainName(api.SpecProvider.NetworkId);
+        _logger.Info($"Checking for unimported blocks '{syncConfig.ImportDirectory}'");
+
+        var eraFiles = EraReader.GetAllEraFiles(syncConfig.ImportDirectory, networkName).ToArray();
+        if (eraFiles.Length == 0)
+        {
+            _logger.Warn($"No files for '{networkName}' import was found in '{syncConfig.ImportDirectory}'.");
+            return;
+        }
+        EraStore eraStore = new(eraFiles, _api.FileSystem);
+
+        //StartFullSyncComponents();
+
+        //if (_syncConfig.FastSync)
+        //{
+        //    if (_syncConfig.FastBlocks)
+        //    {
+        //        StartFastBlocksComponents();
+        //    }
+
+        //    StartFastSyncComponents();
+
+        //}
+
+        if (_syncConfig.FastSync)
+        {
+            if (_syncConfig.DownloadBodiesInFastSync)
+            {
+
+            }
+
+            if (_syncConfig.DownloadReceiptsInFastSync)
+            {
+
+            }
+        }
+        else
+        {
+            //full sync archive
+        }
+
+        long bestEpoch = (api.BlockTree.BestKnownNumber + 1) / EraWriter.MaxEra1Size;
+        if (!eraStore.HasEpoch(bestEpoch))
+        {
+            _logger.Info($"Best known block {api.BlockTree.BestKnownNumber} is ahead of era1 archives in '{syncConfig.ImportDirectory}'. Skipping import.");
+            return;
+        }
+
+        EraImport eraImport = new(
+            api.FileSystem,
+            api.BlockTree,
+            api.BlockValidator,
+            api.ReceiptStorage,
+            api.SpecProvider,
+            networkName,
+            _api.LogManager);
+
+        try
+        {
+            await eraImport.Import(syncConfig.ImportDirectory, cancellation);
+        }
+        catch (EraException e)
+        {
+            _logger.Error($"The import failed with the message: {e.Message}");
+        }
     }
 
     private Task StartDiscovery()

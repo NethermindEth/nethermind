@@ -31,7 +31,6 @@ namespace Nethermind.Consensus.Processing
             IBlockPreprocessorStep recoveryStep,
             IRewardCalculator rewardCalculator,
             IReceiptStorage receiptStorage,
-            IReadOnlyDbProvider dbProvider,
             ISpecProvider specProvider,
             ILogManager logManager,
             IBlockProcessor.IBlockTransactionsExecutor? blockTransactionsExecutor = null)
@@ -53,7 +52,7 @@ namespace Nethermind.Consensus.Processing
 
             _blockProcessingQueue = new BlockchainProcessor(_txEnv.BlockTree, BlockProcessor, recoveryStep, _txEnv.StateReader, logManager, BlockchainProcessor.Options.NoReceipts);
             BlockProcessingQueue = _blockProcessingQueue;
-            ChainProcessor = new OneTimeChainProcessor(dbProvider, _blockProcessingQueue);
+            ChainProcessor = new OneTimeChainProcessor(txEnv.StateProvider, _blockProcessingQueue);
         }
 
         public void Dispose()

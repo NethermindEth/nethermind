@@ -53,7 +53,7 @@ internal class GethLikeTxTraceJsonLinesConverter : JsonConverter<GethTxFileTrace
         writer.WritePropertyName("memSize");
         writer.WriteNumberValue(value.MemorySize ?? 0UL);
 
-        if ((value.Memory?.Count ?? 0) != 0)
+        if ((value.Memory?.Length ?? 0) != 0)
         {
             var memory = string.Concat(value.Memory);
 

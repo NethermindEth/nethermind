@@ -27,7 +27,7 @@ namespace Nethermind.Hive
         private readonly IConfigProvider _configurationProvider;
         private readonly IFileSystem _fileSystem;
         private readonly IBlockValidator _blockValidator;
-        private SemaphoreSlim _resetEvent;
+        private readonly SemaphoreSlim _resetEvent;
         private bool BlockSuggested;
 
         public HiveRunner(
