@@ -45,9 +45,14 @@ public class EraReader : IAsyncEnumerable<(Block, TxReceipt[], UInt256)>, IDispo
     {
         return Create(file, false, allocator, token);
     }
+    public static Task<EraReader> Create(string file, bool descendingOrder, in CancellationToken token = default)
+    {
+        return Create(file, descendingOrder, null, token);
+    }
     public static Task<EraReader> Create(string file, bool descendingOrder, IByteBufferAllocator? allocator = null, in CancellationToken token = default)
     {
         if (string.IsNullOrEmpty(file)) throw new ArgumentException("Cannot be null or empty.", nameof(file));
+
         return Create(File.OpenRead(file), descendingOrder, allocator, token);
     }
     public static Task<EraReader> Create(Stream stream, CancellationToken token = default)
@@ -260,90 +265,6 @@ public class EraReader : IAsyncEnumerable<(Block, TxReceipt[], UInt256)>, IDispo
         };
     }
 
-    private class BlockBodyDecoder : IRlpValueDecoder<BlockBody>
-    {
-        private readonly TxDecoder _txDecoder = new();
-        private readonly HeaderDecoder? _headerDecoder = new();
-        private readonly WithdrawalDecoder _withdrawalDecoderDecoder = new();
-
-        public int GetLength(BlockBody item, RlpBehaviors rlpBehaviors)
-        {
-            return Rlp.LengthOfSequence(GetBodyLength(item));
-        }
-
-        public int GetBodyLength(BlockBody b)
-        {
-            if (b.Withdrawals != null)
-            {
-                return Rlp.LengthOfSequence(GetTxLength(b.Transactions)) +
-                       Rlp.LengthOfSequence(GetUnclesLength(b.Uncles)) + Rlp.LengthOfSequence(GetWithdrawalsLength(b.Withdrawals));
-            }
-            return Rlp.LengthOfSequence(GetTxLength(b.Transactions)) +
-                   Rlp.LengthOfSequence(GetUnclesLength(b.Uncles));
-        }
-
-        private int GetTxLength(Transaction[] transactions)
-        {
-            return transactions.Sum(t => _txDecoder!.GetLength(t, RlpBehaviors.None));
-        }
-
-        private int GetUnclesLength(BlockHeader[] headers)
-        {
-            return headers.Sum(t => _headerDecoder!.GetLength(t, RlpBehaviors.None));
-        }
-
-        private int GetWithdrawalsLength(Withdrawal[] withdrawals)
-        {
-            return withdrawals.Sum(t => _withdrawalDecoderDecoder.GetLength(t, RlpBehaviors.None));
-        }
-
-        public BlockBody Decode(ref Rlp.ValueDecoderContext ctx, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-        {
-            int sequenceLength = ctx.ReadSequenceLength();
-            int startingPosition = ctx.Position;
-            if (sequenceLength == 0)
-            {
-                return new BlockBody();
-            }
-
-            // quite significant allocations (>0.5%) here based on a sample 3M blocks sync
-            // (just on these delegates)
-            var transactions = ctx.DecodeArray(_txDecoder!);
-            var uncles = ctx.DecodeArray(_headerDecoder!);
-            Withdrawal?[]? withdrawals = null;
-            if (ctx.PeekNumberOfItemsRemaining(startingPosition + sequenceLength, 1) > 0)
-            {
-                withdrawals = ctx.DecodeArray(_withdrawalDecoderDecoder!);
-            }
-
-            return new BlockBody(transactions!, uncles!, withdrawals!);
-        }
-
-        public void Serialize(RlpStream stream, BlockBody body)
-        {
-            stream.StartSequence(GetBodyLength(body));
-            stream.StartSequence(GetTxLength(body.Transactions));
-            foreach (Transaction? txn in body.Transactions)
-            {
-                stream.Encode(txn);
-            }
-
-            stream.StartSequence(GetUnclesLength(body.Uncles));
-            foreach (BlockHeader? uncle in body.Uncles)
-            {
-                stream.Encode(uncle);
-            }
-
-            if (body.Withdrawals != null)
-            {
-                stream.StartSequence(GetWithdrawalsLength(body.Withdrawals));
-                foreach (Withdrawal? withdrawal in body.Withdrawals)
-                {
-                    stream.Encode(withdrawal);
-                }
-            }
-        }
-    }
     /// <summary>
     /// Reads an entry and loads it's value into <paramref name="buffer"/> from the current position in the stream.
     /// </summary>

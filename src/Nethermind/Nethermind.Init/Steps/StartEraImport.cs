@@ -68,6 +68,6 @@ public class StartEraImport : IStep
             _api.SpecProvider,
             networkName,
             _api.LogManager);
-        await eraImport.Import(syncConfig.ImportDirectory, cancellation);
+        await eraImport.ImportAsFullSync(syncConfig.ImportDirectory, cancellation);
     }
 }

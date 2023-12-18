@@ -44,7 +44,7 @@
     },
     "Goerli": {
       "commandName": "Project",
-      "commandLineArgs": "-c goerli -dd .data",
+      "commandLineArgs": "-c goerli -dd C:/ethereum/nethermind --JsonRpc.JwtSecretFile C:/ethereum/jwt.hex",
       "environmentVariables": {
         "ASPNETCORE_ENVIRONMENT": "Development"
       }
@@ -86,7 +86,7 @@
     },
     "Holesky": {
       "commandName": "Project",
-      "commandLineArgs": "-c holesky -dd .data",
+      "commandLineArgs": "-c holesky -dd .data --JsonRpc.JwtSecretFile C:/ethereum/jwt.hex",
       "environmentVariables": {
         "ASPNETCORE_ENVIRONMENT": "Development"
       }

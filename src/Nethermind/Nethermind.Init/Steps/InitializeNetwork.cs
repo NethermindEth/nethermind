@@ -44,6 +44,7 @@ using Nethermind.Synchronization.SnapSync;
 using Nethermind.Synchronization.Trie;
 using Nethermind.TxPool;
 using System.Linq;
+using Nethermind.Core.Crypto;
 namespace Nethermind.Init.Steps;
 
 public static class NettyMemoryEstimator
@@ -306,61 +307,77 @@ public class InitializeNetwork : IStep
             _logger.Warn($"No files for '{networkName}' import was found in '{syncConfig.ImportDirectory}'.");
             return;
         }
-        EraStore eraStore = new(eraFiles, _api.FileSystem);
-
-        //StartFullSyncComponents();
-
-        //if (_syncConfig.FastSync)
-        //{
-        //    if (_syncConfig.FastBlocks)
-        //    {
-        //        StartFastBlocksComponents();
-        //    }
-
-        //    StartFastSyncComponents();
-
-        //}
-
-        if (_syncConfig.FastSync)
-        {
-            if (_syncConfig.DownloadBodiesInFastSync)
-            {
-
-            }
-
-            if (_syncConfig.DownloadReceiptsInFastSync)
-            {
-
-            }
-        }
-        else
-        {
-            //full sync archive
-        }
-
-        long bestEpoch = (api.BlockTree.BestKnownNumber + 1) / EraWriter.MaxEra1Size;
-        if (!eraStore.HasEpoch(bestEpoch))
-        {
-            _logger.Info($"Best known block {api.BlockTree.BestKnownNumber} is ahead of era1 archives in '{syncConfig.ImportDirectory}'. Skipping import.");
-            return;
-        }
 
         EraImport eraImport = new(
-            api.FileSystem,
-            api.BlockTree,
-            api.BlockValidator,
-            api.ReceiptStorage,
-            api.SpecProvider,
-            networkName,
-            _api.LogManager);
+         api.FileSystem,
+         api.BlockTree,
+         api.BlockValidator,
+         api.ReceiptStorage,
+         api.SpecProvider,
+         networkName);
 
+
+
+        //bool backfillBlocks = _api.Pivot.PivotNumber;
+        var pivot = _api.Pivot!;
+        var blockTree = _api.BlockTree!;
         try
         {
-            await eraImport.Import(syncConfig.ImportDirectory, cancellation);
+            if (_syncConfig.FastSync)
+            {
+                long pivotStartNumber = pivot.PivotParentHash != null ? pivot.PivotNumber - 1 : pivot.PivotHash != null ? pivot.PivotNumber : -1;
+
+                if (pivotStartNumber != -1)
+                {
+                    long startNumber = Math.Min(pivotStartNumber, blockTree.LowestInsertedHeader?.Number ?? long.MaxValue);
+                    bool withBodies = false;
+                    if (_syncConfig.DownloadBodiesInFastSync)
+                    {
+                        startNumber = Math.Min(startNumber, blockTree.LowestInsertedBodyNumber??long.MaxValue);
+                        withBodies = true;
+                    }
+                    bool withReceipts = false;
+                    if (_syncConfig.DownloadReceiptsInFastSync)
+                    {
+                        withReceipts = true;
+                    }
+                    Hash256? pivotHash = pivot.PivotHash ?? pivot.PivotParentHash;
+                    eraImport.ImportProgressChanged += (s, args) =>
+                    {
+                        _logger.Info($"Era1 import {args.BlocksProcessed,7}/{args.TotalBlocks} Blks | elapsed {args.Elapsed,7:hh\\:mm\\:ss} | {args.BlocksProcessed / args.Elapsed.TotalSeconds,7:F2} Blks/s | {args.TxProcessed / args.Elapsed.TotalSeconds,7:F2} Tx/s");
+                    };
+
+                    _logger.Info($"Starting backfilling import from '{syncConfig.ImportDirectory}'");
+                    await eraImport.ImportWithBackfill(syncConfig.ImportDirectory, startNumber, pivotHash!, withBodies, withReceipts, false, cancellation);
+                }
+                else
+                {
+                    _logger.Info($"Skipping era1 import since no pivot is available.");
+                }
+            }
+            else
+            {
+                eraImport.ImportProgressChanged += (s, args) =>
+                {
+                    _logger.Info($"Era1 import | elapsed {args.Elapsed,7:hh\\:mm\\:ss} | {args.BlocksProcessed / args.Elapsed.TotalSeconds,7:F2} Blks/s | {args.TxProcessed / args.Elapsed.TotalSeconds,7:F2} Tx/s");
+                };
+                //Import as a full archive
+                _logger.Info($"Starting full archive import from '{syncConfig.ImportDirectory}'");
+                await eraImport.ImportAsFullSync(syncConfig.ImportDirectory, cancellation);
+            }
+        }
+        catch (Exception e) when (e is TaskCanceledException or OperationCanceledException)
+        {
+            _logger.Warn($"A running import job was cancelled.");
         }
         catch (EraException e)
         {
             _logger.Error($"The import failed with the message: {e.Message}");
+        }
+        catch (Exception e)
+        {
+            _logger.Error("Import error", e);
+            throw;
         }
     }
 

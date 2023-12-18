@@ -43,15 +43,19 @@ public class EraStore: IEraStore
         _fileSystem = fileSystem;
     }
     public bool HasEpoch(long epoch) => _epochs.ContainsKey(epoch);
-    public Task<EraReader> GetReader(long epoch, CancellationToken cancellation = default)
+    
+    public Task<EraReader> GetReader(long epoch, bool descendingOrder, CancellationToken cancellation = default)
     {
-        if (!HasEpoch(epoch))
-        {
-            throw new ArgumentOutOfRangeException($"Does not contain epoch.", epoch, nameof(epoch));
-        }
-
-        return EraReader.Create(_epochs[epoch], cancellation);
+        GuardMissingEpoch(epoch);
+        return EraReader.Create(_epochs[epoch], descendingOrder, cancellation);
     }
+
+    public string GetReaderPath(long epoch)
+    {
+        GuardMissingEpoch(epoch);
+        return _epochs[epoch];
+    }
+
     public async Task<Block?> FindBlock(long number, CancellationToken cancellation = default)
     {
         ThrowIfNegative(number);
@@ -84,5 +88,13 @@ public class EraStore: IEraStore
     {
         if (number < 0)
             throw new ArgumentOutOfRangeException(nameof(number), number, "Cannot be negative.");
+    }
+
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private void GuardMissingEpoch(long epoch)
+    {
+        if (!HasEpoch(epoch))
+            throw new ArgumentOutOfRangeException($"Does not contain epoch.", epoch, nameof(epoch));
     }
 }
