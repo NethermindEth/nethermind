@@ -270,6 +270,8 @@ namespace Nethermind.Specs.ChainSpecStyle
 
         public IReleaseSpec GetSpec(ForkActivation activation)
         {
+            (ForkActivation Activation, ReleaseSpec Spec)[] consideredTransitions = _transitions;
+
             // TODO: Is this actually needed? Can this be tricked with invalid activation check if someone would fake timestamp from the future?
             if (_firstTimestampActivation is not null && activation.Timestamp is not null)
             {
@@ -281,15 +283,11 @@ namespace Nethermind.Specs.ChainSpecStyle
 
                 if (_firstTimestampActivation.Value.Timestamp <= activation.Timestamp)
                 {
-                    return _timestampOnlyTransitions.TryGetSearchedItem(activation,
-                        CompareTransitionOnActivation,
-                        out (ForkActivation Activation, ReleaseSpec Spec) timestampTransition)
-                        ? timestampTransition.Spec
-                        : GenesisSpec;
+                    consideredTransitions = _timestampOnlyTransitions;
                 }
             }
 
-            return _transitions.TryGetSearchedItem(activation,
+            return consideredTransitions.TryGetSearchedItem(activation,
                 CompareTransitionOnActivation,
                 out (ForkActivation Activation, ReleaseSpec Spec) transition)
                 ? transition.Spec
