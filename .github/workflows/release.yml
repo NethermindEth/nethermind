@@ -37,11 +37,11 @@ jobs:
           repository: NethermindEth/nethermind.launcher
           path: launcher
       - name: Set up .NET
-        uses: actions/setup-dotnet@v3
+        uses: actions/setup-dotnet@v4
         with:
           global-json-file: nethermind/global.json
       - name: Set up Node.js
-        uses: actions/setup-node@v3
+        uses: actions/setup-node@v4
         with:
           node-version: 14
       - name: Install npm packages
@@ -77,37 +77,37 @@ jobs:
           echo "package-prefix=$PACKAGE_PREFIX" >> $GITHUB_OUTPUT
           $SCRIPTS_PATH/archive-packages.sh
       - name: Upload Nethermind Linux x64 package
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: ${{ steps.archive.outputs.package-prefix }}-linux-x64-package
           path: ${{ github.workspace }}/${{ env.PACKAGE_DIR }}/*linux-x64*
           retention-days: ${{ env.PACKAGE_RETENTION }}
       - name: Upload Nethermind Linux arm64 package
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: ${{ steps.archive.outputs.package-prefix }}-linux-arm64-package
           path: ${{ github.workspace }}/${{ env.PACKAGE_DIR }}/*linux-arm64*
           retention-days: ${{ env.PACKAGE_RETENTION }}
       - name: Upload Nethermind Windows x64 package
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: ${{ steps.archive.outputs.package-prefix }}-windows-x64-package
           path: ${{ github.workspace }}/${{ env.PACKAGE_DIR }}/*windows-x64*
           retention-days: ${{ env.PACKAGE_RETENTION }}
       - name: Upload Nethermind macOS x64 package
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: ${{ steps.archive.outputs.package-prefix }}-macos-x64-package
           path: ${{ github.workspace }}/${{ env.PACKAGE_DIR }}/*macos-x64*
           retention-days: ${{ env.PACKAGE_RETENTION }}
       - name: Upload Nethermind macOS arm64 package
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: ${{ steps.archive.outputs.package-prefix }}-macos-arm64-package
           path: ${{ github.workspace }}/${{ env.PACKAGE_DIR }}/*macos-arm64*
           retention-days: ${{ env.PACKAGE_RETENTION }}
       - name: Upload Nethermind reference assemblies
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: ${{ steps.archive.outputs.package-prefix }}-ref-assemblies-package
           path: ${{ github.workspace }}/${{ env.PACKAGE_DIR }}/*ref-assemblies*

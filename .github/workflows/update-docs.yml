@@ -27,7 +27,7 @@ jobs:
           path: d
           token: ${{ secrets.REPOSITORY_DISPATCH_TOKEN }}
       - name: Set up .NET
-        uses: actions/setup-dotnet@v3
+        uses: actions/setup-dotnet@v4
         with:
           global-json-file: n/global.json
       - name: Build DocGen
