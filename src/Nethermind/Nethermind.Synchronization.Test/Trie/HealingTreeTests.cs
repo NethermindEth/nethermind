@@ -95,7 +95,7 @@ public class HealingTreeTests
         if (isMainThread && successfullyRecovered)
         {
             action.Should().NotThrow();
-            db.KeyWasWritten(kvp => Bytes.AreEqual(kvp.Item1, ValueKeccak.Compute(_rlp).Bytes) && Bytes.AreEqual(kvp.Item2, _rlp));
+            trieStore.Received().Set(ValueKeccak.Compute(_rlp), _rlp);
         }
         else
         {
