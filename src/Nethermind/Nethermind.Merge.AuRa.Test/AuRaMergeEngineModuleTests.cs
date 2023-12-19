@@ -32,13 +32,20 @@ using Nethermind.Specs;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.State;
 using Nethermind.Synchronization.ParallelSync;
+using Nethermind.Trie.Pruning;
 using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Merge.AuRa.Test;
 
+[TestFixture(TrieNodeResolverCapability.Hash)]
+[TestFixture(TrieNodeResolverCapability.Path)]
 public class AuRaMergeEngineModuleTests : EngineModuleTests
 {
+    public AuRaMergeEngineModuleTests(TrieNodeResolverCapability resolverCapability) : base(resolverCapability)
+    {
+    }
+
     protected override MergeTestBlockchain CreateBaseBlockchain(
         IMergeConfig? mergeConfig = null,
         IPayloadPreparationService? mockedPayloadService = null,

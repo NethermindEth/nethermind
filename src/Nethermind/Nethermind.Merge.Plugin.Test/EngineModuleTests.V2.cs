@@ -22,6 +22,7 @@ using Nethermind.Merge.Plugin.Data;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
 using Nethermind.State;
+using Nethermind.Trie.Pruning;
 using NSubstitute;
 using NSubstitute.Core;
 using NUnit.Framework;
@@ -702,7 +703,7 @@ public partial class EngineModuleTests
         );
 
         // Genesis, Timestamp = 1
-        using MergeTestBlockchain chain = await CreateBlockchain(specProvider);
+        using MergeTestBlockchain chain = await CreateBlockchain(specProvider, _resolverCapability == TrieNodeResolverCapability.Path);
         IEngineRpcModule rpc = CreateEngineModule(chain);
 
         // Block without withdrawals, Timestamp = 2

@@ -28,13 +28,23 @@ using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
 using Nethermind.State.Repositories;
+using Nethermind.Trie.Pruning;
 using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Merge.Plugin.Test;
 
+[TestFixture(TrieNodeResolverCapability.Hash)]
+[TestFixture(TrieNodeResolverCapability.Path)]
 public partial class EngineModuleTests
 {
+    private readonly TrieNodeResolverCapability _resolverCapability;
+
+    public EngineModuleTests(TrieNodeResolverCapability resolverCapability)
+    {
+        _resolverCapability = resolverCapability;
+    }
+
     [Test]
     public async Task getPayloadV1_should_allow_asking_multiple_times_by_same_payload_id()
     {
@@ -403,7 +413,7 @@ public partial class EngineModuleTests
     public async Task Cannot_build_invalid_block_with_the_branch()
     {
         using SemaphoreSlim blockImprovementLock = new(0);
-        using MergeTestBlockchain chain = await CreateBlockchain(new TestSingleReleaseSpecProvider(London.Instance));
+        using MergeTestBlockchain chain = await CreateBlockchain(new TestSingleReleaseSpecProvider(London.Instance), _resolverCapability == TrieNodeResolverCapability.Path);
         IEngineRpcModule rpc = CreateEngineModule(chain);
 
         // creating chain with 30 blocks
@@ -480,7 +490,7 @@ public partial class EngineModuleTests
         // as the result we want to check if we are not able to produce invalid block by repeating this test many times
 
         bool logInvalidBlockExecution = false; // change to true if you want to log invalid blocks
-        string logFolder = "D:\\logs"; // adjust to your folder if needed by default logging is turned off
+        string logFolder = "C:\\logs"; // adjust to your folder if needed by default logging is turned off
         string guid = Guid.NewGuid().ToString();
         ILogManager? logManager = LimboLogs.Instance;
         if (logInvalidBlockExecution)
@@ -489,7 +499,7 @@ public partial class EngineModuleTests
         }
 
         using SemaphoreSlim blockImprovementLock = new(0);
-        using MergeTestBlockchain chain = await CreateBlockchain(new TestSingleReleaseSpecProvider(London.Instance), logManager);
+        using MergeTestBlockchain chain = await CreateBlockchain(new TestSingleReleaseSpecProvider(London.Instance), _resolverCapability == TrieNodeResolverCapability.Path, logManager);
         TimeSpan delay = TimeSpan.FromMilliseconds(10);
         TimeSpan timePerSlot = 4 * delay;
         StoringBlockImprovementContextFactory improvementContextFactory = new(new BlockImprovementContextFactory(chain.BlockProductionTrigger, TimeSpan.FromSeconds(chain.MergeConfig.SecondsPerSlot)));
@@ -565,7 +575,7 @@ public partial class EngineModuleTests
     public async Task Empty_block_is_valid_V1()
     {
         using SemaphoreSlim blockImprovementLock = new(0);
-        using MergeTestBlockchain chain = await CreateBlockchain(new TestSingleReleaseSpecProvider(London.Instance));
+        using MergeTestBlockchain chain = await CreateBlockchain(new TestSingleReleaseSpecProvider(London.Instance), _resolverCapability == TrieNodeResolverCapability.Path);
         IEngineRpcModule rpc = CreateEngineModule(chain);
         Hash256 blockX = chain.BlockTree.HeadHash;
         await rpc.engine_forkchoiceUpdatedV1(
@@ -581,7 +591,7 @@ public partial class EngineModuleTests
     public virtual async Task Empty_block_is_valid_with_withdrawals_V2()
     {
         using SemaphoreSlim blockImprovementLock = new(0);
-        using MergeTestBlockchain chain = await CreateBlockchain(new TestSingleReleaseSpecProvider(Shanghai.Instance));
+        using MergeTestBlockchain chain = await CreateBlockchain(new TestSingleReleaseSpecProvider(Shanghai.Instance), _resolverCapability == TrieNodeResolverCapability.Path);
         IEngineRpcModule rpc = CreateEngineModule(chain);
         Hash256 blockX = chain.BlockTree.HeadHash;
         await rpc.engine_forkchoiceUpdatedV2(
