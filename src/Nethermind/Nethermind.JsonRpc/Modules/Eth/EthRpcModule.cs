@@ -176,13 +176,11 @@ public partial class EthRpcModule : IEthRpcModule
         }
 
         BlockHeader? header = searchResult.Object;
-        Account account = _stateReader.GetAccount(header!.StateRoot!, address);
-        if (account is null)
+        byte[] storage = _stateReader.GetStorage(header!.StateRoot!, address, positionIndex);
+        if (storage is null)
         {
             return ResultWrapper<byte[]>.Success(Array.Empty<byte>());
         }
-
-        byte[] storage = _stateReader.GetStorage(account.StorageRoot, positionIndex);
         return ResultWrapper<byte[]>.Success(storage!.PadLeft(32));
     }
 
