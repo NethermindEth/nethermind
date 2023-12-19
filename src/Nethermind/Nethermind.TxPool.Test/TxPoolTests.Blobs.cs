@@ -478,7 +478,7 @@ namespace Nethermind.TxPool.Test
 
         [TestCase(0, 97)]
         [TestCase(1, 131320)]
-        [TestCase(2, 262529)]
+        [TestCase(2, 262530)]
         [TestCase(3, 393737)]
         [TestCase(4, 524944)]
         [TestCase(5, 656152)]
@@ -546,6 +546,19 @@ namespace Nethermind.TxPool.Test
 
             blobTxStorage.DeleteBlobTransactionsFromBlock(blockNumber);
             blobTxStorage.TryGetBlobTransactionsFromBlock(blockNumber, out returnedTxs).Should().BeFalse();
+        }
+
+        [Test]
+        public void RecoverAddress_should_work_correctly()
+        {
+            Transaction tx = Build.A.Transaction
+                .WithShardBlobTxTypeAndFields()
+                .WithMaxFeePerGas(1.GWei())
+                .WithMaxPriorityFeePerGas(1.GWei())
+                .WithNonce(UInt256.Zero)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+
+            _ethereumEcdsa.RecoverAddress(tx).Should().Be(tx.SenderAddress);
         }
     }
 }
