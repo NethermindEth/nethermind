@@ -55,7 +55,6 @@ public class DebugBridge : IDebugBridge
         IDb blockInfosDb = dbProvider.BlockInfosDb ?? throw new ArgumentNullException(nameof(dbProvider.BlockInfosDb));
         IDb blocksDb = dbProvider.BlocksDb ?? throw new ArgumentNullException(nameof(dbProvider.BlocksDb));
         IDb headersDb = dbProvider.HeadersDb ?? throw new ArgumentNullException(nameof(dbProvider.HeadersDb));
-        IDb receiptsDb = dbProvider.ReceiptsDb ?? throw new ArgumentNullException(nameof(dbProvider.ReceiptsDb));
         IDb codeDb = dbProvider.CodeDb ?? throw new ArgumentNullException(nameof(dbProvider.CodeDb));
         IDb metadataDb = dbProvider.MetadataDb ?? throw new ArgumentNullException(nameof(dbProvider.MetadataDb));
 
@@ -68,8 +67,13 @@ public class DebugBridge : IDebugBridge
             {DbNames.Headers, headersDb},
             {DbNames.Metadata, metadataDb},
             {DbNames.Code, codeDb},
-            {DbNames.Receipts, receiptsDb},
         };
+
+        IColumnsDb<ReceiptsColumns> receiptsDb = dbProvider.ReceiptsDb ?? throw new ArgumentNullException(nameof(dbProvider.ReceiptsDb));
+        foreach (ReceiptsColumns receiptsDbColumnKey in receiptsDb.ColumnKeys)
+        {
+            _dbMappings[DbNames.Receipts + receiptsDbColumnKey] = receiptsDb.GetColumnDb(receiptsDbColumnKey);
+        }
     }
 
     public byte[] GetDbValue(string dbName, byte[] key)
@@ -82,12 +86,12 @@ public class DebugBridge : IDebugBridge
         return _blockTree.FindLevel(number);
     }
 
-    public int DeleteChainSlice(long startNumber)
+    public int DeleteChainSlice(long startNumber, bool force = false)
     {
-        return _blockTree.DeleteChainSlice(startNumber);
+        return _blockTree.DeleteChainSlice(startNumber, force: force);
     }
 
-    public void UpdateHeadBlock(Keccak blockHash)
+    public void UpdateHeadBlock(Hash256 blockHash)
     {
         _blockTree.UpdateHeadBlock(blockHash);
     }
@@ -114,7 +118,7 @@ public class DebugBridge : IDebugBridge
         _receiptStorage.Insert(block, txReceipts);
     }
 
-    public GethLikeTxTrace GetTransactionTrace(Keccak transactionHash, CancellationToken cancellationToken, GethTraceOptions gethTraceOptions = null)
+    public GethLikeTxTrace GetTransactionTrace(Hash256 transactionHash, CancellationToken cancellationToken, GethTraceOptions gethTraceOptions = null)
     {
         return _tracer.Trace(transactionHash, gethTraceOptions ?? GethTraceOptions.Default, cancellationToken);
     }
@@ -124,12 +128,12 @@ public class DebugBridge : IDebugBridge
         return _tracer.Trace(blockNumber, index, gethTraceOptions ?? GethTraceOptions.Default, cancellationToken);
     }
 
-    public GethLikeTxTrace GetTransactionTrace(Keccak blockHash, int index, CancellationToken cancellationToken, GethTraceOptions gethTraceOptions = null)
+    public GethLikeTxTrace GetTransactionTrace(Hash256 blockHash, int index, CancellationToken cancellationToken, GethTraceOptions gethTraceOptions = null)
     {
         return _tracer.Trace(blockHash, index, gethTraceOptions ?? GethTraceOptions.Default, cancellationToken);
     }
 
-    public GethLikeTxTrace GetTransactionTrace(Rlp blockRlp, Keccak transactionHash, CancellationToken cancellationToken, GethTraceOptions gethTraceOptions = null)
+    public GethLikeTxTrace GetTransactionTrace(Rlp blockRlp, Hash256 transactionHash, CancellationToken cancellationToken, GethTraceOptions gethTraceOptions = null)
     {
         return _tracer.Trace(blockRlp, transactionHash, gethTraceOptions ?? GethTraceOptions.Default, cancellationToken);
     }
@@ -139,24 +143,24 @@ public class DebugBridge : IDebugBridge
         return _tracer.Trace(blockParameter, transaction, gethTraceOptions ?? GethTraceOptions.Default, cancellationToken);
     }
 
-    public GethLikeTxTrace[] GetBlockTrace(BlockParameter blockParameter, CancellationToken cancellationToken, GethTraceOptions gethTraceOptions = null)
+    public IReadOnlyCollection<GethLikeTxTrace> GetBlockTrace(BlockParameter blockParameter, CancellationToken cancellationToken, GethTraceOptions gethTraceOptions = null)
     {
         return _tracer.TraceBlock(blockParameter, gethTraceOptions ?? GethTraceOptions.Default, cancellationToken);
     }
 
-    public GethLikeTxTrace[] GetBlockTrace(Rlp blockRlp, CancellationToken cancellationToken, GethTraceOptions gethTraceOptions = null)
+    public IReadOnlyCollection<GethLikeTxTrace> GetBlockTrace(Rlp blockRlp, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null)
     {
         return _tracer.TraceBlock(blockRlp, gethTraceOptions ?? GethTraceOptions.Default, cancellationToken);
     }
 
-    public byte[] GetBlockRlp(Keccak blockHash)
+    public byte[] GetBlockRlp(Hash256 blockHash)
     {
         return _dbMappings[DbNames.Blocks].Get(blockHash);
     }
 
     public byte[] GetBlockRlp(long number)
     {
-        Keccak hash = _blockTree.FindHash(number);
+        Hash256 hash = _blockTree.FindHash(number);
         return hash is null ? null : _dbMappings[DbNames.Blocks].Get(hash);
     }
 
@@ -174,7 +178,7 @@ public class DebugBridge : IDebugBridge
     }
 
     public IEnumerable<string> TraceBlockToFile(
-        Keccak blockHash,
+        Hash256 blockHash,
         CancellationToken cancellationToken,
         GethTraceOptions? gethTraceOptions = null) =>
         _tracer.TraceBlockToFile(blockHash, gethTraceOptions ?? GethTraceOptions.Default, cancellationToken);

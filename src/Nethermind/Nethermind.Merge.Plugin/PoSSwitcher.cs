@@ -40,12 +40,12 @@ namespace Nethermind.Merge.Plugin
         private readonly IBlockTree _blockTree;
         private readonly ISpecProvider _specProvider;
         private readonly ILogger _logger;
-        private Keccak? _terminalBlockHash;
+        private Hash256? _terminalBlockHash;
 
         private long? _terminalBlockNumber;
         private long? _firstPoSBlockNumber;
         private bool _hasEverReachedTerminalDifficulty;
-        private Keccak _finalizedBlockHash = Keccak.Zero;
+        private Hash256 _finalizedBlockHash = Keccak.Zero;
         private bool _terminalBlockExplicitSpecified;
         private UInt256? _finalTotalDifficulty;
 
@@ -133,7 +133,7 @@ namespace Nethermind.Merge.Plugin
             return true;
         }
 
-        public void ForkchoiceUpdated(BlockHeader newHeadHash, Keccak finalizedHash)
+        public void ForkchoiceUpdated(BlockHeader newHeadHash, Hash256 finalizedHash)
         {
             if (finalizedHash != Keccak.Zero && _finalizedBlockHash == Keccak.Zero)
             {
@@ -214,7 +214,7 @@ namespace Nethermind.Merge.Plugin
 
         public UInt256? FinalTotalDifficulty => _finalTotalDifficulty;
 
-        public Keccak ConfiguredTerminalBlockHash => _mergeConfig.TerminalBlockHashParsed;
+        public Hash256 ConfiguredTerminalBlockHash => _mergeConfig.TerminalBlockHashParsed;
 
         public long? ConfiguredTerminalBlockNumber => _mergeConfig.TerminalBlockNumber;
 
@@ -253,7 +253,7 @@ namespace Nethermind.Merge.Plugin
             return null;
         }
 
-        private Keccak? LoadHashFromDb(int key)
+        private Hash256? LoadHashFromDb(int key)
         {
             try
             {

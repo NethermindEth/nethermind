@@ -15,15 +15,15 @@ namespace Ethereum.Test.Base
         public byte[] ExtraData { get; set; }
         public BigInteger GasLimit { get; set; }
         public BigInteger GasUsed { get; set; }
-        public Keccak Hash { get; set; }
-        public Keccak MixHash { get; set; }
+        public Hash256 Hash { get; set; }
+        public Hash256 MixHash { get; set; }
         public BigInteger Nonce { get; set; }
         public BigInteger Number { get; set; }
-        public Keccak ParentHash { get; set; }
-        public Keccak ReceiptTrie { get; set; }
-        public Keccak StateRoot { get; set; }
+        public Hash256 ParentHash { get; set; }
+        public Hash256 ReceiptTrie { get; set; }
+        public Hash256 StateRoot { get; set; }
         public BigInteger Timestamp { get; set; }
-        public Keccak TransactionsTrie { get; set; }
-        public Keccak UncleHash { get; set; }
+        public Hash256 TransactionsTrie { get; set; }
+        public Hash256 UncleHash { get; set; }
     }
 }

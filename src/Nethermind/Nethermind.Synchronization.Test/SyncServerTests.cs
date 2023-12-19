@@ -45,11 +45,11 @@ namespace Nethermind.Synchronization.Test
         {
             Context ctx = new();
             ctx.BlockTree.FindHash(123).Returns(TestItem.KeccakA);
-            Keccak result = ctx.SyncServer.FindHash(123)!;
+            Hash256 result = ctx.SyncServer.FindHash(123)!;
 
             ctx.BlockTree.DidNotReceive().FindHeader(Arg.Any<long>(), Arg.Any<BlockTreeLookupOptions>());
-            ctx.BlockTree.DidNotReceive().FindHeader(Arg.Any<Keccak>(), Arg.Any<BlockTreeLookupOptions>());
-            ctx.BlockTree.DidNotReceive().FindBlock(Arg.Any<Keccak>(), Arg.Any<BlockTreeLookupOptions>());
+            ctx.BlockTree.DidNotReceive().FindHeader(Arg.Any<Hash256>(), Arg.Any<BlockTreeLookupOptions>());
+            ctx.BlockTree.DidNotReceive().FindBlock(Arg.Any<Hash256>(), Arg.Any<BlockTreeLookupOptions>());
             Assert.That(result, Is.EqualTo(TestItem.KeccakA));
         }
 
@@ -76,7 +76,7 @@ namespace Nethermind.Synchronization.Test
         {
             Context ctx = new();
             ctx.SyncServer.Find(TestItem.KeccakA);
-            ctx.BlockTree.Received().FindBlock(Arg.Any<Keccak>(), BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+            ctx.BlockTree.Received().FindBlock(Arg.Any<Hash256>(), BlockTreeLookupOptions.TotalDifficultyNotNeeded);
         }
 
         [TestCase(true, true, true)]
@@ -645,7 +645,7 @@ namespace Nethermind.Synchronization.Test
             MemDb stateDb = new();
             TrieStore trieStore = new(stateDb, Prune.WhenCacheReaches(10.MB()), NoPersistence.Instance, LimboLogs.Instance);
             ctx.SyncServer = new SyncServer(
-                trieStore.AsKeyValueStore(),
+                trieStore.TrieNodeRlpStore,
                 new MemDb(),
                 localBlockTree,
                 NullReceiptStorage.Instance,
@@ -659,7 +659,7 @@ namespace Nethermind.Synchronization.Test
                 MainnetSpecProvider.Instance,
                 LimboLogs.Instance);
 
-            Keccak nodeKey = TestItem.KeccakA;
+            Hash256 nodeKey = TestItem.KeccakA;
             TrieNode node = new(NodeType.Leaf, nodeKey, TestItem.KeccakB.Bytes);
             trieStore.CommitNode(1, new NodeCommitInfo(node));
             trieStore.FinishBlockCommit(TrieType.State, 1, node);

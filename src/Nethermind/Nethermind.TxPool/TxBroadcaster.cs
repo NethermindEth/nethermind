@@ -14,6 +14,7 @@ using Nethermind.Core.Timers;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.TxPool.Collections;
+using ITimer = Nethermind.Core.Timers.ITimer;
 
 namespace Nethermind.TxPool
 {
@@ -51,11 +52,18 @@ namespace Nethermind.TxPool
         /// </summary>
         private ResettableList<Transaction> _txsToSend;
 
+
+        /// <summary>
+        /// Minimal value of MaxFeePerGas of local tx to be broadcasted immediately after receiving it
+        /// </summary>
+        private UInt256 _baseFeeThreshold;
+
         /// <summary>
         /// Used to throttle tx broadcast. Particularly during forward sync where the head changes a lot which triggers
         /// a lot of broadcast. There are no transaction in pool but its quite spammy on the log.
         /// </summary>
         private DateTimeOffset _lastPersistedTxBroadcast = DateTimeOffset.UnixEpoch;
+
         private readonly TimeSpan _minTimeBetweenPersistedTxBroadcast = TimeSpan.FromSeconds(1);
 
         private readonly ILogger _logger;
@@ -79,6 +87,8 @@ namespace Nethermind.TxPool
             _timer.Elapsed += TimerOnElapsed;
             _timer.AutoReset = false;
             _timer.Start();
+
+            _baseFeeThreshold = CalculateBaseFeeThreshold();
         }
 
         // only for testing reasons
@@ -98,7 +108,13 @@ namespace Nethermind.TxPool
 
         private void StartBroadcast(Transaction tx)
         {
-            NotifyPeersAboutLocalTx(tx);
+            // broadcast local tx only if MaxFeePerGas is not lower than configurable percent of current base fee
+            // (70% by default). Otherwise only add to persistent txs and broadcast when tx will be ready for inclusion
+            if (tx.MaxFeePerGas >= _baseFeeThreshold || tx.IsFree())
+            {
+                NotifyPeersAboutLocalTx(tx);
+            }
+
             if (tx.Hash is not null)
             {
                 _persistentTxs.TryInsert(tx.Hash, tx.SupportsBlobs ? new LightTransaction(tx) : tx);
@@ -121,7 +137,29 @@ namespace Nethermind.TxPool
             }
         }
 
-        public void BroadcastPersistentTxs()
+        public void OnNewHead()
+        {
+            _baseFeeThreshold = CalculateBaseFeeThreshold();
+            BroadcastPersistentTxs();
+        }
+
+        internal UInt256 CalculateBaseFeeThreshold()
+        {
+            bool overflow = UInt256.MultiplyOverflow(_headInfo.CurrentBaseFee, (UInt256)_txPoolConfig.MinBaseFeeThreshold, out UInt256 baseFeeThreshold);
+            UInt256.Divide(baseFeeThreshold, 100, out baseFeeThreshold);
+
+            if (overflow)
+            {
+                UInt256.Divide(_headInfo.CurrentBaseFee, 100, out baseFeeThreshold);
+                overflow = UInt256.MultiplyOverflow(baseFeeThreshold, (UInt256)_txPoolConfig.MinBaseFeeThreshold, out baseFeeThreshold);
+            }
+
+            // if there is still an overflow, it means that MinBaseFeeThreshold > 100
+            // we are returning max possible value of UInt256.MaxValue
+            return overflow ? UInt256.MaxValue : baseFeeThreshold;
+        }
+
+        internal void BroadcastPersistentTxs()
         {
             if (_persistentTxs.Count == 0)
             {
@@ -221,7 +259,7 @@ namespace Nethermind.TxPool
             return (persistentTxsToSend, persistentHashesToSend);
         }
 
-        public void StopBroadcast(Keccak txHash)
+        public void StopBroadcast(Hash256 txHash)
         {
             if (_persistentTxs.Count != 0)
             {
@@ -273,7 +311,6 @@ namespace Nethermind.TxPool
             {
                 try
                 {
-
                     peer.SendNewTransactions(txs.Where(t => _txGossipPolicy.ShouldGossipTransaction(t)), sendFullTx);
                     if (_logger.IsTrace) _logger.Trace($"Notified {peer} about transactions.");
                 }
@@ -304,7 +341,7 @@ namespace Nethermind.TxPool
             }
         }
 
-        public bool TryGetPersistentTx(Keccak hash, out Transaction? transaction)
+        public bool TryGetPersistentTx(Hash256 hash, out Transaction? transaction)
         {
             if (_persistentTxs.TryGetValue(hash, out transaction) && !transaction.SupportsBlobs)
             {
@@ -315,7 +352,7 @@ namespace Nethermind.TxPool
             return false;
         }
 
-        public bool ContainsTx(Keccak hash) => _persistentTxs.ContainsKey(hash);
+        public bool ContainsTx(Hash256 hash) => _persistentTxs.ContainsKey(hash);
 
         public bool AddPeer(ITxPoolPeer peer)
         {

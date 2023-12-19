@@ -213,6 +213,6 @@ namespace Nethermind.Blockchain.Test.Filters
             return bloom;
         }
 
-        private static LogEntry GetLogEntry(Address address, params Keccak[] topics) => new(address, Array.Empty<byte>(), topics);
+        private static LogEntry GetLogEntry(Address address, params Hash256[] topics) => new(address, Array.Empty<byte>(), topics);
     }
 }

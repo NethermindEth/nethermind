@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
+using Nethermind.Synchronization.ParallelSync;
 
 namespace Nethermind.Synchronization.Reporting
 {
@@ -12,6 +13,10 @@ namespace Nethermind.Synchronization.Reporting
         }
 
         public static NullSyncReport Instance = new();
+
+        public void SyncModeSelectorOnChanged(object? sender, SyncModeChangedEventArgs e)
+        {
+        }
 
         public MeasuredProgress FullSyncBlocksDownloaded { get; } = new();
         public long FullSyncBlocksKnown { get; set; }

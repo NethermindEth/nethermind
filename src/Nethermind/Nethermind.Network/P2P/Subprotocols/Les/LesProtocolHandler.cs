@@ -258,12 +258,12 @@ namespace Nethermind.Network.P2P.Subprotocols.Les
             }
             else if (request.AuxiliaryData == 2)
             {
-                (Keccak hash, _) = cht.Get(request.Key);
+                (Hash256 hash, _) = cht.Get(request.Key);
                 var headerResult = SyncServer.FindHeaders(hash, 1, 0, false);
                 if (headerResult.Length != 1) throw new SubprotocolException($"Unable to find header for block {request.Key.WithoutLeadingZeros().ToArray().ToLongFromBigEndianByteArrayWithoutLeadingZeros()} for GetHelperProofs response.");
                 auxData.Add(Rlp.Encode(headerResult[0]).Bytes);
             }
-            proofNodes.AddRange(cht.BuildProof(request.Key, request.SectionIndex, request.FromLevel));
+            proofNodes.AddRange(Synchronization.LesSync.CanonicalHashTrie.BuildProof(request.Key, request.SectionIndex, request.FromLevel));
         }
 
         private BlockHeader _lastSentBlock;
@@ -288,7 +288,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Les
             {
                 BlockHeader firstCommonAncestor = SyncServer.FindLowestCommonAncestor(block.Header, _lastSentBlock);
                 if (firstCommonAncestor is null)
-                    throw new SubprotocolException($"Unable to send announcment to LES peer - No common ancestor found between {block.Header} and {_lastSentBlock}");
+                    throw new SubprotocolException($"Unable to send announcement to LES peer - No common ancestor found between {block.Header} and {_lastSentBlock}");
                 announceMessage.ReorgDepth = _lastSentBlock.Number - firstCommonAncestor.Number;
             }
 
@@ -297,7 +297,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Les
             Send(announceMessage);
         }
 
-        Task<BlockHeader?> ISyncPeer.GetHeadBlockHeader(Keccak? hash, CancellationToken token)
+        Task<BlockHeader?> ISyncPeer.GetHeadBlockHeader(Hash256? hash, CancellationToken token)
         {
             return Task.FromResult(_lastSentBlock);
         }

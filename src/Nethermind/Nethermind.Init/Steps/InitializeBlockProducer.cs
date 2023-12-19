@@ -15,7 +15,7 @@ namespace Nethermind.Init.Steps
     [RunnerStepDependencies(typeof(StartBlockProcessor), typeof(SetupKeyStore), typeof(InitializeNetwork), typeof(ReviewBlockTree))]
     public class InitializeBlockProducer : IStep
     {
-        protected IApiWithBlockchain _api;
+        private readonly IApiWithBlockchain _api;
 
         public InitializeBlockProducer(INethermindApi api)
         {
@@ -32,9 +32,9 @@ namespace Nethermind.Init.Steps
 
         protected virtual async Task<IBlockProducer> BuildProducer()
         {
-            _api.BlockProducerEnvFactory = new BlockProducerEnvFactory(_api.DbProvider!,
+            _api.BlockProducerEnvFactory = new BlockProducerEnvFactory(
+                _api.WorldStateManager!,
                 _api.BlockTree!,
-                _api.ReadOnlyTrieStore!,
                 _api.SpecProvider!,
                 _api.BlockValidator!,
                 _api.RewardCalculatorSource!,

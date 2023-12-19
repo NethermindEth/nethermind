@@ -32,7 +32,7 @@ namespace Nethermind.Trie
         /// <summary>
         ///     0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421
         /// </summary>
-        public static readonly Keccak EmptyTreeHash = Keccak.EmptyTreeHash;
+        public static readonly Hash256 EmptyTreeHash = Keccak.EmptyTreeHash;
 
         public TrieType TrieType { get; init; }
 
@@ -53,7 +53,7 @@ namespace Nethermind.Trie
 
         private readonly bool _allowCommits;
 
-        private Keccak _rootHash = Keccak.EmptyTreeHash;
+        private Hash256 _rootHash = Keccak.EmptyTreeHash;
 
         public TrieNode? RootRef { get; set; }
 
@@ -69,7 +69,7 @@ namespace Nethermind.Trie
             }
         }
 
-        public Keccak RootHash
+        public Hash256 RootHash
         {
             get => _rootHash;
             set => SetRootHash(value, true);
@@ -92,7 +92,7 @@ namespace Nethermind.Trie
 
         public PatriciaTree(
             IKeyValueStoreWithBatching keyValueStore,
-            Keccak rootHash,
+            Hash256 rootHash,
             bool parallelBranches,
             bool allowCommits,
             ILogManager logManager,
@@ -109,7 +109,7 @@ namespace Nethermind.Trie
 
         public PatriciaTree(
             ITrieStore? trieStore,
-            Keccak rootHash,
+            Hash256 rootHash,
             bool parallelBranches,
             bool allowCommits,
             ILogManager? logManager,
@@ -294,7 +294,7 @@ namespace Nethermind.Trie
             SetRootHash(RootRef?.Keccak ?? EmptyTreeHash, false);
         }
 
-        private void SetRootHash(Keccak? value, bool resetObjects)
+        private void SetRootHash(Hash256? value, bool resetObjects)
         {
             _rootHash = value ?? Keccak.EmptyTreeHash; // nulls were allowed before so for now we leave it this way
             if (_rootHash == Keccak.EmptyTreeHash)
@@ -309,7 +309,7 @@ namespace Nethermind.Trie
 
         [SkipLocalsInit]
         [DebuggerStepThrough]
-        public virtual byte[]? Get(ReadOnlySpan<byte> rawKey, Keccak? rootHash = null)
+        public virtual byte[]? Get(ReadOnlySpan<byte> rawKey, Hash256? rootHash = null)
         {
             try
             {
@@ -337,9 +337,9 @@ namespace Nethermind.Trie
             }
         }
 
-        private static void EnhanceException(ReadOnlySpan<byte> rawKey, ValueKeccak rootHash, TrieException baseException)
+        private static void EnhanceException(ReadOnlySpan<byte> rawKey, ValueHash256 rootHash, TrieException baseException)
         {
-            TrieNodeException? GetTrieNodeException(TrieException? exception) =>
+            static TrieNodeException? GetTrieNodeException(TrieException? exception) =>
                 exception switch
                 {
                     null => null,
@@ -400,7 +400,7 @@ namespace Nethermind.Trie
             CappedArray<byte> updateValue,
             bool isUpdate,
             bool ignoreMissingDelete = true,
-            Keccak? startRootHash = null)
+            Hash256? startRootHash = null)
         {
             if (isUpdate && startRootHash is not null)
             {
@@ -1058,10 +1058,10 @@ namespace Nethermind.Trie
             }
         }
 
-        public void Accept(ITreeVisitor visitor, Keccak rootHash, VisitingOptions? visitingOptions = null)
+        public void Accept(ITreeVisitor visitor, Hash256 rootHash, VisitingOptions? visitingOptions = null)
         {
-            if (visitor is null) throw new ArgumentNullException(nameof(visitor));
-            if (rootHash is null) throw new ArgumentNullException(nameof(rootHash));
+            ArgumentNullException.ThrowIfNull(visitor);
+            ArgumentNullException.ThrowIfNull(rootHash);
             visitingOptions ??= VisitingOptions.Default;
 
             using TrieVisitContext trieVisitContext = new()

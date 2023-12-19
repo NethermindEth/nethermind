@@ -107,7 +107,7 @@ public class EliasFanoStorage
     }
 
     public IEnumerable<long> Match(long? startBlock, long? endBlock, IEnumerable<Address>? addresses,
-        IEnumerable<IEnumerable<Keccak>> topics)
+        IEnumerable<IEnumerable<Hash256>> topics)
     {
         // Basically we add a address enumerator after collecting the block numbers
         // We add a topic enumerator for each First level of the list AFTER we unionize the second levels with OR
@@ -155,10 +155,10 @@ public class EliasFanoStorage
         // First level of the list represents AND logical condition, second level represents OR logical condition.
         // So we should union the second levels
         // But we should iterate over first levels at the same time?
-        foreach (IEnumerable<Keccak> topic in topics)
+        foreach (IEnumerable<Hash256> topic in topics)
         {
             SortedSet<long> temp = new SortedSet<long>();
-            foreach (Keccak t in topic)
+            foreach (Hash256 t in topic)
             {
                 // List of block numbers
                 foreach (long bn in Get(t.Bytes.ToArray()).GetEnumerator(0))

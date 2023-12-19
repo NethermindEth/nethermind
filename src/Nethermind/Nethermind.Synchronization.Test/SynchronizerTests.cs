@@ -31,6 +31,8 @@ using Nethermind.Merge.Plugin;
 using Nethermind.Merge.Plugin.InvalidChainTracker;
 using Nethermind.Merge.Plugin.Synchronization;
 using Nethermind.Merge.Plugin.Test;
+using Nethermind.Specs.ChainSpecStyle;
+using Nethermind.State;
 using Nethermind.State.Witnesses;
 using Nethermind.Synchronization.Blocks;
 using Nethermind.Synchronization.ParallelSync;
@@ -101,7 +103,7 @@ namespace Nethermind.Synchronization.Test
             public Node Node { get; } = new Node(Build.A.PrivateKey.TestObject.PublicKey, "127.0.0.1", 1234);
 
             public string ClientId { get; }
-            public Keccak HeadHash { get; set; } = null!;
+            public Hash256 HeadHash { get; set; } = null!;
             public byte ProtocolVersion { get; } = default;
             public string ProtocolCode { get; } = null!;
             public long HeadNumber { get; set; }
@@ -115,7 +117,7 @@ namespace Nethermind.Synchronization.Test
                 Disconnected?.Invoke(this, EventArgs.Empty);
             }
 
-            public Task<OwnedBlockBodies> GetBlockBodies(IReadOnlyList<Keccak> blockHashes, CancellationToken token)
+            public Task<OwnedBlockBodies> GetBlockBodies(IReadOnlyList<Hash256> blockHashes, CancellationToken token)
             {
                 if (_causeTimeoutOnBlocks)
                 {
@@ -168,12 +170,12 @@ namespace Nethermind.Synchronization.Test
                 return Task.FromResult(result);
             }
 
-            public Task<BlockHeader[]> GetBlockHeaders(Keccak startHash, int maxBlocks, int skip, CancellationToken token)
+            public Task<BlockHeader[]> GetBlockHeaders(Hash256 startHash, int maxBlocks, int skip, CancellationToken token)
             {
                 throw new NotImplementedException();
             }
 
-            public async Task<BlockHeader?> GetHeadBlockHeader(Keccak? hash, CancellationToken token)
+            public async Task<BlockHeader?> GetHeadBlockHeader(Hash256? hash, CancellationToken token)
             {
                 if (_causeTimeoutOnInit)
                 {
@@ -210,12 +212,12 @@ namespace Nethermind.Synchronization.Test
 
             public void SendNewTransactions(IEnumerable<Transaction> txs, bool sendFullTx) { }
 
-            public Task<TxReceipt[]?[]> GetReceipts(IReadOnlyList<Keccak> blockHash, CancellationToken token)
+            public Task<TxReceipt[]?[]> GetReceipts(IReadOnlyList<Hash256> blockHash, CancellationToken token)
             {
                 throw new NotImplementedException();
             }
 
-            public Task<byte[][]> GetNodeData(IReadOnlyList<Keccak> hashes, CancellationToken token)
+            public Task<byte[][]> GetNodeData(IReadOnlyList<Hash256> hashes, CancellationToken token)
             {
                 throw new NotImplementedException();
             }
@@ -325,46 +327,31 @@ namespace Nethermind.Synchronization.Test
                 PoSSwitcher poSSwitcher = new(mergeConfig, syncConfig, dbProvider.MetadataDb, BlockTree, new TestSingleReleaseSpecProvider(Constantinople.Instance), _logManager);
                 IBeaconPivot beaconPivot = new BeaconPivot(syncConfig, dbProvider.MetadataDb, BlockTree, _logManager);
 
-                ProgressTracker progressTracker = new(BlockTree, dbProvider.StateDb, LimboLogs.Instance);
-                SnapProvider snapProvider = new(progressTracker, dbProvider, LimboLogs.Instance);
-
                 TrieStore trieStore = new(stateDb, LimboLogs.Instance);
-                SyncProgressResolver syncProgressResolver = new(
-                    BlockTree,
-                    NullReceiptStorage.Instance,
-                    stateDb,
-                    trieStore,
-                    progressTracker,
-                    syncConfig,
-                    _logManager);
-
                 TotalDifficultyBetterPeerStrategy totalDifficultyBetterPeerStrategy = new(LimboLogs.Instance);
                 IBetterPeerStrategy bestPeerStrategy = IsMerge(synchronizerType)
                     ? new MergeBetterPeerStrategy(totalDifficultyBetterPeerStrategy, poSSwitcher, beaconPivot, LimboLogs.Instance)
                     : totalDifficultyBetterPeerStrategy;
 
+                StateReader reader = new StateReader(trieStore, codeDb, LimboLogs.Instance);
+
+                FullStateFinder fullStateFinder = new FullStateFinder(BlockTree, reader);
+
                 SyncPeerPool = new SyncPeerPool(BlockTree, stats, bestPeerStrategy, _logManager, 25);
-                MultiSyncModeSelector syncModeSelector = new(syncProgressResolver, SyncPeerPool, syncConfig, No.BeaconSync, bestPeerStrategy, _logManager);
                 Pivot pivot = new(syncConfig);
 
                 IInvalidChainTracker invalidChainTracker = new NoopInvalidChainTracker();
-                IBlockDownloaderFactory blockDownloaderFactory;
                 if (IsMerge(synchronizerType))
                 {
-                    SyncReport syncReport = new(SyncPeerPool, stats, syncModeSelector, syncConfig, beaconPivot, _logManager);
-                    blockDownloaderFactory = new MergeBlockDownloaderFactory(
+                    IBlockDownloaderFactory blockDownloaderFactory = new MergeBlockDownloaderFactory(
                         poSSwitcher,
                         beaconPivot,
                         MainnetSpecProvider.Instance,
-                        BlockTree,
-                        NullReceiptStorage.Instance,
                         Always.Valid,
                         Always.Valid,
-                        SyncPeerPool,
                         syncConfig,
                         bestPeerStrategy,
-                        syncReport,
-                        syncProgressResolver,
+                        fullStateFinder,
                         _logManager
                     );
                     Synchronizer = new MergeSynchronizer(
@@ -374,30 +361,26 @@ namespace Nethermind.Synchronization.Test
                         NullReceiptStorage.Instance,
                         SyncPeerPool,
                         stats,
-                        syncModeSelector,
                         syncConfig,
-                        snapProvider,
                         blockDownloaderFactory,
                         pivot,
                         poSSwitcher,
                         mergeConfig,
                         invalidChainTracker,
                         Substitute.For<IProcessExitSource>(),
-                        _logManager,
-                        syncReport);
+                        bestPeerStrategy,
+                        new ChainSpec(),
+                        No.BeaconSync,
+                        reader,
+                        _logManager);
                 }
                 else
                 {
-                    SyncReport syncReport = new(SyncPeerPool, stats, syncModeSelector, syncConfig, pivot, _logManager);
-                    blockDownloaderFactory = new BlockDownloaderFactory(
+                    IBlockDownloaderFactory blockDownloaderFactory = new BlockDownloaderFactory(
                         MainnetSpecProvider.Instance,
-                        BlockTree,
-                        NullReceiptStorage.Instance,
                         Always.Valid,
                         Always.Valid,
-                        SyncPeerPool,
                         new TotalDifficultyBetterPeerStrategy(_logManager),
-                        syncReport,
                         _logManager);
 
                     Synchronizer = new Synchronizer(
@@ -407,25 +390,25 @@ namespace Nethermind.Synchronization.Test
                         NullReceiptStorage.Instance,
                         SyncPeerPool,
                         stats,
-                        syncModeSelector,
                         syncConfig,
-                        snapProvider,
                         blockDownloaderFactory,
                         pivot,
-                        syncReport,
                         Substitute.For<IProcessExitSource>(),
+                        bestPeerStrategy,
+                        new ChainSpec(),
+                        reader,
                         _logManager);
                 }
 
                 SyncServer = new SyncServer(
-                    trieStore.AsKeyValueStore(),
+                    trieStore.TrieNodeRlpStore,
                     codeDb,
                     BlockTree,
                     NullReceiptStorage.Instance,
                     Always.Valid,
                     Always.Valid,
                     SyncPeerPool,
-                    syncModeSelector,
+                    Synchronizer.SyncModeSelector,
                     syncConfig,
                     new WitnessCollector(new MemDb(), LimboLogs.Instance),
                     Policy.FullGossip,

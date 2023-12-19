@@ -44,7 +44,7 @@ namespace Nethermind.TxPool.Test
         private IWorldState _stateProvider;
         private IBlockTree _blockTree;
 
-        private int _txGasLimit = 1_000_000;
+        private readonly int _txGasLimit = 1_000_000;
 
         [SetUp]
         public void Setup()
@@ -822,7 +822,7 @@ namespace Nethermind.TxPool.Test
             BlockReplacementEventArgs blockReplacementEventArgs = new(block, null);
 
             ManualResetEvent manualResetEvent = new(false);
-            _txPool.RemoveTransaction(Arg.Do<Keccak>(t => manualResetEvent.Set()));
+            _txPool.RemoveTransaction(Arg.Do<Hash256>(t => manualResetEvent.Set()));
             _blockTree.BlockAddedToMain += Raise.EventWith(new object(), blockReplacementEventArgs);
             manualResetEvent.WaitOne(TimeSpan.FromMilliseconds(200));
 
@@ -860,7 +860,7 @@ namespace Nethermind.TxPool.Test
             BlockReplacementEventArgs blockReplacementEventArgs = new(block, null);
 
             ManualResetEvent manualResetEvent = new(false);
-            _txPool.RemoveTransaction(Arg.Do<Keccak>(t => manualResetEvent.Set()));
+            _txPool.RemoveTransaction(Arg.Do<Hash256>(t => manualResetEvent.Set()));
             _blockTree.BlockAddedToMain += Raise.EventWith(new object(), blockReplacementEventArgs);
             manualResetEvent.WaitOne(TimeSpan.FromMilliseconds(200));
 
@@ -941,7 +941,7 @@ namespace Nethermind.TxPool.Test
             BlockReplacementEventArgs blockReplacementEventArgs = new(block, null);
 
             ManualResetEvent manualResetEvent = new(false);
-            _txPool.RemoveTransaction(Arg.Do<Keccak>(t => manualResetEvent.Set()));
+            _txPool.RemoveTransaction(Arg.Do<Hash256>(t => manualResetEvent.Set()));
             _blockTree.BlockAddedToMain += Raise.EventWith(new object(), blockReplacementEventArgs);
             manualResetEvent.WaitOne(TimeSpan.FromMilliseconds(200));
 
@@ -964,7 +964,7 @@ namespace Nethermind.TxPool.Test
             BlockReplacementEventArgs blockReplacementEventArgs = new(block, null);
 
             ManualResetEvent manualResetEvent = new(false);
-            _txPool.RemoveTransaction(Arg.Do<Keccak>(t => manualResetEvent.Set()));
+            _txPool.RemoveTransaction(Arg.Do<Hash256>(t => manualResetEvent.Set()));
             _blockTree.BlockAddedToMain += Raise.EventWith(new object(), blockReplacementEventArgs);
             manualResetEvent.WaitOne(TimeSpan.FromMilliseconds(200));
 
@@ -1051,14 +1051,15 @@ namespace Nethermind.TxPool.Test
         }
 
         [Test]
-        public void should_notify_added_peer_of_own_tx()
+        public void should_notify_added_peer_of_own_tx_when_we_are_synced([Values(0, 1)] int headNumber)
         {
             _txPool = CreatePool();
             Transaction tx = AddTransactionToPool();
             ITxPoolPeer txPoolPeer = Substitute.For<ITxPoolPeer>();
+            txPoolPeer.HeadNumber.Returns(headNumber);
             txPoolPeer.Id.Returns(TestItem.PublicKeyA);
             _txPool.AddPeer(txPoolPeer);
-            txPoolPeer.Received().SendNewTransactions(Arg.Any<IEnumerable<Transaction>>(), false);
+            txPoolPeer.Received(headNumber).SendNewTransactions(Arg.Any<IEnumerable<Transaction>>(), false);
         }
 
         [Test]
@@ -1069,8 +1070,9 @@ namespace Nethermind.TxPool.Test
             txPoolPeer.Id.Returns(TestItem.PublicKeyA);
             _txPool.AddPeer(txPoolPeer);
             Transaction tx = AddTransactionToPool();
-            await Task.Delay(1000);
-            txPoolPeer.Received(1).SendNewTransactions(Arg.Any<IEnumerable<Transaction>>(), false);
+            await Task.Delay(500);
+            txPoolPeer.Received(1).SendNewTransaction(Arg.Any<Transaction>());
+            txPoolPeer.DidNotReceive().SendNewTransactions(Arg.Any<IEnumerable<Transaction>>(), false);
         }
 
         [Test]

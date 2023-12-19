@@ -11,7 +11,7 @@ namespace Nethermind.Blockchain.Receipts
     {
         public static NullReceiptStorage Instance { get; } = new();
 
-        public Keccak? FindBlockHash(Keccak hash) => null;
+        public Hash256? FindBlockHash(Hash256 hash) => null;
 
         private NullReceiptStorage()
         {
@@ -20,10 +20,10 @@ namespace Nethermind.Blockchain.Receipts
         public void Insert(Block block, TxReceipt[] txReceipts, bool ensureCanonical) { }
 
         public TxReceipt[] Get(Block block) => Array.Empty<TxReceipt>();
-        public TxReceipt[] Get(Keccak blockHash) => Array.Empty<TxReceipt>();
+        public TxReceipt[] Get(Hash256 blockHash) => Array.Empty<TxReceipt>();
         public bool CanGetReceiptsByHash(long blockNumber) => true;
 
-        public bool TryGetReceiptsIterator(long blockNumber, Keccak blockHash, out ReceiptsIterator iterator)
+        public bool TryGetReceiptsIterator(long blockNumber, Hash256 blockHash, out ReceiptsIterator iterator)
         {
             iterator = new ReceiptsIterator();
             return false;
@@ -37,13 +37,7 @@ namespace Nethermind.Blockchain.Receipts
 
         public long MigratedBlockNumber { get; set; } = 0;
 
-        public event EventHandler<ReceiptsEventArgs> ReceiptsInserted
-        {
-            add { }
-            remove { }
-        }
-
-        public bool HasBlock(long blockNumber, Keccak hash)
+        public bool HasBlock(long blockNumber, Hash256 hash)
         {
             return false;
         }

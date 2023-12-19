@@ -14,13 +14,13 @@ namespace Nethermind.Facade.Filters.Topics
 
         private AnyTopic() { }
 
-        public override bool Accepts(Keccak topic) => true;
-        public override bool Accepts(ref KeccakStructRef topic) => true;
+        public override bool Accepts(Hash256 topic) => true;
+        public override bool Accepts(ref Hash256StructRef topic) => true;
 
         public override bool Matches(Bloom bloom) => true;
         public override bool Matches(ref BloomStructRef bloom) => true;
 
-        public override IEnumerable<Keccak> OrTopicExpression => Enumerable.Empty<Keccak>();
+        public override IEnumerable<Hash256> OrTopicExpression => Enumerable.Empty<Hash256>();
 
         public override string ToString() => "null";
     }

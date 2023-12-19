@@ -5,6 +5,7 @@ using System;
 using FluentAssertions;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Serialization.Rlp;
@@ -31,6 +32,19 @@ public class BlockStoreTests
         store.Delete(block.Number, block.Hash!);
 
         store.Get(block.Number, block.Hash!, cached).Should().BeNull();
+    }
+
+    [Test]
+    public void Test_insert_would_pass_in_writeflag()
+    {
+        TestMemDb db = new TestMemDb();
+        BlockStore store = new BlockStore(db);
+
+        Block block = Build.A.Block.WithNumber(1).TestObject;
+        store.Insert(block, WriteFlags.DisableWAL);
+
+        byte[] key = Bytes.Concat(block.Number.ToBigEndianByteArray(), block.Hash!.BytesToArray());
+        db.KeyWasWrittenWithFlags(key, WriteFlags.DisableWAL);
     }
 
     [TestCase(true)]

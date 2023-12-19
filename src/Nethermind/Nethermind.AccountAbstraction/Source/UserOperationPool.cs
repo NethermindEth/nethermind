@@ -41,12 +41,12 @@ namespace Nethermind.AccountAbstraction.Source
         private readonly IReadOnlyStateProvider _stateProvider;
         private readonly ISpecProvider _specProvider;
         private readonly ITimestamper _timestamper;
-        private readonly Keccak _userOperationEventTopic;
+        private readonly Hash256 _userOperationEventTopic;
         private readonly IUserOperationSimulator _userOperationSimulator;
         private readonly UserOperationSortedPool _userOperationSortedPool;
         private readonly IUserOperationBroadcaster _userOperationBroadcaster;
 
-        private readonly ConcurrentDictionary<long, HashSet<Keccak>> _userOperationsToDelete = new();
+        private readonly ConcurrentDictionary<long, HashSet<Hash256>> _userOperationsToDelete = new();
         private readonly ConcurrentDictionary<long, HashSet<UserOperation>> _removedUserOperations = new();
 
         private readonly Channel<BlockReplacementEventArgs> _headBlocksReplacementChannel = Channel.CreateUnbounded<BlockReplacementEventArgs>(new UnboundedChannelOptions() { SingleReader = true, SingleWriter = true });
@@ -89,7 +89,7 @@ namespace Nethermind.AccountAbstraction.Source
             _chainId = chainId;
 
             // topic hash emitted by a successful user operation
-            _userOperationEventTopic = new Keccak("0x33fd4d1f25a5461bea901784a6571de6debc16cd0831932c22c6969cd73ba994");
+            _userOperationEventTopic = new Hash256("0x33fd4d1f25a5461bea901784a6571de6debc16cd0831932c22c6969cd73ba994");
 
             MemoryAllowance.MemPoolSize = accountAbstractionConfig.UserOperationPoolSize;
 
@@ -192,7 +192,7 @@ namespace Nethermind.AccountAbstraction.Source
             {
                 foreach (UserOperation op in value)
                 {
-                    ResultWrapper<Keccak> result = AddUserOperation(op);
+                    ResultWrapper<Hash256> result = AddUserOperation(op);
                     if (result.Result == Result.Success)
                     {
                         if (_logger.IsInfo) _logger.Info($"UserOperation {op.RequestId!} added to pool after reorg");
@@ -258,7 +258,7 @@ namespace Nethermind.AccountAbstraction.Source
             _currentBaseFee = baseFee;
         }
 
-        public ResultWrapper<Keccak> AddUserOperation(UserOperation userOperation)
+        public ResultWrapper<Hash256> AddUserOperation(UserOperation userOperation)
         {
             userOperation.CalculateRequestId(_entryPointAddress, _chainId);
             Metrics.UserOperationsReceived++;
@@ -268,7 +268,7 @@ namespace Nethermind.AccountAbstraction.Source
             NewReceived?.Invoke(this, userOperationEventArgs);
 
             UpdateCurrentBaseFee();
-            ResultWrapper<Keccak> result = ValidateUserOperation(userOperation);
+            ResultWrapper<Hash256> result = ValidateUserOperation(userOperation);
             if (result.Result == Result.Success)
             {
                 if (_logger.IsDebug) _logger.Debug($"UserOperation {userOperation.RequestId!} validation succeeded");
@@ -285,11 +285,11 @@ namespace Nethermind.AccountAbstraction.Source
                     _userOperationBroadcaster.BroadcastOnce(new UserOperationWithEntryPoint(userOperation, _entryPointAddress));
                     NewPending?.Invoke(this, userOperationEventArgs);
 
-                    return ResultWrapper<Keccak>.Success(userOperation.RequestId!);
+                    return ResultWrapper<Hash256>.Success(userOperation.RequestId!);
                 }
 
                 if (_logger.IsDebug) _logger.Debug($"UserOperation {userOperation.RequestId!} failed to be inserted into pool");
-                return ResultWrapper<Keccak>.Fail("failed to insert userOp into pool");
+                return ResultWrapper<Hash256>.Fail("failed to insert userOp into pool");
             }
 
             if (_logger.IsDebug) _logger.Debug($"UserOperation {userOperation.RequestId!} validation failed because: {result.Result.Error}");
@@ -297,7 +297,7 @@ namespace Nethermind.AccountAbstraction.Source
             return result;
         }
 
-        public bool RemoveUserOperation(Keccak? userOperationHash)
+        public bool RemoveUserOperation(Hash256? userOperationHash)
         {
             return userOperationHash is not null && _userOperationSortedPool.TryRemove(userOperationHash);
         }
@@ -308,7 +308,7 @@ namespace Nethermind.AccountAbstraction.Source
             _removedUserOperations.TryRemove(block.Number - Reorganization.MaxDepth, out _);
 
             // remove any user operations that were only allowed to stay for 10 blocks due to throttled paymasters
-            if (_userOperationsToDelete.TryGetValue(block.Number, out HashSet<Keccak>? value))
+            if (_userOperationsToDelete.TryGetValue(block.Number, out HashSet<Hash256>? value))
             {
                 foreach (var userOperationHash in value) RemoveUserOperation(userOperationHash);
             }
@@ -326,7 +326,7 @@ namespace Nethermind.AccountAbstraction.Source
             {
                 if (log.Topics[0] == _userOperationEventTopic)
                 {
-                    Keccak requestId = log.Topics[1];
+                    Hash256 requestId = log.Topics[1];
                     if (_userOperationSortedPool.TryGetValue(requestId, out UserOperation? op))
                     {
                         if (_logger.IsInfo) _logger.Info($"UserOperation {op.RequestId!} removed from pool after being included by miner");
@@ -349,15 +349,15 @@ namespace Nethermind.AccountAbstraction.Source
             }
         }
 
-        private ResultWrapper<Keccak> ValidateUserOperation(UserOperation userOperation)
+        private ResultWrapper<Hash256> ValidateUserOperation(UserOperation userOperation)
         {
             // make sure op not already in pool
             if (_userOperationSortedPool.TryGetValue(userOperation.RequestId!, out _))
-                return ResultWrapper<Keccak>.Fail("userOp is already present in the pool");
+                return ResultWrapper<Hash256>.Fail("userOp is already present in the pool");
 
             if (userOperation.MaxFeePerGas < _currentBaseFee * 70 / 100)
             {
-                return ResultWrapper<Keccak>.Fail($"maxFeePerGas must be at least 70% of baseFee to be accepted into pool");
+                return ResultWrapper<Hash256>.Fail($"maxFeePerGas must be at least 70% of baseFee to be accepted into pool");
             }
 
 
@@ -367,12 +367,12 @@ namespace Nethermind.AccountAbstraction.Source
             switch (paymasterStatus)
             {
                 case PaymasterStatus.Ok: break;
-                case PaymasterStatus.Banned: return ResultWrapper<Keccak>.Fail("paymaster banned");
+                case PaymasterStatus.Banned: return ResultWrapper<Hash256>.Fail("paymaster banned");
                 case PaymasterStatus.Throttled:
                 {
                     IEnumerable<UserOperation> poolUserOperations = GetUserOperations();
                     if (poolUserOperations.Any(poolOp => poolOp.Paymaster == userOperation.Paymaster))
-                        return ResultWrapper<Keccak>.Fail(
+                            return ResultWrapper<Hash256>.Fail(
                             $"paymaster throttled and userOp with paymaster {userOperation.Paymaster} is already present in the pool");
                     break;
                 }
@@ -380,37 +380,37 @@ namespace Nethermind.AccountAbstraction.Source
 
             if (_userOperationSortedPool.UserOperationWouldOverflowSenderBucket(userOperation))
             {
-                return ResultWrapper<Keccak>.Fail($"the pool already contains the maximum {_accountAbstractionConfig.MaximumUserOperationPerSender} user operations from the {userOperation.Sender} sender");
+                return ResultWrapper<Hash256>.Fail($"the pool already contains the maximum {_accountAbstractionConfig.MaximumUserOperationPerSender} user operations from the {userOperation.Sender} sender");
             }
 
             if (userOperation.MaxFeePerGas < _accountAbstractionConfig.MinimumGasPrice)
-                return ResultWrapper<Keccak>.Fail($"maxFeePerGas below minimum gas price {_accountAbstractionConfig.MinimumGasPrice} wei");
+                return ResultWrapper<Hash256>.Fail($"maxFeePerGas below minimum gas price {_accountAbstractionConfig.MinimumGasPrice} wei");
 
             if (userOperation.CallGas < Transaction.BaseTxGasCost)
-                return ResultWrapper<Keccak>.Fail($"callGas too low, must be at least {Transaction.BaseTxGasCost}");
+                return ResultWrapper<Hash256>.Fail($"callGas too low, must be at least {Transaction.BaseTxGasCost}");
 
             // make sure target account exists or is going to be created
             if (
                 userOperation.Sender == Address.Zero
                 || !(_stateProvider.AccountExists(userOperation.Sender) || userOperation.InitCode != Bytes.Empty))
-                return ResultWrapper<Keccak>.Fail("sender doesn't exist");
+                return ResultWrapper<Hash256>.Fail("sender doesn't exist");
 
             // make sure paymaster is a contract (if paymaster is used) and is not on banned list
             if (userOperation.Paymaster != Address.Zero)
             {
                 if (!_stateProvider.AccountExists(userOperation.Paymaster)
                     || !_stateProvider.IsContract(userOperation.Paymaster))
-                    return ResultWrapper<Keccak>.Fail("paymaster is used but is not a contract or is banned");
+                    return ResultWrapper<Hash256>.Fail("paymaster is used but is not a contract or is banned");
             }
 
-            ResultWrapper<Keccak> successfulSimulation = Simulate(userOperation, _blockTree.Head!.Header);
+            ResultWrapper<Hash256> successfulSimulation = Simulate(userOperation, _blockTree.Head!.Header);
 
             // throttled userOp can only stay for 10 blocks
             if (paymasterStatus == PaymasterStatus.Throttled && successfulSimulation.Result == Result.Success)
             {
                 long blockNumberToDelete = _blockTree.Head!.Number + 10;
                 _userOperationsToDelete.AddOrUpdate(blockNumberToDelete,
-                    k => new HashSet<Keccak>() { userOperation.RequestId! },
+                    k => new HashSet<Hash256>() { userOperation.RequestId! },
                     (k, v) =>
                     {
                         v.Add(userOperation.RequestId!);
@@ -421,10 +421,10 @@ namespace Nethermind.AccountAbstraction.Source
             return successfulSimulation;
         }
 
-        private ResultWrapper<Keccak> Simulate(UserOperation userOperation, BlockHeader parent)
+        private ResultWrapper<Hash256> Simulate(UserOperation userOperation, BlockHeader parent)
         {
             Metrics.UserOperationsSimulated++;
-            ResultWrapper<Keccak> success = _userOperationSimulator.Simulate(
+            ResultWrapper<Hash256> success = _userOperationSimulator.Simulate(
                 userOperation,
                 parent,
                 _timestamper.UnixTime.Seconds, CancellationToken.None);

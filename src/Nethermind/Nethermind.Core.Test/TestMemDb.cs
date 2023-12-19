@@ -16,15 +16,17 @@ namespace Nethermind.Core.Test;
 /// </summary>
 public class TestMemDb : MemDb, ITunableDb
 {
-    private List<(byte[], ReadFlags)> _readKeys = new();
-    private List<((byte[], byte[]?), WriteFlags)> _writes = new();
-    private List<byte[]> _removedKeys = new();
-    private List<ITunableDb.TuneType> _tuneTypes = new();
+    private readonly List<(byte[], ReadFlags)> _readKeys = new();
+    private readonly List<((byte[], byte[]?), WriteFlags)> _writes = new();
+    private readonly List<byte[]> _removedKeys = new();
+    private readonly List<ITunableDb.TuneType> _tuneTypes = new();
 
     public Func<byte[], byte[]>? ReadFunc { get; set; }
+    public Func<byte[], byte[]?, bool>? WriteFunc { get; set; }
     public Action<byte[]>? RemoveFunc { get; set; }
 
-    public bool WasFlushed { get; set; }
+    public bool WasFlushed => FlushCount > 0;
+    public int FlushCount { get; set; } = 0;
 
     [MethodImpl(MethodImplOptions.Synchronized)]
     public override byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
@@ -39,6 +41,8 @@ public class TestMemDb : MemDb, ITunableDb
     public override void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None)
     {
         _writes.Add(((key.ToArray(), value), flags));
+
+        if (WriteFunc?.Invoke(key.ToArray(), value) == false) return;
         base.Set(key, value, flags);
     }
 
@@ -100,13 +104,13 @@ public class TestMemDb : MemDb, ITunableDb
         _removedKeys.Count(cond).Should().Be(times);
     }
 
-    public override IBatch StartBatch()
+    public override IWriteBatch StartWriteBatch()
     {
-        return new InMemoryBatch(this);
+        return new InMemoryWriteBatch(this);
     }
 
     public override void Flush()
     {
-        WasFlushed = true;
+        FlushCount++;
     }
 }

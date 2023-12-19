@@ -8,9 +8,9 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Synchronization.LesSync
 {
-    public class ChtDecoder : IRlpStreamDecoder<(Keccak?, UInt256)>
+    public class ChtDecoder : IRlpStreamDecoder<(Hash256?, UInt256)>
     {
-        public (Keccak?, UInt256) Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public (Hash256?, UInt256) Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (rlpStream.IsNextItemNull())
             {
@@ -19,38 +19,38 @@ namespace Nethermind.Synchronization.LesSync
             }
 
             rlpStream.ReadSequenceLength();
-            Keccak hash = rlpStream.DecodeKeccak();
+            Hash256 hash = rlpStream.DecodeKeccak();
             UInt256 totalDifficulty = rlpStream.DecodeUInt256();
             return (hash, totalDifficulty);
         }
 
-        public void Encode(RlpStream stream, (Keccak?, UInt256) item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public void Encode(RlpStream stream, (Hash256?, UInt256) item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            (Keccak? hash, UInt256 totalDifficulty) = item;
+            (Hash256? hash, UInt256 totalDifficulty) = item;
             int contentLength = GetContentLength(item, RlpBehaviors.None);
             stream.StartSequence(contentLength);
             stream.Encode(hash);
             stream.Encode(totalDifficulty);
         }
 
-        public (Keccak?, UInt256) Decode(byte[] bytes)
+        public (Hash256?, UInt256) Decode(byte[] bytes)
         {
             return Decode(new RlpStream(bytes));
         }
 
-        public Rlp Encode((Keccak?, UInt256) item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public Rlp Encode((Hash256?, UInt256) item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             throw new NotImplementedException();
         }
 
-        public int GetLength((Keccak?, UInt256) item, RlpBehaviors rlpBehaviors)
+        public int GetLength((Hash256?, UInt256) item, RlpBehaviors rlpBehaviors)
         {
             return Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors));
         }
 
-        private int GetContentLength((Keccak?, UInt256) item, RlpBehaviors rlpBehaviors)
+        private static int GetContentLength((Hash256?, UInt256) item, RlpBehaviors rlpBehaviors)
         {
-            (Keccak? hash, UInt256 totalDifficulty) = item;
+            (Hash256? hash, UInt256 totalDifficulty) = item;
             return Rlp.LengthOf(hash) + Rlp.LengthOf(totalDifficulty);
         }
     }

@@ -36,14 +36,14 @@ namespace Nethermind.Serialization.Rlp
                 txReceipt.StatusCode = firstItem[0];
                 txReceipt.GasUsedTotal = (long)rlpStream.DecodeUBigInt();
             }
-            else if (firstItem.Length >= 1 && firstItem.Length <= 4)
+            else if (firstItem.Length is >= 1 and <= 4)
             {
                 txReceipt.GasUsedTotal = (long)firstItem.ToUnsignedBigInteger();
                 txReceipt.SkipStateAndStatusInRlp = true;
             }
             else
             {
-                txReceipt.PostTransactionState = firstItem.Length == 0 ? null : new Keccak(firstItem);
+                txReceipt.PostTransactionState = firstItem.Length == 0 ? null : new Hash256(firstItem);
                 txReceipt.GasUsedTotal = (long)rlpStream.DecodeUBigInt();
             }
 
@@ -62,7 +62,7 @@ namespace Nethermind.Serialization.Rlp
             return txReceipt;
         }
 
-        private (int Total, int Logs) GetContentLength(TxReceipt item, RlpBehaviors rlpBehaviors)
+        private static (int Total, int Logs) GetContentLength(TxReceipt item, RlpBehaviors rlpBehaviors)
         {
             if (item is null)
             {
@@ -88,7 +88,7 @@ namespace Nethermind.Serialization.Rlp
             return (contentLength, logsLength);
         }
 
-        private int GetLogsLength(TxReceipt item)
+        private static int GetLogsLength(TxReceipt item)
         {
             int logsLength = 0;
             for (var i = 0; i < item.Logs.Length; i++)

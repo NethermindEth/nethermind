@@ -22,7 +22,7 @@ namespace Nethermind.Logging
             _task.Wait();
         }
 
-        private Task _task;
+        private readonly Task _task;
 
         public ConsoleAsyncLogger(LogLevel logLevel, string prefix = null)
         {

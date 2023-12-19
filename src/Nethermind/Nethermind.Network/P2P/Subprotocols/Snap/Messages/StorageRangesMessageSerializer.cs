@@ -80,7 +80,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
         private PathWithStorageSlot DecodeSlot(RlpStream stream)
         {
             stream.ReadSequenceLength();
-            Keccak path = stream.DecodeKeccak();
+            Hash256 path = stream.DecodeKeccak();
             byte[] value = stream.DecodeByteArray();
 
             PathWithStorageSlot data = new(path, value);
@@ -88,7 +88,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
             return data;
         }
 
-        private (int contentLength, int allSlotsLength, int[] accountSlotsLengths, int proofsLength) CalculateLengths(StorageRangeMessage message)
+        private static (int contentLength, int allSlotsLength, int[] accountSlotsLengths, int proofsLength) CalculateLengths(StorageRangeMessage message)
         {
             int contentLength = Rlp.LengthOf(message.RequestId);
 

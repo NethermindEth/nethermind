@@ -9,10 +9,10 @@ namespace Nethermind.Facade.Filters.Topics
 {
     public class SpecificTopic : TopicExpression
     {
-        public Keccak Topic { get; }
+        public readonly Hash256 Topic;
         private Bloom.BloomExtract _bloomExtract;
 
-        public SpecificTopic(Keccak topic)
+        public SpecificTopic(Hash256 topic)
         {
             Topic = topic;
         }
@@ -30,15 +30,15 @@ namespace Nethermind.Facade.Filters.Topics
             }
         }
 
-        public override bool Accepts(Keccak topic) => topic == Topic;
+        public override bool Accepts(Hash256 topic) => topic == Topic;
 
-        public override bool Accepts(ref KeccakStructRef topic) => topic == Topic;
+        public override bool Accepts(ref Hash256StructRef topic) => topic == Topic;
 
         public override bool Matches(Bloom bloom) => bloom.Matches(in BloomExtract);
 
         public override bool Matches(ref BloomStructRef bloom) => bloom.Matches(in BloomExtract);
 
-        public override IEnumerable<Keccak> OrTopicExpression
+        public override IEnumerable<Hash256> OrTopicExpression
         {
             get
             {
@@ -50,7 +50,7 @@ namespace Nethermind.Facade.Filters.Topics
 
         public override bool Equals(object? obj)
         {
-            if (ReferenceEquals(null, obj)) return false;
+            if (obj is null) return false;
             if (ReferenceEquals(this, obj)) return true;
             if (obj.GetType() != GetType()) return false;
             return Equals((SpecificTopic)obj);

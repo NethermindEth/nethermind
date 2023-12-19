@@ -42,6 +42,9 @@ namespace Nethermind.Blockchain.Test.Find
             SetUp(true);
         }
 
+        [TearDown]
+        public void TearDown() => _bloomStorage?.Dispose();
+
         private void SetUp(bool allowReceiptIterator)
         {
             var specProvider = Substitute.For<ISpecProvider>();
@@ -431,7 +434,7 @@ namespace Nethermind.Blockchain.Test.Find
         private InMemoryReceiptStorage build_receipt_storage()
         {
             LogEntry[] logs = new LogEntry[2];
-            logs[0] = Build.A.LogEntry.WithAddress(TestItem.AddressA).WithTopics(new Keccak[] {TestItem.KeccakA, TestItem.KeccakB, TestItem.KeccakC} ).TestObject;
+            logs[0] = Build.A.LogEntry.WithAddress(TestItem.AddressA).WithTopics(new Hash256[] {TestItem.KeccakA, TestItem.KeccakB, TestItem.KeccakC} ).TestObject;
             logs[1] = Build.A.LogEntry.WithAddress(TestItem.AddressA).WithTopics(TestItem.KeccakA).TestObject;
 
             TxReceipt receipt = Build.A.Receipt.WithTransactionHash(TestItem.KeccakH).WithBloom(new Core.Bloom()).WithLogs(logs).TestObject;

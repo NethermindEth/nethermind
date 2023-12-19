@@ -12,7 +12,7 @@ using Nethermind.Merge.Plugin.Data;
 
 namespace Nethermind.Merge.Plugin.Handlers;
 
-public class GetPayloadBodiesByHashV1Handler : IAsyncHandler<IList<Keccak>, IEnumerable<ExecutionPayloadBodyV1Result?>>
+public class GetPayloadBodiesByHashV1Handler : IAsyncHandler<IList<Hash256>, IEnumerable<ExecutionPayloadBodyV1Result?>>
 {
     private const int MaxCount = 1024;
     private readonly IBlockTree _blockTree;
@@ -24,7 +24,7 @@ public class GetPayloadBodiesByHashV1Handler : IAsyncHandler<IList<Keccak>, IEnu
         _logger = logManager.GetClassLogger();
     }
 
-    public Task<ResultWrapper<IEnumerable<ExecutionPayloadBodyV1Result?>>> HandleAsync(IList<Keccak> blockHashes)
+    public Task<ResultWrapper<IEnumerable<ExecutionPayloadBodyV1Result?>>> HandleAsync(IList<Hash256> blockHashes)
     {
         if (blockHashes.Count > MaxCount)
         {
@@ -35,16 +35,18 @@ public class GetPayloadBodiesByHashV1Handler : IAsyncHandler<IList<Keccak>, IEnu
             return ResultWrapper<IEnumerable<ExecutionPayloadBodyV1Result?>>.Fail(error, MergeErrorCodes.TooLargeRequest);
         }
 
-        var payloadBodies = new ExecutionPayloadBodyV1Result?[blockHashes.Count];
+        return Task.FromResult(ResultWrapper<IEnumerable<ExecutionPayloadBodyV1Result?>>.Success(GetRequests(blockHashes)));
+    }
+
+    private IEnumerable<ExecutionPayloadBodyV1Result?> GetRequests(IList<Hash256> blockHashes)
+    {
         for (int i = 0; i < blockHashes.Count; i++)
         {
             Block? block = _blockTree.FindBlock(blockHashes[i]);
 
-            payloadBodies[i] = block is null
-                ? null
-                : new ExecutionPayloadBodyV1Result(block.Transactions, block.Withdrawals);
+            yield return (block is null ? null : new ExecutionPayloadBodyV1Result(block.Transactions, block.Withdrawals));
         }
 
-        return Task.FromResult(ResultWrapper<IEnumerable<ExecutionPayloadBodyV1Result?>>.Success(payloadBodies));
+        yield break;
     }
 }

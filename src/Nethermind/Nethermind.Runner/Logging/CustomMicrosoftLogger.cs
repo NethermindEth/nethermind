@@ -22,10 +22,7 @@ namespace Nethermind.Runner.Logging
                 return;
             }
 
-            if (formatter is null)
-            {
-                throw new ArgumentNullException(nameof(formatter));
-            }
+            ArgumentNullException.ThrowIfNull(formatter);
 
             var message = formatter(state, exception);
             switch (logLevel)

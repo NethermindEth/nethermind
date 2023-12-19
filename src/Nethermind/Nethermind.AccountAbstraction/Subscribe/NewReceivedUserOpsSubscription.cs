@@ -25,7 +25,7 @@ namespace Nethermind.AccountAbstraction.Subscribe
             UserOperationSubscriptionParam? userOperationSubscriptionParam = null)
             : base(jsonRpcDuplexClient)
         {
-            if (userOperationPools is null) throw new ArgumentNullException(nameof(userOperationPools));
+            ArgumentNullException.ThrowIfNull(userOperationPools);
             if (userOperationSubscriptionParam is not null)
             {
                 if (userOperationSubscriptionParam.EntryPoints.Length == 0)
@@ -60,18 +60,13 @@ namespace Nethermind.AccountAbstraction.Subscribe
 
         private void OnNewReceived(object? sender, UserOperationEventArgs e)
         {
-            ScheduleAction(() =>
+            ScheduleAction(async () =>
             {
                 JsonRpcResult result;
-                if (_includeUserOperations)
-                {
-                    result = CreateSubscriptionMessage(new { UserOperation = new UserOperationRpc(e.UserOperation), e.EntryPoint });
-                }
-                else
-                {
-                    result = CreateSubscriptionMessage(new { UserOperation = e.UserOperation.RequestId, e.EntryPoint });
-                }
-                JsonRpcDuplexClient.SendJsonRpcResult(result);
+                result = _includeUserOperations
+                    ? CreateSubscriptionMessage(new { UserOperation = new UserOperationRpc(e.UserOperation), e.EntryPoint })
+                    : CreateSubscriptionMessage(new { UserOperation = e.UserOperation.RequestId, e.EntryPoint });
+                await JsonRpcDuplexClient.SendJsonRpcResult(result);
                 if (_logger.IsTrace) _logger.Trace($"newReceivedUserOperations subscription {Id} printed hash of newReceivedUserOperations.");
             });
         }
@@ -89,5 +84,3 @@ namespace Nethermind.AccountAbstraction.Subscribe
         }
     }
 }
-
-

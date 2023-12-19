@@ -185,10 +185,10 @@ public class DebugTracer : ITxTracer, ITxTracerWrapper, IDisposable
         }
     }
 
-    public void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Keccak? stateRoot = null)
+    public void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null)
         => InnerTracer.MarkAsSuccess(recipient, gasSpent, output, logs, stateRoot);
 
-    public void MarkAsFailed(Address recipient, long gasSpent, byte[] output, string error, Keccak? stateRoot = null)
+    public void MarkAsFailed(Address recipient, long gasSpent, byte[] output, string error, Hash256? stateRoot = null)
         => InnerTracer.MarkAsFailed(recipient, gasSpent, output, error, stateRoot);
 
     public void StartOperation(int depth, long gas, Instruction opcode, int pc, bool isPostMerge = false)
@@ -200,13 +200,13 @@ public class DebugTracer : ITxTracer, ITxTracerWrapper, IDisposable
     public void ReportOperationRemainingGas(long gas)
         => InnerTracer.ReportOperationRemainingGas(gas);
 
-    public void SetOperationStack(List<string> stackTrace)
-        => InnerTracer.SetOperationStack(stackTrace);
+    public void SetOperationStack(TraceStack stack)
+        => InnerTracer.SetOperationStack(stack);
 
     public void ReportStackPush(in ReadOnlySpan<byte> stackItem)
         => InnerTracer.ReportStackPush(stackItem);
 
-    public void SetOperationMemory(IEnumerable<string> memoryTrace)
+    public void SetOperationMemory(TraceMemory memoryTrace)
         => InnerTracer.SetOperationMemory(memoryTrace);
 
     public void SetOperationMemorySize(ulong newSize)
@@ -236,7 +236,7 @@ public class DebugTracer : ITxTracer, ITxTracerWrapper, IDisposable
     public void ReportActionEnd(long gas, Address deploymentAddress, ReadOnlyMemory<byte> deployedCode)
         => InnerTracer.ReportActionEnd(gas, deploymentAddress, deployedCode);
 
-    public void ReportBlockHash(Keccak blockHash)
+    public void ReportBlockHash(Hash256 blockHash)
         => InnerTracer.ReportBlockHash(blockHash);
 
     public void ReportByteCode(byte[] byteCode)

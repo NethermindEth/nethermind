@@ -47,17 +47,24 @@ namespace Nethermind.Facade.Eth
                 return ReturnSyncing(headNumberOrZero, bestSuggestedNumber, syncMode);
             }
 
-            if (_syncConfig.FastSync)
+            // If we're on FastSync mode and the pivot number is not defined (it's 0), then we might never need to download receipts/bodies
+            // so we cannot check for the `LowestInsertedReceiptBlockNumber`.
+            // On the other hand, if we do have a PivotNumber then we should download receipts/bodies, so we check if we're still downloading them.
+            bool needsToDownloadReceiptsAndBodies = _syncConfig.PivotNumberParsed != 0;
+            if (_syncConfig.FastSync && needsToDownloadReceiptsAndBodies)
             {
-                if (_syncConfig.DownloadReceiptsInFastSync &&
-                    (_receiptStorage.LowestInsertedReceiptBlockNumber is null || _receiptStorage.LowestInsertedReceiptBlockNumber > _syncConfig.AncientReceiptsBarrierCalc))
+                bool isDownloadingReceipts = _receiptStorage.LowestInsertedReceiptBlockNumber is null
+                                             || _receiptStorage.LowestInsertedReceiptBlockNumber > _syncConfig.AncientReceiptsBarrierCalc;
+                if (_syncConfig.DownloadReceiptsInFastSync && isDownloadingReceipts)
                 {
                     if (_logger.IsTrace) _logger.Trace($"Receipts not finished - EthSyncingInfo - HighestBlock: {bestSuggestedNumber}, CurrentBlock: {headNumberOrZero}, AncientReceiptsBarrier: {_syncConfig.AncientReceiptsBarrierCalc}. LowestInsertedBodyNumber: {_blockTree.LowestInsertedBodyNumber} LowestInsertedReceiptBlockNumber: {_receiptStorage.LowestInsertedReceiptBlockNumber}");
                     return ReturnSyncing(headNumberOrZero, bestSuggestedNumber, syncMode);
                 }
 
-                if (_syncConfig.DownloadBodiesInFastSync &&
-                    (_blockTree.LowestInsertedBodyNumber is null || _blockTree.LowestInsertedBodyNumber > _syncConfig.AncientBodiesBarrierCalc))
+
+                bool isDownloadingBodies = _blockTree.LowestInsertedBodyNumber is null
+                                           || _blockTree.LowestInsertedBodyNumber > _syncConfig.AncientBodiesBarrierCalc;
+                if (_syncConfig.DownloadBodiesInFastSync && isDownloadingBodies)
                 {
                     if (_logger.IsTrace) _logger.Trace($"Bodies not finished - EthSyncingInfo - HighestBlock: {bestSuggestedNumber}, CurrentBlock: {headNumberOrZero}, AncientBodiesBarrier: {_syncConfig.AncientBodiesBarrierCalc}. LowestInsertedBodyNumber: {_blockTree.LowestInsertedBodyNumber} LowestInsertedReceiptBlockNumber: {_receiptStorage.LowestInsertedReceiptBlockNumber}");
                     return ReturnSyncing(headNumberOrZero, bestSuggestedNumber, syncMode);
@@ -68,7 +75,7 @@ namespace Nethermind.Facade.Eth
             return SyncingResult.NotSyncing;
         }
 
-        private SyncingResult ReturnSyncing(long headNumberOrZero, long bestSuggestedNumber, SyncMode syncMode)
+        private static SyncingResult ReturnSyncing(long headNumberOrZero, long bestSuggestedNumber, SyncMode syncMode)
         {
             return new SyncingResult
             {

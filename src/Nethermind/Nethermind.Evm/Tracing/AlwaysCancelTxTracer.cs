@@ -42,9 +42,9 @@ public class AlwaysCancelTxTracer : ITxTracer
     public bool IsTracingAccess => true;
     public bool IsTracingFees => true;
 
-    public void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Keccak? stateRoot = null) => throw new OperationCanceledException(ErrorMessage);
+    public void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null) => throw new OperationCanceledException(ErrorMessage);
 
-    public void MarkAsFailed(Address recipient, long gasSpent, byte[] output, string error, Keccak? stateRoot = null) => throw new OperationCanceledException(ErrorMessage);
+    public void MarkAsFailed(Address recipient, long gasSpent, byte[] output, string error, Hash256? stateRoot = null) => throw new OperationCanceledException(ErrorMessage);
 
     public void StartOperation(int depth, long gas, Instruction opcode, int pc, bool isPostMerge = false) => throw new OperationCanceledException(ErrorMessage);
 
@@ -57,11 +57,11 @@ public class AlwaysCancelTxTracer : ITxTracer
     public void ReportMemoryChange(long offset, in ReadOnlySpan<byte> data) => throw new OperationCanceledException(ErrorMessage);
     public void ReportStorageChange(in ReadOnlySpan<byte> key, in ReadOnlySpan<byte> value) => throw new OperationCanceledException(ErrorMessage);
 
-    public void SetOperationStack(List<string> stackTrace) => throw new OperationCanceledException(ErrorMessage);
+    public void SetOperationStack(TraceStack stack) => throw new OperationCanceledException(ErrorMessage);
 
     public void ReportStackPush(in ReadOnlySpan<byte> stackItem) => throw new OperationCanceledException(ErrorMessage);
 
-    public void SetOperationMemory(IEnumerable<string> memoryTrace) => throw new OperationCanceledException(ErrorMessage);
+    public void SetOperationMemory(TraceMemory memoryTrace) => throw new OperationCanceledException(ErrorMessage);
 
     public void SetOperationStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> newValue, ReadOnlySpan<byte> currentValue) => throw new OperationCanceledException(ErrorMessage);
 
@@ -81,13 +81,13 @@ public class AlwaysCancelTxTracer : ITxTracer
 
     public void ReportStorageRead(in StorageCell storageCell) => throw new OperationCanceledException(ErrorMessage);
 
-    public void ReportAction(long gas, UInt256 value, Address @from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false) => throw new OperationCanceledException(ErrorMessage);
+    public void ReportAction(long gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false) => throw new OperationCanceledException(ErrorMessage);
 
     public void ReportActionEnd(long gas, ReadOnlyMemory<byte> output) => throw new OperationCanceledException(ErrorMessage);
     public void ReportActionError(EvmExceptionType exceptionType) => throw new OperationCanceledException(ErrorMessage);
 
     public void ReportActionEnd(long gas, Address deploymentAddress, ReadOnlyMemory<byte> deployedCode) => throw new OperationCanceledException(ErrorMessage);
-    public void ReportBlockHash(Keccak blockHash) => throw new OperationCanceledException(ErrorMessage);
+    public void ReportBlockHash(Hash256 blockHash) => throw new OperationCanceledException(ErrorMessage);
 
     public void ReportByteCode(byte[] byteCode) => throw new OperationCanceledException(ErrorMessage);
     public void ReportGasUpdateForVmTrace(long refund, long gasAvailable) => throw new OperationCanceledException(ErrorMessage);
@@ -95,4 +95,5 @@ public class AlwaysCancelTxTracer : ITxTracer
     public void ReportExtraGasPressure(long extraGasPressure) => throw new OperationCanceledException(ErrorMessage);
     public void ReportAccess(IReadOnlySet<Address> accessedAddresses, IReadOnlySet<StorageCell> accessedStorageCells) => throw new OperationCanceledException(ErrorMessage);
     public void ReportFees(UInt256 fees, UInt256 burntFees) => throw new OperationCanceledException(ErrorMessage);
+    public void Dispose() { }
 }

@@ -7,7 +7,7 @@ namespace Nethermind.Core.Test.Builders
 {
     public class PrivateKeyBuilder : BuilderBase<PrivateKey>
     {
-        private PrivateKeyGenerator _generator = new();
+        private readonly PrivateKeyGenerator _generator = new();
 
         public PrivateKeyBuilder()
         {

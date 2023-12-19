@@ -81,7 +81,7 @@ namespace Nethermind.TxPool
             if (tx.SupportsBlobs)
             {
                 // if tx.SupportsBlobs and has BlobVersionedHashes = null, it will throw on earlier step of validation, in TxValidator
-                overflow |= UInt256.MultiplyOverflow(Eip4844Constants.BlobGasPerBlob, (UInt256)tx.BlobVersionedHashes!.Length, out UInt256 blobGas);
+                overflow |= UInt256.MultiplyOverflow(Eip4844Constants.GasPerBlob, (UInt256)tx.BlobVersionedHashes!.Length, out UInt256 blobGas);
                 overflow |= UInt256.MultiplyOverflow(blobGas, tx.MaxFeePerBlobGas ?? UInt256.MaxValue, out UInt256 blobGasCost);
                 overflow |= UInt256.AddOverflow(cumulativeCost, blobGasCost, out cumulativeCost);
             }

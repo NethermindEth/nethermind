@@ -30,7 +30,7 @@ public class BlockReceiptsTracer : IBlockTracer, ITxTracer, IJournal<int>, ITxTr
 
     private IBlockTracer _otherTracer = NullBlockTracer.Instance;
 
-    public void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Keccak? stateRoot = null)
+    public void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null)
     {
         _txReceipts.Add(BuildReceipt(recipient, gasSpent, StatusCode.Success, logs, stateRoot));
 
@@ -46,7 +46,7 @@ public class BlockReceiptsTracer : IBlockTracer, ITxTracer, IJournal<int>, ITxTr
         }
     }
 
-    public void MarkAsFailed(Address recipient, long gasSpent, byte[] output, string error, Keccak? stateRoot = null)
+    public void MarkAsFailed(Address recipient, long gasSpent, byte[] output, string error, Hash256? stateRoot = null)
     {
         _txReceipts.Add(BuildFailedReceipt(recipient, gasSpent, error, stateRoot));
 
@@ -62,14 +62,14 @@ public class BlockReceiptsTracer : IBlockTracer, ITxTracer, IJournal<int>, ITxTr
         }
     }
 
-    private TxReceipt BuildFailedReceipt(Address recipient, long gasSpent, string error, Keccak? stateRoot = null)
+    private TxReceipt BuildFailedReceipt(Address recipient, long gasSpent, string error, Hash256? stateRoot = null)
     {
         TxReceipt receipt = BuildReceipt(recipient, gasSpent, StatusCode.Failure, Array.Empty<LogEntry>(), stateRoot);
         receipt.Error = error;
         return receipt;
     }
 
-    private TxReceipt BuildReceipt(Address recipient, long spentGas, byte statusCode, LogEntry[] logEntries, Keccak? stateRoot = null)
+    private TxReceipt BuildReceipt(Address recipient, long spentGas, byte statusCode, LogEntry[] logEntries, Hash256? stateRoot = null)
     {
         Transaction transaction = _currentTx!;
         TxReceipt txReceipt = new()
@@ -140,8 +140,8 @@ public class BlockReceiptsTracer : IBlockTracer, ITxTracer, IJournal<int>, ITxTr
     public void ReportStorageRead(in StorageCell storageCell) =>
         _currentTxTracer.ReportStorageRead(storageCell);
 
-    public void ReportAction(long gas, UInt256 value, Address @from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false) =>
-        _currentTxTracer.ReportAction(gas, value, @from, to, input, callType, isPrecompileCall);
+    public void ReportAction(long gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false) =>
+        _currentTxTracer.ReportAction(gas, value, from, to, input, callType, isPrecompileCall);
 
     public void ReportActionEnd(long gas, ReadOnlyMemory<byte> output) =>
         _currentTxTracer.ReportActionEnd(gas, output);
@@ -149,8 +149,8 @@ public class BlockReceiptsTracer : IBlockTracer, ITxTracer, IJournal<int>, ITxTr
     public void ReportActionError(EvmExceptionType exceptionType) =>
         _currentTxTracer.ReportActionError(exceptionType);
 
-    public void ReportActionError(EvmExceptionType exceptionType, long gasLeft) =>
-        _currentTxTracer.ReportActionError(exceptionType, gasLeft);
+    public void ReportActionRevert(long gasLeft, byte[] output) =>
+        _currentTxTracer.ReportActionRevert(gasLeft, output);
 
     public void ReportActionEnd(long gas, Address deploymentAddress, ReadOnlyMemory<byte> deployedCode) =>
         _currentTxTracer.ReportActionEnd(gas, deploymentAddress, deployedCode);
@@ -170,16 +170,16 @@ public class BlockReceiptsTracer : IBlockTracer, ITxTracer, IJournal<int>, ITxTr
     public void ReportAccess(IReadOnlySet<Address> accessedAddresses, IReadOnlySet<StorageCell> accessedStorageCells) =>
         _currentTxTracer.ReportAccess(accessedAddresses, accessedStorageCells);
 
-    public void SetOperationStack(List<string> stackTrace) =>
-        _currentTxTracer.SetOperationStack(stackTrace);
+    public void SetOperationStack(TraceStack stack) =>
+        _currentTxTracer.SetOperationStack(stack);
 
     public void ReportStackPush(in ReadOnlySpan<byte> stackItem) =>
         _currentTxTracer.ReportStackPush(stackItem);
 
-    public void ReportBlockHash(Keccak blockHash) =>
+    public void ReportBlockHash(Hash256 blockHash) =>
         _currentTxTracer.ReportBlockHash(blockHash);
 
-    public void SetOperationMemory(IEnumerable<string> memoryTrace) =>
+    public void SetOperationMemory(TraceMemory memoryTrace) =>
         _currentTxTracer.SetOperationMemory(memoryTrace);
 
     public void ReportFees(UInt256 fees, UInt256 burntFees)
@@ -201,6 +201,7 @@ public class BlockReceiptsTracer : IBlockTracer, ITxTracer, IJournal<int>, ITxTr
     public ITxTracer InnerTracer => _currentTxTracer;
 
     public int TakeSnapshot() => _txReceipts.Count;
+
     public void Restore(int snapshot)
     {
         int numToRemove = _txReceipts.Count - snapshot;
@@ -261,5 +262,10 @@ public class BlockReceiptsTracer : IBlockTracer, ITxTracer, IJournal<int>, ITxTr
     public void SetOtherTracer(IBlockTracer blockTracer)
     {
         _otherTracer = blockTracer;
+    }
+
+    public void Dispose()
+    {
+        _currentTxTracer.Dispose();
     }
 }

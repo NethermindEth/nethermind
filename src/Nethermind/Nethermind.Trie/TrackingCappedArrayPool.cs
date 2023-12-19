@@ -14,8 +14,8 @@ namespace Nethermind.Trie;
 /// </summary>
 public class TrackingCappedArrayPool : ICappedArrayPool
 {
-    private List<CappedArray<byte>> _rentedBuffers;
-    private ArrayPool<byte> _arrayPool;
+    private readonly List<CappedArray<byte>> _rentedBuffers;
+    private readonly ArrayPool<byte> _arrayPool;
 
     public TrackingCappedArrayPool() : this(0)
     {
@@ -35,7 +35,7 @@ public class TrackingCappedArrayPool : ICappedArrayPool
         }
 
         CappedArray<byte> rented = new CappedArray<byte>(_arrayPool.Rent(size), size);
-        rented.AsSpan().Fill(0);
+        rented.AsSpan().Clear();
         _rentedBuffers.Add(rented);
         return rented;
     }

@@ -37,9 +37,9 @@ namespace Nethermind.Mining.Test
             }
         }
 
-        private Guid _guidA = Guid.NewGuid();
-        private Guid _guidB = Guid.NewGuid();
-        private Guid _guidC = Guid.NewGuid();
+        private readonly Guid _guidA = Guid.NewGuid();
+        private readonly Guid _guidB = Guid.NewGuid();
+        private readonly Guid _guidC = Guid.NewGuid();
 
         [Test]
         public async Task With_hint_returns_value()

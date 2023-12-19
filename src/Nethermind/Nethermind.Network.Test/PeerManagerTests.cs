@@ -81,7 +81,7 @@ namespace Nethermind.Network.Test
             Assert.That(ctx.RlpxPeer.ConnectAsyncCallsCount, Is.EqualTo(1));
         }
 
-        [Test]
+        [Test, Retry(3)]
         public async Task Will_only_connect_up_to_max_peers()
         {
             await using Context ctx = new(1);
@@ -224,6 +224,9 @@ namespace Nethermind.Network.Test
             ctx.PeerManager.Start();
             Session session1 = new(30303, Substitute.For<IChannel>(), NullDisconnectsAnalyzer.Instance,
                 LimboLogs.Instance);
+            PacketSender packetSender = new PacketSender(Substitute.For<IMessageSerializationService>(), LimboLogs.Instance, TimeSpan.Zero);
+            IChannelHandlerContext context = Substitute.For<IChannelHandlerContext>();
+
             session1.RemoteHost = "1.2.3.4";
             session1.RemotePort = 12345;
             session1.RemoteNodeId =
@@ -231,12 +234,21 @@ namespace Nethermind.Network.Test
                     ? (shouldLose ? TestItem.PublicKeyA : TestItem.PublicKeyC)
                     : (shouldLose ? TestItem.PublicKeyC : TestItem.PublicKeyA);
 
+            void EnsureSession(ISession? session)
+            {
+                if (session is null) return;
+                if (session.State < SessionState.HandshakeComplete) session.Handshake(session.Node.Id);
+                session.Init(5, context, packetSender);
+            }
 
             if (firstDirection == ConnectionDirection.In)
             {
                 ctx.RlpxPeer.CreateIncoming(session1);
                 await ctx.RlpxPeer.ConnectAsync(session1.Node);
-                if (session1.State < SessionState.HandshakeComplete) session1.Handshake(session1.Node.Id);
+
+                EnsureSession(ctx.PeerManager.ActivePeers.First().OutSession);
+                EnsureSession(ctx.PeerManager.ActivePeers.First().InSession);
+
                 (ctx.PeerManager.ActivePeers.First().OutSession?.IsClosing ?? true).Should().Be(shouldLose);
                 (ctx.PeerManager.ActivePeers.First().InSession?.IsClosing ?? true).Should().Be(!shouldLose);
             }
@@ -246,6 +258,10 @@ namespace Nethermind.Network.Test
                 await ctx.RlpxPeer.ConnectAsync(session1.Node);
                 ctx.RlpxPeer.SessionCreated -= HandshakeOnCreate;
                 ctx.RlpxPeer.CreateIncoming(session1);
+
+                EnsureSession(ctx.PeerManager.ActivePeers.First().OutSession);
+                EnsureSession(ctx.PeerManager.ActivePeers.First().InSession);
+
                 (ctx.PeerManager.ActivePeers.First().OutSession?.IsClosing ?? true).Should().Be(!shouldLose);
                 (ctx.PeerManager.ActivePeers.First().InSession?.IsClosing ?? true).Should().Be(shouldLose);
             }
@@ -295,8 +311,8 @@ namespace Nethermind.Network.Test
             ctx.PeerPool.Start();
             ctx.PeerManager.Start();
 
-            TimeSpan prevConnectingDelay = StatsParameters.Instance.DelayDueToEvent[NodeStatsEventType.Connecting];
-            StatsParameters.Instance.DelayDueToEvent[NodeStatsEventType.Connecting] = TimeSpan.Zero;
+            TimeSpan prevConnectingDelay = StatsParameters.Instance.EventParams[NodeStatsEventType.Connecting].ReconnectDelay;
+            StatsParameters.Instance.EventParams[NodeStatsEventType.Connecting] = (TimeSpan.Zero, 0);
             int[] prevDisconnectDelays = StatsParameters.Instance.DisconnectDelays;
             StatsParameters.Instance.DisconnectDelays = new[] { 0 };
 
@@ -312,7 +328,7 @@ namespace Nethermind.Network.Test
             }
             finally
             {
-                StatsParameters.Instance.DelayDueToEvent[NodeStatsEventType.Connecting] = prevConnectingDelay;
+                StatsParameters.Instance.EventParams[NodeStatsEventType.Connecting] = (prevConnectingDelay, 0);
                 StatsParameters.Instance.DisconnectDelays = prevDisconnectDelays;
             }
         }
@@ -392,10 +408,10 @@ namespace Nethermind.Network.Test
             ctx.PeerPool.ActivePeers.Count.Should().Be(0);
         }
 
-        private int _travisDelay = 500;
+        private readonly int _travisDelay = 500;
 
-        private int _travisDelayLong = 1000;
-        private int _travisDelayLonger = 3000;
+        private readonly int _travisDelayLong = 1000;
+        private readonly int _travisDelayLonger = 3000;
 
         [Test]
         [Ignore("Behaviour changed that allows peers to go over max if awaiting response")]

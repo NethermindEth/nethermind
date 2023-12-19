@@ -5,6 +5,6 @@ namespace Nethermind.Core
 {
     public interface IKeyValueStoreWithBatching : IKeyValueStore
     {
-        IBatch StartBatch();
+        IWriteBatch StartWriteBatch();
     }
 }

@@ -42,16 +42,16 @@ public class DebugRpcModule : IDebugRpcModule
             : ResultWrapper<ChainLevelForRpc>.Success(new ChainLevelForRpc(levelInfo));
     }
 
-    public ResultWrapper<int> debug_deleteChainSlice(in long startNumber)
+    public ResultWrapper<int> debug_deleteChainSlice(in long startNumber, bool force = false)
     {
-        return ResultWrapper<int>.Success(_debugBridge.DeleteChainSlice(startNumber));
+        return ResultWrapper<int>.Success(_debugBridge.DeleteChainSlice(startNumber, force));
     }
 
-    public ResultWrapper<GethLikeTxTrace> debug_traceTransaction(Keccak transactionHash, GethTraceOptions options = null)
+    public ResultWrapper<GethLikeTxTrace> debug_traceTransaction(Hash256 transactionHash, GethTraceOptions? options = null)
     {
         using CancellationTokenSource cancellationTokenSource = new(_traceTimeout);
         CancellationToken cancellationToken = cancellationTokenSource.Token;
-        GethLikeTxTrace transactionTrace = _debugBridge.GetTransactionTrace(transactionHash, cancellationToken, options);
+        GethLikeTxTrace? transactionTrace = _debugBridge.GetTransactionTrace(transactionHash, cancellationToken, options);
         if (transactionTrace is null)
         {
             return ResultWrapper<GethLikeTxTrace>.Fail($"Cannot find transactionTrace for hash: {transactionHash}", ErrorCodes.ResourceNotFound);
@@ -79,7 +79,7 @@ public class DebugRpcModule : IDebugRpcModule
         return ResultWrapper<GethLikeTxTrace>.Success(transactionTrace);
     }
 
-    public ResultWrapper<GethLikeTxTrace> debug_traceTransactionByBlockhashAndIndex(Keccak blockhash, int index, GethTraceOptions options = null)
+    public ResultWrapper<GethLikeTxTrace> debug_traceTransactionByBlockhashAndIndex(Hash256 blockhash, int index, GethTraceOptions options = null)
     {
         using CancellationTokenSource cancellationTokenSource = new(_traceTimeout);
         CancellationToken cancellationToken = cancellationTokenSource.Token;
@@ -113,7 +113,7 @@ public class DebugRpcModule : IDebugRpcModule
         return ResultWrapper<GethLikeTxTrace>.Success(transactionTrace);
     }
 
-    public ResultWrapper<GethLikeTxTrace> debug_traceTransactionInBlockByHash(byte[] blockRlp, Keccak transactionHash, GethTraceOptions options = null)
+    public ResultWrapper<GethLikeTxTrace> debug_traceTransactionInBlockByHash(byte[] blockRlp, Hash256 transactionHash, GethTraceOptions options = null)
     {
         using CancellationTokenSource cancellationTokenSource = new(_traceTimeout);
         CancellationToken cancellationToken = cancellationTokenSource.Token;
@@ -149,46 +149,46 @@ public class DebugRpcModule : IDebugRpcModule
         return Task.FromResult(ResultWrapper<bool>.Success(true));
     }
 
-    public ResultWrapper<GethLikeTxTrace[]> debug_traceBlock(byte[] blockRlp, GethTraceOptions options = null)
+    public ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>> debug_traceBlock(byte[] blockRlp, GethTraceOptions options = null)
     {
         using var cancellationTokenSource = new CancellationTokenSource(_traceTimeout);
         var cancellationToken = cancellationTokenSource.Token;
         var blockTrace = _debugBridge.GetBlockTrace(new Rlp(blockRlp), cancellationToken, options);
 
         if (blockTrace is null)
-            return ResultWrapper<GethLikeTxTrace[]>.Fail($"Trace is null for RLP {blockRlp.ToHexString()}", ErrorCodes.ResourceNotFound);
+            return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail($"Trace is null for RLP {blockRlp.ToHexString()}", ErrorCodes.ResourceNotFound);
 
         if (_logger.IsTrace) _logger.Trace($"{nameof(debug_traceBlock)} request {blockRlp.ToHexString()}, result: {blockTrace}");
 
-        return ResultWrapper<GethLikeTxTrace[]>.Success(blockTrace);
+        return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Success(blockTrace);
     }
 
-    public ResultWrapper<GethLikeTxTrace[]> debug_traceBlockByNumber(BlockParameter blockNumber, GethTraceOptions options = null)
+    public ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>> debug_traceBlockByNumber(BlockParameter blockNumber, GethTraceOptions options = null)
     {
         using var cancellationTokenSource = new CancellationTokenSource(_traceTimeout);
         var cancellationToken = cancellationTokenSource.Token;
         var blockTrace = _debugBridge.GetBlockTrace(blockNumber, cancellationToken, options);
 
         if (blockTrace is null)
-            return ResultWrapper<GethLikeTxTrace[]>.Fail($"Trace is null for block {blockNumber}", ErrorCodes.ResourceNotFound);
+            return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail($"Trace is null for block {blockNumber}", ErrorCodes.ResourceNotFound);
 
         if (_logger.IsTrace) _logger.Trace($"{nameof(debug_traceBlockByNumber)} request {blockNumber}, result: {blockTrace}");
 
-        return ResultWrapper<GethLikeTxTrace[]>.Success(blockTrace);
+        return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Success(blockTrace);
     }
 
-    public ResultWrapper<GethLikeTxTrace[]> debug_traceBlockByHash(Keccak blockHash, GethTraceOptions options = null)
+    public ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>> debug_traceBlockByHash(Hash256 blockHash, GethTraceOptions options = null)
     {
         using var cancellationTokenSource = new CancellationTokenSource(_traceTimeout);
         var cancellationToken = cancellationTokenSource.Token;
         var blockTrace = _debugBridge.GetBlockTrace(new BlockParameter(blockHash), cancellationToken, options);
 
         if (blockTrace is null)
-            return ResultWrapper<GethLikeTxTrace[]>.Fail($"Trace is null for block {blockHash}", ErrorCodes.ResourceNotFound);
+            return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail($"Trace is null for block {blockHash}", ErrorCodes.ResourceNotFound);
 
         if (_logger.IsTrace) _logger.Trace($"{nameof(debug_traceBlockByHash)} request {blockHash}, result: {blockTrace}");
 
-        return ResultWrapper<GethLikeTxTrace[]>.Success(blockTrace);
+        return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Success(blockTrace);
     }
 
     public ResultWrapper<GethLikeTxTrace[]> debug_traceBlockFromFile(string fileName, GethTraceOptions options = null)
@@ -217,7 +217,7 @@ public class DebugRpcModule : IDebugRpcModule
         return ResultWrapper<byte[]>.Success(rlp);
     }
 
-    public ResultWrapper<byte[]> debug_getBlockRlpByHash(Keccak hash)
+    public ResultWrapper<byte[]> debug_getBlockRlpByHash(Hash256 hash)
     {
         byte[] rlp = _debugBridge.GetBlockRlp(hash);
         if (rlp is null)
@@ -255,7 +255,7 @@ public class DebugRpcModule : IDebugRpcModule
         return ResultWrapper<object>.Success(configValue);
     }
 
-    public ResultWrapper<bool> debug_resetHead(Keccak blockHash)
+    public ResultWrapper<bool> debug_resetHead(Hash256 blockHash)
     {
         _debugBridge.UpdateHeadBlock(blockHash);
         return ResultWrapper<bool>.Success(true);
@@ -266,7 +266,7 @@ public class DebugRpcModule : IDebugRpcModule
         return ResultWrapper<SyncReportSymmary>.Success(_debugBridge.GetCurrentSyncStage());
     }
 
-    public ResultWrapper<IEnumerable<string>> debug_standardTraceBlockToFile(Keccak blockHash, GethTraceOptions options = null)
+    public ResultWrapper<IEnumerable<string>> debug_standardTraceBlockToFile(Hash256 blockHash, GethTraceOptions options = null)
     {
         using var cancellationTokenSource = new CancellationTokenSource(_traceTimeout);
         var cancellationToken = cancellationTokenSource.Token;

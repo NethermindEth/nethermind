@@ -15,12 +15,12 @@ namespace Nethermind.Analytics
 {
     public class RewardsVerifier : IBlockTreeVisitor
     {
-        private ILogger _logger;
+        private readonly ILogger _logger;
         public bool PreventsAcceptingNewBlocks => true;
         public long StartLevelInclusive => 0;
         public long EndLevelExclusive { get; }
 
-        private UInt256 _genesisAllocations = UInt256.Parse("72009990499480000000000000");
+        private readonly UInt256 _genesisAllocations = UInt256.Parse("72009990499480000000000000");
         private UInt256 _uncles;
 
         public UInt256 BlockRewards { get; private set; }
@@ -56,7 +56,7 @@ namespace Nethermind.Analytics
         public Task<LevelVisitOutcome> VisitLevelStart(ChainLevelInfo chainLevelInfo, long levelNumber, CancellationToken cancellationToken)
             => Task.FromResult(LevelVisitOutcome.None);
 
-        public Task<bool> VisitMissing(Keccak hash, CancellationToken cancellationToken)
+        public Task<bool> VisitMissing(Hash256 hash, CancellationToken cancellationToken)
             => Task.FromResult(true);
 
         public Task<HeaderVisitOutcome> VisitHeader(BlockHeader header, CancellationToken cancellationToken)

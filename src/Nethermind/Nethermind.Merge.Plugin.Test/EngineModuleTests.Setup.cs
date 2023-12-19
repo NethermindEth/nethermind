@@ -188,9 +188,8 @@ public partial class EngineModuleTests
                 targetAdjustedGasLimitCalculator);
 
             BlockProducerEnvFactory blockProducerEnvFactory = new(
-                DbProvider,
+                WorldStateManager!,
                 BlockTree,
-                ReadOnlyTrieStore,
                 SpecProvider,
                 BlockValidator,
                 NoBlockRewards.Instance,
@@ -275,7 +274,7 @@ public class TestBlockProcessorInterceptor : IBlockProcessor
         DelayMs = delayMs;
     }
 
-    public Block[] Process(Keccak newBranchStateRoot, List<Block> suggestedBlocks, ProcessingOptions processingOptions,
+    public Block[] Process(Hash256 newBranchStateRoot, List<Block> suggestedBlocks, ProcessingOptions processingOptions,
         IBlockTracer blockTracer)
     {
         if (DelayMs > 0)

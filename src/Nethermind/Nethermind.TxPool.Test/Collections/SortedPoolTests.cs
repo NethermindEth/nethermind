@@ -24,9 +24,9 @@ namespace Nethermind.TxPool.Test.Collections
     {
         private const int Capacity = 16;
 
-        private SortedPool<ValueKeccak, Transaction, Address> _sortedPool;
+        private SortedPool<ValueHash256, Transaction, Address> _sortedPool;
 
-        private Transaction[] _transactions = new Transaction[Capacity * 8];
+        private readonly Transaction[] _transactions = new Transaction[Capacity * 8];
 
         [SetUp]
         public void Setup()

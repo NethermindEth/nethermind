@@ -23,7 +23,7 @@ namespace Nethermind.Facade.Filters.Topics
 
         public bool Accepts(LogEntry entry) => Accepts(entry.Topics);
 
-        private bool Accepts(Keccak[] topics)
+        private bool Accepts(Hash256[] topics)
         {
             if (_expressions.Length > topics.Length)
             {
@@ -119,6 +119,6 @@ namespace Nethermind.Facade.Filters.Topics
         /// First level represents AND logical condition, second level represents OR logical condition.
         /// </summary>
         /// <remarks>Example: [ [A], [B, C], [], [A, C] ] represents logical statement A AND (B OR C) AND (TRUE) AND (A or C)</remarks>
-        public IEnumerable<IEnumerable<Keccak>> LogicalTopicsSequence => _expressions.Select(t => t.OrTopicExpression);
+        public IEnumerable<IEnumerable<Hash256>> LogicalTopicsSequence => _expressions.Select(t => t.OrTopicExpression);
     }
 }

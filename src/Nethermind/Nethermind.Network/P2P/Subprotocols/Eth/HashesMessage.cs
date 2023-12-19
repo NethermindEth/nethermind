@@ -10,12 +10,12 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
 {
     public abstract class HashesMessage : P2PMessage
     {
-        protected HashesMessage(IReadOnlyList<Keccak> hashes)
+        protected HashesMessage(IReadOnlyList<Hash256> hashes)
         {
             Hashes = hashes ?? throw new ArgumentNullException(nameof(hashes));
         }
 
-        public IReadOnlyList<Keccak> Hashes { get; }
+        public IReadOnlyList<Hash256> Hashes { get; }
 
         public override string ToString()
         {

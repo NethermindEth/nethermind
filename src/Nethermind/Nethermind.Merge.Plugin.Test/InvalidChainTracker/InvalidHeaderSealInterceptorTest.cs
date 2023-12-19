@@ -16,9 +16,9 @@ public class InvalidHeaderSealInterceptorTest
 {
     private class Context
     {
-        private BlockHeader _blockHeader = Build.A.BlockHeader.TestObject;
-        private ISealValidator _baseValidator = Substitute.For<ISealValidator>();
-        private IInvalidChainTracker _invalidChainTracker = Substitute.For<IInvalidChainTracker>();
+        private readonly BlockHeader _blockHeader = Build.A.BlockHeader.TestObject;
+        private readonly ISealValidator _baseValidator = Substitute.For<ISealValidator>();
+        private readonly IInvalidChainTracker _invalidChainTracker = Substitute.For<IInvalidChainTracker>();
 
         public Context OnValidateSeal()
         {
@@ -41,13 +41,13 @@ public class InvalidHeaderSealInterceptorTest
 
         public Context InvalidBlockShouldGetReported()
         {
-            _invalidChainTracker.Received().OnInvalidBlock(Arg.Any<Keccak>(), Arg.Any<Keccak>());
+            _invalidChainTracker.Received().OnInvalidBlock(Arg.Any<Hash256>(), Arg.Any<Hash256>());
             return this;
         }
 
         public Context InvalidBlockShouldNotGetReported()
         {
-            _invalidChainTracker.DidNotReceive().OnInvalidBlock(Arg.Any<Keccak>(), Arg.Any<Keccak>());
+            _invalidChainTracker.DidNotReceive().OnInvalidBlock(Arg.Any<Hash256>(), Arg.Any<Hash256>());
             return this;
         }
     }

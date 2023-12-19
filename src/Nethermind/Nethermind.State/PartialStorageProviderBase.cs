@@ -96,11 +96,12 @@ namespace Nethermind.State
             for (int i = 0; i < _currentPosition - snapshot; i++)
             {
                 Change change = _changes[_currentPosition - i];
-                if (_intraBlockCache[change!.StorageCell].Count == 1)
+                StackList<int> stack = _intraBlockCache[change!.StorageCell];
+                if (stack.Count == 1)
                 {
-                    if (_changes[_intraBlockCache[change.StorageCell].Peek()]!.ChangeType == ChangeType.JustCache)
+                    if (_changes[stack.Peek()]!.ChangeType == ChangeType.JustCache)
                     {
-                        int actualPosition = _intraBlockCache[change.StorageCell].Pop();
+                        int actualPosition = stack.Pop();
                         if (actualPosition != _currentPosition - i)
                         {
                             throw new InvalidOperationException($"Expected actual position {actualPosition} to be equal to {_currentPosition} - {i}");
@@ -112,7 +113,7 @@ namespace Nethermind.State
                     }
                 }
 
-                int forAssertion = _intraBlockCache[change.StorageCell].Pop();
+                int forAssertion = stack.Pop();
                 if (forAssertion != _currentPosition - i)
                 {
                     throw new InvalidOperationException($"Expected checked value {forAssertion} to be equal to {_currentPosition} - {i}");
@@ -120,7 +121,7 @@ namespace Nethermind.State
 
                 _changes[_currentPosition - i] = null;
 
-                if (_intraBlockCache[change.StorageCell].Count == 0)
+                if (stack.Count == 0)
                 {
                     _intraBlockCache.Remove(change.StorageCell);
                 }
@@ -243,9 +244,9 @@ namespace Nethermind.State
         /// <param name="value">Value to set</param>
         private void PushUpdate(in StorageCell cell, byte[] value)
         {
-            SetupRegistry(cell);
+            StackList<int> stack = SetupRegistry(cell);
             IncrementChangePosition();
-            _intraBlockCache[cell].Push(_currentPosition);
+            stack.Push(_currentPosition);
             _changes[_currentPosition] = new Change(ChangeType.Update, cell, value);
         }
 
@@ -261,12 +262,15 @@ namespace Nethermind.State
         /// Initialize the StackList at the storage cell position if needed
         /// </summary>
         /// <param name="cell"></param>
-        protected void SetupRegistry(in StorageCell cell)
+        protected StackList<int> SetupRegistry(in StorageCell cell)
         {
-            if (!_intraBlockCache.ContainsKey(cell))
+            ref StackList<int>? value = ref _intraBlockCache.GetValueRefOrAddDefault(cell, out bool exists);
+            if (!exists)
             {
-                _intraBlockCache[cell] = new StackList<int>();
+                value = new StackList<int>();
             }
+
+            return value;
         }
 
         /// <summary>

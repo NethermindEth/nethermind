@@ -44,11 +44,11 @@ namespace Nethermind.Core
             }
         }
 
-        public int? FindBlockInfoIndex(Keccak blockHash)
+        public int? FindBlockInfoIndex(Hash256 blockHash)
         {
             for (int i = 0; i < BlockInfos.Length; i++)
             {
-                Keccak hashAtIndex = BlockInfos[i].BlockHash;
+                Hash256 hashAtIndex = BlockInfos[i].BlockHash;
                 if (hashAtIndex.Equals(blockHash))
                 {
                     return i;
@@ -58,11 +58,11 @@ namespace Nethermind.Core
             return null;
         }
 
-        public int? FindIndex(Keccak blockHash)
+        public int? FindIndex(Hash256 blockHash)
         {
             for (int i = 0; i < BlockInfos.Length; i++)
             {
-                Keccak hashAtIndex = BlockInfos[i].BlockHash;
+                Hash256 hashAtIndex = BlockInfos[i].BlockHash;
                 if (hashAtIndex.Equals(blockHash))
                 {
                     return i;
@@ -72,18 +72,18 @@ namespace Nethermind.Core
             return null;
         }
 
-        public BlockInfo? FindBlockInfo(Keccak blockHash)
+        public BlockInfo? FindBlockInfo(Hash256 blockHash)
         {
             int? index = FindIndex(blockHash);
             return index.HasValue ? BlockInfos[index.Value] : null;
         }
 
-        public void InsertBlockInfo(Keccak hash, BlockInfo blockInfo, bool setAsMain)
+        public void InsertBlockInfo(Hash256 hash, BlockInfo blockInfo, bool setAsMain)
         {
             BlockInfo[] blockInfos = BlockInfos;
 
             int? foundIndex = FindIndex(hash);
-            if (!foundIndex.HasValue)
+            if (foundIndex is null)
             {
                 Array.Resize(ref blockInfos, blockInfos.Length + 1);
             }
@@ -91,6 +91,9 @@ namespace Nethermind.Core
             {
                 if (blockInfo.IsBeaconInfo && blockInfos[foundIndex.Value].IsBeaconMainChain)
                     blockInfo.Metadata |= BlockMetadata.BeaconMainChain;
+
+                if (blockInfo.EqualsIgnoringWasProcessed(blockInfos[foundIndex.Value]))
+                    blockInfo.WasProcessed |= blockInfos[foundIndex.Value].WasProcessed;
             }
 
             int index = foundIndex ?? blockInfos.Length - 1;

@@ -35,7 +35,7 @@ namespace Nethermind.JsonRpc.Test
         [TestCase("http://127.0.0.1:1234|a|a", typeof(FormatException))]
         [TestCase("http://127.0.0.1:1234|ipc|a", typeof(FormatException))]
         [TestCase("http://127.0.0.1:1234|http|", typeof(FormatException))]
-        public void Parse_fail(string packedUrlValue, Type expectedExceptionType) =>
-            Assert.Throws(expectedExceptionType, () => JsonRpcUrl.Parse(packedUrlValue));
+        public void Parse_fail(string? packedUrlValue, Type expectedExceptionType) =>
+            Assert.Throws(expectedExceptionType, () => JsonRpcUrl.Parse(packedUrlValue!));
     }
 }

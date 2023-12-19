@@ -34,15 +34,15 @@ public partial class EngineModuleTests
         "0x1c53bdbf457025f80c6971a9cf50986974eed02f0a9acaeeb49cafef10efd133",
         "0x6d8a107ccab7a785de89f58db49064ee091df5d2b6306fe55db666e75a0e9f68",
         "0x03e662d795ee2234c492ca4a08de03b1d7e3e0297af81a76582e16de75cdfc51",
-        "0x5009aaf2fdcd600e")]
+        "0xabd41416f2618ad0")]
     public virtual async Task Should_process_block_as_expected_V2(string latestValidHash, string blockHash,
         string stateRoot, string payloadId)
     {
         using MergeTestBlockchain chain =
             await CreateBlockchain(Shanghai.Instance, new MergeConfig { TerminalTotalDifficulty = "0" });
         IEngineRpcModule rpc = CreateEngineModule(chain);
-        Keccak startingHead = chain.BlockTree.HeadHash;
-        Keccak prevRandao = Keccak.Zero;
+        Hash256 startingHead = chain.BlockTree.HeadHash;
+        Hash256 prevRandao = Keccak.Zero;
         Address feeRecipient = TestItem.AddressC;
         ulong timestamp = Timestamper.UnixTime.Seconds;
         var fcuState = new
@@ -87,7 +87,7 @@ public partial class EngineModuleTests
             }
         }));
 
-        Keccak expectedBlockHash = new(blockHash);
+        Hash256 expectedBlockHash = new(blockHash);
         Block block = new(
             new(
                 startingHead,
@@ -243,7 +243,7 @@ public partial class EngineModuleTests
         using MergeTestBlockchain chain = await CreateBlockchain();
         IEngineRpcModule rpc = CreateEngineModule(chain);
 
-        Keccak startingHead = chain.BlockTree.HeadHash;
+        Hash256 startingHead = chain.BlockTree.HeadHash;
 
         ForkchoiceStateV1 forkchoiceState = new(startingHead, Keccak.Zero, startingHead);
         PayloadAttributes payload = new()
@@ -271,7 +271,7 @@ public partial class EngineModuleTests
 
         Address feeRecipient = TestItem.AddressA;
 
-        Keccak startingHead = chain.BlockTree.HeadHash;
+        Hash256 startingHead = chain.BlockTree.HeadHash;
         uint count = 3;
         int value = 10;
 
@@ -334,7 +334,7 @@ public partial class EngineModuleTests
         chain.AddTransactions(txs);
 
         ExecutionPayload executionPayload2 = await BuildAndSendNewBlockV2(rpc, chain, true, withdrawals);
-        Keccak[] blockHashes = new Keccak[]
+        Hash256[] blockHashes = new Hash256[]
         {
             executionPayload1.BlockHash, TestItem.KeccakA, executionPayload2.BlockHash
         };
@@ -401,7 +401,7 @@ public partial class EngineModuleTests
     {
         using MergeTestBlockchain chain = await CreateBlockchain();
         IEngineRpcModule rpc = CreateEngineModule(chain);
-        Keccak[] hashes = Enumerable.Repeat(TestItem.KeccakA, 1025).ToArray();
+        Hash256[] hashes = Enumerable.Repeat(TestItem.KeccakA, 1025).ToArray();
         Task<ResultWrapper<IEnumerable<ExecutionPayloadBodyV1Result?>>> result =
             rpc.engine_getPayloadBodiesByHashV1(hashes);
 
@@ -576,9 +576,9 @@ public partial class EngineModuleTests
     {
         using MergeTestBlockchain chain = await CreateBlockchain(input.Spec);
         IEngineRpcModule rpcModule = CreateEngineModule(chain);
-        Keccak blockHash = new(input.BlockHash);
-        Keccak startingHead = chain.BlockTree.HeadHash;
-        Keccak prevRandao = Keccak.Zero;
+        Hash256 blockHash = new(input.BlockHash);
+        Hash256 startingHead = chain.BlockTree.HeadHash;
+        Hash256 prevRandao = Keccak.Zero;
         Address feeRecipient = TestItem.AddressC;
         ulong timestamp = Timestamper.UnixTime.Seconds;
         ExecutionPayload expectedPayload = new()
@@ -758,7 +758,7 @@ public partial class EngineModuleTests
             Withdrawals = input.Withdrawals
         };
 
-        var payloadId = payloadAttributes.ComputePayloadId(blockHeader);
+        var payloadId = payloadAttributes.GetPayloadId(blockHeader);
 
         payloadId.Should().Be(input.PayloadId);
     }
@@ -766,7 +766,7 @@ public partial class EngineModuleTests
     private static async Task<GetPayloadV2Result> BuildAndGetPayloadResultV2(
         IEngineRpcModule rpc, MergeTestBlockchain chain, PayloadAttributes payloadAttributes)
     {
-        Keccak currentHeadHash = chain.BlockTree.HeadHash;
+        Hash256 currentHeadHash = chain.BlockTree.HeadHash;
         ForkchoiceStateV1 forkchoiceState = new(currentHeadHash, currentHeadHash, currentHeadHash);
         string payloadId = rpc.engine_forkchoiceUpdatedV2(forkchoiceState, payloadAttributes).Result.Data.PayloadId!;
         ResultWrapper<GetPayloadV2Result?> getPayloadResult =
@@ -814,11 +814,11 @@ public partial class EngineModuleTests
     private async Task<ExecutionPayload> BuildAndGetPayloadResultV2(
         IEngineRpcModule rpc,
         MergeTestBlockchain chain,
-        Keccak headBlockHash,
-        Keccak finalizedBlockHash,
-        Keccak safeBlockHash,
+        Hash256 headBlockHash,
+        Hash256 finalizedBlockHash,
+        Hash256 safeBlockHash,
         ulong timestamp,
-        Keccak random,
+        Hash256 random,
         Address feeRecipient,
         IList<Withdrawal>? withdrawals,
         bool waitForBlockImprovement = true)
@@ -858,9 +858,9 @@ public partial class EngineModuleTests
         bool waitForBlockImprovement,
         IList<Withdrawal>? withdrawals)
     {
-        Keccak head = chain.BlockTree.HeadHash;
+        Hash256 head = chain.BlockTree.HeadHash;
         ulong timestamp = Timestamper.UnixTime.Seconds;
-        Keccak random = Keccak.Zero;
+        Hash256 random = Keccak.Zero;
         Address feeRecipient = Address.Zero;
         ExecutionPayload executionPayload = await BuildAndGetPayloadResultV2(rpc, chain, head,
             Keccak.Zero, head, timestamp, random, feeRecipient, withdrawals, waitForBlockImprovement);
@@ -923,8 +923,8 @@ public partial class EngineModuleTests
         string payloadId
         )> PayloadIdTestCases()
     {
-        yield return (null, "0xd0666188af58eb6f");
-        yield return (Array.Empty<Withdrawal>(), "0xb5f89745e4cfaec0");
-        yield return (new[] { Build.A.Withdrawal.TestObject }, "0x0628b8a79468163e");
+        yield return (null, "0xe3b6f7433feedc38");
+        yield return (Array.Empty<Withdrawal>(), "0xf74921b673b2e08e");
+        yield return (new[] { Build.A.Withdrawal.TestObject }, "0xe0d0b996245ec3a6");
     }
 }

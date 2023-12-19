@@ -20,10 +20,10 @@ internal static class TransactionProcessorAdapterExtensions
     {
         if (processingOptions.ContainsFlag(ProcessingOptions.DoNotVerifyNonce))
         {
-            currentTx.Nonce = stateProvider.GetNonce(currentTx.SenderAddress);
+            currentTx.Nonce = stateProvider.GetNonce(currentTx.SenderAddress!);
         }
 
-        receiptsTracer.StartNewTxTrace(currentTx);
+        using ITxTracer tracer = receiptsTracer.StartNewTxTrace(currentTx);
         transactionProcessor.Execute(currentTx, blkCtx, receiptsTracer);
         receiptsTracer.EndTxTrace();
     }

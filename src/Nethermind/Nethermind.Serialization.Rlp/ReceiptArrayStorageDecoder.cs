@@ -11,11 +11,11 @@ namespace Nethermind.Serialization.Rlp;
 public class ReceiptArrayStorageDecoder : IRlpStreamDecoder<TxReceipt[]>
 {
     public static readonly ReceiptArrayStorageDecoder Instance = new();
-    private ReceiptStorageDecoder StorageDecoder = ReceiptStorageDecoder.Instance;
-    private CompactReceiptStorageDecoder CompactReceiptStorageDecoder = CompactReceiptStorageDecoder.Instance;
+    private readonly ReceiptStorageDecoder StorageDecoder = ReceiptStorageDecoder.Instance;
+    private readonly CompactReceiptStorageDecoder CompactReceiptStorageDecoder = CompactReceiptStorageDecoder.Instance;
 
     public const int CompactEncoding = 127;
-    private bool _useCompactEncoding = true;
+    private readonly bool _useCompactEncoding = true;
 
     public ReceiptArrayStorageDecoder(bool compactEncoding = true)
     {
@@ -132,7 +132,7 @@ public class ReceiptArrayStorageDecoder : IRlpStreamDecoder<TxReceipt[]>
         }
     }
 
-    public TxReceipt DeserializeReceiptObsolete(Keccak hash, Span<byte> receiptData)
+    public TxReceipt DeserializeReceiptObsolete(Hash256 hash, Span<byte> receiptData)
     {
         var context = new Rlp.ValueDecoderContext(receiptData);
         try
@@ -150,12 +150,12 @@ public class ReceiptArrayStorageDecoder : IRlpStreamDecoder<TxReceipt[]>
         }
     }
 
-    public bool IsCompactEncoding(Span<byte> receiptsData)
+    public static bool IsCompactEncoding(Span<byte> receiptsData)
     {
         return receiptsData.Length > 0 && receiptsData[0] == CompactEncoding;
     }
 
-    public IReceiptRefDecoder GetRefDecoder(Span<byte> receiptsData)
+    public static IReceiptRefDecoder GetRefDecoder(Span<byte> receiptsData)
     {
         if (IsCompactEncoding(receiptsData))
         {

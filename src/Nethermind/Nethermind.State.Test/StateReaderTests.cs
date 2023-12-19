@@ -21,7 +21,7 @@ namespace Nethermind.Store.Test
     [TestFixture, Parallelizable(ParallelScope.All)]
     public class StateReaderTests
     {
-        private static readonly Keccak Hash1 = Keccak.Compute("1");
+        private static readonly Hash256 Hash1 = Keccak.Compute("1");
         private readonly Address _address1 = new(Hash1);
         private static readonly ILogManager Logger = LimboLogs.Instance;
 
@@ -36,22 +36,22 @@ namespace Nethermind.Store.Test
             provider.AddToBalance(_address1, 1, spec);
             provider.Commit(spec);
             provider.CommitTree(0);
-            Keccak stateRoot0 = provider.StateRoot;
+            Hash256 stateRoot0 = provider.StateRoot;
 
             provider.AddToBalance(_address1, 1, spec);
             provider.Commit(spec);
             provider.CommitTree(0);
-            Keccak stateRoot1 = provider.StateRoot;
+            Hash256 stateRoot1 = provider.StateRoot;
 
             provider.AddToBalance(_address1, 1, spec);
             provider.Commit(spec);
             provider.CommitTree(0);
-            Keccak stateRoot2 = provider.StateRoot;
+            Hash256 stateRoot2 = provider.StateRoot;
 
             provider.AddToBalance(_address1, 1, spec);
             provider.Commit(spec);
             provider.CommitTree(0);
-            Keccak stateRoot3 = provider.StateRoot;
+            Hash256 stateRoot3 = provider.StateRoot;
 
             provider.CommitTree(0);
 
@@ -97,22 +97,22 @@ namespace Nethermind.Store.Test
             AddOneToBalance();
             UpdateStorageValue(new byte[] { 1 });
             CommitEverything();
-            Keccak stateRoot0 = provider.StateRoot;
+            Hash256 stateRoot0 = provider.StateRoot;
 
             AddOneToBalance();
             UpdateStorageValue(new byte[] { 2 });
             CommitEverything();
-            Keccak stateRoot1 = provider.StateRoot;
+            Hash256 stateRoot1 = provider.StateRoot;
 
             AddOneToBalance();
             UpdateStorageValue(new byte[] { 3 });
             CommitEverything();
-            Keccak stateRoot2 = provider.StateRoot;
+            Hash256 stateRoot2 = provider.StateRoot;
 
             AddOneToBalance();
             UpdateStorageValue(new byte[] { 4 });
             CommitEverything();
-            Keccak stateRoot3 = provider.StateRoot;
+            Hash256 stateRoot3 = provider.StateRoot;
 
             StateReader reader =
                 new(new TrieStore(stateDb, LimboLogs.Instance), Substitute.For<IDb>(), Logger);
@@ -144,16 +144,14 @@ namespace Nethermind.Store.Test
             provider.CreateAccount(_address1, 1);
             provider.Set(storageCell, new byte[] { 1 });
             CommitEverything();
-            Keccak stateRoot0 = provider.StateRoot;
+            Hash256 stateRoot0 = provider.StateRoot;
 
             StateReader reader =
                 new(new TrieStore(stateDb, LimboLogs.Instance), Substitute.For<IDb>(), Logger);
-            Keccak storageRoot = reader.GetStorageRoot(stateRoot0, _address1);
-            reader.GetStorage(storageRoot, storageCell.Index + 1).Should().BeEquivalentTo(new byte[] { 0 });
-            reader.GetStorage(Keccak.EmptyTreeHash, storageCell.Index + 1).Should().BeEquivalentTo(new byte[] { 0 });
+            reader.GetStorage(stateRoot0, _address1, storageCell.Index + 1).Should().BeEquivalentTo(new byte[] { 0 });
         }
 
-        private Task StartTask(StateReader reader, Keccak stateRoot, UInt256 value)
+        private Task StartTask(StateReader reader, Hash256 stateRoot, UInt256 value)
         {
             return Task.Run(
                 () =>
@@ -166,15 +164,14 @@ namespace Nethermind.Store.Test
                 });
         }
 
-        private Task StartStorageTask(StateReader reader, Keccak stateRoot, StorageCell storageCell, byte[] value)
+        private Task StartStorageTask(StateReader reader, Hash256 stateRoot, StorageCell storageCell, byte[] value)
         {
             return Task.Run(
                 () =>
                 {
                     for (int i = 0; i < 1000; i++)
                     {
-                        Keccak storageRoot = reader.GetStorageRoot(stateRoot, storageCell.Address);
-                        byte[] result = reader.GetStorage(storageRoot, storageCell.Index);
+                        byte[] result = reader.GetStorage(stateRoot, storageCell.Address, storageCell.Index);
                         result.Should().BeEquivalentTo(value);
                     }
                 });
@@ -206,8 +203,7 @@ namespace Nethermind.Store.Test
             StateReader reader = new(
                 new TrieStore(dbProvider.StateDb, LimboLogs.Instance), dbProvider.CodeDb, Logger);
 
-            var account = reader.GetAccount(state.StateRoot, _address1);
-            var retrieved = reader.GetStorage(account.StorageRoot, storageCell.Index);
+            var retrieved = reader.GetStorage(state.StateRoot, _address1, storageCell.Index);
             retrieved.Should().BeEquivalentTo(initialValue);
 
             /* at this stage we set the value in storage to 1,2,3 at the tested storage cell */
@@ -230,7 +226,7 @@ namespace Nethermind.Store.Test
                We will try to retrieve the value by taking the state root from the processor.*/
 
             retrieved =
-                reader.GetStorage(processorStateProvider.GetStorageRoot(storageCell.Address), storageCell.Index);
+                reader.GetStorage(processorStateProvider.StateRoot, storageCell.Address, storageCell.Index);
             retrieved.Should().BeEquivalentTo(newValue);
 
             /* If it failed then it means that the blockchain bridge cached the previous call value */

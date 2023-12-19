@@ -18,9 +18,8 @@ on:
 
 env:
   COLLECT_COVERAGE: ${{ github.event_name == 'push' && github.ref == 'refs/heads/master' || github.event.inputs.coverage }}
-  DOTNET_VERSION: 7
+  DOTNET_SYSTEM_CONSOLE_ALLOW_ANSI_COLOR_REDIRECTION: 1
   RETENTION: 1
-  DOTNET_SYSTEM_CONSOLE_ALLOW_ANSI_COLOR_REDIRECTION: "1"
   TERM: xterm
 
 jobs:
@@ -76,11 +75,9 @@ jobs:
           - Nethermind.Wallet.Test
     steps:
     - name: Check out repository
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
     - name: Set up .NET
       uses: actions/setup-dotnet@v3
-      with:
-        dotnet-version: ${{ env.DOTNET_VERSION }}
     - name: Install Linux packages
       run: |
         sudo apt-get update
@@ -133,6 +130,7 @@ jobs:
           - Ethereum.Blockchain.Block.Legacy.Test
           - Ethereum.Blockchain.Block.Test
           - Ethereum.Blockchain.Legacy.Test
+          - Ethereum.Blockchain.Pyspec.Test
           - Ethereum.Blockchain.Test
           - Ethereum.Difficulty.Test
           - Ethereum.HexPrefix.Test
@@ -145,13 +143,11 @@ jobs:
           - Ethereum.VM.Test
     steps:
     - name: Check out repository
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
       with:
         submodules: recursive
     - name: Set up .NET
       uses: actions/setup-dotnet@v3
-      with:
-        dotnet-version: ${{ env.DOTNET_VERSION }}
     - name: Install Linux packages
       run: |
         sudo apt-get update

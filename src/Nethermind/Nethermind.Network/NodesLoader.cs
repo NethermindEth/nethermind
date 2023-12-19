@@ -95,7 +95,7 @@ namespace Nethermind.Network
 
         private void LoadConfigPeers(List<Node> peers, string? enodesString, Action<Node> nodeUpdate)
         {
-            if (enodesString is null || !enodesString.Any())
+            if (enodesString is null || enodesString.Length == 0)
             {
                 return;
             }

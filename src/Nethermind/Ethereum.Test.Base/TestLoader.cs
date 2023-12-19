@@ -3,12 +3,14 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Numerics;
 using System.Reflection;
-using Newtonsoft.Json;
-using Newtonsoft.Json.Linq;
+using System.Text.Json;
+using System.Text.Json.Serialization;
+
 using NUnit.Framework;
 
 namespace Ethereum.Test.Base
@@ -17,30 +19,33 @@ namespace Ethereum.Test.Base
     {
         public static object PrepareInput(object input)
         {
-            string s = input as string;
-            if (s != null && s.StartsWith("#"))
+            if (input is string s && s.StartsWith("#"))
             {
                 BigInteger bigInteger = BigInteger.Parse(s.Substring(1));
                 input = bigInteger;
             }
 
-            if (input is JArray)
+            JsonElement token = (JsonElement)input;
+
+            if (token.ValueKind == JsonValueKind.Array)
             {
-                input = ((JArray)input).Select(PrepareInput).ToArray();
+                object[] array = new object[token.GetArrayLength()];
+                for (int i = 0; i < array.Length; i++)
+                {
+                    array[i] = PrepareInput(token[i]);
+                }
+
+                input = array;
             }
 
-            JToken token = input as JToken;
-            if (token != null)
+            if (token.ValueKind == JsonValueKind.String)
             {
-                if (token.Type == JTokenType.String)
-                {
-                    return token.Value<string>();
-                }
+                return token.GetString()!;
+            }
 
-                if (token.Type == JTokenType.Integer)
-                {
-                    return token.Value<long>();
-                }
+            if (token.ValueKind == JsonValueKind.Number)
+            {
+                return token.GetInt64();
             }
 
             return input;
@@ -58,6 +63,13 @@ namespace Ethereum.Test.Base
                 throw new ArgumentException($"Cannot find test resource: {testFileName}");
             }
 
+            var jsonOptions = new JsonSerializerOptions()
+            {
+                PropertyNameCaseInsensitive = true,
+                PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+                DictionaryKeyPolicy = JsonNamingPolicy.CamelCase,
+                NumberHandling = JsonNumberHandling.AllowReadingFromString
+            };
             using (Stream stream = assembly.GetManifestResourceStream(resourceName))
             {
                 Assert.NotNull(stream);
@@ -65,7 +77,7 @@ namespace Ethereum.Test.Base
                 {
                     string testJson = reader.ReadToEnd();
                     TContainer testSpecs =
-                        JsonConvert.DeserializeObject<TContainer>(testJson);
+                        JsonSerializer.Deserialize<TContainer>(testJson, jsonOptions);
                     return testExtractor(testSpecs);
                 }
             }

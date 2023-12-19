@@ -16,11 +16,11 @@ namespace Nethermind.Init.Steps
     public sealed class ApplyMemoryHint : IStep
     {
         private readonly INethermindApi _api;
-        private IInitConfig _initConfig;
-        private IDbConfig _dbConfig;
-        private INetworkConfig _networkConfig;
-        private ISyncConfig _syncConfig;
-        private ITxPoolConfig _txPoolConfig;
+        private readonly IInitConfig _initConfig;
+        private readonly IDbConfig _dbConfig;
+        private readonly INetworkConfig _networkConfig;
+        private readonly ISyncConfig _syncConfig;
+        private readonly ITxPoolConfig _txPoolConfig;
 
         public ApplyMemoryHint(INethermindApi api)
         {

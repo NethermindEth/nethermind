@@ -27,7 +27,7 @@ public class HealingStateTree : StateTree
         _recovery = recovery;
     }
 
-    public override byte[]? Get(ReadOnlySpan<byte> rawKey, Keccak? rootHash = null)
+    public override byte[]? Get(ReadOnlySpan<byte> rawKey, Hash256? rootHash = null)
     {
         try
         {
@@ -63,7 +63,7 @@ public class HealingStateTree : StateTree
         }
     }
 
-    private bool Recover(in ValueKeccak rlpHash, ReadOnlySpan<byte> pathPart, Keccak rootHash)
+    private bool Recover(in ValueHash256 rlpHash, ReadOnlySpan<byte> pathPart, Hash256 rootHash)
     {
         if (_recovery?.CanRecover == true)
         {
@@ -82,7 +82,7 @@ public class HealingStateTree : StateTree
             byte[]? rlp = _recovery.Recover(rlpHash, request).GetAwaiter().GetResult();
             if (rlp is not null)
             {
-                TrieStore.AsKeyValueStore().Set(rlpHash.Bytes, rlp);
+                TrieStore.Set(rlpHash, rlp);
                 return true;
             }
         }

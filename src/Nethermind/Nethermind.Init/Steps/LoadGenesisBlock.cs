@@ -31,20 +31,22 @@ namespace Nethermind.Init.Steps
         public async Task Execute(CancellationToken _)
         {
             _initConfig = _api.Config<IInitConfig>();
-            Keccak? expectedGenesisHash = string.IsNullOrWhiteSpace(_initConfig.GenesisHash) ? null : new Keccak(_initConfig.GenesisHash);
+            Hash256? expectedGenesisHash = string.IsNullOrWhiteSpace(_initConfig.GenesisHash) ? null : new Hash256(_initConfig.GenesisHash);
 
             if (_api.BlockTree is null)
             {
                 throw new StepDependencyException();
             }
 
+            IWorldState worldState = _api.WorldState!;
+
             // if we already have a database with blocks then we do not need to load genesis from spec
             if (_api.BlockTree.Genesis is null)
             {
-                Load();
+                Load(worldState);
             }
 
-            ValidateGenesisHash(expectedGenesisHash);
+            ValidateGenesisHash(expectedGenesisHash, worldState);
 
             if (!_initConfig.ProcessingEnabled)
             {
@@ -53,11 +55,10 @@ namespace Nethermind.Init.Steps
             }
         }
 
-        protected virtual void Load()
+        protected virtual void Load(IWorldState worldState)
         {
             if (_api.ChainSpec is null) throw new StepDependencyException(nameof(_api.ChainSpec));
             if (_api.BlockTree is null) throw new StepDependencyException(nameof(_api.BlockTree));
-            if (_api.WorldState is null) throw new StepDependencyException(nameof(_api.WorldState));
             if (_api.SpecProvider is null) throw new StepDependencyException(nameof(_api.SpecProvider));
             if (_api.DbProvider is null) throw new StepDependencyException(nameof(_api.DbProvider));
             if (_api.TransactionProcessor is null) throw new StepDependencyException(nameof(_api.TransactionProcessor));
@@ -65,7 +66,7 @@ namespace Nethermind.Init.Steps
             Block genesis = new GenesisLoader(
                 _api.ChainSpec,
                 _api.SpecProvider,
-                _api.WorldState,
+                worldState,
                 _api.TransactionProcessor)
                 .Load();
 
@@ -92,15 +93,14 @@ namespace Nethermind.Init.Steps
         /// If <paramref name="expectedGenesisHash"/> is <value>null</value> then it means that we do not care about the genesis hash (e.g. in some quick testing of private chains)/>
         /// </summary>
         /// <param name="expectedGenesisHash"></param>
-        private void ValidateGenesisHash(Keccak? expectedGenesisHash)
+        private void ValidateGenesisHash(Hash256? expectedGenesisHash, IWorldState worldState)
         {
-            if (_api.WorldState is null) throw new StepDependencyException(nameof(_api.WorldState));
             if (_api.BlockTree is null) throw new StepDependencyException(nameof(_api.BlockTree));
 
-            BlockHeader genesis = _api.BlockTree.Genesis!;
+            BlockHeader genesis = _api.BlockTree.Genesis ?? throw new NullReferenceException("Genesis block is null");
             if (expectedGenesisHash is not null && genesis.Hash != expectedGenesisHash)
             {
-                if (_logger.IsWarn) _logger.Warn(_api.WorldState.DumpState());
+                if (_logger.IsWarn) _logger.Warn(worldState.DumpState());
                 if (_logger.IsWarn) _logger.Warn(genesis.ToString(BlockHeader.Format.Full));
                 if (_logger.IsError) _logger.Error($"Unexpected genesis hash, expected {expectedGenesisHash}, but was {genesis.Hash}");
             }

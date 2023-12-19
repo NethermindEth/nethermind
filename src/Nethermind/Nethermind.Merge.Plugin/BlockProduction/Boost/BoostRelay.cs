@@ -22,11 +22,11 @@ public class BoostRelay : IBoostRelay
         _relayUrl = relayUrl;
     }
 
-    public Task<PayloadAttributes> GetPayloadAttributes(PayloadAttributes payloadAttributes, CancellationToken cancellationToken) =>
-        _httpClient.PostJsonAsync<PayloadAttributes>(GetUri(_relayUrl, GetPayloadAttributesPath), payloadAttributes, cancellationToken);
+    public Task<BoostPayloadAttributes> GetPayloadAttributes(PayloadAttributes payloadAttributes, CancellationToken cancellationToken) =>
+        _httpClient.PostJsonAsync<BoostPayloadAttributes>(GetUri(_relayUrl, GetPayloadAttributesPath), payloadAttributes, cancellationToken);
 
     public Task SendPayload(BoostExecutionPayloadV1 executionPayloadV1, CancellationToken cancellationToken) =>
         _httpClient.PostJsonAsync<object>(GetUri(_relayUrl, SendPayloadPath), executionPayloadV1, cancellationToken);
 
-    private string GetUri(string relayUrl, string relativeUrl) => relayUrl + relativeUrl;
+    private static string GetUri(string relayUrl, string relativeUrl) => relayUrl + relativeUrl;
 }

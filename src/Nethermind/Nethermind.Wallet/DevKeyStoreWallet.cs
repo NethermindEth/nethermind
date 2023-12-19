@@ -86,12 +86,12 @@ namespace Nethermind.Wallet
 
         public bool IsUnlocked(Address address) => _unlockedAccounts.ContainsKey(address);
 
-        public Signature Sign(Keccak message, Address address, SecureString passphrase)
+        public Signature Sign(Hash256 message, Address address, SecureString passphrase)
         {
             PrivateKey key;
-            if (_unlockedAccounts.ContainsKey(address))
+            if (_unlockedAccounts.TryGetValue(address, out PrivateKey value))
             {
-                key = _unlockedAccounts[address];
+                key = value;
             }
             else
             {
@@ -104,12 +104,12 @@ namespace Nethermind.Wallet
             return new Signature(rs, v);
         }
 
-        public Signature Sign(Keccak message, Address address)
+        public Signature Sign(Hash256 message, Address address)
         {
             PrivateKey key;
-            if (_unlockedAccounts.ContainsKey(address))
+            if (_unlockedAccounts.TryGetValue(address, out PrivateKey value))
             {
-                key = _unlockedAccounts[address];
+                key = value;
             }
             else
             {

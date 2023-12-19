@@ -11,17 +11,15 @@ namespace Ethereum.Blockchain.Test;
 [Parallelizable(ParallelScope.All)]
 public class EIP4844blobtransactionsTests : GeneralStateTestBase
 {
-    // Uncomment when stEIP4844 tests are merged
-
-    // [TestCaseSource(nameof(LoadTests))]
-    // public void Test(GeneralStateTest test)
-    // {
-    //     Assert.True(RunTest(test).Pass);
-    // }
+    [TestCaseSource(nameof(LoadTests))]
+    public void Test(GeneralStateTest test)
+    {
+        Assert.True(RunTest(test).Pass);
+    }
 
     public static IEnumerable<GeneralStateTest> LoadTests()
     {
-        var loader = new TestsSourceLoader(new LoadEipTestsStrategy(), "stEIP4844-blobtransactions");
+        var loader = new TestsSourceLoader(new LoadGeneralStateTestsStrategy(), "stEIP4844-blobtransactions");
         return (IEnumerable<GeneralStateTest>)loader.LoadTests();
     }
 }

@@ -1,0 +1,31 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.7.34024.191
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "DocGen", "DocGen.csproj", "{D2C34B4A-DCD7-4AEE-9470-D0C58DC32EC8}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Runner", "..\..\src\Nethermind\Nethermind.Runner\Nethermind.Runner.csproj", "{1671DD29-9358-4B0E-BF47-C66789766FFF}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{D2C34B4A-DCD7-4AEE-9470-D0C58DC32EC8}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{D2C34B4A-DCD7-4AEE-9470-D0C58DC32EC8}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{D2C34B4A-DCD7-4AEE-9470-D0C58DC32EC8}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{D2C34B4A-DCD7-4AEE-9470-D0C58DC32EC8}.Release|Any CPU.Build.0 = Release|Any CPU
+		{1671DD29-9358-4B0E-BF47-C66789766FFF}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{1671DD29-9358-4B0E-BF47-C66789766FFF}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{1671DD29-9358-4B0E-BF47-C66789766FFF}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{1671DD29-9358-4B0E-BF47-C66789766FFF}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {91BBB1F1-AD5C-4682-BAD0-BDD22195E360}
+	EndGlobalSection
+EndGlobal
