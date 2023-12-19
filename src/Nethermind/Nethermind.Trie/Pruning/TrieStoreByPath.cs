@@ -30,10 +30,8 @@ namespace Nethermind.Trie.Pruning
         private readonly ConcurrentDictionary<StateColumns, IPathDataCache> _committedNodes = null;
         private readonly IByPathPersistenceStrategy _persistenceStrategy;
 
-        private readonly ConcurrentQueue<byte[]> _destroyPrefixes;
-
         private bool _lastPersistedReachedReorgBoundary;
-        private bool _useCommittedCache = false;
+        private readonly bool _useCommittedCache = false;
 
         private readonly TrieKeyValueStore _publicStore;
 
@@ -49,7 +47,6 @@ namespace Nethermind.Trie.Pruning
             _committedNodes = new ConcurrentDictionary<StateColumns, IPathDataCache>();
             _committedNodes.TryAdd(StateColumns.State, new PathDataCache(this, logManager));
             _committedNodes.TryAdd(StateColumns.Storage, new PathDataCache(this, logManager));
-            _destroyPrefixes = new ConcurrentQueue<byte[]>();
             _pathStateDb = stateDb as IByPathStateDb;
             _currentWriteBatches = new ConcurrentDictionary<StateColumns, IWriteBatch?>();
             _publicStore = new TrieKeyValueStore(this);

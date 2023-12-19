@@ -184,7 +184,7 @@ internal class PathDataCacheInstance
             _branches.AddRange(branches);
     }
 
-    private StateId _lastState;
+    private StateId? _lastState;
 
     private List<PathDataCacheInstance> _branches;
 
@@ -218,7 +218,7 @@ internal class PathDataCacheInstance
     {
         if (IsOpened && !_isDirty)
         {
-            _lastState = _lastState.ParentBlock;
+            _lastState = _lastState?.ParentBlock;
         }
     }
 
