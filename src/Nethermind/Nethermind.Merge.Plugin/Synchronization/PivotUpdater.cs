@@ -20,7 +20,7 @@ using Nethermind.Synchronization.Peers;
 
 namespace Nethermind.Merge.Plugin.Synchronization;
 
-public class PivotUpdator
+public class PivotUpdater
 {
     private readonly IBlockTree _blockTree;
     private readonly ISyncModeSelector _syncModeSelector;
@@ -38,7 +38,7 @@ public class PivotUpdator
     private int _updateInProgress;
     private Hash256 _alreadyAnnouncedNewPivotHash = Keccak.Zero;
 
-    public PivotUpdator(IBlockTree blockTree,
+    public PivotUpdater(IBlockTree blockTree,
         ISyncModeSelector syncModeSelector,
         ISyncPeerPool syncPeerPool,
         ISyncConfig syncConfig,
