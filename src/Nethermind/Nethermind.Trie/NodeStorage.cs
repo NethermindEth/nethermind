@@ -13,7 +13,7 @@ public class NodeStorage : INodeStorage
 {
     private readonly IKeyValueStore _keyValueStore;
     private static byte[] EmptyTreeHashBytes = { 128 };
-    public const int StoragePathLength = 44;
+    public const int StoragePathLength = 48;
     public INodeStorage.KeyScheme Scheme { get; }
 
     public NodeStorage(IKeyValueStore keyValueStore, INodeStorage.KeyScheme scheme = INodeStorage.KeyScheme.HalfPath)
@@ -61,9 +61,11 @@ public class NodeStorage : INodeStorage
             }
 
             // Keep key small
-            path.Path.BytesAsSpan[..7].CopyTo(pathSpan[1..]);
-            keccak.Bytes.CopyTo(pathSpan[8..]);
-            return pathSpan[..40];
+            path.Path.BytesAsSpan[..8].CopyTo(pathSpan[1..]);
+            keccak.Bytes.CopyTo(pathSpan[10..]);
+
+            pathSpan[9] = (byte)path.Length;
+            return pathSpan[..42];
         }
         else
         {
@@ -72,10 +74,11 @@ public class NodeStorage : INodeStorage
             // can be slower but as long as they are in the same data block, it should not make a difference.
             // On mainnet, the out of order key is around 0.03% for address and 0.07% for storage.
             pathSpan[0] = 2;
-            address.Bytes[..6].CopyTo(pathSpan[1..]);
-            path.Path.BytesAsSpan[..5].CopyTo(pathSpan[7..]);
+            address.Bytes[..7].CopyTo(pathSpan[1..]);
+            path.Path.BytesAsSpan[..7].CopyTo(pathSpan[8..]);
 
-            keccak.Bytes.CopyTo(pathSpan[12..]);
+            pathSpan[15] = (byte)path.Length;
+            keccak.Bytes.CopyTo(pathSpan[16..]);
             return pathSpan;
         }
 

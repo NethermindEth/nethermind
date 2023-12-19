@@ -618,7 +618,7 @@ namespace Nethermind.Trie.Test.Pruning
             trieStore.FinishBlockCommit(TrieType.State, 7, branch);
             trieStore.FinishBlockCommit(TrieType.State, 8, branch);
 
-            storage.Get(null, TreePath.Empty, a.Keccak).Should().NotBeNull();
+            storage.Get(null, TreePath.FromNibble(new byte[] {0}), a.Keccak).Should().NotBeNull();
             storage.Get(new Hash256(Nibbles.ToBytes(storage1Nib)), TreePath.Empty, storage1.Keccak).Should().NotBeNull();
             fullTrieStore.IsNodeCached(null, TreePath.Empty, a.Keccak).Should().BeTrue();
             fullTrieStore.IsNodeCached(new Hash256(Nibbles.ToBytes(storage1Nib)), TreePath.Empty, storage1.Keccak).Should().BeTrue();
