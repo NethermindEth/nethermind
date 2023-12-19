@@ -490,5 +490,18 @@ namespace Nethermind.TxPool.Test
                 .TestObject;
             blobTx.GetLength().Should().Be(expectedLength);
         }
+
+        [Test]
+        public void RecoverAddress_should_work_correctly()
+        {
+            Transaction tx = Build.A.Transaction
+                .WithShardBlobTxTypeAndFields()
+                .WithMaxFeePerGas(1.GWei())
+                .WithMaxPriorityFeePerGas(1.GWei())
+                .WithNonce(UInt256.Zero)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+
+            _ethereumEcdsa.RecoverAddress(tx).Should().Be(tx.SenderAddress);
+        }
     }
 }
