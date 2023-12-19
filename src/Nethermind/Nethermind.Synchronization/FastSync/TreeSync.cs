@@ -509,12 +509,11 @@ namespace Nethermind.Synchronization.FastSync
                 lockToTake.EnterReadLock();
                 try
                 {
-                    bool keyExists = false;
+                    bool keyExists;
                     Interlocked.Increment(ref _data.DbChecks);
                     if (syncItem.NodeDataType == NodeDataType.Code)
                     {
-                        IDb dbToCheck = _codeDb;
-                        keyExists = dbToCheck.KeyExists(syncItem.Hash);
+                        keyExists = _codeDb.KeyExists(syncItem.Hash);
                     }
                     else
                     {
@@ -620,58 +619,58 @@ namespace Nethermind.Synchronization.FastSync
             switch (syncItem.NodeDataType)
             {
                 case NodeDataType.State:
-                {
-                    Interlocked.Increment(ref _data.SavedStateCount);
-                    _stateDbLock.EnterWriteLock();
-                    try
                     {
-                        Interlocked.Add(ref _data.DataSize, data.Length);
-                        Interlocked.Increment(ref Metrics.SyncedStateTrieNodes);
+                        Interlocked.Increment(ref _data.SavedStateCount);
+                        _stateDbLock.EnterWriteLock();
+                        try
+                        {
+                            Interlocked.Add(ref _data.DataSize, data.Length);
+                            Interlocked.Increment(ref Metrics.SyncedStateTrieNodes);
 
-                        _nodeStorage.Set(syncItem.Address, syncItem.Path, syncItem.Hash, data);
-                    }
-                    finally
-                    {
-                        _stateDbLock.ExitWriteLock();
-                    }
+                            _nodeStorage.Set(syncItem.Address, syncItem.Path, syncItem.Hash, data);
+                        }
+                        finally
+                        {
+                            _stateDbLock.ExitWriteLock();
+                        }
 
-                    break;
-                }
+                        break;
+                    }
                 case NodeDataType.Storage:
-                {
-                    Interlocked.Increment(ref _data.SavedStorageCount);
-
-                    _stateDbLock.EnterWriteLock();
-                    try
                     {
-                        Interlocked.Add(ref _data.DataSize, data.Length);
-                        Interlocked.Increment(ref Metrics.SyncedStorageTrieNodes);
-                        _nodeStorage.Set(syncItem.Address, syncItem.Path, syncItem.Hash, data);
-                    }
-                    finally
-                    {
-                        _stateDbLock.ExitWriteLock();
-                    }
+                        Interlocked.Increment(ref _data.SavedStorageCount);
 
-                    break;
-                }
+                        _stateDbLock.EnterWriteLock();
+                        try
+                        {
+                            Interlocked.Add(ref _data.DataSize, data.Length);
+                            Interlocked.Increment(ref Metrics.SyncedStorageTrieNodes);
+                            _nodeStorage.Set(syncItem.Address, syncItem.Path, syncItem.Hash, data);
+                        }
+                        finally
+                        {
+                            _stateDbLock.ExitWriteLock();
+                        }
+
+                        break;
+                    }
                 case NodeDataType.Code:
-                {
-                    Interlocked.Increment(ref _data.SavedCode);
-                    _codeDbLock.EnterWriteLock();
-                    try
                     {
-                        Interlocked.Add(ref _data.DataSize, data.Length);
-                        Interlocked.Increment(ref Metrics.SyncedCodes);
-                        _codeDb.Set(syncItem.Hash, data);
-                    }
-                    finally
-                    {
-                        _codeDbLock.ExitWriteLock();
-                    }
+                        Interlocked.Increment(ref _data.SavedCode);
+                        _codeDbLock.EnterWriteLock();
+                        try
+                        {
+                            Interlocked.Add(ref _data.DataSize, data.Length);
+                            Interlocked.Increment(ref Metrics.SyncedCodes);
+                            _codeDb.Set(syncItem.Hash, data);
+                        }
+                        finally
+                        {
+                            _codeDbLock.ExitWriteLock();
+                        }
 
-                    break;
-                }
+                        break;
+                    }
             }
 
             if (syncItem.IsRoot)
@@ -868,17 +867,7 @@ namespace Nethermind.Synchronization.FastSync
                             trieNode.Key!.CopyTo(childPath[currentStateSyncItem.PathNibbles.Length..]);
 
                             AddNodeResult addStorageNodeResult = AddNodeToPending(new StateSyncItem(storageRoot, childPath.ToArray(), null, NodeDataType.Storage, 0, currentStateSyncItem.Rightness), dependentItem, "storage");
-                            if (addStorageNodeResult != AddNodeResult.AlreadySaved)
-                            {
-                            }
-                            else if (codeHash == storageRoot)
-                            {
-                                // Maybe a storageRoot equal to the codeHash was stored by another branch.
-                                // Double checking code...
-                                AddNodeResult addCodeResult = AddNodeToPending(new StateSyncItem(codeHash, null, null, NodeDataType.Code, 0, currentStateSyncItem.Rightness), dependentItem, "code");
-                                if (addCodeResult == AddNodeResult.AlreadySaved) dependentItem.Counter--;
-                            }
-                            else
+                            if (addStorageNodeResult == AddNodeResult.AlreadySaved)
                             {
                                 dependentItem.Counter--;
                             }
