@@ -6,10 +6,10 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.Crypto
 {
-    public class Bls : IBls
+    public class Bls
     {
         private static readonly BLSApi BlsApi = new(new BLSHerumi(new BLSParameters()));
-        public byte[] Sign(PrivateKey privateKey, Hash256 message)
+        public static byte[] Sign(PrivateKey privateKey, Hash256 message)
         {
             return BlsApi.Sign(privateKey.KeyBytes, message.Bytes);
         }

@@ -1,15 +1,18 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using System.Linq;
 using FluentAssertions;
 using Nethermind.Abi;
 using Nethermind.Blockchain.Contracts.Json;
 using Nethermind.Consensus;
 using Nethermind.Consensus.AuRa.Contracts;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Crypto;
 using Nethermind.Evm.Tracing;
-using Nethermind.Evm.Tracing.GethStyle.JavaScript;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Merge.AuRa.Shutter;
 using Nethermind.TxPool;
@@ -49,9 +52,9 @@ class ValidatorRegistryContractTests
 
         AbiDefinition abiDefinition = new AbiDefinitionParser().Parse(typeof(ValidatorRegistryContract));
         AbiFunctionDescription getNumUpdatesDef = abiDefinition.GetFunction("getNumUpdates");
-        byte[] getNumUpdatesSig = getNumUpdatesDef.GetHash().ToBytes()[..4];
+        byte[] getNumUpdatesSig = getNumUpdatesDef.GetHash().Bytes[..4].ToArray();
         AbiFunctionDescription getUpdateDef = abiDefinition.GetFunction("getUpdate");
-        byte[] getUpdateSig = getUpdateDef.GetHash().ToBytes()[..4];
+        byte[] getUpdateSig = getUpdateDef.GetHash().Bytes[..4].ToArray();
 
         // validator index = 2
         _validatorContract.GetValidators(_blockHeader).Returns(new Address[] {Address.Zero, Address.Zero, _contractAddress, Address.Zero});
@@ -62,14 +65,20 @@ class ValidatorRegistryContractTests
             byte[] functionSig = transaction.Data!.Value[..4].ToArray();
             CallOutputTracer tracer = x.Arg<CallOutputTracer>();
 
-            if (functionSig == getNumUpdatesSig)
+            if (Enumerable.SequenceEqual(functionSig, getNumUpdatesSig))
             {
                 tracer.ReturnValue = AbiEncoder.Instance.Encode(getNumUpdatesDef.GetReturnInfo(), [10]);
             }
-            else if (functionSig == getUpdateSig)
+            else if (Enumerable.SequenceEqual(functionSig, getUpdateSig))
             {
                 // encode update
-                tracer.ReturnValue = AbiEncoder.Instance.Encode(getNumUpdatesDef.GetReturnInfo(), [10]);
+                byte[] message = new ValidatorRegistryContract.Message(Address.Zero, 0, 0).ComputeRegistrationMessage();
+                byte[] sig = Bls.Sign(TestItem.PrivateKeyA, Keccak.Compute(message));
+                tracer.ReturnValue = AbiEncoder.Instance.Encode(getUpdateDef.GetReturnInfo(), [(message, sig)]);
+            }
+            else
+            {
+                throw new NotImplementedException();
             }
 
             tracer.StatusCode = Evm.StatusCode.Success;
