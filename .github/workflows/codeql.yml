@@ -4,7 +4,7 @@ on:
   push:
     tags: ['*']
   schedule:
-  - cron: '0 0 * * 0'
+    - cron: '0 0 * * 0'
   workflow_dispatch:
 
 jobs:
@@ -20,20 +20,20 @@ jobs:
       matrix:
         language: ['csharp']
     steps:
-    - name: Check out repository
-      uses: actions/checkout@v4
-    - name: Update submodules
-      run: git submodule update --init src/tests
-    - name: Initialize CodeQL
-      uses: github/codeql-action/init@v2
-      with:
-        languages: ${{ matrix.language }}
-    - name: Set up .NET
-      uses: actions/setup-dotnet@v3
-    - name: Build Nethermind
-      working-directory: src/Nethermind
-      run: dotnet build Nethermind.sln -c release
-    - name: Perform CodeQL analysis
-      uses: github/codeql-action/analyze@v2
-      with:
-        category: '/language:${{ matrix.language }}'
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          submodules: true
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v2
+        with:
+          languages: ${{ matrix.language }}
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+      - name: Build Nethermind
+        working-directory: src/Nethermind
+        run: dotnet build Nethermind.sln -c release
+      - name: Perform CodeQL analysis
+        uses: github/codeql-action/analyze@v2
+        with:
+          category: '/language:${{ matrix.language }}'

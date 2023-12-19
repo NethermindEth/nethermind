@@ -22,11 +22,11 @@ jobs:
           repository: NethermindEth/nethermind.launcher
           path: launcher
       - name: Set up .NET
-        uses: actions/setup-dotnet@v3
+        uses: actions/setup-dotnet@v4
         with:
           global-json-file: nethermind/global.json
       - name: Set up Node.js
-        uses: actions/setup-node@v3
+        uses: actions/setup-node@v4
         with:
           node-version: 14
       - name: Install npm packages
@@ -61,31 +61,31 @@ jobs:
           echo "PACKAGE_PREFIX=$PACKAGE_PREFIX" >> $GITHUB_ENV
           nethermind/scripts/deployment/archive-packages.sh
       - name: Upload Nethermind Linux x64 package
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: ${{ env.PACKAGE_PREFIX }}-linux-x64-package
           path: ${{ github.workspace }}/${{ env.PACKAGE_DIR }}/*linux-x64*
           retention-days: ${{ env.PACKAGE_RETENTION }}
       - name: Upload Nethermind Linux arm64 package
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: ${{ env.PACKAGE_PREFIX }}-linux-arm64-package
           path: ${{ github.workspace }}/${{ env.PACKAGE_DIR }}/*linux-arm64*
           retention-days: ${{ env.PACKAGE_RETENTION }}
       - name: Upload Nethermind Windows x64 package
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: ${{ env.PACKAGE_PREFIX }}-windows-x64-package
           path: ${{ github.workspace }}/${{ env.PACKAGE_DIR }}/*windows-x64*
           retention-days: ${{ env.PACKAGE_RETENTION }}
       - name: Upload Nethermind macOS x64 package
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: ${{ env.PACKAGE_PREFIX }}-macos-x64-package
           path: ${{ github.workspace }}/${{ env.PACKAGE_DIR }}/*macos-x64*
           retention-days: ${{ env.PACKAGE_RETENTION }}
       - name: Upload Nethermind macOS arm64 package
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: ${{ env.PACKAGE_PREFIX }}-macos-arm64-package
           path: ${{ github.workspace }}/${{ env.PACKAGE_DIR }}/*macos-arm64*
