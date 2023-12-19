@@ -33,11 +33,11 @@ public interface IValidatorRegistryContract
     /// </summary>
     /// <param name="blockHeader"></param>
     /// <param name="i"></param>
-    (byte[], byte[]) GetUpdate(BlockHeader blockHeader, in UInt256 i);
+    Update GetUpdate(BlockHeader blockHeader, in UInt256 i);
 
     struct Update
     {
-        byte[] message;
-        byte[] signature;
+        public byte[] Message;
+        public byte[] Signature;
     }
 }

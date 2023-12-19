@@ -15,6 +15,7 @@ using Nethermind.Crypto;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.TxPool;
+using static Nethermind.Merge.AuRa.Shutter.IValidatorRegistryContract;
 
 [assembly: InternalsVisibleTo("Nethermind.Merge.AuRa.Test")]
 
@@ -48,10 +49,13 @@ public class ValidatorRegistryContract : CallableContract, IValidatorRegistryCon
         return (UInt256)res[0];
     }
 
-    public (byte[], byte[]) GetUpdate(BlockHeader blockHeader, in UInt256 i)
+    public Update GetUpdate(BlockHeader blockHeader, in UInt256 i)
     {
         object[] res = Call(blockHeader, getUpdate, Address.Zero, [i]);
-        return ((byte[])res[0], (byte[])res[1]);
+        Update update = new();
+        update.Message = (byte[])res[0];
+        update.Signature = (byte[])res[1];
+        return update;
     }
 
     internal ulong GetNonce(BlockHeader blockHeader)
@@ -84,9 +88,8 @@ public class ValidatorRegistryContract : CallableContract, IValidatorRegistryCon
 
     private Message GetUpdateMessage(BlockHeader blockHeader, UInt256 i)
     {
-        (byte[] encodedMessage, _) = GetUpdate(blockHeader, i);
-        // ignore signature for now, maybe should verify?
-        return new Message(encodedMessage[..46]);
+        Update update = GetUpdate(blockHeader, i);
+        return new Message(update.Message[..46]);
     }
 
     private byte[] Sign(byte[] message)
