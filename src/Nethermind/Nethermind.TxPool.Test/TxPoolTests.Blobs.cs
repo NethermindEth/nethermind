@@ -477,7 +477,7 @@ namespace Nethermind.TxPool.Test
 
         [TestCase(0, 97)]
         [TestCase(1, 131320)]
-        [TestCase(2, 262529)]
+        [TestCase(2, 262530)]
         [TestCase(3, 393737)]
         [TestCase(4, 524944)]
         [TestCase(5, 656152)]
