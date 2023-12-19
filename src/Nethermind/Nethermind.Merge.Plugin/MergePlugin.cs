@@ -441,7 +441,7 @@ public partial class MergePlugin : IConsensusWrapperPlugin, ISynchronizationPlug
             );
             _api.Synchronizer = synchronizer;
 
-            PivotUpdater pivotUpdater = new(
+            PivotUpdator pivotUpdator = new(
                 _api.BlockTree,
                 synchronizer.SyncModeSelector,
                 _api.SyncPeerPool,

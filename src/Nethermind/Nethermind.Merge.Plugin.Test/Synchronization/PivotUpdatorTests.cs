@@ -24,7 +24,7 @@ using Nethermind.Synchronization.Peers;
 
 namespace Nethermind.Merge.Plugin.Test.Synchronization
 {
-    public class PivotUpdaterTests
+    public class PivotUpdatorTests
     {
         private IBlockTree? _blockTree;
         private ISyncModeSelector? _syncModeSelector;
@@ -61,7 +61,7 @@ namespace Nethermind.Merge.Plugin.Test.Synchronization
             _beaconSyncStrategy = Substitute.For<IBeaconSyncStrategy>();
             _metadataDb = new MemDb();
 
-            PivotUpdater pivotUpdater = new(
+            PivotUpdator pivotUpdator = new(
               _blockTree,
               _syncModeSelector,
               _syncPeerPool,
