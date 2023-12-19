@@ -25,7 +25,7 @@ namespace Nethermind.Trie.Pruning
             remove { }
         }
 
-        public IReadOnlyKeyValueStore GetByHashKeyValueStore() => null!;
+        public IReadOnlyKeyValueStore TrieNodeRlpStore => null!;
 
         public TrieNode FindCachedOrUnknown(Hash256 hash) => new(NodeType.Unknown, hash);
 

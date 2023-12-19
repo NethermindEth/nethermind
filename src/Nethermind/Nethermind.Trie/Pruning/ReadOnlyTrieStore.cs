@@ -20,7 +20,7 @@ namespace Nethermind.Trie.Pruning
         {
             _trieStore = trieStore ?? throw new ArgumentNullException(nameof(trieStore));
             _readOnlyStore = readOnlyStore;
-            _publicStore = _trieStore.GetByHashKeyValueStore();
+            _publicStore = _trieStore.TrieNodeRlpStore;
         }
 
         public TrieNode FindCachedOrUnknown(Hash256 hash) =>
@@ -45,7 +45,8 @@ namespace Nethermind.Trie.Pruning
             remove { }
         }
 
-        public IReadOnlyKeyValueStore GetByHashKeyValueStore() => _publicStore;
+        public IReadOnlyKeyValueStore TrieNodeRlpStore => _publicStore;
+
         public void Set(in ValueHash256 hash, byte[] rlp)
         {
         }

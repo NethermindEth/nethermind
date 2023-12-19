@@ -823,7 +823,8 @@ namespace Nethermind.Trie.Pruning
                 : _keyValueStore.Get(key, flags);
         }
 
-        public IReadOnlyKeyValueStore GetByHashKeyValueStore() => _publicStore;
+        public IReadOnlyKeyValueStore TrieNodeRlpStore => _publicStore;
+
         public void Set(in ValueHash256 hash, byte[] rlp)
         {
             _keyValueStore.Set(hash, rlp);
