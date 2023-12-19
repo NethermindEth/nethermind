@@ -207,7 +207,7 @@ namespace Nethermind.TxPool
                             ReAddReorganisedTransactions(args.PreviousBlock);
                             RemoveProcessedTransactions(args.Block);
                             UpdateBuckets();
-                            _broadcaster.BroadcastPersistentTxs();
+                            _broadcaster.OnNewHead();
                             Metrics.TransactionCount = _transactions.Count;
                             Metrics.BlobTransactionCount = _blobTransactions.Count;
                         }

@@ -33,7 +33,7 @@ namespace Nethermind.Network.Rlpx
         private PublicKey RemoteId => _session.RemoteNodeId;
         private readonly TaskCompletionSource<object> _initCompletionSource;
         private IChannel _channel;
-        private TimeSpan _sendLatency;
+        private readonly TimeSpan _sendLatency;
 
         public NettyHandshakeHandler(
             IMessageSerializationService serializationService,

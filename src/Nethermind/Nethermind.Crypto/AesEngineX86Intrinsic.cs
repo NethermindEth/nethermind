@@ -217,7 +217,7 @@ public sealed class AesEngineX86Intrinsic : IBlockCipher
 
             public override void ProcessRounds(ref Vector128<byte> state)
             {
-                // Take local refence to array so Jit can reason length doesn't change in method
+                // Take local reference to array so Jit can reason length doesn't change in method
                 Vector128<byte>[] roundKeys = _roundKeys;
                 {
                     // Get the Jit to bounds check once rather than each increasing array access
@@ -247,7 +247,7 @@ public sealed class AesEngineX86Intrinsic : IBlockCipher
 
             public override void ProcessRounds(ref Vector128<byte> state)
             {
-                // Take local refence to array so Jit can reason length doesn't change in method
+                // Take local reference to array so Jit can reason length doesn't change in method
                 Vector128<byte>[] roundKeys = _roundKeys;
                 {
                     // Get the Jit to bounds check once rather than each increasing array access
@@ -277,7 +277,7 @@ public sealed class AesEngineX86Intrinsic : IBlockCipher
 
             public override void ProcessRounds(ref Vector128<byte> state)
             {
-                // Take local refence to array so Jit can reason length doesn't change in method
+                // Take local reference to array so Jit can reason length doesn't change in method
                 Vector128<byte>[] roundKeys = _roundKeys;
                 {
                     // Get the Jit to bounds check once rather than each increasing array access
@@ -309,7 +309,7 @@ public sealed class AesEngineX86Intrinsic : IBlockCipher
 
             public override void ProcessRounds(ref Vector128<byte> state)
             {
-                // Take local refence to array so Jit can reason length doesn't change in method
+                // Take local reference to array so Jit can reason length doesn't change in method
                 Vector128<byte>[] roundKeys = _roundKeys;
                 {
                     // Get the Jit to bounds check once rather than each increasing array access
@@ -341,7 +341,7 @@ public sealed class AesEngineX86Intrinsic : IBlockCipher
 
             public override void ProcessRounds(ref Vector128<byte> state)
             {
-                // Take local refence to array so Jit can reason length doesn't change in method
+                // Take local reference to array so Jit can reason length doesn't change in method
                 Vector128<byte>[] roundKeys = _roundKeys;
                 {
                     // Get the Jit to bounds check once rather than each increasing array access
@@ -375,7 +375,7 @@ public sealed class AesEngineX86Intrinsic : IBlockCipher
 
             public override void ProcessRounds(ref Vector128<byte> state)
             {
-                // Take local refence to array so Jit can reason length doesn't change in method
+                // Take local reference to array so Jit can reason length doesn't change in method
                 Vector128<byte>[] roundKeys = _roundKeys;
                 {
                     // Get the Jit to bounds check once rather than each increasing array access

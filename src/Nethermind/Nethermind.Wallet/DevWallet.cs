@@ -17,11 +17,11 @@ namespace Nethermind.Wallet
     public class DevWallet : IWallet
     {
         private const string AnyPassword = "#DEV_ACCOUNT_NETHERMIND_ANY_PASSWORD#";
-        private static byte[] _keySeed = new byte[32];
+        private static readonly byte[] _keySeed = new byte[32];
         private readonly ILogger _logger;
-        private Dictionary<Address, bool> _isUnlocked = new Dictionary<Address, bool>();
-        private Dictionary<Address, PrivateKey> _keys = new Dictionary<Address, PrivateKey>();
-        private Dictionary<Address, string> _passwords = new Dictionary<Address, string>();
+        private readonly Dictionary<Address, bool> _isUnlocked = new Dictionary<Address, bool>();
+        private readonly Dictionary<Address, PrivateKey> _keys = new Dictionary<Address, PrivateKey>();
+        private readonly Dictionary<Address, string> _passwords = new Dictionary<Address, string>();
         public event EventHandler<AccountLockedEventArgs> AccountLocked;
         public event EventHandler<AccountUnlockedEventArgs> AccountUnlocked;
 
@@ -101,9 +101,9 @@ namespace Nethermind.Wallet
         }
         public Signature Sign(Hash256 message, Address address, SecureString passphrase)
         {
-            if (!_isUnlocked.ContainsKey(address)) throw new SecurityException("Account does not exist.");
+            if (!_isUnlocked.TryGetValue(address, out var value)) throw new SecurityException("Account does not exist.");
 
-            if (!_isUnlocked[address] && !CheckPassword(address, passphrase)) throw new SecurityException("Cannot sign without password or unlocked account.");
+            if (!value && !CheckPassword(address, passphrase)) throw new SecurityException("Cannot sign without password or unlocked account.");
 
             return Sign(message, address);
         }

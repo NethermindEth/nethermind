@@ -5,13 +5,14 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Text.Json.Serialization;
+
 using Ethereum.Test.Base;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
 using Nethermind.Int256;
 using Nethermind.Logging;
-using Newtonsoft.Json;
 using NUnit.Framework;
 
 namespace Ethereum.KeyAddress.Test
@@ -96,7 +97,7 @@ namespace Ethereum.KeyAddress.Test
 
         private class KeyAddressTestJson
         {
-            [JsonProperty("sig_of_emptystring")]
+            [JsonPropertyName("sig_of_emptystring")]
             public SigOfEmptyString Signature { get; set; }
 
             public string Seed { get; set; }

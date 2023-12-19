@@ -15,6 +15,8 @@ using Nethermind.Specs;
 using Nethermind.State.Repositories;
 using Nethermind.Db.Blooms;
 using Nethermind.JsonRpc.Test.Modules;
+using Nethermind.State;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test.Visitors
@@ -72,7 +74,7 @@ namespace Nethermind.Blockchain.Test.Visitors
                 .WithDatabaseFrom(builder)
                 .TestObject;
 
-            StartupBlockTreeFixer fixer = new(new SyncConfig(), tree, new MemDb(), LimboNoErrorLogger.Instance);
+            StartupBlockTreeFixer fixer = new(new SyncConfig(), tree, Substitute.For<IStateReader>(), LimboNoErrorLogger.Instance);
             await tree.Accept(fixer, CancellationToken.None);
 
             Assert.Null(blockInfosDb.Get(3), "level 3");
@@ -110,7 +112,7 @@ namespace Nethermind.Blockchain.Test.Visitors
             testRpc.BlockchainProcessor = newBlockchainProcessor;
 
             // fixing after restart
-            StartupBlockTreeFixer fixer = new(new SyncConfig(), tree, testRpc.DbProvider.StateDb, LimboNoErrorLogger.Instance, 5);
+            StartupBlockTreeFixer fixer = new(new SyncConfig(), tree, testRpc.StateReader, LimboNoErrorLogger.Instance, 5);
             await tree.Accept(fixer, CancellationToken.None);
 
             // waiting for N new heads
@@ -144,8 +146,7 @@ namespace Nethermind.Blockchain.Test.Visitors
             testRpc.BlockchainProcessor = newBlockchainProcessor;
 
             // we create a new empty db for stateDb so we shouldn't suggest new blocks
-            MemDb stateDb = new();
-            IBlockTreeVisitor fixer = new StartupBlockTreeFixer(new SyncConfig(), tree, stateDb, LimboNoErrorLogger.Instance, 5);
+            IBlockTreeVisitor fixer = new StartupBlockTreeFixer(new SyncConfig(), tree, Substitute.For<IStateReader>(), LimboNoErrorLogger.Instance, 5);
             BlockVisitOutcome result = await fixer.VisitBlock(tree.Head!, CancellationToken.None);
 
             Assert.That(result, Is.EqualTo(BlockVisitOutcome.None));
@@ -166,7 +167,7 @@ namespace Nethermind.Blockchain.Test.Visitors
             newBlockchainProcessor.Start();
             testRpc.BlockchainProcessor = newBlockchainProcessor;
 
-            IBlockTreeVisitor fixer = new StartupBlockTreeFixer(new SyncConfig(), tree, testRpc.DbProvider.StateDb, LimboNoErrorLogger.Instance, 5);
+            IBlockTreeVisitor fixer = new StartupBlockTreeFixer(new SyncConfig(), tree, testRpc.StateReader, LimboNoErrorLogger.Instance, 5);
             BlockVisitOutcome result = await fixer.VisitBlock(null!, CancellationToken.None);
 
             Assert.That(result, Is.EqualTo(BlockVisitOutcome.None));
@@ -213,7 +214,7 @@ namespace Nethermind.Blockchain.Test.Visitors
 
             tree.UpdateMainChain(block2);
 
-            StartupBlockTreeFixer fixer = new(new SyncConfig(), tree, new MemDb(), LimboNoErrorLogger.Instance);
+            StartupBlockTreeFixer fixer = new(new SyncConfig(), tree, Substitute.For<IStateReader>(), LimboNoErrorLogger.Instance);
             await tree.Accept(fixer, CancellationToken.None);
 
             Assert.Null(blockInfosDb.Get(3), "level 3");

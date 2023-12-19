@@ -4,15 +4,17 @@
 using System;
 using System.Collections.Generic;
 using System.Reflection;
+using System.Text.Json.Serialization;
 using System.Threading.Tasks;
-using Newtonsoft.Json;
+
+using Nethermind.Serialization.Json;
 
 namespace Nethermind.JsonRpc.Modules
 {
     public class NullModuleProvider : IRpcModuleProvider
     {
         public static NullModuleProvider Instance = new();
-        private static Task<IRpcModule> Null = Task.FromResult(default(IRpcModule));
+        private static readonly Task<IRpcModule> Null = Task.FromResult(default(IRpcModule));
 
         private NullModuleProvider()
         {
@@ -22,9 +24,7 @@ namespace Nethermind.JsonRpc.Modules
         {
         }
 
-        public JsonSerializer Serializer { get; } = new();
-
-        public IReadOnlyCollection<JsonConverter> Converters => Array.Empty<JsonConverter>();
+        public IJsonSerializer Serializer { get; } = new EthereumJsonSerializer();
 
         public IReadOnlyCollection<string> Enabled => Array.Empty<string>();
 
@@ -32,7 +32,7 @@ namespace Nethermind.JsonRpc.Modules
 
         public ModuleResolution Check(string methodName, JsonRpcContext context) => ModuleResolution.Unknown;
 
-        public (MethodInfo, bool) Resolve(string methodName) => (null, false);
+        public (MethodInfo, ParameterInfo[], bool) Resolve(string methodName) => (null, Array.Empty<ParameterInfo>(), false);
 
         public Task<IRpcModule> Rent(string methodName, bool canBeShared) => Null;
 

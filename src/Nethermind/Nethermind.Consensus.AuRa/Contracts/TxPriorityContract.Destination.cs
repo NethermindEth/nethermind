@@ -58,11 +58,11 @@ namespace Nethermind.Consensus.AuRa.Contracts
                 return new Destination(tx.To, fnSignature, UInt256.Zero);
             }
 
-            public bool Equals(Destination x, Destination y) => Equals(x.Target, y.Target) && Equals(x.FnSignature, y.FnSignature);
+            public readonly bool Equals(Destination x, Destination y) => Equals(x.Target, y.Target) && Equals(x.FnSignature, y.FnSignature);
 
-            public int GetHashCode(Destination obj) => HashCode.Combine(obj.Target, obj.FnSignature);
+            public readonly int GetHashCode(Destination obj) => HashCode.Combine(obj.Target, obj.FnSignature);
 
-            public override string ToString() => $"{Target}.{FnSignature.ToHexString()}={Value}@{Source}.{BlockNumber}";
+            public override readonly string ToString() => $"{Target}.{FnSignature.ToHexString()}={Value}@{Source}.{BlockNumber}";
         }
 
         public class ValueDestinationMethodComparer : IComparer<Destination>
@@ -93,7 +93,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
                 // if same method, we want to treat destinations as same - to be unique
                 int targetComparison = Comparer<Address>.Default.Compare(x.Target, y.Target);
                 if (targetComparison != 0) return targetComparison;
-                return Bytes.Comparer.Compare(x.FnSignature, y.FnSignature);
+                return Bytes.BytesComparer.Compare(x.FnSignature, y.FnSignature);
             }
 
             public bool Equals(Destination x, Destination y) =>

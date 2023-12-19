@@ -49,12 +49,12 @@ namespace Nethermind.TxPool
                     }
                 }
 
-                if (pending.Any())
+                if (pending.Count != 0)
                 {
                     pendingTransactions[address] = pending;
                 }
 
-                if (queued.Any())
+                if (queued.Count != 0)
                 {
                     queuedTransactions[address] = queued;
                 }

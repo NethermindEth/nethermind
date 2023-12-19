@@ -121,7 +121,7 @@ namespace Nethermind.TxPool.Collections
         [MethodImpl(MethodImplOptions.Synchronized)]
         public void UpdateGroup(Address groupKey, Account groupValue, Func<Address, Account, EnhancedSortedSet<Transaction>, IEnumerable<(Transaction Tx, UInt256? changedGasBottleneck)>> changingElements)
         {
-            if (groupKey is null) throw new ArgumentNullException(nameof(groupKey));
+            ArgumentNullException.ThrowIfNull(groupKey);
             if (_buckets.TryGetValue(groupKey, out EnhancedSortedSet<Transaction>? bucket))
             {
                 Debug.Assert(bucket.Count > 0);

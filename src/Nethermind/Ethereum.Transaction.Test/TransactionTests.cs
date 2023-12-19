@@ -5,6 +5,8 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Text.Json;
+
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -15,7 +17,6 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs.Forks;
-using Newtonsoft.Json;
 using NUnit.Framework;
 
 namespace Ethereum.Transaction.Test
@@ -41,7 +42,7 @@ namespace Ethereum.Transaction.Test
                 foreach (string testFile in testFiles)
                 {
                     string json = File.ReadAllText(testFile);
-                    Dictionary<string, TransactionTestJson> testsInFile = JsonConvert.DeserializeObject<Dictionary<string, TransactionTestJson>>(json);
+                    Dictionary<string, TransactionTestJson> testsInFile = JsonSerializer.Deserialize<Dictionary<string, TransactionTestJson>>(json);
                     foreach (KeyValuePair<string, TransactionTestJson> namedTest in testsInFile)
                     {
                         testJsons[testDir].Add(namedTest.Key, namedTest.Value);

@@ -42,8 +42,8 @@ namespace Nethermind.Network.Discovery.Test
         private INodeTable _nodeTable = null!;
         private IEvictionManager _evictionManagerMock = null!;
         private ILogger _loggerMock = null!;
-        private int _port = 1;
-        private string _host = "192.168.1.27";
+        private readonly int _port = 1;
+        private readonly string _host = "192.168.1.27";
 
         [SetUp]
         public void Setup()

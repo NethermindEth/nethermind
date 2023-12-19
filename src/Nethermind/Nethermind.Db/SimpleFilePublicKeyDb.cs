@@ -36,7 +36,7 @@ namespace Nethermind.Db
         public SimpleFilePublicKeyDb(string name, string dbDirectoryPath, ILogManager logManager)
         {
             _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
-            if (dbDirectoryPath is null) throw new ArgumentNullException(nameof(dbDirectoryPath));
+            ArgumentNullException.ThrowIfNull(dbDirectoryPath);
             Name = name ?? throw new ArgumentNullException(nameof(name));
             DbPath = Path.Combine(dbDirectoryPath, DbFileName);
             Description = $"{Name}|{DbPath}";

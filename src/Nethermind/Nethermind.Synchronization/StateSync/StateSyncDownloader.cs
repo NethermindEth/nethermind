@@ -21,7 +21,7 @@ namespace Nethermind.Synchronization.StateSync
 {
     public class StateSyncDownloader : ISyncDownloader<StateSyncBatch>
     {
-        private ILogger Logger;
+        private readonly ILogger Logger;
 
         public StateSyncDownloader(ILogManager logManager)
         {
@@ -212,7 +212,7 @@ namespace Nethermind.Synchronization.StateSync
         /// </summary>
         private sealed class KeccakToValueKeccakList : IReadOnlyList<ValueHash256>
         {
-            private HashList _innerList;
+            private readonly HashList _innerList;
 
             internal KeccakToValueKeccakList(HashList innerList)
             {

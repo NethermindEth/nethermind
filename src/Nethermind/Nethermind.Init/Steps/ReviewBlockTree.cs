@@ -14,7 +14,7 @@ namespace Nethermind.Init.Steps
     public class ReviewBlockTree : IStep
     {
         private readonly IApiWithBlockchain _api;
-        private ILogger _logger;
+        private readonly ILogger _logger;
 
         public ReviewBlockTree(INethermindApi api)
         {
@@ -59,7 +59,7 @@ namespace Nethermind.Init.Steps
             }
             else
             {
-                StartupBlockTreeFixer fixer = new(syncConfig, _api.BlockTree, _api.DbProvider!.StateDb, _logger!);
+                StartupBlockTreeFixer fixer = new(syncConfig, _api.BlockTree, _api.WorldStateManager!.GlobalStateReader, _logger!);
                 await _api.BlockTree.Accept(fixer, cancellationToken).ContinueWith(t =>
                 {
                     if (t.IsFaulted)

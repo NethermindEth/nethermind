@@ -176,13 +176,11 @@ public partial class EthRpcModule : IEthRpcModule
         }
 
         BlockHeader? header = searchResult.Object;
-        Account account = _stateReader.GetAccount(header!.StateRoot!, address);
-        if (account is null)
+        byte[] storage = _stateReader.GetStorage(header!.StateRoot!, address, positionIndex);
+        if (storage is null)
         {
             return ResultWrapper<byte[]>.Success(Array.Empty<byte>());
         }
-
-        byte[] storage = _stateReader.GetStorage(account.StorageRoot, positionIndex);
         return ResultWrapper<byte[]>.Success(storage!.PadLeft(32));
     }
 
@@ -580,7 +578,7 @@ public partial class EthRpcModule : IEthRpcModule
             if (id < 0 || !filterFound)
             {
                 cancellationTokenSource.Dispose();
-                return ResultWrapper<IEnumerable<FilterLog>>.Fail($"Filter with id: '{filterId}' does not exist.");
+                return ResultWrapper<IEnumerable<FilterLog>>.Fail($"Filter with id: {filterId} does not exist.");
             }
             else
             {
@@ -633,7 +631,8 @@ public partial class EthRpcModule : IEthRpcModule
         if (fromBlockNumber > toBlockNumber && toBlockNumber != 0)
         {
             cancellationTokenSource.Dispose();
-            return ResultWrapper<IEnumerable<FilterLog>>.Fail($"'From' block '{fromBlockNumber}' is later than 'to' block '{toBlockNumber}'.", ErrorCodes.InvalidParams);
+
+            return ResultWrapper<IEnumerable<FilterLog>>.Fail($"From block {fromBlockNumber} is later than to block {toBlockNumber}.", ErrorCodes.InvalidParams);
         }
 
         try
@@ -689,7 +688,7 @@ public partial class EthRpcModule : IEthRpcModule
         transaction.SenderAddress ??= _blockchainBridge.RecoverTxSender(transaction);
     }
 
-    private IEnumerable<FilterLog> GetLogs(IEnumerable<FilterLog> logs, CancellationTokenSource cancellationTokenSource)
+    private static IEnumerable<FilterLog> GetLogs(IEnumerable<FilterLog> logs, CancellationTokenSource cancellationTokenSource)
     {
         using (cancellationTokenSource)
         {

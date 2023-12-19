@@ -131,7 +131,7 @@ namespace Nethermind.Trie.Pruning
 
         private bool _lastPersistedReachedReorgBoundary;
         private Task _pruningTask = Task.CompletedTask;
-        private CancellationTokenSource _pruningTaskCancellationTokenSource = new();
+        private readonly CancellationTokenSource _pruningTaskCancellationTokenSource = new();
 
         public TrieStore(IKeyValueStoreWithBatching? keyValueStore, ILogManager? logManager)
             : this(keyValueStore, No.Pruning, Pruning.Persist.EveryBlock, logManager)
@@ -207,7 +207,7 @@ namespace Nethermind.Trie.Pruning
 
         public void CommitNode(long blockNumber, NodeCommitInfo nodeCommitInfo, WriteFlags writeFlags = WriteFlags.None)
         {
-            if (blockNumber < 0) throw new ArgumentOutOfRangeException(nameof(blockNumber));
+            ArgumentOutOfRangeException.ThrowIfNegative(blockNumber);
             EnsureCommitSetExistsForBlock(blockNumber);
 
             if (_logger.IsTrace) _logger.Trace($"Committing {nodeCommitInfo} at {blockNumber}");
@@ -278,7 +278,7 @@ namespace Nethermind.Trie.Pruning
 
         public void FinishBlockCommit(TrieType trieType, long blockNumber, TrieNode? root, WriteFlags writeFlags = WriteFlags.None)
         {
-            if (blockNumber < 0) throw new ArgumentOutOfRangeException(nameof(blockNumber));
+            ArgumentOutOfRangeException.ThrowIfNegative(blockNumber);
             EnsureCommitSetExistsForBlock(blockNumber);
 
             try
@@ -367,10 +367,7 @@ namespace Nethermind.Trie.Pruning
 
         internal TrieNode FindCachedOrUnknown(Hash256? hash, bool isReadOnly)
         {
-            if (hash is null)
-            {
-                throw new ArgumentNullException(nameof(hash));
-            }
+            ArgumentNullException.ThrowIfNull(hash);
 
             if (!_pruningStrategy.PruningEnabled)
             {
@@ -638,10 +635,7 @@ namespace Nethermind.Trie.Pruning
         private void Persist(TrieNode currentNode, long blockNumber, WriteFlags writeFlags = WriteFlags.None)
         {
             _currentBatch ??= _keyValueStore.StartWriteBatch();
-            if (currentNode is null)
-            {
-                throw new ArgumentNullException(nameof(currentNode));
-            }
+            ArgumentNullException.ThrowIfNull(currentNode);
 
             if (currentNode.Keccak is not null)
             {
@@ -818,7 +812,7 @@ namespace Nethermind.Trie.Pruning
             });
         }
 
-        private byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
+        private byte[]? GetByHash(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
         {
             return _pruningStrategy.PruningEnabled
                    && _dirtyNodes.AllNodes.TryGetValue(new ValueHash256(key), out TrieNode? trieNode)
@@ -829,9 +823,14 @@ namespace Nethermind.Trie.Pruning
                 : _keyValueStore.Get(key, flags);
         }
 
-        public IKeyValueStore AsKeyValueStore() => _publicStore;
+        public IReadOnlyKeyValueStore TrieNodeRlpStore => _publicStore;
 
-        private class TrieKeyValueStore : IKeyValueStore
+        public void Set(in ValueHash256 hash, byte[] rlp)
+        {
+            _keyValueStore.Set(hash, rlp);
+        }
+
+        private class TrieKeyValueStore : IReadOnlyKeyValueStore
         {
             private readonly TrieStore _trieStore;
 
@@ -840,10 +839,7 @@ namespace Nethermind.Trie.Pruning
                 _trieStore = trieStore;
             }
 
-            public byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None) => _trieStore.Get(key, flags);
-
-            public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None)
-                => _trieStore._keyValueStore.Set(key, value, flags);
+            public byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None) => _trieStore.GetByHash(key, flags);
         }
     }
 }

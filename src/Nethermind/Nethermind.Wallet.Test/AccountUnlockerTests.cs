@@ -19,7 +19,7 @@ namespace Nethermind.Wallet.Test
 {
     public class AccountUnlockerTests
     {
-        private static List<(string Name, string Content)> _files = new List<(string Name, string Content)>()
+        private static readonly List<(string Name, string Content)> _files = new List<(string Name, string Content)>()
         {
             ("TestingFileF1", "PF1"),
             ("TestingFileF2", "PF2")

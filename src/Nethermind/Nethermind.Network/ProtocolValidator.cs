@@ -20,7 +20,7 @@ namespace Nethermind.Network
         private readonly INodeStatsManager _nodeStatsManager;
         private readonly IBlockTree _blockTree;
         private readonly ForkInfo _forkInfo;
-        private ILogger _logger;
+        private readonly ILogger _logger;
 
         public ProtocolValidator(INodeStatsManager nodeStatsManager, IBlockTree blockTree, ForkInfo forkInfo, ILogManager? logManager)
         {
@@ -83,7 +83,7 @@ namespace Nethermind.Network
             return false;
         }
 
-        private bool ValidateP2PVersion(byte p2PVersion) => p2PVersion is 4 or 5;
+        private static bool ValidateP2PVersion(byte p2PVersion) => p2PVersion is 4 or 5;
 
         private bool ValidateNetworkId(ulong networkId) => networkId == _blockTree.NetworkId;
     }

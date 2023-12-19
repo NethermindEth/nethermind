@@ -40,7 +40,7 @@ public static class ConcurrentDictionaryLock<TKey, TValue> where TKey : notnull
     /// <exception cref="NotSupportedException">Thrown when private members of <see cref="ConcurrentDictionary{TKey,TValue}"/> changed and we cannot create delegates.</exception>
     static ConcurrentDictionaryLock()
     {
-        TDelegate CreateDelegate<TType, TDelegate>(TType? target = default, string? methodName = null) where TDelegate : Delegate
+        static TDelegate CreateDelegate<TType, TDelegate>(TType? target = default, string? methodName = null) where TDelegate : Delegate
         {
             Type type = typeof(TType);
             Type delegateType = typeof(TDelegate);

@@ -23,7 +23,7 @@ namespace Nethermind.Trie
 
         private class TrieNodeDecoder
         {
-            public CappedArray<byte> Encode(ITrieNodeResolver tree, TrieNode? item, ICappedArrayPool? bufferPool)
+            public static CappedArray<byte> Encode(ITrieNodeResolver tree, TrieNode? item, ICappedArrayPool? bufferPool)
             {
                 Metrics.TreeNodeRlpEncodings++;
 

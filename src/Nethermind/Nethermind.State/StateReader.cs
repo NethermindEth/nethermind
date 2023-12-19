@@ -15,12 +15,12 @@ namespace Nethermind.State
 {
     public class StateReader : IStateReader
     {
-        private readonly IDb _codeDb;
+        private readonly IKeyValueStore _codeDb;
         private readonly ILogger _logger;
         private readonly StateTree _state;
         private readonly StorageTree _storage;
 
-        public StateReader(ITrieStore? trieStore, IDb? codeDb, ILogManager? logManager)
+        public StateReader(ITrieStore? trieStore, IKeyValueStore? codeDb, ILogManager? logManager)
         {
             _logger = logManager?.GetClassLogger<StateReader>() ?? throw new ArgumentNullException(nameof(logManager));
             _codeDb = codeDb ?? throw new ArgumentNullException(nameof(codeDb));
@@ -33,8 +33,12 @@ namespace Nethermind.State
             return GetState(stateRoot, address);
         }
 
-        public byte[] GetStorage(Hash256 storageRoot, in UInt256 index)
+        public byte[] GetStorage(Hash256 stateRoot, Address address, in UInt256 index)
         {
+            Account? account = GetAccount(stateRoot, address);
+            if (account == null) return null;
+
+            Hash256 storageRoot = account.StorageRoot;
             if (storageRoot == Keccak.EmptyTreeHash)
             {
                 return new byte[] { 0 };

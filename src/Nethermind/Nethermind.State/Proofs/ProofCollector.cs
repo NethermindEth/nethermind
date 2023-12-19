@@ -20,9 +20,9 @@ namespace Nethermind.State.Proofs
 
         private Nibble[] Prefix => Nibbles.FromBytes(_key);
 
-        private HashSet<Hash256> _visitingFilter = new();
+        private readonly HashSet<Hash256> _visitingFilter = new();
 
-        private List<byte[]> _proofBits = new();
+        private readonly List<byte[]> _proofBits = new();
 
         public ProofCollector(byte[] key)
         {

@@ -67,7 +67,7 @@ public class BlobTxStorage : IBlobTxStorage
         GetHashPrefixedByTimestamp(transaction.Timestamp, transaction.Hash, txHashPrefixed);
 
         _fullBlobTxsDb.PutSpan(txHashPrefixed, EncodeTx(transaction));
-        _lightBlobTxsDb.Set(transaction.Hash, _lightTxDecoder.Encode(transaction));
+        _lightBlobTxsDb.Set(transaction.Hash, LightTxDecoder.Encode(transaction));
     }
 
     public void Delete(in ValueHash256 hash, in UInt256 timestamp)
@@ -125,7 +125,7 @@ public class BlobTxStorage : IBlobTxStorage
     {
         if (txBytes is not null)
         {
-            lightTx = _lightTxDecoder.Decode(txBytes);
+            lightTx = LightTxDecoder.Decode(txBytes);
             return true;
         }
 
@@ -133,7 +133,7 @@ public class BlobTxStorage : IBlobTxStorage
         return false;
     }
 
-    private void GetHashPrefixedByTimestamp(UInt256 timestamp, ValueHash256 hash, Span<byte> txHashPrefixed)
+    private static void GetHashPrefixedByTimestamp(UInt256 timestamp, ValueHash256 hash, Span<byte> txHashPrefixed)
     {
         timestamp.WriteBigEndian(txHashPrefixed);
         hash.Bytes.CopyTo(txHashPrefixed[32..]);

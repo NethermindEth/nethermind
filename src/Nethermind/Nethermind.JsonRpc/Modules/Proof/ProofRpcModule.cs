@@ -198,7 +198,7 @@ namespace Nethermind.JsonRpc.Modules.Proof
                 .Select(h => _headerDecoder.Encode(h).Bytes).ToArray();
         }
 
-        private byte[][] BuildTxProofs(Transaction[] txs, IReleaseSpec releaseSpec, int index)
+        private static byte[][] BuildTxProofs(Transaction[] txs, IReleaseSpec releaseSpec, int index)
         {
             return new TxTrie(txs, true).BuildProof(index);
         }

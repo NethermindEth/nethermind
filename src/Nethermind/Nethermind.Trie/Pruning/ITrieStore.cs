@@ -19,6 +19,10 @@ namespace Nethermind.Trie.Pruning
 
         event EventHandler<ReorgBoundaryReached>? ReorgBoundaryReached;
 
-        IKeyValueStore AsKeyValueStore();
+        // Used for serving via hash
+        IReadOnlyKeyValueStore TrieNodeRlpStore { get; }
+
+        // Used by healing
+        void Set(in ValueHash256 hash, byte[] rlp);
     }
 }

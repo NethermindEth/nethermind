@@ -14,7 +14,7 @@ namespace Nethermind.Analytics
     public class SupplyVerifier : ITreeVisitor
     {
         private readonly ILogger _logger;
-        private HashSet<Hash256> _ignoreThisOne = new HashSet<Hash256>();
+        private readonly HashSet<Hash256> _ignoreThisOne = new HashSet<Hash256>();
         private int _accountsVisited;
         private int _nodesVisited;
 
@@ -34,9 +34,8 @@ namespace Nethermind.Analytics
                 _logger.Warn($"Ignore count leak -> {_ignoreThisOne.Count}");
             }
 
-            if (_ignoreThisOne.Contains(nextNode))
+            if (_ignoreThisOne.Remove(nextNode))
             {
-                _ignoreThisOne.Remove(nextNode);
                 return false;
             }
 

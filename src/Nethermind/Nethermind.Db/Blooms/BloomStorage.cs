@@ -360,7 +360,7 @@ namespace Nethermind.Db.Blooms
                 Reset();
             }
 
-            private (BloomStorageLevel Storage, IFileReader Reader)[] GetStorageLevels(BloomStorageLevel[] storageLevels, long fromBlock, long toBlock)
+            private static (BloomStorageLevel Storage, IFileReader Reader)[] GetStorageLevels(BloomStorageLevel[] storageLevels, long fromBlock, long toBlock)
             {
                 // Skip higher levels if we would do only 1 or 2 lookups in them. Thanks to that we can skip a lot of IO operations on that file
                 IList<BloomStorageLevel> levels = new List<BloomStorageLevel>(storageLevels.Length);

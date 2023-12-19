@@ -408,10 +408,10 @@ namespace Nethermind.Network.Test
             ctx.PeerPool.ActivePeers.Count.Should().Be(0);
         }
 
-        private int _travisDelay = 500;
+        private readonly int _travisDelay = 500;
 
-        private int _travisDelayLong = 1000;
-        private int _travisDelayLonger = 3000;
+        private readonly int _travisDelayLong = 1000;
+        private readonly int _travisDelayLonger = 3000;
 
         [Test]
         [Ignore("Behaviour changed that allows peers to go over max if awaiting response")]

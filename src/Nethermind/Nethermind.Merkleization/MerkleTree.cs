@@ -22,7 +22,7 @@ public abstract class MerkleTree : IMerkleList
 
     private readonly IKeyValueStore<ulong, byte[]> _keyValueStore;
 
-    private static ulong _countKey = ulong.MaxValue;
+    private static readonly ulong _countKey = ulong.MaxValue;
 
     public readonly ref struct Index
     {
@@ -267,7 +267,7 @@ public abstract class MerkleTree : IMerkleList
         StoreCountInTheDb();
     }
 
-    private byte[] _countBytes = new byte[32];
+    private readonly byte[] _countBytes = new byte[32];
 
     /// <summary>
     /// Check if 'leaf' at 'index' verifies against the Merkle 'root' and 'branch'
