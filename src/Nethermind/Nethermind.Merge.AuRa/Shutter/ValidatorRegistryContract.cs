@@ -11,6 +11,7 @@ using Nethermind.Consensus;
 using Nethermind.Consensus.AuRa.Contracts;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Crypto;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.TxPool;
@@ -90,8 +91,7 @@ public class ValidatorRegistryContract : CallableContract, IValidatorRegistryCon
 
     private byte[] Sign(byte[] message)
     {
-        // todo: this uses secp256k1, we want BLS
-        return _signer.Sign(Keccak.Compute(message)).Bytes;
+        return new Bls().Sign(_signer.Key!, Keccak.Compute(message));
     }
 
     private async ValueTask<AcceptTxResult?> Update(byte[] message, byte[] signature)

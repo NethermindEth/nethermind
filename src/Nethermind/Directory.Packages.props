@@ -13,6 +13,7 @@
     <PackageVersion Include="Colorful.Console" Version="1.2.15" />
     <PackageVersion Include="CommandLineParser" Version="2.9.1" />
     <PackageVersion Include="ConcurrentHashSet" Version="1.3.0" />
+    <PackageVersion Include="Cortex.Cryptography.Bls" Version="0.4.0" />
     <PackageVersion Include="coverlet.collector" Version="6.0.0" />
     <PackageVersion Include="coverlet.msbuild" Version="6.0.0" />
     <PackageVersion Include="Crc32.NET" Version="1.2.0" />
