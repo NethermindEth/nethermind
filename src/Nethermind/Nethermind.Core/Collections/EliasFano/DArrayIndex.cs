@@ -40,7 +40,7 @@ public class DArrayIndex
             int currPos = wordIndex * 64;
             ulong currWord = overOne ? GetWordOverOne(bv, wordIndex) : GetWordOverZero(bv, wordIndex);
 
-            while (true)
+            while (currWord != 0)
             {
                 int l = BitOperations.TrailingZeroCount(currWord);
                 currPos += l;

@@ -17,6 +17,14 @@ public class EliasFanoTests
     private readonly ulong[] _efCase1 = { 1, 3, 3, 7, 10, 25, 98, 205, 206, 207, 807, 850, 899, 999 };
     private readonly ulong[] _efCase2 = { 1, 3, 3, 6, 7, 10 };
 
+    private readonly ulong[] _efCaseError =
+    {
+        74, 231, 234, 243, 245, 251, 29850, 29891, 29892, 29902, 29903, 30002, 30007, 30016, 30030, 30083, 30103,
+        30104, 30114, 30115, 30130, 30136, 30137, 30141, 30142, 30143, 30144, 30145, 30148, 30149, 30150, 30163,
+        30164, 30165, 30166, 30167, 30168, 30169, 30170, 30171, 30172, 30173, 30174, 30175, 30176, 30177, 30178,
+        30179, 30180, 30181, 30182, 30183, 30184, 30185, 30186, 30187, 30188, 30189, 30190
+    };
+
     [Test]
     public void TestBuilder()
     {
@@ -63,7 +71,7 @@ public class EliasFanoTests
         ef.Rank(3).Should().Be(1);
         ef.Rank(4).Should().Be(3);
         ef.Rank(8).Should().Be(4);
-        Assert.Throws<ArgumentException>(() => ef.Rank(9));
+        Assert.Throws<EliasFanoQueryException>(() => ef.Rank(9));
     }
 
     [Test]
@@ -84,6 +92,15 @@ public class EliasFanoTests
         EliasFano ef = efb.Build();
         ef.GetEnumerator(0).ToArray().Should().BeEquivalentTo(_efCase1);
     }
+
+    [Test]
+    public void TestIterationError()
+    {
+
+        EliasFanoBuilder efb = new(_efCaseError[^1] + 1, _efCaseError.Length);
+        efb.Extend(_efCaseError);
+        EliasFano ef = efb.Build();
+        ef.GetEnumerator(0).ToArray().Should().BeEquivalentTo(_efCaseError);    }
 
 
     private static void AssertEfForCase1(EliasFano ef)
@@ -112,7 +129,7 @@ public class EliasFanoTests
         ef.Rank(904).Should().Be(13);
         ef.Rank(905).Should().Be(13);
         ef.Rank(1000).Should().Be(14);
-        Assert.Throws<ArgumentException>(() => ef.Rank(1001));
+        Assert.Throws<EliasFanoQueryException>(() => ef.Rank(1001));
     }
 
     [Test]
@@ -185,7 +202,7 @@ public class EliasFanoTests
     [Test]
     public void TestSuccessor()
     {
-        EliasFanoBuilder efb = new(8, 4);
+        EliasFanoBuilder efb = new(10, 4);
         efb.Extend(_efCase0);
 
         EliasFano ef = efb.Build();
@@ -193,5 +210,6 @@ public class EliasFanoTests
         ef.Successor(2).Should().Be(3);
         ef.Successor(3).Should().Be(3);
         ef.Successor(8).Should().BeNull();
+        ef.Successor(11).Should().BeNull();
     }
 }
