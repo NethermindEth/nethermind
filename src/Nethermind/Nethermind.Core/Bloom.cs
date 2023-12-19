@@ -188,7 +188,7 @@ namespace Nethermind.Core
 
         private static BloomExtract GetExtract(ReadOnlySpan<byte> sequence)
         {
-            int GetIndex(ReadOnlySpan<byte> bytes, int index1, int index2)
+            static int GetIndex(ReadOnlySpan<byte> bytes, int index1, int index2)
             {
                 return 2047 - ((bytes[index1] << 8) + bytes[index2]) % 2048;
             }
@@ -247,7 +247,7 @@ namespace Nethermind.Core
             Set(sequence, null);
         }
 
-        private void Set(ReadOnlySpan<byte> sequence, Bloom? masterBloom = null)
+        private readonly void Set(ReadOnlySpan<byte> sequence, Bloom? masterBloom = null)
         {
             Bloom.BloomExtract indexes = GetExtract(sequence);
             Set(indexes.Index1);
@@ -267,7 +267,7 @@ namespace Nethermind.Core
             return Matches(in indexes);
         }
 
-        public override string ToString()
+        public override readonly string ToString()
         {
             return Bytes.ToHexString();
         }
@@ -282,26 +282,26 @@ namespace Nethermind.Core
         public static bool operator ==(BloomStructRef a, BloomStructRef b) => a.Equals(b);
 
 
-        public bool Equals(Bloom? other)
+        public readonly bool Equals(Bloom? other)
         {
             if (other is null) return false;
             return Nethermind.Core.Extensions.Bytes.AreEqual(Bytes, other.Bytes);
         }
 
-        public bool Equals(BloomStructRef other)
+        public readonly bool Equals(BloomStructRef other)
         {
             return Nethermind.Core.Extensions.Bytes.AreEqual(Bytes, other.Bytes);
         }
 
 
-        public override bool Equals(object? obj)
+        public override readonly bool Equals(object? obj)
         {
             if (obj is null) return false;
             if (obj.GetType() != typeof(BloomStructRef)) return false;
             return Equals((Bloom)obj);
         }
 
-        public override int GetHashCode()
+        public override readonly int GetHashCode()
         {
             return Core.Extensions.Bytes.GetSimplifiedHashCode(Bytes);
         }
@@ -321,7 +321,7 @@ namespace Nethermind.Core
             }
         }
 
-        public void Accumulate(BloomStructRef bloom)
+        public readonly void Accumulate(BloomStructRef bloom)
         {
             Bytes.Or(bloom.Bytes);
         }
@@ -344,14 +344,14 @@ namespace Nethermind.Core
             return false;
         }
 
-        private bool Get(int index)
+        private readonly bool Get(int index)
         {
             int bytePosition = index / 8;
             int shift = index % 8;
             return Bytes[bytePosition].GetBit(shift);
         }
 
-        private void Set(int index)
+        private readonly void Set(int index)
         {
             int bytePosition = index / 8;
             int shift = index % 8;
@@ -362,7 +362,7 @@ namespace Nethermind.Core
 
         public bool Matches(Hash256 topic) => Matches(topic.Bytes);
 
-        public bool Matches(in Bloom.BloomExtract extract) => Get(extract.Index1) && Get(extract.Index2) && Get(extract.Index3);
+        public readonly bool Matches(in Bloom.BloomExtract extract) => Get(extract.Index1) && Get(extract.Index2) && Get(extract.Index3);
 
         public static Bloom.BloomExtract GetExtract(Address address) => GetExtract(address.Bytes);
 
@@ -370,7 +370,7 @@ namespace Nethermind.Core
 
         private static Bloom.BloomExtract GetExtract(ReadOnlySpan<byte> sequence)
         {
-            int GetIndex(Span<byte> bytes, int index1, int index2)
+            static int GetIndex(Span<byte> bytes, int index1, int index2)
             {
                 return 2047 - ((bytes[index1] << 8) + bytes[index2]) % 2048;
             }

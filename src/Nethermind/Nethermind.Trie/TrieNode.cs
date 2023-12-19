@@ -420,7 +420,7 @@ namespace Nethermind.Trie
 
         internal CappedArray<byte> RlpEncode(ITrieNodeResolver tree, ICappedArrayPool? bufferPool = null)
         {
-            CappedArray<byte> rlp = _nodeDecoder.Encode(tree, this, bufferPool);
+            CappedArray<byte> rlp = TrieNodeDecoder.Encode(tree, this, bufferPool);
             // just included here to improve the class reading
             // after some analysis I believe that any non-test Ethereum cases of a trie ever have nodes with RLP shorter than 32 bytes
             // if (rlp.Bytes.Length < 32)

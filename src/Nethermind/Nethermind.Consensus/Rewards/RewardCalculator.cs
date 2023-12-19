@@ -47,7 +47,7 @@ namespace Nethermind.Consensus.Rewards
             return rewards;
         }
 
-        private UInt256 GetUncleReward(UInt256 blockReward, BlockHeader blockHeader, BlockHeader uncle)
+        private static UInt256 GetUncleReward(UInt256 blockReward, BlockHeader blockHeader, BlockHeader uncle)
         {
             return blockReward - ((uint)(blockHeader.Number - uncle.Number) * blockReward >> 3);
         }

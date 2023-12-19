@@ -119,7 +119,7 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
             return percentileValues;
         }
 
-        private ResultWrapper<FeeHistoryResults> Validate(ref long blockCount, BlockParameter newestBlock, double[]? rewardPercentiles)
+        private static ResultWrapper<FeeHistoryResults> Validate(ref long blockCount, BlockParameter newestBlock, double[]? rewardPercentiles)
         {
             if (newestBlock.Type == BlockParameterType.BlockHash)
             {

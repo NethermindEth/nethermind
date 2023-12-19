@@ -139,7 +139,7 @@ namespace Nethermind.Init.Steps.Migrations
             }
         }
 
-        private bool CanMigrate(SyncMode syncMode) => syncMode.NotSyncing();
+        private static bool CanMigrate(SyncMode syncMode) => syncMode.NotSyncing();
 
         private void OnSyncModeChanged(object? sender, SyncModeChangedEventArgs e)
         {
@@ -404,7 +404,7 @@ namespace Nethermind.Init.Steps.Migrations
                 return true;
             }
 
-            bool isCompactEncoding = _storageDecoder.IsCompactEncoding(receiptData!);
+            bool isCompactEncoding = ReceiptArrayStorageDecoder.IsCompactEncoding(receiptData!);
             return _receiptConfig.CompactReceiptStore != isCompactEncoding;
         }
 

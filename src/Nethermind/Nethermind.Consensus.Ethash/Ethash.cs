@@ -260,7 +260,7 @@ namespace Nethermind.Consensus.Ethash
             return headerHashed;
         }
 
-        public (byte[], ValueHash256, bool) Hashimoto(ulong fullSize, IEthashDataSet dataSet, Hash256 headerHash, Hash256 expectedMixHash, ulong nonce)
+        public static (byte[], ValueHash256, bool) Hashimoto(ulong fullSize, IEthashDataSet dataSet, Hash256 headerHash, Hash256 expectedMixHash, ulong nonce)
         {
             uint hashesInFull = (uint)(fullSize / HashBytes); // TODO: at current rate would cover around 200 years... but will the block rate change? what with private chains with shorter block times?
             const uint wordsInMix = MixBytes / WordBytes;

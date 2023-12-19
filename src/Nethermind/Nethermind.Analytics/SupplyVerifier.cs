@@ -34,9 +34,8 @@ namespace Nethermind.Analytics
                 _logger.Warn($"Ignore count leak -> {_ignoreThisOne.Count}");
             }
 
-            if (_ignoreThisOne.Contains(nextNode))
+            if (_ignoreThisOne.Remove(nextNode))
             {
-                _ignoreThisOne.Remove(nextNode);
                 return false;
             }
 

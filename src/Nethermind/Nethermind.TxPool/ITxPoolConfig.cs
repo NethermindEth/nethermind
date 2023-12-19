@@ -10,6 +10,9 @@ public interface ITxPoolConfig : IConfig
     [ConfigItem(DefaultValue = "5", Description = "The average percentage of transaction hashes from persistent broadcast sent to a peer together with hashes of the last added transactions.")]
     int PeerNotificationThreshold { get; set; }
 
+    [ConfigItem(DefaultValue = "70", Description = "The minimal percentage of the current base fee that must be surpassed by the max fee (`max_fee_per_gas`) for the transaction to be broadcasted.")]
+    int MinBaseFeeThreshold { get; set; }
+
     [ConfigItem(DefaultValue = "2048", Description = "The max number of transactions held in the mempool (the more transactions in the mempool, the more memory used).")]
     int Size { get; set; }
 
