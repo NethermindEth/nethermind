@@ -169,13 +169,15 @@ public class DbConfig : IDbConfig
     public int? StateDbMaxOpenFiles { get; set; }
     public long? StateDbMaxBytesPerSec { get; set; }
     public int? StateDbBlockSize { get; set; } = 4 * 1024;
-    public int? PathStateDbBlockSize { get; set; } = 4 * 1024;
     public bool? StateDbUseDirectReads { get; set; } = false;
     public bool? StateDbUseDirectIoForFlushAndCompactions { get; set; } = false;
     public ulong? StateDbCompactionReadAhead { get; set; }
     public bool? StateDbDisableCompression { get; set; } = false;
     public int StateDbTargetFileSizeMultiplier { get; set; } = 2;
     public IDictionary<string, string>? StateDbAdditionalRocksDbOptions { get; set; }
+
+    public int? PathStateStateDbBlockSize { get; set; } = 16 * 1024;
+    public int? PathStateStorageDbBlockSize { get; set; } = 16 * 1024;
 
     public uint RecycleLogFileNum { get; set; } = 0;
     public bool WriteAheadLogSync { get; set; } = false;

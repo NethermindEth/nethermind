@@ -471,10 +471,14 @@ namespace Nethermind.Trie
                 byte[]? nodeData = TrieStore.TryLoadRlp(nibbleBytes, null);
                 if (nodeData is null) return null;
 
-                node = new TrieNode(NodeType.Unknown, nodeData);
-                node.ResolveNode(TrieStore);
-
                 diagData.LoadedFromDb = true;
+                RlpStream rlpStream = nodeData.AsRlpStream();
+
+                rlpStream.ReadSequenceLength();
+                rlpStream.DecodeByteArraySpan();
+                ReadOnlySpan<byte> valueSpan = rlpStream.DecodeByteArraySpan();
+
+                return valueSpan.ToArray();
             }
 
             return node.Value.ToArray();
