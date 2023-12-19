@@ -46,13 +46,13 @@ namespace Nethermind.Merge.Plugin.Test.Synchronization
                 .OfChainLength(20)
                 .TestObject;
 
-            var fakePeer = Substitute.For<ISyncPeer>();
+            ISyncPeer? fakePeer = Substitute.For<ISyncPeer>();
             fakePeer.GetHeadBlockHeader(default, default).ReturnsForAnyArgs(x => _externalPeerBlockTree!.Head!.Header);
             NetworkNode node = new(TestItem.PublicKeyA, "127.0.0.1", 30303, 100L);
             fakePeer.Node.Returns(new Node(node));
 
             _syncPeerPool = Substitute.For<ISyncPeerPool>();
-            _syncPeerPool.InitializedPeers.Returns(new [] { new PeerInfo(fakePeer) });
+            _syncPeerPool.InitializedPeers.Returns(new[] { new PeerInfo(fakePeer) });
 
             _blockTree = Substitute.For<IBlockTree>();
             _syncModeSelector = Substitute.For<ISyncModeSelector>();
@@ -61,7 +61,7 @@ namespace Nethermind.Merge.Plugin.Test.Synchronization
             _beaconSyncStrategy = Substitute.For<IBeaconSyncStrategy>();
             _metadataDb = new MemDb();
 
-            PivotUpdater pivotUpdater = new (
+            PivotUpdater pivotUpdater = new(
               _blockTree,
               _syncModeSelector,
               _syncPeerPool,
@@ -76,7 +76,7 @@ namespace Nethermind.Merge.Plugin.Test.Synchronization
         [Test]
         public void TrySetFreshPivot_SavesFinalizedHashInDb()
         {
-            SyncModeChangedEventArgs args = new (SyncMode.FastSync, SyncMode.UpdatingPivot);
+            SyncModeChangedEventArgs args = new(SyncMode.FastSync, SyncMode.UpdatingPivot);
             Hash256 expectedFinalizedHash = _externalPeerBlockTree!.HeadHash;
             long expectedPivotBlockNumber = _externalPeerBlockTree!.Head!.Number;
             _beaconSyncStrategy!.GetFinalizedHash().Returns(expectedFinalizedHash);
