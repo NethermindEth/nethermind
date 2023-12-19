@@ -48,7 +48,7 @@ namespace Nethermind.Blockchain.Find
             _rpcConfigGetLogsThreads = Math.Max(1, Environment.ProcessorCount / 4);
         }
 
-        public IEnumerable<FilterLog> FindLogs(LogFilter filter, CancellationToken cancellationToken = default)
+        public IEnumerable<IFilterLog> FindLogs(LogFilter filter, CancellationToken cancellationToken = default)
         {
             BlockHeader FindHeader(BlockParameter blockParameter, string name, bool headLimit) =>
                 _blockFinder.FindHeader(blockParameter, headLimit) ?? throw new ResourceNotFoundException($"Block not found: {name} {blockParameter}");
@@ -90,7 +90,7 @@ namespace Nethermind.Blockchain.Find
             return blocksToSearch > 1; // if we are searching only in 1 block skip bloom index altogether, this can be tweaked
         }
 
-        private IEnumerable<FilterLog> FilterLogsWithBloomsIndex(LogFilter filter, BlockHeader fromBlock, BlockHeader toBlock, CancellationToken cancellationToken)
+        private IEnumerable<IFilterLog> FilterLogsWithBloomsIndex(LogFilter filter, BlockHeader fromBlock, BlockHeader toBlock, CancellationToken cancellationToken)
         {
             Hash256 FindBlockHash(long blockNumber, CancellationToken token)
             {
@@ -177,7 +177,7 @@ namespace Nethermind.Blockchain.Find
             return true;
         }
 
-        private IEnumerable<FilterLog> FilterLogsIteratively(LogFilter filter, BlockHeader fromBlock, BlockHeader toBlock, CancellationToken cancellationToken)
+        private IEnumerable<IFilterLog> FilterLogsIteratively(LogFilter filter, BlockHeader fromBlock, BlockHeader toBlock, CancellationToken cancellationToken)
         {
             int count = 0;
             while (count < _maxBlockDepth && fromBlock.Number <= (toBlock?.Number ?? fromBlock.Number))
@@ -194,12 +194,12 @@ namespace Nethermind.Blockchain.Find
             }
         }
 
-        private IEnumerable<FilterLog> FindLogsInBlock(LogFilter filter, BlockHeader block, CancellationToken cancellationToken) =>
+        private IEnumerable<IFilterLog> FindLogsInBlock(LogFilter filter, BlockHeader block, CancellationToken cancellationToken) =>
             filter.Matches(block.Bloom)
                 ? FindLogsInBlock(filter, block.Hash, block.Number, cancellationToken)
-                : Enumerable.Empty<FilterLog>();
+                : Enumerable.Empty<IFilterLog>();
 
-        private IEnumerable<FilterLog> FindLogsInBlock(LogFilter filter, Hash256 blockHash, long blockNumber, CancellationToken cancellationToken)
+        private IEnumerable<IFilterLog> FindLogsInBlock(LogFilter filter, Hash256 blockHash, long blockNumber, CancellationToken cancellationToken)
         {
             if (blockHash is not null)
             {
@@ -208,12 +208,12 @@ namespace Nethermind.Blockchain.Find
                     : FilterLogsInBlockHighMemoryAllocation(filter, blockHash, blockNumber, cancellationToken);
             }
 
-            return Array.Empty<FilterLog>();
+            return Array.Empty<IFilterLog>();
         }
 
-        private static IEnumerable<FilterLog> FilterLogsInBlockLowMemoryAllocation(LogFilter filter, ref ReceiptsIterator iterator, CancellationToken cancellationToken)
+        private static IEnumerable<IFilterLog> FilterLogsInBlockLowMemoryAllocation(LogFilter filter, ref ReceiptsIterator iterator, CancellationToken cancellationToken)
         {
-            List<FilterLog> logList = null;
+            List<IFilterLog> logList = null;
             try
             {
                 long logIndexInBlock = 0;
@@ -233,7 +233,7 @@ namespace Nethermind.Blockchain.Find
                                 // On CL workload, recovery happens about 70% of the time.
                                 iterator.RecoverIfNeeded(ref receipt);
 
-                                logList ??= new List<FilterLog>();
+                                logList ??= new List<IFilterLog>();
                                 Hash256[] topics = log.Topics;
 
                                 topics ??= iterator.DecodeTopics(new Rlp.ValueDecoderContext(log.TopicsRlp));
@@ -268,10 +268,10 @@ namespace Nethermind.Blockchain.Find
                 iterator.Dispose();
             }
 
-            return logList ?? (IEnumerable<FilterLog>)Array.Empty<FilterLog>();
+            return logList ?? (IEnumerable<IFilterLog>)Array.Empty<IFilterLog>();
         }
 
-        private IEnumerable<FilterLog> FilterLogsInBlockHighMemoryAllocation(LogFilter filter, Hash256 blockHash, long blockNumber, CancellationToken cancellationToken)
+        private IEnumerable<IFilterLog> FilterLogsInBlockHighMemoryAllocation(LogFilter filter, Hash256 blockHash, long blockNumber, CancellationToken cancellationToken)
         {
             TxReceipt[]? GetReceipts(Hash256 hash, long number)
             {

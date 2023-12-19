@@ -257,7 +257,7 @@ namespace Nethermind.Blockchain.Test.Filters
 
         private void Assert(IEnumerable<Action<FilterBuilder>> filterBuilders,
             IEnumerable<Action<ReceiptBuilder>> receiptBuilders,
-            Action<IEnumerable<FilterLog>> logsAssertion)
+            Action<IEnumerable<IFilterLog>> logsAssertion)
         {
             List<FilterBase> filters = new List<FilterBase>();
             List<TxReceipt> receipts = new List<TxReceipt>();
@@ -294,7 +294,7 @@ namespace Nethermind.Blockchain.Test.Filters
             {
                 foreach (LogFilter filter in filters.OfType<LogFilter>())
                 {
-                    FilterLog[] logs = _filterManager.GetLogs(filter.Id);
+                    IFilterLog[] logs = _filterManager.GetLogs(filter.Id);
                     logsAssertion(logs);
                 }
 

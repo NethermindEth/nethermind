@@ -10,6 +10,6 @@ namespace Nethermind.Blockchain.Find
 {
     public interface ILogFinder
     {
-        IEnumerable<FilterLog> FindLogs(LogFilter filter, CancellationToken cancellationToken = default);
+        IEnumerable<IFilterLog> FindLogs(LogFilter filter, CancellationToken cancellationToken = default);
     }
 }

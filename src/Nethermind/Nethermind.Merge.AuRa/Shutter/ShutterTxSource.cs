@@ -11,8 +11,10 @@ using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Find;
 using Nethermind.Facade.Filters;
 using Nethermind.Int256;
-using Nethermind.Core.Crypto;
 using Nethermind.Consensus.Producers;
+using System.Runtime.CompilerServices;
+
+[assembly: InternalsVisibleTo("Nethermind.Merge.AuRa.Test")]
 
 namespace Nethermind.Merge.AuRa.Shutter;
 
@@ -21,98 +23,25 @@ public class ShutterTxSource : ITxSource
 
     private ILogFinder? _logFinder;
     private LogFilter? _logFilter;
-    private static readonly Address SEQUENCER_ADDRESS = new(new Hash256("0x0"));
-    private static readonly UInt256 ENCRYPTED_GAS_LIMIT = 1000;
-    private static readonly AbiSignature ABI_SIGNATURE = new AbiSignature(
+    private static readonly Address SequencerAddress = Address.Zero;
+    private static readonly UInt256 EncryptedGasLimit = 300;
+    internal static readonly AbiSignature TransactionSubmmitedSig = new AbiSignature(
         "TransactionSubmitted",
         [
-            AbiType.UInt64,
-            AbiType.Bytes32,
-            AbiType.Address,
-            AbiType.DynamicBytes,
-            AbiType.UInt256
+            AbiType.UInt64, // eon
+            AbiType.Bytes32, // identity prefix
+            AbiType.Address, // sender
+            AbiType.DynamicBytes, // encrypted transaction
+            AbiType.UInt256 // gas limit
         ]
     );
-    
-    class SequencedTransaction
-    {
-        public UInt64 Eon;
-        public byte[] EncryptedTransaction;
-        public UInt256 GasLimit;
-        public object? Identity;
-
-        public SequencedTransaction(UInt64 eon, byte[] encryptedTransaction, UInt256 gasLimit, object? identity)
-        {
-            Eon = eon;
-            EncryptedTransaction = encryptedTransaction;
-            GasLimit = gasLimit;
-            Identity = identity;
-        }
-    }
-
-    class TransactionSubmittedEvent
-    {
-        public UInt64 Eon;
-        public Bytes32 IdentityPrefix;
-        public Address Sender;
-        public byte[] EncryptedTransaction;
-        public UInt256 GasLimit;
-
-        public TransactionSubmittedEvent(object[] decodedEvent)
-        {
-            Eon = (UInt64)decodedEvent[1];
-            IdentityPrefix = (Bytes32)decodedEvent[2];
-            Sender = (Address)decodedEvent[3];
-            EncryptedTransaction = (byte[])decodedEvent[4];
-            GasLimit = (UInt256)decodedEvent[5];
-        }
-    }
-
-    private IEnumerable<TransactionSubmittedEvent> GetEvents()
-    {
-        IEnumerable<FilterLog> logs = _logFinder!.FindLogs(_logFilter!);
-        return logs.Select(log => new TransactionSubmittedEvent(AbiEncoder.Instance.Decode(AbiEncodingStyle.None, ABI_SIGNATURE, log.Data)));
-    }
-
-    private object? ComputeIdentity(Bytes32 identityPrefix, Address sender)
-    {
-        return null;
-    }
-
-    private IEnumerable<SequencedTransaction> GetNextTransactions(UInt64 eon, int txPointer)
-    {
-        IEnumerable<TransactionSubmittedEvent> events = GetEvents();
-        events = events.Where(e => e.Eon == eon).Skip(txPointer);
-
-        IEnumerable<SequencedTransaction> txs = new List<SequencedTransaction>();
-        UInt256 totalGas = 0;
-
-        foreach(TransactionSubmittedEvent e in events)
-        {
-            if (totalGas + e.GasLimit > ENCRYPTED_GAS_LIMIT)
-            {
-                break;
-            }
-
-            txs.Append(new SequencedTransaction(
-                eon,
-                e.EncryptedTransaction,
-                e.GasLimit,
-                ComputeIdentity(e.IdentityPrefix, e.Sender)
-            ));
-
-            totalGas += e.GasLimit;
-        }
-
-        return txs;
-    }
 
     public ShutterTxSource(ILogFinder logFinder, IFilterStore filterStore)
         : base()
     {
-        IEnumerable<object> topics = new List<object>() {ABI_SIGNATURE.Hash};
+        IEnumerable<object> topics = new List<object>() {TransactionSubmmitedSig.Hash};
         _logFinder = logFinder;
-        _logFilter = filterStore.CreateLogFilter(BlockParameter.Earliest, BlockParameter.Latest, SEQUENCER_ADDRESS, topics);
+        _logFilter = filterStore.CreateLogFilter(BlockParameter.Earliest, BlockParameter.Latest, SequencerAddress.ToString(), topics);
     }
 
     public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit, PayloadAttributes? payloadAttributes = null)
@@ -128,4 +57,79 @@ public class ShutterTxSource : ITxSource
 
         return Enumerable.Empty<Transaction>();
     }
+
+    
+    private IEnumerable<TransactionSubmittedEvent> GetEvents()
+    {
+        IEnumerable<IFilterLog> logs = _logFinder!.FindLogs(_logFilter!);
+        return logs.Select(log => new TransactionSubmittedEvent(AbiEncoder.Instance.Decode(AbiEncodingStyle.None, TransactionSubmmitedSig, log.Data)));
+    }
+
+    private object? ComputeIdentity(Bytes32 identityPrefix, Address sender)
+    {
+        return null;
+    }
+
+    internal IEnumerable<SequencedTransaction> GetNextTransactions(UInt64 eon, int txPointer)
+    {
+        IEnumerable<TransactionSubmittedEvent> events = GetEvents();
+        events = events.Where(e => e.Eon == eon).Skip(txPointer);
+
+        List<SequencedTransaction> txs = new List<SequencedTransaction>();
+        UInt256 totalGas = 0;
+
+        foreach(TransactionSubmittedEvent e in events)
+        {
+            if (totalGas + e.GasLimit > EncryptedGasLimit)
+            {
+                break;
+            }
+
+            txs.Add(new SequencedTransaction(
+                eon,
+                e.EncryptedTransaction,
+                e.GasLimit,
+                ComputeIdentity(e.IdentityPrefix, e.Sender)
+            ));
+
+            totalGas += e.GasLimit;
+        }
+
+        return txs;
+    }
+
+    internal class SequencedTransaction
+    {
+        public ulong Eon;
+        public byte[] EncryptedTransaction;
+        public UInt256 GasLimit;
+        public object? Identity;
+
+        public SequencedTransaction(UInt64 eon, byte[] encryptedTransaction, UInt256 gasLimit, object? identity)
+        {
+            Eon = eon;
+            EncryptedTransaction = encryptedTransaction;
+            GasLimit = gasLimit;
+            Identity = identity;
+        }
+    }
+
+    internal class TransactionSubmittedEvent
+    {
+        public ulong Eon;
+        public Bytes32 IdentityPrefix;
+        public Address Sender;
+        public byte[] EncryptedTransaction;
+        public UInt256 GasLimit;
+
+        public TransactionSubmittedEvent(object[] decodedEvent)
+        {
+            Eon = (ulong)decodedEvent[0];
+            IdentityPrefix = new Bytes32((byte[])decodedEvent[1]);
+            Sender = (Address)decodedEvent[2];
+            EncryptedTransaction = (byte[])decodedEvent[3];
+            GasLimit = (UInt256)decodedEvent[4];
+        }
+    }
+
 }

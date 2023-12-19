@@ -249,10 +249,10 @@ namespace Nethermind.JsonRpc.Modules.Eth
             Description = "Reads filter changes",
             IsSharable = true,
             ExampleResponse = "[]")]
-        ResultWrapper<IEnumerable<FilterLog>> eth_getFilterLogs([JsonRpcParameter(ExampleValue = "[\"0x9\"]")] UInt256 filterId);
+        ResultWrapper<IEnumerable<IFilterLog>> eth_getFilterLogs([JsonRpcParameter(ExampleValue = "[\"0x9\"]")] UInt256 filterId);
 
         [JsonRpcMethod(IsImplemented = true, Description = "Reads logs", IsSharable = false)]
-        ResultWrapper<IEnumerable<FilterLog>> eth_getLogs(Filter filter);
+        ResultWrapper<IEnumerable<IFilterLog>> eth_getLogs(Filter filter);
 
         [JsonRpcMethod(Description = "https://github.com/ethereum/EIPs/issues/1186",
             IsImplemented = true,

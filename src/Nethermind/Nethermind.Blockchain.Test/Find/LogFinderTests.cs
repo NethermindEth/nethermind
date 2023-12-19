@@ -128,7 +128,7 @@ namespace Nethermind.Blockchain.Test.Find
         {
             SetUp(allowReceiptIterator);
             LogFilter logFilter = AllBlockFilter().Build();
-            FilterLog[] logs = _logFinder.FindLogs(logFilter).ToArray();
+            IFilterLog[] logs = _logFinder.FindLogs(logFilter).ToArray();
             logs.Length.Should().Be(5);
             var indexes = logs.Select(l => (int)l.LogIndex).ToArray();
             // indexes[0].Should().Be(0);
@@ -176,7 +176,7 @@ namespace Nethermind.Blockchain.Test.Find
             var blockFinder = Substitute.For<IBlockFinder>();
             _logFinder = new LogFinder(blockFinder, _receiptStorage, _receiptStorage, _bloomStorage, LimboLogs.Instance, _receiptsRecovery);
             var logFilter = AllBlockFilter().Build();
-            var action = new Func<IEnumerable<FilterLog>>(() => _logFinder.FindLogs(logFilter));
+            var action = new Func<IEnumerable<IFilterLog>>(() => _logFinder.FindLogs(logFilter));
             action.Should().Throw<ResourceNotFoundException>();
             blockFinder.Received().FindHeader(logFilter.ToBlock, false);
             blockFinder.DidNotReceive().FindHeader(logFilter.FromBlock);
@@ -329,7 +329,7 @@ namespace Nethermind.Blockchain.Test.Find
 
             await Task.Delay(timeout * waitTime);
 
-            Func<FilterLog[]> action = () => logs.ToArray();
+            Func<IFilterLog[]> action = () => logs.ToArray();
 
             if (waitTime > 1)
             {

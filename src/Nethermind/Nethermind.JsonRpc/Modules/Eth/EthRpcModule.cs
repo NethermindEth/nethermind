@@ -568,7 +568,7 @@ public partial class EthRpcModule : IEthRpcModule
         }
     }
 
-    public ResultWrapper<IEnumerable<FilterLog>> eth_getFilterLogs(UInt256 filterId)
+    public ResultWrapper<IEnumerable<IFilterLog>> eth_getFilterLogs(UInt256 filterId)
     {
         CancellationTokenSource cancellationTokenSource = new(_rpcConfig.Timeout);
         CancellationToken cancellationToken = cancellationTokenSource.Token;
@@ -576,25 +576,25 @@ public partial class EthRpcModule : IEthRpcModule
         try
         {
             int id = filterId <= int.MaxValue ? (int)filterId : -1;
-            bool filterFound = _blockchainBridge.TryGetLogs(id, out IEnumerable<FilterLog> filterLogs, cancellationToken);
+            bool filterFound = _blockchainBridge.TryGetLogs(id, out IEnumerable<IFilterLog> filterLogs, cancellationToken);
             if (id < 0 || !filterFound)
             {
                 cancellationTokenSource.Dispose();
-                return ResultWrapper<IEnumerable<FilterLog>>.Fail($"Filter with id: {filterId} does not exist.");
+                return ResultWrapper<IEnumerable<IFilterLog>>.Fail($"Filter with id: {filterId} does not exist.");
             }
             else
             {
-                return ResultWrapper<IEnumerable<FilterLog>>.Success(GetLogs(filterLogs, cancellationTokenSource));
+                return ResultWrapper<IEnumerable<IFilterLog>>.Success(GetLogs(filterLogs, cancellationTokenSource));
             }
         }
         catch (ResourceNotFoundException exception)
         {
             cancellationTokenSource.Dispose();
-            return GetFailureResult<IEnumerable<FilterLog>>(exception, _ethSyncingInfo.SyncMode.HaveNotSyncedReceiptsYet());
+            return GetFailureResult<IEnumerable<IFilterLog>>(exception, _ethSyncingInfo.SyncMode.HaveNotSyncedReceiptsYet());
         }
     }
 
-    public ResultWrapper<IEnumerable<FilterLog>> eth_getLogs(Filter filter)
+    public ResultWrapper<IEnumerable<IFilterLog>> eth_getLogs(Filter filter)
     {
         // because of lazy evaluation of enumerable, we need to do the validation here first
         CancellationTokenSource cancellationTokenSource = new(_rpcConfig.Timeout);
@@ -612,7 +612,7 @@ public partial class EthRpcModule : IEthRpcModule
             if (toBlockResult.IsError)
             {
                 cancellationTokenSource.Dispose();
-                return GetFailureResult<IEnumerable<FilterLog>, BlockHeader>(toBlockResult, _ethSyncingInfo.SyncMode.HaveNotSyncedHeadersYet());
+                return GetFailureResult<IEnumerable<IFilterLog>, BlockHeader>(toBlockResult, _ethSyncingInfo.SyncMode.HaveNotSyncedHeadersYet());
             }
 
             cancellationToken.ThrowIfCancellationRequested();
@@ -622,7 +622,7 @@ public partial class EthRpcModule : IEthRpcModule
         if (fromBlockResult.IsError)
         {
             cancellationTokenSource.Dispose();
-            return GetFailureResult<IEnumerable<FilterLog>, BlockHeader>(fromBlockResult, _ethSyncingInfo.SyncMode.HaveNotSyncedHeadersYet());
+            return GetFailureResult<IEnumerable<IFilterLog>, BlockHeader>(fromBlockResult, _ethSyncingInfo.SyncMode.HaveNotSyncedHeadersYet());
         }
 
         cancellationToken.ThrowIfCancellationRequested();
@@ -634,19 +634,19 @@ public partial class EthRpcModule : IEthRpcModule
         {
             cancellationTokenSource.Dispose();
 
-            return ResultWrapper<IEnumerable<FilterLog>>.Fail($"From block {fromBlockNumber} is later than to block {toBlockNumber}.", ErrorCodes.InvalidParams);
+            return ResultWrapper<IEnumerable<IFilterLog>>.Fail($"From block {fromBlockNumber} is later than to block {toBlockNumber}.", ErrorCodes.InvalidParams);
         }
 
         try
         {
-            IEnumerable<FilterLog> filterLogs = _blockchainBridge.GetLogs(filter.FromBlock!, filter.ToBlock!,
+            IEnumerable<IFilterLog> filterLogs = _blockchainBridge.GetLogs(filter.FromBlock!, filter.ToBlock!,
                 filter.Address, filter.Topics, cancellationToken);
 
-            return ResultWrapper<IEnumerable<FilterLog>>.Success(GetLogs(filterLogs, cancellationTokenSource));
+            return ResultWrapper<IEnumerable<IFilterLog>>.Success(GetLogs(filterLogs, cancellationTokenSource));
         }
         catch (ResourceNotFoundException exception)
         {
-            return GetFailureResult<IEnumerable<FilterLog>>(exception, _ethSyncingInfo.SyncMode.HaveNotSyncedReceiptsYet());
+            return GetFailureResult<IEnumerable<IFilterLog>>(exception, _ethSyncingInfo.SyncMode.HaveNotSyncedReceiptsYet());
         }
     }
 
@@ -690,11 +690,11 @@ public partial class EthRpcModule : IEthRpcModule
         transaction.SenderAddress ??= _blockchainBridge.RecoverTxSender(transaction);
     }
 
-    private IEnumerable<FilterLog> GetLogs(IEnumerable<FilterLog> logs, CancellationTokenSource cancellationTokenSource)
+    private IEnumerable<IFilterLog> GetLogs(IEnumerable<IFilterLog> logs, CancellationTokenSource cancellationTokenSource)
     {
         using (cancellationTokenSource)
         {
-            foreach (FilterLog log in logs)
+            foreach (IFilterLog log in logs)
             {
                 yield return log;
             }

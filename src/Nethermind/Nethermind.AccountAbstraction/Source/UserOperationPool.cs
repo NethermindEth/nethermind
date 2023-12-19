@@ -314,14 +314,14 @@ namespace Nethermind.AccountAbstraction.Source
 
             BlockParameter currentBlockParameter = new BlockParameter(block.Number);
             AddressFilter entryPointAddressFilter = new AddressFilter(_entryPointAddress);
-            IEnumerable<FilterLog> foundLogs = _logFinder.FindLogs(new LogFilter(0,
+            IEnumerable<IFilterLog> foundLogs = _logFinder.FindLogs(new LogFilter(0,
                 currentBlockParameter,
                 currentBlockParameter,
                 entryPointAddressFilter,
                 new SequenceTopicsFilter(new TopicExpression[] { new SpecificTopic(_userOperationEventTopic) })));
 
             // find any userOps included on chain submitted by this miner, delete from the pool
-            foreach (FilterLog log in foundLogs)
+            foreach (IFilterLog log in foundLogs)
             {
                 if (log.Topics[0] == _userOperationEventTopic)
                 {

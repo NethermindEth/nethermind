@@ -15,14 +15,14 @@ namespace Nethermind.Blockchain.Filters
         {
         }
 
-        public FilterLog[] GetLogs(int filterId)
+        public IFilterLog[] GetLogs(int filterId)
         {
-            return Array.Empty<FilterLog>();
+            return Array.Empty<IFilterLog>();
         }
 
-        public FilterLog[] PollLogs(int filterId)
+        public IFilterLog[] PollLogs(int filterId)
         {
-            return Array.Empty<FilterLog>();
+            return Array.Empty<IFilterLog>();
         }
 
         public Hash256[] GetBlocksHashes(int filterId)

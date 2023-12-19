@@ -293,9 +293,9 @@ namespace Nethermind.Facade
 
         public bool FilterExists(int filterId) => _filterStore.FilterExists(filterId);
         public FilterType GetFilterType(int filterId) => _filterStore.GetFilterType(filterId);
-        public FilterLog[] GetFilterLogs(int filterId) => _filterManager.GetLogs(filterId);
+        public IFilterLog[] GetFilterLogs(int filterId) => _filterManager.GetLogs(filterId);
 
-        public IEnumerable<FilterLog> GetLogs(
+        public IEnumerable<IFilterLog> GetLogs(
             BlockParameter fromBlock,
             BlockParameter toBlock,
             object? address = null,
@@ -306,7 +306,7 @@ namespace Nethermind.Facade
             return _logFinder.FindLogs(filter, cancellationToken);
         }
 
-        public bool TryGetLogs(int filterId, out IEnumerable<FilterLog> filterLogs, CancellationToken cancellationToken = default)
+        public bool TryGetLogs(int filterId, out IEnumerable<IFilterLog> filterLogs, CancellationToken cancellationToken = default)
         {
             LogFilter? filter;
             filterLogs = null;
@@ -339,7 +339,7 @@ namespace Nethermind.Facade
         }
 
         public void UninstallFilter(int filterId) => _filterStore.RemoveFilter(filterId);
-        public FilterLog[] GetLogFilterChanges(int filterId) => _filterManager.PollLogs(filterId);
+        public IFilterLog[] GetLogFilterChanges(int filterId) => _filterManager.PollLogs(filterId);
         public Hash256[] GetBlockFilterChanges(int filterId) => _filterManager.PollBlockHashes(filterId);
 
         public void RecoverTxSenders(Block block)
@@ -379,7 +379,7 @@ namespace Nethermind.Facade
             return _processingEnv.StateReader.HasStateForRoot(stateRoot);
         }
 
-        public IEnumerable<FilterLog> FindLogs(LogFilter filter, CancellationToken cancellationToken = default)
+        public IEnumerable<IFilterLog> FindLogs(LogFilter filter, CancellationToken cancellationToken = default)
         {
             return _logFinder.FindLogs(filter, cancellationToken);
         }

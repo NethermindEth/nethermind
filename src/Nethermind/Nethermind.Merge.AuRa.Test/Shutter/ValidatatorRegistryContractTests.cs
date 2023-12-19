@@ -33,7 +33,6 @@ class ValidatorRegistryContractTests
     ];
     private readonly BlockHeader _blockHeader = Build.A.EmptyBlockHeader;
     private IReadOnlyTransactionProcessor _transactionProcessor;
-    private IAbiEncoder _abiEncoder;
     private ISigner _signer;
     private ITxSender _txSender;
     private ITxSealer _txSealer;
@@ -42,7 +41,6 @@ class ValidatorRegistryContractTests
     [SetUp]
     public void SetUp()
     {
-        _abiEncoder = new AbiEncoder();
         _transactionProcessor = Substitute.For<IReadOnlyTransactionProcessor>();
         _signer = Substitute.For<ISigner>();
         _txSender = Substitute.For<ITxSender>();
@@ -66,12 +64,12 @@ class ValidatorRegistryContractTests
 
             if (functionSig == getNumUpdatesSig)
             {
-                tracer.ReturnValue = _abiEncoder.Encode(getNumUpdatesDef.GetReturnInfo(), [10]);
+                tracer.ReturnValue = AbiEncoder.Instance.Encode(getNumUpdatesDef.GetReturnInfo(), [10]);
             }
             else if (functionSig == getUpdateSig)
             {
                 // encode update
-                tracer.ReturnValue = _abiEncoder.Encode(getNumUpdatesDef.GetReturnInfo(), [10]);
+                tracer.ReturnValue = AbiEncoder.Instance.Encode(getNumUpdatesDef.GetReturnInfo(), [10]);
             }
 
             tracer.StatusCode = Evm.StatusCode.Success;
@@ -103,7 +101,7 @@ class ValidatorRegistryContractTests
     [Test]
     public void Can_calculate_validator_index()
     {
-        ValidatorRegistryContract contract = new(_transactionProcessor, _abiEncoder, _contractAddress, _signer, _txSender, _txSealer, _validatorContract, _blockHeader);
+        ValidatorRegistryContract contract = new(_transactionProcessor, AbiEncoder.Instance, _contractAddress, _signer, _txSender, _txSealer, _validatorContract, _blockHeader);
         ulong validatorIndex = contract.GetValidatorIndex(_blockHeader, _validatorContract);
         validatorIndex.Should().Be(2);
     }
