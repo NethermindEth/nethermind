@@ -54,7 +54,7 @@
             "type": "bytes"
           }
         ],
-        "internalType": "struct ValidatorRegistryContract.Update",
+        "internalType": "struct IValidatorRegistryContract.Update",
         "name": "",
         "type": "tuple"
       }
