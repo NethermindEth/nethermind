@@ -5,19 +5,6 @@ using System;
 
 namespace Nethermind.Synchronization;
 
-public class ImportFinishedArgs : ImportProgressChangedArgs
-{
-    public ImportFinishedArgs(
-        TimeSpan elapsed,
-        long blocksProcessed,
-        long txProcessed,
-        long totalBlocks,
-        long epochsProcessed,
-        long totalEpochs) :
-        base(elapsed, blocksProcessed, txProcessed, totalBlocks, epochsProcessed, totalEpochs)
-    {
-    }
-}
 public class ImportProgressChangedArgs : EventArgs
 {
     public ImportProgressChangedArgs(

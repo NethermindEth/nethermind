@@ -316,44 +316,32 @@ public class InitializeNetwork : IStep
          api.SpecProvider,
          networkName);
 
-
-
-        //bool backfillBlocks = _api.Pivot.PivotNumber;
         var pivot = _api.Pivot!;
         var blockTree = _api.BlockTree!;
+        var syncProgressResolver = _api.Synchronizer!.SyncProgressResolver;
         try
         {
             if (_syncConfig.FastSync)
             {
-                long pivotStartNumber = pivot.PivotParentHash != null ? pivot.PivotNumber - 1 : pivot.PivotHash != null ? pivot.PivotNumber : -1;
-
-                if (pivotStartNumber != -1)
+                if (syncProgressResolver.IsFastBlocksHeadersFinished())
                 {
-                    long startNumber = Math.Min(pivotStartNumber, blockTree.LowestInsertedHeader?.Number ?? long.MaxValue);
-                    bool withBodies = false;
-                    if (_syncConfig.DownloadBodiesInFastSync)
-                    {
-                        startNumber = Math.Min(startNumber, blockTree.LowestInsertedBodyNumber??long.MaxValue);
-                        withBodies = true;
-                    }
-                    bool withReceipts = false;
-                    if (_syncConfig.DownloadReceiptsInFastSync)
-                    {
-                        withReceipts = true;
-                    }
-                    Hash256? pivotHash = pivot.PivotHash ?? pivot.PivotParentHash;
-                    eraImport.ImportProgressChanged += (s, args) =>
-                    {
-                        _logger.Info($"Era1 import {args.BlocksProcessed,7}/{args.TotalBlocks} Blks | elapsed {args.Elapsed,7:hh\\:mm\\:ss} | {args.BlocksProcessed / args.Elapsed.TotalSeconds,7:F2} Blks/s | {args.TxProcessed / args.Elapsed.TotalSeconds,7:F2} Tx/s");
-                    };
+                    _logger.Info($"Skipping era1 import since sync has already finished.");
+                    return;
+                }
 
-                    _logger.Info($"Starting backfilling import from '{syncConfig.ImportDirectory}'");
-                    await eraImport.ImportWithBackfill(syncConfig.ImportDirectory, startNumber, pivotHash!, withBodies, withReceipts, false, cancellation);
-                }
-                else
+                long pivotStartNumber = pivot.PivotParentHash != null ? pivot.PivotNumber - 1 : pivot.PivotHash != null ? pivot.PivotNumber : long.MinValue;
+
+                long startNumber = Math.Min(pivotStartNumber, blockTree.LowestInsertedHeader?.Number ?? pivotStartNumber);
+                bool withBodies = _syncConfig.DownloadBodiesInFastSync;
+                bool withReceipts = _syncConfig.DownloadReceiptsInFastSync;
+                eraImport.ImportProgressChanged += (s, args) =>
                 {
-                    _logger.Info($"Skipping era1 import since no pivot is available.");
-                }
+                    _logger.Info($"Era1 import {args.BlocksProcessed,7}/{args.TotalBlocks} Blks | elapsed {args.Elapsed,7:hh\\:mm\\:ss} | {args.BlocksProcessed / args.Elapsed.TotalSeconds,7:F2} Blks/s | {args.TxProcessed / args.Elapsed.TotalSeconds,7:F2} Tx/s");
+                };
+                _logger.Info($"Starting backfilling import from '{syncConfig.ImportDirectory}'");
+                Hash256? pivotHash = pivot.PivotParentHash ?? pivot.PivotHash;
+                Hash256? expectedHash = blockTree.LowestInsertedHeader?.Hash ?? pivotHash;
+                await eraImport.ImportWithBackfill(syncConfig.ImportDirectory, startNumber, expectedHash!, withBodies, withReceipts, false, cancellation);
             }
             else
             {

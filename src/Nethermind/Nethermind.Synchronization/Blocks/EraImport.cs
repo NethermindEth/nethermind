@@ -88,14 +88,6 @@ public class EraImport : IEraImport
 
         long startEpoch = startNumber / EraWriter.MaxEra1Size;
 
-        if (eraStore.BiggestEpoch < startEpoch)
-        {
-            throw new EraImportException($"Nothing to import since current head is ahead of the era1 archives in '{src}'");
-        }
-        if (eraStore.SmallestEpoch > startEpoch)
-        {
-            throw new EraImportException($"Nothing to import since era1 archives in '{src}' is ahead of current head.");
-        }
         if (!eraStore.HasEpoch(startEpoch))
         {
             throw new EraImportException($"No {_networkName} epochs found for block {startNumber} in '{src}'");
@@ -118,6 +110,21 @@ public class EraImport : IEraImport
                 if (b.IsGenesis)
                 {
                     continue;
+                }
+
+                if (backfill)
+                {
+                    if (b.Number > startNumber)
+                    {
+                        continue;
+                    }
+                }
+                else
+                {
+                    if (b.Number < startNumber)
+                    {
+                        continue;
+                    }
                 }
 
                 if (backfill)

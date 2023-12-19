@@ -70,7 +70,7 @@ public class EraExporter : IEraExporter
             }
             if (_logger.IsInfo) _logger.Info($"Starting history export from {start} to {end}");
 
-            using StreamWriter checksumWriter = _fileSystem.File.CreateText(Path.Combine(destinationPath, "checksums.txt"));
+            //using StreamWriter checksumWriter = _fileSystem.File.CreateText(Path.Combine(destinationPath, "checksums.txt"));
 
             DateTime startTime = DateTime.Now;
             DateTime lastProgress = DateTime.Now;
@@ -86,8 +86,8 @@ public class EraExporter : IEraExporter
 
                 //For compatibility reasons, we dont want to write a line terminator after the last checksum,
                 //so we write one here instead, avoiding the last line
-                if (i != start)
-                    await checksumWriter.WriteLineAsync();
+                //if (i != start)
+                //    await checksumWriter.WriteLineAsync();
 
                 //TODO read directly from RocksDb with range reads
                 for (var y = i; y <= end; y++)
@@ -116,7 +116,7 @@ public class EraExporter : IEraExporter
                                                 EraWriter.Filename(_networkName, i / size, new Hash256(root)));
                         _fileSystem.File.Move(filePath,
                             rename, true);
-                        await checksumWriter.WriteAsync(checksum.ToHexString(true));
+                        //await checksumWriter.WriteAsync(checksum.ToHexString(true));
                         break;
                     }
                     txProcessed += block.Transactions.Length;
@@ -148,7 +148,7 @@ public class EraExporter : IEraExporter
             throw;
         }
     }
-    
+
     private int EnsureExistingEraFiles()
     {
         //TODO check and handle existing ERA files in case this is a restart
