@@ -23,8 +23,6 @@ namespace Nethermind.Trie.Pruning
             remove { }
         }
 
-        public IReadOnlyKeyValueStore TrieNodeRlpStore => null!;
-
         public TrieNode FindCachedOrUnknown(in TreePath treePath, Hash256 hash) => new(NodeType.Unknown, hash);
 
         public byte[] LoadRlp(in TreePath treePath, Hash256 hash, ReadFlags flags = ReadFlags.None) => Array.Empty<byte>();
@@ -39,8 +37,6 @@ namespace Nethermind.Trie.Pruning
 
         public void Dispose() { }
 
-        public void Set(in ValueHash256 hash, byte[] rlp)
-        {
-        }
+        public void Set(in TreePath path, in ValueHash256 keccak, byte[] rlp) { }
     }
 }
