@@ -493,18 +493,15 @@ namespace Nethermind.TxPool.Test
         }
 
         [Test]
+        public void RecoverAddress_should_work_correctly()
+        {
+            Transaction tx = GetTx(TestItem.PrivateKeyA);
+            _ethereumEcdsa.RecoverAddress(tx).Should().Be(tx.SenderAddress);
+        }
+
+        [Test]
         public async Task should_add_processed_txs_to_db()
         {
-            Transaction GetTx(PrivateKey sender)
-            {
-                return Build.A.Transaction
-                    .WithShardBlobTxTypeAndFields()
-                    .WithMaxFeePerGas(1.GWei())
-                    .WithMaxPriorityFeePerGas(1.GWei())
-                    .WithNonce(UInt256.Zero)
-                    .SignedAndResolved(_ethereumEcdsa, sender).TestObject;
-            }
-
             const long blockNumber = 358;
 
             BlobTxStorage blobTxStorage = new();
@@ -549,16 +546,72 @@ namespace Nethermind.TxPool.Test
         }
 
         [Test]
-        public void RecoverAddress_should_work_correctly()
+        public async Task should_bring_back_reorganized_blob_txs()
         {
-            Transaction tx = Build.A.Transaction
+            const long blockNumber = 358;
+
+            BlobTxStorage blobTxStorage = new();
+            ITxPoolConfig txPoolConfig = new TxPoolConfig()
+            {
+                Size = 128,
+                BlobSupportEnabled = true,
+                PersistentBlobStorageEnabled = true,
+                BlobReorgsSupportEnabled = true
+            };
+            _txPool = CreatePool(txPoolConfig, GetCancunSpecProvider(), txStorage: blobTxStorage);
+
+            EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
+            EnsureSenderBalance(TestItem.AddressB, UInt256.MaxValue);
+            EnsureSenderBalance(TestItem.AddressC, UInt256.MaxValue);
+
+            Transaction[] txsA = { GetTx(TestItem.PrivateKeyA), GetTx(TestItem.PrivateKeyB) };
+            Transaction[] txsB = { GetTx(TestItem.PrivateKeyC) };
+
+            _txPool.SubmitTx(txsA[0], TxHandlingOptions.None).Should().Be(AcceptTxResult.Accepted);
+            _txPool.SubmitTx(txsA[1], TxHandlingOptions.None).Should().Be(AcceptTxResult.Accepted);
+            _txPool.SubmitTx(txsB[0], TxHandlingOptions.None).Should().Be(AcceptTxResult.Accepted);
+
+            _txPool.GetPendingTransactionsCount().Should().Be(0);
+            _txPool.GetPendingBlobTransactionsCount().Should().Be(txsA.Length + txsB.Length);
+
+            // adding block A
+            Block blockA = Build.A.Block.WithNumber(blockNumber).WithTransactions(txsA).TestObject;
+            await RaiseBlockAddedToMainAndWaitForTransactions(txsA.Length, blockA);
+
+            _txPool.GetPendingBlobTransactionsCount().Should().Be(txsB.Length);
+            _txPool.TryGetPendingBlobTransaction(txsA[0].Hash!, out _).Should().BeFalse();
+            _txPool.TryGetPendingBlobTransaction(txsA[1].Hash!, out _).Should().BeFalse();
+            _txPool.TryGetPendingBlobTransaction(txsB[0].Hash!, out _).Should().BeTrue();
+
+            // reorganized from block A to block B
+            Block blockB = Build.A.Block.WithNumber(blockNumber).WithTransactions(txsB).TestObject;
+            await RaiseBlockAddedToMainAndWaitForTransactions(txsB.Length + txsA.Length, blockB, blockA);
+
+            // tx from block B should be removed from blob pool
+            _txPool.TryGetPendingBlobTransaction(txsB[0].Hash!, out _).Should().BeFalse();
+
+            // blob txs from reorganized blockA should be readded to blob pool
+            _txPool.GetPendingBlobTransactionsCount().Should().Be(txsA.Length);
+            _txPool.TryGetPendingBlobTransaction(txsA[0].Hash!, out Transaction tx1).Should().BeTrue();
+            _txPool.TryGetPendingBlobTransaction(txsA[1].Hash!, out Transaction tx2).Should().BeTrue();
+
+            tx1.Should().BeEquivalentTo(txsA[0], options => options
+                .Excluding(t => t.GasBottleneck)    // GasBottleneck is not encoded/decoded...
+                .Excluding(t => t.PoolIndex));      // ...as well as PoolIndex
+
+            tx2.Should().BeEquivalentTo(txsA[1], options => options
+                .Excluding(t => t.GasBottleneck)    // GasBottleneck is not encoded/decoded...
+                .Excluding(t => t.PoolIndex));      // ...as well as PoolIndex
+        }
+
+        private Transaction GetTx(PrivateKey sender)
+        {
+            return Build.A.Transaction
                 .WithShardBlobTxTypeAndFields()
                 .WithMaxFeePerGas(1.GWei())
                 .WithMaxPriorityFeePerGas(1.GWei())
                 .WithNonce(UInt256.Zero)
-                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
-
-            _ethereumEcdsa.RecoverAddress(tx).Should().Be(tx.SenderAddress);
+                .SignedAndResolved(_ethereumEcdsa, sender).TestObject;
         }
     }
 }
