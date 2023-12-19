@@ -65,7 +65,8 @@ namespace Nethermind.Synchronization.FastSync
         // concurrent request handling with the read lock.
         private readonly ReaderWriterLockSlim _syncStateLock = new();
         private readonly ConcurrentDictionary<StateSyncBatch, object?> _pendingRequests = new();
-        private Dictionary<NodeKey, HashSet<DependentItem>> _dependencies = new();
+        private Dictionary<StateSyncItem.NodeKey, HashSet<DependentItem>> _dependencies = new();
+        private readonly LruKeyCache<StateSyncItem.NodeKey> _alreadySavedNode = new LruKeyCache<StateSyncItem.NodeKey>(AlreadySavedCapacity, "saved nodes");
         private readonly LruKeyCache<Hash256> _alreadySavedCode = new(AlreadySavedCapacity, "saved nodes");
 
         private BranchProgress _branchProgress;
@@ -496,6 +497,14 @@ namespace Nethermind.Synchronization.FastSync
                     return AddNodeResult.AlreadySaved;
                 }
 
+                if (syncItem.NodeDataType != NodeDataType.Code && _alreadySavedNode.Get(syncItem.Key))
+                {
+                    Interlocked.Increment(ref _data.CheckWasCached);
+                    if (_logger.IsTrace) _logger.Trace($"Node already in the DB - skipping {syncItem.Hash}");
+                    _branchProgress.ReportSynced(syncItem, NodeProgressState.AlreadySaved);
+                    return AddNodeResult.AlreadySaved;
+                }
+
                 ReaderWriterLockSlim lockToTake = syncItem.NodeDataType == NodeDataType.Code ? _codeDbLock : _stateDbLock;
                 lockToTake.EnterReadLock();
                 try
@@ -509,8 +518,7 @@ namespace Nethermind.Synchronization.FastSync
                     }
                     else
                     {
-                        (Hash256? storageRoot, TreePath path) = syncItem.AddressAndPath;
-                        keyExists = _nodeStorage.KeyExists(storageRoot, path, syncItem.Hash);
+                        keyExists = _nodeStorage.KeyExists(syncItem.Address, syncItem.Path, syncItem.Hash);
                     }
 
                     if (keyExists)
@@ -520,6 +528,10 @@ namespace Nethermind.Synchronization.FastSync
                         if (syncItem.NodeDataType == NodeDataType.Code)
                         {
                             _alreadySavedCode.Set(syncItem.Hash);
+                        }
+                        if (syncItem.NodeDataType != NodeDataType.Code)
+                        {
+                            _alreadySavedNode.Set(syncItem.Key);
                         }
 
                         Interlocked.Increment(ref _data.StateWasThere);
@@ -561,7 +573,7 @@ namespace Nethermind.Synchronization.FastSync
             return AddNodeResult.Added;
         }
 
-        private void PossiblySaveDependentNodes(NodeKey key)
+        private void PossiblySaveDependentNodes(StateSyncItem.NodeKey key)
         {
             List<DependentItem> nodesToSave = new();
             lock (_dependencies)
@@ -616,8 +628,7 @@ namespace Nethermind.Synchronization.FastSync
                         Interlocked.Add(ref _data.DataSize, data.Length);
                         Interlocked.Increment(ref Metrics.SyncedStateTrieNodes);
 
-                        (Hash256? storageRoot, TreePath path) = syncItem.AddressAndPath;
-                        _nodeStorage.Set(storageRoot, path, syncItem.Hash, data, WriteFlags.None);
+                        _nodeStorage.Set(syncItem.Address, syncItem.Path, syncItem.Hash, data);
                     }
                     finally
                     {
@@ -635,8 +646,7 @@ namespace Nethermind.Synchronization.FastSync
                     {
                         Interlocked.Add(ref _data.DataSize, data.Length);
                         Interlocked.Increment(ref Metrics.SyncedStorageTrieNodes);
-                        (Hash256? storageRoot, TreePath path) = syncItem.AddressAndPath;
-                        _nodeStorage.Set(storageRoot, path, syncItem.Hash, data, WriteFlags.None);
+                        _nodeStorage.Set(syncItem.Address, syncItem.Path, syncItem.Hash, data);
                     }
                     finally
                     {
@@ -687,7 +697,7 @@ namespace Nethermind.Synchronization.FastSync
                     if (_logger.IsError) _logger.Error($"POSSIBLE FAST SYNC CORRUPTION | Dependencies hanging after the root node saved - count: {_dependencies.Count}, first: {_dependencies.Keys.First()}");
                 }
 
-                _dependencies = new Dictionary<NodeKey, HashSet<DependentItem>>();
+                _dependencies = new Dictionary<StateSyncItem.NodeKey, HashSet<DependentItem>>();
                 // _alreadySaved = new LruKeyCache<Keccak>(AlreadySavedCapacity, "saved nodes");
             }
 
@@ -706,6 +716,7 @@ namespace Nethermind.Synchronization.FastSync
             {
                 _pendingRequests.Clear();
                 _dependencies.Clear();
+                _alreadySavedNode.Clear();
                 _alreadySavedCode.Clear();
             }
             finally
@@ -739,7 +750,7 @@ namespace Nethermind.Synchronization.FastSync
         private void HandleTrieNode(StateSyncItem currentStateSyncItem, byte[] currentResponseItem, ref int invalidNodes)
         {
             NodeDataType nodeDataType = currentStateSyncItem.NodeDataType;
-            (Hash256? account, TreePath path) = currentStateSyncItem.AddressAndPath;
+            TreePath path = currentStateSyncItem.Path;
 
             TrieNode trieNode = new(NodeType.Unknown, currentResponseItem);
             trieNode.ResolveNode(NullTrieNodeResolver.Instance, path); // TODO: will this work now?
@@ -809,12 +820,12 @@ namespace Nethermind.Synchronization.FastSync
 
                         AddNodeResult addResult = AddNodeToPending(
                             new StateSyncItem(
-                                    next,
-                                    currentStateSyncItem.AccountPathNibbles,
-                                    childPath.ToArray(),
-                                    nodeDataType,
-                                    currentStateSyncItem.Level + trieNode.Key!.Length,
-                                    CalculateRightness(trieNode.NodeType, currentStateSyncItem, 0))
+                                next,
+                                currentStateSyncItem.AccountPathNibbles,
+                                childPath.ToArray(),
+                                nodeDataType,
+                                currentStateSyncItem.Level + trieNode.Key!.Length,
+                                CalculateRightness(trieNode.NodeType, currentStateSyncItem, 0))
                                 { ParentBranchChildIndex = currentStateSyncItem.BranchChildIndex },
                             dependentItem,
                             "extension child");
@@ -827,7 +838,7 @@ namespace Nethermind.Synchronization.FastSync
                     else
                     {
                         /* this happens when we have a short RLP format of the node
-                         * that would not be stored as Keccak but full RLP*/
+                         * that would not be stored as Keccak but full RLP */
                         SaveNode(currentStateSyncItem, currentResponseItem);
                     }
 
@@ -918,7 +929,7 @@ namespace Nethermind.Synchronization.FastSync
         /// </summary>
         /// <param name="dependency">Sync item that this item is dependent on.</param>
         /// <param name="dependentItem">Item that can only be persisted if all its dependenies are persisted</param>
-        private void AddDependency(NodeKey dependency, DependentItem dependentItem)
+        private void AddDependency(StateSyncItem.NodeKey dependency, DependentItem dependentItem)
         {
             lock (_dependencies)
             {

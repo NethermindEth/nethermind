@@ -48,8 +48,3 @@ public class NodeStorageFactory : INodeStorageFactory
         return keyOfLength32 > 10 ? INodeStorage.KeyScheme.Hash : INodeStorage.KeyScheme.HalfPath;
     }
 }
-
-public interface INodeStorageFactory
-{
-    INodeStorage WrapKeyValueStore(IKeyValueStore keyValueStore);
-}

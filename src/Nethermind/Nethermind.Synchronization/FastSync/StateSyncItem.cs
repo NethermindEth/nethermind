@@ -3,6 +3,7 @@
 
 using System;
 using System.Diagnostics;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Trie;
 
@@ -57,31 +58,18 @@ namespace Nethermind.Synchronization.FastSync
 
         public bool IsRoot => Level == 0 && NodeDataType == NodeDataType.State;
 
-        public (Hash256 account, TreePath path) AddressAndPath
-        {
+        public TreePath Path => TreePath.FromNibble(PathNibbles);
 
-            get
-            {
-                Hash256? account = null;
-                TreePath path = TreePath.FromNibble(PathNibbles);
-                if ((AccountPathNibbles?.Length ?? 0) != 0)
-                {
-                    account = new Hash256(Nibbles.ToBytes(AccountPathNibbles));
-                }
-
-                return (account, path);
-            }
-        }
+        public Hash256? Address => (AccountPathNibbles?.Length ?? 0) != 0 ? new Hash256(Nibbles.ToBytes(AccountPathNibbles)) : null;
 
         public NodeKey Key
         {
             get
             {
-                (Hash256 account, TreePath path) = AddressAndPath;
-                return new NodeKey(account, path, Hash);
+                return new NodeKey(Address, Path, Hash);
             }
         }
-    }
 
-    public record NodeKey(Hash256? Address, TreePath? Path, Hash256 Hash);
+        public record NodeKey(Hash256? Address, TreePath? Path, Hash256 Hash);
+    }
 }

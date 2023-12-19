@@ -100,9 +100,9 @@ public class TreePathTests
         ValueHash256 originalHash = new ValueHash256("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef");
 
         TreePath path = new TreePath(originalHash, 64);
-        path.TruncateMut(truncate1);
+        path = path.Truncate(truncate1);
         path.Length.Should().Be(truncate1);
-        path.TruncateMut(truncate2);
+        path = path.Truncate(truncate2);
         path.Length.Should().Be(truncate2);
 
         path.Path.ToString().Should().Be(expectedHash);

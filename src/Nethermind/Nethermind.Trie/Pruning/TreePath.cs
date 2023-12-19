@@ -4,14 +4,20 @@
 using System;
 using System.IO;
 using System.Runtime.CompilerServices;
+using Nethermind.Core.Attributes;
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.Trie;
 
+/// <summary>
+/// Patricia trie tree path. Can represent up to 64 nibbles in 32+4 byte.
+/// Can be used as ref struct, and mutated during trie traversal.
+/// </summary>
+[Todo("check if its worth it to change the length to byte, or if it actually make things slower.")]
+[Todo("check if its worth it to not clear byte during TruncateMut, but will need proper comparator, span copy, etc.")]
 public struct TreePath
 {
     public readonly ValueHash256 Path;
-    private int _length;
 
     public static TreePath Empty => new TreePath();
 
@@ -20,14 +26,10 @@ public struct TreePath
     public TreePath(in ValueHash256 path, int length)
     {
         Path = path;
-        _length = length;
+        Length = length;
     }
 
-    public int Length
-    {
-        readonly get => _length;
-        set => _length = value;
-    }
+    public int Length { get; private set; }
 
     public static TreePath FromPath(ReadOnlySpan<byte> pathHash)
     {
@@ -85,32 +87,32 @@ public struct TreePath
 
         Span<byte> pathSpan = Span;
 
-        if (_length % 2 == 1)
+        if (Length % 2 == 1)
         {
-            this[_length] = nibbles[0];
-            _length++;
+            this[Length] = nibbles[0];
+            Length++;
             nibbles = nibbles[1..];
         }
 
         int byteLength = nibbles.Length / 2;
-        int pathSpanStart = _length / 2;
+        int pathSpanStart = Length / 2;
         for (int i = 0; i < byteLength; i++)
         {
             pathSpan[i + pathSpanStart] = Nibbles.ToByte(nibbles[i * 2], nibbles[i * 2 + 1]);
-            _length += 2;
+            Length += 2;
         }
 
         if (nibbles.Length % 2 == 1)
         {
-            this[_length] = nibbles[^1];
-            _length++;
+            this[Length] = nibbles[^1];
+            Length++;
         }
     }
 
     public void AppendMut(byte nib)
     {
-        this[_length] = nib;
-        _length++;
+        this[Length] = nib;
+        Length++;
     }
 
     public byte this[int childPathLength]
@@ -156,26 +158,26 @@ public struct TreePath
 
     public void TruncateMut(int pathLength)
     {
-        if (pathLength > _length) throw new IndexOutOfRangeException("path length must be less than current length");
-        if (pathLength == _length) return;
+        if (pathLength > Length) throw new IndexOutOfRangeException("path length must be less than current length");
+        if (pathLength == Length) return;
 
-        if (_length % 2 == 1)
+        if (Length % 2 == 1)
         {
-            this[_length - 1] = 0;
-            _length--;
+            this[Length - 1] = 0;
+            Length--;
         }
 
-        if (pathLength == _length) return;
+        if (pathLength == Length) return;
 
         int byteClearStart = (pathLength + 1) / 2;
-        Span[byteClearStart..(_length / 2)].Clear();
+        Span[byteClearStart..(Length / 2)].Clear();
 
         if (pathLength % 2 == 1)
         {
             this[pathLength] = 0;
         }
 
-        _length = pathLength;
+        Length = pathLength;
     }
 
     public override string ToString()

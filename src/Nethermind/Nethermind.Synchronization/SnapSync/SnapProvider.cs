@@ -204,6 +204,7 @@ namespace Nethermind.Synchronization.SnapSync
         {
             int respLength = response.Length;
             ITrieStore store = _trieStorePool.Get();
+            IScopedTrieStore stateStore = store.GetTrieStore(null);
             try
             {
                 for (int reqi = 0; reqi < request.Paths.Length; reqi++)
@@ -223,12 +224,10 @@ namespace Nethermind.Synchronization.SnapSync
 
                         try
                         {
-                            TreePath path = TreePath.FromPath(requestedPath.PathAndAccount.Path.Bytes);
-
-                            TrieNode node = new(NodeType.Unknown, nodeData, isDirty: true);
-                            node.ResolveNode(store.GetTrieStore(null), TreePath.Empty);
                             TreePath emptyTreePath = TreePath.Empty;
-                            node.ResolveKey(store.GetTrieStore(null), ref emptyTreePath, true);
+                            TrieNode node = new(NodeType.Unknown, nodeData, isDirty: true);
+                            node.ResolveNode(stateStore, emptyTreePath);
+                            node.ResolveKey(stateStore, ref emptyTreePath, true);
 
                             requestedPath.PathAndAccount.Account = requestedPath.PathAndAccount.Account.WithChangedStorageRoot(node.Keccak);
 
