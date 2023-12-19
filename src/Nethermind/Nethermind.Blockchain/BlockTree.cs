@@ -1434,6 +1434,7 @@ namespace Nethermind.Blockchain
                 {
                     current.TotalDifficulty = current.Difficulty;
                     BlockInfo blockInfo = new(current.Hash, current.Difficulty);
+                    blockInfo.WasProcessed = true;
                     UpdateOrCreateLevel(current.Number, current.Hash, blockInfo);
                 }
 
