@@ -29,7 +29,23 @@ public class TrieNodeResolverWithReadFlagsTests
     }
 
     [Test]
-    public void LoadRlp_combine_passed_fleag()
+    public void LoadRlp_shouldPassTheFlag_forStorageStoreAlso()
+    {
+        ReadFlags theFlags = ReadFlags.HintCacheMiss;
+        TestMemDb memDb = new();
+        ITrieStore trieStore = new TrieStore(memDb, LimboLogs.Instance);
+        ITrieNodeResolver resolver = new TrieNodeResolverWithReadFlags(trieStore.GetTrieStore(null), theFlags);
+        resolver = resolver.GetStorageTrieNodeResolver(TestItem.KeccakA);
+
+        Hash256 theKeccak = TestItem.KeccakA;
+        memDb[NodeStorage.GetHalfPathNodeStoragePath(TestItem.KeccakA, TreePath.Empty, theKeccak)] = TestItem.KeccakA.BytesToArray();
+        resolver.LoadRlp(TreePath.Empty, theKeccak);
+
+        memDb.KeyWasReadWithFlags(NodeStorage.GetHalfPathNodeStoragePath(TestItem.KeccakA, TreePath.Empty, theKeccak), theFlags);
+    }
+
+    [Test]
+    public void LoadRlp_combine_passed_flaeg()
     {
         ReadFlags theFlags = ReadFlags.HintCacheMiss;
         TestMemDb memDb = new();
