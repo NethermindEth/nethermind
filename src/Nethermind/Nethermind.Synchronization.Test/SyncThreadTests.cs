@@ -59,7 +59,7 @@ namespace Nethermind.Synchronization.Test
             _synchronizerType = synchronizerType;
         }
 
-        private int remotePeersCount = 2;
+        private readonly int remotePeersCount = 2;
 
         [SetUp]
         public void Setup()
@@ -177,7 +177,7 @@ namespace Nethermind.Synchronization.Test
             return headBlock;
         }
 
-        private int _chainLength = 100;
+        private readonly int _chainLength = 100;
 
         [Test, Ignore("Fails when running with other tests due to pool starvation in NUnit adapter")]
         public void Can_sync_when_initially_disconnected()
@@ -367,7 +367,7 @@ namespace Nethermind.Synchronization.Test
 
             ISyncModeSelector selector = synchronizer.SyncModeSelector;
             SyncServer syncServer = new(
-                trieStore.AsKeyValueStore(),
+                trieStore.TrieNodeRlpStore,
                 codeDb,
                 tree,
                 receiptStorage,

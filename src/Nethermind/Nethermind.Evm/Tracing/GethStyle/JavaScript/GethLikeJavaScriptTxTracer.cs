@@ -235,7 +235,7 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer, ITxTracer
         _log.refund += refund;
     }
 
-    private TracerFunctions GetAvailableFunctions(ICollection<string> functions)
+    private static TracerFunctions GetAvailableFunctions(ICollection<string> functions)
     {
         const TracerFunctions required = TracerFunctions.result;
 

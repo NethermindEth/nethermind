@@ -14,9 +14,9 @@ namespace Nethermind.State;
 /// </summary>
 public class ReadOnlyWorldStateManager : IWorldStateManager
 {
-    private IReadOnlyDbProvider _readOnlyDbProvider;
-    private IReadOnlyTrieStore? _readOnlyTrieStore;
-    private ILogManager _logManager;
+    private readonly IReadOnlyDbProvider _readOnlyDbProvider;
+    private readonly IReadOnlyTrieStore? _readOnlyTrieStore;
+    private readonly ILogManager _logManager;
     private readonly IDbProvider _dbProvider;
     private readonly ReadOnlyDb _codeDb;
 

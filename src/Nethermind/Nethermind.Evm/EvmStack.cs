@@ -273,7 +273,7 @@ public ref struct EvmStack<TTracing>
         }
     }
 
-    public bool PeekUInt256IsZero()
+    public readonly bool PeekUInt256IsZero()
     {
         int head = Head;
         if (head-- == 0)

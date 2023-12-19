@@ -22,8 +22,8 @@ namespace Nethermind.Blockchain.Visitors
         private readonly IBlockTree _blockTree;
         private readonly IStateReader _stateReader;
         private readonly ILogger _logger;
-        private long _startNumber;
-        private long _blocksToLoad;
+        private readonly long _startNumber;
+        private readonly long _blocksToLoad;
 
         private ChainLevelInfo _currentLevel;
         private long _currentLevelNumber;

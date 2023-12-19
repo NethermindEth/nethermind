@@ -74,7 +74,7 @@ namespace Nethermind.Init.Steps.Migrations
             }
         }
 
-        private bool CanMigrate(SyncMode syncMode) => syncMode.NotSyncing();
+        private static bool CanMigrate(SyncMode syncMode) => syncMode.NotSyncing();
 
         private void SynchronizerOnSyncModeChanged(object? sender, SyncModeChangedEventArgs e)
         {

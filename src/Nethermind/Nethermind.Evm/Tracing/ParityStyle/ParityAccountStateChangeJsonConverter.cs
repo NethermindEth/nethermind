@@ -14,14 +14,14 @@ namespace Nethermind.Evm.Tracing.ParityStyle;
 
 public class ParityAccountStateChangeJsonConverter : JsonConverter<ParityAccountStateChange>
 {
-    private Bytes32Converter _32BytesConverter = new();
+    private readonly Bytes32Converter _32BytesConverter = new();
 
     public override ParityAccountStateChange Read(
         ref Utf8JsonReader reader,
         Type typeToConvert,
         JsonSerializerOptions options) => throw new NotImplementedException();
 
-    private void WriteChange(Utf8JsonWriter writer, ParityStateChange<byte[]> change, JsonSerializerOptions options)
+    private static void WriteChange(Utf8JsonWriter writer, ParityStateChange<byte[]> change, JsonSerializerOptions options)
     {
         if (change is null)
         {
@@ -51,7 +51,7 @@ public class ParityAccountStateChangeJsonConverter : JsonConverter<ParityAccount
         }
     }
 
-    private void WriteChange(Utf8JsonWriter writer, ParityStateChange<UInt256?> change, JsonSerializerOptions options)
+    private static void WriteChange(Utf8JsonWriter writer, ParityStateChange<UInt256?> change, JsonSerializerOptions options)
     {
         if (change is null)
         {

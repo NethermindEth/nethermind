@@ -14,7 +14,7 @@ namespace Nethermind.Init.Steps
     public class ReviewBlockTree : IStep
     {
         private readonly IApiWithBlockchain _api;
-        private ILogger _logger;
+        private readonly ILogger _logger;
 
         public ReviewBlockTree(INethermindApi api)
         {

@@ -48,7 +48,7 @@ public class CompactStack<T>
         }
     }
 
-    private ObjectPool<Node> _nodePool;
+    private readonly ObjectPool<Node> _nodePool;
     private Node? _head = null;
 
     public CompactStack(ObjectPool<Node>? nodePool = null)

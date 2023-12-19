@@ -28,7 +28,7 @@ namespace Nethermind.TxPool
         public IDictionary<Address, Transaction[]> GetPendingLightBlobTransactionsBySender()
             => new Dictionary<Address, Transaction[]>();
 
-        public IEnumerable<Transaction> GetPendingBlobTransactions() => Array.Empty<Transaction>();
+        public static IEnumerable<Transaction> GetPendingBlobTransactions() => Array.Empty<Transaction>();
 
         public void AddPeer(ITxPoolPeer peer) { }
 

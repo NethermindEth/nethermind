@@ -28,6 +28,6 @@ namespace Nethermind.JsonRpc.Modules
 
         public int ErrorCode { get; set; }
 
-        public bool IsError => ErrorCode != 0;
+        public readonly bool IsError => ErrorCode != 0;
     }
 }

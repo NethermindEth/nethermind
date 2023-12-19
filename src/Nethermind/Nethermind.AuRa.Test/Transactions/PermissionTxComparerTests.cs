@@ -27,7 +27,7 @@ namespace Nethermind.AuRa.Test.Transactions
 {
     public class PermissionTxComparerTests
     {
-        private static Address[] WhitelistedSenders = new[] { TestItem.AddressC, TestItem.AddressD };
+        private static readonly Address[] WhitelistedSenders = new[] { TestItem.AddressC, TestItem.AddressD };
 
         public static IEnumerable OrderingTests
         {

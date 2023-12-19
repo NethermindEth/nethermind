@@ -126,7 +126,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
 
     public class ParityTxTraceFromReplayJsonConverter : JsonConverter<ParityTxTraceFromReplay>
     {
-        ParityTraceActionFromReplayJsonConverter _actionConverter = new();
+        readonly ParityTraceActionFromReplayJsonConverter _actionConverter = new();
         public override ParityTxTraceFromReplay Read(
             ref Utf8JsonReader reader,
             Type typeToConvert,

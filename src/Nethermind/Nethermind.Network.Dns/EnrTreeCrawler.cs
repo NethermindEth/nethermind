@@ -50,9 +50,8 @@ public class EnrTreeCrawler
 
     private async IAsyncEnumerable<string> SearchNode(IDnsClient client, string query, SearchContext searchContext)
     {
-        if (!searchContext.VisitedRefs.Contains(query))
+        if (searchContext.VisitedRefs.Add(query))
         {
-            searchContext.VisitedRefs.Add(query);
             IEnumerable<string> lookupResult = await client.Lookup(query);
             foreach (string node in lookupResult)
             {

@@ -17,7 +17,7 @@ namespace Nethermind.Facade.Eth
         public long HighestBlock { get; set; }
         public SyncMode SyncMode { get; set; }
 
-        public override string ToString()
+        public override readonly string ToString()
         {
             return $"IsSyncing: {IsSyncing}, StartingBlock: {StartingBlock}, CurrentBlock {CurrentBlock}, HighestBlock {HighestBlock}";
         }

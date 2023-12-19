@@ -18,7 +18,7 @@ namespace Nethermind.Blockchain.Filters
     public class FilterStore : IFilterStore
     {
         private int _currentFilterId = -1;
-        private object _locker = new object();
+        private readonly object _locker = new object();
 
         private readonly ConcurrentDictionary<int, FilterBase> _filters = new();
 
@@ -119,7 +119,7 @@ namespace Nethermind.Blockchain.Filters
             return 0;
         }
 
-        private TopicsFilter GetTopicsFilter(IEnumerable<object?>? topics = null)
+        private static TopicsFilter GetTopicsFilter(IEnumerable<object?>? topics = null)
         {
             if (topics is null)
             {
@@ -137,7 +137,7 @@ namespace Nethermind.Blockchain.Filters
             return new SequenceTopicsFilter(expressions.ToArray());
         }
 
-        private TopicExpression GetTopicExpression(FilterTopic? filterTopic)
+        private static TopicExpression GetTopicExpression(FilterTopic? filterTopic)
         {
             if (filterTopic is null)
             {

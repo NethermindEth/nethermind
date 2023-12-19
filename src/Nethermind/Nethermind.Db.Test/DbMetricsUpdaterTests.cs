@@ -86,7 +86,7 @@ namespace Nethermind.Db.Test
 
             Assert.That(Metrics.DbStats.Count, Is.EqualTo(0));
 
-            logger.Received().Warn("No RocksDB compaction stats available for Test databse.");
+            logger.Received().Warn("No RocksDB compaction stats available for Test database.");
         }
 
         [Test]
@@ -99,7 +99,7 @@ namespace Nethermind.Db.Test
 
             Assert.That(Metrics.DbStats.Count, Is.EqualTo(0));
 
-            logger.Received().Warn("No RocksDB compaction stats available for Test databse.");
+            logger.Received().Warn("No RocksDB compaction stats available for Test database.");
         }
     }
 }

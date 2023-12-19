@@ -56,7 +56,7 @@ namespace Nethermind.Synchronization
         private FastSyncFeed? _fastSyncFeed;
         private StateSyncFeed? _stateSyncFeed;
         private FullSyncFeed? _fullSyncFeed;
-        private IProcessExitSource _exitSource;
+        private readonly IProcessExitSource _exitSource;
         protected IBetterPeerStrategy _betterPeerStrategy;
         private readonly ChainSpec _chainSpec;
 
@@ -391,7 +391,7 @@ namespace Nethermind.Synchronization
                 _logManager);
         }
 
-        private NodeStatsEventType Convert(SyncEvent syncEvent)
+        private static NodeStatsEventType Convert(SyncEvent syncEvent)
         {
             return syncEvent switch
             {

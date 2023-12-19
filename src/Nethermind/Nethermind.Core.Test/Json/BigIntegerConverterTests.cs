@@ -14,8 +14,8 @@ namespace Nethermind.Core.Test.Json
     [TestFixture]
     public class BigIntegerConverterTests : ConverterTestBase<BigInteger>
     {
-        static BigIntegerConverter converter = new BigIntegerConverter();
-        static JsonSerializerOptions options = new JsonSerializerOptions { Converters = { converter } };
+        static readonly BigIntegerConverter converter = new BigIntegerConverter();
+        static readonly JsonSerializerOptions options = new JsonSerializerOptions { Converters = { converter } };
 
         public void Test_roundtrip()
         {
