@@ -47,7 +47,7 @@ namespace Nethermind.Trie.Test.Pruning
             IScopedTrieStore trieStore = fullTrieStore.GetTrieStore(null);
             trieStore.CommitNode(1234, new NodeCommitInfo(trieNode, TreePath.Empty));
             fullTrieStore.MemoryUsedByDirtyCache.Should().Be(
-                trieNode.GetMemorySize(false));
+                trieNode.GetMemorySize(false) + TrieStore.DirtyNodesCache.Key.MemoryUsage);
         }
 
 
@@ -137,7 +137,7 @@ namespace Nethermind.Trie.Test.Pruning
             long startSize = trieStore.MemoryUsedByDirtyCache;
             trieStore.FindCachedOrUnknown(null, TreePath.Empty, TestItem.KeccakA);
             TrieNode trieNode = new(NodeType.Leaf, Keccak.Zero);
-            long oneKeccakSize = trieNode.GetMemorySize(false);
+            long oneKeccakSize = trieNode.GetMemorySize(false) + TrieStore.DirtyNodesCache.Key.MemoryUsage;
             Assert.That(trieStore.MemoryUsedByDirtyCache, Is.EqualTo(startSize + oneKeccakSize));
             trieStore.FindCachedOrUnknown(null, TreePath.Empty, TestItem.KeccakB);
             Assert.That(trieStore.MemoryUsedByDirtyCache, Is.EqualTo(2 * oneKeccakSize + startSize));
@@ -160,8 +160,8 @@ namespace Nethermind.Trie.Test.Pruning
             trieStore.CommitNode(1234, new NodeCommitInfo(trieNode1, TreePath.Empty));
             trieStore.CommitNode(1234, new NodeCommitInfo(trieNode2, TreePath.Empty));
             fullTrieStore.MemoryUsedByDirtyCache.Should().Be(
-                trieNode1.GetMemorySize(false) +
-                trieNode2.GetMemorySize(false));
+                trieNode1.GetMemorySize(false) + TrieStore.DirtyNodesCache.Key.MemoryUsage +
+                trieNode2.GetMemorySize(false) + TrieStore.DirtyNodesCache.Key.MemoryUsage);
         }
 
         [Test]
@@ -183,8 +183,8 @@ namespace Nethermind.Trie.Test.Pruning
             // depending on whether the node gets resolved it gives different values here in debugging and run
             // needs some attention
             fullTrieStore.MemoryUsedByDirtyCache.Should().BeLessOrEqualTo(
-                trieNode1.GetMemorySize(false) +
-                trieNode2.GetMemorySize(false));
+                trieNode1.GetMemorySize(false) + TrieStore.DirtyNodesCache.Key.MemoryUsage +
+                trieNode2.GetMemorySize(false) + TrieStore.DirtyNodesCache.Key.MemoryUsage);
         }
 
         [Test]
@@ -203,19 +203,27 @@ namespace Nethermind.Trie.Test.Pruning
             trieNode4.ResolveKey(null!, ref emptyPath, true);
 
             using TrieStore fullTrieStore = new(new MemDb(), new MemoryLimit(640), No.Persistence, _logManager);
+            Console.Out.WriteLine($"Its {fullTrieStore.MemoryUsedByDirtyCache}");
             IScopedTrieStore trieStore = fullTrieStore.GetTrieStore(null);
             trieStore.CommitNode(1234, new NodeCommitInfo(trieNode1, TreePath.Empty));
+            Console.Out.WriteLine($"Its {fullTrieStore.MemoryUsedByDirtyCache}");
             trieStore.CommitNode(1234, new NodeCommitInfo(trieNode2, TreePath.Empty));
+            Console.Out.WriteLine($"Its {fullTrieStore.MemoryUsedByDirtyCache}");
             trieStore.FinishBlockCommit(TrieType.State, 1234, trieNode2);
+            Console.Out.WriteLine($"Its {fullTrieStore.MemoryUsedByDirtyCache}");
             trieStore.CommitNode(1235, new NodeCommitInfo(trieNode3, TreePath.Empty));
+            Console.Out.WriteLine($"Its {fullTrieStore.MemoryUsedByDirtyCache}");
             trieStore.CommitNode(1235, new NodeCommitInfo(trieNode4, TreePath.Empty));
+            Console.Out.WriteLine($"Its {fullTrieStore.MemoryUsedByDirtyCache}");
             trieStore.FinishBlockCommit(TrieType.State, 1235, trieNode2);
+            Console.Out.WriteLine($"Its {fullTrieStore.MemoryUsedByDirtyCache}");
             trieStore.FinishBlockCommit(TrieType.State, 1236, trieNode2);
+            Console.Out.WriteLine($"Its {fullTrieStore.MemoryUsedByDirtyCache}");
             fullTrieStore.MemoryUsedByDirtyCache.Should().Be(
-                trieNode1.GetMemorySize(false) +
-                trieNode2.GetMemorySize(false) +
-                trieNode3.GetMemorySize(false) +
-                trieNode4.GetMemorySize(false));
+                trieNode1.GetMemorySize(false) + TrieStore.DirtyNodesCache.Key.MemoryUsage +
+                trieNode2.GetMemorySize(false) + TrieStore.DirtyNodesCache.Key.MemoryUsage +
+                trieNode3.GetMemorySize(false) + TrieStore.DirtyNodesCache.Key.MemoryUsage +
+                trieNode4.GetMemorySize(false) + TrieStore.DirtyNodesCache.Key.MemoryUsage);
         }
 
         [Test]
@@ -241,10 +249,10 @@ namespace Nethermind.Trie.Test.Pruning
             trieStore.CommitNode(1235, new NodeCommitInfo(trieNode3, TreePath.Empty));
             trieStore.CommitNode(1235, new NodeCommitInfo(trieNode4, TreePath.Empty));
             fullTrieStore.MemoryUsedByDirtyCache.Should().Be(
-                trieNode1.GetMemorySize(false) +
-                trieNode2.GetMemorySize(false) +
-                trieNode3.GetMemorySize(false) +
-                trieNode4.GetMemorySize(false));
+                trieNode1.GetMemorySize(false) + TrieStore.DirtyNodesCache.Key.MemoryUsage +
+                trieNode2.GetMemorySize(false) + TrieStore.DirtyNodesCache.Key.MemoryUsage +
+                trieNode3.GetMemorySize(false) + TrieStore.DirtyNodesCache.Key.MemoryUsage +
+                trieNode4.GetMemorySize(false) + TrieStore.DirtyNodesCache.Key.MemoryUsage);
         }
 
         [Test]

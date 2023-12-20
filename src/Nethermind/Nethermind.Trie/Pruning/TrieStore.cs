@@ -21,7 +21,7 @@ namespace Nethermind.Trie.Pruning
     /// </summary>
     public class TrieStore : ITrieStore
     {
-        private class DirtyNodesCache
+        internal class DirtyNodesCache
         {
             private readonly TrieStore _trieStore;
 
