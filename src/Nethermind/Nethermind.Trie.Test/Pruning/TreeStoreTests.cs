@@ -204,22 +204,14 @@ namespace Nethermind.Trie.Test.Pruning
             trieNode4.ResolveKey(null!, ref emptyPath, true);
 
             using TrieStore fullTrieStore = new(new MemDb(), new MemoryLimit(640), No.Persistence, _logManager);
-            Console.Out.WriteLine($"Its {fullTrieStore.MemoryUsedByDirtyCache}");
             IScopedTrieStore trieStore = fullTrieStore.GetTrieStore(null);
             trieStore.CommitNode(1234, new NodeCommitInfo(trieNode1, TreePath.Empty));
-            Console.Out.WriteLine($"Its {fullTrieStore.MemoryUsedByDirtyCache}");
             trieStore.CommitNode(1234, new NodeCommitInfo(trieNode2, TreePath.Empty));
-            Console.Out.WriteLine($"Its {fullTrieStore.MemoryUsedByDirtyCache}");
             trieStore.FinishBlockCommit(TrieType.State, 1234, trieNode2);
-            Console.Out.WriteLine($"Its {fullTrieStore.MemoryUsedByDirtyCache}");
             trieStore.CommitNode(1235, new NodeCommitInfo(trieNode3, TreePath.Empty));
-            Console.Out.WriteLine($"Its {fullTrieStore.MemoryUsedByDirtyCache}");
             trieStore.CommitNode(1235, new NodeCommitInfo(trieNode4, TreePath.Empty));
-            Console.Out.WriteLine($"Its {fullTrieStore.MemoryUsedByDirtyCache}");
             trieStore.FinishBlockCommit(TrieType.State, 1235, trieNode2);
-            Console.Out.WriteLine($"Its {fullTrieStore.MemoryUsedByDirtyCache}");
             trieStore.FinishBlockCommit(TrieType.State, 1236, trieNode2);
-            Console.Out.WriteLine($"Its {fullTrieStore.MemoryUsedByDirtyCache}");
             fullTrieStore.MemoryUsedByDirtyCache.Should().Be(
                 trieNode1.GetMemorySize(false) + TrieStore.DirtyNodesCache.Key.MemoryUsage +
                 trieNode2.GetMemorySize(false) + TrieStore.DirtyNodesCache.Key.MemoryUsage +
@@ -627,7 +619,7 @@ namespace Nethermind.Trie.Test.Pruning
             trieStore.FinishBlockCommit(TrieType.State, 7, branch);
             trieStore.FinishBlockCommit(TrieType.State, 8, branch);
 
-            storage.Get(null, TreePath.FromNibble(new byte[] {0}), a.Keccak).Should().NotBeNull();
+            storage.Get(null, TreePath.FromNibble(new byte[] { 0 }), a.Keccak).Should().NotBeNull();
             storage.Get(new Hash256(Nibbles.ToBytes(storage1Nib)), TreePath.Empty, storage1.Keccak).Should().NotBeNull();
             fullTrieStore.IsNodeCached(null, TreePath.Empty, a.Keccak).Should().BeTrue();
             fullTrieStore.IsNodeCached(new Hash256(Nibbles.ToBytes(storage1Nib)), TreePath.Empty, storage1.Keccak).Should().BeTrue();

@@ -55,7 +55,7 @@ namespace Nethermind.Synchronization.FastSync
         public Hash256? Address => (AccountPathNibbles?.Length ?? 0) != 0 ? (_address ??= new Hash256(Nibbles.ToBytes(AccountPathNibbles))) : null;
 
         private NodeKey? _key = null;
-        public NodeKey Key => _key??= new(Address, Path, Hash);
+        public NodeKey Key => _key ??= new(Address, Path, Hash);
 
         public record NodeKey(Hash256? Address, TreePath? Path, Hash256 Hash);
     }

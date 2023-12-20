@@ -475,7 +475,7 @@ namespace Nethermind.Trie
             }
             catch (TrieNodeException e)
             {
-                ThrowMissingTrieNodeException(in traverseContext, path, e);
+                ThrowMissingTrieNodeException(in traverseContext, e);
             }
         }
 
@@ -1182,7 +1182,7 @@ namespace Nethermind.Trie
 
         [DoesNotReturn]
         [StackTraceHidden]
-        private static void ThrowMissingTrieNodeException(in TraverseContext traverseContext, in TreePath path, TrieNodeException e)
+        private static void ThrowMissingTrieNodeException(in TraverseContext traverseContext, TrieNodeException e)
         {
             throw new MissingTrieNodeException(e.Message, e, traverseContext.UpdatePath.ToArray(), traverseContext.CurrentIndex);
         }

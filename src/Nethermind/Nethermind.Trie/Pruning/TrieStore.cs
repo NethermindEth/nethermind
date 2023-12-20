@@ -124,7 +124,7 @@ namespace Nethermind.Trie.Pruning
 
             internal readonly struct Key
             {
-                internal const long MemoryUsage =  8 + 36 + 8; // (address (probably shared), path, keccak pointer (shared with TrieNode))
+                internal const long MemoryUsage = 8 + 36 + 8; // (address (probably shared), path, keccak pointer (shared with TrieNode))
                 public Hash256? Address { get; }
                 public TreePath Path { get; }
                 public Hash256 Keccak { get; }

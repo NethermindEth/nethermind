@@ -825,7 +825,7 @@ namespace Nethermind.Synchronization.FastSync
                                 nodeDataType,
                                 currentStateSyncItem.Level + trieNode.Key!.Length,
                                 CalculateRightness(trieNode.NodeType, currentStateSyncItem, 0))
-                                { ParentBranchChildIndex = currentStateSyncItem.BranchChildIndex },
+                            { ParentBranchChildIndex = currentStateSyncItem.BranchChildIndex },
                             dependentItem,
                             "extension child");
 
