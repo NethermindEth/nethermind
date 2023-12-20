@@ -1,8 +1,6 @@
 name: Build Nethermind packages
 
 on:
-  push:
-    branches: [feature/remove-launcher-build]
   workflow_dispatch:
 
 jobs:
