@@ -299,7 +299,7 @@ namespace Nethermind.Synchronization.FastBlocks
 
         public override Task<HeadersSyncBatch?> PrepareRequest(CancellationToken cancellationToken = default)
         {
-            _resetLock.EnterReadLock();
+            _resetLock.EnterWriteLock();
             try
             {
                 do
@@ -320,10 +320,7 @@ namespace Nethermind.Synchronization.FastBlocks
 
                 if (batch is not null)
                 {
-                    lock (_handlerLock)
-                    {
-                        _sent.Add(batch);
-                    }
+                    _sent.Add(batch);
                     if (batch.StartNumber >= (LowestInsertedBlockHeader?.Number ?? 0) - FastBlocksPriorities.ForHeaders)
                     {
                         batch.Prioritized = true;
@@ -331,12 +328,11 @@ namespace Nethermind.Synchronization.FastBlocks
 
                     LogStateOnPrepare();
                 }
-
                 return Task.FromResult(batch);
             }
             finally
             {
-                _resetLock.ExitReadLock();
+                _resetLock.ExitWriteLock();
             }
         }
 
