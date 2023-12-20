@@ -587,8 +587,13 @@ namespace Nethermind.TxPool.Test
             Block blockB = Build.A.Block.WithNumber(blockNumber).WithTransactions(txsB).TestObject;
             await RaiseBlockAddedToMainAndWaitForTransactions(txsB.Length + txsA.Length, blockB, blockA);
 
-            // tx from block B should be removed from blob pool
+            // tx from block B should be removed from blob pool, but present in processed txs db
             _txPool.TryGetPendingBlobTransaction(txsB[0].Hash!, out _).Should().BeFalse();
+            blobTxStorage.TryGetBlobTransactionsFromBlock(blockNumber, out Transaction[] blockBTxs).Should().BeTrue();
+            txsB.Should().BeEquivalentTo(blockBTxs, options => options
+                .Excluding(t => t.GasBottleneck)    // GasBottleneck is not encoded/decoded...
+                .Excluding(t => t.PoolIndex)        // ...as well as PoolIndex
+                .Excluding(t => t.SenderAddress));  // sender is recovered later, it is not returned from db
 
             // blob txs from reorganized blockA should be readded to blob pool
             _txPool.GetPendingBlobTransactionsCount().Should().Be(txsA.Length);
