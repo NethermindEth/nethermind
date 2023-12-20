@@ -184,4 +184,30 @@ public struct TreePath
     {
         return $"{Length} {Path}";
     }
+
+    public static bool operator ==(in TreePath left, in TreePath right)
+    {
+        return left.Equals(right);
+    }
+
+    public static bool operator !=(TreePath left, TreePath right)
+    {
+        return !(left == right);
+    }
+
+    public bool Equals(TreePath other)
+    {
+        return Path.Equals(other.Path) && Length == other.Length;
+    }
+
+    public override bool Equals(object? obj)
+    {
+        return obj is TreePath other && Equals(other);
+    }
+
+    public override int GetHashCode()
+    {
+        return HashCode.Combine(Path, Length);
+    }
+
 }
