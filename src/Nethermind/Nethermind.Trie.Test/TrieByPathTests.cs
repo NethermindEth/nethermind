@@ -748,7 +748,7 @@ public class TrieByPathTests
     [TestCase("0x0a010b02", "0x0a010b020c030e06", "0x0a010b020f0f0f0f", new string[] { "0x0a010b020c", "0x0a010b020c03" })] //Leaf a1b2 -> a1b2c3e6 | Leaf: a1b2 -> a1b2ffff
     public void Request_deletion_for_leaf(string leafPointer, string oldLeaf, string newLeaf, string[] oldData)
     {
-        ByPathStateMemDb stateDb = new ByPathStateMemDb();
+        ByPathStateMemDb stateDb = new ByPathStateMemDb(_logManager);
         using TrieStoreByPath trieStore = new(stateDb, _logManager);
         MemDb db = stateDb.GetColumnDb(StateColumns.State) as MemDb;
 
@@ -792,7 +792,7 @@ public class TrieByPathTests
     [Test]
     public void Request_deletion_for_extension()
     {
-        ByPathStateMemDb stateDb = new ByPathStateMemDb();
+        ByPathStateMemDb stateDb = new ByPathStateMemDb(_logManager);
         using TrieStoreByPath trieStore = new(stateDb, _logManager);
 
         byte[] data = new byte[4] { 1, 2, 3, 4 };
@@ -838,7 +838,7 @@ public class TrieByPathTests
     [Test]
     public void Request_deletion_for_branch()
     {
-        ByPathStateMemDb stateDb = new ByPathStateMemDb();
+        ByPathStateMemDb stateDb = new ByPathStateMemDb(_logManager);
         using TrieStoreByPath trieStore = new(stateDb, _logManager);
 
         byte[] data = new byte[4] { 1, 2, 3, 4 };
@@ -902,7 +902,7 @@ public class TrieByPathTests
     [TestCase("0x00", new byte[] { 3, 6 }, new byte[] { 1, 4, 10 })]
     public void Request_deletion_for_branch_2(string branchPath, byte[] existingChildren, byte[] deletedChildren)
     {
-        ByPathStateMemDb stateDb = new ByPathStateMemDb();
+        ByPathStateMemDb stateDb = new ByPathStateMemDb(_logManager);
         using TrieStoreByPath trieStore = new(stateDb, _logManager);
         MemDb db = stateDb.GetColumnDb(StateColumns.State) as MemDb;
 
