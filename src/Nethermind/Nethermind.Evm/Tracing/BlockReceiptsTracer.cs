@@ -47,20 +47,20 @@ public class BlockReceiptsTracer : IBlockTracer, ITxTracer, IJournal<int>, ITxTr
         }
     }
 
-    public void MarkAsFailed(Address recipient, long gasSpent, byte[] output, string error, Hash256? stateRoot = null, ulong? depositNonce = null, ulong? depositReceiptVersion = null)
+    public void MarkAsFailed(Address recipient, long gasSpent, byte[] output, string error, Hash256? stateRoot = null)
     {
         _txReceipts.Add(BuildFailedReceipt(recipient, gasSpent, error, stateRoot));
 
         // hacky way to support nested receipt tracers
         if (_otherTracer is ITxTracer otherTxTracer)
         {
-            otherTxTracer.MarkAsFailed(recipient, gasSpent, output, error, stateRoot, depositNonce, depositReceiptVersion);
+            otherTxTracer.MarkAsFailed(recipient, gasSpent, output, error, stateRoot);
         }
 
         if (_currentTxTracer.IsTracingReceipt)
         {
             // TODO: is no stateRoot a bug?
-            _currentTxTracer.MarkAsFailed(recipient, gasSpent, output, error, null, depositNonce, depositReceiptVersion);
+            _currentTxTracer.MarkAsFailed(recipient, gasSpent, output, error, null);
         }
     }
 

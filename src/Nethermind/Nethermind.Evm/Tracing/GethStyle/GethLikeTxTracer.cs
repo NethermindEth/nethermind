@@ -34,7 +34,7 @@ public abstract class GethLikeTxTracer : TxTracer
         Trace.ReturnValue = output;
     }
 
-    public override void MarkAsFailed(Address recipient, long gasSpent, byte[]? output, string error, Hash256? stateRoot = null, ulong? depositNonce = null, ulong? depositReceiptVersion = null)
+    public override void MarkAsFailed(Address recipient, long gasSpent, byte[]? output, string error, Hash256? stateRoot = null)
     {
         Trace.Failed = true;
         Trace.ReturnValue = output ?? Array.Empty<byte>();
