@@ -13,6 +13,8 @@ namespace Nethermind.Trie.Pruning;
 /// </summary>
 public interface IScopedTrieStore : ITrieNodeResolver, IDisposable
 {
+    // TODO: Commit and FinishBlockCommit is unnecessary. Geth just compile the changes and return it in a batch,
+    // which get committed in a single call.
     void CommitNode(long blockNumber, NodeCommitInfo nodeCommitInfo, WriteFlags writeFlags = WriteFlags.None);
 
     void FinishBlockCommit(TrieType trieType, long blockNumber, TrieNode? root, WriteFlags writeFlags = WriteFlags.None);

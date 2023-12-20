@@ -53,17 +53,17 @@ namespace Nethermind.Trie.Pruning
 
         public IScopedTrieStore GetTrieStore(Hash256? address)
         {
-            return new ReadOnlyStorageTrieStore(this, address);
+            return new ScopedReadOnlyTrieStore(this, address);
         }
 
         public void Dispose() { }
 
-        private class ReadOnlyStorageTrieStore : IScopedTrieStore
+        private class ScopedReadOnlyTrieStore : IScopedTrieStore
         {
             private readonly ReadOnlyTrieStore _trieStoreImplementation;
             private readonly Hash256? _address;
 
-            public ReadOnlyStorageTrieStore(ReadOnlyTrieStore fullTrieStore, Hash256? address)
+            public ScopedReadOnlyTrieStore(ReadOnlyTrieStore fullTrieStore, Hash256? address)
             {
                 _trieStoreImplementation = fullTrieStore;
                 _address = address;
@@ -82,7 +82,7 @@ namespace Nethermind.Trie.Pruning
             public ITrieNodeResolver GetStorageTrieNodeResolver(Hash256? address)
             {
                 if (address == _address) return this;
-                return new ReadOnlyStorageTrieStore(_trieStoreImplementation, address);
+                return new ScopedReadOnlyTrieStore(_trieStoreImplementation, address);
             }
 
             public INodeStorage.KeyScheme Scheme => _trieStoreImplementation.Scheme;
