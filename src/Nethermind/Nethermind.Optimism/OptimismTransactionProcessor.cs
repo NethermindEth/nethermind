@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
@@ -45,24 +44,6 @@ public class OptimismTransactionProcessor : TransactionProcessor
         }
 
         base.Execute(tx, blCtx, tracer, opts);
-    }
-
-    protected override void TraceReceiptFailure(ITxTracer tracer, Transaction tx, BlockHeader header, Address executingAccount, long spentGas, byte[] output, string error, IReleaseSpec spec)
-    {
-        // TODO: tx.Sender == executingAccount?
-        if (tracer.IsTracingReceipt)
-        {
-            tracer.MarkAsFailed(executingAccount, spentGas, output, error, null);
-        }
-    }
-
-    protected override void TraceReceiptSuccess(ITxTracer tracer, Transaction tx, BlockHeader header, Address executingAccount, long spentGas, byte[] output, LogEntry[] logs, IReleaseSpec spec)
-    {
-        // TODO: tx.Sender == executingAccount?
-        if (tracer.IsTracingReceipt)
-        {
-            tracer.MarkAsSuccess(executingAccount, spentGas, output, logs, null);
-        }
     }
 
     protected override bool ValidateStatic(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer, ExecutionOptions opts,
