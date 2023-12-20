@@ -160,7 +160,6 @@ namespace Nethermind.Synchronization.SnapSync
             // very-very unlikely), we want `moreChildrenToRight` to return true.
             bool noLimit = limitHash == ValueKeccak.MaxValue;
 
-            // TODO: Try TreePath for path
             Stack<(TrieNode parent, TrieNode node, int pathIndex, List<byte> path)> proofNodesToProcess = new();
 
             tree.RootRef = root;
@@ -184,7 +183,7 @@ namespace Nethermind.Synchronization.SnapSync
                             pathIndex += node.Key.Length;
                             path.AddRange(node.Key);
                             proofNodesToProcess.Push((node, child, pathIndex, path));
-                            sortedBoundaryList.Add((child, TreePath.FromNibble(path.ToArray())));
+                            sortedBoundaryList.Add((child, TreePath.FromNibble(CollectionsMarshal.AsSpan(path))));
                         }
                         else
                         {
@@ -241,7 +240,7 @@ namespace Nethermind.Synchronization.SnapSync
                                 };
 
                                 proofNodesToProcess.Push((node, child, pathIndex, newPath));
-                                sortedBoundaryList.Add((child, TreePath.FromNibble(newPath.ToArray())));
+                                sortedBoundaryList.Add((child, TreePath.FromNibble(CollectionsMarshal.AsSpan(newPath))));
                             }
                         }
                     }

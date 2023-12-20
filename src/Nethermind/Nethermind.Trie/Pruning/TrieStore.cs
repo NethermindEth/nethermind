@@ -192,6 +192,7 @@ namespace Nethermind.Trie.Pruning
             _pruningStrategy = pruningStrategy ?? throw new ArgumentNullException(nameof(pruningStrategy));
             _persistenceStrategy = persistenceStrategy ?? throw new ArgumentNullException(nameof(persistenceStrategy));
             _dirtyNodes = new DirtyNodesCache(this);
+            _publicStore = new TrieKeyValueStore(this);
         }
 
         public IScopedTrieStore GetTrieStore(Hash256? address)
@@ -611,6 +612,8 @@ namespace Nethermind.Trie.Pruning
 
         protected readonly INodeStorage _nodeStorage;
 
+        private readonly TrieKeyValueStore _publicStore;
+
         private readonly IPruningStrategy _pruningStrategy;
 
         private readonly IPersistenceStrategy _persistenceStrategy;
@@ -873,15 +876,15 @@ namespace Nethermind.Trie.Pruning
         private byte[]? GetByHash(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
         {
             return _pruningStrategy.PruningEnabled
-                   && _dirtyNodes.AllNodes.TryGetValue(new DirtyNodesCache.Key(null, TreePath.Empty, new Hash256(key)), out TrieNode? entry)
-                   && entry is not null
-                   && entry.NodeType != NodeType.Unknown
-                   && entry.FullRlp.IsNotNull
-                ? entry.FullRlp.ToArray()
+                   && _dirtyNodes.AllNodes.TryGetValue(new DirtyNodesCache.Key(null, TreePath.Empty, new Hash256(key)), out TrieNode? trieNode)
+                   && trieNode is not null
+                   && trieNode.NodeType != NodeType.Unknown
+                   && trieNode.FullRlp.IsNotNull
+                ? trieNode.FullRlp.ToArray()
                 : _nodeStorage.GetByHash(key, flags);
         }
 
-        public IReadOnlyKeyValueStore TrieNodeRlpStore => new TrieKeyValueStore(this);
+        public IReadOnlyKeyValueStore TrieNodeRlpStore => _publicStore;
 
         public void Set(Hash256? address, in TreePath path, in ValueHash256 keccak, byte[] rlp)
         {
