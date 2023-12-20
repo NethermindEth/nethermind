@@ -276,17 +276,16 @@ namespace Nethermind.Synchronization.Test.FastSync
 
                     if (_filter is null || _filter.Contains(item))
                     {
-                        byte[]? response = _codeDb[item.Bytes];
+                        byte[]? response = _codeDb[item.Bytes] ?? _stateDb[item.Bytes];
                         if (response == null)
                         {
-                            // Hack through it
+                            // Well, patricia tree can't get the rlp of node yet. So can't really make a correct snap sync implementation.
                             foreach (KeyValuePair<byte[], byte[]?> keyValuePair in _stateDb.GetAll())
                             {
-                                if (Bytes.AreEqual(item.Bytes, keyValuePair.Key.AsSpan()[^32..]))
-                                {
-                                    response = keyValuePair.Value;
-                                    break;
-                                }
+                                if (!Bytes.AreEqual(item.Bytes, keyValuePair.Key.AsSpan()[^32..])) continue;
+
+                                response = keyValuePair.Value;
+                                break;
                             }
                         }
                         responses[i] = response!;
