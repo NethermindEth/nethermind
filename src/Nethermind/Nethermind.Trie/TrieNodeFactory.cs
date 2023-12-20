@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Reflection.Metadata;
 using Nethermind.Core.Buffers;
 
 namespace Nethermind.Trie
@@ -32,8 +31,8 @@ namespace Nethermind.Trie
         public static TrieNode CreateExtension(byte[] path, TrieNode child)
         {
             TrieNode node = new(NodeType.Extension);
-            node.Key = path;
             node.SetChild(0, child);
+            node.Key = path;
             return node;
         }
     }

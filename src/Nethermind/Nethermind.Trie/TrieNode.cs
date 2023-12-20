@@ -3,7 +3,6 @@
 
 using System;
 using System.ComponentModel;
-using System.IO;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using Nethermind.Core;
@@ -524,7 +523,6 @@ namespace Nethermind.Trie
         {
             if (IsExtension)
             {
-                // Should be just extension
                 return currentPath.Append(Key);
             }
             else
@@ -537,7 +535,6 @@ namespace Nethermind.Trie
         {
             if (IsExtension)
             {
-                // Should be just extension
                 currentPath.AppendMut(Key);
             }
             else
@@ -565,8 +562,10 @@ namespace Nethermind.Trie
             }
             else if (childOrRef is Hash256 reference)
             {
-                TreePath childPath = GetChildPath(currentPath, childIndex);
-                child = tree.FindCachedOrUnknown(childPath, reference);
+                int currentPathLength = currentPath.Length;
+                GetChildPathMut(ref currentPath, childIndex);
+                child = tree.FindCachedOrUnknown(currentPath, reference);
+                currentPath.TruncateMut(currentPathLength);
             }
             else
             {
@@ -607,10 +606,8 @@ namespace Nethermind.Trie
             }
 
             InitData();
-
             int index = IsExtension ? i + 1 : i;
             _data![index] = node ?? _nullNode;
-
             Keccak = null;
         }
 
@@ -779,10 +776,17 @@ namespace Nethermind.Trie
                 {
                     if (logger.IsTrace) logger.Trace($"Persist recursively on storage root {_storageRoot} of {this}");
                     TreePath storagePath = currentPath.Append(Key);
-                    if (storagePath.Length != 64) throw new Exception("unexpected storage length");
+                    if (storagePath.Length != 64) throw new Exception("unexpected storage path length. Total nibble count should add up to 64.");
 
+                    Hash256 storagePathAddr = storagePath.Path.ToCommitment();
                     TreePath emptyPath = TreePath.Empty;
-                    storageRoot!.CallRecursively(action, storagePath.Path.ToCommitment(), ref emptyPath, resolver.GetStorageTrieNodeResolver(storagePath.Path.ToCommitment()), skipPersisted, logger);
+                    storageRoot!.CallRecursively(
+                        action,
+                        storagePathAddr,
+                        ref emptyPath,
+                        resolver.GetStorageTrieNodeResolver(storagePathAddr),
+                        skipPersisted,
+                        logger);
                 }
             }
 
@@ -967,7 +971,6 @@ namespace Nethermind.Trie
                             {
                                 rlpStream.Position--;
                                 Span<byte> fullRlp = rlpStream.PeekNextItem();
-
                                 TrieNode child = new(NodeType.Unknown, fullRlp.ToArray());
                                 _data![i] = childOrRef = child;
                                 break;

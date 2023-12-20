@@ -22,16 +22,6 @@ namespace Nethermind.Synchronization.FastSync
             Rightness = rightness;
         }
 
-        public StateSyncItem(StateSyncItem original, NodeDataType nodeDataType)
-        {
-            Hash = original.Hash;
-            AccountPathNibbles = original.AccountPathNibbles;
-            PathNibbles = original.PathNibbles;
-            NodeDataType = nodeDataType;
-            Level = original.Level;
-            Rightness = original.Rightness;
-        }
-
         public Hash256 Hash { get; }
 
         /// <summary>
@@ -58,17 +48,14 @@ namespace Nethermind.Synchronization.FastSync
 
         public bool IsRoot => Level == 0 && NodeDataType == NodeDataType.State;
 
-        public TreePath Path => TreePath.FromNibble(PathNibbles);
+        private TreePath? _treePath = null;
+        public TreePath Path => _treePath ??= TreePath.FromNibble(PathNibbles);
 
-        public Hash256? Address => (AccountPathNibbles?.Length ?? 0) != 0 ? new Hash256(Nibbles.ToBytes(AccountPathNibbles)) : null;
+        private Hash256? _address = null;
+        public Hash256? Address => (AccountPathNibbles?.Length ?? 0) != 0 ? (_address ??= new Hash256(Nibbles.ToBytes(AccountPathNibbles))) : null;
 
-        public NodeKey Key
-        {
-            get
-            {
-                return new NodeKey(Address, Path, Hash);
-            }
-        }
+        private NodeKey? _key = null;
+        public NodeKey Key => _key??= new(Address, Path, Hash);
 
         public record NodeKey(Hash256? Address, TreePath? Path, Hash256 Hash);
     }

@@ -48,7 +48,7 @@ namespace Nethermind.Trie.Pruning
                 }
                 else
                 {
-                    trieNode = new TrieNode(NodeType.Unknown, key.Keccak.ToCommitment());
+                    trieNode = new TrieNode(NodeType.Unknown, key.Keccak);
                     if (_trieStore._logger.IsTrace) _trieStore._logger.Trace($"Creating new node {trieNode}");
                     SaveInCache(key, trieNode);
                 }
@@ -65,19 +65,19 @@ namespace Nethermind.Trie.Pruning
                     {
                         // // this happens in SyncProgressResolver
                         // throw new InvalidAsynchronousStateException("Read only trie store is trying to read a transient node.");
-                        return new TrieNode(NodeType.Unknown, key.Keccak.ToCommitment());
+                        return new TrieNode(NodeType.Unknown, key.Keccak);
                     }
 
                     // we returning a copy to avoid multithreaded access
-                    trieNode = new TrieNode(NodeType.Unknown, key.Keccak.ToCommitment(), trieNode.FullRlp);
+                    trieNode = new TrieNode(NodeType.Unknown, key.Keccak, trieNode.FullRlp);
                     trieNode.ResolveNode(_trieStore.GetTrieStore(key.Address), key.Path);
-                    trieNode.Keccak = key.Keccak.ToCommitment();
+                    trieNode.Keccak = key.Keccak;
 
                     Metrics.LoadedFromCacheNodesCount++;
                 }
                 else
                 {
-                    trieNode = new TrieNode(NodeType.Unknown, key.Keccak.ToCommitment());
+                    trieNode = new TrieNode(NodeType.Unknown, key.Keccak);
                 }
 
                 if (_trieStore._logger.IsTrace) _trieStore._logger.Trace($"Creating new node {trieNode}");
@@ -124,12 +124,12 @@ namespace Nethermind.Trie.Pruning
 
             internal readonly struct Key
             {
-                internal const long MemoryUsage =  8 + 36 + 32; // (address (probably shared), path, keccak)
+                internal const long MemoryUsage =  8 + 36 + 8; // (address (probably shared), path, keccak pointer (shared with TrieNode))
                 public Hash256? Address { get; }
                 public TreePath Path { get; }
-                public ValueHash256 Keccak { get; }
+                public Hash256 Keccak { get; }
 
-                public Key(Hash256? address, in TreePath path, ValueHash256 keccak)
+                public Key(Hash256? address, in TreePath path, Hash256 keccak)
                 {
                     Address = address;
                     Path = path;
@@ -564,7 +564,6 @@ namespace Nethermind.Trie.Pruning
                             throw new InvalidOperationException($"Persisted {node} {newKeccak} != {keccak}");
                         }
                     }
-
                     _dirtyNodes.Remove(key);
 
                     Metrics.PrunedPersistedNodesCount++;
@@ -846,7 +845,7 @@ namespace Nethermind.Trie.Pruning
                     Hash256? hash = n.Keccak;
                     if (hash is not null)
                     {
-                        store.Set(address, path, hash, n.FullRlp.ToArray(), WriteFlags.None);
+                        store.Set(address, path, hash, n.FullRlp.ToArray());
                         int persistedNodesCount = Interlocked.Increment(ref persistedNodes);
                         if (_logger.IsInfo && persistedNodesCount % million == 0)
                         {

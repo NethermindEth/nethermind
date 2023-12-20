@@ -46,7 +46,7 @@ namespace Nethermind.Trie
 
         private readonly ConcurrentQueue<NodeCommitInfo>? _currentCommit;
 
-        public IScopedTrieStore TrieStore { get; set; }
+        public IScopedTrieStore TrieStore { get; }
         public ICappedArrayPool? _bufferPool;
 
         private readonly bool _parallelBranches;
@@ -435,8 +435,8 @@ namespace Nethermind.Trie
             if (startRootHash is not null)
             {
                 if (_logger.IsTrace) _logger.Trace($"Starting from {startRootHash} - {traverseContext.ToString()}");
-                TrieNode startNode = TrieStore.FindCachedOrUnknown(TreePath.Empty, startRootHash);
                 TreePath startingPath = TreePath.Empty;
+                TrieNode startNode = TrieStore.FindCachedOrUnknown(startingPath, startRootHash);
                 ResolveNode(startNode, startingPath, in traverseContext);
                 result = TraverseNode(startNode, ref startingPath, in traverseContext);
             }
@@ -457,9 +457,9 @@ namespace Nethermind.Trie
                 }
                 else
                 {
-                    ResolveNode(RootRef, TreePath.Empty, in traverseContext);
-                    if (_logger.IsTrace) _logger.Trace($"{traverseContext.ToString()}");
                     TreePath startingPath = TreePath.Empty;
+                    ResolveNode(RootRef, startingPath, in traverseContext);
+                    if (_logger.IsTrace) _logger.Trace($"{traverseContext.ToString()}");
                     result = TraverseNode(RootRef, ref startingPath, in traverseContext);
                 }
             }
@@ -758,10 +758,11 @@ namespace Nethermind.Trie
                 return traverseContext.UpdateValue;
             }
 
-            TrieNode childNode = node.GetChild(TrieStore, ref path, traverseContext.UpdatePath[traverseContext.CurrentIndex]);
+            int childIdx = traverseContext.UpdatePath[traverseContext.CurrentIndex];
+            TrieNode childNode = node.GetChild(TrieStore, ref path, childIdx);
             if (traverseContext.IsUpdate)
             {
-                _nodeStack.Push(new StackedNode(node, traverseContext.CurrentIndex, traverseContext.UpdatePath[traverseContext.CurrentIndex]));
+                _nodeStack.Push(new StackedNode(node, traverseContext.CurrentIndex, childIdx));
             }
 
             if (childNode is null)
@@ -793,7 +794,7 @@ namespace Nethermind.Trie
             TrieNode nextNode = childNode;
 
             int originalPathLength = path.Length;
-            node.GetChildPathMut(ref path, traverseContext.UpdatePath[traverseContext.CurrentIndex]);
+            node.GetChildPathMut(ref path, childIdx);
 
             CappedArray<byte> res = TraverseNext(in traverseContext, 1, nextNode, ref path);
 
@@ -964,8 +965,8 @@ namespace Nethermind.Trie
             }
             else
             {
-                byte[] remainingKey = remaining.Slice(extensionLength + 1, remaining.Length - extensionLength - 1).ToArray();
-                TrieNode shortLeaf = TrieNodeFactory.CreateLeaf(remainingKey, traverseContext.UpdateValue);
+                byte[] remainingPath = remaining.Slice(extensionLength + 1, remaining.Length - extensionLength - 1).ToArray();
+                TrieNode shortLeaf = TrieNodeFactory.CreateLeaf(remainingPath, traverseContext.UpdateValue);
                 branch.SetChild(remaining[extensionLength], shortLeaf);
             }
 
@@ -1144,7 +1145,7 @@ namespace Nethermind.Trie
             else
             {
                 TreePath emptyPath = TreePath.Empty;
-                rootRef?.Accept(visitor, resolver, ref emptyPath, trieVisitContext);
+                rootRef?.Accept(visitor, TrieStore, ref emptyPath, trieVisitContext);
             }
         }
 
@@ -1183,7 +1184,7 @@ namespace Nethermind.Trie
         [StackTraceHidden]
         private static void ThrowMissingTrieNodeException(in TraverseContext traverseContext, in TreePath path, TrieNodeException e)
         {
-            throw new MissingTrieNodeException($"{e.Message} {path}", e, traverseContext.UpdatePath.ToArray(), traverseContext.CurrentIndex);
+            throw new MissingTrieNodeException(e.Message, e, traverseContext.UpdatePath.ToArray(), traverseContext.CurrentIndex);
         }
     }
 }

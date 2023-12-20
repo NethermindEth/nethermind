@@ -293,10 +293,13 @@ namespace Nethermind.Trie
                                 {
                                     int originalPathLength = path.Length;
                                     path.AppendMut(Key);
+
                                     Hash256 storageAccount = path.Path.ToCommitment();
-                                    TreePath emptyPath = TreePath.Empty;
                                     trieVisitContext.Storage = storageAccount;
+
+                                    TreePath emptyPath = TreePath.Empty;
                                     storageRoot!.Accept(visitor, nodeResolver.GetStorageTrieNodeResolver(storageAccount), ref emptyPath, trieVisitContext);
+
                                     path.TruncateMut(originalPathLength);
                                     trieVisitContext.Storage = null;
                                 }
