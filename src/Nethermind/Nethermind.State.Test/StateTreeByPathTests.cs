@@ -852,7 +852,9 @@ namespace Nethermind.Store.Test
             Assert.That(innerStateDb.ReadsCount, Is.EqualTo(2));
 
             //latest persisted block was 2, so we don't have history at block 1
-            Assert.That(() => tree.Get(TestItem.AddressA, root_1), Throws.TypeOf<InvalidOperationException>());
+            //node tree is not checking this - need to call HasStateForRoot
+            StateReader sr = new StateReader(pathStore, new MemDb(), logManager);
+            Assert.That(sr.HasStateForRoot(root_1), Is.False);
         }
 
         [Test]
@@ -898,8 +900,8 @@ namespace Nethermind.Store.Test
             //both reads from cache
             Assert.That(innerStateDb.ReadsCount, Is.EqualTo(expectedReads));
 
-            //can return for root_0 as it's the last persisted - both reads from cache
-            expectedReads += 2 * 2;
+            //can return for root_0 as it's the last persisted - both reads from db
+            expectedReads += 2;
             Assert.That(tree.Get(TestItem.AddressA, root_0).Balance, Is.EqualTo((UInt256)100));
             Assert.That(tree.Get(TestItem.AddressB, root_0).Balance, Is.EqualTo((UInt256)200));
             Assert.That(innerStateDb.ReadsCount, Is.EqualTo(expectedReads));

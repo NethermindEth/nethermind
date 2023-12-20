@@ -118,7 +118,7 @@ public class TestBlockchain : IDisposable
         SpecProvider = CreateSpecProvider(specProvider ?? MainnetSpecProvider.Instance);
         EthereumEcdsa = new EthereumEcdsa(SpecProvider.ChainId, LogManager);
         DbProvider = await CreateDbProvider();
-        TrieStore = usePathStateDb ? new TrieStoreByPath(PathStateDb, LogManager) : new TrieStore(StateDb, LogManager);
+        TrieStore = usePathStateDb ? new TrieStoreByPath(PathStateDb, ByPathPersist.IfBlockOlderThan(64), LogManager) : new TrieStore(StateDb, LogManager);
 
         State = new WorldState(TrieStore, DbProvider.CodeDb, LogManager);
 

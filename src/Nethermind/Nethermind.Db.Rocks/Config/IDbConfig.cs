@@ -176,6 +176,9 @@ public interface IDbConfig : IConfig
     int StateDbTargetFileSizeMultiplier { get; set; }
     IDictionary<string, string>? StateDbAdditionalRocksDbOptions { get; set; }
 
+    int? PathStateStateDbBlockSize { get; set; }
+    int? PathStateStorageDbBlockSize { get; set; }
+
     /// <summary>
     /// Enables DB Statistics - https://github.com/facebook/rocksdb/wiki/Statistics
     /// It can has a RocksDB perfomance hit between 5 and 10%.

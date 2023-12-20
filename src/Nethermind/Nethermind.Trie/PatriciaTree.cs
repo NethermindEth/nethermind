@@ -466,34 +466,21 @@ namespace Nethermind.Trie
                 return null;
 
             // if not in cached nodes - then check persisted nodes
+            // TODO - when rootHash is overriden should check if it is safe to get value from DB as it might have modifications made after the block of rootHash
+            // eth_call will check this by calling HasStateForRoot - need to ensure all calls do that
             if (node.NodeType == NodeType.Unknown)
             {
-                //check the root of the persisted nodes
-                if (rootHash is not null)
-                {
-                    Hash256? persistedRootHash;
-                    if (RootRef?.IsPersisted == true && RootRef?.NodeType == NodeType.Unknown)
-                    {
-                        RootRef.ResolveNode(TrieStore);
-                        RootRef.ResolveKey(TrieStore, true);
-                        persistedRootHash = RootRef.Keccak;
-                    }
-                    else
-                    {
-                        persistedRootHash = GetPersistedRoot();
-                    }
-
-                    if (rootHash != persistedRootHash)
-                        throw new InvalidOperationException($"Attempting to get data for state having different root than persisted. Trie type: {TrieType} | Data requested: {rawKey.ToHexString()} | Root requested: {rootHash} | Root at DB: {RootRef?.Keccak}");
-                }
-
                 byte[]? nodeData = TrieStore.TryLoadRlp(nibbleBytes, null);
                 if (nodeData is null) return null;
 
-                node = new TrieNode(NodeType.Unknown, nodeData);
-                node.ResolveNode(TrieStore);
-
                 diagData.LoadedFromDb = true;
+                RlpStream rlpStream = nodeData.AsRlpStream();
+
+                rlpStream.ReadSequenceLength();
+                rlpStream.DecodeByteArraySpan();
+                ReadOnlySpan<byte> valueSpan = rlpStream.DecodeByteArraySpan();
+
+                return valueSpan.ToArray();
             }
 
             return node.Value.ToArray();
