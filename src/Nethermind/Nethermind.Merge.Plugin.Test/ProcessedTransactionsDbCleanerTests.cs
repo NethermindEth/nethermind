@@ -54,7 +54,10 @@ public class ProcessedTransactionsDbCleanerTests
             new FinalizeEventArgs(Build.A.BlockHeader.TestObject,
                 Build.A.BlockHeader.WithNumber(finalizedBlock).TestObject));
 
-        Thread.Sleep(100);
+        while (dbCleaner.LastFinalizedBlock == 0L)
+        {
+            Thread.Sleep(10);
+        }
 
         blobTxStorage.TryGetBlobTransactionsFromBlock(blockOfTxs, out returnedTxs).Should().Be(blockOfTxs > finalizedBlock);
     }
