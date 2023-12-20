@@ -559,7 +559,7 @@ namespace Nethermind.Trie.Pruning
                     {
                         TreePath path2 = key.Path;
                         Hash256? newKeccak = node.GenerateKey(this.GetTrieStore(key.Address), ref path2, isRoot: true);
-                        if (newKeccak != keccak)
+                        if (newKeccak != key.Keccak)
                         {
                             throw new InvalidOperationException($"Persisted {node} {newKeccak} != {keccak}");
                         }
@@ -670,7 +670,7 @@ namespace Nethermind.Trie.Pruning
 
                 Stopwatch stopwatch = Stopwatch.StartNew();
                 TreePath path = TreePath.Empty;
-                commitSet.Root?.CallRecursively(PersistNode, null, ref path, GetTrieStore(null), true, _logger);
+                commitSet.Root?.CallRecursively(PersistNode, address, ref path, GetTrieStore(null), true, _logger);
                 stopwatch.Stop();
                 Metrics.SnapshotPersistenceTime = stopwatch.ElapsedMilliseconds;
 
