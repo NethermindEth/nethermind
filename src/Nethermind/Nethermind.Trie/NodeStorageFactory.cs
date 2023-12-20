@@ -11,29 +11,33 @@ namespace Nethermind.Trie;
 public class NodeStorageFactory : INodeStorageFactory
 {
     private readonly INodeStorage.KeyScheme _preferredKeyScheme;
+    private INodeStorage.KeyScheme? _currentKeyScheme;
 
     public NodeStorageFactory(INodeStorage.KeyScheme preferredKeyScheme)
     {
         _preferredKeyScheme = preferredKeyScheme;
+        _currentKeyScheme = null;
     }
 
-    public INodeStorage WrapKeyValueStore(IKeyValueStore keyValueStore)
+    public void DetectCurrentKeySchemeFrom(IDb mainStateDb)
     {
-        INodeStorage.KeyScheme keyScheme = DetectKeyScheme(keyValueStore) ?? _preferredKeyScheme;
-        return new NodeStorage(keyValueStore, keyScheme);
+        _currentKeyScheme = DetectKeyScheme(mainStateDb);
     }
 
-    private static INodeStorage.KeyScheme? DetectKeyScheme(IKeyValueStore keyValueStore)
+    public INodeStorage WrapKeyValueStore(IKeyValueStore keyValueStore, bool forceUsePreferredKeyScheme = false)
     {
-        if (keyValueStore is not IDb asDb) return null;
+        return new NodeStorage(keyValueStore, _currentKeyScheme ?? _preferredKeyScheme);
+    }
 
+    private static INodeStorage.KeyScheme? DetectKeyScheme(IDb db)
+    {
         // Sample 20 keys
         // If most of them have length == 32, they are hash db.
         // Otherwise, its probably halfpath
 
         int total = 0;
         int keyOfLength32 = 0;
-        foreach (KeyValuePair<byte[], byte[]?> keyValuePair in asDb.GetAll().Take(20))
+        foreach (KeyValuePair<byte[], byte[]?> keyValuePair in db.GetAll().Take(20))
         {
             total++;
             if (keyValuePair.Key.Length == 32)

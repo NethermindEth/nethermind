@@ -74,9 +74,8 @@ public class InitializeStateDb : IStep
             setApi.WitnessRepository = NullWitnessCollector.Instance;
         }
 
-        IKeyValueStore codeDb = getApi.DbProvider.CodeDb
-            .WitnessedBy(witnessCollector);
-
+        _api.NodeStorageFactory.DetectCurrentKeySchemeFrom(getApi.DbProvider.StateDb);
+        IKeyValueStore codeDb = getApi.DbProvider.CodeDb.WitnessedBy(witnessCollector);
         IKeyValueStoreWithBatching stateWitnessedBy = getApi.DbProvider.StateDb.WitnessedBy(witnessCollector);
         IPersistenceStrategy persistenceStrategy;
         IPruningStrategy pruningStrategy;

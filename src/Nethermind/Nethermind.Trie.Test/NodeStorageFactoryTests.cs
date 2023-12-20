@@ -3,12 +3,9 @@
 
 using System;
 using FluentAssertions;
-using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
-using Nethermind.Trie.Pruning;
 using NUnit.Framework;
 
 namespace Nethermind.Trie.Test;
@@ -27,6 +24,7 @@ public class NodeStorageFactoryTests
         }
 
         NodeStorageFactory nodeStorageFactory = new NodeStorageFactory(preferredKeyScheme);
+        nodeStorageFactory.DetectCurrentKeySchemeFrom(memDb);
         nodeStorageFactory.WrapKeyValueStore(memDb).Scheme.Should().Be(INodeStorage.KeyScheme.Hash);
     }
 
@@ -47,6 +45,7 @@ public class NodeStorageFactoryTests
         }
 
         NodeStorageFactory nodeStorageFactory = new NodeStorageFactory(preferredKeyScheme);
+        nodeStorageFactory.DetectCurrentKeySchemeFrom(memDb);
         nodeStorageFactory.WrapKeyValueStore(memDb).Scheme.Should().Be(INodeStorage.KeyScheme.HalfPath);
     }
 
@@ -62,41 +61,7 @@ public class NodeStorageFactoryTests
         }
 
         NodeStorageFactory nodeStorageFactory = new NodeStorageFactory(preferredKeyScheme);
+        nodeStorageFactory.DetectCurrentKeySchemeFrom(memDb);
         nodeStorageFactory.WrapKeyValueStore(memDb).Scheme.Should().Be(preferredKeyScheme);
-    }
-
-    [TestCase(INodeStorage.KeyScheme.Hash)]
-    [TestCase(INodeStorage.KeyScheme.HalfPath)]
-    public void When_KVStoreIsNotDb_Then_UsePreferredKeyScheme(INodeStorage.KeyScheme preferredKeyScheme)
-    {
-        IKeyValueStore memDb = new JustKvStore(new MemDb());
-        for (int i = 0; i < 5; i++)
-        {
-            Hash256 hash = Keccak.Compute(i.ToBigEndianByteArray());
-            memDb[hash.Bytes] = hash.Bytes.ToArray();
-        }
-
-        NodeStorageFactory nodeStorageFactory = new NodeStorageFactory(preferredKeyScheme);
-        nodeStorageFactory.WrapKeyValueStore(memDb).Scheme.Should().Be(preferredKeyScheme);
-    }
-
-    private class JustKvStore : IKeyValueStore
-    {
-        private IKeyValueStore _keyValueStoreImplementation;
-
-        public JustKvStore(IKeyValueStore keyValueStoreImplementation)
-        {
-            _keyValueStoreImplementation = keyValueStoreImplementation;
-        }
-
-        public byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
-        {
-            return _keyValueStoreImplementation.Get(key, flags);
-        }
-
-        public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None)
-        {
-            _keyValueStoreImplementation.Set(key, value, flags);
-        }
     }
 }

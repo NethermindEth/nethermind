@@ -221,7 +221,7 @@ namespace Nethermind.Blockchain.FullPruning
                     writeFlags |= WriteFlags.LowPriority;
                 }
 
-                INodeStorage nodeStorage = _nodeStorageFactory.WrapKeyValueStore(pruning);
+                INodeStorage nodeStorage = _nodeStorageFactory.WrapKeyValueStore(pruning, usePreferredKeyScheme: true);
                 using CopyTreeVisitor copyTreeVisitor = new(nodeStorage, pruning.CancellationTokenSource, writeFlags, _logManager);
                 VisitingOptions visitingOptions = new()
                 {
