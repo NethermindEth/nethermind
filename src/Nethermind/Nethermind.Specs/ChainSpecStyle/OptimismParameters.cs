@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 
 namespace Nethermind.Specs.ChainSpecStyle
@@ -22,8 +21,6 @@ namespace Nethermind.Specs.ChainSpecStyle
         public UInt256 CanyonBaseFeeChangeDenominator { get; set; }
 
         public Address Create2DeployerAddress { get; set; }
-
-        public Hash256 Create2DeployerCodeHash { get; set; }
 
         public byte[] Create2DeployerCode { get; set; }
     }

@@ -24,7 +24,7 @@ namespace Nethermind.Evm.Tracing
             _addressesToOptimize = addressesToOptimize;
         }
 
-        public override void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null, ulong? depositNonce = null, ulong? depositReceiptVersion = null)
+        public override void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null)
         {
             GasSpent += gasSpent;
         }

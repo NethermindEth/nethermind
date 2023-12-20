@@ -70,7 +70,7 @@ namespace Nethermind.AccountAbstraction.Executor
         public override bool IsTracingAccess => true;
 
         public override void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs,
-            Hash256? stateRoot = null, ulong? depositNonce = null, ulong? depositReceiptVersion = null)
+            Hash256? stateRoot = null)
         {
             Output = output;
         }

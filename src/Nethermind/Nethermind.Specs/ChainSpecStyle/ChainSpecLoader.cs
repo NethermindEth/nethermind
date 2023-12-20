@@ -348,7 +348,6 @@ public class ChainSpecLoader : IChainSpecLoader
                 L1BlockAddress = chainSpecJson.Engine.Optimism.L1BlockAddress,
                 CanyonBaseFeeChangeDenominator = chainSpecJson.Engine.Optimism.CanyonBaseFeeChangeDenominator,
                 Create2DeployerAddress = chainSpecJson.Engine.Optimism.Create2DeployerAddress,
-                Create2DeployerCodeHash = chainSpecJson.Engine.Optimism.Create2DeployerCodeHash,
                 Create2DeployerCode = chainSpecJson.Engine.Optimism.Create2DeployerCode
             };
         }

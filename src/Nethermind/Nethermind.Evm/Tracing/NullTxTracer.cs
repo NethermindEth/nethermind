@@ -22,7 +22,7 @@ public class NullTxTracer : TxTracer
     [StackTraceHidden]
     private static void ThrowInvalidOperationException() => throw new InvalidOperationException(ErrorMessage);
 
-    public override void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null, ulong? depositNonce = null, ulong? depositReceiptVersion = null)
+    public override void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null)
         => ThrowInvalidOperationException();
     public override void MarkAsFailed(Address recipient, long gasSpent, byte[] output, string error, Hash256? stateRoot = null, ulong? depositNonce = null, ulong? depositReceiptVersion = null)
         => ThrowInvalidOperationException();

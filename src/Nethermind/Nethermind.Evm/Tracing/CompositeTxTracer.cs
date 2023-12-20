@@ -125,14 +125,14 @@ public class CompositeTxTracer : ITxTracer
         }
     }
 
-    public void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null, ulong? depositNonce = null, ulong? depositReceiptVersion = null)
+    public void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null)
     {
         for (int index = 0; index < _txTracers.Count; index++)
         {
             ITxTracer innerTracer = _txTracers[index];
             if (innerTracer.IsTracingReceipt)
             {
-                innerTracer.MarkAsSuccess(recipient, gasSpent, output, logs, stateRoot, depositNonce, depositReceiptVersion);
+                innerTracer.MarkAsSuccess(recipient, gasSpent, output, logs, stateRoot);
             }
         }
     }

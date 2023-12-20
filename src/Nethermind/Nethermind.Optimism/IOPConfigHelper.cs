@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 
 namespace Nethermind.Optimism;
 
@@ -13,7 +12,6 @@ public interface IOPConfigHelper
     bool IsBedrock(BlockHeader header);
     bool IsRegolith(BlockHeader header);
     bool IsCanyon(BlockHeader header);
-    Address Create2DeployerAddress { get; }
-    Hash256 Create2DeployerCodeHash { get; }
-    byte[] Create2DeployerCode { get; }
+    Address? Create2DeployerAddress { get; }
+    byte[]? Create2DeployerCode { get; }
 }

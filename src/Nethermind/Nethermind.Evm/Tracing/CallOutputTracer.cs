@@ -17,7 +17,7 @@ namespace Nethermind.Evm.Tracing
 
         public byte StatusCode { get; set; }
 
-        public override void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null, ulong? depositNonce = null, ulong? depositReceiptVersion = null)
+        public override void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null)
         {
             GasSpent = gasSpent;
             ReturnValue = output;

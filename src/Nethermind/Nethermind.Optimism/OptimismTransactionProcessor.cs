@@ -35,7 +35,6 @@ public class OptimismTransactionProcessor : TransactionProcessor
     protected override void Execute(Transaction tx, BlockExecutionContext blCtx, ITxTracer tracer, ExecutionOptions opts)
     {
         IReleaseSpec spec = SpecProvider.GetSpec(blCtx.Header);
-        ApplyCanyonTransition(blCtx.Header, spec);
         _currentTxL1Cost = null;
         if (tx.IsDeposit())
         {
@@ -48,47 +47,12 @@ public class OptimismTransactionProcessor : TransactionProcessor
         base.Execute(tx, blCtx, tracer, opts);
     }
 
-    private void ApplyCanyonTransition(BlockHeader header, IReleaseSpec spec)
-    {
-        // TODO: create OpBlockProcessor
-        if (_opConfigHelper.IsCanyon(header))
-        {
-            Hash256? currentHash = WorldState.AccountExists(_opConfigHelper.Create2DeployerAddress)
-                ? WorldState.GetCodeHash(_opConfigHelper.Create2DeployerAddress)
-                : null;
-
-            if (currentHash != _opConfigHelper.Create2DeployerCodeHash)
-            {
-                WorldState.InsertCode(_opConfigHelper.Create2DeployerAddress, _opConfigHelper.Create2DeployerCode, spec);
-            }
-        }
-    }
-
-    private (ulong?, ulong?) GetDepositReceiptData(Transaction tx, BlockHeader header)
-    {
-        ulong? depositNonce = null;
-        ulong? version = null;
-
-        if (tx.IsDeposit())
-        {
-            depositNonce = WorldState.GetNonce(tx.SenderAddress!).ToUInt64(null);
-            if (_opConfigHelper.IsCanyon(header))
-            {
-                version = 1;
-            }
-        }
-
-        return (depositNonce == 0 ? 0 : depositNonce - 1, version);
-    }
-
     protected override void TraceReceiptFailure(ITxTracer tracer, Transaction tx, BlockHeader header, Address executingAccount, long spentGas, byte[] output, string error, IReleaseSpec spec)
     {
         // TODO: tx.Sender == executingAccount?
         if (tracer.IsTracingReceipt)
         {
-            (ulong? depositNonce, ulong? version) = GetDepositReceiptData(tx, header);
-
-            tracer.MarkAsFailed(executingAccount, spentGas, output, error, null, depositNonce, version);
+            tracer.MarkAsFailed(executingAccount, spentGas, output, error, null);
         }
     }
 
@@ -97,9 +61,7 @@ public class OptimismTransactionProcessor : TransactionProcessor
         // TODO: tx.Sender == executingAccount?
         if (tracer.IsTracingReceipt)
         {
-            (ulong? depositNonce, ulong? version) = GetDepositReceiptData(tx, header);
-
-            tracer.MarkAsSuccess(executingAccount, spentGas, output, logs, null, depositNonce, version);
+            tracer.MarkAsSuccess(executingAccount, spentGas, output, logs, null);
         }
     }
 

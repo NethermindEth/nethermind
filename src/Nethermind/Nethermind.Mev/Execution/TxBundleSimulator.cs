@@ -197,7 +197,7 @@ namespace Nethermind.Mev.Execution
             public bool Success { get; private set; }
             public string? Error { get; private set; }
 
-            public override void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null, ulong? depositNonce = null, ulong? depositReceiptVersion = null)
+            public override void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null)
             {
                 GasSpent = gasSpent;
                 Success = true;

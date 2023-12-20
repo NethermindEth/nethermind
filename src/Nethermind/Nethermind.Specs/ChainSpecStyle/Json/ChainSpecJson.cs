@@ -177,7 +177,6 @@ namespace Nethermind.Specs.ChainSpecStyle.Json
             public Address L1BlockAddress => Params.L1BlockAddress;
             public UInt256 CanyonBaseFeeChangeDenominator => Params.CanyonBaseFeeChangeDenominator;
             public Address Create2DeployerAddress => Params.Create2DeployerAddress;
-            public Hash256 Create2DeployerCodeHash => Params.Create2DeployerCodeHash;
             public byte[] Create2DeployerCode => Params.Create2DeployerCode;
             public OptimismEngineParamsJson Params { get; set; }
         }
