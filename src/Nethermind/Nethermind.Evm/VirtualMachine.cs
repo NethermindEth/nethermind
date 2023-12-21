@@ -2371,6 +2371,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine
         Metrics.SelfDestructs++;
 
         Address inheritor = stack.PopAddress();
+        if (inheritor is null) EvmStack.ThrowEvmStackUnderflowException();
         if (!ChargeAccountAccessGas(ref gasAvailable, vmState, inheritor, spec, false)) return false;
 
         Address executingAccount = vmState.Env.ExecutingAccount;
