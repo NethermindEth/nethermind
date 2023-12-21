@@ -61,7 +61,7 @@ namespace Nethermind.Blockchain.Test.FullPruning
                 DriveInfo.AvailableFreeSpace.Returns(long.MaxValue);
                 _chainEstimations.StateSize.Returns((long?)null);
 
-                NodeStorageFactory nodeStorageFactory = new NodeStorageFactory(null);
+                NodeStorageFactory nodeStorageFactory = new NodeStorageFactory(INodeStorage.KeyScheme.Current);
                 MainNodeStorage = nodeStorageFactory.WrapKeyValueStore(PruningDb);
 
                 FullPruner = new FullTestPruner(

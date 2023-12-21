@@ -226,7 +226,7 @@ namespace Nethermind.Blockchain.Test.FullPruning
                 int fullScanMemoryBudgetMb = 0,
                 int degreeOfParallelism = 0,
                 INodeStorage.KeyScheme currentKeyScheme = INodeStorage.KeyScheme.HalfPath,
-                INodeStorage.KeyScheme? preferredKeyScheme = null)
+                INodeStorage.KeyScheme preferredKeyScheme = INodeStorage.KeyScheme.Current)
             {
                 BlockTree.OnUpdateMainChain += (_, e) => _head = e.Blocks[^1].Number;
                 _clearPrunedDb = clearPrunedDb;
