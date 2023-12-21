@@ -871,7 +871,7 @@ namespace Nethermind.Trie.Pruning
 
         public bool CanAccessByPath() => false;
 
-        public bool ShouldResetObjectsOnRootChange() => false;
+        public bool ShouldResetObjectsOnRootChange() => true;
         public IKeyValueStore AsKeyValueStore() => _publicStore;
 
         public void OpenContext(long blockNumber, Hash256 keccak) { }
