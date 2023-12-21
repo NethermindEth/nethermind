@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Threading;
+using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Core;
@@ -26,7 +27,7 @@ public class ProcessedTransactionsDbCleanerTests
     private readonly ISpecProvider _specProvider = MainnetSpecProvider.Instance;
 
     [Test]
-    public void should_remove_processed_txs_from_db_after_finalization([Values(0, 1, 42, 358)] long blockOfTxs, [Values(1, 42, 358)] long finalizedBlock)
+    public async Task should_remove_processed_txs_from_db_after_finalization([Values(0, 1, 42, 358)] long blockOfTxs, [Values(1, 42, 358)] long finalizedBlock)
     {
         Transaction GetTx(PrivateKey sender)
         {
@@ -54,10 +55,7 @@ public class ProcessedTransactionsDbCleanerTests
             new FinalizeEventArgs(Build.A.BlockHeader.TestObject,
                 Build.A.BlockHeader.WithNumber(finalizedBlock).TestObject));
 
-        while (dbCleaner.LastFinalizedBlock == 0L)
-        {
-            Thread.Sleep(10);
-        }
+        await dbCleaner.CleaningTask;
 
         blobTxStorage.TryGetBlobTransactionsFromBlock(blockOfTxs, out returnedTxs).Should().Be(blockOfTxs > finalizedBlock);
     }

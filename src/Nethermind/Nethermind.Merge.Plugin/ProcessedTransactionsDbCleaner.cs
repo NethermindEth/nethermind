@@ -18,6 +18,7 @@ public class ProcessedTransactionsDbCleaner : IDisposable
     private readonly IDb _processedTxsDb;
     private readonly ILogger _logger;
     internal long LastFinalizedBlock = 0;
+    public Task CleaningTask { get; private set; } = Task.CompletedTask;
 
     public ProcessedTransactionsDbCleaner(IBlockFinalizationManager finalizationManager, IDb processedTxsDb, ILogManager logManager)
     {
@@ -32,7 +33,7 @@ public class ProcessedTransactionsDbCleaner : IDisposable
     {
         if (e.FinalizedBlocks.Count > 0 && e.FinalizedBlocks[0].Number > LastFinalizedBlock)
         {
-            Task.Run(() => CleanProcessedTransactionsDb(e.FinalizedBlocks[0].Number));
+            CleaningTask = Task.Run(() => CleanProcessedTransactionsDb(e.FinalizedBlocks[0].Number));
         }
     }
 
@@ -40,18 +41,11 @@ public class ProcessedTransactionsDbCleaner : IDisposable
     {
         try
         {
-            List<long> blocksInDb = new();
-            foreach (byte[] key in _processedTxsDb.GetAllKeys())
-            {
-                blocksInDb.Add(key.ToLongFromBigEndianByteArrayWithoutLeadingZeros());
-            }
-
-            if (_logger.IsTrace) _logger.Trace($"There are processed blob txs from {blocksInDb.Count} blocks in ProcessedTxs db");
-
             using (IWriteBatch writeBatch = _processedTxsDb.StartWriteBatch())
             {
-                foreach (long blockNumber in blocksInDb)
+                foreach (byte[] key in _processedTxsDb.GetAllKeys())
                 {
+                    long blockNumber = key.ToLongFromBigEndianByteArrayWithoutLeadingZeros();
                     if (newlyFinalizedBlockNumber >= blockNumber)
                     {
                         if (_logger.IsTrace) _logger.Trace($"Cleaning processed blob txs from block {blockNumber}");
@@ -59,6 +53,7 @@ public class ProcessedTransactionsDbCleaner : IDisposable
                     }
                 }
             }
+
             if (_logger.IsDebug) _logger.Debug($"Cleaned processed blob txs from block {LastFinalizedBlock} to block {newlyFinalizedBlockNumber}");
 
             LastFinalizedBlock = newlyFinalizedBlockNumber;
