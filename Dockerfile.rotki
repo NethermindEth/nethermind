@@ -1,0 +1,59 @@
+# SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+# SPDX-License-Identifier: LGPL-3.0-only
+
+FROM --platform=$BUILDPLATFORM mcr.microsoft.com/dotnet/sdk:8.0-jammy AS build
+
+ARG BUILD_CONFIG=release
+ARG BUILD_TIMESTAMP
+ARG CI
+ARG COMMIT_HASH
+ARG TARGETARCH
+
+COPY .git .git
+COPY src/Nethermind src/Nethermind
+
+RUN arch=$([ "$TARGETARCH" = "amd64" ] && echo "x64" || echo "$TARGETARCH") && \
+  dotnet publish src/Nethermind/Nethermind.Runner -c $BUILD_CONFIG -a $arch -o /publish --sc false \
+  -p:BuildTimestamp=$BUILD_TIMESTAMP -p:Commit=$COMMIT_HASH
+
+# A temporary symlink to support the old executable name
+RUN ln -s -r /publish/nethermind /publish/Nethermind.Runner
+
+FROM --platform=$TARGETPLATFORM rotki/rotki:latest as rotki-app
+
+# See https://github.com/rotki/rotki/blob/develop/Dockerfile
+
+FROM --platform=$TARGETPLATFORM mcr.microsoft.com/dotnet/aspnet:8.0-jammy
+
+# Prepare Rotki
+WORKDIR /rotki
+
+# Copy Rotki files
+COPY --from=rotki-app /opt/rotki app
+COPY --from=rotki-app /etc/nginx/conf.d/default.conf nginx.conf
+
+VOLUME /rotki/data
+VOLUME /rotki/logs
+
+RUN APP=$(find "/rotki/app" -name "rotki-core-*-linux"  | head -n 1) && \
+  echo "${APP}" && \
+  ln -s "${APP}" /usr/local/bin/rotki && \
+  ln -s /rotki/app/colibri/release/colibri /usr/local/bin/colibri
+
+# Prepare Nethermind
+WORKDIR /nethermind
+
+VOLUME /nethermind/keystore
+VOLUME /nethermind/logs
+VOLUME /nethermind/nethermind_db
+
+EXPOSE 8545 8551 30303 80
+
+COPY --from=build /publish .
+
+RUN apt-get update && apt-get -y install libsnappy-dev procps python3-requests nginx && \
+  rm -rf /var/lib/apt/lists/*
+
+COPY scripts/docker-rotki-entrypoint.py entrypoint.py
+
+ENTRYPOINT ["./entrypoint.py"]
