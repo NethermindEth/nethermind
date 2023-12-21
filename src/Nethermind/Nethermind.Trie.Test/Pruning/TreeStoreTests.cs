@@ -787,6 +787,6 @@ namespace Nethermind.Trie.Test.Pruning
             readOnlyNode.Key?.ToString().Should().Be(originalNode.Key?.ToString());
         }
 
-        private long ExpectedPerNodeKeyMemorySize => _scheme == INodeStorage.KeyScheme.Hash ? 8 : TrieStore.DirtyNodesCache.Key.MemoryUsage;
+        private long ExpectedPerNodeKeyMemorySize => _scheme == INodeStorage.KeyScheme.Hash ? 0 : TrieStore.DirtyNodesCache.Key.MemoryUsage;
     }
 }

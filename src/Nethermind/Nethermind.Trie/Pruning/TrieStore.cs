@@ -31,8 +31,10 @@ namespace Nethermind.Trie.Pruning
             public DirtyNodesCache(TrieStore trieStore)
             {
                 _trieStore = trieStore;
+                // If the nodestore indicated that path is not required,
+                // we will use a map with hash as its key instead of the full Key
                 _storeByHash = !trieStore._nodeStorage.RequirePath;
-                KeyMemoryUsage = _storeByHash ? 8 : Key.MemoryUsage; // 8 is the pointer size
+                KeyMemoryUsage = _storeByHash ? 0 : Key.MemoryUsage; // 0 because previously it was not counted.
             }
 
             public void SaveInCache(in Key key, TrieNode node)
@@ -90,7 +92,7 @@ namespace Nethermind.Trie.Pruning
             }
 
             private readonly ConcurrentDictionary<Key, TrieNode> _byKeyObjectCache = new();
-            private readonly ConcurrentDictionary<Hash256, TrieNode> _byHashObjectCache = new();
+            private readonly ConcurrentDictionary<ValueHash256, TrieNode> _byHashObjectCache = new();
 
             public bool IsNodeCached(in Key key)
             {
@@ -105,7 +107,7 @@ namespace Nethermind.Trie.Pruning
                     if (_storeByHash)
                     {
                         return _byHashObjectCache.Select(
-                            pair => new KeyValuePair<Key, TrieNode>(new Key(null, TreePath.Empty, pair.Key), pair.Value));
+                            pair => new KeyValuePair<Key, TrieNode>(new Key(null, TreePath.Empty, pair.Key.ToCommitment()), pair.Value));
                     }
 
                     return _byKeyObjectCache;
@@ -222,7 +224,7 @@ namespace Nethermind.Trie.Pruning
             internal ref struct MapLock
             {
                 public bool _storeByHash;
-                public ConcurrentDictionaryLock<Hash256, TrieNode>.Lock _byHashLock;
+                public ConcurrentDictionaryLock<ValueHash256, TrieNode>.Lock _byHashLock;
                 public ConcurrentDictionaryLock<Key, TrieNode>.Lock _byKeyLock;
 
                 public void Dispose()
