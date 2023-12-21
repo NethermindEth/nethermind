@@ -26,16 +26,24 @@ public class NodeStorageFactory : INodeStorageFactory
 
     public INodeStorage WrapKeyValueStore(IKeyValueStore keyValueStore, bool forceUsePreferredKeyScheme = false)
     {
+        INodeStorage.KeyScheme effectiveKeyScheme;
         if (forceUsePreferredKeyScheme && _preferredKeyScheme != null)
         {
-            return new NodeStorage(
-                keyValueStore,
-                _preferredKeyScheme ?? INodeStorage.KeyScheme.HalfPath);
+            effectiveKeyScheme = _preferredKeyScheme ?? INodeStorage.KeyScheme.HalfPath;
         }
+        else
+        {
+            effectiveKeyScheme = _currentKeyScheme ?? _preferredKeyScheme ?? INodeStorage.KeyScheme.HalfPath;
+        }
+
+        bool requirePath = effectiveKeyScheme == INodeStorage.KeyScheme.HalfPath ||
+                           _currentKeyScheme == INodeStorage.KeyScheme.HalfPath ||
+                           _preferredKeyScheme == INodeStorage.KeyScheme.HalfPath;
 
         return new NodeStorage(
             keyValueStore,
-            _currentKeyScheme ?? _preferredKeyScheme ?? INodeStorage.KeyScheme.HalfPath
+            effectiveKeyScheme,
+            requirePath
         );
     }
 

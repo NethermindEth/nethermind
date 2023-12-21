@@ -9,6 +9,7 @@ using Nethermind.Trie;
 public interface INodeStorage
 {
     public KeyScheme Scheme { get; set; }
+    public bool RequirePath { get; }
 
     byte[]? Get(Hash256? address, in TreePath path, in ValueHash256 keccak, ReadFlags readFlags = ReadFlags.None);
     void Set(Hash256? address, in TreePath path, in ValueHash256 hash, byte[] toArray, WriteFlags writeFlags = WriteFlags.None);

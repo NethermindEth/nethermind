@@ -50,18 +50,20 @@ public class NodeStorageFactoryTests
         nodeStorageFactory.WrapKeyValueStore(memDb).Scheme.Should().Be(preferredKeyScheme);
     }
 
-    [TestCase(INodeStorage.KeyScheme.HalfPath, INodeStorage.KeyScheme.Hash, INodeStorage.KeyScheme.Hash)]
-    [TestCase(INodeStorage.KeyScheme.Hash, INodeStorage.KeyScheme.HalfPath, INodeStorage.KeyScheme.HalfPath)]
-    [TestCase(INodeStorage.KeyScheme.HalfPath, null, INodeStorage.KeyScheme.HalfPath)]
-    [TestCase(INodeStorage.KeyScheme.Hash, null, INodeStorage.KeyScheme.Hash)]
-    [TestCase(null, null, INodeStorage.KeyScheme.HalfPath)]
-    public void When_ForceUsePreferredIsTrue_Then_UsePreferred(INodeStorage.KeyScheme? currentKeyScheme, INodeStorage.KeyScheme? preferredKeyScheme, INodeStorage.KeyScheme expectedScheme)
+    [TestCase(INodeStorage.KeyScheme.HalfPath, INodeStorage.KeyScheme.Hash, INodeStorage.KeyScheme.Hash, true)]
+    [TestCase(INodeStorage.KeyScheme.Hash, INodeStorage.KeyScheme.HalfPath, INodeStorage.KeyScheme.HalfPath, true)]
+    [TestCase(INodeStorage.KeyScheme.HalfPath, null, INodeStorage.KeyScheme.HalfPath, true)]
+    [TestCase(INodeStorage.KeyScheme.Hash, null, INodeStorage.KeyScheme.Hash, false)]
+    [TestCase(null, null, INodeStorage.KeyScheme.HalfPath, true)]
+    public void When_ForceUsePreferredIsTrue_Then_UsePreferred(INodeStorage.KeyScheme? currentKeyScheme, INodeStorage.KeyScheme? preferredKeyScheme, INodeStorage.KeyScheme expectedScheme, bool requirePath)
     {
         IDb memDb = PrepareMemDbWithKeyScheme(currentKeyScheme);
 
         NodeStorageFactory nodeStorageFactory = new NodeStorageFactory(preferredKeyScheme);
         nodeStorageFactory.DetectCurrentKeySchemeFrom(memDb);
-        nodeStorageFactory.WrapKeyValueStore(memDb, forceUsePreferredKeyScheme: true).Scheme.Should().Be(expectedScheme);
+        INodeStorage nodeStorage = nodeStorageFactory.WrapKeyValueStore(memDb, forceUsePreferredKeyScheme: true);
+        nodeStorage.Scheme.Should().Be(expectedScheme);
+        nodeStorage.RequirePath.Should().Be(requirePath);
     }
 
     private MemDb PrepareMemDbWithKeyScheme(INodeStorage.KeyScheme? scheme)

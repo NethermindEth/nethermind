@@ -14,12 +14,15 @@ public class NodeStorage : INodeStorage
     private readonly IKeyValueStore _keyValueStore;
     private static byte[] EmptyTreeHashBytes = { 128 };
     public const int StoragePathLength = 48;
-    public INodeStorage.KeyScheme Scheme { get; set; }
 
-    public NodeStorage(IKeyValueStore keyValueStore, INodeStorage.KeyScheme scheme = INodeStorage.KeyScheme.HalfPath)
+    public INodeStorage.KeyScheme Scheme { get; set; }
+    public bool RequirePath { get; }
+
+    public NodeStorage(IKeyValueStore keyValueStore, INodeStorage.KeyScheme scheme = INodeStorage.KeyScheme.HalfPath, bool requirePath = true)
     {
         _keyValueStore = keyValueStore ?? throw new ArgumentNullException(nameof(keyValueStore));
         Scheme = scheme;
+        RequirePath = requirePath;
     }
 
     public Span<byte> GetExpectedPath(Span<byte> pathSpan, Hash256? address, in TreePath path, in ValueHash256 keccak)
