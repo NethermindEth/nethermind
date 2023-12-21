@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
 using System.Reflection;
+using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
@@ -210,11 +211,11 @@ namespace Nethermind.Specs.ChainSpecStyle
 
             releaseSpec.Eip1559FeeCollector = releaseSpec.IsEip1559Enabled && (chainSpec.Parameters.Eip1559FeeCollectorTransition ?? long.MaxValue) <= releaseStartBlock ? chainSpec.Parameters.Eip1559FeeCollector : null;
             releaseSpec.Eip1559BaseFeeMinValue = releaseSpec.IsEip1559Enabled && (chainSpec.Parameters.Eip1559BaseFeeMinValueTransition ?? long.MaxValue) <= releaseStartBlock ? chainSpec.Parameters.Eip1559BaseFeeMinValue : null;
-            releaseSpec.ElasticityMultiplier = chainSpec.Parameters.Eip1559ElasticityMultiplier;
-            releaseSpec.ForkBaseFee = chainSpec.Parameters.Eip1559BaseFeeInitialValue;
-            releaseSpec.BaseFeeMaxChangeDenominator = chainSpec.Parameters.Eip1559BaseFeeMaxChangeDenominator;
+            releaseSpec.ElasticityMultiplier = chainSpec.Parameters.Eip1559ElasticityMultiplier ?? Eip1559Constants.DefaultElasticityMultiplier;
+            releaseSpec.ForkBaseFee = chainSpec.Parameters.Eip1559BaseFeeInitialValue ?? Eip1559Constants.DefaultForkBaseFee;
+            releaseSpec.BaseFeeMaxChangeDenominator = chainSpec.Parameters.Eip1559BaseFeeMaxChangeDenominator ?? Eip1559Constants.DefaultBaseFeeMaxChangeDenominator;
 
-            if (chainSpec.Optimism.CanyonTimestamp <= releaseStartTimestamp)
+            if (chainSpec.Optimism?.CanyonTimestamp <= releaseStartTimestamp)
             {
                 releaseSpec.BaseFeeMaxChangeDenominator = chainSpec.Optimism.CanyonBaseFeeChangeDenominator;
             }
