@@ -24,7 +24,7 @@ namespace Nethermind.Trie.Pruning
 
         public byte[]? TryLoadRlp(Span<byte> path, IKeyValueStore? keyValueStore)
         {
-            throw new NotImplementedException();
+            return Array.Empty<byte>();
         }
         public TrieNodeResolverCapability Capability => TrieNodeResolverCapability.Hash;
 
@@ -67,33 +67,21 @@ namespace Nethermind.Trie.Pruning
         public void PersistNodeData(Span<byte> fullPath, int pathToNodeLength, byte[]? rlpData, IWriteBatch? batch = null, WriteFlags writeFlags = WriteFlags.None) { }
 
         public void ClearCache() { }
-        public void ClearCacheAfter(Hash256 rootHash) { }
-
         public void DeleteByRange(Span<byte> startKey, Span<byte> endKey, IWriteBatch? writeBatch = null) { }
-        public void MarkPrefixDeleted(long blockNumber, ReadOnlySpan<byte> keyPrefix)
-        {
-            throw new NotImplementedException();
-        }
+        public void MarkPrefixDeleted(long blockNumber, ReadOnlySpan<byte> keyPrefix) { }
 
         public bool CanAccessByPath()
         {
             return false;
         }
 
+        public bool ShouldResetObjectsOnRootChange() => false;
+
         public byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
         {
-            throw new NotImplementedException();
+            return Array.Empty<byte>();
         }
-
-        public void CommitNode(long blockNumber, Hash256 rootHash, NodeCommitInfo nodeCommitInfo, WriteFlags writeFlags = WriteFlags.None)
-        {
-            throw new NotImplementedException();
-        }
-
-        public void OpenContext(long blockNumber, Hash256 keccak)
-        {
-            throw new NotImplementedException();
-        }
+        public void OpenContext(long blockNumber, Hash256 keccak) { }
 
         public byte[]? this[ReadOnlySpan<byte> key] => null;
     }

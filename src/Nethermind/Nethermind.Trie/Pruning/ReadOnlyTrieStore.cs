@@ -83,22 +83,13 @@ namespace Nethermind.Trie.Pruning
         public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None) { }
 
         public bool CanAccessByPath() => _trieStore.CanAccessByPath();
-        public void MarkPrefixDeleted(long blockNumber, ReadOnlySpan<byte> keyPrefix)
-        {
-            throw new NotImplementedException();
-        }
+        public bool ShouldResetObjectsOnRootChange() => _trieStore.ShouldResetObjectsOnRootChange();
+
+        public void MarkPrefixDeleted(long blockNumber, ReadOnlySpan<byte> keyPrefix) { }
 
         public void DeleteByRange(Span<byte> startKey, Span<byte> endKey, IWriteBatch writeBatch = null) { }
 
-        public void CommitNode(long blockNumber, Hash256 rootHash, NodeCommitInfo nodeCommitInfo, WriteFlags writeFlags = WriteFlags.None)
-        {
-            throw new NotImplementedException();
-        }
-
-        public void OpenContext(long blockNumber, Hash256 keccak)
-        {
-            throw new NotImplementedException();
-        }
+        public void OpenContext(long blockNumber, Hash256 keccak) { }
 
         private class ReadOnlyValueStore : IKeyValueStore
         {

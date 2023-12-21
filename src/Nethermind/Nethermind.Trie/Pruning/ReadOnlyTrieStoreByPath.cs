@@ -74,20 +74,17 @@ namespace Nethermind.Trie.Pruning
         public void PersistNodeData(Span<byte> fullPath, int pathToNodeLength, byte[]? rlpData, IWriteBatch? batch = null, WriteFlags writeFlags = WriteFlags.None) { }
 
         public void ClearCache() => _trieStore.ClearCache();
-        public void ClearCacheAfter(Hash256 rootHash) { }
-
         public void DeleteByRange(Span<byte> startKey, Span<byte> endKey, IWriteBatch writeBatch = null) { }
         public void MarkPrefixDeleted(long blockNumber, ReadOnlySpan<byte> keyPrefix) { }
 
         public bool CanAccessByPath() => _trieStore.CanAccessByPath();
+        public bool ShouldResetObjectsOnRootChange() => _trieStore.ShouldResetObjectsOnRootChange();
 
         public byte[]? this[ReadOnlySpan<byte> key] => _trieStore[key];
 
         public byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags) => _trieStore.Get(key, flags);
 
         public IKeyValueStore AsKeyValueStore() => _publicStore;
-
-        public void CommitNode(long blockNumber, Hash256 rootHash, NodeCommitInfo nodeCommitInfo, WriteFlags writeFlags = WriteFlags.None) { }
 
         public void OpenContext(long blockNumber, Hash256 keccak) { }
 

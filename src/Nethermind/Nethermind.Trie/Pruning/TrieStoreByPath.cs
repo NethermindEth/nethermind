@@ -860,6 +860,11 @@ namespace Nethermind.Trie.Pruning
                 _pathStateDb.CanAccessByPath(Db.StateColumns.State) && _pathStateDb.CanAccessByPath(Db.StateColumns.Storage);
         }
 
+        public bool ShouldResetObjectsOnRootChange()
+        {
+            return !UseCommittedCache;
+        }
+
         private IKeyValueStoreWithBatching GetProperColumnDb(int pathLength)
         {
             return pathLength >= 66 ? _stateDb.GetColumnDb(StateColumns.Storage) : _stateDb.GetColumnDb(StateColumns.State);

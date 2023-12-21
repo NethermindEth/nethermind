@@ -379,15 +379,12 @@ public class TrieNodePathCache : IPathTrieNodeCache
 
     public void AddRemovedPrefix(long blockNumber, ReadOnlySpan<byte> keyPrefix)
     {
-        if (_nodesByPath.ContainsKey(keyPrefix))
+        foreach (byte[] path in _nodesByPath.Keys)
         {
-            foreach (byte[] path in _nodesByPath.Keys)
+            if (path.Length >= keyPrefix.Length && Bytes.AreEqual(path.AsSpan()[0..keyPrefix.Length], keyPrefix))
             {
-                if (path.Length >= keyPrefix.Length && Bytes.AreEqual(path.AsSpan()[0..keyPrefix.Length], keyPrefix))
-                {
-                    TrieNode deletedNode = _nodesByPath[path].GetLatest().CloneNodeForDeletion();
-                    _nodesByPath[path].Add(blockNumber, deletedNode);
-                }
+                TrieNode deletedNode = _nodesByPath[path].GetLatest().CloneNodeForDeletion();
+                _nodesByPath[path].Add(blockNumber, deletedNode);
             }
         }
         _removedPrefixes[keyPrefix] = blockNumber;

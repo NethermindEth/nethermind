@@ -132,6 +132,7 @@ public class HealingTreeTests
         public IReadOnlyTrieStore AsReadOnly(IKeyValueStore? keyValueStore) { return this; }
 
         public bool CanAccessByPath() => false;
+        public bool ShouldResetObjectsOnRootChange() => false;
 
         public void ClearCache() { }
 

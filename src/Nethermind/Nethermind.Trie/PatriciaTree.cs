@@ -190,8 +190,7 @@ namespace Nethermind.Trie
                 //resetting root reference for instances without cache will 'unresolve' root node, freeing TrieNode instances
                 //otherwise block commit sets will retain references to TrieNodes and not free them during e.g. snap sync
                 //TODO - refactor - is resetting really need - can be done without?
-                bool resetObjects = TrieStore.Capability != TrieNodeResolverCapability.Path || !((TrieStoreByPath)TrieStore).UseCommittedCache;
-                SetRootHash(RootRef.Keccak!, resetObjects);
+                SetRootHash(RootRef.Keccak!, TrieStore.ShouldResetObjectsOnRootChange());
             }
 
             TrieStore.FinishBlockCommit(TrieType, blockNumber, RootRef, writeFlags);

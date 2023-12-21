@@ -867,22 +867,12 @@ namespace Nethermind.Trie.Pruning
             _keyValueStore.DeleteByRange(startKey, endKey);
         }
 
-        public void MarkPrefixDeleted(long blockNumber, ReadOnlySpan<byte> keyPrefix)
-        {
-            throw new NotImplementedException();
-        }
+        public void MarkPrefixDeleted(long blockNumber, ReadOnlySpan<byte> keyPrefix) { }
 
-        public bool CanAccessByPath()
-        {
-            return false;
-        }
+        public bool CanAccessByPath() => false;
 
+        public bool ShouldResetObjectsOnRootChange() => false;
         public IKeyValueStore AsKeyValueStore() => _publicStore;
-
-        public void CommitNode(long blockNumber, Hash256 rootHash, NodeCommitInfo nodeCommitInfo, WriteFlags writeFlags = WriteFlags.None)
-        {
-            CommitNode(blockNumber, nodeCommitInfo, writeFlags);
-        }
 
         public void OpenContext(long blockNumber, Hash256 keccak) { }
 

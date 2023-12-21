@@ -30,7 +30,7 @@ namespace Nethermind.Trie.Pruning
 
         void MarkPrefixDeleted(long blockNumber, ReadOnlySpan<byte> keyPrefix);
         void DeleteByRange(Span<byte> startKey, Span<byte> endKey, IWriteBatch writeBatch = null);
-
         bool CanAccessByPath();
+        bool ShouldResetObjectsOnRootChange();
     }
 }
