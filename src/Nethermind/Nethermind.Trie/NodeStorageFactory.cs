@@ -26,6 +26,11 @@ public class NodeStorageFactory : INodeStorageFactory
 
     public INodeStorage WrapKeyValueStore(IKeyValueStore keyValueStore, bool forceUsePreferredKeyScheme = false)
     {
+        if (forceUsePreferredKeyScheme)
+        {
+            return new NodeStorage(keyValueStore, _preferredKeyScheme);
+        }
+
         return new NodeStorage(keyValueStore, _currentKeyScheme ?? _preferredKeyScheme);
     }
 

@@ -64,4 +64,25 @@ public class NodeStorageFactoryTests
         nodeStorageFactory.DetectCurrentKeySchemeFrom(memDb);
         nodeStorageFactory.WrapKeyValueStore(memDb).Scheme.Should().Be(preferredKeyScheme);
     }
+
+    [TestCase(INodeStorage.KeyScheme.Hash)]
+    [TestCase(INodeStorage.KeyScheme.HalfPath)]
+    public void When_ForceUsePreferredIsTrue_Then_UsePreferred(INodeStorage.KeyScheme preferredKeyScheme)
+    {
+        IDb memDb = new MemDb();
+        for (int i = 0; i < 10; i++)
+        {
+            Hash256 hash = Keccak.Compute(i.ToBigEndianByteArray());
+            memDb[NodeStorage.GetHalfPathNodeStoragePath(null, TreePath.Empty, hash)] = hash.Bytes.ToArray();
+        }
+        for (int i = 0; i < 10; i++)
+        {
+            Hash256 hash = Keccak.Compute(i.ToBigEndianByteArray());
+            memDb[NodeStorage.GetHalfPathNodeStoragePath(hash, TreePath.Empty, hash)] = hash.Bytes.ToArray();
+        }
+
+        NodeStorageFactory nodeStorageFactory = new NodeStorageFactory(preferredKeyScheme);
+        nodeStorageFactory.DetectCurrentKeySchemeFrom(memDb);
+        nodeStorageFactory.WrapKeyValueStore(memDb, forceUsePreferredKeyScheme: true).Scheme.Should().Be(preferredKeyScheme);
+    }
 }
