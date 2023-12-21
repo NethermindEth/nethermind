@@ -1121,6 +1121,11 @@ namespace Nethermind.Trie
                 flags |= ReadFlags.HintCacheMiss;
             }
 
+            if (visitor.ExtraReadFlag != ReadFlags.None)
+            {
+                flags |= visitor.ExtraReadFlag;
+            }
+
             ITrieNodeResolver resolver = TrieStore;
             if (flags != ReadFlags.None)
             {
@@ -1145,7 +1150,7 @@ namespace Nethermind.Trie
             else
             {
                 TreePath emptyPath = TreePath.Empty;
-                rootRef?.Accept(visitor, TrieStore, ref emptyPath, trieVisitContext);
+                rootRef?.Accept(visitor, resolver, ref emptyPath, trieVisitContext);
             }
         }
 

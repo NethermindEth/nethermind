@@ -14,7 +14,7 @@ public class NodeStorage : INodeStorage
     private readonly IKeyValueStore _keyValueStore;
     private static byte[] EmptyTreeHashBytes = { 128 };
     public const int StoragePathLength = 48;
-    public INodeStorage.KeyScheme Scheme { get; }
+    public INodeStorage.KeyScheme Scheme { get; set; }
 
     public NodeStorage(IKeyValueStore keyValueStore, INodeStorage.KeyScheme scheme = INodeStorage.KeyScheme.HalfPath)
     {

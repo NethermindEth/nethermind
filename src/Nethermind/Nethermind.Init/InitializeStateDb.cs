@@ -97,6 +97,8 @@ public class InitializeStateDb : IStep
             persistenceStrategy = Persist.EveryBlock;
         }
 
+        INodeStorage mainNodeStorage = _api.NodeStorageFactory.WrapKeyValueStore(stateWitnessedBy);
+
         TrieStore trieStore = syncConfig.TrieHealing
             ? new HealingTrieStore(
                 _api.NodeStorageFactory.WrapKeyValueStore(stateWitnessedBy),
@@ -104,7 +106,7 @@ public class InitializeStateDb : IStep
                 persistenceStrategy,
                 getApi.LogManager)
             : new TrieStore(
-                _api.NodeStorageFactory.WrapKeyValueStore(stateWitnessedBy),
+                mainNodeStorage,
                 pruningStrategy,
                 persistenceStrategy,
                 getApi.LogManager);
@@ -174,7 +176,7 @@ public class InitializeStateDb : IStep
             worldState.StateRoot = getApi.BlockTree.Head.StateRoot;
         }
 
-        InitializeFullPruning(pruningConfig, initConfig, _api, stateManager.GlobalStateReader);
+        InitializeFullPruning(pruningConfig, initConfig, _api, stateManager.GlobalStateReader, mainNodeStorage);
 
         return Task.CompletedTask;
     }
@@ -188,7 +190,9 @@ public class InitializeStateDb : IStep
         IPruningConfig pruningConfig,
         IInitConfig initConfig,
         INethermindApi api,
-        IStateReader stateReader)
+        IStateReader stateReader,
+        INodeStorage mainNodeStorage
+    )
     {
         IPruningTrigger? CreateAutomaticTrigger(string dbPath)
         {
@@ -218,9 +222,18 @@ public class InitializeStateDb : IStep
                 }
 
                 IDriveInfo? drive = api.FileSystem.GetDriveInfos(pruningDbPath).FirstOrDefault();
-                FullPruner pruner = new(fullPruningDb, api.NodeStorageFactory, api.PruningTrigger, pruningConfig, api.BlockTree!,
-                    stateReader, api.ProcessExit!, ChainSizes.CreateChainSizeInfo(api.ChainSpec.ChainId),
-                    drive, api.LogManager);
+                FullPruner pruner = new(
+                    fullPruningDb,
+                    api.NodeStorageFactory,
+                    mainNodeStorage,
+                    api.PruningTrigger,
+                    pruningConfig,
+                    api.BlockTree!,
+                    stateReader,
+                    api.ProcessExit!,
+                    ChainSizes.CreateChainSizeInfo(api.ChainSpec.ChainId),
+                    drive,
+                    api.LogManager);
                 api.DisposeStack.Push(pruner);
             }
         }

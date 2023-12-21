@@ -25,6 +25,7 @@ namespace Nethermind.Blockchain.FullPruning
     {
         private readonly IFullPruningDb _fullPruningDb;
         private readonly INodeStorageFactory _nodeStorageFactory;
+        private readonly INodeStorage _nodeStorage;
         private readonly IPruningTrigger _pruningTrigger;
         private readonly IPruningConfig _pruningConfig;
         private readonly IBlockTree _blockTree;
@@ -45,6 +46,7 @@ namespace Nethermind.Blockchain.FullPruning
         public FullPruner(
             IFullPruningDb fullPruningDb,
             INodeStorageFactory nodeStorageFactory,
+            INodeStorage mainNodeStorage,
             IPruningTrigger pruningTrigger,
             IPruningConfig pruningConfig,
             IBlockTree blockTree,
@@ -56,6 +58,7 @@ namespace Nethermind.Blockchain.FullPruning
         {
             _fullPruningDb = fullPruningDb;
             _nodeStorageFactory = nodeStorageFactory;
+            _nodeStorage = mainNodeStorage;
             _pruningTrigger = pruningTrigger;
             _pruningConfig = pruningConfig;
             _blockTree = blockTree;
@@ -211,6 +214,8 @@ namespace Nethermind.Blockchain.FullPruning
 
         protected virtual void RunPruning(IPruningContext pruning, Hash256 statRoot)
         {
+            INodeStorage.KeyScheme originalKeyScheme = _nodeStorage.Scheme;
+
             try
             {
                 pruning.MarkStart();
@@ -221,8 +226,17 @@ namespace Nethermind.Blockchain.FullPruning
                     writeFlags |= WriteFlags.LowPriority;
                 }
 
-                INodeStorage nodeStorage = _nodeStorageFactory.WrapKeyValueStore(pruning, usePreferredKeyScheme: true);
-                using CopyTreeVisitor copyTreeVisitor = new(nodeStorage, pruning.CancellationTokenSource, writeFlags, _logManager);
+                INodeStorage targetNodeStorage = _nodeStorageFactory.WrapKeyValueStore(pruning, usePreferredKeyScheme: true);
+
+                if (originalKeyScheme == INodeStorage.KeyScheme.HalfPath)
+                {
+                    // If original node storage scheme is HalfPath, we cannot double copy HalfPath into a Hash scheme
+                    // state because there could be code path that does not have path when using Hash scheme.
+                    // HalfPath always have hash and can just do a fallback read.
+                    _nodeStorage.Scheme = INodeStorage.KeyScheme.Hash;
+                }
+
+                using CopyTreeVisitor copyTreeVisitor = new(targetNodeStorage, pruning.CancellationTokenSource, writeFlags, _logManager);
                 VisitingOptions visitingOptions = new()
                 {
                     MaxDegreeOfParallelism = _pruningConfig.FullPruningMaxDegreeOfParallelism,
@@ -246,6 +260,9 @@ namespace Nethermind.Blockchain.FullPruning
 
                     _blockTree.OnUpdateMainChain += CommitOnNewBLock;
                     copyTreeVisitor.Finish();
+
+                    // Note: This does means that during full pruning some of the key copied will be of old key scheme.
+                    _nodeStorage.Scheme = targetNodeStorage.Scheme;
                 }
                 else
                 {
@@ -256,6 +273,7 @@ namespace Nethermind.Blockchain.FullPruning
             {
                 _logger.Error("Error during pruning. ", e);
                 pruning.Dispose();
+                _nodeStorage.Scheme = originalKeyScheme;
                 throw;
             }
         }
