@@ -255,7 +255,7 @@ namespace Nethermind.Merge.Plugin.Test
             if (pivotTotalDifficulty != null)
                 syncConfig = new SyncConfig() { PivotTotalDifficulty = $"{(UInt256)pivotTotalDifficulty}" };
             PoSSwitcher poSSwitcher = new PoSSwitcher(new MergeConfig(), syncConfig, new MemDb(), blockTree, specProvider, LimboLogs.Instance);
-            if (expectedFinalTotalDifficulty!=null)
+            if (expectedFinalTotalDifficulty != null)
                 poSSwitcher.FinalTotalDifficulty.Should().Be((UInt256)expectedFinalTotalDifficulty);
             else
                 poSSwitcher.FinalTotalDifficulty.Should().BeNull();
