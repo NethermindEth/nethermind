@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Core;
@@ -17,7 +16,7 @@ public class ProcessedTransactionsDbCleaner : IDisposable
     private readonly IBlockFinalizationManager _finalizationManager;
     private readonly IDb _processedTxsDb;
     private readonly ILogger _logger;
-    internal long LastFinalizedBlock = 0;
+    private long _lastFinalizedBlock = 0;
     public Task CleaningTask { get; private set; } = Task.CompletedTask;
 
     public ProcessedTransactionsDbCleaner(IBlockFinalizationManager finalizationManager, IDb processedTxsDb, ILogManager logManager)
@@ -31,7 +30,7 @@ public class ProcessedTransactionsDbCleaner : IDisposable
 
     private void OnBlocksFinalized(object? sender, FinalizeEventArgs e)
     {
-        if (e.FinalizedBlocks.Count > 0 && e.FinalizedBlocks[0].Number > LastFinalizedBlock)
+        if (e.FinalizedBlocks.Count > 0 && e.FinalizedBlocks[0].Number > _lastFinalizedBlock)
         {
             CleaningTask = Task.Run(() => CleanProcessedTransactionsDb(e.FinalizedBlocks[0].Number));
         }
@@ -54,13 +53,13 @@ public class ProcessedTransactionsDbCleaner : IDisposable
                 }
             }
 
-            if (_logger.IsDebug) _logger.Debug($"Cleaned processed blob txs from block {LastFinalizedBlock} to block {newlyFinalizedBlockNumber}");
+            if (_logger.IsDebug) _logger.Debug($"Cleaned processed blob txs from block {_lastFinalizedBlock} to block {newlyFinalizedBlockNumber}");
 
-            LastFinalizedBlock = newlyFinalizedBlockNumber;
+            _lastFinalizedBlock = newlyFinalizedBlockNumber;
         }
         catch (Exception exception)
         {
-            if (_logger.IsError) _logger.Error($"Couldn't correctly clean db with processed transactions. Newly finalized block {newlyFinalizedBlockNumber}, last finalized block: {LastFinalizedBlock}", exception);
+            if (_logger.IsError) _logger.Error($"Couldn't correctly clean db with processed transactions. Newly finalized block {newlyFinalizedBlockNumber}, last finalized block: {_lastFinalizedBlock}", exception);
         }
     }
 
