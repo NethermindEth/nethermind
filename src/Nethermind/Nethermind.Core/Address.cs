@@ -91,13 +91,20 @@ namespace Nethermind.Core
         /// <summary>
         /// Parses string value to Address. String can be shorter than 20 bytes long, it is padded with leading 0's then.
         /// </summary>
-        public static bool TryParseVariableLength(string? value, out Address? address)
+        public static bool TryParseVariableLength(string? value, out Address? address, bool allowDifferentSize = false)
         {
             if (value is not null)
             {
                 try
                 {
-                    address = new Address(Extensions.Bytes.FromHexString(value, Size));
+                    byte[] bytes = Extensions.Bytes.FromHexString(value, Size);
+
+                    address = bytes.Length switch
+                    {
+                        > Size when allowDifferentSize => new Address(bytes.Slice(bytes.Length - Size, Size)),
+                        < Size when allowDifferentSize => new Address(bytes.PadLeft(Size)),
+                        _ => new Address(bytes),
+                    };
                     return true;
                 }
                 catch (IndexOutOfRangeException) { }
