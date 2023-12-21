@@ -317,7 +317,7 @@ namespace Nethermind.Trie.Pruning
                 return new TrieNode(NodeType.Unknown, nodePath, storagePrefix);
 
             Span<byte> targetPath = Bytes.Concat(storagePrefix, nodePath);
-            NodeData? nodeData =  _committedNodes.GetNodeDataAtRoot(rootHash, targetPath);
+            NodeData? nodeData = _committedNodes.GetNodeDataAtRoot(rootHash, targetPath);
 
             if (nodeData is null)
             {
@@ -917,7 +917,7 @@ namespace Nethermind.Trie.Pruning
             public byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None) => _trieStore.Get(key, flags);
 
             public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None)
-            { 
+            {
                 //_trieStore._stateDb.Set(key, value, flags);
             }
         }

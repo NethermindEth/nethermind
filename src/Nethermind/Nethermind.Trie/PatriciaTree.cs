@@ -444,7 +444,8 @@ namespace Nethermind.Trie
                 if (RootRef is null) return null;
                 if (RootRef?.IsDirty == true)
                 {
-                    if (_uncommitedPaths is null || _uncommitedPaths.Matches(rawKey) || ClearedBySelfDestruct) {
+                    if (_uncommitedPaths is null || _uncommitedPaths.Matches(rawKey) || ClearedBySelfDestruct)
+                    {
                         diagData.Dirty = _uncommitedPaths is null || _uncommitedPaths.Matches(rawKey);
                         diagData.SelfDestruct = ClearedBySelfDestruct;
                         return GetInternal(rawKey, out _);

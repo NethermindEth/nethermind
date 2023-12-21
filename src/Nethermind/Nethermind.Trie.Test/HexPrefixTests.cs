@@ -167,7 +167,7 @@ namespace Nethermind.Trie.Test
             }
 
             //simulate longer paths for storage - all prefixed with account path
-            byte[][] accountPaths = new byte[numberOfKeys/100][];
+            byte[][] accountPaths = new byte[numberOfKeys / 100][];
             for (int i = 0; i < numberOfKeys / 100; i++)
                 accountPaths[i] = GenNibblePath(r);
 

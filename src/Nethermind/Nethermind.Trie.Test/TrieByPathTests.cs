@@ -895,7 +895,7 @@ public class TrieByPathTests
         Assert.That(db.Count, Is.EqualTo(4));
     }
 
-    [TestCase("0x0a010b02", new byte[] { 0, 3, 6 }, new byte[] { 1, 4, 10})]
+    [TestCase("0x0a010b02", new byte[] { 0, 3, 6 }, new byte[] { 1, 4, 10 })]
     [TestCase("0x0a010b02", new byte[] { 5 }, new byte[] { 0, 15 })]
     [TestCase("0x0a010b02", new byte[] { 0, 15 }, new byte[] { 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14 })]
     [TestCase("0x", new byte[] { 0, 3, 6 }, new byte[] { 1, 4, 10 })]
@@ -908,7 +908,7 @@ public class TrieByPathTests
 
         byte[] data = new byte[4] { 1, 2, 3, 4 };
 
-        byte[] replacedPath =   Bytes.FromHexString(branchPath);
+        byte[] replacedPath = Bytes.FromHexString(branchPath);
         TrieNode branch = TrieNodeFactory.CreateBranch(replacedPath, Array.Empty<byte>());
         db.Set(Nibbles.NibblesToByteStorage(replacedPath), data);
 
@@ -919,7 +919,7 @@ public class TrieByPathTests
             childPath[^1] = existingChildren[i];
             TrieNode childNode = TrieNodeFactory.CreateLeaf(childPath, Array.Empty<byte>());
             branch.SetChild(existingChildren[i], childNode);
-            
+
             db.Set(Nibbles.NibblesToByteStorage(childPath), data);
         }
 
