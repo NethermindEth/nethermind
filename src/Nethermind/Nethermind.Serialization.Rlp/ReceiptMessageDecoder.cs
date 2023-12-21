@@ -57,9 +57,14 @@ namespace Nethermind.Serialization.Rlp
             {
                 entries[i] = Rlp.Decode<LogEntry>(rlpStream, RlpBehaviors.AllowExtraBytes);
             }
-
-            // TODO: Decode op stuff here
             txReceipt.Logs = entries;
+
+            if (rlpStream.Position != lastCheck)
+            {
+                txReceipt.DepositNonce = rlpStream.DecodeUlong();
+                txReceipt.DepositReceiptVersion = rlpStream.DecodeUlong();
+            }
+
             return txReceipt;
         }
 

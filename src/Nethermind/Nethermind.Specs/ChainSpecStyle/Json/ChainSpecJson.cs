@@ -190,7 +190,6 @@ namespace Nethermind.Specs.ChainSpecStyle.Json
             public Address L1BlockAddress { get; set; }
             public UInt256 CanyonBaseFeeChangeDenominator { get; set; }
             public Address Create2DeployerAddress { get; set; }
-            public Hash256 Create2DeployerCodeHash { get; set; }
             public byte[] Create2DeployerCode { get; set; }
         }
 
