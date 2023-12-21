@@ -361,7 +361,8 @@ namespace Nethermind.Evm.TransactionProcessing
                 codeSource: recipient,
                 executingAccount: recipient,
                 inputData: inputData,
-                codeInfo: codeInfo
+                codeInfo: codeInfo,
+                isSystemExecutionEnv: true
             );
         }
 
