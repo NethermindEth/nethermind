@@ -33,7 +33,8 @@ public interface INodeStorage
     public enum KeyScheme
     {
         Hash,
-        HalfPath
+        HalfPath,
+        Current,
     }
 
     public interface WriteBatch : IDisposable

@@ -34,7 +34,7 @@ namespace Nethermind.Api
         public long? MemoryHint { get; set; }
         public bool DisableGcOnNewPayload { get; set; } = true;
         public bool DisableMallocOpts { get; set; } = false;
-        public INodeStorage.KeyScheme? StateDbKeyScheme { get; set; } = null;
+        public INodeStorage.KeyScheme StateDbKeyScheme { get; set; } = INodeStorage.KeyScheme.Current;
 
         [Obsolete("Use DiagnosticMode with MemDb instead")]
         public bool UseMemDb

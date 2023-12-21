@@ -81,8 +81,8 @@ public interface IInitConfig : IConfig
     [ConfigItem(Description = "[TECHNICAL] Disable setting malloc options. Set to true if using different memory allocator or manually setting malloc opts.", DefaultValue = "false", HiddenFromDocs = true)]
     bool DisableMallocOpts { get; set; }
 
-    [ConfigItem(Description = "[TECHNICAL] Key scheme for state db. Only effect new db.", DefaultValue = "null", HiddenFromDocs = true)]
-    INodeStorage.KeyScheme? StateDbKeyScheme { get; set; }
+    [ConfigItem(Description = "[TECHNICAL] Key scheme for state db. Only effect new db.", DefaultValue = "Current", HiddenFromDocs = true)]
+    INodeStorage.KeyScheme StateDbKeyScheme { get; set; }
 }
 
 public enum DiagnosticMode

@@ -10,10 +10,10 @@ namespace Nethermind.Trie;
 
 public class NodeStorageFactory : INodeStorageFactory
 {
-    private readonly INodeStorage.KeyScheme? _preferredKeyScheme;
+    private readonly INodeStorage.KeyScheme _preferredKeyScheme;
     private INodeStorage.KeyScheme? _currentKeyScheme;
 
-    public NodeStorageFactory(INodeStorage.KeyScheme? preferredKeyScheme)
+    public NodeStorageFactory(INodeStorage.KeyScheme preferredKeyScheme)
     {
         _preferredKeyScheme = preferredKeyScheme;
         _currentKeyScheme = null;
@@ -27,13 +27,24 @@ public class NodeStorageFactory : INodeStorageFactory
     public INodeStorage WrapKeyValueStore(IKeyValueStore keyValueStore, bool forceUsePreferredKeyScheme = false)
     {
         INodeStorage.KeyScheme effectiveKeyScheme;
-        if (forceUsePreferredKeyScheme && _preferredKeyScheme != null)
+        if (forceUsePreferredKeyScheme && _preferredKeyScheme != INodeStorage.KeyScheme.Current)
         {
-            effectiveKeyScheme = _preferredKeyScheme ?? INodeStorage.KeyScheme.HalfPath;
+            effectiveKeyScheme = _preferredKeyScheme;
         }
         else
         {
-            effectiveKeyScheme = _currentKeyScheme ?? _preferredKeyScheme ?? INodeStorage.KeyScheme.HalfPath;
+            if (_currentKeyScheme != null)
+            {
+                effectiveKeyScheme = _currentKeyScheme.Value;
+            }
+            else if (_preferredKeyScheme != INodeStorage.KeyScheme.Current)
+            {
+                effectiveKeyScheme = _preferredKeyScheme;
+            }
+            else
+            {
+                effectiveKeyScheme = INodeStorage.KeyScheme.HalfPath;
+            }
         }
 
         bool requirePath = effectiveKeyScheme == INodeStorage.KeyScheme.HalfPath ||

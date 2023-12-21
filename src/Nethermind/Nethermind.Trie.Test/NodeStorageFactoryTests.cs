@@ -52,10 +52,10 @@ public class NodeStorageFactoryTests
 
     [TestCase(INodeStorage.KeyScheme.HalfPath, INodeStorage.KeyScheme.Hash, INodeStorage.KeyScheme.Hash, true)]
     [TestCase(INodeStorage.KeyScheme.Hash, INodeStorage.KeyScheme.HalfPath, INodeStorage.KeyScheme.HalfPath, true)]
-    [TestCase(INodeStorage.KeyScheme.HalfPath, null, INodeStorage.KeyScheme.HalfPath, true)]
-    [TestCase(INodeStorage.KeyScheme.Hash, null, INodeStorage.KeyScheme.Hash, false)]
-    [TestCase(null, null, INodeStorage.KeyScheme.HalfPath, true)]
-    public void When_ForceUsePreferredIsTrue_Then_UsePreferred(INodeStorage.KeyScheme? currentKeyScheme, INodeStorage.KeyScheme? preferredKeyScheme, INodeStorage.KeyScheme expectedScheme, bool requirePath)
+    [TestCase(INodeStorage.KeyScheme.HalfPath, INodeStorage.KeyScheme.Current, INodeStorage.KeyScheme.HalfPath, true)]
+    [TestCase(INodeStorage.KeyScheme.Hash, INodeStorage.KeyScheme.Current, INodeStorage.KeyScheme.Hash, false)]
+    [TestCase(null, INodeStorage.KeyScheme.Current, INodeStorage.KeyScheme.HalfPath, true)]
+    public void When_ForceUsePreferredIsTrue_Then_UsePreferred(INodeStorage.KeyScheme? currentKeyScheme, INodeStorage.KeyScheme preferredKeyScheme, INodeStorage.KeyScheme expectedScheme, bool requirePath)
     {
         IDb memDb = PrepareMemDbWithKeyScheme(currentKeyScheme);
 
