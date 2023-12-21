@@ -45,16 +45,18 @@ public class ValidatorRegistryContract : CallableContract, IValidatorRegistryCon
 
     public UInt256 GetNumUpdates(BlockHeader blockHeader)
     {
-        object[] res = Call(blockHeader, getNumUpdates, Address.Zero, Array.Empty<object>());
+        object[] res = Call(blockHeader, getNumUpdates, Address.Zero, []);
         return (UInt256)res[0];
     }
 
     public Update GetUpdate(BlockHeader blockHeader, in UInt256 i)
     {
         object[] res = Call(blockHeader, getUpdate, Address.Zero, [i]);
-        Update update = new();
-        update.Message = (byte[])res[0];
-        update.Signature = (byte[])res[1];
+        Update update = new()
+        {
+            Message = (byte[])res[0],
+            Signature = (byte[])res[1]
+        };
         return update;
     }
 
@@ -89,12 +91,12 @@ public class ValidatorRegistryContract : CallableContract, IValidatorRegistryCon
     private Message GetUpdateMessage(BlockHeader blockHeader, UInt256 i)
     {
         Update update = GetUpdate(blockHeader, i);
-        return new Message(update.Message[..46]);
+        return new Message(update.Message.AsSpan()[..46]);
     }
 
     private byte[] Sign(byte[] message)
     {
-        return Bls.Sign(_signer.Key!, Keccak.Compute(message));
+        return Bls.Sign(_signer.Key!, Keccak.Compute(message)).Bytes;
     }
 
     private async ValueTask<AcceptTxResult?> Update(byte[] message, byte[] signature)
