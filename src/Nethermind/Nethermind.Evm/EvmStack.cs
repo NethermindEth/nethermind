@@ -297,7 +297,7 @@ public ref struct EvmStack<TTracing>
     {
         if (Head-- == 0)
         {
-            return null;;
+            return null;
         }
 
         return new Address(_bytes.Slice(Head * WordSize + WordSize - AddressSize, AddressSize).ToArray());

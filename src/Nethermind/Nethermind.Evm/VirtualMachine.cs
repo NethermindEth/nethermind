@@ -1149,11 +1149,11 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine
                 case Instruction.XOR:
                     {
                         gasAvailable -= GasCostOf.VeryLow;
-                        
+
                         ref byte bytesRef = ref stack.PopBytesByRef();
                         if (IsNullRef(ref bytesRef)) goto StackUnderflow;
                         Vector256<byte> aVec = ReadUnaligned<Vector256<byte>>(ref bytesRef);
-                        
+
                         bytesRef = ref stack.PopBytesByRef();
                         if (IsNullRef(ref bytesRef)) goto StackUnderflow;
                         Vector256<byte> bVec = ReadUnaligned<Vector256<byte>>(ref bytesRef);
@@ -2189,9 +2189,9 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine
         if (instruction == Instruction.DELEGATECALL && !spec.DelegateCallEnabled ||
             instruction == Instruction.STATICCALL && !spec.StaticCallEnabled) return EvmExceptionType.BadInstruction;
 
-        if (!stack.PopUInt256(out UInt256 gasLimit)) EvmStack.ThrowEvmStackUnderflowException();
+        if (!stack.PopUInt256(out UInt256 gasLimit)) return EvmExceptionType.StackUnderflow;
         Address codeSource = stack.PopAddress();
-        if (codeSource is null) EvmStack.ThrowEvmStackUnderflowException();
+        if (codeSource is null) return EvmExceptionType.StackUnderflow;
 
         if (!ChargeAccountAccessGas(ref gasAvailable, vmState, codeSource, spec)) return EvmExceptionType.OutOfGas;
 
@@ -2205,15 +2205,15 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine
                 callValue = env.Value;
                 break;
             default:
-                if (!stack.PopUInt256(out callValue)) EvmStack.ThrowEvmStackUnderflowException();
+                if (!stack.PopUInt256(out callValue)) return EvmExceptionType.StackUnderflow; ;
                 break;
         }
 
         UInt256 transferValue = instruction == Instruction.DELEGATECALL ? UInt256.Zero : callValue;
-        if (!stack.PopUInt256(out UInt256 dataOffset)) EvmStack.ThrowEvmStackUnderflowException();
-        if (!stack.PopUInt256(out UInt256 dataLength)) EvmStack.ThrowEvmStackUnderflowException();
-        if (!stack.PopUInt256(out UInt256 outputOffset)) EvmStack.ThrowEvmStackUnderflowException();
-        if (!stack.PopUInt256(out UInt256 outputLength)) EvmStack.ThrowEvmStackUnderflowException();
+        if (!stack.PopUInt256(out UInt256 dataOffset)) return EvmExceptionType.StackUnderflow; ;
+        if (!stack.PopUInt256(out UInt256 dataLength)) return EvmExceptionType.StackUnderflow; ;
+        if (!stack.PopUInt256(out UInt256 outputOffset)) return EvmExceptionType.StackUnderflow; ;
+        if (!stack.PopUInt256(out UInt256 outputLength)) return EvmExceptionType.StackUnderflow; ;
 
         if (vmState.IsStatic && !transferValue.IsZero && instruction != Instruction.CALLCODE) return EvmExceptionType.StaticCallViolation;
 
@@ -2744,6 +2744,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine
             EvmExceptionType.InvalidSubroutineEntry => CallResult.InvalidSubroutineEntry,
             EvmExceptionType.InvalidSubroutineReturn => CallResult.InvalidSubroutineReturn,
             EvmExceptionType.StackOverflow => CallResult.StackOverflowException,
+            EvmExceptionType.StackUnderflow => CallResult.StackUnderflowException,
             EvmExceptionType.InvalidJumpDestination => CallResult.InvalidJumpDestination,
             EvmExceptionType.AccessViolation => CallResult.AccessViolationException,
             _ => throw new ArgumentOutOfRangeException(nameof(exceptionType), exceptionType, "")
