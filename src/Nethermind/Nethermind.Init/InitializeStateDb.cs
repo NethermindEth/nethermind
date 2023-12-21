@@ -101,7 +101,7 @@ public class InitializeStateDb : IStep
 
         TrieStore trieStore = syncConfig.TrieHealing
             ? new HealingTrieStore(
-                _api.NodeStorageFactory.WrapKeyValueStore(stateWitnessedBy),
+                mainNodeStorage,
                 pruningStrategy,
                 persistenceStrategy,
                 getApi.LogManager)
