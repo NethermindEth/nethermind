@@ -23,7 +23,7 @@ ROTKI_USERNAME = os.getenv("ROTKI_USERNAME")
 ROTKI_PASSWORD = os.getenv("ROTKI_PASSWORD")
 
 NGINX_CMD = "nginx"
-NGINX_CONF = "/rotki/nginx.conf"
+NGINX_CONF = "/opt/rotki/nginx.conf"
 
 
 async def run_nginx() -> asyncio.subprocess.Process:
