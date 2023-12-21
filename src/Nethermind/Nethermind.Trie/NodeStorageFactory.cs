@@ -10,10 +10,10 @@ namespace Nethermind.Trie;
 
 public class NodeStorageFactory : INodeStorageFactory
 {
-    private readonly INodeStorage.KeyScheme _preferredKeyScheme;
+    private readonly INodeStorage.KeyScheme? _preferredKeyScheme;
     private INodeStorage.KeyScheme? _currentKeyScheme;
 
-    public NodeStorageFactory(INodeStorage.KeyScheme preferredKeyScheme)
+    public NodeStorageFactory(INodeStorage.KeyScheme? preferredKeyScheme)
     {
         _preferredKeyScheme = preferredKeyScheme;
         _currentKeyScheme = null;
@@ -26,12 +26,17 @@ public class NodeStorageFactory : INodeStorageFactory
 
     public INodeStorage WrapKeyValueStore(IKeyValueStore keyValueStore, bool forceUsePreferredKeyScheme = false)
     {
-        if (forceUsePreferredKeyScheme)
+        if (forceUsePreferredKeyScheme && _preferredKeyScheme != null)
         {
-            return new NodeStorage(keyValueStore, _preferredKeyScheme);
+            return new NodeStorage(
+                keyValueStore,
+                _preferredKeyScheme ?? INodeStorage.KeyScheme.HalfPath);
         }
 
-        return new NodeStorage(keyValueStore, _currentKeyScheme ?? _preferredKeyScheme);
+        return new NodeStorage(
+            keyValueStore,
+            _currentKeyScheme ?? _preferredKeyScheme ?? INodeStorage.KeyScheme.HalfPath
+        );
     }
 
     private static INodeStorage.KeyScheme? DetectKeyScheme(IDb db)
