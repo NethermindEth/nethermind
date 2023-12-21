@@ -228,7 +228,7 @@ namespace Nethermind.Blockchain.FullPruning
 
                 INodeStorage targetNodeStorage = _nodeStorageFactory.WrapKeyValueStore(pruning, usePreferredKeyScheme: true);
 
-                if (originalKeyScheme == INodeStorage.KeyScheme.HalfPath)
+                if (originalKeyScheme == INodeStorage.KeyScheme.HalfPath && targetNodeStorage.Scheme == INodeStorage.KeyScheme.Hash)
                 {
                     // If original node storage scheme is HalfPath, we cannot double copy HalfPath into a Hash scheme
                     // state because there could be code path that does not have path when using Hash scheme.
