@@ -791,12 +791,11 @@ namespace Nethermind.Trie
                 return traverseContext.UpdateValue;
             }
 
-            TrieNode nextNode = childNode;
-
             int originalPathLength = path.Length;
             node.GetChildPathMut(ref path, childIdx);
 
-            CappedArray<byte> res = TraverseNext(in traverseContext, 1, nextNode, ref path);
+            ResolveNode(childNode, path, in traverseContext);
+            CappedArray<byte> res = TraverseNext(in traverseContext, 1, childNode, ref path);
 
             path.TruncateMut(originalPathLength);
             return res;
@@ -912,6 +911,7 @@ namespace Nethermind.Trie
                 ThrowMissingPrefixException();
             }
 
+            TrieNode originalNode = node;
             ReadOnlySpan<byte> remaining = traverseContext.GetRemainingUpdatePath();
 
             int extensionLength = FindCommonPrefixLength(remaining, node.Key);
@@ -929,6 +929,8 @@ namespace Nethermind.Trie
                 {
                     ThrowMissingChildException(node);
                 }
+
+                ResolveNode(next, path, in traverseContext);
 
                 CappedArray<byte> res = TraverseNext(in traverseContext, extensionLength, next, ref path);
                 path.TruncateMut(originalPathLength);
@@ -954,7 +956,8 @@ namespace Nethermind.Trie
             if (extensionLength != 0)
             {
                 byte[] extensionPath = node.Key.Slice(0, extensionLength);
-                _nodeStack.Push(new StackedNode(node.CloneWithChangedKey(extensionPath), traverseContext.CurrentIndex, 0));
+                node = node.CloneWithChangedKey(extensionPath);
+                _nodeStack.Push(new StackedNode(node, traverseContext.CurrentIndex, 0));
             }
 
             // The node from extension become a branch
@@ -970,10 +973,10 @@ namespace Nethermind.Trie
                 branch.SetChild(remaining[extensionLength], shortLeaf);
             }
 
-            TrieNode originalNodeChild = node.GetChild(TrieStore, ref path, 0);
+            TrieNode originalNodeChild = originalNode.GetChild(TrieStore, ref path, 0);
             if (originalNodeChild is null)
             {
-                ThrowInvalidDataException(node);
+                ThrowInvalidDataException(originalNode);
             }
 
             if (pathBeforeUpdate.Length - extensionLength > 1)
@@ -998,7 +1001,6 @@ namespace Nethermind.Trie
             // Move large struct creation out of flow so doesn't force additional stack space
             // in calling method even if not used
             TraverseContext newContext = traverseContext.WithNewIndex(traverseContext.CurrentIndex + extensionLength);
-            ResolveNode(next, path, newContext);
             return TraverseNode(next, ref path, in newContext);
         }
 
