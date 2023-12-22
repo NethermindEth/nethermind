@@ -112,9 +112,8 @@ public class NodeBucket
         lock (_nodeBucketLock)
         {
             NodeBucketItem item = new(nodeToRemove, DateTime.Now);
-            if (_items.Contains(item))
+            if (_items.Remove(item))
             {
-                _items.Remove(item);
                 AddNode(nodeToAdd);
             }
         }

@@ -97,7 +97,7 @@ public class Root : IEquatable<Root>, IComparable<Root>
 
     public bool Equals(Root? other)
     {
-        if (ReferenceEquals(null, other)) return false;
+        if (other is null) return false;
         if (ReferenceEquals(this, other)) return true;
         return Bytes.SequenceEqual(other.Bytes);
     }

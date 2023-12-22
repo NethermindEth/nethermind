@@ -16,6 +16,7 @@ namespace Nethermind.Specs.ChainSpecStyle
     public class ChainSpecBasedSpecProvider : ISpecProvider
     {
         private (ForkActivation Activation, ReleaseSpec Spec)[] _transitions;
+        private (ForkActivation Activation, ReleaseSpec Spec)[] _timestampOnlyTransitions;
         private ForkActivation? _firstTimestampActivation;
 
         private readonly ChainSpec _chainSpec;
@@ -98,6 +99,7 @@ namespace Nethermind.Specs.ChainSpecStyle
             TransitionActivations = CreateTransitionActivations(transitionBlockNumbers, transitionTimestamps);
             _transitions = CreateTransitions(_chainSpec, transitionBlockNumbers, transitionTimestamps);
             _firstTimestampActivation = TransitionActivations.FirstOrDefault(t => t.Timestamp is not null);
+            _timestampOnlyTransitions = _transitions.SkipWhile(t => t.Activation.Timestamp is null).ToArray();
 
             if (_chainSpec.Parameters.TerminalPoWBlockNumber is not null)
             {
@@ -268,6 +270,8 @@ namespace Nethermind.Specs.ChainSpecStyle
 
         public IReleaseSpec GetSpec(ForkActivation activation)
         {
+            (ForkActivation Activation, ReleaseSpec Spec)[] consideredTransitions = _transitions;
+
             // TODO: Is this actually needed? Can this be tricked with invalid activation check if someone would fake timestamp from the future?
             if (_firstTimestampActivation is not null && activation.Timestamp is not null)
             {
@@ -276,9 +280,14 @@ namespace Nethermind.Specs.ChainSpecStyle
                 {
                     if (_logger.IsWarn) _logger.Warn($"Chainspec file is misconfigured! Timestamp transition is configured to happen before the last block transition.");
                 }
+
+                if (_firstTimestampActivation.Value.Timestamp <= activation.Timestamp)
+                {
+                    consideredTransitions = _timestampOnlyTransitions;
+                }
             }
 
-            return _transitions.TryGetSearchedItem(activation,
+            return consideredTransitions.TryGetSearchedItem(activation,
                 CompareTransitionOnActivation,
                 out (ForkActivation Activation, ReleaseSpec Spec) transition)
                 ? transition.Spec

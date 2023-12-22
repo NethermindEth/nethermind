@@ -37,7 +37,7 @@ public class ColorfulCliConsole : CliConsole
         Colorful.Console.WriteLine();
     }
 
-    private Color GetColor(Color defaultColor)
+    private static Color GetColor(Color defaultColor)
     {
         return _terminal == Terminal.LinuxBash ? _colorScheme.Text : defaultColor;
     }

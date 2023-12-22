@@ -15,7 +15,9 @@ using Nethermind.JsonRpc.Modules.Parity;
 using Nethermind.JsonRpc.Modules.Trace;
 using Nethermind.JsonRpc.Modules.Web3;
 using Nethermind.Logging;
-using Newtonsoft.Json;
+using Nethermind.Serialization.Json;
+
+
 using NSubstitute;
 
 namespace Nethermind.JsonRpc.Test.Modules
@@ -55,13 +57,12 @@ namespace Nethermind.JsonRpc.Test.Modules
             }
         }
 
-        public JsonSerializer Serializer => _provider.Serializer;
-        public IReadOnlyCollection<JsonConverter> Converters => _provider.Converters;
+        public IJsonSerializer Serializer => _provider.Serializer;
         public IReadOnlyCollection<string> Enabled => _provider.All;
         public IReadOnlyCollection<string> All => _provider.All;
         public ModuleResolution Check(string methodName, JsonRpcContext context) => _provider.Check(methodName, context);
 
-        public (MethodInfo, bool) Resolve(string methodName) => _provider.Resolve(methodName);
+        public (MethodInfo, ParameterInfo[], bool) Resolve(string methodName) => _provider.Resolve(methodName);
 
         public Task<IRpcModule> Rent(string methodName, bool readOnly) => _provider.Rent(methodName, readOnly);
 

@@ -23,10 +23,7 @@ namespace Nethermind.Core.Caching
 
         public SpanLruCache(int maxCapacity, int startCapacity, string name, ISpanEqualityComparer<TKey> comparer)
         {
-            if (maxCapacity < 1)
-            {
-                throw new ArgumentOutOfRangeException();
-            }
+            ArgumentOutOfRangeException.ThrowIfLessThan(maxCapacity, 1);
 
             _maxCapacity = maxCapacity;
             _cacheMap = new SpanDictionary<TKey, LinkedListNode<LruCacheItem>>(startCapacity, comparer);

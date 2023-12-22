@@ -10,7 +10,7 @@ namespace Nethermind.Optimism;
 
 public class OptimismEthereumEcdsa : Ecdsa, IEthereumEcdsa
 {
-    private IEthereumEcdsa _ethereumEcdsa;
+    private readonly IEthereumEcdsa _ethereumEcdsa;
 
     public OptimismEthereumEcdsa(IEthereumEcdsa ethereumEcdsa)
     {

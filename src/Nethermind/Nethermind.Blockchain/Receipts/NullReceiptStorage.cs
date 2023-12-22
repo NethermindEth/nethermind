@@ -37,12 +37,6 @@ namespace Nethermind.Blockchain.Receipts
 
         public long MigratedBlockNumber { get; set; } = 0;
 
-        public event EventHandler<ReceiptsEventArgs> ReceiptsInserted
-        {
-            add { }
-            remove { }
-        }
-
         public bool HasBlock(long blockNumber, Hash256 hash)
         {
             return false;

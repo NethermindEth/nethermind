@@ -17,7 +17,7 @@ namespace Nethermind.Blockchain.Test.Receipts;
 
 public class ReceiptsIteratorTests
 {
-    ReceiptArrayStorageDecoder _decoder = ReceiptArrayStorageDecoder.Instance;
+    readonly ReceiptArrayStorageDecoder _decoder = ReceiptArrayStorageDecoder.Instance;
 
     [Test]
     public void SmokeTestWithRecovery()
@@ -112,7 +112,7 @@ public class ReceiptsIteratorTests
             false
         );
 
-        ReceiptsIterator iterator = new ReceiptsIterator(span, blockDb, () => recovery.CreateRecoveryContext(new ReceiptRecoveryBlock(block)), _decoder.GetRefDecoder(span));
+        ReceiptsIterator iterator = new ReceiptsIterator(span, blockDb, () => recovery.CreateRecoveryContext(new ReceiptRecoveryBlock(block)), ReceiptArrayStorageDecoder.GetRefDecoder(span));
         return iterator;
     }
 }

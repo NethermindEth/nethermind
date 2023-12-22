@@ -30,8 +30,8 @@ namespace Nethermind.Core.Collections
         /// <returns></returns>
         public static int BinarySearch<TItem, TSearch>(this IList<TItem> list, TSearch value, Func<TSearch, TItem, int> comparer)
         {
-            if (list is null) throw new ArgumentNullException(nameof(list));
-            if (comparer is null) throw new ArgumentNullException(nameof(comparer));
+            ArgumentNullException.ThrowIfNull(list);
+            ArgumentNullException.ThrowIfNull(comparer);
 
             int lower = 0;
             int upper = list.Count - 1;

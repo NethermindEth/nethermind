@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -13,14 +14,11 @@ using Nethermind.Evm.Tracing.ParityStyle;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
-using Newtonsoft.Json;
 
 namespace Nethermind.Blockchain;
 
 public static class BlockTraceDumper
 {
-    public static List<JsonConverter> Converters { get; } = new();
-
     public static void LogDiagnosticRlp(
         Block block,
         ILogger logger,
@@ -56,15 +54,12 @@ public static class BlockTraceDumper
 
         try
         {
-            IJsonSerializer serializer = new EthereumJsonSerializer();
-            serializer.RegisterConverters(Converters);
-
             if (blockTracer is BlockReceiptsTracer receiptsTracer)
             {
                 fileName = $"receipts_{blockHash}.txt";
                 using FileStream diagnosticFile = GetFileStream(fileName);
                 IReadOnlyList<TxReceipt> receipts = receiptsTracer.TxReceipts;
-                serializer.Serialize(diagnosticFile, receipts, true);
+                EthereumJsonSerializer.SerializeToStream(diagnosticFile, receipts, true);
                 if (logger.IsInfo)
                     logger.Info($"Created a Receipts trace of invalid block {blockHash} in file {diagnosticFile.Name}");
             }
@@ -74,7 +69,7 @@ public static class BlockTraceDumper
                 fileName = $"gethStyle_{blockHash}.txt";
                 using FileStream diagnosticFile = GetFileStream(fileName);
                 IReadOnlyCollection<GethLikeTxTrace> trace = gethTracer.BuildResult();
-                serializer.Serialize(diagnosticFile, trace, true);
+                EthereumJsonSerializer.SerializeToStream(diagnosticFile, trace, true);
                 if (logger.IsInfo)
                     logger.Info($"Created a Geth-style trace of invalid block {blockHash} in file {diagnosticFile.Name}");
             }
@@ -84,7 +79,7 @@ public static class BlockTraceDumper
                 fileName = $"parityStyle_{blockHash}.txt";
                 using FileStream diagnosticFile = GetFileStream(fileName);
                 IReadOnlyCollection<ParityLikeTxTrace> trace = parityTracer.BuildResult();
-                serializer.Serialize(diagnosticFile, trace, true);
+                EthereumJsonSerializer.SerializeToStream(diagnosticFile, trace, true);
                 if (logger.IsInfo)
                     logger.Info($"Created a Parity-style trace of invalid block {blockHash} in file {diagnosticFile.Name}");
             }

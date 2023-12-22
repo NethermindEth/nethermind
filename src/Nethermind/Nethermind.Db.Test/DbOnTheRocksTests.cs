@@ -204,7 +204,7 @@ namespace Nethermind.Db.Test
         private IDb _db = null!;
         IDisposable? _dbDisposable = null!;
 
-        private bool _useColumnDb = false;
+        private readonly bool _useColumnDb = false;
 
         public DbOnTheRocksDbTests(bool useColumnDb)
         {
@@ -253,6 +253,7 @@ namespace Nethermind.Db.Test
         [TearDown]
         public void TearDown()
         {
+            _db?.Dispose();
             _dbDisposable?.Dispose();
         }
 

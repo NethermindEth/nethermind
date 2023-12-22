@@ -7,7 +7,7 @@ namespace Nethermind.Synchronization.ParallelSync
 {
     public abstract class ActivatedSyncFeed<T> : SyncFeed<T>, IDisposable
     {
-        private bool _disposed = false;
+        private readonly bool _disposed = false;
 
         protected ActivatedSyncFeed()
         {

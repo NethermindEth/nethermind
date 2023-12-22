@@ -14,15 +14,15 @@ internal static class ConfigGenerator
         var startMark = "<!--[start autogen]-->";
         var endMark = "<!--[end autogen]-->";
         var fileName = "configuration.md";
-        var excluded = new[] { "AccountAbstraction", "Mev", "Plugin" };
+        var excluded = Enumerable.Empty<string>();
 
         var types = Directory
             .GetFiles(AppDomain.CurrentDomain.BaseDirectory, "Nethermind.*.dll")
-            .SelectMany(a => Assembly.LoadFile(a).GetExportedTypes())
+            .SelectMany(a => Assembly.LoadFrom(a).GetExportedTypes())
             .Where(t => t.IsInterface && typeof(IConfig).IsAssignableFrom(t) &&
                 !excluded.Any(x => t.FullName?.Contains(x, StringComparison.Ordinal) ?? false))
             .OrderBy(t => t.Name);
-
+        
         File.Delete($"~{fileName}");
 
         using var readStream = new StreamReader(File.OpenRead(fileName));

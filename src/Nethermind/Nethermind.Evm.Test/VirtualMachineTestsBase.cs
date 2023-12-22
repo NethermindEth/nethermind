@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Numerics;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -70,6 +71,9 @@ public class VirtualMachineTestsBase
         _processor = new TransactionProcessor(SpecProvider, TestState, Machine, logManager);
     }
 
+    [TearDown]
+    public virtual void TearDown() => _stateDb?.Dispose();
+
     protected GethLikeTxTrace ExecuteAndTrace(params byte[] code)
     {
         GethLikeTxMemoryTracer tracer = new(GethTraceOptions.Default with { EnableMemory = true });
@@ -116,6 +120,18 @@ public class VirtualMachineTestsBase
     }
 
     protected virtual TestAllTracerWithOutput CreateTracer() => new();
+
+
+    protected T ExecuteBlock<T>(T tracer, byte[] code, ForkActivation? forkActivation = null) where T : IBlockTracer
+    {
+        (Block block, Transaction transaction) = PrepareTx(forkActivation ?? Activation, 100000, code);
+        tracer.StartNewBlockTrace(block);
+        ITxTracer txTracer = tracer.StartNewTxTrace(transaction);
+        _processor.Execute(transaction, block.Header, txTracer);
+        tracer.EndTxTrace();
+        tracer.EndBlockTrace();
+        return tracer;
+    }
 
     protected T Execute<T>(T tracer, byte[] code, ForkActivation? forkActivation = null) where T : ITxTracer
     {

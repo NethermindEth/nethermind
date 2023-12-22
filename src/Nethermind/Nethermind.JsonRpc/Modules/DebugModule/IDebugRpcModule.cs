@@ -38,13 +38,13 @@ public interface IDebugRpcModule : IRpcModule
     ResultWrapper<GethLikeTxTrace> debug_traceTransactionByBlockhashAndIndex(Hash256 blockHash, int txIndex, GethTraceOptions options = null);
 
     [JsonRpcMethod(Description = "Returns the full stack trace of all invoked opcodes of all transactions that were included in the block specified. The parent of the block must be present or it will fail.", IsImplemented = true, IsSharable = true)]
-    ResultWrapper<GethLikeTxTrace[]> debug_traceBlock(byte[] blockRlp, GethTraceOptions options = null);
+    ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>> debug_traceBlock(byte[] blockRlp, GethTraceOptions options = null);
 
     [JsonRpcMethod(Description = "Similar to debug_traceBlock, this method accepts a block number as well as \"latest\" or \"finalized\" and replays the block that is already present in the database.", IsImplemented = true, IsSharable = true)]
-    ResultWrapper<GethLikeTxTrace[]> debug_traceBlockByNumber(BlockParameter blockParameter, GethTraceOptions options = null);
+    ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>> debug_traceBlockByNumber(BlockParameter blockParameter, GethTraceOptions options = null);
 
     [JsonRpcMethod(Description = "Similar to debug_traceBlock, this method accepts a block hash and replays the block that is already present in the database.", IsImplemented = true, IsSharable = true)]
-    ResultWrapper<GethLikeTxTrace[]> debug_traceBlockByHash(Hash256 blockHash, GethTraceOptions options = null);
+    ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>> debug_traceBlockByHash(Hash256 blockHash, GethTraceOptions options = null);
 
     [JsonRpcMethod(Description = "", IsImplemented = false, IsSharable = false)]
     ResultWrapper<GethLikeTxTrace[]> debug_traceBlockFromFile(string fileName, GethTraceOptions options = null);
@@ -87,6 +87,18 @@ public interface IDebugRpcModule : IRpcModule
 
     [JsonRpcMethod(Description = "Insert receipts for the block after verifying receipts root correctness.")]
     Task<ResultWrapper<bool>> debug_insertReceipts(BlockParameter blockParameter, ReceiptForRpc[] receiptForRpc);
+
+    [JsonRpcMethod(Description = "Get Raw Block format.")]
+    ResultWrapper<byte[]> debug_getRawBlock(long blockNumber);
+
+    [JsonRpcMethod(Description = "Get Raw Receipt format.")]
+    ResultWrapper<byte[][]> debug_getRawReceipts(long blockNumber);
+
+    [JsonRpcMethod(Description = "Get Raw Header format.")]
+    ResultWrapper<byte[]> debug_getRawHeader(long blockNumber);
+
+    [JsonRpcMethod(Description = "Get Raw Transaction format.")]
+    ResultWrapper<byte[]> debug_getRawTransaction(Hash256 transactionHash);
 
     [JsonRpcMethod(Description = "Retrives Nethermind Sync Stage, With extra Metadata")]
     Task<ResultWrapper<SyncReportSymmary>> debug_getSyncStage();

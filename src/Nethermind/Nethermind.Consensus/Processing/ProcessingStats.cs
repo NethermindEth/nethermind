@@ -35,7 +35,7 @@ namespace Nethermind.Consensus.Processing
         private long _lastSelfDestructs;
         private long _maxMemory;
         private long _totalBlocks;
-        private bool _isDebugMode = false;
+        private readonly bool _isDebugMode = false;
         private decimal _processingMicroseconds;
         private long _lastTotalCreates;
         private long _lastReportMs;

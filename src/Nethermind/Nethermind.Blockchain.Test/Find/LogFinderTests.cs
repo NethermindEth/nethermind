@@ -41,6 +41,9 @@ namespace Nethermind.Blockchain.Test.Find
             SetUp(true);
         }
 
+        [TearDown]
+        public void TearDown() => _bloomStorage?.Dispose();
+
         private void SetUp(bool allowReceiptIterator)
         {
             var specProvider = Substitute.For<ISpecProvider>();

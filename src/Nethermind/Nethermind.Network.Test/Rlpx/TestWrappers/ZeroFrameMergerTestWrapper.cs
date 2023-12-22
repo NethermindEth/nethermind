@@ -29,7 +29,7 @@ namespace Nethermind.Network.Test.Rlpx.TestWrappers
                 base.Decode(_context, input, result);
             }
 
-            if (!result.Any())
+            if (result.Count == 0)
             {
                 return null;
             }

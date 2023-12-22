@@ -25,7 +25,7 @@ namespace Nethermind.Synchronization.FastSync
 
     internal class PendingSyncItems : IPendingSyncItems
     {
-        private ConcurrentStack<StateSyncItem>[] _allStacks = new ConcurrentStack<StateSyncItem>[7];
+        private readonly ConcurrentStack<StateSyncItem>[] _allStacks = new ConcurrentStack<StateSyncItem>[7];
 
         private ConcurrentStack<StateSyncItem> CodeItems => _allStacks[0];
 

@@ -12,10 +12,10 @@ namespace Nethermind.AccountAbstraction.Bundler
 {
     public class MevBundler : IBundler
     {
-        private IBundleTrigger _trigger;
-        private ITxSource _txSource;
-        private IBundlePool _bundlePool;
-        private ILogger _logger;
+        private readonly IBundleTrigger _trigger;
+        private readonly ITxSource _txSource;
+        private readonly IBundlePool _bundlePool;
+        private readonly ILogger _logger;
 
         public MevBundler(IBundleTrigger trigger, ITxSource txSource, IBundlePool bundlePool, ILogger logger)
         {

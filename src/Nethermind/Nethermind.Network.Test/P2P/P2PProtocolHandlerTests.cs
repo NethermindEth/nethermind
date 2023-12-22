@@ -35,9 +35,12 @@ namespace Nethermind.Network.Test.P2P
             _serializer.Register(new PingMessageSerializer());
         }
 
+        [TearDown]
+        public void TearDown() => _session?.Dispose();
+
         private ISession _session;
         private IMessageSerializationService _serializer;
-        private Node node = new(TestItem.PublicKeyA, "127.0.0.1", 30303);
+        private readonly Node node = new(TestItem.PublicKeyA, "127.0.0.1", 30303);
         private INodeStatsManager _nodeStatsManager;
         private Regex? _clientIdPattern;
 

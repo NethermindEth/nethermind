@@ -86,7 +86,9 @@ public class Eth68ProtocolHandlerTests
     [TearDown]
     public void TearDown()
     {
-        _handler.Dispose();
+        _handler?.Dispose();
+        _session?.Dispose();
+        _syncManager?.Dispose();
     }
 
     [Test]

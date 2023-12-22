@@ -17,9 +17,9 @@ namespace Nethermind.Init.Steps
 {
     public class EthereumStepsManager
     {
-        private ILogger _logger;
+        private readonly ILogger _logger;
 
-        private AutoResetEvent _autoResetEvent = new AutoResetEvent(true);
+        private readonly AutoResetEvent _autoResetEvent = new AutoResetEvent(true);
         private readonly INethermindApi _api;
         private readonly List<StepInfo> _allSteps;
         private readonly Dictionary<Type, StepInfo> _allStepsByBaseType;
@@ -29,10 +29,7 @@ namespace Nethermind.Init.Steps
             INethermindApi context,
             ILogManager logManager)
         {
-            if (loader is null)
-            {
-                throw new ArgumentNullException(nameof(loader));
-            }
+            ArgumentNullException.ThrowIfNull(loader);
 
             _api = context ?? throw new ArgumentNullException(nameof(context));
             _logger = logManager?.GetClassLogger<EthereumStepsManager>()

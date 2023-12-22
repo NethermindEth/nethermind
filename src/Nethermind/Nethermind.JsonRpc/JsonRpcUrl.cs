@@ -25,8 +25,7 @@ namespace Nethermind.JsonRpc
 
         public static JsonRpcUrl Parse(string packedUrlValue)
         {
-            if (packedUrlValue is null)
-                throw new ArgumentNullException(nameof(packedUrlValue));
+            ArgumentNullException.ThrowIfNull(packedUrlValue);
 
             string[] parts = packedUrlValue.Split('|');
             if (parts.Length != 3 && parts.Length != 4)

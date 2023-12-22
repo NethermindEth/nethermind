@@ -48,27 +48,6 @@ namespace Nethermind.Evm.Benchmark
         }
 
         [Benchmark(OperationsPerInvoke = 4)]
-        [ArgumentsSource(nameof(ValueSource))]
-        public Int256.Int256 Int256(UInt256 v)
-        {
-            EvmStack<VirtualMachine.NotTracing> stack = new(_stack.AsSpan(), 0, NullTxTracer.Instance);
-
-            stack.PushSignedInt256(new Int256.Int256(v));
-            stack.PopSignedInt256(out Int256.Int256 value);
-
-            stack.PushSignedInt256(value);
-            stack.PopSignedInt256(out value);
-
-            stack.PushSignedInt256(value);
-            stack.PopSignedInt256(out value);
-
-            stack.PushSignedInt256(value);
-            stack.PopSignedInt256(out value);
-
-            return value;
-        }
-
-        [Benchmark(OperationsPerInvoke = 4)]
         public byte Byte()
         {
             EvmStack<VirtualMachine.NotTracing> stack = new(_stack.AsSpan(), 0, NullTxTracer.Instance);

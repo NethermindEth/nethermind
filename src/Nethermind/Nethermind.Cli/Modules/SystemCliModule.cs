@@ -9,14 +9,14 @@ namespace Nethermind.Cli.Modules
     public class SystemCliModule : CliModuleBase
     {
         [CliFunction("system", "getVariable")]
-        public string? GetVariable(string name, string defaultValue)
+        public static string? GetVariable(string name, string defaultValue)
         {
             var value = Environment.GetEnvironmentVariable(name.ToUpperInvariant());
             return string.IsNullOrWhiteSpace(value) ? value : defaultValue;
         }
 
         [CliProperty("system", "memory")]
-        public string Memory(string name, string defaultValue)
+        public static string Memory(string name, string defaultValue)
         {
             return $"Allocated: {GC.GetTotalMemory(false)}, GC0: {GC.CollectionCount(0)}, GC1: {GC.CollectionCount(1)}, GC2: {GC.CollectionCount(2)}";
         }

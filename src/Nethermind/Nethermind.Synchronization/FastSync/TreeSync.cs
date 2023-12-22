@@ -6,11 +6,11 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Core;
-using Nethermind.Core.Buffers;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -43,7 +43,7 @@ namespace Nethermind.Synchronization.FastSync
         private long _currentSyncStartSecondsInSync;
 
         private DateTime _lastResetRoot = DateTime.UtcNow - TimeSpan.FromHours(1);
-        private TimeSpan _minTimeBetweenReset = TimeSpan.FromMinutes(2);
+        private readonly TimeSpan _minTimeBetweenReset = TimeSpan.FromMinutes(2);
 
         private readonly ReaderWriterLockSlim _stateDbLock = new();
         private readonly ReaderWriterLockSlim _codeDbLock = new();
@@ -66,14 +66,14 @@ namespace Nethermind.Synchronization.FastSync
         private readonly ReaderWriterLockSlim _syncStateLock = new();
         private readonly ConcurrentDictionary<StateSyncBatch, object?> _pendingRequests = new();
         private Dictionary<Hash256, HashSet<DependentItem>> _dependencies = new();
-        private LruKeyCache<Hash256> _alreadySavedNode = new(AlreadySavedCapacity, "saved nodes");
-        private LruKeyCache<Hash256> _alreadySavedCode = new(AlreadySavedCapacity, "saved nodes");
+        private readonly LruKeyCache<Hash256> _alreadySavedNode = new(AlreadySavedCapacity, "saved nodes");
+        private readonly LruKeyCache<Hash256> _alreadySavedCode = new(AlreadySavedCapacity, "saved nodes");
         private readonly HashSet<Hash256> _codesSameAsNodes = new();
 
         private BranchProgress _branchProgress;
         private int _hintsToResetRoot;
         private long _blockNumber;
-        private SyncMode _syncMode;
+        private readonly SyncMode _syncMode;
 
         public TreeSync(SyncMode syncMode, IDb codeDb, IDb stateDb, IBlockTree blockTree, ILogManager logManager)
         {
@@ -973,12 +973,13 @@ namespace Nethermind.Synchronization.FastSync
         {
             lock (_dependencies)
             {
-                if (!_dependencies.ContainsKey(dependency))
+                ref HashSet<DependentItem>? value = ref CollectionsMarshal.GetValueRefOrAddDefault(_dependencies, dependency, out bool exists);
+                if (!exists)
                 {
-                    _dependencies[dependency] = new HashSet<DependentItem>(DependentItemComparer.Instance);
+                    value = new HashSet<DependentItem>(DependentItemComparer.Instance);
                 }
 
-                _dependencies[dependency].Add(dependentItem);
+                value.Add(dependentItem);
             }
         }
 

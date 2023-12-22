@@ -17,7 +17,7 @@ namespace Nethermind.Serialization.Ssz.Test
     [TestFixture]
     public class MerkleTreeTests
     {
-        private Bytes32[] _testLeaves = new Bytes32[32];
+        private readonly Bytes32[] _testLeaves = new Bytes32[32];
         private const ulong _nodeIndexOfTheFirstLeaf = (1ul << MerkleTree.TreeHeight) - 1ul;
         private const ulong _lastNodeIndex = (1ul << (MerkleTree.TreeHeight + 1)) - 2ul;
         private const uint _lastLeafIndex = (uint)((1ul << MerkleTree.TreeHeight) - 1u);

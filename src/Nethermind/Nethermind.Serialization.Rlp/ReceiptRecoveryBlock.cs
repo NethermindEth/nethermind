@@ -59,10 +59,10 @@ public struct ReceiptRecoveryBlock
         return _txBuffer;
     }
 
-    public Hash256? Hash => Header.Hash; // do not add setter here
-    public long Number => Header.Number; // do not add setter here
+    public readonly Hash256? Hash => Header.Hash; // do not add setter here
+    public readonly long Number => Header.Number; // do not add setter here
 
-    public void Dispose()
+    public readonly void Dispose()
     {
         ((IMemoryOwner<byte>?)_memoryOwner)?.Dispose();
     }

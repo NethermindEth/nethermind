@@ -23,8 +23,8 @@ namespace Nethermind.Network
         private readonly INetworkConfig _networkConfig;
         private readonly ILogger _logger;
 
-        private TimeSpan _pingInterval;
-        private List<Task<bool>> _pingTasks = new();
+        private readonly TimeSpan _pingInterval;
+        private readonly List<Task<bool>> _pingTasks = new();
 
         private CancellationTokenSource? _cancellationTokenSource;
 
@@ -46,7 +46,7 @@ namespace Nethermind.Network
             StopPingTimer();
         }
 
-        private ConcurrentDictionary<Guid, ISession> _sessions = new();
+        private readonly ConcurrentDictionary<Guid, ISession> _sessions = new();
 
         public void AddSession(ISession session)
         {
