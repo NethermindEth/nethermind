@@ -19,7 +19,7 @@ namespace Nethermind.TxPool.Test
         [Test]
         public void should_reject_blob_tx_if_blobs_not_supported([Values(true, false)] bool isBlobSupportEnabled)
         {
-            TxPoolConfig txPoolConfig = new() { BlobsSupport = isBlobSupportEnabled ? BlobsSupportMode.InMemory : BlobsSupportMode.Disabled};
+            TxPoolConfig txPoolConfig = new() { BlobsSupport = isBlobSupportEnabled ? BlobsSupportMode.InMemory : BlobsSupportMode.Disabled };
             _txPool = CreatePool(txPoolConfig, GetCancunSpecProvider());
 
             Transaction tx = Build.A.Transaction
