@@ -194,7 +194,9 @@ public class ChainSpecBasedSpecProviderTests
             (ForkActivation)(GoerliSpecProvider.LondonBlockNumber - 1),
             (ForkActivation)GoerliSpecProvider.LondonBlockNumber,
             new ForkActivation(GoerliSpecProvider.LondonBlockNumber + 1, GoerliSpecProvider.ShanghaiTimestamp),
-            new ForkActivation(GoerliSpecProvider.LondonBlockNumber + 1, GoerliSpecProvider.ShanghaiTimestamp + 100000000) // far in future
+            new ForkActivation(GoerliSpecProvider.LondonBlockNumber + 1, GoerliSpecProvider.CancunTimestamp -1),
+            new ForkActivation(GoerliSpecProvider.LondonBlockNumber + 2, GoerliSpecProvider.CancunTimestamp),
+            new ForkActivation(GoerliSpecProvider.LondonBlockNumber + 2, GoerliSpecProvider.CancunTimestamp + 100000000) // far in future
         };
 
         CompareSpecProviders(goerli, provider, forkActivationsToTest);
