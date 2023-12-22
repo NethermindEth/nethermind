@@ -115,7 +115,7 @@ namespace Nethermind.Specs.ChainSpecStyle
             SortedSet<ulong> transitionTimestamps)
         {
             (ForkActivation Activation, ReleaseSpec Spec)[] transitions = new (ForkActivation, ReleaseSpec Spec)[transitionBlockNumbers.Count + transitionTimestamps.Count];
-            long biggestBlockTransition = transitionBlockNumbers.Max;
+            long biggestBlockTransition = transitionBlockNumbers.Max + 1; // we can assume first timestamp transition will be after last block transition (in blocks)
 
             int index = 0;
             foreach (long releaseStartBlock in transitionBlockNumbers)
@@ -126,7 +126,7 @@ namespace Nethermind.Specs.ChainSpecStyle
 
             foreach (ulong releaseStartTimestamp in transitionTimestamps)
             {
-                long activationBlockNumber = ++biggestBlockTransition; // we can assume first timestamp transition will be after last block transition (in blocks)
+                long activationBlockNumber = biggestBlockTransition;
                 ForkActivation forkActivation = (activationBlockNumber, releaseStartTimestamp);
                 ReleaseSpec releaseSpec = CreateReleaseSpec(chainSpec, activationBlockNumber, releaseStartTimestamp);
                 transitions[index++] = (forkActivation, releaseSpec);
