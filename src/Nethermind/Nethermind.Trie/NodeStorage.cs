@@ -47,14 +47,10 @@ public class NodeStorage : INodeStorage
 
         if (address == null)
         {
-            // Separate the top level tree into its own section. This improve cache hit rate by about a few %. The idea
-            // being that the top level trie is spread out across the database, leading for a poor cache hit. In practice
-            // its not that much, likely because they are also likely to be at the top of LSM tree.
-            // The total size of node for path length<=4 should be around 40MB making them very cacheable. In practice
-            // whether they get cached or not is seemingly random. This leaves the remaining subtree size of higher depth
-            // to be about 44kB meaning they should take at most 2 iops on 16kB block size. Trying to make this tree
-            // split at depth 5 does not seems to improve things even with more cache.
-            if (path.Length <= 4)
+            // Separate the top level tree into its own section. This marginally improve cache hit rate, but not much.
+            // 70% of duplicated keys is in this section, making them pretty bad, so we isolate them here to not expand
+            // the space of other things, hopefully we can cache them by key somehow.
+            if (path.Length <= 5)
             {
                 pathSpan[0] = 0;
             }
