@@ -106,9 +106,9 @@ namespace Nethermind.State
         {
             _stateProvider.CreateAccount(address, balance, nonce);
         }
-        public void InsertCode(Address address, ReadOnlyMemory<byte> code, IReleaseSpec spec, bool isGenesis = false)
+        public void InsertCode(Address address, ReadOnlyMemory<byte> code, IReleaseSpec spec, bool isSystemCall, bool isGenesis = false)
         {
-            _stateProvider.InsertCode(address, code, spec, isGenesis);
+            _stateProvider.InsertCode(address, code, spec, isGenesis, isSystemCall);
         }
         public void AddToBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec, bool isSystemCall = false)
         {

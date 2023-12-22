@@ -29,10 +29,10 @@ namespace Nethermind.Store.Test
             WorldState stateProvider = new(trieStore, stateDb, LimboLogs.Instance);
 
             stateProvider.CreateAccount(TestItem.AddressA, 1);
-            stateProvider.InsertCode(TestItem.AddressA, new byte[] { 1, 2, 3 }, Istanbul.Instance);
+            stateProvider.InsertCode(TestItem.AddressA, new byte[] { 1, 2, 3 }, Istanbul.Instance, false);
 
             stateProvider.CreateAccount(TestItem.AddressB, 1);
-            stateProvider.InsertCode(TestItem.AddressB, new byte[] { 1, 2, 3, 4 }, Istanbul.Instance);
+            stateProvider.InsertCode(TestItem.AddressB, new byte[] { 1, 2, 3, 4 }, Istanbul.Instance, false);
 
             for (int i = 0; i < 1000; i++)
             {

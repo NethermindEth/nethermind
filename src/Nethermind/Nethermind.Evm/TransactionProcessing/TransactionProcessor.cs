@@ -549,7 +549,7 @@ namespace Nethermind.Evm.TransactionProcessing
 
                         if (unspentGas >= codeDepositGasCost)
                         {
-                            WorldState.InsertCode(env.ExecutingAccount, substate.Output, spec);
+                            WorldState.InsertCode(env.ExecutingAccount, substate.Output, spec, env.IsSystemEnv);
                             unspentGas -= codeDepositGasCost;
                         }
                     }

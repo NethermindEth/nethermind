@@ -899,7 +899,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
 
         private void AddCode(WorldState stateProvider, Address account, byte[] code)
         {
-            stateProvider.InsertCode(account, code, MuirGlacier.Instance);
+            stateProvider.InsertCode(account, code, MuirGlacier.Instance, false);
             stateProvider.Commit(MainnetSpecProvider.Instance.GenesisSpec, NullStateTracer.Instance);
         }
     }
