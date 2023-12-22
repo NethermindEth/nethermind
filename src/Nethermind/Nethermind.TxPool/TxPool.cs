@@ -95,7 +95,7 @@ namespace Nethermind.TxPool
             _blobTxStorage = blobTxStorage ?? throw new ArgumentNullException(nameof(blobTxStorage));
             _headInfo = chainHeadInfoProvider ?? throw new ArgumentNullException(nameof(chainHeadInfoProvider));
             _txPoolConfig = txPoolConfig;
-            _blobReorgsSupportEnabled = txPoolConfig is { BlobSupportEnabled: true, PersistentBlobStorageEnabled: true, BlobReorgsSupportEnabled: true };
+            _blobReorgsSupportEnabled = txPoolConfig.BlobsSupport.SupportsReorgs();
             _accounts = _headInfo.AccountStateProvider;
             _specProvider = _headInfo.SpecProvider;
 
@@ -108,9 +108,9 @@ namespace Nethermind.TxPool
             _broadcaster = new TxBroadcaster(comparer, TimerFactory.Default, txPoolConfig, chainHeadInfoProvider, logManager, transactionsGossipPolicy);
 
             _transactions = new TxDistinctSortedPool(MemoryAllowance.MemPoolSize, comparer, logManager);
-            _blobTransactions = txPoolConfig is { BlobSupportEnabled: true, PersistentBlobStorageEnabled: true }
+            _blobTransactions = txPoolConfig.BlobsSupport.IsPersistentStorage()
                 ? new PersistentBlobTxDistinctSortedPool(blobTxStorage, _txPoolConfig, comparer, logManager)
-                : new BlobTxDistinctSortedPool(txPoolConfig.BlobSupportEnabled ? _txPoolConfig.InMemoryBlobPoolSize : 0, comparer, logManager);
+                : new BlobTxDistinctSortedPool(txPoolConfig.BlobsSupport == BlobsSupportMode.InMemory ? _txPoolConfig.InMemoryBlobPoolSize : 0, comparer, logManager);
             if (_blobTransactions.Count > 0) _blobTransactions.UpdatePool(_accounts, _updateBucket);
 
             _headInfo.HeadChanged += OnHeadChange;

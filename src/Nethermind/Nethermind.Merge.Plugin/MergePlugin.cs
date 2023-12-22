@@ -101,7 +101,7 @@ public partial class MergePlugin : IConsensusWrapperPlugin, ISynchronizationPlug
             _api.PoSSwitcher = _poSSwitcher;
             _api.DisposeStack.Push(_invalidChainTracker);
             _blockFinalizationManager = new ManualBlockFinalizationManager();
-            if (_txPoolConfig is { BlobSupportEnabled: true, PersistentBlobStorageEnabled: true, BlobReorgsSupportEnabled: true })
+            if (_txPoolConfig.BlobsSupport.SupportsReorgs())
             {
                 ProcessedTransactionsDbCleaner processedTransactionsDbCleaner = new(_blockFinalizationManager, _api.DbProvider.BlobTransactionsDb.GetColumnDb(BlobTxsColumns.ProcessedTxs), _api.LogManager);
                 _api.DisposeStack.Push(processedTransactionsDbCleaner);
