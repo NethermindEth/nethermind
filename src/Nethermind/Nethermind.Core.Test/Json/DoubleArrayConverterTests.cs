@@ -10,7 +10,7 @@ using NUnit.Framework;
 namespace Nethermind.Core.Test.Json;
 
 [TestFixture]
-public class  DoubleArrayConverterTests : ConverterTestBase<double[]>
+public class DoubleArrayConverterTests : ConverterTestBase<double[]>
 {
     static readonly DoubleArrayConverter converter = new();
 
