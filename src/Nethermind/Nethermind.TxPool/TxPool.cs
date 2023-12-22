@@ -31,8 +31,6 @@ namespace Nethermind.TxPool
     /// </summary>
     public class TxPool : ITxPool, IDisposable
     {
-        private readonly object _locker = new();
-
         private readonly IIncomingTxFilter[] _preHashFilters;
         private readonly IIncomingTxFilter[] _postHashFilters;
 
@@ -391,54 +389,51 @@ namespace Nethermind.TxPool
 
         private AcceptTxResult AddCore(Transaction tx, TxFilteringState state, bool isPersistentBroadcast)
         {
-            lock (_locker)
+            bool eip1559Enabled = _specProvider.GetCurrentHeadSpec().IsEip1559Enabled;
+            UInt256 effectiveGasPrice = tx.CalculateEffectiveGasPrice(eip1559Enabled, _headInfo.CurrentBaseFee);
+            TxDistinctSortedPool relevantPool = (tx.SupportsBlobs ? _blobTransactions : _transactions);
+
+            relevantPool.TryGetBucketsWorstValue(tx.SenderAddress!, out Transaction? worstTx);
+            tx.GasBottleneck = (worstTx is null || effectiveGasPrice <= worstTx.GasBottleneck)
+                ? effectiveGasPrice
+                : worstTx.GasBottleneck;
+
+            bool inserted = relevantPool.TryInsert(tx.Hash!, tx, out Transaction? removed);
+
+            if (!inserted)
             {
-                bool eip1559Enabled = _specProvider.GetCurrentHeadSpec().IsEip1559Enabled;
-                UInt256 effectiveGasPrice = tx.CalculateEffectiveGasPrice(eip1559Enabled, _headInfo.CurrentBaseFee);
-                TxDistinctSortedPool relevantPool = (tx.SupportsBlobs ? _blobTransactions : _transactions);
+                // it means it failed on adding to the pool - it is possible when new tx has the same sender
+                // and nonce as already existent tx and is not good enough to replace it
+                Metrics.PendingTransactionsPassedFiltersButCannotReplace++;
+                return AcceptTxResult.ReplacementNotAllowed;
+            }
 
-                relevantPool.TryGetBucketsWorstValue(tx.SenderAddress!, out Transaction? worstTx);
-                tx.GasBottleneck = (worstTx is null || effectiveGasPrice <= worstTx.GasBottleneck)
-                    ? effectiveGasPrice
-                    : worstTx.GasBottleneck;
-
-                bool inserted = relevantPool.TryInsert(tx.Hash!, tx, out Transaction? removed);
-
-                if (!inserted)
+            if (tx.Hash == removed?.Hash)
+            {
+                // it means it was added and immediately evicted - pool was full of better txs
+                if (isPersistentBroadcast)
                 {
-                    // it means it failed on adding to the pool - it is possible when new tx has the same sender
-                    // and nonce as already existent tx and is not good enough to replace it
-                    Metrics.PendingTransactionsPassedFiltersButCannotReplace++;
-                    return AcceptTxResult.ReplacementNotAllowed;
+                    // we are adding only to persistent broadcast - not good enough for standard pool,
+                    // but can be good enough for TxBroadcaster pool - for local txs only
+                    _broadcaster.Broadcast(tx, isPersistentBroadcast);
                 }
+                Metrics.PendingTransactionsPassedFiltersButCannotCompeteOnFees++;
+                return AcceptTxResult.FeeTooLowToCompete;
+            }
 
-                if (tx.Hash == removed?.Hash)
-                {
-                    // it means it was added and immediately evicted - pool was full of better txs
-                    if (isPersistentBroadcast)
-                    {
-                        // we are adding only to persistent broadcast - not good enough for standard pool,
-                        // but can be good enough for TxBroadcaster pool - for local txs only
-                        _broadcaster.Broadcast(tx, isPersistentBroadcast);
-                    }
-                    Metrics.PendingTransactionsPassedFiltersButCannotCompeteOnFees++;
-                    return AcceptTxResult.FeeTooLowToCompete;
-                }
+            relevantPool.UpdateGroup(tx.SenderAddress!, state.SenderAccount, UpdateBucketWithAddedTransaction);
+            Metrics.PendingTransactionsAdded++;
+            if (tx.Supports1559) { Metrics.Pending1559TransactionsAdded++; }
+            if (tx.SupportsBlobs) { Metrics.PendingBlobTransactionsAdded++; }
 
-                relevantPool.UpdateGroup(tx.SenderAddress!, state.SenderAccount, UpdateBucketWithAddedTransaction);
-                Metrics.PendingTransactionsAdded++;
-                if (tx.Supports1559) { Metrics.Pending1559TransactionsAdded++; }
-                if (tx.SupportsBlobs) { Metrics.PendingBlobTransactionsAdded++; }
-
-                if (removed is not null)
-                {
-                    EvictedPending?.Invoke(this, new TxEventArgs(removed));
-                    // transaction which was on last position in sorted TxPool and was deleted to give
-                    // a place for a newly added tx (with higher priority) is now removed from hashCache
-                    // to give it opportunity to come back to TxPool in the future, when fees drops
-                    _hashCache.DeleteFromLongTerm(removed.Hash!);
-                    Metrics.PendingTransactionsEvicted++;
-                }
+            if (removed is not null)
+            {
+                EvictedPending?.Invoke(this, new TxEventArgs(removed));
+                // transaction which was on last position in sorted TxPool and was deleted to give
+                // a place for a newly added tx (with higher priority) is now removed from hashCache
+                // to give it opportunity to come back to TxPool in the future, when fees drops
+                _hashCache.DeleteFromLongTerm(removed.Hash!);
+                Metrics.PendingTransactionsEvicted++;
             }
 
             _broadcaster.Broadcast(tx, isPersistentBroadcast);
@@ -519,14 +514,11 @@ namespace Nethermind.TxPool
 
         private void UpdateBuckets()
         {
-            lock (_locker)
-            {
-                _transactions.VerifyCapacity();
-                _transactions.UpdatePool(_accounts, _updateBucket);
+            _transactions.VerifyCapacity();
+            _transactions.UpdatePool(_accounts, _updateBucket);
 
-                _blobTransactions.VerifyCapacity();
-                _blobTransactions.UpdatePool(_accounts, _updateBucket);
-            }
+            _blobTransactions.VerifyCapacity();
+            _blobTransactions.UpdatePool(_accounts, _updateBucket);
         }
 
         private IEnumerable<(Transaction Tx, UInt256? changedGasBottleneck)> UpdateBucket(Address address, Account account, EnhancedSortedSet<Transaction> transactions)
@@ -589,21 +581,20 @@ namespace Nethermind.TxPool
                 return false;
             }
 
-            bool hasBeenRemoved;
-            lock (_locker)
-            {
-                hasBeenRemoved = _transactions.TryRemove(hash, out Transaction? transaction)
+            bool hasBeenRemoved = _transactions.TryRemove(hash, out Transaction? transaction)
                                  || _blobTransactions.TryRemove(hash, out transaction);
 
-                if (transaction is null || !hasBeenRemoved)
-                    return false;
-                if (hasBeenRemoved)
-                {
-                    RemovedPending?.Invoke(this, new TxEventArgs(transaction));
-                }
-
-                _broadcaster.StopBroadcast(hash);
+            if (transaction is null || !hasBeenRemoved)
+            {
+                return false;
             }
+
+            if (hasBeenRemoved)
+            {
+                RemovedPending?.Invoke(this, new TxEventArgs(transaction));
+            }
+
+            _broadcaster.StopBroadcast(hash);
 
             if (_logger.IsTrace) _logger.Trace($"Removed a transaction: {hash}");
 
@@ -616,20 +607,14 @@ namespace Nethermind.TxPool
 
         public bool TryGetPendingTransaction(Hash256 hash, out Transaction? transaction)
         {
-            lock (_locker)
-            {
-                return _transactions.TryGetValue(hash, out transaction)
-                       || _blobTransactions.TryGetValue(hash, out transaction)
-                       || _broadcaster.TryGetPersistentTx(hash, out transaction);
-            }
+            return _transactions.TryGetValue(hash, out transaction)
+                    || _blobTransactions.TryGetValue(hash, out transaction)
+                    || _broadcaster.TryGetPersistentTx(hash, out transaction);
         }
 
         public bool TryGetPendingBlobTransaction(Hash256 hash, [NotNullWhen(true)] out Transaction? blobTransaction)
         {
-            lock (_locker)
-            {
-                return _blobTransactions.TryGetValue(hash, out blobTransaction);
-            }
+            return _blobTransactions.TryGetValue(hash, out blobTransaction);
         }
 
         // only for tests - to test sorting
