@@ -21,7 +21,7 @@ public readonly struct TraceMemory
 
     public string[] ToHexWordList()
     {
-        string[] memory = new string[((int)Size / EvmPooledMemory.WordSize) + ((Size % EvmPooledMemory.WordSize == 0) ? 0 : 1)];
+        string[] memory = new string[(int)Size / EvmPooledMemory.WordSize + (Size % EvmPooledMemory.WordSize == 0 ? 0 : 1)];
         int traceLocation = 0;
 
         int i = 0;

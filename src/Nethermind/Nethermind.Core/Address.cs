@@ -24,7 +24,8 @@ namespace Nethermind.Core
         private const int PrefixedHexCharsCount = 2 + HexCharsCount; // 0x5a4eab120fb44eb6684e5e32785702ff45ea344d
 
         public static Address Zero { get; } = new(new byte[Size]);
-        public static Address SystemUser { get; } = new("0xfffffffffffffffffffffffffffffffffffffffe");
+        public const string SystemUserHex = "0xfffffffffffffffffffffffffffffffffffffffe";
+        public static Address SystemUser { get; } = new(SystemUserHex);
 
         public byte[] Bytes { get; }
 
@@ -91,25 +92,31 @@ namespace Nethermind.Core
         /// <summary>
         /// Parses string value to Address. String can be shorter than 20 bytes long, it is padded with leading 0's then.
         /// </summary>
-        public static bool TryParseVariableLength(string? value, out Address? address, bool allowDifferentSize = false)
+        public static bool TryParseVariableLength(string? value, out Address? address, bool allowOverflow = false)
         {
             if (value is not null)
             {
-                try
-                {
-                    byte[] bytes = Extensions.Bytes.FromHexString(value, Size);
+                const int size = Size << 1;
 
-                    address = bytes.Length switch
+                int start = value is ['0', 'x', ..] ? 2 : 0;
+                ReadOnlySpan<char> span = value.AsSpan(start);
+                if (span.Length > size)
+                {
+                    if (allowOverflow)
                     {
-                        > Size when allowDifferentSize => new Address(bytes.Slice(bytes.Length - Size, Size)),
-                        < Size when allowDifferentSize => new Address(bytes.PadLeft(Size)),
-                        _ => new Address(bytes),
-                    };
-                    return true;
+                        span = span.Slice(value.Length - size);
+                    }
+                    else
+                    {
+                        goto False;
+                    }
                 }
-                catch (IndexOutOfRangeException) { }
+
+                address = new Address(Extensions.Bytes.FromHexString(span, Size));
+                return true;
             }
 
+            False:
             address = default;
             return false;
         }
