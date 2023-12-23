@@ -37,19 +37,42 @@ public class NodeStorage : INodeStorage
 
     public static byte[] GetHalfPathNodeStoragePath(Hash256? address, in TreePath path, in ValueHash256 keccak)
     {
-        Span<byte> bytes = new byte[StoragePathLength];
-        return GetHalfPathNodeStoragePathSpan(bytes, address, path, keccak).ToArray();
+        return GetHalfPathNodeStoragePathSpan(stackalloc byte[StoragePathLength], address, path, keccak).ToArray();
     }
 
     private static Span<byte> GetHalfPathNodeStoragePathSpan(Span<byte> pathSpan, Hash256? address, in TreePath path, in ValueHash256 keccak)
     {
         Debug.Assert(pathSpan.Length == StoragePathLength);
 
+        // Key structure look like this.
+        //
+        // For state (total 42 byte)
+        //
+        // +--------------+------------------+------------------+--------------+
+        // | section byte | 8 byte from path | path length byte | 32 byte hash |
+        // +--------------+------------------+------------------+--------------+
+        //
+        // For storage (total 48 byte)
+        // +--------------+---------------------+------------------+------------------+--------------+
+        // | section byte | 7 byte from address | 7 byte from path | path length byte | 32 byte hash |
+        // +--------------+---------------------+------------------+------------------+--------------+
+        //
+        // The section byte is:
+        // - 0 if state and path length is <= 5.
+        // - 1 if state and path length is > 5.
+        // - 2 if storage.
+        //
+        // The keys are separated due to the different characteristics of these nodes. The idea being that top level
+        // node can be up to 5 times bigger than lower node, and grew a lot due to pruning. So mixing them makes lower
+        // node sparser and have poorer cache hit, and make traversing leaves for snap serving slower.
+
         if (address == null)
         {
             // Separate the top level tree into its own section. This marginally improve cache hit rate, but not much.
             // 70% of duplicated keys is in this section, making them pretty bad, so we isolate them here to not expand
-            // the space of other things, hopefully we can cache them by key somehow.
+            // the space of other things, hopefully we can cache them by key somehow. Separating by the path length 4
+            // does improve cache hit and processing time a little bit, until a few hundreds prune persist where it grew
+            // beyond block cache size.
             if (path.Length <= 5)
             {
                 pathSpan[0] = 0;
@@ -92,6 +115,7 @@ public class NodeStorage : INodeStorage
 
     public byte[]? Get(Hash256? address, in TreePath path, in ValueHash256 keccak, ReadFlags readFlags = ReadFlags.None)
     {
+        // Some of the code does not save empty tree at all so this is more about correctness than optimization.
         if (keccak == Keccak.EmptyTreeHash)
         {
             return EmptyTreeHashBytes;
@@ -132,7 +156,11 @@ public class NodeStorage : INodeStorage
 
     public INodeStorage.WriteBatch StartWriteBatch()
     {
-        return new WriteBatch(((IKeyValueStoreWithBatching)_keyValueStore).StartWriteBatch(), this);
+        if (_keyValueStore is IKeyValueStoreWithBatching withBatching)
+        {
+            return new WriteBatch(withBatching.StartWriteBatch(), this);
+        }
+        return new WriteBatch(new InMemoryWriteBatch(_keyValueStore), this);
     }
 
     public void Set(Hash256? address, in TreePath path, in ValueHash256 keccak, byte[] toArray, WriteFlags writeFlags = WriteFlags.None)
@@ -142,13 +170,7 @@ public class NodeStorage : INodeStorage
             return;
         }
 
-        Span<byte> storagePathSpan = stackalloc byte[StoragePathLength];
-        _keyValueStore.Set(GetExpectedPath(storagePathSpan, address, path, keccak), toArray, writeFlags);
-    }
-
-    public byte[]? GetByHash(ReadOnlySpan<byte> key, ReadFlags flags)
-    {
-        return _keyValueStore.Get(key, flags);
+        _keyValueStore.Set(GetExpectedPath(stackalloc byte[StoragePathLength], address, path, keccak), toArray, writeFlags);
     }
 
     public void Flush()
@@ -182,8 +204,7 @@ public class NodeStorage : INodeStorage
                 return;
             }
 
-            Span<byte> storagePathSpan = stackalloc byte[StoragePathLength];
-            _writeBatch.Set(_nodeStorage.GetExpectedPath(storagePathSpan, address, path, keccak), toArray, writeFlags);
+            _writeBatch.Set(_nodeStorage.GetExpectedPath(stackalloc byte[StoragePathLength], address, path, keccak), toArray, writeFlags);
         }
     }
 }

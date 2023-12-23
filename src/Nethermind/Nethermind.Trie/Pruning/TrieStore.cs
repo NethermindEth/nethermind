@@ -32,7 +32,7 @@ namespace Nethermind.Trie.Pruning
             {
                 _trieStore = trieStore;
                 // If the nodestore indicated that path is not required,
-                // we will use a map with hash as its key instead of the full Key
+                // we will use a map with hash as its key instead of the full Key to reduce memory usage.
                 _storeByHash = !trieStore._nodeStorage.RequirePath;
                 KeyMemoryUsage = _storeByHash ? 0 : Key.MemoryUsage; // 0 because previously it was not counted.
             }
@@ -963,13 +963,14 @@ namespace Nethermind.Trie.Pruning
         // Used to serve node by hash
         private byte[]? GetByHash(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
         {
+            Hash256 asHash = new Hash256(key);
             return _pruningStrategy.PruningEnabled
-                   && _dirtyNodes.TryGetValue(new DirtyNodesCache.Key(null, TreePath.Empty, new Hash256(key)), out TrieNode? trieNode)
+                   && _dirtyNodes.TryGetValue(new DirtyNodesCache.Key(null, TreePath.Empty, asHash), out TrieNode? trieNode)
                    && trieNode is not null
                    && trieNode.NodeType != NodeType.Unknown
                    && trieNode.FullRlp.IsNotNull
                 ? trieNode.FullRlp.ToArray()
-                : _nodeStorage.GetByHash(key, flags);
+                : _nodeStorage.Get(null, TreePath.Empty, asHash, flags);
         }
 
         public IReadOnlyKeyValueStore TrieNodeRlpStore => _publicStore;

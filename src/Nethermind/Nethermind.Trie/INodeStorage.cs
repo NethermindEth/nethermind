@@ -21,11 +21,6 @@ public interface INodeStorage
     bool KeyExists(Hash256? address, in TreePath path, in ValueHash256 hash);
 
     /// <summary>
-    /// Used for serving with hash.
-    /// </summary>
-    byte[]? GetByHash(ReadOnlySpan<byte> key, ReadFlags flags);
-
-    /// <summary>
     /// Used by StateSync to make sure values are flushed.
     /// </summary>
     void Flush();

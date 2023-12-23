@@ -523,14 +523,9 @@ namespace Nethermind.Trie
 
         public TreePath GetChildPath(in TreePath currentPath, int childIndex)
         {
-            if (IsExtension)
-            {
-                return currentPath.Append(Key);
-            }
-            else
-            {
-                return currentPath.Append((byte)childIndex);
-            }
+            TreePath copy = currentPath;
+            GetChildPathMut(ref copy, childIndex);
+            return copy;
         }
 
         public void GetChildPathMut(ref TreePath currentPath, int childIndex)
