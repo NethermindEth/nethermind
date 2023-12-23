@@ -109,7 +109,8 @@ public class ForkInfoTests
     [TestCase(6_000_000, 0ul, "0xB8C6299D", 1678832736ul, "Future London block")]
     [TestCase(6_000_001, 1678832736ul, "0xf9843abf", 1705473120ul, "First Shanghai timestamp")]
     [TestCase(6_000_001, 1705473119ul, "0xf9843abf", 1705473120ul, "Future Shanghai timestamp")]
-    [TestCase(6_000_001, 1705473120ul, "0x70cc14e2", 0ul, "First Cancun timestamp")]
+    [TestCase(6_000_002, 1705473120ul, "0x70cc14e2", 0ul, "First Cancun timestamp")]
+    [TestCase(6_000_002, 1905473119ul, "0xf9843abf", 0ul, "Future Cancun timestamp")]
     public void Fork_id_and_hash_as_expected_on_goerli(long head, ulong headTimestamp, string forkHashHex, ulong next, string description)
     {
         Test(head, headTimestamp, KnownHashes.GoerliGenesis, forkHashHex, next, description, GoerliSpecProvider.Instance, "goerli.json");
