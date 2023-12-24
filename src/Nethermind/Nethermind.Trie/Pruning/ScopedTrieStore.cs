@@ -35,11 +35,6 @@ public class ScopedTrieStore : IScopedTrieStore
 
     public INodeStorage.KeyScheme Scheme => _trieStoreImplementation.Scheme;
 
-    public void Dispose()
-    {
-        _trieStoreImplementation.Dispose();
-    }
-
     public void CommitNode(long blockNumber, NodeCommitInfo nodeCommitInfo, WriteFlags writeFlags = WriteFlags.None)
     {
         _trieStoreImplementation.CommitNode(blockNumber, _address, nodeCommitInfo, writeFlags);

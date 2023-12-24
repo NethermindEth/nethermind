@@ -11,7 +11,7 @@ namespace Nethermind.Trie.Pruning;
 /// Interface with PatriciaTrie. Its `scoped` as it have underlying storage address for storage trie. It basically
 /// an adapter to the standard ITrieStore.
 /// </summary>
-public interface IScopedTrieStore : ITrieNodeResolver, IDisposable
+public interface IScopedTrieStore : ITrieNodeResolver
 {
     // TODO: Commit and FinishBlockCommit is unnecessary. Geth just compile the changes and return it in a batch,
     // which get committed in a single call.

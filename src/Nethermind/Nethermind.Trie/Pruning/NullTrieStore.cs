@@ -23,8 +23,6 @@ namespace Nethermind.Trie.Pruning
 
         public bool IsPersisted(in TreePath path, in ValueHash256 keccak) => true;
 
-        public void Dispose() { }
-
         public void Set(in TreePath path, in ValueHash256 keccak, byte[] rlp)
         {
         }

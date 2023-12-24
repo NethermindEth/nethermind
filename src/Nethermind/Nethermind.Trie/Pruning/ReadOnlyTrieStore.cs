@@ -87,10 +87,6 @@ namespace Nethermind.Trie.Pruning
 
             public INodeStorage.KeyScheme Scheme => _trieStoreImplementation.Scheme;
 
-            public void Dispose()
-            {
-            }
-
             public void CommitNode(long blockNumber, NodeCommitInfo nodeCommitInfo, WriteFlags writeFlags = WriteFlags.None)
             {
             }
