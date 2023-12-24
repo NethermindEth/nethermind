@@ -53,26 +53,33 @@ namespace Nethermind.Core
         public bool IsMessageCall => To is not null;
 
         private Hash256? _hash;
+
+        public bool IsHashCalculated => _hash != null;
+        public Hash256 CalculateHash()
+        {
+            Hash256? hash = _hash;
+            if (hash is not null) return hash;
+
+            lock (this)
+            {
+                hash = _hash;
+                if (hash is not null) return hash;
+
+                if (_preHash.Length > 0)
+                {
+                    _hash = hash = Keccak.Compute(_preHash.Span);
+                    ClearPreHashInternal();
+                }
+            }
+
+            return hash!;
+        }
+
         public Hash256? Hash
         {
             get
             {
-                Hash256? hash = _hash;
-                if (hash is not null) return hash;
-
-                lock (this)
-                {
-                    hash = _hash;
-                    if (hash is not null) return hash;
-
-                    if (_preHash.Length > 0)
-                    {
-                        _hash = hash = Keccak.Compute(_preHash.Span);
-                        ClearPreHashInternal();
-                    }
-                }
-
-                return hash;
+                return CalculateHash();
             }
             set
             {

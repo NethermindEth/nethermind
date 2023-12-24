@@ -46,6 +46,13 @@ namespace Nethermind.Consensus.Processing
                 // so we assume the rest of txs in the block are already recovered
                 return;
 
+            Parallel.ForEach(
+                block.Transactions.Where(tx => !tx.IsHashCalculated),
+                blockTransaction =>
+                {
+                    blockTransaction.CalculateHash();
+                });
+
             var releaseSpec = _specProvider.GetSpec(block.Header);
 
             int recoverFromEcdsa = 0;
