@@ -121,7 +121,7 @@ namespace Nethermind.Trie
                                     Hash256 storageAddr;
                                     using (path.ScopedAppend(Key))
                                     {
-                                         storageAddr = path.Path.ToCommitment();
+                                        storageAddr = path.Path.ToCommitment();
                                     }
                                     trieVisitContext.Storage = storageAddr;
                                     nextToVisit.Add((TreePath.Empty, chStorageRoot!, trieVisitContext));
