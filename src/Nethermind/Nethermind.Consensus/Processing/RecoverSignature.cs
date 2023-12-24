@@ -5,7 +5,6 @@ using System;
 using System.Linq;
 using System.Threading.Tasks;
 using Nethermind.Core;
-using Nethermind.Core.Collections;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Logging;
@@ -50,7 +49,7 @@ namespace Nethermind.Consensus.Processing
                 block.Transactions.Where(tx => !tx.IsHashCalculated),
                 blockTransaction =>
                 {
-                    blockTransaction.CalculateHash();
+                    blockTransaction.CalculateHashInternal();
                 });
 
             var releaseSpec = _specProvider.GetSpec(block.Header);
