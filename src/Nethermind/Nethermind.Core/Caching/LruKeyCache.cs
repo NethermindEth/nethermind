@@ -13,7 +13,7 @@ namespace Nethermind.Core.Caching
         private readonly int _maxCapacity;
         private readonly string _name;
         private readonly Dictionary<TKey, LinkedListNode<TKey>> _cacheMap;
-        private readonly McsLock _lock = new ();
+        private readonly McsLock _lock = new();
         private LinkedListNode<TKey>? _leastRecentlyUsed;
 
         public LruKeyCache(int maxCapacity, int startCapacity, string name)
