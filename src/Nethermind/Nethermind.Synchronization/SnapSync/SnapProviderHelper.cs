@@ -12,6 +12,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State;
 using Nethermind.State.Snap;
+using Nethermind.Stats.Model;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 
@@ -322,11 +323,10 @@ namespace Nethermind.Synchronization.SnapSync
                 return true;
             }
 
-            int nodePathLength = nodePath.Length;
-            node.GetChildPathMut(ref nodePath, childIndex);
-            bool isPersisted = store.IsPersisted(nodePath, childKeccak);
-            nodePath.TruncateMut(nodePathLength);
-            return isPersisted;
+            using (node.EnterChildPath(ref nodePath, childIndex))
+            {
+                return store.IsPersisted(nodePath, childKeccak);
+            }
         }
     }
 }

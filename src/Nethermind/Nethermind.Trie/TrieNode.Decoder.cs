@@ -155,7 +155,6 @@ namespace Nethermind.Trie
 
             private static int GetChildrenRlpLength(ITrieNodeResolver tree, ref TreePath path, TrieNode item, ICappedArrayPool? bufferPool)
             {
-                int originalPathLength = path.Length;
                 int totalLength = 0;
                 item.InitData();
                 item.SeekChild(0);
@@ -179,9 +178,10 @@ namespace Nethermind.Trie
                         else
                         {
                             TrieNode childNode = (TrieNode)item._data[i];
-                            item.GetChildPathMut(ref path, i);
-                            childNode!.ResolveKey(tree, ref path, false, bufferPool: bufferPool);
-                            path.TruncateMut(originalPathLength);
+                            using (item.EnterChildPath(ref path, i))
+                            {
+                                childNode!.ResolveKey(tree, ref path, false, bufferPool: bufferPool);
+                            }
                             totalLength += childNode.Keccak is null ? childNode.FullRlp.Length : Rlp.LengthOfKeccakRlp;
                         }
                     }
@@ -198,7 +198,6 @@ namespace Nethermind.Trie
                 RlpStream rlpStream = item._rlpStream;
                 item.InitData();
                 item.SeekChild(0);
-                int originalPathLength = path.Length;
                 for (int i = 0; i < BranchesCount; i++)
                 {
                     if (rlpStream is not null && item._data![i] is null)
@@ -223,9 +222,11 @@ namespace Nethermind.Trie
                         else
                         {
                             TrieNode childNode = (TrieNode)item._data[i];
-                            item.GetChildPathMut(ref path, i);
-                            childNode!.ResolveKey(tree, ref path, false, bufferPool: bufferPool);
-                            path.TruncateMut(originalPathLength);
+                            using (item.EnterChildPath(ref path, i))
+                            {
+                                childNode!.ResolveKey(tree, ref path, false, bufferPool: bufferPool);
+                            }
+
                             if (childNode.Keccak is null)
                             {
                                 Span<byte> fullRlp = childNode.FullRlp!.AsSpan();

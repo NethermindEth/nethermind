@@ -120,4 +120,26 @@ public class TreePathTests
         path.Length.Should().Be(expectedLength);
         path.Path.BytesAsSpan.ToHexString().Should().Be(expectedHashHex);
     }
+
+    [TestCase]
+    public void TestScopedAppend()
+    {
+        TreePath path = TreePath.Empty;
+
+        using (path.ScopedAppend(new byte[] { 1, 2, 3, 4 }))
+        {
+            path.Length.Should().Be(4);
+            path.Path.ToString().Should().Be("0x1234000000000000000000000000000000000000000000000000000000000000");
+
+            using (path.ScopedAppend(new byte[] { 5, 6, 7 }))
+            {
+                path.Length.Should().Be(7);
+                path.Path.ToString().Should().Be("0x1234567000000000000000000000000000000000000000000000000000000000");
+            }
+
+            path.Length.Should().Be(4);
+            path.Path.ToString().Should().Be("0x1234000000000000000000000000000000000000000000000000000000000000");
+        }
+        path.Length.Should().Be(0);
+    }
 }

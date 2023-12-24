@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.IO;
 using System.Runtime.CompilerServices;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Crypto;
@@ -76,7 +75,7 @@ public struct TreePath
         return copy;
     }
 
-    public void AppendMut(Span<byte> nibbles)
+    internal void AppendMut(Span<byte> nibbles)
     {
         if (nibbles.Length == 0) return;
         if (nibbles.Length == 1)
@@ -109,7 +108,7 @@ public struct TreePath
         }
     }
 
-    public void AppendMut(byte nib)
+    internal void AppendMut(byte nib)
     {
         this[Length] = nib;
         Length++;
@@ -210,4 +209,41 @@ public struct TreePath
         return HashCode.Combine(Path, Length);
     }
 
+    /// <summary>
+    /// Used for scoped pattern where inside the scope the path is appended with some nibbles and it will
+    /// truncate back to previous length on dispose. Cut down on memory allocations.
+    /// </summary>
+    public ref struct AppendScope
+    {
+        private readonly int _previousLength;
+        private ref TreePath _path;
+
+        public AppendScope(int previousLength, ref TreePath path)
+        {
+            _previousLength = previousLength;
+            _path = ref path;
+        }
+
+        public void Dispose()
+        {
+            _path.TruncateMut(_previousLength);
+        }
+    }
+}
+
+public static class TreePathExtensions
+{
+    public static TreePath.AppendScope ScopedAppend(this ref TreePath path, Span<byte> nibbles)
+    {
+        int previousLength = path.Length;
+        path.AppendMut(nibbles);
+        return new TreePath.AppendScope(previousLength, ref path);
+    }
+
+    public static TreePath.AppendScope ScopedAppend(this ref TreePath path, byte nibble)
+    {
+        int previousLength = path.Length;
+        path.AppendMut(nibble);
+        return new TreePath.AppendScope(previousLength, ref path);
+    }
 }
