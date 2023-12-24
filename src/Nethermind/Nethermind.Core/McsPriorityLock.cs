@@ -12,17 +12,29 @@ namespace Nethermind.Core;
 /// the contention and spinning overhead typical of other spinlocks. It achieves this by forming
 /// a queue of waiting threads, ensuring each thread gets the lock in the order it was requested.
 /// </summary>
-public class McsLock
+public class McsPriorityLock
 {
+    private readonly int HalfCores = Math.Max(Environment.ProcessorCount / 2, 1);
+
     /// <summary>
     /// Thread-local storage to ensure each thread has its own node instance.
     /// </summary>
     private readonly ThreadLocal<ThreadNode> _node = new(() => new ThreadNode());
 
     /// <summary>
+    /// Used to throttle Normal priority threads
+    /// </summary>
+    private readonly SemaphoreSlim _semaphore;
+
+    /// <summary>
     /// Points to the last node in the queue (tail). Used to manage the queue of waiting threads.
     /// </summary>
     private volatile ThreadNode? _tail;
+
+    public McsPriorityLock()
+    {
+        _semaphore = new SemaphoreSlim(initialCount: HalfCores, maxCount: HalfCores);
+    }
 
     /// <summary>
     /// Acquires the lock. If the lock is already held, the calling thread is placed into a queue and
@@ -30,6 +42,14 @@ public class McsLock
     /// </summary>
     public Disposable Acquire()
     {
+        bool isPriority = Thread.CurrentThread.Priority > ThreadPriority.Normal;
+        if (!isPriority)
+        {
+            // If not a priority thread max of half processors can being to acquire the lock (e.g. block processing)
+            _semaphore.Wait();
+        }
+
+
         ThreadNode node = _node.Value!;
         node.Locked = true;
 
@@ -50,7 +70,7 @@ public class McsLock
 
         }
 
-        return new Disposable(this);
+        return new Disposable(this, releaseSemaphore: !isPriority);
     }
 
     /// <summary>
@@ -59,11 +79,13 @@ public class McsLock
     /// </summary>
     public readonly struct Disposable : IDisposable
     {
-        readonly McsLock _lock;
+        readonly McsPriorityLock _lock;
+        readonly bool _releaseSemaphore;
 
-        internal Disposable(McsLock @lock)
+        internal Disposable(McsPriorityLock @lock, bool releaseSemaphore)
         {
             _lock = @lock;
+            _releaseSemaphore = releaseSemaphore;
         }
 
         /// <summary>
@@ -72,6 +94,11 @@ public class McsLock
         /// </summary>
         public void Dispose()
         {
+            if (_releaseSemaphore)
+            {
+                _lock._semaphore.Release();
+            }
+
             ThreadNode node = _lock._node.Value!;
 
             // If there is no next node, it means this thread might be the last in the queue.
