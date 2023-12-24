@@ -765,10 +765,13 @@ namespace Nethermind.Trie
                 if (storageRoot is not null || (resolveStorageRoot && TryResolveStorageRoot(resolver, ref currentPath, out storageRoot)))
                 {
                     if (logger.IsTrace) logger.Trace($"Persist recursively on storage root {_storageRoot} of {this}");
-                    TreePath storagePath = currentPath.Append(Key);
-                    if (storagePath.Length != 64) throw new Exception("unexpected storage path length. Total nibble count should add up to 64.");
+                    Hash256 storagePathAddr;
+                    using (currentPath.ScopedAppend(Key))
+                    {
+                        if (currentPath.Length != 64) throw new Exception("unexpected storage path length. Total nibble count should add up to 64.");
+                        storagePathAddr = currentPath.Path.ToCommitment();
+                    }
 
-                    Hash256 storagePathAddr = storagePath.Path.ToCommitment();
                     TreePath emptyPath = TreePath.Empty;
                     storageRoot!.CallRecursively(
                         action,
@@ -854,13 +857,15 @@ namespace Nethermind.Trie
                     Hash256 storageHash = _accountDecoder.DecodeStorageRootOnly(Value.AsRlpStream());
                     if (storageHash != Nethermind.Core.Crypto.Keccak.EmptyTreeHash)
                     {
+                        Hash256 storagePath;
                         using (currentPath.ScopedAppend(Key))
                         {
-                            hasStorage = true;
-                            TreePath emptyPath = TreePath.Empty;
-                            _storageRoot = storageRoot = resolver.GetStorageTrieNodeResolver(currentPath.Path.ToCommitment())
-                                .FindCachedOrUnknown(in emptyPath, storageHash);
+                            storagePath = currentPath.Path.ToCommitment();
                         }
+                        hasStorage = true;
+                        TreePath emptyPath = TreePath.Empty;
+                        _storageRoot = storageRoot = resolver.GetStorageTrieNodeResolver(storagePath)
+                            .FindCachedOrUnknown(in emptyPath, storageHash);
                     }
                 }
             }

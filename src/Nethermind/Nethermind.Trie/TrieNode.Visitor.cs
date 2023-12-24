@@ -33,7 +33,6 @@ namespace Nethermind.Trie
         internal void AcceptResolvedNode(
             ITreeVisitor visitor,
             ITrieNodeResolver nodeResolver,
-            Hash256? address,
             ref TreePath path,
             SmallTrieVisitContext trieVisitContext,
             IList<(TreePath, TrieNode, SmallTrieVisitContext)> nextToVisit
@@ -293,16 +292,17 @@ namespace Nethermind.Trie
 
                                 if (TryResolveStorageRoot(nodeResolver, ref path, out TrieNode? storageRoot))
                                 {
-                                    int originalPathLength = path.Length;
-                                    path.AppendMut(Key);
+                                    Hash256 storageAccount;
+                                    using (path.ScopedAppend(Key))
+                                    {
+                                        storageAccount = path.Path.ToCommitment();
+                                    }
 
-                                    Hash256 storageAccount = path.Path.ToCommitment();
                                     trieVisitContext.Storage = storageAccount;
 
                                     TreePath emptyPath = TreePath.Empty;
                                     storageRoot!.Accept(visitor, nodeResolver.GetStorageTrieNodeResolver(storageAccount), ref emptyPath, trieVisitContext);
 
-                                    path.TruncateMut(originalPathLength);
                                     trieVisitContext.Storage = null;
                                 }
                                 else

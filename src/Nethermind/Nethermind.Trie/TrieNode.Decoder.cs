@@ -66,7 +66,10 @@ namespace Nethermind.Trie
                 Debug.Assert(nodeRef is not null,
                     "Extension child is null when encoding.");
 
-                nodeRef.ResolveKey(tree, ref path, false, bufferPool: bufferPool);
+                using (item.EnterChildPath(ref path, 0))
+                {
+                    nodeRef.ResolveKey(tree, ref path, false, bufferPool: bufferPool);
+                }
 
                 int contentLength = Rlp.LengthOf(keyBytes) + (nodeRef.Keccak is null ? nodeRef.FullRlp.Length : Rlp.LengthOfKeccakRlp);
                 int totalLength = Rlp.LengthOfSequence(contentLength);
