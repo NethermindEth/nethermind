@@ -1088,10 +1088,16 @@ namespace Nethermind.Trie
                 }
             }
 
-            ITrieNodeResolver resolver = TrieStore;
+            ReadFlags flags = visitor.ExtraReadFlag;
             if (visitor.IsFullDbScan)
             {
-                resolver = new TrieNodeResolverWithReadFlags(TrieStore, ReadFlags.HintCacheMiss);
+                flags |= ReadFlags.HintCacheMiss;
+            }
+
+            ITrieNodeResolver resolver = TrieStore;
+            if (flags != ReadFlags.None)
+            {
+                resolver = new TrieNodeResolverWithReadFlags(TrieStore, flags);
             }
 
             visitor.VisitTree(rootHash, trieVisitContext);
