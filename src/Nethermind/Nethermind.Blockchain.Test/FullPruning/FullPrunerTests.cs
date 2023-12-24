@@ -52,9 +52,11 @@ namespace Nethermind.Blockchain.Test.FullPruning
         }
 
         [Timeout(Timeout.MaxTestTime)]
-        [TestCase(INodeStorage.KeyScheme.Hash, INodeStorage.KeyScheme.HalfPath)]
-        [TestCase(INodeStorage.KeyScheme.HalfPath, INodeStorage.KeyScheme.Hash)]
-        public async Task can_prune_and_switch_key_scheme(INodeStorage.KeyScheme currentKeyScheme, INodeStorage.KeyScheme newKeyScheme)
+        [TestCase(INodeStorage.KeyScheme.Hash, INodeStorage.KeyScheme.Current, INodeStorage.KeyScheme.Hash)]
+        [TestCase(INodeStorage.KeyScheme.HalfPath, INodeStorage.KeyScheme.Current, INodeStorage.KeyScheme.HalfPath)]
+        [TestCase(INodeStorage.KeyScheme.Hash, INodeStorage.KeyScheme.HalfPath, INodeStorage.KeyScheme.HalfPath)]
+        [TestCase(INodeStorage.KeyScheme.HalfPath, INodeStorage.KeyScheme.Hash, INodeStorage.KeyScheme.HalfPath)]
+        public async Task can_prune_and_switch_key_scheme(INodeStorage.KeyScheme currentKeyScheme, INodeStorage.KeyScheme newKeyScheme, INodeStorage.KeyScheme expectedNewScheme)
         {
             TestContext test = new(
                 true,
@@ -69,7 +71,7 @@ namespace Nethermind.Blockchain.Test.FullPruning
             bool contextDisposed = await test.WaitForPruning();
             contextDisposed.Should().BeTrue();
             test.ShouldCopyAllValuesWhenVisitingTrie();
-            test.NodeStorage.Scheme.Should().Be(newKeyScheme);
+            test.NodeStorage.Scheme.Should().Be(expectedNewScheme);
         }
 
         [Test, Timeout(Timeout.MaxTestTime)]
@@ -104,15 +106,6 @@ namespace Nethermind.Blockchain.Test.FullPruning
             int count = test.TrieDb.Count;
             bool result = await test.WaitForPruning();
             result.Should().BeTrue();
-
-            foreach (var keyValuePair in test.CopyDb.GetAll())
-            {
-                if (test.TrieDb[keyValuePair.Key] == null)
-                {
-                    Console.Out.Write($"Magic key is {keyValuePair.Key.ToHexString()}");
-                }
-            }
-
             test.CopyDb.Count.Should().Be(count);
         }
 

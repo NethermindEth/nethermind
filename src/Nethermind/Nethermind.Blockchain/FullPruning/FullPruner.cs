@@ -230,10 +230,12 @@ namespace Nethermind.Blockchain.FullPruning
 
                 if (originalKeyScheme == INodeStorage.KeyScheme.HalfPath && targetNodeStorage.Scheme == INodeStorage.KeyScheme.Hash)
                 {
-                    // If original node storage scheme is HalfPath, we cannot double copy HalfPath into a Hash scheme
-                    // state because there could be code path that does not have path when using Hash scheme.
-                    // HalfPath always have hash and can just do a fallback read.
-                    _nodeStorage.Scheme = INodeStorage.KeyScheme.Hash;
+                    // Because of write on read duplication, we can't move from HalfPath to Hash scheme as some of the
+                    // read key which are in HalfPath may be written to the new db. This cause a problem as Hash
+                    // scheme can be started with some code not tracking path, which will be unable to read these HalfPath
+                    // keys.
+                    if (_logger.IsWarn) _logger.Warn($"Full pruning from from HalfPath key to Hash key is not supported. Switching to HalfPath key scheme.");
+                    targetNodeStorage.Scheme = INodeStorage.KeyScheme.HalfPath;
                 }
 
                 using CopyTreeVisitor copyTreeVisitor = new(targetNodeStorage, pruning.CancellationTokenSource, writeFlags, _logManager);
