@@ -80,9 +80,7 @@ namespace Nethermind.Runner.Test
             long memoryHint,
             [Values(1u, 2u, 3u, 4u, 8u, 32u)] uint cpuCount,
             [Values(true, false)] bool fastSync,
-            [Values(true, false)] bool fastBlocks,
-            [Values(INodeStorage.KeyScheme.Hash, INodeStorage.KeyScheme.HalfPath)] INodeStorage.KeyScheme keyScheme
-        )
+            [Values(true, false)] bool fastBlocks)
         {
             // OK to throw here
             if (memoryHint == 256.MB())
@@ -92,7 +90,6 @@ namespace Nethermind.Runner.Test
                 _initConfig.DiagnosticMode = DiagnosticMode.MemDb;
             }
 
-            _initConfig.StateDbKeyScheme = keyScheme;
             _initConfig.MemoryHint = memoryHint;
             SetMemoryAllowances(cpuCount);
 
@@ -136,15 +133,7 @@ namespace Nethermind.Runner.Test
             {
                 // some rounding differences are OK
                 totalMem.Should().BeGreaterThan((ulong)((memoryHint - 200.MB()) * 0.6));
-
-                if (_initConfig.StateDbKeyScheme == INodeStorage.KeyScheme.Hash)
-                {
-                    totalMem.Should().BeLessThan((ulong)((memoryHint - 200.MB()) * 0.9));
-                }
-                else
-                {
-                    totalMem.Should().BeLessThan((ulong)((memoryHint - 200.MB())));
-                }
+                totalMem.Should().BeLessThan((ulong)((memoryHint - 200.MB()) * 0.9));
             }
             else
             {
@@ -177,7 +166,6 @@ namespace Nethermind.Runner.Test
         [TestCase(500 * GB)]
         public void Big_value_at_memory_hint(long memoryHint)
         {
-            _initConfig.StateDbKeyScheme = INodeStorage.KeyScheme.Hash;
             _initConfig.MemoryHint = memoryHint;
             SetMemoryAllowances(1);
             _dbConfig.StateDbRowCacheSize.Should().BeGreaterThan(0);
