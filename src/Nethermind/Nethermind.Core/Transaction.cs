@@ -57,20 +57,22 @@ namespace Nethermind.Core
         {
             get
             {
-                if (_hash is not null) return _hash;
+                Hash256? hash = _hash;
+                if (hash is not null) return hash;
 
                 lock (this)
                 {
-                    if (_hash is not null) return _hash;
+                    hash = _hash;
+                    if (hash is not null) return hash;
 
                     if (_preHash.Length > 0)
                     {
-                        _hash = Keccak.Compute(_preHash.Span);
+                        _hash = hash = Keccak.Compute(_preHash.Span);
                         ClearPreHashInternal();
                     }
                 }
 
-                return _hash;
+                return hash;
             }
             set
             {

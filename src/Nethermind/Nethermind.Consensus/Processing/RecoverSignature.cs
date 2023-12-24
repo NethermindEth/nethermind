@@ -5,6 +5,7 @@ using System;
 using System.Linq;
 using System.Threading.Tasks;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Logging;
@@ -47,19 +48,46 @@ namespace Nethermind.Consensus.Processing
 
             var releaseSpec = _specProvider.GetSpec(block.Header);
 
-            Parallel.ForEach(
-                block.Transactions.Where(tx => tx.IsSigned && tx.SenderAddress is null),
-                blockTransaction =>
+            int recoverFromEcdsa = 0;
+            // Don't access txPool in Parallel loop as increases contention
+            foreach (Transaction blockTransaction in block.Transactions.Where(tx => tx.IsSigned && tx.SenderAddress is null))
+            {
+                _txPool.TryGetPendingTransaction(blockTransaction.Hash, out Transaction? transaction);
+
+                Address sender = transaction?.SenderAddress;
+                if (sender != null)
                 {
-                    _txPool.TryGetPendingTransaction(blockTransaction.Hash, out Transaction? transaction);
+                    blockTransaction.SenderAddress = sender;
 
-                    Address sender = transaction?.SenderAddress;
-                    Address blockTransactionAddress = blockTransaction.SenderAddress;
+                    if (_logger.IsTrace) _logger.Trace($"Recovered {blockTransaction.SenderAddress} sender for {blockTransaction.Hash} (tx pool cached value: {sender})");
+                }
+                else
+                {
+                    recoverFromEcdsa++;
+                }
+            }
 
-                    blockTransaction.SenderAddress =
-                        sender ?? _ecdsa.RecoverAddress(blockTransaction, !releaseSpec.ValidateChainId);
-                    if (_logger.IsTrace) _logger.Trace($"Recovered {blockTransaction.SenderAddress} sender for {blockTransaction.Hash} (tx pool cached value: {sender}, block transaction address: {blockTransactionAddress})");
-                });
+            if (recoverFromEcdsa >= 4)
+            {
+                // Recover ecdsa in Parallel
+                Parallel.ForEach(
+                    block.Transactions.Where(tx => tx.IsSigned && tx.SenderAddress is null),
+                    blockTransaction =>
+                    {
+                        blockTransaction.SenderAddress = _ecdsa.RecoverAddress(blockTransaction, !releaseSpec.ValidateChainId);
+
+                        if (_logger.IsTrace) _logger.Trace($"Recovered {blockTransaction.SenderAddress} sender for {blockTransaction.Hash}");
+                    });
+            }
+            else if (recoverFromEcdsa > 0)
+            {
+                foreach (Transaction blockTransaction in block.Transactions.Where(tx => tx.IsSigned && tx.SenderAddress is null))
+                {
+                    blockTransaction.SenderAddress = _ecdsa.RecoverAddress(blockTransaction, !releaseSpec.ValidateChainId);
+
+                    if (_logger.IsTrace) _logger.Trace($"Recovered {blockTransaction.SenderAddress} sender for {blockTransaction.Hash}");
+                }
+            }
         }
     }
 }
