@@ -842,6 +842,9 @@ public class ChainSpecBasedSpecProviderTests
     {
         get
         {
+            yield return new TestCaseData(new ForkActivation(1), true, false, false);
+            yield return new TestCaseData(new ForkActivation(2), true, false, false);
+            yield return new TestCaseData(new ForkActivation(3), true, false, false);
             yield return new TestCaseData(new ForkActivation(1, 9), true, false, false);
             yield return new TestCaseData(new ForkActivation(2, 9), true, false, false);
             yield return new TestCaseData(new ForkActivation(2, 10), true, true, false);
