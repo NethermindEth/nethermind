@@ -93,7 +93,7 @@ namespace Nethermind.Specs.Test
                 ? transition.Spec
                 : GenesisSpec;
         }
-           
+
 
         private static int CompareTransitionOnBlock(ForkActivation forkActivation, (ForkActivation Activation, IReleaseSpec Spec) transition) =>
             forkActivation.CompareTo(transition.Activation);
