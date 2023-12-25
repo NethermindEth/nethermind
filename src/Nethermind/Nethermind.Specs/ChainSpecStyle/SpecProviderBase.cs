@@ -27,6 +27,7 @@ public abstract class SpecProviderBase
         {
             throw new ArgumentException($"There must be at least one release specified when instantiating {GetType()}", $"{nameof(transitions)}");
         }
+
         if (transitions.First().Activation.BlockNumber != 0L)
         {
             throw new ArgumentException($"First release specified when instantiating {GetType()} should be at genesis block (0)", $"{nameof(transitions)}");
