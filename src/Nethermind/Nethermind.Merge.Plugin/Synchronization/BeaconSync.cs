@@ -3,6 +3,7 @@
 
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
@@ -18,6 +19,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
         private readonly IBlockTree _blockTree;
         private readonly ISyncConfig _syncConfig;
         private readonly IBlockCacheService _blockCacheService;
+        private readonly IPoSSwitcher _poSSwitcher;
         private bool _isInBeaconModeControl = false;
         private readonly ILogger _logger;
 
@@ -26,12 +28,14 @@ namespace Nethermind.Merge.Plugin.Synchronization
             IBlockTree blockTree,
             ISyncConfig syncConfig,
             IBlockCacheService blockCacheService,
+            IPoSSwitcher poSSwitcher,
             ILogManager logManager)
         {
             _beaconPivot = beaconPivot;
             _blockTree = blockTree;
             _syncConfig = syncConfig;
             _blockCacheService = blockCacheService;
+            _poSSwitcher = poSSwitcher;
             _logger = logManager.GetClassLogger();
         }
 
@@ -104,6 +108,8 @@ namespace Nethermind.Merge.Plugin.Synchronization
         /// <param name="blockHeader"></param>
         /// <returns></returns>
         public bool IsBeaconSyncFinished(BlockHeader? blockHeader) => !_beaconPivot.BeaconPivotExists() || (blockHeader is not null && _blockTree.WasProcessed(blockHeader.Number, blockHeader.GetOrCalculateHash()));
+
+        public bool IsPostMerge => _poSSwitcher.TransitionFinished;
 
         public long? GetTargetBlockHeight()
         {
