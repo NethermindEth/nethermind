@@ -120,7 +120,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
             return null;
         }
 
-        public Hash256 GetFinalizedHash()
+        public Hash256? GetFinalizedHash()
         {
             return _blockCacheService.FinalizedHash;
         }
