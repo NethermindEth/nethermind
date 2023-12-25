@@ -109,7 +109,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
         /// <returns></returns>
         public bool IsBeaconSyncFinished(BlockHeader? blockHeader) => !_beaconPivot.BeaconPivotExists() || (blockHeader is not null && _blockTree.WasProcessed(blockHeader.Number, blockHeader.GetOrCalculateHash()));
 
-        public bool IsPostMerge => _poSSwitcher.TransitionFinished;
+        public bool MergeTransitionFinished => _poSSwitcher.TransitionFinished;
 
         public long? GetTargetBlockHeight()
         {
