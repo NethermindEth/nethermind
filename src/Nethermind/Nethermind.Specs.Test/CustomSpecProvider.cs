@@ -15,6 +15,8 @@ namespace Nethermind.Specs.Test
     {
         private ForkActivation? _theMergeBlock = null;
         private readonly (ForkActivation Activation, IReleaseSpec Spec)[] _transitions;
+        private (ForkActivation Activation, IReleaseSpec Spec)[] _timestampOnlyTransitions;
+        private ForkActivation? _firstTimestampActivation;
 
         public ulong NetworkId { get; }
         public ulong ChainId { get; }
@@ -37,6 +39,9 @@ namespace Nethermind.Specs.Test
 
             _transitions = transitions.OrderBy(r => r.Activation).ToArray();
             TransitionActivations = _transitions.Select(t => t.Activation).ToArray();
+            _firstTimestampActivation = TransitionActivations.FirstOrDefault(t => t.Timestamp is not null);
+            _timestampOnlyTransitions = _transitions.SkipWhile(t => t.Activation.Timestamp is null).ToArray();
+            _transitions = _transitions.TakeWhile(t => t.Activation.Timestamp is null).ToArray();
 
             if (transitions[0].Activation.BlockNumber != 0L)
             {
@@ -63,12 +68,32 @@ namespace Nethermind.Specs.Test
 #pragma warning restore CS8603
 #pragma warning restore CS8602
 
-        public IReleaseSpec GetSpec(ForkActivation forkActivation) =>
-            _transitions.TryGetSearchedItem(forkActivation,
+        public IReleaseSpec GetSpec(ForkActivation forkActivation)
+        {
+            (ForkActivation Activation, IReleaseSpec Spec)[] consideredTransitions = _transitions;
+
+            // TODO: Is this actually needed? Can this be tricked with invalid activation check if someone would fake timestamp from the future?
+            if (_firstTimestampActivation is not null && forkActivation.Timestamp is not null)
+            {
+                if (_firstTimestampActivation.Value.Timestamp < forkActivation.Timestamp
+                    && _firstTimestampActivation.Value.BlockNumber > forkActivation.BlockNumber)
+                {
+                    throw new Exception($"Chainspec file is misconfigured! Timestamp transition is configured to happen before the last block transition.");
+                }
+
+                if (_firstTimestampActivation.Value.Timestamp <= forkActivation.Timestamp)
+                {
+                    consideredTransitions = _timestampOnlyTransitions;
+                }
+            }
+
+            return consideredTransitions.TryGetSearchedItem(forkActivation,
                 CompareTransitionOnBlock,
                 out (ForkActivation Activation, IReleaseSpec Spec) transition)
                 ? transition.Spec
                 : GenesisSpec;
+        }
+           
 
         private static int CompareTransitionOnBlock(ForkActivation forkActivation, (ForkActivation Activation, IReleaseSpec Spec) transition) =>
             forkActivation.CompareTo(transition.Activation);

@@ -100,6 +100,8 @@ namespace Nethermind.Specs.ChainSpecStyle
             _transitions = CreateTransitions(_chainSpec, transitionBlockNumbers, transitionTimestamps);
             _firstTimestampActivation = TransitionActivations.FirstOrDefault(t => t.Timestamp is not null);
             _timestampOnlyTransitions = _transitions.SkipWhile(t => t.Activation.Timestamp is null).ToArray();
+            _transitions = _transitions.TakeWhile(t => t.Activation.Timestamp is null).ToArray();
+
 
             if (_chainSpec.Parameters.TerminalPoWBlockNumber is not null)
             {
