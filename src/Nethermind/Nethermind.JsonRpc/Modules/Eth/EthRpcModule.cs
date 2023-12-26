@@ -388,7 +388,7 @@ public partial class EthRpcModule : IEthRpcModule
         TxReceipt receipt = null; // note that if transaction is pending then for sure no receipt is known
         if (transaction is null)
         {
-            (receipt, transaction, baseFee) = _blockchainBridge.GetTransaction(transactionHash);
+            (receipt, transaction, baseFee) = _blockchainBridge.GetTransaction(transactionHash, checkTxnPool: false);
             if (transaction is null)
             {
                 return Task.FromResult(ResultWrapper<TransactionForRpc>.Success(null));
