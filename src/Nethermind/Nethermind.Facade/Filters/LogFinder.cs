@@ -65,6 +65,8 @@ namespace Nethermind.Blockchain.Find
 
         public IEnumerable<FilterLog> FindLogs(LogFilter filter, BlockHeader fromBlock, BlockHeader toBlock, CancellationToken cancellationToken = default)
         {
+            cancellationToken.ThrowIfCancellationRequested();
+
             if (fromBlock.Number > toBlock.Number && toBlock.Number != 0)
             {
                 throw new ArgumentException($"From block {fromBlock.Number} is later than to block {toBlock.Number}.");
