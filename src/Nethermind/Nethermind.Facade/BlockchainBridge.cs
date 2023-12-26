@@ -103,7 +103,7 @@ namespace Nethermind.Facade
             return (null, null, 0);
         }
 
-        public (TxReceipt? Receipt, Transaction Transaction, UInt256? baseFee) GetTransaction(Hash256 txHash)
+        public (TxReceipt? Receipt, Transaction Transaction, UInt256? baseFee) GetTransaction(Hash256 txHash, bool checkTxnPool = true)
         {
             Hash256 blockHash = _receiptFinder.FindBlockHash(txHash);
             if (blockHash is not null)
@@ -113,7 +113,7 @@ namespace Nethermind.Facade
                 return (txReceipt, block?.Transactions[txReceipt.Index], block?.BaseFeePerGas);
             }
 
-            if (_txPool.TryGetPendingTransaction(txHash, out Transaction? transaction))
+            if (checkTxnPool && _txPool.TryGetPendingTransaction(txHash, out Transaction? transaction))
             {
                 return (null, transaction, null);
             }
