@@ -260,7 +260,7 @@ public partial class BlockProcessor : IBlockProcessor
     // TODO: block processor pipeline
     private void StoreTxReceipts(Block block, TxReceipt[] txReceipts)
     {
-        // Setting canonical is done by ReceiptCanonicalityMonitor on block move to main
+        // Setting canonical is done when the BlockAddedToMain event is firec
         _receiptStorage.Insert(block, txReceipts, false);
     }
 

@@ -290,17 +290,22 @@ namespace Nethermind.Blockchain.Test.Receipts
             _receiptsDb.GetColumnDb(ReceiptsColumns.Transactions)[receipts[0].TxHash!.Bytes].Should().BeNull();
         }
 
-        [Test]
-        public void Should_not_index_tx_hash_if_blockNumber_is_negative()
+        [TestCase(1L, false)]
+        [TestCase(10L, false)]
+        [TestCase(11L, true)]
+        public void Should_only_prune_index_tx_hashes_if_blockNumber_is_bigger_than_lookupLimit(long blockNumber, bool WillPruneOldIndicies)
         {
             _receiptConfig.TxLookupLimit = 10;
             CreateStorage();
             _blockTree.BlockAddedToMain +=
-                Raise.EventWith(new BlockReplacementEventArgs(Build.A.Block.WithNumber(1).TestObject));
+                Raise.EventWith(new BlockReplacementEventArgs(Build.A.Block.WithNumber(blockNumber).TestObject));
             Thread.Sleep(100);
             IEnumerable<ICall> calls = _blockTree.ReceivedCalls()
-                .Where(call => !call.GetMethodInfo().Name.EndsWith(nameof(_blockTree.BlockAddedToMain)));
-            calls.Should().BeEmpty();
+                .Where(call => call.GetMethodInfo().Name.EndsWith(nameof(_blockTree.FindBlock)));
+            if (WillPruneOldIndicies)
+                calls.Should().NotBeEmpty();
+            else
+                calls.Should().BeEmpty();
         }
 
         [Test]
