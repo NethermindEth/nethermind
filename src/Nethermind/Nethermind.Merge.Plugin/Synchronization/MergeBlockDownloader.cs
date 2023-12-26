@@ -197,6 +197,8 @@ namespace Nethermind.Merge.Plugin.Synchronization
                     break;
                 }
 
+                long bestSuggestedBlock = 0;
+
                 for (int blockIndex = 0; blockIndex < blocks.Length; blockIndex++)
                 {
                     if (cancellation.IsCancellationRequested)
@@ -225,16 +227,19 @@ namespace Nethermind.Merge.Plugin.Synchronization
                     {
                         // covering edge case during fastSyncTransition when we're trying to SuggestBlock without the state
                         bool headIsGenesis = _blockTree.Head?.IsGenesis ?? false;
-                        bool toBeProcessedIsNotBlockOne = currentBlock.Number > 1;
+                        bool toBeProcessedIsNotBlockOne = currentBlock.Number > (bestSuggestedBlock + 1);
                         bool isFastSyncTransition = headIsGenesis && toBeProcessedIsNotBlockOne;
                         if (isFastSyncTransition)
                         {
                             long bestFullState = _fullStateFinder.FindBestFullState();
                             shouldProcess = currentBlock.Number > bestFullState && bestFullState != 0;
-                            if (!shouldProcess)
+                            if (!shouldProcess && !downloadReceipts)
                             {
-                                if (_logger.IsInfo) _logger.Info($"Skipping processing during fastSyncTransition, currentBlock: {currentBlock}, bestFullState: {bestFullState}");
+                                if (_logger.IsInfo) _logger.Info($"Skipping processing during fastSyncTransition, currentBlock: {currentBlock}, bestFullState: {bestFullState}, trying to load receipts");
                                 downloadReceipts = true;
+                                context = new(_specProvider, bestPeer, headers!, downloadReceipts, _receiptsRecovery);
+                                await RequestReceipts(bestPeer, cancellation, context);
+                                receipts = context.ReceiptsForBlocks;
                             }
                         }
                     }
@@ -270,6 +275,10 @@ namespace Nethermind.Merge.Plugin.Synchronization
                         if (shouldProcess == false)
                         {
                             _blockTree.UpdateMainChain(new[] { currentBlock }, false);
+                        }
+                        else
+                        {
+                            bestSuggestedBlock = currentBlock.Number;
                         }
 
                         TryUpdateTerminalBlock(currentBlock.Header, shouldProcess);
