@@ -302,8 +302,26 @@ namespace Nethermind.Facade
             IEnumerable<object>? topics = null,
             CancellationToken cancellationToken = default)
         {
-            LogFilter filter = _filterStore.CreateLogFilter(fromBlock, toBlock, address, topics, false);
+            LogFilter filter = GetFilter(fromBlock, toBlock, address, topics);
             return _logFinder.FindLogs(filter, cancellationToken);
+        }
+
+        public LogFilter GetFilter(
+            BlockParameter fromBlock,
+            BlockParameter toBlock,
+            object? address = null,
+            IEnumerable<object>? topics = null)
+        {
+            return _filterStore.CreateLogFilter(fromBlock, toBlock, address, topics, false);
+        }
+
+        public IEnumerable<FilterLog> GetLogs(
+            LogFilter filter,
+            BlockHeader fromBlock,
+            BlockHeader toBlock,
+            CancellationToken cancellationToken = default)
+        {
+            return _logFinder.FindLogs(filter, fromBlock, toBlock, cancellationToken);
         }
 
         public bool TryGetLogs(int filterId, out IEnumerable<FilterLog> filterLogs, CancellationToken cancellationToken = default)
@@ -377,6 +395,11 @@ namespace Nethermind.Facade
         public bool HasStateForRoot(Hash256 stateRoot)
         {
             return _processingEnv.StateReader.HasStateForRoot(stateRoot);
+        }
+
+        public IEnumerable<FilterLog> FindLogs(LogFilter filter, BlockHeader fromBlock, BlockHeader toBlock, CancellationToken cancellationToken = default)
+        {
+            return _logFinder.FindLogs(filter, fromBlock, toBlock, cancellationToken);
         }
 
         public IEnumerable<FilterLog> FindLogs(LogFilter filter, CancellationToken cancellationToken = default)

@@ -602,7 +602,9 @@ public partial class EthRpcModule : IEthRpcModule
         SearchResult<BlockHeader> toBlockResult;
 
         if (filter.FromBlock == filter.ToBlock)
+        {
             fromBlockResult = toBlockResult = _blockFinder.SearchForHeader(filter.ToBlock);
+        }
         else
         {
             toBlockResult = _blockFinder.SearchForHeader(filter.ToBlock);
@@ -625,8 +627,11 @@ public partial class EthRpcModule : IEthRpcModule
 
         cancellationToken.ThrowIfCancellationRequested();
 
-        long fromBlockNumber = fromBlockResult.Object!.Number;
-        long toBlockNumber = toBlockResult.Object!.Number;
+        BlockHeader fromBlock = fromBlockResult.Object!;
+        BlockHeader toBlock = toBlockResult.Object!;
+
+        long fromBlockNumber = fromBlock.Number;
+        long toBlockNumber = toBlock.Number;
 
         if (fromBlockNumber > toBlockNumber && toBlockNumber != 0)
         {
@@ -637,8 +642,9 @@ public partial class EthRpcModule : IEthRpcModule
 
         try
         {
-            IEnumerable<FilterLog> filterLogs = _blockchainBridge.GetLogs(filter.FromBlock!, filter.ToBlock!,
-                filter.Address, filter.Topics, cancellationToken);
+            LogFilter logFilter = _blockchainBridge.GetFilter(filter.FromBlock, filter.ToBlock,
+                filter.Address, filter.Topics);
+            IEnumerable<FilterLog> filterLogs = _blockchainBridge.GetLogs(logFilter, fromBlock, toBlock, cancellationToken);
 
             return ResultWrapper<IEnumerable<FilterLog>>.Success(GetLogs(filterLogs, cancellationTokenSource));
         }
