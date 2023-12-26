@@ -41,7 +41,10 @@ namespace Nethermind.Facade
         FilterType GetFilterType(int filterId);
         FilterLog[] GetFilterLogs(int filterId);
 
+        LogFilter GetFilter(BlockParameter fromBlock, BlockParameter toBlock, object? address = null, IEnumerable<object>? topics = null);
+        IEnumerable<FilterLog> GetLogs(LogFilter filter, BlockHeader fromBlock, BlockHeader toBlock, CancellationToken cancellationToken = default);
         IEnumerable<FilterLog> GetLogs(BlockParameter fromBlock, BlockParameter toBlock, object? address = null, IEnumerable<object>? topics = null, CancellationToken cancellationToken = default);
+
         bool TryGetLogs(int filterId, out IEnumerable<FilterLog> filterLogs, CancellationToken cancellationToken = default);
         void RunTreeVisitor(ITreeVisitor treeVisitor, Hash256 stateRoot);
         bool HasStateForRoot(Hash256 stateRoot);
