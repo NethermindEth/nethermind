@@ -812,7 +812,7 @@ namespace Nethermind.Trie.Pruning
             });
         }
 
-        private byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
+        private byte[]? GetByHash(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
         {
             return _pruningStrategy.PruningEnabled
                    && _dirtyNodes.AllNodes.TryGetValue(new ValueHash256(key), out TrieNode? trieNode)
@@ -823,9 +823,14 @@ namespace Nethermind.Trie.Pruning
                 : _keyValueStore.Get(key, flags);
         }
 
-        public IKeyValueStore AsKeyValueStore() => _publicStore;
+        public IReadOnlyKeyValueStore TrieNodeRlpStore => _publicStore;
 
-        private class TrieKeyValueStore : IKeyValueStore
+        public void Set(in ValueHash256 hash, byte[] rlp)
+        {
+            _keyValueStore.Set(hash, rlp);
+        }
+
+        private class TrieKeyValueStore : IReadOnlyKeyValueStore
         {
             private readonly TrieStore _trieStore;
 
@@ -834,10 +839,7 @@ namespace Nethermind.Trie.Pruning
                 _trieStore = trieStore;
             }
 
-            public byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None) => _trieStore.Get(key, flags);
-
-            public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None)
-                => _trieStore._keyValueStore.Set(key, value, flags);
+            public byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None) => _trieStore.GetByHash(key, flags);
         }
     }
 }

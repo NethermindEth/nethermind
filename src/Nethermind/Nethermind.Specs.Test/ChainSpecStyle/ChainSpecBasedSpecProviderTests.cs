@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -100,15 +101,16 @@ public class ChainSpecBasedSpecProviderTests
         expectedSpec.IsEip3855Enabled = isEip3855Enabled;
         expectedSpec.Eip1559TransitionBlock = 0;
         expectedSpec.DifficultyBombDelay = 0;
-        TestSpecProvider testProvider = TestSpecProvider.Instance;
-        testProvider.SpecToReturn = expectedSpec;
-        testProvider.TerminalTotalDifficulty = 0;
-        testProvider.GenesisSpec = expectedSpec;
         List<ForkActivation> forkActivationsToTest = new()
         {
             (blockNumber, timestamp),
         };
-        CompareSpecProviders(testProvider, provider, forkActivationsToTest);
+
+        foreach (ForkActivation activation in forkActivationsToTest)
+        {
+            provider.GetSpec(activation);
+        }
+
         if (receivesWarning)
         {
             logger.Received(1).Warn(Arg.Is("Chainspec file is misconfigured! Timestamp transition is configured to happen before the last block transition."));
@@ -263,8 +265,8 @@ public class ChainSpecBasedSpecProviderTests
             (ForkActivation)(GnosisSpecProvider.BerlinBlockNumber),
             (ForkActivation)(GnosisSpecProvider.LondonBlockNumber -1),
             (ForkActivation)(GnosisSpecProvider.LondonBlockNumber),
-            (1, GnosisSpecProvider.ShanghaiTimestamp - 1),
-            (1, GnosisSpecProvider.ShanghaiTimestamp),
+            (GnosisSpecProvider.LondonBlockNumber, GnosisSpecProvider.ShanghaiTimestamp - 1),
+            (GnosisSpecProvider.LondonBlockNumber, GnosisSpecProvider.ShanghaiTimestamp),
             (999_999_999, 999_999_999) // far in the future
         };
 
@@ -807,6 +809,43 @@ public class ChainSpecBasedSpecProviderTests
             r.IsEip3860Enabled = true;
         });
         TestTransitions((40001L, 1000000024), r => { r.IsEip1153Enabled = r.IsEip2537Enabled = true; });
+    }
+
+    [TestCaseSource(nameof(BlockNumbersAndTimestampsNearForkActivations))]
+    public void Forks_should_be_selected_properly_for_exact_matches(ForkActivation forkActivation, bool isEip3651Enabled, bool isEip3198Enabled, bool isEip3855Enabled)
+    {
+        ISpecProvider provider = new CustomSpecProvider(
+            (new ForkActivation(0), new ReleaseSpec() { IsEip3651Enabled = true }),
+            (new ForkActivation(2, 10), new ReleaseSpec() { IsEip3651Enabled = true, IsEip3198Enabled = true, }),
+            (new ForkActivation(2, 20), new ReleaseSpec() { IsEip3651Enabled = true, IsEip3198Enabled = true, IsEip3855Enabled = true })
+            );
+
+        IReleaseSpec spec = provider.GetSpec(forkActivation);
+        Assert.Multiple(() =>
+        {
+            Assert.That(spec.IsEip3651Enabled, Is.EqualTo(isEip3651Enabled));
+            Assert.That(spec.IsEip3198Enabled, Is.EqualTo(isEip3198Enabled));
+            Assert.That(spec.IsEip3855Enabled, Is.EqualTo(isEip3855Enabled));
+        });
+    }
+
+    public static IEnumerable BlockNumbersAndTimestampsNearForkActivations
+    {
+        get
+        {
+            yield return new TestCaseData(new ForkActivation(1, 9), true, false, false);
+            yield return new TestCaseData(new ForkActivation(2, 9), true, false, false);
+            yield return new TestCaseData(new ForkActivation(2, 10), true, true, false);
+            yield return new TestCaseData(new ForkActivation(2, 11), true, true, false);
+            yield return new TestCaseData(new ForkActivation(2, 19), true, true, false);
+            yield return new TestCaseData(new ForkActivation(2, 20), true, true, true);
+            yield return new TestCaseData(new ForkActivation(2, 21), true, true, true);
+            yield return new TestCaseData(new ForkActivation(3, 10), true, true, false);
+            yield return new TestCaseData(new ForkActivation(3, 11), true, true, false);
+            yield return new TestCaseData(new ForkActivation(3, 19), true, true, false);
+            yield return new TestCaseData(new ForkActivation(3, 20), true, true, true);
+            yield return new TestCaseData(new ForkActivation(3, 21), true, true, true);
+        }
     }
 
     private static IEnumerable<ulong> GetTransitionTimestamps(ChainParameters parameters) => parameters.GetType()

@@ -233,7 +233,7 @@ namespace Nethermind.Blockchain.Receipts
 
             Func<IReceiptsRecovery.IRecoveryContext?> recoveryContextFactory = () => null;
 
-            if (_storageDecoder.IsCompactEncoding(receiptsData))
+            if (ReceiptArrayStorageDecoder.IsCompactEncoding(receiptsData))
             {
                 recoveryContextFactory = () =>
                 {
@@ -248,7 +248,7 @@ namespace Nethermind.Blockchain.Receipts
                 };
             }
 
-            IReceiptRefDecoder refDecoder = _storageDecoder.GetRefDecoder(receiptsData);
+            IReceiptRefDecoder refDecoder = ReceiptArrayStorageDecoder.GetRefDecoder(receiptsData);
 
             iterator = result ? new ReceiptsIterator(receiptsData, _blocksDb, recoveryContextFactory, refDecoder) : new ReceiptsIterator();
             return result;

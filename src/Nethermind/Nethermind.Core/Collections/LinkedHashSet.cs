@@ -10,7 +10,7 @@ namespace Nethermind.Core.Collections
 {
     public class LinkedHashSet<T> : ISet<T>, IReadOnlySet<T> where T : notnull
     {
-        private readonly IDictionary<T, LinkedListNode<T>> _dict;
+        private readonly Dictionary<T, LinkedListNode<T>> _dict;
         private readonly LinkedList<T> _list;
 
         public LinkedHashSet(int initialCapacity)
@@ -71,7 +71,7 @@ namespace Nethermind.Core.Collections
 
             T[] ts = new T[Count];
             CopyTo(ts, 0);
-            ISet<T> set = other.ToHashSet();
+            HashSet<T> set = other.ToHashSet();
             foreach (T t in this.ToArray())
             {
                 if (!set.Contains(t))
@@ -106,7 +106,7 @@ namespace Nethermind.Core.Collections
         {
             ArgumentNullException.ThrowIfNull(other);
 
-            ISet<T> set = other.ToHashSet();
+            HashSet<T> set = other.ToHashSet();
             int otherCount = set.Count;
             if (Count > otherCount)
             {
@@ -134,7 +134,7 @@ namespace Nethermind.Core.Collections
         {
             ArgumentNullException.ThrowIfNull(other);
 
-            ISet<T> set = other.ToHashSet();
+            HashSet<T> set = other.ToHashSet();
             return this.All(t => set.Contains(t));
         }
 
@@ -167,7 +167,7 @@ namespace Nethermind.Core.Collections
             T[] ts = new T[Count];
             CopyTo(ts, 0);
 
-            ISet<T> set = other.ToHashSet();
+            HashSet<T> set = other.ToHashSet();
             for (int index = 0; index < ts.Length; index++)
             {
                 T t = ts[index];
@@ -201,7 +201,7 @@ namespace Nethermind.Core.Collections
 
         public int Count => _dict.Count;
 
-        public bool IsReadOnly => _dict.IsReadOnly;
+        public bool IsReadOnly => false;
 
         void ICollection<T>.Add(T item)
         {

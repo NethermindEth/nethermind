@@ -269,7 +269,7 @@ public class JsonRpcService : IJsonRpcService
         }
     }
 
-    private object? DeserializeParameter(JsonElement providedParameter, ParameterInfo expectedParameter)
+    private static object? DeserializeParameter(JsonElement providedParameter, ParameterInfo expectedParameter)
     {
         Type paramType = expectedParameter.ParameterType;
         if (paramType.IsByRef)
@@ -370,7 +370,7 @@ public class JsonRpcService : IJsonRpcService
         }
     }
 
-    private bool IsNullableParameter(ParameterInfo parameterInfo)
+    private static bool IsNullableParameter(ParameterInfo parameterInfo)
     {
         Type parameterType = parameterInfo.ParameterType;
         if (parameterType.IsValueType)
@@ -391,7 +391,7 @@ public class JsonRpcService : IJsonRpcService
         return false;
     }
 
-    private JsonRpcResponse GetSuccessResponse(string methodName, object result, object id, Action? disposableAction)
+    private static JsonRpcResponse GetSuccessResponse(string methodName, object result, object id, Action? disposableAction)
     {
         JsonRpcResponse response = new JsonRpcSuccessResponse(disposableAction)
         {

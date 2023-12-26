@@ -176,13 +176,11 @@ public partial class EthRpcModule : IEthRpcModule
         }
 
         BlockHeader? header = searchResult.Object;
-        Account account = _stateReader.GetAccount(header!.StateRoot!, address);
-        if (account is null)
+        byte[] storage = _stateReader.GetStorage(header!.StateRoot!, address, positionIndex);
+        if (storage is null)
         {
             return ResultWrapper<byte[]>.Success(Array.Empty<byte>());
         }
-
-        byte[] storage = _stateReader.GetStorage(account.StorageRoot, positionIndex);
         return ResultWrapper<byte[]>.Success(storage!.PadLeft(32));
     }
 
@@ -390,7 +388,7 @@ public partial class EthRpcModule : IEthRpcModule
         TxReceipt receipt = null; // note that if transaction is pending then for sure no receipt is known
         if (transaction is null)
         {
-            (receipt, transaction, baseFee) = _blockchainBridge.GetTransaction(transactionHash);
+            (receipt, transaction, baseFee) = _blockchainBridge.GetTransaction(transactionHash, checkTxnPool: false);
             if (transaction is null)
             {
                 return Task.FromResult(ResultWrapper<TransactionForRpc>.Success(null));
@@ -604,7 +602,9 @@ public partial class EthRpcModule : IEthRpcModule
         SearchResult<BlockHeader> toBlockResult;
 
         if (filter.FromBlock == filter.ToBlock)
+        {
             fromBlockResult = toBlockResult = _blockFinder.SearchForHeader(filter.ToBlock);
+        }
         else
         {
             toBlockResult = _blockFinder.SearchForHeader(filter.ToBlock);
@@ -627,8 +627,11 @@ public partial class EthRpcModule : IEthRpcModule
 
         cancellationToken.ThrowIfCancellationRequested();
 
-        long fromBlockNumber = fromBlockResult.Object!.Number;
-        long toBlockNumber = toBlockResult.Object!.Number;
+        BlockHeader fromBlock = fromBlockResult.Object!;
+        BlockHeader toBlock = toBlockResult.Object!;
+
+        long fromBlockNumber = fromBlock.Number;
+        long toBlockNumber = toBlock.Number;
 
         if (fromBlockNumber > toBlockNumber && toBlockNumber != 0)
         {
@@ -639,8 +642,9 @@ public partial class EthRpcModule : IEthRpcModule
 
         try
         {
-            IEnumerable<FilterLog> filterLogs = _blockchainBridge.GetLogs(filter.FromBlock!, filter.ToBlock!,
-                filter.Address, filter.Topics, cancellationToken);
+            LogFilter logFilter = _blockchainBridge.GetFilter(filter.FromBlock, filter.ToBlock,
+                filter.Address, filter.Topics);
+            IEnumerable<FilterLog> filterLogs = _blockchainBridge.GetLogs(logFilter, fromBlock, toBlock, cancellationToken);
 
             return ResultWrapper<IEnumerable<FilterLog>>.Success(GetLogs(filterLogs, cancellationTokenSource));
         }
@@ -690,7 +694,7 @@ public partial class EthRpcModule : IEthRpcModule
         transaction.SenderAddress ??= _blockchainBridge.RecoverTxSender(transaction);
     }
 
-    private IEnumerable<FilterLog> GetLogs(IEnumerable<FilterLog> logs, CancellationTokenSource cancellationTokenSource)
+    private static IEnumerable<FilterLog> GetLogs(IEnumerable<FilterLog> logs, CancellationTokenSource cancellationTokenSource)
     {
         using (cancellationTokenSource)
         {

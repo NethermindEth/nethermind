@@ -11,8 +11,6 @@ using System.Text.Json.Serialization;
 using System.Threading;
 using System.Threading.Tasks;
 
-using Nethermind.Core.Collections;
-
 namespace Nethermind.Serialization.Json
 {
     public class EthereumJsonSerializer : IJsonSerializer
@@ -121,19 +119,24 @@ namespace Nethermind.Serialization.Json
             JsonSerializer.Serialize(writer, value, indented ? JsonOptionsIndented : _jsonOptions);
             countingWriter.Complete();
 
-            long outputCount = countingWriter.OutputCount;
+            long outputCount = countingWriter.WrittenCount;
             return outputCount;
         }
 
         public async ValueTask<long> SerializeAsync<T>(Stream stream, T value, bool indented = false, bool leaveOpen = true)
         {
-            var countingWriter = GetPipeWriter(stream, leaveOpen);
-            using var writer = new Utf8JsonWriter(countingWriter, new JsonWriterOptions() { SkipValidation = true, Indented = indented });
-            JsonSerializer.Serialize(writer, value, indented ? JsonOptionsIndented : _jsonOptions);
-            await countingWriter.CompleteAsync();
+            var writer = GetPipeWriter(stream, leaveOpen);
+            Serialize(writer, value, indented);
+            await writer.CompleteAsync();
 
-            long outputCount = countingWriter.OutputCount;
+            long outputCount = writer.WrittenCount;
             return outputCount;
+        }
+
+        public void Serialize<T>(IBufferWriter<byte> writer, T value, bool indented = false)
+        {
+            using var jsonWriter = new Utf8JsonWriter(writer, new JsonWriterOptions() { SkipValidation = true, Indented = indented });
+            JsonSerializer.Serialize(jsonWriter, value, indented ? JsonOptionsIndented : _jsonOptions);
         }
 
         public static void SerializeToStream<T>(Stream stream, T value, bool indented = false)

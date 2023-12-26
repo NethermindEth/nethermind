@@ -89,7 +89,7 @@ namespace Nethermind.Init
             // On 16C/32T machine, this reduces memory usage by about 7GB.
             // There aren't much difference between 16KB to 64KB, but the system cpu time increase slightly as threshold
             // lowers. 4k significantly increase cpu system time.
-            bool success = _mallocHelper.MallOpt(MallocHelper.Option.M_MMAP_THRESHOLD, (int)64.KiB());
+            bool success = MallocHelper.Instance.MallOpt(MallocHelper.Option.M_MMAP_THRESHOLD, (int)64.KiB());
             if (!success && _logger.IsDebug) _logger.Debug("Unable to set M_MAP_THRESHOLD");
         }
 
@@ -293,7 +293,7 @@ namespace Nethermind.Init
             public decimal PreferredMemoryPercentage { get; set; }
         }
 
-        private DbNeeds GetStateNeeds(uint cpuCount)
+        private static DbNeeds GetStateNeeds(uint cpuCount)
         {
             uint preferredBuffers = Math.Min(cpuCount, 2u);
             // remove optimize for point lookup here?
@@ -306,7 +306,7 @@ namespace Nethermind.Init
                 1m); // db memory %
         }
 
-        private DbNeeds GetBlockInfosNeeds(uint cpuCount)
+        private static DbNeeds GetBlockInfosNeeds(uint cpuCount)
         {
             uint preferredBuffers = Math.Min(cpuCount, 2u);
             // remove optimize for point lookup here?
@@ -319,7 +319,7 @@ namespace Nethermind.Init
                 0.02m); // db memory %
         }
 
-        private DbNeeds GetHeaderNeeds(uint cpuCount)
+        private static DbNeeds GetHeaderNeeds(uint cpuCount)
         {
             uint preferredBuffers = Math.Min(cpuCount, 2u);
             return new DbNeeds(
@@ -331,7 +331,7 @@ namespace Nethermind.Init
                 0.05m); // db memory %
         }
 
-        private DbNeeds GetBlocksNeeds(uint cpuCount)
+        private static DbNeeds GetBlocksNeeds(uint cpuCount)
         {
             uint preferredBuffers = Math.Min(cpuCount, 2u);
             return new DbNeeds(
@@ -343,7 +343,7 @@ namespace Nethermind.Init
                 0.04m); // db memory %
         }
 
-        private DbNeeds GetReceiptsNeeds(uint cpuCount)
+        private static DbNeeds GetReceiptsNeeds(uint cpuCount)
         {
             uint preferredBuffers = Math.Min(cpuCount, 2u);
             return new DbNeeds(
@@ -355,7 +355,7 @@ namespace Nethermind.Init
                 0.01m); // db memory %
         }
 
-        private DbNeeds GetPendingTxNeeds(uint cpuCount)
+        private static DbNeeds GetPendingTxNeeds(uint cpuCount)
         {
             return new DbNeeds(
                 4,
@@ -366,7 +366,7 @@ namespace Nethermind.Init
                 0.01m); // db memory %
         }
 
-        private DbNeeds GetCodeNeeds(uint cpuCount)
+        private static DbNeeds GetCodeNeeds(uint cpuCount)
         {
             uint preferredBuffers = Math.Min(cpuCount, 2u);
             return new DbNeeds(

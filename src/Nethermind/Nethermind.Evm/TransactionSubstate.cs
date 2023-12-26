@@ -91,7 +91,7 @@ public class TransactionSubstate
         );
     }
 
-    private string DefaultErrorMessage(ReadOnlySpan<byte> span) => span.ToHexString(true);
+    private static string DefaultErrorMessage(ReadOnlySpan<byte> span) => span.ToHexString(true);
 
     private string? TryGetErrorMessage(ReadOnlySpan<byte> span)
     {

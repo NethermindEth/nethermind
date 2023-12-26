@@ -40,7 +40,7 @@ public class CliConsole : ICliConsole
         System.Console.WriteLine();
     }
 
-    protected Terminal GetTerminal()
+    protected static Terminal GetTerminal()
     {
         if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
         {
@@ -60,7 +60,7 @@ public class CliConsole : ICliConsole
         return Terminal.Unknown;
     }
 
-    protected Terminal PrepareConsoleForTerminal()
+    protected static Terminal PrepareConsoleForTerminal()
     {
         _terminal = GetTerminal();
         if (_terminal != Terminal.Powershell)

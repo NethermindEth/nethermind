@@ -339,7 +339,7 @@ namespace Nethermind.Trie
 
         private static void EnhanceException(ReadOnlySpan<byte> rawKey, ValueHash256 rootHash, TrieException baseException)
         {
-            TrieNodeException? GetTrieNodeException(TrieException? exception) =>
+            static TrieNodeException? GetTrieNodeException(TrieException? exception) =>
                 exception switch
                 {
                     null => null,
@@ -1088,10 +1088,16 @@ namespace Nethermind.Trie
                 }
             }
 
-            ITrieNodeResolver resolver = TrieStore;
+            ReadFlags flags = visitor.ExtraReadFlag;
             if (visitor.IsFullDbScan)
             {
-                resolver = new TrieNodeResolverWithReadFlags(TrieStore, ReadFlags.HintCacheMiss);
+                flags |= ReadFlags.HintCacheMiss;
+            }
+
+            ITrieNodeResolver resolver = TrieStore;
+            if (flags != ReadFlags.None)
+            {
+                resolver = new TrieNodeResolverWithReadFlags(TrieStore, flags);
             }
 
             visitor.VisitTree(rootHash, trieVisitContext);

@@ -188,7 +188,7 @@ namespace Nethermind.Synchronization.SnapSync
                         else
                         {
                             Span<byte> pathSpan = CollectionsMarshal.AsSpan(path);
-                            if (Bytes.Comparer.Compare(pathSpan, leftBoundary[0..path.Count]) >= 0
+                            if (Bytes.BytesComparer.Compare(pathSpan, leftBoundary[0..path.Count]) >= 0
                                 && parent is not null
                                 && parent.IsBranch)
                             {
@@ -210,9 +210,9 @@ namespace Nethermind.Synchronization.SnapSync
                     pathIndex++;
 
                     Span<byte> pathSpan = CollectionsMarshal.AsSpan(path);
-                    int left = Bytes.Comparer.Compare(pathSpan, leftBoundary[0..path.Count]) == 0 ? leftBoundary[pathIndex] : 0;
-                    int right = Bytes.Comparer.Compare(pathSpan, rightBoundary[0..path.Count]) == 0 ? rightBoundary[pathIndex] : 15;
-                    int limit = Bytes.Comparer.Compare(pathSpan, rightLimit[0..path.Count]) == 0 ? rightLimit[pathIndex] : 15;
+                    int left = Bytes.BytesComparer.Compare(pathSpan, leftBoundary[0..path.Count]) == 0 ? leftBoundary[pathIndex] : 0;
+                    int right = Bytes.BytesComparer.Compare(pathSpan, rightBoundary[0..path.Count]) == 0 ? rightBoundary[pathIndex] : 15;
+                    int limit = Bytes.BytesComparer.Compare(pathSpan, rightLimit[0..path.Count]) == 0 ? rightLimit[pathIndex] : 15;
 
                     int maxIndex = moreChildrenToRight ? right : 15;
 
