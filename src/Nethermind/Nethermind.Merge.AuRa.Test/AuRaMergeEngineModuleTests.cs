@@ -57,8 +57,8 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
 
     [TestCase(
         "0xe168b70ac8a6f7d90734010030801fbb2dcce03a657155c4024b36ba8d1e3926",
-        "0x3e604e45a9a74b66a7e03f828cc2597f0cb5f5e7dc50c9211be3a62fbcd6396d",
-        "0xdbd87b98a6be7d4e3f11ff8500c38a0736d9a5e7a47b5cb25628d37187a98cb9",
+        "0x310f4c8c949eb758faa4497e293bb18ef27a465af16553e5fc03752d3be19cc3",
+        "0x1ef7300d8961797263939a3d29bbba4ccf1702fabf02d8ad7a20b454edb6fd2f",
         "0xcdd08163eccae523")]
     public override Task Should_process_block_as_expected_V2(string latestValidHash, string blockHash, string stateRoot, string payloadId)
         => base.Should_process_block_as_expected_V2(latestValidHash, blockHash, stateRoot, payloadId);

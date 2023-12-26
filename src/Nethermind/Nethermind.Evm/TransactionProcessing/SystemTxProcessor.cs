@@ -69,7 +69,7 @@ namespace Nethermind.Evm.TransactionProcessing
 
         protected virtual void Execute(Transaction tx, BlockExecutionContext blCtx, ITxTracer tracer, ExecutionOptions opts)
         {
-            UpdateSpecBasedOnSystemProcessor(blCtx, out BlockHeader header, out IReleaseSpec  spec);
+            UpdateSpecBasedOnSystemProcessor(blCtx, out BlockHeader header, out IReleaseSpec spec);
 
             // restore is CallAndRestore - previous call, we will restore state after the execution
             bool restore = opts.HasFlag(ExecutionOptions.Restore);
@@ -177,10 +177,11 @@ namespace Nethermind.Evm.TransactionProcessing
         protected virtual void UpdateSpecBasedOnSystemProcessor(BlockExecutionContext blCtx, out BlockHeader header, out IReleaseSpec spec)
         {
             header = blCtx.Header;
-            if(Spec.AuRaSystemCalls)
+            if (Spec.AuRaSystemCalls)
             {
                 spec = new SystemTransactionReleaseSpec(Spec);
-            } else
+            }
+            else
             {
                 spec = Spec;
             }

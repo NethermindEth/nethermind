@@ -68,9 +68,9 @@ namespace Nethermind.Evm.TransactionProcessing
 
         protected virtual void Execute(Transaction tx, BlockExecutionContext blCtx, ITxTracer tracer, ExecutionOptions opts)
         {
-            GetSpecFromHeader(blCtx, out BlockHeader header, out IReleaseSpec  spec);
+            GetSpecFromHeader(blCtx, out BlockHeader header, out IReleaseSpec spec);
 
-            if(tx.IsSystem())
+            if (tx.IsSystem())
             {
                 ITransactionProcessor systemProcessor = new SystemTxProcessor(spec, WorldState, VirtualMachine, Ecdsa, Logger);
 
