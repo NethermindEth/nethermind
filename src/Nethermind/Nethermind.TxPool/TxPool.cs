@@ -44,8 +44,11 @@ namespace Nethermind.TxPool
 
         private readonly IChainHeadSpecProvider _specProvider;
         private readonly IAccountStateProvider _accounts;
+        private readonly IEthereumEcdsa _ecdsa;
+        private readonly IBlobTxStorage _blobTxStorage;
         private readonly IChainHeadInfoProvider _headInfo;
         private readonly ITxPoolConfig _txPoolConfig;
+        private readonly bool _blobReorgsSupportEnabled;
 
         private readonly ILogger _logger;
 
@@ -77,7 +80,7 @@ namespace Nethermind.TxPool
         /// <param name="incomingTxFilter"></param>
         /// <param name="thereIsPriorityContract"></param>
         public TxPool(IEthereumEcdsa ecdsa,
-            ITxStorage blobTxStorage,
+            IBlobTxStorage blobTxStorage,
             IChainHeadInfoProvider chainHeadInfoProvider,
             ITxPoolConfig txPoolConfig,
             ITxValidator validator,
@@ -88,8 +91,11 @@ namespace Nethermind.TxPool
             bool thereIsPriorityContract = false)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            _ecdsa = ecdsa ?? throw new ArgumentNullException(nameof(ecdsa));
+            _blobTxStorage = blobTxStorage ?? throw new ArgumentNullException(nameof(blobTxStorage));
             _headInfo = chainHeadInfoProvider ?? throw new ArgumentNullException(nameof(chainHeadInfoProvider));
             _txPoolConfig = txPoolConfig;
+            _blobReorgsSupportEnabled = txPoolConfig.BlobsSupport.SupportsReorgs();
             _accounts = _headInfo.AccountStateProvider;
             _specProvider = _headInfo.SpecProvider;
 
@@ -102,9 +108,9 @@ namespace Nethermind.TxPool
             _broadcaster = new TxBroadcaster(comparer, TimerFactory.Default, txPoolConfig, chainHeadInfoProvider, logManager, transactionsGossipPolicy);
 
             _transactions = new TxDistinctSortedPool(MemoryAllowance.MemPoolSize, comparer, logManager);
-            _blobTransactions = txPoolConfig is { BlobSupportEnabled: true, PersistentBlobStorageEnabled: true }
+            _blobTransactions = txPoolConfig.BlobsSupport.IsPersistentStorage()
                 ? new PersistentBlobTxDistinctSortedPool(blobTxStorage, _txPoolConfig, comparer, logManager)
-                : new BlobTxDistinctSortedPool(txPoolConfig.BlobSupportEnabled ? _txPoolConfig.InMemoryBlobPoolSize : 0, comparer, logManager);
+                : new BlobTxDistinctSortedPool(txPoolConfig.BlobsSupport == BlobsSupportMode.InMemory ? _txPoolConfig.InMemoryBlobPoolSize : 0, comparer, logManager);
             if (_blobTransactions.Count > 0) _blobTransactions.UpdatePool(_accounts, _updateBucket);
 
             _headInfo.HeadChanged += OnHeadChange;
@@ -199,7 +205,7 @@ namespace Nethermind.TxPool
                         try
                         {
                             ReAddReorganisedTransactions(args.PreviousBlock);
-                            RemoveProcessedTransactions(args.Block.Transactions);
+                            RemoveProcessedTransactions(args.Block);
                             UpdateBuckets();
                             _broadcaster.OnNewHead();
                             Metrics.TransactionCount = _transactions.Count;
@@ -236,11 +242,29 @@ namespace Nethermind.TxPool
                     _hashCache.Delete(tx.Hash!);
                     SubmitTx(tx, isEip155Enabled ? TxHandlingOptions.None : TxHandlingOptions.PreEip155Signing);
                 }
+
+                if (_blobReorgsSupportEnabled
+                    && _blobTxStorage.TryGetBlobTransactionsFromBlock(previousBlock.Number, out Transaction[]? blobTxs)
+                    && blobTxs is not null)
+                {
+                    foreach (Transaction blobTx in blobTxs)
+                    {
+                        if (_logger.IsTrace) _logger.Trace($"Readded tx {blobTx.Hash} from reorged block {previousBlock.Number} (hash {previousBlock.Hash}) to blob pool");
+                        _hashCache.Delete(blobTx.Hash!);
+                        blobTx.SenderAddress ??= _ecdsa.RecoverAddress(blobTx);
+                        SubmitTx(blobTx, isEip155Enabled ? TxHandlingOptions.None : TxHandlingOptions.PreEip155Signing);
+                    }
+                    if (_logger.IsDebug) _logger.Debug($"Readded txs from reorged block {previousBlock.Number} (hash {previousBlock.Hash}) to blob pool");
+
+                    _blobTxStorage.DeleteBlobTransactionsFromBlock(previousBlock.Number);
+                }
             }
         }
 
-        private void RemoveProcessedTransactions(Transaction[] blockTransactions)
+        private void RemoveProcessedTransactions(Block block)
         {
+            Transaction[] blockTransactions = block.Transactions;
+            using ArrayPoolList<Transaction> blobTxsToSave = new(Eip4844Constants.GetMaxBlobsPerBlock());
             long discoveredForPendingTxs = 0;
             long discoveredForHashCache = 0;
             long eip1559Txs = 0;
@@ -249,29 +273,44 @@ namespace Nethermind.TxPool
 
             for (int i = 0; i < blockTransactions.Length; i++)
             {
-                Transaction transaction = blockTransactions[i];
-                Hash256 txHash = transaction.Hash ?? throw new ArgumentException("Hash was unexpectedly null!");
+                Transaction blockTx = blockTransactions[i];
+                Hash256 txHash = blockTx.Hash ?? throw new ArgumentException("Hash was unexpectedly null!");
+
+                if (blockTx.Supports1559)
+                {
+                    eip1559Txs++;
+                }
+
+                if (blockTx.SupportsBlobs)
+                {
+                    blobTxs++;
+                    blobs += blockTx.BlobVersionedHashes?.Length ?? 0;
+
+                    if (_blobReorgsSupportEnabled)
+                    {
+                        if (_blobTransactions.TryGetValue(blockTx.Hash, out Transaction? fullBlobTx))
+                        {
+                            if (_logger.IsTrace) _logger.Trace($"Saved processed blob tx {blockTx.Hash} from block {block.Number} to ProcessedTxs db");
+                            blobTxsToSave.Add(fullBlobTx);
+                        }
+                        else if (_logger.IsTrace) _logger.Trace($"Skipped adding processed blob tx {blockTx.Hash} from block {block.Number} to ProcessedTxs db - not found in blob pool");
+                    }
+                }
 
                 if (!IsKnown(txHash))
                 {
                     discoveredForHashCache++;
                 }
 
-                if (!RemoveIncludedTransaction(transaction))
+                if (!RemoveIncludedTransaction(blockTx))
                 {
                     discoveredForPendingTxs++;
                 }
+            }
 
-                if (transaction.Supports1559)
-                {
-                    eip1559Txs++;
-                }
-
-                if (transaction.SupportsBlobs)
-                {
-                    blobTxs++;
-                    blobs += transaction.BlobVersionedHashes?.Length ?? 0;
-                }
+            if (blobTxsToSave.Count > 0)
+            {
+                _blobTxStorage.AddBlobTransactionsFromBlock(block.Number, blobTxsToSave);
             }
 
             long transactionsInBlock = blockTransactions.Length;

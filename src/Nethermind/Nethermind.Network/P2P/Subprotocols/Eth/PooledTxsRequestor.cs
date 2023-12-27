@@ -94,7 +94,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
                         packetSizeLeft = TransactionsMessage.MaxPacketSize;
                     }
 
-                    if (_txPoolConfig.BlobSupportEnabled || txType != TxType.Blob)
+                    if (_txPoolConfig.BlobsSupport.IsEnabled() || txType != TxType.Blob)
                     {
                         hashesToRequest.Add(discoveredTxHashesAndSizes[i].Hash);
                         packetSizeLeft -= txSize;
