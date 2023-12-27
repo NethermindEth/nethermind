@@ -104,6 +104,8 @@ public class McsLock
                 // If it is still 'node', then there are no other waiting threads.
                 if (Interlocked.CompareExchange(ref _lock._tail, null, node) == node)
                 {
+                    // Clear current lock holder.
+                    _lock.currentLockHolder = null;
                     return;
                 }
 
