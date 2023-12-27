@@ -1077,11 +1077,7 @@ namespace Nethermind.Trie
             if (!rootHash.Equals(Keccak.EmptyTreeHash))
             {
                 rootRef = RootHash == rootHash ? RootRef : TrieStore.FindCachedOrUnknown(rootHash);
-                try
-                {
-                    rootRef!.ResolveNode(TrieStore);
-                }
-                catch (TrieException)
+                if (!rootRef!.TryResolveNode(TrieStore))
                 {
                     visitor.VisitMissingNode(rootHash, trieVisitContext);
                     return;
