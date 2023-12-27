@@ -347,27 +347,49 @@ namespace Nethermind.Blockchain.Test.Receipts
         [Test]
         public async Task When_NewHeadBlock_Remove_TxIndex_OfRemovedBlock_Unless_ItsAlsoInNewBlock()
         {
+            _receiptConfig.CompactTxIndex = _useCompactReceipts;
             CreateStorage();
             (Block block, TxReceipt[] receipts) = InsertBlock();
+            Block block2 = Build.A.Block
+                .WithParent(block)
+                .WithNumber(2)
+                .WithTransactions(Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyC).TestObject)
+                .TestObject;
+            _blockTree.FindBestSuggestedHeader().Returns(block2.Header);
+            _blockTree.BlockAddedToMain += Raise.EventWith(new BlockReplacementEventArgs(block2));
 
             if (_receiptConfig.CompactTxIndex)
             {
-                _receiptsDb.GetColumnDb(ReceiptsColumns.Transactions)[receipts[0].TxHash!.Bytes].Should().BeEquivalentTo(Rlp.Encode(block.Number).Bytes);
+                _receiptsDb.GetColumnDb(ReceiptsColumns.Transactions)[block.Transactions[0].Hash!.Bytes].Should().BeEquivalentTo(Rlp.Encode(block.Number).Bytes);
             }
             else
             {
-                _receiptsDb.GetColumnDb(ReceiptsColumns.Transactions)[receipts[0].TxHash!.Bytes].Should().NotBeNull();
+                _receiptsDb.GetColumnDb(ReceiptsColumns.Transactions)[block.Transactions[0].Hash!.Bytes].Should().BeEquivalentTo(block.Hash!.Bytes.ToArray());
             }
 
-            Block newHead = Build.A.Block
+            Block block3 = Build.A.Block
                 .WithNumber(1)
-                .WithTransactions(block.Transactions)
+                .WithTransactions(block2.Transactions)
+                .WithExtraData(new byte[1])
                 .TestObject;
-            _blockTree.FindBestSuggestedHeader().Returns(newHead.Header);
-            _blockTree.BlockAddedToMain += Raise.EventWith(new BlockReplacementEventArgs(newHead, block));
+            Block block4 = Build.A.Block
+                .WithNumber(2)
+                .WithTransactions(block.Transactions)
+                .WithExtraData(new byte[1])
+                .TestObject;
+            _blockTree.FindBestSuggestedHeader().Returns(block4.Header);
+            _blockTree.BlockAddedToMain += Raise.EventWith(new BlockReplacementEventArgs(block3, block));
+            _blockTree.BlockAddedToMain += Raise.EventWith(new BlockReplacementEventArgs(block4, block2));
 
             await Task.Delay(100);
-            _receiptsDb.GetColumnDb(ReceiptsColumns.Transactions)[receipts[0].TxHash!.Bytes].Should().NotBeNull();
+            if (_receiptConfig.CompactTxIndex)
+            {
+                _receiptsDb.GetColumnDb(ReceiptsColumns.Transactions)[block4.Transactions[0].Hash!.Bytes].Should().BeEquivalentTo(Rlp.Encode(block4.Number).Bytes);
+            }
+            else
+            {
+                _receiptsDb.GetColumnDb(ReceiptsColumns.Transactions)[block4.Transactions[0].Hash!.Bytes].Should().BeEquivalentTo(block4.Hash!.Bytes.ToArray());
+            }
         }
 
         [Test]
