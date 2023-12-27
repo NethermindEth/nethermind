@@ -327,9 +327,7 @@ namespace Nethermind.Synchronization.FastSync
 
                     Interlocked.Add(ref _handleWatch, handleWatch.ElapsedMilliseconds);
                     _data.LastDbReads = _data.DbChecks;
-                    _data.AverageTimeInHandler =
-                        (_data.AverageTimeInHandler * (_data.ProcessedRequestsCount - 1) +
-                         handleWatch.ElapsedMilliseconds) / _data.ProcessedRequestsCount;
+                    _data.AverageTimeInHandler = _handleWatch / (decimal)_data.ProcessedRequestsCount;
 
                     Interlocked.Add(ref _data.HandledNodesCount, nonEmptyResponses);
                     return result;
