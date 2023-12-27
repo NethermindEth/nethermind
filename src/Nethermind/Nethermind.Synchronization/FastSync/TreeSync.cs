@@ -308,6 +308,7 @@ namespace Nethermind.Synchronization.FastSync
 
                     _data.DisplayProgressReport(_pendingRequests.Count, _branchProgress, _logger);
 
+                    handleWatch.Stop();
                     long total = handleWatch.ElapsedMilliseconds + _networkWatch.ElapsedMilliseconds;
                     if (total != 0)
                     {
@@ -328,7 +329,7 @@ namespace Nethermind.Synchronization.FastSync
                     _data.LastDbReads = _data.DbChecks;
                     _data.AverageTimeInHandler =
                         (_data.AverageTimeInHandler * (_data.ProcessedRequestsCount - 1) +
-                         _handleWatch) / _data.ProcessedRequestsCount;
+                         handleWatch.ElapsedMilliseconds) / _data.ProcessedRequestsCount;
 
                     Interlocked.Add(ref _data.HandledNodesCount, nonEmptyResponses);
                     return result;
