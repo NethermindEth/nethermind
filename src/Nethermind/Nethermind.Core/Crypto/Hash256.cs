@@ -16,7 +16,7 @@ namespace Nethermind.Core.Crypto
 {
     [DebuggerStepThrough]
     [DebuggerDisplay("{ToString()}")]
-    [InlineArray(32)]
+    [InlineArray(MemorySize)]
     public struct ValueHash256 : IEquatable<ValueHash256>, IComparable<ValueHash256>, IEquatable<Hash256>
     {
         private byte _bytes0;
