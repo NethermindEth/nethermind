@@ -658,6 +658,17 @@ public class DbOnTheRocks : IDb, ITunableDb
         }
     }
 
+    public IEnumerable<byte[]> GetAllKeys(bool ordered = false)
+    {
+        if (_isDisposing)
+        {
+            throw new ObjectDisposedException($"Attempted to read form a disposed database {Name}");
+        }
+
+        Iterator iterator = CreateIterator(ordered);
+        return GetAllKeysCore(iterator);
+    }
+
     public IEnumerable<byte[]> GetAllValues(bool ordered = false)
     {
         ObjectDisposedException.ThrowIf(_isDisposing, this);
@@ -683,6 +694,48 @@ public class DbOnTheRocks : IDb, ITunableDb
             while (iterator.Valid())
             {
                 yield return iterator.Value();
+                try
+                {
+                    iterator.Next();
+                }
+                catch (RocksDbSharpException e)
+                {
+                    CreateMarkerIfCorrupt(e);
+                    throw;
+                }
+            }
+        }
+        finally
+        {
+            try
+            {
+                iterator.Dispose();
+            }
+            catch (RocksDbSharpException e)
+            {
+                CreateMarkerIfCorrupt(e);
+                throw;
+            }
+        }
+    }
+
+    internal IEnumerable<byte[]> GetAllKeysCore(Iterator iterator)
+    {
+        try
+        {
+            try
+            {
+                iterator.SeekToFirst();
+            }
+            catch (RocksDbSharpException e)
+            {
+                CreateMarkerIfCorrupt(e);
+                throw;
+            }
+
+            while (iterator.Valid())
+            {
+                yield return iterator.Key();
                 try
                 {
                     iterator.Next();

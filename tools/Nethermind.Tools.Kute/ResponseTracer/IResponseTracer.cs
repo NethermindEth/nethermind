@@ -3,9 +3,9 @@
 
 using System.Text.Json;
 
-namespace Nethermind.Tools.Kute.JsonRpcSubmitter;
+namespace Nethermind.Tools.Kute.ResponseTracer;
 
-interface IJsonRpcSubmitter
+public interface IResponseTracer
 {
-    Task<JsonDocument?> Submit(JsonRpc rpc);
+    Task TraceResponse(JsonDocument? response);
 }
