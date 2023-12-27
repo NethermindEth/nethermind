@@ -1558,6 +1558,11 @@ namespace Nethermind.Serialization.Rlp
             return item is null ? 1 : 33;
         }
 
+        public static int LengthOf(in ValueHash256 _)
+        {
+            return 33;
+        }
+
         public static int LengthOf(in ValueHash256? item)
         {
             return item is null ? 1 : 33;

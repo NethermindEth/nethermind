@@ -19,7 +19,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
             stream.StartSequence(contentLength);
 
             stream.Encode(message.RequestId);
-            stream.Encode(message.RootHash);
+            stream.Encode(message.RootHash.BytesAsSpan);
 
             if (message.Paths is null || message.Paths.Length == 0)
             {

@@ -42,7 +42,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
                         int itemLength = Rlp.LengthOf(slot.Path) + Rlp.LengthOf(slot.SlotRlpValue);
 
                         stream.StartSequence(itemLength);
-                        stream.Encode(slot.Path);
+                        stream.Encode(slot.Path.BytesAsSpan);
                         stream.Encode(slot.SlotRlpValue);
                     }
 

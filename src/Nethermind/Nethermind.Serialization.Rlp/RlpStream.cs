@@ -219,7 +219,7 @@ namespace Nethermind.Serialization.Rlp
             }
         }
 
-        public void Encode(in ValueHash256? keccak)
+        public void Encode(ValueHash256? keccak)
         {
             if (keccak is null)
             {
@@ -230,6 +230,12 @@ namespace Nethermind.Serialization.Rlp
                 WriteByte(160);
                 Write(keccak.Value.Bytes);
             }
+        }
+
+        public void Encode(in ValueHash256 keccak)
+        {
+            WriteByte(160);
+            Write(keccak.Bytes);
         }
 
         public void Encode(Hash256[] keccaks)

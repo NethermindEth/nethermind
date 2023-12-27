@@ -3,6 +3,7 @@
 
 using System;
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
@@ -15,15 +16,16 @@ namespace Nethermind.Core.Crypto
 {
     [DebuggerStepThrough]
     [DebuggerDisplay("{ToString()}")]
-    public readonly struct ValueHash256 : IEquatable<ValueHash256>, IComparable<ValueHash256>, IEquatable<Hash256>
+    [InlineArray(32)]
+    public struct ValueHash256 : IEquatable<ValueHash256>, IComparable<ValueHash256>, IEquatable<Hash256>
     {
-        private readonly Vector256<byte> _bytes;
+        private byte _bytes0;
 
         public const int MemorySize = 32;
         public static int Length => MemorySize;
 
-        public Span<byte> BytesAsSpan => MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref Unsafe.AsRef(in _bytes), 1));
-        public ReadOnlySpan<byte> Bytes => MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref Unsafe.AsRef(in _bytes), 1));
+        public Span<byte> BytesAsSpan => MemoryMarshal.CreateSpan(ref _bytes0, ValueHash256.Length);
+        public ReadOnlySpan<byte> Bytes => MemoryMarshal.CreateReadOnlySpan(ref _bytes0, ValueHash256.Length);
 
         public static implicit operator ValueHash256(Hash256? keccak)
         {
@@ -33,14 +35,14 @@ namespace Nethermind.Core.Crypto
         public ValueHash256(byte[] bytes)
         {
             Debug.Assert(bytes.Length == ValueHash256.MemorySize);
-            _bytes = Unsafe.As<byte, Vector256<byte>>(ref MemoryMarshal.GetArrayDataReference(bytes));
+            Unsafe.As<byte, Vector256<byte>>(ref _bytes0) = Unsafe.As<byte, Vector256<byte>>(ref MemoryMarshal.GetArrayDataReference(bytes));
         }
 
         public ValueHash256(string hex)
         {
             byte[] bytes = Extensions.Bytes.FromHexString(hex);
             Debug.Assert(bytes.Length == ValueHash256.MemorySize);
-            _bytes = Unsafe.As<byte, Vector256<byte>>(ref MemoryMarshal.GetArrayDataReference(bytes));
+            Unsafe.As<byte, Vector256<byte>>(ref _bytes0) = Unsafe.As<byte, Vector256<byte>>(ref MemoryMarshal.GetArrayDataReference(bytes));
         }
 
         public ValueHash256(Span<byte> bytes)
@@ -49,22 +51,30 @@ namespace Nethermind.Core.Crypto
         public ValueHash256(ReadOnlySpan<byte> bytes)
         {
             Debug.Assert(bytes.Length == MemorySize);
-            _bytes = Unsafe.As<byte, Vector256<byte>>(ref MemoryMarshal.GetReference(bytes));
+            Unsafe.As<byte, Vector256<byte>>(ref _bytes0) = Unsafe.As<byte, Vector256<byte>>(ref MemoryMarshal.GetReference(bytes));
         }
 
         public override bool Equals(object? obj) => obj is ValueHash256 keccak && Equals(keccak);
 
-        public bool Equals(ValueHash256 other) => _bytes.Equals(other._bytes);
-        public bool Equals(in ValueHash256 other) => _bytes.Equals(other._bytes);
+        public bool Equals(ValueHash256 other) => Unsafe.As<byte, Vector256<byte>>(ref _bytes0).Equals(Unsafe.As<byte, Vector256<byte>>(ref other._bytes0));
+        public bool Equals(in ValueHash256 other) => Unsafe.As<byte, Vector256<byte>>(ref _bytes0).Equals(Unsafe.As<byte, Vector256<byte>>(ref Unsafe.AsRef(in other._bytes0)));
 
-        public bool Equals(Hash256? other) => _bytes.Equals(other?.ValueHash256._bytes ?? default);
+        public bool Equals(Hash256? other)
+        {
+            if (other is null)
+            {
+                return Unsafe.As<byte, Vector256<byte>>(ref _bytes0) == default;
+            }
+
+            return Unsafe.As<byte, Vector256<byte>>(ref _bytes0).Equals(Unsafe.As<byte, Vector256<byte>>(ref Unsafe.AsRef(in other.ValueHash256._bytes0)));
+        }
 
         public override int GetHashCode()
         {
-            long v0 = Unsafe.As<Vector256<byte>, long>(ref Unsafe.AsRef(in _bytes));
-            long v1 = Unsafe.Add(ref Unsafe.As<Vector256<byte>, long>(ref Unsafe.AsRef(in _bytes)), 1);
-            long v2 = Unsafe.Add(ref Unsafe.As<Vector256<byte>, long>(ref Unsafe.AsRef(in _bytes)), 2);
-            long v3 = Unsafe.Add(ref Unsafe.As<Vector256<byte>, long>(ref Unsafe.AsRef(in _bytes)), 3);
+            long v0 = Unsafe.As<byte, long>(ref _bytes0);
+            long v1 = Unsafe.Add(ref Unsafe.As<byte, long>(ref _bytes0), 1);
+            long v2 = Unsafe.Add(ref Unsafe.As<byte, long>(ref _bytes0), 2);
+            long v3 = Unsafe.Add(ref Unsafe.As<byte, long>(ref _bytes0), 3);
             v0 ^= v1;
             v2 ^= v3;
             v0 ^= v2;

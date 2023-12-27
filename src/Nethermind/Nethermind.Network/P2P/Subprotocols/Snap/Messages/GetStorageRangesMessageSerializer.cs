@@ -16,7 +16,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
             NettyRlpStream rlpStream = GetRlpStreamAndStartSequence(byteBuffer, message);
 
             rlpStream.Encode(message.RequestId);
-            rlpStream.Encode(message.StoragetRange.RootHash);
+            rlpStream.Encode(message.StoragetRange.RootHash.BytesAsSpan);
             rlpStream.Encode(message.StoragetRange.Accounts.Select(a => a.Path).ToArray()); // TODO: optimize this
             rlpStream.Encode(message.StoragetRange.StartingHash);
             rlpStream.Encode(message.StoragetRange.LimitHash);
