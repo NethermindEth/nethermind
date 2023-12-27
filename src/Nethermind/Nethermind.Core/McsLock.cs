@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Threading;
 
 namespace Nethermind.Core;
@@ -24,12 +26,20 @@ public class McsLock
     /// </summary>
     private volatile ThreadNode? _tail;
 
+    private volatile Thread? currentLockHolder = null;
+
     /// <summary>
     /// Acquires the lock. If the lock is already held, the calling thread is placed into a queue and
     /// enters a busy-wait state until the lock becomes available.
     /// </summary>
     public Disposable Acquire()
     {
+        // Check for reentrancy.
+        if (Thread.CurrentThread == currentLockHolder)
+        {
+            ThrowInvalidOperationException();
+        }
+
         ThreadNode node = _node.Value!;
         node.Locked = true;
 
@@ -43,14 +53,27 @@ public class McsLock
             // Busy-wait (spin) until our 'Locked' flag is set to false by the thread
             // that is releasing the lock.
             SpinWait sw = default;
+            // This lock is more scalable than regular locks as each thread
+            // spins on their own local flag rather than a shared flag for
+            // lower cpu cache thrashing. Drawback is it is a strict queue and
+            // the next thread in line may be sleeping when lock is released.
             while (node.Locked)
             {
                 sw.SpinOnce();
             }
-
         }
 
+        // Set current lock holder.
+        currentLockHolder = Thread.CurrentThread;
+
         return new Disposable(this);
+
+        [DoesNotReturn]
+        [StackTraceHidden]
+        static void ThrowInvalidOperationException()
+        {
+            throw new InvalidOperationException("Lock is not reentrant");
+        }
     }
 
     /// <summary>
@@ -92,6 +115,9 @@ public class McsLock
                     sw.SpinOnce();
                 }
             }
+
+            // Clear current lock holder.
+            _lock.currentLockHolder = null;
 
             // Pass the lock to the next thread by setting its 'Locked' flag to false.
             node.Next.Locked = false;
