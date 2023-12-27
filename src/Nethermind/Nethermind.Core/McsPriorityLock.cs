@@ -81,6 +81,9 @@ public class McsPriorityLock
             {
                 if (sw.NextSpinWillYield)
                 {
+                    // We use Monitor signalling to try to combat additional latency
+                    // that may be introduced by the strict in-order thread queuing
+                    // rather than letting the SpinWait sleep the thread.
                     lock (node)
                     {
                         if (node.Locked)
