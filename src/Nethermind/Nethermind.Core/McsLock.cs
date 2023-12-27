@@ -59,7 +59,26 @@ public class McsLock
             // the next thread in line may be sleeping when lock is released.
             while (node.Locked)
             {
-                sw.SpinOnce();
+                if (sw.NextSpinWillYield)
+                {
+                    lock (node)
+                    {
+                        if (node.Locked)
+                        {
+                            // Sleep till signal
+                            Monitor.Wait(node);
+                        }
+                        else
+                        {
+                            // Acquired the lock
+                            break;
+                        }
+                    }
+                }
+                else
+                {
+                    sw.SpinOnce();
+                }
             }
         }
 
@@ -123,6 +142,12 @@ public class McsLock
 
             // Pass the lock to the next thread by setting its 'Locked' flag to false.
             node.Next.Locked = false;
+
+            lock (node.Next)
+            {
+                // Wake up next node if sleeping
+                Monitor.Pulse(node.Next);
+            }
             // Remove the reference to the next node 
             node.Next = null;
         }
