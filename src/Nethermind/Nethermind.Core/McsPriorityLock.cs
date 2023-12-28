@@ -19,7 +19,7 @@ public class McsPriorityLock
 {
     private readonly int HalfCores = Math.Max(Environment.ProcessorCount / 2, 1);
 
-    private readonly McsLock _coreLock = new ();
+    private readonly McsLock _coreLock = new();
     private readonly McsLock[] _queuedLocks;
     private uint _queueId;
 
