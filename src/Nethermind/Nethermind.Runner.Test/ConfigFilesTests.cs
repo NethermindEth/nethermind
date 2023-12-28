@@ -323,6 +323,17 @@ namespace Nethermind.Runner.Test
             Test<IInitConfig, string>(configWildcard, c => c.LogFileName, (cf, p) => p.Should().Be(cf.Replace("cfg", "logs.txt"), cf));
         }
 
+        [TestCase("goerli", BlobsSupportMode.StorageWithReorgs)]
+        [TestCase("^goerli", BlobsSupportMode.Disabled)]
+        [TestCase("sepolia", BlobsSupportMode.Disabled)]
+        [TestCase("mainnet", BlobsSupportMode.Disabled)]
+        [TestCase("chiado", BlobsSupportMode.Disabled)]
+        [TestCase("gnosis", BlobsSupportMode.Disabled)]
+        public void Blob_txs_support_is_correct(string configWildcard, BlobsSupportMode blobsSupportMode)
+        {
+            Test<ITxPoolConfig, BlobsSupportMode>(configWildcard, c => c.BlobsSupport, blobsSupportMode);
+        }
+
 
         [TestCase("goerli", new[] { 16, 16, 16, 16 })]
         [TestCase("mainnet")]
