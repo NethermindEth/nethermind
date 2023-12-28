@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using NUnit.Framework;
+using NUnit.Framework.Internal;
 
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
@@ -86,6 +88,61 @@ public class McsPriorityLockTests
 
         var expectedOrder = Enumerable.Range(0, numberOfThreads).ToList();
         CollectionAssert.AreEqual(expectedOrder, executionOrder, "Threads did not acquire lock in the order they were started.");
+    }
+
+
+    [Test]
+    public void PriorityQueueJumpingTest()
+    {
+        int numberOfThreads = 100;
+        var threads = new List<Thread>();
+        List<int> executionOrder = new();
+        Dictionary<Thread, ThreadPriority> threadPriorities = new();
+
+        // Create threads with varying priorities.
+        for (int i = 0; i < numberOfThreads; i++)
+        {
+            ThreadPriority priority = i % 2 == 0 ? ThreadPriority.Highest : ThreadPriority.Normal; // Alternate priorities
+            var thread = new Thread(() =>
+            {
+                using var handle = mcsLock.Acquire();
+                executionOrder.Add(Thread.CurrentThread.ManagedThreadId);
+                Thread.Sleep(25); // Simulate work
+            });
+            thread.Priority = priority; // Set thread priority
+            threads.Add(thread);
+            threadPriorities[thread] = priority;
+        }
+
+        // Start threads.
+        foreach (var thread in threads)
+        {
+            thread.Start();
+        }
+
+        // Wait for all threads to complete.
+        foreach (var thread in threads)
+        {
+            thread.Join();
+        }
+
+        // Analyze execution order based on priority.
+        int lowPriorityFirst = 0;
+        for (int i = 0; i < executionOrder.Count - 1; i++)
+        {
+            int currentThreadId = executionOrder[i];
+            int nextThreadId = executionOrder[i + 1];
+            Thread currentThread = threads.First(t => t.ManagedThreadId == currentThreadId);
+            Thread nextThread = threads.First(t => t.ManagedThreadId == nextThreadId);
+
+            if (threadPriorities[currentThread] < threadPriorities[nextThread])
+            {
+                lowPriorityFirst++;
+            }
+        }
+
+        // Some lower priority threads will acquire first; we are asserting that they mostly queue jump
+        Assert.That(lowPriorityFirst < (numberOfThreads / 8), Is.True, "High priority threads did not acquire the lock before lower priority ones.");
     }
 
     [Test]
