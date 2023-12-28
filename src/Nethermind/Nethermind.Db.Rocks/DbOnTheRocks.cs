@@ -15,6 +15,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Threading;
 using Nethermind.Db.Rocks.Config;
 using Nethermind.Db.Rocks.Statistics;
 using Nethermind.Logging;
@@ -25,6 +26,9 @@ namespace Nethermind.Db.Rocks;
 
 public class DbOnTheRocks : IDb, ITunableDb
 {
+    private McsPriorityLock _readThrottle = new();
+    private McsPriorityLock _writeThrottle = new();
+
     private ILogger _logger;
 
     private string? _fullPath;
@@ -501,6 +505,7 @@ public class DbOnTheRocks : IDb, ITunableDb
                 }
             }
 
+            using var handle = _readThrottle.Acquire();
             return _db.Get(key, cf);
         }
         catch (RocksDbSharpException e)
@@ -523,6 +528,7 @@ public class DbOnTheRocks : IDb, ITunableDb
 
         try
         {
+            using var handle = _writeThrottle.Acquire();
             if (value.IsNull())
             {
                 _db.Remove(key, cf, WriteFlagsToWriteOptions(flags));
@@ -566,6 +572,7 @@ public class DbOnTheRocks : IDb, ITunableDb
         {
             try
             {
+                using var handle = _readThrottle.Acquire();
                 return _db.MultiGet(keys);
             }
             catch (RocksDbSharpException e)
@@ -589,7 +596,11 @@ public class DbOnTheRocks : IDb, ITunableDb
 
         try
         {
-            Span<byte> span = _db.GetSpan(key, cf);
+            Span<byte> span;
+            using (var handle = _readThrottle.Acquire())
+            {
+                span = _db.GetSpan(key, cf);
+            }
             if (!span.IsNullOrEmpty())
             {
                 Interlocked.Increment(ref _allocatedSpan);
@@ -625,6 +636,7 @@ public class DbOnTheRocks : IDb, ITunableDb
 
         try
         {
+            using var handle = _writeThrottle.Acquire();
             _db.Remove(key, null, WriteOptions);
         }
         catch (RocksDbSharpException e)
@@ -812,6 +824,7 @@ public class DbOnTheRocks : IDb, ITunableDb
 
         try
         {
+            using var handle = _readThrottle.Acquire();
             // seems it has no performance impact
             return _db.Get(key) is not null;
             // return _db.Get(key, 32, _keyExistsBuffer, 0, 0, null, null) != -1;
@@ -890,7 +903,11 @@ public class DbOnTheRocks : IDb, ITunableDb
 
             try
             {
-                _dbOnTheRocks._db.Write(_rocksBatch, _dbOnTheRocks.WriteFlagsToWriteOptions(_writeFlags));
+                using (var handle = _dbOnTheRocks._writeThrottle.Acquire())
+                {
+                    _dbOnTheRocks._db.Write(_rocksBatch, _dbOnTheRocks.WriteFlagsToWriteOptions(_writeFlags));
+                }
+
                 _dbOnTheRocks._currentBatches.TryRemove(this);
                 ReturnWriteBatch(_rocksBatch);
             }
@@ -943,7 +960,10 @@ public class DbOnTheRocks : IDb, ITunableDb
 
             try
             {
-                _dbOnTheRocks._db.Write(currentBatch, _dbOnTheRocks.WriteFlagsToWriteOptions(_writeFlags));
+                using (var handle = _dbOnTheRocks._writeThrottle.Acquire())
+                {
+                    _dbOnTheRocks._db.Write(currentBatch, _dbOnTheRocks.WriteFlagsToWriteOptions(_writeFlags));
+                }
                 ReturnWriteBatch(currentBatch);
             }
             catch (RocksDbSharpException e)
