@@ -77,6 +77,8 @@ public partial class EngineModuleTests
         chain.BeaconSync.IsBeaconSyncHeadersFinished().Should().BeFalse();
         chain.BeaconSync.IsBeaconSyncFinished(chain.BlockTree.FindBlock(block.Hash!)?.Header).Should().BeFalse();
         AssertBeaconPivotValues(chain.BeaconPivot, block.Header);
+
+        block.Header.TotalDifficulty = 0;
         pointers.LowestInsertedBeaconHeader = block.Header;
         pointers.BestKnownBeaconBlock = block.Number;
         pointers.LowestInsertedHeader = block.Header;
@@ -151,6 +153,7 @@ public partial class EngineModuleTests
         chain.BeaconSync.IsBeaconSyncFinished(chain.BlockTree.FindBlock(block.Hash!)?.Header).Should().BeFalse();
         AssertBeaconPivotValues(chain.BeaconPivot, block.Header);
 
+        block.Header.TotalDifficulty = 0;
         pointers.LowestInsertedBeaconHeader = block.Header;
         pointers.BestKnownBeaconBlock = block.Number;
         pointers.LowestInsertedHeader = block.Header;
@@ -167,6 +170,7 @@ public partial class EngineModuleTests
         chain.BeaconSync.IsBeaconSyncFinished(chain.BlockTree.FindBlock(nextUnconnectedBlock.Hash!)?.Header).Should().BeFalse();
         AssertBeaconPivotValues(chain.BeaconPivot, nextUnconnectedBlock.Header);
 
+        nextUnconnectedBlock.Header.TotalDifficulty = 0;
         pointers.LowestInsertedBeaconHeader = nextUnconnectedBlock.Header;
         pointers.BestKnownBeaconBlock = nextUnconnectedBlock.Number;
         AssertBlockTreePointers(chain.BlockTree, pointers);
@@ -967,7 +971,7 @@ public partial class EngineModuleTests
         beaconPivot.BeaconPivotExists().Should().BeTrue();
         beaconPivot.PivotNumber.Should().Be(blockHeader.Number);
         beaconPivot.PivotHash.Should().Be(blockHeader.Hash ?? blockHeader.CalculateHash());
-        beaconPivot.PivotTotalDifficulty.Should().Be(null);
+        beaconPivot.PivotTotalDifficulty.Should().Be((UInt256)0);
     }
 
     private class BlockTreePointers
