@@ -102,6 +102,11 @@ namespace Nethermind.Init.Steps
 
             _set.LogFinder = logFinder;
 
+            if (initConfig.ExitOnBlockNumber != null)
+            {
+                new ExitOnBlockNumberHandler(blockTree, _get.ProcessExit!, initConfig.ExitOnBlockNumber);
+            }
+
             return Task.CompletedTask;
         }
     }
