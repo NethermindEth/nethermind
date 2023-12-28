@@ -14,19 +14,14 @@ using Nethermind.Logging;
 
 namespace Nethermind.Specs.ChainSpecStyle
 {
-    public class ChainSpecBasedSpecProvider : ISpecProvider
+    public class ChainSpecBasedSpecProvider : SpecProviderBase, ISpecProvider
     {
-        private (ForkActivation Activation, ReleaseSpec Spec)[] _transitions;
-        private (ForkActivation Activation, ReleaseSpec Spec)[] _timestampOnlyTransitions;
-        private ForkActivation? _firstTimestampActivation;
-
         private readonly ChainSpec _chainSpec;
-        private readonly ILogger _logger;
 
         public ChainSpecBasedSpecProvider(ChainSpec chainSpec, ILogManager logManager = null)
+            : base(logManager?.GetClassLogger<ChainSpecBasedSpecProvider>() ?? LimboTraceLogger.Instance)
         {
             _chainSpec = chainSpec ?? throw new ArgumentNullException(nameof(chainSpec));
-            _logger = logManager?.GetClassLogger<ChainSpecBasedSpecProvider>() ?? LimboTraceLogger.Instance;
             BuildTransitions();
         }
 
@@ -97,10 +92,12 @@ namespace Nethermind.Specs.ChainSpecStyle
                 transitionBlockNumbers.Add(bombDelay.Key);
             }
 
+
+            (ForkActivation Activation, IReleaseSpec Spec)[] allTransitions = CreateTransitions(_chainSpec, transitionBlockNumbers, transitionTimestamps);
+
+            LoadTransitions(allTransitions);
+
             TransitionActivations = CreateTransitionActivations(transitionBlockNumbers, transitionTimestamps);
-            _transitions = CreateTransitions(_chainSpec, transitionBlockNumbers, transitionTimestamps);
-            _firstTimestampActivation = TransitionActivations.FirstOrDefault(t => t.Timestamp is not null);
-            _timestampOnlyTransitions = _transitions.SkipWhile(t => t.Activation.Timestamp is null).ToArray();
 
             if (_chainSpec.Parameters.TerminalPoWBlockNumber is not null)
             {
@@ -110,12 +107,12 @@ namespace Nethermind.Specs.ChainSpecStyle
             TerminalTotalDifficulty = _chainSpec.Parameters.TerminalTotalDifficulty;
         }
 
-        private static (ForkActivation, ReleaseSpec Spec)[] CreateTransitions(
+        private static (ForkActivation, IReleaseSpec Spec)[] CreateTransitions(
             ChainSpec chainSpec,
             SortedSet<long> transitionBlockNumbers,
             SortedSet<ulong> transitionTimestamps)
         {
-            (ForkActivation Activation, ReleaseSpec Spec)[] transitions = new (ForkActivation, ReleaseSpec Spec)[transitionBlockNumbers.Count + transitionTimestamps.Count];
+            (ForkActivation Activation, IReleaseSpec Spec)[] transitions = new (ForkActivation, IReleaseSpec Spec)[transitionBlockNumbers.Count + transitionTimestamps.Count];
             long biggestBlockTransition = transitionBlockNumbers.Max;
 
             int index = 0;
@@ -268,41 +265,9 @@ namespace Nethermind.Specs.ChainSpecStyle
 
         public UInt256? TerminalTotalDifficulty { get; private set; }
 
-        public IReleaseSpec GenesisSpec => _transitions.Length == 0 ? null : _transitions[0].Spec;
-
-        public IReleaseSpec GetSpec(ForkActivation activation)
-        {
-            (ForkActivation Activation, ReleaseSpec Spec)[] consideredTransitions = _transitions;
-
-            // TODO: Is this actually needed? Can this be tricked with invalid activation check if someone would fake timestamp from the future?
-            if (_firstTimestampActivation is not null && activation.Timestamp is not null)
-            {
-                if (_firstTimestampActivation.Value.Timestamp < activation.Timestamp
-                    && _firstTimestampActivation.Value.BlockNumber > activation.BlockNumber)
-                {
-                    if (_logger.IsWarn) _logger.Warn($"Chainspec file is misconfigured! Timestamp transition is configured to happen before the last block transition.");
-                }
-
-                if (_firstTimestampActivation.Value.Timestamp <= activation.Timestamp)
-                {
-                    consideredTransitions = _timestampOnlyTransitions;
-                }
-            }
-
-            return consideredTransitions.TryGetSearchedItem(activation,
-                CompareTransitionOnActivation,
-                out (ForkActivation Activation, ReleaseSpec Spec) transition)
-                ? transition.Spec
-                : GenesisSpec;
-        }
-
-        private static int CompareTransitionOnActivation(ForkActivation activation, (ForkActivation Activation, ReleaseSpec Spec) transition) =>
-            activation.CompareTo(transition.Activation);
-
         public long? DaoBlockNumber => _chainSpec.DaoForkBlockNumber;
 
         public ulong NetworkId => _chainSpec.NetworkId;
         public ulong ChainId => _chainSpec.ChainId;
-        public ForkActivation[] TransitionActivations { get; private set; }
     }
 }
