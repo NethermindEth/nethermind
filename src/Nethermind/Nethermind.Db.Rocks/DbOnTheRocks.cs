@@ -15,6 +15,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Threading;
 using Nethermind.Db.Rocks.Config;
 using Nethermind.Db.Rocks.Statistics;
 using Nethermind.Logging;
@@ -26,7 +27,7 @@ namespace Nethermind.Db.Rocks;
 public class DbOnTheRocks : IDb, ITunableDb
 {
     private McsPriorityLock _readThrottle = new();
-    private McsLock _writeThrottle = new();
+    private McsPriorityLock _writeThrottle = new();
 
     private ILogger _logger;
 

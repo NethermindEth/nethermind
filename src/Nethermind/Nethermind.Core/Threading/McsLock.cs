@@ -6,7 +6,7 @@ using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Threading;
 
-namespace Nethermind.Core;
+namespace Nethermind.Core.Threading;
 
 /// <summary>
 /// MCSLock (Mellor-Crummey and Scott Lock) provides a fair, scalable mutual exclusion lock.
@@ -36,9 +36,7 @@ public class McsLock
     {
         // Check for reentrancy.
         if (Thread.CurrentThread == currentLockHolder)
-        {
             ThrowInvalidOperationException();
-        }
 
         ThreadNode node = _node.Value!;
         node.Locked = true;
@@ -67,10 +65,8 @@ public class McsLock
                     lock (node)
                     {
                         if (node.Locked)
-                        {
                             // Sleep till signal
                             Monitor.Wait(node);
-                        }
                         else
                         {
                             // Acquired the lock

@@ -7,6 +7,7 @@ using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using Nethermind.Core.Collections;
+using Nethermind.Core.Threading;
 
 namespace Nethermind.Core.Caching
 {

@@ -6,7 +6,7 @@ using System.Diagnostics.CodeAnalysis;
 using System.Diagnostics;
 using System.Threading;
 
-namespace Nethermind.Core;
+namespace Nethermind.Core.Threading;
 
 /// <summary>
 /// MCSLock (Mellor-Crummey and Scott Lock) provides a fair, scalable mutual exclusion lock.
@@ -25,8 +25,8 @@ public class McsPriorityLock
 
     public McsPriorityLock()
     {
-        McsLock[] queue = new McsLock[HalfCores];
-        for (int i = 0; i < queue.Length; i++)
+        var queue = new McsLock[HalfCores];
+        for (var i = 0; i < queue.Length; i++)
         {
             queue[i] = new McsLock();
         }
@@ -44,16 +44,12 @@ public class McsPriorityLock
     {
         // Check for reentrancy.
         if (Thread.CurrentThread == _coreLock.currentLockHolder)
-        {
             ThrowInvalidOperationException();
-        }
 
-        bool isPriority = Thread.CurrentThread.Priority > ThreadPriority.Normal;
+        var isPriority = Thread.CurrentThread.Priority > ThreadPriority.Normal;
         if (!isPriority)
-        {
             // If not a priority thread max of half processors can being to acquire the lock (e.g. block processing)
             return NonPriorityAcquire();
-        }
 
         return _coreLock.Acquire();
 
@@ -67,7 +63,7 @@ public class McsPriorityLock
 
     private McsLock.Disposable NonPriorityAcquire()
     {
-        uint queueId = Interlocked.Increment(ref _queueId) % (uint)_queuedLocks.Length;
+        var queueId = Interlocked.Increment(ref _queueId) % (uint)_queuedLocks.Length;
 
         using var handle = _queuedLocks[queueId].Acquire();
 
