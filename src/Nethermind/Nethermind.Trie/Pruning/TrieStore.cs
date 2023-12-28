@@ -460,17 +460,20 @@ namespace Nethermind.Trie.Pruning
 
         public event EventHandler<ReorgBoundaryReached>? ReorgBoundaryReached;
 
-        public byte[] LoadRlp(Hash256? address, in TreePath path, Hash256 keccak, INodeStorage? nodeStorage, ReadFlags readFlags = ReadFlags.None)
+        public byte[]? TryLoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None)
+        {
+            return TryLoadRlp(address, path, hash, null, flags);
+        }
+
+        public byte[]? TryLoadRlp(Hash256? address, in TreePath path, Hash256 keccak, INodeStorage? nodeStorage, ReadFlags readFlags = ReadFlags.None)
         {
             nodeStorage ??= _nodeStorage;
             byte[]? rlp = nodeStorage.Get(address, path, keccak, readFlags);
 
-            if (rlp is null)
+            if (rlp is not null)
             {
-                throw new TrieNodeException($"Node {keccak} is missing from the DB", keccak);
+                Metrics.LoadedFromDbNodesCount++;
             }
-
-            Metrics.LoadedFromDbNodesCount++;
 
             return rlp;
         }
@@ -478,6 +481,17 @@ namespace Nethermind.Trie.Pruning
         public virtual byte[]? LoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None)
         {
             return LoadRlp(address, path, hash, null, flags);
+        }
+
+        public byte[] LoadRlp(Hash256? address, in TreePath path, Hash256 keccak, INodeStorage? nodeStorage, ReadFlags readFlags = ReadFlags.None)
+        {
+            byte[]? rlp = TryLoadRlp(address, path, keccak, nodeStorage, readFlags);
+            if (rlp is null)
+            {
+                throw new TrieNodeException($"Node {keccak} is missing from the DB", keccak);
+            }
+
+            return rlp;
         }
 
         public bool IsPersisted(Hash256? address, in TreePath path, in ValueHash256 keccak)

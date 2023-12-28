@@ -83,6 +83,9 @@ public interface IInitConfig : IConfig
 
     [ConfigItem(Description = "[TECHNICAL] Key scheme for state db. Only effect new db.", DefaultValue = "Current", HiddenFromDocs = true)]
     INodeStorage.KeyScheme StateDbKeyScheme { get; set; }
+
+    [ConfigItem(Description = "[TECHNICAL] Exit when block number is reached. Useful for scripting and testing.", DefaultValue = "null", HiddenFromDocs = true)]
+    long? ExitOnBlockNumber { get; set; }
 }
 
 public enum DiagnosticMode

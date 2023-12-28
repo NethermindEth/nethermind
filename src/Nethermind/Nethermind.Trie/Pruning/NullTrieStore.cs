@@ -21,6 +21,8 @@ namespace Nethermind.Trie.Pruning
 
         public byte[] LoadRlp(in TreePath treePath, Hash256 hash, ReadFlags flags = ReadFlags.None) => Array.Empty<byte>();
 
+        public byte[]? TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) => Array.Empty<byte>();
+
         public bool IsPersisted(in TreePath path, in ValueHash256 keccak) => true;
 
         public void Set(in TreePath path, in ValueHash256 keccak, byte[] rlp)

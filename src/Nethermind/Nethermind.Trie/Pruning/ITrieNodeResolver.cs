@@ -26,6 +26,13 @@ namespace Nethermind.Trie.Pruning
         byte[]? LoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None);
 
         /// <summary>
+        /// Loads RLP of the node, but return null instead of throwing of does not exist.
+        /// </summary>
+        /// <param name="hash"></param>
+        /// <returns></returns>
+        byte[]? TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None);
+
+        /// <summary>
         /// Got another node resolver for another trie. Used for tree traversal. For simplicity, if address is null,
         /// return state trie.
         /// </summary>

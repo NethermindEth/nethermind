@@ -27,6 +27,11 @@ public class ScopedTrieStore : IScopedTrieStore
         return _trieStoreImplementation.LoadRlp(_address, path, hash, flags);
     }
 
+    public byte[]? TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None)
+    {
+        return _trieStoreImplementation.TryLoadRlp(_address, path, hash, flags);
+    }
+
     public ITrieNodeResolver GetStorageTrieNodeResolver(Hash256? address)
     {
         if (address == _address) return this;

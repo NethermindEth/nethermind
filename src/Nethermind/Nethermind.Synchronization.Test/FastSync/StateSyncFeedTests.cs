@@ -28,7 +28,7 @@ namespace Nethermind.Synchronization.Test.FastSync
     [TestFixture(1, 100)]
     [TestFixture(4, 0)]
     [TestFixture(4, 100)]
-    [Parallelizable(ParallelScope.Children)]
+    [Parallelizable(ParallelScope.All)]
     public class StateSyncFeedTests : StateSyncFeedTestsBase
     {
         // Useful for set and forget run. But this test is taking a long time to have it set to other than 1.

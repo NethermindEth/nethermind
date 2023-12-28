@@ -23,6 +23,16 @@ public class TrieNodeResolverWithReadFlags : ITrieNodeResolver
         return _baseResolver.FindCachedOrUnknown(treePath, hash);
     }
 
+    public byte[]? TryLoadRlp(in TreePath treePath, Hash256 hash, ReadFlags flags = ReadFlags.None)
+    {
+        if (flags != ReadFlags.None)
+        {
+            return _baseResolver.TryLoadRlp(treePath, hash, flags | _defaultFlags);
+        }
+
+        return _baseResolver.TryLoadRlp(treePath, hash, _defaultFlags);
+    }
+
     public byte[]? LoadRlp(in TreePath treePath, Hash256 hash, ReadFlags flags = ReadFlags.None)
     {
         if (flags != ReadFlags.None)

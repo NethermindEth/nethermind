@@ -304,44 +304,7 @@ namespace Nethermind.Trie
                     throw new InvalidAsynchronousStateException($"{nameof(_rlpStream)} is null when {nameof(NodeType)} is {NodeType}");
                 }
 
-                Metrics.TreeNodeRlpDecodings++;
-                _rlpStream.ReadSequenceLength();
-
-                // micro optimization to prevent searches beyond 3 items for branches (search up to three)
-                int numberOfItems = _rlpStream.PeekNumberOfItemsRemaining(null, 3);
-
-                if (numberOfItems > 2)
-                {
-                    NodeType = NodeType.Branch;
-                }
-                else if (numberOfItems == 2)
-                {
-                    (byte[] key, bool isLeaf) = HexPrefix.FromBytes(_rlpStream.DecodeByteArraySpan());
-
-                    // a hack to set internally and still verify attempts from the outside
-                    // after the code is ready we should just add proper access control for methods from the outside and inside
-                    bool isDirtyActual = IsDirty;
-                    IsDirty = true;
-
-                    if (isLeaf)
-                    {
-                        NodeType = NodeType.Leaf;
-                        Key = key;
-
-                        ReadOnlySpan<byte> valueSpan = _rlpStream.DecodeByteArraySpan();
-                        CappedArray<byte> buffer = bufferPool.SafeRentBuffer(valueSpan.Length);
-                        valueSpan.CopyTo(buffer.AsSpan());
-                        Value = buffer;
-                    }
-                    else
-                    {
-                        NodeType = NodeType.Extension;
-                        Key = key;
-                    }
-
-                    IsDirty = isDirtyActual;
-                }
-                else
+                if (!DecodeRlp(bufferPool, out int numberOfItems))
                 {
                     throw new TrieNodeException($"Unexpected number of items = {numberOfItems} when decoding a node from RLP ({FullRlp.AsSpan().ToHexString()})", Keccak ?? Nethermind.Core.Crypto.Keccak.Zero);
                 }
@@ -350,6 +313,97 @@ namespace Nethermind.Trie
             {
                 throw new TrieNodeException($"Error when decoding node {Keccak}", Keccak ?? Nethermind.Core.Crypto.Keccak.Zero, rlpException);
             }
+        }
+
+        /// <summary>
+        /// Highly optimized
+        /// </summary>
+        public bool TryResolveNode(ITrieNodeResolver tree, ref TreePath path, ReadFlags readFlags = ReadFlags.None, ICappedArrayPool? bufferPool = null)
+        {
+            try
+            {
+                if (NodeType == NodeType.Unknown)
+                {
+                    if (FullRlp.IsNull)
+                    {
+                        if (Keccak is null)
+                        {
+                            return false;
+                        }
+
+                        FullRlp = tree.TryLoadRlp(path, Keccak, readFlags);
+                        IsPersisted = true;
+
+                        if (FullRlp.IsNull)
+                        {
+                            return false;
+                        }
+                    }
+                }
+                else
+                {
+                    return true;
+                }
+
+                _rlpStream = FullRlp.AsRlpStream();
+                if (_rlpStream is null)
+                {
+                    throw new InvalidAsynchronousStateException($"{nameof(_rlpStream)} is null when {nameof(NodeType)} is {NodeType}");
+                }
+
+                return DecodeRlp(bufferPool, out _);
+            }
+            catch (RlpException)
+            {
+                return false;
+            }
+        }
+
+        private bool DecodeRlp(ICappedArrayPool bufferPool, out int itemsCount)
+        {
+            Metrics.TreeNodeRlpDecodings++;
+            _rlpStream.ReadSequenceLength();
+
+            // micro optimization to prevent searches beyond 3 items for branches (search up to three)
+            int numberOfItems = itemsCount = _rlpStream.PeekNumberOfItemsRemaining(null, 3);
+
+            if (numberOfItems > 2)
+            {
+                NodeType = NodeType.Branch;
+            }
+            else if (numberOfItems == 2)
+            {
+                (byte[] key, bool isLeaf) = HexPrefix.FromBytes(_rlpStream.DecodeByteArraySpan());
+
+                // a hack to set internally and still verify attempts from the outside
+                // after the code is ready we should just add proper access control for methods from the outside and inside
+                bool isDirtyActual = IsDirty;
+                IsDirty = true;
+
+                if (isLeaf)
+                {
+                    NodeType = NodeType.Leaf;
+                    Key = key;
+
+                    ReadOnlySpan<byte> valueSpan = _rlpStream.DecodeByteArraySpan();
+                    CappedArray<byte> buffer = bufferPool.SafeRentBuffer(valueSpan.Length);
+                    valueSpan.CopyTo(buffer.AsSpan());
+                    Value = buffer;
+                }
+                else
+                {
+                    NodeType = NodeType.Extension;
+                    Key = key;
+                }
+
+                IsDirty = isDirtyActual;
+            }
+            else
+            {
+                return false;
+            }
+
+            return true;
         }
 
         public void ResolveKey(ITrieNodeResolver tree, ref TreePath path, bool isRoot, ICappedArrayPool? bufferPool = null)

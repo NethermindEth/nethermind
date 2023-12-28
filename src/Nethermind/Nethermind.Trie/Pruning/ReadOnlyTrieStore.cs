@@ -27,6 +27,8 @@ namespace Nethermind.Trie.Pruning
 
         public byte[] LoadRlp(Hash256? address, in TreePath treePath, Hash256 hash, ReadFlags flags) =>
             _trieStore.LoadRlp(address, treePath, hash, _readOnlyStore, flags);
+        public byte[]? TryLoadRlp(Hash256? address, in TreePath treePath, Hash256 hash, ReadFlags flags) =>
+            _trieStore.TryLoadRlp(address, treePath, hash, _readOnlyStore, flags);
 
         public bool IsPersisted(Hash256? address, in TreePath path, in ValueHash256 keccak) => _trieStore.IsPersisted(address, path, keccak);
 
@@ -77,6 +79,11 @@ namespace Nethermind.Trie.Pruning
             public byte[]? LoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None)
             {
                 return _trieStoreImplementation.LoadRlp(_address, path, hash, flags);
+            }
+
+            public byte[]? TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None)
+            {
+                return _trieStoreImplementation.TryLoadRlp(_address, path, hash, flags);
             }
 
             public ITrieNodeResolver GetStorageTrieNodeResolver(Hash256? address)
