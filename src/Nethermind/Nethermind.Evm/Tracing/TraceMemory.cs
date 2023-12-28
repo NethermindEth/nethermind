@@ -21,7 +21,7 @@ public readonly struct TraceMemory
 
     public string[] ToHexWordList()
     {
-        string[] memory = new string[((int)Size / EvmPooledMemory.WordSize) + ((Size % EvmPooledMemory.WordSize == 0) ? 0 : 1)];
+        string[] memory = new string[(int)Size / EvmPooledMemory.WordSize + (Size % EvmPooledMemory.WordSize == 0 ? 0 : 1)];
         int traceLocation = 0;
 
         int i = 0;
@@ -45,21 +45,23 @@ public readonly struct TraceMemory
         return memory;
     }
 
+    private const int MemoryPadLimit = 1024 * 1024;
     public ReadOnlySpan<byte> Slice(int start, int length)
     {
-        if ((ulong)start + (ulong)length > Size)
-        {
-            throw new IndexOutOfRangeException("Requested memory range is out of bounds.");
-        }
+        ArgumentOutOfRangeException.ThrowIfNegative(start, nameof(start));
+        ArgumentOutOfRangeException.ThrowIfNegative(length, nameof(length));
 
         ReadOnlySpan<byte> span = _memory.Span;
 
-        if (start + length > _memory.Length)
+        if (start + length > span.Length)
         {
+            int paddingNeeded = start + length - span.Length;
+            if (paddingNeeded > MemoryPadLimit) throw new InvalidOperationException($"reached limit for padding memory slice: {paddingNeeded}");
             byte[] result = new byte[length];
-            for (int i = 0, index = start; index < _memory.Length; i++, index++)
+            int overlap = span.Length - start;
+            if (overlap > 0)
             {
-                result[i] = span[index];
+                span.Slice(start, overlap).CopyTo(result.AsSpan(0, overlap));
             }
 
             return result;
@@ -68,13 +70,8 @@ public readonly struct TraceMemory
         return span.Slice(start, length);
     }
 
-    public BigInteger GetUint(int offset)
-    {
-        if (offset < 0 || (ulong)(offset + EvmPooledMemory.WordSize) > Size)
-        {
-            throw new ArgumentOutOfRangeException(nameof(offset), $"tracer accessed out of bound memory: available {Size}, offset {offset}, size {EvmPooledMemory.WordSize}");
-        }
-
-        return new BigInteger(Slice(offset, EvmPooledMemory.WordSize), true, true);
-    }
+    public BigInteger GetUint(int offset) =>
+        offset < 0 || (ulong)(offset + EvmPooledMemory.WordSize) > Size
+            ? throw new ArgumentOutOfRangeException(nameof(offset), $"tracer accessed out of bound memory: available {Size}, offset {offset}, size {EvmPooledMemory.WordSize}")
+            : new BigInteger(Slice(offset, EvmPooledMemory.WordSize), true, true);
 }
