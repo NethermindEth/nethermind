@@ -1657,7 +1657,7 @@ namespace Nethermind.TxPool.Test
             ISpecProvider specProvider = null,
             ChainHeadInfoProvider chainHeadInfoProvider = null,
             IIncomingTxFilter incomingTxFilter = null,
-            ITxStorage txStorage = null,
+            IBlobTxStorage txStorage = null,
             bool thereIsPriorityContract = false)
         {
             specProvider ??= MainnetSpecProvider.Instance;
@@ -1803,11 +1803,15 @@ namespace Nethermind.TxPool.Test
                 .SignedAndResolved(_ethereumEcdsa, privateKey)
                 .TestObject;
 
-        private async Task RaiseBlockAddedToMainAndWaitForTransactions(int txCount)
+        private async Task RaiseBlockAddedToMainAndWaitForTransactions(int txCount, Block block = null, Block previousBlock = null)
         {
+            BlockReplacementEventArgs blockReplacementEventArgs = previousBlock is null
+                ? new BlockReplacementEventArgs(block ?? Build.A.Block.TestObject)
+                : new BlockReplacementEventArgs(block ?? Build.A.Block.TestObject, previousBlock);
+
             SemaphoreSlim semaphoreSlim = new(0, txCount);
             _txPool.NewPending += (o, e) => semaphoreSlim.Release();
-            _blockTree.BlockAddedToMain += Raise.EventWith(new BlockReplacementEventArgs(Build.A.Block.TestObject));
+            _blockTree.BlockAddedToMain += Raise.EventWith(blockReplacementEventArgs);
             for (int i = 0; i < txCount; i++)
             {
                 await semaphoreSlim.WaitAsync(10);

@@ -22,7 +22,7 @@ internal sealed class NotSupportedTxFilter : IIncomingTxFilter
 
     public AcceptTxResult Accept(Transaction tx, TxFilteringState state, TxHandlingOptions txHandlingOptions)
     {
-        if (!_txPoolConfig.BlobSupportEnabled && tx.SupportsBlobs)
+        if (_txPoolConfig.BlobsSupport.IsDisabled() && tx.SupportsBlobs)
         {
             Metrics.PendingTransactionsNotSupportedTxType++;
             if (_logger.IsTrace) _logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, blob transactions are not supported.");

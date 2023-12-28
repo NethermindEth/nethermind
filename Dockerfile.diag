@@ -8,27 +8,26 @@ ARG BUILD_TIMESTAMP
 ARG CI
 ARG COMMIT_HASH
 ARG TARGETARCH
-ARG TARGETOS
 
 COPY .git .git
 COPY src/Nethermind src/Nethermind
 
 RUN arch=$([ "$TARGETARCH" = "amd64" ] && echo "x64" || echo "$TARGETARCH") && \
-    jb_version=2023.3.0 && \
-    dotnet tool install JetBrains.dotTrace.GlobalTools --version $jb_version --tool-path /tmp && \
-    dotnet add src/Nethermind/Nethermind.Runner package JetBrains.dotMemory.Console.$TARGETOS-$arch \
-      --version $jb_version --package-directory /tmp && \
+    dotnet add src/Nethermind/Nethermind.Runner package JetBrains.dotMemory.Console.linux-$arch \
+      --package-directory /tmp && \
     dotnet publish src/Nethermind/Nethermind.Runner -c $BUILD_CONFIG -a $arch -o /publish --sc false \
       -p:BuildTimestamp=$BUILD_TIMESTAMP -p:Commit=$COMMIT_HASH
 
-RUN dotnet tool install --tool-path /dotnetcore-tools dotnet-trace && \
-    dotnet tool install --tool-path /dotnetcore-tools dotnet-dump && \
-    dotnet tool install --tool-path /dotnetcore-tools dotnet-gcdump
+RUN dotnet tool install -g dotnet-dump && \
+    dotnet tool install -g dotnet-gcdump && \
+    dotnet tool install -g dotnet-trace && \
+    dotnet tool install -g JetBrains.dotTrace.GlobalTools
 
 FROM --platform=$TARGETPLATFORM mcr.microsoft.com/dotnet/aspnet:8.0-jammy
 
 WORKDIR /nethermind
 
+VOLUME /nethermind/diag
 VOLUME /nethermind/keystore
 VOLUME /nethermind/logs
 VOLUME /nethermind/nethermind_db
@@ -36,14 +35,12 @@ VOLUME /nethermind/nethermind_db
 EXPOSE 8545 8551 30303
 
 COPY --from=build /publish .
-COPY --from=build /dotnetcore-tools /opt/dotnetcore-tools
-COPY --from=build /tmp/jetbrains.dotmemory.console.* /opt/tools
-COPY --from=build /tmp/dottrace /opt/tools
-COPY --from=build /tmp/.store /opt/tools/.store
+COPY --from=build /root/.dotnet/tools /opt/diag-tools
+COPY --from=build /tmp/jetbrains.dotmemory.console.*/**/tools /opt/diag-tools/dotmemory
 
-ENV PATH="/opt/dotnetcore-tools:${PATH}"
+ENV PATH="$PATH:/opt/diag-tools:/opt/diag-tools/dotmemory"
 
-RUN apt-get update && apt-get -y install libsnappy-dev procps && \
+RUN apt-get update && apt-get -y install libsnappy-dev && \
   rm -rf /var/lib/apt/lists/*
 
 ENTRYPOINT ["./nethermind"]

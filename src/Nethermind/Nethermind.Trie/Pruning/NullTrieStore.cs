@@ -29,6 +29,8 @@ namespace Nethermind.Trie.Pruning
 
         public TrieNode FindCachedOrUnknown(Hash256 hash) => new(NodeType.Unknown, hash);
 
+        public byte[] TryLoadRlp(Hash256 hash, ReadFlags flags = ReadFlags.None) => null;
+
         public byte[] LoadRlp(Hash256 hash, ReadFlags flags = ReadFlags.None) => Array.Empty<byte>();
 
         public bool IsPersisted(in ValueHash256 keccak) => true;
