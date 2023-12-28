@@ -243,10 +243,11 @@ namespace Nethermind.Runner.Test
             Test<ISyncConfig, bool>(configWildcard, c => c.SnapSync, enabled);
         }
 
-        [TestCase("^aura ^sepolia ^goerli ^mainnet", false)]
+        [TestCase("^aura ^sepolia ^holesky ^goerli ^mainnet", false)]
         [TestCase("aura ^archive", true)]
         [TestCase("^archive ^spaceneth", true)]
         [TestCase("sepolia ^archive", true)]
+        [TestCase("holesky ^archive", true)]
         [TestCase("goerli ^archive", true)]
         [TestCase("mainnet ^archive", true)]
         public void Stays_on_full_sync(string configWildcard, bool stickToFullSyncAfterFastSync)
