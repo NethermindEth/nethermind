@@ -114,9 +114,9 @@ public sealed class NethermindKestrelMetricServer : MetricHandler
         }
 
         var webHost = builder.Build();
-        webHost.Start();
 
         // This is what changed
+        // webHost.Start();
         // return webHost.WaitForShutdownAsync(cancel);
 
         return webHost.RunAsync(cancel);
