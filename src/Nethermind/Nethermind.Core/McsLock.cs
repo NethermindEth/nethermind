@@ -26,7 +26,7 @@ public class McsLock
     /// </summary>
     private volatile ThreadNode? _tail;
 
-    private volatile Thread? currentLockHolder = null;
+    internal volatile Thread? currentLockHolder = null;
 
     /// <summary>
     /// Acquires the lock. If the lock is already held, the calling thread is placed into a queue and
