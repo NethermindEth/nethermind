@@ -4,6 +4,7 @@
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Logging;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -19,7 +20,7 @@ public class ExitOnBlocknumberHandlerTests
     {
         IBlockTree blockTree = Substitute.For<IBlockTree>();
         IProcessExitSource processExitSource = Substitute.For<IProcessExitSource>();
-        new ExitOnBlockNumberHandler(blockTree, processExitSource, 100);
+        new ExitOnBlockNumberHandler(blockTree, processExitSource, 100, LimboLogs.Instance);
 
         blockTree.BlockAddedToMain += Raise.EventWith(
             new BlockReplacementEventArgs(Build.A.Block.WithNumber(blockNumber).TestObject));

@@ -104,7 +104,7 @@ namespace Nethermind.Init.Steps
 
             if (initConfig.ExitOnBlockNumber != null)
             {
-                new ExitOnBlockNumberHandler(blockTree, _get.ProcessExit!, initConfig.ExitOnBlockNumber);
+                new ExitOnBlockNumberHandler(blockTree, _get.ProcessExit!, initConfig.ExitOnBlockNumber.Value, _get.LogManager);
             }
 
             return Task.CompletedTask;
