@@ -189,11 +189,12 @@ namespace Nethermind.Runner.Test
         }
 
         [TestCase("mainnet", 2048)]
+        [TestCase("holesky", 2048)]
         [TestCase("gnosis", 2048)]
         [TestCase("poacore", 2048)]
         [TestCase("energy", 2048)]
         [TestCase("chiado", 2048)]
-        [TestCase("^mainnet ^spaceneth ^volta ^energy ^poacore ^gnosis ^chiado", 1024)]
+        [TestCase("^mainnet ^holesky ^spaceneth ^volta ^energy ^poacore ^gnosis ^chiado", 1024)]
         [TestCase("spaceneth", 128)]
         public void Tx_pool_defaults_are_correct(string configWildcard, int poolSize)
         {
@@ -205,8 +206,9 @@ namespace Nethermind.Runner.Test
         [TestCase("gnosis", true)]
         [TestCase("mainnet", true)]
         [TestCase("sepolia", true)]
+        [TestCase("holesky", true)]
         [TestCase("chiado", true)]
-        [TestCase("^spaceneth ^goerli ^mainnet ^gnosis ^sepolia ^chiado", false)]
+        [TestCase("^spaceneth ^goerli ^mainnet ^gnosis ^sepolia ^holesky ^chiado", false)]
         public void Json_defaults_are_correct(string configWildcard, bool jsonEnabled)
         {
             Test<IJsonRpcConfig, bool>(configWildcard, c => c.Enabled, jsonEnabled);
@@ -326,6 +328,7 @@ namespace Nethermind.Runner.Test
         [TestCase("goerli", BlobsSupportMode.StorageWithReorgs)]
         [TestCase("^goerli", BlobsSupportMode.Disabled)]
         [TestCase("sepolia", BlobsSupportMode.Disabled)]
+        [TestCase("holesky", BlobsSupportMode.Disabled)]
         [TestCase("mainnet", BlobsSupportMode.Disabled)]
         [TestCase("chiado", BlobsSupportMode.Disabled)]
         [TestCase("gnosis", BlobsSupportMode.Disabled)]
@@ -368,7 +371,8 @@ namespace Nethermind.Runner.Test
         [TestCase("goerli", 30_000_000L)]
         [TestCase("mainnet", 30_000_000L)]
         [TestCase("sepolia", 30_000_000L)]
-        [TestCase("^chiado ^gnosis ^goerli ^mainnet ^sepolia")]
+        [TestCase("holesky", 30_000_000L)]
+        [TestCase("^chiado ^gnosis ^goerli ^mainnet ^sepolia ^holesky")]
         public void Blocks_defaults_are_correct(string configWildcard, long? targetBlockGasLimit = null, ulong secondsPerSlot = 12)
         {
             Test<IBlocksConfig, long?>(configWildcard, c => c.TargetBlockGasLimit, targetBlockGasLimit);
@@ -419,8 +423,8 @@ namespace Nethermind.Runner.Test
         {
             "goerli_archive.cfg",
             "goerli.cfg",
-            "kovan.cfg",
-            "kovan_archive.cfg",
+            "holesky.cfg",
+            "holesky_archive.cfg",
             "mainnet_archive.cfg",
             "mainnet.cfg",
             "poacore.cfg",
@@ -429,8 +433,6 @@ namespace Nethermind.Runner.Test
             "gnosis_archive.cfg",
             "spaceneth.cfg",
             "spaceneth_persistent.cfg",
-            "volta.cfg",
-            "volta_archive.cfg",
             "volta.cfg",
             "volta_archive.cfg",
             "energyweb.cfg",
