@@ -88,10 +88,21 @@ namespace Nethermind.Merge.Plugin
         {
             _finalTotalDifficulty = _mergeConfig.FinalTotalDifficultyParsed;
 
+            if (TerminalTotalDifficulty is null)
+                return;
+
             // pivot post TTD, so we know FinalTotalDifficulty
-            if (_syncConfig.PivotTotalDifficultyParsed != 0 && TerminalTotalDifficulty is not null && _syncConfig.PivotTotalDifficultyParsed >= TerminalTotalDifficulty)
+            if (_syncConfig.PivotTotalDifficultyParsed != 0 && _syncConfig.PivotTotalDifficultyParsed >= TerminalTotalDifficulty)
             {
                 _finalTotalDifficulty = _syncConfig.PivotTotalDifficultyParsed;
+            }
+            else
+            {
+                UInt256 genesisDifficulty = _blockTree.Genesis?.Difficulty ?? 0;
+                if (genesisDifficulty >= TerminalTotalDifficulty) // networks with the merge in genesis
+                {
+                    _finalTotalDifficulty = genesisDifficulty;
+                }
             }
         }
 
