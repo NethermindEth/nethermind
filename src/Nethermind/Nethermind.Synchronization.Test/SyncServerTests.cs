@@ -22,6 +22,7 @@ using Nethermind.Merge.Plugin;
 using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Merge.Plugin.InvalidChainTracker;
 using Nethermind.Specs;
+using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
 using Nethermind.Stats.Model;
@@ -180,6 +181,7 @@ namespace Nethermind.Synchronization.Test
                 new MemDb(),
                 localBlockTree,
                 testSpecProvider,
+                new ChainSpec(),
                 LimboLogs.Instance);
             HeaderValidator headerValidator = new(
                 localBlockTree,
@@ -389,6 +391,7 @@ namespace Nethermind.Synchronization.Test
                 new MemDb(),
                 localBlockTree,
                 testSpecProvider,
+                new ChainSpec(),
                 LimboLogs.Instance);
             MergeSealEngine sealEngine = new(
                 new SealEngine(new NethDevSealEngine(), Always.Valid),
