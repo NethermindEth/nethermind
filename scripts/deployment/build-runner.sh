@@ -7,7 +7,7 @@ set -e
 build_config=release
 output_path=$GITHUB_WORKSPACE/$PUB_DIR
 
-cd $GITHUB_WORKSPACE/nethermind/src/Nethermind/Nethermind.Runner
+cd $GITHUB_WORKSPACE/src/Nethermind/Nethermind.Runner
 
 echo "Building Nethermind"
 

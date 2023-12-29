@@ -69,7 +69,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
             return group;
         }
 
-        private (int contentLength, int allPathsLength, int[] pathsLengths) CalculateLengths(GetTrieNodesMessage message)
+        private static (int contentLength, int allPathsLength, int[] pathsLengths) CalculateLengths(GetTrieNodesMessage message)
         {
             int contentLength = Rlp.LengthOf(message.RequestId);
             contentLength += Rlp.LengthOf(message.RootHash);

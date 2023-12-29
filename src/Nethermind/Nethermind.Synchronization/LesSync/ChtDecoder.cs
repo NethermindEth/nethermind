@@ -48,7 +48,7 @@ namespace Nethermind.Synchronization.LesSync
             return Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors));
         }
 
-        private int GetContentLength((Hash256?, UInt256) item, RlpBehaviors rlpBehaviors)
+        private static int GetContentLength((Hash256?, UInt256) item, RlpBehaviors rlpBehaviors)
         {
             (Hash256? hash, UInt256 totalDifficulty) = item;
             return Rlp.LengthOf(hash) + Rlp.LengthOf(totalDifficulty);

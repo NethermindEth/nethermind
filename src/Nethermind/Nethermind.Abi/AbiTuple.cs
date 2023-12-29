@@ -47,7 +47,7 @@ namespace Nethermind.Abi
 
         public override byte[] Encode(object? arg, bool packed)
         {
-            IEnumerable<object?> GetEnumerable(ITuple tuple)
+            static IEnumerable<object?> GetEnumerable(ITuple tuple)
             {
                 for (int i = 0; i < tuple.Length; i++)
                 {

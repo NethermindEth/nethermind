@@ -9,7 +9,7 @@ using Nethermind.Stats.Model;
 
 namespace Nethermind.Network
 {
-    //TODO: consult on use of metric disabeling flags!
+    //TODO: consult on use of metric disabling flags!
     public static class Metrics
     {
         [KeyIsLabel("reason")]

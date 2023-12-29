@@ -9,12 +9,12 @@ using System.IO;
 using System.IO.Abstractions;
 using System.IO.Pipelines;
 using System.Linq;
-using System.Numerics;
 using System.Text.Json;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Http;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Resettables;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 
@@ -118,7 +118,6 @@ public class JsonRpcProcessor : IJsonRpcProcessor
     {
         reader = await RecordRequest(reader);
         Stopwatch stopwatch = Stopwatch.StartNew();
-
         // Initializes a buffer to store the data read from the reader.
         ReadOnlySequence<byte> buffer = default;
         try
@@ -365,11 +364,13 @@ public class JsonRpcProcessor : IJsonRpcProcessor
         return result;
     }
 
+    private static readonly StreamPipeReaderOptions _pipeReaderOptions = new StreamPipeReaderOptions(leaveOpen: false);
+
     private async ValueTask<PipeReader> RecordRequest(PipeReader reader)
     {
         if ((_jsonRpcConfig.RpcRecorderState & RpcRecorderState.Request) != 0)
         {
-            Stream memoryStream = new MemoryStream();
+            Stream memoryStream = RecyclableStream.GetStream("recorder");
             await reader.CopyToAsync(memoryStream);
             memoryStream.Seek(0, SeekOrigin.Begin);
 
@@ -379,7 +380,7 @@ public class JsonRpcProcessor : IJsonRpcProcessor
             _recorder.RecordRequest(requestString);
 
             memoryStream.Seek(0, SeekOrigin.Begin);
-            return PipeReader.Create(memoryStream);
+            return PipeReader.Create(memoryStream, _pipeReaderOptions);
         }
 
         return reader;

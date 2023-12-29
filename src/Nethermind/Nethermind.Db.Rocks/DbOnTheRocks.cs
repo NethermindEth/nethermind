@@ -15,6 +15,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Threading;
 using Nethermind.Db.Rocks.Config;
 using Nethermind.Db.Rocks.Statistics;
 using Nethermind.Logging;
@@ -25,6 +26,9 @@ namespace Nethermind.Db.Rocks;
 
 public class DbOnTheRocks : IDb, ITunableDb
 {
+    private McsPriorityLock _readThrottle = new();
+    private McsPriorityLock _writeThrottle = new();
+
     private ILogger _logger;
 
     private string? _fullPath;
@@ -183,7 +187,7 @@ public class DbOnTheRocks : IDb, ITunableDb
         }
         catch (RocksDbException x) when (x.Message.Contains("LOCK"))
         {
-            if (_logger.IsWarn) _logger.Warn("If your database did not close properly you need to call 'find -type f -name '*LOCK*' -delete' from the databse folder");
+            if (_logger.IsWarn) _logger.Warn("If your database did not close properly you need to call 'find -type f -name '*LOCK*' -delete' from the database folder");
             throw;
         }
         catch (RocksDbSharpException x)
@@ -459,7 +463,7 @@ public class DbOnTheRocks : IDb, ITunableDb
         }
     }
 
-    private WriteOptions CreateWriteOptions(PerTableDbConfig dbConfig)
+    private static WriteOptions CreateWriteOptions(PerTableDbConfig dbConfig)
     {
         WriteOptions options = new();
         // potential fix for corruption on hard process termination, may cause performance degradation
@@ -501,6 +505,7 @@ public class DbOnTheRocks : IDb, ITunableDb
                 }
             }
 
+            using var handle = _readThrottle.Acquire();
             return _db.Get(key, cf);
         }
         catch (RocksDbSharpException e)
@@ -523,6 +528,7 @@ public class DbOnTheRocks : IDb, ITunableDb
 
         try
         {
+            using var handle = _writeThrottle.Acquire();
             if (value.IsNull())
             {
                 _db.Remove(key, cf, WriteFlagsToWriteOptions(flags));
@@ -566,6 +572,7 @@ public class DbOnTheRocks : IDb, ITunableDb
         {
             try
             {
+                using var handle = _readThrottle.Acquire();
                 return _db.MultiGet(keys);
             }
             catch (RocksDbSharpException e)
@@ -589,7 +596,11 @@ public class DbOnTheRocks : IDb, ITunableDb
 
         try
         {
-            Span<byte> span = _db.GetSpan(key, cf);
+            Span<byte> span;
+            using (var handle = _readThrottle.Acquire())
+            {
+                span = _db.GetSpan(key, cf);
+            }
             if (!span.IsNullOrEmpty())
             {
                 Interlocked.Increment(ref _allocatedSpan);
@@ -625,6 +636,7 @@ public class DbOnTheRocks : IDb, ITunableDb
 
         try
         {
+            using var handle = _writeThrottle.Acquire();
             _db.Remove(key, null, WriteOptions);
         }
         catch (RocksDbSharpException e)
@@ -658,6 +670,14 @@ public class DbOnTheRocks : IDb, ITunableDb
         }
     }
 
+    public IEnumerable<byte[]> GetAllKeys(bool ordered = false)
+    {
+        ObjectDisposedException.ThrowIf(_isDisposing, this);
+
+        Iterator iterator = CreateIterator(ordered);
+        return GetAllKeysCore(iterator);
+    }
+
     public IEnumerable<byte[]> GetAllValues(bool ordered = false)
     {
         ObjectDisposedException.ThrowIf(_isDisposing, this);
@@ -683,6 +703,48 @@ public class DbOnTheRocks : IDb, ITunableDb
             while (iterator.Valid())
             {
                 yield return iterator.Value();
+                try
+                {
+                    iterator.Next();
+                }
+                catch (RocksDbSharpException e)
+                {
+                    CreateMarkerIfCorrupt(e);
+                    throw;
+                }
+            }
+        }
+        finally
+        {
+            try
+            {
+                iterator.Dispose();
+            }
+            catch (RocksDbSharpException e)
+            {
+                CreateMarkerIfCorrupt(e);
+                throw;
+            }
+        }
+    }
+
+    internal IEnumerable<byte[]> GetAllKeysCore(Iterator iterator)
+    {
+        try
+        {
+            try
+            {
+                iterator.SeekToFirst();
+            }
+            catch (RocksDbSharpException e)
+            {
+                CreateMarkerIfCorrupt(e);
+                throw;
+            }
+
+            while (iterator.Valid())
+            {
+                yield return iterator.Key();
                 try
                 {
                     iterator.Next();
@@ -759,6 +821,7 @@ public class DbOnTheRocks : IDb, ITunableDb
 
         try
         {
+            using var handle = _readThrottle.Acquire();
             // seems it has no performance impact
             return _db.Get(key) is not null;
             // return _db.Get(key, 32, _keyExistsBuffer, 0, 0, null, null) != -1;
@@ -837,7 +900,11 @@ public class DbOnTheRocks : IDb, ITunableDb
 
             try
             {
-                _dbOnTheRocks._db.Write(_rocksBatch, _dbOnTheRocks.WriteFlagsToWriteOptions(_writeFlags));
+                using (var handle = _dbOnTheRocks._writeThrottle.Acquire())
+                {
+                    _dbOnTheRocks._db.Write(_rocksBatch, _dbOnTheRocks.WriteFlagsToWriteOptions(_writeFlags));
+                }
+
                 _dbOnTheRocks._currentBatches.TryRemove(this);
                 ReturnWriteBatch(_rocksBatch);
             }
@@ -890,7 +957,10 @@ public class DbOnTheRocks : IDb, ITunableDb
 
             try
             {
-                _dbOnTheRocks._db.Write(currentBatch, _dbOnTheRocks.WriteFlagsToWriteOptions(_writeFlags));
+                using (var handle = _dbOnTheRocks._writeThrottle.Acquire())
+                {
+                    _dbOnTheRocks._db.Write(currentBatch, _dbOnTheRocks.WriteFlagsToWriteOptions(_writeFlags));
+                }
                 ReturnWriteBatch(currentBatch);
             }
             catch (RocksDbSharpException e)
@@ -1156,7 +1226,7 @@ public class DbOnTheRocks : IDb, ITunableDb
     ///  This caps the maximum allowed number of l0 files, which is also the read response time amplification.
     /// </param>
     /// <returns></returns>
-    private IDictionary<string, string> GetHeavyWriteOptions(ulong l0FileNumTarget)
+    private static IDictionary<string, string> GetHeavyWriteOptions(ulong l0FileNumTarget)
     {
         // Make buffer (probably) smaller so that it does not take too much memory to have many of them.
         // More buffer means more parallel flush, but each read have to go through all buffer one by one much like l0
@@ -1190,7 +1260,7 @@ public class DbOnTheRocks : IDb, ITunableDb
         };
     }
 
-    private IDictionary<string, string> GetDisableCompactionOptions()
+    private static IDictionary<string, string> GetDisableCompactionOptions()
     {
         IDictionary<string, string> heavyWriteOption = GetHeavyWriteOptions(2048);
 
@@ -1205,7 +1275,7 @@ public class DbOnTheRocks : IDb, ITunableDb
     }
 
 
-    private IDictionary<string, string> GetBlobFilesOptions()
+    private static IDictionary<string, string> GetBlobFilesOptions()
     {
         // Enable blob files, see: https://rocksdb.org/blog/2021/05/26/integrated-blob-db.html
         // This is very useful for blocks, as it almost eliminate 95% of the compaction as the main db no longer

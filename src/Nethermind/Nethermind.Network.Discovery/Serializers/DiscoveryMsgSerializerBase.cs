@@ -151,7 +151,7 @@ public abstract class DiscoveryMsgSerializerBase
         return length;
     }
 
-    protected void PrepareBufferForSerialization(IByteBuffer byteBuffer, int dataLength, byte msgType)
+    protected static void PrepareBufferForSerialization(IByteBuffer byteBuffer, int dataLength, byte msgType)
     {
         byteBuffer.EnsureWritable(MdcSigOffset + 1 + dataLength);
         byteBuffer.SetWriterIndex(byteBuffer.WriterIndex + MdcSigOffset);

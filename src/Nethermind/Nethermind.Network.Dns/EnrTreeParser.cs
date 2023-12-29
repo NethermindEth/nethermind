@@ -69,7 +69,7 @@ public static class EnrTreeParser
         enrTreeRoot.LinkRoot = enrTreeRootText.Substring(linkRootIndex + 2, HashLengthBase32);
 
         int seqIndex = enrTreeRootText.IndexOf("seq=", StringComparison.InvariantCulture);
-        int seqLength = enrTreeRootText.IndexOf(" ", seqIndex, StringComparison.InvariantCulture) - (seqIndex + 4);
+        int seqLength = enrTreeRootText.IndexOf(' ', seqIndex) - (seqIndex + 4);
         enrTreeRoot.Sequence = int.Parse(enrTreeRootText.AsSpan(seqIndex + 4, seqLength));
 
         int sigIndex = enrTreeRootText.IndexOf("sig=", StringComparison.InvariantCulture);

@@ -254,11 +254,11 @@ public sealed class ArrayPoolList<T> : IList<T>, IList, IReadOnlyList<T>, IDispo
 
         public void Reset() => _index = -1;
 
-        public T Current => _array[_index];
+        public readonly T Current => _array[_index];
 
-        object IEnumerator.Current => Current!;
+        readonly object IEnumerator.Current => Current!;
 
-        public void Dispose() { }
+        public readonly void Dispose() { }
     }
 
     public void Dispose()

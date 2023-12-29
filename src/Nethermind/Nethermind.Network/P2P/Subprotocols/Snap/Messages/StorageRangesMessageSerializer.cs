@@ -88,7 +88,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
             return data;
         }
 
-        private (int contentLength, int allSlotsLength, int[] accountSlotsLengths, int proofsLength) CalculateLengths(StorageRangeMessage message)
+        private static (int contentLength, int allSlotsLength, int[] accountSlotsLengths, int proofsLength) CalculateLengths(StorageRangeMessage message)
         {
             int contentLength = Rlp.LengthOf(message.RequestId);
 

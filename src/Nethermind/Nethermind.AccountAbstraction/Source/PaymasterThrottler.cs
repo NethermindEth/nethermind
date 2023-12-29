@@ -165,7 +165,7 @@ namespace Nethermind.AccountAbstraction.Source
          * @param dividend: Dividend, or numerator of the division.
          * @param divisor: Divisor, or denominator of the division.
          */
-        private uint FloorDivision(uint dividend, uint divisor)
+        private static uint FloorDivision(uint dividend, uint divisor)
         {
             if (divisor == 0) throw new Exception("PaymasterThrottler: Divisor cannot be == 0");
 

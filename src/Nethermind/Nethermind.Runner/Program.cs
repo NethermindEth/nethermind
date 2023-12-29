@@ -11,6 +11,7 @@ using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Runtime.Loader;
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 #if !DEBUG
@@ -56,6 +57,8 @@ public static class Program
 
     public static void Main(string[] args)
     {
+        // Increase regex cache size as more added in log coloring matches
+        Regex.CacheSize = 128;
 #if !DEBUG
         ResourceLeakDetector.Level = ResourceLeakDetector.DetectionLevel.Disabled;
 #endif

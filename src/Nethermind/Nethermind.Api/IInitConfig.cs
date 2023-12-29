@@ -82,6 +82,9 @@ public interface IInitConfig : IConfig
 
     [ConfigItem(Description = "Directory with era1 archives from which ancient blocks will be served.", DefaultValue = "", HiddenFromDocs = false)]
     string AncientDataDirectory { get; set; }
+
+    [ConfigItem(Description = "[TECHNICAL] Exit when block number is reached. Useful for scripting and testing.", DefaultValue = "null", HiddenFromDocs = true)]
+    long? ExitOnBlockNumber { get; set; }
 }
 
 public enum DiagnosticMode

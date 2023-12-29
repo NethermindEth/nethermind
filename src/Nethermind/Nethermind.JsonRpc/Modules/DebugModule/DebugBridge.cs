@@ -118,6 +118,31 @@ public class DebugBridge : IDebugBridge
         _receiptStorage.Insert(block, txReceipts);
     }
 
+    public TxReceipt[]? GetReceiptsForBlock(BlockParameter blockParam)
+    {
+        SearchResult<Block> searchResult = _blockTree.SearchForBlock(blockParam);
+        if (searchResult.IsError)
+        {
+            throw new InvalidDataException(searchResult.Error);
+        }
+
+        Block block = searchResult.Object;
+        return _receiptStorage.Get(block);
+    }
+
+    public Transaction? GetTransactionFromHash(Hash256 txHash)
+    {
+        Hash256 blockHash = _receiptStorage.FindBlockHash(txHash);
+        SearchResult<Block> searchResult = _blockTree.SearchForBlock(new BlockParameter(blockHash));
+        if (searchResult.IsError)
+        {
+            throw new InvalidDataException(searchResult.Error);
+        }
+        Block block = searchResult.Object;
+        TxReceipt txReceipt = _receiptStorage.Get(block).ForTransaction(txHash);
+        return block?.Transactions[txReceipt.Index];
+    }
+
     public GethLikeTxTrace GetTransactionTrace(Hash256 transactionHash, CancellationToken cancellationToken, GethTraceOptions gethTraceOptions = null)
     {
         return _tracer.Trace(transactionHash, gethTraceOptions ?? GethTraceOptions.Default, cancellationToken);
@@ -153,11 +178,28 @@ public class DebugBridge : IDebugBridge
         return _tracer.TraceBlock(blockRlp, gethTraceOptions ?? GethTraceOptions.Default, cancellationToken);
     }
 
+
+    public byte[]? GetBlockRlp(BlockParameter parameter)
+    {
+        if (parameter.BlockHash is Hash256 hash)
+        {
+            return GetBlockRlp(hash);
+
+        }
+        if (parameter.BlockNumber is long num)
+        {
+            return GetBlockRlp(num);
+        }
+        return null;
+    }
+
     public byte[] GetBlockRlp(Hash256 blockHash)
     {
         return _dbMappings[DbNames.Blocks].Get(blockHash);
     }
 
+    public Block? GetBlock(BlockParameter param)
+        => _blockTree.FindBlock(param);
     public byte[] GetBlockRlp(long number)
     {
         Hash256 hash = _blockTree.FindHash(number);

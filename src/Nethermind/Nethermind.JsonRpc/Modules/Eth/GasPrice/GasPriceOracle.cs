@@ -154,7 +154,7 @@ namespace Nethermind.JsonRpc.Modules.Eth.GasPrice
             }
         }
 
-        private UInt256? GetGasPriceAtPercentile(List<UInt256> txGasPriceList)
+        private static UInt256? GetGasPriceAtPercentile(List<UInt256> txGasPriceList)
         {
             int roundedIndex = GetRoundedIndexAtPercentile(txGasPriceList.Count);
 
@@ -188,7 +188,7 @@ namespace Nethermind.JsonRpc.Modules.Eth.GasPrice
                 LastPrice = price;
             }
 
-            public bool TryGetPrice(Hash256 headHash, out UInt256? price)
+            public readonly bool TryGetPrice(Hash256 headHash, out UInt256? price)
             {
                 if (headHash == LastHeadHash)
                 {

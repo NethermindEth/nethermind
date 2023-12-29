@@ -334,6 +334,36 @@ public class TxBroadcasterTests
         expectedTxs.Should().BeEquivalentTo(pickedTxs);
     }
 
+    [TestCase(0, false)]
+    [TestCase(69, false)]
+    [TestCase(70, true)]
+    [TestCase(100, true)]
+    [TestCase(150, true)]
+    public void should_not_broadcast_tx_with_MaxFeePerGas_lower_than_70_percent_of_CurrentBaseFee(int maxFeePerGas, bool shouldBroadcast)
+    {
+        _headInfo.CurrentBaseFee.Returns((UInt256)100);
+
+        _broadcaster = new TxBroadcaster(_comparer, TimerFactory.Default, _txPoolConfig, _headInfo, _logManager);
+
+        ITxPoolPeer peer = Substitute.For<ITxPoolPeer>();
+        peer.Id.Returns(TestItem.PublicKeyA);
+        _broadcaster.AddPeer(peer);
+
+        Transaction transaction = Build.A.Transaction
+            .WithType(TxType.EIP1559)
+            .WithMaxFeePerGas((UInt256)maxFeePerGas)
+            .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA)
+            .TestObject;
+
+        _broadcaster.Broadcast(transaction, true);
+
+        // tx should be immediately broadcasted only if MaxFeePerGas is equal at least 70% of current base fee
+        peer.Received(shouldBroadcast ? 1 : 0).SendNewTransaction(Arg.Any<Transaction>());
+
+        // tx should always be added to persistent collection, without any fee restrictions
+        _broadcaster.GetSnapshot().Length.Should().Be(1);
+    }
+
     [Test]
     public void should_not_pick_1559_txs_with_MaxFeePerGas_lower_than_CurrentBaseFee([Values(1, 2, 99, 100, 101, 1000)] int threshold)
     {
@@ -655,6 +685,39 @@ public class TxBroadcasterTests
         {
             pickedTxs[i].Nonce.Should().Be((UInt256)i);
         }
+    }
+
+    [TestCase(0, 0)]
+    [TestCase(2, 1)]
+    [TestCase(3, 2)]
+    [TestCase(7, 4)]
+    [TestCase(8, 5)]
+    [TestCase(100, 70)]
+    [TestCase(9999, 6999)]
+    [TestCase(10000, 7000)]
+    public void should_calculate_baseFeeThreshold_correctly(int baseFee, int expectedThreshold)
+    {
+        _headInfo.CurrentBaseFee.Returns((UInt256)baseFee);
+        _broadcaster = new TxBroadcaster(_comparer, TimerFactory.Default, _txPoolConfig, _headInfo, _logManager);
+        _broadcaster.CalculateBaseFeeThreshold().Should().Be((UInt256)expectedThreshold);
+    }
+
+    [Test]
+    public void calculation_of_baseFeeThreshold_should_handle_overflow_correctly([Values(0, 70, 100, 101, 500)] int threshold, [Values(2, 3, 4, 5, 6, 7, 8, 9, 10, 11)] int divisor)
+    {
+        UInt256.Divide(UInt256.MaxValue, (UInt256)divisor, out UInt256 baseFee);
+        _headInfo.CurrentBaseFee.Returns(baseFee);
+
+        _txPoolConfig = new TxPoolConfig() { MinBaseFeeThreshold = threshold };
+        _broadcaster = new TxBroadcaster(_comparer, TimerFactory.Default, _txPoolConfig, _headInfo, _logManager);
+
+        UInt256.Divide(baseFee, 100, out UInt256 onePercentOfBaseFee);
+        bool overflow = UInt256.MultiplyOverflow(onePercentOfBaseFee, (UInt256)threshold, out UInt256 lessAccurateBaseFeeThreshold);
+
+        _broadcaster.CalculateBaseFeeThreshold().Should().Be(
+            UInt256.MultiplyOverflow(baseFee, (UInt256)threshold, out UInt256 baseFeeThreshold)
+                ? overflow ? UInt256.MaxValue : lessAccurateBaseFeeThreshold
+                : baseFeeThreshold);
     }
 
     private (IList<Transaction> expectedTxs, IList<Hash256> expectedHashes) GetTxsAndHashesExpectedToBroadcast(Transaction[] transactions, int expectedCountTotal)

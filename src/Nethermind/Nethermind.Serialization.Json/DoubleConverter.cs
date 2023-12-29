@@ -5,7 +5,7 @@ using System;
 
 namespace Nethermind.Serialization.Json
 {
-    using System.Collections.Generic;
+    using Nethermind.Core.Collections;
     using System.Runtime.CompilerServices;
     using System.Text.Json;
     using System.Text.Json.Serialization;
@@ -47,19 +47,21 @@ namespace Nethermind.Serialization.Json
             {
                 throw new JsonException();
             }
-            List<double> values = null;
-            reader.Read();
-            while (reader.TokenType == JsonTokenType.Number)
+            using ArrayPoolList<double> values = new ArrayPoolList<double>(16);
+            while (reader.Read() && reader.TokenType == JsonTokenType.Number)
             {
-                values ??= new List<double>();
                 values.Add(reader.GetDouble());
             }
             if (reader.TokenType != JsonTokenType.EndArray)
             {
                 throw new JsonException();
             }
-            reader.Read();
-            return values?.ToArray() ?? Array.Empty<double>();
+
+            if (values.Count == 0) return Array.Empty<double>();
+
+            double[] result = new double[values.Count];
+            values.CopyTo(result, 0);
+            return result;
         }
 
         [SkipLocalsInit]

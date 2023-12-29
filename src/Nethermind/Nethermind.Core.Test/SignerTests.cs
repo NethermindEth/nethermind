@@ -47,7 +47,7 @@ namespace Nethermind.Core.Test
             PrivateKey privateKey = Build.A.PrivateKey.TestObject;
             CompressedPublicKey compressedPublicKey = privateKey.CompressedPublicKey;
             PublicKey expected = privateKey.PublicKey;
-            PublicKey actual = ethereumEcdsa.Decompress(compressedPublicKey);
+            PublicKey actual = EthereumEcdsa.Decompress(compressedPublicKey);
             Assert.That(actual, Is.EqualTo(expected));
         }
     }
