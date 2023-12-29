@@ -290,17 +290,22 @@ namespace Nethermind.Blockchain.Test.Receipts
             _receiptsDb.GetColumnDb(ReceiptsColumns.Transactions)[receipts[0].TxHash!.Bytes].Should().BeNull();
         }
 
-        [Test]
-        public void Should_not_index_tx_hash_if_blockNumber_is_negative()
+        [TestCase(1L, false)]
+        [TestCase(10L, false)]
+        [TestCase(11L, true)]
+        public void Should_only_prune_index_tx_hashes_if_blockNumber_is_bigger_than_lookupLimit(long blockNumber, bool WillPruneOldIndicies)
         {
             _receiptConfig.TxLookupLimit = 10;
             CreateStorage();
             _blockTree.BlockAddedToMain +=
-                Raise.EventWith(new BlockReplacementEventArgs(Build.A.Block.WithNumber(1).TestObject));
+                Raise.EventWith(new BlockReplacementEventArgs(Build.A.Block.WithNumber(blockNumber).TestObject));
             Thread.Sleep(100);
             IEnumerable<ICall> calls = _blockTree.ReceivedCalls()
-                .Where(call => !call.GetMethodInfo().Name.EndsWith(nameof(_blockTree.BlockAddedToMain)));
-            calls.Should().BeEmpty();
+                .Where(call => call.GetMethodInfo().Name.EndsWith(nameof(_blockTree.FindBlock)));
+            if (WillPruneOldIndicies)
+                calls.Should().NotBeEmpty();
+            else
+                calls.Should().BeEmpty();
         }
 
         [Test]
@@ -342,27 +347,49 @@ namespace Nethermind.Blockchain.Test.Receipts
         [Test]
         public async Task When_NewHeadBlock_Remove_TxIndex_OfRemovedBlock_Unless_ItsAlsoInNewBlock()
         {
+            _receiptConfig.CompactTxIndex = _useCompactReceipts;
             CreateStorage();
             (Block block, TxReceipt[] receipts) = InsertBlock();
+            Block block2 = Build.A.Block
+                .WithParent(block)
+                .WithNumber(2)
+                .WithTransactions(Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyC).TestObject)
+                .TestObject;
+            _blockTree.FindBestSuggestedHeader().Returns(block2.Header);
+            _blockTree.BlockAddedToMain += Raise.EventWith(new BlockReplacementEventArgs(block2));
 
             if (_receiptConfig.CompactTxIndex)
             {
-                _receiptsDb.GetColumnDb(ReceiptsColumns.Transactions)[receipts[0].TxHash!.Bytes].Should().BeEquivalentTo(Rlp.Encode(block.Number).Bytes);
+                _receiptsDb.GetColumnDb(ReceiptsColumns.Transactions)[block.Transactions[0].Hash!.Bytes].Should().BeEquivalentTo(Rlp.Encode(block.Number).Bytes);
             }
             else
             {
-                _receiptsDb.GetColumnDb(ReceiptsColumns.Transactions)[receipts[0].TxHash!.Bytes].Should().NotBeNull();
+                _receiptsDb.GetColumnDb(ReceiptsColumns.Transactions)[block.Transactions[0].Hash!.Bytes].Should().BeEquivalentTo(block.Hash!.Bytes.ToArray());
             }
 
-            Block newHead = Build.A.Block
+            Block block3 = Build.A.Block
                 .WithNumber(1)
-                .WithTransactions(block.Transactions)
+                .WithTransactions(block2.Transactions)
+                .WithExtraData(new byte[1])
                 .TestObject;
-            _blockTree.FindBestSuggestedHeader().Returns(newHead.Header);
-            _blockTree.BlockAddedToMain += Raise.EventWith(new BlockReplacementEventArgs(newHead, block));
+            Block block4 = Build.A.Block
+                .WithNumber(2)
+                .WithTransactions(block.Transactions)
+                .WithExtraData(new byte[1])
+                .TestObject;
+            _blockTree.FindBestSuggestedHeader().Returns(block4.Header);
+            _blockTree.BlockAddedToMain += Raise.EventWith(new BlockReplacementEventArgs(block3, block));
+            _blockTree.BlockAddedToMain += Raise.EventWith(new BlockReplacementEventArgs(block4, block2));
 
             await Task.Delay(100);
-            _receiptsDb.GetColumnDb(ReceiptsColumns.Transactions)[receipts[0].TxHash!.Bytes].Should().NotBeNull();
+            if (_receiptConfig.CompactTxIndex)
+            {
+                _receiptsDb.GetColumnDb(ReceiptsColumns.Transactions)[block4.Transactions[0].Hash!.Bytes].Should().BeEquivalentTo(Rlp.Encode(block4.Number).Bytes);
+            }
+            else
+            {
+                _receiptsDb.GetColumnDb(ReceiptsColumns.Transactions)[block4.Transactions[0].Hash!.Bytes].Should().BeEquivalentTo(block4.Hash!.Bytes.ToArray());
+            }
         }
 
         [Test]
