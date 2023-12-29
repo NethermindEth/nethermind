@@ -48,14 +48,14 @@
     <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="17.8.0" />
     <PackageVersion Include="Microsoft.VisualStudio.Azure.Containers.Tools.Targets" Version="1.19.5" />
     <PackageVersion Include="Nethermind.Crypto.Pairings" Version="1.0.1" />
-    <PackageVersion Include="Nethermind.Crypto.SecP256k1" Version="1.1.0" />
+    <PackageVersion Include="Nethermind.Crypto.SecP256k1" Version="1.1.1" />
     <PackageVersion Include="Nethermind.DotNetty.Buffers" Version="1.0.1" />
     <PackageVersion Include="Nethermind.DotNetty.Handlers" Version="1.0.1" />
     <PackageVersion Include="Nethermind.DotNetty.Transport" Version="1.0.1" />
     <PackageVersion Include="Nethermind.Gmp" Version="1.0.1" />
     <PackageVersion Include="Nethermind.Numerics.Int256" Version="1.1.1" />
     <PackageVersion Include="Nito.Collections.Deque" Version="1.2.1" />
-    <PackageVersion Include="NLog" Version="5.2.7" />
+    <PackageVersion Include="NLog" Version="5.2.8" />
     <PackageVersion Include="NLog.Targets.Seq" Version="3.0.0" />
     <PackageVersion Include="NSubstitute" Version="5.1.0" />
     <PackageVersion Include="NUnit" Version="3.14.0" />
