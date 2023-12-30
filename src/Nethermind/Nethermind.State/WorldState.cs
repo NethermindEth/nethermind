@@ -88,6 +88,11 @@ namespace Nethermind.State
             _persistentStorageProvider.Reset();
             _transientStorageProvider.Reset();
         }
+        public void ResetCache()
+        {
+            _stateProvider.ResetCache();
+            _persistentStorageProvider.ResetCache();
+        }
 
         public void ClearStorage(Address address)
         {

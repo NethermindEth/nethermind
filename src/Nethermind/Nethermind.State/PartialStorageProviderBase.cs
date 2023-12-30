@@ -16,7 +16,7 @@ namespace Nethermind.State
     /// </summary>
     internal abstract class PartialStorageProviderBase
     {
-        protected readonly ResettableDictionary<StorageCell, StackList<int>> _intraBlockCache = new();
+        protected readonly ResettableDictionary<StorageCell, StackList<int>> _intraTxCache = new();
 
         protected readonly ILogger _logger;
 
@@ -96,7 +96,7 @@ namespace Nethermind.State
             for (int i = 0; i < _currentPosition - snapshot; i++)
             {
                 Change change = _changes[_currentPosition - i];
-                StackList<int> stack = _intraBlockCache[change!.StorageCell];
+                StackList<int> stack = _intraTxCache[change!.StorageCell];
                 if (stack.Count == 1)
                 {
                     if (_changes[stack.Peek()]!.ChangeType == ChangeType.JustCache)
@@ -123,7 +123,7 @@ namespace Nethermind.State
 
                 if (stack.Count == 0)
                 {
-                    _intraBlockCache.Remove(change.StorageCell);
+                    _intraTxCache.Remove(change.StorageCell);
                 }
             }
 
@@ -132,7 +132,7 @@ namespace Nethermind.State
             {
                 _currentPosition++;
                 _changes[_currentPosition] = kept;
-                _intraBlockCache[kept.StorageCell].Push(_currentPosition);
+                _intraTxCache[kept.StorageCell].Push(_currentPosition);
             }
 
             while (_transactionChangesSnapshots.TryPeek(out int lastOriginalSnapshot) && lastOriginalSnapshot > snapshot)
@@ -192,7 +192,7 @@ namespace Nethermind.State
         protected virtual void CommitCore(IStorageTracer tracer)
         {
             Resettable<Change>.Reset(ref _changes, ref _capacity, ref _currentPosition);
-            _intraBlockCache.Reset();
+            _intraTxCache.Reset();
             _transactionChangesSnapshots.Clear();
         }
 
@@ -203,7 +203,7 @@ namespace Nethermind.State
         {
             if (_logger.IsTrace) _logger.Trace("Resetting storage");
 
-            _intraBlockCache.Clear();
+            _intraTxCache.Clear();
             _transactionChangesSnapshots.Clear();
             _currentPosition = -1;
             Array.Clear(_changes, 0, _changes.Length);
@@ -217,7 +217,7 @@ namespace Nethermind.State
         /// <returns>True if value has been set</returns>
         protected bool TryGetCachedValue(in StorageCell storageCell, out byte[]? bytes)
         {
-            if (_intraBlockCache.TryGetValue(storageCell, out StackList<int> stack))
+            if (_intraTxCache.TryGetValue(storageCell, out StackList<int> stack))
             {
                 int lastChangeIndex = stack.Peek();
                 {
@@ -264,7 +264,7 @@ namespace Nethermind.State
         /// <param name="cell"></param>
         protected StackList<int> SetupRegistry(in StorageCell cell)
         {
-            ref StackList<int>? value = ref _intraBlockCache.GetValueRefOrAddDefault(cell, out bool exists);
+            ref StackList<int>? value = ref _intraTxCache.GetValueRefOrAddDefault(cell, out bool exists);
             if (!exists)
             {
                 value = new StackList<int>();
@@ -281,7 +281,7 @@ namespace Nethermind.State
         {
             // We are setting cached values to zero so we do not use previously set values
             // when the contract is revived with CREATE2 inside the same block
-            foreach (KeyValuePair<StorageCell, StackList<int>> cellByAddress in _intraBlockCache)
+            foreach (KeyValuePair<StorageCell, StackList<int>> cellByAddress in _intraTxCache)
             {
                 if (cellByAddress.Key.Address == address)
                 {

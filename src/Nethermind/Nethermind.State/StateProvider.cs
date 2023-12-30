@@ -24,7 +24,8 @@ namespace Nethermind.State
     internal class StateProvider
     {
         private const int StartCapacity = Resettable.StartCapacity;
-        private readonly ResettableDictionary<Address, Stack<int>> _intraBlockCache = new();
+        private readonly LruCache<Address, Account> _intraBlockCache = new(8192, "Inter-block State cache");
+        private readonly ResettableDictionary<Address, Stack<int>> _intraTxCache = new();
         private readonly ResettableHashSet<Address> _committedThisRound = new();
         // Only guarding against hot duplicates so filter doesn't need to be too big
         // Note:
@@ -92,7 +93,7 @@ namespace Nethermind.State
 
         public bool AccountExists(Address address)
         {
-            if (_intraBlockCache.TryGetValue(address, out Stack<int> value))
+            if (_intraTxCache.TryGetValue(address, out Stack<int> value))
             {
                 return _changes[value.Peek()]!.ChangeType != ChangeType.Delete;
             }
@@ -371,7 +372,7 @@ namespace Nethermind.State
             for (int i = 0; i < _currentPosition - snapshot; i++)
             {
                 Change change = _changes[_currentPosition - i];
-                Stack<int> stack = _intraBlockCache[change!.Address];
+                Stack<int> stack = _intraTxCache[change!.Address];
                 if (stack.Count == 1)
                 {
                     if (change.ChangeType == ChangeType.JustCache)
@@ -397,7 +398,7 @@ namespace Nethermind.State
 
                 if (stack.Count == 0)
                 {
-                    _intraBlockCache.Remove(change.Address);
+                    _intraTxCache.Remove(change.Address);
                 }
             }
 
@@ -406,7 +407,7 @@ namespace Nethermind.State
             {
                 _currentPosition++;
                 _changes[_currentPosition] = kept;
-                _intraBlockCache[kept.Address].Push(_currentPosition);
+                _intraTxCache[kept.Address].Push(_currentPosition);
             }
 
             _keptInCache.Clear();
@@ -512,7 +513,7 @@ namespace Nethermind.State
                     continue;
                 }
 
-                Stack<int> stack = _intraBlockCache[change.Address];
+                Stack<int> stack = _intraTxCache[change.Address];
                 int forAssertion = stack.Pop();
                 if (forAssertion != _currentPosition - i)
                 {
@@ -607,7 +608,7 @@ namespace Nethermind.State
             Resettable<Change>.Reset(ref _changes, ref _capacity, ref _currentPosition, StartCapacity);
             _committedThisRound.Reset();
             _readsForTracing.Clear();
-            _intraBlockCache.Reset();
+            _intraTxCache.Reset();
 
             if (isTracing)
             {
@@ -675,8 +676,14 @@ namespace Nethermind.State
 
         private Account? GetState(Address address)
         {
+            if (_intraBlockCache.TryGet(address, out Account? account))
+            {
+                //Console.WriteLine($"{address}: block cached");
+                return account;
+            }
+
             Metrics.StateTreeReads++;
-            Account? account = _tree.Get(address);
+            account = _tree.Get(address);
             return account;
         }
 
@@ -684,6 +691,7 @@ namespace Nethermind.State
         {
             _needsStateRootUpdate = true;
             Metrics.StateTreeWrites++;
+            _intraBlockCache.Set(address, account);
             _tree.Set(address, account);
         }
 
@@ -691,6 +699,7 @@ namespace Nethermind.State
 
         private Account? GetAndAddToCache(Address address)
         {
+            //Console.WriteLine($"{address}: going to tree");
             Account? account = GetState(address);
             if (account is not null)
             {
@@ -707,12 +716,14 @@ namespace Nethermind.State
 
         private Account? GetThroughCache(Address address)
         {
-            if (_intraBlockCache.TryGetValue(address, out Stack<int> value))
+            if (_intraTxCache.TryGetValue(address, out Stack<int> value))
             {
+                //Console.WriteLine($"{address}: txn cached");
                 return _changes[value.Peek()]!.Account;
             }
 
-            Account account = GetAndAddToCache(address);
+            //Console.WriteLine($"{address}: not cached");
+            Account? account = GetAndAddToCache(address);
             return account;
         }
 
@@ -766,7 +777,7 @@ namespace Nethermind.State
 
         private Stack<int> SetupCache(Address address)
         {
-            ref Stack<int>? value = ref _intraBlockCache.GetValueRefOrAddDefault(address, out bool exists);
+            ref Stack<int>? value = ref _intraTxCache.GetValueRefOrAddDefault(address, out bool exists);
             if (!exists)
             {
                 value = new Stack<int>();
@@ -801,7 +812,7 @@ namespace Nethermind.State
         public void Reset()
         {
             if (_logger.IsTrace) _logger.Trace("Clearing state provider caches");
-            _intraBlockCache.Reset();
+            _intraTxCache.Reset();
             _committedThisRound.Reset();
             _readsForTracing.Clear();
             _currentPosition = Resettable.EmptyPosition;
@@ -812,6 +823,12 @@ namespace Nethermind.State
             {
                 readOnlyDb.ClearTempChanges();
             }
+        }
+
+        public void ResetCache()
+        {
+            if (_logger.IsTrace) _logger.Trace("Clearing state provider inter block cache");
+            _intraBlockCache.Clear();
         }
 
         public void CommitTree(long blockNumber)

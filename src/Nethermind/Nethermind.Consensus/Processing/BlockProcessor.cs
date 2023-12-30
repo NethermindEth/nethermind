@@ -39,6 +39,10 @@ public partial class BlockProcessor : IBlockProcessor
 
     private const int MaxUncommittedBlocks = 64;
 
+    // We can maintain the cache if next block is next in orderof the one that last cached.
+    private long _cacheBlockNumber;
+    private Hash256? _cacheBlockStateRoot;
+
     /// <summary>
     /// We use a single receipt tracer for all blocks. Internally receipt tracer forwards most of the calls
     /// to any block-specific tracers.
@@ -89,7 +93,7 @@ public partial class BlockProcessor : IBlockProcessor
            In case of invalid blocks on the new branch we will discard the entire branch and come back to
            the previous head state.*/
         Hash256 previousBranchStateRoot = CreateCheckpoint();
-        InitBranch(newBranchStateRoot);
+        InitBranch(suggestedBlocks[0].Number, newBranchStateRoot);
 
         bool notReadOnly = !options.ContainsFlag(ProcessingOptions.ReadOnlyChain);
         int blocksCount = suggestedBlocks.Count;
@@ -126,8 +130,12 @@ public partial class BlockProcessor : IBlockProcessor
                     if (_logger.IsInfo) _logger.Info($"Commit part of a long blocks branch {i}/{blocksCount}");
                     previousBranchStateRoot = CreateCheckpoint();
                     Hash256? newStateRoot = suggestedBlocks[i].StateRoot;
-                    InitBranch(newStateRoot, false);
+                    InitBranch(processedBlock.Number, newStateRoot, false);
                 }
+
+                // Update the blocks/branch data where the cache is valid from
+                _cacheBlockNumber = processedBlock.Number;
+                _cacheBlockStateRoot = processedBlock.StateRoot;
             }
 
             if (options.ContainsFlag(ProcessingOptions.DoNotUpdateHead))
@@ -148,7 +156,7 @@ public partial class BlockProcessor : IBlockProcessor
     public event EventHandler<BlocksProcessingEventArgs>? BlocksProcessing;
 
     // TODO: move to branch processor
-    private void InitBranch(Hash256 branchStateRoot, bool incrementReorgMetric = true)
+    private void InitBranch(long blockNumber, Hash256 branchStateRoot, bool incrementReorgMetric = true)
     {
         /* Please note that we do not reset the state if branch state root is null.
            That said, I do not remember in what cases we receive null here.*/
@@ -159,9 +167,17 @@ public partial class BlockProcessor : IBlockProcessor
                by blocks that are being reorganized out.*/
 
             if (incrementReorgMetric)
+            {
                 Metrics.Reorganizations++;
+            }
             _stateProvider.Reset();
             _stateProvider.StateRoot = branchStateRoot;
+
+            if (_cacheBlockNumber + 1 != blockNumber || branchStateRoot != _cacheBlockStateRoot)
+            {
+                // Clear cache if not in next in order or cache state root doesn't match
+                _stateProvider.ResetCache();
+            }
         }
     }
 

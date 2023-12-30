@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using Nethermind.Core;
+using Nethermind.Core.Caching;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -26,6 +27,7 @@ namespace Nethermind.State
         internal readonly IStorageTreeFactory _storageTreeFactory;
         private readonly ResettableDictionary<Address, StorageTree> _storages = new();
 
+        private readonly LruCache<StorageCell, byte[]> _intraBlockCache = new(8192, "Inter-block Storage cache");
         /// <summary>
         /// EIP-1283
         /// </summary>
@@ -56,6 +58,15 @@ namespace Nethermind.State
         }
 
         /// <summary>
+        /// Reset the storage state
+        /// </summary>
+        public void ResetCache()
+        {
+            if (_logger.IsTrace) _logger.Trace("Clearing storage provider inter block cache");
+            _intraBlockCache.Clear();
+        }
+
+        /// <summary>
         /// Get the current value at the specified location
         /// </summary>
         /// <param name="storageCell">Storage location</param>
@@ -77,7 +88,7 @@ namespace Nethermind.State
 
             if (_transactionChangesSnapshots.TryPeek(out int snapshot))
             {
-                if (_intraBlockCache.TryGetValue(storageCell, out StackList<int> stack))
+                if (_intraTxCache.TryGetValue(storageCell, out StackList<int> stack))
                 {
                     if (stack.TryGetSearchedItem(snapshot, out int lastChangeIndexBeforeOriginalSnapshot))
                     {
@@ -148,7 +159,7 @@ namespace Nethermind.State
                     continue;
                 }
 
-                int forAssertion = _intraBlockCache[change.StorageCell].Pop();
+                int forAssertion = _intraTxCache[change.StorageCell].Pop();
                 if (forAssertion != _currentPosition - i)
                 {
                     throw new InvalidOperationException($"Expected checked value {forAssertion} to be equal to {_currentPosition} - {i}");
@@ -170,6 +181,7 @@ namespace Nethermind.State
                         Db.Metrics.StorageTreeWrites++;
                         toUpdateRoots.Add(change.StorageCell.Address);
                         tree.Set(change.StorageCell.Index, change.Value);
+                        _intraBlockCache.Set(change.StorageCell, change.Value);
                         if (isTracing)
                         {
                             trace![change.StorageCell] = new ChangeTrace(change.Value);
@@ -242,7 +254,11 @@ namespace Nethermind.State
 
             if (!storageCell.IsHash)
             {
-                byte[] value = tree.Get(storageCell.Index);
+                if (!_intraBlockCache.TryGet(storageCell, out byte[]? value))
+                {
+                    value = tree.Get(storageCell.Index);
+                }
+
                 PushToRegistryOnly(storageCell, value);
                 return value;
             }
