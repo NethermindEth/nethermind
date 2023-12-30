@@ -3,6 +3,9 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
+
 using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Collections;
@@ -226,6 +229,16 @@ namespace Nethermind.State
         {
             foreach ((StorageCell storageCell, byte[] value) in _storageChangesToCommit)
             {
+                if (!_originalValues.TryGetValue(storageCell, out var original))
+                {
+                    ThrowNoOriginalValue();
+                }
+                if (Bytes.BytesComparer.Compare(original, value) == 0)
+                {
+                    // Nothing to save
+                    continue;
+                }
+
                 StorageTree tree = GetOrCreateStorage(storageCell.Address);
                 Db.Metrics.StorageTreeWrites++;
                 toUpdateRoots.Add(storageCell.Address);
@@ -234,6 +247,13 @@ namespace Nethermind.State
             }
 
             _storageChangesToCommit.Reset();
+
+            [DoesNotReturn]
+            [StackTraceHidden]
+            static void ThrowNoOriginalValue()
+            {
+                throw new InvalidOperationException("Get original should have been called if state is changing");
+            }
         }
 
         /// <summary>
