@@ -206,5 +206,10 @@ public class NodeStorage : INodeStorage
 
             _writeBatch.Set(_nodeStorage.GetExpectedPath(stackalloc byte[StoragePathLength], address, path, keccak), toArray, writeFlags);
         }
+
+        public void Remove(Hash256? address, in TreePath path, in ValueHash256 keccak)
+        {
+            _writeBatch.Remove(_nodeStorage.GetExpectedPath(stackalloc byte[StoragePathLength], address, path, keccak));
+        }
     }
 }
