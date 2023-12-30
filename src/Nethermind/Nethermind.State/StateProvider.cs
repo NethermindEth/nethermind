@@ -24,7 +24,7 @@ namespace Nethermind.State
     internal class StateProvider
     {
         private const int StartCapacity = Resettable.StartCapacity;
-        private readonly LruCache<Address, Account> _intraBlockCache = new(8192, "Inter-block State cache");
+        private readonly LruCache<Address, Account> _intraBlockCache = new(16_384, "Inter-block State cache");
         private readonly ResettableDictionary<Address, Stack<int>> _intraTxCache = new();
         private readonly ResettableHashSet<Address> _committedThisRound = new();
         private readonly ResettableDictionary<Address, Account> _stateChangesToCommit = new();
@@ -683,7 +683,7 @@ namespace Nethermind.State
         {
             if (_intraBlockCache.TryGet(address, out Account? account))
             {
-                //Console.WriteLine($"{address}: block cached");
+                Metrics.StateTreeCacheHits++;
                 return account;
             }
 
@@ -714,7 +714,6 @@ namespace Nethermind.State
 
         private Account? GetAndAddToCache(Address address)
         {
-            //Console.WriteLine($"{address}: going to tree");
             Account? account = GetState(address);
             if (account is not null)
             {
@@ -733,11 +732,9 @@ namespace Nethermind.State
         {
             if (_intraTxCache.TryGetValue(address, out Stack<int> value))
             {
-                //Console.WriteLine($"{address}: txn cached");
                 return _changes[value.Peek()]!.Account;
             }
 
-            //Console.WriteLine($"{address}: not cached");
             Account? account = GetAndAddToCache(address);
             return account;
         }

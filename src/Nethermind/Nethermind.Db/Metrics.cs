@@ -67,6 +67,10 @@ namespace Nethermind.Db
         public static long StateTreeWrites { get; set; }
 
         [CounterMetric]
+        [Description("Number of State DB cache hits.")]
+        public static int StateTreeCacheHits;
+
+        [CounterMetric]
         [Description("Number of State DB reads.")]
         public static long StateDbReads { get; set; }
 
@@ -77,6 +81,10 @@ namespace Nethermind.Db
         [CounterMetric]
         [Description("Number of State DB duplicate writes during full pruning.")]
         public static int StateDbInPruningWrites;
+
+        [CounterMetric]
+        [Description("Number of storge trie cache hits.")]
+        public static int StorageTreeCacheHits;
 
         [CounterMetric]
         [Description("Number of storge trie reads.")]

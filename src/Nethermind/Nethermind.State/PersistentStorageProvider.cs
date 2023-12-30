@@ -30,7 +30,7 @@ namespace Nethermind.State
         internal readonly IStorageTreeFactory _storageTreeFactory;
         private readonly ResettableDictionary<Address, StorageTree> _storages = new();
 
-        private readonly LruCache<StorageCell, byte[]> _intraBlockCache = new(16384, "Inter-block Storage cache");
+        private readonly LruCache<StorageCell, byte[]> _intraBlockCache = new(32_768, "Inter-block Storage cache");
         private readonly ResettableDictionary<StorageCell, byte[]> _storageChangesToCommit = new();
         /// <summary>
         /// EIP-1283
@@ -280,19 +280,23 @@ namespace Nethermind.State
         {
             StorageTree tree = GetOrCreateStorage(storageCell.Address);
 
-            Db.Metrics.StorageTreeReads++;
-
             if (!storageCell.IsHash)
             {
                 if (!_intraBlockCache.TryGet(storageCell, out byte[]? value))
                 {
+                    Db.Metrics.StorageTreeReads++;
                     value = tree.Get(storageCell.Index);
+                }
+                else
+                {
+                    Db.Metrics.StorageTreeCacheHits++;
                 }
 
                 PushToRegistryOnly(storageCell, value);
                 return value;
             }
 
+            Db.Metrics.StorageTreeReads++;
             return tree.Get(storageCell.Hash.Bytes);
         }
 
