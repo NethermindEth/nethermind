@@ -4,7 +4,7 @@
 using System;
 using System.Buffers;
 using System.Diagnostics;
-using System.Linq;
+using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
@@ -29,7 +29,7 @@ namespace Nethermind.Trie
 
                 if (item is null)
                 {
-                    throw new TrieException("An attempt was made to RLP encode a null node.");
+                    ThrowNullNode();
                 }
 
                 return item.NodeType switch
@@ -37,8 +37,22 @@ namespace Nethermind.Trie
                     NodeType.Branch => RlpEncodeBranch(tree, item, bufferPool),
                     NodeType.Extension => EncodeExtension(tree, item, bufferPool),
                     NodeType.Leaf => EncodeLeaf(item, bufferPool),
-                    _ => throw new TrieException($"An attempt was made to encode a trie node of type {item.NodeType}")
+                    _ => ThrowUnhandledNodeType(item)
                 };
+
+                [DoesNotReturn]
+                [StackTraceHidden]
+                static void ThrowNullNode()
+                {
+                    throw new TrieException("An attempt was made to RLP encode a null node.");
+                }
+
+                [DoesNotReturn]
+                [StackTraceHidden]
+                static CappedArray<byte> ThrowUnhandledNodeType(TrieNode item)
+                {
+                    throw new TrieException($"An attempt was made to encode a trie node of type {item.NodeType}");
+                }
             }
 
             [SkipLocalsInit]
@@ -101,7 +115,7 @@ namespace Nethermind.Trie
             {
                 if (node.Key is null)
                 {
-                    throw new TrieException($"Hex prefix of a leaf node is null at node {node.Keccak}");
+                    ThrowNullKey(node);
                 }
 
                 byte[] hexPrefix = node.Key;
@@ -128,6 +142,13 @@ namespace Nethermind.Trie
                 }
                 rlpStream.Encode(node.Value.AsSpan());
                 return data;
+            }
+
+            [DoesNotReturn]
+            [StackTraceHidden]
+            private static void ThrowNullKey(TrieNode node)
+            {
+                throw new TrieException($"Hex prefix of a leaf node is null at node {node.Keccak}");
             }
 
             private static CappedArray<byte> RlpEncodeBranch(ITrieNodeResolver tree, TrieNode item, ICappedArrayPool? pool)
