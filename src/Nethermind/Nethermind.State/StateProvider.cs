@@ -27,6 +27,7 @@ namespace Nethermind.State
         private readonly LruCache<Address, Account> _intraBlockCache = new(8192, "Inter-block State cache");
         private readonly ResettableDictionary<Address, Stack<int>> _intraTxCache = new();
         private readonly ResettableHashSet<Address> _committedThisRound = new();
+        private readonly ResettableDictionary<Address, Account> _stateChangesToCommit = new();
         // Only guarding against hot duplicates so filter doesn't need to be too big
         // Note:
         // False negatives are fine as they will just result in a overwrite set
@@ -488,6 +489,8 @@ namespace Nethermind.State
                 trace = new Dictionary<Address, ChangeTrace>();
             }
 
+            _stateChangesToCommit.Clear();
+
             for (int i = 0; i <= _currentPosition; i++)
             {
                 Change change = _changes[_currentPosition - i];
@@ -596,6 +599,8 @@ namespace Nethermind.State
                 }
             }
 
+            CommitStateChanges();
+
             if (isTracing)
             {
                 foreach (Address nullRead in _readsForTracing)
@@ -689,10 +694,20 @@ namespace Nethermind.State
 
         private void SetState(Address address, Account? account)
         {
+            _stateChangesToCommit[address] = account;
+        }
+
+        private void CommitStateChanges()
+        {
+            foreach ((Address address, Account account) in _stateChangesToCommit)
+            {
+                _intraBlockCache.Set(address, account);
+                _tree.Set(address, account);
+            }
+
+            _stateChangesToCommit.Reset();
+            Metrics.StateTreeWrites += _stateChangesToCommit.Count;
             _needsStateRootUpdate = true;
-            Metrics.StateTreeWrites++;
-            _intraBlockCache.Set(address, account);
-            _tree.Set(address, account);
         }
 
         private readonly HashSet<Address> _readsForTracing = new();

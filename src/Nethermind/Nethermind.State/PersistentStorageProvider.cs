@@ -28,6 +28,7 @@ namespace Nethermind.State
         private readonly ResettableDictionary<Address, StorageTree> _storages = new();
 
         private readonly LruCache<StorageCell, byte[]> _intraBlockCache = new(8192, "Inter-block Storage cache");
+        private readonly ResettableDictionary<StorageCell, byte[]> _storageChangesToCommit = new();
         /// <summary>
         /// EIP-1283
         /// </summary>
@@ -129,6 +130,8 @@ namespace Nethermind.State
                 trace = new Dictionary<StorageCell, ChangeTrace>();
             }
 
+            _storageChangesToCommit.Reset();
+
             for (int i = 0; i <= _currentPosition; i++)
             {
                 Change change = _changes[_currentPosition - i];
@@ -177,11 +180,7 @@ namespace Nethermind.State
                             _logger.Trace($"  Update {change.StorageCell.Address}_{change.StorageCell.Index} V = {change.Value.ToHexString(true)}");
                         }
 
-                        StorageTree tree = GetOrCreateStorage(change.StorageCell.Address);
-                        Db.Metrics.StorageTreeWrites++;
-                        toUpdateRoots.Add(change.StorageCell.Address);
-                        tree.Set(change.StorageCell.Index, change.Value);
-                        _intraBlockCache.Set(change.StorageCell, change.Value);
+                        SetStorage(change);
                         if (isTracing)
                         {
                             trace![change.StorageCell] = new ChangeTrace(change.Value);
@@ -192,6 +191,8 @@ namespace Nethermind.State
                         throw new ArgumentOutOfRangeException();
                 }
             }
+
+            CommitStorageChanges(toUpdateRoots);
 
             // TODO: it seems that we are unnecessarily recalculating root hashes all the time in storage?
             foreach (Address address in toUpdateRoots)
@@ -214,6 +215,25 @@ namespace Nethermind.State
             {
                 ReportChanges(tracer!, trace!);
             }
+        }
+
+        private void SetStorage(Change change)
+        {
+            _storageChangesToCommit[change.StorageCell] = change.Value;
+        }
+
+        private void CommitStorageChanges(HashSet<Address> toUpdateRoots)
+        {
+            foreach ((StorageCell storageCell, byte[] value) in _storageChangesToCommit)
+            {
+                StorageTree tree = GetOrCreateStorage(storageCell.Address);
+                Db.Metrics.StorageTreeWrites++;
+                toUpdateRoots.Add(storageCell.Address);
+                tree.Set(storageCell.Index, value);
+                _intraBlockCache.Set(storageCell, value);
+            }
+
+            _storageChangesToCommit.Reset();
         }
 
         /// <summary>
