@@ -229,13 +229,10 @@ namespace Nethermind.State
         {
             foreach ((StorageCell storageCell, byte[] value) in _storageChangesToCommit)
             {
-                if (!_originalValues.TryGetValue(storageCell, out var original))
+                if (_originalValues.TryGetValue(storageCell, out var original) &&
+                    Bytes.BytesComparer.Compare(original, value) == 0)
                 {
-                    ThrowNoOriginalValue();
-                }
-                if (Bytes.BytesComparer.Compare(original, value) == 0)
-                {
-                    // Nothing to save
+                    // Nothing changed, nothing to save
                     continue;
                 }
 
@@ -247,17 +244,10 @@ namespace Nethermind.State
             }
 
             _storageChangesToCommit.Reset();
-
-            [DoesNotReturn]
-            [StackTraceHidden]
-            static void ThrowNoOriginalValue()
-            {
-                throw new InvalidOperationException("Get original should have been called if state is changing");
-            }
         }
 
         /// <summary>
-        /// Commit persisent storage trees
+        /// Commit persistent storage trees
         /// </summary>
         /// <param name="blockNumber">Current block number</param>
         public void CommitTrees(long blockNumber)
