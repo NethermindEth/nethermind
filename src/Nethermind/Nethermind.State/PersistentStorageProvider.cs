@@ -227,6 +227,7 @@ namespace Nethermind.State
 
         private void CommitStorageChanges(HashSet<Address> toUpdateRoots)
         {
+            int changesWritten = 0;
             foreach ((StorageCell storageCell, byte[] value) in _storageChangesToCommit)
             {
                 if (_originalValues.TryGetValue(storageCell, out var original) &&
@@ -237,12 +238,13 @@ namespace Nethermind.State
                 }
 
                 StorageTree tree = GetOrCreateStorage(storageCell.Address);
-                Db.Metrics.StorageTreeWrites++;
                 toUpdateRoots.Add(storageCell.Address);
                 tree.Set(storageCell.Index, value);
                 _intraBlockCache.Set(storageCell, value);
+                changesWritten++;
             }
 
+            Db.Metrics.StorageTreeWrites += changesWritten;
             _storageChangesToCommit.Reset();
         }
 

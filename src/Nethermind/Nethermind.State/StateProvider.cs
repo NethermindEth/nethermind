@@ -689,6 +689,7 @@ namespace Nethermind.State
 
             Metrics.StateTreeReads++;
             account = _tree.Get(address);
+            _intraBlockCache.Set(address, account);
             return account;
         }
 
