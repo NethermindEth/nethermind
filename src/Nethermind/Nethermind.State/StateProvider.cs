@@ -10,6 +10,7 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Resettables;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Threading;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -24,7 +25,7 @@ namespace Nethermind.State
     internal class StateProvider
     {
         private const int StartCapacity = Resettable.StartCapacity;
-        private readonly LruCache<Address, Account> _intraBlockCache = new(16_384, "Inter-block State cache");
+        private readonly LruCache<Address, Account> _intraBlockCache = new(65_536, "Inter-block State cache");
         private readonly ResettableDictionary<Address, Stack<int>> _intraTxCache = new();
         private readonly ResettableHashSet<Address> _committedThisRound = new();
         private readonly ResettableDictionary<Address, Account> _stateChangesToCommit = new();
@@ -679,6 +680,36 @@ namespace Nethermind.State
             }
         }
 
+        private volatile bool _blockInProduction = false;
+
+        public void MarkBlockInProduction() => _blockInProduction = true;
+        public void MarkBlockFinishedProduction() => _blockInProduction = false;
+
+        McsPriorityLock _lock = new McsPriorityLock();
+
+        public Account? TryGetAccountFromProcessorCache(Address address)
+        {
+            if (_intraBlockCache.TryGet(address, out Account? account))
+            {
+                Metrics.StateTreeCacheHits++;
+                return account;
+            }
+
+            if (_blockInProduction)
+            {
+                return null;
+            }
+            else
+            {
+                using var handle = _lock.Acquire();
+
+                Metrics.StateTreeReads++;
+                account = _tree.Get(address);
+                _intraBlockCache.Set(address, account);
+                return account;
+            }
+        }
+
         private Account? GetState(Address address)
         {
             if (_intraBlockCache.TryGet(address, out Account? account))
@@ -686,6 +717,8 @@ namespace Nethermind.State
                 Metrics.StateTreeCacheHits++;
                 return account;
             }
+
+            using var handle = _lock.Acquire();
 
             Metrics.StateTreeReads++;
             account = _tree.Get(address);
@@ -700,10 +733,12 @@ namespace Nethermind.State
 
         private void CommitStateChanges()
         {
+            using var handle = _lock.Acquire();
+
             foreach ((Address address, Account account) in _stateChangesToCommit)
             {
-                _intraBlockCache.Set(address, account);
                 _tree.Set(address, account);
+                _intraBlockCache.Set(address, account);
             }
 
             Metrics.StateTreeWrites += _stateChangesToCommit.Count;

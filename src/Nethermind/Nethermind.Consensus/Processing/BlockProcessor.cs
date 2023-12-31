@@ -99,6 +99,7 @@ public partial class BlockProcessor : IBlockProcessor
         int blocksCount = suggestedBlocks.Count;
         Block[] processedBlocks = new Block[blocksCount];
         using IDisposable tracker = _witnessCollector.TrackOnThisThread();
+        _stateProvider.MarkBlockInProduction();
         try
         {
             for (int i = 0; i < blocksCount; i++)
@@ -150,6 +151,10 @@ public partial class BlockProcessor : IBlockProcessor
             _logger.Trace($"Encountered exception {ex} while processing blocks.");
             RestoreBranch(previousBranchStateRoot);
             throw;
+        }
+        finally
+        {
+            _stateProvider.MarkBlockFinishedProduction();
         }
     }
 

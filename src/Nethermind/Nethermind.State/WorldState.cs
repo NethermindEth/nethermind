@@ -243,5 +243,12 @@ namespace Nethermind.State
         {
             _stateProvider.CreateAccountIfNotExists(address, balance, nonce);
         }
+
+        public Account? TryGetAccountFromProcessorCache(Address address)
+        {
+            return _stateProvider.TryGetAccountFromProcessorCache(address);
+        }
+        public void MarkBlockInProduction() => _stateProvider.MarkBlockInProduction();
+        public void MarkBlockFinishedProduction() => _stateProvider.MarkBlockInProduction();
     }
 }

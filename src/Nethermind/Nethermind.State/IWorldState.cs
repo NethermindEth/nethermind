@@ -60,6 +60,8 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
     /// </summary>
     void ResetCache();
 
+    Account? TryGetAccountFromProcessorCache(Address address);
+
     /// <summary>
     /// Creates a restartable snapshot.
     /// </summary>
@@ -115,4 +117,6 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
     /// </summary>
     /// <param name="codeHash"></param>
     void TouchCode(Hash256 codeHash);
+    void MarkBlockInProduction();
+    void MarkBlockFinishedProduction();
 }
