@@ -288,6 +288,7 @@ namespace Nethermind.State
                 {
                     Db.Metrics.StorageTreeReads++;
                     value = tree.Get(storageCell.Index);
+                    _intraBlockCache.Set(storageCell, value);
                 }
                 else
                 {
