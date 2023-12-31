@@ -705,8 +705,8 @@ namespace Nethermind.State
                 _tree.Set(address, account);
             }
 
-            _stateChangesToCommit.Reset();
             Metrics.StateTreeWrites += _stateChangesToCommit.Count;
+            _stateChangesToCommit.Reset();
             _needsStateRootUpdate = true;
         }
 
