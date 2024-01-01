@@ -59,7 +59,7 @@ namespace Nethermind.Serialization.Rlp
             }
             txReceipt.Logs = entries;
 
-            if (rlpStream.Position != lastCheck)
+            if (txReceipt.TxType == TxType.DepositTx && rlpStream.Position != lastCheck)
             {
                 txReceipt.DepositNonce = rlpStream.DecodeUlong();
                 txReceipt.DepositReceiptVersion = rlpStream.DecodeUlong();
