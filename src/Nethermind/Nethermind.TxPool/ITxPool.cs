@@ -42,6 +42,8 @@ namespace Nethermind.TxPool
         bool TryGetPendingTransaction(Hash256 hash, out Transaction? transaction);
         bool TryGetPendingBlobTransaction(Hash256 hash, [NotNullWhen(true)] out Transaction? blobTransaction);
         UInt256 GetLatestPendingNonce(Address address);
+        void BlocksProcessing();
+
         event EventHandler<TxEventArgs> NewDiscovered;
         event EventHandler<TxEventArgs> NewPending;
         event EventHandler<TxEventArgs> RemovedPending;

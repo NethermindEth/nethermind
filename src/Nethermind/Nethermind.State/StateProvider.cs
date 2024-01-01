@@ -25,7 +25,7 @@ namespace Nethermind.State
     internal class StateProvider
     {
         private const int StartCapacity = Resettable.StartCapacity;
-        private readonly LruCache<Address, Account> _intraBlockCache = new(65_536, "Inter-block State cache");
+        private readonly LruCache<Address, Account> _intraBlockCache = new(65_536_000, "Inter-block State cache");
         private readonly ResettableDictionary<Address, Stack<int>> _intraTxCache = new();
         private readonly ResettableHashSet<Address> _committedThisRound = new();
         private readonly ResettableDictionary<Address, Account> _stateChangesToCommit = new();

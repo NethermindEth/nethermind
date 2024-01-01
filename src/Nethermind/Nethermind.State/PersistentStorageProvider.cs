@@ -30,7 +30,7 @@ namespace Nethermind.State
         internal readonly IStorageTreeFactory _storageTreeFactory;
         private readonly ResettableDictionary<Address, StorageTree> _storages = new();
 
-        private readonly LruCache<StorageCell, byte[]> _intraBlockCache = new(32_768, "Inter-block Storage cache");
+        private readonly LruCache<StorageCell, byte[]> _intraBlockCache = new(32_768_000, "Inter-block Storage cache");
         private readonly ResettableDictionary<StorageCell, byte[]> _storageChangesToCommit = new();
         /// <summary>
         /// EIP-1283

@@ -178,6 +178,13 @@ namespace Nethermind.TxPool
 
         public int GetPendingBlobTransactionsCount() => _blobTransactions.Count;
 
+        ManualResetEventSlim _blockProcessing = new ManualResetEventSlim(true);
+
+        public void BlocksProcessing()
+        {
+            _blockProcessing.Reset();
+        }
+
         private void OnHeadChange(object? sender, BlockReplacementEventArgs e)
         {
             try
@@ -206,6 +213,7 @@ namespace Nethermind.TxPool
                     {
                         try
                         {
+                            _blockProcessing.Set();
                             ReAddReorganisedTransactions(args.PreviousBlock);
                             RemoveProcessedTransactions(args.Block);
                             UpdateBuckets();
@@ -365,6 +373,8 @@ namespace Nethermind.TxPool
 
         public AcceptTxResult SubmitTx(Transaction tx, TxHandlingOptions handlingOptions)
         {
+            _blockProcessing.Wait();
+
             Metrics.PendingTransactionsReceived++;
 
             // assign a sequence number to transaction so we can order them by arrival times when

@@ -44,7 +44,7 @@ namespace Nethermind.State
                 return new byte[] { 0 };
             }
 
-            Metrics.StorageTreeReads++;
+            Metrics.ReadOnlyStorageTreeReads++;
             return _storage.Get(index, storageRoot);
         }
 
@@ -88,7 +88,7 @@ namespace Nethermind.State
                 return null;
             }
 
-            Metrics.StateTreeReads++;
+            Metrics.ReadOnlyStateTreeReads++;
             Account? account = _state.Get(address, stateRoot);
             return account;
         }

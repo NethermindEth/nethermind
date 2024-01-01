@@ -87,6 +87,14 @@ namespace Nethermind.Db
         public static int StorageTreeCacheHits;
 
         [CounterMetric]
+        [Description("Number of ro state trie reads.")]
+        public static int ReadOnlyStateTreeReads;
+        
+        [CounterMetric]
+        [Description("Number of ro storage trie reads.")]
+        public static int ReadOnlyStorageTreeReads;
+
+        [CounterMetric]
         [Description("Number of storge trie reads.")]
         public static long StorageTreeReads { get; set; }
 
