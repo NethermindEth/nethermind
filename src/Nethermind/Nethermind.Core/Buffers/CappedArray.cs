@@ -2,8 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 
 namespace Nethermind.Core.Buffers;
 
@@ -13,10 +11,10 @@ namespace Nethermind.Core.Buffers;
 /// underlying array can be null and this struct is meant to be non nullable, checking the `IsNull` property to check
 /// if it represent null.
 /// </summary>
-public struct CappedArray<T>
+public readonly struct CappedArray<T>
 {
     private readonly T[]? _array = null;
-    private int _length = 0;
+    private readonly int _length = 0;
 
     public CappedArray(T[]? array, int length)
     {
@@ -44,11 +42,7 @@ public struct CappedArray<T>
         return new CappedArray<T>(array);
     }
 
-    public int Length
-    {
-        readonly get => _length;
-        set => _length = value;
-    }
+    public readonly int Length => _length;
 
     public readonly T[]? Array => _array;
     public readonly bool IsUncapped => _length == _array?.Length;
@@ -60,7 +54,7 @@ public struct CappedArray<T>
         return _array.AsSpan()[..Length];
     }
 
-    public T[]? ToArray()
+    public readonly T[]? ToArray()
     {
         if (_array is null) return null;
         if (_length == _array?.Length) return _array;
