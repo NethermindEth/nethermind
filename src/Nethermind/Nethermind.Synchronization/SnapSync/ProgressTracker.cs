@@ -24,7 +24,7 @@ namespace Nethermind.Synchronization.SnapSync
         public const int HIGH_STORAGE_QUEUE_SIZE = STORAGE_BATCH_SIZE * 100;
         private const int CODES_BATCH_SIZE = 1_000;
         public const int HIGH_CODES_QUEUE_SIZE = CODES_BATCH_SIZE * 5;
-        private readonly byte[] ACC_PROGRESS_KEY = Encoding.ASCII.GetBytes("AccountProgressKey");
+        internal static readonly byte[] ACC_PROGRESS_KEY = Encoding.ASCII.GetBytes("AccountProgressKey");
 
         // This does not need to be a lot as it spawn other requests. In fact 8 is probably too much. It is severely
         // bottlenecked by _syncCommit lock in SnapProviderHelper, which in turns is limited by the IO.
@@ -416,7 +416,8 @@ namespace Nethermind.Synchronization.SnapSync
 
         private void FinishRangePhase()
         {
-            _db.PutSpan(ACC_PROGRESS_KEY, ValueKeccak.MaxValue.Bytes);
+            _db.PutSpan(ACC_PROGRESS_KEY, ValueKeccak.MaxValue.Bytes, WriteFlags.DisableWAL);
+            _db.Flush();
         }
 
         private void LogRequest(string reqType)
