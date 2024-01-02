@@ -260,6 +260,8 @@ namespace Nethermind.Trie.Pruning
         private Task _pruningTask = Task.CompletedTask;
         private readonly CancellationTokenSource _pruningTaskCancellationTokenSource = new();
 
+        private long _reorgDepth = Reorganization.MaxDepth;
+
         public TrieStore(IKeyValueStoreWithBatching? keyValueStore, ILogManager? logManager)
             : this(keyValueStore, No.Pruning, Pruning.Persist.EveryBlock, logManager)
         {
@@ -282,7 +284,8 @@ namespace Nethermind.Trie.Pruning
             INodeStorage? nodeStorage,
             IPruningStrategy? pruningStrategy,
             IPersistenceStrategy? persistenceStrategy,
-            ILogManager? logManager)
+            ILogManager? logManager,
+            long? reorgDepthOverride = null)
         {
             _logger = logManager?.GetClassLogger<TrieStore>() ?? throw new ArgumentNullException(nameof(logManager));
             _nodeStorage = nodeStorage ?? throw new ArgumentNullException(nameof(nodeStorage));
@@ -290,6 +293,8 @@ namespace Nethermind.Trie.Pruning
             _persistenceStrategy = persistenceStrategy ?? throw new ArgumentNullException(nameof(persistenceStrategy));
             _dirtyNodes = new DirtyNodesCache(this);
             _publicStore = new TrieKeyValueStore(this);
+
+            if (reorgDepthOverride != null) _reorgDepth = reorgDepthOverride.Value;
 
             if (pruningStrategy.TrackedPastKeyCount > 0 && nodeStorage.RequirePath) {
                 _pastPathHash = new(pruningStrategy.TrackedPastKeyCount, "");
@@ -600,7 +605,7 @@ namespace Nethermind.Trie.Pruning
                 using ArrayPoolList<BlockCommitSet> candidateSets = new(_commitSetQueue.Count);
                 while (_commitSetQueue.TryDequeue(out BlockCommitSet frontSet))
                 {
-                    if (frontSet!.BlockNumber >= LatestCommittedBlockNumber - Reorganization.MaxDepth)
+                    if (frontSet!.BlockNumber >= LatestCommittedBlockNumber - _reorgDepth)
                     {
                         toAddBack.Add(frontSet);
                     }
@@ -640,7 +645,7 @@ namespace Nethermind.Trie.Pruning
                 }
 
                 _commitSetQueue.TryPeek(out BlockCommitSet? uselessFrontSet);
-                if (_logger.IsDebug) _logger.Debug($"Found no candidate for elevated pruning (sets: {_commitSetQueue.Count}, earliest: {uselessFrontSet?.BlockNumber}, newest kept: {LatestCommittedBlockNumber}, reorg depth {Reorganization.MaxDepth})");
+                if (_logger.IsDebug) _logger.Debug($"Found no candidate for elevated pruning (sets: {_commitSetQueue.Count}, earliest: {uselessFrontSet?.BlockNumber}, newest kept: {LatestCommittedBlockNumber}, reorg depth {_reorgDepth})");
             }
 
             return false;
@@ -946,16 +951,16 @@ namespace Nethermind.Trie.Pruning
         {
             Debug.Assert(lastSeen.HasValue, $"Any node that is cache should have {nameof(TrieNode.LastSeen)} set.");
             return lastSeen < LastPersistedBlockNumber
-                   && lastSeen < LatestCommittedBlockNumber - Reorganization.MaxDepth;
+                   && lastSeen < LatestCommittedBlockNumber - _reorgDepth;
         }
 
         private void DequeueOldCommitSets()
         {
             while (_commitSetQueue.TryPeek(out BlockCommitSet blockCommitSet))
             {
-                if (blockCommitSet.BlockNumber < LatestCommittedBlockNumber - Reorganization.MaxDepth - 1)
+                if (blockCommitSet.BlockNumber < LatestCommittedBlockNumber - _reorgDepth - 1)
                 {
-                    if (_logger.IsDebug) _logger.Debug($"Removing historical ({_commitSetQueue.Count}) {blockCommitSet.BlockNumber} < {LatestCommittedBlockNumber} - {Reorganization.MaxDepth}");
+                    if (_logger.IsDebug) _logger.Debug($"Removing historical ({_commitSetQueue.Count}) {blockCommitSet.BlockNumber} < {LatestCommittedBlockNumber} - {_reorgDepth}");
                     _commitSetQueue.TryDequeue(out _);
                 }
                 else
@@ -1004,7 +1009,7 @@ namespace Nethermind.Trie.Pruning
             {
                 // even after we persist a block we do not really remember it as a safe checkpoint
                 // until max reorgs blocks after
-                if (LatestCommittedBlockNumber >= LastPersistedBlockNumber + Reorganization.MaxDepth)
+                if (LatestCommittedBlockNumber >= LastPersistedBlockNumber + _reorgDepth)
                 {
                     shouldAnnounceReorgBoundary = true;
                 }
@@ -1028,11 +1033,11 @@ namespace Nethermind.Trie.Pruning
                 using ArrayPoolList<BlockCommitSet> candidateSets = new(_commitSetQueue.Count);
                 while (_commitSetQueue.TryDequeue(out BlockCommitSet frontSet))
                 {
-                    if (candidateSets.Count == 0 || candidateSets[0].BlockNumber == frontSet!.BlockNumber)
+                    if (!frontSet.IsSealed || candidateSets.Count == 0 || candidateSets[0].BlockNumber == frontSet!.BlockNumber)
                     {
                         candidateSets.Add(frontSet);
                     }
-                    else if (frontSet!.BlockNumber < LatestCommittedBlockNumber - Reorganization.MaxDepth
+                    else if (frontSet!.BlockNumber < LatestCommittedBlockNumber - _reorgDepth
                              && frontSet!.BlockNumber > candidateSets[0].BlockNumber)
                     {
                         candidateSets.Clear();
