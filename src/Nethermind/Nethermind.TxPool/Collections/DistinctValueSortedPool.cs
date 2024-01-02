@@ -49,7 +49,7 @@ namespace Nethermind.TxPool.Collections
         {
             if (_distinctDictionary.TryGetValue(value, out KeyValuePair<TKey, TValue> oldKvp))
             {
-                TryRemove(oldKvp.Key);
+                TryRemoveNonLocked(oldKvp.Key, evicted: false, out _, out _);
             }
 
             base.InsertCore(key, value, groupKey);

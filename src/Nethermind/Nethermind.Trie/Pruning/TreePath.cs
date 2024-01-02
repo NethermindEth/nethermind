@@ -189,12 +189,12 @@ public struct TreePath
         return left.Equals(right);
     }
 
-    public static bool operator !=(TreePath left, TreePath right)
+    public static bool operator !=(in TreePath left, in TreePath right)
     {
         return !(left == right);
     }
 
-    public bool Equals(TreePath other)
+    public bool Equals(in TreePath other)
     {
         return Path.Equals(other.Path) && Length == other.Length;
     }

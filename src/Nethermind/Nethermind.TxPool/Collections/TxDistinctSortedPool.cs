@@ -71,19 +71,20 @@ namespace Nethermind.TxPool.Collections
             }
         }
 
-        [MethodImpl(MethodImplOptions.Synchronized)]
         public void UpdatePool(IAccountStateProvider accounts, Func<Address, Account, EnhancedSortedSet<Transaction>, IEnumerable<(Transaction Tx, UInt256? changedGasBottleneck)>> changingElements)
         {
+            using var lockRelease = Lock.Acquire();
+
             foreach ((Address address, EnhancedSortedSet<Transaction> bucket) in _buckets)
             {
                 Debug.Assert(bucket.Count > 0);
 
                 Account? account = accounts.GetAccount(address);
-                UpdateGroup(address, account, bucket, changingElements);
+                UpdateGroupNonLocked(address, account, bucket, changingElements);
             }
         }
 
-        private void UpdateGroup(Address groupKey, Account groupValue, EnhancedSortedSet<Transaction> bucket, Func<Address, Account, EnhancedSortedSet<Transaction>, IEnumerable<(Transaction Tx, UInt256? changedGasBottleneck)>> changingElements)
+        private void UpdateGroupNonLocked(Address groupKey, Account groupValue, EnhancedSortedSet<Transaction> bucket, Func<Address, Account, EnhancedSortedSet<Transaction>, IEnumerable<(Transaction Tx, UInt256? changedGasBottleneck)>> changingElements)
         {
             _transactionsToRemove.Clear();
             Transaction? lastElement = bucket.Max;
@@ -114,25 +115,26 @@ namespace Nethermind.TxPool.Collections
             ReadOnlySpan<Transaction> txs = CollectionsMarshal.AsSpan(_transactionsToRemove);
             for (int i = 0; i < txs.Length; i++)
             {
-                TryRemove(txs[i].Hash!);
+                TryRemoveNonLocked(txs[i].Hash!, evicted: false, out _, out _);
             }
         }
 
-        [MethodImpl(MethodImplOptions.Synchronized)]
         public void UpdateGroup(Address groupKey, Account groupValue, Func<Address, Account, EnhancedSortedSet<Transaction>, IEnumerable<(Transaction Tx, UInt256? changedGasBottleneck)>> changingElements)
         {
+            using var lockRelease = Lock.Acquire();
+
             ArgumentNullException.ThrowIfNull(groupKey);
             if (_buckets.TryGetValue(groupKey, out EnhancedSortedSet<Transaction>? bucket))
             {
                 Debug.Assert(bucket.Count > 0);
 
-                UpdateGroup(groupKey, groupValue, bucket, changingElements);
+                UpdateGroupNonLocked(groupKey, groupValue, bucket, changingElements);
             }
         }
 
         public virtual void VerifyCapacity()
         {
-            if (Count > _poolCapacity && _logger.IsWarn)
+            if (_logger.IsWarn && Count > _poolCapacity)
                 _logger.Warn($"TxPool exceeds the config size {Count}/{_poolCapacity}");
         }
     }

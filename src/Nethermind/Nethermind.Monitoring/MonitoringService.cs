@@ -81,13 +81,7 @@ namespace Nethermind.Monitoring
             }
             if (_exposePort is not null)
             {
-                IMetricServer metricServer = RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ?
-                    // MetricServer uses HttpListener which on Windows either needs
-                    // permissions at OS or Admin mode, whereas KestrelMetricServer doesn't need those
-                    new KestrelMetricServer(_exposePort.Value) :
-                    // KestrelMetricServer intercept SIGTERM causing exitcode to be incorrect
-                    new MetricServer(_exposePort.Value);
-                metricServer.Start();
+                new NethermindKestrelMetricServer(_exposePort.Value).Start();
             }
             await Task.Factory.StartNew(() => _metricsController.StartUpdating(), TaskCreationOptions.LongRunning);
             if (_logger.IsInfo) _logger.Info($"Started monitoring for the group: {_options.Group}, instance: {_options.Instance}");
