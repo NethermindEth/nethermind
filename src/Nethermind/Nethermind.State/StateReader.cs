@@ -15,17 +15,15 @@ namespace Nethermind.State
 {
     public class StateReader : IStateReader
     {
+        private readonly IStateFactory _factory;
         private readonly IKeyValueStore _codeDb;
         private readonly ILogger _logger;
-        private readonly StateTree _state;
-        private readonly StorageTree _storage;
 
-        public StateReader(ITrieStore? trieStore, IKeyValueStore? codeDb, ILogManager? logManager)
+        public StateReader(IStateFactory factory, IKeyValueStore? codeDb, ILogManager? logManager)
         {
             _logger = logManager?.GetClassLogger<StateReader>() ?? throw new ArgumentNullException(nameof(logManager));
             _codeDb = codeDb ?? throw new ArgumentNullException(nameof(codeDb));
-            _state = new StateTree(trieStore, logManager);
-            _storage = new StorageTree(trieStore, Keccak.EmptyTreeHash, logManager);
+            _factory = factory;
         }
 
         public Account? GetAccount(Hash256 stateRoot, Address address)
@@ -33,16 +31,14 @@ namespace Nethermind.State
             return GetState(stateRoot, address);
         }
 
-        public byte[] GetStorage(Hash256 storageRoot, in UInt256 index)
+        public byte[]? GetStorage(Hash256 stateRoot, Address address, in UInt256 index)
         {
-            if (storageRoot == Keccak.EmptyTreeHash)
-            {
-                return new byte[] { 0 };
-            }
-
             Metrics.StorageTreeReads++;
-            return _storage.Get(index, storageRoot);
+            using IReadOnlyState state = GetReadOnlyState(stateRoot);
+            return state.GetStorageAt(new StorageCell(address, index));
         }
+
+        private IReadOnlyState GetReadOnlyState(Hash256 stateRoot) => _factory.GetReadOnly(stateRoot);
 
         public UInt256 GetBalance(Hash256 stateRoot, Address address)
         {
@@ -61,7 +57,13 @@ namespace Nethermind.State
 
         public void RunTreeVisitor(ITreeVisitor treeVisitor, Hash256 rootHash, VisitingOptions? visitingOptions = null)
         {
-            _state.Accept(treeVisitor, rootHash, visitingOptions);
+            if (treeVisitor is RootCheckVisitor rootCheck)
+            {
+                rootCheck.HasRoot = _factory.HasRoot(rootHash);
+                return;
+            }
+
+            throw new NotImplementedException($"The type of visitor {treeVisitor.GetType()} is not handled now");
         }
 
         public bool HasStateForRoot(Hash256 stateRoot)
@@ -85,8 +87,8 @@ namespace Nethermind.State
             }
 
             Metrics.StateTreeReads++;
-            Account? account = _state.Get(address, stateRoot);
-            return account;
+            using IReadOnlyState state = GetReadOnlyState(stateRoot);
+            return state.Get(address);
         }
     }
 }

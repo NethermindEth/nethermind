@@ -34,17 +34,20 @@ namespace Nethermind.State
 
         private readonly List<Change> _keptInCache = new();
         private readonly ILogger _logger;
+        private readonly IStateOwner _owner;
+        private readonly IStateFactory _factory;
         private readonly IKeyValueStore _codeDb;
 
         private int _capacity = StartCapacity;
         private Change?[] _changes = new Change?[StartCapacity];
         private int _currentPosition = Resettable.EmptyPosition;
 
-        public StateProvider(ITrieStore? trieStore, IKeyValueStore? codeDb, ILogManager? logManager, StateTree? stateTree = null)
+        public StateProvider(IStateOwner owner, IStateFactory factory, IKeyValueStore? codeDb, ILogManager? logManager, StateTree? stateTree = null)
         {
             _logger = logManager?.GetClassLogger<StateProvider>() ?? throw new ArgumentNullException(nameof(logManager));
             _codeDb = codeDb ?? throw new ArgumentNullException(nameof(codeDb));
-            _tree = stateTree ?? new StateTree(trieStore, logManager);
+            _owner = owner;
+            _factory = factory;
         }
 
         public void Accept(ITreeVisitor? visitor, Hash256? stateRoot, VisitingOptions? visitingOptions = null)
@@ -52,26 +55,18 @@ namespace Nethermind.State
             ArgumentNullException.ThrowIfNull(visitor);
             ArgumentNullException.ThrowIfNull(stateRoot);
 
-            _tree.Accept(visitor, stateRoot, visitingOptions);
-        }
+            if (visitor is RootCheckVisitor rootCheck)
+            {
+                rootCheck.HasRoot = _factory.HasRoot(stateRoot);
+            }
 
-        private bool _needsStateRootUpdate;
-
-        public void RecalculateStateRoot()
-        {
-            _tree.UpdateRootHash();
-            _needsStateRootUpdate = false;
+            throw new NotImplementedException($"The type of visitor {visitor.GetType()} is not handled now");
         }
 
         public Hash256 StateRoot
         {
             get
             {
-                if (_needsStateRootUpdate)
-                {
-                    throw new InvalidOperationException();
-                }
-
                 return _tree.RootHash;
             }
             set => _tree.RootHash = value;
@@ -147,7 +142,6 @@ namespace Nethermind.State
 
         public void InsertCode(Address address, ReadOnlyMemory<byte> code, IReleaseSpec spec, bool isGenesis = false)
         {
-            _needsStateRootUpdate = true;
             Hash256 codeHash = code.Length == 0 ? Keccak.OfAnEmptyString : Keccak.Compute(code.Span);
 
             // Don't reinsert if already inserted. This can be the case when the same
@@ -197,8 +191,6 @@ namespace Nethermind.State
 
         private void SetNewBalance(Address address, in UInt256 balanceChange, IReleaseSpec releaseSpec, bool isSubtracting)
         {
-            _needsStateRootUpdate = true;
-
             Account GetThroughCacheCheckExists()
             {
                 Account result = GetThroughCache(address);
@@ -246,13 +238,11 @@ namespace Nethermind.State
 
         public void SubtractFromBalance(Address address, in UInt256 balanceChange, IReleaseSpec releaseSpec)
         {
-            _needsStateRootUpdate = true;
             SetNewBalance(address, balanceChange, releaseSpec, true);
         }
 
         public void AddToBalance(Address address, in UInt256 balanceChange, IReleaseSpec releaseSpec)
         {
-            _needsStateRootUpdate = true;
             SetNewBalance(address, balanceChange, releaseSpec, false);
         }
 
@@ -264,7 +254,6 @@ namespace Nethermind.State
         /// <param name="storageRoot"></param>
         public void UpdateStorageRoot(Address address, Hash256 storageRoot)
         {
-            _needsStateRootUpdate = true;
             Account? account = GetThroughCache(address);
             if (account is null)
             {
@@ -281,7 +270,6 @@ namespace Nethermind.State
 
         public void IncrementNonce(Address address)
         {
-            _needsStateRootUpdate = true;
             Account? account = GetThroughCache(address);
             if (account is null)
             {
@@ -295,7 +283,6 @@ namespace Nethermind.State
 
         public void DecrementNonce(Address address)
         {
-            _needsStateRootUpdate = true;
             Account? account = GetThroughCache(address);
             if (account is null)
             {
@@ -345,7 +332,6 @@ namespace Nethermind.State
 
         public void DeleteAccount(Address address)
         {
-            _needsStateRootUpdate = true;
             PushDelete(address);
         }
 
@@ -414,7 +400,6 @@ namespace Nethermind.State
 
         public void CreateAccount(Address address, in UInt256 balance, in UInt256 nonce = default)
         {
-            _needsStateRootUpdate = true;
             if (_logger.IsTrace) _logger.Trace($"Creating account: {address} with balance {balance} and nonce {nonce}");
             Account account = (balance.IsZero && nonce.IsZero) ? Account.TotallyEmpty : new Account(nonce, balance);
             PushNew(address, account);
@@ -676,15 +661,14 @@ namespace Nethermind.State
         private Account? GetState(Address address)
         {
             Metrics.StateTreeReads++;
-            Account? account = _tree.Get(address);
+            Account? account = _owner.State.Get(address);
             return account;
         }
 
         private void SetState(Address address, Account? account)
         {
-            _needsStateRootUpdate = true;
             Metrics.StateTreeWrites++;
-            _tree.Set(address, account);
+            _owner.State.Set(address, account);
         }
 
         private readonly HashSet<Address> _readsForTracing = new();
@@ -806,7 +790,6 @@ namespace Nethermind.State
             _readsForTracing.Clear();
             _currentPosition = Resettable.EmptyPosition;
             Array.Clear(_changes, 0, _changes.Length);
-            _needsStateRootUpdate = false;
 
             if (_codeDb is IReadOnlyDb readOnlyDb)
             {
@@ -814,25 +797,9 @@ namespace Nethermind.State
             }
         }
 
-        public void CommitTree(long blockNumber)
-        {
-            if (_needsStateRootUpdate)
-            {
-                RecalculateStateRoot();
-            }
-
-            _tree.Commit(blockNumber);
-        }
-
-        public static void CommitBranch()
-        {
-            // placeholder for the three level Commit->CommitBlock->CommitBranch
-        }
-
         // used in EthereumTests
         internal void SetNonce(Address address, in UInt256 nonce)
         {
-            _needsStateRootUpdate = true;
             Account? account = GetThroughCache(address);
             if (account is null)
             {
