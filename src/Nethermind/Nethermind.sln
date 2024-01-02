@@ -221,6 +221,8 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Init.Snapshot", 
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Paprika", "..\Paprika\src\Paprika\Paprika.csproj", "{D946ED60-DD43-4004-8B65-654A47DDA193}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Paprika", "Nethermind.Paprika\Nethermind.Paprika.csproj", "{071D2CA9-12D7-433D-9772-79CC013E9696}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -615,6 +617,10 @@ Global
 		{D946ED60-DD43-4004-8B65-654A47DDA193}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{D946ED60-DD43-4004-8B65-654A47DDA193}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{D946ED60-DD43-4004-8B65-654A47DDA193}.Release|Any CPU.Build.0 = Release|Any CPU
+		{071D2CA9-12D7-433D-9772-79CC013E9696}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{071D2CA9-12D7-433D-9772-79CC013E9696}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{071D2CA9-12D7-433D-9772-79CC013E9696}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{071D2CA9-12D7-433D-9772-79CC013E9696}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

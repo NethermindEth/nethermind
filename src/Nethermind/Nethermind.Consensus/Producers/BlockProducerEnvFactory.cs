@@ -21,6 +21,7 @@ namespace Nethermind.Consensus.Producers
 {
     public class BlockProducerEnvFactory : IBlockProducerEnvFactory
     {
+        private readonly IReadOnlyDbProvider _apiDbProvider;
         protected readonly IStateFactory _stateFactory;
         protected readonly IBlockTree _blockTree;
         protected readonly ISpecProvider _specProvider;
@@ -35,8 +36,7 @@ namespace Nethermind.Consensus.Producers
 
         public IBlockTransactionsExecutorFactory TransactionsExecutorFactory { get; set; }
 
-        public BlockProducerEnvFactory(
-            IStateFactory stateFactory,
+        public BlockProducerEnvFactory(IReadOnlyDbProvider apiDbProvider, IStateFactory stateFactory,
             IBlockTree blockTree,
             ISpecProvider specProvider,
             IBlockValidator blockValidator,
@@ -48,6 +48,7 @@ namespace Nethermind.Consensus.Producers
             IBlocksConfig blocksConfig,
             ILogManager logManager)
         {
+            _apiDbProvider = apiDbProvider;
             _stateFactory = stateFactory;
             _blockTree = blockTree;
             _specProvider = specProvider;
@@ -103,7 +104,7 @@ namespace Nethermind.Consensus.Producers
         }
 
         protected virtual ReadOnlyTxProcessingEnv CreateReadonlyTxProcessingEnv(IStateFactory stateFactory, ReadOnlyBlockTree readOnlyBlockTree) =>
-            new(stateFactory, readOnlyBlockTree, _specProvider, _logManager);
+            new(_apiDbProvider, stateFactory, readOnlyBlockTree, _specProvider, _logManager);
 
         protected virtual ITxSource CreateTxSourceForProducer(
             ITxSource? additionalTxSource,

@@ -5,6 +5,7 @@ using System;
 using Nethermind.Blockchain;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
+using Nethermind.Db;
 using Nethermind.Evm;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
@@ -24,15 +25,17 @@ namespace Nethermind.Consensus.Processing
         public IVirtualMachine Machine { get; }
 
         public ReadOnlyTxProcessingEnv(
+            IReadOnlyDbProvider readOnlyDbProvider,
             IStateFactory stateFactory,
             IBlockTree? blockTree,
             ISpecProvider? specProvider,
             ILogManager? logManager)
-            : this(stateFactory, blockTree?.AsReadOnly(), specProvider, logManager)
+            : this(readOnlyDbProvider, stateFactory, blockTree?.AsReadOnly(), specProvider, logManager)
         {
         }
 
         public ReadOnlyTxProcessingEnv(
+            IReadOnlyDbProvider readOnlyDbProvider,
             IStateFactory stateFactory,
             IReadOnlyBlockTree? readOnlyBlockTree,
             ISpecProvider? specProvider,
@@ -40,6 +43,8 @@ namespace Nethermind.Consensus.Processing
         {
             ArgumentNullException.ThrowIfNull(specProvider);
             ArgumentNullException.ThrowIfNull(stateFactory);
+
+            ReadOnlyDb codeDb = readOnlyDbProvider.CodeDb.AsReadOnly(true);
 
             StateReader = new StateReader(stateFactory, codeDb, logManager);
             StateProvider = new WorldState(stateFactory, codeDb, logManager);
