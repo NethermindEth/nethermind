@@ -76,7 +76,7 @@ namespace Nethermind.Trie.Test
             public static PruningContext InMemoryAlwaysPrune
             {
                 [DebuggerStepThrough]
-                get => new(new TestPruningStrategy(true, true), No.Persistence);
+                get => new(new TestPruningStrategy(true, true, 1000000), No.Persistence);
             }
 
             public static PruningContext SetupWithPersistenceEveryEightBlocks
