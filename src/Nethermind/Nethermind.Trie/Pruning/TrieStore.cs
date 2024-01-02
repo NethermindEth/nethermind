@@ -296,8 +296,7 @@ namespace Nethermind.Trie.Pruning
 
             if (reorgDepthOverride != null) _reorgDepth = reorgDepthOverride.Value;
 
-            // Note: this does mean that after full pruning from Hash, it does not turn on automatically.
-            if (pruningStrategy.TrackedPastKeyCount > 0 && nodeStorage.Scheme == INodeStorage.KeyScheme.HalfPath)
+            if (pruningStrategy.TrackedPastKeyCount > 0 && nodeStorage.RequirePath)
             {
                 _pastPathHash = new(pruningStrategy.TrackedPastKeyCount, "");
             }
