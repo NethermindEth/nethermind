@@ -13,7 +13,7 @@ public class NodeStorage : INodeStorage
 {
     private readonly IKeyValueStore _keyValueStore;
     private static byte[] EmptyTreeHashBytes = { 128 };
-    public const int StoragePathLength = 48;
+    private const int StoragePathLength = 74;
 
     public INodeStorage.KeyScheme Scheme { get; set; }
     public bool RequirePath { get; }
@@ -52,9 +52,9 @@ public class NodeStorage : INodeStorage
         // | section byte | 8 byte from path | path length byte | 32 byte hash |
         // +--------------+------------------+------------------+--------------+
         //
-        // For storage (total 48 byte)
+        // For storage (total 74 byte)
         // +--------------+---------------------+------------------+------------------+--------------+
-        // | section byte | 7 byte from address | 7 byte from path | path length byte | 32 byte hash |
+        // | section byte | 32 byte from address | 8 byte from path | path length byte | 32 byte hash |
         // +--------------+---------------------+------------------+------------------+--------------+
         //
         // The section byte is:
@@ -65,6 +65,11 @@ public class NodeStorage : INodeStorage
         // The keys are separated due to the different characteristics of these nodes. The idea being that top level
         // node can be up to 5 times bigger than lower node, and grew a lot due to pruning. So mixing them makes lower
         // node sparser and have poorer cache hit, and make traversing leaves for snap serving slower.
+        //
+        // Technically, you'll need 9 byte for state and 8 byte for storage on mainnet for the path. But we want to keep
+        // key small at the same time too. If the key are too small, multiple node will be out of order, which
+        // can be slower but as long as they are in the same data block, it should not make a difference.
+        // On mainnet, the out of order key is around 0.03% for address and 0.07% for storage.
 
         if (address == null)
         {
@@ -91,16 +96,12 @@ public class NodeStorage : INodeStorage
         }
         else
         {
-            // Technically, you'll need 9 byte for address and 8 byte for storage on mainnet. But we want to keep
-            // key small at the same time too. If the key are too small, multiple node will be out of order, which
-            // can be slower but as long as they are in the same data block, it should not make a difference.
-            // On mainnet, the out of order key is around 0.03% for address and 0.07% for storage.
             pathSpan[0] = 2;
-            address.Bytes[..7].CopyTo(pathSpan[1..]);
-            path.Path.BytesAsSpan[..7].CopyTo(pathSpan[8..]);
+            address.Bytes.CopyTo(pathSpan[1..]);
+            path.Path.BytesAsSpan[..8].CopyTo(pathSpan[33..]);
 
-            pathSpan[15] = (byte)path.Length;
-            keccak.Bytes.CopyTo(pathSpan[16..]);
+            pathSpan[41] = (byte)path.Length;
+            keccak.Bytes.CopyTo(pathSpan[42..]);
             return pathSpan;
         }
 
