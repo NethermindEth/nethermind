@@ -296,7 +296,8 @@ namespace Nethermind.Trie.Pruning
 
             if (reorgDepthOverride != null) _reorgDepth = reorgDepthOverride.Value;
 
-            if (pruningStrategy.TrackedPastKeyCount > 0 && nodeStorage.RequirePath) {
+            if (pruningStrategy.TrackedPastKeyCount > 0 && nodeStorage.RequirePath)
+            {
                 _pastPathHash = new(pruningStrategy.TrackedPastKeyCount, "");
             }
             else

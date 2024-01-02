@@ -3,7 +3,7 @@
 
 namespace Nethermind.Trie.Pruning;
 
-public class TrackedPastKeyCountStrategy: IPruningStrategy
+public class TrackedPastKeyCountStrategy : IPruningStrategy
 {
     private IPruningStrategy _baseStrategy;
     private readonly int _trackedPastKeyCount;

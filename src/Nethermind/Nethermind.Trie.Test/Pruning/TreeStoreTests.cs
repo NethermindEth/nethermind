@@ -822,7 +822,8 @@ namespace Nethermind.Trie.Test.Pruning
                 await Task.Delay(TimeSpan.FromMilliseconds(10));
             }
 
-            if (_scheme == INodeStorage.KeyScheme.Hash) {
+            if (_scheme == INodeStorage.KeyScheme.Hash)
+            {
                 memDb.Count.Should().NotBe(1);
             }
             else
@@ -846,7 +847,7 @@ namespace Nethermind.Trie.Test.Pruning
 
             for (int i = 0; i < 64; i++)
             {
-                TrieNode node = new(NodeType.Leaf, TestItem.Keccaks[i%4], new byte[2]);
+                TrieNode node = new(NodeType.Leaf, TestItem.Keccaks[i % 4], new byte[2]);
                 trieStore.CommitNode(i, new NodeCommitInfo(node, TreePath.Empty));
                 node = trieStore.FindCachedOrUnknown(TreePath.Empty, node.Keccak);
                 trieStore.FinishBlockCommit(TrieType.State, i, node);
@@ -855,7 +856,8 @@ namespace Nethermind.Trie.Test.Pruning
                 await Task.Delay(TimeSpan.FromMilliseconds(10));
             }
 
-            if (_scheme == INodeStorage.KeyScheme.Hash) {
+            if (_scheme == INodeStorage.KeyScheme.Hash)
+            {
                 memDb.Count.Should().NotBe(4);
             }
             else
