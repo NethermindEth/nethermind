@@ -171,7 +171,7 @@ public class StartBlockProducerAuRa
     {
         // We need special one for TxPriority as its following Head separately with events and we want rules from Head, not produced block
         IReadOnlyTxProcessorSource readOnlyTxProcessorSourceForTxPriority =
-            new ReadOnlyTxProcessingEnv(_api.WorldStateManager!, _api.BlockTree, _api.SpecProvider, _api.LogManager);
+            new ReadOnlyTxProcessingEnv(_api.StateFactory!, _api.BlockTree, _api.SpecProvider, _api.LogManager);
 
         (_txPriorityContract, _localDataSource) = TxAuRaFilterBuilders.CreateTxPrioritySources(_auraConfig, _api, readOnlyTxProcessorSourceForTxPriority);
 

@@ -121,7 +121,7 @@ public class AccountAbstractionPlugin : IConsensusWrapperPlugin
         var (getFromApi, _) = _nethermindApi!.ForProducer;
 
         ReadOnlyTxProcessingEnvFactory readOnlyTxProcessingEnvFactory = new(
-            getFromApi.WorldStateManager!,
+            getFromApi.StateFactory!,
             getFromApi.BlockTree,
             getFromApi.SpecProvider,
             getFromApi.LogManager);

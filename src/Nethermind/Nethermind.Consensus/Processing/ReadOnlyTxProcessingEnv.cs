@@ -24,25 +24,25 @@ namespace Nethermind.Consensus.Processing
         public IVirtualMachine Machine { get; }
 
         public ReadOnlyTxProcessingEnv(
-            IWorldStateManager worldStateManager,
+            IStateFactory stateFactory,
             IBlockTree? blockTree,
             ISpecProvider? specProvider,
             ILogManager? logManager)
-            : this(worldStateManager, blockTree?.AsReadOnly(), specProvider, logManager)
+            : this(stateFactory, blockTree?.AsReadOnly(), specProvider, logManager)
         {
         }
 
         public ReadOnlyTxProcessingEnv(
-            IWorldStateManager worldStateManager,
+            IStateFactory stateFactory,
             IReadOnlyBlockTree? readOnlyBlockTree,
             ISpecProvider? specProvider,
             ILogManager? logManager)
         {
             ArgumentNullException.ThrowIfNull(specProvider);
-            ArgumentNullException.ThrowIfNull(worldStateManager);
+            ArgumentNullException.ThrowIfNull(stateFactory);
 
-            StateReader = worldStateManager.GlobalStateReader;
-            StateProvider = worldStateManager.CreateResettableWorldState();
+            StateReader = new StateReader(stateFactory, codeDb, logManager);
+            StateProvider = new WorldState(stateFactory, codeDb, logManager);
 
             BlockTree = readOnlyBlockTree ?? throw new ArgumentNullException(nameof(readOnlyBlockTree));
             BlockhashProvider = new BlockhashProvider(BlockTree, logManager);

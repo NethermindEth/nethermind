@@ -56,6 +56,11 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
     void ResetTo(Hash256 stateRoot);
 
     /// <summary>
+    /// Resets the world state to the given state root.
+    /// </summary>
+    void Reset();
+
+    /// <summary>
     /// Creates a restartable snapshot.
     /// </summary>
     /// <param name="newTransactionStart"> Indicates new transaction will start here.</param>

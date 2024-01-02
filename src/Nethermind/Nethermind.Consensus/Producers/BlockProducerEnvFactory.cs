@@ -21,7 +21,7 @@ namespace Nethermind.Consensus.Producers
 {
     public class BlockProducerEnvFactory : IBlockProducerEnvFactory
     {
-        protected readonly IWorldStateManager _worldStateManager;
+        protected readonly IStateFactory _stateFactory;
         protected readonly IBlockTree _blockTree;
         protected readonly ISpecProvider _specProvider;
         protected readonly IBlockValidator _blockValidator;
@@ -36,7 +36,7 @@ namespace Nethermind.Consensus.Producers
         public IBlockTransactionsExecutorFactory TransactionsExecutorFactory { get; set; }
 
         public BlockProducerEnvFactory(
-            IWorldStateManager worldStateManager,
+            IStateFactory stateFactory,
             IBlockTree blockTree,
             ISpecProvider specProvider,
             IBlockValidator blockValidator,
@@ -48,7 +48,7 @@ namespace Nethermind.Consensus.Producers
             IBlocksConfig blocksConfig,
             ILogManager logManager)
         {
-            _worldStateManager = worldStateManager;
+            _stateFactory = stateFactory;
             _blockTree = blockTree;
             _specProvider = specProvider;
             _blockValidator = blockValidator;
@@ -68,7 +68,7 @@ namespace Nethermind.Consensus.Producers
             ReadOnlyBlockTree readOnlyBlockTree = _blockTree.AsReadOnly();
 
             ReadOnlyTxProcessingEnv txProcessingEnv =
-                CreateReadonlyTxProcessingEnv(_worldStateManager, readOnlyBlockTree);
+                CreateReadonlyTxProcessingEnv(_stateFactory, readOnlyBlockTree);
 
             BlockProcessor blockProcessor =
                 CreateBlockProcessor(txProcessingEnv,
@@ -102,8 +102,8 @@ namespace Nethermind.Consensus.Producers
             };
         }
 
-        protected virtual ReadOnlyTxProcessingEnv CreateReadonlyTxProcessingEnv(IWorldStateManager worldStateManager, ReadOnlyBlockTree readOnlyBlockTree) =>
-            new(worldStateManager, readOnlyBlockTree, _specProvider, _logManager);
+        protected virtual ReadOnlyTxProcessingEnv CreateReadonlyTxProcessingEnv(IStateFactory stateFactory, ReadOnlyBlockTree readOnlyBlockTree) =>
+            new(stateFactory, readOnlyBlockTree, _specProvider, _logManager);
 
         protected virtual ITxSource CreateTxSourceForProducer(
             ITxSource? additionalTxSource,

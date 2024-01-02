@@ -22,33 +22,32 @@ using Nethermind.Trie.Pruning;
 
 namespace Nethermind.State
 {
-    public class WorldState : IWorldState
+    public class WorldState : IWorldState, IStateOwner
     {
-        internal readonly StateProvider _stateProvider;
-        internal readonly PersistentStorageProvider _persistentStorageProvider;
+        private readonly IStateFactory _factory;
+        private readonly StateProvider _stateProvider;
+        private readonly PersistentStorageProvider _persistentStorageProvider;
         private readonly TransientStorageProvider _transientStorageProvider;
+        private IState? _state;
 
         public Hash256 StateRoot
         {
-            get => _stateProvider.StateRoot;
+            get => _state!.StateRoot;
             set
             {
-                _stateProvider.StateRoot = value;
-                _persistentStorageProvider.StateRoot = value;
+                // clean previous and get new
+                _state?.Dispose();
+                _state = _factory.Get(value);
             }
         }
 
-        public WorldState(ITrieStore? trieStore, IKeyValueStore? codeDb, ILogManager? logManager)
-        {
-            _stateProvider = new StateProvider(trieStore, codeDb, logManager);
-            _persistentStorageProvider = new PersistentStorageProvider(trieStore, _stateProvider, logManager);
-            _transientStorageProvider = new TransientStorageProvider(logManager);
-        }
+        public IState State => _state!;
 
-        internal WorldState(ITrieStore? trieStore, IKeyValueStore? codeDb, ILogManager? logManager, StateTree stateTree, IStorageTreeFactory storageTreeFactory)
+        public WorldState(IStateFactory factory, IKeyValueStore? codeDb, ILogManager? logManager)
         {
-            _stateProvider = new StateProvider(trieStore, codeDb, logManager, stateTree);
-            _persistentStorageProvider = new PersistentStorageProvider(trieStore, _stateProvider, logManager, storageTreeFactory);
+            _factory = factory;
+            _stateProvider = new StateProvider(this, factory, codeDb, logManager);
+            _persistentStorageProvider = new PersistentStorageProvider(this, logManager);
             _transientStorageProvider = new TransientStorageProvider(logManager);
         }
 
@@ -84,6 +83,16 @@ namespace Nethermind.State
         }
         public void Reset()
         {
+            _state.Reset();
+            _stateProvider.Reset();
+            _persistentStorageProvider.Reset();
+            _transientStorageProvider.Reset();
+        }
+
+        public void ResetTo(Hash256 stateRoot)
+        {
+            _state?.Dispose();
+            _state = _factory.Get(stateRoot);
             _stateProvider.Reset();
             _persistentStorageProvider.Reset();
             _transientStorageProvider.Reset();
@@ -94,10 +103,7 @@ namespace Nethermind.State
             _persistentStorageProvider.ClearStorage(address);
             _transientStorageProvider.ClearStorage(address);
         }
-        public void RecalculateStateRoot()
-        {
-            _stateProvider.RecalculateStateRoot();
-        }
+
         public void DeleteAccount(Address address)
         {
             _stateProvider.DeleteAccount(address);
@@ -137,9 +143,12 @@ namespace Nethermind.State
 
         public void CommitTree(long blockNumber)
         {
-            _persistentStorageProvider.CommitTrees(blockNumber);
-            _stateProvider.CommitTree(blockNumber);
-            _persistentStorageProvider.StateRoot = _stateProvider.StateRoot;
+            _state.Commit(blockNumber);
+
+            // clean previous and get new
+            IState previous = _state;
+            previous.Dispose();
+            _state = _factory.Get(previous.StateRoot);
         }
 
         public void TouchCode(Hash256 codeHash)

@@ -13,13 +13,11 @@ namespace Nethermind.Evm.TransactionProcessing
     {
         private readonly ITransactionProcessor _transactionProcessor;
         private readonly IWorldState _stateProvider;
-        private readonly Hash256 _stateBefore;
 
         public ReadOnlyTransactionProcessor(ITransactionProcessor transactionProcessor, IWorldState stateProvider, Hash256 startState)
         {
             _transactionProcessor = transactionProcessor ?? throw new ArgumentNullException(nameof(transactionProcessor));
             _stateProvider = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
-            _stateBefore = _stateProvider.StateRoot;
             _stateProvider.StateRoot = startState ?? throw new ArgumentNullException(nameof(startState));
         }
 
@@ -40,7 +38,6 @@ namespace Nethermind.Evm.TransactionProcessing
 
         public void Dispose()
         {
-            _stateProvider.StateRoot = _stateBefore;
             _stateProvider.Reset();
         }
     }

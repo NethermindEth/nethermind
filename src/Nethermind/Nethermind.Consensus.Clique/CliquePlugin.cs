@@ -94,7 +94,7 @@ namespace Nethermind.Consensus.Clique
             ITransactionComparerProvider transactionComparerProvider = getFromApi.TransactionComparerProvider;
 
             ReadOnlyTxProcessingEnv producerEnv = new(
-                _nethermindApi.WorldStateManager!,
+                _nethermindApi.StateFactory!,
                 readOnlyBlockTree,
                 getFromApi.SpecProvider,
                 getFromApi.LogManager);

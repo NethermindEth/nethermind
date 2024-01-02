@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.IO.Abstractions;
 using System.Threading;
@@ -76,7 +77,7 @@ namespace Nethermind.Api
 
             // TODO: reuse the same trie cache here
             ReadOnlyTxProcessingEnv readOnlyTxProcessingEnv = new(
-                WorldStateManager!,
+                StateFactory!,
                 readOnlyTree,
                 SpecProvider,
                 LogManager);
@@ -187,13 +188,12 @@ namespace Nethermind.Api
         public ISyncServer? SyncServer { get; set; }
         public IWorldState? WorldState { get; set; }
         public IReadOnlyStateProvider? ChainHeadStateProvider { get; set; }
-        public IWorldStateManager? WorldStateManager { get; set; }
         public IStateReader? StateReader { get; set; }
         public IStaticNodesManager? StaticNodesManager { get; set; }
         public ITimestamper Timestamper { get; } = Core.Timestamper.Default;
         public ITimerFactory TimerFactory { get; } = Core.Timers.TimerFactory.Default;
         public ITransactionProcessor? TransactionProcessor { get; set; }
-        public ITrieStore? TrieStore { get; set; }
+        public IStateFactory? StateFactory { get; set; }
         public ITxSender? TxSender { get; set; }
         public INonceManager? NonceManager { get; set; }
         public ITxPool? TxPool { get; set; }
@@ -201,7 +201,38 @@ namespace Nethermind.Api
         public IHealthHintService? HealthHintService { get; set; }
         public IRpcCapabilitiesProvider? RpcCapabilitiesProvider { get; set; }
         public ITxValidator? TxValidator { get; set; }
-        public IBlockFinalizationManager? FinalizationManager { get; set; }
+        public IBlockFinalizationManager? FinalizationManager
+        {
+            get => _finalizationManager;
+            set
+            {
+                if (_blocksFinalizedHandlers.Count > 0)
+                {
+                    foreach (EventHandler<FinalizeEventArgs> handler in _blocksFinalizedHandlers)
+                    {
+                        // TODO: unregistering?
+                        value!.BlocksFinalized += handler;
+                    }
+                }
+
+                _finalizationManager = value;
+            }
+        }
+
+        public void RegisterForBlockFinalized(EventHandler<FinalizeEventArgs> blocksFinalizedHandler)
+        {
+            if (FinalizationManager != null)
+            {
+                FinalizationManager.BlocksFinalized += blocksFinalizedHandler;
+            }
+            else
+            {
+                _blocksFinalizedHandlers.Add(blocksFinalizedHandler);
+            }
+        }
+
+        private List<EventHandler<FinalizeEventArgs>> _blocksFinalizedHandlers = new();
+        private IBlockFinalizationManager? _finalizationManager;
         public IGasLimitCalculator? GasLimitCalculator { get; set; }
 
         public IBlockProducerEnvFactory? BlockProducerEnvFactory { get; set; }

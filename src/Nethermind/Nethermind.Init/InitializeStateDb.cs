@@ -76,82 +76,23 @@ public class InitializeStateDb : IStep
             setApi.WitnessRepository = NullWitnessCollector.Instance;
         }
 
-        CachingStore cachedStateDb = getApi.DbProvider.StateDb
-            .Cached(Trie.MemoryAllowance.TrieNodeCacheCount);
         IKeyValueStore codeDb = getApi.DbProvider.CodeDb
             .WitnessedBy(witnessCollector);
 
-        IKeyValueStoreWithBatching stateWitnessedBy = cachedStateDb.WitnessedBy(witnessCollector);
-        IPersistenceStrategy persistenceStrategy;
-        IPruningStrategy pruningStrategy;
-        if (pruningConfig.Mode.IsMemory())
-        {
-            persistenceStrategy = Persist.IfBlockOlderThan(pruningConfig.PersistenceInterval); // TODO: this should be based on time
-            if (pruningConfig.Mode.IsFull())
-            {
-                PruningTriggerPersistenceStrategy triggerPersistenceStrategy = new((IFullPruningDb)getApi.DbProvider!.StateDb, getApi.BlockTree!, getApi.LogManager);
-                getApi.DisposeStack.Push(triggerPersistenceStrategy);
-                persistenceStrategy = persistenceStrategy.Or(triggerPersistenceStrategy);
-            }
 
-            pruningStrategy = Prune.WhenCacheReaches(pruningConfig.CacheMb.MB()); // TODO: memory hint should define this
-        }
-        else
-        {
-            pruningStrategy = No.Pruning;
-            persistenceStrategy = Persist.EveryBlock;
-        }
+        IStateFactory stateFactory = setApi.StateFactory!;
 
-        TrieStore trieStore = syncConfig.TrieHealing
-            ? new HealingTrieStore(
-                stateWitnessedBy,
-                pruningStrategy,
-                persistenceStrategy,
-                getApi.LogManager)
-            : new TrieStore(
-                stateWitnessedBy,
-                pruningStrategy,
-                persistenceStrategy,
-                getApi.LogManager);
-
-        // TODO: Needed by node serving. Probably should use `StateReader` instead.
-        setApi.TrieStore = trieStore;
-
-        IWorldState worldState = syncConfig.TrieHealing
-            ? new HealingWorldState(
-                trieStore,
-                codeDb,
-                getApi.LogManager)
-            : new WorldState(
-                trieStore,
-                codeDb,
-                getApi.LogManager);
-
-        if (pruningConfig.Mode.IsFull())
-        {
-            IFullPruningDb fullPruningDb = (IFullPruningDb)getApi.DbProvider!.StateDb;
-            fullPruningDb.PruningStarted += (_, args) =>
-            {
-                cachedStateDb.PersistCache(args.Context);
-                trieStore.PersistCache(args.Context, args.Context.CancellationTokenSource.Token);
-            };
-        }
 
         // This is probably the point where a different state implementation would switch.
-        IWorldStateManager stateManager = setApi.WorldStateManager = new WorldStateManager(
-            worldState,
-            trieStore,
-            getApi.DbProvider,
-            getApi.LogManager);
+        IWorldState worldState = new WorldState(stateFactory, codeDb, getApi.LogManager);
+        setApi.WorldState = worldState;
 
         // TODO: Don't forget this
-        TrieStoreBoundaryWatcher trieStoreBoundaryWatcher = new(stateManager, _api.BlockTree!, _api.LogManager);
+        TrieStoreBoundaryWatcher trieStoreBoundaryWatcher = new(stateFactory, _api.BlockTree!, _api.LogManager);
         getApi.DisposeStack.Push(trieStoreBoundaryWatcher);
-        getApi.DisposeStack.Push(trieStore);
 
-        setApi.WorldState = stateManager.GlobalWorldState;
-        setApi.StateReader = stateManager.GlobalStateReader;
-        setApi.ChainHeadStateProvider = new ChainHeadReadOnlyStateProvider(getApi.BlockTree, stateManager.GlobalStateReader);
+        IStateReader stateReader = setApi.StateReader = new StateReader(stateFactory, readOnly.GetDb<IDb>(DbNames.Code), getApi.LogManager);
+        setApi.ChainHeadStateProvider = new ChainHeadReadOnlyStateProvider(getApi.BlockTree, stateReader);
 
         worldState.StateRoot = getApi.BlockTree!.Head?.StateRoot ?? Keccak.EmptyTreeHash;
 
@@ -162,7 +103,7 @@ public class InitializeStateDb : IStep
                 try
                 {
                     _logger!.Info("Collecting trie stats and verifying that no nodes are missing...");
-                    IWorldState diagStateProvider = stateManager.GlobalWorldState;
+                    IWorldState diagStateProvider = new WorldState(stateFactory, codeDb, getApi.LogManager);
                     diagStateProvider.StateRoot = getApi.BlockTree!.Head?.StateRoot ?? Keccak.EmptyTreeHash;
                     TrieStats stats = diagStateProvider.CollectStats(getApi.DbProvider.CodeDb, _api.LogManager);
                     _logger.Info($"Starting from {getApi.BlockTree.Head?.Number} {getApi.BlockTree.Head?.StateRoot}{Environment.NewLine}" + stats);
