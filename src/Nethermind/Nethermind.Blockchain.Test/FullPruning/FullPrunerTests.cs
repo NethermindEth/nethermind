@@ -232,7 +232,7 @@ namespace Nethermind.Blockchain.Test.FullPruning
                 PatriciaTree trie = Build.A.Trie(storageForWrite).WithAccountsByIndex(0, 100).TestObject;
                 _stateRoot = trie.RootHash;
                 FullPruningDb = new TestFullPruningDb(new RocksDbSettings("test", "test"), rocksDbFactory, successfulPruning, clearPrunedDb);
-                NodeStorageFactory nodeStorageFactory = new NodeStorageFactory(preferredKeyScheme);
+                NodeStorageFactory nodeStorageFactory = new NodeStorageFactory(preferredKeyScheme, LimboLogs.Instance);
                 nodeStorageFactory.DetectCurrentKeySchemeFrom(TrieDb);
                 NodeStorage = nodeStorageFactory.WrapKeyValueStore(FullPruningDb);
                 StateReader = new StateReader(new TrieStore(NodeStorage, LimboLogs.Instance), new TestMemDb(), LimboLogs.Instance);

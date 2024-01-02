@@ -5,6 +5,7 @@ using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Core;
 using Nethermind.Db;
+using Nethermind.Logging;
 
 namespace Nethermind.Trie;
 
@@ -12,9 +13,11 @@ public class NodeStorageFactory : INodeStorageFactory
 {
     private readonly INodeStorage.KeyScheme _preferredKeyScheme;
     private INodeStorage.KeyScheme? _currentKeyScheme;
+    private readonly ILogger _logger;
 
-    public NodeStorageFactory(INodeStorage.KeyScheme preferredKeyScheme)
+    public NodeStorageFactory(INodeStorage.KeyScheme preferredKeyScheme, ILogManager logManager)
     {
+        _logger = logManager.GetClassLogger();
         _preferredKeyScheme = preferredKeyScheme;
         _currentKeyScheme = null;
     }
@@ -22,6 +25,14 @@ public class NodeStorageFactory : INodeStorageFactory
     public void DetectCurrentKeySchemeFrom(IDb mainStateDb)
     {
         _currentKeyScheme = DetectKeyScheme(mainStateDb);
+        if (_currentKeyScheme == null)
+        {
+            _logger.Info("No current state db key scheme.");
+        }
+        else
+        {
+            _logger.Info($"Detected {_currentKeyScheme} key scheme.");
+        }
     }
 
     public INodeStorage WrapKeyValueStore(IKeyValueStore keyValueStore, bool forceUsePreferredKeyScheme = false)

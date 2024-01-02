@@ -6,6 +6,7 @@ using FluentAssertions;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Db;
+using Nethermind.Logging;
 using NUnit.Framework;
 
 namespace Nethermind.Trie.Test;
@@ -18,7 +19,7 @@ public class NodeStorageFactoryTests
     {
         IDb memDb = PrepareMemDbWithKeyScheme(INodeStorage.KeyScheme.Hash);
 
-        NodeStorageFactory nodeStorageFactory = new NodeStorageFactory(preferredKeyScheme);
+        NodeStorageFactory nodeStorageFactory = new NodeStorageFactory(preferredKeyScheme, LimboLogs.Instance);
         nodeStorageFactory.DetectCurrentKeySchemeFrom(memDb);
         nodeStorageFactory.WrapKeyValueStore(memDb).Scheme.Should().Be(INodeStorage.KeyScheme.Hash);
     }
@@ -29,7 +30,7 @@ public class NodeStorageFactoryTests
     {
         IDb memDb = PrepareMemDbWithKeyScheme(INodeStorage.KeyScheme.HalfPath);
 
-        NodeStorageFactory nodeStorageFactory = new NodeStorageFactory(preferredKeyScheme);
+        NodeStorageFactory nodeStorageFactory = new NodeStorageFactory(preferredKeyScheme, LimboLogs.Instance);
         nodeStorageFactory.DetectCurrentKeySchemeFrom(memDb);
         nodeStorageFactory.WrapKeyValueStore(memDb).Scheme.Should().Be(INodeStorage.KeyScheme.HalfPath);
     }
@@ -45,7 +46,7 @@ public class NodeStorageFactoryTests
             memDb[hash.Bytes] = hash.Bytes.ToArray();
         }
 
-        NodeStorageFactory nodeStorageFactory = new NodeStorageFactory(preferredKeyScheme);
+        NodeStorageFactory nodeStorageFactory = new NodeStorageFactory(preferredKeyScheme, LimboLogs.Instance);
         nodeStorageFactory.DetectCurrentKeySchemeFrom(memDb);
         nodeStorageFactory.WrapKeyValueStore(memDb).Scheme.Should().Be(preferredKeyScheme);
     }
@@ -59,7 +60,7 @@ public class NodeStorageFactoryTests
     {
         IDb memDb = PrepareMemDbWithKeyScheme(currentKeyScheme);
 
-        NodeStorageFactory nodeStorageFactory = new NodeStorageFactory(preferredKeyScheme);
+        NodeStorageFactory nodeStorageFactory = new NodeStorageFactory(preferredKeyScheme, LimboLogs.Instance);
         nodeStorageFactory.DetectCurrentKeySchemeFrom(memDb);
         INodeStorage nodeStorage = nodeStorageFactory.WrapKeyValueStore(memDb, forceUsePreferredKeyScheme: true);
         nodeStorage.Scheme.Should().Be(expectedScheme);
