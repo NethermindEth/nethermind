@@ -10,6 +10,7 @@ using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Specs;
+using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Specs.Forks;
 using NSubstitute;
 using NUnit.Framework;
@@ -156,7 +157,7 @@ namespace Nethermind.Merge.Plugin.Test
             specProvider.TerminalTotalDifficulty = 2;
             MergeConfig? mergeConfig = new() { };
             IBlockCacheService blockCacheService = new BlockCacheService();
-            return new PoSSwitcher(mergeConfig, new SyncConfig(), db, blockTree, specProvider, LimboLogs.Instance);
+            return new PoSSwitcher(mergeConfig, new SyncConfig(), db, blockTree, specProvider, new ChainSpec(), LimboLogs.Instance);
         }
 
     }

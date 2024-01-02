@@ -6,5 +6,6 @@ namespace Nethermind.Db;
 public enum BlobTxsColumns
 {
     FullBlobTxs,
-    LightBlobTxs
+    LightBlobTxs,
+    ProcessedTxs
 }
