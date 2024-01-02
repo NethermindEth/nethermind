@@ -640,6 +640,14 @@ namespace Nethermind.Trie.Pruning
 
                 RemovePastKeys(persistedHashes);
 
+                foreach (KeyValuePair<(Hash256, TinyTreePath, ValueHash256), long> keyValuePair in _persistedLastSeens)
+                {
+                    if (IsNoLongerNeeded(keyValuePair.Value))
+                    {
+                        _persistedLastSeens.Remove(keyValuePair.Key, out _);
+                    }
+                }
+
                 if (candidateSets.Count > 0)
                 {
                     return true;
@@ -686,14 +694,6 @@ namespace Nethermind.Trie.Pruning
                     {
                         deleteNodeBatch.Remove(key.addr, key.path, prevHash);
                     }
-                }
-            }
-
-            foreach (KeyValuePair<(Hash256, TinyTreePath, ValueHash256), long> keyValuePair in _persistedLastSeens)
-            {
-                if (IsNoLongerNeeded(keyValuePair.Value))
-                {
-                    _persistedLastSeens.Remove(keyValuePair.Key, out _);
                 }
             }
         }
