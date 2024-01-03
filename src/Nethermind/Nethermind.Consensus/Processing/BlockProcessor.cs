@@ -234,7 +234,7 @@ public partial class BlockProcessor : IBlockProcessor
 
         TxReceipt[] receipts = _blockTransactionsExecutor.ProcessTransactions(block, options, ReceiptsTracer, spec);
 
-        if (spec.IsEip4844Enabled)
+        if (spec.IsEip4844Enabled && !block.IsGenesis)
         {
             block.Header.BlobGasUsed = BlobGasCalculator.CalculateBlobGas(block.Transactions);
         }
