@@ -691,6 +691,8 @@ namespace Nethermind.State
 
         private Account? GetAndAddToCache(Address address)
         {
+            if (_readsForTracing.Contains(address)) return null;
+
             Account? account = GetState(address);
             if (account is not null)
             {
