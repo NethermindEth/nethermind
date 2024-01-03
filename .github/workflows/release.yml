@@ -116,8 +116,6 @@ jobs:
     steps:
       - name: Check out Nethermind repository
         uses: actions/checkout@v4
-        with:
-          path: nethermind
       - name: Download artifacts
         uses: actions/download-artifact@v4
         with:
@@ -141,8 +139,6 @@ jobs:
     steps:
       - name: Check out Nethermind repository
         uses: actions/checkout@v4
-        with:
-          path: nethermind
       - name: Download artifacts
         uses: actions/download-artifact@v4
         with:
