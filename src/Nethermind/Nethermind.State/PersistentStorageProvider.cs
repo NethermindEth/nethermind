@@ -101,8 +101,6 @@ namespace Nethermind.State
                 throw new InvalidOperationException($"Change after current position ({_currentPosition} + 1) was not null when commiting {nameof(PartialStorageProviderBase)}");
             }
 
-            HashSet<Address> toUpdateRoots = new();
-
             bool isTracing = tracer.IsTracingStorage;
             Dictionary<StorageCell, ChangeTrace>? trace = null;
             if (isTracing)
