@@ -16,7 +16,7 @@ env:
   PACKAGE_DIR: pkg
   PACKAGE_RETENTION: 7
   PUB_DIR: pub
-  SCRIPTS_PATH: ${{ github.workspace }}/nethermind/scripts/deployment
+  SCRIPTS_PATH: ${{ github.workspace }}/scripts/deployment
 
 jobs:
   build:
