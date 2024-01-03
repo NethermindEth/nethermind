@@ -26,7 +26,7 @@ namespace Nethermind.Trie.Pruning
         byte[]? LoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None);
 
         /// <summary>
-        /// Loads RLP of the node, but return null instead of throwing of does not exist.
+        /// Loads RLP of the node, but return null instead of throwing if does not exist.
         /// </summary>
         /// <param name="hash"></param>
         /// <returns></returns>
