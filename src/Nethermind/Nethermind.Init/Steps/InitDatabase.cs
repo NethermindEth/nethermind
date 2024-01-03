@@ -93,7 +93,7 @@ namespace Nethermind.Init.Steps
                     break;
             }
 
-            _api.NodeStorageFactory = new NodeStorageFactory(initConfig.StateDbKeyScheme);
+            _api.NodeStorageFactory = new NodeStorageFactory(initConfig.StateDbKeyScheme, _api.LogManager);
         }
     }
 }

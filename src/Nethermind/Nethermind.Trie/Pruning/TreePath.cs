@@ -194,17 +194,17 @@ public struct TreePath
         return !(left == right);
     }
 
-    public bool Equals(in TreePath other)
+    public readonly bool Equals(in TreePath other)
     {
         return Path.Equals(other.Path) && Length == other.Length;
     }
 
-    public override bool Equals(object? obj)
+    public readonly override bool Equals(object? obj)
     {
         return obj is TreePath other && Equals(other);
     }
 
-    public override int GetHashCode()
+    public readonly override int GetHashCode()
     {
         return HashCode.Combine(Path, Length);
     }
