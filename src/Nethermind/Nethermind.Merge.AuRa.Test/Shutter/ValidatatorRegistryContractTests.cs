@@ -14,6 +14,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Int256;
 using Nethermind.Merge.AuRa.Shutter;
 using Nethermind.TxPool;
 using NSubstitute;
@@ -67,14 +68,14 @@ class ValidatorRegistryContractTests
 
             if (Enumerable.SequenceEqual(functionSig, getNumUpdatesSig))
             {
-                tracer.ReturnValue = AbiEncoder.Instance.Encode(getNumUpdatesDef.GetReturnInfo(), [10]);
+                tracer.ReturnValue = AbiEncoder.Instance.Encode(getNumUpdatesDef.GetReturnInfo(), [new UInt256(10)]);
             }
             else if (Enumerable.SequenceEqual(functionSig, getUpdateSig))
             {
                 // encode update
-                byte[] message = new ValidatorRegistryContract.Message(Address.Zero, 0, 0).ComputeRegistrationMessage();
-                byte[] sig = Bls.Sign(TestItem.PrivateKeyA, Keccak.Compute(message));
-                tracer.ReturnValue = AbiEncoder.Instance.Encode(getUpdateDef.GetReturnInfo(), [(message, sig)]);
+                byte[] message = new ValidatorRegistryContract.Message(_contractAddress, 0, 1000).ComputeRegistrationMessage();
+                Bls.Signature sig = Bls.Sign(TestItem.PrivateKeyA, Keccak.Compute(message));
+                tracer.ReturnValue = AbiEncoder.Instance.Encode(getUpdateDef.GetReturnInfo(), [(message, sig.Bytes)]);
             }
             else
             {
@@ -118,7 +119,9 @@ class ValidatorRegistryContractTests
     [Test]
     public void Can_calculate_nonce()
     {
-        // ValidatorRegistryContract contract = new(_transactionProcessor, _abiEncoder, _contractAddress, _signer, _txSender, _txSealer, _validatorContract, _blockHeader);
+        ValidatorRegistryContract contract = new(_transactionProcessor, AbiEncoder.Instance, _contractAddress, _signer, _txSender, _txSealer, _validatorContract, _blockHeader);
+        ulong nonce = contract.GetNonce(_blockHeader);
+        nonce.Should().Be(1001);
     }
 
     [Test]

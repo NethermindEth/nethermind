@@ -51,11 +51,11 @@ public class ValidatorRegistryContract : CallableContract, IValidatorRegistryCon
 
     public Update GetUpdate(BlockHeader blockHeader, in UInt256 i)
     {
-        object[] res = Call(blockHeader, getUpdate, Address.Zero, [i]);
+        var res = (ValueTuple<byte[], byte[]>) Call(blockHeader, getUpdate, Address.Zero, [i])[0];
         Update update = new()
         {
-            Message = (byte[])res[0],
-            Signature = (byte[])res[1]
+            Message = res.Item1,
+            Signature = res.Item2
         };
         return update;
     }
@@ -63,9 +63,9 @@ public class ValidatorRegistryContract : CallableContract, IValidatorRegistryCon
     internal ulong GetNonce(BlockHeader blockHeader)
     {
         UInt256 update = GetNumUpdates(blockHeader);
-        for (UInt256 i = update - 1; i >= 0; i -= 1)
+        for (UInt256 i = 0; i < update; i += 1)
         {
-            Message m = GetUpdateMessage(blockHeader, i);
+            Message m = GetUpdateMessage(blockHeader, update - i - 1);
             if (m.Sender == ContractAddress!)
             {
                 return m.Nonce + 1;
