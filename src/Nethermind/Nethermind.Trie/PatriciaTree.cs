@@ -53,6 +53,9 @@ namespace Nethermind.Trie
 
         private readonly bool _allowCommits;
 
+        private readonly bool _isTrace;
+        private readonly bool _isDebug;
+
         private Hash256 _rootHash = Keccak.EmptyTreeHash;
 
         public TrieNode? RootRef { get; set; }
@@ -121,6 +124,8 @@ namespace Nethermind.Trie
             ICappedArrayPool? bufferPool = null)
         {
             _logger = logManager?.GetClassLogger<PatriciaTree>() ?? throw new ArgumentNullException(nameof(logManager));
+            _isTrace = _logger.IsTrace;
+            _isDebug = _logger.IsDebug;
             TrieStore = trieStore ?? throw new ArgumentNullException(nameof(trieStore));
             _parallelBranches = parallelBranches;
             _allowCommits = allowCommits;
@@ -142,13 +147,12 @@ namespace Nethermind.Trie
         {
             if (_currentCommit is null)
             {
-                throw new InvalidAsynchronousStateException(
-                    $"{nameof(_currentCommit)} is NULL when calling {nameof(Commit)}");
+                ThrowInvalidAsynchronousStateException();
             }
 
             if (!_allowCommits)
             {
-                throw new TrieException("Commits are not allowed on this trie.");
+                ThrowTrieException();
             }
 
             if (RootRef is not null && RootRef.IsDirty)
@@ -156,7 +160,7 @@ namespace Nethermind.Trie
                 Commit(new NodeCommitInfo(RootRef, TreePath.Empty), skipSelf: skipRoot);
                 while (_currentCommit.TryDequeue(out NodeCommitInfo node))
                 {
-                    if (_logger.IsTrace) _logger.Trace($"Committing {node} in {blockNumber}");
+                    if (_isTrace) Trace(blockNumber, node);
                     TrieStore.CommitNode(blockNumber, node, writeFlags: writeFlags);
                 }
 
@@ -167,21 +171,46 @@ namespace Nethermind.Trie
             }
 
             TrieStore.FinishBlockCommit(TrieType, blockNumber, RootRef, writeFlags);
-            if (_logger.IsDebug) _logger.Debug($"Finished committing block {blockNumber}");
+
+            if (_isDebug) Debug(blockNumber);
+
+            [MethodImpl(MethodImplOptions.NoInlining)]
+            void Trace(long blockNumber, in NodeCommitInfo node)
+            {
+                _logger.Trace($"Committing {node} in {blockNumber}");
+            }
+
+            [MethodImpl(MethodImplOptions.NoInlining)]
+            void Debug(long blockNumber)
+            {
+                _logger.Debug($"Finished committing block {blockNumber}");
+            }
+
+            [DoesNotReturn]
+            [StackTraceHidden]
+            static void ThrowInvalidAsynchronousStateException()
+            {
+                throw new InvalidAsynchronousStateException($"{nameof(_currentCommit)} is NULL when calling {nameof(Commit)}");
+            }
+
+            [DoesNotReturn]
+            [StackTraceHidden]
+            static void ThrowTrieException()
+            {
+                throw new TrieException("Commits are not allowed on this trie.");
+            }
         }
 
         private void Commit(NodeCommitInfo nodeCommitInfo, bool skipSelf = false)
         {
             if (_currentCommit is null)
             {
-                throw new InvalidAsynchronousStateException(
-                    $"{nameof(_currentCommit)} is NULL when calling {nameof(Commit)}");
+                ThrowInvalidAsynchronousStateException(nameof(_currentCommit));
             }
 
             if (_commitExceptions is null)
             {
-                throw new InvalidAsynchronousStateException(
-                    $"{nameof(_commitExceptions)} is NULL when calling {nameof(Commit)}");
+                ThrowInvalidAsynchronousStateException(nameof(_commitExceptions));
             }
 
             TrieNode node = nodeCommitInfo.Node;
@@ -199,20 +228,16 @@ namespace Nethermind.Trie
                         }
                         else
                         {
-                            if (_logger.IsTrace)
+                            if (_isTrace)
                             {
-                                TrieNode child = node.GetChild(TrieStore, ref path, i);
-                                if (child is not null)
-                                {
-                                    _logger.Trace($"Skipping commit of {child}");
-                                }
+                                Trace(node, ref path, i);
                             }
                         }
                     }
                 }
                 else
                 {
-                    List<NodeCommitInfo> nodesToCommit = new();
+                    List<NodeCommitInfo> nodesToCommit = new(16);
                     for (int i = 0; i < 16; i++)
                     {
                         if (node.IsChildDirty(i))
@@ -221,13 +246,9 @@ namespace Nethermind.Trie
                         }
                         else
                         {
-                            if (_logger.IsTrace)
+                            if (_isTrace)
                             {
-                                TrieNode child = node.GetChild(TrieStore, ref path, i);
-                                if (child is not null)
-                                {
-                                    _logger.Trace($"Skipping commit of {child}");
-                                }
+                                Trace(node, ref path, i);
                             }
                         }
                     }
@@ -249,7 +270,7 @@ namespace Nethermind.Trie
 
                         if (!_commitExceptions.IsEmpty)
                         {
-                            throw new AggregateException(_commitExceptions);
+                            ThrowAggregateExceptions();
                         }
                     }
                     else
@@ -266,7 +287,7 @@ namespace Nethermind.Trie
                 TrieNode extensionChild = node.GetChild(TrieStore, ref path, 0);
                 if (extensionChild is null)
                 {
-                    throw new InvalidOperationException("An attempt to store an extension without a child.");
+                    ThrowInvalidExtension();
                 }
 
                 if (extensionChild.IsDirty)
@@ -275,7 +296,7 @@ namespace Nethermind.Trie
                 }
                 else
                 {
-                    if (_logger.IsTrace) _logger.Trace($"Skipping commit of {extensionChild}");
+                    if (_isTrace) TraceExtensionSkip(extensionChild);
                 }
             }
 
@@ -291,7 +312,50 @@ namespace Nethermind.Trie
             }
             else
             {
-                if (_logger.IsTrace) _logger.Trace($"Skipping commit of an inlined {node}");
+                if (_isTrace) TraceSkipInlineNode(node);
+            }
+
+            [DoesNotReturn]
+            [StackTraceHidden]
+            void ThrowAggregateExceptions()
+            {
+                throw new AggregateException(_commitExceptions);
+            }
+
+            [DoesNotReturn]
+            [StackTraceHidden]
+            static void ThrowInvalidExtension()
+            {
+                throw new InvalidOperationException("An attempt to store an extension without a child.");
+            }
+
+            [DoesNotReturn]
+            [StackTraceHidden]
+            static void ThrowInvalidAsynchronousStateException(string param)
+            {
+                throw new InvalidAsynchronousStateException($"{param} is NULL when calling {nameof(Commit)}");
+            }
+
+            [MethodImpl(MethodImplOptions.NoInlining)]
+            void Trace(TrieNode node, ref TreePath path, int i)
+            {
+                TrieNode child = node.GetChild(TrieStore, ref path, i);
+                if (child is not null)
+                {
+                    _logger.Trace($"Skipping commit of {child}");
+                }
+            }
+
+            [MethodImpl(MethodImplOptions.NoInlining)]
+            void TraceExtensionSkip(TrieNode extensionChild)
+            {
+                _logger.Trace($"Skipping commit of {extensionChild}");
+            }
+
+            [MethodImpl(MethodImplOptions.NoInlining)]
+            void TraceSkipInlineNode(TrieNode node)
+            {
+                _logger.Trace($"Skipping commit of an inlined {node}");
             }
         }
 
@@ -328,15 +392,11 @@ namespace Nethermind.Trie
                         : array = ArrayPool<byte>.Shared.Rent(nibblesCount))
                     [..nibblesCount]; // Slice to exact size;
 
-                try
-                {
-                    Nibbles.BytesToNibbleBytes(rawKey, nibbles);
-                    return Run(nibbles, nibblesCount, new CappedArray<byte>(Array.Empty<byte>()), false, startRootHash: rootHash).ToArray();
-                }
-                finally
-                {
-                    if (array is not null) ArrayPool<byte>.Shared.Return(array);
-                }
+                Nibbles.BytesToNibbleBytes(rawKey, nibbles);
+                var result = Run(nibbles, nibblesCount, new CappedArray<byte>(Array.Empty<byte>()), false, startRootHash: rootHash).ToArray();
+                if (array is not null) ArrayPool<byte>.Shared.Return(array);
+
+                return result;
             }
             catch (TrieException e)
             {
@@ -345,6 +405,7 @@ namespace Nethermind.Trie
             }
         }
 
+        [MethodImpl(MethodImplOptions.NoInlining)]
         private static void EnhanceException(ReadOnlySpan<byte> rawKey, ValueHash256 rootHash, TrieException baseException)
         {
             static TrieNodeException? GetTrieNodeException(TrieException? exception) =>
@@ -375,8 +436,7 @@ namespace Nethermind.Trie
         [DebuggerStepThrough]
         public virtual void Set(ReadOnlySpan<byte> rawKey, CappedArray<byte> value)
         {
-            if (_logger.IsTrace)
-                _logger.Trace($"{(value.Length == 0 ? $"Deleting {rawKey.ToHexString()}" : $"Setting {rawKey.ToHexString()} = {value.AsSpan().ToHexString()}")}");
+            if (_isTrace) Trace(in rawKey, in value);
 
             int nibblesCount = 2 * rawKey.Length;
             byte[] array = null;
@@ -385,14 +445,14 @@ namespace Nethermind.Trie
                     : array = ArrayPool<byte>.Shared.Rent(nibblesCount))
                 [..nibblesCount]; // Slice to exact size
 
-            try
+            Nibbles.BytesToNibbleBytes(rawKey, nibbles);
+            Run(nibbles, nibblesCount, value, true);
+
+            if (array is not null) ArrayPool<byte>.Shared.Return(array);
+
+            void Trace(in ReadOnlySpan<byte> rawKey, in CappedArray<byte> value)
             {
-                Nibbles.BytesToNibbleBytes(rawKey, nibbles);
-                Run(nibbles, nibblesCount, value, true);
-            }
-            finally
-            {
-                if (array is not null) ArrayPool<byte>.Shared.Return(array);
+                _logger.Trace($"{(value.Length == 0 ? $"Deleting {rawKey.ToHexString()}" : $"Setting {rawKey.ToHexString()} = {value.AsSpan().ToHexString()}")}");
             }
         }
 
@@ -412,7 +472,7 @@ namespace Nethermind.Trie
         {
             if (isUpdate && startRootHash is not null)
             {
-                throw new InvalidOperationException("Only reads can be done in parallel on the Patricia tree");
+                ThrowNonConcurrentWrites();
             }
 
 #if DEBUG
@@ -434,7 +494,7 @@ namespace Nethermind.Trie
             CappedArray<byte> result;
             if (startRootHash is not null)
             {
-                if (_logger.IsTrace) _logger.Trace($"Starting from {startRootHash} - {traverseContext.ToString()}");
+                if (_isTrace) TraceStart(startRootHash, in traverseContext);
                 TreePath startingPath = TreePath.Empty;
                 TrieNode startNode = TrieStore.FindCachedOrUnknown(startingPath, startRootHash);
                 ResolveNode(startNode, startingPath, in traverseContext);
@@ -447,24 +507,51 @@ namespace Nethermind.Trie
                 {
                     if (traverseContext.UpdateValue.IsNotNull)
                     {
-                        if (_logger.IsTrace) _logger.Trace($"Setting new leaf node with value {traverseContext.UpdateValue}");
+                        if (_isTrace) TraceNewLeaf(in traverseContext);
                         byte[] key = updatePath[..nibblesCount].ToArray();
                         RootRef = TrieNodeFactory.CreateLeaf(key, traverseContext.UpdateValue);
                     }
 
-                    if (_logger.IsTrace) _logger.Trace($"Keeping the root as null in {traverseContext.ToString()}");
+                    if (_isTrace) TraceNull(in traverseContext);
                     result = traverseContext.UpdateValue;
                 }
                 else
                 {
                     TreePath startingPath = TreePath.Empty;
                     ResolveNode(RootRef, startingPath, in traverseContext);
-                    if (_logger.IsTrace) _logger.Trace($"{traverseContext.ToString()}");
+                    if (_isTrace) TraceNode(in traverseContext);
                     result = TraverseNode(RootRef, ref startingPath, in traverseContext);
                 }
             }
 
             return result;
+
+            [DoesNotReturn]
+            [StackTraceHidden]
+            static void ThrowNonConcurrentWrites()
+            {
+                throw new InvalidOperationException("Only reads can be done in parallel on the Patricia tree");
+            }
+
+            void TraceStart(Hash256 startRootHash, in TraverseContext traverseContext)
+            {
+                _logger.Trace($"Starting from {startRootHash} - {traverseContext.ToString()}");
+            }
+
+            void TraceNewLeaf(in TraverseContext traverseContext)
+            {
+                _logger.Trace($"Setting new leaf node with value {traverseContext.UpdateValue}");
+            }
+
+            void TraceNull(in TraverseContext traverseContext)
+            {
+                _logger.Trace($"Keeping the root as null in {traverseContext.ToString()}");
+            }
+
+            void TraceNode(in TraverseContext traverseContext)
+            {
+                _logger.Trace($"{traverseContext.ToString()}");
+            }
         }
 
         private void ResolveNode(TrieNode node, in TreePath path, in TraverseContext traverseContext)
@@ -481,20 +568,36 @@ namespace Nethermind.Trie
 
         private CappedArray<byte> TraverseNode(TrieNode node, ref TreePath path, in TraverseContext traverseContext)
         {
-            if (_logger.IsTrace)
-                _logger.Trace(
-                    $"Traversing {node} to {(traverseContext.IsRead ? "READ" : traverseContext.IsDelete ? "DELETE" : "UPDATE")}");
+            if (_isTrace) Trace(node, traverseContext);
 
             return node.NodeType switch
             {
                 NodeType.Branch => TraverseBranch(node, ref path, in traverseContext),
                 NodeType.Extension => TraverseExtension(node, ref path, in traverseContext),
                 NodeType.Leaf => TraverseLeaf(node, in traverseContext),
-                NodeType.Unknown => throw new InvalidOperationException(
-                    $"Cannot traverse unresolved node {node.Keccak}"),
-                _ => throw new NotSupportedException(
-                    $"Unknown node type {node.NodeType}")
+                NodeType.Unknown => TraverseUnknown(node),
+                _ => ThrowNotSupported(node)
             };
+
+            [MethodImpl(MethodImplOptions.NoInlining)]
+            void Trace(TrieNode node, in TraverseContext traverseContext)
+            {
+                _logger.Trace($"Traversing {node} to {(traverseContext.IsRead ? "READ" : traverseContext.IsDelete ? "DELETE" : "UPDATE")}");
+            }
+
+            [DoesNotReturn]
+            [StackTraceHidden]
+            static CappedArray<byte> TraverseUnknown(TrieNode node)
+            {
+                throw new InvalidOperationException($"Cannot traverse unresolved node {node.Keccak}");
+            }
+
+            [DoesNotReturn]
+            [StackTraceHidden]
+            static CappedArray<byte> ThrowNotSupported(TrieNode node)
+            {
+                throw new NotSupportedException($"Unknown node type {node.NodeType}");
+            }
         }
 
         private void ConnectNodes(TrieNode? node, in TraverseContext traverseContext)
@@ -538,7 +641,7 @@ namespace Nethermind.Trie
                             // which is not possible in the Ethereum protocol where keys are of equal lengths
                             // (it is possible in the more general trie definition)
                             TrieNode leafFromBranch = TrieNodeFactory.CreateLeaf(Array.Empty<byte>(), node.Value);
-                            if (_logger.IsTrace) _logger.Trace($"Converting {node} into {leafFromBranch}");
+                            if (_isTrace) _logger.Trace($"Converting {node} into {leafFromBranch}");
                             nextNode = leafFromBranch;
                         }
                         else
@@ -584,7 +687,7 @@ namespace Nethermind.Trie
                             {
                                 TrieNode extensionFromBranch =
                                     TrieNodeFactory.CreateExtension(new[] { (byte)childNodeIndex }, childNode);
-                                if (_logger.IsTrace)
+                                if (_isTrace)
                                     _logger.Trace(
                                         $"Extending child {childNodeIndex} {childNode} of {node} into {extensionFromBranch}");
 
@@ -620,7 +723,7 @@ namespace Nethermind.Trie
                                 byte[] newKey = Bytes.Concat((byte)childNodeIndex, childNode.Key);
 
                                 TrieNode extendedExtension = childNode.CloneWithChangedKey(newKey);
-                                if (_logger.IsTrace)
+                                if (_isTrace)
                                     _logger.Trace(
                                         $"Extending child {childNodeIndex} {childNode} of {node} into {extendedExtension}");
                                 nextNode = extendedExtension;
@@ -630,14 +733,14 @@ namespace Nethermind.Trie
                                 byte[] newKey = Bytes.Concat((byte)childNodeIndex, childNode.Key);
 
                                 TrieNode extendedLeaf = childNode.CloneWithChangedKey(newKey);
-                                if (_logger.IsTrace)
+                                if (_isTrace)
                                     _logger.Trace(
                                         $"Extending branch child {childNodeIndex} {childNode} into {extendedLeaf}");
 
-                                if (_logger.IsTrace) _logger.Trace($"Decrementing ref on a leaf extended up to eat a branch {childNode}");
+                                if (_isTrace) _logger.Trace($"Decrementing ref on a leaf extended up to eat a branch {childNode}");
                                 if (node.IsSealed)
                                 {
-                                    if (_logger.IsTrace) _logger.Trace($"Decrementing ref on a branch replaced by a leaf {node}");
+                                    if (_isTrace) _logger.Trace($"Decrementing ref on a branch replaced by a leaf {node}");
                                 }
 
                                 nextNode = extendedLeaf;
@@ -661,7 +764,7 @@ namespace Nethermind.Trie
                     {
                         byte[] newKey = Bytes.Concat(node.Key, nextNode.Key);
                         TrieNode extendedLeaf = nextNode.CloneWithChangedKey(newKey);
-                        if (_logger.IsTrace)
+                        if (_isTrace)
                             _logger.Trace($"Combining {node} and {nextNode} into {extendedLeaf}");
 
                         nextNode = extendedLeaf;
@@ -695,7 +798,7 @@ namespace Nethermind.Trie
 
                         byte[] newKey = Bytes.Concat(node.Key, nextNode.Key);
                         TrieNode extendedExtension = nextNode.CloneWithChangedKey(newKey);
-                        if (_logger.IsTrace)
+                        if (_isTrace)
                             _logger.Trace($"Combining {node} and {nextNode} into {extendedExtension}");
 
                         nextNode = extendedExtension;
@@ -707,7 +810,7 @@ namespace Nethermind.Trie
                             node = node.Clone();
                         }
 
-                        if (_logger.IsTrace) _logger.Trace($"Connecting {node} with {nextNode}");
+                        if (_isTrace) _logger.Trace($"Connecting {node} with {nextNode}");
                         node.SetChild(0, nextNode);
                         nextNode = node;
                     }
@@ -834,7 +937,7 @@ namespace Nethermind.Trie
                 longerPathValue = node.Value;
             }
 
-            int extensionLength = FindCommonPrefixLength(shorterPath, longerPath);
+            int extensionLength = shorterPath.CommonPrefixLength(longerPath);
             if (extensionLength == shorterPath.Length && extensionLength == longerPath.Length)
             {
                 if (traverseContext.IsRead)
@@ -912,7 +1015,7 @@ namespace Nethermind.Trie
             TrieNode originalNode = node;
             ReadOnlySpan<byte> remaining = traverseContext.GetRemainingUpdatePath();
 
-            int extensionLength = FindCommonPrefixLength(remaining, node.Key);
+            int extensionLength = remaining.CommonPrefixLength(node.Key);
             if (extensionLength == node.Key.Length)
             {
                 if (traverseContext.IsUpdate)
@@ -998,18 +1101,6 @@ namespace Nethermind.Trie
             // in calling method even if not used
             TraverseContext newContext = traverseContext.WithNewIndex(traverseContext.CurrentIndex + extensionLength);
             return TraverseNode(next, ref path, in newContext);
-        }
-
-        private static int FindCommonPrefixLength(ReadOnlySpan<byte> shorterPath, ReadOnlySpan<byte> longerPath)
-        {
-            int commonPrefixLength = 0;
-            int maxLength = Math.Min(shorterPath.Length, longerPath.Length);
-            for (int i = 0; i < maxLength && shorterPath[i] == longerPath[i]; i++, commonPrefixLength++)
-            {
-                // just finding the common part of the path
-            }
-
-            return commonPrefixLength;
         }
 
         private readonly ref struct TraverseContext

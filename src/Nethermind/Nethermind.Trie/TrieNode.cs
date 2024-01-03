@@ -3,6 +3,8 @@
 
 using System;
 using System.ComponentModel;
+using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using Nethermind.Core;
@@ -73,13 +75,19 @@ namespace Nethermind.Trie
             {
                 if (IsSealed)
                 {
-                    throw new InvalidOperationException(
-                        $"{nameof(TrieNode)} {this} is already sealed when setting {nameof(Key)}.");
+                    ThrowAlreadySealed();
                 }
 
                 InitData();
                 _data![0] = value;
                 Keccak = null;
+
+                [DoesNotReturn]
+                [StackTraceHidden]
+                void ThrowAlreadySealed()
+                {
+                    throw new InvalidOperationException($"{nameof(TrieNode)} {this} is already sealed when setting {nameof(Key)}.");
+                }
             }
         }
 
@@ -144,8 +152,7 @@ namespace Nethermind.Trie
             {
                 if (IsSealed)
                 {
-                    throw new InvalidOperationException(
-                        $"{nameof(TrieNode)} {this} is already sealed when setting {nameof(Value)}.");
+                    ThrowAlreadySealed();
                 }
 
                 InitData();
@@ -170,6 +177,13 @@ namespace Nethermind.Trie
                 }
 
                 _data![IsLeaf ? 1 : BranchesCount] = value;
+
+                [DoesNotReturn]
+                [StackTraceHidden]
+                void ThrowAlreadySealed()
+                {
+                    throw new InvalidOperationException($"{nameof(TrieNode)} {this} is already sealed when setting {nameof(Value)}.");
+                }
             }
         }
 
@@ -262,10 +276,17 @@ namespace Nethermind.Trie
         {
             if (IsSealed)
             {
-                throw new InvalidOperationException($"{nameof(TrieNode)} {this} is already sealed.");
+                ThrowAlreadySealed();
             }
 
             IsDirty = false;
+
+            [DoesNotReturn]
+            [StackTraceHidden]
+            void ThrowAlreadySealed()
+            {
+                throw new InvalidOperationException($"{nameof(TrieNode)} {this} is already sealed.");
+            }
         }
 
         /// <summary>
@@ -281,7 +302,7 @@ namespace Nethermind.Trie
                     {
                         if (Keccak is null)
                         {
-                            throw new TrieException("Unable to resolve node without Keccak");
+                            ThrowMissingKeccak();
                         }
 
                         FullRlp = tree.LoadRlp(path, Keccak, readFlags);
@@ -289,7 +310,7 @@ namespace Nethermind.Trie
 
                         if (FullRlp.IsNull)
                         {
-                            throw new TrieException($"Trie returned a NULL RLP for node {Keccak}");
+                            ThrowNullRlp();
                         }
                     }
                 }
@@ -301,15 +322,51 @@ namespace Nethermind.Trie
                 _rlpStream = FullRlp.AsRlpStream();
                 if (_rlpStream is null)
                 {
-                    throw new InvalidAsynchronousStateException($"{nameof(_rlpStream)} is null when {nameof(NodeType)} is {NodeType}");
+                    ThrowInvalidStateException();
+                    return;
                 }
 
                 if (!DecodeRlp(bufferPool, out int numberOfItems))
                 {
-                    throw new TrieNodeException($"Unexpected number of items = {numberOfItems} when decoding a node from RLP ({FullRlp.AsSpan().ToHexString()})", Keccak ?? Nethermind.Core.Crypto.Keccak.Zero);
+                    ThrowUnexpectedNumberOfItems(numberOfItems);
                 }
             }
             catch (RlpException rlpException)
+            {
+                ThrowDecodingError(rlpException);
+            }
+
+            [DoesNotReturn]
+            [StackTraceHidden]
+            static void ThrowMissingKeccak()
+            {
+                throw new TrieException("Unable to resolve node without Keccak");
+            }
+
+            [DoesNotReturn]
+            [StackTraceHidden]
+            void ThrowNullRlp()
+            {
+                throw new TrieException($"Trie returned a NULL RLP for node {Keccak}");
+            }
+
+            [DoesNotReturn]
+            [StackTraceHidden]
+            void ThrowInvalidStateException()
+            {
+                throw new InvalidAsynchronousStateException($"{nameof(_rlpStream)} is null when {nameof(NodeType)} is {NodeType}");
+            }
+
+            [DoesNotReturn]
+            [StackTraceHidden]
+            void ThrowUnexpectedNumberOfItems(int numberOfItems)
+            {
+                throw new TrieNodeException($"Unexpected number of items = {numberOfItems} when decoding a node from RLP ({FullRlp.AsSpan().ToHexString()})", Keccak ?? Nethermind.Core.Crypto.Keccak.Zero);
+            }
+
+            [DoesNotReturn]
+            [StackTraceHidden]
+            void ThrowDecodingError(RlpException rlpException)
             {
                 throw new TrieNodeException($"Error when decoding node {Keccak}", Keccak ?? Nethermind.Core.Crypto.Keccak.Zero, rlpException);
             }
@@ -348,7 +405,7 @@ namespace Nethermind.Trie
                 _rlpStream = FullRlp.AsRlpStream();
                 if (_rlpStream is null)
                 {
-                    throw new InvalidAsynchronousStateException($"{nameof(_rlpStream)} is null when {nameof(NodeType)} is {NodeType}");
+                    ThrowInvalidStateException();
                 }
 
                 return DecodeRlp(bufferPool, out _);
@@ -356,6 +413,13 @@ namespace Nethermind.Trie
             catch (RlpException)
             {
                 return false;
+            }
+
+            [DoesNotReturn]
+            [StackTraceHidden]
+            void ThrowInvalidStateException()
+            {
+                throw new InvalidAsynchronousStateException($"{nameof(_rlpStream)} is null when {nameof(NodeType)} is {NodeType}");
             }
         }
 
@@ -531,8 +595,7 @@ namespace Nethermind.Trie
         {
             if (!IsBranch)
             {
-                throw new TrieException(
-                    "An attempt was made to ask about whether a child is null on a non-branch node.");
+                ThrowNotABranch();
             }
 
             if (_rlpStream is not null && _data?[i] is null)
@@ -542,6 +605,13 @@ namespace Nethermind.Trie
             }
 
             return _data?[i] is null || ReferenceEquals(_data[i], _nullNode);
+
+            [DoesNotReturn]
+            [StackTraceHidden]
+            static void ThrowNotABranch()
+            {
+                throw new TrieException("An attempt was made to ask about whether a child is null on a non-branch node.");
+            }
         }
 
         public bool IsChildDirty(int i)
@@ -615,9 +685,7 @@ namespace Nethermind.Trie
             {
                 // we expect this to happen as a Trie traversal error (please see the stack trace above)
                 // we need to investigate this case when it happens again
-                bool isKeccakCalculated = Keccak is not null && FullRlp.IsNotNull;
-                bool isKeccakCorrect = isKeccakCalculated && Keccak == Nethermind.Core.Crypto.Keccak.Compute(FullRlp.AsSpan());
-                throw new TrieException($"Unexpected type found at position {childIndex} of {this} with {nameof(_data)} of length {_data?.Length}. Expected a {nameof(TrieNode)} or {nameof(Keccak)} but found {childOrRef?.GetType()} with a value of {childOrRef}. Keccak calculated? : {isKeccakCalculated}; Keccak correct? : {isKeccakCorrect}");
+                ThrowUnexpectedTypeException(childIndex, childOrRef);
             }
 
             // pruning trick so we never store long persisted paths
@@ -627,6 +695,15 @@ namespace Nethermind.Trie
             }
 
             return child;
+
+            [DoesNotReturn]
+            [StackTraceHidden]
+            void ThrowUnexpectedTypeException(int childIndex, object childOrRef)
+            {
+                bool isKeccakCalculated = Keccak is not null && FullRlp.IsNotNull;
+                bool isKeccakCorrect = isKeccakCalculated && Keccak == Nethermind.Core.Crypto.Keccak.Compute(FullRlp.AsSpan());
+                throw new TrieException($"Unexpected type found at position {childIndex} of {this} with {nameof(_data)} of length {_data?.Length}. Expected a {nameof(TrieNode)} or {nameof(Keccak)} but found {childOrRef?.GetType()} with a value of {childOrRef}. Keccak calculated? : {isKeccakCalculated}; Keccak correct? : {isKeccakCorrect}");
+            }
         }
 
         public void ReplaceChildRef(int i, TrieNode child)
@@ -645,14 +722,20 @@ namespace Nethermind.Trie
         {
             if (IsSealed)
             {
-                throw new InvalidOperationException(
-                    $"{nameof(TrieNode)} {this} is already sealed when setting a child.");
+                ThrowAlreadySealed();
             }
 
             InitData();
             int index = IsExtension ? i + 1 : i;
             _data![index] = node ?? _nullNode;
             Keccak = null;
+
+            [DoesNotReturn]
+            [StackTraceHidden]
+            void ThrowAlreadySealed()
+            {
+                throw new InvalidOperationException($"{nameof(TrieNode)} {this} is already sealed when setting a child.");
+            }
         }
 
         public long GetMemorySize(bool recursive)
@@ -893,8 +976,6 @@ namespace Nethermind.Trie
             // }
         }
 
-        #region private
-
         private bool TryResolveStorageRoot(ITrieNodeResolver resolver, ref TreePath currentPath, out TrieNode? storageRoot)
         {
             bool hasStorage = false;
@@ -934,8 +1015,8 @@ namespace Nethermind.Trie
                 switch (NodeType)
                 {
                     case NodeType.Unknown:
-                        throw new InvalidOperationException(
-                            $"Cannot resolve children of an {nameof(NodeType.Unknown)} node");
+                        ThrowCannotResolveException();
+                        return;
                     case NodeType.Branch:
                         _data = new object[AllowBranchValues ? BranchesCount + 1 : BranchesCount];
                         break;
@@ -943,6 +1024,13 @@ namespace Nethermind.Trie
                         _data = new object[2];
                         break;
                 }
+            }
+
+            [DoesNotReturn]
+            [StackTraceHidden]
+            static void ThrowCannotResolveException()
+            {
+                throw new InvalidOperationException($"Cannot resolve children of an {nameof(NodeType.Unknown)} node");
             }
         }
 
@@ -1046,7 +1134,7 @@ namespace Nethermind.Trie
                 {
                     if (!childNode.IsPersisted)
                     {
-                        throw new InvalidOperationException("Cannot unresolve a child that is not persisted yet.");
+                        ThrowNotPersisted();
                     }
                     else if (childNode.Keccak is not null) // if not by value node
                     {
@@ -1054,8 +1142,13 @@ namespace Nethermind.Trie
                     }
                 }
             }
-        }
 
-        #endregion
+            [DoesNotReturn]
+            [StackTraceHidden]
+            static void ThrowNotPersisted()
+            {
+                throw new InvalidOperationException("Cannot unresolve a child that is not persisted yet.");
+            }
+        }
     }
 }
