@@ -156,7 +156,9 @@ public class BlockValidator : IBlockValidator
                 _logger.Error($"- state root: expected {suggestedBlock.Header.StateRoot}, got {processedBlock.Header.StateRoot}");
             }
 
-            if (processedBlock.Header.BlobGasUsed != suggestedBlock.Header.BlobGasUsed)
+            if (processedBlock.Header.BlobGasUsed != suggestedBlock.Header.BlobGasUsed
+                && processedBlock.Header.BlobGasUsed is not null
+                && suggestedBlock.Header.BlobGasUsed != UInt256.Zero)
             {
                 _logger.Error($"- blob gas used: expected {suggestedBlock.Header.BlobGasUsed}, got {processedBlock.Header.BlobGasUsed}");
             }
