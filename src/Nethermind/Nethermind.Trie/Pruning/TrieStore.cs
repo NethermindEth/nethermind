@@ -627,8 +627,8 @@ namespace Nethermind.Trie.Pruning
                     _commitSetQueue.Enqueue(toAddBack[index]);
                 }
 
-                Dictionary<(Hash256?, TreePath), Hash256?>? persistedHashes = _pastPathHash != null
-                    ? new Dictionary<(Hash256?, TreePath), Hash256?>()
+                Dictionary<(Hash256?, TinyTreePath), Hash256?>? persistedHashes = _pastPathHash != null
+                    ? new Dictionary<(Hash256?, TinyTreePath), Hash256?>()
                     : null;
 
                 for (int index = 0; index < candidateSets.Count; index++)
@@ -660,11 +660,11 @@ namespace Nethermind.Trie.Pruning
             return false;
         }
 
-        private void RemovePastKeys(Dictionary<(Hash256, TreePath), Hash256?>? persistedHashes)
+        private void RemovePastKeys(Dictionary<(Hash256, TinyTreePath), Hash256?>? persistedHashes)
         {
             if (persistedHashes == null) return;
 
-            bool CanRemove(Hash256? address, TreePath path, ValueHash256 keccak, Hash256? currentlyPersistingKeccak)
+            bool CanRemove(Hash256? address, TinyTreePath path, TreePath fullPath, ValueHash256 keccak, Hash256? currentlyPersistingKeccak)
             {
                 // Multiple current hash that we don't keep track for simplicity. Just ignore this case.
                 if (currentlyPersistingKeccak == null) return false;
@@ -673,26 +673,27 @@ namespace Nethermind.Trie.Pruning
                 if (currentlyPersistingKeccak == keccak) return false;
 
                 // We have is in cache and it is still needed.
-                if (_dirtyNodes.TryGetValue(new DirtyNodesCache.Key(address, path, keccak.ToCommitment()), out TrieNode node) &&
+                if (_dirtyNodes.TryGetValue(new DirtyNodesCache.Key(address, fullPath, keccak.ToCommitment()), out TrieNode node) &&
                     !IsNoLongerNeeded(node)) return false;
 
                 // We don't have it in cache, but we know it was re-committed, so if it is still needed, don't remove
-                if (_persistedLastSeens.TryGetValue((address, new TinyTreePath(path), keccak), out long commitBlock) &&
+                if (_persistedLastSeens.TryGetValue((address, path, keccak), out long commitBlock) &&
                     !IsNoLongerNeeded(commitBlock)) return false;
 
                 return true;
             }
 
             using INodeStorage.WriteBatch deleteNodeBatch = _nodeStorage.StartWriteBatch();
-            foreach (KeyValuePair<(Hash256?, TreePath), Hash256> keyValuePair in persistedHashes)
+            foreach (KeyValuePair<(Hash256?, TinyTreePath), Hash256> keyValuePair in persistedHashes)
             {
-                (Hash256? addr, TreePath path) key = keyValuePair.Key;
+                (Hash256? addr, TinyTreePath path) key = keyValuePair.Key;
                 if (key.path.Length > TinyTreePath.MaxNibbleLength) continue;
-                if (_pastPathHash.TryGet((key.addr, new TinyTreePath(key.path)), out ValueHash256 prevHash))
+                if (_pastPathHash.TryGet((key.addr, key.path), out ValueHash256 prevHash))
                 {
-                    if (CanRemove(key.addr, key.path, prevHash, keyValuePair.Value))
+                    TreePath fullPath = key.path.ToTreePath(); // Micro op to reduce double convert
+                    if (CanRemove(key.addr, key.path, fullPath, prevHash, keyValuePair.Value))
                     {
-                        deleteNodeBatch.Remove(key.addr, key.path, prevHash);
+                        deleteNodeBatch.Remove(key.addr, fullPath, prevHash);
                     }
                 }
             }
@@ -775,7 +776,7 @@ namespace Nethermind.Trie.Pruning
             if (_logger.IsDebug) _logger.Debug($"Finished pruning nodes in {stopwatch.ElapsedMilliseconds}ms {MemoryUsedByDirtyCache / 1.MB()} MB, last persisted block: {LastPersistedBlockNumber} current: {LatestCommittedBlockNumber}.");
         }
 
-        private void TrackPrunedPersistedNodes(DirtyNodesCache.Key key, TrieNode node)
+        private void TrackPrunedPersistedNodes(in DirtyNodesCache.Key key, TrieNode node)
         {
             if (key.Path.Length > TinyTreePath.MaxNibbleLength) return;
             if (_pastPathHash == null) return;
@@ -869,14 +870,14 @@ namespace Nethermind.Trie.Pruning
         private void PersistBlockCommitSet(
             Hash256? address,
             BlockCommitSet commitSet,
-            Dictionary<(Hash256, TreePath), Hash256?>? persistedHashes = null,
+            Dictionary<(Hash256, TinyTreePath), Hash256?>? persistedHashes = null,
             WriteFlags writeFlags = WriteFlags.None)
         {
             void PersistNode(TrieNode tn, Hash256? address2, TreePath path)
             {
-                if (persistedHashes != null)
+                if (persistedHashes != null && path.Length <= TinyTreePath.MaxNibbleLength)
                 {
-                    (Hash256 address2, TreePath path) key = (address2, path);
+                    (Hash256 address2, TinyTreePath path) key = (address2, new TinyTreePath(path));
                     if (persistedHashes.ContainsKey(key))
                     {
                         // Null mark that there are multiple saved hash for this path. So we don't attempt to remove anything.
