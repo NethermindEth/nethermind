@@ -856,14 +856,7 @@ namespace Nethermind.Trie.Test.Pruning
                 await Task.Delay(TimeSpan.FromMilliseconds(10));
             }
 
-            if (_scheme == INodeStorage.KeyScheme.Hash)
-            {
-                memDb.Count.Should().NotBe(4);
-            }
-            else
-            {
-                memDb.Count.Should().Be(4);
-            }
+            memDb.Count.Should().Be(4);
         }
     }
 }
