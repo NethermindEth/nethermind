@@ -627,16 +627,22 @@ namespace Nethermind.Trie.Pruning
                     _commitSetQueue.Enqueue(toAddBack[index]);
                 }
 
+                Dictionary<(Hash256?, TreePath), Hash256?>? persistedHashes = _pastPathHash != null
+                    ? new Dictionary<(Hash256?, TreePath), Hash256?>()
+                    : null;
+
                 for (int index = 0; index < candidateSets.Count; index++)
                 {
                     BlockCommitSet blockCommitSet = candidateSets[index];
                     if (_logger.IsDebug) _logger.Debug($"Elevated pruning for candidate {blockCommitSet.BlockNumber}");
-                    PersistBlockCommitSet(null, blockCommitSet);
+                    PersistBlockCommitSet(null, blockCommitSet, persistedHashes: persistedHashes);
                 }
+
+                RemovePastKeys(persistedHashes);
 
                 foreach (KeyValuePair<(Hash256, TinyTreePath, ValueHash256), long> keyValuePair in _persistedLastSeens)
                 {
-                    if (IsNoLongerNeeded(keyValuePair.Value, LastPersistedBlockNumber))
+                    if (IsNoLongerNeeded(keyValuePair.Value))
                     {
                         _persistedLastSeens.Remove(keyValuePair.Key, out _);
                     }
@@ -652,6 +658,44 @@ namespace Nethermind.Trie.Pruning
             }
 
             return false;
+        }
+
+        private void RemovePastKeys(Dictionary<(Hash256, TreePath), Hash256?>? persistedHashes)
+        {
+            if (persistedHashes == null) return;
+
+            bool CanRemove(Hash256? address, TreePath path, ValueHash256 keccak, Hash256? currentlyPersistingKeccak)
+            {
+                // Multiple current hash that we don't keep track for simplicity. Just ignore this case.
+                if (currentlyPersistingKeccak == null) return false;
+
+                // The persisted hash is the same as currently persisting hash. Do nothing.
+                if (currentlyPersistingKeccak == keccak) return false;
+
+                // We have is in cache and it is still needed.
+                if (_dirtyNodes.TryGetValue(new DirtyNodesCache.Key(address, path, keccak.ToCommitment()), out TrieNode node) &&
+                    !IsNoLongerNeeded(node)) return false;
+
+                // We don't have it in cache, but we know it was re-committed, so if it is still needed, don't remove
+                if (_persistedLastSeens.TryGetValue((address, new TinyTreePath(path), keccak), out long commitBlock) &&
+                    !IsNoLongerNeeded(commitBlock)) return false;
+
+                return true;
+            }
+
+            using INodeStorage.WriteBatch deleteNodeBatch = _nodeStorage.StartWriteBatch();
+            foreach (KeyValuePair<(Hash256?, TreePath), Hash256> keyValuePair in persistedHashes)
+            {
+                (Hash256? addr, TreePath path) key = keyValuePair.Key;
+                if (key.path.Length > TinyTreePath.MaxNibbleLength) continue;
+                if (_pastPathHash.TryGet((key.addr, new TinyTreePath(key.path)), out ValueHash256 prevHash))
+                {
+                    if (CanRemove(key.addr, key.path, prevHash, keyValuePair.Value))
+                    {
+                        deleteNodeBatch.Remove(key.addr, key.path, prevHash);
+                    }
+                }
+            }
         }
 
         /// <summary>
@@ -825,10 +869,25 @@ namespace Nethermind.Trie.Pruning
         private void PersistBlockCommitSet(
             Hash256? address,
             BlockCommitSet commitSet,
+            Dictionary<(Hash256, TreePath), Hash256?>? persistedHashes = null,
             WriteFlags writeFlags = WriteFlags.None)
         {
             void PersistNode(TrieNode tn, Hash256? address2, TreePath path)
             {
+                if (persistedHashes != null)
+                {
+                    (Hash256 address2, TreePath path) key = (address2, path);
+                    if (persistedHashes.ContainsKey(key))
+                    {
+                        // Null mark that there are multiple saved hash for this path. So we don't attempt to remove anything.
+                        // Otherwise this would have to be a list, which is such a rare case that its not worth it to have a list.
+                        persistedHashes[key] = null;
+                    }
+                    else
+                    {
+                        persistedHashes[key] = tn.Keccak;
+                    }
+                }
                 Persist(address2, path, tn, commitSet.BlockNumber, writeFlags);
             }
 
@@ -882,40 +941,17 @@ namespace Nethermind.Trie.Pruning
                 Debug.Assert(currentNode.FullRlp.IsNotNull && currentNode.FullRlp.Length < 32,
                     "We only expect persistence call without Keccak for the nodes that are kept inside the parent RLP (less than 32 bytes).");
             }
-
-            if (_pastPathHash != null)
-            {
-                if (path.Length <= TinyTreePath.MaxNibbleLength &&
-                    _pastPathHash.TryGet((address, new TinyTreePath(path)), out ValueHash256 hash) &&
-                    CanRemove(address, path, hash, blockNumber))
-                {
-                    _currentBatch.Remove(address, path, hash);
-                }
-            }
-        }
-
-        private bool CanRemove(Hash256? address, TreePath path, ValueHash256 keccak, long currentlyPersistingBlockNumber)
-        {
-            // We have is in cache and it is still needed.
-            if (_dirtyNodes.TryGetValue(new DirtyNodesCache.Key(address, path, keccak.ToCommitment()), out TrieNode node) &&
-                !IsNoLongerNeeded(node.LastSeen, currentlyPersistingBlockNumber)) return false;
-
-            // We don't have it in cache, but we know it was re-committed, so if it is still needed, don't remove
-            if (_persistedLastSeens.TryGetValue((address, new TinyTreePath(path), keccak), out long commitBlock) &&
-                !IsNoLongerNeeded(commitBlock, currentlyPersistingBlockNumber)) return false;
-
-            return true;
         }
 
         private bool IsNoLongerNeeded(TrieNode node)
         {
-            return IsNoLongerNeeded(node.LastSeen, LastPersistedBlockNumber);
+            return IsNoLongerNeeded(node.LastSeen);
         }
 
-        private bool IsNoLongerNeeded(long? lastSeen, long lastPersistedBlockNumber)
+        private bool IsNoLongerNeeded(long? lastSeen)
         {
             Debug.Assert(lastSeen.HasValue, $"Any node that is cache should have {nameof(TrieNode.LastSeen)} set.");
-            return lastSeen < lastPersistedBlockNumber
+            return lastSeen < LastPersistedBlockNumber
                    && lastSeen < LatestCommittedBlockNumber - _reorgDepth;
         }
 

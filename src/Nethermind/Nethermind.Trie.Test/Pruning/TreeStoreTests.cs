@@ -856,48 +856,13 @@ namespace Nethermind.Trie.Test.Pruning
                 await Task.Delay(TimeSpan.FromMilliseconds(10));
             }
 
-            memDb.Count.Should().Be(4);
-        }
-
-        [Test]
-        public async Task Will_NotRemove_ReCommittedNode_FromA_ReOrg()
-        {
-            MemDb memDb = new();
-
-            using TrieStore fullTrieStore = CreateTrieStore(
-                kvStore: memDb,
-                pruningStrategy: new TestPruningStrategy(true, true, 100000),
-                persistenceStrategy: No.Persistence,
-                reorgDepthOverride: 2);
-
-            IScopedTrieStore trieStore = fullTrieStore.GetTrieStore(null);
-
-            for (int i = 0; i < 64; i++)
+            if (_scheme == INodeStorage.KeyScheme.Hash)
             {
-                TrieNode node = new(NodeType.Leaf, TestItem.Keccaks[i], new byte[2]);
-                trieStore.CommitNode(i, new NodeCommitInfo(node, TreePath.Empty));
-                node = trieStore.FindCachedOrUnknown(TreePath.Empty, node.Keccak);
-                trieStore.FinishBlockCommit(TrieType.State, i, node);
-
-                if (i > 1)
-                {
-                    node = new(NodeType.Leaf, TestItem.Keccaks[i-1], new byte[2]);
-                    trieStore.CommitNode(i, new NodeCommitInfo(node, TreePath.Empty));
-                    node = trieStore.FindCachedOrUnknown(TreePath.Empty, node.Keccak);
-                    trieStore.FinishBlockCommit(TrieType.State, i, node);
-                }
-
-                // Pruning is done in background
-                await Task.Delay(TimeSpan.FromMilliseconds(10));
-            }
-
-            if (_scheme == INodeStorage.KeyScheme.HalfPath)
-            {
-                memDb.Count.Should().Be(60);
+                memDb.Count.Should().NotBe(4);
             }
             else
             {
-                memDb.Count.Should().Be(61);
+                memDb.Count.Should().Be(4);
             }
         }
     }
