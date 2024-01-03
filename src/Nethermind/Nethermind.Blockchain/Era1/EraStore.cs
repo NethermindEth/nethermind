@@ -11,12 +11,13 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
+using Nethermind.Core.Caching;
 using Nethermind.Era1;
 
 namespace Nethermind.Blockchain;
 public class EraStore: IEraStore
 {
-    private readonly char[] _eraSeparator = ['-'];
+    private readonly char[] _fileNameSeparator = ['-'];
     private readonly Dictionary<long, string> _epochs;
     private readonly IFileSystem _fileSystem;
 
@@ -30,7 +31,7 @@ public class EraStore: IEraStore
         _epochs = new();
         foreach (var file in eraFiles)
         {
-            string[] parts = Path.GetFileName(file).Split(_eraSeparator);
+            string[] parts = Path.GetFileName(file).Split(_fileNameSeparator);
             int epoch;
             if (parts.Length != 3 || !int.TryParse(parts[1], out epoch) || epoch < 0)
                 throw new ArgumentException($"Malformed Era1 file '{file}'.",nameof(eraFiles));
