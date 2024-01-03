@@ -423,8 +423,8 @@ public class ChainSpecLoader : IChainSpecLoader
         bool isEip4844Enabled = chainSpecJson.Params.Eip4844TransitionTimestamp != null && genesisHeader.Timestamp >= chainSpecJson.Params.Eip4844TransitionTimestamp;
         if (isEip4844Enabled)
         {
-            genesisHeader.BlobGasUsed = chainSpecJson.Genesis.BlobGasUsed ?? 0;
-            genesisHeader.ExcessBlobGas = chainSpecJson.Genesis.ExcessBlobGas ?? 0;
+            genesisHeader.BlobGasUsed = chainSpecJson.Genesis.BlobGasUsed;
+            genesisHeader.ExcessBlobGas = chainSpecJson.Genesis.ExcessBlobGas;
         }
 
         bool isEip4788Enabled = chainSpecJson.Params.Eip4788TransitionTimestamp != null && genesisHeader.Timestamp >= chainSpecJson.Params.Eip4788TransitionTimestamp;
