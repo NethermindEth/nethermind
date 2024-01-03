@@ -6,7 +6,7 @@ set -e
 
 output_path=$GITHUB_WORKSPACE/$PUB_DIR
 
-cd $GITHUB_WORKSPACE/nethermind/src/Nethermind/Nethermind.Cli
+cd $GITHUB_WORKSPACE/src/Nethermind/Nethermind.Cli
 
 echo "Building Nethermind CLI"
 

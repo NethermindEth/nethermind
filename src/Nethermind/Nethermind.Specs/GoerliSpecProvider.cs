@@ -15,6 +15,7 @@ public class GoerliSpecProvider : ISpecProvider
     public const long LondonBlockNumber = 5_062_605;
     public const ulong BeaconChainGenesisTimestamp = 0x6059f460;
     public const ulong ShanghaiTimestamp = 0x6410f460;
+    public const ulong CancunTimestamp = 0x65A77460;
 
     private GoerliSpecProvider() { }
 
@@ -28,7 +29,8 @@ public class GoerliSpecProvider : ISpecProvider
             _ => forkActivation.Timestamp switch
             {
                 null or < ShanghaiTimestamp => London.Instance,
-                _ => Shanghai.Instance
+                < CancunTimestamp => Shanghai.Instance,
+                _ => Cancun.Instance
             }
         };
     }
@@ -53,7 +55,8 @@ public class GoerliSpecProvider : ISpecProvider
         (ForkActivation)IstanbulBlockNumber,
         (ForkActivation)BerlinBlockNumber,
         (ForkActivation)LondonBlockNumber,
-        (LondonBlockNumber, ShanghaiTimestamp)
+        (LondonBlockNumber + 1, ShanghaiTimestamp),
+        (LondonBlockNumber + 2, CancunTimestamp)
     };
 
     public static readonly GoerliSpecProvider Instance = new();
