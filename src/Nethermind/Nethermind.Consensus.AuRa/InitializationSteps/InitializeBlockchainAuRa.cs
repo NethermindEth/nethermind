@@ -22,6 +22,7 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
+using Nethermind.Db;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Init.Steps;
 using Nethermind.Logging;
@@ -106,7 +107,7 @@ public class InitializeBlockchainAuRa : InitializeBlockchain
     }
 
     protected ReadOnlyTxProcessingEnv CreateReadOnlyTransactionProcessorSource() =>
-        new ReadOnlyTxProcessingEnv(_api.StateFactory!, _api.BlockTree, _api.SpecProvider, _api.LogManager);
+        new ReadOnlyTxProcessingEnv(_api.DbProvider!.AsReadOnly(false), _api.StateFactory!, _api.BlockTree, _api.SpecProvider, _api.LogManager);
 
     protected override IHealthHintService CreateHealthHintService() =>
         new AuraHealthHintService(_auRaStepCalculator, _api.ValidatorStore);

@@ -9,6 +9,7 @@ using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Blockchain.FullPruning;
 using Nethermind.Core;
+using Nethermind.Db;
 using Nethermind.Init.Steps.Migrations;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
@@ -62,7 +63,6 @@ public class RegisterRpcModules : IStep
         if (_api.SyncModeSelector is null) throw new StepDependencyException(nameof(_api.SyncModeSelector));
         if (_api.TxSender is null) throw new StepDependencyException(nameof(_api.TxSender));
         if (_api.StateReader is null) throw new StepDependencyException(nameof(_api.StateReader));
-        if (_api.WorldStateManager is null) throw new StepDependencyException(nameof(_api.WorldStateManager));
         if (_api.PeerManager is null) throw new StepDependencyException(nameof(_api.PeerManager));
 
         if (jsonRpcConfig.Enabled)
@@ -117,11 +117,12 @@ public class RegisterRpcModules : IStep
         if (_api.PeerPool is null) throw new StepDependencyException(nameof(_api.PeerPool));
         if (_api.WitnessRepository is null) throw new StepDependencyException(nameof(_api.WitnessRepository));
 
-        ProofModuleFactory proofModuleFactory = new(_api.WorldStateManager, _api.BlockTree, _api.BlockPreprocessor, _api.ReceiptFinder, _api.SpecProvider, _api.LogManager);
+        ProofModuleFactory proofModuleFactory = new(_api.DbProvider.AsReadOnly(false), _api.StateFactory!,
+            _api.BlockTree, _api.BlockPreprocessor, _api.ReceiptFinder, _api.SpecProvider, _api.LogManager);
         rpcModuleProvider.RegisterBounded(proofModuleFactory, 2, rpcConfig.Timeout);
 
         DebugModuleFactory debugModuleFactory = new(
-            _api.WorldStateManager,
+            _api.StateFactory!,
             _api.DbProvider,
             _api.BlockTree,
             rpcConfig,
@@ -138,7 +139,8 @@ public class RegisterRpcModules : IStep
         rpcModuleProvider.RegisterBoundedByCpuCount(debugModuleFactory, rpcConfig.Timeout);
 
         TraceModuleFactory traceModuleFactory = new(
-            _api.WorldStateManager,
+            _api.DbProvider.AsReadOnly(false),
+            _api.StateFactory!,
             _api.BlockTree,
             rpcConfig,
             _api.BlockPreprocessor,

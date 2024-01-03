@@ -32,6 +32,7 @@ using Nethermind.JsonRpc.Modules.Subscribe;
 using Nethermind.Network.Config;
 using Nethermind.Consensus.Producers;
 using Nethermind.Config;
+using Nethermind.Db;
 using Nethermind.Network.Contract.P2P;
 
 namespace Nethermind.AccountAbstraction;
@@ -121,6 +122,7 @@ public class AccountAbstractionPlugin : IConsensusWrapperPlugin
         var (getFromApi, _) = _nethermindApi!.ForProducer;
 
         ReadOnlyTxProcessingEnvFactory readOnlyTxProcessingEnvFactory = new(
+            getFromApi.DbProvider!.AsReadOnly(false),
             getFromApi.StateFactory!,
             getFromApi.BlockTree,
             getFromApi.SpecProvider,

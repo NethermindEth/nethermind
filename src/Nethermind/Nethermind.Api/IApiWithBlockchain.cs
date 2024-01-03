@@ -54,7 +54,6 @@ namespace Nethermind.Api
         IStateFactory? StateFactory { get; set; }
         IReadOnlyStateProvider? ChainHeadStateProvider { get; set; }
         IStateReader? StateReader { get; set; }
-        IWorldStateManager? WorldStateManager { get; set; }
         ITransactionProcessor? TransactionProcessor { get; set; }
         ITxSender? TxSender { get; set; }
         INonceManager? NonceManager { get; set; }
@@ -92,5 +91,7 @@ namespace Nethermind.Api
         CompositePruningTrigger PruningTrigger { get; }
 
         IBlockProductionPolicy? BlockProductionPolicy { get; set; }
+
+        IWorldState? WorldState { get; set; }
     }
 }

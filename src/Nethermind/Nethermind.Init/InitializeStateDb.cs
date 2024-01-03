@@ -79,9 +79,7 @@ public class InitializeStateDb : IStep
         IKeyValueStore codeDb = getApi.DbProvider.CodeDb
             .WitnessedBy(witnessCollector);
 
-
         IStateFactory stateFactory = setApi.StateFactory!;
-
 
         // This is probably the point where a different state implementation would switch.
         IWorldState worldState = new WorldState(stateFactory, codeDb, getApi.LogManager);
@@ -91,7 +89,7 @@ public class InitializeStateDb : IStep
         TrieStoreBoundaryWatcher trieStoreBoundaryWatcher = new(stateFactory, _api.BlockTree!, _api.LogManager);
         getApi.DisposeStack.Push(trieStoreBoundaryWatcher);
 
-        IStateReader stateReader = setApi.StateReader = new StateReader(stateFactory, readOnly.GetDb<IDb>(DbNames.Code), getApi.LogManager);
+        IStateReader stateReader = setApi.StateReader = new StateReader(stateFactory, codeDb, getApi.LogManager);
         setApi.ChainHeadStateProvider = new ChainHeadReadOnlyStateProvider(getApi.BlockTree, stateReader);
 
         worldState.StateRoot = getApi.BlockTree!.Head?.StateRoot ?? Keccak.EmptyTreeHash;
@@ -121,7 +119,7 @@ public class InitializeStateDb : IStep
             worldState.StateRoot = getApi.BlockTree.Head.StateRoot;
         }
 
-        InitializeFullPruning(pruningConfig, initConfig, _api, stateManager.GlobalStateReader);
+        // TODO: remove prunning InitializeFullPruning(pruningConfig, initConfig, _api, stateManager.GlobalStateReader);
 
         return Task.CompletedTask;
     }

@@ -25,17 +25,20 @@ namespace Nethermind.JsonRpc.Modules.Proof
         private readonly ISpecProvider _specProvider;
         private readonly ILogManager _logManager;
         private readonly IReadOnlyBlockTree _blockTree;
-        private readonly IWorldStateManager _worldStateManager;
+        private readonly IReadOnlyDbProvider _dbProvider;
+        private readonly IStateFactory _stateFactory;
 
         public ProofModuleFactory(
-            IWorldStateManager worldStateManager,
+            IReadOnlyDbProvider dbProvider,
+            IStateFactory stateFactory,
             IBlockTree blockTree,
             IBlockPreprocessorStep recoveryStep,
             IReceiptFinder receiptFinder,
             ISpecProvider specProvider,
             ILogManager logManager)
         {
-            _worldStateManager = worldStateManager ?? throw new ArgumentNullException(nameof(worldStateManager));
+            _dbProvider = dbProvider ?? throw new ArgumentNullException(nameof(dbProvider));
+            _stateFactory = stateFactory ?? throw new ArgumentNullException(nameof(stateFactory));
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
             _recoveryStep = recoveryStep ?? throw new ArgumentNullException(nameof(recoveryStep));
             _receiptFinder = receiptFinder ?? throw new ArgumentNullException(nameof(receiptFinder));
@@ -46,7 +49,7 @@ namespace Nethermind.JsonRpc.Modules.Proof
         public override IProofRpcModule Create()
         {
             ReadOnlyTxProcessingEnv txProcessingEnv = new(
-                _worldStateManager, _blockTree, _specProvider, _logManager);
+                _dbProvider, _stateFactory, _blockTree, _specProvider, _logManager);
 
             ReadOnlyChainProcessingEnv chainProcessingEnv = new(
                 txProcessingEnv, Always.Valid, _recoveryStep, NoBlockRewards.Instance, new InMemoryReceiptStorage(), _specProvider, _logManager);

@@ -23,28 +23,28 @@ namespace Nethermind.Mev.Execution
         private readonly ILogManager _logManager;
         private readonly ProcessingOptions _processingOptions;
         private readonly IReadOnlyBlockTree _blockTree;
-        private readonly IWorldStateManager _worldStateManager;
+        private IReadOnlyDbProvider _dbProvider;
+        private IStateFactory _stateFactory;
 
-        public TracerFactory(
+        public TracerFactory(IReadOnlyDbProvider dbProvider, IStateFactory stateFactory,
             IBlockTree blockTree,
-            IWorldStateManager worldStateManager,
             IBlockPreprocessorStep recoveryStep,
             ISpecProvider specProvider,
-            ILogManager logManager,
-            ProcessingOptions processingOptions = ProcessingOptions.Trace)
+            ILogManager logManager,  ProcessingOptions processingOptions = ProcessingOptions.Trace)
         {
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
             _processingOptions = processingOptions;
             _recoveryStep = recoveryStep ?? throw new ArgumentNullException(nameof(recoveryStep));
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
-            _worldStateManager = worldStateManager ?? throw new ArgumentNullException(nameof(worldStateManager));
+            _dbProvider = dbProvider?? throw new ArgumentNullException(nameof(dbProvider));
+            _stateFactory = stateFactory?? throw new ArgumentNullException(nameof(stateFactory));
             _blockTree = blockTree.AsReadOnly();
         }
 
         public ITracer Create()
         {
             ReadOnlyTxProcessingEnv txProcessingEnv = new(
-                _worldStateManager, _blockTree, _specProvider, _logManager);
+                _dbProvider, _stateFactory, _blockTree, _specProvider, _logManager);
 
             ReadOnlyChainProcessingEnv chainProcessingEnv = new(
                 txProcessingEnv, Always.Valid, _recoveryStep, NoBlockRewards.Instance, new InMemoryReceiptStorage(), _specProvider, _logManager);

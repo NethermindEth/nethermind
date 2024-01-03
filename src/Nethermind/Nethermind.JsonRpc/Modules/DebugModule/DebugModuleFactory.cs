@@ -26,7 +26,7 @@ namespace Nethermind.JsonRpc.Modules.DebugModule;
 
 public class DebugModuleFactory : ModuleFactoryBase<IDebugRpcModule>
 {
-    private readonly IWorldStateManager _worldStateManager;
+    private readonly IStateFactory _stateFactory;
     private readonly IJsonRpcConfig _jsonRpcConfig;
     private readonly IBlockValidator _blockValidator;
     private readonly IRewardCalculatorSource _rewardCalculatorSource;
@@ -43,7 +43,7 @@ public class DebugModuleFactory : ModuleFactoryBase<IDebugRpcModule>
     private readonly ILogger _logger;
 
     public DebugModuleFactory(
-        IWorldStateManager worldStateManager,
+        IStateFactory stateFactory,
         IDbProvider dbProvider,
         IBlockTree blockTree,
         IJsonRpcConfig jsonRpcConfig,
@@ -58,9 +58,9 @@ public class DebugModuleFactory : ModuleFactoryBase<IDebugRpcModule>
         IFileSystem fileSystem,
         ILogManager logManager)
     {
-        _worldStateManager = worldStateManager;
         _dbProvider = dbProvider.AsReadOnly(false);
         _blockTree = blockTree.AsReadOnly();
+        _stateFactory = stateFactory;
         _jsonRpcConfig = jsonRpcConfig ?? throw new ArgumentNullException(nameof(jsonRpcConfig));
         _blockValidator = blockValidator ?? throw new ArgumentNullException(nameof(blockValidator));
         _recoveryStep = recoveryStep ?? throw new ArgumentNullException(nameof(recoveryStep));
@@ -78,7 +78,8 @@ public class DebugModuleFactory : ModuleFactoryBase<IDebugRpcModule>
     public override IDebugRpcModule Create()
     {
         ReadOnlyTxProcessingEnv txEnv = new(
-            _worldStateManager,
+            _dbProvider,
+            _stateFactory,
             _blockTree,
             _specProvider,
             _logManager);

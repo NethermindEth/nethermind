@@ -13,6 +13,7 @@ using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
+using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Merge.AuRa.Withdrawals;
 using Nethermind.State;
@@ -41,6 +42,7 @@ public class AuRaMergeBlockProducerEnvFactory : BlockProducerEnvFactory
         ITransactionComparerProvider transactionComparerProvider,
         IBlocksConfig blocksConfig,
         ILogManager logManager) : base(
+            auraApi.DbProvider!.AsReadOnly(false),
             stateFactory,
             blockTree,
             specProvider,

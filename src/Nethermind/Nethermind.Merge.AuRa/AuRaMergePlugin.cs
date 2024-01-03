@@ -50,7 +50,7 @@ namespace Nethermind.Merge.AuRa
                 (AuRaNethermindApi)_api,
                 _api.Config<IAuraConfig>(),
                 _api.DisposeStack,
-                _api.WorldStateManager!,
+                _api.StateFactory!,
                 _api.BlockTree!,
                 _api.SpecProvider!,
                 _api.BlockValidator!,

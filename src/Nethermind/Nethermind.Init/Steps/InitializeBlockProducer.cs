@@ -9,6 +9,7 @@ using Nethermind.Api.Extensions;
 using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Producers;
+using Nethermind.Db;
 
 namespace Nethermind.Init.Steps
 {
@@ -33,7 +34,7 @@ namespace Nethermind.Init.Steps
         protected virtual async Task<IBlockProducer> BuildProducer()
         {
             _api.BlockProducerEnvFactory = new BlockProducerEnvFactory(
-                _api.DbProvider!,
+                _api.DbProvider!.AsReadOnly(true),
                 _api.StateFactory!,
                 _api.BlockTree!,
                 _api.SpecProvider!,

@@ -75,8 +75,8 @@ namespace Nethermind.Api
         {
             ReadOnlyBlockTree readOnlyTree = BlockTree!.AsReadOnly();
 
-            // TODO: reuse the same trie cache here
             ReadOnlyTxProcessingEnv readOnlyTxProcessingEnv = new(
+                DbProvider!.AsReadOnly(false),
                 StateFactory!,
                 readOnlyTree,
                 SpecProvider,
