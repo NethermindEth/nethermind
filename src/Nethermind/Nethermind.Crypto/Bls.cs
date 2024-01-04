@@ -3,8 +3,11 @@
 
 using System;
 using System.Linq;
+using System.Security.Cryptography;
+using System.Text;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
+using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Crypto
 {
@@ -12,15 +15,16 @@ namespace Nethermind.Crypto
     {
         internal static readonly byte[] SubgroupOrder = [0x73,0xed,0xa7,0x53,0x29,0x9d,0x7d,0x48,0x33,0x39,0xd8,0x08,0x09,0xa1,0xd8,0x05,0x53,0xbd,0xa4,0x02,0xff,0xfe,0x5b,0xfe,0xff,0xff,0xff,0xff,0x00,0x00,0x00,0x01];
         internal static readonly byte[] SubgroupOrderMinusOne = [0x73,0xed,0xa7,0x53,0x29,0x9d,0x7d,0x48,0x33,0x39,0xd8,0x08,0x09,0xa1,0xd8,0x05,0x53,0xbd,0xa4,0x02,0xff,0xfe,0x5b,0xfe,0xff,0xff,0xff,0xff,0x00,0x00,0x00,0x00];
+        internal static readonly byte[] Cryptosuite = ASCIIEncoding.ASCII.GetBytes("BLS_SIG_BLS12381G2_XMD:SHA-256_SSWU_RO_NUL_");
 
         public static Signature Sign(PrivateKey privateKey, ReadOnlySpan<byte> message)
         {
-            return (privateKey.KeyBytes * G1.FromHash(Keccak.Compute(message))).ToSignature();
+            return (privateKey.KeyBytes * G1.HashToCurve(message)).ToSignature();
         }
 
         public static bool Verify(PublicKey publicKey, Signature signature, ReadOnlySpan<byte> message)
         {
-            return PairingsEqual(G1.FromSignature(signature), G2.Generator, G1.FromHash(Keccak.Compute(message)), publicKey.Point);
+            return PairingsEqual(G1.FromSignature(signature), G2.Generator, G1.HashToCurve(message), publicKey.Point);
         }
 
         public static PublicKey GetPublicKey(PrivateKey privateKey)
@@ -101,9 +105,12 @@ namespace Nethermind.Crypto
                 return x.ToBigEndian() * Generator;
             }
 
-            public static G1 FromHash(Hash256 x)
+            public static G1 HashToCurve(ReadOnlySpan<byte> msg)
             {
-                return x.Bytes * Generator;
+                Span<byte> data = stackalloc byte[msg.Length + Cryptosuite.Length];
+                Cryptosuite.CopyTo(data);
+                msg.CopyTo(data[Cryptosuite.Length..]);
+                return SHA256.HashData(data) * Generator;
             }
 
             public static G1 FromSignature(Signature signature)
