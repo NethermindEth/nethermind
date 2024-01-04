@@ -8,6 +8,7 @@ public static class Program
     const long MaxSizeWithoutSplitting = 35_000_000;
     const long TargetSize = 23_000_000;
     const long PenaltyForAdditionalInit = 300_000;
+    const int MaxJobsCount = 256;
 
     static void Main(string[] args)
     {
@@ -16,29 +17,37 @@ public static class Program
         IEnumerable<string> directories = GetTestsDirectories(path);
         Dictionary<string, long> pathsToBeTested = GetPathsToBeTested(directories);
 
-        var jsonObjects = pathsToBeTested.Select(y => Path.GetFileName(y.Key))
-                                         .Select(x => x.Split('.').First())
-                                         .Select(testName => new { testName })
-                                         .ToList();
+        // Calculate the group size based on the number of elements
+        int totalElements = pathsToBeTested.Count;
+        int groupSize = (int)Math.Ceiling(totalElements / (double)MaxJobsCount);
 
-        string jsonString = JsonSerializer.Serialize(jsonObjects, new JsonSerializerOptions { WriteIndented = true });
+        var groupedTestNames = pathsToBeTested.Select(y => Path.GetFileName(y.Key))
+                                              .Select(x => x.Split('.').First())
+                                              .Select((testName, index) => new { Index = index, TestName = testName })
+                                              .GroupBy(x => x.Index / groupSize)
+                                              .Select(group => new { testNames = group.Select(x => x.TestName).ToArray() })
+                                              .Take(MaxJobsCount)
+                                              .ToList();
+
+        string jsonString = JsonSerializer.Serialize(groupedTestNames, new JsonSerializerOptions { WriteIndented = true });
 
         File.WriteAllText("matrix.json", jsonString);
-
-        //IEnumerable<List<string>> accumulatedJobs = GetTestsSplittedToJobs(pathsToBeTested);
-        //
-        //TextWriter fileContent = CreateTextWriter();
-        //
-        //WriteInitialLines(fileContent);
-        //
-        //int jobsCreated = 0;
-        //foreach (List<string> job in accumulatedJobs)
-        //{
-        //    WriteJob(fileContent, job, ++jobsCreated);
-        //}
-        //
-        //fileContent.Dispose();
     }
+
+    //IEnumerable<List<string>> accumulatedJobs = GetTestsSplittedToJobs(pathsToBeTested);
+    //
+    //TextWriter fileContent = CreateTextWriter();
+    //
+    //WriteInitialLines(fileContent);
+    //
+    //int jobsCreated = 0;
+    //foreach (List<string> job in accumulatedJobs)
+    //{
+    //    WriteJob(fileContent, job, ++jobsCreated);
+    //}
+    //
+    //fileContent.Dispose();
+}
 
     private static IEnumerable<string> GetTestsDirectories(string path)
     {

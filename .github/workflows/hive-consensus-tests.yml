@@ -152,10 +152,14 @@ jobs:
         run: go build .
       - name: Load Docker image
         run: docker load --input /tmp/image.tar
-      - name: Run stArgsZeroOneBalance
+      - name: Run hive for tests - ${{ matrix.hiveTests.testNames }}
         continue-on-error: true
         working-directory: hive
-        run: ./hive --client nethermind --sim ethereum/consensus --sim.limit /${{ matrix.hiveTests.testName }} --sim.parallelism $PARALLELISM
+        run: |
+          for testName in ${matrix.hiveTests.testNames[@]}
+          do
+            ./hive --client nethermind --sim ethereum/consensus --sim.limit /$testName --sim.parallelism $PARALLELISM
+          done
       - name: Print results
         run: |
           chmod +x nethermind/scripts/hive-results.sh
