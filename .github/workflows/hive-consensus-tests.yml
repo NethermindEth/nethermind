@@ -95,6 +95,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           path: nethermind
+          submodules: 'recursive'
       - name: Generate Hive Json For Matrix
         run: |
           cd nethermind/tools/HiveConsensusWorkflowGenerator
