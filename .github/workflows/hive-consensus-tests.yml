@@ -97,11 +97,12 @@ jobs:
           path: nethermind
           submodules: 'recursive'
       - name: Generate Hive Json For Matrix
+        id: set-matrix
         run: |
           cd nethermind/tools/HiveConsensusWorkflowGenerator
           dotnet run
           cat matrix.json
-          echo "matrix=$(jq -c . matrix.json)" >> $GITHUB_OUTPUT
+          echo "matrix=$(cat matrix.json)" >> $GITHUB_OUTPUT
           
   run_hive_tests:
     runs-on: ubuntu-latest
