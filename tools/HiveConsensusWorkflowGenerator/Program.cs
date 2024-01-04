@@ -1,3 +1,6 @@
+using System.Diagnostics;
+using System.Text.Json;
+
 namespace HiveConsensusWorkflowGenerator;
 
 public static class Program
@@ -12,24 +15,34 @@ public static class Program
 
         IEnumerable<string> directories = GetTestsDirectories(path);
         Dictionary<string, long> pathsToBeTested = GetPathsToBeTested(directories);
-        IEnumerable<List<string>> accumulatedJobs = GetTestsSplittedToJobs(pathsToBeTested);
 
-        TextWriter fileContent = CreateTextWriter();
+        var jsonObjects = pathsToBeTested.Select(y => Path.GetFileName(y.Key))
+                                         .Select(x => x.Split('.').First())
+                                         .Select(testName => new { testName })
+                                         .ToList();
 
-        WriteInitialLines(fileContent);
+        string jsonString = JsonSerializer.Serialize(jsonObjects, new JsonSerializerOptions { WriteIndented = true });
 
-        int jobsCreated = 0;
-        foreach (List<string> job in accumulatedJobs)
-        {
-            WriteJob(fileContent, job, ++jobsCreated);
-        }
+        File.WriteAllText("matrix.json", jsonString);
 
-        fileContent.Dispose();
+        //IEnumerable<List<string>> accumulatedJobs = GetTestsSplittedToJobs(pathsToBeTested);
+        //
+        //TextWriter fileContent = CreateTextWriter();
+        //
+        //WriteInitialLines(fileContent);
+        //
+        //int jobsCreated = 0;
+        //foreach (List<string> job in accumulatedJobs)
+        //{
+        //    WriteJob(fileContent, job, ++jobsCreated);
+        //}
+        //
+        //fileContent.Dispose();
     }
 
     private static IEnumerable<string> GetTestsDirectories(string path)
     {
-        string testsDirectory = string.Concat(FindDirectory("nethermind"), "/", path, "/BlockchainTests");
+        string testsDirectory = string.Concat(FindDirectory("nethermind"), "/src/tests", path, "/BlockchainTests");
 
         foreach (string directory in Directory.GetDirectories(testsDirectory, "st*", SearchOption.AllDirectories))
         {

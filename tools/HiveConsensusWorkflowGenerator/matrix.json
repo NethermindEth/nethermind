@@ -1,0 +1,2612 @@
+[
+  {
+    "testName": "stArgsZeroOneBalance"
+  },
+  {
+    "testName": "stAttackTest"
+  },
+  {
+    "testName": "badOpcodes"
+  },
+  {
+    "testName": "eip2315NotRemoved"
+  },
+  {
+    "testName": "invalidAddr"
+  },
+  {
+    "testName": "invalidDiffPlaces"
+  },
+  {
+    "testName": "measureGas"
+  },
+  {
+    "testName": "opc0CDiffPlaces"
+  },
+  {
+    "testName": "opc0DDiffPlaces"
+  },
+  {
+    "testName": "opc0EDiffPlaces"
+  },
+  {
+    "testName": "opc0FDiffPlaces"
+  },
+  {
+    "testName": "opc1EDiffPlaces"
+  },
+  {
+    "testName": "opc1FDiffPlaces"
+  },
+  {
+    "testName": "opc21DiffPlaces"
+  },
+  {
+    "testName": "opc22DiffPlaces"
+  },
+  {
+    "testName": "opc23DiffPlaces"
+  },
+  {
+    "testName": "opc24DiffPlaces"
+  },
+  {
+    "testName": "opc25DiffPlaces"
+  },
+  {
+    "testName": "opc26DiffPlaces"
+  },
+  {
+    "testName": "opc27DiffPlaces"
+  },
+  {
+    "testName": "opc28DiffPlaces"
+  },
+  {
+    "testName": "opc29DiffPlaces"
+  },
+  {
+    "testName": "opc2ADiffPlaces"
+  },
+  {
+    "testName": "opc2BDiffPlaces"
+  },
+  {
+    "testName": "opc2CDiffPlaces"
+  },
+  {
+    "testName": "opc2DDiffPlaces"
+  },
+  {
+    "testName": "opc2EDiffPlaces"
+  },
+  {
+    "testName": "opc2FDiffPlaces"
+  },
+  {
+    "testName": "opc49DiffPlaces"
+  },
+  {
+    "testName": "opc4ADiffPlaces"
+  },
+  {
+    "testName": "opc4BDiffPlaces"
+  },
+  {
+    "testName": "opc4CDiffPlaces"
+  },
+  {
+    "testName": "opc4DDiffPlaces"
+  },
+  {
+    "testName": "opc4EDiffPlaces"
+  },
+  {
+    "testName": "opc4FDiffPlaces"
+  },
+  {
+    "testName": "opc5CDiffPlaces"
+  },
+  {
+    "testName": "opc5DDiffPlaces"
+  },
+  {
+    "testName": "opc5EDiffPlaces"
+  },
+  {
+    "testName": "opc5FDiffPlaces"
+  },
+  {
+    "testName": "opcA5DiffPlaces"
+  },
+  {
+    "testName": "opcA6DiffPlaces"
+  },
+  {
+    "testName": "opcA7DiffPlaces"
+  },
+  {
+    "testName": "opcA8DiffPlaces"
+  },
+  {
+    "testName": "opcA9DiffPlaces"
+  },
+  {
+    "testName": "opcAADiffPlaces"
+  },
+  {
+    "testName": "opcABDiffPlaces"
+  },
+  {
+    "testName": "opcACDiffPlaces"
+  },
+  {
+    "testName": "opcADDiffPlaces"
+  },
+  {
+    "testName": "opcAEDiffPlaces"
+  },
+  {
+    "testName": "opcAFDiffPlaces"
+  },
+  {
+    "testName": "opcB0DiffPlaces"
+  },
+  {
+    "testName": "opcB1DiffPlaces"
+  },
+  {
+    "testName": "opcB2DiffPlaces"
+  },
+  {
+    "testName": "opcB3DiffPlaces"
+  },
+  {
+    "testName": "opcB4DiffPlaces"
+  },
+  {
+    "testName": "opcB5DiffPlaces"
+  },
+  {
+    "testName": "opcB6DiffPlaces"
+  },
+  {
+    "testName": "opcB7DiffPlaces"
+  },
+  {
+    "testName": "opcB8DiffPlaces"
+  },
+  {
+    "testName": "opcB9DiffPlaces"
+  },
+  {
+    "testName": "opcBADiffPlaces"
+  },
+  {
+    "testName": "opcBBDiffPlaces"
+  },
+  {
+    "testName": "opcBCDiffPlaces"
+  },
+  {
+    "testName": "opcBDDiffPlaces"
+  },
+  {
+    "testName": "opcBEDiffPlaces"
+  },
+  {
+    "testName": "opcBFDiffPlaces"
+  },
+  {
+    "testName": "opcC0DiffPlaces"
+  },
+  {
+    "testName": "opcC1DiffPlaces"
+  },
+  {
+    "testName": "opcC2DiffPlaces"
+  },
+  {
+    "testName": "opcC3DiffPlaces"
+  },
+  {
+    "testName": "opcC4DiffPlaces"
+  },
+  {
+    "testName": "opcC5DiffPlaces"
+  },
+  {
+    "testName": "opcC6DiffPlaces"
+  },
+  {
+    "testName": "opcC7DiffPlaces"
+  },
+  {
+    "testName": "opcC8DiffPlaces"
+  },
+  {
+    "testName": "opcC9DiffPlaces"
+  },
+  {
+    "testName": "opcCADiffPlaces"
+  },
+  {
+    "testName": "opcCBDiffPlaces"
+  },
+  {
+    "testName": "opcCCDiffPlaces"
+  },
+  {
+    "testName": "opcCDDiffPlaces"
+  },
+  {
+    "testName": "opcCEDiffPlaces"
+  },
+  {
+    "testName": "opcCFDiffPlaces"
+  },
+  {
+    "testName": "opcD0DiffPlaces"
+  },
+  {
+    "testName": "opcD1DiffPlaces"
+  },
+  {
+    "testName": "opcD2DiffPlaces"
+  },
+  {
+    "testName": "opcD3DiffPlaces"
+  },
+  {
+    "testName": "opcD4DiffPlaces"
+  },
+  {
+    "testName": "opcD5DiffPlaces"
+  },
+  {
+    "testName": "opcD6DiffPlaces"
+  },
+  {
+    "testName": "opcD7DiffPlaces"
+  },
+  {
+    "testName": "opcD8DiffPlaces"
+  },
+  {
+    "testName": "opcD9DiffPlaces"
+  },
+  {
+    "testName": "opcDADiffPlaces"
+  },
+  {
+    "testName": "opcDBDiffPlaces"
+  },
+  {
+    "testName": "opcDCDiffPlaces"
+  },
+  {
+    "testName": "opcDDDiffPlaces"
+  },
+  {
+    "testName": "opcDEDiffPlaces"
+  },
+  {
+    "testName": "opcDFDiffPlaces"
+  },
+  {
+    "testName": "opcE0DiffPlaces"
+  },
+  {
+    "testName": "opcE1DiffPlaces"
+  },
+  {
+    "testName": "opcE2DiffPlaces"
+  },
+  {
+    "testName": "opcE3DiffPlaces"
+  },
+  {
+    "testName": "opcE4DiffPlaces"
+  },
+  {
+    "testName": "opcE5DiffPlaces"
+  },
+  {
+    "testName": "opcE6DiffPlaces"
+  },
+  {
+    "testName": "opcE7DiffPlaces"
+  },
+  {
+    "testName": "opcE8DiffPlaces"
+  },
+  {
+    "testName": "opcE9DiffPlaces"
+  },
+  {
+    "testName": "opcEADiffPlaces"
+  },
+  {
+    "testName": "opcEBDiffPlaces"
+  },
+  {
+    "testName": "opcECDiffPlaces"
+  },
+  {
+    "testName": "opcEDDiffPlaces"
+  },
+  {
+    "testName": "opcEEDiffPlaces"
+  },
+  {
+    "testName": "opcEFDiffPlaces"
+  },
+  {
+    "testName": "opcF6DiffPlaces"
+  },
+  {
+    "testName": "opcF7DiffPlaces"
+  },
+  {
+    "testName": "opcF8DiffPlaces"
+  },
+  {
+    "testName": "opcF9DiffPlaces"
+  },
+  {
+    "testName": "opcFBDiffPlaces"
+  },
+  {
+    "testName": "opcFCDiffPlaces"
+  },
+  {
+    "testName": "opcFEDiffPlaces"
+  },
+  {
+    "testName": "operationDiffGas"
+  },
+  {
+    "testName": "undefinedOpcodeFirstByte"
+  },
+  {
+    "testName": "stBugs"
+  },
+  {
+    "testName": "stCallCodes"
+  },
+  {
+    "testName": "stCallCreateCallCodeTest"
+  },
+  {
+    "testName": "stCallDelegateCodesCallCodeHomestead"
+  },
+  {
+    "testName": "stCallDelegateCodesHomestead"
+  },
+  {
+    "testName": "stChainId"
+  },
+  {
+    "testName": "stCodeCopyTest"
+  },
+  {
+    "testName": "stCodeSizeLimit"
+  },
+  {
+    "testName": "stCreate2"
+  },
+  {
+    "testName": "stCreateTest"
+  },
+  {
+    "testName": "stDelegatecallTestHomestead"
+  },
+  {
+    "testName": "stEIP150singleCodeGasPrices"
+  },
+  {
+    "testName": "stEIP150Specific"
+  },
+  {
+    "testName": "baseFeeDiffPlaces"
+  },
+  {
+    "testName": "gasPriceDiffPlaces"
+  },
+  {
+    "testName": "intrinsic"
+  },
+  {
+    "testName": "lowFeeCap"
+  },
+  {
+    "testName": "lowGasLimit"
+  },
+  {
+    "testName": "lowGasPriceOldTypes"
+  },
+  {
+    "testName": "outOfFunds"
+  },
+  {
+    "testName": "outOfFundsOldTypes"
+  },
+  {
+    "testName": "senderBalance"
+  },
+  {
+    "testName": "tipTooHigh"
+  },
+  {
+    "testName": "transactionIntinsicBug"
+  },
+  {
+    "testName": "typeTwoBerlin"
+  },
+  {
+    "testName": "valCausesOOF"
+  },
+  {
+    "testName": "stEIP158Specific"
+  },
+  {
+    "testName": "stEIP2930"
+  },
+  {
+    "testName": "stEIP3607"
+  },
+  {
+    "testName": "stExample"
+  },
+  {
+    "testName": "stExtCodeHash"
+  },
+  {
+    "testName": "stHomesteadSpecific"
+  },
+  {
+    "testName": "stInitCodeTest"
+  },
+  {
+    "testName": "stLogTests"
+  },
+  {
+    "testName": "stMemExpandingEIP150Calls"
+  },
+  {
+    "testName": "stMemoryStressTest"
+  },
+  {
+    "testName": "buffer"
+  },
+  {
+    "testName": "bufferSrcOffset"
+  },
+  {
+    "testName": "callDataCopyOffset"
+  },
+  {
+    "testName": "calldatacopy_dejavu"
+  },
+  {
+    "testName": "calldatacopy_dejavu2"
+  },
+  {
+    "testName": "codeCopyOffset"
+  },
+  {
+    "testName": "codecopy_dejavu"
+  },
+  {
+    "testName": "codecopy_dejavu2"
+  },
+  {
+    "testName": "extcodecopy_dejavu"
+  },
+  {
+    "testName": "log1_dejavu"
+  },
+  {
+    "testName": "log2_dejavu"
+  },
+  {
+    "testName": "log3_dejavu"
+  },
+  {
+    "testName": "log4_dejavu"
+  },
+  {
+    "testName": "mem0b_singleByte"
+  },
+  {
+    "testName": "mem31b_singleByte"
+  },
+  {
+    "testName": "mem32b_singleByte"
+  },
+  {
+    "testName": "mem32kb\u002B1"
+  },
+  {
+    "testName": "mem32kb\u002B31"
+  },
+  {
+    "testName": "mem32kb\u002B32"
+  },
+  {
+    "testName": "mem32kb\u002B33"
+  },
+  {
+    "testName": "mem32kb-1"
+  },
+  {
+    "testName": "mem32kb-31"
+  },
+  {
+    "testName": "mem32kb-32"
+  },
+  {
+    "testName": "mem32kb-33"
+  },
+  {
+    "testName": "mem32kb"
+  },
+  {
+    "testName": "mem32kb_singleByte\u002B1"
+  },
+  {
+    "testName": "mem32kb_singleByte\u002B31"
+  },
+  {
+    "testName": "mem32kb_singleByte\u002B32"
+  },
+  {
+    "testName": "mem32kb_singleByte\u002B33"
+  },
+  {
+    "testName": "mem32kb_singleByte-1"
+  },
+  {
+    "testName": "mem32kb_singleByte-31"
+  },
+  {
+    "testName": "mem32kb_singleByte-32"
+  },
+  {
+    "testName": "mem32kb_singleByte-33"
+  },
+  {
+    "testName": "mem32kb_singleByte"
+  },
+  {
+    "testName": "mem33b_singleByte"
+  },
+  {
+    "testName": "mem64kb\u002B1"
+  },
+  {
+    "testName": "mem64kb\u002B31"
+  },
+  {
+    "testName": "mem64kb\u002B32"
+  },
+  {
+    "testName": "mem64kb\u002B33"
+  },
+  {
+    "testName": "mem64kb-1"
+  },
+  {
+    "testName": "mem64kb-31"
+  },
+  {
+    "testName": "mem64kb-32"
+  },
+  {
+    "testName": "mem64kb-33"
+  },
+  {
+    "testName": "mem64kb"
+  },
+  {
+    "testName": "mem64kb_singleByte\u002B1"
+  },
+  {
+    "testName": "mem64kb_singleByte\u002B31"
+  },
+  {
+    "testName": "mem64kb_singleByte\u002B32"
+  },
+  {
+    "testName": "mem64kb_singleByte\u002B33"
+  },
+  {
+    "testName": "mem64kb_singleByte-1"
+  },
+  {
+    "testName": "mem64kb_singleByte-31"
+  },
+  {
+    "testName": "mem64kb_singleByte-32"
+  },
+  {
+    "testName": "mem64kb_singleByte-33"
+  },
+  {
+    "testName": "mem64kb_singleByte"
+  },
+  {
+    "testName": "memCopySelf"
+  },
+  {
+    "testName": "memReturn"
+  },
+  {
+    "testName": "mload16bitBound"
+  },
+  {
+    "testName": "mload8bitBound"
+  },
+  {
+    "testName": "mload_dejavu"
+  },
+  {
+    "testName": "mstore_dejavu"
+  },
+  {
+    "testName": "mstroe8_dejavu"
+  },
+  {
+    "testName": "oog"
+  },
+  {
+    "testName": "sha3_dejavu"
+  },
+  {
+    "testName": "stackLimitGas_1023"
+  },
+  {
+    "testName": "stackLimitGas_1024"
+  },
+  {
+    "testName": "stackLimitGas_1025"
+  },
+  {
+    "testName": "stackLimitPush31_1023"
+  },
+  {
+    "testName": "stackLimitPush31_1024"
+  },
+  {
+    "testName": "stackLimitPush31_1025"
+  },
+  {
+    "testName": "stackLimitPush32_1023"
+  },
+  {
+    "testName": "stackLimitPush32_1024"
+  },
+  {
+    "testName": "stackLimitPush32_1025"
+  },
+  {
+    "testName": "stNonZeroCallsTest"
+  },
+  {
+    "testName": "blake2B"
+  },
+  {
+    "testName": "delegatecall09Undefined"
+  },
+  {
+    "testName": "identity_to_bigger"
+  },
+  {
+    "testName": "identity_to_smaller"
+  },
+  {
+    "testName": "idPrecomps"
+  },
+  {
+    "testName": "modexp"
+  },
+  {
+    "testName": "modexpTests"
+  },
+  {
+    "testName": "precompsEIP2929"
+  },
+  {
+    "testName": "sec80"
+  },
+  {
+    "testName": "stPreCompiledContracts2"
+  },
+  {
+    "testName": "stQuadraticComplexityTest"
+  },
+  {
+    "testName": "stRandom"
+  },
+  {
+    "testName": "stRandom2"
+  },
+  {
+    "testName": "stRecursiveCreate"
+  },
+  {
+    "testName": "stRefundTest"
+  },
+  {
+    "testName": "stReturnDataTest"
+  },
+  {
+    "testName": "stRevertTest"
+  },
+  {
+    "testName": "stSelfBalance"
+  },
+  {
+    "testName": "stShift"
+  },
+  {
+    "testName": "stSLoadTest"
+  },
+  {
+    "testName": "stSolidityTest"
+  },
+  {
+    "testName": "stSpecialTest"
+  },
+  {
+    "testName": "stSStoreTest"
+  },
+  {
+    "testName": "shallowStack"
+  },
+  {
+    "testName": "stackOverflow"
+  },
+  {
+    "testName": "stackOverflowDUP"
+  },
+  {
+    "testName": "stackOverflowM1"
+  },
+  {
+    "testName": "stackOverflowM1DUP"
+  },
+  {
+    "testName": "stackOverflowM1PUSH"
+  },
+  {
+    "testName": "stackOverflowPUSH"
+  },
+  {
+    "testName": "stackOverflowSWAP"
+  },
+  {
+    "testName": "stacksanitySWAP"
+  },
+  {
+    "testName": "underflowTest"
+  },
+  {
+    "testName": "StaticcallToPrecompileFromCalledContract"
+  },
+  {
+    "testName": "StaticcallToPrecompileFromContractInitialization"
+  },
+  {
+    "testName": "StaticcallToPrecompileFromTransaction"
+  },
+  {
+    "testName": "static_ABAcalls0"
+  },
+  {
+    "testName": "static_ABAcalls1"
+  },
+  {
+    "testName": "static_ABAcalls2"
+  },
+  {
+    "testName": "static_ABAcalls3"
+  },
+  {
+    "testName": "static_ABAcallsSuicide0"
+  },
+  {
+    "testName": "static_ABAcallsSuicide1"
+  },
+  {
+    "testName": "static_Call10"
+  },
+  {
+    "testName": "static_Call1024BalanceTooLow"
+  },
+  {
+    "testName": "static_Call1024BalanceTooLow2"
+  },
+  {
+    "testName": "static_Call1024OOG"
+  },
+  {
+    "testName": "static_Call1024PreCalls"
+  },
+  {
+    "testName": "static_Call1024PreCalls2"
+  },
+  {
+    "testName": "static_Call1024PreCalls3"
+  },
+  {
+    "testName": "static_Call1MB1024Calldepth"
+  },
+  {
+    "testName": "static_Call50000"
+  },
+  {
+    "testName": "static_Call50000bytesContract50_1"
+  },
+  {
+    "testName": "static_Call50000bytesContract50_2"
+  },
+  {
+    "testName": "static_Call50000bytesContract50_3"
+  },
+  {
+    "testName": "static_Call50000_ecrec"
+  },
+  {
+    "testName": "static_Call50000_identity"
+  },
+  {
+    "testName": "static_Call50000_identity2"
+  },
+  {
+    "testName": "static_Call50000_rip160"
+  },
+  {
+    "testName": "static_CallAndCallcodeConsumeMoreGasThenTransactionHas"
+  },
+  {
+    "testName": "static_CallAskMoreGasOnDepth2ThenTransactionHas"
+  },
+  {
+    "testName": "static_callBasic"
+  },
+  {
+    "testName": "static_callcallcallcode_001"
+  },
+  {
+    "testName": "static_callcallcallcode_001_2"
+  },
+  {
+    "testName": "static_callcallcallcode_001_OOGE"
+  },
+  {
+    "testName": "static_callcallcallcode_001_OOGE_2"
+  },
+  {
+    "testName": "static_callcallcallcode_001_OOGMAfter"
+  },
+  {
+    "testName": "static_callcallcallcode_001_OOGMAfter2"
+  },
+  {
+    "testName": "static_callcallcallcode_001_OOGMAfter_2"
+  },
+  {
+    "testName": "static_callcallcallcode_001_OOGMAfter_3"
+  },
+  {
+    "testName": "static_callcallcallcode_001_OOGMBefore"
+  },
+  {
+    "testName": "static_callcallcallcode_001_OOGMBefore2"
+  },
+  {
+    "testName": "static_callcallcallcode_001_SuicideEnd"
+  },
+  {
+    "testName": "static_callcallcallcode_001_SuicideEnd2"
+  },
+  {
+    "testName": "static_callcallcallcode_001_SuicideMiddle"
+  },
+  {
+    "testName": "static_callcallcallcode_001_SuicideMiddle2"
+  },
+  {
+    "testName": "static_callcallcallcode_ABCB_RECURSIVE"
+  },
+  {
+    "testName": "static_callcallcallcode_ABCB_RECURSIVE2"
+  },
+  {
+    "testName": "static_callcallcall_000"
+  },
+  {
+    "testName": "static_callcallcall_000_OOGE"
+  },
+  {
+    "testName": "static_callcallcall_000_OOGMAfter"
+  },
+  {
+    "testName": "static_callcallcall_000_OOGMAfter2"
+  },
+  {
+    "testName": "static_callcallcall_000_OOGMBefore"
+  },
+  {
+    "testName": "static_callcallcall_000_SuicideEnd"
+  },
+  {
+    "testName": "static_callcallcall_000_SuicideMiddle"
+  },
+  {
+    "testName": "static_callcallcall_ABCB_RECURSIVE"
+  },
+  {
+    "testName": "static_callcallcodecallcode_011"
+  },
+  {
+    "testName": "static_callcallcodecallcode_011_2"
+  },
+  {
+    "testName": "static_callcallcodecallcode_011_OOGE"
+  },
+  {
+    "testName": "static_callcallcodecallcode_011_OOGE_2"
+  },
+  {
+    "testName": "static_callcallcodecallcode_011_OOGMAfter"
+  },
+  {
+    "testName": "static_callcallcodecallcode_011_OOGMAfter2"
+  },
+  {
+    "testName": "static_callcallcodecallcode_011_OOGMAfter_1"
+  },
+  {
+    "testName": "static_callcallcodecallcode_011_OOGMAfter_2"
+  },
+  {
+    "testName": "static_callcallcodecallcode_011_OOGMBefore"
+  },
+  {
+    "testName": "static_callcallcodecallcode_011_OOGMBefore2"
+  },
+  {
+    "testName": "static_callcallcodecallcode_011_SuicideEnd"
+  },
+  {
+    "testName": "static_callcallcodecallcode_011_SuicideEnd2"
+  },
+  {
+    "testName": "static_callcallcodecallcode_011_SuicideMiddle"
+  },
+  {
+    "testName": "static_callcallcodecallcode_011_SuicideMiddle2"
+  },
+  {
+    "testName": "static_callcallcodecallcode_ABCB_RECURSIVE"
+  },
+  {
+    "testName": "static_callcallcodecallcode_ABCB_RECURSIVE2"
+  },
+  {
+    "testName": "static_callcallcodecall_010"
+  },
+  {
+    "testName": "static_callcallcodecall_010_2"
+  },
+  {
+    "testName": "static_callcallcodecall_010_OOGE"
+  },
+  {
+    "testName": "static_callcallcodecall_010_OOGE_2"
+  },
+  {
+    "testName": "static_callcallcodecall_010_OOGMAfter"
+  },
+  {
+    "testName": "static_callcallcodecall_010_OOGMAfter2"
+  },
+  {
+    "testName": "static_callcallcodecall_010_OOGMAfter_2"
+  },
+  {
+    "testName": "static_callcallcodecall_010_OOGMAfter_3"
+  },
+  {
+    "testName": "static_callcallcodecall_010_OOGMBefore"
+  },
+  {
+    "testName": "static_callcallcodecall_010_OOGMBefore2"
+  },
+  {
+    "testName": "static_callcallcodecall_010_SuicideEnd"
+  },
+  {
+    "testName": "static_callcallcodecall_010_SuicideEnd2"
+  },
+  {
+    "testName": "static_callcallcodecall_010_SuicideMiddle"
+  },
+  {
+    "testName": "static_callcallcodecall_010_SuicideMiddle2"
+  },
+  {
+    "testName": "static_callcallcodecall_ABCB_RECURSIVE"
+  },
+  {
+    "testName": "static_callcallcodecall_ABCB_RECURSIVE2"
+  },
+  {
+    "testName": "static_callcallcode_01_2"
+  },
+  {
+    "testName": "static_callcallcode_01_OOGE_2"
+  },
+  {
+    "testName": "static_callcallcode_01_SuicideEnd"
+  },
+  {
+    "testName": "static_callcallcode_01_SuicideEnd2"
+  },
+  {
+    "testName": "static_callcall_00"
+  },
+  {
+    "testName": "static_callcall_00_OOGE"
+  },
+  {
+    "testName": "static_callcall_00_OOGE_1"
+  },
+  {
+    "testName": "static_callcall_00_OOGE_2"
+  },
+  {
+    "testName": "static_callcall_00_SuicideEnd"
+  },
+  {
+    "testName": "static_callChangeRevert"
+  },
+  {
+    "testName": "static_callcodecallcallcode_101"
+  },
+  {
+    "testName": "static_callcodecallcallcode_101_2"
+  },
+  {
+    "testName": "static_callcodecallcallcode_101_OOGE"
+  },
+  {
+    "testName": "static_callcodecallcallcode_101_OOGE_2"
+  },
+  {
+    "testName": "static_callcodecallcallcode_101_OOGMAfter"
+  },
+  {
+    "testName": "static_callcodecallcallcode_101_OOGMAfter2"
+  },
+  {
+    "testName": "static_callcodecallcallcode_101_OOGMAfter_1"
+  },
+  {
+    "testName": "static_callcodecallcallcode_101_OOGMAfter_3"
+  },
+  {
+    "testName": "static_callcodecallcallcode_101_OOGMBefore"
+  },
+  {
+    "testName": "static_callcodecallcallcode_101_OOGMBefore2"
+  },
+  {
+    "testName": "static_callcodecallcallcode_101_SuicideEnd"
+  },
+  {
+    "testName": "static_callcodecallcallcode_101_SuicideEnd2"
+  },
+  {
+    "testName": "static_callcodecallcallcode_101_SuicideMiddle"
+  },
+  {
+    "testName": "static_callcodecallcallcode_101_SuicideMiddle2"
+  },
+  {
+    "testName": "static_callcodecallcallcode_ABCB_RECURSIVE"
+  },
+  {
+    "testName": "static_callcodecallcallcode_ABCB_RECURSIVE2"
+  },
+  {
+    "testName": "static_callcodecallcall_100"
+  },
+  {
+    "testName": "static_callcodecallcall_100_2"
+  },
+  {
+    "testName": "static_callcodecallcall_100_OOGE"
+  },
+  {
+    "testName": "static_callcodecallcall_100_OOGE2"
+  },
+  {
+    "testName": "static_callcodecallcall_100_OOGMAfter"
+  },
+  {
+    "testName": "static_callcodecallcall_100_OOGMAfter2"
+  },
+  {
+    "testName": "static_callcodecallcall_100_OOGMAfter_2"
+  },
+  {
+    "testName": "static_callcodecallcall_100_OOGMAfter_3"
+  },
+  {
+    "testName": "static_callcodecallcall_100_OOGMBefore"
+  },
+  {
+    "testName": "static_callcodecallcall_100_OOGMBefore2"
+  },
+  {
+    "testName": "static_callcodecallcall_100_SuicideEnd"
+  },
+  {
+    "testName": "static_callcodecallcall_100_SuicideEnd2"
+  },
+  {
+    "testName": "static_callcodecallcall_100_SuicideMiddle"
+  },
+  {
+    "testName": "static_callcodecallcall_100_SuicideMiddle2"
+  },
+  {
+    "testName": "static_callcodecallcall_ABCB_RECURSIVE"
+  },
+  {
+    "testName": "static_callcodecallcall_ABCB_RECURSIVE2"
+  },
+  {
+    "testName": "static_callcodecallcodecallcode_111_SuicideEnd"
+  },
+  {
+    "testName": "static_callcodecallcodecall_110"
+  },
+  {
+    "testName": "static_callcodecallcodecall_1102"
+  },
+  {
+    "testName": "static_callcodecallcodecall_110_2"
+  },
+  {
+    "testName": "static_callcodecallcodecall_110_OOGE"
+  },
+  {
+    "testName": "static_callcodecallcodecall_110_OOGE2"
+  },
+  {
+    "testName": "static_callcodecallcodecall_110_OOGMAfter"
+  },
+  {
+    "testName": "static_callcodecallcodecall_110_OOGMAfter2"
+  },
+  {
+    "testName": "static_callcodecallcodecall_110_OOGMAfter_2"
+  },
+  {
+    "testName": "static_callcodecallcodecall_110_OOGMAfter_3"
+  },
+  {
+    "testName": "static_callcodecallcodecall_110_OOGMBefore"
+  },
+  {
+    "testName": "static_callcodecallcodecall_110_OOGMBefore2"
+  },
+  {
+    "testName": "static_callcodecallcodecall_110_SuicideEnd"
+  },
+  {
+    "testName": "static_callcodecallcodecall_110_SuicideEnd2"
+  },
+  {
+    "testName": "static_callcodecallcodecall_110_SuicideMiddle"
+  },
+  {
+    "testName": "static_callcodecallcodecall_110_SuicideMiddle2"
+  },
+  {
+    "testName": "static_callcodecallcodecall_ABCB_RECURSIVE"
+  },
+  {
+    "testName": "static_callcodecallcodecall_ABCB_RECURSIVE2"
+  },
+  {
+    "testName": "static_callcodecall_10"
+  },
+  {
+    "testName": "static_callcodecall_10_2"
+  },
+  {
+    "testName": "static_callcodecall_10_OOGE"
+  },
+  {
+    "testName": "static_callcodecall_10_OOGE_2"
+  },
+  {
+    "testName": "static_callcodecall_10_SuicideEnd"
+  },
+  {
+    "testName": "static_callcodecall_10_SuicideEnd2"
+  },
+  {
+    "testName": "static_callcode_checkPC"
+  },
+  {
+    "testName": "static_CallContractToCreateContractAndCallItOOG"
+  },
+  {
+    "testName": "static_CallContractToCreateContractOOG"
+  },
+  {
+    "testName": "static_CallContractToCreateContractOOGBonusGas"
+  },
+  {
+    "testName": "static_CallContractToCreateContractWhichWouldCreateContractIfCalled"
+  },
+  {
+    "testName": "static_callCreate"
+  },
+  {
+    "testName": "static_callCreate2"
+  },
+  {
+    "testName": "static_callCreate3"
+  },
+  {
+    "testName": "static_calldelcode_01"
+  },
+  {
+    "testName": "static_calldelcode_01_OOGE"
+  },
+  {
+    "testName": "static_CallEcrecover0"
+  },
+  {
+    "testName": "static_CallEcrecover0_0input"
+  },
+  {
+    "testName": "static_CallEcrecover0_completeReturnValue"
+  },
+  {
+    "testName": "static_CallEcrecover0_Gas2999"
+  },
+  {
+    "testName": "static_CallEcrecover0_gas3000"
+  },
+  {
+    "testName": "static_CallEcrecover0_NoGas"
+  },
+  {
+    "testName": "static_CallEcrecover0_overlappingInputOutput"
+  },
+  {
+    "testName": "static_CallEcrecover1"
+  },
+  {
+    "testName": "static_CallEcrecover2"
+  },
+  {
+    "testName": "static_CallEcrecover3"
+  },
+  {
+    "testName": "static_CallEcrecover80"
+  },
+  {
+    "testName": "static_CallEcrecoverCheckLength"
+  },
+  {
+    "testName": "static_CallEcrecoverCheckLengthWrongV"
+  },
+  {
+    "testName": "static_CallEcrecoverH_prefixed0"
+  },
+  {
+    "testName": "static_CallEcrecoverR_prefixed0"
+  },
+  {
+    "testName": "static_CallEcrecoverS_prefixed0"
+  },
+  {
+    "testName": "static_CallEcrecoverV_prefixed0"
+  },
+  {
+    "testName": "static_CallGoesOOGOnSecondLevel"
+  },
+  {
+    "testName": "static_CallGoesOOGOnSecondLevel2"
+  },
+  {
+    "testName": "static_CallIdentitiy_1"
+  },
+  {
+    "testName": "static_CallIdentity_1_nonzeroValue"
+  },
+  {
+    "testName": "static_CallIdentity_2"
+  },
+  {
+    "testName": "static_CallIdentity_3"
+  },
+  {
+    "testName": "static_CallIdentity_4"
+  },
+  {
+    "testName": "static_CallIdentity_4_gas17"
+  },
+  {
+    "testName": "static_CallIdentity_4_gas18"
+  },
+  {
+    "testName": "static_CallIdentity_5"
+  },
+  {
+    "testName": "static_CallLoseGasOOG"
+  },
+  {
+    "testName": "static_callOutput1"
+  },
+  {
+    "testName": "static_callOutput2"
+  },
+  {
+    "testName": "static_callOutput3"
+  },
+  {
+    "testName": "static_callOutput3Fail"
+  },
+  {
+    "testName": "static_callOutput3partial"
+  },
+  {
+    "testName": "static_callOutput3partialFail"
+  },
+  {
+    "testName": "static_CallRecursiveBomb0"
+  },
+  {
+    "testName": "static_CallRecursiveBomb0_OOG_atMaxCallDepth"
+  },
+  {
+    "testName": "static_CallRecursiveBomb1"
+  },
+  {
+    "testName": "static_CallRecursiveBomb2"
+  },
+  {
+    "testName": "static_CallRecursiveBomb3"
+  },
+  {
+    "testName": "static_CallRecursiveBombLog"
+  },
+  {
+    "testName": "static_CallRecursiveBombLog2"
+  },
+  {
+    "testName": "static_CallRecursiveBombPreCall"
+  },
+  {
+    "testName": "static_CallRecursiveBombPreCall2"
+  },
+  {
+    "testName": "static_CallRipemd160_1"
+  },
+  {
+    "testName": "static_CallRipemd160_2"
+  },
+  {
+    "testName": "static_CallRipemd160_3"
+  },
+  {
+    "testName": "static_CallRipemd160_3_postfixed0"
+  },
+  {
+    "testName": "static_CallRipemd160_3_prefixed0"
+  },
+  {
+    "testName": "static_CallRipemd160_4"
+  },
+  {
+    "testName": "static_CallRipemd160_4_gas719"
+  },
+  {
+    "testName": "static_CallRipemd160_5"
+  },
+  {
+    "testName": "static_CallSha256_1"
+  },
+  {
+    "testName": "static_CallSha256_1_nonzeroValue"
+  },
+  {
+    "testName": "static_CallSha256_2"
+  },
+  {
+    "testName": "static_CallSha256_3"
+  },
+  {
+    "testName": "static_CallSha256_3_postfix0"
+  },
+  {
+    "testName": "static_CallSha256_3_prefix0"
+  },
+  {
+    "testName": "static_CallSha256_4"
+  },
+  {
+    "testName": "static_CallSha256_4_gas99"
+  },
+  {
+    "testName": "static_CallSha256_5"
+  },
+  {
+    "testName": "static_callToCallCodeOpCodeCheck"
+  },
+  {
+    "testName": "static_callToCallOpCodeCheck"
+  },
+  {
+    "testName": "static_callToDelCallOpCodeCheck"
+  },
+  {
+    "testName": "static_CallToNameRegistrator0"
+  },
+  {
+    "testName": "static_CallToReturn1"
+  },
+  {
+    "testName": "static_CalltoReturn2"
+  },
+  {
+    "testName": "static_callToStaticOpCodeCheck"
+  },
+  {
+    "testName": "static_callWithHighValue"
+  },
+  {
+    "testName": "static_callWithHighValueAndGasOOG"
+  },
+  {
+    "testName": "static_callWithHighValueAndOOGatTxLevel"
+  },
+  {
+    "testName": "static_callWithHighValueOOGinCall"
+  },
+  {
+    "testName": "static_CALL_OneVCallSuicide"
+  },
+  {
+    "testName": "static_call_OOG_additionalGasCosts1"
+  },
+  {
+    "testName": "static_call_OOG_additionalGasCosts2"
+  },
+  {
+    "testName": "static_call_value_inherit"
+  },
+  {
+    "testName": "static_call_value_inherit_from_call"
+  },
+  {
+    "testName": "static_CALL_ZeroVCallSuicide"
+  },
+  {
+    "testName": "static_CheckCallCostOOG"
+  },
+  {
+    "testName": "static_CheckOpcodes"
+  },
+  {
+    "testName": "static_CheckOpcodes2"
+  },
+  {
+    "testName": "static_CheckOpcodes3"
+  },
+  {
+    "testName": "static_CheckOpcodes4"
+  },
+  {
+    "testName": "static_CheckOpcodes5"
+  },
+  {
+    "testName": "static_contractCreationMakeCallThatAskMoreGasThenTransactionProvided"
+  },
+  {
+    "testName": "static_contractCreationOOGdontLeaveEmptyContractViaTransaction"
+  },
+  {
+    "testName": "static_CREATE_ContractSuicideDuringInit"
+  },
+  {
+    "testName": "static_CREATE_ContractSuicideDuringInit_ThenStoreThenReturn"
+  },
+  {
+    "testName": "static_CREATE_ContractSuicideDuringInit_WithValue"
+  },
+  {
+    "testName": "static_CREATE_EmptyContractAndCallIt_0wei"
+  },
+  {
+    "testName": "static_CREATE_EmptyContractWithStorageAndCallIt_0wei"
+  },
+  {
+    "testName": "static_ExecuteCallThatAskForeGasThenTrabsactionHas"
+  },
+  {
+    "testName": "static_InternalCallHittingGasLimit"
+  },
+  {
+    "testName": "static_InternalCallHittingGasLimit2"
+  },
+  {
+    "testName": "static_InternlCallStoreClearsOOG"
+  },
+  {
+    "testName": "static_log0_emptyMem"
+  },
+  {
+    "testName": "static_log0_logMemsizeTooHigh"
+  },
+  {
+    "testName": "static_log0_logMemsizeZero"
+  },
+  {
+    "testName": "static_log0_logMemStartTooHigh"
+  },
+  {
+    "testName": "static_log0_nonEmptyMem"
+  },
+  {
+    "testName": "static_log0_nonEmptyMem_logMemSize1"
+  },
+  {
+    "testName": "static_log0_nonEmptyMem_logMemSize1_logMemStart31"
+  },
+  {
+    "testName": "static_log1_emptyMem"
+  },
+  {
+    "testName": "static_log1_logMemsizeTooHigh"
+  },
+  {
+    "testName": "static_log1_logMemsizeZero"
+  },
+  {
+    "testName": "static_log1_logMemStartTooHigh"
+  },
+  {
+    "testName": "static_log1_MaxTopic"
+  },
+  {
+    "testName": "static_log_Caller"
+  },
+  {
+    "testName": "static_LoopCallsDepthThenRevert"
+  },
+  {
+    "testName": "static_LoopCallsDepthThenRevert2"
+  },
+  {
+    "testName": "static_LoopCallsDepthThenRevert3"
+  },
+  {
+    "testName": "static_LoopCallsThenRevert"
+  },
+  {
+    "testName": "static_makeMoney"
+  },
+  {
+    "testName": "static_PostToReturn1"
+  },
+  {
+    "testName": "static_RawCallGasAsk"
+  },
+  {
+    "testName": "static_refund_CallA"
+  },
+  {
+    "testName": "static_refund_CallToSuicideNoStorage"
+  },
+  {
+    "testName": "static_refund_CallToSuicideTwice"
+  },
+  {
+    "testName": "static_Return50000_2"
+  },
+  {
+    "testName": "static_ReturnTest"
+  },
+  {
+    "testName": "static_ReturnTest2"
+  },
+  {
+    "testName": "static_RETURN_Bounds"
+  },
+  {
+    "testName": "static_RETURN_BoundsOOG"
+  },
+  {
+    "testName": "static_RevertDepth2"
+  },
+  {
+    "testName": "static_RevertOpcodeCalls"
+  },
+  {
+    "testName": "static_ZeroValue_CALL_OOGRevert"
+  },
+  {
+    "testName": "static_ZeroValue_SUICIDE_OOGRevert"
+  },
+  {
+    "testName": "stStaticFlagEnabled"
+  },
+  {
+    "testName": "stSystemOperationsTest"
+  },
+  {
+    "testName": "CALLBlake2f_MaxRounds"
+  },
+  {
+    "testName": "sstore_combinations_initial00"
+  },
+  {
+    "testName": "sstore_combinations_initial00_2"
+  },
+  {
+    "testName": "sstore_combinations_initial01"
+  },
+  {
+    "testName": "sstore_combinations_initial01_2"
+  },
+  {
+    "testName": "sstore_combinations_initial10"
+  },
+  {
+    "testName": "sstore_combinations_initial10_2"
+  },
+  {
+    "testName": "sstore_combinations_initial11"
+  },
+  {
+    "testName": "sstore_combinations_initial11_2"
+  },
+  {
+    "testName": "sstore_combinations_initial20"
+  },
+  {
+    "testName": "sstore_combinations_initial20_2"
+  },
+  {
+    "testName": "sstore_combinations_initial21"
+  },
+  {
+    "testName": "sstore_combinations_initial21_2"
+  },
+  {
+    "testName": "static_Call50000_sha256"
+  },
+  {
+    "testName": "stTransactionTest"
+  },
+  {
+    "testName": "stTransitionTest"
+  },
+  {
+    "testName": "stWalletTest"
+  },
+  {
+    "testName": "stZeroCallsRevert"
+  },
+  {
+    "testName": "stZeroCallsTest"
+  },
+  {
+    "testName": "ecmul_1-2_2_28000_128"
+  },
+  {
+    "testName": "ecmul_1-2_2_28000_96"
+  },
+  {
+    "testName": "ecmul_1-2_340282366920938463463374607431768211456_21000_128"
+  },
+  {
+    "testName": "ecmul_1-2_340282366920938463463374607431768211456_21000_80"
+  },
+  {
+    "testName": "ecmul_1-2_340282366920938463463374607431768211456_21000_96"
+  },
+  {
+    "testName": "ecmul_1-2_340282366920938463463374607431768211456_28000_128"
+  },
+  {
+    "testName": "ecmul_1-2_340282366920938463463374607431768211456_28000_80"
+  },
+  {
+    "testName": "ecmul_1-2_340282366920938463463374607431768211456_28000_96"
+  },
+  {
+    "testName": "ecmul_1-2_5616_21000_128"
+  },
+  {
+    "testName": "ecmul_1-2_5616_21000_96"
+  },
+  {
+    "testName": "ecmul_1-2_5616_28000_128"
+  },
+  {
+    "testName": "ecmul_1-2_5617_21000_128"
+  },
+  {
+    "testName": "ecmul_1-2_5617_21000_96"
+  },
+  {
+    "testName": "ecmul_1-2_5617_28000_128"
+  },
+  {
+    "testName": "ecmul_1-2_5617_28000_96"
+  },
+  {
+    "testName": "ecmul_1-2_616_28000_96"
+  },
+  {
+    "testName": "ecmul_1-2_9935_21000_128"
+  },
+  {
+    "testName": "ecmul_1-2_9935_21000_96"
+  },
+  {
+    "testName": "ecmul_1-2_9935_28000_128"
+  },
+  {
+    "testName": "ecmul_1-2_9935_28000_96"
+  },
+  {
+    "testName": "ecmul_1-2_9_21000_128"
+  },
+  {
+    "testName": "ecmul_1-2_9_21000_96"
+  },
+  {
+    "testName": "ecmul_1-2_9_28000_128"
+  },
+  {
+    "testName": "ecmul_1-2_9_28000_96"
+  },
+  {
+    "testName": "ecmul_1-3_0_21000_128"
+  },
+  {
+    "testName": "ecmul_1-3_0_21000_64"
+  },
+  {
+    "testName": "ecmul_1-3_0_21000_80"
+  },
+  {
+    "testName": "ecmul_1-3_0_21000_96"
+  },
+  {
+    "testName": "ecmul_1-3_0_28000_128"
+  },
+  {
+    "testName": "ecmul_1-3_0_28000_64"
+  },
+  {
+    "testName": "ecmul_1-3_0_28000_80"
+  },
+  {
+    "testName": "ecmul_1-3_0_28000_96"
+  },
+  {
+    "testName": "ecmul_1-3_1_21000_128"
+  },
+  {
+    "testName": "ecmul_1-3_1_21000_96"
+  },
+  {
+    "testName": "ecmul_1-3_1_28000_128"
+  },
+  {
+    "testName": "ecmul_1-3_1_28000_96"
+  },
+  {
+    "testName": "ecmul_1-3_2_21000_128"
+  },
+  {
+    "testName": "ecmul_1-3_2_21000_96"
+  },
+  {
+    "testName": "ecmul_1-3_2_28000_128"
+  },
+  {
+    "testName": "ecmul_1-3_2_28000_96"
+  },
+  {
+    "testName": "ecmul_1-3_340282366920938463463374607431768211456_21000_128"
+  },
+  {
+    "testName": "ecmul_1-3_340282366920938463463374607431768211456_21000_80"
+  },
+  {
+    "testName": "ecmul_1-3_340282366920938463463374607431768211456_21000_96"
+  },
+  {
+    "testName": "ecmul_1-3_340282366920938463463374607431768211456_28000_128"
+  },
+  {
+    "testName": "ecmul_1-3_340282366920938463463374607431768211456_28000_80"
+  },
+  {
+    "testName": "ecmul_1-3_340282366920938463463374607431768211456_28000_96"
+  },
+  {
+    "testName": "ecmul_1-3_5616_21000_128"
+  },
+  {
+    "testName": "ecmul_1-3_5616_21000_96"
+  },
+  {
+    "testName": "ecmul_1-3_5616_28000_128"
+  },
+  {
+    "testName": "ecmul_1-3_5616_28000_96"
+  },
+  {
+    "testName": "ecmul_1-3_5617_21000_128"
+  },
+  {
+    "testName": "ecmul_1-3_5617_21000_96"
+  },
+  {
+    "testName": "ecmul_1-3_5617_28000_128"
+  },
+  {
+    "testName": "ecmul_1-3_5617_28000_96"
+  },
+  {
+    "testName": "ecmul_1-3_9935_21000_128"
+  },
+  {
+    "testName": "ecmul_1-3_9935_21000_96"
+  },
+  {
+    "testName": "ecmul_1-3_9935_28000_128"
+  },
+  {
+    "testName": "ecmul_1-3_9935_28000_96"
+  },
+  {
+    "testName": "ecmul_1-3_9_21000_128"
+  },
+  {
+    "testName": "ecmul_1-3_9_21000_96"
+  },
+  {
+    "testName": "ecmul_1-3_9_28000_128"
+  },
+  {
+    "testName": "ecmul_1-3_9_28000_96"
+  },
+  {
+    "testName": "ecmul_7827-6598_0_21000_128"
+  },
+  {
+    "testName": "ecmul_7827-6598_0_21000_64"
+  },
+  {
+    "testName": "ecmul_7827-6598_0_21000_80"
+  },
+  {
+    "testName": "ecmul_7827-6598_0_21000_96"
+  },
+  {
+    "testName": "ecmul_7827-6598_0_28000_128"
+  },
+  {
+    "testName": "ecmul_7827-6598_0_28000_64"
+  },
+  {
+    "testName": "ecmul_7827-6598_0_28000_80"
+  },
+  {
+    "testName": "ecmul_7827-6598_0_28000_96"
+  },
+  {
+    "testName": "ecmul_7827-6598_1456_21000_128"
+  },
+  {
+    "testName": "ecmul_7827-6598_1456_21000_80"
+  },
+  {
+    "testName": "ecmul_7827-6598_1456_21000_96"
+  },
+  {
+    "testName": "ecmul_7827-6598_1456_28000_128"
+  },
+  {
+    "testName": "ecmul_7827-6598_1456_28000_80"
+  },
+  {
+    "testName": "ecmul_7827-6598_1456_28000_96"
+  },
+  {
+    "testName": "ecmul_7827-6598_1_21000_128"
+  },
+  {
+    "testName": "ecmul_7827-6598_1_21000_96"
+  },
+  {
+    "testName": "ecmul_7827-6598_1_28000_128"
+  },
+  {
+    "testName": "ecmul_7827-6598_1_28000_96"
+  },
+  {
+    "testName": "ecmul_7827-6598_2_21000_128"
+  },
+  {
+    "testName": "ecmul_7827-6598_2_21000_96"
+  },
+  {
+    "testName": "ecmul_7827-6598_2_28000_128"
+  },
+  {
+    "testName": "ecmul_7827-6598_2_28000_96"
+  },
+  {
+    "testName": "ecmul_7827-6598_5616_21000_128"
+  },
+  {
+    "testName": "ecmul_7827-6598_5616_21000_96"
+  },
+  {
+    "testName": "ecmul_7827-6598_5616_28000_128"
+  },
+  {
+    "testName": "ecmul_7827-6598_5616_28000_96"
+  },
+  {
+    "testName": "ecmul_7827-6598_5617_21000_128"
+  },
+  {
+    "testName": "ecmul_7827-6598_5617_21000_96"
+  },
+  {
+    "testName": "ecmul_7827-6598_5617_28000_128"
+  },
+  {
+    "testName": "ecmul_7827-6598_5617_28000_96"
+  },
+  {
+    "testName": "ecmul_7827-6598_9935_21000_128"
+  },
+  {
+    "testName": "ecmul_7827-6598_9935_21000_96"
+  },
+  {
+    "testName": "ecmul_7827-6598_9935_28000_128"
+  },
+  {
+    "testName": "ecmul_7827-6598_9935_28000_96"
+  },
+  {
+    "testName": "ecmul_7827-6598_9_21000_128"
+  },
+  {
+    "testName": "ecmul_7827-6598_9_21000_96"
+  },
+  {
+    "testName": "ecmul_7827-6598_9_28000_128"
+  },
+  {
+    "testName": "ecmul_7827-6598_9_28000_96"
+  },
+  {
+    "testName": "ecpairing_bad_length_191"
+  },
+  {
+    "testName": "ecpairing_bad_length_193"
+  },
+  {
+    "testName": "ecpairing_empty_data"
+  },
+  {
+    "testName": "ecpairing_empty_data_insufficient_gas"
+  },
+  {
+    "testName": "ecpairing_one_point_fail"
+  },
+  {
+    "testName": "ecpairing_one_point_insufficient_gas"
+  },
+  {
+    "testName": "ecpairing_one_point_not_in_subgroup"
+  },
+  {
+    "testName": "ecpairing_one_point_with_g1_zero"
+  },
+  {
+    "testName": "ecpairing_one_point_with_g2_zero"
+  },
+  {
+    "testName": "ecpairing_one_point_with_g2_zero_and_g1_invalid"
+  },
+  {
+    "testName": "ecpairing_perturb_g2_by_curve_order"
+  },
+  {
+    "testName": "ecpairing_perturb_g2_by_field_modulus"
+  },
+  {
+    "testName": "ecpairing_perturb_g2_by_field_modulus_again"
+  },
+  {
+    "testName": "ecpairing_perturb_g2_by_one"
+  },
+  {
+    "testName": "ecpairing_perturb_zeropoint_by_curve_order"
+  },
+  {
+    "testName": "ecpairing_perturb_zeropoint_by_field_modulus"
+  },
+  {
+    "testName": "ecpairing_perturb_zeropoint_by_one"
+  },
+  {
+    "testName": "ecpairing_three_point_fail_1"
+  },
+  {
+    "testName": "ecpairing_three_point_match_1"
+  },
+  {
+    "testName": "ecpairing_two_points_with_one_g2_zero"
+  },
+  {
+    "testName": "ecpairing_two_point_fail_1"
+  },
+  {
+    "testName": "ecpairing_two_point_fail_2"
+  },
+  {
+    "testName": "ecpairing_two_point_match_1"
+  },
+  {
+    "testName": "ecpairing_two_point_match_2"
+  },
+  {
+    "testName": "ecpairing_two_point_match_3"
+  },
+  {
+    "testName": "ecpairing_two_point_match_4"
+  },
+  {
+    "testName": "ecpairing_two_point_match_5"
+  },
+  {
+    "testName": "ecpairing_two_point_oog"
+  },
+  {
+    "testName": "pairingTest"
+  },
+  {
+    "testName": "pointAdd"
+  },
+  {
+    "testName": "pointAddTrunc"
+  },
+  {
+    "testName": "pointMulAdd"
+  },
+  {
+    "testName": "pointMulAdd2"
+  },
+  {
+    "testName": "ecadd_0-0_0-0_21000_0"
+  },
+  {
+    "testName": "ecadd_0-0_0-0_21000_128"
+  },
+  {
+    "testName": "ecadd_0-0_0-0_21000_192"
+  },
+  {
+    "testName": "ecadd_0-0_0-0_21000_64"
+  },
+  {
+    "testName": "ecadd_0-0_0-0_21000_80"
+  },
+  {
+    "testName": "ecadd_0-0_0-0_25000_0"
+  },
+  {
+    "testName": "ecadd_0-0_0-0_25000_128"
+  },
+  {
+    "testName": "ecadd_0-0_0-0_25000_192"
+  },
+  {
+    "testName": "ecadd_0-0_0-0_25000_64"
+  },
+  {
+    "testName": "ecadd_0-0_0-0_25000_80"
+  },
+  {
+    "testName": "ecadd_0-0_1-2_21000_128"
+  },
+  {
+    "testName": "ecadd_0-0_1-2_21000_192"
+  },
+  {
+    "testName": "ecadd_0-0_1-2_25000_128"
+  },
+  {
+    "testName": "ecadd_0-0_1-2_25000_192"
+  },
+  {
+    "testName": "ecadd_0-0_1-3_21000_128"
+  },
+  {
+    "testName": "ecadd_0-0_1-3_25000_128"
+  },
+  {
+    "testName": "ecadd_0-3_1-2_21000_128"
+  },
+  {
+    "testName": "ecadd_0-3_1-2_25000_128"
+  },
+  {
+    "testName": "ecadd_1-2_0-0_21000_128"
+  },
+  {
+    "testName": "ecadd_1-2_0-0_21000_192"
+  },
+  {
+    "testName": "ecadd_1-2_0-0_21000_64"
+  },
+  {
+    "testName": "ecadd_1-2_0-0_25000_128"
+  },
+  {
+    "testName": "ecadd_1-2_0-0_25000_192"
+  },
+  {
+    "testName": "ecadd_1-2_0-0_25000_64"
+  },
+  {
+    "testName": "ecadd_1-2_1-2_21000_128"
+  },
+  {
+    "testName": "ecadd_1-2_1-2_21000_192"
+  },
+  {
+    "testName": "ecadd_1-2_1-2_25000_128"
+  },
+  {
+    "testName": "ecadd_1-2_1-2_25000_192"
+  },
+  {
+    "testName": "ecadd_1-3_0-0_21000_80"
+  },
+  {
+    "testName": "ecadd_1-3_0-0_25000_80"
+  },
+  {
+    "testName": "ecadd_1145-3932_1145-4651_21000_192"
+  },
+  {
+    "testName": "ecadd_1145-3932_1145-4651_25000_192"
+  },
+  {
+    "testName": "ecadd_1145-3932_2969-1336_21000_128"
+  },
+  {
+    "testName": "ecadd_1145-3932_2969-1336_25000_128"
+  },
+  {
+    "testName": "ecadd_6-9_19274124-124124_21000_128"
+  },
+  {
+    "testName": "ecadd_6-9_19274124-124124_25000_128"
+  },
+  {
+    "testName": "ecmul_0-0_0_21000_0"
+  },
+  {
+    "testName": "ecmul_0-0_0_21000_128"
+  },
+  {
+    "testName": "ecmul_0-0_0_21000_40"
+  },
+  {
+    "testName": "ecmul_0-0_0_21000_64"
+  },
+  {
+    "testName": "ecmul_0-0_0_21000_80"
+  },
+  {
+    "testName": "ecmul_0-0_0_21000_96"
+  },
+  {
+    "testName": "ecmul_0-0_0_28000_0"
+  },
+  {
+    "testName": "ecmul_0-0_0_28000_128"
+  },
+  {
+    "testName": "ecmul_0-0_0_28000_40"
+  },
+  {
+    "testName": "ecmul_0-0_0_28000_64"
+  },
+  {
+    "testName": "ecmul_0-0_0_28000_80"
+  },
+  {
+    "testName": "ecmul_0-0_0_28000_96"
+  },
+  {
+    "testName": "ecmul_0-0_1_21000_128"
+  },
+  {
+    "testName": "ecmul_0-0_1_21000_96"
+  },
+  {
+    "testName": "ecmul_0-0_1_28000_128"
+  },
+  {
+    "testName": "ecmul_0-0_1_28000_96"
+  },
+  {
+    "testName": "ecmul_0-0_2_21000_128"
+  },
+  {
+    "testName": "ecmul_0-0_2_21000_96"
+  },
+  {
+    "testName": "ecmul_0-0_2_28000_128"
+  },
+  {
+    "testName": "ecmul_0-0_2_28000_96"
+  },
+  {
+    "testName": "ecmul_0-0_340282366920938463463374607431768211456_21000_128"
+  },
+  {
+    "testName": "ecmul_0-0_340282366920938463463374607431768211456_21000_80"
+  },
+  {
+    "testName": "ecmul_0-0_340282366920938463463374607431768211456_21000_96"
+  },
+  {
+    "testName": "ecmul_0-0_340282366920938463463374607431768211456_28000_128"
+  },
+  {
+    "testName": "ecmul_0-0_340282366920938463463374607431768211456_28000_80"
+  },
+  {
+    "testName": "ecmul_0-0_340282366920938463463374607431768211456_28000_96"
+  },
+  {
+    "testName": "ecmul_0-0_5616_21000_128"
+  },
+  {
+    "testName": "ecmul_0-0_5616_21000_96"
+  },
+  {
+    "testName": "ecmul_0-0_5616_28000_128"
+  },
+  {
+    "testName": "ecmul_0-0_5616_28000_96"
+  },
+  {
+    "testName": "ecmul_0-0_5617_21000_128"
+  },
+  {
+    "testName": "ecmul_0-0_5617_21000_96"
+  },
+  {
+    "testName": "ecmul_0-0_5617_28000_128"
+  },
+  {
+    "testName": "ecmul_0-0_5617_28000_96"
+  },
+  {
+    "testName": "ecmul_0-0_9935_21000_128"
+  },
+  {
+    "testName": "ecmul_0-0_9935_21000_96"
+  },
+  {
+    "testName": "ecmul_0-0_9935_28000_128"
+  },
+  {
+    "testName": "ecmul_0-0_9935_28000_96"
+  },
+  {
+    "testName": "ecmul_0-0_9_21000_128"
+  },
+  {
+    "testName": "ecmul_0-0_9_21000_96"
+  },
+  {
+    "testName": "ecmul_0-0_9_28000_128"
+  },
+  {
+    "testName": "ecmul_0-0_9_28000_96"
+  },
+  {
+    "testName": "ecmul_0-3_0_21000_128"
+  },
+  {
+    "testName": "ecmul_0-3_0_21000_64"
+  },
+  {
+    "testName": "ecmul_0-3_0_21000_80"
+  },
+  {
+    "testName": "ecmul_0-3_0_21000_96"
+  },
+  {
+    "testName": "ecmul_0-3_0_28000_128"
+  },
+  {
+    "testName": "ecmul_0-3_0_28000_64"
+  },
+  {
+    "testName": "ecmul_0-3_0_28000_80"
+  },
+  {
+    "testName": "ecmul_0-3_0_28000_96"
+  },
+  {
+    "testName": "ecmul_0-3_1_21000_128"
+  },
+  {
+    "testName": "ecmul_0-3_1_21000_96"
+  },
+  {
+    "testName": "ecmul_0-3_1_28000_128"
+  },
+  {
+    "testName": "ecmul_0-3_1_28000_96"
+  },
+  {
+    "testName": "ecmul_0-3_2_21000_128"
+  },
+  {
+    "testName": "ecmul_0-3_2_21000_96"
+  },
+  {
+    "testName": "ecmul_0-3_2_28000_128"
+  },
+  {
+    "testName": "ecmul_0-3_2_28000_96"
+  },
+  {
+    "testName": "ecmul_0-3_340282366920938463463374607431768211456_21000_128"
+  },
+  {
+    "testName": "ecmul_0-3_340282366920938463463374607431768211456_21000_80"
+  },
+  {
+    "testName": "ecmul_0-3_340282366920938463463374607431768211456_21000_96"
+  },
+  {
+    "testName": "ecmul_0-3_340282366920938463463374607431768211456_28000_128"
+  },
+  {
+    "testName": "ecmul_0-3_340282366920938463463374607431768211456_28000_80"
+  },
+  {
+    "testName": "ecmul_0-3_340282366920938463463374607431768211456_28000_96"
+  },
+  {
+    "testName": "ecmul_0-3_5616_21000_128"
+  },
+  {
+    "testName": "ecmul_0-3_5616_21000_96"
+  },
+  {
+    "testName": "ecmul_0-3_5616_28000_128"
+  },
+  {
+    "testName": "ecmul_0-3_5616_28000_96"
+  },
+  {
+    "testName": "ecmul_0-3_5617_21000_128"
+  },
+  {
+    "testName": "ecmul_0-3_5617_21000_96"
+  },
+  {
+    "testName": "ecmul_0-3_5617_28000_128"
+  },
+  {
+    "testName": "ecmul_0-3_5617_28000_96"
+  },
+  {
+    "testName": "ecmul_0-3_9935_21000_128"
+  },
+  {
+    "testName": "ecmul_0-3_9935_21000_96"
+  },
+  {
+    "testName": "ecmul_0-3_9935_28000_128"
+  },
+  {
+    "testName": "ecmul_0-3_9935_28000_96"
+  },
+  {
+    "testName": "ecmul_0-3_9_21000_128"
+  },
+  {
+    "testName": "ecmul_0-3_9_21000_96"
+  },
+  {
+    "testName": "ecmul_0-3_9_28000_128"
+  },
+  {
+    "testName": "ecmul_0-3_9_28000_96"
+  },
+  {
+    "testName": "ecmul_1-2_0_21000_128"
+  },
+  {
+    "testName": "ecmul_1-2_0_21000_64"
+  },
+  {
+    "testName": "ecmul_1-2_0_21000_80"
+  },
+  {
+    "testName": "ecmul_1-2_0_21000_96"
+  },
+  {
+    "testName": "ecmul_1-2_0_28000_128"
+  },
+  {
+    "testName": "ecmul_1-2_0_28000_64"
+  },
+  {
+    "testName": "ecmul_1-2_0_28000_80"
+  },
+  {
+    "testName": "ecmul_1-2_0_28000_96"
+  },
+  {
+    "testName": "ecmul_1-2_1_21000_128"
+  },
+  {
+    "testName": "ecmul_1-2_1_21000_96"
+  },
+  {
+    "testName": "ecmul_1-2_1_28000_128"
+  },
+  {
+    "testName": "ecmul_1-2_1_28000_96"
+  },
+  {
+    "testName": "ecmul_1-2_2_21000_128"
+  },
+  {
+    "testName": "ecmul_1-2_2_21000_96"
+  },
+  {
+    "testName": "stEIP3651-warmcoinbase"
+  },
+  {
+    "testName": "stEIP3855-push0"
+  },
+  {
+    "testName": "stEIP3860-limitmeterinitcode"
+  },
+  {
+    "testName": "bc4895-withdrawals"
+  },
+  {
+    "testName": "bcBlockGasLimitTest"
+  },
+  {
+    "testName": "bcEIP1559"
+  },
+  {
+    "testName": "bcEIP3675"
+  },
+  {
+    "testName": "bcForgedTest"
+  },
+  {
+    "testName": "bcInvalidHeaderTest"
+  },
+  {
+    "testName": "bcMultiChainTest"
+  },
+  {
+    "testName": "bcUncleHeaderValidity"
+  },
+  {
+    "testName": "bcUncleSpecialTests"
+  },
+  {
+    "testName": "bcUncleTest"
+  },
+  {
+    "testName": "bcArrowGlacierToMerge"
+  },
+  {
+    "testName": "bcBerlinToLondon"
+  },
+  {
+    "testName": "bcByzantiumToConstantinopleFix"
+  },
+  {
+    "testName": "bcEIP158ToByzantium"
+  },
+  {
+    "testName": "bcFrontierToHomestead"
+  },
+  {
+    "testName": "bcHomesteadToDao"
+  },
+  {
+    "testName": "bcHomesteadToEIP150"
+  },
+  {
+    "testName": "bcMergeToShanghai"
+  },
+  {
+    "testName": "bcBlockGasLimitTest"
+  },
+  {
+    "testName": "bcEIP1559"
+  },
+  {
+    "testName": "bcEIP3675"
+  },
+  {
+    "testName": "bcExample"
+  },
+  {
+    "testName": "bcExploitTest"
+  },
+  {
+    "testName": "bcForkStressTest"
+  },
+  {
+    "testName": "bcGasPricerTest"
+  },
+  {
+    "testName": "bcMultiChainTest"
+  },
+  {
+    "testName": "bcRandomBlockhashTest"
+  },
+  {
+    "testName": "bcStateTests"
+  },
+  {
+    "testName": "bcTotalDifficultyTest"
+  },
+  {
+    "testName": "bcUncleSpecialTests"
+  },
+  {
+    "testName": "bcUncleTest"
+  },
+  {
+    "testName": "bcValidBlockTest"
+  },
+  {
+    "testName": "bcWalletTest"
+  }
+]
