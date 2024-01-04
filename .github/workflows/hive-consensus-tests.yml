@@ -135,7 +135,7 @@ jobs:
           ref: master
           path: hive
       - name: Patch Hive Dockerfile
-        run: sed -i 's#FROM $baseimage:$tag#FROM nethermindeth/nethermind:${{needs.create_docker_image.outputs.cleanRef}}' hive/clients/nethermind/Dockerfile
+        run: sed -i "s#FROM $baseimage:$tag#FROM nethermindeth/nethermind:${{ needs.create_docker_image.outputs.cleanRef }}" hive/clients/nethermind/Dockerfile
       - name: Build Hive
         working-directory: hive
         run: go build .
