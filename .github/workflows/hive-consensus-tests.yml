@@ -110,7 +110,7 @@ jobs:
       max-parallel: 10
       fail-fast: false
       matrix:
-        hiveTests: ${{fromJson(needs.setup-matrix.outputs.matrix)}}
+        hiveTests: ${{fromJson(needs.generate_hive_consensus_tests.outputs.matrix)}}
     steps:
       - name: Set up parameters
         run: |
