@@ -2,28 +2,32 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Buffers.Binary;
+using System.Linq;
 using Nethermind.Core.Crypto;
+using Nethermind.Int256;
 
 namespace Nethermind.Crypto
 {
     public class Bls
     {
-        public static Signature Sign(PrivateKey privateKey, Hash256 message)
+        internal static readonly byte[] SubgroupOrder = [0x73,0xed,0xa7,0x53,0x29,0x9d,0x7d,0x48,0x33,0x39,0xd8,0x08,0x09,0xa1,0xd8,0x05,0x53,0xbd,0xa4,0x02,0xff,0xfe,0x5b,0xfe,0xff,0xff,0xff,0xff,0x00,0x00,0x00,0x01];
+        internal static readonly byte[] SubgroupOrderMinusOne = [0x73,0xed,0xa7,0x53,0x29,0x9d,0x7d,0x48,0x33,0x39,0xd8,0x08,0x09,0xa1,0xd8,0x05,0x53,0xbd,0xa4,0x02,0xff,0xfe,0x5b,0xfe,0xff,0xff,0xff,0xff,0x00,0x00,0x00,0x00];
+
+        public static Signature Sign(PrivateKey privateKey, ReadOnlySpan<byte> message)
         {
-            return G1.FromHash(message).Multiply(privateKey.KeyBytes).ToSignature();
+            return (privateKey.KeyBytes * G1.FromHash(Keccak.Compute(message))).ToSignature();
         }
 
-        public static bool Verify(PublicKey publicKey, Signature signature, Hash256 message)
+        public static bool Verify(PublicKey publicKey, Signature signature, ReadOnlySpan<byte> message)
         {
-            return PairingsEqual(G1.FromSignature(signature), G2.Generator, G1.FromHash(message), publicKey.Point);
+            return PairingsEqual(G1.FromSignature(signature), G2.Generator, G1.FromHash(Keccak.Compute(message)), publicKey.Point);
         }
 
         public static PublicKey GetPublicKey(PrivateKey privateKey)
         {
             PublicKey publicKey = new()
             {
-                Point = G2.Generator.Multiply(privateKey.KeyBytes)
+                Point = privateKey.KeyBytes * G2.Generator
             };
             return publicKey;
         }
@@ -52,7 +56,7 @@ namespace Nethermind.Crypto
 
         public static bool PairingsEqual(G1 a1, G2 a2, G1 b1, G2 b2)
         {
-            return Pairing2(a1.Negate(), a2, b1, b2);
+            return Pairing2(-a1, a2, b1, b2);
         }
 
         public struct PublicKey
@@ -69,7 +73,7 @@ namespace Nethermind.Crypto
             }
         }
 
-        public class G1
+        public class G1 : IEquatable<G1>
         {
             public readonly byte[] X = new byte[48];
             public readonly byte[] Y = new byte[48];
@@ -92,16 +96,14 @@ namespace Nethermind.Crypto
                 Y.CopyTo(this.Y);
             }
 
-            public static G1 FromScalar(UInt128 x)
+            public static G1 FromScalar(UInt256 x)
             {
-                Span<byte> s = stackalloc byte[32];
-                BinaryPrimitives.WriteUInt128BigEndian(s[16..], x);
-                return Generator.Multiply(s);
+                return x.ToBigEndian() * Generator;
             }
 
             public static G1 FromHash(Hash256 x)
             {
-                return Generator.Multiply(x.Bytes);
+                return x.Bytes * Generator;
             }
 
             public static G1 FromSignature(Signature signature)
@@ -117,7 +119,22 @@ namespace Nethermind.Crypto
                 return s;
             }
 
-            public G1 Multiply(ReadOnlySpan<byte> s)
+            public override bool Equals(object obj) => Equals(obj as G1);
+
+            public bool Equals(G1 p)
+            {
+                return X.SequenceEqual(p.X) && Y.SequenceEqual(p.Y);
+            }
+            public override int GetHashCode() => (X, Y).GetHashCode();
+
+            public static bool operator ==(G1 p, G1 q)
+            {
+                return p.Equals(q);
+            }
+
+            public static bool operator !=(G1 p, G1 q) => !p.Equals(q);
+
+            public static G1 operator *(ReadOnlySpan<byte> s, G1 p)
             {
                 if (s.Length != 32)
                 {
@@ -126,25 +143,30 @@ namespace Nethermind.Crypto
 
                 Span<byte> encoded = stackalloc byte[160];
                 Span<byte> output = stackalloc byte[128];
-                Encode(encoded[..128]);
+                p.Encode(encoded[..128]);
                 s.CopyTo(encoded[128..]);
                 Pairings.BlsG1Mul(encoded, output);
                 return new G1(output[16..64], output[80..]);
             }
 
-            public G1 Add(G1 p)
+            public static G1 operator *(UInt256 s, G1 p)
+            {
+                return s.ToBigEndian() * p;
+            }
+
+            public static G1 operator +(G1 p, G1 q)
             {
                 Span<byte> encoded = stackalloc byte[256];
                 Span<byte> output = stackalloc byte[128];
-                Encode(encoded[..128]);
-                p.Encode(encoded[128..]);
+                p.Encode(encoded[..128]);
+                q.Encode(encoded[128..]);
                 Pairings.BlsG1Add(encoded, output);
                 return new G1(output[16..64], output[80..]);
             }
 
-            public G1 Negate()
+            public static G1 operator -(G1 p)
             {
-                return Multiply(SubgroupOrderMinusOne);
+                return SubgroupOrderMinusOne * p;
             }
 
             internal void Encode(Span<byte> output)
@@ -159,7 +181,7 @@ namespace Nethermind.Crypto
             }
         }
 
-        public class G2
+        public class G2 : IEquatable<G2>
         {
             public readonly (byte[], byte[]) X = (new byte[48], new byte[48]);
             public readonly (byte[], byte[]) Y = (new byte[48], new byte[48]);
@@ -188,19 +210,31 @@ namespace Nethermind.Crypto
                 Y2.CopyTo(Y.Item2);
             }
 
-            public static G2 FromScalar(UInt128 x)
+            public static G2 FromScalar(UInt256 x)
             {
-                Span<byte> s = stackalloc byte[32];
-                BinaryPrimitives.WriteUInt128BigEndian(s[16..], x);
-                return Generator.Multiply(s);
+                return x.ToBigEndian() * Generator;
             }
 
             public static G2 FromHash(Hash256 x)
             {
-                return Generator.Multiply(x.Bytes);
+                return x.Bytes * Generator;
+            }
+            public override bool Equals(object obj) => Equals(obj as G1);
+
+            public bool Equals(G2 p)
+            {
+                return X.Item1.SequenceEqual(p.X.Item1) && X.Item2.SequenceEqual(p.X.Item2) && Y.Item1.SequenceEqual(p.Y.Item1) && Y.Item2.SequenceEqual(p.Y.Item2);
+            }
+            public override int GetHashCode() => (X, Y).GetHashCode();
+
+            public static bool operator ==(G2 p, G2 q)
+            {
+                return p.Equals(q);
             }
 
-            public G2 Multiply(ReadOnlySpan<byte> s)
+            public static bool operator !=(G2 p, G2 q) => !p.Equals(q);
+
+            public static G2 operator *(ReadOnlySpan<byte> s, G2 p)
             {
                 if (s.Length != 32)
                 {
@@ -209,25 +243,30 @@ namespace Nethermind.Crypto
 
                 Span<byte> encoded = stackalloc byte[288];
                 Span<byte> output = stackalloc byte[256];
-                Encode(encoded[..256]);
+                p.Encode(encoded[..256]);
                 s.CopyTo(encoded[256..]);
                 Pairings.BlsG2Mul(encoded, output);
                 return new G2(output[16..64], output[80..128], output[144..192], output[208..]);
             }
             
-            public G2 Add(G2 p)
+            public static G2 operator *(UInt256 s, G2 p)
+            {
+                return s.ToBigEndian() * p;
+            }
+
+            public static G2 operator +(G2 p, G2 q)
             {
                 Span<byte> encoded = stackalloc byte[512];
                 Span<byte> output = stackalloc byte[256];
-                Encode(encoded[..256]);
-                p.Encode(encoded[256..]);
+                p.Encode(encoded[..256]);
+                q.Encode(encoded[256..]);
                 Pairings.BlsG2Add(encoded, output);
                 return new G2(output[16..64], output[80..128], output[144..192], output[208..]);
             }
 
-            public G2 Negate()
+            public static G2 operator -(G2 p)
             {
-                return Multiply(SubgroupOrderMinusOne);
+                return SubgroupOrderMinusOne * p;
             }
 
             internal void Encode(Span<byte> output)
@@ -243,8 +282,5 @@ namespace Nethermind.Crypto
                 Y.Item2.CopyTo(output[208..]);
             }
         }
-
-        internal static readonly byte[] SubgroupOrder = [0x73,0xed,0xa7,0x53,0x29,0x9d,0x7d,0x48,0x33,0x39,0xd8,0x08,0x09,0xa1,0xd8,0x05,0x53,0xbd,0xa4,0x02,0xff,0xfe,0x5b,0xfe,0xff,0xff,0xff,0xff,0x00,0x00,0x00,0x01];
-        internal static readonly byte[] SubgroupOrderMinusOne = [0x73,0xed,0xa7,0x53,0x29,0x9d,0x7d,0x48,0x33,0x39,0xd8,0x08,0x09,0xa1,0xd8,0x05,0x53,0xbd,0xa4,0x02,0xff,0xfe,0x5b,0xfe,0xff,0xff,0xff,0xff,0x00,0x00,0x00,0x00];
     }
 }

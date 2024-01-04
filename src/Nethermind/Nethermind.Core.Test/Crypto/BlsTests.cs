@@ -4,7 +4,6 @@
 using System;
 using System.Buffers.Binary;
 using FluentAssertions;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using NUnit.Framework;
@@ -17,9 +16,9 @@ namespace Nethermind.Core.Test.Crypto
         [Test]
         public void Calculate_signature()
         {
-            byte[] expected = [0x80,0x8c,0xce,0xc5,0x43,0x5a,0x63,0xae,0x01,0xe1,0x0d,0x81,0xbe,0x27,0x07,0xab,0x55,0xcd,0x0d,0xfc,0x23,0x5d,0xfd,0xf9,0xf7,0x0a,0xd3,0x27,0x99,0xe4,0x25,0x10,0xd6,0x7c,0x9f,0x61,0xd9,0x8a,0x65,0x78,0xa9,0x6a,0x76,0xcf,0x6f,0x4c,0x10,0x5d,0x09,0x26,0x2e,0xc1,0xd8,0x6b,0x06,0x51,0x53,0x60,0xb2,0x90,0xe7,0xd5,0x2d,0x34,0x7e,0x48,0x43,0x8d,0xe2,0xea,0x22,0x33,0xf3,0xc7,0x2a,0x0c,0x22,0x21,0xed,0x2d,0xa5,0xe1,0x15,0x36,0x7b,0xca,0x7a,0x27,0x12,0x16,0x50,0x32,0x34,0x0e,0x0b,0x29];
-            PrivateKey sk = new("0x7b0b2bab671fabdd9308d85c3d41954cd80bbe6fafc9a66fe1e3adfbdcd10b6f");
-            Hash256 message = new("0x3e00ef2f895f40d67f5bb8e81f09a5a12c840ec3ce9a7f3b181be188ef711a1e");
+            byte[] expected = [0xac,0x9a,0xe9,0xe7,0x65,0xb0,0x4d,0xae,0x80,0xbe,0xd1,0xfb,0xca,0xc6,0xd9,0x39,0xd8,0xdc,0x2e,0x8b,0xbd,0x5d,0x6a,0x0c,0xcd,0x24,0xcf,0x13,0x02,0xca,0xa0,0x05,0x07,0xbe,0xcc,0x66,0x0a,0x7d,0x49,0x84,0xf4,0x69,0x03,0xd6,0x5d,0x5a,0x68,0xd5,0x0b,0x7d,0x3c,0xed,0x18,0xc8,0x39,0x3d,0x4d,0xe6,0x58,0xeb,0xc3,0x8a,0x1b,0x5b,0x73,0xc6,0xad,0xd2,0x54,0x13,0x53,0x28,0x36,0x02,0x42,0x9c,0xbf,0x16,0x44,0x78,0x8a,0xca,0xd1,0x17,0xf6,0x49,0x3b,0xfb,0x82,0x1f,0x1e,0x03,0xa7,0x24,0x4b,0xec];
+            PrivateKey sk = new("0xa7fe687cd0c187738b4729aaed9b882a9cb34428bc66ff94d6a1d8f77a092e47");
+            byte[] message = [0x7b,0x0a,0x20,0x20,0x22,0x6f,0x70,0x65,0x6e,0x22,0x3a,0x20,0x7b,0x0a,0x20,0x20,0x20,0x20,0x22,0x70,0x72,0x69,0x63,0x65,0x22,0x3a,0x20,0x39,0x35,0x39,0x31,0x37,0x2c,0x0a,0x20,0x20,0x20,0x20,0x22,0x74,0x69,0x6d,0x65,0x22,0x3a,0x20,0x7b,0x0a,0x20,0x20,0x20,0x20,0x20,0x20,0x22,0x75,0x6e,0x69,0x78,0x22,0x3a,0x20,0x31,0x34,0x38,0x33,0x31,0x34,0x32,0x34,0x30,0x30,0x2c,0x0a,0x20,0x20,0x20,0x20,0x20,0x20,0x22,0x69,0x73,0x6f,0x22,0x3a,0x20,0x22,0x32,0x30,0x31,0x36,0x2d,0x31,0x32,0x2d,0x33,0x31,0x54,0x30,0x30,0x3a,0x30,0x30,0x3a,0x30,0x30,0x2e,0x30,0x30,0x30,0x5a,0x22,0x0a,0x20,0x20,0x20,0x20,0x7d,0x0a,0x20,0x20,0x7d,0x2c,0x0a,0x20,0x20,0x22,0x63,0x6c,0x6f,0x73,0x65,0x22,0x3a,0x20,0x7b,0x0a,0x20,0x20,0x20,0x20,0x22,0x70,0x72,0x69,0x63,0x65,0x22,0x3a,0x20,0x39,0x36,0x37,0x36,0x30,0x2c,0x0a,0x20,0x20,0x20,0x20,0x22,0x74,0x69,0x6d,0x65,0x22,0x3a,0x20,0x7b,0x0a,0x20,0x20,0x20,0x20,0x20,0x20,0x22,0x75,0x6e,0x69,0x78,0x22,0x3a,0x20,0x31,0x34,0x38,0x33,0x32,0x32,0x38,0x38,0x30,0x30,0x2c,0x0a,0x20,0x20,0x20,0x20,0x20,0x20,0x22,0x69,0x73,0x6f,0x22,0x3a,0x20,0x22,0x32,0x30,0x31,0x37,0x2d,0x30,0x31,0x2d,0x30,0x31,0x54,0x30,0x30,0x3a,0x30,0x30,0x3a,0x30,0x30,0x2e,0x30,0x30,0x30,0x5a,0x22,0x0a,0x20,0x20,0x20,0x20,0x7d,0x0a,0x20,0x20,0x7d,0x2c,0x0a,0x20,0x20,0x22,0x6c,0x6f,0x6f,0x6b,0x75,0x70,0x22,0x3a,0x20,0x7b,0x0a,0x20,0x20,0x20,0x20,0x22,0x70,0x72,0x69,0x63,0x65,0x22,0x3a,0x20,0x39,0x36,0x37,0x36,0x30,0x2c,0x0a,0x20,0x20,0x20,0x20,0x22,0x6b,0x22,0x3a,0x20,0x31,0x2c,0x0a,0x20,0x20,0x20,0x20,0x22,0x74,0x69,0x6d,0x65,0x22,0x3a,0x20,0x7b,0x0a,0x20,0x20,0x20,0x20,0x20,0x20,0x22,0x75,0x6e,0x69,0x78,0x22,0x3a,0x20,0x31,0x34,0x38,0x33,0x32,0x32,0x38,0x38,0x30,0x30,0x2c,0x0a,0x20,0x20,0x20,0x20,0x20,0x20,0x22,0x69,0x73,0x6f,0x22,0x3a,0x20,0x22,0x32,0x30,0x31,0x37,0x2d,0x30,0x31,0x2d,0x30,0x31,0x54,0x30,0x30,0x3a,0x30,0x30,0x3a,0x30,0x30,0x2e,0x30,0x30,0x30,0x5a,0x22,0x0a,0x20,0x20,0x20,0x20,0x7d,0x0a,0x20,0x20,0x7d,0x0a,0x7d,0x0a,0x65,0x78,0x61,0x6d,0x70,0x6c,0x65,0x2e,0x63,0x6f,0x6d,0x2f,0x61,0x70,0x69,0x2f,0x31];
             Bls.Signature s = Bls.Sign(sk, message);
             s.Bytes.Should().Equal(expected);
         }
@@ -27,7 +26,7 @@ namespace Nethermind.Core.Test.Crypto
         [Test]
         public void Verify_signature()
         {
-            Hash256 message = new("0x3e00ef2f895f40d67f5bb8e81f09a5a12c840ec3ce9a7f3b181be188ef711a1e");
+            byte[] message = [0x3e,0x00,0xef,0x2f,0x89,0x5f,0x40,0xd6,0x7f,0x5b,0xb8,0xe8,0x1f,0x09,0xa5,0xa1,0x2c,0x84,0x0e,0xc3,0xce,0x9a,0x7f,0x3b,0x18,0x1b,0xe1,0x88,0xef,0x71,0x1a,0x1e];
             Bls.Signature s = Bls.Sign(TestItem.PrivateKeyA, message);
             Assert.That(Bls.Verify(Bls.GetPublicKey(TestItem.PrivateKeyA), s, message));
         }
@@ -35,7 +34,7 @@ namespace Nethermind.Core.Test.Crypto
         [Test]
         public void Rejects_bad_signature()
         {
-            Hash256 message = new("0x3e00ef2f895f40d67f5bb8e81f09a5a12c840ec3ce9a7f3b181be188ef711a1e");
+            byte[] message = [0x3e,0x00,0xef,0x2f,0x89,0x5f,0x40,0xd6,0x7f,0x5b,0xb8,0xe8,0x1f,0x09,0xa5,0xa1,0x2c,0x84,0x0e,0xc3,0xce,0x9a,0x7f,0x3b,0x18,0x1b,0xe1,0x88,0xef,0x71,0x1a,0x1e];
             Bls.Signature s = Bls.Sign(TestItem.PrivateKeyA, message);
             s.Bytes[34] += 1;
             Assert.That(!Bls.Verify(Bls.GetPublicKey(TestItem.PrivateKeyA), s, message));
@@ -44,10 +43,10 @@ namespace Nethermind.Core.Test.Crypto
         [Test]
         public void G1_additive_commutativity()
         {
-            var p = Bls.G1.FromScalar(232323232u);
-            var q = Bls.G1.FromScalar(9999999999u);
-            Bls.G1 res = p.Add(q);
-            Bls.G1 expected = q.Add(p);
+            var p = Bls.G1.FromScalar(232323232);
+            var q = Bls.G1.FromScalar(9999999999);
+            Bls.G1 res = p + q;
+            Bls.G1 expected = q + p;
             res.X.Should().Equal(expected.X);
             res.Y.Should().Equal(expected.Y);
         }
@@ -55,147 +54,94 @@ namespace Nethermind.Core.Test.Crypto
         [Test]
         public void G2_additive_commutativity()
         {
-            var p = Bls.G2.FromScalar(232323232u);
-            var q = Bls.G2.FromScalar(9999999999u);
-            Bls.G2 res = p.Add(q);
-            Bls.G2 expected = q.Add(p);
-            res.X.Item1.Should().Equal(expected.X.Item1);
-            res.X.Item2.Should().Equal(expected.X.Item2);
-            res.Y.Item1.Should().Equal(expected.Y.Item1);
-            res.Y.Item2.Should().Equal(expected.Y.Item2);
+            var p = Bls.G2.FromScalar(232323232);
+            var q = Bls.G2.FromScalar(9999999999);
+            Assert.That(p + q, Is.EqualTo(q + p));
         }
 
         [Test]
         public void G1_additive_negation()
         {
-            var p = Bls.G1.FromScalar(55555555u);
-            Bls.G1 res = p.Add(p.Negate());
-            res.X.Should().Equal(Bls.G1.Zero.X);
-            res.Y.Should().Equal(Bls.G1.Zero.Y);
+            var p = Bls.G1.FromScalar(55555555);
+            Assert.That(p + (-p), Is.EqualTo(Bls.G1.Zero));
         }
 
         [Test]
         public void G2_additive_negation()
         {
-            var p = Bls.G2.FromScalar(55555555u);
-            Bls.G2 res = p.Add(p.Negate());
-            res.X.Item1.Should().Equal(Bls.G2.Zero.X.Item1);
-            res.X.Item2.Should().Equal(Bls.G2.Zero.X.Item2);
-            res.Y.Item1.Should().Equal(Bls.G2.Zero.Y.Item1);
-            res.Y.Item2.Should().Equal(Bls.G2.Zero.Y.Item2);
+            var p = Bls.G2.FromScalar(55555555);
+            Assert.That(p + (-p), Is.EqualTo(Bls.G2.Zero));
         }
 
         [Test]
         public void G1_multiply_by_scalar_zero()
         {
-            Span<byte> s = stackalloc byte[32];
-            Bls.G1 p = Bls.G1.Generator.Multiply(s);
-            p.X.Should().Equal(Bls.G1.Zero.X);
-            p.Y.Should().Equal(Bls.G1.Zero.Y);
+            var p = Bls.G1.FromScalar(666666666);
+            Assert.That(0 * p, Is.EqualTo(p));
         }
 
         [Test]
         public void G2_multiply_by_scalar_zero()
         {
-            Span<byte> s = stackalloc byte[32];
-            Bls.G2 p = Bls.G2.Generator.Multiply(s);
-            p.X.Item1.Should().Equal(Bls.G2.Zero.X.Item1);
-            p.X.Item2.Should().Equal(Bls.G2.Zero.X.Item2);
-            p.Y.Item1.Should().Equal(Bls.G2.Zero.Y.Item1);
-            p.Y.Item2.Should().Equal(Bls.G2.Zero.Y.Item2);
+            var p = Bls.G2.FromScalar(666666666);
+            Assert.That(0 * p, Is.EqualTo(p));
         }
 
         [Test]
         public void G1_multiply_by_scalar_one()
         {
-            Span<byte> s = stackalloc byte[32];
-            s[31] = 1;
-            Bls.G1 p = Bls.G1.Generator.Multiply(s);
-            p.X.Should().Equal(Bls.G1.Generator.X);
-            p.Y.Should().Equal(Bls.G1.Generator.Y);
+            var p = Bls.G1.FromScalar(666666666);
+            Assert.That(1 * p, Is.EqualTo(p));
         }
 
         [Test]
         public void G2_multiply_by_scalar_one()
         {
-            Span<byte> s = stackalloc byte[32];
-            s[31] = 1;
-            Bls.G2 p = Bls.G2.Generator.Multiply(s);
-            p.X.Item1.Should().Equal(Bls.G2.Generator.X.Item1);
-            p.X.Item2.Should().Equal(Bls.G2.Generator.X.Item2);
-            p.Y.Item1.Should().Equal(Bls.G2.Generator.Y.Item1);
-            p.Y.Item2.Should().Equal(Bls.G2.Generator.Y.Item2);
+            var p = Bls.G2.FromScalar(666666666);
+            Assert.That(1 * p, Is.EqualTo(p));
         }
 
         [Test]
         public void G1_doubling()
         {
-            Span<byte> s = stackalloc byte[32];
-            s[31] = 2;
-
-            var p = Bls.G1.FromScalar(20572853u);
-            Bls.G1 doubled = p.Multiply(s);
-            Bls.G1 expected = p.Add(p);
-
-            doubled.X.Should().Equal(expected.X);
-            doubled.Y.Should().Equal(expected.Y);
+            var p = Bls.G1.FromScalar(20572853);
+            Assert.That(2 * p, Is.EqualTo(p + p));
         }
 
         [Test]
         public void G2_doubling()
         {
-            Span<byte> s = stackalloc byte[32];
-            s[31] = 2;
-
-            var p = Bls.G2.FromScalar(60074914u);
-            Bls.G2 doubled = p.Multiply(s);
-            Bls.G2 expected = p.Add(p);
-
-            doubled.X.Item1.Should().Equal(expected.X.Item1);
-            doubled.X.Item2.Should().Equal(expected.X.Item2);
-            doubled.Y.Item1.Should().Equal(expected.Y.Item1);
-            doubled.Y.Item2.Should().Equal(expected.Y.Item2);
+            var p = Bls.G2.FromScalar(60074914);
+            Assert.That(2 * p, Is.EqualTo(p + p));
         }
 
         [Test]
         public void G1_subgroup_check()
         {
-            var p = Bls.G1.FromScalar(10403746324u);
-            Bls.G1 res = p.Multiply(Bls.SubgroupOrder);
-
-            res.X.Should().Equal(Bls.G1.Zero.X);
-            res.Y.Should().Equal(Bls.G1.Zero.Y);
+            var p = Bls.G1.FromScalar(10403746324);
+            Assert.That(Bls.SubgroupOrder * p, Is.EqualTo(Bls.G1.Zero));
         }
 
         [Test]
         public void G2_subgroup_check()
         {
-            var p = Bls.G2.FromScalar(92461756u);
-            Bls.G2 res = p.Multiply(Bls.SubgroupOrder);
-
-            res.X.Item1.Should().Equal(Bls.G2.Zero.X.Item1);
-            res.X.Item2.Should().Equal(Bls.G2.Zero.X.Item2);
-            res.Y.Item1.Should().Equal(Bls.G2.Zero.Y.Item1);
-            res.Y.Item2.Should().Equal(Bls.G2.Zero.Y.Item2);
+            var p = Bls.G2.FromScalar(92461756);
+            Assert.That(Bls.SubgroupOrder * p, Is.EqualTo(Bls.G2.Zero));
         }
 
         [Test]
         public void G1_multiplication_by_unnormalised_scalar()
         {
-            Span<byte> s1 = stackalloc byte[32];
-            Span<byte> s2 = stackalloc byte[32];
-            s1[30] = 0xDA;
-            s1[31] = 0xAC;
-            Bls.SubgroupOrder.CopyTo(s2);
-            s2[30] += 0xDA;
-            s2[31] += 0xAC;
+            Span<byte> s = stackalloc byte[32];
+            Span<byte> unnormalised = stackalloc byte[32];
+            s[30] = 0xDA;
+            s[31] = 0xAC;
+            Bls.SubgroupOrder.CopyTo(unnormalised);
+            unnormalised[30] += 0xDA;
+            unnormalised[31] += 0xAC;
 
-            var p = Bls.G1.FromScalar(43333333u);
-            Bls.G1 res = p.Multiply(s2);
-            Bls.G1 expected = p.Multiply(s1);
-
-            res.X.Should().Equal(expected.X);
-            res.Y.Should().Equal(expected.Y);
+            var p = Bls.G1.FromScalar(43333333);
+            Assert.That(unnormalised * p, Is.EqualTo(s * p));
         }
 
         [Test]
@@ -209,9 +155,9 @@ namespace Nethermind.Core.Test.Crypto
             s2[30] += 0xDA;
             s2[31] += 0xAC;
 
-            var p = Bls.G2.FromScalar(43577532u);
-            Bls.G2 res = p.Multiply(s2);
-            Bls.G2 expected = p.Multiply(s1);
+            var p = Bls.G2.FromScalar(43577532);
+            Bls.G2 res = s2 * p;
+            Bls.G2 expected = s1 * p;
 
             res.X.Item1.Should().Equal(expected.X.Item1);
             res.X.Item2.Should().Equal(expected.X.Item2);
@@ -222,8 +168,8 @@ namespace Nethermind.Core.Test.Crypto
         [Test]
         public void Pairing_degeneracy()
         {
-            var p = Bls.G1.FromScalar(6758363496u);
-            var q = Bls.G2.FromScalar(14863974504635u);
+            var p = Bls.G1.FromScalar(6758363496);
+            var q = Bls.G2.FromScalar(14863974504635);
             Assert.That(Bls.Pairing(p, Bls.G2.Zero));
             Assert.That(Bls.Pairing(Bls.G1.Zero, q));
             Assert.That(Bls.Pairing2(p, Bls.G2.Zero, Bls.G1.Zero, q));
@@ -235,14 +181,14 @@ namespace Nethermind.Core.Test.Crypto
         {
             Span<byte> s1 = stackalloc byte[32];
             Span<byte> s2 = stackalloc byte[32];
-            BinaryPrimitives.WriteUInt128BigEndian(s1[16..], 35789430543857u);
-            BinaryPrimitives.WriteUInt128BigEndian(s2[16..], 60857913825u);
+            BinaryPrimitives.WriteUInt128BigEndian(s1[16..], 35789430543857);
+            BinaryPrimitives.WriteUInt128BigEndian(s2[16..], 60857913825);
 
-            var p = Bls.G1.FromScalar(5452347823u);
-            var q = Bls.G2.FromScalar(984534538u);
+            var p = Bls.G1.FromScalar(5452347823);
+            var q = Bls.G2.FromScalar(984534538);
 
-            Assert.That(Bls.PairingsEqual(p.Multiply(s1), q.Multiply(s2), p.Multiply(s1).Multiply(s2), q));
-            Assert.That(Bls.PairingsEqual(p.Multiply(s1), q.Multiply(s2), p, q.Multiply(s1).Multiply(s2)));
+            Assert.That(Bls.PairingsEqual(s1 * p, s2 * q, s2 * (s1 * p), q));
+            Assert.That(Bls.PairingsEqual(s1 * p, s2 * q, p, s2 * (s1 * q)));
         }
     }
 }
