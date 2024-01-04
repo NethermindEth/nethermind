@@ -14,7 +14,7 @@ jobs:
   create_docker_image:
     name: "Generate docker image"
     outputs:
-      cleanRef: ${{ steps.cleanup.outputs.cleanRef }}
+      cleanRef: ${{ steps.prepare_ref.outputs.cleanRef }}
     runs-on: ubuntu-latest
     steps:
     - name: Checkout repository
