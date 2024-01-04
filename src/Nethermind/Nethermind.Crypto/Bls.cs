@@ -3,9 +3,11 @@
 
 using System;
 using System.Linq;
+using System.Numerics;
 using System.Security.Cryptography;
 using System.Text;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
 
@@ -13,6 +15,7 @@ namespace Nethermind.Crypto
 {
     public class Bls
     {
+        internal static readonly BigInteger BaseFieldOrder = new([0x1a,0x01,0x11,0xea,0x39,0x7f,0xe6,0x9a,0x4b,0x1b,0xa7,0xb6,0x43,0x4b,0xac,0xd7,0x64,0x77,0x4b,0x84,0xf3,0x85,0x12,0xbf,0x67,0x30,0xd2,0xa0,0xf6,0xb0,0xf6,0x24,0x1e,0xab,0xff,0xfe,0xb1,0x53,0xff,0xff,0xb9,0xfe,0xff,0xff,0xff,0xff,0xaa,0xab], true, true);
         internal static readonly byte[] SubgroupOrder = [0x73,0xed,0xa7,0x53,0x29,0x9d,0x7d,0x48,0x33,0x39,0xd8,0x08,0x09,0xa1,0xd8,0x05,0x53,0xbd,0xa4,0x02,0xff,0xfe,0x5b,0xfe,0xff,0xff,0xff,0xff,0x00,0x00,0x00,0x01];
         internal static readonly byte[] SubgroupOrderMinusOne = [0x73,0xed,0xa7,0x53,0x29,0x9d,0x7d,0x48,0x33,0x39,0xd8,0x08,0x09,0xa1,0xd8,0x05,0x53,0xbd,0xa4,0x02,0xff,0xfe,0x5b,0xfe,0xff,0xff,0xff,0xff,0x00,0x00,0x00,0x00];
         internal static readonly byte[] Cryptosuite = ASCIIEncoding.ASCII.GetBytes("BLS_SIG_BLS12381G2_XMD:SHA-256_SSWU_RO_NUL_");
@@ -70,7 +73,7 @@ namespace Nethermind.Crypto
 
         public struct Signature
         {
-            public byte[] Bytes = new byte[96];
+            public byte[] Bytes = new byte[48];
 
             public Signature()
             {
@@ -115,15 +118,33 @@ namespace Nethermind.Crypto
 
             public static G1 FromSignature(Signature signature)
             {
-                return new G1(signature.Bytes.AsSpan()[..48], signature.Bytes.AsSpan()[48..]);
+                // decompresss curve point
+                bool sign = (signature.Bytes[0] & 0x20) == 0x20;
+                signature.Bytes[0] &= 0x1F; // mask out top 3 bits
+                G1 P = new(signature.Bytes, Twist(signature.Bytes));
+                return sign ? P : -P;
             }
 
             public Signature ToSignature()
             {
+                // compress curve point
                 Signature s = new();
                 X.CopyTo(s.Bytes.AsSpan());
-                Y.CopyTo(s.Bytes.AsSpan()[48..]);
+
+                bool sign = Enumerable.SequenceEqual(Y, Twist(X));
+                if (sign)
+                {
+                    s.Bytes[0] |= 0x20;
+                }
+
                 return s;
+            }
+
+            private static byte[] Twist(ReadOnlySpan<byte> XBytes)
+            {
+                BigInteger x = new(XBytes, true, true);
+                var y = BigInteger.ModPow(BigInteger.ModPow(x, 3, BaseFieldOrder) + 4, (BaseFieldOrder + 1) / 4, BaseFieldOrder);
+                return y.ToBigEndianByteArray(48);
             }
 
             public override bool Equals(object obj) => Equals(obj as G1);
