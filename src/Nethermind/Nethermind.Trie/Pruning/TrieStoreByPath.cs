@@ -249,7 +249,8 @@ namespace Nethermind.Trie.Pruning
         public bool IsPersisted(Hash256 keccak, byte[] childPath)
         {
             byte[]? rlp = TryLoadRlp(childPath, null);
-            if (rlp is null) return false;
+            if (rlp is null)
+                return keccak == Keccak.EmptyTreeHash;
 
             TrieNode node = new TrieNode(NodeType.Unknown, rlp: rlp);
             node.ResolveNode(this);

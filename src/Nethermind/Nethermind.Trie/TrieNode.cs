@@ -1056,15 +1056,6 @@ namespace Nethermind.Trie
             if (storageRootKey == Core.Crypto.Keccak.EmptyTreeHash) return false;
 
             _storageRoot = storageRoot = resolver.FindCachedOrUnknown(storageRootKey, Array.Empty<byte>(), storagePrefix);
-            try
-            {
-                storageRoot.ResolveNode(resolver);
-            }
-            catch (TrieException)
-            {
-                _storageRoot = storageRoot = null;
-                return false;
-            }
             return true;
         }
 
