@@ -31,6 +31,8 @@ public static class Program
 
         string jsonString = JsonSerializer.Serialize(groupedTestNames, new JsonSerializerOptions { WriteIndented = true });
 
+        Console.WriteLine(jsonString);
+
         File.WriteAllText("matrix.json", jsonString);
     }
 
@@ -47,7 +49,7 @@ public static class Program
     //}
     //
     //fileContent.Dispose();
-}
+
 
     private static IEnumerable<string> GetTestsDirectories(string path)
     {
