@@ -26,6 +26,7 @@ namespace Nethermind.State
         private const int StartCapacity = Resettable.StartCapacity;
         private readonly ResettableDictionary<Address, Stack<int>> _intraBlockCache = new();
         private readonly ResettableHashSet<Address> _committedThisRound = new();
+        private readonly HashSet<Address> _nullAccountReads = new();
         // Only guarding against hot duplicates so filter doesn't need to be too big
         // Note:
         // False negatives are fine as they will just result in a overwrite set
@@ -508,7 +509,7 @@ namespace Nethermind.State
                 // because it was not committed yet it means that the just cache is the only state (so it was read only)
                 if (isTracing && change.ChangeType == ChangeType.JustCache)
                 {
-                    _readsForTracing.Add(change.Address);
+                    _nullAccountReads.Add(change.Address);
                     continue;
                 }
 
@@ -597,7 +598,7 @@ namespace Nethermind.State
 
             if (isTracing)
             {
-                foreach (Address nullRead in _readsForTracing)
+                foreach (Address nullRead in _nullAccountReads)
                 {
                     // // this may be enough, let us write tests
                     stateTracer.ReportAccountRead(nullRead);
@@ -606,7 +607,7 @@ namespace Nethermind.State
 
             Resettable<Change>.Reset(ref _changes, ref _capacity, ref _currentPosition, StartCapacity);
             _committedThisRound.Reset();
-            _readsForTracing.Clear();
+            _nullAccountReads.Clear();
             _intraBlockCache.Reset();
 
             if (isTracing)
@@ -687,10 +688,10 @@ namespace Nethermind.State
             _tree.Set(address, account);
         }
 
-        private readonly HashSet<Address> _readsForTracing = new();
-
         private Account? GetAndAddToCache(Address address)
         {
+            if (_nullAccountReads.Contains(address)) return null;
+
             Account? account = GetState(address);
             if (account is not null)
             {
@@ -699,7 +700,7 @@ namespace Nethermind.State
             else
             {
                 // just for tracing - potential perf hit, maybe a better solution?
-                _readsForTracing.Add(address);
+                _nullAccountReads.Add(address);
             }
 
             return account;
@@ -803,7 +804,7 @@ namespace Nethermind.State
             if (_logger.IsTrace) _logger.Trace("Clearing state provider caches");
             _intraBlockCache.Reset();
             _committedThisRound.Reset();
-            _readsForTracing.Clear();
+            _nullAccountReads.Clear();
             _currentPosition = Resettable.EmptyPosition;
             Array.Clear(_changes, 0, _changes.Length);
             _needsStateRootUpdate = false;
