@@ -2,1743 +2,1895 @@
   {
     "testNames": [
       "stArgsZeroOneBalance",
-      "stAttackTest",
-      "badOpcodes",
-      "eip2315NotRemoved"
-    ]
-  },
-  {
-    "testNames": [
-      "invalidAddr",
-      "invalidDiffPlaces",
-      "measureGas",
-      "opc0CDiffPlaces"
-    ]
-  },
-  {
-    "testNames": [
-      "opc0DDiffPlaces",
-      "opc0EDiffPlaces",
-      "opc0FDiffPlaces",
-      "opc1EDiffPlaces"
-    ]
-  },
-  {
-    "testNames": [
-      "opc1FDiffPlaces",
-      "opc21DiffPlaces",
-      "opc22DiffPlaces",
-      "opc23DiffPlaces"
-    ]
-  },
-  {
-    "testNames": [
-      "opc24DiffPlaces",
-      "opc25DiffPlaces",
-      "opc26DiffPlaces",
-      "opc27DiffPlaces"
-    ]
-  },
-  {
-    "testNames": [
-      "opc28DiffPlaces",
-      "opc29DiffPlaces",
-      "opc2ADiffPlaces",
-      "opc2BDiffPlaces"
-    ]
-  },
-  {
-    "testNames": [
-      "opc2CDiffPlaces",
-      "opc2DDiffPlaces",
-      "opc2EDiffPlaces",
-      "opc2FDiffPlaces"
-    ]
-  },
-  {
-    "testNames": [
-      "opc49DiffPlaces",
-      "opc4ADiffPlaces",
-      "opc4BDiffPlaces",
-      "opc4CDiffPlaces"
-    ]
-  },
-  {
-    "testNames": [
-      "opc4DDiffPlaces",
-      "opc4EDiffPlaces",
-      "opc4FDiffPlaces",
-      "opc5CDiffPlaces"
-    ]
-  },
-  {
-    "testNames": [
-      "opc5DDiffPlaces",
-      "opc5EDiffPlaces",
-      "opc5FDiffPlaces",
-      "opcA5DiffPlaces"
-    ]
-  },
-  {
-    "testNames": [
-      "opcA6DiffPlaces",
-      "opcA7DiffPlaces",
-      "opcA8DiffPlaces",
-      "opcA9DiffPlaces"
-    ]
-  },
-  {
-    "testNames": [
-      "opcAADiffPlaces",
-      "opcABDiffPlaces",
-      "opcACDiffPlaces",
-      "opcADDiffPlaces"
-    ]
-  },
-  {
-    "testNames": [
-      "opcAEDiffPlaces",
-      "opcAFDiffPlaces",
-      "opcB0DiffPlaces",
-      "opcB1DiffPlaces"
-    ]
-  },
-  {
-    "testNames": [
-      "opcB2DiffPlaces",
-      "opcB3DiffPlaces",
-      "opcB4DiffPlaces",
-      "opcB5DiffPlaces"
-    ]
-  },
-  {
-    "testNames": [
-      "opcB6DiffPlaces",
-      "opcB7DiffPlaces",
-      "opcB8DiffPlaces",
-      "opcB9DiffPlaces"
-    ]
-  },
-  {
-    "testNames": [
-      "opcBADiffPlaces",
-      "opcBBDiffPlaces",
-      "opcBCDiffPlaces",
-      "opcBDDiffPlaces"
-    ]
-  },
-  {
-    "testNames": [
-      "opcBEDiffPlaces",
-      "opcBFDiffPlaces",
-      "opcC0DiffPlaces",
-      "opcC1DiffPlaces"
-    ]
-  },
-  {
-    "testNames": [
-      "opcC2DiffPlaces",
-      "opcC3DiffPlaces",
-      "opcC4DiffPlaces",
-      "opcC5DiffPlaces"
-    ]
-  },
-  {
-    "testNames": [
-      "opcC6DiffPlaces",
-      "opcC7DiffPlaces",
-      "opcC8DiffPlaces",
-      "opcC9DiffPlaces"
-    ]
-  },
-  {
-    "testNames": [
-      "opcCADiffPlaces",
-      "opcCBDiffPlaces",
-      "opcCCDiffPlaces",
-      "opcCDDiffPlaces"
-    ]
-  },
-  {
-    "testNames": [
-      "opcCEDiffPlaces",
-      "opcCFDiffPlaces",
-      "opcD0DiffPlaces",
-      "opcD1DiffPlaces"
-    ]
-  },
-  {
-    "testNames": [
-      "opcD2DiffPlaces",
-      "opcD3DiffPlaces",
-      "opcD4DiffPlaces",
-      "opcD5DiffPlaces"
-    ]
-  },
-  {
-    "testNames": [
-      "opcD6DiffPlaces",
-      "opcD7DiffPlaces",
-      "opcD8DiffPlaces",
-      "opcD9DiffPlaces"
-    ]
-  },
-  {
-    "testNames": [
-      "opcDADiffPlaces",
-      "opcDBDiffPlaces",
-      "opcDCDiffPlaces",
-      "opcDDDiffPlaces"
-    ]
-  },
-  {
-    "testNames": [
-      "opcDEDiffPlaces",
-      "opcDFDiffPlaces",
-      "opcE0DiffPlaces",
-      "opcE1DiffPlaces"
-    ]
-  },
-  {
-    "testNames": [
-      "opcE2DiffPlaces",
-      "opcE3DiffPlaces",
-      "opcE4DiffPlaces",
-      "opcE5DiffPlaces"
-    ]
-  },
-  {
-    "testNames": [
-      "opcE6DiffPlaces",
-      "opcE7DiffPlaces",
-      "opcE8DiffPlaces",
-      "opcE9DiffPlaces"
-    ]
-  },
-  {
-    "testNames": [
-      "opcEADiffPlaces",
-      "opcEBDiffPlaces",
-      "opcECDiffPlaces",
-      "opcEDDiffPlaces"
-    ]
-  },
-  {
-    "testNames": [
-      "opcEEDiffPlaces",
-      "opcEFDiffPlaces",
-      "opcF6DiffPlaces",
-      "opcF7DiffPlaces"
-    ]
-  },
-  {
-    "testNames": [
-      "opcF8DiffPlaces",
-      "opcF9DiffPlaces",
-      "opcFBDiffPlaces",
-      "opcFCDiffPlaces"
-    ]
-  },
-  {
-    "testNames": [
-      "opcFEDiffPlaces",
-      "operationDiffGas",
-      "undefinedOpcodeFirstByte",
-      "stBugs"
-    ]
-  },
-  {
-    "testNames": [
-      "stCallCodes",
-      "stCallCreateCallCodeTest",
-      "stCallDelegateCodesCallCodeHomestead",
-      "stCallDelegateCodesHomestead"
-    ]
-  },
-  {
-    "testNames": [
-      "stChainId",
-      "stCodeCopyTest",
-      "stCodeSizeLimit",
-      "stCreate2"
-    ]
-  },
-  {
-    "testNames": [
-      "stCreateTest",
-      "stDelegatecallTestHomestead",
-      "stEIP150singleCodeGasPrices",
-      "stEIP150Specific"
-    ]
-  },
-  {
-    "testNames": [
-      "baseFeeDiffPlaces",
-      "gasPriceDiffPlaces",
-      "intrinsic",
-      "lowFeeCap"
-    ]
-  },
-  {
-    "testNames": [
-      "lowGasLimit",
-      "lowGasPriceOldTypes",
-      "outOfFunds",
-      "outOfFundsOldTypes"
-    ]
-  },
-  {
-    "testNames": [
-      "senderBalance",
-      "tipTooHigh",
-      "transactionIntinsicBug",
-      "typeTwoBerlin"
-    ]
-  },
-  {
-    "testNames": [
-      "valCausesOOF",
-      "stEIP158Specific",
-      "stEIP2930",
-      "stEIP3607"
-    ]
-  },
-  {
-    "testNames": [
-      "stExample",
-      "stExtCodeHash",
-      "stHomesteadSpecific",
-      "stInitCodeTest"
-    ]
-  },
-  {
-    "testNames": [
-      "stLogTests",
-      "stMemExpandingEIP150Calls",
-      "stMemoryStressTest",
-      "buffer"
-    ]
-  },
-  {
-    "testNames": [
-      "bufferSrcOffset",
-      "callDataCopyOffset",
-      "calldatacopy_dejavu",
-      "calldatacopy_dejavu2"
-    ]
-  },
-  {
-    "testNames": [
-      "codeCopyOffset",
-      "codecopy_dejavu",
-      "codecopy_dejavu2",
-      "extcodecopy_dejavu"
-    ]
-  },
-  {
-    "testNames": [
-      "log1_dejavu",
-      "log2_dejavu",
-      "log3_dejavu",
-      "log4_dejavu"
-    ]
-  },
-  {
-    "testNames": [
-      "mem0b_singleByte",
-      "mem31b_singleByte",
-      "mem32b_singleByte",
-      "mem32kb\u002B1"
-    ]
-  },
-  {
-    "testNames": [
-      "mem32kb\u002B31",
-      "mem32kb\u002B32",
-      "mem32kb\u002B33",
-      "mem32kb-1"
-    ]
-  },
-  {
-    "testNames": [
-      "mem32kb-31",
-      "mem32kb-32",
-      "mem32kb-33",
-      "mem32kb"
-    ]
-  },
-  {
-    "testNames": [
-      "mem32kb_singleByte\u002B1",
-      "mem32kb_singleByte\u002B31",
-      "mem32kb_singleByte\u002B32",
-      "mem32kb_singleByte\u002B33"
-    ]
-  },
-  {
-    "testNames": [
-      "mem32kb_singleByte-1",
-      "mem32kb_singleByte-31",
-      "mem32kb_singleByte-32",
-      "mem32kb_singleByte-33"
-    ]
-  },
-  {
-    "testNames": [
-      "mem32kb_singleByte",
-      "mem33b_singleByte",
-      "mem64kb\u002B1",
-      "mem64kb\u002B31"
-    ]
-  },
-  {
-    "testNames": [
-      "mem64kb\u002B32",
-      "mem64kb\u002B33",
-      "mem64kb-1",
-      "mem64kb-31"
-    ]
-  },
-  {
-    "testNames": [
-      "mem64kb-32",
-      "mem64kb-33",
-      "mem64kb",
-      "mem64kb_singleByte\u002B1"
-    ]
-  },
-  {
-    "testNames": [
-      "mem64kb_singleByte\u002B31",
-      "mem64kb_singleByte\u002B32",
-      "mem64kb_singleByte\u002B33",
-      "mem64kb_singleByte-1"
-    ]
-  },
-  {
-    "testNames": [
-      "mem64kb_singleByte-31",
-      "mem64kb_singleByte-32",
-      "mem64kb_singleByte-33",
-      "mem64kb_singleByte"
-    ]
-  },
-  {
-    "testNames": [
-      "memCopySelf",
-      "memReturn",
-      "mload16bitBound",
-      "mload8bitBound"
-    ]
-  },
-  {
-    "testNames": [
-      "mload_dejavu",
-      "mstore_dejavu",
-      "mstroe8_dejavu",
-      "oog"
-    ]
-  },
-  {
-    "testNames": [
-      "sha3_dejavu",
-      "stackLimitGas_1023",
-      "stackLimitGas_1024",
-      "stackLimitGas_1025"
-    ]
-  },
-  {
-    "testNames": [
-      "stackLimitPush31_1023",
-      "stackLimitPush31_1024",
-      "stackLimitPush31_1025",
-      "stackLimitPush32_1023"
-    ]
-  },
-  {
-    "testNames": [
-      "stackLimitPush32_1024",
-      "stackLimitPush32_1025",
-      "stNonZeroCallsTest",
-      "blake2B"
-    ]
-  },
-  {
-    "testNames": [
-      "delegatecall09Undefined",
-      "identity_to_bigger",
-      "identity_to_smaller",
-      "idPrecomps"
-    ]
-  },
-  {
-    "testNames": [
-      "modexp",
-      "modexpTests",
-      "precompsEIP2929",
-      "sec80"
-    ]
-  },
-  {
-    "testNames": [
-      "stPreCompiledContracts2",
-      "stQuadraticComplexityTest",
-      "stRandom",
-      "stRandom2"
-    ]
-  },
-  {
-    "testNames": [
-      "stRecursiveCreate",
-      "stRefundTest",
-      "stReturnDataTest",
-      "stRevertTest"
-    ]
-  },
-  {
-    "testNames": [
-      "stSelfBalance",
-      "stShift",
-      "stSLoadTest",
-      "stSolidityTest"
-    ]
-  },
-  {
-    "testNames": [
-      "stSpecialTest",
-      "stSStoreTest",
-      "shallowStack",
-      "stackOverflow"
-    ]
-  },
-  {
-    "testNames": [
       "stackOverflowDUP",
-      "stackOverflowM1",
-      "stackOverflowM1DUP",
-      "stackOverflowM1PUSH"
-    ]
-  },
-  {
-    "testNames": [
-      "stackOverflowPUSH",
-      "stackOverflowSWAP",
-      "stacksanitySWAP",
-      "underflowTest"
-    ]
-  },
-  {
-    "testNames": [
-      "StaticcallToPrecompileFromCalledContract",
-      "StaticcallToPrecompileFromContractInitialization",
-      "StaticcallToPrecompileFromTransaction",
-      "static_ABAcalls0"
-    ]
-  },
-  {
-    "testNames": [
-      "static_ABAcalls1",
-      "static_ABAcalls2",
-      "static_ABAcalls3",
-      "static_ABAcallsSuicide0"
-    ]
-  },
-  {
-    "testNames": [
-      "static_ABAcallsSuicide1",
-      "static_Call10",
-      "static_Call1024BalanceTooLow",
-      "static_Call1024BalanceTooLow2"
-    ]
-  },
-  {
-    "testNames": [
-      "static_Call1024OOG",
-      "static_Call1024PreCalls",
-      "static_Call1024PreCalls2",
-      "static_Call1024PreCalls3"
-    ]
-  },
-  {
-    "testNames": [
-      "static_Call1MB1024Calldepth",
-      "static_Call50000",
-      "static_Call50000bytesContract50_1",
-      "static_Call50000bytesContract50_2"
-    ]
-  },
-  {
-    "testNames": [
-      "static_Call50000bytesContract50_3",
-      "static_Call50000_ecrec",
-      "static_Call50000_identity",
-      "static_Call50000_identity2"
-    ]
-  },
-  {
-    "testNames": [
-      "static_Call50000_rip160",
-      "static_CallAndCallcodeConsumeMoreGasThenTransactionHas",
-      "static_CallAskMoreGasOnDepth2ThenTransactionHas",
-      "static_callBasic"
-    ]
-  },
-  {
-    "testNames": [
-      "static_callcallcallcode_001",
-      "static_callcallcallcode_001_2",
-      "static_callcallcallcode_001_OOGE",
-      "static_callcallcallcode_001_OOGE_2"
-    ]
-  },
-  {
-    "testNames": [
-      "static_callcallcallcode_001_OOGMAfter",
-      "static_callcallcallcode_001_OOGMAfter2",
-      "static_callcallcallcode_001_OOGMAfter_2",
-      "static_callcallcallcode_001_OOGMAfter_3"
-    ]
-  },
-  {
-    "testNames": [
-      "static_callcallcallcode_001_OOGMBefore",
-      "static_callcallcallcode_001_OOGMBefore2",
-      "static_callcallcallcode_001_SuicideEnd",
-      "static_callcallcallcode_001_SuicideEnd2"
-    ]
-  },
-  {
-    "testNames": [
-      "static_callcallcallcode_001_SuicideMiddle",
-      "static_callcallcallcode_001_SuicideMiddle2",
-      "static_callcallcallcode_ABCB_RECURSIVE",
-      "static_callcallcallcode_ABCB_RECURSIVE2"
-    ]
-  },
-  {
-    "testNames": [
-      "static_callcallcall_000",
-      "static_callcallcall_000_OOGE",
-      "static_callcallcall_000_OOGMAfter",
-      "static_callcallcall_000_OOGMAfter2"
-    ]
-  },
-  {
-    "testNames": [
-      "static_callcallcall_000_OOGMBefore",
-      "static_callcallcall_000_SuicideEnd",
-      "static_callcallcall_000_SuicideMiddle",
-      "static_callcallcall_ABCB_RECURSIVE"
-    ]
-  },
-  {
-    "testNames": [
-      "static_callcallcodecallcode_011",
-      "static_callcallcodecallcode_011_2",
-      "static_callcallcodecallcode_011_OOGE",
-      "static_callcallcodecallcode_011_OOGE_2"
-    ]
-  },
-  {
-    "testNames": [
-      "static_callcallcodecallcode_011_OOGMAfter",
-      "static_callcallcodecallcode_011_OOGMAfter2",
-      "static_callcallcodecallcode_011_OOGMAfter_1",
-      "static_callcallcodecallcode_011_OOGMAfter_2"
-    ]
-  },
-  {
-    "testNames": [
-      "static_callcallcodecallcode_011_OOGMBefore",
-      "static_callcallcodecallcode_011_OOGMBefore2",
-      "static_callcallcodecallcode_011_SuicideEnd",
-      "static_callcallcodecallcode_011_SuicideEnd2"
-    ]
-  },
-  {
-    "testNames": [
-      "static_callcallcodecallcode_011_SuicideMiddle",
-      "static_callcallcodecallcode_011_SuicideMiddle2",
-      "static_callcallcodecallcode_ABCB_RECURSIVE",
-      "static_callcallcodecallcode_ABCB_RECURSIVE2"
-    ]
-  },
-  {
-    "testNames": [
-      "static_callcallcodecall_010",
-      "static_callcallcodecall_010_2",
-      "static_callcallcodecall_010_OOGE",
-      "static_callcallcodecall_010_OOGE_2"
-    ]
-  },
-  {
-    "testNames": [
-      "static_callcallcodecall_010_OOGMAfter",
-      "static_callcallcodecall_010_OOGMAfter2",
-      "static_callcallcodecall_010_OOGMAfter_2",
-      "static_callcallcodecall_010_OOGMAfter_3"
-    ]
-  },
-  {
-    "testNames": [
-      "static_callcallcodecall_010_OOGMBefore",
-      "static_callcallcodecall_010_OOGMBefore2",
-      "static_callcallcodecall_010_SuicideEnd",
-      "static_callcallcodecall_010_SuicideEnd2"
-    ]
-  },
-  {
-    "testNames": [
-      "static_callcallcodecall_010_SuicideMiddle",
-      "static_callcallcodecall_010_SuicideMiddle2",
-      "static_callcallcodecall_ABCB_RECURSIVE",
-      "static_callcallcodecall_ABCB_RECURSIVE2"
-    ]
-  },
-  {
-    "testNames": [
-      "static_callcallcode_01_2",
-      "static_callcallcode_01_OOGE_2",
-      "static_callcallcode_01_SuicideEnd",
-      "static_callcallcode_01_SuicideEnd2"
-    ]
-  },
-  {
-    "testNames": [
-      "static_callcall_00",
-      "static_callcall_00_OOGE",
-      "static_callcall_00_OOGE_1",
-      "static_callcall_00_OOGE_2"
-    ]
-  },
-  {
-    "testNames": [
-      "static_callcall_00_SuicideEnd",
-      "static_callChangeRevert",
-      "static_callcodecallcallcode_101",
-      "static_callcodecallcallcode_101_2"
-    ]
-  },
-  {
-    "testNames": [
-      "static_callcodecallcallcode_101_OOGE",
-      "static_callcodecallcallcode_101_OOGE_2",
-      "static_callcodecallcallcode_101_OOGMAfter",
-      "static_callcodecallcallcode_101_OOGMAfter2"
-    ]
-  },
-  {
-    "testNames": [
-      "static_callcodecallcallcode_101_OOGMAfter_1",
-      "static_callcodecallcallcode_101_OOGMAfter_3",
-      "static_callcodecallcallcode_101_OOGMBefore",
-      "static_callcodecallcallcode_101_OOGMBefore2"
-    ]
-  },
-  {
-    "testNames": [
-      "static_callcodecallcallcode_101_SuicideEnd",
-      "static_callcodecallcallcode_101_SuicideEnd2",
-      "static_callcodecallcallcode_101_SuicideMiddle",
-      "static_callcodecallcallcode_101_SuicideMiddle2"
-    ]
-  },
-  {
-    "testNames": [
-      "static_callcodecallcallcode_ABCB_RECURSIVE",
-      "static_callcodecallcallcode_ABCB_RECURSIVE2",
-      "static_callcodecallcall_100",
-      "static_callcodecallcall_100_2"
-    ]
-  },
-  {
-    "testNames": [
-      "static_callcodecallcall_100_OOGE",
-      "static_callcodecallcall_100_OOGE2",
-      "static_callcodecallcall_100_OOGMAfter",
-      "static_callcodecallcall_100_OOGMAfter2"
-    ]
-  },
-  {
-    "testNames": [
-      "static_callcodecallcall_100_OOGMAfter_2",
-      "static_callcodecallcall_100_OOGMAfter_3",
-      "static_callcodecallcall_100_OOGMBefore",
-      "static_callcodecallcall_100_OOGMBefore2"
-    ]
-  },
-  {
-    "testNames": [
-      "static_callcodecallcall_100_SuicideEnd",
-      "static_callcodecallcall_100_SuicideEnd2",
-      "static_callcodecallcall_100_SuicideMiddle",
-      "static_callcodecallcall_100_SuicideMiddle2"
-    ]
-  },
-  {
-    "testNames": [
-      "static_callcodecallcall_ABCB_RECURSIVE",
-      "static_callcodecallcall_ABCB_RECURSIVE2",
-      "static_callcodecallcodecallcode_111_SuicideEnd",
-      "static_callcodecallcodecall_110"
-    ]
-  },
-  {
-    "testNames": [
-      "static_callcodecallcodecall_1102",
-      "static_callcodecallcodecall_110_2",
-      "static_callcodecallcodecall_110_OOGE",
-      "static_callcodecallcodecall_110_OOGE2"
-    ]
-  },
-  {
-    "testNames": [
-      "static_callcodecallcodecall_110_OOGMAfter",
-      "static_callcodecallcodecall_110_OOGMAfter2",
-      "static_callcodecallcodecall_110_OOGMAfter_2",
-      "static_callcodecallcodecall_110_OOGMAfter_3"
-    ]
-  },
-  {
-    "testNames": [
-      "static_callcodecallcodecall_110_OOGMBefore",
-      "static_callcodecallcodecall_110_OOGMBefore2",
-      "static_callcodecallcodecall_110_SuicideEnd",
-      "static_callcodecallcodecall_110_SuicideEnd2"
-    ]
-  },
-  {
-    "testNames": [
-      "static_callcodecallcodecall_110_SuicideMiddle",
-      "static_callcodecallcodecall_110_SuicideMiddle2",
-      "static_callcodecallcodecall_ABCB_RECURSIVE",
-      "static_callcodecallcodecall_ABCB_RECURSIVE2"
-    ]
-  },
-  {
-    "testNames": [
-      "static_callcodecall_10",
-      "static_callcodecall_10_2",
-      "static_callcodecall_10_OOGE",
-      "static_callcodecall_10_OOGE_2"
-    ]
-  },
-  {
-    "testNames": [
-      "static_callcodecall_10_SuicideEnd",
-      "static_callcodecall_10_SuicideEnd2",
-      "static_callcode_checkPC",
-      "static_CallContractToCreateContractAndCallItOOG"
-    ]
-  },
-  {
-    "testNames": [
-      "static_CallContractToCreateContractOOG",
-      "static_CallContractToCreateContractOOGBonusGas",
-      "static_CallContractToCreateContractWhichWouldCreateContractIfCalled",
-      "static_callCreate"
-    ]
-  },
-  {
-    "testNames": [
-      "static_callCreate2",
-      "static_callCreate3",
-      "static_calldelcode_01",
-      "static_calldelcode_01_OOGE"
-    ]
-  },
-  {
-    "testNames": [
-      "static_CallEcrecover0",
-      "static_CallEcrecover0_0input",
-      "static_CallEcrecover0_completeReturnValue",
-      "static_CallEcrecover0_Gas2999"
-    ]
-  },
-  {
-    "testNames": [
-      "static_CallEcrecover0_gas3000",
-      "static_CallEcrecover0_NoGas",
-      "static_CallEcrecover0_overlappingInputOutput",
-      "static_CallEcrecover1"
-    ]
-  },
-  {
-    "testNames": [
-      "static_CallEcrecover2",
-      "static_CallEcrecover3",
-      "static_CallEcrecover80",
-      "static_CallEcrecoverCheckLength"
-    ]
-  },
-  {
-    "testNames": [
-      "static_CallEcrecoverCheckLengthWrongV",
-      "static_CallEcrecoverH_prefixed0",
-      "static_CallEcrecoverR_prefixed0",
-      "static_CallEcrecoverS_prefixed0"
-    ]
-  },
-  {
-    "testNames": [
-      "static_CallEcrecoverV_prefixed0",
-      "static_CallGoesOOGOnSecondLevel",
-      "static_CallGoesOOGOnSecondLevel2",
-      "static_CallIdentitiy_1"
-    ]
-  },
-  {
-    "testNames": [
-      "static_CallIdentity_1_nonzeroValue",
-      "static_CallIdentity_2",
-      "static_CallIdentity_3",
-      "static_CallIdentity_4"
-    ]
-  },
-  {
-    "testNames": [
-      "static_CallIdentity_4_gas17",
-      "static_CallIdentity_4_gas18",
-      "static_CallIdentity_5",
-      "static_CallLoseGasOOG"
-    ]
-  },
-  {
-    "testNames": [
-      "static_callOutput1",
-      "static_callOutput2",
-      "static_callOutput3",
-      "static_callOutput3Fail"
-    ]
-  },
-  {
-    "testNames": [
-      "static_callOutput3partial",
-      "static_callOutput3partialFail",
-      "static_CallRecursiveBomb0",
-      "static_CallRecursiveBomb0_OOG_atMaxCallDepth"
-    ]
-  },
-  {
-    "testNames": [
-      "static_CallRecursiveBomb1",
-      "static_CallRecursiveBomb2",
-      "static_CallRecursiveBomb3",
-      "static_CallRecursiveBombLog"
-    ]
-  },
-  {
-    "testNames": [
-      "static_CallRecursiveBombLog2",
-      "static_CallRecursiveBombPreCall",
-      "static_CallRecursiveBombPreCall2",
-      "static_CallRipemd160_1"
-    ]
-  },
-  {
-    "testNames": [
-      "static_CallRipemd160_2",
-      "static_CallRipemd160_3",
-      "static_CallRipemd160_3_postfixed0",
-      "static_CallRipemd160_3_prefixed0"
-    ]
-  },
-  {
-    "testNames": [
-      "static_CallRipemd160_4",
-      "static_CallRipemd160_4_gas719",
-      "static_CallRipemd160_5",
-      "static_CallSha256_1"
-    ]
-  },
-  {
-    "testNames": [
-      "static_CallSha256_1_nonzeroValue",
-      "static_CallSha256_2",
-      "static_CallSha256_3",
-      "static_CallSha256_3_postfix0"
-    ]
-  },
-  {
-    "testNames": [
-      "static_CallSha256_3_prefix0",
-      "static_CallSha256_4",
-      "static_CallSha256_4_gas99",
-      "static_CallSha256_5"
-    ]
-  },
-  {
-    "testNames": [
-      "static_callToCallCodeOpCodeCheck",
-      "static_callToCallOpCodeCheck",
-      "static_callToDelCallOpCodeCheck",
-      "static_CallToNameRegistrator0"
-    ]
-  },
-  {
-    "testNames": [
-      "static_CallToReturn1",
-      "static_CalltoReturn2",
-      "static_callToStaticOpCodeCheck",
-      "static_callWithHighValue"
-    ]
-  },
-  {
-    "testNames": [
-      "static_callWithHighValueAndGasOOG",
-      "static_callWithHighValueAndOOGatTxLevel",
-      "static_callWithHighValueOOGinCall",
-      "static_CALL_OneVCallSuicide"
-    ]
-  },
-  {
-    "testNames": [
-      "static_call_OOG_additionalGasCosts1",
-      "static_call_OOG_additionalGasCosts2",
-      "static_call_value_inherit",
-      "static_call_value_inherit_from_call"
-    ]
-  },
-  {
-    "testNames": [
-      "static_CALL_ZeroVCallSuicide",
-      "static_CheckCallCostOOG",
-      "static_CheckOpcodes",
-      "static_CheckOpcodes2"
-    ]
-  },
-  {
-    "testNames": [
-      "static_CheckOpcodes3",
-      "static_CheckOpcodes4",
-      "static_CheckOpcodes5",
-      "static_contractCreationMakeCallThatAskMoreGasThenTransactionProvided"
-    ]
-  },
-  {
-    "testNames": [
-      "static_contractCreationOOGdontLeaveEmptyContractViaTransaction",
-      "static_CREATE_ContractSuicideDuringInit",
-      "static_CREATE_ContractSuicideDuringInit_ThenStoreThenReturn",
-      "static_CREATE_ContractSuicideDuringInit_WithValue"
-    ]
-  },
-  {
-    "testNames": [
       "static_CREATE_EmptyContractAndCallIt_0wei",
+      "ecmul_0-0_5616_28000_128"
+    ]
+  },
+  {
+    "testNames": [
+      "stAttackTest",
+      "stackOverflowM1",
       "static_CREATE_EmptyContractWithStorageAndCallIt_0wei",
+      "ecmul_0-0_5616_28000_96"
+    ]
+  },
+  {
+    "testNames": [
+      "badOpcodes",
+      "stackOverflowM1DUP",
       "static_ExecuteCallThatAskForeGasThenTrabsactionHas",
-      "static_InternalCallHittingGasLimit"
+      "ecmul_0-0_5617_21000_128"
     ]
   },
   {
     "testNames": [
-      "static_InternalCallHittingGasLimit2",
-      "static_InternlCallStoreClearsOOG",
-      "static_log0_emptyMem",
-      "static_log0_logMemsizeTooHigh"
-    ]
-  },
-  {
-    "testNames": [
-      "static_log0_logMemsizeZero",
-      "static_log0_logMemStartTooHigh",
-      "static_log0_nonEmptyMem",
-      "static_log0_nonEmptyMem_logMemSize1"
-    ]
-  },
-  {
-    "testNames": [
-      "static_log0_nonEmptyMem_logMemSize1_logMemStart31",
-      "static_log1_emptyMem",
-      "static_log1_logMemsizeTooHigh",
-      "static_log1_logMemsizeZero"
-    ]
-  },
-  {
-    "testNames": [
-      "static_log1_logMemStartTooHigh",
-      "static_log1_MaxTopic",
-      "static_log_Caller",
-      "static_LoopCallsDepthThenRevert"
-    ]
-  },
-  {
-    "testNames": [
-      "static_LoopCallsDepthThenRevert2",
-      "static_LoopCallsDepthThenRevert3",
-      "static_LoopCallsThenRevert",
-      "static_makeMoney"
-    ]
-  },
-  {
-    "testNames": [
-      "static_PostToReturn1",
-      "static_RawCallGasAsk",
-      "static_refund_CallA",
-      "static_refund_CallToSuicideNoStorage"
-    ]
-  },
-  {
-    "testNames": [
-      "static_refund_CallToSuicideTwice",
-      "static_Return50000_2",
-      "static_ReturnTest",
-      "static_ReturnTest2"
-    ]
-  },
-  {
-    "testNames": [
-      "static_RETURN_Bounds",
-      "static_RETURN_BoundsOOG",
-      "static_RevertDepth2",
-      "static_RevertOpcodeCalls"
-    ]
-  },
-  {
-    "testNames": [
-      "static_ZeroValue_CALL_OOGRevert",
-      "static_ZeroValue_SUICIDE_OOGRevert",
-      "stStaticFlagEnabled",
-      "stSystemOperationsTest"
-    ]
-  },
-  {
-    "testNames": [
-      "CALLBlake2f_MaxRounds",
-      "sstore_combinations_initial00",
-      "sstore_combinations_initial00_2",
-      "sstore_combinations_initial01"
-    ]
-  },
-  {
-    "testNames": [
-      "sstore_combinations_initial01_2",
-      "sstore_combinations_initial10",
-      "sstore_combinations_initial10_2",
-      "sstore_combinations_initial11"
-    ]
-  },
-  {
-    "testNames": [
-      "sstore_combinations_initial11_2",
-      "sstore_combinations_initial20",
-      "sstore_combinations_initial20_2",
-      "sstore_combinations_initial21"
-    ]
-  },
-  {
-    "testNames": [
-      "sstore_combinations_initial21_2",
-      "static_Call50000_sha256",
-      "stTransactionTest",
-      "stTransitionTest"
-    ]
-  },
-  {
-    "testNames": [
-      "stWalletTest",
-      "stZeroCallsRevert",
-      "stZeroCallsTest",
-      "ecmul_1-2_2_28000_128"
-    ]
-  },
-  {
-    "testNames": [
-      "ecmul_1-2_2_28000_96",
-      "ecmul_1-2_340282366920938463463374607431768211456_21000_128",
-      "ecmul_1-2_340282366920938463463374607431768211456_21000_80",
-      "ecmul_1-2_340282366920938463463374607431768211456_21000_96"
-    ]
-  },
-  {
-    "testNames": [
-      "ecmul_1-2_340282366920938463463374607431768211456_28000_128",
-      "ecmul_1-2_340282366920938463463374607431768211456_28000_80",
-      "ecmul_1-2_340282366920938463463374607431768211456_28000_96",
-      "ecmul_1-2_5616_21000_128"
-    ]
-  },
-  {
-    "testNames": [
-      "ecmul_1-2_5616_21000_96",
-      "ecmul_1-2_5616_28000_128",
-      "ecmul_1-2_5617_21000_128",
-      "ecmul_1-2_5617_21000_96"
-    ]
-  },
-  {
-    "testNames": [
-      "ecmul_1-2_5617_28000_128",
-      "ecmul_1-2_5617_28000_96",
-      "ecmul_1-2_616_28000_96",
-      "ecmul_1-2_9935_21000_128"
-    ]
-  },
-  {
-    "testNames": [
-      "ecmul_1-2_9935_21000_96",
-      "ecmul_1-2_9935_28000_128",
-      "ecmul_1-2_9935_28000_96",
-      "ecmul_1-2_9_21000_128"
-    ]
-  },
-  {
-    "testNames": [
-      "ecmul_1-2_9_21000_96",
-      "ecmul_1-2_9_28000_128",
-      "ecmul_1-2_9_28000_96",
-      "ecmul_1-3_0_21000_128"
-    ]
-  },
-  {
-    "testNames": [
-      "ecmul_1-3_0_21000_64",
-      "ecmul_1-3_0_21000_80",
-      "ecmul_1-3_0_21000_96",
-      "ecmul_1-3_0_28000_128"
-    ]
-  },
-  {
-    "testNames": [
-      "ecmul_1-3_0_28000_64",
-      "ecmul_1-3_0_28000_80",
-      "ecmul_1-3_0_28000_96",
-      "ecmul_1-3_1_21000_128"
-    ]
-  },
-  {
-    "testNames": [
-      "ecmul_1-3_1_21000_96",
-      "ecmul_1-3_1_28000_128",
-      "ecmul_1-3_1_28000_96",
-      "ecmul_1-3_2_21000_128"
-    ]
-  },
-  {
-    "testNames": [
-      "ecmul_1-3_2_21000_96",
-      "ecmul_1-3_2_28000_128",
-      "ecmul_1-3_2_28000_96",
-      "ecmul_1-3_340282366920938463463374607431768211456_21000_128"
-    ]
-  },
-  {
-    "testNames": [
-      "ecmul_1-3_340282366920938463463374607431768211456_21000_80",
-      "ecmul_1-3_340282366920938463463374607431768211456_21000_96",
-      "ecmul_1-3_340282366920938463463374607431768211456_28000_128",
-      "ecmul_1-3_340282366920938463463374607431768211456_28000_80"
-    ]
-  },
-  {
-    "testNames": [
-      "ecmul_1-3_340282366920938463463374607431768211456_28000_96",
-      "ecmul_1-3_5616_21000_128",
-      "ecmul_1-3_5616_21000_96",
-      "ecmul_1-3_5616_28000_128"
-    ]
-  },
-  {
-    "testNames": [
-      "ecmul_1-3_5616_28000_96",
-      "ecmul_1-3_5617_21000_128",
-      "ecmul_1-3_5617_21000_96",
-      "ecmul_1-3_5617_28000_128"
-    ]
-  },
-  {
-    "testNames": [
-      "ecmul_1-3_5617_28000_96",
-      "ecmul_1-3_9935_21000_128",
-      "ecmul_1-3_9935_21000_96",
-      "ecmul_1-3_9935_28000_128"
-    ]
-  },
-  {
-    "testNames": [
-      "ecmul_1-3_9935_28000_96",
-      "ecmul_1-3_9_21000_128",
-      "ecmul_1-3_9_21000_96",
-      "ecmul_1-3_9_28000_128"
-    ]
-  },
-  {
-    "testNames": [
-      "ecmul_1-3_9_28000_96",
-      "ecmul_7827-6598_0_21000_128",
-      "ecmul_7827-6598_0_21000_64",
-      "ecmul_7827-6598_0_21000_80"
-    ]
-  },
-  {
-    "testNames": [
-      "ecmul_7827-6598_0_21000_96",
-      "ecmul_7827-6598_0_28000_128",
-      "ecmul_7827-6598_0_28000_64",
-      "ecmul_7827-6598_0_28000_80"
-    ]
-  },
-  {
-    "testNames": [
-      "ecmul_7827-6598_0_28000_96",
-      "ecmul_7827-6598_1456_21000_128",
-      "ecmul_7827-6598_1456_21000_80",
-      "ecmul_7827-6598_1456_21000_96"
-    ]
-  },
-  {
-    "testNames": [
-      "ecmul_7827-6598_1456_28000_128",
-      "ecmul_7827-6598_1456_28000_80",
-      "ecmul_7827-6598_1456_28000_96",
-      "ecmul_7827-6598_1_21000_128"
-    ]
-  },
-  {
-    "testNames": [
-      "ecmul_7827-6598_1_21000_96",
-      "ecmul_7827-6598_1_28000_128",
-      "ecmul_7827-6598_1_28000_96",
-      "ecmul_7827-6598_2_21000_128"
-    ]
-  },
-  {
-    "testNames": [
-      "ecmul_7827-6598_2_21000_96",
-      "ecmul_7827-6598_2_28000_128",
-      "ecmul_7827-6598_2_28000_96",
-      "ecmul_7827-6598_5616_21000_128"
-    ]
-  },
-  {
-    "testNames": [
-      "ecmul_7827-6598_5616_21000_96",
-      "ecmul_7827-6598_5616_28000_128",
-      "ecmul_7827-6598_5616_28000_96",
-      "ecmul_7827-6598_5617_21000_128"
-    ]
-  },
-  {
-    "testNames": [
-      "ecmul_7827-6598_5617_21000_96",
-      "ecmul_7827-6598_5617_28000_128",
-      "ecmul_7827-6598_5617_28000_96",
-      "ecmul_7827-6598_9935_21000_128"
-    ]
-  },
-  {
-    "testNames": [
-      "ecmul_7827-6598_9935_21000_96",
-      "ecmul_7827-6598_9935_28000_128",
-      "ecmul_7827-6598_9935_28000_96",
-      "ecmul_7827-6598_9_21000_128"
-    ]
-  },
-  {
-    "testNames": [
-      "ecmul_7827-6598_9_21000_96",
-      "ecmul_7827-6598_9_28000_128",
-      "ecmul_7827-6598_9_28000_96",
-      "ecpairing_bad_length_191"
-    ]
-  },
-  {
-    "testNames": [
-      "ecpairing_bad_length_193",
-      "ecpairing_empty_data",
-      "ecpairing_empty_data_insufficient_gas",
-      "ecpairing_one_point_fail"
-    ]
-  },
-  {
-    "testNames": [
-      "ecpairing_one_point_insufficient_gas",
-      "ecpairing_one_point_not_in_subgroup",
-      "ecpairing_one_point_with_g1_zero",
-      "ecpairing_one_point_with_g2_zero"
-    ]
-  },
-  {
-    "testNames": [
-      "ecpairing_one_point_with_g2_zero_and_g1_invalid",
-      "ecpairing_perturb_g2_by_curve_order",
-      "ecpairing_perturb_g2_by_field_modulus",
-      "ecpairing_perturb_g2_by_field_modulus_again"
-    ]
-  },
-  {
-    "testNames": [
-      "ecpairing_perturb_g2_by_one",
-      "ecpairing_perturb_zeropoint_by_curve_order",
-      "ecpairing_perturb_zeropoint_by_field_modulus",
-      "ecpairing_perturb_zeropoint_by_one"
-    ]
-  },
-  {
-    "testNames": [
-      "ecpairing_three_point_fail_1",
-      "ecpairing_three_point_match_1",
-      "ecpairing_two_points_with_one_g2_zero",
-      "ecpairing_two_point_fail_1"
-    ]
-  },
-  {
-    "testNames": [
-      "ecpairing_two_point_fail_2",
-      "ecpairing_two_point_match_1",
-      "ecpairing_two_point_match_2",
-      "ecpairing_two_point_match_3"
-    ]
-  },
-  {
-    "testNames": [
-      "ecpairing_two_point_match_4",
-      "ecpairing_two_point_match_5",
-      "ecpairing_two_point_oog",
-      "pairingTest"
-    ]
-  },
-  {
-    "testNames": [
-      "pointAdd",
-      "pointAddTrunc",
-      "pointMulAdd",
-      "pointMulAdd2"
-    ]
-  },
-  {
-    "testNames": [
-      "ecadd_0-0_0-0_21000_0",
-      "ecadd_0-0_0-0_21000_128",
-      "ecadd_0-0_0-0_21000_192",
-      "ecadd_0-0_0-0_21000_64"
-    ]
-  },
-  {
-    "testNames": [
-      "ecadd_0-0_0-0_21000_80",
-      "ecadd_0-0_0-0_25000_0",
-      "ecadd_0-0_0-0_25000_128",
-      "ecadd_0-0_0-0_25000_192"
-    ]
-  },
-  {
-    "testNames": [
-      "ecadd_0-0_0-0_25000_64",
-      "ecadd_0-0_0-0_25000_80",
-      "ecadd_0-0_1-2_21000_128",
-      "ecadd_0-0_1-2_21000_192"
-    ]
-  },
-  {
-    "testNames": [
-      "ecadd_0-0_1-2_25000_128",
-      "ecadd_0-0_1-2_25000_192",
-      "ecadd_0-0_1-3_21000_128",
-      "ecadd_0-0_1-3_25000_128"
-    ]
-  },
-  {
-    "testNames": [
-      "ecadd_0-3_1-2_21000_128",
-      "ecadd_0-3_1-2_25000_128",
-      "ecadd_1-2_0-0_21000_128",
-      "ecadd_1-2_0-0_21000_192"
-    ]
-  },
-  {
-    "testNames": [
-      "ecadd_1-2_0-0_21000_64",
-      "ecadd_1-2_0-0_25000_128",
-      "ecadd_1-2_0-0_25000_192",
-      "ecadd_1-2_0-0_25000_64"
-    ]
-  },
-  {
-    "testNames": [
-      "ecadd_1-2_1-2_21000_128",
-      "ecadd_1-2_1-2_21000_192",
-      "ecadd_1-2_1-2_25000_128",
-      "ecadd_1-2_1-2_25000_192"
-    ]
-  },
-  {
-    "testNames": [
-      "ecadd_1-3_0-0_21000_80",
-      "ecadd_1-3_0-0_25000_80",
-      "ecadd_1145-3932_1145-4651_21000_192",
-      "ecadd_1145-3932_1145-4651_25000_192"
-    ]
-  },
-  {
-    "testNames": [
-      "ecadd_1145-3932_2969-1336_21000_128",
-      "ecadd_1145-3932_2969-1336_25000_128",
-      "ecadd_6-9_19274124-124124_21000_128",
-      "ecadd_6-9_19274124-124124_25000_128"
-    ]
-  },
-  {
-    "testNames": [
-      "ecmul_0-0_0_21000_0",
-      "ecmul_0-0_0_21000_128",
-      "ecmul_0-0_0_21000_40",
-      "ecmul_0-0_0_21000_64"
-    ]
-  },
-  {
-    "testNames": [
-      "ecmul_0-0_0_21000_80",
-      "ecmul_0-0_0_21000_96",
-      "ecmul_0-0_0_28000_0",
-      "ecmul_0-0_0_28000_128"
-    ]
-  },
-  {
-    "testNames": [
-      "ecmul_0-0_0_28000_40",
-      "ecmul_0-0_0_28000_64",
-      "ecmul_0-0_0_28000_80",
-      "ecmul_0-0_0_28000_96"
-    ]
-  },
-  {
-    "testNames": [
-      "ecmul_0-0_1_21000_128",
-      "ecmul_0-0_1_21000_96",
-      "ecmul_0-0_1_28000_128",
-      "ecmul_0-0_1_28000_96"
-    ]
-  },
-  {
-    "testNames": [
-      "ecmul_0-0_2_21000_128",
-      "ecmul_0-0_2_21000_96",
-      "ecmul_0-0_2_28000_128",
-      "ecmul_0-0_2_28000_96"
-    ]
-  },
-  {
-    "testNames": [
-      "ecmul_0-0_340282366920938463463374607431768211456_21000_128",
-      "ecmul_0-0_340282366920938463463374607431768211456_21000_80",
-      "ecmul_0-0_340282366920938463463374607431768211456_21000_96",
-      "ecmul_0-0_340282366920938463463374607431768211456_28000_128"
-    ]
-  },
-  {
-    "testNames": [
-      "ecmul_0-0_340282366920938463463374607431768211456_28000_80",
-      "ecmul_0-0_340282366920938463463374607431768211456_28000_96",
-      "ecmul_0-0_5616_21000_128",
-      "ecmul_0-0_5616_21000_96"
-    ]
-  },
-  {
-    "testNames": [
-      "ecmul_0-0_5616_28000_128",
-      "ecmul_0-0_5616_28000_96",
-      "ecmul_0-0_5617_21000_128",
+      "eip2315NotRemoved",
+      "stackOverflowM1PUSH",
+      "static_InternalCallHittingGasLimit",
       "ecmul_0-0_5617_21000_96"
     ]
   },
   {
     "testNames": [
-      "ecmul_0-0_5617_28000_128",
-      "ecmul_0-0_5617_28000_96",
-      "ecmul_0-0_9935_21000_128",
+      "invalidAddr",
+      "stackOverflowPUSH",
+      "static_InternalCallHittingGasLimit2",
+      "ecmul_0-0_5617_28000_128"
+    ]
+  },
+  {
+    "testNames": [
+      "invalidDiffPlaces",
+      "stackOverflowSWAP",
+      "static_InternlCallStoreClearsOOG",
+      "ecmul_0-0_5617_28000_96"
+    ]
+  },
+  {
+    "testNames": [
+      "measureGas",
+      "stacksanitySWAP",
+      "static_log0_emptyMem",
+      "ecmul_0-0_9935_21000_128"
+    ]
+  },
+  {
+    "testNames": [
+      "opc0CDiffPlaces",
+      "underflowTest",
+      "static_log0_logMemsizeTooHigh",
       "ecmul_0-0_9935_21000_96"
     ]
   },
   {
     "testNames": [
-      "ecmul_0-0_9935_28000_128",
-      "ecmul_0-0_9935_28000_96",
-      "ecmul_0-0_9_21000_128",
+      "opc0DDiffPlaces",
+      "StaticcallToPrecompileFromCalledContract",
+      "static_log0_logMemsizeZero",
+      "ecmul_0-0_9935_28000_128"
+    ]
+  },
+  {
+    "testNames": [
+      "opc0EDiffPlaces",
+      "StaticcallToPrecompileFromContractInitialization",
+      "static_log0_logMemStartTooHigh",
+      "ecmul_0-0_9935_28000_96"
+    ]
+  },
+  {
+    "testNames": [
+      "opc0FDiffPlaces",
+      "StaticcallToPrecompileFromTransaction",
+      "static_log0_nonEmptyMem",
+      "ecmul_0-0_9_21000_128"
+    ]
+  },
+  {
+    "testNames": [
+      "opc1EDiffPlaces",
+      "static_ABAcalls0",
+      "static_log0_nonEmptyMem_logMemSize1",
       "ecmul_0-0_9_21000_96"
     ]
   },
   {
     "testNames": [
-      "ecmul_0-0_9_28000_128",
-      "ecmul_0-0_9_28000_96",
-      "ecmul_0-3_0_21000_128",
+      "opc1FDiffPlaces",
+      "static_ABAcalls1",
+      "static_log0_nonEmptyMem_logMemSize1_logMemStart31",
+      "ecmul_0-0_9_28000_128"
+    ]
+  },
+  {
+    "testNames": [
+      "opc21DiffPlaces",
+      "static_ABAcalls2",
+      "static_log1_emptyMem",
+      "ecmul_0-0_9_28000_96"
+    ]
+  },
+  {
+    "testNames": [
+      "opc22DiffPlaces",
+      "static_ABAcalls3",
+      "static_log1_logMemsizeTooHigh",
+      "ecmul_0-3_0_21000_128"
+    ]
+  },
+  {
+    "testNames": [
+      "opc23DiffPlaces",
+      "static_ABAcallsSuicide0",
+      "static_log1_logMemsizeZero",
       "ecmul_0-3_0_21000_64"
     ]
   },
   {
     "testNames": [
-      "ecmul_0-3_0_21000_80",
-      "ecmul_0-3_0_21000_96",
-      "ecmul_0-3_0_28000_128",
+      "opc24DiffPlaces",
+      "static_ABAcallsSuicide1",
+      "static_log1_logMemStartTooHigh",
+      "ecmul_0-3_0_21000_80"
+    ]
+  },
+  {
+    "testNames": [
+      "opc25DiffPlaces",
+      "static_Call10",
+      "static_log1_MaxTopic",
+      "ecmul_0-3_0_21000_96"
+    ]
+  },
+  {
+    "testNames": [
+      "opc26DiffPlaces",
+      "static_Call1024BalanceTooLow",
+      "static_log_Caller",
+      "ecmul_0-3_0_28000_128"
+    ]
+  },
+  {
+    "testNames": [
+      "opc27DiffPlaces",
+      "static_Call1024BalanceTooLow2",
+      "static_LoopCallsDepthThenRevert",
       "ecmul_0-3_0_28000_64"
     ]
   },
   {
     "testNames": [
-      "ecmul_0-3_0_28000_80",
-      "ecmul_0-3_0_28000_96",
-      "ecmul_0-3_1_21000_128",
+      "opc28DiffPlaces",
+      "static_Call1024OOG",
+      "static_LoopCallsDepthThenRevert2",
+      "ecmul_0-3_0_28000_80"
+    ]
+  },
+  {
+    "testNames": [
+      "opc29DiffPlaces",
+      "static_Call1024PreCalls",
+      "static_LoopCallsDepthThenRevert3",
+      "ecmul_0-3_0_28000_96"
+    ]
+  },
+  {
+    "testNames": [
+      "opc2ADiffPlaces",
+      "static_Call1024PreCalls2",
+      "static_LoopCallsThenRevert",
+      "ecmul_0-3_1_21000_128"
+    ]
+  },
+  {
+    "testNames": [
+      "opc2BDiffPlaces",
+      "static_Call1024PreCalls3",
+      "static_makeMoney",
       "ecmul_0-3_1_21000_96"
     ]
   },
   {
     "testNames": [
-      "ecmul_0-3_1_28000_128",
-      "ecmul_0-3_1_28000_96",
-      "ecmul_0-3_2_21000_128",
+      "opc2CDiffPlaces",
+      "static_Call1MB1024Calldepth",
+      "static_PostToReturn1",
+      "ecmul_0-3_1_28000_128"
+    ]
+  },
+  {
+    "testNames": [
+      "opc2DDiffPlaces",
+      "static_Call50000",
+      "static_RawCallGasAsk",
+      "ecmul_0-3_1_28000_96"
+    ]
+  },
+  {
+    "testNames": [
+      "opc2EDiffPlaces",
+      "static_Call50000bytesContract50_1",
+      "static_refund_CallA",
+      "ecmul_0-3_2_21000_128"
+    ]
+  },
+  {
+    "testNames": [
+      "opc2FDiffPlaces",
+      "static_Call50000bytesContract50_2",
+      "static_refund_CallToSuicideNoStorage",
       "ecmul_0-3_2_21000_96"
     ]
   },
   {
     "testNames": [
-      "ecmul_0-3_2_28000_128",
-      "ecmul_0-3_2_28000_96",
-      "ecmul_0-3_340282366920938463463374607431768211456_21000_128",
+      "opc49DiffPlaces",
+      "static_Call50000bytesContract50_3",
+      "static_refund_CallToSuicideTwice",
+      "ecmul_0-3_2_28000_128"
+    ]
+  },
+  {
+    "testNames": [
+      "opc4ADiffPlaces",
+      "static_Call50000_ecrec",
+      "static_Return50000_2",
+      "ecmul_0-3_2_28000_96"
+    ]
+  },
+  {
+    "testNames": [
+      "opc4BDiffPlaces",
+      "static_Call50000_identity",
+      "static_ReturnTest",
+      "ecmul_0-3_340282366920938463463374607431768211456_21000_128"
+    ]
+  },
+  {
+    "testNames": [
+      "opc4CDiffPlaces",
+      "static_Call50000_identity2",
+      "static_ReturnTest2",
       "ecmul_0-3_340282366920938463463374607431768211456_21000_80"
     ]
   },
   {
     "testNames": [
-      "ecmul_0-3_340282366920938463463374607431768211456_21000_96",
-      "ecmul_0-3_340282366920938463463374607431768211456_28000_128",
-      "ecmul_0-3_340282366920938463463374607431768211456_28000_80",
+      "opc4DDiffPlaces",
+      "static_Call50000_rip160",
+      "static_RETURN_Bounds",
+      "ecmul_0-3_340282366920938463463374607431768211456_21000_96"
+    ]
+  },
+  {
+    "testNames": [
+      "opc4EDiffPlaces",
+      "static_CallAndCallcodeConsumeMoreGasThenTransactionHas",
+      "static_RETURN_BoundsOOG",
+      "ecmul_0-3_340282366920938463463374607431768211456_28000_128"
+    ]
+  },
+  {
+    "testNames": [
+      "opc4FDiffPlaces",
+      "static_CallAskMoreGasOnDepth2ThenTransactionHas",
+      "static_RevertDepth2",
+      "ecmul_0-3_340282366920938463463374607431768211456_28000_80"
+    ]
+  },
+  {
+    "testNames": [
+      "opc5CDiffPlaces",
+      "static_callBasic",
+      "static_RevertOpcodeCalls",
       "ecmul_0-3_340282366920938463463374607431768211456_28000_96"
     ]
   },
   {
     "testNames": [
-      "ecmul_0-3_5616_21000_128",
-      "ecmul_0-3_5616_21000_96",
-      "ecmul_0-3_5616_28000_128",
+      "opc5DDiffPlaces",
+      "static_callcallcallcode_001",
+      "static_ZeroValue_CALL_OOGRevert",
+      "ecmul_0-3_5616_21000_128"
+    ]
+  },
+  {
+    "testNames": [
+      "opc5EDiffPlaces",
+      "static_callcallcallcode_001_2",
+      "static_ZeroValue_SUICIDE_OOGRevert",
+      "ecmul_0-3_5616_21000_96"
+    ]
+  },
+  {
+    "testNames": [
+      "opc5FDiffPlaces",
+      "static_callcallcallcode_001_OOGE",
+      "stStaticFlagEnabled",
+      "ecmul_0-3_5616_28000_128"
+    ]
+  },
+  {
+    "testNames": [
+      "opcA5DiffPlaces",
+      "static_callcallcallcode_001_OOGE_2",
+      "stSystemOperationsTest",
       "ecmul_0-3_5616_28000_96"
     ]
   },
   {
     "testNames": [
-      "ecmul_0-3_5617_21000_128",
-      "ecmul_0-3_5617_21000_96",
-      "ecmul_0-3_5617_28000_128",
+      "opcA6DiffPlaces",
+      "static_callcallcallcode_001_OOGMAfter",
+      "CALLBlake2f_MaxRounds",
+      "ecmul_0-3_5617_21000_128"
+    ]
+  },
+  {
+    "testNames": [
+      "opcA7DiffPlaces",
+      "static_callcallcallcode_001_OOGMAfter2",
+      "sstore_combinations_initial00",
+      "ecmul_0-3_5617_21000_96"
+    ]
+  },
+  {
+    "testNames": [
+      "opcA8DiffPlaces",
+      "static_callcallcallcode_001_OOGMAfter_2",
+      "sstore_combinations_initial00_2",
+      "ecmul_0-3_5617_28000_128"
+    ]
+  },
+  {
+    "testNames": [
+      "opcA9DiffPlaces",
+      "static_callcallcallcode_001_OOGMAfter_3",
+      "sstore_combinations_initial01",
       "ecmul_0-3_5617_28000_96"
     ]
   },
   {
     "testNames": [
-      "ecmul_0-3_9935_21000_128",
-      "ecmul_0-3_9935_21000_96",
-      "ecmul_0-3_9935_28000_128",
+      "opcAADiffPlaces",
+      "static_callcallcallcode_001_OOGMBefore",
+      "sstore_combinations_initial01_2",
+      "ecmul_0-3_9935_21000_128"
+    ]
+  },
+  {
+    "testNames": [
+      "opcABDiffPlaces",
+      "static_callcallcallcode_001_OOGMBefore2",
+      "sstore_combinations_initial10",
+      "ecmul_0-3_9935_21000_96"
+    ]
+  },
+  {
+    "testNames": [
+      "opcACDiffPlaces",
+      "static_callcallcallcode_001_SuicideEnd",
+      "sstore_combinations_initial10_2",
+      "ecmul_0-3_9935_28000_128"
+    ]
+  },
+  {
+    "testNames": [
+      "opcADDiffPlaces",
+      "static_callcallcallcode_001_SuicideEnd2",
+      "sstore_combinations_initial11",
       "ecmul_0-3_9935_28000_96"
     ]
   },
   {
     "testNames": [
-      "ecmul_0-3_9_21000_128",
-      "ecmul_0-3_9_21000_96",
-      "ecmul_0-3_9_28000_128",
+      "opcAEDiffPlaces",
+      "static_callcallcallcode_001_SuicideMiddle",
+      "sstore_combinations_initial11_2",
+      "ecmul_0-3_9_21000_128"
+    ]
+  },
+  {
+    "testNames": [
+      "opcAFDiffPlaces",
+      "static_callcallcallcode_001_SuicideMiddle2",
+      "sstore_combinations_initial20",
+      "ecmul_0-3_9_21000_96"
+    ]
+  },
+  {
+    "testNames": [
+      "opcB0DiffPlaces",
+      "static_callcallcallcode_ABCB_RECURSIVE",
+      "sstore_combinations_initial20_2",
+      "ecmul_0-3_9_28000_128"
+    ]
+  },
+  {
+    "testNames": [
+      "opcB1DiffPlaces",
+      "static_callcallcallcode_ABCB_RECURSIVE2",
+      "sstore_combinations_initial21",
       "ecmul_0-3_9_28000_96"
     ]
   },
   {
     "testNames": [
-      "ecmul_1-2_0_21000_128",
-      "ecmul_1-2_0_21000_64",
-      "ecmul_1-2_0_21000_80",
+      "opcB2DiffPlaces",
+      "static_callcallcall_000",
+      "sstore_combinations_initial21_2",
+      "ecmul_1-2_0_21000_128"
+    ]
+  },
+  {
+    "testNames": [
+      "opcB3DiffPlaces",
+      "static_callcallcall_000_OOGE",
+      "static_Call50000_sha256",
+      "ecmul_1-2_0_21000_64"
+    ]
+  },
+  {
+    "testNames": [
+      "opcB4DiffPlaces",
+      "static_callcallcall_000_OOGMAfter",
+      "stTransactionTest",
+      "ecmul_1-2_0_21000_80"
+    ]
+  },
+  {
+    "testNames": [
+      "opcB5DiffPlaces",
+      "static_callcallcall_000_OOGMAfter2",
+      "stTransitionTest",
       "ecmul_1-2_0_21000_96"
     ]
   },
   {
     "testNames": [
-      "ecmul_1-2_0_28000_128",
-      "ecmul_1-2_0_28000_64",
-      "ecmul_1-2_0_28000_80",
+      "opcB6DiffPlaces",
+      "static_callcallcall_000_OOGMBefore",
+      "stWalletTest",
+      "ecmul_1-2_0_28000_128"
+    ]
+  },
+  {
+    "testNames": [
+      "opcB7DiffPlaces",
+      "static_callcallcall_000_SuicideEnd",
+      "stZeroCallsRevert",
+      "ecmul_1-2_0_28000_64"
+    ]
+  },
+  {
+    "testNames": [
+      "opcB8DiffPlaces",
+      "static_callcallcall_000_SuicideMiddle",
+      "stZeroCallsTest",
+      "ecmul_1-2_0_28000_80"
+    ]
+  },
+  {
+    "testNames": [
+      "opcB9DiffPlaces",
+      "static_callcallcall_ABCB_RECURSIVE",
+      "ecmul_1-2_2_28000_128",
       "ecmul_1-2_0_28000_96"
     ]
   },
   {
     "testNames": [
-      "ecmul_1-2_1_21000_128",
-      "ecmul_1-2_1_21000_96",
-      "ecmul_1-2_1_28000_128",
+      "opcBADiffPlaces",
+      "static_callcallcodecallcode_011",
+      "ecmul_1-2_2_28000_96",
+      "ecmul_1-2_1_21000_128"
+    ]
+  },
+  {
+    "testNames": [
+      "opcBBDiffPlaces",
+      "static_callcallcodecallcode_011_2",
+      "ecmul_1-2_340282366920938463463374607431768211456_21000_128",
+      "ecmul_1-2_1_21000_96"
+    ]
+  },
+  {
+    "testNames": [
+      "opcBCDiffPlaces",
+      "static_callcallcodecallcode_011_OOGE",
+      "ecmul_1-2_340282366920938463463374607431768211456_21000_80",
+      "ecmul_1-2_1_28000_128"
+    ]
+  },
+  {
+    "testNames": [
+      "opcBDDiffPlaces",
+      "static_callcallcodecallcode_011_OOGE_2",
+      "ecmul_1-2_340282366920938463463374607431768211456_21000_96",
       "ecmul_1-2_1_28000_96"
     ]
   },
   {
     "testNames": [
-      "ecmul_1-2_2_21000_128",
-      "ecmul_1-2_2_21000_96",
-      "stEIP3651-warmcoinbase",
+      "opcBEDiffPlaces",
+      "static_callcallcodecallcode_011_OOGMAfter",
+      "ecmul_1-2_340282366920938463463374607431768211456_28000_128",
+      "ecmul_1-2_2_21000_128"
+    ]
+  },
+  {
+    "testNames": [
+      "opcBFDiffPlaces",
+      "static_callcallcodecallcode_011_OOGMAfter2",
+      "ecmul_1-2_340282366920938463463374607431768211456_28000_80",
+      "ecmul_1-2_2_21000_96"
+    ]
+  },
+  {
+    "testNames": [
+      "opcC0DiffPlaces",
+      "static_callcallcodecallcode_011_OOGMAfter_1",
+      "ecmul_1-2_340282366920938463463374607431768211456_28000_96",
+      "stEIP3651-warmcoinbase"
+    ]
+  },
+  {
+    "testNames": [
+      "opcC1DiffPlaces",
+      "static_callcallcodecallcode_011_OOGMAfter_2",
+      "ecmul_1-2_5616_21000_128",
       "stEIP3855-push0"
     ]
   },
   {
     "testNames": [
-      "stEIP3860-limitmeterinitcode",
-      "bc4895-withdrawals",
-      "bcBlockGasLimitTest",
-      "bcEIP1559"
+      "opcC2DiffPlaces",
+      "static_callcallcodecallcode_011_OOGMBefore",
+      "ecmul_1-2_5616_21000_96",
+      "stEIP3860-limitmeterinitcode"
     ]
   },
   {
     "testNames": [
-      "bcEIP3675",
-      "bcForgedTest",
-      "bcInvalidHeaderTest",
-      "bcMultiChainTest"
+      "opcC3DiffPlaces",
+      "static_callcallcodecallcode_011_OOGMBefore2",
+      "ecmul_1-2_5616_28000_128",
+      "bc4895-withdrawals"
     ]
   },
   {
     "testNames": [
-      "bcUncleHeaderValidity",
-      "bcUncleSpecialTests",
-      "bcUncleTest",
-      "bcArrowGlacierToMerge"
-    ]
-  },
-  {
-    "testNames": [
-      "bcBerlinToLondon",
-      "bcByzantiumToConstantinopleFix",
-      "bcEIP158ToByzantium",
-      "bcFrontierToHomestead"
-    ]
-  },
-  {
-    "testNames": [
-      "bcHomesteadToDao",
-      "bcHomesteadToEIP150",
-      "bcMergeToShanghai",
+      "opcC4DiffPlaces",
+      "static_callcallcodecallcode_011_SuicideEnd",
+      "ecmul_1-2_5617_21000_128",
       "bcBlockGasLimitTest"
     ]
   },
   {
     "testNames": [
-      "bcEIP1559",
-      "bcEIP3675",
-      "bcExample",
-      "bcExploitTest"
+      "opcC5DiffPlaces",
+      "static_callcallcodecallcode_011_SuicideEnd2",
+      "ecmul_1-2_5617_21000_96",
+      "bcEIP1559"
     ]
   },
   {
     "testNames": [
-      "bcForkStressTest",
-      "bcGasPricerTest",
-      "bcMultiChainTest",
-      "bcRandomBlockhashTest"
+      "opcC6DiffPlaces",
+      "static_callcallcodecallcode_011_SuicideMiddle",
+      "ecmul_1-2_5617_28000_128",
+      "bcEIP3675"
     ]
   },
   {
     "testNames": [
-      "bcStateTests",
-      "bcTotalDifficultyTest",
-      "bcUncleSpecialTests",
+      "opcC7DiffPlaces",
+      "static_callcallcodecallcode_011_SuicideMiddle2",
+      "ecmul_1-2_5617_28000_96",
+      "bcForgedTest"
+    ]
+  },
+  {
+    "testNames": [
+      "opcC8DiffPlaces",
+      "static_callcallcodecallcode_ABCB_RECURSIVE",
+      "ecmul_1-2_616_28000_96",
+      "bcInvalidHeaderTest"
+    ]
+  },
+  {
+    "testNames": [
+      "opcC9DiffPlaces",
+      "static_callcallcodecallcode_ABCB_RECURSIVE2",
+      "ecmul_1-2_9935_21000_128",
+      "bcMultiChainTest"
+    ]
+  },
+  {
+    "testNames": [
+      "opcCADiffPlaces",
+      "static_callcallcodecall_010",
+      "ecmul_1-2_9935_21000_96",
+      "bcUncleHeaderValidity"
+    ]
+  },
+  {
+    "testNames": [
+      "opcCBDiffPlaces",
+      "static_callcallcodecall_010_2",
+      "ecmul_1-2_9935_28000_128",
+      "bcUncleSpecialTests"
+    ]
+  },
+  {
+    "testNames": [
+      "opcCCDiffPlaces",
+      "static_callcallcodecall_010_OOGE",
+      "ecmul_1-2_9935_28000_96",
       "bcUncleTest"
     ]
   },
   {
     "testNames": [
-      "bcValidBlockTest",
+      "opcCDDiffPlaces",
+      "static_callcallcodecall_010_OOGE_2",
+      "ecmul_1-2_9_21000_128",
+      "bcArrowGlacierToMerge"
+    ]
+  },
+  {
+    "testNames": [
+      "opcCEDiffPlaces",
+      "static_callcallcodecall_010_OOGMAfter",
+      "ecmul_1-2_9_21000_96",
+      "bcBerlinToLondon"
+    ]
+  },
+  {
+    "testNames": [
+      "opcCFDiffPlaces",
+      "static_callcallcodecall_010_OOGMAfter2",
+      "ecmul_1-2_9_28000_128",
+      "bcByzantiumToConstantinopleFix"
+    ]
+  },
+  {
+    "testNames": [
+      "opcD0DiffPlaces",
+      "static_callcallcodecall_010_OOGMAfter_2",
+      "ecmul_1-2_9_28000_96",
+      "bcEIP158ToByzantium"
+    ]
+  },
+  {
+    "testNames": [
+      "opcD1DiffPlaces",
+      "static_callcallcodecall_010_OOGMAfter_3",
+      "ecmul_1-3_0_21000_128",
+      "bcFrontierToHomestead"
+    ]
+  },
+  {
+    "testNames": [
+      "opcD2DiffPlaces",
+      "static_callcallcodecall_010_OOGMBefore",
+      "ecmul_1-3_0_21000_64",
+      "bcHomesteadToDao"
+    ]
+  },
+  {
+    "testNames": [
+      "opcD3DiffPlaces",
+      "static_callcallcodecall_010_OOGMBefore2",
+      "ecmul_1-3_0_21000_80",
+      "bcHomesteadToEIP150"
+    ]
+  },
+  {
+    "testNames": [
+      "opcD4DiffPlaces",
+      "static_callcallcodecall_010_SuicideEnd",
+      "ecmul_1-3_0_21000_96",
+      "bcMergeToShanghai"
+    ]
+  },
+  {
+    "testNames": [
+      "opcD5DiffPlaces",
+      "static_callcallcodecall_010_SuicideEnd2",
+      "ecmul_1-3_0_28000_128",
+      "bcBlockGasLimitTest"
+    ]
+  },
+  {
+    "testNames": [
+      "opcD6DiffPlaces",
+      "static_callcallcodecall_010_SuicideMiddle",
+      "ecmul_1-3_0_28000_64",
+      "bcEIP1559"
+    ]
+  },
+  {
+    "testNames": [
+      "opcD7DiffPlaces",
+      "static_callcallcodecall_010_SuicideMiddle2",
+      "ecmul_1-3_0_28000_80",
+      "bcEIP3675"
+    ]
+  },
+  {
+    "testNames": [
+      "opcD8DiffPlaces",
+      "static_callcallcodecall_ABCB_RECURSIVE",
+      "ecmul_1-3_0_28000_96",
+      "bcExample"
+    ]
+  },
+  {
+    "testNames": [
+      "opcD9DiffPlaces",
+      "static_callcallcodecall_ABCB_RECURSIVE2",
+      "ecmul_1-3_1_21000_128",
+      "bcExploitTest"
+    ]
+  },
+  {
+    "testNames": [
+      "opcDADiffPlaces",
+      "static_callcallcode_01_2",
+      "ecmul_1-3_1_21000_96",
+      "bcForkStressTest"
+    ]
+  },
+  {
+    "testNames": [
+      "opcDBDiffPlaces",
+      "static_callcallcode_01_OOGE_2",
+      "ecmul_1-3_1_28000_128",
+      "bcGasPricerTest"
+    ]
+  },
+  {
+    "testNames": [
+      "opcDCDiffPlaces",
+      "static_callcallcode_01_SuicideEnd",
+      "ecmul_1-3_1_28000_96",
+      "bcMultiChainTest"
+    ]
+  },
+  {
+    "testNames": [
+      "opcDDDiffPlaces",
+      "static_callcallcode_01_SuicideEnd2",
+      "ecmul_1-3_2_21000_128",
+      "bcRandomBlockhashTest"
+    ]
+  },
+  {
+    "testNames": [
+      "opcDEDiffPlaces",
+      "static_callcall_00",
+      "ecmul_1-3_2_21000_96",
+      "bcStateTests"
+    ]
+  },
+  {
+    "testNames": [
+      "opcDFDiffPlaces",
+      "static_callcall_00_OOGE",
+      "ecmul_1-3_2_28000_128",
+      "bcTotalDifficultyTest"
+    ]
+  },
+  {
+    "testNames": [
+      "opcE0DiffPlaces",
+      "static_callcall_00_OOGE_1",
+      "ecmul_1-3_2_28000_96",
+      "bcUncleSpecialTests"
+    ]
+  },
+  {
+    "testNames": [
+      "opcE1DiffPlaces",
+      "static_callcall_00_OOGE_2",
+      "ecmul_1-3_340282366920938463463374607431768211456_21000_128",
+      "bcUncleTest"
+    ]
+  },
+  {
+    "testNames": [
+      "opcE2DiffPlaces",
+      "static_callcall_00_SuicideEnd",
+      "ecmul_1-3_340282366920938463463374607431768211456_21000_80",
+      "bcValidBlockTest"
+    ]
+  },
+  {
+    "testNames": [
+      "opcE3DiffPlaces",
+      "static_callChangeRevert",
+      "ecmul_1-3_340282366920938463463374607431768211456_21000_96",
       "bcWalletTest"
+    ]
+  },
+  {
+    "testNames": [
+      "opcE4DiffPlaces",
+      "static_callcodecallcallcode_101",
+      "ecmul_1-3_340282366920938463463374607431768211456_28000_128"
+    ]
+  },
+  {
+    "testNames": [
+      "opcE5DiffPlaces",
+      "static_callcodecallcallcode_101_2",
+      "ecmul_1-3_340282366920938463463374607431768211456_28000_80"
+    ]
+  },
+  {
+    "testNames": [
+      "opcE6DiffPlaces",
+      "static_callcodecallcallcode_101_OOGE",
+      "ecmul_1-3_340282366920938463463374607431768211456_28000_96"
+    ]
+  },
+  {
+    "testNames": [
+      "opcE7DiffPlaces",
+      "static_callcodecallcallcode_101_OOGE_2",
+      "ecmul_1-3_5616_21000_128"
+    ]
+  },
+  {
+    "testNames": [
+      "opcE8DiffPlaces",
+      "static_callcodecallcallcode_101_OOGMAfter",
+      "ecmul_1-3_5616_21000_96"
+    ]
+  },
+  {
+    "testNames": [
+      "opcE9DiffPlaces",
+      "static_callcodecallcallcode_101_OOGMAfter2",
+      "ecmul_1-3_5616_28000_128"
+    ]
+  },
+  {
+    "testNames": [
+      "opcEADiffPlaces",
+      "static_callcodecallcallcode_101_OOGMAfter_1",
+      "ecmul_1-3_5616_28000_96"
+    ]
+  },
+  {
+    "testNames": [
+      "opcEBDiffPlaces",
+      "static_callcodecallcallcode_101_OOGMAfter_3",
+      "ecmul_1-3_5617_21000_128"
+    ]
+  },
+  {
+    "testNames": [
+      "opcECDiffPlaces",
+      "static_callcodecallcallcode_101_OOGMBefore",
+      "ecmul_1-3_5617_21000_96"
+    ]
+  },
+  {
+    "testNames": [
+      "opcEDDiffPlaces",
+      "static_callcodecallcallcode_101_OOGMBefore2",
+      "ecmul_1-3_5617_28000_128"
+    ]
+  },
+  {
+    "testNames": [
+      "opcEEDiffPlaces",
+      "static_callcodecallcallcode_101_SuicideEnd",
+      "ecmul_1-3_5617_28000_96"
+    ]
+  },
+  {
+    "testNames": [
+      "opcEFDiffPlaces",
+      "static_callcodecallcallcode_101_SuicideEnd2",
+      "ecmul_1-3_9935_21000_128"
+    ]
+  },
+  {
+    "testNames": [
+      "opcF6DiffPlaces",
+      "static_callcodecallcallcode_101_SuicideMiddle",
+      "ecmul_1-3_9935_21000_96"
+    ]
+  },
+  {
+    "testNames": [
+      "opcF7DiffPlaces",
+      "static_callcodecallcallcode_101_SuicideMiddle2",
+      "ecmul_1-3_9935_28000_128"
+    ]
+  },
+  {
+    "testNames": [
+      "opcF8DiffPlaces",
+      "static_callcodecallcallcode_ABCB_RECURSIVE",
+      "ecmul_1-3_9935_28000_96"
+    ]
+  },
+  {
+    "testNames": [
+      "opcF9DiffPlaces",
+      "static_callcodecallcallcode_ABCB_RECURSIVE2",
+      "ecmul_1-3_9_21000_128"
+    ]
+  },
+  {
+    "testNames": [
+      "opcFBDiffPlaces",
+      "static_callcodecallcall_100",
+      "ecmul_1-3_9_21000_96"
+    ]
+  },
+  {
+    "testNames": [
+      "opcFCDiffPlaces",
+      "static_callcodecallcall_100_2",
+      "ecmul_1-3_9_28000_128"
+    ]
+  },
+  {
+    "testNames": [
+      "opcFEDiffPlaces",
+      "static_callcodecallcall_100_OOGE",
+      "ecmul_1-3_9_28000_96"
+    ]
+  },
+  {
+    "testNames": [
+      "operationDiffGas",
+      "static_callcodecallcall_100_OOGE2",
+      "ecmul_7827-6598_0_21000_128"
+    ]
+  },
+  {
+    "testNames": [
+      "undefinedOpcodeFirstByte",
+      "static_callcodecallcall_100_OOGMAfter",
+      "ecmul_7827-6598_0_21000_64"
+    ]
+  },
+  {
+    "testNames": [
+      "stBugs",
+      "static_callcodecallcall_100_OOGMAfter2",
+      "ecmul_7827-6598_0_21000_80"
+    ]
+  },
+  {
+    "testNames": [
+      "stCallCodes",
+      "static_callcodecallcall_100_OOGMAfter_2",
+      "ecmul_7827-6598_0_21000_96"
+    ]
+  },
+  {
+    "testNames": [
+      "stCallCreateCallCodeTest",
+      "static_callcodecallcall_100_OOGMAfter_3",
+      "ecmul_7827-6598_0_28000_128"
+    ]
+  },
+  {
+    "testNames": [
+      "stCallDelegateCodesCallCodeHomestead",
+      "static_callcodecallcall_100_OOGMBefore",
+      "ecmul_7827-6598_0_28000_64"
+    ]
+  },
+  {
+    "testNames": [
+      "stCallDelegateCodesHomestead",
+      "static_callcodecallcall_100_OOGMBefore2",
+      "ecmul_7827-6598_0_28000_80"
+    ]
+  },
+  {
+    "testNames": [
+      "stChainId",
+      "static_callcodecallcall_100_SuicideEnd",
+      "ecmul_7827-6598_0_28000_96"
+    ]
+  },
+  {
+    "testNames": [
+      "stCodeCopyTest",
+      "static_callcodecallcall_100_SuicideEnd2",
+      "ecmul_7827-6598_1456_21000_128"
+    ]
+  },
+  {
+    "testNames": [
+      "stCodeSizeLimit",
+      "static_callcodecallcall_100_SuicideMiddle",
+      "ecmul_7827-6598_1456_21000_80"
+    ]
+  },
+  {
+    "testNames": [
+      "stCreate2",
+      "static_callcodecallcall_100_SuicideMiddle2",
+      "ecmul_7827-6598_1456_21000_96"
+    ]
+  },
+  {
+    "testNames": [
+      "stCreateTest",
+      "static_callcodecallcall_ABCB_RECURSIVE",
+      "ecmul_7827-6598_1456_28000_128"
+    ]
+  },
+  {
+    "testNames": [
+      "stDelegatecallTestHomestead",
+      "static_callcodecallcall_ABCB_RECURSIVE2",
+      "ecmul_7827-6598_1456_28000_80"
+    ]
+  },
+  {
+    "testNames": [
+      "stEIP150singleCodeGasPrices",
+      "static_callcodecallcodecallcode_111_SuicideEnd",
+      "ecmul_7827-6598_1456_28000_96"
+    ]
+  },
+  {
+    "testNames": [
+      "stEIP150Specific",
+      "static_callcodecallcodecall_110",
+      "ecmul_7827-6598_1_21000_128"
+    ]
+  },
+  {
+    "testNames": [
+      "baseFeeDiffPlaces",
+      "static_callcodecallcodecall_1102",
+      "ecmul_7827-6598_1_21000_96"
+    ]
+  },
+  {
+    "testNames": [
+      "gasPriceDiffPlaces",
+      "static_callcodecallcodecall_110_2",
+      "ecmul_7827-6598_1_28000_128"
+    ]
+  },
+  {
+    "testNames": [
+      "intrinsic",
+      "static_callcodecallcodecall_110_OOGE",
+      "ecmul_7827-6598_1_28000_96"
+    ]
+  },
+  {
+    "testNames": [
+      "lowFeeCap",
+      "static_callcodecallcodecall_110_OOGE2",
+      "ecmul_7827-6598_2_21000_128"
+    ]
+  },
+  {
+    "testNames": [
+      "lowGasLimit",
+      "static_callcodecallcodecall_110_OOGMAfter",
+      "ecmul_7827-6598_2_21000_96"
+    ]
+  },
+  {
+    "testNames": [
+      "lowGasPriceOldTypes",
+      "static_callcodecallcodecall_110_OOGMAfter2",
+      "ecmul_7827-6598_2_28000_128"
+    ]
+  },
+  {
+    "testNames": [
+      "outOfFunds",
+      "static_callcodecallcodecall_110_OOGMAfter_2",
+      "ecmul_7827-6598_2_28000_96"
+    ]
+  },
+  {
+    "testNames": [
+      "outOfFundsOldTypes",
+      "static_callcodecallcodecall_110_OOGMAfter_3",
+      "ecmul_7827-6598_5616_21000_128"
+    ]
+  },
+  {
+    "testNames": [
+      "senderBalance",
+      "static_callcodecallcodecall_110_OOGMBefore",
+      "ecmul_7827-6598_5616_21000_96"
+    ]
+  },
+  {
+    "testNames": [
+      "tipTooHigh",
+      "static_callcodecallcodecall_110_OOGMBefore2",
+      "ecmul_7827-6598_5616_28000_128"
+    ]
+  },
+  {
+    "testNames": [
+      "transactionIntinsicBug",
+      "static_callcodecallcodecall_110_SuicideEnd",
+      "ecmul_7827-6598_5616_28000_96"
+    ]
+  },
+  {
+    "testNames": [
+      "typeTwoBerlin",
+      "static_callcodecallcodecall_110_SuicideEnd2",
+      "ecmul_7827-6598_5617_21000_128"
+    ]
+  },
+  {
+    "testNames": [
+      "valCausesOOF",
+      "static_callcodecallcodecall_110_SuicideMiddle",
+      "ecmul_7827-6598_5617_21000_96"
+    ]
+  },
+  {
+    "testNames": [
+      "stEIP158Specific",
+      "static_callcodecallcodecall_110_SuicideMiddle2",
+      "ecmul_7827-6598_5617_28000_128"
+    ]
+  },
+  {
+    "testNames": [
+      "stEIP2930",
+      "static_callcodecallcodecall_ABCB_RECURSIVE",
+      "ecmul_7827-6598_5617_28000_96"
+    ]
+  },
+  {
+    "testNames": [
+      "stEIP3607",
+      "static_callcodecallcodecall_ABCB_RECURSIVE2",
+      "ecmul_7827-6598_9935_21000_128"
+    ]
+  },
+  {
+    "testNames": [
+      "stExample",
+      "static_callcodecall_10",
+      "ecmul_7827-6598_9935_21000_96"
+    ]
+  },
+  {
+    "testNames": [
+      "stExtCodeHash",
+      "static_callcodecall_10_2",
+      "ecmul_7827-6598_9935_28000_128"
+    ]
+  },
+  {
+    "testNames": [
+      "stHomesteadSpecific",
+      "static_callcodecall_10_OOGE",
+      "ecmul_7827-6598_9935_28000_96"
+    ]
+  },
+  {
+    "testNames": [
+      "stInitCodeTest",
+      "static_callcodecall_10_OOGE_2",
+      "ecmul_7827-6598_9_21000_128"
+    ]
+  },
+  {
+    "testNames": [
+      "stLogTests",
+      "static_callcodecall_10_SuicideEnd",
+      "ecmul_7827-6598_9_21000_96"
+    ]
+  },
+  {
+    "testNames": [
+      "stMemExpandingEIP150Calls",
+      "static_callcodecall_10_SuicideEnd2",
+      "ecmul_7827-6598_9_28000_128"
+    ]
+  },
+  {
+    "testNames": [
+      "stMemoryStressTest",
+      "static_callcode_checkPC",
+      "ecmul_7827-6598_9_28000_96"
+    ]
+  },
+  {
+    "testNames": [
+      "buffer",
+      "static_CallContractToCreateContractAndCallItOOG",
+      "ecpairing_bad_length_191"
+    ]
+  },
+  {
+    "testNames": [
+      "bufferSrcOffset",
+      "static_CallContractToCreateContractOOG",
+      "ecpairing_bad_length_193"
+    ]
+  },
+  {
+    "testNames": [
+      "callDataCopyOffset",
+      "static_CallContractToCreateContractOOGBonusGas",
+      "ecpairing_empty_data"
+    ]
+  },
+  {
+    "testNames": [
+      "calldatacopy_dejavu",
+      "static_CallContractToCreateContractWhichWouldCreateContractIfCalled",
+      "ecpairing_empty_data_insufficient_gas"
+    ]
+  },
+  {
+    "testNames": [
+      "calldatacopy_dejavu2",
+      "static_callCreate",
+      "ecpairing_one_point_fail"
+    ]
+  },
+  {
+    "testNames": [
+      "codeCopyOffset",
+      "static_callCreate2",
+      "ecpairing_one_point_insufficient_gas"
+    ]
+  },
+  {
+    "testNames": [
+      "codecopy_dejavu",
+      "static_callCreate3",
+      "ecpairing_one_point_not_in_subgroup"
+    ]
+  },
+  {
+    "testNames": [
+      "codecopy_dejavu2",
+      "static_calldelcode_01",
+      "ecpairing_one_point_with_g1_zero"
+    ]
+  },
+  {
+    "testNames": [
+      "extcodecopy_dejavu",
+      "static_calldelcode_01_OOGE",
+      "ecpairing_one_point_with_g2_zero"
+    ]
+  },
+  {
+    "testNames": [
+      "log1_dejavu",
+      "static_CallEcrecover0",
+      "ecpairing_one_point_with_g2_zero_and_g1_invalid"
+    ]
+  },
+  {
+    "testNames": [
+      "log2_dejavu",
+      "static_CallEcrecover0_0input",
+      "ecpairing_perturb_g2_by_curve_order"
+    ]
+  },
+  {
+    "testNames": [
+      "log3_dejavu",
+      "static_CallEcrecover0_completeReturnValue",
+      "ecpairing_perturb_g2_by_field_modulus"
+    ]
+  },
+  {
+    "testNames": [
+      "log4_dejavu",
+      "static_CallEcrecover0_Gas2999",
+      "ecpairing_perturb_g2_by_field_modulus_again"
+    ]
+  },
+  {
+    "testNames": [
+      "mem0b_singleByte",
+      "static_CallEcrecover0_gas3000",
+      "ecpairing_perturb_g2_by_one"
+    ]
+  },
+  {
+    "testNames": [
+      "mem31b_singleByte",
+      "static_CallEcrecover0_NoGas",
+      "ecpairing_perturb_zeropoint_by_curve_order"
+    ]
+  },
+  {
+    "testNames": [
+      "mem32b_singleByte",
+      "static_CallEcrecover0_overlappingInputOutput",
+      "ecpairing_perturb_zeropoint_by_field_modulus"
+    ]
+  },
+  {
+    "testNames": [
+      "mem32kb\u002B1",
+      "static_CallEcrecover1",
+      "ecpairing_perturb_zeropoint_by_one"
+    ]
+  },
+  {
+    "testNames": [
+      "mem32kb\u002B31",
+      "static_CallEcrecover2",
+      "ecpairing_three_point_fail_1"
+    ]
+  },
+  {
+    "testNames": [
+      "mem32kb\u002B32",
+      "static_CallEcrecover3",
+      "ecpairing_three_point_match_1"
+    ]
+  },
+  {
+    "testNames": [
+      "mem32kb\u002B33",
+      "static_CallEcrecover80",
+      "ecpairing_two_points_with_one_g2_zero"
+    ]
+  },
+  {
+    "testNames": [
+      "mem32kb-1",
+      "static_CallEcrecoverCheckLength",
+      "ecpairing_two_point_fail_1"
+    ]
+  },
+  {
+    "testNames": [
+      "mem32kb-31",
+      "static_CallEcrecoverCheckLengthWrongV",
+      "ecpairing_two_point_fail_2"
+    ]
+  },
+  {
+    "testNames": [
+      "mem32kb-32",
+      "static_CallEcrecoverH_prefixed0",
+      "ecpairing_two_point_match_1"
+    ]
+  },
+  {
+    "testNames": [
+      "mem32kb-33",
+      "static_CallEcrecoverR_prefixed0",
+      "ecpairing_two_point_match_2"
+    ]
+  },
+  {
+    "testNames": [
+      "mem32kb",
+      "static_CallEcrecoverS_prefixed0",
+      "ecpairing_two_point_match_3"
+    ]
+  },
+  {
+    "testNames": [
+      "mem32kb_singleByte\u002B1",
+      "static_CallEcrecoverV_prefixed0",
+      "ecpairing_two_point_match_4"
+    ]
+  },
+  {
+    "testNames": [
+      "mem32kb_singleByte\u002B31",
+      "static_CallGoesOOGOnSecondLevel",
+      "ecpairing_two_point_match_5"
+    ]
+  },
+  {
+    "testNames": [
+      "mem32kb_singleByte\u002B32",
+      "static_CallGoesOOGOnSecondLevel2",
+      "ecpairing_two_point_oog"
+    ]
+  },
+  {
+    "testNames": [
+      "mem32kb_singleByte\u002B33",
+      "static_CallIdentitiy_1",
+      "pairingTest"
+    ]
+  },
+  {
+    "testNames": [
+      "mem32kb_singleByte-1",
+      "static_CallIdentity_1_nonzeroValue",
+      "pointAdd"
+    ]
+  },
+  {
+    "testNames": [
+      "mem32kb_singleByte-31",
+      "static_CallIdentity_2",
+      "pointAddTrunc"
+    ]
+  },
+  {
+    "testNames": [
+      "mem32kb_singleByte-32",
+      "static_CallIdentity_3",
+      "pointMulAdd"
+    ]
+  },
+  {
+    "testNames": [
+      "mem32kb_singleByte-33",
+      "static_CallIdentity_4",
+      "pointMulAdd2"
+    ]
+  },
+  {
+    "testNames": [
+      "mem32kb_singleByte",
+      "static_CallIdentity_4_gas17",
+      "ecadd_0-0_0-0_21000_0"
+    ]
+  },
+  {
+    "testNames": [
+      "mem33b_singleByte",
+      "static_CallIdentity_4_gas18",
+      "ecadd_0-0_0-0_21000_128"
+    ]
+  },
+  {
+    "testNames": [
+      "mem64kb\u002B1",
+      "static_CallIdentity_5",
+      "ecadd_0-0_0-0_21000_192"
+    ]
+  },
+  {
+    "testNames": [
+      "mem64kb\u002B31",
+      "static_CallLoseGasOOG",
+      "ecadd_0-0_0-0_21000_64"
+    ]
+  },
+  {
+    "testNames": [
+      "mem64kb\u002B32",
+      "static_callOutput1",
+      "ecadd_0-0_0-0_21000_80"
+    ]
+  },
+  {
+    "testNames": [
+      "mem64kb\u002B33",
+      "static_callOutput2",
+      "ecadd_0-0_0-0_25000_0"
+    ]
+  },
+  {
+    "testNames": [
+      "mem64kb-1",
+      "static_callOutput3",
+      "ecadd_0-0_0-0_25000_128"
+    ]
+  },
+  {
+    "testNames": [
+      "mem64kb-31",
+      "static_callOutput3Fail",
+      "ecadd_0-0_0-0_25000_192"
+    ]
+  },
+  {
+    "testNames": [
+      "mem64kb-32",
+      "static_callOutput3partial",
+      "ecadd_0-0_0-0_25000_64"
+    ]
+  },
+  {
+    "testNames": [
+      "mem64kb-33",
+      "static_callOutput3partialFail",
+      "ecadd_0-0_0-0_25000_80"
+    ]
+  },
+  {
+    "testNames": [
+      "mem64kb",
+      "static_CallRecursiveBomb0",
+      "ecadd_0-0_1-2_21000_128"
+    ]
+  },
+  {
+    "testNames": [
+      "mem64kb_singleByte\u002B1",
+      "static_CallRecursiveBomb0_OOG_atMaxCallDepth",
+      "ecadd_0-0_1-2_21000_192"
+    ]
+  },
+  {
+    "testNames": [
+      "mem64kb_singleByte\u002B31",
+      "static_CallRecursiveBomb1",
+      "ecadd_0-0_1-2_25000_128"
+    ]
+  },
+  {
+    "testNames": [
+      "mem64kb_singleByte\u002B32",
+      "static_CallRecursiveBomb2",
+      "ecadd_0-0_1-2_25000_192"
+    ]
+  },
+  {
+    "testNames": [
+      "mem64kb_singleByte\u002B33",
+      "static_CallRecursiveBomb3",
+      "ecadd_0-0_1-3_21000_128"
+    ]
+  },
+  {
+    "testNames": [
+      "mem64kb_singleByte-1",
+      "static_CallRecursiveBombLog",
+      "ecadd_0-0_1-3_25000_128"
+    ]
+  },
+  {
+    "testNames": [
+      "mem64kb_singleByte-31",
+      "static_CallRecursiveBombLog2",
+      "ecadd_0-3_1-2_21000_128"
+    ]
+  },
+  {
+    "testNames": [
+      "mem64kb_singleByte-32",
+      "static_CallRecursiveBombPreCall",
+      "ecadd_0-3_1-2_25000_128"
+    ]
+  },
+  {
+    "testNames": [
+      "mem64kb_singleByte-33",
+      "static_CallRecursiveBombPreCall2",
+      "ecadd_1-2_0-0_21000_128"
+    ]
+  },
+  {
+    "testNames": [
+      "mem64kb_singleByte",
+      "static_CallRipemd160_1",
+      "ecadd_1-2_0-0_21000_192"
+    ]
+  },
+  {
+    "testNames": [
+      "memCopySelf",
+      "static_CallRipemd160_2",
+      "ecadd_1-2_0-0_21000_64"
+    ]
+  },
+  {
+    "testNames": [
+      "memReturn",
+      "static_CallRipemd160_3",
+      "ecadd_1-2_0-0_25000_128"
+    ]
+  },
+  {
+    "testNames": [
+      "mload16bitBound",
+      "static_CallRipemd160_3_postfixed0",
+      "ecadd_1-2_0-0_25000_192"
+    ]
+  },
+  {
+    "testNames": [
+      "mload8bitBound",
+      "static_CallRipemd160_3_prefixed0",
+      "ecadd_1-2_0-0_25000_64"
+    ]
+  },
+  {
+    "testNames": [
+      "mload_dejavu",
+      "static_CallRipemd160_4",
+      "ecadd_1-2_1-2_21000_128"
+    ]
+  },
+  {
+    "testNames": [
+      "mstore_dejavu",
+      "static_CallRipemd160_4_gas719",
+      "ecadd_1-2_1-2_21000_192"
+    ]
+  },
+  {
+    "testNames": [
+      "mstroe8_dejavu",
+      "static_CallRipemd160_5",
+      "ecadd_1-2_1-2_25000_128"
+    ]
+  },
+  {
+    "testNames": [
+      "oog",
+      "static_CallSha256_1",
+      "ecadd_1-2_1-2_25000_192"
+    ]
+  },
+  {
+    "testNames": [
+      "sha3_dejavu",
+      "static_CallSha256_1_nonzeroValue",
+      "ecadd_1-3_0-0_21000_80"
+    ]
+  },
+  {
+    "testNames": [
+      "stackLimitGas_1023",
+      "static_CallSha256_2",
+      "ecadd_1-3_0-0_25000_80"
+    ]
+  },
+  {
+    "testNames": [
+      "stackLimitGas_1024",
+      "static_CallSha256_3",
+      "ecadd_1145-3932_1145-4651_21000_192"
+    ]
+  },
+  {
+    "testNames": [
+      "stackLimitGas_1025",
+      "static_CallSha256_3_postfix0",
+      "ecadd_1145-3932_1145-4651_25000_192"
+    ]
+  },
+  {
+    "testNames": [
+      "stackLimitPush31_1023",
+      "static_CallSha256_3_prefix0",
+      "ecadd_1145-3932_2969-1336_21000_128"
+    ]
+  },
+  {
+    "testNames": [
+      "stackLimitPush31_1024",
+      "static_CallSha256_4",
+      "ecadd_1145-3932_2969-1336_25000_128"
+    ]
+  },
+  {
+    "testNames": [
+      "stackLimitPush31_1025",
+      "static_CallSha256_4_gas99",
+      "ecadd_6-9_19274124-124124_21000_128"
+    ]
+  },
+  {
+    "testNames": [
+      "stackLimitPush32_1023",
+      "static_CallSha256_5",
+      "ecadd_6-9_19274124-124124_25000_128"
+    ]
+  },
+  {
+    "testNames": [
+      "stackLimitPush32_1024",
+      "static_callToCallCodeOpCodeCheck",
+      "ecmul_0-0_0_21000_0"
+    ]
+  },
+  {
+    "testNames": [
+      "stackLimitPush32_1025",
+      "static_callToCallOpCodeCheck",
+      "ecmul_0-0_0_21000_128"
+    ]
+  },
+  {
+    "testNames": [
+      "stNonZeroCallsTest",
+      "static_callToDelCallOpCodeCheck",
+      "ecmul_0-0_0_21000_40"
+    ]
+  },
+  {
+    "testNames": [
+      "blake2B",
+      "static_CallToNameRegistrator0",
+      "ecmul_0-0_0_21000_64"
+    ]
+  },
+  {
+    "testNames": [
+      "delegatecall09Undefined",
+      "static_CallToReturn1",
+      "ecmul_0-0_0_21000_80"
+    ]
+  },
+  {
+    "testNames": [
+      "identity_to_bigger",
+      "static_CalltoReturn2",
+      "ecmul_0-0_0_21000_96"
+    ]
+  },
+  {
+    "testNames": [
+      "identity_to_smaller",
+      "static_callToStaticOpCodeCheck",
+      "ecmul_0-0_0_28000_0"
+    ]
+  },
+  {
+    "testNames": [
+      "idPrecomps",
+      "static_callWithHighValue",
+      "ecmul_0-0_0_28000_128"
+    ]
+  },
+  {
+    "testNames": [
+      "modexp",
+      "static_callWithHighValueAndGasOOG",
+      "ecmul_0-0_0_28000_40"
+    ]
+  },
+  {
+    "testNames": [
+      "modexpTests",
+      "static_callWithHighValueAndOOGatTxLevel",
+      "ecmul_0-0_0_28000_64"
+    ]
+  },
+  {
+    "testNames": [
+      "precompsEIP2929",
+      "static_callWithHighValueOOGinCall",
+      "ecmul_0-0_0_28000_80"
+    ]
+  },
+  {
+    "testNames": [
+      "sec80",
+      "static_CALL_OneVCallSuicide",
+      "ecmul_0-0_0_28000_96"
+    ]
+  },
+  {
+    "testNames": [
+      "stPreCompiledContracts2",
+      "static_call_OOG_additionalGasCosts1",
+      "ecmul_0-0_1_21000_128"
+    ]
+  },
+  {
+    "testNames": [
+      "stQuadraticComplexityTest",
+      "static_call_OOG_additionalGasCosts2",
+      "ecmul_0-0_1_21000_96"
+    ]
+  },
+  {
+    "testNames": [
+      "stRandom",
+      "static_call_value_inherit",
+      "ecmul_0-0_1_28000_128"
+    ]
+  },
+  {
+    "testNames": [
+      "stRandom2",
+      "static_call_value_inherit_from_call",
+      "ecmul_0-0_1_28000_96"
+    ]
+  },
+  {
+    "testNames": [
+      "stRecursiveCreate",
+      "static_CALL_ZeroVCallSuicide",
+      "ecmul_0-0_2_21000_128"
+    ]
+  },
+  {
+    "testNames": [
+      "stRefundTest",
+      "static_CheckCallCostOOG",
+      "ecmul_0-0_2_21000_96"
+    ]
+  },
+  {
+    "testNames": [
+      "stReturnDataTest",
+      "static_CheckOpcodes",
+      "ecmul_0-0_2_28000_128"
+    ]
+  },
+  {
+    "testNames": [
+      "stRevertTest",
+      "static_CheckOpcodes2",
+      "ecmul_0-0_2_28000_96"
+    ]
+  },
+  {
+    "testNames": [
+      "stSelfBalance",
+      "static_CheckOpcodes3",
+      "ecmul_0-0_340282366920938463463374607431768211456_21000_128"
+    ]
+  },
+  {
+    "testNames": [
+      "stShift",
+      "static_CheckOpcodes4",
+      "ecmul_0-0_340282366920938463463374607431768211456_21000_80"
+    ]
+  },
+  {
+    "testNames": [
+      "stSLoadTest",
+      "static_CheckOpcodes5",
+      "ecmul_0-0_340282366920938463463374607431768211456_21000_96"
+    ]
+  },
+  {
+    "testNames": [
+      "stSolidityTest",
+      "static_contractCreationMakeCallThatAskMoreGasThenTransactionProvided",
+      "ecmul_0-0_340282366920938463463374607431768211456_28000_128"
+    ]
+  },
+  {
+    "testNames": [
+      "stSpecialTest",
+      "static_contractCreationOOGdontLeaveEmptyContractViaTransaction",
+      "ecmul_0-0_340282366920938463463374607431768211456_28000_80"
+    ]
+  },
+  {
+    "testNames": [
+      "stSStoreTest",
+      "static_CREATE_ContractSuicideDuringInit",
+      "ecmul_0-0_340282366920938463463374607431768211456_28000_96"
+    ]
+  },
+  {
+    "testNames": [
+      "shallowStack",
+      "static_CREATE_ContractSuicideDuringInit_ThenStoreThenReturn",
+      "ecmul_0-0_5616_21000_128"
+    ]
+  },
+  {
+    "testNames": [
+      "stackOverflow",
+      "static_CREATE_ContractSuicideDuringInit_WithValue",
+      "ecmul_0-0_5616_21000_96"
     ]
   }
 ]

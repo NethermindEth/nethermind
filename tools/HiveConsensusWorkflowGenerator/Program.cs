@@ -17,19 +17,28 @@ public static class Program
         IEnumerable<string> directories = GetTestsDirectories(path);
         Dictionary<string, long> pathsToBeTested = GetPathsToBeTested(directories);
 
-        // Calculate the group size based on the number of elements
-        int totalElements = pathsToBeTested.Count;
-        int groupSize = (int)Math.Ceiling(totalElements / (double)MaxJobsCount);
+        var testNames = pathsToBeTested.Select(y => Path.GetFileName(y.Key))
+                                       .Select(x => x.Split('.').First())
+                                       .ToList();
 
-        var groupedTestNames = pathsToBeTested.Select(y => Path.GetFileName(y.Key))
-                                              .Select(x => x.Split('.').First())
-                                              .Select((testName, index) => new { Index = index, TestName = testName })
-                                              .GroupBy(x => x.Index / groupSize)
-                                              .Select(group => new { testNames = group.Select(x => x.TestName).ToArray() })
-                                              .Take(MaxJobsCount)
-                                              .ToList();
+        var groupedTestNames = new List<List<string>>();
+        for (int i = 0; i < MaxJobsCount; i++)
+        {
+            groupedTestNames.Add(new List<string>());
+        }
 
-        string jsonString = JsonSerializer.Serialize(groupedTestNames, new JsonSerializerOptions { WriteIndented = true });
+        int groupIndex = 0;
+        foreach (var testName in testNames)
+        {
+            groupedTestNames[groupIndex].Add(testName);
+            groupIndex = (groupIndex + 1) % MaxJobsCount;
+        }
+
+        var jsonGroups = groupedTestNames.Select(group => new { testNames = group.ToArray() })
+                                         .Where(group => group.testNames.Any())
+                                         .ToList();
+
+        string jsonString = JsonSerializer.Serialize(jsonGroups, new JsonSerializerOptions { WriteIndented = true });
 
         Console.WriteLine(jsonString);
 
