@@ -100,6 +100,7 @@ jobs:
         run: |
           cd nethermind/tools/HiveConsensusWorkflowGenerator
           dotnet run
+          cat matrix.json
           echo "matrix=$(jq -c . matrix.json)" >> $GITHUB_OUTPUT
           
   run_hive_tests:
