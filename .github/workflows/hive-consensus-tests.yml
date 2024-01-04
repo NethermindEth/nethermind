@@ -98,7 +98,7 @@ jobs:
       - name: Generate Hive Json For Matrix
         run: |
           cd nethermind/tools/HiveConsensusWorkflowGenerator
-          dotnet run .
+          dotnet run
           echo "matrix=$(jq -c . matrix.json)" >> $GITHUB_OUTPUT
           
   run_hive_tests:
