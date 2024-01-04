@@ -36,7 +36,7 @@ jobs:
         echo "ORG_NAME=${{ github.repository_owner }}" >> $GITHUB_ENV
         echo "REPO_NAME=${{ github.event.repository.name }}" >> $GITHUB_ENV
         
-    - name: Check if master branch and default additional_options
+    - name: Check if master branch
       id: check_conditions
       run: |
         ref="${{ github.ref }}"
@@ -53,36 +53,36 @@ jobs:
           echo "skip_docker_build=false" >> $GITHUB_OUTPUT
         fi
 
-    - name: Trigger Docker Build Action with Cleaned Ref
-      if: steps.check_conditions.outputs.skip_docker_build != 'true'
-      uses: benc-uk/workflow-dispatch@v1
-      env:
-        ADDITIONAL_OPTIONS: ${{ inputs.additional_options }}
-      with:
-          workflow: publish-docker.yml
-          ref: "${{ github.ref }}"
-          token: "${{ secrets.REPOSITORY_DISPATCH_TOKEN }}"
-          inputs: '{
-              "tag": "${{ env.CLEAN_REF }}",
-              "dockerfile": "${{ steps.extract_dockerfile.outputs.dockerfile }}",
-              "build-config": "${{ steps.extract_dockerfile.outputs.build-config }}"
-           }'
-        
-    - name: Wait for Docker Build Action to complete
-      if: steps.check_conditions.outputs.skip_docker_build != 'true'
-      env:
-        GITHUB_TOKEN: ${{ secrets.REPOSITORY_DISPATCH_TOKEN }}
-        WORKFLOW_ID: 'publish-docker.yml'
-        MAX_WAIT_MINUTES: '5'
-        INTERVAL: '5'
-        TIMEOUT: '10'
-        ORG_NAME: ${{ env.ORG_NAME }}
-        REPO_NAME: ${{ env.REPO_NAME }}
-        REF: ${{ github.ref }}
-      run: |
-        chmod +x scripts/wait-for-workflow-completed.sh
-        ./scripts/wait-for-workflow-completed.sh
-      working-directory: ${{ github.workspace }}
+    #- name: Trigger Docker Build Action with Cleaned Ref
+    #  if: steps.check_conditions.outputs.skip_docker_build != 'true'
+    #  uses: benc-uk/workflow-dispatch@v1
+    #  env:
+    #    ADDITIONAL_OPTIONS: ${{ inputs.additional_options }}
+    #  with:
+    #      workflow: publish-docker.yml
+    #      ref: "${{ github.ref }}"
+    #      token: "${{ secrets.REPOSITORY_DISPATCH_TOKEN }}"
+    #      inputs: '{
+    #          "tag": "${{ env.CLEAN_REF }}",
+    #          "dockerfile": "${{ steps.extract_dockerfile.outputs.dockerfile }}",
+    #          "build-config": "${{ steps.extract_dockerfile.outputs.build-config }}"
+    #       }'
+    #    
+    #- name: Wait for Docker Build Action to complete
+    #  if: steps.check_conditions.outputs.skip_docker_build != 'true'
+    #  env:
+    #    GITHUB_TOKEN: ${{ secrets.REPOSITORY_DISPATCH_TOKEN }}
+    #    WORKFLOW_ID: 'publish-docker.yml'
+    #    MAX_WAIT_MINUTES: '5'
+    #    INTERVAL: '5'
+    #    TIMEOUT: '10'
+    #    ORG_NAME: ${{ env.ORG_NAME }}
+    #    REPO_NAME: ${{ env.REPO_NAME }}
+    #    REF: ${{ github.ref }}
+    #  run: |
+    #    chmod +x scripts/wait-for-workflow-completed.sh
+    #    ./scripts/wait-for-workflow-completed.sh
+    #  working-directory: ${{ github.workspace }}
 
   generate_hive_consensus_tests:
     name: "Prepare all hive tests to be started"

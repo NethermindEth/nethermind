@@ -42,7 +42,7 @@ public static class Program
 
     private static IEnumerable<string> GetTestsDirectories(string path)
     {
-        string testsDirectory = string.Concat(FindDirectory("nethermind"), "/src/tests", path, "/BlockchainTests");
+        string testsDirectory = string.Concat(FindDirectory("nethermind"), "/", path, "/BlockchainTests");
 
         foreach (string directory in Directory.GetDirectories(testsDirectory, "st*", SearchOption.AllDirectories))
         {
