@@ -82,7 +82,6 @@ public class OptimismReceiptDecoder : IRlpStreamDecoder<OptimismTxReceipt>
 
     public void Encode(RlpStream rlpStream, OptimismTxReceipt item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
-        Console.WriteLine("HERE");
         if (item is null)
         {
             rlpStream.EncodeNullObject();
