@@ -141,8 +141,6 @@ jobs:
       - name: Build Hive
         working-directory: hive
         run: go build .
-      - name: Load Docker image
-        run: docker load --input /tmp/image.tar
       - name: Run hive for tests - ${{ matrix.hiveTests.testNames }}
         continue-on-error: true
         working-directory: hive
