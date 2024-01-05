@@ -116,6 +116,7 @@ public class RegisterRpcModules : IStep
         if (_api.KeyStore is null) throw new StepDependencyException(nameof(_api.KeyStore));
         if (_api.PeerPool is null) throw new StepDependencyException(nameof(_api.PeerPool));
         if (_api.WitnessRepository is null) throw new StepDependencyException(nameof(_api.WitnessRepository));
+        if (_api.BadBlocksStore is null) throw new StepDependencyException(nameof(_api.BadBlocksStore));
 
         ProofModuleFactory proofModuleFactory = new(_api.WorldStateManager, _api.BlockTree, _api.BlockPreprocessor, _api.ReceiptFinder, _api.SpecProvider, _api.LogManager);
         rpcModuleProvider.RegisterBounded(proofModuleFactory, 2, rpcConfig.Timeout);
@@ -133,6 +134,7 @@ public class RegisterRpcModules : IStep
             _api.ConfigProvider,
             _api.SpecProvider,
             _api.SyncModeSelector,
+            _api.BadBlocksStore,
             _api.FileSystem,
             _api.LogManager);
         rpcModuleProvider.RegisterBoundedByCpuCount(debugModuleFactory, rpcConfig.Timeout);
