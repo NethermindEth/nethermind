@@ -77,7 +77,6 @@ namespace Nethermind.Core.Test.Builders
                     _blockTree = new BlockTree(
                         BlockStore,
                         HeaderStore,
-                        null,
                         BlockInfoDb,
                         MetadataDb,
                         ChainLevelInfoRepository,

@@ -1,12 +1,9 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.IO;
-using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using Google.Protobuf.WellKnownTypes;
 using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Blocks;
@@ -14,13 +11,10 @@ using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Headers;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
-using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Core;
-using Nethermind.Core.Exceptions;
 using Nethermind.Db;
 using Nethermind.Db.Blooms;
-using Nethermind.Era1;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Repositories;
 
@@ -31,18 +25,14 @@ namespace Nethermind.Init.Steps
     {
         private readonly IBasicApi _get;
         private readonly IApiWithStores _set;
-        private readonly INethermindApi _api;
 
         public InitializeBlockTree(INethermindApi api)
         {
             (_get, _set) = api.ForInit;
-            _api = api;
         }
 
         public Task Execute(CancellationToken cancellationToken)
         {
-            if (_api.SpecProvider is null) throw new StepDependencyException(nameof(_api.SpecProvider));
-
             IInitConfig initConfig = _get.Config<IInitConfig>();
             IBloomConfig bloomConfig = _get.Config<IBloomConfig>();
 
@@ -62,11 +52,10 @@ namespace Nethermind.Init.Steps
 
             IBlockStore blockStore = new BlockStore(_get.DbProvider.BlocksDb);
             IHeaderStore headerStore = new HeaderStore(_get.DbProvider.HeadersDb, _get.DbProvider.BlockNumbersDb);
-            IEraStore? eraStore = SetupEraStore(initConfig, BlockchainIds.GetBlockchainName(_api.SpecProvider.NetworkId));
+
             IBlockTree blockTree = _set.BlockTree = new BlockTree(
                 blockStore,
                 headerStore,
-                eraStore,
                 _get.DbProvider.BlockInfosDb,
                 _get.DbProvider.MetadataDb,
                 chainLevelInfoRepository,
@@ -119,29 +108,6 @@ namespace Nethermind.Init.Steps
             }
 
             return Task.CompletedTask;
-        }
-
-        private IEraStore? SetupEraStore(IInitConfig initConfig, string networkName)
-        {
-            if (string.IsNullOrWhiteSpace(initConfig.AncientDataDirectory))
-            {
-                return null;
-            }
-
-            string[] erafiles;
-            try
-            {
-                erafiles = EraReader.GetAllEraFiles(initConfig.AncientDataDirectory, networkName.ToLower()).ToArray();
-            }
-            catch (DirectoryNotFoundException)
-            {
-                throw new InvalidConfigurationException($"The configured directory '{initConfig.AncientDataDirectory}' does not exist.", ExitCodes.GeneralError);
-            }
-
-            if (!erafiles.Any())
-                throw new InvalidConfigurationException($"The configured directory '{initConfig.AncientDataDirectory}' for ancient data contains no era1 files for {networkName}.", ExitCodes.GeneralError);
-
-            return new EraStore(erafiles, _get.FileSystem);
         }
     }
 }
