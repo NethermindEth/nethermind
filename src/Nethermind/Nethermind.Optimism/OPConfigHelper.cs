@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
+using Nethermind.Specs.ChainSpecStyle;
 
 namespace Nethermind.Optimism;
 
@@ -9,14 +10,18 @@ public class OPSpecHelper : IOPConfigHelper
 {
     private readonly ulong _regolithTimestamp;
     private readonly long _bedrockBlockNumber;
+    private readonly ulong? _canyonTimestamp;
 
     public Address L1FeeReceiver { get; init; }
 
-    public OPSpecHelper(ulong regolithTimestamp, long bedrockBlockNumber, Address l1FeeReceiver)
+    public OPSpecHelper(OptimismParameters parameters)
     {
-        _regolithTimestamp = regolithTimestamp;
-        _bedrockBlockNumber = bedrockBlockNumber;
-        L1FeeReceiver = l1FeeReceiver;
+        _regolithTimestamp = parameters.RegolithTimestamp;
+        _bedrockBlockNumber = parameters.BedrockBlockNumber;
+        _canyonTimestamp = parameters.CanyonTimestamp;
+        L1FeeReceiver = parameters.L1FeeRecipient;
+        Create2DeployerCode = parameters.Create2DeployerCode;
+        Create2DeployerAddress = parameters.Create2DeployerAddress;
     }
 
     public bool IsRegolith(BlockHeader header)
@@ -28,4 +33,12 @@ public class OPSpecHelper : IOPConfigHelper
     {
         return header.Number >= _bedrockBlockNumber;
     }
+
+    public bool IsCanyon(BlockHeader header)
+    {
+        return header.Timestamp >= (_canyonTimestamp ?? long.MaxValue);
+    }
+
+    public Address? Create2DeployerAddress { get; }
+    public byte[]? Create2DeployerCode { get; }
 }

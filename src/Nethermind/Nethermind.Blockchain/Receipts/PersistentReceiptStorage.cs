@@ -39,6 +39,8 @@ namespace Nethermind.Blockchain.Receipts
         private const int CacheSize = 64;
         private readonly LruCache<ValueHash256, TxReceipt[]> _receiptsCache = new(CacheSize, CacheSize, "receipts");
 
+        public event EventHandler<BlockReplacementEventArgs> ReceiptsInserted;
+
         public PersistentReceiptStorage(
             IColumnsDb<ReceiptsColumns> receiptsDb,
             ISpecProvider specProvider,
@@ -78,6 +80,8 @@ namespace Nethermind.Blockchain.Receipts
             {
                 RemoveBlockTx(e.PreviousBlock, e.Block);
             }
+            EnsureCanonical(e.Block);
+            ReceiptsInserted?.Invoke(this, e);
 
             // Dont block main loop
             Task.Run(() =>

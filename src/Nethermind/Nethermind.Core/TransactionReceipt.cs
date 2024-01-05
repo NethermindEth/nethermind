@@ -39,6 +39,9 @@ namespace Nethermind.Core
         public LogEntry[]? Logs { get; set; }
         public string? Error { get; set; }
 
+        public ulong? DepositNonce { get; set; }
+        public ulong? DepositReceiptVersion { get; set; }
+
         /// <summary>
         /// Ignores receipt output on RLP serialization.
         /// Output is either StateRoot or StatusCode depending on eip configuration.
