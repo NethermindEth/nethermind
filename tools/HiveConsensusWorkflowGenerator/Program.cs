@@ -125,7 +125,7 @@ public static class Program
                 DirectoryInfo parentDirInfo = Directory.GetParent(file);
                 string parentDirName = parentDirInfo != null ? Path.GetFileName(parentDirInfo.FullName) : "";
                 string grandParentDirName = parentDirInfo?.Parent != null ? Path.GetFileName(parentDirInfo.Parent.FullName) : "";
-                string fileName = Path.GetFileName(file);
+                string fileName = Path.GetFileName(file).Split('.')[0];
                 string key = $"{grandParentDirName}/{parentDirName}/{fileName}";
 
                 // Add the file size to the dictionary or throw an error if the file already exists
