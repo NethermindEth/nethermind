@@ -108,7 +108,6 @@ jobs:
     runs-on: ubuntu-latest
     needs: [generate_hive_consensus_tests, create_docker_image]
     strategy:
-      max-parallel: 10
       fail-fast: false
       matrix:
         hiveTests: ${{fromJson(needs.generate_hive_consensus_tests.outputs.matrix)}}
