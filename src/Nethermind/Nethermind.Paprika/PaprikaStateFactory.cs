@@ -27,7 +27,7 @@ public class PaprikaStateFactory : IStateFactory
     {
         _db = PagedDb.MemoryMappedDb(_sepolia, 64, directory, true);
         ComputeMerkleBehavior merkle = new(1, 1);
-        _blockchain = new Blockchain(_db, merkle, _flushFileEvery, new CacheBudget.Options(100, 1000));
+        _blockchain = new Blockchain(_db, merkle, _flushFileEvery, new CacheBudget.Options(1000));
         _blockchain.Flushed += (_, flushed) =>
             ReorgBoundaryReached?.Invoke(this, new ReorgBoundaryReached(flushed.blockNumber));
     }
