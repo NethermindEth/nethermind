@@ -8,6 +8,7 @@ using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
@@ -43,5 +44,10 @@ public class OptimismBlockProcessor : BlockProcessor
     {
         _contractRewriter?.RewriteContract(block.Header, _stateProvider);
         return base.ProcessBlock(block, blockTracer, options);
+    }
+
+    protected override Hash256 CalculateReceiptsRoot(TxReceipt[] receipts, IReceiptSpec spec, Hash256? suggestedRoot)
+    {
+        return OptimismReceiptsRootCalculator.Instance.GetReceiptsRoot(receipts, spec, suggestedRoot);
     }
 }

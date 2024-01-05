@@ -125,7 +125,7 @@ namespace Nethermind.Synchronization.Blocks
 
         private void ValidateReceipts(Block block, TxReceipt[] blockReceipts)
         {
-            Hash256 receiptsRoot = new ReceiptTrie(_specProvider.GetSpec(block.Header), blockReceipts).RootHash;
+            Hash256 receiptsRoot = ReceiptsRootCalculator.Instance.GetReceiptsRoot(blockReceipts, _specProvider.GetSpec(block.Header), block.ReceiptsRoot);
 
             if (receiptsRoot != block.ReceiptsRoot)
             {

@@ -9,6 +9,8 @@ namespace Nethermind.Serialization.Rlp
 {
     public class ReceiptMessageDecoder : IRlpStreamDecoder<TxReceipt>
     {
+        public static readonly ReceiptMessageDecoder Instance = new();
+
         static ReceiptMessageDecoder()
         {
             Rlp.Decoders[typeof(TxReceipt)] = new ReceiptMessageDecoder();

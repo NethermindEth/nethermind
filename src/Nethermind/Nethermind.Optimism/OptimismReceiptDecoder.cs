@@ -9,10 +9,7 @@ namespace Nethermind.Optimism;
 
 public class OptimismReceiptDecoder : IRlpStreamDecoder<OptimismTxReceipt>
 {
-    static OptimismReceiptDecoder()
-    {
-        Rlp.Decoders[typeof(OptimismTxReceipt)] = new OptimismReceiptDecoder();
-    }
+    public static readonly OptimismReceiptDecoder Instance = new();
 
     public OptimismTxReceipt Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {

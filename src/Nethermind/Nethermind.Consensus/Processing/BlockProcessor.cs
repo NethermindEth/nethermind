@@ -239,7 +239,7 @@ public partial class BlockProcessor : IBlockProcessor
             block.Header.BlobGasUsed = BlobGasCalculator.CalculateBlobGas(block.Transactions);
         }
 
-        block.Header.ReceiptsRoot = receipts.GetReceiptsRoot(spec, block.ReceiptsRoot);
+        block.Header.ReceiptsRoot = CalculateReceiptsRoot(receipts, spec, block.ReceiptsRoot);
         ApplyMinerRewards(block, blockTracer, spec);
         _withdrawalProcessor.ProcessWithdrawals(block, spec);
         ReceiptsTracer.EndBlockTrace();
@@ -255,6 +255,11 @@ public partial class BlockProcessor : IBlockProcessor
         block.Header.Hash = block.Header.CalculateHash();
 
         return receipts;
+    }
+
+    protected virtual Hash256 CalculateReceiptsRoot(TxReceipt[] receipts, IReceiptSpec spec, Hash256? suggestedRoot)
+    {
+        return ReceiptsRootCalculator.Instance.GetReceiptsRoot(receipts, spec, suggestedRoot);
     }
 
     // TODO: block processor pipeline
