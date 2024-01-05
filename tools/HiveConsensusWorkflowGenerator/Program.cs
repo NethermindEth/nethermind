@@ -29,7 +29,7 @@ public static class Program
         int groupIndex = 0;
         foreach (var test in sortedTests.Take(MaxJobsCount))
         {
-            string fileName = Path.GetFileNameWithoutExtension(test.Key); // Strip the .json extension
+            string fileName = test.Key;
             groupedTestNames[groupIndex].Add((test.Key, fileName));
             groupIndex = (groupIndex + 1) % MaxJobsCount;
         }
@@ -37,7 +37,7 @@ public static class Program
         // Subsequent distribution with size limit
         foreach (var test in sortedTests.Skip(MaxJobsCount))
         {
-            string fileName = Path.GetFileNameWithoutExtension(test.Key); // Strip the .json extension
+            string fileName = test.Key;
             groupIndex = FindSuitableGroupIndex(groupedTestNames, pathsToBeTested, MaxSizeWithoutSplitting, test.Value);
             if (groupIndex != -1)
             {
@@ -81,21 +81,10 @@ public static class Program
         return suitableIndex;
     }
 
-
-
     private static IEnumerable<string> GetTestsDirectories(string path)
     {
-        string testsDirectory = string.Concat(FindDirectory("nethermind"), "/", path, "/BlockchainTests");
-
-        foreach (string directory in Directory.GetDirectories(testsDirectory, "st*", SearchOption.AllDirectories))
-        {
-            yield return directory;
-        }
-
-        foreach (string directory in Directory.GetDirectories(testsDirectory, "bc*", SearchOption.AllDirectories))
-        {
-            yield return directory;
-        }
+        string testsDirectory = Path.Combine(FindDirectory("nethermind"), path, "BlockchainTests");
+        yield return testsDirectory;
     }
 
     private static string FindDirectory(string searchPattern)
@@ -127,37 +116,26 @@ public static class Program
 
         foreach (string directory in directories)
         {
-            long sum = 0;
-
-            string parentDirectory = Directory.GetParent(directory)?.ToString() ?? "";
-            string prefix = Path.GetFileName(parentDirectory)[..2];
-            if (!prefix.Equals("st") && !prefix.Equals("bc"))
+            // Recursively find all JSON files
+            foreach (string file in Directory.GetFiles(directory, "*.json", SearchOption.AllDirectories))
             {
-                foreach (string file in Directory.GetFiles(directory, "*", SearchOption.AllDirectories))
-                {
-                    long fileSize = (new FileInfo(file)).Length;
-                    sum += fileSize;
-                }
+                long fileSize = (new FileInfo(file)).Length;
 
-                if (sum < MaxSizeWithoutSplitting)
+                // Create a key from the grandparent and parent directory names and the file name
+                DirectoryInfo parentDirInfo = Directory.GetParent(file);
+                string parentDirName = parentDirInfo != null ? Path.GetFileName(parentDirInfo.FullName) : "";
+                string grandParentDirName = parentDirInfo?.Parent != null ? Path.GetFileName(parentDirInfo.Parent.FullName) : "";
+                string fileName = Path.GetFileName(file);
+                string key = $"{grandParentDirName}/{parentDirName}/{fileName}";
+
+                // Add the file size to the dictionary or throw an error if the file already exists
+                if (pathsToBeTested.ContainsKey(key))
                 {
-                    pathsToBeTested.Add(directory, sum);
+                    throw new InvalidOperationException($"Duplicate file detected: {key}");
                 }
                 else
                 {
-                    foreach (string file in Directory.GetFiles(directory, "*", SearchOption.AllDirectories))
-                    {
-                        string fileName = Path.GetFileName(file);
-                        long fileSize = (new FileInfo(file)).Length;
-                        if (pathsToBeTested.TryGetValue(fileName, out long size))
-                        {
-                            size += fileSize;
-                        }
-                        else
-                        {
-                            pathsToBeTested.Add(fileName, fileSize);
-                        }
-                    }
+                    pathsToBeTested.Add(key, fileSize);
                 }
             }
         }
