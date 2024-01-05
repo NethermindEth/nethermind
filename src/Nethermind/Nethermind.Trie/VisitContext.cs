@@ -22,8 +22,6 @@ namespace Nethermind.Trie
 
         public bool KeepTrackOfAbsolutePath { get; init; }
 
-        public ITrieNodeResolver StorageTrieNodeResolver { get; init; }
-
         private List<byte>? _absolutePathNibbles;
 
         public List<byte> AbsolutePathNibbles => _absolutePathNibbles ??= new List<byte>();
