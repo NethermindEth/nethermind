@@ -54,6 +54,7 @@
     <PackageVersion Include="Nethermind.DotNetty.Transport" Version="1.0.1" />
     <PackageVersion Include="Nethermind.Gmp" Version="1.0.1" />
     <PackageVersion Include="Nethermind.Numerics.Int256" Version="1.1.1" />
+    <PackageVersion Include="Nethermind.RocksDB.Bindings" Version="8.3.2.39829-preview.14" />
     <PackageVersion Include="Nito.Collections.Deque" Version="1.2.1" />
     <PackageVersion Include="NLog" Version="5.2.8" />
     <PackageVersion Include="NLog.Targets.Seq" Version="3.0.0" />
