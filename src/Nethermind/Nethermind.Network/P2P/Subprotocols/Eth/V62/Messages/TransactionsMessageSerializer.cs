@@ -42,7 +42,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
             return Rlp.LengthOfSequence(contentLength);
         }
 
-        public Transaction[] DeserializeTxs(RlpStream rlpStream)
+        public static Transaction[] DeserializeTxs(RlpStream rlpStream)
         {
             return Rlp.DecodeArray<Transaction>(rlpStream, RlpBehaviors.InMempoolForm);
         }

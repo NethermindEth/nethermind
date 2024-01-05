@@ -1276,7 +1276,7 @@ namespace Nethermind.Blockchain
         /// <returns></returns>
         private bool ShouldCache(long number)
         {
-            return number == 0L || Head is null || number <= Head.Number + 1;
+            return number == 0L || Head is null || number >= Head.Number - HeaderStore.CacheSize;
         }
 
         public ChainLevelInfo? FindLevel(long number)
@@ -1438,6 +1438,7 @@ namespace Nethermind.Blockchain
                 {
                     current.TotalDifficulty = current.Difficulty;
                     BlockInfo blockInfo = new(current.Hash, current.Difficulty);
+                    blockInfo.WasProcessed = true;
                     UpdateOrCreateLevel(current.Number, current.Hash, blockInfo);
                 }
 

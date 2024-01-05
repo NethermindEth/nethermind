@@ -26,7 +26,7 @@ namespace Nethermind.Synchronization.Blocks
 
         public bool CanBeReplaced => true;
 
-        private long? GetSpeed(INodeStatsManager nodeStatsManager, PeerInfo peerInfo)
+        private static long? GetSpeed(INodeStatsManager nodeStatsManager, PeerInfo peerInfo)
         {
             long? headersSpeed = nodeStatsManager.GetOrAdd(peerInfo.SyncPeer.Node).GetAverageTransferSpeed(TransferSpeedType.Headers);
             long? bodiesSpeed = nodeStatsManager.GetOrAdd(peerInfo.SyncPeer.Node).GetAverageTransferSpeed(TransferSpeedType.Bodies);

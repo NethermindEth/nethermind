@@ -21,7 +21,7 @@ public class ParityAccountStateChangeJsonConverter : JsonConverter<ParityAccount
         Type typeToConvert,
         JsonSerializerOptions options) => throw new NotImplementedException();
 
-    private void WriteChange(Utf8JsonWriter writer, ParityStateChange<byte[]> change, JsonSerializerOptions options)
+    private static void WriteChange(Utf8JsonWriter writer, ParityStateChange<byte[]> change, JsonSerializerOptions options)
     {
         if (change is null)
         {
@@ -51,7 +51,7 @@ public class ParityAccountStateChangeJsonConverter : JsonConverter<ParityAccount
         }
     }
 
-    private void WriteChange(Utf8JsonWriter writer, ParityStateChange<UInt256?> change, JsonSerializerOptions options)
+    private static void WriteChange(Utf8JsonWriter writer, ParityStateChange<UInt256?> change, JsonSerializerOptions options)
     {
         if (change is null)
         {

@@ -34,6 +34,7 @@ namespace Nethermind.Api
         public long? BadBlocksStored { get; set; } = 100;
         public bool DisableGcOnNewPayload { get; set; } = true;
         public bool DisableMallocOpts { get; set; } = false;
+        public long? ExitOnBlockNumber { get; set; } = null;
 
         [Obsolete("Use DiagnosticMode with MemDb instead")]
         public bool UseMemDb

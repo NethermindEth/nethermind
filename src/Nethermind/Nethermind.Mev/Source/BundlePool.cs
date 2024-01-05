@@ -188,7 +188,7 @@ namespace Nethermind.Mev.Source
             return false;
         }
 
-        private bool BundleInTimestampRange(MevBundle bundle, UInt256 minTimestamp, UInt256 maxTimestamp)
+        private static bool BundleInTimestampRange(MevBundle bundle, UInt256 minTimestamp, UInt256 maxTimestamp)
         {
             bool bundleIsInFuture = bundle.MinTimestamp != UInt256.Zero && minTimestamp < bundle.MinTimestamp;
             bool bundleIsTooOld = bundle.MaxTimestamp != UInt256.Zero && maxTimestamp > bundle.MaxTimestamp;
@@ -348,7 +348,7 @@ namespace Nethermind.Mev.Source
 
         private void RemoveBundlesUpToBlock(long blockNumber)
         {
-            void StopSimulations(IEnumerable<SimulatedMevBundleContext> simulations)
+            static void StopSimulations(IEnumerable<SimulatedMevBundleContext> simulations)
             {
                 foreach (SimulatedMevBundleContext simulation in simulations)
                 {
@@ -419,7 +419,7 @@ namespace Nethermind.Mev.Source
             }
         }
 
-        private void StopSimulation(SimulatedMevBundleContext simulation)
+        private static void StopSimulation(SimulatedMevBundleContext simulation)
         {
             if (!simulation.Task.IsCompleted)
             {

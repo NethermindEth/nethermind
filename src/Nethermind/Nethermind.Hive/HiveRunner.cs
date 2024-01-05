@@ -112,11 +112,6 @@ namespace Nethermind.Hive
             }
         }
 
-        public async Task StopAsync()
-        {
-            await Task.CompletedTask;
-        }
-
         private async Task InitializeBlocks(string blocksDir, CancellationToken cancellationToken)
         {
             if (!Directory.Exists(blocksDir))
@@ -191,7 +186,7 @@ namespace Nethermind.Hive
             return Rlp.Decode<Block>(blockRlp);
         }
 
-        private async Task WaitForBlockProcessing(SemaphoreSlim semaphore)
+        private static async Task WaitForBlockProcessing(SemaphoreSlim semaphore)
         {
             if (!await semaphore.WaitAsync(5000))
             {

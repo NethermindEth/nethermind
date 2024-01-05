@@ -322,22 +322,32 @@ namespace Nethermind.Trie.Pruning
 
         public event EventHandler<ReorgBoundaryReached>? ReorgBoundaryReached;
 
-        public byte[] LoadRlp(Hash256 keccak, IKeyValueStore? keyValueStore, ReadFlags readFlags = ReadFlags.None)
+        public byte[]? TryLoadRlp(Hash256 keccak, IKeyValueStore? keyValueStore, ReadFlags readFlags = ReadFlags.None)
         {
             keyValueStore ??= _keyValueStore;
             byte[]? rlp = keyValueStore.Get(keccak.Bytes, readFlags);
 
+            if (rlp is not null)
+            {
+                Metrics.LoadedFromDbNodesCount++;
+            }
+
+            return rlp;
+        }
+
+        public byte[] LoadRlp(Hash256 keccak, IKeyValueStore? keyValueStore, ReadFlags readFlags = ReadFlags.None)
+        {
+            byte[]? rlp = TryLoadRlp(keccak, keyValueStore, readFlags);
             if (rlp is null)
             {
                 throw new TrieNodeException($"Node {keccak} is missing from the DB", keccak);
             }
 
-            Metrics.LoadedFromDbNodesCount++;
-
             return rlp;
         }
 
         public virtual byte[] LoadRlp(Hash256 keccak, ReadFlags readFlags = ReadFlags.None) => LoadRlp(keccak, null, readFlags);
+        public virtual byte[]? TryLoadRlp(Hash256 keccak, ReadFlags readFlags = ReadFlags.None) => TryLoadRlp(keccak, null, readFlags);
 
         public bool IsPersisted(in ValueHash256 keccak)
         {
@@ -812,7 +822,7 @@ namespace Nethermind.Trie.Pruning
             });
         }
 
-        private byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
+        private byte[]? GetByHash(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
         {
             return _pruningStrategy.PruningEnabled
                    && _dirtyNodes.AllNodes.TryGetValue(new ValueHash256(key), out TrieNode? trieNode)
@@ -823,9 +833,14 @@ namespace Nethermind.Trie.Pruning
                 : _keyValueStore.Get(key, flags);
         }
 
-        public IKeyValueStore AsKeyValueStore() => _publicStore;
+        public IReadOnlyKeyValueStore TrieNodeRlpStore => _publicStore;
 
-        private class TrieKeyValueStore : IKeyValueStore
+        public void Set(in ValueHash256 hash, byte[] rlp)
+        {
+            _keyValueStore.Set(hash, rlp);
+        }
+
+        private class TrieKeyValueStore : IReadOnlyKeyValueStore
         {
             private readonly TrieStore _trieStore;
 
@@ -834,10 +849,7 @@ namespace Nethermind.Trie.Pruning
                 _trieStore = trieStore;
             }
 
-            public byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None) => _trieStore.Get(key, flags);
-
-            public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None)
-                => _trieStore._keyValueStore.Set(key, value, flags);
+            public byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None) => _trieStore.GetByHash(key, flags);
         }
     }
 }

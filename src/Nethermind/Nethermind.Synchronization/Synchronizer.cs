@@ -391,7 +391,7 @@ namespace Nethermind.Synchronization
                 _logManager);
         }
 
-        private NodeStatsEventType Convert(SyncEvent syncEvent)
+        private static NodeStatsEventType Convert(SyncEvent syncEvent)
         {
             return syncEvent switch
             {

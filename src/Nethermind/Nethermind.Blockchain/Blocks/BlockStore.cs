@@ -102,7 +102,7 @@ public class BlockStore : IBlockStore
             memoryOwner = _blockDb.GetOwnedMemory(blockHash.Bytes);
         }
 
-        return _blockDecoder.DecodeToReceiptRecoveryBlock(memoryOwner, memoryOwner?.Memory ?? Memory<byte>.Empty, RlpBehaviors.None);
+        return BlockDecoder.DecodeToReceiptRecoveryBlock(memoryOwner, memoryOwner?.Memory ?? Memory<byte>.Empty, RlpBehaviors.None);
     }
 
     public void Cache(Block block)

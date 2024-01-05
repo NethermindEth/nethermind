@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using FluentAssertions;
+using Nethermind.Core;
 using Nethermind.Db.FullPruning;
 using NSubstitute;
 using NUnit.Framework;
@@ -63,6 +64,34 @@ namespace Nethermind.Db.Test.FullPruning
             byte[] value = { 5, 6 };
             test.FullPruningDb[key] = value;
             test.CurrentMirrorDb[key].Should().BeEquivalentTo(value);
+        }
+
+        [Test]
+        public void during_pruning_duplicate_on_read()
+        {
+            TestContext test = new();
+            byte[] key = { 1, 2 };
+            byte[] value = { 5, 6 };
+            test.FullPruningDb[key] = value;
+
+            test.FullPruningDb.TryStartPruning(out IPruningContext _);
+
+            test.FullPruningDb.Get(key);
+            test.CurrentMirrorDb[key].Should().BeEquivalentTo(value);
+        }
+
+        [Test]
+        public void during_pruning_dont_duplicate_read_with_skip_duplicate_read()
+        {
+            TestContext test = new();
+            byte[] key = { 1, 2 };
+            byte[] value = { 5, 6 };
+            test.FullPruningDb[key] = value;
+
+            test.FullPruningDb.TryStartPruning(out IPruningContext _);
+
+            test.FullPruningDb.Get(key, ReadFlags.SkipDuplicateRead);
+            test.CurrentMirrorDb[key].Should().BeNull();
         }
 
         [Test]

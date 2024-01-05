@@ -41,15 +41,13 @@ namespace Nethermind.Crypto
                 _logger.Debug(
                     $"Signing transaction {tx.SenderAddress} -> {tx.To} ({tx.Value}) with data of length {tx.Data?.Length}");
 
-            //Keccak hash = Keccak.Compute(Bytes.Concat((byte)tx.Type, Rlp.Encode(tx, true, isEip155Enabled, _chainIdValue).Bytes));
-
-            Hash256 hash = Keccak.Compute(Rlp.Encode(tx, true, isEip155Enabled, _chainIdValue).Bytes);
-            tx.Signature = Sign(privateKey, hash);
-
             if (tx.Type != TxType.Legacy)
             {
                 tx.ChainId = _chainIdValue;
             }
+
+            Hash256 hash = Keccak.Compute(Rlp.Encode(tx, true, isEip155Enabled, _chainIdValue).Bytes);
+            tx.Signature = Sign(privateKey, hash);
 
             if (tx.Type == TxType.Legacy && isEip155Enabled)
             {

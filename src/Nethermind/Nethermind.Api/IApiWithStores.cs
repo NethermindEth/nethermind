@@ -16,7 +16,7 @@ namespace Nethermind.Api
 {
     public interface IApiWithStores : IBasicApi
     {
-        ITxStorage? BlobTxStorage { get; set; }
+        IBlobTxStorage? BlobTxStorage { get; set; }
         IBlockTree? BlockTree { get; set; }
         IBloomStorage? BloomStorage { get; set; }
         IChainLevelInfoRepository? ChainLevelInfoRepository { get; set; }
