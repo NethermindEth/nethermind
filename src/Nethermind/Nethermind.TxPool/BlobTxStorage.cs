@@ -65,7 +65,16 @@ public class BlobTxStorage : IBlobTxStorage
         Span<byte> txHashPrefixed = stackalloc byte[64];
         GetHashPrefixedByTimestamp(transaction.Timestamp, transaction.Hash, txHashPrefixed);
 
-        _fullBlobTxsDb.PutSpan(txHashPrefixed, EncodeTx(transaction));
+        IByteBuffer buffer = EncodeTx(transaction);
+        try
+        {
+            _fullBlobTxsDb.PutSpan(txHashPrefixed, buffer.AsSpan());
+        }
+        finally
+        {
+            buffer.Release();
+        }
+
         _lightBlobTxsDb.Set(transaction.Hash, LightTxDecoder.Encode(transaction));
     }
 
@@ -85,7 +94,15 @@ public class BlobTxStorage : IBlobTxStorage
             return;
         }
 
-        _processedBlobTxsDb.Set(blockNumber, EncodeTxs(blockBlobTransactions));
+        IByteBuffer buffer = EncodeTxs(blockBlobTransactions);
+        try
+        {
+            _processedBlobTxsDb.Set(blockNumber, buffer.Array);
+        }
+        finally
+        {
+            buffer.Release();
+        }
     }
 
     public bool TryGetBlobTransactionsFromBlock(long blockNumber, out Transaction[]? blockBlobTransactions)
@@ -138,17 +155,18 @@ public class BlobTxStorage : IBlobTxStorage
         hash.Bytes.CopyTo(txHashPrefixed[32..]);
     }
 
-    private Span<byte> EncodeTx(Transaction transaction)
+    private IByteBuffer EncodeTx(Transaction transaction)
     {
         int length = _txDecoder.GetLength(transaction, RlpBehaviors.InMempoolForm);
         IByteBuffer byteBuffer = PooledByteBufferAllocator.Default.Buffer(length);
         using NettyRlpStream rlpStream = new(byteBuffer);
         rlpStream.Encode(transaction, RlpBehaviors.InMempoolForm);
 
-        return byteBuffer.AsSpan();
+        byteBuffer.Retain();
+        return byteBuffer;
     }
 
-    private byte[] EncodeTxs(IList<Transaction> blockBlobTransactions)
+    private IByteBuffer EncodeTxs(IList<Transaction> blockBlobTransactions)
     {
         int contentLength = GetLength(blockBlobTransactions);
 
@@ -160,7 +178,8 @@ public class BlobTxStorage : IBlobTxStorage
             _txDecoder.Encode(rlpStream, transaction, RlpBehaviors.InMempoolForm);
         }
 
-        return byteBuffer.Array;
+        byteBuffer.Retain();
+        return byteBuffer;
     }
 
     private int GetLength(IList<Transaction> blockBlobTransactions)
