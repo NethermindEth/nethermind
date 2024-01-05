@@ -20,9 +20,9 @@ namespace Nethermind.Consensus.AuRa.Rewards
 
         public AuRaRewardCalculator(AuRaParameters auRaParameters, IAbiEncoder abiEncoder, ITransactionProcessor transactionProcessor)
         {
-            if (auRaParameters is null) throw new ArgumentNullException(nameof(auRaParameters));
-            if (abiEncoder is null) throw new ArgumentNullException(nameof(abiEncoder));
-            if (transactionProcessor is null) throw new ArgumentNullException(nameof(transactionProcessor));
+            ArgumentNullException.ThrowIfNull(auRaParameters);
+            ArgumentNullException.ThrowIfNull(abiEncoder);
+            ArgumentNullException.ThrowIfNull(transactionProcessor);
 
             IList<IRewardContract> BuildTransitions()
             {
@@ -48,7 +48,7 @@ namespace Nethermind.Consensus.AuRa.Rewards
                 return contracts;
             }
 
-            if (auRaParameters is null) throw new ArgumentNullException(nameof(AuRaParameters));
+            ArgumentNullException.ThrowIfNull(auRaParameters);
             _contracts = BuildTransitions();
             _blockRewardCalculator = new StaticRewardCalculator(auRaParameters.BlockReward);
         }
@@ -66,7 +66,7 @@ namespace Nethermind.Consensus.AuRa.Rewards
         }
 
 
-        private BlockReward[] CalculateRewardsWithContract(Block block, IRewardContract contract)
+        private static BlockReward[] CalculateRewardsWithContract(Block block, IRewardContract contract)
         {
             (Address[] beneficieries, ushort[] kinds) GetBeneficiaries()
             {

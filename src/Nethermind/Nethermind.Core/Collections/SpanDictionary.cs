@@ -39,10 +39,7 @@ namespace Nethermind.Core.Collections
 
         public SpanDictionary(int capacity, ISpanEqualityComparer<TKey> comparer)
         {
-            if (capacity < 0)
-            {
-                throw new ArgumentOutOfRangeException(nameof(capacity));
-            }
+            ArgumentOutOfRangeException.ThrowIfNegative(capacity);
 
             if (capacity > 0)
             {
@@ -946,10 +943,7 @@ namespace Nethermind.Core.Collections
         /// </summary>
         public int EnsureCapacity(int capacity)
         {
-            if (capacity < 0)
-            {
-                throw new ArgumentOutOfRangeException(nameof(capacity));
-            }
+            ArgumentOutOfRangeException.ThrowIfNegative(capacity);
 
             int currentCapacity = _entries == null ? 0 : _entries.Length;
             if (currentCapacity >= capacity)
@@ -992,10 +986,7 @@ namespace Nethermind.Core.Collections
         /// </remarks>
         public void TrimExcess(int capacity)
         {
-            if (capacity < Count)
-            {
-                throw new ArgumentOutOfRangeException(nameof(capacity));
-            }
+            ArgumentOutOfRangeException.ThrowIfLessThan(capacity, Count);
 
             int newSize = HashHelpers.GetPrime(capacity);
             Entry[]? oldEntries = _entries;
@@ -1204,11 +1195,11 @@ namespace Nethermind.Core.Collections
                 return false;
             }
 
-            public KeyValuePair<TKey[], TValue> Current => _current;
+            public readonly KeyValuePair<TKey[], TValue> Current => _current;
 
-            public void Dispose() { }
+            public readonly void Dispose() { }
 
-            object? IEnumerator.Current
+            readonly object? IEnumerator.Current
             {
                 get
                 {
@@ -1237,7 +1228,7 @@ namespace Nethermind.Core.Collections
                 _current = default;
             }
 
-            DictionaryEntry IDictionaryEnumerator.Entry
+            readonly DictionaryEntry IDictionaryEnumerator.Entry
             {
                 get
                 {
@@ -1250,7 +1241,7 @@ namespace Nethermind.Core.Collections
                 }
             }
 
-            object IDictionaryEnumerator.Key
+            readonly object IDictionaryEnumerator.Key
             {
                 get
                 {
@@ -1263,7 +1254,7 @@ namespace Nethermind.Core.Collections
                 }
             }
 
-            object? IDictionaryEnumerator.Value
+            readonly object? IDictionaryEnumerator.Value
             {
                 get
                 {
@@ -1404,7 +1395,7 @@ namespace Nethermind.Core.Collections
                     _currentKey = default;
                 }
 
-                public void Dispose() { }
+                public readonly void Dispose() { }
 
                 public bool MoveNext()
                 {
@@ -1429,9 +1420,9 @@ namespace Nethermind.Core.Collections
                     return false;
                 }
 
-                public TKey[] Current => _currentKey!;
+                public readonly TKey[] Current => _currentKey!;
 
-                object? IEnumerator.Current
+                readonly object? IEnumerator.Current
                 {
                     get
                     {
@@ -1581,7 +1572,7 @@ namespace Nethermind.Core.Collections
                     _currentValue = default;
                 }
 
-                public void Dispose() { }
+                public readonly void Dispose() { }
 
                 public bool MoveNext()
                 {
@@ -1605,9 +1596,9 @@ namespace Nethermind.Core.Collections
                     return false;
                 }
 
-                public TValue Current => _currentValue!;
+                public readonly TValue Current => _currentValue!;
 
-                object? IEnumerator.Current
+                readonly object? IEnumerator.Current
                 {
                     get
                     {

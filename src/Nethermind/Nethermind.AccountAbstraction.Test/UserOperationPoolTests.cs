@@ -36,16 +36,16 @@ namespace Nethermind.AccountAbstraction.Test
 #pragma warning disable NUnit1032
         private IUserOperationPool _userOperationPool = Substitute.For<IUserOperationPool>();
 #pragma warning restore NUnit1032
-        private IUserOperationSimulator _simulator = Substitute.For<IUserOperationSimulator>();
-        private IBlockTree _blockTree = Substitute.For<IBlockTree>();
-        private IReceiptFinder _receiptFinder = Substitute.For<IReceiptFinder>();
-        private ILogFinder _logFinder = Substitute.For<ILogFinder>();
-        private IWorldState _stateProvider = Substitute.For<IWorldState>();
-        private ISpecProvider _specProvider = Substitute.For<ISpecProvider>();
+        private readonly IUserOperationSimulator _simulator = Substitute.For<IUserOperationSimulator>();
+        private readonly IBlockTree _blockTree = Substitute.For<IBlockTree>();
+        private readonly IReceiptFinder _receiptFinder = Substitute.For<IReceiptFinder>();
+        private readonly ILogFinder _logFinder = Substitute.For<ILogFinder>();
+        private readonly IWorldState _stateProvider = Substitute.For<IWorldState>();
+        private readonly ISpecProvider _specProvider = Substitute.For<ISpecProvider>();
         private readonly ISigner _signer = Substitute.For<ISigner>();
         private readonly Hash256 _userOperationEventTopic = new("0x33fd4d1f25a5461bea901784a6571de6debc16cd0831932c22c6969cd73ba994");
         private readonly string _entryPointContractAddress = "0x8595dd9e0438640b5e1254f9df579ac12a86865f";
-        private static Address _notAnAddress = new("0x373f2D08b1C195fF08B9AbEdE3C78575FAAC2aCf");
+        private static readonly Address _notAnAddress = new("0x373f2D08b1C195fF08B9AbEdE3C78575FAAC2aCf");
 
         [Test]
         public void Can_add_user_operation_correctly()

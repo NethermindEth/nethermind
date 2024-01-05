@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Logging;
@@ -134,5 +135,25 @@ public class ProgressTrackerTests
 
         request.CodesRequest.Should().BeNull();
         request.StorageRangeRequest.Should().NotBeNull();
+    }
+
+    [Test]
+    public void Will_mark_progress_and_flush_when_finished()
+    {
+        BlockTree blockTree = Build.A.BlockTree().WithBlocks(Build.A.Block
+            .WithStateRoot(Keccak.EmptyTreeHash)
+            .TestObject).TestObject;
+        TestMemDb memDb = new TestMemDb();
+        ProgressTracker progressTracker = new ProgressTracker(blockTree, memDb, LimboLogs.Instance, 1);
+
+        (SnapSyncBatch request, bool finished) = progressTracker.GetNextRequest();
+        request.AccountRangeRequest.Should().NotBeNull();
+        progressTracker.UpdateAccountRangePartitionProgress(request.AccountRangeRequest!.LimitHash!.Value, Keccak.MaxValue, false);
+        progressTracker.ReportAccountRangePartitionFinished(request.AccountRangeRequest!.LimitHash!.Value);
+        (_, finished) = progressTracker.GetNextRequest();
+        finished.Should().BeTrue();
+
+        memDb.WasFlushed.Should().BeTrue();
+        memDb[ProgressTracker.ACC_PROGRESS_KEY].Should().BeEquivalentTo(Keccak.MaxValue.BytesToArray());
     }
 }

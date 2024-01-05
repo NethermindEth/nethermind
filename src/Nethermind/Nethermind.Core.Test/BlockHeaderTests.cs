@@ -114,10 +114,13 @@ public class BlockHeaderTests
         IReleaseSpec releaseSpec = Substitute.For<IReleaseSpec>();
         releaseSpec.IsEip1559Enabled.Returns(true);
         releaseSpec.Eip1559BaseFeeMinValue.Returns((UInt256?)minimalBaseFee);
+        releaseSpec.ForkBaseFee.Returns(Eip1559Constants.DefaultForkBaseFee);
+        releaseSpec.BaseFeeMaxChangeDenominator.Returns(Eip1559Constants.DefaultBaseFeeMaxChangeDenominator);
+        releaseSpec.ElasticityMultiplier.Returns(Eip1559Constants.DefaultElasticityMultiplier);
 
         BlockHeader blockHeader = Build.A.BlockHeader.TestObject;
         blockHeader.Number = 2001;
-        blockHeader.GasLimit = gasTarget * Eip1559Constants.ElasticityMultiplier;
+        blockHeader.GasLimit = gasTarget * Eip1559Constants.DefaultElasticityMultiplier;
         blockHeader.BaseFeePerGas = (UInt256)baseFee;
         blockHeader.GasUsed = gasUsed;
         UInt256 actualBaseFee = BaseFeeCalculator.Calculate(blockHeader, releaseSpec);
@@ -141,10 +144,13 @@ public class BlockHeaderTests
     {
         IReleaseSpec releaseSpec = Substitute.For<IReleaseSpec>();
         releaseSpec.IsEip1559Enabled.Returns(true);
+        releaseSpec.ForkBaseFee.Returns(Eip1559Constants.DefaultForkBaseFee);
+        releaseSpec.BaseFeeMaxChangeDenominator.Returns(Eip1559Constants.DefaultBaseFeeMaxChangeDenominator);
+        releaseSpec.ElasticityMultiplier.Returns(Eip1559Constants.DefaultElasticityMultiplier);
 
         BlockHeader blockHeader = Build.A.BlockHeader.TestObject;
         blockHeader.Number = 2001;
-        blockHeader.GasLimit = testCase.Info.ParentTargetGasUsed * Eip1559Constants.ElasticityMultiplier;
+        blockHeader.GasLimit = testCase.Info.ParentTargetGasUsed * Eip1559Constants.DefaultElasticityMultiplier;
         blockHeader.BaseFeePerGas = (UInt256)testCase.Info.ParentBaseFee;
         blockHeader.GasUsed = testCase.Info.ParentGasUsed;
         UInt256 actualBaseFee = BaseFeeCalculator.Calculate(blockHeader, releaseSpec);

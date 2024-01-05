@@ -100,33 +100,17 @@ namespace Nethermind.JsonRpc.Modules.Trace
 
             writer.WriteString("type"u8, value.Type);
             writer.WriteEndObject();
+
             foreach (ParityTraceAction subtrace in value.Subtraces)
             {
-                writer.WriteStartObject();
-
-                writer.WritePropertyName("action"u8);
-                JsonSerializer.Serialize(writer, subtrace, options);
-
-                writer.WritePropertyName("result"u8);
-                JsonSerializer.Serialize(writer, subtrace.Result, options);
-
-                writer.WritePropertyName("subtraces"u8);
-                JsonSerializer.Serialize(writer, subtrace.Subtraces.Count, options);
-
-                writer.WritePropertyName("traceAddress"u8);
-                JsonSerializer.Serialize(writer, subtrace.TraceAddress, options);
-
-                writer.WritePropertyName("type"u8);
-                JsonSerializer.Serialize(writer, subtrace.Type, options);
-
-                writer.WriteEndObject();
+                Write(writer, subtrace, options);
             }
         }
     }
 
     public class ParityTxTraceFromReplayJsonConverter : JsonConverter<ParityTxTraceFromReplay>
     {
-        ParityTraceActionFromReplayJsonConverter _actionConverter = new();
+        readonly ParityTraceActionFromReplayJsonConverter _actionConverter = new();
         public override ParityTxTraceFromReplay Read(
             ref Utf8JsonReader reader,
             Type typeToConvert,

@@ -5,6 +5,8 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Security.Cryptography;
+
+using Nethermind.Core.Resettables;
 using Nethermind.KeyStore.Config;
 using Nethermind.Logging;
 
@@ -41,7 +43,7 @@ namespace Nethermind.KeyStore
                         }
                     case "aes-128-ctr":
                         {
-                            using var outputEncryptedStream = new MemoryStream();
+                            using var outputEncryptedStream = RecyclableStream.GetStream("aes-128-ctr-encrypt");
                             using var inputStream = new MemoryStream(content);
                             AesCtr(key, iv, inputStream, outputEncryptedStream);
                             outputEncryptedStream.Position = 0;
@@ -78,7 +80,7 @@ namespace Nethermind.KeyStore
                     case "aes-128-ctr":
                         {
                             using var outputEncryptedStream = new MemoryStream(cipher);
-                            using var outputDecryptedStream = new MemoryStream();
+                            using var outputDecryptedStream = RecyclableStream.GetStream("aes-128-ctr-decrypt");
                             AesCtr(key, iv, outputEncryptedStream, outputDecryptedStream);
                             outputDecryptedStream.Position = 0;
                             return outputDecryptedStream.ToArray();
@@ -94,11 +96,11 @@ namespace Nethermind.KeyStore
             }
         }
 
-        private byte[] Execute(ICryptoTransform cryptoTransform, byte[] data)
+        private static byte[] Execute(ICryptoTransform cryptoTransform, byte[] data)
         {
-            using (var memoryStream = new MemoryStream())
+            using (var memoryStream = RecyclableStream.GetStream(nameof(AesEncrypter)))
             {
-                using (var cryptoStream = new CryptoStream(memoryStream, cryptoTransform, CryptoStreamMode.Write))
+                using (var cryptoStream = new CryptoStream(memoryStream, cryptoTransform, CryptoStreamMode.Write, leaveOpen: true))
                 {
                     cryptoStream.Write(data, 0, data.Length);
                     cryptoStream.FlushFinalBlock();

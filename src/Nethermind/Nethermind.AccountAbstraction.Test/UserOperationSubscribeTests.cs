@@ -49,11 +49,11 @@ namespace Nethermind.AccountAbstraction.Test
         private IJsonRpcDuplexClient _jsonRpcDuplexClient = null!;
         private IJsonSerializer _jsonSerializer = null!;
         private ISpecProvider _specProvider = null!;
-        private ISyncConfig _syncConfig = new SyncConfig();
-        private IDictionary<Address, IUserOperationPool> _userOperationPools = new Dictionary<Address, IUserOperationPool>();
+        private readonly ISyncConfig _syncConfig = new SyncConfig();
+        private readonly IDictionary<Address, IUserOperationPool> _userOperationPools = new Dictionary<Address, IUserOperationPool>();
         //Any test pool and entry point addresses should work for testing.
-        private Address _testPoolAddress = Address.Zero;
-        private Address _entryPointAddress = new("0x90f3e1105e63c877bf9587de5388c23cdb702c6b");
+        private readonly Address _testPoolAddress = Address.Zero;
+        private readonly Address _entryPointAddress = new("0x90f3e1105e63c877bf9587de5388c23cdb702c6b");
 
         [SetUp]
         public void Setup()
@@ -62,7 +62,7 @@ namespace Nethermind.AccountAbstraction.Test
             _blockTree = Substitute.For<IBlockTree>();
             _txPool = Substitute.For<ITxPool>();
             _receiptStorage = Substitute.For<IReceiptStorage>();
-            _receiptCanonicalityMonitor = new ReceiptCanonicalityMonitor(_blockTree, _receiptStorage, _logManager);
+            _receiptCanonicalityMonitor = new ReceiptCanonicalityMonitor(_receiptStorage, _logManager);
             _specProvider = Substitute.For<ISpecProvider>();
             _userOperationPools[_testPoolAddress] = Substitute.For<IUserOperationPool>();
             _filterStore = new FilterStore();

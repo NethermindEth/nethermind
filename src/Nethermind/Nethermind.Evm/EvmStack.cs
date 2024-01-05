@@ -218,13 +218,6 @@ public ref struct EvmStack<TTracing>
         }
     }
 
-    public void PopSignedInt256(out Int256.Int256 result)
-    {
-        // tail call into UInt256
-        Unsafe.SkipInit(out result);
-        PopUInt256(out Unsafe.As<Int256.Int256, UInt256>(ref result));
-    }
-
     /// <summary>
     /// Pops an Uint256 written in big endian.
     /// </summary>
@@ -233,9 +226,11 @@ public ref struct EvmStack<TTracing>
     /// All it does is <see cref="Unsafe.ReadUnaligned{T}(ref byte)"/> and then reverse endianness if needed. Then it creates <paramref name="result"/>.
     /// </remarks>
     /// <param name="result">The returned value.</param>
-    public void PopUInt256(out UInt256 result)
+    public bool PopUInt256(out UInt256 result)
     {
+        Unsafe.SkipInit(out result);
         ref byte bytes = ref PopBytesByRef();
+        if (Unsafe.IsNullRef(ref bytes)) return false;
 
         if (Avx2.IsSupported)
         {
@@ -271,9 +266,11 @@ public ref struct EvmStack<TTracing>
 
             result = new UInt256(u0, u1, u2, u3);
         }
+
+        return true;
     }
 
-    public bool PeekUInt256IsZero()
+    public readonly bool PeekUInt256IsZero()
     {
         int head = Head;
         if (head-- == 0)
@@ -300,7 +297,7 @@ public ref struct EvmStack<TTracing>
     {
         if (Head-- == 0)
         {
-            EvmStack.ThrowEvmStackUnderflowException();
+            return null;
         }
 
         return new Address(_bytes.Slice(Head * WordSize + WordSize - AddressSize, AddressSize).ToArray());
@@ -310,7 +307,7 @@ public ref struct EvmStack<TTracing>
     {
         if (Head-- == 0)
         {
-            EvmStack.ThrowEvmStackUnderflowException();
+            return ref Unsafe.NullRef<byte>();
         }
 
         return ref _bytes[Head * WordSize];
@@ -356,9 +353,9 @@ public ref struct EvmStack<TTracing>
         }
     }
 
-    public void Dup(in int depth)
+    public bool Dup(in int depth)
     {
-        EnsureDepth(depth);
+        if (!EnsureDepth(depth)) return false;
 
         ref byte bytes = ref MemoryMarshal.GetReference(_bytes);
 
@@ -376,19 +373,23 @@ public ref struct EvmStack<TTracing>
         {
             EvmStack.ThrowEvmStackOverflowException();
         }
+
+        return true;
     }
 
-    public readonly void EnsureDepth(int depth)
+    public readonly bool EnsureDepth(int depth)
     {
         if (Head < depth)
         {
-            EvmStack.ThrowEvmStackUnderflowException();
+            return false;
         }
+
+        return true;
     }
 
-    public readonly void Swap(int depth)
+    public readonly bool Swap(int depth)
     {
-        EnsureDepth(depth);
+        if (!EnsureDepth(depth)) return false;
 
         ref byte bytes = ref MemoryMarshal.GetReference(_bytes);
 
@@ -403,6 +404,8 @@ public ref struct EvmStack<TTracing>
         {
             Trace(depth);
         }
+
+        return true;
     }
 
     private readonly void Trace(int depth)

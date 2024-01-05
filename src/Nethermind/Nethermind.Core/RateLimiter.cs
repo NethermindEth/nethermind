@@ -48,7 +48,7 @@ public class RateLimiter
         return GetCurrentTick() < _nextSlot;
     }
 
-    public async ValueTask WaitAsync(CancellationToken ctx)
+    public Task WaitAsync(CancellationToken ctx)
     {
         long currentNextSlot = _nextSlot;
         while (true)
@@ -64,8 +64,8 @@ public class RateLimiter
         long now = GetCurrentTick();
         long toWait = currentNextSlot - now;
 
-        if (toWait <= 0) return;
+        if (toWait <= 0) return Task.CompletedTask;
 
-        await Task.Delay(TimeSpan.FromMilliseconds(TickToMs(toWait)), ctx);
+        return Task.Delay(TimeSpan.FromMilliseconds(TickToMs(toWait)), ctx);
     }
 }

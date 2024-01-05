@@ -117,7 +117,7 @@ namespace Nethermind.Evm.TransactionProcessing
 
             if (opts == ExecutionOptions.Commit || opts == ExecutionOptions.None)
             {
-                decimal gasPrice = (decimal)effectiveGasPrice / 1_000_000_000m;
+                float gasPrice = (float)((double)effectiveGasPrice / 1_000_000_000.0);
                 Metrics.MinGasPrice = Math.Min(gasPrice, Metrics.MinGasPrice);
                 Metrics.MaxGasPrice = Math.Max(gasPrice, Metrics.MaxGasPrice);
 
@@ -125,11 +125,11 @@ namespace Nethermind.Evm.TransactionProcessing
                 Metrics.BlockMaxGasPrice = Math.Max(gasPrice, Metrics.BlockMaxGasPrice);
 
                 Metrics.AveGasPrice = (Metrics.AveGasPrice * Metrics.Transactions + gasPrice) / (Metrics.Transactions + 1);
-                Metrics.EstMedianGasPrice += Metrics.AveGasPrice * 0.01m * decimal.Sign(gasPrice - Metrics.EstMedianGasPrice);
+                Metrics.EstMedianGasPrice += Metrics.AveGasPrice * 0.01f * float.Sign(gasPrice - Metrics.EstMedianGasPrice);
                 Metrics.Transactions++;
 
                 Metrics.BlockAveGasPrice = (Metrics.BlockAveGasPrice * Metrics.BlockTransactions + gasPrice) / (Metrics.BlockTransactions + 1);
-                Metrics.BlockEstMedianGasPrice += Metrics.BlockAveGasPrice * 0.01m * decimal.Sign(gasPrice - Metrics.BlockEstMedianGasPrice);
+                Metrics.BlockEstMedianGasPrice += Metrics.BlockAveGasPrice * 0.01f * float.Sign(gasPrice - Metrics.BlockEstMedianGasPrice);
                 Metrics.BlockTransactions++;
             }
 
@@ -195,7 +195,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 }
                 else
                 {
-                    LogEntry[] logs = substate.Logs.Any() ? substate.Logs.ToArray() : Array.Empty<LogEntry>();
+                    LogEntry[] logs = substate.Logs.Count != 0 ? substate.Logs.ToArray() : Array.Empty<LogEntry>();
                     tracer.MarkAsSuccess(env.ExecutingAccount, spentGas, substate.Output.ToArray(), logs, stateRoot);
                 }
             }

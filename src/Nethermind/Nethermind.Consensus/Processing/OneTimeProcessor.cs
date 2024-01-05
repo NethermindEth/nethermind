@@ -17,7 +17,7 @@ namespace Nethermind.Consensus.Processing
         private readonly IBlockchainProcessor _processor;
         private readonly IWorldState _worldState;
 
-        private object _lock = new();
+        private readonly object _lock = new();
 
         public OneTimeChainProcessor(IWorldState worldState, IBlockchainProcessor processor)
         {

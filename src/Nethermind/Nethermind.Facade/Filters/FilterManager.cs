@@ -158,10 +158,7 @@ namespace Nethermind.Blockchain.Filters
 
         private void AddReceipts(TxReceipt txReceipt)
         {
-            if (txReceipt is null)
-            {
-                throw new ArgumentNullException(nameof(txReceipt));
-            }
+            ArgumentNullException.ThrowIfNull(txReceipt);
 
             IEnumerable<LogFilter> filters = _filterStore.GetFilters<LogFilter>();
             foreach (LogFilter filter in filters)
@@ -172,10 +169,7 @@ namespace Nethermind.Blockchain.Filters
 
         private void AddBlock(Block block)
         {
-            if (block is null)
-            {
-                throw new ArgumentNullException(nameof(block));
-            }
+            ArgumentNullException.ThrowIfNull(block);
 
             IEnumerable<BlockFilter> filters = _filterStore.GetFilters<BlockFilter>();
 
@@ -223,7 +217,7 @@ namespace Nethermind.Blockchain.Filters
             if (_logger.IsDebug) _logger.Debug($"Filter with id: {filter.Id} contains {logs.Count} logs.");
         }
 
-        private IFilterLog? CreateLog(LogFilter logFilter, TxReceipt txReceipt, LogEntry logEntry, long index, int transactionLogIndex)
+        private static IFilterLog? CreateLog(LogFilter logFilter, TxReceipt txReceipt, LogEntry logEntry, long index, int transactionLogIndex)
         {
             if (logFilter.FromBlock.Type == BlockParameterType.BlockNumber &&
                 logFilter.FromBlock.BlockNumber > txReceipt.BlockNumber)

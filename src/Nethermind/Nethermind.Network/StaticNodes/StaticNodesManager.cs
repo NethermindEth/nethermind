@@ -33,6 +33,8 @@ namespace Nethermind.Network.StaticNodes
 
         public IEnumerable<NetworkNode> Nodes => _nodes.Values;
 
+        private static readonly char[] separator = new[] { '\r', '\n' };
+
         public async Task InitAsync()
         {
             if (!File.Exists(_staticNodesPath))
@@ -77,7 +79,7 @@ namespace Nethermind.Network.StaticNodes
             }
             catch (JsonException)
             {
-                nodes = data.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
+                nodes = data.Split(separator, StringSplitOptions.RemoveEmptyEntries);
             }
 
             return nodes.Distinct().ToArray();

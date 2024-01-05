@@ -9,7 +9,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages
 {
     public class GetReceiptsMessageSerializer : HashesMessageSerializer<GetReceiptsMessage>
     {
-        public GetReceiptsMessage Deserialize(byte[] bytes)
+        public static GetReceiptsMessage Deserialize(byte[] bytes)
         {
             RlpStream rlpStream = bytes.AsRlpStream();
             Hash256[] hashes = rlpStream.DecodeArray(itemContext => itemContext.DecodeKeccak());

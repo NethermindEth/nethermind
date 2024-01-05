@@ -79,6 +79,9 @@ public interface IInitConfig : IConfig
 
     [ConfigItem(Description = "[TECHNICAL] Disable setting malloc options. Set to true if using different memory allocator or manually setting malloc opts.", DefaultValue = "false", HiddenFromDocs = true)]
     bool DisableMallocOpts { get; set; }
+
+    [ConfigItem(Description = "[TECHNICAL] Exit when block number is reached. Useful for scripting and testing.", DefaultValue = "null", HiddenFromDocs = true)]
+    long? ExitOnBlockNumber { get; set; }
 }
 
 public enum DiagnosticMode

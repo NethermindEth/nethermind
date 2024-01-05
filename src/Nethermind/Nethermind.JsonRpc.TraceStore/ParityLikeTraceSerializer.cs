@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.IO.Compression;
+
+using Nethermind.Core.Resettables;
 using Nethermind.Evm.Tracing.ParityStyle;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
@@ -49,8 +51,8 @@ public class ParityLikeTraceSerializer : ITraceSerializer<ParityLikeTxTrace>
 
         CheckDepth(traces);
 
-        using MemoryStream output = new();
-        using (GZipStream compressionStream = new(output, CompressionMode.Compress))
+        using MemoryStream output = RecyclableStream.GetStream("Parity");
+        using (GZipStream compressionStream = new(output, CompressionMode.Compress, leaveOpen: true))
         {
             _jsonSerializer.Serialize(compressionStream, traces);
         }

@@ -99,7 +99,7 @@ namespace Nethermind.Core.Extensions
                 return y.Length > x.Length ? 1 : 0;
             }
 
-            public int Compare(ReadOnlySpan<byte> x, ReadOnlySpan<byte> y)
+            public static int Compare(ReadOnlySpan<byte> x, ReadOnlySpan<byte> y)
             {
                 if (Unsafe.AreSame(ref MemoryMarshal.GetReference(x), ref MemoryMarshal.GetReference(y)) &&
                     x.Length == y.Length)
@@ -1018,7 +1018,7 @@ namespace Nethermind.Core.Extensions
             hexString is null ? throw new ArgumentNullException(nameof(hexString)) : FromHexString(hexString.AsSpan(), length);
 
         [DebuggerStepThrough]
-        private static byte[] FromHexString(ReadOnlySpan<char> hexString, int length)
+        public static byte[] FromHexString(ReadOnlySpan<char> hexString, int length)
         {
             int start = hexString is ['0', 'x', ..] ? 2 : 0;
             ReadOnlySpan<char> chars = hexString.Slice(start);

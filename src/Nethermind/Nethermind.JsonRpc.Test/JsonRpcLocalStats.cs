@@ -16,11 +16,11 @@ namespace Nethermind.JsonRpc.Test
     {
         private TestLogger _testLogger = null!;
 
-        private JsonRpcConfig _config = new();
+        private readonly JsonRpcConfig _config = new();
 
         private ManualTimestamper _manualTimestamper = null!;
 
-        private DateTime _startTime = DateTime.MinValue;
+        private readonly DateTime _startTime = DateTime.MinValue;
         private OneLoggerLogManager _logManager = null!;
 
         [SetUp]

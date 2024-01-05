@@ -63,7 +63,7 @@ public class PongMsgSerializer : DiscoveryMsgSerializerBase, IZeroInnerMessageSe
         return totalLength;
     }
 
-    private (int totalLength, int contentLength, int farAddressLength) GetLength(PongMsg message)
+    private static (int totalLength, int contentLength, int farAddressLength) GetLength(PongMsg message)
     {
         if (message.FarAddress is null)
         {

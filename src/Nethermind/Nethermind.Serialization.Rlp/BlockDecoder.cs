@@ -261,7 +261,7 @@ namespace Nethermind.Serialization.Rlp
             }
         }
 
-        public ReceiptRecoveryBlock? DecodeToReceiptRecoveryBlock(MemoryManager<byte>? memoryManager, Memory<byte> memory, RlpBehaviors rlpBehaviors)
+        public static ReceiptRecoveryBlock? DecodeToReceiptRecoveryBlock(MemoryManager<byte>? memoryManager, Memory<byte> memory, RlpBehaviors rlpBehaviors)
         {
             Rlp.ValueDecoderContext decoderContext = new Rlp.ValueDecoderContext(memory, true);
 

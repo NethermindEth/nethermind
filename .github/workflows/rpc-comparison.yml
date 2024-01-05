@@ -1,0 +1,261 @@
+name: '[JSON-RPC] Compare Nethermind between clients and versions'
+
+on:
+  workflow_dispatch:
+    inputs:
+      allowed_ips:
+        type: string
+        description: "A comma-separated list of ips allowed to connect to the node"
+        default: ''
+        required: false
+      branch_to_compare:
+        type: string
+        description: "A space-separated list of branches. If empty, then selected branch will be used. If multiple specified, those will be compared to themselves."
+        default: ""
+        required: false
+      compare_with:
+        type: string
+        description: "A space-separated list of additional comparers. If empty, then nothing else will be added to comparision. Possible options: 'INFURA_ENDPOINT', 'NETHERMIND_ARCHIVE_ENDPOINT'"
+        default: ""
+        required: false
+
+jobs:
+  create_main_node:
+    name: Create node from current branch
+    uses: ./.github/workflows/run-a-single-node-from-branch.yml
+    secrets: inherit
+    with:
+      additional_options: '{"timeout":"12", "default_dockerfile":"Dockerfile", "default_dockerfile_build_type":"release", "ssh_keys":"", "allowed_ips":"${{ inputs.allowed_ips }}"}' 
+      non_validator_mode: false
+      additional_nethermind_flags: Pruning.Mode=None JsonRpc.EnabledModules=[Eth,Subscribe,Trace,TxPool,Web3,Personal,Proof,Net,Parity,Health,Rpc,Debug,Admin]
+      nethermind_repo_ref: ${{ github.ref }}
+      custom_run_id: ${{ github.run_id }}
+  
+  create_compare_node:
+    name: Create node from branch to compare
+    uses: ./.github/workflows/run-a-single-node-from-branch.yml
+    if: inputs.branch_to_compare != ''
+    secrets: inherit
+    with:
+      additional_options: '{"timeout":"12", "default_dockerfile":"Dockerfile", "default_dockerfile_build_type":"release", "ssh_keys":"", "allowed_ips":"${{ inputs.allowed_ips }}"}' 
+      non_validator_mode: false
+      additional_nethermind_flags: Pruning.Mode=None JsonRpc.EnabledModules=[Eth,Subscribe,Trace,TxPool,Web3,Personal,Proof,Net,Parity,Health,Rpc,Debug,Admin]
+      nethermind_repo_ref: ${{ inputs.branch_to_compare }}
+      custom_run_id: ${{ github.run_id }}
+  
+  aggregate_rpcs:
+    name: Collect all RPC Urls and pass it further
+    runs-on: ubuntu-latest
+    needs: [create_main_node, create_compare_node]
+    outputs:
+      rpc_urls: ${{ steps.process_artifacts.outputs.rpc_urls }}
+    steps:
+  
+      - name: Prepare clean main ref
+        id: prepare_main_ref
+        run: |
+          REF_NAME=${{ github.ref }}
+          CLEAN_REF=$(echo "${REF_NAME/refs\/heads\//}" | sed 's/[^a-zA-Z0-9._-]/-/g')
+          echo "CLEAN_MAIN_REF=$CLEAN_REF" >> $GITHUB_ENV
+      
+      - name: Prepare clean compare ref
+        id: prepare_compare_ref
+        if: inputs.branch_to_compare != ''
+        run: |
+          REF_NAME=${{ inputs.nethermind_repo_ref }}
+          CLEAN_REF=$(echo "${REF_NAME/refs\/heads\//}" | sed 's/[^a-zA-Z0-9._-]/-/g')
+          echo "CLEAN_COMPARE_REF=$CLEAN_REF" >> $GITHUB_ENV
+      
+      - name: Download RPC Artifact for current branch
+        uses: actions/download-artifact@v3
+        with:
+          name: rpc-url___${{ env.CLEAN_MAIN_REF }}___${{ github.run_id }}
+          path: artifacts
+      
+      - name: Download RPC Artifact for branch to compare 
+        if: inputs.branch_to_compare != ''
+        uses: actions/download-artifact@v3
+        with:
+          name: rpc-url___${{ env.CLEAN_COMPARE_REF }}___${{ github.run_id }}
+          path: artifacts
+  
+      - name: Process Artifacts Content
+        id: process_artifacts
+        run: |
+          rpc_urls=""
+          main_branch_file="rpc_url%${{ env.CLEAN_MAIN_REF }}%${{ github.run_id }}.txt"
+          compare_branch_file="rpc_url%${{ env.CLEAN_COMPARE_REF }}%${{ github.run_id }}"
+  
+          ls artifacts
+          # Check and add the main branch file
+          if [ -f "artifacts/$main_branch_file" ]; then
+            url_content=$(cat "artifacts/$main_branch_file")
+            echo $url_content
+            rpc_urls+="${{ env.CLEAN_MAIN_REF }}::$url_content,"
+          fi
+  
+          # Check and add the compare branch file
+          if [ -f "artifacts/$compare_branch_file" ]; then
+            url_content=$(cat "artifacts/$compare_branch_file")
+            echo $url_content
+            rpc_urls+="${{ env.CLEAN_COMPARE_REF }}::$url_content,"
+          fi
+  
+          rpc_urls=${rpc_urls%,}
+          echo $rpc_urls
+          echo "rpc_urls=$rpc_urls" >> $GITHUB_OUTPUT
+            
+  wait_for_node_to_sync:
+    name: Wait for the nodes to sync
+    runs-on: ubuntu-latest
+    needs: [aggregate_rpcs]
+    timeout-minutes: 600
+    steps:
+      - uses: actions/checkout@v3
+      - name: Install WireGuard
+        run: |
+          sudo apt update
+          sudo apt install -y wireguard resolvconf
+          sudo mkdir -p /etc/wireguard
+          envsubst < scripts/wireguard.conf.template > wg0.conf
+          sudo wg-quick up ./wg0.conf
+        env:
+          WIREGUARD_PRIVKEY: '${{ secrets.WIREGUARD_PRIVKEY }}'
+          WIREGUARD_ADDRESS: '${{ secrets.WIREGUARD_ADDRESS }}'
+          WIREGUARD_DNS: '${{ secrets.WIREGUARD_DNS }}'
+          WIREGUARD_PUBKEY: '${{ secrets.WIREGUARD_PUBKEY }}'
+          WIREGUARD_PRESHAREDKEY: '${{ secrets.WIREGUARD_PRESHAREDKEY }}'
+          WIREGUARD_ALLOWED_IPS: '${{ secrets.WIREGUARD_ALLOWED_IPS }}'
+          WIREGUARD_SERVER_IP: '${{ secrets.WIREGUARD_SERVER_IP }}'
+          WIREGUARD_SERVER_PORT: '${{ secrets.WIREGUARD_SERVER_PORT }}'
+      
+      - name: Wait for the nodes to sync
+        timeout-minutes: 600
+        run: |          
+          # Assuming rpc_urls_str is a comma-separated string of URLs
+          rpc_urls_str="${{ needs.aggregate_rpcs.outputs.rpc_urls }}"
+          IFS=',' read -r -a rpc_urls_array <<< "$rpc_urls_str"
+          
+          # Loop through the array and strip the branch prefix
+          processed_rpc_urls=()
+          for url_entry in "${rpc_urls_array[@]}"; do
+            processed_url="${url_entry#*::}"  # Remove everything up to and including "::"
+            processed_rpc_urls+=("$processed_url")
+          done
+          
+          sync_complete_flag=0
+          
+          check_sync() {
+            rpc_url=$1
+            while curl -X POST --data '{"jsonrpc":"2.0","method":"eth_syncing","params":[],"id":1}' "$rpc_url" | jq -e '.result'; do
+              echo "Still waiting for node to be synced at RPC: $rpc_url."
+              sleep 60
+            done
+            echo "Node at $rpc_url synced."
+            sync_complete_flag=$((sync_complete_flag+1))
+          }
+
+          # Just an RPC warmup - to make sure no faulty info reached a check
+          sleep 60
+
+          # Iterate over the processed array of URLs
+          for url in "${processed_rpc_urls[@]}"; do
+            check_sync "$url"
+          done
+  
+  
+  compare:
+    name: Compare JSON-RPC responses between clients and versions
+    runs-on: ubuntu-latest
+    needs: [wait_for_node_to_sync, aggregate_rpcs]
+    steps:
+      - uses: actions/checkout@v3
+      - name: Install flood
+        run: pip install git+https://github.com/piwonskp/flood.git
+  
+      - name: Install WireGuard
+        run: |
+          sudo apt update
+          sudo apt install -y wireguard resolvconf
+          sudo mkdir -p /etc/wireguard
+          envsubst < scripts/wireguard.conf.template > wg0.conf
+          sudo wg-quick up ./wg0.conf
+        env:
+          WIREGUARD_PRIVKEY: '${{ secrets.WIREGUARD_PRIVKEY }}'
+          WIREGUARD_ADDRESS: '${{ secrets.WIREGUARD_ADDRESS }}'
+          WIREGUARD_DNS: '${{ secrets.WIREGUARD_DNS }}'
+          WIREGUARD_PUBKEY: '${{ secrets.WIREGUARD_PUBKEY }}'
+          WIREGUARD_PRESHAREDKEY: '${{ secrets.WIREGUARD_PRESHAREDKEY }}'
+          WIREGUARD_ALLOWED_IPS: '${{ secrets.WIREGUARD_ALLOWED_IPS }}'
+          WIREGUARD_SERVER_IP: '${{ secrets.WIREGUARD_SERVER_IP }}'
+          WIREGUARD_SERVER_PORT: '${{ secrets.WIREGUARD_SERVER_PORT }}'
+
+      - name: Prepare Comparison Flags
+        id: prep_comparison
+        env:          
+          INFURA_ENDPOINT: '${{ secrets.INFURA_ENDPOINT }}'
+          NETHERMIND_ARCHIVE_ENDPOINT: '${{ secrets.NETHERMIND_ARCHIVE_ENDPOINT }}'
+        run: |
+          others_str="${{ github.event.inputs.compare_with }}"
+          rpc_urls_str="${{ needs.aggregate_rpcs.outputs.rpc_urls }}"
+
+          IFS=',' read -r -a rpc_urls_array <<< "$rpc_urls_str"
+          unset IFS
+          IFS=' ' read -r -a others_str_array <<< "$others_str"
+          unset IFS
+          
+          # Construct nethermind_urls_str as an array
+          nethermind_urls_str=()
+          for url_entry in "${rpc_urls_array[@]}"; do
+            branch="${url_entry%%::*}"  # Extract the branch part
+            url="${url_entry#*::}"     # Extract the URL part
+            nethermind_urls_str+=("nethermind_$branch=$url")
+          done
+          
+          # Construct others_prepared_str as an array
+          others_prepared_str=()
+          for other in "${others_str_array[@]}"; do
+            if [[ "$other" == "INFURA_ENDPOINT" ]]; then
+              others_prepared_str+=("$other=${INFURA_ENDPOINT}")
+            elif [[ "$other" == "NETHERMIND_ARCHIVE_ENDPOINT" ]]; then
+              others_prepared_str+=("$other=${NETHERMIND_ARCHIVE_ENDPOINT}")
+            fi
+          done
+
+          # Flag for comparing to other branch
+          if [ ${#nethermind_urls_str[@]} -gt 1 ]; then
+            echo "compare_to_other_branch=true" >> $GITHUB_ENV
+            echo "compare_to_other_branch_params=${nethermind_urls_str[0]} ${nethermind_urls_str[1]}" >> $GITHUB_ENV
+          else
+            echo "compare_to_other_branch=false" >> $GITHUB_ENV
+          fi
+
+          # Flags for comparing to INFURA and ARCHIVE endpoints
+          compare_to_infura=false
+          compare_to_archive=false
+          for (( j = 0; j < ${#others_prepared_str[@]}; j++ )); do
+            if [[ "${others_prepared_str[j]}" == "INFURA_ENDPOINT=${INFURA_ENDPOINT}" ]]; then
+              compare_to_infura=true
+              echo "compare_to_infura_params=${nethermind_urls_str[0]} ${others_prepared_str[j]}" >> $GITHUB_ENV
+            elif [[ "${others_prepared_str[j]}" == "NETHERMIND_ARCHIVE_ENDPOINT=${NETHERMIND_ARCHIVE_ENDPOINT}" ]]; then
+              compare_to_archive=true
+              echo "compare_to_archive_params=${nethermind_urls_str[0]} ${others_prepared_str[j]}" >> $GITHUB_ENV
+            fi
+          done
+          echo "compare_to_infura=$compare_to_infura" >> $GITHUB_ENV
+          echo "compare_to_archive=$compare_to_archive" >> $GITHUB_ENV               
+
+      - name: Compare to Other Branch
+        if: env.compare_to_other_branch == 'true'
+        run: |
+          flood all ${compare_to_other_branch_params} --equality
+      
+      - name: Compare to INFURA Endpoint
+        if: env.compare_to_infura == 'true'
+        run: |
+          flood all ${compare_to_infura_params} --equality
+      
+      - name: Compare to Nethermind Archive Endpoint
+        if: env.compare_to_archive == 'true'
+        run: |
+          flood all ${compare_to_archive_params} --equality

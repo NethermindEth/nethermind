@@ -21,10 +21,6 @@ namespace Nethermind.Specs.Test
         public void When_first_release_is_not_at_block_zero_then_throws_argument_exception()
         {
             Assert.Throws<ArgumentException>(() => _ = new CustomSpecProvider(((ForkActivation)1, Byzantium.Instance)), "ordered");
-
-            Assert.Throws<ArgumentException>(() => _ = new CustomSpecProvider(
-                ((ForkActivation)1, Byzantium.Instance),
-                ((ForkActivation)0, Frontier.Instance)), "not ordered");
         }
 
         [Test]

@@ -36,7 +36,7 @@ namespace Nethermind.Db
         public SimpleFilePublicKeyDb(string name, string dbDirectoryPath, ILogManager logManager)
         {
             _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
-            if (dbDirectoryPath is null) throw new ArgumentNullException(nameof(dbDirectoryPath));
+            ArgumentNullException.ThrowIfNull(dbDirectoryPath);
             Name = name ?? throw new ArgumentNullException(nameof(name));
             DbPath = Path.Combine(dbDirectoryPath, DbFileName);
             Description = $"{Name}|{DbPath}";
@@ -98,6 +98,8 @@ namespace Nethermind.Db
         }
 
         public IEnumerable<KeyValuePair<byte[], byte[]>> GetAll(bool ordered = false) => _cache;
+
+        public IEnumerable<byte[]> GetAllKeys(bool ordered = false) => _cache.Keys;
 
         public IEnumerable<byte[]> GetAllValues(bool ordered = false) => _cache.Values;
 

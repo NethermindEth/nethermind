@@ -94,7 +94,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
                         packetSizeLeft = TransactionsMessage.MaxPacketSize;
                     }
 
-                    if (_txPoolConfig.BlobSupportEnabled || txType != TxType.Blob)
+                    if (_txPoolConfig.BlobsSupport.IsEnabled() || txType != TxType.Blob)
                     {
                         hashesToRequest.Add(discoveredTxHashesAndSizes[i].Hash);
                         packetSizeLeft -= txSize;
@@ -133,13 +133,13 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             }
         }
 
-        private void RequestPooledTransactions(Action<GetPooledTransactionsMessage> send, IReadOnlyList<Hash256> hashesToRequest)
+        private static void RequestPooledTransactions(Action<GetPooledTransactionsMessage> send, IReadOnlyList<Hash256> hashesToRequest)
         {
             send(new GetPooledTransactionsMessage(hashesToRequest));
             Metrics.Eth65GetPooledTransactionsRequested++;
         }
 
-        private void RequestPooledTransactionsEth66(Action<V66.Messages.GetPooledTransactionsMessage> send, IReadOnlyList<Hash256> hashesToRequest)
+        private static void RequestPooledTransactionsEth66(Action<V66.Messages.GetPooledTransactionsMessage> send, IReadOnlyList<Hash256> hashesToRequest)
         {
             GetPooledTransactionsMessage msg65 = new(hashesToRequest);
             send(new V66.Messages.GetPooledTransactionsMessage() { EthMessage = msg65 });

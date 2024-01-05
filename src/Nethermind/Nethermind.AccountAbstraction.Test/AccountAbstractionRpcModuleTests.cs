@@ -31,9 +31,9 @@ namespace Nethermind.AccountAbstraction.Test;
 [TestFixture]
 public partial class AccountAbstractionRpcModuleTests
 {
-    private Contracts _contracts = new();
-    private AbiEncoder _encoder = new();
-    private static int entryPointNum = 2;
+    private readonly Contracts _contracts = new();
+    private readonly AbiEncoder _encoder = new();
+    private static readonly int entryPointNum = 2;
 
     public class Contracts
     {
@@ -43,7 +43,7 @@ public partial class AccountAbstractionRpcModuleTests
         internal AbiDefinition TestCounterAbi;
         internal AbiDefinition TokenPaymasterAbi;
 
-        private AbiEncoder _encoder = new();
+        private readonly AbiEncoder _encoder = new();
 
         public Contracts()
         {
@@ -61,7 +61,7 @@ public partial class AccountAbstractionRpcModuleTests
             AbiParameterConverter.RegisterFactory(new AbiTypeFactory(new AbiTuple<UserOperationAbi>()));
 
             var parser = new AbiDefinitionParser();
-            var json = parser.LoadContract(contractType);
+            var json = AbiDefinitionParser.LoadContract(contractType);
             return parser.Parse(json);
         }
 

@@ -14,12 +14,12 @@ public interface IBlocksConfig : IConfig
     //bool Enabled { get; set; }
 
     [ConfigItem(
-        Description = "The block gas limit that the block producer should try to reach in the fastest possible way based on the protocol rules. If not specified, then the miner should follow other miners.",
+        Description = "The block gas limit that the block producer should try to reach in the fastest possible way based on the protocol rules. If not specified, then the block producer should follow others.",
         DefaultValue = "null")]
     long? TargetBlockGasLimit { get; set; }
 
     [ConfigItem(
-        Description = "The minimum gas premium (price if before the London hard fork) for transactions accepted by the block producer.",
+        Description = "The minimum gas premium (or the gas price before the London hard fork) for transactions accepted by the block producer.",
         DefaultValue = "1")]
     UInt256 MinGasPrice { get; set; }
 
@@ -31,7 +31,7 @@ public interface IBlocksConfig : IConfig
     [ConfigItem(Description = "The block header extra data up to 32 bytes in length.", DefaultValue = "Nethermind")]
     string ExtraData { get; set; }
 
-    [ConfigItem(Description = "Seconds per slot.", DefaultValue = "12")]
+    [ConfigItem(Description = "The block time slot, in seconds.", DefaultValue = "12")]
     ulong SecondsPerSlot { get; set; }
 
     byte[] GetExtraDataBytes();

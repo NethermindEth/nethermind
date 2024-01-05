@@ -13,8 +13,8 @@ namespace Nethermind.Core.Test.Json
     [TestFixture]
     public class NullableULongConverterTests : ConverterTestBase<ulong?>
     {
-        static NullableULongConverter converter = new();
-        static JsonSerializerOptions options = new JsonSerializerOptions { Converters = { converter } };
+        static readonly NullableULongConverter converter = new();
+        static readonly JsonSerializerOptions options = new JsonSerializerOptions { Converters = { converter } };
 
         [TestCase(NumberConversion.Hex)]
         [TestCase(NumberConversion.Decimal)]

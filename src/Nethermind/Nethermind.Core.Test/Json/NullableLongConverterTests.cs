@@ -14,8 +14,8 @@ namespace Nethermind.Core.Test.Json
     [TestFixture]
     public class NullableLongConverterTests : ConverterTestBase<long?>
     {
-        static NullableLongConverter converter = new();
-        static JsonSerializerOptions options = new JsonSerializerOptions { Converters = { converter } };
+        static readonly NullableLongConverter converter = new();
+        static readonly JsonSerializerOptions options = new JsonSerializerOptions { Converters = { converter } };
 
         public void Test_roundtrip()
         {

@@ -17,7 +17,7 @@ public class ColumnDb : IDb
     internal readonly DbOnTheRocks _mainDb;
     internal readonly ColumnFamilyHandle _columnFamily;
 
-    private DbOnTheRocks.ManagedIterators _readaheadIterators = new();
+    private readonly DbOnTheRocks.ManagedIterators _readaheadIterators = new();
 
     public ColumnDb(RocksDb rocksDb, DbOnTheRocks mainDb, string name)
     {
@@ -62,6 +62,12 @@ public class ColumnDb : IDb
     {
         Iterator iterator = _mainDb.CreateIterator(ordered, _columnFamily);
         return _mainDb.GetAllCore(iterator);
+    }
+
+    public IEnumerable<byte[]> GetAllKeys(bool ordered = false)
+    {
+        Iterator iterator = _mainDb.CreateIterator(ordered, _columnFamily);
+        return _mainDb.GetAllKeysCore(iterator);
     }
 
     public IEnumerable<byte[]> GetAllValues(bool ordered = false)

@@ -98,9 +98,8 @@ public class InvalidChainTracker : IInvalidChainTracker
                     if (childNode.LastValidHash != current.LastValidHash)
                     {
                         childNode.LastValidHash = current.LastValidHash;
-                        if (!visited.Contains(childNode))
+                        if (visited.Add(childNode))
                         {
-                            visited.Add(childNode);
                             bfsQue.Enqueue(childNode);
                         }
                     }

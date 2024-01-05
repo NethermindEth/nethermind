@@ -20,7 +20,7 @@ namespace Nethermind.Core.Crypto
         private Address? _address;
 
         private byte[]? _prefixedBytes;
-        private int _hashCode;
+        private readonly int _hashCode;
 
         public PublicKey(string? hexString)
             : this(Core.Extensions.Bytes.FromHexString(hexString ?? throw new ArgumentNullException(nameof(hexString))))
@@ -138,12 +138,12 @@ namespace Nethermind.Core.Crypto
 
         public static bool operator ==(PublicKey? a, PublicKey? b)
         {
-            if (ReferenceEquals(a, null))
+            if (a is null)
             {
-                return ReferenceEquals(b, null);
+                return b is null;
             }
 
-            if (ReferenceEquals(b, null))
+            if (b is null)
             {
                 return false;
             }

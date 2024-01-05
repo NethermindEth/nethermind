@@ -40,7 +40,7 @@ public class DebugModuleFactory : ModuleFactoryBase<IDebugRpcModule>
     private readonly IReadOnlyBlockTree _blockTree;
     private readonly ISyncModeSelector _syncModeSelector;
     private readonly IFileSystem _fileSystem;
-    private ILogger _logger;
+    private readonly ILogger _logger;
 
     public DebugModuleFactory(
         IWorldStateManager worldStateManager,

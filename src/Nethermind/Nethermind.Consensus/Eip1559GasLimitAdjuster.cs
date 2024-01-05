@@ -14,7 +14,7 @@ namespace Nethermind.Consensus
             long adjustedGasLimit = gasLimit;
             if (releaseSpec.Eip1559TransitionBlock == blockNumber)
             {
-                adjustedGasLimit *= Eip1559Constants.ElasticityMultiplier;
+                adjustedGasLimit *= releaseSpec.ElasticityMultiplier;
             }
 
             return adjustedGasLimit;
