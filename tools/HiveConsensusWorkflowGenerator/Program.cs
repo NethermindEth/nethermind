@@ -6,8 +6,6 @@ namespace HiveConsensusWorkflowGenerator;
 public static class Program
 {
     const long MaxSizeWithoutSplitting = 35_000_000;
-    const long TargetSize = 23_000_000;
-    const long PenaltyForAdditionalInit = 300_000;
     const int MaxJobsCount = 256;
 
     static void Main(string[] args)
@@ -17,33 +15,74 @@ public static class Program
         IEnumerable<string> directories = GetTestsDirectories(path);
         Dictionary<string, long> pathsToBeTested = GetPathsToBeTested(directories);
 
-        var testNames = pathsToBeTested.Select(y => Path.GetFileName(y.Key))
-                                       .Select(x => x.Split('.').First())
-                                       .ToList();
+        // Sort the tests by size in descending order
+        var sortedTests = pathsToBeTested.OrderByDescending(kv => kv.Value).ToList();
 
-        var groupedTestNames = new List<List<string>>();
+        // Create empty list of 256 jobs
+        var groupedTestNames = new List<List<(string fullPath, string fileName)>>(); // Store both full path and filename
         for (int i = 0; i < MaxJobsCount; i++)
         {
-            groupedTestNames.Add(new List<string>());
+            groupedTestNames.Add(new List<(string, string)>());
         }
 
+        // Initial distribution without size limit
         int groupIndex = 0;
-        foreach (var testName in testNames)
+        foreach (var test in sortedTests.Take(MaxJobsCount))
         {
-            groupedTestNames[groupIndex].Add(testName);
+            string fileName = Path.GetFileNameWithoutExtension(test.Key); // Strip the .json extension
+            groupedTestNames[groupIndex].Add((test.Key, fileName));
             groupIndex = (groupIndex + 1) % MaxJobsCount;
         }
 
-        var jsonGroups = groupedTestNames.Select(group => new { testNames = group.ToArray() })
-                                         .Where(group => group.testNames.Any())
-                                         .ToList();
+        // Subsequent distribution with size limit
+        foreach (var test in sortedTests.Skip(MaxJobsCount))
+        {
+            string fileName = Path.GetFileNameWithoutExtension(test.Key); // Strip the .json extension
+            groupIndex = FindSuitableGroupIndex(groupedTestNames, pathsToBeTested, MaxSizeWithoutSplitting, test.Value);
+            if (groupIndex != -1)
+            {
+                groupedTestNames[groupIndex].Add((test.Key, fileName));
+            }
+        }
+
+        // Calculate group sizes and include sizes of each test in JSON output
+        var jsonGroups = groupedTestNames.Select(group => new
+        {
+            testNames = group.Select(t => new { name = t.fileName, size = pathsToBeTested.ContainsKey(t.fullPath) ? pathsToBeTested[t.fullPath] : 0 }).ToArray(),
+            totalSize = group.Sum(t => pathsToBeTested.ContainsKey(t.fullPath) ? pathsToBeTested[t.fullPath] : 0)
+        })
+        .OrderBy(group => group.totalSize)
+        .ToList();
 
         string jsonString = JsonSerializer.Serialize(jsonGroups, new JsonSerializerOptions { WriteIndented = true });
 
         Console.WriteLine(jsonString);
 
+        // Log the number of groups created in the JSON file
+        Console.WriteLine($"Number of groups created in JSON file: {jsonGroups.Count}");
+
         File.WriteAllText("matrix.json", jsonString);
     }
+
+    private static int FindSuitableGroupIndex(List<List<(string fullPath, string fileName)>> groups, Dictionary<string, long> pathsToBeTested, long maxSize, long testSize)
+    {
+        int suitableIndex = -1;
+        long smallestSize = long.MaxValue;
+
+        for (int i = 0; i < groups.Count; i++)
+        {
+            long currentGroupSize = groups[i].Sum(t => pathsToBeTested.ContainsKey(t.fullPath) ? pathsToBeTested[t.fullPath] : 0);
+
+            if (currentGroupSize + testSize <= maxSize && currentGroupSize < smallestSize)
+            {
+                smallestSize = currentGroupSize;
+                suitableIndex = i;
+            }
+        }
+
+        return suitableIndex;
+    }
+
 
 
     private static IEnumerable<string> GetTestsDirectories(string path)
