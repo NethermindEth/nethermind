@@ -49,11 +49,8 @@ public class ZeroNettyP2PHandler : SimpleChannelInboundHandler<ZeroPacket>
 
             if (uncompressedLength > SnappyParameters.MaxSnappyLength)
             {
-                int uncompressedLength = SnappyCodec.GetUncompressedLength(content.Array, content.ArrayOffset + content.ReaderIndex, content.ReadableBytes);
-                if (uncompressedLength > SnappyParameters.MaxSnappyLength)
-                {
-                    throw new Exception("Max message size exceeded"); // TODO: disconnect here
-                }
+                throw new Exception("Max message size exceeeded"); // TODO: disconnect here
+            }
 
             if (content.ReadableBytes > SnappyParameters.MaxSnappyLength / 4)
             {
