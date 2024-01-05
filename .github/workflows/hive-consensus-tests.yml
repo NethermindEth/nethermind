@@ -1,6 +1,11 @@
 name: 'Hive consensus tests' 
 
 on:
+  workflow_run:
+    workflows: ["Publish Docker image"]
+    branches: ["release/*"]
+    types:
+      - completed  
   workflow_dispatch:
     inputs:
       parallelism:
