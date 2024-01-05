@@ -48,10 +48,8 @@ public static class Program
         // Calculate group sizes and include sizes of each test in JSON output
         var jsonGroups = groupedTestNames.Select(group => new
         {
-            testNames = group.Select(t => new { name = t.fileName, size = pathsToBeTested.ContainsKey(t.fullPath) ? pathsToBeTested[t.fullPath] : 0 }).ToArray(),
-            totalSize = group.Sum(t => pathsToBeTested.ContainsKey(t.fullPath) ? pathsToBeTested[t.fullPath] : 0)
+            testNames = group.Select(t => t.fileName ).ToArray()
         })
-        .OrderBy(group => group.totalSize)
         .ToList();
 
         string jsonString = JsonSerializer.Serialize(jsonGroups, new JsonSerializerOptions { WriteIndented = true });
