@@ -65,7 +65,7 @@ public class BlobTxStorage : IBlobTxStorage
         Span<byte> txHashPrefixed = stackalloc byte[64];
         GetHashPrefixedByTimestamp(transaction.Timestamp, transaction.Hash, txHashPrefixed);
 
-        EncodeTx(transaction, _fullBlobTxsDb, txHashPrefixed);
+        EncodeAndSaveTx(transaction, _fullBlobTxsDb, txHashPrefixed);
         _lightBlobTxsDb.Set(transaction.Hash, LightTxDecoder.Encode(transaction));
     }
 
@@ -85,7 +85,7 @@ public class BlobTxStorage : IBlobTxStorage
             return;
         }
 
-        EncodeTxs(blockBlobTransactions, _processedBlobTxsDb, blockNumber);
+        EncodeAndSaveTxs(blockBlobTransactions, _processedBlobTxsDb, blockNumber);
     }
 
     public bool TryGetBlobTransactionsFromBlock(long blockNumber, out Transaction[]? blockBlobTransactions)
@@ -138,7 +138,7 @@ public class BlobTxStorage : IBlobTxStorage
         hash.Bytes.CopyTo(txHashPrefixed[32..]);
     }
 
-    private void EncodeTx(Transaction transaction, IDb db, Span<byte> txHashPrefixed)
+    private void EncodeAndSaveTx(Transaction transaction, IDb db, Span<byte> txHashPrefixed)
     {
         int length = _txDecoder.GetLength(transaction, RlpBehaviors.InMempoolForm);
         IByteBuffer byteBuffer = PooledByteBufferAllocator.Default.Buffer(length);
@@ -148,7 +148,7 @@ public class BlobTxStorage : IBlobTxStorage
         db.PutSpan(txHashPrefixed, byteBuffer.AsSpan());
     }
 
-    private void EncodeTxs(IList<Transaction> blockBlobTransactions, IDb db, long blockNumber)
+    private void EncodeAndSaveTxs(IList<Transaction> blockBlobTransactions, IDb db, long blockNumber)
     {
         int contentLength = GetLength(blockBlobTransactions);
 
