@@ -32,7 +32,9 @@ namespace Nethermind.Synchronization.SnapSync
         {
             _dbProvider = dbProvider ?? throw new ArgumentNullException(nameof(dbProvider));
             _progressTracker = progressTracker ?? throw new ArgumentNullException(nameof(progressTracker));
-            _trieStorePool = new DefaultObjectPool<ITrieStore>(new TrieStorePoolPolicy(_dbProvider.StateDb, logManager));
+
+            // TODO: reintroduce the store
+            _trieStorePool = new DefaultObjectPool<ITrieStore>(new TrieStorePoolPolicy(new MemDb(), logManager));
 
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
             _logger = logManager.GetClassLogger<SnapProvider>();

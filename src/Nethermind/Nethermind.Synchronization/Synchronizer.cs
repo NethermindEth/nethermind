@@ -133,7 +133,7 @@ namespace Nethermind.Synchronization
 
             ProgressTracker progressTracker = new(
                 blockTree,
-                dbProvider.StateDb,
+                new MemDb(), // TODO: replace with proper state
                 logManager,
                 _syncConfig.SnapSyncAccountRangePartitionCount);
             SnapProvider = new SnapProvider(progressTracker, dbProvider, logManager);
