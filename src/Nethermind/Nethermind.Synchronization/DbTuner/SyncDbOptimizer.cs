@@ -11,7 +11,6 @@ namespace Nethermind.Synchronization.DbTuner;
 
 public class SyncDbTuner
 {
-    private readonly ITunableDb? _stateDb;
     private readonly ITunableDb? _codeDb;
     private readonly ITunableDb? _blockDb;
     private readonly ITunableDb? _receiptDb;
@@ -24,7 +23,6 @@ public class SyncDbTuner
         ISyncFeed<SnapSyncBatch>? snapSyncFeed,
         ISyncFeed<BodiesSyncBatch>? bodiesSyncFeed,
         ISyncFeed<ReceiptsSyncBatch>? receiptSyncFeed,
-        ITunableDb? stateDb,
         ITunableDb? codeDb,
         ITunableDb? blockDb,
         ITunableDb? receiptDb
@@ -48,7 +46,6 @@ public class SyncDbTuner
             receiptSyncFeed.StateChanged += ReceiptsStateChanged;
         }
 
-        _stateDb = stateDb;
         _codeDb = codeDb;
         _blockDb = blockDb;
         _receiptDb = receiptDb;
@@ -61,12 +58,10 @@ public class SyncDbTuner
     {
         if (e.NewState == SyncFeedState.Active)
         {
-            _stateDb?.Tune(_tuneType);
             _codeDb?.Tune(_tuneType);
         }
         else if (e.NewState == SyncFeedState.Finished)
         {
-            _stateDb?.Tune(ITunableDb.TuneType.Default);
             _codeDb?.Tune(ITunableDb.TuneType.Default);
         }
     }

@@ -212,7 +212,6 @@ namespace Nethermind.Synchronization
                 SnapSyncFeed,
                 BodiesSyncFeed,
                 ReceiptsSyncFeed,
-                _dbProvider.StateDb as ITunableDb,
                 _dbProvider.CodeDb as ITunableDb,
                 _dbProvider.BlocksDb as ITunableDb,
                 _dbProvider.ReceiptsDb as ITunableDb);

@@ -166,25 +166,24 @@ public class InitializeNetwork : IStep
         _api.DisposeStack.Push(_api.SyncModeSelector);
         _api.DisposeStack.Push(_api.Synchronizer);
 
-        // TODO: no sync now
-        // ISyncServer syncServer = _api.SyncServer = new SyncServer(
-        //     _api.TrieStore!.TrieNodeRlpStore,
-        //     _api.DbProvider.CodeDb,
-        //     _api.BlockTree,
-        //     _api.ReceiptStorage!,
-        //     _api.BlockValidator!,
-        //     _api.SealValidator!,
-        //     _api.SyncPeerPool,
-        //     _api.SyncModeSelector,
-        //     _api.Config<ISyncConfig>(),
-        //     _api.WitnessRepository,
-        //     _api.GossipPolicy,
-        //     _api.SpecProvider!,
-        //     _api.LogManager,
-        //     cht);
-        //
-        // _ = syncServer.BuildCHT();
-        // _api.DisposeStack.Push(syncServer);
+        ISyncServer syncServer = _api.SyncServer = new SyncServer(
+            new MemDb(), // TODO: provide tree nodes here
+            _api.DbProvider.CodeDb,
+            _api.BlockTree,
+            _api.ReceiptStorage!,
+            _api.BlockValidator!,
+            _api.SealValidator!,
+            _api.SyncPeerPool,
+            _api.SyncModeSelector,
+            _api.Config<ISyncConfig>(),
+            _api.WitnessRepository,
+            _api.GossipPolicy,
+            _api.SpecProvider!,
+            _api.LogManager,
+            cht);
+
+        _ = syncServer.BuildCHT();
+        _api.DisposeStack.Push(syncServer);
 
         InitDiscovery();
         if (cancellationToken.IsCancellationRequested)

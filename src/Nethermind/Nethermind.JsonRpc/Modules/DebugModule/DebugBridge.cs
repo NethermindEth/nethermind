@@ -60,8 +60,6 @@ public class DebugBridge : IDebugBridge
 
         _dbMappings = new Dictionary<string, IDb>(StringComparer.InvariantCultureIgnoreCase)
         {
-            {DbNames.State, dbProvider.StateDb},
-            {DbNames.Storage, dbProvider.StateDb},
             {DbNames.BlockInfos, blockInfosDb},
             {DbNames.Blocks, blocksDb},
             {DbNames.Headers, headersDb},
