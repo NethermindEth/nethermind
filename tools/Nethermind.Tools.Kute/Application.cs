@@ -1,12 +1,15 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Text.Json;
 using Nethermind.Tools.Kute.Extensions;
 using Nethermind.Tools.Kute.MessageProvider;
 using Nethermind.Tools.Kute.JsonRpcMethodFilter;
 using Nethermind.Tools.Kute.JsonRpcSubmitter;
+using Nethermind.Tools.Kute.JsonRpcValidator;
 using Nethermind.Tools.Kute.MetricsConsumer;
 using Nethermind.Tools.Kute.ProgressReporter;
+using Nethermind.Tools.Kute.ResponseTracer;
 
 namespace Nethermind.Tools.Kute;
 
@@ -16,6 +19,8 @@ class Application
 
     private readonly IMessageProvider<JsonRpc?> _msgProvider;
     private readonly IJsonRpcSubmitter _submitter;
+    private readonly IJsonRpcValidator _validator;
+    private readonly IResponseTracer _responseTracer;
     private readonly IProgressReporter _progressReporter;
     private readonly IMetricsConsumer _metricsConsumer;
     private readonly IJsonRpcMethodFilter _methodFilter;
@@ -23,6 +28,8 @@ class Application
     public Application(
         IMessageProvider<JsonRpc?> msgProvider,
         IJsonRpcSubmitter submitter,
+        IJsonRpcValidator validator,
+        IResponseTracer responseTracer,
         IProgressReporter progressReporter,
         IMetricsConsumer metricsConsumer,
         IJsonRpcMethodFilter methodFilter
@@ -30,6 +37,8 @@ class Application
     {
         _msgProvider = msgProvider;
         _submitter = submitter;
+        _validator = validator;
+        _responseTracer = responseTracer;
         _progressReporter = progressReporter;
         _metricsConsumer = metricsConsumer;
         _methodFilter = methodFilter;
@@ -43,24 +52,41 @@ class Application
         {
             await foreach (var (jsonRpc, n) in _msgProvider.Messages.Indexed(startingFrom: 1))
             {
+                _progressReporter.ReportProgress(n);
+
                 _metrics.TickMessages();
 
                 switch (jsonRpc)
                 {
                     case null:
+                    {
                         _metrics.TickFailed();
 
                         break;
-
+                    }
                     case JsonRpc.BatchJsonRpc batch:
+                    {
+                        JsonDocument? result;
                         using (_metrics.TimeBatch())
                         {
-                            await _submitter.Submit(batch);
+                            result = await _submitter.Submit(batch);
                         }
 
-                        break;
+                        if (_validator.IsInvalid(batch, result))
+                        {
+                            _metrics.TickFailed();
+                        }
+                        else
+                        {
+                            _metrics.TickSucceeded();
+                        }
 
+                        await _responseTracer.TraceResponse(result);
+
+                        break;
+                    }
                     case JsonRpc.SingleJsonRpc single:
+                    {
                         if (single.IsResponse)
                         {
                             _metrics.TickResponses();
@@ -79,18 +105,30 @@ class Application
                             continue;
                         }
 
+                        JsonDocument? result;
                         using (_metrics.TimeMethod(single.MethodName))
                         {
-                            await _submitter.Submit(single);
+                            result = await _submitter.Submit(single);
                         }
 
+                        if (_validator.IsInvalid(single, result))
+                        {
+                            _metrics.TickFailed();
+                        }
+                        else
+                        {
+                            _metrics.TickSucceeded();
+                        }
+
+                        await _responseTracer.TraceResponse(result);
+
                         break;
-
+                    }
                     default:
+                    {
                         throw new ArgumentOutOfRangeException(nameof(jsonRpc));
+                    }
                 }
-
-                _progressReporter.ReportProgress(n);
             }
         }
 

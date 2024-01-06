@@ -324,7 +324,7 @@ namespace Nethermind.Synchronization.Test
                 {
                     mergeConfig.TerminalTotalDifficulty = UInt256.MaxValue.ToString(CultureInfo.InvariantCulture);
                 }
-                PoSSwitcher poSSwitcher = new(mergeConfig, syncConfig, dbProvider.MetadataDb, BlockTree, new TestSingleReleaseSpecProvider(Constantinople.Instance), _logManager);
+                PoSSwitcher poSSwitcher = new(mergeConfig, syncConfig, dbProvider.MetadataDb, BlockTree, new TestSingleReleaseSpecProvider(Constantinople.Instance), new ChainSpec(), _logManager);
                 IBeaconPivot beaconPivot = new BeaconPivot(syncConfig, dbProvider.MetadataDb, BlockTree, _logManager);
 
                 TrieStore trieStore = new(stateDb, LimboLogs.Instance);
@@ -401,7 +401,7 @@ namespace Nethermind.Synchronization.Test
                 }
 
                 SyncServer = new SyncServer(
-                    trieStore.AsKeyValueStore(),
+                    trieStore.TrieNodeRlpStore,
                     codeDb,
                     BlockTree,
                     NullReceiptStorage.Instance,

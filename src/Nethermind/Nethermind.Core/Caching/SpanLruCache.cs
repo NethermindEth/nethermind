@@ -7,6 +7,7 @@ using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using Nethermind.Core.Collections;
+using Nethermind.Core.Threading;
 
 namespace Nethermind.Core.Caching
 {
@@ -19,6 +20,7 @@ namespace Nethermind.Core.Caching
     {
         private readonly int _maxCapacity;
         private readonly SpanDictionary<TKey, LinkedListNode<LruCacheItem>> _cacheMap;
+        private readonly McsLock _lock = new();
         private LinkedListNode<LruCacheItem>? _leastRecentlyUsed;
 
         public SpanLruCache(int maxCapacity, int startCapacity, string name, ISpanEqualityComparer<TKey> comparer)
@@ -29,16 +31,18 @@ namespace Nethermind.Core.Caching
             _cacheMap = new SpanDictionary<TKey, LinkedListNode<LruCacheItem>>(startCapacity, comparer);
         }
 
-        [MethodImpl(MethodImplOptions.Synchronized)]
         public void Clear()
         {
+            using var lockRelease = _lock.Acquire();
+
             _leastRecentlyUsed = null;
             _cacheMap.Clear();
         }
 
-        [MethodImpl(MethodImplOptions.Synchronized)]
         public TValue Get(ReadOnlySpan<TKey> key)
         {
+            using var lockRelease = _lock.Acquire();
+
             if (_cacheMap.TryGetValue(key, out LinkedListNode<LruCacheItem>? node))
             {
                 TValue value = node.Value.Value;
@@ -52,9 +56,10 @@ namespace Nethermind.Core.Caching
 #pragma warning restore 8603
         }
 
-        [MethodImpl(MethodImplOptions.Synchronized)]
         public bool TryGet(ReadOnlySpan<TKey> key, out TValue value)
         {
+            using var lockRelease = _lock.Acquire();
+
             if (_cacheMap.TryGetValue(key, out LinkedListNode<LruCacheItem>? node))
             {
                 value = node.Value.Value;
@@ -69,12 +74,13 @@ namespace Nethermind.Core.Caching
             return false;
         }
 
-        [MethodImpl(MethodImplOptions.Synchronized)]
         public bool Set(ReadOnlySpan<TKey> key, TValue val)
         {
+            using var lockRelease = _lock.Acquire();
+
             if (val is null)
             {
-                return Delete(key);
+                return DeleteNoLock(key);
             }
 
             if (_cacheMap.TryGetValue(key, out LinkedListNode<LruCacheItem>? node))
@@ -101,8 +107,14 @@ namespace Nethermind.Core.Caching
             }
         }
 
-        [MethodImpl(MethodImplOptions.Synchronized)]
         public bool Delete(ReadOnlySpan<TKey> key)
+        {
+            using var lockRelease = _lock.Acquire();
+
+            return DeleteNoLock(key);
+        }
+
+        private bool DeleteNoLock(ReadOnlySpan<TKey> key)
         {
             if (_cacheMap.TryGetValue(key, out LinkedListNode<LruCacheItem>? node))
             {
@@ -114,14 +126,26 @@ namespace Nethermind.Core.Caching
             return false;
         }
 
-        [MethodImpl(MethodImplOptions.Synchronized)]
-        public bool Contains(ReadOnlySpan<TKey> key) => _cacheMap.ContainsKey(key);
+        public bool Contains(ReadOnlySpan<TKey> key)
+        {
+            using var lockRelease = _lock.Acquire();
 
-        [MethodImpl(MethodImplOptions.Synchronized)]
-        public IDictionary<TKey[], TValue> Clone() => _cacheMap.ToDictionary(i => i.Key, i => i.Value.Value.Value);
+            return _cacheMap.ContainsKey(key);
+        }
 
-        [MethodImpl(MethodImplOptions.Synchronized)]
-        public KeyValuePair<TKey[], TValue>[] ToArray() => _cacheMap.Select(kv => new KeyValuePair<TKey[], TValue>(kv.Key, kv.Value.Value.Value)).ToArray();
+        public IDictionary<TKey[], TValue> Clone()
+        {
+            using var lockRelease = _lock.Acquire();
+
+            return _cacheMap.ToDictionary(i => i.Key, i => i.Value.Value.Value);
+        }
+
+        public KeyValuePair<TKey[], TValue>[] ToArray()
+        {
+            using var lockRelease = _lock.Acquire();
+
+            return _cacheMap.Select(kv => new KeyValuePair<TKey[], TValue>(kv.Key, kv.Value.Value.Value)).ToArray();
+        }
 
         private void Replace(ReadOnlySpan<TKey> key, TValue value)
         {

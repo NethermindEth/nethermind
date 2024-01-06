@@ -28,22 +28,16 @@ public class GCKeeper
 
     public IDisposable TryStartNoGCRegion(long? size = null)
     {
-        // SustainedLowLatency is used rather than NoGCRegion
-        // due to runtime bug https://github.com/dotnet/runtime/issues/84096
-        // The code is left in as comments so it can be reverted when the bug is fixed
         size ??= _defaultSize;
-        var priorLatencyMode = System.Runtime.GCSettings.LatencyMode;
-        //if (_gcStrategy.CanStartNoGCRegion())
-        if (priorLatencyMode != GCLatencyMode.SustainedLowLatency)
+        if (_gcStrategy.CanStartNoGCRegion())
         {
             FailCause failCause = FailCause.None;
             try
             {
-                GCSettings.LatencyMode = GCLatencyMode.SustainedLowLatency;
-                //if (!System.GC.TryStartNoGCRegion(size.Value, true))
-                //{
-                //    failCause = FailCause.GCFailedToStartNoGCRegion;
-                //}
+                if (!System.GC.TryStartNoGCRegion(size.Value, true))
+                {
+                    failCause = FailCause.GCFailedToStartNoGCRegion;
+                }
             }
             catch (ArgumentOutOfRangeException)
             {
@@ -60,10 +54,10 @@ public class GCKeeper
                 if (_logger.IsError) _logger.Error($"{nameof(System.GC.TryStartNoGCRegion)} failed with exception.", e);
             }
 
-            return new NoGCRegion(this, priorLatencyMode, failCause, size, _logger);
+            return new NoGCRegion(this, failCause, size, _logger);
         }
 
-        return new NoGCRegion(this, priorLatencyMode, FailCause.StrategyDisallowed, size, _logger);
+        return new NoGCRegion(this, FailCause.StrategyDisallowed, size, _logger);
     }
 
     private enum FailCause
@@ -79,15 +73,13 @@ public class GCKeeper
     private class NoGCRegion : IDisposable
     {
         private readonly GCKeeper _gcKeeper;
-        private readonly GCLatencyMode _priorMode;
         private readonly FailCause _failCause;
         private readonly long? _size;
         private readonly ILogger _logger;
 
-        internal NoGCRegion(GCKeeper gcKeeper, GCLatencyMode priorMode, FailCause failCause, long? size, ILogger logger)
+        internal NoGCRegion(GCKeeper gcKeeper, FailCause failCause, long? size, ILogger logger)
         {
             _gcKeeper = gcKeeper;
-            _priorMode = priorMode;
             _failCause = failCause;
             _size = size;
             _logger = logger;
@@ -95,19 +87,13 @@ public class GCKeeper
 
         public void Dispose()
         {
-            // SustainedLowLatency is used rather than NoGCRegion
-            // due to runtime bug https://github.com/dotnet/runtime/issues/84096
-            // The code is left in as comments so it can be reverted when the bug is fixed
             if (_failCause == FailCause.None)
             {
-                //if (GCSettings.LatencyMode == GCLatencyMode.NoGCRegion)
-                if (GCSettings.LatencyMode == GCLatencyMode.SustainedLowLatency &&
-                    _priorMode != GCLatencyMode.SustainedLowLatency)
+                if (GCSettings.LatencyMode == GCLatencyMode.NoGCRegion)
                 {
                     try
                     {
-                        GCSettings.LatencyMode = _priorMode;
-                        //System.GC.EndNoGCRegion();
+                        System.GC.EndNoGCRegion();
                         _gcKeeper.ScheduleGC();
                     }
                     catch (InvalidOperationException)

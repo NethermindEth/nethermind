@@ -15,8 +15,8 @@ namespace Nethermind.Blockchain.Headers;
 
 public class HeaderStore : IHeaderStore
 {
-    // SyncProgressResolver MaxLookupBack is 128, add 16 wiggle room
-    private const int CacheSize = 128 + 16;
+    // SyncProgressResolver MaxLookupBack is 256, add 16 wiggle room
+    public const int CacheSize = 256 + 16;
 
     private readonly IDb _headerDb;
     private readonly IDb _blockNumberDb;

@@ -51,7 +51,7 @@ jobs:
       - name: Install Linux packages
         run: sudo apt-get update && sudo apt-get install libsnappy-dev
       - name: Set up .NET
-        uses: actions/setup-dotnet@v3
+        uses: actions/setup-dotnet@v4
         with:
           global-json-file: nethermind/global.json
       - name: Build Nethermind
@@ -63,12 +63,12 @@ jobs:
           cp -r artifacts/bin/Nethermind.Runner/release/* $GITHUB_WORKSPACE/nethermind/bin/
       - name: Set up Node.js v12
         if: ${{ !contains(matrix.branch, 'merge') }}
-        uses: actions/setup-node@v3
+        uses: actions/setup-node@v4
         with:
           node-version: 12
       - name: Set up Node.js v16
         if: ${{ contains(matrix.branch, 'merge') }}
-        uses: actions/setup-node@v3
+        uses: actions/setup-node@v4
         with:
           node-version: 16
       - name: Run tests
@@ -88,7 +88,7 @@ jobs:
           ls posdao-logs
       - name: Upload logs
         if: always()
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
-          name: posdao-logs
+          name: posdao-logs-${{ matrix.branch }}
           path: posdao-logs/*

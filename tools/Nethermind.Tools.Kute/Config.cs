@@ -21,7 +21,7 @@ public class Config
         longName: "address",
         Required = false,
         Default = "http://localhost:8551",
-        HelpText = "Address where to send JSON RPC calls"
+        HelpText = "Address where to send JSON RPC requests"
     )]
     public string HostAddress { get; }
 
@@ -29,7 +29,7 @@ public class Config
         shortName: 's',
         longName: "secret",
         Required = true,
-        HelpText = "Path to file with hex encoded secret for JWT authentication"
+        HelpText = "Path to File with hex encoded secret for JWT authentication"
     )]
     public string JwtSecretFilePath { get; }
 
@@ -75,9 +75,18 @@ public class Config
         Separator = ',',
         Required = false,
         Default = new string[] { },
-        HelpText = "A comma separated List of regexes of methods to be executed"
+        HelpText = "A comma separated List of regexes of methods to be executed with optional limits"
     )]
     public IEnumerable<string> MethodFilters { get; }
+
+    [Option(
+        shortName: 'r',
+        longName: "responses",
+        Required = false,
+        Default = null,
+        HelpText = "Path to File to store JSON-RPC responses"
+    )]
+    public string? ResponsesTraceFile { get; }
 
     public Config(
         string messagesFilePath,
@@ -87,7 +96,8 @@ public class Config
         bool dryRun,
         bool showProgress,
         MetricsOutputFormatter metricsOutputFormatter,
-        IEnumerable<string> methodFilters
+        IEnumerable<string> methodFilters,
+        string? responsesTraceFile
     )
     {
         MessagesFilePath = messagesFilePath;
@@ -98,6 +108,6 @@ public class Config
         ShowProgress = showProgress;
         MetricsOutputFormatter = metricsOutputFormatter;
         MethodFilters = methodFilters;
-        ShowProgress = showProgress;
+        ResponsesTraceFile = responsesTraceFile;
     }
 }

@@ -6,38 +6,20 @@ on:
   push:
     branches: [master]
 
-defaults:
-  run:
-    working-directory: src/Nethermind
-
-env:
-  BUILD_CONFIG: release
-  DOTNET_SYSTEM_CONSOLE_ALLOW_ANSI_COLOR_REDIRECTION: 1
-  TERM: xterm
-
 jobs:
   build:
     name: Build
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
+    strategy:
+      matrix:
+        config: [release, debug]
+        solution: [Nethermind, EthereumTests, Benchmarks]
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
         with:
-          submodules: true
-      - name: Install Linux packages
-        run: sudo apt-get update && sudo apt-get install libsnappy-dev
+          submodules: ${{ matrix.solution == 'EthereumTests' }}
       - name: Set up .NET
-        uses: actions/setup-dotnet@v3
-      - name: Install dependencies
-        run: |
-          dotnet restore Nethermind.sln
-          dotnet restore EthereumTests.sln
-          dotnet restore Benchmarks.sln
-      - name: Build Nethermind.sln
-        run: dotnet build Nethermind.sln -c ${{ env.BUILD_CONFIG }} --no-restore
-      - name: Build EthereumTests.sln
-        run: dotnet build EthereumTests.sln -c ${{ env.BUILD_CONFIG }} --no-restore
-      - name: Build Benchmarks.sln
-        run: dotnet build Benchmarks.sln -c ${{ env.BUILD_CONFIG }} --no-restore
+        uses: actions/setup-dotnet@v4
+      - name: Build ${{ matrix.solution }}.sln
+        run: dotnet build src/Nethermind/${{ matrix.solution }}.sln -c ${{ matrix.config }}

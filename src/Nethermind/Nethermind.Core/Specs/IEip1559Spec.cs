@@ -17,5 +17,8 @@ namespace Nethermind.Core.Specs
         public long Eip1559TransitionBlock { get; }
         public Address? Eip1559FeeCollector => null;
         public UInt256? Eip1559BaseFeeMinValue => null;
+        public UInt256 ForkBaseFee { get; }
+        public UInt256 BaseFeeMaxChangeDenominator { get; }
+        public long ElasticityMultiplier { get; }
     }
 }
