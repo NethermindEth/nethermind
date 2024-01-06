@@ -627,7 +627,9 @@ namespace Nethermind.Trie.Pruning
                     _commitSetQueue.Enqueue(toAddBack[index]);
                 }
 
-                Dictionary<(Hash256?, TinyTreePath), Hash256?>? persistedHashes = _pastPathHash != null
+                Dictionary<(Hash256?, TinyTreePath), Hash256?>? persistedHashes =
+                    // If its a reorg, we can't remove node as persisted node may not be canonical
+                    _pastPathHash != null && candidateSets.Count == 1
                     ? new Dictionary<(Hash256?, TinyTreePath), Hash256?>()
                     : null;
 
