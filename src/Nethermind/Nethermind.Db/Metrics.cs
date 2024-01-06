@@ -143,6 +143,14 @@ namespace Nethermind.Db
         public static long MetadataDbWrites { get; set; }
 
         [CounterMetric]
+        [Description("Number of BadBlocks DB writes.")]
+        public static long BadBlocksDbWrites { get; set; }
+
+        [CounterMetric]
+        [Description("Number of BadBlocks DB reads.")]
+        public static long BadBlocksDbReads { get; set; }
+
+        [CounterMetric]
         [Description("Number of BlobTransactions DB reads.")]
         public static long BlobTransactionsDbReads { get; set; }
 
