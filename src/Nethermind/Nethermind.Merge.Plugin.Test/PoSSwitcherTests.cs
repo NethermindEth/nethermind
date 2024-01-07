@@ -44,7 +44,7 @@ namespace Nethermind.Merge.Plugin.Test
             string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, "Specs/test_spec.json");
             ChainSpec chainSpec = loader.Load(File.ReadAllText(path));
 
-            ChainSpecBasedSpecProvider specProvider = new(chainSpec);
+            ChainSpecBasedSpecProvider specProvider = new(chainSpec, null);
             PoSSwitcher poSSwitcher = new(new MergeConfig(), new SyncConfig(), new MemDb(), blockTree, specProvider, new ChainSpec(), LimboLogs.Instance);
 
             Assert.That(poSSwitcher.TerminalTotalDifficulty, Is.EqualTo(expectedTtd));

@@ -96,7 +96,7 @@ public class ForkInfoTests
         ChainSpec spec = loader.Load(File.ReadAllText("../../../../Chains/foundation.json"));
         spec.Parameters.MergeForkIdTransition = 21_000_000L;
         spec.MergeForkIdBlockNumber = 21_000_000L;
-        ChainSpecBasedSpecProvider provider = new ChainSpecBasedSpecProvider(spec);
+        ChainSpecBasedSpecProvider provider = new ChainSpecBasedSpecProvider(spec, null);
         Test(head, headTimestamp, KnownHashes.MainnetGenesis, forkHashHex, next, description, provider);
     }
 
@@ -154,7 +154,7 @@ public class ForkInfoTests
     {
         ChainSpecLoader loader = new ChainSpecLoader(new EthereumJsonSerializer());
         ChainSpec spec = loader.Load(File.ReadAllText("../../../../Chains/gnosis.json"));
-        ChainSpecBasedSpecProvider provider = new ChainSpecBasedSpecProvider(spec);
+        ChainSpecBasedSpecProvider provider = new ChainSpecBasedSpecProvider(spec, null);
         Test(head, headTimestamp, KnownHashes.GnosisGenesis, forkHashHex, next, description, provider);
     }
 
@@ -165,7 +165,7 @@ public class ForkInfoTests
     {
         ChainSpecLoader loader = new ChainSpecLoader(new EthereumJsonSerializer());
         ChainSpec spec = loader.Load(File.ReadAllText("../../../../Chains/chiado.json"));
-        ChainSpecBasedSpecProvider provider = new ChainSpecBasedSpecProvider(spec);
+        ChainSpecBasedSpecProvider provider = new ChainSpecBasedSpecProvider(spec, null);
         Test(head, headTimestamp, KnownHashes.ChiadoGenesis, forkHashHex, next, description, provider);
     }
 
@@ -313,7 +313,7 @@ public class ForkInfoTests
             ChainSpecLoader loader = new ChainSpecLoader(new EthereumJsonSerializer());
             ChainSpec spec = loader.Load(File.ReadAllText(
                 $"../../../../{Assembly.GetExecutingAssembly().GetName().Name}/TimestampForkIdTest.json"));
-            specProvider = new ChainSpecBasedSpecProvider(spec);
+            specProvider = new ChainSpecBasedSpecProvider(spec, null);
         }
 
         ForkInfo forkInfo = new(specProvider, KnownHashes.MainnetGenesis);
@@ -331,7 +331,7 @@ public class ForkInfoTests
         ChainSpecLoader loader = new(new EthereumJsonSerializer());
 
         ChainSpec spec = loader.Load($"{{\"params\":{{\"networkID\":{specNetworkId?.ToString() ?? "null"},\"chainId\":{specChainId?.ToString() ?? "null"}}},\"engine\":{{\"NethDev\":{{}}}}}}");
-        ChainSpecBasedSpecProvider provider = new(spec);
+        ChainSpecBasedSpecProvider provider = new(spec, null);
 
         spec.ChainId.Should().Be(expectedChainId);
         spec.NetworkId.Should().Be(expectedNetworkId);
@@ -349,7 +349,7 @@ public class ForkInfoTests
     {
         ChainSpecLoader loader = new ChainSpecLoader(new EthereumJsonSerializer());
         ChainSpec spec = loader.Load(File.ReadAllText(Path.Combine(path, chainSpec)));
-        ChainSpecBasedSpecProvider provider = new ChainSpecBasedSpecProvider(spec);
+        ChainSpecBasedSpecProvider provider = new ChainSpecBasedSpecProvider(spec, null);
         Test(head, headTimestamp, genesisHash, forkHashHex, next, description, provider);
     }
 

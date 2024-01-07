@@ -3,6 +3,7 @@
 
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Text.Json.Serialization;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Int256;
@@ -40,9 +41,9 @@ namespace Nethermind.Specs.ChainSpecStyle
 
         public EthashParameters Ethash { get; set; }
 
-        public OptimismParameters Optimism { get; set; }
-
         public ChainParameters Parameters { get; set; }
+
+        public Dictionary<string, object> AdditionalParameters { get; set; }
 
         public Dictionary<Address, ChainSpecAllocation> Allocations { get; set; }
 

@@ -39,6 +39,11 @@ namespace Nethermind.Serialization.Json
             return JsonSerializer.Deserialize<T>(json, _jsonOptions);
         }
 
+        public object Deserialize(string json, Type returnType)
+        {
+            return JsonSerializer.Deserialize(json, returnType, _jsonOptions);
+        }
+
         public T Deserialize<T>(ref Utf8JsonReader json)
         {
             return JsonSerializer.Deserialize<T>(ref json, _jsonOptions);

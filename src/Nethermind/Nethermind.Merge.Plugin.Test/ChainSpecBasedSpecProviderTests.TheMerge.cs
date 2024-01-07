@@ -25,7 +25,7 @@ public class ChainSpecBasedSpecProviderTestsTheMerge
             }
         };
 
-        ChainSpecBasedSpecProvider provider = new(chainSpec);
+        ChainSpecBasedSpecProvider provider = new(chainSpec, null);
         Assert.That(provider.MergeBlockNumber?.BlockNumber, Is.EqualTo(terminalBlockNumber + 1));
         Assert.That(provider.TransitionActivations.Length, Is.EqualTo(0)); // merge block number shouldn't affect transition blocks
     }
@@ -37,7 +37,7 @@ public class ChainSpecBasedSpecProviderTestsTheMerge
         string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, "Specs/test_spec.json");
         ChainSpec chainSpec = loader.Load(File.ReadAllText(path));
 
-        ChainSpecBasedSpecProvider provider = new(chainSpec);
+        ChainSpecBasedSpecProvider provider = new(chainSpec, null);
         Assert.That(provider.MergeBlockNumber?.BlockNumber, Is.EqualTo(101));
         Assert.That(chainSpec.TerminalTotalDifficulty, Is.EqualTo((UInt256)10));
         Assert.That(chainSpec.MergeForkIdBlockNumber, Is.EqualTo(72));
@@ -55,7 +55,7 @@ public class ChainSpecBasedSpecProviderTestsTheMerge
             Parameters = new ChainParameters { }
         };
 
-        ChainSpecBasedSpecProvider provider = new(chainSpec);
+        ChainSpecBasedSpecProvider provider = new(chainSpec, null);
         Assert.That(provider.MergeBlockNumber, Is.EqualTo(null));
         Assert.That(provider.TransitionActivations.Length, Is.EqualTo(0));
     }
@@ -69,7 +69,7 @@ public class ChainSpecBasedSpecProviderTestsTheMerge
         string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, "Specs/test_spec.json");
         ChainSpec chainSpec = loader.Load(File.ReadAllText(path));
 
-        ChainSpecBasedSpecProvider provider = new(chainSpec);
+        ChainSpecBasedSpecProvider provider = new(chainSpec, null);
         Assert.That(provider.MergeBlockNumber?.BlockNumber, Is.EqualTo(expectedTerminalPoWBlock + 1));
 
         provider.UpdateMergeTransitionInfo(newMergeBlock);

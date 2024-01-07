@@ -30,7 +30,7 @@ namespace Nethermind.AuRa.Test.Contract
                 using Stream? stream = typeof(TTestClass).Assembly.GetManifestResourceStream(name);
                 using StreamReader reader = new(stream ?? new MemoryStream());
                 ChainSpec chainSpec = loader.Load(reader.ReadToEnd());
-                ChainSpecBasedSpecProvider chainSpecBasedSpecProvider = new(chainSpec);
+                ChainSpecBasedSpecProvider chainSpecBasedSpecProvider = new(chainSpec, null);
                 return (chainSpec, chainSpecBasedSpecProvider);
             }
 

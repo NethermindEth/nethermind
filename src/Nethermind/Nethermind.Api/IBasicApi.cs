@@ -41,6 +41,7 @@ namespace Nethermind.Api
         IReadOnlyList<INethermindPlugin> Plugins { get; }
         string SealEngineType { get; set; }
         ISpecProvider? SpecProvider { get; set; }
+        IChainSpecParametersProvider? ChainSpecParametersProvider { get; set; }
         ISyncModeSelector SyncModeSelector { get; set; }
         ISyncProgressResolver? SyncProgressResolver { get; set; }
         IBetterPeerStrategy? BetterPeerStrategy { get; set; }

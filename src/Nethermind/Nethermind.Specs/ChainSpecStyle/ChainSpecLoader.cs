@@ -336,37 +336,24 @@ public class ChainSpecLoader : IChainSpecLoader
                 }
             }
         }
-        else if (chainSpecJson.Engine?.Optimism is not null)
+        else if (chainSpecJson.Engine.EngineData.Count != 0)
         {
-            chainSpec.SealEngineType = SealEngineType.Optimism;
-            chainSpec.Optimism = new OptimismParameters
+            chainSpec.AdditionalParameters = new();
+            foreach (KeyValuePair<string, JsonElement> element in chainSpecJson.Engine.EngineData)
             {
-                RegolithTimestamp = chainSpecJson.Engine.Optimism.RegolithTimestamp,
-                BedrockBlockNumber = chainSpecJson.Engine.Optimism.BedrockBlockNumber,
-                CanyonTimestamp = chainSpecJson.Engine.Optimism.CanyonTimestamp,
-                L1FeeRecipient = chainSpecJson.Engine.Optimism.L1FeeRecipient,
-                L1BlockAddress = chainSpecJson.Engine.Optimism.L1BlockAddress,
-                CanyonBaseFeeChangeDenominator = chainSpecJson.Engine.Optimism.CanyonBaseFeeChangeDenominator,
-                Create2DeployerAddress = chainSpecJson.Engine.Optimism.Create2DeployerAddress,
-                Create2DeployerCode = chainSpecJson.Engine.Optimism.Create2DeployerCode
-            };
+                var parsed = element.Value.Deserialize<Dictionary<string, object>>();
+                chainSpec.AdditionalParameters.Add(element.Key, parsed["params"]);
+            }
         }
         else if (chainSpecJson.Engine?.NethDev is not null)
         {
             chainSpec.SealEngineType = SealEngineType.NethDev;
         }
 
-        var customEngineType = chainSpecJson.Engine?.CustomEngineData?.FirstOrDefault().Key;
-
-        if (!string.IsNullOrEmpty(customEngineType))
-        {
-            chainSpec.SealEngineType = customEngineType;
-        }
-
-        if (string.IsNullOrEmpty(chainSpec.SealEngineType))
-        {
-            throw new NotSupportedException("unknown seal engine in chainspec");
-        }
+        // if (string.IsNullOrEmpty(chainSpec.SealEngineType))
+        // {
+        //     throw new NotSupportedException("unknown seal engine in chainspec");
+        // }
     }
 
     private static void LoadGenesis(ChainSpecJson chainSpecJson, ChainSpec chainSpec)
