@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using Nethermind.Core;
+using Nethermind.Core.Caching;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -25,6 +26,7 @@ namespace Nethermind.State
         private readonly ILogManager? _logManager;
         internal readonly IStorageTreeFactory _storageTreeFactory;
         private readonly ResettableDictionary<Address, StorageTree> _storages = new();
+        private readonly LruCache<StorageCell, byte[]> _interBlockCache = new(65_536_000, "Inter-block Storage cache");
 
         /// <summary>
         /// EIP-1283
@@ -170,6 +172,7 @@ namespace Nethermind.State
                         Db.Metrics.StorageTreeWrites++;
                         toUpdateRoots.Add(change.StorageCell.Address);
                         tree.Set(change.StorageCell.Index, change.Value);
+                        _interBlockCache.Set(change.StorageCell, change.Value);
                         if (isTracing)
                         {
                             trace![change.StorageCell] = new ChangeTrace(change.Value);
@@ -238,15 +241,23 @@ namespace Nethermind.State
         {
             StorageTree tree = GetOrCreateStorage(storageCell.Address);
 
-            Db.Metrics.StorageTreeReads++;
-
             if (!storageCell.IsHash)
             {
-                byte[] value = tree.Get(storageCell.Index);
+                if (!_interBlockCache.TryGet(storageCell, out byte[]? value))
+                {
+                    Db.Metrics.StorageTreeReads++;
+                    value = tree.Get(storageCell.Index);
+                }
+                else
+                {
+                    Db.Metrics.StorageTreeCacheHits++;
+                }
+
                 PushToRegistryOnly(storageCell, value);
                 return value;
             }
 
+            Db.Metrics.StorageTreeReads++;
             return tree.Get(storageCell.Hash.Bytes);
         }
 
@@ -278,6 +289,15 @@ namespace Nethermind.State
             StorageTree storageTree = GetOrCreateStorage(address);
             storageTree.UpdateRootHash();
             return storageTree.RootHash;
+        }
+
+        /// <summary>
+        /// Reset the storage state
+        /// </summary>
+        public void ResetCache()
+        {
+            if (_logger.IsTrace) _logger.Trace("Clearing storage provider inter block cache");
+            _interBlockCache.Clear();
         }
 
         /// <summary>

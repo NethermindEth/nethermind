@@ -24,6 +24,7 @@ namespace Nethermind.State
     internal class StateProvider
     {
         private const int StartCapacity = Resettable.StartCapacity;
+        private readonly LruCache<Address, Account> _interBlockCache = new(65_536_000, "Inter-block State cache");
         private readonly ResettableDictionary<Address, Stack<int>> _intraBlockCache = new();
         private readonly ResettableHashSet<Address> _committedThisRound = new();
         private readonly HashSet<Address> _nullAccountReads = new();
@@ -676,9 +677,14 @@ namespace Nethermind.State
 
         private Account? GetState(Address address)
         {
+            if (_interBlockCache.TryGet(address, out Account? account))
+            {
+                Db.Metrics.StateTreeCacheHits++;
+                return account;
+            }
+
             Metrics.StateTreeReads++;
-            Account? account = _tree.Get(address);
-            return account;
+            return _tree.Get(address);
         }
 
         private void SetState(Address address, Account? account)
@@ -686,6 +692,7 @@ namespace Nethermind.State
             _needsStateRootUpdate = true;
             Metrics.StateTreeWrites++;
             _tree.Set(address, account);
+            _interBlockCache.Set(address, account);
         }
 
         private Account? GetAndAddToCache(Address address)
@@ -813,6 +820,12 @@ namespace Nethermind.State
             {
                 readOnlyDb.ClearTempChanges();
             }
+        }
+
+        public void ResetCache()
+        {
+            if (_logger.IsTrace) _logger.Trace("Clearing state provider inter block cache");
+            _interBlockCache.Clear();
         }
 
         public void CommitTree(long blockNumber)
