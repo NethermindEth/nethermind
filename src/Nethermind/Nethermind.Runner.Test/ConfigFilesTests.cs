@@ -326,6 +326,12 @@ namespace Nethermind.Runner.Test
             Test<IInitConfig, string>(configWildcard, c => c.LogFileName, (cf, p) => p.Should().Be(cf.Replace("cfg", "logs.txt"), cf));
         }
 
+        [TestCase("*")]
+        public void Forcing_block_production_on_every_slot_is_always_disabled(string configWildcard)
+        {
+            Test<IInitConfig, bool>(configWildcard, c => c.ForceBlockProduction, false);
+        }
+
         [TestCase("goerli", BlobsSupportMode.StorageWithReorgs)]
         [TestCase("^goerli", BlobsSupportMode.Disabled)]
         [TestCase("sepolia", BlobsSupportMode.Disabled)]
