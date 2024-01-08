@@ -78,7 +78,7 @@ public partial class EngineModuleTests
             blockCacheService,
             chain.LogManager);
         invalidChainTracker.SetupBlockchainProcessorInterceptor(chain.BlockchainProcessor);
-        chain.BeaconSync = new BeaconSync(chain.BeaconPivot, chain.BlockTree, synchronizationConfig, blockCacheService, chain.LogManager);
+        chain.BeaconSync = new BeaconSync(chain.BeaconPivot, chain.BlockTree, synchronizationConfig, blockCacheService, chain.PoSSwitcher, chain.LogManager);
         EngineRpcCapabilitiesProvider capabilitiesProvider = new(chain.SpecProvider);
         return new EngineRpcModule(
             new GetPayloadV1Handler(
