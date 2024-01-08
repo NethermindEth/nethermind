@@ -61,18 +61,26 @@ namespace Nethermind.Core.Test
         }
 
         [Test]
-        public void Length_of_byte()
+        public void single_byte_encoding_decoding()
         {
             byte item = 0;
             for (int i = 0; i < 128; i++)
             {
                 Assert.That(Rlp.LengthOf(item), Is.EqualTo(1));
+                var data = Rlp.Encode(item);
+                var rlp = new RlpStream(data.Bytes);
+                Assert.That(rlp.DecodeByte(), Is.EqualTo(item));
+
                 item += 1;
             }
 
             for (int i = 128; i < 256; i++)
             {
                 Assert.That(Rlp.LengthOf(item), Is.EqualTo(2));
+                var data = Rlp.Encode(item);
+                var rlp = new RlpStream(data.Bytes);
+                Assert.That(rlp.DecodeByte(), Is.EqualTo(item));
+
                 item += 1;
             }
         }
