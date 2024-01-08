@@ -109,7 +109,17 @@ namespace Nethermind.Consensus.Processing
                 }
                 else
                 {
-                    _transactionProcessor.ProcessTransaction(in blkCtx, currentTx, receiptsTracer, processingOptions, _stateProvider);
+                    Snapshot snapshot = _stateProvider.TakeSnapshot(true);
+                    try
+                    {
+                        _transactionProcessor.ProcessTransaction(in blkCtx, currentTx, receiptsTracer, processingOptions, _stateProvider);
+                    }
+                    catch (InvalidOperationException ex)
+                    {
+                        if (_logger.IsError) _logger.Error($"Skipping transaction {currentTx.ToShortString()} because: {ex}.");
+                        _stateProvider.Restore(snapshot);
+                        return TxAction.Skip;
+                    }
 
                     if (addToBlock)
                     {
