@@ -41,7 +41,6 @@ namespace Nethermind.Blockchain
 
         private readonly IBlockStore _blockStore;
         private readonly IHeaderStore _headerStore;
-        private readonly IEraStore? _eraStore;
         private readonly IDb _blockInfoDb;
         private readonly IDb _metadataDb;
 
@@ -109,7 +108,6 @@ namespace Nethermind.Blockchain
         public BlockTree(
             IBlockStore? blockStore,
             IHeaderStore? headerDb,
-            IEraStore? eraStore,
             IDb? blockInfoDb,
             IDb? metadataDb,
             IChainLevelInfoRepository? chainLevelInfoRepository,
@@ -121,7 +119,6 @@ namespace Nethermind.Blockchain
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _blockStore = blockStore ?? throw new ArgumentNullException(nameof(blockStore));
             _headerStore = headerDb ?? throw new ArgumentNullException(nameof(headerDb));
-            _eraStore = eraStore;
             _blockInfoDb = blockInfoDb ?? throw new ArgumentNullException(nameof(blockInfoDb));
             _metadataDb = metadataDb ?? throw new ArgumentNullException(nameof(metadataDb));
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
@@ -1301,11 +1298,6 @@ namespace Nethermind.Blockchain
             if (blockNumber != null)
             {
                 block = _blockStore.Get(blockNumber.Value, blockHash, shouldCache: false);
-            }
-
-            if (block is null && blockNumber != null && _syncConfig.AncientBodiesBarrier < blockNumber)
-            {
-                block = _eraStore?.FindBlock(blockNumber.Value).GetAwaiter().GetResult();
             }
 
             if (block is null)

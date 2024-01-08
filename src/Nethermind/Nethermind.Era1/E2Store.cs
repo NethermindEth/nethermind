@@ -353,6 +353,9 @@ internal class E2Store : IDisposable
 
             int indexLength = 16 + 8 * (int)c;
 
+            if (indexLength < 16 || indexLength > EraWriter.MaxEra1Size * 8 + 16)
+                throw new EraFormatException("Index is in an invalid format.");
+
             using ArrayPoolList<byte> blockIndex = new(indexLength);
             blockIndex.AddRange(bytes.Span);
 

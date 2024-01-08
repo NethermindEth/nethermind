@@ -44,7 +44,7 @@
     },
     "Goerli": {
       "commandName": "Project",
-      "commandLineArgs": "-c goerli -dd C:/ethereum/nethermind --JsonRpc.JwtSecretFile C:/ethereum/jwt.hex",
+      "commandLineArgs": "-c goerli -dd f:/ethereum/nethermind --JsonRpc.JwtSecretFile C:/ethereum/jwt.hex",
       "environmentVariables": {
         "ASPNETCORE_ENVIRONMENT": "Development"
       }
