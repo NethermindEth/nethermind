@@ -254,7 +254,7 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
 
         if (_forceBlockProduction)
         {
-            payloadAttributes = new PayloadAttributes()
+            payloadAttributes ??= new PayloadAttributes()
             {
                 Timestamp = newHeadBlock.Timestamp + 12,
                 ParentBeaconBlockRoot = newHeadBlock.ParentHash, // it doesn't matter
