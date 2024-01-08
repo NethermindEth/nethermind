@@ -74,14 +74,14 @@ public interface IInitConfig : IConfig
     [ConfigItem(Description = "The hint on the max memory limit, in bytes, to configure the database and networking memory allocations.", DefaultValue = "null")]
     long? MemoryHint { get; set; }
 
+    [ConfigItem(Description = "The maximum number of bad blocks observed on the network that will be stored to disk.", DefaultValue = "100")]
+    long? BadBlocksStored { get; set; }
+
     [ConfigItem(Description = "[TECHNICAL] Disable garbage collector on newPayload", DefaultValue = "true", HiddenFromDocs = true)]
     bool DisableGcOnNewPayload { get; set; }
 
     [ConfigItem(Description = "[TECHNICAL] Disable setting malloc options. Set to true if using different memory allocator or manually setting malloc opts.", DefaultValue = "false", HiddenFromDocs = true)]
     bool DisableMallocOpts { get; set; }
-
-    [ConfigItem(Description = "Directory with era1 archives from which ancient blocks will be served.", DefaultValue = "", HiddenFromDocs = false)]
-    string AncientDataDirectory { get; set; }
 
     [ConfigItem(Description = "[TECHNICAL] Exit when block number is reached. Useful for scripting and testing.", DefaultValue = "null", HiddenFromDocs = true)]
     long? ExitOnBlockNumber { get; set; }

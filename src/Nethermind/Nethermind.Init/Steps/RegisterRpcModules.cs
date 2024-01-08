@@ -29,7 +29,6 @@ using Nethermind.Logging;
 using Nethermind.Network.Config;
 using Nethermind.JsonRpc.Modules.Rpc;
 using Nethermind.Serialization.Json;
-using Nethermind.Blockchain;
 
 namespace Nethermind.Init.Steps;
 
@@ -117,6 +116,7 @@ public class RegisterRpcModules : IStep
         if (_api.KeyStore is null) throw new StepDependencyException(nameof(_api.KeyStore));
         if (_api.PeerPool is null) throw new StepDependencyException(nameof(_api.PeerPool));
         if (_api.WitnessRepository is null) throw new StepDependencyException(nameof(_api.WitnessRepository));
+        if (_api.BadBlocksStore is null) throw new StepDependencyException(nameof(_api.BadBlocksStore));
 
         ProofModuleFactory proofModuleFactory = new(_api.WorldStateManager, _api.BlockTree, _api.BlockPreprocessor, _api.ReceiptFinder, _api.SpecProvider, _api.LogManager);
         rpcModuleProvider.RegisterBounded(proofModuleFactory, 2, rpcConfig.Timeout);
@@ -134,6 +134,7 @@ public class RegisterRpcModules : IStep
             _api.ConfigProvider,
             _api.SpecProvider,
             _api.SyncModeSelector,
+            _api.BadBlocksStore,
             _api.FileSystem,
             _api.LogManager);
         rpcModuleProvider.RegisterBoundedByCpuCount(debugModuleFactory, rpcConfig.Timeout);
@@ -166,31 +167,21 @@ public class RegisterRpcModules : IStep
 
         ManualPruningTrigger pruningTrigger = new();
         _api.PruningTrigger.Add(pruningTrigger);
-        
-        IEraExporter eraService = new EraExporter(
-            _api.FileSystem,
-            _api.BlockTree,
-            _api.ReceiptStorage,
-            _api.SpecProvider,
-            BlockchainIds.GetBlockchainName(_api.SpecProvider.NetworkId),
-            _api.LogManager);
         AdminRpcModule adminRpcModule = new(
             _api.BlockTree,
             networkConfig,
             _api.PeerPool,
             _api.StaticNodesManager,
             _api.Enode,
-            eraService,
             initConfig.BaseDbPath,
-            pruningTrigger,
-            _api.ProcessExitToken!);
+            pruningTrigger);
         rpcModuleProvider.RegisterSingle<IAdminRpcModule>(adminRpcModule);
 
         if (_api.TxPoolInfoProvider is null) throw new StepDependencyException(nameof(_api.TxPoolInfoProvider));
 
         TxPoolRpcModule txPoolRpcModule = new(_api.TxPoolInfoProvider, _api.LogManager);
         rpcModuleProvider.RegisterSingle<ITxPoolRpcModule>(txPoolRpcModule);
-        
+
         if (_api.SyncServer is null) throw new StepDependencyException(nameof(_api.SyncServer));
         if (_api.EngineSignerStore is null) throw new StepDependencyException(nameof(_api.EngineSignerStore));
 
