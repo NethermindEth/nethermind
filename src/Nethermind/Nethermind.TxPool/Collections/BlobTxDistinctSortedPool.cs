@@ -24,7 +24,7 @@ public class BlobTxDistinctSortedPool : TxDistinctSortedPool
 
     public override void VerifyCapacity()
     {
-        if (Count > _poolCapacity && _logger.IsWarn)
+        if (_logger.IsWarn && Count > _poolCapacity)
             _logger.Warn($"Blob pool exceeds the config size {Count}/{_poolCapacity}");
     }
 
