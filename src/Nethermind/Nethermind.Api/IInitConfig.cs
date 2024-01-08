@@ -86,8 +86,8 @@ public interface IInitConfig : IConfig
     [ConfigItem(Description = "[TECHNICAL] Exit when block number is reached. Useful for scripting and testing.", DefaultValue = "null", HiddenFromDocs = true)]
     long? ExitOnBlockNumber { get; set; }
 
-    [ConfigItem(Description = "[TECHNICAL] Produce block for every possible slot.", DefaultValue = "false", HiddenFromDocs = true)]
-    bool ForceBlockProduction { get; set; }
+    [ConfigItem(Description = "[TECHNICAL] Simulate block production for every possible slot. Just for stress-testing purposes.", DefaultValue = "false", HiddenFromDocs = true)]
+    bool SimulateBlockProduction { get; set; }
 }
 
 public enum DiagnosticMode

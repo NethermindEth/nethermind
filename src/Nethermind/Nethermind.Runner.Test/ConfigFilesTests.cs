@@ -329,7 +329,7 @@ namespace Nethermind.Runner.Test
         [TestCase("*")]
         public void Forcing_block_production_on_every_slot_is_always_disabled(string configWildcard)
         {
-            Test<IInitConfig, bool>(configWildcard, c => c.ForceBlockProduction, false);
+            Test<IInitConfig, bool>(configWildcard, c => c.SimulateBlockProduction, false);
         }
 
         [TestCase("goerli", BlobsSupportMode.StorageWithReorgs)]

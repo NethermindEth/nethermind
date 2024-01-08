@@ -75,7 +75,7 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
         _beaconPivot = beaconPivot;
         _peerRefresher = peerRefresher;
         _specProvider = specProvider;
-        _forceBlockProduction = initConfig.ForceBlockProduction;
+        _forceBlockProduction = initConfig.SimulateBlockProduction;
         _logger = logManager.GetClassLogger();
     }
 
