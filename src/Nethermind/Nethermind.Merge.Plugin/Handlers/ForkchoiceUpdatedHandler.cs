@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Consensus;
@@ -46,9 +47,11 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
     private readonly ILogger _logger;
     private readonly IPeerRefresher _peerRefresher;
     private readonly ISpecProvider _specProvider;
+    private readonly bool _forceBlockProduction;
 
     public ForkchoiceUpdatedHandler(
         IBlockTree blockTree,
+        IInitConfig initConfig,
         IManualBlockFinalizationManager manualBlockFinalizationManager,
         IPoSSwitcher poSSwitcher,
         IPayloadPreparationService payloadPreparationService,
@@ -72,6 +75,7 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
         _beaconPivot = beaconPivot;
         _peerRefresher = peerRefresher;
         _specProvider = specProvider;
+        _forceBlockProduction = initConfig.ForceBlockProduction;
         _logger = logManager.GetClassLogger();
     }
 
@@ -247,6 +251,19 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
     private ResultWrapper<ForkchoiceUpdatedV1Result> StartBuildingPayload(Block newHeadBlock, ForkchoiceStateV1 forkchoiceState, PayloadAttributes? payloadAttributes)
     {
         string? payloadId = null;
+
+        if (_forceBlockProduction)
+        {
+            payloadAttributes = new PayloadAttributes()
+            {
+                Timestamp = newHeadBlock.Timestamp + 12,
+                ParentBeaconBlockRoot = newHeadBlock.ParentHash, // it doesn't matter
+                PrevRandao = newHeadBlock.ParentHash ?? Keccak.Zero, // it doesn't matter
+                Withdrawals = Array.Empty<Withdrawal>(),
+                SuggestedFeeRecipient = Address.Zero
+            };
+        }
+
         if (payloadAttributes is not null)
         {
             if (newHeadBlock.Timestamp >= payloadAttributes.Timestamp)

@@ -327,6 +327,7 @@ public partial class MergePlugin : IConsensusWrapperPlugin, ISynchronizationPlug
                     TimeSpan.FromSeconds(_mergeConfig.NewPayloadTimeout)),
                 new ForkchoiceUpdatedHandler(
                     _api.BlockTree,
+                    _api.Config<IInitConfig>(),
                     _blockFinalizationManager,
                     _poSSwitcher,
                     payloadPreparationService,
