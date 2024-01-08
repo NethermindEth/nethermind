@@ -17,6 +17,6 @@
   <ItemGroup>
     <PackageReference Include="ConcurrentHashSet" />
     <PackageReference Include="FastEnum" />
-    <PackageReference Include="Nethermind.RocksDB.Bindings" />
+    <PackageReference Include="Nethermind.RocksDB.Runtimes" />
   </ItemGroup>
 </Project>
