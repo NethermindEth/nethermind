@@ -231,7 +231,7 @@ public partial class EngineModuleTests
             result = new ExecutionPayload
             {
                 BaseFeePerGas = 0,
-                BlockHash = new("0x5fd61518405272d77fd6cdc8a824a109d75343e32024ee4f6769408454b1823d"),
+                BlockHash = new("0x28012c3a37c85b37f9dc6db2d874f9c92b5d8d4bb784177c5309a0c6d7af6ef4"),
                 BlockNumber = 0,
                 ExtraData = Bytes.FromHexString("0x010203"),
                 FeeRecipient = Address.Zero,
@@ -250,7 +250,7 @@ public partial class EngineModuleTests
                         Bytes.FromHexString(
                             "0xf85f800182520894475674cb523a0a2736b7f7534390288fce16982c018025a0634db2f18f24d740be29e03dd217eea5757ed7422680429bdd458c582721b6c2a02f0fa83931c9a99d3448a46b922261447d6a41d8a58992b5596089d15d521102"),
                         Bytes.FromHexString(
-                            "0x02f8620180011482520894475674cb523a0a2736b7f7534390288fce16982c0180c001a0033e85439a128c42f2ba47ca278f1375ef211e61750018ff21bcd9750d1893f2a04ee981fe5261f8853f95c865232ffdab009abcc7858ca051fb624c49744bf18d")
+                            "0x02f8620180011482520894475674cb523a0a2736b7f7534390288fce16982c0180c001a0db002b398e038bc919b316a214154aa6d9d5e404cb201aa8a151efb92f9fdbbda07bee8ea6915ed54bb07af4cd69b201548fe9aac699978e5c444405dc49f55a36")
                     },
             },
             id = 67

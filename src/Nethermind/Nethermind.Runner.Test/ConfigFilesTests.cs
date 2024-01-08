@@ -189,11 +189,12 @@ namespace Nethermind.Runner.Test
         }
 
         [TestCase("mainnet", 2048)]
+        [TestCase("holesky", 2048)]
         [TestCase("gnosis", 2048)]
         [TestCase("poacore", 2048)]
         [TestCase("energy", 2048)]
         [TestCase("chiado", 2048)]
-        [TestCase("^mainnet ^spaceneth ^volta ^energy ^poacore ^gnosis ^chiado", 1024)]
+        [TestCase("^mainnet ^holesky ^spaceneth ^volta ^energy ^poacore ^gnosis ^chiado", 1024)]
         [TestCase("spaceneth", 128)]
         public void Tx_pool_defaults_are_correct(string configWildcard, int poolSize)
         {
@@ -205,8 +206,9 @@ namespace Nethermind.Runner.Test
         [TestCase("gnosis", true)]
         [TestCase("mainnet", true)]
         [TestCase("sepolia", true)]
+        [TestCase("holesky", true)]
         [TestCase("chiado", true)]
-        [TestCase("^spaceneth ^goerli ^mainnet ^gnosis ^sepolia ^chiado", false)]
+        [TestCase("^spaceneth ^goerli ^mainnet ^gnosis ^sepolia ^holesky ^chiado", false)]
         public void Json_defaults_are_correct(string configWildcard, bool jsonEnabled)
         {
             Test<IJsonRpcConfig, bool>(configWildcard, c => c.Enabled, jsonEnabled);
@@ -241,10 +243,11 @@ namespace Nethermind.Runner.Test
             Test<ISyncConfig, bool>(configWildcard, c => c.SnapSync, enabled);
         }
 
-        [TestCase("^aura ^sepolia ^goerli ^mainnet", false)]
+        [TestCase("^aura ^sepolia ^holesky ^goerli ^mainnet", false)]
         [TestCase("aura ^archive", true)]
         [TestCase("^archive ^spaceneth", true)]
         [TestCase("sepolia ^archive", true)]
+        [TestCase("holesky ^archive", true)]
         [TestCase("goerli ^archive", true)]
         [TestCase("mainnet ^archive", true)]
         public void Stays_on_full_sync(string configWildcard, bool stickToFullSyncAfterFastSync)
@@ -323,6 +326,18 @@ namespace Nethermind.Runner.Test
             Test<IInitConfig, string>(configWildcard, c => c.LogFileName, (cf, p) => p.Should().Be(cf.Replace("cfg", "logs.txt"), cf));
         }
 
+        [TestCase("goerli", BlobsSupportMode.StorageWithReorgs)]
+        [TestCase("^goerli", BlobsSupportMode.Disabled)]
+        [TestCase("sepolia", BlobsSupportMode.Disabled)]
+        [TestCase("holesky", BlobsSupportMode.Disabled)]
+        [TestCase("mainnet", BlobsSupportMode.Disabled)]
+        [TestCase("chiado", BlobsSupportMode.Disabled)]
+        [TestCase("gnosis", BlobsSupportMode.Disabled)]
+        public void Blob_txs_support_is_correct(string configWildcard, BlobsSupportMode blobsSupportMode)
+        {
+            Test<ITxPoolConfig, BlobsSupportMode>(configWildcard, c => c.BlobsSupport, blobsSupportMode);
+        }
+
 
         [TestCase("goerli", new[] { 16, 16, 16, 16 })]
         [TestCase("mainnet")]
@@ -357,7 +372,8 @@ namespace Nethermind.Runner.Test
         [TestCase("goerli", 30_000_000L)]
         [TestCase("mainnet", 30_000_000L)]
         [TestCase("sepolia", 30_000_000L)]
-        [TestCase("^chiado ^gnosis ^goerli ^mainnet ^sepolia")]
+        [TestCase("holesky", 30_000_000L)]
+        [TestCase("^chiado ^gnosis ^goerli ^mainnet ^sepolia ^holesky")]
         public void Blocks_defaults_are_correct(string configWildcard, long? targetBlockGasLimit = null, ulong secondsPerSlot = 12)
         {
             Test<IBlocksConfig, long?>(configWildcard, c => c.TargetBlockGasLimit, targetBlockGasLimit);
@@ -408,8 +424,8 @@ namespace Nethermind.Runner.Test
         {
             "goerli_archive.cfg",
             "goerli.cfg",
-            "kovan.cfg",
-            "kovan_archive.cfg",
+            "holesky.cfg",
+            "holesky_archive.cfg",
             "mainnet_archive.cfg",
             "mainnet.cfg",
             "poacore.cfg",
@@ -418,8 +434,6 @@ namespace Nethermind.Runner.Test
             "gnosis_archive.cfg",
             "spaceneth.cfg",
             "spaceneth_persistent.cfg",
-            "volta.cfg",
-            "volta_archive.cfg",
             "volta.cfg",
             "volta_archive.cfg",
             "energyweb.cfg",

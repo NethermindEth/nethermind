@@ -18,7 +18,7 @@ namespace Nethermind.Core
                 long gasDelta;
                 UInt256 feeDelta;
                 bool isForkBlockNumber = specFor1559.Eip1559TransitionBlock == parent.Number + 1;
-                long parentGasTarget = parent.GasLimit / Eip1559Constants.ElasticityMultiplier;
+                long parentGasTarget = parent.GasLimit / specFor1559.ElasticityMultiplier;
                 if (isForkBlockNumber)
                     parentGasTarget = parent.GasLimit;
 
@@ -30,20 +30,20 @@ namespace Nethermind.Core
                 {
                     gasDelta = parent.GasUsed - parentGasTarget;
                     feeDelta = UInt256.Max(
-                        parentBaseFee * (UInt256)gasDelta / (UInt256)parentGasTarget / Eip1559Constants.BaseFeeMaxChangeDenominator,
+                        parentBaseFee * (UInt256)gasDelta / (UInt256)parentGasTarget / specFor1559.BaseFeeMaxChangeDenominator,
                         UInt256.One);
                     expectedBaseFee = parentBaseFee + feeDelta;
                 }
                 else
                 {
                     gasDelta = parentGasTarget - parent.GasUsed;
-                    feeDelta = parentBaseFee * (UInt256)gasDelta / (UInt256)parentGasTarget / Eip1559Constants.BaseFeeMaxChangeDenominator;
+                    feeDelta = parentBaseFee * (UInt256)gasDelta / (UInt256)parentGasTarget / specFor1559.BaseFeeMaxChangeDenominator;
                     expectedBaseFee = UInt256.Max(parentBaseFee - feeDelta, 0);
                 }
 
                 if (isForkBlockNumber)
                 {
-                    expectedBaseFee = Eip1559Constants.ForkBaseFee;
+                    expectedBaseFee = specFor1559.ForkBaseFee;
                 }
 
                 if (specFor1559.Eip1559BaseFeeMinValue.HasValue)

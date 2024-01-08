@@ -135,13 +135,11 @@ public class Engine : IDisposable
     private ITypedArray<byte> Slice(object input, long start, long end)
     {
         ArgumentNullException.ThrowIfNull(input);
+        var bytes = input.ToBytes();
 
-        if (start < 0 || end < start || end > Array.MaxLength)
-        {
-            throw new ArgumentOutOfRangeException(nameof(start), $"tracer accessed out of bound memory: offset {start}, end {end}");
-        }
-
-        return input.ToBytes().Slice((int)start, (int)(end - start)).ToTypedScriptArray();
+        return start < 0 || end < start || end > bytes.Length
+            ? throw new ArgumentOutOfRangeException(nameof(start), $"tracer accessed out of bound memory: available {bytes.Length}, offset {start}, size {end - start}")
+            : bytes.Slice((int)start, (int)(end - start)).ToTypedScriptArray();
     }
 
     /// <summary>

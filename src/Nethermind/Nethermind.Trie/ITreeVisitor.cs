@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.Trie
@@ -11,6 +12,8 @@ namespace Nethermind.Trie
         /// Specify that this is a full table scan and should optimize for it.
         /// </summary>
         public bool IsFullDbScan { get; }
+
+        ReadFlags ExtraReadFlag => ReadFlags.None;
 
         bool ShouldVisit(Hash256 nextNode);
 
