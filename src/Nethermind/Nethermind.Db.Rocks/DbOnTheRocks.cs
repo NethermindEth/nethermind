@@ -53,6 +53,7 @@ public class DbOnTheRocks : IDb, ITunableDb
     private long _maxThisDbSize;
 
     protected IntPtr? _cache = null;
+    protected IntPtr? _rowCache = null;
 
     private readonly RocksDbSettings _settings;
 
@@ -353,6 +354,12 @@ public class DbOnTheRocks : IDb, ITunableDb
 
         options.SetCreateIfMissing();
         options.SetAdviseRandomOnOpen(true);
+
+        if (dbConfig.RowCacheSize > 0)
+        {
+            _rowCache = RocksDbSharp.Native.Instance.rocksdb_cache_create_lru(new UIntPtr(dbConfig.RowCacheSize.Value));
+            _rocksDbNative.rocksdb_options_set_row_cache(options.Handle, _rowCache.Value);
+        }
 
         /*
          * Multi-Threaded Compactions
@@ -1046,6 +1053,11 @@ public class DbOnTheRocks : IDb, ITunableDb
         if (_cache.HasValue)
         {
             _rocksDbNative.rocksdb_cache_destroy(_cache.Value);
+        }
+
+        if (_rowCache.HasValue)
+        {
+            _rocksDbNative.rocksdb_cache_destroy(_rowCache.Value);
         }
 
         if (_rateLimiter.HasValue)
