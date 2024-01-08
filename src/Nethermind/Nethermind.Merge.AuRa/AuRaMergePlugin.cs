@@ -76,7 +76,7 @@ namespace Nethermind.Merge.AuRa
         public bool ShouldRunSteps(INethermindApi api)
         {
             _mergeConfig = api.Config<IMergeConfig>();
-            return _mergeConfig.Enabled && api.ChainSpec.SealEngineType == SealEngineType.AuRa;
+            return _mergeConfig.Enabled && api.ChainSpecParametersProvider?.SealEngineType == SealEngineType.AuRa;
         }
     }
 }

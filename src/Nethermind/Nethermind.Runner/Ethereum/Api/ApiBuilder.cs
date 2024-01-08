@@ -92,7 +92,7 @@ namespace Nethermind.Runner.Ethereum.Api
         {
             _logManager.SetGlobalVariable("chain", chainSpec.Name);
             _logManager.SetGlobalVariable("chainId", chainSpec.ChainId);
-            _logManager.SetGlobalVariable("engine", chainSpec.SealEngineType);
+            // _logManager.SetGlobalVariable("engine", chainSpec.SealEngineType);
         }
     }
 }

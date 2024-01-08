@@ -95,7 +95,8 @@ namespace Nethermind.Synchronization
             No.BeaconSync,
             _betterPeerStrategy!,
             _logManager,
-            _chainSpec?.SealEngineType == SealEngineType.Clique);
+            false);
+            // _chainSpec?.SealEngineType == SealEngineType.Clique);
 
         public Synchronizer(
             IDbProvider dbProvider,

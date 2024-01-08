@@ -76,7 +76,7 @@ public class ChainSpecLoaderTests
             chainSpec.Allocations[new Address("0x71562b71999873db5b286df957af199ec94617f7")].Code, Is.EqualTo(Bytes.FromHexString("0xabcd")),
             "account 0x71562b71999873db5b286df957af199ec94617f7 - code");
 
-        Assert.That(chainSpec.SealEngineType, Is.EqualTo(SealEngineType.Ethash), "engine");
+        // Assert.That(chainSpec.SealEngineType, Is.EqualTo(SealEngineType.Ethash), "engine");
 
         Assert.That(chainSpec.HomesteadBlockNumber, Is.EqualTo((long?)0), "homestead transition");
         Assert.That(chainSpec.TangerineWhistleBlockNumber, Is.EqualTo((long?)0), "tangerine whistle transition");
@@ -128,7 +128,7 @@ public class ChainSpecLoaderTests
         Assert.That(chainSpec.NetworkId, Is.EqualTo(5), $"{nameof(chainSpec.NetworkId)}");
         Assert.That(chainSpec.Name, Is.EqualTo("Görli Testnet"), $"{nameof(chainSpec.Name)}");
         Assert.That(chainSpec.DataDir, Is.EqualTo("goerli"), $"{nameof(chainSpec.DataDir)}");
-        Assert.That(chainSpec.SealEngineType, Is.EqualTo(SealEngineType.Clique), "engine");
+        // Assert.That(chainSpec.SealEngineType, Is.EqualTo(SealEngineType.Clique), "engine");
 
         Assert.That(chainSpec.Clique.Period, Is.EqualTo(15UL));
         Assert.That(chainSpec.Clique.Epoch, Is.EqualTo(30000UL));
@@ -159,7 +159,7 @@ public class ChainSpecLoaderTests
         Assert.That(chainSpec.Parameters.Eip1559BaseFeeInitialValue, Is.EqualTo(1.GWei()), $"fork base fee");
         Assert.That(chainSpec.NetworkId, Is.EqualTo(100), $"{nameof(chainSpec.NetworkId)}");
         Assert.That(chainSpec.Name, Is.EqualTo("GnosisChain"), $"{nameof(chainSpec.Name)}");
-        Assert.That(chainSpec.SealEngineType, Is.EqualTo(SealEngineType.AuRa), "engine");
+        // Assert.That(chainSpec.SealEngineType, Is.EqualTo(SealEngineType.AuRa), "engine");
 
         int berlinGnosisBlockNumber = 16101500;
         chainSpec.Parameters.Eip2565Transition.Should().Be(berlinGnosisBlockNumber);
@@ -182,7 +182,7 @@ public class ChainSpecLoaderTests
         Assert.That(chainSpec.Parameters.Eip1559BaseFeeInitialValue, Is.EqualTo(1.GWei()), $"fork base fee");
         Assert.That(chainSpec.NetworkId, Is.EqualTo(10200), $"{nameof(chainSpec.NetworkId)}");
         Assert.That(chainSpec.Name, Is.EqualTo("chiado"), $"{nameof(chainSpec.Name)}");
-        Assert.That(chainSpec.SealEngineType, Is.EqualTo(SealEngineType.AuRa), "engine");
+        // Assert.That(chainSpec.SealEngineType, Is.EqualTo(SealEngineType.AuRa), "engine");
 
         chainSpec.Parameters.TerminalTotalDifficulty.ToString()
             .Should().Be("231707791542740786049188744689299064356246512");
@@ -205,7 +205,7 @@ public class ChainSpecLoaderTests
         Assert.That(chainSpec.NetworkId, Is.EqualTo(1), $"{nameof(chainSpec.NetworkId)}");
         Assert.That(chainSpec.Name, Is.EqualTo("Ethereum"), $"{nameof(chainSpec.Name)}");
         Assert.That(chainSpec.DataDir, Is.EqualTo("ethereum"), $"{nameof(chainSpec.Name)}");
-        Assert.That(chainSpec.SealEngineType, Is.EqualTo(SealEngineType.Ethash), "engine");
+        // Assert.That(chainSpec.SealEngineType, Is.EqualTo(SealEngineType.Ethash), "engine");
 
         chainSpec.HomesteadBlockNumber.Should().Be(MainnetSpecProvider.HomesteadBlockNumber);
         chainSpec.DaoForkBlockNumber.Should().Be(1920000);
@@ -233,7 +233,7 @@ public class ChainSpecLoaderTests
         Assert.That(chainSpec.NetworkId, Is.EqualTo(99), $"{nameof(chainSpec.NetworkId)}");
         Assert.That(chainSpec.Name, Is.EqualTo("Spaceneth"), $"{nameof(chainSpec.Name)}");
         Assert.That(chainSpec.DataDir, Is.EqualTo("spaceneth"), $"{nameof(chainSpec.Name)}");
-        Assert.That(chainSpec.SealEngineType, Is.EqualTo(SealEngineType.NethDev), "engine");
+        // Assert.That(chainSpec.SealEngineType, Is.EqualTo(SealEngineType.NethDev), "engine");
 
         chainSpec.HomesteadBlockNumber.Should().Be(0L);
         chainSpec.DaoForkBlockNumber.Should().Be(null);
@@ -259,7 +259,7 @@ public class ChainSpecLoaderTests
         Assert.That(chainSpec.NetworkId, Is.EqualTo(11155111), $"{nameof(chainSpec.NetworkId)}");
         Assert.That(chainSpec.Name, Is.EqualTo("Sepolia Testnet"), $"{nameof(chainSpec.Name)}");
         Assert.That(chainSpec.DataDir, Is.EqualTo("sepolia"), $"{nameof(chainSpec.Name)}");
-        Assert.That(chainSpec.SealEngineType, Is.EqualTo("Ethash"), "engine");
+        // Assert.That(chainSpec.SealEngineType, Is.EqualTo("Ethash"), "engine");
 
         chainSpec.LondonBlockNumber.Should().Be(0L);
         chainSpec.ShanghaiTimestamp.Should().Be(1677557088);
@@ -274,7 +274,7 @@ public class ChainSpecLoaderTests
         Assert.That(chainSpec.NetworkId, Is.EqualTo(17000), $"{nameof(chainSpec.NetworkId)}");
         Assert.That(chainSpec.Name, Is.EqualTo("Holesky Testnet"), $"{nameof(chainSpec.Name)}");
         Assert.That(chainSpec.DataDir, Is.EqualTo("holesky"), $"{nameof(chainSpec.DataDir)}");
-        Assert.That(chainSpec.SealEngineType, Is.EqualTo(SealEngineType.Ethash), "engine");
+        // Assert.That(chainSpec.SealEngineType, Is.EqualTo(SealEngineType.Ethash), "engine");
 
         chainSpec.DaoForkBlockNumber.Should().Be(null);
         chainSpec.TangerineWhistleBlockNumber.Should().Be(0);

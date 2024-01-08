@@ -275,7 +275,7 @@ public class ChainSpecLoader : IChainSpecLoader
 
         if (chainSpecJson.Engine?.AuthorityRound is not null)
         {
-            chainSpec.SealEngineType = SealEngineType.AuRa;
+            // chainSpec.SealEngineType = SealEngineType.AuRa;
             chainSpec.AuRa = new AuRaParameters
             {
                 MaximumUncleCount = chainSpecJson.Engine.AuthorityRound.MaximumUncleCount,
@@ -298,7 +298,7 @@ public class ChainSpecLoader : IChainSpecLoader
         }
         else if (chainSpecJson.Engine?.Clique is not null)
         {
-            chainSpec.SealEngineType = SealEngineType.Clique;
+            // chainSpec.SealEngineType = SealEngineType.Clique;
             chainSpec.Clique = new CliqueParameters
             {
                 Epoch = chainSpecJson.Engine.Clique.Epoch,
@@ -308,7 +308,7 @@ public class ChainSpecLoader : IChainSpecLoader
         }
         else if (chainSpecJson.Engine?.Ethash is not null)
         {
-            chainSpec.SealEngineType = SealEngineType.Ethash;
+            // chainSpec.SealEngineType = SealEngineType.Ethash;
             chainSpec.Ethash = new EthashParameters
             {
                 MinimumDifficulty = chainSpecJson.Engine.Ethash.MinimumDifficulty ?? 0L,
@@ -347,7 +347,7 @@ public class ChainSpecLoader : IChainSpecLoader
         }
         else if (chainSpecJson.Engine?.NethDev is not null)
         {
-            chainSpec.SealEngineType = SealEngineType.NethDev;
+            // chainSpec.SealEngineType = SealEngineType.NethDev;
         }
 
         // if (string.IsNullOrEmpty(chainSpec.SealEngineType))

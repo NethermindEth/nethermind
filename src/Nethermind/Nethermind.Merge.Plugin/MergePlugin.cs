@@ -57,7 +57,7 @@ public partial class MergePlugin : IConsensusWrapperPlugin, ISynchronizationPlug
     public string Author => "Nethermind";
 
     protected virtual bool MergeEnabled => _mergeConfig.Enabled &&
-                                           _api.ChainSpec.SealEngineType is SealEngineType.BeaconChain or SealEngineType.Clique or SealEngineType.Ethash;
+                                           _api.ChainSpecParametersProvider?.SealEngineType is SealEngineType.BeaconChain or SealEngineType.Clique or SealEngineType.Ethash;
 
     // Don't remove default constructor. It is used by reflection when we're loading plugins
     public MergePlugin() { }

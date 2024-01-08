@@ -33,8 +33,6 @@ namespace Nethermind.Specs.ChainSpecStyle
         public bool GenesisStateUnavailable { get; set; }
         public Block Genesis { get; set; }
 
-        public string SealEngineType { get; set; }
-
         public AuRaParameters AuRa { get; set; }
 
         public CliqueParameters Clique { get; set; }
