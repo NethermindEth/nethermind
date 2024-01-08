@@ -13,7 +13,6 @@ using Nethermind.Merge.Plugin.BlockProduction;
 using Nethermind.Merge.Plugin.GC;
 using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.JsonRpc.Modules;
-using Nethermind.Core;
 using Nethermind.Config;
 using Nethermind.Logging;
 using Nethermind.Blockchain.Synchronization;
@@ -21,13 +20,10 @@ using Nethermind.Merge.Plugin.InvalidChainTracker;
 using Nethermind.Blockchain;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Merge.Plugin.Synchronization;
-using Nethermind.Synchronization.Reporting;
 using Nethermind.Synchronization.ParallelSync;
-using System.Threading;
 using Nethermind.HealthChecks;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs.ChainSpecStyle;
-using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Optimism;
 
@@ -235,6 +231,7 @@ public class OptimismPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitial
                 TimeSpan.FromSeconds(_mergeConfig.NewPayloadTimeout)),
             new ForkchoiceUpdatedHandler(
                 _api.BlockTree,
+                _api.Config<IInitConfig>(),
                 _blockFinalizationManager,
                 _api.PoSSwitcher,
                 payloadPreparationService,
