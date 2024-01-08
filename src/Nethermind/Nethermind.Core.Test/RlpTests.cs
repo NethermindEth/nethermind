@@ -61,6 +61,23 @@ namespace Nethermind.Core.Test
         }
 
         [Test]
+        public void Length_of_byte()
+        {
+            byte item = 0;
+            for (int i = 0; i < 128; i++)
+            {
+                Assert.That(Rlp.LengthOf(item), Is.EqualTo(1));
+                item += 1;
+            }
+
+            for (int i = 128; i < 256; i++)
+            {
+                Assert.That(Rlp.LengthOf(item), Is.EqualTo(2));
+                item += 1;
+            }
+        }
+
+        [Test]
         public void Long_negative()
         {
             Rlp output = Rlp.Encode(-1L);
