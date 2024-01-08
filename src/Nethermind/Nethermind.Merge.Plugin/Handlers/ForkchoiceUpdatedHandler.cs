@@ -47,7 +47,7 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
     private readonly ILogger _logger;
     private readonly IPeerRefresher _peerRefresher;
     private readonly ISpecProvider _specProvider;
-    private readonly bool _forceBlockProduction;
+    private readonly bool _simulateBlockProduction;
 
     public ForkchoiceUpdatedHandler(
         IBlockTree blockTree,
@@ -75,7 +75,7 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
         _beaconPivot = beaconPivot;
         _peerRefresher = peerRefresher;
         _specProvider = specProvider;
-        _forceBlockProduction = initConfig.SimulateBlockProduction;
+        _simulateBlockProduction = initConfig.SimulateBlockProduction;
         _logger = logManager.GetClassLogger();
     }
 
@@ -252,7 +252,7 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
     {
         string? payloadId = null;
 
-        if (_forceBlockProduction)
+        if (_simulateBlockProduction)
         {
             payloadAttributes ??= new PayloadAttributes()
             {
