@@ -33,7 +33,7 @@ public class OptimismBlockProcessor : BlockProcessor
         Create2DeployerContractRewriter contractRewriter,
         IWithdrawalProcessor? withdrawalProcessor = null)
         : base(specProvider, blockValidator, rewardCalculator, blockTransactionsExecutor,
-            stateProvider, receiptStorage, witnessCollector, logManager, withdrawalProcessor)
+            stateProvider, receiptStorage, witnessCollector, logManager, withdrawalProcessor, OptimismReceiptsRootCalculator.Instance)
     {
         ArgumentNullException.ThrowIfNull(stateProvider);
         _contractRewriter = contractRewriter;
@@ -44,10 +44,5 @@ public class OptimismBlockProcessor : BlockProcessor
     {
         _contractRewriter?.RewriteContract(block.Header, _stateProvider);
         return base.ProcessBlock(block, blockTracer, options);
-    }
-
-    protected override Hash256 CalculateReceiptsRoot(TxReceipt[] receipts, IReceiptSpec spec, Hash256? suggestedRoot)
-    {
-        return OptimismReceiptsRootCalculator.Instance.GetReceiptsRoot(receipts, spec, suggestedRoot);
     }
 }
