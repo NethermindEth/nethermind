@@ -73,7 +73,7 @@ namespace Nethermind.Init.Steps
             IStateReader stateReader = setApi.StateReader!;
             ITxPool txPool = _api.TxPool = CreateTxPool();
 
-            ReceiptCanonicalityMonitor receiptCanonicalityMonitor = new(getApi.BlockTree, getApi.ReceiptStorage, _api.LogManager);
+            ReceiptCanonicalityMonitor receiptCanonicalityMonitor = new(getApi.ReceiptStorage, _api.LogManager);
             getApi.DisposeStack.Push(receiptCanonicalityMonitor);
             _api.ReceiptMonitor = receiptCanonicalityMonitor;
 

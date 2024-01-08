@@ -44,12 +44,12 @@ namespace Nethermind.Evm.TransactionProcessing
             Ecdsa = ecdsa ?? throw new ArgumentNullException(nameof(ecdsa));
         }
 
-        public void CallAndRestore(Transaction transaction, BlockExecutionContext blCtx, ITxTracer txTracer)
+        public void CallAndRestore(Transaction transaction, in BlockExecutionContext blCtx, ITxTracer txTracer)
         {
             Execute(transaction, blCtx, txTracer, ExecutionOptions.CommitAndRestore);
         }
 
-        public void BuildUp(Transaction transaction, BlockExecutionContext blCtx, ITxTracer txTracer)
+        public void BuildUp(Transaction transaction, in BlockExecutionContext blCtx, ITxTracer txTracer)
         {
             // we need to treat the result of previous transaction as the original value of next transaction
             // when we do not commit
@@ -57,12 +57,12 @@ namespace Nethermind.Evm.TransactionProcessing
             Execute(transaction, blCtx, txTracer, ExecutionOptions.None);
         }
 
-        public void Execute(Transaction transaction, BlockExecutionContext blCtx, ITxTracer txTracer)
+        public void Execute(Transaction transaction, in BlockExecutionContext blCtx, ITxTracer txTracer)
         {
             Execute(transaction, blCtx, txTracer, ExecutionOptions.Commit);
         }
 
-        public void Trace(Transaction transaction, BlockExecutionContext blCtx, ITxTracer txTracer)
+        public void Trace(Transaction transaction, in BlockExecutionContext blCtx, ITxTracer txTracer)
         {
             Execute(transaction, blCtx, txTracer, ExecutionOptions.NoValidation);
         }
@@ -86,23 +86,19 @@ namespace Nethermind.Evm.TransactionProcessing
 
             if (opts == ExecutionOptions.Commit || opts == ExecutionOptions.None)
             {
-                decimal gasPrice = (decimal)effectiveGasPrice / 1_000_000_000m;
+                float gasPrice = (float)((double)effectiveGasPrice / 1_000_000_000.0);
                 Metrics.MinGasPrice = Math.Min(gasPrice, Metrics.MinGasPrice);
                 Metrics.MaxGasPrice = Math.Max(gasPrice, Metrics.MaxGasPrice);
 
                 Metrics.BlockMinGasPrice = Math.Min(gasPrice, Metrics.BlockMinGasPrice);
                 Metrics.BlockMaxGasPrice = Math.Max(gasPrice, Metrics.BlockMaxGasPrice);
 
-                Metrics.AveGasPrice =
-                    (Metrics.AveGasPrice * Metrics.Transactions + gasPrice) / (Metrics.Transactions + 1);
-                Metrics.EstMedianGasPrice +=
-                    Metrics.AveGasPrice * 0.01m * decimal.Sign(gasPrice - Metrics.EstMedianGasPrice);
+                Metrics.AveGasPrice = (Metrics.AveGasPrice * Metrics.Transactions + gasPrice) / (Metrics.Transactions + 1);
+                Metrics.EstMedianGasPrice += Metrics.AveGasPrice * 0.01f * float.Sign(gasPrice - Metrics.EstMedianGasPrice);
                 Metrics.Transactions++;
 
-                Metrics.BlockAveGasPrice = (Metrics.BlockAveGasPrice * Metrics.BlockTransactions + gasPrice) /
-                                           (Metrics.BlockTransactions + 1);
-                Metrics.BlockEstMedianGasPrice += Metrics.BlockAveGasPrice * 0.01m *
-                                                  decimal.Sign(gasPrice - Metrics.BlockEstMedianGasPrice);
+                Metrics.BlockAveGasPrice = (Metrics.BlockAveGasPrice * Metrics.BlockTransactions + gasPrice) / (Metrics.BlockTransactions + 1);
+                Metrics.BlockEstMedianGasPrice += Metrics.BlockAveGasPrice * 0.01f * float.Sign(gasPrice - Metrics.BlockEstMedianGasPrice);
                 Metrics.BlockTransactions++;
             }
 

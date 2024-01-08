@@ -44,7 +44,7 @@ public partial class BlockProcessor : IBlockProcessor
     /// We use a single receipt tracer for all blocks. Internally receipt tracer forwards most of the calls
     /// to any block-specific tracers.
     /// </summary>
-    private readonly BlockReceiptsTracer _receiptsTracer;
+    protected BlockReceiptsTracer ReceiptsTracer { get; set; }
 
     public BlockProcessor(
         ISpecProvider? specProvider,
@@ -69,7 +69,7 @@ public partial class BlockProcessor : IBlockProcessor
         _rewardCalculator = rewardCalculator ?? throw new ArgumentNullException(nameof(rewardCalculator));
         _blockTransactionsExecutor = blockTransactionsExecutor ?? throw new ArgumentNullException(nameof(blockTransactionsExecutor));
         _beaconBlockRootHandler = beaconBlockRootHandler ?? new BeaconBlockRootHandler(transactionProcessor, logManager);
-        _receiptsTracer = new BlockReceiptsTracer();
+        ReceiptsTracer = new BlockReceiptsTracer();
     }
 
     public event EventHandler<BlockProcessedEventArgs> BlockProcessed;
@@ -229,12 +229,12 @@ public partial class BlockProcessor : IBlockProcessor
     {
         IReleaseSpec spec = _specProvider.GetSpec(block.Header);
 
-        _receiptsTracer.SetOtherTracer(blockTracer);
-        _receiptsTracer.StartNewBlockTrace(block);
+        ReceiptsTracer.SetOtherTracer(blockTracer);
+        ReceiptsTracer.StartNewBlockTrace(block);
 
         _beaconBlockRootHandler.ExecuteSystemCall(block, spec);
 
-        TxReceipt[] receipts = _blockTransactionsExecutor.ProcessTransactions(block, options, _receiptsTracer, spec);
+        TxReceipt[] receipts = _blockTransactionsExecutor.ProcessTransactions(block, options, ReceiptsTracer, spec);
 
         if (spec.IsEip4844Enabled)
         {
@@ -244,7 +244,7 @@ public partial class BlockProcessor : IBlockProcessor
         block.Header.ReceiptsRoot = receipts.GetReceiptsRoot(spec, block.ReceiptsRoot);
         ApplyMinerRewards(block, blockTracer, spec);
         _withdrawalProcessor.ProcessWithdrawals(block, spec);
-        _receiptsTracer.EndBlockTrace();
+        ReceiptsTracer.EndBlockTrace();
 
         _stateProvider.Commit(spec);
 
@@ -262,7 +262,7 @@ public partial class BlockProcessor : IBlockProcessor
     // TODO: block processor pipeline
     private void StoreTxReceipts(Block block, TxReceipt[] txReceipts)
     {
-        // Setting canonical is done by ReceiptCanonicalityMonitor on block move to main
+        // Setting canonical is done when the BlockAddedToMain event is firec
         _receiptStorage.Insert(block, txReceipts, false);
     }
 

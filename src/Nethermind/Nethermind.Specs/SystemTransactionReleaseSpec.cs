@@ -128,5 +128,8 @@ namespace Nethermind.Specs
         public Address Eip4788ContractAddress => _spec.Eip4788ContractAddress;
 
         public bool AuRaSystemCalls => false;
+        public UInt256 ForkBaseFee => _spec.ForkBaseFee;
+        public UInt256 BaseFeeMaxChangeDenominator => _spec.BaseFeeMaxChangeDenominator;
+        public long ElasticityMultiplier => _spec.ElasticityMultiplier;
     }
 }

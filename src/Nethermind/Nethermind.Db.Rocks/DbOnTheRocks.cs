@@ -6,7 +6,6 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.IO.Abstractions;
-using System.Net.Sockets;
 using System.Reflection;
 using System.Threading;
 using ConcurrentCollections;
@@ -590,6 +589,7 @@ public class DbOnTheRocks : IDb, ITunableDb
         try
         {
             Span<byte> span = _db.GetSpan(key, cf);
+
             if (!span.IsNullOrEmpty())
             {
                 Interlocked.Increment(ref _allocatedSpan);
@@ -891,6 +891,7 @@ public class DbOnTheRocks : IDb, ITunableDb
             try
             {
                 _dbOnTheRocks._db.Write(_rocksBatch, _dbOnTheRocks.WriteFlagsToWriteOptions(_writeFlags));
+
                 _dbOnTheRocks._currentBatches.TryRemove(this);
                 ReturnWriteBatch(_rocksBatch);
             }

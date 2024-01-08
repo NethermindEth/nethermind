@@ -18,6 +18,7 @@ using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Merge.Plugin.InvalidChainTracker;
 using Nethermind.Merge.Plugin.Synchronization;
 using Nethermind.Specs;
+using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.State.Repositories;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.FastBlocks;
@@ -64,14 +65,14 @@ public class BeaconHeadersSyncTests
         }
 
         private BeaconSync? _beaconSync;
-        public BeaconSync BeaconSync => _beaconSync ??= new(BeaconPivot, BlockTree, SyncConfig, BlockCacheService, LimboLogs.Instance);
+        public BeaconSync BeaconSync => _beaconSync ??= new(BeaconPivot, BlockTree, SyncConfig, BlockCacheService, PoSSwitcher, LimboLogs.Instance);
 
         private IDb? _metadataDb;
         public IDb MetadataDb => _metadataDb ??= new MemDb();
 
         private PoSSwitcher? _poSSwitcher;
         public PoSSwitcher PoSSwitcher => _poSSwitcher ??= new(MergeConfig, SyncConfig, MetadataDb, BlockTree,
-                MainnetSpecProvider.Instance, LimboLogs.Instance);
+                MainnetSpecProvider.Instance, new ChainSpec(), LimboLogs.Instance);
 
         private IInvalidChainTracker? _invalidChainTracker;
 

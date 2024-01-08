@@ -255,7 +255,7 @@ namespace Nethermind.Blockchain.Test.Producers
                 .WithEip1559TransitionBlock(7)
                 .CreateTestBlockchain()
                 .BlocksBeforeTransitionShouldHaveZeroBaseFee()
-                .AssertNewBlock(Eip1559Constants.ForkBaseFee);
+                .AssertNewBlock(Eip1559Constants.DefaultForkBaseFee);
             await scenario.Finish();
         }
 
@@ -266,7 +266,7 @@ namespace Nethermind.Blockchain.Test.Producers
                 .WithEip1559TransitionBlock(6)
                 .CreateTestBlockchain()
                 .BlocksBeforeTransitionShouldHaveZeroBaseFee()
-                .AssertNewBlock(Eip1559Constants.ForkBaseFee)
+                .AssertNewBlock(Eip1559Constants.DefaultForkBaseFee)
                 .AssertNewBlock(875000000)
                 .AssertNewBlock(765625000)
                 .AssertNewBlock(669921875)
@@ -283,7 +283,7 @@ namespace Nethermind.Blockchain.Test.Producers
                 .CreateTestBlockchain(gasLimit)
                 .DeployContract()
                 .BlocksBeforeTransitionShouldHaveZeroBaseFee()
-                .AssertNewBlock(Eip1559Constants.ForkBaseFee)
+                .AssertNewBlock(Eip1559Constants.DefaultForkBaseFee)
                 .SendLegacyTransaction(gasLimit / 3, 20.GWei())
                 .SendEip1559Transaction(gasLimit / 3, 1.GWei(), 20.GWei())
                 .AssertNewBlock(875000000)
@@ -301,7 +301,7 @@ namespace Nethermind.Blockchain.Test.Producers
                 .CreateTestBlockchain(gasTarget)
                 .DeployContract()
                 .BlocksBeforeTransitionShouldHaveZeroBaseFee()
-                .AssertNewBlock(Eip1559Constants.ForkBaseFee)
+                .AssertNewBlock(Eip1559Constants.DefaultForkBaseFee)
                 .SendLegacyTransaction(gasTarget / 2, 20.GWei())
                 .SendEip1559Transaction(gasTarget / 2, 1.GWei(), 20.GWei())
                 .AssertNewBlock(875000000)
@@ -319,7 +319,7 @@ namespace Nethermind.Blockchain.Test.Producers
                 .CreateTestBlockchain(gasTarget)
                 .DeployContract()
                 .BlocksBeforeTransitionShouldHaveZeroBaseFee()
-                .AssertNewBlock(Eip1559Constants.ForkBaseFee)
+                .AssertNewBlock(Eip1559Constants.DefaultForkBaseFee)
                 .SendLegacyTransaction(gasTarget / 2, 20.GWei())
                 .SendEip1559Transaction(gasTarget / 2, 1.GWei(), 20.GWei())
                 .SendLegacyTransaction(gasTarget / 2, 20.GWei())
@@ -337,7 +337,7 @@ namespace Nethermind.Blockchain.Test.Producers
                 .WithEip1559TransitionBlock(6)
                 .CreateTestBlockchain(gasTarget)
                 .BlocksBeforeTransitionShouldHaveZeroBaseFee()
-                .AssertNewBlock(Eip1559Constants.ForkBaseFee)
+                .AssertNewBlock(Eip1559Constants.DefaultForkBaseFee)
                 .SendLegacyTransaction(gasTarget / 2, 7.GWei() / 10, nonce: UInt256.Zero)
                 .AssertNewBlock(875000000)
                 .AssertNewBlock(765625000)
