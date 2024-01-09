@@ -35,7 +35,7 @@ public static class JavaScriptConverter
 
     public static Address ToAddress(this object address) => address switch
     {
-        string hexString => Address.TryParseVariableLength(hexString, out Address parsedAddress)
+        string hexString => Address.TryParseVariableLength(hexString, out Address parsedAddress, true)
             ? parsedAddress
             : throw new ArgumentException("Not correct address", nameof(address)),
         _ => new Address(address.ToBytes())

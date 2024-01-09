@@ -12,7 +12,7 @@ namespace Nethermind.Evm.Tracing;
 
 public class BlockReceiptsTracer : IBlockTracer, ITxTracer, IJournal<int>, ITxTracerWrapper
 {
-    private Block _block = null!;
+    protected Block Block = null!;
     public bool IsTracingReceipt => true;
     public bool IsTracingActions => _currentTxTracer.IsTracingActions;
     public bool IsTracingOpLevelStorage => _currentTxTracer.IsTracingOpLevelStorage;
@@ -42,7 +42,8 @@ public class BlockReceiptsTracer : IBlockTracer, ITxTracer, IJournal<int>, ITxTr
 
         if (_currentTxTracer.IsTracingReceipt)
         {
-            _currentTxTracer.MarkAsSuccess(recipient, gasSpent, output, logs);
+            // TODO: is no stateRoot a bug?
+            _currentTxTracer.MarkAsSuccess(recipient, gasSpent, output, logs, null);
         }
     }
 
@@ -58,30 +59,31 @@ public class BlockReceiptsTracer : IBlockTracer, ITxTracer, IJournal<int>, ITxTr
 
         if (_currentTxTracer.IsTracingReceipt)
         {
-            _currentTxTracer.MarkAsFailed(recipient, gasSpent, output, error);
+            // TODO: is no stateRoot a bug?
+            _currentTxTracer.MarkAsFailed(recipient, gasSpent, output, error, null);
         }
     }
 
-    private TxReceipt BuildFailedReceipt(Address recipient, long gasSpent, string error, Hash256? stateRoot = null)
+    protected TxReceipt BuildFailedReceipt(Address recipient, long gasSpent, string error, Hash256? stateRoot)
     {
         TxReceipt receipt = BuildReceipt(recipient, gasSpent, StatusCode.Failure, Array.Empty<LogEntry>(), stateRoot);
         receipt.Error = error;
         return receipt;
     }
 
-    private TxReceipt BuildReceipt(Address recipient, long spentGas, byte statusCode, LogEntry[] logEntries, Hash256? stateRoot = null)
+    protected virtual TxReceipt BuildReceipt(Address recipient, long spentGas, byte statusCode, LogEntry[] logEntries, Hash256? stateRoot)
     {
-        Transaction transaction = _currentTx!;
+        Transaction transaction = CurrentTx!;
         TxReceipt txReceipt = new()
         {
             Logs = logEntries,
             TxType = transaction.Type,
             Bloom = logEntries.Length == 0 ? Bloom.Empty : new Bloom(logEntries),
-            GasUsedTotal = _block.GasUsed,
+            GasUsedTotal = Block.GasUsed,
             StatusCode = statusCode,
             Recipient = transaction.IsContractCreation ? null : recipient,
-            BlockHash = _block.Hash,
-            BlockNumber = _block.Number,
+            BlockHash = Block.Hash,
+            BlockNumber = Block.Number,
             Index = _currentIndex,
             GasUsed = spentGas,
             Sender = transaction.SenderAddress,
@@ -193,7 +195,7 @@ public class BlockReceiptsTracer : IBlockTracer, ITxTracer, IJournal<int>, ITxTr
     private ITxTracer _currentTxTracer = NullTxTracer.Instance;
     private int _currentIndex;
     private readonly List<TxReceipt> _txReceipts = new();
-    private Transaction? _currentTx;
+    protected Transaction? CurrentTx;
     public IReadOnlyList<TxReceipt> TxReceipts => _txReceipts;
     public TxReceipt LastReceipt => _txReceipts[^1];
     public bool IsTracingRewards => _otherTracer.IsTracingRewards;
@@ -211,7 +213,7 @@ public class BlockReceiptsTracer : IBlockTracer, ITxTracer, IJournal<int>, ITxTr
             _txReceipts.RemoveAt(_txReceipts.Count - 1);
         }
 
-        _block.Header.GasUsed = _txReceipts.Count > 0 ? _txReceipts.Last().GasUsedTotal : 0;
+        Block.Header.GasUsed = _txReceipts.Count > 0 ? _txReceipts.Last().GasUsedTotal : 0;
     }
 
     public void ReportReward(Address author, string rewardType, UInt256 rewardValue) =>
@@ -224,7 +226,7 @@ public class BlockReceiptsTracer : IBlockTracer, ITxTracer, IJournal<int>, ITxTr
             throw new InvalidOperationException("other tracer not set in receipts tracer");
         }
 
-        _block = block;
+        Block = block;
         _currentIndex = 0;
         _txReceipts.Clear();
 
@@ -233,7 +235,7 @@ public class BlockReceiptsTracer : IBlockTracer, ITxTracer, IJournal<int>, ITxTr
 
     public ITxTracer StartNewTxTrace(Transaction? tx)
     {
-        _currentTx = tx;
+        CurrentTx = tx;
         _currentTxTracer = _otherTracer.StartNewTxTrace(tx);
         return _currentTxTracer;
     }
@@ -250,7 +252,7 @@ public class BlockReceiptsTracer : IBlockTracer, ITxTracer, IJournal<int>, ITxTr
         if (_txReceipts.Count > 0)
         {
             Bloom blockBloom = new();
-            _block.Header.Bloom = blockBloom;
+            Block.Header.Bloom = blockBloom;
             for (int index = 0; index < _txReceipts.Count; index++)
             {
                 TxReceipt? receipt = _txReceipts[index];

@@ -43,6 +43,9 @@ namespace Nethermind.Blockchain.FullPruning
         }
 
         public bool IsFullDbScan => true;
+
+        public ReadFlags ExtraReadFlag => ReadFlags.SkipDuplicateRead;
+
         public bool ShouldVisit(Hash256 nextNode) => !_cancellationToken.IsCancellationRequested;
 
         public void VisitTree(Hash256 rootHash, TrieVisitContext trieVisitContext)
