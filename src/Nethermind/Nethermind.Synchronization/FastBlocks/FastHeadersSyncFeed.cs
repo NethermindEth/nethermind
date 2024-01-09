@@ -328,7 +328,6 @@ namespace Nethermind.Synchronization.FastBlocks
 
                     LogStateOnPrepare();
                 }
-
                 return Task.FromResult(batch);
             }
             finally
@@ -566,8 +565,6 @@ namespace Nethermind.Synchronization.FastBlocks
 
                             break;
                         }
-                        var addedEarliestBefore = addedEarliest;
-                        var addedLastBefore = addedLast;
 
                         for (int j = 0; j < batch.Response.Length; j++)
                         {
@@ -584,14 +581,8 @@ namespace Nethermind.Synchronization.FastBlocks
                         }
 
                         HeadersSyncBatch dependentBatch = BuildDependentBatch(batch, addedLast, addedEarliest);
-                        if (!_dependencies.TryAdd(header.Number, dependentBatch))
-                        {
-                            //Another thread has already added this batch
-                            _pending.Enqueue(batch);
-                            //Returning 0 will trigger peer being reported as weak and put to sleep,
-                            //despite being an internal error
-                            return Math.Max(0, (int)(addedLastBefore - addedEarliestBefore + 1));
-                        }
+                        //Update any existing value, which could have been added by another thread
+                        _dependencies.AddOrUpdate(header.Number, dependentBatch, (key, oldValue) => dependentBatch);
                         MarkDirty();
                         if (_logger.IsDebug) _logger.Debug($"{batch} -> DEPENDENCY {dependentBatch}");
 
