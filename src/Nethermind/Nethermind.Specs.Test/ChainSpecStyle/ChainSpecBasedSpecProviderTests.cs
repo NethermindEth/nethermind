@@ -464,9 +464,6 @@ public class ChainSpecBasedSpecProviderTests
                      .Where(p => p.Name != nameof(Eip4844Constants.MinBlobGasPrice))
                      .Where(p => p.Name != nameof(Eip4844Constants.TargetBlobGasPerBlock))
 
-                     // Skip EIP-4788 contract address validation
-                     .Where(p => p.Name != nameof(IReleaseSpec.Eip4788ContractAddress))
-
                      // handle gnosis specific exceptions
                      .Where(p => !isGnosis || p.Name != nameof(IReleaseSpec.MaxCodeSize))
                      .Where(p => !isGnosis || p.Name != nameof(IReleaseSpec.MaxInitCodeSize))
