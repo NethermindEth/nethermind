@@ -44,10 +44,10 @@ public class EraStore: IEraStore
     }
     public bool HasEpoch(long epoch) => _epochs.ContainsKey(epoch);
     
-    public Task<EraReader> GetReader(long epoch, bool descendingOrder, CancellationToken cancellation = default)
+    public Task<EraReader> GetReader(long epoch, CancellationToken cancellation = default)
     {
         GuardMissingEpoch(epoch);
-        return EraReader.Create(_epochs[epoch], descendingOrder, cancellation);
+        return EraReader.Create(_epochs[epoch], cancellation);
     }
 
     public string GetReaderPath(long epoch)

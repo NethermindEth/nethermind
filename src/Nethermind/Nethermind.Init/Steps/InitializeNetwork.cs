@@ -297,6 +297,14 @@ public class InitializeNetwork : IStep
             return;
         }
 
+        var blockTree = _api.BlockTree!;
+
+        if (blockTree.Head == null || blockTree.Head.Number != 0)
+        {
+            _logger.Warn($"Era1 import is only supported beginning from genesis.");
+            return;
+        }
+
         //TODO check best known number and compare with era files
         var networkName = BlockchainIds.GetBlockchainName(api.SpecProvider.NetworkId);
         _logger.Info($"Checking for unimported blocks '{syncConfig.ImportDirectory}'");
@@ -316,8 +324,6 @@ public class InitializeNetwork : IStep
          api.SpecProvider,
          networkName);
 
-        var pivot = _api.Pivot!;
-        var blockTree = _api.BlockTree!;
         var syncProgressResolver = _api.Synchronizer!.SyncProgressResolver;
         try
         {
@@ -329,19 +335,14 @@ public class InitializeNetwork : IStep
                     return;
                 }
 
-                long pivotStartNumber = pivot.PivotParentHash != null ? pivot.PivotNumber - 1 : pivot.PivotHash != null ? pivot.PivotNumber : long.MinValue;
-
-                long startNumber = Math.Min(pivotStartNumber, blockTree.LowestInsertedHeader?.Number ?? pivotStartNumber);
                 bool withBodies = _syncConfig.DownloadBodiesInFastSync;
                 bool withReceipts = _syncConfig.DownloadReceiptsInFastSync;
                 eraImport.ImportProgressChanged += (s, args) =>
                 {
                     _logger.Info($"Era1 import {args.BlocksProcessed,7}/{args.TotalBlocks} Blks | elapsed {args.Elapsed,7:hh\\:mm\\:ss} | {args.BlocksProcessed / args.Elapsed.TotalSeconds,7:F2} Blks/s | {args.TxProcessed / args.Elapsed.TotalSeconds,7:F2} Tx/s");
                 };
-                _logger.Info($"Starting backfilling import from '{syncConfig.ImportDirectory}'");
-                Hash256? pivotHash = pivot.PivotParentHash ?? pivot.PivotHash;
-                Hash256? expectedHash = blockTree.LowestInsertedHeader?.Hash ?? pivotHash;
-                await eraImport.ImportWithBackfill(syncConfig.ImportDirectory, startNumber, expectedHash!, withBodies, withReceipts, false, cancellation);
+                _logger.Info($"Starting import from '{syncConfig.ImportDirectory}'");
+                await eraImport.Import(syncConfig.ImportDirectory, 0, withBodies, withReceipts, cancellation);
             }
             else
             {

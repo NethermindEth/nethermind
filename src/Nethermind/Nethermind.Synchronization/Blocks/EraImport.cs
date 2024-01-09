@@ -54,32 +54,28 @@ public class EraImport : IEraImport
 
     public Task ImportAsFullSync(string src, CancellationToken cancellation)
     {
-        return ImportInternal(src, false, _blockTree.Head.Number, true, true, true, null, cancellation);
+        return ImportInternal(src, _blockTree.Head.Number, true, true, true, cancellation);
     }
 
-    public Task ImportWithBackfill(
+    public Task Import(
         string src,
         long startNumber,
-        Hash256 expectedHeaderHash,
         bool insertBodies,
         bool insertReceipts,
-        bool processBlock,
         CancellationToken cancellation)
     {
         if (string.IsNullOrEmpty(src)) throw new ArgumentException("Cannot be null or empty.", nameof(src));
-        if (startNumber < 1) throw new ArgumentOutOfRangeException("Cannot be negative or genesis.", startNumber, nameof(startNumber));
+        if (startNumber < 0) throw new ArgumentOutOfRangeException("Cannot be negative.", startNumber, nameof(startNumber));
 
-        return ImportInternal(src, true, startNumber, insertBodies, insertReceipts, false, expectedHeaderHash,cancellation);
+        return ImportInternal(src, startNumber, insertBodies, insertReceipts, false, cancellation);
     }
 
     private async Task ImportInternal(
         string src,
-        bool backfill,
         long startNumber,
         bool insertBodies,
         bool insertReceipts,
         bool processBlock,
-        Hash256? expectedHeaderHash,
         CancellationToken cancellation)
     {
         var eraFiles = EraReader.GetAllEraFiles(src, _networkName).ToArray();
@@ -97,13 +93,13 @@ public class EraImport : IEraImport
         long epochProcessed = 0;
         DateTime startTime = DateTime.Now;
         long txProcessed = 0;
-        long totalblocks = backfill ? startNumber : 0;
+        long totalblocks = 0;
         int blocksProcessed = 0;
 
-        int increment = backfill ? -1 : 1;  
+        int increment = 1;
         for (long i = startEpoch; eraStore.HasEpoch(i); i = i + increment)
         {
-            using EraReader eraReader = await eraStore.GetReader(i, backfill, cancellation);
+            using EraReader eraReader = await eraStore.GetReader(i, cancellation);
 
             await foreach ((Block b, TxReceipt[] r, UInt256 td) in eraReader)
             {
@@ -112,29 +108,11 @@ public class EraImport : IEraImport
                     continue;
                 }
 
-                if (backfill)
+                if (b.Number < startNumber)
                 {
-                    if (b.Number > startNumber)
-                    {
-                        continue;
-                    }
-                }
-                else
-                {
-                    if (b.Number < startNumber)
-                    {
-                        continue;
-                    }
+                    continue;
                 }
 
-                if (backfill)
-                {
-                    if (expectedHeaderHash != b.Header.Hash)
-                    {
-                        throw new EraImportException($"Unexpected header in '{eraStore.GetReaderPath(i)}'. Archive might be corrupted.");
-                    }
-                    expectedHeaderHash = b.Header.ParentHash; 
-                }
 
                 if (insertBodies)
                 {
@@ -143,9 +121,7 @@ public class EraImport : IEraImport
                         throw new EraImportException($"Unexpected block without a body found in '{eraStore.GetReaderPath(i)}'. Archive might be corrupted.");
                     }
 
-                    if (backfill ?
-                        !BlockValidator.ValidateBodyAgainstHeader(b.Header, b.Body) :
-                        !_blockValidator.ValidateSuggestedBlock(b))
+                    if (!_blockValidator.ValidateSuggestedBlock(b))
                     {
                         throw new EraImportException($"Era1 archive '{eraStore.GetReaderPath(i)}' contains an invalid block {b.ToString(Block.Format.Short)}.");
                     }
@@ -156,14 +132,7 @@ public class EraImport : IEraImport
                     ValidateReceipts(b, r);
                 }
 
-                if (backfill)
-                {
-                    InsertValidatedBlock(b, r,insertBodies, insertReceipts, cancellation);                   
-                }
-                else
-                {
-                    await SuggestBlockAndProcess(b, r, cancellation);                        
-                }
+                await SuggestBlock(b, r, processBlock, cancellation);
 
                 blocksProcessed++;
                 txProcessed += b.Transactions.Length;
@@ -203,9 +172,10 @@ public class EraImport : IEraImport
             throw new EraImportException($"Attempted to insert {block.ToString(Block.Format.Short)}, but received an unexpected result ({result}).");
     }
 
-    private async Task SuggestBlockAndProcess(Block block, TxReceipt[] receipts, CancellationToken cancellation)
+    private async Task SuggestBlock(Block block, TxReceipt[] receipts, bool processBlock,CancellationToken cancellation)
     {
-        var addResult = await _blockTree.SuggestBlockAsync(block, BlockTreeSuggestOptions.ShouldProcess);
+        var options = processBlock ? BlockTreeSuggestOptions.ShouldProcess: BlockTreeSuggestOptions.None;
+        var addResult = await _blockTree.SuggestBlockAsync(block, options);
         switch (addResult)
         {
             case AddBlockResult.AlreadyKnown:
