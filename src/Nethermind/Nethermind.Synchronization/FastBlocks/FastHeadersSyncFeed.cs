@@ -299,7 +299,7 @@ namespace Nethermind.Synchronization.FastBlocks
 
         public override Task<HeadersSyncBatch?> PrepareRequest(CancellationToken cancellationToken = default)
         {
-            _resetLock.EnterWriteLock();
+            _resetLock.EnterReadLock();
             try
             {
                 do
@@ -328,11 +328,12 @@ namespace Nethermind.Synchronization.FastBlocks
 
                     LogStateOnPrepare();
                 }
+
                 return Task.FromResult(batch);
             }
             finally
             {
-                _resetLock.ExitWriteLock();
+                _resetLock.ExitReadLock();
             }
         }
 
@@ -565,12 +566,8 @@ namespace Nethermind.Synchronization.FastBlocks
 
                             break;
                         }
-
-                        if (_dependencies.ContainsKey(header.Number))
-                        {
-                            _pending.Enqueue(batch);
-                            throw new InvalidOperationException($"Only one header dependency expected ({batch})");
-                        }
+                        var addedEarliestBefore = addedEarliest;
+                        var addedLastBefore = addedLast;
 
                         for (int j = 0; j < batch.Response.Length; j++)
                         {
@@ -587,7 +584,14 @@ namespace Nethermind.Synchronization.FastBlocks
                         }
 
                         HeadersSyncBatch dependentBatch = BuildDependentBatch(batch, addedLast, addedEarliest);
-                        _dependencies[header.Number] = dependentBatch;
+                        if (!_dependencies.TryAdd(header.Number, dependentBatch))
+                        {
+                            //Another thread has already added this batch
+                            _pending.Enqueue(batch);
+                            //Returning 0 will trigger peer being reported as weak and put to sleep,
+                            //despite being an internal error
+                            return Math.Max(0, (int)(addedLastBefore - addedEarliestBefore + 1));
+                        }
                         MarkDirty();
                         if (_logger.IsDebug) _logger.Debug($"{batch} -> DEPENDENCY {dependentBatch}");
 
