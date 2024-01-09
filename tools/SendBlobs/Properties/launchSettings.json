@@ -2,7 +2,7 @@
   "profiles": {
     "SendBlobs": {
       "commandName": "Project",
-      "commandLineArgs": "--rpcurl http://172.105.149.206:8545 --bloboptions 100x2 --privatekey 0x4bc391a63f2827ed88291061c3428887c83cab6c090328e68ae1738fbbedf1d8 --receiveraddress 0x3Af4A1fe34392AACbf4cDA98518860b9Ea3c8943 --maxfeeperblobgas 1000000 --maxpriorityfee 10000000000"
+      "commandLineArgs": "--rpcurl http://172.105.149.206:8545 --bloboptions 1 --privatekey 0x4bc391a63f2827ed88291061c3428887c83cab6c090328e68ae1738fbbedf1d8 --receiveraddress 0x3Af4A1fe34392AACbf4cDA98518860b9Ea3c8943 --maxfeeperblobgas 1000000 --maxpriorityfee 20000000000 --feemultiplier 10"
     }
   }
 }

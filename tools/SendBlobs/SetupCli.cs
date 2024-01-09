@@ -65,7 +65,7 @@ internal static class SetupCli
                 maxFeePerBlobGas = shortMaxFeePerBlobGas;
             }
 
-            ulong feeMultiplier = 4;
+            ulong feeMultiplier = 1;
             if (feeMultiplierOption.HasValue())
                 ulong.TryParse(feeMultiplierOption.Value(), out feeMultiplier);
 

@@ -140,22 +140,26 @@ internal class BlobSender
                 }
 
                 string? gasPriceRes = await _nodeManager.Post<string>("eth_gasPrice") ?? "1";
-                UInt256 gasPrice = HexConvert.ToUInt256(gasPriceRes);
+                UInt256 maxGasPrice = HexConvert.ToUInt256(gasPriceRes);
 
-                string? maxPriorityFeePerGasRes = await _nodeManager.Post<string>("eth_maxPriorityFeePerGas") ?? "1";
-                UInt256 maxPriorityFeePerGas = HexConvert.ToUInt256(maxPriorityFeePerGasRes);
-
-
-                UInt256 adjustedMaxPriorityFeePerGas = maxPriorityFeeGasArgs == 0 ? maxPriorityFeePerGas : maxPriorityFeeGasArgs;
-
+                UInt256 maxPriorityFeePerGas = maxPriorityFeeGasArgs;
+                if (maxPriorityFeePerGas == 0)
+                {
+                    string? maxPriorityFeePerGasRes = await _nodeManager.Post<string>("eth_maxPriorityFeePerGas") ?? "1";
+                    maxPriorityFeePerGas = HexConvert.ToUInt256(maxPriorityFeePerGasRes);
+                }
+                else
+                {
+                    maxGasPrice = UInt256.Max(maxPriorityFeePerGas + 7, maxGasPrice);
+                }
 
                 BlockModel<Hash256>? blockResult = null;
                 blockResult = await _nodeManager.Post<BlockModel<Hash256>>("eth_getBlockByNumber", "latest", false);
                 BlobGasCalculator.TryCalculateBlobGasPricePerUnit((blockResult?.ExcessBlobGas ?? 0) + (10 + excessBlobs) * Eip4844Constants.MaxBlobGasPerBlock, out UInt256 blobGasPrice);
 
-                if (maxFeePerBlobGas != 0)
+                if (maxFeePerBlobGas == 0)
                 {
-                    maxFeePerBlobGas = blobGasPrice * (Math.Min(1, feeMultiplier));
+                     maxFeePerBlobGas = blobGasPrice;
                 }
 
                 switch (@break)
@@ -174,8 +178,12 @@ internal class BlobSender
                     case "11": maxFeePerBlobGas = UInt256.MaxValue / Eip4844Constants.GasPerBlob + 1; break;
                 }
 
-                Console.WriteLine($"Sending from {signer.Address}. Nonce: {nonce}, GasPrice: {gasPrice}, MaxPriorityFeePerGas: {maxPriorityFeePerGas}, MaxFeePerBlobGas {maxFeePerBlobGas}. " +
-                    $"Block's GasPrice: {(blockResult is not null ? BaseFeeCalculator.Calculate(blockResult.ToBlock().Header, Cancun.Instance).ToString() : "???")}, BlobGasPrice {blobGasPrice}");
+                maxPriorityFeePerGas *= feeMultiplier;
+                maxGasPrice *= feeMultiplier;
+                maxFeePerBlobGas *= feeMultiplier;
+
+                Console.WriteLine($"Sending from {signer.Address}. Nonce: {nonce}, GasPrice: {maxGasPrice}, MaxPriorityFeePerGas: {maxPriorityFeePerGas}, MaxFeePerBlobGas {maxFeePerBlobGas}. " +
+                    $"Block's GasPrice: {(blockResult is not null ? UInt256.Max(BaseFeeCalculator.Calculate(blockResult.ToBlock().Header, Cancun.Instance), 7).ToString() : "???")}, BlobGasPrice {blobGasPrice}");
 
                 Transaction tx = new()
                 {
@@ -183,8 +191,8 @@ internal class BlobSender
                     ChainId = chainId,
                     Nonce = nonce,
                     GasLimit = GasCostOf.Transaction,
-                    GasPrice = adjustedMaxPriorityFeePerGas * feeMultiplier,
-                    DecodedMaxFeePerGas = gasPrice * feeMultiplier,
+                    GasPrice = maxPriorityFeePerGas,
+                    DecodedMaxFeePerGas = maxGasPrice,
                     MaxFeePerBlobGas = maxFeePerBlobGas,
                     Value = 0,
                     To = new Address(receiver),
