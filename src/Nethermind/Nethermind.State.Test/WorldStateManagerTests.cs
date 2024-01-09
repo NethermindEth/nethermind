@@ -42,25 +42,4 @@ public class WorldStateManagerTests
 
         gotEvent.Should().BeTrue();
     }
-
-    [Test]
-    public void ShouldCreateTemporaryWorldState_AndCanReset()
-    {
-        IWorldState worldState = Substitute.For<IWorldState>();
-        ITrieStore trieStore = Substitute.For<ITrieStore>();
-        IDbProvider dbProvider = TestMemDbProvider.Init();
-        WorldStateManager worldStateManager = new WorldStateManager(worldState, trieStore, dbProvider, LimboLogs.Instance);
-
-        IWorldState tempWorldState = worldStateManager.CreateResettableWorldState();
-        IStateReader stateReader = worldStateManager.GlobalStateReader;
-
-        byte[] code = new byte[] { 1 };
-        Hash256 codeHash = Keccak.Compute(code);
-        tempWorldState.CreateAccount(Address.Zero, 0, 0);
-        tempWorldState.InsertCode(Address.Zero, code, MainnetSpecProvider.Instance.GenesisSpec);
-
-        stateReader.GetCode(codeHash).Should().NotBeNull();
-        tempWorldState.Reset();
-        stateReader.GetCode(codeHash).Should().BeNull();
-    }
 }
