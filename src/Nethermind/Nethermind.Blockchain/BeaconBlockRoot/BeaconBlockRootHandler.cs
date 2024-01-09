@@ -11,15 +11,13 @@ using Nethermind.Core.Extensions;
 namespace Nethermind.Consensus.BeaconBlockRoot;
 public class BeaconBlockRootHandler : IBeaconBlockRootHandler
 {
-    public static UInt256 HISTORICAL_ROOTS_LENGTH = 8191;
-    private static readonly Address DefaultPbbrContractAddress = new Address("0x000F3df6D732807Ef1319fB7B8bB8522d0Beac02");
-
+    private static UInt256 HISTORICAL_ROOTS_LENGTH = 8191;
     public void ApplyContractStateChanges(Block block, IReleaseSpec spec, IWorldState stateProvider)
     {
         if (!spec.IsBeaconBlockRootAvailable ||
             block.IsGenesis ||
             block.Header.ParentBeaconBlockRoot is null) return;
-        Address? eip4788Account = spec.Eip4788ContractAddress ?? DefaultPbbrContractAddress;
+        Address? eip4788Account = spec.Eip4788ContractAddress;
         if (!stateProvider.AccountExists(eip4788Account))
             return;
 

@@ -16,6 +16,7 @@ namespace Nethermind.Specs.ChainSpecStyle
     public class ChainSpecBasedSpecProvider : SpecProviderBase, ISpecProvider
     {
         private readonly ChainSpec _chainSpec;
+        private static readonly Address Default4788Address = new("0x000F3df6D732807Ef1319fB7B8bB8522d0Beac02");
 
         public ChainSpecBasedSpecProvider(ChainSpec chainSpec, ILogManager logManager = null)
             : base(logManager?.GetClassLogger<ChainSpecBasedSpecProvider>() ?? LimboTraceLogger.Instance)
@@ -250,7 +251,7 @@ namespace Nethermind.Specs.ChainSpecStyle
             releaseSpec.IsEip5656Enabled = (chainSpec.Parameters.Eip5656TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
             releaseSpec.IsEip6780Enabled = (chainSpec.Parameters.Eip6780TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
             releaseSpec.IsEip4788Enabled = (chainSpec.Parameters.Eip4788TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
-            releaseSpec.Eip4788ContractAddress = chainSpec.Parameters.Eip4788ContractAddress;
+            releaseSpec.Eip4788ContractAddress = chainSpec.Parameters.Eip4788ContractAddress ?? Default4788Address;
 
             return releaseSpec;
         }
