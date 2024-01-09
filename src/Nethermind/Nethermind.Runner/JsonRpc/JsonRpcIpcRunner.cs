@@ -98,11 +98,11 @@ namespace Nethermind.Runner.JsonRpc
             }
             catch (SocketException exc)
             {
-                if (_logger.IsError)_logger.Error($"Error ({exc.ErrorCode}) when starting IPC server over '{_path}' path.", exc);
+                if (_logger.IsError) _logger.Error($"Error ({exc.ErrorCode}) when starting IPC server over '{_path}' path.", exc);
             }
             catch (Exception exc)
             {
-                if (_logger.IsError)_logger.Error($"Error when starting IPC server over '{_path}' path.", exc);
+                if (_logger.IsError) _logger.Error($"Error when starting IPC server over '{_path}' path.", exc);
             }
             finally
             {
