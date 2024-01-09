@@ -416,6 +416,14 @@ namespace Nethermind.JsonRpc.Test.Modules
         }
 
         [Test]
+        public async Task LogsSubscription_dispose_regression()
+        {
+            string serialized = await RpcTest.TestSerializedRequest(_subscribeRpcModule, "eth_subscribe", "logs", "{\"address\":[\"0x0000000000000000000000000000000000000314\"],\"fromBlock\":\"0x0\",\"toBlock\":\"latest\",\"topics\":[]}");
+            var expectedResult = string.Concat("{\"jsonrpc\":\"2.0\",\"result\":\"", serialized.Substring(serialized.Length - 44, 34), "\",\"id\":67}");
+            expectedResult.Should().Be(serialized);
+        }
+
+        [Test]
         public async Task LogsSubscription_with_invalid_arguments_creating_result()
         {
             string serialized = await RpcTest.TestSerializedRequest(_subscribeRpcModule, "eth_subscribe", "logs", "trambabamba");
