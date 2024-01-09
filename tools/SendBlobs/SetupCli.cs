@@ -28,7 +28,8 @@ internal static class SetupCli
         CommandOption privateKeyOption = app.Option("--privatekey <privateKey>", "The key to use for sending blobs.", CommandOptionType.SingleValue);
         CommandOption privateKeyFileOption = app.Option("--keyfile <keyFile>", "File containing private keys that each blob tx will be send from.", CommandOptionType.SingleValue);
         CommandOption receiverOption = app.Option("--receiveraddress <receiverAddress>", "Receiver address of the blobs.", CommandOptionType.SingleValue);
-        CommandOption maxFeePerDataGasOption = app.Option("--maxfeeperdatagas <maxFeePerDataGas>", "(Optional) Set the maximum fee per blob data.", CommandOptionType.SingleValue);
+        CommandOption maxFeePerDataGasOptionObsolete = app.Option("--maxfeeperdatagas <maxFeePerDataGas>", "(Optional) Set the maximum fee per blob data.", CommandOptionType.SingleValue);
+        CommandOption maxFeePerBlobGasOption = app.Option("--maxfeeperblobgas <maxFeePerBlobGas>", "(Optional) Set the maximum fee per blob data.", CommandOptionType.SingleValue);
         CommandOption feeMultiplierOption = app.Option("--feemultiplier <feeMultiplier>", "(Optional) A multiplier to use for gas fees.", CommandOptionType.SingleValue);
         CommandOption maxPriorityFeeGasOption = app.Option("--maxpriorityfee <maxPriorityFee>", "(Optional) The maximum priority fee for each transaction.", CommandOptionType.SingleValue);
 
@@ -52,11 +53,16 @@ internal static class SetupCli
 
             string receiver = receiverOption.Value();
 
-            UInt256 maxFeePerDataGas = 1000;
-            if (maxFeePerDataGasOption.HasValue())
+            UInt256 maxFeePerBlobGas = 1000;
+            if (maxFeePerBlobGasOption.HasValue())
             {
-                ulong.TryParse(maxFeePerDataGasOption.Value(), out ulong shortMaxFeePerDataGas);
-                maxFeePerDataGas = shortMaxFeePerDataGas;
+                ulong.TryParse(maxFeePerBlobGasOption.Value(), out ulong shortMaxFeePerBlobGas);
+                maxFeePerBlobGas = shortMaxFeePerBlobGas;
+            }
+            else if(maxFeePerDataGasOptionObsolete.HasValue())
+            {
+                ulong.TryParse(maxFeePerDataGasOptionObsolete.Value(), out ulong shortMaxFeePerBlobGas);
+                maxFeePerBlobGas = shortMaxFeePerBlobGas;
             }
 
             ulong feeMultiplier = 4;
@@ -73,7 +79,7 @@ internal static class SetupCli
                 blobTxCounts,
                 privateKeys,
                 receiver,
-                maxFeePerDataGas,
+                maxFeePerBlobGas,
                 feeMultiplier,
                 maxPriorityFeeGasArgs);
 
@@ -213,7 +219,8 @@ internal static class SetupCli
             CommandOption rpcUrlOption = command.Option("--rpcurl <rpcUrl>", "Url of the Json RPC.", CommandOptionType.SingleValue);
             CommandOption privateKeyOption = command.Option("--privatekey <privateKey>", "The key to use for sending blobs.", CommandOptionType.SingleValue);
             CommandOption receiverOption = command.Option("--receiveraddress <receiverAddress>", "Receiver address of the blobs.", CommandOptionType.SingleValue);
-            CommandOption maxFeePerDataGasOption = command.Option("--maxfeeperdatagas <maxFeePerDataGas>", "(Optional) Set the maximum fee per blob data.", CommandOptionType.SingleValue);
+            CommandOption maxFeePerBlobGasOptionObsolete = command.Option("--maxfeeperdatagas <maxFeePerDataGas>", "(Optional) Set the maximum fee per blob data.", CommandOptionType.SingleValue);
+            CommandOption maxFeePerBlobGasOption = command.Option("--maxfeeperblobgas <maxFeePerBlobGas>", "(Optional) Set the maximum fee per blob data.", CommandOptionType.SingleValue);
             CommandOption feeMultiplierOption = command.Option("--feemultiplier <feeMultiplier>", "(Optional) A multiplier to use for gas fees.", CommandOptionType.SingleValue);
             CommandOption maxPriorityFeeGasOption = command.Option("--maxpriorityfee <maxPriorityFee>", "(Optional) The maximum priority fee for each transaction.", CommandOptionType.SingleValue);
 
@@ -234,11 +241,16 @@ internal static class SetupCli
 
                 string receiver = receiverOption.Value();
 
-                UInt256 maxFeePerDataGas = 1000;
-                if (maxFeePerDataGasOption.HasValue())
+                UInt256 maxFeePerBlobGas = 1000;
+                if (maxFeePerBlobGasOption.HasValue())
                 {
-                    ulong.TryParse(maxFeePerDataGasOption.Value(), out ulong shortMaxFeePerDataGas);
-                    maxFeePerDataGas = shortMaxFeePerDataGas;
+                    ulong.TryParse(maxFeePerBlobGasOption.Value(), out ulong shortMaxFeePerBlobGas);
+                    maxFeePerBlobGas = shortMaxFeePerBlobGas;
+                }
+                else if(maxFeePerBlobGasOptionObsolete.HasValue())
+                {
+                    ulong.TryParse(maxFeePerBlobGasOptionObsolete.Value(), out ulong shortMaxFeePerBlobGas);
+                    maxFeePerBlobGas = shortMaxFeePerBlobGas;
                 }
 
                 ulong feeMultiplier = 4;
@@ -257,7 +269,7 @@ internal static class SetupCli
                     data,
                     privateKey,
                     receiver,
-                    maxFeePerDataGas,
+                    maxFeePerBlobGas,
                     feeMultiplier,
                     maxPriorityFeeGasArgs);
 

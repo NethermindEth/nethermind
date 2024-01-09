@@ -28,6 +28,8 @@ namespace Nethermind.Facade.Proxy.Models
         public UInt256 TotalDifficulty { get; set; }
         public List<T> Transactions { get; set; }
         public Hash256 TransactionsRoot { get; set; }
+        public ulong? BlobGasUsed { get; set; }
+        public ulong? ExcessBlobGas { get; set; }
 
         public Block ToBlock()
         {

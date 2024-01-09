@@ -1,11 +1,6 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 using Nethermind.Cli;
 using Nethermind.Consensus;
 using Nethermind.Core.Crypto;
@@ -17,8 +12,7 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Org.BouncyCastle.Utilities.Encoders;
-using Nethermind.Cli.Console;
-using Nethermind.Serialization.Json;
+using Nethermind.Specs.Forks;
 
 namespace SendBlobs;
 internal class BlobSender
@@ -51,7 +45,7 @@ internal class BlobSender
         (int count, int blobCount, string @break)[] blobTxCounts,
         PrivateKey[] privateKeys,
         string receiver,
-        UInt256 maxFeePerDataGas,
+        UInt256 maxFeePerBlobGas,
         ulong feeMultiplier,
         UInt256 maxPriorityFeeGasArgs)
     {
@@ -81,6 +75,8 @@ internal class BlobSender
 
         TxDecoder txDecoder = new();
         int signerIndex = -1;
+
+        ulong excessBlobs = (ulong)blobTxCounts.Sum(btxc => btxc.blobCount) / 2;
 
         foreach ((int txCount, int blobCount, string @break) txs in blobTxCounts)
         {
@@ -149,7 +145,18 @@ internal class BlobSender
                 string? maxPriorityFeePerGasRes = await _nodeManager.Post<string>("eth_maxPriorityFeePerGas") ?? "1";
                 UInt256 maxPriorityFeePerGas = HexConvert.ToUInt256(maxPriorityFeePerGasRes);
 
-                Console.WriteLine($"Nonce: {nonce}, GasPrice: {gasPrice}, MaxPriorityFeePerGas: {maxPriorityFeePerGas}");
+
+                UInt256 adjustedMaxPriorityFeePerGas = maxPriorityFeeGasArgs == 0 ? maxPriorityFeePerGas : maxPriorityFeeGasArgs;
+
+
+                BlockModel<Hash256>? blockResult = null;
+                blockResult = await _nodeManager.Post<BlockModel<Hash256>>("eth_getBlockByNumber", "latest", false);
+                BlobGasCalculator.TryCalculateBlobGasPricePerUnit((blockResult?.ExcessBlobGas ?? 0) + (10 + excessBlobs) * Eip4844Constants.MaxBlobGasPerBlock, out UInt256 blobGasPrice);
+
+                if (maxFeePerBlobGas != 0)
+                {
+                    maxFeePerBlobGas = blobGasPrice * (Math.Min(1, feeMultiplier));
+                }
 
                 switch (@break)
                 {
@@ -160,14 +167,16 @@ internal class BlobSender
                         Array.Copy(KzgPolynomialCommitments.BlsModulus.ToBigEndian(), blobs[0], 32);
                         blobs[0][31] += 1;
                         break;
-                    case "7": maxFeePerDataGas = UInt256.MaxValue; break;
-                    //case "8": maxFeePerDataGas = 42_000_000_000; break;
+                    case "7": maxFeePerBlobGas = UInt256.MaxValue; break;
+                    //case "8": maxFeePerBlobGas = 42_000_000_000; break;
                     case "9": proofs = proofs.Skip(1).ToArray(); break;
                     case "10": commitments = commitments.Skip(1).ToArray(); break;
-                    case "11": maxFeePerDataGas = UInt256.MaxValue / Eip4844Constants.GasPerBlob + 1; break;
+                    case "11": maxFeePerBlobGas = UInt256.MaxValue / Eip4844Constants.GasPerBlob + 1; break;
                 }
 
-                UInt256 adjustedMaxPriorityFeePerGas = maxPriorityFeeGasArgs == 0 ? maxPriorityFeePerGas : maxPriorityFeeGasArgs;
+                Console.WriteLine($"Sending from {signer.Address}. Nonce: {nonce}, GasPrice: {gasPrice}, MaxPriorityFeePerGas: {maxPriorityFeePerGas}, MaxFeePerBlobGas {maxFeePerBlobGas}. " +
+                    $"Block's GasPrice: {(blockResult is not null ? BaseFeeCalculator.Calculate(blockResult.ToBlock().Header, Cancun.Instance).ToString() : "???")}, BlobGasPrice {blobGasPrice}");
+
                 Transaction tx = new()
                 {
                     Type = TxType.Blob,
@@ -176,7 +185,7 @@ internal class BlobSender
                     GasLimit = GasCostOf.Transaction,
                     GasPrice = adjustedMaxPriorityFeePerGas * feeMultiplier,
                     DecodedMaxFeePerGas = gasPrice * feeMultiplier,
-                    MaxFeePerBlobGas = maxFeePerDataGas,
+                    MaxFeePerBlobGas = maxFeePerBlobGas,
                     Value = 0,
                     To = new Address(receiver),
                     BlobVersionedHashes = blobhashes,
@@ -187,10 +196,6 @@ internal class BlobSender
 
                 string txRlp = Hex.ToHexString(txDecoder
                     .Encode(tx, RlpBehaviors.InMempoolForm | RlpBehaviors.SkipTypedWrapping).Bytes);
-
-                BlockModel<Hash256>? blockResult = null;
-                if (waitForBlock)
-                    blockResult = await _nodeManager.Post<BlockModel<Hash256>>("eth_getBlockByNumber", "latest", false);
 
                 string? result = await _nodeManager.Post<string>("eth_sendRawTransaction", "0x" + txRlp);
 
@@ -209,13 +214,13 @@ internal class BlobSender
         byte[] data,
         PrivateKey privateKey,
         string receiver,
-        UInt256 maxFeePerDataGas,
+        UInt256 maxFeePerBlobGas,
         ulong feeMultiplier,
         UInt256 maxPriorityFeeGasArgs)
     {
         int n = 0;
         data = data
-            .Select((s, i) => (i + n) % 32 != 0 ? new byte[] { s } : (s < 0x73 ? new byte[] { s } : new byte[] {(byte)(32 + (n++ * 0)), s }))
+            .Select((s, i) => (i + n) % 32 != 0 ? [s] : (s < 0x73 ? new byte[] { s } : [(byte)(32 + (n++ * 0)), s]))
             .SelectMany(b => b).ToArray();
 
         await KzgPolynomialCommitments.InitializeAsync();
@@ -282,7 +287,7 @@ internal class BlobSender
             GasLimit = GasCostOf.Transaction,
             GasPrice = adjustedMaxPriorityFeePerGas * feeMultiplier,
             DecodedMaxFeePerGas = gasPrice * feeMultiplier,
-            MaxFeePerBlobGas = maxFeePerDataGas,
+            MaxFeePerBlobGas = maxFeePerBlobGas,
             Value = 0,
             To = new Address(receiver),
             BlobVersionedHashes = blobhashes,
