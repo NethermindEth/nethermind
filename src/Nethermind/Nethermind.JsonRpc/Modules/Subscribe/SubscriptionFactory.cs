@@ -80,17 +80,25 @@ public class SubscriptionFactory : ISubscriptionFactory
             IJsonRpcParam? param = null;
             bool thereIsParameter = paramType is not null;
             bool thereAreArgs = args is not null;
-            if (thereIsParameter && (thereAreArgs || paramType.CannotBeAssignedNull()))
+            JsonDocument doc = null;
+            try
             {
-                param = (IJsonRpcParam)Activator.CreateInstance(paramType);
-                if (thereAreArgs)
+                if (thereIsParameter && (thereAreArgs || paramType.CannotBeAssignedNull()))
                 {
-                    using var doc = JsonDocument.Parse(args);
-                    param!.ReadJson(doc.RootElement, EthereumJsonSerializer.JsonOptions);
+                    param = (IJsonRpcParam)Activator.CreateInstance(paramType);
+                    if (thereAreArgs)
+                    {
+                        doc = JsonDocument.Parse(args);
+                        param!.ReadJson(doc.RootElement, EthereumJsonSerializer.JsonOptions);
+                    }
                 }
-            }
 
-            return customSubscription.Constructor(jsonRpcDuplexClient, param);
+                return customSubscription.Constructor(jsonRpcDuplexClient, param);
+            }
+            finally
+            {
+                doc?.Dispose();
+            }
         }
 
         throw new KeyNotFoundException($"{subscriptionType} is an invalid or unregistered subscription type");
