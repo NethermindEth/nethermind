@@ -2297,7 +2297,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine
 
         ExecutionEnvironment callEnv = new
         (
-            txExecutionContext: env.TxExecutionContext,
+            txExecutionContext: in env.TxExecutionContext,
             callDepth: env.CallDepth + 1,
             caller: caller,
             codeSource: codeSource,
@@ -2535,7 +2535,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine
 
         ExecutionEnvironment callEnv = new
         (
-            txExecutionContext: env.TxExecutionContext,
+            txExecutionContext: in env.TxExecutionContext,
             callDepth: env.CallDepth + 1,
             caller: env.ExecutingAccount,
             executingAccount: contractAddress,
