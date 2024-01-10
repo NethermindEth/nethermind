@@ -73,6 +73,10 @@ namespace Nethermind.Blockchain
         [DataMember(Name = "ethereum_blockchain_height")]
         public static long BlockchainHeight { get; set; }
 
+        [GaugeMetric]
+        [Description("Hash of the last block.")]
+        public static long LastBlockHash { get; set; }
+
         //EIP-2159: Common Prometheus Metrics Names for Clients
         [GaugeMetric]
         [Description("The estimated highest block available.")]
