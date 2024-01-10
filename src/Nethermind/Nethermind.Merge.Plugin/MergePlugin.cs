@@ -338,6 +338,7 @@ public partial class MergePlugin : IConsensusWrapperPlugin, ISynchronizationPlug
                     _peerRefresher,
                     _api.SpecProvider,
                     _api.LogManager,
+                    _api.Config<IBlocksConfig>().SecondsPerSlot,
                     _api.Config<IMergeConfig>().SimulateBlockProduction),
                 new GetPayloadBodiesByHashV1Handler(_api.BlockTree, _api.LogManager),
                 new GetPayloadBodiesByRangeV1Handler(_api.BlockTree, _api.LogManager),

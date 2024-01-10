@@ -8,6 +8,7 @@ using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
+using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
@@ -48,6 +49,7 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
     private readonly IPeerRefresher _peerRefresher;
     private readonly ISpecProvider _specProvider;
     private readonly bool _simulateBlockProduction;
+    private readonly ulong _secondsPerSlot;
 
     public ForkchoiceUpdatedHandler(
         IBlockTree blockTree,
@@ -62,6 +64,7 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
         IPeerRefresher peerRefresher,
         ISpecProvider specProvider,
         ILogManager logManager,
+        ulong secondsPerSlot,
         bool simulateBlockProduction = false)
     {
         _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
@@ -76,6 +79,7 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
         _peerRefresher = peerRefresher;
         _specProvider = specProvider;
         _simulateBlockProduction = simulateBlockProduction;
+        _secondsPerSlot = secondsPerSlot;
         _logger = logManager.GetClassLogger();
     }
 
@@ -256,7 +260,7 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
         {
             payloadAttributes ??= new PayloadAttributes()
             {
-                Timestamp = newHeadBlock.Timestamp + 12,
+                Timestamp = newHeadBlock.Timestamp + _secondsPerSlot,
                 ParentBeaconBlockRoot = newHeadBlock.ParentHash, // it doesn't matter
                 PrevRandao = newHeadBlock.ParentHash ?? Keccak.Zero, // it doesn't matter
                 Withdrawals = Array.Empty<Withdrawal>(),
