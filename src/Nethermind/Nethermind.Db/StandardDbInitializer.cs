@@ -16,9 +16,8 @@ namespace Nethermind.Db
         public StandardDbInitializer(
             IDbProvider? dbProvider,
             IDbFactory? rocksDbFactory,
-            IMemDbFactory? memDbFactory,
             IFileSystem? fileSystem = null)
-            : base(dbProvider, rocksDbFactory, memDbFactory)
+            : base(dbProvider, rocksDbFactory)
         {
             _fileSystem = fileSystem ?? new FileSystem();
         }
@@ -46,9 +45,7 @@ namespace Nethermind.Db
             DbSettings stateDbSettings = BuildRocksDbSettings(DbNames.State, () => Metrics.StateDbReads++, () => Metrics.StateDbWrites++);
             RegisterCustomDb(DbNames.State, () => new FullPruningDb(
                 stateDbSettings,
-                PersistedDb
-                    ? new FullPruningInnerDbFactory(RocksDbFactory, _fileSystem, stateDbSettings.DbPath)
-                    : new MemDbFactoryToRocksDbAdapter(MemDbFactory),
+                new FullPruningInnerDbFactory(DbFactory, _fileSystem, stateDbSettings.DbPath),
                 () => Interlocked.Increment(ref Metrics.StateDbInPruningWrites)));
 
             RegisterDb(BuildRocksDbSettings(DbNames.Code, () => Metrics.CodeDbReads++, () => Metrics.CodeDbWrites++));

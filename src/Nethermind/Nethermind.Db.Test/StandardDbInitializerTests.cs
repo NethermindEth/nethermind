@@ -69,8 +69,16 @@ namespace Nethermind.Db.Test
         private async Task<IDbProvider> InitializeStandardDb(bool useReceipts, DbModeHint dbModeHint, string path)
         {
             IDbProvider dbProvider = new DbProvider(dbModeHint);
-            RocksDbFactory rocksDbFactory = new(new DbConfig(), LimboLogs.Instance, Path.Combine(_folderWithDbs, path));
-            StandardDbInitializer initializer = new(dbProvider, rocksDbFactory, new MemDbFactory(), Substitute.For<IFileSystem>());
+            IDbFactory dbFactory;
+            if (dbModeHint == DbModeHint.Mem)
+            {
+                dbFactory = new MemDbFactory();
+            }
+            else
+            {
+                dbFactory = new RocksDbFactory(new DbConfig(), LimboLogs.Instance, Path.Combine(_folderWithDbs, path));
+            }
+            StandardDbInitializer initializer = new(dbProvider, dbFactory, Substitute.For<IFileSystem>());
             await initializer.InitStandardDbsAsync(useReceipts);
             return dbProvider;
         }

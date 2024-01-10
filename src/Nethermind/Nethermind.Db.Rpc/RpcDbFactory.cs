@@ -8,22 +8,19 @@ using Nethermind.Serialization.Json;
 
 namespace Nethermind.Db.Rpc
 {
-    public class RpcDbFactory : IDbFactory, IMemDbFactory
+    public class RpcDbFactory : IDbFactory
     {
-        private readonly IMemDbFactory _wrappedMemDbFactory;
         private readonly IDbFactory _wrappedRocksDbFactory;
         private readonly IJsonSerializer _jsonSerializer;
         private readonly IJsonRpcClient _jsonRpcClient;
         private readonly ILogManager _logManager;
 
         public RpcDbFactory(
-            IMemDbFactory wrappedMemDbFactory,
             IDbFactory wrappedRocksDbFactory,
             IJsonSerializer jsonSerializer,
             IJsonRpcClient jsonRpcClient,
             ILogManager logManager)
         {
-            _wrappedMemDbFactory = wrappedMemDbFactory;
             _wrappedRocksDbFactory = wrappedRocksDbFactory;
             _jsonSerializer = jsonSerializer;
             _jsonRpcClient = jsonRpcClient;
@@ -38,22 +35,10 @@ namespace Nethermind.Db.Rpc
                 true);
         }
 
-        public IColumnsDb<T> CreateColumnsDb<T>(string dbName) where T : struct, Enum
-        {
-            IColumnsDb<T> memDb = _wrappedMemDbFactory.CreateColumnsDb<T>(dbName);
-            return new ReadOnlyColumnsDb<T>(new RpcColumnsDb<T>(dbName, _jsonSerializer, _jsonRpcClient, _logManager, memDb), true);
-        }
-
         public IDb CreateDb(DbSettings dbSettings)
         {
             var rocksDb = _wrappedRocksDbFactory.CreateDb(dbSettings);
             return WrapWithRpc(rocksDb);
-        }
-
-        public IDb CreateDb(string dbName)
-        {
-            var memDb = _wrappedMemDbFactory.CreateDb(dbName);
-            return WrapWithRpc(memDb);
         }
 
         public string GetFullDbPath(DbSettings dbSettings) => _wrappedRocksDbFactory.GetFullDbPath(dbSettings);

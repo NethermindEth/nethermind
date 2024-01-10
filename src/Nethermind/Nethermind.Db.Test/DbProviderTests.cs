@@ -15,7 +15,7 @@ namespace Nethermind.Db.Test
             MemDbFactory memDbFactory = new MemDbFactory();
             using (DbProvider dbProvider = new DbProvider(DbModeHint.Mem))
             {
-                IDb memDb = memDbFactory.CreateDb("MemDb");
+                IDb memDb = memDbFactory.CreateDb(new DbSettings("MemDb", "MemDb"));
                 dbProvider.RegisterDb("MemDb", memDb);
                 IDb db = dbProvider.GetDb<IDb>("MemDb");
                 Assert.That(db, Is.EqualTo(memDb));

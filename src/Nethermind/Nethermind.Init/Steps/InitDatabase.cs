@@ -48,7 +48,7 @@ namespace Nethermind.Init.Steps
                 bool useReceiptsDb = initConfig.StoreReceipts || syncConfig.DownloadReceiptsInFastSync;
                 bool useBlobsDb = txPoolConfig.BlobsSupport.IsPersistentStorage();
                 InitDbApi(initConfig, dbConfig, initConfig.StoreReceipts || syncConfig.DownloadReceiptsInFastSync);
-                StandardDbInitializer dbInitializer = new(_api.DbProvider, _api.RocksDbFactory, _api.MemDbFactory, _api.FileSystem);
+                StandardDbInitializer dbInitializer = new(_api.DbProvider, _api.RocksDbFactory, _api.FileSystem);
                 await dbInitializer.InitStandardDbsAsync(useReceiptsDb, useBlobsDb);
                 _api.BlobTxStorage = useBlobsDb
                     ? new BlobTxStorage(_api.DbProvider!.BlobTransactionsDb)
@@ -68,26 +68,22 @@ namespace Nethermind.Init.Steps
                 case DiagnosticMode.RpcDb:
                     _api.DbProvider = new DbProvider(DbModeHint.Persisted);
                     RocksDbFactory rocksDbFactory = new(dbConfig, _api.LogManager, Path.Combine(initConfig.BaseDbPath, "debug"));
-                    RpcDbFactory rpcDbFactory = new(new MemDbFactory(), rocksDbFactory, _api.EthereumJsonSerializer, new BasicJsonRpcClient(new Uri(initConfig.RpcDbUrl), _api.EthereumJsonSerializer, _api.LogManager), _api.LogManager);
+                    RpcDbFactory rpcDbFactory = new(rocksDbFactory, _api.EthereumJsonSerializer, new BasicJsonRpcClient(new Uri(initConfig.RpcDbUrl), _api.EthereumJsonSerializer, _api.LogManager), _api.LogManager);
                     _api.RocksDbFactory = rpcDbFactory;
-                    _api.MemDbFactory = rpcDbFactory;
                     break;
                 case DiagnosticMode.ReadOnlyDb:
                     DbProvider rocksDbProvider = new(DbModeHint.Persisted);
                     _api.DbProvider = new ReadOnlyDbProvider(rocksDbProvider, storeReceipts); // ToDo storeReceipts as createInMemoryWriteStore - bug?
                     _api.DisposeStack.Push(rocksDbProvider);
                     _api.RocksDbFactory = new RocksDbFactory(dbConfig, _api.LogManager, Path.Combine(initConfig.BaseDbPath, "debug"));
-                    _api.MemDbFactory = new MemDbFactory();
                     break;
                 case DiagnosticMode.MemDb:
                     _api.DbProvider = new DbProvider(DbModeHint.Mem);
-                    _api.RocksDbFactory = new RocksDbFactory(dbConfig, _api.LogManager, Path.Combine(initConfig.BaseDbPath, "debug"));
-                    _api.MemDbFactory = new MemDbFactory();
+                    _api.RocksDbFactory = new MemDbFactory();
                     break;
                 default:
                     _api.DbProvider = new DbProvider(DbModeHint.Persisted);
                     _api.RocksDbFactory = new RocksDbFactory(dbConfig, _api.LogManager, initConfig.BaseDbPath);
-                    _api.MemDbFactory = new MemDbFactory();
                     break;
             }
         }
