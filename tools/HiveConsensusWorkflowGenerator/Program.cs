@@ -5,7 +5,6 @@ namespace HiveConsensusWorkflowGenerator;
 
 public static class Program
 {
-    const long MaxSizeWithoutSplitting = 35_000_000;
     const int MaxJobsCount = 256;
 
     static void Main(string[] args)
@@ -25,6 +24,8 @@ public static class Program
             groupedTestNames.Add(new List<(string, string)>());
         }
 
+        File.WriteAllText("allTests.json", string.Join('\n', sortedTests.Select(x => x.Key)));
+
         // Initial distribution without size limit
         int groupIndex = 0;
         foreach (var test in sortedTests.Take(MaxJobsCount))
@@ -38,11 +39,8 @@ public static class Program
         foreach (var test in sortedTests.Skip(MaxJobsCount))
         {
             string fileName = test.Key;
-            groupIndex = FindSuitableGroupIndex(groupedTestNames, pathsToBeTested, MaxSizeWithoutSplitting, test.Value);
-            if (groupIndex != -1)
-            {
-                groupedTestNames[groupIndex].Add((test.Key, fileName));
-            }
+            groupIndex = FindSuitableGroupIndex(groupedTestNames, pathsToBeTested, test.Value);
+            groupedTestNames[groupIndex].Add((test.Key, fileName));
         }
 
         // Calculate group sizes and include sizes of each test in JSON output
@@ -62,16 +60,19 @@ public static class Program
         File.WriteAllText("matrix.json", jsonString);
     }
 
-    private static int FindSuitableGroupIndex(List<List<(string fullPath, string fileName)>> groups, Dictionary<string, long> pathsToBeTested, long maxSize, long testSize)
+    private static int FindSuitableGroupIndex(List<List<(string fullPath, string fileName)>> groups, Dictionary<string, long> pathsToBeTested, long testSize)
     {
-        int suitableIndex = -1;
+        int suitableIndex = 0;
         long smallestSize = long.MaxValue;
+
+        if (groups.Count == 0)
+            throw new Exception("Groups are empty - issue with generation of jobs.");
 
         for (int i = 0; i < groups.Count; i++)
         {
             long currentGroupSize = groups[i].Sum(t => pathsToBeTested.ContainsKey(t.fullPath) ? pathsToBeTested[t.fullPath] : 0);
 
-            if (currentGroupSize + testSize <= maxSize && currentGroupSize < smallestSize)
+            if (currentGroupSize < smallestSize)
             {
                 smallestSize = currentGroupSize;
                 suitableIndex = i;
