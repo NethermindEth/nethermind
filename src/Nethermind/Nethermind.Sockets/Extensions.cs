@@ -23,7 +23,7 @@ namespace Nethermind.Sockets
                 logger = scope.ServiceProvider.GetService<ILogManager>()?.GetClassLogger();
             }
 
-            app.Use(async (context, next) =>
+            app.Run(async (context) =>
             {
                 string id = string.Empty;
                 string clientName = string.Empty;
