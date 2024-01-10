@@ -12,7 +12,7 @@ jobs:
     steps:
       - name: Wait to ensure assets are uploaded
         run: sleep 5m
-  
+
   publish-ppa:
     name: Publish on PPA
     runs-on: ubuntu-latest
@@ -34,13 +34,13 @@ jobs:
           echo "Import GPG owner trust"
           echo ${{ secrets.GPG_OWNERTRUST }} | base64 --decode | gpg --import-ownertrust
       - name: Install PPA dependencies
-        run: sudo apt update && sudo apt install debhelper devscripts -y
+        run: sudo apt-get update && sudo apt-get install debhelper devscripts -y
       - name: Submit package
         env:
           PPA_GPG_KEYID: ${{ secrets.PPA_GPG_KEYID }}
           VERSION: ${{ github.event.release.tag_name }}
         working-directory: scripts/deployment
-        run: | 
+        run: |
           # This hack must be removed once we reach the v2
           echo $VERSION > ver
           fixed_version=$(awk -F. '{ print $1"."$2$3$4"0"}' ver)
@@ -63,21 +63,17 @@ jobs:
       - name: Install PPA dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install debhelper devscripts ubuntu-dev-tools -y --no-install-recommends
-      - name: Install Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: 3.x
+          sudo apt-get install debhelper devscripts ubuntu-dev-tools -y
       - name: Install launchpadlib
         run: pip install launchpadlib --upgrade
       - name: Copy to other Ubuntu releases
-        env: 
+        env:
           LP_CREDENTIALS_FILE: /tmp/lp_credentials
         run: |
           echo ${{ secrets.PPA_COPY_TOKEN }} | base64 --decode > /tmp/lp_credentials
           git clone https://git.launchpad.net/ubuntu-archive-tools
           cd ubuntu-archive-tools
-          for release in "trusty" "bionic" "focal" "kinetic"
+          for release in "focal" "mantic"
           do
             python3 copy-package -y -b -p nethermindeth --ppa-name=nethermind -s jammy --to-suite=$release nethermind
           done
