@@ -88,6 +88,11 @@ namespace Nethermind.State
             _persistentStorageProvider.Reset();
             _transientStorageProvider.Reset();
         }
+        public void ResetCache()
+        {
+            _stateProvider.ResetCache();
+            _persistentStorageProvider.ResetCache();
+        }
 
         public void ClearStorage(Address address)
         {
@@ -238,5 +243,12 @@ namespace Nethermind.State
         {
             _stateProvider.CreateAccountIfNotExists(address, balance, nonce);
         }
+
+        public Account? TryGetAccountFromProcessorCache(Address address)
+        {
+            return _stateProvider.TryGetAccountFromProcessorCache(address);
+        }
+        public void MarkBlockInProduction() => _stateProvider.MarkBlockInProduction();
+        public void MarkBlockFinishedProduction() => _stateProvider.MarkBlockInProduction();
     }
 }

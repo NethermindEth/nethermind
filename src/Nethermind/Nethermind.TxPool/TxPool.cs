@@ -15,6 +15,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Timers;
 using Nethermind.Crypto;
+using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.TxPool.Collections;
@@ -86,7 +87,8 @@ namespace Nethermind.TxPool
             IComparer<Transaction> comparer,
             ITxGossipPolicy? transactionsGossipPolicy = null,
             IIncomingTxFilter? incomingTxFilter = null,
-            bool thereIsPriorityContract = false)
+            bool thereIsPriorityContract = false,
+            Func<Address, Account?>? tryGetAccountFromProcessorCache = null)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _ecdsa = ecdsa ?? throw new ArgumentNullException(nameof(ecdsa));
@@ -94,7 +96,9 @@ namespace Nethermind.TxPool
             _headInfo = chainHeadInfoProvider ?? throw new ArgumentNullException(nameof(chainHeadInfoProvider));
             _txPoolConfig = txPoolConfig;
             _blobReorgsSupportEnabled = txPoolConfig.BlobsSupport.SupportsReorgs();
-            _accounts = _headInfo.AccountStateProvider;
+            _accounts = tryGetAccountFromProcessorCache is null ?
+                _headInfo.AccountStateProvider :
+                new AccountCached(_headInfo.AccountStateProvider, tryGetAccountFromProcessorCache);
             _specProvider = _headInfo.SpecProvider;
 
             MemoryAllowance.MemPoolSize = txPoolConfig.Size;
@@ -174,6 +178,13 @@ namespace Nethermind.TxPool
 
         public int GetPendingBlobTransactionsCount() => _blobTransactions.Count;
 
+        ManualResetEventSlim _blockProcessing = new ManualResetEventSlim(true);
+
+        public void BlocksProcessing()
+        {
+            _blockProcessing.Reset();
+        }
+
         private void OnHeadChange(object? sender, BlockReplacementEventArgs e)
         {
             try
@@ -202,6 +213,7 @@ namespace Nethermind.TxPool
                     {
                         try
                         {
+                            _blockProcessing.Set();
                             ReAddReorganisedTransactions(args.PreviousBlock);
                             RemoveProcessedTransactions(args.Block);
                             UpdateBuckets();
@@ -361,6 +373,8 @@ namespace Nethermind.TxPool
 
         public AcceptTxResult SubmitTx(Transaction tx, TxHandlingOptions handlingOptions)
         {
+            _blockProcessing.Wait();
+
             Metrics.PendingTransactionsReceived++;
 
             // assign a sequence number to transaction so we can order them by arrival times when
@@ -741,6 +755,29 @@ namespace Nethermind.TxPool
             WriteTxPoolReport(_logger);
 
             _timer!.Enabled = true;
+        }
+
+        private class AccountCached : IAccountStateProvider
+        {
+            Func<Address, Account?> _tryGetAccountFromProcessorCache;
+            IAccountStateProvider _provider;
+
+            public AccountCached(IAccountStateProvider provider, Func<Address, Account?> tryGetAccountFromProcessorCache)
+            {
+                _provider = provider;
+                _tryGetAccountFromProcessorCache = tryGetAccountFromProcessorCache;
+            }
+
+            public Account GetAccount(Address address)
+            {
+                Account? account = _tryGetAccountFromProcessorCache(address);
+                if (account is null)
+                {
+                    account = _provider.GetAccount(address);
+                }
+
+                return account;
+            }
         }
 
         private static void WriteTxPoolReport(ILogger logger)

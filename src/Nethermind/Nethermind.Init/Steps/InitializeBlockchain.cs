@@ -103,6 +103,7 @@ namespace Nethermind.Init.Steps
             setApi.TxPoolInfoProvider = new TxPoolInfoProvider(chainHeadInfoProvider.AccountStateProvider, txPool);
             setApi.GasPriceOracle = new GasPriceOracle(getApi.BlockTree!, getApi.SpecProvider, _api.LogManager, blocksConfig.MinGasPrice);
             IBlockProcessor mainBlockProcessor = setApi.MainBlockProcessor = CreateBlockProcessor();
+            mainBlockProcessor.BlocksProcessing += (o, e) => txPool.BlocksProcessing();
 
             BlockchainProcessor blockchainProcessor = new(
                 getApi.BlockTree,
@@ -190,7 +191,8 @@ namespace Nethermind.Init.Steps
                 _api.TxValidator!,
                 _api.LogManager,
                 CreateTxPoolTxComparer(),
-                _api.TxGossipPolicy);
+                _api.TxGossipPolicy,
+                tryGetAccountFromProcessorCache: _api.WorldState!.TryGetAccountFromProcessorCache);
 
         protected IComparer<Transaction> CreateTxPoolTxComparer() => _api.TransactionComparerProvider!.GetDefaultComparer();
 

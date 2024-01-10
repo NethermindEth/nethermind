@@ -3,7 +3,11 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
+
 using Nethermind.Core;
+using Nethermind.Core.Caching;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -26,6 +30,8 @@ namespace Nethermind.State
         internal readonly IStorageTreeFactory _storageTreeFactory;
         private readonly ResettableDictionary<Address, StorageTree> _storages = new();
 
+        private readonly LruCache<StorageCell, byte[]> _intraBlockCache = new(32_768_000, "Inter-block Storage cache");
+        private readonly ResettableDictionary<StorageCell, byte[]> _storageChangesToCommit = new();
         /// <summary>
         /// EIP-1283
         /// </summary>
@@ -56,6 +62,15 @@ namespace Nethermind.State
         }
 
         /// <summary>
+        /// Reset the storage state
+        /// </summary>
+        public void ResetCache()
+        {
+            if (_logger.IsTrace) _logger.Trace("Clearing storage provider inter block cache");
+            _intraBlockCache.Clear();
+        }
+
+        /// <summary>
         /// Get the current value at the specified location
         /// </summary>
         /// <param name="storageCell">Storage location</param>
@@ -77,7 +92,7 @@ namespace Nethermind.State
 
             if (_transactionChangesSnapshots.TryPeek(out int snapshot))
             {
-                if (_intraBlockCache.TryGetValue(storageCell, out StackList<int> stack))
+                if (_intraTxCache.TryGetValue(storageCell, out StackList<int> stack))
                 {
                     if (stack.TryGetSearchedItem(snapshot, out int lastChangeIndexBeforeOriginalSnapshot))
                     {
@@ -118,6 +133,8 @@ namespace Nethermind.State
                 trace = new Dictionary<StorageCell, ChangeTrace>();
             }
 
+            _storageChangesToCommit.Reset();
+
             for (int i = 0; i <= _currentPosition; i++)
             {
                 Change change = _changes[_currentPosition - i];
@@ -148,7 +165,7 @@ namespace Nethermind.State
                     continue;
                 }
 
-                int forAssertion = _intraBlockCache[change.StorageCell].Pop();
+                int forAssertion = _intraTxCache[change.StorageCell].Pop();
                 if (forAssertion != _currentPosition - i)
                 {
                     throw new InvalidOperationException($"Expected checked value {forAssertion} to be equal to {_currentPosition} - {i}");
@@ -166,10 +183,7 @@ namespace Nethermind.State
                             _logger.Trace($"  Update {change.StorageCell.Address}_{change.StorageCell.Index} V = {change.Value.ToHexString(true)}");
                         }
 
-                        StorageTree tree = GetOrCreateStorage(change.StorageCell.Address);
-                        Db.Metrics.StorageTreeWrites++;
-                        toUpdateRoots.Add(change.StorageCell.Address);
-                        tree.Set(change.StorageCell.Index, change.Value);
+                        SetStorage(change);
                         if (isTracing)
                         {
                             trace![change.StorageCell] = new ChangeTrace(change.Value);
@@ -180,6 +194,8 @@ namespace Nethermind.State
                         throw new ArgumentOutOfRangeException();
                 }
             }
+
+            CommitStorageChanges(toUpdateRoots);
 
             // TODO: it seems that we are unnecessarily recalculating root hashes all the time in storage?
             foreach (Address address in toUpdateRoots)
@@ -204,8 +220,36 @@ namespace Nethermind.State
             }
         }
 
+        private void SetStorage(Change change)
+        {
+            _storageChangesToCommit[change.StorageCell] = change.Value;
+        }
+
+        private void CommitStorageChanges(HashSet<Address> toUpdateRoots)
+        {
+            int changesWritten = 0;
+            foreach ((StorageCell storageCell, byte[] value) in _storageChangesToCommit)
+            {
+                if (_originalValues.TryGetValue(storageCell, out var original) &&
+                    Bytes.BytesComparer.Compare(original, value) == 0)
+                {
+                    // Nothing changed, nothing to save
+                    continue;
+                }
+
+                StorageTree tree = GetOrCreateStorage(storageCell.Address);
+                toUpdateRoots.Add(storageCell.Address);
+                tree.Set(storageCell.Index, value);
+                _intraBlockCache.Set(storageCell, value);
+                changesWritten++;
+            }
+
+            Db.Metrics.StorageTreeWrites += changesWritten;
+            _storageChangesToCommit.Reset();
+        }
+
         /// <summary>
-        /// Commit persisent storage trees
+        /// Commit persistent storage trees
         /// </summary>
         /// <param name="blockNumber">Current block number</param>
         public void CommitTrees(long blockNumber)
@@ -238,15 +282,24 @@ namespace Nethermind.State
         {
             StorageTree tree = GetOrCreateStorage(storageCell.Address);
 
-            Db.Metrics.StorageTreeReads++;
-
             if (!storageCell.IsHash)
             {
-                byte[] value = tree.Get(storageCell.Index);
+                if (!_intraBlockCache.TryGet(storageCell, out byte[]? value))
+                {
+                    Db.Metrics.StorageTreeReads++;
+                    value = tree.Get(storageCell.Index);
+                    _intraBlockCache.Set(storageCell, value);
+                }
+                else
+                {
+                    Db.Metrics.StorageTreeCacheHits++;
+                }
+
                 PushToRegistryOnly(storageCell, value);
                 return value;
             }
 
+            Db.Metrics.StorageTreeReads++;
             return tree.Get(storageCell.Hash.Bytes);
         }
 
