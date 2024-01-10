@@ -917,10 +917,11 @@ public class DbOnTheRocks : IDb, ITunableDb
             iterator.Seek(startKey);
             while (iterator.Valid())
             {
-                if (Bytes.Comparer.Compare(iterator.Key(), endKey) >= 0)
+                var key = iterator.Key();
+                if (Bytes.Comparer.Compare(key, endKey) >= 0)
                     break;
-                //Console.WriteLine($"Deleting: {Convert.ToHexString(iterator.Key())} - {Convert.ToHexString(iterator.Value())}");
-                Delete(iterator.Key(), cf);
+                //Console.WriteLine($"Deleting: {Convert.ToHexString(key)} - {Convert.ToHexString(iterator.Value())}");
+                Delete(key, cf);
                 iterator.Next();
             }
         }
