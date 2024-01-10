@@ -29,6 +29,7 @@ using Nethermind.Logging;
 using Nethermind.Network.Config;
 using Nethermind.JsonRpc.Modules.Rpc;
 using Nethermind.Serialization.Json;
+using Nethermind.Blockchain;
 
 namespace Nethermind.Init.Steps;
 
@@ -165,6 +166,13 @@ public class RegisterRpcModules : IStep
         if (_api.StaticNodesManager is null) throw new StepDependencyException(nameof(_api.StaticNodesManager));
         if (_api.Enode is null) throw new StepDependencyException(nameof(_api.Enode));
 
+        IEraExporter eraService = new EraExporter(
+           _api.FileSystem,
+           _api.BlockTree,
+           _api.ReceiptStorage,
+           _api.SpecProvider,
+           BlockchainIds.GetBlockchainName(_api.SpecProvider.NetworkId),
+           _api.LogManager);
         ManualPruningTrigger pruningTrigger = new();
         _api.PruningTrigger.Add(pruningTrigger);
         AdminRpcModule adminRpcModule = new(
@@ -173,8 +181,10 @@ public class RegisterRpcModules : IStep
             _api.PeerPool,
             _api.StaticNodesManager,
             _api.Enode,
+            eraService,
             initConfig.BaseDbPath,
-            pruningTrigger);
+            pruningTrigger,
+            _api.ProcessExitToken!);
         rpcModuleProvider.RegisterSingle<IAdminRpcModule>(adminRpcModule);
 
         if (_api.TxPoolInfoProvider is null) throw new StepDependencyException(nameof(_api.TxPoolInfoProvider));
