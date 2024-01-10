@@ -66,7 +66,7 @@ namespace Nethermind.Db.Test
         public void Throws_whenMaxWriteBufferNumIs0()
         {
             IDbConfig config = new DbConfig();
-            RocksDbSettings settings = new("Blocks", DbPath)
+            DbSettings settings = new("Blocks", DbPath)
             {
                 BlockCacheSize = (ulong)1.KiB(),
                 CacheIndexAndFilterBlocks = false,
@@ -183,7 +183,7 @@ namespace Nethermind.Db.Test
             file.Received().Delete(markerFile);
         }
 
-        private static RocksDbSettings GetRocksDbSettings(string dbPath, string dbName)
+        private static DbSettings GetRocksDbSettings(string dbPath, string dbName)
         {
             return new(dbName, dbPath)
             {
@@ -324,7 +324,7 @@ namespace Nethermind.Db.Test
             AllocatedSpan.Should().Be(0);
         }
 
-        private static RocksDbSettings GetRocksDbSettings(string dbPath, string dbName)
+        private static DbSettings GetRocksDbSettings(string dbPath, string dbName)
         {
             return new(dbName, dbPath)
             {
@@ -357,13 +357,13 @@ namespace Nethermind.Db.Test
     {
         public CorruptedDbOnTheRocks(
             string basePath,
-            RocksDbSettings rocksDbSettings,
+            DbSettings dbSettings,
             IDbConfig dbConfig,
             ILogManager logManager,
             IList<string>? columnFamilies = null,
             RocksDbSharp.Native? rocksDbNative = null,
             IFileSystem? fileSystem = null
-        ) : base(basePath, rocksDbSettings, dbConfig, logManager, columnFamilies, rocksDbNative, fileSystem)
+        ) : base(basePath, dbSettings, dbConfig, logManager, columnFamilies, rocksDbNative, fileSystem)
         {
         }
 

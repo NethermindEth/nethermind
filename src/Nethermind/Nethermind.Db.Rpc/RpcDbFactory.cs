@@ -8,17 +8,17 @@ using Nethermind.Serialization.Json;
 
 namespace Nethermind.Db.Rpc
 {
-    public class RpcDbFactory : IRocksDbFactory, IMemDbFactory
+    public class RpcDbFactory : IDbFactory, IMemDbFactory
     {
         private readonly IMemDbFactory _wrappedMemDbFactory;
-        private readonly IRocksDbFactory _wrappedRocksDbFactory;
+        private readonly IDbFactory _wrappedRocksDbFactory;
         private readonly IJsonSerializer _jsonSerializer;
         private readonly IJsonRpcClient _jsonRpcClient;
         private readonly ILogManager _logManager;
 
         public RpcDbFactory(
             IMemDbFactory wrappedMemDbFactory,
-            IRocksDbFactory wrappedRocksDbFactory,
+            IDbFactory wrappedRocksDbFactory,
             IJsonSerializer jsonSerializer,
             IJsonRpcClient jsonRpcClient,
             ILogManager logManager)
@@ -30,11 +30,11 @@ namespace Nethermind.Db.Rpc
             _logManager = logManager;
         }
 
-        public IColumnsDb<T> CreateColumnsDb<T>(RocksDbSettings rocksDbSettings) where T : struct, Enum
+        public IColumnsDb<T> CreateColumnsDb<T>(DbSettings dbSettings) where T : struct, Enum
         {
-            IColumnsDb<T> rocksDb = _wrappedRocksDbFactory.CreateColumnsDb<T>(rocksDbSettings);
+            IColumnsDb<T> rocksDb = _wrappedRocksDbFactory.CreateColumnsDb<T>(dbSettings);
             return new ReadOnlyColumnsDb<T>(
-                new RpcColumnsDb<T>(rocksDbSettings.DbName, _jsonSerializer, _jsonRpcClient, _logManager, rocksDb),
+                new RpcColumnsDb<T>(dbSettings.DbName, _jsonSerializer, _jsonRpcClient, _logManager, rocksDb),
                 true);
         }
 
@@ -44,9 +44,9 @@ namespace Nethermind.Db.Rpc
             return new ReadOnlyColumnsDb<T>(new RpcColumnsDb<T>(dbName, _jsonSerializer, _jsonRpcClient, _logManager, memDb), true);
         }
 
-        public IDb CreateDb(RocksDbSettings rocksDbSettings)
+        public IDb CreateDb(DbSettings dbSettings)
         {
-            var rocksDb = _wrappedRocksDbFactory.CreateDb(rocksDbSettings);
+            var rocksDb = _wrappedRocksDbFactory.CreateDb(dbSettings);
             return WrapWithRpc(rocksDb);
         }
 
@@ -56,7 +56,7 @@ namespace Nethermind.Db.Rpc
             return WrapWithRpc(memDb);
         }
 
-        public string GetFullDbPath(RocksDbSettings rocksDbSettings) => _wrappedRocksDbFactory.GetFullDbPath(rocksDbSettings);
+        public string GetFullDbPath(DbSettings dbSettings) => _wrappedRocksDbFactory.GetFullDbPath(dbSettings);
 
         private IDb WrapWithRpc(IDb db) =>
             new ReadOnlyDb(new RpcDb(db.Name, _jsonSerializer, _jsonRpcClient, _logManager, db), true);

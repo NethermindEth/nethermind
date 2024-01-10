@@ -10,13 +10,13 @@ namespace Nethermind.Db
     public abstract class RocksDbInitializer
     {
         private readonly IDbProvider _dbProvider;
-        protected IRocksDbFactory RocksDbFactory { get; }
+        protected IDbFactory RocksDbFactory { get; }
         protected IMemDbFactory MemDbFactory { get; }
         protected bool PersistedDb => _dbProvider.DbMode == DbModeHint.Persisted;
 
         private readonly List<Action> _registrations = new();
 
-        protected RocksDbInitializer(IDbProvider? dbProvider, IRocksDbFactory? rocksDbFactory, IMemDbFactory? memDbFactory)
+        protected RocksDbInitializer(IDbProvider? dbProvider, IDbFactory? rocksDbFactory, IMemDbFactory? memDbFactory)
         {
             _dbProvider = dbProvider ?? throw new ArgumentNullException(nameof(dbProvider));
             RocksDbFactory = rocksDbFactory ?? NullRocksDbFactory.Instance;
@@ -45,10 +45,10 @@ namespace Nethermind.Db
             _registrations.Add(Action);
         }
 
-        protected void RegisterDb(RocksDbSettings settings) =>
+        protected void RegisterDb(DbSettings settings) =>
             AddRegisterAction(settings.DbName, () => CreateDb(settings));
 
-        protected void RegisterColumnsDb<T>(RocksDbSettings settings) where T : struct, Enum =>
+        protected void RegisterColumnsDb<T>(DbSettings settings) where T : struct, Enum =>
             AddRegisterAction(settings.DbName, () => CreateColumnDb<T>(settings));
 
         private void AddRegisterAction(string dbName, Func<IDb> dbCreation) =>
@@ -56,10 +56,10 @@ namespace Nethermind.Db
         private void AddRegisterAction<T>(string dbName, Func<IColumnsDb<T>> dbCreation) =>
             _registrations.Add(() => _dbProvider.RegisterColumnDb(dbName, dbCreation()));
 
-        private IDb CreateDb(RocksDbSettings settings) =>
+        private IDb CreateDb(DbSettings settings) =>
             PersistedDb ? RocksDbFactory.CreateDb(settings) : MemDbFactory.CreateDb(settings.DbName);
 
-        private IColumnsDb<T> CreateColumnDb<T>(RocksDbSettings settings) where T : struct, Enum =>
+        private IColumnsDb<T> CreateColumnDb<T>(DbSettings settings) where T : struct, Enum =>
             PersistedDb ? RocksDbFactory.CreateColumnsDb<T>(settings) : MemDbFactory.CreateColumnsDb<T>(settings.DbName);
 
         protected void InitAll()

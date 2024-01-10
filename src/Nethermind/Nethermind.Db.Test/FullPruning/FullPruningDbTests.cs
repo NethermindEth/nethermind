@@ -112,14 +112,14 @@ namespace Nethermind.Db.Test.FullPruning
             public int DbIndex { get; private set; } = -1;
             public string Name { get; }
             public long Metrics { get; private set; }
-            public IRocksDbFactory RocksDbFactory { get; } = Substitute.For<IRocksDbFactory>();
+            public IDbFactory RocksDbFactory { get; } = Substitute.For<IDbFactory>();
             public FullPruningDb FullPruningDb { get; }
 
             public TestContext()
             {
-                RocksDbFactory.CreateDb(Arg.Any<RocksDbSettings>()).Returns(_ => CurrentMirrorDb = new MemDb((++DbIndex).ToString()));
+                RocksDbFactory.CreateDb(Arg.Any<DbSettings>()).Returns(_ => CurrentMirrorDb = new MemDb((++DbIndex).ToString()));
                 Name = "name";
-                FullPruningDb = new FullPruningDb(new RocksDbSettings(Name, "path"), RocksDbFactory, () => Metrics++);
+                FullPruningDb = new FullPruningDb(new DbSettings(Name, "path"), RocksDbFactory, () => Metrics++);
             }
         }
     }

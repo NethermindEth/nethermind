@@ -5,7 +5,7 @@ using System;
 
 namespace Nethermind.Db.FullPruning
 {
-    public class MemDbFactoryToRocksDbAdapter : IRocksDbFactory
+    public class MemDbFactoryToRocksDbAdapter : IDbFactory
     {
         private readonly IMemDbFactory _memDbFactory;
 
@@ -14,8 +14,8 @@ namespace Nethermind.Db.FullPruning
             _memDbFactory = memDbFactory;
         }
 
-        public IDb CreateDb(RocksDbSettings rocksDbSettings) => _memDbFactory.CreateDb(rocksDbSettings.DbName);
+        public IDb CreateDb(DbSettings dbSettings) => _memDbFactory.CreateDb(dbSettings.DbName);
 
-        public IColumnsDb<T> CreateColumnsDb<T>(RocksDbSettings rocksDbSettings) where T : struct, Enum => _memDbFactory.CreateColumnsDb<T>(rocksDbSettings.DbName);
+        public IColumnsDb<T> CreateColumnsDb<T>(DbSettings dbSettings) where T : struct, Enum => _memDbFactory.CreateColumnsDb<T>(dbSettings.DbName);
     }
 }

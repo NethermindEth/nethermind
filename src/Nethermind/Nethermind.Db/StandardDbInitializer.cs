@@ -15,7 +15,7 @@ namespace Nethermind.Db
 
         public StandardDbInitializer(
             IDbProvider? dbProvider,
-            IRocksDbFactory? rocksDbFactory,
+            IDbFactory? rocksDbFactory,
             IMemDbFactory? memDbFactory,
             IFileSystem? fileSystem = null)
             : base(dbProvider, rocksDbFactory, memDbFactory)
@@ -43,7 +43,7 @@ namespace Nethermind.Db
             RegisterDb(BuildRocksDbSettings(DbNames.BlockInfos, () => Metrics.BlockInfosDbReads++, () => Metrics.BlockInfosDbWrites++));
             RegisterDb(BuildRocksDbSettings(DbNames.BadBlocks, () => Metrics.BadBlocksDbReads++, () => Metrics.BadBlocksDbWrites++));
 
-            RocksDbSettings stateDbSettings = BuildRocksDbSettings(DbNames.State, () => Metrics.StateDbReads++, () => Metrics.StateDbWrites++);
+            DbSettings stateDbSettings = BuildRocksDbSettings(DbNames.State, () => Metrics.StateDbReads++, () => Metrics.StateDbWrites++);
             RegisterCustomDb(DbNames.State, () => new FullPruningDb(
                 stateDbSettings,
                 PersistedDb
@@ -70,7 +70,7 @@ namespace Nethermind.Db
             }
         }
 
-        private static RocksDbSettings BuildRocksDbSettings(string dbName, Action updateReadsMetrics, Action updateWriteMetrics, bool deleteOnStart = false)
+        private static DbSettings BuildRocksDbSettings(string dbName, Action updateReadsMetrics, Action updateWriteMetrics, bool deleteOnStart = false)
         {
             return new(GetTitleDbName(dbName), dbName)
             {
