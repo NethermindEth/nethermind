@@ -51,7 +51,6 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
 
     public ForkchoiceUpdatedHandler(
         IBlockTree blockTree,
-        IInitConfig initConfig,
         IManualBlockFinalizationManager manualBlockFinalizationManager,
         IPoSSwitcher poSSwitcher,
         IPayloadPreparationService payloadPreparationService,
@@ -62,7 +61,8 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
         IBeaconPivot beaconPivot,
         IPeerRefresher peerRefresher,
         ISpecProvider specProvider,
-        ILogManager logManager)
+        ILogManager logManager,
+        bool simulateBlockProduction = false)
     {
         _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
         _manualBlockFinalizationManager = manualBlockFinalizationManager ?? throw new ArgumentNullException(nameof(manualBlockFinalizationManager));
@@ -75,7 +75,7 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
         _beaconPivot = beaconPivot;
         _peerRefresher = peerRefresher;
         _specProvider = specProvider;
-        _simulateBlockProduction = initConfig.SimulateBlockProduction;
+        _simulateBlockProduction = simulateBlockProduction;
         _logger = logManager.GetClassLogger();
     }
 

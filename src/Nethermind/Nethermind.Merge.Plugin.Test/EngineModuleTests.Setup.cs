@@ -109,7 +109,6 @@ public partial class EngineModuleTests
                 newPayloadCacheSize),
             new ForkchoiceUpdatedHandler(
                 chain.BlockTree,
-                new InitConfig(),
                 chain.BlockFinalizationManager,
                 chain.PoSSwitcher,
                 chain.PayloadPreparationService!,

@@ -327,7 +327,6 @@ public partial class MergePlugin : IConsensusWrapperPlugin, ISynchronizationPlug
                     TimeSpan.FromSeconds(_mergeConfig.NewPayloadTimeout)),
                 new ForkchoiceUpdatedHandler(
                     _api.BlockTree,
-                    _api.Config<IInitConfig>(),
                     _blockFinalizationManager,
                     _poSSwitcher,
                     payloadPreparationService,
@@ -338,7 +337,8 @@ public partial class MergePlugin : IConsensusWrapperPlugin, ISynchronizationPlug
                     _beaconPivot,
                     _peerRefresher,
                     _api.SpecProvider,
-                    _api.LogManager),
+                    _api.LogManager,
+                    _api.Config<IMergeConfig>().SimulateBlockProduction),
                 new GetPayloadBodiesByHashV1Handler(_api.BlockTree, _api.LogManager),
                 new GetPayloadBodiesByRangeV1Handler(_api.BlockTree, _api.LogManager),
                 new ExchangeTransitionConfigurationV1Handler(_poSSwitcher, _api.LogManager),
