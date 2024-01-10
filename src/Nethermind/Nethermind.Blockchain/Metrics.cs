@@ -75,7 +75,7 @@ namespace Nethermind.Blockchain
 
         [GaugeMetric]
         [Description("Hash of the last block.")]
-        public static long LastBlockHash { get; set; }
+        public static Hash256? LastBlockHash { get; set; }
 
         //EIP-2159: Common Prometheus Metrics Names for Clients
         [GaugeMetric]
