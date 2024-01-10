@@ -55,7 +55,7 @@ namespace Nethermind.Trie
                     // This leaves byte holes for the other set of nibbles to fill.
                     lower0 = Vector128.Shuffle(lower0.AsByte(), Vector128.Create((byte)1, 0, 1, 2, 1, 4, 1, 6, 1, 8, 1, 10, 1, 12, 1, 14)).AsUInt16();
                     upper0 = Vector128.Shuffle(upper0.AsByte(), Vector128.Create((byte)1, 0, 1, 2, 1, 4, 1, 6, 1, 8, 1, 10, 1, 12, 1, 14)).AsUInt16();
-                    
+
                     // Mask off upper nibble 0xf0 and split each byte into two bytes and store them in two separate vectors.
                     // Widening from byte -> ushort creates byte sized gaps so the two sets can be combined.
                     (Vector128<ushort> lower1, Vector128<ushort> upper1) = Vector128.Widen(Vector128.BitwiseAnd(value, Vector128.Create((byte)0xf0)));
