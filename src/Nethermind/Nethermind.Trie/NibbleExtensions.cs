@@ -6,6 +6,9 @@ using System.Buffers;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
+using System.Runtime.Intrinsics;
+
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 
@@ -14,6 +17,7 @@ namespace Nethermind.Trie
     public static class Nibbles
     {
         private static readonly byte PathPointerOdd = 0xfe;
+        private const int MaxNibbles = 256;
 
         public static Nibble[] FromBytes(params byte[] bytes)
         {
@@ -23,26 +27,46 @@ namespace Nethermind.Trie
         public static Nibble[] FromBytes(ReadOnlySpan<byte> bytes)
         {
             Nibble[] nibbles = new Nibble[2 * bytes.Length];
-            for (int i = 0; i < bytes.Length; i++)
-            {
-                nibbles[i * 2] = new Nibble((byte)((bytes[i] & 240) >> 4));
-                nibbles[i * 2 + 1] = new Nibble((byte)(bytes[i] & 15));
-            }
-
+            BytesToNibbleBytes(bytes, MemoryMarshal.AsBytes(nibbles.AsSpan()));
             return nibbles;
         }
 
-        public static void BytesToNibbleBytes(ReadOnlySpan<byte> bytes, Span<byte> nibbles)
+        public unsafe static void BytesToNibbleBytes(ReadOnlySpan<byte> bytes, Span<byte> nibbles)
         {
             if (nibbles.Length != 2 * bytes.Length)
             {
                 ThrowArgumentException();
             }
 
-            for (int i = 0; i < bytes.Length; i++)
+            var length = bytes.Length / sizeof(Vector128<byte>) * sizeof(Vector128<byte>);
+            if (Vector128.IsHardwareAccelerated && length > 0)
             {
-                nibbles[i * 2] = (byte)((bytes[i] & 240) >> 4);
-                nibbles[i * 2 + 1] = (byte)(bytes[i] & 15);
+                var input = MemoryMarshal.Cast<byte, Vector128<byte>>(bytes.Slice(0, length));
+                ref var output = ref Unsafe.As<byte, Vector128<ushort>>(ref MemoryMarshal.GetReference(nibbles));
+
+                for (int i = 0; i < input.Length; i++)
+                {
+                    Vector128<byte> value = input[i];
+                    (Vector128<ushort> lower0, Vector128<ushort> upper0) = Vector128.Widen(Vector128.BitwiseAnd(value, Vector128.Create((byte)0xf)));
+                    lower0 = Vector128.Shuffle(lower0.AsByte(), Vector128.Create((byte)1, 0, 1, 2, 1, 4, 1, 6, 1, 8, 1, 10, 1, 12, 1, 14)).AsUInt16();
+                    upper0 = Vector128.Shuffle(upper0.AsByte(), Vector128.Create((byte)1, 0, 1, 2, 1, 4, 1, 6, 1, 8, 1, 10, 1, 12, 1, 14)).AsUInt16();
+                    (Vector128<ushort> lower1, Vector128<ushort> upper1) = Vector128.Widen(Vector128.BitwiseAnd(value, Vector128.Create((byte)0xf0)));
+                    lower1 = Vector128.ShiftRightLogical(lower1.AsByte(), 4).AsUInt16();
+                    upper1 = Vector128.ShiftRightLogical(upper1.AsByte(), 4).AsUInt16();
+
+                    lower0 = Vector128.BitwiseOr(lower0, lower1);
+                    upper0 = Vector128.BitwiseOr(upper0, upper1);
+
+                    Unsafe.Add(ref output, i * 2) = lower0;
+                    Unsafe.Add(ref output, i * 2 + 1) = upper0;
+                }
+            }
+
+            for (int i = length; i < bytes.Length; i++)
+            {
+                int value =  Unsafe.Add(ref MemoryMarshal.GetReference(bytes), i);
+                Unsafe.Add(ref MemoryMarshal.GetReference(nibbles), i * 2) = (byte)(value >> 4);
+                Unsafe.Add(ref MemoryMarshal.GetReference(nibbles), i * 2 + 1) = (byte)(value & 15);
             }
 
             [DoesNotReturn]
@@ -53,9 +77,10 @@ namespace Nethermind.Trie
             }
         }
 
+        [SkipLocalsInit]
         public static byte[] BytesToNibbleBytes(Span<byte> bytes)
         {
-            Span<byte> nibbles = stackalloc byte[2 * bytes.Length];
+            Span<byte> nibbles = stackalloc byte[MaxNibbles].Slice(0, 2 * bytes.Length);
             BytesToNibbleBytes(bytes, nibbles);
             return nibbles.ToArray();
         }
@@ -196,12 +221,13 @@ namespace Nethermind.Trie
             return bytes.Slice(0, bi).ToArray();
         }
 
+        [SkipLocalsInit]
         public static byte[] BytesToNibblesStorage(Span<byte> bytes)
         {
-            Span<byte> nibbles = stackalloc byte[bytes.Length * 2];
+            Span<byte> nibbles = stackalloc byte[MaxNibbles].Slice(0, 2 * bytes.Length);
 
             byte[] last2Nibbles = new byte[2];
-            last2Nibbles[0] = (byte)((bytes[^1] & 240) >> 4);
+            last2Nibbles[0] = (byte)((bytes[^1]) >> 4);
             last2Nibbles[1] = (byte)(bytes[^1] & 15);
 
             int ni = 0;
@@ -220,7 +246,7 @@ namespace Nethermind.Trie
                 }
                 else
                 {
-                    nibbles[ni] = (byte)((bytes[bi] & 240) >> 4);
+                    nibbles[ni] = (byte)((bytes[bi]) >> 4);
                     nibbles[ni + 1] = (byte)(bytes[bi] & 15);
                 }
 
