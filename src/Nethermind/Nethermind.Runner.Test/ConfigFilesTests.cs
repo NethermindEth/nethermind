@@ -20,6 +20,7 @@ using Nethermind.Db.Blooms;
 using Nethermind.Db.Rocks.Config;
 using Nethermind.Init;
 using Nethermind.Logging;
+using Nethermind.Merge.Plugin;
 using Nethermind.TxPool;
 using NUnit.Framework;
 
@@ -329,7 +330,7 @@ namespace Nethermind.Runner.Test
         [TestCase("*")]
         public void Simulating_block_production_on_every_slot_is_always_disabled(string configWildcard)
         {
-            Test<IInitConfig, bool>(configWildcard, c => c.SimulateBlockProduction, false);
+            Test<IMergeConfig, bool>(configWildcard, c => c.SimulateBlockProduction, false);
         }
 
         [TestCase("goerli", BlobsSupportMode.StorageWithReorgs)]
