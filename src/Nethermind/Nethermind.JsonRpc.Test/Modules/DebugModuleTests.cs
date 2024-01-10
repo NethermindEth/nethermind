@@ -4,7 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Runtime.CompilerServices;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
@@ -97,6 +97,19 @@ public class DebugModuleTests
     }
 
     [Test]
+    public async Task Get_raw_Header()
+    {
+        HeaderDecoder decoder = new();
+        Block blk = Build.A.Block.WithNumber(0).TestObject;
+        Rlp rlp = decoder.Encode(blk.Header);
+        debugBridge.GetBlock(new BlockParameter((long)0)).Returns(blk);
+
+        DebugRpcModule rpcModule = new(LimboLogs.Instance, debugBridge, jsonRpcConfig);
+        JsonRpcSuccessResponse? response = await RpcTest.TestRequest<IDebugRpcModule>(rpcModule, "debug_getRawHeader", $"{Keccak.Zero.Bytes.ToHexString()}") as JsonRpcSuccessResponse;
+        Assert.That((byte[]?)response?.Result, Is.EqualTo(rlp.Bytes));
+    }
+
+    [Test]
     public async Task Get_block_rlp()
     {
         BlockDecoder decoder = new();
@@ -111,12 +124,37 @@ public class DebugModuleTests
     }
 
     [Test]
+    public async Task Get_rawblock()
+    {
+        BlockDecoder decoder = new();
+        IDebugBridge debugBridge = Substitute.For<IDebugBridge>();
+        Rlp rlp = decoder.Encode(Build.A.Block.WithNumber(1).TestObject);
+        debugBridge.GetBlockRlp(new BlockParameter(1)).Returns(rlp.Bytes);
+
+        DebugRpcModule rpcModule = new(LimboLogs.Instance, debugBridge, jsonRpcConfig);
+        JsonRpcSuccessResponse? response = await RpcTest.TestRequest<IDebugRpcModule>(rpcModule, "debug_getRawBlock", "1") as JsonRpcSuccessResponse;
+
+        Assert.That((byte[]?)response?.Result, Is.EqualTo(rlp.Bytes));
+    }
+
+    [Test]
     public async Task Get_block_rlp_when_missing()
     {
         debugBridge.GetBlockRlp(new BlockParameter(1)).ReturnsNull();
 
         DebugRpcModule rpcModule = new(LimboLogs.Instance, debugBridge, jsonRpcConfig);
         JsonRpcErrorResponse? response = await RpcTest.TestRequest<IDebugRpcModule>(rpcModule, "debug_getBlockRlp", "1") as JsonRpcErrorResponse;
+
+        Assert.That(response?.Error?.Code, Is.EqualTo(-32001));
+    }
+
+    [Test]
+    public async Task Get_rawblock_when_missing()
+    {
+        debugBridge.GetBlockRlp(new BlockParameter(1)).ReturnsNull();
+
+        DebugRpcModule rpcModule = new(LimboLogs.Instance, debugBridge, jsonRpcConfig);
+        JsonRpcErrorResponse? response = await RpcTest.TestRequest<IDebugRpcModule>(rpcModule, "debug_getRawBlock", "1") as JsonRpcErrorResponse;
 
         Assert.That(response?.Error?.Code, Is.EqualTo(-32001));
     }
