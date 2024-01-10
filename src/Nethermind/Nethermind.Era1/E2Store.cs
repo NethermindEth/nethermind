@@ -27,9 +27,6 @@ internal class E2Store : IDisposable
     private bool _disposedValue;
 
     private EraMetadata? _metadata;
-    private StreamSegment? _streamSegment;
-    private SnappyStream? _decompressor;
-    private SnappyStream? _compressor;
     private MemoryStream? _compressedData;
     private readonly IncrementalHash _incrementalHash;
 
@@ -90,9 +87,12 @@ internal class E2Store : IDisposable
         if (asSnappy && bytes.Length > 0)
         {
             //TODO find a way to write directly to file, and still return the number of bytes written
-            EnsureCompressorStream(bytes.Length);
-            await _compressor!.WriteAsync(bytes, cancellation);
-            await _compressor.FlushAsync();
+            EnsureCompressedStream(bytes.Length);
+            
+            using SnappyStream compressor = new(_compressedData!, CompressionMode.Compress, true);
+            
+            await compressor!.WriteAsync(bytes, cancellation);
+            await compressor.FlushAsync();
             
             bytes = _compressedData!.ToArray();
         }
@@ -205,7 +205,6 @@ internal class E2Store : IDisposable
         //TODO is this necessary?
         buffer.EnsureWritable((int)e.Length * 4, true);
 
-        EnsureDecompressorStream(e.ValueOffset, e.Length);
         using StreamSegment streamSegment = new(_stream, e.ValueOffset, e.Length);
         using SnappyStream decompressor = new(streamSegment, CompressionMode.Decompress, true);
         int totalRead = 0;
@@ -223,32 +222,13 @@ internal class E2Store : IDisposable
     }
 
 
-    private void EnsureCompressorStream(int minLength)
+    private void EnsureCompressedStream(int minLength)
     {
         if (_compressedData == null)
             _compressedData = new MemoryStream(minLength);
         else
             _compressedData.SetLength(0);
-        if (_compressor == null)
-            _compressor = new(_compressedData, CompressionMode.Compress, true);
-        else
-            WriteStreamHeader();
-    }
-    private void WriteStreamHeader()
-    {
-        _compressedData!.Write(SnappyHeader);
-    }
-    private void EnsureDecompressorStream(long offset, long length)
-    {
-        if (_decompressor == null||_streamSegment == null)
-        {
-            _streamSegment = new StreamSegment(_stream, offset, length);
-            _decompressor = new(_streamSegment, CompressionMode.Decompress, true);
-        }
-        else
-        {
-            _streamSegment.ShiftSegment(offset, length);
-        }
+
     }
 
     public async ValueTask<int> ReadEntryValue(IByteBuffer buffer, Entry e, CancellationToken cancellation = default)
@@ -274,7 +254,6 @@ internal class E2Store : IDisposable
             if (disposing)
             {
                 _stream?.Dispose();
-                _decompressor?.Dispose();
                 _blockIndex?.Dispose();
                 _compressedData?.Dispose();
                 _incrementalHash?.Dispose();
