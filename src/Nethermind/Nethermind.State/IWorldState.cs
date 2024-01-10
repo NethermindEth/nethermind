@@ -56,6 +56,11 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
     void Reset();
 
     /// <summary>
+    /// Reset all cache
+    /// </summary>
+    void ResetCache();
+
+    /// <summary>
     /// Creates a restartable snapshot.
     /// </summary>
     /// <param name="newTransactionStart"> Indicates new transaction will start here.</param>

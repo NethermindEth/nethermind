@@ -197,6 +197,8 @@ namespace Nethermind.Store.Test
             // revert
             ctx.StateProvider.Reset();
             storageProvider.Reset();
+            ctx.StateProvider.ResetCache();
+            storageProvider.ResetCache();
             ctx.StateProvider.StateRoot = stateRoot;
 
             byte[] valueAfter = storageProvider.Get(new StorageCell(ctx.Address1, 1));
