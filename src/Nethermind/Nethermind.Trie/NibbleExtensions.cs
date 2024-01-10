@@ -64,7 +64,7 @@ namespace Nethermind.Trie
 
             for (int i = length; i < bytes.Length; i++)
             {
-                int value =  Unsafe.Add(ref MemoryMarshal.GetReference(bytes), i);
+                int value = Unsafe.Add(ref MemoryMarshal.GetReference(bytes), i);
                 Unsafe.Add(ref MemoryMarshal.GetReference(nibbles), i * 2) = (byte)(value >> 4);
                 Unsafe.Add(ref MemoryMarshal.GetReference(nibbles), i * 2 + 1) = (byte)(value & 15);
             }
