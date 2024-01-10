@@ -11,7 +11,6 @@ namespace Nethermind.Db
     {
         private readonly IDbProvider _dbProvider;
         protected IDbFactory DbFactory { get; }
-        protected bool PersistedDb => _dbProvider.DbMode == DbModeHint.Persisted;
 
         private readonly List<Action> _registrations = new();
 

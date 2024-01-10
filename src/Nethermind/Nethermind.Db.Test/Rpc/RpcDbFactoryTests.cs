@@ -31,7 +31,7 @@ namespace Nethermind.Db.Test.Rpc
             IJsonRpcClient jsonRpcClient = Substitute.For<IJsonRpcClient>();
             IDbFactory rpcDbFactory = new RpcDbFactory(new MemDbFactory(), jsonSerializer, jsonRpcClient, LimboLogs.Instance);
 
-            IDbProvider memDbProvider = new DbProvider(DbModeHint.Mem);
+            IDbProvider memDbProvider = new DbProvider();
             StandardDbInitializer standardDbInitializer = new(memDbProvider, rpcDbFactory, Substitute.For<IFileSystem>());
             standardDbInitializer.InitStandardDbs(true);
 

@@ -10,7 +10,7 @@ namespace Nethermind.Db
     {
         public static async Task<IDbProvider> InitAsync()
         {
-            IDbProvider memDbProvider = new DbProvider(DbModeHint.Mem);
+            IDbProvider memDbProvider = new DbProvider();
             StandardDbInitializer? standardDbInitializer = new StandardDbInitializer(memDbProvider, new MemDbFactory());
             await standardDbInitializer.InitStandardDbsAsync(true);
             return memDbProvider;
@@ -18,7 +18,7 @@ namespace Nethermind.Db
 
         public static IDbProvider Init()
         {
-            IDbProvider memDbProvider = new DbProvider(DbModeHint.Mem);
+            IDbProvider memDbProvider = new DbProvider();
             StandardDbInitializer? standardDbInitializer = new StandardDbInitializer(memDbProvider, new MemDbFactory());
             standardDbInitializer.InitStandardDbs(true);
             return memDbProvider;
