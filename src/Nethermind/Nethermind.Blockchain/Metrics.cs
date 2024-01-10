@@ -4,6 +4,7 @@
 using System.ComponentModel;
 using System.Runtime.Serialization;
 using Nethermind.Core.Attributes;
+using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 // ReSharper disable InconsistentNaming
 
