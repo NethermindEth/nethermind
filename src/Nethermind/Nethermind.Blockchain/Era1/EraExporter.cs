@@ -59,8 +59,6 @@ public class EraExporter : IEraExporter
         if (destinationPath is null) throw new ArgumentNullException(nameof(destinationPath));
         if (_fileSystem.File.Exists(destinationPath)) throw new ArgumentException(nameof(destinationPath), $"Cannot be a file.");
 
-        EnsureExistingEraFiles();
-
         try
         {
             if (!_fileSystem.Directory.Exists(destinationPath))
@@ -69,8 +67,6 @@ public class EraExporter : IEraExporter
                 _fileSystem.Directory.CreateDirectory(destinationPath);
             }
             if (_logger.IsInfo) _logger.Info($"Starting history export from {start} to {end}");
-
-            //using StreamWriter checksumWriter = _fileSystem.File.CreateText(Path.Combine(destinationPath, "checksums.txt"));
 
             DateTime startTime = DateTime.Now;
             DateTime lastProgress = DateTime.Now;
@@ -84,11 +80,6 @@ public class EraExporter : IEraExporter
                    EraWriter.Filename(_networkName, i / size, Keccak.Zero));
                 using EraWriter? builder = EraWriter.Create(_fileSystem.File.Create(filePath), _specProvider);
 
-                //For compatibility reasons, we dont want to write a line terminator after the last checksum,
-                //so we write one here instead, avoiding the last line
-                //if (i != start)
-                //    await checksumWriter.WriteLineAsync();
-
                 //TODO read directly from RocksDb with range reads
                 for (var y = i; y <= end; y++)
                 {
@@ -96,7 +87,6 @@ public class EraExporter : IEraExporter
 
                     if (block == null)
                     {
-                        //Found the level but not the block?
                         throw new EraException($"Could not find a block with number {y}.");
                     }
 
@@ -109,14 +99,13 @@ public class EraExporter : IEraExporter
                     if (!await builder.Add(block, receipts, cancellation) || y == end)
                     {
                         byte[] root = await builder.Finalize();
-                        byte[] checksum = builder.Checksum;
                         builder.Dispose();
                         string rename = Path.Combine(
                                                 destinationPath,
                                                 EraWriter.Filename(_networkName, i / size, new Hash256(root)));
-                        _fileSystem.File.Move(filePath,
+                        _fileSystem.File.Move(
+                            filePath,
                             rename, true);
-                        //await checksumWriter.WriteAsync(checksum.ToHexString(true));
                         break;
                     }
                     txProcessed += block.Transactions.Length;
@@ -147,13 +136,6 @@ public class EraExporter : IEraExporter
             _logger.Error("Export error", e);
             throw;
         }
-    }
-
-    private int EnsureExistingEraFiles()
-    {
-        //TODO check and handle existing ERA files in case this is a restart
-        //What is the correct behavior? 
-        return 0;
     }
 
     public async Task<bool> VerifyEraFiles(string[] eraFiles, byte[][] expectedAccumulators, CancellationToken cancellation = default)

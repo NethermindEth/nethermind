@@ -38,8 +38,6 @@ public class EraWriter : IDisposable
     private bool _disposedValue;
     private bool _finalized;
 
-    public byte[] Checksum => _e2Store.CurrentChecksum;
-
     public static EraWriter Create(string path, ISpecProvider specProvider, IByteBufferAllocator? bufferAllocator = null)
     {
         if (string.IsNullOrWhiteSpace(path)) throw new ArgumentException($"'{nameof(path)}' cannot be null or whitespace.", nameof(path));

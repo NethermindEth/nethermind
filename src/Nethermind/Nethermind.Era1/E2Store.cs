@@ -28,14 +28,11 @@ internal class E2Store : IDisposable
 
     private EraMetadata? _metadata;
     private MemoryStream? _compressedData;
-    private readonly IncrementalHash _incrementalHash;
 
     public long StreamLength => _stream.Length;
     public EraMetadata Metadata => GetMetadata();
 
     public long Position => _stream.Position;
-
-    public byte[] CurrentChecksum => _incrementalHash.GetCurrentHash();
 
     public static E2Store ForWrite(Stream stream)
     {
@@ -54,7 +51,6 @@ internal class E2Store : IDisposable
     internal E2Store(Stream stream)
     {
         _stream = stream;
-        _incrementalHash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
     }
 
     private EraMetadata GetMetadata()
@@ -109,11 +105,9 @@ internal class E2Store : IDisposable
 
         Memory<byte> headerMemory = headerBuffer.AsMemory(0, HeaderSize);
         await _stream.WriteAsync(headerMemory, cancellation);
-        _incrementalHash.AppendData(headerMemory.Span);
         if (length > 0)
         {
             await _stream.WriteAsync(bytes, cancellation);
-            _incrementalHash.AppendData(bytes.Span);
         }
 
         return length + HeaderSize;
@@ -256,7 +250,6 @@ internal class E2Store : IDisposable
                 _stream?.Dispose();
                 _blockIndex?.Dispose();
                 _compressedData?.Dispose();
-                _incrementalHash?.Dispose();
             }
             _disposedValue = true;
         }
