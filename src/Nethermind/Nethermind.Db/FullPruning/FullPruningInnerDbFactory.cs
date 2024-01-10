@@ -12,19 +12,19 @@ namespace Nethermind.Db.FullPruning
     /// </summary>
     public class FullPruningInnerDbFactory : IDbFactory
     {
-        private readonly IDbFactory _rocksDbFactory;
+        private readonly IDbFactory _dbFactory;
         private readonly IFileSystem _fileSystem;
         private int _index; // current index of the inner db
 
         /// <summary>
         /// Constructor
         /// </summary>
-        /// <param name="rocksDbFactory">Inner real db factory.</param>
+        /// <param name="dbFactory">Inner real db factory.</param>
         /// <param name="fileSystem">File system.</param>
         /// <param name="path">Main DB path.</param>
-        public FullPruningInnerDbFactory(IDbFactory rocksDbFactory, IFileSystem fileSystem, string path)
+        public FullPruningInnerDbFactory(IDbFactory dbFactory, IFileSystem fileSystem, string path)
         {
-            _rocksDbFactory = rocksDbFactory;
+            _dbFactory = dbFactory;
             _fileSystem = fileSystem;
             _index = GetStartingIndex(path); // we need to read the current state of inner DB's
         }
@@ -33,21 +33,21 @@ namespace Nethermind.Db.FullPruning
         public IDb CreateDb(DbSettings dbSettings)
         {
             DbSettings settings = GetRocksDbSettings(dbSettings);
-            return _rocksDbFactory.CreateDb(settings);
+            return _dbFactory.CreateDb(settings);
         }
 
         /// <inheritdoc />
         public IColumnsDb<T> CreateColumnsDb<T>(DbSettings dbSettings) where T : struct, Enum
         {
             DbSettings settings = GetRocksDbSettings(dbSettings);
-            return _rocksDbFactory.CreateColumnsDb<T>(settings);
+            return _dbFactory.CreateColumnsDb<T>(settings);
         }
 
         /// <inheritdoc />
         public string GetFullDbPath(DbSettings dbSettings)
         {
             DbSettings settings = GetRocksDbSettings(dbSettings);
-            return _rocksDbFactory.GetFullDbPath(settings);
+            return _dbFactory.GetFullDbPath(settings);
         }
 
         // When creating a new DB, we need to change its inner settings
@@ -74,7 +74,7 @@ namespace Nethermind.Db.FullPruning
         private int GetStartingIndex(string path)
         {
             // gets path to non-index DB.
-            string fullPath = _rocksDbFactory.GetFullDbPath(new DbSettings(string.Empty, path));
+            string fullPath = _dbFactory.GetFullDbPath(new DbSettings(string.Empty, path));
             IDirectoryInfo directory = _fileSystem.DirectoryInfo.New(fullPath);
             if (directory.Exists)
             {

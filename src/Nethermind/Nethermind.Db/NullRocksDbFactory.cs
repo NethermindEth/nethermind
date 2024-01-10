@@ -5,11 +5,11 @@ using System;
 
 namespace Nethermind.Db
 {
-    public class NullRocksDbFactory : IDbFactory
+    public class NullDbFactory : IDbFactory
     {
-        private NullRocksDbFactory() { }
+        private NullDbFactory() { }
 
-        public static NullRocksDbFactory Instance { get; } = new();
+        public static NullDbFactory Instance { get; } = new();
 
         public IDb CreateDb(DbSettings dbSettings)
         {

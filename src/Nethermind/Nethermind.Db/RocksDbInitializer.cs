@@ -17,7 +17,7 @@ namespace Nethermind.Db
         protected RocksDbInitializer(IDbProvider? dbProvider, IDbFactory? dbFactory)
         {
             _dbProvider = dbProvider ?? throw new ArgumentNullException(nameof(dbProvider));
-            DbFactory = dbFactory ?? NullRocksDbFactory.Instance;
+            DbFactory = dbFactory ?? NullDbFactory.Instance;
         }
 
         protected void RegisterCustomDb(string dbName, Func<IDb> dbFunc)

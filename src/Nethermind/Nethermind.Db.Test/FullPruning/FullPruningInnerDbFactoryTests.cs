@@ -19,9 +19,9 @@ namespace Nethermind.Db.Test.FullPruning
         {
             TestContext test = new();
             test.Directory.Exists.Returns(false);
-            test.TestedDbFactory.CreateDb(test._dbSettings);
+            test.TestedDbFactory.CreateDb(test.DbSettings);
             test.RocksDbFactory.Received().CreateDb(Arg.Is(MatchSettings(test, 0)));
-            test.TestedDbFactory.CreateDb(test._dbSettings);
+            test.TestedDbFactory.CreateDb(test.DbSettings);
             test.RocksDbFactory.Received().CreateDb(Arg.Is(MatchSettings(test, 1)));
         }
 
@@ -31,9 +31,9 @@ namespace Nethermind.Db.Test.FullPruning
             TestContext test = new();
             test.Directory.Exists.Returns(true);
             test.Directory.EnumerateFiles().Returns(new[] { Substitute.For<IFileInfo>() });
-            test.TestedDbFactory.CreateDb(test._dbSettings);
+            test.TestedDbFactory.CreateDb(test.DbSettings);
             test.RocksDbFactory.Received().CreateDb(Arg.Is(MatchSettings(test)));
-            test.TestedDbFactory.CreateDb(test._dbSettings);
+            test.TestedDbFactory.CreateDb(test.DbSettings);
             test.RocksDbFactory.Received().CreateDb(Arg.Is(MatchSettings(test, 0)));
         }
 
@@ -48,16 +48,16 @@ namespace Nethermind.Db.Test.FullPruning
             dir11.Name.Returns(11.ToString());
             IDirectoryInfo ignoredDir = Substitute.For<IDirectoryInfo>();
             test.Directory.EnumerateDirectories().Returns(new[] { dir10, ignoredDir, dir11 });
-            test.TestedDbFactory.CreateDb(test._dbSettings);
+            test.TestedDbFactory.CreateDb(test.DbSettings);
             test.RocksDbFactory.Received().CreateDb(Arg.Is(MatchSettings(test, 10)));
-            test.TestedDbFactory.CreateDb(test._dbSettings);
+            test.TestedDbFactory.CreateDb(test.DbSettings);
             test.RocksDbFactory.Received().CreateDb(Arg.Is(MatchSettings(test, 11)));
         }
 
         private static Expression<Predicate<DbSettings>> MatchSettings(TestContext test, int? index = null)
         {
-            string dbName = test._dbSettings.DbName + index;
-            string combine = Combine(test._dbSettings.DbPath, index);
+            string dbName = test.DbSettings.DbName + index;
+            string combine = Combine(test.DbSettings.DbPath, index);
             return r => r.DbName == dbName && r.DbPath == combine;
         }
 
@@ -67,7 +67,7 @@ namespace Nethermind.Db.Test.FullPruning
         {
             private FullPruningInnerDbFactory _testedDbFactory;
 
-            public DbSettings _dbSettings = new("name", "path");
+            public DbSettings DbSettings = new("name", "path");
             public string Path => "path";
             public IDbFactory RocksDbFactory { get; } = Substitute.For<IDbFactory>();
             public IFileSystem FileSystem { get; } = Substitute.For<IFileSystem>();

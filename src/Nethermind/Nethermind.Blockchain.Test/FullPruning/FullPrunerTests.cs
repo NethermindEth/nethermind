@@ -191,13 +191,13 @@ namespace Nethermind.Blockchain.Test.FullPruning
                 _clearPrunedDb = clearPrunedDb;
                 TrieDb = new TestMemDb();
                 CopyDb = new TestMemDb();
-                IDbFactory rocksDbFactory = Substitute.For<IDbFactory>();
-                rocksDbFactory.CreateDb(Arg.Any<DbSettings>()).Returns(TrieDb, CopyDb);
+                IDbFactory dbFactory = Substitute.For<IDbFactory>();
+                dbFactory.CreateDb(Arg.Any<DbSettings>()).Returns(TrieDb, CopyDb);
 
                 PatriciaTree trie = Build.A.Trie(TrieDb).WithAccountsByIndex(0, 100).TestObject;
                 _stateRoot = trie.RootHash;
                 StateReader = new StateReader(new TrieStore(TrieDb, LimboLogs.Instance), new TestMemDb(), LimboLogs.Instance);
-                FullPruningDb = new TestFullPruningDb(new DbSettings("test", "test"), rocksDbFactory, successfulPruning, clearPrunedDb);
+                FullPruningDb = new TestFullPruningDb(new DbSettings("test", "test"), dbFactory, successfulPruning, clearPrunedDb);
 
                 Pruner = new(FullPruningDb, PruningTrigger, new PruningConfig()
                 {
