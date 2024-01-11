@@ -298,7 +298,9 @@ public class JsonRpcService : IJsonRpcService
         }
         else if (paramType == typeof(string))
         {
-            executionParam = providedParameter.GetString();
+            executionParam = providedParameter.ValueKind == JsonValueKind.String ?
+                providedParameter.GetString() :
+                providedParameter.GetRawText();
         }
         else
         {

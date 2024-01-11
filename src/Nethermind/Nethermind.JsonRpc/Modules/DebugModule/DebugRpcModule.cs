@@ -272,34 +272,34 @@ public class DebugRpcModule : IDebugRpcModule
         return ResultWrapper<byte[]>.Success(rlp.Bytes);
     }
 
-    public ResultWrapper<byte[][]> debug_getRawReceipts(long blockNumber)
+    public ResultWrapper<byte[][]> debug_getRawReceipts(BlockParameter blockParameter)
     {
-        var receipts = _debugBridge.GetReceiptsForBlock(new BlockParameter(blockNumber));
+        var receipts = _debugBridge.GetReceiptsForBlock(blockParameter);
         if (receipts == null)
         {
-            return ResultWrapper<byte[][]>.Fail($"Receipts are not found for block {blockNumber}", ErrorCodes.ResourceNotFound);
+            return ResultWrapper<byte[][]>.Fail($"Receipts are not found for block {blockParameter}", ErrorCodes.ResourceNotFound);
         }
 
-        var rlp = receipts.Select(tx => Rlp.Encode(tx, RlpBehaviors.Eip658Receipts).Bytes);
+        var rlp = receipts.Select(tx => Rlp.Encode(tx).Bytes);
         return ResultWrapper<byte[][]>.Success(rlp.ToArray());
     }
 
-    public ResultWrapper<byte[]> debug_getRawBlock(long blockNumber)
+    public ResultWrapper<byte[]> debug_getRawBlock(BlockParameter blockParameter)
     {
-        var blockRLP = _debugBridge.GetBlockRlp(new BlockParameter(blockNumber));
+        var blockRLP = _debugBridge.GetBlockRlp(blockParameter);
         if (blockRLP == null)
         {
-            return ResultWrapper<byte[]>.Fail($"Block {blockNumber} was not found", ErrorCodes.ResourceNotFound);
+            return ResultWrapper<byte[]>.Fail($"Block {blockParameter} was not found", ErrorCodes.ResourceNotFound);
         }
         return ResultWrapper<byte[]>.Success(blockRLP);
     }
 
-    public ResultWrapper<byte[]> debug_getRawHeader(long blockNumber)
+    public ResultWrapper<byte[]> debug_getRawHeader(BlockParameter blockParameter)
     {
-        var block = _debugBridge.GetBlock(new BlockParameter(blockNumber));
+        var block = _debugBridge.GetBlock(blockParameter);
         if (block == null)
         {
-            return ResultWrapper<byte[]>.Fail($"Block {blockNumber} was not found", ErrorCodes.ResourceNotFound);
+            return ResultWrapper<byte[]>.Fail($"Block {blockParameter} was not found", ErrorCodes.ResourceNotFound);
         }
         Rlp rlp = Rlp.Encode<BlockHeader>(block.Header);
         return ResultWrapper<byte[]>.Success(rlp.Bytes);
