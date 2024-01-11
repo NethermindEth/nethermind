@@ -43,6 +43,14 @@ namespace Nethermind.Core.Test.Crypto
         }
 
         [Test]
+        public void Public_key_from_private_key()
+        {
+            byte[] expected = [0xb4,0x95,0x3c,0x4b,0xa1,0x0c,0x4d,0x41,0x96,0xf9,0x01,0x69,0xe7,0x6f,0xaf,0x15,0x4c,0x26,0x0e,0xd7,0x3f,0xc7,0x7b,0xb6,0x5d,0xc3,0xbe,0x31,0xe0,0xce,0xc6,0x14,0xa7,0x28,0x7c,0xda,0x94,0x19,0x53,0x43,0x67,0x6c,0x2c,0x57,0x49,0x4f,0x0e,0x65,0x15,0x27,0xe6,0x50,0x4c,0x98,0x40,0x8e,0x59,0x9a,0x4e,0xb9,0x6f,0x7c,0x5a,0x8c,0xfb,0x85,0xd2,0xfd,0xc7,0x72,0xf2,0x85,0x04,0x58,0x00,0x84,0xef,0x55,0x9b,0x9b,0x62,0x3b,0xc8,0x4c,0xe3,0x05,0x62,0xed,0x32,0x0f,0x6b,0x7f,0x65,0x24,0x5a,0xd4];
+            PrivateKey sk = new("0x2cd4ba406b522459d57a0bed51a397435c0bb11dd5f3ca1152b3694bb91d7c22");
+            Assert.That(Bls.GetPublicKey(sk).Bytes, Is.EqualTo(expected));
+        }
+
+        [Test]
         public void Can_expand_msg()
         {
             // Test vector from
@@ -77,6 +85,50 @@ namespace Nethermind.Core.Test.Crypto
             var q = Bls.G1.FromScalar(11111111111);
             Assert.That(Bls.G1.FromSignature(p.ToSignature()), Is.EqualTo(p));
             Assert.That(Bls.G1.FromSignature(q.ToSignature()), Is.EqualTo(q));
+        }
+
+        [Test]
+        public void G2_from_public_key()
+        {
+            var p = Bls.G2.FromScalar(232323232);
+            var q = Bls.G2.FromScalar(11111111111);
+            Assert.That(Bls.G2.FromPublicKey(p.ToPublicKey()), Is.EqualTo(p));
+            Assert.That(Bls.G2.FromPublicKey(q.ToPublicKey()), Is.EqualTo(q));
+        }
+
+        [Test]
+        public void Fp_div()
+        {
+            var p = Bls.G1.FromScalar(232323232);
+            Bls.Fp x = new(p.X);
+            Assert.That(x * Bls.Fp.Inv(x), Is.EqualTo(new Bls.Fp(1)));
+            Assert.That((x / 2) * 2, Is.EqualTo(x));
+        }
+
+        [Test]
+        public void G2_twist()
+        {
+            IEnumerable<Bls.G2> points = [
+                Bls.G2.FromScalar(232323232),
+                Bls.G2.FromScalar(54935932),
+                Bls.G2.FromScalar(5738295764),
+                Bls.G2.FromScalar(1111)
+            ];
+
+            foreach (Bls.G2 p in points)
+            {
+                Bls.Fp c0 = new(p.X.Item1);
+                Bls.Fp c1 = new(p.X.Item2);
+                Bls.Fp y0Exp = new(p.Y.Item1);
+                Bls.Fp y1Exp = new(p.Y.Item2);
+
+                bool sign = y0Exp < y1Exp;
+
+                (Bls.Fp, Bls.Fp) y = Bls.Fp.TwistG2(c0, c1, sign);
+
+                Assert.That(y.Item1, Is.EqualTo(y0Exp));
+                Assert.That(y.Item2, Is.EqualTo(y1Exp));
+            }
         }
 
         [Test]

@@ -8,7 +8,6 @@ using System.Linq;
 using System.Numerics;
 using System.Security.Cryptography;
 using System.Text;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
@@ -18,6 +17,7 @@ namespace Nethermind.Crypto
     public class Bls
     {
         internal static readonly BigInteger BaseFieldOrder = new([0x1a,0x01,0x11,0xea,0x39,0x7f,0xe6,0x9a,0x4b,0x1b,0xa7,0xb6,0x43,0x4b,0xac,0xd7,0x64,0x77,0x4b,0x84,0xf3,0x85,0x12,0xbf,0x67,0x30,0xd2,0xa0,0xf6,0xb0,0xf6,0x24,0x1e,0xab,0xff,0xfe,0xb1,0x53,0xff,0xff,0xb9,0xfe,0xff,0xff,0xff,0xff,0xaa,0xab], true, true);
+        internal static readonly BigInteger FpQuadraticNonResidue = BaseFieldOrder - 1;
         internal static readonly byte[] SubgroupOrder = [0x73,0xed,0xa7,0x53,0x29,0x9d,0x7d,0x48,0x33,0x39,0xd8,0x08,0x09,0xa1,0xd8,0x05,0x53,0xbd,0xa4,0x02,0xff,0xfe,0x5b,0xfe,0xff,0xff,0xff,0xff,0x00,0x00,0x00,0x01];
         internal static readonly byte[] SubgroupOrderMinusOne = [0x73,0xed,0xa7,0x53,0x29,0x9d,0x7d,0x48,0x33,0x39,0xd8,0x08,0x09,0xa1,0xd8,0x05,0x53,0xbd,0xa4,0x02,0xff,0xfe,0x5b,0xfe,0xff,0xff,0xff,0xff,0x00,0x00,0x00,0x00];
         internal static readonly byte[] Cryptosuite = ASCIIEncoding.ASCII.GetBytes("BLS_SIG_BLS12381G1_XMD:SHA-256_SSWU_RO_NUL_");
@@ -29,16 +29,12 @@ namespace Nethermind.Crypto
 
         public static bool Verify(PublicKey publicKey, Signature signature, ReadOnlySpan<byte> message)
         {
-            return PairingsEqual(G1.FromSignature(signature), G2.Generator, G1.HashToCurve(message, Cryptosuite), publicKey.Point);
+            return PairingsEqual(G1.FromSignature(signature), G2.Generator, G1.HashToCurve(message, Cryptosuite), G2.FromPublicKey(publicKey));
         }
 
         public static PublicKey GetPublicKey(PrivateKey privateKey)
         {
-            PublicKey publicKey = new()
-            {
-                Point = privateKey.KeyBytes .Reverse().ToArray() * G2.Generator
-            };
-            return publicKey;
+            return (privateKey.KeyBytes.Reverse().ToArray() * G2.Generator).ToPublicKey();
         }
 
         public static bool Pairing(G1 g1, G2 g2)
@@ -68,9 +64,34 @@ namespace Nethermind.Crypto
             return Pairing2(-a1, a2, b1, b2);
         }
 
+        internal static void CompressPoint(ReadOnlySpan<byte> p, bool sign, Span<byte> res)
+        {
+            p.CopyTo(res);
+
+            if (sign)
+            {
+                res[0] |= 0x20;
+            }
+
+            // indicates that byte is compressed
+            res[0] |= 0x80;
+        }
+
+        internal static bool DecompressPoint(ReadOnlySpan<byte> p, Span<byte> res)
+        {
+            bool sign = (p[0] & 0x20) == 0x20;
+            p.CopyTo(res);
+            res[0] &= 0x1F; // mask out top 3 bits
+            return sign;
+        }
+
         public struct PublicKey
         {
-            public G2 Point;
+            public byte[] Bytes = new byte[96];
+
+            public PublicKey()
+            {
+            }
         }
 
         public struct Signature
@@ -79,6 +100,180 @@ namespace Nethermind.Crypto
 
             public Signature()
             {
+            }
+        }
+
+        public class Fp : IEquatable<Fp>
+        {
+            internal BigInteger _value;
+
+            public Fp(ReadOnlySpan<byte> bytes)
+            {
+                if (bytes.Length != 48)
+                {
+                    throw new Exception("Field point must have 48 bytes");
+                }
+                _value = Normalise(new BigInteger(bytes, true, true));
+            }
+
+            public Fp(BigInteger value)
+            {
+                _value = Normalise(value);
+            }
+
+            private static BigInteger Normalise(BigInteger x)
+            {
+                BigInteger unnormalised = x % BaseFieldOrder;
+                return (unnormalised.Sign == 1) ? unnormalised : (BaseFieldOrder + unnormalised);
+            }
+
+            public static implicit operator Fp(byte[] v) => new(v);
+            public static implicit operator Fp(ReadOnlySpan<byte> v) => new(v);
+            public static implicit operator Fp(BigInteger v) => new(v);
+            public static implicit operator Fp(int v) => new(v);
+
+            public byte[] ToBytes()
+            {
+                return _value.ToBigEndianByteArray(48);
+            }
+
+            public static (Fp, Fp) Sqrt(Fp x)
+            {
+                Fp res = x ^ ((BaseFieldOrder + 1) / 4);
+                return (res, -res);
+            }
+
+            public static Fp operator -(Fp x)
+            {
+                return BaseFieldOrder - x._value;
+            }
+
+            public static Fp operator ^(Fp x, Fp exp)
+            {
+                return BigInteger.ModPow(x._value, exp._value, BaseFieldOrder);
+            }
+
+            public static Fp operator +(Fp x, Fp y)
+            {
+                return x._value + y._value;
+            }
+
+            public static bool operator <(Fp x, Fp y)
+            {
+                return x._value < y._value;
+            }
+
+            public static bool operator >(Fp x, Fp y)
+            {
+                return x._value > y._value;
+            }
+
+            public override bool Equals(object obj) => Equals(obj as G1);
+
+            public bool Equals(Fp p)
+            {
+                return _value == p._value;
+            }
+            public override int GetHashCode() => _value.GetHashCode();
+
+            public static bool operator ==(Fp x, Fp y)
+            {
+                return x._value == y._value;
+            }
+
+            public static bool operator !=(Fp x, Fp y) => !x.Equals(y);
+
+            private static BigInteger gcdExtended(BigInteger a, BigInteger b, ref BigInteger x, ref BigInteger y)
+            {
+                if (a == 0)
+                {
+                    x = 0;
+                    y = 1;
+                    return b;
+                }
+        
+                BigInteger x1 = 1, y1 = 1; 
+                BigInteger gcd = gcdExtended(b % a, a, ref x1, ref y1);
+        
+                x = y1 - (b / a) * x1;
+                y = x1;
+        
+                return gcd;
+            }
+            
+            public static Fp Inv(Fp c)
+            {
+                BigInteger x = 1;
+                BigInteger y = 1;
+                gcdExtended(c._value, BaseFieldOrder, ref x, ref y);
+                return x;
+            }
+
+            public static Fp operator *(Fp x, Fp y)
+            {
+                return x._value * y._value;
+            }
+
+            public static Fp operator -(Fp x, Fp y)
+            {
+                return x + (-y);
+            }
+
+            public static Fp operator /(Fp x, Fp y)
+            {
+                return x * Inv(y);
+            }
+
+            public static Fp Twist(Fp x, bool sign)
+            {
+                (Fp, Fp) res = Sqrt((x ^ 3) + 4);
+                return sign ? res.Item1 : res.Item2;
+            }
+
+            public static (Fp, Fp) TwistG2(Fp c0, Fp c1, bool sign)
+            {
+                // y ^ 2 = sqrt(x ^ 3 + 4(1 + i)) = a + bi
+
+                Fp a = (c0 ^ 3) - (3 * c0 * (c1 ^ 2)) + 4;
+                Fp b = -(c1 ^ 3) + 3 * (c0 ^ 2) * c1 + 4;
+                (Fp, Fp) l = Sqrt((a ^ 2) + (b ^ 2));
+
+                // test all possible signs
+                for (int i = 0; i < 2; i++)
+                {
+                    Fp lCurrent = i == 0 ? l.Item1 : l.Item2;
+                    for (int j = 0; j < 2; j++)
+                    {
+                        (Fp, Fp) y0 = Sqrt(((-a) + lCurrent) / 2);
+                        (Fp, Fp) y1 = Sqrt((a + lCurrent) / 2);
+
+                        Fp y0Current = j == 0 ? y0.Item1 : y0.Item2;
+
+                        for (int k = 0; k < 2; k++)
+                        {
+                            Fp y1Current = k == 0 ? y1.Item1 : y1.Item2;
+
+                            if ((y0Current < y1Current) != sign)
+                            {
+                                continue;
+                            }
+
+                            if ((y0Current ^ 2)  - (y1Current ^ 2) != a)
+                            {
+                                continue;
+                            }
+
+                            if (2 * y0Current * y1Current != b)
+                            {
+                                continue;
+                            }
+
+                            return (y0Current, y1Current);
+                        }
+                    }
+                }
+                
+                throw new Exception("Could not twist invalid x coordinate.");
             }
         }
 
@@ -190,39 +385,20 @@ namespace Nethermind.Crypto
 
             public static G1 FromSignature(Signature signature)
             {
-                // decompresss curve point
-                bool sign = (signature.Bytes[0] & 0x20) == 0x20;
-                byte tmp = signature.Bytes[0];
-                signature.Bytes[0] &= 0x1F; // mask out top 3 bits
-                G1 P = new(signature.Bytes, Twist(signature.Bytes));
-                signature.Bytes[0] = tmp;
-                return sign ? P : -P;
+                G1 P = Zero;
+                bool sign = DecompressPoint(signature.Bytes, P.X);
+                Fp.Twist(P.X, sign).ToBytes().CopyTo(P.Y.AsSpan());
+                return P;
             }
 
             public Signature ToSignature()
             {
-                // compress curve point
                 Signature s = new();
-                X.CopyTo(s.Bytes.AsSpan());
-
-                bool sign = Enumerable.SequenceEqual(Y, Twist(X));
-                if (sign)
-                {
-                    s.Bytes[0] |= 0x20;
-                }
-
-                s.Bytes[0] |= 0x80;
-
+                Fp y = Fp.Twist(X, true);
+                bool sign = Enumerable.SequenceEqual(Y, y.ToBytes());
+                CompressPoint(X, sign, s.Bytes);
                 return s;
             }
-
-            private static byte[] Twist(ReadOnlySpan<byte> XBytes)
-            {
-                BigInteger x = new(XBytes, true, true);
-                var y = BigInteger.ModPow(BigInteger.ModPow(x, 3, BaseFieldOrder) + 4, (BaseFieldOrder + 1) / 4, BaseFieldOrder);
-                return y.ToBigEndianByteArray(48);
-            }
-
             public override bool Equals(object obj) => Equals(obj as G1);
 
             public bool Equals(G1 p)
@@ -328,9 +504,27 @@ namespace Nethermind.Crypto
                 return x.ToBigEndian() * Generator;
             }
 
-            public static G2 FromHash(Hash256 x)
+            public static G2 FromPublicKey(PublicKey pk)
             {
-                return x.Bytes * Generator;
+
+                G2 P = Zero;
+                bool sign = DecompressPoint(pk.Bytes.AsSpan()[..48], P.X.Item2);
+                pk.Bytes.AsSpan()[48..].CopyTo(P.X.Item1);
+
+                (Fp, Fp) y = Fp.TwistG2(P.X.Item1, P.X.Item2, sign);
+                y.Item1.ToBytes().CopyTo(P.Y.Item1.AsSpan());
+                y.Item2.ToBytes().CopyTo(P.Y.Item2.AsSpan());
+
+                return P;
+            }
+
+            public PublicKey ToPublicKey()
+            {
+                PublicKey pk = new();
+                bool sign = new Fp(Y.Item1) < new Fp(Y.Item2);
+                CompressPoint(X.Item2, sign, pk.Bytes.AsSpan()[..48]);
+                X.Item1.CopyTo(pk.Bytes.AsSpan()[48..]);
+                return pk;
             }
             public override bool Equals(object obj) => Equals(obj as G1);
 
