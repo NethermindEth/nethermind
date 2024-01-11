@@ -11,8 +11,6 @@
     <TieredPGO>true</TieredPGO>
     <PublishReadyToRun>true</PublishReadyToRun>
     <GarbageCollectionAdaptationMode>1</GarbageCollectionAdaptationMode>
-    <!-- See https://github.com/dotnet/aspnetcore/issues/50836#issuecomment-1813301014 -->
-    <NoWarn>$(NoWarn);AD0001</NoWarn>
   </PropertyGroup>
 
   <PropertyGroup>
