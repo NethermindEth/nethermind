@@ -66,8 +66,6 @@
     <PackageVersion Include="RichardSzalay.MockHttp" Version="7.0.0" />
     <PackageVersion Include="RocksDB" Version="8.3.2.39829" />
     <PackageVersion Include="SCrypt" Version="2.0.0.2" />
-    <PackageVersion Include="Seq.Api" Version="2023.4.0" />
-    <PackageVersion Include="SharpCompress" Version="0.35.0" />
     <PackageVersion Include="Shouldly" Version="4.2.1" />
     <PackageVersion Include="Snappy.Standard" Version="0.2.0" />
     <PackageVersion Include="System.Configuration.ConfigurationManager" Version="8.0.0" />
