@@ -80,7 +80,8 @@ namespace Nethermind.Evm
         /// <example>If we call TX -> DELEGATECALL -> CALL -> STATICCALL then the call depth would be 3.</example>
         public readonly int CallDepth;
 
-        /// <example>If we call TX -> DELEGATECALL -> CALL -> STATICCALL then the call depth would be 3.</example>
+        /// <summary>
+        /// this field keeps track of wether the execution envirement was initiated by a systemTx.
         public readonly bool IsSystemEnv;
     }
 }
