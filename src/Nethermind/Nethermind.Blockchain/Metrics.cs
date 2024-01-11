@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.ComponentModel;
 using System.Runtime.Serialization;
 using Nethermind.Core.Attributes;
@@ -76,7 +77,7 @@ namespace Nethermind.Blockchain
 
         [GaugeMetric]
         [Description("Hash of the last block.")]
-        public static Hash256? LastBlockHash { get; set; }
+        public static String LastBlockHash { get; set; }
 
         //EIP-2159: Common Prometheus Metrics Names for Clients
         [GaugeMetric]
