@@ -3,7 +3,6 @@
     <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
   </PropertyGroup>
   <ItemGroup>
-    <PackageVersion Include="Antlr4.Runtime.Standard" Version="4.13.1" />
     <PackageVersion Include="AspNetCore.HealthChecks.UI" Version="8.0.0" />
     <PackageVersion Include="AspNetCore.HealthChecks.UI.Client" Version="8.0.0" />
     <PackageVersion Include="AspNetCore.HealthChecks.UI.InMemory.Storage" Version="8.0.0" />
@@ -28,10 +27,7 @@
     <PackageVersion Include="Jint" Version="2.11.58" />
     <PackageVersion Include="MathNet.Numerics.FSharp" Version="5.0.0" />
     <PackageVersion Include="Microsoft.AspNetCore.DataProtection" Version="8.0.0" />
-    <PackageVersion Include="Microsoft.AspNetCore.DataProtection.Abstractions" Version="8.0.0" />
     <PackageVersion Include="Microsoft.AspNetCore.DataProtection.Extensions" Version="8.0.0" />
-    <PackageVersion Include="Microsoft.AspNetCore.Http.Abstractions" Version="2.2.0" />
-    <PackageVersion Include="Microsoft.AspNetCore.WebSockets" Version="2.2.1" />
     <PackageVersion Include="Microsoft.ClearScript.V8" Version="7.4.4" />
     <PackageVersion Include="Microsoft.ClearScript.V8.Native.linux-arm64" Version="7.4.4" />
     <PackageVersion Include="Microsoft.ClearScript.V8.Native.linux-x64" Version="7.4.4" />
@@ -81,13 +77,11 @@
     <PackageVersion Include="System.IO.Compression.ZipFile" Version="4.3.0" />
     <PackageVersion Include="System.IO.Pipelines" Version="8.0.0" />
     <PackageVersion Include="System.Linq.Async" Version="6.0.1" />
-    <PackageVersion Include="System.Net.Http" Version="4.3.4" />
     <PackageVersion Include="System.Runtime.Caching" Version="8.0.0" />
     <PackageVersion Include="System.Security.Cryptography.ProtectedData" Version="8.0.0" />
     <PackageVersion Include="System.Text.Encodings.Web" Version="8.0.0" />
     <PackageVersion Include="TestableIO.System.IO.Abstractions.TestingHelpers" Version="20.0.4" />
     <PackageVersion Include="TestableIO.System.IO.Abstractions.Wrappers" Version="20.0.4" />
     <PackageVersion Include="Websocket.Client" Version="5.0.0" />
-    <PackageVersion Include="YamlDotNet" Version="13.7.1" />
   </ItemGroup>
 </Project>

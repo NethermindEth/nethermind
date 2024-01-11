@@ -18,7 +18,6 @@
     <PackageReference Include="Nethermind.DotNetty.Handlers" />
     <PackageReference Include="Portable.BouncyCastle" />
     <PackageReference Include="Snappy.Standard" />
-    <PackageReference Include="System.Net.Http" />
     <PackageReference Include="System.IO.Compression.ZipFile" />
   </ItemGroup>
   <ItemGroup>
