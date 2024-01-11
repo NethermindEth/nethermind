@@ -20,6 +20,7 @@ using Nethermind.Db.Blooms;
 using Nethermind.Db.Rocks.Config;
 using Nethermind.Init;
 using Nethermind.Logging;
+using Nethermind.Merge.Plugin;
 using Nethermind.TxPool;
 using NUnit.Framework;
 
@@ -324,6 +325,12 @@ namespace Nethermind.Runner.Test
             }
 
             Test<IInitConfig, string>(configWildcard, c => c.LogFileName, (cf, p) => p.Should().Be(cf.Replace("cfg", "logs.txt"), cf));
+        }
+
+        [TestCase("*")]
+        public void Simulating_block_production_on_every_slot_is_always_disabled(string configWildcard)
+        {
+            Test<IMergeConfig, bool>(configWildcard, c => c.SimulateBlockProduction, false);
         }
 
         [TestCase("goerli", BlobsSupportMode.StorageWithReorgs)]
