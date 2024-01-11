@@ -33,7 +33,7 @@ namespace Nethermind.Trie.Pruning
 
         TrieNodeResolverCapability Capability { get; }
 
-        bool ExistsInDB(Hash256 hash, byte[] nodePathNibbles);
+        bool IsPersisted(Hash256 hash, byte[] nodePathNibbles);
     }
 
     public enum TrieNodeResolverCapability

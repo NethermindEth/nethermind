@@ -30,6 +30,7 @@ public class ByPathConstantPersistenceStrategy : IByPathPersistenceStrategy
 
     public void FinalizationManager_BlocksFinalized(object? sender, FinalizeEventArgs e)
     {
+        //TODO - when remove?
         foreach (BlockHeader b in e.FinalizedBlocks)
         {
             _finalizedBlocks[b.Number] = b;

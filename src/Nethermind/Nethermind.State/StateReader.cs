@@ -77,7 +77,7 @@ namespace Nethermind.State
             }
 
             return _trieStore.FindCachedOrUnknown(stateRoot, Array.Empty<byte>(), Array.Empty<byte>()).NodeType != NodeType.Unknown ||
-                _trieStore.ExistsInDB(stateRoot, Array.Empty<byte>());
+                _trieStore.IsPersisted(stateRoot, Array.Empty<byte>());
         }
 
         public byte[] GetCode(Hash256 stateRoot, Address address)

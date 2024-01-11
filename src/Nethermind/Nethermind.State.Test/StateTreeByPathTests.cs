@@ -75,7 +75,7 @@ namespace Nethermind.Store.Test
             tree.Get(new Hash256("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb1eeeeeb0")).Should().BeEquivalentTo(_account0);
             tree.Get(new Hash256("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb1eeeeeb1")).Should().BeEquivalentTo(_account0);
             Assert.That(db.WritesCount, Is.EqualTo(8), "writes"); // extension, branch, leaf, extension, branch, 2x same leaf
-            Assert.That(Trie.Metrics.TreeNodeHashCalculations, Is.EqualTo(8), "hashes");
+            Assert.That(Trie.Metrics.TreeNodeHashCalculations, Is.EqualTo(7), "hashes");
             Assert.That(Trie.Metrics.TreeNodeRlpEncodings, Is.EqualTo(7), "encodings");
         }
 
@@ -90,7 +90,7 @@ namespace Nethermind.Store.Test
             tree.Set(new Hash256("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb1eeeeeb1"), _account0);
             tree.Set(new Hash256("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb1eeeeeb1"), null);
             tree.Commit(0);
-            Assert.That(db.WritesCount, Is.EqualTo(12), "writes"); // extension, branch, 2x leaf (each node is 2 writes) + deletion writes (2)
+            Assert.That(db.WritesCount, Is.EqualTo(8), "writes"); // extension, branch, 2x leaf (each node is 2 writes) + deletion writes (2)
             Assert.That(Trie.Metrics.TreeNodeHashCalculations, Is.EqualTo(4), "hashes");
             Assert.That(Trie.Metrics.TreeNodeRlpEncodings, Is.EqualTo(4), "encodings");
         }
@@ -107,7 +107,7 @@ namespace Nethermind.Store.Test
             tree.Set(new Hash256("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb1eeeeeb0"), null);
             tree.Set(new Hash256("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb1eeeeeb1"), null);
             tree.Commit(0);
-            Assert.That(db.WritesCount, Is.EqualTo(14), "writes"); // extension, branch, 2x leaf
+            Assert.That(db.WritesCount, Is.EqualTo(8), "writes"); // extension, branch, 2x leaf
             Assert.That(Trie.Metrics.TreeNodeHashCalculations, Is.EqualTo(1), "hashes");
             Assert.That(Trie.Metrics.TreeNodeRlpEncodings, Is.EqualTo(1), "encodings");
         }
@@ -125,7 +125,7 @@ namespace Nethermind.Store.Test
             tree.Set(new Hash256("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb1eeeeeb1"), null);
             tree.Set(new Hash256("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb00000000"), null);
             tree.Commit(0);
-            Assert.That(db.WritesCount, Is.EqualTo(0), "writes"); // extension, branch, 2x leaf
+            Assert.That(db.WritesCount, Is.EqualTo(8), "writes"); // extension, branch, 2x leaf
             Assert.That(Trie.Metrics.TreeNodeHashCalculations, Is.EqualTo(0), "hashes");
             Assert.That(Trie.Metrics.TreeNodeRlpEncodings, Is.EqualTo(0), "encodings");
         }
@@ -877,14 +877,13 @@ namespace Nethermind.Store.Test
             //block 1
             tree.Set(TestItem.AddressA, TestItem.GenerateIndexedAccount(101));
             tree.Set(TestItem.AddressC, TestItem.GenerateIndexedAccount(301));
-            int expectedReads = 3; //reads for intermmediate nodes when traversing trie in Set operation
 
             Assert.That(tree.Get(TestItem.AddressA).Balance, Is.EqualTo((UInt256)101));
             Assert.That(tree.Get(TestItem.AddressB).Balance, Is.EqualTo((UInt256)200));
             Assert.That(tree.Get(TestItem.AddressC).Balance, Is.EqualTo((UInt256)301));
 
             //1 accounts read from database, 2 from trie (modifications not yet commited)
-            expectedReads++;
+            int expectedReads = 1;
             Assert.That(innerStateDb.ReadsCount, Is.EqualTo(expectedReads));
 
             tree.Commit(1); //not persisted
@@ -900,8 +899,8 @@ namespace Nethermind.Store.Test
             //both reads from cache
             Assert.That(innerStateDb.ReadsCount, Is.EqualTo(expectedReads));
 
-            //can return for root_0 as it's the last persisted - both reads from db
-            expectedReads += 2;
+            //can return for root_0 as it's the last persisted - 1 reads from db, 1 from read cache
+            expectedReads += 1;
             Assert.That(tree.Get(TestItem.AddressA, root_0).Balance, Is.EqualTo((UInt256)100));
             Assert.That(tree.Get(TestItem.AddressB, root_0).Balance, Is.EqualTo((UInt256)200));
             Assert.That(innerStateDb.ReadsCount, Is.EqualTo(expectedReads));

@@ -289,28 +289,37 @@ namespace Nethermind.Trie
 
                                     using (trieVisitContext.AbsolutePathNext(new byte[] { 8, 0 }))
                                     {
-                                        ITrieNodeResolver storageNodeResolver = trieVisitContext.StorageTrieNodeResolver ?? nodeResolver;
-                                        if (TryResolveStorageRoot(storageNodeResolver, CollectionsMarshal.AsSpan(trieVisitContext.AbsolutePathNibbles), out TrieNode? storageRoot))
+                                        if (TryResolveStorageRoot(nodeResolver, CollectionsMarshal.AsSpan(trieVisitContext.AbsolutePathNibbles), out TrieNode? storageRoot))
                                         {
-                                            using TrieVisitContext storageTrieVisitContext = new TrieVisitContext
+                                            //using TrieVisitContext storageTrieVisitContext = new TrieVisitContext
+                                            //{
+                                            //    // hacky but other solutions are not much better, something nicer would require a bit of thinking
+                                            //    // we introduced a notion of an account on the visit context level which should have no knowledge of account really
+                                            //    // but we know that we have multiple optimizations and assumptions on trees
+                                            //    ExpectAccounts = trieVisitContext.ExpectAccounts,
+                                            //    MaxDegreeOfParallelism = trieVisitContext.MaxDegreeOfParallelism,
+                                            //    KeepTrackOfAbsolutePath = trieVisitContext.KeepTrackOfAbsolutePath
+                                            //};
+                                            //storageTrieVisitContext.Level = trieVisitContext.Level;
+                                            //storageTrieVisitContext.IsStorage = true;
+                                            //storageTrieVisitContext.BranchChildIndex = null;
+
+                                            try
                                             {
-                                                // hacky but other solutions are not much better, something nicer would require a bit of thinking
-                                                // we introduced a notion of an account on the visit context level which should have no knowledge of account really
-                                                // but we know that we have multiple optimizations and assumptions on trees
-                                                ExpectAccounts = trieVisitContext.ExpectAccounts,
-                                                MaxDegreeOfParallelism = trieVisitContext.MaxDegreeOfParallelism,
-                                                KeepTrackOfAbsolutePath = trieVisitContext.KeepTrackOfAbsolutePath
-                                            };
-                                            storageTrieVisitContext.Level = trieVisitContext.Level;
-                                            storageTrieVisitContext.IsStorage = true;
-                                            storageTrieVisitContext.BranchChildIndex = null;
+                                                if (nodeResolver.Capability == TrieNodeResolverCapability.Path)
+                                                {
+                                                    storageRoot.ResolveNode(nodeResolver);
+                                                    storageRoot.ResolveKey(nodeResolver, true);
+                                                    if (storageRoot.Keccak != account.StorageRoot)
+                                                        throw new ArgumentException("Storage root not matching");
+                                                }
 
-                                            storageRoot.ResolveNode(storageNodeResolver);
-                                            storageRoot.ResolveKey(storageNodeResolver, true);
-                                            if (storageRoot.Keccak != account.StorageRoot)
-                                                throw new ArgumentException("Storage root not matching");
-
-                                            storageRoot!.Accept(visitor, storageNodeResolver, storageTrieVisitContext);
+                                                storageRoot!.Accept(visitor, nodeResolver, trieVisitContext);
+                                            }
+                                            catch (TrieException)
+                                            {
+                                                visitor.VisitMissingNode(account.StorageRoot, trieVisitContext);
+                                            }
                                         }
                                         else
                                         {

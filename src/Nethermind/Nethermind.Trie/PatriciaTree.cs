@@ -189,7 +189,8 @@ namespace Nethermind.Trie
                 RootRef!.ResolveKey(TrieStore, true);
                 //resetting root reference for instances without cache will 'unresolve' root node, freeing TrieNode instances
                 //otherwise block commit sets will retain references to TrieNodes and not free them during e.g. snap sync
-                SetRootHash(RootRef.Keccak!, true);
+                //TODO - refactor - is resetting really need - can be done without?
+                SetRootHash(RootRef.Keccak!, TrieStore.ShouldResetObjectsOnRootChange());
             }
 
             TrieStore.FinishBlockCommit(TrieType, blockNumber, RootRef, writeFlags);
@@ -443,7 +444,8 @@ namespace Nethermind.Trie
                 if (RootRef is null) return null;
                 if (RootRef?.IsDirty == true)
                 {
-                    if (_uncommitedPaths is null || _uncommitedPaths.Matches(rawKey) || ClearedBySelfDestruct) {
+                    if (_uncommitedPaths is null || _uncommitedPaths.Matches(rawKey) || ClearedBySelfDestruct)
+                    {
                         diagData.Dirty = _uncommitedPaths is null || _uncommitedPaths.Matches(rawKey);
                         diagData.SelfDestruct = ClearedBySelfDestruct;
                         return GetInternal(rawKey, out _);
@@ -923,7 +925,12 @@ namespace Nethermind.Trie
                 return traverseContext.UpdateValue;
             }
 
-            TrieNode childNode = node.GetChild(TrieStore, traverseContext.UpdatePath[traverseContext.CurrentIndex]);
+            TrieNode childNode = Capability switch
+            {
+                TrieNodeResolverCapability.Hash => node.GetChild(TrieStore, traverseContext.UpdatePath[traverseContext.CurrentIndex]),
+                TrieNodeResolverCapability.Path => node.GetChild(TrieStore, traverseContext.UpdatePath[traverseContext.CurrentIndex], ParentStateRootHash),
+                _ => throw new ArgumentOutOfRangeException()
+            };
 
             if (traverseContext.IsUpdate)
             {
@@ -1137,7 +1144,12 @@ namespace Nethermind.Trie
                     _nodeStack.Push(new StackedNode(node, 0));
                 }
 
-                TrieNode next = node.GetChild(TrieStore, 0);
+                TrieNode next = Capability switch
+                {
+                    TrieNodeResolverCapability.Hash => node.GetChild(TrieStore, 0),
+                    TrieNodeResolverCapability.Path => node.GetChild(TrieStore, 0, ParentStateRootHash),
+                    _ => throw new ArgumentOutOfRangeException()
+                };
 
                 if (next is null)
                 {
@@ -1195,7 +1207,12 @@ namespace Nethermind.Trie
                 branch.SetChild(remaining[extensionLength], shortLeaf);
             }
 
-            TrieNode originalNodeChild = originalNode.GetChild(TrieStore, 0);
+            TrieNode originalNodeChild = Capability switch
+            {
+                TrieNodeResolverCapability.Hash => originalNode.GetChild(TrieStore, 0),
+                TrieNodeResolverCapability.Path => originalNode.GetChild(TrieStore, 0, ParentStateRootHash),
+                _ => throw new ArgumentOutOfRangeException()
+            };
             if (originalNodeChild is null)
             {
                 ThrowInvalidDataException(originalNode);

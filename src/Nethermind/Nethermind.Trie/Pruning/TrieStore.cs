@@ -354,6 +354,8 @@ namespace Nethermind.Trie.Pruning
             return true;
         }
 
+        public bool IsPersisted(Hash256 hash, byte[] nodePathNibbles) => IsPersisted(hash);
+
         public IReadOnlyTrieStore AsReadOnly(IKeyValueStore? keyValueStore)
         {
             return new ReadOnlyTrieStore(this, keyValueStore);
@@ -844,11 +846,6 @@ namespace Nethermind.Trie.Pruning
         {
         }
 
-        public bool ExistsInDB(Hash256 hash, byte[] nodePathNibbles)
-        {
-            return _keyValueStore[hash.Bytes] is not null;
-        }
-
         public byte[]? this[ReadOnlySpan<byte> key]
         {
             get => Get(key);
@@ -870,22 +867,12 @@ namespace Nethermind.Trie.Pruning
             _keyValueStore.DeleteByRange(startKey, endKey);
         }
 
-        public void MarkPrefixDeleted(long blockNumber, ReadOnlySpan<byte> keyPrefix)
-        {
-            throw new NotImplementedException();
-        }
+        public void MarkPrefixDeleted(long blockNumber, ReadOnlySpan<byte> keyPrefix) { }
 
-        public bool CanAccessByPath()
-        {
-            return false;
-        }
+        public bool CanAccessByPath() => false;
 
+        public bool ShouldResetObjectsOnRootChange() => true;
         public IKeyValueStore AsKeyValueStore() => _publicStore;
-
-        public void CommitNode(long blockNumber, Hash256 rootHash, NodeCommitInfo nodeCommitInfo, WriteFlags writeFlags = WriteFlags.None)
-        {
-            CommitNode(blockNumber, nodeCommitInfo, writeFlags);
-        }
 
         public void OpenContext(long blockNumber, Hash256 keccak) { }
 

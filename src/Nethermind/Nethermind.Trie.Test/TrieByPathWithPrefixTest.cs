@@ -28,7 +28,7 @@ public class TrieByPathWithPrefixTest
     public void SetUp()
     {
         _logManager = NUnitLogManager.Instance;
-        // new NUnitLogManager(LogLevel.Trace);
+        //_logManager = new NUnitLogManager(LogLevel.Trace);
         _logger = _logManager.GetClassLogger();
     }
 
@@ -890,8 +890,8 @@ public class TrieByPathWithPrefixTest
         }
     }
 
-    // [TestCase(256, 128, 128, 32)]
-    // [TestCase(128, 128, 8, 8)]
+    [TestCase(256, 128, 128, 32, null)]
+    [TestCase(128, 128, 8, 8, null)]
     [TestCase(4, 16, 4, 4, null)]
     public void Fuzz_accounts_with_reorganizations(
         int accountsCount,
@@ -900,6 +900,7 @@ public class TrieByPathWithPrefixTest
         int lookupLimit,
         int? seed)
     {
+        //seed = 1126123191;
         int usedSeed = seed ?? _random.Next(int.MaxValue);
         _random = new Random(usedSeed);
 
@@ -952,24 +953,14 @@ public class TrieByPathWithPrefixTest
         int blockCount = 0;
         for (int blockNumber = 0; blockNumber < blocksCount; blockNumber++)
         {
-            int reorgDepth = _random.Next(Math.Min(5, blockCount));
+            int reorgDepth = _random.Next(Math.Min(5, blockCount - (int)trieStore.LastPersistedBlockNumber));
             _logger.Debug($"Reorganizing {reorgDepth}");
 
             for (int i = 0; i < reorgDepth; i++)
             {
-                try
-                {
-                    // no longer need undo?
-                    // trieStore.UndoOneBlock();
-                }
-                catch (InvalidOperationException)
-                {
-                    // if memory limit hits in
-                    blockCount = 0;
-                }
-
                 rootStack.Pop();
                 patriciaTree.RootHash = rootStack.Peek();
+                patriciaTree.ParentStateRootHash = rootStack.Peek();
             }
 
             blockCount = Math.Max(0, blockCount - reorgDepth);

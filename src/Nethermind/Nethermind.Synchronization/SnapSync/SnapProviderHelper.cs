@@ -353,14 +353,14 @@ namespace Nethermind.Synchronization.SnapSync
                     Span<byte> childPath = stackalloc byte[node.FullPath.Length + 1];
                     node.FullPath.CopyTo(childPath);
                     childPath[^1] = (byte)childIndex;
-                    return store.ExistsInDB(childKeccak, childPath.ToArray());
+                    return store.IsPersisted(childKeccak, childPath.ToArray());
                 }
                 else if (node.IsExtension)
                 {
                     Span<byte> childPath = stackalloc byte[node.FullPath.Length + node.Key.Length];
                     node.FullPath.CopyTo(childPath);
                     node.Key.CopyTo(childPath.Slice(node.FullPath.Length));
-                    return store.ExistsInDB(childKeccak, childPath.ToArray());
+                    return store.IsPersisted(childKeccak, childPath.ToArray());
                 }
                 return false;
             }

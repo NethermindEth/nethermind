@@ -34,7 +34,7 @@ namespace Nethermind.Trie.Pruning
             return null;
         }
 
-        public bool ExistsInDB(Hash256 hash, byte[] nodePathNibbles)
+        public bool IsPersisted(Hash256 hash, byte[] nodePathNibbles)
         {
             return false;
         }

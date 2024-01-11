@@ -35,7 +35,7 @@ internal class PathDataCacheInstance
 {
     class StateId
     {
-        static int _stateIdSeed = 0;
+        static int _stateIdSeed;
         public int Id { get; }
         public long? BlockNumber { get; set; }
         public Hash256? BlockStateRoot { get; set; }
@@ -49,19 +49,6 @@ internal class PathDataCacheInstance
             BlockStateRoot = blockHash;
             ParentStateHash = parentStateRoot;
             ParentBlock = parentBlock;
-        }
-
-        private StateId(int id, long? blockNumber, Hash256 blockHash, StateId? parentBlock = null)
-        {
-            Id = id;
-            BlockNumber = blockNumber;
-            BlockStateRoot = blockHash;
-            ParentBlock = parentBlock;
-        }
-
-        public StateId Clone()
-        {
-            return new StateId(Id, BlockNumber, BlockStateRoot, ParentBlock);
         }
     }
 
@@ -102,7 +89,6 @@ internal class PathDataCacheInstance
 
         public void Add(int stateId, NodeData data, bool shouldPersist)
         {
-
             PathDataAtState nad = new(stateId, data, shouldPersist);
             _nodes.Remove(nad);
             _nodes.Add(nad);
@@ -110,29 +96,13 @@ internal class PathDataCacheInstance
 
         public PathDataAtState? Get(Hash256 keccak)
         {
-            foreach (PathDataAtState nodeHist in _nodes)
+            foreach (PathDataAtState nodeHist in _nodes.Reverse())
             {
                 if (nodeHist.Data.Keccak == keccak)
                     return nodeHist;
             }
             return null;
         }
-
-        public PathDataAtState? Get(Hash256 keccak, int highestStateId)
-        {
-            if (_nodes.Count == 0) return null;
-            if (highestStateId < _nodes.Min.StateId)
-                return null;
-
-            foreach (PathDataAtState nodeHist in _nodes.GetViewBetween(_nodes.Min, new PathDataAtState(highestStateId)))
-            {
-                if (nodeHist.Data.Keccak == keccak)
-                    return nodeHist;
-            }
-            return null;
-        }
-
-        public PathDataAtState? GetLatest() => _nodes.Max;
 
         public PathDataAtState? GetLatestUntil(int stateId)
         {

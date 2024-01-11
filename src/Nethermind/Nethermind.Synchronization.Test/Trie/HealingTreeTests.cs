@@ -132,6 +132,7 @@ public class HealingTreeTests
         public IReadOnlyTrieStore AsReadOnly(IKeyValueStore? keyValueStore) { return this; }
 
         public bool CanAccessByPath() => false;
+        public bool ShouldResetObjectsOnRootChange() => false;
 
         public void ClearCache() { }
 
@@ -141,7 +142,7 @@ public class HealingTreeTests
 
         public void Dispose() { }
 
-        public bool ExistsInDB(Hash256 hash, byte[] nodePathNibbles) => false;
+        public bool IsPersisted(Hash256 hash, byte[] nodePathNibbles) => false;
 
         public TrieNode FindCachedOrUnknown(Hash256 hash)
         {
