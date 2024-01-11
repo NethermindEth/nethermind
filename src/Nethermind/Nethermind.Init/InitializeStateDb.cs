@@ -76,12 +76,10 @@ public class InitializeStateDb : IStep
             setApi.WitnessRepository = NullWitnessCollector.Instance;
         }
 
-        CachingStore cachedStateDb = getApi.DbProvider.StateDb
-            .Cached(Trie.MemoryAllowance.TrieNodeCacheCount);
         IKeyValueStore codeDb = getApi.DbProvider.CodeDb
             .WitnessedBy(witnessCollector);
 
-        IKeyValueStoreWithBatching stateWitnessedBy = cachedStateDb.WitnessedBy(witnessCollector);
+        IKeyValueStoreWithBatching stateWitnessedBy = getApi.DbProvider.StateDb.WitnessedBy(witnessCollector);
         IPersistenceStrategy persistenceStrategy;
         IPruningStrategy pruningStrategy;
         if (pruningConfig.Mode.IsMemory())
@@ -132,7 +130,6 @@ public class InitializeStateDb : IStep
             IFullPruningDb fullPruningDb = (IFullPruningDb)getApi.DbProvider!.StateDb;
             fullPruningDb.PruningStarted += (_, args) =>
             {
-                cachedStateDb.PersistCache(args.Context);
                 trieStore.PersistCache(args.Context, args.Context.CancellationTokenSource.Token);
             };
         }

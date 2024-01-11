@@ -884,7 +884,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                         {
                             SyncConfig.MaxAttemptsToUpdatePivot = 3;
                             BeaconSyncStrategy = Substitute.For<IBeaconSyncStrategy>();
-                            BeaconSyncStrategy.GetFinalizedHash().Returns(TestItem.KeccakA);
+                            BeaconSyncStrategy.MergeTransitionFinished.Returns(true);
                             return "merge sync pivot not resolved yet";
                         }
                     );
