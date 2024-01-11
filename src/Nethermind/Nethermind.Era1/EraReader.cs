@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Buffers;
+using System.IO.Abstractions;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using DotNetty.Buffers;
@@ -131,19 +132,24 @@ public class EraReader : IAsyncEnumerable<(Block, TxReceipt[], UInt256)>, IDispo
         return result.Value.TotalDifficulty - result.Value.Block.Header.Difficulty;
     }
 
-    // Format: <network>-<epoch>-<hexroot>.era1
     public static IEnumerable<string> GetAllEraFiles(string directoryPath, string network)
+    {
+        return GetAllEraFiles(directoryPath, network, new FileSystem());
+    }
+    public static IEnumerable<string> GetAllEraFiles(string directoryPath, string network, IFileSystem fileSystem)
     {
         if (directoryPath is null) throw new ArgumentNullException(nameof(directoryPath));
         if (network is null) throw new ArgumentNullException(nameof(network));
+        if (fileSystem is null) throw new ArgumentNullException(nameof(fileSystem));
 
-        var entries = Directory.GetFiles(directoryPath, "*.era1", new EnumerationOptions() { RecurseSubdirectories=false, MatchCasing=MatchCasing.PlatformDefault });
+        var entries = fileSystem.Directory.GetFiles(directoryPath, "*.era1", new EnumerationOptions() { RecurseSubdirectories=false, MatchCasing=MatchCasing.PlatformDefault });
         if (!entries.Any())
             yield break;
 
         uint next = 0;
         foreach (string file in entries)
         {
+            // Format: <network>-<epoch>-<hexroot>.era1
             string[] parts = Path.GetFileName(file).Split(separator);
             if (parts.Length != 3 || !network.Equals(parts[0], StringComparison.OrdinalIgnoreCase))
             {

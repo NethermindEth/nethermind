@@ -52,7 +52,8 @@ public class EraExporter : IEraExporter
     {
         if (destinationPath is null) throw new ArgumentNullException(nameof(destinationPath));
         if (_fileSystem.File.Exists(destinationPath)) throw new ArgumentException(nameof(destinationPath), $"Cannot be a file.");
-
+        if (size < 1) throw new ArgumentOutOfRangeException(nameof(size), size, $"Must be greater than 0.");
+        if (size > EraWriter.MaxEra1Size) throw new ArgumentOutOfRangeException(nameof(size), size, $"Cannot be greater than {EraWriter.MaxEra1Size}.");
         if (!_fileSystem.Directory.Exists(destinationPath))
         {
             //TODO look into permission settings - should it be set?
@@ -142,13 +143,17 @@ public class EraExporter : IEraExporter
     {
         if (expectedAccumulators is null) throw new ArgumentNullException(nameof(expectedAccumulators));
         if (eraFiles is null) throw new ArgumentNullException(nameof(eraFiles));
+        if (eraFiles.Length == 0)
+            throw new ArgumentException("Must have at least one file.", nameof(eraFiles));
         if (eraFiles.Length != expectedAccumulators.Length)
             throw new ArgumentException("Must have an equal amount of files and accumulators.", nameof(eraFiles));
+        if (expectedAccumulators.Any(a=>a.Length != 32))
+            throw new ArgumentException("All accumulators must have a length of 32 bytes.", nameof(eraFiles));
 
         DateTime lastProgress = DateTime.Now; 
         for (int i = 0; i < eraFiles.Length; i++)
         {
-            using EraReader reader = await EraReader.Create(eraFiles[i], cancellation);
+            using EraReader reader = await EraReader.Create(_fileSystem.File.OpenRead(eraFiles[i]), cancellation);
             if (!await reader.VerifyAccumulator(expectedAccumulators[i], _specProvider, cancellation))
             {
                 throw new EraVerificationException($"The accumulator for the archive '{eraFiles[i]}' does not match the expected accumulator '{expectedAccumulators[i]}'");

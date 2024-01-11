@@ -111,11 +111,11 @@ public class AdminEraService : IAdminEraService
 
     public ResultWrapper<string> VerifyHistory(string eraSource, string accumulatorFile)
     {
-        if (Interlocked.Exchange(ref _canEnterExport, 0) == 1)
+        if (Interlocked.Exchange(ref _canEnterVerification, 0) == 1)
         {
             StartVerificationTask(eraSource, accumulatorFile).ContinueWith((t) =>
             {
-                Interlocked.Exchange(ref _canEnterExport, 1);
+                Interlocked.Exchange(ref _canEnterVerification, 1);
             });
 
             return ResultWrapper<string>.Success("Started history verification");
