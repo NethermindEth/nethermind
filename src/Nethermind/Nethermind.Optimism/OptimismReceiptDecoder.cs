@@ -1,8 +1,9 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Optimism;
@@ -13,8 +14,50 @@ public class OptimismReceiptDecoder : IRlpStreamDecoder<OptimismTxReceipt>
 
     public OptimismTxReceipt Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
-        // Right now we don't have p2p on optimism, so receipts are never decoded
-        throw new NotImplementedException();
+        OptimismTxReceipt txReceipt = new();
+        if (!rlpStream.IsSequenceNext())
+        {
+            rlpStream.SkipLength();
+            txReceipt.TxType = (TxType)rlpStream.ReadByte();
+        }
+
+        _ = rlpStream.ReadSequenceLength();
+        byte[] firstItem = rlpStream.DecodeByteArray();
+        if (firstItem.Length == 1 && (firstItem[0] == 0 || firstItem[0] == 1))
+        {
+            txReceipt.StatusCode = firstItem[0];
+            txReceipt.GasUsedTotal = (long)rlpStream.DecodeUBigInt();
+        }
+        else if (firstItem.Length is >= 1 and <= 4)
+        {
+            txReceipt.GasUsedTotal = (long)firstItem.ToUnsignedBigInteger();
+            txReceipt.SkipStateAndStatusInRlp = true;
+        }
+        else
+        {
+            txReceipt.PostTransactionState = firstItem.Length == 0 ? null : new Hash256(firstItem);
+            txReceipt.GasUsedTotal = (long)rlpStream.DecodeUBigInt();
+        }
+
+        txReceipt.Bloom = rlpStream.DecodeBloom();
+
+        int lastCheck = rlpStream.ReadSequenceLength() + rlpStream.Position;
+
+        int numberOfReceipts = rlpStream.PeekNumberOfItemsRemaining(lastCheck);
+        LogEntry[] entries = new LogEntry[numberOfReceipts];
+        for (int i = 0; i < numberOfReceipts; i++)
+        {
+            entries[i] = Rlp.Decode<LogEntry>(rlpStream, RlpBehaviors.AllowExtraBytes);
+        }
+        txReceipt.Logs = entries;
+
+        if (txReceipt.TxType == TxType.DepositTx && lastCheck > rlpStream.Position)
+        {
+            txReceipt.DepositNonce = rlpStream.DecodeUlong();
+            txReceipt.DepositReceiptVersion = rlpStream.DecodeUlong();
+        }
+
+        return txReceipt;
     }
 
     private static (int Total, int Logs) GetContentLength(OptimismTxReceipt item, RlpBehaviors rlpBehaviors)

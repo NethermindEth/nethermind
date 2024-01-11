@@ -7,6 +7,11 @@ namespace Nethermind.Optimism;
 
 public class OptimismTxReceipt : TxReceipt
 {
+    public OptimismTxReceipt()
+    {
+
+    }
+
     public OptimismTxReceipt(TxReceipt receipt) : base(receipt)
     {
 
