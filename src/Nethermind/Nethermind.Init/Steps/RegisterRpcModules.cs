@@ -166,13 +166,17 @@ public class RegisterRpcModules : IStep
         if (_api.StaticNodesManager is null) throw new StepDependencyException(nameof(_api.StaticNodesManager));
         if (_api.Enode is null) throw new StepDependencyException(nameof(_api.Enode));
 
-        IEraExporter eraService = new EraExporter(
+        IEraExporter eraExporter = new EraExporter(
            _api.FileSystem,
            _api.BlockTree,
            _api.ReceiptStorage,
            _api.SpecProvider,
-           BlockchainIds.GetBlockchainName(_api.SpecProvider.NetworkId),
-           _api.LogManager);
+           BlockchainIds.GetBlockchainName(_api.SpecProvider.NetworkId));
+        IAdminEraService eraService = new AdminEraService(
+            _api.BlockTree,
+            eraExporter,
+            _api.ProcessExitToken!,
+            _api.LogManager);
         ManualPruningTrigger pruningTrigger = new();
         _api.PruningTrigger.Add(pruningTrigger);
         AdminRpcModule adminRpcModule = new(
@@ -183,8 +187,7 @@ public class RegisterRpcModules : IStep
             _api.Enode,
             eraService,
             initConfig.BaseDbPath,
-            pruningTrigger,
-            _api.ProcessExitToken!);
+            pruningTrigger);
         rpcModuleProvider.RegisterSingle<IAdminRpcModule>(adminRpcModule);
 
         if (_api.TxPoolInfoProvider is null) throw new StepDependencyException(nameof(_api.TxPoolInfoProvider));

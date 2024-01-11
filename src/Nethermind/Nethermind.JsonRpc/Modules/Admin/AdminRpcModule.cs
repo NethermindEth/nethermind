@@ -30,9 +30,8 @@ public class AdminRpcModule : IAdminRpcModule
     private readonly IEnode _enode;
     private readonly string _dataDir;
     private readonly ManualPruningTrigger _pruningTrigger;
-    private readonly IProcessExitToken _processExitToken;
     private NodeInfo _nodeInfo = null!;
-    private readonly IEraExporter _eraExporter;
+    private readonly IAdminEraService _eraService;
 
     public AdminRpcModule(
         IBlockTree blockTree,
@@ -40,10 +39,9 @@ public class AdminRpcModule : IAdminRpcModule
         IPeerPool peerPool,
         IStaticNodesManager staticNodesManager,
         IEnode enode,
-        IEraExporter eraService,
+        IAdminEraService eraService,
         string dataDir,
-        ManualPruningTrigger pruningTrigger,
-        IProcessExitToken processExitToken)
+        ManualPruningTrigger pruningTrigger)
     {
         _enode = enode ?? throw new ArgumentNullException(nameof(enode));
         _dataDir = dataDir ?? throw new ArgumentNullException(nameof(dataDir));
@@ -52,8 +50,7 @@ public class AdminRpcModule : IAdminRpcModule
         _networkConfig = networkConfig ?? throw new ArgumentNullException(nameof(networkConfig));
         _staticNodesManager = staticNodesManager ?? throw new ArgumentNullException(nameof(staticNodesManager));
         _pruningTrigger = pruningTrigger;
-        _processExitToken = processExitToken;
-        _eraExporter = eraService;
+        _eraService = eraService;
         BuildNodeInfo();
     }
 
@@ -140,77 +137,14 @@ public class AdminRpcModule : IAdminRpcModule
         return ResultWrapper<PruningStatus>.Success(_pruningTrigger.Trigger());
     }
 
-    private Task _exportTask = Task.CompletedTask;
-    private int _canEnter = 1;
-
     public Task<ResultWrapper<string>> admin_exportHistory(string destination, int epochFrom, int epochTo)
     {
-        //TODO sanitize destination path
-        if (epochFrom < 0 || epochTo < 0)
-            return ResultWrapper<string>.Fail("Epoch number cannot be negative.");
-        if (epochTo < epochFrom)
-            return ResultWrapper<string>.Fail($"Invalid range {epochFrom}-{epochTo}.");
-
-        //TODO what is the correct bounds check? Should canonical be required?
-        Block? latestHead = _blockTree.Head;
-        if (latestHead == null)
-            return ResultWrapper<string>.Fail("Node is currently unable to export.");
-
-        int from = epochFrom * EraWriter.MaxEra1Size;
-        int to = epochTo * EraWriter.MaxEra1Size + EraWriter.MaxEra1Size - 1;
-        long remainingInEpoch = EraWriter.MaxEra1Size - latestHead.Number % EraWriter.MaxEra1Size;
-        long mostRecentFinishedEpoch = (latestHead.Number == 0 ? 0 : latestHead.Number / EraWriter.MaxEra1Size) - (remainingInEpoch == 0 ? 0 : 1);
-        if (mostRecentFinishedEpoch < 0)
-            return ResultWrapper<string>.Fail($"No epochs ready for export.");
-        if (mostRecentFinishedEpoch < epochFrom || mostRecentFinishedEpoch < epochTo)
-            return ResultWrapper<string>.Fail($"Cannot export beyond epoch {mostRecentFinishedEpoch}.");
-        
-        Block? earliest = _blockTree.FindBlock(from, BlockTreeLookupOptions.DoNotCreateLevelIfMissing);
-
-        if (earliest == null)
-            return ResultWrapper<string>.Fail($"Cannot export epoch {epochFrom}.");
-
-        if (Interlocked.Exchange(ref _canEnter, 0) == 1 && _exportTask.IsCompleted)
-        {
-            try
-            {
-                _exportTask = _eraExporter.Export(destination, from, to, EraWriter.MaxEra1Size, _processExitToken.Token);
-            }
-            finally
-            {
-                Interlocked.Exchange(ref _canEnter, 1);
-            }
-
-            //TODO better message?
-            return ResultWrapper<string>.Success("Started export task");
-        }
-        else
-        {
-            return ResultWrapper<string>.Fail("An export job is already running.");
-        }
+        return _eraService.ExportHistory(destination, epochFrom, epochTo);
     }
 
     //TODO maybe move to cli?
     public Task<ResultWrapper<string>> admin_verifyHistory(string eraSource, string accumulatorFile)
     {
-        try
-        {
-            if (Interlocked.Exchange(ref _canEnter, 0) == 1 && _exportTask.IsCompleted)
-            {
-                //TODO correct network 
-                //_importExportTask = _eraService.VerifyEraFiles(eraSource);
-
-                //TODO better message?
-                return ResultWrapper<string>.Success("Started export task");
-            }
-            else
-            {
-                return ResultWrapper<string>.Fail("An export job is currently running.");
-            }
-        }
-        finally
-        {
-            Interlocked.Exchange(ref _canEnter, 1);
-        }
+        return _eraService.VerifyHistory(eraSource, accumulatorFile);
     }
 }
