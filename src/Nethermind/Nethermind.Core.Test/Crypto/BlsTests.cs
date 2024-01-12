@@ -6,7 +6,6 @@ using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.Text;
 using FluentAssertions;
-using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using NUnit.Framework;
 
@@ -15,11 +14,18 @@ namespace Nethermind.Core.Test.Crypto
     [TestFixture]
     public class BlsTests
     {
+        private Bls.PrivateKey sk;
+
+        [SetUp]
+        public void Setup()
+        {
+            sk.Bytes = [0x2c,0xd4,0xba,0x40,0x6b,0x52,0x24,0x59,0xd5,0x7a,0x0b,0xed,0x51,0xa3,0x97,0x43,0x5c,0x0b,0xb1,0x1d,0xd5,0xf3,0xca,0x11,0x52,0xb3,0x69,0x4b,0xb9,0x1d,0x7c,0x22];
+        }
+
         [Test]
         public void Calculate_signature()
         {
             byte[] expected = [0x8e,0x02,0xb7,0x95,0x01,0x98,0xd3,0x35,0xc7,0xb3,0x52,0xd1,0x88,0x80,0xe2,0xf6,0xb4,0xe7,0xf6,0x78,0x02,0x98,0x87,0x2b,0x67,0x84,0x0d,0xb1,0xfa,0xa0,0x69,0xf9,0xa8,0xbe,0x48,0x80,0x0c,0xe2,0xee,0x55,0x65,0xa8,0x11,0xd8,0x23,0x0d,0x3f,0x05];
-            PrivateKey sk = new("0x2cd4ba406b522459d57a0bed51a397435c0bb11dd5f3ca1152b3694bb91d7c22");
             byte[] message = [0x50,0x32,0xec,0x38,0xbb,0xc5,0xda,0x98,0xee,0x0c,0x6f,0x56,0x8b,0x87,0x2a,0x65,0xa0,0x8a,0xbf,0x25,0x1d,0xeb,0x21,0xbb,0x4b,0x56,0xe5,0xd8,0x82,0x1e,0x68,0xaa];
             Bls.Signature s = Bls.Sign(sk, message);
             s.Bytes.Should().Equal(expected);
@@ -29,24 +35,23 @@ namespace Nethermind.Core.Test.Crypto
         public void Verify_signature()
         {
             byte[] message = [0x3e,0x00,0xef,0x2f,0x89,0x5f,0x40,0xd6,0x7f,0x5b,0xb8,0xe8,0x1f,0x09,0xa5,0xa1,0x2c,0x84,0x0e,0xc3,0xce,0x9a,0x7f,0x3b,0x18,0x1b,0xe1,0x88,0xef,0x71,0x1a,0x1e];
-            Bls.Signature s = Bls.Sign(TestItem.PrivateKeyA, message);
-            Assert.That(Bls.Verify(Bls.GetPublicKey(TestItem.PrivateKeyA), s, message));
+            Bls.Signature s = Bls.Sign(sk, message);
+            Assert.That(Bls.Verify(Bls.GetPublicKey(sk), s, message));
         }
 
         [Test]
         public void Rejects_bad_signature()
         {
             byte[] message = [0x3e,0x00,0xef,0x2f,0x89,0x5f,0x40,0xd6,0x7f,0x5b,0xb8,0xe8,0x1f,0x09,0xa5,0xa1,0x2c,0x84,0x0e,0xc3,0xce,0x9a,0x7f,0x3b,0x18,0x1b,0xe1,0x88,0xef,0x71,0x1a,0x1e];
-            Bls.Signature s = Bls.Sign(TestItem.PrivateKeyA, message);
+            Bls.Signature s = Bls.Sign(sk, message);
             s.Bytes[34] += 1;
-            Assert.That(!Bls.Verify(Bls.GetPublicKey(TestItem.PrivateKeyA), s, message));
+            Assert.That(!Bls.Verify(Bls.GetPublicKey(sk), s, message));
         }
 
         [Test]
         public void Public_key_from_private_key()
         {
             byte[] expected = [0xb4,0x95,0x3c,0x4b,0xa1,0x0c,0x4d,0x41,0x96,0xf9,0x01,0x69,0xe7,0x6f,0xaf,0x15,0x4c,0x26,0x0e,0xd7,0x3f,0xc7,0x7b,0xb6,0x5d,0xc3,0xbe,0x31,0xe0,0xce,0xc6,0x14,0xa7,0x28,0x7c,0xda,0x94,0x19,0x53,0x43,0x67,0x6c,0x2c,0x57,0x49,0x4f,0x0e,0x65,0x15,0x27,0xe6,0x50,0x4c,0x98,0x40,0x8e,0x59,0x9a,0x4e,0xb9,0x6f,0x7c,0x5a,0x8c,0xfb,0x85,0xd2,0xfd,0xc7,0x72,0xf2,0x85,0x04,0x58,0x00,0x84,0xef,0x55,0x9b,0x9b,0x62,0x3b,0xc8,0x4c,0xe3,0x05,0x62,0xed,0x32,0x0f,0x6b,0x7f,0x65,0x24,0x5a,0xd4];
-            PrivateKey sk = new("0x2cd4ba406b522459d57a0bed51a397435c0bb11dd5f3ca1152b3694bb91d7c22");
             Assert.That(Bls.GetPublicKey(sk).Bytes, Is.EqualTo(expected));
         }
 
@@ -59,7 +64,7 @@ namespace Nethermind.Core.Test.Crypto
             byte[] msg = ASCIIEncoding.ASCII.GetBytes("abcdef0123456789");
             byte[] dst = ASCIIEncoding.ASCII.GetBytes("QUUX-V01-CS02-with-expander-SHA256-128");
             byte[] res = new byte[128];
-            Bls.G1.ExpandMessageXmd(msg, dst, 0x80, res);
+            Bls.ExpandMessageXmd(msg, dst, 0x80, res);
             Assert.That(res, Is.EqualTo(expected));
         }
 
@@ -68,153 +73,137 @@ namespace Nethermind.Core.Test.Crypto
         {
             // Test vector from
             // https://datatracker.ietf.org/doc/html/rfc9380#appendix-K.1
-            Bls.G1 expected = new(
+            BlsCurve.G1 expected = new(
                 [0x11,0xe0,0xb0,0x79,0xde,0xa2,0x9a,0x68,0xf0,0x38,0x3e,0xe9,0x4f,0xed,0x1b,0x94,0x09,0x95,0x27,0x24,0x07,0xe3,0xbb,0x91,0x6b,0xbf,0x26,0x8c,0x26,0x3d,0xdd,0x57,0xa6,0xa2,0x72,0x00,0xa7,0x84,0xcb,0xc2,0x48,0xe8,0x4f,0x35,0x7c,0xe8,0x2d,0x98],
                 [0x03,0xa8,0x7a,0xe2,0xca,0xf1,0x4e,0x8e,0xe5,0x2e,0x51,0xfa,0x2e,0xd8,0xee,0xfe,0x80,0xf0,0x24,0x57,0x00,0x4b,0xa4,0xd4,0x86,0xd6,0xaa,0x1f,0x51,0x7c,0x08,0x89,0x50,0x1d,0xc7,0x41,0x37,0x53,0xf9,0x59,0x9b,0x09,0x9e,0xbc,0xbb,0xd2,0xd7,0x09]
             );
             byte[] msg = ASCIIEncoding.ASCII.GetBytes("abcdef0123456789");
             byte[] dst = ASCIIEncoding.ASCII.GetBytes("QUUX-V01-CS02-with-BLS12381G1_XMD:SHA-256_SSWU_RO_");
-            var res = Bls.G1.HashToCurve(msg, dst);
+            var res = Bls.HashToCurve(msg, dst);
             Assert.That(res, Is.EqualTo(expected));
         }
 
-        [Test]
-        public void G1_from_signature()
+        [TestCase(232323232u)]
+        [TestCase(11111111111u)]
+        public void G1_from_signature(ulong s)
         {
-            var p = Bls.G1.FromScalar(232323232);
-            var q = Bls.G1.FromScalar(11111111111);
-            Assert.That(Bls.G1.FromSignature(p.ToSignature()), Is.EqualTo(p));
-            Assert.That(Bls.G1.FromSignature(q.ToSignature()), Is.EqualTo(q));
+            var p = BlsCurve.G1.FromScalar(s);
+            Assert.That(Bls.FromSignature(Bls.ToSignature(p)), Is.EqualTo(p));
         }
 
-        [Test]
-        public void G2_from_public_key()
+        [TestCase(232323232u)]
+        [TestCase(11111111111u)]
+        public void G2_from_public_key(ulong s)
         {
-            var p = Bls.G2.FromScalar(232323232);
-            var q = Bls.G2.FromScalar(11111111111);
-            Assert.That(Bls.G2.FromPublicKey(p.ToPublicKey()), Is.EqualTo(p));
-            Assert.That(Bls.G2.FromPublicKey(q.ToPublicKey()), Is.EqualTo(q));
+            var p = BlsCurve.G2.FromScalar(s);
+            Assert.That(Bls.FromPublicKey(Bls.ToPublicKey(p)), Is.EqualTo(p));
         }
 
         [Test]
         public void Fp_div()
         {
-            var p = Bls.G1.FromScalar(232323232);
-            Bls.Fp x = new(p.X);
-            Assert.That(x * Bls.Fp.Inv(x), Is.EqualTo(new Bls.Fp(1)));
+            var p = BlsCurve.G1.FromScalar(232323232);
+            BlsCurve.Fp x = new(p.X);
+            Assert.That(x * BlsCurve.Fp.Inv(x), Is.EqualTo(new BlsCurve.Fp(1)));
             Assert.That((x / 2) * 2, Is.EqualTo(x));
         }
 
-        [Test]
-        public void G2_twist()
+        [TestCase(232323232u)]
+        [TestCase(54935932u)]
+        [TestCase(5738295764u)]
+        [TestCase(1111u)]
+        public void G2_twist(ulong x)
         {
-            IEnumerable<Bls.G2> points = [
-                Bls.G2.FromScalar(232323232),
-                Bls.G2.FromScalar(54935932),
-                Bls.G2.FromScalar(5738295764),
-                Bls.G2.FromScalar(1111)
-            ];
-
-            foreach (Bls.G2 p in points)
-            {
-                Bls.Fp c0 = new(p.X.Item1);
-                Bls.Fp c1 = new(p.X.Item2);
-                Bls.Fp y0Exp = new(p.Y.Item1);
-                Bls.Fp y1Exp = new(p.Y.Item2);
-
-                bool sign = y0Exp < y1Exp;
-
-                (Bls.Fp, Bls.Fp) y = Bls.Fp.TwistG2(c0, c1, sign);
-
-                Assert.That(y.Item1, Is.EqualTo(y0Exp));
-                Assert.That(y.Item2, Is.EqualTo(y1Exp));
-            }
+            var p = BlsCurve.G2.FromScalar(x);
+            bool sign = new BlsCurve.Fp(p.Y.Item1) < new BlsCurve.Fp(p.Y.Item2);
+            var res = BlsCurve.G2.FromX(p.X.Item1, p.X.Item2, sign);
+            Assert.That(res, Is.EqualTo(p));
         }
 
         [Test]
         public void G1_additive_commutativity()
         {
-            var p = Bls.G1.FromScalar(232323232);
-            var q = Bls.G1.FromScalar(9999999999);
+            var p = BlsCurve.G1.FromScalar(232323232);
+            var q = BlsCurve.G1.FromScalar(9999999999);
             Assert.That(p + q, Is.EqualTo(q + p));
         }
 
         [Test]
         public void G2_additive_commutativity()
         {
-            var p = Bls.G2.FromScalar(232323232);
-            var q = Bls.G2.FromScalar(9999999999);
+            var p = BlsCurve.G2.FromScalar(232323232);
+            var q = BlsCurve.G2.FromScalar(9999999999);
             Assert.That(p + q, Is.EqualTo(q + p));
         }
 
         [Test]
         public void G1_additive_negation()
         {
-            var p = Bls.G1.FromScalar(55555555);
-            Assert.That(p + (-p), Is.EqualTo(Bls.G1.Zero));
+            var p = BlsCurve.G1.FromScalar(55555555);
+            Assert.That(p + (-p), Is.EqualTo(BlsCurve.G1.Zero));
         }
 
         [Test]
         public void G2_additive_negation()
         {
-            var p = Bls.G2.FromScalar(55555555);
-            Assert.That(p + (-p), Is.EqualTo(Bls.G2.Zero));
+            var p = BlsCurve.G2.FromScalar(55555555);
+            Assert.That(p + (-p), Is.EqualTo(BlsCurve.G2.Zero));
         }
 
         [Test]
         public void G1_multiply_by_scalar_zero()
         {
-            var p = Bls.G1.FromScalar(666666666);
-            Assert.That(0 * p, Is.EqualTo(Bls.G1.Zero));
+            var p = BlsCurve.G1.FromScalar(666666666);
+            Assert.That(0 * p, Is.EqualTo(BlsCurve.G1.Zero));
         }
 
         [Test]
         public void G2_multiply_by_scalar_zero()
         {
-            var p = Bls.G2.FromScalar(666666666);
-            Assert.That(0 * p, Is.EqualTo(Bls.G2.Zero));
+            var p = BlsCurve.G2.FromScalar(666666666);
+            Assert.That(0 * p, Is.EqualTo(BlsCurve.G2.Zero));
         }
 
         [Test]
         public void G1_multiply_by_scalar_one()
         {
-            var p = Bls.G1.FromScalar(666666666);
+            var p = BlsCurve.G1.FromScalar(666666666);
             Assert.That(1 * p, Is.EqualTo(p));
         }
 
         [Test]
         public void G2_multiply_by_scalar_one()
         {
-            var p = Bls.G2.FromScalar(666666666);
+            var p = BlsCurve.G2.FromScalar(666666666);
             Assert.That(1 * p, Is.EqualTo(p));
         }
 
         [Test]
         public void G1_doubling()
         {
-            var p = Bls.G1.FromScalar(20572853);
+            var p = BlsCurve.G1.FromScalar(20572853);
             Assert.That(2 * p, Is.EqualTo(p + p));
         }
 
         [Test]
         public void G2_doubling()
         {
-            var p = Bls.G2.FromScalar(60074914);
+            var p = BlsCurve.G2.FromScalar(60074914);
             Assert.That(2 * p, Is.EqualTo(p + p));
         }
 
         [Test]
         public void G1_subgroup_check()
         {
-            var p = Bls.G1.FromScalar(10403746324);
-            Assert.That(Bls.SubgroupOrder * p, Is.EqualTo(Bls.G1.Zero));
+            var p = BlsCurve.G1.FromScalar(10403746324);
+            Assert.That(BlsCurve.SubgroupOrder * p, Is.EqualTo(BlsCurve.G1.Zero));
         }
 
         [Test]
         public void G2_subgroup_check()
         {
-            var p = Bls.G2.FromScalar(92461756);
-            Assert.That(Bls.SubgroupOrder * p, Is.EqualTo(Bls.G2.Zero));
+            var p = BlsCurve.G2.FromScalar(92461756);
+            Assert.That(BlsCurve.SubgroupOrder * p, Is.EqualTo(BlsCurve.G2.Zero));
         }
 
         [Test]
@@ -224,11 +213,11 @@ namespace Nethermind.Core.Test.Crypto
             Span<byte> unnormalised = stackalloc byte[32];
             s[30] = 0xDA;
             s[31] = 0xAC;
-            Bls.SubgroupOrder.CopyTo(unnormalised);
+            BlsCurve.SubgroupOrder.CopyTo(unnormalised);
             unnormalised[30] += 0xDA;
             unnormalised[31] += 0xAC;
 
-            var p = Bls.G1.FromScalar(43333333);
+            var p = BlsCurve.G1.FromScalar(43333333);
             Assert.That(unnormalised * p, Is.EqualTo(s * p));
         }
 
@@ -239,29 +228,26 @@ namespace Nethermind.Core.Test.Crypto
             Span<byte> s2 = stackalloc byte[32];
             s1[30] = 0xDA;
             s1[31] = 0xAC;
-            Bls.SubgroupOrder.CopyTo(s2);
+            BlsCurve.SubgroupOrder.CopyTo(s2);
             s2[30] += 0xDA;
             s2[31] += 0xAC;
 
-            var p = Bls.G2.FromScalar(43577532);
-            Bls.G2 res = s2 * p;
-            Bls.G2 expected = s1 * p;
+            var p = BlsCurve.G2.FromScalar(43577532);
+            BlsCurve.G2 res = s2 * p;
+            BlsCurve.G2 expected = s1 * p;
 
-            res.X.Item1.Should().Equal(expected.X.Item1);
-            res.X.Item2.Should().Equal(expected.X.Item2);
-            res.Y.Item1.Should().Equal(expected.Y.Item1);
-            res.Y.Item2.Should().Equal(expected.Y.Item2);
+            Assert.That(res, Is.EqualTo(expected));
         }
 
         [Test]
         public void Pairing_degeneracy()
         {
-            var p = Bls.G1.FromScalar(6758363496);
-            var q = Bls.G2.FromScalar(14863974504635);
-            Assert.That(Bls.Pairing(p, Bls.G2.Zero));
-            Assert.That(Bls.Pairing(Bls.G1.Zero, q));
-            Assert.That(Bls.Pairing2(p, Bls.G2.Zero, Bls.G1.Zero, q));
-            Assert.That(Bls.PairingsEqual(p, Bls.G2.Zero, Bls.G1.Zero, q));
+            var p = BlsCurve.G1.FromScalar(6758363496);
+            var q = BlsCurve.G2.FromScalar(14863974504635);
+            Assert.That(BlsCurve.Pairing(p, BlsCurve.G2.Zero));
+            Assert.That(BlsCurve.Pairing(BlsCurve.G1.Zero, q));
+            Assert.That(BlsCurve.Pairing2(p, BlsCurve.G2.Zero, BlsCurve.G1.Zero, q));
+            Assert.That(BlsCurve.PairingsEqual(p, BlsCurve.G2.Zero, BlsCurve.G1.Zero, q));
         }
 
         [Test]
@@ -272,11 +258,11 @@ namespace Nethermind.Core.Test.Crypto
             BinaryPrimitives.WriteUInt128BigEndian(s1[16..], 35789430543857);
             BinaryPrimitives.WriteUInt128BigEndian(s2[16..], 60857913825);
 
-            var p = Bls.G1.FromScalar(5452347823);
-            var q = Bls.G2.FromScalar(984534538);
+            var p = BlsCurve.G1.FromScalar(5452347823);
+            var q = BlsCurve.G2.FromScalar(984534538);
 
-            Assert.That(Bls.PairingsEqual(s1 * p, s2 * q, s2 * (s1 * p), q));
-            Assert.That(Bls.PairingsEqual(s1 * p, s2 * q, p, s2 * (s1 * q)));
+            Assert.That(BlsCurve.PairingsEqual(s1 * p, s2 * q, s2 * (s1 * p), q));
+            Assert.That(BlsCurve.PairingsEqual(s1 * p, s2 * q, p, s2 * (s1 * q)));
         }
     }
 }

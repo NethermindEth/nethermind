@@ -74,7 +74,9 @@ class ValidatorRegistryContractTests
             {
                 // encode update
                 byte[] message = new ValidatorRegistryContract.Message(_contractAddress, 0, 1000).ComputeRegistrationMessage();
-                Bls.Signature sig = Bls.Sign(TestItem.PrivateKeyA, message);
+                Bls.PrivateKey sk;
+                sk.Bytes = [0x2c,0xd4,0xba,0x40,0x6b,0x52,0x24,0x59,0xd5,0x7a,0x0b,0xed,0x51,0xa3,0x97,0x43,0x5c,0x0b,0xb1,0x1d,0xd5,0xf3,0xca,0x11,0x52,0xb3,0x69,0x4b,0xb9,0x1d,0x7c,0x22];
+                Bls.Signature sig = Bls.Sign(sk, message);
                 tracer.ReturnValue = AbiEncoder.Instance.Encode(getUpdateDef.GetReturnInfo(), [(message, sig.Bytes)]);
             }
             else
