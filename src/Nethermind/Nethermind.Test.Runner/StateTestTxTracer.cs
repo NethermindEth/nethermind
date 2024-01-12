@@ -3,7 +3,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -110,7 +109,7 @@ public class StateTestTxTracer : ITxTracer, IDisposable
     public void SetOperationMemory(TraceMemory memoryTrace)
     {
         if (IsTracingDetailedMemory)
-            _traceEntry.Memory = string.Concat("0x", string.Join("", memoryTrace.ToHexWordList().Select(mt => mt.Replace("0x", string.Empty))));
+            _traceEntry.Memory = string.Concat("0x", string.Join("", memoryTrace.ToHexWordList()));
     }
 
     public void SetOperationMemorySize(ulong newSize)
