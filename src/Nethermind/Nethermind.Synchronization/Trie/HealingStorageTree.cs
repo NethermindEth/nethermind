@@ -18,7 +18,7 @@ public class HealingStorageTree : StorageTree
     private readonly Hash256 _stateRoot;
     private readonly ITrieNodeRecovery<GetTrieNodesRequest>? _recovery;
 
-    public HealingStorageTree(ITrieStore? trieStore, Hash256 rootHash, ILogManager? logManager, Address address, Hash256 stateRoot, ITrieNodeRecovery<GetTrieNodesRequest>? recovery)
+    public HealingStorageTree(IScopedTrieStore? trieStore, Hash256 rootHash, ILogManager? logManager, Address address, Hash256 stateRoot, ITrieNodeRecovery<GetTrieNodesRequest>? recovery)
         : base(trieStore, rootHash, logManager)
     {
         _address = address;
@@ -81,7 +81,8 @@ public class HealingStorageTree : StorageTree
             byte[]? rlp = _recovery.Recover(rlpHash, request).GetAwaiter().GetResult();
             if (rlp is not null)
             {
-                TrieStore.Set(rlpHash, rlp);
+                TreePath path = TreePath.FromNibble(pathPart);
+                TrieStore.Set(path, rlpHash, rlp);
                 return true;
             }
         }

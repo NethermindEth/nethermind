@@ -55,7 +55,7 @@ namespace Nethermind.Blockchain.Test
                             // Simulate state root check
                             ITreeVisitor visitor = (ITreeVisitor)info[0];
                             Hash256 stateRoot = (Hash256)info[1];
-                            if (!_rootProcessed.Contains(stateRoot)) visitor.VisitMissingNode(stateRoot, new TrieVisitContext());
+                            if (!_rootProcessed.Contains(stateRoot)) visitor.VisitMissingNode(TreePath.Empty, stateRoot, new TrieVisitContext());
                         }));
 
                     stateReader.HasStateForRoot(Arg.Any<Hash256>()).Returns(x => _rootProcessed.Contains(x[0]));

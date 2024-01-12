@@ -159,11 +159,11 @@ namespace Nethermind.State.Proofs
         {
         }
 
-        public void VisitMissingNode(Hash256 nodeHash, TrieVisitContext trieVisitContext)
+        public void VisitMissingNode(in TreePath path, Hash256 nodeHash, TrieVisitContext trieVisitContext)
         {
         }
 
-        public void VisitBranch(TrieNode node, TrieVisitContext trieVisitContext)
+        public void VisitBranch(in TreePath path, TrieNode node, TrieVisitContext trieVisitContext)
         {
             AddProofItem(node, trieVisitContext);
             _nodeToVisitFilter.Remove(node.Keccak);
@@ -206,7 +206,7 @@ namespace Nethermind.State.Proofs
             _pathTraversalIndex++;
         }
 
-        public void VisitExtension(TrieNode node, TrieVisitContext trieVisitContext)
+        public void VisitExtension(in TreePath path, TrieNode node, TrieVisitContext trieVisitContext)
         {
             AddProofItem(node, trieVisitContext);
             _nodeToVisitFilter.Remove(node.Keccak);
@@ -271,7 +271,7 @@ namespace Nethermind.State.Proofs
             }
         }
 
-        public void VisitLeaf(TrieNode node, TrieVisitContext trieVisitContext, byte[] value)
+        public void VisitLeaf(in TreePath path, TrieNode node, TrieVisitContext trieVisitContext, byte[] value)
         {
             AddProofItem(node, trieVisitContext);
             _nodeToVisitFilter.Remove(node.Keccak);
@@ -332,7 +332,7 @@ namespace Nethermind.State.Proofs
 
         private readonly AccountDecoder _accountDecoder = new();
 
-        public void VisitCode(Hash256 codeHash, TrieVisitContext trieVisitContext)
+        public void VisitCode(in TreePath path, Hash256 codeHash, TrieVisitContext trieVisitContext)
         {
             throw new InvalidOperationException($"{nameof(AccountProofCollector)} does never expect to visit code");
         }
