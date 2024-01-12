@@ -22,16 +22,25 @@ namespace Ethereum.Test.Base
             JsonSerializerOptions options)
         {
             Dictionary<string, string>? labels = null;
-            if (reader.TokenType == JsonTokenType.String || reader.TokenType == JsonTokenType.Number)
+            if (reader.TokenType == JsonTokenType.StartObject)
             {
-                labels = new Dictionary<string, string>
+                var depth = reader.CurrentDepth;
+                while (reader.Read())
                 {
-                    ["0"] = reader.GetString()
-                };
-            }
-            else
-            {
-                labels = JsonSerializer.Deserialize<Dictionary<string, string>>(ref reader, options);
+                    if (reader.TokenType == JsonTokenType.EndObject && reader.CurrentDepth == depth)
+                    {
+                        break;
+                    }
+                    if (reader.TokenType == JsonTokenType.PropertyName && reader.ValueTextEquals("labels"u8))
+                    {
+                        reader.Read();
+                        labels = JsonSerializer.Deserialize<Dictionary<string, string>>(ref reader, options);
+                    }
+                    else
+                    {
+                        reader.Skip();
+                    }
+                }
             }
 
             return new GeneralStateTestInfoJson { Labels = labels };
