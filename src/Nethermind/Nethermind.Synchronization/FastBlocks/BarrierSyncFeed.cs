@@ -15,6 +15,8 @@ namespace Nethermind.Synchronization.FastBlocks;
 public abstract class BarrierSyncFeed<T> : ActivatedSyncFeed<T>
 {
     internal const int DepositContractBarrier = 11052984;
+    internal const int OldBarrierDefaultExtraRange = 8192;
+
     protected abstract long? LowestInsertedNumber { get; }
     protected abstract int BarrierWhenStartedMetadataDbKey { get; }
     protected abstract long SyncConfigBarrierCalc { get; }
@@ -32,7 +34,7 @@ public abstract class BarrierSyncFeed<T> : ActivatedSyncFeed<T>
     protected bool WithinOldBarrierDefault => _specProvider.ChainId == BlockchainIds.Mainnet
         && _barrierWhenStarted == DepositContractBarrier
         && LowestInsertedNumber <= DepositContractBarrier
-        && LowestInsertedNumber > DepositContractBarrier - 5_000; // this is intentional. this is a magic number as to the amount of possible blocks that had been synced. We noticed on previous versions that the client synced a bit below the default barrier by more than just the GethRequest limit (128).
+        && LowestInsertedNumber > DepositContractBarrier - OldBarrierDefaultExtraRange; // this is intentional. this is a magic number as to the amount of possible blocks that had been synced. We noticed on previous versions that the client synced a bit below the default barrier by more than just the GethRequest limit (128).
 
     public BarrierSyncFeed(IDb metadataDb, ISpecProvider specProvider, ILogger logger)
     {
