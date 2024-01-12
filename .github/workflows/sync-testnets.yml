@@ -88,7 +88,7 @@ jobs:
 
       - name: Wait for ${{ matrix.network }} to sync
         id: wait
-        timeout-minutes: 90
+        timeout-minutes: 180
         run: |
           set +e
 
