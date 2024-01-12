@@ -808,11 +808,6 @@ namespace Nethermind.State
             _currentPosition = Resettable.EmptyPosition;
             Array.Clear(_changes, 0, _changes.Length);
             _needsStateRootUpdate = false;
-
-            if (_codeDb is IReadOnlyDb readOnlyDb)
-            {
-                readOnlyDb.ClearTempChanges();
-            }
         }
 
         public void CommitTree(long blockNumber)

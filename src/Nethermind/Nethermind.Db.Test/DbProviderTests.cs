@@ -13,9 +13,9 @@ namespace Nethermind.Db.Test
         public void DbProvider_CanRegisterMemDb()
         {
             MemDbFactory memDbFactory = new MemDbFactory();
-            using (DbProvider dbProvider = new DbProvider(DbModeHint.Mem))
+            using (DbProvider dbProvider = new DbProvider())
             {
-                IDb memDb = memDbFactory.CreateDb("MemDb");
+                IDb memDb = memDbFactory.CreateDb(new DbSettings("MemDb", "MemDb"));
                 dbProvider.RegisterDb("MemDb", memDb);
                 IDb db = dbProvider.GetDb<IDb>("MemDb");
                 Assert.That(db, Is.EqualTo(memDb));
@@ -25,7 +25,7 @@ namespace Nethermind.Db.Test
         [Test]
         public void DbProvider_CanRegisterColumnsDb()
         {
-            using (DbProvider dbProvider = new DbProvider(DbModeHint.Mem))
+            using (DbProvider dbProvider = new DbProvider())
             {
                 MemDbFactory memDbFactory = new MemDbFactory();
                 IColumnsDb<ReceiptsColumns> memSnapshotableDb = memDbFactory.CreateColumnsDb<ReceiptsColumns>("ColumnsDb");
@@ -39,7 +39,7 @@ namespace Nethermind.Db.Test
         [Test]
         public void DbProvider_ThrowExceptionOnRegisteringTheSameDb()
         {
-            using (DbProvider dbProvider = new DbProvider(DbModeHint.Mem))
+            using (DbProvider dbProvider = new DbProvider())
             {
                 MemDbFactory memDbFactory = new MemDbFactory();
                 IColumnsDb<ReceiptsColumns> memSnapshotableDb = memDbFactory.CreateColumnsDb<ReceiptsColumns>("ColumnsDb");
@@ -51,7 +51,7 @@ namespace Nethermind.Db.Test
         [Test]
         public void DbProvider_ThrowExceptionOnGettingNotRegisteredDb()
         {
-            using (DbProvider dbProvider = new DbProvider(DbModeHint.Mem))
+            using (DbProvider dbProvider = new DbProvider())
             {
                 MemDbFactory memDbFactory = new MemDbFactory();
                 IColumnsDb<ReceiptsColumns> memSnapshotableDb = memDbFactory.CreateColumnsDb<ReceiptsColumns>("ColumnsDb");

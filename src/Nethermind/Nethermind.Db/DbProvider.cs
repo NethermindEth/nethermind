@@ -15,13 +15,6 @@ namespace Nethermind.Db
         private readonly ConcurrentDictionary<string, object> _registeredColumnDbs =
             new(StringComparer.InvariantCultureIgnoreCase);
 
-        public DbProvider(DbModeHint dbMode)
-        {
-            DbMode = dbMode;
-        }
-
-        public DbModeHint DbMode { get; }
-
         public IDictionary<string, IDb> RegisteredDbs => _registeredDbs;
         public IDictionary<string, object> RegisteredColumnDbs => _registeredColumnDbs;
 
