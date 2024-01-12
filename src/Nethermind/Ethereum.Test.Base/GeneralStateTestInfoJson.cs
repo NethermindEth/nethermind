@@ -14,7 +14,6 @@ namespace Ethereum.Test.Base
         public Dictionary<string, string>? Labels { get; set; }
     }
 
-
     public class GeneralStateTestInfoConverter : JsonConverter<GeneralStateTestInfoJson>
     {
         public override GeneralStateTestInfoJson? Read(
