@@ -219,10 +219,6 @@ namespace Ethereum.Test.Base
                     {
                         test.Name += testJson.Info?.Labels?[iterationNumber.ToString()]?.Replace(":label ", string.Empty);
                     }
-                    else
-                    {
-                        test.Name += string.Empty;
-                    }
 
                     test.ForkName = postStateBySpec.Key;
                     test.Fork = ParseSpec(postStateBySpec.Key);

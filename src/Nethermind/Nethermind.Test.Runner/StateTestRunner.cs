@@ -4,6 +4,8 @@
 using System;
 using System.Collections.Generic;
 using System.Text.RegularExpressions;
+using System.Threading;
+
 using Ethereum.Test.Base;
 using Ethereum.Test.Base.Interfaces;
 using Nethermind.Evm;
@@ -62,9 +64,20 @@ namespace Nethermind.Test.Runner
             {
                 if (_filter is not null && !Regex.Match(test.Name, $"^({_filter})").Success)
                     continue;
+
                 EthereumTestResult result = null;
                 if (_whenTrace != WhenTrace.Always)
+                {
+                    // Warm up
+                    for (int i = 0; i < 25; i++)
+                    {
+                        _ = RunTest(test, NullTxTracer.Instance);
+                    }
+
+                    // Give time to Jit optimized version
+                    Thread.Sleep(20);
                     result = RunTest(test, NullTxTracer.Instance);
+                }
 
                 if (_whenTrace != WhenTrace.Never && !(result?.Pass ?? false))
                 {
