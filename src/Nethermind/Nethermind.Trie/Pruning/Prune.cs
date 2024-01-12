@@ -7,5 +7,10 @@ namespace Nethermind.Trie.Pruning
     {
         public static IPruningStrategy WhenCacheReaches(long sizeInBytes)
             => new MemoryLimit(sizeInBytes);
+
+        public static IPruningStrategy TrackingPastKeys(this IPruningStrategy baseStrategy, int trackedPastKeyCount)
+            => trackedPastKeyCount <= 0
+                ? baseStrategy
+                : new TrackedPastKeyCountStrategy(baseStrategy, trackedPastKeyCount);
     }
 }

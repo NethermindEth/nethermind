@@ -7,5 +7,6 @@ namespace Nethermind.Trie.Pruning
     {
         bool PruningEnabled { get; }
         bool ShouldPrune(in long currentMemory);
+        int TrackedPastKeyCount { get; }
     }
 }

@@ -92,4 +92,7 @@ public interface IPruningConfig : IConfig
 
     [ConfigItem(Description = "Whether to enables available disk space check.", DefaultValue = "true")]
     bool AvailableSpaceCheckEnabled { get; set; }
+
+    [ConfigItem(Description = "[TECHNICAL] Number of past persisted keys to keep track off for possible pruning.", DefaultValue = "1000000")]
+    int TrackedPastKeyCount { get; set; }
 }
