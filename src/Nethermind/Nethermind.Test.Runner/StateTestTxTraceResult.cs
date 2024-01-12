@@ -14,7 +14,7 @@ namespace Nethermind.Test.Runner
         public long GasUsed { get; set; }
 
         [JsonPropertyName("time")]
-        public int Time { get; set; }
+        public double Time { get; set; }
 
         [JsonPropertyName("error")]
         public string Error { get; set; }

@@ -33,7 +33,7 @@ namespace Nethermind.Network
         public static long Handshakes { get; set; }
 
         [CounterMetric]
-        [Description("Number of devp2p handshke timeouts")]
+        [Description("Number of devp2p handshake timeouts")]
         public static long HandshakeTimeouts { get; set; }
 
         [CounterMetric]
