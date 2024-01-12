@@ -5,8 +5,8 @@ using System;
 using System.Collections.Generic;
 using System.Numerics;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Receipts;
-using Nethermind.Consensus.BeaconBlockRoot;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
 using Nethermind.Consensus.Withdrawals;
@@ -16,6 +16,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs.Forks;
@@ -53,8 +54,10 @@ public partial class BlockProcessor : IBlockProcessor
         IWorldState? stateProvider,
         IReceiptStorage? receiptStorage,
         IWitnessCollector? witnessCollector,
+        ITransactionProcessor transactionProcessor,
         ILogManager? logManager,
-        IWithdrawalProcessor? withdrawalProcessor = null)
+        IWithdrawalProcessor? withdrawalProcessor = null,
+        IBeaconBlockRootHandler? beaconBlockRootHandler = null)
     {
         _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
@@ -65,8 +68,7 @@ public partial class BlockProcessor : IBlockProcessor
         _withdrawalProcessor = withdrawalProcessor ?? new WithdrawalProcessor(stateProvider, logManager);
         _rewardCalculator = rewardCalculator ?? throw new ArgumentNullException(nameof(rewardCalculator));
         _blockTransactionsExecutor = blockTransactionsExecutor ?? throw new ArgumentNullException(nameof(blockTransactionsExecutor));
-        _beaconBlockRootHandler = new BeaconBlockRootHandler();
-
+        _beaconBlockRootHandler = beaconBlockRootHandler ?? new BeaconBlockRootHandler(transactionProcessor, logManager);
         ReceiptsTracer = new BlockReceiptsTracer();
     }
 
@@ -110,6 +112,7 @@ public partial class BlockProcessor : IBlockProcessor
 
                 // be cautious here as AuRa depends on processing
                 PreCommitBlock(newBranchStateRoot, suggestedBlocks[i].Number);
+
                 if (notReadOnly)
                 {
                     _witnessCollector.Persist(processedBlock.Hash!);
@@ -229,8 +232,7 @@ public partial class BlockProcessor : IBlockProcessor
         ReceiptsTracer.SetOtherTracer(blockTracer);
         ReceiptsTracer.StartNewBlockTrace(block);
 
-        _beaconBlockRootHandler.ApplyContractStateChanges(block, spec, _stateProvider);
-        _stateProvider.Commit(spec);
+        _beaconBlockRootHandler.ExecuteSystemCall(block, spec);
 
         TxReceipt[] receipts = _blockTransactionsExecutor.ProcessTransactions(block, options, ReceiptsTracer, spec);
 

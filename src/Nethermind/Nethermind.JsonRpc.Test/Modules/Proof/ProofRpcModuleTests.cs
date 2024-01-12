@@ -352,7 +352,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
                 .Done;
 
             CallResultWithProof result = await TestCallWithCode(code);
-            Assert.That(result.Accounts.Length, Is.EqualTo(1 + (_useNonZeroGasPrice ? 1 : 0)));
+            Assert.That(result.Accounts.Length, Is.EqualTo(1 + (_createSystemAccount ? 1 : 0)));
         }
 
         [TestCase]
@@ -365,7 +365,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
                 .Op(Instruction.SLOAD)
                 .Done;
             CallResultWithProof result = await TestCallWithCode(code);
-            Assert.That(result.Accounts.Length, Is.EqualTo(1 + (_useNonZeroGasPrice ? 1 : 0)));
+            Assert.That(result.Accounts.Length, Is.EqualTo(1 + (_createSystemAccount ? 1 : 0)));
         }
 
         [TestCase]
@@ -378,7 +378,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
                 .Done;
 
             CallResultWithProof result = await TestCallWithCode(code);
-            Assert.That(result.Accounts.Length, Is.EqualTo(1 + (_useNonZeroGasPrice ? 1 : 0)));
+            Assert.That(result.Accounts.Length, Is.EqualTo(1 + (_createSystemAccount ? 1 : 0)));
         }
 
         [TestCase]
@@ -392,7 +392,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
                 .Op(Instruction.EXTCODECOPY)
                 .Done;
             CallResultWithProof result = await TestCallWithCode(code);
-            Assert.That(result.Accounts.Length, Is.EqualTo(2 + (_useNonZeroGasPrice ? 1 : 0)));
+            Assert.That(result.Accounts.Length, Is.EqualTo(2 + (_createSystemAccount ? 1 : 0)));
         }
 
         [TestCase]
@@ -406,7 +406,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
                 .Op(Instruction.EXTCODECOPY)
                 .Done;
             CallResultWithProof result = await TestCallWithCode(code);
-            Assert.That(result.Accounts.Length, Is.EqualTo(2));
+            Assert.That(result.Accounts.Length, Is.EqualTo(1 + (_createSystemAccount ? 1 : 0)));
         }
 
         [TestCase]
@@ -417,7 +417,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
                 .Op(Instruction.EXTCODESIZE)
                 .Done;
             CallResultWithProof result = await TestCallWithCode(code);
-            Assert.That(result.Accounts.Length, Is.EqualTo(2 + (_useNonZeroGasPrice ? 1 : 0)));
+            Assert.That(result.Accounts.Length, Is.EqualTo(2 + (_createSystemAccount ? 1 : 0)));
         }
 
         [TestCase]
@@ -428,7 +428,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
                 .Op(Instruction.EXTCODESIZE)
                 .Done;
             CallResultWithProof result = await TestCallWithCode(code);
-            Assert.That(result.Accounts.Length, Is.EqualTo(2));
+            Assert.That(result.Accounts.Length, Is.EqualTo(1 + (_createSystemAccount ? 1 : 0)));
         }
 
         [TestCase]
@@ -440,7 +440,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
                 .Op(Instruction.EXTCODEHASH)
                 .Done;
             CallResultWithProof result = await TestCallWithCode(code);
-            Assert.That(result.Accounts.Length, Is.EqualTo(2 + (_useNonZeroGasPrice ? 1 : 0)));
+            Assert.That(result.Accounts.Length, Is.EqualTo(2 + (_createSystemAccount ? 1 : 0)));
         }
 
         [TestCase]
@@ -452,7 +452,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
                 .Op(Instruction.EXTCODEHASH)
                 .Done;
             CallResultWithProof result = await TestCallWithCode(code);
-            Assert.That(result.Accounts.Length, Is.EqualTo(2));
+            Assert.That(result.Accounts.Length, Is.EqualTo(1 + (_createSystemAccount ? 1 : 0)));
         }
 
         [TestCase]
@@ -463,7 +463,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
                 .Op(Instruction.STOP)
                 .Done;
             CallResultWithProof result = await TestCallWithCode(code);
-            Assert.That(result.Accounts.Length, Is.EqualTo(1 + (_useNonZeroGasPrice ? 1 : 0)));
+            Assert.That(result.Accounts.Length, Is.EqualTo(1 + (_createSystemAccount ? 1 : 0)));
         }
 
         [TestCase]
@@ -476,7 +476,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
                 .Done;
 
             CallResultWithProof result = await TestCallWithCode(code);
-            Assert.That(result.Accounts.Length, Is.EqualTo(2 + (_useNonZeroGasPrice ? 1 : 0)));
+            Assert.That(result.Accounts.Length, Is.EqualTo(2 + (_createSystemAccount ? 1 : 0)));
         }
 
         [TestCase]
@@ -488,7 +488,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
                 .Done;
 
             CallResultWithProof result = await TestCallWithCode(code);
-            Assert.That(result.Accounts.Length, Is.EqualTo(1 + (_useNonZeroGasPrice ? 1 : 0)));
+            Assert.That(result.Accounts.Length, Is.EqualTo(1 + (_createSystemAccount ? 1 : 0)));
         }
 
         [TestCase]
@@ -500,7 +500,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
                 .Op(Instruction.BALANCE)
                 .Done;
             CallResultWithProof result = await TestCallWithCode(code);
-            Assert.That(result.Accounts.Length, Is.EqualTo(2));
+            Assert.That(result.Accounts.Length, Is.EqualTo(1 + (_createSystemAccount ? 1 : 0)));
         }
 
         [TestCase]
@@ -552,7 +552,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
                 .Op(Instruction.DELEGATECALL)
                 .Done;
             CallResultWithProof result = await TestCallWithCode(code);
-            Assert.That(result.Accounts.Length, Is.EqualTo(2));
+            Assert.That(result.Accounts.Length, Is.EqualTo(1 + (_createSystemAccount ? 1 : 0)));
         }
 
         [TestCase]
@@ -588,7 +588,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
                 .Op(Instruction.CALL)
                 .Done;
             CallResultWithProof result = await TestCallWithCode(code);
-            Assert.That(result.Accounts.Length, Is.EqualTo(2 + (_useNonZeroGasPrice ? 1 : 0)));
+            Assert.That(result.Accounts.Length, Is.EqualTo(2 + (_createSystemAccount ? 1 : 0)));
         }
 
         [TestCase]
@@ -605,7 +605,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
                 .Op(Instruction.STATICCALL)
                 .Done;
             CallResultWithProof result = await TestCallWithCode(code);
-            Assert.That(result.Accounts.Length, Is.EqualTo(2 + (_useNonZeroGasPrice ? 1 : 0)));
+            Assert.That(result.Accounts.Length, Is.EqualTo(2 + (_createSystemAccount ? 1 : 0)));
         }
 
         [TestCase]
@@ -622,7 +622,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
                 .Op(Instruction.DELEGATECALL)
                 .Done;
             CallResultWithProof result = await TestCallWithCode(code);
-            Assert.That(result.Accounts.Length, Is.EqualTo(_createSystemAccount && _useNonZeroGasPrice ? 3 : 2));
+            Assert.That(result.Accounts.Length, Is.EqualTo(_createSystemAccount ? 3 : 2));
         }
 
         [TestCase]
@@ -640,7 +640,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
                 .Op(Instruction.CALL)
                 .Done;
             CallResultWithProof result = await TestCallWithCode(code);
-            Assert.That(result.Accounts.Length, Is.EqualTo(2 + (_useNonZeroGasPrice ? 1 : 0)));
+            Assert.That(result.Accounts.Length, Is.EqualTo(2 + (_createSystemAccount ? 1 : 0)));
         }
 
         [TestCase]
@@ -653,7 +653,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
                 .Done;
             CallResultWithProof result = await TestCallWithCode(code);
 
-            Assert.That(result.Accounts.Length, Is.EqualTo(2 + (_useNonZeroGasPrice ? 1 : 0)));
+            Assert.That(result.Accounts.Length, Is.EqualTo(2 + (_createSystemAccount ? 1 : 0)));
         }
 
         [TestCase]
@@ -681,7 +681,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
                 .Op(Instruction.SSTORE)
                 .Done;
             CallResultWithProof result = await TestCallWithCode(code);
-            Assert.That(result.Accounts.Length, Is.EqualTo(1 + (_useNonZeroGasPrice ? 1 : 0)));
+            Assert.That(result.Accounts.Length, Is.EqualTo(1 + (_createSystemAccount ? 1 : 0)));
         }
 
         [TestCase]
@@ -899,7 +899,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
 
         private void AddCode(WorldState stateProvider, Address account, byte[] code)
         {
-            stateProvider.InsertCode(account, code, MuirGlacier.Instance);
+            stateProvider.InsertCode(account, code, MuirGlacier.Instance, false);
             stateProvider.Commit(MainnetSpecProvider.Instance.GenesisSpec, NullStateTracer.Instance);
         }
     }

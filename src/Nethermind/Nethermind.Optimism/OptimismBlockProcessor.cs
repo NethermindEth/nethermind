@@ -10,6 +10,7 @@ using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.Tracing;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.State;
 
@@ -29,10 +30,11 @@ public class OptimismBlockProcessor : BlockProcessor
         IWitnessCollector? witnessCollector,
         ILogManager? logManager,
         IOPConfigHelper opConfigHelper,
+        ITransactionProcessor txProcessor,
         Create2DeployerContractRewriter contractRewriter,
         IWithdrawalProcessor? withdrawalProcessor = null)
         : base(specProvider, blockValidator, rewardCalculator, blockTransactionsExecutor,
-            stateProvider, receiptStorage, witnessCollector, logManager, withdrawalProcessor)
+            stateProvider, receiptStorage, witnessCollector, txProcessor, logManager, withdrawalProcessor)
     {
         ArgumentNullException.ThrowIfNull(stateProvider);
         _contractRewriter = contractRewriter;
