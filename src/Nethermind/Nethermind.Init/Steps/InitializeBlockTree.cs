@@ -8,6 +8,7 @@ using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Find;
+using Nethermind.Blockchain.Headers;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus;
@@ -50,12 +51,15 @@ namespace Nethermind.Init.Steps
                 _set.ChainLevelInfoRepository = new ChainLevelInfoRepository(_get.DbProvider!.BlockInfosDb);
 
             IBlockStore blockStore = new BlockStore(_get.DbProvider.BlocksDb);
+            IHeaderStore headerStore = new HeaderStore(_get.DbProvider.HeadersDb, _get.DbProvider.BlockNumbersDb);
+            IBlockStore badBlockStore = _set.BadBlocksStore = new BlockStore(_get.DbProvider.BadBlocksDb, initConfig.BadBlocksStored);
 
             IBlockTree blockTree = _set.BlockTree = new BlockTree(
                 blockStore,
-                _get.DbProvider.HeadersDb,
+                headerStore,
                 _get.DbProvider.BlockInfosDb,
                 _get.DbProvider.MetadataDb,
+                badBlockStore,
                 chainLevelInfoRepository,
                 _get.SpecProvider,
                 bloomStorage,
@@ -99,6 +103,11 @@ namespace Nethermind.Init.Steps
                 receiptConfig.MaxBlockDepth);
 
             _set.LogFinder = logFinder;
+
+            if (initConfig.ExitOnBlockNumber != null)
+            {
+                new ExitOnBlockNumberHandler(blockTree, _get.ProcessExit!, initConfig.ExitOnBlockNumber.Value, _get.LogManager);
+            }
 
             return Task.CompletedTask;
         }

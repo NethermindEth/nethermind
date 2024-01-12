@@ -8,10 +8,10 @@ namespace Nethermind.Blockchain.Receipts
 {
     public interface IReceiptFinder
     {
-        Keccak? FindBlockHash(Keccak txHash);
+        Hash256? FindBlockHash(Hash256 txHash);
         TxReceipt[] Get(Block block);
-        TxReceipt[] Get(Keccak blockHash);
+        TxReceipt[] Get(Hash256 blockHash);
         bool CanGetReceiptsByHash(long blockNumber);
-        bool TryGetReceiptsIterator(long blockNumber, Keccak blockHash, out ReceiptsIterator iterator);
+        bool TryGetReceiptsIterator(long blockNumber, Hash256 blockHash, out ReceiptsIterator iterator);
     }
 }

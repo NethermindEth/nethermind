@@ -12,7 +12,7 @@ namespace Nethermind.Crypto
     /// </summary>
     public class Ecdsa : IEcdsa
     {
-        public Signature Sign(PrivateKey privateKey, Keccak message)
+        public Signature Sign(PrivateKey privateKey, Hash256 message)
         {
             if (!SecP256k1.VerifyPrivateKey(privateKey.KeyBytes))
             {
@@ -48,7 +48,7 @@ namespace Nethermind.Crypto
             return signature;
         }
 
-        public PublicKey? RecoverPublicKey(Signature signature, Keccak message)
+        public PublicKey? RecoverPublicKey(Signature signature, Hash256 message)
         {
             Span<byte> publicKey = stackalloc byte[65];
             bool success = SpanSecP256k1.RecoverKeyFromCompact(publicKey, message.Bytes, signature.Bytes, signature.RecoveryId, false);
@@ -60,7 +60,7 @@ namespace Nethermind.Crypto
             return new PublicKey(publicKey);
         }
 
-        public CompressedPublicKey? RecoverCompressedPublicKey(Signature signature, Keccak message)
+        public CompressedPublicKey? RecoverCompressedPublicKey(Signature signature, Hash256 message)
         {
             Span<byte> publicKey = stackalloc byte[33];
             bool success = SpanSecP256k1.RecoverKeyFromCompact(publicKey, message.Bytes, signature.Bytes, signature.RecoveryId, true);
@@ -72,7 +72,7 @@ namespace Nethermind.Crypto
             return new CompressedPublicKey(publicKey);
         }
 
-        public PublicKey Decompress(CompressedPublicKey compressedPublicKey)
+        public static PublicKey Decompress(CompressedPublicKey compressedPublicKey)
         {
             byte[] deserialized = SecP256k1.Decompress(compressedPublicKey.Bytes);
             return new PublicKey(deserialized);

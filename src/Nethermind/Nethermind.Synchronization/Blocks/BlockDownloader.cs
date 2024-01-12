@@ -137,7 +137,7 @@ namespace Nethermind.Synchronization.Blocks
             }
         }
 
-        public async Task<long> DownloadHeaders(PeerInfo bestPeer, BlocksRequest blocksRequest, CancellationToken cancellation)
+        public async Task<long> DownloadHeaders(PeerInfo? bestPeer, BlocksRequest blocksRequest, CancellationToken cancellation)
         {
             if (bestPeer is null)
             {
@@ -169,7 +169,7 @@ namespace Nethermind.Synchronization.Blocks
                 Stopwatch sw = Stopwatch.StartNew();
                 BlockHeader?[] headers = await RequestHeaders(bestPeer, cancellation, currentNumber, headersToRequest);
 
-                Keccak? startHeaderHash = headers[0]?.Hash;
+                Hash256? startHeaderHash = headers[0]?.Hash;
                 BlockHeader? startHeader = (startHeaderHash is null)
                     ? null : _blockTree.FindHeader(startHeaderHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
                 if (startHeader is null)
@@ -240,8 +240,7 @@ namespace Nethermind.Synchronization.Blocks
             return headersSynced;
         }
 
-        public virtual async Task<long> DownloadBlocks(PeerInfo? bestPeer, BlocksRequest blocksRequest,
-            CancellationToken cancellation)
+        public virtual async Task<long> DownloadBlocks(PeerInfo? bestPeer, BlocksRequest blocksRequest, CancellationToken cancellation)
         {
             if (bestPeer is null)
             {
@@ -443,7 +442,7 @@ namespace Nethermind.Synchronization.Blocks
             int offset = 0;
             while (offset != context.NonEmptyBlockHashes.Count)
             {
-                IReadOnlyList<Keccak> hashesToRequest = context.GetHashesByOffset(offset, peer.MaxBodiesPerRequest());
+                IReadOnlyList<Hash256> hashesToRequest = context.GetHashesByOffset(offset, peer.MaxBodiesPerRequest());
                 Task<OwnedBlockBodies> getBodiesRequest = peer.SyncPeer.GetBlockBodies(hashesToRequest, cancellation);
                 await getBodiesRequest.ContinueWith(_ => DownloadFailHandler(getBodiesRequest, "bodies"), cancellation);
 
@@ -477,7 +476,7 @@ namespace Nethermind.Synchronization.Blocks
             int offset = 0;
             while (offset != context.NonEmptyBlockHashes.Count)
             {
-                IReadOnlyList<Keccak> hashesToRequest = context.GetHashesByOffset(offset, peer.MaxReceiptsPerRequest());
+                IReadOnlyList<Hash256> hashesToRequest = context.GetHashesByOffset(offset, peer.MaxReceiptsPerRequest());
                 Task<TxReceipt[][]> request = peer.SyncPeer.GetReceipts(hashesToRequest, cancellation);
                 await request.ContinueWith(_ => DownloadFailHandler(request, "receipts"), cancellation);
 
@@ -494,7 +493,7 @@ namespace Nethermind.Synchronization.Blocks
                     }
                     if (!context.TrySetReceipts(i + offset, txReceipts, out block))
                     {
-                        throw new EthSyncException($"{peer} sent invalid receipts for block {block.ToString(Block.Format.Short)}.");
+                        throw new EthSyncException($"{peer} {peer.PeerClientType} sent invalid receipts for block {block.ToString(Block.Format.Short)}.");
                     }
                 }
 
@@ -705,7 +704,7 @@ namespace Nethermind.Synchronization.Blocks
         /// <param name="downloadTime"></param>
         protected void AdjustSyncBatchSize(TimeSpan downloadTime)
         {
-            // We shrink the batch size to prevent timeout. Timeout are wasted bandwith.
+            // We shrink the batch size to prevent timeout. Timeout are wasted bandwidth.
             if (downloadTime > SyncBatchDownloadTimeUpperBound)
             {
                 _syncBatchSize.Shrink();
@@ -779,10 +778,10 @@ namespace Nethermind.Synchronization.Blocks
             }
 
             private CancellationTokenSource Cancellation { get; }
-            public bool IsCancellationRequested => Cancellation.IsCancellationRequested;
+            public readonly bool IsCancellationRequested => Cancellation.IsCancellationRequested;
             public SyncPeerAllocation Allocation { get; }
 
-            public void Cancel()
+            public readonly void Cancel()
             {
                 lock (Cancellation)
                 {

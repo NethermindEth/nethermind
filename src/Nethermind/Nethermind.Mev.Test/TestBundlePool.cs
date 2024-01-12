@@ -18,7 +18,7 @@ namespace Nethermind.Mev.Test
 {
     public class TestBundlePool : BundlePool
     {
-        private BlockingCollection<(MevBundle Bundle, SimulatedMevBundleContext? Context)> _queue = new(new ConcurrentQueue<(MevBundle, SimulatedMevBundleContext?)>());
+        private readonly BlockingCollection<(MevBundle Bundle, SimulatedMevBundleContext? Context)> _queue = new(new ConcurrentQueue<(MevBundle, SimulatedMevBundleContext?)>());
 
         public TestBundlePool(IBlockTree blockTree,
             IBundleSimulator simulator,

@@ -5,7 +5,6 @@
 set -e
 
 echo "Publishing packages to GitHub"
-echo "Drafting release $GIT_TAG"
 
 release_id=$(curl https://api.github.com/repos/$GITHUB_REPOSITORY/releases \
   -X GET \
@@ -14,6 +13,8 @@ release_id=$(curl https://api.github.com/repos/$GITHUB_REPOSITORY/releases \
 
 if [ "$release_id" == "" ]
 then
+  echo "Drafting release $GIT_TAG"
+
   body=$(printf \
     '{"tag_name": "%s", "target_commitish": "%s", "name": "v%s", "body": "## Release notes\\n\\n", "draft": true, "prerelease": %s}' \
     $GIT_TAG $GITHUB_SHA $GIT_TAG $PRERELEASE)
@@ -25,9 +26,13 @@ then
     -H "Authorization: Bearer $GITHUB_TOKEN" \
     -d "$body" | jq -r '.id')
 else
+  echo "Publishing release $GIT_TAG"
+
+  make_latest=$([ $PRERELEASE = 'true' ] && echo "false" || echo "true")
+
   body=$(printf \
-    '{"target_commitish": "%s", "name": "v%s", "draft": false, "prerelease": %s}' \
-    $GITHUB_SHA $GIT_TAG $PRERELEASE)
+    '{"target_commitish": "%s", "name": "v%s", "draft": false, "make_latest": "%s", "prerelease": %s}' \
+    $GITHUB_SHA $GIT_TAG $make_latest $PRERELEASE)
 
   curl https://api.github.com/repos/$GITHUB_REPOSITORY/releases/$release_id \
     -X PATCH \

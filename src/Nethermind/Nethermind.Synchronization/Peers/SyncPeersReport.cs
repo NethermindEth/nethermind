@@ -16,7 +16,7 @@ namespace Nethermind.Synchronization.Peers
     /// </summary>
     internal class SyncPeersReport
     {
-        private StringBuilder _stringBuilder = new();
+        private readonly StringBuilder _stringBuilder = new();
         private int _currentInitializedPeerCount;
 
         private readonly ISyncPeerPool _peerPool;
@@ -33,7 +33,7 @@ namespace Nethermind.Synchronization.Peers
             }
         }
 
-        private object _writeLock = new();
+        private readonly object _writeLock = new();
 
         private IEnumerable<PeerInfo> OrderedPeers => _peerPool.InitializedPeers
             .OrderByDescending(p => p.SyncPeer?.HeadNumber)
@@ -155,7 +155,7 @@ namespace Nethermind.Synchronization.Peers
             }
         }
 
-        internal string? MakeReportForPeers(IEnumerable<PeerInfo> peers, string header)
+        internal string MakeReportForPeers(IEnumerable<PeerInfo> peers, string header)
         {
             _stringBuilder.Append(header);
             bool headerAdded = false;
@@ -189,7 +189,7 @@ namespace Nethermind.Synchronization.Peers
             _stringBuilder.Append('[').Append(peerInfo.SyncPeer.ClientId).Append(']');
         }
 
-        private string GetPaddedAverageTransferSpeed(INodeStats nodeStats, TransferSpeedType transferSpeedType)
+        private static string GetPaddedAverageTransferSpeed(INodeStats nodeStats, TransferSpeedType transferSpeedType)
         {
             long? speed = nodeStats.GetAverageTransferSpeed(transferSpeedType);
             if (speed is null)
@@ -230,7 +230,7 @@ namespace Nethermind.Synchronization.Peers
             public int Snap { get; set; }
             public int Total { get; set; }
 
-            public void AppendTo(StringBuilder sb, string allText)
+            public readonly void AppendTo(StringBuilder sb, string allText)
             {
                 if (Total == None)
                 {
@@ -248,7 +248,7 @@ namespace Nethermind.Synchronization.Peers
                 if (Witness > 0) AddComma(sb, ref added).Append(Witness).Append(" Witness");
                 if (Snap > 0) AddComma(sb, ref added).Append(Snap).Append(" Snap");
 
-                StringBuilder AddComma(StringBuilder sb, ref bool itemAdded)
+                static StringBuilder AddComma(StringBuilder sb, ref bool itemAdded)
                 {
                     if (itemAdded)
                     {

@@ -73,6 +73,7 @@ namespace Nethermind.Network.P2P
         }
 
         public bool IsClosing => State > SessionState.Initialized;
+        private bool IsClosed => State > SessionState.DisconnectingProtocols;
         public bool IsNetworkIdMatched { get; set; }
         public int LocalPort { get; set; }
         public PublicKey? RemoteNodeId { get; set; }
@@ -154,6 +155,8 @@ namespace Nethermind.Network.P2P
 
         public IPingSender PingSender { get; set; }
 
+        private (DisconnectReason, string?)? _disconnectAfterInitialized = null;
+
         public void ReceiveMessage(ZeroPacket zeroPacket)
         {
             Interlocked.Add(ref Metrics.P2PBytesReceived, zeroPacket.Content.ReadableBytes);
@@ -209,7 +212,9 @@ namespace Nethermind.Network.P2P
                     throw new InvalidOperationException($"{nameof(DeliverMessage)} called {this}");
                 }
 
-                if (IsClosing)
+                // Must allow sending out packet when `DisconnectingProtocols` so that we can send out disconnect reason
+                // and hello (part of protocol)
+                if (IsClosed)
                 {
                     return 1;
                 }
@@ -274,8 +279,8 @@ namespace Nethermind.Network.P2P
         {
             if (_logger.IsTrace) _logger.Trace($"{nameof(Init)} called on {this}");
 
-            if (context is null) throw new ArgumentNullException(nameof(context));
-            if (packetSender is null) throw new ArgumentNullException(nameof(packetSender));
+            ArgumentNullException.ThrowIfNull(context);
+            ArgumentNullException.ThrowIfNull(packetSender);
 
             P2PVersion = p2PVersion;
             lock (_sessionStateLock)
@@ -296,6 +301,15 @@ namespace Nethermind.Network.P2P
             }
 
             Initialized?.Invoke(this, EventArgs.Empty);
+
+            // Disconnect may send disconnect reason message. But the hello message must be sent first, which is done
+            // during Initialized event.
+            // https://github.com/ethereum/devp2p/blob/master/rlpx.md#user-content-hello-0x00
+            if (_disconnectAfterInitialized != null)
+            {
+                InitiateDisconnect(_disconnectAfterInitialized.Value.Item1, _disconnectAfterInitialized.Value.Item2);
+                _disconnectAfterInitialized = null;
+            }
         }
 
         public void Handshake(PublicKey? handshakeRemoteNodeId)
@@ -378,12 +392,20 @@ namespace Nethermind.Network.P2P
                     return;
                 }
 
+                if (State <= SessionState.HandshakeComplete)
+                {
+                    if (_disconnectAfterInitialized != null) return;
+
+                    _disconnectAfterInitialized = (disconnectReason, details);
+                    return;
+                }
+
                 State = SessionState.DisconnectingProtocols;
             }
 
             if (_logger.IsDebug) _logger.Debug($"{this} initiating disconnect because {disconnectReason}, details: {details}");
             //Trigger disconnect on each protocol handler (if p2p is initialized it will send disconnect message to the peer)
-            if (_protocols.Any())
+            if (!_protocols.IsEmpty)
             {
                 foreach (IProtocolHandler protocolHandler in _protocols.Values)
                 {
@@ -404,7 +426,7 @@ namespace Nethermind.Network.P2P
             MarkDisconnected(disconnectReason, DisconnectType.Local, details);
         }
 
-        private object _sessionStateLock = new();
+        private readonly object _sessionStateLock = new();
         public byte P2PVersion { get; private set; }
 
         private SessionState _state;
@@ -550,12 +572,13 @@ namespace Nethermind.Network.P2P
         private AdaptiveCodeResolver GetOrCreateResolver()
         {
             string key = string.Join(":", _protocols.Select(p => p.Key).OrderBy(x => x).ToArray());
-            if (!_resolvers.ContainsKey(key))
+            if (!_resolvers.TryGetValue(key, out AdaptiveCodeResolver? value))
             {
-                _resolvers[key] = new AdaptiveCodeResolver(_protocols);
+                value = new AdaptiveCodeResolver(_protocols);
+                _resolvers[key] = value;
             }
 
-            return _resolvers[key];
+            return value;
         }
 
         public override string ToString()

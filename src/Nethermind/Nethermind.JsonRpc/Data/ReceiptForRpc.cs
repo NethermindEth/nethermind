@@ -6,7 +6,8 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Evm;
 using Nethermind.Int256;
-using Newtonsoft.Json;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace Nethermind.JsonRpc.Data
 {
@@ -16,7 +17,7 @@ namespace Nethermind.JsonRpc.Data
         {
         }
 
-        public ReceiptForRpc(Keccak txHash, TxReceipt receipt, TxGasInfo gasInfo, int logIndexStart = 0)
+        public ReceiptForRpc(Hash256 txHash, TxReceipt receipt, TxGasInfo gasInfo, int logIndexStart = 0)
         {
             TransactionHash = txHash;
             TransactionIndex = receipt.Index;
@@ -38,52 +39,54 @@ namespace Nethermind.JsonRpc.Data
             Type = receipt.TxType;
         }
 
-        public Keccak TransactionHash { get; set; }
+        public Hash256 TransactionHash { get; set; }
         public long TransactionIndex { get; set; }
-        public Keccak BlockHash { get; set; }
+        public Hash256 BlockHash { get; set; }
         public long BlockNumber { get; set; }
         public long CumulativeGasUsed { get; set; }
         public long GasUsed { get; set; }
 
-        [JsonProperty(NullValueHandling = NullValueHandling.Ignore)]
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public ulong? BlobGasUsed { get; set; }
 
-        [JsonProperty(NullValueHandling = NullValueHandling.Ignore)]
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public UInt256? BlobGasPrice { get; set; }
 
         public UInt256? EffectiveGasPrice { get; set; }
         public Address From { get; set; }
 
-        [JsonProperty(NullValueHandling = NullValueHandling.Include)]
+        [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
         public Address To { get; set; }
 
-        [JsonProperty(NullValueHandling = NullValueHandling.Include)]
+        [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
         public Address ContractAddress { get; set; }
         public LogEntryForRpc[] Logs { get; set; }
         public Bloom? LogsBloom { get; set; }
-        public Keccak Root { get; set; }
+        public Hash256 Root { get; set; }
         public long Status { get; set; }
         public string? Error { get; set; }
         public TxType Type { get; set; }
 
         public TxReceipt ToReceipt()
         {
-            TxReceipt receipt = new();
-            receipt.Bloom = LogsBloom;
-            receipt.Error = Error;
-            receipt.Index = (int)TransactionIndex;
-            receipt.Logs = Logs.Select(l => l.ToLogEntry()).ToArray();
-            receipt.Recipient = To;
-            receipt.Sender = From;
-            receipt.BlockHash = BlockHash;
-            receipt.BlockNumber = BlockNumber;
-            receipt.ContractAddress = ContractAddress;
-            receipt.GasUsed = GasUsed;
-            receipt.StatusCode = (byte)Status;
-            receipt.TxHash = TransactionHash;
-            receipt.GasUsedTotal = CumulativeGasUsed;
-            receipt.PostTransactionState = Root;
-            receipt.TxType = Type;
+            TxReceipt receipt = new()
+            {
+                Bloom = LogsBloom,
+                Error = Error,
+                Index = (int)TransactionIndex,
+                Logs = Logs.Select(l => l.ToLogEntry()).ToArray(),
+                Recipient = To,
+                Sender = From,
+                BlockHash = BlockHash,
+                BlockNumber = BlockNumber,
+                ContractAddress = ContractAddress,
+                GasUsed = GasUsed,
+                StatusCode = (byte)Status,
+                TxHash = TransactionHash,
+                GasUsedTotal = CumulativeGasUsed,
+                PostTransactionState = Root,
+                TxType = Type
+            };
             return receipt;
         }
     }

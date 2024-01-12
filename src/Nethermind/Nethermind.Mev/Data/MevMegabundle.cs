@@ -11,12 +11,12 @@ namespace Nethermind.Mev.Data
 {
     public partial class MevMegabundle : MevBundle, IEquatable<MevMegabundle>
     {
-        public MevMegabundle(long blockNumber, IReadOnlyList<BundleTransaction> transactions, Keccak[]? revertingTxHashes = null,
+        public MevMegabundle(long blockNumber, IReadOnlyList<BundleTransaction> transactions, Hash256[]? revertingTxHashes = null,
             Signature? relaySignature = null, UInt256? minTimestamp = null, UInt256? maxTimestamp = null)
             : base(blockNumber, transactions, minTimestamp, maxTimestamp)
         {
             RelaySignature = relaySignature;
-            RevertingTxHashes = revertingTxHashes ?? Array.Empty<Keccak>();
+            RevertingTxHashes = revertingTxHashes ?? Array.Empty<Hash256>();
             Hash = GetHash(this);
             for (int i = 0; i < transactions.Count; i++)
             {
@@ -24,16 +24,16 @@ namespace Nethermind.Mev.Data
             }
         }
 
-        public override Keccak Hash { get; }
+        public override Hash256 Hash { get; }
         public Signature? RelaySignature { get; set; }
 
         public Address? RelayAddress { get; internal set; }
 
-        public Keccak[] RevertingTxHashes { get; }
+        public Hash256[] RevertingTxHashes { get; }
 
         public bool Equals(MevMegabundle? other)
         {
-            if (ReferenceEquals(null, other)) return false;
+            if (other is null) return false;
             if (ReferenceEquals(this, other)) return true;
             return Equals(Hash, other.Hash)
                    && Equals(RelaySignature, other.RelaySignature);
@@ -41,7 +41,7 @@ namespace Nethermind.Mev.Data
 
         public override bool Equals(object? obj)
         {
-            if (ReferenceEquals(null, obj)) return false;
+            if (obj is null) return false;
             if (ReferenceEquals(this, obj)) return true;
             if (obj.GetType() != GetType()) return false;
             return Equals((MevMegabundle)obj);

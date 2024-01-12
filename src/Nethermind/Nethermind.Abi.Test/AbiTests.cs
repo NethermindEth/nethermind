@@ -369,7 +369,7 @@ public class AbiTests
     [TestCase(AbiEncodingStyle.None)]
     public void Test_packed(AbiEncodingStyle encodingStyle)
     {
-        Keccak assetId = Keccak.Compute("assetId");
+        Hash256 assetId = Keccak.Compute("assetId");
         uint expiryTime = (uint)Timestamper.Default.UnixTime.Seconds + 86000;
         UInt256 value = 1.Ether();
         uint units = 10U;

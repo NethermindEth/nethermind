@@ -2,16 +2,19 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Frozen;
 using System.Collections.Generic;
 using System.IO.Abstractions;
 using System.Linq;
 using System.Reflection;
 using System.Threading.Tasks;
 using Nethermind.Logging;
-using Newtonsoft.Json;
+using Nethermind.Serialization.Json;
 
 namespace Nethermind.JsonRpc.Modules
 {
+    using Pool = (Func<bool, Task<IRpcModule>> RentModule, Action<IRpcModule> ReturnModule, IRpcModulePool ModulePool);
+
     public class RpcModuleProvider : IRpcModuleProvider
     {
         private readonly ILogger _logger;
@@ -19,15 +22,18 @@ namespace Nethermind.JsonRpc.Modules
 
         private readonly HashSet<string> _modules = new(StringComparer.InvariantCultureIgnoreCase);
         private readonly HashSet<string> _enabledModules = new(StringComparer.InvariantCultureIgnoreCase);
-        private readonly Dictionary<string, ResolvedMethodInfo> _methods = new(StringComparer.InvariantCulture);
 
-        private readonly Dictionary<string, (Func<bool, Task<IRpcModule>> RentModule, Action<IRpcModule> ReturnModule, IRpcModulePool ModulePool)> _pools = new();
+        private FrozenDictionary<string, ResolvedMethodInfo> _methods = FrozenDictionary<string, ResolvedMethodInfo>.Empty;
+        private FrozenDictionary<string, Pool> _pools = FrozenDictionary<string, Pool>.Empty;
 
         private readonly IRpcMethodFilter _filter = NullRpcMethodFilter.Instance;
+
+        private readonly object _updateRegistrationsLock = new();
 
         public RpcModuleProvider(IFileSystem fileSystem, IJsonRpcConfig jsonRpcConfig, ILogManager logManager)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            Serializer = new EthereumJsonSerializer();
             _jsonRpcConfig = jsonRpcConfig ?? throw new ArgumentNullException(nameof(jsonRpcConfig));
             if (fileSystem.File.Exists(_jsonRpcConfig.CallsFilterFilePath))
             {
@@ -36,9 +42,7 @@ namespace Nethermind.JsonRpc.Modules
             }
         }
 
-        public JsonSerializer Serializer { get; } = new();
-
-        public IReadOnlyCollection<JsonConverter> Converters { get; } = new List<JsonConverter>();
+        public IJsonSerializer Serializer { get; }
 
         public IReadOnlyCollection<string> Enabled => _enabledModules;
 
@@ -54,25 +58,41 @@ namespace Nethermind.JsonRpc.Modules
             }
 
             string moduleType = attribute.ModuleType;
+            lock (_updateRegistrationsLock)
+            {
+                // FrozenDictionary can't be directly updated (which makes it fast for reading) so we combine the two sets of
+                // data as an Enumerable create an new FrozenDictionary from it and then update the reference
+                _pools = GetPools<T>(moduleType, pool).ToFrozenDictionary(StringComparer.Ordinal);
+                _methods = _methods.Concat(GetMethods<T>(moduleType)).ToFrozenDictionary(StringComparer.Ordinal);
 
-            _pools[moduleType] = (async canBeShared => await pool.GetModule(canBeShared), m => pool.ReturnModule((T)m), pool);
-            _modules.Add(moduleType);
+                _modules.Add(moduleType);
 
-            IReadOnlyCollection<JsonConverter> poolConverters = pool.Factory.GetConverters();
-            ((List<JsonConverter>)Converters).AddRange(poolConverters);
+                if (_jsonRpcConfig.EnabledModules.Contains(moduleType, StringComparer.InvariantCultureIgnoreCase))
+                {
+                    _enabledModules.Add(moduleType);
+                }
+            }
+        }
 
+        private IEnumerable<KeyValuePair<string, Pool>> GetPools<T>(string moduleType, IRpcModulePool<T> pool) where T : IRpcModule
+        {
+            foreach (KeyValuePair<string, Pool> item in _pools)
+            {
+                yield return item;
+            }
+
+            yield return new(moduleType, (async canBeShared => await pool.GetModule(canBeShared), m => pool.ReturnModule((T)m), pool));
+        }
+
+        private IEnumerable<KeyValuePair<string, ResolvedMethodInfo>> GetMethods<T>(string moduleType) where T : IRpcModule
+        {
             foreach ((string name, (MethodInfo info, bool readOnly, RpcEndpoint availability)) in GetMethodDict(typeof(T)))
             {
                 ResolvedMethodInfo resolvedMethodInfo = new(moduleType, info, readOnly, availability);
                 if (_filter.AcceptMethod(resolvedMethodInfo.ToString()))
                 {
-                    _methods[name] = resolvedMethodInfo;
+                    yield return new(name, resolvedMethodInfo);
                 }
-            }
-
-            if (_jsonRpcConfig.EnabledModules.Contains(moduleType, StringComparer.InvariantCultureIgnoreCase))
-            {
-                _enabledModules.Add(moduleType);
             }
         }
 
@@ -90,11 +110,11 @@ namespace Nethermind.JsonRpc.Modules
             return _enabledModules.Contains(result.ModuleType) ? ModuleResolution.Enabled : ModuleResolution.Disabled;
         }
 
-        public (MethodInfo, bool) Resolve(string methodName)
+        public (MethodInfo, ParameterInfo[], bool) Resolve(string methodName)
         {
-            if (!_methods.TryGetValue(methodName, out ResolvedMethodInfo result)) return (null, false);
+            if (!_methods.TryGetValue(methodName, out ResolvedMethodInfo result)) return (null, Array.Empty<ParameterInfo>(), false);
 
-            return (result.MethodInfo, result.ReadOnly);
+            return (result.MethodInfo, result.ExpectedParameters, result.ReadOnly);
         }
 
         public Task<IRpcModule> Rent(string methodName, bool canBeShared)
@@ -114,7 +134,7 @@ namespace Nethermind.JsonRpc.Modules
 
         public IRpcModulePool? GetPool(string moduleType) => _pools.TryGetValue(moduleType, out var poolInfo) ? poolInfo.ModulePool : null;
 
-        private IDictionary<string, (MethodInfo, bool, RpcEndpoint)> GetMethodDict(Type type)
+        private static IDictionary<string, (MethodInfo, bool, RpcEndpoint)> GetMethodDict(Type type)
         {
             var methods = type.GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly);
             return methods.ToDictionary(
@@ -136,12 +156,14 @@ namespace Nethermind.JsonRpc.Modules
             {
                 ModuleType = moduleType;
                 MethodInfo = methodInfo;
+                ExpectedParameters = methodInfo.GetParameters();
                 ReadOnly = readOnly;
                 Availability = availability;
             }
 
             public string ModuleType { get; }
             public MethodInfo MethodInfo { get; }
+            public ParameterInfo[] ExpectedParameters { get; }
             public bool ReadOnly { get; }
             public RpcEndpoint Availability { get; }
 

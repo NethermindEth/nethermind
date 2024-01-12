@@ -90,9 +90,8 @@ public class MevPlugin : IConsensusWrapperPlugin
                 var (getFromApi, _) = _nethermindApi!.ForProducer;
 
                 _tracerFactory = new TracerFactory(
-                    getFromApi.DbProvider!,
                     getFromApi.BlockTree!,
-                    getFromApi.ReadOnlyTrieStore!,
+                    getFromApi.WorldStateManager!,
                     getFromApi.BlockPreprocessor!,
                     getFromApi.SpecProvider!,
                     getFromApi.LogManager!,

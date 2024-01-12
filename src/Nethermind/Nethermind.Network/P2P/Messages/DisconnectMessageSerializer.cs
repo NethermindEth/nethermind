@@ -20,7 +20,7 @@ namespace Nethermind.Network.P2P.Messages
             rlpStream.Encode((byte)msg.Reason);
         }
 
-        private int GetLength(DisconnectMessage message, out int contentLength)
+        private static int GetLength(DisconnectMessage message, out int contentLength)
         {
             contentLength = Rlp.LengthOf((byte)message.Reason);
 

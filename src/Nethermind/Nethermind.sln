@@ -206,6 +206,10 @@ EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.UPnP.Plugin", "Nethermind.UPnP.Plugin\Nethermind.UPnP.Plugin.csproj", "{48E50409-26FE-4FD8-AF6E-2A0E79F794CE}"
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution Items", "{0E0F75A7-A03F-4D66-910B-17DB659A33E3}"
+	ProjectSection(SolutionItems) = preProject
+		Directory.Build.props = Directory.Build.props
+		Directory.Packages.props = Directory.Packages.props
+	EndProjectSection
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Serialization.Ssz.Test", "Nethermind.Serialization.Ssz.Test\Nethermind.Serialization.Ssz.Test.csproj", "{E1E7BEFC-52C0-49ED-B0A7-CB8C3250D120}"
 EndProject
@@ -214,6 +218,10 @@ EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Serialization.Ssz", "Nethermind.Serialization.Ssz\Nethermind.Serialization.Ssz.csproj", "{FD9E69EA-75DB-495B-A8DD-139D7A9D8C6D}"
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Network.Contract", "Nethermind.Network.Contract\Nethermind.Network.Contract.csproj", "{AD151E35-4BBC-4A83-8F57-CC8665F6E007}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Optimism", "Nethermind.Optimism\Nethermind.Optimism.csproj", "{32E5D15A-F6A6-40EA-9F31-05FE9251F958}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Init.Snapshot", "Nethermind.Init.Snapshot\Nethermind.Init.Snapshot.csproj", "{AD09FBCB-5496-499B-9129-B6D139A65B6F}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -597,6 +605,14 @@ Global
 		{AD151E35-4BBC-4A83-8F57-CC8665F6E007}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{AD151E35-4BBC-4A83-8F57-CC8665F6E007}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{AD151E35-4BBC-4A83-8F57-CC8665F6E007}.Release|Any CPU.Build.0 = Release|Any CPU
+		{32E5D15A-F6A6-40EA-9F31-05FE9251F958}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{32E5D15A-F6A6-40EA-9F31-05FE9251F958}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{32E5D15A-F6A6-40EA-9F31-05FE9251F958}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{32E5D15A-F6A6-40EA-9F31-05FE9251F958}.Release|Any CPU.Build.0 = Release|Any CPU
+		{AD09FBCB-5496-499B-9129-B6D139A65B6F}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{AD09FBCB-5496-499B-9129-B6D139A65B6F}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{AD09FBCB-5496-499B-9129-B6D139A65B6F}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{AD09FBCB-5496-499B-9129-B6D139A65B6F}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

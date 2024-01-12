@@ -129,9 +129,9 @@ public class VirtualMachine : IVirtualMachine
 internal sealed class VirtualMachine<TLogger> : IVirtualMachine
     where TLogger : struct, IIsTracing
 {
-    private UInt256 P255Int = (UInt256)System.Numerics.BigInteger.Pow(2, 255);
+    private readonly UInt256 P255Int = (UInt256)System.Numerics.BigInteger.Pow(2, 255);
     private UInt256 P255 => P255Int;
-    private UInt256 BigInt256 = 256;
+    private readonly UInt256 BigInt256 = 256;
     public UInt256 BigInt32 = 32;
 
     internal byte[] BytesZero = { 0 };
@@ -156,7 +156,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine
 
     private readonly IBlockhashProvider _blockhashProvider;
     private readonly ISpecProvider _specProvider;
-    private static readonly LruCache<ValueKeccak, CodeInfo> _codeCache = new(MemoryAllowance.CodeCacheSize, MemoryAllowance.CodeCacheSize, "VM bytecodes");
+    private static readonly LruCache<ValueHash256, CodeInfo> _codeCache = new(MemoryAllowance.CodeCacheSize, MemoryAllowance.CodeCacheSize, "VM bytecodes");
     private readonly ILogger _logger;
     private IWorldState _worldState;
     private IWorldState _state;
@@ -185,7 +185,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine
         _state = worldState;
         _worldState = worldState;
 
-        IReleaseSpec spec = _specProvider.GetSpec(state.Env.TxExecutionContext.Header.Number, state.Env.TxExecutionContext.Header.Timestamp);
+        IReleaseSpec spec = _specProvider.GetSpec(state.Env.TxExecutionContext.BlockExecutionContext.Header.Number, state.Env.TxExecutionContext.BlockExecutionContext.Header.Timestamp);
         EvmState currentState = state;
         byte[] previousCallResult = null;
         ZeroPaddedSpan previousCallOutput = ZeroPaddedSpan.Empty;
@@ -287,14 +287,10 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine
                         }
                         else if (callResult.ShouldRevert)
                         {
-                            if (currentState.ExecutionType.IsAnyCreate())
-                            {
-                                _txTracer.ReportActionError(EvmExceptionType.Revert, currentState.GasAvailable - codeDepositGasCost);
-                            }
-                            else
-                            {
-                                _txTracer.ReportActionError(EvmExceptionType.Revert, currentState.GasAvailable);
-                            }
+                            _txTracer.ReportActionRevert(currentState.ExecutionType.IsAnyCreate()
+                                    ? currentState.GasAvailable - codeDepositGasCost
+                                    : currentState.GasAvailable,
+                                callResult.Output);
                         }
                         else
                         {
@@ -425,7 +421,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine
 
                     if (typeof(TTracingActions) == typeof(IsTracing))
                     {
-                        _txTracer.ReportActionError(EvmExceptionType.Revert, previousState.GasAvailable);
+                        _txTracer.ReportActionRevert(previousState.GasAvailable, callResult.Output);
                     }
                 }
             }
@@ -439,8 +435,8 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine
 
                 if (txTracer.IsTracingInstructions)
                 {
-                    txTracer.ReportOperationError(ex is EvmException evmException ? evmException.ExceptionType : EvmExceptionType.Other);
                     txTracer.ReportOperationRemainingGas(0);
+                    txTracer.ReportOperationError(ex is EvmException evmException ? evmException.ExceptionType : EvmExceptionType.Other);
                 }
 
                 if (typeof(TTracingActions) == typeof(IsTracing))
@@ -491,7 +487,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine
             return _precompiles[codeSource];
         }
 
-        Keccak codeHash = worldState.GetCodeHash(codeSource);
+        Hash256 codeHash = worldState.GetCodeHash(codeSource);
         CodeInfo cachedCodeInfo = _codeCache.Get(codeHash);
         if (cachedCodeInfo is null)
         {
@@ -762,9 +758,9 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine
                 ExecuteCode<TTracingInstructions, IsTracing, IsTracing>(vmState, ref stack, gasAvailable, spec) :
                 ExecuteCode<TTracingInstructions, IsTracing, NotTracing>(vmState, ref stack, gasAvailable, spec);
         }
-Empty:
+    Empty:
         return CallResult.Empty;
-OutOfGas:
+    OutOfGas:
         return CallResult.OutOfGasException;
     }
 
@@ -777,13 +773,13 @@ OutOfGas:
         int programCounter = vmState.ProgramCounter;
         ref readonly ExecutionEnvironment env = ref vmState.Env;
         ref readonly TxExecutionContext txCtx = ref env.TxExecutionContext;
+        ref readonly BlockExecutionContext blkCtx = ref txCtx.BlockExecutionContext;
         Span<byte> code = env.CodeInfo.MachineCode.AsSpan();
         EvmExceptionType exceptionType = EvmExceptionType.None;
         bool isRevert = false;
 #if DEBUG
         DebugTracer? debugger = _txTracer.GetTracer<DebugTracer>();
 #endif
-        Span<byte> bytes;
         SkipInit(out UInt256 a);
         SkipInit(out UInt256 b);
         SkipInit(out UInt256 c);
@@ -804,6 +800,7 @@ OutOfGas:
                 StartInstructionTrace(instruction, vmState, gasAvailable, programCounter, in stack);
 
             programCounter++;
+            Span<byte> bytes;
             switch (instruction)
             {
                 case Instruction.STOP:
@@ -814,8 +811,8 @@ OutOfGas:
                     {
                         gasAvailable -= GasCostOf.VeryLow;
 
-                        stack.PopUInt256(out b);
-                        stack.PopUInt256(out a);
+                        if (!stack.PopUInt256(out b)) goto StackUnderflow;
+                        if (!stack.PopUInt256(out a)) goto StackUnderflow;
                         UInt256.Add(in a, in b, out result);
                         stack.PushUInt256(result);
 
@@ -825,8 +822,8 @@ OutOfGas:
                     {
                         gasAvailable -= GasCostOf.Low;
 
-                        stack.PopUInt256(out a);
-                        stack.PopUInt256(out b);
+                        if (!stack.PopUInt256(out a)) goto StackUnderflow;
+                        if (!stack.PopUInt256(out b)) goto StackUnderflow;
                         UInt256.Multiply(in a, in b, out result);
                         stack.PushUInt256(in result);
                         break;
@@ -835,8 +832,8 @@ OutOfGas:
                     {
                         gasAvailable -= GasCostOf.VeryLow;
 
-                        stack.PopUInt256(out a);
-                        stack.PopUInt256(out b);
+                        if (!stack.PopUInt256(out a)) goto StackUnderflow;
+                        if (!stack.PopUInt256(out b)) goto StackUnderflow;
                         UInt256.Subtract(in a, in b, out result);
 
                         stack.PushUInt256(in result);
@@ -846,8 +843,8 @@ OutOfGas:
                     {
                         gasAvailable -= GasCostOf.Low;
 
-                        stack.PopUInt256(out a);
-                        stack.PopUInt256(out b);
+                        if (!stack.PopUInt256(out a)) goto StackUnderflow;
+                        if (!stack.PopUInt256(out b)) goto StackUnderflow;
                         if (b.IsZero)
                         {
                             stack.PushZero();
@@ -864,8 +861,8 @@ OutOfGas:
                     {
                         gasAvailable -= GasCostOf.Low;
 
-                        stack.PopUInt256(out a);
-                        stack.PopUInt256(out b);
+                        if (!stack.PopUInt256(out a)) goto StackUnderflow;
+                        if (!stack.PopUInt256(out b)) goto StackUnderflow;
                         if (b.IsZero)
                         {
                             stack.PushZero();
@@ -887,8 +884,8 @@ OutOfGas:
                     {
                         gasAvailable -= GasCostOf.Low;
 
-                        stack.PopUInt256(out a);
-                        stack.PopUInt256(out b);
+                        if (!stack.PopUInt256(out a)) goto StackUnderflow;
+                        if (!stack.PopUInt256(out b)) goto StackUnderflow;
                         UInt256.Mod(in a, in b, out result);
                         stack.PushUInt256(in result);
                         break;
@@ -897,8 +894,8 @@ OutOfGas:
                     {
                         gasAvailable -= GasCostOf.Low;
 
-                        stack.PopUInt256(out a);
-                        stack.PopUInt256(out b);
+                        if (!stack.PopUInt256(out a)) goto StackUnderflow;
+                        if (!stack.PopUInt256(out b)) goto StackUnderflow;
                         if (b.IsZeroOrOne)
                         {
                             stack.PushZero();
@@ -916,9 +913,9 @@ OutOfGas:
                     {
                         gasAvailable -= GasCostOf.Mid;
 
-                        stack.PopUInt256(out a);
-                        stack.PopUInt256(out b);
-                        stack.PopUInt256(out c);
+                        if (!stack.PopUInt256(out a)) goto StackUnderflow;
+                        if (!stack.PopUInt256(out b)) goto StackUnderflow;
+                        if (!stack.PopUInt256(out c)) goto StackUnderflow;
 
                         if (c.IsZero)
                         {
@@ -936,9 +933,9 @@ OutOfGas:
                     {
                         gasAvailable -= GasCostOf.Mid;
 
-                        stack.PopUInt256(out a);
-                        stack.PopUInt256(out b);
-                        stack.PopUInt256(out c);
+                        if (!stack.PopUInt256(out a)) goto StackUnderflow;
+                        if (!stack.PopUInt256(out b)) goto StackUnderflow;
+                        if (!stack.PopUInt256(out c)) goto StackUnderflow;
 
                         if (c.IsZero)
                         {
@@ -958,7 +955,7 @@ OutOfGas:
 
                         Metrics.ModExpOpcode++;
 
-                        stack.PopUInt256(out a);
+                        if (!stack.PopUInt256(out a)) goto StackUnderflow;
                         bytes = stack.PopWord256();
 
                         int leadingZeros = bytes.LeadingZerosCount();
@@ -993,10 +990,10 @@ OutOfGas:
                     {
                         gasAvailable -= GasCostOf.Low;
 
-                        stack.PopUInt256(out a);
+                        if (!stack.PopUInt256(out a)) goto StackUnderflow;
                         if (a >= BigInt32)
                         {
-                            stack.EnsureDepth(1);
+                            if (!stack.EnsureDepth(1)) goto StackUnderflow;
                             break;
                         }
 
@@ -1021,8 +1018,8 @@ OutOfGas:
                     {
                         gasAvailable -= GasCostOf.VeryLow;
 
-                        stack.PopUInt256(out a);
-                        stack.PopUInt256(out b);
+                        if (!stack.PopUInt256(out a)) goto StackUnderflow;
+                        if (!stack.PopUInt256(out b)) goto StackUnderflow;
                         if (a < b)
                         {
                             stack.PushOne();
@@ -1038,8 +1035,8 @@ OutOfGas:
                     {
                         gasAvailable -= GasCostOf.VeryLow;
 
-                        stack.PopUInt256(out a);
-                        stack.PopUInt256(out b);
+                        if (!stack.PopUInt256(out a)) goto StackUnderflow;
+                        if (!stack.PopUInt256(out b)) goto StackUnderflow;
                         if (a > b)
                         {
                             stack.PushOne();
@@ -1055,8 +1052,8 @@ OutOfGas:
                     {
                         gasAvailable -= GasCostOf.VeryLow;
 
-                        stack.PopUInt256(out a);
-                        stack.PopUInt256(out b);
+                        if (!stack.PopUInt256(out a)) goto StackUnderflow;
+                        if (!stack.PopUInt256(out b)) goto StackUnderflow;
 
                         if (As<UInt256, Int256>(ref a).CompareTo(As<UInt256, Int256>(ref b)) < 0)
                         {
@@ -1073,8 +1070,8 @@ OutOfGas:
                     {
                         gasAvailable -= GasCostOf.VeryLow;
 
-                        stack.PopUInt256(out a);
-                        stack.PopUInt256(out b);
+                        if (!stack.PopUInt256(out a)) goto StackUnderflow;
+                        if (!stack.PopUInt256(out b)) goto StackUnderflow;
                         if (As<UInt256, Int256>(ref a).CompareTo(As<UInt256, Int256>(ref b)) > 0)
                         {
                             stack.PushOne();
@@ -1090,8 +1087,8 @@ OutOfGas:
                     {
                         gasAvailable -= GasCostOf.VeryLow;
 
-                        stack.PopUInt256(out a);
-                        stack.PopUInt256(out b);
+                        if (!stack.PopUInt256(out a)) goto StackUnderflow;
+                        if (!stack.PopUInt256(out b)) goto StackUnderflow;
                         if (a.Equals(b))
                         {
                             stack.PushOne();
@@ -1107,7 +1104,7 @@ OutOfGas:
                     {
                         gasAvailable -= GasCostOf.VeryLow;
 
-                        stack.PopUInt256(out a);
+                        if (!stack.PopUInt256(out a)) goto StackUnderflow;
                         if (a.IsZero)
                         {
                             stack.PushOne();
@@ -1123,8 +1120,13 @@ OutOfGas:
                     {
                         gasAvailable -= GasCostOf.VeryLow;
 
-                        Vector256<byte> aVec = ReadUnaligned<Vector256<byte>>(ref stack.PopBytesByRef());
-                        Vector256<byte> bVec = ReadUnaligned<Vector256<byte>>(ref stack.PopBytesByRef());
+                        ref byte bytesRef = ref stack.PopBytesByRef();
+                        if (IsNullRef(ref bytesRef)) goto StackUnderflow;
+                        Vector256<byte> aVec = ReadUnaligned<Vector256<byte>>(ref bytesRef);
+
+                        bytesRef = ref stack.PopBytesByRef();
+                        if (IsNullRef(ref bytesRef)) goto StackUnderflow;
+                        Vector256<byte> bVec = ReadUnaligned<Vector256<byte>>(ref bytesRef);
 
                         WriteUnaligned(ref stack.PushBytesRef(), Vector256.BitwiseAnd(aVec, bVec));
                         break;
@@ -1133,8 +1135,13 @@ OutOfGas:
                     {
                         gasAvailable -= GasCostOf.VeryLow;
 
-                        Vector256<byte> aVec = ReadUnaligned<Vector256<byte>>(ref stack.PopBytesByRef());
-                        Vector256<byte> bVec = ReadUnaligned<Vector256<byte>>(ref stack.PopBytesByRef());
+                        ref byte bytesRef = ref stack.PopBytesByRef();
+                        if (IsNullRef(ref bytesRef)) goto StackUnderflow;
+                        Vector256<byte> aVec = ReadUnaligned<Vector256<byte>>(ref bytesRef);
+
+                        bytesRef = ref stack.PopBytesByRef();
+                        if (IsNullRef(ref bytesRef)) goto StackUnderflow;
+                        Vector256<byte> bVec = ReadUnaligned<Vector256<byte>>(ref bytesRef);
 
                         WriteUnaligned(ref stack.PushBytesRef(), Vector256.BitwiseOr(aVec, bVec));
                         break;
@@ -1143,8 +1150,13 @@ OutOfGas:
                     {
                         gasAvailable -= GasCostOf.VeryLow;
 
-                        Vector256<byte> aVec = ReadUnaligned<Vector256<byte>>(ref stack.PopBytesByRef());
-                        Vector256<byte> bVec = ReadUnaligned<Vector256<byte>>(ref stack.PopBytesByRef());
+                        ref byte bytesRef = ref stack.PopBytesByRef();
+                        if (IsNullRef(ref bytesRef)) goto StackUnderflow;
+                        Vector256<byte> aVec = ReadUnaligned<Vector256<byte>>(ref bytesRef);
+
+                        bytesRef = ref stack.PopBytesByRef();
+                        if (IsNullRef(ref bytesRef)) goto StackUnderflow;
+                        Vector256<byte> bVec = ReadUnaligned<Vector256<byte>>(ref bytesRef);
 
                         WriteUnaligned(ref stack.PushBytesRef(), Vector256.Xor(aVec, bVec));
                         break;
@@ -1153,7 +1165,10 @@ OutOfGas:
                     {
                         gasAvailable -= GasCostOf.VeryLow;
 
-                        Vector256<byte> negVec = Vector256.OnesComplement(ReadUnaligned<Vector256<byte>>(ref stack.PopBytesByRef()));
+                        ref byte bytesRef = ref stack.PopBytesByRef();
+                        if (IsNullRef(ref bytesRef)) goto StackUnderflow;
+
+                        Vector256<byte> negVec = Vector256.OnesComplement(ReadUnaligned<Vector256<byte>>(ref bytesRef));
 
                         WriteUnaligned(ref stack.PushBytesRef(), negVec);
                         break;
@@ -1162,7 +1177,7 @@ OutOfGas:
                     {
                         gasAvailable -= GasCostOf.VeryLow;
 
-                        stack.PopUInt256(out a);
+                        if (!stack.PopUInt256(out a)) goto StackUnderflow;
                         bytes = stack.PopWord256();
 
                         if (a >= BigInt32)
@@ -1185,8 +1200,8 @@ OutOfGas:
                     }
                 case Instruction.KECCAK256:
                     {
-                        stack.PopUInt256(out a);
-                        stack.PopUInt256(out b);
+                        if (!stack.PopUInt256(out a)) goto StackUnderflow;
+                        if (!stack.PopUInt256(out b)) goto StackUnderflow;
                         gasAvailable -= GasCostOf.Sha3 + GasCostOf.Sha3Word * EvmPooledMemory.Div32Ceiling(in b);
 
                         if (!UpdateMemoryCost(vmState, ref gasAvailable, in a, b)) goto OutOfGas;
@@ -1207,6 +1222,8 @@ OutOfGas:
                         gasAvailable -= spec.GetBalanceCost();
 
                         Address address = stack.PopAddress();
+                        if (address is null) goto StackUnderflow;
+
                         if (!ChargeAccountAccessGas(ref gasAvailable, vmState, address, spec)) goto OutOfGas;
 
                         result = _state.GetBalance(address);
@@ -1239,7 +1256,7 @@ OutOfGas:
                     {
                         gasAvailable -= GasCostOf.VeryLow;
 
-                        stack.PopUInt256(out result);
+                        if (!stack.PopUInt256(out result)) goto StackUnderflow;
                         stack.PushBytes(env.InputData.SliceWithZeroPadding(result, 32));
                         break;
                     }
@@ -1253,9 +1270,9 @@ OutOfGas:
                     }
                 case Instruction.CALLDATACOPY:
                     {
-                        stack.PopUInt256(out a);
-                        stack.PopUInt256(out b);
-                        stack.PopUInt256(out result);
+                        if (!stack.PopUInt256(out a)) goto StackUnderflow;
+                        if (!stack.PopUInt256(out b)) goto StackUnderflow;
+                        if (!stack.PopUInt256(out result)) goto StackUnderflow;
                         gasAvailable -= GasCostOf.VeryLow + GasCostOf.Memory * EvmPooledMemory.Div32Ceiling(in result);
 
                         if (!result.IsZero)
@@ -1282,9 +1299,9 @@ OutOfGas:
                     }
                 case Instruction.CODECOPY:
                     {
-                        stack.PopUInt256(out a);
-                        stack.PopUInt256(out b);
-                        stack.PopUInt256(out result);
+                        if (!stack.PopUInt256(out a)) goto StackUnderflow;
+                        if (!stack.PopUInt256(out b)) goto StackUnderflow;
+                        if (!stack.PopUInt256(out result)) goto StackUnderflow;
                         gasAvailable -= GasCostOf.VeryLow + GasCostOf.Memory * EvmPooledMemory.Div32Ceiling(in result);
 
                         if (!result.IsZero)
@@ -1311,6 +1328,8 @@ OutOfGas:
                         gasAvailable -= spec.GetExtCodeCost();
 
                         Address address = stack.PopAddress();
+                        if (address is null) goto StackUnderflow;
+
                         if (!ChargeAccountAccessGas(ref gasAvailable, vmState, address, spec)) goto OutOfGas;
 
                         if (typeof(TTracingInstructions) != typeof(IsTracing) && programCounter < code.Length)
@@ -1368,9 +1387,10 @@ OutOfGas:
                 case Instruction.EXTCODECOPY:
                     {
                         Address address = stack.PopAddress();
-                        stack.PopUInt256(out a);
-                        stack.PopUInt256(out b);
-                        stack.PopUInt256(out result);
+                        if (address is null) goto StackUnderflow;
+                        if (!stack.PopUInt256(out a)) goto StackUnderflow;
+                        if (!stack.PopUInt256(out b)) goto StackUnderflow;
+                        if (!stack.PopUInt256(out result)) goto StackUnderflow;
 
                         gasAvailable -= spec.GetExtCodeCost() + GasCostOf.Memory * EvmPooledMemory.Div32Ceiling(in result);
 
@@ -1405,9 +1425,9 @@ OutOfGas:
                     {
                         if (!spec.ReturnDataOpcodesEnabled) goto InvalidInstruction;
 
-                        stack.PopUInt256(out a);
-                        stack.PopUInt256(out b);
-                        stack.PopUInt256(out result);
+                        if (!stack.PopUInt256(out a)) goto StackUnderflow;
+                        if (!stack.PopUInt256(out b)) goto StackUnderflow;
+                        if (!stack.PopUInt256(out result)) goto StackUnderflow;
                         gasAvailable -= GasCostOf.VeryLow + GasCostOf.Memory * EvmPooledMemory.Div32Ceiling(in result);
 
                         if (UInt256.AddOverflow(result, b, out c) || c > _returnDataBuffer.Length)
@@ -1435,9 +1455,9 @@ OutOfGas:
 
                         gasAvailable -= GasCostOf.BlockHash;
 
-                        stack.PopUInt256(out a);
+                        if (!stack.PopUInt256(out a)) goto StackUnderflow;
                         long number = a > long.MaxValue ? long.MaxValue : (long)a;
-                        Keccak blockHash = _blockhashProvider.GetBlockhash(txCtx.Header, number);
+                        Hash256 blockHash = _blockhashProvider.GetBlockhash(blkCtx.Header, number);
                         stack.PushBytes(blockHash != null ? blockHash.Bytes : BytesZero32);
 
                         if (typeof(TLogger) == typeof(IsTracing))
@@ -1454,20 +1474,20 @@ OutOfGas:
                     {
                         gasAvailable -= GasCostOf.Base;
 
-                        stack.PushBytes(txCtx.Header.GasBeneficiary.Bytes);
+                        stack.PushBytes(blkCtx.Header.GasBeneficiary.Bytes);
                         break;
                     }
                 case Instruction.PREVRANDAO:
                     {
                         gasAvailable -= GasCostOf.Base;
 
-                        if (txCtx.Header.IsPostMerge)
+                        if (blkCtx.Header.IsPostMerge)
                         {
-                            stack.PushBytes(txCtx.Header.Random.Bytes);
+                            stack.PushBytes(blkCtx.Header.Random.Bytes);
                         }
                         else
                         {
-                            result = txCtx.Header.Difficulty;
+                            result = blkCtx.Header.Difficulty;
                             stack.PushUInt256(in result);
                         }
                         break;
@@ -1476,7 +1496,7 @@ OutOfGas:
                     {
                         gasAvailable -= GasCostOf.Base;
 
-                        result = txCtx.Header.Timestamp;
+                        result = blkCtx.Header.Timestamp;
                         stack.PushUInt256(in result);
                         break;
                     }
@@ -1484,7 +1504,7 @@ OutOfGas:
                     {
                         gasAvailable -= GasCostOf.Base;
 
-                        result = (UInt256)txCtx.Header.Number;
+                        result = (UInt256)blkCtx.Header.Number;
                         stack.PushUInt256(in result);
                         break;
                     }
@@ -1492,7 +1512,7 @@ OutOfGas:
                     {
                         gasAvailable -= GasCostOf.Base;
 
-                        result = (UInt256)txCtx.Header.GasLimit;
+                        result = (UInt256)blkCtx.Header.GasLimit;
                         stack.PushUInt256(in result);
                         break;
                     }
@@ -1521,7 +1541,7 @@ OutOfGas:
 
                         gasAvailable -= GasCostOf.Base;
 
-                        result = txCtx.Header.BaseFeePerGas;
+                        result = blkCtx.Header.BaseFeePerGas;
                         stack.PushUInt256(in result);
                         break;
                     }
@@ -1531,7 +1551,7 @@ OutOfGas:
 
                         gasAvailable -= GasCostOf.BlobHash;
 
-                        stack.PopUInt256(out result);
+                        if (!stack.PopUInt256(out result)) goto StackUnderflow;
 
                         if (txCtx.BlobVersionedHashes is not null && result < txCtx.BlobVersionedHashes.Length)
                         {
@@ -1541,6 +1561,16 @@ OutOfGas:
                         {
                             stack.PushZero();
                         }
+                        break;
+                    }
+                case Instruction.BLOBBASEFEE:
+                    {
+                        if (!spec.BlobBaseFeeEnabled || !blkCtx.BlobBaseFee.HasValue) goto InvalidInstruction;
+
+                        gasAvailable -= GasCostOf.Base;
+
+                        result = blkCtx.BlobBaseFee.Value;
+                        stack.PushUInt256(in result);
                         break;
                     }
                 case Instruction.POP:
@@ -1554,7 +1584,7 @@ OutOfGas:
                     {
                         gasAvailable -= GasCostOf.VeryLow;
 
-                        stack.PopUInt256(out result);
+                        if (!stack.PopUInt256(out result)) goto StackUnderflow;
                         if (!UpdateMemoryCost(vmState, ref gasAvailable, in result, in BigInt32)) goto OutOfGas;
                         bytes = vmState.Memory.LoadSpan(in result);
                         if (typeof(TTracingInstructions) == typeof(IsTracing)) _txTracer.ReportMemoryChange(result, bytes);
@@ -1566,7 +1596,7 @@ OutOfGas:
                     {
                         gasAvailable -= GasCostOf.VeryLow;
 
-                        stack.PopUInt256(out result);
+                        if (!stack.PopUInt256(out result)) goto StackUnderflow;
 
                         bytes = stack.PopWord256();
                         if (!UpdateMemoryCost(vmState, ref gasAvailable, in result, in BigInt32)) goto OutOfGas;
@@ -1579,7 +1609,7 @@ OutOfGas:
                     {
                         gasAvailable -= GasCostOf.VeryLow;
 
-                        stack.PopUInt256(out result);
+                        if (!stack.PopUInt256(out result)) goto StackUnderflow;
                         byte data = stack.PopByte();
                         if (!UpdateMemoryCost(vmState, ref gasAvailable, in result, UInt256.One)) goto OutOfGas;
                         vmState.Memory.SaveByte(in result, data);
@@ -1592,7 +1622,7 @@ OutOfGas:
                         Metrics.SloadOpcode++;
                         gasAvailable -= spec.GetSLoadCost();
 
-                        stack.PopUInt256(out result);
+                        if (!stack.PopUInt256(out result)) goto StackUnderflow;
                         storageCell = new(env.ExecutingAccount, result);
                         if (!ChargeStorageAccessGas(
                             ref gasAvailable,
@@ -1617,8 +1647,8 @@ OutOfGas:
 
                         if (vmState.IsStatic) goto StaticCallViolation;
 
-                        if (!InstructionSStore<TTracingInstructions, TTracingRefunds, TTracingStorage>(vmState, ref stack, ref gasAvailable, spec))
-                            goto OutOfGas;
+                        exceptionType = InstructionSStore<TTracingInstructions, TTracingRefunds, TTracingStorage>(vmState, ref stack, ref gasAvailable, spec);
+                        if (exceptionType != EvmExceptionType.None) goto ReturnFailure;
 
                         break;
                     }
@@ -1626,7 +1656,7 @@ OutOfGas:
                     {
                         gasAvailable -= GasCostOf.Mid;
 
-                        stack.PopUInt256(out result);
+                        if (!stack.PopUInt256(out result)) goto StackUnderflow;
                         if (!Jump(result, ref programCounter, in env)) goto InvalidJumpDestination;
                         break;
                     }
@@ -1634,7 +1664,7 @@ OutOfGas:
                     {
                         gasAvailable -= GasCostOf.High;
 
-                        stack.PopUInt256(out result);
+                        if (!stack.PopUInt256(out result)) goto StackUnderflow;
                         bytes = stack.PopWord256();
                         if (!bytes.SequenceEqual(BytesZero32))
                         {
@@ -1759,7 +1789,7 @@ OutOfGas:
                     {
                         gasAvailable -= GasCostOf.VeryLow;
 
-                        stack.Dup(instruction - Instruction.DUP1 + 1);
+                        if (!stack.Dup(instruction - Instruction.DUP1 + 1)) goto StackUnderflow;
                         break;
                     }
                 case Instruction.SWAP1:
@@ -1781,7 +1811,7 @@ OutOfGas:
                     {
                         gasAvailable -= GasCostOf.VeryLow;
 
-                        stack.Swap(instruction - Instruction.SWAP1 + 2);
+                        if (!stack.Swap(instruction - Instruction.SWAP1 + 2)) goto StackUnderflow;
                         break;
                     }
                 case Instruction.LOG0:
@@ -1792,7 +1822,8 @@ OutOfGas:
                     {
                         if (vmState.IsStatic) goto StaticCallViolation;
 
-                        if (!InstructionLog(vmState, ref stack, ref gasAvailable, instruction)) goto OutOfGas;
+                        exceptionType = InstructionLog(vmState, ref stack, ref gasAvailable, instruction);
+                        if (exceptionType != EvmExceptionType.None) goto ReturnFailure;
                         break;
                     }
                 case Instruction.CREATE:
@@ -1803,16 +1834,17 @@ OutOfGas:
 
                         if (vmState.IsStatic) goto StaticCallViolation;
 
-                        (bool outOfGas, returnData) = InstructionCreate(vmState, ref stack, ref gasAvailable, spec, instruction);
+                        (exceptionType, returnData) = InstructionCreate(vmState, ref stack, ref gasAvailable, spec, instruction);
+                        if (exceptionType != EvmExceptionType.None) goto ReturnFailure;
 
-                        if (outOfGas) goto OutOfGas;
                         if (returnData is null) break;
 
                         goto DataReturnNoTrace;
                     }
                 case Instruction.RETURN:
                     {
-                        if (!InstructionReturn(vmState, ref stack, ref gasAvailable, out returnData)) goto OutOfGas;
+                        exceptionType = InstructionReturn(vmState, ref stack, ref gasAvailable, out returnData);
+                        if (exceptionType != EvmExceptionType.None) goto ReturnFailure;
 
                         goto DataReturn;
                     }
@@ -1822,10 +1854,8 @@ OutOfGas:
                 case Instruction.STATICCALL:
                     {
                         exceptionType = InstructionCall<TTracingInstructions, TTracingRefunds>(vmState, ref stack, ref gasAvailable, spec, instruction, out returnData);
-                        if (exceptionType != EvmExceptionType.None)
-                        {
-                            goto ReturnFailure;
-                        }
+                        if (exceptionType != EvmExceptionType.None) goto ReturnFailure;
+
                         if (returnData is null)
                         {
                             break;
@@ -1837,7 +1867,8 @@ OutOfGas:
                     {
                         if (!spec.RevertOpcodeEnabled) goto InvalidInstruction;
 
-                        if (!InstructionRevert(vmState, ref stack, ref gasAvailable, out returnData)) goto OutOfGas;
+                        exceptionType = InstructionRevert(vmState, ref stack, ref gasAvailable, out returnData);
+                        if (exceptionType != EvmExceptionType.None) goto ReturnFailure;
 
                         isRevert = true;
                         goto DataReturn;
@@ -1857,7 +1888,8 @@ OutOfGas:
                             gasAvailable -= GasCostOf.SelfDestructEip150;
                         }
 
-                        if (!InstructionSelfDestruct(vmState, ref stack, ref gasAvailable, spec)) goto OutOfGas;
+                        exceptionType = InstructionSelfDestruct(vmState, ref stack, ref gasAvailable, spec);
+                        if (exceptionType != EvmExceptionType.None) goto ReturnFailure;
 
                         goto EmptyReturn;
                     }
@@ -1867,7 +1899,7 @@ OutOfGas:
 
                         gasAvailable -= GasCostOf.VeryLow;
 
-                        stack.PopUInt256(out a);
+                        if (!stack.PopUInt256(out a)) goto StackUnderflow;
                         if (a >= 256UL)
                         {
                             stack.PopLimbo();
@@ -1875,7 +1907,7 @@ OutOfGas:
                         }
                         else
                         {
-                            stack.PopUInt256(out b);
+                            if (!stack.PopUInt256(out b)) goto StackUnderflow;
                             result = b << (int)a.u0;
                             stack.PushUInt256(in result);
                         }
@@ -1888,7 +1920,7 @@ OutOfGas:
 
                         gasAvailable -= GasCostOf.VeryLow;
 
-                        stack.PopUInt256(out a);
+                        if (!stack.PopUInt256(out a)) goto StackUnderflow;
                         if (a >= 256)
                         {
                             stack.PopLimbo();
@@ -1896,7 +1928,7 @@ OutOfGas:
                         }
                         else
                         {
-                            stack.PopUInt256(out b);
+                            if (!stack.PopUInt256(out b)) goto StackUnderflow;
                             result = b >> (int)a.u0;
                             stack.PushUInt256(in result);
                         }
@@ -1909,8 +1941,8 @@ OutOfGas:
 
                         gasAvailable -= GasCostOf.VeryLow;
 
-                        stack.PopUInt256(out a);
-                        stack.PopUInt256(out b);
+                        if (!stack.PopUInt256(out a)) goto StackUnderflow;
+                        if (!stack.PopUInt256(out b)) goto StackUnderflow;
                         if (a >= BigInt256)
                         {
                             if (As<UInt256, Int256>(ref b).Sign >= 0)
@@ -1937,6 +1969,7 @@ OutOfGas:
                         gasAvailable -= spec.GetExtCodeHashCost();
 
                         Address address = stack.PopAddress();
+                        if (address is null) goto StackUnderflow;
                         if (!ChargeAccountAccessGas(ref gasAvailable, vmState, address, spec)) goto OutOfGas;
 
                         if (!_state.AccountExists(address) || _state.IsDeadAccount(address))
@@ -1957,7 +1990,7 @@ OutOfGas:
                             Metrics.TloadOpcode++;
                             gasAvailable -= GasCostOf.TLoad;
 
-                            stack.PopUInt256(out result);
+                            if (!stack.PopUInt256(out result)) goto StackUnderflow;
                             storageCell = new(env.ExecutingAccount, result);
 
                             byte[] value = _state.GetTransientState(in storageCell);
@@ -1992,7 +2025,7 @@ OutOfGas:
 
                             gasAvailable -= GasCostOf.TStore;
 
-                            stack.PopUInt256(out result);
+                            if (!stack.PopUInt256(out result)) goto StackUnderflow;
                             storageCell = new(env.ExecutingAccount, result);
                             bytes = stack.PopWord256();
 
@@ -2028,9 +2061,9 @@ OutOfGas:
                         {
                             Metrics.MCopyOpcode++;
 
-                            stack.PopUInt256(out a);
-                            stack.PopUInt256(out b);
-                            stack.PopUInt256(out c);
+                            if (!stack.PopUInt256(out a)) goto StackUnderflow;
+                            if (!stack.PopUInt256(out b)) goto StackUnderflow;
+                            if (!stack.PopUInt256(out c)) goto StackUnderflow;
 
                             gasAvailable -= GasCostOf.VeryLow + GasCostOf.VeryLow * EvmPooledMemory.Div32Ceiling(c);
                             if (!UpdateMemoryCost(vmState, ref gasAvailable, UInt256.Max(b, a), c)) goto OutOfGas;
@@ -2053,7 +2086,7 @@ OutOfGas:
 
                             vmState.ReturnStack[vmState.ReturnStackHead++] = programCounter;
 
-                            stack.PopUInt256(out UInt256 jumpDest);
+                            if (!stack.PopUInt256(out UInt256 jumpDest)) goto StackUnderflow;
                             if (!Jump(jumpDest, ref programCounter, in env, true)) goto InvalidJumpDestination;
                             programCounter++;
 
@@ -2079,21 +2112,21 @@ OutOfGas:
 
         goto EmptyReturnNoTrace;
 
-// Common exit errors, goto labels to reduce in loop code duplication and to keep loop body smaller
-EmptyReturn:
+    // Common exit errors, goto labels to reduce in loop code duplication and to keep loop body smaller
+    EmptyReturn:
         if (typeof(TTracingInstructions) == typeof(IsTracing)) EndInstructionTrace(gasAvailable, vmState.Memory?.Size ?? 0);
-EmptyReturnNoTrace:
-// Ensure gas is positive before updating state
+        EmptyReturnNoTrace:
+        // Ensure gas is positive before updating state
         if (gasAvailable < 0) goto OutOfGas;
         UpdateCurrentState(vmState, programCounter, gasAvailable, stack.Head);
 #if DEBUG
         debugger?.TryWait(ref vmState, ref programCounter, ref gasAvailable, ref stack.Head);
 #endif
         return CallResult.Empty;
-DataReturn:
+    DataReturn:
         if (typeof(TTracingInstructions) == typeof(IsTracing)) EndInstructionTrace(gasAvailable, vmState.Memory?.Size ?? 0);
-DataReturnNoTrace:
-// Ensure gas is positive before updating state
+        DataReturnNoTrace:
+        // Ensure gas is positive before updating state
         if (gasAvailable < 0) goto OutOfGas;
         UpdateCurrentState(vmState, programCounter, gasAvailable, stack.Head);
 
@@ -2103,30 +2136,33 @@ DataReturnNoTrace:
         }
         return new CallResult((byte[])returnData, null, shouldRevert: isRevert);
 
-OutOfGas:
+    OutOfGas:
         exceptionType = EvmExceptionType.OutOfGas;
         goto ReturnFailure;
-InvalidInstruction:
+    InvalidInstruction:
         exceptionType = EvmExceptionType.BadInstruction;
         goto ReturnFailure;
-StaticCallViolation:
+    StaticCallViolation:
         exceptionType = EvmExceptionType.StaticCallViolation;
         goto ReturnFailure;
-InvalidSubroutineEntry:
+    InvalidSubroutineEntry:
         exceptionType = EvmExceptionType.InvalidSubroutineEntry;
         goto ReturnFailure;
-InvalidSubroutineReturn:
+    InvalidSubroutineReturn:
         exceptionType = EvmExceptionType.InvalidSubroutineReturn;
         goto ReturnFailure;
-StackOverflow:
+    StackOverflow:
         exceptionType = EvmExceptionType.StackOverflow;
         goto ReturnFailure;
-InvalidJumpDestination:
+    StackUnderflow:
+        exceptionType = EvmExceptionType.StackUnderflow;
+        goto ReturnFailure;
+    InvalidJumpDestination:
         exceptionType = EvmExceptionType.InvalidJumpDestination;
         goto ReturnFailure;
-AccessViolation:
+    AccessViolation:
         exceptionType = EvmExceptionType.AccessViolation;
-ReturnFailure:
+    ReturnFailure:
         return GetFailureReturn<TTracingInstructions>(gasAvailable, exceptionType);
     }
 
@@ -2153,8 +2189,9 @@ ReturnFailure:
         if (instruction == Instruction.DELEGATECALL && !spec.DelegateCallEnabled ||
             instruction == Instruction.STATICCALL && !spec.StaticCallEnabled) return EvmExceptionType.BadInstruction;
 
-        stack.PopUInt256(out UInt256 gasLimit);
+        if (!stack.PopUInt256(out UInt256 gasLimit)) return EvmExceptionType.StackUnderflow;
         Address codeSource = stack.PopAddress();
+        if (codeSource is null) return EvmExceptionType.StackUnderflow;
 
         if (!ChargeAccountAccessGas(ref gasAvailable, vmState, codeSource, spec)) return EvmExceptionType.OutOfGas;
 
@@ -2168,15 +2205,15 @@ ReturnFailure:
                 callValue = env.Value;
                 break;
             default:
-                stack.PopUInt256(out callValue);
+                if (!stack.PopUInt256(out callValue)) return EvmExceptionType.StackUnderflow;
                 break;
         }
 
         UInt256 transferValue = instruction == Instruction.DELEGATECALL ? UInt256.Zero : callValue;
-        stack.PopUInt256(out UInt256 dataOffset);
-        stack.PopUInt256(out UInt256 dataLength);
-        stack.PopUInt256(out UInt256 outputOffset);
-        stack.PopUInt256(out UInt256 outputLength);
+        if (!stack.PopUInt256(out UInt256 dataOffset)) return EvmExceptionType.StackUnderflow;
+        if (!stack.PopUInt256(out UInt256 dataLength)) return EvmExceptionType.StackUnderflow;
+        if (!stack.PopUInt256(out UInt256 outputOffset)) return EvmExceptionType.StackUnderflow;
+        if (!stack.PopUInt256(out UInt256 outputLength)) return EvmExceptionType.StackUnderflow;
 
         if (vmState.IsStatic && !transferValue.IsZero && instruction != Instruction.CALLCODE) return EvmExceptionType.StaticCallViolation;
 
@@ -2260,7 +2297,7 @@ ReturnFailure:
 
         ExecutionEnvironment callEnv = new
         (
-            txExecutionContext: env.TxExecutionContext,
+            txExecutionContext: in env.TxExecutionContext,
             callDepth: env.CallDepth + 1,
             caller: caller,
             codeSource: codeSource,
@@ -2278,7 +2315,7 @@ ReturnFailure:
             outputOffset = 0;
         }
 
-        ExecutionType executionType = GetCallExecutionType(instruction, env.TxExecutionContext.Header.IsPostMerge);
+        ExecutionType executionType = GetCallExecutionType(instruction, env.TxExecutionContext.BlockExecutionContext.Header.IsPostMerge);
         returnData = new EvmState(
             gasLimitUl,
             callEnv,
@@ -2296,48 +2333,53 @@ ReturnFailure:
     }
 
     [SkipLocalsInit]
-    private static bool InstructionRevert<TTracing>(EvmState vmState, ref EvmStack<TTracing> stack, ref long gasAvailable, out object returnData)
+    private static EvmExceptionType InstructionRevert<TTracing>(EvmState vmState, ref EvmStack<TTracing> stack, ref long gasAvailable, out object returnData)
         where TTracing : struct, IIsTracing
     {
-        stack.PopUInt256(out UInt256 position);
-        stack.PopUInt256(out UInt256 length);
+        SkipInit(out returnData);
+
+        if (!stack.PopUInt256(out UInt256 position) ||
+            !stack.PopUInt256(out UInt256 length))
+            return EvmExceptionType.StackUnderflow;
 
         if (!UpdateMemoryCost(vmState, ref gasAvailable, in position, in length))
         {
-            returnData = null;
-            return false;
+            return EvmExceptionType.OutOfGas;
         }
 
         returnData = vmState.Memory.Load(in position, in length).ToArray();
-        return true;
+        return EvmExceptionType.None;
     }
 
     [SkipLocalsInit]
-    private static bool InstructionReturn<TTracing>(EvmState vmState, ref EvmStack<TTracing> stack, ref long gasAvailable, out object returnData)
+    private static EvmExceptionType InstructionReturn<TTracing>(EvmState vmState, ref EvmStack<TTracing> stack, ref long gasAvailable, out object returnData)
         where TTracing : struct, IIsTracing
     {
-        stack.PopUInt256(out UInt256 position);
-        stack.PopUInt256(out UInt256 length);
+        SkipInit(out returnData);
+
+        if (!stack.PopUInt256(out UInt256 position) ||
+            !stack.PopUInt256(out UInt256 length))
+            return EvmExceptionType.StackUnderflow;
 
         if (!UpdateMemoryCost(vmState, ref gasAvailable, in position, in length))
         {
-            returnData = null;
-            return false;
+            return EvmExceptionType.OutOfGas;
         }
 
         returnData = vmState.Memory.Load(in position, in length).ToArray();
 
-        return true;
+        return EvmExceptionType.None;
     }
 
     [SkipLocalsInit]
-    private bool InstructionSelfDestruct<TTracing>(EvmState vmState, ref EvmStack<TTracing> stack, ref long gasAvailable, IReleaseSpec spec)
+    private EvmExceptionType InstructionSelfDestruct<TTracing>(EvmState vmState, ref EvmStack<TTracing> stack, ref long gasAvailable, IReleaseSpec spec)
         where TTracing : struct, IIsTracing
     {
         Metrics.SelfDestructs++;
 
         Address inheritor = stack.PopAddress();
-        if (!ChargeAccountAccessGas(ref gasAvailable, vmState, inheritor, spec, false)) return false;
+        if (inheritor is null) return EvmExceptionType.StackUnderflow;
+        if (!ChargeAccountAccessGas(ref gasAvailable, vmState, inheritor, spec, false)) return EvmExceptionType.OutOfGas;
 
         Address executingAccount = vmState.Env.ExecutingAccount;
         bool createInSameTx = vmState.CreateList.Contains(executingAccount);
@@ -2348,13 +2390,13 @@ ReturnFailure:
         if (_txTracer.IsTracingActions) _txTracer.ReportSelfDestruct(executingAccount, result, inheritor);
         if (spec.ClearEmptyAccountWhenTouched && !result.IsZero && _state.IsDeadAccount(inheritor))
         {
-            if (!UpdateGas(GasCostOf.NewAccount, ref gasAvailable)) return false;
+            if (!UpdateGas(GasCostOf.NewAccount, ref gasAvailable)) return EvmExceptionType.OutOfGas;
         }
 
         bool inheritorAccountExists = _state.AccountExists(inheritor);
         if (!spec.ClearEmptyAccountWhenTouched && !inheritorAccountExists && spec.UseShanghaiDDosProtection)
         {
-            if (!UpdateGas(GasCostOf.NewAccount, ref gasAvailable)) return false;
+            if (!UpdateGas(GasCostOf.NewAccount, ref gasAvailable)) return EvmExceptionType.OutOfGas;
         }
 
         if (!inheritorAccountExists)
@@ -2367,14 +2409,14 @@ ReturnFailure:
         }
 
         if (spec.SelfdestructOnlyOnSameTransaction && !createInSameTx && inheritor.Equals(executingAccount))
-            return true; // dont burn eth when contract is not destroyed per EIP clarification
+            return EvmExceptionType.None; // don't burn eth when contract is not destroyed per EIP clarification
 
         _state.SubtractFromBalance(executingAccount, result, spec);
-        return true;
+        return EvmExceptionType.None;
     }
 
     [SkipLocalsInit]
-    private (bool outOfGas, EvmState? callState) InstructionCreate<TTracing>(EvmState vmState, ref EvmStack<TTracing> stack, ref long gasAvailable, IReleaseSpec spec, Instruction instruction)
+    private (EvmExceptionType exceptionType, EvmState? callState) InstructionCreate<TTracing>(EvmState vmState, ref EvmStack<TTracing> stack, ref long gasAvailable, IReleaseSpec spec, Instruction instruction)
         where TTracing : struct, IIsTracing
     {
         ref readonly ExecutionEnvironment env = ref vmState.Env;
@@ -2385,9 +2427,11 @@ ReturnFailure:
             _state.CreateAccount(env.ExecutingAccount, UInt256.Zero);
         }
 
-        stack.PopUInt256(out UInt256 value);
-        stack.PopUInt256(out UInt256 memoryPositionOfInitCode);
-        stack.PopUInt256(out UInt256 initCodeLength);
+        if (!stack.PopUInt256(out UInt256 value) ||
+            !stack.PopUInt256(out UInt256 memoryPositionOfInitCode) ||
+            !stack.PopUInt256(out UInt256 initCodeLength))
+            return (EvmExceptionType.StackUnderflow, null);
+
         Span<byte> salt = default;
         if (instruction == Instruction.CREATE2)
         {
@@ -2397,7 +2441,7 @@ ReturnFailure:
         //EIP-3860
         if (spec.IsEip3860Enabled)
         {
-            if (initCodeLength > spec.MaxInitCodeSize) return (outOfGas: true, null);
+            if (initCodeLength > spec.MaxInitCodeSize) return (EvmExceptionType.OutOfGas, null);
         }
 
         long gasCost = GasCostOf.Create +
@@ -2406,9 +2450,9 @@ ReturnFailure:
                            ? GasCostOf.Sha3Word * EvmPooledMemory.Div32Ceiling(initCodeLength)
                            : 0);
 
-        if (!UpdateGas(gasCost, ref gasAvailable)) return (outOfGas: true, null);
+        if (!UpdateGas(gasCost, ref gasAvailable)) return (EvmExceptionType.OutOfGas, null);
 
-        if (!UpdateMemoryCost(vmState, ref gasAvailable, in memoryPositionOfInitCode, initCodeLength)) return (outOfGas: true, null);
+        if (!UpdateMemoryCost(vmState, ref gasAvailable, in memoryPositionOfInitCode, initCodeLength)) return (EvmExceptionType.OutOfGas, null);
 
         // TODO: copy pasted from CALL / DELEGATECALL, need to move it outside?
         if (env.CallDepth >= MaxCallDepth) // TODO: fragile ordering / potential vulnerability for different clients
@@ -2416,7 +2460,7 @@ ReturnFailure:
             // TODO: need a test for this
             _returnDataBuffer = Array.Empty<byte>();
             stack.PushZero();
-            return (outOfGas: false, null);
+            return (EvmExceptionType.None, null);
         }
 
         Span<byte> initCode = vmState.Memory.LoadSpan(in memoryPositionOfInitCode, initCodeLength);
@@ -2426,7 +2470,7 @@ ReturnFailure:
         {
             _returnDataBuffer = Array.Empty<byte>();
             stack.PushZero();
-            return (outOfGas: false, null);
+            return (EvmExceptionType.None, null);
         }
 
         UInt256 accountNonce = _state.GetNonce(env.ExecutingAccount);
@@ -2435,14 +2479,14 @@ ReturnFailure:
         {
             _returnDataBuffer = Array.Empty<byte>();
             stack.PushZero();
-            return (outOfGas: false, null);
+            return (EvmExceptionType.None, null);
         }
 
         if (typeof(TTracing) == typeof(IsTracing)) EndInstructionTrace(gasAvailable, vmState.Memory?.Size ?? 0);
         // todo: === below is a new call - refactor / move
 
         long callGas = spec.Use63Over64Rule ? gasAvailable - gasAvailable / 64L : gasAvailable;
-        if (!UpdateGas(callGas, ref gasAvailable)) return (outOfGas: true, null);
+        if (!UpdateGas(callGas, ref gasAvailable)) return (EvmExceptionType.OutOfGas, null);
 
         Address contractAddress = instruction == Instruction.CREATE
             ? ContractAddress.From(env.ExecutingAccount, _state.GetNonce(env.ExecutingAccount))
@@ -2466,7 +2510,7 @@ ReturnFailure:
             if (typeof(TLogger) == typeof(IsTracing)) _logger.Trace($"Contract collision at {contractAddress}");
             _returnDataBuffer = Array.Empty<byte>();
             stack.PushZero();
-            return (outOfGas: false, null);
+            return (EvmExceptionType.None, null);
         }
 
         if (accountExists)
@@ -2480,7 +2524,7 @@ ReturnFailure:
 
         _state.SubtractFromBalance(env.ExecutingAccount, value, spec);
 
-        ValueKeccak codeHash = ValueKeccak.Compute(initCode);
+        ValueHash256 codeHash = ValueKeccak.Compute(initCode);
         // Prefer code from code cache (e.g. if create from a factory contract or copypasta)
         if (!_codeCache.TryGet(codeHash, out CodeInfo codeInfo))
         {
@@ -2491,7 +2535,7 @@ ReturnFailure:
 
         ExecutionEnvironment callEnv = new
         (
-            txExecutionContext: env.TxExecutionContext,
+            txExecutionContext: in env.TxExecutionContext,
             callDepth: env.CallDepth + 1,
             caller: env.ExecutingAccount,
             executingAccount: contractAddress,
@@ -2504,7 +2548,7 @@ ReturnFailure:
         EvmState callState = new(
             callGas,
             callEnv,
-            instruction == Instruction.CREATE2 ? ExecutionType.Create2 : ExecutionType.Create,
+            instruction == Instruction.CREATE2 ? ExecutionType.CREATE2 : ExecutionType.CREATE,
             false,
             snapshot,
             0L,
@@ -2514,26 +2558,26 @@ ReturnFailure:
             false,
             accountExists);
 
-        return (outOfGas: false, callState);
+        return (EvmExceptionType.None, callState);
     }
 
     [SkipLocalsInit]
-    private static bool InstructionLog<TTracing>(EvmState vmState, ref EvmStack<TTracing> stack, ref long gasAvailable, Instruction instruction)
+    private static EvmExceptionType InstructionLog<TTracing>(EvmState vmState, ref EvmStack<TTracing> stack, ref long gasAvailable, Instruction instruction)
         where TTracing : struct, IIsTracing
     {
-        stack.PopUInt256(out UInt256 position);
-        stack.PopUInt256(out UInt256 length);
+        if (!stack.PopUInt256(out UInt256 position)) return EvmExceptionType.StackUnderflow;
+        if (!stack.PopUInt256(out UInt256 length)) return EvmExceptionType.StackUnderflow;
         long topicsCount = instruction - Instruction.LOG0;
-        if (!UpdateMemoryCost(vmState, ref gasAvailable, in position, length)) return false;
+        if (!UpdateMemoryCost(vmState, ref gasAvailable, in position, length)) return EvmExceptionType.OutOfGas;
         if (!UpdateGas(
                 GasCostOf.Log + topicsCount * GasCostOf.LogTopic +
-                (long)length * GasCostOf.LogData, ref gasAvailable)) return false;
+                (long)length * GasCostOf.LogData, ref gasAvailable)) return EvmExceptionType.OutOfGas;
 
         ReadOnlyMemory<byte> data = vmState.Memory.Load(in position, length);
-        Keccak[] topics = new Keccak[topicsCount];
+        Hash256[] topics = new Hash256[topicsCount];
         for (int i = 0; i < topicsCount; i++)
         {
-            topics[i] = new Keccak(stack.PopWord256());
+            topics[i] = new Hash256(stack.PopWord256());
         }
 
         LogEntry logEntry = new(
@@ -2542,26 +2586,26 @@ ReturnFailure:
             topics);
         vmState.Logs.Add(logEntry);
 
-        return true;
+        return EvmExceptionType.None;
     }
 
     [SkipLocalsInit]
-    private bool InstructionSStore<TTracingInstructions, TTracingRefunds, TTracingStorage>(EvmState vmState, ref EvmStack<TTracingInstructions> stack, ref long gasAvailable, IReleaseSpec spec)
+    private EvmExceptionType InstructionSStore<TTracingInstructions, TTracingRefunds, TTracingStorage>(EvmState vmState, ref EvmStack<TTracingInstructions> stack, ref long gasAvailable, IReleaseSpec spec)
         where TTracingInstructions : struct, IIsTracing
         where TTracingRefunds : struct, IIsTracing
         where TTracingStorage : struct, IIsTracing
     {
         // fail fast before the first storage read if gas is not enough even for reset
-        if (!spec.UseNetGasMetering && !UpdateGas(spec.GetSStoreResetCost(), ref gasAvailable)) return false;
+        if (!spec.UseNetGasMetering && !UpdateGas(spec.GetSStoreResetCost(), ref gasAvailable)) return EvmExceptionType.OutOfGas;
 
         if (spec.UseNetGasMeteringWithAStipendFix)
         {
             if (typeof(TTracingRefunds) == typeof(IsTracing))
                 _txTracer.ReportExtraGasPressure(GasCostOf.CallStipend - spec.GetNetMeteredSStoreCost() + 1);
-            if (gasAvailable <= GasCostOf.CallStipend) return false;
+            if (gasAvailable <= GasCostOf.CallStipend) return EvmExceptionType.OutOfGas;
         }
 
-        stack.PopUInt256(out UInt256 result);
+        if (!stack.PopUInt256(out UInt256 result)) return EvmExceptionType.StackUnderflow;
         Span<byte> bytes = stack.PopWord256();
         bool newIsZero = bytes.IsZero();
         if (!newIsZero)
@@ -2580,7 +2624,7 @@ ReturnFailure:
                 vmState,
                 in storageCell,
                 StorageAccessType.SSTORE,
-                spec)) return false;
+                spec)) return EvmExceptionType.OutOfGas;
 
         Span<byte> currentValue = _state.Get(in storageCell);
         // Console.WriteLine($"current: {currentValue.ToHexString()} newValue {newValue.ToHexString()}");
@@ -2601,14 +2645,14 @@ ReturnFailure:
             }
             else if (currentIsZero)
             {
-                if (!UpdateGas(GasCostOf.SSet - GasCostOf.SReset, ref gasAvailable)) return false;
+                if (!UpdateGas(GasCostOf.SSet - GasCostOf.SReset, ref gasAvailable)) return EvmExceptionType.OutOfGas;
             }
         }
         else // net metered
         {
             if (newSameAsCurrent)
             {
-                if (!UpdateGas(spec.GetNetMeteredSStoreCost(), ref gasAvailable)) return false;
+                if (!UpdateGas(spec.GetNetMeteredSStoreCost(), ref gasAvailable)) return EvmExceptionType.OutOfGas;
             }
             else // net metered, C != N
             {
@@ -2620,11 +2664,11 @@ ReturnFailure:
                 {
                     if (currentIsZero)
                     {
-                        if (!UpdateGas(GasCostOf.SSet, ref gasAvailable)) return false;
+                        if (!UpdateGas(GasCostOf.SSet, ref gasAvailable)) return EvmExceptionType.OutOfGas;
                     }
                     else // net metered, current == original != new, !currentIsZero
                     {
-                        if (!UpdateGas(spec.GetSStoreResetCost(), ref gasAvailable)) return false;
+                        if (!UpdateGas(spec.GetSStoreResetCost(), ref gasAvailable)) return EvmExceptionType.OutOfGas;
 
                         if (newIsZero)
                         {
@@ -2636,7 +2680,7 @@ ReturnFailure:
                 else // net metered, new != current != original
                 {
                     long netMeteredStoreCost = spec.GetNetMeteredSStoreCost();
-                    if (!UpdateGas(netMeteredStoreCost, ref gasAvailable)) return false;
+                    if (!UpdateGas(netMeteredStoreCost, ref gasAvailable)) return EvmExceptionType.OutOfGas;
 
                     if (!originalIsZero) // net metered, new != current != original != 0
                     {
@@ -2691,7 +2735,7 @@ ReturnFailure:
             _txTracer.SetOperationStorage(storageCell.Address, result, bytes, currentValue);
         }
 
-        return true;
+        return EvmExceptionType.None;
     }
 
     private CallResult GetFailureReturn<TTracingInstructions>(long gasAvailable, EvmExceptionType exceptionType)
@@ -2707,6 +2751,7 @@ ReturnFailure:
             EvmExceptionType.InvalidSubroutineEntry => CallResult.InvalidSubroutineEntry,
             EvmExceptionType.InvalidSubroutineReturn => CallResult.InvalidSubroutineReturn,
             EvmExceptionType.StackOverflow => CallResult.StackOverflowException,
+            EvmExceptionType.StackUnderflow => CallResult.StackUnderflowException,
             EvmExceptionType.InvalidJumpDestination => CallResult.InvalidJumpDestination,
             EvmExceptionType.AccessViolation => CallResult.AccessViolationException,
             _ => throw new ArgumentOutOfRangeException(nameof(exceptionType), exceptionType, "")
@@ -2771,16 +2816,17 @@ ReturnFailure:
     private void StartInstructionTrace<TIsTracing>(Instruction instruction, EvmState vmState, long gasAvailable, int programCounter, in EvmStack<TIsTracing> stackValue)
         where TIsTracing : struct, IIsTracing
     {
-        _txTracer.StartOperation(vmState.Env.CallDepth + 1, gasAvailable, instruction, programCounter, vmState.Env.TxExecutionContext.Header.IsPostMerge);
+        _txTracer.StartOperation(vmState.Env.CallDepth + 1, gasAvailable, instruction, programCounter, vmState.Env.TxExecutionContext.BlockExecutionContext.Header.IsPostMerge);
         if (_txTracer.IsTracingMemory)
         {
-            _txTracer.SetOperationMemory(vmState.Memory?.GetTrace() ?? Enumerable.Empty<string>());
+            _txTracer.SetOperationMemory(vmState.Memory?.GetTrace() ?? new TraceMemory());
             _txTracer.SetOperationMemorySize(vmState.Memory?.Size ?? 0);
         }
 
         if (_txTracer.IsTracingStack)
         {
-            _txTracer.SetOperationStack(stackValue.GetStackTrace());
+            Memory<byte> stackMemory = vmState.DataStack.AsMemory().Slice(0, stackValue.Head * EvmStack<TIsTracing>.WordSize);
+            _txTracer.SetOperationStack(new TraceStack(stackMemory));
         }
     }
 
@@ -2793,8 +2839,8 @@ ReturnFailure:
     [MethodImpl(MethodImplOptions.NoInlining)]
     private void EndInstructionTraceError(long gasAvailable, EvmExceptionType evmExceptionType)
     {
-        _txTracer.ReportOperationError(evmExceptionType);
         _txTracer.ReportOperationRemainingGas(gasAvailable);
+        _txTracer.ReportOperationError(evmExceptionType);
     }
 
     private static ExecutionType GetCallExecutionType(Instruction instruction, bool isPostMerge = false)
@@ -2802,19 +2848,19 @@ ReturnFailure:
         ExecutionType executionType;
         if (instruction == Instruction.CALL)
         {
-            executionType = ExecutionType.Call;
+            executionType = ExecutionType.CALL;
         }
         else if (instruction == Instruction.DELEGATECALL)
         {
-            executionType = ExecutionType.DelegateCall;
+            executionType = ExecutionType.DELEGATECALL;
         }
         else if (instruction == Instruction.STATICCALL)
         {
-            executionType = ExecutionType.StaticCall;
+            executionType = ExecutionType.STATICCALL;
         }
         else if (instruction == Instruction.CALLCODE)
         {
-            executionType = ExecutionType.CallCode;
+            executionType = ExecutionType.CALLCODE;
         }
         else
         {

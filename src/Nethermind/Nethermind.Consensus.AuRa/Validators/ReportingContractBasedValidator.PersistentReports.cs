@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 using Nethermind.Abi;
+using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Int256;
@@ -32,9 +33,9 @@ namespace Nethermind.Consensus.AuRa.Validators
         private readonly LinkedList<PersistentReport> _persistentReports;
         private long _sentReportsInBlock = 0;
 
-        public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit)
+        public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit, PayloadAttributes? payloadAttributes = null)
         {
-            foreach (var transaction in _contractValidator.GetTransactions(parent, gasLimit))
+            foreach (var transaction in _contractValidator.GetTransactions(parent, gasLimit, payloadAttributes))
             {
                 yield return transaction;
             }
@@ -152,14 +153,14 @@ namespace Nethermind.Consensus.AuRa.Validators
 
             public bool Equals(PersistentReport other)
             {
-                if (ReferenceEquals(null, other)) return false;
+                if (other is null) return false;
                 if (ReferenceEquals(this, other)) return true;
                 return Equals(MaliciousValidator, other.MaliciousValidator) && BlockNumber == other.BlockNumber;
             }
 
             public override bool Equals(object obj)
             {
-                if (ReferenceEquals(null, obj)) return false;
+                if (obj is null) return false;
                 if (ReferenceEquals(this, obj)) return true;
                 if (obj.GetType() != this.GetType()) return false;
                 return Equals((PersistentReport)obj);

@@ -77,9 +77,11 @@ namespace Nethermind.Db.Rpc
 
         public IEnumerable<KeyValuePair<byte[], byte[]>> GetAll(bool ordered = false) => _recordDb.GetAll();
 
+        public IEnumerable<byte[]> GetAllKeys(bool ordered = false) => _recordDb.GetAllKeys();
+
         public IEnumerable<byte[]> GetAllValues(bool ordered = false) => _recordDb.GetAllValues();
 
-        public IBatch StartBatch()
+        public IWriteBatch StartWriteBatch()
         {
             throw new InvalidOperationException("RPC DB does not support writes");
         }
@@ -100,6 +102,20 @@ namespace Nethermind.Db.Rpc
             }
 
             return value;
+        }
+
+        public Span<byte> GetSpan(ReadOnlySpan<byte> key)
+        {
+            return Get(key);
+        }
+
+        public void PutSpan(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags writeFlags)
+        {
+            Set(key, value.ToArray(), writeFlags);
+        }
+
+        public void DangerousReleaseMemory(in Span<byte> span)
+        {
         }
     }
 }

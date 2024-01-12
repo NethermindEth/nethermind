@@ -51,7 +51,6 @@ public static class TypeDiscovery
                     || assembly.FullName.StartsWith("NLog")
                     || assembly.FullName.StartsWith("netstandard")
                     || assembly.FullName.StartsWith("TestableIO")
-                    || assembly.FullName.StartsWith("Newtonsoft")
                     || assembly.FullName.StartsWith("DotNetty"))
                 {
                     continue;

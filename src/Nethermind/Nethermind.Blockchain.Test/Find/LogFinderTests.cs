@@ -41,6 +41,9 @@ namespace Nethermind.Blockchain.Test.Find
             SetUp(true);
         }
 
+        [TearDown]
+        public void TearDown() => _bloomStorage?.Dispose();
+
         private void SetUp(bool allowReceiptIterator)
         {
             var specProvider = Substitute.For<ISpecProvider>();
@@ -344,9 +347,9 @@ namespace Nethermind.Blockchain.Test.Find
         {
             if (withBloomDb)
             {
-                for (int i = 0; i <= _blockTree.Head.Number; i++)
+                for (int i = 0; i <= _blockTree.Head!.Number; i++)
                 {
-                    _bloomStorage.Store(i, _blockTree.FindHeader(i).Bloom);
+                    _bloomStorage.Store(i, _blockTree.FindHeader(i)!.Bloom!);
                 }
             }
         }

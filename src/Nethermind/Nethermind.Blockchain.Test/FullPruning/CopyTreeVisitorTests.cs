@@ -41,7 +41,7 @@ namespace Nethermind.Blockchain.Test.FullPruning
             };
 
             IPruningContext ctx = StartPruning(trieDb, clonedDb);
-            CopyDb(ctx, trieDb, clonedDb, visitingOptions, writeFlags: WriteFlags.LowPriority);
+            CopyDb(ctx, trieDb, visitingOptions, writeFlags: WriteFlags.LowPriority);
 
             List<byte[]> keys = trieDb.Keys.ToList();
             List<byte[]> values = trieDb.Values.ToList();
@@ -53,6 +53,7 @@ namespace Nethermind.Blockchain.Test.FullPruning
             clonedDb.Values.Should().BeEquivalentTo(values);
 
             clonedDb.KeyWasWrittenWithFlags(keys[0], WriteFlags.LowPriority);
+            trieDb.KeyWasReadWithFlags(keys[0], ReadFlags.SkipDuplicateRead | ReadFlags.HintCacheMiss);
         }
 
         [Test, Timeout(Timeout.MaxTestTime)]
@@ -61,16 +62,16 @@ namespace Nethermind.Blockchain.Test.FullPruning
             MemDb trieDb = new();
             MemDb clonedDb = new();
             IPruningContext pruningContext = StartPruning(trieDb, clonedDb);
-            Task task = Task.Run(() => CopyDb(pruningContext, trieDb, clonedDb));
+            Task task = Task.Run(() => CopyDb(pruningContext, trieDb));
 
-            pruningContext?.CancellationTokenSource.Cancel();
+            pruningContext.CancellationTokenSource.Cancel();
 
             await task;
 
             clonedDb.Count.Should().BeLessThan(trieDb.Count);
         }
 
-        private static IPruningContext CopyDb(IPruningContext pruningContext, MemDb trieDb, MemDb clonedDb, VisitingOptions visitingOptions = null, WriteFlags writeFlags = WriteFlags.None)
+        private static IPruningContext CopyDb(IPruningContext pruningContext, MemDb trieDb, VisitingOptions? visitingOptions = null, WriteFlags writeFlags = WriteFlags.None)
         {
             LimboLogs logManager = LimboLogs.Instance;
             PatriciaTree trie = Build.A.Trie(trieDb).WithAccountsByIndex(0, 100).TestObject;
@@ -83,10 +84,10 @@ namespace Nethermind.Blockchain.Test.FullPruning
 
         private static IPruningContext StartPruning(MemDb trieDb, MemDb clonedDb)
         {
-            IRocksDbFactory rocksDbFactory = Substitute.For<IRocksDbFactory>();
-            rocksDbFactory.CreateDb(Arg.Any<RocksDbSettings>()).Returns(trieDb, clonedDb);
+            IDbFactory dbFactory = Substitute.For<IDbFactory>();
+            dbFactory.CreateDb(Arg.Any<DbSettings>()).Returns(trieDb, clonedDb);
 
-            FullPruningDb fullPruningDb = new(new RocksDbSettings("test", "test"), rocksDbFactory);
+            FullPruningDb fullPruningDb = new(new DbSettings("test", "test"), dbFactory);
             fullPruningDb.TryStartPruning(out IPruningContext pruningContext);
             return pruningContext;
         }

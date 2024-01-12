@@ -11,7 +11,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V65
     [TestFixture, Parallelizable(ParallelScope.All)]
     public class NewPooledTransactionHashesMessageSerializerTests
     {
-        private static void Test(Keccak[] keys)
+        private static void Test(Hash256[] keys)
         {
             NewPooledTransactionHashesMessage message = new(keys);
             NewPooledTransactionHashesMessageSerializer serializer = new();
@@ -22,14 +22,14 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V65
         [Test]
         public void Roundtrip()
         {
-            Keccak[] keys = { TestItem.KeccakA, TestItem.KeccakB, TestItem.KeccakC };
+            Hash256[] keys = { TestItem.KeccakA, TestItem.KeccakB, TestItem.KeccakC };
             Test(keys);
         }
 
         [Test]
         public void Roundtrip_with_nulls()
         {
-            Keccak[] keys = { null, TestItem.KeccakA, null, TestItem.KeccakB, null, null };
+            Hash256[] keys = { null, TestItem.KeccakA, null, TestItem.KeccakB, null, null };
             Test(keys);
         }
 
@@ -37,7 +37,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V65
         public void Empty_to_string()
         {
             NewPooledTransactionHashesMessage message
-                = new(new Keccak[] { });
+                = new(new Hash256[] { });
             _ = message.ToString();
         }
     }

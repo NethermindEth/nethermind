@@ -11,7 +11,7 @@ using Nethermind.Core.Extensions;
 
 namespace Nethermind.Db
 {
-    public class MemDb : IFullDb, IDbWithSpan
+    public class MemDb : IFullDb
     {
         private readonly int _writeDelay; // for testing scenarios
         private readonly int _readDelay; // for testing scenarios
@@ -77,7 +77,7 @@ namespace Nethermind.Db
 
         public IDb Innermost => this;
 
-        public void Flush()
+        public virtual void Flush()
         {
         }
 
@@ -88,9 +88,11 @@ namespace Nethermind.Db
 
         public IEnumerable<KeyValuePair<byte[], byte[]?>> GetAll(bool ordered = false) => _db;
 
+        public IEnumerable<byte[]> GetAllKeys(bool ordered = false) => Keys;
+
         public IEnumerable<byte[]> GetAllValues(bool ordered = false) => Values;
 
-        public virtual IBatch StartBatch()
+        public virtual IWriteBatch StartWriteBatch()
         {
             return this.LikeABatch();
         }
@@ -109,14 +111,11 @@ namespace Nethermind.Db
         {
         }
 
+        public bool PreferWriteByArray => true;
+
         public virtual Span<byte> GetSpan(ReadOnlySpan<byte> key)
         {
             return Get(key).AsSpan();
-        }
-
-        public void PutSpan(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value)
-        {
-            Set(key, value.ToArray());
         }
 
         public void DangerousReleaseMemory(in Span<byte> span)

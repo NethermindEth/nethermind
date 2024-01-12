@@ -2,18 +2,21 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus;
 using Nethermind.Crypto;
 using Nethermind.Db.Blooms;
 using Nethermind.State.Repositories;
+using Nethermind.TxPool;
 using Nethermind.Wallet;
 
 namespace Nethermind.Api
 {
     public interface IApiWithStores : IBasicApi
     {
+        IBlobTxStorage? BlobTxStorage { get; set; }
         IBlockTree? BlockTree { get; set; }
         IBloomStorage? BloomStorage { get; set; }
         IChainLevelInfoRepository? ChainLevelInfoRepository { get; set; }
@@ -25,5 +28,6 @@ namespace Nethermind.Api
         IReceiptFinder? ReceiptFinder { get; set; }
         IReceiptMonitor? ReceiptMonitor { get; set; }
         IWallet? Wallet { get; set; }
+        IBlockStore? BadBlocksStore { get; set; }
     }
 }

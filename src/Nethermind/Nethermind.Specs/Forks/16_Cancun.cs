@@ -15,11 +15,11 @@ namespace Nethermind.Specs.Forks
         {
             Name = "Cancun";
             IsEip1153Enabled = true;
-            IsEip5656Enabled = true;
-            IsEip4844Enabled = true;
-            IsEip6780Enabled = true;
             IsEip4788Enabled = true;
-            Eip4788ContractAddress = Address.FromNumber(0x0b);
+            IsEip4844Enabled = true;
+            IsEip5656Enabled = true;
+            IsEip6780Enabled = true;
+            Eip4788ContractAddress = new Address("0x000F3df6D732807Ef1319fB7B8bB8522d0Beac02");
         }
 
         public new static IReleaseSpec Instance => LazyInitializer.EnsureInitialized(ref _instance, () => new Cancun());

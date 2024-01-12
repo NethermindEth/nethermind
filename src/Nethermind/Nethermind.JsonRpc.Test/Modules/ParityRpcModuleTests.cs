@@ -24,8 +24,6 @@ using Nethermind.Int256;
 using Nethermind.JsonRpc.Modules.Parity;
 using Nethermind.Logging;
 using Nethermind.State;
-using Nethermind.State.Repositories;
-using Nethermind.Db.Blooms;
 using Nethermind.KeyStore;
 using Nethermind.Network;
 using Nethermind.Network.Contract.P2P;
@@ -36,7 +34,7 @@ using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
-using BlockTree = Nethermind.Blockchain.BlockTree;
+using System;
 
 namespace Nethermind.JsonRpc.Test.Modules
 {
@@ -47,7 +45,9 @@ namespace Nethermind.JsonRpc.Test.Modules
         private IParityRpcModule _parityRpcModule = null!;
         private Signer _signerStore = null!;
         private EthereumEcdsa _ethereumEcdsa = null!;
+#pragma warning disable NUnit1032
         private ITxPool _txPool = null!;
+#pragma warning restore NUnit1032
         private IBlockTree _blockTree = null!;
         private IReceiptStorage _receiptStorage = null!;
 
@@ -68,12 +68,13 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             WorldState stateProvider = new(new TrieStore(new MemDb(), LimboLogs.Instance), new MemDb(), LimboLogs.Instance);
 
-            IDb blockDb = new MemDb();
-            IDb headerDb = new MemDb();
-            IDb blockInfoDb = new MemDb();
-            _blockTree = new BlockTree(blockDb, headerDb, blockInfoDb, new ChainLevelInfoRepository(blockInfoDb), specProvider, NullBloomStorage.Instance, logger);
+            _blockTree = Build.A.BlockTree()
+                .WithoutSettingHead
+                .WithSpecProvider(specProvider)
+                .TestObject;
 
             _txPool = new TxPool.TxPool(_ethereumEcdsa,
+                new BlobTxStorage(),
                 new ChainHeadInfoProvider(new FixedForkActivationChainHeadSpecProvider(specProvider), _blockTree, stateProvider),
                 new TxPoolConfig(),
                 new TxValidator(specProvider.ChainId),
@@ -110,7 +111,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             transaction2.Signature.V = 37;
 
             Block genesis = Build.A.Block.Genesis
-                .WithStateRoot(new Keccak("0x1ef7300d8961797263939a3d29bbba4ccf1702fabf02d8ad7a20b454edb6fd2f"))
+                .WithStateRoot(new Hash256("0x1ef7300d8961797263939a3d29bbba4ccf1702fabf02d8ad7a20b454edb6fd2f"))
                 .TestObject;
 
             _blockTree.SuggestBlock(genesis);
@@ -118,7 +119,7 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             Block previousBlock = genesis;
             Block block = Build.A.Block.WithNumber(blockNumber).WithParent(previousBlock)
-                    .WithStateRoot(new Keccak("0x1ef7300d8961797263939a3d29bbba4ccf1702fabf02d8ad7a20b454edb6fd2f"))
+                    .WithStateRoot(new Hash256("0x1ef7300d8961797263939a3d29bbba4ccf1702fabf02d8ad7a20b454edb6fd2f"))
                     .WithTransactions(transaction1, transaction2, transaction3)
                     .TestObject;
 
@@ -177,6 +178,9 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             _receiptStorage.Insert(block, receipt1, receipt2, receipt3);
         }
+
+        [TearDown]
+        public void TearDown() => (_txPool as IDisposable)?.Dispose();
 
         private static Peer SetUpPeerA()
         {

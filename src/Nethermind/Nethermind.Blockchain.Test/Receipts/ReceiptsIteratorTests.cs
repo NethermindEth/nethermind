@@ -17,7 +17,7 @@ namespace Nethermind.Blockchain.Test.Receipts;
 
 public class ReceiptsIteratorTests
 {
-    ReceiptArrayStorageDecoder _decoder = ReceiptArrayStorageDecoder.Instance;
+    readonly ReceiptArrayStorageDecoder _decoder = ReceiptArrayStorageDecoder.Instance;
 
     [Test]
     public void SmokeTestWithRecovery()
@@ -38,15 +38,15 @@ public class ReceiptsIteratorTests
         iterator.TryGetNext(out TxReceiptStructRef receipt).Should().BeTrue();
         iterator.RecoverIfNeeded(ref receipt);
         receipt.Sender.Bytes.ToArray().Should().BeEquivalentTo(TestItem.AddressA.Bytes);
-        receipt.TxHash.Bytes.ToArray().Should().BeEquivalentTo(block.Transactions[0].Hash.BytesToArray());
+        receipt.TxHash.Bytes.ToArray().Should().BeEquivalentTo(block.Transactions[0].Hash!.BytesToArray());
         iterator.TryGetNext(out receipt).Should().BeTrue();
         iterator.RecoverIfNeeded(ref receipt);
         receipt.Sender.Bytes.ToArray().Should().BeEquivalentTo(TestItem.AddressB.Bytes);
-        receipt.TxHash.Bytes.ToArray().Should().BeEquivalentTo(block.Transactions[1].Hash.BytesToArray());
+        receipt.TxHash.Bytes.ToArray().Should().BeEquivalentTo(block.Transactions[1].Hash!.BytesToArray());
         iterator.TryGetNext(out receipt).Should().BeTrue();
         iterator.RecoverIfNeeded(ref receipt);
         receipt.Sender.Bytes.ToArray().Should().BeEquivalentTo(TestItem.AddressC.Bytes);
-        receipt.TxHash.Bytes.ToArray().Should().BeEquivalentTo(block.Transactions[1].Hash.BytesToArray());
+        receipt.TxHash.Bytes.ToArray().Should().BeEquivalentTo(block.Transactions[1].Hash!.BytesToArray());
     }
 
     [Test]
@@ -56,7 +56,7 @@ public class ReceiptsIteratorTests
             .Block
             .WithTransactions(3, MainnetSpecProvider.Instance)
             .TestObject;
-        TxReceipt[] receipts = new[]
+        TxReceipt[] receipts =
         {
             Build.A.Receipt.WithAllFieldsFilled.WithSender(TestItem.AddressA).TestObject,
             Build.A.Receipt.WithAllFieldsFilled.WithSender(TestItem.AddressB).TestObject,
@@ -74,7 +74,7 @@ public class ReceiptsIteratorTests
         iterator.TryGetNext(out receipt).Should().BeTrue();
         iterator.RecoverIfNeeded(ref receipt);
         receipt.Sender.Bytes.ToArray().Should().BeEquivalentTo(TestItem.AddressC.Bytes);
-        receipt.TxHash.Bytes.ToArray().Should().BeEquivalentTo(block.Transactions[1].Hash.BytesToArray());
+        receipt.TxHash.Bytes.ToArray().Should().BeEquivalentTo(block.Transactions[1].Hash!.BytesToArray());
     }
 
     [Test]
@@ -84,7 +84,7 @@ public class ReceiptsIteratorTests
             .Block
             .WithTransactions(3, MainnetSpecProvider.Instance)
             .TestObject;
-        TxReceipt[] receipts = new[]
+        TxReceipt[] receipts =
         {
             Build.A.Receipt.WithAllFieldsFilled.WithSender(TestItem.AddressA).TestObject,
             Build.A.Receipt.WithAllFieldsFilled.WithSender(TestItem.AddressB).TestObject,
@@ -112,7 +112,7 @@ public class ReceiptsIteratorTests
             false
         );
 
-        ReceiptsIterator iterator = new ReceiptsIterator(span, blockDb, () => recovery.CreateRecoveryContext(new ReceiptRecoveryBlock(block)), _decoder.GetRefDecoder(span));
+        ReceiptsIterator iterator = new ReceiptsIterator(span, blockDb, () => recovery.CreateRecoveryContext(new ReceiptRecoveryBlock(block)), ReceiptArrayStorageDecoder.GetRefDecoder(span));
         return iterator;
     }
 }

@@ -20,7 +20,7 @@ namespace Nethermind.Blockchain.Filters.Topics
 
         public override bool Accepts(LogEntry entry) => Accepts(entry.Topics);
 
-        private bool Accepts(Keccak[] topics)
+        private bool Accepts(Hash256[] topics)
         {
             for (int i = 0; i < _expressions.Length; i++)
             {

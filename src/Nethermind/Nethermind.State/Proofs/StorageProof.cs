@@ -8,8 +8,8 @@ namespace Nethermind.State.Proofs
     /// </summary>
     public class StorageProof
     {
-        public byte[][]? Proof { get; set; }
         public byte[]? Key { get; set; }
+        public byte[][]? Proof { get; set; }
         public byte[]? Value { get; set; }
     }
 }

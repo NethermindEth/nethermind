@@ -20,7 +20,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             EvmRpcModule rpcModule = new(trigger);
             string response = await RpcTest.TestSerializedRequest<IEvmRpcModule>(rpcModule, "evm_mine");
             Assert.That(response, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":true,\"id\":67}"));
-            trigger.Received().BuildBlock();
+            await trigger.Received().BuildBlock();
         }
     }
 }

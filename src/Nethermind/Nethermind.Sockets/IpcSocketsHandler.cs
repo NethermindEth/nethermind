@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.IO;
 using System.Net.Sockets;
 using System.Threading.Tasks;
 
@@ -44,9 +45,14 @@ namespace Nethermind.Sockets
             return Task.Factory.StartNew(_socket.Close);
         }
 
+        public Stream SendUsingStream()
+        {
+            return new NetworkStream(_socket, FileAccess.Write, ownsSocket: false);
+        }
+
         public void Dispose()
         {
-            _socket?.Dispose();
+            _socket.Dispose();
         }
     }
 }

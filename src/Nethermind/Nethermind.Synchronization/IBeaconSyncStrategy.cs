@@ -17,8 +17,9 @@ namespace Nethermind.Synchronization
         public bool ShouldBeInBeaconModeControl() => false;
 
         public bool IsBeaconSyncFinished(BlockHeader? blockHeader) => true;
+        public bool MergeTransitionFinished => false;
         public long? GetTargetBlockHeight() => null;
-        public Keccak? GetFinalizedHash() => null;
+        public Hash256? GetFinalizedHash() => null;
     }
 
     public interface IBeaconSyncStrategy
@@ -27,7 +28,9 @@ namespace Nethermind.Synchronization
         bool ShouldBeInBeaconModeControl();
         bool IsBeaconSyncFinished(BlockHeader? blockHeader);
 
+        public bool MergeTransitionFinished { get; }
+
         public long? GetTargetBlockHeight();
-        public Keccak? GetFinalizedHash();
+        public Hash256? GetFinalizedHash();
     }
 }

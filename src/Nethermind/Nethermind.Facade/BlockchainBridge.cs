@@ -83,9 +83,9 @@ namespace Nethermind.Facade
 
         public bool IsMining { get; }
 
-        public (TxReceipt? Receipt, TxGasInfo? GasInfo, int LogIndexStart) GetReceiptAndGasInfo(Keccak txHash)
+        public (TxReceipt? Receipt, TxGasInfo? GasInfo, int LogIndexStart) GetReceiptAndGasInfo(Hash256 txHash)
         {
-            Keccak blockHash = _receiptFinder.FindBlockHash(txHash);
+            Hash256 blockHash = _receiptFinder.FindBlockHash(txHash);
             if (blockHash is not null)
             {
                 Block? block = _processingEnv.BlockTree.FindBlock(blockHash, BlockTreeLookupOptions.RequireCanonical);
@@ -103,9 +103,9 @@ namespace Nethermind.Facade
             return (null, null, 0);
         }
 
-        public (TxReceipt? Receipt, Transaction Transaction, UInt256? baseFee) GetTransaction(Keccak txHash)
+        public (TxReceipt? Receipt, Transaction Transaction, UInt256? baseFee) GetTransaction(Hash256 txHash, bool checkTxnPool = true)
         {
-            Keccak blockHash = _receiptFinder.FindBlockHash(txHash);
+            Hash256 blockHash = _receiptFinder.FindBlockHash(txHash);
             if (blockHash is not null)
             {
                 Block block = _processingEnv.BlockTree.FindBlock(blockHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
@@ -113,7 +113,7 @@ namespace Nethermind.Facade
                 return (txReceipt, block?.Transactions[txReceipt.Index], block?.BaseFeePerGas);
             }
 
-            if (_txPool.TryGetPendingTransaction(txHash, out Transaction? transaction))
+            if (checkTxnPool && _txPool.TryGetPendingTransaction(txHash, out Transaction? transaction))
             {
                 return (null, transaction, null);
             }
@@ -121,9 +121,9 @@ namespace Nethermind.Facade
             return (null, null, null);
         }
 
-        public TxReceipt? GetReceipt(Keccak txHash)
+        public TxReceipt? GetReceipt(Hash256 txHash)
         {
-            Keccak? blockHash = _receiptFinder.FindBlockHash(txHash);
+            Hash256? blockHash = _receiptFinder.FindBlockHash(txHash);
             return blockHash is not null ? _receiptFinder.Get(blockHash).ForTransaction(txHash) : null;
         }
 
@@ -235,7 +235,7 @@ namespace Nethermind.Facade
         {
             transaction.SenderAddress ??= Address.SystemUser;
 
-            Keccak stateRoot = blockHeader.StateRoot!;
+            Hash256 stateRoot = blockHeader.StateRoot!;
             using IReadOnlyTransactionProcessor transactionProcessor = _processingEnv.Build(stateRoot);
 
             if (transaction.Nonce == 0)
@@ -251,7 +251,7 @@ namespace Nethermind.Facade
                     UInt256.Zero,
                     blockHeader.Number + 1,
                     blockHeader.GasLimit,
-                    Math.Max(blockHeader.Timestamp + 1, _timestamper.UnixTime.Seconds),
+                    Math.Max(blockHeader.Timestamp + _blocksConfig.SecondsPerSlot, _timestamper.UnixTime.Seconds),
                     Array.Empty<byte>())
                 : new(
                     blockHeader.ParentHash!,
@@ -278,7 +278,7 @@ namespace Nethermind.Facade
             callHeader.MixHash = blockHeader.MixHash;
             callHeader.IsPostMerge = blockHeader.Difficulty == 0;
             transaction.Hash = transaction.CalculateHash();
-            transactionProcessor.CallAndRestore(transaction, callHeader, tracer);
+            transactionProcessor.CallAndRestore(transaction, new(callHeader), tracer);
         }
 
         public ulong GetChainId()
@@ -286,7 +286,7 @@ namespace Nethermind.Facade
             return _processingEnv.BlockTree.ChainId;
         }
 
-        private UInt256 GetNonce(Keccak stateRoot, Address address)
+        private UInt256 GetNonce(Hash256 stateRoot, Address address)
         {
             return _processingEnv.StateReader.GetNonce(stateRoot, address);
         }
@@ -302,8 +302,26 @@ namespace Nethermind.Facade
             IEnumerable<object>? topics = null,
             CancellationToken cancellationToken = default)
         {
-            LogFilter filter = _filterStore.CreateLogFilter(fromBlock, toBlock, address, topics, false);
+            LogFilter filter = GetFilter(fromBlock, toBlock, address, topics);
             return _logFinder.FindLogs(filter, cancellationToken);
+        }
+
+        public LogFilter GetFilter(
+            BlockParameter fromBlock,
+            BlockParameter toBlock,
+            object? address = null,
+            IEnumerable<object>? topics = null)
+        {
+            return _filterStore.CreateLogFilter(fromBlock, toBlock, address, topics, false);
+        }
+
+        public IEnumerable<FilterLog> GetLogs(
+            LogFilter filter,
+            BlockHeader fromBlock,
+            BlockHeader toBlock,
+            CancellationToken cancellationToken = default)
+        {
+            return _logFinder.FindLogs(filter, fromBlock, toBlock, cancellationToken);
         }
 
         public bool TryGetLogs(int filterId, out IEnumerable<FilterLog> filterLogs, CancellationToken cancellationToken = default)
@@ -340,7 +358,7 @@ namespace Nethermind.Facade
 
         public void UninstallFilter(int filterId) => _filterStore.RemoveFilter(filterId);
         public FilterLog[] GetLogFilterChanges(int filterId) => _filterManager.PollLogs(filterId);
-        public Keccak[] GetBlockFilterChanges(int filterId) => _filterManager.PollBlockHashes(filterId);
+        public Hash256[] GetBlockFilterChanges(int filterId) => _filterManager.PollBlockHashes(filterId);
 
         public void RecoverTxSenders(Block block)
         {
@@ -364,14 +382,24 @@ namespace Nethermind.Facade
             }
         }
 
-        public Keccak[] GetPendingTransactionFilterChanges(int filterId) =>
+        public Hash256[] GetPendingTransactionFilterChanges(int filterId) =>
             _filterManager.PollPendingTransactionHashes(filterId);
 
         public Address? RecoverTxSender(Transaction tx) => _ecdsa.RecoverAddress(tx);
 
-        public void RunTreeVisitor(ITreeVisitor treeVisitor, Keccak stateRoot)
+        public void RunTreeVisitor(ITreeVisitor treeVisitor, Hash256 stateRoot)
         {
             _processingEnv.StateReader.RunTreeVisitor(treeVisitor, stateRoot);
+        }
+
+        public bool HasStateForRoot(Hash256 stateRoot)
+        {
+            return _processingEnv.StateReader.HasStateForRoot(stateRoot);
+        }
+
+        public IEnumerable<FilterLog> FindLogs(LogFilter filter, BlockHeader fromBlock, BlockHeader toBlock, CancellationToken cancellationToken = default)
+        {
+            return _logFinder.FindLogs(filter, fromBlock, toBlock, cancellationToken);
         }
 
         public IEnumerable<FilterLog> FindLogs(LogFilter filter, CancellationToken cancellationToken = default)

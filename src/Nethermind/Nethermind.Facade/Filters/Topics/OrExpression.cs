@@ -17,7 +17,7 @@ namespace Nethermind.Blockchain.Filters.Topics
             _subexpressions = subexpressions;
         }
 
-        public override bool Accepts(Keccak topic)
+        public override bool Accepts(Hash256 topic)
         {
             for (int i = 0; i < _subexpressions.Length; i++)
             {
@@ -30,7 +30,7 @@ namespace Nethermind.Blockchain.Filters.Topics
             return false;
         }
 
-        public override bool Accepts(ref KeccakStructRef topic)
+        public override bool Accepts(ref Hash256StructRef topic)
         {
             for (int i = 0; i < _subexpressions.Length; i++)
             {
@@ -71,7 +71,7 @@ namespace Nethermind.Blockchain.Filters.Topics
 
         public override bool Equals(object? obj)
         {
-            if (ReferenceEquals(null, obj)) return false;
+            if (obj is null) return false;
             if (ReferenceEquals(this, obj)) return true;
             return Equals(obj as OrExpression);
         }
@@ -89,7 +89,7 @@ namespace Nethermind.Blockchain.Filters.Topics
 
         public bool Equals(OrExpression? other)
         {
-            if (ReferenceEquals(null, other)) return false;
+            if (other is null) return false;
             if (ReferenceEquals(this, other)) return true;
             return _subexpressions.SequenceEqual(other._subexpressions);
         }

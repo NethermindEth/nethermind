@@ -27,6 +27,9 @@ public interface IDbConfig : IConfig
     bool? DisableCompression { get; set; }
     ulong? CompactionReadAhead { get; set; }
     IDictionary<string, string>? AdditionalRocksDbOptions { get; set; }
+    ulong? MaxBytesForLevelBase { get; set; }
+    ulong TargetFileSizeBase { get; set; }
+    int TargetFileSizeMultiplier { get; set; }
 
     ulong ReceiptsDbWriteBufferSize { get; set; }
     uint ReceiptsDbWriteBufferNumber { get; set; }
@@ -38,6 +41,7 @@ public interface IDbConfig : IConfig
     bool? ReceiptsDbUseDirectReads { get; set; }
     bool? ReceiptsDbUseDirectIoForFlushAndCompactions { get; set; }
     ulong? ReceiptsDbCompactionReadAhead { get; set; }
+    ulong ReceiptsDbTargetFileSizeBase { get; set; }
     IDictionary<string, string>? ReceiptsDbAdditionalRocksDbOptions { get; set; }
 
     ulong BlocksDbWriteBufferSize { get; set; }
@@ -63,6 +67,20 @@ public interface IDbConfig : IConfig
     bool? HeadersDbUseDirectIoForFlushAndCompactions { get; set; }
     ulong? HeadersDbCompactionReadAhead { get; set; }
     IDictionary<string, string>? HeadersDbAdditionalRocksDbOptions { get; set; }
+    ulong? HeadersDbMaxBytesForLevelBase { get; set; }
+
+    ulong BlockNumbersDbWriteBufferSize { get; set; }
+    uint BlockNumbersDbWriteBufferNumber { get; set; }
+    ulong BlockNumbersDbBlockCacheSize { get; set; }
+    bool BlockNumbersDbCacheIndexAndFilterBlocks { get; set; }
+    int? BlockNumbersDbMaxOpenFiles { get; set; }
+    long? BlockNumbersDbMaxBytesPerSec { get; set; }
+    int? BlockNumbersDbBlockSize { get; set; }
+    bool? BlockNumbersDbUseDirectReads { get; set; }
+    bool? BlockNumbersDbUseDirectIoForFlushAndCompactions { get; set; }
+    ulong? BlockNumbersDbCompactionReadAhead { get; set; }
+    IDictionary<string, string>? BlockNumbersDbAdditionalRocksDbOptions { get; set; }
+    ulong? BlockNumbersDbMaxBytesForLevelBase { get; set; }
 
     ulong BlockInfosDbWriteBufferSize { get; set; }
     uint BlockInfosDbWriteBufferNumber { get; set; }
@@ -155,11 +173,13 @@ public interface IDbConfig : IConfig
     bool? StateDbUseDirectIoForFlushAndCompactions { get; set; }
     ulong? StateDbCompactionReadAhead { get; set; }
     bool? StateDbDisableCompression { get; set; }
+    int StateDbTargetFileSizeMultiplier { get; set; }
+    ulong? StateDbRowCacheSize { get; set; }
     IDictionary<string, string>? StateDbAdditionalRocksDbOptions { get; set; }
 
     /// <summary>
     /// Enables DB Statistics - https://github.com/facebook/rocksdb/wiki/Statistics
-    /// It can has a RocksDB perfomance hit between 5 and 10%.
+    /// It can has a RocksDB performance hit between 5 and 10%.
     /// </summary>
     bool EnableDbStatistics { get; set; }
     bool EnableMetricsUpdater { get; set; }

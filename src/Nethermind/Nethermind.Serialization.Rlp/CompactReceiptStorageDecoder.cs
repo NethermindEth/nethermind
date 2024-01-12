@@ -38,7 +38,7 @@ namespace Nethermind.Serialization.Rlp
             }
             else
             {
-                txReceipt.PostTransactionState = firstItem.Length == 0 ? null : new Keccak(firstItem);
+                txReceipt.PostTransactionState = firstItem.Length == 0 ? null : new Hash256(firstItem);
             }
 
             txReceipt.Sender = rlpStream.DecodeAddress();
@@ -50,7 +50,7 @@ namespace Nethermind.Serialization.Rlp
 
             while (rlpStream.Position < lastCheck)
             {
-                logEntries.Add(CompactLogEntryDecoder.Instance.Decode(rlpStream, RlpBehaviors.AllowExtraBytes));
+                logEntries.Add(CompactLogEntryDecoder.Decode(rlpStream, RlpBehaviors.AllowExtraBytes));
             }
 
             txReceipt.Logs = logEntries.ToArray();
@@ -85,7 +85,7 @@ namespace Nethermind.Serialization.Rlp
             }
             else
             {
-                txReceipt.PostTransactionState = firstItem.Length == 0 ? null : new Keccak(firstItem);
+                txReceipt.PostTransactionState = firstItem.Length == 0 ? null : new Hash256(firstItem);
             }
 
             txReceipt.Sender = decoderContext.DecodeAddress();
@@ -98,7 +98,7 @@ namespace Nethermind.Serialization.Rlp
             using ArrayPoolList<LogEntry> logEntries = new(sequenceLength * 2 / Rlp.LengthOfAddressRlp);
             while (decoderContext.Position < lastCheck)
             {
-                logEntries.Add(CompactLogEntryDecoder.Instance.Decode(ref decoderContext, RlpBehaviors.AllowExtraBytes));
+                logEntries.Add(CompactLogEntryDecoder.Decode(ref decoderContext, RlpBehaviors.AllowExtraBytes));
             }
 
             txReceipt.Logs = logEntries.ToArray();
@@ -136,7 +136,7 @@ namespace Nethermind.Serialization.Rlp
             else
             {
                 item.PostTransactionState =
-                    firstItem.Length == 0 ? new KeccakStructRef() : new KeccakStructRef(firstItem);
+                    firstItem.Length == 0 ? new Hash256StructRef() : new Hash256StructRef(firstItem);
             }
 
             decoderContext.DecodeAddressStructRef(out item.Sender);
@@ -152,12 +152,12 @@ namespace Nethermind.Serialization.Rlp
         public void DecodeLogEntryStructRef(scoped ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors none,
             out LogEntryStructRef current)
         {
-            CompactLogEntryDecoder.Instance.DecodeLogEntryStructRef(ref decoderContext, none, out current);
+            CompactLogEntryDecoder.DecodeLogEntryStructRef(ref decoderContext, none, out current);
         }
 
-        public Keccak[] DecodeTopics(Rlp.ValueDecoderContext valueDecoderContext)
+        public Hash256[] DecodeTopics(Rlp.ValueDecoderContext valueDecoderContext)
         {
-            return CompactLogEntryDecoder.Instance.DecodeTopics(valueDecoderContext);
+            return CompactLogEntryDecoder.DecodeTopics(valueDecoderContext);
         }
 
         // Refstruct decode does not generate bloom
@@ -201,11 +201,11 @@ namespace Nethermind.Serialization.Rlp
             LogEntry[] logs = item.Logs ?? Array.Empty<LogEntry>();
             for (int i = 0; i < logs.Length; i++)
             {
-                CompactLogEntryDecoder.Instance.Encode(rlpStream, logs[i]);
+                CompactLogEntryDecoder.Encode(rlpStream, logs[i]);
             }
         }
 
-        private (int Total, int Logs) GetContentLength(TxReceipt? item, RlpBehaviors rlpBehaviors)
+        private static (int Total, int Logs) GetContentLength(TxReceipt? item, RlpBehaviors rlpBehaviors)
         {
             int contentLength = 0;
             if (item is null)
@@ -232,7 +232,7 @@ namespace Nethermind.Serialization.Rlp
             return (contentLength, logsLength);
         }
 
-        private int GetLogsLength(TxReceipt item)
+        private static int GetLogsLength(TxReceipt item)
         {
             int logsLength = 0;
             LogEntry[] logs = item.Logs ?? Array.Empty<LogEntry>();

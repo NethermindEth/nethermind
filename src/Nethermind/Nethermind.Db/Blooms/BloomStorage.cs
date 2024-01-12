@@ -18,10 +18,10 @@ namespace Nethermind.Db.Blooms
         public byte Levels { get; private set; }
         public int MaxBucketSize => _storageLevels.FirstOrDefault()?.LevelElementSize ?? 1;
 
-        internal static readonly Keccak MinBlockNumberKey = Keccak.Compute(nameof(MinBlockNumber));
-        internal static readonly Keccak MaxBlockNumberKey = Keccak.Compute(nameof(MaxBlockNumber));
-        private static readonly Keccak MigrationBlockNumberKey = Keccak.Compute(nameof(MigratedBlockNumber));
-        private static readonly Keccak LevelsKey = Keccak.Compute(nameof(LevelsKey));
+        internal static readonly Hash256 MinBlockNumberKey = Keccak.Compute(nameof(MinBlockNumber));
+        internal static readonly Hash256 MaxBlockNumberKey = Keccak.Compute(nameof(MaxBlockNumber));
+        private static readonly Hash256 MigrationBlockNumberKey = Keccak.Compute(nameof(MigratedBlockNumber));
+        private static readonly Hash256 LevelsKey = Keccak.Compute(nameof(LevelsKey));
 
         private readonly BloomStorageLevel[] _storageLevels;
         private readonly IBloomConfig _config;
@@ -63,7 +63,7 @@ namespace Nethermind.Db.Blooms
 
         public BloomStorage(IBloomConfig config, IDb bloomDb, IFileStoreFactory fileStoreFactory)
         {
-            long Get(Keccak key, long defaultValue) => bloomDb.Get(key)?.ToLongFromBigEndianByteArrayWithoutLeadingZeros() ?? defaultValue;
+            long Get(Hash256 key, long defaultValue) => bloomDb.Get(key)?.ToLongFromBigEndianByteArrayWithoutLeadingZeros() ?? defaultValue;
 
             _config = config ?? throw new ArgumentNullException(nameof(config));
             _bloomInfoDb = bloomDb ?? throw new ArgumentNullException(nameof(_bloomInfoDb));
@@ -211,7 +211,7 @@ namespace Nethermind.Db.Blooms
             }
         }
 
-        private void Set(Keccak key, long value)
+        private void Set(Hash256 key, long value)
         {
             _bloomInfoDb.Set(key, value.ToBigEndianByteArrayWithoutLeadingZeros());
         }
@@ -360,7 +360,7 @@ namespace Nethermind.Db.Blooms
                 Reset();
             }
 
-            private (BloomStorageLevel Storage, IFileReader Reader)[] GetStorageLevels(BloomStorageLevel[] storageLevels, long fromBlock, long toBlock)
+            private static (BloomStorageLevel Storage, IFileReader Reader)[] GetStorageLevels(BloomStorageLevel[] storageLevels, long fromBlock, long toBlock)
             {
                 // Skip higher levels if we would do only 1 or 2 lookups in them. Thanks to that we can skip a lot of IO operations on that file
                 IList<BloomStorageLevel> levels = new List<BloomStorageLevel>(storageLevels.Length);

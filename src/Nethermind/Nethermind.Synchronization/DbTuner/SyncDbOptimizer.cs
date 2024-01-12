@@ -11,23 +11,23 @@ namespace Nethermind.Synchronization.DbTuner;
 
 public class SyncDbTuner
 {
-    private readonly IDb _stateDb;
-    private readonly IDb _codeDb;
-    private readonly IDb _blockDb;
-    private readonly IDb _receiptDb;
+    private readonly ITunableDb? _stateDb;
+    private readonly ITunableDb? _codeDb;
+    private readonly ITunableDb? _blockDb;
+    private readonly ITunableDb? _receiptDb;
 
-    private ITunableDb.TuneType _tuneType;
-    private ITunableDb.TuneType _blocksDbTuneType;
+    private readonly ITunableDb.TuneType _tuneType;
+    private readonly ITunableDb.TuneType _blocksDbTuneType;
 
     public SyncDbTuner(
         ISyncConfig syncConfig,
         ISyncFeed<SnapSyncBatch>? snapSyncFeed,
         ISyncFeed<BodiesSyncBatch>? bodiesSyncFeed,
         ISyncFeed<ReceiptsSyncBatch>? receiptSyncFeed,
-        IDb stateDb,
-        IDb codeDb,
-        IDb blockDb,
-        IDb receiptDb
+        ITunableDb? stateDb,
+        ITunableDb? codeDb,
+        ITunableDb? blockDb,
+        ITunableDb? receiptDb
     )
     {
         // Only these three make sense as they are write heavy
@@ -61,25 +61,13 @@ public class SyncDbTuner
     {
         if (e.NewState == SyncFeedState.Active)
         {
-            if (_stateDb is ITunableDb stateDb)
-            {
-                stateDb.Tune(_tuneType);
-            }
-            if (_codeDb is ITunableDb codeDb)
-            {
-                codeDb.Tune(_tuneType);
-            }
+            _stateDb?.Tune(_tuneType);
+            _codeDb?.Tune(_tuneType);
         }
         else if (e.NewState == SyncFeedState.Finished)
         {
-            if (_stateDb is ITunableDb stateDb)
-            {
-                stateDb.Tune(ITunableDb.TuneType.Default);
-            }
-            if (_codeDb is ITunableDb codeDb)
-            {
-                codeDb.Tune(ITunableDb.TuneType.Default);
-            }
+            _stateDb?.Tune(ITunableDb.TuneType.Default);
+            _codeDb?.Tune(ITunableDb.TuneType.Default);
         }
     }
 
@@ -87,17 +75,11 @@ public class SyncDbTuner
     {
         if (e.NewState == SyncFeedState.Active)
         {
-            if (_blockDb is ITunableDb blockDb)
-            {
-                blockDb.Tune(_blocksDbTuneType);
-            }
+            _blockDb?.Tune(_blocksDbTuneType);
         }
         else if (e.NewState == SyncFeedState.Finished)
         {
-            if (_blockDb is ITunableDb blockDb)
-            {
-                blockDb.Tune(ITunableDb.TuneType.Default);
-            }
+            _blockDb?.Tune(ITunableDb.TuneType.Default);
         }
     }
 
@@ -105,17 +87,11 @@ public class SyncDbTuner
     {
         if (e.NewState == SyncFeedState.Active)
         {
-            if (_receiptDb is ITunableDb receiptDb)
-            {
-                receiptDb.Tune(_tuneType);
-            }
+            _receiptDb?.Tune(_tuneType);
         }
         else if (e.NewState == SyncFeedState.Finished)
         {
-            if (_receiptDb is ITunableDb receiptDb)
-            {
-                receiptDb.Tune(ITunableDb.TuneType.Default);
-            }
+            _receiptDb?.Tune(ITunableDb.TuneType.Default);
         }
     }
 }

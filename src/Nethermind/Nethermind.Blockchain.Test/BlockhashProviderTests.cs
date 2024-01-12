@@ -24,7 +24,7 @@ namespace Nethermind.Blockchain.Test
             BlockhashProvider provider = new(tree, LimboLogs.Instance);
             BlockHeader? head = tree.FindHeader(chainLength - 1, BlockTreeLookupOptions.None);
             Block current = Build.A.Block.WithParent(head!).TestObject;
-            Keccak result = provider.GetBlockhash(current.Header, chainLength - 1);
+            Hash256 result = provider.GetBlockhash(current.Header, chainLength - 1);
             Assert.That(result, Is.EqualTo(head?.Hash));
         }
 
@@ -37,10 +37,10 @@ namespace Nethermind.Blockchain.Test
             BlockTree tree = Build.A.BlockTree(genesis).OfHeadersOnly.OfChainLength(chainLength).TestObject;
 
             BlockhashProvider provider = new(tree, LimboLogs.Instance);
-            BlockHeader head = tree.FindHeader(chainLength - 1, BlockTreeLookupOptions.None);
+            BlockHeader head = tree.FindHeader(chainLength - 1, BlockTreeLookupOptions.None)!;
             Block current = Build.A.Block.WithParent(head).TestObject;
-            Keccak result = provider.GetBlockhash(current.Header, chainLength - 256);
-            Assert.That(result, Is.EqualTo(tree.FindHeader(256, BlockTreeLookupOptions.None).Hash));
+            Hash256 result = provider.GetBlockhash(current.Header, chainLength - 256);
+            Assert.That(result, Is.EqualTo(tree.FindHeader(256, BlockTreeLookupOptions.None)!.Hash));
         }
 
         [Test, Timeout(Timeout.MaxTestTime)]
@@ -49,12 +49,12 @@ namespace Nethermind.Blockchain.Test
             const int chainLength = 512;
 
             Block genesis = Build.A.Block.Genesis.TestObject;
-            BlockTree tree = Build.A.BlockTree(genesis).OfHeadersOnly.OfChainLength(out Block headBlock, chainLength).OfChainLength(out Block alternativeHeadBlock, chainLength, 1).TestObject;
+            BlockTree tree = Build.A.BlockTree(genesis).OfHeadersOnly.OfChainLength(out Block headBlock, chainLength).OfChainLength(out Block _, chainLength, 1).TestObject;
 
             BlockhashProvider provider = new(tree, LimboLogs.Instance);
             Block current = Build.A.Block.WithParent(headBlock).TestObject;
             long lookupNumber = chainLength - 256;
-            Keccak result = provider.GetBlockhash(current.Header, lookupNumber);
+            Hash256 result = provider.GetBlockhash(current.Header, lookupNumber);
             Assert.NotNull(result);
         }
 
@@ -64,14 +64,14 @@ namespace Nethermind.Blockchain.Test
             const int chainLength = 512;
 
             Block genesis = Build.A.Block.Genesis.TestObject;
-            BlockTree tree = Build.A.BlockTree(genesis).OfHeadersOnly.OfChainLength(out Block headBlock, chainLength).OfChainLength(out Block alternativeHeadBlock, chainLength, 1).TestObject;
+            BlockTree tree = Build.A.BlockTree(genesis).OfHeadersOnly.OfChainLength(out Block headBlock, chainLength).OfChainLength(out Block _, chainLength, 1).TestObject;
 
             BlockhashProvider provider = new(tree, LimboLogs.Instance);
             Block current = Build.A.Block.WithParent(headBlock).TestObject;
             tree.SuggestBlock(current);
             tree.UpdateMainChain(current);
             long lookupNumber = chainLength - 256;
-            Keccak result = provider.GetBlockhash(current.Header, lookupNumber);
+            Hash256 result = provider.GetBlockhash(current.Header, lookupNumber);
             Assert.NotNull(result);
         }
 
@@ -81,7 +81,7 @@ namespace Nethermind.Blockchain.Test
             const int chainLength = 512;
 
             Block genesis = Build.A.Block.Genesis.TestObject;
-            BlockTree tree = Build.A.BlockTree(genesis).OfHeadersOnly.OfChainLength(out Block headBlock, chainLength).OfChainLength(out Block alternativeHeadBlock, chainLength, 1).TestObject;
+            BlockTree tree = Build.A.BlockTree(genesis).OfHeadersOnly.OfChainLength(out Block headBlock, chainLength).OfChainLength(out Block _, chainLength, 1).TestObject;
 
             BlockhashProvider provider = new(tree, LimboLogs.Instance);
 
@@ -94,7 +94,7 @@ namespace Nethermind.Blockchain.Test
             }
 
             long lookupNumber = current.Number - 256;
-            Keccak result = provider.GetBlockhash(current.Header, lookupNumber);
+            Hash256 result = provider.GetBlockhash(current.Header, lookupNumber);
             Assert.NotNull(result);
         }
 
@@ -104,7 +104,7 @@ namespace Nethermind.Blockchain.Test
             const int chainLength = 512;
 
             Block genesis = Build.A.Block.Genesis.TestObject;
-            BlockTree tree = Build.A.BlockTree(genesis).OfHeadersOnly.OfChainLength(out Block headBlock, chainLength).OfChainLength(out Block alternativeHeadBlock, chainLength, 1).TestObject;
+            BlockTree tree = Build.A.BlockTree(genesis).OfHeadersOnly.OfChainLength(out Block headBlock, chainLength).OfChainLength(out Block _, chainLength, 1).TestObject;
             Block current = Build.A.Block.WithParent(headBlock).TestObject;
             for (int i = 0; i < 6; i++)
             {
@@ -115,7 +115,7 @@ namespace Nethermind.Blockchain.Test
 
             BlockhashProvider provider = new(tree, LimboLogs.Instance);
 
-            Keccak result = provider.GetBlockhash(current.Header, 509);
+            Hash256 result = provider.GetBlockhash(current.Header, 509);
             Assert.NotNull(result);
         }
 
@@ -129,9 +129,9 @@ namespace Nethermind.Blockchain.Test
             BlockTree tree = Build.A.BlockTree(genesis).OfChainLength(chainLength).TestObject;
 
             BlockhashProvider provider = new(tree, LimboLogs.Instance);
-            BlockHeader head = tree.FindHeader(chainLength - 1, BlockTreeLookupOptions.None);
+            BlockHeader head = tree.FindHeader(chainLength - 1, BlockTreeLookupOptions.None)!;
             Block current = Build.A.Block.WithParent(head).TestObject;
-            Keccak result = provider.GetBlockhash(current.Header, chainLength - 1);
+            Hash256 result = provider.GetBlockhash(current.Header, chainLength - 1);
             Assert.That(result, Is.EqualTo(head.Hash));
         }
 
@@ -144,9 +144,9 @@ namespace Nethermind.Blockchain.Test
             BlockTree tree = Build.A.BlockTree(genesis).OfChainLength(chainLength).TestObject;
 
             BlockhashProvider provider = new(tree, LimboLogs.Instance);
-            BlockHeader head = tree.FindHeader(chainLength - 1, BlockTreeLookupOptions.None);
+            BlockHeader head = tree.FindHeader(chainLength - 1, BlockTreeLookupOptions.None)!;
             Block current = Build.A.Block.WithParent(head).TestObject;
-            Keccak result = provider.GetBlockhash(current.Header, chainLength);
+            Hash256 result = provider.GetBlockhash(current.Header, chainLength);
             Assert.Null(result);
         }
 
@@ -159,9 +159,9 @@ namespace Nethermind.Blockchain.Test
             BlockTree tree = Build.A.BlockTree(genesis).OfChainLength(chainLength).TestObject;
 
             BlockhashProvider provider = new(tree, LimboLogs.Instance);
-            BlockHeader head = tree.FindHeader(chainLength - 1, BlockTreeLookupOptions.None);
+            BlockHeader head = tree.FindHeader(chainLength - 1, BlockTreeLookupOptions.None)!;
             Block current = Build.A.Block.WithParent(head).TestObject;
-            Keccak result = provider.GetBlockhash(current.Header, chainLength + 1);
+            Hash256 result = provider.GetBlockhash(current.Header, chainLength + 1);
             Assert.Null(result);
         }
 
@@ -174,10 +174,10 @@ namespace Nethermind.Blockchain.Test
             BlockTree tree = Build.A.BlockTree(genesis).OfChainLength(chainLength).TestObject;
 
             BlockhashProvider provider = new(tree, LimboLogs.Instance);
-            BlockHeader head = tree.FindHeader(chainLength - 1, BlockTreeLookupOptions.None);
+            BlockHeader head = tree.FindHeader(chainLength - 1, BlockTreeLookupOptions.None)!;
             Block current = Build.A.Block.WithParent(head).TestObject;
-            Keccak result = provider.GetBlockhash(current.Header, chainLength - 256);
-            Assert.That(result, Is.EqualTo(tree.FindHeader(256, BlockTreeLookupOptions.None).Hash));
+            Hash256 result = provider.GetBlockhash(current.Header, chainLength - 256);
+            Assert.That(result, Is.EqualTo(tree.FindHeader(256, BlockTreeLookupOptions.None)!.Hash));
         }
 
         [Test, Timeout(Timeout.MaxTestTime)]
@@ -189,9 +189,9 @@ namespace Nethermind.Blockchain.Test
             BlockTree tree = Build.A.BlockTree(genesis).OfChainLength(chainLength).TestObject;
 
             BlockhashProvider provider = new(tree, LimboLogs.Instance);
-            BlockHeader head = tree.FindHeader(chainLength - 1, BlockTreeLookupOptions.None);
+            BlockHeader head = tree.FindHeader(chainLength - 1, BlockTreeLookupOptions.None)!;
             Block current = Build.A.Block.WithParent(head).TestObject;
-            Keccak result = provider.GetBlockhash(current.Header, chainLength - 257);
+            Hash256 result = provider.GetBlockhash(current.Header, chainLength - 257);
             Assert.Null(result);
         }
 
@@ -204,9 +204,9 @@ namespace Nethermind.Blockchain.Test
             BlockTree tree = Build.A.BlockTree(genesis).OfChainLength(chainLength).TestObject;
 
             BlockhashProvider provider = new(tree, LimboLogs.Instance);
-            BlockHeader head = tree.FindHeader(chainLength - 1, BlockTreeLookupOptions.None);
+            BlockHeader head = tree.FindHeader(chainLength - 1, BlockTreeLookupOptions.None)!;
             Block current = Build.A.Block.WithParent(head).TestObject;
-            Keccak result = provider.GetBlockhash(current.Header, 127);
+            Hash256 result = provider.GetBlockhash(current.Header, 127);
             Assert.That(result, Is.EqualTo(head.Hash));
         }
     }

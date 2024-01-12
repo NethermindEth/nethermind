@@ -12,6 +12,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Specs.ChainSpecStyle;
 
 namespace Nethermind.Merge.Plugin
 {
@@ -39,13 +40,14 @@ namespace Nethermind.Merge.Plugin
         private readonly IDb _metadataDb;
         private readonly IBlockTree _blockTree;
         private readonly ISpecProvider _specProvider;
+        private readonly ChainSpec _chainSpec;
         private readonly ILogger _logger;
-        private Keccak? _terminalBlockHash;
+        private Hash256? _terminalBlockHash;
 
         private long? _terminalBlockNumber;
         private long? _firstPoSBlockNumber;
         private bool _hasEverReachedTerminalDifficulty;
-        private Keccak _finalizedBlockHash = Keccak.Zero;
+        private Hash256 _finalizedBlockHash = Keccak.Zero;
         private bool _terminalBlockExplicitSpecified;
         private UInt256? _finalTotalDifficulty;
 
@@ -55,6 +57,7 @@ namespace Nethermind.Merge.Plugin
             IDb metadataDb,
             IBlockTree blockTree,
             ISpecProvider specProvider,
+            ChainSpec chainSpec,
             ILogManager logManager)
         {
             _mergeConfig = mergeConfig;
@@ -62,6 +65,7 @@ namespace Nethermind.Merge.Plugin
             _metadataDb = metadataDb;
             _blockTree = blockTree;
             _specProvider = specProvider;
+            _chainSpec = chainSpec;
             _logger = logManager.GetClassLogger();
 
             Initialize();
@@ -88,10 +92,23 @@ namespace Nethermind.Merge.Plugin
         {
             _finalTotalDifficulty = _mergeConfig.FinalTotalDifficultyParsed;
 
+            if (TerminalTotalDifficulty is null)
+                return;
+
             // pivot post TTD, so we know FinalTotalDifficulty
-            if (_syncConfig.PivotTotalDifficultyParsed != 0 && TerminalTotalDifficulty is not null && _syncConfig.PivotTotalDifficultyParsed >= TerminalTotalDifficulty)
+            if (_syncConfig.PivotTotalDifficultyParsed != 0 && _syncConfig.PivotTotalDifficultyParsed >= TerminalTotalDifficulty)
             {
                 _finalTotalDifficulty = _syncConfig.PivotTotalDifficultyParsed;
+            }
+            else
+            {
+                if (_chainSpec?.Genesis == null) return;
+
+                UInt256 genesisDifficulty = _chainSpec.Genesis.Difficulty;
+                if (genesisDifficulty >= TerminalTotalDifficulty) // networks with the merge in genesis
+                {
+                    _finalTotalDifficulty = genesisDifficulty;
+                }
             }
         }
 
@@ -133,7 +150,7 @@ namespace Nethermind.Merge.Plugin
             return true;
         }
 
-        public void ForkchoiceUpdated(BlockHeader newHeadHash, Keccak finalizedHash)
+        public void ForkchoiceUpdated(BlockHeader newHeadHash, Hash256 finalizedHash)
         {
             if (finalizedHash != Keccak.Zero && _finalizedBlockHash == Keccak.Zero)
             {
@@ -214,7 +231,7 @@ namespace Nethermind.Merge.Plugin
 
         public UInt256? FinalTotalDifficulty => _finalTotalDifficulty;
 
-        public Keccak ConfiguredTerminalBlockHash => _mergeConfig.TerminalBlockHashParsed;
+        public Hash256 ConfiguredTerminalBlockHash => _mergeConfig.TerminalBlockHashParsed;
 
         public long? ConfiguredTerminalBlockNumber => _mergeConfig.TerminalBlockNumber;
 
@@ -253,7 +270,7 @@ namespace Nethermind.Merge.Plugin
             return null;
         }
 
-        private Keccak? LoadHashFromDb(int key)
+        private Hash256? LoadHashFromDb(int key)
         {
             try
             {

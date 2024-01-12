@@ -13,12 +13,12 @@ public class PerTableDbConfig
 {
     private readonly string _tableName;
     private readonly IDbConfig _dbConfig;
-    private readonly RocksDbSettings _settings;
+    private readonly DbSettings _settings;
 
-    public PerTableDbConfig(IDbConfig dbConfig, RocksDbSettings rocksDbSettings, string? columnName = null)
+    public PerTableDbConfig(IDbConfig dbConfig, DbSettings dbSettings, string? columnName = null)
     {
         _dbConfig = dbConfig;
-        _settings = rocksDbSettings;
+        _settings = dbSettings;
         _tableName = _settings.DbName;
         if (columnName != null)
         {
@@ -48,6 +48,10 @@ public class PerTableDbConfig
     public uint StatsDumpPeriodSec => _dbConfig.StatsDumpPeriodSec;
     public bool? DisableCompression => ReadConfig<bool?>(nameof(DisableCompression));
     public ulong? CompactionReadAhead => ReadConfig<ulong?>(nameof(CompactionReadAhead));
+    public ulong MaxBytesForLevelBase => ReadConfig<ulong>(nameof(MaxBytesForLevelBase));
+    public ulong TargetFileSizeBase => ReadConfig<ulong>(nameof(TargetFileSizeBase));
+    public int TargetFileSizeMultiplier => ReadConfig<int>(nameof(TargetFileSizeMultiplier));
+    public ulong? RowCacheSize => ReadConfig<ulong?>(nameof(RowCacheSize));
 
     private T? ReadConfig<T>(string propertyName)
     {

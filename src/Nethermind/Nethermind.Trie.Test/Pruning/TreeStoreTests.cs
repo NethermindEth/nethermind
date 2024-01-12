@@ -393,7 +393,7 @@ namespace Nethermind.Trie.Test.Pruning
 
         private class BadDb : IKeyValueStoreWithBatching
         {
-            private Dictionary<byte[], byte[]> _db = new();
+            private readonly Dictionary<byte[], byte[]> _db = new();
 
             public byte[]? this[ReadOnlySpan<byte> key]
             {
@@ -411,14 +411,14 @@ namespace Nethermind.Trie.Test.Pruning
                 return _db[key.ToArray()];
             }
 
-            public IBatch StartBatch()
+            public IWriteBatch StartWriteBatch()
             {
-                return new BadBatch();
+                return new BadWriteBatch();
             }
 
-            private class BadBatch : IBatch
+            private class BadWriteBatch : IWriteBatch
             {
-                private Dictionary<byte[], byte[]> _inBatched = new();
+                private readonly Dictionary<byte[], byte[]> _inBatched = new();
 
                 public void Dispose()
                 {
@@ -426,18 +426,12 @@ namespace Nethermind.Trie.Test.Pruning
 
                 public byte[]? this[ReadOnlySpan<byte> key]
                 {
-                    get => Get(key);
                     set => Set(key, value);
                 }
 
                 public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None)
                 {
                     _inBatched[key.ToArray()] = value;
-                }
-
-                public byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
-                {
-                    return _inBatched[key.ToArray()];
                 }
             }
         }
@@ -452,7 +446,7 @@ namespace Nethermind.Trie.Test.Pruning
             tree.Set(TestItem.AddressB, Build.A.Account.WithBalance(1000).TestObject);
         }
 
-        private AccountDecoder _accountDecoder = new();
+        private readonly AccountDecoder _accountDecoder = new();
 
         [Test]
         public void Will_store_storage_on_snapshot()

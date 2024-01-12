@@ -22,7 +22,7 @@ namespace Nethermind.Blockchain.Filters.Topics
 
         public override bool Accepts(LogEntry entry) => Accepts(entry.Topics);
 
-        private bool Accepts(Keccak[] topics)
+        private bool Accepts(Hash256[] topics)
         {
             if (_expressions.Length > topics.Length)
             {
@@ -103,7 +103,7 @@ namespace Nethermind.Blockchain.Filters.Topics
 
         public override bool Equals(object? obj)
         {
-            if (ReferenceEquals(null, obj)) return false;
+            if (obj is null) return false;
             if (ReferenceEquals(this, obj)) return true;
             if (obj.GetType() != this.GetType()) return false;
             return Equals((SequenceTopicsFilter)obj);

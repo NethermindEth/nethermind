@@ -1,0 +1,94 @@
+name: POSDAO tests
+
+on:
+  push:
+    branches: [master, release/*]
+    tags: ['*']
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: Branch to get tests from
+        required: false
+        default: bc-test-merge
+
+jobs:
+  prepare-branches:
+    name: Prepare branches
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.set-matrix.outputs.matrix }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - id: set-matrix
+        run: |
+          if [ -z "${{ github.event.inputs.branch }}" ]; then
+            echo '{"branch":["master", "bc-test-merge"]}' > matrix.json
+          else
+            echo '{"branch":["${{ github.event.inputs.branch }}"]}' > matrix.json
+          fi
+          echo "matrix=$(cat matrix.json)" >> $GITHUB_OUTPUT
+
+  run-posdao-tests:
+    name: Run Nethermind POSDAO tests
+    needs: prepare-branches
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(needs.prepare-branches.outputs.matrix) }}
+    steps:
+      - name: Check out Nethermind repository
+        uses: actions/checkout@v4
+        with:
+          path: nethermind
+      - name: Check out posdao-test-setup repository
+        uses: actions/checkout@v4
+        with:
+          repository: NethermindEth/posdao-test-setup
+          ref: ${{ matrix.branch }}
+          submodules: recursive
+          path: posdao-test-setup
+      - name: Install Linux packages
+        run: sudo apt-get update && sudo apt-get install libsnappy-dev
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: nethermind/global.json
+      - name: Build Nethermind
+        run: |
+          cd nethermind
+          mkdir bin
+          cd src/Nethermind
+          dotnet build Nethermind.sln -c release
+          cp -r artifacts/bin/Nethermind.Runner/release/* $GITHUB_WORKSPACE/nethermind/bin/
+      - name: Set up Node.js v12
+        if: ${{ !contains(matrix.branch, 'merge') }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: 12
+      - name: Set up Node.js v16
+        if: ${{ contains(matrix.branch, 'merge') }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: 16
+      - name: Run tests
+        run: |
+          cd posdao-test-setup
+          npm run all-nethermind-no-watcher
+      - name: Collect logs if workflow canceled # otherwise, it's collected in the test step
+        if: cancelled()
+        run: |
+          cd posdao-test-setup
+          bash scripts/collect-logs
+      - name: Move logs to different dir
+        if: always()
+        run: |
+          mkdir posdao-logs
+          cp posdao-test-setup/posdao-logs/latest/* posdao-logs
+          ls posdao-logs
+      - name: Upload logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: posdao-logs-${{ matrix.branch }}
+          path: posdao-logs/*

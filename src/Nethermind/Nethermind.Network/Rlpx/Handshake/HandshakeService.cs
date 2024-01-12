@@ -18,8 +18,8 @@ namespace Nethermind.Network.Rlpx.Handshake
     /// </summary>
     public class HandshakeService : IHandshakeService
     {
-        private static int MacBitsSize = 256;
-        private static int MacBytesSize = MacBitsSize / 8;
+        private static readonly int MacBitsSize = 256;
+        private static readonly int MacBytesSize = MacBitsSize / 8;
 
         private readonly IPrivateKeyGenerator _ephemeralGenerator;
         private readonly ICryptoRandom _cryptoRandom;
@@ -61,7 +61,7 @@ namespace Nethermind.Network.Rlpx.Handshake
                 {
                     Nonce = handshake.InitiatorNonce,
                     PublicKey = _privateKey.PublicKey,
-                    Signature = _ecdsa.Sign(handshake.EphemeralPrivateKey, new Keccak(forSigning)),
+                    Signature = _ecdsa.Sign(handshake.EphemeralPrivateKey, new Hash256(forSigning)),
                     IsTokenUsed = false,
                     EphemeralPublicHash = Keccak.Compute(handshake.EphemeralPrivateKey.PublicKey.Bytes)
                 };
@@ -85,7 +85,7 @@ namespace Nethermind.Network.Rlpx.Handshake
                 {
                     Nonce = handshake.InitiatorNonce,
                     PublicKey = _privateKey.PublicKey,
-                    Signature = _ecdsa.Sign(handshake.EphemeralPrivateKey, new Keccak(forSigning))
+                    Signature = _ecdsa.Sign(handshake.EphemeralPrivateKey, new Hash256(forSigning))
                 };
 
                 IByteBuffer authData = _messageSerializationService.ZeroSerialize(authMessage);
@@ -145,7 +145,7 @@ namespace Nethermind.Network.Rlpx.Handshake
             byte[] staticSharedSecret = SecP256k1.EcdhSerialized(handshake.RemoteNodeId.Bytes, _privateKey.KeyBytes);
             byte[] forSigning = staticSharedSecret.Xor(handshake.InitiatorNonce);
 
-            handshake.RemoteEphemeralPublicKey = _ecdsa.RecoverPublicKey(authMessage.Signature, new Keccak(forSigning));
+            handshake.RemoteEphemeralPublicKey = _ecdsa.RecoverPublicKey(authMessage.Signature, new Hash256(forSigning));
 
             byte[] data;
             if (preEip8Format)

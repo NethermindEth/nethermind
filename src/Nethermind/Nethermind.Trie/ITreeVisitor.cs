@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.Trie
@@ -12,11 +13,13 @@ namespace Nethermind.Trie
         /// </summary>
         public bool IsFullDbScan { get; }
 
-        bool ShouldVisit(Keccak nextNode);
+        ReadFlags ExtraReadFlag => ReadFlags.None;
 
-        void VisitTree(Keccak rootHash, TrieVisitContext trieVisitContext);
+        bool ShouldVisit(Hash256 nextNode);
 
-        void VisitMissingNode(Keccak nodeHash, TrieVisitContext trieVisitContext);
+        void VisitTree(Hash256 rootHash, TrieVisitContext trieVisitContext);
+
+        void VisitMissingNode(Hash256 nodeHash, TrieVisitContext trieVisitContext);
 
         void VisitBranch(TrieNode node, TrieVisitContext trieVisitContext);
 
@@ -24,6 +27,6 @@ namespace Nethermind.Trie
 
         void VisitLeaf(TrieNode node, TrieVisitContext trieVisitContext, byte[] value = null);
 
-        void VisitCode(Keccak codeHash, TrieVisitContext trieVisitContext);
+        void VisitCode(Hash256 codeHash, TrieVisitContext trieVisitContext);
     }
 }

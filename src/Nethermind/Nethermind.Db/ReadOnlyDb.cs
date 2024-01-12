@@ -7,7 +7,7 @@ using Nethermind.Core;
 
 namespace Nethermind.Db
 {
-    public class ReadOnlyDb : IReadOnlyDb, IDbWithSpan
+    public class ReadOnlyDb : IReadOnlyDb
     {
         private readonly MemDb _memDb = new();
 
@@ -63,9 +63,11 @@ namespace Nethermind.Db
 
         public IEnumerable<KeyValuePair<byte[], byte[]>> GetAll(bool ordered = false) => _memDb.GetAll();
 
+        public IEnumerable<byte[]> GetAllKeys(bool ordered = false) => _memDb.GetAllKeys();
+
         public IEnumerable<byte[]> GetAllValues(bool ordered = false) => _memDb.GetAllValues();
 
-        public IBatch StartBatch()
+        public IWriteBatch StartWriteBatch()
         {
             return this.LikeABatch();
         }
@@ -96,16 +98,18 @@ namespace Nethermind.Db
         }
 
         public Span<byte> GetSpan(ReadOnlySpan<byte> key) => _memDb.Get(key).AsSpan();
-        public void PutSpan(ReadOnlySpan<byte> keyBytes, ReadOnlySpan<byte> value)
+        public void PutSpan(ReadOnlySpan<byte> keyBytes, ReadOnlySpan<byte> value, WriteFlags writeFlags = WriteFlags.None)
         {
             if (!_createInMemWriteStore)
             {
                 throw new InvalidOperationException($"This {nameof(ReadOnlyDb)} did not expect any writes.");
             }
 
-            _memDb.Set(keyBytes, value.ToArray());
+            _memDb.Set(keyBytes, value.ToArray(), writeFlags);
         }
 
         public void DangerousReleaseMemory(in Span<byte> span) { }
+
+        public bool PreferWriteByArray => true; // Because of memdb buffer
     }
 }

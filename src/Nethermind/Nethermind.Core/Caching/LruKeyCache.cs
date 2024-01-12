@@ -4,8 +4,8 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
-using System.Runtime.CompilerServices;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Threading;
 
 namespace Nethermind.Core.Caching
 {
@@ -14,6 +14,7 @@ namespace Nethermind.Core.Caching
         private readonly int _maxCapacity;
         private readonly string _name;
         private readonly Dictionary<TKey, LinkedListNode<TKey>> _cacheMap;
+        private readonly McsLock _lock = new();
         private LinkedListNode<TKey>? _leastRecentlyUsed;
 
         public LruKeyCache(int maxCapacity, int startCapacity, string name)
@@ -30,16 +31,18 @@ namespace Nethermind.Core.Caching
         {
         }
 
-        [MethodImpl(MethodImplOptions.Synchronized)]
         public void Clear()
         {
+            using var lockRelease = _lock.Acquire();
+
             _leastRecentlyUsed = null;
             _cacheMap.Clear();
         }
 
-        [MethodImpl(MethodImplOptions.Synchronized)]
         public bool Get(TKey key)
         {
+            using var lockRelease = _lock.Acquire();
+
             if (_cacheMap.TryGetValue(key, out LinkedListNode<TKey>? node))
             {
                 LinkedListNode<TKey>.MoveToMostRecent(ref _leastRecentlyUsed, node);
@@ -49,9 +52,10 @@ namespace Nethermind.Core.Caching
             return false;
         }
 
-        [MethodImpl(MethodImplOptions.Synchronized)]
         public bool Set(TKey key)
         {
+            using var lockRelease = _lock.Acquire();
+
             if (_cacheMap.TryGetValue(key, out LinkedListNode<TKey>? node))
             {
                 LinkedListNode<TKey>.MoveToMostRecent(ref _leastRecentlyUsed, node);
@@ -74,9 +78,10 @@ namespace Nethermind.Core.Caching
             }
         }
 
-        [MethodImpl(MethodImplOptions.Synchronized)]
         public void Delete(TKey key)
         {
+            using var lockRelease = _lock.Acquire();
+
             if (_cacheMap.TryGetValue(key, out LinkedListNode<TKey>? node))
             {
                 LinkedListNode<TKey>.Remove(ref _leastRecentlyUsed, node);

@@ -21,7 +21,7 @@ namespace Nethermind.Network
         private (ForkActivation Activation, ForkId Id)[] Forks { get; }
         private readonly bool _hasTimestampFork;
 
-        public ForkInfo(ISpecProvider specProvider, Keccak genesisHash)
+        public ForkInfo(ISpecProvider specProvider, Hash256 genesisHash)
         {
             _hasTimestampFork = specProvider.TimestampFork != ISpecProvider.TimestampForkNever;
             ForkActivation[] transitionActivations = specProvider.TransitionActivations;
@@ -86,7 +86,7 @@ namespace Nethermind.Network
             // Potentially we can parametrize it based on Spec provider, but not worth it for now
             // We support block forks up to 1,4 bln blocks
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
-            bool IsTimestamp(ulong next) => next >= MainnetSpecProvider.GenesisBlockTimestamp;
+            static bool IsTimestamp(ulong next) => next >= MainnetSpecProvider.GenesisBlockTimestamp;
 
             if (head == null) return ValidationResult.Valid;
             if (!DictForks.TryGetValue(peerId.ForkHash, out (ForkActivation Activation, ForkId Id) found))

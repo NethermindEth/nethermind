@@ -16,13 +16,18 @@ using Nethermind.TxPool.Comparison;
 
 namespace Nethermind.TxPool.Collections
 {
-    public class TxDistinctSortedPool : DistinctValueSortedPool<ValueKeccak, Transaction, Address>
+    public class TxDistinctSortedPool : DistinctValueSortedPool<ValueHash256, Transaction, Address>
     {
         private readonly List<Transaction> _transactionsToRemove = new();
+        protected int _poolCapacity;
+        private readonly ILogger _logger;
+
 
         public TxDistinctSortedPool(int capacity, IComparer<Transaction> comparer, ILogManager logManager)
             : base(capacity, comparer, CompetingTransactionEqualityComparer.Instance, logManager)
         {
+            _poolCapacity = capacity;
+            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         }
 
         protected override IComparer<Transaction> GetUniqueComparer(IComparer<Transaction> comparer) => comparer.GetPoolUniqueTxComparer();
@@ -30,7 +35,7 @@ namespace Nethermind.TxPool.Collections
         protected override IComparer<Transaction> GetReplacementComparer(IComparer<Transaction> comparer) => comparer.GetReplacementComparer();
 
         protected override Address MapToGroup(Transaction value) => value.MapTxToGroup() ?? throw new ArgumentException("MapTxToGroup() returned null!");
-        protected override ValueKeccak GetKey(Transaction value) => value.Hash!;
+        protected override ValueHash256 GetKey(Transaction value) => value.Hash!;
 
         protected override void UpdateGroup(Address groupKey, EnhancedSortedSet<Transaction> bucket, Func<Address, IReadOnlySortedSet<Transaction>, IEnumerable<(Transaction Tx, Action<Transaction>? Change)>> changingElements)
         {
@@ -66,19 +71,20 @@ namespace Nethermind.TxPool.Collections
             }
         }
 
-        [MethodImpl(MethodImplOptions.Synchronized)]
         public void UpdatePool(IAccountStateProvider accounts, Func<Address, Account, EnhancedSortedSet<Transaction>, IEnumerable<(Transaction Tx, UInt256? changedGasBottleneck)>> changingElements)
         {
+            using var lockRelease = Lock.Acquire();
+
             foreach ((Address address, EnhancedSortedSet<Transaction> bucket) in _buckets)
             {
                 Debug.Assert(bucket.Count > 0);
 
                 Account? account = accounts.GetAccount(address);
-                UpdateGroup(address, account, bucket, changingElements);
+                UpdateGroupNonLocked(address, account, bucket, changingElements);
             }
         }
 
-        private void UpdateGroup(Address groupKey, Account groupValue, EnhancedSortedSet<Transaction> bucket, Func<Address, Account, EnhancedSortedSet<Transaction>, IEnumerable<(Transaction Tx, UInt256? changedGasBottleneck)>> changingElements)
+        private void UpdateGroupNonLocked(Address groupKey, Account groupValue, EnhancedSortedSet<Transaction> bucket, Func<Address, Account, EnhancedSortedSet<Transaction>, IEnumerable<(Transaction Tx, UInt256? changedGasBottleneck)>> changingElements)
         {
             _transactionsToRemove.Clear();
             Transaction? lastElement = bucket.Max;
@@ -109,20 +115,27 @@ namespace Nethermind.TxPool.Collections
             ReadOnlySpan<Transaction> txs = CollectionsMarshal.AsSpan(_transactionsToRemove);
             for (int i = 0; i < txs.Length; i++)
             {
-                TryRemove(txs[i].Hash!);
+                TryRemoveNonLocked(txs[i].Hash!, evicted: false, out _, out _);
             }
         }
 
-        [MethodImpl(MethodImplOptions.Synchronized)]
         public void UpdateGroup(Address groupKey, Account groupValue, Func<Address, Account, EnhancedSortedSet<Transaction>, IEnumerable<(Transaction Tx, UInt256? changedGasBottleneck)>> changingElements)
         {
-            if (groupKey is null) throw new ArgumentNullException(nameof(groupKey));
+            using var lockRelease = Lock.Acquire();
+
+            ArgumentNullException.ThrowIfNull(groupKey);
             if (_buckets.TryGetValue(groupKey, out EnhancedSortedSet<Transaction>? bucket))
             {
                 Debug.Assert(bucket.Count > 0);
 
-                UpdateGroup(groupKey, groupValue, bucket, changingElements);
+                UpdateGroupNonLocked(groupKey, groupValue, bucket, changingElements);
             }
+        }
+
+        public virtual void VerifyCapacity()
+        {
+            if (_logger.IsWarn && Count > _poolCapacity)
+                _logger.Warn($"TxPool exceeds the config size {Count}/{_poolCapacity}");
         }
     }
 }

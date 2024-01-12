@@ -25,14 +25,16 @@ public static class EnumExtensions
         // This bit converts to int[]
         IReadOnlyList<T> values = FastEnum.GetValues<T>();
 
-        if (!typeof(T).GetCustomAttributes(typeof(FlagsAttribute), false).Any())
+        if (typeof(T).GetCustomAttributes(typeof(FlagsAttribute), false).Length == 0)
         {
             // We don't have flags so just return the result of GetValues
             return values;
         }
 
         // TODO: in .net 7 rewrite with generic INumber based on FastEnum.GetUnderlyingType<T>()
+#pragma warning disable CA2021 // Do not call Enumerable.Cast<T> or Enumerable.OfType<T> with incompatible types
         int[] valuesBinary = values.Cast<int>().ToArray();
+#pragma warning restore CA2021 // Do not call Enumerable.Cast<T> or Enumerable.OfType<T> with incompatible types
 
         int[] valuesInverted = valuesBinary.Select(v => ~v).ToArray();
         int max = 0;

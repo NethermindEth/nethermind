@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Core.Buffers;
+
 namespace Nethermind.Trie
 {
     internal static class TrieNodeFactory
@@ -11,7 +13,7 @@ namespace Nethermind.Trie
             return node;
         }
 
-        public static TrieNode CreateLeaf(byte[] path, byte[]? value)
+        public static TrieNode CreateLeaf(byte[] path, CappedArray<byte> value)
         {
             TrieNode node = new(NodeType.Leaf);
             node.Key = path;

@@ -19,27 +19,29 @@ namespace Nethermind.Db.Test.Rpc
         [Test]
         public void ValidateDbs()
         {
-            void ValidateDb<T>(params IDb[] dbs) where T : IDb
+            void ValidateDb<T>(params object[] dbs)
             {
-                foreach (IDb db in dbs)
+                foreach (object db in dbs)
                 {
-                    db.Should().BeAssignableTo<T>(db.Name);
+                    db.Should().BeAssignableTo<T>();
                 }
             }
 
             IJsonSerializer jsonSerializer = Substitute.For<IJsonSerializer>();
             IJsonRpcClient jsonRpcClient = Substitute.For<IJsonRpcClient>();
-            IMemDbFactory rpcDbFactory = new RpcDbFactory(new MemDbFactory(), null, jsonSerializer, jsonRpcClient, LimboLogs.Instance);
+            IDbFactory rpcDbFactory = new RpcDbFactory(new MemDbFactory(), jsonSerializer, jsonRpcClient, LimboLogs.Instance);
 
-            IDbProvider memDbProvider = new DbProvider(DbModeHint.Mem);
-            StandardDbInitializer standardDbInitializer = new(memDbProvider, null, rpcDbFactory, Substitute.For<IFileSystem>());
+            IDbProvider memDbProvider = new DbProvider();
+            StandardDbInitializer standardDbInitializer = new(memDbProvider, rpcDbFactory, Substitute.For<IFileSystem>());
             standardDbInitializer.InitStandardDbs(true);
+
+            ValidateDb<ReadOnlyColumnsDb<ReceiptsColumns>>(
+                memDbProvider.ReceiptsDb);
 
             ValidateDb<ReadOnlyDb>(
                 memDbProvider.BlocksDb,
                 memDbProvider.BloomDb,
                 memDbProvider.HeadersDb,
-                memDbProvider.ReceiptsDb,
                 memDbProvider.BlockInfosDb);
 
             ValidateDb<ReadOnlyDb>(

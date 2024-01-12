@@ -7,7 +7,7 @@ namespace Nethermind.Consensus.Validators
 {
     public class NeverValidBlockValidator : IBlockValidator
     {
-        public bool ValidateHash(BlockHeader header)
+        public static bool ValidateHash(BlockHeader header)
         {
             return false;
         }
@@ -35,7 +35,12 @@ namespace Nethermind.Consensus.Validators
         public bool ValidateWithdrawals(Block block, out string? error)
         {
             error = null;
+            return false;
+        }
 
+        public bool ValidateOrphanedBlock(Block block, out string? error)
+        {
+            error = null;
             return false;
         }
     }

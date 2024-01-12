@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
-using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Eip2930;
@@ -25,12 +24,12 @@ namespace Nethermind.Evm.Tracing
             _addressesToOptimize = addressesToOptimize;
         }
 
-        public override void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Keccak? stateRoot = null)
+        public override void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null)
         {
             GasSpent += gasSpent;
         }
 
-        public override void MarkAsFailed(Address recipient, long gasSpent, byte[] output, string error, Keccak? stateRoot = null)
+        public override void MarkAsFailed(Address recipient, long gasSpent, byte[] output, string error, Hash256? stateRoot = null)
         {
             GasSpent += gasSpent;
         }
@@ -63,7 +62,16 @@ namespace Nethermind.Evm.Tracing
                 }
             }
 
-            AccessList = new AccessList(dictionary.ToDictionary(k => k.Key, v => (IReadOnlySet<UInt256>)v.Value));
+            AccessList.Builder builder = new();
+            foreach ((Address address, ISet<UInt256> storageKeys) in dictionary)
+            {
+                builder.AddAddress(address);
+                foreach (UInt256 storageKey in storageKeys)
+                {
+                    builder.AddStorage(storageKey);
+                }
+            }
+            AccessList = builder.Build();
         }
 
         public long GasSpent { get; set; }

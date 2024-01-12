@@ -141,7 +141,7 @@ namespace Nethermind.Evm.Test
         public void Logs_are_committed()
         {
             EvmState parentEvmState = CreateEvmState();
-            LogEntry logEntry = new(Address.Zero, Bytes.Empty, Array.Empty<Keccak>());
+            LogEntry logEntry = new(Address.Zero, Bytes.Empty, Array.Empty<Hash256>());
             using (EvmState evmState = CreateEvmState(parentEvmState))
             {
                 evmState.Logs.Add(logEntry);
@@ -155,7 +155,7 @@ namespace Nethermind.Evm.Test
         public void Logs_are_restored()
         {
             EvmState parentEvmState = CreateEvmState();
-            LogEntry logEntry = new(Address.Zero, Bytes.Empty, Array.Empty<Keccak>());
+            LogEntry logEntry = new(Address.Zero, Bytes.Empty, Array.Empty<Hash256>());
             using (EvmState evmState = CreateEvmState(parentEvmState))
             {
                 evmState.Logs.Add(logEntry);
@@ -233,13 +233,13 @@ namespace Nethermind.Evm.Test
             parentEvmState is null
                 ? new EvmState(10000,
                     new ExecutionEnvironment(),
-                    ExecutionType.Call,
+                    ExecutionType.CALL,
                     true,
                     Snapshot.Empty,
                     isContinuation)
                 : new EvmState(10000,
                     new ExecutionEnvironment(),
-                    ExecutionType.Call,
+                    ExecutionType.CALL,
                     false,
                     Snapshot.Empty,
                     0,

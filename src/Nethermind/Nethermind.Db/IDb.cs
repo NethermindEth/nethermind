@@ -7,23 +7,27 @@ using Nethermind.Core;
 
 namespace Nethermind.Db
 {
-    public interface IDb : IKeyValueStoreWithBatching, IDisposable
+    public interface IDb : IKeyValueStoreWithBatching, IDbMeta, IDisposable
     {
         string Name { get; }
         KeyValuePair<byte[], byte[]?>[] this[byte[][] keys] { get; }
         IEnumerable<KeyValuePair<byte[], byte[]?>> GetAll(bool ordered = false);
+        IEnumerable<byte[]> GetAllKeys(bool ordered = false);
         IEnumerable<byte[]> GetAllValues(bool ordered = false);
-        void Remove(ReadOnlySpan<byte> key);
-        bool KeyExists(ReadOnlySpan<byte> key);
-        long GetSize();
-        long GetCacheSize();
-        long GetIndexSize();
-        long GetMemtableSize();
-
-        void Flush();
-        void Clear();
-        void Compact() { }
 
         public IReadOnlyDb CreateReadOnly(bool createInMemWriteStore) => new ReadOnlyDb(this, createInMemWriteStore);
+    }
+
+    // Some metadata options
+    public interface IDbMeta
+    {
+        long GetSize() => 0;
+        long GetCacheSize() => 0;
+        long GetIndexSize() => 0;
+        long GetMemtableSize() => 0;
+
+        void Flush() { }
+        void Clear() { }
+        void Compact() { }
     }
 }

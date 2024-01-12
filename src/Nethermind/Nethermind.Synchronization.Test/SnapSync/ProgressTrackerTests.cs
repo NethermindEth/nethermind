@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Logging;
@@ -22,7 +23,7 @@ public class ProgressTrackerTests
     public async Task Did_not_have_race_issue()
     {
         BlockTree blockTree = Build.A.BlockTree().WithBlocks(Build.A.Block.TestObject).TestObject;
-        ProgressTracker progressTracker = new ProgressTracker(blockTree, new MemDb(), LimboLogs.Instance);
+        ProgressTracker progressTracker = new(blockTree, new MemDb(), LimboLogs.Instance);
         progressTracker.EnqueueStorageRange(new StorageRange()
         {
             Accounts = Array.Empty<PathWithAccount>(),
@@ -60,25 +61,25 @@ public class ProgressTrackerTests
         (SnapSyncBatch request, bool finished) = progressTracker.GetNextRequest();
         request.AccountRangeRequest.Should().NotBeNull();
         request.AccountRangeRequest!.StartingHash.Bytes[0].Should().Be(0);
-        request.AccountRangeRequest.LimitHash.Value.Bytes[0].Should().Be(64);
+        request.AccountRangeRequest.LimitHash!.Value.Bytes[0].Should().Be(64);
         finished.Should().BeFalse();
 
         (request, finished) = progressTracker.GetNextRequest();
         request.AccountRangeRequest.Should().NotBeNull();
         request.AccountRangeRequest!.StartingHash.Bytes[0].Should().Be(64);
-        request.AccountRangeRequest.LimitHash.Value.Bytes[0].Should().Be(128);
+        request.AccountRangeRequest.LimitHash!.Value.Bytes[0].Should().Be(128);
         finished.Should().BeFalse();
 
         (request, finished) = progressTracker.GetNextRequest();
         request.AccountRangeRequest.Should().NotBeNull();
         request.AccountRangeRequest!.StartingHash.Bytes[0].Should().Be(128);
-        request.AccountRangeRequest.LimitHash.Value.Bytes[0].Should().Be(192);
+        request.AccountRangeRequest.LimitHash!.Value.Bytes[0].Should().Be(192);
         finished.Should().BeFalse();
 
         (request, finished) = progressTracker.GetNextRequest();
         request.AccountRangeRequest.Should().NotBeNull();
         request.AccountRangeRequest!.StartingHash.Bytes[0].Should().Be(192);
-        request.AccountRangeRequest.LimitHash.Value.Bytes[0].Should().Be(255);
+        request.AccountRangeRequest.LimitHash!.Value.Bytes[0].Should().Be(255);
         finished.Should().BeFalse();
 
         (request, finished) = progressTracker.GetNextRequest();
@@ -102,7 +103,7 @@ public class ProgressTrackerTests
 
         for (int i = 0; i < ProgressTracker.HIGH_CODES_QUEUE_SIZE; i++)
         {
-            progressTracker.EnqueueCodeHashes(new ValueKeccak[] { TestItem.ValueKeccaks[0] });
+            progressTracker.EnqueueCodeHashes(new[] { TestItem.ValueKeccaks[0] });
         }
 
         (SnapSyncBatch request, bool _) = progressTracker.GetNextRequest();
@@ -127,12 +128,32 @@ public class ProgressTrackerTests
 
         for (int i = 0; i < ProgressTracker.HIGH_CODES_QUEUE_SIZE; i++)
         {
-            progressTracker.EnqueueCodeHashes(new ValueKeccak[] { TestItem.ValueKeccaks[0] });
+            progressTracker.EnqueueCodeHashes(new[] { TestItem.ValueKeccaks[0] });
         }
 
         (SnapSyncBatch request, bool _) = progressTracker.GetNextRequest();
 
         request.CodesRequest.Should().BeNull();
         request.StorageRangeRequest.Should().NotBeNull();
+    }
+
+    [Test]
+    public void Will_mark_progress_and_flush_when_finished()
+    {
+        BlockTree blockTree = Build.A.BlockTree().WithBlocks(Build.A.Block
+            .WithStateRoot(Keccak.EmptyTreeHash)
+            .TestObject).TestObject;
+        TestMemDb memDb = new TestMemDb();
+        ProgressTracker progressTracker = new ProgressTracker(blockTree, memDb, LimboLogs.Instance, 1);
+
+        (SnapSyncBatch request, bool finished) = progressTracker.GetNextRequest();
+        request.AccountRangeRequest.Should().NotBeNull();
+        progressTracker.UpdateAccountRangePartitionProgress(request.AccountRangeRequest!.LimitHash!.Value, Keccak.MaxValue, false);
+        progressTracker.ReportAccountRangePartitionFinished(request.AccountRangeRequest!.LimitHash!.Value);
+        (_, finished) = progressTracker.GetNextRequest();
+        finished.Should().BeTrue();
+
+        memDb.WasFlushed.Should().BeTrue();
+        memDb[ProgressTracker.ACC_PROGRESS_KEY].Should().BeEquivalentTo(Keccak.MaxValue.BytesToArray());
     }
 }

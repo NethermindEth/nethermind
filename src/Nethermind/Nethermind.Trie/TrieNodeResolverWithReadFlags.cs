@@ -18,12 +18,22 @@ public class TrieNodeResolverWithReadFlags : ITrieNodeResolver
         _defaultFlags = defaultFlags;
     }
 
-    public TrieNode FindCachedOrUnknown(Keccak hash)
+    public TrieNode FindCachedOrUnknown(Hash256 hash)
     {
         return _baseResolver.FindCachedOrUnknown(hash);
     }
 
-    public byte[]? LoadRlp(Keccak hash, ReadFlags flags = ReadFlags.None)
+    public byte[]? TryLoadRlp(Hash256 hash, ReadFlags flags = ReadFlags.None)
+    {
+        if (flags != ReadFlags.None)
+        {
+            return _baseResolver.TryLoadRlp(hash, flags | _defaultFlags);
+        }
+
+        return _baseResolver.TryLoadRlp(hash, _defaultFlags);
+    }
+
+    public byte[]? LoadRlp(Hash256 hash, ReadFlags flags = ReadFlags.None)
     {
         if (flags != ReadFlags.None)
         {

@@ -32,7 +32,7 @@ namespace Nethermind.Network.Rlpx.Handshake
             _messagePad?.Pad(byteBuffer);
         }
 
-        public int GetLength(AuthEip8Message msg)
+        public static int GetLength(AuthEip8Message msg)
         {
             int contentLength = Rlp.LengthOf(Bytes.Concat(msg.Signature.Bytes, msg.Signature.RecoveryId))
                                 + Rlp.LengthOf(msg.PublicKey.Bytes)
@@ -51,7 +51,6 @@ namespace Nethermind.Network.Rlpx.Handshake
             authMessage.Signature = signature;
             authMessage.PublicKey = new PublicKey(rlpStream.DecodeByteArraySpan());
             authMessage.Nonce = rlpStream.DecodeByteArray();
-            _ = rlpStream.DecodeInt();
             return authMessage;
         }
     }

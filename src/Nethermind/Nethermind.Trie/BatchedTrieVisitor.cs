@@ -40,8 +40,8 @@ namespace Nethermind.Trie;
 public class BatchedTrieVisitor
 {
     // Not using shared pool so GC can reclaim them later.
-    private ArrayPool<Job> _jobArrayPool = ArrayPool<Job>.Create();
-    private ArrayPool<(TrieNode, SmallTrieVisitContext)> _trieNodePool = ArrayPool<(TrieNode, SmallTrieVisitContext)>.Create();
+    private readonly ArrayPool<Job> _jobArrayPool = ArrayPool<Job>.Create();
+    private readonly ArrayPool<(TrieNode, SmallTrieVisitContext)> _trieNodePool = ArrayPool<(TrieNode, SmallTrieVisitContext)>.Create();
 
     private readonly int _maxBatchSize;
     private readonly long _partitionCount;
@@ -52,7 +52,7 @@ public class BatchedTrieVisitor
     private long _queuedJobs;
     private bool _failed;
     private long _currentPointer;
-    private long _readAheadThreshold;
+    private readonly long _readAheadThreshold;
 
     private readonly ITrieNodeResolver _resolver;
     private readonly ITreeVisitor _visitor;
@@ -117,14 +117,14 @@ public class BatchedTrieVisitor
     }
 
     // Determine the locality of the key. I guess if you use paprika or something, you'd need to modify this.
-    int CalculatePartitionIdx(ValueKeccak key)
+    int CalculatePartitionIdx(ValueHash256 key)
     {
         uint number = BinaryPrimitives.ReadUInt32BigEndian(key.Bytes);
         return (int)(number * (ulong)_partitionCount / uint.MaxValue);
     }
 
     public void Start(
-        ValueKeccak root,
+        ValueHash256 root,
         TrieVisitContext trieVisitContext)
     {
         // Start with the root
@@ -191,7 +191,7 @@ public class BatchedTrieVisitor
                 for (int i = 0; i < _maxBatchSize; i++)
                 {
                     if (!theStack.TryPop(out Job item)) break;
-                    finalBatch.Add((_resolver.FindCachedOrUnknown(item.Key.ToKeccak()), item.Context));
+                    finalBatch.Add((_resolver.FindCachedOrUnknown(item.Key.ToCommitment()), item.Context));
                     Interlocked.Decrement(ref _queuedJobs);
                 }
             }
@@ -224,7 +224,7 @@ public class BatchedTrieVisitor
             {
                 Job job = preSort[i];
 
-                TrieNode node = _resolver.FindCachedOrUnknown(job.Key.ToKeccak());
+                TrieNode node = _resolver.FindCachedOrUnknown(job.Key.ToCommitment());
                 finalBatch.Add((node, job.Context));
             }
 
@@ -249,7 +249,7 @@ public class BatchedTrieVisitor
         for (int i = batchResult.Count - 1; i >= 0; i--)
         {
             (TrieNode trieNode, SmallTrieVisitContext ctx) = batchResult[i];
-            if (trieNode.NodeType == NodeType.Unknown && trieNode.FullRlp != null)
+            if (trieNode.NodeType == NodeType.Unknown && trieNode.FullRlp.IsNotNull)
             {
                 // Inline node. Seems rare, so its fine to create new list for this. Does not have a keccak
                 // to queue, so we'll just process it inline.
@@ -261,7 +261,7 @@ public class BatchedTrieVisitor
                 continue;
             }
 
-            ValueKeccak keccak = trieNode.Keccak;
+            ValueHash256 keccak = trieNode.Keccak;
             int partitionIdx = CalculatePartitionIdx(keccak);
             Interlocked.Increment(ref _activeJobs);
             Interlocked.Increment(ref _queuedJobs);
@@ -295,7 +295,7 @@ public class BatchedTrieVisitor
 
                 SmallTrieVisitContext ctx = currentBatch[i].Item2;
 
-                if (cur.FullRlp != null) continue;
+                if (cur.FullRlp.IsNotNull) continue;
                 if (cur.Keccak is null) throw new TrieException($"Unable to resolve node without Keccak. ctx: {ctx.Level}, {ctx.ExpectAccounts}, {ctx.IsStorage}, {ctx.BranchChildIndex}");
 
                 resolveOrdering.Add(i);
@@ -321,7 +321,7 @@ public class BatchedTrieVisitor
                 (TrieNode nodeToResolve, SmallTrieVisitContext ctx) = currentBatch[idx];
                 try
                 {
-                    Keccak theKeccak = nodeToResolve.Keccak;
+                    Hash256 theKeccak = nodeToResolve.Keccak;
                     nodeToResolve.ResolveNode(_resolver, flags);
                     nodeToResolve.Keccak = theKeccak; // The resolve may set a key which clear the keccak
                 }
@@ -337,7 +337,7 @@ public class BatchedTrieVisitor
                 (TrieNode nodeToResolve, SmallTrieVisitContext ctx) = currentBatch[i];
 
                 nextToProcesses.Clear();
-                if (nodeToResolve.FullRlp == null)
+                if (nodeToResolve.FullRlp.IsNull)
                 {
                     // Still need to decrement counter
                     QueueNextNodes(nextToProcesses);
@@ -355,10 +355,10 @@ public class BatchedTrieVisitor
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
     private readonly struct Job
     {
-        public readonly ValueKeccak Key;
+        public readonly ValueHash256 Key;
         public readonly SmallTrieVisitContext Context;
 
-        public Job(ValueKeccak key, SmallTrieVisitContext context)
+        public Job(ValueHash256 key, SmallTrieVisitContext context)
         {
             Key = key;
             Context = context;

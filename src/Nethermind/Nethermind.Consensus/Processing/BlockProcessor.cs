@@ -43,7 +43,7 @@ public partial class BlockProcessor : IBlockProcessor
     /// We use a single receipt tracer for all blocks. Internally receipt tracer forwards most of the calls
     /// to any block-specific tracers.
     /// </summary>
-    private readonly BlockReceiptsTracer _receiptsTracer;
+    protected BlockReceiptsTracer ReceiptsTracer { get; set; }
 
     public BlockProcessor(
         ISpecProvider? specProvider,
@@ -67,7 +67,7 @@ public partial class BlockProcessor : IBlockProcessor
         _blockTransactionsExecutor = blockTransactionsExecutor ?? throw new ArgumentNullException(nameof(blockTransactionsExecutor));
         _beaconBlockRootHandler = new BeaconBlockRootHandler();
 
-        _receiptsTracer = new BlockReceiptsTracer();
+        ReceiptsTracer = new BlockReceiptsTracer();
     }
 
     public event EventHandler<BlockProcessedEventArgs> BlockProcessed;
@@ -79,7 +79,7 @@ public partial class BlockProcessor : IBlockProcessor
     }
 
     // TODO: move to branch processor
-    public Block[] Process(Keccak newBranchStateRoot, List<Block> suggestedBlocks, ProcessingOptions options, IBlockTracer blockTracer)
+    public Block[] Process(Hash256 newBranchStateRoot, List<Block> suggestedBlocks, ProcessingOptions options, IBlockTracer blockTracer)
     {
         if (suggestedBlocks.Count == 0) return Array.Empty<Block>();
 
@@ -88,7 +88,7 @@ public partial class BlockProcessor : IBlockProcessor
         /* We need to save the snapshot state root before reorganization in case the new branch has invalid blocks.
            In case of invalid blocks on the new branch we will discard the entire branch and come back to
            the previous head state.*/
-        Keccak previousBranchStateRoot = CreateCheckpoint();
+        Hash256 previousBranchStateRoot = CreateCheckpoint();
         InitBranch(newBranchStateRoot);
 
         bool notReadOnly = !options.ContainsFlag(ProcessingOptions.ReadOnlyChain);
@@ -125,7 +125,7 @@ public partial class BlockProcessor : IBlockProcessor
                 {
                     if (_logger.IsInfo) _logger.Info($"Commit part of a long blocks branch {i}/{blocksCount}");
                     previousBranchStateRoot = CreateCheckpoint();
-                    Keccak? newStateRoot = suggestedBlocks[i].StateRoot;
+                    Hash256? newStateRoot = suggestedBlocks[i].StateRoot;
                     InitBranch(newStateRoot, false);
                 }
             }
@@ -148,7 +148,7 @@ public partial class BlockProcessor : IBlockProcessor
     public event EventHandler<BlocksProcessingEventArgs>? BlocksProcessing;
 
     // TODO: move to branch processor
-    private void InitBranch(Keccak branchStateRoot, bool incrementReorgMetric = true)
+    private void InitBranch(Hash256 branchStateRoot, bool incrementReorgMetric = true)
     {
         /* Please note that we do not reset the state if branch state root is null.
            That said, I do not remember in what cases we receive null here.*/
@@ -166,20 +166,20 @@ public partial class BlockProcessor : IBlockProcessor
     }
 
     // TODO: move to branch processor
-    private Keccak CreateCheckpoint()
+    private Hash256 CreateCheckpoint()
     {
         return _stateProvider.StateRoot;
     }
 
     // TODO: move to block processing pipeline
-    private void PreCommitBlock(Keccak newBranchStateRoot, long blockNumber)
+    private void PreCommitBlock(Hash256 newBranchStateRoot, long blockNumber)
     {
         if (_logger.IsTrace) _logger.Trace($"Committing the branch - {newBranchStateRoot}");
         _stateProvider.CommitTree(blockNumber);
     }
 
     // TODO: move to branch processor
-    private void RestoreBranch(Keccak branchingPointStateRoot)
+    private void RestoreBranch(Hash256 branchingPointStateRoot)
     {
         if (_logger.IsTrace) _logger.Trace($"Restoring the branch checkpoint - {branchingPointStateRoot}");
         _stateProvider.Reset();
@@ -215,6 +215,9 @@ public partial class BlockProcessor : IBlockProcessor
         }
     }
 
+    private bool ShouldComputeStateRoot(BlockHeader header) =>
+        !header.IsGenesis || !_specProvider.GenesisStateUnavailable;
+
     // TODO: block processor pipeline
     protected virtual TxReceipt[] ProcessBlock(
         Block block,
@@ -223,13 +226,13 @@ public partial class BlockProcessor : IBlockProcessor
     {
         IReleaseSpec spec = _specProvider.GetSpec(block.Header);
 
-        _receiptsTracer.SetOtherTracer(blockTracer);
-        _receiptsTracer.StartNewBlockTrace(block);
+        ReceiptsTracer.SetOtherTracer(blockTracer);
+        ReceiptsTracer.StartNewBlockTrace(block);
 
         _beaconBlockRootHandler.ApplyContractStateChanges(block, spec, _stateProvider);
         _stateProvider.Commit(spec);
 
-        TxReceipt[] receipts = _blockTransactionsExecutor.ProcessTransactions(block, options, _receiptsTracer, spec);
+        TxReceipt[] receipts = _blockTransactionsExecutor.ProcessTransactions(block, options, ReceiptsTracer, spec);
 
         if (spec.IsEip4844Enabled)
         {
@@ -239,12 +242,16 @@ public partial class BlockProcessor : IBlockProcessor
         block.Header.ReceiptsRoot = receipts.GetReceiptsRoot(spec, block.ReceiptsRoot);
         ApplyMinerRewards(block, blockTracer, spec);
         _withdrawalProcessor.ProcessWithdrawals(block, spec);
-        _receiptsTracer.EndBlockTrace();
+        ReceiptsTracer.EndBlockTrace();
 
         _stateProvider.Commit(spec);
-        _stateProvider.RecalculateStateRoot();
 
-        block.Header.StateRoot = _stateProvider.StateRoot;
+        if (ShouldComputeStateRoot(block.Header))
+        {
+            _stateProvider.RecalculateStateRoot();
+            block.Header.StateRoot = _stateProvider.StateRoot;
+        }
+
         block.Header.Hash = block.Header.CalculateHash();
 
         return receipts;
@@ -253,7 +260,7 @@ public partial class BlockProcessor : IBlockProcessor
     // TODO: block processor pipeline
     private void StoreTxReceipts(Block block, TxReceipt[] txReceipts)
     {
-        // Setting canonical is done by ReceiptCanonicalityMonitor on block move to main
+        // Setting canonical is done when the BlockAddedToMain event is firec
         _receiptStorage.Insert(block, txReceipts, false);
     }
 
@@ -290,6 +297,11 @@ public partial class BlockProcessor : IBlockProcessor
             ParentBeaconBlockRoot = bh.ParentBeaconBlockRoot,
         };
 
+        if (!ShouldComputeStateRoot(bh))
+        {
+            headerForProcessing.StateRoot = bh.StateRoot;
+        }
+
         return suggestedBlock.CreateCopy(headerForProcessing);
     }
 
@@ -302,12 +314,10 @@ public partial class BlockProcessor : IBlockProcessor
         {
             BlockReward reward = rewards[i];
 
-            ITxTracer txTracer = NullTxTracer.Instance;
-            if (tracer.IsTracingRewards)
-            {
-                // we need this tracer to be able to track any potential miner account creation
-                txTracer = tracer.StartNewTxTrace(null);
-            }
+            using ITxTracer txTracer = tracer.IsTracingRewards
+                ? // we need this tracer to be able to track any potential miner account creation
+                tracer.StartNewTxTrace(null)
+                : NullTxTracer.Instance;
 
             ApplyMinerReward(block, reward, spec);
 

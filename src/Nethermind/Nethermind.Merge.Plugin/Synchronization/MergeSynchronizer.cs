@@ -10,14 +10,15 @@ using Nethermind.Core.Specs;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.InvalidChainTracker;
+using Nethermind.Specs.ChainSpecStyle;
+using Nethermind.State;
 using Nethermind.Stats;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.Blocks;
 using Nethermind.Synchronization.FastBlocks;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
-using Nethermind.Synchronization.Reporting;
-using Nethermind.Synchronization.SnapSync;
+using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Merge.Plugin.Synchronization;
 
@@ -26,6 +27,16 @@ public class MergeSynchronizer : Synchronizer
     private readonly IPoSSwitcher _poSSwitcher;
     private readonly IMergeConfig _mergeConfig;
     private readonly IInvalidChainTracker _invalidChainTracker;
+    private BeaconHeadersSyncFeed _beaconHeadersFeed = null!;
+    private readonly IBeaconSyncStrategy _beaconSync;
+
+    public override ISyncModeSelector SyncModeSelector => _syncModeSelector ??= new MultiSyncModeSelector(
+        SyncProgressResolver,
+        _syncPeerPool,
+        _syncConfig,
+        _beaconSync,
+        _betterPeerStrategy!,
+        _logManager);
 
     public MergeSynchronizer(
         IDbProvider dbProvider,
@@ -34,17 +45,18 @@ public class MergeSynchronizer : Synchronizer
         IReceiptStorage receiptStorage,
         ISyncPeerPool peerPool,
         INodeStatsManager nodeStatsManager,
-        ISyncModeSelector syncModeSelector,
         ISyncConfig syncConfig,
-        ISnapProvider snapProvider,
         IBlockDownloaderFactory blockDownloaderFactory,
         IPivot pivot,
         IPoSSwitcher poSSwitcher,
         IMergeConfig mergeConfig,
         IInvalidChainTracker invalidChainTracker,
         IProcessExitSource exitSource,
-        ILogManager logManager,
-        ISyncReport syncReport)
+        IBetterPeerStrategy betterPeerStrategy,
+        ChainSpec chainSpec,
+        IBeaconSyncStrategy beaconSync,
+        IStateReader stateReader,
+        ILogManager logManager)
         : base(
             dbProvider,
             specProvider,
@@ -52,18 +64,19 @@ public class MergeSynchronizer : Synchronizer
             receiptStorage,
             peerPool,
             nodeStatsManager,
-            syncModeSelector,
             syncConfig,
-            snapProvider,
             blockDownloaderFactory,
             pivot,
-            syncReport,
             exitSource,
+            betterPeerStrategy,
+            chainSpec,
+            stateReader,
             logManager)
     {
         _invalidChainTracker = invalidChainTracker;
         _poSSwitcher = poSSwitcher;
         _mergeConfig = mergeConfig;
+        _beaconSync = beaconSync;
     }
 
     public override void Start()
@@ -75,17 +88,18 @@ public class MergeSynchronizer : Synchronizer
 
         base.Start();
         StartBeaconHeadersComponents();
+        WireMultiSyncModeSelector();
     }
 
     private void StartBeaconHeadersComponents()
     {
         FastBlocksPeerAllocationStrategyFactory fastFactory = new();
-        BeaconHeadersSyncFeed beaconHeadersFeed =
-            new(_poSSwitcher, _syncMode, _blockTree, _syncPeerPool, _syncConfig, _syncReport, _pivot, _mergeConfig, _invalidChainTracker, _logManager);
+        _beaconHeadersFeed =
+            new(_poSSwitcher, _blockTree, _syncPeerPool, _syncConfig, _syncReport, _pivot, _mergeConfig, _invalidChainTracker, _logManager);
         BeaconHeadersSyncDownloader beaconHeadersDownloader = new(_logManager);
 
         SyncDispatcher<HeadersSyncBatch> dispatcher = CreateDispatcher(
-            beaconHeadersFeed!,
+            _beaconHeadersFeed!,
             beaconHeadersDownloader,
             fastFactory
         );
@@ -101,5 +115,10 @@ public class MergeSynchronizer : Synchronizer
                 if (_logger.IsInfo) _logger.Info("Beacon headers task completed.");
             }
         });
+    }
+
+    private void WireMultiSyncModeSelector()
+    {
+        WireFeedWithModeSelector(_beaconHeadersFeed);
     }
 }

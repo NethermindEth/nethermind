@@ -13,7 +13,7 @@ namespace Nethermind.Merkleization;
 
 public ref struct Merkleizer
 {
-    public bool IsKthBitSet(int k)
+    public readonly bool IsKthBitSet(int k)
     {
         return (_filled & ((ulong)1 << k)) != 0;
     }
@@ -28,10 +28,10 @@ public ref struct Merkleizer
         _filled &= ~((ulong)1 << k);
     }
 
-    private Span<UInt256> _chunks;
+    private readonly Span<UInt256> _chunks;
     private ulong _filled;
 
-    public UInt256 PartChunk
+    public readonly UInt256 PartChunk
     {
         get
         {

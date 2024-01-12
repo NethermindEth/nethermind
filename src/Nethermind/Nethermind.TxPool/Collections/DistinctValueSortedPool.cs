@@ -9,7 +9,7 @@ namespace Nethermind.TxPool.Collections
 {
     /// <summary>
     /// Keeps a distinct pool of <see cref="TValue"/> with <see cref="TKey"/> in groups based on <see cref="TGroupKey"/>.
-    /// Uses separate comparator to distinct between elements. If there is duplicate element added it uses ordering comparator and keeps the one that is larger. 
+    /// Uses separate comparator to distinct between elements. If there is duplicate element added it uses ordering comparator and keeps the one that is larger.
     /// </summary>
     /// <typeparam name="TKey">Type of keys of items, unique in pool.</typeparam>
     /// <typeparam name="TValue">Type of items that are kept.</typeparam>
@@ -49,7 +49,7 @@ namespace Nethermind.TxPool.Collections
         {
             if (_distinctDictionary.TryGetValue(value, out KeyValuePair<TKey, TValue> oldKvp))
             {
-                TryRemove(oldKvp.Key);
+                TryRemoveNonLocked(oldKvp.Key, evicted: false, out _, out _);
             }
 
             base.InsertCore(key, value, groupKey);

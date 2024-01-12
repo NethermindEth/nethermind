@@ -134,12 +134,17 @@ namespace Nethermind.Synchronization.ParallelSync
         public void Update()
         {
             _pivotNumber = _syncConfig.PivotNumberParsed;
+            bool shouldBeInUpdatingPivot = ShouldBeInUpdatingPivot();
 
             SyncMode newModes;
             string reason = string.Empty;
             if (_syncProgressResolver.IsLoadingBlocksFromDb())
             {
                 newModes = SyncMode.DbLoad;
+                if (shouldBeInUpdatingPivot)
+                {
+                    newModes |= SyncMode.UpdatingPivot;
+                }
             }
             else if (!_syncConfig.SynchronizationEnabled)
             {
@@ -149,7 +154,6 @@ namespace Nethermind.Synchronization.ParallelSync
             else
             {
                 bool inBeaconControl = _beaconSyncStrategy.ShouldBeInBeaconModeControl();
-                bool shouldBeInUpdatingPivot = ShouldBeInUpdatingPivot();
                 (UInt256? peerDifficulty, long? peerBlock) = ReloadDataFromPeers();
                 // if there are no peers that we could use then we cannot sync
                 if (peerDifficulty is null || peerBlock is null || peerBlock == 0)
@@ -242,7 +246,7 @@ namespace Nethermind.Synchronization.ParallelSync
             UpdateSyncModes(newModes, reason);
         }
 
-        private void CheckAddFlag(in bool flag, SyncMode mode, ref SyncMode resultMode)
+        private static void CheckAddFlag(in bool flag, SyncMode mode, ref SyncMode resultMode)
         {
             if (flag)
             {
@@ -352,7 +356,7 @@ namespace Nethermind.Synchronization.ParallelSync
         private bool ShouldBeInUpdatingPivot()
         {
             bool updateRequestedAndNotFinished = _syncConfig.MaxAttemptsToUpdatePivot > 0;
-            bool isPostMerge = _beaconSyncStrategy.GetFinalizedHash() != null;
+            bool isPostMerge = _beaconSyncStrategy.MergeTransitionFinished;
             bool stateSyncNotFinished = _syncProgressResolver.FindBestFullState() == 0;
 
             bool result = updateRequestedAndNotFinished &&
@@ -563,7 +567,7 @@ namespace Nethermind.Synchronization.ParallelSync
             return result;
         }
 
-        private bool ShouldBeInDisconnectedMode(Snapshot best)
+        private static bool ShouldBeInDisconnectedMode(Snapshot best)
         {
             return !best.IsInUpdatingPivot &&
                    !best.IsInFastBodies &&
@@ -739,7 +743,7 @@ namespace Nethermind.Synchronization.ParallelSync
             return new(processed, state, block, header, chainDifficulty, Math.Max(peerBlock, 0), peerDifficulty, inBeaconControl, targetBlock);
         }
 
-        private bool IsSnapshotInvalid(Snapshot best)
+        private static bool IsSnapshotInvalid(Snapshot best)
         {
             return // none of these values should ever be negative
                 best.Block < 0
@@ -820,7 +824,7 @@ namespace Nethermind.Synchronization.ParallelSync
             public bool IsInWaitingForBlock { get; set; }
             public bool IsInBeaconHeaders { get; set; }
             public bool IsInBeaconControl { get; }
-            public bool IsInAnyBeaconMode => IsInBeaconHeaders || IsInBeaconControl;
+            public readonly bool IsInAnyBeaconMode => IsInBeaconHeaders || IsInBeaconControl;
 
             /// <summary>
             /// Best block that has been processed

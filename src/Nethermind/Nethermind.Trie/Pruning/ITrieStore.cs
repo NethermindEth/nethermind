@@ -13,12 +13,16 @@ namespace Nethermind.Trie.Pruning
 
         void FinishBlockCommit(TrieType trieType, long blockNumber, TrieNode? root, WriteFlags writeFlags = WriteFlags.None);
 
-        bool IsPersisted(in ValueKeccak keccak);
+        bool IsPersisted(in ValueHash256 keccak);
 
         IReadOnlyTrieStore AsReadOnly(IKeyValueStore? keyValueStore);
 
         event EventHandler<ReorgBoundaryReached>? ReorgBoundaryReached;
 
-        IKeyValueStore AsKeyValueStore();
+        // Used for serving via hash
+        IReadOnlyKeyValueStore TrieNodeRlpStore { get; }
+
+        // Used by healing
+        void Set(in ValueHash256 hash, byte[] rlp);
     }
 }

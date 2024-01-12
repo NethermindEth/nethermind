@@ -79,6 +79,10 @@
     "eip1559BaseFeeInitialValue": "0x3b9aca00",
     "eip1559FeeCollector": "0x6BBe78ee9e474842Dbd4AB4987b3CeFE88426A92",
     "eip1559FeeCollectorTransition": 19040000,
+    "eip4844BlobGasPriceUpdateFraction": "0x10fafa",
+    "eip4844MaxBlobGasPerBlock": "0x40000",
+    "eip4844MinBlobGasPrice": "0x3b9aca00",
+    "eip4844TargetBlobGasPerBlock": "0x20000",
     "registrar": "0x6B53721D4f2Fb9514B85f5C49b197D857e36Cf03",
     "transactionPermissionContract": "0x7Dd7032AA75A37ea0b150f57F899119C7379A78b",
     "transactionPermissionContractTransition": 9186425,
@@ -107,7 +111,8 @@
     "enode://40f40acd78004650cce57aa302de9acbf54becf91b609da93596a18979bb203ba79fcbee5c2e637407b91be23ce72f0cc13dfa38d13e657005ce842eafb6b172@65.109.103.149:30303",
     "enode://9e50857aa48a7a31bc7b46957e8ced0ef69a7165d3199bea924cb6d02b81f1f35bd8e29d21a54f4a331316bf09bb92716772ea76d3ef75ce027699eccfa14fad@141.94.97.22:30303",
     "enode://96dc133ce3aeb5d9430f1dce1d77a36418c8789b443ae0445f06f73c6b363f5b35c019086700a098c3e6e54974d64f37e97d72a5c711d1eae34dc06e3e00eed5@141.94.97.74:30303",
-    "enode://516cbfbe9bbf26b6395ed68b24e383401fc33e7fe96b9d235ebca86c9f812fde8d33a7dbebc0fb5595459d2c5cc6381595d96507af89e6b48b5bdd0ebf8af0c0@141.94.97.84:30303"
+    "enode://516cbfbe9bbf26b6395ed68b24e383401fc33e7fe96b9d235ebca86c9f812fde8d33a7dbebc0fb5595459d2c5cc6381595d96507af89e6b48b5bdd0ebf8af0c0@141.94.97.84:30303",
+    "enode://fc86a93545c56322dd861180b76632b9baeb65af8f304269b489b4623ae060847569c3c3c10c4b39baf221a2cdefea66efabce061a542cdcda374cbba45aa3d4@51.68.39.206:30303"
   ],
   "accounts": {
     "0x0000000000000000000000000000000000000005": {

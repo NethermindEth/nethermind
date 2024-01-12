@@ -27,7 +27,7 @@ namespace Nethermind.Mev.Test
     [Ignore("ToDo - it is failing after the merge changes on total difficulty checks in BlockTree and IBlockTree")]
     public partial class MevRpcModuleTests
     {
-        public static IEnumerable<Keccak?> GetHashes(IEnumerable<Transaction> bundle2Txs) => bundle2Txs.Select(t => t.Hash);
+        public static IEnumerable<Hash256?> GetHashes(IEnumerable<Transaction> bundle2Txs) => bundle2Txs.Select(t => t.Hash);
 
         public static class Contracts
         {
@@ -65,7 +65,7 @@ namespace Nethermind.Mev.Test
 
             // WARNING be careful when using PrivateKeyC
             // make sure keys from A to D are funded with test ether
-            private static PrivateKey ContractCreatorPrivateKey = TestItem.PrivateKeyC;
+            private static readonly PrivateKey ContractCreatorPrivateKey = TestItem.PrivateKeyC;
 
             public static async Task<Address> Deploy(TestMevRpcBlockchain chain, string code, ulong nonce = 0, int value = 1)
             {
@@ -80,9 +80,9 @@ namespace Nethermind.Mev.Test
             }
         }
 
-        private static async Task<Keccak> SendSignedTransaction(TestMevRpcBlockchain chain, Transaction tx)
+        private static async Task<Hash256> SendSignedTransaction(TestMevRpcBlockchain chain, Transaction tx)
         {
-            ResultWrapper<Keccak> result = await chain.EthRpcModule.eth_sendRawTransaction(EncodeTx(tx).Bytes);
+            ResultWrapper<Hash256> result = await chain.EthRpcModule.eth_sendRawTransaction(EncodeTx(tx).Bytes);
             result.Result.Should().Be(Result.Success);
             return result.Data;
         }
@@ -104,7 +104,7 @@ namespace Nethermind.Mev.Test
         private static MevBundle SendBundle(TestMevRpcBlockchain chain, int blockNumber, BundleTransaction[] txs, bool success)
         {
             byte[][] bundleBytes = txs.Select(t => EncodeTx(t).Bytes).ToArray();
-            List<Keccak> revertingTxHashes = txs.Where(tx => tx.CanRevert).Select(tx => tx.Hash!).ToList();
+            List<Hash256> revertingTxHashes = txs.Where(tx => tx.CanRevert).Select(tx => tx.Hash!).ToList();
             MevBundleRpc mevBundleRpc = new() { BlockNumber = blockNumber, Txs = bundleBytes, RevertingTxHashes = revertingTxHashes.Count > 0 ? revertingTxHashes.ToArray() : null };
             ResultWrapper<bool> resultOfBundle = chain.MevRpcModule.eth_sendBundle(mevBundleRpc);
             resultOfBundle.Result.Should().Be(Result.Success);
@@ -115,7 +115,7 @@ namespace Nethermind.Mev.Test
         private static MevMegabundle SendMegabundle(TestMevRpcBlockchain chain, int blockNumber, PrivateKey privateKey, BundleTransaction[] txs, bool success)
         {
             byte[][] bundleBytes = txs.Select(t => EncodeTx(t).Bytes).ToArray();
-            List<Keccak> revertingTxHashes = txs.Where(tx => tx.CanRevert).Select(tx => tx.Hash!).ToList();
+            List<Hash256> revertingTxHashes = txs.Where(tx => tx.CanRevert).Select(tx => tx.Hash!).ToList();
             MevMegabundle mevMegabundle = new(blockNumber, txs, revertingTxHashes.ToArray());
             Signature relaySignature = chain.EthereumEcdsa.Sign(privateKey, mevMegabundle.Hash);
             mevMegabundle.RelaySignature = relaySignature;
