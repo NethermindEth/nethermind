@@ -227,7 +227,7 @@ namespace Nethermind.State
             ref StorageTree? value = ref _storages.GetValueRefOrAddDefault(address, out bool exists);
             if (!exists)
             {
-                value = _storageTreeFactory.Create(address, _trieStore, _stateProvider.GetStorageRoot(address), StateRoot, _logManager);
+                value = _storageTreeFactory.Create(address, _trieStore.GetTrieStore(address.ToAccountPath), _stateProvider.GetStorageRoot(address), StateRoot, _logManager);
                 return value;
             }
 
@@ -292,12 +292,12 @@ namespace Nethermind.State
             // by means of CREATE 2 - notice that the cached trie may carry information about items that were not
             // touched in this block, hence were not zeroed above
             // TODO: how does it work with pruning?
-            _storages[address] = new StorageTree(_trieStore, Keccak.EmptyTreeHash, _logManager);
+            _storages[address] = new StorageTree(_trieStore.GetTrieStore(address.ToAccountPath), Keccak.EmptyTreeHash, _logManager);
         }
 
         private class StorageTreeFactory : IStorageTreeFactory
         {
-            public StorageTree Create(Address address, ITrieStore trieStore, Hash256 storageRoot, Hash256 stateRoot, ILogManager? logManager)
+            public StorageTree Create(Address address, IScopedTrieStore trieStore, Hash256 storageRoot, Hash256 stateRoot, ILogManager? logManager)
                 => new(trieStore, storageRoot, logManager);
         }
     }

@@ -17,8 +17,6 @@ using Nethermind.Db;
 using Nethermind.Db.FullPruning;
 using Nethermind.Init.Steps;
 using Nethermind.JsonRpc.Converters;
-using Nethermind.JsonRpc.Modules.DebugModule;
-using Nethermind.JsonRpc.Modules.Trace;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.State;
@@ -76,9 +74,8 @@ public class InitializeStateDb : IStep
             setApi.WitnessRepository = NullWitnessCollector.Instance;
         }
 
-        IKeyValueStore codeDb = getApi.DbProvider.CodeDb
-            .WitnessedBy(witnessCollector);
-
+        _api.NodeStorageFactory.DetectCurrentKeySchemeFrom(getApi.DbProvider.StateDb);
+        IKeyValueStore codeDb = getApi.DbProvider.CodeDb.WitnessedBy(witnessCollector);
         IKeyValueStoreWithBatching stateWitnessedBy = getApi.DbProvider.StateDb.WitnessedBy(witnessCollector);
         IPersistenceStrategy persistenceStrategy;
         IPruningStrategy pruningStrategy;
@@ -100,14 +97,16 @@ public class InitializeStateDb : IStep
             persistenceStrategy = Persist.EveryBlock;
         }
 
+        INodeStorage mainNodeStorage = _api.NodeStorageFactory.WrapKeyValueStore(stateWitnessedBy);
+
         TrieStore trieStore = syncConfig.TrieHealing
             ? new HealingTrieStore(
-                stateWitnessedBy,
+                mainNodeStorage,
                 pruningStrategy,
                 persistenceStrategy,
                 getApi.LogManager)
             : new TrieStore(
-                stateWitnessedBy,
+                mainNodeStorage,
                 pruningStrategy,
                 persistenceStrategy,
                 getApi.LogManager);
@@ -130,7 +129,7 @@ public class InitializeStateDb : IStep
             IFullPruningDb fullPruningDb = (IFullPruningDb)getApi.DbProvider!.StateDb;
             fullPruningDb.PruningStarted += (_, args) =>
             {
-                trieStore.PersistCache(args.Context, args.Context.CancellationTokenSource.Token);
+                trieStore.PersistCache(_api.NodeStorageFactory.WrapKeyValueStore(args.Context), args.Context.CancellationTokenSource.Token);
             };
         }
 
@@ -177,7 +176,7 @@ public class InitializeStateDb : IStep
             worldState.StateRoot = getApi.BlockTree.Head.StateRoot;
         }
 
-        InitializeFullPruning(pruningConfig, initConfig, _api, stateManager.GlobalStateReader);
+        InitializeFullPruning(pruningConfig, initConfig, _api, stateManager.GlobalStateReader, mainNodeStorage);
 
         return Task.CompletedTask;
     }
@@ -191,7 +190,9 @@ public class InitializeStateDb : IStep
         IPruningConfig pruningConfig,
         IInitConfig initConfig,
         INethermindApi api,
-        IStateReader stateReader)
+        IStateReader stateReader,
+        INodeStorage mainNodeStorage
+    )
     {
         IPruningTrigger? CreateAutomaticTrigger(string dbPath)
         {
@@ -221,9 +222,18 @@ public class InitializeStateDb : IStep
                 }
 
                 IDriveInfo? drive = api.FileSystem.GetDriveInfos(pruningDbPath).FirstOrDefault();
-                FullPruner pruner = new(fullPruningDb, api.PruningTrigger, pruningConfig, api.BlockTree!,
-                    stateReader, api.ProcessExit!, ChainSizes.CreateChainSizeInfo(api.ChainSpec.ChainId),
-                    drive, api.LogManager);
+                FullPruner pruner = new(
+                    fullPruningDb,
+                    api.NodeStorageFactory,
+                    mainNodeStorage,
+                    api.PruningTrigger,
+                    pruningConfig,
+                    api.BlockTree!,
+                    stateReader,
+                    api.ProcessExit!,
+                    ChainSizes.CreateChainSizeInfo(api.ChainSpec.ChainId),
+                    drive,
+                    api.LogManager);
                 api.DisposeStack.Push(pruner);
             }
         }

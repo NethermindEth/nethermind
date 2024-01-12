@@ -2,9 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Trie;
@@ -18,14 +18,16 @@ namespace Nethermind.State
         private readonly IKeyValueStore _codeDb;
         private readonly ILogger _logger;
         private readonly StateTree _state;
-        private readonly StorageTree _storage;
+        private readonly ILogManager _logManager;
+        private readonly ITrieStore _trieStore;
 
         public StateReader(ITrieStore? trieStore, IKeyValueStore? codeDb, ILogManager? logManager)
         {
+            _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
             _logger = logManager?.GetClassLogger<StateReader>() ?? throw new ArgumentNullException(nameof(logManager));
             _codeDb = codeDb ?? throw new ArgumentNullException(nameof(codeDb));
-            _state = new StateTree(trieStore, logManager);
-            _storage = new StorageTree(trieStore, Keccak.EmptyTreeHash, logManager);
+            _state = new StateTree(trieStore.GetTrieStore(null), logManager);
+            _trieStore = trieStore ?? throw new ArgumentNullException(nameof(trieStore));
         }
 
         public Account? GetAccount(Hash256 stateRoot, Address address)
@@ -45,7 +47,8 @@ namespace Nethermind.State
             }
 
             Metrics.StorageTreeReads++;
-            return _storage.Get(index, storageRoot);
+            StorageTree storage = new StorageTree(_trieStore.GetTrieStore(address.ToAccountPath), Keccak.EmptyTreeHash, _logManager);
+            return storage.Get(index, storageRoot);
         }
 
         public UInt256 GetBalance(Hash256 stateRoot, Address address)

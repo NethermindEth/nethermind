@@ -3,7 +3,6 @@
 
 using System.Collections.Generic;
 using System.IO.Abstractions;
-using System.Threading;
 using Nethermind.Abi;
 using Nethermind.Api.Extensions;
 using Nethermind.Blockchain;
@@ -54,8 +53,7 @@ using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
 using Nethermind.Sockets;
-using Nethermind.Synchronization.SnapSync;
-using Nethermind.Synchronization.Blocks;
+using Nethermind.Trie;
 
 namespace Nethermind.Api
 {
@@ -210,6 +208,7 @@ namespace Nethermind.Api
 
         public IEthSyncingInfo? EthSyncingInfo { get; set; }
         public IBlockProductionPolicy? BlockProductionPolicy { get; set; }
+        public INodeStorageFactory NodeStorageFactory { get; set; } = null!;
         public IWallet? Wallet { get; set; }
         public IBlockStore? BadBlocksStore { get; set; }
         public ITransactionComparerProvider? TransactionComparerProvider { get; set; }

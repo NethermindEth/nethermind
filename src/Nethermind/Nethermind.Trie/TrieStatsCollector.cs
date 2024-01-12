@@ -33,7 +33,7 @@ namespace Nethermind.Trie
 
         public void VisitTree(Hash256 rootHash, TrieVisitContext trieVisitContext) { }
 
-        public void VisitMissingNode(Hash256 nodeHash, TrieVisitContext trieVisitContext)
+        public void VisitMissingNode(in TreePath path, Hash256 nodeHash, TrieVisitContext trieVisitContext)
         {
             if (trieVisitContext.IsStorage)
             {
@@ -47,7 +47,7 @@ namespace Nethermind.Trie
             IncrementLevel(trieVisitContext);
         }
 
-        public void VisitBranch(TrieNode node, TrieVisitContext trieVisitContext)
+        public void VisitBranch(in TreePath path, TrieNode node, TrieVisitContext trieVisitContext)
         {
             if (trieVisitContext.IsStorage)
             {
@@ -63,7 +63,7 @@ namespace Nethermind.Trie
             IncrementLevel(trieVisitContext);
         }
 
-        public void VisitExtension(TrieNode node, TrieVisitContext trieVisitContext)
+        public void VisitExtension(in TreePath path, TrieNode node, TrieVisitContext trieVisitContext)
         {
             if (trieVisitContext.IsStorage)
             {
@@ -79,7 +79,7 @@ namespace Nethermind.Trie
             IncrementLevel(trieVisitContext);
         }
 
-        public void VisitLeaf(TrieNode node, TrieVisitContext trieVisitContext, byte[] value = null)
+        public void VisitLeaf(in TreePath path, TrieNode node, TrieVisitContext trieVisitContext, byte[] value = null)
         {
             if (Stats.NodesCount - _lastAccountNodeCount > 1_000_000)
             {
@@ -101,7 +101,7 @@ namespace Nethermind.Trie
             IncrementLevel(trieVisitContext);
         }
 
-        public void VisitCode(Hash256 codeHash, TrieVisitContext trieVisitContext)
+        public void VisitCode(in TreePath path, Hash256 codeHash, TrieVisitContext trieVisitContext)
         {
             byte[] code = _codeKeyValueStore[codeHash.Bytes];
             if (code is not null)

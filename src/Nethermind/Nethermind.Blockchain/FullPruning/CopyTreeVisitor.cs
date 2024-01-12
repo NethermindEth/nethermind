@@ -10,6 +10,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Db.FullPruning;
 using Nethermind.Logging;
 using Nethermind.Trie;
+using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Blockchain.FullPruning
 {
@@ -21,22 +22,25 @@ namespace Nethermind.Blockchain.FullPruning
     /// </remarks>
     public class CopyTreeVisitor : ITreeVisitor, IDisposable
     {
-        private readonly IPruningContext _pruningContext;
         private readonly ILogger _logger;
         private readonly Stopwatch _stopwatch;
         private long _persistedNodes = 0;
         private bool _finished = false;
         private readonly WriteFlags _writeFlags;
+        private readonly CancellationTokenSource _cancellationTokenSource;
         private readonly CancellationToken _cancellationToken;
+        private readonly INodeStorage _nodeStorage;
         private const int Million = 1_000_000;
 
         public CopyTreeVisitor(
-            IPruningContext pruningContext,
+            INodeStorage nodeStorage,
+            CancellationTokenSource cancellationTokenSource,
             WriteFlags writeFlags,
             ILogManager logManager)
         {
-            _pruningContext = pruningContext;
-            _cancellationToken = pruningContext.CancellationTokenSource.Token;
+            _nodeStorage = nodeStorage;
+            _cancellationTokenSource = cancellationTokenSource;
+            _cancellationToken = cancellationTokenSource.Token;
             _writeFlags = writeFlags;
             _logger = logManager.GetClassLogger();
             _stopwatch = new Stopwatch();
@@ -54,7 +58,7 @@ namespace Nethermind.Blockchain.FullPruning
             if (_logger.IsWarn) _logger.Warn($"Full Pruning Started on root hash {rootHash}: do not close the node until finished or progress will be lost.");
         }
 
-        public void VisitMissingNode(Hash256 nodeHash, TrieVisitContext trieVisitContext)
+        public void VisitMissingNode(in TreePath path, Hash256 nodeHash, TrieVisitContext trieVisitContext)
         {
             if (_logger.IsWarn)
             {
@@ -62,23 +66,23 @@ namespace Nethermind.Blockchain.FullPruning
             }
 
             // if nodes are missing then state trie is not valid and we need to stop copying it
-            _pruningContext.CancellationTokenSource.Cancel();
+            _cancellationTokenSource.Cancel();
         }
 
-        public void VisitBranch(TrieNode node, TrieVisitContext trieVisitContext) => PersistNode(node);
+        public void VisitBranch(in TreePath path, TrieNode node, TrieVisitContext trieVisitContext) => PersistNode(path, node, trieVisitContext);
 
-        public void VisitExtension(TrieNode node, TrieVisitContext trieVisitContext) => PersistNode(node);
+        public void VisitExtension(in TreePath path, TrieNode node, TrieVisitContext trieVisitContext) => PersistNode(path, node, trieVisitContext);
 
-        public void VisitLeaf(TrieNode node, TrieVisitContext trieVisitContext, byte[]? value = null) => PersistNode(node);
+        public void VisitLeaf(in TreePath path, TrieNode node, TrieVisitContext trieVisitContext, byte[]? value = null) => PersistNode(path, node, trieVisitContext);
 
-        public void VisitCode(Hash256 codeHash, TrieVisitContext trieVisitContext) { }
+        public void VisitCode(in TreePath path, Hash256 codeHash, TrieVisitContext trieVisitContext) { }
 
-        private void PersistNode(TrieNode node)
+        private void PersistNode(in TreePath path, TrieNode node, TrieVisitContext trieVisitContext)
         {
             if (node.Keccak is not null)
             {
                 // simple copy of nodes RLP
-                _pruningContext.Set(node.Keccak.Bytes, node.FullRlp.ToArray(), _writeFlags);
+                _nodeStorage.Set(trieVisitContext.Storage, path, node.Keccak, node.FullRlp.ToArray(), _writeFlags);
                 Interlocked.Increment(ref _persistedNodes);
 
                 // log message every 1 mln nodes

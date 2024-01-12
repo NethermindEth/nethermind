@@ -46,12 +46,12 @@ namespace Nethermind.Analytics
         {
         }
 
-        public void VisitMissingNode(Hash256 nodeHash, TrieVisitContext trieVisitContext)
+        public void VisitMissingNode(in TreePath path, Hash256 nodeHash, TrieVisitContext trieVisitContext)
         {
             _logger.Warn($"Missing node {nodeHash}");
         }
 
-        public void VisitBranch(TrieNode node, TrieVisitContext trieVisitContext)
+        public void VisitBranch(in TreePath path, TrieNode node, TrieVisitContext trieVisitContext)
         {
             _logger.Info($"Balance after visiting {_accountsVisited} accounts and {_nodesVisited} nodes: {Balance}");
             _nodesVisited++;
@@ -69,7 +69,7 @@ namespace Nethermind.Analytics
             }
         }
 
-        public void VisitExtension(TrieNode node, TrieVisitContext trieVisitContext)
+        public void VisitExtension(in TreePath path, TrieNode node, TrieVisitContext trieVisitContext)
         {
             _nodesVisited++;
             if (trieVisitContext.IsStorage)
@@ -78,7 +78,7 @@ namespace Nethermind.Analytics
             }
         }
 
-        public void VisitLeaf(TrieNode node, TrieVisitContext trieVisitContext, byte[] value = null)
+        public void VisitLeaf(in TreePath path, TrieNode node, TrieVisitContext trieVisitContext, byte[] value = null)
         {
             _nodesVisited++;
 
@@ -95,7 +95,7 @@ namespace Nethermind.Analytics
             _logger.Info($"Balance after visiting {_accountsVisited} accounts and {_nodesVisited} nodes: {Balance}");
         }
 
-        public void VisitCode(Hash256 codeHash, TrieVisitContext trieVisitContext)
+        public void VisitCode(in TreePath path, Hash256 codeHash, TrieVisitContext trieVisitContext)
         {
             _nodesVisited++;
         }
