@@ -391,12 +391,15 @@ namespace Nethermind.Trie
                     {
                         if (tree.Capability == TrieNodeResolverCapability.Hash)
                         {
-                            ThrowMissingKeccak();
+                            if (Keccak is null)
+                                ThrowMissingKeccak();
+
+                            FullRlp = tree.LoadRlp(Keccak, readFlags);
                         }
                         else if (tree.Capability == TrieNodeResolverCapability.Path)
                         {
                             if (PathToNode is null)
-                                throw new TrieException("Unable to resolve node without its path");
+                                ThrowMissingPath();
 
                             FullRlp = tree.LoadRlp(FullPath);
                             //if node was created as unknown, the hash may be different and needs to be recalculated - maybe should throw an exception here?
@@ -444,6 +447,13 @@ namespace Nethermind.Trie
             static void ThrowMissingKeccak()
             {
                 throw new TrieException("Unable to resolve node without Keccak");
+            }
+
+            [DoesNotReturn]
+            [StackTraceHidden]
+            static void ThrowMissingPath()
+            {
+                throw new TrieException("Unable to resolve node without its path");
             }
 
             [DoesNotReturn]
