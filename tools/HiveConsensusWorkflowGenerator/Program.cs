@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Text.Json;
 
@@ -17,69 +18,46 @@ public static class Program
         // Sort the tests by size in descending order
         var sortedTests = pathsToBeTested.OrderByDescending(kv => kv.Value).ToList();
 
-        // Create empty list of 256 jobs
-        var groupedTestNames = new List<List<(string fullPath, string fileName)>>(); // Store both full path and filename
-        for (int i = 0; i < MaxJobsCount; i++)
-        {
-            groupedTestNames.Add(new List<(string, string)>());
-        }
+        var groupedTestNames = new SortedList<long, List<string>>();
 
-        File.WriteAllText("allTests.json", string.Join('\n', sortedTests.Select(x => x.Key)));
-
-        // Initial distribution without size limit
-        int groupIndex = 0;
-        foreach (var test in sortedTests.Take(MaxJobsCount))
+        foreach (var test in sortedTests)
         {
-            string fileName = test.Key;
-            groupedTestNames[groupIndex].Add((test.Key, fileName));
-            groupIndex = (groupIndex + 1) % MaxJobsCount;
-        }
+            long size = 0;
+            List<string> testsList = null;
 
-        // Subsequent distribution with size limit
-        foreach (var test in sortedTests.Skip(MaxJobsCount))
-        {
-            string fileName = test.Key;
-            groupIndex = FindSuitableGroupIndex(groupedTestNames, pathsToBeTested, test.Value);
-            groupedTestNames[groupIndex].Add((test.Key, fileName));
+            if (groupedTestNames.Count == MaxJobsCount)
+            {
+                testsList = new List<string>(groupedTestNames.First().Value);
+                size = groupedTestNames.First().Key;
+                testsList.Add(test.Key);
+                size += test.Value;
+                groupedTestNames.Remove(groupedTestNames.First().Key);
+            }
+            else
+            {
+                size = test.Value;
+                testsList = new List<string> { test.Key };
+            }
+
+            //Hack to use SortedList
+            while (groupedTestNames.ContainsKey(size))
+            {
+                size++;
+            }
+
+            groupedTestNames.Add(size, testsList);
         }
 
         // Calculate group sizes and include sizes of each test in JSON output
         var jsonGroups = groupedTestNames.Select(group => new
         {
-            testNames = group.Select(t => t.fileName ).ToArray()
+            testNames = group.Value.ToArray()
         })
         .ToList();
 
         string jsonString = JsonSerializer.Serialize(jsonGroups, new JsonSerializerOptions { WriteIndented = true });
-
-        Console.WriteLine(jsonString);
-
-        // Log the number of groups created in the JSON file
-        Console.WriteLine($"Number of groups created in JSON file: {jsonGroups.Count}");
-
+        
         File.WriteAllText("matrix.json", jsonString);
-    }
-
-    private static int FindSuitableGroupIndex(List<List<(string fullPath, string fileName)>> groups, Dictionary<string, long> pathsToBeTested, long testSize)
-    {
-        int suitableIndex = 0;
-        long smallestSize = long.MaxValue;
-
-        if (groups.Count == 0)
-            throw new Exception("Groups are empty - issue with generation of jobs.");
-
-        for (int i = 0; i < groups.Count; i++)
-        {
-            long currentGroupSize = groups[i].Sum(t => pathsToBeTested.ContainsKey(t.fullPath) ? pathsToBeTested[t.fullPath] : 0);
-
-            if (currentGroupSize < smallestSize)
-            {
-                smallestSize = currentGroupSize;
-                suitableIndex = i;
-            }
-        }
-
-        return suitableIndex;
     }
 
     private static IEnumerable<string> GetTestsDirectories(string path)
@@ -122,22 +100,11 @@ public static class Program
             {
                 long fileSize = (new FileInfo(file)).Length;
 
-                // Create a key from the grandparent and parent directory names and the file name
-                DirectoryInfo parentDirInfo = Directory.GetParent(file);
-                string parentDirName = parentDirInfo != null ? Path.GetFileName(parentDirInfo.FullName) : "";
-                string grandParentDirName = parentDirInfo?.Parent != null ? Path.GetFileName(parentDirInfo.Parent.FullName) : "";
-                string fileName = Path.GetFileName(file).Split('.')[0];
-                string key = $"{grandParentDirName}/{parentDirName}/{fileName}";
+                string[] pathSplitted = file.Split(new[] { Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar });
+                string key = $"{pathSplitted[^3]}/{pathSplitted[^2]}/{Path.GetFileName(file)}";
 
-                // Add the file size to the dictionary or throw an error if the file already exists
-                if (pathsToBeTested.ContainsKey(key))
-                {
-                    throw new InvalidOperationException($"Duplicate file detected: {key}");
-                }
-                else
-                {
-                    pathsToBeTested.Add(key, fileSize);
-                }
+
+                pathsToBeTested.Add(key, fileSize);
             }
         }
 
