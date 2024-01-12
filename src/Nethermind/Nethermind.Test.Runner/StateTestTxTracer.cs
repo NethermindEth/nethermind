@@ -109,7 +109,28 @@ public class StateTestTxTracer : ITxTracer, IDisposable
     public void SetOperationMemory(TraceMemory memoryTrace)
     {
         if (IsTracingDetailedMemory)
-            _traceEntry.Memory = string.Concat("0x", string.Join("", memoryTrace.ToHexWordList()));
+        {
+            var length = 2;
+            var wordList = memoryTrace.ToHexWordList();
+            for (int i = 0; i < wordList.Length; i++)
+            {
+                length += wordList[i].Length;
+            }
+
+            _traceEntry.Memory = string.Create(length, wordList, static (span, words) =>
+            {
+                span[1] = 'x';
+                span[0] = '0';
+
+                span = span[2..];
+                for (int i = 0; i < words.Length; i++)
+                {
+                    ReadOnlySpan<char> word = words[i].AsSpan();
+                    word.CopyTo(span);
+                    span = span[word.Length..];
+                }
+            });
+        }
     }
 
     public void SetOperationMemorySize(ulong newSize)
