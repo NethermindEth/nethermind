@@ -9,7 +9,7 @@ on:
   workflow_dispatch:
     inputs:
       parallelism:
-        description: 'Number of concurrently running tests in each job. With 1 or 2 timeout is likely. With 4 or more false-positive fails are likely. Recommended is 3 to avoid timeouts and reduce false-positives'
+        description: 'Number of concurrently running tests in each job.'
         required: true
         default: '8'
         type: choice
