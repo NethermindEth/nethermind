@@ -1,8 +1,11 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
@@ -640,5 +643,69 @@ namespace Nethermind.Synchronization.Test.ParallelSync
 
             selector.Current.Should().Be(SyncMode.StateNodes);
         }
+
+        [Test]
+        public void Changed_event_no_longer_gets_blocked_when_invoking_delegates()
+        {
+            ISyncProgressResolver syncProgressResolver = Substitute.For<ISyncProgressResolver>();
+            syncProgressResolver.FindBestHeader().Returns(Scenario.ChainHead.Number);
+            syncProgressResolver.FindBestFullBlock().Returns(Scenario.ChainHead.Number);
+            syncProgressResolver.FindBestFullState().Returns(Scenario.ChainHead.Number - MultiSyncModeSelector.FastSyncLag);
+            syncProgressResolver.FindBestProcessedBlock().Returns(0);
+            syncProgressResolver.IsFastBlocksFinished().Returns(FastBlocksState.FinishedReceipts);
+            syncProgressResolver.ChainDifficulty.Returns(UInt256.Zero);
+
+            List<ISyncPeer> syncPeers = new();
+
+            BlockHeader header = Scenario.ChainHead;
+            ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
+            syncPeer.HeadHash.Returns(header.Hash);
+            syncPeer.HeadNumber.Returns(header.Number);
+            syncPeer.TotalDifficulty.Returns(header.TotalDifficulty ?? 0);
+            syncPeer.IsInitialized.Returns(true);
+            syncPeer.ClientId.Returns("nethermind");
+
+            syncPeers.Add(syncPeer);
+            ISyncPeerPool syncPeerPool = Substitute.For<ISyncPeerPool>();
+            IEnumerable<PeerInfo> peerInfos = syncPeers.Select(p => new PeerInfo(p)).ToArray();
+            syncPeerPool.InitializedPeers.Returns(peerInfos);
+            syncPeerPool.AllPeers.Returns(peerInfos);
+
+            ISyncConfig syncConfig = new SyncConfig() { FastSyncCatchUpHeightDelta = 2 };
+            syncConfig.FastSync = true;
+
+            TotalDifficultyBetterPeerStrategy bestPeerStrategy = new(LimboLogs.Instance);
+            MultiSyncModeSelector selector = new(syncProgressResolver, syncPeerPool, syncConfig, No.BeaconSync, bestPeerStrategy, LimboLogs.Instance);
+            selector.Stop();
+            syncProgressResolver.FindBestProcessedBlock().Returns(Scenario.ChainHead.Number);
+            selector.Update();
+            selector.Current.Should().Be(SyncMode.Full);
+
+            CancellationTokenSource waitTokenSource = new CancellationTokenSource();
+            selector.Changed += BlockingMethod;
+            selector.Changed += TestMethod;
+
+            for (uint i = 0; i < syncConfig.FastSyncCatchUpHeightDelta + 1; i++)
+            {
+                long number = header.Number + i;
+                syncPeer.HeadNumber.Returns(number);
+                syncPeer.TotalDifficulty.Returns(header.TotalDifficulty!.Value + i);
+                syncProgressResolver.FindBestHeader().Returns(number);
+                syncProgressResolver.FindBestFullBlock().Returns(number);
+                selector.Update();
+            }
+
+            void BlockingMethod(object? sender, SyncModeChangedEventArgs e)
+            {
+                waitTokenSource.Token.WaitHandle.WaitOne(1000);
+                if (!waitTokenSource.IsCancellationRequested)
+                    Assert.Fail();
+            }
+            void TestMethod(object? sender, SyncModeChangedEventArgs e)
+            {
+                waitTokenSource.Cancel();
+            }
+        }
+
     }
 }

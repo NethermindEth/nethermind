@@ -281,7 +281,11 @@ namespace Nethermind.Synchronization.ParallelSync
             Preparing?.Invoke(this, args);
             Changing?.Invoke(this, args);
             Current = newModes;
-            Changed?.Invoke(this, args);
+            if (Changed is not null)
+            {
+                Parallel.ForEach(Changed.GetInvocationList(),
+                    deleg => deleg.DynamicInvoke(this, args));
+            }
         }
 
         /// <summary>
