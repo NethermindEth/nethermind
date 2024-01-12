@@ -141,6 +141,11 @@ namespace Nethermind.Db
             }
 
             WritesCount++;
+            if (value == null)
+            {
+                _db.TryRemove(key, out _);
+                return;
+            }
             _db[key] = value;
         }
     }

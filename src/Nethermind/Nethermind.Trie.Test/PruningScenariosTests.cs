@@ -76,7 +76,7 @@ namespace Nethermind.Trie.Test
             public static PruningContext InMemoryAlwaysPrune
             {
                 [DebuggerStepThrough]
-                get => new(new TestPruningStrategy(true, true), No.Persistence);
+                get => new(new TestPruningStrategy(true, true, 1000000), No.Persistence);
             }
 
             public static PruningContext SetupWithPersistenceEveryEightBlocks
@@ -745,6 +745,35 @@ namespace Nethermind.Trie.Test
                 .VerifyAccountBalance(2, 101)
                 .VerifyAccountBalance(3, 101);
 
+        }
+
+        [Test]
+        public void When_Reorg_OldValueIsNotRemoved()
+        {
+            Reorganization.MaxDepth = 2;
+
+            PruningContext.InMemoryAlwaysPrune
+                .SetAccountBalance(1, 100)
+                .SetAccountBalance(2, 100)
+                .Commit()
+
+                .SetAccountBalance(3, 100)
+                .SetAccountBalance(4, 100)
+                .Commit()
+
+                .SaveBranchingPoint("revert_main")
+
+                .SetAccountBalance(4, 200)
+                .Commit()
+
+                .RestoreBranchingPoint("revert_main")
+
+                .Commit()
+                .Commit()
+                .Commit()
+                .Commit()
+
+                .VerifyAccountBalance(4, 100);
         }
     }
 }
