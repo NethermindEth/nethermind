@@ -38,5 +38,6 @@ namespace Nethermind.Trie.Pruning
         {
             return false;
         }
+        public byte[]? TryLoadRlp(Hash256 hash, ReadFlags flags = ReadFlags.None) => null;
     }
 }

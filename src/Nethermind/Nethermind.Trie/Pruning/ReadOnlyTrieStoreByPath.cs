@@ -16,13 +16,13 @@ namespace Nethermind.Trie.Pruning
     {
         private readonly TrieStoreByPath _trieStore;
         private readonly IKeyValueStore? _readOnlyStore;
-        private readonly ReadOnlyValueStore _publicStore;
+        private readonly IReadOnlyKeyValueStore _publicStore;
 
         public ReadOnlyTrieStoreByPath(TrieStoreByPath trieStore, IKeyValueStore? readOnlyStore)
         {
             _trieStore = trieStore ?? throw new ArgumentNullException(nameof(trieStore));
             _readOnlyStore = readOnlyStore;
-            _publicStore = new ReadOnlyValueStore(_trieStore.AsKeyValueStore());
+            _publicStore = _trieStore.TrieNodeRlpStore;
         }
 
         public TrieNode FindCachedOrUnknown(Hash256 hash) =>
@@ -36,15 +36,13 @@ namespace Nethermind.Trie.Pruning
         }
 
         public byte[] LoadRlp(Hash256 hash, ReadFlags flags = ReadFlags.None) => _trieStore.LoadRlp(hash, _readOnlyStore, flags);
+        public byte[]? TryLoadRlp(Hash256 hash, ReadFlags flags = ReadFlags.None) => _trieStore.TryLoadRlp(hash, flags);
+        public byte[]? TryLoadRlp(Span<byte> path, IKeyValueStore? keyValueStore) => _trieStore.TryLoadRlp(path, keyValueStore);
 
         public bool IsPersisted(Hash256 keccak) => _trieStore.IsPersisted(keccak);
         public bool IsPersisted(in ValueHash256 keccak) => _trieStore.IsPersisted(keccak);
         public bool IsPersisted(Hash256 hash, byte[] nodePathNibbles) => _trieStore.IsPersisted(hash, nodePathNibbles);
 
-        public byte[]? TryLoadRlp(Span<byte> path, IKeyValueStore? keyValueStore)
-        {
-            return _trieStore.TryLoadRlp(path, keyValueStore);
-        }
         public TrieNodeResolverCapability Capability => TrieNodeResolverCapability.Path;
 
         public IReadOnlyTrieStore AsReadOnly(IKeyValueStore keyValueStore)
@@ -70,6 +68,8 @@ namespace Nethermind.Trie.Pruning
             return _trieStore.LoadRlp(nodePath, rootHash);
         }
 
+        public void Set(in ValueHash256 hash, byte[] rlp) { }
+
         public void PersistNode(TrieNode trieNode, IWriteBatch? batch = null, bool withDelete = false, WriteFlags writeFlags = WriteFlags.None) { }
         public void PersistNodeData(Span<byte> fullPath, int pathToNodeLength, byte[]? rlpData, IWriteBatch? batch = null, WriteFlags writeFlags = WriteFlags.None) { }
 
@@ -84,23 +84,8 @@ namespace Nethermind.Trie.Pruning
 
         public byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags) => _trieStore.Get(key, flags);
 
-        public IKeyValueStore AsKeyValueStore() => _publicStore;
-
         public void OpenContext(long blockNumber, Hash256 keccak) { }
 
-        private class ReadOnlyValueStore : IKeyValueStore
-        {
-            private readonly IKeyValueStore _keyValueStore;
-
-            public ReadOnlyValueStore(IKeyValueStore keyValueStore)
-            {
-                _keyValueStore = keyValueStore;
-            }
-
-            public byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None) => _keyValueStore.Get(key, flags);
-
-            public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None) { }
-            public void DeleteByRange(Span<byte> startKey, Span<byte> endKey) { }
-        }
+        public IReadOnlyKeyValueStore TrieNodeRlpStore => _publicStore;
     }
 }

@@ -39,13 +39,13 @@ namespace Nethermind.Blockchain.Contracts.Json
             _abiTypeFactories.Add(abiTypeFactory);
         }
 
-        public string LoadContract(Type type)
+        public static string LoadContract(Type type)
         {
             using var reader = new StreamReader(LoadResource(type));
             return reader.ReadToEnd();
         }
 
-        public string Serialize(AbiDefinition contract)
+        public static string Serialize(AbiDefinition contract)
         {
             return JsonSerializer.Serialize(contract, SourceGenerationContext.Default.AbiDefinition);
         }

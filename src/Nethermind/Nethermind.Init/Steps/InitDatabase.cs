@@ -46,7 +46,7 @@ namespace Nethermind.Init.Steps
             try
             {
                 bool useReceiptsDb = initConfig.StoreReceipts || syncConfig.DownloadReceiptsInFastSync;
-                bool useBlobsDb = txPoolConfig is { BlobSupportEnabled: true, PersistentBlobStorageEnabled: true };
+                bool useBlobsDb = txPoolConfig.BlobsSupport.IsPersistentStorage();
                 InitDbApi(initConfig, dbConfig, initConfig.StoreReceipts || syncConfig.DownloadReceiptsInFastSync);
                 StandardDbInitializer dbInitializer = new(_api.DbProvider, _api.RocksDbFactory, _api.MemDbFactory, _api.LogManager, _api.FileSystem);
                 await dbInitializer.InitStandardDbsAsync(useReceiptsDb, useBlobsDb);

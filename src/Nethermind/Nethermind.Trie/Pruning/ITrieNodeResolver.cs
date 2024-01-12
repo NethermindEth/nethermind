@@ -28,6 +28,12 @@ namespace Nethermind.Trie.Pruning
         /// <param name="hash"></param>
         /// <returns></returns>
         byte[]? LoadRlp(Hash256 hash, ReadFlags flags = ReadFlags.None);
+        /// <summary>
+        /// Loads RLP of the node.
+        /// </summary>
+        /// <param name="hash"></param>
+        /// <returns></returns>
+        byte[]? TryLoadRlp(Hash256 hash, ReadFlags flags = ReadFlags.None);
         byte[]? LoadRlp(Span<byte> nodePath, Hash256 rootHash = null);
         byte[]? TryLoadRlp(Span<byte> path, IKeyValueStore? keyValueStore);
 

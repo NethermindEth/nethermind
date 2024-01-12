@@ -91,7 +91,7 @@ public class PingMsgSerializer : DiscoveryMsgSerializerBase, IZeroInnerMessageSe
     }
 
 
-    private (int totalLength, int contentLength, int sourceAddressLength, int destinationAddressLength) GetLength(PingMsg msg)
+    private static (int totalLength, int contentLength, int sourceAddressLength, int destinationAddressLength) GetLength(PingMsg msg)
     {
         int sourceAddressLength = GetIPEndPointLength(msg.SourceAddress);
         int destinationAddressLength = GetIPEndPointLength(msg.DestinationAddress);

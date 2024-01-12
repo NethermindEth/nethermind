@@ -18,8 +18,6 @@ namespace Nethermind.Trie.Pruning
 
         public void FinishBlockCommit(TrieType trieType, long blockNumber, TrieNode? root, WriteFlags flags = WriteFlags.None) { }
 
-        public void HackPersistOnShutdown() { }
-
         public IReadOnlyTrieStore AsReadOnly(IKeyValueStore keyValueStore) => this;
 
         public byte[]? TryLoadRlp(Span<byte> path, IKeyValueStore? keyValueStore)
@@ -34,7 +32,7 @@ namespace Nethermind.Trie.Pruning
             remove { }
         }
 
-        public IKeyValueStore AsKeyValueStore() => null!;
+        public IReadOnlyKeyValueStore TrieNodeRlpStore => null!;
 
         public TrieNode FindCachedOrUnknown(Hash256 hash) => new(NodeType.Unknown, hash);
 
@@ -48,10 +46,9 @@ namespace Nethermind.Trie.Pruning
             return new(NodeType.Unknown, nodePath, storagePrefix);
         }
 
-        public byte[] LoadRlp(Hash256 hash, ReadFlags flags = ReadFlags.None)
-        {
-            return Array.Empty<byte>();
-        }
+        public byte[] TryLoadRlp(Hash256 hash, ReadFlags flags = ReadFlags.None) => null;
+
+        public byte[] LoadRlp(Hash256 hash, ReadFlags flags = ReadFlags.None) => Array.Empty<byte>();
 
         public bool IsPersisted(in ValueHash256 keccak) => true;
         public bool IsPersisted(Hash256 hash, byte[] nodePathNibbles) => false;
@@ -84,5 +81,8 @@ namespace Nethermind.Trie.Pruning
         public void OpenContext(long blockNumber, Hash256 keccak) { }
 
         public byte[]? this[ReadOnlySpan<byte> key] => null;
+        public void Set(in ValueHash256 hash, byte[] rlp)
+        {
+        }
     }
 }

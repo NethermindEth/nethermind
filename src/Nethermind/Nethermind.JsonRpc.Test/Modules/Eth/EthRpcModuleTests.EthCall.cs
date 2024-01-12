@@ -138,6 +138,19 @@ public partial class EthRpcModuleTests
     }
 
     [Test]
+    public async Task Eth_call_with_blockhash_ok()
+    {
+        using Context ctx = await Context.Create();
+        TransactionForRpc transaction = new(Keccak.Zero, 1L, 1, new Transaction());
+        transaction.From = TestItem.AddressA;
+        transaction.To = TestItem.AddressB;
+
+        string serialized =
+            await ctx.Test.TestEthRpc("eth_call", ctx.Test.JsonSerializer.Serialize(transaction), "{\"blockHash\":\"0xf0b3f69cbd4e1e8d9b0ef02ff5d1384d18e19d251a4052f5f90bab190c5e8937\"}");
+        Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32001,\"message\":\"0xf0b3f69cbd4e1e8d9b0ef02ff5d1384d18e19d251a4052f5f90bab190c5e8937 could not be found\"},\"id\":67}"));
+    }
+
+    [Test]
     public async Task Eth_call_create_tx_with_empty_data()
     {
         using Context ctx = await Context.Create();

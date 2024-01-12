@@ -91,6 +91,8 @@ namespace Nethermind.Db
 
         public IEnumerable<KeyValuePair<byte[], byte[]?>> GetAll(bool ordered = false) => _db;
 
+        public IEnumerable<byte[]> GetAllKeys(bool ordered = false) => Keys;
+
         public IEnumerable<byte[]> GetAllValues(bool ordered = false) => Values;
 
         public virtual IWriteBatch StartWriteBatch()
@@ -147,13 +149,13 @@ namespace Nethermind.Db
 
         public void DeleteByRange(Span<byte> startKey, Span<byte> endKey)
         {
-            if (Bytes.Comparer.Compare(startKey, endKey) == 0)
+            if (Bytes.BytesComparer.Compare(startKey, endKey) == 0)
                 _db.Remove(startKey.ToArray(), out _);
 
             List<byte[]> keys = new();
             foreach (byte[] key in _db.Keys)
             {
-                if (Bytes.Comparer.Compare(key, startKey) >= 0 && Bytes.Comparer.Compare(key, endKey) < 0)
+                if (Bytes.BytesComparer.Compare(key, startKey) >= 0 && Bytes.BytesComparer.Compare(key, endKey) < 0)
                     keys.Add(key);
             }
             foreach (byte[] key in keys)

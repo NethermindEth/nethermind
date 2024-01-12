@@ -144,7 +144,7 @@ namespace Nethermind.Synchronization.Peers
             return sleeps;
         }
 
-        private void ResolveWeaknessChecks(ref int weakness, AllocationContexts singleContext, ref AllocationContexts sleeps)
+        private static void ResolveWeaknessChecks(ref int weakness, AllocationContexts singleContext, ref AllocationContexts sleeps)
         {
             int level = Interlocked.Increment(ref weakness);
             if (level >= SleepThreshold)

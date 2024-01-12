@@ -174,6 +174,7 @@ public interface IDbConfig : IConfig
     ulong? StateDbCompactionReadAhead { get; set; }
     bool? StateDbDisableCompression { get; set; }
     int StateDbTargetFileSizeMultiplier { get; set; }
+    ulong? StateDbRowCacheSize { get; set; }
     IDictionary<string, string>? StateDbAdditionalRocksDbOptions { get; set; }
 
     int? PathStateStateDbBlockSize { get; set; }
@@ -181,7 +182,7 @@ public interface IDbConfig : IConfig
 
     /// <summary>
     /// Enables DB Statistics - https://github.com/facebook/rocksdb/wiki/Statistics
-    /// It can has a RocksDB perfomance hit between 5 and 10%.
+    /// It can has a RocksDB performance hit between 5 and 10%.
     /// </summary>
     bool EnableDbStatistics { get; set; }
     bool EnableMetricsUpdater { get; set; }

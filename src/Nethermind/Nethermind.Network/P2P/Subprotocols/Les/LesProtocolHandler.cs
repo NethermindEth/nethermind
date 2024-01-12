@@ -263,7 +263,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Les
                 if (headerResult.Length != 1) throw new SubprotocolException($"Unable to find header for block {request.Key.WithoutLeadingZeros().ToArray().ToLongFromBigEndianByteArrayWithoutLeadingZeros()} for GetHelperProofs response.");
                 auxData.Add(Rlp.Encode(headerResult[0]).Bytes);
             }
-            proofNodes.AddRange(cht.BuildProof(request.Key, request.SectionIndex, request.FromLevel));
+            proofNodes.AddRange(Synchronization.LesSync.CanonicalHashTrie.BuildProof(request.Key, request.SectionIndex, request.FromLevel));
         }
 
         private BlockHeader _lastSentBlock;

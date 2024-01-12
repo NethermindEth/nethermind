@@ -286,7 +286,7 @@ namespace Nethermind.Synchronization.SnapSync
         {
             HashSet<ValueHash256> set = requestedHashes.ToHashSet();
 
-            using (IWriteBatch writeWriteBatch = _dbProvider.CodeDb.StartWriteBatch())
+            using (IWriteBatch writeBatch = _dbProvider.CodeDb.StartWriteBatch())
             {
                 for (int i = 0; i < codes.Length; i++)
                 {
@@ -296,7 +296,7 @@ namespace Nethermind.Synchronization.SnapSync
                     if (set.Remove(codeHash))
                     {
                         Interlocked.Add(ref Metrics.SnapStateSynced, code.Length);
-                        writeWriteBatch[codeHash.Bytes] = code;
+                        writeBatch[codeHash.Bytes] = code;
                     }
                 }
             }

@@ -43,7 +43,7 @@ namespace Nethermind.AccountAbstraction.Network
             return Rlp.LengthOfSequence(contentLength);
         }
 
-        private UserOperationWithEntryPoint[] DeserializeUOps(NettyRlpStream rlpStream)
+        private static UserOperationWithEntryPoint[] DeserializeUOps(NettyRlpStream rlpStream)
         {
             return Rlp.DecodeArray<UserOperationWithEntryPoint>(rlpStream);
         }

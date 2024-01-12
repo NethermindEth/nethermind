@@ -99,9 +99,7 @@ public class InitializeStateDb : IStep
         }
         else
         {
-            CachingStore cachedStateDb = getApi.DbProvider.StateDb
-                .Cached(Trie.MemoryAllowance.TrieNodeCacheCount);
-            stateWitnessedBy = cachedStateDb.WitnessedBy(witnessCollector);
+            stateWitnessedBy = getApi.DbProvider.StateDb.WitnessedBy(witnessCollector);
 
             IPersistenceStrategy persistenceStrategy;
             IPruningStrategy pruningStrategy;
@@ -143,7 +141,6 @@ public class InitializeStateDb : IStep
                 IFullPruningDb fullPruningDb = (IFullPruningDb)getApi.DbProvider!.StateDb;
                 fullPruningDb.PruningStarted += (_, args) =>
                 {
-                    cachedStateDb.PersistCache(args.Context);
                     ((TrieStore)trieStore).PersistCache(args.Context, args.Context.CancellationTokenSource.Token);
                 };
             }

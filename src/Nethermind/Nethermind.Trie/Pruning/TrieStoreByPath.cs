@@ -34,6 +34,7 @@ namespace Nethermind.Trie.Pruning
         private readonly bool _useCommittedCache = false;
 
         private readonly TrieKeyValueStore _publicStore;
+
         public TrieStoreByPath(
             IColumnsDb<StateColumns> stateDb,
             IByPathPersistenceStrategy? persistenceStrategy,
@@ -218,6 +219,7 @@ namespace Nethermind.Trie.Pruning
         {
             return Array.Empty<byte>();
         }
+        public virtual byte[]? TryLoadRlp(Hash256 keccak, ReadFlags readFlags = ReadFlags.None) => LoadRlp(keccak, null, readFlags);
 
         private byte[] LoadRlp(Span<byte> path, IKeyValueStore? keyValueStore, Hash256 rootHash = null)
         {
@@ -876,8 +878,6 @@ namespace Nethermind.Trie.Pruning
             return pathLength >= 66 ? StateColumns.Storage : StateColumns.State;
         }
 
-        public IKeyValueStore AsKeyValueStore() => _publicStore;
-
         private void PrepareWriteBatches()
         {
             if (_columnsBatch is null)
@@ -904,7 +904,11 @@ namespace Nethermind.Trie.Pruning
             _committedNodes.OpenContext(blockNumber, keccak);
         }
 
-        private class TrieKeyValueStore : IKeyValueStore
+        public IReadOnlyKeyValueStore TrieNodeRlpStore => _publicStore;
+
+        public void Set(in ValueHash256 hash, byte[] rlp) { }
+
+        private class TrieKeyValueStore : IReadOnlyKeyValueStore
         {
             private readonly TrieStoreByPath _trieStore;
 
@@ -913,14 +917,8 @@ namespace Nethermind.Trie.Pruning
                 _trieStore = trieStore;
             }
 
-            public void DeleteByRange(Span<byte> startKey, Span<byte> endKey) => _trieStore.DeleteByRange(startKey, endKey);
-
-            public byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None) => _trieStore.Get(key, flags);
-
-            public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None)
-            {
-                //_trieStore._stateDb.Set(key, value, flags);
-            }
+            //public byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None) => _trieStore.GetByHash(key, flags);
+            public byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None) => Array.Empty<byte>();
         }
     }
 }

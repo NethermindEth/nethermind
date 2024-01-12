@@ -24,8 +24,8 @@ namespace Nethermind.Specs.ChainSpecStyle.Json
         public bool StateUnavailable { get; set; } = false;
         public Hash256 StateRoot { get; set; }
 
-        public ulong? BlobGasUsed { get; set; }
-        public ulong? ExcessBlobGas { get; set; }
+        public ulong BlobGasUsed { get; set; }
+        public ulong ExcessBlobGas { get; set; }
         public Hash256 ParentBeaconBlockRoot { get; set; }
     }
 }

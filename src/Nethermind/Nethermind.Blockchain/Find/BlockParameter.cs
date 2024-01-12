@@ -49,6 +49,8 @@ namespace Nethermind.Blockchain.Find
 
         public BlockParameter(Hash256 blockHash, bool requireCanonical = false)
         {
+            ArgumentNullException.ThrowIfNull(blockHash);
+
             Type = BlockParameterType.BlockHash;
             BlockHash = blockHash;
             RequireCanonical = requireCanonical;
@@ -151,10 +153,17 @@ namespace Nethermind.JsonRpc.Data
             if (tokenType == JsonTokenType.StartObject)
             {
                 bool requireCanonical = false;
+                bool readEndObject = false;
                 Hash256 blockHash = null;
                 for (int i = 0; i < 2; i++)
                 {
                     reader.Read();
+                    if (reader.TokenType == JsonTokenType.EndObject)
+                    {
+                        readEndObject = true;
+                        break;
+                    }
+
                     if (reader.ValueTextEquals("requireCanonical"u8))
                     {
                         reader.Read();
@@ -168,7 +177,7 @@ namespace Nethermind.JsonRpc.Data
 
                 BlockParameter parameter = new(blockHash, requireCanonical);
 
-                if (!reader.Read() || reader.TokenType != JsonTokenType.EndObject)
+                if ((!readEndObject && !reader.Read()) || reader.TokenType != JsonTokenType.EndObject)
                 {
                     ThrowInvalidFormatting();
                 }

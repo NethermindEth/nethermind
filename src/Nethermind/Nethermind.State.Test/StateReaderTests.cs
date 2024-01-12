@@ -147,7 +147,7 @@ namespace Nethermind.Store.Test
 
             StateReader reader =
                 new(trieStore, Substitute.For<IDb>(), Logger);
-            reader.GetStorage(stateRoot0, null, _address1, storageCell.Index + 1).Should().BeEquivalentTo(new byte[] { 0 });
+            reader.GetStorage(stateRoot0, _address1, storageCell.Index + 1).Should().BeEquivalentTo(new byte[] { 0 });
         }
 
         private Task StartTask(StateReader reader, Hash256 stateRoot, UInt256 value)
@@ -170,8 +170,7 @@ namespace Nethermind.Store.Test
                 {
                     for (int i = 0; i < 1000; i++)
                     {
-                        Hash256 storageRoot = reader.GetStorageRoot(stateRoot, storageCell.Address);
-                        byte[] result = reader.GetStorage(stateRoot, storageRoot, storageCell.Address, storageCell.Index);
+                        byte[] result = reader.GetStorage(stateRoot, storageCell.Address, storageCell.Index);
                         result.Should().BeEquivalentTo(value);
                     }
                 });
@@ -202,9 +201,7 @@ namespace Nethermind.Store.Test
 
             StateReader reader = new(trieStore, dbProvider.CodeDb, Logger);
 
-            var account = reader.GetAccount(state.StateRoot, _address1);
-            var retrieved = reader.GetStorage(state.StateRoot, account.StorageRoot, _address1, storageCell.Index);
-            //byte[] retrieved = reader.GetStorage(state.StateRoot, _address1, storageCell.Index);
+            var retrieved = reader.GetStorage(state.StateRoot, _address1, storageCell.Index);
             retrieved.Should().BeEquivalentTo(initialValue);
 
             /* at this stage we set the value in storage to 1,2,3 at the tested storage cell */
@@ -227,7 +224,7 @@ namespace Nethermind.Store.Test
                We will try to retrieve the value by taking the state root from the processor.*/
 
             retrieved =
-                reader.GetStorage(processorStateProvider.StateRoot, processorStateProvider.GetStorageRoot(storageCell.Address), storageCell.Address, storageCell.Index);
+                reader.GetStorage(processorStateProvider.StateRoot, storageCell.Address, storageCell.Index);
             retrieved.Should().BeEquivalentTo(newValue);
 
             /* If it failed then it means that the blockchain bridge cached the previous call value */

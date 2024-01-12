@@ -104,7 +104,7 @@ namespace Nethermind.Trie
 
         public bool IsStorage
         {
-            get => (_flags & StorageFlag) == StorageFlag;
+            readonly get => (_flags & StorageFlag) == StorageFlag;
             internal set
             {
                 if (value)
@@ -120,7 +120,7 @@ namespace Nethermind.Trie
 
         public bool ExpectAccounts
         {
-            get => (_flags & ExpectAccountsFlag) == ExpectAccountsFlag;
+            readonly get => (_flags & ExpectAccountsFlag) == ExpectAccountsFlag;
             internal set
             {
                 if (value)
@@ -136,7 +136,7 @@ namespace Nethermind.Trie
 
         public byte? BranchChildIndex
         {
-            get => _branchChildIndex == 255 ? null : _branchChildIndex;
+            readonly get => _branchChildIndex == 255 ? null : _branchChildIndex;
             internal set
             {
                 if (value == null)

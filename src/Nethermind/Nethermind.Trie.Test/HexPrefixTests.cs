@@ -186,7 +186,7 @@ namespace Nethermind.Trie.Test
                 byte[] encodedBytes = Nibbles.NibblesToByteStorage(kvp.Key);
                 byte[] decodedNibbles = Nibbles.BytesToNibblesStorage(encodedBytes);
 
-                bool isEqual = Bytes.Comparer.Compare(decodedNibbles, kvp.Key) == 0;
+                bool isEqual = Bytes.BytesComparer.Compare(decodedNibbles, kvp.Key) == 0;
 
                 Assert.That(isEqual, Is.True);
 

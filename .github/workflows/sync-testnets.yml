@@ -84,11 +84,11 @@ jobs:
           --el-extra-flag JsonRpc.EnabledModules=[Eth,Subscribe,Trace,TxPool,Web3,Personal,Proof,Net,Parity,Health,Rpc,Debug] \
           --checkpoint-sync-url=${{ matrix.checkpoint-sync-url }}
           echo 'Running sedge...'
-          docker compose up -d
+          ./build/sedge run -p $GITHUB_WORKSPACE/sedge
 
       - name: Wait for ${{ matrix.network }} to sync
         id: wait
-        timeout-minutes: 90
+        timeout-minutes: 180
         run: |
           set +e
 

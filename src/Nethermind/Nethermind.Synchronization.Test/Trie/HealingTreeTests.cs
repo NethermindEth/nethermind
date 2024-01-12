@@ -100,7 +100,7 @@ public class HealingTreeTests
         if (isMainThread && successfullyRecovered)
         {
             action.Should().NotThrow();
-            db.KeyWasWritten(kvp => Bytes.AreEqual(kvp.Item1, ValueKeccak.Compute(_rlp).Bytes) && Bytes.AreEqual(kvp.Item2, _rlp));
+            trieStore.Received().Set(ValueKeccak.Compute(_rlp), _rlp);
         }
         else
         {
@@ -121,13 +121,13 @@ public class HealingTreeTests
         {
             _path = path;
             _db = db;
+            TrieNodeRlpStore = null!;
         }
 
         public TrieNodeResolverCapability Capability => TrieNodeResolverCapability.Hash;
 
         public event EventHandler<ReorgBoundaryReached>? ReorgBoundaryReached;
-
-        public IKeyValueStore AsKeyValueStore() { return _db; }
+        public IReadOnlyKeyValueStore TrieNodeRlpStore { get; }
 
         public IReadOnlyTrieStore AsReadOnly(IKeyValueStore? keyValueStore) { return this; }
 
@@ -164,7 +164,7 @@ public class HealingTreeTests
 
         public TrieNode? FindCachedOrUnknown(Span<byte> nodePath, byte[] storagePrefix, Hash256? rootHash)
         {
-            throw new NotImplementedException();
+            return new TrieNode(NodeType.Unknown);
         }
 
         public void FinishBlockCommit(TrieType trieType, long blockNumber, TrieNode? root, WriteFlags writeFlags = WriteFlags.None)
@@ -176,12 +176,18 @@ public class HealingTreeTests
         public bool IsPersisted(in ValueHash256 keccak) => false;
 
         public byte[]? LoadRlp(Hash256 hash, ReadFlags flags = ReadFlags.None) { return null; }
+        public byte[]? TryLoadRlp(Hash256 hash, ReadFlags flags = ReadFlags.None)
+        {
+            throw new NotImplementedException();
+        }
 
         public byte[]? LoadRlp(Span<byte> nodePath, Hash256? rootHash = null) { return null; }
 
         public void MarkPrefixDeleted(long blockNumber, ReadOnlySpan<byte> keyPrefix) { }
 
         public void OpenContext(long blockNumber, Hash256 keccak) { }
+
+        public void Set(in ValueHash256 hash, byte[] rlp) { }
 
         public void PersistNode(TrieNode trieNode, IWriteBatch? batch = null, bool withDelete = false, WriteFlags writeFlags = WriteFlags.None) { }
 

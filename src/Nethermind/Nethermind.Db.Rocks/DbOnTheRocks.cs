@@ -6,7 +6,6 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.IO.Abstractions;
-using System.Net.Sockets;
 using System.Reflection;
 using System.Threading;
 using ConcurrentCollections;
@@ -54,6 +53,7 @@ public class DbOnTheRocks : IDb, ITunableDb
     private long _maxThisDbSize;
 
     protected IntPtr? _cache = null;
+    protected IntPtr? _rowCache = null;
 
     private readonly RocksDbSettings _settings;
 
@@ -358,6 +358,12 @@ public class DbOnTheRocks : IDb, ITunableDb
         options.SetCreateIfMissing();
         options.SetAdviseRandomOnOpen(true);
 
+        if (dbConfig.RowCacheSize > 0)
+        {
+            _rowCache = RocksDbSharp.Native.Instance.rocksdb_cache_create_lru(new UIntPtr(dbConfig.RowCacheSize.Value));
+            _rocksDbNative.rocksdb_options_set_row_cache(options.Handle, _rowCache.Value);
+        }
+
         /*
          * Multi-Threaded Compactions
          * Compactions are needed to remove multiple copies of the same key that may occur if an application overwrites an existing key. Compactions also process deletions of keys. Compactions may occur in multiple threads if configured appropriately.
@@ -459,7 +465,7 @@ public class DbOnTheRocks : IDb, ITunableDb
         }
     }
 
-    private WriteOptions CreateWriteOptions(PerTableDbConfig dbConfig)
+    private static WriteOptions CreateWriteOptions(PerTableDbConfig dbConfig)
     {
         WriteOptions options = new();
         // potential fix for corruption on hard process termination, may cause performance degradation
@@ -590,6 +596,7 @@ public class DbOnTheRocks : IDb, ITunableDb
         try
         {
             Span<byte> span = _db.GetSpan(key, cf);
+
             if (!span.IsNullOrEmpty())
             {
                 Interlocked.Increment(ref _allocatedSpan);
@@ -668,6 +675,17 @@ public class DbOnTheRocks : IDb, ITunableDb
         }
     }
 
+    public IEnumerable<byte[]> GetAllKeys(bool ordered = false)
+    {
+        if (_isDisposing)
+        {
+            throw new ObjectDisposedException($"Attempted to read form a disposed database {Name}");
+        }
+
+        Iterator iterator = CreateIterator(ordered);
+        return GetAllKeysCore(iterator);
+    }
+
     public IEnumerable<byte[]> GetAllValues(bool ordered = false)
     {
         ObjectDisposedException.ThrowIf(_isDisposing, this);
@@ -693,6 +711,48 @@ public class DbOnTheRocks : IDb, ITunableDb
             while (iterator.Valid())
             {
                 yield return iterator.Value();
+                try
+                {
+                    iterator.Next();
+                }
+                catch (RocksDbSharpException e)
+                {
+                    CreateMarkerIfCorrupt(e);
+                    throw;
+                }
+            }
+        }
+        finally
+        {
+            try
+            {
+                iterator.Dispose();
+            }
+            catch (RocksDbSharpException e)
+            {
+                CreateMarkerIfCorrupt(e);
+                throw;
+            }
+        }
+    }
+
+    internal IEnumerable<byte[]> GetAllKeysCore(Iterator iterator)
+    {
+        try
+        {
+            try
+            {
+                iterator.SeekToFirst();
+            }
+            catch (RocksDbSharpException e)
+            {
+                CreateMarkerIfCorrupt(e);
+                throw;
+            }
+
+            while (iterator.Valid())
+            {
+                yield return iterator.Key();
                 try
                 {
                     iterator.Next();
@@ -848,6 +908,7 @@ public class DbOnTheRocks : IDb, ITunableDb
             try
             {
                 _dbOnTheRocks._db.Write(_rocksBatch, _dbOnTheRocks.WriteFlagsToWriteOptions(_writeFlags));
+
                 _dbOnTheRocks._currentBatches.TryRemove(this);
                 ReturnWriteBatch(_rocksBatch);
             }
@@ -917,7 +978,7 @@ public class DbOnTheRocks : IDb, ITunableDb
             iterator.Seek(startKey);
             while (iterator.Valid())
             {
-                if (Bytes.Comparer.Compare(iterator.Key(), endKey) >= 0)
+                if (Bytes.BytesComparer.Compare(iterator.Key(), endKey) >= 0)
                     break;
                 //Console.WriteLine($"Deleting: {Convert.ToHexString(iterator.Key())} - {Convert.ToHexString(iterator.Value())}");
                 Delete(iterator.Key(), cf);
@@ -1025,6 +1086,11 @@ public class DbOnTheRocks : IDb, ITunableDb
         if (_cache.HasValue)
         {
             _rocksDbNative.rocksdb_cache_destroy(_cache.Value);
+        }
+
+        if (_rowCache.HasValue)
+        {
+            _rocksDbNative.rocksdb_cache_destroy(_rowCache.Value);
         }
 
         if (_rateLimiter.HasValue)
@@ -1186,7 +1252,7 @@ public class DbOnTheRocks : IDb, ITunableDb
     ///  This caps the maximum allowed number of l0 files, which is also the read response time amplification.
     /// </param>
     /// <returns></returns>
-    private IDictionary<string, string> GetHeavyWriteOptions(ulong l0FileNumTarget)
+    private static IDictionary<string, string> GetHeavyWriteOptions(ulong l0FileNumTarget)
     {
         // Make buffer (probably) smaller so that it does not take too much memory to have many of them.
         // More buffer means more parallel flush, but each read have to go through all buffer one by one much like l0
@@ -1220,7 +1286,7 @@ public class DbOnTheRocks : IDb, ITunableDb
         };
     }
 
-    private IDictionary<string, string> GetDisableCompactionOptions()
+    private static IDictionary<string, string> GetDisableCompactionOptions()
     {
         IDictionary<string, string> heavyWriteOption = GetHeavyWriteOptions(2048);
 
@@ -1235,7 +1301,7 @@ public class DbOnTheRocks : IDb, ITunableDb
     }
 
 
-    private IDictionary<string, string> GetBlobFilesOptions()
+    private static IDictionary<string, string> GetBlobFilesOptions()
     {
         // Enable blob files, see: https://rocksdb.org/blog/2021/05/26/integrated-blob-db.html
         // This is very useful for blocks, as it almost eliminate 95% of the compaction as the main db no longer

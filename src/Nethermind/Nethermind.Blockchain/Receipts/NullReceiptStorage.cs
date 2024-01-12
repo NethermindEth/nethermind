@@ -11,6 +11,10 @@ namespace Nethermind.Blockchain.Receipts
     {
         public static NullReceiptStorage Instance { get; } = new();
 
+#pragma warning disable CS0067
+        public event EventHandler<BlockReplacementEventArgs> ReceiptsInserted;
+#pragma warning restore CS0067
+
         public Hash256? FindBlockHash(Hash256 hash) => null;
 
         private NullReceiptStorage()
@@ -36,12 +40,6 @@ namespace Nethermind.Blockchain.Receipts
         }
 
         public long MigratedBlockNumber { get; set; } = 0;
-
-        public event EventHandler<ReceiptsEventArgs> ReceiptsInserted
-        {
-            add { }
-            remove { }
-        }
 
         public bool HasBlock(long blockNumber, Hash256 hash)
         {

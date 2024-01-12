@@ -1195,11 +1195,11 @@ namespace Nethermind.Core.Collections
                 return false;
             }
 
-            public KeyValuePair<TKey[], TValue> Current => _current;
+            public readonly KeyValuePair<TKey[], TValue> Current => _current;
 
-            public void Dispose() { }
+            public readonly void Dispose() { }
 
-            object? IEnumerator.Current
+            readonly object? IEnumerator.Current
             {
                 get
                 {
@@ -1228,7 +1228,7 @@ namespace Nethermind.Core.Collections
                 _current = default;
             }
 
-            DictionaryEntry IDictionaryEnumerator.Entry
+            readonly DictionaryEntry IDictionaryEnumerator.Entry
             {
                 get
                 {
@@ -1241,7 +1241,7 @@ namespace Nethermind.Core.Collections
                 }
             }
 
-            object IDictionaryEnumerator.Key
+            readonly object IDictionaryEnumerator.Key
             {
                 get
                 {
@@ -1254,7 +1254,7 @@ namespace Nethermind.Core.Collections
                 }
             }
 
-            object? IDictionaryEnumerator.Value
+            readonly object? IDictionaryEnumerator.Value
             {
                 get
                 {
@@ -1395,7 +1395,7 @@ namespace Nethermind.Core.Collections
                     _currentKey = default;
                 }
 
-                public void Dispose() { }
+                public readonly void Dispose() { }
 
                 public bool MoveNext()
                 {
@@ -1420,9 +1420,9 @@ namespace Nethermind.Core.Collections
                     return false;
                 }
 
-                public TKey[] Current => _currentKey!;
+                public readonly TKey[] Current => _currentKey!;
 
-                object? IEnumerator.Current
+                readonly object? IEnumerator.Current
                 {
                     get
                     {
@@ -1572,7 +1572,7 @@ namespace Nethermind.Core.Collections
                     _currentValue = default;
                 }
 
-                public void Dispose() { }
+                public readonly void Dispose() { }
 
                 public bool MoveNext()
                 {
@@ -1596,9 +1596,9 @@ namespace Nethermind.Core.Collections
                     return false;
                 }
 
-                public TValue Current => _currentValue!;
+                public readonly TValue Current => _currentValue!;
 
-                object? IEnumerator.Current
+                readonly object? IEnumerator.Current
                 {
                     get
                     {

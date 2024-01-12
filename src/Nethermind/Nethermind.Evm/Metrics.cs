@@ -90,23 +90,23 @@ public class Metrics
     [Description("Number of contract create calls.")]
     public static long Creates { get; set; }
     internal static long Transactions { get; set; }
-    internal static decimal AveGasPrice { get; set; }
-    internal static decimal MinGasPrice { get; set; } = decimal.MaxValue;
-    internal static decimal MaxGasPrice { get; set; }
-    internal static decimal EstMedianGasPrice { get; set; }
+    internal static float AveGasPrice { get; set; }
+    internal static float MinGasPrice { get; set; } = float.MaxValue;
+    internal static float MaxGasPrice { get; set; }
+    internal static float EstMedianGasPrice { get; set; }
 
     internal static long BlockTransactions { get; set; }
-    internal static decimal BlockAveGasPrice { get; set; }
-    internal static decimal BlockMinGasPrice { get; set; } = decimal.MaxValue;
-    internal static decimal BlockMaxGasPrice { get; set; }
-    internal static decimal BlockEstMedianGasPrice { get; set; }
+    internal static float BlockAveGasPrice { get; set; }
+    internal static float BlockMinGasPrice { get; set; } = float.MaxValue;
+    internal static float BlockMaxGasPrice { get; set; }
+    internal static float BlockEstMedianGasPrice { get; set; }
 
     public static void ResetBlockStats()
     {
         BlockTransactions = 0;
-        BlockAveGasPrice = 0m;
-        BlockMaxGasPrice = 0m;
-        BlockEstMedianGasPrice = 0m;
-        BlockMinGasPrice = decimal.MaxValue;
+        BlockAveGasPrice = 0.0f;
+        BlockMaxGasPrice = 0.0f;
+        BlockEstMedianGasPrice = 0.0f;
+        BlockMinGasPrice = float.MaxValue;
     }
 }

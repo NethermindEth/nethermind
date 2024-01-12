@@ -79,7 +79,7 @@ public class NeighborsMsgSerializer : DiscoveryMsgSerializerBase, IZeroInnerMess
         });
     }
 
-    private int GetNodesLength(Node[] nodes, out int contentLength)
+    private static int GetNodesLength(Node[] nodes, out int contentLength)
     {
         contentLength = 0;
         for (int i = 0; i < nodes.Length; i++)
@@ -96,7 +96,7 @@ public class NeighborsMsgSerializer : DiscoveryMsgSerializerBase, IZeroInnerMess
         return totalLength;
     }
 
-    private (int totalLength, int contentLength, int nodesContentLength) GetLength(NeighborsMsg msg)
+    private static (int totalLength, int contentLength, int nodesContentLength) GetLength(NeighborsMsg msg)
     {
         int nodesContentLength = 0;
         int contentLength = 0;

@@ -15,13 +15,13 @@ namespace Nethermind.Trie.Pruning
     {
         private readonly TrieStore _trieStore;
         private readonly IKeyValueStore? _readOnlyStore;
-        private readonly ReadOnlyValueStore _publicStore;
+        private readonly IReadOnlyKeyValueStore _publicStore;
 
         public ReadOnlyTrieStore(TrieStore trieStore, IKeyValueStore? readOnlyStore)
         {
             _trieStore = trieStore ?? throw new ArgumentNullException(nameof(trieStore));
             _readOnlyStore = readOnlyStore;
-            _publicStore = new ReadOnlyValueStore(_trieStore.AsKeyValueStore());
+            _publicStore = _trieStore.TrieNodeRlpStore;
         }
 
         public TrieNode FindCachedOrUnknown(Hash256 hash) =>
@@ -34,7 +34,8 @@ namespace Nethermind.Trie.Pruning
             throw new NotImplementedException();
         }
 
-        public byte[] LoadRlp(Hash256 hash, ReadFlags readFlags = ReadFlags.None) => _trieStore.LoadRlp(hash, _readOnlyStore, readFlags);
+        public byte[]? TryLoadRlp(Hash256 hash, ReadFlags flags) => _trieStore.TryLoadRlp(hash, _readOnlyStore, flags);
+        public byte[] LoadRlp(Hash256 hash, ReadFlags flags) => _trieStore.LoadRlp(hash, _readOnlyStore, flags);
 
         public bool IsPersisted(in ValueHash256 keccak) => _trieStore.IsPersisted(keccak);
         public bool IsPersisted(Hash256 hash, byte[] nodePathNibbles) => _trieStore.IsPersisted(hash, nodePathNibbles);
@@ -60,7 +61,7 @@ namespace Nethermind.Trie.Pruning
             remove { }
         }
 
-        public IKeyValueStore AsKeyValueStore() => _publicStore;
+        public IReadOnlyKeyValueStore TrieNodeRlpStore => _publicStore;
 
         public void Dispose() { }
 
@@ -79,8 +80,10 @@ namespace Nethermind.Trie.Pruning
 
         public void ClearCacheAfter(Hash256 rootHash) { }
 
-        public byte[]? this[ReadOnlySpan<byte> key] => _trieStore[key];
         public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None) { }
+        public void Set(in ValueHash256 hash, byte[] rlp)
+        {
+        }
 
         public bool CanAccessByPath() => _trieStore.CanAccessByPath();
         public bool ShouldResetObjectsOnRootChange() => _trieStore.ShouldResetObjectsOnRootChange();

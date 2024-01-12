@@ -195,7 +195,7 @@ namespace Nethermind.AccountAbstraction.Test
                 AbiParameterConverter.RegisterFactory(new AbiTypeFactory(new AbiTuple<UserOperationAbi>()));
 
                 var parser = new AbiDefinitionParser();
-                var json = parser.LoadContract(typeof(EntryPoint));
+                var json = AbiDefinitionParser.LoadContract(typeof(EntryPoint));
                 EntryPointContractAbi = parser.Parse(json);
 
                 foreach (Address entryPoint in entryPointContractAddresses)
