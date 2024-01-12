@@ -15,7 +15,7 @@ public interface IInitConfig : IConfig
     [ConfigItem(Description = "Whether to create session-only accounts and delete them on shutdown.", DefaultValue = "false")]
     bool KeepDevWalletInMemory { get; set; }
 
-    [ConfigItem(Description = "Whether to enable WebSocket service for the defaut JSON-RPC port on startup.", DefaultValue = "true")]
+    [ConfigItem(Description = "Whether to enable WebSocket service for the default JSON-RPC port on startup.", DefaultValue = "true")]
     bool WebSocketsEnabled { get; set; }
 
     [ConfigItem(Description = "Whether to enable the node discovery. If disabled, Nethermind doesn't look for other nodes beyond the bootnodes specified.", DefaultValue = "true")]

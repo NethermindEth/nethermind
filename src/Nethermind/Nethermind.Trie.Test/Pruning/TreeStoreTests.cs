@@ -799,6 +799,7 @@ namespace Nethermind.Trie.Test.Pruning
 
         private long ExpectedPerNodeKeyMemorySize => _scheme == INodeStorage.KeyScheme.Hash ? 0 : TrieStore.DirtyNodesCache.Key.MemoryUsage;
 
+
         [Test]
         public async Task Will_RemovePastKeys_OnSnapshot()
         {
@@ -858,5 +859,6 @@ namespace Nethermind.Trie.Test.Pruning
 
             memDb.Count.Should().Be(4);
         }
+
     }
 }

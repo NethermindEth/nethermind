@@ -311,6 +311,11 @@ namespace Nethermind.Trie.Pruning
             return new ScopedTrieStore(this, address);
         }
 
+        public IScopedTrieStore GetTrieStore(Hash256? address)
+        {
+            return new ScopedTrieStore(this, address);
+        }
+
         public long LastPersistedBlockNumber
         {
             get => _latestPersistedBlockNumber;
@@ -459,6 +464,7 @@ namespace Nethermind.Trie.Pruning
                     if (shouldPersistSnapshot)
                     {
                         PersistBlockCommitSet(address, set, writeFlags: writeFlags);
+
                     }
                     else
                     {
@@ -647,6 +653,7 @@ namespace Nethermind.Trie.Pruning
                     {
                         _persistedLastSeens.Remove(keyValuePair.Key, out _);
                     }
+
                 }
 
                 if (candidateSets.Count > 0)

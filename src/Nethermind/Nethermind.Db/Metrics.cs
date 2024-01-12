@@ -79,7 +79,7 @@ namespace Nethermind.Db
         public static int StateDbInPruningWrites;
 
         [CounterMetric]
-        [Description("Number of storge trie reads.")]
+        [Description("Number of storage trie reads.")]
         public static long StorageTreeReads { get; set; }
 
         [CounterMetric]

@@ -209,7 +209,6 @@ namespace Ethereum.Test.Base
             foreach (KeyValuePair<string, PostStateJson[]> postStateBySpec in testJson.Post)
             {
                 int iterationNumber = 0;
-                int testIndex = testJson.Info?.Labels?.Select(x => System.Convert.ToInt32(x.Key)).FirstOrDefault() ?? 0;
                 foreach (PostStateJson stateJson in postStateBySpec.Value)
                 {
                     GeneralStateTest test = new();
@@ -218,10 +217,6 @@ namespace Ethereum.Test.Base
                     if (testJson.Info?.Labels?.ContainsKey(iterationNumber.ToString()) ?? false)
                     {
                         test.Name += testJson.Info?.Labels?[iterationNumber.ToString()]?.Replace(":label ", string.Empty);
-                    }
-                    else
-                    {
-                        test.Name += string.Empty;
                     }
 
                     test.ForkName = postStateBySpec.Key;
