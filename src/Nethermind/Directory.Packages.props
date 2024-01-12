@@ -30,8 +30,6 @@
     <PackageVersion Include="Microsoft.AspNetCore.DataProtection" Version="8.0.0" />
     <PackageVersion Include="Microsoft.AspNetCore.DataProtection.Abstractions" Version="8.0.0" />
     <PackageVersion Include="Microsoft.AspNetCore.DataProtection.Extensions" Version="8.0.0" />
-    <PackageVersion Include="Microsoft.AspNetCore.Http.Abstractions" Version="2.2.0" />
-    <PackageVersion Include="Microsoft.AspNetCore.WebSockets" Version="2.2.1" />
     <PackageVersion Include="Microsoft.ClearScript.V8" Version="7.4.4" />
     <PackageVersion Include="Microsoft.ClearScript.V8.Native.linux-arm64" Version="7.4.4" />
     <PackageVersion Include="Microsoft.ClearScript.V8.Native.linux-x64" Version="7.4.4" />
