@@ -7,7 +7,7 @@ using Nethermind.Logging;
 
 namespace Nethermind.Db.Rocks;
 
-public class RocksDbFactory : IRocksDbFactory
+public class RocksDbFactory : IDbFactory
 {
     private readonly IDbConfig _dbConfig;
 
@@ -33,11 +33,11 @@ public class RocksDbFactory : IRocksDbFactory
         _sharedCache = RocksDbSharp.Native.Instance.rocksdb_cache_create_lru(new UIntPtr(dbConfig.SharedBlockCacheSize));
     }
 
-    public IDb CreateDb(RocksDbSettings rocksDbSettings) =>
-        new DbOnTheRocks(_basePath, rocksDbSettings, _dbConfig, _logManager, sharedCache: _sharedCache);
+    public IDb CreateDb(DbSettings dbSettings) =>
+        new DbOnTheRocks(_basePath, dbSettings, _dbConfig, _logManager, sharedCache: _sharedCache);
 
-    public IColumnsDb<T> CreateColumnsDb<T>(RocksDbSettings rocksDbSettings) where T : struct, Enum =>
-        new ColumnsDb<T>(_basePath, rocksDbSettings, _dbConfig, _logManager, Array.Empty<T>(), sharedCache: _sharedCache);
+    public IColumnsDb<T> CreateColumnsDb<T>(DbSettings dbSettings) where T : struct, Enum =>
+        new ColumnsDb<T>(_basePath, dbSettings, _dbConfig, _logManager, Array.Empty<T>(), sharedCache: _sharedCache);
 
-    public string GetFullDbPath(RocksDbSettings rocksDbSettings) => DbOnTheRocks.GetFullDbPath(rocksDbSettings.DbPath, _basePath);
+    public string GetFullDbPath(DbSettings dbSettings) => DbOnTheRocks.GetFullDbPath(dbSettings.DbPath, _basePath);
 }

@@ -84,10 +84,10 @@ namespace Nethermind.Blockchain.Test.FullPruning
 
         private static IPruningContext StartPruning(MemDb trieDb, MemDb clonedDb)
         {
-            IRocksDbFactory rocksDbFactory = Substitute.For<IRocksDbFactory>();
-            rocksDbFactory.CreateDb(Arg.Any<RocksDbSettings>()).Returns(trieDb, clonedDb);
+            IDbFactory dbFactory = Substitute.For<IDbFactory>();
+            dbFactory.CreateDb(Arg.Any<DbSettings>()).Returns(trieDb, clonedDb);
 
-            FullPruningDb fullPruningDb = new(new RocksDbSettings("test", "test"), rocksDbFactory);
+            FullPruningDb fullPruningDb = new(new DbSettings("test", "test"), dbFactory);
             fullPruningDb.TryStartPruning(out IPruningContext pruningContext);
             return pruningContext;
         }
