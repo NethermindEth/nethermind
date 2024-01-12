@@ -104,7 +104,7 @@ public static class Program
                 string key = $"{pathSplitted[^3]}/{pathSplitted[^2]}/{Path.GetFileName(file)}";
 
 
-                pathsToBeTested.Add(key, fileSize);
+                pathsToBeTested.Add(key.Split('.')[0], fileSize);
             }
         }
 
