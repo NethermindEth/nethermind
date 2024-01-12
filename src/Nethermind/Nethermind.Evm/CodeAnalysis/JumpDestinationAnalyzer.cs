@@ -13,8 +13,9 @@ namespace Nethermind.Evm.CodeAnalysis
         private const int PUSH32 = 0x7f;
         private const int JUMPDEST = 0x5b;
         private const int BEGINSUB = 0x5c;
+        private const int BitShiftPerInt32 = 5;
 
-        private byte[]? _codeBitmap;
+        private int[]? _codeBitmap;
         public byte[] MachineCode { get; set; }
 
         public JumpDestinationAnalyzer(byte[] code)
@@ -51,12 +52,33 @@ namespace Nethermind.Evm.CodeAnalysis
         }
 
         /// <summary>
+        /// Used for conversion between different representations of bit array.
+        /// Returns (n + (32 - 1)) / 32, rearranged to avoid arithmetic overflow.
+        /// For example, in the bit to int case, the straightforward calc would
+        /// be (n + 31) / 32, but that would cause overflow. So instead it's
+        /// rearranged to ((n - 1) / 32) + 1.
+        /// Due to sign extension, we don't need to special case for n == 0, if we use
+        /// bitwise operations (since ((n - 1) >> 5) + 1 = 0).
+        /// This doesn't hold true for ((n - 1) / 32) + 1, which equals 1.
+        ///
+        /// Usage:
+        /// GetInt32ArrayLengthFromBitLength(77): returns how many ints must be
+        /// allocated to store 77 bits.
+        /// </summary>
+        /// <param name="n"></param>
+        /// <returns>how many ints are required to store n bytes</returns>
+        private static int GetInt32ArrayLengthFromBitLength(int n)
+        {
+            return (int)((uint)(n - 1 + (1 << BitShiftPerInt32)) >> BitShiftPerInt32);
+        }
+
+        /// <summary>
         /// Collects data locations in code.
         /// An unset bit means the byte is an opcode, a set bit means it's data.
         /// </summary>
-        private static byte[] CreateJumpDestinationBitmap(byte[] code)
+        private static int[] CreateJumpDestinationBitmap(byte[] code)
         {
-            byte[] bitvec = new byte[(code.Length / 8) + 1];
+            int[] bitvec = new int[GetInt32ArrayLengthFromBitLength(code.Length)];
 
             int pc = 0;
             while (true)
@@ -88,25 +110,21 @@ namespace Nethermind.Evm.CodeAnalysis
         /// <summary>
         /// Checks if the position is in a code segment.
         /// </summary>
-        private static bool IsJumpDestination(byte[] bitvec, int pos)
+        private static bool IsJumpDestination(int[] bitvec, int pos)
         {
-            //return (bitvec[pos / 8] & (0x80 >> (pos % 8))) == 0;
-
-            int vecIndex = pos >> 3;
+            int vecIndex = pos >> BitShiftPerInt32;
             // Check if in bounds, Jit will add slightly more expensive exception throwing check if we don't
             if ((uint)vecIndex >= (uint)bitvec.Length) return false;
 
-            // Store byte to int, as less expensive operations at word size
-            int codeByte = bitvec[vecIndex];
-            return (codeByte & (0x80 >> (pos & 7))) != 0;
+            return (bitvec[vecIndex] & (1 << pos)) != 0;
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static void Set(byte[] bitvec, int pos)
+        private static void Set(int[] bitvec, int pos)
         {
-            int vecIndex = pos >> 3;
+            int vecIndex = pos >> BitShiftPerInt32;
             Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(bitvec), vecIndex)
-                |= (byte)(1 << (7 - (pos & 7)));
+                |= 1 << pos;
         }
     }
 }
