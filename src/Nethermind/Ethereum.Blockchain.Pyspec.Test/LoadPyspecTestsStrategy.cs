@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Formats.Tar;
 using System.IO;
+using System.IO.Compression;
 using System.Linq;
 using System.Net.Http;
 using Ethereum.Test.Base;
@@ -34,7 +35,12 @@ public class LoadPyspecTestsStrategy : ITestLoadStrategy
         HttpResponseMessage response = httpClient.GetAsync(string.Format(Constants.ARCHIVE_URL_TEMPLATE, archiveVersion, archiveName)).GetAwaiter().GetResult();
         response.EnsureSuccessStatusCode();
         using Stream contentStream = response.Content.ReadAsStreamAsync().GetAwaiter().GetResult();
-        TarFile.ExtractToDirectory(contentStream, testsDirectoryName, true);
+        using GZipStream gzStream = new(contentStream, CompressionMode.Decompress);
+
+        if (!Directory.Exists(testsDirectoryName))
+            Directory.CreateDirectory(testsDirectoryName);
+
+        TarFile.ExtractToDirectory(gzStream, testsDirectoryName, true);
     }
 
     private IEnumerable<BlockchainTest> LoadTestsFromDirectory(string testDir, string wildcard)
