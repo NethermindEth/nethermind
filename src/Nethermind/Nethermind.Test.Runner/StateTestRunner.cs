@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Text.RegularExpressions;
 using System.Threading;
+using System.Threading.Tasks;
 
 using Ethereum.Test.Base;
 using Ethereum.Test.Base.Interfaces;
@@ -69,10 +70,10 @@ namespace Nethermind.Test.Runner
                 if (_whenTrace != WhenTrace.Always)
                 {
                     // Warm up
-                    for (int i = 0; i < 25; i++)
+                    Parallel.For(0, 30, (i, s) =>
                     {
                         _ = RunTest(test, NullTxTracer.Instance);
-                    }
+                    });
 
                     // Give time to Jit optimized version
                     Thread.Sleep(20);
