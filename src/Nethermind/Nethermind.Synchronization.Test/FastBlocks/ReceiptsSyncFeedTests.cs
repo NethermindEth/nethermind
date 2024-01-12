@@ -241,19 +241,19 @@ namespace Nethermind.Synchronization.Test.FastBlocks
         }
 
         [TestCase(1024, false, null, false)]
-        [TestCase(11052930, false, null, true)]
+        [TestCase(11051474, false, null, true)]
         [TestCase(11052984, false, null, true)]
         [TestCase(11052985, false, null, false)]
         [TestCase(1024, false, 11052984, false)]
-        [TestCase(11052930, false, 11052984, true)]
+        [TestCase(11051474, false, 11052984, true)]
         [TestCase(11052984, false, 11052984, true)]
         [TestCase(11052985, false, 11052984, false)]
         [TestCase(1024, true, null, false)]
-        [TestCase(11052930, true, null, false)]
+        [TestCase(11051474, true, null, false)]
         [TestCase(11052984, true, null, false)]
         [TestCase(11052985, true, null, false)]
         [TestCase(1024, false, 0, false)]
-        [TestCase(11052930, false, 0, false)]
+        [TestCase(11051474, false, 0, false)]
         [TestCase(11052984, false, 0, false)]
         [TestCase(11052985, false, 0, false)]
         public async Task When_finished_sync_with_old_default_barrier_then_finishes_imedietely(
