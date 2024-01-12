@@ -76,6 +76,7 @@ namespace Nethermind.Test.Runner
 
                     // Give time to Jit optimized version
                     Thread.Sleep(20);
+                    GC.Collect(GC.MaxGeneration);
                     result = RunTest(test, NullTxTracer.Instance);
                 }
 
