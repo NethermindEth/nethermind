@@ -278,13 +278,19 @@ namespace Nethermind.Synchronization.ParallelSync
             // for example when switching to Full sync we need to ensure that we safely transition
             // DBS and processors if needed
 
-            Preparing?.Invoke(this, args);
-            Changing?.Invoke(this, args);
+            ParallelInvoke(Preparing, args);
+            ParallelInvoke(Changing, args);
             Current = newModes;
-            if (Changed is not null)
+            ParallelInvoke(Changed, args);
+
+            void ParallelInvoke(EventHandler<SyncModeChangedEventArgs> handler, SyncModeChangedEventArgs args)
             {
-                Parallel.ForEach(Changed.GetInvocationList(),
-                    deleg => deleg.DynamicInvoke(this, args));
+                EventHandler<SyncModeChangedEventArgs> handlerCopy = handler;
+                if (handlerCopy is not null)
+                {
+                    Parallel.ForEach(handlerCopy.GetInvocationList(),
+                        deleg => deleg.DynamicInvoke(this, args));
+                }
             }
         }
 
