@@ -5,7 +5,7 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.State.Snap
 {
-    public class PathWithStorageSlot
+    public readonly struct PathWithStorageSlot
     {
         public PathWithStorageSlot(ValueHash256 keyHash, byte[] slotRlpValue)
         {
@@ -13,7 +13,7 @@ namespace Nethermind.State.Snap
             SlotRlpValue = slotRlpValue;
         }
 
-        public ValueHash256 Path { get; set; }
-        public byte[] SlotRlpValue { get; set; }
+        public ValueHash256 Path { get; }
+        public byte[] SlotRlpValue { get; }
     }
 }
