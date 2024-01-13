@@ -4,7 +4,9 @@
 using System;
 using System.Linq;
 using System.Net.WebSockets;
+using System.Threading.Tasks;
 using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Primitives;
 using Nethermind.Logging;
@@ -23,7 +25,7 @@ namespace Nethermind.Sockets
                 logger = scope.ServiceProvider.GetService<ILogManager>()?.GetClassLogger();
             }
 
-            app.Use(async (context, next) =>
+            app.Use(async (HttpContext context, Func<Task> next) =>
             {
                 string id = string.Empty;
                 string clientName = string.Empty;
@@ -50,8 +52,8 @@ namespace Nethermind.Sockets
 
                     if (logger?.IsDebug == true) logger.Info($"Initializing WebSockets for client: '{clientName}'.");
 
-                    var webSocket = await context.WebSockets.AcceptWebSocketAsync();
-                    var socketsClient =
+                    using WebSocket webSocket = await context.WebSockets.AcceptWebSocketAsync();
+                    using ISocketsClient socketsClient =
                         module.CreateClient(webSocket, clientName, context);
                     id = socketsClient.Id;
                     await socketsClient.ReceiveAsync();
