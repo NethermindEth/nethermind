@@ -59,7 +59,7 @@ namespace Nethermind.Runner.JsonRpc
                 options.ConfigureHttpsDefaults(co => co.SslProtocols |= SslProtocols.Tls13);
             });
             Bootstrap.Instance.RegisterJsonRpcServices(services);
-            services.AddControllers();
+
             string corsOrigins = Environment.GetEnvironmentVariable("NETHERMIND_CORS_ORIGINS") ?? "*";
             services.AddCors(c => c.AddPolicy("Cors",
                 p => p.AllowAnyMethod().AllowAnyHeader().WithOrigins(corsOrigins)));
