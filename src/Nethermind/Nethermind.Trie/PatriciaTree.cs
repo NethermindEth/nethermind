@@ -385,7 +385,7 @@ namespace Nethermind.Trie
                     [..nibblesCount]; // Slice to exact size;
 
                 Nibbles.BytesToNibbleBytes(rawKey, nibbles);
-                var result = Run(nibbles, nibblesCount, new CappedArray<byte>(Array.Empty<byte>()), false, startRootHash: rootHash).ToArray();
+                var result = Run(nibbles, nibblesCount, in CappedArray<byte>.Empty, isUpdate: false, startRootHash: rootHash).ToArray();
                 if (array is not null) ArrayPool<byte>.Shared.Return(array);
 
                 return result;
@@ -426,7 +426,7 @@ namespace Nethermind.Trie
 
         [SkipLocalsInit]
         [DebuggerStepThrough]
-        public virtual void Set(ReadOnlySpan<byte> rawKey, CappedArray<byte> value)
+        public virtual void Set(ReadOnlySpan<byte> rawKey, in CappedArray<byte> value)
         {
             if (_isTrace) Trace(in rawKey, in value);
 
@@ -438,7 +438,7 @@ namespace Nethermind.Trie
                 [..nibblesCount]; // Slice to exact size
 
             Nibbles.BytesToNibbleBytes(rawKey, nibbles);
-            Run(nibbles, nibblesCount, value, true);
+            Run(nibbles, nibblesCount, in value, isUpdate: true);
 
             if (array is not null) ArrayPool<byte>.Shared.Return(array);
 
@@ -457,7 +457,7 @@ namespace Nethermind.Trie
         private CappedArray<byte> Run(
             Span<byte> updatePath,
             int nibblesCount,
-            CappedArray<byte> updateValue,
+            in CappedArray<byte> updateValue,
             bool isUpdate,
             bool ignoreMissingDelete = true,
             Hash256? startRootHash = null)

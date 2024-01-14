@@ -285,9 +285,9 @@ namespace Nethermind.Core.Test.Builders
                     currentBlock.Bloom!.Add(receipt.Logs);
                 }
 
-                currentBlock.Header.TxRoot = new TxTrie(currentBlock.Transactions).RootHash;
+                currentBlock.Header.TxRoot = TxTrie.CalculateRoot(currentBlock.Transactions);
                 TxReceipt[] txReceipts = receipts.ToArray();
-                currentBlock.Header.ReceiptsRoot = new ReceiptTrie(_specProvider.GetSpec(currentBlock.Header), txReceipts).RootHash;
+                currentBlock.Header.ReceiptsRoot = ReceiptTrie.CalculateRoot(_specProvider.GetSpec(currentBlock.Header), txReceipts);
                 currentBlock.Header.Hash = currentBlock.CalculateHash();
                 foreach (TxReceipt txReceipt in txReceipts)
                 {
