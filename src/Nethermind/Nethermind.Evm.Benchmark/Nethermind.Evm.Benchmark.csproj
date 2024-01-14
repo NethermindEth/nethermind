@@ -2,7 +2,6 @@
 
   <ItemGroup>
     <PackageReference Include="BenchmarkDotNet" />
-    <PackageReference Include="Nethermind.Numerics.Int256" />
   </ItemGroup>
 
   <ItemGroup>

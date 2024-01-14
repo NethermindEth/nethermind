@@ -183,7 +183,7 @@ namespace Nethermind.Serialization.Rlp
             if (item is Rlp rlp)
             {
                 RlpStream stream = new(LengthOfSequence(rlp.Length));
-                return new(stream.Data);
+                return new(stream.Data.ToArray());
             }
 
             IRlpStreamDecoder<T>? rlpStreamDecoder = GetStreamDecoder<T>();
@@ -192,7 +192,7 @@ namespace Nethermind.Serialization.Rlp
                 int totalLength = rlpStreamDecoder.GetLength(item, behaviors);
                 RlpStream stream = new(totalLength);
                 rlpStreamDecoder.Encode(stream, item, behaviors);
-                return new Rlp(stream.Data);
+                return new Rlp(stream.Data.ToArray());
             }
 
             IRlpObjectDecoder<T>? rlpDecoder = GetObjectDecoder<T>();
@@ -212,7 +212,7 @@ namespace Nethermind.Serialization.Rlp
                 int totalLength = rlpStreamDecoder.GetLength(items, behaviors);
                 RlpStream stream = new(totalLength);
                 rlpStreamDecoder.Encode(stream, items, behaviors);
-                return new Rlp(stream.Data);
+                return new Rlp(stream.Data.ToArray());
             }
 
             IRlpObjectDecoder<T> rlpDecoder = GetObjectDecoder<T>();
