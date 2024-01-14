@@ -165,7 +165,7 @@ jobs:
         run: |
           chmod +x nethermind/scripts/hive-results.sh
           nethermind/scripts/hive-results.sh "hive/workspace/logs/*.json"
-      - name: Send response to dashboard
+      - name: Send results to dashboard
         uses: appleboy/scp-action@master
         with:
           host: ${{ secrets.HIVE_HOST }}
