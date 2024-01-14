@@ -15,11 +15,13 @@ namespace Nethermind.Evm.CodeAnalysis
         private const int BEGINSUB = 0x5c;
         private const int BitShiftPerInt32 = 5;
 
-        private int[]? _codeBitmap;
+        private int[]? _jumpDestBitmap;
         public byte[] MachineCode { get; set; }
 
         public JumpDestinationAnalyzer(byte[] code)
         {
+            // Store the code refence as the JumpDest analysis is lazy
+            // and not performed until first jump.
             MachineCode = code;
         }
 
@@ -27,14 +29,14 @@ namespace Nethermind.Evm.CodeAnalysis
         {
             // Take array ref to local so Jit knows its size won't change in the method.
             byte[] machineCode = MachineCode;
-            _codeBitmap ??= CreateJumpDestinationBitmap(machineCode);
+            _jumpDestBitmap ??= CreateJumpDestinationBitmap(machineCode);
 
             var result = false;
-            // Cast to uint to change negative numbers to very high numbers
+            // Cast to uint to change negative numbers to very int high numbers
             // Then do length check, this both reduces check by 1 and eliminates the bounds
             // check from accessing the array.
             if ((uint)destination < (uint)machineCode.Length &&
-                IsJumpDestination(_codeBitmap, destination))
+                IsJumpDestination(_jumpDestBitmap, destination))
             {
                 // Store byte to int, as less expensive operations at word size
                 int codeByte = machineCode[destination];
@@ -78,33 +80,36 @@ namespace Nethermind.Evm.CodeAnalysis
         /// </summary>
         private static int[] CreateJumpDestinationBitmap(byte[] code)
         {
-            int[] bitvec = new int[GetInt32ArrayLengthFromBitLength(code.Length)];
+            int[] jumpDestBitmap = new int[GetInt32ArrayLengthFromBitLength(code.Length)];
 
             int pc = 0;
             while (true)
             {
-                // Since we are using a non-standard for loop here
-                // Changing to while(true) plus below if check elides
-                // the bounds check from the array access
+                // Since we are using a non-standard for loop here;
+                // changing to while(true) plus below if check elides
+                // the bounds check from the following code array access.
                 if ((uint)pc >= (uint)code.Length) break;
-                int instruction = code[pc];
 
-                if (instruction >= PUSH1 && instruction <= PUSH32)
+                // Grab the instruction from the code.
+                int op = code[pc];
+
+                if (op >= PUSH1 && op <= PUSH32)
                 {
-                    pc += instruction - PUSH1 + 2;
+                    // Skip forward amount of data the push represents
+                    // don't need to analyse data for JumpDests
+                    pc += op - PUSH1 + 1;
                 }
-                else if (instruction == JUMPDEST || instruction == BEGINSUB)
+                else if (op == JUMPDEST || op == BEGINSUB)
                 {
-                    Set(bitvec, pc);
-                    pc++;
+                    // Exact type will be checked again by ValidateJump
+                    MarkAsJumpDestination(jumpDestBitmap, pc);
                 }
-                else
-                {
-                    pc++;
-                }
+
+                // Next instruction
+                pc++;
             }
 
-            return bitvec;
+            return jumpDestBitmap;
         }
 
         /// <summary>
@@ -120,7 +125,7 @@ namespace Nethermind.Evm.CodeAnalysis
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static void Set(int[] bitvec, int pos)
+        private static void MarkAsJumpDestination(int[] bitvec, int pos)
         {
             int vecIndex = pos >> BitShiftPerInt32;
             Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(bitvec), vecIndex)
