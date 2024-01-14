@@ -12,6 +12,7 @@ using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Events;
 using Nethermind.Db.Blooms;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -30,8 +31,6 @@ namespace Nethermind.Init.Steps.Migrations
         private Stopwatch? _stopwatch;
         private readonly MeasuredProgress _progress = new MeasuredProgress();
         private long _migrateCount;
-        private CancellationTokenSource? _cancellationTokenSource;
-        private Task? _migrationTask;
         private Average[]? _averages;
         private readonly StringBuilder _builder = new StringBuilder();
         private readonly IBloomConfig _bloomConfig;
@@ -43,7 +42,7 @@ namespace Nethermind.Init.Steps.Migrations
             _bloomConfig = api.Config<IBloomConfig>();
         }
 
-        public void Run()
+        public async Task Run(CancellationToken cancellationToken)
         {
             if (_api.BloomStorage is null) throw new StepDependencyException(nameof(_api.BloomStorage));
             if (_api.Synchronizer is null) throw new StepDependencyException(nameof(_api.Synchronizer));
@@ -54,13 +53,24 @@ namespace Nethermind.Init.Steps.Migrations
             {
                 if (_bloomConfig.Migration)
                 {
-                    if (CanMigrate(_api.SyncModeSelector.Current))
+                    if (!CanMigrate(_api.SyncModeSelector.Current))
                     {
-                        RunBloomMigration();
+                        await Wait.ForEventCondition<SyncModeChangedEventArgs>(
+                            cancellationToken,
+                            (d) => _api.SyncModeSelector.Changed += d,
+                            (d) => _api.SyncModeSelector.Changed -= d,
+                            (arg) => CanMigrate(arg.Current));
                     }
-                    else
+
+                    _stopwatch = Stopwatch.StartNew();
+                    try
                     {
-                        _api.SyncModeSelector.Changed += SynchronizerOnSyncModeChanged;
+                        RunBloomMigration(cancellationToken);
+                    }
+                    catch (Exception e)
+                    {
+                        _stopwatch.Stop();
+                        _logger.Error(GetLogMessage("failed", $"Error: {e}"), e);
                     }
                 }
                 else
@@ -75,39 +85,6 @@ namespace Nethermind.Init.Steps.Migrations
         }
 
         private static bool CanMigrate(SyncMode syncMode) => syncMode.NotSyncing();
-
-        private void SynchronizerOnSyncModeChanged(object? sender, SyncModeChangedEventArgs e)
-        {
-            if (CanMigrate(e.Current))
-            {
-                if (_api.SyncModeSelector is null) throw new StepDependencyException(nameof(_api.SyncModeSelector));
-
-                RunBloomMigration();
-                _api.SyncModeSelector.Changed -= SynchronizerOnSyncModeChanged;
-            }
-        }
-
-        private void RunBloomMigration()
-        {
-            if (_api.DisposeStack is null) throw new StepDependencyException(nameof(_api.DisposeStack));
-            if (_api.BloomStorage is null) throw new StepDependencyException(nameof(_api.BloomStorage));
-
-            if (_api.BloomStorage.NeedsMigration)
-            {
-                _cancellationTokenSource = new CancellationTokenSource();
-                _api.DisposeStack.Push(this);
-                _stopwatch = Stopwatch.StartNew();
-                _migrationTask = Task.Run(() => RunBloomMigration(_cancellationTokenSource.Token))
-                    .ContinueWith(x =>
-                    {
-                        if (x.IsFaulted && _logger.IsError)
-                        {
-                            _stopwatch.Stop();
-                            _logger.Error(GetLogMessage("failed", $"Error: {x.Exception}"), x.Exception);
-                        }
-                    });
-            }
-        }
 
         private long MinBlockNumber
         {
@@ -262,12 +239,6 @@ namespace Nethermind.Init.Steps.Migrations
             }
 
             return String.Empty;
-        }
-
-        public async ValueTask DisposeAsync()
-        {
-            _cancellationTokenSource?.Cancel();
-            await (_migrationTask ?? Task.CompletedTask);
         }
     }
 }
