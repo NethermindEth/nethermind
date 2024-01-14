@@ -47,6 +47,7 @@ namespace Nethermind.Core.Test.Builders
             BlockNumbersDb = new TestMemDb();
             BlockInfoDb = new TestMemDb();
             MetadataDb = new TestMemDb();
+            BadBlocksDb = new TestMemDb();
 
             _genesisBlock = genesisBlock;
             _specProvider = specProvider;
@@ -77,9 +78,9 @@ namespace Nethermind.Core.Test.Builders
                     _blockTree = new BlockTree(
                         BlockStore,
                         HeaderStore,
-                        null,
                         BlockInfoDb,
                         MetadataDb,
+                        BadBlockStore,
                         ChainLevelInfoRepository,
                         _specProvider,
                         BloomStorage,
@@ -106,6 +107,7 @@ namespace Nethermind.Core.Test.Builders
         public ISyncConfig SyncConfig { get; set; } = new SyncConfig();
 
         public IDb BlocksDb { get; set; }
+        public IDb BadBlocksDb { get; set; }
 
         private IBlockStore? _blockStore;
         public IBlockStore BlockStore
@@ -140,6 +142,18 @@ namespace Nethermind.Core.Test.Builders
 
         public IDb MetadataDb { get; set; }
 
+        private IBlockStore? _badBlockStore;
+        public IBlockStore BadBlockStore
+        {
+            get
+            {
+                return _badBlockStore ??= new BlockStore(BadBlocksDb, 100);
+            }
+            set
+            {
+                _badBlockStore = value;
+            }
+        }
         private IChainLevelInfoRepository? _chainLevelInfoRepository;
 
         public IChainLevelInfoRepository ChainLevelInfoRepository
@@ -382,6 +396,18 @@ namespace Nethermind.Core.Test.Builders
         public BlockTreeBuilder WithBlockStore(IBlockStore blockStore)
         {
             BlockStore = blockStore;
+            return this;
+        }
+
+        public BlockTreeBuilder WithBadBlockStore(IBlockStore blockStore)
+        {
+            BadBlockStore = blockStore;
+            return this;
+        }
+
+        public BlockTreeBuilder WithHeaderStore(IHeaderStore headerStore)
+        {
+            HeaderStore = headerStore;
             return this;
         }
 

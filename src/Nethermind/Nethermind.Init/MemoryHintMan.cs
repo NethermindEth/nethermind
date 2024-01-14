@@ -64,7 +64,7 @@ namespace Nethermind.Init
                 AssignFastBlocksMemory(syncConfig);
                 _remainingMemory -= FastBlocksMemory;
                 if (_logger.IsInfo) _logger.Info($"  Fast blocks memory: {FastBlocksMemory / 1000 / 1000,5} MB");
-                AssignTrieCacheMemory();
+                AssignTrieCacheMemory(dbConfig);
                 _remainingMemory -= TrieCacheMemory;
                 if (_logger.IsInfo) _logger.Info($"  Trie memory:        {TrieCacheMemory / 1000 / 1000,5} MB");
                 UpdateDbConfig(cpuCount, syncConfig, dbConfig, initConfig);
@@ -104,10 +104,10 @@ namespace Nethermind.Init
         public long PeersMemory { get; private set; }
         public long TrieCacheMemory { get; private set; }
 
-        private void AssignTrieCacheMemory()
+        private void AssignTrieCacheMemory(IDbConfig dbConfig)
         {
             TrieCacheMemory = (long)(0.2 * _remainingMemory);
-            Trie.MemoryAllowance.TrieNodeCacheMemory = TrieCacheMemory;
+            dbConfig.StateDbRowCacheSize = (ulong)TrieCacheMemory;
         }
 
         private void AssignPeersMemory(INetworkConfig networkConfig)

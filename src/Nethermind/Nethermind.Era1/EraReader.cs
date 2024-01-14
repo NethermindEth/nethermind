@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Buffers;
+using System.IO.Abstractions;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using DotNetty.Buffers;
@@ -88,7 +89,7 @@ public class EraReader : IAsyncEnumerable<(Block, TxReceipt[], UInt256)>, IDispo
     /// Verify that the accumulator matches the archive data. 
     /// </summary>
     /// <param name="cancellation"></param>
-    /// <returns>Returns <see cref="true"/> if the data matches the accumulator, and <see cref="false"/> if there is no match.</returns>
+    /// <returns>Returns <see cref="true"/> if the expected accumulator matches, and <see cref="false"/> if there is no match.</returns>
     public async Task<bool> VerifyAccumulator(byte[] expectedAccumulator, ISpecProvider specProvider, CancellationToken cancellation = default)
     {
         if (specProvider is null) throw new ArgumentNullException(nameof(specProvider));
@@ -131,19 +132,24 @@ public class EraReader : IAsyncEnumerable<(Block, TxReceipt[], UInt256)>, IDispo
         return result.Value.TotalDifficulty - result.Value.Block.Header.Difficulty;
     }
 
-    // Format: <network>-<epoch>-<hexroot>.era1
     public static IEnumerable<string> GetAllEraFiles(string directoryPath, string network)
+    {
+        return GetAllEraFiles(directoryPath, network, new FileSystem());
+    }
+    public static IEnumerable<string> GetAllEraFiles(string directoryPath, string network, IFileSystem fileSystem)
     {
         if (directoryPath is null) throw new ArgumentNullException(nameof(directoryPath));
         if (network is null) throw new ArgumentNullException(nameof(network));
+        if (fileSystem is null) throw new ArgumentNullException(nameof(fileSystem));
 
-        var entries = Directory.GetFiles(directoryPath, "*.era1", new EnumerationOptions() { RecurseSubdirectories=false, MatchCasing=MatchCasing.PlatformDefault });
+        var entries = fileSystem.Directory.GetFiles(directoryPath, "*.era1", new EnumerationOptions() { RecurseSubdirectories=false, MatchCasing=MatchCasing.PlatformDefault });
         if (!entries.Any())
             yield break;
 
         uint next = 0;
         foreach (string file in entries)
         {
+            // Format: <network>-<epoch>-<hexroot>.era1
             string[] parts = Path.GetFileName(file).Split(separator);
             if (parts.Length != 3 || !network.Equals(parts[0], StringComparison.OrdinalIgnoreCase))
             {
@@ -232,17 +238,6 @@ public class EraReader : IAsyncEnumerable<(Block, TxReceipt[], UInt256)>, IDispo
             BlockHeader header = Rlp.Decode<BlockHeader>(rlpStream);
 
             await ReadEntryHere(buffer, EntryTypes.CompressedBody, cancellationToken);
-
-            //void Test()
-            //{
-            //    NettyBufferMemoryOwner memoryOwner = new(buffer);
-            //    Rlp.ValueDecoderContext ctx = new(memoryOwner.Memory, true);
-
-            //    var x = new BlockBodyDecoder();
-            //    x.Decode(ref ctx);
-            //}
-            //Test();
-
 
             BlockBody body = Rlp.Decode<BlockBody>(new NettyRlpStream(buffer));
 

@@ -1165,12 +1165,19 @@ namespace Nethermind.Serialization.Rlp
                 return byteValue;
             }
 
-            ReadOnlySpan<byte> bytes = DecodeByteArraySpan();
-            return bytes.Length == 0 ? (byte)0
-                : bytes.Length == 1 ? bytes[0] == (byte)128
-                    ? (byte)0
-                    : bytes[0]
-                : bytes[1];
+            if (byteValue == 128)
+            {
+                SkipBytes(1);
+                return 0;
+            }
+
+            if (byteValue == 129)
+            {
+                SkipBytes(1);
+                return ReadByte();
+            }
+
+            throw new RlpException($"Unexpected value while decoding byte {byteValue}");
         }
 
         public int DecodeInt()

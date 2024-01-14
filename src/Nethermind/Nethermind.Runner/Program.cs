@@ -170,8 +170,6 @@ public static class Program
             SetFinalDbPath(dbBasePath.HasValue() ? dbBasePath.Value() : null, initConfig);
             LogMemoryConfiguration();
 
-            initConfig.AncientDataDirectory = ancientDataSource.HasValue() ? ancientDataSource.Value() : null;
-
             EthereumJsonSerializer serializer = new();
             if (_logger.IsDebug) _logger.Debug($"Nethermind config:{Environment.NewLine}{serializer.Serialize(initConfig, true)}{Environment.NewLine}");
             if (_logger.IsInfo) _logger.Info($"RocksDb Version: {DbOnTheRocks.GetRocksDbVersion()}");

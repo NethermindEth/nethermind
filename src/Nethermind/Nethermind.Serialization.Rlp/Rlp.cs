@@ -1706,7 +1706,7 @@ namespace Nethermind.Serialization.Rlp
 
         public static int LengthOf(byte value)
         {
-            return 1;
+            return 1 + value / 128;
         }
 
         public static int LengthOf(bool value)

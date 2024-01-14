@@ -38,8 +38,6 @@ public class EraWriter : IDisposable
     private bool _disposedValue;
     private bool _finalized;
 
-    public byte[] Checksum => _e2Store.CurrentChecksum;
-
     public static EraWriter Create(string path, ISpecProvider specProvider, IByteBufferAllocator? bufferAllocator = null)
     {
         if (string.IsNullOrWhiteSpace(path)) throw new ArgumentException($"'{nameof(path)}' cannot be null or whitespace.", nameof(path));
@@ -64,7 +62,7 @@ public class EraWriter : IDisposable
 
     public Task<bool> Add(Block block, TxReceipt[] receipts, in CancellationToken cancellation = default)
     {
-        return Add(block, receipts, block.TotalDifficulty ?? 0, cancellation);
+        return Add(block, receipts, block.TotalDifficulty ?? block.Difficulty, cancellation);
     }
     public Task<bool> Add(Block block, TxReceipt[] receipts, in UInt256 totalDifficulty, in CancellationToken cancellation = default)
     {

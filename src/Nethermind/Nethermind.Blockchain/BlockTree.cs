@@ -41,9 +41,9 @@ namespace Nethermind.Blockchain
 
         private readonly IBlockStore _blockStore;
         private readonly IHeaderStore _headerStore;
-        private readonly IEraStore? _eraStore;
         private readonly IDb _blockInfoDb;
         private readonly IDb _metadataDb;
+        private readonly IBlockStore _badBlockStore;
 
         private readonly LruCache<ValueHash256, Block> _invalidBlocks =
             new(128, 128, "invalid blocks");
@@ -109,9 +109,9 @@ namespace Nethermind.Blockchain
         public BlockTree(
             IBlockStore? blockStore,
             IHeaderStore? headerDb,
-            IEraStore? eraStore,
             IDb? blockInfoDb,
             IDb? metadataDb,
+            IBlockStore? badBlockStore,
             IChainLevelInfoRepository? chainLevelInfoRepository,
             ISpecProvider? specProvider,
             IBloomStorage? bloomStorage,
@@ -121,9 +121,9 @@ namespace Nethermind.Blockchain
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _blockStore = blockStore ?? throw new ArgumentNullException(nameof(blockStore));
             _headerStore = headerDb ?? throw new ArgumentNullException(nameof(headerDb));
-            _eraStore = eraStore;
             _blockInfoDb = blockInfoDb ?? throw new ArgumentNullException(nameof(blockInfoDb));
             _metadataDb = metadataDb ?? throw new ArgumentNullException(nameof(metadataDb));
+            _badBlockStore = badBlockStore ?? throw new ArgumentNullException(nameof(badBlockStore));
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
             _bloomStorage = bloomStorage ?? throw new ArgumentNullException(nameof(bloomStorage));
             _syncConfig = syncConfig ?? throw new ArgumentNullException(nameof(syncConfig));
@@ -713,6 +713,7 @@ namespace Nethermind.Blockchain
             if (_logger.IsDebug) _logger.Debug($"Deleting invalid block {invalidBlock.ToString(Block.Format.FullHashAndNumber)}");
 
             _invalidBlocks.Set(invalidBlock.Hash, invalidBlock);
+            _badBlockStore.Insert(invalidBlock);
 
             BestSuggestedHeader = Head?.Header;
             BestSuggestedBody = Head;
@@ -1301,11 +1302,6 @@ namespace Nethermind.Blockchain
             if (blockNumber != null)
             {
                 block = _blockStore.Get(blockNumber.Value, blockHash, shouldCache: false);
-            }
-
-            if (block is null && blockNumber != null && _syncConfig.AncientBodiesBarrier < blockNumber)
-            {
-                block = _eraStore?.FindBlock(blockNumber.Value).GetAwaiter().GetResult();
             }
 
             if (block is null)

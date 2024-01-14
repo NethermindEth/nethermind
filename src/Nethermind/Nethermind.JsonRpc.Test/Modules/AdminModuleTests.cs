@@ -12,6 +12,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Era1;
+using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Admin;
 using Nethermind.Network;
 using Nethermind.Network.Config;
@@ -42,9 +43,8 @@ public class AdminModuleTests
         ConcurrentDictionary<PublicKey, Peer> dict = new();
         dict.TryAdd(TestItem.PublicKeyA, new Peer(new Node(TestItem.PublicKeyA, "127.0.0.1", 30303, true)));
         peerPool.ActivePeers.Returns(dict);
-        IEraExporter eraService = Substitute.For<IEraExporter>();
+        IAdminEraService eraService = Substitute.For<IAdminEraService>();
         IStaticNodesManager staticNodesManager = Substitute.For<IStaticNodesManager>();
-        IProcessExitToken exitToken = Substitute.For<IProcessExitToken>();
         Enode enode = new(_enodeString);
         _adminRpcModule = new AdminRpcModule(
             _blockTree,
@@ -54,8 +54,7 @@ public class AdminModuleTests
             enode,
             eraService,
             _exampleDataDir,
-            new ManualPruningTrigger(),
-            exitToken);
+            new ManualPruningTrigger());
 
         _serializer = new EthereumJsonSerializer();
     }

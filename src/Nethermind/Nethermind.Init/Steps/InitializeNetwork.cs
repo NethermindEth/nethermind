@@ -8,12 +8,10 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
-using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Crypto;
 using Nethermind.Db;
-using Nethermind.Era1;
 using Nethermind.Facade.Eth;
 using Nethermind.Logging;
 using Nethermind.Network;
@@ -43,8 +41,7 @@ using Nethermind.Synchronization.Reporting;
 using Nethermind.Synchronization.SnapSync;
 using Nethermind.Synchronization.Trie;
 using Nethermind.TxPool;
-using System.Linq;
-using Nethermind.Core.Crypto;
+
 namespace Nethermind.Init.Steps;
 
 public static class NettyMemoryEstimator
@@ -224,8 +221,6 @@ public class InitializeNetwork : IStep
         {
             return;
         }
-
-        await CheckAndStartEraImport(_api, cancellationToken);
 
         await StartSync().ContinueWith(initNetTask =>
         {

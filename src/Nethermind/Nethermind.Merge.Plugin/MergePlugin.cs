@@ -92,6 +92,7 @@ public partial class MergePlugin : IConsensusWrapperPlugin, ISynchronizationPlug
                 _api.DbProvider.GetDb<IDb>(DbNames.Metadata),
                 _api.BlockTree,
                 _api.SpecProvider,
+                _api.ChainSpec,
                 _api.LogManager);
             _invalidChainTracker = new InvalidChainTracker.InvalidChainTracker(
                 _poSSwitcher,
@@ -406,7 +407,7 @@ public partial class MergePlugin : IConsensusWrapperPlugin, ISynchronizationPlug
                     _api.LogManager),
                 _invalidChainTracker,
                 _api.LogManager);
-            _beaconSync = new BeaconSync(_beaconPivot, _api.BlockTree, _syncConfig, _blockCacheService, _api.LogManager);
+            _beaconSync = new BeaconSync(_beaconPivot, _api.BlockTree, _syncConfig, _blockCacheService, _poSSwitcher, _api.LogManager);
 
             _api.BetterPeerStrategy = new MergeBetterPeerStrategy(_api.BetterPeerStrategy, _poSSwitcher, _beaconPivot, _api.LogManager);
 

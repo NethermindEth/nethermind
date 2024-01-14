@@ -12,6 +12,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Specs.ChainSpecStyle;
 
 namespace Nethermind.Merge.Plugin
 {
@@ -39,6 +40,7 @@ namespace Nethermind.Merge.Plugin
         private readonly IDb _metadataDb;
         private readonly IBlockTree _blockTree;
         private readonly ISpecProvider _specProvider;
+        private readonly ChainSpec _chainSpec;
         private readonly ILogger _logger;
         private Hash256? _terminalBlockHash;
 
@@ -55,6 +57,7 @@ namespace Nethermind.Merge.Plugin
             IDb metadataDb,
             IBlockTree blockTree,
             ISpecProvider specProvider,
+            ChainSpec chainSpec,
             ILogManager logManager)
         {
             _mergeConfig = mergeConfig;
@@ -62,6 +65,7 @@ namespace Nethermind.Merge.Plugin
             _metadataDb = metadataDb;
             _blockTree = blockTree;
             _specProvider = specProvider;
+            _chainSpec = chainSpec;
             _logger = logManager.GetClassLogger();
 
             Initialize();
@@ -98,7 +102,9 @@ namespace Nethermind.Merge.Plugin
             }
             else
             {
-                UInt256 genesisDifficulty = _blockTree.Genesis?.Difficulty ?? 0;
+                if (_chainSpec?.Genesis == null) return;
+
+                UInt256 genesisDifficulty = _chainSpec.Genesis.Difficulty;
                 if (genesisDifficulty >= TerminalTotalDifficulty) // networks with the merge in genesis
                 {
                     _finalTotalDifficulty = genesisDifficulty;

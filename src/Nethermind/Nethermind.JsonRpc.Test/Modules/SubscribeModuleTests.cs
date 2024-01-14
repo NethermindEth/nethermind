@@ -64,7 +64,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             _filterStore = new FilterStore();
             _jsonRpcDuplexClient = Substitute.For<IJsonRpcDuplexClient>();
             _jsonSerializer = new EthereumJsonSerializer();
-            _receiptCanonicalityMonitor = new ReceiptCanonicalityMonitor(_blockTree, _receiptStorage, _logManager);
+            _receiptCanonicalityMonitor = new ReceiptCanonicalityMonitor(_receiptStorage, _logManager);
             _syncConfig = new SyncConfig();
 
             IJsonSerializer jsonSerializer = new EthereumJsonSerializer();
@@ -114,6 +114,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             }));
 
             _blockTree.BlockAddedToMain += Raise.EventWith(new object(), blockReplacementEventArgs);
+            _receiptStorage.ReceiptsInserted += Raise.EventWith(new object(), blockReplacementEventArgs);
             manualResetEvent.WaitOne(TimeSpan.FromMilliseconds(1000)).Should().Be(shouldReceiveResult);
 
             subscriptionId = newHeadSubscription.Id;
@@ -133,6 +134,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             }));
 
             _blockTree.BlockAddedToMain += Raise.EventWith(new object(), blockEventArgs);
+            _receiptStorage.ReceiptsInserted += Raise.EventWith(new object(), blockEventArgs);
             semaphoreSlim.Wait(TimeSpan.FromMilliseconds(100));
 
             subscriptionId = logsSubscription.Id;
@@ -409,6 +411,14 @@ namespace Nethermind.JsonRpc.Test.Modules
         public async Task LogsSubscription_with_valid_arguments_creating_result()
         {
             string serialized = await RpcTest.TestSerializedRequest(_subscribeRpcModule, "eth_subscribe", "logs", "{\"fromBlock\":\"latest\",\"toBlock\":\"latest\",\"address\":\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\",\"topics\":\"0x03783fac2efed8fbc9ad443e592ee30e61d65f471140c10ca155e937b435b760\"}");
+            var expectedResult = string.Concat("{\"jsonrpc\":\"2.0\",\"result\":\"", serialized.Substring(serialized.Length - 44, 34), "\",\"id\":67}");
+            expectedResult.Should().Be(serialized);
+        }
+
+        [Test]
+        public async Task LogsSubscription_dispose_regression()
+        {
+            string serialized = await RpcTest.TestSerializedRequest(_subscribeRpcModule, "eth_subscribe", "logs", "{\"address\":[\"0x0000000000000000000000000000000000000314\"],\"fromBlock\":\"0x0\",\"toBlock\":\"latest\",\"topics\":[]}");
             var expectedResult = string.Concat("{\"jsonrpc\":\"2.0\",\"result\":\"", serialized.Substring(serialized.Length - 44, 34), "\",\"id\":67}");
             expectedResult.Should().Be(serialized);
         }
@@ -713,6 +723,7 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             BlockReplacementEventArgs blockEventArgs = new(block);
             _blockTree.BlockAddedToMain += Raise.EventWith(new object(), blockEventArgs);
+            _receiptStorage.ReceiptsInserted += Raise.EventWith(new object(), blockEventArgs);
             manualResetEvent.WaitOne(TimeSpan.FromMilliseconds(200));
 
             jsonRpcResults.Count.Should().Be(1);
@@ -892,6 +903,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                 {
                     BlockReplacementEventArgs eventArgs = new(Build.A.Block.TestObject);
                     blockTree.BlockAddedToMain += Raise.EventWith(eventArgs);
+                    _receiptStorage.ReceiptsInserted += Raise.EventWith(new object(), eventArgs);
                 }
             });
 
@@ -1148,6 +1160,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             }));
 
             _blockTree.BlockAddedToMain += Raise.EventWith(new object(), blockEventArgs);
+            _receiptStorage.ReceiptsInserted += Raise.EventWith(new object(), blockEventArgs);
             manualResetEvent.WaitOne(TimeSpan.FromMilliseconds(2000));
 
             jsonRpcResults.Count.Should().Be(1);
