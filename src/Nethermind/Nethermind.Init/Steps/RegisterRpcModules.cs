@@ -176,6 +176,7 @@ public class RegisterRpcModules : IStep
             _api.BlockTree,
             eraExporter,
             _api.ProcessExitToken!,
+            _api.FileSystem,
             _api.LogManager);
         ManualPruningTrigger pruningTrigger = new();
         _api.PruningTrigger.Add(pruningTrigger);

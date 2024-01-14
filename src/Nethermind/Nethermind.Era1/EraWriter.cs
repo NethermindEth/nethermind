@@ -62,7 +62,7 @@ public class EraWriter : IDisposable
 
     public Task<bool> Add(Block block, TxReceipt[] receipts, in CancellationToken cancellation = default)
     {
-        return Add(block, receipts, block.TotalDifficulty ?? 0, cancellation);
+        return Add(block, receipts, block.TotalDifficulty ?? block.Difficulty, cancellation);
     }
     public Task<bool> Add(Block block, TxReceipt[] receipts, in UInt256 totalDifficulty, in CancellationToken cancellation = default)
     {

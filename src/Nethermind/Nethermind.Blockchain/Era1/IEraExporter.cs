@@ -11,6 +11,8 @@ namespace Nethermind.Blockchain;
 
 public interface IEraExporter
 {
+    string NetworkName { get; }
+
     event EventHandler<ExportProgressArgs> ExportProgress;
     event EventHandler<VerificationProgressArgs> VerificationProgress;
 

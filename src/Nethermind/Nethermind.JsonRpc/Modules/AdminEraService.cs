@@ -12,6 +12,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.IO.Abstractions;
 using System.Linq;
 using System.Text;
 using System.Threading;
@@ -24,14 +25,21 @@ public class AdminEraService : IAdminEraService
     private readonly IBlockTree _blockTree;
     private readonly IEraExporter _eraExporter;
     private readonly IProcessExitToken _processExit;
+    private readonly IFileSystem _fileSystem;
     private int _canEnterExport = 1;
     private int _canEnterVerification = 1;
 
-    public AdminEraService(IBlockTree blockTree, IEraExporter eraExporter, IProcessExitToken processExit, ILogManager logManager)
+    public AdminEraService(
+        IBlockTree blockTree,
+        IEraExporter eraExporter,
+        IProcessExitToken processExit,
+        IFileSystem fileSystem,
+        ILogManager logManager)
     {
         _blockTree = blockTree;
         _eraExporter = eraExporter;
         this._processExit = processExit;
+        this._fileSystem = fileSystem;
         _logger = logManager.GetClassLogger();
     }
 
@@ -42,7 +50,9 @@ public class AdminEraService : IAdminEraService
             return ResultWrapper<string>.Fail("Epoch number cannot be negative.");
         if (epochTo < epochFrom)
             return ResultWrapper<string>.Fail($"Invalid range {epochFrom}-{epochTo}.");
-
+        if (!_fileSystem.Directory.Exists(destination))
+            //TODO consider if this is too sensitive information
+            return ResultWrapper<string>.Fail($"The directory does not exists.");
         Block? latestHead = _blockTree.Head;
         if (latestHead == null)
             return ResultWrapper<string>.Fail("Node is currently unable to export.");
@@ -102,6 +112,7 @@ public class AdminEraService : IAdminEraService
         catch (Exception e)
         {
             _logger.Error("Export error", e);
+            throw;
         }
         finally
         {
@@ -111,13 +122,19 @@ public class AdminEraService : IAdminEraService
 
     public ResultWrapper<string> VerifyHistory(string eraSource, string accumulatorFile)
     {
+
+        if (!_fileSystem.Directory.Exists(eraSource))
+            //TODO consider if this is too sensitive information
+            return ResultWrapper<string>.Fail($"The directory does not exists.");
+        if (!_fileSystem.File.Exists(accumulatorFile))
+            //TODO consider if this is too sensitive information
+            return ResultWrapper<string>.Fail($"The accumulator file does not exists.");
         if (Interlocked.Exchange(ref _canEnterVerification, 0) == 1)
         {
             StartVerificationTask(eraSource, accumulatorFile).ContinueWith((t) =>
             {
                 Interlocked.Exchange(ref _canEnterVerification, 1);
             });
-
             return ResultWrapper<string>.Success("Started history verification");
         }
         else
@@ -131,11 +148,22 @@ public class AdminEraService : IAdminEraService
         try
         {
             _eraExporter.VerificationProgress += LogVerificationProgress;
+            if (_logger.IsInfo) _logger.Info($"Starting history verification in '{eraSource}'");
             await _eraExporter.VerifyEraFiles(eraSource, accumulatorFile, _processExit.Token);
+            if (_logger.IsInfo) _logger.Info($"Succesfully verified all {_eraExporter.NetworkName} archives in '{eraSource}'");
         }
         catch (EraVerificationException e)
         {
-            _logger.Error(e.Message);
+            if (_logger.IsInfo) _logger.Info($"History verification failed: {e.Message}");
+        }
+        catch (Exception e) when (e is EraException or FormatException)
+        {
+            _logger.Error($"History verification failed: {e.Message}");
+        }
+        catch (Exception e)
+        {
+            _logger.Error("History verification failed.", e);
+            throw;
         }
         finally
         {
@@ -146,12 +174,12 @@ public class AdminEraService : IAdminEraService
     private void LogExportProgress(object sender, ExportProgressArgs args)
     {
         if (_logger.IsInfo)
-            _logger.Info($"Export progress: {args.BlockProcessedSinceLast,10}/{args.TotalBlocks} blocks  |  elapsed {args.Elapsed:hh\\:mm\\:ss}  |  {args.BlockProcessedSinceLast / args.ElapsedSinceLast.TotalSeconds,10:0.##} Blk/s  |  {args.TxProcessedSinceLast / args.ElapsedSinceLast.TotalSeconds,10:0.##} tx/s");
+            _logger.Info($"Export progress: {args.TotalBlocksProcessed,10}/{args.TotalBlocks} blocks  |  elapsed {args.Elapsed:hh\\:mm\\:ss}  |  {args.BlockProcessedSinceLast / args.ElapsedSinceLast.TotalSeconds,10:0.00} Blk/s  |  {args.TxProcessedSinceLast / args.ElapsedSinceLast.TotalSeconds,10:0.00} tx/s");
     }
 
     private void LogVerificationProgress(object sender, VerificationProgressArgs args)
     {
         if (_logger.IsInfo)
-            _logger.Info($"Verification progress: {args.Processed,10}/{args.TotalToProcess} archives  |  elapsed {args.Elapsed:hh\\:mm\\:ss}  |  {args.Processed / args.Elapsed.TotalSeconds,10:0.##} archives/s");
+            _logger.Info($"Verification progress: {args.Processed,10}/{args.TotalToProcess} archives  |  elapsed {args.Elapsed:hh\\:mm\\:ss}  |  {args.Processed / args.Elapsed.TotalSeconds,10:0.00} archives/s");
     }
 }

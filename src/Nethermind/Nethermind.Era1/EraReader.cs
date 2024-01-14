@@ -89,7 +89,7 @@ public class EraReader : IAsyncEnumerable<(Block, TxReceipt[], UInt256)>, IDispo
     /// Verify that the accumulator matches the archive data. 
     /// </summary>
     /// <param name="cancellation"></param>
-    /// <returns>Returns <see cref="true"/>If the expected accumulator matches, and <see cref="false"/> if there is no match.</returns>
+    /// <returns>Returns <see cref="true"/> if the expected accumulator matches, and <see cref="false"/> if there is no match.</returns>
     public async Task<bool> VerifyAccumulator(byte[] expectedAccumulator, ISpecProvider specProvider, CancellationToken cancellation = default)
     {
         if (specProvider is null) throw new ArgumentNullException(nameof(specProvider));
@@ -238,17 +238,6 @@ public class EraReader : IAsyncEnumerable<(Block, TxReceipt[], UInt256)>, IDispo
             BlockHeader header = Rlp.Decode<BlockHeader>(rlpStream);
 
             await ReadEntryHere(buffer, EntryTypes.CompressedBody, cancellationToken);
-
-            //void Test()
-            //{
-            //    NettyBufferMemoryOwner memoryOwner = new(buffer);
-            //    Rlp.ValueDecoderContext ctx = new(memoryOwner.Memory, true);
-
-            //    var x = new BlockBodyDecoder();
-            //    x.Decode(ref ctx);
-            //}
-            //Test();
-
 
             BlockBody body = Rlp.Decode<BlockBody>(new NettyRlpStream(buffer));
 

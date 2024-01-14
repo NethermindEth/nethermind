@@ -28,6 +28,8 @@ public class EraExporter : IEraExporter
     public event EventHandler<ExportProgressArgs> ExportProgress;
     public event EventHandler<VerificationProgressArgs> VerificationProgress;
 
+    public string NetworkName => _networkName;
+
     public EraExporter(
         IFileSystem fileSystem,
         IBlockTree blockTree,
@@ -62,8 +64,10 @@ public class EraExporter : IEraExporter
 
         DateTime startTime = DateTime.Now;
         DateTime lastProgress = DateTime.Now;
-        int processed = 0;
-        int txProcessed = 0;
+
+        int totalProcessed = 0;
+        int processedSinceLast = 0;
+        int txProcessedSinceLast = 0;
 
         for (long i = start; i <= end; i += size)
         {
@@ -100,15 +104,22 @@ public class EraExporter : IEraExporter
                         rename, true);
                     break;
                 }
-                txProcessed += block.Transactions.Length;
-                processed++;
+                totalProcessed++;
+                txProcessedSinceLast += block.Transactions.Length;
+                processedSinceLast++;
                 TimeSpan elapsed = DateTime.Now.Subtract(lastProgress);
                 if (elapsed.TotalSeconds > TimeSpan.FromSeconds(10).TotalSeconds)
                 {
-                    ExportProgress?.Invoke(this, new ExportProgressArgs(end, processed, txProcessed, elapsed, DateTime.Now.Subtract(startTime)));
+                    ExportProgress?.Invoke(this, new ExportProgressArgs(
+                        end - start,
+                        totalProcessed,
+                        processedSinceLast,
+                        txProcessedSinceLast,
+                        elapsed,
+                        DateTime.Now.Subtract(startTime)));
                     lastProgress = DateTime.Now;
-                    processed = 0;
-                    txProcessed = 0;
+                    processedSinceLast = 0;
+                    txProcessedSinceLast = 0;
                 }
             }
         }
@@ -150,19 +161,20 @@ public class EraExporter : IEraExporter
         if (expectedAccumulators.Any(a=>a.Length != 32))
             throw new ArgumentException("All accumulators must have a length of 32 bytes.", nameof(eraFiles));
 
-        DateTime lastProgress = DateTime.Now; 
+        DateTime startTime = DateTime.Now; 
+        DateTime lastProgress = DateTime.Now;
         for (int i = 0; i < eraFiles.Length; i++)
         {
             using EraReader reader = await EraReader.Create(_fileSystem.File.OpenRead(eraFiles[i]), cancellation);
             if (!await reader.VerifyAccumulator(expectedAccumulators[i], _specProvider, cancellation))
             {
-                throw new EraVerificationException($"The accumulator for the archive '{eraFiles[i]}' does not match the expected accumulator '{expectedAccumulators[i]}'");
+                throw new EraVerificationException($"The accumulator for the archive '{eraFiles[i]}' does not match the expected accumulator '{expectedAccumulators[i].ToHexString()}'.");
             }
 
             TimeSpan elapsed = DateTime.Now.Subtract(lastProgress);
             if (elapsed.TotalSeconds > TimeSpan.FromSeconds(10).TotalSeconds)
             {
-                VerificationProgress?.Invoke(this, new VerificationProgressArgs(i, eraFiles.Length, elapsed));
+                VerificationProgress?.Invoke(this, new VerificationProgressArgs(i, eraFiles.Length, DateTime.Now.Subtract(startTime)));
                 lastProgress = DateTime.Now;
             }
         }
