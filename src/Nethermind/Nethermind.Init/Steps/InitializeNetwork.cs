@@ -12,6 +12,7 @@ using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Crypto;
 using Nethermind.Db;
+using Nethermind.Era1;
 using Nethermind.Facade.Eth;
 using Nethermind.Logging;
 using Nethermind.Network;
@@ -37,10 +38,9 @@ using Nethermind.Synchronization.Blocks;
 using Nethermind.Synchronization.LesSync;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
-using Nethermind.Synchronization.Reporting;
-using Nethermind.Synchronization.SnapSync;
 using Nethermind.Synchronization.Trie;
 using Nethermind.TxPool;
+using System.Linq;
 
 namespace Nethermind.Init.Steps;
 
@@ -319,31 +319,18 @@ public class InitializeNetwork : IStep
          api.SpecProvider,
          networkName);
 
-        var syncProgressResolver = _api.Synchronizer!.SyncProgressResolver;
         try
         {
             if (_syncConfig.FastSync)
             {
-                if (syncProgressResolver.IsFastBlocksHeadersFinished())
-                {
-                    _logger.Info($"Skipping era1 import since sync has already finished.");
-                    return;
-                }
-
-                bool withBodies = _syncConfig.DownloadBodiesInFastSync;
-                bool withReceipts = _syncConfig.DownloadReceiptsInFastSync;
-                eraImport.ImportProgressChanged += (s, args) =>
-                {
-                    _logger.Info($"Era1 import {args.BlocksProcessed,7}/{args.TotalBlocks} Blks | elapsed {args.Elapsed,7:hh\\:mm\\:ss} | {args.BlocksProcessed / args.Elapsed.TotalSeconds,7:F2} Blks/s | {args.TxProcessed / args.Elapsed.TotalSeconds,7:F2} Tx/s");
-                };
-                _logger.Info($"Starting import from '{syncConfig.ImportDirectory}'");
-                await eraImport.Import(syncConfig.ImportDirectory, 0, withBodies, withReceipts, cancellation);
+                //Archive sync is not supported
+                return;
             }
             else
             {
                 eraImport.ImportProgressChanged += (s, args) =>
                 {
-                    _logger.Info($"Era1 import | elapsed {args.Elapsed,7:hh\\:mm\\:ss} | {args.BlocksProcessed / args.Elapsed.TotalSeconds,7:F2} Blks/s | {args.TxProcessed / args.Elapsed.TotalSeconds,7:F2} Tx/s");
+                    _logger.Info($"Era1 import | elapsed {args.Elapsed,7:hh\\:mm\\:ss} | {args.TotalBlocksProcessed / args.Elapsed.TotalSeconds,7:F2} Blks/s | {args.TxProcessed / args.Elapsed.TotalSeconds,7:F2} Tx/s");
                 };
                 //Import as a full archive
                 _logger.Info($"Starting full archive import from '{syncConfig.ImportDirectory}'");
@@ -354,7 +341,7 @@ public class InitializeNetwork : IStep
         {
             _logger.Warn($"A running import job was cancelled.");
         }
-        catch (EraException e)
+        catch (Exception e) when (e is EraException or EraImportException)
         {
             _logger.Error($"The import failed with the message: {e.Message}");
         }
