@@ -136,7 +136,7 @@ namespace Nethermind.Synchronization.LesSync
             (Hash256? Hash, UInt256 Value) item = (header.Hash, header.TotalDifficulty.Value);
             RlpStream stream = new(_decoder.GetLength(item, RlpBehaviors.None));
             _decoder.Encode(stream, item);
-            return new Rlp(stream.Data);
+            return new Rlp(stream.Data.ToArray());
         }
     }
 }
