@@ -9,7 +9,9 @@ namespace Nethermind.Core
 {
     public class TxReceipt
     {
-        public TxReceipt() {}
+        public TxReceipt()
+        {
+        }
 
         public TxReceipt(TxReceipt other)
         {

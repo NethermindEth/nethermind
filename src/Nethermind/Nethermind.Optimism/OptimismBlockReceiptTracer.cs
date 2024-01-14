@@ -47,7 +47,7 @@ public class OptimismBlockReceiptTracer : BlockReceiptsTracer
     {
         (ulong? depositNonce, ulong? version) = GetDepositReceiptData(Block.Header);
         OptimismTxReceipt receipt = new(base.BuildReceipt(recipient, spentGas, statusCode, logEntries, stateRoot))
-            { DepositNonce = depositNonce, DepositReceiptVersion = version };
+        { DepositNonce = depositNonce, DepositReceiptVersion = version };
 
         return receipt;
     }
