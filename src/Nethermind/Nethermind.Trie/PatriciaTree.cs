@@ -288,7 +288,7 @@ namespace Nethermind.Trie
             }
 
             void ClearExceptions() => _commitExceptions?.Clear();
-            bool WereExceptions() => !(_commitExceptions?.IsEmpty ?? true);
+            bool WereExceptions() => _commitExceptions?.IsEmpty == false;
 
             void AddException(Exception value)
             {
