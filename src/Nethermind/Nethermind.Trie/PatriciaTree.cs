@@ -871,9 +871,8 @@ namespace Nethermind.Trie
             }
 
             ResolveNode(childNode, in traverseContext);
-            TrieNode nextNode = childNode;
 
-            return TraverseNext(in traverseContext, 1, nextNode);
+            return TraverseNext(in traverseContext, 1, childNode);
         }
 
         private CappedArray<byte> TraverseLeaf(TrieNode node, in TraverseContext traverseContext)
