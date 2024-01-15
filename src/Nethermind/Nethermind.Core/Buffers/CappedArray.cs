@@ -84,8 +84,11 @@ public readonly struct CappedArray<T>
 
     public readonly T[]? ToArray()
     {
-        if (_array is null) return null;
-        if (_length == _array?.Length) return _array;
+        T[]? array = _array;
+
+        if (array is null) return null;
+        if (array.Length == 0) return Array.Empty<T>();
+        if (_length == array?.Length) return array;
         return AsSpan().ToArray();
     }
 }
