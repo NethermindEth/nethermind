@@ -57,7 +57,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
 
             CodeInfo codeInfo = new CodeInfo(bytecode);
 
-            await IlAnalyzer.StartAnalysis(bytecode, codeInfo);
+            await IlAnalyzer.StartAnalysis(codeInfo);
 
             codeInfo.IlInfo.Chunks.Count.Should().Be(2);
         }

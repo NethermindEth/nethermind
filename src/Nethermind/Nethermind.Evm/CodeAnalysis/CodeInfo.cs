@@ -3,7 +3,6 @@
 
 using System;
 using System.Threading;
-using Nethermind.Core.Specs;
 using Nethermind.Evm.CodeAnalysis.IL;
 using Nethermind.Evm.Precompiles;
 

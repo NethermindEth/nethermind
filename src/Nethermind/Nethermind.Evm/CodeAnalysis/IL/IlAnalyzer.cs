@@ -12,7 +12,7 @@ using static System.Runtime.InteropServices.JavaScript.JSType;
 namespace Nethermind.Evm.CodeAnalysis.IL;
 
 /// <summary>
-/// Provides 
+/// Provides
 /// </summary>
 internal static class IlAnalyzer
 {
@@ -21,13 +21,12 @@ internal static class IlAnalyzer
     /// <summary>
     /// Starts the analyzing in a background task and outputs the value in the <paramref name="codeInfo"/>.
     /// </summary>
-    /// <param name="machineCode">The code to analyze.</param>
     /// <param name="codeInfo">The destination output.</param>
-    public static Task StartAnalysis(byte[] machineCode, CodeInfo codeInfo)
+    public static Task StartAnalysis(CodeInfo codeInfo)
     {
         return Task.Run(() =>
         {
-            IlInfo info = Analysis(machineCode);
+            IlInfo info = Analysis(codeInfo.MachineCode);
             codeInfo.SetIlInfo(info);
         });
     }
