@@ -54,7 +54,7 @@ public class DbOnTheRocks : IDb, ITunableDb
 
     protected IntPtr? _cache = null;
 
-    private readonly RocksDbSettings _settings;
+    private readonly DbSettings _settings;
 
     protected readonly PerTableDbConfig _perTableDbConfig;
 
@@ -74,7 +74,7 @@ public class DbOnTheRocks : IDb, ITunableDb
 
     public DbOnTheRocks(
         string basePath,
-        RocksDbSettings rocksDbSettings,
+        DbSettings dbSettings,
         IDbConfig dbConfig,
         ILogManager logManager,
         IList<string>? columnFamilies = null,
@@ -83,12 +83,12 @@ public class DbOnTheRocks : IDb, ITunableDb
         IntPtr? sharedCache = null)
     {
         _logger = logManager.GetClassLogger();
-        _settings = rocksDbSettings;
+        _settings = dbSettings;
         Name = _settings.DbName;
         _fileSystem = fileSystem ?? new FileSystem();
         _rocksDbNative = rocksDbNative ?? RocksDbSharp.Native.Instance;
         _perTableDbConfig = new PerTableDbConfig(dbConfig, _settings);
-        _db = Init(basePath, rocksDbSettings.DbPath, dbConfig, logManager, columnFamilies, rocksDbSettings.DeleteOnStart, sharedCache);
+        _db = Init(basePath, dbSettings.DbPath, dbConfig, logManager, columnFamilies, dbSettings.DeleteOnStart, sharedCache);
 
         if (_perTableDbConfig.AdditionalRocksDbOptions != null)
         {

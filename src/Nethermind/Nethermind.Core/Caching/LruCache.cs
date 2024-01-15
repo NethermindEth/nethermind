@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
+using System.Runtime.CompilerServices;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Threading;
 
@@ -141,6 +142,19 @@ namespace Nethermind.Core.Caching
             foreach (KeyValuePair<TKey, LinkedListNode<LruCacheItem>> kvp in _cacheMap)
             {
                 array[i++] = new KeyValuePair<TKey, TValue>(kvp.Key, kvp.Value.Value.Value);
+            }
+
+            return array;
+        }
+
+        [MethodImpl(MethodImplOptions.Synchronized)]
+        public TValue[] GetValues()
+        {
+            int i = 0;
+            TValue[] array = new TValue[_cacheMap.Count];
+            foreach (KeyValuePair<TKey, LinkedListNode<LruCacheItem>> kvp in _cacheMap)
+            {
+                array[i++] = kvp.Value.Value.Value;
             }
 
             return array;

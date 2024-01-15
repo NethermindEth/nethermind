@@ -7,7 +7,7 @@ using System.Linq;
 
 namespace Nethermind.Core.Collections;
 
-public static class EnuberableExtensions
+public static class EnumerableExtensions
 {
     public static void ForEach<T>(this IEnumerable<T> list, Action<T> action)
     {

@@ -11,8 +11,4 @@
     <ProjectReference Include="..\Nethermind.Db\Nethermind.Db.csproj" />
   </ItemGroup>
 
-  <ItemGroup>
-    <PackageReference Include="TestableIO.System.IO.Abstractions.Wrappers" />
-  </ItemGroup>
-
 </Project>

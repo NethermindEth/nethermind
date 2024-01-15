@@ -29,7 +29,6 @@ using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Merge.Plugin.InvalidChainTracker;
 using Nethermind.Merge.Plugin.Synchronization;
 using Nethermind.Synchronization.ParallelSync;
-using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 
 namespace Nethermind.Merge.Plugin;
@@ -337,7 +336,9 @@ public partial class MergePlugin : IConsensusWrapperPlugin, ISynchronizationPlug
                     _beaconPivot,
                     _peerRefresher,
                     _api.SpecProvider,
-                    _api.LogManager),
+                    _api.LogManager,
+                    _api.Config<IBlocksConfig>().SecondsPerSlot,
+                    _api.Config<IMergeConfig>().SimulateBlockProduction),
                 new GetPayloadBodiesByHashV1Handler(_api.BlockTree, _api.LogManager),
                 new GetPayloadBodiesByRangeV1Handler(_api.BlockTree, _api.LogManager),
                 new ExchangeTransitionConfigurationV1Handler(_poSSwitcher, _api.LogManager),
@@ -407,7 +408,7 @@ public partial class MergePlugin : IConsensusWrapperPlugin, ISynchronizationPlug
                     _api.LogManager),
                 _invalidChainTracker,
                 _api.LogManager);
-            _beaconSync = new BeaconSync(_beaconPivot, _api.BlockTree, _syncConfig, _blockCacheService, _api.LogManager);
+            _beaconSync = new BeaconSync(_beaconPivot, _api.BlockTree, _syncConfig, _blockCacheService, _poSSwitcher, _api.LogManager);
 
             _api.BetterPeerStrategy = new MergeBetterPeerStrategy(_api.BetterPeerStrategy, _poSSwitcher, _beaconPivot, _api.LogManager);
 
