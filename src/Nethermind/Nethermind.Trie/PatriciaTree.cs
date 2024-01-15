@@ -283,16 +283,8 @@ namespace Nethermind.Trie
             {
                 ConcurrentQueue<NodeCommitInfo> queue = Volatile.Read(ref _currentCommit);
                 // Allocate queue if first commit made
-                queue ??= CreateQueue();
+                queue ??= CreateQueue(ref _currentCommit);
                 queue.Enqueue(value);
-
-                [MethodImpl(MethodImplOptions.NoInlining)]
-                ConcurrentQueue<NodeCommitInfo> CreateQueue()
-                {
-                    ConcurrentQueue<NodeCommitInfo> queue = new();
-                    ConcurrentQueue<NodeCommitInfo> current = Interlocked.CompareExchange(ref _currentCommit, queue, null);
-                    return (current is null) ? queue : current;
-                }
             }
 
             void ClearExceptions() => _commitExceptions?.Clear();
@@ -302,16 +294,16 @@ namespace Nethermind.Trie
             {
                 ConcurrentQueue<Exception> queue = Volatile.Read(ref _commitExceptions);
                 // Allocate queue if first exception thrown
-                queue ??= CreateQueue();
+                queue ??= CreateQueue(ref _commitExceptions);
                 queue.Enqueue(value);
+            }
 
-                [MethodImpl(MethodImplOptions.NoInlining)]
-                ConcurrentQueue<Exception> CreateQueue()
-                {
-                    ConcurrentQueue<Exception> queue = new();
-                    ConcurrentQueue<Exception> current = Interlocked.CompareExchange(ref _commitExceptions, queue, null);
-                    return (current is null) ? queue : current;
-                }
+            [MethodImpl(MethodImplOptions.NoInlining)]
+            ConcurrentQueue<T> CreateQueue<T>(ref ConcurrentQueue<T> queueRef)
+            {
+                ConcurrentQueue<T> queue = new();
+                ConcurrentQueue<T> current = Interlocked.CompareExchange(ref queueRef, queue, null);
+                return (current is null) ? queue : current;
             }
 
             [DoesNotReturn]
