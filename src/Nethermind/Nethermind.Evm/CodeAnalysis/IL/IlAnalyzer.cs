@@ -58,14 +58,12 @@ internal static class IlAnalyzer
 
         foreach (var (pattern, mapping) in Patterns)
         {
-
             for (int i = 0; i < strippedBytecode.Length - pattern.Length + 1; i++)
             {
                 bool found = true;
                 for (int j = 0; j < pattern.Length && found; j++)
                 {
                     found = strippedBytecode[i + j] == pattern[j];
-
                 }
 
                 if (found)

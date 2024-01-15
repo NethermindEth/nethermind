@@ -38,11 +38,12 @@ internal class IlInfo
         if (programCounter > ushort.MaxValue)
             return false;
 
-        bool hasProgramCounter = Chunks.ContainsKey((ushort)programCounter);
-        if (!hasProgramCounter)
+        if (Chunks.TryGetValue((ushort)programCounter, out InstructionChunk chunk) == false)
+        {
             return false;
+        }
 
-        Chunks[(ushort)programCounter].Invoke(vmState, spec, ref programCounter, ref gasAvailable, ref stack);
+        chunk.Invoke(vmState, spec, ref programCounter, ref gasAvailable, ref stack);
         return true;
     }
 }
