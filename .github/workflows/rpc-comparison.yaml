@@ -29,13 +29,13 @@ jobs:
     name: Verify if inputs are correct
     runs-on: ubuntu-latest
     steps:
-      - name: Verify if inputs are correct
+      - name: Verify if inputs are correctly applied
         run: |
           if [ "${{ inputs.is_performance_check }}" == "true" ] && [ -z "${{ inputs.branch_to_compare }}" ]; then
             echo "Error: 'branch_to_compare' must be provided when 'is_performance_check' is set to true."
             exit 1
           fi
-
+          
           if [ "${{ inputs.is_performance_check }}" == "false" ] && [ -z "${{ inputs.branch_to_compare }}" ] && [ -z "${{ inputs.compare_with }}" ]; then
             echo "Error: Either 'branch_to_compare' or 'compare_with' must be provided when 'is_performance_check' is set to false."
             exit 1
