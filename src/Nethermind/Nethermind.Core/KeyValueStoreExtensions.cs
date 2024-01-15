@@ -104,7 +104,7 @@ namespace Nethermind.Core
             db.PutSpan(key.Bytes, value, writeFlags);
         }
 
-        public static void Set(this IWriteOnlyKeyValueStore db, Hash256 key, CappedArray<byte> value, WriteFlags writeFlags = WriteFlags.None)
+        public static void Set(this IWriteOnlyKeyValueStore db, Hash256 key, in CappedArray<byte> value, WriteFlags writeFlags = WriteFlags.None)
         {
             if (value.IsUncapped && db.PreferWriteByArray)
             {
@@ -112,7 +112,7 @@ namespace Nethermind.Core
                 return;
             }
 
-            db.PutSpan(key.Bytes, value, writeFlags);
+            db.PutSpan(key.Bytes, value.AsSpan(), writeFlags);
         }
 
         public static void Set(this IWriteOnlyKeyValueStore db, long blockNumber, Hash256 key, ReadOnlySpan<byte> value, WriteFlags writeFlags = WriteFlags.None)
