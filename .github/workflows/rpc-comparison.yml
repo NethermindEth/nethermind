@@ -35,9 +35,14 @@ jobs:
             echo "Error: 'branch_to_compare' must be provided when 'is_performance_check' is set to true."
             exit 1
           fi
+
+          if [ "$IS_PERFORMANCE_CHECK" == "true" ] && [ ! -z "$COMPARE_WITH" ]; then
+            echo "Error: 'compare_with' should not be provided when 'is_performance_check' is true."
+            exit 1
+          fi
           
           if [ "$IS_PERFORMANCE_CHECK" == "false" ] && [ -z "$BRANCH_TO_COMPARE" ] && [ -z "$COMPARE_WITH" ]; then
-            echo "Error: Either 'branch_to_compare' or 'compare_with' must be provided when 'is_performance_check' is set to false."
+            echo "Error: 'branch_to_compare' must be provided when 'is_performance_check' is set to false."
             exit 1
           fi
         env:
@@ -53,7 +58,7 @@ jobs:
     with:
       additional_options: >-
         {
-          "timeout": "12",
+          "timeout": "1",
           "default_dockerfile": "Dockerfile",
           "default_dockerfile_build_type": "release",
           "ssh_keys": "",
@@ -75,7 +80,7 @@ jobs:
     with:
       additional_options: >-
         {
-          "timeout": "12",
+          "timeout": "1",
           "default_dockerfile": "Dockerfile",
           "default_dockerfile_build_type": "release",
           "ssh_keys": "",
@@ -304,20 +309,43 @@ jobs:
         if: env.compare_to_other_branch == 'true'
         run: |
           if [ "${{ inputs.is_performance_check }}" == "true" ]; then
-            flood all ${compare_to_other_branch_params} --rates 10 100 1000 --duration 30 | tee output_other_branch.txt
+            mapfile -t tests < <(flood ls | sed -n '/Single Load Tests/,/Multi Load Tests/{/Single Load Tests\|Multi Load Tests\|───/d; s/- //p}')
+            
+            for TEST in "${tests[@]}"; do
+                TEST_perf_result="${TEST}_perf_result"
+                flood "$TEST" ${compare_to_other_branch_params} --rates 10 100 1000 --output "$TEST_perf_result" --duration 30 | tee -a "$TEST_perf_result.txt"
+            done
           else
-            flood all ${compare_to_other_branch_params} --equality | tee output_other_branch.txt
+            flood all ${compare_to_other_branch_params} --output equality_result_other --equality | tee output_other_branch.txt
           fi
       
       - name: Compare to INFURA Endpoint
         if: env.compare_to_infura == 'true' && inputs.is_performance_check != true
         run: |
-          flood all ${compare_to_infura_params} --equality | tee output_infura.txt
+          flood all ${compare_to_infura_params} --output equality_result_infura --equality | tee output_infura.txt
       
       - name: Compare to Nethermind Archive Endpoint
         if: env.compare_to_archive == 'true' && inputs.is_performance_check != true
         run: |
-          flood all ${compare_to_archive_params} --equality | tee output_archive.txt
+          flood all ${compare_to_archive_params} --output equality_result_archive --equality | tee output_archive.txt
+
+      - name: Generate report
+        run: |
+          ls
+          if [ "${{ inputs.is_performance_check }}" == "true" ]; then
+            flood repos $(ls -d *_perf_result)
+          else
+            if [ "$COMPARE_TO_OTHER_BRANCH" == "true" ]; then
+              flood report equality_result_other
+            fi
+            if [ "$COMPARE_TO_INFURA" == "true" ]; then
+              flood report equality_result_infura
+            fi
+            if [ "$COMPARE_TO_ARCHIVE" == "true" ]; then
+              flood report equality_result_archive
+            fi
+          fi
+          ls
 
       - name: Upload results as files
         uses: actions/upload-artifact@v3
