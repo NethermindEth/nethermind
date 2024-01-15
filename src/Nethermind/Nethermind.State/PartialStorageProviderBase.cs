@@ -43,7 +43,7 @@ namespace Nethermind.State
         /// <returns>Value at cell</returns>
         public byte[] Get(in StorageCell storageCell)
         {
-            return GetCurrentValue(storageCell);
+            return GetCurrentValue(in storageCell);
         }
 
         /// <summary>

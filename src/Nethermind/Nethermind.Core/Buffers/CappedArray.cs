@@ -17,6 +17,8 @@ public readonly struct CappedArray<T>
     private readonly static CappedArray<T> _empty = new CappedArray<T>(Array.Empty<T>());
     public static ref readonly CappedArray<T> Null => ref _null;
     public static ref readonly CappedArray<T> Empty => ref _empty;
+    public static object NullBoxed { get; } = _null;
+    public static object EmptyBoxed { get; } = _empty;
 
     private readonly T[]? _array;
     private readonly int _length;
