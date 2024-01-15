@@ -69,7 +69,7 @@ jobs:
           inputs: '{
               "tag": "${{ env.CLEAN_REF }}",
               "dockerfile": "Dockerfile",
-              "build-config": "Release"
+              "build-config": "release"
            }'
         
     - name: Wait for Docker Build Action to complete
