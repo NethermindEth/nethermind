@@ -872,7 +872,7 @@ namespace Nethermind.Trie
 
             ResolveNode(childNode, in traverseContext);
 
-            return TraverseNext(in traverseContext, 1, childNode);
+            return TraverseNext(childNode, in traverseContext, 1);
         }
 
         private CappedArray<byte> TraverseLeaf(TrieNode node, in TraverseContext traverseContext)
@@ -1004,7 +1004,7 @@ namespace Nethermind.Trie
 
                 ResolveNode(next, in traverseContext);
 
-                return TraverseNext(in traverseContext, extensionLength, next);
+                return TraverseNext(next, in traverseContext, extensionLength);
             }
 
             if (traverseContext.IsRead)
@@ -1065,7 +1065,7 @@ namespace Nethermind.Trie
             return traverseContext.UpdateValue;
         }
 
-        private CappedArray<byte> TraverseNext(in TraverseContext traverseContext, int extensionLength, TrieNode next)
+        private CappedArray<byte> TraverseNext(TrieNode next, in TraverseContext traverseContext, int extensionLength)
         {
             // Move large struct creation out of flow so doesn't force additional stack space
             // in calling method even if not used
