@@ -76,7 +76,7 @@ jobs:
     uses: ./.github/workflows/run-a-single-node-from-branch.yml
     if: inputs.branch_to_compare != ''
     secrets: inherit
-    needs: [verify_correctness_of_setup]
+    needs: [create_main_node, verify_correctness_of_setup]
     with:
       additional_options: >-
         {
@@ -155,19 +155,10 @@ jobs:
           echo $rpc_urls
           echo "rpc_urls=$rpc_urls" >> $GITHUB_OUTPUT
 
-  #wait_for_node_to_sync_pre_delay:
-  #  name: Wait for the nodes to sync - Extra wait before
-  #  runs-on: ubuntu-latest
-  #  needs: [aggregate_rpcs]
-  #  timeout-minutes: 600
-  #  steps:
-  #    - name: Wait for 3h
-  #      run: sleep 3h
-            
+
   wait_for_node_to_sync:
     name: Wait for the nodes to sync
     runs-on: ubuntu-latest
-    #needs: [wait_for_node_to_sync_pre_delay, aggregate_rpcs]
     needs: [aggregate_rpcs]
     timeout-minutes: 600
     steps:
