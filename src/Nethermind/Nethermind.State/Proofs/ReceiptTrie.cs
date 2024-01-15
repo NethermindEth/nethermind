@@ -7,12 +7,10 @@ using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Trie;
 using Nethermind.Trie;
-using Nethermind.Trie.Pruning;
 
 namespace Nethermind.State.Proofs;
 
@@ -46,19 +44,25 @@ public class ReceiptTrie : PatriciaTrie<TxReceipt>
 
         foreach (TxReceipt? receipt in receipts)
         {
-            CappedArray<byte> buffer = _decoder.EncodeToCappedArray(receipt, behavior, bufferPool: _bufferPool);
-            CappedArray<byte> keyBuffer = (key++).EncodeToCappedArray(bufferPool: _bufferPool);
+            CappedArray<byte> buffer = _decoder.EncodeToCappedArray(receipt, behavior, _bufferPool);
+            CappedArray<byte> keyBuffer = (key++).EncodeToCappedArray(_bufferPool);
+
             Set(keyBuffer.AsSpan(), buffer);
         }
     }
 
     protected override void Initialize(IEnumerable<TxReceipt> list) => throw new NotSupportedException();
 
+    public static byte[][] CalculateReceiptProofs(IReleaseSpec spec, TxReceipt[] receipts, int index)
+    {
+        using TrackingCappedArrayPool cappedArrayPool = new(receipts.Length * 4);
+        return new ReceiptTrie(spec, receipts, canBuildProof: true, cappedArrayPool).BuildProof(index);
+    }
+
     public static Hash256 CalculateRoot(IReceiptSpec receiptSpec, IList<TxReceipt> txReceipts)
     {
-        TrackingCappedArrayPool cappedArrayPool = new(txReceipts.Count * 4);
+        using TrackingCappedArrayPool cappedArrayPool = new(txReceipts.Count * 4);
         Hash256 receiptsRoot = new ReceiptTrie(receiptSpec, txReceipts, bufferPool: cappedArrayPool).RootHash;
-        cappedArrayPool.ReturnAll();
         return receiptsRoot;
     }
 }

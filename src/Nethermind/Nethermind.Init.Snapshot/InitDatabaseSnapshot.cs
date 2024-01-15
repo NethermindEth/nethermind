@@ -43,55 +43,76 @@ public class InitDatabaseSnapshot : InitDatabase
 
     private async Task InitDbFromSnapshot(CancellationToken cancellationToken)
     {
-        string dbPath = _api.Config<IInitConfig>().BaseDbPath;
-        if (Path.Exists(dbPath))
-        {
-            if (_logger.IsInfo)
-                _logger.Info($"Database already exists at {dbPath}. Skipping snapshot initialization.");
-            return;
-        }
 
         ISnapshotConfig snapshotConfig = _api.Config<ISnapshotConfig>();
+        string dbPath = _api.Config<IInitConfig>().BaseDbPath;
         string snapshotUrl = snapshotConfig.DownloadUrl ??
                              throw new InvalidOperationException("Snapshot download URL is not configured");
-
         string snapshotFileName = Path.Combine(snapshotConfig.SnapshotDirectory, snapshotConfig.SnapshotFileName);
-        Directory.CreateDirectory(snapshotConfig.SnapshotDirectory);
 
-        while (true)
+        if (Path.Exists(dbPath))
         {
-            try
+            if (GetCheckpoint(snapshotConfig) < Stage.Extracted)
             {
-                await DownloadSnapshotTo(snapshotUrl, snapshotFileName, cancellationToken);
-                break;
-            }
-            catch (IOException e)
-            {
-                if (_logger.IsError)
-                    _logger.Error($"Snapshot download failed. Retrying in 5 seconds. Error: {e}");
+                if (_logger.IsInfo)
+                    _logger.Info($"Extracting wasn't finished last time, restarting it. To interrupt press Ctrl^C");
+                // Wait few seconds if user wants to stop reinitialization
                 await Task.Delay(TimeSpan.FromSeconds(5), cancellationToken);
+                Directory.Delete(dbPath, true);
             }
-            cancellationToken.ThrowIfCancellationRequested();
-        }
-
-        if (snapshotConfig.Checksum is not null)
-        {
-            bool isChecksumValid = await VerifyChecksum(snapshotFileName, snapshotConfig.Checksum, cancellationToken);
-            if (!isChecksumValid)
+            else
             {
-                if (_logger.IsError)
-                    _logger.Error("Snapshot checksum verification failed. Aborting, but will continue running.");
+                if (_logger.IsInfo)
+                    _logger.Info($"Database already exists at {dbPath}. Interrupting");
+
                 return;
             }
-
-            if (_logger.IsInfo)
-                _logger.Info("Snapshot checksum verified.");
         }
-        else if (_logger.IsWarn)
-            _logger.Warn("Snapshot checksum is not configured");
 
+        Directory.CreateDirectory(snapshotConfig.SnapshotDirectory);
+
+        if (GetCheckpoint(snapshotConfig) < Stage.Downloaded)
+        {
+            while (true)
+            {
+                try
+                {
+                    await DownloadSnapshotTo(snapshotUrl, snapshotFileName, cancellationToken);
+                    break;
+                }
+                catch (IOException e)
+                {
+                    if (_logger.IsError)
+                        _logger.Error($"Snapshot download failed. Retrying in 5 seconds. Error: {e}");
+                    await Task.Delay(TimeSpan.FromSeconds(5), cancellationToken);
+                }
+                cancellationToken.ThrowIfCancellationRequested();
+            }
+            SetCheckpoint(snapshotConfig, Stage.Downloaded);
+        }
+
+        if (GetCheckpoint(snapshotConfig) < Stage.Verified)
+        {
+            if (snapshotConfig.Checksum is not null)
+            {
+                bool isChecksumValid = await VerifyChecksum(snapshotFileName, snapshotConfig.Checksum, cancellationToken);
+                if (!isChecksumValid)
+                {
+                    if (_logger.IsError)
+                        _logger.Error("Snapshot checksum verification failed. Aborting, but will continue running.");
+                    return;
+                }
+
+                if (_logger.IsInfo)
+                    _logger.Info("Snapshot checksum verified.");
+            }
+            else if (_logger.IsWarn)
+                _logger.Warn("Snapshot checksum is not configured");
+            SetCheckpoint(snapshotConfig, Stage.Verified);
+        }
 
         await ExtractSnapshotTo(snapshotFileName, dbPath, cancellationToken);
+        SetCheckpoint(snapshotConfig, Stage.Extracted);
 
         if (_logger.IsInfo)
         {
@@ -100,6 +121,8 @@ public class InitDatabaseSnapshot : InitDatabase
         }
 
         File.Delete(snapshotFileName);
+
+        SetCheckpoint(snapshotConfig, Stage.End);
     }
 
     private async Task DownloadSnapshotTo(
@@ -187,4 +210,33 @@ public class InitDatabaseSnapshot : InitDatabase
 
             ZipFile.ExtractToDirectory(snapshotPath, dbPath);
         }, cancellationToken);
+
+    private enum Stage
+    {
+        Start,
+        Downloaded,
+        Verified,
+        Extracted,
+        End,
+    }
+
+    private static void SetCheckpoint(ISnapshotConfig snapshotConfig, Stage stage)
+    {
+        string checkpointPath = Path.Combine(snapshotConfig.SnapshotDirectory, "checkpoint" + "_" + snapshotConfig.SnapshotFileName);
+        File.WriteAllText(checkpointPath, stage.ToString());
+    }
+
+    private static Stage GetCheckpoint(ISnapshotConfig snapshotConfig)
+    {
+        string checkpointPath = Path.Combine(snapshotConfig.SnapshotDirectory, "checkpoint" + "_" + snapshotConfig.SnapshotFileName);
+        if (File.Exists(checkpointPath))
+        {
+            string stringStage = File.ReadAllText(checkpointPath);
+            return (Stage)Enum.Parse(typeof(Stage), stringStage);
+        }
+        else
+        {
+            return Stage.Start;
+        }
+    }
 }

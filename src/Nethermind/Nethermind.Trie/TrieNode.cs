@@ -107,7 +107,7 @@ namespace Nethermind.Trie
 
                     if (obj is null)
                     {
-                        return new CappedArray<byte>(null);
+                        return CappedArray<byte>.Null;
                     }
 
                     if (obj is byte[] asBytes)
@@ -121,7 +121,7 @@ namespace Nethermind.Trie
                 if (!AllowBranchValues)
                 {
                     // branches that we use for state will never have value set as all the keys are equal length
-                    return new CappedArray<byte>(Array.Empty<byte>());
+                    return CappedArray<byte>.Empty;
                 }
 
                 obj = _data![BranchesCount];
@@ -130,7 +130,7 @@ namespace Nethermind.Trie
                     if (_rlpStream is null)
                     {
                         _data[BranchesCount] = Array.Empty<byte>();
-                        return new CappedArray<byte>(Array.Empty<byte>());
+                        return CappedArray<byte>.Empty;
                     }
                     else
                     {
@@ -172,7 +172,7 @@ namespace Nethermind.Trie
                 if (value.IsUncapped)
                 {
                     // Store array directly if possible to reduce memory
-                    _data![IsLeaf ? 1 : BranchesCount] = value.Array;
+                    _data![IsLeaf ? 1 : BranchesCount] = value.UnderlyingArray;
                     return;
                 }
 
@@ -230,7 +230,7 @@ namespace Nethermind.Trie
             }
         }
 
-        public TrieNode(NodeType nodeType, CappedArray<byte> rlp, bool isDirty = false)
+        public TrieNode(NodeType nodeType, in CappedArray<byte> rlp, bool isDirty = false)
         {
             NodeType = nodeType;
             FullRlp = rlp;
@@ -248,7 +248,7 @@ namespace Nethermind.Trie
         {
         }
 
-        public TrieNode(NodeType nodeType, Hash256 keccak, CappedArray<byte> rlp)
+        public TrieNode(NodeType nodeType, Hash256 keccak, in CappedArray<byte> rlp)
             : this(nodeType, rlp)
         {
             Keccak = keccak;
@@ -496,7 +496,7 @@ namespace Nethermind.Trie
             {
                 CappedArray<byte> oldRlp = FullRlp;
                 FullRlp = RlpEncode(tree, ref path, bufferPool);
-                if (oldRlp.IsNotNull)
+                if (oldRlp.IsNotNullOrEmpty)
                 {
                     bufferPool.SafeReturnBuffer(oldRlp);
                 }
@@ -746,10 +746,10 @@ namespace Nethermind.Trie
                     : MemorySizes.RefSize + Hash256.MemorySize;
             long fullRlpSize =
                 MemorySizes.RefSize +
-                (FullRlp.IsNull ? 0 : MemorySizes.Align(FullRlp.Array.Length + MemorySizes.ArrayOverhead));
+                (FullRlp.IsNull ? 0 : MemorySizes.Align(FullRlp.UnderlyingLength + MemorySizes.ArrayOverhead));
             long rlpStreamSize =
                 MemorySizes.RefSize + (_rlpStream?.MemorySize ?? 0)
-                - (FullRlp.IsNull ? 0 : MemorySizes.Align(FullRlp.Array.Length + MemorySizes.ArrayOverhead));
+                - (FullRlp.IsNull ? 0 : MemorySizes.Align(FullRlp.UnderlyingLength + MemorySizes.ArrayOverhead));
             long dataSize =
                 MemorySizes.RefSize +
                 (_data is null
@@ -779,7 +779,7 @@ namespace Nethermind.Trie
 
                 if (_data![i] is CappedArray<byte> cappedArray)
                 {
-                    dataSize += MemorySizes.ArrayOverhead + (cappedArray.Array?.Length ?? 0) + MemorySizes.SmallObjectOverhead;
+                    dataSize += MemorySizes.ArrayOverhead + cappedArray.UnderlyingLength + MemorySizes.SmallObjectOverhead;
                 }
 
                 if (recursive)
@@ -830,14 +830,14 @@ namespace Nethermind.Trie
             return trieNode;
         }
 
-        public TrieNode CloneWithChangedValue(CappedArray<byte> changedValue)
+        public TrieNode CloneWithChangedValue(in CappedArray<byte> changedValue)
         {
             TrieNode trieNode = Clone();
             trieNode.Value = changedValue;
             return trieNode;
         }
 
-        public TrieNode CloneWithChangedKeyAndValue(byte[] key, CappedArray<byte> changedValue)
+        public TrieNode CloneWithChangedKeyAndValue(byte[] key, in CappedArray<byte> changedValue)
         {
             TrieNode trieNode = Clone();
             trieNode.Key = key;
@@ -1008,9 +1008,16 @@ namespace Nethermind.Trie
             return hasStorage;
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void InitData()
         {
             if (_data is null)
+            {
+                Initialize();
+            }
+
+            [MethodImpl(MethodImplOptions.NoInlining)]
+            void Initialize()
             {
                 switch (NodeType)
                 {

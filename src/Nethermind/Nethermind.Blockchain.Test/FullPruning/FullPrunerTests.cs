@@ -225,13 +225,13 @@ namespace Nethermind.Blockchain.Test.FullPruning
                 _clearPrunedDb = clearPrunedDb;
                 TrieDb = new TestMemDb();
                 CopyDb = new TestMemDb();
-                IRocksDbFactory rocksDbFactory = Substitute.For<IRocksDbFactory>();
-                rocksDbFactory.CreateDb(Arg.Any<RocksDbSettings>()).Returns(TrieDb, CopyDb);
+                IDbFactory dbFactory = Substitute.For<IDbFactory>();
+                dbFactory.CreateDb(Arg.Any<DbSettings>()).Returns(TrieDb, CopyDb);
 
                 NodeStorage storageForWrite = new NodeStorage(TrieDb, currentKeyScheme);
                 PatriciaTree trie = Build.A.Trie(storageForWrite).WithAccountsByIndex(0, 100).TestObject;
                 _stateRoot = trie.RootHash;
-                FullPruningDb = new TestFullPruningDb(new RocksDbSettings("test", "test"), rocksDbFactory, successfulPruning, clearPrunedDb);
+                FullPruningDb = new TestFullPruningDb(new DbSettings("test", "test"), dbFactory, successfulPruning, clearPrunedDb);
                 NodeStorageFactory nodeStorageFactory = new NodeStorageFactory(preferredKeyScheme, LimboLogs.Instance);
                 nodeStorageFactory.DetectCurrentKeySchemeFrom(TrieDb);
                 NodeStorage = nodeStorageFactory.WrapKeyValueStore(FullPruningDb);
@@ -317,7 +317,7 @@ namespace Nethermind.Blockchain.Test.FullPruning
             public new int PruningStarted { get; private set; }
             public ManualResetEvent WaitForClearDb { get; } = new(false);
 
-            public TestFullPruningDb(RocksDbSettings settings, IRocksDbFactory dbFactory, bool successfulPruning, bool clearPrunedDb = false)
+            public TestFullPruningDb(DbSettings settings, IDbFactory dbFactory, bool successfulPruning, bool clearPrunedDb = false)
                 : base(settings, dbFactory)
             {
                 _successfulPruning = successfulPruning;
