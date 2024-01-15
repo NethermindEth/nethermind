@@ -208,7 +208,7 @@ public class DebugRpcModule : IDebugRpcModule
 
     public ResultWrapper<byte[]> debug_getBlockRlp(long blockNumber)
     {
-        byte[] rlp = _debugBridge.GetBlockRlp(blockNumber);
+        byte[] rlp = _debugBridge.GetBlockRlp(new BlockParameter(blockNumber));
         if (rlp is null)
         {
             return ResultWrapper<byte[]>.Fail($"Block {blockNumber} was not found", ErrorCodes.ResourceNotFound);
@@ -219,7 +219,7 @@ public class DebugRpcModule : IDebugRpcModule
 
     public ResultWrapper<byte[]> debug_getBlockRlpByHash(Hash256 hash)
     {
-        byte[] rlp = _debugBridge.GetBlockRlp(hash);
+        byte[] rlp = _debugBridge.GetBlockRlp(new BlockParameter(hash));
         if (rlp is null)
         {
             return ResultWrapper<byte[]>.Fail($"Block {hash} was not found", ErrorCodes.ResourceNotFound);
@@ -261,6 +261,50 @@ public class DebugRpcModule : IDebugRpcModule
         return ResultWrapper<bool>.Success(true);
     }
 
+    public ResultWrapper<byte[]> debug_getRawTransaction(Hash256 transactionHash)
+    {
+        var transaction = _debugBridge.GetTransactionFromHash(transactionHash);
+        if (transaction == null)
+        {
+            return ResultWrapper<byte[]>.Fail($"Transaction {transactionHash} was not found", ErrorCodes.ResourceNotFound);
+        }
+        var rlp = Rlp.Encode(transaction);
+        return ResultWrapper<byte[]>.Success(rlp.Bytes);
+    }
+
+    public ResultWrapper<byte[][]> debug_getRawReceipts(BlockParameter blockParameter)
+    {
+        var receipts = _debugBridge.GetReceiptsForBlock(blockParameter);
+        if (receipts == null)
+        {
+            return ResultWrapper<byte[][]>.Fail($"Receipts are not found for block {blockParameter}", ErrorCodes.ResourceNotFound);
+        }
+
+        var rlp = receipts.Select(tx => Rlp.Encode(tx).Bytes);
+        return ResultWrapper<byte[][]>.Success(rlp.ToArray());
+    }
+
+    public ResultWrapper<byte[]> debug_getRawBlock(BlockParameter blockParameter)
+    {
+        var blockRLP = _debugBridge.GetBlockRlp(blockParameter);
+        if (blockRLP == null)
+        {
+            return ResultWrapper<byte[]>.Fail($"Block {blockParameter} was not found", ErrorCodes.ResourceNotFound);
+        }
+        return ResultWrapper<byte[]>.Success(blockRLP);
+    }
+
+    public ResultWrapper<byte[]> debug_getRawHeader(BlockParameter blockParameter)
+    {
+        var block = _debugBridge.GetBlock(blockParameter);
+        if (block == null)
+        {
+            return ResultWrapper<byte[]>.Fail($"Block {blockParameter} was not found", ErrorCodes.ResourceNotFound);
+        }
+        Rlp rlp = Rlp.Encode<BlockHeader>(block.Header);
+        return ResultWrapper<byte[]>.Success(rlp.Bytes);
+    }
+
     public Task<ResultWrapper<SyncReportSymmary>> debug_getSyncStage()
     {
         return ResultWrapper<SyncReportSymmary>.Success(_debugBridge.GetCurrentSyncStage());
@@ -276,5 +320,11 @@ public class DebugRpcModule : IDebugRpcModule
         if (_logger.IsTrace) _logger.Trace($"{nameof(debug_standardTraceBlockToFile)} request {blockHash}, result: {files}");
 
         return ResultWrapper<IEnumerable<string>>.Success(files);
+    }
+
+    public ResultWrapper<IEnumerable<Block>> debug_getBadBlocks()
+    {
+        IEnumerable<Block> badBlocks = _debugBridge.GetBadBlocks();
+        return ResultWrapper<IEnumerable<Block>>.Success(badBlocks);
     }
 }

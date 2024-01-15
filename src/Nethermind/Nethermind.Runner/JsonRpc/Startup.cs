@@ -26,6 +26,7 @@ using Nethermind.Api;
 using Nethermind.Config;
 using Nethermind.Core.Authentication;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Resettables;
 using Nethermind.HealthChecks;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
@@ -58,7 +59,7 @@ namespace Nethermind.Runner.JsonRpc
                 options.ConfigureHttpsDefaults(co => co.SslProtocols |= SslProtocols.Tls13);
             });
             Bootstrap.Instance.RegisterJsonRpcServices(services);
-            services.AddControllers();
+
             string corsOrigins = Environment.GetEnvironmentVariable("NETHERMIND_CORS_ORIGINS") ?? "*";
             services.AddCors(c => c.AddPolicy("Cors",
                 p => p.AllowAnyMethod().AllowAnyHeader().WithOrigins(corsOrigins)));
@@ -167,7 +168,7 @@ namespace Nethermind.Runner.JsonRpc
                         JsonRpcContext jsonRpcContext = JsonRpcContext.Http(jsonRpcUrl);
                         await foreach (JsonRpcResult result in jsonRpcProcessor.ProcessAsync(request, jsonRpcContext))
                         {
-                            Stream stream = jsonRpcConfig.BufferResponses ? new MemoryStream() : null;
+                            using Stream stream = jsonRpcConfig.BufferResponses ? RecyclableStream.GetStream("http") : null;
                             ICountingBufferWriter resultWriter = stream is not null ? new CountingStreamPipeWriter(stream) : new CountingPipeWriter(ctx.Response.BodyWriter);
                             try
                             {

@@ -4,20 +4,17 @@
 using System;
 using System.Threading;
 using Nethermind.Evm.CodeAnalysis.IL;
+using System.Runtime.CompilerServices;
 using Nethermind.Evm.Precompiles;
 
 namespace Nethermind.Evm.CodeAnalysis
 {
     public class CodeInfo
     {
-        private const int SampledCodeLength = 10_001;
-        private const int PercentageOfPush1 = 40;
-        private const int NumberOfSamples = 100;
-        private static readonly Random _rand = new();
-
         public byte[] MachineCode { get; set; }
         public IPrecompile? Precompile { get; set; }
-        private ICodeInfoAnalyzer? _jumpAnalyzer;
+
+        private JumpDestinationAnalyzer? _analyzer;
 
         // IL-EVM
         private volatile IlInfo? _il;
@@ -32,7 +29,7 @@ namespace Nethermind.Evm.CodeAnalysis
             // use Interlocked just in case of concurrent execution to run it only once
             if (Interlocked.Increment(ref _callCount) == IlAnalyzer.IlAnalyzerThreshold)
             {
-                IlAnalyzer.StartAnalysis(MachineCode, this);
+                IlAnalyzer.StartAnalysis(this);
             }
         }
 
@@ -63,45 +60,20 @@ namespace Nethermind.Evm.CodeAnalysis
 
         public bool ValidateJump(int destination, bool isSubroutine)
         {
-            if (_jumpAnalyzer is null)
-            {
-                CreateAnalyzer();
-            }
+            JumpDestinationAnalyzer analyzer = _analyzer;
+            analyzer ??= CreateAnalyzer();
 
-            return _jumpAnalyzer!.ValidateJump(destination, isSubroutine);
+            return analyzer.ValidateJump(destination, isSubroutine);
         }
 
         /// <summary>
         /// Do sampling to choose an algo when the code is big enough.
         /// When the code size is small we can use the default analyzer.
         /// </summary>
-        private void CreateAnalyzer()
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private JumpDestinationAnalyzer CreateAnalyzer()
         {
-            if (MachineCode.Length >= SampledCodeLength)
-            {
-                byte push1Count = 0;
-
-                // we check (by sampling randomly) how many PUSH1 instructions are in the code
-                for (int i = 0; i < NumberOfSamples; i++)
-                {
-                    byte instruction = MachineCode[_rand.Next(0, MachineCode.Length)];
-
-                    // PUSH1
-                    if (instruction == 0x60)
-                    {
-                        push1Count++;
-                    }
-                }
-
-                // If there are many PUSH1 ops then use the JUMPDEST analyzer.
-                // The JumpdestAnalyzer can perform up to 40% better than the default Code Data Analyzer
-                // in a scenario when the code consists only of PUSH1 instructions.
-                _jumpAnalyzer = push1Count > PercentageOfPush1 ? new JumpdestAnalyzer(MachineCode) : new CodeDataAnalyzer(MachineCode);
-            }
-            else
-            {
-                _jumpAnalyzer = new CodeDataAnalyzer(MachineCode);
-            }
+            return _analyzer = new JumpDestinationAnalyzer(MachineCode);
         }
 
         internal void SetIlInfo(IlInfo info) => _il = info;

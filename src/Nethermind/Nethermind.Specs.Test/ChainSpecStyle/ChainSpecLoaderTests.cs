@@ -147,6 +147,7 @@ public class ChainSpecLoaderTests
         chainSpec.LondonBlockNumber.Should().Be(GoerliSpecProvider.LondonBlockNumber);
         chainSpec.ShanghaiTimestamp.Should().Be(GoerliSpecProvider.ShanghaiTimestamp);
         chainSpec.ShanghaiTimestamp.Should().Be(GoerliSpecProvider.Instance.TimestampFork);
+        chainSpec.CancunTimestamp.Should().Be(GoerliSpecProvider.CancunTimestamp);
     }
 
     [Test]

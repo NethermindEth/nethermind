@@ -35,7 +35,7 @@ namespace Nethermind.Network.P2P.Messages
             stream.Encode(msg.NodeId.Bytes);
         }
 
-        private (int, int) GetLength(HelloMessage msg)
+        private static (int, int) GetLength(HelloMessage msg)
         {
             int contentLength = 0;
             contentLength += Rlp.LengthOf(msg.P2PVersion);

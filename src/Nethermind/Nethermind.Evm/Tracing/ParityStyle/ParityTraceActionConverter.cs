@@ -173,7 +173,7 @@ namespace Nethermind.Evm.Tracing.ParityStyle
             writer.WriteEndObject();
         }
 
-        private void WriteSelfDestructJson(Utf8JsonWriter writer, ParityTraceAction value, JsonSerializerOptions options)
+        private static void WriteSelfDestructJson(Utf8JsonWriter writer, ParityTraceAction value, JsonSerializerOptions options)
         {
             writer.WriteStartObject();
 
@@ -189,7 +189,7 @@ namespace Nethermind.Evm.Tracing.ParityStyle
             writer.WriteEndObject();
         }
 
-        private void WriteRewardJson(Utf8JsonWriter writer, ParityTraceAction value, JsonSerializerOptions options)
+        private static void WriteRewardJson(Utf8JsonWriter writer, ParityTraceAction value, JsonSerializerOptions options)
         {
             writer.WriteStartObject();
 

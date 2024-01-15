@@ -175,7 +175,7 @@ namespace Nethermind.Serialization.Rlp
         {
             RlpStream rlpStream = new(GetLength(item, rlpBehaviors));
             Encode(rlpStream, item, rlpBehaviors);
-            return new Rlp(rlpStream.Data);
+            return new Rlp(rlpStream.Data.ToArray());
         }
 
         public void Encode(RlpStream rlpStream, TxReceipt? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
@@ -255,7 +255,7 @@ namespace Nethermind.Serialization.Rlp
             }
         }
 
-        private (int Total, int Logs) GetContentLength(TxReceipt? item, RlpBehaviors rlpBehaviors)
+        private static (int Total, int Logs) GetContentLength(TxReceipt? item, RlpBehaviors rlpBehaviors)
         {
             int contentLength = 0;
             if (item is null)
@@ -299,7 +299,7 @@ namespace Nethermind.Serialization.Rlp
             return (contentLength, logsLength);
         }
 
-        private int GetLogsLength(TxReceipt item)
+        private static int GetLogsLength(TxReceipt item)
         {
             int logsLength = 0;
             for (int i = 0; i < item.Logs.Length; i++)

@@ -171,7 +171,7 @@ namespace Nethermind.Core.Caching
             public readonly ValueHash256 Key;
             public byte[] Value;
 
-            public long MemorySize => FindMemorySize(Value);
+            public readonly long MemorySize => FindMemorySize(Value);
 
             public static long FindMemorySize(byte[] withValue)
             {

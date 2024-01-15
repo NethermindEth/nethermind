@@ -13,12 +13,12 @@ public class PerTableDbConfig
 {
     private readonly string _tableName;
     private readonly IDbConfig _dbConfig;
-    private readonly RocksDbSettings _settings;
+    private readonly DbSettings _settings;
 
-    public PerTableDbConfig(IDbConfig dbConfig, RocksDbSettings rocksDbSettings, string? columnName = null)
+    public PerTableDbConfig(IDbConfig dbConfig, DbSettings dbSettings, string? columnName = null)
     {
         _dbConfig = dbConfig;
-        _settings = rocksDbSettings;
+        _settings = dbSettings;
         _tableName = _settings.DbName;
         if (columnName != null)
         {

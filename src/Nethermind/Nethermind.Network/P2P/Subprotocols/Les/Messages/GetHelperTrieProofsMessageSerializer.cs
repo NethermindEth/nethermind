@@ -37,7 +37,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Les.Messages
             }
         }
 
-        private int GetRequestLength(HelperTrieRequest request)
+        private static int GetRequestLength(HelperTrieRequest request)
         {
             return
                 Rlp.LengthOf((int)request.SubType) +

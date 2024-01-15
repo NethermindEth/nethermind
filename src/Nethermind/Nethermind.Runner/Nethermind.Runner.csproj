@@ -11,8 +11,6 @@
     <TieredPGO>true</TieredPGO>
     <PublishReadyToRun>true</PublishReadyToRun>
     <GarbageCollectionAdaptationMode>1</GarbageCollectionAdaptationMode>
-    <!-- See https://github.com/dotnet/aspnetcore/issues/50836#issuecomment-1813301014 -->
-    <NoWarn>$(NoWarn);AD0001</NoWarn>
   </PropertyGroup>
 
   <PropertyGroup>
@@ -22,22 +20,11 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Antlr4.Runtime.Standard" />
-    <PackageReference Include="AspNetCore.HealthChecks.UI" />
     <PackageReference Include="AspNetCore.HealthChecks.UI.Client" />
-    <PackageReference Include="AspNetCore.HealthChecks.UI.InMemory.Storage" />
-    <PackageReference Include="Microsoft.AspNetCore.DataProtection.Abstractions" />
-    <PackageReference Include="Microsoft.AspNetCore.DataProtection.Extensions" />
     <PackageReference Include="Microsoft.Extensions.CommandLineUtils" />
-    <PackageReference Include="Microsoft.Extensions.Logging" />
     <PackageReference Include="Microsoft.VisualStudio.Azure.Containers.Tools.Targets" />
     <PackageReference Include="NLog.Targets.Seq" />
-    <PackageReference Include="NLog" />
     <PackageReference Include="Pyroscope" />
-    <PackageReference Include="Seq.Api" />
-    <PackageReference Include="System.Linq.Async" />
-    <PackageReference Include="TestableIO.System.IO.Abstractions.Wrappers" />
-    <PackageReference Include="YamlDotNet" />
   </ItemGroup>
 
   <ItemGroup>
@@ -47,30 +34,29 @@
     <ProjectReference Include="..\Nethermind.Consensus.Clique\Nethermind.Consensus.Clique.csproj" />
     <ProjectReference Include="..\Nethermind.Consensus.Ethash\Nethermind.Consensus.Ethash.csproj" />
     <ProjectReference Include="..\Nethermind.Core\Nethermind.Core.csproj" />
-    <ProjectReference Include="..\Nethermind.Db.Rocks\Nethermind.Db.Rocks.csproj" />
     <ProjectReference Include="..\Nethermind.Db\Nethermind.Db.csproj" />
+    <ProjectReference Include="..\Nethermind.Db.Rocks\Nethermind.Db.Rocks.csproj" />
+    <ProjectReference Include="..\Nethermind.Db.Rpc\Nethermind.Db.Rpc.csproj" />
     <ProjectReference Include="..\Nethermind.EthStats\Nethermind.EthStats.csproj" />
     <ProjectReference Include="..\Nethermind.Grpc\Nethermind.Grpc.csproj" />
+    <ProjectReference Include="..\Nethermind.HealthChecks\Nethermind.HealthChecks.csproj" />
     <ProjectReference Include="..\Nethermind.Hive\Nethermind.Hive.csproj" />
     <ProjectReference Include="..\Nethermind.Init\Nethermind.Init.csproj" />
-    <ProjectReference Include="..\Nethermind.JsonRpc.TraceStore\Nethermind.JsonRpc.TraceStore.csproj" />
+    <ProjectReference Include="..\Nethermind.Init.Snapshot\Nethermind.Init.Snapshot.csproj" />
     <ProjectReference Include="..\Nethermind.JsonRpc\Nethermind.JsonRpc.csproj" />
+    <ProjectReference Include="..\Nethermind.JsonRpc.TraceStore\Nethermind.JsonRpc.TraceStore.csproj" />
     <ProjectReference Include="..\Nethermind.Logging.NLog\Nethermind.Logging.NLog.csproj" />
-    <ProjectReference Include="..\Nethermind.Merge.Plugin\Nethermind.Merge.Plugin.csproj" />
     <ProjectReference Include="..\Nethermind.Merge.AuRa\Nethermind.Merge.AuRa.csproj" />
-    <ProjectReference Include="..\Nethermind.Optimism\Nethermind.Optimism.csproj" />
-    <ProjectReference Include="..\Nethermind.Optimism\Nethermind.Optimism.csproj" />
+    <ProjectReference Include="..\Nethermind.Merge.Plugin\Nethermind.Merge.Plugin.csproj" />
     <ProjectReference Include="..\Nethermind.Mev\Nethermind.Mev.csproj" />
     <ProjectReference Include="..\Nethermind.Monitoring\Nethermind.Monitoring.csproj" />
     <ProjectReference Include="..\Nethermind.Network\Nethermind.Network.csproj" />
-    <ProjectReference Include="..\Nethermind.Specs\Nethermind.Specs.csproj" />
-    <ProjectReference Include="..\Nethermind.Db.Rpc\Nethermind.Db.Rpc.csproj" />
-    <ProjectReference Include="..\Nethermind.Synchronization\Nethermind.Synchronization.csproj" />
-    <ProjectReference Include="..\Nethermind.Sockets\Nethermind.Sockets.csproj" />
+    <ProjectReference Include="..\Nethermind.Optimism\Nethermind.Optimism.csproj" />
     <ProjectReference Include="..\Nethermind.Seq\Nethermind.Seq.csproj" />
-    <ProjectReference Include="..\Nethermind.HealthChecks\Nethermind.HealthChecks.csproj" />
+    <ProjectReference Include="..\Nethermind.Sockets\Nethermind.Sockets.csproj" />
+    <ProjectReference Include="..\Nethermind.Specs\Nethermind.Specs.csproj" />
+    <ProjectReference Include="..\Nethermind.Synchronization\Nethermind.Synchronization.csproj" />
     <ProjectReference Include="..\Nethermind.UPnP.Plugin\Nethermind.UPnP.Plugin.csproj" />
-    <ProjectReference Include="..\Nethermind.Init.Snapshot\Nethermind.Init.Snapshot.csproj" />
   </ItemGroup>
 
   <ItemGroup>

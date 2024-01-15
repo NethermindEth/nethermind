@@ -57,7 +57,7 @@ public class EnrDiscovery : INodeSource
         }
     }
 
-    private Node? CreateNode(NodeRecord nodeRecord)
+    private static Node? CreateNode(NodeRecord nodeRecord)
     {
         CompressedPublicKey? compressedPublicKey = nodeRecord.GetObj<CompressedPublicKey>(EnrContentKey.Secp256K1);
         IPAddress? ipAddress = nodeRecord.GetObj<IPAddress>(EnrContentKey.Ip);

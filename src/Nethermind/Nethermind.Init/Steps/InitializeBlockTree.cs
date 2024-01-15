@@ -52,12 +52,14 @@ namespace Nethermind.Init.Steps
 
             IBlockStore blockStore = new BlockStore(_get.DbProvider.BlocksDb);
             IHeaderStore headerStore = new HeaderStore(_get.DbProvider.HeadersDb, _get.DbProvider.BlockNumbersDb);
+            IBlockStore badBlockStore = _set.BadBlocksStore = new BlockStore(_get.DbProvider.BadBlocksDb, initConfig.BadBlocksStored);
 
             IBlockTree blockTree = _set.BlockTree = new BlockTree(
                 blockStore,
                 headerStore,
                 _get.DbProvider.BlockInfosDb,
                 _get.DbProvider.MetadataDb,
+                badBlockStore,
                 chainLevelInfoRepository,
                 _get.SpecProvider,
                 bloomStorage,
@@ -101,6 +103,11 @@ namespace Nethermind.Init.Steps
                 receiptConfig.MaxBlockDepth);
 
             _set.LogFinder = logFinder;
+
+            if (initConfig.ExitOnBlockNumber != null)
+            {
+                new ExitOnBlockNumberHandler(blockTree, _get.ProcessExit!, initConfig.ExitOnBlockNumber.Value, _get.LogManager);
+            }
 
             return Task.CompletedTask;
         }

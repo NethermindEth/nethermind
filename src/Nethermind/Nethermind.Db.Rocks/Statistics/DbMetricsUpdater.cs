@@ -98,7 +98,7 @@ public partial class DbMetricsUpdater
     /// Example line:
     ///   L0      2/0    1.77 MB   0.5      0.0     0.0      0.0       0.4      0.4       0.0   1.0      0.0     44.6      9.83              0.00       386    0.025       0      0
     /// </summary>
-    private List<(string Name, long Value)> ExtractStatsPerLevel(string compactionStatsDump)
+    private static List<(string Name, long Value)> ExtractStatsPerLevel(string compactionStatsDump)
     {
         var stats = new List<(string Name, long Value)>(5);
 

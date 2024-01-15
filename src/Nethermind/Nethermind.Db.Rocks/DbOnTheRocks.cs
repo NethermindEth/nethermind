@@ -6,7 +6,6 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.IO.Abstractions;
-using System.Net.Sockets;
 using System.Reflection;
 using System.Threading;
 using ConcurrentCollections;
@@ -55,7 +54,7 @@ public class DbOnTheRocks : IDb, ITunableDb
 
     protected IntPtr? _cache = null;
 
-    private readonly RocksDbSettings _settings;
+    private readonly DbSettings _settings;
 
     protected readonly PerTableDbConfig _perTableDbConfig;
 
@@ -75,7 +74,7 @@ public class DbOnTheRocks : IDb, ITunableDb
 
     public DbOnTheRocks(
         string basePath,
-        RocksDbSettings rocksDbSettings,
+        DbSettings dbSettings,
         IDbConfig dbConfig,
         ILogManager logManager,
         IList<string>? columnFamilies = null,
@@ -84,12 +83,12 @@ public class DbOnTheRocks : IDb, ITunableDb
         IntPtr? sharedCache = null)
     {
         _logger = logManager.GetClassLogger();
-        _settings = rocksDbSettings;
+        _settings = dbSettings;
         Name = _settings.DbName;
         _fileSystem = fileSystem ?? new FileSystem();
         _rocksDbNative = rocksDbNative ?? RocksDbSharp.Native.Instance;
         _perTableDbConfig = new PerTableDbConfig(dbConfig, _settings);
-        _db = Init(basePath, rocksDbSettings.DbPath, dbConfig, logManager, columnFamilies, rocksDbSettings.DeleteOnStart, sharedCache);
+        _db = Init(basePath, dbSettings.DbPath, dbConfig, logManager, columnFamilies, dbSettings.DeleteOnStart, sharedCache);
 
         if (_perTableDbConfig.AdditionalRocksDbOptions != null)
         {
@@ -459,7 +458,7 @@ public class DbOnTheRocks : IDb, ITunableDb
         }
     }
 
-    private WriteOptions CreateWriteOptions(PerTableDbConfig dbConfig)
+    private static WriteOptions CreateWriteOptions(PerTableDbConfig dbConfig)
     {
         WriteOptions options = new();
         // potential fix for corruption on hard process termination, may cause performance degradation
@@ -590,6 +589,7 @@ public class DbOnTheRocks : IDb, ITunableDb
         try
         {
             Span<byte> span = _db.GetSpan(key, cf);
+
             if (!span.IsNullOrEmpty())
             {
                 Interlocked.Increment(ref _allocatedSpan);
@@ -658,6 +658,17 @@ public class DbOnTheRocks : IDb, ITunableDb
         }
     }
 
+    public IEnumerable<byte[]> GetAllKeys(bool ordered = false)
+    {
+        if (_isDisposing)
+        {
+            throw new ObjectDisposedException($"Attempted to read form a disposed database {Name}");
+        }
+
+        Iterator iterator = CreateIterator(ordered);
+        return GetAllKeysCore(iterator);
+    }
+
     public IEnumerable<byte[]> GetAllValues(bool ordered = false)
     {
         ObjectDisposedException.ThrowIf(_isDisposing, this);
@@ -683,6 +694,48 @@ public class DbOnTheRocks : IDb, ITunableDb
             while (iterator.Valid())
             {
                 yield return iterator.Value();
+                try
+                {
+                    iterator.Next();
+                }
+                catch (RocksDbSharpException e)
+                {
+                    CreateMarkerIfCorrupt(e);
+                    throw;
+                }
+            }
+        }
+        finally
+        {
+            try
+            {
+                iterator.Dispose();
+            }
+            catch (RocksDbSharpException e)
+            {
+                CreateMarkerIfCorrupt(e);
+                throw;
+            }
+        }
+    }
+
+    internal IEnumerable<byte[]> GetAllKeysCore(Iterator iterator)
+    {
+        try
+        {
+            try
+            {
+                iterator.SeekToFirst();
+            }
+            catch (RocksDbSharpException e)
+            {
+                CreateMarkerIfCorrupt(e);
+                throw;
+            }
+
+            while (iterator.Valid())
+            {
+                yield return iterator.Key();
                 try
                 {
                     iterator.Next();
@@ -838,6 +891,7 @@ public class DbOnTheRocks : IDb, ITunableDb
             try
             {
                 _dbOnTheRocks._db.Write(_rocksBatch, _dbOnTheRocks.WriteFlagsToWriteOptions(_writeFlags));
+
                 _dbOnTheRocks._currentBatches.TryRemove(this);
                 ReturnWriteBatch(_rocksBatch);
             }
@@ -1156,7 +1210,7 @@ public class DbOnTheRocks : IDb, ITunableDb
     ///  This caps the maximum allowed number of l0 files, which is also the read response time amplification.
     /// </param>
     /// <returns></returns>
-    private IDictionary<string, string> GetHeavyWriteOptions(ulong l0FileNumTarget)
+    private static IDictionary<string, string> GetHeavyWriteOptions(ulong l0FileNumTarget)
     {
         // Make buffer (probably) smaller so that it does not take too much memory to have many of them.
         // More buffer means more parallel flush, but each read have to go through all buffer one by one much like l0
@@ -1190,7 +1244,7 @@ public class DbOnTheRocks : IDb, ITunableDb
         };
     }
 
-    private IDictionary<string, string> GetDisableCompactionOptions()
+    private static IDictionary<string, string> GetDisableCompactionOptions()
     {
         IDictionary<string, string> heavyWriteOption = GetHeavyWriteOptions(2048);
 
@@ -1205,7 +1259,7 @@ public class DbOnTheRocks : IDb, ITunableDb
     }
 
 
-    private IDictionary<string, string> GetBlobFilesOptions()
+    private static IDictionary<string, string> GetBlobFilesOptions()
     {
         // Enable blob files, see: https://rocksdb.org/blog/2021/05/26/integrated-blob-db.html
         // This is very useful for blocks, as it almost eliminate 95% of the compaction as the main db no longer

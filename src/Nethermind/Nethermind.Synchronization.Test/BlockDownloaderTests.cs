@@ -1329,7 +1329,7 @@ namespace Nethermind.Synchronization.Test
 
                     _headers[blockHashes[i]].ReceiptsRoot = flags.HasFlag(Response.IncorrectReceiptRoot)
                         ? Keccak.EmptyTreeHash
-                        : new ReceiptTrie(MainnetSpecProvider.Instance.GetSpec((ForkActivation)_headers[blockHashes[i]].Number), receipts[i]).RootHash;
+                        : ReceiptTrie.CalculateRoot(MainnetSpecProvider.Instance.GetSpec((ForkActivation)_headers[blockHashes[i]].Number), receipts[i]);
                 }
 
                 ReceiptsMessage message = new(receipts);

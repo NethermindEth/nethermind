@@ -124,7 +124,7 @@ namespace Nethermind.Consensus.Processing
                     decimal bps = chunkMicroseconds == 0 ? -1 : chunkBlocks / chunkMicroseconds * 1000 * 1000;
                     decimal chunkMs = (chunkMicroseconds == 0 ? -1 : chunkMicroseconds / 1000);
                     decimal runMs = (runMicroseconds == 0 ? -1 : runMicroseconds / 1000);
-                    string blockGas = Evm.Metrics.BlockMinGasPrice != decimal.MaxValue ? $" Gas gwei: {Evm.Metrics.BlockMinGasPrice:N2} .. {whiteText}{Math.Max(Evm.Metrics.BlockMinGasPrice, Evm.Metrics.BlockEstMedianGasPrice):N2}{resetColor} ({Evm.Metrics.BlockAveGasPrice:N2}) .. {Evm.Metrics.BlockMaxGasPrice:N2}" : "";
+                    string blockGas = Evm.Metrics.BlockMinGasPrice != float.MaxValue ? $" Gas gwei: {Evm.Metrics.BlockMinGasPrice:N2} .. {whiteText}{Math.Max(Evm.Metrics.BlockMinGasPrice, Evm.Metrics.BlockEstMedianGasPrice):N2}{resetColor} ({Evm.Metrics.BlockAveGasPrice:N2}) .. {Evm.Metrics.BlockMaxGasPrice:N2}" : "";
                     if (chunkBlocks > 1)
                     {
                         _logger.Info($"Processed   {block.Number - chunkBlocks + 1,9}...{block.Number,9} | {chunkMs,9:N2} ms  |  slot    {runMs,7:N0} ms |{blockGas}");

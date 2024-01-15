@@ -82,7 +82,7 @@ public class HealingStateTree : StateTree
             byte[]? rlp = _recovery.Recover(rlpHash, request).GetAwaiter().GetResult();
             if (rlp is not null)
             {
-                TrieStore.AsKeyValueStore().Set(rlpHash.Bytes, rlp);
+                TrieStore.Set(rlpHash, rlp);
                 return true;
             }
         }

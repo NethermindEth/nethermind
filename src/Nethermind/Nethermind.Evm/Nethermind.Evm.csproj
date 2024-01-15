@@ -6,12 +6,12 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Nethermind.Core\Nethermind.Core.csproj" />
+    <ProjectReference Include="..\Nethermind.Crypto\Nethermind.Crypto.csproj" />
     <ProjectReference Include="..\Nethermind.Serialization.Rlp\Nethermind.Serialization.Rlp.csproj" />
+    <ProjectReference Include="..\Nethermind.Specs\Nethermind.Specs.csproj" />
     <ProjectReference Include="..\Nethermind.State\Nethermind.State.csproj" />
   </ItemGroup>
   <ItemGroup>
-    <PackageReference Include="FastEnum" />
-    <PackageReference Include="Microsoft.ClearScript.V8" />
     <PackageReference Include="Microsoft.ClearScript.V8.Native.linux-arm64" />
     <PackageReference Include="Microsoft.ClearScript.V8.Native.linux-x64" />
     <PackageReference Include="Microsoft.ClearScript.V8.Native.osx-arm64" />

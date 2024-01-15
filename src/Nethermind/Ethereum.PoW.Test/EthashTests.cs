@@ -85,7 +85,7 @@ namespace Ethereum.PoW.Test
             Assert.That(Bytes.AreEqual(test.Result.Bytes, resultHalfTest), Is.True, "half test");
 
             // here we confirm that the whole mix hash calculation is fine
-            (byte[] mixHash, ValueHash256 result, bool success) = ethash.Hashimoto((ulong)test.FullSize, cache, headerHash, blockHeader.MixHash, test.Nonce);
+            (byte[] mixHash, ValueHash256 result, bool success) = Ethash.Hashimoto((ulong)test.FullSize, cache, headerHash, blockHeader.MixHash, test.Nonce);
             Assert.That(Bytes.AreEqual(mixHash, test.MixHash.Bytes), Is.True, "mix hash");
             Assert.That(Bytes.AreEqual(result.Bytes, test.Result.Bytes), Is.True, "result");
 

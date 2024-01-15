@@ -338,7 +338,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
             return tracer.BuildResult();
         }
 
-        private ResultWrapper<TResult> GetStateFailureResult<TResult>(BlockHeader header) =>
+        private static ResultWrapper<TResult> GetStateFailureResult<TResult>(BlockHeader header) =>
         ResultWrapper<TResult>.Fail($"No state available for block {header.ToString(BlockHeader.Format.FullHashAndNumber)}", ErrorCodes.ResourceUnavailable);
     }
 }

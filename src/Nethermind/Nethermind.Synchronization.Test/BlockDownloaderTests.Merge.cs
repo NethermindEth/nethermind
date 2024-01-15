@@ -20,6 +20,7 @@ using Nethermind.Merge.Plugin;
 using Nethermind.Merge.Plugin.Synchronization;
 using Nethermind.Merge.Plugin.Test;
 using Nethermind.Specs;
+using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization.Blocks;
@@ -456,6 +457,7 @@ public partial class BlockDownloaderTests
             MetadataDb,
             BlockTree,
             SpecProvider,
+            new ChainSpec(),
             LimboLogs.Instance);
 
         protected override IBetterPeerStrategy BetterPeerStrategy => _betterPeerStrategy ??=

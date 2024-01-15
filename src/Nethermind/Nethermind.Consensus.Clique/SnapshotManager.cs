@@ -368,7 +368,7 @@ namespace Nethermind.Consensus.Clique
             return true;
         }
 
-        private bool Uncast(Snapshot snapshot, Address address, bool authorize)
+        private static bool Uncast(Snapshot snapshot, Address address, bool authorize)
         {
             // If there's no tally, it's a dangling vote, just drop
             if (!snapshot.Tally.TryGetValue(address, out Tally? value)) return true;
