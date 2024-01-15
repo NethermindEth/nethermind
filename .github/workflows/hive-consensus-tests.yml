@@ -51,8 +51,7 @@ jobs:
           ref="refs/heads/$ref"
         fi
 
-        if 
-        [[ "$ref" == "refs/heads/master" ]]; then
+        if [[ "$ref" == "refs/heads/master" || "$ref" == "release/" ]]; then
           echo "skip_docker_build=true" >> $GITHUB_OUTPUT
         else
           echo "skip_docker_build=false" >> $GITHUB_OUTPUT
