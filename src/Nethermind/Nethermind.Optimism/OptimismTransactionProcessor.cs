@@ -31,20 +31,19 @@ public class OptimismTransactionProcessor : TransactionProcessor
 
     private UInt256? _currentTxL1Cost;
 
-    protected override void Execute(Transaction tx, BlockExecutionContext blCtx, ITxTracer tracer, ExecutionOptions opts)
+    protected override void Execute(Transaction tx, in BlockExecutionContext blCtx, ITxTracer tracer, ExecutionOptions opts)
     {
+        IReleaseSpec spec = SpecProvider.GetSpec(blCtx.Header);
         _currentTxL1Cost = null;
         if (tx.IsDeposit())
         {
-            IReleaseSpec spec = SpecProvider.GetSpec(blCtx.Header);
-
             WorldState.AddToBalanceAndCreateIfNotExists(tx.SenderAddress!, tx.Mint, spec);
 
             if (opts.HasFlag(ExecutionOptions.Commit) || !spec.IsEip658Enabled)
                 WorldState.Commit(spec);
         }
 
-        base.Execute(tx, blCtx, tracer, opts);
+        base.Execute(tx, in blCtx, tracer, opts);
     }
 
     protected override bool ValidateStatic(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer, ExecutionOptions opts,

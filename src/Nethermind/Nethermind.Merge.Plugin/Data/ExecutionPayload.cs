@@ -3,17 +3,14 @@
 
 using System;
 using System.Collections.Generic;
-using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.Merge.Plugin.Handlers;
-using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Proofs;
-using System.Text.Json;
 using System.Text.Json.Serialization;
 
 namespace Nethermind.Merge.Plugin.Data;
@@ -100,14 +97,14 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams
     /// <see href="https://eips.ethereum.org/EIPS/eip-4844">EIP-4844</see>.
     /// </summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    public ulong? BlobGasUsed { get; set; }
+    public virtual ulong? BlobGasUsed { get; set; }
 
     /// <summary>
     /// Gets or sets <see cref="Block.ExcessBlobGas"/> as defined in
     /// <see href="https://eips.ethereum.org/EIPS/eip-4844">EIP-4844</see>.
     /// </summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    public ulong? ExcessBlobGas { get; set; }
+    public virtual ulong? ExcessBlobGas { get; set; }
 
     /// <summary>
     /// Gets or sets <see cref="Block.ParentBeaconBlockRoot"/> as defined in
@@ -148,7 +145,7 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams
                 Author = FeeRecipient,
                 IsPostMerge = true,
                 TotalDifficulty = totalDifficulty,
-                TxRoot = new TxTrie(transactions).RootHash,
+                TxRoot = TxTrie.CalculateRoot(transactions),
                 WithdrawalsRoot = Withdrawals is null ? null : new WithdrawalTrie(Withdrawals).RootHash,
             };
 

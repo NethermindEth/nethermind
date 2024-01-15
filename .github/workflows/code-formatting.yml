@@ -14,6 +14,6 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
       - name: Set up .NET
-        uses: actions/setup-dotnet@v3
+        uses: actions/setup-dotnet@v4
       - name: Format
         run: dotnet format whitespace src/Nethermind/ --folder --verify-no-changes

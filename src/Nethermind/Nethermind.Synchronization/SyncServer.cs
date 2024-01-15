@@ -277,7 +277,7 @@ namespace Nethermind.Synchronization
 
             Task.Run(() =>
                 {
-                    double CalculateBroadcastRatio(int minPeers, int peerCount) => peerCount == 0 ? 0 : minPeers / (double)peerCount;
+                    static double CalculateBroadcastRatio(int minPeers, int peerCount) => peerCount == 0 ? 0 : minPeers / (double)peerCount;
 
                     int peerCount = _pool.PeerCount - (nodeWhoSentTheBlock is null ? 0 : 1);
                     int minPeers = (int)Math.Ceiling(Math.Sqrt(peerCount));
@@ -495,7 +495,7 @@ namespace Nethermind.Synchronization
                     long maxSection =
                         CanonicalHashTrie.GetSectionFromBlockNo(_blockTree.FindLatestHeader().Number -
                                                                 Sync.MaxReorgLength);
-                    long maxKnownSection = _cht.GetMaxSectionIndex();
+                    long maxKnownSection = CanonicalHashTrie.GetMaxSectionIndex();
 
                     for (long section = (maxKnownSection + 1); section <= maxSection; section++)
                     {

@@ -13,13 +13,15 @@ namespace Nethermind.Init.Cpu;
 
 internal static partial class SectionsHelper
 {
+    internal static readonly char[] separator = new[] { '\r', '\n' };
+
     public static Dictionary<string, string> ParseSection(string? content, char separator)
     {
         var values = new Dictionary<string, string>();
-        var list = content?.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
+        var list = content?.Split(separator, StringSplitOptions.RemoveEmptyEntries);
         if (list != null)
             foreach (string line in list)
-                if (line.IndexOf(separator) != -1)
+                if (line.Contains(separator))
                 {
                     var lineParts = line.Split(separator);
                     if (lineParts.Length >= 2)

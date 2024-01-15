@@ -22,9 +22,9 @@ namespace Nethermind.Synchronization.Blocks
 
         public int Current { get; private set; }
 
-        public bool IsMin => Current == Min;
+        public readonly bool IsMin => Current == Min;
 
-        public bool IsMax => Current == Max;
+        public readonly bool IsMax => Current == Max;
 
         public SyncBatchSize(ILogManager logManager)
         {

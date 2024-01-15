@@ -7,6 +7,7 @@ using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Config;
@@ -32,6 +33,7 @@ public class DebugBridge : IDebugBridge
     private readonly IReceiptsMigration _receiptsMigration;
     private readonly ISpecProvider _specProvider;
     private readonly ISyncModeSelector _syncModeSelector;
+    private readonly IBlockStore _badBlockStore;
     private readonly Dictionary<string, IDb> _dbMappings;
 
     public DebugBridge(
@@ -42,7 +44,8 @@ public class DebugBridge : IDebugBridge
         IReceiptStorage receiptStorage,
         IReceiptsMigration receiptsMigration,
         ISpecProvider specProvider,
-        ISyncModeSelector syncModeSelector)
+        ISyncModeSelector syncModeSelector,
+        IBlockStore badBlockStore)
     {
         _configProvider = configProvider ?? throw new ArgumentNullException(nameof(configProvider));
         _tracer = tracer ?? throw new ArgumentNullException(nameof(tracer));
@@ -51,6 +54,7 @@ public class DebugBridge : IDebugBridge
         _receiptsMigration = receiptsMigration ?? throw new ArgumentNullException(nameof(receiptsMigration));
         _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
         _syncModeSelector = syncModeSelector ?? throw new ArgumentNullException(nameof(syncModeSelector));
+        _badBlockStore = badBlockStore;
         dbProvider = dbProvider ?? throw new ArgumentNullException(nameof(dbProvider));
         IDb blockInfosDb = dbProvider.BlockInfosDb ?? throw new ArgumentNullException(nameof(dbProvider.BlockInfosDb));
         IDb blocksDb = dbProvider.BlocksDb ?? throw new ArgumentNullException(nameof(dbProvider.BlocksDb));
@@ -76,25 +80,15 @@ public class DebugBridge : IDebugBridge
         }
     }
 
-    public byte[] GetDbValue(string dbName, byte[] key)
-    {
-        return _dbMappings[dbName][key];
-    }
+    public IEnumerable<Block> GetBadBlocks() => _badBlockStore.GetAll();
 
-    public ChainLevelInfo GetLevelInfo(long number)
-    {
-        return _blockTree.FindLevel(number);
-    }
+    public byte[] GetDbValue(string dbName, byte[] key) => _dbMappings[dbName][key];
 
-    public int DeleteChainSlice(long startNumber, bool force = false)
-    {
-        return _blockTree.DeleteChainSlice(startNumber, force: force);
-    }
+    public ChainLevelInfo GetLevelInfo(long number) => _blockTree.FindLevel(number);
 
-    public void UpdateHeadBlock(Hash256 blockHash)
-    {
-        _blockTree.UpdateHeadBlock(blockHash);
-    }
+    public int DeleteChainSlice(long startNumber, bool force = false) => _blockTree.DeleteChainSlice(startNumber, force: force);
+
+    public void UpdateHeadBlock(Hash256 blockHash) => _blockTree.UpdateHeadBlock(blockHash);
 
     public Task<bool> MigrateReceipts(long blockNumber)
         => _receiptsMigration.Run(blockNumber + 1); // add 1 to make go from inclusive (better for API) to exclusive (better for internal)
@@ -108,9 +102,8 @@ public class DebugBridge : IDebugBridge
         }
 
         Block block = searchResult.Object;
-        ReceiptTrie receiptTrie = new(_specProvider.GetSpec(block.Header), txReceipts);
-        receiptTrie.UpdateRootHash();
-        if (block.ReceiptsRoot != receiptTrie.RootHash)
+        Hash256 receiptHash = ReceiptTrie.CalculateRoot(_specProvider.GetSpec(block.Header), txReceipts);
+        if (block.ReceiptsRoot != receiptHash)
         {
             throw new InvalidDataException("Receipts root mismatch");
         }
@@ -118,56 +111,76 @@ public class DebugBridge : IDebugBridge
         _receiptStorage.Insert(block, txReceipts);
     }
 
-    public GethLikeTxTrace GetTransactionTrace(Hash256 transactionHash, CancellationToken cancellationToken, GethTraceOptions gethTraceOptions = null)
+    public GethLikeTxTrace GetTransactionTrace(Hash256 transactionHash, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null) =>
+        _tracer.Trace(transactionHash, gethTraceOptions ?? GethTraceOptions.Default, cancellationToken);
+    public TxReceipt[]? GetReceiptsForBlock(BlockParameter blockParam)
     {
-        return _tracer.Trace(transactionHash, gethTraceOptions ?? GethTraceOptions.Default, cancellationToken);
+        SearchResult<Block> searchResult = _blockTree.SearchForBlock(blockParam);
+        if (searchResult.IsError)
+        {
+            throw new InvalidDataException(searchResult.Error);
+        }
+
+        Block block = searchResult.Object;
+        return _receiptStorage.Get(block);
     }
 
-    public GethLikeTxTrace GetTransactionTrace(long blockNumber, int index, CancellationToken cancellationToken, GethTraceOptions gethTraceOptions = null)
+    public Transaction? GetTransactionFromHash(Hash256 txHash)
     {
-        return _tracer.Trace(blockNumber, index, gethTraceOptions ?? GethTraceOptions.Default, cancellationToken);
+        Hash256 blockHash = _receiptStorage.FindBlockHash(txHash);
+        SearchResult<Block> searchResult = _blockTree.SearchForBlock(new BlockParameter(blockHash));
+        if (searchResult.IsError)
+        {
+            throw new InvalidDataException(searchResult.Error);
+        }
+        Block block = searchResult.Object;
+        TxReceipt txReceipt = _receiptStorage.Get(block).ForTransaction(txHash);
+        return block?.Transactions[txReceipt.Index];
     }
 
-    public GethLikeTxTrace GetTransactionTrace(Hash256 blockHash, int index, CancellationToken cancellationToken, GethTraceOptions gethTraceOptions = null)
+    public GethLikeTxTrace GetTransactionTrace(long blockNumber, int index, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null) =>
+        _tracer.Trace(blockNumber, index, gethTraceOptions ?? GethTraceOptions.Default, cancellationToken);
+
+    public GethLikeTxTrace GetTransactionTrace(Hash256 blockHash, int index, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null) =>
+        _tracer.Trace(blockHash, index, gethTraceOptions ?? GethTraceOptions.Default, cancellationToken);
+
+    public GethLikeTxTrace GetTransactionTrace(Rlp blockRlp, Hash256 transactionHash, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null) =>
+        _tracer.Trace(blockRlp, transactionHash, gethTraceOptions ?? GethTraceOptions.Default, cancellationToken);
+
+    public GethLikeTxTrace? GetTransactionTrace(Transaction transaction, BlockParameter blockParameter, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null) =>
+        _tracer.Trace(blockParameter, transaction, gethTraceOptions ?? GethTraceOptions.Default, cancellationToken);
+
+    public IReadOnlyCollection<GethLikeTxTrace> GetBlockTrace(BlockParameter blockParameter, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null) =>
+        _tracer.TraceBlock(blockParameter, gethTraceOptions ?? GethTraceOptions.Default, cancellationToken);
+
+    public IReadOnlyCollection<GethLikeTxTrace> GetBlockTrace(Rlp blockRlp, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null) =>
+        _tracer.TraceBlock(blockRlp, gethTraceOptions ?? GethTraceOptions.Default, cancellationToken);
+
+    public byte[] GetBlockRlp(Hash256 blockHash) => _dbMappings[DbNames.Blocks].Get(blockHash);
+
+    public byte[]? GetBlockRlp(BlockParameter parameter)
     {
-        return _tracer.Trace(blockHash, index, gethTraceOptions ?? GethTraceOptions.Default, cancellationToken);
+        if (parameter.BlockHash is Hash256 hash)
+        {
+            return GetBlockRlp(hash);
+
+        }
+        if (parameter.BlockNumber is long num)
+        {
+            return GetBlockRlp(num);
+        }
+        return null;
     }
 
-    public GethLikeTxTrace GetTransactionTrace(Rlp blockRlp, Hash256 transactionHash, CancellationToken cancellationToken, GethTraceOptions gethTraceOptions = null)
-    {
-        return _tracer.Trace(blockRlp, transactionHash, gethTraceOptions ?? GethTraceOptions.Default, cancellationToken);
-    }
-
-    public GethLikeTxTrace? GetTransactionTrace(Transaction transaction, BlockParameter blockParameter, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null)
-    {
-        return _tracer.Trace(blockParameter, transaction, gethTraceOptions ?? GethTraceOptions.Default, cancellationToken);
-    }
-
-    public IReadOnlyCollection<GethLikeTxTrace> GetBlockTrace(BlockParameter blockParameter, CancellationToken cancellationToken, GethTraceOptions gethTraceOptions = null)
-    {
-        return _tracer.TraceBlock(blockParameter, gethTraceOptions ?? GethTraceOptions.Default, cancellationToken);
-    }
-
-    public IReadOnlyCollection<GethLikeTxTrace> GetBlockTrace(Rlp blockRlp, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null)
-    {
-        return _tracer.TraceBlock(blockRlp, gethTraceOptions ?? GethTraceOptions.Default, cancellationToken);
-    }
-
-    public byte[] GetBlockRlp(Hash256 blockHash)
-    {
-        return _dbMappings[DbNames.Blocks].Get(blockHash);
-    }
-
+    public Block? GetBlock(BlockParameter param)
+        => _blockTree.FindBlock(param);
     public byte[] GetBlockRlp(long number)
     {
         Hash256 hash = _blockTree.FindHash(number);
         return hash is null ? null : _dbMappings[DbNames.Blocks].Get(hash);
     }
 
-    public object GetConfigValue(string category, string name)
-    {
-        return _configProvider.GetRawValue(category, name);
-    }
+    public object GetConfigValue(string category, string name) => _configProvider.GetRawValue(category, name);
 
     public SyncReportSymmary GetCurrentSyncStage()
     {

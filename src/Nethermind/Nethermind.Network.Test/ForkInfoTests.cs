@@ -107,8 +107,10 @@ public class ForkInfoTests
     [TestCase(4_600_000L, 0ul, "0x757a1c47", 5_062_605ul, "Future Berlin block")]
     [TestCase(5_062_605L, 0ul, "0xB8C6299D", 1678832736ul, "First London block")]
     [TestCase(6_000_000, 0ul, "0xB8C6299D", 1678832736ul, "Future London block")]
-    [TestCase(6_000_001, 1678832736ul, "0xf9843abf", 0ul, "First Shanghai timestamp")]
-    [TestCase(6_000_001, 2678832736ul, "0xf9843abf", 0ul, "Future Shanghai timestamp")]
+    [TestCase(6_000_001, 1678832736ul, "0xf9843abf", 1705473120ul, "First Shanghai timestamp")]
+    [TestCase(6_000_001, 1705473119ul, "0xf9843abf", 1705473120ul, "Future Shanghai timestamp")]
+    [TestCase(6_000_002, 1705473120ul, "0x70cc14e2", 0ul, "First Cancun timestamp")]
+    [TestCase(6_000_002, 1905473119ul, "0x70cc14e2", 0ul, "Future Cancun timestamp")]
     public void Fork_id_and_hash_as_expected_on_goerli(long head, ulong headTimestamp, string forkHashHex, ulong next, string description)
     {
         Test(head, headTimestamp, KnownHashes.GoerliGenesis, forkHashHex, next, description, GoerliSpecProvider.Instance, "goerli.json");
@@ -157,8 +159,9 @@ public class ForkInfoTests
     }
 
     [TestCase(0L, 0UL, "0x50d39d7b", ChiadoSpecProvider.ShanghaiTimestamp, "Chiado genesis")]
-    [TestCase(3945317, ChiadoSpecProvider.ShanghaiTimestamp, "0xa15a4252", 0ul, "First Shanghai timestamp")]
-    [TestCase(9945337, 9984930320ul, "0xa15a4252", 0ul, "Future Shanghai timestamp")]
+    [TestCase(3945317, ChiadoSpecProvider.ShanghaiTimestamp, "0xa15a4252", ChiadoSpecProvider.CancunTimestamp, "First Shanghai timestamp")]
+    [TestCase(4_000_000, ChiadoSpecProvider.CancunTimestamp, "0x5fbc16bc", 0ul, "First Cancun timestamp")]
+    [TestCase(5_000_000, 9984930320ul, "0x5fbc16bc", 0ul, "Future Cancun timestamp")]
     public void Fork_id_and_hash_as_expected_on_chiado(long head, ulong headTimestamp, string forkHashHex, ulong next, string description)
     {
         ChainSpecLoader loader = new ChainSpecLoader(new EthereumJsonSerializer());

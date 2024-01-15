@@ -272,7 +272,7 @@ namespace Nethermind.Network
                     if (remainingCandidates.Count == 0)
                     {
                         // Delay to prevent high CPU use. There is a shortcut path for newly discovered peer, so having
-                        // a lower delay probably wont do much.
+                        // a lower delay probably won't do much.
                         await Task.Delay(TimeSpan.FromSeconds(1));
                         continue;
                     }
@@ -297,14 +297,14 @@ namespace Nethermind.Network
 
                     if (_logger.IsTrace || (_logger.IsDebug && _logCounter % 5 == 0))
                     {
-                        List<KeyValuePair<PublicKey, Peer>>? activePeers = _peerPool.ActivePeers.ToList();
-                        int activePeersCount = activePeers.Count;
+                        KeyValuePair<PublicKey, Peer>[] activePeers = _peerPool.ActivePeers.ToArray();
+                        int activePeersCount = activePeers.Length;
                         if (activePeersCount != previousActivePeersCount)
                         {
                             string countersLog = string.Join(", ", _currentSelection.Counters.Select(x => $"{x.Key.ToString()}: {x.Value}"));
                             _logger.Debug($"RunPeerUpdate | {countersLog}, Incompatible: {GetIncompatibleDesc(_currentSelection.Incompatible)}, EligibleCandidates: {_currentSelection.Candidates.Count}, " +
                                           $"Tried: {_tryCount}, Rounds: {_connectionRounds}, Failed initial connect: {_failedInitialConnect}, Established initial connect: {_newActiveNodes}, " +
-                                          $"Current candidate peers: {_peerPool.PeerCount}, Current active peers: {activePeers.Count} " +
+                                          $"Current candidate peers: {_peerPool.PeerCount}, Current active peers: {activePeers.Length} " +
                                           $"[InOut: {activePeers.Count(x => x.Value.OutSession is not null && x.Value.InSession is not null)} | " +
                                           $"[Out: {activePeers.Count(x => x.Value.OutSession is not null)} | " +
                                           $"In: {activePeers.Count(x => x.Value.InSession is not null)}]");

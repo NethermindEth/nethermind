@@ -4,8 +4,8 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.InteropServices;
 using Nethermind.Core;
-using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
@@ -181,18 +181,19 @@ namespace Nethermind.State.Proofs
                     }
                     else
                     {
-                        if (!_storageNodeInfos.ContainsKey(childHash))
+                        ref StorageNodeInfo? value = ref CollectionsMarshal.GetValueRefOrAddDefault(_storageNodeInfos, childHash, out bool exists);
+                        if (!exists)
                         {
-                            _storageNodeInfos[childHash] = new StorageNodeInfo();
+                            value = new StorageNodeInfo();
                         }
 
                         if (!bumpedIndexes.Contains((byte)childIndex))
                         {
                             bumpedIndexes.Add((byte)childIndex);
-                            _storageNodeInfos[childHash].PathIndex = _pathTraversalIndex + 1;
+                            value.PathIndex = _pathTraversalIndex + 1;
                         }
 
-                        _storageNodeInfos[childHash].StorageIndices.Add(storageIndex);
+                        value.StorageIndices.Add(storageIndex);
                         _nodeToVisitFilter.Add(childHash);
                     }
                 }

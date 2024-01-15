@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Resettables;
 using Nethermind.Core.Specs;
@@ -25,6 +26,7 @@ namespace Nethermind.State
         private const int StartCapacity = Resettable.StartCapacity;
         private readonly ResettableDictionary<Address, Stack<int>> _intraBlockCache = new();
         private readonly ResettableHashSet<Address> _committedThisRound = new();
+        private readonly HashSet<Address> _nullAccountReads = new();
         // Only guarding against hot duplicates so filter doesn't need to be too big
         // Note:
         // False negatives are fine as they will just result in a overwrite set
@@ -180,7 +182,7 @@ namespace Nethermind.State
 
             if (account.CodeHash != codeHash)
             {
-                if (_logger.IsTrace) _logger.Trace($"  Update {address} C {account.CodeHash} -> {codeHash}");
+                if (_logger.IsDebug) _logger.Debug($"  Update {address} C {account.CodeHash} -> {codeHash}");
                 Account changedAccount = account.WithChangedCodeHash(codeHash);
                 PushUpdate(address, changedAccount);
             }
@@ -370,11 +372,12 @@ namespace Nethermind.State
             for (int i = 0; i < _currentPosition - snapshot; i++)
             {
                 Change change = _changes[_currentPosition - i];
-                if (_intraBlockCache[change!.Address].Count == 1)
+                Stack<int> stack = _intraBlockCache[change!.Address];
+                if (stack.Count == 1)
                 {
                     if (change.ChangeType == ChangeType.JustCache)
                     {
-                        int actualPosition = _intraBlockCache[change.Address].Pop();
+                        int actualPosition = stack.Pop();
                         if (actualPosition != _currentPosition - i)
                         {
                             throw new InvalidOperationException($"Expected actual position {actualPosition} to be equal to {_currentPosition} - {i}");
@@ -387,13 +390,13 @@ namespace Nethermind.State
                 }
 
                 _changes[_currentPosition - i] = null; // TODO: temp, ???
-                int forChecking = _intraBlockCache[change.Address].Pop();
+                int forChecking = stack.Pop();
                 if (forChecking != _currentPosition - i)
                 {
                     throw new InvalidOperationException($"Expected checked value {forChecking} to be equal to {_currentPosition} - {i}");
                 }
 
-                if (_intraBlockCache[change.Address].Count == 0)
+                if (stack.Count == 0)
                 {
                     _intraBlockCache.Remove(change.Address);
                 }
@@ -506,11 +509,12 @@ namespace Nethermind.State
                 // because it was not committed yet it means that the just cache is the only state (so it was read only)
                 if (isTracing && change.ChangeType == ChangeType.JustCache)
                 {
-                    _readsForTracing.Add(change.Address);
+                    _nullAccountReads.Add(change.Address);
                     continue;
                 }
 
-                int forAssertion = _intraBlockCache[change.Address].Pop();
+                Stack<int> stack = _intraBlockCache[change.Address];
+                int forAssertion = stack.Pop();
                 if (forAssertion != _currentPosition - i)
                 {
                     throw new InvalidOperationException($"Expected checked value {forAssertion} to be equal to {_currentPosition} - {i}");
@@ -566,9 +570,9 @@ namespace Nethermind.State
                         {
                             if (_logger.IsTrace) _logger.Trace($"  Commit remove {change.Address}");
                             bool wasItCreatedNow = false;
-                            while (_intraBlockCache[change.Address].Count > 0)
+                            while (stack.Count > 0)
                             {
-                                int previousOne = _intraBlockCache[change.Address].Pop();
+                                int previousOne = stack.Pop();
                                 wasItCreatedNow |= _changes[previousOne].ChangeType == ChangeType.New;
                                 if (wasItCreatedNow)
                                 {
@@ -594,7 +598,7 @@ namespace Nethermind.State
 
             if (isTracing)
             {
-                foreach (Address nullRead in _readsForTracing)
+                foreach (Address nullRead in _nullAccountReads)
                 {
                     // // this may be enough, let us write tests
                     stateTracer.ReportAccountRead(nullRead);
@@ -603,7 +607,7 @@ namespace Nethermind.State
 
             Resettable<Change>.Reset(ref _changes, ref _capacity, ref _currentPosition, StartCapacity);
             _committedThisRound.Reset();
-            _readsForTracing.Clear();
+            _nullAccountReads.Clear();
             _intraBlockCache.Reset();
 
             if (isTracing)
@@ -684,10 +688,10 @@ namespace Nethermind.State
             _tree.Set(address, account);
         }
 
-        private readonly HashSet<Address> _readsForTracing = new();
-
         private Account? GetAndAddToCache(Address address)
         {
+            if (_nullAccountReads.Contains(address)) return null;
+
             Account? account = GetState(address);
             if (account is not null)
             {
@@ -696,7 +700,7 @@ namespace Nethermind.State
             else
             {
                 // just for tracing - potential perf hit, maybe a better solution?
-                _readsForTracing.Add(address);
+                _nullAccountReads.Add(address);
             }
 
             return account;
@@ -736,23 +740,23 @@ namespace Nethermind.State
 
         private void Push(ChangeType changeType, Address address, Account? touchedAccount)
         {
-            SetupCache(address);
+            Stack<int> stack = SetupCache(address);
             if (changeType == ChangeType.Touch
-                && _changes[_intraBlockCache[address].Peek()]!.ChangeType == ChangeType.Touch)
+                && _changes[stack.Peek()]!.ChangeType == ChangeType.Touch)
             {
                 return;
             }
 
             IncrementChangePosition();
-            _intraBlockCache[address].Push(_currentPosition);
+            stack.Push(_currentPosition);
             _changes[_currentPosition] = new Change(changeType, address, touchedAccount);
         }
 
         private void PushNew(Address address, Account account)
         {
-            SetupCache(address);
+            Stack<int> stack = SetupCache(address);
             IncrementChangePosition();
-            _intraBlockCache[address].Push(_currentPosition);
+            stack.Push(_currentPosition);
             _changes[_currentPosition] = new Change(ChangeType.New, address, account);
         }
 
@@ -761,12 +765,15 @@ namespace Nethermind.State
             Resettable<Change>.IncrementPosition(ref _changes, ref _capacity, ref _currentPosition);
         }
 
-        private void SetupCache(Address address)
+        private Stack<int> SetupCache(Address address)
         {
-            if (!_intraBlockCache.ContainsKey(address))
+            ref Stack<int>? value = ref _intraBlockCache.GetValueRefOrAddDefault(address, out bool exists);
+            if (!exists)
             {
-                _intraBlockCache[address] = new Stack<int>();
+                value = new Stack<int>();
             }
+
+            return value;
         }
 
         private enum ChangeType
@@ -797,15 +804,10 @@ namespace Nethermind.State
             if (_logger.IsTrace) _logger.Trace("Clearing state provider caches");
             _intraBlockCache.Reset();
             _committedThisRound.Reset();
-            _readsForTracing.Clear();
+            _nullAccountReads.Clear();
             _currentPosition = Resettable.EmptyPosition;
             Array.Clear(_changes, 0, _changes.Length);
             _needsStateRootUpdate = false;
-
-            if (_codeDb is IReadOnlyDb readOnlyDb)
-            {
-                readOnlyDb.ClearTempChanges();
-            }
         }
 
         public void CommitTree(long blockNumber)
@@ -818,12 +820,12 @@ namespace Nethermind.State
             _tree.Commit(blockNumber);
         }
 
-        public void CommitBranch()
+        public static void CommitBranch()
         {
             // placeholder for the three level Commit->CommitBlock->CommitBranch
         }
 
-        // used in EtheereumTests
+        // used in EthereumTests
         internal void SetNonce(Address address, in UInt256 nonce)
         {
             _needsStateRootUpdate = true;

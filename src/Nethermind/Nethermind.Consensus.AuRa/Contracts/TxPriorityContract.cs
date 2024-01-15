@@ -88,7 +88,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
             return (Address[])objects[0];
         }
 
-        private Destination DecodeDestination(LogEntry log, BlockHeader blockHeader) =>
+        private static Destination DecodeDestination(LogEntry log, BlockHeader blockHeader) =>
             new Destination(
                 new Address(log.Topics[1]),
                 log.Topics[2].Bytes.Slice(0, 4).ToArray(),

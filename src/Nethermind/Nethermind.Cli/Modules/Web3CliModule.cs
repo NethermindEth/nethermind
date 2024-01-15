@@ -24,6 +24,6 @@ namespace Nethermind.Cli.Modules
         public JsValue ToDecimal(string hex) => Engine.Execute(hex);
 
         [CliFunction("web3", "abi")]
-        public string Abi(string name) => new AbiSignature(name).Address.ToHexString();
+        public static string Abi(string name) => new AbiSignature(name).Address.ToHexString();
     }
 }

@@ -250,7 +250,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
             return response.Nodes;
         }
 
-        private PathGroup[] GetPathGroups(AccountsToRefreshRequest request)
+        private static PathGroup[] GetPathGroups(AccountsToRefreshRequest request)
         {
             PathGroup[] groups = new PathGroup[request.Paths.Length];
 

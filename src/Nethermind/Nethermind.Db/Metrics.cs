@@ -79,7 +79,7 @@ namespace Nethermind.Db
         public static int StateDbInPruningWrites;
 
         [CounterMetric]
-        [Description("Number of storge trie reads.")]
+        [Description("Number of storage trie reads.")]
         public static long StorageTreeReads { get; set; }
 
         [CounterMetric]
@@ -125,6 +125,14 @@ namespace Nethermind.Db
         [CounterMetric]
         [Description("Number of Metadata DB writes.")]
         public static long MetadataDbWrites { get; set; }
+
+        [CounterMetric]
+        [Description("Number of BadBlocks DB writes.")]
+        public static long BadBlocksDbWrites { get; set; }
+
+        [CounterMetric]
+        [Description("Number of BadBlocks DB reads.")]
+        public static long BadBlocksDbReads { get; set; }
 
         [CounterMetric]
         [Description("Number of BlobTransactions DB reads.")]

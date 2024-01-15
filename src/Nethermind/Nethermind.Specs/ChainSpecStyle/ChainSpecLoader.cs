@@ -152,15 +152,15 @@ public class ChainSpecLoader : IChainSpecLoader
             Eip5656TransitionTimestamp = chainSpecJson.Params.Eip5656TransitionTimestamp,
             Eip6780TransitionTimestamp = chainSpecJson.Params.Eip6780TransitionTimestamp,
             Eip4788TransitionTimestamp = chainSpecJson.Params.Eip4788TransitionTimestamp,
-            Eip4788ContractAddress = chainSpecJson.Params.Eip4788ContractAddress,
+            Eip4788ContractAddress = chainSpecJson.Params.Eip4788ContractAddress ?? Eip4788Constants.BeaconRootsAddress,
             TransactionPermissionContract = chainSpecJson.Params.TransactionPermissionContract,
             TransactionPermissionContractTransition = chainSpecJson.Params.TransactionPermissionContractTransition,
             ValidateChainIdTransition = chainSpecJson.Params.ValidateChainIdTransition,
             ValidateReceiptsTransition = chainSpecJson.Params.ValidateReceiptsTransition,
-            Eip1559ElasticityMultiplier = chainSpecJson.Params.Eip1559ElasticityMultiplier ?? Eip1559Constants.ElasticityMultiplier,
-            Eip1559BaseFeeInitialValue = chainSpecJson.Params.Eip1559BaseFeeInitialValue ?? Eip1559Constants.ForkBaseFee,
+            Eip1559ElasticityMultiplier = chainSpecJson.Params.Eip1559ElasticityMultiplier ?? Eip1559Constants.DefaultElasticityMultiplier,
+            Eip1559BaseFeeInitialValue = chainSpecJson.Params.Eip1559BaseFeeInitialValue ?? Eip1559Constants.DefaultForkBaseFee,
             Eip1559BaseFeeMaxChangeDenominator = chainSpecJson.Params.Eip1559BaseFeeMaxChangeDenominator ??
-                                                 Eip1559Constants.BaseFeeMaxChangeDenominator,
+                                                 Eip1559Constants.DefaultBaseFeeMaxChangeDenominator,
             Eip1559FeeCollector = chainSpecJson.Params.Eip1559FeeCollector,
             Eip1559FeeCollectorTransition = chainSpecJson.Params.Eip1559FeeCollectorTransition,
             Eip1559BaseFeeMinValueTransition = chainSpecJson.Params.Eip1559BaseFeeMinValueTransition,
@@ -179,10 +179,6 @@ public class ChainSpecLoader : IChainSpecLoader
                                                    ?? GetTransitionForExpectedPricing("alt_bn128_mul", "price.alt_bn128_const_operations.price", 6000)
                                                    ?? GetTransitionForExpectedPricing("alt_bn128_pairing", "price.alt_bn128_pairing.base", 45000);
         chainSpec.Parameters.Eip2565Transition ??= GetTransitionIfInnerPathExists("modexp", "price.modexp2565");
-
-        Eip1559Constants.ElasticityMultiplier = chainSpec.Parameters.Eip1559ElasticityMultiplier;
-        Eip1559Constants.ForkBaseFee = chainSpec.Parameters.Eip1559BaseFeeInitialValue;
-        Eip1559Constants.BaseFeeMaxChangeDenominator = chainSpec.Parameters.Eip1559BaseFeeMaxChangeDenominator;
 
         Eip4844Constants.OverrideIfAny(
             chainSpec.Parameters.Eip4844BlobGasPriceUpdateFraction,
@@ -347,8 +343,12 @@ public class ChainSpecLoader : IChainSpecLoader
             {
                 RegolithTimestamp = chainSpecJson.Engine.Optimism.RegolithTimestamp,
                 BedrockBlockNumber = chainSpecJson.Engine.Optimism.BedrockBlockNumber,
+                CanyonTimestamp = chainSpecJson.Engine.Optimism.CanyonTimestamp,
                 L1FeeRecipient = chainSpecJson.Engine.Optimism.L1FeeRecipient,
-                L1BlockAddress = chainSpecJson.Engine.Optimism.L1BlockAddress
+                L1BlockAddress = chainSpecJson.Engine.Optimism.L1BlockAddress,
+                CanyonBaseFeeChangeDenominator = chainSpecJson.Engine.Optimism.CanyonBaseFeeChangeDenominator,
+                Create2DeployerAddress = chainSpecJson.Engine.Optimism.Create2DeployerAddress,
+                Create2DeployerCode = chainSpecJson.Engine.Optimism.Create2DeployerCode
             };
         }
         else if (chainSpecJson.Engine?.NethDev is not null)

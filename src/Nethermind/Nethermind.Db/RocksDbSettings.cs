@@ -5,9 +5,9 @@ using System;
 
 namespace Nethermind.Db
 {
-    public class RocksDbSettings
+    public class DbSettings
     {
-        public RocksDbSettings(string name, string path)
+        public DbSettings(string name, string path)
         {
             DbName = name;
             DbPath = path;
@@ -27,15 +27,15 @@ namespace Nethermind.Db
         public bool DeleteOnStart { get; set; }
         public bool CanDeleteFolder { get; set; } = true;
 
-        public RocksDbSettings Clone(string name, string path)
+        public DbSettings Clone(string name, string path)
         {
-            RocksDbSettings settings = (RocksDbSettings)MemberwiseClone();
+            DbSettings settings = (DbSettings)MemberwiseClone();
             settings.DbName = name;
             settings.DbPath = path;
             return settings;
         }
 
-        public RocksDbSettings Clone() => (RocksDbSettings)MemberwiseClone();
+        public DbSettings Clone() => (DbSettings)MemberwiseClone();
 
         public override string ToString() => $"{DbName}:{DbPath}";
     }

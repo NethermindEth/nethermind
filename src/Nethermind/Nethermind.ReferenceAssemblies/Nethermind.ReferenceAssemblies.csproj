@@ -20,7 +20,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <Content Include="ref/**/*.dll" Pack="true" PackagePath="ref/$(TFM)">
+    <Content Include="ref/**/*.dll" Pack="true" PackagePath="ref/$(TargetFramework)">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
   </ItemGroup>

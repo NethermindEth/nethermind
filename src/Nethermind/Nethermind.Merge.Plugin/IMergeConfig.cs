@@ -47,21 +47,25 @@ public interface IMergeConfig : IConfig
     [ConfigItem(Description = "The garbage collection (GC) mode between Engine API calls.", DefaultValue = "Gen1")]
     public GcLevel SweepMemory { get; set; }
 
-    [ConfigItem(Description = "The memory compaction mode. When set to `Full`, compacts the large object heap (LOH) if `--Merge.SweepMemory` is set to `Gen2`.", DefaultValue = "Yes")]
+    [ConfigItem(Description = "The memory compaction mode. When set to `Full`, compacts the large object heap (LOH) if `SweepMemory` is set to `Gen2`.", DefaultValue = "Yes")]
     public GcCompaction CompactMemory { get; set; }
 
     [ConfigItem(Description = """
-            Request the garbage collector (GC) to release process memory back to the OS.
+            Request the garbage collector (GC) to release the process memory.
 
             Allowed values:
 
             - `-1` to disable
             - `0` to release every time
-            - A positive number to realise memory after that many Engine API calls
+            - A positive number to release memory after that many Engine API calls
+
 
             """, DefaultValue = "75")]
     public int CollectionsPerDecommit { get; set; }
 
-    [ConfigItem(Description = "The timeout, in seconds, for the `engine_newPayload*` methods.", DefaultValue = "7", HiddenFromDocs = true)]
+    [ConfigItem(Description = "The timeout, in seconds, for the `engine_newPayload` method.", DefaultValue = "7", HiddenFromDocs = true)]
     public int NewPayloadTimeout { get; }
+
+    [ConfigItem(Description = "[TECHNICAL] Simulate block production for every possible slot. Just for stress-testing purposes.", DefaultValue = "false", HiddenFromDocs = true)]
+    bool SimulateBlockProduction { get; set; }
 }

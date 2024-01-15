@@ -10,14 +10,22 @@ public interface ITxPoolConfig : IConfig
     [ConfigItem(DefaultValue = "5", Description = "The average percentage of transaction hashes from persistent broadcast sent to a peer together with hashes of the last added transactions.")]
     int PeerNotificationThreshold { get; set; }
 
+    [ConfigItem(DefaultValue = "70", Description = "The minimal percentage of the current base fee that must be surpassed by the max fee (`max_fee_per_gas`) for the transaction to be broadcasted.")]
+    int MinBaseFeeThreshold { get; set; }
+
     [ConfigItem(DefaultValue = "2048", Description = "The max number of transactions held in the mempool (the more transactions in the mempool, the more memory used).")]
     int Size { get; set; }
 
-    [ConfigItem(DefaultValue = "false", Description = "Whether to enable blob transactions.")]
-    bool BlobSupportEnabled { get; set; }
+    [ConfigItem(
+        Description = """
+                      Blobs support mode:
 
-    [ConfigItem(DefaultValue = "false", Description = "Whether to store blob transactions in the database.")]
-    bool PersistentBlobStorageEnabled { get; set; }
+                      - `Disabled`: No support for blob transactions
+                      - `InMemory`: Blob transactions stored only in memory
+                      - `Storage`: Blob transactions stored in db
+                      - `StorageWithReorgs`: Blob transactions stored in db with support for restoring reorganized blob transactions to blob pool
+                      """, DefaultValue = "Disabled")]
+    BlobsSupportMode BlobsSupport { get; set; }
 
     [ConfigItem(DefaultValue = "16384", Description = "The max number of full blob transactions stored in the database (increasing the number of transactions in the blob pool also results in higher memory usage). The default value uses max 13GB for 6 blobs where one blob is 2GB (16386 * 128KB).")]
     int PersistentBlobStorageSize { get; set; }

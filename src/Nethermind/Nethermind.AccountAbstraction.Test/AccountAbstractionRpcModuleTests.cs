@@ -61,7 +61,7 @@ public partial class AccountAbstractionRpcModuleTests
             AbiParameterConverter.RegisterFactory(new AbiTypeFactory(new AbiTuple<UserOperationAbi>()));
 
             var parser = new AbiDefinitionParser();
-            var json = parser.LoadContract(contractType);
+            var json = AbiDefinitionParser.LoadContract(contractType);
             return parser.Parse(json);
         }
 

@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using DotNetty.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
@@ -8,8 +9,18 @@ using Nethermind.State.Snap;
 
 namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
 {
-    public class StorageRangesMessageSerializer : IZeroMessageSerializer<StorageRangeMessage>
+    public sealed class StorageRangesMessageSerializer : IZeroMessageSerializer<StorageRangeMessage>
     {
+        private readonly Func<RlpStream, PathWithStorageSlot> _decodeSlot;
+        private readonly Func<RlpStream, PathWithStorageSlot[]> _decodeSlotArray;
+
+        public StorageRangesMessageSerializer()
+        {
+            // Capture closures once
+            _decodeSlot = DecodeSlot;
+            _decodeSlotArray = s => s.DecodeArray(_decodeSlot);
+        }
+
         public void Serialize(IByteBuffer byteBuffer, StorageRangeMessage message)
         {
             (int contentLength, int allSlotsLength, int[] accountSlotsLengths, int proofsLength) = CalculateLengths(message);
@@ -71,7 +82,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
             stream.ReadSequenceLength();
 
             message.RequestId = stream.DecodeLong();
-            message.Slots = stream.DecodeArray(s => s.DecodeArray(DecodeSlot));
+            message.Slots = stream.DecodeArray(_decodeSlotArray);
             message.Proofs = stream.DecodeArray(s => s.DecodeByteArray());
 
             return message;
@@ -88,7 +99,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
             return data;
         }
 
-        private (int contentLength, int allSlotsLength, int[] accountSlotsLengths, int proofsLength) CalculateLengths(StorageRangeMessage message)
+        private static (int contentLength, int allSlotsLength, int[] accountSlotsLengths, int proofsLength) CalculateLengths(StorageRangeMessage message)
         {
             int contentLength = Rlp.LengthOf(message.RequestId);
 

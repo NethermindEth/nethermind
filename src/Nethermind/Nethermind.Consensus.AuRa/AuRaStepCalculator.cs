@@ -106,7 +106,7 @@ namespace Nethermind.Consensus.AuRa
             }
         }
 
-        private IList<StepDurationInfo> CreateStepDurations(IDictionary<long, long> stepDurations)
+        private static IList<StepDurationInfo> CreateStepDurations(IDictionary<long, long> stepDurations)
         {
             StepDurationInfo[] result = new StepDurationInfo[stepDurations.Count];
             KeyValuePair<long, long> firstStep = stepDurations.First();

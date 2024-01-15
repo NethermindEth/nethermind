@@ -39,6 +39,8 @@ namespace Nethermind.Blockchain.Receipts
         private const int CacheSize = 64;
         private readonly LruCache<ValueHash256, TxReceipt[]> _receiptsCache = new(CacheSize, CacheSize, "receipts");
 
+        public event EventHandler<BlockReplacementEventArgs> ReceiptsInserted;
+
         public PersistentReceiptStorage(
             IColumnsDb<ReceiptsColumns> receiptsDb,
             ISpecProvider specProvider,
@@ -78,6 +80,8 @@ namespace Nethermind.Blockchain.Receipts
             {
                 RemoveBlockTx(e.PreviousBlock, e.Block);
             }
+            EnsureCanonical(e.Block);
+            ReceiptsInserted?.Invoke(this, e);
 
             // Dont block main loop
             Task.Run(() =>
@@ -233,7 +237,7 @@ namespace Nethermind.Blockchain.Receipts
 
             Func<IReceiptsRecovery.IRecoveryContext?> recoveryContextFactory = () => null;
 
-            if (_storageDecoder.IsCompactEncoding(receiptsData))
+            if (ReceiptArrayStorageDecoder.IsCompactEncoding(receiptsData))
             {
                 recoveryContextFactory = () =>
                 {
@@ -248,7 +252,7 @@ namespace Nethermind.Blockchain.Receipts
                 };
             }
 
-            IReceiptRefDecoder refDecoder = _storageDecoder.GetRefDecoder(receiptsData);
+            IReceiptRefDecoder refDecoder = ReceiptArrayStorageDecoder.GetRefDecoder(receiptsData);
 
             iterator = result ? new ReceiptsIterator(receiptsData, _blocksDb, recoveryContextFactory, refDecoder) : new ReceiptsIterator();
             return result;
