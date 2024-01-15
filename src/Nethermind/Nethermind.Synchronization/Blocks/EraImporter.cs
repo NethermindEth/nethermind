@@ -9,21 +9,15 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
-using Nethermind.Logging;
 using Nethermind.State.Proofs;
-using Nethermind.Core.Collections;
 using System;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Linq;
 using Nethermind.Era1;
-using System.Text;
-using Nethermind.Evm;
-using System.ComponentModel;
-using MathNet.Numerics.Distributions;
 
 namespace Nethermind.Synchronization;
-public class EraImport : IEraImport
+public class EraImporter : IEraImporter
 {
     private const int MergeBlock = 15537393;
     private readonly IFileSystem _fileSystem;
@@ -31,43 +25,33 @@ public class EraImport : IEraImport
     private readonly IBlockValidator _blockValidator;
     private readonly IReceiptStorage _receiptStorage;
     private readonly ISpecProvider _specProvider;
+    private readonly int _epochSize;
     private readonly string _networkName;
 
     public event EventHandler<ImportProgressChangedArgs> ImportProgressChanged;
 
-    public EraImport(
+    public EraImporter(
         IFileSystem fileSystem,
         IBlockTree blockTree,
         IBlockValidator blockValidator,
         IReceiptStorage receiptStorage,
         ISpecProvider specProvider,
-        string networkName)
+        string networkName,
+        int epochSize = EraWriter.MaxEra1Size)
     {
         _fileSystem = fileSystem ?? throw new ArgumentNullException(nameof(fileSystem));
         _blockTree = blockTree;
         _blockValidator = blockValidator;
         _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
         _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
+        this._epochSize = epochSize;
         if (string.IsNullOrWhiteSpace(networkName)) throw new ArgumentException("Cannot be null or whitespace.", nameof(specProvider));
         _networkName = networkName.Trim().ToLower();
     }
 
-    public Task ImportAsFullSync(string src, CancellationToken cancellation)
+    public Task ImportAsArchiveSync(string src, CancellationToken cancellation)
     {
-        return ImportInternal(src, _blockTree.Head.Number, true, true, true, cancellation);
-    }
-
-    public Task Import(
-        string src,
-        long startNumber,
-        bool insertBodies,
-        bool insertReceipts,
-        CancellationToken cancellation)
-    {
-        if (string.IsNullOrEmpty(src)) throw new ArgumentException("Cannot be null or empty.", nameof(src));
-        if (startNumber < 0) throw new ArgumentOutOfRangeException("Cannot be negative.", startNumber, nameof(startNumber));
-
-        return ImportInternal(src, startNumber, insertBodies, insertReceipts, false, cancellation);
+        return ImportInternal(src, _blockTree.Head?.Number + 1 ?? 0, true, false, true, cancellation);
     }
 
     private async Task ImportInternal(
@@ -78,11 +62,11 @@ public class EraImport : IEraImport
         bool processBlock,
         CancellationToken cancellation)
     {
-        var eraFiles = EraReader.GetAllEraFiles(src, _networkName).ToArray();
+        var eraFiles = EraReader.GetAllEraFiles(src, _networkName, _fileSystem).ToArray();
 
         EraStore eraStore = new(eraFiles, _fileSystem);
 
-        long startEpoch = startNumber / EraWriter.MaxEra1Size;
+        long startEpoch = startNumber / _epochSize;
 
         if (!eraStore.HasEpoch(startEpoch))
         {
@@ -96,13 +80,14 @@ public class EraImport : IEraImport
         long totalblocks = 0;
         int blocksProcessed = 0;
 
-        int increment = 1;
-        for (long i = startEpoch; eraStore.HasEpoch(i); i = i + increment)
+        for (long i = startEpoch; eraStore.HasEpoch(i); i++)
         {
             using EraReader eraReader = await eraStore.GetReader(i, cancellation);
 
             await foreach ((Block b, TxReceipt[] r, UInt256 td) in eraReader)
             {
+                cancellation.ThrowIfCancellationRequested();
+
                 if (b.IsGenesis)
                 {
                     continue;
@@ -112,7 +97,6 @@ public class EraImport : IEraImport
                 {
                     continue;
                 }
-
 
                 if (insertBodies)
                 {
@@ -131,8 +115,8 @@ public class EraImport : IEraImport
                 {
                     ValidateReceipts(b, r);
                 }
-
-                await SuggestBlock(b, r, processBlock, cancellation);
+                cancellation.ThrowIfCancellationRequested();
+                await SuggestBlock(b, r, processBlock);
 
                 blocksProcessed++;
                 txProcessed += b.Transactions.Length;
@@ -148,31 +132,7 @@ public class EraImport : IEraImport
         ImportProgressChanged?.Invoke(this, new ImportProgressChangedArgs(DateTime.Now.Subtract(startTime), blocksProcessed, txProcessed, totalblocks, epochProcessed, eraStore.EpochCount));
     }
 
-    private void InsertValidatedBlock(Block block, TxReceipt[] receipts, bool insertBodies, bool insertReceipts, CancellationToken cancellation)
-    {
-        AddBlockResult result = _blockTree.Insert(block.Header);
-
-        EnsureAddResult(block, result);
-
-        if (insertBodies)
-        {
-            result = _blockTree.Insert(block, BlockTreeInsertBlockOptions.SkipCanAcceptNewBlocks, bodiesWriteFlags: WriteFlags.DisableWAL);
-            EnsureAddResult(block, result);
-        }
-
-        if (insertReceipts)
-        {
-            _receiptStorage.Insert(block, receipts, ensureCanonical: true);
-        }
-    }
-
-    private static void EnsureAddResult(Block block, AddBlockResult result)
-    {
-        if (result != AddBlockResult.Added && result != AddBlockResult.AlreadyKnown)
-            throw new EraImportException($"Attempted to insert {block.ToString(Block.Format.Short)}, but received an unexpected result ({result}).");
-    }
-
-    private async Task SuggestBlock(Block block, TxReceipt[] receipts, bool processBlock,CancellationToken cancellation)
+    private async Task SuggestBlock(Block block, TxReceipt[] receipts, bool processBlock)
     {
         var options = processBlock ? BlockTreeSuggestOptions.ShouldProcess: BlockTreeSuggestOptions.None;
         var addResult = await _blockTree.SuggestBlockAsync(block, options);
@@ -187,7 +147,7 @@ public class EraImport : IEraImport
             case AddBlockResult.InvalidBlock:
                 throw new EraImportException("Invalid block in Era1 archive");
             case AddBlockResult.Added:
-                _receiptStorage.Insert(block, receipts);
+                if (!processBlock) _receiptStorage.Insert(block, receipts);
                 break;
             default:
                 throw new NotSupportedException($"Not supported value of {nameof(AddBlockResult)} = {addResult}");
@@ -203,12 +163,4 @@ public class EraImport : IEraImport
             throw new EraImportException($"Wrong receipts root in Era1 archive for block {block.ToString(Block.Format.Short)}.");
         }
     }
-
-    public Task<bool> VerifyEraFiles(string path)
-    {
-        var eraFiles = EraReader.GetAllEraFiles(path, "mainnet");
-
-        throw new NotImplementedException();
-    }
-
 }

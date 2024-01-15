@@ -1,30 +1,26 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Diagnostics;
-using System.Security.Cryptography;
+using System.IO.Abstractions.TestingHelpers;
 using FluentAssertions;
-using MathNet.Numerics.LinearAlgebra.Solvers;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus.Processing;
+using Nethermind.Consensus.Validators;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Crypto;
-using Nethermind.Era1;
 using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
-using Nethermind.Serialization.Rlp;
 using Nethermind.Specs.ChainSpecStyle;
+using Nethermind.Synchronization;
 using NSubstitute;
 using NUnit.Framework.Constraints;
-using Snappier;
 
 namespace Nethermind.Era1.Test;
-public class Era1IntegrationTests
+public class Era1ModuleTests
 {
     [Test]
     public async Task ExportAndImportTwoBlocksAndReceipts()
@@ -369,5 +365,37 @@ public class Era1IntegrationTests
                     Assert.That(r[y].Error, Is.EqualTo(expectedReceipts[y].Error));
             }
         }
+    }
+
+    [Test]
+    public async Task EraExportAndImport()
+    {
+        const int ChainLength = 10000;
+        var fileSystem = new MockFileSystem();
+        BlockTree exportTree = Build.A.BlockTree().OfChainLength(ChainLength).TestObject;
+        IReceiptStorage receiptStorage = Substitute.For<IReceiptStorage>();
+        ISpecProvider specProvider = Substitute.For<ISpecProvider>();
+        IBlockValidator blockValidator = Substitute.For<IBlockValidator>();
+        blockValidator.ValidateSuggestedBlock(Arg.Any<Block>()).Returns(true);
+        EraExporter exporter = new(fileSystem, exportTree, receiptStorage, specProvider, "abc");
+        await exporter.Export("test", 0, ChainLength - 1);
+
+        BlockTree importTree = Build.A.BlockTree()
+            .WithBlocks(exportTree.FindBlock(0, BlockTreeLookupOptions.None)!).TestObject;
+        int bestSuggestedNumber = 0;
+        importTree.NewBestSuggestedBlock += (sender, args) => bestSuggestedNumber++;
+        EraImporter importer = new(
+            fileSystem,
+            importTree,
+            blockValidator,
+            receiptStorage,
+            specProvider,
+            "abc");
+        await importer.ImportAsArchiveSync("test", CancellationToken.None);
+
+        Assert.That(importTree.BestSuggestedHeader, Is.Not.Null);
+        Assert.That(importTree.BestSuggestedHeader!.Hash, Is.EqualTo(exportTree.HeadHash));
+
+        Assert.That(bestSuggestedNumber, Is.EqualTo(ChainLength - 1));
     }
 }

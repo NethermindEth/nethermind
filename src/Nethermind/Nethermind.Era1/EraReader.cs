@@ -40,21 +40,18 @@ public class EraReader : IAsyncEnumerable<(Block, TxReceipt[], UInt256)>, IDispo
     }
     public static Task<EraReader> Create(string file, in CancellationToken token = default)
     {
-        return Create(file, null, token);
+        return Create(file, new FileSystem(), token);
     }
-    public static Task<EraReader> Create(string file, IByteBufferAllocator? allocator, in CancellationToken token = default)
+    public static Task<EraReader> Create(string file, IFileSystem fileSystem, in CancellationToken token = default)
     {
-        return Create(file, false, allocator, token);
+        return Create(file, fileSystem, false, null, token);
     }
-    public static Task<EraReader> Create(string file, bool descendingOrder, in CancellationToken token = default)
-    {
-        return Create(file, descendingOrder, null, token);
-    }
-    public static Task<EraReader> Create(string file, bool descendingOrder, IByteBufferAllocator? allocator = null, in CancellationToken token = default)
+    public static Task<EraReader> Create(string file, IFileSystem? fileSystem, bool descendingOrder = false, IByteBufferAllocator? allocator = null, in CancellationToken token = default)
     {
         if (string.IsNullOrEmpty(file)) throw new ArgumentException("Cannot be null or empty.", nameof(file));
-
-        return Create(File.OpenRead(file), descendingOrder, allocator, token);
+        if (fileSystem == null)
+            fileSystem = new FileSystem();
+        return Create(fileSystem.File.OpenRead(file), descendingOrder, allocator, token);
     }
     public static Task<EraReader> Create(Stream stream, CancellationToken token = default)
     {

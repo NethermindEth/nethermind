@@ -190,6 +190,8 @@ public class InitializeNetwork : IStep
             return;
         }
 
+        await CheckAndStartEraImport(_api, cancellationToken);
+
         await InitPeer().ContinueWith(initPeerTask =>
         {
             if (initPeerTask.IsFaulted)
@@ -270,7 +272,6 @@ public class InitializeNetwork : IStep
 
     private async Task CheckAndStartEraImport(IApiWithNetwork api, CancellationToken cancellation)
     {
-        //TODO remove?
         if (api.BlockTree is null)
             throw new StepDependencyException(nameof(_api.BlockTree));
         if (api.BlockValidator is null)
@@ -285,22 +286,12 @@ public class InitializeNetwork : IStep
         {
             return;
         }
-        //TODO some guard checks for directory
         if (!api.FileSystem.Directory.Exists(syncConfig.ImportDirectory))
         {
             _logger.Warn($"The directory given for import '{syncConfig.ImportDirectory}' does not exist.");
             return;
         }
 
-        var blockTree = _api.BlockTree!;
-
-        if (blockTree.Head == null || blockTree.Head.Number != 0)
-        {
-            _logger.Warn($"Era1 import is only supported beginning from genesis.");
-            return;
-        }
-
-        //TODO check best known number and compare with era files
         var networkName = BlockchainIds.GetBlockchainName(api.SpecProvider.NetworkId);
         _logger.Info($"Checking for unimported blocks '{syncConfig.ImportDirectory}'");
 
@@ -310,8 +301,8 @@ public class InitializeNetwork : IStep
             _logger.Warn($"No files for '{networkName}' import was found in '{syncConfig.ImportDirectory}'.");
             return;
         }
-
-        EraImport eraImport = new(
+        
+        EraImporter eraImport = new(
          api.FileSystem,
          api.BlockTree,
          api.BlockValidator,
@@ -323,7 +314,6 @@ public class InitializeNetwork : IStep
         {
             if (_syncConfig.FastSync)
             {
-                //Archive sync is not supported
                 return;
             }
             else
@@ -334,7 +324,7 @@ public class InitializeNetwork : IStep
                 };
                 //Import as a full archive
                 _logger.Info($"Starting full archive import from '{syncConfig.ImportDirectory}'");
-                await eraImport.ImportAsFullSync(syncConfig.ImportDirectory, cancellation);
+                await eraImport.ImportAsArchiveSync(syncConfig.ImportDirectory, cancellation);
             }
         }
         catch (Exception e) when (e is TaskCanceledException or OperationCanceledException)

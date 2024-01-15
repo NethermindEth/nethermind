@@ -32,7 +32,7 @@ public class EraExporterTests
     [TestCase(3, 1, 3)]
     [TestCase(16, 16, 1)]
     [TestCase(32, 16, 2)]
-    [TestCase(8192 * 2 + 1, 8192, 3)]
+    [TestCase(64 * 2 + 1, 64, 3)]
     public async Task Export_ChainHasDifferentLength_CorrectNumberOfFilesCreated(int chainlength, int size, int expectedNumberOfFiles)
     {
         var fileSystem = new MockFileSystem();
