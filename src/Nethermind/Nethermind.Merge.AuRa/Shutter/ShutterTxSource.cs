@@ -39,7 +39,7 @@ public class ShutterTxSource : ITxSource
     public ShutterTxSource(ILogFinder logFinder, IFilterStore filterStore)
         : base()
     {
-        IEnumerable<object> topics = new List<object>() {TransactionSubmmitedSig.Hash};
+        IEnumerable<object> topics = new List<object>() { TransactionSubmmitedSig.Hash };
         _logFinder = logFinder;
         _logFilter = filterStore.CreateLogFilter(BlockParameter.Earliest, BlockParameter.Latest, SequencerAddress.ToString(), topics);
     }
@@ -52,13 +52,13 @@ public class ShutterTxSource : ITxSource
 
         // get encrypted transactions from event logs
         IEnumerable<SequencedTransaction> encryptedTransactions = GetNextTransactions(eon, txPointer);
-        
+
         // todo: get decryption key from gossip layer and decrypt transactions
 
         return Enumerable.Empty<Transaction>();
     }
 
-    
+
     private IEnumerable<TransactionSubmittedEvent> GetEvents()
     {
         IEnumerable<IFilterLog> logs = _logFinder!.FindLogs(_logFilter!);
@@ -78,7 +78,7 @@ public class ShutterTxSource : ITxSource
         List<SequencedTransaction> txs = new List<SequencedTransaction>();
         UInt256 totalGas = 0;
 
-        foreach(TransactionSubmittedEvent e in events)
+        foreach (TransactionSubmittedEvent e in events)
         {
             if (totalGas + e.GasLimit > EncryptedGasLimit)
             {

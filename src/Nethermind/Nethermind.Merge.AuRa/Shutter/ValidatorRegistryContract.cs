@@ -51,7 +51,7 @@ public class ValidatorRegistryContract : CallableContract, IValidatorRegistryCon
 
     public Update GetUpdate(BlockHeader blockHeader, in UInt256 i)
     {
-        var res = (ValueTuple<byte[], byte[]>) Call(blockHeader, getUpdate, Address.Zero, [i])[0];
+        var res = (ValueTuple<byte[], byte[]>)Call(blockHeader, getUpdate, Address.Zero, [i])[0];
         Update update = new()
         {
             Message = res.Item1,
@@ -103,7 +103,7 @@ public class ValidatorRegistryContract : CallableContract, IValidatorRegistryCon
 
     private async ValueTask<AcceptTxResult?> Update(byte[] message, byte[] signature)
     {
-        Transaction transaction = GenerateTransaction<GeneratedTransaction>(update, _signer.Address, new[] {message, signature});
+        Transaction transaction = GenerateTransaction<GeneratedTransaction>(update, _signer.Address, new[] { message, signature });
         await _txSealer.Seal(transaction, TxHandlingOptions.AllowReplacingSignature);
         (Hash256 _, AcceptTxResult? res) = await _txSender.SendTransaction(transaction, TxHandlingOptions.PersistentBroadcast);
         return res;

@@ -136,7 +136,7 @@ public class TestBlockchain : IDisposable
         State.CreateAccount(TestItem.AddressE, (initialValues ?? InitialValue));
         State.CreateAccount(TestItem.AddressF, (initialValues ?? InitialValue));
 
-        foreach(Address addr in TestItem.Addresses)
+        foreach (Address addr in TestItem.Addresses)
         {
             State.CreateAccount(addr, (initialValues ?? InitialValue));
         }

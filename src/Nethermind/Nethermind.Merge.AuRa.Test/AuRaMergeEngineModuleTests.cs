@@ -192,7 +192,7 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
                 Signature signature = new(sigData);
                 UInt256 value = 123 + _nonce;
 
-                if (value == (UInt256) 130)
+                if (value == (UInt256)130)
                 {
                     // bad transaction (incorrect nonce)
                     _transaction = Build.A.Transaction
@@ -217,7 +217,7 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
 
             _lastParent = parent.Hash;
 
-            return new[] {_transaction!};
+            return new[] { _transaction! };
         }
     }
 

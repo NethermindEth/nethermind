@@ -28,12 +28,14 @@ class ValidatorRegistryContractTests
     private readonly ulong _validatorIndex = 99;
     private readonly ulong _nonce = 5;
     private readonly byte[] _encodedRegistrationMessage = [
+#pragma warning disable format
         ValidatorRegistryContract.validatorRegistryMessageVersion, // VALIDATOR_REGISTRY_MESSAGE_VERSION
         0, 0, 0, 0, 0, 0, 0, 100, // gnosis chain id = 100
         0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 190, 239, // validator registry address = 0xbeef
         0, 0, 0, 0, 0, 0, 0, 99, // validator index = 99
         0, 0, 0, 0, 0, 0, 0, 5, // nonce = 5
         1 // registration message
+#pragma warning restore format
     ];
     private readonly BlockHeader _blockHeader = Build.A.EmptyBlockHeader;
     private IReadOnlyTransactionProcessor _transactionProcessor;
@@ -58,10 +60,11 @@ class ValidatorRegistryContractTests
         byte[] getUpdateSig = getUpdateDef.GetHash().Bytes[..4].ToArray();
 
         // validator index = 2
-        _validatorContract.GetValidators(_blockHeader).Returns(new Address[] {Address.Zero, Address.Zero, _contractAddress, Address.Zero});
+        _validatorContract.GetValidators(_blockHeader).Returns(new Address[] { Address.Zero, Address.Zero, _contractAddress, Address.Zero });
 
         // fake execution of contract
-        _transactionProcessor.When(x => x.Execute(Arg.Any<Transaction>(), Arg.Any<Evm.BlockExecutionContext>(), Arg.Any<CallOutputTracer>())).Do(x => {
+        _transactionProcessor.When(x => x.Execute(Arg.Any<Transaction>(), Arg.Any<Evm.BlockExecutionContext>(), Arg.Any<CallOutputTracer>())).Do(x =>
+        {
             Transaction transaction = x.Arg<Transaction>();
             byte[] functionSig = transaction.Data!.Value[..4].ToArray();
             CallOutputTracer tracer = x.Arg<CallOutputTracer>();
@@ -75,7 +78,7 @@ class ValidatorRegistryContractTests
                 // encode update
                 byte[] message = new ValidatorRegistryContract.Message(_contractAddress, 0, 1000).ComputeRegistrationMessage();
                 Bls.PrivateKey sk;
-                sk.Bytes = [0x2c,0xd4,0xba,0x40,0x6b,0x52,0x24,0x59,0xd5,0x7a,0x0b,0xed,0x51,0xa3,0x97,0x43,0x5c,0x0b,0xb1,0x1d,0xd5,0xf3,0xca,0x11,0x52,0xb3,0x69,0x4b,0xb9,0x1d,0x7c,0x22];
+                sk.Bytes = [0x2c, 0xd4, 0xba, 0x40, 0x6b, 0x52, 0x24, 0x59, 0xd5, 0x7a, 0x0b, 0xed, 0x51, 0xa3, 0x97, 0x43, 0x5c, 0x0b, 0xb1, 0x1d, 0xd5, 0xf3, 0xca, 0x11, 0x52, 0xb3, 0x69, 0x4b, 0xb9, 0x1d, 0x7c, 0x22];
                 Bls.Signature sig = Bls.Sign(sk, message);
                 tracer.ReturnValue = AbiEncoder.Instance.Encode(getUpdateDef.GetReturnInfo(), [(message, sig.Bytes)]);
             }
@@ -97,7 +100,7 @@ class ValidatorRegistryContractTests
         byte[] encodedRegistrationMessage = new ValidatorRegistryContract.Message(_contractAddress, _validatorIndex, _nonce).ComputeRegistrationMessage();
         encodedRegistrationMessage.Should().Equal(_encodedRegistrationMessage);
     }
-    
+
     [Test]
     public void Can_decode_registration_message()
     {
