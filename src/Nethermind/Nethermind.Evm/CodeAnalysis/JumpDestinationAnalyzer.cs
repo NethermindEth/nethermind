@@ -4,10 +4,11 @@
 using System;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using System.Threading;
 
 namespace Nethermind.Evm.CodeAnalysis
 {
-    public sealed class JumpDestinationAnalyzer
+    public sealed class JumpDestinationAnalyzer : IThreadPoolWorkItem
     {
         private const int PUSH1 = 0x60;
         private const int PUSH32 = 0x7f;
@@ -23,6 +24,9 @@ namespace Nethermind.Evm.CodeAnalysis
             // Store the code refence as the JumpDest analysis is lazy
             // and not performed until first jump.
             MachineCode = code;
+
+            // Start generating the JumpDestinationBitmap in background.
+            ThreadPool.UnsafeQueueUserWorkItem(this, preferLocal: false);
         }
 
         public bool ValidateJump(int destination, bool isSubroutine)
@@ -130,6 +134,18 @@ namespace Nethermind.Evm.CodeAnalysis
             int vecIndex = pos >> BitShiftPerInt32;
             Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(bitvec), vecIndex)
                 |= 1 << pos;
+        }
+
+        void IThreadPoolWorkItem.Execute()
+        {
+            if (_jumpDestBitmap is null)
+            {
+                var jumpDestBitmap = CreateJumpDestinationBitmap(MachineCode);
+                // Atomically assign if still null. Aren't really any thread safety issues here,
+                // as will be same result. Just keep first one we created; as Evm will have started
+                // using it if already created and let this one be Gen0 GC'd.
+                Interlocked.CompareExchange(ref _jumpDestBitmap, jumpDestBitmap, null);
+            }
         }
     }
 }
