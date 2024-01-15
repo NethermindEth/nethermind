@@ -31,15 +31,19 @@ jobs:
     steps:
       - name: Verify if inputs are correctly applied
         run: |
-          if [ "${{ inputs.is_performance_check }}" == "true" ] && [ -z "${{ inputs.branch_to_compare }}" ]; then
+          if [ "$IS_PERFORMANCE_CHECK" == "true" ] && [ -z "$BRANCH_TO_COMPARE" ]; then
             echo "Error: 'branch_to_compare' must be provided when 'is_performance_check' is set to true."
             exit 1
           fi
           
-          if [ "${{ inputs.is_performance_check }}" == "false" ] && [ -z "${{ inputs.branch_to_compare }}" ] && [ -z "${{ inputs.compare_with }}" ]; then
+          if [ "$IS_PERFORMANCE_CHECK" == "false" ] && [ -z "$BRANCH_TO_COMPARE" ] && [ -z "$COMPARE_WITH" ]; then
             echo "Error: Either 'branch_to_compare' or 'compare_with' must be provided when 'is_performance_check' is set to false."
             exit 1
           fi
+        env:
+          IS_PERFORMANCE_CHECK: ${{ inputs.is_performance_check }}
+          BRANCH_TO_COMPARE: ${{ inputs.branch_to_compare }}
+          COMPARE_WITH: ${{ inputs.compare_with }}
 
   create_main_node:
     name: Create node from current branch
