@@ -76,7 +76,7 @@ jobs:
     uses: ./.github/workflows/run-a-single-node-from-branch.yml
     if: inputs.branch_to_compare != ''
     secrets: inherit
-    needs: [create_main_node, verify_correctness_of_setup]
+    needs: [verify_correctness_of_setup]
     with:
       additional_options: >-
         {

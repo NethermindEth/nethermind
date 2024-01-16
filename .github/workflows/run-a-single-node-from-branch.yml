@@ -133,7 +133,7 @@ jobs:
     - name: Checkout repository
       uses: actions/checkout@v4
       with:
-        ref: ${{ inputs.nethermind_repo_ref }}
+        ref: ${{ inputs.nethermind_repo_ref || github.ref }}
 
     - name: Prepare docker tag
       id: prepare_ref
@@ -193,7 +193,7 @@ jobs:
         ADDITIONAL_OPTIONS: ${{ inputs.additional_options }}
       with:
           workflow: publish-docker.yml
-          ref: "${{ github.ref }}"
+          ref: "${{ inputs.nethermind_repo_ref || github.ref }}"
           token: "${{ secrets.REPOSITORY_DISPATCH_TOKEN }}"
           inputs: '{
               "tag": "${{ env.CLEAN_REF }}",
@@ -211,7 +211,7 @@ jobs:
         TIMEOUT: '10'
         ORG_NAME: ${{ env.ORG_NAME }}
         REPO_NAME: ${{ env.REPO_NAME }}
-        REF: ${{ github.ref }}
+        REF: ${{ inputs.nethermind_repo_ref || github.ref }}
       run: |
         chmod +x scripts/wait-for-workflow-completed.sh
         ./scripts/wait-for-workflow-completed.sh
