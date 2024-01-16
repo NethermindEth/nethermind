@@ -220,10 +220,10 @@ jobs:
     runs-on: ubuntu-latest
     needs: [wait_for_node_to_sync, aggregate_rpcs]
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - name: Install flood
         run: pip install git+https://github.com/piwonskp/flood.git
-  
+        
       - name: Install WireGuard
         run: |
           sudo apt update
@@ -300,6 +300,14 @@ jobs:
         if: env.compare_to_other_branch == 'true'
         run: |
           if [ "${{ inputs.is_performance_check }}" == "true" ]; then
+
+            # Install Vegeta
+            wget https://github.com/tsenart/vegeta/releases/download/v12.11.1/vegeta_12.11.1_linux_amd64.tar.gz
+            tar -xzvf vegeta_12.11.1_linux_amd64.tar.gz
+            current_dir=$(pwd)
+            export PATH="$current_dir:$PATH"
+
+            # Prepare test files
             mapfile -t tests < <(flood ls | sed -n '/Single Load Tests/,/Multi Load Tests/{/Single Load Tests\|Multi Load Tests\|───/d; s/- //p}')
             
             for TEST in "${tests[@]}"; do
