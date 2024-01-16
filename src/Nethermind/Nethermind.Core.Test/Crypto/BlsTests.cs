@@ -108,6 +108,16 @@ namespace Nethermind.Core.Test.Crypto
             Assert.That((x / 2) * 2, Is.EqualTo(x));
         }
 
+        [Test]
+        public void Fp2_div()
+        {
+            var p = BlsCurve.G2.FromScalar(232323232);
+            BlsCurve.Fp2 x = new(p.X.Item2, p.X.Item1);
+            BlsCurve.Fp2 q = new(p.Y.Item2, p.Y.Item1);
+            Assert.That(x * BlsCurve.Fp2.Inv(x), Is.EqualTo(new BlsCurve.Fp2(0, 1)));
+            Assert.That((x / q) * q, Is.EqualTo(x));
+        }
+
         [TestCase(232323232u)]
         [TestCase(54935932u)]
         [TestCase(5738295764u)]

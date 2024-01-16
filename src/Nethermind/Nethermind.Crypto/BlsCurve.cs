@@ -191,52 +191,11 @@ namespace Nethermind.Crypto
                 {
                     throw new Exception("Cannot create G2 point from X, encoded values must be 48 bytes each.");
                 }
-
-                // y ^ 2 = sqrt(x ^ 3 + 4(1 + i)) = a + bi
-
-                Fp c0 = X0;
-                Fp c1 = X1;
-
-                Fp a = (c0 ^ 3) - (3 * c0 * (c1 ^ 2)) + 4;
-                Fp b = -(c1 ^ 3) + 3 * (c0 ^ 2) * c1 + 4;
-                (Fp, Fp) l = Fp.Sqrt((a ^ 2) + (b ^ 2));
-
-                // test all possible signs
-                for (int i = 0; i < 2; i++)
-                {
-                    Fp lCurrent = i == 0 ? l.Item1 : l.Item2;
-                    for (int j = 0; j < 2; j++)
-                    {
-                        (Fp, Fp) y0 = Fp.Sqrt(((-a) + lCurrent) / 2);
-                        (Fp, Fp) y1 = Fp.Sqrt((a + lCurrent) / 2);
-
-                        Fp y0Current = j == 0 ? y0.Item1 : y0.Item2;
-
-                        for (int k = 0; k < 2; k++)
-                        {
-                            Fp y1Current = k == 0 ? y1.Item1 : y1.Item2;
-
-                            if ((y0Current < y1Current) != sign)
-                            {
-                                continue;
-                            }
-
-                            if (2 * y0Current * y1Current != b)
-                            {
-                                continue;
-                            }
-
-                            if ((y0Current ^ 2)  - (y1Current ^ 2) != a)
-                            {
-                                continue;
-                            }
-
-                            return new G2(X0, X1, y0Current.ToBytes(), y1Current.ToBytes());
-                        }
-                    }
-                }
                 
-                throw new Exception("Could not twist invalid x coordinate.");
+                Fp2 x = new(X1, X0);
+                var y = Fp2.Sqrt((x ^ 3) + new Fp2(4, 4), sign);
+
+                return new G2(X0, X1, y.b.ToBytes(), y.a.ToBytes());
             }
 
             public override bool Equals(object obj) => Equals(obj as G1);
@@ -421,6 +380,120 @@ namespace Nethermind.Crypto
             public static Fp operator /(Fp x, Fp y)
             {
                 return x * Inv(y);
+            }
+        }
+
+        public class Fp2
+        {
+            // ai + b
+            public Fp a, b;
+            
+            public Fp2(Fp a, Fp b)
+            {
+                this.a = a;
+                this.b = b;
+            }
+
+            public static (Fp, Fp) Len(Fp2 x)
+            {
+                return Fp.Sqrt((x.a ^ 2) + (x.b ^ 2));
+            }
+
+            public static Fp2 operator -(Fp2 x)
+            {
+                return new(-x.a, -x.b);
+            }
+
+            public static Fp2 operator ^(Fp2 x, int exp)
+            {
+                Fp2 acc = new(0, 1);
+                for (int i = 0; i < exp; i++)
+                {
+                    acc *= x;
+                }
+                return acc;
+            }
+
+            public static Fp2 operator +(Fp2 x, Fp2 y)
+            {
+                return new(x.a + y.a, x.b + y.b);
+            }
+
+            public override bool Equals(object obj) => Equals(obj as Fp2);
+
+            public bool Equals(Fp2 p)
+            {
+                return (a == p.a) && (b == p.b);
+            }
+            public override int GetHashCode() => (a, b).GetHashCode();
+
+            public static bool operator ==(Fp2 x, Fp2 y)
+            {
+                return x.Equals(y);
+            }
+
+            public static bool operator !=(Fp2 x, Fp2 y) => !x.Equals(y);
+
+            public static Fp2 Inv(Fp2 c)
+            {
+                Fp lenSqr = (c.a ^ 2) + (c.b ^ 2);
+                return new((-c.a) / lenSqr, c.b / lenSqr);
+            }
+
+            public static Fp2 operator *(Fp2 x, Fp2 y)
+            {
+                return new((x.a * y.b) + (x.b * y.a), (x.b * y.b) - (x.a * y.a));
+            }
+
+            public static Fp2 operator -(Fp2 x, Fp2 y)
+            {
+                return x + (-y);
+            }
+
+            public static Fp2 operator /(Fp2 x, Fp2 y)
+            {
+                return x * Inv(y);
+            }
+
+            public static Fp2 Sqrt(Fp2 x, bool sign)
+            {
+                (Fp, Fp) l = Len(x);
+                // test all possible signs
+                for (int i = 0; i < 2; i++)
+                {
+                    Fp lCurrent = i == 0 ? l.Item1 : l.Item2;
+                    for (int j = 0; j < 2; j++)
+                    {
+                        // sqrt(x) = ai + b
+                        (Fp, Fp) b = Fp.Sqrt(((-x.b) + lCurrent) / 2);
+                        (Fp, Fp) a = Fp.Sqrt((x.b + lCurrent) / 2);
+
+                        Fp bCurrent = j == 0 ? b.Item1 : b.Item2;
+
+                        for (int k = 0; k < 2; k++)
+                        {
+                            Fp aCurrent = k == 0 ? a.Item1 : a.Item2;
+
+                            if ((bCurrent < aCurrent) != sign)
+                            {
+                                continue;
+                            }
+
+                            if (2 * aCurrent * bCurrent != x.a)
+                            {
+                                continue;
+                            }
+
+                            if ((bCurrent ^ 2)  - (aCurrent ^ 2) != x.b)
+                            {
+                                continue;
+                            }
+
+                            return new Fp2(aCurrent, bCurrent);
+                        }
+                    }
+                }
+                throw new Exception("Could not calculate sqrt of Fp2 point");
             }
         }
     }
