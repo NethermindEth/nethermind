@@ -91,6 +91,9 @@ namespace Nethermind.Serialization.Rlp
                 case TxType.Blob:
                     DecodeShardBlobPayloadWithoutSig(transaction, rlpStream, rlpBehaviors);
                     break;
+                case TxType.EofInitcodeTx:
+                    DecodeEofPayloadWithoutSig(transaction, rlpStream, rlpBehaviors);
+                    break;
                 case TxType.DepositTx:
                     TxDecoder<T>.DecodeDepositPayloadWithoutSig(transaction, rlpStream, rlpBehaviors);
                     break;
@@ -210,6 +213,20 @@ namespace Nethermind.Serialization.Rlp
             transaction.AccessList = _accessListDecoder.Decode(rlpStream, rlpBehaviors);
         }
 
+        private void DecodeEofPayloadWithoutSig(T transaction, RlpStream rlpStream, RlpBehaviors rlpBehaviors)
+        {
+            transaction.ChainId = rlpStream.DecodeULong();
+            transaction.Nonce = rlpStream.DecodeUInt256();
+            transaction.GasPrice = rlpStream.DecodeUInt256(); // gas premium
+            transaction.DecodedMaxFeePerGas = rlpStream.DecodeUInt256();
+            transaction.GasLimit = rlpStream.DecodeLong();
+            transaction.To = rlpStream.DecodeAddress();
+            transaction.Value = rlpStream.DecodeUInt256();
+            transaction.Data = rlpStream.DecodeByteArray();
+            transaction.AccessList = _accessListDecoder.Decode(rlpStream, rlpBehaviors);
+            transaction.Initcodes = rlpStream.DecodeByteArrays();
+        }
+
         private void DecodeShardBlobPayloadWithoutSig(T transaction, RlpStream rlpStream, RlpBehaviors rlpBehaviors)
         {
             transaction.ChainId = rlpStream.DecodeULong();
@@ -279,6 +296,20 @@ namespace Nethermind.Serialization.Rlp
             transaction.Data = decoderContext.DecodeByteArrayMemory();
             transaction.AccessList = _accessListDecoder.Decode(ref decoderContext, rlpBehaviors);
         }
+        private void DecodeEofPayloadWithoutSig(T transaction, ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors)
+        {
+            transaction.ChainId = decoderContext.DecodeULong();
+            transaction.Nonce = decoderContext.DecodeUInt256();
+            transaction.GasPrice = decoderContext.DecodeUInt256(); // gas premium
+            transaction.DecodedMaxFeePerGas = decoderContext.DecodeUInt256();
+            transaction.GasLimit = decoderContext.DecodeLong();
+            transaction.To = decoderContext.DecodeAddress();
+            transaction.Value = decoderContext.DecodeUInt256();
+            transaction.Data = decoderContext.DecodeByteArrayMemory();
+            transaction.AccessList = _accessListDecoder.Decode(ref decoderContext, rlpBehaviors);
+            transaction.Initcodes = decoderContext.DecodeByteArrays();
+        }
+
 
         private void DecodeShardBlobPayloadWithoutSig(T transaction, ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors)
         {
@@ -348,6 +379,20 @@ namespace Nethermind.Serialization.Rlp
             stream.Encode(item.Value);
             stream.Encode(item.Data);
             _accessListDecoder.Encode(stream, item.AccessList, rlpBehaviors);
+        }
+
+        private void EncodeEofPayloadWithoutPayload(T item, RlpStream stream, RlpBehaviors rlpBehaviors)
+        {
+            stream.Encode(item.ChainId ?? 0);
+            stream.Encode(item.Nonce);
+            stream.Encode(item.GasPrice); // gas premium
+            stream.Encode(item.DecodedMaxFeePerGas);
+            stream.Encode(item.GasLimit);
+            stream.Encode(item.To);
+            stream.Encode(item.Value);
+            stream.Encode(item.Data);
+            _accessListDecoder.Encode(stream, item.AccessList, rlpBehaviors);
+            stream.Encode(item.Initcodes);
         }
 
         private void EncodeShardBlobPayloadWithoutPayload(T item, RlpStream stream, RlpBehaviors rlpBehaviors)
@@ -452,6 +497,9 @@ namespace Nethermind.Serialization.Rlp
                     break;
                 case TxType.EIP1559:
                     DecodeEip1559PayloadWithoutSig(transaction, ref decoderContext, rlpBehaviors);
+                    break;
+                case TxType.EofInitcodeTx:
+                    DecodeEofPayloadWithoutSig(transaction, ref decoderContext, rlpBehaviors);
                     break;
                 case TxType.Blob:
                     DecodeShardBlobPayloadWithoutSig(transaction, ref decoderContext, rlpBehaviors);
@@ -653,6 +701,9 @@ namespace Nethermind.Serialization.Rlp
                 case TxType.Blob:
                     EncodeShardBlobPayloadWithoutPayload(item, stream, rlpBehaviors);
                     break;
+                case TxType.EofInitcodeTx:
+                    EncodeEofPayloadWithoutPayload(item, stream, rlpBehaviors);
+                    break;
                 case TxType.DepositTx:
                     TxDecoder<T>.EncodeDepositTxPayloadWithoutPayload(item, stream);
                     break;
@@ -746,6 +797,20 @@ namespace Nethermind.Serialization.Rlp
                    + _accessListDecoder.GetLength(item.AccessList, RlpBehaviors.None);
         }
 
+        private int GetEofContentLength(T item)
+        {
+            return Rlp.LengthOf(item.Nonce)
+                   + Rlp.LengthOf(item.GasPrice) // gas premium
+                   + Rlp.LengthOf(item.DecodedMaxFeePerGas)
+                   + Rlp.LengthOf(item.GasLimit)
+                   + Rlp.LengthOf(item.To)
+                   + Rlp.LengthOf(item.Value)
+                   + Rlp.LengthOf(item.Data)
+                   + Rlp.LengthOf(item.ChainId ?? 0)
+                   + _accessListDecoder.GetLength(item.AccessList, RlpBehaviors.None)
+                   + Rlp.LengthOf(item.Initcodes);
+        }
+
         private int GetShardBlobContentLength(T item)
         {
             return Rlp.LengthOf(item.Nonce)
@@ -800,6 +865,9 @@ namespace Nethermind.Serialization.Rlp
                     break;
                 case TxType.Blob:
                     contentLength = GetShardBlobContentLength(item);
+                    break;
+                case TxType.EofInitcodeTx:
+                    contentLength = GetEofContentLength(item);
                     break;
                 case TxType.DepositTx:
                     contentLength = TxDecoder<T>.GetDepositTxContentLength(item);

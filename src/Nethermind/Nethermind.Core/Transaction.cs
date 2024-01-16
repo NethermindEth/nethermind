@@ -45,10 +45,12 @@ namespace Nethermind.Core
         public bool SupportsAccessList => Type >= TxType.AccessList && Type != TxType.DepositTx;
         public bool Supports1559 => Type >= TxType.EIP1559 && Type != TxType.DepositTx;
         public bool SupportsBlobs => Type == TxType.Blob && Type != TxType.DepositTx;
+        public bool SupportsEofInitcode => Type == TxType.EofInitcodeTx && Type != TxType.DepositTx;
         public long GasLimit { get; set; }
         public Address? To { get; set; }
         public UInt256 Value { get; set; }
         public Memory<byte>? Data { get; set; }
+        public byte[][]? Initcodes { get; set; }
         public Address? SenderAddress { get; set; }
         public Signature? Signature { get; set; }
         public bool IsSigned => Signature is not null;
@@ -224,6 +226,16 @@ namespace Nethermind.Core
                 builder.AppendLine($"{indent}{nameof(BlobVersionedHashes)}: {BlobVersionedHashes?.Length}");
             }
 
+            if (SupportsEofInitcode)
+            {
+                builder.AppendLine($"{indent}{nameof(Initcodes)}: [");
+                foreach (var initcode in Initcodes!)
+                {
+                    builder.AppendLine($"{indent}{indent}{initcode.ToHexString()}");
+                }
+                builder.AppendLine($"]");
+            }
+
             return builder.ToString();
         }
 
@@ -261,6 +273,7 @@ namespace Nethermind.Core
                 obj.NetworkWrapper = default;
                 obj.IsServiceTransaction = default;
                 obj.PoolIndex = default;
+                obj.Initcodes = default;
                 obj._size = default;
 
                 return true;
