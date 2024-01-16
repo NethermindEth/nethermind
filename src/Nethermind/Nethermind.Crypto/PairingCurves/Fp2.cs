@@ -104,7 +104,7 @@ public class Fp2<T>(Fp<T> a, Fp<T> b, T baseField) where T : IBaseField
                         continue;
                     }
 
-                    if ((bCurrent ^ two)  - (aCurrent ^ two) != x.b)
+                    if ((bCurrent ^ two) - (aCurrent ^ two) != x.b)
                     {
                         continue;
                     }

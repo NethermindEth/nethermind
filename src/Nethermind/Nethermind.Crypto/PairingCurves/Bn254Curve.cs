@@ -46,7 +46,7 @@ public class Bn254Curve
     public class BaseField : IBaseField
     {
         public static readonly BaseField Instance = new();
-        private BaseField() {}
+        private BaseField() { }
 
         public BigInteger GetOrder()
         {
@@ -63,7 +63,7 @@ public class Bn254Curve
     {
         return new Fp<BaseField>(bytes, BaseField.Instance);
     }
-    
+
     public static Fp<BaseField> Fp(BigInteger x)
     {
         return new Fp<BaseField>(x, BaseField.Instance);

@@ -47,13 +47,13 @@ public class BlsCurve
     public class BaseField : IBaseField
     {
         public static readonly BaseField Instance = new();
-        private BaseField() {}
+        private BaseField() { }
 
         public BigInteger GetOrder()
         {
             return BaseFieldOrder;
         }
-        
+
         public int GetSize()
         {
             return 48;
@@ -64,7 +64,7 @@ public class BlsCurve
     {
         return new Fp<BaseField>(bytes, BaseField.Instance);
     }
-    
+
     public static Fp<BaseField> Fp(BigInteger x)
     {
         return new Fp<BaseField>(x, BaseField.Instance);
@@ -185,7 +185,7 @@ public class BlsCurve
             Y.CopyTo(output[80..]);
         }
 
-        
+
     }
 
     public class G2 : IEquatable<G2>
