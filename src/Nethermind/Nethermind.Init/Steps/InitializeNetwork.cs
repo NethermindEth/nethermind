@@ -303,7 +303,7 @@ public class InitializeNetwork : IStep
             _logger.Warn($"No files for '{networkName}' import was found in '{syncConfig.ImportDirectory}'.");
             return;
         }
-        
+
         EraImporter eraImport = new(
          api.FileSystem,
          api.BlockTree,

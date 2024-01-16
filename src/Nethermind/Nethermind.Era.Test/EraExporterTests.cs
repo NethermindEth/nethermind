@@ -25,7 +25,7 @@ public class EraExporterTests
         ISpecProvider specProvider = Substitute.For<ISpecProvider>();
         EraExporter sut = new(fileSystem, blockTree, receiptStorage, specProvider, "test");
 
-        Assert.That(()=> sut.Export("",0,0, size), Throws.TypeOf<ArgumentOutOfRangeException>());
+        Assert.That(() => sut.Export("", 0, 0, size), Throws.TypeOf<ArgumentOutOfRangeException>());
     }
 
     [TestCase(1, 1, 1)]
@@ -41,7 +41,7 @@ public class EraExporterTests
         ISpecProvider specProvider = Substitute.For<ISpecProvider>();
         EraExporter sut = new(fileSystem, blockTree, receiptStorage, specProvider, "abc");
 
-        await sut.Export("test", 0, chainlength - 1,size);
+        await sut.Export("test", 0, chainlength - 1, size);
 
         Assert.That(fileSystem.AllFiles.Count, Is.EqualTo(expectedNumberOfFiles));
     }
@@ -58,7 +58,7 @@ public class EraExporterTests
         ISpecProvider specProvider = Substitute.For<ISpecProvider>();
         EraExporter sut = new(fileSystem, blockTree, receiptStorage, specProvider, "abc");
 
-        Assert.That(()=> sut.Export("test", 0, to), Throws.TypeOf<EraException>());
+        Assert.That(() => sut.Export("test", 0, to), Throws.TypeOf<EraException>());
     }
 
     [Test]
@@ -79,7 +79,7 @@ public class EraExporterTests
     {
         EraExporter sut = new(Substitute.For<IFileSystem>(), Substitute.For<IBlockTree>(), Substitute.For<IReceiptStorage>(), Substitute.For<ISpecProvider>(), "abc");
 
-        Assert.That(() => sut.VerifyEraFiles(["abc", "abc"], [ [0x0] ]), Throws.TypeOf<ArgumentException>());
+        Assert.That(() => sut.VerifyEraFiles(["abc", "abc"], [[0x0]]), Throws.TypeOf<ArgumentException>());
     }
 
     [Test]

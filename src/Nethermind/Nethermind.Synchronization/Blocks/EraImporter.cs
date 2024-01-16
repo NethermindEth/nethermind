@@ -134,7 +134,7 @@ public class EraImporter : IEraImporter
 
     private async Task SuggestBlock(Block block, TxReceipt[] receipts, bool processBlock)
     {
-        var options = processBlock ? BlockTreeSuggestOptions.ShouldProcess: BlockTreeSuggestOptions.None;
+        var options = processBlock ? BlockTreeSuggestOptions.ShouldProcess : BlockTreeSuggestOptions.None;
         var addResult = await _blockTree.SuggestBlockAsync(block, options);
         switch (addResult)
         {

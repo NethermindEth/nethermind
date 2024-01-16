@@ -5,7 +5,7 @@ using System;
 
 namespace Nethermind.Blockchain;
 
-public class VerificationProgressArgs:EventArgs
+public class VerificationProgressArgs : EventArgs
 {
     public VerificationProgressArgs(long processed, long totalToProcess, TimeSpan elapsed)
     {

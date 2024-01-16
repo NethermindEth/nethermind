@@ -76,12 +76,12 @@ internal class E2Store : IDisposable
         {
             //TODO find a way to write directly to file, and still return the number of bytes written
             EnsureCompressedStream(bytes.Length);
-            
+
             using SnappyStream compressor = new(_compressedData!, CompressionMode.Compress, true);
-            
+
             await compressor!.WriteAsync(bytes, cancellation);
             await compressor.FlushAsync();
-            
+
             bytes = _compressedData!.ToArray();
         }
 

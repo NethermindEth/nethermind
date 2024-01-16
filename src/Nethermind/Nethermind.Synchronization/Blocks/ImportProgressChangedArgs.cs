@@ -6,7 +6,7 @@ using System;
 
 namespace Nethermind.Synchronization;
 
-public class ImportProgressChangedArgs:EventArgs
+public class ImportProgressChangedArgs : EventArgs
 {
     public ImportProgressChangedArgs(
         TimeSpan elapsed,

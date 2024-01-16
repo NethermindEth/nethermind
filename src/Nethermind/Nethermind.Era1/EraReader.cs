@@ -139,7 +139,7 @@ public class EraReader : IAsyncEnumerable<(Block, TxReceipt[], UInt256)>, IDispo
         if (network is null) throw new ArgumentNullException(nameof(network));
         if (fileSystem is null) throw new ArgumentNullException(nameof(fileSystem));
 
-        var entries = fileSystem.Directory.GetFiles(directoryPath, "*.era1", new EnumerationOptions() { RecurseSubdirectories=false, MatchCasing=MatchCasing.PlatformDefault });
+        var entries = fileSystem.Directory.GetFiles(directoryPath, "*.era1", new EnumerationOptions() { RecurseSubdirectories = false, MatchCasing = MatchCasing.PlatformDefault });
         if (!entries.Any())
             yield break;
 
@@ -191,7 +191,7 @@ public class EraReader : IAsyncEnumerable<(Block, TxReceipt[], UInt256)>, IDispo
     {
         if (_isDescendingOrder)
         {
-            if (_store.Metadata.Start  > _currentBlockNumber)
+            if (_store.Metadata.Start > _currentBlockNumber)
             {
                 //TODO test enumerate more than once
                 Reset(_isDescendingOrder);
@@ -207,7 +207,7 @@ public class EraReader : IAsyncEnumerable<(Block, TxReceipt[], UInt256)>, IDispo
                 return null;
             }
         }
-        
+
         EntryReadResult result = await ReadBlockAndReceipts(_currentBlockNumber, computeHeaderHash, cancellationToken);
         if (_isDescendingOrder)
             _currentBlockNumber--;
@@ -295,7 +295,7 @@ public class EraReader : IAsyncEnumerable<(Block, TxReceipt[], UInt256)>, IDispo
             _currentBlockNumber = _store.Metadata.Start;
         }
     }
-    [MethodImpl(MethodImplOptions. AggressiveInlining)]
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static void CheckType(Entry e, ushort expected)
     {
         if (e.Type != expected) throw new EraException($"Expected an entry of type {expected}, but got {e.Type}.");

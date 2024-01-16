@@ -14,7 +14,7 @@ using Nethermind.Core;
 using Nethermind.Era1;
 
 namespace Nethermind.Blockchain;
-public class EraStore: IEraStore
+public class EraStore : IEraStore
 {
     private readonly char[] _eraSeparator = ['-'];
     private readonly Dictionary<long, string> _epochs;
@@ -33,7 +33,7 @@ public class EraStore: IEraStore
             string[] parts = Path.GetFileName(file).Split(_eraSeparator);
             int epoch;
             if (parts.Length != 3 || !int.TryParse(parts[1], out epoch) || epoch < 0)
-                throw new ArgumentException($"Malformed Era1 file '{file}'.",nameof(eraFiles));
+                throw new ArgumentException($"Malformed Era1 file '{file}'.", nameof(eraFiles));
             _epochs[epoch] = file;
             if (epoch > BiggestEpoch)
                 BiggestEpoch = epoch;
@@ -43,7 +43,7 @@ public class EraStore: IEraStore
         _fileSystem = fileSystem;
     }
     public bool HasEpoch(long epoch) => _epochs.ContainsKey(epoch);
-    
+
     public Task<EraReader> GetReader(long epoch, CancellationToken cancellation = default)
     {
         GuardMissingEpoch(epoch);

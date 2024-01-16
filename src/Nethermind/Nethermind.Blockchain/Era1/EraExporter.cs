@@ -158,10 +158,10 @@ public class EraExporter : IEraExporter
             throw new ArgumentException("Must have at least one file.", nameof(eraFiles));
         if (eraFiles.Length != expectedAccumulators.Length)
             throw new ArgumentException("Must have an equal amount of files and accumulators.", nameof(eraFiles));
-        if (expectedAccumulators.Any(a=>a.Length != 32))
+        if (expectedAccumulators.Any(a => a.Length != 32))
             throw new ArgumentException("All accumulators must have a length of 32 bytes.", nameof(eraFiles));
 
-        DateTime startTime = DateTime.Now; 
+        DateTime startTime = DateTime.Now;
         DateTime lastProgress = DateTime.Now;
         for (int i = 0; i < eraFiles.Length; i++)
         {
