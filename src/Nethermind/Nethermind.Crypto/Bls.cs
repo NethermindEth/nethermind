@@ -10,6 +10,7 @@ using System.Security.Cryptography;
 using System.Text;
 using Nethermind.Core.Extensions;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Crypto.PairingCurves;
 
 namespace Nethermind.Crypto;
 
@@ -91,7 +92,7 @@ public class Bls
     internal static PublicKey ToPublicKey(BlsCurve.G2 p)
     {
         PublicKey pk = new();
-        bool sign = new BlsCurve.Fp(p.Y.Item1) < new BlsCurve.Fp(p.Y.Item2);
+        bool sign = BlsCurve.Fp(p.Y.Item1) < BlsCurve.Fp(p.Y.Item2);
         CompressPoint(p.X.Item2, sign, pk.Bytes.AsSpan()[..48]);
         p.X.Item1.CopyTo(pk.Bytes.AsSpan()[48..]);
         return pk;

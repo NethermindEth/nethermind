@@ -4,8 +4,7 @@
 using System;
 using System.Buffers.Binary;
 using System.Collections.Generic;
-using FluentAssertions;
-using Nethermind.Crypto;
+using Nethermind.Crypto.PairingCurves;
 using NUnit.Framework;
 
 namespace Nethermind.Core.Test.Crypto;
@@ -17,22 +16,32 @@ public class Bn254CurveTests
     public void Fp_div()
     {
         var p = Bn254Curve.G1.FromScalar(232323232);
-        Bn254Curve.Fp x = new(p.X);
-        Assert.That(x * Bn254Curve.Fp.Inv(x), Is.EqualTo(new Bn254Curve.Fp(1)));
-        Assert.That((x / 2) * 2, Is.EqualTo(x));
+        Fp<Bn254Curve.BaseField> x = Bn254Curve.Fp(p.X);
+        Assert.That(x * Fp<Bn254Curve.BaseField>.Inv(x), Is.EqualTo(Bn254Curve.Fp(1)));
+        Assert.That((x / Bn254Curve.Fp(2)) * Bn254Curve.Fp(2), Is.EqualTo(x));
     }
 
-    // [TestCase(232323232u)]
-    // [TestCase(54935932u)]
-    // [TestCase(5738295764u)]
-    // [TestCase(1111u)]
-    // public void G2_twist(ulong x)
-    // {
-    //     var p = Bn254Curve.G2.FromScalar(x);
-    //     bool sign = new Bn254Curve.Fp(p.Y.Item1) < new Bn254Curve.Fp(p.Y.Item2);
-    //     var res = Bn254Curve.G2.FromX(p.X.Item1, p.X.Item2, sign);
-    //     Assert.That(res, Is.EqualTo(p));
-    // }
+    [Test]
+    public void Fp2_div()
+    {
+        var p = Bn254Curve.G2.FromScalar(232323232);
+        Fp2<Bn254Curve.BaseField> x = Bn254Curve.Fp2(p.X.Item2, p.X.Item1);
+        Fp2<Bn254Curve.BaseField> q = Bn254Curve.Fp2(p.Y.Item2, p.Y.Item1);
+        Assert.That(x * Fp2<Bn254Curve.BaseField>.Inv(x), Is.EqualTo(Bn254Curve.Fp2(0, 1)));
+        Assert.That((x / q) * q, Is.EqualTo(x));
+    }
+
+    [TestCase(232323232u)]
+    [TestCase(54935932u)]
+    [TestCase(5738295764u)]
+    [TestCase(1111u)]
+    public void G2_twist(ulong x)
+    {
+        var p = Bn254Curve.G2.FromScalar(x);
+        bool sign = Bn254Curve.Fp(p.Y.Item1) < Bn254Curve.Fp(p.Y.Item2);
+        var res = Bn254Curve.G2.FromX(p.X.Item1, p.X.Item2, sign);
+        Assert.That(res, Is.EqualTo(p));
+    }
 
     [Test]
     public void G1_additive_commutativity()

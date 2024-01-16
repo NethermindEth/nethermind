@@ -5,10 +5,9 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
-using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 
-namespace Nethermind.Crypto;
+namespace Nethermind.Crypto.PairingCurves;
 
 public class Bn254Curve
 {
@@ -44,6 +43,42 @@ public class Bn254Curve
         return Pairing2(-a1, a2, b1, b2);
     }
 
+    public class BaseField : IBaseField
+    {
+        public static readonly BaseField Instance = new();
+        private BaseField() {}
+
+        public BigInteger GetOrder()
+        {
+            return BaseFieldOrder;
+        }
+
+        public int GetSize()
+        {
+            return 32;
+        }
+    }
+
+    public static Fp<BaseField> Fp(ReadOnlySpan<byte> bytes)
+    {
+        return new Fp<BaseField>(bytes, BaseField.Instance);
+    }
+    
+    public static Fp<BaseField> Fp(BigInteger x)
+    {
+        return new Fp<BaseField>(x, BaseField.Instance);
+    }
+
+    public static Fp2<BaseField> Fp2(ReadOnlySpan<byte> X0, ReadOnlySpan<byte> X1)
+    {
+        return new Fp2<BaseField>(Fp(X0), Fp(X1), BaseField.Instance);
+    }
+
+    public static Fp2<BaseField> Fp2(BigInteger a, BigInteger b)
+    {
+        return new Fp2<BaseField>(Fp(a), Fp(b), BaseField.Instance);
+    }
+
     public class G1 : IEquatable<G1>
     {
         public readonly byte[] X = new byte[32];
@@ -69,8 +104,8 @@ public class Bn254Curve
 
         public static G1 FromX(ReadOnlySpan<byte> X, bool sign)
         {
-            (Fp, Fp) res = Fp.Sqrt((new Fp(X) ^ 3) + 3);
-            Fp Y = sign ? res.Item1 : res.Item2;
+            (Fp<BaseField>, Fp<BaseField>) res = Fp<BaseField>.Sqrt((Fp(X) ^ Fp(3)) + Fp(3));
+            Fp<BaseField> Y = sign ? res.Item1 : res.Item2;
             return new G1(X, Y.ToBytes());
         }
 
@@ -181,51 +216,10 @@ public class Bn254Curve
                 throw new Exception("Cannot create G2 point from X, encoded values must be 32 bytes each.");
             }
 
-            // y ^ 2 = sqrt(x ^ 3 + 4(1 + i)) = a + bi
-
-            Fp c0 = X0;
-            Fp c1 = X1;
-
-            Fp a = (c0 ^ 3) - (3 * c0 * (c1 ^ 2)) + 4;
-            Fp b = -(c1 ^ 3) + 3 * (c0 ^ 2) * c1 + 4;
-            (Fp, Fp) l = Fp.Sqrt((a ^ 2) + (b ^ 2));
-
-            // test all possible signs
-            for (int i = 0; i < 2; i++)
-            {
-                Fp lCurrent = i == 0 ? l.Item1 : l.Item2;
-                for (int j = 0; j < 2; j++)
-                {
-                    (Fp, Fp) y0 = Fp.Sqrt(((-a) + lCurrent) / 2);
-                    (Fp, Fp) y1 = Fp.Sqrt((a + lCurrent) / 2);
-
-                    Fp y0Current = j == 0 ? y0.Item1 : y0.Item2;
-
-                    for (int k = 0; k < 2; k++)
-                    {
-                        Fp y1Current = k == 0 ? y1.Item1 : y1.Item2;
-
-                        if ((y0Current < y1Current) != sign)
-                        {
-                            continue;
-                        }
-
-                        if (2 * y0Current * y1Current != b)
-                        {
-                            continue;
-                        }
-
-                        if ((y0Current ^ 2) - (y1Current ^ 2) != a)
-                        {
-                            continue;
-                        }
-
-                        return new G2(X0, X1, y0Current.ToBytes(), y1Current.ToBytes());
-                    }
-                }
-            }
-
-            throw new Exception("Could not twist invalid x coordinate.");
+            // y ^ 2 = sqrt((x ^ 3) + (3 / (i + 9))) = a + bi
+            Fp2<BaseField> x = Fp2(X1, X0);
+            var y = Fp2<BaseField>.Sqrt((x ^ 3) + (Fp2(0, 3) / Fp2(1, 9)), sign);
+            return new G2(X0, X1, y.b.ToBytes(), y.a.ToBytes());
         }
 
         public override bool Equals(object obj) => Equals(obj as G1);
@@ -250,21 +244,6 @@ public class Bn254Curve
                 throw new Exception("Scalar must be 32 bytes to multiply with G2 point.");
             }
 
-            // Span<byte> encoded = stackalloc byte[64 + 32];
-            // Span<byte> output = stackalloc byte[64];
-            // p.X.Item1.CopyTo(encoded[..32]);
-            // p.Y.Item1.CopyTo(encoded[32..]);
-            // s.CopyTo(encoded[64..]);
-            // Pairings.Bn254Mul(encoded, output);
-
-            // Span<byte> encodedI = stackalloc byte[64 + 32];
-            // Span<byte> outputI = stackalloc byte[64];
-            // p.X.Item2.CopyTo(encodedI[..32]);
-            // p.Y.Item2.CopyTo(encodedI[32..]);
-            // s.CopyTo(encodedI[64..]);
-            // Pairings.Bn254Mul(encodedI, outputI);
-
-            // return new G2(output[..32], outputI[..32], output[32..], outputI[32..]);
             throw new NotImplementedException();
         }
 
@@ -275,23 +254,6 @@ public class Bn254Curve
 
         public static G2 operator +(G2 p, G2 q)
         {
-            // Span<byte> encoded = stackalloc byte[128];
-            // Span<byte> output = stackalloc byte[64];
-            // p.X.Item1.CopyTo(encoded[..32]);
-            // p.Y.Item1.CopyTo(encoded[32..]);
-            // q.X.Item1.CopyTo(encoded[64..]);
-            // q.Y.Item1.CopyTo(encoded[96..]);
-            // Pairings.Bn254Add(encoded, output);
-
-            // Span<byte> encodedI = stackalloc byte[128];
-            // Span<byte> outputI = stackalloc byte[64];
-            // p.X.Item2.CopyTo(encodedI[..32]);
-            // p.Y.Item2.CopyTo(encodedI[32..]);
-            // q.X.Item2.CopyTo(encodedI[64..]);
-            // q.Y.Item2.CopyTo(encodedI[96..]);
-            // Pairings.Bn254Add(encodedI, outputI);
-
-            // return new G2(output[..32], outputI[..32], output[32..], outputI[32..]);
             throw new NotImplementedException();
         }
 
@@ -311,128 +273,6 @@ public class Bn254Curve
             X.Item2.CopyTo(output[32..]);
             Y.Item1.CopyTo(output[64..]);
             Y.Item2.CopyTo(output[96..]);
-        }
-    }
-
-    public class Fp
-    {
-        internal BigInteger _value;
-
-        public Fp(ReadOnlySpan<byte> bytes)
-        {
-            if (bytes.Length != 32)
-            {
-                throw new Exception("Field point must have 32 bytes");
-            }
-            _value = Normalise(new BigInteger(bytes, true, true));
-        }
-
-        public Fp(BigInteger value)
-        {
-            _value = Normalise(value);
-        }
-
-        private static BigInteger Normalise(BigInteger x)
-        {
-            BigInteger unnormalised = x % BaseFieldOrder;
-            return (unnormalised.Sign == 1) ? unnormalised : (BaseFieldOrder + unnormalised);
-        }
-
-        public static implicit operator Fp(byte[] v) => new(v);
-        public static implicit operator Fp(ReadOnlySpan<byte> v) => new(v);
-        public static implicit operator Fp(BigInteger v) => new(v);
-        public static implicit operator Fp(int v) => new(v);
-
-        public byte[] ToBytes()
-        {
-            return _value.ToBigEndianByteArray(32);
-        }
-
-        public static (Fp, Fp) Sqrt(Fp x)
-        {
-            Fp res = x ^ ((BaseFieldOrder + 1) / 4);
-            return (res, -res);
-        }
-
-        public static Fp operator -(Fp x)
-        {
-            return BaseFieldOrder - x._value;
-        }
-
-        public static Fp operator ^(Fp x, Fp exp)
-        {
-            return BigInteger.ModPow(x._value, exp._value, BaseFieldOrder);
-        }
-
-        public static Fp operator +(Fp x, Fp y)
-        {
-            return x._value + y._value;
-        }
-
-        public static bool operator <(Fp x, Fp y)
-        {
-            return x._value < y._value;
-        }
-
-        public static bool operator >(Fp x, Fp y)
-        {
-            return x._value > y._value;
-        }
-        public override bool Equals(object obj) => Equals(obj as Fp);
-
-        public bool Equals(Fp p)
-        {
-            return _value == p._value;
-        }
-        public override int GetHashCode() => _value.GetHashCode();
-
-        public static bool operator ==(Fp x, Fp y)
-        {
-            return x._value == y._value;
-        }
-
-        public static bool operator !=(Fp x, Fp y) => !x.Equals(y);
-
-        // todo: move to helper
-        private static BigInteger gcdExtended(BigInteger a, BigInteger b, ref BigInteger x, ref BigInteger y)
-        {
-            if (a == 0)
-            {
-                x = 0;
-                y = 1;
-                return b;
-            }
-
-            BigInteger x1 = 1, y1 = 1;
-            BigInteger gcd = gcdExtended(b % a, a, ref x1, ref y1);
-
-            x = y1 - (b / a) * x1;
-            y = x1;
-
-            return gcd;
-        }
-
-        public static Fp Inv(Fp c)
-        {
-            BigInteger x = 1;
-            BigInteger y = 1;
-            gcdExtended(c._value, BaseFieldOrder, ref x, ref y);
-            return x;
-        }
-
-        public static Fp operator *(Fp x, Fp y)
-        {
-            return x._value * y._value;
-        }
-
-        public static Fp operator -(Fp x, Fp y)
-        {
-            return x + (-y);
-        }
-
-        public static Fp operator /(Fp x, Fp y)
-        {
-            return x * Inv(y);
         }
     }
 }

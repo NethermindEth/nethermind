@@ -7,6 +7,7 @@ using System.Collections.Generic;
 using System.Text;
 using FluentAssertions;
 using Nethermind.Crypto;
+using Nethermind.Crypto.PairingCurves;
 using NUnit.Framework;
 
 namespace Nethermind.Core.Test.Crypto;
@@ -103,18 +104,18 @@ public class BlsTests
     public void Fp_div()
     {
         var p = BlsCurve.G1.FromScalar(232323232);
-        BlsCurve.Fp x = new(p.X);
-        Assert.That(x * BlsCurve.Fp.Inv(x), Is.EqualTo(new BlsCurve.Fp(1)));
-        Assert.That((x / 2) * 2, Is.EqualTo(x));
+        Fp<BlsCurve.BaseField> x = BlsCurve.Fp(p.X);
+        Assert.That(x * Fp<BlsCurve.BaseField>.Inv(x), Is.EqualTo(BlsCurve.Fp(1)));
+        Assert.That((x / BlsCurve.Fp(2)) * BlsCurve.Fp(2), Is.EqualTo(x));
     }
 
     [Test]
     public void Fp2_div()
     {
         var p = BlsCurve.G2.FromScalar(232323232);
-        BlsCurve.Fp2 x = new(p.X.Item2, p.X.Item1);
-        BlsCurve.Fp2 q = new(p.Y.Item2, p.Y.Item1);
-        Assert.That(x * BlsCurve.Fp2.Inv(x), Is.EqualTo(new BlsCurve.Fp2(0, 1)));
+        Fp2<BlsCurve.BaseField> x = BlsCurve.Fp2(p.X.Item2, p.X.Item1);
+        Fp2<BlsCurve.BaseField> q = BlsCurve.Fp2(p.Y.Item2, p.Y.Item1);
+        Assert.That(x * Fp2<BlsCurve.BaseField>.Inv(x), Is.EqualTo(BlsCurve.Fp2(0, 1)));
         Assert.That((x / q) * q, Is.EqualTo(x));
     }
 
@@ -125,7 +126,7 @@ public class BlsTests
     public void G2_twist(ulong x)
     {
         var p = BlsCurve.G2.FromScalar(x);
-        bool sign = new BlsCurve.Fp(p.Y.Item1) < new BlsCurve.Fp(p.Y.Item2);
+        bool sign = BlsCurve.Fp(p.Y.Item1) < BlsCurve.Fp(p.Y.Item2);
         var res = BlsCurve.G2.FromX(p.X.Item1, p.X.Item2, sign);
         Assert.That(res, Is.EqualTo(p));
     }
