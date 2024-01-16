@@ -237,7 +237,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
                             {
                                 if (_logger.IsInfo) _logger.Info($"Skipping processing during fastSyncTransition, currentBlock: {currentBlock}, bestFullState: {bestFullState}, trying to load receipts");
                                 downloadReceipts = true;
-                                context = new(_specProvider, bestPeer, headers!, downloadReceipts, _receiptsRecovery);
+                                context.ForceDownloadReceipts();
                                 await RequestReceipts(bestPeer, cancellation, context);
                                 receipts = context.ReceiptsForBlocks;
                             }
