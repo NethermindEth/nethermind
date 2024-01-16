@@ -320,7 +320,7 @@ public class InitializeNetwork : IStep
             {
                 eraImport.ImportProgressChanged += (s, args) =>
                 {
-                    _logger.Info($"Era1 import | elapsed {args.Elapsed,7:hh\\:mm\\:ss} | {args.TotalBlocksProcessed / args.Elapsed.TotalSeconds,7:F2} Blks/s | {args.TxProcessed / args.Elapsed.TotalSeconds,7:F2} Tx/s");
+                    _logger.Info($"Era1 import | {args.EpochProcessed,5}/{args.TotalEpochs} archives | elapsed {args.Elapsed,7:hh\\:mm\\:ss} | {args.TotalBlocksProcessed / args.Elapsed.TotalSeconds,7:F2} Blks/s | {args.TxProcessed / args.Elapsed.TotalSeconds,7:F2} Tx/s");
                 };
                 //Import as a full archive
                 _logger.Info($"Starting full archive import from '{syncConfig.ImportDirectory}'");
