@@ -8,7 +8,6 @@ using System.Runtime.CompilerServices;
 using System.Security.Cryptography;
 using DotNetty.Buffers;
 using Nethermind.Core.Collections;
-using Org.BouncyCastle.Asn1.Cms;
 using Snappier;
 namespace Nethermind.Era1;
 
