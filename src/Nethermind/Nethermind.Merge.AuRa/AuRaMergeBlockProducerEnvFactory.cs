@@ -1,9 +1,11 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Config;
+using Nethermind.Consensus.AuRa;
 using Nethermind.Consensus.AuRa.Config;
 using Nethermind.Consensus.AuRa.InitializationSteps;
 using Nethermind.Consensus.Comparers;
@@ -83,7 +85,9 @@ public class AuRaMergeBlockProducerEnvFactory : BlockProducerEnvFactory
                     withdrawalContractFactory.Create(readOnlyTxProcessingEnv.TransactionProcessor),
                     logManager
                     )
-                ));
+                ),
+            null
+            );
     }
 
     protected override TxPoolTxSource CreateTxPoolTxSource(

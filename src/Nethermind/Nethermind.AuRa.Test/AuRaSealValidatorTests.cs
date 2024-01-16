@@ -57,10 +57,8 @@ namespace Nethermind.AuRa.Test
                 Substitute.For<IValidatorStore>(),
                 _validSealerStrategy,
                 _ethereumEcdsa,
-                _logManager)
-            {
-                ReportingValidator = _reportingValidator
-            };
+                _reportingValidator,
+                _logManager);
         }
 
         public enum Repeat

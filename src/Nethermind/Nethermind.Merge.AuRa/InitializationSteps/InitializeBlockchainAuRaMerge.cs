@@ -3,6 +3,7 @@
 
 using Nethermind.Consensus.AuRa;
 using Nethermind.Consensus.AuRa.InitializationSteps;
+using Nethermind.Consensus.AuRa.Validators;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Evm.TransactionProcessing;
@@ -21,7 +22,7 @@ namespace Nethermind.Merge.AuRa.InitializationSteps
             _api = api;
         }
 
-        protected override BlockProcessor NewBlockProcessor(AuRaNethermindApi api, ITxFilter txFilter, ContractRewriter contractRewriter)
+        protected override BlockProcessor NewBlockProcessor(AuRaNethermindApi api, ITxFilter txFilter, IAuRaValidator auRaValidator, ContractRewriter contractRewriter)
         {
             WithdrawalContractFactory withdrawalContractFactory = new WithdrawalContractFactory(_api.ChainSpec!.AuRa, _api.AbiEncoder);
             IWorldState worldState = _api.WorldState!;
@@ -38,6 +39,7 @@ namespace Nethermind.Merge.AuRa.InitializationSteps
                 _api.BlockTree!,
                 new AuraWithdrawalProcessor(
                     withdrawalContractFactory.Create(transactionProcessor!), _api.LogManager),
+                auRaValidator,
                 txFilter,
                 GetGasLimitCalculator(),
                 contractRewriter

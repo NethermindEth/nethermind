@@ -159,12 +159,10 @@ public class StartBlockProducerAuRa
             _api.LogManager,
             changeableTxProcessingEnv.BlockTree,
             NullWithdrawalProcessor.Instance,
+            _validator,
             auRaTxFilter,
             CreateGasLimitCalculator(constantContractTxProcessingEnv) as AuRaContractGasLimitOverride,
-            contractRewriter)
-        {
-            AuRaValidator = _validator
-        };
+            contractRewriter);
     }
 
     internal TxPoolTxSource CreateTxPoolTxSource(ReadOnlyTxProcessingEnv processingEnv, IReadOnlyTxProcessorSource readOnlyTxProcessorSource)

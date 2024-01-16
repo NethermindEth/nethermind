@@ -41,6 +41,7 @@ namespace Nethermind.Consensus.AuRa
             ILogManager logManager,
             IBlockTree blockTree,
             IWithdrawalProcessor withdrawalProcessor,
+            IAuRaValidator? auRaValidator,
             ITxFilter? txFilter = null,
             AuRaContractGasLimitOverride? gasLimitOverride = null,
             ContractRewriter? contractRewriter = null)
@@ -59,6 +60,7 @@ namespace Nethermind.Consensus.AuRa
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _logger = logManager?.GetClassLogger<AuRaBlockProcessor>() ?? throw new ArgumentNullException(nameof(logManager));
             _txFilter = txFilter ?? NullTxFilter.Instance;
+            _auRaValidator = auRaValidator;
             _gasLimitOverride = gasLimitOverride;
             _contractRewriter = contractRewriter;
             if (blockTransactionsExecutor is IBlockProductionTransactionsExecutor produceBlockTransactionsStrategy)
@@ -67,10 +69,9 @@ namespace Nethermind.Consensus.AuRa
             }
         }
 
-        public IAuRaValidator AuRaValidator
+        private IAuRaValidator AuRaValidator
         {
             get => _auRaValidator ?? new NullAuRaValidator();
-            set => _auRaValidator = value;
         }
 
         protected override TxReceipt[] ProcessBlock(Block block, IBlockTracer blockTracer, ProcessingOptions options)
