@@ -9,7 +9,6 @@ using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Trie;
 using Nethermind.Trie;
-using Nethermind.Trie.Pruning;
 
 namespace Nethermind.State.Proofs;
 
@@ -29,23 +28,26 @@ public class TxTrie : PatriciaTrie<Transaction>
     {
         int key = 0;
 
-        // 3% allocations (2GB) on a Goerli 3M blocks fast sync due to calling transaction encoder here
-        // Avoiding it would require pooling byte arrays and passing them as Spans to temporary trees
-        // a temporary trie would be a trie that exists to create a state root only and then be disposed of
         foreach (Transaction? transaction in list)
         {
-            CappedArray<byte> buffer = _txDecoder.EncodeToCappedArray(transaction, RlpBehaviors.SkipTypedWrapping,
-                bufferPool: _bufferPool);
-            CappedArray<byte> keyBuffer = (key++).EncodeToCappedArray(bufferPool: _bufferPool);
+            CappedArray<byte> buffer = _txDecoder.EncodeToCappedArray(transaction, RlpBehaviors.SkipTypedWrapping, _bufferPool);
+            CappedArray<byte> keyBuffer = (key++).EncodeToCappedArray(_bufferPool);
+
             Set(keyBuffer.AsSpan(), buffer);
         }
     }
 
+    public static byte[][] CalculateProof(IList<Transaction> transactions, int index)
+    {
+        using TrackingCappedArrayPool cappedArray = new TrackingCappedArrayPool(transactions.Count * 4);
+        byte[][] rootHash = new TxTrie(transactions, canBuildProof: true, bufferPool: cappedArray).BuildProof(index);
+        return rootHash;
+    }
+
     public static Hash256 CalculateRoot(IList<Transaction> transactions)
     {
-        TrackingCappedArrayPool cappedArray = new TrackingCappedArrayPool(transactions.Count * 4);
-        Hash256 rootHash = new TxTrie(transactions, false, bufferPool: cappedArray).RootHash;
-        cappedArray.ReturnAll();
+        using TrackingCappedArrayPool cappedArray = new TrackingCappedArrayPool(transactions.Count * 4);
+        Hash256 rootHash = new TxTrie(transactions, canBuildProof: false, bufferPool: cappedArray).RootHash;
         return rootHash;
     }
 }

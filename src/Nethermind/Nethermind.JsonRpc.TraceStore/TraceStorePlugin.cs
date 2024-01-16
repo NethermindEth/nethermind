@@ -41,7 +41,7 @@ public class TraceStorePlugin : INethermindPlugin
             _traceSerializer = new ParityLikeTraceSerializer(_logManager, _config.MaxDepth, _config.VerifySerialized);
 
             // Setup DB
-            _db = _api.RocksDbFactory!.CreateDb(new RocksDbSettings(DbName, DbName.ToLower()));
+            _db = _api.DbFactory!.CreateDb(new DbSettings(DbName, DbName.ToLower()));
             _api.DbProvider!.RegisterDb(DbName, _db);
 
             //Setup pruning if configured

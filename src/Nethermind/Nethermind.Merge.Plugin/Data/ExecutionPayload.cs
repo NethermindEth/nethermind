@@ -145,7 +145,7 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams
                 Author = FeeRecipient,
                 IsPostMerge = true,
                 TotalDifficulty = totalDifficulty,
-                TxRoot = new TxTrie(transactions).RootHash,
+                TxRoot = TxTrie.CalculateRoot(transactions),
                 WithdrawalsRoot = Withdrawals is null ? null : new WithdrawalTrie(Withdrawals).RootHash,
             };
 

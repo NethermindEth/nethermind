@@ -53,9 +53,8 @@ public class DbOnTheRocks : IDb, ITunableDb
     private long _maxThisDbSize;
 
     protected IntPtr? _cache = null;
-    protected IntPtr? _rowCache = null;
 
-    private readonly RocksDbSettings _settings;
+    private readonly DbSettings _settings;
 
     protected readonly PerTableDbConfig _perTableDbConfig;
 
@@ -75,7 +74,7 @@ public class DbOnTheRocks : IDb, ITunableDb
 
     public DbOnTheRocks(
         string basePath,
-        RocksDbSettings rocksDbSettings,
+        DbSettings dbSettings,
         IDbConfig dbConfig,
         ILogManager logManager,
         IList<string>? columnFamilies = null,
@@ -84,12 +83,12 @@ public class DbOnTheRocks : IDb, ITunableDb
         IntPtr? sharedCache = null)
     {
         _logger = logManager.GetClassLogger();
-        _settings = rocksDbSettings;
+        _settings = dbSettings;
         Name = _settings.DbName;
         _fileSystem = fileSystem ?? new FileSystem();
         _rocksDbNative = rocksDbNative ?? RocksDbSharp.Native.Instance;
         _perTableDbConfig = new PerTableDbConfig(dbConfig, _settings);
-        _db = Init(basePath, rocksDbSettings.DbPath, dbConfig, logManager, columnFamilies, rocksDbSettings.DeleteOnStart, sharedCache);
+        _db = Init(basePath, dbSettings.DbPath, dbConfig, logManager, columnFamilies, dbSettings.DeleteOnStart, sharedCache);
 
         if (_perTableDbConfig.AdditionalRocksDbOptions != null)
         {
@@ -357,12 +356,6 @@ public class DbOnTheRocks : IDb, ITunableDb
 
         options.SetCreateIfMissing();
         options.SetAdviseRandomOnOpen(true);
-
-        if (dbConfig.RowCacheSize > 0)
-        {
-            _rowCache = RocksDbSharp.Native.Instance.rocksdb_cache_create_lru(new UIntPtr(dbConfig.RowCacheSize.Value));
-            _rocksDbNative.rocksdb_options_set_row_cache(options.Handle, _rowCache.Value);
-        }
 
         /*
          * Multi-Threaded Compactions
@@ -1056,11 +1049,6 @@ public class DbOnTheRocks : IDb, ITunableDb
         if (_cache.HasValue)
         {
             _rocksDbNative.rocksdb_cache_destroy(_cache.Value);
-        }
-
-        if (_rowCache.HasValue)
-        {
-            _rocksDbNative.rocksdb_cache_destroy(_rowCache.Value);
         }
 
         if (_rateLimiter.HasValue)

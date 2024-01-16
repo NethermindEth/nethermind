@@ -32,6 +32,7 @@ using Nethermind.Wallet;
 
 using Nethermind.Config;
 using Nethermind.Synchronization.ParallelSync;
+using NSubstitute;
 
 namespace Nethermind.JsonRpc.Test.Modules
 {
@@ -152,7 +153,8 @@ namespace Nethermind.JsonRpc.Test.Modules
                 LimboLogs.Instance,
                 SpecProvider,
                 GasPriceOracle,
-                new EthSyncingInfo(BlockTree, ReceiptStorage, syncConfig, new StaticSelector(SyncMode.All), LogManager),
+                new EthSyncingInfo(BlockTree, ReceiptStorage, syncConfig,
+                    new StaticSelector(SyncMode.All), Substitute.For<ISyncProgressResolver>(), LogManager),
                 FeeHistoryOracle);
 
             return this;

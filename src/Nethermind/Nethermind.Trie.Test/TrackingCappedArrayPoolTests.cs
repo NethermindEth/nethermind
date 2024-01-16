@@ -29,7 +29,7 @@ public class TrackingCappedArrayPoolTests
         pool.Return(sample);
         arrayPool.Received(0).Return(Arg.Any<byte[]>());
 
-        pool.ReturnAll();
+        pool.Dispose();
         arrayPool.Received(4).Return(Arg.Any<byte[]>());
     }
 }

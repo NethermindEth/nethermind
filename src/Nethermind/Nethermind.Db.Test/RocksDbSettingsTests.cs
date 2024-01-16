@@ -12,7 +12,7 @@ namespace Nethermind.Db.Test
         [Test]
         public void clone_test()
         {
-            RocksDbSettings settings = new("name", "path")
+            DbSettings settings = new("name", "path")
             {
                 BlockCacheSize = 1,
                 UpdateReadMetrics = () => { },
@@ -22,7 +22,7 @@ namespace Nethermind.Db.Test
                 CacheIndexAndFilterBlocks = true
             };
 
-            RocksDbSettings settings2 = settings.Clone("Name2", "Path2");
+            DbSettings settings2 = settings.Clone("Name2", "Path2");
             settings2.Should().BeEquivalentTo(settings,
                 o => o.Excluding(s => s.DbName).Excluding(s => s.DbPath));
             settings2.DbName.Should().Be("Name2");

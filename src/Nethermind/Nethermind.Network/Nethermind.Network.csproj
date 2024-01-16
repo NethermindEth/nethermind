@@ -7,19 +7,14 @@
     <ProjectReference Include="..\Nethermind.Config\Nethermind.Config.csproj" />
     <ProjectReference Include="..\Nethermind.Core\Nethermind.Core.csproj" />
     <ProjectReference Include="..\Nethermind.Crypto\Nethermind.Crypto.csproj" />
-    <ProjectReference Include="..\Nethermind.KeyStore\Nethermind.KeyStore.csproj" />
     <ProjectReference Include="..\Nethermind.Network.Contract\Nethermind.Network.Contract.csproj" />
     <ProjectReference Include="..\Nethermind.Network.Stats\Nethermind.Network.Stats.csproj" />
     <ProjectReference Include="..\Nethermind.Synchronization\Nethermind.Synchronization.csproj" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Crc32.NET" />
-    <PackageReference Include="Microsoft.Extensions.Logging.Console" />
     <PackageReference Include="Nethermind.DotNetty.Handlers" />
-    <PackageReference Include="Portable.BouncyCastle" />
     <PackageReference Include="Snappy.Standard" />
-    <PackageReference Include="System.Net.Http" />
-    <PackageReference Include="System.IO.Compression.ZipFile" />
   </ItemGroup>
   <ItemGroup>
     <Compile Remove="Swarm\**" />

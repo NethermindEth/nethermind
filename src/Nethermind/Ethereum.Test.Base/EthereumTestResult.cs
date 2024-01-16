@@ -34,7 +34,7 @@ namespace Ethereum.Test.Base
         public bool Pass { get; set; }
         public string Fork { get; set; }
 
-        [JsonIgnore] public int TimeInMs { get; set; }
+        public double TimeInMs { get; set; }
 
         public Hash256 StateRoot { get; set; } = Keccak.EmptyTreeHash;
     }
