@@ -127,7 +127,6 @@ public static class Program
         CommandOption logLevelOverride = app.Option("-l|--log <logLevel>", "Log level override. Possible values: OFF|TRACE|DEBUG|INFO|WARN|ERROR", CommandOptionType.SingleValue);
         CommandOption configsDirectory = app.Option("-cd|--configsDirectory <configsDirectory>", "Configs directory", CommandOptionType.SingleValue);
         CommandOption loggerConfigSource = app.Option("-lcs|--loggerConfigSource <loggerConfigSource>", "Path to the NLog config file", CommandOptionType.SingleValue);
-        CommandOption ancientDataSource = app.Option("-add|--ancientDatadir <ancientDataDir>", "Folder from where to serve blocks from era1 archives.", CommandOptionType.SingleValue);
         _ = app.Option("-pd|--pluginsDirectory <pluginsDirectory>", "plugins directory", CommandOptionType.SingleValue);
 
         IFileSystem fileSystem = new FileSystem();
