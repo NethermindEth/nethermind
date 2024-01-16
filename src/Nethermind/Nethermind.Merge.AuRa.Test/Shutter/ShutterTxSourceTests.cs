@@ -37,7 +37,7 @@ class ShutterTxSourceTests
             object[] data = [0L, identity, Address.Zero, encryptedData, new UInt256(100)];
             byte[] encodedData = AbiEncoder.Instance.Encode(AbiEncodingStyle.None, ShutterTxSource.TransactionSubmmitedSig, data);
 
-            log.Data.Returns(encodedData);;
+            log.Data.Returns(encodedData); ;
             logs.Add(log);
         }
 

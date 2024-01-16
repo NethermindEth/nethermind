@@ -10,6 +10,7 @@ using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Text;
 using Nethermind.Core;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
@@ -26,6 +27,8 @@ namespace Nethermind.Serialization.Rlp
         private static readonly WithdrawalDecoder _withdrawalDecoder = new();
         private static readonly LogEntryDecoder _logEntryDecoder = LogEntryDecoder.Instance;
 
+        private CappedArray<byte> _data;
+
         protected RlpStream()
         {
         }
@@ -36,12 +39,17 @@ namespace Nethermind.Serialization.Rlp
 
         public RlpStream(int length)
         {
-            Data = new byte[length];
+            _data = new byte[length];
         }
 
         public RlpStream(byte[] data)
         {
-            Data = data;
+            _data = data;
+        }
+
+        public RlpStream(in CappedArray<byte> data)
+        {
+            _data = data;
         }
 
         public void Encode(Block value)
@@ -165,15 +173,15 @@ namespace Nethermind.Serialization.Rlp
         {
             for (int i = 0; i < bytesToWrite.Count; ++i)
             {
-                Data![_position + i] = bytesToWrite[i];
+                Data[_position + i] = bytesToWrite[i];
             }
             Position += bytesToWrite.Count;
         }
 
         protected virtual string Description =>
-            Data?.Slice(0, Math.Min(Rlp.DebugMessageContentLength, Length)).ToHexString() ?? "0x";
+            Data.AsSpan(0, Math.Min(Rlp.DebugMessageContentLength, Length)).ToHexString() ?? "0x";
 
-        public byte[]? Data { get; }
+        public ref readonly CappedArray<byte> Data => ref _data;
 
         private int _position = 0;
 
@@ -1143,12 +1151,19 @@ namespace Nethermind.Serialization.Rlp
                 return byteValue;
             }
 
-            ReadOnlySpan<byte> bytes = DecodeByteArraySpan();
-            return bytes.Length == 0 ? (byte)0
-                : bytes.Length == 1 ? bytes[0] == (byte)128
-                    ? (byte)0
-                    : bytes[0]
-                : bytes[1];
+            if (byteValue == 128)
+            {
+                SkipBytes(1);
+                return 0;
+            }
+
+            if (byteValue == 129)
+            {
+                SkipBytes(1);
+                return ReadByte();
+            }
+
+            throw new RlpException($"Unexpected value while decoding byte {byteValue}");
         }
 
         public int DecodeInt()

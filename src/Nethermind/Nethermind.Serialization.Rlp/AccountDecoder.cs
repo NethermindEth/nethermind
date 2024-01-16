@@ -82,7 +82,7 @@ namespace Nethermind.Serialization.Rlp
 
             Encode(item, rlpStream, contentLength);
 
-            return new Rlp(rlpStream.Data);
+            return new Rlp(rlpStream.Data.ToArray());
         }
 
         public void Encode(Account account, RlpStream rlpStream, int? contentLength = null)

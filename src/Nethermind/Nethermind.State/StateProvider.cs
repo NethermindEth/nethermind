@@ -182,7 +182,7 @@ namespace Nethermind.State
 
             if (account.CodeHash != codeHash)
             {
-                if (_logger.IsTrace) _logger.Trace($"  Update {address} C {account.CodeHash} -> {codeHash}");
+                if (_logger.IsDebug) _logger.Debug($"  Update {address} C {account.CodeHash} -> {codeHash}");
                 Account changedAccount = account.WithChangedCodeHash(codeHash);
                 PushUpdate(address, changedAccount);
             }
@@ -808,11 +808,6 @@ namespace Nethermind.State
             _currentPosition = Resettable.EmptyPosition;
             Array.Clear(_changes, 0, _changes.Length);
             _needsStateRootUpdate = false;
-
-            if (_codeDb is IReadOnlyDb readOnlyDb)
-            {
-                readOnlyDb.ClearTempChanges();
-            }
         }
 
         public void CommitTree(long blockNumber)
