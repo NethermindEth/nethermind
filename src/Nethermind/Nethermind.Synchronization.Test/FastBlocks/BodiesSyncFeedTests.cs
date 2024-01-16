@@ -150,8 +150,8 @@ public class BodiesSyncFeedTests
     [TestCase(1, 11051474, false, 11052984, true)]
     [TestCase(1, 11052984, false, 11052984, true)]
     [TestCase(1, 11052985, false, 11052984, false)]
-    [TestCase(11051474, 11052984, false, 11051474, false)]
-    [TestCase(11051474, 11051474, false, 11051474, true)]
+    [TestCase(11051474, 11052984, false, 11052984, false)]
+    [TestCase(11051474, 11051474, false, 11052984, true)]
     [TestCase(1, 99, true, null, false)]
     [TestCase(1, 11051474, true, null, false)]
     [TestCase(1, 11052984, true, null, false)]
@@ -173,6 +173,7 @@ public class BodiesSyncFeedTests
     {
         _syncConfig.AncientBodiesBarrier = AncientBarrierInConfig;
         _syncConfig.AncientReceiptsBarrier = AncientBarrierInConfig;
+        _syncConfig.PivotNumber = (AncientBarrierInConfig + 1_000_000).ToString();
         _syncingToBlockTree.LowestInsertedBodyNumber = JustStarted ? null : _pivotBlock.Number;
         if (previousBarrierInDb != null)
             _metadataDb.Set(MetadataDbKeys.BodiesBarrierWhenStarted, previousBarrierInDb.Value.ToBigEndianByteArrayWithoutLeadingZeros());
