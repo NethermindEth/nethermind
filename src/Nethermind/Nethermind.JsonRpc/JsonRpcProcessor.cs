@@ -320,7 +320,10 @@ public class JsonRpcProcessor : IJsonRpcProcessor
         bool isSuccess = localErrorResponse is null;
         if (!isSuccess)
         {
-            if (_logger.IsWarn) _logger.Warn($"Error when handling {request} | {JsonSerializer.Serialize(localErrorResponse, EthereumJsonSerializer.JsonOptionsIndented)}");
+            if (localErrorResponse?.Error?.SuppressWarning == false)
+            {
+                if (_logger.IsWarn) _logger.Warn($"Error when handling {request} | {JsonSerializer.Serialize(localErrorResponse, EthereumJsonSerializer.JsonOptionsIndented)}");
+            }
             Metrics.JsonRpcErrors++;
         }
         else
