@@ -324,6 +324,7 @@ jobs:
         run: |
           ls
           if [ "${{ inputs.is_performance_check }}" == "true" ]; then
+            echo "flood repos $(ls -d *_perf_result)"
             flood repos $(ls -d *_perf_result)
           else
             if [ "$COMPARE_TO_OTHER_BRANCH" == "true" ]; then
