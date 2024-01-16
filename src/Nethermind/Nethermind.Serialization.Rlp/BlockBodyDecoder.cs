@@ -221,7 +221,7 @@ namespace Nethermind.Serialization.Rlp
 
             RlpStream rlpStream = new(GetLength(item, rlpBehaviors));
             Encode(rlpStream, item, rlpBehaviors);
-            return new(rlpStream.Data);
+            return new(rlpStream.Data.ToArray());
         }
 
         public void Encode(RlpStream stream, BlockBody? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)

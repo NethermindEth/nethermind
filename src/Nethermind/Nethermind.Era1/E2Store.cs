@@ -2,10 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Buffers;
-using System.IO;
 using System.IO.Compression;
 using System.Runtime.CompilerServices;
-using System.Security.Cryptography;
 using DotNetty.Buffers;
 using Nethermind.Core.Collections;
 using Snappier;
@@ -15,11 +13,6 @@ internal class E2Store : IDisposable
 {
     internal const int HeaderSize = 8;
     internal const int ValueSizeLimit = 1024 * 1024 * 50;
-
-    private static ReadOnlySpan<byte> SnappyHeader => new byte[]
-      {
-            0xff, 0x06, 0x00, 0x00, 0x73, 0x4e, 0x61, 0x50, 0x70, 0x59
-      };
 
     private readonly Stream _stream;
     private BlockIndex? _blockIndex;
