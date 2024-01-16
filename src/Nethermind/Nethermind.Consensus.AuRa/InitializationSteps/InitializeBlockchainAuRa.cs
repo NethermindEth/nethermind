@@ -48,13 +48,23 @@ public class InitializeBlockchainAuRa : InitializeBlockchain
         _auraConfig = NethermindApi.Config<IAuraConfig>();
     }
 
-    protected override Task InitBlockchain()
+    protected override async Task InitBlockchain()
     {
         var processingReadOnlyTransactionProcessorSource = CreateReadOnlyTransactionProcessorSource();
         _auRaValidator = CreateAuRaValidator(processingReadOnlyTransactionProcessorSource);
         _api.ReportingValidator = _auRaValidator.GetReportingValidator();
 
-        return base.InitBlockchain();
+        await base.InitBlockchain();
+
+        var chainSpecAuRa = _api.ChainSpec.AuRa;
+        _api.FinalizationManager = new AuRaBlockFinalizationManager(
+            _api.BlockTree,
+            _api.ChainLevelInfoRepository,
+            (AuRaBlockProcessor)_api.MainBlockProcessor,
+            _api.ValidatorStore,
+            new ValidSealerStrategy(),
+            _api.LogManager,
+            chainSpecAuRa.TwoThirdsMajorityTransition);
     }
 
     protected override BlockProcessor CreateBlockProcessor()
@@ -81,22 +91,10 @@ public class InitializeBlockchainAuRa : InitializeBlockchain
         IDictionary<long, IDictionary<Address, byte[]>> rewriteBytecode = _api.ChainSpec.AuRa.RewriteBytecode;
         ContractRewriter? contractRewriter = rewriteBytecode?.Count > 0 ? new ContractRewriter(rewriteBytecode) : null;
 
-        var processor = (AuRaBlockProcessor)NewBlockProcessor(_api, auRaTxFilter, _auRaValidator, contractRewriter);
-
-        var chainSpecAuRa = _api.ChainSpec.AuRa;
-        _api.FinalizationManager = new AuRaBlockFinalizationManager(
-            _api.BlockTree,
-            _api.ChainLevelInfoRepository,
-            processor,
-            _api.ValidatorStore,
-            new ValidSealerStrategy(),
-            _api.LogManager,
-            chainSpecAuRa.TwoThirdsMajorityTransition);
-
-        return processor;
+        return NewAuRaBlockProcessor(auRaTxFilter, _auRaValidator, contractRewriter);
     }
 
-    protected virtual BlockProcessor NewBlockProcessor(AuRaNethermindApi api, ITxFilter txFilter, IAuRaValidator auRaValidator, ContractRewriter contractRewriter)
+    protected virtual AuRaBlockProcessor NewAuRaBlockProcessor(ITxFilter txFilter, IAuRaValidator auRaValidator, ContractRewriter contractRewriter)
     {
         IWorldState worldState = _api.WorldState!;
 
