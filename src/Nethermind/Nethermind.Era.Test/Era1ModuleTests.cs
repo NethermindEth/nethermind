@@ -14,6 +14,7 @@ using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
+using Nethermind.Specs;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Synchronization;
 using NSubstitute;
@@ -156,16 +157,16 @@ public class Era1ModuleTests
         }
     }
 
-    [TestCase("data")]
     [TestCase("geth")]
     public async Task VerifyAccumulatorsOnFiles(string dir)
     {
         var eraFiles = EraReader.GetAllEraFiles(dir, "mainnet");
 
         ISpecProvider specProvider = Substitute.For<ISpecProvider>();
-        IReceiptSpec receiptSpec = Substitute.For<IReceiptSpec>();
+        IReceiptSpec receiptSpec = Substitute.For<IReleaseSpec>();
+
         receiptSpec.IsEip658Enabled.Returns(true);
-        specProvider.GetReceiptSpec(Arg.Any<long>()).Returns(receiptSpec);
+        specProvider.GetSpec(Arg.Any<long>(), Arg.Any<ulong?>()).Returns(receiptSpec);
 
         foreach (var era in eraFiles)
         {
@@ -173,7 +174,7 @@ public class Era1ModuleTests
             using EraReader eraReader = await EraReader.Create(era);
             var eraAccumulator = await eraReader.ReadAccumulator();
 
-            Assert.That(await eraReader.VerifyAccumulator(eraAccumulator, specProvider), Is.True);
+            Assert.That(await eraReader.VerifyAccumulator(eraAccumulator, MainnetSpecProvider.Instance), Is.True);
         }
     }
 
