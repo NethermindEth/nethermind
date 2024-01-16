@@ -140,7 +140,7 @@ namespace Ethereum.Test.Base
 
             List<string> differences = RunAssertions(test, stateProvider);
             EthereumTestResult testResult = new(test.Name, test.ForkName, differences.Count == 0);
-            testResult.TimeInMs = (int)stopwatch.Elapsed.TotalMilliseconds;
+            testResult.TimeInMs = stopwatch.Elapsed.TotalMilliseconds;
             testResult.StateRoot = stateProvider.StateRoot;
 
             //            Assert.Zero(differences.Count, "differences");

@@ -138,7 +138,7 @@ namespace Nethermind.Serialization.Rlp
             int length = GetLength(item, rlpBehaviors);
             RlpStream stream = new(length);
             Encode(stream, item, rlpBehaviors);
-            return stream.Data;
+            return stream.Data.ToArray();
         }
 
         public void Encode(RlpStream rlpStream, TxReceipt item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)

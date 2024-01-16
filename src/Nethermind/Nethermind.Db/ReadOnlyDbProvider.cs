@@ -33,8 +33,6 @@ namespace Nethermind.Db
             }
         }
 
-        public DbModeHint DbMode => _wrappedProvider.DbMode;
-
         public void ClearTempChanges()
         {
             foreach (IReadOnlyDb readonlyDb in _registeredDbs.Values)
