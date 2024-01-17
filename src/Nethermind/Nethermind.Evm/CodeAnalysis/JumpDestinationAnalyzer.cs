@@ -1,18 +1,24 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using System.Runtime.Intrinsics;
+using System.Runtime.Intrinsics.X86;
 
 namespace Nethermind.Evm.CodeAnalysis
 {
     public sealed class JumpDestinationAnalyzer(byte[] code)
     {
         private const int PUSH1 = 0x60;
+        private const int PUSHx = PUSH1 - 1;
         private const int PUSH32 = 0x7f;
         private const int JUMPDEST = 0x5b;
         private const int BEGINSUB = 0x5c;
         private const int BitShiftPerInt64 = 6;
+
+        private readonly static long[]? _emptyJumpDestBitmap = new long[1];
 
         private long[]? _jumpDestBitmap;
         public byte[] MachineCode { get; } = code;
@@ -72,21 +78,37 @@ namespace Nethermind.Evm.CodeAnalysis
         /// </summary>
         private static long[] CreateJumpDestinationBitmap(byte[] code)
         {
+            if (code.Length == 0) return _emptyJumpDestBitmap;
+
             long[] jumpDestBitmap = new long[GetInt64ArrayLengthFromBitLength(code.Length)];
 
             int pc = 0;
             long flags = 0;
             while (true)
             {
+                int move = 1;
+                if (Avx2.IsSupported && (pc & 0x1f) == 0 && pc < code.Length - Vector256<sbyte>.Count)
+                {
+                    Vector256<sbyte> data = Unsafe.As<byte, Vector256<sbyte>>(ref Unsafe.AddByteOffset(ref MemoryMarshal.GetArrayDataReference(code), pc));
+                    Vector256<sbyte> compare = Avx2.CompareGreaterThan(data, Vector256.Create((sbyte)PUSHx));
+                    if (compare == default)
+                    {
+                        Vector256<sbyte> dest = Avx2.CompareEqual(data, Vector256.Create((sbyte)JUMPDEST));
+                        Vector256<sbyte> sub = Avx2.CompareEqual(data, Vector256.Create((sbyte)BEGINSUB));
+                        Vector256<sbyte> combined = Avx2.Or(dest, sub);
+                        flags |= (long)Avx2.MoveMask(combined) << (pc & 0x20);
+                        move = Vector256<sbyte>.Count;
+                        goto Next;
+                    }
+                }
+
                 // Since we are using a non-standard for loop here;
                 // changing to while(true) plus below if check elides
                 // the bounds check from the following code array access.
                 if ((uint)pc >= (uint)code.Length) break;
-
                 // Grab the instruction from the code.
                 int op = code[pc];
 
-                int move = 1;
                 if ((uint)op - JUMPDEST <= BEGINSUB - JUMPDEST)
                 {
                     // Accumulate JumpDest to register
@@ -98,7 +120,7 @@ namespace Nethermind.Evm.CodeAnalysis
                     // don't need to analyse data for JumpDests
                     move = op - PUSH1 + 2;
                 }
-
+            Next:
                 int next = pc + move;
                 if ((pc & 0x3F) + move > 0x3f || next >= code.Length)
                 {

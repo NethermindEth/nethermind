@@ -498,8 +498,14 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine
             return _precompiles[codeSource];
         }
 
+        CodeInfo cachedCodeInfo = null;
         Hash256 codeHash = worldState.GetCodeHash(codeSource);
-        CodeInfo cachedCodeInfo = _codeCache.Get(codeHash);
+        if (ReferenceEquals(codeHash, Keccak.OfAnEmptyString))
+        {
+            cachedCodeInfo = CodeInfo.Empty;
+        }
+
+        cachedCodeInfo ??= _codeCache.Get(codeHash);
         if (cachedCodeInfo is null)
         {
             byte[] code = worldState.GetCode(codeHash);
