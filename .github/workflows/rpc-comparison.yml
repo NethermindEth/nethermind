@@ -58,7 +58,7 @@ jobs:
     with:
       additional_options: >-
         {
-          "timeout": "1",
+          "timeout": "12",
           "default_dockerfile": "Dockerfile",
           "default_dockerfile_build_type": "release",
           "ssh_keys": "",
@@ -69,7 +69,7 @@ jobs:
       additional_nethermind_flags: Pruning.Mode=None JsonRpc.EnabledModules=[Eth,Subscribe,Trace,TxPool,Web3,Personal,Proof,Net,Parity,Health,Rpc,Debug,Admin]
       nethermind_repo_ref: ${{ github.ref }}
       custom_run_id: ${{ github.run_id }}
-      network: holesky
+      network: mainnet
   
   create_compare_node:
     name: Create node from branch to compare
@@ -80,7 +80,7 @@ jobs:
     with:
       additional_options: >-
         {
-          "timeout": "1",
+          "timeout": "12",
           "default_dockerfile": "Dockerfile",
           "default_dockerfile_build_type": "release",
           "ssh_keys": "",
@@ -91,7 +91,7 @@ jobs:
       additional_nethermind_flags: Pruning.Mode=None JsonRpc.EnabledModules=[Eth,Subscribe,Trace,TxPool,Web3,Personal,Proof,Net,Parity,Health,Rpc,Debug,Admin]
       nethermind_repo_ref: ${{ inputs.branch_to_compare }}
       custom_run_id: ${{ github.run_id }}
-      network: holesky
+      network: mainnet
   
   aggregate_rpcs:
     name: Collect all RPC Urls and pass it further
@@ -312,7 +312,7 @@ jobs:
             
             for TEST in "${tests[@]}"; do
                 TEST_perf_result="${TEST}_perf_result"
-                flood "$TEST" ${compare_to_other_branch_params} --rates 10 100 1000 --output "$TEST_perf_result" --duration 30 | tee -a "$TEST_perf_result.txt"
+                flood "$TEST" ${compare_to_other_branch_params} --rates 10 100 1000 --output "$TEST_perf_result" --duration 30 --deep-check | tee -a "$TEST_perf_result.txt"
             done
           else
             flood all ${compare_to_other_branch_params} --output equality_result_other --equality | tee output_other_branch.txt
@@ -332,8 +332,11 @@ jobs:
         run: |
           ls
           if [ "${{ inputs.is_performance_check }}" == "true" ]; then
-            echo "flood repos $(ls -d *_perf_result)"
-            flood repos $(ls -d *_perf_result)
+            echo "Processing performance check repositories:"
+            for repo in $(ls -d *_perf_result); do
+              echo "Flood report for $repo"
+              flood report "$repo"
+            done
           else
             if [ "$COMPARE_TO_OTHER_BRANCH" == "true" ]; then
               flood report equality_result_other
@@ -355,3 +358,7 @@ jobs:
             output_other_branch.txt
             output_infura.txt
             output_archive.txt
+            *_perf_result
+            *_perf_result.txt
+            equality_result_*
+            
