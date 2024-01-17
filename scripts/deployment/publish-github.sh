@@ -11,6 +11,8 @@ release_id=$(curl https://api.github.com/repos/$GITHUB_REPOSITORY/releases \
   -H "Accept: application/vnd.github+json" \
   -H "Authorization: Bearer $GITHUB_TOKEN" | jq -r '.[] | select(.tag_name == "'$GIT_TAG'") | .id')
 
+should_publish=true
+
 if [ "$release_id" == "" ]
 then
   echo "Drafting release $GIT_TAG"
@@ -25,21 +27,8 @@ then
     -H "Accept: application/vnd.github+json" \
     -H "Authorization: Bearer $GITHUB_TOKEN" \
     -d "$body" | jq -r '.id')
-else
-  echo "Publishing release $GIT_TAG"
 
-  make_latest=$([ $PRERELEASE = 'true' ] && echo "false" || echo "true")
-
-  body=$(printf \
-    '{"target_commitish": "%s", "name": "v%s", "draft": false, "make_latest": "%s", "prerelease": %s}' \
-    $GITHUB_SHA $GIT_TAG $make_latest $PRERELEASE)
-
-  curl https://api.github.com/repos/$GITHUB_REPOSITORY/releases/$release_id \
-    -X PATCH \
-    --fail-with-body \
-    -H "Accept: application/vnd.github+json" \
-    -H "Authorization: Bearer $GITHUB_TOKEN" \
-    -d "$body"
+  should_publish=false
 fi
 
 cd $GITHUB_WORKSPACE/$PACKAGE_DIR
@@ -58,5 +47,23 @@ do
     -H "Content-Type: application/octet-stream" \
     --data-binary @"$file_name"
 done
+
+if [ "$should_publish" == "true" ]
+then
+  echo "Publishing release $GIT_TAG"
+
+  make_latest=$([ $PRERELEASE = 'true' ] && echo "false" || echo "true")
+
+  body=$(printf \
+    '{"target_commitish": "%s", "name": "v%s", "draft": false, "make_latest": "%s", "prerelease": %s}' \
+    $GITHUB_SHA $GIT_TAG $make_latest $PRERELEASE)
+
+  curl https://api.github.com/repos/$GITHUB_REPOSITORY/releases/$release_id \
+    -X PATCH \
+    --fail-with-body \
+    -H "Accept: application/vnd.github+json" \
+    -H "Authorization: Bearer $GITHUB_TOKEN" \
+    -d "$body"
+fi
 
 echo "Publishing completed"
