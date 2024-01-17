@@ -32,7 +32,10 @@ using Nethermind.Evm.Tracing.Debugger;
 namespace Nethermind.Evm;
 
 using System.Linq;
+using System.Reflection.PortableExecutable;
+using System.Security.Cryptography;
 using Int256;
+using Nethermind.Evm.EOF;
 
 public class VirtualMachine : IVirtualMachine
 {
@@ -1398,11 +1401,20 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine
 
                         if (!result.IsZero)
                         {
-                            if (!UpdateMemoryCost(vmState, ref gasAvailable, in a, result)) goto OutOfGas;
 
                             byte[] externalCode = GetCachedCodeInfo(_worldState, address, spec).MachineCode;
-                            slice = externalCode.SliceWithZeroPadding(b, (int)result);
+
+                            if(spec.IsEofEnabled && EvmObjectFormat.IsEof(externalCode, out _ ))
+                            {
+                                slice = ZeroPaddedSpan.Empty;
+                            } else
+                            {
+                                slice = externalCode.SliceWithZeroPadding(b, (int)result);
+                            }
+
+                            if (!UpdateMemoryCost(vmState, ref gasAvailable, in a, result)) goto OutOfGas;
                             vmState.Memory.Save(in a, in slice);
+
                             if (typeof(TTracingInstructions) == typeof(IsTracing))
                             {
                                 _txTracer.ReportMemoryChange((long)a, in slice);
@@ -1978,7 +1990,15 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine
                         }
                         else
                         {
-                            stack.PushBytes(_state.GetCodeHash(address).Bytes);
+                            Span<byte> account = _state.GetCode(address);
+                            if(spec.IsEofEnabled && EvmObjectFormat.IsEof(account, out _))
+                            {
+                                stack.PushBytes(SHA256.HashData(EvmObjectFormat.MAGIC));
+                            }
+                            else
+                            {
+                                stack.PushBytes(_state.GetCodeHash(address).Bytes);
+                            }
                         }
 
                         break;
@@ -2171,8 +2191,15 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine
     private void InstructionExtCodeSize<TTracingInstructions>(Address address, ref EvmStack<TTracingInstructions> stack, IReleaseSpec spec) where TTracingInstructions : struct, IIsTracing
     {
         byte[] accountCode = GetCachedCodeInfo(_worldState, address, spec).MachineCode;
-        UInt256 result = (UInt256)accountCode.Length;
-        stack.PushUInt256(in result);
+        if (spec.IsEofEnabled && EvmObjectFormat.IsEof(accountCode, out _))
+        {
+            stack.PushUInt256(2);
+        }
+        else
+        {
+            UInt256 result = (UInt256)accountCode.Length;
+            stack.PushUInt256(in result);
+        }
     }
 
     [SkipLocalsInit]

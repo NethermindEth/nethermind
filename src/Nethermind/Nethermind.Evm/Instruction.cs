@@ -227,17 +227,23 @@ namespace Nethermind.Evm
 
             return instruction switch
             {
-                Instruction.CREATE2 or Instruction.CREATE => !IsEofContext,
-                Instruction.EXTCODEHASH or Instruction.EXTCODECOPY or Instruction.EXTCODESIZE => !IsEofContext,
-                Instruction.CODECOPY or Instruction.CODESIZE => !IsEofContext,
-                Instruction.GAS => !IsEofContext,
-                Instruction.PC => !IsEofContext,
-                Instruction.CALLCODE or Instruction.SELFDESTRUCT => !IsEofContext,
-                Instruction.JUMPI or Instruction.JUMP => !IsEofContext,
                 Instruction.CALLF or Instruction.RETF or Instruction.JUMPF => IsEofContext,
                 Instruction.DUPN or Instruction.SWAPN or Instruction.EXCHANGE => IsEofContext,
-                Instruction.BEGINSUB or Instruction.RETURNSUB or Instruction.JUMPSUB => true,
-                Instruction.CALL or Instruction.DELEGATECALL or Instruction.GAS => !IsEofContext,
+                Instruction.RJUMP or Instruction.RJUMPI or Instruction.RJUMPV => IsEofContext,
+                Instruction.CALL => !IsEofContext,
+                Instruction.CALLCODE => !IsEofContext,
+                Instruction.DELEGATECALL => !IsEofContext,
+                Instruction.SELFDESTRUCT => !IsEofContext,
+                Instruction.JUMP => !IsEofContext,
+                Instruction.JUMPI => !IsEofContext,
+                Instruction.PC => !IsEofContext,
+                Instruction.CREATE2 or Instruction.CREATE => !IsEofContext,
+                Instruction.CODECOPY => !IsEofContext,
+                Instruction.CODESIZE => !IsEofContext,
+                Instruction.EXTCODEHASH => !IsEofContext,
+                Instruction.EXTCODECOPY => !IsEofContext,
+                Instruction.EXTCODESIZE => !IsEofContext,
+                Instruction.GAS => !IsEofContext,
                 _ => true
             };
         }

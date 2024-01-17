@@ -55,7 +55,20 @@ internal static class EvmObjectFormat
     /// </summary>
     /// <param name="container">Machine code to be checked</param>
     /// <returns></returns>
-    public static bool IsEof(ReadOnlySpan<byte> container) => container.StartsWith(MAGIC);
+    public static bool IsEof(ReadOnlySpan<byte> container, [NotNullWhen(true)] out int version)
+    {
+        if(container.Length >= MAGIC.Length + 1)
+        {
+            version = container[MAGIC.Length];
+            return container.StartsWith(MAGIC);
+        } else
+        {
+            version = 0;
+            return false;
+        }
+        
+    }
+
     public static bool IsEofn(ReadOnlySpan<byte> container, byte version) => container.Length >= MAGIC.Length + 1 && container.StartsWith(MAGIC) && container[MAGIC.Length] == version;
 
     public static bool IsValidEof(ReadOnlySpan<byte> container, [NotNullWhen(true)] out EofHeader? header)
