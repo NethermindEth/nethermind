@@ -69,7 +69,7 @@ jobs:
       additional_nethermind_flags: Pruning.Mode=None JsonRpc.EnabledModules=[Eth,Subscribe,Trace,TxPool,Web3,Personal,Proof,Net,Parity,Health,Rpc,Debug,Admin]
       nethermind_repo_ref: ${{ github.ref }}
       custom_run_id: ${{ github.run_id }}
-      network: mainnet
+      network: holesky
   
   create_compare_node:
     name: Create node from branch to compare
@@ -91,7 +91,7 @@ jobs:
       additional_nethermind_flags: Pruning.Mode=None JsonRpc.EnabledModules=[Eth,Subscribe,Trace,TxPool,Web3,Personal,Proof,Net,Parity,Health,Rpc,Debug,Admin]
       nethermind_repo_ref: ${{ inputs.branch_to_compare }}
       custom_run_id: ${{ github.run_id }}
-      network: mainnet
+      network: holesky
   
   aggregate_rpcs:
     name: Collect all RPC Urls and pass it further
