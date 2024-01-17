@@ -58,7 +58,7 @@ jobs:
     with:
       additional_options: >-
         {
-          "timeout": "12",
+          "timeout": "6",
           "default_dockerfile": "Dockerfile",
           "default_dockerfile_build_type": "release",
           "ssh_keys": "",
@@ -80,7 +80,7 @@ jobs:
     with:
       additional_options: >-
         {
-          "timeout": "12",
+          "timeout": "6",
           "default_dockerfile": "Dockerfile",
           "default_dockerfile_build_type": "release",
           "ssh_keys": "",
