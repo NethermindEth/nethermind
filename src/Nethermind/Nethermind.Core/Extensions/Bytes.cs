@@ -365,6 +365,62 @@ namespace Nethermind.Core.Extensions
         {
             return new(bytes, true, true);
         }
+        public static short ReadEthInt16(this Span<byte> bytes)
+        {
+            return ReadEthInt16((ReadOnlySpan<byte>)bytes);
+        }
+
+        public static short ReadEthInt16(this ReadOnlySpan<byte> bytes)
+        {
+            if (bytes.Length > 2)
+            {
+                bytes = bytes.Slice(bytes.Length - 2, 2);
+            }
+
+            return bytes.Length switch
+            {
+                2 => BinaryPrimitives.ReadInt16BigEndian(bytes),
+                1 => bytes[0],
+                _ => 0
+            };
+        }
+
+        public static ushort ReadEthUInt16(this Span<byte> bytes)
+        {
+            return ReadEthUInt16((ReadOnlySpan<byte>)bytes);
+        }
+
+        public static ushort ReadEthUInt16(this ReadOnlySpan<byte> bytes)
+        {
+            if (bytes.Length > 2)
+            {
+                bytes = bytes.Slice(bytes.Length - 2, 2);
+            }
+
+            return bytes.Length switch
+            {
+                2 => BinaryPrimitives.ReadUInt16BigEndian(bytes),
+                1 => bytes[0],
+                _ => 0
+            };
+        }
+
+        public static ushort ReadEthUInt16LittleEndian(this Span<byte> bytes)
+        {
+            if (bytes.Length > 2)
+            {
+                bytes = bytes.Slice(bytes.Length - 2, 2);
+            }
+
+            if (bytes.Length == 2)
+            {
+                return BinaryPrimitives.ReadUInt16LittleEndian(bytes);
+            }
+
+            Span<byte> fourBytes = stackalloc byte[2];
+            bytes.CopyTo(fourBytes[(2 - bytes.Length)..]);
+            return BinaryPrimitives.ReadUInt16LittleEndian(fourBytes);
+        }
 
         public static uint ReadEthUInt32(this Span<byte> bytes)
         {
