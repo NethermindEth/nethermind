@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Numerics;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
+using Nethermind.Blockchain.ValidatorExit;
 using Nethermind.Consensus.BeaconBlockRoot;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
@@ -36,6 +37,7 @@ public partial class BlockProcessor : IBlockProcessor
     private readonly IBlockValidator _blockValidator;
     private readonly IRewardCalculator _rewardCalculator;
     private readonly IBlockProcessor.IBlockTransactionsExecutor _blockTransactionsExecutor;
+    private readonly IValidatorExitEipHandler _validatorExitEipHandler;
 
     private const int MaxUncommittedBlocks = 64;
 
@@ -66,6 +68,7 @@ public partial class BlockProcessor : IBlockProcessor
         _rewardCalculator = rewardCalculator ?? throw new ArgumentNullException(nameof(rewardCalculator));
         _blockTransactionsExecutor = blockTransactionsExecutor ?? throw new ArgumentNullException(nameof(blockTransactionsExecutor));
         _beaconBlockRootHandler = new BeaconBlockRootHandler();
+        _validatorExitEipHandler = new ValidatorExitEipHandler();
 
         ReceiptsTracer = new BlockReceiptsTracer();
     }
@@ -242,6 +245,7 @@ public partial class BlockProcessor : IBlockProcessor
         block.Header.ReceiptsRoot = receipts.GetReceiptsRoot(spec, block.ReceiptsRoot);
         ApplyMinerRewards(block, blockTracer, spec);
         _withdrawalProcessor.ProcessWithdrawals(block, spec);
+
         ReceiptsTracer.EndBlockTrace();
 
         _stateProvider.Commit(spec);
