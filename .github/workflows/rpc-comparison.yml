@@ -354,7 +354,7 @@ jobs:
         uses: actions/upload-artifact@v3
         with:
           name: flood-results
-          path:
+          path: |
             output_other_branch.txt
             output_infura.txt
             output_archive.txt
