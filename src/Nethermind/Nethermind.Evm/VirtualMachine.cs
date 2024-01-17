@@ -59,6 +59,9 @@ public class VirtualMachine : IVirtualMachine
     public CodeInfo GetCachedCodeInfo(IWorldState worldState, Address codeSource, IReleaseSpec spec)
         => _evm.GetCachedCodeInfo(worldState, codeSource, spec);
 
+    public void CacheCodeInfo(Hash256 codeHash, CodeInfo cachedCodeInfo)
+        => _evm.CacheCodeInfo(codeHash, cachedCodeInfo);
+
     public TransactionSubstate Run<TTracingActions>(EvmState state, IWorldState worldState, ITxTracer txTracer)
         where TTracingActions : struct, IIsTracing
         => _evm.Run<TTracingActions>(state, worldState, txTracer);
@@ -354,7 +357,12 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine
                         bool invalidCode = CodeDepositHandler.CodeIsInvalid(spec, callResult.Output);
                         if (gasAvailableForCodeDeposit >= codeDepositGasCost && !invalidCode)
                         {
-                            _state.InsertCode(callCodeOwner, callResult.Output, spec);
+                            var code = callResult.Output;
+
+                            Hash256 codeHash = code.Length == 0 ? Keccak.OfAnEmptyString : Keccak.Compute(code.AsSpan());
+                            _state.InsertCode(callCodeOwner, codeHash, callResult.Output, spec);
+                            _codeCache.Set(codeHash, new CodeInfo(code));
+
                             currentState.GasAvailable -= codeDepositGasCost;
 
                             if (typeof(TTracingActions) == typeof(IsTracing))
@@ -474,6 +482,9 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine
             _parityTouchBugAccount.ShouldDelete = false;
         }
     }
+
+    public void CacheCodeInfo(Hash256 codeHash, CodeInfo cachedCodeInfo)
+        => _codeCache.Set(codeHash, cachedCodeInfo);
 
     public CodeInfo GetCachedCodeInfo(IWorldState worldState, Address codeSource, IReleaseSpec vmSpec)
     {
@@ -2524,14 +2535,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine
 
         _state.SubtractFromBalance(env.ExecutingAccount, value, spec);
 
-        ValueHash256 codeHash = ValueKeccak.Compute(initCode);
-        // Prefer code from code cache (e.g. if create from a factory contract or copypasta)
-        if (!_codeCache.TryGet(codeHash, out CodeInfo codeInfo))
-        {
-            codeInfo = new(initCode.ToArray());
-            // Prime the code cache as likely to be used by more txs
-            _codeCache.Set(codeHash, codeInfo);
-        }
+        CodeInfo codeInfo = new(initCode.ToArray());
 
         ExecutionEnvironment callEnv = new
         (

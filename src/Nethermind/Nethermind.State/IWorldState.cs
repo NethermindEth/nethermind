@@ -85,6 +85,8 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
 
     void InsertCode(Address address, ReadOnlyMemory<byte> code, IReleaseSpec spec, bool isGenesis = false);
 
+    void InsertCode(Address address, Hash256 codeHash, ReadOnlyMemory<byte> code, IReleaseSpec spec, bool isGenesis = false);
+
     void AddToBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec);
 
     void AddToBalanceAndCreateIfNotExists(Address address, in UInt256 balanceChange, IReleaseSpec spec);
