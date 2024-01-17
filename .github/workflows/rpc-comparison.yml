@@ -10,7 +10,7 @@ on:
         required: false
       branch_to_compare:
         type: string
-        description: "A space-separated list of branches. If empty, then selected branch will be used. If multiple specified, those will be compared to themselves."
+        description: "A branch to compare with. Example: \"release/1.25.1\""
         default: ""
         required: false
       compare_with:
