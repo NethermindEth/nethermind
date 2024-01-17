@@ -24,12 +24,20 @@ public class Fp2<T>(Fp<T> a, Fp<T> b, T baseField) where T : IBaseField
 
     public static Fp2<T> operator ^(Fp2<T> x, int exp)
     {
-        Fp2<T> acc = new(new Fp<T>(0, x._baseField), new Fp<T>(1, x._baseField), x._baseField);
-        for (int i = 0; i < exp; i++)
+        Fp2<T> a = x;
+        Fp2<T> b = new(new Fp<T>(0, x._baseField), new Fp<T>(1, x._baseField), x._baseField);
+
+        for (int i = 0; i < 32; i++)
         {
-            acc *= x;
+            if ((exp & 1) == 1)
+            {
+                b *= a;
+            }
+            a *= a;
+            exp >>= 1;
         }
-        return acc;
+
+        return b;
     }
 
     public static Fp2<T> operator +(Fp2<T> x, Fp2<T> y)

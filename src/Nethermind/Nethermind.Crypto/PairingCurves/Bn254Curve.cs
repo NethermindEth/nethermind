@@ -79,6 +79,11 @@ public class Bn254Curve
         return new Fp2<BaseField>(Fp(a), Fp(b), BaseField.Instance);
     }
 
+    public static Fp2<BaseField> Fp2(BigInteger b)
+    {
+        return new Fp2<BaseField>(Fp(0), Fp(b), BaseField.Instance);
+    }
+
     public class G1 : IEquatable<G1>
     {
         public readonly byte[] X = new byte[32];
@@ -186,10 +191,10 @@ public class Bn254Curve
             [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]
         );
         public static readonly G2 Generator = new(
-            [0x18, 0x00, 0xDE, 0xEF, 0x12, 0x1F, 0x1E, 0x76, 0x42, 0x6A, 0x00, 0x66, 0x5E, 0x5C, 0x44, 0x79, 0x67, 0x43, 0x22, 0xD4, 0xF7, 0x5E, 0xDA, 0xDD, 0x46, 0xDE, 0xBD, 0x5C, 0xD9, 0x92, 0xF6, 0xED],
             [0x19, 0x8E, 0x93, 0x93, 0x92, 0x0D, 0x48, 0x3A, 0x72, 0x60, 0xBF, 0xB7, 0x31, 0xFB, 0x5D, 0x25, 0xF1, 0xAA, 0x49, 0x33, 0x35, 0xA9, 0xE7, 0x12, 0x97, 0xE4, 0x85, 0xB7, 0xAE, 0xF3, 0x12, 0xC2],
-            [0x12, 0xC8, 0x5E, 0xA5, 0xDB, 0x8C, 0x6D, 0xEB, 0x4A, 0xAB, 0x71, 0x80, 0x8D, 0xCB, 0x40, 0x8F, 0xE3, 0xD1, 0xE7, 0x69, 0x0C, 0x43, 0xD3, 0x7B, 0x4C, 0xE6, 0xCC, 0x01, 0x66, 0xFA, 0x7D, 0xAA],
-            [0x09, 0x06, 0x89, 0xD0, 0x58, 0x5F, 0xF0, 0x75, 0xEC, 0x9E, 0x99, 0xAD, 0x69, 0x0C, 0x33, 0x95, 0xBC, 0x4B, 0x31, 0x33, 0x70, 0xB3, 0x8E, 0xF3, 0x55, 0xAC, 0xDA, 0xDC, 0xD1, 0x22, 0x97, 0x5B]
+            [0x18, 0x00, 0xDE, 0xEF, 0x12, 0x1F, 0x1E, 0x76, 0x42, 0x6A, 0x00, 0x66, 0x5E, 0x5C, 0x44, 0x79, 0x67, 0x43, 0x22, 0xD4, 0xF7, 0x5E, 0xDA, 0xDD, 0x46, 0xDE, 0xBD, 0x5C, 0xD9, 0x92, 0xF6, 0xED],
+            [0x09, 0x06, 0x89, 0xD0, 0x58, 0x5F, 0xF0, 0x75, 0xEC, 0x9E, 0x99, 0xAD, 0x69, 0x0C, 0x33, 0x95, 0xBC, 0x4B, 0x31, 0x33, 0x70, 0xB3, 0x8E, 0xF3, 0x55, 0xAC, 0xDA, 0xDC, 0xD1, 0x22, 0x97, 0x5B],
+            [0x12, 0xC8, 0x5E, 0xA5, 0xDB, 0x8C, 0x6D, 0xEB, 0x4A, 0xAB, 0x71, 0x80, 0x8D, 0xCB, 0x40, 0x8F, 0xE3, 0xD1, 0xE7, 0x69, 0x0C, 0x43, 0xD3, 0x7B, 0x4C, 0xE6, 0xCC, 0x01, 0x66, 0xFA, 0x7D, 0xAA]
         );
 
         public G2(ReadOnlySpan<byte> X0, ReadOnlySpan<byte> X1, ReadOnlySpan<byte> Y0, ReadOnlySpan<byte> Y1)
@@ -217,9 +222,9 @@ public class Bn254Curve
             }
 
             // y ^ 2 = sqrt((x ^ 3) + (3 / (i + 9))) = a + bi
-            Fp2<BaseField> x = Fp2(X1, X0);
-            var y = Fp2<BaseField>.Sqrt((x ^ 3) + (Fp2(0, 3) / Fp2(1, 9)), sign);
-            return new G2(X0, X1, y.b.ToBytes(), y.a.ToBytes());
+            Fp2<BaseField> x = Fp2(X0, X1);
+            var y = Fp2<BaseField>.Sqrt((x ^ 3) + (Fp2(3) / Fp2(1, 9)), sign);
+            return new G2(X0, X1, y.a.ToBytes(), y.b.ToBytes());
         }
 
         public override bool Equals(object obj) => Equals(obj as G1);
@@ -244,17 +249,77 @@ public class Bn254Curve
                 throw new Exception("Scalar must be 32 bytes to multiply with G2 point.");
             }
 
-            throw new NotImplementedException();
+            return new UInt256(s, true) * p;
         }
 
         public static G2 operator *(UInt256 s, G2 p)
         {
-            return s.ToBigEndian() * p;
+            if (!OnCurve(p))
+            {
+                throw new Exception("Not on G2 curve, cannot multiply.");
+            }
+
+            G2 a = p;
+            G2 b = Zero;
+
+            for (int i = 0; i < 32; i++)
+            {
+                if ((s & 1) == 1)
+                {
+                    b += a;
+                }
+                a += a;
+                s >>= 1;
+            }
+
+            return b;
         }
 
         public static G2 operator +(G2 p, G2 q)
         {
-            throw new NotImplementedException();
+            if (!OnCurve(p) || !OnCurve(q))
+            {
+                throw new Exception("Not on G2 curve, cannot add.");
+            }
+
+            if (p == Zero)
+            {
+                return q;
+            }
+
+            if (q == Zero)
+            {
+                return p;
+            }
+
+            Fp2<BaseField> x1 = Fp2(p.X.Item1, p.X.Item2);
+            Fp2<BaseField> y1 = Fp2(p.Y.Item1, p.Y.Item2);
+            Fp2<BaseField> x2 = Fp2(q.X.Item1, q.X.Item2);
+            Fp2<BaseField> y2 = Fp2(q.Y.Item1, q.Y.Item2);
+
+            if (p == q)
+            {
+                if (y1 == Fp2(0))
+                {
+                    return Zero;
+                }
+
+                Fp2<BaseField> lambda = Fp2(3) * (x1 ^ 2) / (Fp2(2) * y1);
+                Fp2<BaseField> x = (lambda ^ 2) - (Fp2(2) * x2);
+                Fp2<BaseField> y = (lambda * (x1 - x)) - y1;
+                return new(x.a.ToBytes(), x.b.ToBytes(), y.a.ToBytes(), y.b.ToBytes());
+            }
+            else if (x1 != x2)
+            {
+                Fp2<BaseField> lambda = (y2 - y1) / (x2 - x1);
+                Fp2<BaseField> x = (lambda ^ 2) - x1 - x2;
+                Fp2<BaseField> y = (lambda * (x1 - x)) - y1;
+                return new(x.a.ToBytes(), x.b.ToBytes(), y.a.ToBytes(), y.b.ToBytes());
+            }
+            else
+            {
+                return Zero;
+            }
         }
 
         public static G2 operator -(G2 p)
@@ -273,6 +338,24 @@ public class Bn254Curve
             X.Item2.CopyTo(output[32..]);
             Y.Item1.CopyTo(output[64..]);
             Y.Item2.CopyTo(output[96..]);
+        }
+
+        internal static bool OnCurve(G2 p)
+        {
+            if (p == Zero)
+            {
+                return true;
+            }
+
+            try
+            {
+                return p == FromX(p.X.Item1, p.X.Item2, Fp(p.Y.Item2) < Fp(p.Y.Item1));
+            }
+            catch (Exception)
+            {
+                // if unable to find x then cannot be on curve
+                return false;
+            }
         }
     }
 }

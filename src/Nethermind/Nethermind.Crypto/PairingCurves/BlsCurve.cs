@@ -80,6 +80,11 @@ public class BlsCurve
         return new Fp2<BaseField>(Fp(a), Fp(b), BaseField.Instance);
     }
 
+    public static Fp2<BaseField> Fp2(BigInteger b)
+    {
+        return new Fp2<BaseField>(Fp(0), Fp(b), BaseField.Instance);
+    }
+
     public class G1 : IEquatable<G1>
     {
         public readonly byte[] X = new byte[48];

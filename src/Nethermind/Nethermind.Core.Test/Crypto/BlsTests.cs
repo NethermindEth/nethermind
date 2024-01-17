@@ -115,7 +115,7 @@ public class BlsTests
         var p = BlsCurve.G2.FromScalar(232323232);
         Fp2<BlsCurve.BaseField> x = BlsCurve.Fp2(p.X.Item2, p.X.Item1);
         Fp2<BlsCurve.BaseField> q = BlsCurve.Fp2(p.Y.Item2, p.Y.Item1);
-        Assert.That(x * Fp2<BlsCurve.BaseField>.Inv(x), Is.EqualTo(BlsCurve.Fp2(0, 1)));
+        Assert.That(x * Fp2<BlsCurve.BaseField>.Inv(x), Is.EqualTo(BlsCurve.Fp2(1)));
         Assert.That((x / q) * q, Is.EqualTo(x));
     }
 

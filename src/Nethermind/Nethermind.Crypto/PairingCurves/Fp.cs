@@ -36,7 +36,7 @@ public class Fp<T> where T : IBaseField
 
     public byte[] ToBytes()
     {
-        return _value.ToBigEndianByteArray(48);
+        return _value.ToBigEndianByteArray(_baseField.GetSize());
     }
 
     public static (Fp<T>, Fp<T>) Sqrt(Fp<T> x)
