@@ -173,7 +173,8 @@ public class StartBlockProducerAuRa
         IReadOnlyTxProcessorSource readOnlyTxProcessorSourceForTxPriority =
             new ReadOnlyTxProcessingEnv(_api.WorldStateManager!, _api.BlockTree, _api.SpecProvider, _api.LogManager);
 
-        (_txPriorityContract, _localDataSource) = TxAuRaFilterBuilders.CreateTxPrioritySources(_auraConfig, _api, readOnlyTxProcessorSourceForTxPriority);
+        _txPriorityContract = TxAuRaFilterBuilders.CreateTxPrioritySources(_auraConfig, _api, readOnlyTxProcessorSourceForTxPriority);
+        _localDataSource = _api.TxPriorityContractLocalDataSource;
 
         if (_txPriorityContract is not null || _localDataSource is not null)
         {

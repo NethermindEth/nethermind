@@ -3,6 +3,7 @@
 
 using Nethermind.Api;
 using Nethermind.Config;
+using Nethermind.Consensus.AuRa.Config;
 using Nethermind.Consensus.AuRa.Contracts;
 using Nethermind.Consensus.AuRa.Transactions;
 using Nethermind.Consensus.AuRa.Validators;
@@ -28,20 +29,47 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
             set => base.FinalizationManager = value;
         }
 
-        public PermissionBasedTxFilter.Cache? TxFilterCache { get; set; }
+        private PermissionBasedTxFilter.Cache? _txFilterCache = null;
+        public PermissionBasedTxFilter.Cache TxFilterCache => _txFilterCache ??= new PermissionBasedTxFilter.Cache();
 
-        public IValidatorStore? ValidatorStore { get; set; }
+        private IValidatorStore? _validatorStore = null;
+        public IValidatorStore ValidatorStore => _validatorStore ??= new ValidatorStore(DbProvider!.BlockInfosDb);
 
         public LruCache<ValueHash256, UInt256> TransactionPermissionContractVersions { get; }
             = new(
                 PermissionBasedTxFilter.Cache.MaxCacheSize,
                 nameof(TransactionPermissionContract));
 
-        public AuRaContractGasLimitOverride.Cache? GasLimitCalculatorCache { get; set; }
+
+        private AuRaContractGasLimitOverride.Cache? _gasLimitCalculatorCache = null;
+        public AuRaContractGasLimitOverride.Cache? GasLimitCalculatorCache => _gasLimitCalculatorCache ??= new AuRaContractGasLimitOverride.Cache();
 
         public IReportingValidator? ReportingValidator { get; set; }
 
         public ReportingContractBasedValidator.Cache ReportingContractValidatorCache { get; } = new ReportingContractBasedValidator.Cache();
-        public TxPriorityContract.LocalDataSource? TxPriorityContractLocalDataSource { get; set; }
+
+
+        private TxPriorityContract.LocalDataSource? _txPriorityContractLocalDataSource = null;
+        public TxPriorityContract.LocalDataSource? TxPriorityContractLocalDataSource
+        {
+            get
+            {
+                if (_txPriorityContractLocalDataSource != null) return _txPriorityContractLocalDataSource;
+
+                IAuraConfig config = this.Config<IAuraConfig>();
+                string? auraConfigTxPriorityConfigFilePath = config.TxPriorityConfigFilePath;
+                bool usesTxPriorityLocalData = auraConfigTxPriorityConfigFilePath is not null;
+                if (usesTxPriorityLocalData)
+                {
+                    _txPriorityContractLocalDataSource = new TxPriorityContract.LocalDataSource(
+                        auraConfigTxPriorityConfigFilePath,
+                        EthereumJsonSerializer,
+                        FileSystem,
+                        LogManager);
+                }
+
+                return _txPriorityContractLocalDataSource;
+            }
+        }
     }
 }

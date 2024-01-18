@@ -49,7 +49,6 @@ public class InitializeBlockchainAuRa : InitializeBlockchain
     protected override async Task InitBlockchain()
     {
         var chainSpecAuRa = _api.ChainSpec.AuRa;
-        _api.ValidatorStore = new ValidatorStore(_api.DbProvider!.BlockInfosDb);
         _auRaStepCalculator = new AuRaStepCalculator(_api.ChainSpec.AuRa.StepDuration, _api.Timestamper, _api.LogManager);
         _api.FinalizationManager = new AuRaBlockFinalizationManager(
             _api.BlockTree!,
@@ -62,7 +61,7 @@ public class InitializeBlockchainAuRa : InitializeBlockchain
         await base.InitBlockchain();
 
         _api.FinalizationManager.SetMainBlockProcessor(_api.MainBlockProcessor!);
-        _api.ReportingValidator = ((AuRaBlockProcessor) _api.MainBlockProcessor).AuRaValidator.GetReportingValidator();;
+        _api.ReportingValidator = ((AuRaBlockProcessor)_api.MainBlockProcessor).AuRaValidator.GetReportingValidator();
         if (_sealValidator is not null)
         {
             _sealValidator.ReportingValidator = _api.ReportingValidator;
@@ -171,8 +170,6 @@ public class InitializeBlockchainAuRa : InitializeBlockchain
 
         if (blockGasLimitContractTransitions?.Any() == true)
         {
-            _api.GasLimitCalculatorCache = new AuRaContractGasLimitOverride.Cache();
-
             AuRaContractGasLimitOverride gasLimitCalculator = new(
                 blockGasLimitContractTransitions.Select(blockGasLimitContractTransition =>
                     new BlockGasLimitContract(
@@ -263,7 +260,8 @@ public class InitializeBlockchainAuRa : InitializeBlockchain
     {
         // This has to be different object than the _processingReadOnlyTransactionProcessorSource as this is in separate thread
         var txPoolReadOnlyTransactionProcessorSource = CreateReadOnlyTransactionProcessorSource();
-        var (txPriorityContract, localDataSource) = TxAuRaFilterBuilders.CreateTxPrioritySources(_auraConfig, _api, txPoolReadOnlyTransactionProcessorSource!);
+        var txPriorityContract = TxAuRaFilterBuilders.CreateTxPrioritySources(_auraConfig, _api, txPoolReadOnlyTransactionProcessorSource!);
+        var localDataSource = _api.TxPriorityContractLocalDataSource;
 
         ReportTxPriorityRules(txPriorityContract, localDataSource);
 

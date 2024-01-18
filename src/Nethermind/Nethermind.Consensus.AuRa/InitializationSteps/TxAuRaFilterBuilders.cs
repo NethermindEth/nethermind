@@ -82,8 +82,6 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
 
             if (api.ChainSpec.Parameters.TransactionPermissionContract is not null)
             {
-                api.TxFilterCache ??= new PermissionBasedTxFilter.Cache();
-
                 var txPermissionFilter = CreateFilter(new PermissionBasedTxFilter(
                     new VersionedTransactionPermissionContract(api.AbiEncoder,
                         api.ChainSpec.Parameters.TransactionPermissionContract,
@@ -128,7 +126,7 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
                 : baseAuRaTxFilter;
         }
 
-        public static (TxPriorityContract? Contract, TxPriorityContract.LocalDataSource? DataSource) CreateTxPrioritySources(
+        public static TxPriorityContract? CreateTxPrioritySources(
             IAuraConfig config,
             AuRaNethermindApi api,
             IReadOnlyTxProcessorSource readOnlyTxProcessorSource)
@@ -142,14 +140,7 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
                 txPriorityContract = new TxPriorityContract(api.AbiEncoder, txPriorityContractAddress, readOnlyTxProcessorSource);
             }
 
-            string? auraConfigTxPriorityConfigFilePath = config.TxPriorityConfigFilePath;
-            bool usesTxPriorityLocalData = auraConfigTxPriorityConfigFilePath is not null;
-            if (usesTxPriorityLocalData)
-            {
-                api.TxPriorityContractLocalDataSource ??= new TxPriorityContract.LocalDataSource(auraConfigTxPriorityConfigFilePath, api.EthereumJsonSerializer, api.FileSystem, api.LogManager);
-            }
-
-            return (txPriorityContract, api.TxPriorityContractLocalDataSource);
+            return txPriorityContract;
         }
 
         public static DictionaryContractDataStore<TxPriorityContract.Destination>? CreateMinGasPricesDataStore(
