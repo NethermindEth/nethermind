@@ -17,10 +17,10 @@ namespace Nethermind.Evm.CodeAnalysis
         private const int BEGINSUB = 0x5c;
         private const int BitShiftPerInt64 = 6;
 
-        private readonly static long[]? _emptyJumpDestinationBitmap = new long[1];
+        private static readonly long[]? _emptyJumpDestinationBitmap = new long[1];
         private long[]? _jumpDestinationBitmap = code.Length == 0 ? _emptyJumpDestinationBitmap : null;
 
-        public ReadOnlyMemory<byte> MachineCode { get; } = code;
+        private ReadOnlyMemory<byte> MachineCode { get; } = code;
 
         public bool ValidateJump(int destination, bool isSubroutine)
         {
@@ -57,10 +57,8 @@ namespace Nethermind.Evm.CodeAnalysis
         /// </summary>
         /// <param name="n"></param>
         /// <returns>how many ints are required to store n bytes</returns>
-        private static int GetInt64ArrayLengthFromBitLength(int n)
-        {
-            return (int)((uint)(n - 1 + (1 << BitShiftPerInt64)) >> BitShiftPerInt64);
-        }
+        private static int GetInt64ArrayLengthFromBitLength(int n) =>
+            (n - 1 + (1 << BitShiftPerInt64)) >>> BitShiftPerInt64;
 
         /// <summary>
         /// Collects data locations in code.
@@ -117,14 +115,14 @@ namespace Nethermind.Evm.CodeAnalysis
                     // so can shift by the whole programCounter.
                     currentFlags |= 1L << programCounter;
                 }
-                else if ((sbyte)op > (sbyte)PUSHx)
+                else if ((sbyte)op > PUSHx)
                 {
                     // Fast forward programCounter by the amount of data the push
                     // represents as don't need to analyse data for Jump Destinations.
                     move = op - PUSH1 + 2;
                 }
 
-            Next:
+                Next:
                 int nextCounter = programCounter + move;
                 // Check if read last item of code; we want to write this out also even if not
                 // at a boundary and then we will return the results.
@@ -173,8 +171,7 @@ namespace Nethermind.Evm.CodeAnalysis
         private static void MarkJumpDestinations(long[] jumpDestinationBitmap, int pos, long flags)
         {
             uint offset = (uint)pos >> BitShiftPerInt64;
-            Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(jumpDestinationBitmap), offset)
-                |= flags;
+            Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(jumpDestinationBitmap), offset) |= flags;
         }
 
         public void Execute()
