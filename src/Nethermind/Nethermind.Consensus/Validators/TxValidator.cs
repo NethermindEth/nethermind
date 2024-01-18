@@ -40,7 +40,8 @@ namespace Nethermind.Consensus.Validators
                    ValidateChainId(transaction) &&
                    Validate1559GasFields(transaction, releaseSpec) &&
                    Validate3860Rules(transaction, releaseSpec) &&
-                   Validate4844Fields(transaction);
+                   Validate4844Fields(transaction) &&
+                   ValidateMegaEofInitcodes(transaction, releaseSpec);
         }
 
         private static bool Validate3860Rules(Transaction transaction, IReleaseSpec releaseSpec) =>
@@ -104,6 +105,19 @@ namespace Nethermind.Consensus.Validators
             }
 
             return !spec.ValidateChainId;
+        }
+
+        private static bool ValidateMegaEofInitcodes(Transaction transaction, IReleaseSpec spec)
+        {
+            if (!spec.IsEofEnabled) return true;
+
+            if (transaction.Initcodes?.Length >= Transaction.MaxInitcodeCount) return false;
+
+            foreach (var initcode in transaction.Initcodes)
+            {
+                if (initcode?.Length >= spec.MaxInitCodeSize) return false;
+            }
+            return true;
         }
 
         private static bool Validate4844Fields(Transaction transaction)
