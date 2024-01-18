@@ -32,6 +32,8 @@ using Nethermind.Evm.Tracing.Debugger;
 namespace Nethermind.Evm;
 
 using System.Linq;
+using System.Threading;
+
 using Int256;
 
 public class VirtualMachine : IVirtualMachine
@@ -358,10 +360,13 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine
                         if (gasAvailableForCodeDeposit >= codeDepositGasCost && !invalidCode)
                         {
                             var code = callResult.Output;
+                            var codeInfo = new CodeInfo(code);
+                            // Start generating the JumpDestinationBitmap in background.
+                            ThreadPool.UnsafeQueueUserWorkItem(codeInfo, preferLocal: false);
 
                             Hash256 codeHash = code.Length == 0 ? Keccak.OfAnEmptyString : Keccak.Compute(code.AsSpan());
                             _state.InsertCode(callCodeOwner, codeHash, callResult.Output, spec);
-                            _codeCache.Set(codeHash, new CodeInfo(code));
+                            _codeCache.Set(codeHash, codeInfo);
 
                             currentState.GasAvailable -= codeDepositGasCost;
 

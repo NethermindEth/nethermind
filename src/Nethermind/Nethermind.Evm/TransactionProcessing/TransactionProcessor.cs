@@ -5,6 +5,8 @@ using System;
 using System.IO;
 using System.Linq;
 using System.Runtime.CompilerServices;
+using System.Threading;
+
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
@@ -553,9 +555,13 @@ namespace Nethermind.Evm.TransactionProcessing
                         if (unspentGas >= codeDepositGasCost)
                         {
                             var code = substate.Output.ToArray();
+                            var codeInfo = new CodeInfo(code);
+                            // Start generating the JumpDestinationBitmap in background.
+                            ThreadPool.UnsafeQueueUserWorkItem(codeInfo, preferLocal: false);
+
                             Hash256 codeHash = code.Length == 0 ? Keccak.OfAnEmptyString : Keccak.Compute(code.AsSpan());
                             WorldState.InsertCode(env.ExecutingAccount, codeHash, code, spec);
-                            VirtualMachine.CacheCodeInfo(codeHash, new CodeInfo(code));
+                            VirtualMachine.CacheCodeInfo(codeHash, codeInfo);
 
                             unspentGas -= codeDepositGasCost;
                         }

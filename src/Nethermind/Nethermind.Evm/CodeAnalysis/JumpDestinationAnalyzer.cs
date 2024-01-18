@@ -19,8 +19,8 @@ namespace Nethermind.Evm.CodeAnalysis
         private const int BitShiftPerInt64 = 6;
 
         private readonly static long[]? _emptyJumpDestBitmap = new long[1];
+        private long[]? _jumpDestBitmap = code.Length == 0 ? _emptyJumpDestBitmap : null;
 
-        private long[]? _jumpDestBitmap;
         public byte[] MachineCode { get; } = code;
 
         public bool ValidateJump(int destination, bool isSubroutine)
@@ -78,10 +78,9 @@ namespace Nethermind.Evm.CodeAnalysis
         /// </summary>
         private static long[] CreateJumpDestinationBitmap(byte[] code)
         {
-            if (code.Length == 0) return _emptyJumpDestBitmap;
-
             long[] jumpDestBitmap = new long[GetInt64ArrayLengthFromBitLength(code.Length)];
 
+            bool exit = false;
             int pc = 0;
             long flags = 0;
             while (true)
@@ -102,12 +101,8 @@ namespace Nethermind.Evm.CodeAnalysis
                     }
                 }
 
-                // Since we are using a non-standard for loop here;
-                // changing to while(true) plus below if check elides
-                // the bounds check from the following code array access.
-                if ((uint)pc >= (uint)code.Length) break;
                 // Grab the instruction from the code.
-                int op = code[pc];
+                int op = Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(code), pc);
 
                 if ((uint)op - JUMPDEST <= BEGINSUB - JUMPDEST)
                 {
@@ -122,11 +117,20 @@ namespace Nethermind.Evm.CodeAnalysis
                 }
             Next:
                 int next = pc + move;
-                if ((pc & 0x3F) + move > 0x3f || next >= code.Length)
+                exit = next >= code.Length;
+                if ((pc & 0x3F) + move > 0x3f || exit)
                 {
-                    // Moving to next array element (or finishing) assign to array.
-                    MarkJumpDestinations(jumpDestBitmap, pc, flags);
-                    flags = 0;
+                    if (flags != 0)
+                    {
+                        // Moving to next array element (or finishing) assign to array.
+                        MarkJumpDestinations(jumpDestBitmap, pc, flags);
+                        flags = 0;
+                    }
+                }
+
+                if (exit)
+                {
+                    break;
                 }
 
                 // Next instruction
@@ -154,6 +158,11 @@ namespace Nethermind.Evm.CodeAnalysis
             uint offset = (uint)pos >> BitShiftPerInt64;
             Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(bitvec), offset)
                 |= flags;
+        }
+
+        public void Execute()
+        {
+            _jumpDestBitmap ??= CreateJumpDestinationBitmap(MachineCode);
         }
     }
 }

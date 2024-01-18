@@ -2,12 +2,13 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Threading;
 
 using Nethermind.Evm.Precompiles;
 
 namespace Nethermind.Evm.CodeAnalysis
 {
-    public class CodeInfo
+    public class CodeInfo : IThreadPoolWorkItem
     {
         public byte[] MachineCode { get; set; }
         public IPrecompile? Precompile { get; set; }
@@ -33,6 +34,11 @@ namespace Nethermind.Evm.CodeAnalysis
         public bool ValidateJump(int destination, bool isSubroutine)
         {
             return _analyzer.ValidateJump(destination, isSubroutine);
+        }
+
+        void IThreadPoolWorkItem.Execute()
+        {
+            _analyzer.Execute();
         }
     }
 }
