@@ -122,7 +122,7 @@ namespace Nethermind.Evm.CodeAnalysis
                     move = op - PUSH1 + 2;
                 }
 
-                Next:
+            Next:
                 int nextCounter = programCounter + move;
                 // Check if read last item of code; we want to write this out also even if not
                 // at a boundary and then we will return the results.
