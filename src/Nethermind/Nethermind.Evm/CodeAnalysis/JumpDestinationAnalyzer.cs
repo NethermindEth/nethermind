@@ -13,40 +13,33 @@ namespace Nethermind.Evm.CodeAnalysis
     {
         private const int PUSH1 = 0x60;
         private const int PUSHx = PUSH1 - 1;
-        private const int PUSH32 = 0x7f;
         private const int JUMPDEST = 0x5b;
         private const int BEGINSUB = 0x5c;
         private const int BitShiftPerInt64 = 6;
 
-        private readonly static long[]? _emptyJumpDestBitmap = new long[1];
-        private long[]? _jumpDestBitmap = code.Length == 0 ? _emptyJumpDestBitmap : null;
+        private readonly static long[]? _emptyJumpDestinationBitmap = new long[1];
+        private long[]? _jumpDestinationBitmap = code.Length == 0 ? _emptyJumpDestinationBitmap : null;
 
         public ReadOnlyMemory<byte> MachineCode { get; } = code;
 
         public bool ValidateJump(int destination, bool isSubroutine)
         {
-            // Take array ref to local so Jit knows its size won't change in the method.
             ReadOnlySpan<byte> machineCode = MachineCode.Span;
-            _jumpDestBitmap ??= CreateJumpDestinationBitmap(machineCode);
+            _jumpDestinationBitmap ??= CreateJumpDestinationBitmap(machineCode);
 
             var result = false;
             // Cast to uint to change negative numbers to very int high numbers
             // Then do length check, this both reduces check by 1 and eliminates the bounds
-            // check from accessing the array.
+            // check from accessing the span.
             if ((uint)destination < (uint)machineCode.Length)
             {
                 // Store byte to int, as less expensive operations at word size
                 int codeByte = machineCode[destination];
-                if (IsJumpDestination(_jumpDestBitmap, destination))
+                if (IsJumpDestination(_jumpDestinationBitmap, destination))
                 {
-                    if (isSubroutine)
-                    {
-                        result = codeByte == BEGINSUB;
-                    }
-                    else
-                    {
-                        result = codeByte == JUMPDEST;
-                    }
+                    result = isSubroutine ?
+                        codeByte == BEGINSUB :
+                        codeByte == JUMPDEST;
                 }
             }
 
@@ -80,65 +73,91 @@ namespace Nethermind.Evm.CodeAnalysis
         /// </summary>
         private static long[] CreateJumpDestinationBitmap(ReadOnlySpan<byte> code)
         {
-            long[] jumpDestBitmap = new long[GetInt64ArrayLengthFromBitLength(code.Length)];
+            long[] jumpDestinationBitmap = new long[GetInt64ArrayLengthFromBitLength(code.Length)];
 
-            int pc = 0;
-            long flags = 0;
+            int programCounter = 0;
+            // We accumulate each array segment to a register and then flush to memory when we move to next.
+            long currentFlags = 0;
             while (true)
             {
+                // Set default programCounter increment to 1 for default case when don't vectorize or read a PUSH.
                 int move = 1;
-                if (Avx2.IsSupported && (pc & 0x1f) == 0 && pc < code.Length - Vector256<sbyte>.Count)
+                if (Avx2.IsSupported &&
+                    // Check not going to read passed end of code.
+                    programCounter <= code.Length - Vector256<sbyte>.Count &&
+                    // Are we on an int stride, one or other half of the long flags?
+                    (programCounter & 31) == 0)
                 {
-                    Vector256<sbyte> data = Unsafe.As<byte, Vector256<sbyte>>(ref Unsafe.AddByteOffset(ref MemoryMarshal.GetReference(code), pc));
+                    Vector256<sbyte> data = Unsafe.As<byte, Vector256<sbyte>>(ref Unsafe.AddByteOffset(ref MemoryMarshal.GetReference(code), programCounter));
+                    // Pushes are 0x60 to 0x7f; converting to signed bytes any instruction higher than PUSH32
+                    // becomes negative so we can just do a single greater than test to see if any present.
                     Vector256<sbyte> compare = Avx2.CompareGreaterThan(data, Vector256.Create((sbyte)PUSHx));
                     if (compare == default)
                     {
+                        // Check the bytes for any JUMPDESTs.
                         Vector256<sbyte> dest = Avx2.CompareEqual(data, Vector256.Create((sbyte)JUMPDEST));
+                        // Check the bytes for any BEGINSUBs.
                         Vector256<sbyte> sub = Avx2.CompareEqual(data, Vector256.Create((sbyte)BEGINSUB));
+                        // Merge the two results.
                         Vector256<sbyte> combined = Avx2.Or(dest, sub);
-                        flags |= (long)Avx2.MoveMask(combined) << (pc & 0x20);
+                        // Extract the checks as a set of int flags.
+                        int flags = Avx2.MoveMask(combined);
+                        // Shift up flags by depending which side of long we are on, and merge to current set.
+                        currentFlags |= (long)flags << (programCounter & 32);
+                        // Forward programCounter by Vector256 stride.
                         move = Vector256<sbyte>.Count;
                         goto Next;
                     }
                 }
 
-                // Grab the instruction from the code.
-                int op = Unsafe.Add(ref MemoryMarshal.GetReference(code), pc);
+                // Grab the instruction from the code; zero length code
+                // doesn't enter this method and we check at end of loop if
+                // hit the last element and should exit, so skip bounds check
+                // access here.
+                int op = Unsafe.Add(ref MemoryMarshal.GetReference(code), programCounter);
 
                 if ((uint)op - JUMPDEST <= BEGINSUB - JUMPDEST)
                 {
-                    // Accumulate JumpDest to register
-                    flags |= 1L << pc;
+                    // Accumulate Jump Destinations to register, shift will wrap and single bit
+                    // so can shift by the whole programCounter.
+                    currentFlags |= 1L << programCounter;
                 }
-                else if ((uint)op - PUSH1 <= PUSH32 - PUSH1)
+                else if ((sbyte)op > (sbyte)PUSHx)
                 {
-                    // Skip forward amount of data the push represents
-                    // don't need to analyse data for JumpDests
+                    // Fast forward programCounter by the amount of data the push
+                    // represents as don't need to analyse data for Jump Destinations.
                     move = op - PUSH1 + 2;
                 }
+
             Next:
-                int next = pc + move;
-                bool exit = next >= code.Length;
-                if ((pc & 0x3F) + move > 0x3f || exit)
+                int nextCounter = programCounter + move;
+                // Check if read last item of code; we want to write this out also even if not
+                // at a boundary and then we will return the results.
+                bool exit = nextCounter >= code.Length;
+                // Does the move mean we are moving to new segment of the long array?
+                if ((programCounter & 63) + move > 63 || exit)
                 {
-                    if (flags != 0)
+                    // If so write out the flags (if any are set)
+                    if (currentFlags != 0)
                     {
                         // Moving to next array element (or finishing) assign to array.
-                        MarkJumpDestinations(jumpDestBitmap, pc, flags);
-                        flags = 0;
+                        MarkJumpDestinations(jumpDestinationBitmap, programCounter, currentFlags);
+                        // Clear the flags in preparation for the next array segment.
+                        currentFlags = 0;
                     }
                 }
 
                 if (exit)
                 {
+                    // End of code.
                     break;
                 }
 
-                // Next instruction
-                pc = next;
+                // Move to next instruction.
+                programCounter = nextCounter;
             }
 
-            return jumpDestBitmap;
+            return jumpDestinationBitmap;
         }
 
         /// <summary>
@@ -147,23 +166,24 @@ namespace Nethermind.Evm.CodeAnalysis
         private static bool IsJumpDestination(long[] bitvec, int pos)
         {
             int vecIndex = pos >> BitShiftPerInt64;
-            // Check if in bounds, Jit will add slightly more expensive exception throwing check if we don't
+            // Check if in bounds, Jit will add slightly more expensive exception throwing check if we don't.
             if ((uint)vecIndex >= (uint)bitvec.Length) return false;
 
             return (bitvec[vecIndex] & (1L << pos)) != 0;
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static void MarkJumpDestinations(long[] bitvec, int pos, long flags)
+        private static void MarkJumpDestinations(long[] jumpDestinationBitmap, int pos, long flags)
         {
             uint offset = (uint)pos >> BitShiftPerInt64;
-            Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(bitvec), offset)
+            Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(jumpDestinationBitmap), offset)
                 |= flags;
         }
 
         public void Execute()
         {
-            _jumpDestBitmap ??= CreateJumpDestinationBitmap(MachineCode.Span);
+            // This is to support background thread preparation of the bitmap.
+            _jumpDestinationBitmap ??= CreateJumpDestinationBitmap(MachineCode.Span);
         }
     }
 }
