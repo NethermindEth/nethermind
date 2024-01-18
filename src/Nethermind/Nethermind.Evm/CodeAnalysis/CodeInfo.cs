@@ -8,19 +8,16 @@ using Nethermind.Evm.Precompiles;
 
 namespace Nethermind.Evm.CodeAnalysis
 {
-    public class CodeInfo
+    public class CodeInfo : ICodeInfo
     {
         public byte[] MachineCode { get; set; }
 
-        public bool IsEof;
-        public int Version;
         public IPrecompile? Precompile { get; set; }
         private JumpDestinationAnalyzer? _analyzer;
 
         public CodeInfo(byte[] code)
         {
             MachineCode = code;
-            IsEof = EvmObjectFormat.IsEof(code, out this.Version);
         }
 
         public bool IsPrecompile => Precompile is not null;

@@ -773,11 +773,19 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine
         where TTracingRefunds : struct, IIsTracing
         where TTracingStorage : struct, IIsTracing
     {
-        int programCounter = vmState.ProgramCounter;
+
         ref readonly ExecutionEnvironment env = ref vmState.Env;
         ref readonly TxExecutionContext txCtx = ref env.TxExecutionContext;
         ref readonly BlockExecutionContext blkCtx = ref txCtx.BlockExecutionContext;
-        Span<byte> code = env.CodeInfo.MachineCode.AsSpan();
+
+        int programCounter = vmState.ProgramCounter;
+        int sectionIndex = vmState.FunctionIndex;
+
+        ReadOnlySpan<byte> codeSection = env.CodeInfo.CodeSection.Span;
+        ReadOnlySpan<byte> dataSection = env.CodeInfo.DataSection.Span;
+        ReadOnlySpan<byte> typeSection = env.CodeInfo.TypeSection.Span;
+        ReadOnlySpan<byte> containerSection = env.CodeInfo.ContainerSection.Span;
+
         EvmExceptionType exceptionType = EvmExceptionType.None;
         bool isRevert = false;
 #if DEBUG
@@ -790,13 +798,13 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine
         SkipInit(out StorageCell storageCell);
         object returnData;
         ZeroPaddedSpan slice;
-        uint codeLength = (uint)code.Length;
+        uint codeLength = (uint)codeSection.Length;
         while ((uint)programCounter < codeLength)
         {
 #if DEBUG
             debugger?.TryWait(ref vmState, ref programCounter, ref gasAvailable, ref stack.Head);
 #endif
-            Instruction instruction = (Instruction)code[programCounter];
+            Instruction instruction = (Instruction)codeSection[programCounter];
 
             // Evaluated to constant at compile time and code elided if not tracing
             if (typeof(TTracingInstructions) == typeof(IsTracing))
@@ -1296,7 +1304,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine
                     {
                         gasAvailable -= GasCostOf.Base;
 
-                        result = (UInt256)code.Length;
+                        result = (UInt256)env.CodeInfo.MachineCode.Length;
                         stack.PushUInt256(in result);
                         break;
                     }
@@ -1311,7 +1319,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine
                         {
                             if (!UpdateMemoryCost(vmState, ref gasAvailable, in a, result)) goto OutOfGas;
 
-                            slice = code.SliceWithZeroPadding(in b, (int)result);
+                            slice = env.CodeInfo.MachineCode.SliceWithZeroPadding(in b, (int)result);
                             vmState.Memory.Save(in a, in slice);
                             if (typeof(TTracingInstructions) == typeof(IsTracing)) _txTracer.ReportMemoryChange((long)a, in slice);
                         }
@@ -1335,10 +1343,10 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine
 
                         if (!ChargeAccountAccessGas(ref gasAvailable, vmState, address, spec)) goto OutOfGas;
 
-                        if (typeof(TTracingInstructions) != typeof(IsTracing) && programCounter < code.Length)
+                        if (typeof(TTracingInstructions) != typeof(IsTracing) && programCounter < codeSection.Length)
                         {
                             bool optimizeAccess = false;
-                            Instruction nextInstruction = (Instruction)code[programCounter];
+                            Instruction nextInstruction = (Instruction)codeSection[programCounter];
                             // code.length is zero
                             if (nextInstruction == Instruction.ISZERO)
                             {
@@ -1729,13 +1737,13 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine
                         gasAvailable -= GasCostOf.VeryLow;
 
                         int programCounterInt = programCounter;
-                        if (programCounterInt >= code.Length)
+                        if (programCounterInt >= codeSection.Length)
                         {
                             stack.PushZero();
                         }
                         else
                         {
-                            stack.PushByte(code[programCounterInt]);
+                            stack.PushByte(codeSection[programCounterInt]);
                         }
 
                         programCounter++;
@@ -1776,8 +1784,8 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine
                         gasAvailable -= GasCostOf.VeryLow;
 
                         int length = instruction - Instruction.PUSH1 + 1;
-                        int usedFromCode = Math.Min(code.Length - programCounter, length);
-                        stack.PushLeftPaddedBytes(code.Slice(programCounter, usedFromCode), length);
+                        int usedFromCode = Math.Min(codeSection.Length - programCounter, length);
+                        stack.PushLeftPaddedBytes(codeSection.Slice(programCounter, usedFromCode), length);
 
                         programCounter += length;
                         break;
@@ -1806,13 +1814,13 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine
                     }
                 case Instruction.DUPN:
                     {
-                        if (!spec.IsEofEnabled || !env.CodeInfo.IsEof)
+                        if (!spec.IsEofEnabled || !(env.CodeInfo.Version > 0))
                             goto InvalidInstruction;
 
                         if (!UpdateGas(GasCostOf.Dupn, ref gasAvailable))
                             goto OutOfGas;
 
-                        byte imm = code[programCounter];
+                        byte imm = codeSection[programCounter];
                         stack.Dup(imm + 1);
 
                         programCounter += 1;
@@ -1842,13 +1850,13 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine
                     }
                 case Instruction.SWAPN:
                     {
-                        if (!spec.IsEofEnabled || !env.CodeInfo.IsEof)
+                        if (!spec.IsEofEnabled || !(env.CodeInfo.Version > 0))
                             goto InvalidInstruction;
 
                         if (!UpdateGas(GasCostOf.Swapn, ref gasAvailable))
                             goto OutOfGas;
 
-                        byte imm = code[programCounter];
+                        byte imm = codeSection[programCounter];
                         stack.Swap(imm + 1);
 
                         programCounter += 1;
@@ -1856,14 +1864,14 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine
                     }
                 case Instruction.EXCHANGE:
                     {
-                        if (!spec.IsEofEnabled || !env.CodeInfo.IsEof)
+                        if (!spec.IsEofEnabled || !(env.CodeInfo.Version > 0))
                             goto InvalidInstruction;
 
                         if (!UpdateGas(GasCostOf.Swapn, ref gasAvailable))
                             goto OutOfGas;
 
-                        int n = (int)code[programCounter] >> 0x04 + 1;
-                        int m = (int)code[programCounter] &  0x0f + 1;
+                        int n = (int)codeSection[programCounter] >> 0x04 + 1;
+                        int m = (int)codeSection[programCounter] &  0x0f + 1;
 
                         stack.Exchange(n, m);
 
@@ -2115,7 +2123,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine
                                 goto InvalidSubroutineReturn;
                             }
 
-                            programCounter = vmState.ReturnStack[--vmState.ReturnStackHead];
+                            programCounter = vmState.ReturnStack[--vmState.ReturnStackHead].Offset;
                             break;
                         }
                     }
@@ -2148,7 +2156,10 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine
 
                             if (vmState.ReturnStackHead == EvmStack.ReturnStackSize) goto StackOverflow;
 
-                            vmState.ReturnStack[vmState.ReturnStackHead++] = programCounter;
+                            vmState.ReturnStack[vmState.ReturnStackHead++] = new EvmState.ReturnState
+                            {
+                                Offset = programCounter
+                            }; ;
 
                             if (!stack.PopUInt256(out UInt256 jumpDest)) goto StackUnderflow;
                             if (!Jump(jumpDest, ref programCounter, in env, true)) goto InvalidJumpDestination;
@@ -2159,10 +2170,10 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine
                     }
                 case Instruction.RJUMP:
                     {
-                        if (spec.IsEofEnabled && env.CodeInfo.IsEof)
+                        if (spec.IsEofEnabled && !(env.CodeInfo.Version > 0))
                         {
                             if (!UpdateGas(GasCostOf.RJump, ref gasAvailable)) goto OutOfGas;
-                            short offset = code.Slice(programCounter, EvmObjectFormat.TWO_BYTE_LENGTH).ReadEthInt16();
+                            short offset = codeSection.Slice(programCounter, EvmObjectFormat.TWO_BYTE_LENGTH).ReadEthInt16();
                             programCounter += EvmObjectFormat.TWO_BYTE_LENGTH + offset;
                             break;
                         }
@@ -2170,11 +2181,11 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine
                     }
                 case Instruction.RJUMPI:
                     {
-                        if (spec.IsEofEnabled && env.CodeInfo.IsEof)
+                        if (spec.IsEofEnabled && !(env.CodeInfo.Version > 0))
                         {
                             if (!UpdateGas(GasCostOf.RJumpi, ref gasAvailable)) goto OutOfGas;
                             Span<byte> condition = stack.PopWord256();
-                            short offset = code.Slice(programCounter, EvmObjectFormat.TWO_BYTE_LENGTH).ReadEthInt16();
+                            short offset = codeSection.Slice(programCounter, EvmObjectFormat.TWO_BYTE_LENGTH).ReadEthInt16();
                             if (!condition.SequenceEqual(BytesZero32))
                             {
                                 programCounter += offset;
@@ -2185,15 +2196,15 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine
                     }
                 case Instruction.RJUMPV:
                     {
-                        if (spec.IsEofEnabled && env.CodeInfo.IsEof)
+                        if (spec.IsEofEnabled && !(env.CodeInfo.Version > 0))
                         {
                             if (!UpdateGas(GasCostOf.RJumpv, ref gasAvailable)) goto OutOfGas;
                             var caseV = stack.PopByte();
-                            var maxIndex = code[programCounter++];
+                            var maxIndex = codeSection[programCounter++];
                             var immediateValueSize = (maxIndex + 1) * EvmObjectFormat.TWO_BYTE_LENGTH;
                             if (caseV <= maxIndex)
                             {
-                                int caseOffset = code.Slice(
+                                int caseOffset = codeSection.Slice(
                                     programCounter + caseV * EvmObjectFormat.TWO_BYTE_LENGTH,
                                     EvmObjectFormat.TWO_BYTE_LENGTH).ReadEthInt16();
                                 programCounter += caseOffset;
@@ -2201,6 +2212,56 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine
                             programCounter += immediateValueSize;
                         }
                         goto InvalidInstruction;
+                    }
+                case Instruction.CALLF:
+                    {
+                        if (!spec.IsEofEnabled || !(env.CodeInfo.Version > 0))
+                        {
+                            goto InvalidInstruction;
+                        }
+
+                        if (!UpdateGas(GasCostOf.Callf, ref gasAvailable)) goto OutOfGas;
+                        var index = (int)codeSection.Slice(programCounter, EvmObjectFormat.TWO_BYTE_LENGTH).ReadEthUInt16();
+                        (int inputCount, _, int maxStackHeight) = env.CodeInfo.GetSectionMetadata(index);
+
+                        if (maxStackHeight + stack.Head > EvmObjectFormat.Eof1.MAX_STACK_HEIGHT)
+                        {
+                            goto StackOverflow;
+                        }
+
+                        if (vmState.ReturnStackHead == EvmObjectFormat.Eof1.RETURN_STACK_MAX_HEIGHT) goto InvalidSubroutineEntry;
+
+                        stack.EnsureDepth(inputCount);
+                        vmState.ReturnStack[vmState.ReturnStackHead++] = new EvmState.ReturnState
+                        {
+                            Index = sectionIndex,
+                            Height = stack.Head - inputCount,
+                            Offset = programCounter + EvmObjectFormat.TWO_BYTE_LENGTH
+                        };
+
+                        sectionIndex = index;
+                        (programCounter, _) = env.CodeInfo.SectionOffset(index);
+                        break;
+                    }
+                case Instruction.RETF:
+                    {
+                        if (!spec.IsEofEnabled || !(env.CodeInfo.Version > 0))
+                        {
+                            goto InvalidInstruction;
+                        }
+
+                        if (!UpdateGas(GasCostOf.Retf, ref gasAvailable)) goto OutOfGas;
+                        (_, int outputCount, _) = env.CodeInfo.GetSectionMetadata(sectionIndex);
+                        if (vmState.ReturnStackHead == 0)
+                        {
+                            UpdateCurrentState(vmState, programCounter, gasAvailable, stack.Head, sectionIndex);
+                            goto ReturnFailure;
+                        }
+
+                        var stackFrame = vmState.ReturnStack[--vmState.ReturnStackHead];
+                        sectionIndex = stackFrame.Index;
+                        programCounter = stackFrame.Offset;
+                        break;
                     }
                 default:
                     {
@@ -2227,7 +2288,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine
         EmptyReturnNoTrace:
         // Ensure gas is positive before updating state
         if (gasAvailable < 0) goto OutOfGas;
-        UpdateCurrentState(vmState, programCounter, gasAvailable, stack.Head);
+        UpdateCurrentState(vmState, programCounter, gasAvailable, stack.Head, sectionIndex);
 #if DEBUG
         debugger?.TryWait(ref vmState, ref programCounter, ref gasAvailable, ref stack.Head);
 #endif
@@ -2237,7 +2298,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine
         DataReturnNoTrace:
         // Ensure gas is positive before updating state
         if (gasAvailable < 0) goto OutOfGas;
-        UpdateCurrentState(vmState, programCounter, gasAvailable, stack.Head);
+        UpdateCurrentState(vmState, programCounter, gasAvailable, stack.Head, sectionIndex);
 
         if (returnData is EvmState state)
         {
@@ -2874,11 +2935,12 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine
         };
     }
 
-    private static void UpdateCurrentState(EvmState state, int pc, long gas, int stackHead)
+    private static void UpdateCurrentState(EvmState state, int pc, long gas, int stackHead, int sectionId)
     {
         state.ProgramCounter = pc;
         state.GasAvailable = gas;
         state.DataStackHead = stackHead;
+        state.FunctionIndex = sectionId;
     }
 
     private static bool UpdateMemoryCost(EvmState vmState, ref long gasAvailable, in UInt256 position, in UInt256 length)

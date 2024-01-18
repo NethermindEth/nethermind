@@ -36,7 +36,7 @@ namespace Nethermind.Evm
         /// <summary>
         /// Parsed bytecode for the current call.
         /// </summary>
-        public readonly CodeInfo CodeInfo;
+        public readonly ICodeInfo CodeInfo;
 
         /// <summary>
         /// Currently executing account (in DELEGATECALL this will be equal to caller).
