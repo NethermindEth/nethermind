@@ -445,6 +445,8 @@ public class DbOnTheRocks : IDb, ITunableDb
         _lowPriorityAndNoWalWrite.DisableWal(1);
         Native.Instance.rocksdb_writeoptions_set_low_pri(_lowPriorityAndNoWalWrite.Handle, true);
 
+        _readAheadReadOptions = new ReadOptions();
+        _readAheadReadOptions.SetVerifyChecksums(false);
         // When readahead flag is on, the next keys are expected to be after the current key. Increasing this value,
         // will increase the chances that the next keys will be in the cache, which reduces iops and latency. This
         // increases throughput, however, if a lot of the keys are not close to the current key, it will increase read
@@ -452,7 +454,6 @@ public class DbOnTheRocks : IDb, ITunableDb
         // visitor on mainnet with 4GB memory budget and 4Gbps read bandwidth.
         if (dbConfig.ReadAheadSize != 0)
         {
-            _readAheadReadOptions = new ReadOptions();
             _readAheadReadOptions.SetReadaheadSize(dbConfig.ReadAheadSize ?? (ulong)256.KiB());
             _readAheadReadOptions.SetTailing(true);
         }
@@ -500,7 +501,7 @@ public class DbOnTheRocks : IDb, ITunableDb
                 }
             }
 
-            return _db.Get(key, cf);
+            return _db.Get(key, cf, _readAheadReadOptions);
         }
         catch (RocksDbSharpException e)
         {
