@@ -105,7 +105,7 @@ public class NodeRecordSigner : INodeRecordSigner
             originalContentStream.StartSequence(noSigContentLength);
             originalContentStream.Write(rlpStream.Read(noSigContentLength));
             rlpStream.Position = startPosition;
-            nodeRecord.OriginalContentRlp = originalContentStream.Data!;
+            nodeRecord.OriginalContentRlp = originalContentStream.Data.ToArray()!;
         }
 
         nodeRecord.EnrSequence = enrSequence;

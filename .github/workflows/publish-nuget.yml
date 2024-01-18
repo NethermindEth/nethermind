@@ -3,7 +3,7 @@ name: Publish NuGet packages
 on:
   release:
     types: [published]
-  
+
 jobs:
   publish:
     name: Publish Nethermind.ReferenceAssemblies
@@ -26,6 +26,6 @@ jobs:
           unzip refasm.zip -d src/Nethermind/Nethermind.ReferenceAssemblies/ref
       - name: Submit package
         working-directory: src/Nethermind/Nethermind.ReferenceAssemblies
-        run: | 
+        run: |
           dotnet pack -c release
-          dotnet nuget push bin/release/*.nupkg -k ${{ secrets.NUGET_API_KEY }} -s https://api.nuget.org/v3/index.json
+          dotnet nuget push ../artifacts/**/*.nupkg -k ${{ secrets.NUGET_API_KEY }} -s https://api.nuget.org/v3/index.json

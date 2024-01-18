@@ -12,6 +12,7 @@ public class ChiadoSpecProvider : ISpecProvider
 {
     public const ulong BeaconChainGenesisTimestamp = 0x6343ee4c;
     public const ulong ShanghaiTimestamp = 0x646e0e4c;
+    public const ulong CancunTimestamp = 0x65ba8e4c;
 
     private ChiadoSpecProvider() { }
 
@@ -20,7 +21,8 @@ public class ChiadoSpecProvider : ISpecProvider
         _ => forkActivation.Timestamp switch
         {
             null or < ShanghaiTimestamp => GenesisSpec,
-            _ => Shanghai.Instance
+            < CancunTimestamp => Shanghai.Instance,
+            _ => Cancun.Instance
         }
     };
 

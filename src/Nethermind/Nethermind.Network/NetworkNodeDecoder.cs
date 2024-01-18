@@ -60,7 +60,7 @@ namespace Nethermind.Network
             stream.Encode(item.Port);
             stream.Encode(string.Empty);
             stream.Encode(item.Reputation);
-            return new Rlp(stream.Data);
+            return new Rlp(stream.Data.ToArray());
         }
 
         public void Encode(MemoryStream stream, NetworkNode item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)

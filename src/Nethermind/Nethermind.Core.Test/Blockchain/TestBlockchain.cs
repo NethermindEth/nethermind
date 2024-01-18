@@ -63,6 +63,8 @@ public class TestBlockchain : IDisposable
     public IBlockProcessingQueue BlockProcessingQueue { get; set; } = null!;
     public IBlockTree BlockTree { get; set; } = null!;
 
+    public Action<IWorldState>? InitialStateMutator { get; set; }
+
     public IBlockFinder BlockFinder
     {
         get => _blockFinder ?? BlockTree;
@@ -133,6 +135,8 @@ public class TestBlockchain : IDisposable
         State.CreateAccount(TestItem.AddressA, (initialValues ?? InitialValue));
         State.CreateAccount(TestItem.AddressB, (initialValues ?? InitialValue));
         State.CreateAccount(TestItem.AddressC, (initialValues ?? InitialValue));
+
+        InitialStateMutator?.Invoke(State);
 
         byte[] code = Bytes.FromHexString("0xabcd");
         Hash256 codeHash = Keccak.Compute(code);

@@ -52,7 +52,7 @@ namespace Nethermind.Consensus.AuRa.Validators
 
             RlpStream rlpStream = new RlpStream(GetLength(item, rlpBehaviors));
             Encode(rlpStream, item, rlpBehaviors);
-            return new Rlp(rlpStream.Data);
+            return new Rlp(rlpStream.Data.ToArray());
         }
 
         public void Encode(RlpStream rlpStream, PendingValidators item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
