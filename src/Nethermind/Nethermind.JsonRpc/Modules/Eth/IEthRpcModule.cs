@@ -10,7 +10,6 @@ using Nethermind.Facade.Eth;
 using Nethermind.Facade.Filters;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Data;
-using Nethermind.JsonRpc.Modules.Eth.GasPrice;
 using Nethermind.State.Proofs;
 
 namespace Nethermind.JsonRpc.Modules.Eth
@@ -59,11 +58,6 @@ namespace Nethermind.JsonRpc.Modules.Eth
             IsSharable = true,
             ExampleResponse = "0x4a817c800")]
         ResultWrapper<UInt256?> eth_gasPrice();
-
-        [JsonRpcMethod(IsImplemented = false,
-            Description = "Returns miner's gas prices",
-            IsSharable = true)]
-        ResultWrapper<GasPrices> eth_gasPrices();
 
         [JsonRpcMethod(IsImplemented = false,
             Description = "Returns accounts",
