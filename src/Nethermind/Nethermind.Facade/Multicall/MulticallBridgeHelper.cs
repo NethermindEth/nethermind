@@ -4,9 +4,6 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using Microsoft.AspNetCore.Authorization;
-using Nethermind.Blockchain;
-using Nethermind.Blockchain.Find;
 using Nethermind.Config;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
