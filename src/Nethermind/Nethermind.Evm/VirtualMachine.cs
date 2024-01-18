@@ -2546,6 +2546,9 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine
 
         _state.SubtractFromBalance(env.ExecutingAccount, value, spec);
 
+        // Do not add the initCode to the cache as it is
+        // pointing to data in this tx and will become invalid
+        // for another tx as returned to pool.
         CodeInfo codeInfo = new(initCode);
 
         ExecutionEnvironment callEnv = new
