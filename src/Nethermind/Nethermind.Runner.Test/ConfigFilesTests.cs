@@ -190,12 +190,13 @@ namespace Nethermind.Runner.Test
         }
 
         [TestCase("mainnet", 2048)]
-        [TestCase("holesky", 2048)]
+        [TestCase("holesky", 1024)]
+        [TestCase("sepolia", 1024)]
         [TestCase("gnosis", 2048)]
         [TestCase("poacore", 2048)]
         [TestCase("energy", 2048)]
-        [TestCase("chiado", 2048)]
-        [TestCase("^mainnet ^holesky ^spaceneth ^volta ^energy ^poacore ^gnosis ^chiado", 1024)]
+        [TestCase("chiado", 1024)]
+        [TestCase("^mainnet ^spaceneth ^volta ^energy ^poacore ^gnosis ^chiado", 1024)]
         [TestCase("spaceneth", 128)]
         public void Tx_pool_defaults_are_correct(string configWildcard, int poolSize)
         {
