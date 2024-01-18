@@ -27,6 +27,11 @@ public class BlsCurve
         return output[31] == 1;
     }
 
+    public static GT PairingGT(G1 g1, G2 g2)
+    {
+        return new();
+    }
+
     public static bool Pairing2(G1 a1, G2 a2, G1 b1, G2 b2)
     {
         Span<byte> encoded = stackalloc byte[384 * 2];
@@ -301,6 +306,14 @@ public class BlsCurve
             X.Item2.CopyTo(output[80..]);
             Y.Item1.CopyTo(output[144..]);
             Y.Item2.CopyTo(output[208..]);
+        }
+    }
+
+    public class GT
+    {
+        public static GT operator *(UInt256 s, GT p)
+        {
+            throw new NotImplementedException();
         }
     }
 }

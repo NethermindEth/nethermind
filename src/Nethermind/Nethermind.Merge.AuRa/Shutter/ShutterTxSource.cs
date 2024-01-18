@@ -13,6 +13,7 @@ using Nethermind.Facade.Filters;
 using Nethermind.Int256;
 using Nethermind.Consensus.Producers;
 using System.Runtime.CompilerServices;
+using Nethermind.Crypto.PairingCurves;
 
 [assembly: InternalsVisibleTo("Nethermind.Merge.AuRa.Test")]
 
@@ -65,11 +66,6 @@ public class ShutterTxSource : ITxSource
         return logs.Select(log => new TransactionSubmittedEvent(AbiEncoder.Instance.Decode(AbiEncodingStyle.None, TransactionSubmmitedSig, log.Data)));
     }
 
-    private object? ComputeIdentity(Bytes32 identityPrefix, Address sender)
-    {
-        return null;
-    }
-
     internal IEnumerable<SequencedTransaction> GetNextTransactions(UInt64 eon, int txPointer)
     {
         IEnumerable<TransactionSubmittedEvent> events = GetEvents();
@@ -89,7 +85,7 @@ public class ShutterTxSource : ITxSource
                 eon,
                 e.EncryptedTransaction,
                 e.GasLimit,
-                ComputeIdentity(e.IdentityPrefix, e.Sender)
+                Crypto.ComputeIdentity(e.IdentityPrefix, e.Sender)
             ));
 
             totalGas += e.GasLimit;
@@ -103,9 +99,9 @@ public class ShutterTxSource : ITxSource
         public ulong Eon;
         public byte[] EncryptedTransaction;
         public UInt256 GasLimit;
-        public object? Identity;
+        public BlsCurve.G1 Identity;
 
-        public SequencedTransaction(UInt64 eon, byte[] encryptedTransaction, UInt256 gasLimit, object? identity)
+        public SequencedTransaction(ulong eon, byte[] encryptedTransaction, UInt256 gasLimit, BlsCurve.G1 identity)
         {
             Eon = eon;
             EncryptedTransaction = encryptedTransaction;
@@ -131,5 +127,4 @@ public class ShutterTxSource : ITxSource
             GasLimit = (UInt256)decodedEvent[4];
         }
     }
-
 }
