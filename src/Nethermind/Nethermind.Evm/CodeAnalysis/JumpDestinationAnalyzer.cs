@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Numerics;
+using System;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
@@ -9,7 +9,7 @@ using System.Runtime.Intrinsics.X86;
 
 namespace Nethermind.Evm.CodeAnalysis
 {
-    public sealed class JumpDestinationAnalyzer(byte[] code)
+    public sealed class JumpDestinationAnalyzer(ReadOnlyMemory<byte> code)
     {
         private const int PUSH1 = 0x60;
         private const int PUSHx = PUSH1 - 1;
@@ -21,30 +21,32 @@ namespace Nethermind.Evm.CodeAnalysis
         private readonly static long[]? _emptyJumpDestBitmap = new long[1];
         private long[]? _jumpDestBitmap = code.Length == 0 ? _emptyJumpDestBitmap : null;
 
-        public byte[] MachineCode { get; } = code;
+        public ReadOnlyMemory<byte> MachineCode { get; } = code;
 
         public bool ValidateJump(int destination, bool isSubroutine)
         {
             // Take array ref to local so Jit knows its size won't change in the method.
-            byte[] machineCode = MachineCode;
+            ReadOnlySpan<byte> machineCode = MachineCode.Span;
             _jumpDestBitmap ??= CreateJumpDestinationBitmap(machineCode);
 
             var result = false;
             // Cast to uint to change negative numbers to very int high numbers
             // Then do length check, this both reduces check by 1 and eliminates the bounds
             // check from accessing the array.
-            if ((uint)destination < (uint)machineCode.Length &&
-                IsJumpDestination(_jumpDestBitmap, destination))
+            if ((uint)destination < (uint)machineCode.Length)
             {
                 // Store byte to int, as less expensive operations at word size
                 int codeByte = machineCode[destination];
-                if (isSubroutine)
+                if (IsJumpDestination(_jumpDestBitmap, destination))
                 {
-                    result = codeByte == BEGINSUB;
-                }
-                else
-                {
-                    result = codeByte == JUMPDEST;
+                    if (isSubroutine)
+                    {
+                        result = codeByte == BEGINSUB;
+                    }
+                    else
+                    {
+                        result = codeByte == JUMPDEST;
+                    }
                 }
             }
 
@@ -76,11 +78,10 @@ namespace Nethermind.Evm.CodeAnalysis
         /// Collects data locations in code.
         /// An unset bit means the byte is an opcode, a set bit means it's data.
         /// </summary>
-        private static long[] CreateJumpDestinationBitmap(byte[] code)
+        private static long[] CreateJumpDestinationBitmap(ReadOnlySpan<byte> code)
         {
             long[] jumpDestBitmap = new long[GetInt64ArrayLengthFromBitLength(code.Length)];
 
-            bool exit = false;
             int pc = 0;
             long flags = 0;
             while (true)
@@ -88,7 +89,7 @@ namespace Nethermind.Evm.CodeAnalysis
                 int move = 1;
                 if (Avx2.IsSupported && (pc & 0x1f) == 0 && pc < code.Length - Vector256<sbyte>.Count)
                 {
-                    Vector256<sbyte> data = Unsafe.As<byte, Vector256<sbyte>>(ref Unsafe.AddByteOffset(ref MemoryMarshal.GetArrayDataReference(code), pc));
+                    Vector256<sbyte> data = Unsafe.As<byte, Vector256<sbyte>>(ref Unsafe.AddByteOffset(ref MemoryMarshal.GetReference(code), pc));
                     Vector256<sbyte> compare = Avx2.CompareGreaterThan(data, Vector256.Create((sbyte)PUSHx));
                     if (compare == default)
                     {
@@ -102,7 +103,7 @@ namespace Nethermind.Evm.CodeAnalysis
                 }
 
                 // Grab the instruction from the code.
-                int op = Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(code), pc);
+                int op = Unsafe.Add(ref MemoryMarshal.GetReference(code), pc);
 
                 if ((uint)op - JUMPDEST <= BEGINSUB - JUMPDEST)
                 {
@@ -117,7 +118,7 @@ namespace Nethermind.Evm.CodeAnalysis
                 }
             Next:
                 int next = pc + move;
-                exit = next >= code.Length;
+                bool exit = next >= code.Length;
                 if ((pc & 0x3F) + move > 0x3f || exit)
                 {
                     if (flags != 0)
@@ -162,7 +163,7 @@ namespace Nethermind.Evm.CodeAnalysis
 
         public void Execute()
         {
-            _jumpDestBitmap ??= CreateJumpDestinationBitmap(MachineCode);
+            _jumpDestBitmap ??= CreateJumpDestinationBitmap(MachineCode.Span);
         }
     }
 }

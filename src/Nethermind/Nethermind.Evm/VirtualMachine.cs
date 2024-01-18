@@ -234,7 +234,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine
                     if (typeof(TTracingActions) == typeof(IsTracing) && !currentState.IsContinuation)
                     {
                         _txTracer.ReportAction(currentState.GasAvailable, currentState.Env.Value, currentState.From, currentState.To, currentState.ExecutionType.IsAnyCreate() ? currentState.Env.CodeInfo.MachineCode : currentState.Env.InputData, currentState.ExecutionType);
-                        if (_txTracer.IsTracingCode) _txTracer.ReportByteCode(currentState.Env.CodeInfo.MachineCode);
+                        if (_txTracer.IsTracingCode) _txTracer.ReportByteCode(currentState.Env.CodeInfo.MachineCode.ToArray());
                     }
 
                     if (!_txTracer.IsTracingInstructions)
@@ -796,7 +796,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine
         ref readonly ExecutionEnvironment env = ref vmState.Env;
         ref readonly TxExecutionContext txCtx = ref env.TxExecutionContext;
         ref readonly BlockExecutionContext blkCtx = ref txCtx.BlockExecutionContext;
-        Span<byte> code = env.CodeInfo.MachineCode.AsSpan();
+        ReadOnlySpan<byte> code = env.CodeInfo.MachineCode.Span;
         EvmExceptionType exceptionType = EvmExceptionType.None;
         bool isRevert = false;
 #if DEBUG
@@ -1422,7 +1422,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine
                         {
                             if (!UpdateMemoryCost(vmState, ref gasAvailable, in a, result)) goto OutOfGas;
 
-                            byte[] externalCode = GetCachedCodeInfo(_worldState, address, spec).MachineCode;
+                            ReadOnlyMemory<byte> externalCode = GetCachedCodeInfo(_worldState, address, spec).MachineCode;
                             slice = externalCode.SliceWithZeroPadding(b, (int)result);
                             vmState.Memory.Save(in a, in slice);
                             if (typeof(TTracingInstructions) == typeof(IsTracing))
@@ -2192,8 +2192,8 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine
     [MethodImpl(MethodImplOptions.NoInlining)]
     private void InstructionExtCodeSize<TTracingInstructions>(Address address, ref EvmStack<TTracingInstructions> stack, IReleaseSpec spec) where TTracingInstructions : struct, IIsTracing
     {
-        byte[] accountCode = GetCachedCodeInfo(_worldState, address, spec).MachineCode;
-        UInt256 result = (UInt256)accountCode.Length;
+        int codeLength = GetCachedCodeInfo(_worldState, address, spec).MachineCode.Span.Length;
+        UInt256 result = (UInt256)codeLength;
         stack.PushUInt256(in result);
     }
 
@@ -2485,7 +2485,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine
             return (EvmExceptionType.None, null);
         }
 
-        Span<byte> initCode = vmState.Memory.LoadSpan(in memoryPositionOfInitCode, initCodeLength);
+        ReadOnlyMemory<byte> initCode = vmState.Memory.Load(in memoryPositionOfInitCode, initCodeLength);
 
         UInt256 balance = _state.GetBalance(env.ExecutingAccount);
         if (value > balance)
@@ -2512,7 +2512,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine
 
         Address contractAddress = instruction == Instruction.CREATE
             ? ContractAddress.From(env.ExecutingAccount, _state.GetNonce(env.ExecutingAccount))
-            : ContractAddress.From(env.ExecutingAccount, salt, initCode);
+            : ContractAddress.From(env.ExecutingAccount, salt, initCode.Span);
 
         if (spec.UseHotAndColdStorage)
         {
@@ -2546,7 +2546,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine
 
         _state.SubtractFromBalance(env.ExecutingAccount, value, spec);
 
-        CodeInfo codeInfo = new(initCode.ToArray());
+        CodeInfo codeInfo = new(initCode);
 
         ExecutionEnvironment callEnv = new
         (
