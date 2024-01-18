@@ -334,11 +334,10 @@ namespace Nethermind.Runner.Test
         }
 
         [TestCase("goerli", BlobsSupportMode.StorageWithReorgs)]
-        [TestCase("^goerli", BlobsSupportMode.Disabled)]
-        [TestCase("sepolia", BlobsSupportMode.Disabled)]
-        [TestCase("holesky", BlobsSupportMode.Disabled)]
+        [TestCase("sepolia", BlobsSupportMode.StorageWithReorgs)]
+        [TestCase("holesky", BlobsSupportMode.StorageWithReorgs)]
+        [TestCase("chiado", BlobsSupportMode.StorageWithReorgs)]
         [TestCase("mainnet", BlobsSupportMode.Disabled)]
-        [TestCase("chiado", BlobsSupportMode.Disabled)]
         [TestCase("gnosis", BlobsSupportMode.Disabled)]
         public void Blob_txs_support_is_correct(string configWildcard, BlobsSupportMode blobsSupportMode)
         {
