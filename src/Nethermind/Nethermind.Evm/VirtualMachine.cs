@@ -61,8 +61,10 @@ public class VirtualMachine : IVirtualMachine
     public CodeInfo GetCachedCodeInfo(IWorldState worldState, Address codeSource, IReleaseSpec spec)
         => _evm.GetCachedCodeInfo(worldState, codeSource, spec);
 
-    public void CacheCodeInfo(Hash256 codeHash, CodeInfo cachedCodeInfo)
-        => _evm.CacheCodeInfo(codeHash, cachedCodeInfo);
+    public void InsertCode(byte[] code, Address codeOwner, IReleaseSpec spec)
+    {
+        _evm.InsertCode(code, codeOwner, spec);
+    }
 
     public TransactionSubstate Run<TTracingActions>(EvmState state, IWorldState worldState, ITxTracer txTracer)
         where TTracingActions : struct, IIsTracing
@@ -131,8 +133,7 @@ public class VirtualMachine : IVirtualMachine
     public readonly struct IsTracing : IIsTracing { }
 }
 
-internal sealed class VirtualMachine<TLogger> : IVirtualMachine
-    where TLogger : struct, IIsTracing
+internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : struct, IIsTracing
 {
     private readonly UInt256 P255Int = (UInt256)System.Numerics.BigInteger.Pow(2, 255);
     private UInt256 P255 => P255Int;
@@ -234,7 +235,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine
                     if (typeof(TTracingActions) == typeof(IsTracing) && !currentState.IsContinuation)
                     {
                         _txTracer.ReportAction(currentState.GasAvailable, currentState.Env.Value, currentState.From, currentState.To, currentState.ExecutionType.IsAnyCreate() ? currentState.Env.CodeInfo.MachineCode : currentState.Env.InputData, currentState.ExecutionType);
-                        if (_txTracer.IsTracingCode) _txTracer.ReportByteCode(currentState.Env.CodeInfo.MachineCode.ToArray());
+                        if (_txTracer.IsTracingCode) _txTracer.ReportByteCode(currentState.Env.CodeInfo.MachineCode);
                     }
 
                     if (!_txTracer.IsTracingInstructions)
@@ -360,13 +361,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine
                         if (gasAvailableForCodeDeposit >= codeDepositGasCost && !invalidCode)
                         {
                             var code = callResult.Output;
-                            var codeInfo = new CodeInfo(code);
-                            // Start generating the JumpDestinationBitmap in background.
-                            ThreadPool.UnsafeQueueUserWorkItem(codeInfo, preferLocal: false);
-
-                            Hash256 codeHash = code.Length == 0 ? Keccak.OfAnEmptyString : Keccak.Compute(code.AsSpan());
-                            _state.InsertCode(callCodeOwner, codeHash, callResult.Output, spec);
-                            _codeCache.Set(codeHash, codeInfo);
+                            InsertCode(code, callCodeOwner, spec);
 
                             currentState.GasAvailable -= codeDepositGasCost;
 
@@ -475,6 +470,17 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine
         }
     }
 
+    public void InsertCode(byte[] code, Address callCodeOwner, IReleaseSpec spec)
+    {
+        var codeInfo = new CodeInfo(code);
+        // Start generating the JumpDestinationBitmap in background.
+        ThreadPool.UnsafeQueueUserWorkItem(codeInfo, preferLocal: false);
+
+        Hash256 codeHash = code.Length == 0 ? Keccak.OfAnEmptyString : Keccak.Compute(code.AsSpan());
+        _state.InsertCode(callCodeOwner, codeHash, code, spec);
+        _codeCache.Set(codeHash, codeInfo);
+    }
+
     private void RevertParityTouchBugAccount(IReleaseSpec spec)
     {
         if (_parityTouchBugAccount.ShouldDelete)
@@ -487,9 +493,6 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine
             _parityTouchBugAccount.ShouldDelete = false;
         }
     }
-
-    public void CacheCodeInfo(Hash256 codeHash, CodeInfo cachedCodeInfo)
-        => _codeCache.Set(codeHash, cachedCodeInfo);
 
     public CodeInfo GetCachedCodeInfo(IWorldState worldState, Address codeSource, IReleaseSpec vmSpec)
     {
