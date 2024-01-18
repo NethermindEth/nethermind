@@ -43,5 +43,17 @@ namespace Nethermind.Consensus.Validators
             error = null;
             return false;
         }
+
+        public bool ValidateSuggestedBlock(Block block, out string? error)
+        {
+            error = null;
+            return false;
+        }
+
+        public bool ValidateProcessedBlock(Block processedBlock, TxReceipt[] receipts, Block suggestedBlock, out string? error)
+        {
+            error = null;
+            return false;
+        }
     }
 }

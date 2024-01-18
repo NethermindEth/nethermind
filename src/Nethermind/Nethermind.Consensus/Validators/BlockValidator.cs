@@ -75,29 +75,44 @@ public class BlockValidator : IBlockValidator
     /// </returns>
     public bool ValidateSuggestedBlock(Block block)
     {
+        return ValidateSuggestedBlock(block, out _);
+    }
+    /// <summary>
+    /// Suggested block validation runs basic checks that can be executed before going through the expensive EVM processing.
+    /// </summary>
+    /// <param name="block">A block to validate</param>
+    /// <param name="errorMessage">Message detailing a validation failure.</param>
+    /// <returns>
+    /// <c>true</c> if the <paramref name="block"/> is valid; otherwise, <c>false</c>.
+    /// </returns>
+    public bool ValidateSuggestedBlock(Block block, out string? errorMessage)
+    {
         IReleaseSpec spec = _specProvider.GetSpec(block.Header);
 
-        if (!ValidateTransactions(block, spec))
+        if (!ValidateTransactions(block, spec, out errorMessage))
             return false;
 
-        if (!ValidateEip4844Fields(block, spec, out _))
+        if (!ValidateEip4844Fields(block, spec, out errorMessage))
             return false;
 
         if (spec.MaximumUncleCount < block.Uncles.Length)
         {
             if (_logger.IsDebug) _logger.Debug($"{Invalid(block)} Uncle count of {block.Uncles.Length} exceeds the max limit of {spec.MaximumUncleCount}");
+            errorMessage = $"Uncle count of {block.Uncles.Length} exceeds the max limit of {spec.MaximumUncleCount}";
             return false;
         }
 
         if (!ValidateUnclesHashMatches(block, out Hash256 unclesHash))
         {
             if (_logger.IsDebug) _logger.Debug($"{Invalid(block)} Uncles hash mismatch: expected {block.Header.UnclesHash}, got {unclesHash}");
+            errorMessage = $"Uncles hash mismatch: expected {block.Header.UnclesHash}, got {unclesHash}";
             return false;
         }
 
         if (!_unclesValidator.Validate(block.Header, block.Uncles))
         {
             if (_logger.IsDebug) _logger.Debug($"{Invalid(block)} Invalid uncles");
+            errorMessage = $"One or more uncles are invalid.";
             return false;
         }
 
@@ -105,21 +120,22 @@ public class BlockValidator : IBlockValidator
         if (!blockHeaderValid)
         {
             if (_logger.IsDebug) _logger.Debug($"{Invalid(block)} Invalid header");
+            errorMessage = $"Block header is invalid.";
             return false;
         }
 
         if (!ValidateTxRootMatchesTxs(block, out Hash256 txRoot))
         {
             if (_logger.IsDebug) _logger.Debug($"{Invalid(block)} Transaction root hash mismatch: expected {block.Header.TxRoot}, got {txRoot}");
+            errorMessage = $"$Transaction root hash mismatch: expected {block.Header.TxRoot}, got {txRoot}";
             return false;
         }
 
-        if (!ValidateWithdrawals(block, spec, out _))
+        if (!ValidateWithdrawals(block, spec, out errorMessage))
             return false;
 
         return true;
     }
-
     /// <summary>
     /// Processed block validation is comparing the block hashes (which include all other results).
     /// We only make exact checks on what is invalid if the hash is different.
@@ -130,9 +146,24 @@ public class BlockValidator : IBlockValidator
     /// <returns><c>true</c> if the <paramref name="processedBlock"/> is valid; otherwise, <c>false</c>.</returns>
     public bool ValidateProcessedBlock(Block processedBlock, TxReceipt[] receipts, Block suggestedBlock)
     {
+        return ValidateProcessedBlock(processedBlock, receipts, suggestedBlock, out _);
+    }
+
+    /// <summary>
+    /// Processed block validation is comparing the block hashes (which include all other results).
+    /// We only make exact checks on what is invalid if the hash is different.
+    /// </summary>
+    /// <param name="processedBlock">This should be the block processing result (after going through the EVM processing)</param>
+    /// <param name="receipts">List of tx receipts from the processed block (required only for better diagnostics when the receipt root is invalid).</param>
+    /// <param name="suggestedBlock">Block received from the network - unchanged.</param>
+    /// <param name="error">Details message if validation fails.</param>
+    /// <returns><c>true</c> if the <paramref name="processedBlock"/> is valid; otherwise, <c>false</c>.</returns>
+    public bool ValidateProcessedBlock(Block processedBlock, TxReceipt[] receipts, Block suggestedBlock, out string? error)
+    {
         bool isValid = processedBlock.Header.Hash == suggestedBlock.Header.Hash;
         if (!isValid && _logger.IsError)
         {
+            error = $"Post process block does not match expected.";
             _logger.Error($"Processed block {processedBlock.ToString(Block.Format.Short)} is invalid:");
             _logger.Error($"- hash: expected {suggestedBlock.Hash}, got {processedBlock.Hash}");
 
@@ -184,7 +215,7 @@ public class BlockValidator : IBlockValidator
                 _logger.Error($"- block extra data : {suggestedBlock.ExtraData.ToHexString()}, UTF8: {Encoding.UTF8.GetString(suggestedBlock.ExtraData)}");
             }
         }
-
+        error = null;
         return isValid;
     }
 
@@ -227,7 +258,7 @@ public class BlockValidator : IBlockValidator
         return true;
     }
 
-    private bool ValidateTransactions(Block block, IReleaseSpec spec)
+    private bool ValidateTransactions(Block block, IReleaseSpec spec, out string? errorMessage)
     {
         Transaction[] transactions = block.Transactions;
 
@@ -235,13 +266,13 @@ public class BlockValidator : IBlockValidator
         {
             Transaction transaction = transactions[txIndex];
 
-            if (!_txValidator.IsWellFormed(transaction, spec))
+            if (!_txValidator.IsWellFormed(transaction, spec, out errorMessage))
             {
-                if (_logger.IsDebug) _logger.Debug($"{Invalid(block)} Invalid transaction {transaction.Hash}");
+                if (_logger.IsDebug) _logger.Debug($"{Invalid(block)} Invalid transaction: {errorMessage}");
                 return false;
             }
         }
-
+        errorMessage = null;
         return true;
     }
 
@@ -278,7 +309,7 @@ public class BlockValidator : IBlockValidator
 
             if (transaction.MaxFeePerBlobGas < blobGasPrice)
             {
-                error = $"A transaction has unsufficient {nameof(transaction.MaxFeePerBlobGas)} to cover current blob gas fee: {transaction.MaxFeePerBlobGas} < {blobGasPrice}";
+                error = $"Transaction at index {txIndex} has insufficient {nameof(transaction.MaxFeePerBlobGas)} to cover current blob gas fee: {transaction.MaxFeePerBlobGas} < {blobGasPrice}";
                 if (_logger.IsDebug) _logger.Debug($"{Invalid(block)} {error}.");
                 return false;
             }
@@ -297,7 +328,7 @@ public class BlockValidator : IBlockValidator
 
         if (blobGasUsed != block.Header.BlobGasUsed)
         {
-            error = $"{Invalid(block)} {nameof(BlockHeader.BlobGasUsed)} declared in the block header does not match actual blob gas used: {block.Header.BlobGasUsed} != {blobGasUsed}.";
+            error = $"{nameof(BlockHeader.BlobGasUsed)} declared in the block header does not match actual blob gas used: {block.Header.BlobGasUsed} != {blobGasUsed}.";
             if (_logger.IsDebug) _logger.Debug($"{Invalid(block)} {error}.");
             return false;
         }

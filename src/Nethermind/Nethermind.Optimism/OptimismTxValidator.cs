@@ -17,5 +17,11 @@ public class OptimismTxValidator : ITxValidator
     }
 
     public bool IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec) =>
-        transaction.Type == TxType.DepositTx || _txValidator.IsWellFormed(transaction, releaseSpec);
+        IsWellFormed(transaction, releaseSpec, out _);
+    public bool IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec, out string? error)
+    {
+        error = null;
+        return transaction.Type == TxType.DepositTx || _txValidator.IsWellFormed(transaction, releaseSpec, out error);
+    }
+    
 }

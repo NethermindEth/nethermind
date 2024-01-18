@@ -42,7 +42,7 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
     private readonly IMergeSyncController _mergeSyncController;
     private readonly IInvalidChainTracker _invalidChainTracker;
     private readonly ILogger _logger;
-    private readonly LruCache<ValueHash256, bool>? _latestBlocks;
+    private readonly LruCache<ValueHash256, (bool, string?)>? _latestBlocks;
     private readonly ProcessingOptions _defaultProcessingOptions;
     private readonly TimeSpan _timeout;
 
@@ -154,10 +154,11 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
 
         if (!ShouldProcessBlock(block, parentHeader, out ProcessingOptions processingOptions)) // we shouldn't process block
         {
-            if (!_blockValidator.ValidateSuggestedBlock(block))
+            string? error = null;
+            if (!_blockValidator.ValidateSuggestedBlock(block, out error))
             {
                 if (_logger.IsInfo) _logger.Info($"Rejecting invalid block received during the sync, block: {block}");
-                return NewPayloadV1Result.Invalid(null);
+                return NewPayloadV1Result.Invalid(error!);
             }
 
             BlockTreeInsertHeaderOptions insertHeaderOptions = BlockTreeInsertHeaderOptions.BeaconBlockInsert;
@@ -183,17 +184,21 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
 
         if (_poSSwitcher.MisconfiguredTerminalTotalDifficulty())
         {
-            if (_logger.IsWarn) _logger.Warn($"Misconfigured terminal total difficulty.");
-
-            return NewPayloadV1Result.Invalid(Keccak.Zero);
+            const string errorMessage = $"Misconfigured terminal total difficulty.";
+            if (_logger.IsWarn)
+            {
+                _logger.Warn(errorMessage);
+            }
+            return NewPayloadV1Result.Invalid(Keccak.Zero, errorMessage);
         }
 
         if ((block.TotalDifficulty ?? 0) != 0 && _poSSwitcher.BlockBeforeTerminalTotalDifficulty(parentHeader))
         {
-            if (_logger.IsWarn) _logger.Warn($"Invalid terminal block. Nethermind TTD {_poSSwitcher.TerminalTotalDifficulty}, Parent TD: {parentHeader.TotalDifficulty}. Request: {requestStr}.");
+            string errorMessage = $"Invalid terminal block. Nethermind TTD {_poSSwitcher.TerminalTotalDifficulty}, Parent TD: {parentHeader.TotalDifficulty}. Request: {requestStr}.";
+            if (_logger.IsWarn) _logger.Warn(errorMessage);
 
             // {status: INVALID, latestValidHash: 0x0000000000000000000000000000000000000000000000000000000000000000, validationError: errorMessage | null} if terminal block conditions are not satisfied
-            return NewPayloadV1Result.Invalid(Keccak.Zero);
+            return NewPayloadV1Result.Invalid(Keccak.Zero, errorMessage);
         }
 
         // Otherwise, we can just process this block and we don't need to do BeaconSync anymore.
@@ -272,34 +277,33 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
 
     private async Task<(ValidationResult, string?)> ValidateBlockAndProcess(Block block, BlockHeader parent, ProcessingOptions processingOptions)
     {
-        ValidationResult TryCacheResult(ValidationResult result)
+        ValidationResult TryCacheResult(ValidationResult result, string? errorMessage)
         {
             // notice that it is not correct to add information to the cache
             // if we return SYNCING for example, and don't know yet whether
             // the block is valid or invalid because we haven't processed it yet
             if (result == ValidationResult.Valid || result == ValidationResult.Invalid)
-                _latestBlocks?.Set(block.GetOrCalculateHash(), result == ValidationResult.Valid);
+                _latestBlocks?.Set(block.GetOrCalculateHash(), (result == ValidationResult.Valid, errorMessage));
             return result;
         }
 
         (ValidationResult? result, string? validationMessage) = (null, null);
 
         // If duplicate, reuse results
-        if (_latestBlocks is not null && _latestBlocks.TryGet(block.Hash!, out bool isValid))
+        if (_latestBlocks is not null && _latestBlocks.TryGet(block.Hash!, out var cachedResult))
         {
+            bool isValid = cachedResult.Item1;
             if (!isValid)
             {
-                validationMessage = "Invalid block found in latestBlock cache.";
-                if (_logger.IsWarn) _logger.Warn(validationMessage);
+                if (_logger.IsWarn) _logger.Warn("Invalid block found in latestBlock cache.");
             }
-
-            return (isValid ? ValidationResult.Valid : ValidationResult.Invalid, validationMessage);
+            return (isValid ? ValidationResult.Valid : ValidationResult.Invalid, cachedResult.Item2);
         }
 
         // Validate
-        if (!ValidateWithBlockValidator(block, parent))
+        if (!ValidateWithBlockValidator(block, parent, out validationMessage))
         {
-            return (TryCacheResult(ValidationResult.Invalid), string.Empty);
+            return (TryCacheResult(ValidationResult.Invalid, validationMessage), validationMessage);
         }
 
         TaskCompletionSource<ValidationResult?> blockProcessedTaskCompletionSource = new();
@@ -387,14 +391,14 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
             _processingQueue.BlockRemoved -= GetProcessingQueueOnBlockRemoved;
         }
 
-        return (TryCacheResult(result ?? ValidationResult.Syncing), validationMessage);
+        return (TryCacheResult(result ?? ValidationResult.Syncing, validationMessage), validationMessage);
     }
 
-    private bool ValidateWithBlockValidator(Block block, BlockHeader parent)
+    private bool ValidateWithBlockValidator(Block block, BlockHeader parent, out string? error)
     {
         block.Header.TotalDifficulty ??= parent.TotalDifficulty + block.Difficulty;
         block.Header.IsPostMerge = true; // I think we don't need to set it again here.
-        bool isValid = _blockValidator.ValidateSuggestedBlock(block);
+        bool isValid = _blockValidator.ValidateSuggestedBlock(block, out error);
         if (!isValid && _logger.IsWarn) _logger.Warn($"Block validator rejected the block {block.ToString(Block.Format.FullHashAndNumber)}.");
         return isValid;
     }
