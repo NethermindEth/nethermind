@@ -96,6 +96,7 @@ namespace Nethermind.Api
 
             MultiCallReadOnlyBlocksProcessingEnv multiCallReadOnlyBlocksProcessingEnv = MultiCallReadOnlyBlocksProcessingEnv.Create(false,
                 WorldStateManager!,
+                readOnlyTree,
                 _multiCallReadOnlyDbProvider,
                 SpecProvider,
                 LogManager);

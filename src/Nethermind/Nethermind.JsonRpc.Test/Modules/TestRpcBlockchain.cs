@@ -124,16 +124,17 @@ namespace Nethermind.JsonRpc.Test.Modules
             IFilterStore filterStore = new FilterStore();
             IFilterManager filterManager = new FilterManager(filterStore, BlockProcessor, TxPool, LimboLogs.Instance);
             var dbProvider = new ReadOnlyDbProvider(DbProvider, false);
-
+            IReadOnlyBlockTree? roBlockTree = BlockTree!.AsReadOnly();
             ReadOnlyTxProcessingEnv processingEnv = new(
                 WorldStateManager,
-                new ReadOnlyBlockTree(BlockTree),
+                roBlockTree,
                 SpecProvider,
                 LimboLogs.Instance);
 
             MultiCallReadOnlyBlocksProcessingEnv multiCallProcessingEnv = MultiCallReadOnlyBlocksProcessingEnv.Create(
                 false,
                 WorldStateManager,
+                roBlockTree,
                 new ReadOnlyDbProvider(dbProvider, true),
                 SpecProvider,
                 LimboLogs.Instance);

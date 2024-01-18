@@ -38,6 +38,7 @@ public class MultiCallReadOnlyBlocksProcessingEnv : ReadOnlyTxProcessingEnvBase,
     public static MultiCallReadOnlyBlocksProcessingEnv Create(
         bool traceTransfers,
         IWorldStateManager worldStateManager,
+        IReadOnlyBlockTree roBlockTree,
         IReadOnlyDbProvider readOnlyDbProvider,
         ISpecProvider? specProvider,
         ILogManager? logManager = null,
@@ -51,7 +52,7 @@ public class MultiCallReadOnlyBlocksProcessingEnv : ReadOnlyTxProcessingEnvBase,
         const int badBlocksStored = 1;
         IBlockStore badBlockStore = new BlockStore(dbProvider.BadBlocksDb, badBlocksStored);
 
-        BlockTree blockTree = new(blockStore,
+        BlockTree tmpBlockTree = new(blockStore,
             headerStore,
             dbProvider.BlockInfosDb,
             dbProvider.MetadataDb,
@@ -61,11 +62,13 @@ public class MultiCallReadOnlyBlocksProcessingEnv : ReadOnlyTxProcessingEnvBase,
             NullBloomStorage.Instance,
             new SyncConfig(),
             logManager);
+        var blockTree = new NonDistructiveBlockTreeOverlay(roBlockTree, tmpBlockTree);
 
         return new MultiCallReadOnlyBlocksProcessingEnv(
             traceTransfers,
             worldStateManager,
-            //dbProvider,
+            roBlockTree,
+            dbProvider,
             //trieStore,
             blockTree,
             specProvider,
@@ -74,13 +77,15 @@ public class MultiCallReadOnlyBlocksProcessingEnv : ReadOnlyTxProcessingEnvBase,
     }
 
     public MultiCallReadOnlyBlocksProcessingEnv Clone(bool traceTransfers, bool doValidation) =>
-        Create(traceTransfers, WorldStateManager, DbProvider, SpecProvider, _logManager, doValidation);
+        Create(traceTransfers, WorldStateManager, ReadOnlyBlockTree, DbProvider, SpecProvider, _logManager, doValidation);
 
+    public IReadOnlyDbProvider DbProvider { get; }
 
     private MultiCallReadOnlyBlocksProcessingEnv(
         bool traceTransfers,
         IWorldStateManager worldStateManager,
-        //IReadOnlyDbProvider readOnlyDbProvider,
+        IReadOnlyBlockTree roBlockTree,
+        IReadOnlyDbProvider readOnlyDbProvider,
         //ITrieStore trieStore,
         IBlockTree blockTree,
         ISpecProvider? specProvider,
@@ -88,6 +93,8 @@ public class MultiCallReadOnlyBlocksProcessingEnv : ReadOnlyTxProcessingEnvBase,
         bool doValidation = false)
         : base(worldStateManager, blockTree, logManager)
     {
+        ReadOnlyBlockTree = roBlockTree;
+        DbProvider = readOnlyDbProvider;
         //_trieStore = trieStore;
         WorldStateManager = worldStateManager;
         _logManager = logManager;
@@ -112,6 +119,8 @@ public class MultiCallReadOnlyBlocksProcessingEnv : ReadOnlyTxProcessingEnvBase,
 
         _blockValidator = new MultiCallBlockValidatorProxy(blockValidator);
     }
+
+    public IReadOnlyBlockTree ReadOnlyBlockTree { get; set; }
 
     public IBlockProcessor GetProcessor(Hash256 stateRoot)
     {

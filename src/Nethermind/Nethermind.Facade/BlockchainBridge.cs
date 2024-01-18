@@ -156,19 +156,19 @@ namespace Nethermind.Facade
         {
             MultiCallBlockTracer multiCallOutputTracer = new(payload.TraceTransfers);
             MultiCallOutput result = new();
-            try
-            {
+            //try
+            //{
                 (bool success, string error) = _multicallBridgeHelper.TryMultiCallTrace(header, payload, multiCallOutputTracer.WithCancellation(cancellationToken));
 
                 if (!success)
                 {
                     result.Error = error;
                 }
-            }
-            catch (Exception ex)
-            {
-                result.Error = ex.ToString();
-            }
+            //}
+            //catch (Exception ex)
+            //{
+            //    result.Error = ex.ToString();
+            //}
 
             result.Items = multiCallOutputTracer.Results;
             return result;

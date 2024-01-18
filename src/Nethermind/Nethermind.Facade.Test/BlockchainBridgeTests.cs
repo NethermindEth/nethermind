@@ -68,16 +68,18 @@ namespace Nethermind.Facade.Test
             IWorldStateManager readOnlyWorldStateManager =
                 new ReadOnlyWorldStateManager(dbProvider, trieStore, LimboLogs.Instance);
 
+            IReadOnlyBlockTree? roBlockTree = _blockTree!.AsReadOnly();
             ReadOnlyTxProcessingEnv processingEnv = new(
                 readOnlyWorldStateManager,
-                new ReadOnlyBlockTree(_blockTree),
+                roBlockTree,
                 _specProvider,
                 LimboLogs.Instance);
 
             MultiCallReadOnlyBlocksProcessingEnv multiCallProcessingEnv = MultiCallReadOnlyBlocksProcessingEnv.Create(
                 false,
                 readOnlyWorldStateManager,
-                new ReadOnlyDbProvider(_dbProvider, true),
+                roBlockTree,
+            new ReadOnlyDbProvider(_dbProvider, true),
                 _specProvider,
                 LimboLogs.Instance);
 
@@ -224,16 +226,17 @@ namespace Nethermind.Facade.Test
 
             IWorldStateManager readOnlyWorldStateManager =
                 new ReadOnlyWorldStateManager(dbProvider, trieStore, LimboLogs.Instance);
-
+            IReadOnlyBlockTree? roBlockTree = _blockTree!.AsReadOnly();
             ReadOnlyTxProcessingEnv processingEnv = new(
                 readOnlyWorldStateManager,
-                new ReadOnlyBlockTree(_blockTree),
+                roBlockTree,
                 _specProvider,
                 LimboLogs.Instance);
 
             MultiCallReadOnlyBlocksProcessingEnv multiCallProcessingEnv = MultiCallReadOnlyBlocksProcessingEnv.Create(
                 false,
                 readOnlyWorldStateManager,
+                roBlockTree,
                 new ReadOnlyDbProvider(_dbProvider, true),
                 _specProvider,
                 LimboLogs.Instance);

@@ -95,6 +95,7 @@ public class EthMulticallTestsBlocksAndTransactions
         //Force persistancy of head block in main chain
         chain.BlockTree.UpdateMainChain(new List<Block> { chain.BlockFinder.Head! }, true, true);
         chain.BlockTree.UpdateHeadBlock(chain.BlockFinder.Head!.Hash!);
+        //Assert.Equals(chain.BlockTree.BestPersistedState!, chain.BlockTree.Head!.Number);
         //will mock our GetCachedCodeInfo function - it shall be called 3 times if redirect is working, 2 times if not
         MultiCallTxExecutor executor = new(chain.Bridge, chain.BlockFinder, new JsonRpcConfig());
         ResultWrapper<IReadOnlyList<MultiCallBlockResult>> result =
