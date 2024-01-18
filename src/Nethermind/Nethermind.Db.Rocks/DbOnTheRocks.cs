@@ -24,6 +24,15 @@ namespace Nethermind.Db.Rocks;
 
 public class DbOnTheRocks : IDb, ITunableDb
 {
+    public static ReadOptions DefaultReadOptions { get; } = CreateDefaultReadOptions();
+
+    private static ReadOptions CreateDefaultReadOptions()
+    {
+        ReadOptions options = new();
+        options.SetVerifyChecksums(false);
+        return options;
+    }
+
     private ILogger _logger;
 
     private string? _fullPath;

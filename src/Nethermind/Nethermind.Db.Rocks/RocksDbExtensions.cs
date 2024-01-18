@@ -11,15 +11,6 @@ namespace Nethermind.Db.Rocks;
 
 internal static class RocksDbExtensions
 {
-    private static readonly ReadOptions _defaultReadOptions = CreateReadOptions();
-
-    private static ReadOptions CreateReadOptions()
-    {
-        ReadOptions options = new();
-        options.SetVerifyChecksums(false);
-        return options;
-    }
-
     internal static unsafe void DangerousReleaseMemory(this RocksDb _, in ReadOnlySpan<byte> span)
     {
         ref var ptr = ref MemoryMarshal.GetReference(span);
@@ -30,7 +21,7 @@ internal static class RocksDbExtensions
 
     internal static unsafe Span<byte> GetSpan(this RocksDb db, ReadOnlySpan<byte> key, ColumnFamilyHandle? cf = null)
     {
-        var readOptions = _defaultReadOptions.Handle;
+        var readOptions = DbOnTheRocks.DefaultReadOptions.Handle;
         var keyLength = (long)key.Length;
 
         if (keyLength == 0)
