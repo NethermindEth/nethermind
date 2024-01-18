@@ -31,7 +31,7 @@ namespace Nethermind.Evm.CodeAnalysis
             // Cast to uint to change negative numbers to very int high numbers
             // Then do length check, this both reduces check by 1 and eliminates the bounds
             // check from accessing the span.
-            if ((uint)destination < (uint)machineCode.Length && IsJumpDestination(_jumpDestBitmap, destination))
+            if ((uint)destination < (uint)machineCode.Length && IsJumpDestination(_jumpDestinationBitmap, destination))
             {
                 // Store byte to int, as less expensive operations at word size
                 int codeByte = machineCode[destination];
@@ -130,7 +130,9 @@ namespace Nethermind.Evm.CodeAnalysis
                 // at a boundary and then we will return the results.
                 bool exit = nextCounter >= code.Length;
                 // Does the move mean we are moving to new segment of the long array?
-                if ((programCounter & 63) + move > 63 || exit)
+                // If we take the current index in flags, and add the move, are we at
+                // a new long segment, i.e. a larger than 64 position move.
+                if ((programCounter & 63) + move >= 64 || exit)
                 {
                     // If so write out the flags (if any are set)
                     if (currentFlags != 0)
