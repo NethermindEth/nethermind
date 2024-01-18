@@ -194,8 +194,13 @@ namespace Nethermind.Evm
 
         DUPN = 0xe6,
         SWAPN = 0xe7,
-        EXCHANGE = 0xf8,
-        RETURNDATALOAD = 0xf7
+        EXCHANGE = 0xf8, // random value opcode spec has collision
+        RETURNDATALOAD = 0xf7,
+
+        // opcode value not spec-ed 
+        EOFCALL = 0xba,
+        EOFSTATICCALL = 0xbb, // StaticCallEnabled
+        EOFDELEGATECALL = 0xbc, // DelegateCallEnabled
 
     }
     public static class InstructionExtensions
@@ -355,6 +360,9 @@ namespace Nethermind.Evm
             spec ??= Frontier.Instance;
             return instruction switch
             {
+                Instruction.EOFCALL => "CALL" ,
+                Instruction.EOFSTATICCALL => "STATICCALL", // StaticCallEnabled
+                Instruction.EOFDELEGATECALL => "DELEGATECALL",
                 Instruction.PREVRANDAO when !isPostMerge => "DIFFICULTY",
                 Instruction.RJUMP => spec.IsEofEnabled ? "RJUMP" : "BEGINSUB",
                 Instruction.RJUMPI => spec.IsEofEnabled ? "RJUMPI" : "RETURNSUB",

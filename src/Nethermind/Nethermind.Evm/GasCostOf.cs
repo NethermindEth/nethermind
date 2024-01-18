@@ -62,5 +62,25 @@ namespace Nethermind.Evm
         public const long AccessStorageListEntry = 1900; // eip-2930
         public const long TLoad = WarmStateRead; // eip-1153
         public const long TStore = WarmStateRead; // eip-1153
+
+        public const long DataLoad = 4;
+        public const long DataLoadN = 3;
+        public const long DataCopy = 3;
+        public const long DataSize = 2;
+        public const long ReturnContract = 0;
+        public const long Create3 = 32000;
+        public const long Create4 = 32000;
+        public const long ReturnDataLoad = 3;
+
+
+        public const long RJump = 2;
+        public const long RJumpi = 4;
+        public const long RJumpv = 4;
+        public const long Exchange = 3;
+        public const long Swapn = 3;
+        public const long Dupn = 3;
+        public const long Callf = 5;
+        public const long Jumpf = 5;
+        public const long Retf = 4;
     }
 }

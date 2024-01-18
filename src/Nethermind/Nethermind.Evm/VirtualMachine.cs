@@ -2113,6 +2113,51 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine
                             break;
                         }
                     }
+                case Instruction.RJUMP:
+                    {
+                        if (spec.IsEofEnabled && env.CodeInfo.IsEof)
+                        {
+                            if (!UpdateGas(GasCostOf.RJump, ref gasAvailable)) goto OutOfGas;
+                            short offset = code.Slice(programCounter, EvmObjectFormat.TWO_BYTE_LENGTH).ReadEthInt16();
+                            programCounter += EvmObjectFormat.TWO_BYTE_LENGTH + offset;
+                            break;
+                        }
+                        goto InvalidInstruction;
+                    }
+                case Instruction.RJUMPI:
+                    {
+                        if (spec.IsEofEnabled && env.CodeInfo.IsEof)
+                        {
+                            if (!UpdateGas(GasCostOf.RJumpi, ref gasAvailable)) goto OutOfGas;
+                            Span<byte> condition = stack.PopWord256();
+                            short offset = code.Slice(programCounter, EvmObjectFormat.TWO_BYTE_LENGTH).ReadEthInt16();
+                            if (!condition.SequenceEqual(BytesZero32))
+                            {
+                                programCounter += offset;
+                            }
+                            programCounter += EvmObjectFormat.TWO_BYTE_LENGTH;
+                        }
+                        goto InvalidInstruction;
+                    }
+                case Instruction.RJUMPV:
+                    {
+                        if (spec.IsEofEnabled && env.CodeInfo.IsEof)
+                        {
+                            if (!UpdateGas(GasCostOf.RJumpv, ref gasAvailable)) goto OutOfGas;
+                            var caseV = stack.PopByte();
+                            var maxIndex = code[programCounter++];
+                            var immediateValueSize = (maxIndex + 1) * EvmObjectFormat.TWO_BYTE_LENGTH;
+                            if (caseV <= maxIndex)
+                            {
+                                int caseOffset = code.Slice(
+                                    programCounter + caseV * EvmObjectFormat.TWO_BYTE_LENGTH,
+                                    EvmObjectFormat.TWO_BYTE_LENGTH).ReadEthInt16();
+                                programCounter += caseOffset;
+                            }
+                            programCounter += immediateValueSize;
+                        }
+                        goto InvalidInstruction;
+                    }
                 default:
                     {
                         goto InvalidInstruction;
