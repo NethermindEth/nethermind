@@ -1804,6 +1804,20 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine
                         if (!stack.Dup(instruction - Instruction.DUP1 + 1)) goto StackUnderflow;
                         break;
                     }
+                case Instruction.DUPN:
+                    {
+                        if (!spec.IsEofEnabled || !env.CodeInfo.IsEof)
+                            goto InvalidInstruction;
+
+                        if (!UpdateGas(GasCostOf.Dupn, ref gasAvailable))
+                            goto OutOfGas;
+
+                        byte imm = code[programCounter];
+                        stack.Dup(imm + 1);
+
+                        programCounter += 1;
+                        break;
+                    }
                 case Instruction.SWAP1:
                 case Instruction.SWAP2:
                 case Instruction.SWAP3:
@@ -1824,6 +1838,36 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine
                         gasAvailable -= GasCostOf.VeryLow;
 
                         if (!stack.Swap(instruction - Instruction.SWAP1 + 2)) goto StackUnderflow;
+                        break;
+                    }
+                case Instruction.SWAPN:
+                    {
+                        if (!spec.IsEofEnabled || !env.CodeInfo.IsEof)
+                            goto InvalidInstruction;
+
+                        if (!UpdateGas(GasCostOf.Swapn, ref gasAvailable))
+                            goto OutOfGas;
+
+                        byte imm = code[programCounter];
+                        stack.Swap(imm + 1);
+
+                        programCounter += 1;
+                        break;
+                    }
+                case Instruction.EXCHANGE:
+                    {
+                        if (!spec.IsEofEnabled || !env.CodeInfo.IsEof)
+                            goto InvalidInstruction;
+
+                        if (!UpdateGas(GasCostOf.Swapn, ref gasAvailable))
+                            goto OutOfGas;
+
+                        int n = (int)code[programCounter] >> 0x04 + 1;
+                        int m = (int)code[programCounter] &  0x0f + 1;
+
+                        stack.Exchange(n, m);
+
+                        programCounter += 1;
                         break;
                     }
                 case Instruction.LOG0:

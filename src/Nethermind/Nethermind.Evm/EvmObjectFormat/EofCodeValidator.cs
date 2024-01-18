@@ -757,7 +757,7 @@ internal static class EvmObjectFormat
                             case Instruction.EXCHANGE:
                                 byte imm_n = (byte)((code[posPostInstruction] >> 4) + 1);
                                 byte imm_m = (byte)((code[posPostInstruction] & 0x0F) + 1);
-                                outputs = inputs = Math.Max(imm_n, imm_m);
+                                outputs = inputs = (ushort)(imm_n + imm_m);
                                 break;
                         }
 
