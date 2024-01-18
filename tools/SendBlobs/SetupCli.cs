@@ -1,11 +1,6 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 using Microsoft.Extensions.CommandLineUtils;
 using Nethermind.Cli;
 using Nethermind.Cli.Console;
@@ -32,6 +27,7 @@ internal static class SetupCli
         CommandOption maxFeePerBlobGasOption = app.Option("--maxfeeperblobgas <maxFeePerBlobGas>", "(Optional) Set the maximum fee per blob data.", CommandOptionType.SingleValue);
         CommandOption feeMultiplierOption = app.Option("--feemultiplier <feeMultiplier>", "(Optional) A multiplier to use for gas fees.", CommandOptionType.SingleValue);
         CommandOption maxPriorityFeeGasOption = app.Option("--maxpriorityfee <maxPriorityFee>", "(Optional) The maximum priority fee for each transaction.", CommandOptionType.SingleValue);
+        CommandOption waitOption = app.Option("--wait", "(Optional) Wait for tx inclusion.", CommandOptionType.NoValue);
 
         app.OnExecute(async () =>
         {
@@ -43,7 +39,7 @@ internal static class SetupCli
             if (privateKeyFileOption.HasValue())
                 privateKeys = File.ReadAllLines(privateKeyFileOption.Value()).Select(k => new PrivateKey(k)).ToArray();
             else if (privateKeyOption.HasValue())
-                privateKeys = new[] { new PrivateKey(privateKeyOption.Value()) };
+                privateKeys = [new PrivateKey(privateKeyOption.Value())];
             else
             {
                 Console.WriteLine("Missing private key argument.");
@@ -53,7 +49,7 @@ internal static class SetupCli
 
             string receiver = receiverOption.Value();
 
-            UInt256 maxFeePerBlobGas = 1000;
+            UInt256? maxFeePerBlobGas = null;
             if (maxFeePerBlobGasOption.HasValue())
             {
                 ulong.TryParse(maxFeePerBlobGasOption.Value(), out ulong shortMaxFeePerBlobGas);
@@ -72,16 +68,17 @@ internal static class SetupCli
             UInt256 maxPriorityFeeGasArgs = 0;
             if (maxPriorityFeeGasOption.HasValue()) UInt256.TryParse(maxPriorityFeeGasOption.Value(), out maxPriorityFeeGasArgs);
 
-            ILogger logger = SimpleConsoleLogManager.Instance.GetLogger("send blobs");
+            bool wait = waitOption.HasValue();
 
-            BlobSender sender = new(rpcUrl, logger);
-            await sender.Send(
+            BlobSender sender = new(rpcUrl, SimpleConsoleLogManager.Instance);
+            await sender.SendRandomBlobs(
                 blobTxCounts,
                 privateKeys,
                 receiver,
                 maxFeePerBlobGas,
                 feeMultiplier,
-                maxPriorityFeeGasArgs);
+                maxPriorityFeeGasArgs,
+                wait);
 
             return 0;
         });
@@ -145,17 +142,17 @@ internal static class SetupCli
                 uint keysToMake = uint.Parse(keyNumberOption.Value());
                 PrivateKey privateKey = new(privateKeyOption.Value());
 
-                ILogger logger = SimpleConsoleLogManager.Instance.GetLogger("distribute funds");
+                ILogger logger = SimpleConsoleLogManager.Instance.GetClassLogger();
                 INodeManager nodeManager = InitNodeManager(rpcUrlOption.Value(), logger);
 
                 string? chainIdString = await nodeManager.Post<string>("eth_chainId") ?? "1";
                 ulong chainId = HexConvert.ToUInt64(chainIdString);
 
-                Signer signer = new Signer(chainId, privateKey, new OneLoggerLogManager(logger));
+                Signer signer = new Signer(chainId, privateKey, SimpleConsoleLogManager.Instance);
                 UInt256 maxFee = maxFeeOption.HasValue() ? UInt256.Parse(maxFeeOption.Value()) : 0;
                 UInt256 maxPriorityFee = maxPriorityFeeGasOption.HasValue() ? UInt256.Parse(maxPriorityFeeGasOption.Value()) : 0;
 
-                FundsDistributor distributor = new FundsDistributor(nodeManager, chainId, keyFileOption.Value(), new OneLoggerLogManager(logger));
+                FundsDistributor distributor = new FundsDistributor(nodeManager, chainId, keyFileOption.Value(), SimpleConsoleLogManager.Instance);
                 IEnumerable<string> hashes = await distributor.DitributeFunds(signer, keysToMake, maxFee, maxPriorityFee);
 
                 return 0;
@@ -178,8 +175,7 @@ internal static class SetupCli
 
             command.OnExecute(async () =>
             {
-                ILogger logger = SimpleConsoleLogManager.Instance.GetLogger("reclaim funds");
-                INodeManager nodeManager = InitNodeManager(rpcUrlOption.Value(), logger);
+                INodeManager nodeManager = InitNodeManager(rpcUrlOption.Value(), SimpleConsoleLogManager.Instance.GetClassLogger());
 
                 string? chainIdString = await nodeManager.Post<string>("eth_chainId") ?? "1";
                 ulong chainId = HexConvert.ToUInt64(chainIdString);
@@ -189,7 +185,7 @@ internal static class SetupCli
                 UInt256 maxFee = maxFeeOption.HasValue() ? UInt256.Parse(maxFeeOption.Value()) : 0;
                 UInt256 maxPriorityFee = maxPriorityFeeGasOption.HasValue() ? UInt256.Parse(maxPriorityFeeGasOption.Value()) : 0;
 
-                FundsDistributor distributor = new FundsDistributor(nodeManager, chainId, keyFileOption.Value(), new OneLoggerLogManager(logger));
+                FundsDistributor distributor = new FundsDistributor(nodeManager, chainId, keyFileOption.Value(), SimpleConsoleLogManager.Instance);
                 IEnumerable<string> hashes = await distributor.ReclaimFunds(beneficiary, maxFee, maxPriorityFee);
 
                 return 0;
@@ -219,10 +215,10 @@ internal static class SetupCli
             CommandOption rpcUrlOption = command.Option("--rpcurl <rpcUrl>", "Url of the Json RPC.", CommandOptionType.SingleValue);
             CommandOption privateKeyOption = command.Option("--privatekey <privateKey>", "The key to use for sending blobs.", CommandOptionType.SingleValue);
             CommandOption receiverOption = command.Option("--receiveraddress <receiverAddress>", "Receiver address of the blobs.", CommandOptionType.SingleValue);
-            CommandOption maxFeePerBlobGasOptionObsolete = command.Option("--maxfeeperdatagas <maxFeePerDataGas>", "(Optional) Set the maximum fee per blob data.", CommandOptionType.SingleValue);
             CommandOption maxFeePerBlobGasOption = command.Option("--maxfeeperblobgas <maxFeePerBlobGas>", "(Optional) Set the maximum fee per blob data.", CommandOptionType.SingleValue);
             CommandOption feeMultiplierOption = command.Option("--feemultiplier <feeMultiplier>", "(Optional) A multiplier to use for gas fees.", CommandOptionType.SingleValue);
             CommandOption maxPriorityFeeGasOption = command.Option("--maxpriorityfee <maxPriorityFee>", "(Optional) The maximum priority fee for each transaction.", CommandOptionType.SingleValue);
+            CommandOption waitOption = app.Option("--wait", "(Optional) Wait for tx inclusion.", CommandOptionType.NoValue);
 
             command.OnExecute(async () =>
             {
@@ -247,31 +243,29 @@ internal static class SetupCli
                     ulong.TryParse(maxFeePerBlobGasOption.Value(), out ulong shortMaxFeePerBlobGas);
                     maxFeePerBlobGas = shortMaxFeePerBlobGas;
                 }
-                else if(maxFeePerBlobGasOptionObsolete.HasValue())
-                {
-                    ulong.TryParse(maxFeePerBlobGasOptionObsolete.Value(), out ulong shortMaxFeePerBlobGas);
-                    maxFeePerBlobGas = shortMaxFeePerBlobGas;
-                }
 
-                ulong feeMultiplier = 4;
+                ulong feeMultiplier = 1;
                 if (feeMultiplierOption.HasValue())
                     ulong.TryParse(feeMultiplierOption.Value(), out feeMultiplier);
 
-                UInt256 maxPriorityFeeGasArgs = 0;
-                if (maxPriorityFeeGasOption.HasValue()) UInt256.TryParse(maxPriorityFeeGasOption.Value(), out maxPriorityFeeGasArgs);
+                UInt256? maxPriorityFeeGas = null;
+                if (maxPriorityFeeGasOption.HasValue() && UInt256.TryParse(maxPriorityFeeGasOption.Value(), out UInt256 maxPriorityFeeGasParsed)){
+                    maxPriorityFeeGas = maxPriorityFeeGasParsed;
+                }
 
-                ILogger logger = SimpleConsoleLogManager.Instance.GetLogger("send blobs");
+                bool wait = waitOption.HasValue();
 
                 byte[] data = File.ReadAllBytes(fileOption.Value());
 
-                BlobSender sender = new(rpcUrl, logger);
+                BlobSender sender = new(rpcUrl, SimpleConsoleLogManager.Instance);
                 await sender.SendData(
                     data,
                     privateKey,
                     receiver,
                     maxFeePerBlobGas,
                     feeMultiplier,
-                    maxPriorityFeeGasArgs);
+                    maxPriorityFeeGas,
+                    wait);
 
                 return 0;
             });
