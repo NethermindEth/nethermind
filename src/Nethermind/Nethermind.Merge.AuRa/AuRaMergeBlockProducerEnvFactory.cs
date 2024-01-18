@@ -88,11 +88,6 @@ public class AuRaMergeBlockProducerEnvFactory : BlockProducerEnvFactory
         ITransactionComparerProvider transactionComparerProvider,
         ILogManager logManager)
     {
-        ReadOnlyTxProcessingEnv constantContractsProcessingEnv = CreateReadonlyTxProcessingEnv(
-            _worldStateManager,
-            _blockTree.AsReadOnly());
-
-        return new StartBlockProducerAuRa(_auraApi)
-            .CreateTxPoolTxSource(processingEnv, constantContractsProcessingEnv);
+        return new StartBlockProducerAuRa(_auraApi).CreateTxPoolTxSource(processingEnv);
     }
 }

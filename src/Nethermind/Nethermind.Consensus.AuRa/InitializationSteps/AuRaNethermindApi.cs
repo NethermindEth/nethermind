@@ -2,11 +2,13 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Api;
+using Nethermind.Blockchain;
 using Nethermind.Config;
 using Nethermind.Consensus.AuRa.Config;
 using Nethermind.Consensus.AuRa.Contracts;
 using Nethermind.Consensus.AuRa.Transactions;
 using Nethermind.Consensus.AuRa.Validators;
+using Nethermind.Consensus.Processing;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
@@ -42,7 +44,7 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
 
 
         private AuRaContractGasLimitOverride.Cache? _gasLimitCalculatorCache = null;
-        public AuRaContractGasLimitOverride.Cache? GasLimitCalculatorCache => _gasLimitCalculatorCache ??= new AuRaContractGasLimitOverride.Cache();
+        public AuRaContractGasLimitOverride.Cache GasLimitCalculatorCache => _gasLimitCalculatorCache ??= new AuRaContractGasLimitOverride.Cache();
 
         public IReportingValidator? ReportingValidator { get; set; }
 
@@ -71,5 +73,9 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
                 return _txPriorityContractLocalDataSource;
             }
         }
+
+        public ReadOnlyTxProcessingEnv CreateReadOnlyTransactionProcessorSource() =>
+            new ReadOnlyTxProcessingEnv(WorldStateManager!, BlockTree!.AsReadOnly(), SpecProvider!, LogManager!);
+
     }
 }
