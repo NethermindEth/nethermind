@@ -60,7 +60,7 @@ public class VirtualMachine : IVirtualMachine
         }
     }
 
-    public CodeInfo GetCachedCodeInfo(IWorldState worldState, Address codeSource, IReleaseSpec spec)
+    public ICodeInfo GetCachedCodeInfo(IWorldState worldState, Address codeSource, IReleaseSpec spec)
         => _evm.GetCachedCodeInfo(worldState, codeSource, spec);
 
     public TransactionSubstate Run<TTracingActions>(EvmState state, IWorldState worldState, ITxTracer txTracer)
@@ -160,13 +160,13 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine
 
     private readonly IBlockhashProvider _blockhashProvider;
     private readonly ISpecProvider _specProvider;
-    private static readonly LruCache<ValueHash256, CodeInfo> _codeCache = new(MemoryAllowance.CodeCacheSize, MemoryAllowance.CodeCacheSize, "VM bytecodes");
+    private static readonly LruCache<ValueHash256, ICodeInfo> _codeCache = new(MemoryAllowance.CodeCacheSize, MemoryAllowance.CodeCacheSize, "VM bytecodes");
     private readonly ILogger _logger;
     private IWorldState _worldState;
     private IWorldState _state;
     private readonly Stack<EvmState> _stateStack = new();
     private (Address Address, bool ShouldDelete) _parityTouchBugAccount = (Address.FromNumber(3), false);
-    private Dictionary<Address, CodeInfo>? _precompiles;
+    private Dictionary<Address, ICodeInfo>? _precompiles;
     private byte[] _returnDataBuffer = Array.Empty<byte>();
     private ITxTracer _txTracer = NullTxTracer.Instance;
 
@@ -479,7 +479,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine
         }
     }
 
-    public CodeInfo GetCachedCodeInfo(IWorldState worldState, Address codeSource, IReleaseSpec vmSpec)
+    public ICodeInfo GetCachedCodeInfo(IWorldState worldState, Address codeSource, IReleaseSpec vmSpec)
     {
         if (codeSource.IsPrecompile(vmSpec))
         {
@@ -492,7 +492,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine
         }
 
         Hash256 codeHash = worldState.GetCodeHash(codeSource);
-        CodeInfo cachedCodeInfo = _codeCache.Get(codeHash);
+        ICodeInfo cachedCodeInfo = _codeCache.Get(codeHash);
         if (cachedCodeInfo is null)
         {
             byte[] code = worldState.GetCode(codeHash);
@@ -502,7 +502,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine
                 throw new NullReferenceException($"Code {codeHash} missing in the state for address {codeSource}");
             }
 
-            cachedCodeInfo = new CodeInfo(code);
+            cachedCodeInfo = CodeInfoFactory.CreateCodeInfo(code, vmSpec);
             _codeCache.Set(codeHash, cachedCodeInfo);
         }
         else
@@ -516,31 +516,31 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine
 
     private void InitializePrecompiledContracts()
     {
-        _precompiles = new Dictionary<Address, CodeInfo>
+        _precompiles = new Dictionary<Address, ICodeInfo>
         {
-            [EcRecoverPrecompile.Address] = new(EcRecoverPrecompile.Instance),
-            [Sha256Precompile.Address] = new(Sha256Precompile.Instance),
-            [Ripemd160Precompile.Address] = new(Ripemd160Precompile.Instance),
-            [IdentityPrecompile.Address] = new(IdentityPrecompile.Instance),
+            [EcRecoverPrecompile.Address]   = new CodeInfo(EcRecoverPrecompile.Instance),
+            [Sha256Precompile.Address]      = new CodeInfo(Sha256Precompile.Instance),
+            [Ripemd160Precompile.Address]   = new CodeInfo(Ripemd160Precompile.Instance),
+            [IdentityPrecompile.Address]    = new CodeInfo(IdentityPrecompile.Instance),
 
-            [Bn254AddPrecompile.Address] = new(Bn254AddPrecompile.Instance),
-            [Bn254MulPrecompile.Address] = new(Bn254MulPrecompile.Instance),
-            [Bn254PairingPrecompile.Address] = new(Bn254PairingPrecompile.Instance),
-            [ModExpPrecompile.Address] = new(ModExpPrecompile.Instance),
+            [Bn254AddPrecompile.Address]    = new CodeInfo(Bn254AddPrecompile.Instance),
+            [Bn254MulPrecompile.Address]    = new CodeInfo(Bn254MulPrecompile.Instance),
+            [Bn254PairingPrecompile.Address]= new CodeInfo(Bn254PairingPrecompile.Instance),
+            [ModExpPrecompile.Address]      = new CodeInfo(ModExpPrecompile.Instance),
 
-            [Blake2FPrecompile.Address] = new(Blake2FPrecompile.Instance),
+            [Blake2FPrecompile.Address]     = new CodeInfo(Blake2FPrecompile.Instance),
 
-            [G1AddPrecompile.Address] = new(G1AddPrecompile.Instance),
-            [G1MulPrecompile.Address] = new(G1MulPrecompile.Instance),
-            [G1MultiExpPrecompile.Address] = new(G1MultiExpPrecompile.Instance),
-            [G2AddPrecompile.Address] = new(G2AddPrecompile.Instance),
-            [G2MulPrecompile.Address] = new(G2MulPrecompile.Instance),
-            [G2MultiExpPrecompile.Address] = new(G2MultiExpPrecompile.Instance),
-            [PairingPrecompile.Address] = new(PairingPrecompile.Instance),
-            [MapToG1Precompile.Address] = new(MapToG1Precompile.Instance),
-            [MapToG2Precompile.Address] = new(MapToG2Precompile.Instance),
+            [G1AddPrecompile.Address]       = new CodeInfo(G1AddPrecompile.Instance),
+            [G1MulPrecompile.Address]       = new CodeInfo(G1MulPrecompile.Instance),
+            [G1MultiExpPrecompile.Address]  = new CodeInfo(G1MultiExpPrecompile.Instance),
+            [G2AddPrecompile.Address]       = new CodeInfo(G2AddPrecompile.Instance),
+            [G2MulPrecompile.Address]       = new CodeInfo(G2MulPrecompile.Instance),
+            [G2MultiExpPrecompile.Address]  = new CodeInfo(G2MultiExpPrecompile.Instance),
+            [PairingPrecompile.Address]     = new CodeInfo(PairingPrecompile.Instance),
+            [MapToG1Precompile.Address]     = new CodeInfo(MapToG1Precompile.Instance),
+            [MapToG2Precompile.Address]     = new CodeInfo(MapToG2Precompile.Instance),
 
-            [PointEvaluationPrecompile.Address] = new(PointEvaluationPrecompile.Instance),
+            [PointEvaluationPrecompile.Address] = new CodeInfo(PointEvaluationPrecompile.Instance),
         };
     }
 
@@ -2876,11 +2876,11 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine
 
         ValueHash256 codeHash = ValueKeccak.Compute(initCode);
         // Prefer code from code cache (e.g. if create from a factory contract or copypasta)
-        if (!_codeCache.TryGet(codeHash, out CodeInfo codeInfo))
+        if (!_codeCache.TryGet(codeHash, out ICodeInfo codeinfo))
         {
-            codeInfo = new(initCode.ToArray());
+            codeinfo = CodeInfoFactory.CreateCodeInfo(initCode.ToArray(), spec);
             // Prime the code cache as likely to be used by more txs
-            _codeCache.Set(codeHash, codeInfo);
+            _codeCache.Set(codeHash, codeinfo);
         }
 
         ExecutionEnvironment callEnv = new
@@ -2890,7 +2890,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine
             caller: env.ExecutingAccount,
             executingAccount: contractAddress,
             codeSource: null,
-            codeInfo: codeInfo,
+            codeInfo: codeinfo,
             inputData: default,
             transferValue: value,
             value: value

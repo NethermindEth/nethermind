@@ -443,7 +443,7 @@ namespace Nethermind.Evm.TransactionProcessing
             TxExecutionContext executionContext =
                 new(in blCtx, tx.SenderAddress, effectiveGasPrice, tx.BlobVersionedHashes, tx.Initcodes);
 
-            CodeInfo codeInfo = tx.IsContractCreation ? new(tx.Data.AsArray())
+            ICodeInfo codeInfo = tx.IsContractCreation ? CodeInfoFactory.CreateCodeInfo(tx.Data.AsArray(), spec)
                                     : VirtualMachine.GetCachedCodeInfo(WorldState, recipient, spec);
 
             byte[] inputData = tx.IsMessageCall ? tx.Data.AsArray() ?? Array.Empty<byte>() : Array.Empty<byte>();
@@ -615,7 +615,7 @@ namespace Nethermind.Evm.TransactionProcessing
         {
             if (WorldState.AccountExists(contractAddress))
             {
-                CodeInfo codeInfo = VirtualMachine.GetCachedCodeInfo(WorldState, contractAddress, spec);
+                ICodeInfo codeInfo = VirtualMachine.GetCachedCodeInfo(WorldState, contractAddress, spec);
                 bool codeIsNotEmpty = codeInfo.MachineCode.Length != 0;
                 bool accountNonceIsNotZero = WorldState.GetNonce(contractAddress) != 0;
 

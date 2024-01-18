@@ -12,7 +12,7 @@ namespace Nethermind.Evm
     {
         public ExecutionEnvironment
         (
-            CodeInfo codeInfo,
+            ICodeInfo codeInfo,
             Address executingAccount,
             Address caller,
             Address? codeSource,
