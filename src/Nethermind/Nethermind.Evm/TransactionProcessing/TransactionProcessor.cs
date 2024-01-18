@@ -5,6 +5,8 @@ using System;
 using System.IO;
 using System.Linq;
 using System.Runtime.CompilerServices;
+using System.Threading;
+
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
@@ -552,7 +554,9 @@ namespace Nethermind.Evm.TransactionProcessing
 
                         if (unspentGas >= codeDepositGasCost)
                         {
-                            WorldState.InsertCode(env.ExecutingAccount, substate.Output, spec);
+                            var code = substate.Output.ToArray();
+                            VirtualMachine.InsertCode(code, env.ExecutingAccount, spec);
+
                             unspentGas -= codeDepositGasCost;
                         }
                     }

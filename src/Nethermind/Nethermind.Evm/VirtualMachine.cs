@@ -32,6 +32,8 @@ using Nethermind.Evm.Tracing.Debugger;
 namespace Nethermind.Evm;
 
 using System.Linq;
+using System.Threading;
+
 using Int256;
 
 public class VirtualMachine : IVirtualMachine
@@ -58,6 +60,11 @@ public class VirtualMachine : IVirtualMachine
 
     public CodeInfo GetCachedCodeInfo(IWorldState worldState, Address codeSource, IReleaseSpec spec)
         => _evm.GetCachedCodeInfo(worldState, codeSource, spec);
+
+    public void InsertCode(byte[] code, Address codeOwner, IReleaseSpec spec)
+    {
+        _evm.InsertCode(code, codeOwner, spec);
+    }
 
     public TransactionSubstate Run<TTracingActions>(EvmState state, IWorldState worldState, ITxTracer txTracer)
         where TTracingActions : struct, IIsTracing
@@ -126,8 +133,7 @@ public class VirtualMachine : IVirtualMachine
     public readonly struct IsTracing : IIsTracing { }
 }
 
-internal sealed class VirtualMachine<TLogger> : IVirtualMachine
-    where TLogger : struct, IIsTracing
+internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : struct, IIsTracing
 {
     private readonly UInt256 P255Int = (UInt256)System.Numerics.BigInteger.Pow(2, 255);
     private UInt256 P255 => P255Int;
@@ -354,7 +360,9 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine
                         bool invalidCode = CodeDepositHandler.CodeIsInvalid(spec, callResult.Output);
                         if (gasAvailableForCodeDeposit >= codeDepositGasCost && !invalidCode)
                         {
-                            _state.InsertCode(callCodeOwner, callResult.Output, spec);
+                            var code = callResult.Output;
+                            InsertCode(code, callCodeOwner, spec);
+
                             currentState.GasAvailable -= codeDepositGasCost;
 
                             if (typeof(TTracingActions) == typeof(IsTracing))
@@ -462,6 +470,17 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine
         }
     }
 
+    public void InsertCode(byte[] code, Address callCodeOwner, IReleaseSpec spec)
+    {
+        var codeInfo = new CodeInfo(code);
+        // Start generating the JumpDestinationBitmap in background.
+        ThreadPool.UnsafeQueueUserWorkItem(codeInfo, preferLocal: false);
+
+        Hash256 codeHash = code.Length == 0 ? Keccak.OfAnEmptyString : Keccak.Compute(code.AsSpan());
+        _state.InsertCode(callCodeOwner, codeHash, code, spec);
+        _codeCache.Set(codeHash, codeInfo);
+    }
+
     private void RevertParityTouchBugAccount(IReleaseSpec spec)
     {
         if (_parityTouchBugAccount.ShouldDelete)
@@ -487,8 +506,14 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine
             return _precompiles[codeSource];
         }
 
+        CodeInfo cachedCodeInfo = null;
         Hash256 codeHash = worldState.GetCodeHash(codeSource);
-        CodeInfo cachedCodeInfo = _codeCache.Get(codeHash);
+        if (ReferenceEquals(codeHash, Keccak.OfAnEmptyString))
+        {
+            cachedCodeInfo = CodeInfo.Empty;
+        }
+
+        cachedCodeInfo ??= _codeCache.Get(codeHash);
         if (cachedCodeInfo is null)
         {
             byte[] code = worldState.GetCode(codeHash);
@@ -774,7 +799,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine
         ref readonly ExecutionEnvironment env = ref vmState.Env;
         ref readonly TxExecutionContext txCtx = ref env.TxExecutionContext;
         ref readonly BlockExecutionContext blkCtx = ref txCtx.BlockExecutionContext;
-        Span<byte> code = env.CodeInfo.MachineCode.AsSpan();
+        ReadOnlySpan<byte> code = env.CodeInfo.MachineCode.Span;
         EvmExceptionType exceptionType = EvmExceptionType.None;
         bool isRevert = false;
 #if DEBUG
@@ -1400,7 +1425,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine
                         {
                             if (!UpdateMemoryCost(vmState, ref gasAvailable, in a, result)) goto OutOfGas;
 
-                            byte[] externalCode = GetCachedCodeInfo(_worldState, address, spec).MachineCode;
+                            ReadOnlyMemory<byte> externalCode = GetCachedCodeInfo(_worldState, address, spec).MachineCode;
                             slice = externalCode.SliceWithZeroPadding(b, (int)result);
                             vmState.Memory.Save(in a, in slice);
                             if (typeof(TTracingInstructions) == typeof(IsTracing))
@@ -2170,8 +2195,8 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine
     [MethodImpl(MethodImplOptions.NoInlining)]
     private void InstructionExtCodeSize<TTracingInstructions>(Address address, ref EvmStack<TTracingInstructions> stack, IReleaseSpec spec) where TTracingInstructions : struct, IIsTracing
     {
-        byte[] accountCode = GetCachedCodeInfo(_worldState, address, spec).MachineCode;
-        UInt256 result = (UInt256)accountCode.Length;
+        int codeLength = GetCachedCodeInfo(_worldState, address, spec).MachineCode.Span.Length;
+        UInt256 result = (UInt256)codeLength;
         stack.PushUInt256(in result);
     }
 
@@ -2463,7 +2488,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine
             return (EvmExceptionType.None, null);
         }
 
-        Span<byte> initCode = vmState.Memory.LoadSpan(in memoryPositionOfInitCode, initCodeLength);
+        ReadOnlyMemory<byte> initCode = vmState.Memory.Load(in memoryPositionOfInitCode, initCodeLength);
 
         UInt256 balance = _state.GetBalance(env.ExecutingAccount);
         if (value > balance)
@@ -2490,7 +2515,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine
 
         Address contractAddress = instruction == Instruction.CREATE
             ? ContractAddress.From(env.ExecutingAccount, _state.GetNonce(env.ExecutingAccount))
-            : ContractAddress.From(env.ExecutingAccount, salt, initCode);
+            : ContractAddress.From(env.ExecutingAccount, salt, initCode.Span);
 
         if (spec.UseHotAndColdStorage)
         {
@@ -2524,14 +2549,10 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine
 
         _state.SubtractFromBalance(env.ExecutingAccount, value, spec);
 
-        ValueHash256 codeHash = ValueKeccak.Compute(initCode);
-        // Prefer code from code cache (e.g. if create from a factory contract or copypasta)
-        if (!_codeCache.TryGet(codeHash, out CodeInfo codeInfo))
-        {
-            codeInfo = new(initCode.ToArray());
-            // Prime the code cache as likely to be used by more txs
-            _codeCache.Set(codeHash, codeInfo);
-        }
+        // Do not add the initCode to the cache as it is
+        // pointing to data in this tx and will become invalid
+        // for another tx as returned to pool.
+        CodeInfo codeInfo = new(initCode);
 
         ExecutionEnvironment callEnv = new
         (
