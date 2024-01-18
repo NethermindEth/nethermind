@@ -34,6 +34,7 @@ namespace Nethermind.Evm;
 using System.Linq;
 using System.Reflection.PortableExecutable;
 using System.Security.Cryptography;
+using DotNetty.Common.Utilities;
 using Int256;
 using Nethermind.Evm.EOF;
 
@@ -2263,6 +2264,22 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine
                         programCounter = stackFrame.Offset;
                         break;
                     }
+                case Instruction.EOFCALL:
+                case Instruction.EOFDELEGATECALL:
+                case Instruction.EOFSTATICCALL:
+                    {
+                        if (!spec.IsEofEnabled)
+                            goto InvalidInstruction;
+                        InstructionEofCall<TTracingInstructions, TTracingRefunds>(vmState, ref stack, ref gasAvailable, spec, instruction, out returnData);
+                        if (exceptionType != EvmExceptionType.None) goto ReturnFailure;
+
+                        if (returnData is null)
+                        {
+                            break;
+                        }
+
+                        goto DataReturn;
+                    }
                 default:
                     {
                         goto InvalidInstruction;
@@ -2501,6 +2518,162 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine
             snapshot,
             (long)outputOffset,
             (long)outputLength,
+            instruction == Instruction.STATICCALL || vmState.IsStatic,
+            vmState,
+            isContinuation: false,
+            isCreateOnPreExistingAccount: false);
+
+        return EvmExceptionType.None;
+    }
+
+    [SkipLocalsInit]
+    private EvmExceptionType InstructionEofCall<TTracingInstructions, TTracingRefunds>(EvmState vmState, ref EvmStack<TTracingInstructions> stack, ref long gasAvailable, IReleaseSpec spec,
+        Instruction instruction, out object returnData)
+        where TTracingInstructions : struct, IIsTracing
+        where TTracingRefunds : struct, IIsTracing
+    {
+        returnData = null;
+        ref readonly ExecutionEnvironment env = ref vmState.Env;
+
+        Metrics.Calls++;
+
+        if (instruction == Instruction.EOFDELEGATECALL && !spec.DelegateCallEnabled ||
+            instruction == Instruction.EOFSTATICCALL && !spec.StaticCallEnabled) return EvmExceptionType.BadInstruction;
+
+        if (!stack.PopUInt256(out UInt256 gasLimit)) return EvmExceptionType.StackUnderflow;
+        Address codeSource = stack.PopAddress();
+        if (codeSource is null) return EvmExceptionType.StackUnderflow;
+
+        if (!ChargeAccountAccessGas(ref gasAvailable, vmState, codeSource, spec)) return EvmExceptionType.OutOfGas;
+
+        ICodeInfo targetCodeInfo = GetCachedCodeInfo(_worldState, codeSource, spec);
+
+        if (instruction is Instruction.EOFDELEGATECALL
+                            && env.CodeInfo.Version != 0
+                            && targetCodeInfo is not EofCodeInfo)
+        {
+            _returnDataBuffer = Array.Empty<byte>();
+            stack.PushZero();
+            return EvmExceptionType.None;
+        }
+
+        UInt256 callValue;
+        switch (instruction)
+        {
+            case Instruction.EOFSTATICCALL:
+                callValue = UInt256.Zero;
+                break;
+            case Instruction.EOFDELEGATECALL:
+                callValue = env.Value;
+                break;
+            default:
+                if (!stack.PopUInt256(out callValue)) return EvmExceptionType.StackUnderflow;
+                break;
+        }
+
+        UInt256 transferValue = instruction == Instruction.EOFDELEGATECALL ? UInt256.Zero : callValue;
+        if (!stack.PopUInt256(out UInt256 dataOffset)) return EvmExceptionType.StackUnderflow;
+        if (!stack.PopUInt256(out UInt256 dataLength)) return EvmExceptionType.StackUnderflow;
+
+        if (vmState.IsStatic && !transferValue.IsZero && instruction != Instruction.CALLCODE) return EvmExceptionType.StaticCallViolation;
+
+        Address caller = instruction == Instruction.EOFDELEGATECALL ? env.Caller : env.ExecutingAccount;
+        Address target = instruction == Instruction.EOFCALL || instruction == Instruction.EOFSTATICCALL
+            ? codeSource
+            : env.ExecutingAccount;
+
+        if (typeof(TLogger) == typeof(IsTracing))
+        {
+            _logger.Trace($"caller {caller}");
+            _logger.Trace($"code source {codeSource}");
+            _logger.Trace($"target {target}");
+            _logger.Trace($"value {callValue}");
+            _logger.Trace($"transfer value {transferValue}");
+        }
+
+        long gasExtra = 0L;
+
+        if (!transferValue.IsZero)
+        {
+            gasExtra += GasCostOf.CallValue;
+        }
+
+        if (!spec.ClearEmptyAccountWhenTouched && !_state.AccountExists(target))
+        {
+            gasExtra += GasCostOf.NewAccount;
+        }
+        else if (spec.ClearEmptyAccountWhenTouched && transferValue != 0 && _state.IsDeadAccount(target))
+        {
+            gasExtra += GasCostOf.NewAccount;
+        }
+
+        if (!UpdateGas(spec.GetCallCost(), ref gasAvailable) ||
+            !UpdateMemoryCost(vmState, ref gasAvailable, in dataOffset, dataLength) ||
+            !UpdateGas(gasExtra, ref gasAvailable)) return EvmExceptionType.OutOfGas;
+
+        gasLimit = (UInt256)(gasAvailable - gasAvailable / 64);
+
+        if (gasLimit >= long.MaxValue) return EvmExceptionType.OutOfGas;
+
+        long gasLimitUl = (long)gasLimit;
+        if (!UpdateGas(gasLimitUl, ref gasAvailable)) return EvmExceptionType.OutOfGas;
+
+        if (!transferValue.IsZero)
+        {
+            if (typeof(TTracingRefunds) == typeof(IsTracing)) _txTracer.ReportExtraGasPressure(GasCostOf.CallStipend);
+            gasLimitUl += GasCostOf.CallStipend;
+        }
+
+        if (env.CallDepth >= MaxCallDepth ||
+            !transferValue.IsZero && _state.GetBalance(env.ExecutingAccount) < transferValue)
+        {
+            _returnDataBuffer = Array.Empty<byte>();
+            stack.PushZero();
+
+            if (typeof(TTracingInstructions) == typeof(IsTracing))
+            {
+                // very specific for Parity trace, need to find generalization - very peculiar 32 length...
+                ReadOnlyMemory<byte> memoryTrace = vmState.Memory.Inspect(in dataOffset, 32);
+                _txTracer.ReportMemoryChange(dataOffset, memoryTrace.Span);
+            }
+
+            if (typeof(TLogger) == typeof(IsTracing)) _logger.Trace("FAIL - call depth");
+            if (typeof(TTracingInstructions) == typeof(IsTracing)) _txTracer.ReportOperationRemainingGas(gasAvailable);
+            if (typeof(TTracingInstructions) == typeof(IsTracing)) _txTracer.ReportOperationError(EvmExceptionType.NotEnoughBalance);
+
+            UpdateGasUp(gasLimitUl, ref gasAvailable);
+            if (typeof(TTracingInstructions) == typeof(IsTracing)) _txTracer.ReportGasUpdateForVmTrace(gasLimitUl, gasAvailable);
+            return EvmExceptionType.None;
+        }
+
+        ReadOnlyMemory<byte> callData = vmState.Memory.Load(in dataOffset, dataLength);
+
+        Snapshot snapshot = _worldState.TakeSnapshot();
+        _state.SubtractFromBalance(caller, transferValue, spec);
+
+        ExecutionEnvironment callEnv = new
+        (
+            txExecutionContext: in env.TxExecutionContext,
+            callDepth: env.CallDepth + 1,
+            caller: caller,
+            codeSource: codeSource,
+            executingAccount: target,
+            transferValue: transferValue,
+            value: callValue,
+            inputData: callData,
+            codeInfo: GetCachedCodeInfo(_worldState, codeSource, spec)
+        );
+        if (typeof(TLogger) == typeof(IsTracing)) _logger.Trace($"Tx call gas {gasLimitUl}");
+
+        ExecutionType executionType = GetCallExecutionType(instruction, env.TxExecutionContext.BlockExecutionContext.Header.IsPostMerge);
+        returnData = new EvmState(
+            gasLimitUl,
+            callEnv,
+            executionType,
+            isTopLevel: false,
+            snapshot,
+            (long)0,
+            (long)0,
             instruction == Instruction.STATICCALL || vmState.IsStatic,
             vmState,
             isContinuation: false,
