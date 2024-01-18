@@ -11,6 +11,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using Nethermind.Evm.Precompiles;
 using Nethermind.Evm.Tracing.ParityStyle;
+using Nethermind.State;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test.Tracing

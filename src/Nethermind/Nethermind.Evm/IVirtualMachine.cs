@@ -18,6 +18,6 @@ namespace Nethermind.Evm
             where TTracingActions : struct, IIsTracing;
 
         CodeInfo GetCachedCodeInfo(IWorldState worldState, Address codeSource, IReleaseSpec spec);
-        void CacheCodeInfo(Hash256 codeHash, CodeInfo cachedCodeInfo);
+        void InsertCode(byte[] code, Address codeOwner, IReleaseSpec spec);
     }
 }

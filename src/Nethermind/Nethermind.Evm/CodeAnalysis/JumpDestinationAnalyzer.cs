@@ -33,21 +33,11 @@ namespace Nethermind.Evm.CodeAnalysis
             // Cast to uint to change negative numbers to very int high numbers
             // Then do length check, this both reduces check by 1 and eliminates the bounds
             // check from accessing the array.
-            if ((uint)destination < (uint)machineCode.Length)
+            if ((uint)destination < (uint)machineCode.Length && IsJumpDestination(_jumpDestBitmap, destination))
             {
                 // Store byte to int, as less expensive operations at word size
                 int codeByte = machineCode[destination];
-                if (IsJumpDestination(_jumpDestBitmap, destination))
-                {
-                    if (isSubroutine)
-                    {
-                        result = codeByte == BEGINSUB;
-                    }
-                    else
-                    {
-                        result = codeByte == JUMPDEST;
-                    }
-                }
+                result = isSubroutine ? codeByte == BEGINSUB : codeByte == JUMPDEST;
             }
 
             return result;
