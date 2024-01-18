@@ -49,6 +49,8 @@ public class InitializeBlockchainAuRa : InitializeBlockchain
     protected override async Task InitBlockchain()
     {
         var chainSpecAuRa = _api.ChainSpec.AuRa;
+        _api.ValidatorStore = new ValidatorStore(_api.DbProvider!.BlockInfosDb);
+        _auRaStepCalculator = new AuRaStepCalculator(_api.ChainSpec.AuRa.StepDuration, _api.Timestamper, _api.LogManager);
         _api.FinalizationManager = new AuRaBlockFinalizationManager(
             _api.BlockTree!,
             _api.ChainLevelInfoRepository!,
@@ -99,14 +101,14 @@ public class InitializeBlockchainAuRa : InitializeBlockchain
         IWorldState worldState = _api.WorldState!;
 
         return new AuRaBlockProcessor(
-            _api.SpecProvider,
-            _api.BlockValidator,
-            _api.RewardCalculatorSource.Get(_api.TransactionProcessor),
+            _api.SpecProvider!,
+            _api.BlockValidator!,
+            _api.RewardCalculatorSource!.Get(_api.TransactionProcessor!),
             new BlockProcessor.BlockValidationTransactionsExecutor(_api.TransactionProcessor, worldState),
             worldState,
-            _api.ReceiptStorage,
+            _api.ReceiptStorage!,
             _api.LogManager,
-            _api.BlockTree,
+            _api.BlockTree!,
             NullWithdrawalProcessor.Instance,
             validator,
             txFilter,
@@ -198,14 +200,10 @@ public class InitializeBlockchainAuRa : InitializeBlockchain
         if (_api.EthereumEcdsa is null) throw new StepDependencyException(nameof(_api.EthereumEcdsa));
         if (_api.BlockTree is null) throw new StepDependencyException(nameof(_api.BlockTree));
 
-        _api.ValidatorStore = new ValidatorStore(_api.DbProvider.BlockInfosDb);
-
         ValidSealerStrategy validSealerStrategy = new ValidSealerStrategy();
-        AuRaStepCalculator auRaStepCalculator = new AuRaStepCalculator(_api.ChainSpec.AuRa.StepDuration, _api.Timestamper, _api.LogManager);
-        _api.SealValidator = _sealValidator = new AuRaSealValidator(_api.ChainSpec.AuRa, auRaStepCalculator, _api.BlockTree, _api.ValidatorStore, validSealerStrategy, _api.EthereumEcdsa, _api.LogManager);
+        _api.SealValidator = _sealValidator = new AuRaSealValidator(_api.ChainSpec.AuRa, _auRaStepCalculator, _api.BlockTree, _api.ValidatorStore, validSealerStrategy, _api.EthereumEcdsa, _api.LogManager);
         _api.RewardCalculatorSource = AuRaRewardCalculator.GetSource(_api.ChainSpec.AuRa, _api.AbiEncoder);
-        _api.Sealer = new AuRaSealer(_api.BlockTree, _api.ValidatorStore, auRaStepCalculator, _api.EngineSigner, validSealerStrategy, _api.LogManager);
-        _auRaStepCalculator = auRaStepCalculator;
+        _api.Sealer = new AuRaSealer(_api.BlockTree, _api.ValidatorStore, _auRaStepCalculator, _api.EngineSigner, validSealerStrategy, _api.LogManager);
     }
 
     // private IReadOnlyTransactionProcessorSource GetReadOnlyTransactionProcessorSource() =>
