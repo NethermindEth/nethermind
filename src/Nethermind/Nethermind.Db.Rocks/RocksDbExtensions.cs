@@ -11,7 +11,14 @@ namespace Nethermind.Db.Rocks;
 
 internal static class RocksDbExtensions
 {
-    private static readonly ReadOptions _defaultReadOptions = new();
+    private static readonly ReadOptions _defaultReadOptions = CreateReadOptions();
+
+    private static ReadOptions CreateReadOptions()
+    {
+        ReadOptions options = new();
+        options.SetVerifyChecksums(false);
+        return options;
+    }
 
     internal static unsafe void DangerousReleaseMemory(this RocksDb _, in ReadOnlySpan<byte> span)
     {
