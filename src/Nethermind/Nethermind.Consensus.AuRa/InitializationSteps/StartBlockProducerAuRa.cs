@@ -138,7 +138,9 @@ public class StartBlockProducerAuRa
                 _api.EngineSigner,
                 _api.SpecProvider,
                 _api.GasPriceOracle,
-                _api.ReportingContractValidatorCache, chainSpecAuRa.PosdaoTransition, true)
+                _api.ReportingContractValidatorCache,
+                chainSpecAuRa.PosdaoTransition,
+                true)
             .CreateValidatorProcessor(chainSpecAuRa.Validators, _api.BlockTree.Head?.Header);
 
         if (_validator is IDisposable disposableValidator)
@@ -159,12 +161,10 @@ public class StartBlockProducerAuRa
             _api.LogManager,
             changeableTxProcessingEnv.BlockTree,
             NullWithdrawalProcessor.Instance,
+            _validator,
             auRaTxFilter,
             CreateGasLimitCalculator(constantContractTxProcessingEnv) as AuRaContractGasLimitOverride,
-            contractRewriter)
-        {
-            AuRaValidator = _validator
-        };
+            contractRewriter);
     }
 
     internal TxPoolTxSource CreateTxPoolTxSource(ReadOnlyTxProcessingEnv processingEnv, IReadOnlyTxProcessorSource readOnlyTxProcessorSource)
