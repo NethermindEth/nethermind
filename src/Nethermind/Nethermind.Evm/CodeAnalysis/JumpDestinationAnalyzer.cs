@@ -67,7 +67,6 @@ namespace Nethermind.Evm.CodeAnalysis
         private static long[] CreateJumpDestinationBitmap(ReadOnlySpan<byte> code)
         {
             long[] jumpDestinationBitmap = new long[GetInt64ArrayLengthFromBitLength(code.Length)];
-
             int programCounter = 0;
             // We accumulate each array segment to a register and then flush to memory when we move to next.
             long currentFlags = 0;
@@ -75,30 +74,32 @@ namespace Nethermind.Evm.CodeAnalysis
             {
                 // Set default programCounter increment to 1 for default case when don't vectorize or read a PUSH.
                 int move = 1;
-                if (Avx2.IsSupported &&
+                // We use Sse rather than Avx or Avx-512 as is optimization for stretch of code without PUSHes.
+                // As the vector size increases the chance of there being a PUSH increases which will disable this optimization.
+                if (Sse2.IsSupported &&
                     // Check not going to read passed end of code.
-                    programCounter <= code.Length - Vector256<sbyte>.Count &&
-                    // Are we on an int stride, one or other half of the long flags?
-                    (programCounter & 31) == 0)
+                    programCounter <= code.Length - Vector128<sbyte>.Count &&
+                    // Are we on an short stride, one quarter of the long flags?
+                    (programCounter & 15) == 0)
                 {
-                    Vector256<sbyte> data = Unsafe.As<byte, Vector256<sbyte>>(ref Unsafe.AddByteOffset(ref MemoryMarshal.GetReference(code), programCounter));
+                    Vector128<sbyte> data = Unsafe.As<byte, Vector128<sbyte>>(ref Unsafe.AddByteOffset(ref MemoryMarshal.GetReference(code), programCounter));
                     // Pushes are 0x60 to 0x7f; converting to signed bytes any instruction higher than PUSH32
                     // becomes negative so we can just do a single greater than test to see if any present.
-                    Vector256<sbyte> compare = Avx2.CompareGreaterThan(data, Vector256.Create((sbyte)PUSHx));
+                    Vector128<sbyte> compare = Sse2.CompareGreaterThan(data, Vector128.Create((sbyte)PUSHx));
                     if (compare == default)
                     {
                         // Check the bytes for any JUMPDESTs.
-                        Vector256<sbyte> dest = Avx2.CompareEqual(data, Vector256.Create((sbyte)JUMPDEST));
+                        Vector128<sbyte> dest = Sse2.CompareEqual(data, Vector128.Create((sbyte)JUMPDEST));
                         // Check the bytes for any BEGINSUBs.
-                        Vector256<sbyte> sub = Avx2.CompareEqual(data, Vector256.Create((sbyte)BEGINSUB));
+                        Vector128<sbyte> sub = Sse2.CompareEqual(data, Vector128.Create((sbyte)BEGINSUB));
                         // Merge the two results.
-                        Vector256<sbyte> combined = Avx2.Or(dest, sub);
+                        Vector128<sbyte> combined = Sse2.Or(dest, sub);
                         // Extract the checks as a set of int flags.
-                        int flags = Avx2.MoveMask(combined);
+                        int flags = Sse2.MoveMask(combined);
                         // Shift up flags by depending which side of long we are on, and merge to current set.
-                        currentFlags |= (long)flags << (programCounter & 32);
-                        // Forward programCounter by Vector256 stride.
-                        move = Vector256<sbyte>.Count;
+                        currentFlags |= (long)flags << (programCounter & (32 + 16));
+                        // Forward programCounter by Vector128 stride.
+                        move = Vector128<sbyte>.Count;
                         goto Next;
                     }
                 }
