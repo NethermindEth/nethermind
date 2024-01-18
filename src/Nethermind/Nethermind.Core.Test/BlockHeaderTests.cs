@@ -4,6 +4,8 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Text.Json;
+
 using FluentAssertions;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -11,7 +13,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Int256;
-using Newtonsoft.Json;
+
 using NSubstitute;
 using NUnit.Framework;
 
@@ -112,10 +114,13 @@ public class BlockHeaderTests
         IReleaseSpec releaseSpec = Substitute.For<IReleaseSpec>();
         releaseSpec.IsEip1559Enabled.Returns(true);
         releaseSpec.Eip1559BaseFeeMinValue.Returns((UInt256?)minimalBaseFee);
+        releaseSpec.ForkBaseFee.Returns(Eip1559Constants.DefaultForkBaseFee);
+        releaseSpec.BaseFeeMaxChangeDenominator.Returns(Eip1559Constants.DefaultBaseFeeMaxChangeDenominator);
+        releaseSpec.ElasticityMultiplier.Returns(Eip1559Constants.DefaultElasticityMultiplier);
 
         BlockHeader blockHeader = Build.A.BlockHeader.TestObject;
         blockHeader.Number = 2001;
-        blockHeader.GasLimit = gasTarget * Eip1559Constants.ElasticityMultiplier;
+        blockHeader.GasLimit = gasTarget * Eip1559Constants.DefaultElasticityMultiplier;
         blockHeader.BaseFeePerGas = (UInt256)baseFee;
         blockHeader.GasUsed = gasUsed;
         UInt256 actualBaseFee = BaseFeeCalculator.Calculate(blockHeader, releaseSpec);
@@ -139,10 +144,13 @@ public class BlockHeaderTests
     {
         IReleaseSpec releaseSpec = Substitute.For<IReleaseSpec>();
         releaseSpec.IsEip1559Enabled.Returns(true);
+        releaseSpec.ForkBaseFee.Returns(Eip1559Constants.DefaultForkBaseFee);
+        releaseSpec.BaseFeeMaxChangeDenominator.Returns(Eip1559Constants.DefaultBaseFeeMaxChangeDenominator);
+        releaseSpec.ElasticityMultiplier.Returns(Eip1559Constants.DefaultElasticityMultiplier);
 
         BlockHeader blockHeader = Build.A.BlockHeader.TestObject;
         blockHeader.Number = 2001;
-        blockHeader.GasLimit = testCase.Info.ParentTargetGasUsed * Eip1559Constants.ElasticityMultiplier;
+        blockHeader.GasLimit = testCase.Info.ParentTargetGasUsed * Eip1559Constants.DefaultElasticityMultiplier;
         blockHeader.BaseFeePerGas = (UInt256)testCase.Info.ParentBaseFee;
         blockHeader.GasUsed = testCase.Info.ParentGasUsed;
         UInt256 actualBaseFee = BaseFeeCalculator.Calculate(blockHeader, releaseSpec);
@@ -152,7 +160,7 @@ public class BlockHeaderTests
     private static IEnumerable<(BaseFeeTestCases, string)> Eip1559BaseFeeTestSource()
     {
         string testCases = File.ReadAllText("TestFiles/BaseFeeTestCases.json");
-        BaseFeeTestCases[] deserializedTestCases = JsonConvert.DeserializeObject<BaseFeeTestCases[]>(testCases) ?? Array.Empty<BaseFeeTestCases>();
+        BaseFeeTestCases[] deserializedTestCases = JsonSerializer.Deserialize<BaseFeeTestCases[]>(testCases) ?? Array.Empty<BaseFeeTestCases>();
 
         for (int i = 0; i < deserializedTestCases.Length; ++i)
         {

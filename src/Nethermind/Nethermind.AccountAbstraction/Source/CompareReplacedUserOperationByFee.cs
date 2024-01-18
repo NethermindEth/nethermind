@@ -20,8 +20,8 @@ namespace Nethermind.AccountAbstraction.Source
         public int Compare(UserOperation? x, UserOperation? y)
         {
             if (ReferenceEquals(x, y)) return 0;
-            if (ReferenceEquals(null, y)) return 1;
-            if (ReferenceEquals(null, x)) return -1;
+            if (y is null) return 1;
+            if (x is null) return -1;
 
             y.MaxFeePerGas.Divide(PartOfFeeRequiredToIncrease, out UInt256 bumpMaxFeePerGas);
             if (y.MaxFeePerGas + bumpMaxFeePerGas > x.MaxFeePerGas) return 1;

@@ -10,6 +10,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Find;
+using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -45,6 +46,7 @@ public partial class EthRpcModule : IEthRpcModule
     private readonly IJsonRpcConfig _rpcConfig;
     private readonly IBlockchainBridge _blockchainBridge;
     private readonly IBlockFinder _blockFinder;
+    private readonly IReceiptFinder _receiptFinder;
     private readonly IStateReader _stateReader;
     private readonly ITxPool _txPoolBridge;
     private readonly ITxSender _txSender;
@@ -65,6 +67,7 @@ public partial class EthRpcModule : IEthRpcModule
         IJsonRpcConfig rpcConfig,
         IBlockchainBridge blockchainBridge,
         IBlockFinder blockFinder,
+        IReceiptFinder receiptFinder,
         IStateReader stateReader,
         ITxPool txPool,
         ITxSender txSender,
@@ -79,6 +82,7 @@ public partial class EthRpcModule : IEthRpcModule
         _rpcConfig = rpcConfig ?? throw new ArgumentNullException(nameof(rpcConfig));
         _blockchainBridge = blockchainBridge ?? throw new ArgumentNullException(nameof(blockchainBridge));
         _blockFinder = blockFinder ?? throw new ArgumentNullException(nameof(blockFinder));
+        _receiptFinder = receiptFinder ?? throw new ArgumentNullException(nameof(receiptFinder));
         _stateReader = stateReader ?? throw new ArgumentNullException(nameof(stateReader));
         _txPoolBridge = txPool ?? throw new ArgumentNullException(nameof(txPool));
         _txSender = txSender ?? throw new ArgumentNullException(nameof(txSender));
@@ -174,13 +178,11 @@ public partial class EthRpcModule : IEthRpcModule
         }
 
         BlockHeader? header = searchResult.Object;
-        Account account = _stateReader.GetAccount(header!.StateRoot!, address);
-        if (account is null)
+        byte[] storage = _stateReader.GetStorage(header!.StateRoot!, address, positionIndex);
+        if (storage is null)
         {
             return ResultWrapper<byte[]>.Success(Array.Empty<byte>());
         }
-
-        byte[] storage = _stateReader.GetStorage(account.StorageRoot, positionIndex);
         return ResultWrapper<byte[]>.Success(storage!.PadLeft(32));
     }
 
@@ -224,6 +226,11 @@ public partial class EthRpcModule : IEthRpcModule
         return searchResult.IsError
             ? GetFailureResult<UInt256?, Block>(searchResult, _ethSyncingInfo.SyncMode.HaveNotSyncedBodiesYet())
             : ResultWrapper<UInt256?>.Success((UInt256)searchResult.Object!.Transactions.Length);
+    }
+
+    public ResultWrapper<ReceiptForRpc[]> eth_getBlockReceipts(BlockParameter blockParameter)
+    {
+        return _receiptFinder.GetBlockReceipts(blockParameter, _blockFinder, _specProvider);
     }
 
     public ResultWrapper<UInt256?> eth_getUncleCountByBlockHash(Hash256 blockHash)
@@ -388,7 +395,7 @@ public partial class EthRpcModule : IEthRpcModule
         TxReceipt receipt = null; // note that if transaction is pending then for sure no receipt is known
         if (transaction is null)
         {
-            (receipt, transaction, baseFee) = _blockchainBridge.GetTransaction(transactionHash);
+            (receipt, transaction, baseFee) = _blockchainBridge.GetTransaction(transactionHash, checkTxnPool: false);
             if (transaction is null)
             {
                 return Task.FromResult(ResultWrapper<TransactionForRpc>.Success(null));
@@ -578,7 +585,7 @@ public partial class EthRpcModule : IEthRpcModule
             if (id < 0 || !filterFound)
             {
                 cancellationTokenSource.Dispose();
-                return ResultWrapper<IEnumerable<FilterLog>>.Fail($"Filter with id: '{filterId}' does not exist.");
+                return ResultWrapper<IEnumerable<FilterLog>>.Fail($"Filter with id: {filterId} does not exist.");
             }
             else
             {
@@ -602,7 +609,9 @@ public partial class EthRpcModule : IEthRpcModule
         SearchResult<BlockHeader> toBlockResult;
 
         if (filter.FromBlock == filter.ToBlock)
+        {
             fromBlockResult = toBlockResult = _blockFinder.SearchForHeader(filter.ToBlock);
+        }
         else
         {
             toBlockResult = _blockFinder.SearchForHeader(filter.ToBlock);
@@ -625,19 +634,24 @@ public partial class EthRpcModule : IEthRpcModule
 
         cancellationToken.ThrowIfCancellationRequested();
 
-        long fromBlockNumber = fromBlockResult.Object!.Number;
-        long toBlockNumber = toBlockResult.Object!.Number;
+        BlockHeader fromBlock = fromBlockResult.Object!;
+        BlockHeader toBlock = toBlockResult.Object!;
+
+        long fromBlockNumber = fromBlock.Number;
+        long toBlockNumber = toBlock.Number;
 
         if (fromBlockNumber > toBlockNumber && toBlockNumber != 0)
         {
             cancellationTokenSource.Dispose();
-            return ResultWrapper<IEnumerable<FilterLog>>.Fail($"'From' block '{fromBlockNumber}' is later than 'to' block '{toBlockNumber}'.", ErrorCodes.InvalidParams);
+
+            return ResultWrapper<IEnumerable<FilterLog>>.Fail($"From block {fromBlockNumber} is later than to block {toBlockNumber}.", ErrorCodes.InvalidParams);
         }
 
         try
         {
-            IEnumerable<FilterLog> filterLogs = _blockchainBridge.GetLogs(filter.FromBlock!, filter.ToBlock!,
-                filter.Address, filter.Topics, cancellationToken);
+            LogFilter logFilter = _blockchainBridge.GetFilter(filter.FromBlock, filter.ToBlock,
+                filter.Address, filter.Topics);
+            IEnumerable<FilterLog> filterLogs = _blockchainBridge.GetLogs(logFilter, fromBlock, toBlock, cancellationToken);
 
             return ResultWrapper<IEnumerable<FilterLog>>.Success(GetLogs(filterLogs, cancellationTokenSource));
         }
@@ -687,7 +701,7 @@ public partial class EthRpcModule : IEthRpcModule
         transaction.SenderAddress ??= _blockchainBridge.RecoverTxSender(transaction);
     }
 
-    private IEnumerable<FilterLog> GetLogs(IEnumerable<FilterLog> logs, CancellationTokenSource cancellationTokenSource)
+    private static IEnumerable<FilterLog> GetLogs(IEnumerable<FilterLog> logs, CancellationTokenSource cancellationTokenSource)
     {
         using (cancellationTokenSource)
         {

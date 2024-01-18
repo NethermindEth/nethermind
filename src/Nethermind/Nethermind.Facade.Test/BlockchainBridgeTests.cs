@@ -30,6 +30,7 @@ using NUnit.Framework;
 using Nethermind.Config;
 using Nethermind.Evm;
 using Nethermind.Facade.Multicall;
+using Nethermind.State;
 
 namespace Nethermind.Facade.Test
 {
@@ -61,15 +62,21 @@ namespace Nethermind.Facade.Test
             _ethereumEcdsa = Substitute.For<IEthereumEcdsa>();
             _specProvider = MainnetSpecProvider.Instance;
 
+            ReadOnlyDbProvider dbProvider = new ReadOnlyDbProvider(_dbProvider, false);
+            IReadOnlyTrieStore trieStore = new TrieStore(_dbProvider.StateDb, LimboLogs.Instance).AsReadOnly();
+
+            IWorldStateManager readOnlyWorldStateManager =
+                new ReadOnlyWorldStateManager(dbProvider, trieStore, LimboLogs.Instance);
+
             ReadOnlyTxProcessingEnv processingEnv = new(
-                new ReadOnlyDbProvider(_dbProvider, false),
-                new TrieStore(_dbProvider.StateDb, LimboLogs.Instance).AsReadOnly(),
+                readOnlyWorldStateManager,
                 new ReadOnlyBlockTree(_blockTree),
                 _specProvider,
                 LimboLogs.Instance);
 
             MultiCallReadOnlyBlocksProcessingEnv multiCallProcessingEnv = MultiCallReadOnlyBlocksProcessingEnv.Create(
                 false,
+                readOnlyWorldStateManager,
                 new ReadOnlyDbProvider(_dbProvider, true),
                 _specProvider,
                 LimboLogs.Instance);
@@ -212,15 +219,21 @@ namespace Nethermind.Facade.Test
         [TestCase(0)]
         public void Bridge_head_is_correct(long headNumber)
         {
+            ReadOnlyDbProvider dbProvider = new ReadOnlyDbProvider(_dbProvider, false);
+            IReadOnlyTrieStore trieStore = new TrieStore(_dbProvider.StateDb, LimboLogs.Instance).AsReadOnly();
+
+            IWorldStateManager readOnlyWorldStateManager =
+                new ReadOnlyWorldStateManager(dbProvider, trieStore, LimboLogs.Instance);
+
             ReadOnlyTxProcessingEnv processingEnv = new(
-                new ReadOnlyDbProvider(_dbProvider, false),
-                new TrieStore(_dbProvider.StateDb, LimboLogs.Instance).AsReadOnly(),
+                readOnlyWorldStateManager,
                 new ReadOnlyBlockTree(_blockTree),
                 _specProvider,
                 LimboLogs.Instance);
 
             MultiCallReadOnlyBlocksProcessingEnv multiCallProcessingEnv = MultiCallReadOnlyBlocksProcessingEnv.Create(
                 false,
+                readOnlyWorldStateManager,
                 new ReadOnlyDbProvider(_dbProvider, true),
                 _specProvider,
                 LimboLogs.Instance);

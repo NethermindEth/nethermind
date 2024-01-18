@@ -56,6 +56,73 @@ on:
       additional_options:
         description: "A Json property which allows to customize node even more"
         default: '{"timeout":"24", "default_dockerfile":"Dockerfile", "default_dockerfile_build_type":"release", "ssh_keys":"", "allowed_ips":""}'
+  workflow_call:
+    inputs:
+      smoke_tests_ref:
+        description: "Ref of the smoke tests repository to be used for smoke tests"
+        default: "main"
+        required: false
+        type: string
+      nethermind_repo_ref:
+        description: "Ref of the nethermind repo in case it is needed to be changed"
+        default: ""
+        required: false
+        type: string
+      custom_run_id:
+        description: "Run ID used for artifacts save"
+        default: ""
+        required: false
+        type: string
+      network:
+        description: "Select a network on which You want to run a node"
+        default: "mainnet"
+        required: false
+        type: string
+      cl_client:
+        description: "Select Consensus Layer Client to run node against"
+        default: "lighthouse"
+        required: false
+        type: string
+      cl_custom_image:
+        description: "In case of need to run non-default cl image (different than actually supported by Sedge) put it in there"
+        default: ""
+        required: false        
+        type: string
+      config:
+        description: "Select a config file which will be selected for tests."
+        default: "default.json"
+        required: false
+        type: string
+      non_validator_mode:
+        description: "If checked, node will be started in NonValidator mode (OldBodies and oldReceipts will not be synced)"
+        default: true
+        type: boolean
+      additional_nethermind_flags:
+        type: string
+        description: "Provide any additional flags to the Nethermind in space-separated format. Example: \"JsonRpc.Enabled=false Sync.SnapSync=false\"."
+        default: ""
+        required: false
+      additional_cl_flags:
+        type: string
+        description: "Provide any additional flags to the CL client in space-separated format. Example: \"clflag1=1 clflag2=2\"."
+        default: ""
+        required: false
+      additional_options:
+        type: string
+        description: "A Json property which allows to customize node even more"
+        default: '{"timeout":"24", "default_dockerfile":"Dockerfile", "default_dockerfile_build_type":"release", "ssh_keys":"", "allowed_ips":""}'
+        required: false
+    outputs:
+      base_tag:
+        description: ""
+        value: ${{ jobs.create_docker_image.outputs.base_tag }}
+      run_id:
+        description: ""
+        value: ${{ jobs.trigger_node_and_vm_creation.outputs.run_id }}
+      rpc_url:
+        description: ""
+        value: ${{ jobs.trigger_node_and_vm_creation.outputs.rpc_url }}
+
       
 jobs:
   create_docker_image:
@@ -64,12 +131,14 @@ jobs:
       base_tag: ${{ steps.set-base-tag.outputs.base_tag }}
     steps:
     - name: Checkout repository
-      uses: actions/checkout@v2
+      uses: actions/checkout@v4
+      with:
+        ref: ${{ inputs.nethermind_repo_ref }}
 
     - name: Prepare docker tag
       id: prepare_ref
       run: |
-        REF_NAME=${{ github.ref }}
+        REF_NAME=${{ inputs.nethermind_repo_ref || github.ref }}
         CLEAN_REF=$(echo "${REF_NAME/refs\/heads\//}" | sed 's/[^a-zA-Z0-9._-]/-/g')
         echo "CLEAN_REF=$CLEAN_REF" >> $GITHUB_ENV
 
@@ -99,8 +168,17 @@ jobs:
     - name: Check if master branch and default additional_options
       id: check_conditions
       run: |
+        ref="${{ inputs.nethermind_repo_ref || github.ref }}"
+        if [ -z "$ref" ]; then
+          ref="${{ github.ref }}"
+        fi
+        # Append "refs/heads/" prefix if it's not already there
+        if [[ $ref != refs/heads/* ]]; then
+          ref="refs/heads/$ref"
+        fi
+
         if 
-        [[ "${{ github.ref }}" == "refs/heads/master" ]] && 
+        [[ "$ref" == "refs/heads/master" ]] && 
         [[ "${{ steps.extract_dockerfile.outputs.dockerfile }}" == "Dockerfile" ]] && 
         [[ "${{ steps.extract_dockerfile.outputs.build-config }}" == "release" ]]; then
           echo "skip_docker_build=true" >> $GITHUB_OUTPUT
@@ -144,12 +222,14 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - name: Checkout repository
-      uses: actions/checkout@v2
+      uses: actions/checkout@v4
+      with:
+        ref: ${{ inputs.nethermind_repo_ref }}
 
     - name: Prepare docker tag
       id: prepare_ref
       run: |
-        REF_NAME=${{ github.ref }}
+        REF_NAME=${{ inputs.nethermind_repo_ref || github.ref }}
         CLEAN_REF=$(echo "${REF_NAME/refs\/heads\//}" | sed 's/[^a-zA-Z0-9._-]/-/g')
 
         echo "CLEAN_REF=$CLEAN_REF" >> $GITHUB_ENV
@@ -206,4 +286,20 @@ jobs:
     - name: Display machine specs content
       run: |
         FILE=$(ls downloaded-artifacts/machine-details | head -n 1)
-        cat "downloaded-artifacts/machine-details/$FILE"
+        cat "downloaded-artifacts/machine-details/$FILE" | tee spec-output.txt
+        rpc_url=$(grep -oP '\s{2,3}RPC URL: \K.+' spec-output.txt)
+        echo "RPC URL extracted is: $rpc_url"
+        echo "RPC_URL=$rpc_url" >> $GITHUB_ENV
+
+    - name: Save RPC URL to file
+      if: inputs.custom_run_id != ''
+      run: |
+        workflow_id=${{ inputs.custom_run_id }}
+        echo "${{ env.RPC_URL }}" > rpc_url%${{ env.CLEAN_REF }}%${{ inputs.custom_run_id }}.txt
+
+    - name: Upload RPC URL
+      uses: actions/upload-artifact@v3
+      if: inputs.custom_run_id != ''
+      with:
+        name: rpc-url___${{ env.CLEAN_REF }}___${{ inputs.custom_run_id }}
+        path: rpc_url%${{ env.CLEAN_REF }}%${{ inputs.custom_run_id }}.txt

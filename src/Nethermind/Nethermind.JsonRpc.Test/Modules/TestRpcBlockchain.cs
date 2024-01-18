@@ -29,7 +29,7 @@ using Nethermind.Specs.Forks;
 using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
-using Newtonsoft.Json;
+
 using Nethermind.Config;
 using Nethermind.Facade.Multicall;
 using Nethermind.Synchronization.ParallelSync;
@@ -125,14 +125,14 @@ namespace Nethermind.JsonRpc.Test.Modules
             var dbProvider = new ReadOnlyDbProvider(DbProvider, false);
 
             ReadOnlyTxProcessingEnv processingEnv = new(
-                dbProvider,
-                new TrieStore(DbProvider.StateDb, LimboLogs.Instance).AsReadOnly(),
+                WorldStateManager,
                 new ReadOnlyBlockTree(BlockTree),
                 SpecProvider,
                 LimboLogs.Instance);
 
             MultiCallReadOnlyBlocksProcessingEnv multiCallProcessingEnv = MultiCallReadOnlyBlocksProcessingEnv.Create(
                 false,
+                WorldStateManager,
                 new ReadOnlyDbProvider(dbProvider, true),
                 SpecProvider,
                 LimboLogs.Instance);
@@ -153,6 +153,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                 RpcConfig,
                 Bridge,
                 BlockFinder,
+                ReceiptFinder,
                 StateReader,
                 TxPool,
                 TxSender,
@@ -167,9 +168,9 @@ namespace Nethermind.JsonRpc.Test.Modules
         }
 
         public Task<string> TestEthRpc(string method, params string[] parameters) =>
-            RpcTest.TestSerializedRequest(EthModuleFactory.Converters, EthRpcModule, method, parameters);
+            RpcTest.TestSerializedRequest(EthRpcModule, method, parameters);
 
         public Task<string> TestSerializedRequest<T>(T module, string method, params string[] parameters) where T : class, IRpcModule =>
-            RpcTest.TestSerializedRequest(Array.Empty<JsonConverter>(), module, method, parameters);
+            RpcTest.TestSerializedRequest(module, method, parameters);
     }
 }

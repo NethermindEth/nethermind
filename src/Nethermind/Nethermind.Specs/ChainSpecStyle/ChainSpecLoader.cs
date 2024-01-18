@@ -13,7 +13,10 @@ using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs.ChainSpecStyle.Json;
-using Newtonsoft.Json.Linq;
+
+using System.Text.Json;
+using System.Text.Json.Serialization;
+using System.Globalization;
 
 namespace Nethermind.Specs.ChainSpecStyle;
 
@@ -27,8 +30,6 @@ public class ChainSpecLoader : IChainSpecLoader
     public ChainSpecLoader(IJsonSerializer serializer)
     {
         _serializer = serializer;
-        _serializer.RegisterConverter(new StepDurationJsonConverter());
-        _serializer.RegisterConverter(new BlockRewardJsonConverter());
     }
 
     public ChainSpec Load(byte[] data) => Load(Encoding.UTF8.GetString(data));
@@ -61,11 +62,11 @@ public class ChainSpecLoader : IChainSpecLoader
 
     private void LoadParameters(ChainSpecJson chainSpecJson, ChainSpec chainSpec)
     {
-        long? GetTransitions(string builtInName, Predicate<KeyValuePair<string, JObject>> predicate)
+        long? GetTransitions(string builtInName, Predicate<KeyValuePair<string, JsonElement>> predicate)
         {
             var allocation = chainSpecJson.Accounts?.Values.FirstOrDefault(v => v.BuiltIn?.Name.Equals(builtInName, StringComparison.InvariantCultureIgnoreCase) == true);
             if (allocation is null) return null;
-            KeyValuePair<string, JObject>[] pricing = allocation.BuiltIn.Pricing.Where(o => predicate(o)).ToArray();
+            KeyValuePair<string, JsonElement>[] pricing = allocation.BuiltIn.Pricing.Where(o => predicate(o)).ToArray();
             if (pricing.Length > 0)
             {
                 string key = pricing[0].Key;
@@ -77,13 +78,21 @@ public class ChainSpecLoader : IChainSpecLoader
 
         long? GetTransitionForExpectedPricing(string builtInName, string innerPath, long expectedValue)
         {
-            bool GetForExpectedPricing(KeyValuePair<string, JObject> o) => o.Value.SelectToken(innerPath)?.Value<long>() == expectedValue;
+            bool GetForExpectedPricing(KeyValuePair<string, JsonElement> o)
+            {
+                return o.Value.TryGetSubProperty(innerPath, out JsonElement value) ? value.GetInt64() == expectedValue : false;
+            }
+
             return GetTransitions(builtInName, GetForExpectedPricing);
         }
 
         long? GetTransitionIfInnerPathExists(string builtInName, string innerPath)
         {
-            bool GetForInnerPathExistence(KeyValuePair<string, JObject> o) => o.Value.SelectToken(innerPath) is not null;
+            bool GetForInnerPathExistence(KeyValuePair<string, JsonElement> o)
+            {
+                return o.Value.TryGetSubProperty(innerPath, out _);
+            }
+
             return GetTransitions(builtInName, GetForInnerPathExistence);
         }
 
@@ -148,10 +157,10 @@ public class ChainSpecLoader : IChainSpecLoader
             TransactionPermissionContractTransition = chainSpecJson.Params.TransactionPermissionContractTransition,
             ValidateChainIdTransition = chainSpecJson.Params.ValidateChainIdTransition,
             ValidateReceiptsTransition = chainSpecJson.Params.ValidateReceiptsTransition,
-            Eip1559ElasticityMultiplier = chainSpecJson.Params.Eip1559ElasticityMultiplier ?? Eip1559Constants.ElasticityMultiplier,
-            Eip1559BaseFeeInitialValue = chainSpecJson.Params.Eip1559BaseFeeInitialValue ?? Eip1559Constants.ForkBaseFee,
+            Eip1559ElasticityMultiplier = chainSpecJson.Params.Eip1559ElasticityMultiplier ?? Eip1559Constants.DefaultElasticityMultiplier,
+            Eip1559BaseFeeInitialValue = chainSpecJson.Params.Eip1559BaseFeeInitialValue ?? Eip1559Constants.DefaultForkBaseFee,
             Eip1559BaseFeeMaxChangeDenominator = chainSpecJson.Params.Eip1559BaseFeeMaxChangeDenominator ??
-                                                 Eip1559Constants.BaseFeeMaxChangeDenominator,
+                                                 Eip1559Constants.DefaultBaseFeeMaxChangeDenominator,
             Eip1559FeeCollector = chainSpecJson.Params.Eip1559FeeCollector,
             Eip1559FeeCollectorTransition = chainSpecJson.Params.Eip1559FeeCollectorTransition,
             Eip1559BaseFeeMinValueTransition = chainSpecJson.Params.Eip1559BaseFeeMinValueTransition,
@@ -170,10 +179,6 @@ public class ChainSpecLoader : IChainSpecLoader
                                                    ?? GetTransitionForExpectedPricing("alt_bn128_mul", "price.alt_bn128_const_operations.price", 6000)
                                                    ?? GetTransitionForExpectedPricing("alt_bn128_pairing", "price.alt_bn128_pairing.base", 45000);
         chainSpec.Parameters.Eip2565Transition ??= GetTransitionIfInnerPathExists("modexp", "price.modexp2565");
-
-        Eip1559Constants.ElasticityMultiplier = chainSpec.Parameters.Eip1559ElasticityMultiplier;
-        Eip1559Constants.ForkBaseFee = chainSpec.Parameters.Eip1559BaseFeeInitialValue;
-        Eip1559Constants.BaseFeeMaxChangeDenominator = chainSpec.Parameters.Eip1559BaseFeeMaxChangeDenominator;
 
         Eip4844Constants.OverrideIfAny(
             chainSpec.Parameters.Eip4844BlobGasPriceUpdateFraction,
@@ -323,7 +328,11 @@ public class ChainSpecLoader : IChainSpecLoader
             {
                 foreach (KeyValuePair<string, long> reward in chainSpecJson.Engine.Ethash.DifficultyBombDelays)
                 {
-                    chainSpec.Ethash.DifficultyBombDelays.Add(LongConverter.FromString(reward.Key), reward.Value);
+                    long key = reward.Key.StartsWith("0x") ?
+                        long.Parse(reward.Key.AsSpan(2), NumberStyles.HexNumber) :
+                        long.Parse(reward.Key);
+
+                    chainSpec.Ethash.DifficultyBombDelays.Add(key, reward.Value);
                 }
             }
         }
@@ -334,8 +343,12 @@ public class ChainSpecLoader : IChainSpecLoader
             {
                 RegolithTimestamp = chainSpecJson.Engine.Optimism.RegolithTimestamp,
                 BedrockBlockNumber = chainSpecJson.Engine.Optimism.BedrockBlockNumber,
+                CanyonTimestamp = chainSpecJson.Engine.Optimism.CanyonTimestamp,
                 L1FeeRecipient = chainSpecJson.Engine.Optimism.L1FeeRecipient,
-                L1BlockAddress = chainSpecJson.Engine.Optimism.L1BlockAddress
+                L1BlockAddress = chainSpecJson.Engine.Optimism.L1BlockAddress,
+                CanyonBaseFeeChangeDenominator = chainSpecJson.Engine.Optimism.CanyonBaseFeeChangeDenominator,
+                Create2DeployerAddress = chainSpecJson.Engine.Optimism.Create2DeployerAddress,
+                Create2DeployerCode = chainSpecJson.Engine.Optimism.Create2DeployerCode
             };
         }
         else if (chainSpecJson.Engine?.NethDev is not null)

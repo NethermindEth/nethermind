@@ -39,10 +39,7 @@ namespace Nethermind.Core.Collections
 
         public SpanDictionary(int capacity, ISpanEqualityComparer<TKey> comparer)
         {
-            if (capacity < 0)
-            {
-                throw new ArgumentOutOfRangeException(nameof(capacity));
-            }
+            ArgumentOutOfRangeException.ThrowIfNegative(capacity);
 
             if (capacity > 0)
             {
@@ -355,13 +352,13 @@ namespace Nethermind.Core.Collections
 
             goto ReturnNotFound;
 
-ConcurrentOperation:
+        ConcurrentOperation:
             throw new InvalidOperationException("Concurrent operations not supported");
-ReturnFound:
+        ReturnFound:
             ref TValue value = ref entry.value;
-Return:
+        Return:
             return ref value;
-ReturnNotFound:
+        ReturnNotFound:
             value = ref Unsafe.NullRef<TValue>();
             goto Return;
         }
@@ -946,10 +943,7 @@ ReturnNotFound:
         /// </summary>
         public int EnsureCapacity(int capacity)
         {
-            if (capacity < 0)
-            {
-                throw new ArgumentOutOfRangeException(nameof(capacity));
-            }
+            ArgumentOutOfRangeException.ThrowIfNegative(capacity);
 
             int currentCapacity = _entries == null ? 0 : _entries.Length;
             if (currentCapacity >= capacity)
@@ -992,10 +986,7 @@ ReturnNotFound:
         /// </remarks>
         public void TrimExcess(int capacity)
         {
-            if (capacity < Count)
-            {
-                throw new ArgumentOutOfRangeException(nameof(capacity));
-            }
+            ArgumentOutOfRangeException.ThrowIfLessThan(capacity, Count);
 
             int newSize = HashHelpers.GetPrime(capacity);
             Entry[]? oldEntries = _entries;
@@ -1204,11 +1195,11 @@ ReturnNotFound:
                 return false;
             }
 
-            public KeyValuePair<TKey[], TValue> Current => _current;
+            public readonly KeyValuePair<TKey[], TValue> Current => _current;
 
-            public void Dispose() { }
+            public readonly void Dispose() { }
 
-            object? IEnumerator.Current
+            readonly object? IEnumerator.Current
             {
                 get
                 {
@@ -1237,7 +1228,7 @@ ReturnNotFound:
                 _current = default;
             }
 
-            DictionaryEntry IDictionaryEnumerator.Entry
+            readonly DictionaryEntry IDictionaryEnumerator.Entry
             {
                 get
                 {
@@ -1250,7 +1241,7 @@ ReturnNotFound:
                 }
             }
 
-            object IDictionaryEnumerator.Key
+            readonly object IDictionaryEnumerator.Key
             {
                 get
                 {
@@ -1263,7 +1254,7 @@ ReturnNotFound:
                 }
             }
 
-            object? IDictionaryEnumerator.Value
+            readonly object? IDictionaryEnumerator.Value
             {
                 get
                 {
@@ -1404,7 +1395,7 @@ ReturnNotFound:
                     _currentKey = default;
                 }
 
-                public void Dispose() { }
+                public readonly void Dispose() { }
 
                 public bool MoveNext()
                 {
@@ -1429,9 +1420,9 @@ ReturnNotFound:
                     return false;
                 }
 
-                public TKey[] Current => _currentKey!;
+                public readonly TKey[] Current => _currentKey!;
 
-                object? IEnumerator.Current
+                readonly object? IEnumerator.Current
                 {
                     get
                     {
@@ -1581,7 +1572,7 @@ ReturnNotFound:
                     _currentValue = default;
                 }
 
-                public void Dispose() { }
+                public readonly void Dispose() { }
 
                 public bool MoveNext()
                 {
@@ -1605,9 +1596,9 @@ ReturnNotFound:
                     return false;
                 }
 
-                public TValue Current => _currentValue!;
+                public readonly TValue Current => _currentValue!;
 
-                object? IEnumerator.Current
+                readonly object? IEnumerator.Current
                 {
                     get
                     {

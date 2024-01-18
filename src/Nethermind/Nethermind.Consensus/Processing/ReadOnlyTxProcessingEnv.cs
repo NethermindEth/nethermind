@@ -1,14 +1,14 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Blockchain;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
-using Nethermind.Db;
 using Nethermind.Evm;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
-using Nethermind.Trie.Pruning;
+using Nethermind.State;
 
 
 // ReSharper disable MemberCanBePrivate.Global
@@ -22,23 +22,25 @@ namespace Nethermind.Consensus.Processing
 
         public ICodeInfoRepository CodeInfoRepository { get; }
         public ReadOnlyTxProcessingEnv(
-            IDbProvider? dbProvider,
-            IReadOnlyTrieStore? trieStore,
+            IWorldStateManager worldStateManager,
             IBlockTree? blockTree,
             ISpecProvider? specProvider,
             ILogManager? logManager)
-            : this(dbProvider?.AsReadOnly(false), trieStore, blockTree?.AsReadOnly(), specProvider, logManager)
+            : this(worldStateManager, blockTree?.AsReadOnly(), specProvider, logManager)
         {
         }
 
         public ReadOnlyTxProcessingEnv(
-            IReadOnlyDbProvider? readOnlyDbProvider,
-            IReadOnlyTrieStore? trieStore,
-            IReadOnlyBlockTree? blockTree,
+            IWorldStateManager worldStateManager,
+            IReadOnlyBlockTree? readOnlyBlockTree,
             ISpecProvider? specProvider,
             ILogManager? logManager
-            ) : base(readOnlyDbProvider, trieStore, blockTree, logManager)
+            ) : base(worldStateManager, readOnlyBlockTree, logManager)
         {
+            //TO DO CHECK AGAIN!!!
+            ArgumentNullException.ThrowIfNull(specProvider);
+            ArgumentNullException.ThrowIfNull(worldStateManager);
+
             CodeInfoRepository = new CodeInfoRepository();
             Machine = new VirtualMachine(BlockhashProvider, specProvider, CodeInfoRepository, logManager);
             TransactionProcessor = new TransactionProcessor(specProvider, StateProvider, Machine, CodeInfoRepository, logManager);

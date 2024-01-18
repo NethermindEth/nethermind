@@ -64,6 +64,8 @@ namespace Nethermind.Db
 
         public IEnumerable<KeyValuePair<byte[], byte[]>> GetAll(bool ordered = false) => _memDb.GetAll().Union(_wrappedDb.GetAll());
 
+        public IEnumerable<byte[]> GetAllKeys(bool ordered = false) => _memDb.GetAllKeys().Union(_wrappedDb.GetAllKeys());
+
         public IEnumerable<byte[]> GetAllValues(bool ordered = false) => _memDb.GetAllValues().Union(_wrappedDb.GetAllValues());
 
         public IWriteBatch StartWriteBatch()

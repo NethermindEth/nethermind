@@ -15,9 +15,9 @@ namespace Nethermind.Network.Discovery.Test.RoutingTable
     [TestFixture]
     public class NodeBucketTests
     {
-        private Node _node = new(TestItem.PublicKeyA, IPAddress.Broadcast.ToString(), 30000);
-        private Node _node2 = new(TestItem.PublicKeyB, IPAddress.Broadcast.ToString(), 3000);
-        private Node _node3 = new(TestItem.PublicKeyC, IPAddress.Broadcast.ToString(), 3000);
+        private readonly Node _node = new(TestItem.PublicKeyA, IPAddress.Broadcast.ToString(), 30000);
+        private readonly Node _node2 = new(TestItem.PublicKeyB, IPAddress.Broadcast.ToString(), 3000);
+        private readonly Node _node3 = new(TestItem.PublicKeyC, IPAddress.Broadcast.ToString(), 3000);
 
         [Test]
         public void Bonded_count_is_tracked()

@@ -18,7 +18,7 @@ namespace Nethermind.TxPool.Comparison
         private CompetingTransactionEqualityComparer() { }
 
         public bool Equals(Transaction? newTx, Transaction? oldTx) =>
-            ReferenceEquals(newTx, oldTx) || !ReferenceEquals(newTx, null) && !ReferenceEquals(oldTx, null) && newTx.SenderAddress == oldTx.SenderAddress && newTx.Nonce == oldTx.Nonce;
+            ReferenceEquals(newTx, oldTx) || newTx is not null && oldTx is not null && newTx.SenderAddress == oldTx.SenderAddress && newTx.Nonce == oldTx.Nonce;
 
         public int GetHashCode(Transaction? obj) => HashCode.Combine(obj?.SenderAddress, obj?.Nonce);
     }

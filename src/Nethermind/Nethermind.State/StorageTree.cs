@@ -21,6 +21,7 @@ namespace Nethermind.State
         private static readonly int CacheSizeInt = (int)CacheSize;
 
         private static readonly Dictionary<UInt256, byte[]> Cache = new(CacheSizeInt);
+        private static readonly byte[] _emptyBytes = { 0 };
 
         static StorageTree()
         {
@@ -59,17 +60,22 @@ namespace Nethermind.State
             KeccakHash.ComputeHashBytesToSpan(key, key);
         }
 
-
         [SkipLocalsInit]
         public byte[] Get(in UInt256 index, Hash256? storageRoot = null)
         {
             Span<byte> key = stackalloc byte[32];
             GetKey(index, key);
 
-            byte[]? value = Get(key, storageRoot);
+            return Get(key, storageRoot);
+        }
+
+        public override byte[] Get(ReadOnlySpan<byte> rawKey, Hash256? rootHash = null)
+        {
+            byte[]? value = base.Get(rawKey, rootHash);
+
             if (value is null)
             {
-                return new byte[] { 0 };
+                return _emptyBytes;
             }
 
             Rlp.ValueDecoderContext rlp = value.AsRlpValueContext();

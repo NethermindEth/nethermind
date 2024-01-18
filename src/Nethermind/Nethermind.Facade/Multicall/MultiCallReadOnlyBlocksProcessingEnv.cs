@@ -25,16 +25,19 @@ namespace Nethermind.Facade.Multicall;
 
 public class MultiCallReadOnlyBlocksProcessingEnv : ReadOnlyTxProcessingEnvBase, IDisposable
 {
-    private readonly ITrieStore _trieStore;
+    //private readonly ITrieStore _trieStore;
     private readonly ILogManager? _logManager;
     private readonly IBlockValidator _blockValidator;
     public ISpecProvider SpecProvider { get; }
+    public IWorldStateManager WorldStateManager { get; }
+
     public IVirtualMachine VirtualMachine { get; }
     public OverridableCodeInfoRepository CodeInfoRepository { get; }
     private readonly bool _doValidation = false;
     // We need ability to get many instances that do not conflict in terms of editable tmp storage - thus we implement env cloning
     public static MultiCallReadOnlyBlocksProcessingEnv Create(
         bool traceTransfers,
+        IWorldStateManager worldStateManager,
         IReadOnlyDbProvider readOnlyDbProvider,
         ISpecProvider? specProvider,
         ILogManager? logManager = null,
@@ -45,11 +48,14 @@ public class MultiCallReadOnlyBlocksProcessingEnv : ReadOnlyTxProcessingEnvBase,
 
         IBlockStore blockStore = new BlockStore(dbProvider.BlocksDb);
         IHeaderStore headerStore = new HeaderStore(dbProvider.HeadersDb, dbProvider.BlockNumbersDb);
+        const int badBlocksStored = 1;
+        IBlockStore badBlockStore = new BlockStore(dbProvider.BadBlocksDb, badBlocksStored);
 
         BlockTree blockTree = new(blockStore,
             headerStore,
             dbProvider.BlockInfosDb,
             dbProvider.MetadataDb,
+            badBlockStore,
             new ChainLevelInfoRepository(readOnlyDbProvider.BlockInfosDb),
             specProvider,
             NullBloomStorage.Instance,
@@ -58,8 +64,9 @@ public class MultiCallReadOnlyBlocksProcessingEnv : ReadOnlyTxProcessingEnvBase,
 
         return new MultiCallReadOnlyBlocksProcessingEnv(
             traceTransfers,
-            dbProvider,
-            trieStore,
+            worldStateManager,
+            //dbProvider,
+            //trieStore,
             blockTree,
             specProvider,
             logManager,
@@ -67,19 +74,22 @@ public class MultiCallReadOnlyBlocksProcessingEnv : ReadOnlyTxProcessingEnvBase,
     }
 
     public MultiCallReadOnlyBlocksProcessingEnv Clone(bool traceTransfers, bool doValidation) =>
-        Create(traceTransfers, DbProvider, SpecProvider, _logManager, doValidation);
+        Create(traceTransfers, WorldStateManager, DbProvider, SpecProvider, _logManager, doValidation);
+
 
     private MultiCallReadOnlyBlocksProcessingEnv(
         bool traceTransfers,
-        IReadOnlyDbProvider readOnlyDbProvider,
-        ITrieStore trieStore,
+        IWorldStateManager worldStateManager,
+        //IReadOnlyDbProvider readOnlyDbProvider,
+        //ITrieStore trieStore,
         IBlockTree blockTree,
         ISpecProvider? specProvider,
         ILogManager? logManager = null,
         bool doValidation = false)
-        : base(readOnlyDbProvider, trieStore, blockTree, logManager)
+        : base(worldStateManager, blockTree, logManager)
     {
-        _trieStore = trieStore;
+        //_trieStore = trieStore;
+        WorldStateManager = worldStateManager;
         _logManager = logManager;
         SpecProvider = specProvider;
         _doValidation = doValidation;
@@ -122,7 +132,7 @@ public class MultiCallReadOnlyBlocksProcessingEnv : ReadOnlyTxProcessingEnvBase,
 
     public void Dispose()
     {
-        _trieStore.Dispose();
+        //_trieStore.Dispose();
         DbProvider.Dispose();
     }
 }

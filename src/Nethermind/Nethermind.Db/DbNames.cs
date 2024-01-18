@@ -13,6 +13,7 @@ namespace Nethermind.Db
         public const string BlockNumbers = "blockNumbers";
         public const string Receipts = "receipts";
         public const string BlockInfos = "blockInfos";
+        public const string BadBlocks = "badBlocks";
         public const string Bloom = "bloom";
         public const string Witness = "witness";
         public const string CHT = "canonicalHashTrie";

@@ -48,25 +48,24 @@ public class RateLimiter
         return GetCurrentTick() < _nextSlot;
     }
 
-    public async ValueTask WaitAsync(CancellationToken ctx)
+    public Task WaitAsync(CancellationToken ctx)
     {
+        long currentNextSlot = _nextSlot;
         while (true)
         {
-            long originalNextSlot = _nextSlot;
-
-            // Technically its possible that two `GetCurrentTick()` call at the same time can return same value,
-            // but its very unlikely.
-            long now = GetCurrentTick();
-            if (now >= originalNextSlot
-                && Interlocked.CompareExchange(ref _nextSlot, now + _delay, originalNextSlot) == originalNextSlot)
+            long nextSlot = Interlocked.CompareExchange(ref _nextSlot, currentNextSlot + _delay, currentNextSlot);
+            if (nextSlot == currentNextSlot)
             {
-                return;
+                break;
             }
-
-            long toWait = originalNextSlot - now;
-            if (toWait < 0) continue;
-
-            await Task.Delay(TimeSpan.FromMilliseconds(TickToMs(toWait)), ctx);
+            currentNextSlot = nextSlot;
         }
+
+        long now = GetCurrentTick();
+        long toWait = currentNextSlot - now;
+
+        if (toWait <= 0) return Task.CompletedTask;
+
+        return Task.Delay(TimeSpan.FromMilliseconds(TickToMs(toWait)), ctx);
     }
 }

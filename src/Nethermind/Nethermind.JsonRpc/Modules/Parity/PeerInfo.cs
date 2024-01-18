@@ -8,25 +8,26 @@ using Nethermind.Network.Contract.P2P;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.ProtocolHandlers;
 using Nethermind.Stats.Model;
-using Newtonsoft.Json;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace Nethermind.JsonRpc.Modules.Parity
 {
     public class PeerInfo
     {
-        [JsonProperty("id", Order = 0)]
+        [JsonPropertyName("id")]
         public string Id { get; set; }
 
-        [JsonProperty("name", Order = 1)]
+        [JsonPropertyName("name")]
         public string Name { get; set; }
 
-        [JsonProperty("caps", Order = 2)]
+        [JsonPropertyName("caps")]
         public List<string> Caps { get; set; }
 
-        [JsonProperty("network", Order = 3)]
+        [JsonPropertyName("network")]
         public PeerNetworkInfo Network { get; set; }
 
-        [JsonProperty("protocols", Order = 4)]
+        [JsonPropertyName("protocols")]
         public Dictionary<string, EthProtocolInfo> Protocols { get; set; }
 
         public PeerInfo(Peer peer)

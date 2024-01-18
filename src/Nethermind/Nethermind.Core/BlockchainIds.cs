@@ -56,6 +56,7 @@ namespace Nethermind.Core
                 Chiado => nameof(Chiado),
                 Volta => nameof(Volta),
                 Sepolia => nameof(Sepolia),
+                Holesky => nameof(Holesky),
                 _ => networkId.ToString()
             };
         }

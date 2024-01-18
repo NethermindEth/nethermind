@@ -9,12 +9,16 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Eip2930;
 using Nethermind.Int256;
 using Nethermind.Serialization.Json;
-using Newtonsoft.Json;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace Nethermind.JsonRpc.Data
 {
     public struct AccessListItemForRpc : IEquatable<AccessListItemForRpc>
     {
+        [JsonConstructor]
+        public AccessListItemForRpc() { }
+
         public AccessListItemForRpc(Address address, IEnumerable<UInt256>? storageKeys)
         {
             Address = address;
@@ -22,8 +26,7 @@ namespace Nethermind.JsonRpc.Data
         }
 
         public Address Address { get; set; }
-
-        [JsonProperty(ItemConverterType = typeof(StorageCellIndexConverter))]
+        [JsonConverter(typeof(StorageCellIndexConverter))]
         public IEnumerable<UInt256>? StorageKeys { get; set; }
 
         public static IEnumerable<AccessListItemForRpc> FromAccessList(AccessList accessList) =>
@@ -47,8 +50,8 @@ namespace Nethermind.JsonRpc.Data
             return builder.Build();
         }
 
-        public bool Equals(AccessListItemForRpc other) => Equals(Address, other.Address) && StorageKeys.NullableSequenceEqual(other.StorageKeys);
+        public readonly bool Equals(AccessListItemForRpc other) => Equals(Address, other.Address) && StorageKeys.NullableSequenceEqual(other.StorageKeys);
         public override bool Equals(object? obj) => obj is AccessListItemForRpc other && Equals(other);
-        public override int GetHashCode() => HashCode.Combine(Address, StorageKeys);
+        public override readonly int GetHashCode() => HashCode.Combine(Address, StorageKeys);
     }
 }

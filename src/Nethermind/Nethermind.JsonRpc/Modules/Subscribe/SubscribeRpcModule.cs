@@ -3,7 +3,8 @@
 
 using System;
 using System.Collections.Generic;
-using Newtonsoft.Json;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace Nethermind.JsonRpc.Modules.Subscribe
 {
@@ -31,7 +32,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
             {
                 return ResultWrapper<string>.Fail($"Invalid params", ErrorCodes.InvalidParams, e.Message);
             }
-            catch (JsonReaderException)
+            catch (JsonException)
             {
                 return ResultWrapper<string>.Fail($"Invalid params", ErrorCodes.InvalidParams);
             }

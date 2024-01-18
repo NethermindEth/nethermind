@@ -83,30 +83,30 @@ namespace Nethermind.Evm.TransactionProcessing
             }
         }
 
-        public void CallAndRestore(Transaction transaction, BlockExecutionContext blCtx, ITxTracer txTracer)
+        public void CallAndRestore(Transaction transaction, in BlockExecutionContext blCtx, ITxTracer txTracer)
         {
-            Execute(transaction, blCtx, txTracer, ExecutionOptions.CommitAndRestore);
+            Execute(transaction, in blCtx, txTracer, ExecutionOptions.CommitAndRestore);
         }
 
-        public void BuildUp(Transaction transaction, BlockExecutionContext blCtx, ITxTracer txTracer)
+        public void BuildUp(Transaction transaction, in BlockExecutionContext blCtx, ITxTracer txTracer)
         {
             // we need to treat the result of previous transaction as the original value of next transaction
             // when we do not commit
             WorldState.TakeSnapshot(true);
-            Execute(transaction, blCtx, txTracer, ExecutionOptions.None);
+            Execute(transaction, in blCtx, txTracer, ExecutionOptions.None);
         }
 
-        public void Execute(Transaction transaction, BlockExecutionContext blCtx, ITxTracer txTracer)
+        public void Execute(Transaction transaction, in BlockExecutionContext blCtx, ITxTracer txTracer)
         {
             Execute(transaction, blCtx, txTracer, _executeOptions);
         }
 
-        public void Trace(Transaction transaction, BlockExecutionContext blCtx, ITxTracer txTracer)
+        public void Trace(Transaction transaction, in BlockExecutionContext blCtx, ITxTracer txTracer)
         {
-            Execute(transaction, blCtx, txTracer, ExecutionOptions.NoValidation);
+            Execute(transaction, in blCtx, txTracer, ExecutionOptions.NoValidation);
         }
 
-        protected virtual void Execute(Transaction tx, BlockExecutionContext blCtx, ITxTracer tracer, ExecutionOptions opts)
+        protected virtual void Execute(Transaction tx, in BlockExecutionContext blCtx, ITxTracer tracer, ExecutionOptions opts)
         {
             BlockHeader header = blCtx.Header;
             IReleaseSpec spec = SpecProvider.GetSpec(header);
@@ -128,7 +128,7 @@ namespace Nethermind.Evm.TransactionProcessing
 
             if (opts == ExecutionOptions.Commit || opts == ExecutionOptions.None)
             {
-                decimal gasPrice = (decimal)effectiveGasPrice / 1_000_000_000m;
+                float gasPrice = (float)((double)effectiveGasPrice / 1_000_000_000.0);
                 Metrics.MinGasPrice = Math.Min(gasPrice, Metrics.MinGasPrice);
                 Metrics.MaxGasPrice = Math.Max(gasPrice, Metrics.MaxGasPrice);
 
@@ -136,11 +136,11 @@ namespace Nethermind.Evm.TransactionProcessing
                 Metrics.BlockMaxGasPrice = Math.Max(gasPrice, Metrics.BlockMaxGasPrice);
 
                 Metrics.AveGasPrice = (Metrics.AveGasPrice * Metrics.Transactions + gasPrice) / (Metrics.Transactions + 1);
-                Metrics.EstMedianGasPrice += Metrics.AveGasPrice * 0.01m * decimal.Sign(gasPrice - Metrics.EstMedianGasPrice);
+                Metrics.EstMedianGasPrice += Metrics.AveGasPrice * 0.01f * float.Sign(gasPrice - Metrics.EstMedianGasPrice);
                 Metrics.Transactions++;
 
                 Metrics.BlockAveGasPrice = (Metrics.BlockAveGasPrice * Metrics.BlockTransactions + gasPrice) / (Metrics.BlockTransactions + 1);
-                Metrics.BlockEstMedianGasPrice += Metrics.BlockAveGasPrice * 0.01m * decimal.Sign(gasPrice - Metrics.BlockEstMedianGasPrice);
+                Metrics.BlockEstMedianGasPrice += Metrics.BlockAveGasPrice * 0.01f * float.Sign(gasPrice - Metrics.BlockEstMedianGasPrice);
                 Metrics.BlockTransactions++;
             }
 
@@ -158,7 +158,7 @@ namespace Nethermind.Evm.TransactionProcessing
             if (commit)
                 WorldState.Commit(spec, tracer.IsTracingState ? tracer : NullTxTracer.Instance);
 
-            ExecutionEnvironment env = BuildExecutionEnvironmnet(tx, blCtx, spec, tracer, opts, effectiveGasPrice);
+            ExecutionEnvironment env = BuildExecutionEnvironmnet(tx, in blCtx, spec, tracer, opts, effectiveGasPrice);
 
             long gasAvailable = tx.GasLimit - intrinsicGas;
             if (!ExecuteEVMCall(tx, header, spec, tracer, opts, gasAvailable, env, out TransactionSubstate? substate, out long spentGas, out byte statusCode))
@@ -206,7 +206,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 }
                 else
                 {
-                    LogEntry[] logs = substate.Logs.Any() ? substate.Logs.ToArray() : Array.Empty<LogEntry>();
+                    LogEntry[] logs = substate.Logs.Count != 0 ? substate.Logs.ToArray() : Array.Empty<LogEntry>();
                     tracer.MarkAsSuccess(env.ExecutingAccount, spentGas, substate.Output.ToArray(), logs, stateRoot);
                 }
             }
@@ -444,7 +444,7 @@ namespace Nethermind.Evm.TransactionProcessing
         }
 
         protected virtual ExecutionEnvironment BuildExecutionEnvironmnet(
-            Transaction tx, BlockExecutionContext blCtx, IReleaseSpec spec, ITxTracer tracer, ExecutionOptions opts,
+            Transaction tx, in BlockExecutionContext blCtx, IReleaseSpec spec, ITxTracer tracer, ExecutionOptions opts,
             in UInt256 effectiveGasPrice)
         {
             Address recipient = tx.GetRecipient(tx.IsContractCreation ? WorldState.GetNonce(tx.SenderAddress!) : 0) ??
@@ -452,7 +452,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 throw new InvalidDataException("Recipient has not been resolved properly before tx execution");
 
             TxExecutionContext executionContext =
-                new(blCtx, tx.SenderAddress!, effectiveGasPrice, tx.BlobVersionedHashes);
+                new(blCtx, tx.SenderAddress, effectiveGasPrice, tx.BlobVersionedHashes);
 
             CodeInfo codeInfo = tx.IsContractCreation ? new(tx.Data.AsArray()!)
                                     : _codeInfoRepository.GetCachedCodeInfo(WorldState, recipient, spec);
@@ -461,7 +461,7 @@ namespace Nethermind.Evm.TransactionProcessing
 
             return new ExecutionEnvironment
             (
-                txExecutionContext: executionContext,
+                txExecutionContext: in executionContext,
                 value: tx.Value,
                 transferValue: tx.Value,
                 caller: tx.SenderAddress,
@@ -501,7 +501,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 }
 
                 ExecutionType executionType =
-                    tx.IsContractCreation ? ExecutionType.Create : ExecutionType.Transaction;
+                    tx.IsContractCreation ? ExecutionType.CREATE : ExecutionType.TRANSACTION;
 
                 using (EvmState state = new(unspentGas, env, executionType, true, snapshot, false))
                 {

@@ -11,7 +11,7 @@ using Nethermind.Int256;
 using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Proofs;
-using Newtonsoft.Json;
+using System.Text.Json.Serialization;
 
 namespace Nethermind.Merge.Plugin.Data;
 
@@ -96,13 +96,15 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams
     /// Gets or sets <see cref="Block.BlobGasUsed"/> as defined in
     /// <see href="https://eips.ethereum.org/EIPS/eip-4844">EIP-4844</see>.
     /// </summary>
-    public ulong? BlobGasUsed { get; set; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public virtual ulong? BlobGasUsed { get; set; }
 
     /// <summary>
     /// Gets or sets <see cref="Block.ExcessBlobGas"/> as defined in
     /// <see href="https://eips.ethereum.org/EIPS/eip-4844">EIP-4844</see>.
     /// </summary>
-    public ulong? ExcessBlobGas { get; set; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public virtual ulong? ExcessBlobGas { get; set; }
 
     /// <summary>
     /// Gets or sets <see cref="Block.ParentBeaconBlockRoot"/> as defined in
@@ -157,7 +159,6 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams
             return false;
         }
     }
-
 
     private Transaction[]? _transactions = null;
 

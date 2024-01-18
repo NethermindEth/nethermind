@@ -15,7 +15,7 @@ namespace Nethermind.Network.P2P
         private readonly IMessageSerializationService _messageSerializationService;
         private readonly ILogger _logger;
         private IChannelHandlerContext _context;
-        private TimeSpan _sendLatency;
+        private readonly TimeSpan _sendLatency;
 
         public PacketSender(IMessageSerializationService messageSerializationService, ILogManager logManager,
             TimeSpan sendLatency)

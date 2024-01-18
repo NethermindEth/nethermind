@@ -36,7 +36,7 @@ namespace Nethermind.Serialization.Rlp
                 txReceipt.StatusCode = firstItem[0];
                 txReceipt.GasUsedTotal = (long)rlpStream.DecodeUBigInt();
             }
-            else if (firstItem.Length >= 1 && firstItem.Length <= 4)
+            else if (firstItem.Length is >= 1 and <= 4)
             {
                 txReceipt.GasUsedTotal = (long)firstItem.ToUnsignedBigInteger();
                 txReceipt.SkipStateAndStatusInRlp = true;
@@ -57,12 +57,18 @@ namespace Nethermind.Serialization.Rlp
             {
                 entries[i] = Rlp.Decode<LogEntry>(rlpStream, RlpBehaviors.AllowExtraBytes);
             }
-
             txReceipt.Logs = entries;
+
+            if (txReceipt.TxType == TxType.DepositTx && rlpStream.Position != lastCheck)
+            {
+                txReceipt.DepositNonce = rlpStream.DecodeUlong();
+                txReceipt.DepositReceiptVersion = rlpStream.DecodeUlong();
+            }
+
             return txReceipt;
         }
 
-        private (int Total, int Logs) GetContentLength(TxReceipt item, RlpBehaviors rlpBehaviors)
+        private static (int Total, int Logs) GetContentLength(TxReceipt item, RlpBehaviors rlpBehaviors)
         {
             if (item is null)
             {
@@ -85,10 +91,16 @@ namespace Nethermind.Serialization.Rlp
                     : Rlp.LengthOf(item.PostTransactionState);
             }
 
+            if (item.TxType == TxType.DepositTx && item.DepositReceiptVersion is not null)
+            {
+                contentLength += Rlp.LengthOf(item.DepositNonce ?? 0);
+                contentLength += Rlp.LengthOf(item.DepositReceiptVersion.Value);
+            }
+
             return (contentLength, logsLength);
         }
 
-        private int GetLogsLength(TxReceipt item)
+        private static int GetLogsLength(TxReceipt item)
         {
             int logsLength = 0;
             for (var i = 0; i < item.Logs.Length; i++)
@@ -172,6 +184,12 @@ namespace Nethermind.Serialization.Rlp
             for (var i = 0; i < item.Logs.Length; i++)
             {
                 rlpStream.Encode(item.Logs[i]);
+            }
+
+            if (item.TxType == TxType.DepositTx && item.DepositReceiptVersion is not null)
+            {
+                rlpStream.Encode(item.DepositNonce!.Value);
+                rlpStream.Encode(item.DepositReceiptVersion.Value);
             }
         }
     }

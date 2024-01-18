@@ -28,6 +28,21 @@ public class OptimismEngineRpcModule : IOptimismEngineRpcModule
         return _engineRpcModule.engine_newPayloadV1(executionPayload);
     }
 
+    public async Task<ResultWrapper<ForkchoiceUpdatedV1Result>> engine_forkchoiceUpdatedV2(ForkchoiceStateV1 forkchoiceState, OptimismPayloadAttributes? payloadAttributes = null)
+    {
+        return await _engineRpcModule.engine_forkchoiceUpdatedV2(forkchoiceState, payloadAttributes);
+    }
+
+    public Task<ResultWrapper<GetPayloadV2Result?>> engine_getPayloadV2(byte[] payloadId)
+    {
+        return _engineRpcModule.engine_getPayloadV2(payloadId);
+    }
+
+    public Task<ResultWrapper<PayloadStatusV1>> engine_newPayloadV2(ExecutionPayload executionPayload)
+    {
+        return _engineRpcModule.engine_newPayloadV2(executionPayload);
+    }
+
     public OptimismEngineRpcModule(IEngineRpcModule engineRpcModule)
     {
         _engineRpcModule = engineRpcModule;

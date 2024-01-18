@@ -83,22 +83,50 @@ namespace Ethereum.Test.Base
 
             InitializeTestState(test, stateProvider, specProvider);
 
-            BlockHeader header = new(test.PreviousHash, Keccak.OfAnEmptySequenceRlp, test.CurrentCoinbase,
-                test.CurrentDifficulty, test.CurrentNumber, test.CurrentGasLimit, test.CurrentTimestamp, Array.Empty<byte>());
+            BlockHeader header = new(
+                test.PreviousHash,
+                Keccak.OfAnEmptySequenceRlp,
+                test.CurrentCoinbase,
+                test.CurrentDifficulty,
+                test.CurrentNumber,
+                test.CurrentGasLimit,
+                test.CurrentTimestamp,
+                Array.Empty<byte>());
             header.BaseFeePerGas = test.Fork.IsEip1559Enabled ? test.CurrentBaseFee ?? _defaultBaseFeeForStateTest : UInt256.Zero;
             header.StateRoot = test.PostHash;
             header.Hash = header.CalculateHash();
             header.IsPostMerge = test.CurrentRandom is not null;
             header.MixHash = test.CurrentRandom;
+            header.WithdrawalsRoot = test.CurrentWithdrawalsRoot;
+            header.ParentBeaconBlockRoot = test.CurrentBeaconRoot;
+            header.ExcessBlobGas = 0;
 
             Stopwatch stopwatch = Stopwatch.StartNew();
             TxValidator? txValidator = new((MainnetSpecProvider.Instance.ChainId));
             IReleaseSpec? spec = specProvider.GetSpec((ForkActivation)test.CurrentNumber);
             if (test.Transaction.ChainId == null)
                 test.Transaction.ChainId = MainnetSpecProvider.Instance.ChainId;
+            if (test.ParentBlobGasUsed is not null && test.ParentExcessBlobGas is not null)
+            {
+                BlockHeader parent = new(
+                    parentHash: Keccak.Zero,
+                    unclesHash: Keccak.OfAnEmptySequenceRlp,
+                    beneficiary: test.CurrentCoinbase,
+                    difficulty: test.CurrentDifficulty,
+                    number: test.CurrentNumber - 1,
+                    gasLimit: test.CurrentGasLimit,
+                    timestamp: test.CurrentTimestamp,
+                    extraData: Array.Empty<byte>()
+                )
+                {
+                    BlobGasUsed = (ulong)test.ParentBlobGasUsed,
+                    ExcessBlobGas = (ulong)test.ParentExcessBlobGas,
+                };
+                header.ExcessBlobGas = BlobGasCalculator.CalculateExcessBlobGas(parent, spec);
+            }
             bool isValid = txValidator.IsWellFormed(test.Transaction, spec);
             if (isValid)
-                transactionProcessor.Execute(test.Transaction, header, txTracer);
+                transactionProcessor.Execute(test.Transaction, new BlockExecutionContext(header), txTracer);
             stopwatch.Stop();
 
             stateProvider.Commit(specProvider.GenesisSpec);

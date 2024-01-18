@@ -10,13 +10,11 @@ using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Consensus.Validators;
-using Nethermind.Core;
+using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core.Specs;
-using Nethermind.Db;
-using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.Specs.ChainSpecStyle;
-using Nethermind.Trie.Pruning;
+using Nethermind.State;
 using Nethermind.TxPool;
 
 namespace Nethermind.Optimism;
@@ -28,10 +26,9 @@ public class OptimismBlockProducerEnvFactory : BlockProducerEnvFactory
     private readonly OPL1CostHelper _l1CostHelper;
 
     public OptimismBlockProducerEnvFactory(
+        IWorldStateManager worldStateManager,
         ChainSpec chainSpec,
-        IDbProvider dbProvider,
         IBlockTree blockTree,
-        IReadOnlyTrieStore readOnlyTrieStore,
         ISpecProvider specProvider,
         IBlockValidator blockValidator,
         IRewardCalculatorSource rewardCalculatorSource,
@@ -42,8 +39,8 @@ public class OptimismBlockProducerEnvFactory : BlockProducerEnvFactory
         IBlocksConfig blocksConfig,
         OPSpecHelper specHelper,
         OPL1CostHelper l1CostHelper,
-        ILogManager logManager) : base(dbProvider,
-        blockTree, readOnlyTrieStore, specProvider, blockValidator,
+        ILogManager logManager) : base(worldStateManager,
+        blockTree, specProvider, blockValidator,
         rewardCalculatorSource, receiptStorage, blockPreprocessorStep,
         txPool, transactionComparerProvider, blocksConfig, logManager)
     {
@@ -53,10 +50,10 @@ public class OptimismBlockProducerEnvFactory : BlockProducerEnvFactory
         TransactionsExecutorFactory = new OptimismTransactionsExecutorFactory(specProvider, logManager);
     }
 
-    protected override ReadOnlyTxProcessingEnv CreateReadonlyTxProcessingEnv(ReadOnlyDbProvider readOnlyDbProvider,
+    protected override ReadOnlyTxProcessingEnv CreateReadonlyTxProcessingEnv(IWorldStateManager worldStateManager,
         ReadOnlyBlockTree readOnlyBlockTree)
     {
-        ReadOnlyTxProcessingEnv result = new(readOnlyDbProvider, _readOnlyTrieStore,
+        ReadOnlyTxProcessingEnv result = new(worldStateManager,
             readOnlyBlockTree, _specProvider, _logManager);
         result.TransactionProcessor =
             new OptimismTransactionProcessor(_specProvider, result.StateProvider, result.Machine, _logManager, _l1CostHelper, _specHelper, result.CodeInfoRepository);
@@ -73,5 +70,27 @@ public class OptimismBlockProducerEnvFactory : BlockProducerEnvFactory
             transactionComparerProvider, logManager);
 
         return new OptimismTxPoolTxSource(baseTxSource);
+    }
+
+    protected override BlockProcessor CreateBlockProcessor(
+        ReadOnlyTxProcessingEnv readOnlyTxProcessingEnv,
+        ISpecProvider specProvider,
+        IBlockValidator blockValidator,
+        IRewardCalculatorSource rewardCalculatorSource,
+        IReceiptStorage receiptStorage,
+        ILogManager logManager,
+        IBlocksConfig blocksConfig)
+    {
+        return new OptimismBlockProcessor(specProvider,
+            blockValidator,
+            rewardCalculatorSource.Get(readOnlyTxProcessingEnv.TransactionProcessor),
+            TransactionsExecutorFactory.Create(readOnlyTxProcessingEnv),
+            readOnlyTxProcessingEnv.StateProvider,
+            receiptStorage,
+            NullWitnessCollector.Instance,
+            logManager,
+            _specHelper,
+            new Create2DeployerContractRewriter(_specHelper, _specProvider, _blockTree),
+            new BlockProductionWithdrawalProcessor(new WithdrawalProcessor(readOnlyTxProcessingEnv.StateProvider, logManager)));
     }
 }

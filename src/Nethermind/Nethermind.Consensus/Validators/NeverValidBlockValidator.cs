@@ -7,7 +7,7 @@ namespace Nethermind.Consensus.Validators
 {
     public class NeverValidBlockValidator : IBlockValidator
     {
-        public bool ValidateHash(BlockHeader header)
+        public static bool ValidateHash(BlockHeader header)
         {
             return false;
         }

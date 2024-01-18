@@ -15,7 +15,7 @@ namespace Nethermind.JsonRpc.Modules.Personal
 {
     public class PersonalRpcModule : IPersonalRpcModule
     {
-        private Encoding _messageEncoding = Encoding.UTF8;
+        private readonly Encoding _messageEncoding = Encoding.UTF8;
         private readonly IEcdsa _ecdsa;
         private readonly IWallet _wallet;
         private readonly IKeyStore _keyStore;
