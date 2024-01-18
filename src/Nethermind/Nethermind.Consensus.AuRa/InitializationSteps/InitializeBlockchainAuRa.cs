@@ -92,10 +92,10 @@ public class InitializeBlockchainAuRa : InitializeBlockchain
         IDictionary<long, IDictionary<Address, byte[]>> rewriteBytecode = _api.ChainSpec.AuRa.RewriteBytecode;
         ContractRewriter? contractRewriter = rewriteBytecode?.Count > 0 ? new ContractRewriter(rewriteBytecode) : null;
 
-        return NewAuraBlockProcessor(_api, CreateAuRaValidator(), auRaTxFilter, contractRewriter);
+        return NewAuraBlockProcessor(_api, auRaTxFilter, contractRewriter);
     }
 
-    protected virtual AuRaBlockProcessor NewAuraBlockProcessor(AuRaNethermindApi api, IAuRaValidator validator, ITxFilter txFilter, ContractRewriter contractRewriter)
+    protected virtual AuRaBlockProcessor NewAuraBlockProcessor(AuRaNethermindApi api, ITxFilter txFilter, ContractRewriter contractRewriter)
     {
         IWorldState worldState = _api.WorldState!;
 
@@ -109,7 +109,7 @@ public class InitializeBlockchainAuRa : InitializeBlockchain
             _api.LogManager,
             _api.BlockTree!,
             NullWithdrawalProcessor.Instance,
-            validator,
+            CreateAuRaValidator(),
             txFilter,
             GetGasLimitCalculator(),
             contractRewriter
@@ -123,7 +123,7 @@ public class InitializeBlockchainAuRa : InitializeBlockchain
         new AuraHealthHintService(_auRaStepCalculator, _api.ValidatorStore);
 
 
-    private IAuRaValidator CreateAuRaValidator()
+    protected IAuRaValidator CreateAuRaValidator()
     {
         if (_api.ChainSpec is null) throw new StepDependencyException(nameof(_api.ChainSpec));
         if (_api.BlockTree is null) throw new StepDependencyException(nameof(_api.BlockTree));

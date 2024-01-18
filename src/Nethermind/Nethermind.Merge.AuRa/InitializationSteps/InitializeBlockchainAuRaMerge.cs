@@ -22,7 +22,7 @@ namespace Nethermind.Merge.AuRa.InitializationSteps
             _api = api;
         }
 
-        protected override AuRaBlockProcessor NewAuraBlockProcessor(AuRaNethermindApi api, IAuRaValidator validator, ITxFilter txFilter, ContractRewriter contractRewriter)
+        protected override AuRaBlockProcessor NewAuraBlockProcessor(AuRaNethermindApi api, ITxFilter txFilter, ContractRewriter contractRewriter)
         {
             WithdrawalContractFactory withdrawalContractFactory = new WithdrawalContractFactory(_api.ChainSpec!.AuRa, _api.AbiEncoder);
             IWorldState worldState = _api.WorldState!;
@@ -39,7 +39,7 @@ namespace Nethermind.Merge.AuRa.InitializationSteps
                 _api.BlockTree!,
                 new AuraWithdrawalProcessor(
                     withdrawalContractFactory.Create(transactionProcessor!), _api.LogManager),
-                validator,
+                CreateAuRaValidator(),
                 txFilter,
                 GetGasLimitCalculator(),
                 contractRewriter
