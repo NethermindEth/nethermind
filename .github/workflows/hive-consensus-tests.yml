@@ -22,12 +22,12 @@ jobs:
     - name: Checkout repository
       uses: actions/checkout@v4
       with:
-        ref: ${{ github.event.workflow_run.head_branch || github.ref }}
+        ref: ${{ github.ref }}
 
     - name: Prepare docker tag
       id: prepare_ref
       run: |
-        REF_NAME=${{ github.event.workflow_run.head_branch || github.ref }}
+        REF_NAME=${{ github.ref }}
         CLEAN_REF=$(echo "${REF_NAME/refs\/heads\//}" | sed 's/[^a-zA-Z0-9._-]/-/g')
         echo "CLEAN_REF=$CLEAN_REF" >> $GITHUB_ENV
         echo "cleanRef=$CLEAN_REF" >> $GITHUB_OUTPUT
