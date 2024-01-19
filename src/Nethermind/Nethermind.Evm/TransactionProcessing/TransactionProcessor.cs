@@ -5,6 +5,8 @@ using System;
 using System.IO;
 using System.Linq;
 using System.Runtime.CompilerServices;
+using System.Threading;
+
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
@@ -147,10 +149,10 @@ namespace Nethermind.Evm.TransactionProcessing
             if (commit)
                 WorldState.Commit(spec, tracer.IsTracingState ? tracer : NullTxTracer.Instance);
 
-            ExecutionEnvironment env = BuildExecutionEnvironmnet(tx, in blCtx, spec, tracer, opts, effectiveGasPrice);
+            ExecutionEnvironment env = BuildExecutionEnvironment(tx, in blCtx, spec, tracer, opts, effectiveGasPrice);
 
             long gasAvailable = tx.GasLimit - intrinsicGas;
-            if (!ExecuteEVMCall(tx, header, spec, tracer, opts, gasAvailable, env, out TransactionSubstate? substate, out long spentGas, out byte statusCode))
+            if (!ExecuteEvmCall(tx, header, spec, tracer, opts, gasAvailable, env, out TransactionSubstate? substate, out long spentGas, out byte statusCode))
                 return;
 
             if (!PayFees(tx, header, spec, tracer, substate, spentGas, premiumPerGas, statusCode))
@@ -432,7 +434,7 @@ namespace Nethermind.Evm.TransactionProcessing
             return true;
         }
 
-        protected virtual ExecutionEnvironment BuildExecutionEnvironmnet(
+        protected virtual ExecutionEnvironment BuildExecutionEnvironment(
             Transaction tx, in BlockExecutionContext blCtx, IReleaseSpec spec, ITxTracer tracer, ExecutionOptions opts,
             in UInt256 effectiveGasPrice)
         {
@@ -461,7 +463,7 @@ namespace Nethermind.Evm.TransactionProcessing
             );
         }
 
-        protected virtual bool ExecuteEVMCall(
+        protected virtual bool ExecuteEvmCall(
             Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer, ExecutionOptions opts,
             in long gasAvailable, in ExecutionEnvironment env,
             out TransactionSubstate? substate, out long spentGas, out byte statusCode)
@@ -552,7 +554,9 @@ namespace Nethermind.Evm.TransactionProcessing
 
                         if (unspentGas >= codeDepositGasCost)
                         {
-                            WorldState.InsertCode(env.ExecutingAccount, substate.Output, spec);
+                            var code = substate.Output.ToArray();
+                            VirtualMachine.InsertCode(code, env.ExecutingAccount, spec);
+
                             unspentGas -= codeDepositGasCost;
                         }
                     }

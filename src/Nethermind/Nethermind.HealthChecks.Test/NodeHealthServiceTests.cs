@@ -63,7 +63,7 @@ namespace Nethermind.HealthChecks.Test
                 blockFinder.FindBestSuggestedHeader().Returns(GetBlockHeader(2).TestObject);
             }
 
-            IEthSyncingInfo ethSyncingInfo = new EthSyncingInfo(blockFinder, receiptStorage, syncConfig, Substitute.For<ISyncModeSelector>(), LimboLogs.Instance);
+            IEthSyncingInfo ethSyncingInfo = new EthSyncingInfo(blockFinder, receiptStorage, syncConfig, Substitute.For<ISyncModeSelector>(), Substitute.For<ISyncProgressResolver>(), LimboLogs.Instance);
             NodeHealthService nodeHealthService =
                 new(syncServer, blockchainProcessor, blockProducer, new HealthChecksConfig(),
                     healthHintService, ethSyncingInfo, new EngineRpcCapabilitiesProvider(api.SpecProvider), api, new[] { drive }, test.IsMining);
@@ -130,7 +130,8 @@ namespace Nethermind.HealthChecks.Test
 
             CustomRpcCapabilitiesProvider customProvider =
                 new(test.EnabledCapabilities, test.DisabledCapabilities);
-            IEthSyncingInfo ethSyncingInfo = new EthSyncingInfo(blockFinder, new InMemoryReceiptStorage(), new SyncConfig(), syncModeSelector, new TestLogManager());
+            IEthSyncingInfo ethSyncingInfo = new EthSyncingInfo(blockFinder, new InMemoryReceiptStorage(),
+                new SyncConfig(), syncModeSelector, Substitute.For<ISyncProgressResolver>(), new TestLogManager());
             NodeHealthService nodeHealthService =
                 new(syncServer, blockchainProcessor, blockProducer, new HealthChecksConfig(),
                     healthHintService, ethSyncingInfo, customProvider, api, new[] { drive }, false);

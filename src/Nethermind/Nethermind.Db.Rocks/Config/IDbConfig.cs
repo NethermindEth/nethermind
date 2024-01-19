@@ -174,7 +174,6 @@ public interface IDbConfig : IConfig
     ulong? StateDbCompactionReadAhead { get; set; }
     bool? StateDbDisableCompression { get; set; }
     int StateDbTargetFileSizeMultiplier { get; set; }
-    ulong? StateDbRowCacheSize { get; set; }
     IDictionary<string, string>? StateDbAdditionalRocksDbOptions { get; set; }
 
     /// <summary>

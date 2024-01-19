@@ -51,7 +51,6 @@ public class PerTableDbConfig
     public ulong MaxBytesForLevelBase => ReadConfig<ulong>(nameof(MaxBytesForLevelBase));
     public ulong TargetFileSizeBase => ReadConfig<ulong>(nameof(TargetFileSizeBase));
     public int TargetFileSizeMultiplier => ReadConfig<int>(nameof(TargetFileSizeMultiplier));
-    public ulong? RowCacheSize => ReadConfig<ulong?>(nameof(RowCacheSize));
 
     private T? ReadConfig<T>(string propertyName)
     {
