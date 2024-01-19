@@ -8,7 +8,6 @@ using System.IO;
 using System.IO.Pipelines;
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using System.Threading;
 using System.Threading.Tasks;
 
 namespace Nethermind.Serialization.Json
@@ -80,7 +79,7 @@ namespace Nethermind.Serialization.Json
                     new BigIntegerConverter(),
                     new NullableBigIntegerConverter(),
                     new JavaScriptObjectConverter(),
-                    //TODO check new DictionaryWithSpecialUInt256KeyHash256ValConverter()
+                    new UInt256DictionaryKeyConverter()
                 }
             };
 
