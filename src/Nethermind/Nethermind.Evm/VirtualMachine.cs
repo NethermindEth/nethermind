@@ -40,7 +40,31 @@ using Int256;
 public class VirtualMachine : IVirtualMachine
 {
     public const int MaxCallDepth = 1024;
-    public static FrozenDictionary<Address, CodeInfo> Precompiles { get; } = InitializePrecompiledContracts();
+    internal static FrozenDictionary<Address, CodeInfo> PrecompileCode { get; } = InitializePrecompiledContracts();
+    internal static LruCache<ValueHash256, CodeInfo> CodeCache { get; } = new(MemoryAllowance.CodeCacheSize, MemoryAllowance.CodeCacheSize, "VM bytecodes");
+
+    private readonly static UInt256 P255Int = (UInt256)System.Numerics.BigInteger.Pow(2, 255);
+    internal static ref readonly UInt256 P255 => ref P255Int;
+    internal static readonly UInt256 BigInt256 = 256;
+    internal static readonly UInt256 BigInt32 = 32;
+
+    internal static readonly byte[] BytesZero = { 0 };
+
+    internal static readonly byte[] BytesZero32 =
+    {
+        0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0
+    };
+
+    internal static readonly byte[] BytesMax32 =
+    {
+        255, 255, 255, 255, 255, 255, 255, 255,
+        255, 255, 255, 255, 255, 255, 255, 255,
+        255, 255, 255, 255, 255, 255, 255, 255,
+        255, 255, 255, 255, 255, 255, 255, 255
+    };
 
     private readonly IVirtualMachine _evm;
 
@@ -167,34 +191,10 @@ public class VirtualMachine : IVirtualMachine
 
 internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : struct, IIsTracing
 {
-    private readonly UInt256 P255Int = (UInt256)System.Numerics.BigInteger.Pow(2, 255);
-    private UInt256 P255 => P255Int;
-    private readonly UInt256 BigInt256 = 256;
-    public UInt256 BigInt32 = 32;
-
-    internal byte[] BytesZero = { 0 };
-
-    internal byte[] BytesZero32 =
-    {
-        0, 0, 0, 0, 0, 0, 0, 0,
-        0, 0, 0, 0, 0, 0, 0, 0,
-        0, 0, 0, 0, 0, 0, 0, 0,
-        0, 0, 0, 0, 0, 0, 0, 0
-    };
-
-    internal byte[] BytesMax32 =
-    {
-        255, 255, 255, 255, 255, 255, 255, 255,
-        255, 255, 255, 255, 255, 255, 255, 255,
-        255, 255, 255, 255, 255, 255, 255, 255,
-        255, 255, 255, 255, 255, 255, 255, 255
-    };
-
     private readonly byte[] _chainId;
 
     private readonly IBlockhashProvider _blockhashProvider;
     private readonly ISpecProvider _specProvider;
-    private static readonly LruCache<ValueHash256, CodeInfo> _codeCache = new(MemoryAllowance.CodeCacheSize, MemoryAllowance.CodeCacheSize, "VM bytecodes");
     private readonly ILogger _logger;
     private IWorldState _worldState;
     private IWorldState _state;
@@ -508,7 +508,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
 
         Hash256 codeHash = code.Length == 0 ? Keccak.OfAnEmptyString : Keccak.Compute(code.AsSpan());
         _state.InsertCode(callCodeOwner, codeHash, code, spec);
-        _codeCache.Set(codeHash, codeInfo);
+        CodeCache.Set(codeHash, codeInfo);
     }
 
     private void RevertParityTouchBugAccount(IReleaseSpec spec)
@@ -528,7 +528,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
     {
         if (codeSource.IsPrecompile(vmSpec))
         {
-            return VirtualMachine.Precompiles[codeSource];
+            return PrecompileCode[codeSource];
         }
 
         CodeInfo cachedCodeInfo = null;
@@ -538,18 +538,18 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
             cachedCodeInfo = CodeInfo.Empty;
         }
 
-        cachedCodeInfo ??= _codeCache.Get(codeHash);
+        cachedCodeInfo ??= CodeCache.Get(codeHash);
         if (cachedCodeInfo is null)
         {
             byte[] code = worldState.GetCode(codeHash);
 
             if (code is null)
             {
-                throw new NullReferenceException($"Code {codeHash} missing in the state for address {codeSource}");
+                MissingCode(codeSource, codeHash);
             }
 
             cachedCodeInfo = new CodeInfo(code);
-            _codeCache.Set(codeHash, cachedCodeInfo);
+            CodeCache.Set(codeHash, cachedCodeInfo);
         }
         else
         {
@@ -558,6 +558,13 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         }
 
         return cachedCodeInfo;
+
+        [DoesNotReturn]
+        [StackTraceHidden]
+        static void MissingCode(Address codeSource, Hash256 codeHash)
+        {
+            throw new NullReferenceException($"Code {codeHash} missing in the state for address {codeSource}");
+        }
     }
 
     private static bool UpdateGas(long gasCost, ref long gasAvailable)
