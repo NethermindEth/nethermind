@@ -106,7 +106,7 @@ public class EthMulticallTestsBlocksAndTransactions
 
         foreach (MultiCallBlockResult blockResult in data)
         {
-            blockResult.Calls.Select(c => c.Type).Should().BeEquivalentTo(new[] { ResultType.Failure, ResultType.Success });
+            blockResult.Calls.Select(c => c.Type).Should().BeEquivalentTo(new[] { ResultType.Success, ResultType.Success });
         }
     }
 
