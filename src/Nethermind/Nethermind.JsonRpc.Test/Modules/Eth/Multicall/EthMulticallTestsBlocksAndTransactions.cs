@@ -54,7 +54,7 @@ public class EthMulticallTestsBlocksAndTransactions
             GetTransferTxData(nonceA,
                 chain.EthereumEcdsa, pk, new Address("0xA143c0eA6f8059f7B3651417ccD2bAA80FC2d4Ab"), 10_000_000);
 
-        UInt256 nextNonceA = nonceA++;
+        UInt256 nextNonceA = ++nonceA;
         Transaction txMainnetAtoBToComplete =
             GetTransferTxData(nextNonceA,
                 chain.EthereumEcdsa, pk, new Address("0xA143c0eA6f8059f7B3651417ccD2bAA80FC2d4Ab"), 4_000_000);
