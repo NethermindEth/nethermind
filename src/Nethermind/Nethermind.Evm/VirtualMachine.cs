@@ -1668,10 +1668,6 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                     }
                 case Instruction.SSTORE:
                     {
-                        Metrics.SstoreOpcode++;
-
-                        if (vmState.IsStatic) goto StaticCallViolation;
-
                         exceptionType = InstructionSStore<TTracingInstructions, TTracingRefunds, TTracingStorage>(vmState, ref stack, ref gasAvailable, spec);
                         if (exceptionType != EvmExceptionType.None) goto ReturnFailure;
 
@@ -2616,6 +2612,9 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         where TTracingRefunds : struct, IIsTracing
         where TTracingStorage : struct, IIsTracing
     {
+        Metrics.SstoreOpcode++;
+
+        if (vmState.IsStatic) return EvmExceptionType.StaticCallViolation;
         // fail fast before the first storage read if gas is not enough even for reset
         if (!spec.UseNetGasMetering && !UpdateGas(spec.GetSStoreResetCost(), ref gasAvailable)) return EvmExceptionType.OutOfGas;
 
