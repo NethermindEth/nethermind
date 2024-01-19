@@ -2631,7 +2631,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         bool newIsZero = bytes.IsZero();
         if (!newIsZero)
         {
-            bytes = bytes.WithoutLeadingZeros().ToArray();
+            bytes = bytes.WithoutLeadingZeros();
         }
         else
         {
