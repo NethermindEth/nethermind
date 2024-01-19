@@ -31,6 +31,7 @@ using Nethermind.Evm.Tracing.Debugger;
 
 namespace Nethermind.Evm;
 
+using System.Collections.Frozen;
 using System.Linq;
 using System.Threading;
 
@@ -39,6 +40,7 @@ using Int256;
 public class VirtualMachine : IVirtualMachine
 {
     public const int MaxCallDepth = 1024;
+    public static FrozenDictionary<Address, CodeInfo> Precompiles { get; } = InitializePrecompiledContracts();
 
     private readonly IVirtualMachine _evm;
 
@@ -69,6 +71,36 @@ public class VirtualMachine : IVirtualMachine
     public TransactionSubstate Run<TTracingActions>(EvmState state, IWorldState worldState, ITxTracer txTracer)
         where TTracingActions : struct, IIsTracing
         => _evm.Run<TTracingActions>(state, worldState, txTracer);
+
+    private static FrozenDictionary<Address, CodeInfo> InitializePrecompiledContracts()
+    {
+        return new Dictionary<Address, CodeInfo>
+        {
+            [EcRecoverPrecompile.Address] = new(EcRecoverPrecompile.Instance),
+            [Sha256Precompile.Address] = new(Sha256Precompile.Instance),
+            [Ripemd160Precompile.Address] = new(Ripemd160Precompile.Instance),
+            [IdentityPrecompile.Address] = new(IdentityPrecompile.Instance),
+
+            [Bn254AddPrecompile.Address] = new(Bn254AddPrecompile.Instance),
+            [Bn254MulPrecompile.Address] = new(Bn254MulPrecompile.Instance),
+            [Bn254PairingPrecompile.Address] = new(Bn254PairingPrecompile.Instance),
+            [ModExpPrecompile.Address] = new(ModExpPrecompile.Instance),
+
+            [Blake2FPrecompile.Address] = new(Blake2FPrecompile.Instance),
+
+            [G1AddPrecompile.Address] = new(G1AddPrecompile.Instance),
+            [G1MulPrecompile.Address] = new(G1MulPrecompile.Instance),
+            [G1MultiExpPrecompile.Address] = new(G1MultiExpPrecompile.Instance),
+            [G2AddPrecompile.Address] = new(G2AddPrecompile.Instance),
+            [G2MulPrecompile.Address] = new(G2MulPrecompile.Instance),
+            [G2MultiExpPrecompile.Address] = new(G2MultiExpPrecompile.Instance),
+            [PairingPrecompile.Address] = new(PairingPrecompile.Instance),
+            [MapToG1Precompile.Address] = new(MapToG1Precompile.Instance),
+            [MapToG2Precompile.Address] = new(MapToG2Precompile.Instance),
+
+            [PointEvaluationPrecompile.Address] = new(PointEvaluationPrecompile.Instance),
+        }.ToFrozenDictionary();
+    }
 
     internal readonly ref struct CallResult
     {
@@ -168,7 +200,6 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
     private IWorldState _state;
     private readonly Stack<EvmState> _stateStack = new();
     private (Address Address, bool ShouldDelete) _parityTouchBugAccount = (Address.FromNumber(3), false);
-    private Dictionary<Address, CodeInfo>? _precompiles;
     private byte[] _returnDataBuffer = Array.Empty<byte>();
     private ITxTracer _txTracer = NullTxTracer.Instance;
 
@@ -181,7 +212,6 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         _blockhashProvider = blockhashProvider ?? throw new ArgumentNullException(nameof(blockhashProvider));
         _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
         _chainId = ((UInt256)specProvider.ChainId).ToBigEndian();
-        InitializePrecompiledContracts();
     }
 
     public TransactionSubstate Run<TTracingActions>(EvmState state, IWorldState worldState, ITxTracer txTracer)
@@ -498,12 +528,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
     {
         if (codeSource.IsPrecompile(vmSpec))
         {
-            if (_precompiles is null)
-            {
-                throw new InvalidOperationException("EVM precompile have not been initialized properly.");
-            }
-
-            return _precompiles[codeSource];
+            return VirtualMachine.Precompiles[codeSource];
         }
 
         CodeInfo cachedCodeInfo = null;
@@ -533,36 +558,6 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         }
 
         return cachedCodeInfo;
-    }
-
-    private void InitializePrecompiledContracts()
-    {
-        _precompiles = new Dictionary<Address, CodeInfo>
-        {
-            [EcRecoverPrecompile.Address] = new(EcRecoverPrecompile.Instance),
-            [Sha256Precompile.Address] = new(Sha256Precompile.Instance),
-            [Ripemd160Precompile.Address] = new(Ripemd160Precompile.Instance),
-            [IdentityPrecompile.Address] = new(IdentityPrecompile.Instance),
-
-            [Bn254AddPrecompile.Address] = new(Bn254AddPrecompile.Instance),
-            [Bn254MulPrecompile.Address] = new(Bn254MulPrecompile.Instance),
-            [Bn254PairingPrecompile.Address] = new(Bn254PairingPrecompile.Instance),
-            [ModExpPrecompile.Address] = new(ModExpPrecompile.Instance),
-
-            [Blake2FPrecompile.Address] = new(Blake2FPrecompile.Instance),
-
-            [G1AddPrecompile.Address] = new(G1AddPrecompile.Instance),
-            [G1MulPrecompile.Address] = new(G1MulPrecompile.Instance),
-            [G1MultiExpPrecompile.Address] = new(G1MultiExpPrecompile.Instance),
-            [G2AddPrecompile.Address] = new(G2AddPrecompile.Instance),
-            [G2MulPrecompile.Address] = new(G2MulPrecompile.Instance),
-            [G2MultiExpPrecompile.Address] = new(G2MultiExpPrecompile.Instance),
-            [PairingPrecompile.Address] = new(PairingPrecompile.Instance),
-            [MapToG1Precompile.Address] = new(MapToG1Precompile.Instance),
-            [MapToG2Precompile.Address] = new(MapToG2Precompile.Instance),
-
-            [PointEvaluationPrecompile.Address] = new(PointEvaluationPrecompile.Instance),
-        };
     }
 
     private static bool UpdateGas(long gasCost, ref long gasAvailable)
