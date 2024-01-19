@@ -96,7 +96,7 @@ public class ByteArrayConverter : JsonConverter<byte[]>
             array = ArrayPool<byte>.Shared.Rent(length);
         }
 
-        Span<byte> hex = (array is null ? stackalloc byte[stackLength] : array)[..length];
+        Span<byte> hex = (array ?? stackalloc byte[stackLength])[..length];
         hex[^1] = (byte)'"';
         hex[0] = (byte)'"';
         hex[1] = (byte)'0';
@@ -104,7 +104,6 @@ public class ByteArrayConverter : JsonConverter<byte[]>
 
         Span<byte> output = hex[3..^1];
 
-        bool extraNibble = (leadingNibbleZeros & 1) != 0;
         ReadOnlySpan<byte> input = bytes.Slice(leadingNibbleZeros / 2);
         input.OutputBytesToByteHex(output, extraNibble: (leadingNibbleZeros & 1) != 0);
         writer.WriteRawValue(hex, skipInputValidation: true);

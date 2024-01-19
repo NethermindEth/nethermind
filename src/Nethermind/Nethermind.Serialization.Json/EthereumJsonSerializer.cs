@@ -18,14 +18,7 @@ namespace Nethermind.Serialization.Json
 
         public EthereumJsonSerializer(int? maxDepth = null)
         {
-            if (maxDepth.HasValue)
-            {
-                _jsonOptions = CreateOptions(indented: false, maxDepth.Value);
-            }
-            else
-            {
-                _jsonOptions = JsonOptions;
-            }
+            _jsonOptions = maxDepth.HasValue ? CreateOptions(indented: false, maxDepth.Value) : JsonOptions;
         }
 
         public T Deserialize<T>(Stream stream)
@@ -45,7 +38,7 @@ namespace Nethermind.Serialization.Json
 
         public string Serialize<T>(T value, bool indented = false)
         {
-            return JsonSerializer.Serialize<T>(value, indented ? JsonOptionsIndented : _jsonOptions);
+            return JsonSerializer.Serialize(value, indented ? JsonOptionsIndented : _jsonOptions);
         }
 
         private static JsonSerializerOptions CreateOptions(bool indented, int maxDepth = 64)
@@ -78,12 +71,11 @@ namespace Nethermind.Serialization.Json
                     new MemoryByteConverter(),
                     new BigIntegerConverter(),
                     new NullableBigIntegerConverter(),
-                    new JavaScriptObjectConverter(),
-                    new UInt256DictionaryKeyConverter()
+                    new JavaScriptObjectConverter()
                 }
             };
 
-            foreach (var converter in _additionalConverters)
+            foreach (JsonConverter converter in _additionalConverters)
             {
                 options.Converters.Add(converter);
             }
@@ -104,17 +96,17 @@ namespace Nethermind.Serialization.Json
 
         public static JsonSerializerOptions JsonOptionsIndented { get; private set; } = CreateOptions(indented: true);
 
-        private static readonly StreamPipeWriterOptions optionsLeaveOpen = new(pool: MemoryPool<byte>.Shared, minimumBufferSize: 4096, leaveOpen: true);
-        private static readonly StreamPipeWriterOptions options = new(pool: MemoryPool<byte>.Shared, minimumBufferSize: 4096, leaveOpen: false);
+        private static readonly StreamPipeWriterOptions _optionsLeaveOpen = new(pool: MemoryPool<byte>.Shared, minimumBufferSize: 4096, leaveOpen: true);
+        private static readonly StreamPipeWriterOptions _options = new(pool: MemoryPool<byte>.Shared, minimumBufferSize: 4096, leaveOpen: false);
 
         private static CountingStreamPipeWriter GetPipeWriter(Stream stream, bool leaveOpen)
         {
-            return new CountingStreamPipeWriter(stream, leaveOpen ? optionsLeaveOpen : options);
+            return new CountingStreamPipeWriter(stream, leaveOpen ? _optionsLeaveOpen : _options);
         }
 
         public long Serialize<T>(Stream stream, T value, bool indented = false, bool leaveOpen = true)
         {
-            var countingWriter = GetPipeWriter(stream, leaveOpen);
+            CountingStreamPipeWriter countingWriter = GetPipeWriter(stream, leaveOpen);
             using var writer = new Utf8JsonWriter(countingWriter, new JsonWriterOptions() { SkipValidation = true, Indented = indented });
             JsonSerializer.Serialize(writer, value, indented ? JsonOptionsIndented : _jsonOptions);
             countingWriter.Complete();
@@ -125,7 +117,7 @@ namespace Nethermind.Serialization.Json
 
         public async ValueTask<long> SerializeAsync<T>(Stream stream, T value, bool indented = false, bool leaveOpen = true)
         {
-            var writer = GetPipeWriter(stream, leaveOpen);
+            CountingStreamPipeWriter writer = GetPipeWriter(stream, leaveOpen);
             Serialize(writer, value, indented);
             await writer.CompleteAsync();
 

@@ -22,13 +22,16 @@ public class UInt256Converter : JsonConverter<UInt256>
     public override UInt256 Read(
         ref Utf8JsonReader reader,
         Type typeToConvert,
-        JsonSerializerOptions options)
+        JsonSerializerOptions options) =>
+        ReadInternal(ref reader, JsonTokenType.String);
+
+    private static UInt256 ReadInternal(ref Utf8JsonReader reader, JsonTokenType allowedTokenType)
     {
         if (reader.TokenType == JsonTokenType.Number)
         {
-            return (UInt256)reader.GetUInt64();
+            return reader.GetUInt64();
         }
-        if (reader.TokenType != JsonTokenType.String)
+        if (reader.TokenType != allowedTokenType)
         {
             ThrowJsonException();
         }
@@ -89,6 +92,33 @@ public class UInt256Converter : JsonConverter<UInt256>
                 break;
             case NumberConversion.Raw:
                 writer.WriteStringValue(((BigInteger)value).ToString(CultureInfo.InvariantCulture));
+                break;
+            default:
+                throw new NotSupportedException($"{usedConversion} format is not supported for {nameof(UInt256)}");
+        }
+    }
+
+    public override UInt256 ReadAsPropertyName(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) =>
+        ReadInternal(ref reader, JsonTokenType.PropertyName);
+
+    public override void WriteAsPropertyName(Utf8JsonWriter writer, UInt256 value, JsonSerializerOptions options)
+    {
+        if (value.IsZero)
+        {
+            writer.WritePropertyName("\"0x0\"");
+            return;
+        }
+        NumberConversion usedConversion = ForcedNumberConversion.GetFinalConversion();
+        switch (usedConversion)
+        {
+            case NumberConversion.Hex:
+                writer.WritePropertyName(value.ToHexString(false));
+                break;
+            case NumberConversion.Decimal:
+                writer.WritePropertyName(value.ToString(CultureInfo.InvariantCulture));
+                break;
+            case NumberConversion.Raw:
+                writer.WritePropertyName(((BigInteger)value).ToString(CultureInfo.InvariantCulture));
                 break;
             default:
                 throw new NotSupportedException($"{usedConversion} format is not supported for {nameof(UInt256)}");

@@ -15,27 +15,29 @@ namespace Nethermind.Core.Test.Json;
 public class UInt256DictionaryKeyConverterTests
 {
     private static readonly JsonSerializerOptions Options = new()
-    { Converters = { 
-        new LongConverter(),
-        new UInt256Converter(),
-        new ULongConverter(),
-        new IntConverter(),
-        new ByteArrayConverter(),
-        new NullableLongConverter(),
-        new NullableULongConverter(),
-        new NullableUInt256Converter(),
-        new NullableIntConverter(),
-        new TxTypeConverter(),
-        new DoubleConverter(),
-        new DoubleArrayConverter(),
-        new BooleanConverter(),
-        new DictionaryAddressKeyConverter(),
-        new MemoryByteConverter(),
-        new BigIntegerConverter(),
-        new NullableBigIntegerConverter(),
-        new JavaScriptObjectConverter(),
-        new UInt256DictionaryKeyConverter ()
-    } };
+    {
+        Converters =
+        {
+            new LongConverter(),
+            new UInt256Converter(),
+            new ULongConverter(),
+            new IntConverter(),
+            new ByteArrayConverter(),
+            new NullableLongConverter(),
+            new NullableULongConverter(),
+            new NullableUInt256Converter(),
+            new NullableIntConverter(),
+            new TxTypeConverter(),
+            new DoubleConverter(),
+            new DoubleArrayConverter(),
+            new BooleanConverter(),
+            new DictionaryAddressKeyConverter(),
+            new MemoryByteConverter(),
+            new BigIntegerConverter(),
+            new NullableBigIntegerConverter(),
+            new JavaScriptObjectConverter()
+        }
+    };
 
     [Test]
     public void ReadJson_NestedValidJson_ReturnsCorrectDictionary()
@@ -89,13 +91,6 @@ public class UInt256DictionaryKeyConverterTests
         var key = Bytes.FromHexString("0x0000000000000000000000000000000000000000").ToUInt256();
         var hashValue = stateInner[key];
         Assert.IsTrue("0x1200000000000000000000000000000000000000000000000000000000000000" == hashValue.ToString());
-    }
-
-    [Test]
-    public void CanConvert_ValidDictionary_ReturnsTrue()
-    {
-        bool canConvert = new UInt256DictionaryKeyConverter().CanConvert(typeof(Dictionary<UInt256, Hash256>));
-        Assert.IsTrue(canConvert);
     }
 
     [Test]
