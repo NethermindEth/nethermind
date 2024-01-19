@@ -74,7 +74,7 @@ public class UInt256Converter : JsonConverter<UInt256>
     {
         if (value.IsZero)
         {
-            writer.WriteRawValue("\"0x0\"");
+            writer.WriteRawValue("\"0x0\""u8);
             return;
         }
         NumberConversion usedConversion = ForcedNumberConversion.GetFinalConversion();
@@ -101,18 +101,21 @@ public class UInt256Converter : JsonConverter<UInt256>
     public override UInt256 ReadAsPropertyName(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) =>
         ReadInternal(ref reader, JsonTokenType.PropertyName);
 
+    [SkipLocalsInit]
     public override void WriteAsPropertyName(Utf8JsonWriter writer, UInt256 value, JsonSerializerOptions options)
     {
         if (value.IsZero)
         {
-            writer.WritePropertyName("\"0x0\"");
+            writer.WritePropertyName("0x0"u8);
             return;
         }
         NumberConversion usedConversion = ForcedNumberConversion.GetFinalConversion();
         switch (usedConversion)
         {
             case NumberConversion.Hex:
-                writer.WritePropertyName(value.ToHexString(false));
+                Span<byte> bytes = stackalloc byte[32];
+                value.ToBigEndian(bytes);
+                writer.WritePropertyName(bytes);
                 break;
             case NumberConversion.Decimal:
                 writer.WritePropertyName(value.ToString(CultureInfo.InvariantCulture));
