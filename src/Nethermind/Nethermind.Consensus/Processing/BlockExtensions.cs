@@ -1,10 +1,16 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
+using System.Runtime.CompilerServices;
+using System.Text;
+using Nethermind.Config;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.State.Proofs;
+
+[assembly: InternalsVisibleTo("Nethermind.Consensus.Test")]
 
 namespace Nethermind.Consensus.Processing
 {
@@ -22,7 +28,7 @@ namespace Nethermind.Consensus.Processing
 
         public static bool TrySetTransactions(this Block block, Transaction[] transactions)
         {
-            block.Header.TxRoot = new TxTrie(transactions).RootHash;
+            block.Header.TxRoot = TxTrie.CalculateRoot(transactions);
 
             if (block is BlockToProduce blockToProduce)
             {
@@ -31,6 +37,18 @@ namespace Nethermind.Consensus.Processing
             }
 
             return false;
+        }
+
+        public static bool IsByNethermindNode(this Block block)
+        {
+            try
+            {
+                return Encoding.ASCII.GetString(block.ExtraData).Contains(BlocksConfig.DefaultExtraData, StringComparison.InvariantCultureIgnoreCase);
+            }
+            catch (Exception)
+            {
+                return false;
+            }
         }
     }
 }

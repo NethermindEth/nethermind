@@ -25,7 +25,7 @@ namespace Nethermind.AccountAbstraction.Subscribe
             UserOperationSubscriptionParam? userOperationSubscriptionParam = null)
             : base(jsonRpcDuplexClient)
         {
-            if (userOperationPools is null) throw new ArgumentNullException(nameof(userOperationPools));
+            ArgumentNullException.ThrowIfNull(userOperationPools);
             if (userOperationSubscriptionParam is not null)
             {
                 if (userOperationSubscriptionParam.EntryPoints.Length == 0)

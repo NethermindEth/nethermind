@@ -493,7 +493,7 @@ namespace Nethermind.Synchronization.Blocks
                     }
                     if (!context.TrySetReceipts(i + offset, txReceipts, out block))
                     {
-                        throw new EthSyncException($"{peer} sent invalid receipts for block {block.ToString(Block.Format.Short)}.");
+                        throw new EthSyncException($"{peer} {peer.PeerClientType} sent invalid receipts for block {block.ToString(Block.Format.Short)}.");
                     }
                 }
 
@@ -778,10 +778,10 @@ namespace Nethermind.Synchronization.Blocks
             }
 
             private CancellationTokenSource Cancellation { get; }
-            public bool IsCancellationRequested => Cancellation.IsCancellationRequested;
+            public readonly bool IsCancellationRequested => Cancellation.IsCancellationRequested;
             public SyncPeerAllocation Allocation { get; }
 
-            public void Cancel()
+            public readonly void Cancel()
             {
                 lock (Cancellation)
                 {

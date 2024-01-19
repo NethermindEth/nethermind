@@ -4,7 +4,7 @@ on:
   schedule:
     - cron:  '0 0 * * 0'
   workflow_dispatch:
-  
+
 permissions:
   contents: write
   pull-requests: write
@@ -18,7 +18,7 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v3
         with:
-          ref: master
+          ref: ${{ github.ref }}
       - name: Install dependencies
         run: |
           pip3 install setuptools
@@ -27,16 +27,22 @@ jobs:
         run: |
           python3 scripts/syncSettings.py ${{ secrets.ETHERSCAN_API_KEY }}
       - name: Create pull request
-        uses: peter-evans/create-pull-request@v3.7.0
+        uses: peter-evans/create-pull-request@v5.0.2
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           commit-message: Updating Fast Sync config files
           body: |
-            Config files included: 
+            Config files included:
             - mainnet.cfg
             - goerli.cfg
-            - rinkeby.cfg
+            - gnosis.cfg
+            - chiado.cfg
             - sepolia.cfg
+            - energyweb.cfg
+            - volta.cfg
+            - exosama.cfg
+            - joc-mainnet.cfg
+            - joc-testnet.cfg
 
             Properties refreshed:
             - PivotNumber

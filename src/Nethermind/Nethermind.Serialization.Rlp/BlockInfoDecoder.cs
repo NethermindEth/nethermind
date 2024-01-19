@@ -71,7 +71,7 @@ namespace Nethermind.Serialization.Rlp
             }
         }
 
-        private int GetContentLength(BlockInfo item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        private static int GetContentLength(BlockInfo item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             bool hasMetadata = item.Metadata != BlockMetadata.None;
             int contentLength = 0;

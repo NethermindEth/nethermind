@@ -8,7 +8,7 @@ namespace Nethermind.TxPool;
 
 public class LightTxDecoder : TxDecoder<Transaction>
 {
-    private int GetLength(Transaction tx)
+    private static int GetLength(Transaction tx)
     {
         return Rlp.LengthOf(tx.Timestamp)
                + Rlp.LengthOf(tx.SenderAddress)
@@ -25,7 +25,7 @@ public class LightTxDecoder : TxDecoder<Transaction>
 
     }
 
-    public byte[] Encode(Transaction tx)
+    public static byte[] Encode(Transaction tx)
     {
         RlpStream rlpStream = new(GetLength(tx));
 
@@ -42,10 +42,10 @@ public class LightTxDecoder : TxDecoder<Transaction>
         rlpStream.Encode(tx.PoolIndex);
         rlpStream.Encode(tx.GetLength());
 
-        return rlpStream.Data!;
+        return rlpStream.Data.ToArray()!;
     }
 
-    public LightTransaction Decode(byte[] data)
+    public static LightTransaction Decode(byte[] data)
     {
         RlpStream rlpStream = new(data);
         return new LightTransaction(

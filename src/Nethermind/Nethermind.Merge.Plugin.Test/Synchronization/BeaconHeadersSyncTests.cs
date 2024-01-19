@@ -18,6 +18,7 @@ using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Merge.Plugin.InvalidChainTracker;
 using Nethermind.Merge.Plugin.Synchronization;
 using Nethermind.Specs;
+using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.State.Repositories;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.FastBlocks;
@@ -64,14 +65,14 @@ public class BeaconHeadersSyncTests
         }
 
         private BeaconSync? _beaconSync;
-        public BeaconSync BeaconSync => _beaconSync ??= new(BeaconPivot, BlockTree, SyncConfig, BlockCacheService, LimboLogs.Instance);
+        public BeaconSync BeaconSync => _beaconSync ??= new(BeaconPivot, BlockTree, SyncConfig, BlockCacheService, PoSSwitcher, LimboLogs.Instance);
 
         private IDb? _metadataDb;
         public IDb MetadataDb => _metadataDb ??= new MemDb();
 
         private PoSSwitcher? _poSSwitcher;
         public PoSSwitcher PoSSwitcher => _poSSwitcher ??= new(MergeConfig, SyncConfig, MetadataDb, BlockTree,
-                MainnetSpecProvider.Instance, LimboLogs.Instance);
+                MainnetSpecProvider.Instance, new ChainSpec(), LimboLogs.Instance);
 
         private IInvalidChainTracker? _invalidChainTracker;
 
@@ -84,7 +85,6 @@ public class BeaconHeadersSyncTests
         private BeaconHeadersSyncFeed? _feed;
         public BeaconHeadersSyncFeed Feed => _feed ??= new BeaconHeadersSyncFeed(
             PoSSwitcher,
-            Selector,
             BlockTree,
             PeerPool,
             SyncConfig,
@@ -94,32 +94,6 @@ public class BeaconHeadersSyncTests
             InvalidChainTracker,
             LimboLogs.Instance
         );
-
-        private MultiSyncModeSelector? _selector;
-        public MultiSyncModeSelector Selector
-        {
-            get
-            {
-                if (_selector is null)
-                {
-                    MemDb stateDb = new();
-                    ProgressTracker progressTracker = new(BlockTree, stateDb, LimboLogs.Instance);
-                    SyncProgressResolver syncProgressResolver = new(
-                        BlockTree,
-                        NullReceiptStorage.Instance,
-                        stateDb,
-                        new TrieStore(stateDb, LimboLogs.Instance),
-                        progressTracker,
-                        SyncConfig,
-                        LimboLogs.Instance);
-                    TotalDifficultyBetterPeerStrategy bestPeerStrategy = new(LimboLogs.Instance);
-                    _selector = new MultiSyncModeSelector(syncProgressResolver, PeerPool, SyncConfig, BeaconSync,
-                        bestPeerStrategy, LimboLogs.Instance);
-                }
-
-                return _selector;
-            }
-        }
 
         private ISyncPeerPool? _peerPool;
         public ISyncPeerPool PeerPool => _peerPool ??= Substitute.For<ISyncPeerPool>();

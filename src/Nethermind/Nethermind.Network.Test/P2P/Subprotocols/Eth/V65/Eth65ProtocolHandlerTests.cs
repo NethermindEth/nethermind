@@ -81,7 +81,9 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V65
         [TearDown]
         public void TearDown()
         {
-            _handler.Dispose();
+            _handler?.Dispose();
+            _session?.Dispose();
+            _syncManager?.Dispose();
         }
 
         [Test]

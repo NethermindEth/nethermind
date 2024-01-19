@@ -18,10 +18,7 @@ namespace Nethermind.Db
         {
             _wrappedProvider = wrappedProvider ?? throw new ArgumentNullException(nameof(wrappedProvider));
             _createInMemoryWriteStore = createInMemoryWriteStore;
-            if (wrappedProvider is null)
-            {
-                throw new ArgumentNullException(nameof(wrappedProvider));
-            }
+            ArgumentNullException.ThrowIfNull(wrappedProvider);
         }
 
         public void Dispose()
@@ -35,8 +32,6 @@ namespace Nethermind.Db
                 (registeredColumnDb.Value as IDisposable)!.Dispose();
             }
         }
-
-        public DbModeHint DbMode => _wrappedProvider.DbMode;
 
         public void ClearTempChanges()
         {

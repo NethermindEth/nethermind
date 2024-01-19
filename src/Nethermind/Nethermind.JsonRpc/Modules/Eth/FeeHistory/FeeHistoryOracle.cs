@@ -52,7 +52,7 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
             Stack<double> gasUsedRatio = new((int)blockCount);
             Stack<double> blobGasUsedRatio = new((int)blockCount);
 
-            Stack<UInt256[]>? rewards = rewardPercentiles is null || rewardPercentiles.Any() is false ? null : new Stack<UInt256[]>((int)blockCount);
+            Stack<UInt256[]>? rewards = rewardPercentiles is null || rewardPercentiles.Length == 0 ? null : new Stack<UInt256[]>((int)blockCount);
 
             while (block is not null && blockCount > 0)
             {
@@ -128,7 +128,7 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
             return percentileValues;
         }
 
-        private ResultWrapper<FeeHistoryResults> Validate(ref long blockCount, BlockParameter newestBlock, double[]? rewardPercentiles)
+        private static ResultWrapper<FeeHistoryResults> Validate(ref long blockCount, BlockParameter newestBlock, double[]? rewardPercentiles)
         {
             if (newestBlock.Type == BlockParameterType.BlockHash)
             {

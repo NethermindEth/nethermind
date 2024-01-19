@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
 
 namespace Nethermind.Evm;
@@ -18,5 +19,5 @@ public interface IEvmMemory : IDisposable
     Span<byte> LoadSpan(in UInt256 location, in UInt256 length);
     ReadOnlyMemory<byte> Load(in UInt256 location, in UInt256 length);
     long CalculateMemoryCost(in UInt256 location, in UInt256 length);
-    IEnumerable<string> GetTrace();
+    TraceMemory GetTrace();
 }

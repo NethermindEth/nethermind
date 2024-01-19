@@ -63,6 +63,8 @@ namespace Nethermind.JsonRpc.Benchmark
             stateProvider.Commit(spec);
             stateProvider.CommitTree(0);
 
+            WorldStateManager stateManager = new WorldStateManager(stateProvider, trieStore, dbProvider, LimboLogs.Instance);
+
             StateReader stateReader = new(trieStore, codeDb, LimboLogs.Instance);
 
             ChainLevelInfoRepository chainLevelInfoRepository = new(blockInfoDb);
@@ -71,6 +73,7 @@ namespace Nethermind.JsonRpc.Benchmark
                 new HeaderStore(dbProvider.HeadersDb, dbProvider.BlockNumbersDb),
                 dbProvider.BlockInfosDb,
                 dbProvider.MetadataDb,
+                new BlockStore(dbProvider.BadBlocksDb),
                 chainLevelInfoRepository,
                 specProvider,
                 NullBloomStorage.Instance,
@@ -120,8 +123,7 @@ namespace Nethermind.JsonRpc.Benchmark
 
             BlockchainBridge bridge = new(
                 new ReadOnlyTxProcessingEnv(
-                    new ReadOnlyDbProvider(dbProvider, false),
-                    trieStore.AsReadOnly(),
+                    stateManager,
                     new ReadOnlyBlockTree(blockTree),
                     specProvider,
                     LimboLogs.Instance),
@@ -141,12 +143,13 @@ namespace Nethermind.JsonRpc.Benchmark
 
             IReceiptStorage receiptStorage = new InMemoryReceiptStorage();
             ISyncConfig syncConfig = new SyncConfig();
-            EthSyncingInfo ethSyncingInfo = new(blockTree, receiptStorage, syncConfig, new StaticSelector(SyncMode.All), LimboLogs.Instance);
+            EthSyncingInfo ethSyncingInfo = new(blockTree, receiptStorage, syncConfig, new StaticSelector(SyncMode.All), null, LimboLogs.Instance);
 
             _ethModule = new EthRpcModule(
                 new JsonRpcConfig(),
                 bridge,
                 blockTree,
+                receiptStorage,
                 stateReader,
                 NullTxPool.Instance,
                 NullTxSender.Instance,

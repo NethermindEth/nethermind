@@ -22,7 +22,7 @@ public abstract class MerkleTree : IMerkleList
 
     private readonly IKeyValueStore<ulong, byte[]> _keyValueStore;
 
-    private static ulong _countKey = ulong.MaxValue;
+    private static readonly ulong _countKey = ulong.MaxValue;
 
     public readonly ref struct Index
     {
@@ -267,7 +267,7 @@ public abstract class MerkleTree : IMerkleList
         StoreCountInTheDb();
     }
 
-    private byte[] _countBytes = new byte[32];
+    private readonly byte[] _countBytes = new byte[32];
 
     /// <summary>
     /// Check if 'leaf' at 'index' verifies against the Merkle 'root' and 'branch'
@@ -294,7 +294,7 @@ public abstract class MerkleTree : IMerkleList
 
         // MixIn count
         Hash(value.AsSpan(), proof[^1].AsSpan(), value);
-        return value.AsSpan().SequenceEqual(Root.AsSpan());
+        return value.AsSpan().SequenceEqual(Root!.AsSpan());
     }
 
     public IList<Bytes32> GetProof(in uint leafIndex)
@@ -356,7 +356,7 @@ public abstract class MerkleTree : IMerkleList
         return new Index(nodeIndex).Parent().NodeIndex;
     }
 
-    public Root Root { get; set; }
+    public Root? Root { get; set; }
 
     protected abstract void Hash(ReadOnlySpan<byte> a, ReadOnlySpan<byte> b, Span<byte> target);
 }

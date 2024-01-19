@@ -134,6 +134,8 @@ namespace Ethereum.Test.Base
             transaction.Data = transactionJson.Data[postStateJson.Indexes.Data];
             transaction.SenderAddress = new PrivateKey(transactionJson.SecretKey).Address;
             transaction.Signature = new Signature(1, 1, 27);
+            transaction.BlobVersionedHashes = transactionJson.BlobVersionedHashes;
+            transaction.MaxFeePerBlobGas = transactionJson.MaxFeePerBlobGas;
             transaction.Hash = transaction.CalculateHash();
 
             AccessList.Builder builder = new();
@@ -149,6 +151,9 @@ namespace Ethereum.Test.Base
 
             if (transactionJson.MaxFeePerGas != null)
                 transaction.Type = TxType.EIP1559;
+
+            if (transaction.BlobVersionedHashes?.Length > 0)
+                transaction.Type = TxType.Blob;
 
             return transaction;
         }
@@ -204,7 +209,6 @@ namespace Ethereum.Test.Base
             foreach (KeyValuePair<string, PostStateJson[]> postStateBySpec in testJson.Post)
             {
                 int iterationNumber = 0;
-                int testIndex = testJson.Info?.Labels?.Select(x => System.Convert.ToInt32(x.Key)).FirstOrDefault() ?? 0;
                 foreach (PostStateJson stateJson in postStateBySpec.Value)
                 {
                     GeneralStateTest test = new();
@@ -213,10 +217,6 @@ namespace Ethereum.Test.Base
                     if (testJson.Info?.Labels?.ContainsKey(iterationNumber.ToString()) ?? false)
                     {
                         test.Name += testJson.Info?.Labels?[iterationNumber.ToString()]?.Replace(":label ", string.Empty);
-                    }
-                    else
-                    {
-                        test.Name += string.Empty;
                     }
 
                     test.ForkName = postStateBySpec.Key;
@@ -229,6 +229,10 @@ namespace Ethereum.Test.Base
                     test.CurrentTimestamp = testJson.Env.CurrentTimestamp;
                     test.CurrentBaseFee = testJson.Env.CurrentBaseFee;
                     test.CurrentRandom = testJson.Env.CurrentRandom;
+                    test.CurrentBeaconRoot = testJson.Env.CurrentBeaconRoot;
+                    test.CurrentWithdrawalsRoot = testJson.Env.CurrentWithdrawalsRoot;
+                    test.ParentBlobGasUsed = testJson.Env.ParentBlobGasUsed;
+                    test.ParentExcessBlobGas = testJson.Env.ParentExcessBlobGas;
                     test.PostReceiptsRoot = stateJson.Logs;
                     test.PostHash = stateJson.Hash;
                     test.Pre = testJson.Pre.ToDictionary(p => new Address(p.Key), p => Convert(p.Value));

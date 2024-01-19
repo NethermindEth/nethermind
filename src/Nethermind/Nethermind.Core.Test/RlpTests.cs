@@ -61,6 +61,31 @@ namespace Nethermind.Core.Test
         }
 
         [Test]
+        public void single_byte_encoding_decoding()
+        {
+            byte item = 0;
+            for (int i = 0; i < 128; i++)
+            {
+                Assert.That(Rlp.LengthOf(item), Is.EqualTo(1));
+                var data = Rlp.Encode(item);
+                var rlp = new RlpStream(data.Bytes);
+                Assert.That(rlp.DecodeByte(), Is.EqualTo(item));
+
+                item += 1;
+            }
+
+            for (int i = 128; i < 256; i++)
+            {
+                Assert.That(Rlp.LengthOf(item), Is.EqualTo(2));
+                var data = Rlp.Encode(item);
+                var rlp = new RlpStream(data.Bytes);
+                Assert.That(rlp.DecodeByte(), Is.EqualTo(item));
+
+                item += 1;
+            }
+        }
+
+        [Test]
         public void Long_negative()
         {
             Rlp output = Rlp.Encode(-1L);
@@ -234,7 +259,7 @@ namespace Nethermind.Core.Test
             stream.Encode(randomBytes);
             stream.Encode(randomBytes);
 
-            Memory<byte> memory = stream.Data;
+            Memory<byte> memory = stream.Data.ToArray();
             Rlp.ValueDecoderContext context = new Rlp.ValueDecoderContext(memory, sliceValue);
 
             for (int i = 0; i < 3; i++)

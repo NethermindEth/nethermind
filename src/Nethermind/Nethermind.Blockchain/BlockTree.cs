@@ -33,7 +33,7 @@ namespace Nethermind.Blockchain
     {
         // there is not much logic in the addressing here
         public static readonly byte[] LowestInsertedBodyNumberDbEntryAddress = ((long)0).ToBigEndianByteArrayWithoutLeadingZeros();
-        private static byte[] StateHeadHashDbEntryAddress = new byte[16];
+        private static readonly byte[] StateHeadHashDbEntryAddress = new byte[16];
         internal static Hash256 DeletePointerAddressInDb = new(new BitArray(32 * 8, true).ToBytes());
         internal static Hash256 HeadAddressInDb = Keccak.Zero;
 
@@ -43,6 +43,7 @@ namespace Nethermind.Blockchain
         private readonly IHeaderStore _headerStore;
         private readonly IDb _blockInfoDb;
         private readonly IDb _metadataDb;
+        private readonly IBlockStore _badBlockStore;
 
         private readonly LruCache<ValueHash256, Block> _invalidBlocks =
             new(128, 128, "invalid blocks");
@@ -110,6 +111,7 @@ namespace Nethermind.Blockchain
             IHeaderStore? headerDb,
             IDb? blockInfoDb,
             IDb? metadataDb,
+            IBlockStore? badBlockStore,
             IChainLevelInfoRepository? chainLevelInfoRepository,
             ISpecProvider? specProvider,
             IBloomStorage? bloomStorage,
@@ -121,6 +123,7 @@ namespace Nethermind.Blockchain
             _headerStore = headerDb ?? throw new ArgumentNullException(nameof(headerDb));
             _blockInfoDb = blockInfoDb ?? throw new ArgumentNullException(nameof(blockInfoDb));
             _metadataDb = metadataDb ?? throw new ArgumentNullException(nameof(metadataDb));
+            _badBlockStore = badBlockStore ?? throw new ArgumentNullException(nameof(badBlockStore));
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
             _bloomStorage = bloomStorage ?? throw new ArgumentNullException(nameof(bloomStorage));
             _syncConfig = syncConfig ?? throw new ArgumentNullException(nameof(syncConfig));
@@ -560,7 +563,7 @@ namespace Nethermind.Blockchain
             {
                 static BlockHeader[] FindHeadersReversedFast(BlockTree tree, BlockHeader startHeader, int numberOfBlocks, bool reverse = false)
                 {
-                    if (startHeader is null) throw new ArgumentNullException(nameof(startHeader));
+                    ArgumentNullException.ThrowIfNull(startHeader);
                     if (numberOfBlocks == 1)
                     {
                         return new[] { startHeader };
@@ -710,6 +713,7 @@ namespace Nethermind.Blockchain
             if (_logger.IsDebug) _logger.Debug($"Deleting invalid block {invalidBlock.ToString(Block.Format.FullHashAndNumber)}");
 
             _invalidBlocks.Set(invalidBlock.Hash, invalidBlock);
+            _badBlockStore.Insert(invalidBlock);
 
             BestSuggestedHeader = Head?.Header;
             BestSuggestedBody = Head;
@@ -1272,7 +1276,7 @@ namespace Nethermind.Blockchain
         /// <returns></returns>
         private bool ShouldCache(long number)
         {
-            return number == 0L || Head is null || number <= Head.Number + 1;
+            return number == 0L || Head is null || number >= Head.Number - HeaderStore.CacheSize;
         }
 
         public ChainLevelInfo? FindLevel(long number)
@@ -1434,6 +1438,7 @@ namespace Nethermind.Blockchain
                 {
                     current.TotalDifficulty = current.Difficulty;
                     BlockInfo blockInfo = new(current.Hash, current.Difficulty);
+                    blockInfo.WasProcessed = true;
                     UpdateOrCreateLevel(current.Number, current.Hash, blockInfo);
                 }
 
@@ -1486,8 +1491,9 @@ namespace Nethermind.Blockchain
         /// </summary>
         /// <param name="startNumber">Start level of the slice to delete</param>
         /// <param name="endNumber">End level of the slice to delete</param>
+        /// <param name="force">Should it force of deletion of valid blocks</param>
         /// <exception cref="ArgumentException">Thrown when <paramref name="startNumber"/> ot <paramref name="endNumber"/> do not satisfy the slice position rules</exception>
-        public int DeleteChainSlice(in long startNumber, long? endNumber)
+        public int DeleteChainSlice(in long startNumber, long? endNumber = null, bool force = false)
         {
             int deleted = 0;
             endNumber ??= BestKnownNumber;
@@ -1512,7 +1518,7 @@ namespace Nethermind.Blockchain
             Block? newHeadBlock = null;
 
             // we are running these checks before all the deletes
-            if (Head.Number >= startNumber)
+            if (Head?.Number >= startNumber)
             {
                 // greater than zero so will not fail
                 ChainLevelInfo? chainLevelInfo = _chainLevelInfoRepository.LoadLevel(startNumber - 1);

@@ -66,7 +66,7 @@ namespace Nethermind.Db.Test
         public void Throws_whenMaxWriteBufferNumIs0()
         {
             IDbConfig config = new DbConfig();
-            RocksDbSettings settings = new("Blocks", DbPath)
+            DbSettings settings = new("Blocks", DbPath)
             {
                 BlockCacheSize = (ulong)1.KiB(),
                 CacheIndexAndFilterBlocks = false,
@@ -183,7 +183,7 @@ namespace Nethermind.Db.Test
             file.Received().Delete(markerFile);
         }
 
-        private static RocksDbSettings GetRocksDbSettings(string dbPath, string dbName)
+        private static DbSettings GetRocksDbSettings(string dbPath, string dbName)
         {
             return new(dbName, dbPath)
             {
@@ -204,7 +204,7 @@ namespace Nethermind.Db.Test
         private IDb _db = null!;
         IDisposable? _dbDisposable = null!;
 
-        private bool _useColumnDb = false;
+        private readonly bool _useColumnDb = false;
 
         public DbOnTheRocksDbTests(bool useColumnDb)
         {
@@ -237,9 +237,23 @@ namespace Nethermind.Db.Test
             }
         }
 
+        private long AllocatedSpan
+        {
+            get
+            {
+                if (_db is ColumnDb columnDb)
+                {
+                    return columnDb._mainDb._allocatedSpan;
+                }
+
+                return (_db as DbOnTheRocks)._allocatedSpan;
+            }
+        }
+
         [TearDown]
         public void TearDown()
         {
+            _db?.Dispose();
             _dbDisposable?.Dispose();
         }
 
@@ -286,7 +300,10 @@ namespace Nethermind.Db.Test
             _db.PutSpan(key, value);
             Span<byte> readSpan = _db.GetSpan(key);
             Assert.That(readSpan.ToArray(), Is.EqualTo(new byte[] { 4, 5, 6 }));
+
+            AllocatedSpan.Should().Be(1);
             _db.DangerousReleaseMemory(readSpan);
+            AllocatedSpan.Should().Be(0);
         }
 
         [Test]
@@ -301,10 +318,13 @@ namespace Nethermind.Db.Test
             IMemoryOwner<byte> manager = new DbSpanMemoryManager(_db, readSpan);
             Memory<byte> theMemory = manager.Memory;
             Assert.That(theMemory.ToArray(), Is.EqualTo(new byte[] { 4, 5, 6 }));
+
+            AllocatedSpan.Should().Be(1);
             manager.Dispose();
+            AllocatedSpan.Should().Be(0);
         }
 
-        private static RocksDbSettings GetRocksDbSettings(string dbPath, string dbName)
+        private static DbSettings GetRocksDbSettings(string dbPath, string dbName)
         {
             return new(dbName, dbPath)
             {
@@ -337,13 +357,13 @@ namespace Nethermind.Db.Test
     {
         public CorruptedDbOnTheRocks(
             string basePath,
-            RocksDbSettings rocksDbSettings,
+            DbSettings dbSettings,
             IDbConfig dbConfig,
             ILogManager logManager,
             IList<string>? columnFamilies = null,
             RocksDbSharp.Native? rocksDbNative = null,
             IFileSystem? fileSystem = null
-        ) : base(basePath, rocksDbSettings, dbConfig, logManager, columnFamilies, rocksDbNative, fileSystem)
+        ) : base(basePath, dbSettings, dbConfig, logManager, columnFamilies, rocksDbNative, fileSystem)
         {
         }
 

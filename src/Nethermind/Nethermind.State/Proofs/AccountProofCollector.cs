@@ -4,8 +4,8 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.InteropServices;
 using Nethermind.Core;
-using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
@@ -19,17 +19,17 @@ namespace Nethermind.State.Proofs
     public class AccountProofCollector : ITreeVisitor
     {
         private int _pathTraversalIndex;
-        private Address _address = Address.Zero;
-        private AccountProof _accountProof;
+        private readonly Address _address = Address.Zero;
+        private readonly AccountProof _accountProof;
 
-        private Nibble[] _fullAccountPath;
-        private Nibble[][] _fullStoragePaths;
+        private readonly Nibble[] _fullAccountPath;
+        private readonly Nibble[][] _fullStoragePaths;
 
-        private List<byte[]> _accountProofItems = new();
-        private List<byte[]>[] _storageProofItems;
+        private readonly List<byte[]> _accountProofItems = new();
+        private readonly List<byte[]>[] _storageProofItems;
 
-        private Dictionary<Hash256, StorageNodeInfo> _storageNodeInfos = new();
-        private HashSet<Hash256> _nodeToVisitFilter = new();
+        private readonly Dictionary<Hash256, StorageNodeInfo> _storageNodeInfos = new();
+        private readonly HashSet<Hash256> _nodeToVisitFilter = new();
 
         private class StorageNodeInfo
         {
@@ -181,18 +181,19 @@ namespace Nethermind.State.Proofs
                     }
                     else
                     {
-                        if (!_storageNodeInfos.ContainsKey(childHash))
+                        ref StorageNodeInfo? value = ref CollectionsMarshal.GetValueRefOrAddDefault(_storageNodeInfos, childHash, out bool exists);
+                        if (!exists)
                         {
-                            _storageNodeInfos[childHash] = new StorageNodeInfo();
+                            value = new StorageNodeInfo();
                         }
 
                         if (!bumpedIndexes.Contains((byte)childIndex))
                         {
                             bumpedIndexes.Add((byte)childIndex);
-                            _storageNodeInfos[childHash].PathIndex = _pathTraversalIndex + 1;
+                            value.PathIndex = _pathTraversalIndex + 1;
                         }
 
-                        _storageNodeInfos[childHash].StorageIndices.Add(storageIndex);
+                        value.StorageIndices.Add(storageIndex);
                         _nodeToVisitFilter.Add(childHash);
                     }
                 }
@@ -329,7 +330,7 @@ namespace Nethermind.State.Proofs
             return isPathMatched;
         }
 
-        private AccountDecoder _accountDecoder = new();
+        private readonly AccountDecoder _accountDecoder = new();
 
         public void VisitCode(Hash256 codeHash, TrieVisitContext trieVisitContext)
         {

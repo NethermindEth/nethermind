@@ -14,7 +14,7 @@ namespace Nethermind.Cli.Modules
     public class NodeCliModule : CliModuleBase
     {
         [CliFunction("node", "setNodeKey")]
-        public string SetNodeKey(string key)
+        public static string SetNodeKey(string key)
         {
             string path = Path.Combine(AppDomain.CurrentDomain.BaseDirectory!, "node.key.plain");
             File.WriteAllBytes("node.key.plain", new PrivateKey(Bytes.FromHexString(key)).KeyBytes);

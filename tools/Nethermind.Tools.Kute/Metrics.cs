@@ -4,6 +4,7 @@
 using App.Metrics;
 using App.Metrics.Counter;
 using App.Metrics.Timer;
+using Nethermind.Tools.Kute.Extensions;
 
 namespace Nethermind.Tools.Kute;
 
@@ -23,6 +24,10 @@ public class Metrics
     {
         Name = "Failed", MeasurementUnit = Unit.Items,
     };
+    private readonly CounterOptions _succeeded = new()
+    {
+        Name = "Succeeded", MeasurementUnit = Unit.Items,
+    };
     private readonly CounterOptions _ignoredRequests = new()
     {
         Name = "Ignored Requests", MeasurementUnit = Unit.Items
@@ -39,13 +44,16 @@ public class Metrics
 
     public Metrics()
     {
-        _metrics = new MetricsBuilder().Build();
+        _metrics = new MetricsBuilder()
+            .SampleWith.Reservoir<CompleteReservoir>()
+            .Build();
     }
 
     public MetricsDataValueSource Snapshot => _metrics.Snapshot.Get();
 
     public void TickMessages() => _metrics.Measure.Counter.Increment(_messages);
     public void TickFailed() => _metrics.Measure.Counter.Increment(_failed);
+    public void TickSucceeded() => _metrics.Measure.Counter.Increment(_succeeded);
     public void TickIgnoredRequests() => _metrics.Measure.Counter.Increment(_ignoredRequests);
     public void TickResponses() => _metrics.Measure.Counter.Increment(_responses);
 

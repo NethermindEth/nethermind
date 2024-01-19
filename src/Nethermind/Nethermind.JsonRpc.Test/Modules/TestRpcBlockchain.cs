@@ -29,9 +29,10 @@ using Nethermind.Specs.Forks;
 using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
-using Newtonsoft.Json;
+
 using Nethermind.Config;
 using Nethermind.Synchronization.ParallelSync;
+using NSubstitute;
 
 namespace Nethermind.JsonRpc.Test.Modules
 {
@@ -123,8 +124,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             IFilterManager filterManager = new FilterManager(filterStore, BlockProcessor, TxPool, LimboLogs.Instance);
 
             ReadOnlyTxProcessingEnv processingEnv = new(
-                new ReadOnlyDbProvider(DbProvider, false),
-                new TrieStore(DbProvider.StateDb, LimboLogs.Instance).AsReadOnly(),
+                WorldStateManager,
                 new ReadOnlyBlockTree(BlockTree),
                 SpecProvider,
                 LimboLogs.Instance);
@@ -145,6 +145,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                 RpcConfig,
                 Bridge,
                 BlockFinder,
+                ReceiptFinder,
                 StateReader,
                 TxPool,
                 TxSender,
@@ -152,16 +153,17 @@ namespace Nethermind.JsonRpc.Test.Modules
                 LimboLogs.Instance,
                 SpecProvider,
                 GasPriceOracle,
-                new EthSyncingInfo(BlockTree, ReceiptStorage, syncConfig, new StaticSelector(SyncMode.All), LogManager),
+                new EthSyncingInfo(BlockTree, ReceiptStorage, syncConfig,
+                    new StaticSelector(SyncMode.All), Substitute.For<ISyncProgressResolver>(), LogManager),
                 FeeHistoryOracle);
 
             return this;
         }
 
         public Task<string> TestEthRpc(string method, params string[] parameters) =>
-            RpcTest.TestSerializedRequest(EthModuleFactory.Converters, EthRpcModule, method, parameters);
+            RpcTest.TestSerializedRequest(EthRpcModule, method, parameters);
 
         public Task<string> TestSerializedRequest<T>(T module, string method, params string[] parameters) where T : class, IRpcModule =>
-            RpcTest.TestSerializedRequest(Array.Empty<JsonConverter>(), module, method, parameters);
+            RpcTest.TestSerializedRequest(module, method, parameters);
     }
 }

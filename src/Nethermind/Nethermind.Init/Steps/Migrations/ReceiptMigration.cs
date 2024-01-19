@@ -14,6 +14,7 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Events;
 using Nethermind.Core.Extensions;
 using Nethermind.Db;
 using Nethermind.Int256;
@@ -39,15 +40,11 @@ namespace Nethermind.Init.Steps.Migrations
         [NotNull]
         private readonly IReceiptStorage? _receiptStorage;
         [NotNull]
-        private readonly DisposableStack? _disposeStack;
-        [NotNull]
         private readonly IBlockTree? _blockTree;
         [NotNull]
         private readonly ISyncModeSelector? _syncModeSelector;
         [NotNull]
         private readonly IChainLevelInfoRepository? _chainLevelInfoRepository;
-
-        private readonly ReceiptArrayStorageDecoder _storageDecoder;
 
         private readonly IReceiptConfig _receiptConfig;
         private readonly IColumnsDb<ReceiptsColumns> _receiptsDb;
@@ -57,7 +54,6 @@ namespace Nethermind.Init.Steps.Migrations
 
         public ReceiptMigration(IApiWithNetwork api) : this(
             api.ReceiptStorage!,
-            api.DisposeStack,
             api.BlockTree!,
             api.SyncModeSelector!,
             api.ChainLevelInfoRepository!,
@@ -71,7 +67,6 @@ namespace Nethermind.Init.Steps.Migrations
 
         public ReceiptMigration(
             IReceiptStorage receiptStorage,
-            DisposableStack disposeStack,
             IBlockTree blockTree,
             ISyncModeSelector syncModeSelector,
             IChainLevelInfoRepository chainLevelInfoRepository,
@@ -82,7 +77,6 @@ namespace Nethermind.Init.Steps.Migrations
         )
         {
             _receiptStorage = receiptStorage ?? throw new StepDependencyException(nameof(receiptStorage));
-            _disposeStack = disposeStack ?? throw new StepDependencyException(nameof(disposeStack));
             _blockTree = blockTree ?? throw new StepDependencyException(nameof(blockTree));
             _syncModeSelector = syncModeSelector ?? throw new StepDependencyException(nameof(syncModeSelector));
             _chainLevelInfoRepository = chainLevelInfoRepository ?? throw new StepDependencyException(nameof(chainLevelInfoRepository));
@@ -92,90 +86,72 @@ namespace Nethermind.Init.Steps.Migrations
             _txIndexDb = _receiptsDb.GetColumnDb(ReceiptsColumns.Transactions);
             _recovery = recovery;
             _logger = logManager.GetClassLogger();
-            _storageDecoder = new ReceiptArrayStorageDecoder(); // it just need to detect the type of the storage
-        }
-
-        public async ValueTask DisposeAsync()
-        {
-            _cancellationTokenSource?.Cancel();
-            await (_migrationTask ?? Task.CompletedTask);
         }
 
         public async Task<bool> Run(long blockNumber)
         {
             _cancellationTokenSource?.Cancel();
             await (_migrationTask ?? Task.CompletedTask);
+            _cancellationTokenSource = new CancellationTokenSource();
             _receiptStorage.MigratedBlockNumber = Math.Min(Math.Max(_receiptStorage.MigratedBlockNumber, blockNumber), (_blockTree.Head?.Number ?? 0) + 1);
-            DoRun();
+            _migrationTask = DoRun(_cancellationTokenSource.Token);
             return _receiptConfig.StoreReceipts && _receiptConfig.ReceiptsMigration;
         }
-
-        public void Run()
+        public async Task Run(CancellationToken cancellationToken)
         {
             if (_receiptConfig.StoreReceipts)
             {
                 if (_receiptConfig.ReceiptsMigration)
                 {
                     ResetMigrationIndexIfNeeded();
-                    DoRun();
+                    await DoRun(cancellationToken);
                 }
             }
         }
 
-        private void DoRun()
+        private async Task DoRun(CancellationToken cancellationToken)
         {
             if (_receiptConfig.StoreReceipts)
             {
-                if (CanMigrate(_syncModeSelector.Current))
+                if (!CanMigrate(_syncModeSelector.Current))
                 {
-                    RunMigration();
+                    await Wait.ForEventCondition<SyncModeChangedEventArgs>(
+                        cancellationToken,
+                        (e) => _syncModeSelector.Changed += e,
+                        (e) => _syncModeSelector.Changed -= e,
+                        (arg) => CanMigrate(arg.Current));
                 }
-                else
-                {
-                    _syncModeSelector.Changed -= OnSyncModeChanged;
-                    _syncModeSelector.Changed += OnSyncModeChanged;
-                    if (_logger.IsInfo) _logger.Info($"ReceiptsDb migration will start after switching to full sync.");
-                }
+
+                RunIfNeeded(cancellationToken);
             }
         }
 
-        private bool CanMigrate(SyncMode syncMode) => syncMode.NotSyncing();
+        private static bool CanMigrate(SyncMode syncMode) => syncMode.NotSyncing();
 
-        private void OnSyncModeChanged(object? sender, SyncModeChangedEventArgs e)
-        {
-            if (CanMigrate(e.Current))
-            {
-                RunMigration();
-                _syncModeSelector.Changed -= OnSyncModeChanged;
-            }
-        }
-
-        private void RunMigration()
+        private void RunIfNeeded(CancellationToken cancellationToken)
         {
             // Note, it start in decreasing order from this high number.
             long migrateToBlockNumber = _receiptStorage.MigratedBlockNumber == long.MaxValue
-                    ? _syncModeSelector.Current.NotSyncing()
-                        ? _blockTree.Head?.Number ?? 0
-                        : _blockTree.BestKnownNumber
-                    : _receiptStorage.MigratedBlockNumber - 1;
+                ? _syncModeSelector.Current.NotSyncing()
+                    ? _blockTree.Head?.Number ?? 0
+                    : _blockTree.BestKnownNumber
+                : _receiptStorage.MigratedBlockNumber - 1;
             _toBlock = migrateToBlockNumber;
 
             _logger.Warn($"Running migration to {_toBlock}");
 
             if (_toBlock > 0)
             {
-                _cancellationTokenSource = new CancellationTokenSource();
-                _disposeStack.Push(this);
                 _stopwatch = Stopwatch.StartNew();
-                _migrationTask = Task.Run(() => RunMigration(_cancellationTokenSource.Token))
-                    .ContinueWith(x =>
-                    {
-                        if (x.IsFaulted && _logger.IsError)
-                        {
-                            _stopwatch.Stop();
-                            _logger.Error(GetLogMessage("failed", $"Error: {x.Exception}"), x.Exception);
-                        }
-                    });
+                try
+                {
+                    RunMigration(cancellationToken);
+                }
+                catch (Exception e)
+                {
+                    _stopwatch.Stop();
+                    _logger.Error(GetLogMessage("failed", $"Error: {e}"), e);
+                }
             }
             else
             {
@@ -404,7 +380,7 @@ namespace Nethermind.Init.Steps.Migrations
                 return true;
             }
 
-            bool isCompactEncoding = _storageDecoder.IsCompactEncoding(receiptData!);
+            bool isCompactEncoding = ReceiptArrayStorageDecoder.IsCompactEncoding(receiptData!);
             return _receiptConfig.CompactReceiptStore != isCompactEncoding;
         }
 

@@ -2,10 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Runtime.CompilerServices;
+using System.Text.Json.Serialization;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
-using Newtonsoft.Json;
 
 [assembly: InternalsVisibleTo("Nethermind.Specs.Test")]
 namespace Nethermind.Specs.ChainSpecStyle.Json;
@@ -15,7 +15,7 @@ internal class ChainSpecParamsJson
     public ulong? ChainId { get; set; }
     public ulong? NetworkId { get; set; }
 
-    [JsonProperty(PropertyName = "registrar")]
+    [JsonPropertyName("registrar")]
     public Address EnsRegistrar { get; set; }
 
     public long? GasLimitBoundDivisor { get; set; }

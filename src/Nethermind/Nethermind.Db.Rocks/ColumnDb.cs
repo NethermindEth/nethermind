@@ -14,10 +14,10 @@ namespace Nethermind.Db.Rocks;
 public class ColumnDb : IDb
 {
     private readonly RocksDb _rocksDb;
-    private readonly DbOnTheRocks _mainDb;
+    internal readonly DbOnTheRocks _mainDb;
     internal readonly ColumnFamilyHandle _columnFamily;
 
-    private DbOnTheRocks.ManagedIterators _readaheadIterators = new();
+    private readonly DbOnTheRocks.ManagedIterators _readaheadIterators = new();
 
     public ColumnDb(RocksDb rocksDb, DbOnTheRocks mainDb, string name)
     {
@@ -62,6 +62,12 @@ public class ColumnDb : IDb
     {
         Iterator iterator = _mainDb.CreateIterator(ordered, _columnFamily);
         return _mainDb.GetAllCore(iterator);
+    }
+
+    public IEnumerable<byte[]> GetAllKeys(bool ordered = false)
+    {
+        Iterator iterator = _mainDb.CreateIterator(ordered, _columnFamily);
+        return _mainDb.GetAllKeysCore(iterator);
     }
 
     public IEnumerable<byte[]> GetAllValues(bool ordered = false)
@@ -136,4 +142,9 @@ public class ColumnDb : IDb
     public long GetCacheSize() => _mainDb.GetCacheSize();
     public long GetIndexSize() => _mainDb.GetIndexSize();
     public long GetMemtableSize() => _mainDb.GetMemtableSize();
+
+    public void DangerousReleaseMemory(in Span<byte> span)
+    {
+        _mainDb.DangerousReleaseMemory(span);
+    }
 }

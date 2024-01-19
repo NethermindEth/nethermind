@@ -9,7 +9,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
 {
     public class BlockHeadersMessageSerializer : IZeroInnerMessageSerializer<BlockHeadersMessage>
     {
-        private HeaderDecoder _headerDecoder = new();
+        private readonly HeaderDecoder _headerDecoder = new();
 
         public void Serialize(IByteBuffer byteBuffer, BlockHeadersMessage message)
         {

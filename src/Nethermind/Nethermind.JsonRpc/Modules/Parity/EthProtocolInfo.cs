@@ -3,19 +3,20 @@
 
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
-using Newtonsoft.Json;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace Nethermind.JsonRpc.Modules.Parity
 {
     public class EthProtocolInfo
     {
-        [JsonProperty("version", Order = 0)]
+        [JsonPropertyName("version")]
         public byte Version { get; set; }
 
-        [JsonProperty("difficulty", Order = 1)]
+        [JsonPropertyName("difficulty")]
         public UInt256 Difficulty { get; set; }
 
-        [JsonProperty("head", Order = 2)]
+        [JsonPropertyName("head")]
         public Hash256 HeadHash { get; set; }
     }
 }

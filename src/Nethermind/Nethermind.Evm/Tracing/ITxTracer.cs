@@ -10,7 +10,7 @@ using Nethermind.State.Tracing;
 
 namespace Nethermind.Evm.Tracing;
 
-public interface ITxTracer : IWorldStateTracer
+public interface ITxTracer : IWorldStateTracer, IDisposable
 {
     /// <summary>
     /// Defines whether MarkAsSuccess or MarkAsFailed will be called
@@ -187,9 +187,9 @@ public interface ITxTracer : IWorldStateTracer
     /// <summary>
     ///
     /// </summary>
-    /// <param name="stackTrace"></param>
+    /// <param name="stack"></param>
     /// <remarks>Depends on <see cref="IsTracingStack"/></remarks>
-    void SetOperationStack(List<string> stackTrace);
+    void SetOperationStack(TraceStack stack);
 
     /// <summary>
     ///
@@ -199,7 +199,6 @@ public interface ITxTracer : IWorldStateTracer
     void ReportStackPush(in ReadOnlySpan<byte> stackItem);
 
     /// <summary>
-
     /// </summary>
     /// <param name="stackItem"></param>
     /// <remarks>Depends on <see cref="IsTracingInstructions"/></remarks>
@@ -223,7 +222,7 @@ public interface ITxTracer : IWorldStateTracer
     /// </summary>
     /// <param name="memoryTrace"></param>
     /// <remarks>Depends on <see cref="IsTracingMemory"/></remarks>
-    void SetOperationMemory(IEnumerable<string> memoryTrace);
+    void SetOperationMemory(TraceMemory memoryTrace);
 
     /// <summary>
     ///
@@ -248,7 +247,7 @@ public interface ITxTracer : IWorldStateTracer
     /// <remarks>Depends on <see cref="IsTracingInstructions"/></remarks>
     void ReportMemoryChange(UInt256 offset, in ReadOnlySpan<byte> data)
     {
-        if (offset.u1 <= 0 && offset.u2 <= 0 && offset.u3 <= 0 && offset.u0 <= long.MaxValue)
+        if (offset is { u1: <= 0, u2: <= 0, u3: <= 0, u0: <= long.MaxValue })
         {
             ReportMemoryChange((long)offset, data);
         }
@@ -334,7 +333,7 @@ public interface ITxTracer : IWorldStateTracer
     /// <param name="callType"></param>
     /// <param name="isPrecompileCall"></param>
     /// <remarks>Depends on <see cref="IsTracingActions"/></remarks>
-    void ReportAction(long gas, UInt256 value, Address @from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false);
+    void ReportAction(long gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false);
 
     /// <summary>
     ///
@@ -347,10 +346,10 @@ public interface ITxTracer : IWorldStateTracer
     /// <summary>
     ///
     /// </summary>
-    /// <param name="evmExceptionType"></param>
     /// <param name="gasLeft"></param>
+    /// <param name="output"></param>
     /// <remarks>Depends on <see cref="IsTracingActions"/></remarks>
-    void ReportActionError(EvmExceptionType evmExceptionType, long gasLeft) => ReportActionError(evmExceptionType);
+    void ReportActionRevert(long gasLeft, byte[] output) => ReportActionError(EvmExceptionType.Revert);
 
     /// <summary>
     ///
@@ -376,11 +375,11 @@ public interface ITxTracer : IWorldStateTracer
     void ReportBlockHash(Hash256 blockHash);
 
     /// <summary>
-    ///
+    /// 
     /// </summary>
     /// <param name="byteCode"></param>
     /// <remarks>Depends on <see cref="IsTracingCode"/></remarks>
-    void ReportByteCode(byte[] byteCode);
+    void ReportByteCode(ReadOnlyMemory<byte> byteCode);
 
     /// <summary>
     /// Special case for VM trace in Parity but we consider removing support for it

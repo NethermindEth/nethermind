@@ -28,60 +28,86 @@ public class NullTxTracer : TxTracer
         => ThrowInvalidOperationException();
     public override void StartOperation(int depth, long gas, Instruction opcode, int pc, bool isPostMerge = false)
         => ThrowInvalidOperationException();
+
     public override void ReportOperationError(EvmExceptionType error)
         => ThrowInvalidOperationException();
+
     public override void ReportOperationRemainingGas(long gas)
         => ThrowInvalidOperationException();
+
     public override void SetOperationMemorySize(ulong newSize)
         => ThrowInvalidOperationException();
+
     public override void ReportMemoryChange(long offset, in ReadOnlySpan<byte> data)
         => ThrowInvalidOperationException();
+
     public override void ReportStorageChange(in ReadOnlySpan<byte> key, in ReadOnlySpan<byte> value)
         => ThrowInvalidOperationException();
-    public override void SetOperationStack(List<string> stackTrace)
+
+    public override void SetOperationStack(TraceStack stack)
         => ThrowInvalidOperationException();
+
     public override void ReportStackPush(in ReadOnlySpan<byte> stackItem)
         => ThrowInvalidOperationException();
-    public override void SetOperationMemory(IEnumerable<string> memoryTrace)
+
+    public override void SetOperationMemory(TraceMemory memoryTrace)
         => ThrowInvalidOperationException();
+
     public override void SetOperationStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> newValue, ReadOnlySpan<byte> currentValue)
         => ThrowInvalidOperationException();
+
     public override void LoadOperationStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> value)
         => ThrowInvalidOperationException();
+
     public override void ReportSelfDestruct(Address address, UInt256 balance, Address refundAddress)
         => ThrowInvalidOperationException();
+
     public override void ReportBalanceChange(Address address, UInt256? before, UInt256? after)
         => ThrowInvalidOperationException();
+
     public override void ReportCodeChange(Address address, byte[] before, byte[] after)
         => ThrowInvalidOperationException();
+
     public override void ReportNonceChange(Address address, UInt256? before, UInt256? after)
         => ThrowInvalidOperationException();
+
     public override void ReportAccountRead(Address address)
         => ThrowInvalidOperationException();
+
     public override void ReportStorageChange(in StorageCell storageCell, byte[] before, byte[] after)
         => ThrowInvalidOperationException();
+
     public override void ReportStorageRead(in StorageCell storageCell)
         => ThrowInvalidOperationException();
-    public override void ReportAction(long gas, UInt256 value, Address @from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false)
+
+    public override void ReportAction(long gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false)
         => ThrowInvalidOperationException();
+
     public override void ReportActionEnd(long gas, ReadOnlyMemory<byte> output)
         => ThrowInvalidOperationException();
+
     public override void ReportActionError(EvmExceptionType exceptionType)
         => ThrowInvalidOperationException();
+
     public override void ReportActionEnd(long gas, Address deploymentAddress, ReadOnlyMemory<byte> deployedCode)
         => ThrowInvalidOperationException();
     public override void ReportBlockHash(Hash256 blockHash)
         => ThrowInvalidOperationException();
-    public override void ReportByteCode(byte[] byteCode)
+    public override void ReportByteCode(ReadOnlyMemory<byte> byteCode)
         => ThrowInvalidOperationException();
+
     public override void ReportGasUpdateForVmTrace(long refund, long gasAvailable)
         => ThrowInvalidOperationException();
+
     public override void ReportRefund(long refund)
         => ThrowInvalidOperationException();
+
     public override void ReportExtraGasPressure(long extraGasPressure)
         => ThrowInvalidOperationException();
+
     public override void ReportAccess(IReadOnlySet<Address> accessedAddresses, IReadOnlySet<StorageCell> accessedStorageCells)
         => ThrowInvalidOperationException();
+
     public override void ReportFees(UInt256 fees, UInt256 burntFees)
         => ThrowInvalidOperationException();
 }

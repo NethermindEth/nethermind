@@ -18,6 +18,7 @@ using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.Synchronization;
 using Nethermind.Synchronization;
+using Nethermind.Synchronization.FastBlocks;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
 using Nethermind.Synchronization.SnapSync;
@@ -76,6 +77,8 @@ public partial class EngineModuleTests
         chain.BeaconSync.IsBeaconSyncHeadersFinished().Should().BeFalse();
         chain.BeaconSync.IsBeaconSyncFinished(chain.BlockTree.FindBlock(block.Hash!)?.Header).Should().BeFalse();
         AssertBeaconPivotValues(chain.BeaconPivot, block.Header);
+
+        block.Header.TotalDifficulty = 0;
         pointers.LowestInsertedBeaconHeader = block.Header;
         pointers.BestKnownBeaconBlock = block.Number;
         pointers.LowestInsertedHeader = block.Header;
@@ -150,6 +153,7 @@ public partial class EngineModuleTests
         chain.BeaconSync.IsBeaconSyncFinished(chain.BlockTree.FindBlock(block.Hash!)?.Header).Should().BeFalse();
         AssertBeaconPivotValues(chain.BeaconPivot, block.Header);
 
+        block.Header.TotalDifficulty = 0;
         pointers.LowestInsertedBeaconHeader = block.Header;
         pointers.BestKnownBeaconBlock = block.Number;
         pointers.LowestInsertedHeader = block.Header;
@@ -166,6 +170,7 @@ public partial class EngineModuleTests
         chain.BeaconSync.IsBeaconSyncFinished(chain.BlockTree.FindBlock(nextUnconnectedBlock.Hash!)?.Header).Should().BeFalse();
         AssertBeaconPivotValues(chain.BeaconPivot, nextUnconnectedBlock.Header);
 
+        nextUnconnectedBlock.Header.TotalDifficulty = 0;
         pointers.LowestInsertedBeaconHeader = nextUnconnectedBlock.Header;
         pointers.BestKnownBeaconBlock = nextUnconnectedBlock.Number;
         AssertBlockTreePointers(chain.BlockTree, pointers);
@@ -921,7 +926,6 @@ public partial class EngineModuleTests
 
     private MultiSyncModeSelector CreateMultiSyncModeSelector(MergeTestBlockchain chain)
     {
-        SyncProgressResolver syncProgressResolver = new(chain.BlockTree, chain.ReceiptStorage, chain.DbProvider.StateDb, chain.TrieStore, new ProgressTracker(chain.BlockTree, chain.StateDb, LimboLogs.Instance), new SyncConfig(), LimboLogs.Instance);
         BlockHeader peerHeader = chain.BlockTree.Head!.Header;
         ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
         syncPeer.HeadHash.Returns(peerHeader.Hash);
@@ -931,6 +935,17 @@ public partial class EngineModuleTests
         ISyncPeerPool? syncPeerPool = Substitute.For<ISyncPeerPool>();
         List<PeerInfo> peerInfos = new() { new(syncPeer) };
         syncPeerPool.InitializedPeers.Returns(peerInfos);
+
+        SyncProgressResolver syncProgressResolver = new(
+            chain.BlockTree,
+            new FullStateFinder(chain.BlockTree, chain.StateReader),
+            new SyncConfig(),
+            Substitute.For<ISyncFeed<HeadersSyncBatch?>>(),
+            Substitute.For<ISyncFeed<BodiesSyncBatch?>>(),
+            Substitute.For<ISyncFeed<ReceiptsSyncBatch?>>(),
+            Substitute.For<ISyncFeed<SnapSyncBatch?>>(),
+            LimboLogs.Instance);
+
         MultiSyncModeSelector multiSyncModeSelector = new(syncProgressResolver,
             syncPeerPool, new SyncConfig(), No.BeaconSync,
             new TotalDifficultyBetterPeerStrategy(LimboLogs.Instance), LimboLogs.Instance);
@@ -956,7 +971,7 @@ public partial class EngineModuleTests
         beaconPivot.BeaconPivotExists().Should().BeTrue();
         beaconPivot.PivotNumber.Should().Be(blockHeader.Number);
         beaconPivot.PivotHash.Should().Be(blockHeader.Hash ?? blockHeader.CalculateHash());
-        beaconPivot.PivotTotalDifficulty.Should().Be(null);
+        beaconPivot.PivotTotalDifficulty.Should().Be((UInt256)0);
     }
 
     private class BlockTreePointers

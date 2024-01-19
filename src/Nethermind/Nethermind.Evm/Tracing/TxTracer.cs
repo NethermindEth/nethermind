@@ -53,9 +53,9 @@ public class TxTracer : ITxTracer
     public virtual void StartOperation(int depth, long gas, Instruction opcode, int pc, bool isPostMerge = false) { }
     public virtual void ReportOperationError(EvmExceptionType error) { }
     public virtual void ReportOperationRemainingGas(long gas) { }
-    public virtual void SetOperationStack(List<string> stackTrace) { }
+    public virtual void SetOperationStack(TraceStack stack) { }
     public virtual void ReportStackPush(in ReadOnlySpan<byte> stackItem) { }
-    public virtual void SetOperationMemory(IEnumerable<string> memoryTrace) { }
+    public virtual void SetOperationMemory(TraceMemory memoryTrace) { }
     public virtual void SetOperationMemorySize(ulong newSize) { }
     public virtual void ReportMemoryChange(long offset, in ReadOnlySpan<byte> data) { }
     public virtual void SetOperationStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> newValue, ReadOnlySpan<byte> currentValue) { }
@@ -66,10 +66,11 @@ public class TxTracer : ITxTracer
     public virtual void ReportActionError(EvmExceptionType evmExceptionType) { }
     public virtual void ReportActionEnd(long gas, Address deploymentAddress, ReadOnlyMemory<byte> deployedCode) { }
     public virtual void ReportBlockHash(Hash256 blockHash) { }
-    public virtual void ReportByteCode(byte[] byteCode) { }
+    public virtual void ReportByteCode(ReadOnlyMemory<byte> byteCode) { }
     public virtual void ReportGasUpdateForVmTrace(long refund, long gasAvailable) { }
     public virtual void ReportRefund(long refund) { }
     public virtual void ReportExtraGasPressure(long extraGasPressure) { }
     public virtual void ReportAccess(IReadOnlySet<Address> accessedAddresses, IReadOnlySet<StorageCell> accessedStorageCells) { }
     public virtual void ReportFees(UInt256 fees, UInt256 burntFees) { }
+    public virtual void Dispose() { }
 }

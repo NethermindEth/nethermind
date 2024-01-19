@@ -110,7 +110,7 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
             {
                 BlockTree = BlockTree,
                 DbProvider = DbProvider,
-                ReadOnlyTrieStore = ReadOnlyTrieStore,
+                WorldStateManager = WorldStateManager,
                 SpecProvider = SpecProvider,
                 TransactionComparerProvider = TransactionComparerProvider,
                 TxPool = TxPool
@@ -144,7 +144,8 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
             BlocksConfig blocksConfig = new() { MinGasPrice = 0 };
             ISyncConfig syncConfig = new SyncConfig();
             TargetAdjustedGasLimitCalculator targetAdjustedGasLimitCalculator = new(SpecProvider, blocksConfig);
-            EthSyncingInfo = new EthSyncingInfo(BlockTree, ReceiptStorage, syncConfig, new StaticSelector(SyncMode.All), LogManager);
+            EthSyncingInfo = new EthSyncingInfo(BlockTree, ReceiptStorage, syncConfig,
+                new StaticSelector(SyncMode.All), Substitute.For<ISyncProgressResolver>(), LogManager);
             PostMergeBlockProducerFactory blockProducerFactory = new(
                 SpecProvider,
                 SealEngine,
@@ -157,9 +158,8 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
                 _api!,
                 new AuRaConfig(),
                 new DisposableStack(),
-                DbProvider,
+                WorldStateManager,
                 BlockTree,
-                ReadOnlyTrieStore,
                 SpecProvider,
                 BlockValidator,
                 NoBlockRewards.Instance,

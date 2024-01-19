@@ -40,7 +40,7 @@ public class EnrRecordParser : IEnrRecordParser
 
     public NodeRecord ParseRecord(string nodeRecordText, IByteBuffer buffer)
     {
-        void AddPadding(IByteBuffer byteBuffer, ICharSequence base64)
+        static void AddPadding(IByteBuffer byteBuffer, ICharSequence base64)
         {
             if (base64[^1] != '=')
             {

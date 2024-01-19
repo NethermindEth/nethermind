@@ -64,6 +64,9 @@ public class RecoveryTests
         _nodeDataRecovery = new GetNodeDataTrieNodeRecovery(_syncPeerPool, LimboLogs.Instance);
     }
 
+    [TearDown]
+    public void TearDown() => _syncPeerPool?.Dispose();
+
     [Test]
     public async Task can_recover_eth66()
     {

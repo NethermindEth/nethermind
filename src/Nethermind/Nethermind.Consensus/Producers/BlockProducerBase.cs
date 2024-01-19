@@ -194,7 +194,7 @@ namespace Nethermind.Consensus.Producers
                                 if (t.Result is not null)
                                 {
                                     if (Logger.IsInfo)
-                                        Logger.Info($"Sealed block {t.Result.ToString(Block.Format.HashNumberDiffAndTx)}");
+                                        Logger.Info($"Produced block {t.Result.ToString(Block.Format.HashNumberDiffAndTx)}");
                                     Metrics.BlocksSealed++;
                                     _lastProducedBlockDateTime = DateTime.UtcNow;
                                     return t.Result;
@@ -203,18 +203,18 @@ namespace Nethermind.Consensus.Producers
                                 {
                                     if (Logger.IsInfo)
                                         Logger.Info(
-                                            $"Failed to seal block {processedBlock.ToString(Block.Format.HashNumberDiffAndTx)} (null seal)");
+                                            $"Failed to produce block {processedBlock.ToString(Block.Format.HashNumberDiffAndTx)} (null seal)");
                                     Metrics.FailedBlockSeals++;
                                 }
                             }
                             else if (t.IsFaulted)
                             {
-                                if (Logger.IsError) Logger.Error("Mining failed", t.Exception);
+                                if (Logger.IsError) Logger.Error("Producing failed", t.Exception);
                                 Metrics.FailedBlockSeals++;
                             }
                             else if (t.IsCanceled)
                             {
-                                if (Logger.IsInfo) Logger.Info($"Sealing block {processedBlock.Number} cancelled");
+                                if (Logger.IsInfo) Logger.Info($"Producing block {processedBlock.Number} cancelled");
                                 Metrics.FailedBlockSeals++;
                             }
 
@@ -235,14 +235,7 @@ namespace Nethermind.Consensus.Producers
         /// <remarks>Should be called inside <see cref="_producingBlockLock"/> lock.</remarks>
         protected bool TrySetState(Hash256? parentStateRoot)
         {
-            bool HasState(Hash256 stateRoot)
-            {
-                RootCheckVisitor visitor = new();
-                StateProvider.Accept(visitor, stateRoot);
-                return visitor.HasRoot;
-            }
-
-            if (parentStateRoot is not null && HasState(parentStateRoot))
+            if (parentStateRoot is not null && StateProvider.HasStateForRoot(parentStateRoot))
             {
                 StateProvider.StateRoot = parentStateRoot;
                 return true;

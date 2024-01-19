@@ -147,6 +147,7 @@ public class ChainSpecLoaderTests
         chainSpec.LondonBlockNumber.Should().Be(GoerliSpecProvider.LondonBlockNumber);
         chainSpec.ShanghaiTimestamp.Should().Be(GoerliSpecProvider.ShanghaiTimestamp);
         chainSpec.ShanghaiTimestamp.Should().Be(GoerliSpecProvider.Instance.TimestampFork);
+        chainSpec.CancunTimestamp.Should().Be(GoerliSpecProvider.CancunTimestamp);
     }
 
     [Test]
@@ -192,30 +193,6 @@ public class ChainSpecLoaderTests
         chainSpec.ShanghaiTimestamp.Should().Be(ChiadoSpecProvider.ShanghaiTimestamp);
         chainSpec.ShanghaiTimestamp.Should().Be(ChiadoSpecProvider.Instance.TimestampFork);
 
-    }
-
-    [Test]
-    public void Can_load_rinkeby()
-    {
-        string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, "../../../../", "Chains/rinkeby.json");
-        ChainSpec chainSpec = LoadChainSpec(path);
-
-        Assert.That(chainSpec.Parameters.Eip1559BaseFeeInitialValue, Is.EqualTo(1.GWei()), $"fork base fee");
-        Assert.That(chainSpec.NetworkId, Is.EqualTo(4), $"{nameof(chainSpec.NetworkId)}");
-        Assert.That(chainSpec.Name, Is.EqualTo("Rinkeby"), $"{nameof(chainSpec.Name)}");
-        Assert.That(chainSpec.SealEngineType, Is.EqualTo(SealEngineType.Clique), "engine");
-        Assert.That(chainSpec.IstanbulBlockNumber, Is.EqualTo((long?)5435345), "istanbul no");
-
-        // chainSpec.HomesteadBlockNumber.Should().Be(RinkebySpecProvider.HomesteadBlockNumber);
-        chainSpec.DaoForkBlockNumber.Should().Be(null);
-        chainSpec.TangerineWhistleBlockNumber.Should().Be(RinkebySpecProvider.TangerineWhistleBlockNumber);
-        chainSpec.SpuriousDragonBlockNumber.Should().Be(RinkebySpecProvider.SpuriousDragonBlockNumber);
-        chainSpec.ByzantiumBlockNumber.Should().Be(RinkebySpecProvider.ByzantiumBlockNumber);
-        chainSpec.ConstantinopleBlockNumber.Should().Be(RinkebySpecProvider.ConstantinopleBlockNumber);
-        chainSpec.ConstantinopleFixBlockNumber.Should().Be(RinkebySpecProvider.ConstantinopleFixBlockNumber);
-        chainSpec.IstanbulBlockNumber.Should().Be(RinkebySpecProvider.IstanbulBlockNumber);
-        chainSpec.BerlinBlockNumber.Should().Be(RinkebySpecProvider.BerlinBlockNumber);
-        chainSpec.LondonBlockNumber.Should().Be(RinkebySpecProvider.LondonBlockNumber);
     }
 
     [Test]

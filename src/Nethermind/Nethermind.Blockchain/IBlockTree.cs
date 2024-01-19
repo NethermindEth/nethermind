@@ -177,7 +177,7 @@ namespace Nethermind.Blockchain
         /// </summary>
         event EventHandler<OnUpdateMainChainArgs> OnUpdateMainChain;
 
-        int DeleteChainSlice(in long startNumber, long? endNumber = null);
+        int DeleteChainSlice(in long startNumber, long? endNumber = null, bool force = false);
 
         bool IsBetterThanHead(BlockHeader? header);
 

@@ -30,7 +30,14 @@ namespace Nethermind.Core
         /// <returns>Can return null or empty Span on missing key</returns>
         Span<byte> GetSpan(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None) => Get(key, flags);
 
-        bool KeyExists(ReadOnlySpan<byte> key) => GetSpan(key).IsNull();
+        bool KeyExists(ReadOnlySpan<byte> key)
+        {
+            Span<byte> span = GetSpan(key);
+            bool result = span.IsNull();
+            DangerousReleaseMemory(span);
+            return result;
+        }
+
         void DangerousReleaseMemory(in Span<byte> span) { }
     }
 
@@ -63,6 +70,9 @@ namespace Nethermind.Core
 
         // Hint that the workload is likely to need the next value in the sequence and should prefetch it.
         HintReadAhead = 2,
+
+        // Used for full pruning db to skip duplicate read
+        SkipDuplicateRead = 4,
     }
 
     [Flags]

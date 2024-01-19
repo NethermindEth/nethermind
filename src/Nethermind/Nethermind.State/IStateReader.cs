@@ -12,10 +12,11 @@ namespace Nethermind.State
     {
         Account? GetAccount(Hash256 stateRoot, Address address);
 
-        byte[]? GetStorage(Hash256 storageRoot, in UInt256 index);
+        byte[]? GetStorage(Hash256 stateRoot, Address address, in UInt256 index);
 
         byte[]? GetCode(Hash256 codeHash);
 
         void RunTreeVisitor(ITreeVisitor treeVisitor, Hash256 stateRoot, VisitingOptions? visitingOptions = null);
+        bool HasStateForRoot(Hash256 stateRoot);
     }
 }

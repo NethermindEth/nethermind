@@ -379,7 +379,7 @@ public class CliqueBlockProducer : ICliqueBlockProducer, IDisposable
         // Assemble the voting snapshot to check which votes make sense
         Snapshot snapshot = _snapshotManager.GetOrCreateSnapshot(number - 1, parentHeader.Hash);
         bool isEpochBlock = (ulong)number % 30000 == 0;
-        if (!isEpochBlock && _proposals.Any())
+        if (!isEpochBlock && !_proposals.IsEmpty)
         {
             // Gather all the proposals that make sense voting on
             List<Address> addresses = new();
@@ -447,7 +447,7 @@ public class CliqueBlockProducer : ICliqueBlockProducer, IDisposable
             Array.Empty<BlockHeader>(),
             spec.WithdrawalsEnabled ? Enumerable.Empty<Withdrawal>() : null
             );
-        header.TxRoot = new TxTrie(block.Transactions).RootHash;
+        header.TxRoot = TxTrie.CalculateRoot(block.Transactions);
         block.Header.Author = _sealer.Address;
         return block;
     }

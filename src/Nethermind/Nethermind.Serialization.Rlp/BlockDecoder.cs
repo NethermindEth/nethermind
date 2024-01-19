@@ -224,7 +224,7 @@ namespace Nethermind.Serialization.Rlp
 
             RlpStream rlpStream = new(GetLength(item, rlpBehaviors));
             Encode(rlpStream, item, rlpBehaviors);
-            return new(rlpStream.Data);
+            return new(rlpStream.Data.ToArray());
         }
 
         public void Encode(RlpStream stream, Block? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
@@ -261,7 +261,7 @@ namespace Nethermind.Serialization.Rlp
             }
         }
 
-        public ReceiptRecoveryBlock? DecodeToReceiptRecoveryBlock(MemoryManager<byte>? memoryManager, Memory<byte> memory, RlpBehaviors rlpBehaviors)
+        public static ReceiptRecoveryBlock? DecodeToReceiptRecoveryBlock(MemoryManager<byte>? memoryManager, Memory<byte> memory, RlpBehaviors rlpBehaviors)
         {
             Rlp.ValueDecoderContext decoderContext = new Rlp.ValueDecoderContext(memory, true);
 

@@ -40,6 +40,13 @@ namespace Nethermind.Blockchain.Test
         private TestMemDb _headersDb = null!;
         private TestMemDb _blocksDb = null!;
 
+        [TearDown]
+        public void TearDown()
+        {
+            _blocksDb?.Dispose();
+            _headersDb?.Dispose();
+        }
+
         private BlockTree BuildBlockTree()
         {
             _blocksDb = new TestMemDb();
@@ -1208,7 +1215,7 @@ namespace Nethermind.Blockchain.Test
         }
 
 
-        private static object[] SourceOfBSearchTestCases =
+        private static readonly object[] SourceOfBSearchTestCases =
         {
             new object[] {1L, 0L},
             new object[] {1L, 1L},
@@ -1820,8 +1827,9 @@ namespace Nethermind.Blockchain.Test
             findFunction(blockTree, invalidBlock.Hash, lookupOptions).Should().Be(foundInvalid ? invalidBlock.Header : null);
         }
 
-        [Test]
-        public void On_restart_loads_already_processed_genesis_block()
+        [TestCase(true)]
+        [TestCase(false)]
+        public void On_restart_loads_already_processed_genesis_block(bool wereProcessed)
         {
             TestMemDb blocksDb = new();
             TestMemDb headersDb = new();
@@ -1890,7 +1898,7 @@ namespace Nethermind.Blockchain.Test
                 tree.SuggestBlock(genesis);
                 tree.Genesis.Should().NotBeNull();
 
-                tree.UpdateMainChain(ImmutableList.Create(genesis), true);
+                tree.UpdateMainChain(ImmutableList.Create(genesis), wereProcessed);
 
                 tree.SuggestBlock(second);
                 tree.SuggestBlock(third);

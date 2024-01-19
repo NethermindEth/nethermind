@@ -28,7 +28,7 @@ namespace Nethermind.Synchronization.Test.FastSync
     [TestFixture(1, 100)]
     [TestFixture(4, 0)]
     [TestFixture(4, 100)]
-    [Parallelizable(ParallelScope.Children)]
+    [Parallelizable(ParallelScope.All)]
     public class StateSyncFeedTests : StateSyncFeedTestsBase
     {
         // Useful for set and forget run. But this test is taking a long time to have it set to other than 1.
@@ -364,9 +364,9 @@ namespace Nethermind.Synchronization.Test.FastSync
 
             BlockTree blockTree = Build.A.BlockTree().OfChainLength((int)BlockTree.BestSuggestedHeader!.Number).TestObject;
 
-            ctx.SyncModeSelector = StaticSelector.StateNodesWithFastBlocks;
             ctx.TreeFeed = new(SyncMode.StateNodes, dbContext.LocalCodeDb, dbContext.LocalStateDb, blockTree, _logManager);
-            ctx.Feed = new StateSyncFeed(ctx.SyncModeSelector, ctx.TreeFeed, _logManager);
+            ctx.Feed = new StateSyncFeed(ctx.TreeFeed, _logManager);
+            ctx.Feed.SyncModeSelectorOnChanged(SyncMode.StateNodes | SyncMode.FastBlocks);
             ctx.TreeFeed.ResetStateRoot(100, dbContext.RemoteStateTree.RootHash, SyncFeedState.Dormant);
 
             StateSyncBatch? request = await ctx.Feed.PrepareRequest();
@@ -387,9 +387,9 @@ namespace Nethermind.Synchronization.Test.FastSync
 
             BlockTree blockTree = Build.A.BlockTree().OfChainLength((int)BlockTree.BestSuggestedHeader!.Number).TestObject;
 
-            ctx.SyncModeSelector = StaticSelector.StateNodesWithFastBlocks;
             ctx.TreeFeed = new(SyncMode.StateNodes, dbContext.LocalCodeDb, dbContext.LocalStateDb, blockTree, _logManager);
-            ctx.Feed = new StateSyncFeed(ctx.SyncModeSelector, ctx.TreeFeed, _logManager);
+            ctx.Feed = new StateSyncFeed(ctx.TreeFeed, _logManager);
+            ctx.Feed.SyncModeSelectorOnChanged(SyncMode.StateNodes | SyncMode.FastBlocks);
             ctx.TreeFeed.ResetStateRoot(100, dbContext.RemoteStateTree.RootHash, SyncFeedState.Dormant);
 
             StateSyncBatch? request = await ctx.Feed.PrepareRequest();

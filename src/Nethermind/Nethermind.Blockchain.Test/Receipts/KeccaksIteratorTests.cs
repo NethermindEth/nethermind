@@ -64,7 +64,7 @@ public class KeccaksIteratorTests
         }
 
         Span<byte> buffer = stackalloc byte[32];
-        KeccaksIterator iterator = new(rlpStream.Data, buffer);
+        KeccaksIterator iterator = new(rlpStream.Data.AsSpan(), buffer);
 
         List<Hash256> decoded = new();
         while (iterator.TryGetNext(out Hash256StructRef kec))
@@ -92,7 +92,7 @@ public class KeccaksIteratorTests
         }
 
         Span<byte> buffer = stackalloc byte[32];
-        KeccaksIterator iterator = new(rlpStream.Data, buffer);
+        KeccaksIterator iterator = new(rlpStream.Data.AsSpan(), buffer);
 
         List<Hash256> decoded = new();
         while (iterator.TryGetNext(out Hash256StructRef kec))

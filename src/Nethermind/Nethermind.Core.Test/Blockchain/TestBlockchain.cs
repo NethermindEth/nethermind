@@ -35,6 +35,7 @@ using Nethermind.State;
 using Nethermind.State.Repositories;
 using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
+using NSubstitute;
 using BlockTree = Nethermind.Blockchain.BlockTree;
 
 namespace Nethermind.Core.Test.Blockchain;
@@ -49,6 +50,7 @@ public class TestBlockchain : IDisposable
     public IReceiptStorage ReceiptStorage { get; set; } = null!;
     public ITxPool TxPool { get; set; } = null!;
     public IDb CodeDb => DbProvider.CodeDb;
+    public IWorldStateManager WorldStateManager { get; set; } = null!;
     public IBlockProcessor BlockProcessor { get; set; } = null!;
     public IBeaconBlockRootHandler BeaconBlockRootHandler { get; set; } = null!;
     public IBlockchainProcessor BlockchainProcessor { get; set; } = null!;
@@ -57,6 +59,8 @@ public class TestBlockchain : IDisposable
 
     public IBlockProcessingQueue BlockProcessingQueue { get; set; } = null!;
     public IBlockTree BlockTree { get; set; } = null!;
+
+    public Action<IWorldState>? InitialStateMutator { get; set; }
 
     public IBlockFinder BlockFinder
     {
@@ -91,7 +95,7 @@ public class TestBlockchain : IDisposable
     public static Address AccountC = TestItem.AddressC;
     public SemaphoreSlim _resetEvent = null!;
     private ManualResetEvent _suggestedBlockResetEvent = null!;
-    private AutoResetEvent _oneAtATime = new(true);
+    private readonly AutoResetEvent _oneAtATime = new(true);
     private IBlockFinder _blockFinder = null!;
 
     public static readonly UInt256 InitialValue = 1000.Ether();
@@ -129,6 +133,8 @@ public class TestBlockchain : IDisposable
         State.CreateAccount(TestItem.AddressB, (initialValues ?? InitialValue));
         State.CreateAccount(TestItem.AddressC, (initialValues ?? InitialValue));
 
+        InitialStateMutator?.Invoke(State);
+
         byte[] code = Bytes.FromHexString("0xabcd");
         Hash256 codeHash = Keccak.Compute(code);
         State.InsertCode(TestItem.AddressA, code, SpecProvider.GenesisSpec);
@@ -139,6 +145,7 @@ public class TestBlockchain : IDisposable
         State.CommitTree(0);
 
         ReadOnlyTrieStore = TrieStore.AsReadOnly(StateDb);
+        WorldStateManager = new WorldStateManager(State, TrieStore, DbProvider, LimboLogs.Instance);
         StateReader = new StateReader(ReadOnlyTrieStore, CodeDb, LogManager);
 
         BlockTree = Builders.Build.A.BlockTree()
@@ -155,15 +162,15 @@ public class TestBlockchain : IDisposable
 
         NonceManager = new NonceManager(chainHeadInfoProvider.AccountStateProvider);
 
-        _trieStoreWatcher = new TrieStoreBoundaryWatcher(TrieStore, BlockTree, LogManager);
+        _trieStoreWatcher = new TrieStoreBoundaryWatcher(WorldStateManager, BlockTree, LogManager);
 
-        ReceiptStorage = new InMemoryReceiptStorage();
+        ReceiptStorage = new InMemoryReceiptStorage(blockTree: BlockTree);
         VirtualMachine virtualMachine = new(new BlockhashProvider(BlockTree, LogManager), SpecProvider, LogManager);
         TxProcessor = new TransactionProcessor(SpecProvider, State, virtualMachine, LogManager);
         BlockPreprocessorStep = new RecoverSignatures(EthereumEcdsa, TxPool, SpecProvider, LogManager);
         HeaderValidator = new HeaderValidator(BlockTree, Always.Valid, SpecProvider, LogManager);
 
-        new ReceiptCanonicalityMonitor(BlockTree, ReceiptStorage, LogManager);
+        new ReceiptCanonicalityMonitor(ReceiptStorage, LogManager);
 
         BlockValidator = new BlockValidator(
             new TxValidator(SpecProvider.ChainId),
@@ -247,9 +254,8 @@ public class TestBlockchain : IDisposable
         BlocksConfig blocksConfig = new();
 
         BlockProducerEnvFactory blockProducerEnvFactory = new(
-            DbProvider,
+            WorldStateManager,
             BlockTree,
-            ReadOnlyTrieStore,
             SpecProvider,
             BlockValidator,
             NoBlockRewards.Instance,
@@ -281,7 +287,7 @@ public class TestBlockchain : IDisposable
             EthereumEcdsa,
             new BlobTxStorage(),
             new ChainHeadInfoProvider(new FixedForkActivationChainHeadSpecProvider(SpecProvider), BlockTree, ReadOnlyState),
-            new TxPoolConfig() { BlobSupportEnabled = true },
+            new TxPoolConfig() { BlobsSupport = BlobsSupportMode.InMemory },
             new TxValidator(SpecProvider.ChainId),
             LogManager,
             TransactionComparerProvider.GetDefaultComparer());

@@ -109,7 +109,7 @@ namespace Nethermind.Serialization.Rlp
             throw new NotImplementedException();
         }
 
-        private int GetContentLength(ChainLevelInfo item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        private static int GetContentLength(ChainLevelInfo item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (item == null)
             {
@@ -132,7 +132,7 @@ namespace Nethermind.Serialization.Rlp
             return Rlp.LengthOfSequence(contLength);
         }
 
-        private int GetBlockInfoLength(BlockInfo[] item)
+        private static int GetBlockInfoLength(BlockInfo[] item)
         {
             int contentLength = 0;
             foreach (BlockInfo? blockInfo in item)

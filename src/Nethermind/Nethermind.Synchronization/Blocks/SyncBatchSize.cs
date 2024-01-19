@@ -10,7 +10,7 @@ namespace Nethermind.Synchronization.Blocks
     [DebuggerDisplay("{Current}")]
     public struct SyncBatchSize
     {
-        private ILogger _logger;
+        private readonly ILogger _logger;
 
         // The batch size is kinda also used for downloading bodies which is large. Peers can return less body
         // than required, however, they still tend to timeout, so we try to limit this from our side.
@@ -22,9 +22,9 @@ namespace Nethermind.Synchronization.Blocks
 
         public int Current { get; private set; }
 
-        public bool IsMin => Current == Min;
+        public readonly bool IsMin => Current == Min;
 
-        public bool IsMax => Current == Max;
+        public readonly bool IsMax => Current == Max;
 
         public SyncBatchSize(ILogManager logManager)
         {

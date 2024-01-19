@@ -37,7 +37,7 @@ namespace Nethermind.Synchronization.LesSync
             StoreRootHash(sectionIndex);
         }
 
-        public long GetMaxSectionIndex()
+        public static long GetMaxSectionIndex()
         {
             //return GetMaxSectionIndex(_keyValueStore);
             return -1;
@@ -45,12 +45,12 @@ namespace Nethermind.Synchronization.LesSync
 
         public static long GetSectionFromBlockNo(long blockNo) => (blockNo / SectionSize) - 1L;
 
-        public byte[][] BuildProof(long blockNo, long sectionIndex, long fromLevel)
+        public static byte[][] BuildProof(long blockNo, long sectionIndex, long fromLevel)
         {
             return BuildProof(GetKey(blockNo), sectionIndex, fromLevel);
         }
 
-        public byte[][] BuildProof(byte[] key, long sectionIndex, long fromLevel)
+        public static byte[][] BuildProof(byte[] key, long sectionIndex, long fromLevel)
         {
             ChtProofCollector proofCollector = new(key, fromLevel);
             //Accept(proofCollector, GetRootHash(sectionIndex), false);
@@ -126,7 +126,7 @@ namespace Nethermind.Synchronization.LesSync
             return Bytes.Concat(Encoding.ASCII.GetBytes("RootHash"), GetKey(key));
         }
 
-        private Rlp GetValue(BlockHeader header)
+        private static Rlp GetValue(BlockHeader header)
         {
             if (!header.TotalDifficulty.HasValue)
             {
@@ -136,7 +136,7 @@ namespace Nethermind.Synchronization.LesSync
             (Hash256? Hash, UInt256 Value) item = (header.Hash, header.TotalDifficulty.Value);
             RlpStream stream = new(_decoder.GetLength(item, RlpBehaviors.None));
             _decoder.Encode(stream, item);
-            return new Rlp(stream.Data);
+            return new Rlp(stream.Data.ToArray());
         }
     }
 }

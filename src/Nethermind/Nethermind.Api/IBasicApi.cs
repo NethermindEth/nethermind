@@ -30,8 +30,7 @@ namespace Nethermind.Api
         IConfigProvider ConfigProvider { get; set; }
         ICryptoRandom CryptoRandom { get; }
         IDbProvider? DbProvider { get; set; }
-        IRocksDbFactory? RocksDbFactory { get; set; }
-        IMemDbFactory? MemDbFactory { get; set; }
+        IDbFactory? DbFactory { get; set; }
         IEthereumEcdsa? EthereumEcdsa { get; set; }
         IJsonSerializer EthereumJsonSerializer { get; set; }
         IFileSystem FileSystem { get; set; }
@@ -41,7 +40,7 @@ namespace Nethermind.Api
         IReadOnlyList<INethermindPlugin> Plugins { get; }
         string SealEngineType { get; set; }
         ISpecProvider? SpecProvider { get; set; }
-        ISyncModeSelector? SyncModeSelector { get; set; }
+        ISyncModeSelector SyncModeSelector { get; set; }
         ISyncProgressResolver? SyncProgressResolver { get; set; }
         IBetterPeerStrategy? BetterPeerStrategy { get; set; }
         ITimestamper Timestamper { get; }

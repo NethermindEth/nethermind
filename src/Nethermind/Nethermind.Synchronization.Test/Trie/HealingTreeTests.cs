@@ -83,7 +83,7 @@ public class HealingTreeTests
             k => throw new MissingTrieNodeException("", new TrieNodeException("", _key), path, 1),
             k => new TrieNode(NodeType.Leaf) { Key = path });
         TestMemDb db = new();
-        trieStore.AsKeyValueStore().Returns(db);
+        trieStore.TrieNodeRlpStore.Returns(db);
 
         ITrieNodeRecovery<GetTrieNodesRequest> recovery = Substitute.For<ITrieNodeRecovery<GetTrieNodesRequest>>();
         recovery.CanRecover.Returns(isMainThread);
@@ -95,7 +95,7 @@ public class HealingTreeTests
         if (isMainThread && successfullyRecovered)
         {
             action.Should().NotThrow();
-            db.KeyWasWritten(kvp => Bytes.AreEqual(kvp.Item1, ValueKeccak.Compute(_rlp).Bytes) && Bytes.AreEqual(kvp.Item2, _rlp));
+            trieStore.Received().Set(ValueKeccak.Compute(_rlp), _rlp);
         }
         else
         {

@@ -10,6 +10,7 @@ using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Synchronization.FastBlocks;
@@ -57,13 +58,13 @@ public class ReceiptSyncFeedTests
 
         IReceiptStorage receiptStorage = Substitute.For<IReceiptStorage>();
         ReceiptsSyncFeed syncFeed = new ReceiptsSyncFeed(
-            Substitute.For<ISyncModeSelector>(),
             MainnetSpecProvider.Instance,
             syncingTooBlockTree,
             receiptStorage,
             Substitute.For<ISyncPeerPool>(),
             syncConfig,
             new NullSyncReport(),
+            new MemDb(),
             LimboLogs.Instance
         );
         syncFeed.InitializeFeed();

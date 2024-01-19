@@ -17,7 +17,7 @@ public class ColumnsDb<T> : DbOnTheRocks, IColumnsDb<T> where T : struct, Enum
 {
     private readonly IDictionary<T, ColumnDb> _columnDbs = new Dictionary<T, ColumnDb>();
 
-    public ColumnsDb(string basePath, RocksDbSettings settings, IDbConfig dbConfig, ILogManager logManager, IReadOnlyList<T> keys, IntPtr? sharedCache = null)
+    public ColumnsDb(string basePath, DbSettings settings, IDbConfig dbConfig, ILogManager logManager, IReadOnlyList<T> keys, IntPtr? sharedCache = null)
         : base(basePath, settings, dbConfig, logManager, GetEnumKeys(keys).Select((key) => key.ToString()).ToList(), sharedCache: sharedCache)
     {
         keys = GetEnumKeys(keys);
@@ -72,7 +72,7 @@ public class ColumnsDb<T> : DbOnTheRocks, IColumnsDb<T> where T : struct, Enum
     private class RocksColumnsWriteBatch : IColumnsWriteBatch<T>
     {
         internal RocksDbWriteBatch _writeBatch;
-        private ColumnsDb<T> _columnsDb;
+        private readonly ColumnsDb<T> _columnsDb;
 
         public RocksColumnsWriteBatch(ColumnsDb<T> columnsDb)
         {

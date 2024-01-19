@@ -10,7 +10,7 @@ namespace Nethermind.Core.Test.Collections;
 
 public class ClampedReadOnlyList<T> : IReadOnlyList<T>
 {
-    private IReadOnlyList<T> _baseImplementation;
+    private readonly IReadOnlyList<T> _baseImplementation;
 
     public ClampedReadOnlyList(IReadOnlyList<T> toClampList, int maxSize)
     {

@@ -47,27 +47,27 @@ namespace Nethermind.Network.Test
 
         public class Context
         {
-            private int _localPort = 30312;
-            private int _remotePort = 30000;
-            private string _remoteHost = "35.0.0.1";
+            private readonly int _localPort = 30312;
+            private readonly int _remotePort = 30000;
+            private readonly string _remoteHost = "35.0.0.1";
             private ISession _currentSession;
-            private IDiscoveryApp _discoveryApp;
-            private IRlpxHost _rlpxHost;
-            private ProtocolsManager _manager;
-            private INodeStatsManager _nodeStatsManager;
-            private INetworkStorage _peerStorage;
-            private IProtocolValidator _protocolValidator;
-            private IMessageSerializationService _serializer;
-            private ISyncServer _syncServer;
-            private ISyncPeerPool _syncPeerPool;
-            private ITxPool _txPool;
-            private IPooledTxsRequestor _pooledTxsRequestor;
-            private IChannelHandlerContext _channelHandlerContext;
-            private IChannel _channel;
-            private IChannelPipeline _pipeline;
-            private IPacketSender _packetSender;
-            private IBlockTree _blockTree;
-            private IGossipPolicy _gossipPolicy;
+            private readonly IDiscoveryApp _discoveryApp;
+            private readonly IRlpxHost _rlpxHost;
+            private readonly ProtocolsManager _manager;
+            private readonly INodeStatsManager _nodeStatsManager;
+            private readonly INetworkStorage _peerStorage;
+            private readonly IProtocolValidator _protocolValidator;
+            private readonly IMessageSerializationService _serializer;
+            private readonly ISyncServer _syncServer;
+            private readonly ISyncPeerPool _syncPeerPool;
+            private readonly ITxPool _txPool;
+            private readonly IPooledTxsRequestor _pooledTxsRequestor;
+            private readonly IChannelHandlerContext _channelHandlerContext;
+            private readonly IChannel _channel;
+            private readonly IChannelPipeline _pipeline;
+            private readonly IPacketSender _packetSender;
+            private readonly IBlockTree _blockTree;
+            private readonly IGossipPolicy _gossipPolicy;
 
             public Context()
             {

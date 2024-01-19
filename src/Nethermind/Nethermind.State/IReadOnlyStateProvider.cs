@@ -39,5 +39,6 @@ namespace Nethermind.State
         bool IsDeadAccount(Address address);
 
         bool IsEmptyAccount(Address address);
+        bool HasStateForRoot(Hash256 stateRoot);
     }
 }

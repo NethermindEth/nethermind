@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections;
+using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -183,6 +184,26 @@ namespace Nethermind.Core.Test
         public bool Is_PointEvaluationPrecompile_properly_activated(IReleaseSpec spec) =>
             Address.FromNumber(0x0a).IsPrecompile(spec);
 
+        [TestCase(Address.SystemUserHex, false)]
+        [TestCase("2" + Address.SystemUserHex, false)]
+        [TestCase("2" + Address.SystemUserHex, true)]
+        public void Parse_variable_length(string addressHex, bool allowOverflow)
+        {
+            var result = Address.TryParseVariableLength(addressHex, out Address? address, allowOverflow);
+            result.Should().Be(addressHex.Length <= Address.SystemUserHex.Length || allowOverflow);
+            if (result)
+            {
+                address.Should().Be(Address.SystemUser);
+            }
+        }
+
+        [Test]
+        public void Parse_variable_length_too_short()
+        {
+            Address.TryParseVariableLength("1", out Address? address).Should().Be(true);
+            address.Should().Be(new Address("0000000000000000000000000000000000000001"));
+        }
+
         public static IEnumerable PointEvaluationPrecompileTestCases
         {
             get
@@ -197,7 +218,6 @@ namespace Nethermind.Core.Test
         {
             _ = KnownAddresses.GoerliValidators;
             _ = KnownAddresses.KnownMiners;
-            _ = KnownAddresses.RinkebyValidators;
         }
     }
 }

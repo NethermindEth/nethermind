@@ -7,6 +7,7 @@ using System.Threading;
 using Nethermind.Abi;
 using Nethermind.Api.Extensions;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.FullPruning;
@@ -70,17 +71,13 @@ namespace Nethermind.Api
             DisposeStack.Push(CryptoRandom);
         }
 
-        private IReadOnlyDbProvider? _readOnlyDbProvider;
-
         public IBlockchainBridge CreateBlockchainBridge()
         {
             ReadOnlyBlockTree readOnlyTree = BlockTree!.AsReadOnly();
-            LazyInitializer.EnsureInitialized(ref _readOnlyDbProvider, () => new ReadOnlyDbProvider(DbProvider, false));
 
             // TODO: reuse the same trie cache here
             ReadOnlyTxProcessingEnv readOnlyTxProcessingEnv = new(
-                _readOnlyDbProvider,
-                ReadOnlyTrieStore,
+                WorldStateManager!,
                 readOnlyTree,
                 SpecProvider,
                 LogManager);
@@ -104,7 +101,7 @@ namespace Nethermind.Api
         }
 
         public IAbiEncoder AbiEncoder { get; } = Nethermind.Abi.AbiEncoder.Instance;
-        public ITxStorage? BlobTxStorage { get; set; }
+        public IBlobTxStorage? BlobTxStorage { get; set; }
         public IBlockchainProcessor? BlockchainProcessor { get; set; }
         public CompositeBlockPreprocessorStep BlockPreprocessor { get; } = new();
         public IBlockProcessingQueue? BlockProcessingQueue { get; set; }
@@ -117,8 +114,7 @@ namespace Nethermind.Api
         public IConfigProvider ConfigProvider { get; set; }
         public ICryptoRandom CryptoRandom { get; }
         public IDbProvider? DbProvider { get; set; }
-        public IRocksDbFactory? RocksDbFactory { get; set; }
-        public IMemDbFactory? MemDbFactory { get; set; }
+        public IDbFactory? DbFactory { get; set; }
         public IDisconnectsAnalyzer? DisconnectsAnalyzer { get; set; }
         public IDiscoveryApp? DiscoveryApp { get; set; }
         public ISigner? EngineSigner { get; set; }
@@ -180,11 +176,10 @@ namespace Nethermind.Api
         public ISessionMonitor? SessionMonitor { get; set; }
         public ISpecProvider? SpecProvider { get; set; }
         public IPoSSwitcher PoSSwitcher { get; set; } = NoPoS.Instance;
-        public ISyncModeSelector? SyncModeSelector { get; set; }
+        public ISyncModeSelector SyncModeSelector { get; set; } = null!;
 
         public ISyncProgressResolver? SyncProgressResolver { get; set; }
         public IBetterPeerStrategy? BetterPeerStrategy { get; set; }
-        public IBlockDownloaderFactory? BlockDownloaderFactory { get; set; }
         public IPivot? Pivot { get; set; }
         public ISyncPeerPool? SyncPeerPool { get; set; }
         public IPeerDifficultyRefreshPool? PeerDifficultyRefreshPool { get; set; }
@@ -192,13 +187,13 @@ namespace Nethermind.Api
         public ISyncServer? SyncServer { get; set; }
         public IWorldState? WorldState { get; set; }
         public IReadOnlyStateProvider? ChainHeadStateProvider { get; set; }
+        public IWorldStateManager? WorldStateManager { get; set; }
         public IStateReader? StateReader { get; set; }
         public IStaticNodesManager? StaticNodesManager { get; set; }
         public ITimestamper Timestamper { get; } = Core.Timestamper.Default;
         public ITimerFactory TimerFactory { get; } = Core.Timers.TimerFactory.Default;
         public ITransactionProcessor? TransactionProcessor { get; set; }
         public ITrieStore? TrieStore { get; set; }
-        public IReadOnlyTrieStore? ReadOnlyTrieStore { get; set; }
         public ITxSender? TxSender { get; set; }
         public INonceManager? NonceManager { get; set; }
         public ITxPool? TxPool { get; set; }
@@ -215,6 +210,7 @@ namespace Nethermind.Api
         public IEthSyncingInfo? EthSyncingInfo { get; set; }
         public IBlockProductionPolicy? BlockProductionPolicy { get; set; }
         public IWallet? Wallet { get; set; }
+        public IBlockStore? BadBlocksStore { get; set; }
         public ITransactionComparerProvider? TransactionComparerProvider { get; set; }
         public IWebSocketsManager WebSocketsManager { get; set; } = new WebSocketsManager();
 
@@ -231,7 +227,6 @@ namespace Nethermind.Api
         public IReadOnlyList<INethermindPlugin> Plugins { get; } = new List<INethermindPlugin>();
         public IList<IPublisher> Publishers { get; } = new List<IPublisher>(); // this should be called publishers
         public CompositePruningTrigger PruningTrigger { get; } = new();
-        public ISnapProvider? SnapProvider { get; set; }
         public IProcessExitSource? ProcessExit { get; set; }
         public CompositeTxGossipPolicy TxGossipPolicy { get; } = new();
     }

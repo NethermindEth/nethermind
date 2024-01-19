@@ -6,12 +6,16 @@ using System.ComponentModel;
 using System.Globalization;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using System.Text.Json.Serialization;
+
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
+using Nethermind.Serialization.Json;
 
 namespace Nethermind.Core
 {
+    [JsonConverter(typeof(AddressConverter))]
     [TypeConverter(typeof(AddressTypeConverter))]
     public class Address : IEquatable<Address>, IComparable<Address>
     {
@@ -20,7 +24,8 @@ namespace Nethermind.Core
         private const int PrefixedHexCharsCount = 2 + HexCharsCount; // 0x5a4eab120fb44eb6684e5e32785702ff45ea344d
 
         public static Address Zero { get; } = new(new byte[Size]);
-        public static Address SystemUser { get; } = new("0xfffffffffffffffffffffffffffffffffffffffe");
+        public const string SystemUserHex = "0xfffffffffffffffffffffffffffffffffffffffe";
+        public static Address SystemUser { get; } = new(SystemUserHex);
 
         public byte[] Bytes { get; }
 
@@ -61,6 +66,9 @@ namespace Nethermind.Core
 
         public Address(string hexString) : this(Extensions.Bytes.FromHexString(hexString)) { }
 
+        /// <summary>
+        /// Parses string value to Address. String has to be exactly 20 bytes long.
+        /// </summary>
         public static bool TryParse(string? value, out Address? address)
         {
             if (value is not null)
@@ -68,7 +76,7 @@ namespace Nethermind.Core
                 try
                 {
                     byte[] bytes = Extensions.Bytes.FromHexString(value);
-                    if (bytes?.Length == Size)
+                    if (bytes.Length == Size)
                     {
                         address = new Address(bytes);
                         return true;
@@ -81,12 +89,41 @@ namespace Nethermind.Core
             return false;
         }
 
+        /// <summary>
+        /// Parses string value to Address. String can be shorter than 20 bytes long, it is padded with leading 0's then.
+        /// </summary>
+        public static bool TryParseVariableLength(string? value, out Address? address, bool allowOverflow = false)
+        {
+            if (value is not null)
+            {
+                const int size = Size << 1;
+
+                int start = value is ['0', 'x', ..] ? 2 : 0;
+                ReadOnlySpan<char> span = value.AsSpan(start);
+                if (span.Length > size)
+                {
+                    if (allowOverflow)
+                    {
+                        span = span.Slice(value.Length - size);
+                    }
+                    else
+                    {
+                        goto False;
+                    }
+                }
+
+                address = new Address(Extensions.Bytes.FromHexString(span, Size));
+                return true;
+            }
+
+        False:
+            address = default;
+            return false;
+        }
+
         public Address(byte[] bytes)
         {
-            if (bytes is null)
-            {
-                throw new ArgumentNullException(nameof(bytes));
-            }
+            ArgumentNullException.ThrowIfNull(bytes);
 
             if (bytes.Length != Size)
             {
@@ -100,7 +137,7 @@ namespace Nethermind.Core
 
         public bool Equals(Address? other)
         {
-            if (ReferenceEquals(null, other))
+            if (other is null)
             {
                 return false;
             }
@@ -136,7 +173,7 @@ namespace Nethermind.Core
 
         public override bool Equals(object? obj)
         {
-            if (ReferenceEquals(null, obj))
+            if (obj is null)
             {
                 return false;
             }
@@ -204,7 +241,7 @@ namespace Nethermind.Core
 
         public AddressStructRef(in ValueHash256 keccak) : this(keccak.BytesAsSpan.Slice(12, ByteLength).ToArray()) { }
 
-        public byte this[int index] => Bytes[index];
+        public readonly byte this[int index] => Bytes[index];
 
         public static bool IsValidAddress(string hexString, bool allowPrefix)
         {
@@ -256,27 +293,27 @@ namespace Nethermind.Core
             return new AddressStructRef(addressBytes);
         }
 
-        public override string ToString() => ToString(true, false);
+        public override readonly string ToString() => ToString(true, false);
 
         /// <summary>
         ///     https://github.com/ethereum/EIPs/issues/55
         /// </summary>
         /// <returns></returns>
-        public string ToString(bool withEip55Checksum) => ToString(true, withEip55Checksum);
+        public readonly string ToString(bool withEip55Checksum) => ToString(true, withEip55Checksum);
 
         /// <summary>
         ///     https://github.com/ethereum/EIPs/issues/55
         /// </summary>
         /// <returns></returns>
-        public string ToString(bool withZeroX, bool withEip55Checksum) => Bytes.ToHexString(withZeroX, false, withEip55Checksum);
+        public readonly string ToString(bool withZeroX, bool withEip55Checksum) => Bytes.ToHexString(withZeroX, false, withEip55Checksum);
 
-        public bool Equals(Address? other) => !ReferenceEquals(null, other) && Nethermind.Core.Extensions.Bytes.AreEqual(Bytes, other.Bytes);
+        public readonly bool Equals(Address? other) => other is not null && Nethermind.Core.Extensions.Bytes.AreEqual(Bytes, other.Bytes);
 
-        public bool Equals(AddressStructRef other) => Nethermind.Core.Extensions.Bytes.AreEqual(Bytes, other.Bytes);
+        public readonly bool Equals(AddressStructRef other) => Nethermind.Core.Extensions.Bytes.AreEqual(Bytes, other.Bytes);
 
-        public override bool Equals(object? obj)
+        public override readonly bool Equals(object? obj)
         {
-            if (ReferenceEquals(null, obj))
+            if (obj is null)
             {
                 return false;
             }
@@ -284,7 +321,7 @@ namespace Nethermind.Core
             return obj.GetType() == typeof(Address) && Equals((Address)obj);
         }
 
-        public override int GetHashCode() => MemoryMarshal.Read<int>(Bytes);
+        public override readonly int GetHashCode() => MemoryMarshal.Read<int>(Bytes);
 
         public static bool operator ==(AddressStructRef a, Address? b) => a.Equals(b);
 
@@ -298,6 +335,6 @@ namespace Nethermind.Core
 
         public static bool operator !=(AddressStructRef a, AddressStructRef b) => !(a == b);
 
-        public Address ToAddress() => new(Bytes.ToArray());
+        public readonly Address ToAddress() => new(Bytes.ToArray());
     }
 }
