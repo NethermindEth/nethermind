@@ -2634,7 +2634,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         }
         else
         {
-            bytes = new byte[] { 0 };
+            bytes = BytesZero;
         }
 
         StorageCell storageCell = new(vmState.Env.ExecutingAccount, result);
