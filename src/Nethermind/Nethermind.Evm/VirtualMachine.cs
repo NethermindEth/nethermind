@@ -553,6 +553,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         }
         else
         {
+            Db.Metrics.CodeDbCache++;
             // need to touch code so that any collectors that track database access are informed
             worldState.TouchCode(codeHash);
         }
