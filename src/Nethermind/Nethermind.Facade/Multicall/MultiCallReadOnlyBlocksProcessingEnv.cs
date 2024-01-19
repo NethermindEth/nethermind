@@ -45,7 +45,8 @@ public class MultiCallReadOnlyBlocksProcessingEnv : ReadOnlyTxProcessingEnvBase,
         bool doValidation = false)
     {
         IReadOnlyDbProvider dbProvider = new ReadOnlyDbProvider(readOnlyDbProvider, true);
-        TrieStore trieStore = new(readOnlyDbProvider.StateDb, logManager);
+        OverlayTrieStore overlayTrieStore = new(dbProvider.StateDb, worldStateManager.TrieStore, logManager);
+        OverlayWorldStateManager overlayWorldStateManager = new(worldStateManager, dbProvider, overlayTrieStore, logManager);
 
         IBlockStore blockStore = new BlockStore(dbProvider.BlocksDb);
         IHeaderStore headerStore = new HeaderStore(dbProvider.HeadersDb, dbProvider.BlockNumbersDb);
@@ -66,7 +67,7 @@ public class MultiCallReadOnlyBlocksProcessingEnv : ReadOnlyTxProcessingEnvBase,
 
         return new MultiCallReadOnlyBlocksProcessingEnv(
             traceTransfers,
-            worldStateManager,
+            overlayWorldStateManager,
             roBlockTree,
             dbProvider,
             //trieStore,
@@ -144,4 +145,5 @@ public class MultiCallReadOnlyBlocksProcessingEnv : ReadOnlyTxProcessingEnvBase,
         //_trieStore.Dispose();
         DbProvider.Dispose();
     }
+
 }

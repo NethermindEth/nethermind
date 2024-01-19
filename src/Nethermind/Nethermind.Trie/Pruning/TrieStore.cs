@@ -370,7 +370,7 @@ namespace Nethermind.Trie.Pruning
 
         public bool IsNodeCached(Hash256 hash) => _dirtyNodes.IsNodeCached(hash);
 
-        public TrieNode FindCachedOrUnknown(Hash256? hash)
+        public virtual TrieNode FindCachedOrUnknown(Hash256? hash)
         {
             return FindCachedOrUnknown(hash, false);
         }
@@ -822,7 +822,7 @@ namespace Nethermind.Trie.Pruning
             });
         }
 
-        private byte[]? GetByHash(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
+        public virtual byte[]? GetByHash(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
         {
             return _pruningStrategy.PruningEnabled
                    && _dirtyNodes.AllNodes.TryGetValue(new ValueHash256(key), out TrieNode? trieNode)
