@@ -2,11 +2,13 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Utils;
 using Nethermind.Db.FullPruning;
 using Nethermind.Logging;
 using Nethermind.Trie;
@@ -29,6 +31,7 @@ namespace Nethermind.Blockchain.FullPruning
         private readonly WriteFlags _writeFlags;
         private readonly CancellationToken _cancellationToken;
         private const int Million = 1_000_000;
+        private WriteBatcher _writeBatcher;
 
         public CopyTreeVisitor(
             IPruningContext pruningContext,
@@ -40,6 +43,7 @@ namespace Nethermind.Blockchain.FullPruning
             _writeFlags = writeFlags;
             _logger = logManager.GetClassLogger();
             _stopwatch = new Stopwatch();
+            _writeBatcher = new WriteBatcher(pruningContext);
         }
 
         public bool IsFullDbScan => true;
@@ -107,6 +111,7 @@ namespace Nethermind.Blockchain.FullPruning
         {
             _finished = true;
             LogProgress("Finished");
+            _writeBatcher.Dispose();
         }
     }
 }

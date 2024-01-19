@@ -321,6 +321,11 @@ namespace Nethermind.Blockchain.Test.FullPruning
                     set => _context[key] = value;
                 }
 
+                public IWriteBatch StartWriteBatch()
+                {
+                    return _context.StartWriteBatch();
+                }
+
                 public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None)
                 {
                     _context.Set(key, value, flags);
