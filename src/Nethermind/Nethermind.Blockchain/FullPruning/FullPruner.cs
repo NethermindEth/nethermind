@@ -10,6 +10,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Events;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Utils;
 using Nethermind.Db;
 using Nethermind.Db.FullPruning;
 using Nethermind.Logging;
@@ -140,7 +141,9 @@ namespace Nethermind.Blockchain.FullPruning
 
         private async Task RunFullPruning(IPruningContext pruningContext, CancellationToken cancellationToken)
         {
-            await _trieStore.PersistCache(pruningContext, cancellationToken);
+            WriteBatcher cacheWriteBatcher = new WriteBatcher(pruningContext);
+            await _trieStore.PersistCache(cacheWriteBatcher, cancellationToken);
+            cacheWriteBatcher.Dispose();
 
             long blockToWaitFor = 0;
             await WaitForMainChainChange(cancellationToken, (e) =>

@@ -7,6 +7,9 @@ using System.Threading;
 
 namespace Nethermind.Core.Utils;
 
+/// <summary>
+/// Batches writes into a set of concurrent batches. For cases where throughput matter, but not atomicity.
+/// </summary>
 public class WriteBatcher: IWriteBatch
 {
     private long _counter = 0;

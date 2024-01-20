@@ -786,7 +786,7 @@ namespace Nethermind.Trie.Pruning
 
         #endregion
 
-        public Task PersistCache(IKeyValueStore store, CancellationToken cancellationToken)
+        public Task PersistCache(IWriteOnlyKeyValueStore store, CancellationToken cancellationToken)
         {
             const int million = 1_000_000;
             int persistedNodes = 0;
