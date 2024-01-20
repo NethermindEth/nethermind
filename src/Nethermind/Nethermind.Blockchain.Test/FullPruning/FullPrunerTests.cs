@@ -30,7 +30,7 @@ namespace Nethermind.Blockchain.Test.FullPruning
     [TestFixture(0, 4)]
     [TestFixture(1, 1)]
     [TestFixture(1, 4)]
-    [Parallelizable(ParallelScope.All)]
+    [Parallelizable(ParallelScope.Children)]
     public class FullPrunerTests
     {
         private readonly int _fullPrunerMemoryBudgetMb;
@@ -204,7 +204,7 @@ namespace Nethermind.Blockchain.Test.FullPruning
                     FullPruningMaxDegreeOfParallelism = degreeOfParallelism,
                     FullPruningMemoryBudgetMb = fullScanMemoryBudgetMb,
                     FullPruningCompletionBehavior = completionBehavior
-                }, BlockTree, StateReader, ProcessExitSource, _chainEstimations, DriveInfo, LimboLogs.Instance);
+                }, BlockTree, StateReader, ProcessExitSource, _chainEstimations, DriveInfo, Substitute.For<ITrieStore>(), LimboLogs.Instance);
             }
 
             public async Task<bool> WaitForPruning()
@@ -245,6 +245,7 @@ namespace Nethermind.Blockchain.Test.FullPruning
                     BlockTree.Head.Returns(head);
                     BlockTree.FindHeader(number).Returns(head.Header);
                     BlockTree.OnUpdateMainChain += Raise.EventWith(new OnUpdateMainChainArgs(new List<Block>() { head }, true));
+                    Thread.Sleep(10); // Need to add a little sleep as the wait for event in full pruner is async.
                 }
             }
 

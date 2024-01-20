@@ -23,7 +23,6 @@ namespace Nethermind.Blockchain.FullPruning
     /// </remarks>
     public class CopyTreeVisitor : ITreeVisitor, IDisposable
     {
-        private readonly IPruningContext _pruningContext;
         private readonly ILogger _logger;
         private readonly Stopwatch _stopwatch;
         private long _persistedNodes = 0;
@@ -35,11 +34,11 @@ namespace Nethermind.Blockchain.FullPruning
 
         public CopyTreeVisitor(
             IPruningContext pruningContext,
+            CancellationToken cancellationToken,
             WriteFlags writeFlags,
             ILogManager logManager)
         {
-            _pruningContext = pruningContext;
-            _cancellationToken = pruningContext.CancellationTokenSource.Token;
+            _cancellationToken = cancellationToken;
             _writeFlags = writeFlags;
             _logger = logManager.GetClassLogger();
             _stopwatch = new Stopwatch();
@@ -66,7 +65,7 @@ namespace Nethermind.Blockchain.FullPruning
             }
 
             // if nodes are missing then state trie is not valid and we need to stop copying it
-            _pruningContext.CancellationTokenSource.Cancel();
+            throw new TrieException($"Trie {nodeHash} missing");
         }
 
         public void VisitBranch(TrieNode node, TrieVisitContext trieVisitContext) => PersistNode(node);
@@ -82,7 +81,7 @@ namespace Nethermind.Blockchain.FullPruning
             if (node.Keccak is not null)
             {
                 // simple copy of nodes RLP
-                _pruningContext.Set(node.Keccak.Bytes, node.FullRlp.ToArray(), _writeFlags);
+                _writeBatcher.Set(node.Keccak.Bytes, node.FullRlp.ToArray(), _writeFlags);
                 Interlocked.Increment(ref _persistedNodes);
 
                 // log message every 1 mln nodes

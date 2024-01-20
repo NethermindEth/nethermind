@@ -21,10 +21,5 @@ namespace Nethermind.Db.FullPruning
         /// Marks that pruning is starting.
         /// </summary>
         void MarkStart();
-
-        /// <summary>
-        /// Allows cancelling pruning
-        /// </summary>
-        CancellationTokenSource CancellationTokenSource { get; }
     }
 }

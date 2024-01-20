@@ -133,7 +133,6 @@ public class InitializeStateDb : IStep
             fullPruningDb.PruningStarted += (_, args) =>
             {
                 cachedStateDb.PersistCache(args.Context);
-                trieStore.PersistCache(args.Context, args.Context.CancellationTokenSource.Token);
             };
         }
 
@@ -226,7 +225,7 @@ public class InitializeStateDb : IStep
                 IDriveInfo? drive = api.FileSystem.GetDriveInfos(pruningDbPath).FirstOrDefault();
                 FullPruner pruner = new(fullPruningDb, api.PruningTrigger, pruningConfig, api.BlockTree!,
                     stateReader, api.ProcessExit!, ChainSizes.CreateChainSizeInfo(api.ChainSpec.ChainId),
-                    drive, api.LogManager);
+                    drive, api.TrieStore!, api.LogManager);
                 api.DisposeStack.Push(pruner);
             }
         }

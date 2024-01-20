@@ -786,40 +786,39 @@ namespace Nethermind.Trie.Pruning
 
         #endregion
 
-        public void PersistCache(IKeyValueStore store, CancellationToken cancellationToken)
+        public Task PersistCache(IKeyValueStore store, CancellationToken cancellationToken)
         {
-            Task.Run(() =>
-            {
-                const int million = 1_000_000;
-                int persistedNodes = 0;
-                Stopwatch stopwatch = Stopwatch.StartNew();
+            const int million = 1_000_000;
+            int persistedNodes = 0;
+            Stopwatch stopwatch = Stopwatch.StartNew();
 
-                void PersistNode(TrieNode n)
+            void PersistNode(TrieNode n)
+            {
+                Hash256? hash = n.Keccak;
+                if (hash is not null)
                 {
-                    Hash256? hash = n.Keccak;
-                    if (hash is not null)
+                    store.Set(hash, n.FullRlp);
+                    int persistedNodesCount = Interlocked.Increment(ref persistedNodes);
+                    if (_logger.IsInfo && persistedNodesCount % million == 0)
                     {
-                        store.Set(hash, n.FullRlp);
-                        int persistedNodesCount = Interlocked.Increment(ref persistedNodes);
-                        if (_logger.IsInfo && persistedNodesCount % million == 0)
-                        {
-                            _logger.Info($"Full Pruning Persist Cache in progress: {stopwatch.Elapsed} {persistedNodesCount / million:N} mln nodes persisted.");
-                        }
+                        _logger.Info($"Full Pruning Persist Cache in progress: {stopwatch.Elapsed} {persistedNodesCount / million:N} mln nodes persisted.");
                     }
                 }
+            }
 
-                if (_logger.IsInfo) _logger.Info($"Full Pruning Persist Cache started.");
-                KeyValuePair<ValueHash256, TrieNode>[] nodesCopy = _dirtyNodes.AllNodes.ToArray();
-                Parallel.For(0, nodesCopy.Length, new ParallelOptions { MaxDegreeOfParallelism = Environment.ProcessorCount / 2 }, i =>
+            if (_logger.IsInfo) _logger.Info($"Full Pruning Persist Cache started.");
+            KeyValuePair<ValueHash256, TrieNode>[] nodesCopy = _dirtyNodes.AllNodes.ToArray();
+            Parallel.For(0, nodesCopy.Length, new ParallelOptions { MaxDegreeOfParallelism = Environment.ProcessorCount / 2 }, i =>
+            {
+                if (!cancellationToken.IsCancellationRequested)
                 {
-                    if (!cancellationToken.IsCancellationRequested)
-                    {
-                        nodesCopy[i].Value.CallRecursively(PersistNode, this, false, _logger, false);
-                    }
-                });
-
-                if (_logger.IsInfo) _logger.Info($"Full Pruning Persist Cache finished: {stopwatch.Elapsed} {persistedNodes / (double)million:N} mln nodes persisted.");
+                    nodesCopy[i].Value.CallRecursively(PersistNode, this, false, _logger, false);
+                }
             });
+
+            if (_logger.IsInfo) _logger.Info($"Full Pruning Persist Cache finished: {stopwatch.Elapsed} {persistedNodes / (double)million:N} mln nodes persisted.");
+
+            return Task.CompletedTask;
         }
 
         private byte[]? GetByHash(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
