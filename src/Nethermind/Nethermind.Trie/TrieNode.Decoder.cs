@@ -177,12 +177,13 @@ namespace Nethermind.Trie
             {
                 int totalLength = 0;
                 item.InitData();
-                item.SeekChild(0);
+                RlpStream? rlpStream = item.RlpStream;
+                item.SeekChild(rlpStream, 0);
                 for (int i = 0; i < BranchesCount; i++)
                 {
-                    if (item._rlpStream is not null && item._data![i] is null)
+                    if (rlpStream is not null && item._data![i] is null)
                     {
-                        (int prefixLength, int contentLength) = item._rlpStream.PeekPrefixAndContentLength();
+                        (int prefixLength, int contentLength) = rlpStream.PeekPrefixAndContentLength();
                         totalLength += prefixLength + contentLength;
                     }
                     else
@@ -203,7 +204,7 @@ namespace Nethermind.Trie
                         }
                     }
 
-                    item._rlpStream?.SkipItem();
+                    rlpStream?.SkipItem();
                 }
 
                 return totalLength;
@@ -212,9 +213,9 @@ namespace Nethermind.Trie
             private static void WriteChildrenRlp(ITrieNodeResolver tree, TrieNode item, Span<byte> destination, ICappedArrayPool? bufferPool)
             {
                 int position = 0;
-                RlpStream rlpStream = item._rlpStream;
                 item.InitData();
-                item.SeekChild(0);
+                RlpStream? rlpStream = item.RlpStream;
+                item.SeekChild(rlpStream, 0);
                 for (int i = 0; i < BranchesCount; i++)
                 {
                     if (rlpStream is not null && item._data![i] is null)
