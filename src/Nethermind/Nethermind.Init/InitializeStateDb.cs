@@ -76,12 +76,10 @@ public class InitializeStateDb : IStep
             setApi.WitnessRepository = NullWitnessCollector.Instance;
         }
 
-        CachingStore cachedStateDb = getApi.DbProvider.StateDb
-            .Cached(Trie.MemoryAllowance.TrieNodeCacheCount);
         IKeyValueStore codeDb = getApi.DbProvider.CodeDb
             .WitnessedBy(witnessCollector);
 
-        IKeyValueStoreWithBatching stateWitnessedBy = cachedStateDb.WitnessedBy(witnessCollector);
+        IKeyValueStoreWithBatching stateWitnessedBy = getApi.DbProvider.StateDb.WitnessedBy(witnessCollector);
         IPersistenceStrategy persistenceStrategy;
         IPruningStrategy pruningStrategy;
         if (pruningConfig.Mode.IsMemory())
@@ -126,15 +124,6 @@ public class InitializeStateDb : IStep
                 trieStore,
                 codeDb,
                 getApi.LogManager);
-
-        if (pruningConfig.Mode.IsFull())
-        {
-            IFullPruningDb fullPruningDb = (IFullPruningDb)getApi.DbProvider!.StateDb;
-            fullPruningDb.PruningStarted += (_, args) =>
-            {
-                cachedStateDb.PersistCache(args.Context);
-            };
-        }
 
         // This is probably the point where a different state implementation would switch.
         IWorldStateManager stateManager = setApi.WorldStateManager = new WorldStateManager(
