@@ -3,6 +3,8 @@
 
 using System.Linq;
 using System.Reflection;
+using System.Runtime.Intrinsics;
+
 using FluentAssertions;
 using Nethermind.Evm.CodeAnalysis;
 using NUnit.Framework;
@@ -164,6 +166,81 @@ namespace Nethermind.Evm.Test.CodeAnalysis
 
             codeInfo.ValidateJump(10, false).Should().BeFalse();
             codeInfo.ValidateJump(11, false).Should().BeFalse(); // 0x5b but not JUMPDEST but data
+        }
+
+        [TestCase(1)]
+        [TestCase(2)]
+        [TestCase(3)]
+        [TestCase(4)]
+        [TestCase(5)]
+        [TestCase(6)]
+        [TestCase(7)]
+        [TestCase(8)]
+        [TestCase(9)]
+        [TestCase(10)]
+        [TestCase(11)]
+        [TestCase(12)]
+        [TestCase(13)]
+        [TestCase(14)]
+        [TestCase(15)]
+        [TestCase(16)]
+        [TestCase(17)]
+        [TestCase(18)]
+        [TestCase(19)]
+        [TestCase(20)]
+        [TestCase(21)]
+        [TestCase(22)]
+        [TestCase(23)]
+        [TestCase(24)]
+        [TestCase(25)]
+        [TestCase(26)]
+        [TestCase(27)]
+        [TestCase(28)]
+        [TestCase(29)]
+        [TestCase(30)]
+        [TestCase(31)]
+        [TestCase(32)]
+        public void PushNJumpdest_Over10k(int n)
+        {
+            byte[] code = new byte[10_001];
+
+            // One vector (aligned), half vector to unalign
+            int i;
+            for (i = 0; i < Vector256<byte>.Count * 2 + Vector128<byte>.Count; i++)
+            {
+                code[i] = (byte)0x5b;
+            }
+            for (; i < Vector256<byte>.Count * 3; i++)
+            {
+                //
+            }
+            var triggerPushes = false;
+            for (; i < code.Length; i++)
+            {
+                if (i % (n + 1) == 0)
+                {
+                    triggerPushes = true;
+                }
+                if (triggerPushes)
+                {
+                    code[i] = i % (n + 1) == 0 ? (byte)(0x60 + n - 1) : (byte)0x5b;
+                }
+            }
+
+            CodeInfo codeInfo = new(code);
+
+            for (i = 0; i < Vector256<byte>.Count * 2 + Vector128<byte>.Count; i++)
+            {
+                codeInfo.ValidateJump(i, false).Should().BeTrue();
+            }
+            for (; i < Vector256<byte>.Count * 3; i++)
+            {
+                codeInfo.ValidateJump(i, false).Should().BeFalse();
+            }
+            for (; i < code.Length; i++)
+            {
+                codeInfo.ValidateJump(i, false).Should().BeFalse(); // Are 0x5b but not JUMPDEST but data
+            }
         }
     }
 }

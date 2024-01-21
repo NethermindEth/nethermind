@@ -577,7 +577,7 @@ namespace Nethermind.Synchronization.ParallelSync
                    !best.IsInFullSync &&
                    !best.IsInStateSync &&
                    // maybe some more sophisticated heuristic?
-                   best.Peer.TotalDifficulty == UInt256.Zero;
+                   best.Peer.TotalDifficulty.IsZero;
         }
 
         private bool ShouldBeInStateSyncMode(Snapshot best)
