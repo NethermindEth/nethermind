@@ -807,12 +807,13 @@ namespace Nethermind.Trie.Pruning
                 }
             }
 
+            // We persist all sealed Commitset causing PruneCache to almost completely clear. Any new block that
+            // need existing node will have to read back from db causing copy-on-read mechanism to copy the node.
+            // Sadly this block processing.
             if (_logger.IsInfo) _logger.Info($"Full Pruning Persist Cache started.");
             List<KeyValuePair<ValueHash256, TrieNode>> nodesCopy = new();
             lock (_dirtyNodes)
             {
-                // We persist all sealed commitset causing PruneCache to almost completely clear. Any new block that
-                // need new node will have to read back from db causing copy-on-read mechanism to copy the node.
                 using (_dirtyNodes.AllNodes.AcquireLock())
                 {
                     using ArrayPoolList<BlockCommitSet> toAddBack = new(_commitSetQueue.Count);
