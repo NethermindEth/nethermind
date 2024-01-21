@@ -35,7 +35,7 @@ namespace Nethermind.Trie
         private static readonly TrieNodeDecoder _nodeDecoder = new();
         private static readonly AccountDecoder _accountDecoder = new();
         private static Action<TrieNode> _markPersisted => tn => tn.IsPersisted = true;
-        private RlpStream? _rlpStream;
+        private RlpFactory? _rlp;
         private object?[]? _data;
         private int _isDirty;
 
@@ -61,12 +61,23 @@ namespace Nethermind.Trie
         {
             get
             {
-                RlpStream rlpStream = _rlpStream;
-                return ref rlpStream is not null ? ref rlpStream.Data : ref CappedArray<byte>.Null;
+                RlpFactory rlp = _rlp;
+                return ref rlp is not null ? ref rlp.Data : ref CappedArray<byte>.Null;
             }
         }
 
-        public RlpStream? RlpStream => _rlpStream?.Clone();
+        public ValueRlpStream RlpStream
+        {
+            get
+            {
+                RlpFactory rlp = _rlp;
+                if (rlp is null)
+                {
+                    return default;
+                }
+                return rlp.GetRlpStream();
+            }
+        }
 
         public NodeType NodeType { get; private set; }
 
@@ -137,17 +148,17 @@ namespace Nethermind.Trie
                 obj = _data![BranchesCount];
                 if (obj is null)
                 {
-                    RlpStream rlpStream = _rlpStream;
-                    if (rlpStream is null)
+                    RlpFactory rlp = _rlp;
+                    if (rlp is null)
                     {
                         _data[BranchesCount] = Array.Empty<byte>();
                         return CappedArray<byte>.Empty;
                     }
                     else
                     {
-                        RlpStream rlpStreamCopy = rlpStream.Clone();
-                        SeekChild(rlpStreamCopy, BranchesCount);
-                        byte[]? bArr = rlpStreamCopy.DecodeByteArray();
+                        ValueRlpStream rlpStream = rlp.GetRlpStream();
+                        SeekChild(ref rlpStream, BranchesCount);
+                        byte[]? bArr = rlpStream.DecodeByteArray();
                         _data![BranchesCount] = bArr;
                         return new CappedArray<byte>(bArr);
                     }
@@ -247,7 +258,7 @@ namespace Nethermind.Trie
             NodeType = nodeType;
             _isDirty = isDirty ? 1 : 0;
 
-            _rlpStream = rlp.AsRlpStream();
+            _rlp = rlp.AsRlpFactory();
         }
 
         public TrieNode(NodeType nodeType, byte[]? rlp, bool isDirty = false) : this(nodeType, new CappedArray<byte>(rlp), isDirty)
@@ -313,8 +324,8 @@ namespace Nethermind.Trie
         {
             try
             {
-                RlpStream rplStream = _rlpStream;
-                if (rplStream is null)
+                RlpFactory rlp = _rlp;
+                if (rlp is null)
                 {
                     Hash256 keccak = Keccak;
                     if (keccak is null)
@@ -329,11 +340,11 @@ namespace Nethermind.Trie
                         ThrowNullRlp();
                     }
 
-                    _rlpStream = rplStream = fullRlp.AsRlpStream();
+                    _rlp = rlp = fullRlp.AsRlpFactory();
                     IsPersisted = true;
                 }
 
-                if (!DecodeRlp(rplStream.Clone(), bufferPool, out int numberOfItems))
+                if (!DecodeRlp(rlp.GetRlpStream(), bufferPool, out int numberOfItems))
                 {
                     ThrowUnexpectedNumberOfItems(numberOfItems);
                 }
@@ -379,7 +390,7 @@ namespace Nethermind.Trie
         {
             try
             {
-                RlpStream rplStream = _rlpStream;
+                RlpFactory rplStream = _rlp;
                 if (NodeType == NodeType.Unknown)
                 {
                     if (rplStream is null)
@@ -397,7 +408,7 @@ namespace Nethermind.Trie
                             return false;
                         }
 
-                        _rlpStream = rplStream = fullRlp.AsRlpStream();
+                        _rlp = rplStream = fullRlp.AsRlpFactory();
                         IsPersisted = true;
                     }
                 }
@@ -406,7 +417,7 @@ namespace Nethermind.Trie
                     return true;
                 }
 
-                return DecodeRlp(rplStream.Clone(), bufferPool, out _);
+                return DecodeRlp(rplStream.GetRlpStream(), bufferPool, out _);
             }
             catch (RlpException)
             {
@@ -414,7 +425,7 @@ namespace Nethermind.Trie
             }
         }
 
-        private bool DecodeRlp(RlpStream rlpStream, ICappedArrayPool bufferPool, out int itemsCount)
+        private bool DecodeRlp(ValueRlpStream rlpStream, ICappedArrayPool bufferPool, out int itemsCount)
         {
             Metrics.TreeNodeRlpDecodings++;
 
@@ -482,25 +493,25 @@ namespace Nethermind.Trie
                 return keccak;
             }
 
-            RlpStream rlpStream = _rlpStream;
-            if (rlpStream is null || IsDirty)
+            RlpFactory rlp = _rlp;
+            if (rlp is null || IsDirty)
             {
-                ref readonly CappedArray<byte> oldRlp = ref rlpStream is not null ? ref rlpStream.Data : ref CappedArray<byte>.Empty;
+                ref readonly CappedArray<byte> oldRlp = ref rlp is not null ? ref rlp.Data : ref CappedArray<byte>.Empty;
                 CappedArray<byte> fullRlp = RlpEncode(tree, bufferPool);
                 if (fullRlp.IsNotNullOrEmpty)
                 {
                     bufferPool.SafeReturnBuffer(oldRlp);
                 }
-                _rlpStream = rlpStream = fullRlp.AsRlpStream();
+                _rlp = rlp = fullRlp.AsRlpFactory();
             }
 
             /* nodes that are descendants of other nodes are stored inline
              * if their serialized length is less than Keccak length
              * */
-            if (rlpStream.Data.Length >= 32 || isRoot)
+            if (rlp.Data.Length >= 32 || isRoot)
             {
                 Metrics.TreeNodeHashCalculations++;
-                return Nethermind.Core.Crypto.Keccak.Compute(rlpStream.Data.AsSpan());
+                return Nethermind.Core.Crypto.Keccak.Compute(rlp.Data.AsSpan());
             }
 
             return null;
@@ -554,14 +565,14 @@ namespace Nethermind.Trie
 
         public Hash256? GetChildHash(int i)
         {
-            RlpStream rlpStream = _rlpStream;
-            if (rlpStream is null)
+            RlpFactory rlp = _rlp;
+            if (rlp is null)
             {
                 return null;
             }
 
-            rlpStream = rlpStream.Clone();
-            SeekChild(rlpStream, i);
+            ValueRlpStream rlpStream = rlp.GetRlpStream();
+            SeekChild(ref rlpStream, i);
             (int _, int length) = rlpStream.PeekPrefixAndContentLength();
             return length == 32 ? rlpStream.DecodeKeccak() : null;
         }
@@ -569,14 +580,14 @@ namespace Nethermind.Trie
         public bool GetChildHashAsValueKeccak(int i, out ValueHash256 keccak)
         {
             Unsafe.SkipInit(out keccak);
-            RlpStream rlpStream = _rlpStream;
-            if (rlpStream is null)
+            RlpFactory rlp = _rlp;
+            if (rlp is null)
             {
                 return false;
             }
 
-            rlpStream = rlpStream.Clone();
-            SeekChild(rlpStream, i);
+            ValueRlpStream rlpStream = rlp.GetRlpStream();
+            SeekChild(ref rlpStream, i);
             (_, int length) = rlpStream.PeekPrefixAndContentLength();
             if (length == 32 && rlpStream.DecodeValueKeccak(out keccak))
             {
@@ -593,11 +604,11 @@ namespace Nethermind.Trie
                 ThrowNotABranch();
             }
 
-            RlpStream rlpStream = _rlpStream;
-            if (rlpStream is not null && _data?[i] is null)
+            RlpFactory rlp = _rlp;
+            if (rlp is not null && _data?[i] is null)
             {
-                rlpStream = rlpStream.Clone();
-                SeekChild(rlpStream, i);
+                ValueRlpStream rlpStream = rlp.GetRlpStream();
+                SeekChild(ref rlpStream, i);
                 return rlpStream.PeekNextRlpLength() == 1;
             }
 
@@ -730,7 +741,7 @@ namespace Nethermind.Trie
                 MemorySizes.RefSize +
                 (FullRlp.IsNull ? 0 : MemorySizes.Align(FullRlp.UnderlyingLength + MemorySizes.ArrayOverhead));
             long rlpStreamSize =
-                MemorySizes.RefSize + (_rlpStream?.MemorySize ?? 0)
+                MemorySizes.RefSize + (_rlp?.MemorySize ?? 0)
                 - (FullRlp.IsNull ? 0 : MemorySizes.Align(FullRlp.UnderlyingLength + MemorySizes.ArrayOverhead));
             long dataSize =
                 MemorySizes.RefSize +
@@ -804,10 +815,10 @@ namespace Nethermind.Trie
                 }
             }
 
-            RlpStream rlpStream = _rlpStream;
-            if (rlpStream is not null)
+            RlpFactory rlp = _rlp;
+            if (rlp is not null)
             {
-                trieNode._rlpStream = rlpStream.Clone();
+                trieNode._rlp = rlp;
             }
 
             return trieNode;
@@ -998,17 +1009,17 @@ namespace Nethermind.Trie
             }
         }
 
-        private void SeekChild(RlpStream rlpStream, int itemToSetOn)
+        private void SeekChild(ref ValueRlpStream rlpStream, int itemToSetOn)
         {
-            if (rlpStream is null)
+            if (rlpStream.IsNull)
             {
                 return;
             }
 
-            SeekChildNotNull(rlpStream, itemToSetOn);
+            SeekChildNotNull(ref rlpStream, itemToSetOn);
         }
 
-        private void SeekChildNotNull(RlpStream rlpStream, int itemToSetOn)
+        private void SeekChildNotNull(ref ValueRlpStream rlpStream, int itemToSetOn)
         {
             rlpStream.Reset();
             rlpStream.SkipLength();
@@ -1027,8 +1038,8 @@ namespace Nethermind.Trie
         private object? ResolveChild(ITrieNodeResolver tree, int i)
         {
             object? childOrRef;
-            RlpStream rlpStream = _rlpStream;
-            if (rlpStream is null)
+            RlpFactory rlp = _rlp;
+            if (rlp is null)
             {
                 childOrRef = _data?[i];
             }
@@ -1038,8 +1049,8 @@ namespace Nethermind.Trie
                 if (_data![i] is null)
                 {
                     // Allows to load children in parallel
-                    rlpStream = rlpStream.Clone();
-                    SeekChild(rlpStream, i);
+                    ValueRlpStream rlpStream = rlp.GetRlpStream();
+                    SeekChild(ref rlpStream, i);
                     int prefix = rlpStream.ReadByte();
 
                     switch (prefix)

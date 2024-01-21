@@ -28,6 +28,7 @@ namespace Nethermind.Serialization.Rlp
         private static readonly LogEntryDecoder _logEntryDecoder = LogEntryDecoder.Instance;
 
         private readonly CappedArray<byte> _data;
+        private int _position = 0;
 
         protected RlpStream()
         {
@@ -50,11 +51,6 @@ namespace Nethermind.Serialization.Rlp
         public RlpStream(in CappedArray<byte> data)
         {
             _data = data;
-        }
-
-        public RlpStream Clone()
-        {
-            return new(_data);
         }
 
         public void Encode(Block value)
@@ -187,8 +183,6 @@ namespace Nethermind.Serialization.Rlp
             Data.AsSpan(0, Math.Min(Rlp.DebugMessageContentLength, Length)).ToHexString() ?? "0x";
 
         public ref readonly CappedArray<byte> Data => ref _data;
-
-        private int _position = 0;
 
         public virtual int Position
         {
