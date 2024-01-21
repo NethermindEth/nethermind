@@ -840,12 +840,13 @@ namespace Nethermind.Trie.Pruning
                         if (hash is not null && wasPersisted.TryAdd(hash, true))
                         {
                             store.Set(hash, n.FullRlp);
+                            n.IsPersisted = true;
                         }
                     }
                     Parallel.For(0, nodesCopy.Length, new ParallelOptions { MaxDegreeOfParallelism = Environment.ProcessorCount / 2 }, i =>
                     {
                         if (cancellationToken.IsCancellationRequested) return;
-                        nodesCopy[i].Value.CallRecursively(PersistNode, this, false, _logger, true);
+                        nodesCopy[i].Value.CallRecursively(PersistNode, this, false, _logger, false);
                     });
                     PruneCache();
 
