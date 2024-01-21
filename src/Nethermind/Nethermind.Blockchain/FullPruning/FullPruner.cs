@@ -133,6 +133,10 @@ namespace Nethermind.Blockchain.FullPruning
             {
                 await RunFullPruning(pruningContext, cancellationToken);
             }
+            catch (Exception e)
+            {
+                if (_logger.IsError) _logger.Error("full pruning failed. ", e);
+            }
             finally
             {
                 pruningContext.Dispose();

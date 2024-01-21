@@ -7,20 +7,18 @@ namespace Nethermind.Trie.Pruning
     {
         public long BlockNumber { get; }
 
-        public TrieNode? Root { get; set; }
+        public TrieNode? Root { get; private set; }
 
-        public bool IsSealed { get; private set; }
-
-        public long MemorySizeOfCommittedNodes { get; set; }
+        public bool IsSealed => Root != null;
 
         public BlockCommitSet(long blockNumber)
         {
             BlockNumber = blockNumber;
         }
 
-        public void Seal()
+        public void Seal(TrieNode? root)
         {
-            IsSealed = true;
+            Root = root;
         }
 
         public override string ToString()

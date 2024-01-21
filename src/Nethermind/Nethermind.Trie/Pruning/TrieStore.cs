@@ -289,9 +289,8 @@ namespace Nethermind.Trie.Pruning
                     BlockCommitSet set = CurrentPackage;
                     if (set is not null)
                     {
-                        set.Root = root;
-                        if (_logger.IsTrace) _logger.Trace($"Current root (block {blockNumber}): {set.Root}, block {set.BlockNumber}");
-                        set.Seal();
+                        if (_logger.IsTrace) _logger.Trace($"Current root (block {blockNumber}): {root}, block {set.BlockNumber}");
+                        set.Seal(root);
                     }
 
                     bool shouldPersistSnapshot = _persistenceStrategy.ShouldPersist(set.BlockNumber);
@@ -790,12 +789,14 @@ namespace Nethermind.Trie.Pruning
         {
             const int million = 1_000_000;
             int persistedNodes = 0;
+            int commitSetCount = 0;
             Stopwatch stopwatch = Stopwatch.StartNew();
 
+            ConcurrentDictionary<ValueHash256, bool> wasPersisted = new();
             void PersistNode(TrieNode n)
             {
                 Hash256? hash = n.Keccak;
-                if (hash is not null)
+                if (hash is not null && wasPersisted.TryAdd(hash, true))
                 {
                     store.Set(hash, n.FullRlp);
                     int persistedNodesCount = Interlocked.Increment(ref persistedNodes);
@@ -807,13 +808,51 @@ namespace Nethermind.Trie.Pruning
             }
 
             if (_logger.IsInfo) _logger.Info($"Full Pruning Persist Cache started.");
-            KeyValuePair<ValueHash256, TrieNode>[] nodesCopy = _dirtyNodes.AllNodes.ToArray();
-            Parallel.For(0, nodesCopy.Length, new ParallelOptions { MaxDegreeOfParallelism = Environment.ProcessorCount / 2 }, i =>
+            List<KeyValuePair<ValueHash256, TrieNode>> nodesCopy = new();
+            lock (_dirtyNodes)
             {
-                if (!cancellationToken.IsCancellationRequested)
+                // We persist all sealed commitset causing PruneCache to almost completely clear. Any new block that
+                // need new node will have to read back from db causing copy-on-read mechanism to copy the node.
+                using (_dirtyNodes.AllNodes.AcquireLock())
                 {
-                    nodesCopy[i].Value.CallRecursively(PersistNode, this, false, _logger, false);
+                    using ArrayPoolList<BlockCommitSet> toAddBack = new(_commitSetQueue.Count);
+                    using ArrayPoolList<BlockCommitSet> candidateSets = new(_commitSetQueue.Count);
+                    while (_commitSetQueue.TryDequeue(out BlockCommitSet frontSet))
+                    {
+                        if (!frontSet.IsSealed)
+                        {
+                            toAddBack.Add(frontSet);
+                        }
+                        else if (frontSet.Root != null)
+                        {
+                            candidateSets.Add(frontSet);
+                        }
+                    }
+
+                    for (int index = 0; index < toAddBack.Count; index++)
+                    {
+                        _commitSetQueue.Enqueue(toAddBack[index]);
+                    }
+
+                    foreach (BlockCommitSet blockCommitSet in candidateSets)
+                    {
+                        if (cancellationToken.IsCancellationRequested) continue;
+                        if (_logger.IsInfo) _logger.Info($"Block set {blockCommitSet.BlockNumber}");
+                        commitSetCount++;
+                        Persist(blockCommitSet);
+                    }
+
+                    if (_logger.IsInfo) _logger.Info($"Block commit set done. Committing");
+                    PruneCache();
+                    nodesCopy.AddRange(_dirtyNodes.AllNodes);
                 }
+            }
+            if (_logger.IsInfo) _logger.Info($"Saving all commit set took {stopwatch.Elapsed} for {commitSetCount} commit sets, leaving {nodesCopy.Count} cache entry.");
+
+            Parallel.For(0, nodesCopy.Count, new ParallelOptions { MaxDegreeOfParallelism = Environment.ProcessorCount / 2 }, i =>
+            {
+                if (cancellationToken.IsCancellationRequested) return;
+                nodesCopy[i].Value.CallRecursively(PersistNode, this, false, _logger, true);
             });
 
             if (_logger.IsInfo) _logger.Info($"Full Pruning Persist Cache finished: {stopwatch.Elapsed} {persistedNodes / (double)million:N} mln nodes persisted.");
