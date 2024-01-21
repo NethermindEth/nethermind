@@ -57,7 +57,7 @@ namespace Nethermind.Logging.NLog
             return logDirectory;
         }
 
-        private readonly ConcurrentDictionary<Type, NLogLogger> _loggers = new();
+        private static readonly ConcurrentDictionary<Type, NLogLogger> _loggers = new();
         private readonly EventHandler<LoggingConfigurationChangedEventArgs> _logManagerOnConfigurationChanged;
 
         private NLogLogger BuildLogger(Type type) => new(type);
