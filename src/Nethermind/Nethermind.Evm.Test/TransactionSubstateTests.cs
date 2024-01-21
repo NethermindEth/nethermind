@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
@@ -46,6 +47,21 @@ namespace Nethermind.Evm.Test
                 true,
                 true);
             transactionSubstate.Error.Should().Be("Reverted 0x0506070809");
+        }
+
+        [Test]
+        public void should_return_weird_revert_error_when_there_is_exception()
+        {
+            byte[] data = TransactionSubstate.ErrorFunctionSelector.Concat(Bytes.FromHexString("0x00000001000000000000000000000000000000000000000012a9d65e7d180cfcf3601b6d00000000000000000000000000000000000000000000000000000001000276a400000000000000000000000000000000000000000000000000000000000000a0000000000000000000000000000000000000000000000000000000000000006a000000000300000000000115859c410282f6600012efb47fcfcad4f96c83d4ca676842fb03ef20a4770000000015f762bdaa80f6d9dc5518ff64cb7ba5717a10dabc4be3a41acd2c2f95ee22000012a9d65e7d180cfcf3601b6df0000000000000185594dac7eb0828ff000000000000000000000000")).ToArray();
+            ReadOnlyMemory<byte> readOnlyMemory = new(data);
+            TransactionSubstate transactionSubstate = new(readOnlyMemory,
+                0,
+                new ArraySegment<Address>(),
+                new LogEntry[] { },
+                true,
+                true);
+            string expected = "Reverted \ufffd`\u001bm\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0001\u0000\u0002v\ufffd\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\ufffd\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000j\u0000\u0000\u0000\u0000\u0003\u0000\u0000\u0000\u0000\u0000\u0001\u0015\ufffd\ufffdA\u0002\ufffd\ufffd`\u0000\u0012\ufffd\u007f\ufffd\ufffd\ufffd\ufffdl\ufffd\ufffd\ufffdghB\ufffd\u0003\ufffd \ufffdw\u0000\u0000\u0000\u0000\u0015\ufffdb\ufffd\ufffd\ufffd\ufffd\ufffd\ufffdU\u0018\ufffdd\ufffd{\ufffdqz\u0010ڼK\ufffd\u001a\ufffd,/\ufffd\ufffd\"\u0000\u0000\u0012\ufffd\ufffd^}\u0018\u000c\ufffd\ufffd`\u001bm\ufffd\u0000\u0000\u0000\u0000\u0000\u0000\u0018U\ufffd\ufffd\ufffd\ufffd\u0008(\ufffd\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000";
+            transactionSubstate.Error.Should().Be(expected);
         }
 
         [Test]

@@ -22,8 +22,8 @@ public class TransactionSubstate
     private const int WordSize = EvmPooledMemory.WordSize;
 
     private const string RevertedErrorMessagePrefix = "Reverted ";
-    private readonly byte[] ErrorFunctionSelector = Keccak.Compute("Error(string)").BytesToArray()[..RevertPrefix];
-    private readonly byte[] PanicFunctionSelector = Keccak.Compute("Panic(uint256)").BytesToArray()[..RevertPrefix];
+    public static readonly byte[] ErrorFunctionSelector = Keccak.Compute("Error(string)").BytesToArray()[..RevertPrefix];
+    public static readonly byte[] PanicFunctionSelector = Keccak.Compute("Panic(uint256)").BytesToArray()[..RevertPrefix];
 
     private readonly IDictionary<UInt256, string> PanicReasons = new Dictionary<UInt256, string>
     {
@@ -95,12 +95,13 @@ public class TransactionSubstate
 
     private string? TryGetErrorMessage(ReadOnlySpan<byte> span)
     {
-        if (span.Length < RevertPrefix) { return null; }
+        if (span.Length < RevertPrefix) goto UTF;
         ReadOnlySpan<byte> prefix = span.TakeAndMove(RevertPrefix);
+        UInt256 start, length;
 
         if (prefix.SequenceEqual(PanicFunctionSelector))
         {
-            if (span.Length < WordSize) { return null; }
+            if (span.Length < WordSize) goto UTF;
 
             UInt256 panicCode = new(span.TakeAndMove(WordSize), isBigEndian: true);
             if (!PanicReasons.TryGetValue(panicCode, out string panicReason))
@@ -113,35 +114,31 @@ public class TransactionSubstate
 
         if (prefix.SequenceEqual(ErrorFunctionSelector))
         {
-            if (span.Length < WordSize * 2) { return null; }
+            if (span.Length < WordSize * 2) goto UTF;
 
-            int start = (int)new UInt256(span.TakeAndMove(WordSize), isBigEndian: true);
-            if (start != WordSize) { return null; }
+            start = new UInt256(span.TakeAndMove(WordSize), isBigEndian: true);
+            if (start != WordSize) goto UTF;
 
-            int length = (int)new UInt256(span.TakeAndMove(WordSize), isBigEndian: true);
-            if (length > span.Length) { return null; }
+            length = new UInt256(span.TakeAndMove(WordSize), isBigEndian: true);
+            if (length > span.Length) goto UTF;
 
-            ReadOnlySpan<byte> binaryMessage = span.TakeAndMove(length);
+            ReadOnlySpan<byte> binaryMessage = span.TakeAndMove((int)length);
             string message = System.Text.Encoding.UTF8.GetString(binaryMessage);
 
             return message;
         }
 
-        try
-        {
-            if (span.Length < WordSize * 2) { return null; }
+        if (span.Length < WordSize * 2) goto UTF;
 
-            int start = (int)new UInt256(span.Slice(0, WordSize), isBigEndian: true);
-            if (checked(start + WordSize) > span.Length) { return null; }
+        start = new UInt256(span.Slice(0, WordSize), isBigEndian: true);
+        if (UInt256.AddOverflow(start, WordSize, out UInt256 lengthOffset) || lengthOffset > span.Length) goto UTF;
 
-            int length = (int)new UInt256(span.Slice(start, WordSize), isBigEndian: true);
-            if (checked(start + WordSize + length) != span.Length) { return null; }
+        length = new UInt256(span.Slice((int)start, WordSize), isBigEndian: true);
+        if (UInt256.AddOverflow(lengthOffset, length, out UInt256 endOffset) || endOffset != span.Length) goto UTF;
 
-            return span.Slice(start + WordSize, length).ToHexString(true);
-        }
-        catch (OverflowException)
-        {
-            return null;
-        }
+        return span.Slice((int)lengthOffset, (int)length).ToHexString(true);
+
+        UTF:
+        return System.Text.Encoding.UTF8.GetString(span);
     }
 }
