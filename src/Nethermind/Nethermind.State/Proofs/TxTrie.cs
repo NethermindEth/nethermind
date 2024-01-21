@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
@@ -21,10 +20,10 @@ public class TxTrie : PatriciaTrie<Transaction>
 
     /// <inheritdoc/>
     /// <param name="transactions">The transactions to build the trie of.</param>
-    public TxTrie(IEnumerable<Transaction> transactions, bool canBuildProof = false, ICappedArrayPool? bufferPool = null)
+    public TxTrie(Transaction[] transactions, bool canBuildProof = false, ICappedArrayPool? bufferPool = null)
         : base(transactions, canBuildProof, bufferPool: bufferPool) => ArgumentNullException.ThrowIfNull(transactions);
 
-    protected override void Initialize(IEnumerable<Transaction> list)
+    protected override void Initialize(Transaction[] list)
     {
         int key = 0;
 
@@ -37,16 +36,16 @@ public class TxTrie : PatriciaTrie<Transaction>
         }
     }
 
-    public static byte[][] CalculateProof(IList<Transaction> transactions, int index)
+    public static byte[][] CalculateProof(Transaction[] transactions, int index)
     {
-        using TrackingCappedArrayPool cappedArray = new TrackingCappedArrayPool(transactions.Count * 4);
+        using TrackingCappedArrayPool cappedArray = new TrackingCappedArrayPool(transactions.Length * 4);
         byte[][] rootHash = new TxTrie(transactions, canBuildProof: true, bufferPool: cappedArray).BuildProof(index);
         return rootHash;
     }
 
-    public static Hash256 CalculateRoot(IList<Transaction> transactions)
+    public static Hash256 CalculateRoot(Transaction[] transactions)
     {
-        using TrackingCappedArrayPool cappedArray = new TrackingCappedArrayPool(transactions.Count * 4);
+        using TrackingCappedArrayPool cappedArray = new TrackingCappedArrayPool(transactions.Length * 4);
         Hash256 rootHash = new TxTrie(transactions, canBuildProof: false, bufferPool: cappedArray).RootHash;
         return rootHash;
     }
