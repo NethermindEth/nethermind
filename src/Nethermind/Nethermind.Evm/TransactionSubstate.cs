@@ -131,10 +131,16 @@ public class TransactionSubstate
         {
             if (span.Length < WordSize * 2) { return null; }
 
-            int start = (int)new UInt256(span.Slice(0, WordSize), isBigEndian: true);
+            UInt256 startRaw = new UInt256(span.Slice(0, WordSize), isBigEndian: true);
+            if (startRaw > int.MaxValue) { return null; }
+
+            int start = (int)startRaw;
             if (checked(start + WordSize) > span.Length) { return null; }
 
-            int length = (int)new UInt256(span.Slice(start, WordSize), isBigEndian: true);
+            UInt256 lengthRaw = new UInt256(span.Slice(start, WordSize), isBigEndian: true);
+            if (lengthRaw > int.MaxValue) { return null; }
+
+            int length = (int)lengthRaw;
             if (checked(start + WordSize + length) != span.Length) { return null; }
 
             return span.Slice(start + WordSize, length).ToHexString(true);
