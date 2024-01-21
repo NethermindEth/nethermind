@@ -788,7 +788,7 @@ namespace Nethermind.Trie.Pruning
 
         #endregion
 
-        public Task PersistCache(IWriteOnlyKeyValueStore store, CancellationToken cancellationToken)
+        public void PersistCache(CancellationToken cancellationToken)
         {
 
             if (_logger.IsInfo) _logger.Info($"Full Pruning Persist Cache started.");
@@ -839,7 +839,7 @@ namespace Nethermind.Trie.Pruning
                         Hash256? hash = n.Keccak;
                         if (hash is not null && wasPersisted.TryAdd(hash, true))
                         {
-                            store.Set(hash, n.FullRlp);
+                            _keyValueStore.Set(hash, n.FullRlp);
                             n.IsPersisted = true;
                         }
                     }
@@ -857,8 +857,6 @@ namespace Nethermind.Trie.Pruning
                 }
             }
             if (_logger.IsInfo) _logger.Info($"Clear cache took {stopwatch.Elapsed}.");
-
-            return Task.CompletedTask;
         }
 
         private byte[]? GetByHash(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)

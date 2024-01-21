@@ -221,8 +221,10 @@ namespace Nethermind.Blockchain.Test.FullPruning
 
             public async Task<bool> WaitForPruningEnd(TestFullPruningDb.TestPruningContext context)
             {
-                await Task.Yield();
-                await context.WaitForFinish.WaitOneAsync(TimeSpan.FromMilliseconds(Timeout.MaxWaitTime * 5), CancellationToken.None);
+                while (!await context.WaitForFinish.WaitOneAsync(TimeSpan.FromMilliseconds(1), CancellationToken.None))
+                {
+                    AddBlocks(1);
+                }
                 AddBlocks(1);
                 return await context.DisposeEvent.WaitOneAsync(TimeSpan.FromMilliseconds(Timeout.MaxWaitTime * 5), CancellationToken.None);
             }
@@ -230,6 +232,7 @@ namespace Nethermind.Blockchain.Test.FullPruning
             public TestFullPruningDb.TestPruningContext WaitForPruningStart()
             {
                 PruningTrigger.Prune += Raise.Event<EventHandler<PruningTriggerEventArgs>>();
+                Thread.Sleep(10);
                 AddBlocks(Reorganization.MaxDepth + 2);
                 TestFullPruningDb.TestPruningContext context = FullPruningDb.Context;
                 return context;

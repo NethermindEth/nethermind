@@ -43,9 +43,8 @@ namespace Nethermind.Trie.Pruning
         {
         }
 
-        public Task PersistCache(IWriteOnlyKeyValueStore store, CancellationToken cancellationToken)
+        public void PersistCache(CancellationToken cancellationToken)
         {
-            return Task.CompletedTask;
         }
     }
 }

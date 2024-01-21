@@ -34,11 +34,10 @@ namespace Nethermind.Blockchain.FullPruning
         private readonly ILogManager _logManager;
         private readonly IChainEstimations _chainEstimations;
         private readonly IDriveInfo? _driveInfo;
-        private long _stateToCopy;
+        private readonly ITrieStore _trieStore;
         private readonly ILogger _logger;
         private readonly TimeSpan _minimumPruningDelay;
         private DateTime _lastPruning = DateTime.MinValue;
-        private readonly ITrieStore _trieStore;
 
         public FullPruner(
             IFullPruningDb fullPruningDb,
@@ -82,7 +81,6 @@ namespace Nethermind.Blockchain.FullPruning
 
             if (DateTime.Now - _lastPruning < _minimumPruningDelay)
             {
-                Console.Out.WriteLine("Delaye,d");
                 e.Status = PruningStatus.Delayed;
             }
             // If we are already pruning, we don't need to do anything
@@ -98,14 +96,9 @@ namespace Nethermind.Blockchain.FullPruning
                     e.Status = PruningStatus.Starting;
 
 #pragma warning disable CS4014 // Because this call is not awaited, execution of the current method continues before the call is completed
-                    Console.Out.WriteLine("Its starting");
                     RunFullPruning(_processExitSource.Token);
 #pragma warning restore CS4014 // Because this call is not awaited, execution of the current method continues before the call is completed
                 }
-            }
-            else
-            {
-                Console.Out.WriteLine("cannot start pruning");
             }
         }
 
@@ -124,10 +117,20 @@ namespace Nethermind.Blockchain.FullPruning
 
         protected virtual async Task RunFullPruning(CancellationToken cancellationToken)
         {
-            if (!_fullPruningDb.TryStartPruning(_pruningConfig.Mode.IsMemory(), out IPruningContext pruningContext))
+            IPruningContext? pruningContext = null;
+
+            // we don't want to start pruning in the middle of block processing, lets wait for new head.
+            await WaitForMainChainChange(cancellationToken, (e) =>
             {
-                return;
-            }
+                if (_fullPruningDb.TryStartPruning(_pruningConfig.Mode.IsMemory(), out IPruningContext fromDbPruningContext))
+                {
+                    pruningContext = fromDbPruningContext;
+                }
+
+                return true;
+            });
+
+            if (pruningContext is null) return;
 
             try
             {
@@ -145,9 +148,7 @@ namespace Nethermind.Blockchain.FullPruning
 
         private async Task RunFullPruning(IPruningContext pruningContext, CancellationToken cancellationToken)
         {
-            WriteBatcher cacheWriteBatcher = new WriteBatcher(pruningContext);
-            await _trieStore.PersistCache(cacheWriteBatcher, cancellationToken);
-            cacheWriteBatcher.Dispose();
+            _trieStore.PersistCache(cancellationToken);
 
             long blockToWaitFor = 0;
             await WaitForMainChainChange(cancellationToken, (e) =>
@@ -155,7 +156,6 @@ namespace Nethermind.Blockchain.FullPruning
                 if (e.Blocks == null || e.Blocks.Count == 0) return false;
 
                 blockToWaitFor = e.Blocks[^1].Number;
-                _stateToCopy = long.MaxValue;
                 if (_logger.IsInfo)
                     _logger.Info($"Full Pruning Ready to start: waiting for state {blockToWaitFor} to be ready.");
                 return true;
@@ -168,8 +168,8 @@ namespace Nethermind.Blockchain.FullPruning
                 return false;
             });
 
-            _stateToCopy = _blockTree.BestPersistedState.Value;
-            long blockToPruneAfter = _stateToCopy + Reorganization.MaxDepth;
+            long stateToCopy = _blockTree.BestPersistedState.Value;
+            long blockToPruneAfter = stateToCopy + Reorganization.MaxDepth;
 
             await WaitForMainChainChange(cancellationToken, (e) =>
             {
@@ -178,14 +178,14 @@ namespace Nethermind.Blockchain.FullPruning
                 return false;
             });
 
-            BlockHeader? header = _blockTree.FindHeader(_stateToCopy);
+            BlockHeader? header = _blockTree.FindHeader(stateToCopy);
             if (header is null)
             {
                 if (_logger.IsError) _logger.Info($"Header for the state is missing");
                 return;
             }
 
-            if (_logger.IsInfo) _logger.Info($"Full Pruning Ready to start: pruning garbage before state {_stateToCopy} with root {header.StateRoot}");
+            if (_logger.IsInfo) _logger.Info($"Full Pruning Ready to start: pruning garbage before state {stateToCopy} with root {header.StateRoot}");
             await CopyTrie(pruningContext, header.StateRoot!, cancellationToken);
         }
 
@@ -253,14 +253,14 @@ namespace Nethermind.Blockchain.FullPruning
 
                     await WaitForMainChainChange(cancellationToken, (e) =>
                     {
-                        // The db swap happens here
+                        // The db swap happens here. We do it within the event handler of main chain change to block
+                        // so that it does not happen during block processing.
                         pruning.Commit();
                         return true;
                     });
 
                     _lastPruning = DateTime.Now;
                 }
-                Console.Out.WriteLine("Returning");
             }
             catch (Exception e)
             {

@@ -27,6 +27,6 @@ namespace Nethermind.Trie.Pruning
         // Used by healing
         void Set(in ValueHash256 hash, byte[] rlp);
 
-        public Task PersistCache(IWriteOnlyKeyValueStore store, CancellationToken cancellationToken);
+        public void PersistCache(CancellationToken cancellationToken);
     }
 }
