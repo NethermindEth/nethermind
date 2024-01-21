@@ -57,12 +57,13 @@ namespace Nethermind.Logging.NLog
             return logDirectory;
         }
 
-        private static readonly ConcurrentDictionary<Type, Logger> _loggers = new();
+        private static readonly ConcurrentDictionary<Type, Logger> s_loggers = new();
+        private static readonly Func<Type, Logger> s_loggerBuilder = BuildLogger;
         private readonly EventHandler<LoggingConfigurationChangedEventArgs> _logManagerOnConfigurationChanged;
 
-        private Logger BuildLogger(Type type) => new(new NLogLogger(type));
+        private static Logger BuildLogger(Type type) => new(new NLogLogger(type));
 
-        public Logger GetClassLogger(Type type) => _loggers.GetOrAdd(type, BuildLogger);
+        public Logger GetClassLogger(Type type) => s_loggers.GetOrAdd(type, s_loggerBuilder);
 
         public Logger GetClassLogger<T>() => GetClassLogger(typeof(T));
 
