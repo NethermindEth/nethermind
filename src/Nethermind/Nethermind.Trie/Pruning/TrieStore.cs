@@ -793,65 +793,69 @@ namespace Nethermind.Trie.Pruning
 
             if (_logger.IsInfo) _logger.Info($"Full Pruning Persist Cache started.");
 
-            const int million = 1_000_000;
             int commitSetCount = 0;
             Stopwatch stopwatch = Stopwatch.StartNew();
-
             // We persist all sealed Commitset causing PruneCache to almost completely clear the cache. Any new block that
             // need existing node will have to read back from db causing copy-on-read mechanism to copy the node.
-            while (_commitSetQueue.TryPeek(out BlockCommitSet commitSet) && commitSet.IsSealed)
+            void ClearCommitSetQueue()
             {
-                if (!_commitSetQueue.TryDequeue(out commitSet)) break;
-                if (!commitSet.IsSealed)
+                while (_commitSetQueue.TryPeek(out BlockCommitSet commitSet) && commitSet.IsSealed)
                 {
-                    // Oops
-                    _commitSetQueue.Enqueue(commitSet);
-                    break;
-                }
+                    if (!_commitSetQueue.TryDequeue(out commitSet)) break;
+                    if (!commitSet.IsSealed)
+                    {
+                        // Oops
+                        _commitSetQueue.Enqueue(commitSet);
+                        break;
+                    }
 
-                commitSetCount++;
-                using IWriteBatch writeBatch = _keyValueStore.StartWriteBatch();
-                PersistBlockCommitSet(commitSet, writeBatch);
+                    commitSetCount++;
+                    using IWriteBatch writeBatch = _keyValueStore.StartWriteBatch();
+                    PersistBlockCommitSet(commitSet, writeBatch);
+                }
+                PruneCurrentSet();
             }
-            PruneCurrentSet();
+
+            // We persist outside of lock first.
+            ClearCommitSetQueue();
 
             if (_logger.IsInfo) _logger.Info($"Saving all commit set took {stopwatch.Elapsed} for {commitSetCount} commit sets.");
+
             stopwatch.Restart();
-
-            int persistedNodes = 0;
-            ConcurrentDictionary<ValueHash256, bool> wasPersisted = new();
-            void PersistNode(TrieNode n)
-            {
-                Hash256? hash = n.Keccak;
-                if (hash is not null && wasPersisted.TryAdd(hash, true))
-                {
-                    store.Set(hash, n.FullRlp);
-                    int persistedNodesCount = Interlocked.Increment(ref persistedNodes);
-                    if (_logger.IsInfo && persistedNodesCount % million == 0)
-                    {
-                        _logger.Info($"Full Pruning Persist Cache in progress: {stopwatch.Elapsed} {persistedNodesCount / million:N} mln nodes persisted.");
-                    }
-                }
-            }
-
-            List<KeyValuePair<ValueHash256, TrieNode>> nodesCopy = new();
             lock (_dirtyNodes)
             {
                 using (_dirtyNodes.AllNodes.AcquireLock())
                 {
+                    // Double check
+                    ClearCommitSetQueue();
+
+                    // This should clear most nodes. For some reason, not all.
                     PruneCache();
-                    nodesCopy.AddRange(_dirtyNodes.AllNodes);
+                    KeyValuePair<ValueHash256, TrieNode>[] nodesCopy = _dirtyNodes.AllNodes.ToArray();
+
+                    ConcurrentDictionary<ValueHash256, bool> wasPersisted = new();
+                    void PersistNode(TrieNode n)
+                    {
+                        Hash256? hash = n.Keccak;
+                        if (hash is not null && wasPersisted.TryAdd(hash, true))
+                        {
+                            store.Set(hash, n.FullRlp);
+                        }
+                    }
+                    Parallel.For(0, nodesCopy.Length, new ParallelOptions { MaxDegreeOfParallelism = Environment.ProcessorCount / 2 }, i =>
+                    {
+                        if (cancellationToken.IsCancellationRequested) return;
+                        nodesCopy[i].Value.CallRecursively(PersistNode, this, false, _logger, true);
+                    });
+                    PruneCache();
+
+                    if (_dirtyNodes.AllNodes.Count != 0)
+                    {
+                        if (_logger.IsWarn) _logger.Warn($"{_dirtyNodes.AllNodes.Count} cache entry remains.");
+                    }
                 }
             }
-            if (_logger.IsInfo) _logger.Info($"Prune cache took {stopwatch.Elapsed}, leaving {nodesCopy.Count} cache entry.");
-
-            Parallel.For(0, nodesCopy.Count, new ParallelOptions { MaxDegreeOfParallelism = Environment.ProcessorCount / 2 }, i =>
-            {
-                if (cancellationToken.IsCancellationRequested) return;
-                nodesCopy[i].Value.CallRecursively(PersistNode, this, false, _logger, true);
-            });
-
-            if (_logger.IsInfo) _logger.Info($"Full Pruning Persist Cache finished.");
+            if (_logger.IsInfo) _logger.Info($"Clear cache took {stopwatch.Elapsed}.");
 
             return Task.CompletedTask;
         }
