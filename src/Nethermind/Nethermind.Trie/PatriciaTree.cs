@@ -48,6 +48,8 @@ namespace Nethermind.Trie
 
         private readonly bool _allowCommits;
 
+        private int _isWriteInProgress;
+
         private Hash256 _rootHash = Keccak.EmptyTreeHash;
 
         public TrieNode? RootRef { get; set; }
@@ -410,21 +412,42 @@ namespace Nethermind.Trie
         {
             if (_logger.IsTrace) Trace(in rawKey, in value);
 
-            int nibblesCount = 2 * rawKey.Length;
-            byte[] array = null;
-            Span<byte> nibbles = (rawKey.Length <= MaxKeyStackAlloc
-                    ? stackalloc byte[MaxKeyStackAlloc] // Fixed size stack allocation
-                    : array = ArrayPool<byte>.Shared.Rent(nibblesCount))
-                [..nibblesCount]; // Slice to exact size
+            if (Interlocked.CompareExchange(ref _isWriteInProgress, 1, 0) != 0)
+            {
+                ThrowNonConcurrentWrites();
+            }
 
-            Nibbles.BytesToNibbleBytes(rawKey, nibbles);
-            Run(nibbles, nibblesCount, in value, isUpdate: true);
+            try
+            {
+                int nibblesCount = 2 * rawKey.Length;
+                byte[] array = null;
+                Span<byte> nibbles = (rawKey.Length <= MaxKeyStackAlloc
+                        ? stackalloc byte[MaxKeyStackAlloc] // Fixed size stack allocation
+                        : array = ArrayPool<byte>.Shared.Rent(nibblesCount))
+                    [..nibblesCount]; // Slice to exact size
 
-            if (array is not null) ArrayPool<byte>.Shared.Return(array);
+                Nibbles.BytesToNibbleBytes(rawKey, nibbles);
+                // lazy stack cleaning after the previous update
+                ClearNodeStack();
+                Run(nibbles, nibblesCount, in value, isUpdate: true);
+
+                if (array is not null) ArrayPool<byte>.Shared.Return(array);
+            }
+            finally
+            {
+                Volatile.Write(ref _isWriteInProgress, 0);
+            }
 
             void Trace(in ReadOnlySpan<byte> rawKey, in CappedArray<byte> value)
             {
                 _logger.Trace($"{(value.Length == 0 ? $"Deleting {rawKey.ToHexString()}" : $"Setting {rawKey.ToHexString()} = {value.AsSpan().ToHexString()}")}");
+            }
+
+            [DoesNotReturn]
+            [StackTraceHidden]
+            static void ThrowNonConcurrentWrites()
+            {
+                throw new InvalidOperationException("Only reads can be done in parallel on the Patricia tree");
             }
         }
 
@@ -442,26 +465,14 @@ namespace Nethermind.Trie
             bool ignoreMissingDelete = true,
             Hash256? startRootHash = null)
         {
-            if (isUpdate && startRootHash is not null)
-            {
-                ThrowNonConcurrentWrites();
-            }
-
 #if DEBUG
             if (nibblesCount != updatePath.Length)
             {
                 throw new Exception("Does it ever happen?");
             }
 #endif
-
             TraverseContext traverseContext =
                 new(updatePath[..nibblesCount], updateValue, isUpdate, ignoreMissingDelete);
-
-            // lazy stack cleaning after the previous update
-            if (traverseContext.IsUpdate)
-            {
-                ClearNodeStack();
-            }
 
             CappedArray<byte> result;
             if (startRootHash is not null)
@@ -495,13 +506,6 @@ namespace Nethermind.Trie
             }
 
             return result;
-
-            [DoesNotReturn]
-            [StackTraceHidden]
-            static void ThrowNonConcurrentWrites()
-            {
-                throw new InvalidOperationException("Only reads can be done in parallel on the Patricia tree");
-            }
 
             void TraceStart(Hash256 startRootHash, in TraverseContext traverseContext)
             {

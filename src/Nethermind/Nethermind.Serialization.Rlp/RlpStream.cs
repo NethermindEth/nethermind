@@ -27,7 +27,7 @@ namespace Nethermind.Serialization.Rlp
         private static readonly WithdrawalDecoder _withdrawalDecoder = new();
         private static readonly LogEntryDecoder _logEntryDecoder = LogEntryDecoder.Instance;
 
-        private CappedArray<byte> _data;
+        private readonly CappedArray<byte> _data;
 
         protected RlpStream()
         {
@@ -50,6 +50,11 @@ namespace Nethermind.Serialization.Rlp
         public RlpStream(in CappedArray<byte> data)
         {
             _data = data;
+        }
+
+        public RlpStream Clone()
+        {
+            return new(_data);
         }
 
         public void Encode(Block value)
