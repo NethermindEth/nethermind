@@ -235,7 +235,7 @@ namespace Nethermind.Trie.Pruning
 
                 if (!_pruningStrategy.PruningEnabled)
                 {
-                    Persist(node, blockNumber, writeFlags);
+                    PersistNode(node, blockNumber, writeFlags);
                 }
 
                 CommittedNodesCount++;
@@ -296,7 +296,19 @@ namespace Nethermind.Trie.Pruning
                     bool shouldPersistSnapshot = _persistenceStrategy.ShouldPersist(set.BlockNumber);
                     if (shouldPersistSnapshot)
                     {
-                        Persist(set, writeFlags);
+                        _currentBatch ??= _keyValueStore.StartWriteBatch();
+                        try
+                        {
+                            PersistBlockCommitSet(set, _currentBatch, writeFlags);
+                            PruneCurrentSet();
+                        }
+                        finally
+                        {
+                            // For safety we prefer to commit half of the batch rather than not commit at all.
+                            // Generally hanging nodes are not a problem in the DB but anything missing from the DB is.
+                            _currentBatch?.Dispose();
+                            _currentBatch = null;
+                        }
                     }
                     else
                     {
@@ -455,12 +467,14 @@ namespace Nethermind.Trie.Pruning
                     _commitSetQueue.Enqueue(toAddBack[index]);
                 }
 
+                IWriteBatch writeBatch = _keyValueStore.StartWriteBatch();
                 for (int index = 0; index < candidateSets.Count; index++)
                 {
                     BlockCommitSet blockCommitSet = candidateSets[index];
                     if (_logger.IsDebug) _logger.Debug($"Elevated pruning for candidate {blockCommitSet.BlockNumber}");
-                    Persist(blockCommitSet);
+                    PersistBlockCommitSet(blockCommitSet, writeBatch);
                 }
+                writeBatch.Dispose();
 
                 if (candidateSets.Count > 0)
                 {
@@ -612,38 +626,25 @@ namespace Nethermind.Trie.Pruning
         /// for the block represented by this commit set.
         /// </summary>
         /// <param name="commitSet">A commit set of a block which root is to be persisted.</param>
-        private void Persist(BlockCommitSet commitSet, WriteFlags writeFlags = WriteFlags.None)
+        private void PersistBlockCommitSet(BlockCommitSet commitSet, IWriteBatch writeBatch, WriteFlags writeFlags = WriteFlags.None)
         {
-            void PersistNode(TrieNode tn) => Persist(tn, commitSet.BlockNumber, writeFlags);
+            void PersistNode(TrieNode tn) => this.PersistNode(tn, commitSet.BlockNumber, writeFlags, writeBatch);
 
-            try
-            {
-                _currentBatch ??= _keyValueStore.StartWriteBatch();
-                if (_logger.IsDebug) _logger.Debug($"Persisting from root {commitSet.Root} in {commitSet.BlockNumber}");
+            if (_logger.IsDebug) _logger.Debug($"Persisting from root {commitSet.Root} in {commitSet.BlockNumber}");
 
-                Stopwatch stopwatch = Stopwatch.StartNew();
-                commitSet.Root?.CallRecursively(PersistNode, this, true, _logger);
-                stopwatch.Stop();
-                Metrics.SnapshotPersistenceTime = stopwatch.ElapsedMilliseconds;
+            Stopwatch stopwatch = Stopwatch.StartNew();
+            commitSet.Root?.CallRecursively(PersistNode, this, true, _logger);
+            stopwatch.Stop();
+            Metrics.SnapshotPersistenceTime = stopwatch.ElapsedMilliseconds;
 
-                if (_logger.IsDebug) _logger.Debug($"Persisted trie from {commitSet.Root} at {commitSet.BlockNumber} in {stopwatch.ElapsedMilliseconds}ms (cache memory {MemoryUsedByDirtyCache})");
+            if (_logger.IsDebug) _logger.Debug($"Persisted trie from {commitSet.Root} at {commitSet.BlockNumber} in {stopwatch.ElapsedMilliseconds}ms (cache memory {MemoryUsedByDirtyCache})");
 
-                LastPersistedBlockNumber = commitSet.BlockNumber;
-            }
-            finally
-            {
-                // For safety we prefer to commit half of the batch rather than not commit at all.
-                // Generally hanging nodes are not a problem in the DB but anything missing from the DB is.
-                _currentBatch?.Dispose();
-                _currentBatch = null;
-            }
-
-            PruneCurrentSet();
+            LastPersistedBlockNumber = commitSet.BlockNumber;
         }
 
-        private void Persist(TrieNode currentNode, long blockNumber, WriteFlags writeFlags = WriteFlags.None)
+        private void PersistNode(TrieNode currentNode, long blockNumber, WriteFlags writeFlags = WriteFlags.None, IWriteBatch? writeBatch = null)
         {
-            _currentBatch ??= _keyValueStore.StartWriteBatch();
+            writeBatch ??= _currentBatch ??= _keyValueStore.StartWriteBatch();
             ArgumentNullException.ThrowIfNull(currentNode);
 
             if (currentNode.Keccak is not null)
@@ -655,7 +656,7 @@ namespace Nethermind.Trie.Pruning
                 // to prevent it from being removed from cache and also want to have it persisted.
 
                 if (_logger.IsTrace) _logger.Trace($"Persisting {nameof(TrieNode)} {currentNode} in snapshot {blockNumber}.");
-                _currentBatch.Set(currentNode.Keccak, currentNode.FullRlp, writeFlags);
+                writeBatch.Set(currentNode.Keccak, currentNode.FullRlp, writeFlags);
                 currentNode.IsPersisted = true;
                 currentNode.LastSeen = Math.Max(blockNumber, currentNode.LastSeen ?? 0);
                 PersistedNodesCount++;
@@ -765,12 +766,14 @@ namespace Nethermind.Trie.Pruning
                     }
                 }
 
+                IWriteBatch writeBatch = _keyValueStore.StartWriteBatch();
                 for (int index = 0; index < candidateSets.Count; index++)
                 {
                     BlockCommitSet blockCommitSet = candidateSets[index];
                     if (_logger.IsDebug) _logger.Debug($"Persisting on disposal {blockCommitSet} (cache memory at {MemoryUsedByDirtyCache})");
-                    Persist(blockCommitSet);
+                    PersistBlockCommitSet(blockCommitSet, writeBatch);
                 }
+                writeBatch.Dispose();
 
                 if (candidateSets.Count == 0)
                 {
@@ -787,11 +790,35 @@ namespace Nethermind.Trie.Pruning
 
         public Task PersistCache(IWriteOnlyKeyValueStore store, CancellationToken cancellationToken)
         {
+
+            if (_logger.IsInfo) _logger.Info($"Full Pruning Persist Cache started.");
+
             const int million = 1_000_000;
-            int persistedNodes = 0;
             int commitSetCount = 0;
             Stopwatch stopwatch = Stopwatch.StartNew();
 
+            // We persist all sealed Commitset causing PruneCache to almost completely clear the cache. Any new block that
+            // need existing node will have to read back from db causing copy-on-read mechanism to copy the node.
+            while (_commitSetQueue.TryPeek(out BlockCommitSet commitSet) && commitSet.IsSealed)
+            {
+                if (!_commitSetQueue.TryDequeue(out commitSet)) break;
+                if (!commitSet.IsSealed)
+                {
+                    // Oops
+                    _commitSetQueue.Enqueue(commitSet);
+                    break;
+                }
+
+                commitSetCount++;
+                using IWriteBatch writeBatch = _keyValueStore.StartWriteBatch();
+                PersistBlockCommitSet(commitSet, writeBatch);
+            }
+            PruneCurrentSet();
+
+            if (_logger.IsInfo) _logger.Info($"Saving all commit set took {stopwatch.Elapsed} for {commitSetCount} commit sets.");
+            stopwatch.Restart();
+
+            int persistedNodes = 0;
             ConcurrentDictionary<ValueHash256, bool> wasPersisted = new();
             void PersistNode(TrieNode n)
             {
@@ -807,48 +834,16 @@ namespace Nethermind.Trie.Pruning
                 }
             }
 
-            // We persist all sealed Commitset causing PruneCache to almost completely clear. Any new block that
-            // need existing node will have to read back from db causing copy-on-read mechanism to copy the node.
-            // Sadly this block processing.
-            if (_logger.IsInfo) _logger.Info($"Full Pruning Persist Cache started.");
             List<KeyValuePair<ValueHash256, TrieNode>> nodesCopy = new();
             lock (_dirtyNodes)
             {
                 using (_dirtyNodes.AllNodes.AcquireLock())
                 {
-                    using ArrayPoolList<BlockCommitSet> toAddBack = new(_commitSetQueue.Count);
-                    using ArrayPoolList<BlockCommitSet> candidateSets = new(_commitSetQueue.Count);
-                    while (_commitSetQueue.TryDequeue(out BlockCommitSet frontSet))
-                    {
-                        if (!frontSet.IsSealed)
-                        {
-                            toAddBack.Add(frontSet);
-                        }
-                        else if (frontSet.Root != null)
-                        {
-                            candidateSets.Add(frontSet);
-                        }
-                    }
-
-                    for (int index = 0; index < toAddBack.Count; index++)
-                    {
-                        _commitSetQueue.Enqueue(toAddBack[index]);
-                    }
-
-                    foreach (BlockCommitSet blockCommitSet in candidateSets)
-                    {
-                        if (cancellationToken.IsCancellationRequested) continue;
-                        if (_logger.IsInfo) _logger.Info($"Block set {blockCommitSet.BlockNumber}");
-                        commitSetCount++;
-                        Persist(blockCommitSet);
-                    }
-
-                    if (_logger.IsInfo) _logger.Info($"Block commit set done. Committing");
                     PruneCache();
                     nodesCopy.AddRange(_dirtyNodes.AllNodes);
                 }
             }
-            if (_logger.IsInfo) _logger.Info($"Saving all commit set took {stopwatch.Elapsed} for {commitSetCount} commit sets, leaving {nodesCopy.Count} cache entry.");
+            if (_logger.IsInfo) _logger.Info($"Prune cache took {stopwatch.Elapsed}, leaving {nodesCopy.Count} cache entry.");
 
             Parallel.For(0, nodesCopy.Count, new ParallelOptions { MaxDegreeOfParallelism = Environment.ProcessorCount / 2 }, i =>
             {
@@ -856,7 +851,7 @@ namespace Nethermind.Trie.Pruning
                 nodesCopy[i].Value.CallRecursively(PersistNode, this, false, _logger, true);
             });
 
-            if (_logger.IsInfo) _logger.Info($"Full Pruning Persist Cache finished: {stopwatch.Elapsed} {persistedNodes / (double)million:N} mln nodes persisted.");
+            if (_logger.IsInfo) _logger.Info($"Full Pruning Persist Cache finished.");
 
             return Task.CompletedTask;
         }
