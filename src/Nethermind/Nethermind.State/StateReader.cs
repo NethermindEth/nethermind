@@ -16,7 +16,7 @@ namespace Nethermind.State
     public class StateReader : IStateReader
     {
         private readonly IKeyValueStore _codeDb;
-        private readonly ILogger _logger;
+        private readonly Logger _logger;
         private readonly StateTree _state;
         private readonly StorageTree _storage;
 

@@ -14,7 +14,7 @@ public class MergeBetterPeerStrategy : IBetterPeerStrategy
     private readonly IBetterPeerStrategy _preMergeBetterPeerStrategy;
     private readonly IPoSSwitcher _poSSwitcher;
     private readonly IBeaconPivot _beaconPivot;
-    private readonly ILogger _logger;
+    private readonly Logger _logger;
 
     public MergeBetterPeerStrategy(
         IBetterPeerStrategy preMergeBetterPeerStrategy,

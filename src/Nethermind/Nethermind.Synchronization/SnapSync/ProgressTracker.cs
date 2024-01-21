@@ -37,7 +37,7 @@ namespace Nethermind.Synchronization.SnapSync
         private int _activeCodeRequests;
         private int _activeAccRefreshRequests;
 
-        private readonly ILogger _logger;
+        private readonly Logger _logger;
         private readonly IDb _db;
 
         // Partitions are indexed by its limit keccak/address as they are keep in the request struct and remain the same
@@ -57,7 +57,7 @@ namespace Nethermind.Synchronization.SnapSync
 
         public ProgressTracker(IBlockTree blockTree, IDb db, ILogManager logManager, int accountRangePartitionCount = 8)
         {
-            _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _db = db ?? throw new ArgumentNullException(nameof(db));
 
             _pivot = new Pivot(blockTree, logManager);

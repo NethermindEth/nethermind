@@ -27,7 +27,7 @@ namespace Nethermind.Consensus.Producers
         private readonly ITransactionComparerProvider _transactionComparerProvider;
         private readonly ITxFilterPipeline _txFilterPipeline;
         private readonly ISpecProvider _specProvider;
-        protected readonly ILogger _logger;
+        protected readonly Logger _logger;
         private readonly IEip4844Config _eip4844Config;
 
         public TxPoolTxSource(

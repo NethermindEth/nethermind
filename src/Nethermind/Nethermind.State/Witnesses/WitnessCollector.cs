@@ -125,6 +125,6 @@ namespace Nethermind.State.Witnesses
 
         private readonly IKeyValueStore _keyValueStore;
 
-        private readonly ILogger _logger;
+        private readonly Logger _logger;
     }
 }

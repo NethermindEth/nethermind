@@ -15,11 +15,11 @@ namespace Nethermind.TxPool.Filters
     internal sealed class AlreadyKnownTxFilter : IIncomingTxFilter
     {
         private readonly HashCache _hashCache;
-        private readonly ILogger _logger;
+        private readonly Logger _logger;
 
         public AlreadyKnownTxFilter(
             HashCache hashCache,
-            ILogger logger)
+            in Logger logger)
         {
             _hashCache = hashCache;
             _logger = logger;

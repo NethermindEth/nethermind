@@ -10,7 +10,7 @@ namespace Nethermind.Consensus.AuRa;
 public class AuRaBetterPeerStrategy : IBetterPeerStrategy
 {
     private readonly IBetterPeerStrategy _betterPeerStrategy;
-    private readonly ILogger _logger;
+    private readonly Logger _logger;
 
     public AuRaBetterPeerStrategy(IBetterPeerStrategy betterPeerStrategy, ILogManager logManager)
     {

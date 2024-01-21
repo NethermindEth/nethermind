@@ -12,7 +12,7 @@ namespace Nethermind.Network.Rlpx
 {
     public class ZeroSnappyEncoder : MessageToByteEncoder<IByteBuffer>
     {
-        private readonly ILogger _logger;
+        private readonly Logger _logger;
 
         public ZeroSnappyEncoder(ILogManager logManager)
         {

@@ -13,7 +13,7 @@ namespace Nethermind.EthStats.Senders
     public class MessageSender : IMessageSender
     {
         private readonly string _instanceId;
-        private readonly ILogger _logger;
+        private readonly Logger _logger;
 
         public MessageSender(string instanceId, ILogManager logManager)
         {

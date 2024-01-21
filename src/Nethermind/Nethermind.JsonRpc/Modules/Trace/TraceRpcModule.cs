@@ -40,7 +40,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
         private readonly TxDecoder _txDecoder = new();
         private readonly IJsonRpcConfig _jsonRpcConfig;
         private readonly ILogManager _logManager;
-        private readonly ILogger _logger;
+        private readonly Logger _logger;
         private readonly ISpecProvider _specProvider;
         private readonly TimeSpan _cancellationTokenTimeout;
         private readonly IStateReader _stateReader;

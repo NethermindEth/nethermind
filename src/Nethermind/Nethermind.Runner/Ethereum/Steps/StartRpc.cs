@@ -30,7 +30,7 @@ namespace Nethermind.Runner.Ethereum.Steps
         public async Task Execute(CancellationToken cancellationToken)
         {
             IJsonRpcConfig jsonRpcConfig = _api.Config<IJsonRpcConfig>();
-            ILogger logger = _api.LogManager.GetClassLogger();
+            Logger logger = _api.LogManager.GetClassLogger();
 
             if (jsonRpcConfig.Enabled)
             {

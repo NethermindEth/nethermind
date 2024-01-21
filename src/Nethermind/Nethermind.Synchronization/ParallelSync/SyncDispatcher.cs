@@ -18,7 +18,7 @@ namespace Nethermind.Synchronization.ParallelSync
 
         private IPeerAllocationStrategyFactory<T> PeerAllocationStrategyFactory { get; }
 
-        private ILogger Logger { get; }
+        private Logger Logger { get; }
         private ISyncFeed<T> Feed { get; }
         private ISyncDownloader<T> Downloader { get; }
         private ISyncPeerPool SyncPeerPool { get; }

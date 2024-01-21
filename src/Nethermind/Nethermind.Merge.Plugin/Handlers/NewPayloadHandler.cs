@@ -41,7 +41,7 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
     private readonly IBlockProcessingQueue _processingQueue;
     private readonly IMergeSyncController _mergeSyncController;
     private readonly IInvalidChainTracker _invalidChainTracker;
-    private readonly ILogger _logger;
+    private readonly Logger _logger;
     private readonly LruCache<ValueHash256, bool>? _latestBlocks;
     private readonly ProcessingOptions _defaultProcessingOptions;
     private readonly TimeSpan _timeout;

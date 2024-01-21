@@ -42,7 +42,7 @@ public class ChainSpecBasedSpecProviderTests
             $"../../../../{Assembly.GetExecutingAssembly().GetName().Name}/Specs/Timstamp_activation_equal_to_genesis_timestamp_test.json");
         ChainSpec chainSpec = loader.Load(File.ReadAllText(path));
         chainSpec.Parameters.Eip2537Transition.Should().BeNull();
-        var logger = Substitute.ForPartsOf<LimboTraceLogger>();
+        Logger logger = new(Substitute.ForPartsOf<LimboTraceLogger>());
         var logManager = Substitute.For<ILogManager>();
         logManager.GetClassLogger<ChainSpecBasedSpecProvider>().Returns(logger);
         ChainSpecBasedSpecProvider provider = new(chainSpec);
@@ -85,8 +85,9 @@ public class ChainSpecBasedSpecProviderTests
             $"../../../../{Assembly.GetExecutingAssembly().GetName().Name}/Specs/Logs_warning_when_timestampActivation_happens_before_blockActivation_test.json");
         ChainSpec chainSpec = loader.Load(File.ReadAllText(path));
         chainSpec.Parameters.Eip2537Transition.Should().BeNull();
-        var logger = Substitute.For<ILogger>();
-        logger.IsWarn.Returns(true);
+        ILogger iLogger = Substitute.For<ILogger>();
+        iLogger.IsWarn.Returns(true);
+        Logger logger = new(iLogger);
         var logManager = Substitute.For<ILogManager>();
         logManager.GetClassLogger<ChainSpecBasedSpecProvider>().Returns(logger);
         ChainSpecBasedSpecProvider provider = new(chainSpec, logManager);
@@ -110,11 +111,11 @@ public class ChainSpecBasedSpecProviderTests
 
         if (receivesWarning)
         {
-            logger.Received(1).Warn(Arg.Is("Chainspec file is misconfigured! Timestamp transition is configured to happen before the last block transition."));
+            iLogger.Received(1).Warn(Arg.Is("Chainspec file is misconfigured! Timestamp transition is configured to happen before the last block transition."));
         }
         else
         {
-            logger.DidNotReceive().Warn(Arg.Is("Chainspec file is misconfigured! Timestamp transition is configured to happen before the last block transition."));
+            iLogger.DidNotReceive().Warn(Arg.Is("Chainspec file is misconfigured! Timestamp transition is configured to happen before the last block transition."));
         }
     }
 

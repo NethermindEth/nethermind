@@ -15,7 +15,7 @@ namespace Nethermind.Facade.Eth
     {
         private readonly IBlockTree _blockTree;
         private readonly ISyncConfig _syncConfig;
-        private readonly ILogger _logger;
+        private readonly Logger _logger;
         private readonly IReceiptStorage _receiptStorage;
         private readonly ISyncModeSelector _syncModeSelector;
         private readonly ISyncProgressResolver _syncProgressResolver;

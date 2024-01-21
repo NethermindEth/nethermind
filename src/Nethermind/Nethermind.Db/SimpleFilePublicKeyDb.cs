@@ -21,7 +21,7 @@ namespace Nethermind.Db
     {
         public const string DbFileName = "SimpleFileDb.db";
 
-        private readonly ILogger _logger;
+        private readonly Logger _logger;
         private bool _hasPendingChanges;
         private SpanConcurrentDictionary<byte, byte[]> _cache;
 
@@ -35,7 +35,7 @@ namespace Nethermind.Db
 
         public SimpleFilePublicKeyDb(string name, string dbDirectoryPath, ILogManager logManager)
         {
-            _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             ArgumentNullException.ThrowIfNull(dbDirectoryPath);
             Name = name ?? throw new ArgumentNullException(nameof(name));
             DbPath = Path.Combine(dbDirectoryPath, DbFileName);
@@ -154,14 +154,14 @@ namespace Nethermind.Db
         private class Backup : IDisposable
         {
             private readonly string _dbPath;
-            private readonly ILogger _logger;
+            private readonly Logger _logger;
 
             public string BackupPath { get; }
 
-            public Backup(string dbPath, ILogger logger)
+            public Backup(string dbPath, Logger logger)
             {
                 _dbPath = dbPath;
-                _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+                _logger = logger;
 
                 try
                 {

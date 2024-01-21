@@ -13,7 +13,7 @@ namespace Nethermind.Network.P2P
     public class PacketSender : ChannelHandlerAdapter, IPacketSender
     {
         private readonly IMessageSerializationService _messageSerializationService;
-        private readonly ILogger _logger;
+        private readonly Logger _logger;
         private IChannelHandlerContext _context;
         private readonly TimeSpan _sendLatency;
 
@@ -21,7 +21,7 @@ namespace Nethermind.Network.P2P
             TimeSpan sendLatency)
         {
             _messageSerializationService = messageSerializationService ?? throw new ArgumentNullException(nameof(messageSerializationService));
-            _logger = logManager.GetClassLogger<PacketSender>() ?? throw new ArgumentNullException(nameof(logManager));
+            _logger = logManager?.GetClassLogger<PacketSender>() ?? throw new ArgumentNullException(nameof(logManager));
             _sendLatency = sendLatency;
         }
 

@@ -14,9 +14,9 @@ namespace Nethermind.TxPool.Filters
     {
         private readonly ITxValidator _txValidator;
         private readonly IChainHeadSpecProvider _specProvider;
-        private readonly ILogger _logger;
+        private readonly Logger _logger;
 
-        public MalformedTxFilter(IChainHeadSpecProvider specProvider, ITxValidator txValidator, ILogger logger)
+        public MalformedTxFilter(IChainHeadSpecProvider specProvider, ITxValidator txValidator, in Logger logger)
         {
             _txValidator = txValidator;
             _specProvider = specProvider;

@@ -24,7 +24,7 @@ public class PayloadPreparationService : IPayloadPreparationService
 {
     private readonly PostMergeBlockProducer _blockProducer;
     private readonly IBlockImprovementContextFactory _blockImprovementContextFactory;
-    private readonly ILogger _logger;
+    private readonly Logger _logger;
 
     // by default we will cleanup the old payload once per six slot. There is no need to fire it more often
     public const int SlotsPerOldPayloadCleanup = 6;

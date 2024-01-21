@@ -20,7 +20,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
         private readonly ISyncConfig _syncConfig;
         private readonly IDb _metadataDb;
         private readonly IBlockTree _blockTree;
-        private readonly ILogger _logger;
+        private readonly Logger _logger;
         private BlockHeader? _currentBeaconPivot;
 
         private BlockHeader? CurrentBeaconPivot

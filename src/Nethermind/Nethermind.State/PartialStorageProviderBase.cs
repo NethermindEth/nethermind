@@ -18,7 +18,7 @@ namespace Nethermind.State
     {
         protected readonly ResettableDictionary<StorageCell, StackList<int>> _intraBlockCache = new();
 
-        protected readonly ILogger _logger;
+        protected readonly Logger _logger;
 
         private const int StartCapacity = Resettable.StartCapacity;
         private int _capacity = StartCapacity;

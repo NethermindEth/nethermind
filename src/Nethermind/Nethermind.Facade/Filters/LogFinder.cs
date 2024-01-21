@@ -28,7 +28,7 @@ namespace Nethermind.Blockchain.Find
         private readonly int _maxBlockDepth;
         private readonly int _rpcConfigGetLogsThreads;
         private readonly IBlockFinder _blockFinder;
-        private readonly ILogger _logger;
+        private readonly Logger _logger;
 
         public LogFinder(IBlockFinder? blockFinder,
             IReceiptFinder? receiptFinder,

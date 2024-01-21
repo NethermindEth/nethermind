@@ -21,7 +21,7 @@ namespace Nethermind.Synchronization.ParallelSync
         private readonly IFullStateFinder _fullStateFinder;
 
         // ReSharper disable once NotAccessedField.Local
-        private readonly ILogger _logger;
+        private readonly Logger _logger;
 
         private readonly ISyncFeed<HeadersSyncBatch?>? _headersSyncFeed;
         private readonly ISyncFeed<BodiesSyncBatch?>? _bodiesSyncFeed;

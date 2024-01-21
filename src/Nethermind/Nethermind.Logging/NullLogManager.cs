@@ -13,24 +13,12 @@ namespace Nethermind.Logging
 
         public static ILogManager Instance { get; } = new NullLogManager();
 
-        public ILogger GetClassLogger(Type type)
-        {
-            return NullLogger.Instance;
-        }
+        public Logger GetClassLogger(Type type) => NullLogger.Instance;
 
-        public ILogger GetClassLogger<T>()
-        {
-            return NullLogger.Instance;
-        }
+        public Logger GetClassLogger<T>() => NullLogger.Instance;
 
-        public ILogger GetClassLogger()
-        {
-            return NullLogger.Instance;
-        }
+        public Logger GetClassLogger() => NullLogger.Instance;
 
-        public ILogger GetLogger(string loggerName)
-        {
-            return NullLogger.Instance;
-        }
+        public Logger GetLogger(string loggerName) => NullLogger.Instance;
     }
 }

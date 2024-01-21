@@ -29,7 +29,7 @@ public class PivotUpdator
     private readonly IBlockCacheService _blockCacheService;
     private readonly IBeaconSyncStrategy _beaconSyncStrategy;
     private readonly IDb _metadataDb;
-    private readonly ILogger _logger;
+    private readonly Logger _logger;
 
     private readonly CancellationTokenSource _cancellation = new();
 
@@ -54,7 +54,7 @@ public class PivotUpdator
         _blockCacheService = blockCacheService ?? throw new ArgumentNullException(nameof(blockCacheService));
         _beaconSyncStrategy = beaconSyncStrategy ?? throw new ArgumentNullException(nameof(beaconSyncStrategy));
         _metadataDb = metadataDb ?? throw new ArgumentNullException(nameof(metadataDb));
-        _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+        _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
 
         _maxAttempts = syncConfig.MaxAttemptsToUpdatePivot;
         _attemptsLeft = syncConfig.MaxAttemptsToUpdatePivot;

@@ -18,7 +18,7 @@ namespace Nethermind.Network.P2P.Analyzers
     public class DisconnectsAnalyzer : IDisconnectsAnalyzer
     {
         private readonly Timer _timer;
-        private readonly ILogger _logger;
+        private readonly Logger _logger;
         private readonly StringBuilder _builder = new();
 
         private readonly ConcurrentDictionary<DisconnectCategory, int> _disconnectsA = new();

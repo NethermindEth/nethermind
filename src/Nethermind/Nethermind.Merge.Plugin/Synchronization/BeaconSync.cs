@@ -21,7 +21,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
         private readonly IBlockCacheService _blockCacheService;
         private readonly IPoSSwitcher _poSSwitcher;
         private bool _isInBeaconModeControl = false;
-        private readonly ILogger _logger;
+        private readonly Logger _logger;
 
         public BeaconSync(
             IBeaconPivot beaconPivot,

@@ -19,9 +19,9 @@ namespace Nethermind.Logging
     {
         private static LimboNoErrorLogger _instance;
 
-        public static LimboNoErrorLogger Instance
+        public static Logger Instance
         {
-            get { return LazyInitializer.EnsureInitialized(ref _instance, () => new LimboNoErrorLogger()); }
+            get { return new(LazyInitializer.EnsureInitialized(ref _instance, () => new LimboNoErrorLogger())); }
         }
 
         public void Info(string text)

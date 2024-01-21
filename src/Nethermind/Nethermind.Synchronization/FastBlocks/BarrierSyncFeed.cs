@@ -23,7 +23,7 @@ public abstract class BarrierSyncFeed<T> : ActivatedSyncFeed<T>
     protected abstract Func<bool> HasPivot { get; }
 
     protected readonly ISpecProvider _specProvider;
-    protected readonly ILogger _logger;
+    protected readonly Logger _logger;
     protected long _barrier;
     protected long _pivotNumber;
     protected long? _barrierWhenStarted;
@@ -37,11 +37,11 @@ public abstract class BarrierSyncFeed<T> : ActivatedSyncFeed<T>
         && LowestInsertedNumber <= DepositContractBarrier
         && LowestInsertedNumber > DepositContractBarrier - OldBarrierDefaultExtraRange; // this is intentional. this is a magic number as to the amount of possible blocks that had been synced. We noticed on previous versions that the client synced a bit below the default barrier by more than just the GethRequest limit (128).
 
-    public BarrierSyncFeed(IDb metadataDb, ISpecProvider specProvider, ILogger logger)
+    public BarrierSyncFeed(IDb metadataDb, ISpecProvider specProvider, in Logger logger)
     {
         _metadataDb = metadataDb ?? throw new ArgumentNullException(nameof(metadataDb));
         _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
-        _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+        _logger = logger;
     }
 
     public void InitializeMetadataDb()

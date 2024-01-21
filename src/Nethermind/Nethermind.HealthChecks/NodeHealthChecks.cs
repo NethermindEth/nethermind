@@ -16,7 +16,7 @@ namespace Nethermind.HealthChecks
     {
         private readonly INethermindApi _api;
         private readonly INodeHealthService _nodeHealthService;
-        private readonly ILogger _logger;
+        private readonly Logger _logger;
 
         public NodeHealthCheck(
             INodeHealthService nodeHealthService,

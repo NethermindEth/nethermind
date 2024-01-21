@@ -48,7 +48,7 @@ namespace Nethermind.Clique.Test
         {
             private readonly ILogManager _logManager = LimboLogs.Instance;
             //            private ILogManager _logManager = new OneLoggerLogManager(new ConsoleAsyncLogger(LogLevel.Debug));
-            private readonly ILogger _logger;
+            private readonly Logger _logger;
             private static readonly ITimestamper _timestamper = Timestamper.Default;
             private readonly CliqueConfig _cliqueConfig;
             private readonly EthereumEcdsa _ethereumEcdsa = new(BlockchainIds.Goerli, LimboLogs.Instance);

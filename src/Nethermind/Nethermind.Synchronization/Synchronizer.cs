@@ -39,7 +39,7 @@ namespace Nethermind.Synchronization
         private readonly IBlockDownloaderFactory _blockDownloaderFactory;
         private readonly INodeStatsManager _nodeStatsManager;
 
-        protected readonly ILogger _logger;
+        protected readonly Logger _logger;
         protected readonly IBlockTree _blockTree;
         protected readonly ISyncConfig _syncConfig;
         protected readonly ISyncPeerPool _syncPeerPool;

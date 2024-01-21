@@ -18,7 +18,7 @@ namespace Nethermind.Wallet
     public class DevKeyStoreWallet : IWallet
     {
         private readonly IKeyStore _keyStore;
-        private readonly ILogger _logger;
+        private readonly Logger _logger;
 
         private readonly Dictionary<Address, PrivateKey> _unlockedAccounts = new Dictionary<Address, PrivateKey>();
         public event EventHandler<AccountLockedEventArgs> AccountLocked;
@@ -27,7 +27,7 @@ namespace Nethermind.Wallet
         public DevKeyStoreWallet(IKeyStore keyStore, ILogManager logManager, bool createTestAccounts = true)
         {
             _keyStore = keyStore;
-            _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
 
             if (createTestAccounts)
             {

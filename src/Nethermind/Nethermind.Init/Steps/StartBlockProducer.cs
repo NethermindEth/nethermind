@@ -30,7 +30,7 @@ namespace Nethermind.Init.Steps
             {
                 if (_api.BlockTree is null) throw new StepDependencyException(nameof(_api.BlockTree));
 
-                ILogger logger = _api.LogManager.GetClassLogger();
+                Logger logger = _api.LogManager.GetClassLogger();
                 if (logger.IsInfo) logger.Info($"Starting {_api.SealEngineType} block producer & sealer");
                 ProducedBlockSuggester suggester = new(_api.BlockTree, _api.BlockProducer);
                 _api.DisposeStack.Push(suggester);

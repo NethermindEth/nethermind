@@ -56,7 +56,7 @@ namespace Nethermind.Network
         private readonly ITxGossipPolicy _txGossipPolicy;
         private readonly INetworkConfig _networkConfig;
         private readonly ILogManager _logManager;
-        private readonly ILogger _logger;
+        private readonly Logger _logger;
         private readonly IDictionary<string, Func<ISession, int, IProtocolHandler>> _protocolFactories;
         private readonly HashSet<Capability> _capabilities = new();
         private readonly Regex? _clientIdPattern;

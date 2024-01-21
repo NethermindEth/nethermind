@@ -48,7 +48,7 @@ namespace Nethermind.TxPool
         private readonly ITxPoolConfig _txPoolConfig;
         private readonly bool _blobReorgsSupportEnabled;
 
-        private readonly ILogger _logger;
+        private readonly Logger _logger;
 
         private readonly Channel<BlockReplacementEventArgs> _headBlocksChannel = Channel.CreateUnbounded<BlockReplacementEventArgs>(new UnboundedChannelOptions() { SingleReader = true, SingleWriter = true });
 
@@ -743,7 +743,7 @@ namespace Nethermind.TxPool
             _timer!.Enabled = true;
         }
 
-        private static void WriteTxPoolReport(ILogger logger)
+        private static void WriteTxPoolReport(in Logger logger)
         {
             if (!logger.IsInfo)
             {

@@ -16,7 +16,7 @@ public class TraceStorePruner : IDisposable
     private readonly IBlockTree _blockTree;
     private readonly IDb _db;
     private readonly int _blockToKeep;
-    private readonly ILogger _logger;
+    private readonly Logger _logger;
 
     public TraceStorePruner(IBlockTree blockTree, IDb db, int blockToKeep, ILogManager logManager)
     {

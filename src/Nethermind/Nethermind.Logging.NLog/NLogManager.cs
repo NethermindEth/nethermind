@@ -62,13 +62,13 @@ namespace Nethermind.Logging.NLog
 
         private NLogLogger BuildLogger(Type type) => new(type);
 
-        public ILogger GetClassLogger(Type type) => _loggers.GetOrAdd(type, BuildLogger);
+        public Logger GetClassLogger(Type type) => new(_loggers.GetOrAdd(type, BuildLogger));
 
-        public ILogger GetClassLogger<T>() => GetClassLogger(typeof(T));
+        public Logger GetClassLogger<T>() => GetClassLogger(typeof(T));
 
-        public ILogger GetClassLogger() => new NLogLogger();
+        public Logger GetClassLogger() => new(new NLogLogger());
 
-        public ILogger GetLogger(string loggerName) => new NLogLogger(loggerName);
+        public Logger GetLogger(string loggerName) => new(new NLogLogger(loggerName));
 
         public void SetGlobalVariable(string name, object value)
         {

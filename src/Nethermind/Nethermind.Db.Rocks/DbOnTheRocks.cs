@@ -24,7 +24,7 @@ namespace Nethermind.Db.Rocks;
 
 public class DbOnTheRocks : IDb, ITunableDb
 {
-    private ILogger _logger;
+    private Logger _logger;
 
     private string? _fullPath;
 
@@ -113,7 +113,7 @@ public class DbOnTheRocks : IDb, ITunableDb
         IList<string>? columnNames = null, bool deleteOnStart = false, IntPtr? sharedCache = null)
     {
         _fullPath = GetFullDbPath(dbPath, basePath);
-        _logger = logManager?.GetClassLogger() ?? NullLogger.Instance;
+        _logger = logManager?.GetClassLogger() ?? default;
         if (!Directory.Exists(_fullPath))
         {
             Directory.CreateDirectory(_fullPath);

@@ -13,7 +13,7 @@ namespace Nethermind.Synchronization.FastBlocks
 {
     public class HeadersSyncDownloader : ISyncDownloader<HeadersSyncBatch>
     {
-        private readonly ILogger Logger;
+        private readonly Logger Logger;
 
         public HeadersSyncDownloader(ILogManager logManager)
         {

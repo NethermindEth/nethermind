@@ -11,6 +11,7 @@ using Nethermind.EthStats.Clients;
 using Nethermind.EthStats.Configs;
 using Nethermind.EthStats.Integrations;
 using Nethermind.EthStats.Senders;
+using Nethermind.Logging;
 using Nethermind.Network.Config;
 using Nethermind.Network.P2P;
 using ILogger = Nethermind.Logging.ILogger;
@@ -23,7 +24,7 @@ public class EthStatsPlugin : INethermindPlugin
     private IEthStatsClient _ethStatsClient = null!;
     private IEthStatsIntegration _ethStatsIntegration = null!;
     private INethermindApi _api = null!;
-    private ILogger _logger = null!;
+    private Logger _logger;
 
     private bool _isOn;
 

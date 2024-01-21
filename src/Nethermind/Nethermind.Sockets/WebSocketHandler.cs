@@ -14,12 +14,12 @@ namespace Nethermind.Sockets
     public class WebSocketHandler : ISocketHandler
     {
         private readonly WebSocket _webSocket;
-        private readonly ILogger _logger;
+        private readonly Logger _logger;
 
         public WebSocketHandler(WebSocket webSocket, ILogManager logManager)
         {
             _webSocket = webSocket;
-            _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         }
 
         public Task SendRawAsync(ArraySegment<byte> data, bool endOfMessage = true) =>

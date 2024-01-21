@@ -26,7 +26,7 @@ namespace Nethermind.Runner.Ethereum
 {
     public class JsonRpcRunner
     {
-        private readonly ILogger _logger;
+        private readonly Logger _logger;
         private readonly IConfigProvider _configurationProvider;
         private readonly IRpcAuthentication _rpcAuthentication;
         private readonly ILogManager _logManager;

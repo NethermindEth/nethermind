@@ -37,7 +37,7 @@ namespace Nethermind.Consensus.Ethash
         public int CachedEpochsCount => _cachedEpochsCount;
 
         private readonly Func<uint, IEthashDataSet> _createDataSet;
-        private readonly ILogger _logger;
+        private readonly Logger _logger;
 
         public HintBasedCache(Func<uint, IEthashDataSet> createDataSet, ILogManager logManager)
         {

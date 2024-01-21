@@ -22,7 +22,7 @@ namespace Nethermind.Network
         private readonly INodeStatsManager _stats;
         private readonly INetworkStorage _peerStorage;
         private readonly IRlpxHost _rlpxHost;
-        private readonly ILogger _logger;
+        private readonly Logger _logger;
 
         public NodesLoader(
             INetworkConfig networkConfig,
@@ -31,7 +31,7 @@ namespace Nethermind.Network
             IRlpxHost rlpxHost,
             ILogManager logManager)
         {
-            _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _stats = stats ?? throw new ArgumentNullException(nameof(stats));
             _peerStorage = peerStorage ?? throw new ArgumentNullException(nameof(peerStorage));
             _rlpxHost = rlpxHost ?? throw new ArgumentNullException(nameof(rlpxHost));

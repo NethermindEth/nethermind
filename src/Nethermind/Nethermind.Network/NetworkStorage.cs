@@ -19,7 +19,7 @@ namespace Nethermind.Network
     {
         private readonly object _lock = new();
         private readonly IFullDb _fullDb;
-        private readonly ILogger _logger;
+        private readonly Logger _logger;
         private readonly Dictionary<PublicKey, NetworkNode> _nodesDict = new();
         private long _updateCounter;
         private long _removeCounter;

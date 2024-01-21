@@ -20,7 +20,7 @@ namespace Nethermind.Consensus.AuRa.Transactions
         private readonly ITxSource _innerSource;
         private readonly ITxSealer _txSealer;
         private readonly IStateReader _stateReader;
-        private readonly ILogger _logger;
+        private readonly Logger _logger;
         private readonly IDictionary<Address, UInt256> _nonces = new Dictionary<Address, UInt256>(1);
 
         public GeneratedTxSource(ITxSource innerSource, ITxSealer txSealer, IStateReader stateReader, ILogManager logManager)

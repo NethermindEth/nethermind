@@ -23,7 +23,7 @@ namespace Nethermind.Consensus.Processing
             private readonly ITransactionProcessorAdapter _transactionProcessor;
             private readonly IWorldState _stateProvider;
             private readonly IBlockProductionTransactionPicker _blockProductionTransactionPicker;
-            private readonly ILogger _logger;
+            private readonly Logger _logger;
 
             public BlockProductionTransactionsExecutor(
                 ReadOnlyTxProcessingEnv readOnlyTxProcessingEnv,

@@ -1564,8 +1564,13 @@ public partial class EngineModuleTests
     public async Task Should_warn_for_missing_capabilities()
     {
         using MergeTestBlockchain chain = await CreateBlockchain();
-        chain.LogManager = Substitute.For<ILogManager>();
-        chain.LogManager.GetClassLogger().IsWarn.Returns(true);
+        var loggerManager = Substitute.For<ILogManager>();
+        var iLogger = Substitute.For<ILogger>();
+        iLogger.IsWarn.Returns(true);
+        var logger = new Logger(iLogger);
+        loggerManager.GetClassLogger().Returns(logger);
+
+        chain.LogManager = loggerManager;
 
         IEngineRpcModule rpcModule = CreateEngineModule(chain);
         string[] list = new[]
@@ -1576,7 +1581,7 @@ public partial class EngineModuleTests
 
         ResultWrapper<IEnumerable<string>> result = rpcModule.engine_exchangeCapabilities(list);
 
-        chain.LogManager.GetClassLogger().Received().Warn(
+        chain.LogManager.GetClassLogger().UnderlyingLogger.Received().Warn(
             Arg.Is<string>(a =>
                 a.Contains(nameof(IEngineRpcModule.engine_getPayloadV1), StringComparison.Ordinal)/* &&
                 !a.Contains(nameof(IEngineRpcModule.engine_getPayloadV2), StringComparison.Ordinal)*/));

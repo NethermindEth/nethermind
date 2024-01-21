@@ -73,7 +73,7 @@ public class VirtualMachine : IVirtualMachine
         ISpecProvider? specProvider,
         ILogManager? logManager)
     {
-        ILogger logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+        Logger logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         if (!logger.IsTrace)
         {
             _evm = new VirtualMachine<NotTracing>(blockhashProvider, specProvider, logger);
@@ -195,7 +195,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
 
     private readonly IBlockhashProvider _blockhashProvider;
     private readonly ISpecProvider _specProvider;
-    private readonly ILogger _logger;
+    private readonly Logger _logger;
     private IWorldState _worldState;
     private IWorldState _state;
     private readonly Stack<EvmState> _stateStack = new();
@@ -206,9 +206,9 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
     public VirtualMachine(
         IBlockhashProvider? blockhashProvider,
         ISpecProvider? specProvider,
-        ILogger? logger)
+        in Logger logger)
     {
-        _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+        _logger = logger;
         _blockhashProvider = blockhashProvider ?? throw new ArgumentNullException(nameof(blockhashProvider));
         _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
         _chainId = ((UInt256)specProvider.ChainId).ToBigEndian();

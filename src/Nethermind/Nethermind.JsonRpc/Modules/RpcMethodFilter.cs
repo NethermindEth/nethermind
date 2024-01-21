@@ -15,13 +15,13 @@ namespace Nethermind.JsonRpc.Modules
 {
     internal class RpcMethodFilter : IRpcMethodFilter
     {
-        private readonly ILogger _logger;
+        private readonly Logger _logger;
         private readonly HashSet<string> _filters = new();
 
         private readonly ConcurrentDictionary<string, bool> _methodsCache
             = new();
 
-        public RpcMethodFilter(string filePath, IFileSystem fileSystem, ILogger logger)
+        public RpcMethodFilter(string filePath, IFileSystem fileSystem, in Logger logger)
         {
             if (!fileSystem.File.Exists(filePath))
             {

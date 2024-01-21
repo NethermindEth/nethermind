@@ -16,7 +16,7 @@ namespace Nethermind.Synchronization.FastBlocks
 {
     public class ReceiptsSyncDispatcher : ISyncDownloader<ReceiptsSyncBatch>
     {
-        private readonly ILogger Logger;
+        private readonly Logger Logger;
 
         public ReceiptsSyncDispatcher(ILogManager logManager)
         {

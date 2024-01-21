@@ -13,13 +13,13 @@ public class TestErrorLogManager : ILogManager
 
     public IReadOnlyCollection<Error> Errors => _errors;
 
-    public ILogger GetClassLogger(Type type) => GetClassLogger();
+    public Logger GetClassLogger(Type type) => GetClassLogger();
 
-    public ILogger GetClassLogger<T>() => GetClassLogger();
+    public Logger GetClassLogger<T>() => GetClassLogger();
 
-    public ILogger GetClassLogger() => new TestErrorLogger(_errors);
+    public Logger GetClassLogger() => new(new TestErrorLogger(_errors));
 
-    public ILogger GetLogger(string loggerName) => GetClassLogger();
+    public Logger GetLogger(string loggerName) => GetClassLogger();
 
     public class TestErrorLogger : ILogger
     {

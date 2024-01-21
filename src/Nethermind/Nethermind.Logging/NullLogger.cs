@@ -2,18 +2,12 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Threading;
 
 namespace Nethermind.Logging
 {
     public class NullLogger : ILogger
     {
-        private static NullLogger _instance;
-
-        public static NullLogger Instance
-        {
-            get { return LazyInitializer.EnsureInitialized(ref _instance, () => new NullLogger()); }
-        }
+        public static Logger Instance => default;
 
         private NullLogger()
         {

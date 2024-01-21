@@ -12,18 +12,18 @@ namespace Nethermind.JsonRpc
     {
         private readonly string _recorderBaseFilePath;
         private readonly IFileSystem _fileSystem;
-        private readonly ILogger _logger;
+        private readonly Logger _logger;
         private int _recorderFileCounter;
         private string _currentRecorderFilePath;
         private int _currentRecorderFileLength;
         private bool _isEnabled = true;
         private readonly object _recorderSync = new();
 
-        public Recorder(string basePath, IFileSystem fileSystem, ILogger logger)
+        public Recorder(string basePath, IFileSystem fileSystem, in Logger logger)
         {
             _recorderBaseFilePath = basePath ?? throw new ArgumentNullException(nameof(basePath));
             _fileSystem = fileSystem ?? throw new ArgumentNullException(nameof(fileSystem));
-            _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+            _logger = logger;
             CreateNewRecorderFile();
         }
 

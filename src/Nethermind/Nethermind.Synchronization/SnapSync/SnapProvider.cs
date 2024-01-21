@@ -24,7 +24,7 @@ namespace Nethermind.Synchronization.SnapSync
         private readonly ObjectPool<ITrieStore> _trieStorePool;
         private readonly IDbProvider _dbProvider;
         private readonly ILogManager _logManager;
-        private readonly ILogger _logger;
+        private readonly Logger _logger;
 
         private readonly ProgressTracker _progressTracker;
 

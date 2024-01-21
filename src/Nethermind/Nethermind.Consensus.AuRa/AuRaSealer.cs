@@ -21,7 +21,7 @@ namespace Nethermind.Consensus.AuRa
         private readonly IAuRaStepCalculator _auRaStepCalculator;
         private readonly ISigner _signer;
         private readonly IValidSealerStrategy _validSealerStrategy;
-        private readonly ILogger _logger;
+        private readonly Logger _logger;
 
         public AuRaSealer(
             IBlockTree blockTree,

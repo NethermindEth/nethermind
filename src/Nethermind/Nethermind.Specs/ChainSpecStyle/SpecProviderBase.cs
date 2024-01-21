@@ -14,9 +14,9 @@ public abstract class SpecProviderBase
     protected (ForkActivation Activation, IReleaseSpec Spec)[] _blockTransitions;
     private (ForkActivation Activation, IReleaseSpec Spec)[] _timestampTransitions;
     private ForkActivation? _firstTimestampActivation;
-    protected readonly ILogger _logger;
+    protected readonly Logger _logger;
 
-    public SpecProviderBase(ILogger logger = null)
+    public SpecProviderBase(Logger logger = default)
     {
         _logger = logger;
     }
@@ -55,7 +55,7 @@ public abstract class SpecProviderBase
             if (_firstTimestampActivation.Value.Timestamp < activation.Timestamp
                 && _firstTimestampActivation.Value.BlockNumber > activation.BlockNumber)
             {
-                if (_logger is not null && _logger.IsWarn) _logger.Warn($"Chainspec file is misconfigured! Timestamp transition is configured to happen before the last block transition.");
+                if (_logger.IsWarn) _logger.Warn($"Chainspec file is misconfigured! Timestamp transition is configured to happen before the last block transition.");
             }
 
             if (_firstTimestampActivation.Value.Timestamp <= activation.Timestamp)

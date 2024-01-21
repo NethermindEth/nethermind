@@ -13,9 +13,9 @@ namespace Nethermind.TxPool.Filters
     internal sealed class BalanceZeroFilter : IIncomingTxFilter
     {
         private readonly bool _thereIsPriorityContract;
-        private readonly ILogger _logger;
+        private readonly Logger _logger;
 
-        public BalanceZeroFilter(bool thereIsPriorityContract, ILogger logger)
+        public BalanceZeroFilter(bool thereIsPriorityContract, in Logger logger)
         {
             _thereIsPriorityContract = thereIsPriorityContract;
             _logger = logger;

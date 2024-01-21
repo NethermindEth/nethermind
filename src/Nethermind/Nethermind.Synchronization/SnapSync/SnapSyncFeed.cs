@@ -22,7 +22,7 @@ namespace Nethermind.Synchronization.SnapSync
 
         private readonly ISnapProvider _snapProvider;
 
-        private readonly ILogger _logger;
+        private readonly Logger _logger;
         private bool _disposed = false;
         public override bool IsMultiFeed => true;
         public override AllocationContexts Contexts => AllocationContexts.Snap;

@@ -16,7 +16,7 @@ namespace Nethermind.Facade.Proxy
     {
         private readonly HttpClient _client;
         private readonly IJsonSerializer _jsonSerializer;
-        private readonly ILogger _logger;
+        private readonly Logger _logger;
         private readonly int _retries;
         private readonly int _retryDelayMilliseconds;
 
@@ -29,7 +29,7 @@ namespace Nethermind.Facade.Proxy
         {
             _client = client ?? throw new ArgumentNullException(nameof(client));
             _jsonSerializer = jsonSerializer ?? throw new ArgumentNullException(nameof(jsonSerializer));
-            _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _retries = retries;
             _retryDelayMilliseconds = retryDelayMilliseconds;
         }

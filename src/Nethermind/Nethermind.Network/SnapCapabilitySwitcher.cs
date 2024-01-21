@@ -16,7 +16,7 @@ public class SnapCapabilitySwitcher
 {
     private readonly IProtocolsManager _protocolsManager;
     private readonly ISyncModeSelector _syncModeSelector;
-    private readonly ILogger _logger;
+    private readonly Logger _logger;
 
     public SnapCapabilitySwitcher(IProtocolsManager? protocolsManager, ISyncModeSelector? syncModeSelector, ILogManager? logManager)
     {

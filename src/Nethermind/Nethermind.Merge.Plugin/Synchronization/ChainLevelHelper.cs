@@ -23,7 +23,7 @@ public class ChainLevelHelper : IChainLevelHelper
 {
     private readonly IBlockTree _blockTree;
     private readonly ISyncConfig _syncConfig;
-    private readonly ILogger _logger;
+    private readonly Logger _logger;
     private readonly IBeaconPivot _beaconPivot;
 
     public ChainLevelHelper(

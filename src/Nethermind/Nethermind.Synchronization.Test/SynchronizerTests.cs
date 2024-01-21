@@ -290,7 +290,7 @@ namespace Nethermind.Synchronization.Test
 
             readonly ILogManager _logManager = LimboLogs.Instance;
 
-            private readonly ILogger _logger;
+            private readonly Logger _logger;
 
             public SyncingContext(SynchronizerType synchronizerType)
             {

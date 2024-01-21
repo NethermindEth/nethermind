@@ -23,7 +23,7 @@ namespace Nethermind.Hive
     {
         private readonly IBlockTree _blockTree;
         private readonly IBlockProcessingQueue _blockProcessingQueue;
-        private readonly ILogger _logger;
+        private readonly Logger _logger;
         private readonly IConfigProvider _configurationProvider;
         private readonly IFileSystem _fileSystem;
         private readonly IBlockValidator _blockValidator;
@@ -34,11 +34,11 @@ namespace Nethermind.Hive
             IBlockTree blockTree,
             IBlockProcessingQueue blockProcessingQueue,
             IConfigProvider configurationProvider,
-            ILogger logger,
+            in Logger logger,
             IFileSystem fileSystem,
             IBlockValidator blockValidator)
         {
-            _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+            _logger = logger;
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _blockProcessingQueue = blockProcessingQueue ?? throw new ArgumentNullException(nameof(blockProcessingQueue));
             _configurationProvider = configurationProvider ?? throw new ArgumentNullException(nameof(configurationProvider));

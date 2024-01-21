@@ -32,7 +32,7 @@ namespace Nethermind.Synchronization.FastBlocks
             { BlockchainIds.Kovan, new Dictionary<long, ulong> { {148240, 19430113280} } }
         };
 
-        private readonly ILogger _logger;
+        private readonly Logger _logger;
         private readonly ISyncPeerPool _syncPeerPool;
         protected readonly ISyncReport _syncReport;
         protected readonly IBlockTree _blockTree;

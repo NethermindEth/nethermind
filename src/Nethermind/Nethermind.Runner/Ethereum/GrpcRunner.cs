@@ -13,7 +13,7 @@ namespace Nethermind.Runner.Ethereum
     {
         private readonly NethermindService.NethermindServiceBase _service;
         private readonly IGrpcConfig _config;
-        private readonly ILogger _logger;
+        private readonly Logger _logger;
         private Server? _server;
 
         public GrpcRunner(NethermindService.NethermindServiceBase service, IGrpcConfig config, ILogManager logManager)

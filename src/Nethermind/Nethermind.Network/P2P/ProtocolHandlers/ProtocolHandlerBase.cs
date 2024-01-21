@@ -37,7 +37,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
             _initCompletionSource = new TaskCompletionSource<MessageBase>();
         }
 
-        protected ILogger Logger { get; }
+        protected Logger Logger { get; }
 
         protected abstract TimeSpan InitTimeout { get; }
 

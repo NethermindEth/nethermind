@@ -29,7 +29,7 @@ namespace Nethermind.Consensus.AuRa.Transactions
         private readonly ProtectedPrivateKey _previousCryptoKey;
         private readonly IList<IRandomContract> _contracts;
         private readonly ICryptoRandom _random;
-        private readonly ILogger _logger;
+        private readonly Logger _logger;
 
         public RandomContractTxSource(
             IList<IRandomContract> contracts,

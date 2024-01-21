@@ -13,7 +13,7 @@ namespace Nethermind.Synchronization.SnapSync
     {
         private readonly IBlockTree _blockTree;
         private BlockHeader _bestHeader;
-        private readonly ILogger _logger;
+        private readonly Logger _logger;
 
         public long Diff
         {
@@ -26,7 +26,7 @@ namespace Nethermind.Synchronization.SnapSync
         public Pivot(IBlockTree blockTree, ILogManager logManager)
         {
             _blockTree = blockTree;
-            _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         }
 
         public BlockHeader GetPivotHeader()

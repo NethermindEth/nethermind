@@ -41,7 +41,7 @@ namespace Nethermind.Cli
                     : new CliConsole();
 
                 var historyManager = new StatementHistoryManager(cliConsole, new FileSystem());
-                ILogManager logManager = new OneLoggerLogManager(new CliLogger(cliConsole));
+                ILogManager logManager = new OneLoggerLogManager(new(new CliLogger(cliConsole)));
                 ICliEngine engine = new CliEngine(cliConsole);
                 INodeManager nodeManager = new NodeManager(engine, Serializer, cliConsole, logManager);
                 var moduleLoader = new CliModuleLoader(engine, nodeManager, cliConsole);

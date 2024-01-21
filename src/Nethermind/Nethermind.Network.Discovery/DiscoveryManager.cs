@@ -18,7 +18,7 @@ public class DiscoveryManager : IDiscoveryManager
 {
     private readonly IDiscoveryConfig _discoveryConfig;
     private readonly RateLimiter _outgoingMessageRateLimiter;
-    private readonly ILogger _logger;
+    private readonly Logger _logger;
     private readonly INodeLifecycleManagerFactory _nodeLifecycleManagerFactory;
     private readonly ConcurrentDictionary<Hash256, INodeLifecycleManager> _nodeLifecycleManagers = new();
     private readonly INodeTable _nodeTable;

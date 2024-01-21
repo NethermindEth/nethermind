@@ -17,11 +17,11 @@ namespace Nethermind.Runner.Test
 
         private readonly IJsonSerializer _jsonSerializer = new EthereumJsonSerializer();
         private readonly IChainSpecLoader _loader;
-        public ILogger _logger;
+        public Logger _logger;
         public ChainspecFilesTests()
         {
             _loader = new ChainSpecLoader(_jsonSerializer);
-            _logger = NSubstitute.Substitute.For<ILogger>();
+            _logger = default;
         }
 
         [TestCase("foundation", 1UL)]

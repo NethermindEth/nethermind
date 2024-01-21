@@ -21,7 +21,7 @@ namespace Nethermind.Network
         private PeriodicTimer _pingTimer;
         private Task _pingTimerTask;
         private readonly INetworkConfig _networkConfig;
-        private readonly ILogger _logger;
+        private readonly Logger _logger;
 
         private readonly TimeSpan _pingInterval;
         private readonly List<Task<bool>> _pingTasks = new();
@@ -30,7 +30,7 @@ namespace Nethermind.Network
 
         public SessionMonitor(INetworkConfig config, ILogManager logManager)
         {
-            _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _networkConfig = config ?? throw new ArgumentNullException(nameof(config));
 
             _pingInterval = TimeSpan.FromMilliseconds(_networkConfig.P2PPingInterval);

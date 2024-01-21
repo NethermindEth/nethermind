@@ -20,7 +20,7 @@ namespace Nethermind.Network
         private readonly INodeStatsManager _nodeStatsManager;
         private readonly IBlockTree _blockTree;
         private readonly ForkInfo _forkInfo;
-        private readonly ILogger _logger;
+        private readonly Logger _logger;
 
         public ProtocolValidator(INodeStatsManager nodeStatsManager, IBlockTree blockTree, ForkInfo forkInfo, ILogManager? logManager)
         {

@@ -13,7 +13,7 @@ namespace Nethermind.Network.Rlpx
 {
     public class ZeroFrameDecoder : ByteToMessageDecoder
     {
-        private readonly ILogger _logger;
+        private readonly Logger _logger;
         private readonly IFrameCipher _cipher;
         private readonly FrameMacProcessor _authenticator;
 

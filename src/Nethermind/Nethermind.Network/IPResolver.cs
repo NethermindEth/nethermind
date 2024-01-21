@@ -14,7 +14,7 @@ namespace Nethermind.Network
 {
     public class IPResolver : IIPResolver
     {
-        private readonly ILogger _logger;
+        private readonly Logger _logger;
         private readonly INetworkConfig _networkConfig;
         private readonly ILogManager _logManager;
 

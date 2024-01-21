@@ -11,7 +11,7 @@ namespace Nethermind.Merge.Plugin.Handlers;
 
 public class ExchangeCapabilitiesHandler : IHandler<IEnumerable<string>, IEnumerable<string>>
 {
-    private readonly ILogger _logger;
+    private readonly Logger _logger;
     private readonly IRpcCapabilitiesProvider _engineRpcCapabilitiesProvider;
 
     public ExchangeCapabilitiesHandler(IRpcCapabilitiesProvider engineRpcCapabilitiesProvider, ILogManager logManager)

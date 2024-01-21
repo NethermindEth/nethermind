@@ -26,7 +26,7 @@ namespace Nethermind.JsonRpc.Modules.Proof
     /// </summary>
     public class ProofRpcModule : IProofRpcModule
     {
-        private readonly ILogger _logger;
+        private readonly Logger _logger;
         private readonly ITracer _tracer;
         private readonly IBlockFinder _blockFinder;
         private readonly IReceiptFinder _receiptFinder;

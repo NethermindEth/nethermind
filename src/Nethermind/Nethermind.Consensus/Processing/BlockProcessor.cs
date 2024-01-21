@@ -26,7 +26,7 @@ namespace Nethermind.Consensus.Processing;
 
 public partial class BlockProcessor : IBlockProcessor
 {
-    private readonly ILogger _logger;
+    private readonly Logger _logger;
     private readonly ISpecProvider _specProvider;
     protected readonly IWorldState _stateProvider;
     private readonly IReceiptStorage _receiptStorage;

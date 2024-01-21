@@ -23,7 +23,7 @@ namespace Nethermind.Network.StaticNodes
         private ConcurrentDictionary<PublicKey, NetworkNode> _nodes = new();
 
         private readonly string _staticNodesPath;
-        private readonly ILogger _logger;
+        private readonly Logger _logger;
 
         public StaticNodesManager(string staticNodesPath, ILogManager logManager)
         {

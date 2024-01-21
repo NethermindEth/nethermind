@@ -571,7 +571,7 @@ namespace Nethermind.Trie.Pruning
 
         private readonly IPersistenceStrategy _persistenceStrategy;
 
-        private readonly ILogger _logger;
+        private readonly Logger _logger;
 
         private readonly ConcurrentQueue<BlockCommitSet> _commitSetQueue = new();
 

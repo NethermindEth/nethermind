@@ -10,7 +10,7 @@ namespace Nethermind.Init.Snapshot;
 
 public class ProgressTracker : IDisposable
 {
-    private readonly ILogger _logger;
+    private readonly Logger _logger;
     private readonly ITimer _timer;
     private readonly long? _total;
     private long _current;

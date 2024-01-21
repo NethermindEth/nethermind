@@ -54,7 +54,7 @@ namespace Nethermind.Synchronization.FastSync
         private Hash256 _rootNode = Keccak.EmptyTreeHash;
         private int _rootSaved;
 
-        private readonly ILogger _logger;
+        private readonly Logger _logger;
         private readonly IDb _codeDb;
         private readonly IDb _stateDb;
 
@@ -82,7 +82,7 @@ namespace Nethermind.Synchronization.FastSync
             _stateDb = stateDb ?? throw new ArgumentNullException(nameof(stateDb));
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
 
-            _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
 
             byte[] progress = _codeDb.Get(_fastSyncProgressKey);
             _data = new DetailedProgress(_blockTree.NetworkId, progress);

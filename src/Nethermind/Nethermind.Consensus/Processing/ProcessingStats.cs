@@ -14,7 +14,7 @@ namespace Nethermind.Consensus.Processing
     //TODO Consult on disabling of such metrics from configuration
     internal class ProcessingStats
     {
-        private readonly ILogger _logger;
+        private readonly Logger _logger;
         private readonly Stopwatch _processingStopwatch = new();
         private readonly Stopwatch _runStopwatch = new();
         private long _lastBlockNumber;
@@ -35,19 +35,18 @@ namespace Nethermind.Consensus.Processing
         private long _lastSelfDestructs;
         private long _maxMemory;
         private long _totalBlocks;
-        private readonly bool _isDebugMode = false;
         private decimal _processingMicroseconds;
         private long _lastTotalCreates;
         private long _lastReportMs;
 
-        public ProcessingStats(ILogger logger)
+        public ProcessingStats(in Logger logger)
         {
-            _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+            _logger = logger;
 
             // the line below just to avoid compilation errors
-            if (_logger.IsTrace) _logger.Trace($"Processing Stats in debug mode?: {_isDebugMode}");
+            if (_logger.IsTrace) _logger.Trace($"Processing Stats in debug mode?: {_logger.IsDebug}");
 #if DEBUG
-            _isDebugMode = true;
+            _logger.SetDebugMode();
 #endif
         }
 

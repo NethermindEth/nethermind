@@ -15,7 +15,7 @@ public class ParityLikeTraceSerializer : ITraceSerializer<ParityLikeTxTrace>
     private static readonly byte[] _emptyBytes = { 0 };
     private static readonly List<ParityLikeTxTrace> _emptyTraces = new();
 
-    private readonly ILogger? _logger;
+    private readonly Logger _logger;
     private readonly IJsonSerializer _jsonSerializer;
     private readonly int _maxDepth;
     private readonly bool _verifySerialized;
@@ -25,7 +25,7 @@ public class ParityLikeTraceSerializer : ITraceSerializer<ParityLikeTxTrace>
         _jsonSerializer = new EthereumJsonSerializer(maxDepth);
         _maxDepth = maxDepth;
         _verifySerialized = verifySerialized;
-        _logger = logManager?.GetClassLogger<ParityLikeTraceSerializer>();
+        _logger = logManager?.GetClassLogger<ParityLikeTraceSerializer>() ?? default;
     }
 
     public unsafe List<ParityLikeTxTrace>? Deserialize(Span<byte> serialized)
@@ -72,7 +72,7 @@ public class ParityLikeTraceSerializer : ITraceSerializer<ParityLikeTxTrace>
                 {
                     ParityLikeTxTrace? trace = traces.FirstOrDefault();
                     string tracesWrittenToPath = Path.Combine(Path.GetTempPath(), $"{trace?.BlockNumber}-{trace?.BlockHash}.zip");
-                    if (_logger?.IsError == true) _logger.Error($"Can't deserialize trace logs for block {trace?.BlockNumber} ({trace?.BlockHash}), size {result.Length}, dump: {tracesWrittenToPath}", e);
+                    if (_logger.IsError) _logger.Error($"Can't deserialize trace logs for block {trace?.BlockNumber} ({trace?.BlockHash}), size {result.Length}, dump: {tracesWrittenToPath}", e);
                     File.WriteAllBytes(tracesWrittenToPath, result);
                 }
             });

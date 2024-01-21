@@ -17,7 +17,7 @@ namespace Nethermind.JsonRpc.Modules.Eth.GasPrice
     public class GasPriceOracle : IGasPriceOracle
     {
         private readonly IBlockFinder _blockFinder;
-        private readonly ILogger _logger;
+        private readonly Logger _logger;
         private readonly UInt256 _minGasPrice;
         internal PriceCache _gasPriceEstimation;
         internal PriceCache _maxPriorityFeePerGasEstimation;

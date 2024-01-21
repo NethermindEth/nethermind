@@ -16,7 +16,7 @@ public class PersistentBlobTxDistinctSortedPool : BlobTxDistinctSortedPool
 {
     private readonly ITxStorage _blobTxStorage;
     private readonly LruCache<ValueHash256, Transaction> _blobTxCache;
-    private readonly ILogger _logger;
+    private readonly Logger _logger;
 
     public PersistentBlobTxDistinctSortedPool(ITxStorage blobTxStorage, ITxPoolConfig txPoolConfig, IComparer<Transaction> comparer, ILogManager logManager)
         : base(txPoolConfig.PersistentBlobStorageSize, comparer, logManager)

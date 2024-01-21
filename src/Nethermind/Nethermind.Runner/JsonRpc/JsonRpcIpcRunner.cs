@@ -23,7 +23,7 @@ namespace Nethermind.Runner.JsonRpc
     public class JsonRpcIpcRunner : IDisposable
     {
         private const int OperationCancelledError = 125;
-        private readonly ILogger _logger;
+        private readonly Logger _logger;
         private readonly IJsonRpcLocalStats _jsonRpcLocalStats;
         private readonly IJsonSerializer _jsonSerializer;
         private readonly IFileSystem _fileSystem;

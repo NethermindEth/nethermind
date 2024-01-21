@@ -21,7 +21,7 @@ namespace Nethermind.Consensus.Validators
         private readonly ISealValidator _sealValidator;
         private readonly ISpecProvider _specProvider;
         private readonly long? _daoBlockNumber;
-        protected readonly ILogger _logger;
+        protected readonly Logger _logger;
         private readonly IBlockTree _blockTree;
 
         public HeaderValidator(

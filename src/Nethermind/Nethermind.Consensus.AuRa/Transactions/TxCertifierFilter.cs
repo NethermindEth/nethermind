@@ -21,7 +21,7 @@ namespace Nethermind.Consensus.AuRa.Transactions
         private readonly ITxFilter _notCertifiedFilter;
         private readonly ISpecProvider _specProvider;
         private readonly ResettableDictionary<Address, bool> _certifiedCache = new ResettableDictionary<Address, bool>(8);
-        private readonly ILogger _logger;
+        private readonly Logger _logger;
         private Hash256 _cachedBlock;
 
         public TxCertifierFilter(ICertifierContract certifierContract, ITxFilter notCertifiedFilter, ISpecProvider specProvider, ILogManager logManager)

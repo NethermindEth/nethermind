@@ -12,11 +12,11 @@ namespace Nethermind.AccountAbstraction.Bundler
     {
         private readonly ITimer _timer;
         private readonly IBlockTree _blockTree;
-        private readonly ILogger _logger;
+        private readonly Logger _logger;
 
         public event EventHandler<BundleUserOpsEventArgs>? TriggerBundle;
 
-        public PeriodicBundleTrigger(ITimerFactory timerFactory, TimeSpan interval, IBlockTree blockTree, ILogger logger)
+        public PeriodicBundleTrigger(ITimerFactory timerFactory, TimeSpan interval, IBlockTree blockTree, in Logger logger)
         {
             _blockTree = blockTree;
             _logger = logger;

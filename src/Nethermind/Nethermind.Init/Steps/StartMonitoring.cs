@@ -20,7 +20,7 @@ namespace Nethermind.Init.Steps;
 public class StartMonitoring : IStep
 {
     private readonly IApiWithNetwork _api;
-    private readonly ILogger _logger;
+    private readonly Logger _logger;
     private readonly IMetricsConfig _metricsConfig;
 
     public StartMonitoring(INethermindApi api)

@@ -3,7 +3,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Text;
@@ -12,9 +11,6 @@ using System.Text.Json.Serialization;
 using System.Threading.Tasks;
 
 using Nethermind.Core;
-using Nethermind.Core.Attributes;
-using Nethermind.Core.Collections;
-using Nethermind.JsonRpc.Data;
 using Nethermind.JsonRpc.Exceptions;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Logging;
@@ -25,7 +21,7 @@ namespace Nethermind.JsonRpc;
 
 public class JsonRpcService : IJsonRpcService
 {
-    private readonly ILogger _logger;
+    private readonly Logger _logger;
     private readonly IRpcModuleProvider _rpcModuleProvider;
     private readonly HashSet<string> _methodsLoggingFiltering;
     private readonly int _maxLoggedRequestParametersCharacters;

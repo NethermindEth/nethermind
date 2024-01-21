@@ -35,7 +35,7 @@ namespace Nethermind.Synchronization.Peers
         public const int DefaultUpgradeIntervalInMs = 1000;
 
         private readonly IBlockTree _blockTree;
-        private readonly ILogger _logger;
+        private readonly Logger _logger;
         private readonly BlockingCollection<RefreshTotalDiffTask> _peerRefreshQueue = new();
 
         private readonly ConcurrentDictionary<PublicKey, PeerInfo> _peers = new();
@@ -73,7 +73,7 @@ namespace Nethermind.Synchronization.Peers
             PeerMaxCount = peersMaxCount;
             PriorityPeerMaxCount = priorityPeerMaxCount;
             _allocationsUpgradeIntervalInMs = allocationsUpgradeIntervalInMsInMs;
-            _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
 
             if (_logger.IsDebug) _logger.Debug($"PeerMaxCount: {PeerMaxCount}, PriorityPeerMaxCount: {PriorityPeerMaxCount}");
         }

@@ -27,7 +27,7 @@ namespace Nethermind.Evm.TransactionProcessing
     public class TransactionProcessor : ITransactionProcessor
     {
         protected EthereumEcdsa Ecdsa { get; private init; }
-        protected ILogger Logger { get; private init; }
+        protected Logger Logger { get; private init; }
         protected ISpecProvider SpecProvider { get; private init; }
         protected IWorldState WorldState { get; private init; }
         protected IVirtualMachine VirtualMachine { get; private init; }

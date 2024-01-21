@@ -14,7 +14,7 @@ namespace Nethermind.Consensus
     public class TxFilterAdapter : IIncomingTxFilter
     {
         private readonly ITxFilter _txFilter;
-        private readonly ILogger _logger;
+        private readonly Logger _logger;
         private readonly IBlockTree _blockTree;
 
         public TxFilterAdapter(IBlockTree blockTree, ITxFilter txFilter, ILogManager logManager)

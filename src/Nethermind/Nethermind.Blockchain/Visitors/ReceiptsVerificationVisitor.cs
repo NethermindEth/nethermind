@@ -15,7 +15,7 @@ namespace Nethermind.Blockchain.Visitors
     public class ReceiptsVerificationVisitor : IBlockTreeVisitor
     {
         private readonly IReceiptStorage _receiptStorage;
-        protected readonly ILogger _logger;
+        protected readonly Logger _logger;
         private int _good = 0;
         private int _bad = 0;
         private ChainLevelInfo _currentLevel;

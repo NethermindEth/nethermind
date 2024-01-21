@@ -17,7 +17,7 @@ namespace Nethermind.Consensus.AuRa.Transactions
     {
         private readonly VersionedContract<ITransactionPermissionContract> _contract;
         private readonly Cache _cache;
-        private readonly ILogger _logger;
+        private readonly Logger _logger;
 
         public PermissionBasedTxFilter(
             VersionedContract<ITransactionPermissionContract> contract,

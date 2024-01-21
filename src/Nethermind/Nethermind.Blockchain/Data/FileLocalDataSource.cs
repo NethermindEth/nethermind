@@ -18,7 +18,7 @@ namespace Nethermind.Blockchain.Data
     {
         private readonly IJsonSerializer _jsonSerializer;
         private readonly IFileSystem _fileSystem;
-        private readonly ILogger _logger;
+        private readonly Logger _logger;
         private T _data;
         private Timer _timer;
         private readonly int _interval;

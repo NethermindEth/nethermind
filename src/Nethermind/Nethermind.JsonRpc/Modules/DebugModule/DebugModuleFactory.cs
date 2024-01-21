@@ -42,7 +42,7 @@ public class DebugModuleFactory : ModuleFactoryBase<IDebugRpcModule>
     private readonly ISyncModeSelector _syncModeSelector;
     private readonly IBlockStore _badBlockStore;
     private readonly IFileSystem _fileSystem;
-    private readonly ILogger _logger;
+    private readonly Logger _logger;
 
     public DebugModuleFactory(
         IWorldStateManager worldStateManager,

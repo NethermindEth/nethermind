@@ -20,9 +20,9 @@ namespace Nethermind.TxPool.Filters
         private readonly TxDistinctSortedPool _txs;
         private readonly TxDistinctSortedPool _blobTxs;
         private readonly bool _thereIsPriorityContract;
-        private readonly ILogger _logger;
+        private readonly Logger _logger;
 
-        public FeeTooLowFilter(IChainHeadInfoProvider headInfo, TxDistinctSortedPool txs, TxDistinctSortedPool blobTxs, bool thereIsPriorityContract, ILogger logger)
+        public FeeTooLowFilter(IChainHeadInfoProvider headInfo, TxDistinctSortedPool txs, TxDistinctSortedPool blobTxs, bool thereIsPriorityContract, in Logger logger)
         {
             _specProvider = headInfo.SpecProvider;
             _headInfo = headInfo;

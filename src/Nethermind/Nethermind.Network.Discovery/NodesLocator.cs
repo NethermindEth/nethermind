@@ -14,7 +14,7 @@ namespace Nethermind.Network.Discovery;
 
 public class NodesLocator : INodesLocator
 {
-    private readonly ILogger _logger;
+    private readonly Logger _logger;
     private readonly INodeTable _nodeTable;
     private readonly IDiscoveryManager _discoveryManager;
     private readonly IDiscoveryConfig _discoveryConfig;

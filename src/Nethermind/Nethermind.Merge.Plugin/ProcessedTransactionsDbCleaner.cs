@@ -15,7 +15,7 @@ public class ProcessedTransactionsDbCleaner : IDisposable
 {
     private readonly IBlockFinalizationManager _finalizationManager;
     private readonly IDb _processedTxsDb;
-    private readonly ILogger _logger;
+    private readonly Logger _logger;
     private long _lastFinalizedBlock = 0;
     public Task CleaningTask { get; private set; } = Task.CompletedTask;
 
@@ -23,7 +23,7 @@ public class ProcessedTransactionsDbCleaner : IDisposable
     {
         _finalizationManager = finalizationManager ?? throw new ArgumentNullException(nameof(finalizationManager));
         _processedTxsDb = processedTxsDb ?? throw new ArgumentNullException(nameof(processedTxsDb));
-        _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+        _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
 
         _finalizationManager.BlocksFinalized += OnBlocksFinalized;
     }

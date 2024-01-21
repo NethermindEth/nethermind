@@ -18,19 +18,19 @@ namespace Nethermind.Blockchain.Visitors
         private readonly long _batchSize;
         private readonly long _blocksToLoad;
         private readonly IBlockTree _blockTree;
-        private readonly ILogger _logger;
+        private readonly Logger _logger;
 
         private TaskCompletionSource<object> _dbBatchProcessed;
         private long _currentDbLoadBatchEnd;
 
         public DbBlocksLoader(IBlockTree blockTree,
-            ILogger logger,
+            in Logger logger,
             long? startBlockNumber = null,
             long batchSize = DefaultBatchSize,
             long maxBlocksToLoad = long.MaxValue)
         {
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
-            _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+            _logger = logger;
 
             _batchSize = batchSize;
             StartLevelInclusive = Math.Max(0L, startBlockNumber ?? (_blockTree.Head?.Number + 1) ?? 0L);

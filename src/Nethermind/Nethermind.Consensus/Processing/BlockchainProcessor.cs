@@ -5,7 +5,6 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
@@ -41,7 +40,7 @@ public class BlockchainProcessor : IBlockchainProcessor, IBlockProcessingQueue
     private readonly IStateReader _stateReader;
     private readonly Options _options;
     private readonly IBlockTree _blockTree;
-    private readonly ILogger _logger;
+    private readonly Logger _logger;
 
     private readonly BlockingCollection<BlockRef> _recoveryQueue = new(new ConcurrentQueue<BlockRef>());
 

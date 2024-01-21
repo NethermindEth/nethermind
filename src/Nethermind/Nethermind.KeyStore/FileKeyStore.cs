@@ -54,7 +54,7 @@ namespace Nethermind.KeyStore
         private readonly IJsonSerializer _jsonSerializer;
         private readonly ISymmetricEncrypter _symmetricEncrypter;
         private readonly ICryptoRandom _cryptoRandom;
-        private readonly ILogger _logger;
+        private readonly Logger _logger;
         private readonly Encoding _keyStoreEncoding;
         private readonly IKeyStoreIOSettingsProvider _keyStoreIOSettingsProvider;
 

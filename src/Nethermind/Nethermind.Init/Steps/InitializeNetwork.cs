@@ -69,7 +69,7 @@ public class InitializeNetwork : IStep
     private const string PeersDbPath = "peers";
 
     protected readonly IApiWithNetwork _api;
-    private readonly ILogger _logger;
+    private readonly Logger _logger;
     private readonly INetworkConfig _networkConfig;
     protected readonly ISyncConfig _syncConfig;
 

@@ -37,7 +37,7 @@ namespace Nethermind.Network.Rlpx
         private readonly IHandshakeService _handshakeService;
         private readonly IMessageSerializationService _serializationService;
         private readonly ILogManager _logManager;
-        private readonly ILogger _logger;
+        private readonly Logger _logger;
         private readonly ISessionMonitor _sessionMonitor;
         private readonly IDisconnectsAnalyzer _disconnectsAnalyzer;
         private readonly IEventExecutorGroup _group;

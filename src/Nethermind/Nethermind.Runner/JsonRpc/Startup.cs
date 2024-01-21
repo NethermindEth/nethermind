@@ -101,7 +101,7 @@ namespace Nethermind.Runner.JsonRpc
             }
 
             ILogManager? logManager = app.ApplicationServices.GetService<ILogManager>() ?? NullLogManager.Instance;
-            ILogger logger = logManager.GetClassLogger();
+            Logger logger = logManager.GetClassLogger();
             IInitConfig initConfig = configProvider.GetConfig<IInitConfig>();
             IJsonRpcConfig jsonRpcConfig = configProvider.GetConfig<IJsonRpcConfig>();
             IJsonRpcUrlCollection jsonRpcUrlCollection = app.ApplicationServices.GetRequiredService<IJsonRpcUrlCollection>();

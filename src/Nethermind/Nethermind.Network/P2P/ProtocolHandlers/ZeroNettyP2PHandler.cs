@@ -18,7 +18,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
     public class ZeroNettyP2PHandler : SimpleChannelInboundHandler<ZeroPacket>
     {
         private readonly ISession _session;
-        private readonly ILogger _logger;
+        private readonly Logger _logger;
 
         public bool SnappyEnabled { get; private set; }
 

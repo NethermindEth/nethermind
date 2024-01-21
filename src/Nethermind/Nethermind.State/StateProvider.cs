@@ -34,7 +34,7 @@ namespace Nethermind.State
         private readonly LruKeyCache<Hash256> _codeInsertFilter = new(2048, "Code Insert Filter");
 
         private readonly List<Change> _keptInCache = new();
-        private readonly ILogger _logger;
+        private readonly Logger _logger;
         private readonly IKeyValueStore _codeDb;
 
         private int _capacity = StartCapacity;

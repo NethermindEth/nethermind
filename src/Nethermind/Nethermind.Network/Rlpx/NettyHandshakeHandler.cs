@@ -25,7 +25,7 @@ namespace Nethermind.Network.Rlpx
         private readonly IMessageSerializationService _serializationService;
         private readonly ILogManager _logManager;
         private readonly IEventExecutorGroup _group;
-        private readonly ILogger _logger;
+        private readonly Logger _logger;
         private readonly HandshakeRole _role;
 
         private readonly IHandshakeService _service;

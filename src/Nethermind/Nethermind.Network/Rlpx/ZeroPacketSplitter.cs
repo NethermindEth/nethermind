@@ -14,7 +14,7 @@ namespace Nethermind.Network.Rlpx
 {
     public class ZeroPacketSplitter : MessageToByteEncoder<IByteBuffer>, IFramingAware
     {
-        private readonly ILogger _logger;
+        private readonly Logger _logger;
 
         public ZeroPacketSplitter(ILogManager logManager)
         {

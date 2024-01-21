@@ -18,7 +18,7 @@ public class NodeLifecycleManager : INodeLifecycleManager
 {
     private readonly IDiscoveryManager _discoveryManager;
     private readonly INodeTable _nodeTable;
-    private readonly ILogger _logger;
+    private readonly Logger _logger;
     private readonly IDiscoveryConfig _discoveryConfig;
     private readonly ITimestamper _timestamper;
     private readonly IEvictionManager _evictionManager;
@@ -47,11 +47,11 @@ public class NodeLifecycleManager : INodeLifecycleManager
         NodeRecord nodeRecord,
         IDiscoveryConfig discoveryConfig,
         ITimestamper timestamper,
-        ILogger logger)
+        in Logger logger)
     {
         _discoveryManager = discoveryManager ?? throw new ArgumentNullException(nameof(discoveryManager));
         _nodeTable = nodeTable ?? throw new ArgumentNullException(nameof(nodeTable));
-        _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+        _logger = logger;
         _discoveryConfig = discoveryConfig ?? throw new ArgumentNullException(nameof(discoveryConfig));
         _timestamper = timestamper ?? throw new ArgumentNullException(nameof(timestamper));
         _evictionManager = evictionManager ?? throw new ArgumentNullException(nameof(evictionManager));

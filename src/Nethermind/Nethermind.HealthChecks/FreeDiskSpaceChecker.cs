@@ -16,7 +16,7 @@ namespace Nethermind.HealthChecks
     public class FreeDiskSpaceChecker : IHostedService, IAsyncDisposable
     {
         private readonly IHealthChecksConfig _healthChecksConfig;
-        private readonly ILogger _logger;
+        private readonly Logger _logger;
         private readonly IDriveInfo[] _drives;
         private readonly IProcessExitSource _processExitSource;
         private readonly ITimer _timer;
@@ -26,7 +26,7 @@ namespace Nethermind.HealthChecks
             IDriveInfo[] drives,
             ITimerFactory timerFactory,
             IProcessExitSource processExitSource,
-            ILogger logger,
+            in Logger logger,
             double checkPeriodMinutes = 1)
         {
             _healthChecksConfig = healthChecksConfig;

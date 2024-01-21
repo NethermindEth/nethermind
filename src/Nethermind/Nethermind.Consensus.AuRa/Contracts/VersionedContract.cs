@@ -19,7 +19,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
 
         private readonly IVersionedContract _versionSelectorContract;
         private readonly LruCache<ValueHash256, UInt256> _versionsCache;
-        private readonly ILogger _logger;
+        private readonly Logger _logger;
 
         protected VersionedContract(IDictionary<UInt256, T> versions, LruCache<ValueHash256, UInt256> cache, long activation, ILogManager logManager)
         {

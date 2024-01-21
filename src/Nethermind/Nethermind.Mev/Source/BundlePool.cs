@@ -35,7 +35,7 @@ namespace Nethermind.Mev.Source
         private readonly BundleSortedPool _bundles;
         private readonly ConcurrentDictionary<Address, MevBundle> _megabundles = new();
         private readonly ConcurrentDictionary<long, ConcurrentDictionary<(MevBundle Bundle, Hash256 BlockHash), SimulatedMevBundleContext>> _simulatedBundles = new();
-        private readonly ILogger _logger;
+        private readonly Logger _logger;
         private readonly IEthereumEcdsa _ecdsa;
         private readonly HashSet<Address> _trustedRelays;
 

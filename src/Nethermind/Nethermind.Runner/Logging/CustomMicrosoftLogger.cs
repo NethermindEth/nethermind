@@ -8,9 +8,9 @@ namespace Nethermind.Runner.Logging
 {
     public class CustomMicrosoftLogger : ILogger
     {
-        private readonly Nethermind.Logging.ILogger _logger;
+        private readonly Nethermind.Logging.Logger _logger;
 
-        public CustomMicrosoftLogger(Nethermind.Logging.ILogger logger)
+        public CustomMicrosoftLogger(in Nethermind.Logging.Logger logger)
         {
             _logger = logger;
         }

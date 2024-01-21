@@ -12,7 +12,7 @@ namespace Nethermind.Network.IP
     class WebIPSource : IIPSource
     {
         private readonly string _url;
-        private readonly ILogger _logger;
+        private readonly Logger _logger;
 
         public WebIPSource(string url, ILogManager logManager)
         {

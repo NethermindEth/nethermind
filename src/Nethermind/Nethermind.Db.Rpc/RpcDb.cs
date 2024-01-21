@@ -17,7 +17,7 @@ namespace Nethermind.Db.Rpc
     {
         private readonly string _dbName;
         private readonly IJsonSerializer _jsonSerializer;
-        private readonly ILogger _logger;
+        private readonly Logger _logger;
         private readonly IJsonRpcClient _rpcClient;
         private readonly IDb _recordDb;
 

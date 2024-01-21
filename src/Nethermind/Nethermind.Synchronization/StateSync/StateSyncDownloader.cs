@@ -21,7 +21,7 @@ namespace Nethermind.Synchronization.StateSync
 {
     public class StateSyncDownloader : ISyncDownloader<StateSyncBatch>
     {
-        private readonly ILogger Logger;
+        private readonly Logger Logger;
 
         public StateSyncDownloader(ILogManager logManager)
         {

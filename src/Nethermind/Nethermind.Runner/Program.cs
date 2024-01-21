@@ -40,7 +40,7 @@ using Nethermind.Serialization.Json;
 using Nethermind.UPnP.Plugin;
 using NLog;
 using NLog.Config;
-using ILogger = Nethermind.Logging.ILogger;
+using Logger = Nethermind.Logging.Logger;
 
 namespace Nethermind.Runner;
 
@@ -50,7 +50,7 @@ public static class Program
     private const string DefaultConfigsDirectory = "configs";
     private const string DefaultConfigFile = "configs/mainnet.cfg";
 
-    private static ILogger _logger = SimpleConsoleLogger.Instance;
+    private static Logger _logger = new(SimpleConsoleLogger.Instance);
 
     private static readonly ProcessExitSource _processExitSource = new();
     private static readonly ManualResetEventSlim _appClosed = new(true);
@@ -64,7 +64,7 @@ public static class Program
 #endif
         AppDomain.CurrentDomain.UnhandledException += (sender, eventArgs) =>
         {
-            ILogger logger = GetCriticalLogger();
+            Logger logger = GetCriticalLogger();
             if (eventArgs.ExceptionObject is Exception e)
             {
                 logger.Error(FailureString, e);
@@ -81,12 +81,12 @@ public static class Program
         }
         catch (AggregateException e)
         {
-            ILogger logger = GetCriticalLogger();
+            Logger logger = GetCriticalLogger();
             logger.Error(FailureString, e.InnerException);
         }
         catch (Exception e)
         {
-            ILogger logger = GetCriticalLogger();
+            Logger logger = GetCriticalLogger();
             logger.Error(FailureString, e);
         }
         finally
@@ -95,7 +95,7 @@ public static class Program
         }
     }
 
-    private static ILogger GetCriticalLogger()
+    private static Logger GetCriticalLogger()
     {
         try
         {

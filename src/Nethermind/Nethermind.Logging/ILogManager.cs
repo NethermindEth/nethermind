@@ -7,10 +7,10 @@ namespace Nethermind.Logging
 {
     public interface ILogManager
     {
-        ILogger GetClassLogger(Type type);
-        ILogger GetClassLogger<T>();
-        ILogger GetClassLogger();
-        ILogger GetLogger(string loggerName);
+        Logger GetClassLogger(Type type);
+        Logger GetClassLogger<T>();
+        Logger GetClassLogger();
+        Logger GetLogger(string loggerName);
 
         void SetGlobalVariable(string name, object value) { }
     }

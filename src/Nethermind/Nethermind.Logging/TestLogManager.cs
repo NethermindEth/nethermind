@@ -16,13 +16,13 @@ namespace Nethermind.Logging
             _level = level;
         }
 
-        public ILogger GetClassLogger(Type type) => GetClassLogger();
+        public Logger GetClassLogger(Type type) => GetClassLogger();
 
-        public ILogger GetClassLogger<T>() => GetClassLogger();
+        public Logger GetClassLogger<T>() => GetClassLogger();
 
-        public ILogger GetClassLogger() => new NUnitLogger(_level);
+        public Logger GetClassLogger() => new(new NUnitLogger(_level));
 
-        public ILogger GetLogger(string loggerName) => GetClassLogger();
+        public Logger GetLogger(string loggerName) => GetClassLogger();
 
         public class NUnitLogger : ILogger
         {

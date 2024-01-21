@@ -28,7 +28,7 @@ namespace Nethermind.Network
     /// </summary>
     public class PeerManager : IPeerManager
     {
-        private readonly ILogger _logger;
+        private readonly Logger _logger;
         private readonly INetworkConfig _networkConfig;
         private readonly IRlpxHost _rlpxHost;
         private readonly INodeStatsManager _stats;

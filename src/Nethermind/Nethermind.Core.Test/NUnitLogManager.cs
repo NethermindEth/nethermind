@@ -16,12 +16,12 @@ namespace Nethermind.Core.Test
             _logger = new NUnitLogger(level);
         }
 
-        public ILogger GetClassLogger(Type type) => GetClassLogger();
+        public Logger GetClassLogger(Type type) => GetClassLogger();
 
-        public ILogger GetClassLogger<T>() => GetClassLogger();
+        public Logger GetClassLogger<T>() => GetClassLogger();
 
-        public ILogger GetClassLogger() => _logger;
+        public Logger GetClassLogger() => new(_logger);
 
-        public ILogger GetLogger(string loggerName) => GetClassLogger();
+        public Logger GetLogger(string loggerName) => GetClassLogger();
     }
 }

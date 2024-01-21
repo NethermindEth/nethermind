@@ -20,7 +20,7 @@ namespace Nethermind.TxPool.Collections
     {
         private readonly List<Transaction> _transactionsToRemove = new();
         protected int _poolCapacity;
-        private readonly ILogger _logger;
+        private readonly Logger _logger;
 
 
         public TxDistinctSortedPool(int capacity, IComparer<Transaction> comparer, ILogManager logManager)

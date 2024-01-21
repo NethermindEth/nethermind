@@ -16,7 +16,7 @@ namespace Nethermind.Logging.NLog
 
         public string Name { get; }
 
-        private readonly Logger _logger;
+        private readonly global::NLog.Logger _logger;
 
         public NLogLogger(Type type) : this(GetTypeName(type.FullName))
         {

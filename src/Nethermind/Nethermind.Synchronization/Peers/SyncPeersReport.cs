@@ -21,7 +21,7 @@ namespace Nethermind.Synchronization.Peers
 
         private readonly ISyncPeerPool _peerPool;
         private readonly INodeStatsManager _stats;
-        private readonly ILogger _logger;
+        private readonly Logger _logger;
 
         public SyncPeersReport(ISyncPeerPool peerPool, INodeStatsManager statsManager, ILogManager logManager)
         {

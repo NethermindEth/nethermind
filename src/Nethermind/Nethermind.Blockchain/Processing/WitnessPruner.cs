@@ -27,7 +27,7 @@ namespace Nethermind.Synchronization.Witness
         private readonly IBlockTree _blockTree;
         private readonly IWitnessRepository _witnessRepository;
         private readonly int _followDistance;
-        private readonly ILogger _logger;
+        private readonly Logger _logger;
 
         public WitnessPruner(IBlockTree blockTree, IWitnessRepository witnessRepository, ILogManager logManager, int followDistance = 16)
         {

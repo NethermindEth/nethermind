@@ -41,7 +41,7 @@ namespace Nethermind.EthStats.Integrations
         private readonly ITxPool _txPool;
         private readonly IBlockTree _blockTree;
         private readonly IPeerManager _peerManager;
-        private readonly ILogger _logger;
+        private readonly Logger _logger;
         private readonly IGasPriceOracle _gasPriceOracle;
         private readonly IEthSyncingInfo _ethSyncingInfo;
         private readonly bool _isMining;

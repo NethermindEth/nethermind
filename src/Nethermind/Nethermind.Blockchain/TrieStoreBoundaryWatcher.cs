@@ -16,7 +16,7 @@ namespace Nethermind.Blockchain
     {
         private readonly IWorldStateManager _trieStore;
         private readonly IBlockTree _blockTree;
-        private readonly ILogger _logger;
+        private readonly Logger _logger;
 
         public TrieStoreBoundaryWatcher(IWorldStateManager trieStore, IBlockTree blockTree, ILogManager logManager)
         {

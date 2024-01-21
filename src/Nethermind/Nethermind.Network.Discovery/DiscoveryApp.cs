@@ -31,7 +31,7 @@ public class DiscoveryApp : IDiscoveryApp
     private readonly IDiscoveryManager _discoveryManager;
     private readonly INodeTable _nodeTable;
     private readonly ILogManager _logManager;
-    private readonly ILogger _logger;
+    private readonly Logger _logger;
     private readonly IMessageSerializationService _messageSerializationService;
     private readonly ICryptoRandom _cryptoRandom;
     private readonly INetworkStorage _discoveryStorage;

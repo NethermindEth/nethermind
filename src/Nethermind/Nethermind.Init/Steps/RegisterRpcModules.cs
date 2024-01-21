@@ -77,7 +77,7 @@ public class RegisterRpcModules : IStep
         IRpcModuleProvider rpcModuleProvider = _api.RpcModuleProvider;
 
         // the following line needs to be called in order to make sure that the CLI library is referenced from runner and built alongside
-        ILogger logger = _api.LogManager.GetClassLogger();
+        Logger logger = _api.LogManager.GetClassLogger();
 
         IInitConfig initConfig = _api.Config<IInitConfig>();
         IJsonRpcConfig rpcConfig = _api.Config<IJsonRpcConfig>();

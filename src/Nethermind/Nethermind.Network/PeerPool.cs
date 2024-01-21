@@ -27,7 +27,7 @@ namespace Nethermind.Network
         private readonly INodeStatsManager _stats;
         private readonly INetworkStorage _peerStorage;
         private readonly INetworkConfig _networkConfig;
-        private readonly ILogger _logger;
+        private readonly Logger _logger;
 
         public ConcurrentDictionary<PublicKey, Peer> ActivePeers { get; } = new();
         public ConcurrentDictionary<PublicKey, Peer> Peers { get; } = new();

@@ -11,7 +11,7 @@ namespace Nethermind.Network.IP
     class NetworkConfigLocalIPSource : IIPSource
     {
         private readonly INetworkConfig _config;
-        private readonly ILogger _logger;
+        private readonly Logger _logger;
 
         public NetworkConfigLocalIPSource(INetworkConfig config, ILogManager logManager)
         {

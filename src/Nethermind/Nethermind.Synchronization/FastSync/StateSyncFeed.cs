@@ -16,7 +16,7 @@ namespace Nethermind.Synchronization.FastSync
         private const StateSyncBatch EmptyBatch = null;
 
         private readonly Stopwatch _handleWatch = new();
-        private readonly ILogger _logger;
+        private readonly Logger _logger;
         private readonly TreeSync _treeSync;
         private bool _disposed = false;
         private SyncMode _currentSyncMode = SyncMode.None;
@@ -30,7 +30,7 @@ namespace Nethermind.Synchronization.FastSync
             ILogManager logManager)
         {
             _treeSync = treeSync ?? throw new ArgumentNullException(nameof(treeSync));
-            _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         }
 
         public override async Task<StateSyncBatch?> PrepareRequest(CancellationToken token = default)

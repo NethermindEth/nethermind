@@ -13,9 +13,9 @@ namespace Nethermind.TxPool.Filters
     internal sealed class UnknownSenderFilter : IIncomingTxFilter
     {
         private readonly IEthereumEcdsa _ecdsa;
-        private readonly ILogger _logger;
+        private readonly Logger _logger;
 
-        public UnknownSenderFilter(IEthereumEcdsa ecdsa, ILogger logger)
+        public UnknownSenderFilter(IEthereumEcdsa ecdsa, in Logger logger)
         {
             _ecdsa = ecdsa;
             _logger = logger;

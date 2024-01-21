@@ -11,7 +11,7 @@ namespace Nethermind.Consensus.Withdrawals;
 
 public class WithdrawalProcessor : IWithdrawalProcessor
 {
-    private readonly ILogger _logger;
+    private readonly Logger _logger;
     private readonly IWorldState _stateProvider;
 
     public WithdrawalProcessor(IWorldState stateProvider, ILogManager logManager)

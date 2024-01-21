@@ -35,7 +35,7 @@ namespace Nethermind.Trie.Test
             private IWorldState _stateProvider;
             private IStateReader _stateReader;
             private readonly ILogManager _logManager;
-            private readonly ILogger _logger;
+            private readonly Logger _logger;
             private TrieStore _trieStore;
             private readonly IPersistenceStrategy _persistenceStrategy;
             private readonly TestPruningStrategy _pruningStrategy;

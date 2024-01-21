@@ -25,7 +25,7 @@ namespace Nethermind.AccountAbstraction.Executor
         };
 
         private readonly Address _entryPointAddress;
-        private readonly ILogger _logger;
+        private readonly Logger _logger;
         private readonly Address _paymaster;
         private readonly Address _sender;
 
@@ -42,7 +42,7 @@ namespace Nethermind.AccountAbstraction.Executor
             Address sender,
             Address paymaster,
             Address entryPointAddress,
-            ILogger logger)
+            in Logger logger)
         {
             Success = true;
             AccessedStorage = new Dictionary<Address, HashSet<UInt256>>();

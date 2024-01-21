@@ -17,11 +17,11 @@ public partial class DbMetricsUpdater
     private readonly DbOptions _dbOptions;
     private readonly RocksDb _db;
     private readonly IDbConfig _dbConfig;
-    private readonly ILogger _logger;
+    private readonly Logger _logger;
     private readonly ColumnFamilyHandle? _columnFamilyHandle;
     private Timer? _timer;
 
-    public DbMetricsUpdater(string dbName, DbOptions dbOptions, RocksDb db, ColumnFamilyHandle? cf, IDbConfig dbConfig, ILogger logger)
+    public DbMetricsUpdater(string dbName, DbOptions dbOptions, RocksDb db, ColumnFamilyHandle? cf, IDbConfig dbConfig, in Logger logger)
     {
         _dbName = dbName;
         _dbOptions = dbOptions;

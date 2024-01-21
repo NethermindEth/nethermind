@@ -13,7 +13,7 @@ namespace Nethermind.Synchronization.SnapSync
 {
     public class SnapSyncDownloader : ISyncDownloader<SnapSyncBatch>
     {
-        private readonly ILogger Logger;
+        private readonly Logger Logger;
 
         public SnapSyncDownloader(ILogManager? logManager)
         {

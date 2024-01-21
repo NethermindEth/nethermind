@@ -15,29 +15,29 @@ namespace Nethermind.Core.Authentication;
 public partial class JwtAuthentication : IRpcAuthentication
 {
     private readonly SecurityKey _securityKey;
-    private readonly ILogger _logger;
+    private readonly Logger _logger;
     private readonly ITimestamper _timestamper;
     private const string JwtMessagePrefix = "Bearer ";
     private const int JwtTokenTtl = 60;
     private const int JwtSecretLength = 64;
 
-    private JwtAuthentication(byte[] secret, ITimestamper timestamper, ILogger logger)
+    private JwtAuthentication(byte[] secret, ITimestamper timestamper, in Logger logger)
     {
         ArgumentNullException.ThrowIfNull(secret);
 
         _securityKey = new SymmetricSecurityKey(secret);
-        _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+        _logger = logger;
         _timestamper = timestamper ?? throw new ArgumentNullException(nameof(timestamper));
     }
 
-    public static JwtAuthentication FromSecret(string secret, ITimestamper timestamper, ILogger logger)
+    public static JwtAuthentication FromSecret(string secret, ITimestamper timestamper, in Logger logger)
     {
         ArgumentNullException.ThrowIfNull(secret);
 
         return new(Bytes.FromHexString(secret), timestamper, logger);
     }
 
-    public static JwtAuthentication FromFile(string filePath, ITimestamper timestamper, ILogger logger)
+    public static JwtAuthentication FromFile(string filePath, ITimestamper timestamper, in Logger logger)
     {
         ArgumentNullException.ThrowIfNull(filePath);
 

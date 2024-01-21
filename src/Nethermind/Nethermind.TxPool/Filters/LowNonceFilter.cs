@@ -12,9 +12,9 @@ namespace Nethermind.TxPool.Filters
     /// </summary>
     internal sealed class LowNonceFilter : IIncomingTxFilter
     {
-        private readonly ILogger _logger;
+        private readonly Logger _logger;
 
-        public LowNonceFilter(ILogger logger)
+        public LowNonceFilter(in Logger logger)
         {
             _logger = logger;
         }

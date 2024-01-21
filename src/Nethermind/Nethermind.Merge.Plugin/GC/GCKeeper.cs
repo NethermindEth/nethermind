@@ -16,7 +16,7 @@ public class GCKeeper
 {
     private static ulong _forcedGcCount = 0;
     private readonly IGCStrategy _gcStrategy;
-    private readonly ILogger _logger;
+    private readonly Logger _logger;
     private static readonly long _defaultSize = 512.MB();
     private Task _gcScheduleTask = Task.CompletedTask;
 
@@ -75,9 +75,9 @@ public class GCKeeper
         private readonly GCKeeper _gcKeeper;
         private readonly FailCause _failCause;
         private readonly long? _size;
-        private readonly ILogger _logger;
+        private readonly Logger _logger;
 
-        internal NoGCRegion(GCKeeper gcKeeper, FailCause failCause, long? size, ILogger logger)
+        internal NoGCRegion(GCKeeper gcKeeper, FailCause failCause, long? size, in Logger logger)
         {
             _gcKeeper = gcKeeper;
             _failCause = failCause;

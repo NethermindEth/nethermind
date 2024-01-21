@@ -33,7 +33,7 @@ namespace Nethermind.Synchronization
     public class SyncServer : ISyncServer
     {
         private readonly IBlockTree _blockTree;
-        private readonly ILogger _logger;
+        private readonly Logger _logger;
         private readonly ISyncPeerPool _pool;
         private readonly ISyncModeSelector _syncModeSelector;
         private readonly IReceiptFinder _receiptFinder;
@@ -82,7 +82,7 @@ namespace Nethermind.Synchronization
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _receiptFinder = receiptFinder ?? throw new ArgumentNullException(nameof(receiptFinder));
             _blockValidator = blockValidator ?? throw new ArgumentNullException(nameof(blockValidator));
-            _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _cht = cht;
             _pivotNumber = config.PivotNumberParsed;
             _pivotHash = new Hash256(config.PivotHash ?? Keccak.Zero.ToString());

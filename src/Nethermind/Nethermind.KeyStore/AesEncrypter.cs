@@ -15,7 +15,7 @@ namespace Nethermind.KeyStore
     public class AesEncrypter : ISymmetricEncrypter
     {
         private readonly IKeyStoreConfig _config;
-        private readonly ILogger _logger;
+        private readonly Logger _logger;
 
         public AesEncrypter(IKeyStoreConfig keyStoreConfig, ILogManager logManager)
         {

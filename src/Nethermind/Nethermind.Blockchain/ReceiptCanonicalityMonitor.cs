@@ -17,7 +17,7 @@ namespace Nethermind.Blockchain
     public class ReceiptCanonicalityMonitor : IReceiptMonitor
     {
         private readonly IReceiptStorage _receiptStorage;
-        private readonly ILogger _logger;
+        private readonly Logger _logger;
 
         public event EventHandler<ReceiptsEventArgs>? ReceiptsInserted;
 
