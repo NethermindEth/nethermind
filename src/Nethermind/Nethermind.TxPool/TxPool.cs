@@ -711,7 +711,7 @@ namespace Nethermind.TxPool
             return maxPendingNonce;
         }
 
-        public bool IsKnown(Hash256? hash) => hash != null ? _hashCache.Get(hash) : false;
+        public bool IsKnown(Hash256? hash) => hash is not null ? _hashCache.Get(hash) : false;
 
         public event EventHandler<TxEventArgs>? NewDiscovered;
         public event EventHandler<TxEventArgs>? NewPending;

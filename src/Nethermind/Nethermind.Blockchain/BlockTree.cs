@@ -1299,7 +1299,7 @@ namespace Nethermind.Blockchain
 
             Block? block = null;
             blockNumber ??= _headerStore.GetBlockNumber(blockHash);
-            if (blockNumber != null)
+            if (blockNumber is not null)
             {
                 block = _blockStore.Get(blockNumber.Value, blockHash, shouldCache: false);
             }

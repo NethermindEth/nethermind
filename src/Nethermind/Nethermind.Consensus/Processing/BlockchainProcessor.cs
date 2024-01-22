@@ -565,7 +565,7 @@ public class BlockchainProcessor : IBlockchainProcessor, IBlockProcessingQueue
             if (!blocksToProcess[0].IsGenesis)
             {
                 BlockHeader? parentOfFirstBlock = _blockTree.FindHeader(blocksToProcess[0].ParentHash!, BlockTreeLookupOptions.None);
-                if (parentOfFirstBlock == null)
+                if (parentOfFirstBlock is null)
                 {
                     throw new InvalidOperationException("Attempted to process a disconnected blockchain");
                 }

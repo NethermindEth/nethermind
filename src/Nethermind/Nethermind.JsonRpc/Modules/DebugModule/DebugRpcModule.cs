@@ -264,7 +264,7 @@ public class DebugRpcModule : IDebugRpcModule
     public ResultWrapper<byte[]> debug_getRawTransaction(Hash256 transactionHash)
     {
         var transaction = _debugBridge.GetTransactionFromHash(transactionHash);
-        if (transaction == null)
+        if (transaction is null)
         {
             return ResultWrapper<byte[]>.Fail($"Transaction {transactionHash} was not found", ErrorCodes.ResourceNotFound);
         }
@@ -275,7 +275,7 @@ public class DebugRpcModule : IDebugRpcModule
     public ResultWrapper<byte[][]> debug_getRawReceipts(BlockParameter blockParameter)
     {
         var receipts = _debugBridge.GetReceiptsForBlock(blockParameter);
-        if (receipts == null)
+        if (receipts is null)
         {
             return ResultWrapper<byte[][]>.Fail($"Receipts are not found for block {blockParameter}", ErrorCodes.ResourceNotFound);
         }
@@ -287,7 +287,7 @@ public class DebugRpcModule : IDebugRpcModule
     public ResultWrapper<byte[]> debug_getRawBlock(BlockParameter blockParameter)
     {
         var blockRLP = _debugBridge.GetBlockRlp(blockParameter);
-        if (blockRLP == null)
+        if (blockRLP is null)
         {
             return ResultWrapper<byte[]>.Fail($"Block {blockParameter} was not found", ErrorCodes.ResourceNotFound);
         }
@@ -297,7 +297,7 @@ public class DebugRpcModule : IDebugRpcModule
     public ResultWrapper<byte[]> debug_getRawHeader(BlockParameter blockParameter)
     {
         var block = _debugBridge.GetBlock(blockParameter);
-        if (block == null)
+        if (block is null)
         {
             return ResultWrapper<byte[]>.Fail($"Block {blockParameter} was not found", ErrorCodes.ResourceNotFound);
         }
