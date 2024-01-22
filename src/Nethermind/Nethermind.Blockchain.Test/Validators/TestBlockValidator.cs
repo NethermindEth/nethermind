@@ -43,9 +43,18 @@ public class TestBlockValidator : IBlockValidator
     {
         return _alwaysSameResultForSuggested ?? _suggestedValidationResults.Dequeue();
     }
-
+    public bool ValidateSuggestedBlock(Block block, out string? error)
+    {
+        error = null;
+        return _alwaysSameResultForSuggested ?? _suggestedValidationResults.Dequeue();
+    }
     public bool ValidateProcessedBlock(Block processedBlock, TxReceipt[] receipts, Block suggestedBlock)
     {
+        return _alwaysSameResultForProcessed ?? _processedValidationResults.Dequeue();
+    }
+    public bool ValidateProcessedBlock(Block processedBlock, TxReceipt[] receipts, Block suggestedBlock, out string? error)
+    {
+        error = null;
         return _alwaysSameResultForProcessed ?? _processedValidationResults.Dequeue();
     }
 
@@ -60,15 +69,5 @@ public class TestBlockValidator : IBlockValidator
     {
         error = null;
         return _alwaysSameResultForSuggested ?? _suggestedValidationResults.Dequeue();
-    }
-
-    public bool ValidateSuggestedBlock(Block block, out string? error)
-    {
-        throw new NotImplementedException();
-    }
-
-    public bool ValidateProcessedBlock(Block processedBlock, TxReceipt[] receipts, Block suggestedBlock, out string? error)
-    {
-        throw new NotImplementedException();
     }
 }
