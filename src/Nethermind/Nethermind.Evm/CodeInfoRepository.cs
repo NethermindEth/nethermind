@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
@@ -58,9 +59,16 @@ public class CodeInfoRepository : ICodeInfoRepository
             return _precompiles[codeSource];
         }
 
+        CodeInfo cachedCodeInfo = null;
         Hash256 codeHash = worldState.GetCodeHash(codeSource);
-        CodeInfo cachedCodeInfo = _codeCache.Get(codeHash);
-        if (cachedCodeInfo is null)
+        if (ReferenceEquals(codeHash, Keccak.OfAnEmptyString))
+        {
+            cachedCodeInfo = CodeInfo.Empty;
+        }
+
+        bool haveCached = _codeCache.TryGet(codeHash, out cachedCodeInfo);
+
+        if (!haveCached)
         {
             byte[] code = worldState.GetCode(codeHash);
 
@@ -74,6 +82,7 @@ public class CodeInfoRepository : ICodeInfoRepository
         }
         else
         {
+            Db.Metrics.CodeDbCache++;
             // need to touch code so that any collectors that track database access are informed
             worldState.TouchCode(codeHash);
         }
@@ -81,7 +90,7 @@ public class CodeInfoRepository : ICodeInfoRepository
         return cachedCodeInfo;
     }
 
-    public CodeInfo GetOrAdd(ValueHash256 codeHash, Span<byte> initCode)
+    public CodeInfo GetOrAdd(ValueHash256 codeHash, ReadOnlySpan<byte> initCode)
     {
         if (!_codeCache.TryGet(codeHash, out CodeInfo codeInfo))
         {
@@ -92,5 +101,17 @@ public class CodeInfoRepository : ICodeInfoRepository
         }
 
         return codeInfo;
+    }
+
+
+    public void InsertCode(IWorldState state, byte[] code, Address codeOwner, IReleaseSpec spec)
+    {
+        var codeInfo = new CodeInfo(code);
+        // Start generating the JumpDestinationBitmap in background.
+        ThreadPool.UnsafeQueueUserWorkItem(codeInfo, preferLocal: false);
+
+        Hash256 codeHash = code.Length == 0 ? Keccak.OfAnEmptyString : Keccak.Compute(code.AsSpan());
+        state.InsertCode(codeOwner, codeHash, code, spec);
+        _codeCache.Set(codeHash, codeInfo);
     }
 }

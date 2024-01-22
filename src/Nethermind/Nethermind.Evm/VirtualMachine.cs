@@ -32,12 +32,37 @@ using Nethermind.Evm.Tracing.Debugger;
 
 namespace Nethermind.Evm;
 
+using System.Collections.Frozen;
 using System.Linq;
+using System.Threading;
+
 using Int256;
 
 public class VirtualMachine : IVirtualMachine
 {
     public const int MaxCallDepth = 1024;
+    private static readonly UInt256 P255Int = (UInt256)System.Numerics.BigInteger.Pow(2, 255);
+    internal static ref readonly UInt256 P255 => ref P255Int;
+    internal static readonly UInt256 BigInt256 = 256;
+    internal static readonly UInt256 BigInt32 = 32;
+
+    internal static readonly byte[] BytesZero = { 0 };
+
+    internal static readonly byte[] BytesZero32 =
+    {
+        0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0
+    };
+
+    internal static readonly byte[] BytesMax32 =
+    {
+        255, 255, 255, 255, 255, 255, 255, 255,
+        255, 255, 255, 255, 255, 255, 255, 255,
+        255, 255, 255, 255, 255, 255, 255, 255,
+        255, 255, 255, 255, 255, 255, 255, 255
+    };
 
     private readonly IVirtualMachine _evm;
 
@@ -56,7 +81,7 @@ public class VirtualMachine : IVirtualMachine
     public TransactionSubstate Run<TTracingActions>(EvmState state, IWorldState worldState, ITxTracer txTracer)
         where TTracingActions : struct, IIsTracing
         => _evm.Run<TTracingActions>(state, worldState, txTracer);
-
+    
     internal readonly ref struct CallResult
     {
         public static CallResult InvalidSubroutineEntry => new(EvmExceptionType.InvalidSubroutineEntry);
@@ -120,37 +145,14 @@ public class VirtualMachine : IVirtualMachine
     public readonly struct IsTracing : IIsTracing { }
 }
 
-internal sealed class VirtualMachine<TLogger> : IVirtualMachine
-    where TLogger : struct, IIsTracing
+internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : struct, IIsTracing
 {
-    private readonly UInt256 P255Int = (UInt256)System.Numerics.BigInteger.Pow(2, 255);
-    private UInt256 P255 => P255Int;
-    private readonly UInt256 BigInt256 = 256;
-    public UInt256 BigInt32 = 32;
-
-    internal byte[] BytesZero = { 0 };
-
-    internal byte[] BytesZero32 =
-    {
-        0, 0, 0, 0, 0, 0, 0, 0,
-        0, 0, 0, 0, 0, 0, 0, 0,
-        0, 0, 0, 0, 0, 0, 0, 0,
-        0, 0, 0, 0, 0, 0, 0, 0
-    };
-
-    internal byte[] BytesMax32 =
-    {
-        255, 255, 255, 255, 255, 255, 255, 255,
-        255, 255, 255, 255, 255, 255, 255, 255,
-        255, 255, 255, 255, 255, 255, 255, 255,
-        255, 255, 255, 255, 255, 255, 255, 255
-    };
-
     private readonly byte[] _chainId;
 
     private readonly IBlockhashProvider _blockhashProvider;
     private readonly ISpecProvider _specProvider;
     private readonly ILogger _logger;
+    private IWorldState _worldState;
     private IWorldState _state = null!;
     private readonly Stack<EvmState> _stateStack = new();
     private (Address Address, bool ShouldDelete) _parityTouchBugAccount = (Address.FromNumber(3), false);
@@ -176,6 +178,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine
     {
         _txTracer = txTracer;
         _state = worldState;
+        _worldState = worldState;
 
         IReleaseSpec spec = _specProvider.GetSpec(state.Env.TxExecutionContext.BlockExecutionContext.Header.Number, state.Env.TxExecutionContext.BlockExecutionContext.Header.Timestamp);
         EvmState currentState = state;
@@ -255,7 +258,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine
                     if (callResult.IsException)
                     {
                         if (typeof(TTracingActions) == typeof(IsTracing)) _txTracer.ReportActionError(callResult.ExceptionType);
-                        _state.Restore(currentState.Snapshot);
+                        _worldState.Restore(currentState.Snapshot);
 
                         RevertParityTouchBugAccount(spec);
 
@@ -355,7 +358,9 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine
                         bool invalidCode = CodeDepositHandler.CodeIsInvalid(spec, callResult.Output);
                         if (gasAvailableForCodeDeposit >= codeDepositGasCost && !invalidCode)
                         {
-                            _state.InsertCode(callCodeOwner, callResult.Output, spec);
+                            var code = callResult.Output;
+                            _codeInfoRepository.InsertCode(_state, code, callCodeOwner, spec);
+
                             currentState.GasAvailable -= codeDepositGasCost;
 
                             if (typeof(TTracingActions) == typeof(IsTracing))
@@ -430,7 +435,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine
             {
                 if (typeof(TLogger) == typeof(IsTracing)) _logger.Trace($"exception ({ex.GetType().Name}) in {currentState.ExecutionType} at depth {currentState.Env.CallDepth} - restoring snapshot");
 
-                _state.Restore(currentState.Snapshot);
+                _worldState.Restore(currentState.Snapshot);
 
                 RevertParityTouchBugAccount(spec);
 
@@ -710,7 +715,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine
         ref readonly ExecutionEnvironment env = ref vmState.Env;
         ref readonly TxExecutionContext txCtx = ref env.TxExecutionContext;
         ref readonly BlockExecutionContext blkCtx = ref txCtx.BlockExecutionContext;
-        Span<byte> code = env.CodeInfo.MachineCode.AsSpan();
+        ReadOnlySpan<byte> code = env.CodeInfo.MachineCode.Span;
         EvmExceptionType exceptionType = EvmExceptionType.None;
         bool isRevert = false;
 #if DEBUG
@@ -1336,7 +1341,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine
                         {
                             if (!UpdateMemoryCost(vmState, ref gasAvailable, in a, result)) goto OutOfGas;
 
-                            byte[] externalCode = _codeInfoRepository.GetCachedCodeInfo(_state, address, spec).MachineCode;
+                            ReadOnlyMemory<byte> externalCode = _codeInfoRepository.GetCachedCodeInfo(_worldState, address, spec).MachineCode;
                             slice = externalCode.SliceWithZeroPadding(b, (int)result);
                             vmState.Memory.Save(in a, in slice);
                             if (typeof(TTracingInstructions) == typeof(IsTracing))
@@ -1579,10 +1584,6 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine
                     }
                 case Instruction.SSTORE:
                     {
-                        Metrics.SstoreOpcode++;
-
-                        if (vmState.IsStatic) goto StaticCallViolation;
-
                         exceptionType = InstructionSStore<TTracingInstructions, TTracingRefunds, TTracingStorage>(vmState, ref stack, ref gasAvailable, spec);
                         if (exceptionType != EvmExceptionType.None) goto ReturnFailure;
 
@@ -2106,8 +2107,8 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine
     [MethodImpl(MethodImplOptions.NoInlining)]
     private void InstructionExtCodeSize<TTracingInstructions>(Address address, ref EvmStack<TTracingInstructions> stack, IReleaseSpec spec) where TTracingInstructions : struct, IIsTracing
     {
-        byte[] accountCode = _codeInfoRepository.GetCachedCodeInfo(_state, address, spec).MachineCode;
-        UInt256 result = (UInt256)accountCode.Length;
+        ReadOnlyMemory<byte> accountCode = _codeInfoRepository.GetCachedCodeInfo(_worldState, address, spec).MachineCode;
+        UInt256 result = (UInt256)accountCode.Span.Length;
         stack.PushUInt256(in result);
     }
 
@@ -2228,7 +2229,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine
 
         ReadOnlyMemory<byte> callData = vmState.Memory.Load(in dataOffset, dataLength);
 
-        Snapshot snapshot = _state.TakeSnapshot();
+        Snapshot snapshot = _worldState.TakeSnapshot();
         _state.SubtractFromBalance(caller, transferValue, spec);
 
         ExecutionEnvironment callEnv = new
@@ -2241,7 +2242,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine
             transferValue: transferValue,
             value: callValue,
             inputData: callData,
-            codeInfo: _codeInfoRepository.GetCachedCodeInfo(_state, codeSource, spec)
+            codeInfo: _codeInfoRepository.GetCachedCodeInfo(_worldState, codeSource, spec)
         );
         if (typeof(TLogger) == typeof(IsTracing)) _logger.Trace($"Tx call gas {gasLimitUl}");
         if (outputLength == 0)
@@ -2399,7 +2400,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine
             return (EvmExceptionType.None, null);
         }
 
-        Span<byte> initCode = vmState.Memory.LoadSpan(in memoryPositionOfInitCode, initCodeLength);
+        ReadOnlyMemory<byte> initCode = vmState.Memory.Load(in memoryPositionOfInitCode, initCodeLength);
 
         UInt256 balance = _state.GetBalance(env.ExecutingAccount);
         if (value > balance)
@@ -2426,7 +2427,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine
 
         Address contractAddress = instruction == Instruction.CREATE
             ? ContractAddress.From(env.ExecutingAccount, _state.GetNonce(env.ExecutingAccount))
-            : ContractAddress.From(env.ExecutingAccount, salt, initCode);
+            : ContractAddress.From(env.ExecutingAccount, salt, initCode.Span);
 
         if (spec.UseHotAndColdStorage)
         {
@@ -2436,10 +2437,10 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine
 
         _state.IncrementNonce(env.ExecutingAccount);
 
-        Snapshot snapshot = _state.TakeSnapshot();
+        Snapshot snapshot = _worldState.TakeSnapshot();
 
         bool accountExists = _state.AccountExists(contractAddress);
-        if (accountExists && (_codeInfoRepository.GetCachedCodeInfo(_state, contractAddress, spec).MachineCode.Length != 0 ||
+        if (accountExists && (_codeInfoRepository.GetCachedCodeInfo(_worldState, contractAddress, spec).MachineCode.Length != 0 ||
                               _state.GetNonce(contractAddress) != 0))
         {
             /* we get the snapshot before this as there is a possibility with that we will touch an empty account and remove it even if the REVERT operation follows */
@@ -2460,8 +2461,8 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine
 
         _state.SubtractFromBalance(env.ExecutingAccount, value, spec);
 
-        ValueHash256 codeHash = ValueKeccak.Compute(initCode);
-        CodeInfo codeInfo = _codeInfoRepository.GetOrAdd(codeHash, initCode);
+        ValueHash256 codeHash = ValueKeccak.Compute(initCode.Span);
+        CodeInfo codeInfo = _codeInfoRepository.GetOrAdd(codeHash, initCode.Span);
 
         ExecutionEnvironment callEnv = new
         (
@@ -2525,6 +2526,9 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine
         where TTracingRefunds : struct, IIsTracing
         where TTracingStorage : struct, IIsTracing
     {
+        Metrics.SstoreOpcode++;
+
+        if (vmState.IsStatic) return EvmExceptionType.StaticCallViolation;
         // fail fast before the first storage read if gas is not enough even for reset
         if (!spec.UseNetGasMetering && !UpdateGas(spec.GetSStoreResetCost(), ref gasAvailable)) return EvmExceptionType.OutOfGas;
 
@@ -2540,11 +2544,11 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine
         bool newIsZero = bytes.IsZero();
         if (!newIsZero)
         {
-            bytes = bytes.WithoutLeadingZeros().ToArray();
+            bytes = bytes.WithoutLeadingZeros();
         }
         else
         {
-            bytes = new byte[] { 0 };
+            bytes = BytesZero;
         }
 
         StorageCell storageCell = new(vmState.Env.ExecutingAccount, result);

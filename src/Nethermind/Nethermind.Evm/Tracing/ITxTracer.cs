@@ -375,11 +375,11 @@ public interface ITxTracer : IWorldStateTracer, IDisposable
     void ReportBlockHash(Hash256 blockHash);
 
     /// <summary>
-    ///
+    /// 
     /// </summary>
     /// <param name="byteCode"></param>
     /// <remarks>Depends on <see cref="IsTracingCode"/></remarks>
-    void ReportByteCode(byte[] byteCode);
+    void ReportByteCode(ReadOnlyMemory<byte> byteCode);
 
     /// <summary>
     /// Special case for VM trace in Parity but we consider removing support for it

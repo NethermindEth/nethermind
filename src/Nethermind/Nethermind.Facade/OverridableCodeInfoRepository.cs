@@ -8,6 +8,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.Evm.CodeAnalysis;
+using Nethermind.Evm.Precompiles;
 using Nethermind.State;
 
 namespace Nethermind.Facade;
@@ -38,10 +39,12 @@ public class OverridableCodeInfoRepository : ICodeInfoRepository
     }
 
     public CodeInfo GetCachedCodeInfo(IWorldState worldState, Address codeSource, IReleaseSpec vmSpec) =>
-        _codeOverwrites.TryGetValue(codeSource, out CodeInfo result)
-            ? result
-            : _codeInfoRepository.GetCachedCodeInfo(worldState, codeSource, vmSpec);
+        _codeOverwrites.TryGetValue(codeSource, out CodeInfo result) ? result : _codeInfoRepository.GetCachedCodeInfo(worldState, codeSource, vmSpec);
+    
 
-    public CodeInfo GetOrAdd(ValueHash256 codeHash, Span<byte> initCode) =>
+    public CodeInfo GetOrAdd(ValueHash256 codeHash, ReadOnlySpan<byte> initCode) =>
         _codeInfoRepository.GetOrAdd(codeHash, initCode);
+
+    public void InsertCode(IWorldState state, byte[] code, Address codeOwner, IReleaseSpec spec) =>
+        _codeInfoRepository.InsertCode(state, code, codeOwner, spec);
 }

@@ -468,9 +468,10 @@ namespace Nethermind.Evm.Tracing.ParityStyle
             PopAction();
         }
 
-        public override void ReportByteCode(byte[] byteCode)
+        public override void ReportByteCode(ReadOnlyMemory<byte> byteCode)
         {
-            _currentVmTrace.VmTrace.Code = byteCode;
+            // TODO: use memory pool?
+            _currentVmTrace.VmTrace.Code = byteCode.ToArray();
         }
 
         public override void ReportGasUpdateForVmTrace(long refund, long gasAvailable)

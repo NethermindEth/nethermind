@@ -22,6 +22,7 @@ using Nethermind.Int256;
 using Nethermind.JsonRpc.Data;
 using Nethermind.JsonRpc.Test.Modules;
 using Nethermind.Logging;
+using Nethermind.State;
 using NUnit.Framework;
 
 namespace Nethermind.AccountAbstraction.Test;

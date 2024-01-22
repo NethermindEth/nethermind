@@ -5,6 +5,6 @@ namespace Nethermind.Evm
 {
     public static class MemoryAllowance
     {
-        public static int CodeCacheSize { get; } = 1 << 13;
+        public static int CodeCacheSize { get; } = 16_384;
     }
 }

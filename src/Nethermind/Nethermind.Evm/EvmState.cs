@@ -273,7 +273,7 @@ namespace Nethermind.Evm
 
         public void WarmUp(AccessList? accessList)
         {
-            if (accessList is not null)
+            if (accessList?.IsEmpty == false)
             {
                 foreach ((Address address, AccessList.StorageKeysEnumerable storages) in accessList)
                 {
