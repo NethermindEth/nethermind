@@ -154,8 +154,7 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
 
         if (!ShouldProcessBlock(block, parentHeader, out ProcessingOptions processingOptions)) // we shouldn't process block
         {
-            string? error = null;
-            if (!_blockValidator.ValidateSuggestedBlock(block, out error))
+            if (!_blockValidator.ValidateSuggestedBlock(block, out string? error))
             {
                 if (_logger.IsInfo) _logger.Info($"Rejecting invalid block received during the sync, block: {block}");
                 return NewPayloadV1Result.Invalid(error!);
