@@ -125,24 +125,24 @@ namespace Nethermind.Consensus.Validators
             // Execution-payload version verification
             if (!transaction.SupportsBlobs)
             {
-                if (transaction.MaxFeePerBlobGas is null)
+                if (transaction.MaxFeePerBlobGas is not null)
                 {
                     error = $"Non blob transaction cannot have '{nameof(Transaction.MaxFeePerBlobGas)}' set.";
                     return false;
-
                 }
-                if (transaction.BlobVersionedHashes is null)
+                if (transaction.BlobVersionedHashes is not null)
                 {
                     error = $"Non blob transaction cannot have '{nameof(Transaction.BlobVersionedHashes)}' set.";
                     return false;
-
                 }
-                if (transaction is not { NetworkWrapper: ShardBlobNetworkWrapper })
+                if (transaction is { NetworkWrapper: ShardBlobNetworkWrapper })
                 {
                     //This could be an internal problem
                     error = $"Non blob transaction cannot be {nameof(ShardBlobNetworkWrapper)}.";
                     return false;
                 }
+                error = null;
+                return true;
             }
 
             if (transaction.To is null)
