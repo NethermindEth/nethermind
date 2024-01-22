@@ -366,7 +366,8 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                         (IReadOnlyCollection<Address>)currentState.DestroyList,
                         (IReadOnlyCollection<LogEntry>)currentState.Logs,
                         callResult.ShouldRevert,
-                        isTracerConnected: isTracing);
+                        isTracerConnected: isTracing,
+                        _logger);
                 }
 
                 Address callCodeOwner = currentState.Env.ExecutingAccount;

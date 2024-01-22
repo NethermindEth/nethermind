@@ -8,11 +8,13 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
+using Nethermind.Logging;
 
 namespace Nethermind.Evm;
 
 public class TransactionSubstate
 {
+    private readonly ILogger? _logger;
     private static readonly List<Address> _emptyDestroyList = new(0);
     private static readonly List<LogEntry> _emptyLogs = new(0);
 
@@ -57,14 +59,15 @@ public class TransactionSubstate
         ShouldRevert = false;
     }
 
-    public TransactionSubstate(
-        ReadOnlyMemory<byte> output,
+    public TransactionSubstate(ReadOnlyMemory<byte> output,
         long refund,
         IReadOnlyCollection<Address> destroyList,
         IReadOnlyCollection<LogEntry> logs,
         bool shouldRevert,
-        bool isTracerConnected)
+        bool isTracerConnected,
+        ILogger? logger = null)
     {
+        _logger = logger;
         Output = output;
         Refund = refund;
         DestroyList = destroyList;
@@ -92,7 +95,7 @@ public class TransactionSubstate
         );
     }
 
-    private static string DefaultErrorMessage(ReadOnlySpan<byte> span) => System.Text.Encoding.UTF8.GetString(span);
+    private static string DefaultErrorMessage(ReadOnlySpan<byte> span) => span.ToHexString(true);
 
     private string? TryGetErrorMessage(ReadOnlySpan<byte> span)
     {
@@ -139,8 +142,9 @@ public class TransactionSubstate
             span = span.Slice((int)lengthOffset, (int)length);
             return System.Text.Encoding.UTF8.GetString(span);
         }
-        catch (OverflowException) // shouldn't happen, just for being safe
+        catch (Exception e) // shouldn't happen, just for being safe
         {
+            if (_logger?.IsError == true) _logger.Error("Couldn't parse revert message", e);
             return null;
         }
     }

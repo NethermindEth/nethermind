@@ -46,7 +46,7 @@ namespace Nethermind.Evm.Test
                 new LogEntry[] { },
                 true,
                 true);
-            transactionSubstate.Error.Should().Be("Reverted \u0005\u0006\u0007\u0008\t");
+            transactionSubstate.Error.Should().Be("Reverted 0x0506070809");
         }
 
         [Test]
@@ -60,8 +60,7 @@ namespace Nethermind.Evm.Test
                 new LogEntry[] { },
                 true,
                 true);
-            string expected = "Reverted \u0008\ufffdy\ufffd\u0000\u0000\u0000\u0001\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0012\ufffd\ufffd^}\u0018\u000c\ufffd\ufffd`\u001bm\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0001\u0000\u0002v\ufffd\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\ufffd\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000j\u0000\u0000\u0000\u0000\u0003\u0000\u0000\u0000\u0000\u0000\u0001\u0015\ufffd\ufffdA\u0002\ufffd\ufffd`\u0000\u0012\ufffd\u007f\ufffd\ufffd\ufffd\ufffdl\ufffd\ufffd\ufffdghB\ufffd\u0003\ufffd \ufffdw\u0000\u0000\u0000\u0000\u0015\ufffdb\ufffd\ufffd\ufffd\ufffd\ufffd\ufffdU\u0018\ufffdd\ufffd{\ufffdqz\u0010ڼK\ufffd\u001a\ufffd,/\ufffd\ufffd\"\u0000\u0000\u0012\ufffd\ufffd^}\u0018\u000c\ufffd\ufffd`\u001bm\ufffd\u0000\u0000\u0000\u0000\u0000\u0000\u0018U\ufffd\ufffd\ufffd\ufffd\u0008(\ufffd\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000";
-            transactionSubstate.Error.Should().Be(expected);
+            transactionSubstate.Error.Should().Be("Reverted 0x08c379a000000001000000000000000000000000000000000000000012a9d65e7d180cfcf3601b6d00000000000000000000000000000000000000000000000000000001000276a400000000000000000000000000000000000000000000000000000000000000a0000000000000000000000000000000000000000000000000000000000000006a000000000300000000000115859c410282f6600012efb47fcfcad4f96c83d4ca676842fb03ef20a4770000000015f762bdaa80f6d9dc5518ff64cb7ba5717a10dabc4be3a41acd2c2f95ee22000012a9d65e7d180cfcf3601b6df0000000000000185594dac7eb0828ff000000000000000000000000");
         }
 
         [Test]
@@ -81,7 +80,7 @@ namespace Nethermind.Evm.Test
                 new LogEntry[] { },
                 true,
                 true);
-            transactionSubstate.Error.Should().Be("Reverted \"\u0002f\ufffd\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000@\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0017AA21 didn't pay prefund\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000");
+            transactionSubstate.Error.Should().Be("Reverted 0x220266b600000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000040000000000000000000000000000000000000000000000000000000000000001741413231206469646e2774207061792070726566756e64000000000000000000");
         }
 
         private static IEnumerable<(byte[], string)> ErrorFunctionTestCases()
@@ -107,7 +106,7 @@ namespace Nethermind.Evm.Test
                 "Reverted Req::UnAuthAuditor");
 
             // Invalid case
-            yield return (new byte[] { 0x08, 0xc3, 0x79, 0xa0, 0xFF }, "Reverted \u0008\ufffdy\ufffd\ufffd");
+            yield return (new byte[] { 0x08, 0xc3, 0x79, 0xa0, 0xFF }, "Reverted 0x08c379a0ff");
         }
 
         private static IEnumerable<(byte[], string)> PanicFunctionTestCases()
@@ -137,7 +136,7 @@ namespace Nethermind.Evm.Test
                 "Reverted unknown panic code (0xff)");
 
             // Invalid case
-            yield return (new byte[] { 0x4e, 0x48, 0x7b, 0x71 }, "Reverted NH{q");
+            yield return (new byte[] { 0x4e, 0x48, 0x7b, 0x71 }, "Reverted 0x4e487b71");
         }
 
         [Test]
