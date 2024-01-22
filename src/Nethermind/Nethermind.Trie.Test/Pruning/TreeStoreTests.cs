@@ -67,6 +67,17 @@ namespace Nethermind.Trie.Test.Pruning
                 trieNode.GetMemorySize(false) + ExpectedPerNodeKeyMemorySize);
         }
 
+        [Test]
+        public void Memory_with_one_node_when_key_is_large()
+        {
+            TrieNode trieNode = new(NodeType.Leaf, Keccak.Zero); // 56B
+
+            using TrieStore fullTrieStore = CreateTrieStore(pruningStrategy: new TestPruningStrategy(true));
+            IScopedTrieStore trieStore = fullTrieStore.GetTrieStore(null);
+            trieStore.CommitNode(1234, new NodeCommitInfo(trieNode, new TreePath(TestItem.KeccakA, 64)));
+            fullTrieStore.MemoryUsedByDirtyCache.Should().Be(
+                trieNode.GetMemorySize(false) + ExpectedLargePerNodeKeyMemorySize);
+        }
 
         [Test]
         public void Pruning_off_cache_should_not_change_commit_node()
@@ -790,6 +801,7 @@ namespace Nethermind.Trie.Test.Pruning
             readOnlyNode.Key?.ToString().Should().Be(originalNode.Key?.ToString());
         }
 
-        private long ExpectedPerNodeKeyMemorySize => _scheme == INodeStorage.KeyScheme.Hash ? 0 : TrieStore.DirtyNodesCache.Key.MemoryUsage;
+        private long ExpectedPerNodeKeyMemorySize => _scheme == INodeStorage.KeyScheme.Hash ? 0 : TrieStore.DirtyNodesCache.SmallerKey.MemoryUsage;
+        private long ExpectedLargePerNodeKeyMemorySize => _scheme == INodeStorage.KeyScheme.Hash ? 0 : TrieStore.DirtyNodesCache.Key.MemoryUsage;
     }
 }

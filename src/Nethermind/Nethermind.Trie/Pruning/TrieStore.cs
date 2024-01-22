@@ -26,7 +26,6 @@ namespace Nethermind.Trie.Pruning
         {
             private readonly TrieStore _trieStore;
             private readonly bool _storeByHash;
-            public readonly long KeyMemoryUsage;
 
             public DirtyNodesCache(TrieStore trieStore)
             {
@@ -34,7 +33,6 @@ namespace Nethermind.Trie.Pruning
                 // If the nodestore indicated that path is not required,
                 // we will use a map with hash as its key instead of the full Key to reduce memory usage.
                 _storeByHash = !trieStore._nodeStorage.RequirePath;
-                KeyMemoryUsage = _storeByHash ? 0 : Key.MemoryUsage; // 0 because previously it was not counted.
             }
 
             public void SaveInCache(in Key key, TrieNode node)
@@ -43,7 +41,7 @@ namespace Nethermind.Trie.Pruning
                 if (TryAdd(key, node))
                 {
                     Metrics.CachedNodesCount = Interlocked.Increment(ref _count);
-                    _trieStore.MemoryUsedByDirtyCache += node.GetMemorySize(false) + KeyMemoryUsage;
+                    _trieStore.MemoryUsedByDirtyCache += node.GetMemorySize(false) + CalcKeyMemorySize(key);
                 }
             }
 
@@ -92,11 +90,13 @@ namespace Nethermind.Trie.Pruning
             }
 
             private readonly ConcurrentDictionary<Key, TrieNode> _byKeyObjectCache = new();
+            private readonly ConcurrentDictionary<SmallerKey, TrieNode> _bySmallerKeyObjectCache = new();
             private readonly ConcurrentDictionary<ValueHash256, TrieNode> _byHashObjectCache = new();
 
             public bool IsNodeCached(in Key key)
             {
                 if (_storeByHash) return _byHashObjectCache.ContainsKey(key.Keccak);
+                if (key.Path.Length <= TinyTreePath.MaxNibbleLength) return _bySmallerKeyObjectCache.ContainsKey(new SmallerKey(key));
                 return _byKeyObjectCache.ContainsKey(key);
             }
 
@@ -110,7 +110,9 @@ namespace Nethermind.Trie.Pruning
                             pair => new KeyValuePair<Key, TrieNode>(new Key(null, TreePath.Empty, pair.Key.ToCommitment()), pair.Value));
                     }
 
-                    return _byKeyObjectCache;
+                    return _bySmallerKeyObjectCache
+                        .Select((kv) => new KeyValuePair<Key, TrieNode>(kv.Key.ToFullKey(), kv.Value))
+                        .Concat(_byKeyObjectCache);
                 }
             }
 
@@ -120,6 +122,7 @@ namespace Nethermind.Trie.Pruning
                 {
                     return _byHashObjectCache.TryGetValue(key.Keccak, out node);
                 }
+                if (key.Path.Length <= TinyTreePath.MaxNibbleLength) return _bySmallerKeyObjectCache.TryGetValue(new SmallerKey(key), out node);
                 return _byKeyObjectCache.TryGetValue(key, out node);
             }
 
@@ -129,6 +132,7 @@ namespace Nethermind.Trie.Pruning
                 {
                     return _byHashObjectCache.TryAdd(key.Keccak, node);
                 }
+                if (key.Path.Length <= TinyTreePath.MaxNibbleLength) return _bySmallerKeyObjectCache.TryAdd(new SmallerKey(key), node);
                 return _byKeyObjectCache.TryAdd(key, node);
             }
 
@@ -143,10 +147,25 @@ namespace Nethermind.Trie.Pruning
 
                     return;
                 }
+
+                if (key.Path.Length <= TinyTreePath.MaxNibbleLength)
+                {
+                    if (_bySmallerKeyObjectCache.Remove(new SmallerKey(key), out _))
+                    {
+                        Metrics.CachedNodesCount = Interlocked.Decrement(ref _count);
+                    }
+                }
                 if (_byKeyObjectCache.Remove(key, out _))
                 {
                     Metrics.CachedNodesCount = Interlocked.Decrement(ref _count);
                 }
+            }
+
+            public long CalcKeyMemorySize(in Key key)
+            {
+                if (_storeByHash) return 0; // 0 because previously it was not counted.
+                if (key.Path.Length <= TinyTreePath.MaxNibbleLength) return SmallerKey.MemoryUsage;
+                return Key.MemoryUsage;
             }
 
             public MapLock AcquireMapLock()
@@ -162,7 +181,8 @@ namespace Nethermind.Trie.Pruning
                 return new MapLock()
                 {
                     _storeByHash = _storeByHash,
-                    _byKeyLock = _byKeyObjectCache.AcquireLock()
+                    _byKeyLock = _byKeyObjectCache.AcquireLock(),
+                    _bySmallerKeyLock = _bySmallerKeyObjectCache.AcquireLock(),
                 };
             }
 
@@ -186,6 +206,7 @@ namespace Nethermind.Trie.Pruning
             {
                 _byHashObjectCache.Clear();
                 _byKeyObjectCache.Clear();
+                _bySmallerKeyObjectCache.Clear();
                 Interlocked.Exchange(ref _count, 0);
                 Metrics.CachedNodesCount = 0;
                 _trieStore.MemoryUsedByDirtyCache = 0;
@@ -210,7 +231,7 @@ namespace Nethermind.Trie.Pruning
                     return Keccak.GetHashCode();
                 }
 
-                public bool Equals(Key other)
+                public bool Equals(in Key other)
                 {
                     return other.Keccak == Keccak && other.Path == Path && other.Address == Address;
                 }
@@ -221,11 +242,47 @@ namespace Nethermind.Trie.Pruning
                 }
             }
 
+            internal readonly struct SmallerKey
+            {
+                internal const long MemoryUsage = 8 + 8 + 8; // (address (probably shared), path, keccak pointer (shared with TrieNode))
+                public Hash256? Address { get; }
+                public TinyTreePath Path { get; }
+                public Hash256 Keccak { get; }
+
+                public SmallerKey(in Key largeKey)
+                {
+                    Address = largeKey.Address;
+                    Path = new TinyTreePath(largeKey.Path);
+                    Keccak = largeKey.Keccak;
+                }
+
+                public Key ToFullKey()
+                {
+                    return new Key(Address, Path.ToTreePath(), Keccak);
+                }
+
+                public override int GetHashCode()
+                {
+                    return Keccak.GetHashCode();
+                }
+
+                public bool Equals(in SmallerKey other)
+                {
+                    return other.Keccak == Keccak && other.Path.Equals(Path) && other.Address == Address;
+                }
+
+                public override bool Equals(object? obj)
+                {
+                    return obj is SmallerKey other && Equals(other);
+                }
+            }
+
             internal ref struct MapLock
             {
                 public bool _storeByHash;
                 public ConcurrentDictionaryLock<ValueHash256, TrieNode>.Lock _byHashLock;
                 public ConcurrentDictionaryLock<Key, TrieNode>.Lock _byKeyLock;
+                public ConcurrentDictionaryLock<SmallerKey, TrieNode>.Lock _bySmallerKeyLock;
 
                 public void Dispose()
                 {
@@ -235,6 +292,7 @@ namespace Nethermind.Trie.Pruning
                     }
                     else
                     {
+                        _bySmallerKeyLock.Dispose();
                         _byKeyLock.Dispose();
                     }
                 }
@@ -697,7 +755,7 @@ namespace Nethermind.Trie.Pruning
                 else
                 {
                     node.PrunePersistedRecursively(1);
-                    newMemory += node.GetMemorySize(false) + _dirtyNodes.KeyMemoryUsage;
+                    newMemory += node.GetMemorySize(false) + _dirtyNodes.CalcKeyMemorySize(key);
                 }
             }
 
