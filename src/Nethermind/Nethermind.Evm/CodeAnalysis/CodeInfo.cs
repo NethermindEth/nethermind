@@ -45,5 +45,15 @@ namespace Nethermind.Evm.CodeAnalysis
         {
             return _analyzer = new JumpDestinationAnalyzer(MachineCode);
         }
+
+        public SectionHeader SectionOffset(int idx)
+        {
+            throw new NotImplementedException();
+        }
+
+        public SectionHeader ContainerOffset(int idx)
+        {
+            throw new NotImplementedException();
+        }
     }
 }

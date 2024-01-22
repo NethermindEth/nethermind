@@ -71,7 +71,7 @@ internal static class EvmObjectFormat
 
     public static bool IsEofn(ReadOnlySpan<byte> container, byte version) => container.Length >= MAGIC.Length + 1 && container.StartsWith(MAGIC) && container[MAGIC.Length] == version;
 
-    public static bool IsValidEof(ReadOnlySpan<byte> container, [NotNullWhen(true)] out EofHeader? header)
+    public static bool IsValidEof(ReadOnlySpan<byte> container, bool validateSubContainers, [NotNullWhen(true)] out EofHeader? header)
     {
         if (container.Length > VERSION_OFFSET
             && _eofVersionHandlers.TryGetValue(container[VERSION_OFFSET], out IEofVersionHandler handler)
@@ -82,6 +82,28 @@ internal static class EvmObjectFormat
             {
                 return true;
             }
+
+            if(validateSubContainers && header?.ContainerSection?.Count > 0)
+            {
+                int containerSize = header.Value.ContainerSection.Value.Count;
+                byte[][] containers = ArrayPool<byte[]>.Shared.Rent(containerSize);
+
+                for (int i = 0; i < containerSize; i++)
+                {
+                    containers[i] = container.Slice(header.Value.ContainerSection.Value.Start + header.Value.ContainerSection.Value[i].Start, header.Value.ContainerSection.Value[i].Size).ToArray();
+                }
+
+                foreach (var subcontainer in containers)
+                {
+                    if(!IsValidEof(subcontainer, validateSubContainers, out _))
+                    {
+                        return false;
+                    }
+                }
+                return true;
+            }
+
+
         }
 
         header = null;

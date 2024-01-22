@@ -545,7 +545,8 @@ namespace Nethermind.Evm.TransactionProcessing
                             throw new OutOfGasException();
                         }
 
-                        if (CodeDepositHandler.CodeIsInvalid(spec, substate.Output))
+                        // is the new txType considered a contractCreation if it needs CREATE4 to function as such?
+                        if (CodeDepositHandler.CodeIsInvalid(spec, substate.Output, 0))
                         {
                             throw new InvalidCodeException();
                         }

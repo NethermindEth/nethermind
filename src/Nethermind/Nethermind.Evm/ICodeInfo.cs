@@ -3,6 +3,7 @@
 
 using System;
 using System.Diagnostics;
+using Nethermind.Evm.EOF;
 using Nethermind.Evm.Precompiles;
 
 namespace Nethermind.Evm.CodeAnalysis;
@@ -17,8 +18,8 @@ public interface ICodeInfo
     ReadOnlyMemory<byte> CodeSection => MachineCode;
     ReadOnlyMemory<byte> DataSection => Memory<byte>.Empty;
     ReadOnlyMemory<byte> ContainerSection => Memory<byte>.Empty;
-    (int start, int size) SectionOffset(int idx) => idx == 0 ? (0, MachineCode.Length) : throw new ArgumentOutOfRangeException();
-    (int start, int size) ContainerOffset(int idx) => idx == 0 ? (0, 0) : throw new ArgumentOutOfRangeException();
+    SectionHeader SectionOffset(int idx);
+    SectionHeader ContainerOffset(int idx);
     (byte inputCount, byte outputCount, ushort maxStackHeight) GetSectionMetadata(int index) => (0, 0, 1024);
     bool ValidateJump(int destination, bool isSubroutine);
 }

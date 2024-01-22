@@ -3,6 +3,7 @@
 
 using System;
 using Nethermind.Core.Specs;
+using Nethermind.Evm.EOF;
 
 namespace Nethermind.Evm
 {
@@ -17,14 +18,39 @@ namespace Nethermind.Evm
             return GasCostOf.CodeDeposit * byteCodeLength;
         }
 
-        public static bool CodeIsInvalid(IReleaseSpec spec, byte[] output)
+
+        public static bool CodeIsInvalid(IReleaseSpec spec, ReadOnlyMemory<byte> code, int fromVersion)
+            => !CodeIsValid(spec, code, fromVersion);
+        public static bool CodeIsValid(IReleaseSpec spec, ReadOnlyMemory<byte> code, int fromVersion)
         {
-            return spec.IsEip3541Enabled && output.Length >= 1 && output[0] == InvalidStartingCodeByte;
+            bool valid = true;
+            if (spec.IsEofEnabled)
+            {
+                //fromVersion = (execType is ExecutionType.Create1 or ExecutionType.Create2) ? fromVersion : 0; //// hmmmm
+                valid = IsValidWithEofRules(code.Span, fromVersion);
+            }
+            else if (spec.IsEip3541Enabled)
+            {
+                valid = IsValidWithLegacyRules(code.Span);
+            }
+
+            return valid;
         }
 
-        public static bool CodeIsInvalid(IReleaseSpec spec, ReadOnlyMemory<byte> output)
+        public static bool IsValidWithLegacyRules(ReadOnlySpan<byte> code)
         {
-            return spec.IsEip3541Enabled && output.Length >= 1 && output.StartsWith(InvalidStartingCodeByte);
+            return code is not [InvalidStartingCodeByte, ..]; ;
+        }
+
+        public static bool IsValidWithEofRules(ReadOnlySpan<byte> code, int fromVersion)
+        {
+            bool isCodeEof = EvmObjectFormat.IsEof(code, out int codeVersion);
+            bool valid = code.Length >= 1
+                  && codeVersion >= fromVersion
+                  && (isCodeEof ?  // this needs test cases
+                       EvmObjectFormat.IsValidEof(code, false, out _) :
+                            fromVersion > 0 ? false : IsValidWithLegacyRules(code));
+            return valid;
         }
     }
 }

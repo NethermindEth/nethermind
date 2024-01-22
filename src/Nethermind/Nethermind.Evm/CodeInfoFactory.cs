@@ -11,7 +11,7 @@ public static class CodeInfoFactory
     public static ICodeInfo CreateCodeInfo(byte[] code, IReleaseSpec spec)
     {
         CodeInfo codeInfo = new(code);
-        return spec.IsEofEnabled && EvmObjectFormat.IsValidEof(code, out EofHeader? header)
+        return spec.IsEofEnabled && EvmObjectFormat.IsValidEof(code, false, out EofHeader? header)
             ? new EofCodeInfo(codeInfo, header.Value)
             : codeInfo;
     }

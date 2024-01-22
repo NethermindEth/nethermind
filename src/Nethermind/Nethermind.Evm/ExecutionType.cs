@@ -7,10 +7,16 @@ namespace Nethermind.Evm
 {
     public static class ExecutionTypeExtensions
     {
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static bool IsAnyCreateLegacy(this ExecutionType executionType) =>
+            executionType is ExecutionType.CREATE or ExecutionType.CREATE2;
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static bool IsAnyCreateEof(this ExecutionType executionType) =>
+            executionType is ExecutionType.CREATE3 or ExecutionType.CREATE4;
         // did not want to use flags here specifically
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static bool IsAnyCreate(this ExecutionType executionType) =>
-            executionType is ExecutionType.CREATE or ExecutionType.CREATE2;
+            IsAnyCreateLegacy(executionType) || IsAnyCreateEof(executionType);
     }
 
     // ReSharper disable InconsistentNaming IdentifierTypo
@@ -22,7 +28,9 @@ namespace Nethermind.Evm
         CALLCODE,
         DELEGATECALL,
         CREATE,
-        CREATE2
+        CREATE2,
+        CREATE3,
+        CREATE4,
     }
     // ReSharper restore IdentifierTypo InconsistentNaming
 }
