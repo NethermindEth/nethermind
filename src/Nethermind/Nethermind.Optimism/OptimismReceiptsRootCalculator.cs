@@ -21,7 +21,7 @@ public class OptimismReceiptsRootCalculator : IReceiptsRootCalculator
             receipts.SetSkipStateAndStatusInRlp(true);
             try
             {
-                return ReceiptTrie<OptimismTxReceipt>.CalculateRoot(spec, receipts.Cast<OptimismTxReceipt>().ToList(), OptimismReceiptDecoder.Instance);
+                return ReceiptTrie<OptimismTxReceipt>.CalculateRoot(spec, receipts.Cast<OptimismTxReceipt>().ToArray(), OptimismReceiptDecoder.Instance);
             }
             finally
             {
@@ -29,7 +29,7 @@ public class OptimismReceiptsRootCalculator : IReceiptsRootCalculator
             }
         }
 
-        Hash256 receiptsRoot = ReceiptTrie<OptimismTxReceipt>.CalculateRoot(spec, receipts.Cast<OptimismTxReceipt>().ToList(), OptimismReceiptDecoder.Instance);
+        Hash256 receiptsRoot = ReceiptTrie<OptimismTxReceipt>.CalculateRoot(spec, receipts.Cast<OptimismTxReceipt>().ToArray(), OptimismReceiptDecoder.Instance);
         if (!spec.ValidateReceipts && receiptsRoot != suggestedRoot)
         {
             var skipStateAndStatusReceiptsRoot = SkipStateAndStatusReceiptsRoot();

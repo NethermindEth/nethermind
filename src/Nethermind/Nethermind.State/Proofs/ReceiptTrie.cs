@@ -52,10 +52,10 @@ public class ReceiptTrie<TReceipt> : PatriciaTrie<TReceipt>
 
     protected override void Initialize(TReceipt[] list) => throw new NotSupportedException();
 
-    public static byte[][] CalculateReceiptProofs(IReleaseSpec spec, TReceipt[] receipts, int index)
+    public static byte[][] CalculateReceiptProofs(IReleaseSpec spec, TReceipt[] receipts, int index, IRlpStreamDecoder<TReceipt> decoder)
     {
         using TrackingCappedArrayPool cappedArrayPool = new(receipts.Length * 4);
-        return new ReceiptTrie(spec, receipts, canBuildProof: true, cappedArrayPool).BuildProof(index);
+        return new ReceiptTrie<TReceipt>(spec, receipts, decoder, canBuildProof: true, cappedArrayPool).BuildProof(index);
     }
 
     public static Hash256 CalculateRoot(IReceiptSpec receiptSpec, TReceipt[] txReceipts, IRlpStreamDecoder<TReceipt> decoder)
