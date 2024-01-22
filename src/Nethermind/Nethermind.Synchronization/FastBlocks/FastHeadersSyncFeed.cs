@@ -328,7 +328,6 @@ namespace Nethermind.Synchronization.FastBlocks
 
                     LogStateOnPrepare();
                 }
-
                 return Task.FromResult(batch);
             }
             finally
@@ -567,12 +566,6 @@ namespace Nethermind.Synchronization.FastBlocks
                             break;
                         }
 
-                        if (_dependencies.ContainsKey(header.Number))
-                        {
-                            _pending.Enqueue(batch);
-                            throw new InvalidOperationException($"Only one header dependency expected ({batch})");
-                        }
-
                         for (int j = 0; j < batch.Response.Length; j++)
                         {
                             BlockHeader? current = batch.Response[j];
@@ -588,7 +581,8 @@ namespace Nethermind.Synchronization.FastBlocks
                         }
 
                         HeadersSyncBatch dependentBatch = BuildDependentBatch(batch, addedLast, addedEarliest);
-                        _dependencies[header.Number] = dependentBatch;
+                        //Simply ignore the batch if it has been added by another thread
+                        _dependencies.TryAdd(header.Number, dependentBatch);
                         MarkDirty();
                         if (_logger.IsDebug) _logger.Debug($"{batch} -> DEPENDENCY {dependentBatch}");
 
