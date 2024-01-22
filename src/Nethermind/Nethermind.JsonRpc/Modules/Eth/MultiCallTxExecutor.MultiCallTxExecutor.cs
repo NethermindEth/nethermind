@@ -12,25 +12,25 @@ using Nethermind.Core.Collections;
 using Nethermind.Facade;
 using Nethermind.Facade.Simulate;
 using Nethermind.Facade.Proxy.Models;
-using Nethermind.Facade.Proxy.Models.MultiCall;
+using Nethermind.Facade.Proxy.Models.Simulate;
 using Nethermind.JsonRpc.Data;
 using static Microsoft.FSharp.Core.ByRefKinds;
 
 namespace Nethermind.JsonRpc.Modules.Eth;
 
-public class MultiCallTxExecutor : ExecutorBase<IReadOnlyList<SimulateBlockResult>, MultiCallPayload<TransactionForRpc>, MultiCallPayload<TransactionWithSourceDetails>>
+public class SimulateTxExecutor : ExecutorBase<IReadOnlyList<SimulateBlockResult>, SimulatePayload<TransactionForRpc>, SimulatePayload<TransactionWithSourceDetails>>
 {
     private long gasCapBudget;
 
-    public MultiCallTxExecutor(IBlockchainBridge blockchainBridge, IBlockFinder blockFinder, IJsonRpcConfig rpcConfig) :
+    public SimulateTxExecutor(IBlockchainBridge blockchainBridge, IBlockFinder blockFinder, IJsonRpcConfig rpcConfig) :
         base(blockchainBridge, blockFinder, rpcConfig)
     {
         gasCapBudget = rpcConfig.GasCap ?? long.MaxValue;
     }
 
-    protected override MultiCallPayload<TransactionWithSourceDetails> Prepare(MultiCallPayload<TransactionForRpc> call)
+    protected override SimulatePayload<TransactionWithSourceDetails> Prepare(SimulatePayload<TransactionForRpc> call)
     {
-        MultiCallPayload<TransactionWithSourceDetails>? result = new()
+        SimulatePayload<TransactionWithSourceDetails>? result = new()
         {
             TraceTransfers = call.TraceTransfers,
             Validation = call.Validation,
@@ -75,7 +75,7 @@ public class MultiCallTxExecutor : ExecutorBase<IReadOnlyList<SimulateBlockResul
         return result;
     }
     public override ResultWrapper<IReadOnlyList<SimulateBlockResult>> Execute(
-        MultiCallPayload<TransactionForRpc> call,
+        SimulatePayload<TransactionForRpc> call,
         BlockParameter? blockParameter)
     {
         SearchResult<Block> searchResult = _blockFinder.SearchForBlock(blockParameter);
@@ -98,13 +98,13 @@ public class MultiCallTxExecutor : ExecutorBase<IReadOnlyList<SimulateBlockResul
         }
 
         using CancellationTokenSource cancellationTokenSource = new(_rpcConfig.Timeout);
-        MultiCallPayload<TransactionWithSourceDetails>? toProcess = Prepare(call);
+        SimulatePayload<TransactionWithSourceDetails>? toProcess = Prepare(call);
         return Execute(header.Clone(), toProcess, cancellationTokenSource.Token);
     }
 
-    protected override ResultWrapper<IReadOnlyList<SimulateBlockResult>> Execute(BlockHeader header, MultiCallPayload<TransactionWithSourceDetails> tx, CancellationToken token)
+    protected override ResultWrapper<IReadOnlyList<SimulateBlockResult>> Execute(BlockHeader header, SimulatePayload<TransactionWithSourceDetails> tx, CancellationToken token)
     {
-        SimulateOutput results = _blockchainBridge.MultiCall(header, tx, token);
+        SimulateOutput results = _blockchainBridge.Simulate(header, tx, token);
 
         return results.Error is null
             ? ResultWrapper<IReadOnlyList<SimulateBlockResult>>.Success(results.Items)

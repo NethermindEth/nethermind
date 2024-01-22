@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
-using Nethermind.Facade.Proxy.Models.MultiCall;
+using Nethermind.Facade.Proxy.Models.Simulate;
 
 namespace Nethermind.Facade.Simulate;
 

@@ -9,7 +9,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
-using Nethermind.Facade.Proxy.Models.MultiCall;
+using Nethermind.Facade.Proxy.Models.Simulate;
 using Nethermind.Int256;
 
 namespace Nethermind.Facade.Simulate;
@@ -24,11 +24,11 @@ internal sealed class SimulateTxTracer : TxTracer, ILogsTxTracer
         IsTracingReceipt = true;
     }
 
-    public MultiCallCallResult? TraceResult { get; set; }
+    public SimulateCallResult? TraceResult { get; set; }
 
     public override void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null)
     {
-        TraceResult = new MultiCallCallResult()
+        TraceResult = new SimulateCallResult()
         {
             GasUsed = (ulong)gasSpent,
             ReturnData = output,
@@ -45,7 +45,7 @@ internal sealed class SimulateTxTracer : TxTracer, ILogsTxTracer
 
     public override void MarkAsFailed(Address recipient, long gasSpent, byte[] output, string error, Hash256? stateRoot = null)
     {
-        TraceResult = new MultiCallCallResult()
+        TraceResult = new SimulateCallResult()
         {
             GasUsed = (ulong)gasSpent,
             Error = new Error

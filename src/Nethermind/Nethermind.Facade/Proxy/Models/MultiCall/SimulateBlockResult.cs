@@ -8,7 +8,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 
-namespace Nethermind.Facade.Proxy.Models.MultiCall;
+namespace Nethermind.Facade.Proxy.Models.Simulate;
 
 public class SimulateBlockResult
 {
@@ -19,7 +19,7 @@ public class SimulateBlockResult
     public ulong GasUsed { get; set; }
     public Address FeeRecipient { get; set; } = Address.Zero;
     public UInt256 BaseFeePerGas { get; set; }
-    public IEnumerable<MultiCallCallResult> Calls { get; set; } = Enumerable.Empty<MultiCallCallResult>();
+    public IEnumerable<SimulateCallResult> Calls { get; set; } = Enumerable.Empty<SimulateCallResult>();
     public byte[]? PrevRandao { get; set; }
 
 }

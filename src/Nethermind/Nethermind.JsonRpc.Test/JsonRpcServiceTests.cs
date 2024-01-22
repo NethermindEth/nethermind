@@ -16,7 +16,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Facade.Proxy.Models.MultiCall;
+using Nethermind.Facade.Proxy.Models.Simulate;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Data;
 using Nethermind.JsonRpc.Modules;
@@ -82,9 +82,9 @@ public class JsonRpcServiceTests
 
 
     [Test]
-    public void CanRunEthMulticallV1Empty()
+    public void CanRunEthSimulateV1Empty()
     {
-        MultiCallPayload<TransactionForRpc>? payload = new() { BlockStateCalls = Array.Empty<BlockStateCall<TransactionForRpc>>() };
+        SimulatePayload<TransactionForRpc>? payload = new() { BlockStateCalls = Array.Empty<BlockStateCall<TransactionForRpc>>() };
 
         EthereumJsonSerializer serializer = new();
 

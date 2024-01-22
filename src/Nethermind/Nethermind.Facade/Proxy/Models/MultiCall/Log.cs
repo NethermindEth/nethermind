@@ -4,7 +4,7 @@
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 
-namespace Nethermind.Facade.Proxy.Models.MultiCall;
+namespace Nethermind.Facade.Proxy.Models.Simulate;
 
 public class Log
 {

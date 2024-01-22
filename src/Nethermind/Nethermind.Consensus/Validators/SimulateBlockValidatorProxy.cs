@@ -5,11 +5,11 @@ using Nethermind.Core;
 
 namespace Nethermind.Consensus.Validators;
 
-public class MultiCallBlockValidatorProxy : IBlockValidator
+public class SimulateBlockValidatorProxy : IBlockValidator
 {
     private readonly IBlockValidator _baseBlockValidator;
 
-    public MultiCallBlockValidatorProxy(IBlockValidator baseBlockValidator) =>
+    public SimulateBlockValidatorProxy(IBlockValidator baseBlockValidator) =>
         _baseBlockValidator = baseBlockValidator;
 
     public bool Validate(BlockHeader header, BlockHeader? parent, bool isUncle = false) =>

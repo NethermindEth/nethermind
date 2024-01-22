@@ -118,7 +118,7 @@ public class SimulateReadOnlyBlocksProcessingEnv : ReadOnlyTxProcessingEnvBase, 
             SpecProvider,
             _logManager);
 
-        _blockValidator = new MultiCallBlockValidatorProxy(blockValidator);
+        _blockValidator = new SimulateBlockValidatorProxy(blockValidator);
     }
 
     public IReadOnlyBlockTree ReadOnlyBlockTree { get; set; }

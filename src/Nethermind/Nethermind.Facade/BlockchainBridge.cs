@@ -25,7 +25,7 @@ using Nethermind.Facade.Filters;
 using Nethermind.State;
 using Nethermind.Core.Extensions;
 using Nethermind.Config;
-using Nethermind.Facade.Proxy.Models.MultiCall;
+using Nethermind.Facade.Proxy.Models.Simulate;
 using System.Transactions;
 using Microsoft.CSharp.RuntimeBinder;
 using Nethermind.Facade.Simulate;
@@ -152,13 +152,13 @@ namespace Nethermind.Facade
             };
         }
 
-        public SimulateOutput MultiCall(BlockHeader header, MultiCallPayload<TransactionWithSourceDetails> payload, CancellationToken cancellationToken)
+        public SimulateOutput Simulate(BlockHeader header, SimulatePayload<TransactionWithSourceDetails> payload, CancellationToken cancellationToken)
         {
             SimulateBlockTracer simulateOutputTracer = new(payload.TraceTransfers);
             SimulateOutput result = new();
             try
             {
-                (bool success, string error) = _simulateBridgeHelper.TryMultiCallTrace(header, payload, simulateOutputTracer.WithCancellation(cancellationToken));
+                (bool success, string error) = _simulateBridgeHelper.TrySimulateTrace(header, payload, simulateOutputTracer.WithCancellation(cancellationToken));
 
                 if (!success)
                 {

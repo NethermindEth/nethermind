@@ -5,7 +5,7 @@ using Nethermind.Core;
 using Nethermind.Int256;
 using static Nethermind.Core.Extensions.MemoryExtensions;
 
-namespace Nethermind.Facade.Proxy.Models.MultiCall
+namespace Nethermind.Facade.Proxy.Models.Simulate
 {
     //A stub
     public class CallTransaction { }

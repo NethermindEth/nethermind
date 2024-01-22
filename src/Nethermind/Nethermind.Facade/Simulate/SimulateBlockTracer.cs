@@ -6,8 +6,8 @@ using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Evm.Tracing;
-using Nethermind.Facade.Proxy.Models.MultiCall;
-using ResultType = Nethermind.Facade.Proxy.Models.MultiCall.ResultType;
+using Nethermind.Facade.Proxy.Models.Simulate;
+using ResultType = Nethermind.Facade.Proxy.Models.Simulate.ResultType;
 
 namespace Nethermind.Facade.Simulate;
 

@@ -3,7 +3,7 @@
 
 using Nethermind.Core;
 
-namespace Nethermind.Facade.Proxy.Models.MultiCall;
+namespace Nethermind.Facade.Proxy.Models.Simulate;
 
 public class TransactionWithSourceDetails
 {

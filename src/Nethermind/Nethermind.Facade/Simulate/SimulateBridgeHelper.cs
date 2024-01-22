@@ -13,7 +13,7 @@ using Nethermind.Crypto;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
-using Nethermind.Facade.Proxy.Models.MultiCall;
+using Nethermind.Facade.Proxy.Models.Simulate;
 using Nethermind.Int256;
 using Nethermind.State;
 
@@ -25,7 +25,7 @@ public class SimulateBridgeHelper
     private readonly ISpecProvider _specProvider;
     private readonly IBlocksConfig _blocksConfig;
 
-    private static readonly ProcessingOptions _multicallProcessingOptions = ProcessingOptions.ForceProcessing |
+    private static readonly ProcessingOptions _simulateProcessingOptions = ProcessingOptions.ForceProcessing |
                                                                             ProcessingOptions.IgnoreParentNotOnMainChain |
                                                                             ProcessingOptions.MarkAsProcessed |
                                                                             ProcessingOptions.StoreReceipts;
@@ -44,7 +44,7 @@ public class SimulateBridgeHelper
         blockHeader.StateRoot = env.StateProvider.StateRoot;
     }
 
-    public (bool Success, string Error) TryMultiCallTrace(BlockHeader parent, MultiCallPayload<TransactionWithSourceDetails> payload, IBlockTracer tracer)
+    public (bool Success, string Error) TrySimulateTrace(BlockHeader parent, SimulatePayload<TransactionWithSourceDetails> payload, IBlockTracer tracer)
     {
         using SimulateReadOnlyBlocksProcessingEnv? env = _simulateProcessingEnv.Clone(payload.TraceTransfers, payload.Validation);
 
@@ -167,7 +167,7 @@ public class SimulateBridgeHelper
                 Block? currentBlock = new(callHeader, transactions, Array.Empty<BlockHeader>());
                 currentBlock.Header.Hash = currentBlock.Header.CalculateHash();
 
-                ProcessingOptions processingFlags = _multicallProcessingOptions;
+                ProcessingOptions processingFlags = _simulateProcessingOptions;
 
                 if (!payload.Validation)
                 {

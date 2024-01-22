@@ -13,14 +13,14 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Evm;
 using Nethermind.Evm.Precompiles;
 using Nethermind.Facade.Proxy.Models;
-using Nethermind.Facade.Proxy.Models.MultiCall;
+using Nethermind.Facade.Proxy.Models.Simulate;
 using Nethermind.JsonRpc.Data;
 using Nethermind.JsonRpc.Modules.Eth;
 using NUnit.Framework;
 
 namespace Nethermind.JsonRpc.Test.Modules.Eth;
 
-public class EthMulticallTestsPrecompilesWithRedirection
+public class EthSimulateTestsPrecompilesWithRedirection
 {
     public static byte[] HexStringToByteArray(string hex)
     {
@@ -39,9 +39,9 @@ public class EthMulticallTestsPrecompilesWithRedirection
     }
 
     [Test]
-    public async Task Test_eth_multicall_create()
+    public async Task Test_eth_simulate_create()
     {
-        TestRpcBlockchain chain = await EthRpcMulticallTestsBase.CreateChain();
+        TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
 
         Transaction systemTransactionForModifiedVm = new()
         {
@@ -55,7 +55,7 @@ public class EthMulticallTestsPrecompilesWithRedirection
 
         TransactionForRpc transactionForRpc = new(systemTransactionForModifiedVm) { Nonce = null };
 
-        MultiCallPayload<TransactionForRpc> payload = new()
+        SimulatePayload<TransactionForRpc> payload = new()
         {
             BlockStateCalls = new BlockStateCall<TransactionForRpc>[]
             {
@@ -82,7 +82,7 @@ public class EthMulticallTestsPrecompilesWithRedirection
         };
 
         //will mock our GetCachedCodeInfo function - it shall be called 3 times if redirect is working, 2 times if not
-        MultiCallTxExecutor executor = new(chain.Bridge, chain.BlockFinder, new JsonRpcConfig());
+        SimulateTxExecutor executor = new(chain.Bridge, chain.BlockFinder, new JsonRpcConfig());
 
         ResultWrapper<IReadOnlyList<SimulateBlockResult>> result = executor.Execute(payload, BlockParameter.Latest);
 
@@ -95,9 +95,9 @@ public class EthMulticallTestsPrecompilesWithRedirection
     ///     This test verifies that a temporary forked blockchain can redirect precompiles
     /// </summary>
     [Test]
-    public async Task Test_eth_multicall_ecr_moved()
+    public async Task Test_eth_simulate_ecr_moved()
     {
-        TestRpcBlockchain chain = await EthRpcMulticallTestsBase.CreateChain();
+        TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
         //The following opcodes code is based on the following contract compiled:
         /*
          function ecrecover(bytes32 hash, uint8 v, bytes32 r, bytes32 s) public  returns(address)
@@ -150,13 +150,13 @@ public class EthMulticallTestsPrecompilesWithRedirection
             .Op(Instruction.RETURN)
             .Done;
 
-        byte[] transactionData = EthRpcMulticallTestsBase.GetTxData(chain, TestItem.PrivateKeyA);
+        byte[] transactionData = EthRpcSimulateTestsBase.GetTxData(chain, TestItem.PrivateKeyA);
 
         var headHash = chain.BlockFinder.Head!.Hash!;
-        Address? contractAddress = await EthRpcMulticallTestsBase.DeployEcRecoverContract(chain, TestItem.PrivateKeyB,
-            EthMulticallTestsSimplePrecompiles.EcRecoverCallerContractBytecode);
+        Address? contractAddress = await EthRpcSimulateTestsBase.DeployEcRecoverContract(chain, TestItem.PrivateKeyB,
+            EthSimulateTestsSimplePrecompiles.EcRecoverCallerContractBytecode);
 
-        var tst = EthRpcMulticallTestsBase.MainChainTransaction(transactionData, contractAddress, chain, TestItem.AddressB);
+        var tst = EthRpcSimulateTestsBase.MainChainTransaction(transactionData, contractAddress, chain, TestItem.AddressB);
 
         chain.BlockTree.UpdateMainChain(new List<Block> { chain.BlockFinder.Head! }, true, true);
         chain.BlockTree.UpdateHeadBlock(chain.BlockFinder.Head!.Hash!);
@@ -176,7 +176,7 @@ public class EthMulticallTestsPrecompilesWithRedirection
 
         TransactionForRpc transactionForRpc = new(systemTransactionForModifiedVm) { Nonce = null };
 
-        MultiCallPayload<TransactionForRpc> payload = new()
+        SimulatePayload<TransactionForRpc> payload = new()
         {
             BlockStateCalls = new BlockStateCall<TransactionForRpc>[]
             {
@@ -204,7 +204,7 @@ public class EthMulticallTestsPrecompilesWithRedirection
         };
 
         //will mock our GetCachedCodeInfo function - it shall be called 3 times if redirect is working, 2 times if not
-        MultiCallTxExecutor executor = new(chain.Bridge, chain.BlockFinder, new JsonRpcConfig());
+        SimulateTxExecutor executor = new(chain.Bridge, chain.BlockFinder, new JsonRpcConfig());
 
         Debug.Assert(contractAddress != null, nameof(contractAddress) + " != null");
         Assert.IsTrue(chain.State.AccountExists(contractAddress));

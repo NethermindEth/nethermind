@@ -19,7 +19,7 @@ using Nethermind.Evm;
 using Nethermind.Facade;
 using Nethermind.Facade.Eth;
 using Nethermind.Facade.Filters;
-using Nethermind.Facade.Proxy.Models.MultiCall;
+using Nethermind.Facade.Proxy.Models.Simulate;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Data;
 using Nethermind.JsonRpc.Modules.Eth.FeeHistory;
@@ -345,8 +345,8 @@ public partial class EthRpcModule : IEthRpcModule
         new CallTxExecutor(_blockchainBridge, _blockFinder, _rpcConfig)
             .ExecuteTx(transactionCall, blockParameter);
 
-    public ResultWrapper<IReadOnlyList<SimulateBlockResult>> eth_simulateV1(MultiCallPayload<TransactionForRpc> payload, BlockParameter? blockParameter = null) =>
-        new MultiCallTxExecutor(_blockchainBridge, _blockFinder, _rpcConfig)
+    public ResultWrapper<IReadOnlyList<SimulateBlockResult>> eth_simulateV1(SimulatePayload<TransactionForRpc> payload, BlockParameter? blockParameter = null) =>
+        new SimulateTxExecutor(_blockchainBridge, _blockFinder, _rpcConfig)
             .Execute(payload, blockParameter);
 
 

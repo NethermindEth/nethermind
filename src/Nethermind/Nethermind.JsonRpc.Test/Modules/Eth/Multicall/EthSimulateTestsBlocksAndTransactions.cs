@@ -12,17 +12,17 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Facade.Proxy.Models;
-using Nethermind.Facade.Proxy.Models.MultiCall;
+using Nethermind.Facade.Proxy.Models.Simulate;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Data;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.Serialization.Json;
 using NUnit.Framework;
-using ResultType = Nethermind.Facade.Proxy.Models.MultiCall.ResultType;
+using ResultType = Nethermind.Facade.Proxy.Models.Simulate.ResultType;
 
 namespace Nethermind.JsonRpc.Test.Modules.Eth;
 
-public class EthMulticallTestsBlocksAndTransactions
+public class EthSimulateTestsBlocksAndTransactions
 {
     private static Transaction GetTransferTxData(UInt256 nonce, IEthereumEcdsa ethereumEcdsa, PrivateKey from, Address to, UInt256 ammount)
     {
@@ -42,9 +42,9 @@ public class EthMulticallTestsBlocksAndTransactions
     }
 
     [Test]
-    public async Task Test_eth_multicall_serialisation()
+    public async Task Test_eth_simulate_serialisation()
     {
-        TestRpcBlockchain chain = await EthRpcMulticallTestsBase.CreateChain();
+        TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
 
 
         PrivateKey pk = new("0xc7ba1a2892ec0ea1940eebeae739b1effe0543b3104469d5b66625f49ca86e94");
@@ -59,7 +59,7 @@ public class EthMulticallTestsBlocksAndTransactions
             GetTransferTxData(nextNonceA,
                 chain.EthereumEcdsa, pk, new Address("0xA143c0eA6f8059f7B3651417ccD2bAA80FC2d4Ab"), 4_000_000);
 
-        MultiCallPayload<TransactionForRpc> payload = new()
+        SimulatePayload<TransactionForRpc> payload = new()
         {
             BlockStateCalls = new BlockStateCall<TransactionForRpc>[]
             {
@@ -97,7 +97,7 @@ public class EthMulticallTestsBlocksAndTransactions
         chain.BlockTree.UpdateHeadBlock(chain.BlockFinder.Head!.Hash!);
         //Assert.Equals(chain.BlockTree.BestPersistedState!, chain.BlockTree.Head!.Number);
         //will mock our GetCachedCodeInfo function - it shall be called 3 times if redirect is working, 2 times if not
-        MultiCallTxExecutor executor = new(chain.Bridge, chain.BlockFinder, new JsonRpcConfig());
+        SimulateTxExecutor executor = new(chain.Bridge, chain.BlockFinder, new JsonRpcConfig());
         ResultWrapper<IReadOnlyList<SimulateBlockResult>> result =
             executor.Execute(payload, BlockParameter.Latest);
         IReadOnlyList<SimulateBlockResult> data = result.Data;
@@ -117,9 +117,9 @@ public class EthMulticallTestsBlocksAndTransactions
     ///     Note that if we get blocks before head we set simulation start state to one of that first block
     /// </summary>
     [Test]
-    public async Task Test_eth_multicall_eth_moved()
+    public async Task Test_eth_simulate_eth_moved()
     {
-        TestRpcBlockchain chain = await EthRpcMulticallTestsBase.CreateChain();
+        TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
 
         UInt256 nonceA = chain.State.GetNonce(TestItem.AddressA);
         Transaction txMainnetAtoB =
@@ -133,7 +133,7 @@ public class EthMulticallTestsBlocksAndTransactions
         Transaction txAtoB4 =
             GetTransferTxData(nonceA + 4, chain.EthereumEcdsa, TestItem.PrivateKeyA, TestItem.AddressB, 1);
 
-        MultiCallPayload<TransactionForRpc> payload = new()
+        SimulatePayload<TransactionForRpc> payload = new()
         {
             BlockStateCalls = new BlockStateCall<TransactionForRpc>[]
             {
@@ -178,7 +178,7 @@ public class EthMulticallTestsBlocksAndTransactions
         chain.BlockTree.UpdateHeadBlock(chain.BlockFinder.Head!.Hash!);
 
         //will mock our GetCachedCodeInfo function - it shall be called 3 times if redirect is working, 2 times if not
-        MultiCallTxExecutor executor = new(chain.Bridge, chain.BlockFinder, new JsonRpcConfig());
+        SimulateTxExecutor executor = new(chain.Bridge, chain.BlockFinder, new JsonRpcConfig());
         ResultWrapper<IReadOnlyList<SimulateBlockResult>> result =
             executor.Execute(payload, BlockParameter.Latest);
         IReadOnlyList<SimulateBlockResult> data = result.Data;
@@ -195,9 +195,9 @@ public class EthMulticallTestsBlocksAndTransactions
     ///     This test verifies that a temporary forked blockchain can make transactions, blocks and report on them
     /// </summary>
     [Test]
-    public async Task Test_eth_multicall_transactions_forced_fail()
+    public async Task Test_eth_simulate_transactions_forced_fail()
     {
-        TestRpcBlockchain chain = await EthRpcMulticallTestsBase.CreateChain();
+        TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
 
         UInt256 nonceA = chain.State.GetNonce(TestItem.AddressA);
 
@@ -212,7 +212,7 @@ public class EthMulticallTestsBlocksAndTransactions
             GetTransferTxData(nonceA + 2, chain.EthereumEcdsa, TestItem.PrivateKeyA, TestItem.AddressB, UInt256.MaxValue);
         TransactionForRpc transactionForRpc = new(txAtoB2) { Nonce = null };
         TransactionForRpc transactionForRpc2 = new(txAtoB1) { Nonce = null };
-        MultiCallPayload<TransactionForRpc> payload = new()
+        SimulatePayload<TransactionForRpc> payload = new()
         {
             BlockStateCalls = new BlockStateCall<TransactionForRpc>[]
             {
@@ -258,7 +258,7 @@ public class EthMulticallTestsBlocksAndTransactions
         chain.BlockTree.UpdateHeadBlock(chain.BlockFinder.Head!.Hash!);
 
         //will mock our GetCachedCodeInfo function - it shall be called 3 times if redirect is working, 2 times if not
-        MultiCallTxExecutor executor = new(chain.Bridge, chain.BlockFinder, new JsonRpcConfig());
+        SimulateTxExecutor executor = new(chain.Bridge, chain.BlockFinder, new JsonRpcConfig());
 
         ResultWrapper<IReadOnlyList<SimulateBlockResult>> result =
             executor.Execute(payload, BlockParameter.Latest);

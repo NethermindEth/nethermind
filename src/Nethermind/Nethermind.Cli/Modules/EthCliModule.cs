@@ -50,8 +50,8 @@ namespace Nethermind.Cli.Modules
         }
 
 
-        [CliFunction("eth", "multicallV1")]
-        public JsValue MultiCallV1(ulong version, object[] blockCalls, string? blockParameter = null, bool traceTransfers = true)
+        [CliFunction("eth", "simulateV1")]
+        public JsValue SimulateV1(ulong version, object[] blockCalls, string? blockParameter = null, bool traceTransfers = true)
         {
             return NodeManager.PostJint("eth_simulateV1", 1, blockCalls, blockParameter ?? "latest", traceTransfers).Result;
         }

@@ -79,13 +79,13 @@ namespace Nethermind.Api
         }
 
         private IReadOnlyDbProvider? _readOnlyDbProvider;
-        private IReadOnlyDbProvider? _multiCallReadOnlyDbProvider;
+        private IReadOnlyDbProvider? _simulateReadOnlyDbProvider;
 
         public IBlockchainBridge CreateBlockchainBridge()
         {
             ReadOnlyBlockTree readOnlyTree = BlockTree!.AsReadOnly();
             LazyInitializer.EnsureInitialized(ref _readOnlyDbProvider, () => new ReadOnlyDbProvider(DbProvider, false));
-            LazyInitializer.EnsureInitialized(ref _multiCallReadOnlyDbProvider, () => new ReadOnlyDbProvider(DbProvider, true));
+            LazyInitializer.EnsureInitialized(ref _simulateReadOnlyDbProvider, () => new ReadOnlyDbProvider(DbProvider, true));
 
             // TODO: reuse the same trie cache here
             ReadOnlyTxProcessingEnv readOnlyTxProcessingEnv = new(
@@ -97,7 +97,7 @@ namespace Nethermind.Api
             SimulateReadOnlyBlocksProcessingEnv simulateReadOnlyBlocksProcessingEnv = SimulateReadOnlyBlocksProcessingEnv.Create(false,
                 WorldStateManager!,
                 readOnlyTree,
-                _multiCallReadOnlyDbProvider,
+                _simulateReadOnlyDbProvider,
                 SpecProvider,
                 LogManager);
 

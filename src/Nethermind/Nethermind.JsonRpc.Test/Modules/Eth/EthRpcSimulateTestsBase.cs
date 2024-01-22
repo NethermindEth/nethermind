@@ -27,7 +27,7 @@ using Nethermind.Wallet;
 
 namespace Nethermind.JsonRpc.Test.Modules.Eth;
 
-public class EthRpcMulticallTestsBase
+public class EthRpcSimulateTestsBase
 {
     public static Task<TestRpcBlockchain> CreateChain(IReleaseSpec? releaseSpec = null)
     {

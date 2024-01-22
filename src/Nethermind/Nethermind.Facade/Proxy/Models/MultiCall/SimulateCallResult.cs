@@ -3,9 +3,9 @@
 
 using Nethermind.Evm;
 
-namespace Nethermind.Facade.Proxy.Models.MultiCall;
+namespace Nethermind.Facade.Proxy.Models.Simulate;
 
-public class MultiCallCallResult
+public class SimulateCallResult
 {
     public ResultType Type =>
         Status switch

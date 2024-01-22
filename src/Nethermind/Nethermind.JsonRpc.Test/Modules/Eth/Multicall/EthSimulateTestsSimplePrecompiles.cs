@@ -15,12 +15,12 @@ using Nethermind.Evm.Precompiles;
 using Nethermind.Facade;
 using Nethermind.Facade.Simulate;
 using Nethermind.Facade.Proxy.Models;
-using Nethermind.Facade.Proxy.Models.MultiCall;
+using Nethermind.Facade.Proxy.Models.Simulate;
 using NUnit.Framework;
 
 namespace Nethermind.JsonRpc.Test.Modules.Eth;
 
-public class EthMulticallTestsSimplePrecompiles
+public class EthSimulateTestsSimplePrecompiles
 {
     /* Compiled contract
 * Call example for TestItem.AddressA
@@ -44,11 +44,11 @@ contract EcrecoverProxy {
     ///     This test verifies that a temporary forked blockchain can updates precompiles
     /// </summary>
     [Test]
-    public async Task Test_eth_multicall_erc()
+    public async Task Test_eth_simulate_erc()
     {
 
         // Arrange
-        TestRpcBlockchain chain = await EthRpcMulticallTestsBase.CreateChain();
+        TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
 
         //Empose Opcode instead of EcRecoverPrecompile, it returns const TestItem.AddressE address
         byte[] code = Prepare.EvmCode
@@ -71,10 +71,10 @@ contract EcrecoverProxy {
         byte[] s = signature.S;
 
         Address? contractAddress =
-            await EthRpcMulticallTestsBase.DeployEcRecoverContract(chain, TestItem.PrivateKeyB,
+            await EthRpcSimulateTestsBase.DeployEcRecoverContract(chain, TestItem.PrivateKeyB,
                 EcRecoverCallerContractBytecode);
 
-        byte[] transactionData = EthRpcMulticallTestsBase.GenerateTransactionDataForEcRecover(messageHash, v, r, s);
+        byte[] transactionData = EthRpcSimulateTestsBase.GenerateTransactionDataForEcRecover(messageHash, v, r, s);
 
         SystemTransaction systemTransactionForModifiedVM = new()
         {
@@ -90,7 +90,7 @@ contract EcrecoverProxy {
             HadGasLimitInRequest = false,
             HadNonceInRequest = false
         };
-        MultiCallPayload<TransactionWithSourceDetails> payload = new()
+        SimulatePayload<TransactionWithSourceDetails> payload = new()
         {
             BlockStateCalls = new[]
             {
@@ -109,7 +109,7 @@ contract EcrecoverProxy {
 
         // Act
 
-        SimulateOutput result = chain.Bridge.MultiCall(chain.BlockFinder.Head?.Header!, payload, CancellationToken.None);
+        SimulateOutput result = chain.Bridge.Simulate(chain.BlockFinder.Head?.Header!, payload, CancellationToken.None);
         Log[]? logs = result.Items.First().Calls.First().Logs;
         byte[] addressBytes = result.Items.First().Calls.First().ReturnData!
             .SliceWithZeroPaddingEmptyOnError(12, 20);
@@ -118,7 +118,7 @@ contract EcrecoverProxy {
 
         //Check that initial VM is intact
         Address? mainChainRpcAddress =
-            EthRpcMulticallTestsBase.MainChainTransaction(transactionData, contractAddress, chain, TestItem.AddressB);
+            EthRpcSimulateTestsBase.MainChainTransaction(transactionData, contractAddress, chain, TestItem.AddressB);
 
         Assert.NotNull(mainChainRpcAddress);
         Assert.That(mainChainRpcAddress, Is.EqualTo(TestItem.AddressA));
