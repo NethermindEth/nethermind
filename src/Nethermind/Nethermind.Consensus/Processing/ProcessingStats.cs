@@ -35,19 +35,18 @@ namespace Nethermind.Consensus.Processing
         private long _lastSelfDestructs;
         private long _maxMemory;
         private long _totalBlocks;
-        private readonly bool _isDebugMode = false;
         private long _processingMicroseconds;
         private long _lastTotalCreates;
         private long _lastReportMs;
 
         public ProcessingStats(ILogger logger)
         {
-            _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+            _logger = logger;
 
             // the line below just to avoid compilation errors
-            if (_logger.IsTrace) _logger.Trace($"Processing Stats in debug mode?: {_isDebugMode}");
+            if (_logger.IsTrace) _logger.Trace($"Processing Stats in debug mode?: {_logger.IsDebug}");
 #if DEBUG
-            _isDebugMode = true;
+            _logger.SetDebugMode();
 #endif
         }
 

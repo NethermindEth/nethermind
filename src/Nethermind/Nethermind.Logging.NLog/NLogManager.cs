@@ -57,18 +57,19 @@ namespace Nethermind.Logging.NLog
             return logDirectory;
         }
 
-        private readonly ConcurrentDictionary<Type, NLogLogger> _loggers = new();
+        private static readonly ConcurrentDictionary<Type, ILogger> s_loggers = new();
+        private static readonly Func<Type, ILogger> s_loggerBuilder = BuildLogger;
         private readonly EventHandler<LoggingConfigurationChangedEventArgs> _logManagerOnConfigurationChanged;
 
-        private NLogLogger BuildLogger(Type type) => new(type);
+        private static ILogger BuildLogger(Type type) => new(new NLogLogger(type));
 
-        public ILogger GetClassLogger(Type type) => _loggers.GetOrAdd(type, BuildLogger);
+        public ILogger GetClassLogger(Type type) => s_loggers.GetOrAdd(type, s_loggerBuilder);
 
         public ILogger GetClassLogger<T>() => GetClassLogger(typeof(T));
 
-        public ILogger GetClassLogger() => new NLogLogger();
+        public ILogger GetClassLogger() => new(new NLogLogger());
 
-        public ILogger GetLogger(string loggerName) => new NLogLogger(loggerName);
+        public ILogger GetLogger(string loggerName) => new(new NLogLogger(loggerName));
 
         public void SetGlobalVariable(string name, object value)
         {
