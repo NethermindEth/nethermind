@@ -90,30 +90,20 @@ namespace Nethermind.Blockchain
         public static long BadBlocksByNethermindNodes;
 
         [GaugeMetric]
-        [Description("Hash of the last block.")]
+        [Description("First 8 bytes of the last block hash.")]
         public static ulong First8BytesOfLastBlockHash { get; set; }
 
         /// <summary>
-        /// Sets the last block hash. The value of the hash is truncated to the first 64 bits
-        /// and converted to "long" because Prometheus does not support string values.
+        /// Sets the first 8 bytes of the last block hash. The hash is truncated
+        /// to only 64 bits and converted to "ulong" because Prometheus does not
+        /// support string values.
         /// </summary>
         /// <param name="hash">Hash of the block.</param>
-        public static void SetFirst8BytesOfLastBlockHash(string hash)
+        public static void SetFirst8BytesOfLastBlockHash(Hash256 hash)
         {
-            // Remove leading "0x" if present
-            hash = hash.StartsWith("0x") ? hash.Substring(2) : hash;
-            // Ensure that the length of the hex string is at least 16 characters
-            if (hash.Length < 16)
-            {
-                throw new ArgumentException("Insufficient hex string length");
-            }
-            // Take the first 16 characters of the hex string
-            string first8BytesHex = hash.Substring(0, 16);
-            // Convert the hexadecimal string to a long
-            // First8BytesOfLastBlockHash = ulong.Parse(first8BytesHex, System.Globalization.NumberStyles.HexNumber);
-
-            First8BytesOfLastBlockHash = Convert.ToUInt64(first8BytesHex, 16);
-            
+            byte[] first8Bytes = new byte[8];
+            Array.Copy(hash.BytesToArray(), 0, first8Bytes, 0, 8);
+            First8BytesOfLastBlockHash = BitConverter.ToUInt64(first8Bytes, 0);
         }
     }
 }
