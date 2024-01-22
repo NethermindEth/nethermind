@@ -480,12 +480,12 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine
                             long codeDepositGasCost = CodeDepositHandler.CalculateCost(bytecodeResultArray.Length, spec);
                             if (gasAvailableForCodeDeposit >= codeDepositGasCost && !invalidCode)
                             {
-                                _state.InsertCode(callCodeOwner, callResult.Output.Bytes, spec);
+                                _state.InsertCode(callCodeOwner, bytecodeResultArray, spec);
                                 currentState.GasAvailable -= codeDepositGasCost;
 
                                 if (_txTracer.IsTracingActions)
                                 {
-                                    _txTracer.ReportActionEnd(previousState.GasAvailable - codeDepositGasCost, callCodeOwner, callResult.Output.Bytes);
+                                    _txTracer.ReportActionEnd(previousState.GasAvailable - codeDepositGasCost, callCodeOwner, bytecodeResultArray);
                                 }
                             }
                             else if (spec.FailOnOutOfGasCodeDeposit || invalidCode)
@@ -507,7 +507,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine
                             }
                             else if (_txTracer.IsTracingActions)
                             {
-                                _txTracer.ReportActionEnd(0L, callCodeOwner, callResult.Output.Bytes);
+                                _txTracer.ReportActionEnd(0L, callCodeOwner, bytecodeResultArray);
                             }
                         }
                     }
