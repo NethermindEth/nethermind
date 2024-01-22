@@ -743,7 +743,7 @@ namespace Nethermind.TxPool
             _timer!.Enabled = true;
         }
 
-        private static void WriteTxPoolReport(ILogger logger)
+        private static void WriteTxPoolReport(in ILogger logger)
         {
             if (!logger.IsInfo)
             {
