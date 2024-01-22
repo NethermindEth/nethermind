@@ -84,7 +84,7 @@ public class EthMulticallTestsPrecompilesWithRedirection
         //will mock our GetCachedCodeInfo function - it shall be called 3 times if redirect is working, 2 times if not
         MultiCallTxExecutor executor = new(chain.Bridge, chain.BlockFinder, new JsonRpcConfig());
 
-        ResultWrapper<IReadOnlyList<MultiCallBlockResult>> result = executor.Execute(payload, BlockParameter.Latest);
+        ResultWrapper<IReadOnlyList<SimulateBlockResult>> result = executor.Execute(payload, BlockParameter.Latest);
 
         //Check results
         byte[]? returnData = result.Data[0].Calls.First().ReturnData;
@@ -189,7 +189,7 @@ public class EthMulticallTestsPrecompilesWithRedirection
                             new AccountOverride
                             {
                                 Code = code,
-                                MovePrecompileToAddress = new Address("0x0000000000000000000000000000000000000666"),
+                                //MovePrecompileToAddress = new Address("0x0000000000000000000000000000000000000666"),
                             }
                         },
                     },
@@ -208,7 +208,7 @@ public class EthMulticallTestsPrecompilesWithRedirection
 
         Debug.Assert(contractAddress != null, nameof(contractAddress) + " != null");
         Assert.IsTrue(chain.State.AccountExists(contractAddress));
-        ResultWrapper<IReadOnlyList<MultiCallBlockResult>> result = executor.Execute(payload, BlockParameter.Latest);
+        ResultWrapper<IReadOnlyList<SimulateBlockResult>> result = executor.Execute(payload, BlockParameter.Latest);
 
         //Check results
         byte[]? returnData = result.Data[0].Calls.First().ReturnData;

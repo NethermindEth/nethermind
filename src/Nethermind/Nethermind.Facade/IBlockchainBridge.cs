@@ -9,7 +9,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Evm;
 using Nethermind.Facade.Filters;
-using Nethermind.Facade.Multicall;
+using Nethermind.Facade.Simulate;
 using Nethermind.Facade.Proxy.Models.MultiCall;
 using Nethermind.Int256;
 using Nethermind.Trie;
@@ -28,7 +28,7 @@ namespace Nethermind.Facade
         (TxReceipt? Receipt, TxGasInfo? GasInfo, int LogIndexStart) GetReceiptAndGasInfo(Hash256 txHash);
         (TxReceipt? Receipt, Transaction Transaction, UInt256? baseFee) GetTransaction(Hash256 txHash, bool checkTxnPool = true);
         CallOutput Call(BlockHeader header, Transaction tx, CancellationToken cancellationToken);
-        MultiCallOutput MultiCall(BlockHeader header, MultiCallPayload<TransactionWithSourceDetails> payload, CancellationToken cancellationToken);
+        SimulateOutput MultiCall(BlockHeader header, MultiCallPayload<TransactionWithSourceDetails> payload, CancellationToken cancellationToken);
 
         CallOutput EstimateGas(BlockHeader header, Transaction tx, CancellationToken cancellationToken);
         CallOutput CreateAccessList(BlockHeader header, Transaction tx, CancellationToken cancellationToken, bool optimize);

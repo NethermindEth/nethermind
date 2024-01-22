@@ -21,9 +21,9 @@ using Nethermind.State;
 using Nethermind.State.Repositories;
 using Nethermind.Trie.Pruning;
 
-namespace Nethermind.Facade.Multicall;
+namespace Nethermind.Facade.Simulate;
 
-public class MultiCallReadOnlyBlocksProcessingEnv : ReadOnlyTxProcessingEnvBase, IDisposable
+public class SimulateReadOnlyBlocksProcessingEnv : ReadOnlyTxProcessingEnvBase, IDisposable
 {
     //private readonly ITrieStore _trieStore;
     private readonly ILogManager? _logManager;
@@ -35,7 +35,7 @@ public class MultiCallReadOnlyBlocksProcessingEnv : ReadOnlyTxProcessingEnvBase,
     public OverridableCodeInfoRepository CodeInfoRepository { get; }
     private readonly bool _doValidation = false;
     // We need ability to get many instances that do not conflict in terms of editable tmp storage - thus we implement env cloning
-    public static MultiCallReadOnlyBlocksProcessingEnv Create(
+    public static SimulateReadOnlyBlocksProcessingEnv Create(
         bool traceTransfers,
         IWorldStateManager worldStateManager,
         IReadOnlyBlockTree roBlockTree,
@@ -65,7 +65,7 @@ public class MultiCallReadOnlyBlocksProcessingEnv : ReadOnlyTxProcessingEnvBase,
             logManager);
         var blockTree = new NonDistructiveBlockTreeOverlay(roBlockTree, tmpBlockTree);
 
-        return new MultiCallReadOnlyBlocksProcessingEnv(
+        return new SimulateReadOnlyBlocksProcessingEnv(
             traceTransfers,
             overlayWorldStateManager,
             roBlockTree,
@@ -77,12 +77,12 @@ public class MultiCallReadOnlyBlocksProcessingEnv : ReadOnlyTxProcessingEnvBase,
             doValidation);
     }
 
-    public MultiCallReadOnlyBlocksProcessingEnv Clone(bool traceTransfers, bool doValidation) =>
+    public SimulateReadOnlyBlocksProcessingEnv Clone(bool traceTransfers, bool doValidation) =>
         Create(traceTransfers, WorldStateManager, ReadOnlyBlockTree, DbProvider, SpecProvider, _logManager, doValidation);
 
     public IReadOnlyDbProvider DbProvider { get; }
 
-    private MultiCallReadOnlyBlocksProcessingEnv(
+    private SimulateReadOnlyBlocksProcessingEnv(
         bool traceTransfers,
         IWorldStateManager worldStateManager,
         IReadOnlyBlockTree roBlockTree,

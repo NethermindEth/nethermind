@@ -91,12 +91,12 @@ public class JsonRpcServiceTests
             string serializedCall = serializer.Serialize(payload);
 
             IEthRpcModule ethRpcModule = Substitute.For<IEthRpcModule>();
-            ethRpcModule.eth_multicallV1(payload).ReturnsForAnyArgs(x =>
-                ResultWrapper<IReadOnlyList<MultiCallBlockResult>>.Success(Array.Empty<MultiCallBlockResult>()));
+            ethRpcModule.eth_simulateV1(payload).ReturnsForAnyArgs(x =>
+                ResultWrapper<IReadOnlyList<SimulateBlockResult>>.Success(Array.Empty<SimulateBlockResult>()));
             JsonRpcSuccessResponse? response =
-                TestRequest(ethRpcModule, "eth_multicallV1", serializedCall) as JsonRpcSuccessResponse;
+                TestRequest(ethRpcModule, "eth_simulateV1", serializedCall) as JsonRpcSuccessResponse;
             Assert.IsTrue(response != null);
-            Assert.That(response?.Result, Is.EqualTo(Array.Empty<MultiCallBlockResult>()));
+            Assert.That(response?.Result, Is.EqualTo(Array.Empty<SimulateBlockResult>()));
         }
 
 

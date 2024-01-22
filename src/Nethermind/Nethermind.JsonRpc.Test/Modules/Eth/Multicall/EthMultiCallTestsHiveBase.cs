@@ -26,7 +26,7 @@ public class EthMultiCallTestsHiveBase
         var payload = serializer.Deserialize<MultiCallPayload<TransactionForRpc>>(input);
         TestRpcBlockchain chain = await EthRpcMulticallTestsBase.CreateChain();
         Console.WriteLine("current test: multicallAddMoreNonDefinedBlockStateCallsThanFitButNowWithFit");
-        var result = chain.EthRpcModule.eth_multicallV1(payload!, BlockParameter.Latest);
+        var result = chain.EthRpcModule.eth_simulateV1(payload!, BlockParameter.Latest);
         Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success));
         Assert.IsNotNull(result.Data);
     }
@@ -39,7 +39,7 @@ public class EthMultiCallTestsHiveBase
         var payload = serializer.Deserialize<MultiCallPayload<TransactionForRpc>>(input);
         TestRpcBlockchain chain = await EthRpcMulticallTestsBase.CreateChain();
         Console.WriteLine("current test: multicallAddMoreNonDefinedBlockStateCallsThanFit");
-        var result = chain.EthRpcModule.eth_multicallV1(payload!, BlockParameter.Latest);
+        var result = chain.EthRpcModule.eth_simulateV1(payload!, BlockParameter.Latest);
         Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success));
         Assert.IsNotNull(result.Data);
     }
@@ -52,7 +52,7 @@ public class EthMultiCallTestsHiveBase
         var payload = serializer.Deserialize<MultiCallPayload<TransactionForRpc>>(input);
         TestRpcBlockchain chain = await EthRpcMulticallTestsBase.CreateChain();
         Console.WriteLine("current test: multicallBasefeeTooLowWithValidation38012");
-        var result = chain.EthRpcModule.eth_multicallV1(payload!, BlockParameter.Latest);
+        var result = chain.EthRpcModule.eth_simulateV1(payload!, BlockParameter.Latest);
         Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success));
         Assert.That(result.Data.First().PrevRandao, Is.EqualTo(new Hash256("0x0000000000000000000000000000000000000000000000000000000000000000").BytesToArray()));
 
@@ -68,7 +68,7 @@ public class EthMultiCallTestsHiveBase
         var payload = serializer.Deserialize<MultiCallPayload<TransactionForRpc>>(input);
         TestRpcBlockchain chain = await EthRpcMulticallTestsBase.CreateChain();
         Console.WriteLine("current test: multicallBasefeeTooLowWithoutValidation38012");
-        var result = chain.EthRpcModule.eth_multicallV1(payload!, BlockParameter.Latest);
+        var result = chain.EthRpcModule.eth_simulateV1(payload!, BlockParameter.Latest);
         Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success));
         Assert.IsNotNull(result.Data);
     }
@@ -81,7 +81,7 @@ public class EthMultiCallTestsHiveBase
         var payload = serializer.Deserialize<MultiCallPayload<TransactionForRpc>>(input);
         TestRpcBlockchain chain = await EthRpcMulticallTestsBase.CreateChain();
         Console.WriteLine("current test: multicallBlockNumOrder38020");
-        var result = chain.EthRpcModule.eth_multicallV1(payload!, BlockParameter.Latest);
+        var result = chain.EthRpcModule.eth_simulateV1(payload!, BlockParameter.Latest);
         Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success));
         Assert.IsNotNull(result.Data);
     }
@@ -94,7 +94,7 @@ public class EthMultiCallTestsHiveBase
         var payload = serializer.Deserialize<MultiCallPayload<TransactionForRpc>>(input);
         TestRpcBlockchain chain = await EthRpcMulticallTestsBase.CreateChain();
         Console.WriteLine("current test: multicallBlockOverrideReflectedInContractSimple");
-        var result = chain.EthRpcModule.eth_multicallV1(payload!, BlockParameter.Latest);
+        var result = chain.EthRpcModule.eth_simulateV1(payload!, BlockParameter.Latest);
         Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success));
         Assert.IsNotNull(result.Data);
     }
@@ -107,7 +107,7 @@ public class EthMultiCallTestsHiveBase
         var payload = serializer.Deserialize<MultiCallPayload<TransactionForRpc>>(input);
         TestRpcBlockchain chain = await EthRpcMulticallTestsBase.CreateChain();
         Console.WriteLine("current test: multicallBlockOverrideReflectedInContract");
-        var result = chain.EthRpcModule.eth_multicallV1(payload!, BlockParameter.Latest);
+        var result = chain.EthRpcModule.eth_simulateV1(payload!, BlockParameter.Latest);
         Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success));
         Assert.IsNotNull(result.Data);
     }
@@ -120,7 +120,7 @@ public class EthMultiCallTestsHiveBase
         var payload = serializer.Deserialize<MultiCallPayload<TransactionForRpc>>(input);
         TestRpcBlockchain chain = await EthRpcMulticallTestsBase.CreateChain();
         Console.WriteLine("current test: multicallBlockTimestampAutoIncrement");
-        var result = chain.EthRpcModule.eth_multicallV1(payload!, BlockParameter.Latest);
+        var result = chain.EthRpcModule.eth_simulateV1(payload!, BlockParameter.Latest);
         Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success));
         Assert.IsNotNull(result.Data);
     }
@@ -133,7 +133,7 @@ public class EthMultiCallTestsHiveBase
         var payload = serializer.Deserialize<MultiCallPayload<TransactionForRpc>>(input);
         TestRpcBlockchain chain = await EthRpcMulticallTestsBase.CreateChain();
         Console.WriteLine("current test: multicallBlockTimestampNonIncrement");
-        var result = chain.EthRpcModule.eth_multicallV1(payload!, BlockParameter.Latest);
+        var result = chain.EthRpcModule.eth_simulateV1(payload!, BlockParameter.Latest);
         Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success));
         Assert.IsNotNull(result.Data);
     }
@@ -146,7 +146,7 @@ public class EthMultiCallTestsHiveBase
         var payload = serializer.Deserialize<MultiCallPayload<TransactionForRpc>>(input);
         TestRpcBlockchain chain = await EthRpcMulticallTestsBase.CreateChain();
         Console.WriteLine("current test: multicallBlockTimestampOrder38021");
-        var result = chain.EthRpcModule.eth_multicallV1(payload!, BlockParameter.Latest);
+        var result = chain.EthRpcModule.eth_simulateV1(payload!, BlockParameter.Latest);
         Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success));
         Assert.IsNotNull(result.Data);
     }
@@ -159,7 +159,7 @@ public class EthMultiCallTestsHiveBase
         var payload = serializer.Deserialize<MultiCallPayload<TransactionForRpc>>(input);
         TestRpcBlockchain chain = await EthRpcMulticallTestsBase.CreateChain();
         Console.WriteLine("current test: multicallBlockTimestampsIncrementing");
-        var result = chain.EthRpcModule.eth_multicallV1(payload!, BlockParameter.Latest);
+        var result = chain.EthRpcModule.eth_simulateV1(payload!, BlockParameter.Latest);
         Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success));
         Assert.IsNotNull(result.Data);
     }
@@ -172,7 +172,7 @@ public class EthMultiCallTestsHiveBase
         var payload = serializer.Deserialize<MultiCallPayload<TransactionForRpc>>(input);
         TestRpcBlockchain chain = await EthRpcMulticallTestsBase.CreateChain();
         Console.WriteLine("current test: multicallBlockhashComplex");
-        var result = chain.EthRpcModule.eth_multicallV1(payload!, BlockParameter.Latest);
+        var result = chain.EthRpcModule.eth_simulateV1(payload!, BlockParameter.Latest);
         Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success));
         Assert.IsNotNull(result.Data);
     }
@@ -185,7 +185,7 @@ public class EthMultiCallTestsHiveBase
         var payload = serializer.Deserialize<MultiCallPayload<TransactionForRpc>>(input);
         TestRpcBlockchain chain = await EthRpcMulticallTestsBase.CreateChain();
         Console.WriteLine("current test: multicallBlockhashSimple");
-        var result = chain.EthRpcModule.eth_multicallV1(payload!, BlockParameter.Latest);
+        var result = chain.EthRpcModule.eth_simulateV1(payload!, BlockParameter.Latest);
         Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success));
         Assert.IsNotNull(result.Data);
     }
@@ -198,7 +198,7 @@ public class EthMultiCallTestsHiveBase
         var payload = serializer.Deserialize<MultiCallPayload<TransactionForRpc>>(input);
         TestRpcBlockchain chain = await EthRpcMulticallTestsBase.CreateChain();
         Console.WriteLine("current test: multicallBlockhashStartBeforeHead");
-        var result = chain.EthRpcModule.eth_multicallV1(payload!, BlockParameter.Latest);
+        var result = chain.EthRpcModule.eth_simulateV1(payload!, BlockParameter.Latest);
         Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success));
         Assert.IsNotNull(result.Data);
     }
@@ -211,7 +211,7 @@ public class EthMultiCallTestsHiveBase
         var payload = serializer.Deserialize<MultiCallPayload<TransactionForRpc>>(input);
         TestRpcBlockchain chain = await EthRpcMulticallTestsBase.CreateChain();
         Console.WriteLine("current test: multicallCheckInvalidNonce");
-        var result = chain.EthRpcModule.eth_multicallV1(payload!, BlockParameter.Latest);
+        var result = chain.EthRpcModule.eth_simulateV1(payload!, BlockParameter.Latest);
         Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success));
         Assert.IsNotNull(result.Data);
     }
@@ -224,7 +224,7 @@ public class EthMultiCallTestsHiveBase
         var payload = serializer.Deserialize<MultiCallPayload<TransactionForRpc>>(input);
         TestRpcBlockchain chain = await EthRpcMulticallTestsBase.CreateChain();
         Console.WriteLine("current test: multicallCheckThatBalanceIsThereAfterNewBlock");
-        var result = chain.EthRpcModule.eth_multicallV1(payload!, BlockParameter.Latest);
+        var result = chain.EthRpcModule.eth_simulateV1(payload!, BlockParameter.Latest);
         Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success));
         Assert.IsNotNull(result.Data);
     }
@@ -237,7 +237,7 @@ public class EthMultiCallTestsHiveBase
         var payload = serializer.Deserialize<MultiCallPayload<TransactionForRpc>>(input);
         TestRpcBlockchain chain = await EthRpcMulticallTestsBase.CreateChain();
         Console.WriteLine("current test: multicallCheckThatNonceIncreases");
-        var result = chain.EthRpcModule.eth_multicallV1(payload!, BlockParameter.Latest);
+        var result = chain.EthRpcModule.eth_simulateV1(payload!, BlockParameter.Latest);
         Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success));
         Assert.IsNotNull(result.Data);
     }
@@ -250,7 +250,7 @@ public class EthMultiCallTestsHiveBase
         var payload = serializer.Deserialize<MultiCallPayload<TransactionForRpc>>(input);
         TestRpcBlockchain chain = await EthRpcMulticallTestsBase.CreateChain();
         Console.WriteLine("current test: multicallEmptyCallsAndOverridesMulticall");
-        var result = chain.EthRpcModule.eth_multicallV1(payload!, BlockParameter.Latest);
+        var result = chain.EthRpcModule.eth_simulateV1(payload!, BlockParameter.Latest);
         Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success));
         Assert.IsNotNull(result.Data);
     }
@@ -263,7 +263,7 @@ public class EthMultiCallTestsHiveBase
         var payload = serializer.Deserialize<MultiCallPayload<TransactionForRpc>>(input);
         TestRpcBlockchain chain = await EthRpcMulticallTestsBase.CreateChain();
         Console.WriteLine("current test: multicallEthSendShouldNotProduceLogsByDefault");
-        var result = chain.EthRpcModule.eth_multicallV1(payload!, BlockParameter.Latest);
+        var result = chain.EthRpcModule.eth_simulateV1(payload!, BlockParameter.Latest);
         Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success));
         Assert.IsNotNull(result.Data);
     }
@@ -276,7 +276,7 @@ public class EthMultiCallTestsHiveBase
         var payload = serializer.Deserialize<MultiCallPayload<TransactionForRpc>>(input);
         TestRpcBlockchain chain = await EthRpcMulticallTestsBase.CreateChain();
         Console.WriteLine("current test: multicallEthSendShouldNotProduceLogsOnRevert");
-        var result = chain.EthRpcModule.eth_multicallV1(payload!, BlockParameter.Latest);
+        var result = chain.EthRpcModule.eth_simulateV1(payload!, BlockParameter.Latest);
         Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success));
         Assert.IsNotNull(result.Data);
     }
@@ -289,7 +289,7 @@ public class EthMultiCallTestsHiveBase
         var payload = serializer.Deserialize<MultiCallPayload<TransactionForRpc>>(input);
         TestRpcBlockchain chain = await EthRpcMulticallTestsBase.CreateChain();
         Console.WriteLine("current test: multicallEthSendShouldProduceLogs");
-        var result = chain.EthRpcModule.eth_multicallV1(payload!, BlockParameter.Latest);
+        var result = chain.EthRpcModule.eth_simulateV1(payload!, BlockParameter.Latest);
         Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success));
         Assert.IsNotNull(result.Data);
     }
@@ -302,7 +302,7 @@ public class EthMultiCallTestsHiveBase
         var payload = serializer.Deserialize<MultiCallPayload<TransactionForRpc>>(input);
         TestRpcBlockchain chain = await EthRpcMulticallTestsBase.CreateChain();
         Console.WriteLine("current test: multicallEthSendShouldProduceMoreLogsOnForward");
-        var result = chain.EthRpcModule.eth_multicallV1(payload!, BlockParameter.Latest);
+        var result = chain.EthRpcModule.eth_simulateV1(payload!, BlockParameter.Latest);
         Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success));
         Assert.IsNotNull(result.Data);
     }
@@ -315,7 +315,7 @@ public class EthMultiCallTestsHiveBase
         var payload = serializer.Deserialize<MultiCallPayload<TransactionForRpc>>(input);
         TestRpcBlockchain chain = await EthRpcMulticallTestsBase.CreateChain();
         Console.WriteLine("current test: multicallEthSendShouldProduceNoLogsOnForwardRevert");
-        var result = chain.EthRpcModule.eth_multicallV1(payload!, BlockParameter.Latest);
+        var result = chain.EthRpcModule.eth_simulateV1(payload!, BlockParameter.Latest);
         Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success));
         Assert.IsNotNull(result.Data);
     }
@@ -328,7 +328,7 @@ public class EthMultiCallTestsHiveBase
         var payload = serializer.Deserialize<MultiCallPayload<TransactionForRpc>>(input);
         TestRpcBlockchain chain = await EthRpcMulticallTestsBase.CreateChain();
         Console.WriteLine("current test: multicallFeeRecipientReceivingFunds");
-        var result = chain.EthRpcModule.eth_multicallV1(payload!, BlockParameter.Latest);
+        var result = chain.EthRpcModule.eth_simulateV1(payload!, BlockParameter.Latest);
         Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success));
         Assert.IsNotNull(result.Data);
     }
@@ -341,7 +341,7 @@ public class EthMultiCallTestsHiveBase
         var payload = serializer.Deserialize<MultiCallPayload<TransactionForRpc>>(input);
         TestRpcBlockchain chain = await EthRpcMulticallTestsBase.CreateChain();
         Console.WriteLine("current test: multicallGasFeesAndValueError38014WithValidation");
-        var result = chain.EthRpcModule.eth_multicallV1(payload!, BlockParameter.Latest);
+        var result = chain.EthRpcModule.eth_simulateV1(payload!, BlockParameter.Latest);
         Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success));
         Assert.IsNotNull(result.Data);
     }
@@ -354,7 +354,7 @@ public class EthMultiCallTestsHiveBase
         var payload = serializer.Deserialize<MultiCallPayload<TransactionForRpc>>(input);
         TestRpcBlockchain chain = await EthRpcMulticallTestsBase.CreateChain();
         Console.WriteLine("current test: multicallGasFeesAndValueError38014");
-        var result = chain.EthRpcModule.eth_multicallV1(payload!, BlockParameter.Latest);
+        var result = chain.EthRpcModule.eth_simulateV1(payload!, BlockParameter.Latest);
         Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success));
         Assert.IsNotNull(result.Data);
     }
@@ -367,7 +367,7 @@ public class EthMultiCallTestsHiveBase
         var payload = serializer.Deserialize<MultiCallPayload<TransactionForRpc>>(input);
         TestRpcBlockchain chain = await EthRpcMulticallTestsBase.CreateChain();
         Console.WriteLine("current test: multicallGetBlockProperties");
-        var result = chain.EthRpcModule.eth_multicallV1(payload!, BlockParameter.Latest);
+        var result = chain.EthRpcModule.eth_simulateV1(payload!, BlockParameter.Latest);
         Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success));
         Assert.IsNotNull(result.Data);
     }
@@ -380,7 +380,7 @@ public class EthMultiCallTestsHiveBase
         var payload = serializer.Deserialize<MultiCallPayload<TransactionForRpc>>(input);
         TestRpcBlockchain chain = await EthRpcMulticallTestsBase.CreateChain();
         Console.WriteLine("current test: multicallInstrictGas38013");
-        var result = chain.EthRpcModule.eth_multicallV1(payload!, BlockParameter.Latest);
+        var result = chain.EthRpcModule.eth_simulateV1(payload!, BlockParameter.Latest);
         Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success));
         Assert.IsNotNull(result.Data);
     }
@@ -393,7 +393,7 @@ public class EthMultiCallTestsHiveBase
         var payload = serializer.Deserialize<MultiCallPayload<TransactionForRpc>>(input);
         TestRpcBlockchain chain = await EthRpcMulticallTestsBase.CreateChain();
         Console.WriteLine("current test: multicallLogs");
-        var result = chain.EthRpcModule.eth_multicallV1(payload!, BlockParameter.Latest);
+        var result = chain.EthRpcModule.eth_simulateV1(payload!, BlockParameter.Latest);
         Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success));
         Assert.IsNotNull(result.Data);
     }
@@ -406,7 +406,7 @@ public class EthMultiCallTestsHiveBase
         var payload = serializer.Deserialize<MultiCallPayload<TransactionForRpc>>(input);
         TestRpcBlockchain chain = await EthRpcMulticallTestsBase.CreateChain();
         Console.WriteLine("current test: multicallMoveAccountTwice");
-        var result = chain.EthRpcModule.eth_multicallV1(payload!, BlockParameter.Latest);
+        var result = chain.EthRpcModule.eth_simulateV1(payload!, BlockParameter.Latest);
         Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success));
         Assert.IsNotNull(result.Data);
     }
@@ -419,7 +419,7 @@ public class EthMultiCallTestsHiveBase
         var payload = serializer.Deserialize<MultiCallPayload<TransactionForRpc>>(input);
         TestRpcBlockchain chain = await EthRpcMulticallTestsBase.CreateChain();
         Console.WriteLine("current test: multicallMoveEcrecoverAndCall");
-        var result = chain.EthRpcModule.eth_multicallV1(payload!, BlockParameter.Latest);
+        var result = chain.EthRpcModule.eth_simulateV1(payload!, BlockParameter.Latest);
         Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success));
         Assert.IsNotNull(result.Data);
     }
@@ -432,7 +432,7 @@ public class EthMultiCallTestsHiveBase
         var payload = serializer.Deserialize<MultiCallPayload<TransactionForRpc>>(input);
         TestRpcBlockchain chain = await EthRpcMulticallTestsBase.CreateChain();
         Console.WriteLine("current test: multicallMoveToAddressItselfReference38022");
-        var result = chain.EthRpcModule.eth_multicallV1(payload!, BlockParameter.Latest);
+        var result = chain.EthRpcModule.eth_simulateV1(payload!, BlockParameter.Latest);
         Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success));
         Assert.IsNotNull(result.Data);
     }
@@ -445,7 +445,7 @@ public class EthMultiCallTestsHiveBase
         var payload = serializer.Deserialize<MultiCallPayload<TransactionForRpc>>(input);
         TestRpcBlockchain chain = await EthRpcMulticallTestsBase.CreateChain();
         Console.WriteLine("current test: multicallMoveTwoAccountsToSame38023");
-        var result = chain.EthRpcModule.eth_multicallV1(payload!, BlockParameter.Latest);
+        var result = chain.EthRpcModule.eth_simulateV1(payload!, BlockParameter.Latest);
         Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success));
         Assert.IsNotNull(result.Data);
     }
@@ -458,7 +458,7 @@ public class EthMultiCallTestsHiveBase
         var payload = serializer.Deserialize<MultiCallPayload<TransactionForRpc>>(input);
         TestRpcBlockchain chain = await EthRpcMulticallTestsBase.CreateChain();
         Console.WriteLine("current test: multicallMoveTwoNonPrecompilesAccountsToSame");
-        var result = chain.EthRpcModule.eth_multicallV1(payload!, BlockParameter.Latest);
+        var result = chain.EthRpcModule.eth_simulateV1(payload!, BlockParameter.Latest);
         Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success));
         Assert.IsNotNull(result.Data);
     }
@@ -471,7 +471,7 @@ public class EthMultiCallTestsHiveBase
         var payload = serializer.Deserialize<MultiCallPayload<TransactionForRpc>>(input);
         TestRpcBlockchain chain = await EthRpcMulticallTestsBase.CreateChain();
         Console.WriteLine("current test: multicallOverrideAddressTwiceInSeparateBlockStateCalls");
-        var result = chain.EthRpcModule.eth_multicallV1(payload!, BlockParameter.Latest);
+        var result = chain.EthRpcModule.eth_simulateV1(payload!, BlockParameter.Latest);
         Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success));
         Assert.IsNotNull(result.Data);
     }
@@ -484,7 +484,7 @@ public class EthMultiCallTestsHiveBase
         var payload = serializer.Deserialize<MultiCallPayload<TransactionForRpc>>(input);
         TestRpcBlockchain chain = await EthRpcMulticallTestsBase.CreateChain();
         Console.WriteLine("current test: multicallOverrideAddressTwice");
-        var result = chain.EthRpcModule.eth_multicallV1(payload!, BlockParameter.Latest);
+        var result = chain.EthRpcModule.eth_simulateV1(payload!, BlockParameter.Latest);
         Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success));
         Assert.IsNotNull(result.Data);
     }
@@ -497,7 +497,7 @@ public class EthMultiCallTestsHiveBase
         var payload = serializer.Deserialize<MultiCallPayload<TransactionForRpc>>(input);
         TestRpcBlockchain chain = await EthRpcMulticallTestsBase.CreateChain();
         Console.WriteLine("current test: multicallOverrideAllInBlockStateCalls");
-        var result = chain.EthRpcModule.eth_multicallV1(payload!, BlockParameter.Latest);
+        var result = chain.EthRpcModule.eth_simulateV1(payload!, BlockParameter.Latest);
         Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success));
         Assert.IsNotNull(result.Data);
     }
@@ -510,7 +510,7 @@ public class EthMultiCallTestsHiveBase
         var payload = serializer.Deserialize<MultiCallPayload<TransactionForRpc>>(input);
         TestRpcBlockchain chain = await EthRpcMulticallTestsBase.CreateChain();
         Console.WriteLine("current test: multicallOverrideBlockNum");
-        var result = chain.EthRpcModule.eth_multicallV1(payload!, BlockParameter.Latest);
+        var result = chain.EthRpcModule.eth_simulateV1(payload!, BlockParameter.Latest);
         Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success));
         Assert.IsNotNull(result.Data);
     }
@@ -523,7 +523,7 @@ public class EthMultiCallTestsHiveBase
         var payload = serializer.Deserialize<MultiCallPayload<TransactionForRpc>>(input);
         TestRpcBlockchain chain = await EthRpcMulticallTestsBase.CreateChain();
         Console.WriteLine("current test: multicallOverrideEcrecover");
-        var result = chain.EthRpcModule.eth_multicallV1(payload!, BlockParameter.Latest);
+        var result = chain.EthRpcModule.eth_simulateV1(payload!, BlockParameter.Latest);
         Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success));
         Assert.IsNotNull(result.Data);
     }
@@ -536,7 +536,7 @@ public class EthMultiCallTestsHiveBase
         var payload = serializer.Deserialize<MultiCallPayload<TransactionForRpc>>(input);
         TestRpcBlockchain chain = await EthRpcMulticallTestsBase.CreateChain();
         Console.WriteLine("current test: multicallOverrideIdentity");
-        var result = chain.EthRpcModule.eth_multicallV1(payload!, BlockParameter.Latest);
+        var result = chain.EthRpcModule.eth_simulateV1(payload!, BlockParameter.Latest);
         Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success));
         Assert.IsNotNull(result.Data);
     }
@@ -549,7 +549,7 @@ public class EthMultiCallTestsHiveBase
         var payload = serializer.Deserialize<MultiCallPayload<TransactionForRpc>>(input);
         TestRpcBlockchain chain = await EthRpcMulticallTestsBase.CreateChain();
         Console.WriteLine("current test: multicallOverrideSha256");
-        var result = chain.EthRpcModule.eth_multicallV1(payload!, BlockParameter.Latest);
+        var result = chain.EthRpcModule.eth_simulateV1(payload!, BlockParameter.Latest);
         Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success));
         Assert.IsNotNull(result.Data);
     }
@@ -562,7 +562,7 @@ public class EthMultiCallTestsHiveBase
         var payload = serializer.Deserialize<MultiCallPayload<TransactionForRpc>>(input);
         TestRpcBlockchain chain = await EthRpcMulticallTestsBase.CreateChain();
         Console.WriteLine("current test: multicallPrecompileIsSendingTransaction");
-        var result = chain.EthRpcModule.eth_multicallV1(payload!, BlockParameter.Latest);
+        var result = chain.EthRpcModule.eth_simulateV1(payload!, BlockParameter.Latest);
         Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success));
         Assert.IsNotNull(result.Data);
     }
@@ -575,7 +575,7 @@ public class EthMultiCallTestsHiveBase
         var payload = serializer.Deserialize<MultiCallPayload<TransactionForRpc>>(input);
         TestRpcBlockchain chain = await EthRpcMulticallTestsBase.CreateChain();
         Console.WriteLine("current test: multicallRunOutOfGasInBlock38015");
-        var result = chain.EthRpcModule.eth_multicallV1(payload!, BlockParameter.Latest);
+        var result = chain.EthRpcModule.eth_simulateV1(payload!, BlockParameter.Latest);
         Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success));
         Assert.IsNotNull(result.Data);
     }
@@ -588,7 +588,7 @@ public class EthMultiCallTestsHiveBase
         var payload = serializer.Deserialize<MultiCallPayload<TransactionForRpc>>(input);
         TestRpcBlockchain chain = await EthRpcMulticallTestsBase.CreateChain();
         Console.WriteLine("current test: multicallSelfDestructingStateOverride");
-        var result = chain.EthRpcModule.eth_multicallV1(payload!, BlockParameter.Latest);
+        var result = chain.EthRpcModule.eth_simulateV1(payload!, BlockParameter.Latest);
         Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success));
         Assert.IsNotNull(result.Data);
     }
@@ -601,7 +601,7 @@ public class EthMultiCallTestsHiveBase
         var payload = serializer.Deserialize<MultiCallPayload<TransactionForRpc>>(input);
         TestRpcBlockchain chain = await EthRpcMulticallTestsBase.CreateChain();
         Console.WriteLine("current test: multicallSetReadStorage");
-        var result = chain.EthRpcModule.eth_multicallV1(payload!, BlockParameter.Latest);
+        var result = chain.EthRpcModule.eth_simulateV1(payload!, BlockParameter.Latest);
         Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success));
         Assert.IsNotNull(result.Data);
     }
@@ -614,7 +614,7 @@ public class EthMultiCallTestsHiveBase
         var payload = serializer.Deserialize<MultiCallPayload<TransactionForRpc>>(input);
         TestRpcBlockchain chain = await EthRpcMulticallTestsBase.CreateChain();
         Console.WriteLine("current test: multicallSimpleNoFundsWithBalanceQuerying");
-        var result = chain.EthRpcModule.eth_multicallV1(payload!, BlockParameter.Latest);
+        var result = chain.EthRpcModule.eth_simulateV1(payload!, BlockParameter.Latest);
         Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success));
         Assert.IsNotNull(result.Data);
     }
@@ -627,7 +627,7 @@ public class EthMultiCallTestsHiveBase
         var payload = serializer.Deserialize<MultiCallPayload<TransactionForRpc>>(input);
         TestRpcBlockchain chain = await EthRpcMulticallTestsBase.CreateChain();
         Console.WriteLine("current test: multicallSimpleNoFundsWithValidationWithoutNonces");
-        var result = chain.EthRpcModule.eth_multicallV1(payload!, BlockParameter.Latest);
+        var result = chain.EthRpcModule.eth_simulateV1(payload!, BlockParameter.Latest);
         Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success));
         Assert.IsNotNull(result.Data);
     }
@@ -640,7 +640,7 @@ public class EthMultiCallTestsHiveBase
         var payload = serializer.Deserialize<MultiCallPayload<TransactionForRpc>>(input);
         TestRpcBlockchain chain = await EthRpcMulticallTestsBase.CreateChain();
         Console.WriteLine("current test: multicallSimpleNoFundsWithValidation");
-        var result = chain.EthRpcModule.eth_multicallV1(payload!, BlockParameter.Latest);
+        var result = chain.EthRpcModule.eth_simulateV1(payload!, BlockParameter.Latest);
         Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success));
         Assert.IsNotNull(result.Data);
     }
@@ -653,7 +653,7 @@ public class EthMultiCallTestsHiveBase
         var payload = serializer.Deserialize<MultiCallPayload<TransactionForRpc>>(input);
         TestRpcBlockchain chain = await EthRpcMulticallTestsBase.CreateChain();
         Console.WriteLine("current test: multicallSimpleNoFunds");
-        var result = chain.EthRpcModule.eth_multicallV1(payload!, BlockParameter.Latest);
+        var result = chain.EthRpcModule.eth_simulateV1(payload!, BlockParameter.Latest);
         Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success));
         Assert.IsNotNull(result.Data);
     }
@@ -666,7 +666,7 @@ public class EthMultiCallTestsHiveBase
         var payload = serializer.Deserialize<MultiCallPayload<TransactionForRpc>>(input);
         TestRpcBlockchain chain = await EthRpcMulticallTestsBase.CreateChain();
         Console.WriteLine("current test: multicallSimpleSendFromContractNoBalance");
-        var result = chain.EthRpcModule.eth_multicallV1(payload!, BlockParameter.Latest);
+        var result = chain.EthRpcModule.eth_simulateV1(payload!, BlockParameter.Latest);
         Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success));
         Assert.IsNotNull(result.Data);
     }
@@ -679,7 +679,7 @@ public class EthMultiCallTestsHiveBase
         var payload = serializer.Deserialize<MultiCallPayload<TransactionForRpc>>(input);
         TestRpcBlockchain chain = await EthRpcMulticallTestsBase.CreateChain();
         Console.WriteLine("current test: multicallSimpleSendFromContractWithValidation");
-        var result = chain.EthRpcModule.eth_multicallV1(payload!, BlockParameter.Latest);
+        var result = chain.EthRpcModule.eth_simulateV1(payload!, BlockParameter.Latest);
         Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success));
         Assert.IsNotNull(result.Data);
     }
@@ -692,7 +692,7 @@ public class EthMultiCallTestsHiveBase
         var payload = serializer.Deserialize<MultiCallPayload<TransactionForRpc>>(input);
         TestRpcBlockchain chain = await EthRpcMulticallTestsBase.CreateChain();
         Console.WriteLine("current test: multicallSimpleSendFromContract");
-        var result = chain.EthRpcModule.eth_multicallV1(payload!, BlockParameter.Latest);
+        var result = chain.EthRpcModule.eth_simulateV1(payload!, BlockParameter.Latest);
         Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success));
         Assert.IsNotNull(result.Data);
     }
@@ -705,7 +705,7 @@ public class EthMultiCallTestsHiveBase
         var payload = serializer.Deserialize<MultiCallPayload<TransactionForRpc>>(input);
         TestRpcBlockchain chain = await EthRpcMulticallTestsBase.CreateChain();
         Console.WriteLine("current test: multicallSimple");
-        var result = chain.EthRpcModule.eth_multicallV1(payload!, BlockParameter.Latest);
+        var result = chain.EthRpcModule.eth_simulateV1(payload!, BlockParameter.Latest);
         Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success));
         Assert.IsNotNull(result.Data);
     }
@@ -718,7 +718,7 @@ public class EthMultiCallTestsHiveBase
         var payload = serializer.Deserialize<MultiCallPayload<TransactionForRpc>>(input);
         TestRpcBlockchain chain = await EthRpcMulticallTestsBase.CreateChain();
         Console.WriteLine("current test: multicallTransactionTooHighNonce");
-        var result = chain.EthRpcModule.eth_multicallV1(payload!, BlockParameter.Latest);
+        var result = chain.EthRpcModule.eth_simulateV1(payload!, BlockParameter.Latest);
         Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success));
         Assert.IsNotNull(result.Data);
     }
@@ -731,7 +731,7 @@ public class EthMultiCallTestsHiveBase
         var payload = serializer.Deserialize<MultiCallPayload<TransactionForRpc>>(input);
         TestRpcBlockchain chain = await EthRpcMulticallTestsBase.CreateChain();
         Console.WriteLine("current test: multicallTransactionTooLowNonce38010");
-        var result = chain.EthRpcModule.eth_multicallV1(payload!, BlockParameter.Latest);
+        var result = chain.EthRpcModule.eth_simulateV1(payload!, BlockParameter.Latest);
         Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success));
         Assert.IsNotNull(result.Data);
     }
@@ -744,7 +744,7 @@ public class EthMultiCallTestsHiveBase
         var payload = serializer.Deserialize<MultiCallPayload<TransactionForRpc>>(input);
         TestRpcBlockchain chain = await EthRpcMulticallTestsBase.CreateChain();
         Console.WriteLine("current test: multicallTransferOverBlockStateCalls");
-        var result = chain.EthRpcModule.eth_multicallV1(payload!, BlockParameter.Latest);
+        var result = chain.EthRpcModule.eth_simulateV1(payload!, BlockParameter.Latest);
         Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success));
         Assert.IsNotNull(result.Data);
     }
@@ -757,7 +757,7 @@ public class EthMultiCallTestsHiveBase
         var payload = serializer.Deserialize<MultiCallPayload<TransactionForRpc>>(input);
         TestRpcBlockchain chain = await EthRpcMulticallTestsBase.CreateChain();
         Console.WriteLine("current test: multicallTryToMoveNonPrecompile");
-        var result = chain.EthRpcModule.eth_multicallV1(payload!, BlockParameter.Latest);
+        var result = chain.EthRpcModule.eth_simulateV1(payload!, BlockParameter.Latest);
         Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success));
         Assert.IsNotNull(result.Data);
     }

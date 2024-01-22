@@ -29,7 +29,7 @@ using NSubstitute;
 using NUnit.Framework;
 using Nethermind.Config;
 using Nethermind.Evm;
-using Nethermind.Facade.Multicall;
+using Nethermind.Facade.Simulate;
 using Nethermind.State;
 
 namespace Nethermind.Facade.Test
@@ -75,7 +75,7 @@ namespace Nethermind.Facade.Test
                 _specProvider,
                 LimboLogs.Instance);
 
-            MultiCallReadOnlyBlocksProcessingEnv multiCallProcessingEnv = MultiCallReadOnlyBlocksProcessingEnv.Create(
+            SimulateReadOnlyBlocksProcessingEnv simulateProcessingEnv = SimulateReadOnlyBlocksProcessingEnv.Create(
                 false,
                 readOnlyWorldStateManager,
                 roBlockTree,
@@ -87,7 +87,7 @@ namespace Nethermind.Facade.Test
 
             _blockchainBridge = new BlockchainBridge(
                 processingEnv,
-                multiCallProcessingEnv,
+                simulateProcessingEnv,
                 _txPool,
                 _receiptStorage,
                 _filterStore,
@@ -233,7 +233,7 @@ namespace Nethermind.Facade.Test
                 _specProvider,
                 LimboLogs.Instance);
 
-            MultiCallReadOnlyBlocksProcessingEnv multiCallProcessingEnv = MultiCallReadOnlyBlocksProcessingEnv.Create(
+            SimulateReadOnlyBlocksProcessingEnv simulateProcessingEnv = SimulateReadOnlyBlocksProcessingEnv.Create(
                 false,
                 readOnlyWorldStateManager,
                 roBlockTree,
@@ -249,7 +249,7 @@ namespace Nethermind.Facade.Test
 
             _blockchainBridge = new BlockchainBridge(
                 processingEnv,
-                multiCallProcessingEnv,
+                simulateProcessingEnv,
                 _txPool,
                 _receiptStorage,
                 _filterStore,

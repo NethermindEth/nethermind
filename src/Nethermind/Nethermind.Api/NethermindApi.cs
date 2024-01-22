@@ -31,7 +31,7 @@ using Nethermind.Db.Blooms;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Facade;
 using Nethermind.Facade.Eth;
-using Nethermind.Facade.Multicall;
+using Nethermind.Facade.Simulate;
 using Nethermind.Grpc;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
@@ -94,7 +94,7 @@ namespace Nethermind.Api
                 SpecProvider,
                 LogManager);
 
-            MultiCallReadOnlyBlocksProcessingEnv multiCallReadOnlyBlocksProcessingEnv = MultiCallReadOnlyBlocksProcessingEnv.Create(false,
+            SimulateReadOnlyBlocksProcessingEnv simulateReadOnlyBlocksProcessingEnv = SimulateReadOnlyBlocksProcessingEnv.Create(false,
                 WorldStateManager!,
                 readOnlyTree,
                 _multiCallReadOnlyDbProvider,
@@ -107,7 +107,7 @@ namespace Nethermind.Api
 
             return new BlockchainBridge(
                 readOnlyTxProcessingEnv,
-                multiCallReadOnlyBlocksProcessingEnv,
+                simulateReadOnlyBlocksProcessingEnv,
                 TxPool,
                 ReceiptFinder,
                 FilterStore,

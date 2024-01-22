@@ -4,11 +4,11 @@
 using System.Collections.Generic;
 using Nethermind.Facade.Proxy.Models.MultiCall;
 
-namespace Nethermind.Facade.Multicall;
+namespace Nethermind.Facade.Simulate;
 
-public class MultiCallOutput
+public class SimulateOutput
 {
     public string? Error { get; set; }
 
-    public IReadOnlyList<MultiCallBlockResult> Items { get; set; }
+    public IReadOnlyList<SimulateBlockResult> Items { get; set; }
 }

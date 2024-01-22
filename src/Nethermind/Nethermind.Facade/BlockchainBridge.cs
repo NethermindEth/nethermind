@@ -28,7 +28,7 @@ using Nethermind.Config;
 using Nethermind.Facade.Proxy.Models.MultiCall;
 using System.Transactions;
 using Microsoft.CSharp.RuntimeBinder;
-using Nethermind.Facade.Multicall;
+using Nethermind.Facade.Simulate;
 using Transaction = Nethermind.Core.Transaction;
 using Nethermind.Specs;
 
@@ -52,10 +52,10 @@ namespace Nethermind.Facade
         private readonly ILogFinder _logFinder;
         private readonly ISpecProvider _specProvider;
         private readonly IBlocksConfig _blocksConfig;
-        private readonly MulticallBridgeHelper _multicallBridgeHelper;
+        private readonly SimulateBridgeHelper _simulateBridgeHelper;
 
         public BlockchainBridge(ReadOnlyTxProcessingEnv processingEnv,
-            MultiCallReadOnlyBlocksProcessingEnv multiCallProcessingEnv,
+            SimulateReadOnlyBlocksProcessingEnv simulateProcessingEnv,
             ITxPool? txPool,
             IReceiptFinder? receiptStorage,
             IFilterStore? filterStore,
@@ -78,8 +78,8 @@ namespace Nethermind.Facade
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
             _blocksConfig = blocksConfig;
             IsMining = isMining;
-            _multicallBridgeHelper = new MulticallBridgeHelper(
-                multiCallProcessingEnv ?? throw new ArgumentNullException(nameof(multiCallProcessingEnv)),
+            _simulateBridgeHelper = new SimulateBridgeHelper(
+                simulateProcessingEnv ?? throw new ArgumentNullException(nameof(simulateProcessingEnv)),
                 _specProvider,
                 _blocksConfig);
         }
@@ -152,13 +152,13 @@ namespace Nethermind.Facade
             };
         }
 
-        public MultiCallOutput MultiCall(BlockHeader header, MultiCallPayload<TransactionWithSourceDetails> payload, CancellationToken cancellationToken)
+        public SimulateOutput MultiCall(BlockHeader header, MultiCallPayload<TransactionWithSourceDetails> payload, CancellationToken cancellationToken)
         {
-            MultiCallBlockTracer multiCallOutputTracer = new(payload.TraceTransfers);
-            MultiCallOutput result = new();
+            SimulateBlockTracer simulateOutputTracer = new(payload.TraceTransfers);
+            SimulateOutput result = new();
             //try
             //{
-                (bool success, string error) = _multicallBridgeHelper.TryMultiCallTrace(header, payload, multiCallOutputTracer.WithCancellation(cancellationToken));
+                (bool success, string error) = _simulateBridgeHelper.TryMultiCallTrace(header, payload, simulateOutputTracer.WithCancellation(cancellationToken));
 
                 if (!success)
                 {
@@ -170,7 +170,7 @@ namespace Nethermind.Facade
             //    result.Error = ex.ToString();
             //}
 
-            result.Items = multiCallOutputTracer.Results;
+            result.Items = simulateOutputTracer.Results;
             return result;
         }
 

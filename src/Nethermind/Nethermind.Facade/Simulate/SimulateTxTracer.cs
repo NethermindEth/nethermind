@@ -12,13 +12,13 @@ using Nethermind.Evm.Tracing;
 using Nethermind.Facade.Proxy.Models.MultiCall;
 using Nethermind.Int256;
 
-namespace Nethermind.Facade.Multicall;
+namespace Nethermind.Facade.Simulate;
 
-internal sealed class MultiCallTxTracer : TxTracer, ILogsTxTracer
+internal sealed class SimulateTxTracer : TxTracer, ILogsTxTracer
 {
     private static readonly Hash256[] _topics = { Keccak.Zero };
 
-    public MultiCallTxTracer(bool isTracingTransfers)
+    public SimulateTxTracer(bool isTracingTransfers)
     {
         IsTracingLogs = isTracingTransfers;
         IsTracingReceipt = true;

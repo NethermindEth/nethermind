@@ -31,7 +31,7 @@ using Nethermind.TxPool;
 using Nethermind.Wallet;
 
 using Nethermind.Config;
-using Nethermind.Facade.Multicall;
+using Nethermind.Facade.Simulate;
 using Nethermind.Synchronization.ParallelSync;
 using NSubstitute;
 
@@ -131,7 +131,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                 SpecProvider,
                 LimboLogs.Instance);
 
-            MultiCallReadOnlyBlocksProcessingEnv multiCallProcessingEnv = MultiCallReadOnlyBlocksProcessingEnv.Create(
+            SimulateReadOnlyBlocksProcessingEnv simulateProcessingEnv = SimulateReadOnlyBlocksProcessingEnv.Create(
                 false,
                 WorldStateManager,
                 roBlockTree,
@@ -140,7 +140,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                 LimboLogs.Instance);
 
             ReceiptFinder ??= ReceiptStorage;
-            Bridge ??= new BlockchainBridge(processingEnv, multiCallProcessingEnv, TxPool, ReceiptFinder, filterStore, filterManager, EthereumEcdsa, Timestamper, LogFinder, SpecProvider, new BlocksConfig(), false);
+            Bridge ??= new BlockchainBridge(processingEnv, simulateProcessingEnv, TxPool, ReceiptFinder, filterStore, filterManager, EthereumEcdsa, Timestamper, LogFinder, SpecProvider, new BlocksConfig(), false);
             BlockFinder ??= BlockTree;
             GasPriceOracle ??= new GasPriceOracle(BlockFinder, SpecProvider, LogManager);
 

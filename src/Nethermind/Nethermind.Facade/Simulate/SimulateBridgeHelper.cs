@@ -17,11 +17,11 @@ using Nethermind.Facade.Proxy.Models.MultiCall;
 using Nethermind.Int256;
 using Nethermind.State;
 
-namespace Nethermind.Facade.Multicall;
+namespace Nethermind.Facade.Simulate;
 
-public class MulticallBridgeHelper
+public class SimulateBridgeHelper
 {
-    private readonly MultiCallReadOnlyBlocksProcessingEnv _multiCallProcessingEnv;
+    private readonly SimulateReadOnlyBlocksProcessingEnv _simulateProcessingEnv;
     private readonly ISpecProvider _specProvider;
     private readonly IBlocksConfig _blocksConfig;
 
@@ -30,14 +30,14 @@ public class MulticallBridgeHelper
                                                                             ProcessingOptions.MarkAsProcessed |
                                                                             ProcessingOptions.StoreReceipts;
 
-    public MulticallBridgeHelper(MultiCallReadOnlyBlocksProcessingEnv multiCallProcessingEnv, ISpecProvider specProvider, IBlocksConfig blocksConfig)
+    public SimulateBridgeHelper(SimulateReadOnlyBlocksProcessingEnv simulateProcessingEnv, ISpecProvider specProvider, IBlocksConfig blocksConfig)
     {
-        _multiCallProcessingEnv = multiCallProcessingEnv;
+        _simulateProcessingEnv = simulateProcessingEnv;
         _specProvider = specProvider;
         _blocksConfig = blocksConfig;
     }
 
-    private void UpdateStateByModifyingAccounts(BlockHeader blockHeader, BlockStateCall<TransactionWithSourceDetails> blockStateCall, MultiCallReadOnlyBlocksProcessingEnv env)
+    private void UpdateStateByModifyingAccounts(BlockHeader blockHeader, BlockStateCall<TransactionWithSourceDetails> blockStateCall, SimulateReadOnlyBlocksProcessingEnv env)
     {
         IReleaseSpec currentSpec = env.SpecProvider.GetSpec(blockHeader);
         env.StateProvider.ApplyStateOverrides(env.CodeInfoRepository, blockStateCall.StateOverrides, currentSpec, blockHeader.Number);
@@ -46,7 +46,7 @@ public class MulticallBridgeHelper
 
     public (bool Success, string Error) TryMultiCallTrace(BlockHeader parent, MultiCallPayload<TransactionWithSourceDetails> payload, IBlockTracer tracer)
     {
-        using MultiCallReadOnlyBlocksProcessingEnv? env = _multiCallProcessingEnv.Clone(payload.TraceTransfers, payload.Validation);
+        using SimulateReadOnlyBlocksProcessingEnv? env = _simulateProcessingEnv.Clone(payload.TraceTransfers, payload.Validation);
 
         Block? latestPersistant = env.BlockTree.FindLatestBlock();
         if (latestPersistant.Number < parent.Number)

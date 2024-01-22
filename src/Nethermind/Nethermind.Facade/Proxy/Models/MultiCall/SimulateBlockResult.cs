@@ -10,7 +10,7 @@ using Nethermind.Int256;
 
 namespace Nethermind.Facade.Proxy.Models.MultiCall;
 
-public class MultiCallBlockResult
+public class SimulateBlockResult
 {
     public ulong Number { get; set; }
     public Hash256 Hash { get; set; } = Keccak.Zero;

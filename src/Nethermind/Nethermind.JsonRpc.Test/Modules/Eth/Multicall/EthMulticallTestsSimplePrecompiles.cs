@@ -13,7 +13,7 @@ using Nethermind.Crypto;
 using Nethermind.Evm;
 using Nethermind.Evm.Precompiles;
 using Nethermind.Facade;
-using Nethermind.Facade.Multicall;
+using Nethermind.Facade.Simulate;
 using Nethermind.Facade.Proxy.Models;
 using Nethermind.Facade.Proxy.Models.MultiCall;
 using NUnit.Framework;
@@ -109,7 +109,7 @@ contract EcrecoverProxy {
 
         // Act
 
-        MultiCallOutput result = chain.Bridge.MultiCall(chain.BlockFinder.Head?.Header!, payload, CancellationToken.None);
+        SimulateOutput result = chain.Bridge.MultiCall(chain.BlockFinder.Head?.Header!, payload, CancellationToken.None);
         Log[]? logs = result.Items.First().Calls.First().Logs;
         byte[] addressBytes = result.Items.First().Calls.First().ReturnData!
             .SliceWithZeroPaddingEmptyOnError(12, 20);

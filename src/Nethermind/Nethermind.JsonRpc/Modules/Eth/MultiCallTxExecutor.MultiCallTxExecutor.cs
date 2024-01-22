@@ -10,7 +10,7 @@ using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Facade;
-using Nethermind.Facade.Multicall;
+using Nethermind.Facade.Simulate;
 using Nethermind.Facade.Proxy.Models;
 using Nethermind.Facade.Proxy.Models.MultiCall;
 using Nethermind.JsonRpc.Data;
@@ -18,7 +18,7 @@ using static Microsoft.FSharp.Core.ByRefKinds;
 
 namespace Nethermind.JsonRpc.Modules.Eth;
 
-public class MultiCallTxExecutor : ExecutorBase<IReadOnlyList<MultiCallBlockResult>, MultiCallPayload<TransactionForRpc>, MultiCallPayload<TransactionWithSourceDetails>>
+public class MultiCallTxExecutor : ExecutorBase<IReadOnlyList<SimulateBlockResult>, MultiCallPayload<TransactionForRpc>, MultiCallPayload<TransactionWithSourceDetails>>
 {
     private long gasCapBudget;
 
@@ -74,7 +74,7 @@ public class MultiCallTxExecutor : ExecutorBase<IReadOnlyList<MultiCallBlockResu
 
         return result;
     }
-    public override ResultWrapper<IReadOnlyList<MultiCallBlockResult>> Execute(
+    public override ResultWrapper<IReadOnlyList<SimulateBlockResult>> Execute(
         MultiCallPayload<TransactionForRpc> call,
         BlockParameter? blockParameter)
     {
@@ -82,7 +82,7 @@ public class MultiCallTxExecutor : ExecutorBase<IReadOnlyList<MultiCallBlockResu
 
         if (searchResult.IsError || searchResult.Object == null)
         {
-            return ResultWrapper<IReadOnlyList<MultiCallBlockResult>>.Fail(searchResult);
+            return ResultWrapper<IReadOnlyList<SimulateBlockResult>>.Fail(searchResult);
         }
 
         BlockHeader header = searchResult.Object.Header;
@@ -94,7 +94,7 @@ public class MultiCallTxExecutor : ExecutorBase<IReadOnlyList<MultiCallBlockResu
 
         if (!_blockchainBridge.HasStateForBlock(header!))
         {
-            return ResultWrapper<IReadOnlyList<MultiCallBlockResult>>.Fail($"No state available for block {header.Hash}", ErrorCodes.ResourceUnavailable);
+            return ResultWrapper<IReadOnlyList<SimulateBlockResult>>.Fail($"No state available for block {header.Hash}", ErrorCodes.ResourceUnavailable);
         }
 
         using CancellationTokenSource cancellationTokenSource = new(_rpcConfig.Timeout);
@@ -102,13 +102,13 @@ public class MultiCallTxExecutor : ExecutorBase<IReadOnlyList<MultiCallBlockResu
         return Execute(header.Clone(), toProcess, cancellationTokenSource.Token);
     }
 
-    protected override ResultWrapper<IReadOnlyList<MultiCallBlockResult>> Execute(BlockHeader header, MultiCallPayload<TransactionWithSourceDetails> tx, CancellationToken token)
+    protected override ResultWrapper<IReadOnlyList<SimulateBlockResult>> Execute(BlockHeader header, MultiCallPayload<TransactionWithSourceDetails> tx, CancellationToken token)
     {
-        MultiCallOutput results = _blockchainBridge.MultiCall(header, tx, token);
+        SimulateOutput results = _blockchainBridge.MultiCall(header, tx, token);
 
         return results.Error is null
-            ? ResultWrapper<IReadOnlyList<MultiCallBlockResult>>.Success(results.Items)
-            : ResultWrapper<IReadOnlyList<MultiCallBlockResult>>.Fail(results.Error, results.Items);
+            ? ResultWrapper<IReadOnlyList<SimulateBlockResult>>.Success(results.Items)
+            : ResultWrapper<IReadOnlyList<SimulateBlockResult>>.Fail(results.Error, results.Items);
     }
 }
 

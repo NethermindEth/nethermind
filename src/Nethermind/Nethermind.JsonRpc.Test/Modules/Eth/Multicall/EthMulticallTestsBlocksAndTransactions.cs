@@ -98,13 +98,13 @@ public class EthMulticallTestsBlocksAndTransactions
         //Assert.Equals(chain.BlockTree.BestPersistedState!, chain.BlockTree.Head!.Number);
         //will mock our GetCachedCodeInfo function - it shall be called 3 times if redirect is working, 2 times if not
         MultiCallTxExecutor executor = new(chain.Bridge, chain.BlockFinder, new JsonRpcConfig());
-        ResultWrapper<IReadOnlyList<MultiCallBlockResult>> result =
+        ResultWrapper<IReadOnlyList<SimulateBlockResult>> result =
             executor.Execute(payload, BlockParameter.Latest);
-        IReadOnlyList<MultiCallBlockResult> data = result.Data;
+        IReadOnlyList<SimulateBlockResult> data = result.Data;
 
         Assert.That(data.Count, Is.EqualTo(1));
 
-        foreach (MultiCallBlockResult blockResult in data)
+        foreach (SimulateBlockResult blockResult in data)
         {
             blockResult.Calls.Select(c => c.Type).Should().BeEquivalentTo(new[] { ResultType.Success, ResultType.Success });
         }
@@ -179,13 +179,13 @@ public class EthMulticallTestsBlocksAndTransactions
 
         //will mock our GetCachedCodeInfo function - it shall be called 3 times if redirect is working, 2 times if not
         MultiCallTxExecutor executor = new(chain.Bridge, chain.BlockFinder, new JsonRpcConfig());
-        ResultWrapper<IReadOnlyList<MultiCallBlockResult>> result =
+        ResultWrapper<IReadOnlyList<SimulateBlockResult>> result =
             executor.Execute(payload, BlockParameter.Latest);
-        IReadOnlyList<MultiCallBlockResult> data = result.Data;
+        IReadOnlyList<SimulateBlockResult> data = result.Data;
 
         Assert.That(data.Count, Is.EqualTo(2));
 
-        foreach (MultiCallBlockResult blockResult in data)
+        foreach (SimulateBlockResult blockResult in data)
         {
             Assert.That(blockResult.Calls.Count(), Is.EqualTo(2));
         }
@@ -260,7 +260,7 @@ public class EthMulticallTestsBlocksAndTransactions
         //will mock our GetCachedCodeInfo function - it shall be called 3 times if redirect is working, 2 times if not
         MultiCallTxExecutor executor = new(chain.Bridge, chain.BlockFinder, new JsonRpcConfig());
 
-        ResultWrapper<IReadOnlyList<MultiCallBlockResult>> result =
+        ResultWrapper<IReadOnlyList<SimulateBlockResult>> result =
             executor.Execute(payload, BlockParameter.Latest);
         Assert.IsTrue(result.Data[1].Calls.First().Error?.Message.StartsWith("insufficient"));
     }
