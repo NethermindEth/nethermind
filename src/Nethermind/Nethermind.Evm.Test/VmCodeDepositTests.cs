@@ -4,6 +4,7 @@
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Specs;
+using Nethermind.State;
 using Nethermind.Core.Test.Builders;
 using NUnit.Framework;
 

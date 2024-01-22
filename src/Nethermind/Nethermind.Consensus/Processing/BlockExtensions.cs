@@ -28,7 +28,7 @@ namespace Nethermind.Consensus.Processing
 
         public static bool TrySetTransactions(this Block block, Transaction[] transactions)
         {
-            block.Header.TxRoot = new TxTrie(transactions).RootHash;
+            block.Header.TxRoot = TxTrie.CalculateRoot(transactions);
 
             if (block is BlockToProduce blockToProduce)
             {

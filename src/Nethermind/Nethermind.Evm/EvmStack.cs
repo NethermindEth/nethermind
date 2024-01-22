@@ -333,7 +333,7 @@ public ref struct EvmStack<TTracing>
         return _bytes[Head * WordSize + WordSize - sizeof(byte)];
     }
 
-    public void PushLeftPaddedBytes(Span<byte> value, int paddingLength)
+    public void PushLeftPaddedBytes(ReadOnlySpan<byte> value, int paddingLength)
     {
         if (typeof(TTracing) == typeof(IsTracing)) _tracer.ReportStackPush(value);
 

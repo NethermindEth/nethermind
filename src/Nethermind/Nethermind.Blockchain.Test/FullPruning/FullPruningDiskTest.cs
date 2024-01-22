@@ -59,9 +59,9 @@ namespace Nethermind.Blockchain.Test.FullPruning
 
             protected override async Task<IDbProvider> CreateDbProvider()
             {
-                IDbProvider dbProvider = new DbProvider(DbModeHint.Persisted);
+                IDbProvider dbProvider = new DbProvider();
                 RocksDbFactory rocksDbFactory = new(new DbConfig(), LogManager, TempDirectory.Path);
-                StandardDbInitializer standardDbInitializer = new(dbProvider, rocksDbFactory, new MemDbFactory(), new FileSystem());
+                StandardDbInitializer standardDbInitializer = new(dbProvider, rocksDbFactory, new FileSystem());
                 await standardDbInitializer.InitStandardDbsAsync(true);
                 return dbProvider;
             }

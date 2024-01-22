@@ -317,7 +317,7 @@ public class BlockValidator : IBlockValidator
     }
     public static bool ValidateTxRootMatchesTxs(BlockHeader header, BlockBody body, out Hash256 txRoot)
     {
-        txRoot = new TxTrie(body.Transactions).RootHash;
+        txRoot = TxTrie.CalculateRoot(body.Transactions);
         return txRoot == header.TxRoot;
     }
 

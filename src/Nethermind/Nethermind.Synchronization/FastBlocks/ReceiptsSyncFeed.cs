@@ -59,7 +59,7 @@ namespace Nethermind.Synchronization.FastBlocks
             ISyncReport syncReport,
             IDb metadataDb,
             ILogManager logManager)
-            : base(metadataDb, specProvider, logManager?.GetClassLogger())
+            : base(metadataDb, specProvider, logManager?.GetClassLogger() ?? default)
         {
             _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
             _syncPeerPool = syncPeerPool ?? throw new ArgumentNullException(nameof(syncPeerPool));

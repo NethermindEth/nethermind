@@ -175,7 +175,6 @@ public class DbConfig : IDbConfig
     public bool? StateDbDisableCompression { get; set; } = false;
     public int StateDbTargetFileSizeMultiplier { get; set; } = 2;
     public IDictionary<string, string>? StateDbAdditionalRocksDbOptions { get; set; }
-    public ulong? StateDbRowCacheSize { get; set; }
 
     public uint RecycleLogFileNum { get; set; } = 0;
     public bool WriteAheadLogSync { get; set; } = false;

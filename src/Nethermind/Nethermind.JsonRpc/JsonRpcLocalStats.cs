@@ -122,7 +122,7 @@ namespace Nethermind.JsonRpc
                 return;
             }
 
-            lock (_logger)
+            lock (_logger.UnderlyingLogger)
             {
                 if (thisTime - _lastReport <= _reportingInterval)
                 {

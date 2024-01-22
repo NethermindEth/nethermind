@@ -11,6 +11,7 @@ using Nethermind.Evm;
 using Nethermind.Evm.Test;
 using Nethermind.Logging;
 using Nethermind.Specs;
+using Nethermind.State;
 using NUnit.Framework;
 
 namespace Nethermind.AccountAbstraction.Test
