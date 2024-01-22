@@ -74,6 +74,7 @@ namespace Nethermind.Blockchain.Test.FullPruning
                     StateReader,
                     ProcessExitSource,
                     DriveInfo,
+                    chain.TrieStore,
                     _chainEstimations,
                     LogManager);
                 return chain;
@@ -117,15 +118,16 @@ namespace Nethermind.Blockchain.Test.FullPruning
                     IStateReader stateReader,
                     IProcessExitSource processExitSource,
                     IDriveInfo driveInfo,
+                    ITrieStore trieStore,
                     IChainEstimations chainEstimations,
                     ILogManager logManager)
-                    : base(pruningDb, nodeStorageFactory, mainNodeStorage, pruningTrigger, pruningConfig, blockTree, stateReader, processExitSource, chainEstimations, driveInfo, logManager)
+                    : base(pruningDb, nodeStorageFactory, mainNodeStorage, pruningTrigger, pruningConfig, blockTree, stateReader, processExitSource, chainEstimations, driveInfo, trieStore, logManager)
                 {
                 }
 
-                protected override void RunPruning(IPruningContext pruning, Hash256 stateRoot)
+                protected override async Task RunFullPruning(CancellationToken cancellationToken)
                 {
-                    base.RunPruning(pruning, stateRoot);
+                    await base.RunFullPruning(cancellationToken);
                     WaitHandle.Set();
                 }
             }
@@ -168,16 +170,21 @@ namespace Nethermind.Blockchain.Test.FullPruning
         private static async Task RunPruning(PruningTestBlockchain chain, int time, bool onlyFirstRuns)
         {
             chain.FullPruner.WaitHandle.Reset();
-            chain.PruningTrigger.Prune += Raise.Event<EventHandler<PruningTriggerEventArgs>>();
+            PruningTriggerEventArgs args = new();
+            chain.PruningTrigger.Prune += Raise.Event<EventHandler<PruningTriggerEventArgs>>(args);
+            if (args.Status != PruningStatus.Starting) return;
             for (int i = 0; i < Reorganization.MaxDepth + 2; i++)
             {
                 await chain.AddBlock(true);
             }
 
             HashSet<byte[]> allItems = chain.DbProvider.StateDb.GetAllValues().ToHashSet(Bytes.EqualityComparer);
-            bool pruningFinished = chain.FullPruner.WaitHandle.WaitOne(TimeSpan.FromSeconds(1));
-
-            await chain.AddBlock(true);
+            bool pruningFinished = false;
+            for (int i = 0; i < 100 && !pruningFinished; i++)
+            {
+                pruningFinished = chain.FullPruner.WaitHandle.WaitOne(TimeSpan.FromMilliseconds(100));
+                await chain.AddBlock(true);
+            }
 
             if (!onlyFirstRuns || time == 0)
             {
@@ -194,8 +201,6 @@ namespace Nethermind.Blockchain.Test.FullPruning
                 currentItems.IsSubsetOf(allItems).Should().BeTrue();
                 currentItems.Count.Should().BeGreaterThan(0);
             }
-
-            await Task.Delay(TimeSpan.FromMilliseconds(10));
         }
 
         private static async Task WriteFileStructure(PruningTestBlockchain chain)

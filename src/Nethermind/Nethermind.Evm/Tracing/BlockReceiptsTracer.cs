@@ -157,7 +157,7 @@ public class BlockReceiptsTracer : IBlockTracer, ITxTracer, IJournal<int>, ITxTr
     public void ReportActionEnd(long gas, Address deploymentAddress, ReadOnlyMemory<byte> deployedCode) =>
         _currentTxTracer.ReportActionEnd(gas, deploymentAddress, deployedCode);
 
-    public void ReportByteCode(byte[] byteCode) =>
+    public void ReportByteCode(ReadOnlyMemory<byte> byteCode) =>
         _currentTxTracer.ReportByteCode(byteCode);
 
     public void ReportGasUpdateForVmTrace(long refund, long gasAvailable) =>

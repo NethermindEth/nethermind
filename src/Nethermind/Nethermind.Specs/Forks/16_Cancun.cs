@@ -5,23 +5,22 @@ using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 
-namespace Nethermind.Specs.Forks
+namespace Nethermind.Specs.Forks;
+
+public class Cancun : Shanghai
 {
-    public class Cancun : Shanghai
+    private static IReleaseSpec _instance;
+
+    protected Cancun()
     {
-        private static IReleaseSpec _instance;
-
-        protected Cancun()
-        {
-            Name = "Cancun";
-            IsEip1153Enabled = true;
-            IsEip4788Enabled = true;
-            IsEip4844Enabled = true;
-            IsEip5656Enabled = true;
-            IsEip6780Enabled = true;
-            Eip4788ContractAddress = new Address("0x000F3df6D732807Ef1319fB7B8bB8522d0Beac02");
-        }
-
-        public new static IReleaseSpec Instance => LazyInitializer.EnsureInitialized(ref _instance, () => new Cancun());
+        Name = "Cancun";
+        IsEip1153Enabled = true;
+        IsEip4788Enabled = true;
+        IsEip4844Enabled = true;
+        IsEip5656Enabled = true;
+        IsEip6780Enabled = true;
+        Eip4788ContractAddress = Eip4788Constants.BeaconRootsAddress;
     }
+
+    public new static IReleaseSpec Instance => LazyInitializer.EnsureInitialized(ref _instance, () => new Cancun());
 }

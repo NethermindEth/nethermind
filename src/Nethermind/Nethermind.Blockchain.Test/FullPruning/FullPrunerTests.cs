@@ -30,7 +30,7 @@ namespace Nethermind.Blockchain.Test.FullPruning
     [TestFixture(0, 4)]
     [TestFixture(1, 1)]
     [TestFixture(1, 4)]
-    [Parallelizable(ParallelScope.All)]
+    [Parallelizable(ParallelScope.Children)]
     public class FullPrunerTests
     {
         private readonly int _fullPrunerMemoryBudgetMb;
@@ -247,7 +247,7 @@ namespace Nethermind.Blockchain.Test.FullPruning
                         FullPruningMaxDegreeOfParallelism = degreeOfParallelism,
                         FullPruningMemoryBudgetMb = fullScanMemoryBudgetMb,
                         FullPruningCompletionBehavior = completionBehavior
-                    }, BlockTree, StateReader, ProcessExitSource, _chainEstimations, DriveInfo, LimboLogs.Instance);
+                    }, BlockTree, StateReader, ProcessExitSource, _chainEstimations, DriveInfo, Substitute.For<ITrieStore>(), LimboLogs.Instance);
             }
 
             public async Task<bool> WaitForPruning()
@@ -264,8 +264,10 @@ namespace Nethermind.Blockchain.Test.FullPruning
 
             public async Task<bool> WaitForPruningEnd(TestFullPruningDb.TestPruningContext context)
             {
-                await Task.Yield();
-                await context.WaitForFinish.WaitOneAsync(TimeSpan.FromMilliseconds(Timeout.MaxWaitTime * 5), CancellationToken.None);
+                while (!await context.WaitForFinish.WaitOneAsync(TimeSpan.FromMilliseconds(1), CancellationToken.None))
+                {
+                    AddBlocks(1);
+                }
                 AddBlocks(1);
                 return await context.DisposeEvent.WaitOneAsync(TimeSpan.FromMilliseconds(Timeout.MaxWaitTime * 5), CancellationToken.None);
             }
@@ -273,6 +275,7 @@ namespace Nethermind.Blockchain.Test.FullPruning
             public TestFullPruningDb.TestPruningContext WaitForPruningStart()
             {
                 PruningTrigger.Prune += Raise.Event<EventHandler<PruningTriggerEventArgs>>();
+                Thread.Sleep(10);
                 AddBlocks(Reorganization.MaxDepth + 2);
                 TestFullPruningDb.TestPruningContext context = FullPruningDb.Context;
                 return context;
@@ -288,6 +291,7 @@ namespace Nethermind.Blockchain.Test.FullPruning
                     BlockTree.Head.Returns(head);
                     BlockTree.FindHeader(number).Returns(head.Header);
                     BlockTree.OnUpdateMainChain += Raise.EventWith(new OnUpdateMainChainArgs(new List<Block>() { head }, true));
+                    Thread.Sleep(10); // Need to add a little sleep as the wait for event in full pruner is async.
                 }
             }
 
@@ -369,6 +373,11 @@ namespace Nethermind.Blockchain.Test.FullPruning
                 {
                     get => _context[key];
                     set => _context[key] = value;
+                }
+
+                public IWriteBatch StartWriteBatch()
+                {
+                    return _context.StartWriteBatch();
                 }
 
                 public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None)

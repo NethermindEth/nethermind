@@ -106,10 +106,12 @@ namespace Nethermind.State
         {
             _stateProvider.CreateAccount(address, balance, nonce);
         }
-        public void InsertCode(Address address, ReadOnlyMemory<byte> code, IReleaseSpec spec, bool isGenesis = false)
+
+        public void InsertCode(Address address, Hash256 codeHash, ReadOnlyMemory<byte> code, IReleaseSpec spec, bool isGenesis = false)
         {
-            _stateProvider.InsertCode(address, code, spec, isGenesis);
+            _stateProvider.InsertCode(address, codeHash, code, spec, isGenesis);
         }
+
         public void AddToBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec)
         {
             _stateProvider.AddToBalance(address, balanceChange, spec);

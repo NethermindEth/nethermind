@@ -1,8 +1,10 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Blockchain.FullPruning;
@@ -17,6 +19,7 @@ using Nethermind.State;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 using NSubstitute;
+using NSubstitute.ExceptionExtensions;
 using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test.FullPruning
@@ -41,7 +44,7 @@ namespace Nethermind.Blockchain.Test.FullPruning
             };
 
             IPruningContext ctx = StartPruning(trieDb, clonedDb);
-            CopyDb(ctx, trieDb, visitingOptions, writeFlags: WriteFlags.LowPriority);
+            CopyDb(ctx, CancellationToken.None, trieDb, visitingOptions, writeFlags: WriteFlags.LowPriority);
 
             List<byte[]> keys = trieDb.Keys.ToList();
             List<byte[]> values = trieDb.Values.ToList();
@@ -57,29 +60,30 @@ namespace Nethermind.Blockchain.Test.FullPruning
         }
 
         [Test, Timeout(Timeout.MaxTestTime)]
-        public async Task cancel_coping_state_between_dbs()
+        public void cancel_coping_state_between_dbs()
         {
             MemDb trieDb = new();
             MemDb clonedDb = new();
             IPruningContext pruningContext = StartPruning(trieDb, clonedDb);
-            Task task = Task.Run(() => CopyDb(pruningContext, trieDb));
 
-            pruningContext.CancellationTokenSource.Cancel();
+            CancellationTokenSource cts = new CancellationTokenSource();
+            cts.Cancel();
 
-            await task;
+            CopyDb(pruningContext, cts.Token, trieDb);
 
             clonedDb.Count.Should().BeLessThan(trieDb.Count);
         }
 
-        private static IPruningContext CopyDb(IPruningContext pruningContext, MemDb trieDb, VisitingOptions? visitingOptions = null, WriteFlags writeFlags = WriteFlags.None)
+        private static IPruningContext CopyDb(IPruningContext pruningContext, CancellationToken cancellationToken, MemDb trieDb, VisitingOptions? visitingOptions = null, WriteFlags writeFlags = WriteFlags.None)
         {
             LimboLogs logManager = LimboLogs.Instance;
             PatriciaTree trie = Build.A.Trie(trieDb).WithAccountsByIndex(0, 100).TestObject;
             IStateReader stateReader = new StateReader(new TrieStore(trieDb, logManager), new MemDb(), logManager);
 
             NodeStorage nodeStorage = new NodeStorage(pruningContext);
-            using CopyTreeVisitor copyTreeVisitor = new(nodeStorage, pruningContext.CancellationTokenSource, writeFlags, logManager);
+            using CopyTreeVisitor copyTreeVisitor = new(nodeStorage, cancellationToken, writeFlags, logManager);
             stateReader.RunTreeVisitor(copyTreeVisitor, trie.RootHash, visitingOptions);
+            copyTreeVisitor.Finish();
             return pruningContext;
         }
 

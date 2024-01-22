@@ -220,7 +220,7 @@ public class StateTestTxTracer : ITxTracer, IDisposable
         throw new NotImplementedException();
     }
 
-    public void ReportByteCode(byte[] byteCode)
+    public void ReportByteCode(ReadOnlyMemory<byte> byteCode)
     {
         throw new NotSupportedException();
     }

@@ -124,15 +124,6 @@ public class InitializeStateDb : IStep
                 codeDb,
                 getApi.LogManager);
 
-        if (pruningConfig.Mode.IsFull())
-        {
-            IFullPruningDb fullPruningDb = (IFullPruningDb)getApi.DbProvider!.StateDb;
-            fullPruningDb.PruningStarted += (_, args) =>
-            {
-                trieStore.PersistCache(_api.NodeStorageFactory.WrapKeyValueStore(args.Context), args.Context.CancellationTokenSource.Token);
-            };
-        }
-
         // This is probably the point where a different state implementation would switch.
         IWorldStateManager stateManager = setApi.WorldStateManager = new WorldStateManager(
             worldState,
@@ -233,6 +224,7 @@ public class InitializeStateDb : IStep
                     api.ProcessExit!,
                     ChainSizes.CreateChainSizeInfo(api.ChainSpec.ChainId),
                     drive,
+                    api.TrieStore!,
                     api.LogManager);
                 api.DisposeStack.Push(pruner);
             }

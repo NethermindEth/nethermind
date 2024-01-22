@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Threading;
+using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 
@@ -53,9 +55,16 @@ namespace Nethermind.Trie.Pruning
         {
         }
 
+
         public IScopedTrieStore GetTrieStore(Hash256? address)
         {
             return new ScopedReadOnlyTrieStore(this, address);
+        }
+
+
+        public void PersistCache(CancellationToken cancellationToken)
+        {
+            _trieStore.PersistCache(cancellationToken);
         }
 
         public void Dispose() { }
