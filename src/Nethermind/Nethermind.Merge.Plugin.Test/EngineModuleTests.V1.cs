@@ -1565,9 +1565,9 @@ public partial class EngineModuleTests
     {
         using MergeTestBlockchain chain = await CreateBlockchain();
         var loggerManager = Substitute.For<ILogManager>();
-        var iLogger = Substitute.For<ILogger>();
+        var iLogger = Substitute.For<InterfaceLogger>();
         iLogger.IsWarn.Returns(true);
-        var logger = new Logger(iLogger);
+        var logger = new ILogger(iLogger);
         loggerManager.GetClassLogger().Returns(logger);
 
         chain.LogManager = loggerManager;

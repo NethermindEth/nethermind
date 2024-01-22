@@ -41,7 +41,7 @@ namespace Nethermind.Merge.Plugin
         private readonly IBlockTree _blockTree;
         private readonly ISpecProvider _specProvider;
         private readonly ChainSpec _chainSpec;
-        private readonly Logger _logger;
+        private readonly ILogger _logger;
         private Hash256? _terminalBlockHash;
 
         private long? _terminalBlockNumber;

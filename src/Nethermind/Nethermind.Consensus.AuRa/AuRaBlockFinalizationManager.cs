@@ -22,7 +22,7 @@ namespace Nethermind.Consensus.AuRa
         private static readonly List<BlockHeader> Empty = new List<BlockHeader>();
         private readonly IBlockTree _blockTree;
         private readonly IChainLevelInfoRepository _chainLevelInfoRepository;
-        private readonly Logger _logger;
+        private readonly ILogger _logger;
         private readonly IBlockProcessor _blockProcessor;
         private readonly IValidatorStore _validatorStore;
         private readonly IValidSealerStrategy _validSealerStrategy;

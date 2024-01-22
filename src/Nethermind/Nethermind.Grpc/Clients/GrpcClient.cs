@@ -16,7 +16,7 @@ namespace Nethermind.Grpc.Clients
         private readonly int _reconnectionInterval;
         private int _retry;
         private bool _connected;
-        private readonly Logger _logger;
+        private readonly ILogger _logger;
         private Channel _channel;
         private NethermindService.NethermindServiceClient _client;
         private readonly string _address;

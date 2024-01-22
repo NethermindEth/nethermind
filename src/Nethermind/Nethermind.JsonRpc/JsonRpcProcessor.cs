@@ -23,7 +23,7 @@ namespace Nethermind.JsonRpc;
 public class JsonRpcProcessor : IJsonRpcProcessor
 {
     private readonly IJsonRpcConfig _jsonRpcConfig;
-    private readonly Logger _logger;
+    private readonly ILogger _logger;
     private readonly IJsonRpcService _jsonRpcService;
     private readonly Recorder _recorder;
 

@@ -20,7 +20,7 @@ namespace Nethermind.Wallet
         private readonly IKeyStore _keyStore;
         private readonly IProtectedPrivateKeyFactory _protectedPrivateKeyFactory;
         private readonly ITimestamper _timestamper;
-        private readonly Logger _logger;
+        private readonly ILogger _logger;
 
         private readonly LruCache<String, ProtectedPrivateKey> _unlockedAccounts;
         public event EventHandler<AccountLockedEventArgs> AccountLocked;

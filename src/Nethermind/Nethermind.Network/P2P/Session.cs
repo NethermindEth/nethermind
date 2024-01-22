@@ -26,7 +26,7 @@ namespace Nethermind.Network.P2P
         private static readonly ConcurrentDictionary<string, AdaptiveCodeResolver> _resolvers = new();
         private readonly ConcurrentDictionary<string, IProtocolHandler> _protocols = new();
 
-        private readonly Logger _logger;
+        private readonly ILogger _logger;
         private readonly ILogManager _logManager;
 
         private Node? _node;

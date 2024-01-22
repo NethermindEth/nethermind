@@ -13,7 +13,7 @@ namespace Nethermind.Network.P2P
     public class PacketSender : ChannelHandlerAdapter, IPacketSender
     {
         private readonly IMessageSerializationService _messageSerializationService;
-        private readonly Logger _logger;
+        private readonly ILogger _logger;
         private IChannelHandlerContext _context;
         private readonly TimeSpan _sendLatency;
 

@@ -30,7 +30,7 @@ namespace Nethermind.Api.Extensions
 
         public void Load(ILogManager logManager)
         {
-            Logger logger = logManager.GetClassLogger();
+            ILogger logger = logManager.GetClassLogger();
             if (logger.IsInfo) logger.Info("Loading embedded plugins");
             foreach (Type embeddedPlugin in _embedded)
             {

@@ -23,7 +23,7 @@ public interface ITrieNodeRecovery<in TRequest>
 public abstract class TrieNodeRecovery<TRequest> : ITrieNodeRecovery<TRequest>
 {
     private readonly ISyncPeerPool _syncPeerPool;
-    protected readonly Logger _logger;
+    protected readonly ILogger _logger;
     private const int MaxPeersForRecovery = 30;
 
     protected TrieNodeRecovery(ISyncPeerPool syncPeerPool, ILogManager? logManager)

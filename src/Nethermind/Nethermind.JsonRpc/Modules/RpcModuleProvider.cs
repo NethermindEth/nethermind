@@ -17,7 +17,7 @@ namespace Nethermind.JsonRpc.Modules
 
     public class RpcModuleProvider : IRpcModuleProvider
     {
-        private readonly Logger _logger;
+        private readonly ILogger _logger;
         private readonly IJsonRpcConfig _jsonRpcConfig;
 
         private readonly HashSet<string> _modules = new(StringComparer.InvariantCultureIgnoreCase);

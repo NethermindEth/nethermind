@@ -27,7 +27,7 @@ namespace Nethermind.Crypto
                 NumberStyles.HexNumber);
 
         private readonly ulong _chainIdValue;
-        private readonly Logger _logger;
+        private readonly ILogger _logger;
 
         public EthereumEcdsa(ulong chainId, ILogManager logManager)
         {

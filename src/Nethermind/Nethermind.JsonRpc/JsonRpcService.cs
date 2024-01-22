@@ -21,7 +21,7 @@ namespace Nethermind.JsonRpc;
 
 public class JsonRpcService : IJsonRpcService
 {
-    private readonly Logger _logger;
+    private readonly ILogger _logger;
     private readonly IRpcModuleProvider _rpcModuleProvider;
     private readonly HashSet<string> _methodsLoggingFiltering;
     private readonly int _maxLoggedRequestParametersCharacters;

@@ -10,7 +10,7 @@ namespace Nethermind.Synchronization.Blocks
     [DebuggerDisplay("{Current}")]
     public struct SyncBatchSize
     {
-        private readonly Logger _logger;
+        private readonly ILogger _logger;
 
         // The batch size is kinda also used for downloading bodies which is large. Peers can return less body
         // than required, however, they still tend to timeout, so we try to limit this from our side.

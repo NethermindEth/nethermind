@@ -20,7 +20,7 @@ public class UPnPPlugin : INethermindPlugin
     private PeriodicTimer? _timer = null;
     private readonly CancellationTokenSource _cancellationTokenSource = new();
     private INetworkConfig _networkConfig = new NetworkConfig();
-    private Logger _logger = NullLogger.Instance;
+    private ILogger _logger = NullLogger.Instance;
 
     public Task Init(INethermindApi api)
     {

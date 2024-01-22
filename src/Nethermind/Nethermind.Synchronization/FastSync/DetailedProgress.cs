@@ -53,7 +53,7 @@ namespace Nethermind.Synchronization.FastSync
             LoadFromSerialized(serializedInitialState);
         }
 
-        internal void DisplayProgressReport(int pendingRequestsCount, BranchProgress branchProgress, in Logger logger)
+        internal void DisplayProgressReport(int pendingRequestsCount, BranchProgress branchProgress, in ILogger logger)
         {
             TimeSpan sinceLastReport = DateTime.UtcNow - LastReportTime.small;
             if (sinceLastReport > TimeSpan.FromSeconds(1))

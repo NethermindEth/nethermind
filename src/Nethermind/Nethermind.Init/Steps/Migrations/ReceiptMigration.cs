@@ -30,7 +30,7 @@ namespace Nethermind.Init.Steps.Migrations
     {
         private static readonly ObjectPool<Block> EmptyBlock = new DefaultObjectPool<Block>(new EmptyBlockObjectPolicy());
 
-        private readonly Logger _logger;
+        private readonly ILogger _logger;
         private CancellationTokenSource? _cancellationTokenSource;
         internal Task? _migrationTask;
         private Stopwatch? _stopwatch;

@@ -14,7 +14,7 @@ namespace Nethermind.Trie
         private readonly IKeyValueStore _codeKeyValueStore;
         private int _lastAccountNodeCount = 0;
 
-        private readonly Logger _logger;
+        private readonly ILogger _logger;
 
         public TrieStatsCollector(IKeyValueStore codeKeyValueStore, ILogManager logManager)
         {

@@ -27,7 +27,7 @@ namespace Nethermind.Init.Steps.Migrations
         private static readonly BlockHeader EmptyHeader = new BlockHeader(Keccak.Zero, Keccak.Zero, Address.Zero, UInt256.Zero, 0L, 0L, 0UL, Array.Empty<byte>());
 
         private readonly IApiWithNetwork _api;
-        private readonly Logger _logger;
+        private readonly ILogger _logger;
         private Stopwatch? _stopwatch;
         private readonly MeasuredProgress _progress = new MeasuredProgress();
         private long _migrateCount;

@@ -23,7 +23,7 @@ namespace Nethermind.Consensus.AuRa.Validators
         private readonly bool _forSealing;
         private IAuRaBlockFinalizationManager _blockFinalizationManager;
         private readonly IDictionary<long, AuRaParameters.Validator> _validators;
-        private readonly Logger _logger;
+        private readonly ILogger _logger;
         private IAuRaValidator _currentValidator;
         private AuRaParameters.Validator _currentValidatorPrototype;
         private long _lastProcessedBlock = 0;

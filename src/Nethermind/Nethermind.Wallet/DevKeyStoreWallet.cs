@@ -18,7 +18,7 @@ namespace Nethermind.Wallet
     public class DevKeyStoreWallet : IWallet
     {
         private readonly IKeyStore _keyStore;
-        private readonly Logger _logger;
+        private readonly ILogger _logger;
 
         private readonly Dictionary<Address, PrivateKey> _unlockedAccounts = new Dictionary<Address, PrivateKey>();
         public event EventHandler<AccountLockedEventArgs> AccountLocked;

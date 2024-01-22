@@ -23,7 +23,7 @@ namespace Nethermind.HealthChecks
         private INethermindApi _api;
         private IHealthChecksConfig _healthChecksConfig;
         private INodeHealthService _nodeHealthService;
-        private Logger _logger;
+        private ILogger _logger;
         private IJsonRpcConfig _jsonRpcConfig;
         private IInitConfig _initConfig;
 
@@ -176,11 +176,11 @@ namespace Nethermind.HealthChecks
         private class ClHealthLogger : IHostedService, IAsyncDisposable
         {
             private readonly INodeHealthService _nodeHealthService;
-            private readonly Logger _logger;
+            private readonly ILogger _logger;
 
             private Timer _timer;
 
-            public ClHealthLogger(INodeHealthService nodeHealthService, in Logger logger)
+            public ClHealthLogger(INodeHealthService nodeHealthService, in ILogger logger)
             {
                 _nodeHealthService = nodeHealthService;
                 _logger = logger;

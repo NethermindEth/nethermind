@@ -21,7 +21,7 @@ namespace Nethermind.TxPool.Collections
     {
         private readonly IComparer<TValue> _comparer;
         private readonly IDictionary<TValue, KeyValuePair<TKey, TValue>> _distinctDictionary;
-        private readonly Logger _logger;
+        private readonly ILogger _logger;
 
         /// <summary>
         /// Constructor

@@ -14,7 +14,7 @@ namespace Nethermind.Synchronization;
 public class MallocTrimmer
 {
     private readonly MallocHelper _mallocHelper;
-    private readonly Logger _logger;
+    private readonly ILogger _logger;
 
     public MallocTrimmer(
         ISyncModeSelector syncModeSelector,

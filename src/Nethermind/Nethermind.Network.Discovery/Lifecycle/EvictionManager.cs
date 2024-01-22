@@ -12,7 +12,7 @@ public class EvictionManager : IEvictionManager
 {
     private readonly ConcurrentDictionary<Hash256, EvictionPair?> _evictionPairs = new();
     private readonly INodeTable _nodeTable;
-    private readonly Logger _logger;
+    private readonly ILogger _logger;
 
     public EvictionManager(INodeTable nodeTable, ILogManager logManager)
     {

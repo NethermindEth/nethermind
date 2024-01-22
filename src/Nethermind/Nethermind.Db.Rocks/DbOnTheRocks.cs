@@ -24,7 +24,7 @@ namespace Nethermind.Db.Rocks;
 
 public class DbOnTheRocks : IDb, ITunableDb
 {
-    private Logger _logger;
+    private ILogger _logger;
 
     private string? _fullPath;
 

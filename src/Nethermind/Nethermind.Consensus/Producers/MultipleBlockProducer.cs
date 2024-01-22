@@ -16,7 +16,7 @@ namespace Nethermind.Consensus.Producers
         private readonly IBlockProductionTrigger _blockProductionTrigger;
         private readonly IBestBlockPicker _bestBlockPicker;
         private readonly T[] _blockProducers;
-        private readonly Logger _logger;
+        private readonly ILogger _logger;
 
         protected MultipleBlockProducer(
             IBlockProductionTrigger blockProductionTrigger,

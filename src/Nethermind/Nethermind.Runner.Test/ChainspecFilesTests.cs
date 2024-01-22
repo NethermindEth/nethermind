@@ -17,7 +17,7 @@ namespace Nethermind.Runner.Test
 
         private readonly IJsonSerializer _jsonSerializer = new EthereumJsonSerializer();
         private readonly IChainSpecLoader _loader;
-        public Logger _logger;
+        public ILogger _logger;
         public ChainspecFilesTests()
         {
             _loader = new ChainSpecLoader(_jsonSerializer);

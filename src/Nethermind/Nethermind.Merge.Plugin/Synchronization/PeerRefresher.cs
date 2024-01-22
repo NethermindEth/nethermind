@@ -25,7 +25,7 @@ public class PeerRefresher : IPeerRefresher, IAsyncDisposable
     private DateTime _lastRefresh = DateTime.MinValue;
     private (Hash256 headBlockhash, Hash256 headParentBlockhash, Hash256 finalizedBlockhash) _lastBlockhashes = (Keccak.Zero, Keccak.Zero, Keccak.Zero);
     private readonly ITimer _refreshTimer;
-    private readonly Logger _logger;
+    private readonly ILogger _logger;
 
     public PeerRefresher(IPeerDifficultyRefreshPool syncPeerPool, ITimerFactory timerFactory, ILogManager logManager)
     {

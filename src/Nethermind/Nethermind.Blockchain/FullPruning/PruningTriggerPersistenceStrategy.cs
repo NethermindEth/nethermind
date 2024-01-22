@@ -21,7 +21,7 @@ public class PruningTriggerPersistenceStrategy : IPersistenceStrategy, IDisposab
 {
     private readonly IFullPruningDb _fullPruningDb;
     private readonly IBlockTree _blockTree;
-    private readonly Logger _logger;
+    private readonly ILogger _logger;
     private int _inPruning = 0;
     private long? _minPersistedBlock = null;
 

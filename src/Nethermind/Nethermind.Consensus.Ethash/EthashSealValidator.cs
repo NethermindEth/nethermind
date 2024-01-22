@@ -21,7 +21,7 @@ namespace Nethermind.Consensus.Ethash
         private readonly ICryptoRandom _cryptoRandom;
         private readonly IEthash _ethash;
         private readonly ITimestamper _timestamper;
-        private readonly Logger _logger;
+        private readonly ILogger _logger;
 
         private readonly LruCache<ValueHash256, bool> _sealCache = new(2048, 2048, "ethash seals");
         private const int SealValidationIntervalConstantComponent = 1024;

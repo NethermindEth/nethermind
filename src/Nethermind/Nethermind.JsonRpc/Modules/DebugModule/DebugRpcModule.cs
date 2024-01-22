@@ -22,7 +22,7 @@ namespace Nethermind.JsonRpc.Modules.DebugModule;
 public class DebugRpcModule : IDebugRpcModule
 {
     private readonly IDebugBridge _debugBridge;
-    private readonly Logger _logger;
+    private readonly ILogger _logger;
     private readonly TimeSpan _traceTimeout;
     private readonly IJsonRpcConfig _jsonRpcConfig;
 

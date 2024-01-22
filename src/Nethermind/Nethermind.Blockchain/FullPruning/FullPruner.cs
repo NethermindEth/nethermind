@@ -36,7 +36,7 @@ namespace Nethermind.Blockchain.FullPruning
         private int _waitingForStateReady = 0;
         private long _blockToWaitFor;
         private long _stateToCopy;
-        private readonly Logger _logger;
+        private readonly ILogger _logger;
         private readonly TimeSpan _minimumPruningDelay;
         private DateTime _lastPruning = DateTime.MinValue;
 

@@ -11,7 +11,7 @@ public class InvalidHeaderSealInterceptor : ISealValidator
 {
     private readonly ISealValidator _baseValidator;
     private readonly IInvalidChainTracker _invalidChainTracker;
-    private readonly Logger _logger;
+    private readonly ILogger _logger;
 
     public InvalidHeaderSealInterceptor(ISealValidator baseValidator, IInvalidChainTracker invalidChainTracker, ILogManager logManager)
     {

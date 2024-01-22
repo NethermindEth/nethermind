@@ -16,7 +16,7 @@ namespace Nethermind.Facade.Proxy
     {
         private readonly HttpClient _client;
         private readonly IJsonSerializer _jsonSerializer;
-        private readonly Logger _logger;
+        private readonly ILogger _logger;
         private readonly int _retries;
         private readonly int _retryDelayMilliseconds;
 

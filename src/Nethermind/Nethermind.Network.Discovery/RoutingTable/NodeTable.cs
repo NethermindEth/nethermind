@@ -10,7 +10,7 @@ namespace Nethermind.Network.Discovery.RoutingTable;
 
 public class NodeTable : INodeTable
 {
-    private readonly Logger _logger;
+    private readonly ILogger _logger;
     private readonly INetworkConfig _networkConfig;
     private readonly IDiscoveryConfig _discoveryConfig;
     private readonly INodeDistanceCalculator _nodeDistanceCalculator;

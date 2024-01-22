@@ -12,7 +12,7 @@ namespace Nethermind.Consensus.Producers
     {
         private readonly CancellationTokenSource _loopCancellationTokenSource = new();
         private Task? _loopTask;
-        protected Logger Logger { get; }
+        protected ILogger Logger { get; }
 
         public event EventHandler<BlockProductionEventArgs>? TriggerBlockProduction;
 

@@ -16,7 +16,7 @@ namespace Nethermind.Synchronization.FastSync
         private const StateSyncBatch EmptyBatch = null;
 
         private readonly Stopwatch _handleWatch = new();
-        private readonly Logger _logger;
+        private readonly ILogger _logger;
         private readonly TreeSync _treeSync;
         private bool _disposed = false;
         private SyncMode _currentSyncMode = SyncMode.None;

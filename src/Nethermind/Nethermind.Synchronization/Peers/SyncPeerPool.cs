@@ -35,7 +35,7 @@ namespace Nethermind.Synchronization.Peers
         public const int DefaultUpgradeIntervalInMs = 1000;
 
         private readonly IBlockTree _blockTree;
-        private readonly Logger _logger;
+        private readonly ILogger _logger;
         private readonly BlockingCollection<RefreshTotalDiffTask> _peerRefreshQueue = new();
 
         private readonly ConcurrentDictionary<PublicKey, PeerInfo> _peers = new();

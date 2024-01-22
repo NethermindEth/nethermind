@@ -33,7 +33,7 @@ namespace Nethermind.Init.Steps.Migrations
         public async Task Run(CancellationToken cancellationToken)
         {
             ISyncConfig syncConfig = _api.Config<ISyncConfig>();
-            Logger logger = _api.LogManager.GetClassLogger();
+            ILogger logger = _api.LogManager.GetClassLogger();
             if (syncConfig.FixReceipts && _api.BlockTree is not null)
             {
                 MissingReceiptsFixVisitor visitor = new(

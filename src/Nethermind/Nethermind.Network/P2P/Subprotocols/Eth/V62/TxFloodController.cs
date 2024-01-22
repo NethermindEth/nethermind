@@ -13,14 +13,14 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
         private DateTime _checkpoint = DateTime.UtcNow;
         private readonly Eth62ProtocolHandler _protocolHandler;
         private readonly ITimestamper _timestamper;
-        private readonly Logger _logger;
+        private readonly ILogger _logger;
         private readonly TimeSpan _checkInterval = TimeSpan.FromSeconds(60);
         private long _notAcceptedSinceLastCheck;
         private readonly Random _random = new();
 
         internal bool IsDowngraded { get; private set; }
 
-        public TxFloodController(Eth62ProtocolHandler protocolHandler, ITimestamper timestamper, in Logger logger)
+        public TxFloodController(Eth62ProtocolHandler protocolHandler, ITimestamper timestamper, in ILogger logger)
         {
             _protocolHandler = protocolHandler ?? throw new ArgumentNullException(nameof(protocolHandler));
             _timestamper = timestamper ?? throw new ArgumentNullException(nameof(timestamper));

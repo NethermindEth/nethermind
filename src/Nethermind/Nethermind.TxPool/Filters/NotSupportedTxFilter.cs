@@ -12,9 +12,9 @@ namespace Nethermind.TxPool.Filters;
 internal sealed class NotSupportedTxFilter : IIncomingTxFilter
 {
     private readonly ITxPoolConfig _txPoolConfig;
-    private readonly Logger _logger;
+    private readonly ILogger _logger;
 
-    public NotSupportedTxFilter(ITxPoolConfig txPoolConfig, in Logger logger)
+    public NotSupportedTxFilter(ITxPoolConfig txPoolConfig, in ILogger logger)
     {
         _txPoolConfig = txPoolConfig;
         _logger = logger;

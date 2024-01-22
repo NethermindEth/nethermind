@@ -7,9 +7,9 @@ namespace Nethermind.Network.Dns;
 
 public class EnrTreeCrawler
 {
-    private readonly Logger _logger;
+    private readonly ILogger _logger;
 
-    public EnrTreeCrawler(in Logger logger)
+    public EnrTreeCrawler(in ILogger logger)
     {
         _logger = logger;
     }

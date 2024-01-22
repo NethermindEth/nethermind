@@ -14,7 +14,7 @@ namespace Nethermind.Consensus.Transactions
     {
         private readonly ITxSource _innerSource;
         private readonly ITxFilter _txFilter;
-        private readonly Logger _logger;
+        private readonly ILogger _logger;
 
         public FilteredTxSource(ITxSource innerSource, ITxFilter txFilter, ILogManager logManager)
         {

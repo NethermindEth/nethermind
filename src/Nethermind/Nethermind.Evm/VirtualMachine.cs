@@ -73,7 +73,7 @@ public class VirtualMachine : IVirtualMachine
         ISpecProvider? specProvider,
         ILogManager? logManager)
     {
-        Logger logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+        ILogger logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         if (!logger.IsTrace)
         {
             _evm = new VirtualMachine<NotTracing>(blockhashProvider, specProvider, logger);
@@ -195,7 +195,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
 
     private readonly IBlockhashProvider _blockhashProvider;
     private readonly ISpecProvider _specProvider;
-    private readonly Logger _logger;
+    private readonly ILogger _logger;
     private IWorldState _worldState;
     private IWorldState _state;
     private readonly Stack<EvmState> _stateStack = new();
@@ -206,7 +206,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
     public VirtualMachine(
         IBlockhashProvider? blockhashProvider,
         ISpecProvider? specProvider,
-        in Logger logger)
+        in ILogger logger)
     {
         _logger = logger;
         _blockhashProvider = blockhashProvider ?? throw new ArgumentNullException(nameof(blockhashProvider));

@@ -51,7 +51,7 @@ public partial class EthRpcModule : IEthRpcModule
     private readonly ITxSender _txSender;
     private readonly IWallet _wallet;
     private readonly ISpecProvider _specProvider;
-    private readonly Logger _logger;
+    private readonly ILogger _logger;
     private readonly IGasPriceOracle _gasPriceOracle;
     private readonly IEthSyncingInfo _ethSyncingInfo;
 

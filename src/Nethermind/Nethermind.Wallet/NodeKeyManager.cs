@@ -21,7 +21,7 @@ namespace Nethermind.Wallet
         private readonly ICryptoRandom _cryptoRandom;
         private readonly IKeyStore _keyStore;
         private readonly IKeyStoreConfig _config;
-        private readonly Logger _logger;
+        private readonly ILogger _logger;
         private readonly IPasswordProvider _passwordProvider;
         private readonly IFileSystem _fileSystem;
 

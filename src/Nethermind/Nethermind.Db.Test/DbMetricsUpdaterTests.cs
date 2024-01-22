@@ -22,7 +22,7 @@ namespace Nethermind.Db.Test
         [Test]
         public void ProcessCompactionStats_AllDataExist()
         {
-            ILogger logger = Substitute.For<ILogger>();
+            InterfaceLogger logger = Substitute.For<InterfaceLogger>();
 
             string testDump = File.ReadAllText(@"InputFiles/CompactionStatsExample_AllData.txt");
             new DbMetricsUpdater("Test", null, null, null, null, new(logger)).ProcessCompactionStats(testDump);
@@ -44,7 +44,7 @@ namespace Nethermind.Db.Test
         [Test]
         public void ProcessCompactionStats_MissingLevels()
         {
-            ILogger logger = Substitute.For<ILogger>();
+            InterfaceLogger logger = Substitute.For<InterfaceLogger>();
 
             string testDump = File.ReadAllText(@"InputFiles/CompactionStatsExample_MissingLevels.txt");
             new DbMetricsUpdater("Test", null, null, null, null, new(logger)).ProcessCompactionStats(testDump);
@@ -60,7 +60,7 @@ namespace Nethermind.Db.Test
         [Test]
         public void ProcessCompactionStats_MissingIntervalCompaction_Warning()
         {
-            ILogger logger = Substitute.For<ILogger>();
+            InterfaceLogger logger = Substitute.For<InterfaceLogger>();
             logger.IsWarn.Returns(true);
 
             string testDump = File.ReadAllText(@"InputFiles/CompactionStatsExample_MissingIntervalCompaction.txt");
@@ -80,7 +80,7 @@ namespace Nethermind.Db.Test
         [Test]
         public void ProcessCompactionStats_EmptyDump()
         {
-            ILogger logger = Substitute.For<ILogger>();
+            InterfaceLogger logger = Substitute.For<InterfaceLogger>();
             logger.IsWarn.Returns(true);
 
             string testDump = string.Empty;
@@ -94,7 +94,7 @@ namespace Nethermind.Db.Test
         [Test]
         public void ProcessCompactionStats_NullDump()
         {
-            ILogger logger = Substitute.For<ILogger>();
+            InterfaceLogger logger = Substitute.For<InterfaceLogger>();
             logger.IsWarn.Returns(true);
 
             string testDump = null;

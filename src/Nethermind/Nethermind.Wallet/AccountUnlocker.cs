@@ -14,7 +14,7 @@ namespace Nethermind.Wallet
     {
         private readonly IKeyStoreConfig _config;
         private readonly IWallet _wallet;
-        private readonly Logger _logger;
+        private readonly ILogger _logger;
         private readonly IPasswordProvider _passwordProvider;
 
         public AccountUnlocker(IKeyStoreConfig config, IWallet wallet, ILogManager logManager, IPasswordProvider passwordProvider)

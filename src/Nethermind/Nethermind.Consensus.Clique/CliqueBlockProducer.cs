@@ -31,7 +31,7 @@ public class CliqueBlockProducer : ICliqueBlockProducer, IDisposable
     private readonly IBlockTree _blockTree;
     private readonly IWorldState _stateProvider;
     private readonly ITimestamper _timestamper;
-    private readonly Logger _logger;
+    private readonly ILogger _logger;
     private readonly ICryptoRandom _cryptoRandom;
     private readonly WiggleRandomizer _wiggle;
 

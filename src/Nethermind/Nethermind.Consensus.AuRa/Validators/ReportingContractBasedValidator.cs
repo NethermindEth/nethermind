@@ -32,7 +32,7 @@ namespace Nethermind.Consensus.AuRa.Validators
         private readonly Cache _cache;
         private readonly ISpecProvider _specProvider;
         private readonly ITxSender _nonPosdaoTxSender;
-        private readonly Logger _logger;
+        private readonly ILogger _logger;
 
         public ReportingContractBasedValidator(
             ContractBasedValidator contractValidator,

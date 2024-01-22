@@ -18,7 +18,7 @@ namespace Nethermind.Consensus.Producers
         private readonly IBlockProductionTrigger _blockProductionTrigger;
         private readonly IBlockProcessingQueue _blockProcessingQueue;
         private readonly IBlockTree _blockTree;
-        private readonly Logger _logger;
+        private readonly ILogger _logger;
         private int _canProduce;
 
         public BuildBlocksOnlyWhenNotProcessing(

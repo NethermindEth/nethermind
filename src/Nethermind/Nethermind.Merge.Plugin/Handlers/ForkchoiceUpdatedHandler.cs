@@ -43,7 +43,7 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
     private readonly IInvalidChainTracker _invalidChainTracker;
     private readonly IMergeSyncController _mergeSyncController;
     private readonly IBeaconPivot _beaconPivot;
-    private readonly Logger _logger;
+    private readonly ILogger _logger;
     private readonly IPeerRefresher _peerRefresher;
     private readonly ISpecProvider _specProvider;
     private readonly bool _simulateBlockProduction;

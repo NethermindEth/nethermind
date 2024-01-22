@@ -79,7 +79,7 @@ public class StartBlockProducerAuRa
         if (_api.EngineSigner is null) throw new StepDependencyException(nameof(_api.EngineSigner));
         if (_api.ChainSpec is null) throw new StepDependencyException(nameof(_api.ChainSpec));
 
-        Logger logger = _api.LogManager.GetClassLogger();
+        ILogger logger = _api.LogManager.GetClassLogger();
         if (logger.IsInfo) logger.Info("Starting AuRa block producer & sealer");
 
         BlockProducerEnv producerEnv = GetProducerChain(additionalTxSource);

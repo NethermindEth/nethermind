@@ -19,13 +19,13 @@ namespace Nethermind.Synchronization.FastSync
     /// </summary>
     internal class BranchProgress
     {
-        private readonly Logger _logger;
+        private readonly ILogger _logger;
         private readonly NodeProgressState[] _syncProgress;
 
         public decimal LastProgress { get; private set; }
         public long CurrentSyncBlock { get; }
 
-        public BranchProgress(long syncBlockNumber, Logger logger)
+        public BranchProgress(long syncBlockNumber, ILogger logger)
         {
             _logger = logger;
             CurrentSyncBlock = syncBlockNumber;

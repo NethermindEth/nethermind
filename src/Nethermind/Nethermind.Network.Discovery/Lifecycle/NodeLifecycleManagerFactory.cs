@@ -13,7 +13,7 @@ namespace Nethermind.Network.Discovery.Lifecycle;
 public class NodeLifecycleManagerFactory : INodeLifecycleManagerFactory
 {
     private readonly INodeTable _nodeTable;
-    private readonly Logger _logger;
+    private readonly ILogger _logger;
     private readonly IDiscoveryConfig _discoveryConfig;
     private readonly ITimestamper _timestamper;
     private readonly IEvictionManager _evictionManager;

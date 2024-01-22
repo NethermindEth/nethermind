@@ -15,7 +15,7 @@ namespace Nethermind.Analytics
 {
     public class RewardsVerifier : IBlockTreeVisitor
     {
-        private readonly Logger _logger;
+        private readonly ILogger _logger;
         public bool PreventsAcceptingNewBlocks => true;
         public long StartLevelInclusive => 0;
         public long EndLevelExclusive { get; }

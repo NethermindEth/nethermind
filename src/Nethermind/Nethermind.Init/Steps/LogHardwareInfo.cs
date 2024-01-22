@@ -4,13 +4,13 @@
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Api;
-using Logger = Nethermind.Logging.Logger;
+using ILogger = Nethermind.Logging.ILogger;
 
 namespace Nethermind.Init.Steps;
 
 public class LogHardwareInfo : IStep
 {
-    private readonly Logger _logger;
+    private readonly ILogger _logger;
 
     public bool MustInitialize => false;
 

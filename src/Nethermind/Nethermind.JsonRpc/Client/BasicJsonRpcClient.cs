@@ -18,7 +18,7 @@ namespace Nethermind.JsonRpc.Client
     {
         private readonly HttpClient _client;
         private readonly IJsonSerializer _jsonSerializer;
-        private readonly Logger _logger;
+        private readonly ILogger _logger;
 
         public BasicJsonRpcClient(Uri uri, IJsonSerializer jsonSerializer, ILogManager logManager)
         {

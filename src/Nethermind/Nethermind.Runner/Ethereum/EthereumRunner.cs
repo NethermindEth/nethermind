@@ -19,7 +19,7 @@ namespace Nethermind.Runner.Ethereum
     {
         private readonly INethermindApi _api;
 
-        private readonly Logger _logger;
+        private readonly ILogger _logger;
 
         public EthereumRunner(INethermindApi api)
         {

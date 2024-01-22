@@ -16,7 +16,7 @@ namespace Nethermind.Monitoring
     public class MonitoringService : IMonitoringService
     {
         private readonly IMetricsController _metricsController;
-        private readonly Logger _logger;
+        private readonly ILogger _logger;
         private readonly Options _options;
 
         private readonly string _exposeHost;

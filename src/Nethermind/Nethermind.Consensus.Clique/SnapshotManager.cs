@@ -25,7 +25,7 @@ namespace Nethermind.Consensus.Clique
         private static readonly byte[] _snapshotBytes = Encoding.UTF8.GetBytes("snapshot-");
         private readonly IBlockTree _blockTree;
         private readonly ICliqueConfig _cliqueConfig;
-        private readonly Logger _logger;
+        private readonly ILogger _logger;
         private readonly LruCache<ValueHash256, Address> _signatures;
         private readonly IEthereumEcdsa _ecdsa;
         private readonly IDb _blocksDb;

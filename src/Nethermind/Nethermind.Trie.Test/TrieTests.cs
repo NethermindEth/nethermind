@@ -23,7 +23,7 @@ namespace Nethermind.Trie.Test
     [TestFixture]
     public class TrieTests
     {
-        private Logger _logger;
+        private ILogger _logger;
         private ILogManager _logManager;
         private Random _random = new();
 

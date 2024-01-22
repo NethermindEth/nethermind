@@ -42,7 +42,7 @@ public class ChainSpecBasedSpecProviderTests
             $"../../../../{Assembly.GetExecutingAssembly().GetName().Name}/Specs/Timstamp_activation_equal_to_genesis_timestamp_test.json");
         ChainSpec chainSpec = loader.Load(File.ReadAllText(path));
         chainSpec.Parameters.Eip2537Transition.Should().BeNull();
-        Logger logger = new(Substitute.ForPartsOf<LimboTraceLogger>());
+        ILogger logger = new(Substitute.ForPartsOf<LimboTraceLogger>());
         var logManager = Substitute.For<ILogManager>();
         logManager.GetClassLogger<ChainSpecBasedSpecProvider>().Returns(logger);
         ChainSpecBasedSpecProvider provider = new(chainSpec);
@@ -85,9 +85,9 @@ public class ChainSpecBasedSpecProviderTests
             $"../../../../{Assembly.GetExecutingAssembly().GetName().Name}/Specs/Logs_warning_when_timestampActivation_happens_before_blockActivation_test.json");
         ChainSpec chainSpec = loader.Load(File.ReadAllText(path));
         chainSpec.Parameters.Eip2537Transition.Should().BeNull();
-        ILogger iLogger = Substitute.For<ILogger>();
+        InterfaceLogger iLogger = Substitute.For<InterfaceLogger>();
         iLogger.IsWarn.Returns(true);
-        Logger logger = new(iLogger);
+        ILogger logger = new(iLogger);
         var logManager = Substitute.For<ILogManager>();
         logManager.GetClassLogger<ChainSpecBasedSpecProvider>().Returns(logger);
         ChainSpecBasedSpecProvider provider = new(chainSpec, logManager);

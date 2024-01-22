@@ -155,7 +155,7 @@ namespace Nethermind.Evm.Test
         [TestCase(long.MaxValue, ulong.MaxValue)]
         public void Test(long blockNumber, ulong? timestamp = null)
         {
-            Logger logger = _logManager.GetClassLogger();
+            ILogger logger = _logManager.GetClassLogger();
             Instruction[] validOpcodes = _validOpcodes[(blockNumber, timestamp)];
             for (int i = 0; i <= byte.MaxValue; i++)
             {

@@ -11,11 +11,11 @@ namespace Nethermind.AccountAbstraction.Bundler
     public class OnNewBlockBundleTrigger : IBundleTrigger
     {
         private readonly IBlockTree _blockTree;
-        private readonly Logger _logger;
+        private readonly ILogger _logger;
 
         public event EventHandler<BundleUserOpsEventArgs>? TriggerBundle;
 
-        public OnNewBlockBundleTrigger(IBlockTree blockTree, in Logger logger)
+        public OnNewBlockBundleTrigger(IBlockTree blockTree, in ILogger logger)
         {
             _logger = logger;
             _blockTree = blockTree;

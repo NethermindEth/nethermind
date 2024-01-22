@@ -20,7 +20,7 @@ namespace Nethermind.EthStats.Clients
         private readonly string _urlFromConfig;
         private readonly int _reconnectionInterval;
         private readonly IMessageSender _messageSender;
-        private readonly Logger _logger;
+        private readonly ILogger _logger;
         private IWebsocketClient? _client;
 
         public EthStatsClient(

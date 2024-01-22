@@ -14,9 +14,9 @@ public abstract class SpecProviderBase
     protected (ForkActivation Activation, IReleaseSpec Spec)[] _blockTransitions;
     private (ForkActivation Activation, IReleaseSpec Spec)[] _timestampTransitions;
     private ForkActivation? _firstTimestampActivation;
-    protected readonly Logger _logger;
+    protected readonly ILogger _logger;
 
-    public SpecProviderBase(Logger logger = default)
+    public SpecProviderBase(ILogger logger = default)
     {
         _logger = logger;
     }

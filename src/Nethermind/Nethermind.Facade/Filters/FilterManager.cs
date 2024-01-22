@@ -28,7 +28,7 @@ namespace Nethermind.Blockchain.Filters
 
         private Hash256 _lastBlockHash;
         private readonly IFilterStore _filterStore;
-        private readonly Logger _logger;
+        private readonly ILogger _logger;
         private long _logIndex;
 
         public FilterManager(

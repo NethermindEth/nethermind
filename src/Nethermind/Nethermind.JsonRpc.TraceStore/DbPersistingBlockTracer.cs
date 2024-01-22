@@ -23,7 +23,7 @@ public class DbPersistingBlockTracer<TTrace, TTracer> : BlockTracer where TTrace
     private readonly BlockTracerBase<TTrace, TTracer> _tracerWithResults;
     private Hash256 _currentBlockHash = null!;
     private long _currentBlockNumber;
-    private readonly Logger _logger;
+    private readonly ILogger _logger;
 
     /// <summary>
     /// Creates the tracer

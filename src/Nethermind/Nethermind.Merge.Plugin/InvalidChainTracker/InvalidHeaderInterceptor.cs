@@ -11,7 +11,7 @@ public class InvalidHeaderInterceptor : IHeaderValidator
 {
     private readonly IHeaderValidator _baseValidator;
     private readonly IInvalidChainTracker _invalidChainTracker;
-    private readonly Logger _logger;
+    private readonly ILogger _logger;
 
     public InvalidHeaderInterceptor(
         IHeaderValidator headerValidator,

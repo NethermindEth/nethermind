@@ -18,7 +18,7 @@ namespace Nethermind.Consensus.AuRa.Validators
 {
     public partial class ContractBasedValidator : AuRaValidatorBase, IDisposable
     {
-        private readonly Logger _logger;
+        private readonly ILogger _logger;
 
         private PendingValidators _currentPendingValidators;
         private long? _lastProcessedBlockNumber = null;

@@ -13,12 +13,12 @@ namespace Nethermind.Analytics
 {
     public class SupplyVerifier : ITreeVisitor
     {
-        private readonly Logger _logger;
+        private readonly ILogger _logger;
         private readonly HashSet<Hash256> _ignoreThisOne = new HashSet<Hash256>();
         private int _accountsVisited;
         private int _nodesVisited;
 
-        public SupplyVerifier(in Logger logger)
+        public SupplyVerifier(in ILogger logger)
         {
             _logger = logger;
         }

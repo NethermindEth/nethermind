@@ -16,7 +16,7 @@ namespace Nethermind.Consensus.Clique
 {
     internal class CliqueSealer : ISealer
     {
-        private readonly Logger _logger;
+        private readonly ILogger _logger;
         private readonly ISnapshotManager _snapshotManager;
         private readonly ISigner _signer;
         private readonly ICliqueConfig _config;

@@ -12,7 +12,7 @@ namespace Nethermind.Logging.NLog.Test
         [Test]
         public void Test()
         {
-            Logger nullLogger = NullLogger.Instance;
+            ILogger nullLogger = NullLogger.Instance;
             nullLogger.IsDebug.Should().BeFalse();
             nullLogger.IsInfo.Should().BeFalse();
             nullLogger.IsWarn.Should().BeFalse();

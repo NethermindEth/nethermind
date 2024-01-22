@@ -30,7 +30,7 @@ namespace Nethermind.Consensus.AuRa
         private readonly Cache _cache;
         private readonly bool _minimum2MlnGasPerBlockWhenUsingBlockGasLimitContract;
         private readonly IGasLimitCalculator _innerCalculator;
-        private readonly Logger _logger;
+        private readonly ILogger _logger;
 
         public AuRaContractGasLimitOverride(
             IList<IBlockGasLimitContract> contracts,

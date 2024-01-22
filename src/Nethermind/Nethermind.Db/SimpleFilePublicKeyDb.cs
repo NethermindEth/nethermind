@@ -21,7 +21,7 @@ namespace Nethermind.Db
     {
         public const string DbFileName = "SimpleFileDb.db";
 
-        private readonly Logger _logger;
+        private readonly ILogger _logger;
         private bool _hasPendingChanges;
         private SpanConcurrentDictionary<byte, byte[]> _cache;
 
@@ -154,11 +154,11 @@ namespace Nethermind.Db
         private class Backup : IDisposable
         {
             private readonly string _dbPath;
-            private readonly Logger _logger;
+            private readonly ILogger _logger;
 
             public string BackupPath { get; }
 
-            public Backup(string dbPath, Logger logger)
+            public Backup(string dbPath, ILogger logger)
             {
                 _dbPath = dbPath;
                 _logger = logger;

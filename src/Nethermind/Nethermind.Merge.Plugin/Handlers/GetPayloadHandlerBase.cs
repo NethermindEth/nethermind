@@ -16,7 +16,7 @@ public abstract class GetPayloadHandlerBase<TGetPayloadResult> : IAsyncHandler<b
     private readonly int _apiVersion;
     private readonly IPayloadPreparationService _payloadPreparationService;
     private readonly ISpecProvider _specProvider;
-    private readonly Logger _logger;
+    private readonly ILogger _logger;
 
     protected GetPayloadHandlerBase(int apiVersion, IPayloadPreparationService payloadPreparationService,
         ISpecProvider specProvider, ILogManager logManager)

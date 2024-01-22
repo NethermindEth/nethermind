@@ -23,7 +23,7 @@ public class RocksDbFactory : IDbFactory
         _logManager = logManager;
         _basePath = basePath;
 
-        Logger logger = _logManager.GetClassLogger<RocksDbFactory>();
+        ILogger logger = _logManager.GetClassLogger<RocksDbFactory>();
 
         if (logger.IsDebug)
         {

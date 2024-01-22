@@ -7,19 +7,19 @@ namespace Nethermind.Logging
 {
     public class OneLoggerLogManager : ILogManager
     {
-        private readonly Logger _logger;
+        private readonly ILogger _logger;
 
-        public OneLoggerLogManager(Logger logger)
+        public OneLoggerLogManager(ILogger logger)
         {
             _logger = logger;
         }
 
-        public Logger GetClassLogger(Type type) => _logger;
+        public ILogger GetClassLogger(Type type) => _logger;
 
-        public Logger GetClassLogger<T>() => _logger;
+        public ILogger GetClassLogger<T>() => _logger;
 
-        public Logger GetClassLogger() => _logger;
+        public ILogger GetClassLogger() => _logger;
 
-        public Logger GetLogger(string loggerName) => _logger;
+        public ILogger GetLogger(string loggerName) => _logger;
     }
 }

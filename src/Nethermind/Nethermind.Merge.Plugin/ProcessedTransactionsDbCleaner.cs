@@ -15,7 +15,7 @@ public class ProcessedTransactionsDbCleaner : IDisposable
 {
     private readonly IBlockFinalizationManager _finalizationManager;
     private readonly IDb _processedTxsDb;
-    private readonly Logger _logger;
+    private readonly ILogger _logger;
     private long _lastFinalizedBlock = 0;
     public Task CleaningTask { get; private set; } = Task.CompletedTask;
 

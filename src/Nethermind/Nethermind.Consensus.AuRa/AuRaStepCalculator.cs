@@ -13,7 +13,7 @@ namespace Nethermind.Consensus.AuRa
     {
         private readonly IList<StepDurationInfo> _stepDurations;
         private readonly ITimestamper _timestamper;
-        private readonly Logger _logger;
+        private readonly ILogger _logger;
 
         public AuRaStepCalculator(IDictionary<long, long> stepDurations, ITimestamper timestamper, ILogManager logManager)
         {

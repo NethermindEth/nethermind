@@ -13,11 +13,11 @@ namespace Nethermind.TxPool.Filters
     internal sealed class GasLimitTxFilter : IIncomingTxFilter
     {
         private readonly IChainHeadInfoProvider _chainHeadInfoProvider;
-        private readonly Logger _logger;
+        private readonly ILogger _logger;
         private readonly long _configuredGasLimit;
 
         public GasLimitTxFilter(IChainHeadInfoProvider chainHeadInfoProvider, ITxPoolConfig txPoolConfig,
-            in Logger logger)
+            in ILogger logger)
         {
             _chainHeadInfoProvider = chainHeadInfoProvider;
             _logger = logger;

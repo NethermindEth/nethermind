@@ -41,7 +41,7 @@ namespace Nethermind.Synchronization.Blocks
         private readonly IReceiptsRecovery _receiptsRecovery;
         private readonly ISpecProvider _specProvider;
         private readonly IBetterPeerStrategy _betterPeerStrategy;
-        private readonly Logger _logger;
+        private readonly ILogger _logger;
         private readonly ISyncPeerPool _syncPeerPool;
         private readonly Guid _sealValidatorUserGuid = Guid.NewGuid();
         private readonly Random _rnd = new();

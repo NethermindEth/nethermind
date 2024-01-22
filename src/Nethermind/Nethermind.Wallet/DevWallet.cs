@@ -18,7 +18,7 @@ namespace Nethermind.Wallet
     {
         private const string AnyPassword = "#DEV_ACCOUNT_NETHERMIND_ANY_PASSWORD#";
         private static readonly byte[] _keySeed = new byte[32];
-        private readonly Logger _logger;
+        private readonly ILogger _logger;
         private readonly Dictionary<Address, bool> _isUnlocked = new Dictionary<Address, bool>();
         private readonly Dictionary<Address, PrivateKey> _keys = new Dictionary<Address, PrivateKey>();
         private readonly Dictionary<Address, string> _passwords = new Dictionary<Address, string>();

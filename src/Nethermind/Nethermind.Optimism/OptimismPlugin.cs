@@ -34,7 +34,7 @@ public class OptimismPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitial
     public string Description => "Optimism support for Nethermind";
 
     private OptimismNethermindApi? _api;
-    private Logger _logger;
+    private ILogger _logger;
     private IMergeConfig _mergeConfig = null!;
     private ISyncConfig _syncConfig = null!;
     private IBlocksConfig _blocksConfig = null!;

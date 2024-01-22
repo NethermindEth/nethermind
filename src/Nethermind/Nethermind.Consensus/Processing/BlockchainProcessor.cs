@@ -40,7 +40,7 @@ public class BlockchainProcessor : IBlockchainProcessor, IBlockProcessingQueue
     private readonly IStateReader _stateReader;
     private readonly Options _options;
     private readonly IBlockTree _blockTree;
-    private readonly Logger _logger;
+    private readonly ILogger _logger;
 
     private readonly BlockingCollection<BlockRef> _recoveryQueue = new(new ConcurrentQueue<BlockRef>());
 

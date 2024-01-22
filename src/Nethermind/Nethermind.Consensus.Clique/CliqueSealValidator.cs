@@ -12,7 +12,7 @@ namespace Nethermind.Consensus.Clique
     {
         private readonly ICliqueConfig _cliqueConfig;
         private readonly ISnapshotManager _snapshotManager;
-        private readonly Logger _logger;
+        private readonly ILogger _logger;
 
         public CliqueSealValidator(ICliqueConfig cliqueConfig, ISnapshotManager snapshotManager, ILogManager logManager)
         {

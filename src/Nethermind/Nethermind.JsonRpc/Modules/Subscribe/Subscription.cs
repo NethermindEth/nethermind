@@ -10,7 +10,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
 {
     public abstract class Subscription : IDisposable
     {
-        protected Logger _logger;
+        protected ILogger _logger;
 
         protected Subscription(IJsonRpcDuplexClient jsonRpcDuplexClient)
         {

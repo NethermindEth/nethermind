@@ -17,7 +17,7 @@ public class InitDatabaseSnapshot : InitDatabase
     private const int BufferSize = 8192;
 
     private readonly INethermindApi _api;
-    private readonly Logger _logger;
+    private readonly ILogger _logger;
 
     public InitDatabaseSnapshot(INethermindApi api) : base(api)
     {

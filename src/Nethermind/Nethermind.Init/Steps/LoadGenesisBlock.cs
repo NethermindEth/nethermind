@@ -17,7 +17,7 @@ namespace Nethermind.Init.Steps
     public class LoadGenesisBlock : IStep
     {
         private readonly IApiWithBlockchain _api;
-        private readonly Logger _logger;
+        private readonly ILogger _logger;
         private IInitConfig? _initConfig;
 
         readonly TimeSpan _genesisProcessedTimeout = TimeSpan.FromSeconds(40);

@@ -14,7 +14,7 @@ namespace Nethermind.Consensus.Processing
     //TODO Consult on disabling of such metrics from configuration
     internal class ProcessingStats
     {
-        private readonly Logger _logger;
+        private readonly ILogger _logger;
         private readonly Stopwatch _processingStopwatch = new();
         private readonly Stopwatch _runStopwatch = new();
         private long _lastBlockNumber;
@@ -39,7 +39,7 @@ namespace Nethermind.Consensus.Processing
         private long _lastTotalCreates;
         private long _lastReportMs;
 
-        public ProcessingStats(in Logger logger)
+        public ProcessingStats(in ILogger logger)
         {
             _logger = logger;
 

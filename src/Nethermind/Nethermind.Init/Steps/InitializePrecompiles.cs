@@ -23,7 +23,7 @@ public class InitializePrecompiles : IStep
     {
         if (_api.SpecProvider!.GetFinalSpec().IsEip4844Enabled)
         {
-            Logger logger = _api.LogManager.GetClassLogger<InitializePrecompiles>();
+            ILogger logger = _api.LogManager.GetClassLogger<InitializePrecompiles>();
             IInitConfig initConfig = _api.Config<IInitConfig>();
 
             try

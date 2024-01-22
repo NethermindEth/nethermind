@@ -39,7 +39,7 @@ namespace Nethermind.Synchronization.Test.FastSync
         private static IBlockTree? _blockTree;
         protected static IBlockTree BlockTree => LazyInitializer.EnsureInitialized(ref _blockTree, () => Build.A.BlockTree().OfChainLength(100).TestObject);
 
-        protected Logger _logger;
+        protected ILogger _logger;
         protected ILogManager _logManager = null!;
 
         private readonly int _defaultPeerCount;
@@ -154,9 +154,9 @@ namespace Nethermind.Synchronization.Test.FastSync
 
         protected class DbContext
         {
-            private readonly Logger _logger;
+            private readonly ILogger _logger;
 
-            public DbContext(in Logger logger, ILogManager logManager)
+            public DbContext(in ILogger logger, ILogManager logManager)
             {
                 _logger = logger;
                 RemoteDb = new MemDb();

@@ -73,10 +73,10 @@ namespace Nethermind.Synchronization.Test
             ITimer timer = Substitute.For<ITimer>();
             timerFactory.CreateTimer(Arg.Any<TimeSpan>()).Returns(timer);
             ILogManager logManager = Substitute.For<ILogManager>();
-            ILogger iLogger = Substitute.For<ILogger>();
+            InterfaceLogger iLogger = Substitute.For<InterfaceLogger>();
             iLogger.IsInfo.Returns(true);
             iLogger.IsError.Returns(true);
-            Logger logger = new(iLogger);
+            ILogger logger = new(iLogger);
             logManager.GetClassLogger().Returns(logger);
 
             Queue<SyncMode> syncModes = new();

@@ -28,7 +28,7 @@ public sealed class BeaconHeadersSyncFeed : HeadersSyncFeed
     private readonly IInvalidChainTracker _invalidChainTracker;
     private readonly IPivot _pivot;
     private readonly IMergeConfig _mergeConfig;
-    private readonly Logger _logger;
+    private readonly ILogger _logger;
     private bool _chainMerged;
 
     protected override long HeadersDestinationNumber => _pivot.PivotDestinationNumber;

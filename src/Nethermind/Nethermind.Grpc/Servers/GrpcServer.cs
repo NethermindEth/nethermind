@@ -19,7 +19,7 @@ namespace Nethermind.Grpc.Servers
         private readonly ConcurrentDictionary<string, BlockingCollection<string>> _clientResults =
             new ConcurrentDictionary<string, BlockingCollection<string>>();
 
-        private readonly Logger _logger;
+        private readonly ILogger _logger;
 
         public GrpcServer(IJsonSerializer jsonSerializer, ILogManager logManager)
         {

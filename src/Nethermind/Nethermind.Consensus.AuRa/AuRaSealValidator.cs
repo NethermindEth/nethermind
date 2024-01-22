@@ -22,7 +22,7 @@ namespace Nethermind.Consensus.AuRa
         private readonly IValidatorStore _validatorStore;
         private readonly IValidSealerStrategy _validSealerStrategy;
         private readonly IEthereumEcdsa _ecdsa;
-        private readonly Logger _logger;
+        private readonly ILogger _logger;
         private readonly ReceivedSteps _receivedSteps = new ReceivedSteps();
 
         public AuRaSealValidator(AuRaParameters parameters, IAuRaStepCalculator stepCalculator, IBlockTree blockTree, IValidatorStore validatorStore, IValidSealerStrategy validSealerStrategy, IEthereumEcdsa ecdsa, ILogManager logManager)

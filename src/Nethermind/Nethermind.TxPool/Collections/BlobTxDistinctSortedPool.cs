@@ -11,7 +11,7 @@ namespace Nethermind.TxPool.Collections;
 
 public class BlobTxDistinctSortedPool : TxDistinctSortedPool
 {
-    private readonly Logger _logger;
+    private readonly ILogger _logger;
 
     public BlobTxDistinctSortedPool(int capacity, IComparer<Transaction> comparer, ILogManager logManager)
         : base(capacity, comparer, logManager)

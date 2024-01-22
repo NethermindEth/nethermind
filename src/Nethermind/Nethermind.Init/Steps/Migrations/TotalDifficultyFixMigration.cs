@@ -16,7 +16,7 @@ namespace Nethermind.Init.Steps.Migrations;
 
 public class TotalDifficultyFixMigration : IDatabaseMigration
 {
-    private readonly Logger _logger;
+    private readonly ILogger _logger;
     private readonly ISyncConfig _syncConfig;
     private readonly IChainLevelInfoRepository _chainLevelInfoRepository;
     private readonly IBlockTree _blockTree;

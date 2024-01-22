@@ -15,7 +15,7 @@ public class ParityLikeTraceSerializer : ITraceSerializer<ParityLikeTxTrace>
     private static readonly byte[] _emptyBytes = { 0 };
     private static readonly List<ParityLikeTxTrace> _emptyTraces = new();
 
-    private readonly Logger _logger;
+    private readonly ILogger _logger;
     private readonly IJsonSerializer _jsonSerializer;
     private readonly int _maxDepth;
     private readonly bool _verifySerialized;

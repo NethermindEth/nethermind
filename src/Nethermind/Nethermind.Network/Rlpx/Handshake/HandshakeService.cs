@@ -26,7 +26,7 @@ namespace Nethermind.Network.Rlpx.Handshake
         private readonly IEciesCipher _eciesCipher;
         private readonly IMessageSerializationService _messageSerializationService;
         private readonly PrivateKey _privateKey;
-        private readonly Logger _logger;
+        private readonly ILogger _logger;
         private readonly IEcdsa _ecdsa;
 
         public HandshakeService(

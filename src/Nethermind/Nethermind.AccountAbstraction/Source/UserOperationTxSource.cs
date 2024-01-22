@@ -24,7 +24,7 @@ namespace Nethermind.AccountAbstraction.Source
 {
     public class UserOperationTxSource : ITxSource
     {
-        private readonly Logger _logger;
+        private readonly ILogger _logger;
         private readonly ISpecProvider _specProvider;
         private readonly IReadOnlyStateProvider _stateProvider;
         private readonly ISigner _signer;
@@ -44,7 +44,7 @@ namespace Nethermind.AccountAbstraction.Source
             ISpecProvider specProvider,
             IReadOnlyStateProvider stateProvider,
             ISigner signer,
-            in Logger logger)
+            in ILogger logger)
         {
             _userOperationTxBuilders = userOperationTxBuilders;
             _userOperationPools = userOperationPools;

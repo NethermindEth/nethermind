@@ -16,7 +16,7 @@ namespace Nethermind.Consensus.Validators
     {
         private readonly IBlockTree _blockTree;
         private readonly IHeaderValidator _headerValidator;
-        private readonly Logger _logger;
+        private readonly ILogger _logger;
 
         public UnclesValidator(IBlockTree? blockTree, IHeaderValidator? headerValidator, ILogManager? logManager)
         {

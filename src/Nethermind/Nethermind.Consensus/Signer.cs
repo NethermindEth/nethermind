@@ -15,7 +15,7 @@ namespace Nethermind.Consensus
     {
         private readonly ulong _chainId;
         private PrivateKey? _key;
-        private readonly Logger _logger;
+        private readonly ILogger _logger;
 
         public Address Address => _key?.Address ?? Address.Zero;
 

@@ -21,7 +21,7 @@ namespace Nethermind.Blockchain.Visitors
         public const int DefaultBatchSize = 4000;
         private readonly IBlockTree _blockTree;
         private readonly IStateReader _stateReader;
-        private readonly Logger _logger;
+        private readonly ILogger _logger;
         private readonly long _startNumber;
         private readonly long _blocksToLoad;
 
@@ -44,7 +44,7 @@ namespace Nethermind.Blockchain.Visitors
             ISyncConfig syncConfig,
             IBlockTree blockTree,
             IStateReader stateReader,
-            in Logger logger,
+            in ILogger logger,
             long batchSize = DefaultBatchSize)
         {
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));

@@ -19,7 +19,7 @@ namespace Nethermind.Stats
             public int GetHashCode(Node obj) => obj.GetHashCode();
         }
 
-        private readonly Logger _logger;
+        private readonly ILogger _logger;
         private readonly ConcurrentDictionary<Node, INodeStats> _nodeStats = new(new NodeComparer());
         private readonly ITimer _cleanupTimer;
         private readonly int _maxCount;

@@ -67,7 +67,7 @@ namespace Nethermind.TxPool
 
         private readonly TimeSpan _minTimeBetweenPersistedTxBroadcast = TimeSpan.FromSeconds(1);
 
-        private readonly Logger _logger;
+        private readonly ILogger _logger;
 
         public TxBroadcaster(IComparer<Transaction> comparer,
             ITimerFactory timerFactory,

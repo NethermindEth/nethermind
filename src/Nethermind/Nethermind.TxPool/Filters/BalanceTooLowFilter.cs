@@ -15,9 +15,9 @@ namespace Nethermind.TxPool.Filters
     {
         private readonly TxDistinctSortedPool _txs;
         private readonly TxDistinctSortedPool _blobTxs;
-        private readonly Logger _logger;
+        private readonly ILogger _logger;
 
-        public BalanceTooLowFilter(TxDistinctSortedPool txs, TxDistinctSortedPool blobTxs, in Logger logger)
+        public BalanceTooLowFilter(TxDistinctSortedPool txs, TxDistinctSortedPool blobTxs, in ILogger logger)
         {
             _txs = txs;
             _blobTxs = blobTxs;

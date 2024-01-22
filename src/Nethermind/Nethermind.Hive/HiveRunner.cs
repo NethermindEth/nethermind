@@ -23,7 +23,7 @@ namespace Nethermind.Hive
     {
         private readonly IBlockTree _blockTree;
         private readonly IBlockProcessingQueue _blockProcessingQueue;
-        private readonly Logger _logger;
+        private readonly ILogger _logger;
         private readonly IConfigProvider _configurationProvider;
         private readonly IFileSystem _fileSystem;
         private readonly IBlockValidator _blockValidator;
@@ -34,7 +34,7 @@ namespace Nethermind.Hive
             IBlockTree blockTree,
             IBlockProcessingQueue blockProcessingQueue,
             IConfigProvider configurationProvider,
-            in Logger logger,
+            in ILogger logger,
             IFileSystem fileSystem,
             IBlockValidator blockValidator)
         {

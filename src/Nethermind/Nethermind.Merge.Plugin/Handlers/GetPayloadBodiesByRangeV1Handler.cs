@@ -16,7 +16,7 @@ public class GetPayloadBodiesByRangeV1Handler : IGetPayloadBodiesByRangeV1Handle
     private const int MaxCount = 1024;
 
     private readonly IBlockTree _blockTree;
-    private readonly Logger _logger;
+    private readonly ILogger _logger;
 
     public GetPayloadBodiesByRangeV1Handler(IBlockTree blockTree, ILogManager logManager)
     {

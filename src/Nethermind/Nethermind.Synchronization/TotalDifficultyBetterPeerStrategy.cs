@@ -8,7 +8,7 @@ namespace Nethermind.Synchronization;
 
 public class TotalDifficultyBetterPeerStrategy : IBetterPeerStrategy
 {
-    private readonly Logger _logger;
+    private readonly ILogger _logger;
 
     public TotalDifficultyBetterPeerStrategy(ILogManager logManager)
     {

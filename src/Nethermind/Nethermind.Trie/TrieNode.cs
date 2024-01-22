@@ -850,7 +850,7 @@ namespace Nethermind.Trie
             Action<TrieNode> action,
             ITrieNodeResolver resolver,
             bool skipPersisted,
-            in Logger logger,
+            in ILogger logger,
             bool resolveStorageRoot = true)
         {
             if (skipPersisted && IsPersisted)

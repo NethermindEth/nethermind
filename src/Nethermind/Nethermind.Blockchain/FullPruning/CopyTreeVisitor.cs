@@ -22,7 +22,7 @@ namespace Nethermind.Blockchain.FullPruning
     public class CopyTreeVisitor : ITreeVisitor, IDisposable
     {
         private readonly IPruningContext _pruningContext;
-        private readonly Logger _logger;
+        private readonly ILogger _logger;
         private readonly Stopwatch _stopwatch;
         private long _persistedNodes = 0;
         private bool _finished = false;

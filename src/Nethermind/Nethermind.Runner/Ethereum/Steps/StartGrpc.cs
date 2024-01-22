@@ -28,7 +28,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             IGrpcConfig grpcConfig = _api.Config<IGrpcConfig>();
             if (grpcConfig.Enabled)
             {
-                Logger logger = _api.LogManager.GetClassLogger();
+                ILogger logger = _api.LogManager.GetClassLogger();
                 GrpcServer grpcServer = new(_api.EthereumJsonSerializer, _api.LogManager);
                 GrpcRunner grpcRunner = new(grpcServer, grpcConfig, _api.LogManager);
                 await grpcRunner.Start(cancellationToken).ContinueWith(x =>

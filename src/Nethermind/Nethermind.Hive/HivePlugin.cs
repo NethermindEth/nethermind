@@ -14,7 +14,7 @@ namespace Nethermind.Hive
     {
         private INethermindApi _api = null!;
         private IHiveConfig _hiveConfig = null!;
-        private Logger _logger;
+        private ILogger _logger;
         private readonly CancellationTokenSource _disposeCancellationToken = new();
 
         public ValueTask DisposeAsync()

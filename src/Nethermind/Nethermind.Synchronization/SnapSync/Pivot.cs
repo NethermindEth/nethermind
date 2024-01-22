@@ -13,7 +13,7 @@ namespace Nethermind.Synchronization.SnapSync
     {
         private readonly IBlockTree _blockTree;
         private BlockHeader _bestHeader;
-        private readonly Logger _logger;
+        private readonly ILogger _logger;
 
         public long Diff
         {

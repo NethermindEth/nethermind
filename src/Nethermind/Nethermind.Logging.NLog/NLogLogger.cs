@@ -6,7 +6,7 @@ using NLog;
 
 namespace Nethermind.Logging.NLog
 {
-    public class NLogLogger : ILogger
+    public class NLogLogger : InterfaceLogger
     {
         public bool IsError { get; }
         public bool IsWarn { get; }

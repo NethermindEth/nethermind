@@ -13,7 +13,7 @@ namespace Nethermind.JsonRpc
     {
         private const string NethermindUrlVariable = "NETHERMIND_URL";
 
-        private readonly Logger _logger;
+        private readonly ILogger _logger;
         private readonly IJsonRpcConfig _jsonRpcConfig;
 
         public JsonRpcUrlCollection(ILogManager logManager, IJsonRpcConfig jsonRpcConfig, bool includeWebSockets)

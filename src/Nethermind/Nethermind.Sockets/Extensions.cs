@@ -16,7 +16,7 @@ namespace Nethermind.Sockets
         public static void UseWebSocketsModules(this IApplicationBuilder app)
         {
             IWebSocketsManager? webSocketsManager;
-            Logger logger;
+            ILogger logger;
             using (var scope = app.ApplicationServices.CreateScope())
             {
                 webSocketsManager = scope.ServiceProvider.GetService<IWebSocketsManager>();

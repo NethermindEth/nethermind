@@ -22,7 +22,7 @@ namespace Nethermind.JsonRpc
         private ConcurrentDictionary<string, MethodStats> _previousStats = new();
         private readonly ConcurrentDictionary<string, MethodStats> _allTimeStats = new();
         private DateTime _lastReport;
-        private readonly Logger _logger;
+        private readonly ILogger _logger;
         private readonly StringBuilder _reportStringBuilder = new();
 
         public JsonRpcLocalStats(ITimestamper timestamper, IJsonRpcConfig jsonRpcConfig, ILogManager logManager)

@@ -5,9 +5,9 @@ using System;
 
 namespace Nethermind.Logging
 {
-    public class NullLogger : ILogger
+    public class NullLogger : InterfaceLogger
     {
-        public static Logger Instance => default;
+        public static ILogger Instance => default;
 
         private NullLogger()
         {

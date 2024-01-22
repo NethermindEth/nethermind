@@ -15,7 +15,7 @@ namespace Nethermind.Blockchain
     {
         private static readonly int _maxDepth = 256;
         private readonly IBlockTree _blockTree;
-        private readonly Logger _logger;
+        private readonly ILogger _logger;
 
         public BlockhashProvider(IBlockTree blockTree, ILogManager? logManager)
         {

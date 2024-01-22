@@ -15,7 +15,7 @@ namespace Nethermind.Consensus.Ethash
     {
         private readonly IEthash _ethash;
         private readonly ISigner _signer;
-        private readonly Logger _logger;
+        private readonly ILogger _logger;
 
         internal EthashSealer(IEthash? ethash, ISigner? signer, ILogManager? logManager)
         {

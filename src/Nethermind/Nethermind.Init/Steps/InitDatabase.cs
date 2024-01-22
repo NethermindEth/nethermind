@@ -30,7 +30,7 @@ namespace Nethermind.Init.Steps
 
         public virtual async Task Execute(CancellationToken _)
         {
-            Logger logger = _api.LogManager.GetClassLogger();
+            ILogger logger = _api.LogManager.GetClassLogger();
 
             /* sync */
             IDbConfig dbConfig = _api.Config<IDbConfig>();

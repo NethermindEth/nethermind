@@ -19,7 +19,7 @@ public class AuraWithdrawalProcessor : IWithdrawalProcessor
 {
     private readonly IWithdrawalContract _contract;
     private readonly UInt256 _failedWithdrawalsMaxCount = 4;
-    private readonly Logger _logger;
+    private readonly ILogger _logger;
 
     public AuraWithdrawalProcessor(IWithdrawalContract contract, ILogManager logManager)
     {

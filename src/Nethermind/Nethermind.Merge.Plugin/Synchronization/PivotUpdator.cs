@@ -29,7 +29,7 @@ public class PivotUpdator
     private readonly IBlockCacheService _blockCacheService;
     private readonly IBeaconSyncStrategy _beaconSyncStrategy;
     private readonly IDb _metadataDb;
-    private readonly Logger _logger;
+    private readonly ILogger _logger;
 
     private readonly CancellationTokenSource _cancellation = new();
 

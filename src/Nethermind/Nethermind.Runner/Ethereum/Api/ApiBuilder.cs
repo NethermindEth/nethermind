@@ -15,7 +15,7 @@ using Nethermind.JsonRpc.Data;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs.ChainSpecStyle;
-using ILogger = Nethermind.Logging.ILogger;
+using ILogger = Nethermind.Logging.InterfaceLogger;
 
 namespace Nethermind.Runner.Ethereum.Api
 {
@@ -24,7 +24,7 @@ namespace Nethermind.Runner.Ethereum.Api
         private readonly IConfigProvider _configProvider;
         private readonly IJsonSerializer _jsonSerializer;
         private readonly ILogManager _logManager;
-        private readonly Logger _logger;
+        private readonly Nethermind.Logging.ILogger _logger;
         private readonly IInitConfig _initConfig;
 
         public ApiBuilder(IConfigProvider configProvider, ILogManager logManager)

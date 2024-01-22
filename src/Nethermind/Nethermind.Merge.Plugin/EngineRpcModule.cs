@@ -18,7 +18,7 @@ public partial class EngineRpcModule : IEngineRpcModule
 
     private readonly IHandler<IEnumerable<string>, IEnumerable<string>> _capabilitiesHandler;
     private readonly ISpecProvider _specProvider;
-    private readonly Logger _logger;
+    private readonly ILogger _logger;
 
     public EngineRpcModule(
         IAsyncHandler<byte[], ExecutionPayload?> getPayloadHandlerV1,

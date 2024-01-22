@@ -21,9 +21,9 @@ namespace Nethermind.AccountAbstraction.Source
         /// </summary>
         private readonly ConcurrentDictionary<PublicKey, IUserOperationPoolPeer> _peers = new();
 
-        private readonly Logger _logger;
+        private readonly ILogger _logger;
 
-        public UserOperationBroadcaster(in Logger logger)
+        public UserOperationBroadcaster(in ILogger logger)
         {
             _logger = logger;
         }

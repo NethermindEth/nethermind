@@ -21,7 +21,7 @@ namespace Nethermind.Network
         private PeriodicTimer _pingTimer;
         private Task _pingTimerTask;
         private readonly INetworkConfig _networkConfig;
-        private readonly Logger _logger;
+        private readonly ILogger _logger;
 
         private readonly TimeSpan _pingInterval;
         private readonly List<Task<bool>> _pingTasks = new();

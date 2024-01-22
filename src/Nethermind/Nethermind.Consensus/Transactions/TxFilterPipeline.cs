@@ -12,7 +12,7 @@ namespace Nethermind.Consensus.Transactions
     public class TxFilterPipeline : ITxFilterPipeline
     {
         private readonly List<ITxFilter> _filters;
-        private readonly Logger _logger;
+        private readonly ILogger _logger;
 
         public TxFilterPipeline(ILogManager logManager)
         {

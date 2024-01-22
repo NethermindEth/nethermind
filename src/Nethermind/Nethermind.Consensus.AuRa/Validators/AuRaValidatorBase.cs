@@ -14,7 +14,7 @@ namespace Nethermind.Consensus.AuRa.Validators
         public const long DefaultStartBlockNumber = 1;
 
         private readonly IValidSealerStrategy _validSealerStrategy;
-        private readonly Logger _logger;
+        private readonly ILogger _logger;
 
         protected AuRaValidatorBase(
             IValidSealerStrategy validSealerStrategy,

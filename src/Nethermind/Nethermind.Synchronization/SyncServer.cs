@@ -33,7 +33,7 @@ namespace Nethermind.Synchronization
     public class SyncServer : ISyncServer
     {
         private readonly IBlockTree _blockTree;
-        private readonly Logger _logger;
+        private readonly ILogger _logger;
         private readonly ISyncPeerPool _pool;
         private readonly ISyncModeSelector _syncModeSelector;
         private readonly IReceiptFinder _receiptFinder;

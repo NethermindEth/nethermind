@@ -14,7 +14,7 @@ namespace Nethermind.Network.Dns;
 public class EnrDiscovery : INodeSource
 {
     private readonly IEnrRecordParser _parser;
-    private readonly Logger _logger;
+    private readonly ILogger _logger;
     private readonly EnrTreeCrawler _crawler;
 
     public EnrDiscovery(IEnrRecordParser parser, ILogManager logManager)

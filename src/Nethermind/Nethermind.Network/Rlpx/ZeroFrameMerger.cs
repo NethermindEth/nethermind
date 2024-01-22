@@ -14,7 +14,7 @@ namespace Nethermind.Network.Rlpx
 {
     public class ZeroFrameMerger : ByteToMessageDecoder
     {
-        private readonly Logger _logger;
+        private readonly ILogger _logger;
 
         private ZeroPacket? _zeroPacket;
         private readonly FrameHeaderReader _headerReader = new();

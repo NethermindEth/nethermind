@@ -14,7 +14,7 @@ namespace Nethermind.Sockets
     public class WebSocketHandler : ISocketHandler
     {
         private readonly WebSocket _webSocket;
-        private readonly Logger _logger;
+        private readonly ILogger _logger;
 
         public WebSocketHandler(WebSocket webSocket, ILogManager logManager)
         {

@@ -38,7 +38,7 @@ namespace Nethermind.AccountAbstraction.Executor
         private readonly ITimestamper _timestamper;
         private readonly IBlocksConfig _blocksConfig;
         private readonly IAbiEncoder _abiEncoder;
-        private readonly Logger _logger;
+        private readonly ILogger _logger;
 
         public UserOperationSimulator(
             IUserOperationTxBuilder userOperationTxBuilder,

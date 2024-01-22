@@ -17,7 +17,7 @@ namespace Nethermind.Init.Steps
 {
     public class EthereumStepsManager
     {
-        private readonly Logger _logger;
+        private readonly ILogger _logger;
 
         private readonly AutoResetEvent _autoResetEvent = new AutoResetEvent(true);
         private readonly INethermindApi _api;

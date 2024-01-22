@@ -26,7 +26,7 @@ namespace Nethermind.Consensus.Ethash
     {
         private readonly HintBasedCache _hintBasedCache;
 
-        private readonly Logger _logger;
+        private readonly ILogger _logger;
 
         public Ethash(ILogManager logManager)
         {

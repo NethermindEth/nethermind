@@ -23,7 +23,7 @@ namespace Nethermind.Init.Steps
 
         public async Task Execute(CancellationToken cancellationToken)
         {
-            Logger logger = _api.LogManager.GetClassLogger();
+            ILogger logger = _api.LogManager.GetClassLogger();
             if (logger.IsInfo) logger.Info($"Initializing {_api.Plugins.Count} plugins");
             foreach (INethermindPlugin plugin in _api.Plugins)
             {

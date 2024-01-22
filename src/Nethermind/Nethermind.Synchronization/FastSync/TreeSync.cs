@@ -54,7 +54,7 @@ namespace Nethermind.Synchronization.FastSync
         private Hash256 _rootNode = Keccak.EmptyTreeHash;
         private int _rootSaved;
 
-        private readonly Logger _logger;
+        private readonly ILogger _logger;
         private readonly IDb _codeDb;
         private readonly IDb _stateDb;
 

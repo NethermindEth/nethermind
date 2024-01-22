@@ -34,7 +34,7 @@ namespace Nethermind.AccountAbstraction.Source
         private readonly IAccountAbstractionConfig _accountAbstractionConfig;
         private readonly IBlockTree _blockTree;
         private readonly Address _entryPointAddress;
-        private readonly Logger _logger;
+        private readonly ILogger _logger;
         private readonly IPaymasterThrottler _paymasterThrottler;
         private readonly ILogFinder _logFinder;
         private readonly ISigner _signer;
@@ -60,7 +60,7 @@ namespace Nethermind.AccountAbstraction.Source
             IAccountAbstractionConfig accountAbstractionConfig,
             IBlockTree blockTree,
             Address entryPointAddress,
-            in Logger logger,
+            in ILogger logger,
             IPaymasterThrottler paymasterThrottler,
             ILogFinder logFinder,
             ISigner signer,

@@ -22,7 +22,7 @@ namespace Nethermind.Core
         public static bool IsEnabled { get; set; }
 
         private static readonly ConcurrentDictionary<string, ConcurrentQueue<string>> _events = new();
-        private static Logger _logger;
+        private static ILogger _logger;
 
         public static void Start(ILogManager logManager)
         {

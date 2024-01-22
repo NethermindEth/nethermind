@@ -51,7 +51,7 @@ namespace Nethermind.Synchronization.ParallelSync
         private readonly IBeaconSyncStrategy _beaconSyncStrategy;
         private readonly IBetterPeerStrategy _betterPeerStrategy;
         private readonly bool _needToWaitForHeaders;
-        private readonly Logger _logger;
+        private readonly ILogger _logger;
         private readonly bool _isSnapSyncDisabledAfterAnyStateSync;
 
         private long _pivotNumber;

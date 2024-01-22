@@ -13,7 +13,7 @@ namespace Nethermind.Optimism;
 
 public class OptimismPayloadPreparationService : PayloadPreparationService
 {
-    private readonly Logger _logger;
+    private readonly ILogger _logger;
 
     public OptimismPayloadPreparationService(
         PostMergeBlockProducer blockProducer,

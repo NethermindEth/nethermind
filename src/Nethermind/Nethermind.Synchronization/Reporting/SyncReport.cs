@@ -20,7 +20,7 @@ namespace Nethermind.Synchronization.Reporting
         private readonly ISyncPeerPool _syncPeerPool;
         private readonly ISyncConfig _syncConfig;
         private readonly IPivot _pivot;
-        private readonly Logger _logger;
+        private readonly ILogger _logger;
         private SyncMode _currentMode = SyncMode.None;
 
         private readonly SyncPeersReport _syncPeersReport;

@@ -22,7 +22,7 @@ namespace Nethermind.Network
         private readonly INodeStatsManager _stats;
         private readonly INetworkStorage _peerStorage;
         private readonly IRlpxHost _rlpxHost;
-        private readonly Logger _logger;
+        private readonly ILogger _logger;
 
         public NodesLoader(
             INetworkConfig networkConfig,

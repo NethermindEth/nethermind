@@ -51,7 +51,7 @@ namespace Nethermind.Consensus.Producers
 
         private DateTime _lastProducedBlockDateTime;
         protected const int BlockProductionTimeout = 2000;
-        protected Logger Logger { get; }
+        protected ILogger Logger { get; }
         protected readonly IBlocksConfig _blocksConfig;
 
         protected BlockProducerBase(

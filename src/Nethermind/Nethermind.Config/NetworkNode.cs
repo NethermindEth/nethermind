@@ -22,7 +22,7 @@ namespace Nethermind.Config
             _enode = new Enode(enode);
         }
 
-        public static NetworkNode[] ParseNodes(string enodesString, in Logger logger)
+        public static NetworkNode[] ParseNodes(string enodesString, in ILogger logger)
         {
             string[] nodeStrings = enodesString?.Split(",", StringSplitOptions.RemoveEmptyEntries);
             if (nodeStrings is null)

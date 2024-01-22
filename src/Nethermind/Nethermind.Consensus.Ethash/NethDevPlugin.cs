@@ -60,7 +60,7 @@ namespace Nethermind.Consensus.Ethash
                 getFromApi.LogManager,
                 txFilterPipeline);
 
-            Logger logger = getFromApi.LogManager.GetClassLogger();
+            ILogger logger = getFromApi.LogManager.GetClassLogger();
             if (logger.IsInfo) logger.Info("Starting Neth Dev block producer & sealer");
 
             ReadOnlyTxProcessingEnv producerEnv = new(

@@ -37,7 +37,7 @@ namespace Nethermind.Blockchain.Test
 
             private class BlockProcessorMock : IBlockProcessor
             {
-                private readonly Logger _logger;
+                private readonly ILogger _logger;
 
                 private readonly HashSet<Hash256> _allowed = new();
 
@@ -130,7 +130,7 @@ namespace Nethermind.Blockchain.Test
 
             private class RecoveryStepMock : IBlockPreprocessorStep
             {
-                private readonly Logger _logger;
+                private readonly ILogger _logger;
                 private readonly ConcurrentDictionary<Hash256, object> _allowed = new();
                 private readonly ConcurrentDictionary<Hash256, object> _allowedToFail = new();
 
@@ -182,7 +182,7 @@ namespace Nethermind.Blockchain.Test
             private readonly BlockProcessorMock _blockProcessor;
             private readonly RecoveryStepMock _recoveryStep;
             private readonly BlockchainProcessor _processor;
-            private readonly Logger _logger;
+            private readonly ILogger _logger;
 
             private Hash256? _headBefore;
             private int _processingQueueEmptyFired;
@@ -368,7 +368,7 @@ namespace Nethermind.Blockchain.Test
             {
                 public const int IgnoreWait = 200;
 
-                private readonly Logger _logger;
+                private readonly ILogger _logger;
                 private readonly Block _block;
                 private readonly ProcessingTestContext _processingTestContext;
 

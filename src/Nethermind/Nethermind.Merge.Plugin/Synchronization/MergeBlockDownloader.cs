@@ -26,7 +26,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
     {
         private readonly IBeaconPivot _beaconPivot;
         private readonly IBlockTree _blockTree;
-        private readonly Logger _logger;
+        private readonly ILogger _logger;
         private readonly IReceiptsRecovery _receiptsRecovery;
         private readonly IBlockValidator _blockValidator;
         private readonly ISpecProvider _specProvider;

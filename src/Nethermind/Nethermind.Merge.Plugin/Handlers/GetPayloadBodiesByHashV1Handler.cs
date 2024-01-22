@@ -16,7 +16,7 @@ public class GetPayloadBodiesByHashV1Handler : IAsyncHandler<IList<Hash256>, IEn
 {
     private const int MaxCount = 1024;
     private readonly IBlockTree _blockTree;
-    private readonly Logger _logger;
+    private readonly ILogger _logger;
 
     public GetPayloadBodiesByHashV1Handler(IBlockTree blockTree, ILogManager logManager)
     {
