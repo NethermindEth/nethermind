@@ -9,7 +9,7 @@ public class EnrTreeCrawler
 {
     private readonly ILogger _logger;
 
-    public EnrTreeCrawler(in ILogger logger)
+    public EnrTreeCrawler(ILogger logger)
     {
         _logger = logger;
     }

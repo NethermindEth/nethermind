@@ -26,7 +26,7 @@ namespace Nethermind.HealthChecks
             IDriveInfo[] drives,
             ITimerFactory timerFactory,
             IProcessExitSource processExitSource,
-            in ILogger logger,
+            ILogger logger,
             double checkPeriodMinutes = 1)
         {
             _healthChecksConfig = healthChecksConfig;

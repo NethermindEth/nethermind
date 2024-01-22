@@ -23,7 +23,7 @@ namespace Nethermind.AccountAbstraction.Source
 
         private readonly ILogger _logger;
 
-        public UserOperationBroadcaster(in ILogger logger)
+        public UserOperationBroadcaster(ILogger logger)
         {
             _logger = logger;
         }

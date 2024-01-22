@@ -20,7 +20,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
 
         internal bool IsDowngraded { get; private set; }
 
-        public TxFloodController(Eth62ProtocolHandler protocolHandler, ITimestamper timestamper, in ILogger logger)
+        public TxFloodController(Eth62ProtocolHandler protocolHandler, ITimestamper timestamper, ILogger logger)
         {
             _protocolHandler = protocolHandler ?? throw new ArgumentNullException(nameof(protocolHandler));
             _timestamper = timestamper ?? throw new ArgumentNullException(nameof(timestamper));

@@ -77,7 +77,7 @@ public class GCKeeper
         private readonly long? _size;
         private readonly ILogger _logger;
 
-        internal NoGCRegion(GCKeeper gcKeeper, FailCause failCause, long? size, in ILogger logger)
+        internal NoGCRegion(GCKeeper gcKeeper, FailCause failCause, long? size, ILogger logger)
         {
             _gcKeeper = gcKeeper;
             _failCause = failCause;

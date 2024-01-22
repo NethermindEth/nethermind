@@ -20,7 +20,7 @@ namespace Nethermind.AccountAbstraction.Network
 
         public AccountAbstractionPeerManager(IDictionary<Address, IUserOperationPool> userOperationPools,
             IUserOperationBroadcaster broadcaster,
-            in ILogger logger)
+            ILogger logger)
             : this(userOperationPools, broadcaster, 0, logger)
         {
         }
@@ -28,7 +28,7 @@ namespace Nethermind.AccountAbstraction.Network
         public AccountAbstractionPeerManager(IDictionary<Address, IUserOperationPool> userOperationPools,
             IUserOperationBroadcaster broadcaster,
             int numberOfPriorityAaPeers,
-            in ILogger logger)
+            ILogger logger)
         {
             _userOperationPools = userOperationPools;
             _broadcaster = broadcaster;

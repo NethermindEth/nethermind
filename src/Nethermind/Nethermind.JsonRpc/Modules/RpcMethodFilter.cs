@@ -21,7 +21,7 @@ namespace Nethermind.JsonRpc.Modules
         private readonly ConcurrentDictionary<string, bool> _methodsCache
             = new();
 
-        public RpcMethodFilter(string filePath, IFileSystem fileSystem, in ILogger logger)
+        public RpcMethodFilter(string filePath, IFileSystem fileSystem, ILogger logger)
         {
             if (!fileSystem.File.Exists(filePath))
             {

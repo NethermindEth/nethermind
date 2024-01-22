@@ -15,7 +15,7 @@ namespace Nethermind.AccountAbstraction.Bundler
 
         public event EventHandler<BundleUserOpsEventArgs>? TriggerBundle;
 
-        public OnNewBlockBundleTrigger(IBlockTree blockTree, in ILogger logger)
+        public OnNewBlockBundleTrigger(IBlockTree blockTree, ILogger logger)
         {
             _logger = logger;
             _blockTree = blockTree;

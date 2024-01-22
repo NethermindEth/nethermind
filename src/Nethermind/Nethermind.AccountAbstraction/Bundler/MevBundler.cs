@@ -17,7 +17,7 @@ namespace Nethermind.AccountAbstraction.Bundler
         private readonly IBundlePool _bundlePool;
         private readonly ILogger _logger;
 
-        public MevBundler(IBundleTrigger trigger, ITxSource txSource, IBundlePool bundlePool, in ILogger logger)
+        public MevBundler(IBundleTrigger trigger, ITxSource txSource, IBundlePool bundlePool, ILogger logger)
         {
             _trigger = trigger;
             _txSource = txSource;

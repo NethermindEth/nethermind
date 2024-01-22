@@ -19,7 +19,7 @@ namespace Nethermind.JsonRpc
         private bool _isEnabled = true;
         private readonly object _recorderSync = new();
 
-        public Recorder(string basePath, IFileSystem fileSystem, in ILogger logger)
+        public Recorder(string basePath, IFileSystem fileSystem, ILogger logger)
         {
             _recorderBaseFilePath = basePath ?? throw new ArgumentNullException(nameof(basePath));
             _fileSystem = fileSystem ?? throw new ArgumentNullException(nameof(fileSystem));

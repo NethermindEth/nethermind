@@ -180,7 +180,7 @@ namespace Nethermind.HealthChecks
 
             private Timer _timer;
 
-            public ClHealthLogger(INodeHealthService nodeHealthService, in ILogger logger)
+            public ClHealthLogger(INodeHealthService nodeHealthService, ILogger logger)
             {
                 _nodeHealthService = nodeHealthService;
                 _logger = logger;

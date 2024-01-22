@@ -21,7 +21,7 @@ public partial class DbMetricsUpdater
     private readonly ColumnFamilyHandle? _columnFamilyHandle;
     private Timer? _timer;
 
-    public DbMetricsUpdater(string dbName, DbOptions dbOptions, RocksDb db, ColumnFamilyHandle? cf, IDbConfig dbConfig, in ILogger logger)
+    public DbMetricsUpdater(string dbName, DbOptions dbOptions, RocksDb db, ColumnFamilyHandle? cf, IDbConfig dbConfig, ILogger logger)
     {
         _dbName = dbName;
         _dbOptions = dbOptions;

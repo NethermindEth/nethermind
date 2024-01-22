@@ -18,7 +18,7 @@ namespace Nethermind.TxPool.Filters
         private readonly TxDistinctSortedPool _blobTxs;
         private readonly ILogger _logger;
 
-        public GapNonceFilter(TxDistinctSortedPool txs, TxDistinctSortedPool blobTxs, in ILogger logger)
+        public GapNonceFilter(TxDistinctSortedPool txs, TxDistinctSortedPool blobTxs, ILogger logger)
         {
             _txs = txs;
             _blobTxs = blobTxs;

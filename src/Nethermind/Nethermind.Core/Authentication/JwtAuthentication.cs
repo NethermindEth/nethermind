@@ -21,7 +21,7 @@ public partial class JwtAuthentication : IRpcAuthentication
     private const int JwtTokenTtl = 60;
     private const int JwtSecretLength = 64;
 
-    private JwtAuthentication(byte[] secret, ITimestamper timestamper, in ILogger logger)
+    private JwtAuthentication(byte[] secret, ITimestamper timestamper, ILogger logger)
     {
         ArgumentNullException.ThrowIfNull(secret);
 
@@ -30,14 +30,14 @@ public partial class JwtAuthentication : IRpcAuthentication
         _timestamper = timestamper ?? throw new ArgumentNullException(nameof(timestamper));
     }
 
-    public static JwtAuthentication FromSecret(string secret, ITimestamper timestamper, in ILogger logger)
+    public static JwtAuthentication FromSecret(string secret, ITimestamper timestamper, ILogger logger)
     {
         ArgumentNullException.ThrowIfNull(secret);
 
         return new(Bytes.FromHexString(secret), timestamper, logger);
     }
 
-    public static JwtAuthentication FromFile(string filePath, ITimestamper timestamper, in ILogger logger)
+    public static JwtAuthentication FromFile(string filePath, ITimestamper timestamper, ILogger logger)
     {
         ArgumentNullException.ThrowIfNull(filePath);
 

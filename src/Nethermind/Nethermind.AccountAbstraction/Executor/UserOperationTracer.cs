@@ -42,7 +42,7 @@ namespace Nethermind.AccountAbstraction.Executor
             Address sender,
             Address paymaster,
             Address entryPointAddress,
-            in ILogger logger)
+            ILogger logger)
         {
             Success = true;
             AccessedStorage = new Dictionary<Address, HashSet<UInt256>>();

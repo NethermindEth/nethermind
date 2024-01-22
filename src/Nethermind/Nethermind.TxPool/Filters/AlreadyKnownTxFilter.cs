@@ -19,7 +19,7 @@ namespace Nethermind.TxPool.Filters
 
         public AlreadyKnownTxFilter(
             HashCache hashCache,
-            in ILogger logger)
+            ILogger logger)
         {
             _hashCache = hashCache;
             _logger = logger;

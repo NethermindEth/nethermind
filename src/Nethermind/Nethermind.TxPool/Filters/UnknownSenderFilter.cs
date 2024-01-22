@@ -15,7 +15,7 @@ namespace Nethermind.TxPool.Filters
         private readonly IEthereumEcdsa _ecdsa;
         private readonly ILogger _logger;
 
-        public UnknownSenderFilter(IEthereumEcdsa ecdsa, in ILogger logger)
+        public UnknownSenderFilter(IEthereumEcdsa ecdsa, ILogger logger)
         {
             _ecdsa = ecdsa;
             _logger = logger;

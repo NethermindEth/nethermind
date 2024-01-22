@@ -14,7 +14,7 @@ internal sealed class NotSupportedTxFilter : IIncomingTxFilter
     private readonly ITxPoolConfig _txPoolConfig;
     private readonly ILogger _logger;
 
-    public NotSupportedTxFilter(ITxPoolConfig txPoolConfig, in ILogger logger)
+    public NotSupportedTxFilter(ITxPoolConfig txPoolConfig, ILogger logger)
     {
         _txPoolConfig = txPoolConfig;
         _logger = logger;

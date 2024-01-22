@@ -14,7 +14,7 @@ namespace Nethermind.TxPool.Filters
     {
         private readonly ILogger _logger;
 
-        public LowNonceFilter(in ILogger logger)
+        public LowNonceFilter(ILogger logger)
         {
             _logger = logger;
         }

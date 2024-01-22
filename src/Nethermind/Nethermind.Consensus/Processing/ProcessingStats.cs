@@ -39,7 +39,7 @@ namespace Nethermind.Consensus.Processing
         private long _lastTotalCreates;
         private long _lastReportMs;
 
-        public ProcessingStats(in ILogger logger)
+        public ProcessingStats(ILogger logger)
         {
             _logger = logger;
 

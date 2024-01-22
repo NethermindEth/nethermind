@@ -156,7 +156,7 @@ namespace Nethermind.Synchronization.Test.FastSync
         {
             private readonly ILogger _logger;
 
-            public DbContext(in ILogger logger, ILogManager logManager)
+            public DbContext(ILogger logger, ILogManager logManager)
             {
                 _logger = logger;
                 RemoteDb = new MemDb();

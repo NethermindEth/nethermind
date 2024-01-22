@@ -47,7 +47,7 @@ public class NodeLifecycleManager : INodeLifecycleManager
         NodeRecord nodeRecord,
         IDiscoveryConfig discoveryConfig,
         ITimestamper timestamper,
-        in ILogger logger)
+        ILogger logger)
     {
         _discoveryManager = discoveryManager ?? throw new ArgumentNullException(nameof(discoveryManager));
         _nodeTable = nodeTable ?? throw new ArgumentNullException(nameof(nodeTable));

@@ -21,7 +21,7 @@ public static class BlockTraceDumper
 {
     public static void LogDiagnosticRlp(
         Block block,
-        in ILogger logger,
+        ILogger logger,
         bool toFile,
         bool toLog)
     {
@@ -48,7 +48,7 @@ public static class BlockTraceDumper
     public static void LogDiagnosticTrace(
         IBlockTracer blockTracer,
         Hash256 blockHash,
-        in ILogger logger)
+        ILogger logger)
     {
         string fileName = string.Empty;
 
@@ -97,7 +97,7 @@ public static class BlockTraceDumper
             FileMode.Create,
             FileAccess.Write);
 
-    public static void LogTraceFailure(IBlockTracer blockTracer, Hash256 blockHash, Exception exception, in ILogger logger)
+    public static void LogTraceFailure(IBlockTracer blockTracer, Hash256 blockHash, Exception exception, ILogger logger)
     {
         if (logger.IsError)
             logger.Error($"Cannot create trace of blocks starting from {blockHash} of type {blockTracer.GetType().Name}", exception);

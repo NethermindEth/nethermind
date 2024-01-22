@@ -13,7 +13,7 @@ namespace Nethermind.Specs.ChainSpecStyle;
 public static class ChainSpecLoaderExtensions
 {
 
-    public static ChainSpec LoadEmbeddedOrFromFile(this IChainSpecLoader chainSpecLoader, string fileName, in ILogger logger)
+    public static ChainSpec LoadEmbeddedOrFromFile(this IChainSpecLoader chainSpecLoader, string fileName, ILogger logger)
     {
         try
         {
@@ -61,7 +61,7 @@ public static class ChainSpecLoaderExtensions
         return builder.ToString();
     }
 
-    public static ChainSpec LoadFromFile(this IChainSpecLoader chainSpecLoader, string filePath, in ILogger logger)
+    public static ChainSpec LoadFromFile(this IChainSpecLoader chainSpecLoader, string filePath, ILogger logger)
     {
         filePath = filePath.GetApplicationResourcePath();
         if (!File.Exists(filePath))

@@ -15,7 +15,7 @@ namespace Nethermind.TxPool.Filters
         private readonly bool _thereIsPriorityContract;
         private readonly ILogger _logger;
 
-        public BalanceZeroFilter(bool thereIsPriorityContract, in ILogger logger)
+        public BalanceZeroFilter(bool thereIsPriorityContract, ILogger logger)
         {
             _thereIsPriorityContract = thereIsPriorityContract;
             _logger = logger;

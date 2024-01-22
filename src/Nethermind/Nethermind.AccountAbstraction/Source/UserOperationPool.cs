@@ -60,7 +60,7 @@ namespace Nethermind.AccountAbstraction.Source
             IAccountAbstractionConfig accountAbstractionConfig,
             IBlockTree blockTree,
             Address entryPointAddress,
-            in ILogger logger,
+            ILogger logger,
             IPaymasterThrottler paymasterThrottler,
             ILogFinder logFinder,
             ISigner signer,

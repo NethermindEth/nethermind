@@ -44,7 +44,7 @@ namespace Nethermind.Blockchain.Visitors
             ISyncConfig syncConfig,
             IBlockTree blockTree,
             IStateReader stateReader,
-            in ILogger logger,
+            ILogger logger,
             long batchSize = DefaultBatchSize)
         {
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));

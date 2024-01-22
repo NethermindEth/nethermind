@@ -34,7 +34,7 @@ namespace Nethermind.Hive
             IBlockTree blockTree,
             IBlockProcessingQueue blockProcessingQueue,
             IConfigProvider configurationProvider,
-            in ILogger logger,
+            ILogger logger,
             IFileSystem fileSystem,
             IBlockValidator blockValidator)
         {

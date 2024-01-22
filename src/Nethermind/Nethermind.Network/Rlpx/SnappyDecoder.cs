@@ -15,7 +15,7 @@ namespace Nethermind.Network.Rlpx
     {
         private readonly ILogger _logger;
 
-        public SnappyDecoder(in ILogger logger)
+        public SnappyDecoder(ILogger logger)
         {
             _logger = logger;
         }

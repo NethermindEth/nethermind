@@ -18,7 +18,7 @@ namespace Nethermind.Analytics
         private int _accountsVisited;
         private int _nodesVisited;
 
-        public SupplyVerifier(in ILogger logger)
+        public SupplyVerifier(ILogger logger)
         {
             _logger = logger;
         }

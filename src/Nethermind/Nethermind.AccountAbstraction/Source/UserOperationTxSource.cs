@@ -44,7 +44,7 @@ namespace Nethermind.AccountAbstraction.Source
             ISpecProvider specProvider,
             IReadOnlyStateProvider stateProvider,
             ISigner signer,
-            in ILogger logger)
+            ILogger logger)
         {
             _userOperationTxBuilders = userOperationTxBuilders;
             _userOperationPools = userOperationPools;

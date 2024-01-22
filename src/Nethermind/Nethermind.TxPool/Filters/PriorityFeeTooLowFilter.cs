@@ -14,7 +14,7 @@ public class PriorityFeeTooLowFilter : IIncomingTxFilter
     private readonly ILogger _logger;
     private static readonly UInt256 _minBlobsPriorityFee = 1.GWei();
 
-    public PriorityFeeTooLowFilter(in ILogger logger)
+    public PriorityFeeTooLowFilter(ILogger logger)
     {
         _logger = logger;
     }

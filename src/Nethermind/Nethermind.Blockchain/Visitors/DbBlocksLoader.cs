@@ -24,7 +24,7 @@ namespace Nethermind.Blockchain.Visitors
         private long _currentDbLoadBatchEnd;
 
         public DbBlocksLoader(IBlockTree blockTree,
-            in ILogger logger,
+            ILogger logger,
             long? startBlockNumber = null,
             long batchSize = DefaultBatchSize,
             long maxBlocksToLoad = long.MaxValue)
