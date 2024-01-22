@@ -36,7 +36,7 @@ using Nethermind.Wallet;
 using BlockTree = Nethermind.Blockchain.BlockTree;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
-using Nethermind.Facade.Multicall;
+using Nethermind.Facade.Simulate;
 using Nethermind.Synchronization.ParallelSync;
 
 namespace Nethermind.JsonRpc.Benchmark
@@ -129,8 +129,10 @@ namespace Nethermind.JsonRpc.Benchmark
                     new ReadOnlyBlockTree(blockTree),
                     specProvider,
                     LimboLogs.Instance),
-                MultiCallReadOnlyBlocksProcessingEnv.Create(
+                SimulateReadOnlyBlocksProcessingEnv.Create(
                     false,
+                    stateManager,
+                    new ReadOnlyBlockTree(blockTree),
                     new ReadOnlyDbProvider(dbProvider, true),
                     specProvider,
                     LimboLogs.Instance),

@@ -40,7 +40,7 @@ public class OverridableCodeInfoRepository : ICodeInfoRepository
 
     public CodeInfo GetCachedCodeInfo(IWorldState worldState, Address codeSource, IReleaseSpec vmSpec) =>
         _codeOverwrites.TryGetValue(codeSource, out CodeInfo result) ? result : _codeInfoRepository.GetCachedCodeInfo(worldState, codeSource, vmSpec);
-    
+
 
     public CodeInfo GetOrAdd(ValueHash256 codeHash, ReadOnlySpan<byte> initCode) =>
         _codeInfoRepository.GetOrAdd(codeHash, initCode);
