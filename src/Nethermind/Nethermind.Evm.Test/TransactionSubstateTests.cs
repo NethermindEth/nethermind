@@ -46,7 +46,7 @@ namespace Nethermind.Evm.Test
                 new LogEntry[] { },
                 true,
                 true);
-            transactionSubstate.Error.Should().Be("Reverted 0x0506070809");
+            transactionSubstate.Error.Should().Be("Reverted \u0005\u0006\u0007\u0008\t");
         }
 
         [Test]
@@ -136,7 +136,7 @@ namespace Nethermind.Evm.Test
                 "Reverted unknown panic code (0xff)");
 
             // Invalid case
-            yield return (new byte[] { 0x4e, 0x48, 0x7b, 0x71 }, "Reverted 0x4e487b71");
+            yield return (new byte[] { 0x4e, 0x48, 0x7b, 0x71 }, "Reverted NH{q");
         }
 
         [Test]

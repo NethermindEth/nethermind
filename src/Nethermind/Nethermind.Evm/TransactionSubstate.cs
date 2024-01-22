@@ -4,6 +4,8 @@
 using System;
 using System.Collections.Frozen;
 using System.Collections.Generic;
+using System.Text;
+using System.Text.Unicode;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -91,11 +93,12 @@ public class TransactionSubstate
         ReadOnlySpan<byte> span = Output.Span;
         Error = string.Concat(
             RevertedErrorMessagePrefix,
-            TryGetErrorMessage(span) ?? DefaultErrorMessage(span)
+            TryGetErrorMessage(span) ?? EncodeErrorMessage(span)
         );
     }
 
-    private static string DefaultErrorMessage(ReadOnlySpan<byte> span) => span.ToHexString(true);
+    private static string EncodeErrorMessage(ReadOnlySpan<byte> span) =>
+        Utf8.IsValid(span) ? Encoding.UTF8.GetString(span) : span.ToHexString(true);
 
     private string? TryGetErrorMessage(ReadOnlySpan<byte> span)
     {
@@ -129,7 +132,7 @@ public class TransactionSubstate
                 if (length > span.Length) return null;
 
                 ReadOnlySpan<byte> binaryMessage = span.TakeAndMove((int)length);
-                return System.Text.Encoding.UTF8.GetString(binaryMessage);
+                return EncodeErrorMessage(binaryMessage);
 
             }
 
@@ -140,7 +143,7 @@ public class TransactionSubstate
             if (UInt256.AddOverflow(lengthOffset, length, out UInt256 endOffset) || endOffset != span.Length) return null;
 
             span = span.Slice((int)lengthOffset, (int)length);
-            return System.Text.Encoding.UTF8.GetString(span);
+            return EncodeErrorMessage(span);
         }
         catch (Exception e) // shouldn't happen, just for being safe
         {
