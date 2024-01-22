@@ -27,7 +27,7 @@ public class MevPlugin : IConsensusWrapperPlugin
     private static readonly ProcessingOptions SimulateBundleProcessingOptions = ProcessingOptions.ProducingBlock | ProcessingOptions.IgnoreParentNotOnMainChain;
 
     private IMevConfig _mevConfig = null!;
-    private ILogger? _logger;
+    private ILogger _logger;
     private INethermindApi _nethermindApi = null!;
     private BundlePool? _bundlePool;
     private ITracerFactory? _tracerFactory;

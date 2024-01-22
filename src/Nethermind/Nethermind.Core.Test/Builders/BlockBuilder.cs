@@ -96,9 +96,8 @@ namespace Nethermind.Core.Test.Builders
             }
 
             BlockBuilder result = WithTransactions(txs);
-            ReceiptTrie<TxReceipt> receiptTrie = new(specProvider.GetSpec(TestObjectInternal.Header), receipts, ReceiptMessageDecoder.Instance);
-            receiptTrie.UpdateRootHash();
-            TestObjectInternal.Header.ReceiptsRoot = receiptTrie.RootHash;
+            Hash256 receiptHash = ReceiptTrie<TxReceipt>.CalculateRoot(specProvider.GetSpec(TestObjectInternal.Header), receipts, ReceiptMessageDecoder.Instance);
+            TestObjectInternal.Header.ReceiptsRoot = receiptHash;
             return result;
         }
 
@@ -106,10 +105,8 @@ namespace Nethermind.Core.Test.Builders
         {
             TestObjectInternal = TestObjectInternal.WithReplacedBody(
                 TestObjectInternal.Body.WithChangedTransactions(transactions));
-            TxTrie trie = new(transactions);
-            trie.UpdateRootHash();
 
-            TestObjectInternal.Header.TxRoot = trie.RootHash;
+            TestObjectInternal.Header.TxRoot = TxTrie.CalculateRoot(transactions);
             return this;
         }
 

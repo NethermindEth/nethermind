@@ -285,11 +285,11 @@ namespace Nethermind.Core.Test.Builders
                     currentBlock.Bloom!.Add(receipt.Logs);
                 }
 
-                currentBlock.Header.TxRoot = new TxTrie(currentBlock.Transactions).RootHash;
+                currentBlock.Header.TxRoot = TxTrie.CalculateRoot(currentBlock.Transactions);
                 TxReceipt[] txReceipts = receipts.ToArray();
                 currentBlock.Header.ReceiptsRoot =
-                    new ReceiptTrie<TxReceipt>(_specProvider.GetSpec(currentBlock.Header), txReceipts,
-                        ReceiptMessageDecoder.Instance).RootHash;
+                    ReceiptTrie<TxReceipt>.CalculateRoot(_specProvider.GetSpec(currentBlock.Header), txReceipts,
+                        ReceiptMessageDecoder.Instance);
                 currentBlock.Header.Hash = currentBlock.CalculateHash();
                 foreach (TxReceipt txReceipt in txReceipts)
                 {

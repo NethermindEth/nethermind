@@ -20,6 +20,7 @@ using Nethermind.Db.Blooms;
 using Nethermind.Db.Rocks.Config;
 using Nethermind.Init;
 using Nethermind.Logging;
+using Nethermind.Merge.Plugin;
 using Nethermind.TxPool;
 using NUnit.Framework;
 
@@ -189,12 +190,13 @@ namespace Nethermind.Runner.Test
         }
 
         [TestCase("mainnet", 2048)]
-        [TestCase("holesky", 2048)]
+        [TestCase("holesky", 1024)]
+        [TestCase("sepolia", 1024)]
         [TestCase("gnosis", 2048)]
         [TestCase("poacore", 2048)]
         [TestCase("energy", 2048)]
-        [TestCase("chiado", 2048)]
-        [TestCase("^mainnet ^holesky ^spaceneth ^volta ^energy ^poacore ^gnosis ^chiado", 1024)]
+        [TestCase("chiado", 1024)]
+        [TestCase("^mainnet ^spaceneth ^volta ^energy ^poacore ^gnosis ^chiado", 1024)]
         [TestCase("spaceneth", 128)]
         public void Tx_pool_defaults_are_correct(string configWildcard, int poolSize)
         {
@@ -326,12 +328,17 @@ namespace Nethermind.Runner.Test
             Test<IInitConfig, string>(configWildcard, c => c.LogFileName, (cf, p) => p.Should().Be(cf.Replace("cfg", "logs.txt"), cf));
         }
 
+        [TestCase("*")]
+        public void Simulating_block_production_on_every_slot_is_always_disabled(string configWildcard)
+        {
+            Test<IMergeConfig, bool>(configWildcard, c => c.SimulateBlockProduction, false);
+        }
+
         [TestCase("goerli", BlobsSupportMode.StorageWithReorgs)]
-        [TestCase("^goerli", BlobsSupportMode.Disabled)]
-        [TestCase("sepolia", BlobsSupportMode.Disabled)]
-        [TestCase("holesky", BlobsSupportMode.Disabled)]
+        [TestCase("sepolia", BlobsSupportMode.StorageWithReorgs)]
+        [TestCase("holesky", BlobsSupportMode.StorageWithReorgs)]
+        [TestCase("chiado", BlobsSupportMode.StorageWithReorgs)]
         [TestCase("mainnet", BlobsSupportMode.Disabled)]
-        [TestCase("chiado", BlobsSupportMode.Disabled)]
         [TestCase("gnosis", BlobsSupportMode.Disabled)]
         public void Blob_txs_support_is_correct(string configWildcard, BlobsSupportMode blobsSupportMode)
         {

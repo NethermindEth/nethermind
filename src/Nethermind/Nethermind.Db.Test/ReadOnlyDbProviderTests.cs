@@ -12,7 +12,7 @@ namespace Nethermind.Db.Test
         [TestCase(false)]
         public void Can_clear(bool localChanges)
         {
-            ReadOnlyDbProvider dbProvider = new(new DbProvider(DbModeHint.Mem), localChanges);
+            ReadOnlyDbProvider dbProvider = new(new DbProvider(), localChanges);
             dbProvider.ClearTempChanges();
         }
     }

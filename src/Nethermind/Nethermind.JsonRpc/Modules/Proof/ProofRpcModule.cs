@@ -200,12 +200,12 @@ namespace Nethermind.JsonRpc.Modules.Proof
 
         private static byte[][] BuildTxProofs(Transaction[] txs, IReleaseSpec releaseSpec, int index)
         {
-            return new TxTrie(txs, true).BuildProof(index);
+            return TxTrie.CalculateProof(txs, index);
         }
 
         private byte[][] BuildReceiptProofs(BlockHeader blockHeader, TxReceipt[] receipts, int index)
         {
-            return new ReceiptTrie<TxReceipt>(_specProvider.GetSpec(blockHeader), receipts, ReceiptMessageDecoder.Instance, true).BuildProof(index);
+            return ReceiptTrie<TxReceipt>.CalculateReceiptProofs(_specProvider.GetSpec(blockHeader), receipts, index);
         }
     }
 }

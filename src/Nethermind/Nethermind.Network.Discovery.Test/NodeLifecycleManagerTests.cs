@@ -41,7 +41,7 @@ namespace Nethermind.Network.Discovery.Test
         private IDiscoveryConfig _discoveryConfigMock = null!;
         private INodeTable _nodeTable = null!;
         private IEvictionManager _evictionManagerMock = null!;
-        private ILogger _loggerMock = null!;
+        private ILogger _loggerMock = default;
         private readonly int _port = 1;
         private readonly string _host = "192.168.1.27";
 
@@ -55,7 +55,7 @@ namespace Nethermind.Network.Discovery.Test
             SetupNodeIds();
 
             LimboLogs? logManager = LimboLogs.Instance;
-            _loggerMock = Substitute.For<ILogger>();
+            _loggerMock = new(Substitute.For<InterfaceLogger>());
             //setting config to store 3 nodes in a bucket and for table to have one bucket//setting config to store 3 nodes in a bucket and for table to have one bucket
 
             IConfigProvider configurationProvider = new ConfigProvider();

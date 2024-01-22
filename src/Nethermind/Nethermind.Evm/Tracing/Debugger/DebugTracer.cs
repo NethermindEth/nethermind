@@ -239,7 +239,7 @@ public class DebugTracer : ITxTracer, ITxTracerWrapper, IDisposable
     public void ReportBlockHash(Hash256 blockHash)
         => InnerTracer.ReportBlockHash(blockHash);
 
-    public void ReportByteCode(byte[] byteCode)
+    public void ReportByteCode(ReadOnlyMemory<byte> byteCode)
         => InnerTracer.ReportByteCode(byteCode);
 
     public void ReportGasUpdateForVmTrace(long refund, long gasAvailable)
