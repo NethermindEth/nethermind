@@ -30,7 +30,7 @@ namespace Nethermind.Trie
         /// <param name="nextToVisit"></param>
         /// <exception cref="InvalidDataException"></exception>
         /// <exception cref="TrieException"></exception>
-        internal void AcceptResolvedNode<TNodeContext>(ITreeVisitor visitor, TNodeContext nodeContext, ITrieNodeResolver nodeResolver, SmallTrieVisitContext trieVisitContext, IList<(TrieNode, TNodeContext, SmallTrieVisitContext)> nextToVisit)
+        internal void AcceptResolvedNode<TNodeContext>(ITreeVisitor visitor, in TNodeContext nodeContext, ITrieNodeResolver nodeResolver, SmallTrieVisitContext trieVisitContext, IList<(TrieNode, TNodeContext, SmallTrieVisitContext)> nextToVisit)
             where TNodeContext : INodeContext<TNodeContext>
         {
             switch (NodeType)

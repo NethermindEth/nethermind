@@ -326,7 +326,7 @@ public class BatchedTrieVisitor<TNodeContext>
             {
                 int idx = resolveOrdering[i];
 
-                (TrieNode nodeToResolve, TNodeContext nodeContext, SmallTrieVisitContext ctx) = currentBatch[idx];
+                (TrieNode nodeToResolve, TNodeContext _, SmallTrieVisitContext ctx) = currentBatch[idx];
                 try
                 {
                     Hash256 theKeccak = nodeToResolve.Keccak;
