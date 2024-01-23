@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Linq;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Core;
@@ -11,18 +12,20 @@ using Nethermind.Logging;
 
 namespace Nethermind.Merge.Plugin;
 
-public class ProcessedTransactionsDbCleaner : IDisposable
+public class BlobTransactionsDbCleaner : IDisposable
 {
     private readonly IBlockFinalizationManager _finalizationManager;
     private readonly IDb _processedTxsDb;
+    private readonly IColumnsDb<BlobTxsColumns> _db;
     private readonly ILogger _logger;
     private long _lastFinalizedBlock = 0;
     public Task CleaningTask { get; private set; } = Task.CompletedTask;
 
-    public ProcessedTransactionsDbCleaner(IBlockFinalizationManager finalizationManager, IDb processedTxsDb, ILogManager logManager)
+    public BlobTransactionsDbCleaner(IBlockFinalizationManager finalizationManager, IColumnsDb<BlobTxsColumns> db, ILogManager logManager)
     {
         _finalizationManager = finalizationManager ?? throw new ArgumentNullException(nameof(finalizationManager));
-        _processedTxsDb = processedTxsDb ?? throw new ArgumentNullException(nameof(processedTxsDb));
+        _db = db ?? throw new ArgumentNullException(nameof(db));
+        _processedTxsDb = db?.GetColumnDb(BlobTxsColumns.ProcessedTxs) ?? throw new ArgumentNullException(nameof(db));
         _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
 
         _finalizationManager.BlocksFinalized += OnBlocksFinalized;
@@ -54,6 +57,10 @@ public class ProcessedTransactionsDbCleaner : IDisposable
             }
 
             if (_logger.IsDebug) _logger.Debug($"Cleaned processed blob txs from block {_lastFinalizedBlock} to block {newlyFinalizedBlockNumber}");
+
+            _db.CompactColumns();
+
+            if (_logger.IsDebug) _logger.Debug($"Blob transactions database columns have been compacted");
 
             _lastFinalizedBlock = newlyFinalizedBlockNumber;
         }

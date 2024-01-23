@@ -103,7 +103,7 @@ public partial class MergePlugin : IConsensusWrapperPlugin, ISynchronizationPlug
             _blockFinalizationManager = new ManualBlockFinalizationManager();
             if (_txPoolConfig.BlobsSupport.SupportsReorgs())
             {
-                ProcessedTransactionsDbCleaner processedTransactionsDbCleaner = new(_blockFinalizationManager, _api.DbProvider.BlobTransactionsDb.GetColumnDb(BlobTxsColumns.ProcessedTxs), _api.LogManager);
+                BlobTransactionsDbCleaner processedTransactionsDbCleaner = new(_blockFinalizationManager, _api.DbProvider.BlobTransactionsDb, _api.LogManager);
                 _api.DisposeStack.Push(processedTransactionsDbCleaner);
             }
 
