@@ -97,9 +97,11 @@ internal static class EvmObjectFormat
                 {
                     if(!IsValidEof(subcontainer, validateSubContainers, out _))
                     {
+                        ArrayPool<byte[]>.Shared.Return(containers);
                         return false;
                     }
                 }
+                ArrayPool<byte[]>.Shared.Return(containers);
                 return true;
             }
 
@@ -391,11 +393,16 @@ internal static class EvmObjectFormat
                 ReadOnlySpan<byte> code = container.Slice(codeSectionStartOffset, codeSectionSize);
                 if (!ValidateInstructions(sectionIdx, isNonReturning, typesection, code, header, validationQueue, out ushort jumpsCount))
                 {
+                    ArrayPool<bool>.Shared.Return(visitedSections);
                     return false;
                 }
             }
 
-            return visitedSections[..header.CodeSections.Count].All(id => id);
+            var HasNoNonReachableCodeSections = visitedSections[..header.CodeSections.Count].All(id => id);
+            ArrayPool<bool>.Shared.Return(visitedSections);
+
+            return HasNoNonReachableCodeSections;
+
         }
 
         bool ValidateTypeSection(ReadOnlySpan<byte> types)
@@ -498,9 +505,6 @@ internal static class EvmObjectFormat
                             return false;
                         }
 
-                        worklist.Enqueue(targetSectionId);
-
-
                         bool isTargetSectionNonReturning = typesection[targetSectionId * MINIMUM_TYPESECTION_SIZE + OUTPUTS_OFFSET] == 0x80;
 
                         if (isNonReturning && !isTargetSectionNonReturning)
@@ -508,6 +512,8 @@ internal static class EvmObjectFormat
                             if (Logger.IsTrace) Logger.Trace($"EIP-XXXX : JUMPF from non returning code-sections can only call non-returning sections");
                             return false;
                         }
+
+                        worklist.Enqueue(targetSectionId);
                     }
 
                     if (opcode is Instruction.DUPN or Instruction.SWAPN or Instruction.EXCHANGE)
@@ -575,14 +581,12 @@ internal static class EvmObjectFormat
                             return false;
                         }
 
-                        // begin block: might not be included in Eof2
-                        // byte targetSectionOutputCount = typesection[targetSectionId * MINIMUM_TYPESECTION_SIZE + OUTPUTS_OFFSET];
-                        // if (targetSectionOutputCount == 0x80)
-                        // {
-                        //     if (Logger.IsTrace) Logger.Trace($"EIP-XXXX : CALLF into non-returning function");
-                        //     return false;
-                        // }
-                        // end block
+                        byte targetSectionOutputCount = typesection[targetSectionId * MINIMUM_TYPESECTION_SIZE + OUTPUTS_OFFSET];
+                        if (targetSectionOutputCount == 0x80)
+                        {
+                            if (Logger.IsTrace) Logger.Trace($"EIP-XXXX : CALLF into non-returning function");
+                            return false;
+                        }
 
                         worklist.Enqueue(targetSectionId);
                     }
