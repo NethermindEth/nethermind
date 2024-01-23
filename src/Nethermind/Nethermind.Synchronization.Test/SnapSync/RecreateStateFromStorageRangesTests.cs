@@ -8,6 +8,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Logging;
+using Nethermind.Paprika;
 using Nethermind.State;
 using Nethermind.State.Proofs;
 using Nethermind.Synchronization.SnapSync;
@@ -47,7 +48,8 @@ namespace Nethermind.Synchronization.Test.SnapSync
             DbProvider dbProvider = new(DbModeHint.Mem);
             dbProvider.RegisterDb(DbNames.State, db);
             ProgressTracker progressTracker = new(null, dbProvider.GetDb<IDb>(DbNames.State), LimboLogs.Instance);
-            SnapProvider snapProvider = new(progressTracker, dbProvider, LimboLogs.Instance);
+            IStateFactory stateFactory = new PaprikaStateFactory();
+            SnapProvider snapProvider = new(progressTracker, dbProvider, stateFactory, LimboLogs.Instance);
 
             var result = snapProvider.AddStorageRange(1, null, rootHash, Keccak.Zero, TestItem.Tree.SlotsWithPaths, proof!.StorageProofs![0].Proof!.Concat(proof!.StorageProofs![1].Proof!).ToArray());
 
@@ -67,7 +69,8 @@ namespace Nethermind.Synchronization.Test.SnapSync
             DbProvider dbProvider = new(DbModeHint.Mem);
             dbProvider.RegisterDb(DbNames.State, db);
             ProgressTracker progressTracker = new(null, dbProvider.GetDb<IDb>(DbNames.State), LimboLogs.Instance);
-            SnapProvider snapProvider = new(progressTracker, dbProvider, LimboLogs.Instance);
+            IStateFactory stateFactory = new PaprikaStateFactory();
+            SnapProvider snapProvider = new(progressTracker, dbProvider, stateFactory, LimboLogs.Instance);
 
             var result = snapProvider.AddStorageRange(1, null, rootHash, Keccak.Zero, TestItem.Tree.SlotsWithPaths, proof!.StorageProofs![0].Proof!.Concat(proof!.StorageProofs![1].Proof!).ToArray());
 
@@ -83,7 +86,8 @@ namespace Nethermind.Synchronization.Test.SnapSync
             DbProvider dbProvider = new(DbModeHint.Mem);
             dbProvider.RegisterDb(DbNames.State, db);
             ProgressTracker progressTracker = new(null, dbProvider.GetDb<IDb>(DbNames.State), LimboLogs.Instance);
-            SnapProvider snapProvider = new(progressTracker, dbProvider, LimboLogs.Instance);
+            IStateFactory stateFactory = new PaprikaStateFactory();
+            SnapProvider snapProvider = new(progressTracker, dbProvider, stateFactory, LimboLogs.Instance);
 
             var result = snapProvider.AddStorageRange(1, null, rootHash, TestItem.Tree.SlotsWithPaths[0].Path, TestItem.Tree.SlotsWithPaths);
 
@@ -100,7 +104,8 @@ namespace Nethermind.Synchronization.Test.SnapSync
             DbProvider dbProvider = new(DbModeHint.Mem);
             dbProvider.RegisterDb(DbNames.State, db);
             ProgressTracker progressTracker = new(null, dbProvider.GetDb<IDb>(DbNames.State), LimboLogs.Instance);
-            SnapProvider snapProvider = new(progressTracker, dbProvider, LimboLogs.Instance);
+            IStateFactory stateFactory = new PaprikaStateFactory();
+            SnapProvider snapProvider = new(progressTracker, dbProvider, stateFactory, LimboLogs.Instance);
 
             AccountProofCollector accountProofCollector = new(TestItem.Tree.AccountAddress0.Bytes, new ValueHash256[] { Keccak.Zero, TestItem.Tree.SlotsWithPaths[1].Path });
             _inputStateTree!.Accept(accountProofCollector, _inputStateTree.RootHash);
@@ -135,7 +140,8 @@ namespace Nethermind.Synchronization.Test.SnapSync
             DbProvider dbProvider = new(DbModeHint.Mem);
             dbProvider.RegisterDb(DbNames.State, db);
             ProgressTracker progressTracker = new(null, dbProvider.GetDb<IDb>(DbNames.State), LimboLogs.Instance);
-            SnapProvider snapProvider = new(progressTracker, dbProvider, LimboLogs.Instance);
+            IStateFactory stateFactory = new PaprikaStateFactory();
+            SnapProvider snapProvider = new(progressTracker, dbProvider, stateFactory, LimboLogs.Instance);
 
             AccountProofCollector accountProofCollector = new(TestItem.Tree.AccountAddress0.Bytes, new ValueHash256[] { Keccak.Zero, TestItem.Tree.SlotsWithPaths[1].Path });
             _inputStateTree!.Accept(accountProofCollector, _inputStateTree.RootHash);

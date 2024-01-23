@@ -11,6 +11,8 @@ namespace Nethermind.State;
 public interface IState : IReadOnlyState
 {
     void Set(Address address, Account? account);
+    void Set(ValueHash256 hash, Account? account);
+    void Set(ReadOnlySpan<byte> keyPath, int targetKeyLength, Hash256 keccak);
 
     void SetStorage(in StorageCell cell, ReadOnlySpan<byte> value);
 
@@ -28,6 +30,7 @@ public interface IState : IReadOnlyState
 public interface IReadOnlyState : IDisposable
 {
     Account? Get(Address address);
+    Account? Get(ValueHash256 hash);
 
     /// <summary>
     /// Gets storage by the cell.

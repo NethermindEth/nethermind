@@ -31,6 +31,8 @@ using Nethermind.TxPool;
 using Nethermind.Wallet;
 
 using Nethermind.Config;
+using Nethermind.Paprika;
+using Nethermind.State;
 using Nethermind.Synchronization.ParallelSync;
 
 namespace Nethermind.JsonRpc.Test.Modules
@@ -122,8 +124,11 @@ namespace Nethermind.JsonRpc.Test.Modules
             IFilterStore filterStore = new FilterStore();
             IFilterManager filterManager = new FilterManager(filterStore, BlockProcessor, TxPool, LimboLogs.Instance);
 
+            IStateFactory stateFactory = new PaprikaStateFactory();
+
             ReadOnlyTxProcessingEnv processingEnv = new(
-                WorldStateManager,
+                DbProvider.AsReadOnly(true),
+                stateFactory,
                 new ReadOnlyBlockTree(BlockTree),
                 SpecProvider,
                 LimboLogs.Instance);

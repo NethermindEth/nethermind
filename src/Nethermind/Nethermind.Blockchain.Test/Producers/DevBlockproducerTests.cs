@@ -18,6 +18,7 @@ using Nethermind.Db.Blooms;
 using Nethermind.Evm;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
+using Nethermind.Paprika;
 using Nethermind.Specs;
 using Nethermind.State;
 using Nethermind.State.Repositories;
@@ -50,11 +51,12 @@ namespace Nethermind.Blockchain.Test.Producers
                 NoPruning.Instance,
                 Archive.Instance,
                 LimboLogs.Instance);
+            IStateFactory stateFactory = new PaprikaStateFactory();
             WorldState stateProvider = new(
-                trieStore,
+                stateFactory,
                 dbProvider.RegisteredDbs[DbNames.Code],
                 LimboLogs.Instance);
-            StateReader stateReader = new(trieStore, dbProvider.GetDb<IDb>(DbNames.State), LimboLogs.Instance);
+            StateReader stateReader = new(stateFactory, dbProvider.GetDb<IDb>(DbNames.State), LimboLogs.Instance);
             BlockhashProvider blockhashProvider = new(blockTree, LimboLogs.Instance);
             VirtualMachine virtualMachine = new(
                 blockhashProvider,

@@ -5,6 +5,7 @@ using Nethermind.Int256;
 using Nethermind.State;
 using Nethermind.Trie.Pruning;
 using Paprika.Chain;
+using Paprika.Data;
 using Paprika.Merkle;
 using Paprika.Store;
 using IWorldState = Paprika.Chain.IWorldState;
@@ -26,6 +27,15 @@ public class PaprikaStateFactory : IStateFactory
     public PaprikaStateFactory(string directory)
     {
         _db = PagedDb.MemoryMappedDb(_sepolia, 64, directory, true);
+        ComputeMerkleBehavior merkle = new(1, 1);
+        _blockchain = new Blockchain(_db, merkle, _flushFileEvery, new CacheBudget.Options(1000));
+        _blockchain.Flushed += (_, flushed) =>
+            ReorgBoundaryReached?.Invoke(this, new ReorgBoundaryReached(flushed.blockNumber));
+    }
+
+    public PaprikaStateFactory()
+    {
+        _db = PagedDb.NativeMemoryDb((ulong)64.MB());
         ComputeMerkleBehavior merkle = new(1, 1);
         _blockchain = new Blockchain(_db, merkle, _flushFileEvery, new CacheBudget.Options(1000));
         _blockchain.Flushed += (_, flushed) =>
@@ -113,6 +123,23 @@ public class PaprikaStateFactory : IStateFactory
                 Convert(account.CodeHash));
         }
 
+        public Account? Get(ValueHash256 hash)
+        {
+            PaprikaAccount account = _wrapped.GetAccount(Convert(hash));
+            bool hasEmptyStorageAndCode = account.CodeHash == PaprikaKeccak.OfAnEmptyString &&
+                                          account.StorageRootHash == PaprikaKeccak.EmptyTreeHash;
+            if (account.Balance.IsZero &&
+                account.Nonce.IsZero &&
+                hasEmptyStorageAndCode)
+                return null;
+
+            if (hasEmptyStorageAndCode)
+                return new Account(account.Nonce, account.Balance);
+
+            return new Account(account.Nonce, account.Balance, Convert(account.StorageRootHash),
+                Convert(account.CodeHash));
+        }
+
         public byte[] GetStorageAt(in StorageCell cell)
         {
             // bytes are used for two purposes, first for the key encoding and second, for the result handling
@@ -162,9 +189,48 @@ public class PaprikaStateFactory : IStateFactory
             }
         }
 
+        public void Set(ValueHash256 hash, Account? account)
+        {
+            PaprikaKeccak key = Convert(hash);
+
+            if (account == null)
+            {
+                _wrapped.DestroyAccount(key);
+            }
+            else
+            {
+                PaprikaAccount actual = new(account.Balance, account.Nonce, Convert(account.CodeHash),
+                    Convert(account.StorageRoot));
+                _wrapped.SetAccount(key, actual);
+            }
+        }
+
+        public void Set(ReadOnlySpan<byte> keyPath, int targetKeyLength, Hash256 keccak)
+        {
+            NibblePath path = NibblePath.FromKey(keyPath).SliceTo(targetKeyLength);
+            _wrapped.SetAccountHash(path, Convert(keccak));
+        }
+
         public Account? Get(Address address)
         {
             PaprikaAccount account = _wrapped.GetAccount(Convert(address));
+            bool hasEmptyStorageAndCode = account.CodeHash == PaprikaKeccak.OfAnEmptyString &&
+                                          account.StorageRootHash == PaprikaKeccak.EmptyTreeHash;
+            if (account.Balance.IsZero &&
+                account.Nonce.IsZero &&
+                hasEmptyStorageAndCode)
+                return null;
+
+            if (hasEmptyStorageAndCode)
+                return new Account(account.Nonce, account.Balance);
+
+            return new Account(account.Nonce, account.Balance, Convert(account.StorageRootHash),
+                Convert(account.CodeHash));
+        }
+
+        public Account? Get(ValueHash256 hash)
+        {
+            PaprikaAccount account = _wrapped.GetAccount(Convert(hash));
             bool hasEmptyStorageAndCode = account.CodeHash == PaprikaKeccak.OfAnEmptyString &&
                                           account.StorageRootHash == PaprikaKeccak.EmptyTreeHash;
             if (account.Balance.IsZero &&

@@ -18,6 +18,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Timers;
 using Nethermind.Db;
 using Nethermind.Logging;
+using Nethermind.Paprika;
 using Nethermind.Specs;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.State;
@@ -67,7 +68,8 @@ namespace Nethermind.Synchronization.Test
                 new TotalDifficultyBetterPeerStrategy(LimboLogs.Instance),
                 LimboLogs.Instance);
 
-            IStateReader stateReader = new StateReader(trieStore, _codeDb, LimboLogs.Instance);
+            IStateFactory stateFactory = new PaprikaStateFactory();
+            IStateReader stateReader = new StateReader(stateFactory, _codeDb, LimboLogs.Instance);
 
             _synchronizer = new Synchronizer(
                 dbProvider,

@@ -42,6 +42,7 @@ using Nethermind.Trie.Pruning;
 using NSubstitute;
 using NUnit.Framework;
 using Nethermind.Synchronization.SnapSync;
+using Nethermind.Paprika;
 
 namespace Nethermind.Synchronization.Test
 {
@@ -333,7 +334,8 @@ namespace Nethermind.Synchronization.Test
                     ? new MergeBetterPeerStrategy(totalDifficultyBetterPeerStrategy, poSSwitcher, beaconPivot, LimboLogs.Instance)
                     : totalDifficultyBetterPeerStrategy;
 
-                StateReader reader = new StateReader(trieStore, codeDb, LimboLogs.Instance);
+                IStateFactory stateFactory = new PaprikaStateFactory();
+                StateReader reader = new StateReader(stateFactory, codeDb, LimboLogs.Instance);
 
                 FullStateFinder fullStateFinder = new FullStateFinder(BlockTree, reader);
 

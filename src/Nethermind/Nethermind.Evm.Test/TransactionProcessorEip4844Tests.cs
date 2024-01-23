@@ -17,6 +17,7 @@ using Nethermind.State;
 using Nethermind.Trie.Pruning;
 using NUnit.Framework;
 using System.Collections.Generic;
+using Nethermind.Paprika;
 
 namespace Nethermind.Evm.Test;
 
@@ -34,7 +35,8 @@ internal class TransactionProcessorEip4844Tests
         MemDb stateDb = new();
         _specProvider = new TestSpecProvider(Cancun.Instance);
         TrieStore trieStore = new(stateDb, LimboLogs.Instance);
-        _stateProvider = new WorldState(trieStore, new MemDb(), LimboLogs.Instance);
+        IStateFactory stateFactory = new PaprikaStateFactory();
+        _stateProvider = new WorldState(stateFactory, new MemDb(), LimboLogs.Instance);
         VirtualMachine virtualMachine = new(TestBlockhashProvider.Instance, _specProvider, LimboLogs.Instance);
         _transactionProcessor = new TransactionProcessor(_specProvider, _stateProvider, virtualMachine, LimboLogs.Instance);
         _ethereumEcdsa = new EthereumEcdsa(_specProvider.ChainId, LimboLogs.Instance);

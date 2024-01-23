@@ -5,6 +5,7 @@ using System;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
@@ -28,6 +29,7 @@ using Nethermind.Evm;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Paprika;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs;
 using Nethermind.Specs.Test;
@@ -82,6 +84,8 @@ public class TestBlockchain : IDisposable
 
     public IPoSSwitcher PoSSwitcher { get; set; } = null!;
 
+    public IStateFactory? StateFactory { get; private set; }
+
     protected TestBlockchain()
     {
     }
@@ -119,7 +123,10 @@ public class TestBlockchain : IDisposable
         EthereumEcdsa = new EthereumEcdsa(SpecProvider.ChainId, LogManager);
         DbProvider = await CreateDbProvider();
         TrieStore = new TrieStore(StateDb, LogManager);
-        State = new WorldState(TrieStore, DbProvider.CodeDb, LogManager);
+
+        StateFactory = new PaprikaStateFactory();
+
+        State = new WorldState(StateFactory, DbProvider.CodeDb, LogManager);
 
         // Eip4788 precompile state account
         if (specProvider?.GenesisSpec?.IsBeaconBlockRootAvailable ?? false)
@@ -141,7 +148,7 @@ public class TestBlockchain : IDisposable
         State.CommitTree(0);
 
         ReadOnlyTrieStore = TrieStore.AsReadOnly(StateDb);
-        StateReader = new StateReader(ReadOnlyTrieStore, CodeDb, LogManager);
+        StateReader = new StateReader(StateFactory, CodeDb, LogManager);
 
         BlockTree = Builders.Build.A.BlockTree()
             .WithSpecProvider(SpecProvider)
@@ -157,7 +164,7 @@ public class TestBlockchain : IDisposable
 
         NonceManager = new NonceManager(chainHeadInfoProvider.AccountStateProvider);
 
-        _trieStoreWatcher = new TrieStoreBoundaryWatcher(WorldStateManager, BlockTree, LogManager);
+        _trieStoreWatcher = new TrieStoreBoundaryWatcher(StateFactory, BlockTree, LogManager);
 
         ReceiptStorage = new InMemoryReceiptStorage(blockTree: BlockTree);
         VirtualMachine virtualMachine = new(new BlockhashProvider(BlockTree, LogManager), SpecProvider, LogManager);
@@ -249,7 +256,8 @@ public class TestBlockchain : IDisposable
         BlocksConfig blocksConfig = new();
 
         BlockProducerEnvFactory blockProducerEnvFactory = new(
-            WorldStateManager,
+            DbProvider.AsReadOnly(true),
+            StateFactory!,
             BlockTree,
             SpecProvider,
             BlockValidator,

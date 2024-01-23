@@ -44,8 +44,10 @@ public class MergePluginTests
         _context.ConfigProvider.GetConfig<IJsonRpcConfig>().Returns(jsonRpcConfig);
         _context.BlockProcessingQueue?.IsEmpty.Returns(true);
         _context.MemDbFactory = new MemDbFactory();
+
         _context.BlockProducerEnvFactory = new BlockProducerEnvFactory(
-            _context.WorldStateManager!,
+            _context.DbProvider!.AsReadOnly(true),
+            _context.StateFactory!,
             _context.BlockTree!,
             _context.SpecProvider!,
             _context.BlockValidator!,

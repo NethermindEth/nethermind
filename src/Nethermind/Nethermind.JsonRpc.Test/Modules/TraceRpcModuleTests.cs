@@ -30,6 +30,8 @@ using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
 using Nethermind.JsonRpc.Data;
 using Nethermind.JsonRpc.Modules;
+using Nethermind.Paprika;
+using Nethermind.State;
 
 namespace Nethermind.JsonRpc.Test.Modules;
 
@@ -49,8 +51,12 @@ public class TraceRpcModuleTests
             ReceiptsRecovery receiptsRecovery =
                 new(Blockchain.EthereumEcdsa, Blockchain.SpecProvider);
             IReceiptFinder receiptFinder = new FullInfoReceiptFinder(Blockchain.ReceiptStorage, receiptsRecovery, Blockchain.BlockFinder);
+
+            IDbProvider dbProvider = await TestMemDbProvider.InitAsync();
+            IStateFactory stateFactory = new PaprikaStateFactory();
+
             ReadOnlyTxProcessingEnv txProcessingEnv =
-                new(Blockchain.WorldStateManager, Blockchain.BlockTree.AsReadOnly(), Blockchain.SpecProvider, Blockchain.LogManager);
+                new(dbProvider.AsReadOnly(true), stateFactory, Blockchain.BlockTree.AsReadOnly(), Blockchain.SpecProvider, Blockchain.LogManager);
             RewardCalculator rewardCalculatorSource = new(Blockchain.SpecProvider);
 
             IRewardCalculator rewardCalculator = rewardCalculatorSource.Get(txProcessingEnv.TransactionProcessor);

@@ -20,6 +20,7 @@ using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.Trie.Pruning;
 using NUnit.Framework;
+using Nethermind.Paprika;
 
 namespace Nethermind.Evm.Test;
 
@@ -64,7 +65,8 @@ public class VirtualMachineTestsBase
         IDb codeDb = new MemDb();
         _stateDb = new MemDb();
         ITrieStore trieStore = new TrieStore(_stateDb, logManager);
-        TestState = new WorldState(trieStore, codeDb, logManager);
+        IStateFactory stateFactory = new PaprikaStateFactory();
+        TestState = new WorldState(stateFactory, codeDb, logManager);
         _ethereumEcdsa = new EthereumEcdsa(SpecProvider.ChainId, logManager);
         IBlockhashProvider blockhashProvider = TestBlockhashProvider.Instance;
         Machine = new VirtualMachine(blockhashProvider, SpecProvider, logManager);

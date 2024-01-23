@@ -14,13 +14,16 @@ using Nethermind.State;
 using Nethermind.State.Snap;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
+using Paprika.RLP;
+using static Nethermind.Core.Extensions.Bytes;
 
 namespace Nethermind.Synchronization.SnapSync
 {
     public static class SnapProviderHelper
     {
         public static (AddRangeResult result, bool moreChildrenToRight, List<PathWithAccount> storageRoots, List<ValueHash256> codeHashes) AddAccountRange(
-            StateTree tree,
+            //StateTree tree,
+            IState state,
             long blockNumber,
             in ValueHash256 expectedRootHash,
             in ValueHash256 startingHash,
@@ -33,13 +36,15 @@ namespace Nethermind.Synchronization.SnapSync
 
             ValueHash256 lastHash = accounts[^1].Path;
 
+            StateTree tree = new StateTree();
+
             (AddRangeResult result, List<TrieNode> sortedBoundaryList, bool moreChildrenToRight) =
                 FillBoundaryTree(tree, startingHash, lastHash, limitHash, expectedRootHash, proofs);
 
-            if (result != AddRangeResult.OK)
-            {
-                return (result, true, null, null);
-            }
+            //if (result != AddRangeResult.OK)
+            //{
+            //    return (result, true, null, null);
+            //}
 
             List<PathWithAccount> accountsWithStorage = new();
             List<ValueHash256> codeHashes = new();
@@ -57,25 +62,87 @@ namespace Nethermind.Synchronization.SnapSync
                     codeHashes.Add(account.Account.CodeHash);
                 }
 
-                Rlp rlp = tree.Set(account.Path, account.Account);
-                if (rlp is not null)
+                //Rlp rlp = tree.Set(account.Path, account.Account);
+                //if (rlp is not null)
+                //{
+                //    Interlocked.Add(ref Metrics.SnapStateSynced, rlp.Bytes.Length);
+                //}
+                state.Set(account.Path, account.Account);
+            }
+
+            Span<byte> lastPath = stackalloc byte[64];
+            Nibbles.BytesToNibbleBytes(lastHash.BytesAsSpan, lastPath);
+            Span<byte> path = stackalloc byte[64];
+            int pathIndex = 0;
+            foreach (var node in sortedBoundaryList)
+            {
+                lastPath.Slice(0, pathIndex).CopyTo(path.Slice(0, pathIndex));
+                if (node.IsExtension)
                 {
-                    Interlocked.Add(ref Metrics.SnapStateSynced, rlp.Bytes.Length);
+                    var childHash = node.GetChildHash(1);
+                    node.Key.CopyTo(path.Slice(pathIndex));
+                    pathIndex += node.Key.Length;
+                }
+                else if (node.IsBranch)
+                {
+                    for (int i = 0; i < 16; i++)
+                    {
+                        path[pathIndex] = (byte)i;
+                        if (BytesCompare(path, lastPath) > 0)
+                        {
+                            if (node.GetChildHashAsValueKeccak(i, out ValueHash256 childHash))
+                            {
+                                state.Set(Nibbles.ToBytes(path), pathIndex + 1, new Hash256(childHash));
+                            }
+                        }
+                    }
+                    pathIndex++;
                 }
             }
 
-            tree.UpdateRootHash();
-
-            if (tree.RootHash != expectedRootHash)
+            //tree.UpdateRootHash();
+            if (state.StateRoot != expectedRootHash)
             {
                 return (AddRangeResult.DifferentRootHash, true, null, null);
             }
 
-            StitchBoundaries(sortedBoundaryList, tree.TrieStore);
+            //StitchBoundaries(sortedBoundaryList, tree.TrieStore);
 
-            tree.Commit(blockNumber, skipRoot: true, WriteFlags.DisableWAL);
+            //tree.Commit(blockNumber, skipRoot: true, WriteFlags.DisableWAL);
+            state.Commit(blockNumber);
 
-            return (AddRangeResult.OK, moreChildrenToRight, accountsWithStorage, codeHashes);
+            //return (AddRangeResult.OK, moreChildrenToRight, accountsWithStorage, codeHashes);
+            return (AddRangeResult.OK, true, accountsWithStorage, codeHashes);
+        }
+
+        private static int BytesCompare(ReadOnlySpan<byte> x, ReadOnlySpan<byte> y)
+        {
+            if (Unsafe.AreSame(ref MemoryMarshal.GetReference(x), ref MemoryMarshal.GetReference(y)) &&
+                x.Length == y.Length)
+            {
+                return 0;
+            }
+
+            if (x.Length == 0)
+            {
+                return y.Length == 0 ? 0 : 1;
+            }
+
+            for (int i = 0; i < x.Length; i++)
+            {
+                if (y.Length <= i)
+                {
+                    return -1;
+                }
+
+                int result = x[i].CompareTo(y[i]);
+                if (result != 0)
+                {
+                    return result;
+                }
+            }
+
+            return y.Length > x.Length ? 1 : 0;
         }
 
         public static (AddRangeResult result, bool moreChildrenToRight) AddStorageRange(

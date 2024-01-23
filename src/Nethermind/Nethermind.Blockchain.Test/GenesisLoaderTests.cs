@@ -7,6 +7,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Db;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
+using Nethermind.Paprika;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Specs.Forks;
@@ -59,7 +60,8 @@ public class GenesisLoaderTests
         IDb stateDb = new MemDb();
         IDb codeDb = new MemDb();
         TrieStore trieStore = new(stateDb, LimboLogs.Instance);
-        IWorldState stateProvider = new WorldState(trieStore, codeDb, LimboLogs.Instance);
+        IStateFactory stateFactory = new PaprikaStateFactory();
+        IWorldState stateProvider = new WorldState(stateFactory, codeDb, LimboLogs.Instance);
         ISpecProvider specProvider = Substitute.For<ISpecProvider>();
         specProvider.GetSpec(Arg.Any<BlockHeader>()).Returns(Berlin.Instance);
         specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(Berlin.Instance);

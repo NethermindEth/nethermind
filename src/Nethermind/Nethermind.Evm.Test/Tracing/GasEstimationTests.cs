@@ -13,6 +13,7 @@ using Nethermind.Db;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
+using Nethermind.Paprika;
 using Nethermind.Specs;
 using Nethermind.State;
 using Nethermind.Trie.Pruning;
@@ -272,7 +273,8 @@ namespace Nethermind.Evm.Test.Tracing
                 _specProvider = MainnetSpecProvider.Instance;
                 MemDb stateDb = new();
                 TrieStore trieStore = new(stateDb, LimboLogs.Instance);
-                _stateProvider = new WorldState(trieStore, new MemDb(), LimboLogs.Instance);
+                IStateFactory stateFactory = new PaprikaStateFactory();
+                _stateProvider = new WorldState(stateFactory, new MemDb(), LimboLogs.Instance);
                 _stateProvider.CreateAccount(TestItem.AddressA, 1.Ether());
                 _stateProvider.Commit(_specProvider.GenesisSpec);
                 _stateProvider.CommitTree(0);

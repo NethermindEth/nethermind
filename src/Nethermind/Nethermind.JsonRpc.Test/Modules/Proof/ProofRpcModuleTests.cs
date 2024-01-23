@@ -27,6 +27,7 @@ using Nethermind.TxPool;
 using NUnit.Framework;
 using System.Threading.Tasks;
 using Nethermind.Consensus.Processing;
+using Nethermind.Paprika;
 using Nethermind.State.Tracing;
 using NSubstitute;
 
@@ -44,7 +45,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
         private IBlockTree _blockTree = null!;
         private IDbProvider _dbProvider = null!;
         private TestSpecProvider _specProvider = null!;
-        private ReadOnlyWorldStateManager _readOnlyWorldStateManager = null!;
+        //private ReadOnlyWorldStateManager _readOnlyWorldStateManager = null!;
 
         public ProofRpcModuleTests(bool createSystemAccount, bool useNonZeroGasPrice)
         {
@@ -61,10 +62,13 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
             _dbProvider = await TestMemDbProvider.InitAsync();
 
             ITrieStore trieStore = new TrieStore(_dbProvider.StateDb, LimboLogs.Instance);
-            _readOnlyWorldStateManager = new ReadOnlyWorldStateManager(_dbProvider, trieStore.AsReadOnly(), LimboLogs.Instance);
+            //_readOnlyWorldStateManager = new ReadOnlyWorldStateManager(_dbProvider, trieStore.AsReadOnly(), LimboLogs.Instance);
+
+            IStateFactory stateFactory = new PaprikaStateFactory();
 
             ProofModuleFactory moduleFactory = new(
-                _readOnlyWorldStateManager,
+                _dbProvider.AsReadOnly(true),
+                stateFactory,
                 _blockTree,
                 new CompositeBlockPreprocessorStep(new RecoverSignatures(new EthereumEcdsa(TestBlockchainIds.ChainId, LimboLogs.Instance), NullTxPool.Instance, _specProvider, LimboLogs.Instance)),
                 receiptStorage,
@@ -207,8 +211,12 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
             _receiptFinder.Get(Arg.Any<Hash256>()).Returns(receipts);
             _receiptFinder.FindBlockHash(Arg.Any<Hash256>()).Returns(_blockTree.FindBlock(1)!.Hash);
 
+            IDbProvider dbProvider = await TestMemDbProvider.InitAsync();
+            IStateFactory stateFactory = new PaprikaStateFactory();
+
             ProofModuleFactory moduleFactory = new ProofModuleFactory(
-                _readOnlyWorldStateManager,
+                dbProvider.AsReadOnly(true),
+                stateFactory,
                 _blockTree,
                 new CompositeBlockPreprocessorStep(new RecoverSignatures(new EthereumEcdsa(TestBlockchainIds.ChainId, LimboLogs.Instance), NullTxPool.Instance, _specProvider, LimboLogs.Instance)),
                 _receiptFinder,
@@ -872,7 +880,9 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
 
         private WorldState CreateInitialState(byte[]? code)
         {
-            WorldState stateProvider = new(new TrieStore(_dbProvider.StateDb, LimboLogs.Instance), _dbProvider.CodeDb, LimboLogs.Instance);
+            IStateFactory stateFactory = new PaprikaStateFactory();
+
+            WorldState stateProvider = new(stateFactory, _dbProvider.CodeDb, LimboLogs.Instance);
             AddAccount(stateProvider, TestItem.AddressA, 1.Ether());
             AddAccount(stateProvider, TestItem.AddressB, 1.Ether());
 

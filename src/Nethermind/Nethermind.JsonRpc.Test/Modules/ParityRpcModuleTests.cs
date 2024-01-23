@@ -35,6 +35,7 @@ using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
 using System;
+using Nethermind.Paprika;
 
 namespace Nethermind.JsonRpc.Test.Modules
 {
@@ -66,7 +67,9 @@ namespace Nethermind.JsonRpc.Test.Modules
             peerManager.ConnectedPeers.Returns(new List<Peer> { peerA, peerB, peerA, peerC, peerB });
             peerManager.MaxActivePeers.Returns(15);
 
-            WorldState stateProvider = new(new TrieStore(new MemDb(), LimboLogs.Instance), new MemDb(), LimboLogs.Instance);
+            //WorldState stateProvider = new(new TrieStore(new MemDb(), LimboLogs.Instance), new MemDb(), LimboLogs.Instance);
+            IStateFactory stateFactory = new PaprikaStateFactory();
+            WorldState stateProvider = new(stateFactory, new MemDb(), LimboLogs.Instance);
 
             _blockTree = Build.A.BlockTree()
                 .WithoutSettingHead

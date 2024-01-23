@@ -29,6 +29,7 @@ using Nethermind.Db.Blooms;
 using Nethermind.TxPool;
 using NUnit.Framework;
 using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Paprika;
 using Nethermind.Trie.Pruning;
 using NSubstitute;
 
@@ -57,9 +58,12 @@ namespace Nethermind.JsonRpc.Test.Modules.Trace
 
             MemDb stateDb = new();
             MemDb codeDb = new();
+
+            IStateFactory stateFactory = new PaprikaStateFactory();
+
             ITrieStore trieStore = new TrieStore(stateDb, LimboLogs.Instance).AsReadOnly();
-            WorldState stateProvider = new(trieStore, codeDb, LimboLogs.Instance);
-            _stateReader = new StateReader(trieStore, codeDb, LimboLogs.Instance);
+            WorldState stateProvider = new(stateFactory, codeDb, LimboLogs.Instance);
+            _stateReader = new StateReader(stateFactory, codeDb, LimboLogs.Instance);
 
             BlockhashProvider blockhashProvider = new(_blockTree, LimboLogs.Instance);
             VirtualMachine virtualMachine = new(blockhashProvider, specProvider, LimboLogs.Instance);

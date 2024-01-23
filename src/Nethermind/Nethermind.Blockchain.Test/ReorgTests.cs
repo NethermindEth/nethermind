@@ -16,6 +16,7 @@ using Nethermind.Db;
 using Nethermind.Evm;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
+using Nethermind.Paprika;
 using Nethermind.Specs;
 using Nethermind.State;
 using Nethermind.State.Witnesses;
@@ -36,8 +37,9 @@ public class ReorgTests
     {
         IDbProvider memDbProvider = TestMemDbProvider.Init();
         TrieStore trieStore = new(new MemDb(), LimboLogs.Instance);
-        WorldState stateProvider = new(trieStore, memDbProvider.CodeDb, LimboLogs.Instance);
-        StateReader stateReader = new(trieStore, memDbProvider.CodeDb, LimboLogs.Instance);
+        IStateFactory stateFactory = new PaprikaStateFactory();
+        WorldState stateProvider = new(stateFactory, memDbProvider.CodeDb, LimboLogs.Instance);
+        StateReader stateReader = new(stateFactory, memDbProvider.CodeDb, LimboLogs.Instance);
         ISpecProvider specProvider = MainnetSpecProvider.Instance;
         EthereumEcdsa ecdsa = new(1, LimboLogs.Instance);
         ITransactionComparerProvider transactionComparerProvider =
