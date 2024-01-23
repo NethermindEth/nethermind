@@ -145,7 +145,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
             {
                 get
                 {
-                    if (_protocolHandler != null)
+                    if (_protocolHandler is not null)
                     {
                         return _protocolHandler;
                     }

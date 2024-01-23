@@ -52,7 +52,7 @@ public sealed class NethermindKestrelMetricServer : MetricHandler
             // Legacy setting, may be overridden by ConfigureExporter.
             settings.Registry = options.Registry;
 
-            if (options.ConfigureExporter != null)
+            if (options.ConfigureExporter is not null)
                 options.ConfigureExporter(settings);
         };
     }
@@ -67,7 +67,7 @@ public sealed class NethermindKestrelMetricServer : MetricHandler
 
     protected override Task StartServer(CancellationToken cancel)
     {
-        var s = _certificate != null ? "s" : "";
+        var s = _certificate is not null ? "s" : "";
         var hostAddress = $"http{s}://{_hostname}:{_port}";
 
         // If the caller needs to customize any of this, they can just set up their own web host and inject the middleware.
@@ -93,7 +93,7 @@ public sealed class NethermindKestrelMetricServer : MetricHandler
                 }
             });
 
-        if (_certificate != null)
+        if (_certificate is not null)
         {
             builder = builder.ConfigureServices(services =>
             {

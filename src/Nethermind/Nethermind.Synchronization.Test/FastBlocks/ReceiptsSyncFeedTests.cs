@@ -275,7 +275,7 @@ namespace Nethermind.Synchronization.Test.FastBlocks
             _syncConfig.AncientReceiptsBarrier = AncientBarrierInConfig;
             _pivotNumber = AncientBarrierInConfig + 1_000_000;
             _receiptStorage.HasBlock(Arg.Is(_pivotNumber), Arg.Any<Hash256>()).Returns(!JustStarted);
-            if (previousBarrierInDb != null)
+            if (previousBarrierInDb is not null)
                 _metadataDb.Set(MetadataDbKeys.ReceiptsBarrierWhenStarted, previousBarrierInDb.Value.ToBigEndianByteArrayWithoutLeadingZeros());
             LoadScenario(_256BodiesWithOneTxEach);
             _receiptStorage.LowestInsertedReceiptBlockNumber.Returns(lowestInsertedReceiptBlockNumber);

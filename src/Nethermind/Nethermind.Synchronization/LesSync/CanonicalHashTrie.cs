@@ -81,7 +81,7 @@ namespace Nethermind.Synchronization.LesSync
         private static Hash256 GetRootHash(IKeyValueStore db, long sectionIndex)
         {
             byte[]? hash = db[GetRootHashKey(sectionIndex)];
-            return hash == null ? EmptyTreeHash : new Hash256(hash);
+            return hash is null ? EmptyTreeHash : new Hash256(hash);
         }
 
         private static Hash256 GetMaxRootHash(IKeyValueStore db)
@@ -103,7 +103,7 @@ namespace Nethermind.Synchronization.LesSync
         public (Hash256?, UInt256) Get(Span<byte> key)
         {
             byte[]? val = base.Get(key);
-            if (val == null)
+            if (val is null)
             {
                 throw new InvalidDataException("Missing CHT data");
             }

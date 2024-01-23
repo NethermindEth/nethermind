@@ -411,7 +411,7 @@ namespace Nethermind.Synchronization.Test.FastBlocks
             while (true)
             {
                 HeadersSyncBatch? batch = await feed.PrepareRequest();
-                if (batch == null) break;
+                if (batch is null) break;
                 batches.Add(batch);
             }
             int totalBatchCount = batches.Count;
@@ -428,7 +428,7 @@ namespace Nethermind.Synchronization.Test.FastBlocks
                 for (int i = 0; i < 100000; i++)
                 {
                     HeadersSyncBatch? batch = await feed.PrepareRequest();
-                    if (batch == null)
+                    if (batch is null)
                     {
                         await Task.Delay(1);
                         continue;
@@ -452,7 +452,7 @@ namespace Nethermind.Synchronization.Test.FastBlocks
             while (true)
             {
                 HeadersSyncBatch? batch = await feed.PrepareRequest();
-                if (batch == null) break;
+                if (batch is null) break;
                 batches.Add(batch);
             }
 

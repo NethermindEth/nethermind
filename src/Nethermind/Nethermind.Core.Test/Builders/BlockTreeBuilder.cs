@@ -67,7 +67,7 @@ namespace Nethermind.Core.Test.Builders
         {
             get
             {
-                if (_blockTree == null)
+                if (_blockTree is null)
                 {
                     if (!_noHead)
                     {
@@ -96,7 +96,7 @@ namespace Nethermind.Core.Test.Builders
         {
             base.BeforeReturn();
 
-            if (TestObjectInternal == null)
+            if (TestObjectInternal is null)
             {
                 TestObjectInternal = BlockTree;
             }
