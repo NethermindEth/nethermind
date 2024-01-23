@@ -28,7 +28,7 @@ namespace Nethermind.JsonRpc.Test
         {
             _manualTimestamper = new ManualTimestamper(_startTime);
             _testLogger = new TestLogger();
-            _logManager = new OneLoggerLogManager(_testLogger);
+            _logManager = new OneLoggerLogManager(new(_testLogger));
         }
 
         [Test]
@@ -92,7 +92,7 @@ namespace Nethermind.JsonRpc.Test
             _testLogger = new TestLogger();
             _testLogger.IsInfo = false;
 
-            OneLoggerLogManager logManager = new(_testLogger);
+            OneLoggerLogManager logManager = new(new(_testLogger));
             JsonRpcLocalStats localStats = new(_manualTimestamper, _config, logManager);
             localStats.ReportCall("A", 100, true);
             MakeTimePass();

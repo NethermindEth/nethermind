@@ -38,18 +38,15 @@ public static class IntrinsicGasCalculator
         long txDataNonZeroGasCost =
             releaseSpec.IsEip2028Enabled ? GasCostOf.TxDataNonZeroEip2028 : GasCostOf.TxDataNonZero;
         long dataCost = 0;
-        if (transaction.Data is not null)
+        Span<byte> data = transaction.Data.GetValueOrDefault().Span;
+        for (int i = 0; i < data.Length; i++)
         {
-            Span<byte> data = transaction.Data.Value.Span;
-            for (int i = 0; i < transaction.DataLength; i++)
-            {
-                dataCost += data[i] == 0 ? GasCostOf.TxDataZero : txDataNonZeroGasCost;
-            }
+            dataCost += data[i] == 0 ? GasCostOf.TxDataZero : txDataNonZeroGasCost;
         }
 
         if (transaction.IsContractCreation && releaseSpec.IsEip3860Enabled)
         {
-            dataCost += EvmPooledMemory.Div32Ceiling((UInt256)transaction.DataLength) * GasCostOf.InitCodeWord;
+            dataCost += EvmPooledMemory.Div32Ceiling((UInt256)data.Length) * GasCostOf.InitCodeWord;
         }
 
         return dataCost;
@@ -66,6 +63,8 @@ public static class IntrinsicGasCalculator
                 throw new InvalidDataException(
                     $"Transaction with an access list received within the context of {releaseSpec.Name}. Eip-2930 is not enabled.");
             }
+
+            if (accessList.IsEmpty) return accessListCost;
 
             foreach ((Address address, AccessList.StorageKeysEnumerable storageKeys) entry in accessList)
             {
