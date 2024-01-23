@@ -39,7 +39,7 @@ namespace Nethermind.Synchronization.Test.FastSync
         private static IBlockTree? _blockTree;
         protected static IBlockTree BlockTree => LazyInitializer.EnsureInitialized(ref _blockTree, () => Build.A.BlockTree().OfChainLength(100).TestObject);
 
-        protected ILogger _logger = null!;
+        protected ILogger _logger;
         protected ILogManager _logManager = null!;
 
         private readonly int _defaultPeerCount;
@@ -64,7 +64,7 @@ namespace Nethermind.Synchronization.Test.FastSync
         [TearDown]
         public void TearDown()
         {
-            (_logger as ConsoleAsyncLogger)?.Flush();
+            (_logger.UnderlyingLogger as ConsoleAsyncLogger)?.Flush();
         }
 
         protected static StorageTree SetStorage(ITrieStore trieStore, byte i)

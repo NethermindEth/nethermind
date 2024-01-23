@@ -12,7 +12,7 @@ public class EofCodeInfo : ICodeInfo
 {
     private readonly CodeInfo _codeInfo;
     private readonly EofHeader _header;
-    public byte[] MachineCode => _codeInfo.MachineCode;
+    public ReadOnlyMemory<byte> MachineCode => _codeInfo.MachineCode;
     public IPrecompile? Precompile => _codeInfo.Precompile;
     public byte Version => _header.Version;
     public ReadOnlyMemory<byte> TypeSection { get; }
@@ -45,11 +45,10 @@ public class EofCodeInfo : ICodeInfo
     {
         _codeInfo = codeInfo;
         _header = header;
-        ReadOnlyMemory<byte> memory = MachineCode.AsMemory();
-        TypeSection = memory.Slice(_header.TypeSection.Start, _header.TypeSection.Size);
-        CodeSection = memory.Slice(_header.CodeSections[0].Start, _header.CodeSections.Size);
-        DataSection = memory.Slice(_header.DataSection.Start, _header.DataSection.Size);
+        TypeSection = MachineCode.Slice(_header.TypeSection.Start, _header.TypeSection.Size);
+        CodeSection = MachineCode.Slice(_header.CodeSections.Start, _header.CodeSections.Size);
+        DataSection = MachineCode.Slice(_header.DataSection.Start, _header.DataSection.Size);
         ContainerSection = _header.ContainerSection is null ? null
-            : memory.Slice(_header.ContainerSection.Value[0].Start, _header.ContainerSection.Value.Size);
+            : MachineCode.Slice(_header.ContainerSection.Value.Start, _header.ContainerSection.Value.Size);
     }
 }

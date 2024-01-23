@@ -41,7 +41,7 @@ namespace Ethereum.Test.Base
 {
     public abstract class BlockchainTestBase
     {
-        private static ILogger _logger = new NUnitLogger(LogLevel.Trace);
+        private static InterfaceLogger _logger = new NUnitLogger(LogLevel.Trace);
         // private static ILogManager _logManager = new OneLoggerLogManager(_logger);
         private static ILogManager _logManager = LimboLogs.Instance;
         private static ISealValidator Sealer { get; }

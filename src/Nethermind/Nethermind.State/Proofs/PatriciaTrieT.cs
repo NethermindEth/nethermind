@@ -2,8 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
-using System.Linq;
 using Nethermind.Core.Buffers;
 using Nethermind.Db;
 using Nethermind.Logging;
@@ -24,12 +22,12 @@ public abstract class PatriciaTrie<T> : PatriciaTree
     /// <c>true</c> to maintain an in-memory database for proof computation;
     /// otherwise, <c>false</c>.
     /// </param>
-    public PatriciaTrie(IEnumerable<T>? list, bool canBuildProof, ICappedArrayPool? bufferPool = null)
+    public PatriciaTrie(T[]? list, bool canBuildProof, ICappedArrayPool? bufferPool = null)
         : base(canBuildProof ? new MemDb() : NullDb.Instance, EmptyTreeHash, false, false, NullLogManager.Instance, bufferPool: bufferPool)
     {
         CanBuildProof = canBuildProof;
 
-        if (list?.Any() ?? false)
+        if (list?.Length > 0)
         {
             Initialize(list);
             UpdateRootHash();
@@ -54,7 +52,7 @@ public abstract class PatriciaTrie<T> : PatriciaTree
         return proofCollector.BuildResult();
     }
 
-    protected abstract void Initialize(IEnumerable<T> list);
+    protected abstract void Initialize(T[] list);
 
     protected virtual bool CanBuildProof { get; }
 }

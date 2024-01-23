@@ -14,24 +14,12 @@ namespace Nethermind.Logging
             _logger = logger;
         }
 
-        public ILogger GetClassLogger(Type type)
-        {
-            return _logger;
-        }
+        public ILogger GetClassLogger(Type type) => _logger;
 
-        public ILogger GetClassLogger<T>()
-        {
-            return _logger;
-        }
+        public ILogger GetClassLogger<T>() => _logger;
 
-        public ILogger GetClassLogger()
-        {
-            return _logger;
-        }
+        public ILogger GetClassLogger() => _logger;
 
-        public ILogger GetLogger(string loggerName)
-        {
-            return _logger;
-        }
+        public ILogger GetLogger(string loggerName) => _logger;
     }
 }

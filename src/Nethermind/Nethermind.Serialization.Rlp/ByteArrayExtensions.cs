@@ -18,6 +18,16 @@ namespace Nethermind.Serialization.Rlp
             return new(in bytes.IsNotNull ? ref bytes : ref CappedArray<byte>.Empty);
         }
 
+        public static RlpFactory AsRlpFactory(this byte[]? bytes)
+        {
+            return new(bytes ?? Array.Empty<byte>());
+        }
+
+        public static RlpFactory AsRlpFactory(in this CappedArray<byte> bytes)
+        {
+            return new(in bytes.IsNotNull ? ref bytes : ref CappedArray<byte>.Empty);
+        }
+
         public static Rlp.ValueDecoderContext AsRlpValueContext(this byte[]? bytes)
         {
             return new(bytes ?? Array.Empty<byte>());

@@ -11,7 +11,7 @@ namespace Nethermind.Evm.CodeAnalysis;
 public interface ICodeInfo
 {
     int Version => 0;
-    byte[] MachineCode { get; }
+    ReadOnlyMemory<byte> MachineCode { get; }
     IPrecompile? Precompile { get; }
     bool IsPrecompile => Precompile is not null;
     ReadOnlyMemory<byte> TypeSection => Memory<byte>.Empty;

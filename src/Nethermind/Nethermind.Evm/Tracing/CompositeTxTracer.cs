@@ -413,7 +413,7 @@ public class CompositeTxTracer : ITxTracer
         }
     }
 
-    public void ReportByteCode(byte[] byteCode)
+    public void ReportByteCode(ReadOnlyMemory<byte> byteCode)
     {
         for (int index = 0; index < _txTracers.Count; index++)
         {
