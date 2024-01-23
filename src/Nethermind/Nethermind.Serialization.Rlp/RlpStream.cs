@@ -1309,7 +1309,7 @@ namespace Nethermind.Serialization.Rlp
             int prefix = ReadByte();
             if (prefix == 0)
             {
-                return new byte[] { 0 };
+                return Bytes.ZeroByte;
             }
 
             if (prefix < 128)

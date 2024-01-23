@@ -19,6 +19,7 @@ using Nethermind.Logging;
 using Nethermind.State;
 using System.Diagnostics.CodeAnalysis;
 using System.Diagnostics;
+using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
 using static Nethermind.Evm.VirtualMachine;
 using static System.Runtime.CompilerServices.Unsafe;
@@ -1659,8 +1660,9 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                             StorageAccessType.SLOAD,
                             spec)) goto OutOfGas;
 
-                        byte[] value = _state.Get(in storageCell);
-                        stack.PushBytes(value);
+                        Span<byte> value = _state.Get(in storageCell);
+                        Span<byte> valueBytes = MemoryMarshal.CreateSpan(ref MemoryMarshal.AsRef<byte>(value), value.Length); // TODO: how to do it?
+                        stack.PushBytes(valueBytes);
 
                         if (typeof(TTracingStorage) == typeof(IsTracing))
                         {
@@ -2017,8 +2019,9 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                             if (!stack.PopUInt256(out result)) goto StackUnderflow;
                             storageCell = new(env.ExecutingAccount, result);
 
-                            byte[] value = _state.GetTransientState(in storageCell);
-                            stack.PushBytes(value);
+                            Span<byte> value = _state.GetTransientState(in storageCell);
+                            Span<byte> valueBytes = MemoryMarshal.CreateSpan(ref MemoryMarshal.AsRef<byte>(value), value.Length); // TODO: how to do it?
+                            stack.PushBytes(valueBytes);
 
                             if (typeof(TTracingStorage) == typeof(IsTracing))
                             {
@@ -2058,7 +2061,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                             if (typeof(TTracingStorage) == typeof(IsTracing))
                             {
                                 if (gasAvailable < 0) goto OutOfGas;
-                                byte[] currentValue = _state.GetTransientState(in storageCell);
+                                Span<byte> currentValue = _state.GetTransientState(in storageCell);
                                 _txTracer.SetOperationTransientStorage(storageCell.Address, result, bytes, currentValue);
                             }
 

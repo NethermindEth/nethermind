@@ -4,6 +4,7 @@
 using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -33,7 +34,7 @@ namespace Nethermind.State
             return GetState(stateRoot, address);
         }
 
-        public byte[] GetStorage(Hash256 stateRoot, Address address, in UInt256 index)
+        public Span<byte> GetStorage(Hash256 stateRoot, Address address, in UInt256 index)
         {
             Account? account = GetAccount(stateRoot, address);
             if (account is null) return null;
@@ -41,10 +42,11 @@ namespace Nethermind.State
             Hash256 storageRoot = account.StorageRoot;
             if (storageRoot == Keccak.EmptyTreeHash)
             {
-                return new byte[] { 0 };
+                return Bytes.ZeroByte;
             }
 
             Metrics.StorageTreeReads++;
+
             return _storage.Get(index, storageRoot);
         }
 

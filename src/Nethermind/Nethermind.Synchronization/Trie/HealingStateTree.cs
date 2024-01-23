@@ -27,7 +27,7 @@ public class HealingStateTree : StateTree
         _recovery = recovery;
     }
 
-    public override byte[]? Get(ReadOnlySpan<byte> rawKey, Hash256? rootHash = null)
+    public override Span<byte> Get(ReadOnlySpan<byte> rawKey, Hash256? rootHash = null)
     {
         try
         {

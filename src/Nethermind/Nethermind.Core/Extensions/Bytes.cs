@@ -27,6 +27,8 @@ namespace Nethermind.Core.Extensions
         public static readonly IEqualityComparer<byte[]?> NullableEqualityComparer = new NullableBytesEqualityComparer();
         public static readonly ISpanEqualityComparer<byte> SpanEqualityComparer = new SpanBytesEqualityComparer();
         public static readonly BytesComparer Comparer = new();
+        public static readonly byte[] ZeroByte = [0];
+        public static readonly byte[] OneByte = [1];
 
         private class BytesEqualityComparer : EqualityComparer<byte[]>
         {
@@ -217,7 +219,7 @@ namespace Nethermind.Core.Extensions
 
         public static Span<byte> WithoutLeadingZeros(this Span<byte> bytes)
         {
-            if (bytes.Length == 0) return new byte[] { 0 };
+            if (bytes.Length == 0) return ZeroByte;
 
             int nonZeroIndex = bytes.IndexOfAnyExcept((byte)0);
             // Keep one or it will be interpreted as null

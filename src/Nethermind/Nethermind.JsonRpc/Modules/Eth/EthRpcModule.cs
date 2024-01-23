@@ -176,8 +176,8 @@ public partial class EthRpcModule : IEthRpcModule
         }
 
         BlockHeader? header = searchResult.Object;
-        byte[] storage = _stateReader.GetStorage(header!.StateRoot!, address, positionIndex);
-        if (storage is null)
+        Span<byte> storage = _stateReader.GetStorage(header!.StateRoot!, address, positionIndex);
+        if (storage.IsEmpty)
         {
             return ResultWrapper<byte[]>.Success(Array.Empty<byte>());
         }
