@@ -301,12 +301,22 @@ public class NonDistructiveBlockTreeOverlay : IBlockTree
 
     public bool IsMainChain(BlockHeader blockHeader)
     {
-        return _overlayTree.IsMainChain(blockHeader) || _baseTree.IsMainChain(blockHeader);
+        return _baseTree.IsMainChain(blockHeader) || _overlayTree.IsMainChain(blockHeader);
     }
 
     public bool IsMainChain(Hash256 blockHash)
     {
-        return _overlayTree.IsMainChain(blockHash) || _baseTree.IsMainChain(blockHash);
+
+        try
+        {
+            if (_baseTree.IsMainChain(blockHash)) return true;
+        }
+        catch
+        {
+            // ignored as we have _overlayTree to look into
+        }
+
+        return _overlayTree.IsMainChain(blockHash);
     }
 
     public BlockHeader FindBestSuggestedHeader()

@@ -10,6 +10,7 @@ using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
@@ -44,9 +45,16 @@ public class SimulateReadOnlyBlocksProcessingEnv : ReadOnlyTxProcessingEnvBase, 
         ILogManager? logManager = null,
         bool doValidation = false)
     {
-        IReadOnlyDbProvider dbProvider = new ReadOnlyDbProvider(readOnlyDbProvider, true);
-        OverlayTrieStore overlayTrieStore = new(dbProvider.StateDb, worldStateManager.TrieStore, logManager);
-        OverlayWorldStateManager overlayWorldStateManager = new(worldStateManager, dbProvider, overlayTrieStore, logManager);
+        IReadOnlyDbProvider editableDbProvider = new ReadOnlyDbProvider(readOnlyDbProvider, true);
+
+        var emptyDbProvider = new DbProvider();
+        StandardDbInitializer? standardDbInitializer = new StandardDbInitializer(emptyDbProvider, new MemDbFactory());
+        standardDbInitializer.InitStandardDbs(true);
+        IReadOnlyDbProvider dbProvider = new ReadOnlyDbProvider(emptyDbProvider, true);
+
+        OverlayTrieStore overlayTrieStore = new(editableDbProvider.StateDb, worldStateManager.TrieStore, logManager);
+        OverlayWorldStateManager overlayWorldStateManager = new(worldStateManager, editableDbProvider, overlayTrieStore, logManager);
+
 
         IBlockStore blockStore = new BlockStore(dbProvider.BlocksDb);
         IHeaderStore headerStore = new HeaderStore(dbProvider.HeadersDb, dbProvider.BlockNumbersDb);
@@ -63,15 +71,16 @@ public class SimulateReadOnlyBlocksProcessingEnv : ReadOnlyTxProcessingEnvBase, 
             NullBloomStorage.Instance,
             new SyncConfig(),
             logManager);
-        var blockTree = new NonDistructiveBlockTreeOverlay(roBlockTree, tmpBlockTree);
+
+        //var blockTree = new NonDistructiveBlockTreeOverlay(roBlockTree, tmpBlockTree);
 
         return new SimulateReadOnlyBlocksProcessingEnv(
             traceTransfers,
             overlayWorldStateManager,
             roBlockTree,
-            dbProvider,
+            editableDbProvider,
             //trieStore,
-            blockTree,
+            tmpBlockTree,
             specProvider,
             logManager,
             doValidation);
@@ -97,10 +106,15 @@ public class SimulateReadOnlyBlocksProcessingEnv : ReadOnlyTxProcessingEnvBase, 
         ReadOnlyBlockTree = roBlockTree;
         DbProvider = readOnlyDbProvider;
         //_trieStore = trieStore;
+
         WorldStateManager = worldStateManager;
         _logManager = logManager;
         SpecProvider = specProvider;
         _doValidation = doValidation;
+
+        BlockTree = new NonDistructiveBlockTreeOverlay(ReadOnlyBlockTree, blockTree);
+        BlockhashProvider = new BlockhashProvider(BlockTree, logManager);
+
         CodeInfoRepository = new OverridableCodeInfoRepository(new CodeInfoRepository());
 
         VirtualMachine = new VirtualMachine(BlockhashProvider, specProvider, CodeInfoRepository, logManager);

@@ -15,8 +15,8 @@ public class ReadOnlyTxProcessingEnvBase
 {
     public IStateReader StateReader { get; }
     public IWorldState StateProvider { get; }
-    public IBlockTree BlockTree { get; }
-    public IBlockhashProvider BlockhashProvider { get; }
+    public IBlockTree BlockTree { get; protected set; }
+    public IBlockhashProvider BlockhashProvider { get; protected set; }
 
     protected ReadOnlyTxProcessingEnvBase(
         IWorldStateManager worldStateManager,
