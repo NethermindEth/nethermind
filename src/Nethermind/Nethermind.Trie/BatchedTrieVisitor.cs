@@ -58,10 +58,10 @@ public class BatchedTrieVisitor<TNodeContext>
     private readonly long _readAheadThreshold;
 
     private readonly ITrieNodeResolver _resolver;
-    private readonly ITreeVisitor _visitor;
+    private readonly ITreeVisitor<TNodeContext> _visitor;
 
     public BatchedTrieVisitor(
-        ITreeVisitor visitor,
+        ITreeVisitor<TNodeContext> visitor,
         ITrieNodeResolver resolver,
         VisitingOptions visitingOptions)
     {
@@ -326,7 +326,7 @@ public class BatchedTrieVisitor<TNodeContext>
             {
                 int idx = resolveOrdering[i];
 
-                (TrieNode nodeToResolve, TNodeContext _, SmallTrieVisitContext ctx) = currentBatch[idx];
+                (TrieNode nodeToResolve, TNodeContext nodeContext, SmallTrieVisitContext ctx) = currentBatch[idx];
                 try
                 {
                     Hash256 theKeccak = nodeToResolve.Keccak;
@@ -335,7 +335,7 @@ public class BatchedTrieVisitor<TNodeContext>
                 }
                 catch (TrieException)
                 {
-                    _visitor.VisitMissingNode(nodeToResolve.Keccak, ctx.ToVisitContext());
+                    _visitor.VisitMissingNode(nodeContext, nodeToResolve.Keccak, ctx.ToVisitContext());
                 }
             }
 
@@ -390,12 +390,4 @@ public interface INodeContext<TNodeContext>
     TNodeContext Add(byte[] path);
 
     TNodeContext Add(byte nibble);
-}
-
-public class BatchedTrieVisitor : BatchedTrieVisitor<EmptyContext>
-{
-    public BatchedTrieVisitor(ITreeVisitor visitor, ITrieNodeResolver resolver, VisitingOptions visitingOptions)
-        : base(visitor, resolver, visitingOptions)
-    {
-    }
 }
