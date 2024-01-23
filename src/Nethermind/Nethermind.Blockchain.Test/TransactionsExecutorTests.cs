@@ -19,6 +19,7 @@ using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Paprika;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
 using Nethermind.Trie.Pruning;
@@ -262,7 +263,8 @@ namespace Nethermind.Blockchain.Test
             MemDb stateDb = new();
             MemDb codeDb = new();
             TrieStore trieStore = new(stateDb, LimboLogs.Instance);
-            WorldState stateProvider = new(trieStore, codeDb, LimboLogs.Instance);
+            IStateFactory stateFactory = new PaprikaStateFactory();
+            WorldState stateProvider = new(stateFactory, codeDb, LimboLogs.Instance);
             ISpecProvider specProvider = Substitute.For<ISpecProvider>();
 
             IReleaseSpec spec = testCase.ReleaseSpec;

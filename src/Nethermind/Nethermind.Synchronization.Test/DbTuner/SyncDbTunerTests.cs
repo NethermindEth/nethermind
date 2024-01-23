@@ -47,7 +47,6 @@ public class SyncDbTunerTests
             _snapSyncFeed,
             _bodiesSyncFeed,
             _receiptSyncFeed,
-            _stateDb,
             _codeDb,
             _blockDb,
             _receiptDb);

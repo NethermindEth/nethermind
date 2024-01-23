@@ -32,6 +32,7 @@ using Nethermind.Merge.Plugin.BlockProduction;
 using Nethermind.Merge.Plugin.GC;
 using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Merge.Plugin.Synchronization;
+using Nethermind.Paprika;
 using Nethermind.Specs;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Specs.Forks;
@@ -196,7 +197,8 @@ public partial class EngineModuleTests
                 targetAdjustedGasLimitCalculator);
 
             BlockProducerEnvFactory blockProducerEnvFactory = new(
-                WorldStateManager!,
+                DbProvider.AsReadOnly(true),
+                StateFactory!,
                 BlockTree,
                 SpecProvider,
                 BlockValidator,

@@ -25,6 +25,8 @@ using Nethermind.Specs.Forks;
 using Nethermind.State;
 using FluentAssertions;
 using NUnit.Framework;
+using Nethermind.Config;
+using Nethermind.Paprika;
 
 namespace Nethermind.Evm.Test;
 
@@ -52,9 +54,11 @@ public class TransactionProcessorTests
     [SetUp]
     public void Setup()
     {
-        _stateDb = new PaprikaStateFactory();
-        _stateProvider = new WorldState(_stateDb, new MemDb(), LimboLogs.Instance);
-        _stateProvider.CreateAccount(TestItem.AddressA, AccountBalance);
+        MemDb stateDb = new();
+        TrieStore trieStore = new(stateDb, LimboLogs.Instance);
+        IStateFactory stateFactory = new PaprikaStateFactory();
+        _stateProvider = new WorldState(stateFactory, new MemDb(), LimboLogs.Instance);
+        _stateProvider.CreateAccount(TestItem.AddressA, 1.Ether());
         _stateProvider.Commit(_specProvider.GenesisSpec);
         _stateProvider.CommitTree(0);
 

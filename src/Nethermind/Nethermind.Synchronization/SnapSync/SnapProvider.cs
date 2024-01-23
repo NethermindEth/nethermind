@@ -26,16 +26,16 @@ namespace Nethermind.Synchronization.SnapSync
         private readonly IDbProvider _dbProvider;
         private readonly ILogManager _logManager;
         private readonly ILogger _logger;
+        private readonly IStateFactory _stateFactory;
 
         private readonly ProgressTracker _progressTracker;
 
-        public SnapProvider(ProgressTracker progressTracker, IDbProvider dbProvider, ILogManager logManager)
+        public SnapProvider(ProgressTracker progressTracker, IDbProvider dbProvider, IStateFactory stateFactory, ILogManager logManager)
         {
             _dbProvider = dbProvider ?? throw new ArgumentNullException(nameof(dbProvider));
             _progressTracker = progressTracker ?? throw new ArgumentNullException(nameof(progressTracker));
-
-            // TODO: reintroduce the store
-            _trieStorePool = new DefaultObjectPool<ITrieStore>(new TrieStorePoolPolicy(new MemDb(), logManager));
+            _trieStorePool = new DefaultObjectPool<ITrieStore>(new TrieStorePoolPolicy(_dbProvider.StateDb, logManager));
+            _stateFactory = stateFactory;
 
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
             _logger = logManager.GetClassLogger<SnapProvider>();
@@ -78,10 +78,20 @@ namespace Nethermind.Synchronization.SnapSync
             {
                 StateTree tree = new(store, _logManager);
 
+                IState state = null;
+                try
+                {
+                    state = _stateFactory.Get(new Hash256(expectedRootHash));
+                }
+                catch
+                {
+                    state = _stateFactory.Get(Keccak.EmptyTreeHash);
+                }
+
                 ValueHash256 effectiveHashLimit = hashLimit.HasValue ? hashLimit.Value : ValueKeccak.MaxValue;
 
                 (AddRangeResult result, bool moreChildrenToRight, List<PathWithAccount> accountsWithStorage, List<ValueHash256> codeHashes) =
-                    SnapProviderHelper.AddAccountRange(tree, blockNumber, expectedRootHash, startingHash, effectiveHashLimit, accounts, proofs);
+                    SnapProviderHelper.AddAccountRange(state, blockNumber, expectedRootHash, startingHash, effectiveHashLimit, accounts, proofs);
 
                 if (result == AddRangeResult.OK)
                 {

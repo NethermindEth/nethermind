@@ -28,6 +28,7 @@ using NUnit.Framework;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Consensus.Processing;
+using Nethermind.Paprika;
 using Nethermind.Core.Buffers;
 using Nethermind.State.Tracing;
 using NSubstitute;
@@ -218,6 +219,9 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
             _receiptFinder.Get(Arg.Any<Block>()).Returns(receipts);
             _receiptFinder.Get(Arg.Any<Hash256>()).Returns(receipts);
             _receiptFinder.FindBlockHash(Arg.Any<Hash256>()).Returns(_blockTree.FindBlock(1)!.Hash);
+
+            IDbProvider dbProvider = await TestMemDbProvider.InitAsync();
+            IStateFactory stateFactory = new PaprikaStateFactory();
 
             ProofModuleFactory moduleFactory = new ProofModuleFactory(
                 null!,//_worldStateManager, TODO

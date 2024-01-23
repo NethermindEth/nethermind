@@ -273,9 +273,10 @@ namespace Nethermind.Evm.Test.Tracing
             public TestEnvironment()
             {
                 _specProvider = MainnetSpecProvider.Instance;
-                _stateDb = new PaprikaStateFactory();
-                _stateProvider = new WorldState(_stateDb, new MemDb(), LimboLogs.Instance);
-                _stateProvider.StateRoot = Keccak.EmptyTreeHash;
+                MemDb stateDb = new();
+                TrieStore trieStore = new(stateDb, LimboLogs.Instance);
+                IStateFactory stateFactory = new PaprikaStateFactory();
+                _stateProvider = new WorldState(stateFactory, new MemDb(), LimboLogs.Instance);
                 _stateProvider.CreateAccount(TestItem.AddressA, 1.Ether());
                 _stateProvider.Commit(_specProvider.GenesisSpec);
                 _stateProvider.CommitTree(0);

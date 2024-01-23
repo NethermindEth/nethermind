@@ -10,6 +10,7 @@ using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.Trie.Pruning;
 using Paprika.Chain;
+using Paprika.Data;
 using Paprika.Merkle;
 using Paprika.Store;
 using IWorldState = Paprika.Chain.IWorldState;
@@ -145,6 +146,24 @@ public class PaprikaStateFactory : IStateFactory
             return true;
         }
 
+        public Account? Get(ValueHash256 hash)
+        {
+            PaprikaAccount account = _wrapped.GetAccount(Convert(hash));
+            bool hasEmptyStorageAndCode = account.CodeHash == PaprikaKeccak.OfAnEmptyString &&
+                                          account.StorageRootHash == PaprikaKeccak.EmptyTreeHash;
+            if (account.Balance.IsZero &&
+                account.Nonce.IsZero &&
+                hasEmptyStorageAndCode)
+                return null;
+
+            if (hasEmptyStorageAndCode)
+                return new Account(account.Nonce, account.Balance);
+
+            return new Account(account.Nonce, account.Balance, Convert(account.StorageRootHash),
+                Convert(account.CodeHash));
+        }
+
+        public byte[] GetStorageAt(in StorageCell cell)
         [SkipLocalsInit]
         public EvmWord GetStorageAt(in StorageCell cell)
         {
@@ -186,6 +205,13 @@ public class PaprikaStateFactory : IStateFactory
         }
 
         public bool TryGet(Address address, out AccountStruct account)
+        public void Set(ReadOnlySpan<byte> keyPath, int targetKeyLength, Hash256 keccak)
+        {
+            NibblePath path = NibblePath.FromKey(keyPath).SliceTo(targetKeyLength);
+            _wrapped.SetAccountHash(path, Convert(keccak));
+        }
+
+        public Account? Get(Address address)
         {
             PaprikaAccount retrieved = wrapped.GetAccount(Convert(address));
             bool hasEmptyStorageAndCode = retrieved.CodeHash == PaprikaKeccak.OfAnEmptyString &&
@@ -211,6 +237,24 @@ public class PaprikaStateFactory : IStateFactory
 
         [SkipLocalsInit]
         public EvmWord GetStorageAt(in StorageCell cell)
+        public Account? Get(ValueHash256 hash)
+        {
+            PaprikaAccount account = _wrapped.GetAccount(Convert(hash));
+            bool hasEmptyStorageAndCode = account.CodeHash == PaprikaKeccak.OfAnEmptyString &&
+                                          account.StorageRootHash == PaprikaKeccak.EmptyTreeHash;
+            if (account.Balance.IsZero &&
+                account.Nonce.IsZero &&
+                hasEmptyStorageAndCode)
+                return null;
+
+            if (hasEmptyStorageAndCode)
+                return new Account(account.Nonce, account.Balance);
+
+            return new Account(account.Nonce, account.Balance, Convert(account.StorageRootHash),
+                Convert(account.CodeHash));
+        }
+
+        public byte[] GetStorageAt(in StorageCell cell)
         {
             Span<byte> bytes = stackalloc byte[32];
             GetKey(cell.Index, bytes);

@@ -29,6 +29,7 @@ using Nethermind.Db.Blooms;
 using Nethermind.TxPool;
 using NUnit.Framework;
 using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Paprika;
 using Nethermind.Trie.Pruning;
 using NSubstitute;
 using Nethermind.Paprika;

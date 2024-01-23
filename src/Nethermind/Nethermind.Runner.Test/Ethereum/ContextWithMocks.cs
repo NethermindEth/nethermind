@@ -106,7 +106,7 @@ namespace Nethermind.Runner.Test.Ethereum
                 PeerDifficultyRefreshPool = Substitute.For<IPeerDifficultyRefreshPool>(),
                 WebSocketsManager = Substitute.For<IWebSocketsManager>(),
                 ChainLevelInfoRepository = Substitute.For<IChainLevelInfoRepository>(),
-                TrieStore = Substitute.For<ITrieStore>(),
+                //TrieStore = Substitute.For<ITrieStore>(),
                 BlockProducerEnvFactory = Substitute.For<IBlockProducerEnvFactory>(),
                 TransactionComparerProvider = Substitute.For<ITransactionComparerProvider>(),
                 GasPriceOracle = Substitute.For<IGasPriceOracle>(),
@@ -122,7 +122,7 @@ namespace Nethermind.Runner.Test.Ethereum
                 BadBlocksStore = Substitute.For<IBlockStore>()
             };
 
-            api.WorldStateManager = new ReadOnlyWorldStateManager(api.DbProvider, Substitute.For<IReadOnlyTrieStore>(), LimboLogs.Instance);
+            //api.WorldStateManager = new ReadOnlyWorldStateManager(api.DbProvider, Substitute.For<IReadOnlyTrieStore>(), LimboLogs.Instance);
             return api;
         }
     }

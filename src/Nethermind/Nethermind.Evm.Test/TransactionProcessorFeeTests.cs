@@ -37,8 +37,9 @@ public class TransactionProcessorFeeTests
         _spec = new(London.Instance);
         _specProvider = new TestSpecProvider(_spec);
 
-        _stateDb = new PaprikaStateFactory();
-        _stateProvider = new WorldState(_stateDb, new MemDb(), LimboLogs.Instance);
+        TrieStore trieStore = new(new MemDb(), LimboLogs.Instance);
+        IStateFactory stateFactory = new PaprikaStateFactory();
+        _stateProvider = new WorldState(stateFactory, new MemDb(), LimboLogs.Instance);
         _stateProvider.CreateAccount(TestItem.AddressA, 1.Ether());
         _stateProvider.Commit(_specProvider.GenesisSpec);
         _stateProvider.CommitTree(0);

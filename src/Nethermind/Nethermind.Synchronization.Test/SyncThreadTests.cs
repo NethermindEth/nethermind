@@ -41,6 +41,7 @@ using BlockTree = Nethermind.Blockchain.BlockTree;
 using Nethermind.Synchronization.SnapSync;
 using Nethermind.Config;
 using Nethermind.Specs.ChainSpecStyle;
+using Nethermind.Paprika;
 
 namespace Nethermind.Synchronization.Test
 {
@@ -251,12 +252,13 @@ namespace Nethermind.Synchronization.Test
             IDb stateDb = dbProvider.StateDb;
 
             TrieStore trieStore = new(stateDb, LimboLogs.Instance);
-            StateReader stateReader = new(trieStore, codeDb, logManager);
-            WorldState stateProvider = new(trieStore, codeDb, logManager);
+            IStateFactory stateFactory = new PaprikaStateFactory();
+            StateReader stateReader = new(stateFactory, codeDb, logManager);
+            WorldState stateProvider = new(stateFactory, codeDb, logManager);
             stateProvider.CreateAccount(TestItem.AddressA, 10000.Ether());
             stateProvider.Commit(specProvider.GenesisSpec);
             stateProvider.CommitTree(0);
-            stateProvider.RecalculateStateRoot();
+            //stateProvider.RecalculateStateRoot();
 
             InMemoryReceiptStorage receiptStorage = new();
 
@@ -308,7 +310,7 @@ namespace Nethermind.Synchronization.Test
             NodeStatsManager nodeStatsManager = new(timerFactory, logManager);
             SyncPeerPool syncPeerPool = new(tree, nodeStatsManager, new TotalDifficultyBetterPeerStrategy(LimboLogs.Instance), logManager, 25);
 
-            WorldState devState = new(trieStore, codeDb, logManager);
+            WorldState devState = new(stateFactory, codeDb, logManager);
             VirtualMachine devEvm = new(blockhashProvider, specProvider, logManager);
             TransactionProcessor devTxProcessor = new(specProvider, devState, devEvm, logManager);
 

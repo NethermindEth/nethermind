@@ -27,6 +27,7 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Paprika;
 
 namespace Nethermind.Blockchain.Test
 {
@@ -39,7 +40,8 @@ namespace Nethermind.Blockchain.Test
             IDb stateDb = new MemDb();
             IDb codeDb = new MemDb();
             TrieStore trieStore = new(stateDb, LimboLogs.Instance);
-            IWorldState stateProvider = new WorldState(trieStore, codeDb, LimboLogs.Instance);
+            IStateFactory stateFactory = new PaprikaStateFactory();
+            IWorldState stateProvider = new WorldState(stateFactory, codeDb, LimboLogs.Instance);
             ITransactionProcessor transactionProcessor = Substitute.For<ITransactionProcessor>();
             BlockProcessor processor = new(
                 GoerliSpecProvider.Instance,
@@ -68,8 +70,9 @@ namespace Nethermind.Blockchain.Test
             IDb stateDb = new MemDb();
             IDb codeDb = new MemDb();
             TrieStore trieStore = new TrieStore(stateDb, LimboLogs.Instance);
+            IStateFactory stateFactory = new PaprikaStateFactory();
 
-            IWorldState stateProvider = new WorldState(trieStore, codeDb, LimboLogs.Instance);
+            IWorldState stateProvider = new WorldState(stateFactory, codeDb, LimboLogs.Instance);
             ITransactionProcessor transactionProcessor = Substitute.For<ITransactionProcessor>();
             IWitnessCollector witnessCollector = Substitute.For<IWitnessCollector>();
             BlockProcessor processor = new(
@@ -99,7 +102,8 @@ namespace Nethermind.Blockchain.Test
             IDb stateDb = new MemDb();
             IDb codeDb = new MemDb();
             TrieStore trieStore = new(stateDb, LimboLogs.Instance);
-            IWorldState stateProvider = new WorldState(trieStore, codeDb, LimboLogs.Instance);
+            IStateFactory stateFactory = new PaprikaStateFactory();
+            IWorldState stateProvider = new WorldState(stateFactory, codeDb, LimboLogs.Instance);
             ITransactionProcessor transactionProcessor = Substitute.For<ITransactionProcessor>();
             BlockProcessor processor = new(
                 GoerliSpecProvider.Instance,

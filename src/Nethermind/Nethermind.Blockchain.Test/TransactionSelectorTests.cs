@@ -24,6 +24,7 @@ using NSubstitute;
 using NUnit.Framework;
 using Nethermind.Config;
 using Nethermind.Core.Crypto;
+using Nethermind.Paprika;
 
 namespace Nethermind.Blockchain.Test
 {
@@ -195,8 +196,9 @@ namespace Nethermind.Blockchain.Test
             MemDb stateDb = new();
             MemDb codeDb = new();
             TrieStore trieStore = new(stateDb, LimboLogs.Instance);
-            WorldState stateProvider = new(trieStore, codeDb, LimboLogs.Instance);
-            StateReader _ = new(new TrieStore(stateDb, LimboLogs.Instance), codeDb, LimboLogs.Instance);
+            IStateFactory stateFactory = new PaprikaStateFactory();
+            WorldState stateProvider = new(stateFactory, codeDb, LimboLogs.Instance);
+            StateReader _ = new(stateFactory, codeDb, LimboLogs.Instance);
             ISpecProvider specProvider = Substitute.For<ISpecProvider>();
 
             void SetAccountStates(IEnumerable<Address> missingAddresses)

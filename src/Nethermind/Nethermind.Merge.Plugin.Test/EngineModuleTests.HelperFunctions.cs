@@ -98,7 +98,7 @@ namespace Nethermind.Merge.Plugin.Test
             chain.WithdrawalProcessor?.ProcessWithdrawals(block!, chain.SpecProvider.GenesisSpec);
 
             chain.State.Commit(chain.SpecProvider.GenesisSpec);
-            chain.State.RecalculateStateRoot();
+            //chain.State.RecalculateStateRoot();
             blockRequest.StateRoot = chain.State.StateRoot;
             chain.State.Restore(before);
 
@@ -118,7 +118,7 @@ namespace Nethermind.Merge.Plugin.Test
             chain.WithdrawalProcessor?.ProcessWithdrawals(block!, chain.SpecProvider.GenesisSpec);
 
             chain.State.Commit(chain.SpecProvider.GenesisSpec);
-            chain.State.RecalculateStateRoot();
+            //chain.State.RecalculateStateRoot();
             blockRequestV3.StateRoot = chain.State.StateRoot;
             chain.State.Restore(before);
 

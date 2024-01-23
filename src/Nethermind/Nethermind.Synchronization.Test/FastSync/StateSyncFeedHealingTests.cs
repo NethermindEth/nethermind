@@ -83,7 +83,7 @@ namespace Nethermind.Synchronization.Test.FastSync
                     endHashIndex = startingHashIndex + 1000;
 
                     ProcessAccountRange(dbContext.RemoteStateTree, dbContext.LocalStateTree, blockNumber, dbContext.RemoteStateTree.RootHash,
-                       accounts.Where(a => a.Key >= pathPool[startingHashIndex] && a.Key <= pathPool[endHashIndex]).Select(a => new PathWithAccount(a.Key, a.Value)).ToArray());
+                        accounts.Where(a => a.Key >= pathPool[startingHashIndex] && a.Key <= pathPool[endHashIndex]).Select(a => new PathWithAccount(a.Key, a.Value)).ToArray());
 
                     startingHashIndex = endHashIndex + 1;
                 }
@@ -160,7 +160,7 @@ namespace Nethermind.Synchronization.Test.FastSync
             remoteStateTree.Accept(accountProofCollector, remoteStateTree.RootHash);
             byte[][] lastProof = accountProofCollector.BuildResult().Proof!;
 
-            _ = SnapProviderHelper.AddAccountRange(localStateTree, blockNumber, rootHash, startingHash, limitHash, accounts, firstProof.Concat(lastProof).ToArray());
+            //_ = SnapProviderHelper.AddAccountRange(localStateTree, blockNumber, rootHash, startingHash, limitHash, accounts, firstProof.Concat(lastProof).ToArray());
         }
     }
 }

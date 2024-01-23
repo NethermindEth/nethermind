@@ -15,6 +15,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Db.FullPruning;
 using Nethermind.Logging;
+using Nethermind.Paprika;
 using Nethermind.State;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
@@ -78,7 +79,8 @@ namespace Nethermind.Blockchain.Test.FullPruning
         {
             LimboLogs logManager = LimboLogs.Instance;
             PatriciaTree trie = Build.A.Trie(trieDb).WithAccountsByIndex(0, 100).TestObject;
-            IStateReader stateReader = new StateReader(new TrieStore(trieDb, logManager), new MemDb(), logManager);
+            IStateFactory stateFactory = new PaprikaStateFactory();
+            IStateReader stateReader = new StateReader(stateFactory, new MemDb(), logManager);
 
             using CopyTreeVisitor copyTreeVisitor = new(pruningContext, writeFlags, logManager, cancellationToken);
             stateReader.RunTreeVisitor(copyTreeVisitor, trie.RootHash, visitingOptions);

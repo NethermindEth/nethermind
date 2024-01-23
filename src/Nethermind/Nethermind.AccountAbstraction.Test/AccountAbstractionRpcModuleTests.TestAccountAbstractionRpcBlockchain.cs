@@ -37,6 +37,7 @@ using Nethermind.Specs.Forks;
 using Nethermind.State;
 using NSubstitute;
 using Nethermind.Config;
+using Nethermind.Db;
 
 namespace Nethermind.AccountAbstraction.Test
 {
@@ -99,7 +100,8 @@ namespace Nethermind.AccountAbstraction.Test
                 SpecProvider.UpdateMergeTransitionInfo(1, 0);
 
                 BlockProducerEnvFactory blockProducerEnvFactory = new BlockProducerEnvFactory(
-                    WorldStateManager,
+                    DbProvider.AsReadOnly(true),
+                    StateFactory!,
                     BlockTree,
                     SpecProvider,
                     BlockValidator,
@@ -212,7 +214,7 @@ namespace Nethermind.AccountAbstraction.Test
                     UserOperationSimulator[entryPoint] = new(
                         UserOperationTxBuilder[entryPoint],
                         ReadOnlyState,
-                        new ReadOnlyTxProcessingEnvFactory(WorldStateManager, BlockTree, SpecProvider, LogManager),
+                        new ReadOnlyTxProcessingEnvFactory(DbProvider.AsReadOnly(true), StateFactory!, BlockTree, SpecProvider, LogManager),
                         EntryPointContractAbi,
                         entryPoint!,
                         WhitelistedPayamsters,
