@@ -498,6 +498,16 @@ namespace Nethermind.Synchronization.Test
             {
                 throw new NotImplementedException();
             }
+
+            public bool Validate(BlockHeader header, BlockHeader? parent, bool isUncle, out string? error)
+            {
+                throw new NotImplementedException();
+            }
+
+            public bool Validate(BlockHeader header, bool isUncle, out string? error)
+            {
+                throw new NotImplementedException();
+            }
         }
 
         [Test, MaxTime(7000)]

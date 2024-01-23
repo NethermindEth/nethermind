@@ -34,8 +34,19 @@ public class TestBlockValidator : IBlockValidator
         return _alwaysSameResultForSuggested ?? _suggestedValidationResults.Dequeue();
     }
 
+    public bool Validate(BlockHeader header, BlockHeader? parent, bool isUncle, out string? error)
+    {
+        error = null;
+        return _alwaysSameResultForSuggested ?? _suggestedValidationResults.Dequeue();
+    }
+
     public bool Validate(BlockHeader header, bool isUncle)
     {
+        return _alwaysSameResultForSuggested ?? _suggestedValidationResults.Dequeue();
+    }
+    public bool Validate(BlockHeader header, bool isUncle, out string? error)
+    {
+        error = null;
         return _alwaysSameResultForSuggested ?? _suggestedValidationResults.Dequeue();
     }
 
@@ -70,4 +81,6 @@ public class TestBlockValidator : IBlockValidator
         error = null;
         return _alwaysSameResultForSuggested ?? _suggestedValidationResults.Dequeue();
     }
+
+
 }

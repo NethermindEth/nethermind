@@ -38,6 +38,17 @@ namespace Nethermind.Consensus.Validators
         }
 
         public static bool ValidateHash(BlockHeader header) => header.Hash == header.CalculateHash();
+        /// <summary>
+        /// Note that this does not validate seal which is the responsibility of <see cref="ISealValidator"/>>
+        /// </summary>
+        /// <param name="header">BlockHeader to validate</param>
+        /// <param name="parent">BlockHeader which is the parent of <paramref name="header"/></param>
+        /// <param name="isUncle"><value>True</value> if uncle block, otherwise <value>False</value></param>
+        /// <returns><value>True</value> if validation succeeds otherwise <value>false</value></returns>
+        public virtual bool Validate(BlockHeader header, BlockHeader? parent, bool isUncle = false)
+        {
+            return Validate(header, parent, isUncle, out _);
+        }
 
         /// <summary>
         /// Note that this does not validate seal which is the responsibility of <see cref="ISealValidator"/>>
@@ -45,10 +56,11 @@ namespace Nethermind.Consensus.Validators
         /// <param name="header">BlockHeader to validate</param>
         /// <param name="parent">BlockHeader which is the parent of <paramref name="header"/></param>
         /// <param name="isUncle"><value>True</value> if uncle block, otherwise <value>False</value></param>
-        /// <returns></returns>
-        public virtual bool Validate(BlockHeader header, BlockHeader? parent, bool isUncle = false)
+        /// <param name="error">Detailed error message if validation fails, otherwise <value>null</value>.</param>
+        /// <returns><value>True</value> if validation succeeds otherwise <value>false</value></returns>
+        public virtual bool Validate(BlockHeader header, BlockHeader? parent, bool isUncle, out string? error)
         {
-            if (!ValidateFieldLimit(header))
+            if (!ValidateFieldLimit(header, out error))
             {
                 return false;
             }
@@ -58,6 +70,8 @@ namespace Nethermind.Consensus.Validators
             if (!hashAsExpected)
             {
                 if (_logger.IsWarn) _logger.Warn($"Invalid block header ({header.Hash}) - invalid block hash");
+                error = $"Invalid block hash.";
+                return false;
             }
 
             IReleaseSpec spec = _specProvider.GetSpec(header);
@@ -70,31 +84,45 @@ namespace Nethermind.Consensus.Validators
                     if (!isGenesisValid)
                     {
                         if (_logger.IsWarn) _logger.Warn($"Invalid genesis block header ({header.Hash})");
+                        error = $"Invalid genesis block.";
                     }
-
                     return isGenesisValid;
                 }
 
                 if (_logger.IsDebug) _logger.Debug($"Orphan block, could not find parent ({header.ParentHash}) of ({header.Hash})");
+                error = $"Could not find parent block.";
                 return false;
             }
 
             bool totalDifficultyCorrect = ValidateTotalDifficulty(parent, header);
+            if (!totalDifficultyCorrect)
+            {
+                error = $"Invalid genesis block.";
+                return false;
+            }
 
             bool sealParamsCorrect = _sealValidator.ValidateParams(parent, header, isUncle);
             if (!sealParamsCorrect)
             {
                 if (_logger.IsWarn) _logger.Warn($"Invalid block header ({header.Hash}) - seal parameters incorrect");
+                error = $"Seal parameters incorrect.";
+                return false;
             }
 
             bool gasUsedBelowLimit = header.GasUsed <= header.GasLimit;
             if (!gasUsedBelowLimit)
             {
                 if (_logger.IsWarn) _logger.Warn($"Invalid block header ({header.Hash}) - gas used above gas limit");
+                error = $"Gas used above gas limit.";
+                return false;
             }
 
             bool gasLimitInRange = ValidateGasLimitRange(header, parent, spec);
-
+            if (!gasLimitInRange)
+            {
+                error = $"Gas limit is invalid.";
+                return false;
+            }
             // bool gasLimitAboveAbsoluteMinimum = header.GasLimit >= 125000; // described in the YellowPaper but not followed
 
             bool timestampValid = ValidateTimestamp(parent, header);
@@ -103,25 +131,26 @@ namespace Nethermind.Consensus.Validators
             if (!numberIsParentPlusOne)
             {
                 if (_logger.IsWarn) _logger.Warn($"Invalid block header ({header.Hash}) - block number is not parent + 1");
+                error = $"Expected block number '{parent.Number + 1}', but got '{header.Number}'.";
+                return false;
             }
 
             if (_logger.IsTrace) _logger.Trace($"Validating block {header.ToString(BlockHeader.Format.Short)}, extraData {header.ExtraData.ToHexString(true)}");
 
-            bool eip1559Valid = true;
             bool isEip1559Enabled = spec.IsEip1559Enabled;
             if (isEip1559Enabled)
             {
                 UInt256? expectedBaseFee = BaseFeeCalculator.Calculate(parent, spec);
-                eip1559Valid = expectedBaseFee == header.BaseFeePerGas;
 
                 if (expectedBaseFee != header.BaseFeePerGas)
                 {
                     if (_logger.IsWarn) _logger.Warn($"Invalid block header ({header.ToString(BlockHeader.Format.Short)}) incorrect base fee. Expected base fee: {expectedBaseFee}, Current base fee: {header.BaseFeePerGas} ");
-                    eip1559Valid = false;
+                    error = $"Expected BaseFeePerGas '{expectedBaseFee}', but got '{header.BaseFeePerGas}'.";
+                    return false;
                 }
             }
 
-            bool eip4844Valid = ValidateBlobGasFields(header, parent, spec);
+            bool eip4844Valid = ValidateBlobGasFields(header, parent, spec, out error);
 
             return
                 totalDifficultyCorrect &&
@@ -133,11 +162,10 @@ namespace Nethermind.Consensus.Validators
                 numberIsParentPlusOne &&
                 hashAsExpected &&
                 extraDataValid &&
-                eip1559Valid &&
                 eip4844Valid;
         }
 
-        private bool ValidateFieldLimit(BlockHeader blockHeader)
+        private bool ValidateFieldLimit(BlockHeader blockHeader, out string? error)
         {
             // Note, these are out of spec. Technically, there could be a block with field with very high value that is
             // valid when using ulong, but wrapped to negative value when using long. However, switching to ulong
@@ -145,21 +173,24 @@ namespace Nethermind.Consensus.Validators
             if (blockHeader.Number < 0)
             {
                 if (_logger.IsWarn) _logger.Warn($"Invalid block header ({blockHeader.Hash}) - Block number is negative {blockHeader.Number}");
+                error = $"Block number is negative {blockHeader.Number}";
                 return false;
             }
 
             if (blockHeader.GasLimit < 0)
             {
                 if (_logger.IsWarn) _logger.Warn($"Invalid block header ({blockHeader.Hash}) - Block GasLimit is negative {blockHeader.GasLimit}");
+                error = $"Block GasLimit is negative {blockHeader.GasLimit}";
                 return false;
             }
 
             if (blockHeader.GasUsed < 0)
             {
                 if (_logger.IsWarn) _logger.Warn($"Invalid block header ({blockHeader.Hash}) - Block GasUsed is negative {blockHeader.GasUsed}");
+                error = $"Block GasUsed is negative {blockHeader.GasUsed}";
                 return false;
             }
-
+            error = null;
             return true;
         }
 
@@ -264,8 +295,20 @@ namespace Nethermind.Consensus.Validators
         /// <returns><value>True</value> if <paramref name="header"/> is valid, otherwise <value>False</value></returns>
         public virtual bool Validate(BlockHeader header, bool isUncle = false)
         {
+            return Validate(header, isUncle, out _);
+        }
+
+        /// <summary>
+        /// Validates all the header elements (usually in relation to parent). Difficulty calculation is validated in <see cref="ISealValidator"/>
+        /// </summary>
+        /// <param name="header">Block header to validate</param>
+        /// <param name="isUncle"><value>True</value> if the <paramref name="header"/> is an uncle, otherwise <value>False</value></param>
+        /// <param name="error">Detailed error message if validation fails, otherwise <value>False</value></param>
+        /// <returns><value>True</value> if <paramref name="header"/> is valid, otherwise <value>False</value></returns>
+        public virtual bool Validate(BlockHeader header, bool isUncle, out string? error)
+        {
             BlockHeader parent = _blockTree.FindParentHeader(header, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
-            return Validate(header, parent, isUncle);
+            return Validate(header, parent, isUncle, out error);
         }
 
         private bool ValidateGenesis(BlockHeader header)
@@ -279,34 +322,38 @@ namespace Nethermind.Consensus.Validators
                 header.ExtraData.Length <= _specProvider.GenesisSpec.MaximumExtraDataSize;
         }
 
-        private bool ValidateBlobGasFields(BlockHeader header, BlockHeader parentHeader, IReleaseSpec spec)
+        private bool ValidateBlobGasFields(BlockHeader header, BlockHeader parentHeader, IReleaseSpec spec, out string? error)
         {
             if (!spec.IsEip4844Enabled)
             {
                 if (header.BlobGasUsed is not null)
                 {
                     if (_logger.IsWarn) _logger.Warn($"BlobGasUsed field should not have value.");
+                    error = $"BlobGasUsed field should not have value.";
                     return false;
                 }
 
                 if (header.ExcessBlobGas is not null)
                 {
                     if (_logger.IsWarn) _logger.Warn($"ExcessBlobGas field should not have value.");
+                    error = $"ExcessBlobGas field should not have value.";
                     return false;
                 }
-
+                error = null;
                 return true;
             }
 
             if (header.BlobGasUsed is null)
             {
                 if (_logger.IsWarn) _logger.Warn($"BlobGasUsed field is not set.");
+                error = $"BlobGasUsed field is not set.";
                 return false;
             }
 
             if (header.ExcessBlobGas is null)
             {
                 if (_logger.IsWarn) _logger.Warn($"ExcessBlobGas field is not set.");
+                error = $"ExcessBlobGas field is not set.";
                 return false;
             }
 
@@ -315,8 +362,10 @@ namespace Nethermind.Consensus.Validators
             if (header.ExcessBlobGas != expectedExcessBlobGas)
             {
                 if (_logger.IsWarn) _logger.Warn($"ExcessBlobGas field is incorrect: {header.ExcessBlobGas}, should be {expectedExcessBlobGas}.");
+                error = $"Expected ExcessBlobGas '{expectedExcessBlobGas}', but got '{header.ExcessBlobGas}'.";
                 return false;
             }
+            error = null;
             return true;
         }
     }

@@ -16,9 +16,20 @@ namespace Nethermind.Consensus.Validators
         {
             return false;
         }
+        public bool Validate(BlockHeader header, BlockHeader? parent, bool isUncle, out string? error)
+        {
+            error = null;
+            return false;
+        }
 
         public bool Validate(BlockHeader header, bool isUncle)
         {
+            return false;
+        }
+
+        public bool Validate(BlockHeader header, bool isUncle, out string? error)
+        {
+            error = null;
             return false;
         }
 
@@ -55,5 +66,6 @@ namespace Nethermind.Consensus.Validators
             error = null;
             return false;
         }
+
     }
 }

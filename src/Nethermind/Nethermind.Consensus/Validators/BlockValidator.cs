@@ -42,10 +42,17 @@ public class BlockValidator : IBlockValidator
     {
         return _headerValidator.Validate(header, parent, isUncle);
     }
-
+    public bool Validate(BlockHeader header, BlockHeader? parent, bool isUncle, out string? error)
+    {
+        return _headerValidator.Validate(header, parent, isUncle, out error);
+    }
     public bool Validate(BlockHeader header, bool isUncle)
     {
         return _headerValidator.Validate(header, isUncle);
+    }
+    public bool Validate(BlockHeader header, bool isUncle, out string? error)
+    {
+        return _headerValidator.Validate(header, isUncle, out error);
     }
 
     /// <summary>
@@ -116,11 +123,10 @@ public class BlockValidator : IBlockValidator
             return false;
         }
 
-        bool blockHeaderValid = _headerValidator.Validate(block.Header);
+        bool blockHeaderValid = _headerValidator.Validate(block.Header, false, out errorMessage);
         if (!blockHeaderValid)
         {
             if (_logger.IsDebug) _logger.Debug($"{Invalid(block)} Invalid header");
-            errorMessage = $"Block header is invalid.";
             return false;
         }
 
@@ -156,7 +162,7 @@ public class BlockValidator : IBlockValidator
     /// <param name="processedBlock">This should be the block processing result (after going through the EVM processing)</param>
     /// <param name="receipts">List of tx receipts from the processed block (required only for better diagnostics when the receipt root is invalid).</param>
     /// <param name="suggestedBlock">Block received from the network - unchanged.</param>
-    /// <param name="error">Details message if validation fails.</param>
+    /// <param name="error">Detailed error message if validation fails otherwise <value>null</value>.</param>
     /// <returns><c>true</c> if the <paramref name="processedBlock"/> is valid; otherwise, <c>false</c>.</returns>
     public bool ValidateProcessedBlock(Block processedBlock, TxReceipt[] receipts, Block suggestedBlock, out string? error)
     {
@@ -214,6 +220,7 @@ public class BlockValidator : IBlockValidator
             {
                 _logger.Error($"- block extra data : {suggestedBlock.ExtraData.ToHexString()}, UTF8: {Encoding.UTF8.GetString(suggestedBlock.ExtraData)}");
             }
+            return isValid;
         }
         error = null;
         return isValid;
@@ -382,4 +389,5 @@ public class BlockValidator : IBlockValidator
 
     private static string Invalid(Block block) =>
         $"Invalid block {block.ToString(Block.Format.FullHashAndNumber)}:";
+
 }

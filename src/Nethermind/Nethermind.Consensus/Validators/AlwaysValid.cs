@@ -39,11 +39,21 @@ public class Always : IBlockValidator, ISealValidator, IUnclesValidator, ITxVali
         return _result;
     }
 
+    public bool Validate(BlockHeader header, BlockHeader? parent, bool isUncle, out string? error)
+    {
+        error = null;   
+        return _result;
+    }
+
     public bool Validate(BlockHeader header, bool isUncle = false)
     {
         return _result;
     }
-
+    public bool Validate(BlockHeader header, bool isUncle, out string? error)
+    {
+        error = null;
+        return _result;
+    }
     public bool ValidateSuggestedBlock(Block block)
     {
         return _result;
@@ -103,4 +113,5 @@ public class Always : IBlockValidator, ISealValidator, IUnclesValidator, ITxVali
         error = null;
         return _result;
     }
+
 }

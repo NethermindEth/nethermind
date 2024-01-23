@@ -27,7 +27,11 @@ public class InvalidBlockInterceptor : IBlockValidator
 
     public bool Validate(BlockHeader header, BlockHeader? parent, bool isUncle = false)
     {
-        bool result = _baseValidator.Validate(header, parent, isUncle);
+        return Validate(header, parent, isUncle, out _);
+    }
+    public bool Validate(BlockHeader header, BlockHeader? parent, bool isUncle, out string? error)
+    {
+        bool result = _baseValidator.Validate(header, parent, isUncle, out error);
         if (!result)
         {
             if (_logger.IsTrace) _logger.Trace($"Intercepted a bad header {header}");
@@ -44,7 +48,12 @@ public class InvalidBlockInterceptor : IBlockValidator
 
     public bool Validate(BlockHeader header, bool isUncle = false)
     {
-        bool result = _baseValidator.Validate(header, isUncle);
+        return Validate(header, isUncle, out _);
+    }
+
+    public bool Validate(BlockHeader header, bool isUncle, out string? error)
+    {
+        bool result = _baseValidator.Validate(header, isUncle, out error);
         if (!result)
         {
             if (_logger.IsTrace) _logger.Trace($"Intercepted a bad header {header}");
@@ -143,5 +152,6 @@ public class InvalidBlockInterceptor : IBlockValidator
             return true;
 
         return !BlockValidator.ValidateWithdrawalsHashMatches(block, out _);
-    }  
+    }
+
 }
