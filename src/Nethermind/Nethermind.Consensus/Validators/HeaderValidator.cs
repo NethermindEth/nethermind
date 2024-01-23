@@ -70,7 +70,7 @@ namespace Nethermind.Consensus.Validators
             if (!hashAsExpected)
             {
                 if (_logger.IsWarn) _logger.Warn($"Invalid block header ({header.Hash}) - invalid block hash");
-                error = $"Invalid block hash.";
+                error = $"Invalid header hash: Expected {hashAsExpected}, got {header.Hash}.";
                 return false;
             }
 
@@ -90,14 +90,14 @@ namespace Nethermind.Consensus.Validators
                 }
 
                 if (_logger.IsDebug) _logger.Debug($"Orphan block, could not find parent ({header.ParentHash}) of ({header.Hash})");
-                error = $"Could not find parent block.";
+                error = $"Invalid ancestor.";
                 return false;
             }
 
             bool totalDifficultyCorrect = ValidateTotalDifficulty(parent, header);
             if (!totalDifficultyCorrect)
             {
-                error = $"Invalid genesis block.";
+                error = $"Invalid totalDifficulty.";
                 return false;
             }
 
@@ -105,7 +105,7 @@ namespace Nethermind.Consensus.Validators
             if (!sealParamsCorrect)
             {
                 if (_logger.IsWarn) _logger.Warn($"Invalid block header ({header.Hash}) - seal parameters incorrect");
-                error = $"Seal parameters incorrect.";
+                error = $"Invalid seal parameters.";
                 return false;
             }
 
@@ -113,14 +113,14 @@ namespace Nethermind.Consensus.Validators
             if (!gasUsedBelowLimit)
             {
                 if (_logger.IsWarn) _logger.Warn($"Invalid block header ({header.Hash}) - gas used above gas limit");
-                error = $"Gas used above gas limit.";
+                error = $"Invalid gas used: Above gas limit.";
                 return false;
             }
 
             bool gasLimitInRange = ValidateGasLimitRange(header, parent, spec);
             if (!gasLimitInRange)
             {
-                error = $"Gas limit is invalid.";
+                error = $"Invalid gas limit.";
                 return false;
             }
             // bool gasLimitAboveAbsoluteMinimum = header.GasLimit >= 125000; // described in the YellowPaper but not followed
@@ -131,7 +131,7 @@ namespace Nethermind.Consensus.Validators
             if (!numberIsParentPlusOne)
             {
                 if (_logger.IsWarn) _logger.Warn($"Invalid block header ({header.Hash}) - block number is not parent + 1");
-                error = $"Expected block number '{parent.Number + 1}', but got '{header.Number}'.";
+                error = $"Invalid block number.";
                 return false;
             }
 
@@ -145,7 +145,7 @@ namespace Nethermind.Consensus.Validators
                 if (expectedBaseFee != header.BaseFeePerGas)
                 {
                     if (_logger.IsWarn) _logger.Warn($"Invalid block header ({header.ToString(BlockHeader.Format.Short)}) incorrect base fee. Expected base fee: {expectedBaseFee}, Current base fee: {header.BaseFeePerGas} ");
-                    error = $"Expected BaseFeePerGas '{expectedBaseFee}', but got '{header.BaseFeePerGas}'.";
+                    error = $"Invalid baseFeePerGas: Expected '{expectedBaseFee}', got '{header.BaseFeePerGas}'.";
                     return false;
                 }
             }
@@ -329,14 +329,14 @@ namespace Nethermind.Consensus.Validators
                 if (header.BlobGasUsed is not null)
                 {
                     if (_logger.IsWarn) _logger.Warn($"BlobGasUsed field should not have value.");
-                    error = $"BlobGasUsed field should not have value.";
+                    error = $"Invalid blobGasUsed: Expected null, got {header.BlobGasUsed}.";
                     return false;
                 }
 
                 if (header.ExcessBlobGas is not null)
                 {
                     if (_logger.IsWarn) _logger.Warn($"ExcessBlobGas field should not have value.");
-                    error = $"ExcessBlobGas field should not have value.";
+                    error = $"Invalid excessBlobGas: Expected null, got {header.ExcessBlobGas}.";
                     return false;
                 }
                 error = null;
@@ -346,14 +346,14 @@ namespace Nethermind.Consensus.Validators
             if (header.BlobGasUsed is null)
             {
                 if (_logger.IsWarn) _logger.Warn($"BlobGasUsed field is not set.");
-                error = $"BlobGasUsed field is not set.";
+                error = $"Invalid blobGasUsed: Expected {header.BlobGasUsed}, got null.";
                 return false;
             }
 
             if (header.ExcessBlobGas is null)
             {
                 if (_logger.IsWarn) _logger.Warn($"ExcessBlobGas field is not set.");
-                error = $"ExcessBlobGas field is not set.";
+                error = $"Invalid excessBlobGas: Expected {header.ExcessBlobGas}, got null.";
                 return false;
             }
 
@@ -362,7 +362,7 @@ namespace Nethermind.Consensus.Validators
             if (header.ExcessBlobGas != expectedExcessBlobGas)
             {
                 if (_logger.IsWarn) _logger.Warn($"ExcessBlobGas field is incorrect: {header.ExcessBlobGas}, should be {expectedExcessBlobGas}.");
-                error = $"Expected ExcessBlobGas '{expectedExcessBlobGas}', but got '{header.ExcessBlobGas}'.";
+                error = $"Invalid excessBlobGas: Expected {expectedExcessBlobGas}, got {header.ExcessBlobGas}.";
                 return false;
             }
             error = null;
