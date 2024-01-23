@@ -58,7 +58,7 @@ public class BlobTransactionsDbCleaner : IDisposable
 
             if (_logger.IsDebug) _logger.Debug($"Cleaned processed blob txs from block {_lastFinalizedBlock} to block {newlyFinalizedBlockNumber}");
 
-            _db.CompactColumns();
+            _db.Compact();
 
             if (_logger.IsDebug) _logger.Debug($"Blob transactions database columns have been compacted");
 

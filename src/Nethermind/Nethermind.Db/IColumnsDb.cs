@@ -13,14 +13,6 @@ namespace Nethermind.Db
         IEnumerable<TKey> ColumnKeys { get; }
         public IReadOnlyColumnDb<TKey> CreateReadOnly(bool createInMemWriteStore) => new ReadOnlyColumnsDb<TKey>(this, createInMemWriteStore);
         IColumnsWriteBatch<TKey> StartWriteBatch();
-
-        void CompactColumns()
-        {
-            foreach (TKey key in ColumnKeys)
-            {
-                GetColumnDb(key).Compact();
-            }
-        }
     }
 
     public interface IColumnsWriteBatch<in TKey> : IDisposable
