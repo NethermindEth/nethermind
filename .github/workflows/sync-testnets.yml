@@ -32,7 +32,7 @@ jobs:
             checkpoint-sync-url: "https://beaconstate-sepolia.chainsafe.io"
             cl-client: "lighthouse"
             el-client: "nethermind:nethermindeth/nethermind:master"
-            agent: sync-agent-80gb
+            agent: sync-agent-160gb
     name: "Run sync of ${{ matrix.network }} testnet"
     runs-on: ${{ matrix.agent }}
     steps:

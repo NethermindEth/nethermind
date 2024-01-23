@@ -268,7 +268,7 @@ namespace Nethermind.Core.Crypto
 
         public byte[] ThreadStaticBytes()
         {
-            if (_threadStaticBuffer == null) _threadStaticBuffer = new byte[Size];
+            if (_threadStaticBuffer is null) _threadStaticBuffer = new byte[Size];
             Bytes.CopyTo(_threadStaticBuffer);
             return _threadStaticBuffer;
         }

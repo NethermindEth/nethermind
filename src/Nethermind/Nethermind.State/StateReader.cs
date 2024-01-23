@@ -36,7 +36,7 @@ namespace Nethermind.State
         public byte[] GetStorage(Hash256 stateRoot, Address address, in UInt256 index)
         {
             Account? account = GetAccount(stateRoot, address);
-            if (account == null) return null;
+            if (account is null) return null;
 
             Hash256 storageRoot = account.StorageRoot;
             if (storageRoot == Keccak.EmptyTreeHash)

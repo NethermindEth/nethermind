@@ -191,13 +191,13 @@ namespace Nethermind.Blockchain.Test.FullPruning
                 _clearPrunedDb = clearPrunedDb;
                 TrieDb = new TestMemDb();
                 CopyDb = new TestMemDb();
-                IRocksDbFactory rocksDbFactory = Substitute.For<IRocksDbFactory>();
-                rocksDbFactory.CreateDb(Arg.Any<RocksDbSettings>()).Returns(TrieDb, CopyDb);
+                IDbFactory dbFactory = Substitute.For<IDbFactory>();
+                dbFactory.CreateDb(Arg.Any<DbSettings>()).Returns(TrieDb, CopyDb);
 
                 PatriciaTree trie = Build.A.Trie(TrieDb).WithAccountsByIndex(0, 100).TestObject;
                 _stateRoot = trie.RootHash;
                 StateReader = new StateReader(new TrieStore(TrieDb, LimboLogs.Instance), new TestMemDb(), LimboLogs.Instance);
-                FullPruningDb = new TestFullPruningDb(new RocksDbSettings("test", "test"), rocksDbFactory, successfulPruning, clearPrunedDb);
+                FullPruningDb = new TestFullPruningDb(new DbSettings("test", "test"), dbFactory, successfulPruning, clearPrunedDb);
 
                 Pruner = new(FullPruningDb, PruningTrigger, new PruningConfig()
                 {
@@ -267,7 +267,7 @@ namespace Nethermind.Blockchain.Test.FullPruning
             public new int PruningStarted { get; private set; }
             public ManualResetEvent WaitForClearDb { get; } = new(false);
 
-            public TestFullPruningDb(RocksDbSettings settings, IRocksDbFactory dbFactory, bool successfulPruning, bool clearPrunedDb = false)
+            public TestFullPruningDb(DbSettings settings, IDbFactory dbFactory, bool successfulPruning, bool clearPrunedDb = false)
                 : base(settings, dbFactory)
             {
                 _successfulPruning = successfulPruning;

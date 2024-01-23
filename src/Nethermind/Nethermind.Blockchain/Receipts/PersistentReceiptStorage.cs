@@ -69,14 +69,14 @@ namespace Nethermind.Blockchain.Receipts
             _migratedBlockNumber = Get(MigrationBlockNumberKey, long.MaxValue);
 
             KeyValuePair<byte[], byte[]>? firstValue = _blocksDb.GetAll().FirstOrDefault();
-            _legacyHashKey = firstValue.HasValue && firstValue.Value.Key != null && firstValue.Value.Key.Length == Hash256.Size;
+            _legacyHashKey = firstValue.HasValue && firstValue.Value.Key is not null && firstValue.Value.Key.Length == Hash256.Size;
 
             _blockTree.BlockAddedToMain += BlockTreeOnBlockAddedToMain;
         }
 
         private void BlockTreeOnBlockAddedToMain(object? sender, BlockReplacementEventArgs e)
         {
-            if (e.PreviousBlock != null)
+            if (e.PreviousBlock is not null)
             {
                 RemoveBlockTx(e.PreviousBlock, e.Block);
             }
@@ -93,7 +93,7 @@ namespace Nethermind.Blockchain.Receipts
                 if (_receiptConfig.TxLookupLimit > 0 && newMain.Number > _receiptConfig.TxLookupLimit.Value)
                 {
                     Block newOldTx = _blockTree.FindBlock(newMain.Number - _receiptConfig.TxLookupLimit.Value);
-                    if (newOldTx != null)
+                    if (newOldTx is not null)
                     {
                         RemoveBlockTx(newOldTx);
                     }
@@ -180,7 +180,7 @@ namespace Nethermind.Blockchain.Receipts
             if (_legacyHashKey)
             {
                 Span<byte> receiptsData = _blocksDb.GetSpan(blockHash);
-                if (receiptsData != null)
+                if (!receiptsData.IsNull())
                 {
                     return receiptsData;
                 }
@@ -218,7 +218,7 @@ namespace Nethermind.Blockchain.Receipts
         public TxReceipt[] Get(Hash256 blockHash)
         {
             Block? block = _blockTree.FindBlock(blockHash);
-            if (block == null) return Array.Empty<TxReceipt>();
+            if (block is null) return Array.Empty<TxReceipt>();
             return Get(block);
         }
 

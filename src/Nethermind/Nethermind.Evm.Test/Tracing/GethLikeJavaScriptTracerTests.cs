@@ -12,9 +12,9 @@ using Nethermind.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.Tracing.GethStyle.JavaScript;
 using Nethermind.Int256;
-using Nethermind.JsonRpc.Modules.DebugModule;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs.Forks;
+using Nethermind.State;
 
 namespace Nethermind.Evm.Test.Tracing;
 

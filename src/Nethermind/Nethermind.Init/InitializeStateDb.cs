@@ -34,7 +34,7 @@ namespace Nethermind.Init;
 public class InitializeStateDb : IStep
 {
     private readonly INethermindApi _api;
-    private ILogger? _logger;
+    private ILogger _logger;
 
     public InitializeStateDb(INethermindApi api)
     {
@@ -76,10 +76,12 @@ public class InitializeStateDb : IStep
             setApi.WitnessRepository = NullWitnessCollector.Instance;
         }
 
+        CachingStore cachedStateDb = getApi.DbProvider.StateDb
+            .Cached(Trie.MemoryAllowance.TrieNodeCacheCount);
         IKeyValueStore codeDb = getApi.DbProvider.CodeDb
             .WitnessedBy(witnessCollector);
 
-        IKeyValueStoreWithBatching stateWitnessedBy = getApi.DbProvider.StateDb.WitnessedBy(witnessCollector);
+        IKeyValueStoreWithBatching stateWitnessedBy = cachedStateDb.WitnessedBy(witnessCollector);
         IPersistenceStrategy persistenceStrategy;
         IPruningStrategy pruningStrategy;
         if (pruningConfig.Mode.IsMemory())
@@ -130,6 +132,7 @@ public class InitializeStateDb : IStep
             IFullPruningDb fullPruningDb = (IFullPruningDb)getApi.DbProvider!.StateDb;
             fullPruningDb.PruningStarted += (_, args) =>
             {
+                cachedStateDb.PersistCache(args.Context);
                 trieStore.PersistCache(args.Context, args.Context.CancellationTokenSource.Token);
             };
         }

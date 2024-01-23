@@ -75,7 +75,7 @@ namespace Nethermind.Synchronization.Test.FastBlocks
         private IBlockTree _blockTree = null!;
         private IDb _metadataDb = null!;
 
-        private static readonly long _pivotNumber = 1024;
+        private static long _pivotNumber = 1024;
 
         private static readonly Scenario _1024BodiesWithOneTxEach;
         private static readonly Scenario _256BodiesWithOneTxEach;
@@ -240,48 +240,46 @@ namespace Nethermind.Synchronization.Test.FastBlocks
             _measuredProgressQueue.HasEnded.Should().BeTrue();
         }
 
-        [TestCase(1024, false, null, false)]
-        [TestCase(11052930, false, null, true)]
-        [TestCase(11052984, false, null, true)]
-        [TestCase(11052985, false, null, false)]
-        [TestCase(1024, false, 11052984, false)]
-        [TestCase(11052930, false, 11052984, true)]
-        [TestCase(11052984, false, 11052984, true)]
-        [TestCase(11052985, false, 11052984, false)]
-        [TestCase(1024, true, null, false)]
-        [TestCase(11052930, true, null, false)]
-        [TestCase(11052984, true, null, false)]
-        [TestCase(11052985, true, null, false)]
-        [TestCase(1024, false, 0, false)]
-        [TestCase(11052930, false, 0, false)]
-        [TestCase(11052984, false, 0, false)]
-        [TestCase(11052985, false, 0, false)]
-        public async Task When_finished_sync_with_old_default_barrier_then_finishes_imedietely(
+        [TestCase(1, 1024, false, null, false)]
+        [TestCase(1, 11051474, false, null, true)]
+        [TestCase(1, 11052984, false, null, true)]
+        [TestCase(11051474, 11052984, false, null, false)]
+        [TestCase(11051474, 11051474, false, null, true)]
+        [TestCase(1, 11052985, false, null, false)]
+        [TestCase(1, 1024, false, 11052984, false)]
+        [TestCase(1, 11051474, false, 11052984, true)]
+        [TestCase(1, 11052984, false, 11052984, true)]
+        [TestCase(11051474, 11052984, false, 11052984, false)]
+        [TestCase(11051474, 11051474, false, 11052984, true)]
+        [TestCase(1, 11052985, false, 11052984, false)]
+        [TestCase(1, 1024, true, null, false)]
+        [TestCase(1, 11051474, true, null, false)]
+        [TestCase(1, 11052984, true, null, false)]
+        [TestCase(11051474, 11052984, true, null, false)]
+        [TestCase(11051474, 11051474, true, null, true)]
+        [TestCase(1, 11052985, true, null, false)]
+        [TestCase(1, 1024, false, 0, false)]
+        [TestCase(1, 11051474, false, 0, false)]
+        [TestCase(1, 11052984, false, 0, false)]
+        [TestCase(11051474, 11052984, false, 0, false)]
+        [TestCase(11051474, 11051474, false, 0, true)]
+        [TestCase(1, 11052985, false, 0, false)]
+        public void When_finished_sync_with_old_default_barrier_then_finishes_imedietely(
+            long AncientBarrierInConfig,
             long? lowestInsertedReceiptBlockNumber,
             bool JustStarted,
             long? previousBarrierInDb,
             bool shouldfinish)
         {
-            _syncConfig.AncientReceiptsBarrier = 0;
+            _syncConfig.AncientBodiesBarrier = AncientBarrierInConfig;
+            _syncConfig.AncientReceiptsBarrier = AncientBarrierInConfig;
+            _pivotNumber = AncientBarrierInConfig + 1_000_000;
             _receiptStorage.HasBlock(Arg.Is(_pivotNumber), Arg.Any<Hash256>()).Returns(!JustStarted);
-            if (previousBarrierInDb != null)
+            if (previousBarrierInDb is not null)
                 _metadataDb.Set(MetadataDbKeys.ReceiptsBarrierWhenStarted, previousBarrierInDb.Value.ToBigEndianByteArrayWithoutLeadingZeros());
             LoadScenario(_256BodiesWithOneTxEach);
             _receiptStorage.LowestInsertedReceiptBlockNumber.Returns(lowestInsertedReceiptBlockNumber);
-
-            ReceiptsSyncBatch? request = await _feed.PrepareRequest();
-            if (shouldfinish)
-            {
-                request.Should().BeNull();
-                _feed.CurrentState.Should().Be(SyncFeedState.Finished);
-            }
-            else
-            {
-                request.Should().NotBeNull();
-                _feed.CurrentState.Should().NotBe(SyncFeedState.Finished);
-            }
-            _measuredProgress.HasEnded.Should().Be(shouldfinish);
-            _measuredProgressQueue.HasEnded.Should().Be(shouldfinish);
+            _feed.IsFinished.Should().Be(shouldfinish);
         }
 
         private void LoadScenario(Scenario scenario)

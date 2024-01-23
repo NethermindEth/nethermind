@@ -183,16 +183,16 @@ namespace Nethermind.Serialization.Rlp
             if (item is Rlp rlp)
             {
                 RlpStream stream = new(LengthOfSequence(rlp.Length));
-                return new(stream.Data);
+                return new(stream.Data.ToArray());
             }
 
             IRlpStreamDecoder<T>? rlpStreamDecoder = GetStreamDecoder<T>();
-            if (rlpStreamDecoder != null)
+            if (rlpStreamDecoder is not null)
             {
                 int totalLength = rlpStreamDecoder.GetLength(item, behaviors);
                 RlpStream stream = new(totalLength);
                 rlpStreamDecoder.Encode(stream, item, behaviors);
-                return new Rlp(stream.Data);
+                return new Rlp(stream.Data.ToArray());
             }
 
             IRlpObjectDecoder<T>? rlpDecoder = GetObjectDecoder<T>();
@@ -207,12 +207,12 @@ namespace Nethermind.Serialization.Rlp
             }
 
             IRlpStreamDecoder<T>? rlpStreamDecoder = GetStreamDecoder<T>();
-            if (rlpStreamDecoder != null)
+            if (rlpStreamDecoder is not null)
             {
                 int totalLength = rlpStreamDecoder.GetLength(items, behaviors);
                 RlpStream stream = new(totalLength);
                 rlpStreamDecoder.Encode(stream, items, behaviors);
-                return new Rlp(stream.Data);
+                return new Rlp(stream.Data.ToArray());
             }
 
             IRlpObjectDecoder<T> rlpDecoder = GetObjectDecoder<T>();
@@ -1165,7 +1165,7 @@ namespace Nethermind.Serialization.Rlp
                     return DecodeByteArraySpan().ToArray();
                 }
 
-                if (Memory == null)
+                if (Memory is null)
                 {
                     throw new RlpException("Rlp not backed by a Memory<byte>");
                 }
@@ -1390,10 +1390,10 @@ namespace Nethermind.Serialization.Rlp
             public T[] DecodeArray<T>(IRlpValueDecoder<T>? decoder = null, bool checkPositions = true,
                 T defaultElement = default)
             {
-                if (decoder == null)
+                if (decoder is null)
                 {
                     decoder = GetValueDecoder<T>();
-                    if (decoder == null)
+                    if (decoder is null)
                     {
                         throw new RlpException($"{nameof(Rlp)} does not support length of {nameof(T)}");
                     }

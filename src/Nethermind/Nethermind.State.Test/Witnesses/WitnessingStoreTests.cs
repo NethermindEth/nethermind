@@ -40,9 +40,9 @@ namespace Nethermind.Store.Test.Witnesses
         }
 
         [Test]
-        public void Collects_on_reads_2()
+        public void Collects_on_reads_when_cached_underneath()
         {
-            Context context = new();
+            Context context = new(2);
             context.Wrapped[Key1] = Value1;
             context.Wrapped[Key2] = Value2;
             context.Wrapped[Key3] = Value3;
@@ -63,9 +63,9 @@ namespace Nethermind.Store.Test.Witnesses
         }
 
         [Test]
-        public void Collects_on_reads_and_previously_populated()
+        public void Collects_on_reads_when_cached_underneath_and_previously_populated()
         {
-            Context context = new();
+            Context context = new(3);
 
             using IDisposable tracker = context.WitnessCollector.TrackOnThisThread();
             context.Database[Key1] = Value1;
@@ -112,6 +112,12 @@ namespace Nethermind.Store.Test.Witnesses
             {
                 WitnessCollector = new WitnessCollector(new MemDb(), LimboLogs.Instance);
                 Database = new WitnessingStore(Wrapped, WitnessCollector);
+            }
+
+            public Context(int cacheSize)
+            {
+                WitnessCollector = new WitnessCollector(new MemDb(), LimboLogs.Instance);
+                Database = new WitnessingStore(new CachingStore(Wrapped, cacheSize), WitnessCollector);
             }
         }
 

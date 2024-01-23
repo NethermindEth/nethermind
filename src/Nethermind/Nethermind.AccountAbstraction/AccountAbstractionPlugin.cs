@@ -40,7 +40,7 @@ public class AccountAbstractionPlugin : IConsensusWrapperPlugin
 {
     private IAccountAbstractionConfig _accountAbstractionConfig = null!;
     private AbiDefinition _entryPointContractAbi = null!;
-    private ILogger _logger = null!;
+    private ILogger _logger;
 
     private INethermindApi _nethermindApi = null!;
     private readonly IList<Address> _entryPointContractAddresses = new List<Address>();

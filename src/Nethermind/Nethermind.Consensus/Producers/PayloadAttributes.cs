@@ -24,7 +24,7 @@ public class PayloadAttributes
 
     public Address SuggestedFeeRecipient { get; set; }
 
-    public IList<Withdrawal>? Withdrawals { get; set; }
+    public Withdrawal[]? Withdrawals { get; set; }
 
     public Hash256? ParentBeaconBlockRoot { get; set; }
 
@@ -41,7 +41,7 @@ public class PayloadAttributes
 
         if (Withdrawals is not null)
         {
-            sb.Append($", {nameof(Withdrawals)} count: {Withdrawals.Count}");
+            sb.Append($", {nameof(Withdrawals)} count: {Withdrawals.Length}");
         }
 
         if (ParentBeaconBlockRoot is not null)
@@ -99,7 +99,7 @@ public class PayloadAttributes
 
         if (Withdrawals is not null)
         {
-            Hash256 withdrawalsRootHash = Withdrawals.Count == 0
+            Hash256 withdrawalsRootHash = Withdrawals.Length == 0
                 ? PatriciaTree.EmptyTreeHash
                 : new WithdrawalTrie(Withdrawals).RootHash;
             withdrawalsRootHash.Bytes.CopyTo(inputSpan.Slice(position, Keccak.Size));

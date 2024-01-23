@@ -33,17 +33,17 @@ public class SyncDbTuner
         // Only these three make sense as they are write heavy
         // Headers is used everywhere, so slowing read might slow the whole sync.
         // Statesync is read heavy, Forward sync is just plain too slow to saturate IO.
-        if (snapSyncFeed != null)
+        if (snapSyncFeed is not null)
         {
             snapSyncFeed.StateChanged += SnapStateChanged;
         }
 
-        if (bodiesSyncFeed != null)
+        if (bodiesSyncFeed is not null)
         {
             bodiesSyncFeed.StateChanged += BodiesStateChanged;
         }
 
-        if (receiptSyncFeed != null)
+        if (receiptSyncFeed is not null)
         {
             receiptSyncFeed.StateChanged += ReceiptsStateChanged;
         }

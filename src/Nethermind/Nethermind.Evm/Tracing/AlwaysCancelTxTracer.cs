@@ -89,7 +89,7 @@ public class AlwaysCancelTxTracer : ITxTracer
     public void ReportActionEnd(long gas, Address deploymentAddress, ReadOnlyMemory<byte> deployedCode) => throw new OperationCanceledException(ErrorMessage);
     public void ReportBlockHash(Hash256 blockHash) => throw new OperationCanceledException(ErrorMessage);
 
-    public void ReportByteCode(byte[] byteCode) => throw new OperationCanceledException(ErrorMessage);
+    public void ReportByteCode(ReadOnlyMemory<byte> byteCode) => throw new OperationCanceledException(ErrorMessage);
     public void ReportGasUpdateForVmTrace(long refund, long gasAvailable) => throw new OperationCanceledException(ErrorMessage);
     public void ReportRefund(long refund) => throw new OperationCanceledException(ErrorMessage);
     public void ReportExtraGasPressure(long extraGasPressure) => throw new OperationCanceledException(ErrorMessage);

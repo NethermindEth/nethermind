@@ -49,7 +49,7 @@ namespace Nethermind.Core.Extensions
         }
 
         [DebuggerStepThrough]
-        private static string ToHexViaLookup(ReadOnlySpan<byte> bytes, bool withZeroX, bool skipLeadingZeros, bool withEip55Checksum)
+        private unsafe static string ToHexViaLookup(ReadOnlySpan<byte> bytes, bool withZeroX, bool skipLeadingZeros, bool withEip55Checksum)
         {
             if (withEip55Checksum)
             {
@@ -65,15 +65,25 @@ namespace Nethermind.Core.Extensions
                 return withZeroX ? "0x0" : "0";
             }
 
-            char[] charArray = ArrayPool<char>.Shared.Rent(length);
+            fixed (byte* input = &Unsafe.Add(ref MemoryMarshal.GetReference(bytes), leadingZeros / 2))
+            {
+                var createParams = new StringParams(input, bytes.Length, leadingZeros, withZeroX);
+                return string.Create(length, createParams, static (chars, state) =>
+                {
 
-            ref byte input = ref Unsafe.Add(ref MemoryMarshal.GetReference(bytes), leadingZeros / 2);
-            Bytes.OutputBytesToCharHex(ref input, bytes.Length, ref charArray[0], withZeroX, leadingZeros);
+                    Bytes.OutputBytesToCharHex(ref state.Input, state.InputLength, ref MemoryMarshal.GetReference(chars), state.WithZeroX, state.LeadingZeros);
+                });
+            }
+        }
 
-            string result = new string(charArray.AsSpan(0, length));
-            ArrayPool<char>.Shared.Return(charArray);
+        unsafe readonly struct StringParams(byte* input, int inputLength, int leadingZeros, bool withZeroX)
+        {
+            private readonly byte* _input = input;
+            public readonly int InputLength = inputLength;
+            public readonly int LeadingZeros = leadingZeros;
+            public readonly bool WithZeroX = withZeroX;
 
-            return result;
+            public readonly ref byte Input => ref Unsafe.AsRef<byte>(_input);
         }
 
         private static string ToHexStringWithEip55Checksum(ReadOnlySpan<byte> bytes, bool withZeroX, bool skipLeadingZeros)

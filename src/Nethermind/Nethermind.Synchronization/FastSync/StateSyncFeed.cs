@@ -30,7 +30,7 @@ namespace Nethermind.Synchronization.FastSync
             ILogManager logManager)
         {
             _treeSync = treeSync ?? throw new ArgumentNullException(nameof(treeSync));
-            _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         }
 
         public override async Task<StateSyncBatch?> PrepareRequest(CancellationToken token = default)

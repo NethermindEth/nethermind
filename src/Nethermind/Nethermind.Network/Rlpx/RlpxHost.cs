@@ -19,7 +19,7 @@ using Nethermind.Network.P2P.Analyzers;
 using Nethermind.Network.P2P.EventArg;
 using Nethermind.Network.Rlpx.Handshake;
 using Nethermind.Stats.Model;
-using ILogger = Nethermind.Logging.ILogger;
+using ILogger = Nethermind.Logging.InterfaceLogger;
 using LogLevel = DotNetty.Handlers.Logging.LogLevel;
 
 namespace Nethermind.Network.Rlpx
@@ -37,7 +37,7 @@ namespace Nethermind.Network.Rlpx
         private readonly IHandshakeService _handshakeService;
         private readonly IMessageSerializationService _serializationService;
         private readonly ILogManager _logManager;
-        private readonly ILogger _logger;
+        private readonly Logging.ILogger _logger;
         private readonly ISessionMonitor _sessionMonitor;
         private readonly IDisconnectsAnalyzer _disconnectsAnalyzer;
         private readonly IEventExecutorGroup _group;
@@ -181,6 +181,15 @@ namespace Nethermind.Network.Rlpx
             if (firstTask != connectTask)
             {
                 if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| {node:s} OUT connection timed out");
+
+                _ = connectTask.ContinueWith(async c =>
+                {
+                    if (connectTask.IsCompletedSuccessfully)
+                    {
+                        await c.Result.DisconnectAsync();
+                    }
+                });
+
                 throw new NetworkingException($"Failed to connect to {node:s} (timeout)", NetworkExceptionType.Timeout);
             }
 

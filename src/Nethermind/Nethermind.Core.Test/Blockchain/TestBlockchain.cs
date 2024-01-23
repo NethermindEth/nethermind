@@ -407,7 +407,7 @@ public class TestBlockchain : IDisposable
     public virtual void Dispose()
     {
         BlockProducer?.StopAsync();
-        if (DbProvider != null)
+        if (DbProvider is not null)
         {
             CodeDb?.Dispose();
             StateDb?.Dispose();

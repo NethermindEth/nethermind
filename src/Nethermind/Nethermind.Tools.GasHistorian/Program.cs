@@ -24,14 +24,14 @@ namespace Nethermind.Tools.GasHistorian
             string baseDir = args[0];
             Console.WriteLine($"Scanning blocks in {baseDir}");
 
-            RocksDbSettings chainDbSettings = new("blockInfos", "blockInfos");
+            DbSettings chainDbSettings = new("blockInfos", "blockInfos");
             DbOnTheRocks chainDb = new(
                 baseDir,
                 chainDbSettings,
                 DbConfig.Default,
                 LimboLogs.Instance);
 
-            RocksDbSettings blocksDbSettings = new("blocks", "blocks");
+            DbSettings blocksDbSettings = new("blocks", "blocks");
             DbOnTheRocks blocksDb = new(
                 baseDir,
                 blocksDbSettings,
