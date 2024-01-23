@@ -21,6 +21,7 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
+using Nethermind.State.Proofs;
 using Metrics = Nethermind.Blockchain.Metrics;
 
 namespace Nethermind.Consensus.Processing;
@@ -246,6 +247,14 @@ public partial class BlockProcessor : IBlockProcessor
         ApplyMinerRewards(block, blockTracer, spec);
         _withdrawalProcessor.ProcessWithdrawals(block, spec);
 
+        if (spec.IsEip7002Enabled)
+        {
+            ValidatorExit[] validatorExits = _validatorExitEipHandler.CalculateValidatorExits(spec, _stateProvider);
+            // TODO: make function
+            Hash256 root = new ValidatorExitsTrie(validatorExits, true).RootHash;
+            block.Header.ValidatorExitsRoot = root;
+        }
+
         ReceiptsTracer.EndBlockTrace();
 
         _stateProvider.Commit(spec);
@@ -299,6 +308,7 @@ public partial class BlockProcessor : IBlockProcessor
             WithdrawalsRoot = bh.WithdrawalsRoot,
             IsPostMerge = bh.IsPostMerge,
             ParentBeaconBlockRoot = bh.ParentBeaconBlockRoot,
+            ValidatorExitsRoot = bh.ValidatorExitsRoot
         };
 
         if (!ShouldComputeStateRoot(bh))

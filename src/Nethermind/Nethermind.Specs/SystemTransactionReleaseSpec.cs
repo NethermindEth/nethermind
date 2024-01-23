@@ -130,6 +130,8 @@ namespace Nethermind.Specs
         public bool IsEip6780Enabled => _spec.IsEip6780Enabled;
         public bool IsEip4788Enabled => _spec.IsEip4788Enabled;
         public Address Eip4788ContractAddress => _spec.Eip4788ContractAddress;
+        public bool IsEip7002Enabled => _spec.IsEip7002Enabled;
+        public Address Eip7002ContractAddress => _spec.Eip7002ContractAddress;
         public UInt256 ForkBaseFee => _spec.ForkBaseFee;
         public UInt256 BaseFeeMaxChangeDenominator => _spec.BaseFeeMaxChangeDenominator;
         public long ElasticityMultiplier => _spec.ElasticityMultiplier;

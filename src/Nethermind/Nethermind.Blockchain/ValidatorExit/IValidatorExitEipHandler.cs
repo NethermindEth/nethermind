@@ -9,6 +9,5 @@ namespace Nethermind.Blockchain.ValidatorExit;
 
 public interface IValidatorExitEipHandler
 {
-    void UpdateExitPrecompile(IReleaseSpec spec, IWorldState state);
     ValidatorExit[] CalculateValidatorExits(IReleaseSpec spec, IWorldState state);
 }

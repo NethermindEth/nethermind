@@ -25,10 +25,11 @@ public class Block
         BlockHeader header,
         IEnumerable<Transaction> transactions,
         IEnumerable<BlockHeader> uncles,
-        IEnumerable<Withdrawal>? withdrawals = null)
+        IEnumerable<Withdrawal>? withdrawals = null,
+        IEnumerable<ValidatorExit>? validatorExits = null)
     {
         Header = header ?? throw new ArgumentNullException(nameof(header));
-        Body = new(transactions.ToArray(), uncles.ToArray(), withdrawals?.ToArray());
+        Body = new(transactions.ToArray(), uncles.ToArray(), withdrawals?.ToArray(), validatorExits?.ToArray());
     }
 
     public Block(BlockHeader header) : this(

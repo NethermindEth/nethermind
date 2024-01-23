@@ -13,6 +13,7 @@ namespace Nethermind.Core
             Transactions = transactions ?? Array.Empty<Transaction>();
             Uncles = uncles ?? Array.Empty<BlockHeader>();
             Withdrawals = withdrawals;
+            ValidatorExits = validatorExits;
         }
 
         public BlockBody() : this(null, null, null) { }
