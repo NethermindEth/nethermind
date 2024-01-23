@@ -9,7 +9,6 @@ public interface IBlockValidator : IHeaderValidator, IWithdrawalValidator
 {
     bool ValidateOrphanedBlock(Block block, out string? error);
 
-    bool ValidateSuggestedBlock(Block block);
     bool ValidateSuggestedBlock(Block block, out string? error);
     bool ValidateProcessedBlock(Block processedBlock, TxReceipt[] receipts, Block suggestedBlock);
     bool ValidateProcessedBlock(Block processedBlock, TxReceipt[] receipts, Block suggestedBlock, out string? error);

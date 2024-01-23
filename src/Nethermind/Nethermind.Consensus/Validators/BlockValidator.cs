@@ -142,6 +142,7 @@ public class BlockValidator : IBlockValidator
 
         return true;
     }
+
     /// <summary>
     /// Processed block validation is comparing the block hashes (which include all other results).
     /// We only make exact checks on what is invalid if the hash is different.
@@ -167,45 +168,51 @@ public class BlockValidator : IBlockValidator
     public bool ValidateProcessedBlock(Block processedBlock, TxReceipt[] receipts, Block suggestedBlock, out string? error)
     {
         bool isValid = processedBlock.Header.Hash == suggestedBlock.Header.Hash;
-        if (!isValid && _logger.IsError)
+        if (!isValid)
         {
-            error = $"Post process block does not match expected.";
             _logger.Error($"Processed block {processedBlock.ToString(Block.Format.Short)} is invalid:");
             _logger.Error($"- hash: expected {suggestedBlock.Hash}, got {processedBlock.Hash}");
-
+            error = null;
             if (processedBlock.Header.GasUsed != suggestedBlock.Header.GasUsed)
             {
                 _logger.Error($"- gas used: expected {suggestedBlock.Header.GasUsed}, got {processedBlock.Header.GasUsed} (diff: {processedBlock.Header.GasUsed - suggestedBlock.Header.GasUsed})");
+                error = error ?? $"Invalid gasUsed: Expected '{suggestedBlock.Header.GasUsed}', got '{processedBlock.Header.GasUsed}'.";
             }
 
             if (processedBlock.Header.Bloom != suggestedBlock.Header.Bloom)
             {
                 _logger.Error($"- bloom: expected {suggestedBlock.Header.Bloom}, got {processedBlock.Header.Bloom}");
+                error = error ?? $"Invalid logsBloom: Expected '{suggestedBlock.Header.Bloom}', got '{processedBlock.Header.Bloom}'.";
             }
 
             if (processedBlock.Header.ReceiptsRoot != suggestedBlock.Header.ReceiptsRoot)
             {
                 _logger.Error($"- receipts root: expected {suggestedBlock.Header.ReceiptsRoot}, got {processedBlock.Header.ReceiptsRoot}");
+                error = error ?? $"Invalid receiptsRoot: Expected '{suggestedBlock.Header.ReceiptsRoot}', got '{processedBlock.Header.ReceiptsRoot}'.";
             }
 
             if (processedBlock.Header.StateRoot != suggestedBlock.Header.StateRoot)
             {
                 _logger.Error($"- state root: expected {suggestedBlock.Header.StateRoot}, got {processedBlock.Header.StateRoot}");
+                error = error ?? $"Invalid stateRoot: Expected '{suggestedBlock.Header.StateRoot}', got '{processedBlock.Header.StateRoot}'.";
             }
 
             if (processedBlock.Header.BlobGasUsed != suggestedBlock.Header.BlobGasUsed)
             {
                 _logger.Error($"- blob gas used: expected {suggestedBlock.Header.BlobGasUsed}, got {processedBlock.Header.BlobGasUsed}");
+                error = error ?? $"Invalid blobGasUsed: Expected '{suggestedBlock.Header.BlobGasUsed}', got '{processedBlock.Header.BlobGasUsed}'.";
             }
 
             if (processedBlock.Header.ExcessBlobGas != suggestedBlock.Header.ExcessBlobGas)
             {
                 _logger.Error($"- excess blob gas: expected {suggestedBlock.Header.ExcessBlobGas}, got {processedBlock.Header.ExcessBlobGas}");
+                error = error ?? $"Invalid excessBlobGas: Expected '{suggestedBlock.Header.ExcessBlobGas}', got '{processedBlock.Header.ExcessBlobGas}'.";
             }
 
             if (processedBlock.Header.ParentBeaconBlockRoot != suggestedBlock.Header.ParentBeaconBlockRoot)
             {
                 _logger.Error($"- parent beacon block root : expected {suggestedBlock.Header.ParentBeaconBlockRoot}, got {processedBlock.Header.ParentBeaconBlockRoot}");
+                error = error ?? $"Invalid parentBeaconBlockRoot: Expected '{suggestedBlock.Header.ParentBeaconBlockRoot}', got '{processedBlock.Header.ParentBeaconBlockRoot}'.";
             }
 
             for (int i = 0; i < processedBlock.Transactions.Length; i++)
@@ -213,14 +220,13 @@ public class BlockValidator : IBlockValidator
                 if (receipts[i].Error is not null && receipts[i].GasUsed == 0 && receipts[i].Error == "invalid")
                 {
                     _logger.Error($"- invalid transaction {i}");
+                    error = error ?? $"Invalid transaction: Index {i}.";
                 }
             }
-
             if (suggestedBlock.ExtraData is not null)
             {
                 _logger.Error($"- block extra data : {suggestedBlock.ExtraData.ToHexString()}, UTF8: {Encoding.UTF8.GetString(suggestedBlock.ExtraData)}");
             }
-            return isValid;
         }
         error = null;
         return isValid;
@@ -389,5 +395,4 @@ public class BlockValidator : IBlockValidator
 
     private static string Invalid(Block block) =>
         $"Invalid block {block.ToString(Block.Format.FullHashAndNumber)}:";
-
 }

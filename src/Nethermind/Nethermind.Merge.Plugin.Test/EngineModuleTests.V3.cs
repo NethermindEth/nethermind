@@ -181,6 +181,43 @@ public partial class EngineModuleTests
     }
 
     [Test]
+    public async Task NewPayloadV3_WrongBlockNumber_BlockIsRejectedWithErrorMessage()
+    {
+        (IEngineRpcModule prevRpcModule, string payloadId, Transaction[] transactions, _) = await BuildAndGetPayloadV3Result(Cancun.Instance, 1);
+        ExecutionPayloadV3 payload = (await prevRpcModule.engine_getPayloadV3(Bytes.FromHexString(payloadId))).Data!.ExecutionPayload;
+
+        payload.BlockNumber = 2;
+        payload.StateRoot = Keccak.Zero; 
+        payload.TryGetBlock(out Block? b);
+        payload.BlockHash = b!.CalculateHash();
+
+        byte[]?[] blobVersionedHashes = transactions.SelectMany(tx => tx.BlobVersionedHashes ?? Array.Empty<byte[]>()).ToArray();
+        ResultWrapper<PayloadStatusV1> result = await prevRpcModule.engine_newPayloadV3(payload, blobVersionedHashes, payload.ParentBeaconBlockRoot);
+
+        Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.None));
+        result.Data.Status.Should().Be("INVALID");
+        Assert.That(result.Data.ValidationError, Is.Not.Empty);
+    }
+
+    [Test]
+    public async Task NewPayloadV3_WrongStateRoot_BlockIsRejectedWithErrorMessage()
+    {
+        (IEngineRpcModule prevRpcModule, string payloadId, Transaction[] transactions, _) = await BuildAndGetPayloadV3Result(Cancun.Instance, 1);
+        ExecutionPayloadV3 payload = (await prevRpcModule.engine_getPayloadV3(Bytes.FromHexString(payloadId))).Data!.ExecutionPayload;
+
+        payload.StateRoot = Keccak.Zero;
+        payload.TryGetBlock(out Block? b);
+        payload.BlockHash = b!.CalculateHash();
+
+        byte[]?[] blobVersionedHashes = transactions.SelectMany(tx => tx.BlobVersionedHashes ?? Array.Empty<byte[]>()).ToArray();
+        ResultWrapper<PayloadStatusV1> result = await prevRpcModule.engine_newPayloadV3(payload, blobVersionedHashes, payload.ParentBeaconBlockRoot);
+
+        Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.None));
+        result.Data.Status.Should().Be("INVALID");
+        Assert.That(result.Data.ValidationError, Is.Not.Empty);
+    }
+
+    [Test]
     public async Task NewPayloadV3_should_decline_null_blobversionedhashes()
     {
         (JsonRpcService jsonRpcService, JsonRpcContext context, EthereumJsonSerializer serializer, ExecutionPayloadV3 executionPayload)
@@ -605,7 +642,7 @@ public partial class EngineModuleTests
         IReleaseSpec spec, int transactionCount = 0)
     {
         MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: spec, null);
-        IEngineRpcModule rpcModule = CreateEngineModule(chain);
+        IEngineRpcModule rpcModule = CreateEngineModule(chain, null, TimeSpan.FromDays(1));
         Transaction[] txs = Array.Empty<Transaction>();
 
         if (transactionCount is not 0)
