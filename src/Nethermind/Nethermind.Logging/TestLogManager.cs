@@ -20,11 +20,11 @@ namespace Nethermind.Logging
 
         public ILogger GetClassLogger<T>() => GetClassLogger();
 
-        public ILogger GetClassLogger() => new NUnitLogger(_level);
+        public ILogger GetClassLogger() => new(new NUnitLogger(_level));
 
         public ILogger GetLogger(string loggerName) => GetClassLogger();
 
-        public class NUnitLogger : ILogger
+        public class NUnitLogger : InterfaceLogger
         {
             private readonly LogLevel _level;
 

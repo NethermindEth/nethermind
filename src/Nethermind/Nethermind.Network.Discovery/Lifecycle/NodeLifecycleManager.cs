@@ -51,7 +51,7 @@ public class NodeLifecycleManager : INodeLifecycleManager
     {
         _discoveryManager = discoveryManager ?? throw new ArgumentNullException(nameof(discoveryManager));
         _nodeTable = nodeTable ?? throw new ArgumentNullException(nameof(nodeTable));
-        _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+        _logger = logger;
         _discoveryConfig = discoveryConfig ?? throw new ArgumentNullException(nameof(discoveryConfig));
         _timestamper = timestamper ?? throw new ArgumentNullException(nameof(timestamper));
         _evictionManager = evictionManager ?? throw new ArgumentNullException(nameof(evictionManager));

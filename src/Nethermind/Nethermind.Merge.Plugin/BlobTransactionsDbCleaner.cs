@@ -26,7 +26,7 @@ public class BlobTransactionsDbCleaner : IDisposable
         _finalizationManager = finalizationManager ?? throw new ArgumentNullException(nameof(finalizationManager));
         _db = db ?? throw new ArgumentNullException(nameof(db));
         _processedTxsDb = db?.GetColumnDb(BlobTxsColumns.ProcessedTxs) ?? throw new ArgumentNullException(nameof(db));
-        _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+        _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
 
         _finalizationManager.BlocksFinalized += OnBlocksFinalized;
     }

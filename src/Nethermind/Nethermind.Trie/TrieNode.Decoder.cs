@@ -177,33 +177,36 @@ namespace Nethermind.Trie
             {
                 int totalLength = 0;
                 item.InitData();
-                item.SeekChild(0);
+                ValueRlpStream rlpStream = item.RlpStream;
+                item.SeekChild(ref rlpStream, 0);
                 for (int i = 0; i < BranchesCount; i++)
                 {
-                    if (item._rlpStream is not null && item._data![i] is null)
+                    bool isRlp = rlpStream.IsNotNull;
+                    object data = item._data[i];
+                    if (rlpStream.IsNotNull && data is null)
                     {
-                        (int prefixLength, int contentLength) = item._rlpStream.PeekPrefixAndContentLength();
+                        (int prefixLength, int contentLength) = rlpStream.PeekPrefixAndContentLength();
                         totalLength += prefixLength + contentLength;
                     }
                     else
                     {
-                        if (ReferenceEquals(item._data![i], _nullNode) || item._data[i] is null)
+                        if (ReferenceEquals(data, _nullNode) || data is null)
                         {
                             totalLength++;
                         }
-                        else if (item._data[i] is Hash256)
+                        else if (data is Hash256)
                         {
                             totalLength += Rlp.LengthOfKeccakRlp;
                         }
                         else
                         {
-                            TrieNode childNode = (TrieNode)item._data[i];
+                            TrieNode childNode = (TrieNode)data;
                             childNode!.ResolveKey(tree, false, bufferPool: bufferPool);
                             totalLength += childNode.Keccak is null ? childNode.FullRlp.Length : Rlp.LengthOfKeccakRlp;
                         }
                     }
 
-                    item._rlpStream?.SkipItem();
+                    if (isRlp) rlpStream.SkipItem();
                 }
 
                 return totalLength;
@@ -212,12 +215,14 @@ namespace Nethermind.Trie
             private static void WriteChildrenRlp(ITrieNodeResolver tree, TrieNode item, Span<byte> destination, ICappedArrayPool? bufferPool)
             {
                 int position = 0;
-                RlpStream rlpStream = item._rlpStream;
                 item.InitData();
-                item.SeekChild(0);
+                ValueRlpStream rlpStream = item.RlpStream;
+                item.SeekChild(ref rlpStream, 0);
                 for (int i = 0; i < BranchesCount; i++)
                 {
-                    if (rlpStream is not null && item._data![i] is null)
+                    bool isRlp = rlpStream.IsNotNull;
+                    object data = item._data[i];
+                    if (isRlp && data is null)
                     {
                         int length = rlpStream.PeekNextRlpLength();
                         Span<byte> nextItem = rlpStream.Data.AsSpan(rlpStream.Position, length);
@@ -227,18 +232,18 @@ namespace Nethermind.Trie
                     }
                     else
                     {
-                        rlpStream?.SkipItem();
-                        if (ReferenceEquals(item._data![i], _nullNode) || item._data[i] is null)
+                        if (isRlp) rlpStream.SkipItem();
+                        if (ReferenceEquals(data, _nullNode) || data is null)
                         {
                             destination[position++] = 128;
                         }
-                        else if (item._data[i] is Hash256)
+                        else if (data is Hash256)
                         {
-                            position = Rlp.Encode(destination, position, (item._data[i] as Hash256)!.Bytes);
+                            position = Rlp.Encode(destination, position, (data as Hash256)!.Bytes);
                         }
                         else
                         {
-                            TrieNode childNode = (TrieNode)item._data[i];
+                            TrieNode childNode = (TrieNode)data;
                             childNode!.ResolveKey(tree, false, bufferPool: bufferPool);
                             if (childNode.Keccak is null)
                             {

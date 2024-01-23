@@ -287,7 +287,7 @@ public partial class EngineModuleTests
             Timestamp = chain.BlockTree.Head!.Timestamp,
             PrevRandao = Keccak.Zero,
             SuggestedFeeRecipient = Address.Zero,
-            Withdrawals = new List<Withdrawal>(),
+            Withdrawals = Array.Empty<Withdrawal>(),
             ParentBeaconBlockRoot = isBeaconRootSet ? Keccak.Zero : null,
         };
 
@@ -399,7 +399,7 @@ public partial class EngineModuleTests
             Timestamp = payload.Timestamp + 1,
             PrevRandao = Keccak.Zero,
             SuggestedFeeRecipient = Address.Zero,
-            Withdrawals = new List<Withdrawal>(),
+            Withdrawals = Array.Empty<Withdrawal>(),
             ParentBeaconBlockRoot = null,
         };
 
@@ -426,7 +426,7 @@ public partial class EngineModuleTests
             Timestamp = payload.Timestamp + 1,
             PrevRandao = Keccak.Zero,
             SuggestedFeeRecipient = Address.Zero,
-            Withdrawals = new List<Withdrawal>(),
+            Withdrawals = Array.Empty<Withdrawal>(),
         };
 
         await rpcModule.engine_newPayloadV3(payload, Array.Empty<byte[]>(), payload.ParentBeaconBlockRoot);
@@ -590,7 +590,7 @@ public partial class EngineModuleTests
         }
     }
 
-    private async Task<ExecutionPayload> SendNewBlockV3(IEngineRpcModule rpc, MergeTestBlockchain chain, IList<Withdrawal>? withdrawals)
+    private async Task<ExecutionPayload> SendNewBlockV3(IEngineRpcModule rpc, MergeTestBlockchain chain, Withdrawal[]? withdrawals)
     {
         ExecutionPayloadV3 executionPayload = CreateBlockRequestV3(
             chain, CreateParentBlockRequestOnHead(chain.BlockTree), TestItem.AddressD, withdrawals, 0, 0, parentBeaconBlockRoot: TestItem.KeccakE);
@@ -612,7 +612,7 @@ public partial class EngineModuleTests
         {
             using SemaphoreSlim blockImprovementLock = new(0);
 
-            ExecutionPayload executionPayload1 = await SendNewBlockV3(rpcModule, chain, new List<Withdrawal>());
+            ExecutionPayload executionPayload1 = await SendNewBlockV3(rpcModule, chain, Array.Empty<Withdrawal>());
             txs = BuildTransactions(chain, executionPayload1.BlockHash, TestItem.PrivateKeyA, TestItem.AddressB, (uint)transactionCount, 0, out _, out _, 1);
             chain.AddTransactions(txs);
 
@@ -628,7 +628,7 @@ public partial class EngineModuleTests
             Timestamp = chain.BlockTree.Head!.Timestamp + 1,
             PrevRandao = TestItem.KeccakH,
             SuggestedFeeRecipient = TestItem.AddressF,
-            Withdrawals = new List<Withdrawal> { TestItem.WithdrawalA_1Eth },
+            Withdrawals = [TestItem.WithdrawalA_1Eth],
             ParentBeaconBlockRoot = spec.IsBeaconBlockRootAvailable ? TestItem.KeccakE : null
         };
         Hash256 currentHeadHash = chain.BlockTree.HeadHash;

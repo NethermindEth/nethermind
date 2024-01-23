@@ -2,8 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
-using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
@@ -23,20 +21,20 @@ public class ReceiptTrie : PatriciaTrie<TxReceipt>
 
     /// <inheritdoc/>
     /// <param name="receipts">The transaction receipts to build the trie of.</param>
-    public ReceiptTrie(IReceiptSpec spec, IEnumerable<TxReceipt> receipts, bool canBuildProof = false, ICappedArrayPool? bufferPool = null)
+    public ReceiptTrie(IReceiptSpec spec, TxReceipt[] receipts, bool canBuildProof = false, ICappedArrayPool? bufferPool = null)
         : base(null, canBuildProof, bufferPool: bufferPool)
     {
         ArgumentNullException.ThrowIfNull(spec);
         ArgumentNullException.ThrowIfNull(receipts);
 
-        if (receipts.Any())
+        if (receipts.Length > 0)
         {
             Initialize(receipts, spec);
             UpdateRootHash();
         }
     }
 
-    private void Initialize(IEnumerable<TxReceipt> receipts, IReceiptSpec spec)
+    private void Initialize(TxReceipt[] receipts, IReceiptSpec spec)
     {
         RlpBehaviors behavior = (spec.IsEip658Enabled ? RlpBehaviors.Eip658Receipts : RlpBehaviors.None)
                                 | RlpBehaviors.SkipTypedWrapping;
@@ -51,7 +49,7 @@ public class ReceiptTrie : PatriciaTrie<TxReceipt>
         }
     }
 
-    protected override void Initialize(IEnumerable<TxReceipt> list) => throw new NotSupportedException();
+    protected override void Initialize(TxReceipt[] list) => throw new NotSupportedException();
 
     public static byte[][] CalculateReceiptProofs(IReleaseSpec spec, TxReceipt[] receipts, int index)
     {
@@ -59,9 +57,9 @@ public class ReceiptTrie : PatriciaTrie<TxReceipt>
         return new ReceiptTrie(spec, receipts, canBuildProof: true, cappedArrayPool).BuildProof(index);
     }
 
-    public static Hash256 CalculateRoot(IReceiptSpec receiptSpec, IList<TxReceipt> txReceipts)
+    public static Hash256 CalculateRoot(IReceiptSpec receiptSpec, TxReceipt[] txReceipts)
     {
-        using TrackingCappedArrayPool cappedArrayPool = new(txReceipts.Count * 4);
+        using TrackingCappedArrayPool cappedArrayPool = new(txReceipts.Length * 4);
         Hash256 receiptsRoot = new ReceiptTrie(receiptSpec, txReceipts, bufferPool: cappedArrayPool).RootHash;
         return receiptsRoot;
     }

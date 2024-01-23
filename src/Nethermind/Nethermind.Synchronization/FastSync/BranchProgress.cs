@@ -27,7 +27,7 @@ namespace Nethermind.Synchronization.FastSync
 
         public BranchProgress(long syncBlockNumber, ILogger logger)
         {
-            _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+            _logger = logger;
             CurrentSyncBlock = syncBlockNumber;
             _logger.Info($"Now syncing nodes starting from root of block {syncBlockNumber}");
             _syncProgress = new NodeProgressState[256];
