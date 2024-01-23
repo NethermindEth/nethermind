@@ -15,7 +15,7 @@ namespace Nethermind.Blockchain.Receipts
         private readonly Span<byte> _buffer;
         public long Index { get; private set; }
 
-        public KeccaksIterator(Span<byte> data, Span<byte> buffer)
+        public KeccaksIterator(ReadOnlySpan<byte> data, Span<byte> buffer)
         {
             if (buffer.Length != 32) throw new ArgumentException("Buffer must be 32 bytes long");
             _decoderContext = new Rlp.ValueDecoderContext(data);
