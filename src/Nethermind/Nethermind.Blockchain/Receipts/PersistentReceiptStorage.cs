@@ -180,7 +180,7 @@ namespace Nethermind.Blockchain.Receipts
             if (_legacyHashKey)
             {
                 Span<byte> receiptsData = _blocksDb.GetSpan(blockHash);
-                if (receiptsData.Length > 0)
+                if (!receiptsData.IsNull())
                 {
                     return receiptsData;
                 }
