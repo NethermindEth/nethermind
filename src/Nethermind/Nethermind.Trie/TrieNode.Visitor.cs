@@ -30,7 +30,8 @@ namespace Nethermind.Trie
         /// <param name="nextToVisit"></param>
         /// <exception cref="InvalidDataException"></exception>
         /// <exception cref="TrieException"></exception>
-        internal void AcceptResolvedNode(ITreeVisitor visitor, ITrieNodeResolver nodeResolver, SmallTrieVisitContext trieVisitContext, IList<(TrieNode, SmallTrieVisitContext)> nextToVisit)
+        internal void AcceptResolvedNode<TNodeContext>(ITreeVisitor visitor, TNodeContext nodeContext, ITrieNodeResolver nodeResolver, SmallTrieVisitContext trieVisitContext, IList<(TrieNode, TNodeContext, SmallTrieVisitContext)> nextToVisit)
+            where TNodeContext : INodeContext<TNodeContext>
         {
             switch (NodeType)
             {
@@ -50,7 +51,7 @@ namespace Nethermind.Trie
                                     SmallTrieVisitContext childCtx = trieVisitContext; // Copy
                                     childCtx.BranchChildIndex = (byte?)i;
 
-                                    nextToVisit.Add((child, childCtx));
+                                    nextToVisit.Add((child, nodeContext.Add((byte)i), childCtx));
                                 }
 
                                 if (child.IsPersisted)
@@ -77,7 +78,7 @@ namespace Nethermind.Trie
                             trieVisitContext.Level++;
                             trieVisitContext.BranchChildIndex = null;
 
-                            nextToVisit.Add((child, trieVisitContext));
+                            nextToVisit.Add((child, nodeContext.Add(this.Key!), trieVisitContext));
                         }
 
                         break;
@@ -106,7 +107,7 @@ namespace Nethermind.Trie
 
                                 if (TryResolveStorageRoot(nodeResolver, out TrieNode? storageRoot))
                                 {
-                                    nextToVisit.Add((storageRoot!, trieVisitContext));
+                                    nextToVisit.Add((storageRoot!, nodeContext.Add(Key!), trieVisitContext));
                                 }
                                 else
                                 {
