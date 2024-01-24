@@ -5,7 +5,6 @@ using System;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
-using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Core.Crypto
 {
@@ -21,12 +20,12 @@ namespace Nethermind.Core.Crypto
         /// <returns>
         ///     <string>0x1dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347</string>
         /// </returns>
-        public static readonly ValueHash256 OfAnEmptySequenceRlp = InternalCompute([Rlp.NullObjectByte]);
+        public static readonly ValueHash256 OfAnEmptySequenceRlp = InternalCompute([192]);
 
         /// <summary>
         ///     0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421
         /// </summary>
-        public static readonly ValueHash256 EmptyTreeHash = InternalCompute([Rlp.EmptyArrayByte]);
+        public static readonly ValueHash256 EmptyTreeHash = InternalCompute([128]);
 
         /// <returns>
         ///     <string>0x0000000000000000000000000000000000000000000000000000000000000000</string>
@@ -88,12 +87,12 @@ namespace Nethermind.Core.Crypto
         /// <returns>
         ///     <string>0x1dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347</string>
         /// </returns>
-        public static readonly Hash256 OfAnEmptySequenceRlp = new Hash256(ValueKeccak.InternalCompute([Rlp.NullObjectByte]));
+        public static readonly Hash256 OfAnEmptySequenceRlp = new Hash256(ValueKeccak.InternalCompute([192]));
 
         /// <summary>
         ///     0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421
         /// </summary>
-        public static Hash256 EmptyTreeHash = new Hash256(ValueKeccak.InternalCompute([Rlp.EmptyArrayByte]));
+        public static Hash256 EmptyTreeHash = new Hash256(ValueKeccak.InternalCompute([128]));
 
         /// <returns>
         ///     <string>0x0000000000000000000000000000000000000000000000000000000000000000</string>
