@@ -8,13 +8,6 @@ using System.Runtime.Intrinsics;
 namespace Nethermind.Evm;
 public static class BitmapHelper
 {
-    private const ushort Set2BitsMask = 0b1100_0000_0000_0000;
-    private const ushort Set3BitsMask = 0b1110_0000_0000_0000;
-    private const ushort Set4BitsMask = 0b1111_0000_0000_0000;
-    private const ushort Set5BitsMask = 0b1111_1000_0000_0000;
-    private const ushort Set6BitsMask = 0b1111_1100_0000_0000;
-    private const ushort Set7BitsMask = 0b1111_1110_0000_0000;
-
     private static readonly byte[] _lookup = { 0x80, 0x40, 0x20, 0x10, 0x8, 0x4, 0x2, 0x1 };
 
     /// <summary>
@@ -63,36 +56,15 @@ public static class BitmapHelper
             }
         }
 
-        switch (numbits)
+
+        ushort setNBitsMask = (ushort)(~((1 << 32 - numbits) - 1));
+        if(numbits > 1)
         {
-            case 1:
-                bitvec.Set1(pc);
-                pc += 1;
-                break;
-            case 2:
-                bitvec.SetN(pc, Set2BitsMask);
-                pc += 2;
-                break;
-            case 3:
-                bitvec.SetN(pc, Set3BitsMask);
-                pc += 3;
-                break;
-            case 4:
-                bitvec.SetN(pc, Set4BitsMask);
-                pc += 4;
-                break;
-            case 5:
-                bitvec.SetN(pc, Set5BitsMask);
-                pc += 5;
-                break;
-            case 6:
-                bitvec.SetN(pc, Set6BitsMask);
-                pc += 6;
-                break;
-            case 7:
-                bitvec.SetN(pc, Set7BitsMask);
-                pc += 7;
-                break;
+            bitvec.SetN(pc, setNBitsMask);
+            pc += numbits;
+        } else
+        {
+            bitvec.Set1(pc);
         }
     }
     /// <summary>
