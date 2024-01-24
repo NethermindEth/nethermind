@@ -17,6 +17,7 @@ using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test.Validators
@@ -318,6 +319,18 @@ namespace Nethermind.Blockchain.Test.Validators
 
             bool result = _validator.Validate(_block.Header);
             Assert.False(result);
+        }
+
+        [Test]
+        public void IsWellFormed()
+        {
+            IBlockTree blockTree = Substitute.For<IBlockTree>();
+            ISealValidator sealValidator = Substitute.For<ISealValidator>();
+            ISpecProvider specProvider = Substitute.For<ISpecProvider>();
+            var sut = new HeaderValidator(blockTree, sealValidator, specProvider, new OneLoggerLogManager(new(_testLogger)));
+
+            sut.Validate(_block.Header);
+
         }
     }
 }

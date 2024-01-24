@@ -2,8 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using Nethermind.Consensus.Messages;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Evm;
@@ -35,39 +37,54 @@ namespace Nethermind.Consensus.Validators
         public bool IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec, out string? error)
         {
             // validate type before calculating intrinsic gas to avoid exception
-            return ValidateTxType(transaction, releaseSpec, out error) &&
-                   /* This is unnecessarily calculated twice - at validation and execution times. */
-                   transaction.GasLimit >= IntrinsicGasCalculator.Calculate(transaction, releaseSpec) &&
-                   /* if it is a call or a transfer then we require the 'To' field to have a value
-                      while for an init it will be empty */
-                   ValidateSignature(transaction, releaseSpec) &&
-                   ValidateChainId(transaction) &&
-                   Validate1559GasFields(transaction, releaseSpec) &&
-                   Validate3860Rules(transaction, releaseSpec) &&
-                   Validate4844Fields(transaction, out error);
+            if (!ValidateTxType(transaction, releaseSpec))
+            {
+                error = $"InvalidTxType: Transaction type in {releaseSpec.Name} is not supported.";
+                return false;
+            }
+            /* This is unnecessarily calculated twice - at validation and execution times. */
+            if (transaction.GasLimit < IntrinsicGasCalculator.Calculate(transaction, releaseSpec))
+            {
+                error = $"IntrinsicGasTooLow: Gas limit is too low.";
+                return false;
+            }
+            /* if it is a call or a transfer then we require the 'To' field to have a value
+               while for an init it will be empty */
+            if (!ValidateSignature(transaction, releaseSpec))
+            {
+                error = $"InvalidTxSignature: Signature is invalid.";
+                return false;
+            }
+            if (!ValidateChainId(transaction))
+            {
+                error = $"InvalidTxChainId: Expected {_chainIdValue}, got {transaction.ChainId}.";
+                return false;
+            }
+            if (!Validate1559GasFields(transaction, releaseSpec))
+            {
+                error = $"InvalidMaxPriorityFeePerGas: Cannot be higher than maxFeePerGas.";
+                return false;
+            }
+            if (!Validate3860Rules(transaction, releaseSpec))
+            {
+                error = $"ContractSizeTooBig: Max initcode size exceeded.";
+                return false;
+            }
+            return Validate4844Fields(transaction, out error);
         }
 
         private static bool Validate3860Rules(Transaction transaction, IReleaseSpec releaseSpec) =>
             !transaction.IsAboveInitCode(releaseSpec);
 
-        private static bool ValidateTxType(Transaction transaction, IReleaseSpec releaseSpec, out string? error)
-        {
-            error = null;
-            switch (transaction.Type)
+        private static bool ValidateTxType(Transaction transaction, IReleaseSpec releaseSpec) =>
+            transaction.Type switch
             {
-                case TxType.Legacy:
-                    return true;
-                case TxType.AccessList:
-                    return releaseSpec.UseTxAccessLists;
-                case TxType.EIP1559:
-                    return releaseSpec.IsEip1559Enabled;
-                case TxType.Blob:
-                    return releaseSpec.IsEip4844Enabled;
-                default:
-                    error = $"Unknown transaction type: {transaction.Type}";
-                    return false;
-            }
-        }
+                TxType.Legacy => true,
+                TxType.AccessList => releaseSpec.UseTxAccessLists,
+                TxType.EIP1559 => releaseSpec.IsEip1559Enabled,
+                TxType.Blob => releaseSpec.IsEip4844Enabled,
+                _ => false
+            };
 
 
         private static bool Validate1559GasFields(Transaction transaction, IReleaseSpec releaseSpec)
@@ -127,18 +144,18 @@ namespace Nethermind.Consensus.Validators
             {
                 if (transaction.MaxFeePerBlobGas is not null)
                 {
-                    error = $"Non blob transaction cannot have '{nameof(Transaction.MaxFeePerBlobGas)}' set.";
+                    error = $"NotAllowedMaxFeePerBlobGas: Cannot be set.";
                     return false;
                 }
                 if (transaction.BlobVersionedHashes is not null)
                 {
-                    error = $"Non blob transaction cannot have '{nameof(Transaction.BlobVersionedHashes)}' set.";
+                    error = $"NotAllowedBlobVersionedHashes: Cannot be set.";
                     return false;
                 }
                 if (transaction is { NetworkWrapper: ShardBlobNetworkWrapper })
                 {
-                    //This could be an internal problem
-                    error = $"Non blob transaction cannot be {nameof(ShardBlobNetworkWrapper)}.";
+                    //This must be an internal issue?
+                    error = $"InvalidTransaction: Cannot be {nameof(ShardBlobNetworkWrapper)}.";
                     return false;
                 }
                 error = null;
@@ -147,29 +164,31 @@ namespace Nethermind.Consensus.Validators
 
             if (transaction.To is null)
             {
-                error = $"Transaction must have '{nameof(Transaction.To)}' set.";
+                error = $"BlobTxMissingTo: Must be set.";
                 return false;
             }
 
             if (transaction.MaxFeePerBlobGas is null)
             {
-                error = $"Blob transaction must have '{nameof(Transaction.MaxFeePerBlobGas)}' set.";
+                error = $"BlobTxMissingMaxFeePerBlobGas: Must be set.";
                 return false;
             }
 
             if (transaction.BlobVersionedHashes is null)
             {
-                error = $"Blob transaction must have '{nameof(Transaction.BlobVersionedHashes)}' set.";
+                error = $"BlobTxMissingBlobVersionedHashes: Must be set.";
                 return false;
             }
-            if (BlobGasCalculator.CalculateBlobGas(transaction.BlobVersionedHashes!.Length) > Eip4844Constants.MaxBlobGasPerTransaction)
+
+            var totalDataGas = BlobGasCalculator.CalculateBlobGas(transaction.BlobVersionedHashes!.Length);
+            if (totalDataGas > Eip4844Constants.MaxBlobGasPerTransaction)
             {
-                error = $"Total transaction blob gas exceeds maximum of {Eip4844Constants.MaxBlobGasPerTransaction} per block.";
+                error = $"BlobTxGasLimitExceeded: Transaction exceeded {Eip4844Constants.MaxBlobGasPerTransaction}.";
                 return false;
             }
             if (transaction.BlobVersionedHashes!.Length < Eip4844Constants.MinBlobsPerTransaction)
             {
-                error = $"Blob transactions must have at least {Eip4844Constants.MinBlobsPerTransaction} blob.";
+                error = $"BlobTxMissingBlobs: Blob transaction must have blobs.";
                 return false;
             }
 
@@ -179,18 +198,18 @@ namespace Nethermind.Consensus.Validators
             {
                 if (transaction.BlobVersionedHashes[i] is null)
                 {
-                    error = $"Transaction {transaction.Hash.ToShortString()} with blob at index {i} is missing 'VersionedHash'.";
+                    error = $"MissingBlobVersionedHash: Must be set.";
                     return false;
                 }
                 if (transaction.BlobVersionedHashes![i].Length !=
                 KzgPolynomialCommitments.BytesPerBlobVersionedHash)
                 {
-                    error = $"Transaction {transaction.Hash.ToShortString()} with blob at index {i} exceed maximum length of {KzgPolynomialCommitments.BytesPerBlobVersionedHash}.";
+                    error = $"InvalidBlobVersionedHashSize: Cannot exceed {KzgPolynomialCommitments.BytesPerBlobVersionedHash}.";
                     return false;
                 }
                 if (transaction.BlobVersionedHashes![i][0] != KzgPolynomialCommitments.KzgBlobHashVersionV1)
                 {
-                    error = $"Transaction {transaction.Hash.ToShortString()} with blob at index {i} has unexpected hash version {transaction.BlobVersionedHashes![i][0]}.";
+                    error = $"InvalidBlobVersionedHashVersion: Blob version not supported.";
                     return false;
                 }
             }
@@ -200,17 +219,17 @@ namespace Nethermind.Consensus.Validators
             {
                 if (wrapper.Blobs.Length != blobCount)
                 {
-                    error = $"Blob transactions must have an equal amount of blobs, hashes, commitments and proofs.";
+                    error = CommonMessages.InvalidBlobData();
                     return false;
                 }
                 if (wrapper.Commitments.Length != blobCount)
                 {
-                    error = $"Blob transactions must have an equal amount of blobs, hashes, commitments and proofs.";
+                    error = CommonMessages.InvalidBlobData();
                     return false;
                 }
                 if (wrapper.Proofs.Length != blobCount)
                 {
-                    error = $"Blob transactions must have an equal amount of blobs, hashes, commitments and proofs.";
+                    error = CommonMessages.InvalidBlobData();
                     return false;
                 }
 
@@ -218,17 +237,17 @@ namespace Nethermind.Consensus.Validators
                 {
                     if (wrapper.Blobs[i].Length != Ckzg.Ckzg.BytesPerBlob)
                     {
-                        error = $"Blob at index {i} exceeds maximum size of {Ckzg.Ckzg.BytesPerBlob}.";
+                        error = $"ExceededBlobSize: Cannot be more than {Ckzg.Ckzg.BytesPerBlob}.";
                         return false;
                     }
                     if (wrapper.Commitments[i].Length != Ckzg.Ckzg.BytesPerCommitment)
                     {
-                        error = $"Blob commitment at index {i} exceeds maximum size of {Ckzg.Ckzg.BytesPerCommitment}.";
+                        error = $"ExceededBlobCommitmentSize: Cannot be more than {Ckzg.Ckzg.BytesPerCommitment}.";
                         return false;
                     }
                     if (wrapper.Proofs[i].Length != Ckzg.Ckzg.BytesPerProof)
                     {
-                        error = $"Blob proof at index {i} exceeds maximum size of {Ckzg.Ckzg.BytesPerProof}.";
+                        error = $"InvalidBlobProofSize: Cannot be more than {Ckzg.Ckzg.BytesPerProof}.";
                         return false;
                     }
                 }
@@ -240,7 +259,7 @@ namespace Nethermind.Consensus.Validators
                             wrapper.Commitments[i].AsSpan(), hash) ||
                         !hash.SequenceEqual(transaction.BlobVersionedHashes[i]))
                     {
-                        error = $"Blob commitment at index {i} is invalid.";
+                        error = $"InvalidBlobCommitmentHash: Commitment hash does not match.";
                         return false;
                     }
                 }
@@ -248,7 +267,7 @@ namespace Nethermind.Consensus.Validators
                 if (!KzgPolynomialCommitments.AreProofsValid(wrapper.Blobs,
                     wrapper.Commitments, wrapper.Proofs))
                 {
-                    error = $"One ore more blob proofs are invalid.";
+                    error = $"InvalidBlobProof: Proof does not match.";
                     return false;
                 }
 

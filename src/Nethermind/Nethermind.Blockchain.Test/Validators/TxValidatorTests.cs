@@ -395,6 +395,24 @@ public class TxValidatorTests
         return txValidator.IsWellFormed(tx, Cancun.Instance);
     }
 
+    [Test]
+    public void IsWellFormed_()
+    {
+        TransactionBuilder<Transaction> txBuilder = Build.A.Transaction
+            //.WithType(TxType.Blob)
+            //.WithTimestamp(ulong.MaxValue)
+            //.WithMaxFeePerGas(1)
+            //.WithMaxFeePerBlobGas(isMaxFeePerBlobGasSet ? 1 : null)
+            //.WithBlobVersionedHashes(txType == TxType.Blob ? Eip4844Constants.MinBlobsPerTransaction : null)
+            .WithChainId(TestBlockchainIds.ChainId)
+            .SignedAndResolved();
+
+        Transaction tx = txBuilder.TestObject;
+
+        TxValidator txValidator = new(TestBlockchainIds.ChainId);
+        txValidator.IsWellFormed(tx, Cancun.Instance);
+    }
+
     private static byte[] MakeArray(int count, params byte[] elements) =>
         elements.Take(Math.Min(count, elements.Length))
             .Concat(new byte[Math.Max(0, count - elements.Length)])
