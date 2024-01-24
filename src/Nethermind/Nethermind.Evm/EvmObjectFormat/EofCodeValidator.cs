@@ -489,7 +489,6 @@ internal static class EvmObjectFormat
 
                         var targetSectionId = code.Slice(postInstructionByte, TWO_BYTE_LENGTH).ReadEthUInt16();
 
-                        BitmapHelper.HandleNumbits(TWO_BYTE_LENGTH, codeBitmap, ref postInstructionByte);
                         if (targetSectionId >= header.CodeSections.Count)
                         {
                             if (Logger.IsTrace) Logger.Trace($"EIP-6206 : JUMPF to unknown code section");
@@ -505,6 +504,7 @@ internal static class EvmObjectFormat
                         }
 
                         worklist.Enqueue(targetSectionId);
+                        BitmapHelper.HandleNumbits(TWO_BYTE_LENGTH, codeBitmap, ref postInstructionByte);
                     }
 
                     if (opcode is Instruction.DUPN or Instruction.SWAPN or Instruction.EXCHANGE)
@@ -564,7 +564,6 @@ internal static class EvmObjectFormat
                         }
 
                         ushort targetSectionId = code.Slice(postInstructionByte, TWO_BYTE_LENGTH).ReadEthUInt16();
-                        BitmapHelper.HandleNumbits(TWO_BYTE_LENGTH, codeBitmap, ref postInstructionByte);
 
                         if (targetSectionId >= header.CodeSections.Count)
                         {
@@ -580,6 +579,7 @@ internal static class EvmObjectFormat
                         }
 
                         worklist.Enqueue(targetSectionId);
+                        BitmapHelper.HandleNumbits(TWO_BYTE_LENGTH, codeBitmap, ref postInstructionByte);
                     }
 
                     if (opcode is Instruction.RETF && typesection[sectionId * MINIMUM_TYPESECTION_SIZE + OUTPUTS_OFFSET] == 0x80)
@@ -597,7 +597,6 @@ internal static class EvmObjectFormat
                         }
 
                         ushort dataSectionOffset = code.Slice(postInstructionByte, TWO_BYTE_LENGTH).ReadEthUInt16();
-                        BitmapHelper.HandleNumbits(TWO_BYTE_LENGTH, codeBitmap, ref postInstructionByte);
 
                         if (dataSectionOffset * 32 >= header.DataSection.Size)
                         {
@@ -605,6 +604,26 @@ internal static class EvmObjectFormat
                             if (Logger.IsTrace) Logger.Trace($"EIP-XXXX : DATALOADN's immediate argument must be less than datasection.Length / 32 i.e : {header.DataSection.Size / 32}");
                             return false;
                         }
+                        BitmapHelper.HandleNumbits(TWO_BYTE_LENGTH, codeBitmap, ref postInstructionByte);
+                    }
+
+                    if (opcode is Instruction.RETURNCONTRACT)
+                    {
+                        if (postInstructionByte + ONE_BYTE_LENGTH > code.Length)
+                        {
+                            if (Logger.IsTrace) Logger.Trace($"EIP-XXXX : DATALOADN Argument underflow");
+                            return false;
+                        }
+
+                        ushort containerId = code.Slice(postInstructionByte, TWO_BYTE_LENGTH).ReadEthUInt16();
+
+                        if (containerId >= 0 && containerId < header.ContainerSection?.Count)
+                        {
+
+                            if (Logger.IsTrace) Logger.Trace($"EIP-XXXX : RETURNCONTRACT's immediate argument must be less than containersection.Count i.e : {header.ContainerSection?.Count}");
+                            return false;
+                        }
+                        BitmapHelper.HandleNumbits(ONE_BYTE_LENGTH, codeBitmap, ref postInstructionByte);
                     }
 
                     if (opcode is Instruction.CREATE3)
@@ -701,6 +720,9 @@ internal static class EvmObjectFormat
                 else if (opcode is Instruction.DATALOADN)
                 {
                     pos += TWO_BYTE_LENGTH;
+                } else if (opcode is Instruction.RETURNCONTRACT)
+                {
+                    pos += ONE_BYTE_LENGTH;
                 }
             }
             return true;

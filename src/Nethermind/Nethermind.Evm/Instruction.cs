@@ -187,20 +187,20 @@ namespace Nethermind.Evm
         CREATE3 = 0xec,
         CREATE4 = 0xed,
         RETURNCONTRACT = 0xee,
-        DATALOAD = 0xe8,
-        DATALOADN = 0xe9,
-        DATASIZE = 0xea,
-        DATACOPY = 0xeb,
+        DATALOAD = 0xd0,
+        DATALOADN = 0xd1,
+        DATASIZE = 0xd2,
+        DATACOPY = 0xd3,
 
         DUPN = 0xe6,
         SWAPN = 0xe7,
-        EXCHANGE = 0xf8, // random value opcode spec has collision
+        EXCHANGE = 0xe8, // random value opcode spec has collision
         RETURNDATALOAD = 0xf7,
 
         // opcode value not spec-ed 
-        EOFCALL = 0xba,
-        EOFSTATICCALL = 0xbb, // StaticCallEnabled
-        EOFDELEGATECALL = 0xbc, // DelegateCallEnabled
+        CALL2 = 0xf8,
+        DELEGATECALL2 = 0xf9, // DelegateCallEnabled
+        STATICCALL2 = 0xfb, // StaticCallEnabled
 
     }
     public static class InstructionExtensions
@@ -213,6 +213,9 @@ namespace Nethermind.Evm
                 Instruction.RJUMP or Instruction.RJUMPI => IsEofContext ? EvmObjectFormat.TWO_BYTE_LENGTH : 0,
                 Instruction.RJUMPV => IsEofContext ? jumpvCount * EvmObjectFormat.TWO_BYTE_LENGTH + EvmObjectFormat.ONE_BYTE_LENGTH : 0,
                 >= Instruction.PUSH0 and <= Instruction.PUSH32 => instruction - Instruction.PUSH0,
+                Instruction.DATALOADN => IsEofContext ? EvmObjectFormat.TWO_BYTE_LENGTH: 0,
+                Instruction.RETURNCONTRACT => IsEofContext ? EvmObjectFormat.ONE_BYTE_LENGTH : 0,
+                Instruction.CREATE3 => IsEofContext ? EvmObjectFormat.ONE_BYTE_LENGTH : 0,
                 _ => 0
             };
         public static bool IsTerminating(this Instruction instruction) => instruction switch
@@ -235,6 +238,10 @@ namespace Nethermind.Evm
                 Instruction.CALLF or Instruction.RETF or Instruction.JUMPF => IsEofContext,
                 Instruction.DUPN or Instruction.SWAPN or Instruction.EXCHANGE => IsEofContext,
                 Instruction.RJUMP or Instruction.RJUMPI or Instruction.RJUMPV => IsEofContext,
+                Instruction.RETURNCONTRACT or Instruction.CREATE4 or Instruction.CREATE3 => IsEofContext,
+                Instruction.DATACOPY or Instruction.DATALOAD or Instruction.DATALOADN => IsEofContext,
+                Instruction.STATICCALL2 or Instruction.DELEGATECALL2 or Instruction.CALL2 => IsEofContext,
+                Instruction.RETURNDATACOPY => IsEofContext,
                 Instruction.CALL => !IsEofContext,
                 Instruction.CALLCODE => !IsEofContext,
                 Instruction.DELEGATECALL => !IsEofContext,
@@ -352,7 +359,11 @@ namespace Nethermind.Evm
             Instruction.SWAPN => (null, null, 1),
             Instruction.DUPN => (null, null, 1),
             Instruction.EXCHANGE => (null, null, 1),
-            _ => throw new NotImplementedException($"Instruction {instruction} not implemented")
+
+            Instruction.CALL2 => (3, 1, 0),
+            Instruction.STATICCALL2 => (3, 1, 0),
+            Instruction.DELEGATECALL2 => (3, 1, 0),
+            _ => throw new NotImplementedException(),
         };
 
         public static string? GetName(this Instruction instruction, bool isPostMerge = false, IReleaseSpec? spec = null)
@@ -360,9 +371,9 @@ namespace Nethermind.Evm
             spec ??= Frontier.Instance;
             return instruction switch
             {
-                Instruction.EOFCALL => "CALL" ,
-                Instruction.EOFSTATICCALL => "STATICCALL", // StaticCallEnabled
-                Instruction.EOFDELEGATECALL => "DELEGATECALL",
+                Instruction.CALL2 => "CALL" ,
+                Instruction.STATICCALL2 => "STATICCALL", // StaticCallEnabled
+                Instruction.DELEGATECALL2 => "DELEGATECALL",
                 Instruction.PREVRANDAO when !isPostMerge => "DIFFICULTY",
                 Instruction.RJUMP => spec.IsEofEnabled ? "RJUMP" : "BEGINSUB",
                 Instruction.RJUMPI => spec.IsEofEnabled ? "RJUMPI" : "RETURNSUB",

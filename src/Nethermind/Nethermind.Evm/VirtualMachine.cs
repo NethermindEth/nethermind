@@ -2448,9 +2448,9 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                         programCounter = stackFrame.Offset;
                         break;
                     }
-                case Instruction.EOFCALL:
-                case Instruction.EOFDELEGATECALL:
-                case Instruction.EOFSTATICCALL:
+                case Instruction.CALL2:
+                case Instruction.DELEGATECALL2:
+                case Instruction.STATICCALL2:
                     {
                         if (!spec.IsEofEnabled)
                             goto InvalidInstruction;
@@ -2807,8 +2807,8 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
 
         Metrics.Calls++;
 
-        if (instruction == Instruction.EOFDELEGATECALL && !spec.DelegateCallEnabled ||
-            instruction == Instruction.EOFSTATICCALL && !spec.StaticCallEnabled) return EvmExceptionType.BadInstruction;
+        if (instruction == Instruction.DELEGATECALL2 && !spec.DelegateCallEnabled ||
+            instruction == Instruction.STATICCALL2 && !spec.StaticCallEnabled) return EvmExceptionType.BadInstruction;
 
         if (!stack.PopUInt256(out UInt256 gasLimit)) return EvmExceptionType.StackUnderflow;
         Address codeSource = stack.PopAddress();
@@ -2818,7 +2818,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
 
         ICodeInfo targetCodeInfo = GetCachedCodeInfo(_worldState, codeSource, spec);
 
-        if (instruction is Instruction.EOFDELEGATECALL
+        if (instruction is Instruction.DELEGATECALL2
                             && env.CodeInfo.Version != 0
                             && targetCodeInfo is not EofCodeInfo)
         {
@@ -2830,10 +2830,10 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         UInt256 callValue;
         switch (instruction)
         {
-            case Instruction.EOFSTATICCALL:
+            case Instruction.STATICCALL2:
                 callValue = UInt256.Zero;
                 break;
-            case Instruction.EOFDELEGATECALL:
+            case Instruction.DELEGATECALL2:
                 callValue = env.Value;
                 break;
             default:
@@ -2841,14 +2841,14 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                 break;
         }
 
-        UInt256 transferValue = instruction == Instruction.EOFDELEGATECALL ? UInt256.Zero : callValue;
+        UInt256 transferValue = instruction == Instruction.DELEGATECALL2 ? UInt256.Zero : callValue;
         if (!stack.PopUInt256(out UInt256 dataOffset)) return EvmExceptionType.StackUnderflow;
         if (!stack.PopUInt256(out UInt256 dataLength)) return EvmExceptionType.StackUnderflow;
 
         if (vmState.IsStatic && !transferValue.IsZero && instruction != Instruction.CALLCODE) return EvmExceptionType.StaticCallViolation;
 
-        Address caller = instruction == Instruction.EOFDELEGATECALL ? env.Caller : env.ExecutingAccount;
-        Address target = instruction == Instruction.EOFCALL || instruction == Instruction.EOFSTATICCALL
+        Address caller = instruction == Instruction.DELEGATECALL2 ? env.Caller : env.ExecutingAccount;
+        Address target = instruction == Instruction.CALL2 || instruction == Instruction.STATICCALL2
             ? codeSource
             : env.ExecutingAccount;
 
@@ -3633,15 +3633,15 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
     private static ExecutionType GetCallExecutionType(Instruction instruction, bool isPostMerge = false)
     {
         ExecutionType executionType;
-        if (instruction is Instruction.CALL or Instruction.EOFCALL)
+        if (instruction is Instruction.CALL or Instruction.CALL2)
         {
             executionType = ExecutionType.CALL;
         }
-        else if (instruction is Instruction.DELEGATECALL or Instruction.EOFDELEGATECALL)
+        else if (instruction is Instruction.DELEGATECALL or Instruction.DELEGATECALL2)
         {
             executionType = ExecutionType.DELEGATECALL;
         }
-        else if (instruction is Instruction.STATICCALL or Instruction.EOFSTATICCALL)
+        else if (instruction is Instruction.STATICCALL or Instruction.STATICCALL2)
         {
             executionType = ExecutionType.STATICCALL;
         }
