@@ -83,6 +83,11 @@ namespace Nethermind.Evm.Tracing.ParityStyle
                     reader.Read();
                     value.Input = JsonSerializer.Deserialize<byte[]?>(ref reader, options);
                 }
+                else if (reader.ValueTextEquals("init"u8))
+                {
+                    reader.Read();
+                    value.Input = JsonSerializer.Deserialize<byte[]?>(ref reader, options);
+                }
                 else if (reader.ValueTextEquals("result"u8))
                 {
                     reader.Read();
