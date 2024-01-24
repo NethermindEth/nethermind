@@ -30,8 +30,8 @@ namespace Nethermind.Evm
                 _maxCallStackDepth = maxCallStackDepth;
             }
 
-            private readonly ConcurrentStack<byte[]> _dataStackPool = new();
-            private readonly ConcurrentStack<int[]> _returnStackPool = new();
+            private readonly Stack<byte[]> _dataStackPool = new(32);
+            private readonly Stack<int[]> _returnStackPool = new(32);
 
             private int _dataStackPoolDepth;
             private int _returnStackPoolDepth;
@@ -55,7 +55,7 @@ namespace Nethermind.Evm
                     return result;
                 }
 
-                Interlocked.Increment(ref _dataStackPoolDepth);
+                _dataStackPoolDepth++;
                 if (_dataStackPoolDepth > _maxCallStackDepth)
                 {
                     EvmStack.ThrowEvmStackOverflowException();
@@ -71,7 +71,7 @@ namespace Nethermind.Evm
                     return result;
                 }
 
-                Interlocked.Increment(ref _returnStackPoolDepth);
+                _returnStackPoolDepth++;
                 if (_returnStackPoolDepth > _maxCallStackDepth)
                 {
                     EvmStack.ThrowEvmStackOverflowException();
