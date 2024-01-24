@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.Trie
@@ -31,6 +32,7 @@ namespace Nethermind.Trie
     }
 
     public interface ITreeVisitor<TNodeContext>
+        where TNodeContext : struct, INodeContext<TNodeContext>
     {
         /// <summary>
         /// Specify that this is a full table scan and should optimize for it.
