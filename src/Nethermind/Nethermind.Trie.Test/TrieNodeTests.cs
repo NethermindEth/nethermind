@@ -369,8 +369,6 @@ namespace Nethermind.Trie.Test
         public void Leaf_with_contract_without_storage_and_with_code_can_accept_visitors()
         {
             TreeVisitorMock visitor = new();
-            visitor.ShouldVisit(Arg.Any<Hash256>()).Returns(true);
-
             TrieVisitContext context = new();
             Account account = new(1, 100, Keccak.EmptyTreeHash, Keccak.Zero);
             AccountDecoder decoder = new();
