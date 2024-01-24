@@ -149,7 +149,7 @@ namespace Nethermind.Trie
                 case NodeType.Branch:
                     {
                         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-                        void VisitChild(int i, TrieNode? child, ITrieNodeResolver resolver, ITreeVisitor<TNodeContext> v, in TNodeContext nodeContext,TrieVisitContext context)
+                        void VisitChild(int i, TrieNode? child, ITrieNodeResolver resolver, ITreeVisitor<TNodeContext> v, in TNodeContext nodeContext, TrieVisitContext context)
                         {
                             if (child is not null)
                             {
@@ -280,7 +280,7 @@ namespace Nethermind.Trie
 
                                 if (TryResolveStorageRoot(nodeResolver, out TrieNode? storageRoot))
                                 {
-                                    storageRoot!.Accept(visitor,leafContext, nodeResolver, trieVisitContext);
+                                    storageRoot!.Accept(visitor, leafContext, nodeResolver, trieVisitContext);
                                 }
                                 else
                                 {
