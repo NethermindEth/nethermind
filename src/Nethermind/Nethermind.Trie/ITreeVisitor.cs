@@ -64,6 +64,9 @@ namespace Nethermind.Trie
         }
 
         public bool IsFullDbScan => _wrapped.IsFullDbScan;
+
+        public ReadFlags ExtraReadFlag => _wrapped.ExtraReadFlag;
+
         public bool ShouldVisit(in EmptyContext nodeContext, Hash256 nextNode) => _wrapped.ShouldVisit(nextNode);
 
         public void VisitTree(in EmptyContext nodeContext, Hash256 rootHash, TrieVisitContext trieVisitContext)
