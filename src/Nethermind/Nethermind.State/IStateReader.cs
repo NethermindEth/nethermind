@@ -11,11 +11,12 @@ namespace Nethermind.State
 {
     public interface IStateReader
     {
-        Account? GetAccount(Hash256 stateRoot, Address address);
+        AccountStruct? GetAccount(Hash256 stateRoot, Address address);
 
         Span<byte> GetStorage(Hash256 stateRoot, Address address, in UInt256 index);
 
         byte[]? GetCode(Hash256 codeHash);
+        byte[]? GetCode(in ValueHash256 codeHash);
 
         void RunTreeVisitor(ITreeVisitor treeVisitor, Hash256 stateRoot, VisitingOptions? visitingOptions = null);
         bool HasStateForRoot(Hash256 stateRoot);

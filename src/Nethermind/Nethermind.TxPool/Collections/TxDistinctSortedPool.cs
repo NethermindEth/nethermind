@@ -71,7 +71,7 @@ namespace Nethermind.TxPool.Collections
             }
         }
 
-        public void UpdatePool(IAccountStateProvider accounts, Func<Address, Account, EnhancedSortedSet<Transaction>, IEnumerable<(Transaction Tx, UInt256? changedGasBottleneck)>> changingElements)
+        public void UpdatePool(IAccountStateProvider accounts, Func<Address, AccountStruct, EnhancedSortedSet<Transaction>, IEnumerable<(Transaction Tx, UInt256? changedGasBottleneck)>> changingElements)
         {
             using var lockRelease = Lock.Acquire();
 
@@ -79,12 +79,12 @@ namespace Nethermind.TxPool.Collections
             {
                 Debug.Assert(bucket.Count > 0);
 
-                Account? account = accounts.GetAccount(address);
+                AccountStruct account = accounts.GetAccount(address);
                 UpdateGroupNonLocked(address, account, bucket, changingElements);
             }
         }
 
-        private void UpdateGroupNonLocked(Address groupKey, Account groupValue, EnhancedSortedSet<Transaction> bucket, Func<Address, Account, EnhancedSortedSet<Transaction>, IEnumerable<(Transaction Tx, UInt256? changedGasBottleneck)>> changingElements)
+        private void UpdateGroupNonLocked(Address groupKey, AccountStruct groupValue, EnhancedSortedSet<Transaction> bucket, Func<Address, AccountStruct, EnhancedSortedSet<Transaction>, IEnumerable<(Transaction Tx, UInt256? changedGasBottleneck)>> changingElements)
         {
             _transactionsToRemove.Clear();
             Transaction? lastElement = bucket.Max;
@@ -119,7 +119,7 @@ namespace Nethermind.TxPool.Collections
             }
         }
 
-        public void UpdateGroup(Address groupKey, Account groupValue, Func<Address, Account, EnhancedSortedSet<Transaction>, IEnumerable<(Transaction Tx, UInt256? changedGasBottleneck)>> changingElements)
+        public void UpdateGroup(Address groupKey, AccountStruct groupValue, Func<Address, AccountStruct, EnhancedSortedSet<Transaction>, IEnumerable<(Transaction Tx, UInt256? changedGasBottleneck)>> changingElements)
         {
             using var lockRelease = Lock.Acquire();
 

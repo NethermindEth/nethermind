@@ -69,6 +69,7 @@ namespace Nethermind.State
             return Get(key, storageRoot).ToArray();
         }
 
+
         public override Span<byte> Get(ReadOnlySpan<byte> rawKey, Hash256? rootHash = null)
         {
             Span<byte> value = base.Get(rawKey, rootHash);
