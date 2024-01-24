@@ -417,9 +417,9 @@ namespace Nethermind.Core.Extensions
                 return BinaryPrimitives.ReadUInt16LittleEndian(bytes);
             }
 
-            Span<byte> fourBytes = stackalloc byte[2];
-            bytes.CopyTo(fourBytes[(2 - bytes.Length)..]);
-            return BinaryPrimitives.ReadUInt16LittleEndian(fourBytes);
+            Span<byte> twoBytes = stackalloc byte[2];
+            bytes.CopyTo(twoBytes[(2 - bytes.Length)..]);
+            return BinaryPrimitives.ReadUInt16LittleEndian(twoBytes);
         }
 
         public static uint ReadEthUInt32(this Span<byte> bytes)
