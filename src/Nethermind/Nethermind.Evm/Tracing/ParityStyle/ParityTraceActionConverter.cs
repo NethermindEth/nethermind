@@ -23,6 +23,8 @@ namespace Nethermind.Evm.Tracing.ParityStyle
      */
     public class ParityTraceActionConverter : JsonConverter<ParityTraceAction>
     {
+        public static readonly ParityTraceActionConverter Instance = new();
+
         public override ParityTraceAction Read(
             ref Utf8JsonReader reader,
             Type typeToConvert,
