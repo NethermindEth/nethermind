@@ -30,6 +30,7 @@ public class OptimismBlockReceiptTracer : BlockReceiptsTracer
         if (CurrentTx.IsDeposit())
         {
             depositNonce = _worldState.GetNonce(CurrentTx.SenderAddress!).ToUInt64(null);
+            // We write nonce after tx processing, so need to subtract one
             if (depositNonce > 0)
             {
                 depositNonce--;
