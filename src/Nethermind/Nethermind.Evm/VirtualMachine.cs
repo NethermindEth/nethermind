@@ -412,7 +412,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                             bool invalidCode = !CodeDepositHandler.CodeIsValid(spec, callResult.Output.Bytes, callResult.FromVersion);
                             if (gasAvailableForCodeDeposit >= codeDepositGasCost && !invalidCode)
                             {
-                                _state.InsertCode(callCodeOwner, callResult.Output.Bytes, spec);
+                                InsertCode(callResult.Output.Bytes, callCodeOwner, spec);
                                 currentState.GasAvailable -= codeDepositGasCost;
 
                                 if (_txTracer.IsTracingActions)
@@ -515,7 +515,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                             long codeDepositGasCost = CodeDepositHandler.CalculateCost(bytecodeResultArray.Length, spec);
                             if (gasAvailableForCodeDeposit >= codeDepositGasCost && !invalidCode)
                             {
-                                _state.InsertCode(callCodeOwner, bytecodeResultArray, spec);
+                                InsertCode(bytecodeResultArray, callCodeOwner, spec);
                                 currentState.GasAvailable -= codeDepositGasCost;
 
                                 if (_txTracer.IsTracingActions)

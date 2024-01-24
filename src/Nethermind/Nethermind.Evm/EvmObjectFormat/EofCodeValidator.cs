@@ -80,31 +80,22 @@ internal static class EvmObjectFormat
             EofHeader h = header.Value;
             if (handler.ValidateBody(container, h))
             {
-                return true;
-            }
-
-            if(validateSubContainers && header?.ContainerSection?.Count > 0)
-            {
-                int containerSize = header.Value.ContainerSection.Value.Count;
-                byte[][] containers = ArrayPool<byte[]>.Shared.Rent(containerSize);
-
-                for (int i = 0; i < containerSize; i++)
+                if(validateSubContainers && header?.ContainerSection?.Count > 0)
                 {
-                    containers[i] = container.Slice(header.Value.ContainerSection.Value.Start + header.Value.ContainerSection.Value[i].Start, header.Value.ContainerSection.Value[i].Size).ToArray();
-                }
+                    int containerSize = header.Value.ContainerSection.Value.Count;
 
-                foreach (var subcontainer in containers)
-                {
-                    if(!IsValidEof(subcontainer, validateSubContainers, out _))
+                    for (int i = 0; i < containerSize; i++)
                     {
-                        ArrayPool<byte[]>.Shared.Return(containers);
-                        return false;
+                        ReadOnlySpan<byte> subContainer = container.Slice(header.Value.ContainerSection.Value.Start + header.Value.ContainerSection.Value[i].Start, header.Value.ContainerSection.Value[i].Size);
+                        if(!IsValidEof(subContainer, validateSubContainers, out _))
+                        {
+                            return false;
+                        }
                     }
+                    return true;
                 }
-                ArrayPool<byte[]>.Shared.Return(containers);
                 return true;
             }
-
 
         }
 

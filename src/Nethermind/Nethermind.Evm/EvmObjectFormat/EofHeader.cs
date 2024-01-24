@@ -28,6 +28,33 @@ public readonly record struct CompoundSectionHeader(int Start, int[] SubSections
     public int Size => EndOffset - Start;
     public int Count => SubSectionsSizes.Length;
 
+    /*
+    private readonly int[] subSectionsSizesAcc;
+    private readonly int[] SubSectionsSizesAcc
+    {
+        init
+        {
+            if(subSectionsSizesAcc is null) {
+                subSectionsSizesAcc = new int[SubSectionsSizes.Length];
+            }
+
+            for (var i = 0; i < SubSectionsSizes.Length; i++)
+            {
+                if(i == 0)
+                {
+                    subSectionsSizesAcc[i] = 0;
+                } else
+                {
+                    subSectionsSizesAcc[i] = subSectionsSizesAcc[i - 1] + SubSectionsSizes[i];
+                }
+            }
+        }
+
+        get => subSectionsSizesAcc;
+    }
+
+    public SectionHeader this[int i] => new SectionHeader(Start: SubSectionsSizesAcc[i], Size: (ushort)SubSectionsSizes[i]);
+    */
     // returns a subsection with localized indexing [0, size] ==> 0 is local to the section not the entire bytecode
     public SectionHeader this[int i] => new SectionHeader(Start: SubSectionsSizes[..i].Sum(), Size: (ushort)SubSectionsSizes[i]);
 }
