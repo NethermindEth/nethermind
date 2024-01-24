@@ -89,7 +89,7 @@ namespace Nethermind.Serialization.Json
             };
 
             options.Converters.AddRange(_additionalConverters);
-            options.Converters.AddRange(converters ?? Enumerable.Empty<JsonConverter>());
+            options.Converters.AddRange(converters ?? Array.Empty<JsonConverter>());
 
             return options;
         }
