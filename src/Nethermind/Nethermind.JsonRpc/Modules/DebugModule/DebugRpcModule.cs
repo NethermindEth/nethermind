@@ -16,6 +16,8 @@ using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Synchronization.Reporting;
 using System.Collections.Generic;
+using Nethermind.JsonRpc.Modules.Eth;
+using Nethermind.Core.Specs;
 
 namespace Nethermind.JsonRpc.Modules.DebugModule;
 
@@ -25,11 +27,13 @@ public class DebugRpcModule : IDebugRpcModule
     private readonly ILogger _logger;
     private readonly TimeSpan _traceTimeout;
     private readonly IJsonRpcConfig _jsonRpcConfig;
+    private readonly ISpecProvider _specProvider;
 
-    public DebugRpcModule(ILogManager logManager, IDebugBridge debugBridge, IJsonRpcConfig jsonRpcConfig)
+    public DebugRpcModule(ILogManager logManager, IDebugBridge debugBridge, IJsonRpcConfig jsonRpcConfig, ISpecProvider specProvider)
     {
         _debugBridge = debugBridge ?? throw new ArgumentNullException(nameof(debugBridge));
         _jsonRpcConfig = jsonRpcConfig ?? throw new ArgumentNullException(nameof(jsonRpcConfig));
+        _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
         _logger = logManager.GetClassLogger();
         _traceTimeout = TimeSpan.FromMilliseconds(_jsonRpcConfig.Timeout);
     }
@@ -322,9 +326,9 @@ public class DebugRpcModule : IDebugRpcModule
         return ResultWrapper<IEnumerable<string>>.Success(files);
     }
 
-    public ResultWrapper<IEnumerable<Block>> debug_getBadBlocks()
+    public ResultWrapper<IEnumerable<BlockForRpc>> debug_getBadBlocks()
     {
-        IEnumerable<Block> badBlocks = _debugBridge.GetBadBlocks();
-        return ResultWrapper<IEnumerable<Block>>.Success(badBlocks);
+        IEnumerable<BlockForRpc> badBlocks = _debugBridge.GetBadBlocks().Select(block => new BlockForRpc(block, true, _specProvider));
+        return ResultWrapper<IEnumerable<BlockForRpc>>.Success(badBlocks);
     }
 }

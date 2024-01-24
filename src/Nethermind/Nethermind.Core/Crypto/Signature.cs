@@ -3,7 +3,6 @@
 
 using System;
 using System.Runtime.InteropServices;
-using System.Text.Json.Serialization;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
@@ -74,12 +73,8 @@ namespace Nethermind.Core.Crypto
         public byte RecoveryId => V <= VOffset + 1 ? (byte)(V - VOffset) : (byte)(1 - V % 2);
 
         public byte[] R => Bytes.Slice(0, 32);
-
-        [JsonIgnore]
         public Span<byte> RAsSpan => Bytes.AsSpan(0, 32);
         public byte[] S => Bytes.Slice(32, 32);
-
-        [JsonIgnore]
         public Span<byte> SAsSpan => Bytes.AsSpan(32, 32);
 
         [Todo("Change signature to store 65 bytes and just slice it for normal Bytes.")]
