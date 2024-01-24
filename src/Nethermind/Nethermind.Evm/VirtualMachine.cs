@@ -1596,30 +1596,47 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                     }
                 case Instruction.RETURNDATACOPY:
                     {
-                        if (!spec.ReturnDataOpcodesEnabled) goto InvalidInstruction;
-
-                        if (!stack.PopUInt256(out a)) goto StackUnderflow;
-                        if (!stack.PopUInt256(out b)) goto StackUnderflow;
-                        if (!stack.PopUInt256(out result)) goto StackUnderflow;
-                        gasAvailable -= GasCostOf.VeryLow + GasCostOf.Memory * EvmPooledMemory.Div32Ceiling(in result);
-
-                        if (UInt256.AddOverflow(result, b, out c) || c > _returnDataBuffer.Length)
+                        if(spec.IsEofEnabled)
                         {
-                            goto AccessViolation;
-                        }
+                            gasAvailable -= GasCostOf.VeryLow;
 
-                        if (!result.IsZero)
-                        {
-                            if (!UpdateMemoryCost(vmState, ref gasAvailable, in a, result)) goto OutOfGas;
-
-                            slice = _returnDataBuffer.AsSpan().SliceWithZeroPadding(b, (int)result);
-                            vmState.Memory.Save(in a, in slice);
-                            if (typeof(TTracingInstructions) == typeof(IsTracing))
+                            if (!stack.PopUInt256(out a)) goto StackUnderflow;
+                            if (UInt256.AddOverflow(a, 32, out c) || c > _returnDataBuffer.Length)
                             {
-                                _txTracer.ReportMemoryChange((long)a, in slice);
+                                goto AccessViolation;
+                            }
+
+                            if (!UpdateMemoryCost(vmState, ref gasAvailable, in a, 32)) goto OutOfGas;
+
+                            slice = _returnDataBuffer.AsSpan().SliceWithZeroPadding(a, 32);
+                            stack.PushBytes(slice);
+                        }
+                        else
+                        {
+                            if (!spec.ReturnDataOpcodesEnabled) goto InvalidInstruction;
+
+                            if (!stack.PopUInt256(out a)) goto StackUnderflow;
+                            if (!stack.PopUInt256(out b)) goto StackUnderflow;
+                            if (!stack.PopUInt256(out result)) goto StackUnderflow;
+                            gasAvailable -= GasCostOf.VeryLow + GasCostOf.Memory * EvmPooledMemory.Div32Ceiling(in result);
+
+                            if (UInt256.AddOverflow(result, b, out c) || c > _returnDataBuffer.Length)
+                            {
+                                goto AccessViolation;
+                            }
+
+                            if (!result.IsZero)
+                            {
+                                if (!UpdateMemoryCost(vmState, ref gasAvailable, in a, result)) goto OutOfGas;
+
+                                slice = _returnDataBuffer.AsSpan().SliceWithZeroPadding(b, (int)result);
+                                vmState.Memory.Save(in a, in slice);
+                                if (typeof(TTracingInstructions) == typeof(IsTracing))
+                                {
+                                    _txTracer.ReportMemoryChange((long)a, in slice);
+                                }
                             }
                         }
-
                         break;
                     }
                 case Instruction.BLOCKHASH:
@@ -2456,17 +2473,82 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                         if (!UpdateGas(GasCostOf.ReturnContract, ref gasAvailable)) goto OutOfGas;
 
                         byte sectionIdx = codeSection[programCounter];
-                        stack.PopUInt256(out var aux_data_offset);
-                        stack.PopUInt256(out var aux_data_size);
+                        stack.PopUInt256(out a);
+                        stack.PopUInt256(out b);
 
                         ReadOnlySpan<byte> auxData = Span<byte>.Empty;
-                        if (aux_data_size > UInt256.Zero)
+                        if (b > UInt256.Zero)
                         {
-                            if (!UpdateMemoryCost(vmState, ref gasAvailable, in aux_data_offset, aux_data_size)) goto OutOfGas;
-                            auxData = env.InputData.Slice((int)aux_data_offset, (int)aux_data_size).Span;
+                            if (!UpdateMemoryCost(vmState, ref gasAvailable, in a, b)) goto OutOfGas;
+                            auxData = vmState.Memory.LoadSpan(a, b);
                         }
 
                         return new CallResult(sectionIdx, auxData.ToArray(), null, env.CodeInfo.Version);
+                    }
+                case Instruction.DATASIZE:
+                    {
+                        if (!spec.IsEofEnabled|| env.CodeInfo.Version == 0)
+                            goto InvalidInstruction;
+
+                        if (!UpdateGas(GasCostOf.DataSize, ref gasAvailable)) goto OutOfGas;
+
+                        stack.PushUInt32(dataSection.Length);
+                        break;
+                    }
+                case Instruction.DATALOAD:
+                    {
+                        if (!spec.IsEofEnabled|| env.CodeInfo.Version == 0)
+                                goto InvalidInstruction;
+
+                        if (!UpdateGas(GasCostOf.DataLoad, ref gasAvailable)) goto OutOfGas;
+
+                        stack.PopUInt256(out a);
+                        ZeroPaddedSpan zpbytes = dataSection.SliceWithZeroPadding(a, 32);
+                        stack.PushBytes(zpbytes);
+                        break;
+                    }
+                case Instruction.DATALOADN:
+                    {
+                        if (!spec.IsEofEnabled|| env.CodeInfo.Version == 0)
+                            goto InvalidInstruction;
+
+                        if (!UpdateGas(GasCostOf.DataLoadN, ref gasAvailable)) goto OutOfGas;
+
+                        var offset = codeSection.Slice(programCounter, EvmObjectFormat.TWO_BYTE_LENGTH).ReadEthUInt16();
+                        ZeroPaddedSpan zpbytes = dataSection.SliceWithZeroPadding(offset, 32);
+                        stack.PushBytes(zpbytes);
+
+                        programCounter += EvmObjectFormat.TWO_BYTE_LENGTH;
+                        break;
+                    }
+                case Instruction.DATACOPY:
+                    {
+                        if (!spec.IsEofEnabled || env.CodeInfo.Version == 0)
+                            goto InvalidInstruction;
+
+
+                        if (!UpdateGas(GasCostOf.DataCopy, ref gasAvailable)) goto OutOfGas;
+
+                        stack.PopUInt256(out UInt256 memOffset);
+                        stack.PopUInt256(out UInt256 offset);
+                        stack.PopUInt256(out UInt256 size);
+
+                        if (size > UInt256.Zero)
+                        {
+                            gasAvailable -= GasCostOf.Memory * EvmPooledMemory.Div32Ceiling(in size);
+                            if (!UpdateGas(gasAvailable, ref gasAvailable) ||
+                                !UpdateMemoryCost(vmState, ref gasAvailable, in memOffset, size))
+                                goto OutOfGas;
+
+                            ZeroPaddedSpan dataSectionSlice = dataSection.SliceWithZeroPadding(offset, (int)size);
+                            vmState.Memory.Save(in memOffset, dataSectionSlice);
+                            if (_txTracer.IsTracingInstructions)
+                            {
+                                _txTracer.ReportMemoryChange((long)memOffset, dataSectionSlice);
+                            }
+                        }
+
+                        break;
                     }
                 default:
                     {
