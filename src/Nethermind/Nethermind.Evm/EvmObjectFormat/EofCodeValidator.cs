@@ -526,7 +526,7 @@ internal static class EvmObjectFormat
                             return false;
                         }
 
-                        byte count = code[postInstructionByte];
+                        ushort count = (ushort)(code[postInstructionByte] + 1);
                         jumpsCount += count;
                         if (count < MINIMUMS_ACCEPTABLE_JUMPV_JUMPTABLE_LENGTH)
                         {
@@ -681,9 +681,9 @@ internal static class EvmObjectFormat
                 }
                 else if (opcode is Instruction.RJUMPV)
                 {
-                    byte count = code[pos];
+                    byte maxIndex = code[pos];
 
-                    pos += ONE_BYTE_LENGTH + count * TWO_BYTE_LENGTH;
+                    pos += ONE_BYTE_LENGTH + (maxIndex + 1) * TWO_BYTE_LENGTH;
                 }
                 else if (opcode is Instruction.SWAPN or Instruction.DUPN or Instruction.EXCHANGE)
                 {
@@ -823,7 +823,7 @@ internal static class EvmObjectFormat
                                 }
                             case Instruction.RJUMPV:
                                 {
-                                    var count = code[posPostInstruction];
+                                    var count = code[posPostInstruction] + 1;
                                     immediates = (ushort)(count * TWO_BYTE_LENGTH + ONE_BYTE_LENGTH);
                                     for (short j = 0; j < count; j++)
                                     {
