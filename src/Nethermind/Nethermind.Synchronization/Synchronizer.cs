@@ -438,7 +438,7 @@ namespace Nethermind.Synchronization
 
         protected void WireFeedWithModeSelector<T>(ISyncFeed<T>? feed)
         {
-            if (feed == null) return;
+            if (feed is null) return;
             SyncModeSelector.Changed += ((sender, args) =>
             {
                 feed?.SyncModeSelectorOnChanged(args.Current);

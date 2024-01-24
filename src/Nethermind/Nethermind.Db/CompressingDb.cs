@@ -77,7 +77,7 @@ namespace Nethermind.Db
 
             private static byte[]? Compress(byte[]? bytes)
             {
-                if (bytes == null) return null;
+                if (bytes is null) return null;
                 return Compress(bytes, stackalloc byte[bytes.Length]).ToArray();
             }
 
@@ -103,7 +103,7 @@ namespace Nethermind.Db
 
             private static byte[]? Decompress(byte[]? bytes)
             {
-                if (bytes == null || bytes.Length == 0 || (bytes[PreambleIndex] != PreambleValue))
+                if (bytes is null || bytes.Length == 0 || (bytes[PreambleIndex] != PreambleValue))
                 {
                     return bytes;
                 }

@@ -181,7 +181,7 @@ namespace Nethermind.Synchronization.FastSync
                         return SyncResponseHandlingResult.InternalError;
                     }
 
-                    if (peerInfo == null)
+                    if (peerInfo is null)
                     {
                         AddAgainAllItems();
                         if (_logger.IsTrace) _logger.Trace("Batch was not assigned to any peer.");
