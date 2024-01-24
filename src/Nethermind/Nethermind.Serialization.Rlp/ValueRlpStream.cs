@@ -347,7 +347,7 @@ public ref struct ValueRlpStream(in CappedArray<byte> data)
         int prefix = ReadByte();
         if (prefix == 0)
         {
-            return Bytes.ZeroByte;
+            return Bytes.ZeroByte.Span;
         }
 
         if (prefix < 128)

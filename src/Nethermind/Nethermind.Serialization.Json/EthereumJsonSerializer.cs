@@ -19,14 +19,7 @@ namespace Nethermind.Serialization.Json
 
         public EthereumJsonSerializer(int? maxDepth = null)
         {
-            if (maxDepth.HasValue)
-            {
-                _jsonOptions = CreateOptions(indented: false, maxDepth.Value);
-            }
-            else
-            {
-                _jsonOptions = JsonOptions;
-            }
+            _jsonOptions = maxDepth.HasValue ? CreateOptions(indented: false, maxDepth.Value) : JsonOptions;
         }
 
         public T Deserialize<T>(Stream stream)
@@ -67,6 +60,8 @@ namespace Nethermind.Serialization.Json
                     new ULongConverter(),
                     new IntConverter(),
                     new ByteArrayConverter(),
+                    new ByteReadOnlyMemoryConverter(),
+                    new NullableByteReadOnlyMemoryConverter(),
                     new NullableLongConverter(),
                     new NullableULongConverter(),
                     new NullableUInt256Converter(),

@@ -34,7 +34,7 @@ namespace Nethermind.State
             return GetState(stateRoot, address);
         }
 
-        public Span<byte> GetStorage(Hash256 stateRoot, Address address, in UInt256 index)
+        public ReadOnlySpan<byte> GetStorage(Hash256 stateRoot, Address address, in UInt256 index)
         {
             AccountStruct? account = GetAccount(stateRoot, address);
             if (account is null) return null;
@@ -42,7 +42,7 @@ namespace Nethermind.State
             ValueHash256 storageRoot = account.Value.StorageRoot;
             if (storageRoot == Keccak.EmptyTreeHash)
             {
-                return Bytes.ZeroByte;
+                return Bytes.ZeroByte.Span;
             }
 
             Metrics.StorageTreeReads++;

@@ -16,9 +16,4 @@
   <ItemGroup>
     <ProjectReference Include="..\Nethermind.Logging\Nethermind.Logging.csproj" />
   </ItemGroup>
-  <ItemGroup>
-    <Reference Include="Nethermind.Serialization.Rlp">
-      <HintPath>..\artifacts\bin\Nethermind.Evm.Test\debug\Nethermind.Serialization.Rlp.dll</HintPath>
-    </Reference>
-  </ItemGroup>
 </Project>

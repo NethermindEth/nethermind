@@ -106,7 +106,7 @@ public ref struct EvmStack<TTracing>
         }
     }
 
-    private static ReadOnlySpan<byte> OneStackItem() => Bytes.OneByte;
+    private static ReadOnlySpan<byte> OneStackItem() => Bytes.OneByte.Span;
 
     public void PushOne()
     {
@@ -121,7 +121,7 @@ public ref struct EvmStack<TTracing>
         }
     }
 
-    private static ReadOnlySpan<byte> ZeroStackItem() => Bytes.ZeroByte;
+    private static ReadOnlySpan<byte> ZeroStackItem() => Bytes.ZeroByte.Span;
 
     public void PushZero()
     {

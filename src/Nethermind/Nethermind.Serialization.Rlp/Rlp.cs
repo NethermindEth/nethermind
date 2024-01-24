@@ -337,7 +337,7 @@ namespace Nethermind.Serialization.Rlp
             return position;
         }
 
-        public static Rlp Encode(Span<byte> input)
+        public static Rlp Encode(ReadOnlySpan<byte> input)
         {
             if (input.Length == 0)
             {
@@ -1684,7 +1684,7 @@ namespace Nethermind.Serialization.Rlp
             return LengthOfByteString(array.Count, array[0]);
         }
 
-        public static int LengthOf(Span<byte> array)
+        public static int LengthOf(ReadOnlySpan<byte> array)
         {
             if (array.Length == 0)
             {

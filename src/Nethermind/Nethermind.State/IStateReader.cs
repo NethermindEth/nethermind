@@ -13,7 +13,7 @@ namespace Nethermind.State
     {
         AccountStruct? GetAccount(Hash256 stateRoot, Address address);
 
-        Span<byte> GetStorage(Hash256 stateRoot, Address address, in UInt256 index);
+        ReadOnlySpan<byte> GetStorage(Hash256 stateRoot, Address address, in UInt256 index);
 
         byte[]? GetCode(Hash256 codeHash);
         byte[]? GetCode(in ValueHash256 codeHash);

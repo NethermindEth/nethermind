@@ -119,7 +119,7 @@ namespace Nethermind.Trie.Test
             memDb.Keys.Should().HaveCount(0);
 
             PatriciaTree checkTree = CreateCheckTree(memDb, patriciaTree);
-            checkTree.Get(_keyA).ToArray().Should().BeNull();
+            checkTree.Get(_keyA).ToArray().Should().BeEmpty();
         }
 
         [Test]
@@ -138,7 +138,7 @@ namespace Nethermind.Trie.Test
             memDb.Keys.Should().HaveCount(1);
 
             PatriciaTree checkTree = CreateCheckTree(memDb, patriciaTree);
-            checkTree.Get(_keyA).ToArray().Should().BeNull();
+            checkTree.Get(_keyA).ToArray().Should().BeEmpty();
         }
 
         [Test]
@@ -171,8 +171,8 @@ namespace Nethermind.Trie.Test
             memDb.Keys.Should().HaveCount(2);
 
             PatriciaTree checkTree = CreateCheckTree(memDb, patriciaTree);
-            checkTree.Get(_keyA).ToArray().Should().BeNull();
-            checkTree.Get(_keyB).ToArray().Should().BeNull();
+            checkTree.Get(_keyA).ToArray().Should().BeEmpty();
+            checkTree.Get(_keyB).ToArray().Should().BeEmpty();
         }
 
         [Test]
@@ -225,9 +225,9 @@ namespace Nethermind.Trie.Test
             // leaf (root)
             memDb.Keys.Should().HaveCount(6);
             PatriciaTree checkTree = CreateCheckTree(memDb, patriciaTree);
-            checkTree.Get(_keyA).ToArray().Should().BeNull();
-            checkTree.Get(_keyB).ToArray().Should().BeNull();
-            checkTree.Get(_keyC).ToArray().Should().BeNull();
+            checkTree.Get(_keyA).ToArray().Should().BeEmpty();
+            checkTree.Get(_keyB).ToArray().Should().BeEmpty();
+            checkTree.Get(_keyC).ToArray().Should().BeEmpty();
         }
 
         public void Test_add_many(int i)
@@ -292,7 +292,7 @@ namespace Nethermind.Trie.Test
             for (int j = 0; j < i; j++)
             {
                 Hash256 key = TestItem.Keccaks[j + 100];
-                checkTree.Get(key.Bytes).ToArray().Should().BeNull();
+                checkTree.Get(key.Bytes).ToArray().Should().BeEmpty();
             }
         }
 
@@ -393,7 +393,7 @@ namespace Nethermind.Trie.Test
             for (int j = 0; j < i; j++)
             {
                 Hash256 key = TestItem.Keccaks[j];
-                checkTree.Get(key.Bytes).ToArray().Should().BeNull($@"{i} {j}");
+                checkTree.Get(key.Bytes).ToArray().Should().BeEmpty($"{i} {j}");
             }
         }
 
@@ -425,7 +425,7 @@ namespace Nethermind.Trie.Test
             for (int j = 0; j < i; j++)
             {
                 Hash256 key = TestItem.Keccaks[j];
-                checkTree.Get(key.Bytes).ToArray().Should().BeNull($@"{i} {j}");
+                checkTree.Get(key.Bytes).ToArray().Should().BeEmpty($"{i} {j}");
             }
         }
 
@@ -487,7 +487,7 @@ namespace Nethermind.Trie.Test
             // leaf (root)
             memDb.Keys.Should().HaveCount(6);
             PatriciaTree checkTree = CreateCheckTree(memDb, patriciaTree);
-            checkTree.Get(_keyA).ToArray().Should().BeNull();
+            checkTree.Get(_keyA).ToArray().Should().BeEmpty();
             checkTree.Get(_keyB).ToArray().Should().BeEquivalentTo(_longLeaf1);
             checkTree.Get(_keyC).ToArray().Should().BeEquivalentTo(_longLeaf1);
             checkTree.Get(_keyD).ToArray().Should().BeEquivalentTo(_longLeaf1);
@@ -651,7 +651,7 @@ namespace Nethermind.Trie.Test
             PatriciaTree checkTree = CreateCheckTree(memDb, patriciaTree);
             checkTree.Get(key1).ToArray().Should().BeEquivalentTo(_longLeaf1);
             checkTree.Get(key2).ToArray().Should().BeEquivalentTo(_longLeaf1);
-            checkTree.Get(key3).ToArray().Should().BeNull();
+            checkTree.Get(key3).ToArray().Should().BeEmpty();
         }
 
         [Test]
