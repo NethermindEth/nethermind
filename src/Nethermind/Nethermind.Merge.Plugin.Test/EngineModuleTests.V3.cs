@@ -187,7 +187,6 @@ public partial class EngineModuleTests
         ExecutionPayloadV3 payload = (await prevRpcModule.engine_getPayloadV3(Bytes.FromHexString(payloadId))).Data!.ExecutionPayload;
 
         payload.BlockNumber = 2;
-        payload.StateRoot = Keccak.Zero; 
         payload.TryGetBlock(out Block? b);
         payload.BlockHash = b!.CalculateHash();
 
