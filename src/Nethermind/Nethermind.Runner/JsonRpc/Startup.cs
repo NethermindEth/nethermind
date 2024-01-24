@@ -38,9 +38,9 @@ namespace Nethermind.Runner.JsonRpc
 {
     public class Startup
     {
-        private static ReadOnlySpan<byte> _jsonOpeningBracket => new byte[] { (byte)'[' };
-        private static ReadOnlySpan<byte> _jsonComma => new byte[] { (byte)',' };
-        private static ReadOnlySpan<byte> _jsonClosingBracket => new byte[] { (byte)']' };
+        private static readonly byte _jsonOpeningBracket = Convert.ToByte('[');
+        private static readonly byte _jsonComma = Convert.ToByte(',');
+        private static readonly byte _jsonClosingBracket = Convert.ToByte(']');
 
         public void ConfigureServices(IServiceCollection services)
         {
@@ -55,6 +55,7 @@ namespace Nethermind.Runner.JsonRpc
 
             services.Configure<KestrelServerOptions>(options =>
             {
+                options.AllowSynchronousIO = true;
                 options.Limits.MaxRequestBodySize = jsonRpcConfig.MaxRequestBodySize;
                 options.ConfigureHttpsDefaults(co => co.SslProtocols |= SslProtocols.Tls13);
             });
@@ -77,10 +78,10 @@ namespace Nethermind.Runner.JsonRpc
 
         public void Configure(IApplicationBuilder app, IWebHostEnvironment env, IJsonRpcProcessor jsonRpcProcessor, IJsonRpcService jsonRpcService, IJsonRpcLocalStats jsonRpcLocalStats, IJsonSerializer jsonSerializer)
         {
-            void SerializeTimeoutException(IJsonRpcService service, IBufferWriter<byte> resultStream)
+            ValueTask<long> SerializeTimeoutException(IJsonRpcService service, Stream resultStream)
             {
                 JsonRpcErrorResponse? error = service.GetErrorResponse(ErrorCodes.Timeout, "Request was canceled due to enabled timeout.");
-                jsonSerializer.Serialize(resultStream, error);
+                return jsonSerializer.SerializeAsync(resultStream, error);
             }
 
             if (env.IsDevelopment())
@@ -156,7 +157,7 @@ namespace Nethermind.Runner.JsonRpc
                         JsonRpcErrorResponse? response = jsonRpcService.GetErrorResponse(ErrorCodes.InvalidRequest, "Authentication error");
                         ctx.Response.ContentType = "application/json";
                         ctx.Response.StatusCode = StatusCodes.Status403Forbidden;
-                        jsonSerializer.Serialize(ctx.Response.BodyWriter, response);
+                        await jsonSerializer.SerializeAsync(ctx.Response.Body, response);
                         await ctx.Response.CompleteAsync();
                         return;
                     }
@@ -169,7 +170,9 @@ namespace Nethermind.Runner.JsonRpc
                         await foreach (JsonRpcResult result in jsonRpcProcessor.ProcessAsync(request, jsonRpcContext))
                         {
                             using Stream stream = jsonRpcConfig.BufferResponses ? RecyclableStream.GetStream("http") : null;
-                            ICountingBufferWriter resultWriter = stream is not null ? new CountingStreamPipeWriter(stream) : new CountingPipeWriter(ctx.Response.BodyWriter);
+                            Stream resultStream = jsonRpcConfig.BufferResponses ? stream : ctx.Response.Body;
+
+                            long responseSize = 0;
                             try
                             {
                                 ctx.Response.ContentType = "application/json";
@@ -177,7 +180,8 @@ namespace Nethermind.Runner.JsonRpc
 
                                 if (result.IsCollection)
                                 {
-                                    resultWriter.Write(_jsonOpeningBracket);
+                                    resultStream.WriteByte(_jsonOpeningBracket);
+                                    responseSize += 1;
                                     bool first = true;
                                     JsonRpcBatchResultAsyncEnumerator enumerator = result.BatchedResponses.GetAsyncEnumerator(CancellationToken.None);
                                     try
@@ -189,17 +193,18 @@ namespace Nethermind.Runner.JsonRpc
                                             {
                                                 if (!first)
                                                 {
-                                                    resultWriter.Write(_jsonComma);
+                                                    resultStream.WriteByte(_jsonComma);
+                                                    responseSize += 1;
                                                 }
 
                                                 first = false;
-                                                jsonSerializer.Serialize(resultWriter, entry.Response);
+                                                responseSize += await jsonSerializer.SerializeAsync(resultStream, entry.Response);
                                                 _ = jsonRpcLocalStats.ReportCall(entry.Report);
 
                                                 // We reached the limit and don't want to responded to more request in the batch
-                                                if (!jsonRpcContext.IsAuthenticated && resultWriter.WrittenCount > jsonRpcConfig.MaxBatchResponseBodySize)
+                                                if (!jsonRpcContext.IsAuthenticated && responseSize > jsonRpcConfig.MaxBatchResponseBodySize)
                                                 {
-                                                    if (logger.IsWarn) logger.Warn($"The max batch response body size exceeded. The current response size {resultWriter.WrittenCount}, and the config setting is JsonRpc.{nameof(jsonRpcConfig.MaxBatchResponseBodySize)} = {jsonRpcConfig.MaxBatchResponseBodySize}");
+                                                    if (logger.IsWarn) logger.Warn($"The max batch response body size exceeded. The current response size {responseSize}, and the config setting is JsonRpc.{nameof(jsonRpcConfig.MaxBatchResponseBodySize)} = {jsonRpcConfig.MaxBatchResponseBodySize}");
                                                     enumerator.IsStopped = true;
                                                 }
                                             }
@@ -210,42 +215,48 @@ namespace Nethermind.Runner.JsonRpc
                                         await enumerator.DisposeAsync();
                                     }
 
-                                    resultWriter.Write(_jsonClosingBracket);
+                                    resultStream.WriteByte(_jsonClosingBracket);
+                                    responseSize += 1;
                                 }
                                 else
                                 {
                                     using (result.Response)
                                     {
-                                        jsonSerializer.Serialize(resultWriter, result.Response);
+                                        await jsonSerializer.SerializeAsync(resultStream, result.Response);
                                     }
                                 }
 
-                                if (stream is not null)
+                                if (jsonRpcConfig.BufferResponses)
                                 {
-                                    ctx.Response.ContentLength = resultWriter.WrittenCount;
-                                    stream.Seek(0, SeekOrigin.Begin);
-                                    await stream.CopyToAsync(ctx.Response.Body);
+                                    ctx.Response.ContentLength = responseSize = resultStream.Length;
+                                    resultStream.Seek(0, SeekOrigin.Begin);
+                                    await resultStream.CopyToAsync(ctx.Response.Body);
                                 }
                             }
                             catch (Exception e) when (e.InnerException is OperationCanceledException)
                             {
-                                SerializeTimeoutException(jsonRpcService, resultWriter);
+                                responseSize = await SerializeTimeoutException(jsonRpcService, resultStream);
                             }
                             catch (OperationCanceledException)
                             {
-                                SerializeTimeoutException(jsonRpcService, resultWriter);
+                                responseSize = await SerializeTimeoutException(jsonRpcService, resultStream);
                             }
                             finally
                             {
                                 await ctx.Response.CompleteAsync();
+
+                                if (jsonRpcConfig.BufferResponses)
+                                {
+                                    await resultStream.DisposeAsync();
+                                }
                             }
 
                             long handlingTimeMicroseconds = stopwatch.ElapsedMicroseconds();
                             _ = jsonRpcLocalStats.ReportCall(result.IsCollection
                                 ? new RpcReport("# collection serialization #", handlingTimeMicroseconds, true)
-                                : result.Report.Value, handlingTimeMicroseconds, resultWriter.WrittenCount);
+                                : result.Report.Value, handlingTimeMicroseconds, responseSize);
 
-                            Interlocked.Add(ref Metrics.JsonRpcBytesSentHttp, resultWriter.WrittenCount);
+                            Interlocked.Add(ref Metrics.JsonRpcBytesSentHttp, responseSize);
 
                             // There should be only one response because we don't expect multiple JSON tokens in the request
                             break;

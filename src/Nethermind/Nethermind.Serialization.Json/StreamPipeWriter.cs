@@ -16,35 +16,7 @@ namespace Nethermind.Serialization.Json;
 
 #nullable enable
 
-public interface ICountingBufferWriter : IBufferWriter<byte>
-{
-    public long WrittenCount { get; }
-}
-
-public sealed class CountingPipeWriter : ICountingBufferWriter
-{
-    private readonly PipeWriter _writer;
-    public long WrittenCount { get; private set; }
-
-    public CountingPipeWriter(PipeWriter writer)
-    {
-        ArgumentNullException.ThrowIfNull(writer);
-
-        _writer = writer;
-    }
-
-    public void Advance(int count)
-    {
-        _writer.Advance(count);
-        WrittenCount += count;
-    }
-
-    public Memory<byte> GetMemory(int sizeHint = 0) => _writer.GetMemory(sizeHint);
-
-    public Span<byte> GetSpan(int sizeHint = 0) => _writer.GetSpan(sizeHint);
-}
-
-public sealed class CountingStreamPipeWriter : PipeWriter, ICountingBufferWriter
+internal sealed class CountingStreamPipeWriter : PipeWriter
 {
     internal const int InitialSegmentPoolSize = 4; // 16K
     internal const int MaxSegmentPoolSize = 256; // 1MB
@@ -78,7 +50,7 @@ public sealed class CountingStreamPipeWriter : PipeWriter, ICountingBufferWriter
         }
     }
 
-    public CountingStreamPipeWriter(Stream writingStream, StreamPipeWriterOptions? options = null)
+    public CountingStreamPipeWriter(Stream writingStream, StreamPipeWriterOptions options)
     {
         if (writingStream is null)
         {
@@ -90,18 +62,18 @@ public sealed class CountingStreamPipeWriter : PipeWriter, ICountingBufferWriter
         }
 
         InnerStream = writingStream;
-        _minimumBufferSize = options?.MinimumBufferSize ?? 4096;
-        _pool = options?.Pool == MemoryPool<byte>.Shared ? null : options?.Pool;
+        _minimumBufferSize = options.MinimumBufferSize;
+        _pool = options.Pool == MemoryPool<byte>.Shared ? null : options.Pool;
         _maxPooledBufferSize = _pool?.MaxBufferSize ?? -1;
         _bufferSegmentPool = new BufferSegmentStack(InitialSegmentPoolSize);
-        _leaveOpen = options?.LeaveOpen ?? true;
+        _leaveOpen = options.LeaveOpen;
     }
 
     /// <summary>
     /// Gets the inner stream that is being written to.
     /// </summary>
     public Stream InnerStream { get; }
-    public long WrittenCount { get; set; }
+    public long OutputCount { get; set; }
 
     /// <inheritdoc />
     public override void Advance(int bytes)
@@ -114,7 +86,7 @@ public sealed class CountingStreamPipeWriter : PipeWriter, ICountingBufferWriter
         _tailBytesBuffered += bytes;
         _bytesBuffered += bytes;
         _tailMemory = _tailMemory.Slice(bytes);
-        WrittenCount += bytes;
+        OutputCount += bytes;
 
         if (_bytesBuffered > _minimumBufferSize)
         {
