@@ -380,14 +380,14 @@ public class BatchedTrieVisitor<TNodeContext>
 
 public struct EmptyContext : INodeContext<EmptyContext>
 {
-    public EmptyContext Add(byte[] path) => default;
-    public EmptyContext Add(byte nibble) => default;
+    public EmptyContext Add(byte[] nibblePath) => this;
+    public EmptyContext Add(byte nibble) => this;
 }
 
 public interface INodeContext<TNodeContext>
     where TNodeContext : INodeContext<TNodeContext>
 {
-    TNodeContext Add(byte[] path);
+    TNodeContext Add(byte[] nibblePath);
 
     TNodeContext Add(byte nibble);
 }

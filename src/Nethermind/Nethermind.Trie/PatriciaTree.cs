@@ -1182,7 +1182,7 @@ namespace Nethermind.Trie
             }
             else
             {
-                rootRef?.Accept(visitor, resolver, trieVisitContext);
+                rootRef?.Accept(visitor, default, resolver, trieVisitContext);
             }
         }
 
