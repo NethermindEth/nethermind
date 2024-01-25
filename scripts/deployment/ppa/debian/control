@@ -1,7 +1,7 @@
 Source: nethermind
 Section: net
 Priority: optional
-Maintainer: Demerzel Solutions Limited <hello@nethermind.io>
+Maintainer: Demerzel Solutions Limited <devops@nethermind.io>
 Build-Depends: debhelper-compat (= 11)
 Standards-Version: 4.6.0
 Homepage: https://nethermind.io/nethermind-client
