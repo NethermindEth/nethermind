@@ -190,8 +190,7 @@ public class VisitingTests
         {
         }
 
-        public void VisitExtension(in PathGatheringContext nodeContext, TrieNode node,
-            TrieVisitContext trieVisitContext)
+        public void VisitExtension(in PathGatheringContext nodeContext, TrieNode node, TrieVisitContext trieVisitContext)
         {
         }
 
