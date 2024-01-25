@@ -52,7 +52,7 @@ namespace Nethermind.Db.FullPruning
         public byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
         {
             byte[]? value = _currentDb.Get(key, flags); // we are reading from the main DB
-            if (value != null && _pruningContext?.DuplicateReads == true && (flags & ReadFlags.SkipDuplicateRead) == 0)
+            if (value is not null && _pruningContext?.DuplicateReads == true && (flags & ReadFlags.SkipDuplicateRead) == 0)
             {
                 Duplicate(_pruningContext.CloningDb, key, value, WriteFlags.None);
             }

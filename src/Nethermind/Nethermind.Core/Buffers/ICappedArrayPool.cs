@@ -14,7 +14,7 @@ public static class BufferPoolExtensions
 {
     public static CappedArray<byte> SafeRentBuffer(this ICappedArrayPool? pool, int size)
     {
-        if (pool == null) return new CappedArray<byte>(new byte[size]);
+        if (pool is null) return new CappedArray<byte>(new byte[size]);
         return pool.Rent(size);
     }
 

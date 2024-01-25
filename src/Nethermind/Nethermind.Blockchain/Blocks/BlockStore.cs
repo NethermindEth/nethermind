@@ -87,7 +87,7 @@ public class BlockStore : IBlockStore
     public Block? Get(long blockNumber, Hash256 blockHash, bool shouldCache = false)
     {
         Block? b = _blockDb.Get(blockNumber, blockHash, _blockDecoder, _blockCache, shouldCache);
-        if (b != null) return b;
+        if (b is not null) return b;
         return _blockDb.Get(blockHash, _blockDecoder, _blockCache, shouldCache);
     }
 
@@ -97,7 +97,7 @@ public class BlockStore : IBlockStore
         GetBlockNumPrefixedKey(blockNumber, blockHash, keyWithBlockNumber);
 
         MemoryManager<byte>? memoryOwner = _blockDb.GetOwnedMemory(keyWithBlockNumber);
-        if (memoryOwner == null)
+        if (memoryOwner is null)
         {
             memoryOwner = _blockDb.GetOwnedMemory(blockHash.Bytes);
         }

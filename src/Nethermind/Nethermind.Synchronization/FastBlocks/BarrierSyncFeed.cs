@@ -41,7 +41,7 @@ public abstract class BarrierSyncFeed<T> : ActivatedSyncFeed<T>
     {
         _metadataDb = metadataDb ?? throw new ArgumentNullException(nameof(metadataDb));
         _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
-        _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+        _logger = logger;
     }
 
     public void InitializeMetadataDb()

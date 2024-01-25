@@ -73,7 +73,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
             writer.WriteStartObject();
 
             writer.WritePropertyName("action"u8);
-            JsonSerializer.Serialize(writer, value, options);
+            ParityTraceActionConverter.Instance.Write(writer, value, options);
 
             if (value.Error is null)
             {

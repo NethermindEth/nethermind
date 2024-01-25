@@ -90,7 +90,7 @@ public class DbOnTheRocks : IDb, ITunableDb
         _perTableDbConfig = new PerTableDbConfig(dbConfig, _settings);
         _db = Init(basePath, dbSettings.DbPath, dbConfig, logManager, columnFamilies, dbSettings.DeleteOnStart, sharedCache);
 
-        if (_perTableDbConfig.AdditionalRocksDbOptions != null)
+        if (_perTableDbConfig.AdditionalRocksDbOptions is not null)
         {
             ApplyOptions(_perTableDbConfig.AdditionalRocksDbOptions);
         }
@@ -113,7 +113,7 @@ public class DbOnTheRocks : IDb, ITunableDb
         IList<string>? columnNames = null, bool deleteOnStart = false, IntPtr? sharedCache = null)
     {
         _fullPath = GetFullDbPath(dbPath, basePath);
-        _logger = logManager?.GetClassLogger() ?? NullLogger.Instance;
+        _logger = logManager?.GetClassLogger() ?? default;
         if (!Directory.Exists(_fullPath))
         {
             Directory.CreateDirectory(_fullPath);
@@ -131,7 +131,7 @@ public class DbOnTheRocks : IDb, ITunableDb
             BuildOptions(_perTableDbConfig, DbOptions, sharedCache);
 
             ColumnFamilies? columnFamilies = null;
-            if (columnNames != null)
+            if (columnNames is not null)
             {
                 columnFamilies = new ColumnFamilies();
                 foreach (string enumColumnName in columnNames)
@@ -154,7 +154,7 @@ public class DbOnTheRocks : IDb, ITunableDb
             if (dbConfig.EnableMetricsUpdater)
             {
                 _metricsUpdaters.Add(new DbMetricsUpdater(Name, DbOptions, db, null, dbConfig, _logger));
-                if (columnFamilies != null)
+                if (columnFamilies is not null)
                 {
                     foreach (ColumnFamilies.Descriptor columnFamily in columnFamilies)
                     {
@@ -341,7 +341,7 @@ public class DbOnTheRocks : IDb, ITunableDb
         options.SetOptimizeFiltersForHits(1);
 
         ulong blockCacheSize = dbConfig.BlockCacheSize;
-        if (sharedCache != null && blockCacheSize == 0)
+        if (sharedCache is not null && blockCacheSize == 0)
         {
             tableOptions.SetBlockCache(sharedCache.Value);
         }
@@ -414,7 +414,7 @@ public class DbOnTheRocks : IDb, ITunableDb
         // VERY important to reduce stalls. Allow L0->L1 compaction to happen with multiple thread.
         _rocksDbNative.rocksdb_options_set_max_subcompactions(options.Handle, (uint)Environment.ProcessorCount);
 
-        if (dbConfig.CompactionReadAhead != null && dbConfig.CompactionReadAhead != 0)
+        if (dbConfig.CompactionReadAhead is not null && dbConfig.CompactionReadAhead != 0)
         {
             options.SetCompactionReadaheadSize(dbConfig.CompactionReadAhead.Value);
         }
@@ -482,7 +482,7 @@ public class DbOnTheRocks : IDb, ITunableDb
 
         try
         {
-            if (_readAheadReadOptions != null && (flags & ReadFlags.HintReadAhead) != 0)
+            if (_readAheadReadOptions is not null && (flags & ReadFlags.HintReadAhead) != 0)
             {
                 if (!readaheadIterators.IsValueCreated)
                 {
@@ -855,7 +855,7 @@ public class DbOnTheRocks : IDb, ITunableDb
 
         private static WriteBatch CreateWriteBatch()
         {
-            if (_reusableWriteBatch == null) return new WriteBatch();
+            if (_reusableWriteBatch is null) return new WriteBatch();
 
             WriteBatch batch = _reusableWriteBatch;
             _reusableWriteBatch = null;
@@ -865,7 +865,7 @@ public class DbOnTheRocks : IDb, ITunableDb
         private static void ReturnWriteBatch(WriteBatch batch)
         {
             Native.Instance.rocksdb_writebatch_data(batch.Handle, out UIntPtr size);
-            if (size > (uint)16.KiB() || _reusableWriteBatch != null)
+            if (size > (uint)16.KiB() || _reusableWriteBatch is not null)
             {
                 batch.Dispose();
                 return;

@@ -96,7 +96,7 @@ namespace Nethermind.Network
             _networkConfig = networkConfig ?? throw new ArgumentNullException(nameof(networkConfig));
             _logger = _logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
 
-            if (networkConfig.ClientIdMatcher != null)
+            if (networkConfig.ClientIdMatcher is not null)
             {
                 _clientIdPattern = new Regex(networkConfig.ClientIdMatcher, RegexOptions.Compiled);
             }

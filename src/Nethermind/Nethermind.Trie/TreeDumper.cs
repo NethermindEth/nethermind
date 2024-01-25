@@ -88,7 +88,7 @@ namespace Nethermind.Trie
 
         private static string? KeccakOrRlpStringOfNode(TrieNode node)
         {
-            return node.Keccak != null ? node.Keccak!.Bytes.ToHexString() : node.FullRlp.AsSpan().ToHexString();
+            return node.Keccak is not null ? node.Keccak!.Bytes.ToHexString() : node.FullRlp.AsSpan().ToHexString();
         }
     }
 }

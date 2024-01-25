@@ -29,7 +29,7 @@ public readonly struct CappedArray<T>
 
     public CappedArray(T[]? array)
     {
-        if (array != null)
+        if (array is not null)
         {
             _array = array;
             _length = array.Length;
@@ -43,7 +43,7 @@ public readonly struct CappedArray<T>
 
     public static implicit operator CappedArray<T>(T[]? array)
     {
-        if (array == null) return default;
+        if (array is null) return default;
         return new CappedArray<T>(array);
     }
 

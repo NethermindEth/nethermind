@@ -73,8 +73,10 @@ namespace Nethermind.Synchronization.Test
             ITimer timer = Substitute.For<ITimer>();
             timerFactory.CreateTimer(Arg.Any<TimeSpan>()).Returns(timer);
             ILogManager logManager = Substitute.For<ILogManager>();
-            ILogger logger = Substitute.For<ILogger>();
-            logger.IsInfo.Returns(true);
+            InterfaceLogger iLogger = Substitute.For<InterfaceLogger>();
+            iLogger.IsInfo.Returns(true);
+            iLogger.IsError.Returns(true);
+            ILogger logger = new(iLogger);
             logManager.GetClassLogger().Returns(logger);
 
             Queue<SyncMode> syncModes = new();
@@ -100,15 +102,15 @@ namespace Nethermind.Synchronization.Test
 
             if (setBarriers)
             {
-                logger.Received(1).Info("Old Headers    0 / 100 (  0.00 %) | queue         0 | current            0 Blk/s | total            0 Blk/s");
-                logger.Received(1).Info("Old Bodies     0 / 70 (  0.00 %) | queue         0 | current            0 Blk/s | total            0 Blk/s");
-                logger.Received(1).Info("Old Receipts   0 / 65 (  0.00 %) | queue         0 | current            0 Blk/s | total            0 Blk/s");
+                iLogger.Received(1).Info("Old Headers    0 / 100 (  0.00 %) | queue         0 | current            0 Blk/s | total            0 Blk/s");
+                iLogger.Received(1).Info("Old Bodies     0 / 70 (  0.00 %) | queue         0 | current            0 Blk/s | total            0 Blk/s");
+                iLogger.Received(1).Info("Old Receipts   0 / 65 (  0.00 %) | queue         0 | current            0 Blk/s | total            0 Blk/s");
             }
             else
             {
-                logger.Received(1).Info("Old Headers    0 / 100 (  0.00 %) | queue         0 | current            0 Blk/s | total            0 Blk/s");
-                logger.Received(1).Info("Old Bodies     0 / 100 (  0.00 %) | queue         0 | current            0 Blk/s | total            0 Blk/s");
-                logger.Received(1).Info("Old Receipts   0 / 100 (  0.00 %) | queue         0 | current            0 Blk/s | total            0 Blk/s");
+                iLogger.Received(1).Info("Old Headers    0 / 100 (  0.00 %) | queue         0 | current            0 Blk/s | total            0 Blk/s");
+                iLogger.Received(1).Info("Old Bodies     0 / 100 (  0.00 %) | queue         0 | current            0 Blk/s | total            0 Blk/s");
+                iLogger.Received(1).Info("Old Receipts   0 / 100 (  0.00 %) | queue         0 | current            0 Blk/s | total            0 Blk/s");
             }
         }
     }

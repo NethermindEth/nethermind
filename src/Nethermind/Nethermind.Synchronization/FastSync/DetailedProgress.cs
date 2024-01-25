@@ -102,7 +102,7 @@ namespace Nethermind.Synchronization.FastSync
 
         private void LoadFromSerialized(byte[]? serializedData)
         {
-            if (serializedData == null)
+            if (serializedData is null)
             {
                 return;
             }

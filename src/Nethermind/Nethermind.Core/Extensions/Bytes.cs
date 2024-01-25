@@ -205,7 +205,7 @@ namespace Nethermind.Core.Extensions
 
         public static Span<byte> WithoutLeadingZerosOrEmpty(this byte[] bytes)
         {
-            if (bytes == null || bytes.Length == 0) return Array.Empty<byte>();
+            if (bytes is null || bytes.Length == 0) return Array.Empty<byte>();
             return bytes.AsSpan().WithoutLeadingZeros();
         }
 
