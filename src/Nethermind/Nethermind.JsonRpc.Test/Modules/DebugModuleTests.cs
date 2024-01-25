@@ -4,7 +4,6 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
@@ -25,7 +24,6 @@ using Nethermind.JsonRpc.Modules.DebugModule;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
-using Nethermind.Specs.Forks;
 using NSubstitute;
 using NSubstitute.ReturnsExtensions;
 using NUnit.Framework;
@@ -303,10 +301,10 @@ public class DebugModuleTests
         Assert.That(result, Is.EqualTo(AddBlockResult.InvalidBlock));
 
         DebugRpcModule rpcModule = new(LimboLogs.Instance, debugBridge, jsonRpcConfig, specProvider);
-        ResultWrapper<IEnumerable<DebugBlockForRpc>> blocks = rpcModule.debug_getBadBlocks();
+        ResultWrapper<IEnumerable<BadBlock>> blocks = rpcModule.debug_getBadBlocks();
         Assert.That(blocks.Data.Count, Is.EqualTo(1));
         Assert.That(blocks.Data.ElementAt(0).Hash, Is.EqualTo(block1.Hash));
-        Assert.That(blocks.Data.ElementAt(0).Difficulty, Is.EqualTo(new UInt256(2)));
+        Assert.That(blocks.Data.ElementAt(0).Block.Difficulty, Is.EqualTo(new UInt256(2)));
     }
 
     [Test]

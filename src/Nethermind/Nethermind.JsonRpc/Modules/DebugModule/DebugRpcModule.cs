@@ -28,7 +28,7 @@ public class DebugRpcModule : IDebugRpcModule
     private readonly TimeSpan _traceTimeout;
     private readonly IJsonRpcConfig _jsonRpcConfig;
     private readonly ISpecProvider _specProvider;
-    private readonly HeaderDecoder _headerDecoder;
+    private readonly BlockDecoder _blockDecoder;
 
     public DebugRpcModule(ILogManager logManager, IDebugBridge debugBridge, IJsonRpcConfig jsonRpcConfig, ISpecProvider specProvider)
     {
@@ -37,7 +37,7 @@ public class DebugRpcModule : IDebugRpcModule
         _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
         _logger = logManager.GetClassLogger();
         _traceTimeout = TimeSpan.FromMilliseconds(_jsonRpcConfig.Timeout);
-        _headerDecoder = new HeaderDecoder();
+        _blockDecoder = new BlockDecoder();
     }
 
     public ResultWrapper<ChainLevelForRpc> debug_getChainLevel(in long number)
@@ -328,9 +328,9 @@ public class DebugRpcModule : IDebugRpcModule
         return ResultWrapper<IEnumerable<string>>.Success(files);
     }
 
-    public ResultWrapper<IEnumerable<DebugBlockForRpc>> debug_getBadBlocks()
+    public ResultWrapper<IEnumerable<BadBlock>> debug_getBadBlocks()
     {
-        IEnumerable<DebugBlockForRpc> badBlocks = _debugBridge.GetBadBlocks().Select(block => new DebugBlockForRpc(block, true, _specProvider, _headerDecoder));
-        return ResultWrapper<IEnumerable<DebugBlockForRpc>>.Success(badBlocks);
+        IEnumerable<BadBlock> badBlocks = _debugBridge.GetBadBlocks().Select(block => new BadBlock(block, true, _specProvider, _blockDecoder));
+        return ResultWrapper<IEnumerable<BadBlock>>.Success(badBlocks);
     }
 }
