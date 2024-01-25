@@ -71,7 +71,7 @@ namespace Nethermind.State
         {
             return _persistentStorageProvider.GetOriginal(storageCell);
         }
-        public Span<byte> Get(in StorageCell storageCell)
+        public ReadOnlySpan<byte> Get(in StorageCell storageCell)
         {
             return _persistentStorageProvider.Get(storageCell);
         }
@@ -79,7 +79,7 @@ namespace Nethermind.State
         {
             _persistentStorageProvider.Set(storageCell, newValue);
         }
-        public Span<byte> GetTransientState(in StorageCell storageCell)
+        public ReadOnlySpan<byte> GetTransientState(in StorageCell storageCell)
         {
             return _transientStorageProvider.Get(storageCell);
         }
