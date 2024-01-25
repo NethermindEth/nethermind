@@ -19,25 +19,29 @@ using Nethermind.Int256;
 
 namespace Nethermind.Merge.AuRa.Shutter;
 
+using G1 = BlsCurve.G1;
+using G2 = BlsCurve.G2;
+using GT = BlsCurve.GT;
+
 public class Crypto
 {
     public struct EncryptedMessage
     {
-        public BlsCurve.G2 c1;
+        public G2 c1;
         public Bytes32 c2;
         public IEnumerable<Bytes32> c3;
     }
 
-    public static BlsCurve.G1 ComputeIdentity(Bytes32 identityPrefix, Address sender)
+    public static G1 ComputeIdentity(Bytes32 identityPrefix, Address sender)
     {
         Span<byte> identity = stackalloc byte[52];
         identityPrefix.Unwrap().CopyTo(identity);
         sender.Bytes.CopyTo(identity[32..]);
         // todo: reverse?
-        return Keccak.Compute(identity).Bytes * BlsCurve.G1.Generator;
+        return Keccak.Compute(identity).Bytes * G1.Generator;
     }
 
-    public static byte[] Decrypt(EncryptedMessage encryptedMessage, BlsCurve.G1 key)
+    public static byte[] Decrypt(EncryptedMessage encryptedMessage, G1 key)
     {
         Bytes32 sigma = RecoverSigma(encryptedMessage, key);
         IEnumerable<Bytes32> keys = ComputeBlockKeys(sigma, encryptedMessage.c3.Count());
@@ -45,7 +49,7 @@ public class Crypto
         byte[] msg = UnpadAndJoin(decryptedBlocks);
 
         UInt256 r = ComputeR(sigma, msg);
-        BlsCurve.G2 expectedC1 = ComputeC1(r);
+        G2 expectedC1 = ComputeC1(r);
         if (expectedC1 != encryptedMessage.c1)
         {
             throw new Exception("Could not decrypt message.");
@@ -54,9 +58,9 @@ public class Crypto
         return msg;
     }
 
-    private static Bytes32 RecoverSigma(EncryptedMessage encryptedMessage, BlsCurve.G1 decryptionKey)
+    private static Bytes32 RecoverSigma(EncryptedMessage encryptedMessage, G1 decryptionKey)
     {
-        BlsCurve.GT p = BlsCurve.PairingGT(decryptionKey, encryptedMessage.c1);
+        GT p = BlsCurve.Pairing(decryptionKey, encryptedMessage.c1);
         Bytes32 key = HashGTToBlock(p);
         Bytes32 sigma = XorBlocks(encryptedMessage.c2, key);
         return sigma;
@@ -67,9 +71,9 @@ public class Crypto
         return HashBlocksToInt([sigma, HashBytesToBlock(msg)]);
     }
 
-    private static BlsCurve.G2 ComputeC1(UInt256 r)
+    private static G2 ComputeC1(UInt256 r)
     {
-        return BlsCurve.G2.FromScalar(r);
+        return G2.FromScalar(r);
     }
 
     // helper functions
@@ -153,12 +157,12 @@ public class Crypto
         return new(v.ToBigEndianByteArray(32));
     }
 
-    private static Bytes32 HashGTToBlock(BlsCurve.GT p)
+    private static Bytes32 HashGTToBlock(GT p)
     {
         return HashBytesToBlock(EncodeGT(p));
     }
 
-    private static byte[] EncodeGT(BlsCurve.GT p)
+    private static byte[] EncodeGT(GT p)
     {
         return [];
     }

@@ -14,6 +14,9 @@ using Nethermind.Crypto.PairingCurves;
 
 namespace Nethermind.Crypto;
 
+using G1 = BlsCurve.G1;
+using G2 = BlsCurve.G2;
+
 public class Bls
 {
     internal static readonly byte[] Cryptosuite = Encoding.ASCII.GetBytes("BLS_SIG_BLS12381G1_XMD:SHA-256_SSWU_RO_NUL_");
@@ -26,12 +29,12 @@ public class Bls
 
     public static bool Verify(PublicKey publicKey, Signature signature, ReadOnlySpan<byte> message)
     {
-        return BlsCurve.PairingsEqual(FromSignature(signature), BlsCurve.G2.Generator, HashToCurve(message, Cryptosuite), FromPublicKey(publicKey));
+        return BlsCurve.PairingsEqual(FromSignature(signature), G2.Generator, HashToCurve(message, Cryptosuite), FromPublicKey(publicKey));
     }
 
     public static PublicKey GetPublicKey(PrivateKey privateKey)
     {
-        return ToPublicKey(privateKey.Bytes.Reverse().ToArray() * BlsCurve.G2.Generator);
+        return ToPublicKey(privateKey.Bytes.Reverse().ToArray() * G2.Generator);
     }
 
     public struct PrivateKey
@@ -60,39 +63,39 @@ public class Bls
         {
         }
     }
-    internal static BlsCurve.G1 FromSignature(Signature signature)
+    internal static G1 FromSignature(Signature signature)
     {
-        BlsCurve.G1 P = BlsCurve.G1.Zero;
+        G1 P = G1.Zero;
         Span<byte> X = stackalloc byte[48];
         bool sign = DecompressPoint(signature.Bytes, X);
-        return BlsCurve.G1.FromX(X, sign);
+        return G1.FromX(X, sign);
     }
 
-    internal static Signature ToSignature(BlsCurve.G1 p)
+    internal static Signature ToSignature(G1 p)
     {
         Signature s = new();
-        BlsCurve.G1 twistedPoint = BlsCurve.G1.FromX(p.X, true);
-        bool sign = Enumerable.SequenceEqual(p.Y, twistedPoint.Y);
+        G1 fromX = G1.FromX(p.X, true);
+        bool sign = Enumerable.SequenceEqual(p.Y, fromX.Y);
         CompressPoint(p.X, sign, s.Bytes);
         return s;
     }
 
-    internal static BlsCurve.G2 FromPublicKey(PublicKey pk)
+    internal static G2 FromPublicKey(PublicKey pk)
     {
         Span<byte> X0 = stackalloc byte[48];
         Span<byte> X1 = stackalloc byte[48];
 
-        BlsCurve.G2 P = BlsCurve.G2.Zero;
+        G2 P = G2.Zero;
         bool sign = DecompressPoint(pk.Bytes.AsSpan()[..48], X1);
         pk.Bytes.AsSpan()[48..].CopyTo(X0);
 
-        return BlsCurve.G2.FromX(X0, X1, sign);
+        return G2.FromX(X0, X1, sign);
     }
 
-    internal static PublicKey ToPublicKey(BlsCurve.G2 p)
+    internal static PublicKey ToPublicKey(G2 p)
     {
         PublicKey pk = new();
-        bool sign = BlsCurve.Fp(p.Y.Item1) < BlsCurve.Fp(p.Y.Item2);
+        bool sign = BlsCurve.Fq(p.Y.Item1) < BlsCurve.Fq(p.Y.Item2);
         CompressPoint(p.X.Item2, sign, pk.Bytes.AsSpan()[..48]);
         p.X.Item1.CopyTo(pk.Bytes.AsSpan()[48..]);
         return pk;
@@ -102,12 +105,12 @@ public class Bls
     // https://datatracker.ietf.org/doc/html/rfc9380#section-8.8.1
     // implementation:
     // https://datatracker.ietf.org/doc/html/rfc9380#section-3
-    internal static BlsCurve.G1 HashToCurve(ReadOnlySpan<byte> msg, ReadOnlySpan<byte> dst)
+    internal static G1 HashToCurve(ReadOnlySpan<byte> msg, ReadOnlySpan<byte> dst)
     {
         List<byte[]> u = HashToField(msg, 2, dst);
         // n.b. MapToCurve implements clear_cofactor internally
-        var q0 = BlsCurve.G1.MapToCurve(u[0]);
-        var q1 = BlsCurve.G1.MapToCurve(u[1]);
+        var q0 = G1.MapToCurve(u[0]);
+        var q1 = G1.MapToCurve(u[1]);
         return q0 + q1;
     }
 

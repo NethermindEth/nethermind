@@ -4,6 +4,7 @@
 using System.Numerics;
 
 namespace Nethermind.Crypto.PairingCurves;
+
 public interface IBaseField
 {
     BigInteger GetOrder();

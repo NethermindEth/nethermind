@@ -12,7 +12,7 @@ namespace Nethermind.Crypto.PairingCurves;
 public class Bn254Curve
 {
     public static readonly BigInteger BaseFieldOrder = new([0x30, 0x64, 0x4E, 0x72, 0xE1, 0x31, 0xA0, 0x29, 0xB8, 0x50, 0x45, 0xB6, 0x81, 0x81, 0x58, 0x5D, 0x97, 0x81, 0x6A, 0x91, 0x68, 0x71, 0xCA, 0x8D, 0x3C, 0x20, 0x8C, 0x16, 0xD8, 0x7C, 0xFD, 0x47], true, true);
-    public static readonly BigInteger FpQuadraticNonResidue = BaseFieldOrder - 1;
+    public static readonly BigInteger FqQuadraticNonResidue = BaseFieldOrder - 1;
     public static readonly byte[] SubgroupOrder = [0x30, 0x64, 0x4E, 0x72, 0xE1, 0x31, 0xA0, 0x29, 0xB8, 0x50, 0x45, 0xB6, 0x81, 0x81, 0x58, 0x5D, 0x28, 0x33, 0xE8, 0x48, 0x79, 0xB9, 0x70, 0x91, 0x43, 0xE1, 0xF5, 0x93, 0xF0, 0x00, 0x00, 0x01];
     public static readonly byte[] SubgroupOrderMinusOne = [0x30, 0x64, 0x4E, 0x72, 0xE1, 0x31, 0xA0, 0x29, 0xB8, 0x50, 0x45, 0xB6, 0x81, 0x81, 0x58, 0x5D, 0x28, 0x33, 0xE8, 0x48, 0x79, 0xB9, 0x70, 0x91, 0x43, 0xE1, 0xF5, 0x93, 0xF0, 0x00, 0x00, 0x00];
 
@@ -31,8 +31,8 @@ public class Bn254Curve
         Span<byte> encoded = stackalloc byte[192 * 2];
         Span<byte> output = stackalloc byte[32];
         a1.Encode(encoded[..64]);
-        a2.Encode(encoded[64..]);
-        b1.Encode(encoded[192..]);
+        a2.Encode(encoded[64..192]);
+        b1.Encode(encoded[192..256]);
         b2.Encode(encoded[256..]);
         Pairings.Bn254Pairing(encoded, output);
         return output[31] == 1;
@@ -59,29 +59,132 @@ public class Bn254Curve
         }
     }
 
-    public static Fp<BaseField> Fp(ReadOnlySpan<byte> bytes)
+    public class Params : ICurveParams<BaseField>
     {
-        return new Fp<BaseField>(bytes, BaseField.Instance);
+        public static readonly Params Instance = new();
+        private Params() { }
+
+        public (Fq<BaseField>, Fq<BaseField>) G1FromX(Fq<BaseField> x, bool sign)
+        {
+            (Fq<BaseField>, Fq<BaseField>) res = Fq<BaseField>.Sqrt((x ^ Fq(3)) + Fq(3));
+            return (x, sign ? res.Item1 : res.Item2);
+        }
+
+        public bool G1IsOnCurve((Fq<BaseField>, Fq<BaseField>)? p)
+        {
+            if (p is null)
+            {
+                return false;
+            }
+            else
+            {
+                return (p.Value.Item1 ^ Fq(3)) + Fq(3) == p.Value.Item2 * p.Value.Item2;
+            }
+        }
+
+        public (Fq2<BaseField>, Fq2<BaseField>) G2FromX(Fq2<BaseField> x, bool sign)
+        {
+            return (x, Fq2<BaseField>.Sqrt((x ^ Fq(3)) + (Fq2(3) / Fq2(1, 9)), sign));
+        }
+
+        public bool G2IsOnCurve((Fq2<BaseField>, Fq2<BaseField>)? p)
+        {
+            if (p is null)
+            {
+                return false;
+            }
+            else
+            {
+                return (p.Value.Item1 ^ Fq(3)) + (Fq2(3) / Fq2(1, 9)) == p.Value.Item2 * p.Value.Item2;
+            }
+        }
+
+        public (Fq12<BaseField>, Fq12<BaseField>) GTFromX(Fq12<BaseField> x, bool sign)
+        {
+            throw new NotImplementedException();
+        }
+
+        public bool GTIsOnCurve((Fq12<BaseField>, Fq12<BaseField>)? p)
+        {
+            if (p is null)
+            {
+                return false;
+            }
+            else
+            {
+                return (p.Value.Item1 ^ Fq(3)) + Fq12<BaseField>.MulNonRes(Fq12(3)) == p.Value.Item2 * p.Value.Item2;
+            }
+        }
+
+        public BaseField GetBaseField()
+        {
+            return BaseField.Instance;
+        }
+
+        public BigInteger GetSubgroupOrder()
+        {
+            return new BigInteger(SubgroupOrder, true, true);
+        }
+
+        public BigInteger GetX()
+        {
+            return -new BigInteger(0xd201000000010000);
+        }
     }
 
-    public static Fp<BaseField> Fp(BigInteger x)
+    public static Fq<BaseField> Fq(ReadOnlySpan<byte> bytes)
     {
-        return new Fp<BaseField>(x, BaseField.Instance);
+        return new Fq<BaseField>(bytes, BaseField.Instance);
     }
 
-    public static Fp2<BaseField> Fp2(ReadOnlySpan<byte> X0, ReadOnlySpan<byte> X1)
+    public static Fq<BaseField> Fq(BigInteger x)
     {
-        return new Fp2<BaseField>(Fp(X0), Fp(X1), BaseField.Instance);
+        return new Fq<BaseField>(x, BaseField.Instance);
     }
 
-    public static Fp2<BaseField> Fp2(BigInteger a, BigInteger b)
+    public static Fq2<BaseField> Fq2(ReadOnlySpan<byte> X0, ReadOnlySpan<byte> X1)
     {
-        return new Fp2<BaseField>(Fp(a), Fp(b), BaseField.Instance);
+        return new Fq2<BaseField>(Fq(X0), Fq(X1), BaseField.Instance);
     }
 
-    public static Fp2<BaseField> Fp2(BigInteger b)
+    public static Fq2<BaseField> Fq2(BigInteger a, BigInteger b)
     {
-        return new Fp2<BaseField>(Fp(0), Fp(b), BaseField.Instance);
+        return new Fq2<BaseField>(Fq(a), Fq(b), BaseField.Instance);
+    }
+
+    public static Fq2<BaseField> Fq2(BigInteger b)
+    {
+        return Fq2<BaseField>.FromFq(Fq(b));
+    }
+
+    public static Fq6<BaseField> Fq6(Fq2<BaseField> a, Fq2<BaseField> b, Fq2<BaseField> c)
+    {
+        return new(a, b, c, BaseField.Instance);
+    }
+
+    public static Fq6<BaseField> Fq6(BigInteger b)
+    {
+        return Fq6<BaseField>.FromFq(Fq(b));
+    }
+
+    public static Fq6<BaseField> Fq6(Fq<BaseField> b)
+    {
+        return Fq6<BaseField>.FromFq(b);
+    }
+
+    public static Fq12<BaseField> Fq12(Fq6<BaseField> a, Fq6<BaseField> b)
+    {
+        return new(a, b, BaseField.Instance);
+    }
+
+    public static Fq12<BaseField> Fq12(BigInteger b)
+    {
+        return Fq12<BaseField>.FromFq(Fq(b));
+    }
+
+    public static Fq12<BaseField> Fq12(Fq<BaseField> b)
+    {
+        return Fq12<BaseField>.FromFq(b);
     }
 
     public class G1 : IEquatable<G1>
@@ -107,11 +210,28 @@ public class Bn254Curve
             Y.CopyTo(this.Y);
         }
 
+        public G1((Fq<BaseField>, Fq<BaseField>)? p)
+        {
+            if (Params.Instance.G1IsOnCurve(p))
+            {
+                X = p.Value.Item1.ToBytes();
+                Y = p.Value.Item2.ToBytes();
+
+                if (!IsInSubgroup())
+                {
+                    throw new Exception("Invalid G1 point");
+                }
+            }
+        }
+
+        public (Fq<BaseField>, Fq<BaseField>) ToFq()
+        {
+            return (Fq(X), Fq(Y));
+        }
+
         public static G1 FromX(ReadOnlySpan<byte> X, bool sign)
         {
-            (Fp<BaseField>, Fp<BaseField>) res = Fp<BaseField>.Sqrt((Fp(X) ^ Fp(3)) + Fp(3));
-            Fp<BaseField> Y = sign ? res.Item1 : res.Item2;
-            return new G1(X, Y.ToBytes());
+            return new G1(X, Params.Instance.G1FromX(Fq(X), sign).Item2.ToBytes());
         }
 
         public static G1 FromScalar(UInt256 x)
@@ -165,7 +285,18 @@ public class Bn254Curve
 
         public static G1 operator -(G1 p)
         {
-            return SubgroupOrderMinusOne * p;
+            if (p == Zero)
+            {
+                return Zero;
+            }
+
+            (Fq<BaseField>, Fq<BaseField>)? tmp = p.ToFq();
+            return new((tmp.Value.Item1, -tmp.Value.Item2));
+        }
+
+        public bool IsInSubgroup()
+        {
+            return (SubgroupOrder * this) == Zero;
         }
 
         internal void Encode(Span<byte> output)
@@ -209,9 +340,30 @@ public class Bn254Curve
             Y1.CopyTo(Y.Item2);
         }
 
+        public G2((Fq2<BaseField>, Fq2<BaseField>)? p)
+        {
+            if (Params.Instance.G2IsOnCurve(p))
+            {
+                X.Item1 = p.Value.Item1.a.ToBytes();
+                X.Item2 = p.Value.Item1.b.ToBytes();
+                Y.Item1 = p.Value.Item2.a.ToBytes();
+                Y.Item2 = p.Value.Item2.b.ToBytes();
+
+                if (!IsInSubgroup())
+                {
+                    throw new Exception("Invalid G2 point");
+                }
+            }
+        }
+
         public static G2 FromScalar(UInt256 x)
         {
             return x.ToBigEndian() * Generator;
+        }
+
+        public (Fq2<BaseField>, Fq2<BaseField>) ToFq()
+        {
+            return (Fq2(X.Item1, X.Item2), Fq2(Y.Item1, Y.Item2));
         }
 
         public static G2 FromX(ReadOnlySpan<byte> X0, ReadOnlySpan<byte> X1, bool sign)
@@ -221,9 +373,7 @@ public class Bn254Curve
                 throw new Exception("Cannot create G2 point from X, encoded values must be 32 bytes each.");
             }
 
-            // y ^ 2 = sqrt((x ^ 3) + (3 / (i + 9))) = a + bi
-            Fp2<BaseField> x = Fp2(X0, X1);
-            var y = Fp2<BaseField>.Sqrt((x ^ 3) + (Fp2(3) / Fp2(1, 9)), sign);
+            Fq2<BaseField> y = Params.Instance.G2FromX(Fq2(X0, X1), sign).Item2;
             return new G2(X0, X1, y.a.ToBytes(), y.b.ToBytes());
         }
 
@@ -254,77 +404,30 @@ public class Bn254Curve
 
         public static G2 operator *(UInt256 s, G2 p)
         {
-            if (!OnCurve(p))
-            {
-                throw new Exception("Not on G2 curve, cannot multiply.");
-            }
-
-            G2 a = p;
-            G2 b = Zero;
-
-            for (int i = 0; i < 32; i++)
-            {
-                if ((s & 1) == 1)
-                {
-                    b += a;
-                }
-                a += a;
-                s >>= 1;
-            }
-
-            return b;
+            (Fq2<BaseField>, Fq2<BaseField>)? r = FieldArithmetic<BaseField>.G2Multiply(s, p.ToFq(), Params.Instance);
+            return new(r);
         }
 
         public static G2 operator +(G2 p, G2 q)
         {
-            if (!OnCurve(p) || !OnCurve(q))
-            {
-                throw new Exception("Not on G2 curve, cannot add.");
-            }
-
-            if (p == Zero)
-            {
-                return q;
-            }
-
-            if (q == Zero)
-            {
-                return p;
-            }
-
-            Fp2<BaseField> x1 = Fp2(p.X.Item1, p.X.Item2);
-            Fp2<BaseField> y1 = Fp2(p.Y.Item1, p.Y.Item2);
-            Fp2<BaseField> x2 = Fp2(q.X.Item1, q.X.Item2);
-            Fp2<BaseField> y2 = Fp2(q.Y.Item1, q.Y.Item2);
-
-            if (p == q)
-            {
-                if (y1 == Fp2(0))
-                {
-                    return Zero;
-                }
-
-                Fp2<BaseField> lambda = Fp2(3) * (x1 ^ 2) / (Fp2(2) * y1);
-                Fp2<BaseField> x = (lambda ^ 2) - (Fp2(2) * x2);
-                Fp2<BaseField> y = (lambda * (x1 - x)) - y1;
-                return new(x.a.ToBytes(), x.b.ToBytes(), y.a.ToBytes(), y.b.ToBytes());
-            }
-            else if (x1 != x2)
-            {
-                Fp2<BaseField> lambda = (y2 - y1) / (x2 - x1);
-                Fp2<BaseField> x = (lambda ^ 2) - x1 - x2;
-                Fp2<BaseField> y = (lambda * (x1 - x)) - y1;
-                return new(x.a.ToBytes(), x.b.ToBytes(), y.a.ToBytes(), y.b.ToBytes());
-            }
-            else
-            {
-                return Zero;
-            }
+            (Fq2<BaseField>, Fq2<BaseField>)? r = FieldArithmetic<BaseField>.G2Add(p.ToFq(), q.ToFq(), BaseField.Instance);
+            return new(r);
         }
 
         public static G2 operator -(G2 p)
         {
-            return SubgroupOrderMinusOne * p;
+            if (p == Zero)
+            {
+                return Zero;
+            }
+
+            (Fq2<BaseField>, Fq2<BaseField>)? tmp = p.ToFq();
+            return new((tmp.Value.Item1, -tmp.Value.Item2));
+        }
+
+        public bool IsInSubgroup()
+        {
+            return (SubgroupOrder * this) == Zero;
         }
 
         internal void Encode(Span<byte> output)
@@ -334,28 +437,10 @@ public class Bn254Curve
                 throw new Exception("Encoding G2 point requires 128 bytes.");
             }
 
-            X.Item1.CopyTo(output[..32]);
-            X.Item2.CopyTo(output[32..]);
-            Y.Item1.CopyTo(output[64..]);
-            Y.Item2.CopyTo(output[96..]);
-        }
-
-        internal static bool OnCurve(G2 p)
-        {
-            if (p == Zero)
-            {
-                return true;
-            }
-
-            try
-            {
-                return p == FromX(p.X.Item1, p.X.Item2, Fp(p.Y.Item2) < Fp(p.Y.Item1));
-            }
-            catch (Exception)
-            {
-                // if unable to find x then cannot be on curve
-                return false;
-            }
+            X.Item2.CopyTo(output[..32]);
+            X.Item1.CopyTo(output[32..64]);
+            Y.Item2.CopyTo(output[64..96]);
+            Y.Item1.CopyTo(output[96..]);
         }
     }
 }
