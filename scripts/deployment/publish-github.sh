@@ -13,8 +13,7 @@ release_id=$(curl https://api.github.com/repos/$GITHUB_REPOSITORY/releases \
 
 should_publish=true
 
-if [ "$release_id" == "" ]
-then
+if [ "$release_id" == "" ]; then
   echo "Drafting release $GIT_TAG"
 
   body=$(printf \
@@ -33,8 +32,7 @@ fi
 
 cd $GITHUB_WORKSPACE/$PACKAGE_DIR
 
-for rid in "linux-x64" "linux-arm64" "windows-x64" "macos-x64" "macos-arm64" "ref-assemblies"
-do
+for rid in "linux-x64" "linux-arm64" "windows-x64" "macos-x64" "macos-arm64" "ref-assemblies"; do
   file_name=$(basename *$rid*)
 
   echo "Uploading $file_name"
@@ -48,8 +46,7 @@ do
     --data-binary @"$file_name"
 done
 
-if [ "$should_publish" == "true" ]
-then
+if [ "$should_publish" == "true" ]; then
   echo "Publishing release $GIT_TAG"
 
   make_latest=$([ $PRERELEASE = 'true' ] && echo "false" || echo "true")
