@@ -4,13 +4,16 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Linq;
 using FluentAssertions;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Db;
-using Nethermind.Evm.Tracing.GethStyle.JavaScript;
+using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
+using Nethermind.State;
 using Nethermind.Trie.Pruning;
 using NUnit.Framework;
 
@@ -18,8 +21,8 @@ namespace Nethermind.Trie.Test;
 
 public class VisitingTests
 {
-    [TestCaseSource(nameof(GetOptions))]
-    public void Visitors(VisitingOptions options)
+    [TestCaseSource(nameof(GetAccountOptions))]
+    public void Visitors_state(VisitingOptions options)
     {
         MemDb memDb = new();
 
@@ -33,7 +36,7 @@ public class VisitingTests
             raw.Clear();
 
             raw[i / 2] = (byte)(1 << (4 * (1 - i % 2)));
-            patriciaTree.Set(raw, [Rlp.NullObjectByte]);
+            patriciaTree.Set(raw, Rlp.Encode(new Account(10, (UInt256)(10_000_000 + i))));
         }
 
         patriciaTree.Commit(0);
@@ -41,20 +44,102 @@ public class VisitingTests
         var visitor = new AppendingVisitor();
 
         patriciaTree.Accept(visitor, patriciaTree.RootHash, options);
+
+        var setNibbles = new HashSet<int>(Enumerable.Range(0, 64));
+
+        foreach (var path in visitor.LeafPaths)
+        {
+            path.Length.Should().Be(64);
+
+            var index = path.AsSpan().IndexOfAnyExcept((byte)0);
+
+            path.AsSpan(index + 1).IndexOfAnyExcept((byte)0).Should()
+                .Be(-1, "Shall not found other values than the one nibble set");
+            path[index].Should().Be(1, "The given set should be 1 as this is the only nibble");
+            setNibbles.Remove(index).Should().BeTrue("The nibble should not have been removed before");
+        }
     }
 
-    public static IEnumerable<TestCaseData> GetOptions()
+    [TestCaseSource(nameof(GetStorageOptions))]
+    public void Visitors_storage(VisitingOptions options)
+    {
+        MemDb memDb = new();
+
+        using TrieStore trieStore = new(memDb, Prune.WhenCacheReaches(1.MB()), Persist.EveryBlock, LimboLogs.Instance);
+        StorageTree storage = new(trieStore, LimboLogs.Instance);
+
+        byte[] value = Enumerable.Range(1, 32).Select(i => (byte)i).ToArray();
+
+        for (int i = 0; i < 64; i++)
+        {
+            ValueHash256 storageKey = default;
+            storageKey.BytesAsSpan[i / 2] = (byte)(1 << (4 * (1 - i % 2)));
+            storage.Set(storageKey, value);
+        }
+
+        storage.Commit(0);
+
+        StateTree stateTree = new(trieStore, LimboLogs.Instance);
+
+        for (int i = 0; i < 64; i++)
+        {
+            ValueHash256 stateKey = default;
+            stateKey.BytesAsSpan[i / 2] = (byte)(1 << (4 * (1 - i % 2)));
+
+            stateTree.Set(stateKey,
+                new Account(10, (UInt256)(10_000_000 + i), storage.RootHash, Keccak.OfAnEmptySequenceRlp));
+        }
+
+        stateTree.Commit(0);
+
+        var visitor = new AppendingVisitor();
+
+        stateTree.Accept(visitor, stateTree.RootHash, options);
+
+        foreach (var path in visitor.LeafPaths)
+        {
+            if (path.Length == 64)
+            {
+                AssertPath(path);
+            }
+            else
+            {
+                path.Length.Should().Be(128);
+
+                var accountPart = path.Slice(0, 64);
+                var storagePart = path.Slice(64);
+
+                AssertPath(accountPart);
+                AssertPath(storagePart);
+            }
+        }
+
+        return;
+
+        static void AssertPath(ReadOnlySpan<byte> path)
+        {
+            var index = path.IndexOfAnyExcept((byte)0);
+            path.Slice(index + 1).IndexOfAnyExcept((byte)0).Should()
+                .Be(-1, "Shall not found other values than the one nibble set");
+            path[index].Should().Be(1, "The given set should be 1 as this is the only nibble");
+        }
+    }
+
+    public static IEnumerable<TestCaseData> GetAccountOptions() => GetOptions(false);
+    public static IEnumerable<TestCaseData> GetStorageOptions() => GetOptions(true);
+
+    private static IEnumerable<TestCaseData> GetOptions(bool expectAccounts)
     {
         yield return new TestCaseData(new VisitingOptions
         {
-            ExpectAccounts = false
+            ExpectAccounts = expectAccounts
         }).SetName("Default");
 
         yield return new TestCaseData(new VisitingOptions
         {
             MaxDegreeOfParallelism = Environment.ProcessorCount,
             FullScanMemoryBudget = 1.MiB(),
-            ExpectAccounts = false
+            ExpectAccounts = expectAccounts
         }).SetName("Parallel");
     }
 
@@ -114,11 +199,7 @@ public class VisitingTests
             byte[] value = null)
         {
             PathGatheringContext context = nodeContext.Add(node.Key!);
-
-            var nibbles = context.Nibbles;
-
-            nibbles.Length.Should().Be(64);
-            _paths.Enqueue(nibbles);
+            _paths.Enqueue(context.Nibbles);
         }
 
         public void VisitCode(in PathGatheringContext nodeContext, Hash256 codeHash, TrieVisitContext trieVisitContext)

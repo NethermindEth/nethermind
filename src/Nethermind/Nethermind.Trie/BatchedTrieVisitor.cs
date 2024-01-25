@@ -5,6 +5,7 @@ using System;
 using System.Buffers;
 using System.Buffers.Binary;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
@@ -72,7 +73,7 @@ public class BatchedTrieVisitor<TNodeContext>
 
         // The keccak + context itself should be 40 byte. But the measured byte seems to be 52 from GC stats POV.
         // The * 2 is just margin. RSS is still higher though, but that could be due to more deserialization.
-        long recordSize = 52 * 2;
+        long recordSize = (52 + Unsafe.SizeOf<TNodeContext>()) * 2;
         long recordCount = visitingOptions.FullScanMemoryBudget / recordSize;
         if (recordCount == 0) recordCount = 1;
 
