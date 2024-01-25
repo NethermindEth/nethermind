@@ -77,6 +77,12 @@ namespace Nethermind.Consensus.Validators
 
             IReleaseSpec spec = _specProvider.GetSpec(header);
             bool extraDataValid = ValidateExtraData(header, parent, spec, isUncle);
+            if (!extraDataValid)
+            {
+                error = $"InvalidExtraData: Extra data in header is not valid.";
+                return false;
+            }
+
             if (parent is null)
             {
                 if (header.Number == 0)
@@ -195,7 +201,7 @@ namespace Nethermind.Consensus.Validators
             return true;
         }
 
-        protected virtual bool ValidateExtraData(BlockHeader header, BlockHeader? parent, IReleaseSpec spec, bool isUncle = false)
+        protected virtual bool ValidateExtraData(BlockHeader header, BlockHeader? parent, IReleaseSpec spec, bool isUncle)
         {
             bool extraDataValid = header.ExtraData.Length <= spec.MaximumExtraDataSize
                                    && (isUncle
