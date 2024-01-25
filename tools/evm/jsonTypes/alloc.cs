@@ -1,7 +1,7 @@
-
 namespace JsonTypes
 {
-    public partial class Alloc
+    using Alloc = Dictionary<String, Account>;
+    public partial class Account
     {
         //Maybe missing some properties
         public string Balance { get; set; } = "0x0";

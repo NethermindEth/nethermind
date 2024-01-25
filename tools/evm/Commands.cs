@@ -4,7 +4,20 @@ using Ethereum.Test.Base;
 using Ethereum.Test.Base.Interfaces;
 namespace Nethermind.Tools.t8n;
 using Newtonsoft.Json;
-using Newtonsoft.Json.Converters;
+using Nethermind.Db;
+using Nethermind.Specs;
+using Nethermind.Core.Attributes;
+using Nethermind.Core.Extensions;
+using Nethermind.Specs.Forks;
+using Nethermind.Specs.Test;
+using Nethermind.State;
+using Nethermind.Trie.Pruning;
+using Nethermind.Core;
+using Nethermind.Core.Crypto;
+
+
+
+using Alloc = Dictionary<String, JsonTypes.Account>;
 
 public class TraceOptions
 {
@@ -77,7 +90,7 @@ public class T8N
         bool traceReturnData)
     {
 
-        Dictionary<String, JsonTypes.Alloc> allocJson = JsonConvert.DeserializeObject<Dictionary<String, JsonTypes.Alloc>>(File.ReadAllText(inputAlloc));
+        Alloc allocJson = JsonConvert.DeserializeObject<Alloc>(File.ReadAllText(inputAlloc));
         JsonTypes.Env envJson = JsonConvert.DeserializeObject<JsonTypes.Env>(File.ReadAllText(inputEnv));
 
         JsonTypes.Transaction[] txsJson = new JsonTypes.Transaction[0];
@@ -95,7 +108,7 @@ public class T8N
         Console.WriteLine(envJson.CurrentCoinbase);
 
 
-        foreach (KeyValuePair<string, JsonTypes.Alloc> entry in allocJson)
+        foreach (KeyValuePair<string, JsonTypes.Account> entry in allocJson)
         {
             Console.WriteLine(entry.Key);
             Console.WriteLine(entry.Value.Code);
@@ -114,7 +127,33 @@ public class T8N
             Console.WriteLine(tx.V);
         }
 
+
+
+        //Setup similar to Nethermind.Test.Runner runTest
+        IDb stateDb = new MemDb();
+        IDb codeDb = new MemDb();
+
+        //        TrieStore trieStore = new(stateDb, _logManager);
+        //        WorldState stateProvider = new(trieStore, codeDb, _logManager);
+        //        IBlockhashProvider blockhashProvider = new TestBlockhashProvider();
+        //        IVirtualMachine virtualMachine = new VirtualMachine(
+        //            blockhashProvider,
+        //            specProvider,
+        //            _logManager);
+        //
+
+
+
         //TODO: Convert to proper classes that Nethermind.Test.Runner uses
+        BlockHeader header = new(
+    envJson.PreviousHash,
+    Keccak.OfAnEmptySequenceRlp,
+    envJson.CurrentCoinbase,
+    Bytes.FromHexString(envJson.CurrentDifficulty).ToUInt256(),
+    envJson.CurrentNumber,
+    Bytes.FromHexString(envJson.CurrentGasLimit).ToLongFromBigEndianByteArrayWithoutLeadingZeros(),
+    envJson.CurrentTimestamp,
+    Array.Empty<byte>());
 
 
         return Task.CompletedTask;
