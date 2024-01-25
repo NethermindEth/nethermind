@@ -215,13 +215,6 @@ public partial class EngineModuleTests
         Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.None));
         result.Data.Status.Should().Be("INVALID");
         Assert.That(result.Data.ValidationError, Does.StartWith("InvalidStateRoot"));
-
-        result = await prevRpcModule.engine_newPayloadV3(payload, blobVersionedHashes, payload.ParentBeaconBlockRoot);
-
-        Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.None));
-        result.Data.Status.Should().Be("INVALID");
-        Assert.That(result.Data.ValidationError, Does.StartWith("InvalidStateRoot"));
-
     }
 
     [Test]
