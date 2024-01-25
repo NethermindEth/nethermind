@@ -121,6 +121,8 @@ public static class Program
         _ = app.HelpOption("-?|-h|--help");
         _ = app.VersionOption("-v|--version", () => ProductInfo.Version, GetProductInfo);
 
+        EnableConsoleColorOutput();
+
         CommandOption dataDir = app.Option("-dd|--datadir <dataDir>", "Data directory", CommandOptionType.SingleValue);
         CommandOption configFile = app.Option("-c|--config <configFile>", "Config file path", CommandOptionType.SingleValue);
         CommandOption dbBasePath = app.Option("-d|--baseDbPath <baseDbPath>", "Base db path", CommandOptionType.SingleValue);
@@ -556,5 +558,36 @@ public static class Program
             .Append("Runtime: ").AppendLine(ProductInfo.Runtime);
 
         return info.ToString();
+    }
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    static extern IntPtr GetStdHandle(int nStdHandle);
+
+    [DllImport("kernel32.dll")]
+    static extern bool GetConsoleMode(IntPtr hConsoleHandle, out uint lpMode);
+
+    [DllImport("kernel32.dll")]
+    static extern bool SetConsoleMode(IntPtr hConsoleHandle, uint dwMode);
+
+    static void EnableConsoleColorOutput()
+    {
+        const int STD_OUTPUT_HANDLE = -11;
+        const uint ENABLE_VIRTUAL_TERMINAL_PROCESSING = 4;
+
+        if (!OperatingSystem.IsWindowsVersionAtLeast(10))
+            return;
+
+        try
+        {
+            // If using Cmd and not set in registry
+            // enable ANSI escape sequences here
+            var handle = GetStdHandle(STD_OUTPUT_HANDLE);
+            GetConsoleMode(handle, out var mode);
+            mode |= ENABLE_VIRTUAL_TERMINAL_PROCESSING;
+                SetConsoleMode(handle, mode);
+        }
+        catch
+        {
+        }
     }
 }
