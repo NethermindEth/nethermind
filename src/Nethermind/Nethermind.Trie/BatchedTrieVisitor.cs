@@ -296,16 +296,13 @@ public class BatchedTrieVisitor<TNodeContext>
             resolveOrdering.Clear();
             for (int i = 0; i < currentBatch.Count; i++)
             {
-                TrieNode cur = currentBatch[i].Item1;
+                (TrieNode? cur, TNodeContext _, SmallTrieVisitContext ctx) = currentBatch[i];
 
                 cur.ResolveKey(_resolver, false);
 
-                SmallTrieVisitContext ctx = currentBatch[i].Item3;
-
                 if (cur.FullRlp.IsNotNull) continue;
                 if (cur.Keccak is null)
-                    throw new TrieException(
-                        $"Unable to resolve node without Keccak. ctx: {ctx.Level}, {ctx.ExpectAccounts}, {ctx.IsStorage}, {ctx.BranchChildIndex}");
+                    ThrowUnableToResolve(ctx);
 
                 resolveOrdering.Add(i);
             }
@@ -340,8 +337,6 @@ public class BatchedTrieVisitor<TNodeContext>
                 }
             }
 
-            ;
-
             // Going in reverse to reduce memory
             for (int i = currentBatch.Count - 1; i >= 0; i--)
             {
@@ -360,6 +355,14 @@ public class BatchedTrieVisitor<TNodeContext>
             }
 
             currentBatch.Dispose();
+        }
+
+        return;
+
+        static void ThrowUnableToResolve(in SmallTrieVisitContext ctx)
+        {
+            throw new TrieException(
+                $"Unable to resolve node without Keccak. ctx: {ctx.Level}, {ctx.ExpectAccounts}, {ctx.IsStorage}, {ctx.BranchChildIndex}");
         }
     }
 
@@ -386,7 +389,8 @@ public struct EmptyContext : INodeContext<EmptyContext>
 }
 
 public interface INodeContext<TNodeContext>
-    where TNodeContext : INodeContext<TNodeContext>
+    // The context needs to be the struct so that it's passed nicely via in and returned from the methods.
+    where TNodeContext : struct, INodeContext<TNodeContext>
 {
     TNodeContext Add(byte[] nibblePath);
 

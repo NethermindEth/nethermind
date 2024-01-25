@@ -24,12 +24,6 @@ namespace Nethermind.Trie
         /// Like `Accept`, but does not execute its children. Instead it return the next trie to visit in the list
         /// `nextToVisit`. Also, it assume the node is already resolved.
         /// </summary>
-        /// <param name="visitor"></param>
-        /// <param name="nodeResolver"></param>
-        /// <param name="trieVisitContext"></param>
-        /// <param name="nextToVisit"></param>
-        /// <exception cref="InvalidDataException"></exception>
-        /// <exception cref="TrieException"></exception>
         internal void AcceptResolvedNode<TNodeContext>(ITreeVisitor<TNodeContext> visitor, in TNodeContext nodeContext, ITrieNodeResolver nodeResolver, SmallTrieVisitContext trieVisitContext, IList<(TrieNode, TNodeContext, SmallTrieVisitContext)> nextToVisit)
             where TNodeContext : struct, INodeContext<TNodeContext>
         {
