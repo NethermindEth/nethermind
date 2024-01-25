@@ -33,7 +33,7 @@ public class Db
         byte[] array = ArrayPool<byte>.Shared.Rent(32);
         try
         {
-            Span<byte> bytes = WorldState.Get(new StorageCell(address.ToAddress(), hash.GetHash()));
+            ReadOnlySpan<byte> bytes = WorldState.Get(new StorageCell(address.ToAddress(), hash.GetHash()));
             if (bytes.Length < array.Length)
             {
                 Array.Clear(array);

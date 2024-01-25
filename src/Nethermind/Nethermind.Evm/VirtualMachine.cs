@@ -1660,10 +1660,8 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                             StorageAccessType.SLOAD,
                             spec)) goto OutOfGas;
 
-                        Span<byte> value = _state.Get(in storageCell);
-                        Span<byte> valueBytes = MemoryMarshal.CreateSpan(ref MemoryMarshal.AsRef<byte>(value), value.Length); // TODO: how to do it?
-                        stack.PushBytes(valueBytes);
-
+                        ReadOnlySpan<byte> value = _state.Get(in storageCell);
+                        stack.PushBytes(value);
                         if (typeof(TTracingStorage) == typeof(IsTracing))
                         {
                             _txTracer.LoadOperationStorage(storageCell.Address, result, value);
@@ -2019,9 +2017,8 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                             if (!stack.PopUInt256(out result)) goto StackUnderflow;
                             storageCell = new(env.ExecutingAccount, result);
 
-                            Span<byte> value = _state.GetTransientState(in storageCell);
-                            Span<byte> valueBytes = MemoryMarshal.CreateSpan(ref MemoryMarshal.AsRef<byte>(value), value.Length); // TODO: how to do it?
-                            stack.PushBytes(valueBytes);
+                            ReadOnlySpan<byte> value = _state.GetTransientState(in storageCell);
+                            stack.PushBytes(value);
 
                             if (typeof(TTracingStorage) == typeof(IsTracing))
                             {
@@ -2061,7 +2058,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                             if (typeof(TTracingStorage) == typeof(IsTracing))
                             {
                                 if (gasAvailable < 0) goto OutOfGas;
-                                Span<byte> currentValue = _state.GetTransientState(in storageCell);
+                                ReadOnlySpan<byte> currentValue = _state.GetTransientState(in storageCell);
                                 _txTracer.SetOperationTransientStorage(storageCell.Address, result, bytes, currentValue);
                             }
 
@@ -2645,7 +2642,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                 StorageAccessType.SSTORE,
                 spec)) return EvmExceptionType.OutOfGas;
 
-        Span<byte> currentValue = _state.Get(in storageCell);
+        ReadOnlySpan<byte> currentValue = _state.Get(in storageCell);
         // Console.WriteLine($"current: {currentValue.ToHexString()} newValue {newValue.ToHexString()}");
         bool currentIsZero = currentValue.IsZero();
 

@@ -102,7 +102,7 @@ namespace Nethermind.Synchronization.LesSync
 
         public (Hash256?, UInt256) Get(Span<byte> key)
         {
-            Span<byte> val = base.Get(key);
+            ReadOnlySpan<byte> val = base.Get(key);
             if (val.IsEmpty)
             {
                 throw new InvalidDataException("Missing CHT data");

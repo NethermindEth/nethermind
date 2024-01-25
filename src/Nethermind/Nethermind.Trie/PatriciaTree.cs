@@ -355,7 +355,7 @@ namespace Nethermind.Trie
 
         [SkipLocalsInit]
         [DebuggerStepThrough]
-        public virtual Span<byte> Get(ReadOnlySpan<byte> rawKey, Hash256? rootHash = null)
+        public virtual ReadOnlySpan<byte> Get(ReadOnlySpan<byte> rawKey, Hash256? rootHash = null)
         {
             try
             {

@@ -39,7 +39,7 @@ public ref struct EvmStack<TTracing>
 
     private readonly ITxTracer _tracer;
 
-    public void PushBytes(scoped in ReadOnlySpan<byte> value)
+    public void PushBytes(scoped ReadOnlySpan<byte> value)
     {
         if (typeof(TTracing) == typeof(IsTracing)) _tracer.ReportStackPush(value);
 
