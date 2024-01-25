@@ -182,7 +182,7 @@ public partial class EngineModuleTests
     }
 
     [Test]
-    public async Task NewPayloadV3_WrongBlockNumber_BlockIsRejectedWithErrorMessage()
+    public async Task NewPayloadV3_WrongBlockNumber_BlockIsRejectedWithCorrectErrorMessage()
     {
         (IEngineRpcModule prevRpcModule, string payloadId, Transaction[] transactions, _) = await BuildAndGetPayloadV3Result(Cancun.Instance, 1);
         ExecutionPayloadV3 payload = (await prevRpcModule.engine_getPayloadV3(Bytes.FromHexString(payloadId))).Data!.ExecutionPayload;
@@ -196,7 +196,7 @@ public partial class EngineModuleTests
 
         Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.None));
         result.Data.Status.Should().Be("INVALID");
-        Assert.That(result.Data.ValidationError, Is.Not.Empty);
+        Assert.That(result.Data.ValidationError, Does.StartWith("InvalidBlockNumber"));
     }
 
     [Test]
