@@ -9,12 +9,10 @@ using Nethermind.Int256;
 
 namespace Nethermind.Evm.Tracing.ParityStyle
 {
-    [JsonConverter(typeof(ParityTraceActionConverter))]
     public class ParityTraceAction
     {
         public int[]? TraceAddress { get; set; }
         public string? CallType { get; set; }
-
         public bool IncludeInTrace { get; set; } = true;
         public bool IsPrecompiled { get; set; }
         public string? Type { get; set; }
@@ -26,7 +24,6 @@ namespace Nethermind.Evm.Tracing.ParityStyle
         public byte[]? Input { get; set; }
         public ParityTraceResult? Result { get; set; } = new();
         public List<ParityTraceAction> Subtraces { get; set; } = new();
-
         public Address? Author { get; set; }
         public string? RewardType { get; set; }
         public string? Error { get; set; }

@@ -20,7 +20,7 @@ public interface ITraceStoreConfig : IConfig
     [ConfigItem(Description = "Whether to verify all serialized elements.", DefaultValue = "false", HiddenFromDocs = true)]
     bool VerifySerialized { get; set; }
 
-    [ConfigItem(Description = "The max depth allowed when deserializing traces.", DefaultValue = "1024", HiddenFromDocs = true)]
+    [ConfigItem(Description = "The max depth allowed when deserializing traces.", DefaultValue = "3200", HiddenFromDocs = true)]
     int MaxDepth { get; set; }
 
     [ConfigItem(Description = "The max parallelization when deserialization requests the `trace_filter` method. `0` to use the number of logical processors. If you experience a resource shortage, set to a low number.", DefaultValue = "0")]
