@@ -332,7 +332,7 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
                 {
                     ProcessingResult.QueueException => "Block cannot be added to processing queue.",
                     ProcessingResult.MissingBlock => "Block wasn't found in tree.",
-                    ProcessingResult.ProcessingError => "Block processing failed.",
+                    ProcessingResult.ProcessingError => e.Message ?? "Block processing failed.",
                     _ => null
                 };
 

@@ -29,6 +29,7 @@ using Nethermind.Serialization.Rlp;
 using Nethermind.Specs.Forks;
 using NSubstitute;
 using NUnit.Framework;
+using NUnit.Framework.Constraints;
 
 namespace Nethermind.Merge.Plugin.Test;
 
@@ -199,7 +200,7 @@ public partial class EngineModuleTests
     }
 
     [Test]
-    public async Task NewPayloadV3_WrongStateRoot_BlockIsRejectedWithErrorMessage()
+    public async Task NewPayloadV3_WrongStateRoot_CorrectErrorIsReturnedAfterProcessing()
     {
         (IEngineRpcModule prevRpcModule, string payloadId, Transaction[] transactions, _) = await BuildAndGetPayloadV3Result(Cancun.Instance, 1);
         ExecutionPayloadV3 payload = (await prevRpcModule.engine_getPayloadV3(Bytes.FromHexString(payloadId))).Data!.ExecutionPayload;
@@ -213,7 +214,14 @@ public partial class EngineModuleTests
 
         Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.None));
         result.Data.Status.Should().Be("INVALID");
-        Assert.That(result.Data.ValidationError, Is.Not.Empty);
+        Assert.That(result.Data.ValidationError, Does.StartWith("InvalidStateRoot"));
+
+        result = await prevRpcModule.engine_newPayloadV3(payload, blobVersionedHashes, payload.ParentBeaconBlockRoot);
+
+        Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.None));
+        result.Data.Status.Should().Be("INVALID");
+        Assert.That(result.Data.ValidationError, Does.StartWith("InvalidStateRoot"));
+
     }
 
     [Test]

@@ -11,7 +11,12 @@ public class BlockHashEventArgs : EventArgs
     public Hash256 BlockHash { get; }
     public ProcessingResult ProcessingResult { get; }
     public Exception? Exception { get; }
+    public string? Message { get; }
 
+    public BlockHashEventArgs(Hash256 blockHash, ProcessingResult processingResult, string? message) : this(blockHash, processingResult)
+    {
+        Message = message;
+    }
     public BlockHashEventArgs(Hash256 blockHash, ProcessingResult processingResult, Exception? exception = null)
     {
         BlockHash = blockHash;
