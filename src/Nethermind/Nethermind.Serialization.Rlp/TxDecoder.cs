@@ -544,12 +544,7 @@ namespace Nethermind.Serialization.Rlp
             bool allowUnsigned = (rlpBehaviors & RlpBehaviors.AllowUnsigned) == RlpBehaviors.AllowUnsigned;
             bool isSignatureOk = true;
             string signatureError = null;
-            if (rBytes == null || sBytes == null)
-            {
-                isSignatureOk = false;
-                signatureError = "VRS null when decoding Transaction";
-            }
-            else if (rBytes.Length == 0 || sBytes.Length == 0)
+            if (rBytes.Length == 0 || sBytes.Length == 0)
             {
                 isSignatureOk = false;
                 signatureError = "VRS is 0 length when decoding Transaction";
@@ -836,7 +831,7 @@ namespace Nethermind.Serialization.Rlp
             }
             else
             {
-                bool signatureIsNull = item.Signature == null;
+                bool signatureIsNull = item.Signature is null;
                 contentLength += signatureIsNull ? 1 : Rlp.LengthOf(item.Type == TxType.Legacy ? item.Signature.V : item.Signature.RecoveryId);
                 contentLength += signatureIsNull ? 1 : Rlp.LengthOf(item.Signature.RAsSpan.WithoutLeadingZeros());
                 contentLength += signatureIsNull ? 1 : Rlp.LengthOf(item.Signature.SAsSpan.WithoutLeadingZeros());

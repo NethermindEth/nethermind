@@ -27,7 +27,7 @@ namespace Nethermind.Wallet
 
         public DevWallet(IWalletConfig walletConfig, ILogManager logManager)
         {
-            _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
 
             _keySeed[31] = 1;
             for (int i = 0; i < walletConfig?.DevAccounts; i++)

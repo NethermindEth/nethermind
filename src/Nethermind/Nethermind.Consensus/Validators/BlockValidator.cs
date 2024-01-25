@@ -341,8 +341,8 @@ public class BlockValidator : IBlockValidator
     public static bool ValidateWithdrawalsHashMatches(BlockHeader header, BlockBody body, out Hash256? withdrawalsRoot)
     {
         withdrawalsRoot = null;
-        if (body.Withdrawals == null)
-            return header.WithdrawalsRoot == null;
+        if (body.Withdrawals is null)
+            return header.WithdrawalsRoot is null;
 
         withdrawalsRoot = new WithdrawalTrie(body.Withdrawals).RootHash;
 

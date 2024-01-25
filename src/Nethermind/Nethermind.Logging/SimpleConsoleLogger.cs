@@ -8,7 +8,7 @@ namespace Nethermind.Logging
     /// <summary>
     /// Just use before the logger is configured
     /// </summary>
-    public class SimpleConsoleLogger : ILogger
+    public class SimpleConsoleLogger : InterfaceLogger
     {
         private SimpleConsoleLogger()
         {

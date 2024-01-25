@@ -37,7 +37,7 @@ namespace Nethermind.Synchronization.Test.SnapSync
         private byte[][] CreateProofForPath(ReadOnlySpan<byte> path, StateTree tree = null)
         {
             AccountProofCollector accountProofCollector = new(path);
-            if (tree == null)
+            if (tree is null)
             {
                 tree = _inputTree;
             }
