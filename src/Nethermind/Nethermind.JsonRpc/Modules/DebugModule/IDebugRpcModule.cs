@@ -7,6 +7,7 @@ using Nethermind.Blockchain.Find;
 using Nethermind.Core.Crypto;
 using Nethermind.Evm.Tracing.GethStyle;
 using Nethermind.JsonRpc.Data;
+using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.Synchronization.Reporting;
 
 namespace Nethermind.JsonRpc.Modules.DebugModule;
@@ -106,4 +107,7 @@ public interface IDebugRpcModule : IRpcModule
     [JsonRpcMethod(Description = "Writes to a file the full stack trace of all invoked opcodes of the transaction specified (or all transactions if not specified) that was included in the block specified. The parent of the block must be present or it will fail.",
         IsImplemented = true, IsSharable = false)]
     ResultWrapper<IEnumerable<string>> debug_standardTraceBlockToFile(Hash256 blockHash, GethTraceOptions options = null);
+
+    [JsonRpcMethod(Description = "Return list of invalid blocks.")]
+    ResultWrapper<IEnumerable<BadBlock>> debug_getBadBlocks();
 }
