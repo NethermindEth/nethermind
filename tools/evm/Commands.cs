@@ -132,9 +132,10 @@ public class T8N
         ILogger _logger = _logManager.GetClassLogger();
 
 
+        //TODO: Parse state.fork and select the proper spec here
         ISpecProvider specProvider = new CustomSpecProvider(
     ((ForkActivation)0, Frontier.Instance), // TODO: this thing took a lot of time to find after it was removed!, genesis block is always initialized with Frontier
-    ((ForkActivation)1, Byzantium.Instance)); //evm.Fork
+    ((ForkActivation)1, Byzantium.Instance)); //state.Fork
 
 
         TrieStore trieStore = new(stateDb, _logManager);
@@ -153,7 +154,8 @@ public class T8N
 
 
 
-        //TODO: Convert to proper classes that Nethermind.Test.Runner uses
+        InitializeFromAlloc(allocJson, stateProvider, specProvider);
+
         BlockHeader header = new(
     envJson.PreviousHash,
     Keccak.OfAnEmptySequenceRlp,
@@ -164,7 +166,6 @@ public class T8N
     envJson.CurrentTimestamp,
     Array.Empty<byte>());
 
-        InitializeFromAlloc(allocJson, stateProvider, specProvider);
 
         //    for(JsonTypes.Transaction tx in txsJson)
         //        {
@@ -186,19 +187,17 @@ public class T8N
 
     private static void InitializeFromAlloc(Dictionary<Address, JsonTypes.AccountState> alloc, WorldState stateProvider, ISpecProvider specProvider)
     {
-        foreach (KeyValuePair<Address, JsonTypes.AccountState> acountsState in alloc)
+        foreach (KeyValuePair<Address, JsonTypes.AccountState> accountState in alloc)
         {
-            foreach (KeyValuePair<string, string> storageItem in acountsState.Value.Storage)
+            foreach (KeyValuePair<string, string> storageItem in accountState.Value.Storage)
             {
                 UInt256 storageKey = Bytes.FromHexString(storageItem.Key).ToUInt256();
                 byte[] storageValue = Bytes.FromHexString(storageItem.Key);
-                stateProvider.Set(new StorageCell(acountsState.Key, storageKey), storageValue.WithoutLeadingZeros().ToArray());
+                stateProvider.Set(new StorageCell(accountState.Key, storageKey), storageValue.WithoutLeadingZeros().ToArray());
 
             }
-
-            stateProvider.CreateAccount(acountsState.Key, Bytes.FromHexString(acountsState.Value.Balance).ToUInt256());
-            stateProvider.InsertCode(acountsState.Key, Bytes.FromHexString(acountsState.Value.Code), specProvider.GenesisSpec);
-            //stateProvider.SetNonce(accountState.Key, Bytes.FromHexString(acountsState.Value.Balance).ToUInt256()); //NOTE: Set nonce is internal. Need to change in WorldState?
+            stateProvider.CreateAccount(accountState.Key, Bytes.FromHexString(accountState.Value.Balance).ToUInt256(), Bytes.FromHexString(accountState.Value.Nonce).ToUInt256());
+            stateProvider.InsertCode(accountState.Key, Bytes.FromHexString(accountState.Value.Code), specProvider.GenesisSpec);
         }
         stateProvider.Commit(specProvider.GenesisSpec);
         stateProvider.CommitTree(0);
