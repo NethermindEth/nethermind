@@ -244,7 +244,7 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
         if (shouldUpdateHead)
         {
             _poSSwitcher.ForkchoiceUpdated(newHeadBlock.Header, forkchoiceState.FinalizedBlockHash);
-            if (_logger.IsInfo) _logger.Info($"Synced chain Head to {newHeadBlock.ToString(Block.Format.Short)}");
+            if (_logger.IsInfo) _logger.Info($"Synced Chain Head to {newHeadBlock.ToString(Block.Format.Short)}");
         }
 
         return null;
