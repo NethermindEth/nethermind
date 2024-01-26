@@ -681,6 +681,11 @@ namespace Nethermind.Core.Extensions
                 });
         }
 
+        public static void OutputBytesToByteHex(this Span<byte> bytes, Span<byte> hex, bool extraNibble)
+        {
+            ((ReadOnlySpan<byte>)bytes).OutputBytesToByteHex(hex, extraNibble);
+        }
+
         public static void OutputBytesToByteHex(this ReadOnlySpan<byte> bytes, Span<byte> hex, bool extraNibble)
         {
             int toProcess = bytes.Length;
