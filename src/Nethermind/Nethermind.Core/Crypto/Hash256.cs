@@ -282,9 +282,9 @@ namespace Nethermind.Core.Crypto
 
         public static int MemorySize => MemorySizes.ArrayOverhead + Size;
 
-        public Span<byte> Bytes { get; }
+        public ReadOnlySpan<byte> Bytes { get; }
 
-        public Hash256StructRef(Span<byte> bytes)
+        public Hash256StructRef(ReadOnlySpan<byte> bytes)
         {
             if (bytes.Length != Size)
             {

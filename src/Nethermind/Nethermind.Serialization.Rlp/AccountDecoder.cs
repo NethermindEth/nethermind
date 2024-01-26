@@ -7,7 +7,7 @@ using Nethermind.Int256;
 
 namespace Nethermind.Serialization.Rlp
 {
-    public class AccountDecoder : IRlpObjectDecoder<Account?>, IRlpStreamDecoder<Account?>
+    public class AccountDecoder : IRlpObjectDecoder<Account?>, IRlpStreamDecoder<Account?>, IRlpValueDecoder<Account?>
     {
         private readonly bool _slimFormat;
 
@@ -187,6 +187,58 @@ namespace Nethermind.Serialization.Rlp
         }
 
         private Hash256 DecodeCodeHash(RlpStream rlpStream)
+        {
+            Hash256 codeHash;
+            if (_slimFormat && rlpStream.IsNextItemEmptyArray())
+            {
+                rlpStream.ReadByte();
+                codeHash = Keccak.OfAnEmptyString;
+            }
+            else
+            {
+                codeHash = rlpStream.DecodeKeccak();
+            }
+
+            return codeHash;
+        }
+
+        public Account? Decode(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        {
+            int length = decoderContext.ReadSequenceLength();
+            if (length == 1)
+            {
+                return null;
+            }
+
+            UInt256 nonce = decoderContext.DecodeUInt256();
+            UInt256 balance = decoderContext.DecodeUInt256();
+            Hash256 storageRoot = DecodeStorageRoot(ref decoderContext);
+            Hash256 codeHash = DecodeCodeHash(ref decoderContext);
+            if (ReferenceEquals(storageRoot, Keccak.EmptyTreeHash) && ReferenceEquals(codeHash, Keccak.OfAnEmptyString))
+            {
+                return new(nonce, balance);
+            }
+
+            return new(nonce, balance, storageRoot, codeHash);
+        }
+
+        private Hash256 DecodeStorageRoot(ref Rlp.ValueDecoderContext rlpStream)
+        {
+            Hash256 storageRoot;
+            if (_slimFormat && rlpStream.IsNextItemEmptyArray())
+            {
+                rlpStream.ReadByte();
+                storageRoot = Keccak.EmptyTreeHash;
+            }
+            else
+            {
+                storageRoot = rlpStream.DecodeKeccak();
+            }
+
+            return storageRoot;
+        }
+
+        private Hash256 DecodeCodeHash(ref Rlp.ValueDecoderContext rlpStream)
         {
             Hash256 codeHash;
             if (_slimFormat && rlpStream.IsNextItemEmptyArray())

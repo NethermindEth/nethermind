@@ -38,7 +38,7 @@ namespace Nethermind.Core
             return result;
         }
 
-        void DangerousReleaseMemory(in Span<byte> span) { }
+        void DangerousReleaseMemory(in ReadOnlySpan<byte> span) { }
     }
 
     public interface IWriteOnlyKeyValueStore
