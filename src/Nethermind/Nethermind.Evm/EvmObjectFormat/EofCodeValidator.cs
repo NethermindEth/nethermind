@@ -22,7 +22,7 @@ internal static class EvmObjectFormat
     struct Worklet
     {
         public Worklet(ushort position, ushort stackHeight)
-        {
+        { 
             Position = position;
             StackHeight = stackHeight;
         }
@@ -701,7 +701,6 @@ internal static class EvmObjectFormat
                 else if (opcode is Instruction.RJUMPV)
                 {
                     byte maxIndex = code[pos];
-
                     pos += ONE_BYTE_LENGTH + (maxIndex + 1) * TWO_BYTE_LENGTH;
                 }
                 else if (opcode is Instruction.SWAPN or Instruction.DUPN or Instruction.EXCHANGE)
@@ -720,7 +719,8 @@ internal static class EvmObjectFormat
                 else if (opcode is Instruction.DATALOADN)
                 {
                     pos += TWO_BYTE_LENGTH;
-                } else if (opcode is Instruction.RETURNCONTRACT)
+                }
+                else if (opcode is Instruction.RETURNCONTRACT)
                 {
                     pos += ONE_BYTE_LENGTH;
                 }
@@ -734,6 +734,7 @@ internal static class EvmObjectFormat
 
             short[] recordedStackHeight = ArrayPool<short>.Shared.Rent(code.Length);
             ushort suggestedMaxHeight = typesection.Slice(sectionId * MINIMUM_TYPESECTION_SIZE + TWO_BYTE_LENGTH, TWO_BYTE_LENGTH).ReadEthUInt16();
+        
             int curr_outputs = typesection[sectionId * MINIMUM_TYPESECTION_SIZE + OUTPUTS_OFFSET];
             int peakStackHeight = typesection[sectionId * MINIMUM_TYPESECTION_SIZE + INPUTS_OFFSET];
 

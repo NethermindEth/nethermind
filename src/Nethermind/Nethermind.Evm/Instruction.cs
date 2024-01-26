@@ -351,7 +351,7 @@ namespace Nethermind.Evm
             Instruction.CREATE4 => (5, 1, 0),
             Instruction.RETURNCONTRACT => (2, 2, 1),
             Instruction.DATALOAD => (1, 1, 0),
-            Instruction.DATALOADN => (0, 1, 1),
+            Instruction.DATALOADN => (0, 1, 2),
             Instruction.DATASIZE => (0, 1, 0),
             Instruction.DATACOPY => (3, 1, 0),
 
