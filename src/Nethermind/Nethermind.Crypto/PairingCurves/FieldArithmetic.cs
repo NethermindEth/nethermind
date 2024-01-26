@@ -6,59 +6,8 @@ using System.Numerics;
 using Nethermind.Int256;
 namespace Nethermind.Crypto.PairingCurves;
 
-public class FieldArithmetic<T> where T : IBaseField
+internal class FieldArithmetic<T> where T : IBaseField
 {
-    public static Fq<T> Fq(BigInteger x, T baseField)
-    {
-        return new(x, baseField);
-    }
-
-    public static Fq2<T> Fq2(Fq<T> a, Fq<T> b)
-    {
-        return new(a, b, a.BaseField);
-    }
-
-    public static Fq2<T> Fq2(Fq<T> b)
-    {
-        return Fq2<T>.FromFq(b);
-    }
-
-    public static Fq2<T> Fq2(BigInteger b, T baseField)
-    {
-        return Fq2<T>.FromFq(Fq(b, baseField));
-    }
-
-    public static Fq6<T> Fq6(Fq2<T> a, Fq2<T> b, Fq2<T> c)
-    {
-        return new(a, b, c, a.BaseField);
-    }
-
-    public static Fq6<T> Fq6(BigInteger b, T baseField)
-    {
-        return Fq6<T>.FromFq(Fq(b, baseField));
-    }
-
-    public static Fq6<T> Fq6(Fq<T> b)
-    {
-        return Fq6<T>.FromFq(b);
-    }
-
-    public static Fq12<T> Fq12(Fq6<T> a, Fq6<T> b)
-    {
-        return new(a, b, a.BaseField);
-    }
-
-    public static Fq12<T> Fq12(BigInteger b, T baseField)
-    {
-        return Fq12<T>.FromFq(Fq(b, baseField));
-    }
-
-    public static Fq12<T> Fq12(Fq<T> b)
-    {
-        return Fq12<T>.FromFq(b);
-    }
-
-
     public static (Fq2<T>, Fq2<T>)? G2Multiply(UInt256 s, (Fq2<T>, Fq2<T>)? p, ICurveParams<T> curve)
     {
         T f = curve.GetBaseField();
@@ -198,5 +147,55 @@ public class FieldArithmetic<T> where T : IBaseField
         Fq12<T> wideX = Fq12(Fq6(0, f), Fq6(Fq2(0, f), Fq2(0, f), p.Item1)) / Fq12(Fq6(0, f), root);
         Fq12<T> wideY = Fq12(Fq6(0, f), Fq6(Fq2(0, f), Fq2(0, f), p.Item2)) / Fq12(root, Fq6(0, f));
         return (wideX, wideY);
+    }
+
+    private static Fq<T> Fq(BigInteger x, T baseField)
+    {
+        return new(x, baseField);
+    }
+
+    private static Fq2<T> Fq2(Fq<T> a, Fq<T> b)
+    {
+        return new(a, b, a.BaseField);
+    }
+
+    private static Fq2<T> Fq2(Fq<T> b)
+    {
+        return Fq2<T>.FromFq(b);
+    }
+
+    private static Fq2<T> Fq2(BigInteger b, T baseField)
+    {
+        return Fq2<T>.FromFq(Fq(b, baseField));
+    }
+
+    private static Fq6<T> Fq6(Fq2<T> a, Fq2<T> b, Fq2<T> c)
+    {
+        return new(a, b, c, a.BaseField);
+    }
+
+    private static Fq6<T> Fq6(BigInteger b, T baseField)
+    {
+        return Fq6<T>.FromFq(Fq(b, baseField));
+    }
+
+    private static Fq6<T> Fq6(Fq<T> b)
+    {
+        return Fq6<T>.FromFq(b);
+    }
+
+    private static Fq12<T> Fq12(Fq6<T> a, Fq6<T> b)
+    {
+        return new(a, b, a.BaseField);
+    }
+
+    private static Fq12<T> Fq12(BigInteger b, T baseField)
+    {
+        return Fq12<T>.FromFq(Fq(b, baseField));
+    }
+
+    private static Fq12<T> Fq12(Fq<T> b)
+    {
+        return Fq12<T>.FromFq(b);
     }
 }

@@ -17,6 +17,15 @@ public class Fq2<T>(Fq<T> a, Fq<T> b, T baseField) where T : IBaseField
         return new(new Fq<T>(0, x.BaseField), x, x.BaseField);
     }
 
+    public byte[] ToBytes()
+    {
+        int s = BaseField.GetSize();
+        byte[] res = new byte[s * 2];
+        a.ToBytes().CopyTo(res.AsSpan()[..s]);
+        b.ToBytes().CopyTo(res.AsSpan()[s..]);
+        return res;
+    }
+
     public static (Fq<T>, Fq<T>) Len(Fq2<T> x)
     {
         Fq<T> two = new(2, x.BaseField);

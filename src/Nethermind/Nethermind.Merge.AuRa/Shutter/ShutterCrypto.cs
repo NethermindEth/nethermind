@@ -23,7 +23,7 @@ using G1 = BlsCurve.G1;
 using G2 = BlsCurve.G2;
 using GT = BlsCurve.GT;
 
-public class Crypto
+internal class ShutterCrypto
 {
     public struct EncryptedMessage
     {
@@ -58,7 +58,7 @@ public class Crypto
         return msg;
     }
 
-    private static Bytes32 RecoverSigma(EncryptedMessage encryptedMessage, G1 decryptionKey)
+    public static Bytes32 RecoverSigma(EncryptedMessage encryptedMessage, G1 decryptionKey)
     {
         GT p = BlsCurve.Pairing(decryptionKey, encryptedMessage.c1);
         Bytes32 key = HashGTToBlock(p);
@@ -66,18 +66,18 @@ public class Crypto
         return sigma;
     }
 
-    private static UInt256 ComputeR(Bytes32 sigma, byte[] msg)
+    public static UInt256 ComputeR(Bytes32 sigma, byte[] msg)
     {
         return HashBlocksToInt([sigma, HashBytesToBlock(msg)]);
     }
 
-    private static G2 ComputeC1(UInt256 r)
+    public static G2 ComputeC1(UInt256 r)
     {
         return G2.FromScalar(r);
     }
 
     // helper functions
-    private static IEnumerable<Bytes32> ComputeBlockKeys(Bytes32 sigma, int n)
+    public static IEnumerable<Bytes32> ComputeBlockKeys(Bytes32 sigma, int n)
     {
         // suffix_length = max((n.bit_length() + 7) // 8, 1)
         // suffixes = [n.to_bytes(suffix_length, "big")]
@@ -102,12 +102,12 @@ public class Crypto
         });
     }
 
-    private static Bytes32 XorBlocks(Bytes32 x, Bytes32 y)
+    public static Bytes32 XorBlocks(Bytes32 x, Bytes32 y)
     {
         return new(x.Unwrap().Xor(y.Unwrap()));
     }
 
-    private static byte[] UnpadAndJoin(IEnumerable<Bytes32> blocks)
+    public static byte[] UnpadAndJoin(IEnumerable<Bytes32> blocks)
     {
         if (blocks.IsNullOrEmpty())
         {
@@ -137,12 +137,12 @@ public class Crypto
         return res;
     }
 
-    private static Bytes32 HashBytesToBlock(ReadOnlySpan<byte> bytes)
+    public static Bytes32 HashBytesToBlock(ReadOnlySpan<byte> bytes)
     {
         return new(Keccak.Compute(bytes).Bytes);
     }
 
-    private static UInt256 HashBlocksToInt(IEnumerable<Bytes32> blocks)
+    public static UInt256 HashBlocksToInt(IEnumerable<Bytes32> blocks)
     {
         Span<byte> combinedBlocks = stackalloc byte[blocks.Count() * 32];
 
@@ -152,17 +152,17 @@ public class Crypto
         }
 
         Span<byte> hash = Keccak.Compute(combinedBlocks).Bytes;
-        BigInteger v = new BigInteger(hash, true, true) % new BigInteger(BlsCurve.SubgroupOrder, true, true);
+        BigInteger v = new BigInteger(hash, true, true) % BlsCurve.SubgroupOrder;
 
         return new(v.ToBigEndianByteArray(32));
     }
 
-    private static Bytes32 HashGTToBlock(GT p)
+    public static Bytes32 HashGTToBlock(GT p)
     {
         return HashBytesToBlock(EncodeGT(p));
     }
 
-    private static byte[] EncodeGT(GT p)
+    public static byte[] EncodeGT(GT p)
     {
         return [];
     }

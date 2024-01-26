@@ -28,13 +28,6 @@ public class Fq<T> where T : IBaseField
         BaseField = baseField;
     }
 
-    private static BigInteger Normalise(BigInteger x, BigInteger baseFieldOrder)
-    {
-        BigInteger unnormalised = x % baseFieldOrder;
-        // return (unnormalised.Sign == 1) ? unnormalised : (baseFieldOrder + unnormalised);
-        return unnormalised >= 0 ? unnormalised : (baseFieldOrder + unnormalised);
-    }
-
     public byte[] ToBytes()
     {
         return Value.ToBigEndianByteArray(BaseField.GetSize());
@@ -85,24 +78,6 @@ public class Fq<T> where T : IBaseField
 
     public static bool operator !=(Fq<T> x, Fq<T> y) => !x.Equals(y);
 
-    private static BigInteger gcdExtended(BigInteger a, BigInteger b, ref BigInteger x, ref BigInteger y)
-    {
-        if (a == 0)
-        {
-            x = 0;
-            y = 1;
-            return b;
-        }
-
-        BigInteger x1 = 1, y1 = 1;
-        BigInteger gcd = gcdExtended(b % a, a, ref x1, ref y1);
-
-        x = y1 - (b / a) * x1;
-        y = x1;
-
-        return gcd;
-    }
-
     public static Fq<T> MulNonRes(Fq<T> c)
     {
         return c;
@@ -130,4 +105,29 @@ public class Fq<T> where T : IBaseField
     {
         return x * Inv(y);
     }
+
+    private static BigInteger Normalise(BigInteger x, BigInteger baseFieldOrder)
+    {
+        BigInteger unnormalised = x % baseFieldOrder;
+        return unnormalised >= 0 ? unnormalised : (baseFieldOrder + unnormalised);
+    }
+
+    private static BigInteger gcdExtended(BigInteger a, BigInteger b, ref BigInteger x, ref BigInteger y)
+    {
+        if (a == 0)
+        {
+            x = 0;
+            y = 1;
+            return b;
+        }
+
+        BigInteger x1 = 1, y1 = 1;
+        BigInteger gcd = gcdExtended(b % a, a, ref x1, ref y1);
+
+        x = y1 - (b / a) * x1;
+        y = x1;
+
+        return gcd;
+    }
+
 }

@@ -6,6 +6,7 @@ using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.Text;
 using FluentAssertions;
+using Nethermind.Core.Extensions;
 using Nethermind.Crypto;
 using Nethermind.Crypto.PairingCurves;
 using NUnit.Framework;
@@ -192,14 +193,14 @@ public class BlsTests
     public void G1_subgroup_check()
     {
         var p = G1.FromScalar(10403746324);
-        Assert.That(BlsCurve.SubgroupOrder * p, Is.EqualTo(G1.Zero));
+        Assert.That(p.IsInSubgroup());
     }
 
     [Test]
     public void G2_subgroup_check()
     {
         var p = G2.FromScalar(92461756);
-        Assert.That(BlsCurve.SubgroupOrder * p, Is.EqualTo(G2.Zero));
+        Assert.That(p.IsInSubgroup());
     }
 
     [Test]
@@ -209,7 +210,7 @@ public class BlsTests
         Span<byte> unnormalised = stackalloc byte[32];
         s[30] = 0xDA;
         s[31] = 0xAC;
-        BlsCurve.SubgroupOrder.CopyTo(unnormalised);
+        BlsCurve.SubgroupOrder.ToBigEndianByteArray(32).CopyTo(unnormalised);
         unnormalised[30] += 0xDA;
         unnormalised[31] += 0xAC;
 
@@ -224,7 +225,7 @@ public class BlsTests
         Span<byte> s2 = stackalloc byte[32];
         s1[30] = 0xDA;
         s1[31] = 0xAC;
-        BlsCurve.SubgroupOrder.CopyTo(s2);
+        BlsCurve.SubgroupOrder.ToBigEndianByteArray(32).CopyTo(s2);
         s2[30] += 0xDA;
         s2[31] += 0xAC;
 

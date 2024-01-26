@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+
 namespace Nethermind.Crypto.PairingCurves;
 
 public class Fq6<T>(Fq2<T> a, Fq2<T> b, Fq2<T> c, T baseField) where T : IBaseField
@@ -12,6 +14,16 @@ public class Fq6<T>(Fq2<T> a, Fq2<T> b, Fq2<T> c, T baseField) where T : IBaseFi
     {
         var zero = Fq2<T>.FromFq(new(0, x.BaseField));
         return new(zero, zero, Fq2<T>.FromFq(x), x.BaseField);
+    }
+
+    public byte[] ToBytes()
+    {
+        int s = BaseField.GetSize();
+        byte[] res = new byte[s * 6];
+        a.ToBytes().CopyTo(res.AsSpan()[..(s * 2)]);
+        b.ToBytes().CopyTo(res.AsSpan()[(s * 2)..(s * 4)]);
+        c.ToBytes().CopyTo(res.AsSpan()[(s * 4)..]);
+        return res;
     }
 
     public static Fq6<T> operator -(Fq6<T> x)

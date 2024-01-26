@@ -85,7 +85,7 @@ public class ShutterTxSource : ITxSource
                 eon,
                 e.EncryptedTransaction,
                 e.GasLimit,
-                Crypto.ComputeIdentity(e.IdentityPrefix, e.Sender)
+                ShutterCrypto.ComputeIdentity(e.IdentityPrefix, e.Sender)
             ));
 
             totalGas += e.GasLimit;

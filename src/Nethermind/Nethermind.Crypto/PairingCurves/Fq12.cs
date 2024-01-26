@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Numerics;
 
 namespace Nethermind.Crypto.PairingCurves;
@@ -13,6 +14,15 @@ public class Fq12<T>(Fq6<T> a, Fq6<T> b, T baseField) where T : IBaseField
     {
         var zero = Fq6<T>.FromFq(new(0, x.BaseField));
         return new(zero, Fq6<T>.FromFq(x), x.BaseField);
+    }
+
+    public byte[] ToBytes()
+    {
+        int s = BaseField.GetSize();
+        byte[] res = new byte[s * 12];
+        a.ToBytes().CopyTo(res.AsSpan()[..(s * 6)]);
+        b.ToBytes().CopyTo(res.AsSpan()[(s * 6)..]);
+        return res;
     }
 
     public static Fq12<T> operator -(Fq12<T> x)
@@ -56,12 +66,6 @@ public class Fq12<T>(Fq6<T> a, Fq6<T> b, T baseField) where T : IBaseField
     }
 
     public static bool operator !=(Fq12<T> x, Fq12<T> y) => !x.Equals(y);
-
-    public static Fq12<T> MulNonRes(Fq12<T> c)
-    {
-        // todo: work out actual
-        return new(c.a + c.b, c.b - c.a, c.BaseField);
-    }
 
     public static Fq12<T> Inv(Fq12<T> c)
     {

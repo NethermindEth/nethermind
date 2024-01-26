@@ -60,6 +60,32 @@ public class ValidatorRegistryContract : CallableContract, IValidatorRegistryCon
         return update;
     }
 
+    public async ValueTask<AcceptTxResult?> Deregister(BlockHeader blockHeader)
+    {
+        byte[] deregistrationMessage = new Message(ContractAddress!, _validatorIndex, _nonce).ComputeDeregistrationMessage();
+        AcceptTxResult? res = await Update(deregistrationMessage, Sign(deregistrationMessage));
+
+        if (res == AcceptTxResult.Accepted)
+        {
+            _nonce++;
+        }
+
+        return res;
+    }
+
+    public async ValueTask<AcceptTxResult?> Register(BlockHeader blockHeader)
+    {
+        byte[] registrationMessage = new Message(ContractAddress!, _validatorIndex, _nonce).ComputeRegistrationMessage();
+        AcceptTxResult? res = await Update(registrationMessage, Sign(registrationMessage));
+
+        if (res == AcceptTxResult.Accepted)
+        {
+            _nonce++;
+        }
+
+        return res;
+    }
+
     internal ulong GetNonce(BlockHeader blockHeader)
     {
         UInt256 update = GetNumUpdates(blockHeader);
@@ -88,50 +114,24 @@ public class ValidatorRegistryContract : CallableContract, IValidatorRegistryCon
         throw new Exception("Not registered as validator on beacon chain, cannot be Shutter validator.");
     }
 
-    private Message GetUpdateMessage(BlockHeader blockHeader, UInt256 i)
+    internal Message GetUpdateMessage(BlockHeader blockHeader, UInt256 i)
     {
         Update update = GetUpdate(blockHeader, i);
         return new Message(update.Message.AsSpan()[..46]);
     }
 
-    private byte[] Sign(byte[] message)
+    internal byte[] Sign(byte[] message)
     {
         Bls.PrivateKey sk;
         sk.Bytes = _signer.Key!.KeyBytes;
         return Bls.Sign(sk, message).Bytes;
     }
 
-    private async ValueTask<AcceptTxResult?> Update(byte[] message, byte[] signature)
+    internal async ValueTask<AcceptTxResult?> Update(byte[] message, byte[] signature)
     {
         Transaction transaction = GenerateTransaction<GeneratedTransaction>(update, _signer.Address, new[] { message, signature });
         await _txSealer.Seal(transaction, TxHandlingOptions.AllowReplacingSignature);
         (Hash256 _, AcceptTxResult? res) = await _txSender.SendTransaction(transaction, TxHandlingOptions.PersistentBroadcast);
-        return res;
-    }
-
-    public async ValueTask<AcceptTxResult?> Deregister(BlockHeader blockHeader)
-    {
-        byte[] deregistrationMessage = new Message(ContractAddress!, _validatorIndex, _nonce).ComputeDeregistrationMessage();
-        AcceptTxResult? res = await Update(deregistrationMessage, Sign(deregistrationMessage));
-
-        if (res == AcceptTxResult.Accepted)
-        {
-            _nonce++;
-        }
-
-        return res;
-    }
-
-    public async ValueTask<AcceptTxResult?> Register(BlockHeader blockHeader)
-    {
-        byte[] registrationMessage = new Message(ContractAddress!, _validatorIndex, _nonce).ComputeRegistrationMessage();
-        AcceptTxResult? res = await Update(registrationMessage, Sign(registrationMessage));
-
-        if (res == AcceptTxResult.Accepted)
-        {
-            _nonce++;
-        }
-
         return res;
     }
 
@@ -183,7 +183,7 @@ public class ValidatorRegistryContract : CallableContract, IValidatorRegistryCon
             return registryMessagePrefix.ToArray();
         }
 
-        private void ComputeRegistryMessagePrefix(Span<byte> registryMessagePrefix)
+        public void ComputeRegistryMessagePrefix(Span<byte> registryMessagePrefix)
         {
             registryMessagePrefix[0] = Version;
             BinaryPrimitives.WriteUInt64BigEndian(registryMessagePrefix[1..], ChainId);
@@ -191,6 +191,5 @@ public class ValidatorRegistryContract : CallableContract, IValidatorRegistryCon
             BinaryPrimitives.WriteUInt64BigEndian(registryMessagePrefix[29..], ValidatorIndex);
             BinaryPrimitives.WriteUInt64BigEndian(registryMessagePrefix[37..], Nonce);
         }
-
     }
 }

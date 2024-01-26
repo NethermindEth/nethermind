@@ -3,6 +3,7 @@
 
 using System;
 using System.Buffers.Binary;
+using Nethermind.Core.Extensions;
 using Nethermind.Crypto.PairingCurves;
 using NUnit.Framework;
 
@@ -103,14 +104,14 @@ public class Bn254CurveTests
     public void G1_subgroup_check()
     {
         var p = G1.FromScalar(10403746324);
-        Assert.That(Bn254Curve.SubgroupOrder * p, Is.EqualTo(G1.Zero));
+        Assert.That(Bn254Curve.SubgroupOrder.ToBigEndianByteArray(32) * p, Is.EqualTo(G1.Zero));
     }
 
     [Test]
     public void G2_subgroup_check()
     {
         var p = G2.FromScalar(92461756);
-        Assert.That(Bn254Curve.SubgroupOrder * p, Is.EqualTo(G2.Zero));
+        Assert.That(Bn254Curve.SubgroupOrder.ToBigEndianByteArray(32) * p, Is.EqualTo(G2.Zero));
     }
 
     [Test]
@@ -120,7 +121,7 @@ public class Bn254CurveTests
         Span<byte> unnormalised = stackalloc byte[32];
         s[30] = 0xDA;
         s[31] = 0xAC;
-        Bn254Curve.SubgroupOrder.CopyTo(unnormalised);
+        Bn254Curve.SubgroupOrder.ToBigEndianByteArray(32).CopyTo(unnormalised);
         unnormalised[30] += 0xDA;
         unnormalised[31] += 0xAC;
 
@@ -135,7 +136,7 @@ public class Bn254CurveTests
         Span<byte> s2 = stackalloc byte[32];
         s1[30] = 0xDA;
         s1[31] = 0xAC;
-        Bn254Curve.SubgroupOrder.CopyTo(s2);
+        Bn254Curve.SubgroupOrder.ToBigEndianByteArray(32).CopyTo(s2);
         s2[30] += 0xDA;
         s2[31] += 0xAC;
 
