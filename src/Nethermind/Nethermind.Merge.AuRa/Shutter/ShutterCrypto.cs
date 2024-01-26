@@ -66,7 +66,7 @@ internal class ShutterCrypto
         return sigma;
     }
 
-    public static UInt256 ComputeR(Bytes32 sigma, byte[] msg)
+    public static UInt256 ComputeR(Bytes32 sigma, ReadOnlySpan<byte> msg)
     {
         return HashBlocksToInt([sigma, HashBytesToBlock(msg)]);
     }
@@ -131,7 +131,7 @@ internal class ShutterCrypto
 
         for (int i = 0; i < (32 - n); i++)
         {
-            res[(blocks.Count() * 32) + i] = lastBlock.Unwrap()[i];
+            res[((blocks.Count() - 1) * 32) + i] = lastBlock.Unwrap()[i];
         }
 
         return res;
@@ -159,11 +159,6 @@ internal class ShutterCrypto
 
     public static Bytes32 HashGTToBlock(GT p)
     {
-        return HashBytesToBlock(EncodeGT(p));
-    }
-
-    public static byte[] EncodeGT(GT p)
-    {
-        return [];
+        return HashBytesToBlock(p.ToBytes());
     }
 }

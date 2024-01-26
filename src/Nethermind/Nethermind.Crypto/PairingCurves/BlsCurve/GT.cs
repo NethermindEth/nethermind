@@ -3,6 +3,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Numerics;
+using Nethermind.Int256;
 
 namespace Nethermind.Crypto.PairingCurves;
 
@@ -12,14 +14,14 @@ public partial class BlsCurve
     {
         public readonly Fq12<BaseField>? X = x;
 
-        public static GT operator *(Fq<BaseField> s, GT p)
+        public static GT operator *(UInt256 s, GT p)
         {
             if (p.X is null)
             {
                 return p;
             }
 
-            return new(Fq12(s) * p.X);
+            return new(Fq12(new BigInteger(s.ToBigEndian(), true, true)) * p.X);
         }
         public override bool Equals(object obj) => Equals(obj as GT);
 

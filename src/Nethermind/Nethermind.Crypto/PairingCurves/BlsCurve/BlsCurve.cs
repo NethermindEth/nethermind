@@ -122,5 +122,4 @@ public partial class BlsCurve
             return X;
         }
     }
-
 }
