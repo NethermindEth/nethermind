@@ -10,6 +10,7 @@ using DotNetty.Transport.Channels;
 using Nethermind.Core.Exceptions;
 using Nethermind.Logging;
 using Nethermind.Network.Rlpx;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Stats.Model;
 using Snappy;
 
@@ -117,7 +118,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
             {
                 // Do nothing as we don't want to drop peer for internal issue.
             }
-            else if (_session?.Node?.IsStatic != true)
+            else if (exception is RlpException || _session?.Node?.IsStatic != true)
             {
                 context.DisconnectAsync().ContinueWith(x =>
                 {
