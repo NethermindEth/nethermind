@@ -66,14 +66,14 @@ namespace Nethermind.State
             Span<byte> key = stackalloc byte[32];
             GetKey(index, key);
 
-            return Get(key, storageRoot);
+            return Get(key, storageRoot).ToArray();
         }
 
-        public override byte[] Get(ReadOnlySpan<byte> rawKey, Hash256? rootHash = null)
+        public override ReadOnlySpan<byte> Get(ReadOnlySpan<byte> rawKey, Hash256? rootHash = null)
         {
-            byte[]? value = base.Get(rawKey, rootHash);
+            ReadOnlySpan<byte> value = base.Get(rawKey, rootHash);
 
-            if (value is null)
+            if (value.IsEmpty)
             {
                 return _emptyBytes;
             }

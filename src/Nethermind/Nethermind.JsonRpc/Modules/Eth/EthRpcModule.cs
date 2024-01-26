@@ -176,12 +176,8 @@ public partial class EthRpcModule : IEthRpcModule
         }
 
         BlockHeader? header = searchResult.Object;
-        byte[] storage = _stateReader.GetStorage(header!.StateRoot!, address, positionIndex);
-        if (storage is null)
-        {
-            return ResultWrapper<byte[]>.Success(Array.Empty<byte>());
-        }
-        return ResultWrapper<byte[]>.Success(storage!.PadLeft(32));
+        ReadOnlySpan<byte> storage = _stateReader.GetStorage(header!.StateRoot!, address, positionIndex);
+        return ResultWrapper<byte[]>.Success(storage.IsEmpty ? Array.Empty<byte>() : storage!.PadLeft(32));
     }
 
     public Task<ResultWrapper<UInt256>> eth_getTransactionCount(Address address, BlockParameter blockParameter)

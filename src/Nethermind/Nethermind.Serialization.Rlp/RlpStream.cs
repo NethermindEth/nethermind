@@ -555,7 +555,7 @@ namespace Nethermind.Serialization.Rlp
             Encode(input.Value.Span);
         }
 
-        public void Encode(Span<byte> input)
+        public void Encode(ReadOnlySpan<byte> input)
         {
             if (input.IsEmpty)
             {
@@ -1309,7 +1309,7 @@ namespace Nethermind.Serialization.Rlp
             int prefix = ReadByte();
             if (prefix == 0)
             {
-                return new byte[] { 0 };
+                return Bytes.ZeroByte.Span;
             }
 
             if (prefix < 128)

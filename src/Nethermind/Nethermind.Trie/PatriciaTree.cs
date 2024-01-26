@@ -355,7 +355,7 @@ namespace Nethermind.Trie
 
         [SkipLocalsInit]
         [DebuggerStepThrough]
-        public virtual byte[]? Get(ReadOnlySpan<byte> rawKey, Hash256? rootHash = null)
+        public virtual ReadOnlySpan<byte> Get(ReadOnlySpan<byte> rawKey, Hash256? rootHash = null)
         {
             try
             {
@@ -367,10 +367,10 @@ namespace Nethermind.Trie
                     [..nibblesCount]; // Slice to exact size;
 
                 Nibbles.BytesToNibbleBytes(rawKey, nibbles);
-                var result = Run(nibbles, nibblesCount, in CappedArray<byte>.Empty, isUpdate: false, startRootHash: rootHash).ToArray();
+                var result = Run(nibbles, nibblesCount, in CappedArray<byte>.Empty, isUpdate: false, startRootHash: rootHash);
                 if (array is not null) ArrayPool<byte>.Shared.Return(array);
 
-                return result;
+                return result.AsSpan();
             }
             catch (TrieException e)
             {

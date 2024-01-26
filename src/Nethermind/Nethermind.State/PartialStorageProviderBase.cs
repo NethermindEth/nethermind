@@ -41,7 +41,7 @@ namespace Nethermind.State
         /// </summary>
         /// <param name="storageCell">Storage location</param>
         /// <returns>Value at cell</returns>
-        public byte[] Get(in StorageCell storageCell)
+        public ReadOnlySpan<byte> Get(in StorageCell storageCell)
         {
             return GetCurrentValue(storageCell);
         }
@@ -235,7 +235,7 @@ namespace Nethermind.State
         /// </summary>
         /// <param name="storageCell">Storage location</param>
         /// <returns>Value at location</returns>
-        protected abstract byte[] GetCurrentValue(in StorageCell storageCell);
+        protected abstract ReadOnlySpan<byte> GetCurrentValue(in StorageCell storageCell);
 
         /// <summary>
         /// Update the storage cell with provided value
