@@ -23,6 +23,7 @@ using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
 using static Nethermind.Evm.VirtualMachine;
 using static System.Runtime.CompilerServices.Unsafe;
+using ValueHash256 = Nethermind.Core.Crypto.ValueHash256;
 
 #if DEBUG
 using Nethermind.Evm.Tracing.Debugger;
@@ -533,8 +534,8 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         }
 
         CodeInfo cachedCodeInfo = null;
-        Hash256 codeHash = worldState.GetCodeHash(codeSource);
-        if (ReferenceEquals(codeHash, Keccak.OfAnEmptyString))
+        ValueHash256 codeHash = worldState.GetCodeHash(codeSource);
+        if (codeHash == Keccak.OfAnEmptyString.ValueHash256)
         {
             cachedCodeInfo = CodeInfo.Empty;
         }
@@ -542,7 +543,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         cachedCodeInfo ??= CodeCache.Get(codeHash);
         if (cachedCodeInfo is null)
         {
-            byte[] code = worldState.GetCode(codeHash);
+            byte[]? code = worldState.GetCode(codeHash);
 
             if (code is null)
             {
@@ -563,7 +564,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
 
         [DoesNotReturn]
         [StackTraceHidden]
-        static void MissingCode(Address codeSource, Hash256 codeHash)
+        static void MissingCode(Address codeSource, in ValueHash256 codeHash)
         {
             throw new NullReferenceException($"Code {codeHash} missing in the state for address {codeSource}");
         }

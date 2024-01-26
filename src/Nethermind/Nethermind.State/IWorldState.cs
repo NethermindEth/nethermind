@@ -109,5 +109,5 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
     /// For witness
     /// </summary>
     /// <param name="codeHash"></param>
-    void TouchCode(Hash256 codeHash);
+    void TouchCode(in ValueHash256 codeHash);
 }

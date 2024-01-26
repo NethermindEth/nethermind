@@ -145,8 +145,8 @@ namespace Nethermind.AccountAbstraction.Test
                 .Op(Instruction.STOP)
                 .Done;
 
-            Hash256 initialCodeHash = TestState.GetCodeHash(externalContractAddress);
-            (UserOperationTxTracer tracer, _, _) = ExecuteAndTraceAccessCall(SenderRecipientAndMiner.Default, code, whitelisted);
+            ValueHash256 initialCodeHash = TestState.GetCodeHash(externalContractAddress);
+            ExecuteAndTraceAccessCall(SenderRecipientAndMiner.Default, code, whitelisted);
             if (shouldMatch)
             {
                 TestState.GetCodeHash(externalContractAddress).Should().Be(initialCodeHash);

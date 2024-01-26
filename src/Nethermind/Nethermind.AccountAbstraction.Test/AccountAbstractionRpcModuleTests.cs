@@ -222,7 +222,7 @@ public partial class AccountAbstractionRpcModuleTests
         chain.SendUserOperation(entryPointAddress[0], op);
         if (changeCodeHash)
         {
-            chain.State.InsertCode(walletAddress[0]!, Bytes.Concat(chain.State.GetCode(walletAddress[0]!), 0x00), chain.SpecProvider.GenesisSpec);
+            chain.State.InsertCode(walletAddress[0]!, Bytes.Concat(chain.State.GetCode(walletAddress[0]!)!, 0x00), chain.SpecProvider.GenesisSpec);
             chain.State.Commit(chain.SpecProvider.GenesisSpec);
             chain.State.RecalculateStateRoot();
             chain.State.CommitTree(chain.BlockTree.Head!.Number);
