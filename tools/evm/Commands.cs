@@ -6,6 +6,7 @@ namespace Nethermind.Tools.t8n;
 using Newtonsoft.Json;
 using Nethermind.Db;
 using Nethermind.Specs;
+using Nethermind.Logging;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Extensions;
 using Nethermind.Specs.Forks;
@@ -13,11 +14,14 @@ using Nethermind.Specs.Test;
 using Nethermind.State;
 using Nethermind.Trie.Pruning;
 using Nethermind.Core;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Crypto;
+using Nethermind.Evm;
+using Nethermind.Int256;
+using Nethermind.Evm.TransactionProcessing;
 
 
 
-using Alloc = Dictionary<String, JsonTypes.Account>;
 
 public class TraceOptions
 {
@@ -90,7 +94,7 @@ public class T8N
         bool traceReturnData)
     {
 
-        Alloc allocJson = JsonConvert.DeserializeObject<Alloc>(File.ReadAllText(inputAlloc));
+        Dictionary<Address, JsonTypes.AccountState> allocJson = JsonConvert.DeserializeObject<Dictionary<Address, JsonTypes.AccountState>>(File.ReadAllText(inputAlloc));
         JsonTypes.Env envJson = JsonConvert.DeserializeObject<JsonTypes.Env>(File.ReadAllText(inputEnv));
 
         JsonTypes.Transaction[] txsJson = new JsonTypes.Transaction[0];
@@ -106,26 +110,6 @@ public class T8N
         }
 
         Console.WriteLine(envJson.CurrentCoinbase);
-
-
-        foreach (KeyValuePair<string, JsonTypes.Account> entry in allocJson)
-        {
-            Console.WriteLine(entry.Key);
-            Console.WriteLine(entry.Value.Code);
-            Console.WriteLine(entry.Value.Nonce);
-            Console.WriteLine(entry.Value.Balance);
-            Console.WriteLine(entry.Value.Storage);
-        }
-
-
-        foreach (JsonTypes.Transaction tx in txsJson)
-        {
-            Console.WriteLine(tx.Nonce);
-            Console.WriteLine(tx.Value);
-            Console.WriteLine(tx.R);
-            Console.WriteLine(tx.S);
-            Console.WriteLine(tx.V);
-        }
 
 
 
@@ -144,6 +128,31 @@ public class T8N
 
 
 
+        ILogManager _logManager = LimboLogs.Instance;
+        ILogger _logger = _logManager.GetClassLogger();
+
+
+        ISpecProvider specProvider = new CustomSpecProvider(
+    ((ForkActivation)0, Frontier.Instance), // TODO: this thing took a lot of time to find after it was removed!, genesis block is always initialized with Frontier
+    ((ForkActivation)1, Byzantium.Instance)); //evm.Fork
+
+
+        TrieStore trieStore = new(stateDb, _logManager);
+        WorldState stateProvider = new(trieStore, codeDb, _logManager);
+        IBlockhashProvider blockhashProvider = new TestBlockhashProvider();
+        IVirtualMachine virtualMachine = new VirtualMachine(
+            blockhashProvider,
+            specProvider,
+            _logManager);
+
+        TransactionProcessor transactionProcessor = new(
+            specProvider,
+            stateProvider,
+            virtualMachine,
+            _logManager);
+
+
+
         //TODO: Convert to proper classes that Nethermind.Test.Runner uses
         BlockHeader header = new(
     envJson.PreviousHash,
@@ -155,7 +164,44 @@ public class T8N
     envJson.CurrentTimestamp,
     Array.Empty<byte>());
 
+        InitializeFromAlloc(allocJson, stateProvider, specProvider);
+
+        //    for(JsonTypes.Transaction tx in txsJson)
+        //        {
+        //            bool isValid = txValidator.IsWellFormed(tx, spec);
+        //            if (isValid)
+        //            {
+        //                transactionProcessor.Execute(test.Transaction, new BlockExecutionContext(header), txTracer);
+        //
+        //            }
+        //
+        //        }
+        //
+        Console.WriteLine(stateProvider);
+
 
         return Task.CompletedTask;
+    }
+
+
+    private static void InitializeFromAlloc(Dictionary<Address, JsonTypes.AccountState> alloc, WorldState stateProvider, ISpecProvider specProvider)
+    {
+        foreach (KeyValuePair<Address, JsonTypes.AccountState> acountsState in alloc)
+        {
+            foreach (KeyValuePair<string, string> storageItem in acountsState.Value.Storage)
+            {
+                UInt256 storageKey = Bytes.FromHexString(storageItem.Key).ToUInt256();
+                byte[] storageValue = Bytes.FromHexString(storageItem.Key);
+                stateProvider.Set(new StorageCell(acountsState.Key, storageKey), storageValue.WithoutLeadingZeros().ToArray());
+
+            }
+
+            stateProvider.CreateAccount(acountsState.Key, Bytes.FromHexString(acountsState.Value.Balance).ToUInt256());
+            stateProvider.InsertCode(acountsState.Key, Bytes.FromHexString(acountsState.Value.Code), specProvider.GenesisSpec);
+            //stateProvider.SetNonce(accountState.Key, Bytes.FromHexString(acountsState.Value.Balance).ToUInt256()); //NOTE: Set nonce is internal. Need to change in WorldState?
+        }
+        stateProvider.Commit(specProvider.GenesisSpec);
+        stateProvider.CommitTree(0);
+        stateProvider.Reset();
     }
 }
