@@ -69,7 +69,7 @@ namespace Nethermind.State.Proofs
             _proofBits.Add(node.FullRlp.ToArray());
         }
 
-        public void VisitLeaf(in TreePath path, TrieNode node, TrieVisitContext trieVisitContext, byte[] value)
+        public void VisitLeaf(in TreePath path, TrieNode node, TrieVisitContext trieVisitContext, ReadOnlySpan<byte> value)
         {
             AddProofBits(node);
             _visitingFilter.Remove(node.Keccak);

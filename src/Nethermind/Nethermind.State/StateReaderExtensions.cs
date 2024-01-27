@@ -21,7 +21,7 @@ namespace Nethermind.State
             return stateReader.GetAccount(stateRoot, address)?.Balance ?? UInt256.Zero;
         }
 
-        public static Hash256 GetStorageRoot(this IStateReader stateReader, Hash256 stateRoot, Address address)
+        public static ValueHash256 GetStorageRoot(this IStateReader stateReader, Hash256 stateRoot, Address address)
         {
             return stateReader.GetAccount(stateRoot, address)?.StorageRoot ?? Keccak.EmptyTreeHash;
         }
@@ -31,7 +31,7 @@ namespace Nethermind.State
             return stateReader.GetCode(GetCodeHash(stateReader, stateRoot, address)) ?? Array.Empty<byte>();
         }
 
-        public static Hash256 GetCodeHash(this IStateReader stateReader, Hash256 stateRoot, Address address)
+        public static ValueHash256 GetCodeHash(this IStateReader stateReader, Hash256 stateRoot, Address address)
         {
             return stateReader.GetAccount(stateRoot, address)?.CodeHash ?? Keccak.OfAnEmptyString;
         }

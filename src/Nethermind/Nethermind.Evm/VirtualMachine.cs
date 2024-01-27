@@ -19,9 +19,11 @@ using Nethermind.Logging;
 using Nethermind.State;
 using System.Diagnostics.CodeAnalysis;
 using System.Diagnostics;
+using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
 using static Nethermind.Evm.VirtualMachine;
 using static System.Runtime.CompilerServices.Unsafe;
+using ValueHash256 = Nethermind.Core.Crypto.ValueHash256;
 
 #if DEBUG
 using Nethermind.Evm.Tracing.Debugger;
@@ -87,7 +89,7 @@ public class VirtualMachine : IVirtualMachine
     public CodeInfo GetCachedCodeInfo(IWorldState worldState, Address codeSource, IReleaseSpec spec)
         => _evm.GetCachedCodeInfo(worldState, codeSource, spec);
 
-    public void InsertCode(byte[] code, Address codeOwner, IReleaseSpec spec)
+    public void InsertCode(ReadOnlyMemory<byte> code, Address codeOwner, IReleaseSpec spec)
     {
         _evm.InsertCode(code, codeOwner, spec);
     }
@@ -176,7 +178,7 @@ public class VirtualMachine : IVirtualMachine
         }
 
         public EvmState? StateToExecute { get; }
-        public byte[] Output { get; }
+        public ReadOnlyMemory<byte> Output { get; }
         public EvmExceptionType ExceptionType { get; }
         public bool ShouldRevert { get; }
         public bool? PrecompileSuccess { get; } // TODO: check this behaviour as it seems it is required and previously that was not the case
@@ -200,15 +202,15 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
     private IWorldState _state;
     private readonly Stack<EvmState> _stateStack = new();
     private (Address Address, bool ShouldDelete) _parityTouchBugAccount = (Address.FromNumber(3), false);
-    private byte[] _returnDataBuffer = Array.Empty<byte>();
+    private ReadOnlyMemory<byte> _returnDataBuffer = Array.Empty<byte>();
     private ITxTracer _txTracer = NullTxTracer.Instance;
 
     public VirtualMachine(
         IBlockhashProvider? blockhashProvider,
         ISpecProvider? specProvider,
-        ILogger? logger)
+        ILogger logger)
     {
-        _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+        _logger = logger;
         _blockhashProvider = blockhashProvider ?? throw new ArgumentNullException(nameof(blockhashProvider));
         _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
         _chainId = ((UInt256)specProvider.ChainId).ToBigEndian();
@@ -223,7 +225,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
 
         IReleaseSpec spec = _specProvider.GetSpec(state.Env.TxExecutionContext.BlockExecutionContext.Header.Number, state.Env.TxExecutionContext.BlockExecutionContext.Header.Timestamp);
         EvmState currentState = state;
-        byte[] previousCallResult = null;
+        ReadOnlyMemory<byte>? previousCallResult = null;
         ZeroPaddedSpan previousCallOutput = ZeroPaddedSpan.Empty;
         UInt256 previousCallOutputDestination = UInt256.Zero;
         bool isTracing = _txTracer.IsTracing;
@@ -390,7 +392,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                         bool invalidCode = CodeDepositHandler.CodeIsInvalid(spec, callResult.Output);
                         if (gasAvailableForCodeDeposit >= codeDepositGasCost && !invalidCode)
                         {
-                            var code = callResult.Output;
+                            ReadOnlyMemory<byte> code = callResult.Output;
                             InsertCode(code, callCodeOwner, spec);
 
                             currentState.GasAvailable -= codeDepositGasCost;
@@ -426,7 +428,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                     {
                         _returnDataBuffer = callResult.Output;
                         previousCallResult = callResult.PrecompileSuccess.HasValue ? (callResult.PrecompileSuccess.Value ? StatusCode.SuccessBytes : StatusCode.FailureBytes) : StatusCode.SuccessBytes;
-                        previousCallOutput = callResult.Output.AsSpan().SliceWithZeroPadding(0, Math.Min(callResult.Output.Length, (int)previousState.OutputLength));
+                        previousCallOutput = callResult.Output.Span.SliceWithZeroPadding(0, Math.Min(callResult.Output.Length, (int)previousState.OutputLength));
                         previousCallOutputDestination = (ulong)previousState.OutputDestination;
                         if (previousState.IsPrecompile)
                         {
@@ -453,7 +455,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                     worldState.Restore(previousState.Snapshot);
                     _returnDataBuffer = callResult.Output;
                     previousCallResult = StatusCode.FailureBytes;
-                    previousCallOutput = callResult.Output.AsSpan().SliceWithZeroPadding(0, Math.Min(callResult.Output.Length, (int)previousState.OutputLength));
+                    previousCallOutput = callResult.Output.Span.SliceWithZeroPadding(0, Math.Min(callResult.Output.Length, (int)previousState.OutputLength));
                     previousCallOutputDestination = (ulong)previousState.OutputDestination;
 
 
@@ -500,13 +502,13 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         }
     }
 
-    public void InsertCode(byte[] code, Address callCodeOwner, IReleaseSpec spec)
+    public void InsertCode(ReadOnlyMemory<byte> code, Address callCodeOwner, IReleaseSpec spec)
     {
         var codeInfo = new CodeInfo(code);
         // Start generating the JumpDestinationBitmap in background.
         ThreadPool.UnsafeQueueUserWorkItem(codeInfo, preferLocal: false);
 
-        Hash256 codeHash = code.Length == 0 ? Keccak.OfAnEmptyString : Keccak.Compute(code.AsSpan());
+        Hash256 codeHash = code.Length == 0 ? Keccak.OfAnEmptyString : Keccak.Compute(code.Span);
         _state.InsertCode(callCodeOwner, codeHash, code, spec);
         CodeCache.Set(codeHash, codeInfo);
     }
@@ -532,8 +534,8 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         }
 
         CodeInfo cachedCodeInfo = null;
-        Hash256 codeHash = worldState.GetCodeHash(codeSource);
-        if (ReferenceEquals(codeHash, Keccak.OfAnEmptyString))
+        ValueHash256 codeHash = worldState.GetCodeHash(codeSource);
+        if (codeHash == Keccak.OfAnEmptyString.ValueHash256)
         {
             cachedCodeInfo = CodeInfo.Empty;
         }
@@ -541,7 +543,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         cachedCodeInfo ??= CodeCache.Get(codeHash);
         if (cachedCodeInfo is null)
         {
-            byte[] code = worldState.GetCode(codeHash);
+            byte[]? code = worldState.GetCode(codeHash);
 
             if (code is null)
             {
@@ -562,7 +564,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
 
         [DoesNotReturn]
         [StackTraceHidden]
-        static void MissingCode(Address codeSource, Hash256 codeHash)
+        static void MissingCode(Address codeSource, in ValueHash256 codeHash)
         {
             throw new NullReferenceException($"Code {codeHash} missing in the state for address {codeSource}");
         }
@@ -718,7 +720,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
     /// values at compile time.
     /// </remarks>
     [SkipLocalsInit]
-    private CallResult ExecuteCall<TTracingInstructions>(EvmState vmState, byte[]? previousCallResult, ZeroPaddedSpan previousCallOutput, scoped in UInt256 previousCallOutputDestination, IReleaseSpec spec)
+    private CallResult ExecuteCall<TTracingInstructions>(EvmState vmState, ReadOnlyMemory<byte>? previousCallResult, ZeroPaddedSpan previousCallOutput, scoped in UInt256 previousCallOutputDestination, IReleaseSpec spec)
         where TTracingInstructions : struct, IIsTracing
     {
         ref readonly ExecutionEnvironment env = ref vmState.Env;
@@ -754,7 +756,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
 
         if (previousCallResult is not null)
         {
-            stack.PushBytes(previousCallResult);
+            stack.PushBytes(previousCallResult.Value.Span);
             if (typeof(TTracingInstructions) == typeof(IsTracing)) _txTracer.ReportOperationRemainingGas(vmState.GasAvailable);
         }
 
@@ -1467,7 +1469,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                         {
                             if (!UpdateMemoryCost(vmState, ref gasAvailable, in a, result)) goto OutOfGas;
 
-                            slice = _returnDataBuffer.AsSpan().SliceWithZeroPadding(b, (int)result);
+                            slice = _returnDataBuffer.Span.SliceWithZeroPadding(b, (int)result);
                             vmState.Memory.Save(in a, in slice);
                             if (typeof(TTracingInstructions) == typeof(IsTracing))
                             {
@@ -1486,7 +1488,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                         if (!stack.PopUInt256(out a)) goto StackUnderflow;
                         long number = a > long.MaxValue ? long.MaxValue : (long)a;
                         Hash256 blockHash = _blockhashProvider.GetBlockhash(blkCtx.Header, number);
-                        stack.PushBytes(blockHash != null ? blockHash.Bytes : BytesZero32);
+                        stack.PushBytes(blockHash is not null ? blockHash.Bytes : BytesZero32);
 
                         if (typeof(TLogger) == typeof(IsTracing))
                         {
@@ -1659,9 +1661,8 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                             StorageAccessType.SLOAD,
                             spec)) goto OutOfGas;
 
-                        byte[] value = _state.Get(in storageCell);
+                        ReadOnlySpan<byte> value = _state.Get(in storageCell);
                         stack.PushBytes(value);
-
                         if (typeof(TTracingStorage) == typeof(IsTracing))
                         {
                             _txTracer.LoadOperationStorage(storageCell.Address, result, value);
@@ -2017,7 +2018,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                             if (!stack.PopUInt256(out result)) goto StackUnderflow;
                             storageCell = new(env.ExecutingAccount, result);
 
-                            byte[] value = _state.GetTransientState(in storageCell);
+                            ReadOnlySpan<byte> value = _state.GetTransientState(in storageCell);
                             stack.PushBytes(value);
 
                             if (typeof(TTracingStorage) == typeof(IsTracing))
@@ -2058,7 +2059,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                             if (typeof(TTracingStorage) == typeof(IsTracing))
                             {
                                 if (gasAvailable < 0) goto OutOfGas;
-                                byte[] currentValue = _state.GetTransientState(in storageCell);
+                                ReadOnlySpan<byte> currentValue = _state.GetTransientState(in storageCell);
                                 _txTracer.SetOperationTransientStorage(storageCell.Address, result, bytes, currentValue);
                             }
 
@@ -2629,16 +2630,9 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         }
 
         if (!stack.PopUInt256(out UInt256 result)) return EvmExceptionType.StackUnderflow;
-        Span<byte> bytes = stack.PopWord256();
+        ReadOnlySpan<byte> bytes = stack.PopWord256();
         bool newIsZero = bytes.IsZero();
-        if (!newIsZero)
-        {
-            bytes = bytes.WithoutLeadingZeros();
-        }
-        else
-        {
-            bytes = BytesZero;
-        }
+        bytes = !newIsZero ? bytes.WithoutLeadingZeros() : BytesZero;
 
         StorageCell storageCell = new(vmState.Env.ExecutingAccount, result);
 
@@ -2649,7 +2643,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                 StorageAccessType.SSTORE,
                 spec)) return EvmExceptionType.OutOfGas;
 
-        Span<byte> currentValue = _state.Get(in storageCell);
+        ReadOnlySpan<byte> currentValue = _state.Get(in storageCell);
         // Console.WriteLine($"current: {currentValue.ToHexString()} newValue {newValue.ToHexString()}");
         bool currentIsZero = currentValue.IsZero();
 
@@ -2747,10 +2741,10 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
 
         if (typeof(TTracingInstructions) == typeof(IsTracing))
         {
-            Span<byte> valueToStore = newIsZero ? BytesZero : bytes;
-            bytes = new byte[32]; // do not stackalloc here
-            storageCell.Index.ToBigEndian(bytes);
-            _txTracer.ReportStorageChange(bytes, valueToStore);
+            ReadOnlySpan<byte> valueToStore = newIsZero ? BytesZero.AsSpan() : bytes;
+            byte[] storageBytes = new byte[32]; // do not stackalloc here
+            storageCell.Index.ToBigEndian(storageBytes);
+            _txTracer.ReportStorageChange(storageBytes, valueToStore);
         }
 
         if (typeof(TTracingStorage) == typeof(IsTracing))

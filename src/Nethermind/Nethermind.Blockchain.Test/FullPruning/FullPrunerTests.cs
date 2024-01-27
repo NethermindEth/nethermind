@@ -446,7 +446,7 @@ namespace Nethermind.Blockchain.Test.FullPruning
                 CheckNode(path, node, trieVisitContext);
             }
 
-            public void VisitLeaf(in TreePath path, TrieNode node, TrieVisitContext trieVisitContext, byte[]? value = null)
+            public void VisitLeaf(in TreePath path, TrieNode node, TrieVisitContext trieVisitContext, ReadOnlySpan<byte> value)
             {
                 CheckNode(path, node, trieVisitContext);
             }

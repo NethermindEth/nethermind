@@ -52,7 +52,7 @@ namespace Nethermind.TxPool
 
         private readonly Channel<BlockReplacementEventArgs> _headBlocksChannel = Channel.CreateUnbounded<BlockReplacementEventArgs>(new UnboundedChannelOptions() { SingleReader = true, SingleWriter = true });
 
-        private readonly Func<Address, Account, EnhancedSortedSet<Transaction>, IEnumerable<(Transaction Tx, UInt256? changedGasBottleneck)>> _updateBucket;
+        private readonly Func<Address, AccountStruct, EnhancedSortedSet<Transaction>, IEnumerable<(Transaction Tx, UInt256? changedGasBottleneck)>> _updateBucket;
 
         /// <summary>
         /// Indexes transactions
@@ -485,7 +485,7 @@ namespace Nethermind.TxPool
         }
 
         private IEnumerable<(Transaction Tx, UInt256? changedGasBottleneck)> UpdateBucketWithAddedTransaction(
-            Address address, Account account, EnhancedSortedSet<Transaction> transactions)
+            Address address, AccountStruct account, EnhancedSortedSet<Transaction> transactions)
         {
             if (transactions.Count != 0)
             {
@@ -560,7 +560,7 @@ namespace Nethermind.TxPool
             _blobTransactions.UpdatePool(_accounts, _updateBucket);
         }
 
-        private IEnumerable<(Transaction Tx, UInt256? changedGasBottleneck)> UpdateBucket(Address address, Account account, EnhancedSortedSet<Transaction> transactions)
+        private IEnumerable<(Transaction Tx, UInt256? changedGasBottleneck)> UpdateBucket(Address address, AccountStruct account, EnhancedSortedSet<Transaction> transactions)
         {
             if (transactions.Count != 0)
             {
@@ -711,7 +711,7 @@ namespace Nethermind.TxPool
             return maxPendingNonce;
         }
 
-        public bool IsKnown(Hash256? hash) => hash != null ? _hashCache.Get(hash) : false;
+        public bool IsKnown(Hash256? hash) => hash is not null ? _hashCache.Get(hash) : false;
 
         public event EventHandler<TxEventArgs>? NewDiscovered;
         public event EventHandler<TxEventArgs>? NewPending;
@@ -743,7 +743,7 @@ namespace Nethermind.TxPool
             _timer!.Enabled = true;
         }
 
-        private static void WriteTxPoolReport(ILogger logger)
+        private static void WriteTxPoolReport(in ILogger logger)
         {
             if (!logger.IsInfo)
             {

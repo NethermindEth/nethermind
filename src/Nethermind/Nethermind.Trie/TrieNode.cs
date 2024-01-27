@@ -880,7 +880,7 @@ namespace Nethermind.Trie
             ref TreePath currentPath,
             ITrieNodeResolver resolver,
             bool skipPersisted,
-            ILogger logger,
+            in ILogger logger,
             bool resolveStorageRoot = true)
         {
             if (skipPersisted && IsPersisted)

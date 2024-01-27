@@ -17,7 +17,7 @@ namespace Nethermind.Logging.NLog.Test
         public void Logger_name_is_set_to_full_class_name()
         {
             NLogManager manager = new NLogManager("test", null);
-            NLogLogger logger = (NLogLogger)manager.GetClassLogger();
+            NLogLogger logger = (NLogLogger)manager.GetClassLogger().UnderlyingLogger;
             Assert.That(logger.Name, Is.EqualTo(GetType().FullName.Replace("Nethermind.", string.Empty)));
         }
 
