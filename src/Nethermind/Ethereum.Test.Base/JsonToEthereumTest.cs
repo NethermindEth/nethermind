@@ -21,7 +21,8 @@ namespace Ethereum.Test.Base
 {
     public static class JsonToEthereumTest
     {
-        private static IReleaseSpec ParseSpec(string network)
+        //TODO: Refactor this to some other class
+        public static IReleaseSpec ParseSpec(string network)
         {
             network = network.Replace("EIP150", "TangerineWhistle");
             network = network.Replace("EIP158", "SpuriousDragon");

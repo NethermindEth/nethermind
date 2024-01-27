@@ -8,5 +8,6 @@ namespace JsonTypes
         public string Code { get; set; } = "0x0";
         public string Nonce { get; set; } = "0x0";
         public Dictionary<String, String> Storage { get; set; } = new Dictionary<String, String>();
+        public byte[] SecretKey;
     }
 }

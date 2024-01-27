@@ -17,6 +17,8 @@ using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Crypto;
 using Nethermind.Evm;
+using Nethermind.Evm.Tracing;
+using Nethermind.Consensus.Validators;
 using Nethermind.Int256;
 using Nethermind.Evm.TransactionProcessing;
 
@@ -132,10 +134,10 @@ public class T8N
         ILogger _logger = _logManager.GetClassLogger();
 
 
-        //TODO: Parse state.fork and select the proper spec here
+        //TODO: Refactor ParesSpec
         ISpecProvider specProvider = new CustomSpecProvider(
     ((ForkActivation)0, Frontier.Instance), // TODO: this thing took a lot of time to find after it was removed!, genesis block is always initialized with Frontier
-    ((ForkActivation)1, Byzantium.Instance)); //state.Fork
+    ((ForkActivation)1, JsonToEthereumTest.ParseSpec(stateFork))); //state.Fork
 
 
         TrieStore trieStore = new(stateDb, _logManager);
@@ -157,28 +159,76 @@ public class T8N
         InitializeFromAlloc(allocJson, stateProvider, specProvider);
 
         BlockHeader header = new(
-    envJson.PreviousHash,
-    Keccak.OfAnEmptySequenceRlp,
-    envJson.CurrentCoinbase,
-    Bytes.FromHexString(envJson.CurrentDifficulty).ToUInt256(),
-    envJson.CurrentNumber,
-    Bytes.FromHexString(envJson.CurrentGasLimit).ToLongFromBigEndianByteArrayWithoutLeadingZeros(),
-    envJson.CurrentTimestamp,
-    Array.Empty<byte>());
+            envJson.PreviousHash,
+            Keccak.OfAnEmptySequenceRlp,
+            envJson.CurrentCoinbase,
+            Bytes.FromHexString(envJson.CurrentDifficulty).ToUInt256(),
+            envJson.CurrentNumber,
+            Bytes.FromHexString(envJson.CurrentGasLimit).ToLongFromBigEndianByteArrayWithoutLeadingZeros(),
+            envJson.CurrentTimestamp,
+            Array.Empty<byte>()
+        );
+
+        if (envJson.CurrentDifficulty is not null)
+        {
+            header.Difficulty = Bytes.FromHexString(envJson.CurrentDifficulty).ToUInt256();
+
+        }
+        TxValidator? txValidator = new((MainnetSpecProvider.Instance.ChainId));
+        IReleaseSpec? spec = specProvider.GetSpec((ForkActivation)envJson.CurrentNumber);
+
+        if (envJson.ParentBlobGasUsed is not null && envJson.ParentExcessBlobGas is not null)
+        {
+            BlockHeader parent = new(
+                parentHash: Keccak.Zero,
+                unclesHash: Keccak.OfAnEmptySequenceRlp,
+                beneficiary: envJson.CurrentCoinbase,
+                difficulty: Bytes.FromHexString(envJson.CurrentDifficulty).ToUInt256(),
+                number: envJson.CurrentNumber - 1,
+                gasLimit: Bytes.FromHexString(envJson.CurrentGasLimit).ToLongFromBigEndianByteArrayWithoutLeadingZeros(),
+                timestamp: envJson.CurrentTimestamp,
+                extraData: Array.Empty<byte>()
+            )
+            {
+                BlobGasUsed = envJson.ParentBlobGasUsed,
+                ExcessBlobGas = envJson.ParentExcessBlobGas
+            };
+            header.ExcessBlobGas = BlobGasCalculator.CalculateExcessBlobGas(parent, spec);
+        }
 
 
-        //    for(JsonTypes.Transaction tx in txsJson)
-        //        {
-        //            bool isValid = txValidator.IsWellFormed(tx, spec);
-        //            if (isValid)
-        //            {
-        //                transactionProcessor.Execute(test.Transaction, new BlockExecutionContext(header), txTracer);
-        //
-        //            }
-        //
-        //        }
-        //
-        Console.WriteLine(stateProvider);
+
+
+        //NOTE: This is not working correctly
+        foreach (JsonTypes.Transaction jsonTx in txsJson)
+        {
+            //TODO: Support other than legacy tx and make this a function
+            Transaction tx = new Transaction();
+            tx.Value = Bytes.FromHexString(jsonTx.Value).ToUInt256();
+            tx.Signature = new Signature(Bytes.FromHexString(jsonTx.R), Bytes.FromHexString(jsonTx.S), (ulong)Bytes.FromHexString(jsonTx.V).ToLongFromBigEndianByteArrayWithoutLeadingZeros());
+            tx.Data = Bytes.FromHexString(jsonTx.Input);
+            tx.To = jsonTx.To;
+            tx.Nonce = Bytes.FromHexString(jsonTx.Nonce).ToUInt256();
+            tx.GasPrice = Bytes.FromHexString(jsonTx.GasPrice).ToUInt256();
+            tx.GasLimit = Bytes.FromHexString(jsonTx.Gas).ToLongFromBigEndianByteArrayWithoutLeadingZeros();
+
+            bool isValid = txValidator.IsWellFormed(tx, spec);
+            Console.WriteLine("Tx.IsWellFromed: {0}", isValid);
+            if (isValid)
+            {
+                transactionProcessor.Execute(tx, new BlockExecutionContext(header), NullTxTracer.Instance);
+            }
+        }
+        stateProvider.Commit(specProvider.GenesisSpec);
+        stateProvider.CommitTree(1);
+        if (!stateProvider.AccountExists(envJson.CurrentCoinbase))
+        {
+            stateProvider.CreateAccount(envJson.CurrentCoinbase, 0);
+        }
+        stateProvider.Commit(specProvider.GetSpec((ForkActivation)1));
+        stateProvider.RecalculateStateRoot();
+        Console.WriteLine(stateProvider.StateRoot);
+
 
 
         return Task.CompletedTask;

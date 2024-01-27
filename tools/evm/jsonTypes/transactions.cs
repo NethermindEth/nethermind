@@ -9,9 +9,9 @@ namespace JsonTypes
     {
         //TODO: Figure out which are optional and which fields are missing
         public string? Input { get; set; }
-        public string? Gas { get; set; }
+        public string Gas { get; set; }
         public string? Nonce { get; set; }
-        public string? To { get; set; }
+        public Address? To { get; set; }
         public string? Value { get; set; }
         public string? V { get; set; }
         public string? R { get; set; }
