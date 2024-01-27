@@ -423,7 +423,7 @@ namespace Nethermind.Trie.Test
             node.Accept(visitor, NullTrieNodeResolver.Instance, ref emptyPath, context);
 
             visitor.VisitExtensionReceived[(TreePath.Empty, node, context)].Should().Be(1);
-            visitor.VisitLeafReceived[(Arg.Any<TreePath>(), ctx.AccountLeaf, context, ctx.AccountLeaf.Value.ToArray())].Should().Be(1);
+            visitor.VisitLeafReceived[(new(new(Bytes.FromHexString("0xa000000000000000000000000000000000000000000000000000000000000000")), 1), ctx.AccountLeaf, context, ctx.AccountLeaf.Value.ToArray())].Should().Be(1);
         }
 
         [Test]
@@ -442,7 +442,11 @@ namespace Nethermind.Trie.Test
             node.Accept(visitor, NullTrieNodeResolver.Instance, ref emptyPath, context);
 
             visitor.VisitBranchReceived[(TreePath.Empty, node, context)].Should().Be(1);
-            visitor.VisitLeafReceived[(Arg.Any<TreePath>(), ctx.AccountLeaf, context, ctx.AccountLeaf.Value.ToArray())].Should().Be(16);
+            for (byte i = 0; i < 16; i++)
+            {
+                var hex = "0x" + i.ToString("x2")[1] + "000000000000000000000000000000000000000000000000000000000000000";
+                visitor.VisitLeafReceived[(new(new(Bytes.FromHexString(hex)), 1), ctx.AccountLeaf, context, ctx.AccountLeaf.Value.ToArray())].Should().Be(1);
+            }
         }
 
         [Test]
