@@ -121,6 +121,8 @@ public static class Program
         _ = app.HelpOption("-?|-h|--help");
         _ = app.VersionOption("-v|--version", () => ProductInfo.Version, GetProductInfo);
 
+        ConsoleHelpers.EnableConsoleColorOutput();
+
         CommandOption dataDir = app.Option("-dd|--datadir <dataDir>", "Data directory", CommandOptionType.SingleValue);
         CommandOption configFile = app.Option("-c|--config <configFile>", "Config file path", CommandOptionType.SingleValue);
         CommandOption dbBasePath = app.Option("-d|--baseDbPath <baseDbPath>", "Base db path", CommandOptionType.SingleValue);
