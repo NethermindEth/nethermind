@@ -113,6 +113,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
             {
                 if (_logger.IsDebug) _logger.Debug($"Error in communication with {clientId}: {exception}");
             }
+            _logger.Info($"Exception caught: " + exception.GetType().Name);
 
             if (exception is IInternalNethermindException)
             {
