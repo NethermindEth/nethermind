@@ -1056,6 +1056,7 @@ namespace Nethermind.Trie
             {
                 _data[0] = key;
             }
+            // Set NodeType after setting key as it alters code path to one that expects the key to be set
             NodeType = nodeType;
 
             [DoesNotReturn]
