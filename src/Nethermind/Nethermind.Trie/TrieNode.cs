@@ -503,10 +503,10 @@ namespace Nethermind.Trie
                 int isDirtyActual = _isDirty;
                 Volatile.Write(ref _isDirty, 1);
 
-                Key = key;
                 if (isLeaf)
                 {
                     NodeType = NodeType.Leaf;
+                    Key = key;
 
                     ReadOnlySpan<byte> valueSpan = rlpStream.DecodeByteArraySpan();
                     CappedArray<byte> buffer = bufferPool.SafeRentBuffer(valueSpan.Length);
@@ -516,6 +516,7 @@ namespace Nethermind.Trie
                 else
                 {
                     NodeType = NodeType.Extension;
+                    Key = key;
                 }
 
                 Volatile.Write(ref _isDirty, isDirtyActual);
