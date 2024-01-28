@@ -212,13 +212,18 @@ namespace Nethermind.Trie
             set
             {
                 InitData();
-                ref var data = ref _data[IsLeaf ? 1 : BranchesCount];
+                var index = IsLeaf ? 1 : BranchesCount;
+                ref var data = ref index >= _data.Length ? ref Unsafe.NullRef<object>() : ref _data[index];
                 if (IsSealed)
                 {
-                    if (data is null && value.IsNull || Unsafe.Unbox<CappedArray<byte>>(data).AsSpan().SequenceEqual(value))
+                    if (data is null)
                     {
-                        // No change, parallel read
-                        return;
+                        if (!Unsafe.IsNullRef(ref data) && value.IsNull)
+                        { 
+                            // No change, parallel read
+                            return;
+                        }
+                        ThrowAlreadySealed();
                     }
                     ref readonly var cappedArray = ref Unsafe.Unbox<CappedArray<byte>>(data);
                     if ((cappedArray.IsNull && value.IsNull) || (!cappedArray.IsNull && !value.IsNull && cappedArray.AsSpan().SequenceEqual(value)))
@@ -234,7 +239,7 @@ namespace Nethermind.Trie
                 {
                     // in Ethereum all paths are of equal length, hence branches will never have values
                     // so we decided to save 1/17th of the array size in memory
-                    throw new TrieException("Optimized Patricia Trie does not support setting values on branches.");
+                    ThrowNoValueOnBranches();
                 }
 
                 if (value.IsNull)
@@ -250,6 +255,13 @@ namespace Nethermind.Trie
                 void ThrowAlreadySealed()
                 {
                     throw new InvalidOperationException($"{nameof(TrieNode)} {this} is already sealed when setting {nameof(Value)}.");
+                }
+
+                [DoesNotReturn]
+                [StackTraceHidden]
+                static void ThrowNoValueOnBranches()
+                {
+                    throw new TrieException("Optimized Patricia Trie does not support setting values on branches.");
                 }
             }
         }
