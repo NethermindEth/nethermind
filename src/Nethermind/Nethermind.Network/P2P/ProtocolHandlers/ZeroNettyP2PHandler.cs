@@ -119,12 +119,15 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
             {
                 // Do nothing as we don't want to drop peer for internal issue.
             }
-            else if (exception is RlpException || _session?.Node?.IsStatic != true)
+            else if (_session?.Node?.IsStatic != true)
             {
                 context.DisconnectAsync().ContinueWith(x =>
                 {
                     if (x.IsFaulted && _logger.IsTrace)
                         _logger.Trace($"Error while disconnecting on context on {this} : {x.Exception}");
+                    else
+                        _logger.Warn("Disconnected from " + context.Name);
+
                 });
             }
             else
