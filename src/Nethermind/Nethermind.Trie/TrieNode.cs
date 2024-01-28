@@ -94,12 +94,17 @@ namespace Nethermind.Trie
             get => _data?[0] as byte[];
             internal set
             {
+                InitData();
                 if (IsSealed)
                 {
+                    if ((_data[0] as byte[]).AsSpan().SequenceEqual(value))
+                    {
+                        // No change, parallel read
+                        return;
+                    }
                     ThrowAlreadySealed();
                 }
 
-                InitData();
                 _data![0] = value;
                 Keccak = null;
 
@@ -111,6 +116,50 @@ namespace Nethermind.Trie
                 }
             }
         }
+        public ref readonly CappedArray<byte> ValueRef
+        {
+            get
+            {
+                InitData();
+                if (IsLeaf)
+                {
+                    object? data = _data![1];
+                    if (data is null)
+                    {
+                        return ref CappedArray<byte>.Null;
+                    }
+
+                    return ref Unsafe.Unbox<CappedArray<byte>>(data);
+                }
+
+                if (!AllowBranchValues)
+                {
+                    // branches that we use for state will never have value set as all the keys are equal length
+                    return ref CappedArray<byte>.Empty;
+                }
+
+                ref object? obj = ref _data![BranchesCount];
+                if (obj is null)
+                {
+                    RlpFactory rlp = _rlp;
+                    if (rlp is null)
+                    {
+                        obj = CappedArray<byte>.EmptyBoxed;
+                        return ref CappedArray<byte>.Empty;
+                    }
+                    else
+                    {
+                        ValueRlpStream rlpStream = rlp.GetRlpStream();
+                        SeekChild(ref rlpStream, BranchesCount);
+                        byte[]? bArr = rlpStream.DecodeByteArray();
+                        obj = new CappedArray<byte>(bArr);
+                        return ref Unsafe.Unbox<CappedArray<byte>>(obj);
+                    }
+                }
+
+                return ref Unsafe.Unbox<CappedArray<byte>>(obj);
+            }
+        }
 
         /// <summary>
         /// Highly optimized
@@ -120,23 +169,16 @@ namespace Nethermind.Trie
             get
             {
                 InitData();
-                object? obj;
-
                 if (IsLeaf)
                 {
-                    obj = _data![1];
+                    object? data = _data![1];
 
-                    if (obj is null)
+                    if (data is null)
                     {
                         return CappedArray<byte>.Null;
                     }
 
-                    if (obj is byte[] asBytes)
-                    {
-                        return new CappedArray<byte>(asBytes);
-                    }
-
-                    return (CappedArray<byte>)obj;
+                    return Unsafe.Unbox<CappedArray<byte>>(data);
                 }
 
                 if (!AllowBranchValues)
@@ -145,13 +187,13 @@ namespace Nethermind.Trie
                     return CappedArray<byte>.Empty;
                 }
 
-                obj = _data![BranchesCount];
+                ref object? obj = ref _data![BranchesCount];
                 if (obj is null)
                 {
                     RlpFactory rlp = _rlp;
                     if (rlp is null)
                     {
-                        _data[BranchesCount] = Array.Empty<byte>();
+                        obj = CappedArray<byte>.EmptyBoxed;
                         return CappedArray<byte>.Empty;
                     }
                     else
@@ -159,26 +201,28 @@ namespace Nethermind.Trie
                         ValueRlpStream rlpStream = rlp.GetRlpStream();
                         SeekChild(ref rlpStream, BranchesCount);
                         byte[]? bArr = rlpStream.DecodeByteArray();
-                        _data![BranchesCount] = bArr;
-                        return new CappedArray<byte>(bArr);
+                        obj = new CappedArray<byte>(bArr);
+                        return Unsafe.Unbox<CappedArray<byte>>(obj);
                     }
                 }
 
-                if (obj is byte[] asBytes2)
-                {
-                    return new CappedArray<byte>(asBytes2);
-                }
-                return (CappedArray<byte>)obj;
+                return Unsafe.Unbox<CappedArray<byte>>(obj);
             }
 
             set
             {
+                InitData();
                 if (IsSealed)
                 {
+                    if (Unsafe.Unbox<CappedArray<byte>>(_data![IsLeaf ? 1 : BranchesCount]).AsSpan().SequenceEqual(value))
+                    {
+                        // No change, parallel read
+                        return;
+                    }
+
                     ThrowAlreadySealed();
                 }
 
-                InitData();
                 if (IsBranch && !AllowBranchValues)
                 {
                     // in Ethereum all paths are of equal length, hence branches will never have values
@@ -188,14 +232,7 @@ namespace Nethermind.Trie
 
                 if (value.IsNull)
                 {
-                    _data![IsLeaf ? 1 : BranchesCount] = null;
-                    return;
-                }
-
-                if (value.IsUncapped)
-                {
-                    // Store array directly if possible to reduce memory
-                    _data![IsLeaf ? 1 : BranchesCount] = value.UnderlyingArray;
+                    _data![IsLeaf ? 1 : BranchesCount] = CappedArray<byte>.NullBoxed;
                     return;
                 }
 
