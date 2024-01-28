@@ -55,10 +55,10 @@ public class BatchedTrieVisitor
     private readonly long _readAheadThreshold;
 
     private readonly ITrieNodeResolver _resolver;
-    private readonly ITreeVisitor _visitor;
+    private readonly ITreeVisitorWithPath _visitor;
 
     public BatchedTrieVisitor(
-        ITreeVisitor visitor,
+        ITreeVisitorWithPath visitor,
         ITrieNodeResolver resolver,
         VisitingOptions visitingOptions)
     {

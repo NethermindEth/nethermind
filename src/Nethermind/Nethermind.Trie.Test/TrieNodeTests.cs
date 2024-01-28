@@ -327,7 +327,7 @@ namespace Nethermind.Trie.Test
         [Test]
         public void Extension_can_accept_visitors()
         {
-            ITreeVisitor visitor = Substitute.For<ITreeVisitor>();
+            ITreeVisitorWithPath visitor = Substitute.For<ITreeVisitorWithPath>();
             TrieVisitContext context = new();
             TrieNode ignore = TrieNodeFactory.CreateLeaf(Bytes.FromHexString("ccc"), Array.Empty<byte>());
             TrieNode node = TrieNodeFactory.CreateExtension(Bytes.FromHexString("aa"), ignore);
@@ -341,7 +341,7 @@ namespace Nethermind.Trie.Test
         [Test]
         public void Unknown_node_with_missing_data_can_accept_visitor()
         {
-            ITreeVisitor visitor = Substitute.For<ITreeVisitor>();
+            ITreeVisitorWithPath visitor = Substitute.For<ITreeVisitorWithPath>();
             TrieVisitContext context = new();
             TrieNode node = new(NodeType.Unknown);
 
@@ -452,7 +452,7 @@ namespace Nethermind.Trie.Test
         [Test]
         public void Branch_can_accept_visitors()
         {
-            ITreeVisitor visitor = Substitute.For<ITreeVisitor>();
+            ITreeVisitorWithPath visitor = Substitute.For<ITreeVisitorWithPath>();
             TrieVisitContext context = new();
             TrieNode node = new(NodeType.Branch);
             for (int i = 0; i < 16; i++)
@@ -1000,7 +1000,7 @@ namespace Nethermind.Trie.Test
             }
         }
 
-        private class TreeVisitorMock : ITreeVisitor
+        private class TreeVisitorMock : ITreeVisitorWithPath
         {
             public readonly Dictionary<(TreePath path, TrieNode, TrieVisitContext), int> VisitExtensionReceived = new();
             public readonly Dictionary<(TreePath path, TrieNode, TrieVisitContext), int> VisitBranchReceived = new();

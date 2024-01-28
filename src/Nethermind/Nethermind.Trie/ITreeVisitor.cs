@@ -20,14 +20,14 @@ namespace Nethermind.Trie
 
         void VisitTree(Hash256 rootHash, TrieVisitContext trieVisitContext);
 
-        void VisitMissingNode(in TreePath path, Hash256 nodeHash, TrieVisitContext trieVisitContext);
+        void VisitMissingNode(Hash256 nodeHash, TrieVisitContext trieVisitContext);
 
-        void VisitBranch(in TreePath path, TrieNode node, TrieVisitContext trieVisitContext);
+        void VisitBranch(TrieNode node, TrieVisitContext trieVisitContext);
 
-        void VisitExtension(in TreePath path, TrieNode node, TrieVisitContext trieVisitContext);
+        void VisitExtension(TrieNode node, TrieVisitContext trieVisitContext);
 
-        void VisitLeaf(in TreePath path, TrieNode node, TrieVisitContext trieVisitContext, ReadOnlySpan<byte> value);
+        void VisitLeaf(TrieNode node, TrieVisitContext trieVisitContext, ReadOnlySpan<byte> value);
 
-        void VisitCode(in TreePath path, Hash256 codeHash, TrieVisitContext trieVisitContext);
+        void VisitCode(Hash256 codeHash, TrieVisitContext trieVisitContext);
     }
 }

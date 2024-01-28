@@ -408,7 +408,7 @@ namespace Nethermind.Blockchain.Test.FullPruning
             }
         }
 
-        class TrieCopiedNodeVisitor : ITreeVisitor
+        class TrieCopiedNodeVisitor : ITreeVisitorWithPath
         {
             private INodeStorage _nodeStorageToCompareTo;
 

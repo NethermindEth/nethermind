@@ -21,24 +21,24 @@ namespace Nethermind.Trie
         {
         }
 
-        public void VisitMissingNode(in TreePath path, Hash256 nodeHash, TrieVisitContext trieVisitContext)
+        public void VisitMissingNode(Hash256 nodeHash, TrieVisitContext trieVisitContext)
         {
             HasRoot = false;
         }
 
-        public void VisitBranch(in TreePath path, TrieNode node, TrieVisitContext trieVisitContext)
+        public void VisitBranch(TrieNode node, TrieVisitContext trieVisitContext)
         {
         }
 
-        public void VisitExtension(in TreePath path, TrieNode node, TrieVisitContext trieVisitContext)
+        public void VisitExtension(TrieNode node, TrieVisitContext trieVisitContext)
         {
         }
 
-        public void VisitLeaf(in TreePath path, TrieNode node, TrieVisitContext trieVisitContext, ReadOnlySpan<byte> value)
+        public void VisitLeaf(TrieNode node, TrieVisitContext trieVisitContext, ReadOnlySpan<byte> value)
         {
         }
 
-        public void VisitCode(in TreePath path, Hash256 codeHash, TrieVisitContext trieVisitContext)
+        public void VisitCode(Hash256 codeHash, TrieVisitContext trieVisitContext)
         {
         }
     }

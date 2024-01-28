@@ -1159,6 +1159,11 @@ namespace Nethermind.Trie
 
         public void Accept(ITreeVisitor visitor, Hash256 rootHash, VisitingOptions? visitingOptions = null)
         {
+            Accept(ITreeVisitorWithPath.FromITreeVisitor(visitor), rootHash, visitingOptions);
+        }
+
+        public void Accept(ITreeVisitorWithPath visitor, Hash256 rootHash, VisitingOptions? visitingOptions = null)
+        {
             ArgumentNullException.ThrowIfNull(visitor);
             ArgumentNullException.ThrowIfNull(rootHash);
             visitingOptions ??= VisitingOptions.Default;

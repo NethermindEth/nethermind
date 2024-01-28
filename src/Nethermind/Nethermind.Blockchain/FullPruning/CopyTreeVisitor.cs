@@ -22,7 +22,7 @@ namespace Nethermind.Blockchain.FullPruning
     /// <remarks>
     /// During visiting of the state trie at specified state root it copies the existing trie into <see cref="IPruningContext"/>.
     /// </remarks>
-    public class CopyTreeVisitor : ITreeVisitor, IDisposable
+    public class CopyTreeVisitor : ITreeVisitorWithPath, IDisposable
     {
         private readonly ILogger _logger;
         private readonly Stopwatch _stopwatch;

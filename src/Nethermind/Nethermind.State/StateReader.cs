@@ -61,7 +61,7 @@ namespace Nethermind.State
 
         public byte[]? GetCode(Hash256 codeHash) => codeHash == Keccak.OfAnEmptyString ? Array.Empty<byte>() : _codeDb[codeHash.Bytes];
 
-        public void RunTreeVisitor(ITreeVisitor treeVisitor, Hash256 rootHash, VisitingOptions? visitingOptions = null)
+        public void RunTreeVisitor(ITreeVisitorWithPath treeVisitor, Hash256 rootHash, VisitingOptions? visitingOptions = null)
         {
             _state.Accept(treeVisitor, rootHash, visitingOptions);
         }
@@ -69,7 +69,7 @@ namespace Nethermind.State
         public bool HasStateForRoot(Hash256 stateRoot)
         {
             RootCheckVisitor visitor = new();
-            RunTreeVisitor(visitor, stateRoot);
+            RunTreeVisitor(ITreeVisitorWithPath.FromITreeVisitor(visitor), stateRoot);
             return visitor.HasRoot;
         }
 
