@@ -212,9 +212,16 @@ namespace Nethermind.Trie
             set
             {
                 InitData();
+                ref var data = ref _data[IsLeaf ? 1 : BranchesCount];
                 if (IsSealed)
                 {
-                    if (Unsafe.Unbox<CappedArray<byte>>(_data![IsLeaf ? 1 : BranchesCount]).AsSpan().SequenceEqual(value))
+                    if (data is null && value.IsNull || Unsafe.Unbox<CappedArray<byte>>(data).AsSpan().SequenceEqual(value))
+                    {
+                        // No change, parallel read
+                        return;
+                    }
+                    ref readonly var cappedArray = ref Unsafe.Unbox<CappedArray<byte>>(data);
+                    if ((cappedArray.IsNull && value.IsNull) || (!cappedArray.IsNull && !value.IsNull && cappedArray.AsSpan().SequenceEqual(value)))
                     {
                         // No change, parallel read
                         return;
@@ -232,11 +239,11 @@ namespace Nethermind.Trie
 
                 if (value.IsNull)
                 {
-                    _data![IsLeaf ? 1 : BranchesCount] = CappedArray<byte>.NullBoxed;
+                    data = CappedArray<byte>.NullBoxed;
                     return;
                 }
 
-                _data![IsLeaf ? 1 : BranchesCount] = value;
+                data = value;
 
                 [DoesNotReturn]
                 [StackTraceHidden]
@@ -745,7 +752,7 @@ namespace Nethermind.Trie
 
             InitData();
             int index = IsExtension ? i + 1 : i;
-            _data![index] = child;
+            _data[index] = child;
         }
 
         public void SetChild(int i, TrieNode? node)
@@ -757,7 +764,7 @@ namespace Nethermind.Trie
 
             InitData();
             int index = IsExtension ? i + 1 : i;
-            _data![index] = node ?? _nullNode;
+            _data[index] = node ?? _nullNode;
             Keccak = null;
 
             [DoesNotReturn]
@@ -848,7 +855,7 @@ namespace Nethermind.Trie
                 trieNode.InitData();
                 for (int i = 0; i < data.Length; i++)
                 {
-                    trieNode._data![i] = data[i];
+                    trieNode._data[i] = data[i];
                 }
             }
 
@@ -1013,6 +1020,7 @@ namespace Nethermind.Trie
             return hasStorage;
         }
 
+        [MemberNotNull(nameof(_data))]
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void InitData()
         {
