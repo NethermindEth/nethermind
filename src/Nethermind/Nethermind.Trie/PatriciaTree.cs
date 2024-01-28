@@ -869,7 +869,7 @@ namespace Nethermind.Trie
             return ref TraverseNext(childNode, in traverseContext, 1);
         }
 
-        private  ref readonly CappedArray<byte> TraverseLeaf(TrieNode node, scoped in TraverseContext traverseContext)
+        private ref readonly CappedArray<byte> TraverseLeaf(TrieNode node, scoped in TraverseContext traverseContext)
         {
             if (node.Key is null)
             {
