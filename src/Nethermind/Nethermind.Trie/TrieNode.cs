@@ -219,7 +219,7 @@ namespace Nethermind.Trie
                     if (data is null)
                     {
                         if (!Unsafe.IsNullRef(ref data) && value.IsNull)
-                        { 
+                        {
                             // No change, parallel read
                             return;
                         }
