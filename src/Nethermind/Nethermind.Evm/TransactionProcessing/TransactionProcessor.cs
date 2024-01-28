@@ -114,26 +114,9 @@ namespace Nethermind.Evm.TransactionProcessing
             if (!ValidateStatic(tx, header, spec, tracer, opts, out long intrinsicGas))
                 return;
 
-            UInt256 effectiveGasPrice =
-                tx.CalculateEffectiveGasPrice(spec.IsEip1559Enabled, header.BaseFeePerGas);
+            UInt256 effectiveGasPrice = tx.CalculateEffectiveGasPrice(spec.IsEip1559Enabled, header.BaseFeePerGas);
 
-            if (opts == ExecutionOptions.Commit || opts == ExecutionOptions.None)
-            {
-                float gasPrice = (float)((double)effectiveGasPrice / 1_000_000_000.0);
-                Metrics.MinGasPrice = Math.Min(gasPrice, Metrics.MinGasPrice);
-                Metrics.MaxGasPrice = Math.Max(gasPrice, Metrics.MaxGasPrice);
-
-                Metrics.BlockMinGasPrice = Math.Min(gasPrice, Metrics.BlockMinGasPrice);
-                Metrics.BlockMaxGasPrice = Math.Max(gasPrice, Metrics.BlockMaxGasPrice);
-
-                Metrics.AveGasPrice = (Metrics.AveGasPrice * Metrics.Transactions + gasPrice) / (Metrics.Transactions + 1);
-                Metrics.EstMedianGasPrice += Metrics.AveGasPrice * 0.01f * float.Sign(gasPrice - Metrics.EstMedianGasPrice);
-                Metrics.Transactions++;
-
-                Metrics.BlockAveGasPrice = (Metrics.BlockAveGasPrice * Metrics.BlockTransactions + gasPrice) / (Metrics.BlockTransactions + 1);
-                Metrics.BlockEstMedianGasPrice += Metrics.BlockAveGasPrice * 0.01f * float.Sign(gasPrice - Metrics.BlockEstMedianGasPrice);
-                Metrics.BlockTransactions++;
-            }
+            UpdateMetrics(opts, effectiveGasPrice);
 
             bool deleteCallerAccount = RecoverSenderIfNeeded(tx, spec, opts, effectiveGasPrice);
 
@@ -146,8 +129,7 @@ namespace Nethermind.Evm.TransactionProcessing
             if (!IncrementNonce(tx, header, spec, tracer, opts))
                 return;
 
-            if (commit)
-                WorldState.Commit(spec, tracer.IsTracingState ? tracer : NullTxTracer.Instance);
+            if (commit) WorldState.Commit(spec, tracer.IsTracingState ? tracer : NullTxTracer.Instance);
 
             ExecutionEnvironment env = BuildExecutionEnvironment(tx, in blCtx, spec, tracer, opts, effectiveGasPrice);
 
@@ -203,25 +185,47 @@ namespace Nethermind.Evm.TransactionProcessing
             }
         }
 
+        private static void UpdateMetrics(ExecutionOptions opts, UInt256 effectiveGasPrice)
+        {
+            if (opts is ExecutionOptions.Commit or ExecutionOptions.None)
+            {
+                float gasPrice = (float)((double)effectiveGasPrice / 1_000_000_000.0);
+                Metrics.MinGasPrice = Math.Min(gasPrice, Metrics.MinGasPrice);
+                Metrics.MaxGasPrice = Math.Max(gasPrice, Metrics.MaxGasPrice);
+
+                Metrics.BlockMinGasPrice = Math.Min(gasPrice, Metrics.BlockMinGasPrice);
+                Metrics.BlockMaxGasPrice = Math.Max(gasPrice, Metrics.BlockMaxGasPrice);
+
+                Metrics.AveGasPrice = (Metrics.AveGasPrice * Metrics.Transactions + gasPrice) / (Metrics.Transactions + 1);
+                Metrics.EstMedianGasPrice += Metrics.AveGasPrice * 0.01f * float.Sign(gasPrice - Metrics.EstMedianGasPrice);
+                Metrics.Transactions++;
+
+                Metrics.BlockAveGasPrice = (Metrics.BlockAveGasPrice * Metrics.BlockTransactions + gasPrice) / (Metrics.BlockTransactions + 1);
+                Metrics.BlockEstMedianGasPrice += Metrics.BlockAveGasPrice * 0.01f * float.Sign(gasPrice - Metrics.BlockEstMedianGasPrice);
+                Metrics.BlockTransactions++;
+            }
+        }
+
         protected void QuickFail(Transaction tx, BlockHeader block, IReleaseSpec spec, ITxTracer txTracer, string? reason)
         {
-            block.GasUsed += tx.GasLimit;
-
-            Address recipient = tx.To ?? ContractAddress.From(
-                tx.SenderAddress ?? Address.Zero,
-                WorldState.GetNonce(tx.SenderAddress ?? Address.Zero));
-
-            if (txTracer.IsTracingReceipt)
-            {
-                Hash256? stateRoot = null;
-                if (!spec.IsEip658Enabled)
-                {
-                    WorldState.RecalculateStateRoot();
-                    stateRoot = WorldState.StateRoot;
-                }
-
-                txTracer.MarkAsFailed(recipient, tx.GasLimit, Array.Empty<byte>(), reason ?? "invalid", stateRoot);
-            }
+            throw new InvalidOperationException(reason);
+            // block.GasUsed += tx.GasLimit;
+            //
+            // Address recipient = tx.To ?? ContractAddress.From(
+            //     tx.SenderAddress ?? Address.Zero,
+            //     WorldState.GetNonce(tx.SenderAddress ?? Address.Zero));
+            //
+            // if (txTracer.IsTracingReceipt)
+            // {
+            //     Hash256? stateRoot = null;
+            //     if (!spec.IsEip658Enabled)
+            //     {
+            //         WorldState.RecalculateStateRoot();
+            //         stateRoot = WorldState.StateRoot;
+            //     }
+            //
+            //     txTracer.MarkAsFailed(recipient, tx.GasLimit, Array.Empty<byte>(), reason ?? "invalid", stateRoot);
+            // }
         }
 
 
