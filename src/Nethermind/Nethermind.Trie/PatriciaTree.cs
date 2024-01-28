@@ -1100,15 +1100,7 @@ namespace Nethermind.Trie
                 bool ignoreMissingDelete = true)
             {
                 UpdatePath = updatePath;
-                if (updateValue.IsNotNull && updateValue.Length == 0)
-                {
-                    UpdateValue = ref CappedArray<byte>.Null;
-                }
-                else
-                {
-                    UpdateValue = ref updateValue;
-                }
-
+                UpdateValue = ref updateValue.IsNotNull && updateValue.Length == 0 ? ref CappedArray<byte>.Null : ref updateValue;
                 IsUpdate = isUpdate;
                 IgnoreMissingDelete = ignoreMissingDelete;
                 CurrentIndex = 0;
