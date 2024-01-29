@@ -20,7 +20,7 @@ namespace Nethermind.Merge.Plugin.Test;
 
 [TestFixture]
 [Parallelizable(ParallelScope.Self)]
-public class BlobTransactionsDbCleanerTests
+public class ProcessedTransactionsDbCleanerTests
 {
     private readonly ILogManager _logManager = LimboLogs.Instance;
     private readonly ISpecProvider _specProvider = MainnetSpecProvider.Instance;
@@ -48,7 +48,7 @@ public class BlobTransactionsDbCleanerTests
         returnedTxs!.Length.Should().Be(2);
 
         IBlockFinalizationManager finalizationManager = Substitute.For<IBlockFinalizationManager>();
-        BlobTransactionsDbCleaner dbCleaner = new(finalizationManager, columnsDb, _logManager);
+        ProcessedTransactionsDbCleaner dbCleaner = new(finalizationManager, columnsDb.GetColumnDb(BlobTxsColumns.ProcessedTxs), _logManager);
 
         finalizationManager.BlocksFinalized += Raise.EventWith(
             new FinalizeEventArgs(Build.A.BlockHeader.TestObject,

@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Linq;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Core;
@@ -12,20 +11,18 @@ using Nethermind.Logging;
 
 namespace Nethermind.Merge.Plugin;
 
-public class BlobTransactionsDbCleaner : IDisposable
+public class ProcessedTransactionsDbCleaner : IDisposable
 {
     private readonly IBlockFinalizationManager _finalizationManager;
     private readonly IDb _processedTxsDb;
-    private readonly IColumnsDb<BlobTxsColumns> _db;
     private readonly ILogger _logger;
     private long _lastFinalizedBlock = 0;
     public Task CleaningTask { get; private set; } = Task.CompletedTask;
 
-    public BlobTransactionsDbCleaner(IBlockFinalizationManager finalizationManager, IColumnsDb<BlobTxsColumns> db, ILogManager logManager)
+    public ProcessedTransactionsDbCleaner(IBlockFinalizationManager finalizationManager, IDb processedTxsDb, ILogManager logManager)
     {
         _finalizationManager = finalizationManager ?? throw new ArgumentNullException(nameof(finalizationManager));
-        _db = db ?? throw new ArgumentNullException(nameof(db));
-        _processedTxsDb = db?.GetColumnDb(BlobTxsColumns.ProcessedTxs) ?? throw new ArgumentNullException(nameof(db));
+        _processedTxsDb = processedTxsDb ?? throw new ArgumentNullException(nameof(processedTxsDb));
         _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
 
         _finalizationManager.BlocksFinalized += OnBlocksFinalized;
@@ -33,7 +30,7 @@ public class BlobTransactionsDbCleaner : IDisposable
 
     private void OnBlocksFinalized(object? sender, FinalizeEventArgs e)
     {
-        if (e.FinalizedBlocks.Count > 0 && e.FinalizedBlocks[0].Number > _lastFinalizedBlock)
+        if (e.FinalizedBlocks.Count > 0 && e.FinalizedBlocks[0].Number > _lastFinalizedBlock && CleaningTask.IsCompleted)
         {
             CleaningTask = Task.Run(() => CleanProcessedTransactionsDb(e.FinalizedBlocks[0].Number));
         }
@@ -58,7 +55,7 @@ public class BlobTransactionsDbCleaner : IDisposable
 
             if (_logger.IsDebug) _logger.Debug($"Cleaned processed blob txs from block {_lastFinalizedBlock} to block {newlyFinalizedBlockNumber}");
 
-            _db.Compact();
+            _processedTxsDb.Compact();
 
             if (_logger.IsDebug) _logger.Debug($"Blob transactions database columns have been compacted");
 
