@@ -181,10 +181,7 @@ namespace Ethereum.Test.Base
             stopwatch?.Start();
             List<(Block Block, string ExpectedException)> correctRlp = DecodeRlps(test, failOnInvalidRlp);
 
-            if (test.GenesisRlp == null)
-            {
-                test.GenesisRlp = Rlp.Encode(new Block(JsonToEthereumTest.Convert(test.GenesisBlockHeader)));
-            }
+            test.GenesisRlp ??= Rlp.Encode(new Block(JsonToEthereumTest.Convert(test.GenesisBlockHeader)));
 
             Block genesisBlock = Rlp.Decode<Block>(test.GenesisRlp.Bytes);
             Assert.That(genesisBlock.Header.Hash, Is.EqualTo(new Hash256(test.GenesisBlockHeader.Hash)));
@@ -216,7 +213,7 @@ namespace Ethereum.Test.Base
                     correctRlp[i].Block.Header.IsPostMerge = correctRlp[i].Block.Difficulty == 0;
                     if (!test.SealEngineUsed || blockValidator.ValidateSuggestedBlock(correctRlp[i].Block))
                     {
-                        blockTree.SuggestBlock(correctRlp[i].Block);
+                        await blockTree.SuggestBlockAsync(correctRlp[i].Block);
                     }
                     else
                     {
@@ -271,14 +268,13 @@ namespace Ethereum.Test.Base
                     {
                         Assert.That(suggestedBlock.Header.Hash, Is.EqualTo(new Hash256(testBlockJson.BlockHeader.Hash)));
 
-
                         for (int uncleIndex = 0; uncleIndex < suggestedBlock.Uncles.Length; uncleIndex++)
                         {
                             Assert.That(suggestedBlock.Uncles[uncleIndex].Hash, Is.EqualTo(new Hash256(testBlockJson.UncleHeaders[uncleIndex].Hash)));
                         }
-
-                        correctRlp.Add((suggestedBlock, testBlockJson.ExpectedException));
                     }
+
+                    correctRlp.Add((suggestedBlock, testBlockJson.ExpectedException));
                 }
                 catch (Exception e)
                 {
