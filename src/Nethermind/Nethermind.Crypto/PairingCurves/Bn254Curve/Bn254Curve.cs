@@ -10,7 +10,8 @@ public partial class Bn254Curve
 {
     public static readonly BigInteger BaseFieldOrder = new([0x30, 0x64, 0x4E, 0x72, 0xE1, 0x31, 0xA0, 0x29, 0xB8, 0x50, 0x45, 0xB6, 0x81, 0x81, 0x58, 0x5D, 0x97, 0x81, 0x6A, 0x91, 0x68, 0x71, 0xCA, 0x8D, 0x3C, 0x20, 0x8C, 0x16, 0xD8, 0x7C, 0xFD, 0x47], true, true);
     public static readonly BigInteger SubgroupOrder = new([0x30, 0x64, 0x4E, 0x72, 0xE1, 0x31, 0xA0, 0x29, 0xB8, 0x50, 0x45, 0xB6, 0x81, 0x81, 0x58, 0x5D, 0x28, 0x33, 0xE8, 0x48, 0x79, 0xB9, 0x70, 0x91, 0x43, 0xE1, 0xF5, 0x93, 0xF0, 0x00, 0x00, 0x01], true, true);
-    public static readonly BigInteger X = new BigInteger(4965661367192848881);
+    public static readonly BigInteger MillerExponent = (BigInteger.Pow(BaseFieldOrder, 12) - 1) / SubgroupOrder;
+    public static readonly ulong MinusX = 4965661367192848881;
 
     public static bool Pairing(G1 g1, G2 g2)
     {
@@ -49,6 +50,10 @@ public partial class Bn254Curve
             return BaseFieldOrder;
         }
 
+        public BigInteger GetMillerExponent()
+        {
+            return MillerExponent;
+        }
         public int GetSize()
         {
             return 32;
@@ -105,10 +110,9 @@ public partial class Bn254Curve
             return SubgroupOrder;
         }
 
-        public BigInteger GetX()
+        public ulong GetMinusX()
         {
-            return X;
+            return MinusX;
         }
     }
-
 }

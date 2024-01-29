@@ -9,6 +9,6 @@ public interface ICurveParams<T> where T : IBaseField
     (Fq2<T>, Fq2<T>) G2FromX(Fq2<T> x, bool sign);
     bool G2IsOnCurve((Fq2<T>, Fq2<T>)? p);
     BigInteger GetSubgroupOrder();
-    BigInteger GetX();
+    ulong GetMinusX();
     T GetBaseField();
 }

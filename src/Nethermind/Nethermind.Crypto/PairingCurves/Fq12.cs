@@ -30,14 +30,14 @@ public class Fq12<T>(Fq6<T> a, Fq6<T> b, T baseField) where T : IBaseField
         return new(-x.a, -x.b, x.BaseField);
     }
 
-    public static Fq12<T> operator ^(Fq12<T> x, Fq<T> exp)
+    public static Fq12<T> operator ^(Fq12<T> x, BigInteger exp)
     {
         Fq12<T> a = x;
         Fq12<T> b = Fq12<T>.FromFq(new Fq<T>(1, x.BaseField));
 
-        for (BigInteger v = exp.Value; v != 0; v >>= 1)
+        for (; exp > 0; exp >>= 1)
         {
-            if ((v & 1) == 1)
+            if ((exp & 1) == 1)
             {
                 b *= a;
             }

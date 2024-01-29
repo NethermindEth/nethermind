@@ -54,6 +54,10 @@ public partial class Bn254Curve
                     throw new Exception("Invalid G2 point");
                 }
             }
+            else if (p is not null)
+            {
+                throw new Exception("Invalid G2 point");
+            }
         }
 
         public static G2 FromScalar(UInt256 x)
@@ -61,9 +65,16 @@ public partial class Bn254Curve
             return x.ToBigEndian() * Generator;
         }
 
-        public (Fq2<BaseField>, Fq2<BaseField>) ToFq()
+        public (Fq2<BaseField>, Fq2<BaseField>)? ToFq()
         {
-            return (Fq2(X.Item1, X.Item2), Fq2(Y.Item1, Y.Item2));
+            if (this == Zero)
+            {
+                return null;
+            }
+            else
+            {
+                return (Fq2(X.Item1, X.Item2), Fq2(Y.Item1, Y.Item2));
+            }
         }
 
         public static G2 FromX(ReadOnlySpan<byte> X0, ReadOnlySpan<byte> X1, bool sign)
@@ -104,7 +115,8 @@ public partial class Bn254Curve
 
         public static G2 operator *(UInt256 s, G2 p)
         {
-            (Fq2<BaseField>, Fq2<BaseField>)? r = FieldArithmetic<BaseField>.G2Multiply(s, p.ToFq(), Params.Instance);
+            var tmp = p.ToFq();
+            (Fq2<BaseField>, Fq2<BaseField>)? r = FieldArithmetic<BaseField>.G2Multiply(s, tmp, Params.Instance);
             return new(r);
         }
 

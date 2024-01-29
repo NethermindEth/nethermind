@@ -46,6 +46,10 @@ public partial class BlsCurve
                     throw new Exception("Invalid G1 point");
                 }
             }
+            else if (p is not null)
+            {
+                throw new Exception("Invalid G2 point");
+            }
         }
 
         public (Fq<BaseField>, Fq<BaseField>)? ToFq()

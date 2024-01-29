@@ -78,6 +78,6 @@ public class FqTests
             acc *= x;
         }
 
-        Assert.That(x ^ BlsCurve.Fq(1000), Is.EqualTo(acc));
+        Assert.That(x ^ 1000, Is.EqualTo(acc));
     }
 }

@@ -19,24 +19,37 @@ using EncryptedMessage = ShutterCrypto.EncryptedMessage;
 
 class ShutterCryptoTests
 {
-    [SetUp]
-    public void SetUp()
+    [Test]
+    public void Pairing_holds()
     {
+        UInt256 sk = 123456789;
+        UInt256 r = 4444444444;
+        G1 identity = G1.FromScalar(3261443);
+        G2 eonKey = G2.FromScalar(sk);
+        G1 key = sk * identity;
 
+        GT p1 = BlsCurve.Pairing(key, G2.FromScalar(r));
+        GT p2 = BlsCurve.Pairing(identity, eonKey) ^ r;
+        Assert.That(p1.X!, Is.EqualTo(p2.X!));
     }
 
     [Test]
     public void Can_decrypt()
     {
-        byte[] msg = [0xca, 0x55, 0x72, 0x15, 0xff, 0x44];
+        Span<byte> msg = stackalloc byte[200];
+        msg.Fill(55);
+        byte[] b = [0xca, 0x55, 0x72, 0x15, 0xff, 0x44];
+        b.CopyTo(msg);
+
         UInt256 sk = 123456789;
         G1 identity = G1.FromScalar(3261443);
         G2 eonKey = G2.FromScalar(sk);
         Bytes32 sigma = new([0x12, 0x15, 0xaa, 0xbb, 0x33, 0xfd, 0x66, 0x55, 0x15, 0xaa, 0xbb, 0x33, 0xfd, 0x66, 0x55, 0x15, 0xaa, 0xbb, 0x33, 0xfd, 0x66, 0x55, 0x15, 0xaa, 0xbb, 0x33, 0xfd, 0x66, 0x55, 0x22, 0x88, 0x45]);
         EncryptedMessage c = Encrypt(msg, identity, eonKey, sigma);
+
         G1 key = sk * identity;
-        byte[] res = ShutterCrypto.Decrypt(c, key);
-        Assert.That(res, Is.EqualTo(msg));
+        Span<byte> res = ShutterCrypto.Decrypt(c, key);
+        Assert.That(res.SequenceEqual(msg));
     }
 
     private static EncryptedMessage Encrypt(ReadOnlySpan<byte> msg, G1 identity, G2 eonKey, Bytes32 sigma)
@@ -54,7 +67,7 @@ class ShutterCryptoTests
     private static Bytes32 ComputeC2(Bytes32 sigma, UInt256 r, G1 identity, G2 eonKey)
     {
         GT p = BlsCurve.Pairing(identity, eonKey);
-        GT preimage = r * p;
+        GT preimage = p ^ r;
         Bytes32 key = ShutterCrypto.HashGTToBlock(preimage);
         return ShutterCrypto.XorBlocks(sigma, key);
     }

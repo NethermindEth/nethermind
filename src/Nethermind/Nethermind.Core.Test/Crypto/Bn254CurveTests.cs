@@ -15,10 +15,10 @@ using G2 = Bn254Curve.G2;
 [TestFixture]
 public class Bn254CurveTests
 {
-    [TestCase(232323232u)]
-    [TestCase(54935932u)]
-    [TestCase(5738295764u)]
-    [TestCase(1111u)]
+    [TestCase(23u)]
+    [TestCase(54u)]
+    [TestCase(57u)]
+    [TestCase(111u)]
     public void G2_from_x(ulong x)
     {
         var p = G2.FromScalar(x);
@@ -38,8 +38,8 @@ public class Bn254CurveTests
     [Test]
     public void G2_additive_commutativity()
     {
-        var p = G2.FromScalar(232323232);
-        var q = G2.FromScalar(9999999999);
+        var p = G2.FromScalar(23);
+        var q = G2.FromScalar(99);
         Assert.That(p + q, Is.EqualTo(q + p));
         Assert.That(p + q, Is.Not.EqualTo(G2.Zero));
     }
@@ -54,7 +54,7 @@ public class Bn254CurveTests
     [Test]
     public void G2_additive_negation()
     {
-        var p = G2.FromScalar(55555555);
+        var p = G2.FromScalar(77);
         Assert.That(p + (-p), Is.EqualTo(G2.Zero));
     }
 
@@ -68,7 +68,7 @@ public class Bn254CurveTests
     [Test]
     public void G2_multiply_by_scalar_zero()
     {
-        var p = G2.FromScalar(666666666);
+        var p = G2.FromScalar(26);
         Assert.That(0 * p, Is.EqualTo(G2.Zero));
     }
 
@@ -82,7 +82,7 @@ public class Bn254CurveTests
     [Test]
     public void G2_multiply_by_scalar_one()
     {
-        var p = G2.FromScalar(666666666);
+        var p = G2.FromScalar(66);
         Assert.That(1 * p, Is.EqualTo(p));
     }
 
@@ -96,8 +96,21 @@ public class Bn254CurveTests
     [Test]
     public void G2_doubling()
     {
-        var p = G2.FromScalar(60074914);
+        var p = G2.FromScalar(22);
         Assert.That(2 * p, Is.EqualTo(p + p));
+    }
+
+    [Test]
+    public void G2_mul()
+    {
+        var p = G2.FromScalar(5);
+        var acc = G2.Zero;
+        for (int i = 0; i < 99; i++)
+        {
+            acc += p;
+        }
+        Assert.That(99 * p, Is.EqualTo(acc));
+        Assert.That(acc, Is.Not.EqualTo(G2.Zero));
     }
 
     [Test]
@@ -110,7 +123,7 @@ public class Bn254CurveTests
     [Test]
     public void G2_subgroup_check()
     {
-        var p = G2.FromScalar(92461756);
+        var p = G2.FromScalar(320);
         Assert.That(Bn254Curve.SubgroupOrder.ToBigEndianByteArray(32) * p, Is.EqualTo(G2.Zero));
     }
 

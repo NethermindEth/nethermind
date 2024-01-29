@@ -4,6 +4,7 @@
 using System;
 using System.Buffers.Binary;
 using System.Collections.Generic;
+using System.Numerics;
 using System.Text;
 using FluentAssertions;
 using Nethermind.Core.Extensions;
@@ -190,6 +191,14 @@ public class BlsTests
     }
 
     [Test]
+    public void G2_mul()
+    {
+        var p = G2.FromScalar(99).ToFq();
+        var r = FieldArithmetic<BlsCurve.BaseField>.G2Multiply(99, G2.Generator.ToFq(), BlsCurve.Params.Instance);
+        Assert.That(r, Is.EqualTo(p));
+    }
+
+    [Test]
     public void G1_subgroup_check()
     {
         var p = G1.FromScalar(10403746324);
@@ -263,16 +272,35 @@ public class BlsTests
 
         GT r1 = BlsCurve.Pairing(s1 * p, s2 * q);
         GT r2 = BlsCurve.Pairing(s2 * (s1 * p), q);
-        Assert.That(r1.X! * r2.X!, Is.EqualTo(BlsCurve.Fq12(1)));
+        Assert.That(r1.X!, Is.EqualTo(r2.X!));
     }
 
     [Test]
-    public void PairingGT()
+    public void PairingTest1()
     {
         //@pairing((12+34)*56*g1, 78*g2) == pairing(78*g1, 12*56*g2) * pairing(78*g1, 34*56*g2)@
         GT r1 = BlsCurve.Pairing(G1.FromScalar((12 + 34) * 56), G2.FromScalar(78));
         GT r2 = BlsCurve.Pairing(G1.FromScalar(78), G2.FromScalar(12 * 56));
         GT r3 = BlsCurve.Pairing(G1.FromScalar(78), G2.FromScalar(34 * 56));
         Assert.That(r2.X! * r3.X!, Is.EqualTo(r1.X!));
+    }
+
+    [Test]
+    public void PairingTest2()
+    {
+        GT r1 = BlsCurve.Pairing(G1.FromScalar(2), G2.Generator);
+        GT r2 = BlsCurve.Pairing(G1.Generator, G2.FromScalar(2));
+        Assert.That(r1.X!, Is.EqualTo(r2.X!));
+    }
+
+    [Test]
+    public void Constants()
+    {
+        BigInteger x = new(BlsCurve.MinusX);
+        x *= -1;
+        BigInteger subgroupOrder = (BigInteger.Pow(x, 4)) - (x * x) + 1;
+        BigInteger fieldOrder = (x - 1) * (x - 1) * subgroupOrder / 3 + x;
+        Assert.That(subgroupOrder, Is.EqualTo(BlsCurve.SubgroupOrder));
+        Assert.That(fieldOrder, Is.EqualTo(BlsCurve.BaseFieldOrder));
     }
 }

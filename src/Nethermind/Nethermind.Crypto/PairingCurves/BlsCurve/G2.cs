@@ -54,6 +54,10 @@ public partial class BlsCurve
                     throw new Exception("Invalid G2 point");
                 }
             }
+            else if (p is not null)
+            {
+                throw new Exception("Invalid G2 point");
+            }
         }
 
         public static G2 FromScalar(UInt256 x)

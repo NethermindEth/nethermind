@@ -25,7 +25,7 @@ internal class FieldArithmetic<T> where T : IBaseField
             {
                 b = G2Add(a, b, f);
             }
-            a = G2Add(a, a, f);
+            a = G2Double(a, f);
         }
 
         return b;
@@ -50,23 +50,13 @@ internal class FieldArithmetic<T> where T : IBaseField
 
         if (p == q)
         {
-            if (y1 == Fq2(0, f))
-            {
-                return null;
-            }
-
-            Fq2<T> lambda = Fq2(3, f) * (x1 ^ Fq(2, f)) / (Fq2(2, f) * y1);
-            Fq2<T> x = (lambda ^ Fq(2, f)) - (Fq2(2, f) * x2);
-            Fq2<T> y = (lambda * (x1 - x)) - y1;
-
-            return (x, y);
+            return G2Double(p, f);
         }
         else if (x1 != x2)
         {
-            Fq2<T> lambda = (y2 - y1) / (x2 - x1);
-            Fq2<T> x = (lambda ^ Fq(2, f)) - x1 - x2;
-            Fq2<T> y = (lambda * (x1 - x)) - y1;
-
+            Fq2<T> slope = (y2 - y1) / (x2 - x1);
+            Fq2<T> x = (slope * slope) - x1 - x2;
+            Fq2<T> y = slope * (x1 - x) - y1;
             return (x, y);
         }
         else
@@ -75,12 +65,29 @@ internal class FieldArithmetic<T> where T : IBaseField
         }
     }
 
+    public static (Fq2<T>, Fq2<T>)? G2Double((Fq2<T>, Fq2<T>)? p, T f)
+    {
+        if (p is null)
+        {
+            return null;
+        }
+
+        Fq2<T> x1 = p.Value.Item1;
+        Fq2<T> y1 = p.Value.Item2;
+
+        Fq2<T> slope = Fq2(3, f) * x1 * x1 / (Fq2(2, f) * y1);
+        Fq2<T> x = (slope * slope) - (Fq2(2, f) * x1);
+        Fq2<T> y = slope * (x1 - x) - y1;
+
+        return (x, y);
+    }
+
     public static Fq12<T>? Pairing((Fq<T>, Fq<T>) p, (Fq2<T>, Fq2<T>) q, ICurveParams<T> curve)
     {
         T f = curve.GetBaseField();
         if (curve.G1IsOnCurve(p) && curve.G2IsOnCurve(q))
         {
-            return Miller(p, q, curve) ^ Fq(((f.GetOrder() ^ 12) - 1) / curve.GetSubgroupOrder(), f);
+            return Miller(p, q, curve) ^ f.GetMillerExponent();
         }
         return null;
     }
@@ -92,10 +99,10 @@ internal class FieldArithmetic<T> where T : IBaseField
         Fq12<T> acc = Fq12(Fq(1, f));
         (Fq2<T>, Fq2<T>)? r = q;
 
-        foreach (bool b in ToBitListBigEndian(curve.GetX()))
+        foreach (bool b in ToBitListBigEndian(curve.GetMinusX()))
         {
             acc = acc * acc * DoubleEval(r!.Value, p, f);
-            r = G2Add(r, r, f);
+            r = G2Double(r, f);
 
             if (b)
             {
@@ -107,25 +114,26 @@ internal class FieldArithmetic<T> where T : IBaseField
         return acc;
     }
 
-    private static IEnumerable<bool> ToBitListBigEndian(BigInteger x)
+    private static IEnumerable<bool> ToBitListBigEndian(ulong x)
     {
         LinkedList<bool> bits = [];
         for (; x > 0; x >>= 1)
         {
             bits.AddFirst((x & 1) == 1);
         }
+        bits.RemoveFirst();
         return bits;
     }
 
-    private static Fq12<T> DoubleEval((Fq2<T>, Fq2<T>) r, (Fq<T>, Fq<T>) p, T f)
+    internal static Fq12<T> DoubleEval((Fq2<T>, Fq2<T>) r, (Fq<T>, Fq<T>) p, T f)
     {
         (Fq12<T>, Fq12<T>) wideR = Untwist(r, f);
         Fq12<T> slope = Fq12(3, f) * wideR.Item1 * wideR.Item1 / (Fq12(2, f) * wideR.Item2);
-        Fq12<T> v = wideR.Item2 - slope * wideR.Item1;
+        Fq12<T> v = wideR.Item2 - (slope * wideR.Item1);
         return Fq12(p.Item2) - (Fq12(p.Item1) * slope) - v;
     }
 
-    private static Fq12<T> AddEval((Fq2<T>, Fq2<T>) r, (Fq2<T>, Fq2<T>) q, (Fq<T>, Fq<T>) p, T f)
+    internal static Fq12<T> AddEval((Fq2<T>, Fq2<T>) r, (Fq2<T>, Fq2<T>) q, (Fq<T>, Fq<T>) p, T f)
     {
         (Fq12<T>, Fq12<T>) wideR = Untwist(r, f);
         (Fq12<T>, Fq12<T>) wideQ = Untwist(q, f);

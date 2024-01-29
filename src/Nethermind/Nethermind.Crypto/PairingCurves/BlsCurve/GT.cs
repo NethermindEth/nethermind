@@ -14,14 +14,14 @@ public partial class BlsCurve
     {
         public readonly Fq12<BaseField>? X = x;
 
-        public static GT operator *(UInt256 s, GT p)
+        public static GT operator ^(GT p, UInt256 s)
         {
             if (p.X is null)
             {
-                return p;
+                return new(null);
             }
 
-            return new(Fq12(new BigInteger(s.ToBigEndian(), true, true)) * p.X);
+            return new(p.X ^ new BigInteger(s.ToBigEndian(), true, true));
         }
         public override bool Equals(object obj) => Equals(obj as GT);
 

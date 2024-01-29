@@ -46,11 +46,22 @@ public partial class Bn254Curve
                     throw new Exception("Invalid G1 point");
                 }
             }
+            else if (p is not null)
+            {
+                throw new Exception("Invalid G2 point");
+            }
         }
 
-        public (Fq<BaseField>, Fq<BaseField>) ToFq()
+        public (Fq<BaseField>, Fq<BaseField>)? ToFq()
         {
-            return (Fq(X), Fq(Y));
+            if (this == Zero)
+            {
+                return null;
+            }
+            else
+            {
+                return (Fq(X), Fq(Y));
+            }
         }
 
         public static G1 FromX(ReadOnlySpan<byte> X, bool sign)

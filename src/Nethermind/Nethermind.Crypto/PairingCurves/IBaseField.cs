@@ -8,6 +8,7 @@ namespace Nethermind.Crypto.PairingCurves;
 public interface IBaseField
 {
     BigInteger GetOrder();
+    BigInteger GetMillerExponent();
     // size to encode Fp in bytes
     int GetSize();
 }
