@@ -83,7 +83,7 @@ namespace Nethermind.Trie
 
                 case NodeType.Leaf:
                     {
-                        visitor.VisitLeaf(nodeContext,this, trieVisitContext.ToVisitContext(), Value.AsSpan());
+                        visitor.VisitLeaf(nodeContext, this, trieVisitContext.ToVisitContext(), Value.AsSpan());
 
                         if (!trieVisitContext.IsStorage && trieVisitContext.ExpectAccounts) // can combine these conditions
                         {
@@ -258,7 +258,7 @@ namespace Nethermind.Trie
 
                 case NodeType.Leaf:
                     {
-                        visitor.VisitLeaf(nodeContext,this, trieVisitContext, Value.AsSpan());
+                        visitor.VisitLeaf(nodeContext, this, trieVisitContext, Value.AsSpan());
 
                         trieVisitContext.AddVisited();
 
