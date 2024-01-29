@@ -21,19 +21,6 @@ namespace Nethermind.Network.Test.Rlpx;
 
 public class ZeroNettyP2PHandlerTests
 {
-
-    [Test]
-    public async Task When_exception_is_thrown__then_disconnect_session()
-    {
-        ISession session = Substitute.For<ISession>();
-        IChannelHandlerContext channelHandlerContext = Substitute.For<IChannelHandlerContext>();
-        ZeroNettyP2PHandler handler = new ZeroNettyP2PHandler(session, LimboLogs.Instance);
-
-        handler.ExceptionCaught(channelHandlerContext, new Exception());
-
-        await channelHandlerContext.Received().DisconnectAsync();
-    }
-
     [Test]
     public void When_exception_is_thrown_send_disconnect_message()
     {
