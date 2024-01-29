@@ -553,7 +553,7 @@ namespace Nethermind.Trie
                     return ref TraverseUnknown(node);
                 default:
                     return ref ThrowNotSupported(node);
-            };
+            }
 
             [MethodImpl(MethodImplOptions.NoInlining)]
             void Trace(TrieNode node, in TraverseContext traverseContext)

@@ -166,53 +166,8 @@ namespace Nethermind.Trie
         /// </summary>
         public CappedArray<byte> Value
         {
-            get
-            {
-                InitData();
-                if (IsLeaf)
-                {
-                    object? data = _data![1];
-
-                    if (data is null)
-                    {
-                        return CappedArray<byte>.Null;
-                    }
-
-                    return Unsafe.Unbox<CappedArray<byte>>(data);
-                }
-
-                if (!AllowBranchValues)
-                {
-                    // branches that we use for state will never have value set as all the keys are equal length
-                    return CappedArray<byte>.Empty;
-                }
-
-                ref object? obj = ref _data![BranchesCount];
-                if (obj is null)
-                {
-                    RlpFactory rlp = _rlp;
-                    if (rlp is null)
-                    {
-                        obj = CappedArray<byte>.EmptyBoxed;
-                        return CappedArray<byte>.Empty;
-                    }
-                    else
-                    {
-                        ValueRlpStream rlpStream = rlp.GetRlpStream();
-                        SeekChild(ref rlpStream, BranchesCount);
-                        byte[]? bArr = rlpStream.DecodeByteArray();
-                        obj = new CappedArray<byte>(bArr);
-                        return Unsafe.Unbox<CappedArray<byte>>(obj);
-                    }
-                }
-
-                return Unsafe.Unbox<CappedArray<byte>>(obj);
-            }
-
-            set
-            {
-                SetValue(in value);
-            }
+            get => ValueRef;
+            set => SetValue(in value);
         }
 
         private void SetValue(in CappedArray<byte> value, bool overrideSealed = false)
