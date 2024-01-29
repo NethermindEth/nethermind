@@ -72,6 +72,8 @@ namespace Nethermind.Serialization.Json
                     new ULongConverter(),
                     new IntConverter(),
                     new ByteArrayConverter(),
+                    new ByteReadOnlyMemoryConverter(),
+                    new NullableByteReadOnlyMemoryConverter(),
                     new NullableLongConverter(),
                     new NullableULongConverter(),
                     new NullableUInt256Converter(),

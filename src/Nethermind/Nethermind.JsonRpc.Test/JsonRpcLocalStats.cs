@@ -39,8 +39,8 @@ namespace Nethermind.JsonRpc.Test
             await localStats.ReportCall("A", 200, true);
             MakeTimePass();
             await localStats.ReportCall("A", 300, true);
-            CheckLogLine("A|2|150|200|0|0|0|");
-            CheckLogLine("TOTAL|2|150|200|0|0|0|");
+            CheckLogLine("A|2|0.150|0.200|0|0.000|0.000|");
+            CheckLogLine("TOTAL|2|0.150|0.200|0|0.000|0.000|");
         }
 
         [Test]
@@ -50,8 +50,8 @@ namespace Nethermind.JsonRpc.Test
             await localStats.ReportCall("A", 100, true);
             MakeTimePass();
             await localStats.ReportCall("A", 300, true);
-            CheckLogLine("A|1|100|100|0|0|0|");
-            CheckLogLine("TOTAL|1|100|100|0|0|0|");
+            CheckLogLine("A|1|0.100|0.100|0|0.000|0.000|");
+            CheckLogLine("TOTAL|1|0.100|0.100|0|0.000|0.000|");
         }
 
         [Test]
@@ -61,15 +61,15 @@ namespace Nethermind.JsonRpc.Test
             await localStats.ReportCall("A", 100, true);
             MakeTimePass();
             await localStats.ReportCall("A", 300, true);
-            CheckLogLine("A|1|100|100|0|0|0|");
+            CheckLogLine("A|1|0.100|0.100|0|0.000|0.000|");
             _testLogger.LogList.Clear();
             MakeTimePass();
             await localStats.ReportCall("A", 500, true);
-            CheckLogLine("A|1|300|300|0|0|0|");
+            CheckLogLine("A|1|0.300|0.300|0|0.000|0.000|");
             _testLogger.LogList.Clear();
             MakeTimePass();
             await localStats.ReportCall("A", 700, true);
-            CheckLogLine("A|1|500|500|0|0|0|");
+            CheckLogLine("A|1|0.500|0.500|0|0.000|0.000|");
             _testLogger.LogList.Clear();
         }
 
@@ -121,8 +121,8 @@ namespace Nethermind.JsonRpc.Test
             await localStats.ReportCall("A", 100, false);
             MakeTimePass();
             await localStats.ReportCall("A", 300, true);
-            CheckLogLine("A|3|33|50|3|67|100|");
-            CheckLogLine("TOTAL|3|33|50|3|67|100|");
+            CheckLogLine("A|3|0.033|0.050|3|0.067|0.100|");
+            CheckLogLine("TOTAL|3|0.033|0.050|3|0.067|0.100|");
         }
 
         [Test]
@@ -135,9 +135,9 @@ namespace Nethermind.JsonRpc.Test
             await localStats.ReportCall("B", 175, false);
             MakeTimePass();
             await localStats.ReportCall("A", 300, true);
-            CheckLogLine("A|1|25|25|1|125|125|");
-            CheckLogLine("B|1|75|75|1|175|175|");
-            CheckLogLine("TOTAL|2|50|75|2|150|175|");
+            CheckLogLine("A|1|0.025|0.025|1|0.125|0.125|");
+            CheckLogLine("B|1|0.075|0.075|1|0.175|0.175|");
+            CheckLogLine("TOTAL|2|0.050|0.075|2|0.150|0.175|");
         }
 
         [Test]

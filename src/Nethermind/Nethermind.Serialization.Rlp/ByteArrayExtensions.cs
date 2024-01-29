@@ -35,6 +35,11 @@ namespace Nethermind.Serialization.Rlp
 
         public static Rlp.ValueDecoderContext AsRlpValueContext(this Span<byte> span)
         {
+            return ((ReadOnlySpan<byte>)span).AsRlpValueContext();
+        }
+
+        public static Rlp.ValueDecoderContext AsRlpValueContext(this ReadOnlySpan<byte> span)
+        {
             return span.IsEmpty ? new Rlp.ValueDecoderContext(Array.Empty<byte>()) : new Rlp.ValueDecoderContext(span);
         }
     }

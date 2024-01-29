@@ -105,7 +105,7 @@ namespace Nethermind.Core
         /// <summary>
         /// Rlp encoded logs
         /// </summary>
-        public Span<byte> LogsRlp { get; set; }
+        public ReadOnlySpan<byte> LogsRlp { get; set; }
 
         public LogEntry[]? Logs { get; set; }
 
