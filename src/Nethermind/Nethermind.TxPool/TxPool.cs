@@ -553,10 +553,7 @@ namespace Nethermind.TxPool
 
         private void UpdateBuckets()
         {
-            _transactions.VerifyCapacity();
             _transactions.UpdatePool(_accounts, _updateBucket);
-
-            _blobTransactions.VerifyCapacity();
             _blobTransactions.UpdatePool(_accounts, _updateBucket);
         }
 
