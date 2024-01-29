@@ -654,12 +654,12 @@ namespace Nethermind.Evm.TransactionProcessing
     public readonly struct TransactionResult(string? error)
     {
         public static readonly TransactionResult Ok = new();
-        [MemberNotNullWhen(true, nameof(IsError))]
-        [MemberNotNullWhen(false, nameof(IsOk))]
+        [MemberNotNullWhen(true, nameof(Fail))]
+        [MemberNotNullWhen(false, nameof(Success))]
         public string? Error { get; } = error;
-        public bool IsError => Error is not null;
-        public bool IsOk => Error is null;
+        public bool Fail => Error is not null;
+        public bool Success => Error is null;
         public static implicit operator TransactionResult(string? error) => new(error);
-        public static implicit operator bool(TransactionResult result) => result.IsOk;
+        public static implicit operator bool(TransactionResult result) => result.Success;
     }
 }
