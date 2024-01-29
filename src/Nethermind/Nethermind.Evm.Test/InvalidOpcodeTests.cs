@@ -150,8 +150,8 @@ namespace Nethermind.Evm.Test
         [TestCase(MainnetSpecProvider.MuirGlacierBlockNumber)]
         [TestCase(MainnetSpecProvider.BerlinBlockNumber)]
         [TestCase(MainnetSpecProvider.LondonBlockNumber)]
-        [TestCase(MainnetSpecProvider.ParisBlockNumber, MainnetSpecProvider.ShanghaiBlockTimestamp)]
-        [TestCase(MainnetSpecProvider.ParisBlockNumber + 1, MainnetSpecProvider.CancunBlockTimestamp)]
+        [TestCase(MainnetSpecProvider.ParisBlockNumber + 1, MainnetSpecProvider.ShanghaiBlockTimestamp)]
+        [TestCase(MainnetSpecProvider.ParisBlockNumber + 2, MainnetSpecProvider.CancunBlockTimestamp)]
         [TestCase(long.MaxValue, ulong.MaxValue)]
         public void Test(long blockNumber, ulong? timestamp = null)
         {
