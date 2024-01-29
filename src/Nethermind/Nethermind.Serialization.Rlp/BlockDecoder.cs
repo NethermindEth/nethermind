@@ -37,7 +37,7 @@ namespace Nethermind.Serialization.Rlp
             List<Transaction> transactions = new();
             while (rlpStream.Position < transactionsCheck)
             {
-                transactions.Add(Rlp.Decode<Transaction>(rlpStream));
+                transactions.Add(Rlp.Decode<Transaction>(rlpStream, rlpBehaviors));
             }
 
             rlpStream.Check(transactionsCheck);
