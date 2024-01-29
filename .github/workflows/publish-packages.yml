@@ -8,6 +8,7 @@ jobs:
   publish-ppa:
     name: Publish on PPA
     runs-on: ubuntu-latest
+    if: ${{ !github.event.release.prerelease }}
     steps:
       - name: Check out Nethermind repository
         uses: actions/checkout@v4
@@ -81,6 +82,7 @@ jobs:
   publish-winget:
     name: Publish on Windows Package Manager
     runs-on: windows-latest
+    if: ${{ !github.event.release.prerelease }}
     steps:
       - name: Submit package
         run: |
@@ -92,6 +94,7 @@ jobs:
   publish-homebrew:
     name: Publish on Homebrew
     runs-on: ubuntu-latest
+    if: ${{ !github.event.release.prerelease }}
     env:
       FORMULA: nethermind.rb
     steps:
