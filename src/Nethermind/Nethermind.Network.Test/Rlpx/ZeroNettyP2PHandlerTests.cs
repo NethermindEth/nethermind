@@ -13,6 +13,7 @@ using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.ProtocolHandlers;
 using Nethermind.Network.Rlpx;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Stats.Model;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -34,6 +35,18 @@ public class ZeroNettyP2PHandlerTests
     }
 
     [Test]
+    public void When_exception_is_thrown_send_disconnect_message()
+    {
+        ISession session = Substitute.For<ISession>();
+        IChannelHandlerContext channelHandlerContext = Substitute.For<IChannelHandlerContext>();
+        ZeroNettyP2PHandler handler = new ZeroNettyP2PHandler(session, LimboLogs.Instance);
+
+        handler.ExceptionCaught(channelHandlerContext, new Exception());
+
+        session.Received().InitiateDisconnect(Arg.Any<DisconnectReason>(), Arg.Any<string>());
+    }
+
+    [Test]
     public async Task When_internal_nethermind_exception_is_thrown__then_do_not_disconnect_session()
     {
         ISession session = Substitute.For<ISession>();
@@ -44,6 +57,7 @@ public class ZeroNettyP2PHandlerTests
 
         await channelHandlerContext.DidNotReceive().DisconnectAsync();
     }
+
 
     [Test]
     public void When_not_a_snappy_encoded_data_then_pass_data_directly()
