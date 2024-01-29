@@ -21,6 +21,7 @@ public class MainnetSpecProvider : ISpecProvider
     public const long LondonBlockNumber = 12_965_000;
     public const long ArrowGlacierBlockNumber = 13_773_000;
     public const long GrayGlacierBlockNumber = 15_050_000;
+    public const long ParisBlockNumber = 15_537_393;
     public const ulong GenesisBlockTimestamp = 0x55ba4215;
     public const ulong BeaconChainGenesisTimestamp = 0x5fc63057;
     public const ulong ShanghaiBlockTimestamp = 0x64373057;
@@ -43,7 +44,8 @@ public class MainnetSpecProvider : ISpecProvider
             { BlockNumber: < LondonBlockNumber } => Berlin.Instance,
             { BlockNumber: < ArrowGlacierBlockNumber } => London.Instance,
             { BlockNumber: < GrayGlacierBlockNumber } => ArrowGlacier.Instance,
-            { Timestamp: null } or { Timestamp: < ShanghaiBlockTimestamp } => GrayGlacier.Instance,
+            { BlockNumber: < ParisBlockNumber } => GrayGlacier.Instance,
+            { Timestamp: null } or { Timestamp: < ShanghaiBlockTimestamp } => Paris.Instance,
             { Timestamp: < CancunBlockTimestamp } => Shanghai.Instance,
             _ => Cancun.Instance
         };
