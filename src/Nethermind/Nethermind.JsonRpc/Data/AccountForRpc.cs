@@ -7,17 +7,23 @@ using Nethermind.Int256;
 
 namespace Nethermind.JsonRpc.Data;
 
-public class AccountForRpc
+public struct AccountForRpc
 {
-    private Account _Account { get; set; }
+    private readonly Account? _account;
+    private readonly AccountStruct? _accountStruct;
     public AccountForRpc(Account account)
     {
-        _Account = account;
+        _account = account;
     }
 
-    public Hash256 CodeHash => _Account.CodeHash;
-    public Hash256 StorageRoot => _Account.StorageRoot;
-    public UInt256 Balance => _Account.Balance;
-    public UInt256 Nonce => _Account.Nonce;
+    public AccountForRpc(in AccountStruct? account)
+    {
+        _accountStruct = account;
+    }
+
+    public ValueHash256 CodeHash => (_accountStruct?.CodeHash ?? _account?.CodeHash.ValueHash256)!.Value;
+    public ValueHash256 StorageRoot => (_accountStruct?.StorageRoot ?? _account?.StorageRoot.ValueHash256)!.Value;
+    public UInt256 Balance => (_accountStruct?.Balance ?? _account?.Balance)!.Value;
+    public UInt256 Nonce => (_accountStruct?.Nonce ?? _account?.Nonce)!.Value;
 
 }

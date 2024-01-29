@@ -165,7 +165,7 @@ namespace Nethermind.Serialization.Rlp
             return transactionSequence;
         }
 
-        private static Hash256 CalculateHashForNetworkPayloadForm(TxType type, Span<byte> transactionSequence)
+        private static Hash256 CalculateHashForNetworkPayloadForm(TxType type, ReadOnlySpan<byte> transactionSequence)
         {
             KeccakHash hash = KeccakHash.Create();
             Span<byte> txType = stackalloc byte[1];
@@ -405,7 +405,7 @@ namespace Nethermind.Serialization.Rlp
             transaction.Type = TxType.Legacy;
 
             int txSequenceStart = decoderContext.Position;
-            Span<byte> transactionSequence = decoderContext.PeekNextItem();
+            ReadOnlySpan<byte> transactionSequence = decoderContext.PeekNextItem();
 
             if ((rlpBehaviors & RlpBehaviors.SkipTypedWrapping) == RlpBehaviors.SkipTypedWrapping)
             {

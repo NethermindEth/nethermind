@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -26,7 +27,7 @@ namespace Nethermind.Trie
 
         void VisitExtension(TrieNode node, TrieVisitContext trieVisitContext);
 
-        void VisitLeaf(TrieNode node, TrieVisitContext trieVisitContext, byte[] value = null);
+        void VisitLeaf(TrieNode node, TrieVisitContext trieVisitContext, ReadOnlySpan<byte> value);
 
         void VisitCode(Hash256 codeHash, TrieVisitContext trieVisitContext);
     }
@@ -51,7 +52,7 @@ namespace Nethermind.Trie
 
         void VisitExtension(in TNodeContext nodeContext, TrieNode node, TrieVisitContext trieVisitContext);
 
-        void VisitLeaf(in TNodeContext nodeContext, TrieNode node, TrieVisitContext trieVisitContext, byte[] value = null);
+        void VisitLeaf(in TNodeContext nodeContext, TrieNode node, TrieVisitContext trieVisitContext, ReadOnlySpan<byte> value);
 
         void VisitCode(in TNodeContext nodeContext, Hash256 codeHash, TrieVisitContext trieVisitContext);
     }
@@ -91,7 +92,7 @@ namespace Nethermind.Trie
             _wrapped.VisitExtension(node, trieVisitContext);
         }
 
-        public void VisitLeaf(in EmptyContext nodeContext, TrieNode node, TrieVisitContext trieVisitContext, byte[] value = null)
+        public void VisitLeaf(in EmptyContext nodeContext, TrieNode node, TrieVisitContext trieVisitContext, ReadOnlySpan<byte> value)
         {
             _wrapped.VisitLeaf(node, trieVisitContext, value);
         }

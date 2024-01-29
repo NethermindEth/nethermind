@@ -125,7 +125,7 @@ namespace Nethermind.Consensus.Processing
                     double bps = chunkMicroseconds == 0 ? -1 : chunkBlocks / chunkMicroseconds * 1_000_000.0;
                     double chunkMs = (chunkMicroseconds == 0 ? -1 : chunkMicroseconds / 1000.0);
                     double runMs = (runMicroseconds == 0 ? -1 : runMicroseconds / 1000.0);
-                    string blockGas = Evm.Metrics.BlockMinGasPrice != float.MaxValue ? $" Gas gwei: {Evm.Metrics.BlockMinGasPrice:N2} .. {whiteText}{Math.Max(Evm.Metrics.BlockMinGasPrice, Evm.Metrics.BlockEstMedianGasPrice):N2}{resetColor} ({Evm.Metrics.BlockAveGasPrice:N2}) .. {Evm.Metrics.BlockMaxGasPrice:N2}" : "";
+                    string blockGas = Evm.Metrics.BlockMinGasPrice != float.MaxValue ? $"⛽ Gas gwei: {Evm.Metrics.BlockMinGasPrice:N2} .. {whiteText}{Math.Max(Evm.Metrics.BlockMinGasPrice, Evm.Metrics.BlockEstMedianGasPrice):N2}{resetColor} ({Evm.Metrics.BlockAveGasPrice:N2}) .. {Evm.Metrics.BlockMaxGasPrice:N2}" : "";
                     string mgasColor = whiteText;
 
                     if (chunkBlocks > 1)
@@ -202,7 +202,7 @@ namespace Nethermind.Consensus.Processing
                     // Only output the total throughput in debug mode
                     if (_logger.IsDebug)
                     {
-                        _logger.Debug($"- Total throughput {totalMgasPerSecond,7:F2} MGas/s | {totalTxPerSecond,9:F2} t/s |       {totalBlocksPerSecond,7:F2} Blk/s | Gas gwei: {Evm.Metrics.MinGasPrice:N2} .. {Math.Max(Evm.Metrics.MinGasPrice, Evm.Metrics.EstMedianGasPrice):N2} ({Evm.Metrics.AveGasPrice:N2}) .. {Evm.Metrics.MaxGasPrice:N2}");
+                        _logger.Debug($"- Total throughput {totalMgasPerSecond,7:F2} MGas/s | {totalTxPerSecond,9:F2} t/s |       {totalBlocksPerSecond,7:F2} Blk/s |⛽ Gas gwei: {Evm.Metrics.MinGasPrice:N2} .. {Math.Max(Evm.Metrics.MinGasPrice, Evm.Metrics.EstMedianGasPrice):N2} ({Evm.Metrics.AveGasPrice:N2}) .. {Evm.Metrics.MaxGasPrice:N2}");
                     }
 
                     if (_logger.IsTrace)

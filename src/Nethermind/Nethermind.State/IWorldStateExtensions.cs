@@ -15,7 +15,7 @@ namespace Nethermind.State
     {
         public static byte[] GetCode(this IWorldState stateProvider, Address address)
         {
-            Account account = stateProvider.GetAccount(address);
+            AccountStruct account = stateProvider.GetAccount(address);
             return !account.HasCode ? Array.Empty<byte>() : stateProvider.GetCode(account.CodeHash);
         }
 
