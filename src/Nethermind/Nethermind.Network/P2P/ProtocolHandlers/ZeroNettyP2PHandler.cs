@@ -10,7 +10,6 @@ using DotNetty.Transport.Channels;
 using Nethermind.Core.Exceptions;
 using Nethermind.Logging;
 using Nethermind.Network.Rlpx;
-using Nethermind.Serialization.Rlp;
 using Nethermind.Stats.Model;
 using Snappy;
 
