@@ -113,7 +113,6 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
             {
                 if (_logger.IsDebug) _logger.Debug($"Error in communication with {clientId}: {exception}");
             }
-            _logger.Info($"Exception caught: " + exception.GetType().Name);
 
             if (exception is IInternalNethermindException)
             {
@@ -121,13 +120,11 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
             }
             else if (_session?.Node?.IsStatic != true)
             {
-                _session.InitiateDisconnect(DisconnectReason.Other, exception.Message);
+                _session.InitiateDisconnect(DisconnectReason.Other, $"Peer caused exception: {exception.GetType().Name} with message: {exception.Message}");
                 context.DisconnectAsync().ContinueWith(x =>
                 {
                     if (x.IsFaulted && _logger.IsTrace)
                         _logger.Trace($"Error while disconnecting on context on {this} : {x.Exception}");
-                    else
-                        _logger.Warn("Disconnected from " + context.Name);
 
                 });
             }
