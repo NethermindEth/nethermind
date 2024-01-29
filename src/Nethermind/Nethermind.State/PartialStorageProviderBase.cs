@@ -43,7 +43,7 @@ namespace Nethermind.State
         /// <returns>Value at cell</returns>
         public ReadOnlySpan<byte> Get(in StorageCell storageCell)
         {
-            return GetCurrentValue(storageCell);
+            return GetCurrentValue(in storageCell);
         }
 
         /// <summary>
@@ -53,7 +53,7 @@ namespace Nethermind.State
         /// <param name="newValue">Value to store</param>
         public void Set(in StorageCell storageCell, byte[] newValue)
         {
-            PushUpdate(storageCell, newValue);
+            PushUpdate(in storageCell, newValue);
         }
 
         /// <summary>
