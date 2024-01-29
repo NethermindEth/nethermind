@@ -66,10 +66,10 @@ public class MainnetSpecProvider : ISpecProvider
     public ulong TimestampFork { get; } = ShanghaiBlockTimestamp;
     public UInt256? TerminalTotalDifficulty { get; private set; } = UInt256.Parse("58750000000000000000000");
     public IReleaseSpec GenesisSpec => Frontier.Instance;
-    public static ForkActivation ShanghaiActivation { get; } = (15_050_001, ShanghaiBlockTimestamp);
-    public static ForkActivation CancunActivation { get; } = (15_050_002, CancunBlockTimestamp);
-    public static ForkActivation PragueActivation { get; } = (15_050_003, PragueBlockTimestamp);
-    public static ForkActivation OsakaActivation { get; } = (15_050_004, OsakaBlockTimestamp);
+    public static ForkActivation ShanghaiActivation { get; } = (ParisBlockNumber, ShanghaiBlockTimestamp);
+    public static ForkActivation CancunActivation { get; } = (ParisBlockNumber + 1, CancunBlockTimestamp);
+    public static ForkActivation PragueActivation { get; } = (ParisBlockNumber + 2, PragueBlockTimestamp);
+    public static ForkActivation OsakaActivation { get; } = (ParisBlockNumber + 3, OsakaBlockTimestamp);
     public ForkActivation[] TransitionActivations { get; } =
     {
         (ForkActivation)HomesteadBlockNumber,
