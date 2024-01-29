@@ -3,7 +3,10 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Numerics;
+using System.Threading;
+using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus.BeaconBlockRoot;
@@ -86,6 +89,7 @@ public partial class BlockProcessor : IBlockProcessor
     {
         if (suggestedBlocks.Count == 0) return Array.Empty<Block>();
 
+        TxHashCalculator.CalculateInBackground(suggestedBlocks);
         BlocksProcessing?.Invoke(this, new BlocksProcessingEventArgs(suggestedBlocks));
 
         /* We need to save the snapshot state root before reorganization in case the new branch has invalid blocks.
@@ -369,6 +373,24 @@ public partial class BlockProcessor : IBlockProcessor
                 _stateProvider.AddToBalance(withdrawAccount, balance, Dao.Instance);
                 _stateProvider.SubtractFromBalance(daoAccount, balance, Dao.Instance);
             }
+        }
+    }
+
+    private class TxHashCalculator(List<Block> suggestedBlocks) : IThreadPoolWorkItem
+    {
+        public static void CalculateInBackground(List<Block> suggestedBlocks)
+        {
+            ThreadPool.UnsafeQueueUserWorkItem(new TxHashCalculator(suggestedBlocks), preferLocal: false);
+        }
+
+        void IThreadPoolWorkItem.Execute()
+        {
+            // Hashes will be required for PersistentReceiptStorage in UpdateMainChain ForkchoiceUpdatedHandler
+            Parallel.ForEach(suggestedBlocks.SelectMany(b => b.Transactions), static (tx) =>
+            {
+                // Calculate the hashes to release the memory from the transactionSequence
+                tx.CalculateHashInternal();
+            });
         }
     }
 }
