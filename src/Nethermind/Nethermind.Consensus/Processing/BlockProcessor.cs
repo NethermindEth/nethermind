@@ -3,10 +3,9 @@
 
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Numerics;
+using System.Runtime.InteropServices;
 using System.Threading;
-using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus.BeaconBlockRoot;
@@ -380,17 +379,24 @@ public partial class BlockProcessor : IBlockProcessor
     {
         public static void CalculateInBackground(List<Block> suggestedBlocks)
         {
+            // Memory has been reserved on the transactions to delay calculate the hashes
+            // We calculate the hashes in the background to release that memory
             ThreadPool.UnsafeQueueUserWorkItem(new TxHashCalculator(suggestedBlocks), preferLocal: false);
         }
 
         void IThreadPoolWorkItem.Execute()
         {
             // Hashes will be required for PersistentReceiptStorage in UpdateMainChain ForkchoiceUpdatedHandler
-            Parallel.ForEach(suggestedBlocks.SelectMany(b => b.Transactions), static (tx) =>
+            // Which occurs after the block has been processed; however the block is stored in cache and picked up
+            // from there so we can calculate the hashes now for that later use.
+            foreach (Block block in CollectionsMarshal.AsSpan(suggestedBlocks))
             {
-                // Calculate the hashes to release the memory from the transactionSequence
-                tx.CalculateHashInternal();
-            });
+                foreach (Transaction tx in block.Transactions)
+                {
+                    // Calculate the hashes to release the memory from the transactionSequence
+                    tx.CalculateHashInternal();
+                }
+            }
         }
     }
 }
