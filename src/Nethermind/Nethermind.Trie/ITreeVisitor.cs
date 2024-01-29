@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 
@@ -25,7 +26,7 @@ namespace Nethermind.Trie
 
         void VisitExtension(TrieNode node, TrieVisitContext trieVisitContext);
 
-        void VisitLeaf(TrieNode node, TrieVisitContext trieVisitContext, byte[] value = null);
+        void VisitLeaf(TrieNode node, TrieVisitContext trieVisitContext, ReadOnlySpan<byte> value);
 
         void VisitCode(Hash256 codeHash, TrieVisitContext trieVisitContext);
     }

@@ -14,5 +14,5 @@ public class SyncedTxGossipPolicy : ITxGossipPolicy
         _syncModeSelector = syncModeSelector;
     }
 
-    public bool ShouldListenToGossippedTransactions => (_syncModeSelector.Current & SyncMode.WaitingForBlock) != 0;
+    public bool ShouldListenToGossipedTransactions => (_syncModeSelector.Current & SyncMode.WaitingForBlock) != 0;
 }

@@ -35,7 +35,7 @@ namespace Nethermind.Db
 
         public SimpleFilePublicKeyDb(string name, string dbDirectoryPath, ILogManager logManager)
         {
-            _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             ArgumentNullException.ThrowIfNull(dbDirectoryPath);
             Name = name ?? throw new ArgumentNullException(nameof(name));
             DbPath = Path.Combine(dbDirectoryPath, DbFileName);
@@ -161,7 +161,7 @@ namespace Nethermind.Db
             public Backup(string dbPath, ILogger logger)
             {
                 _dbPath = dbPath;
-                _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+                _logger = logger;
 
                 try
                 {

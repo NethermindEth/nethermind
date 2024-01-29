@@ -21,7 +21,7 @@ namespace Nethermind.Runner.Test
         public ChainspecFilesTests()
         {
             _loader = new ChainSpecLoader(_jsonSerializer);
-            _logger = NSubstitute.Substitute.For<ILogger>();
+            _logger = default;
         }
 
         [TestCase("foundation", 1UL)]

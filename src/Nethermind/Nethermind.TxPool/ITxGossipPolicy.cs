@@ -2,14 +2,14 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
-using System.Linq;
+using System.Runtime.InteropServices;
 using Nethermind.Core;
 
 namespace Nethermind.TxPool;
 
 public interface ITxGossipPolicy
 {
-    bool ShouldListenToGossippedTransactions => true;
+    bool ShouldListenToGossipedTransactions => true;
     bool CanGossipTransactions => true;
     bool ShouldGossipTransaction(Transaction tx) => true;
 }
@@ -17,9 +17,47 @@ public interface ITxGossipPolicy
 public class CompositeTxGossipPolicy : ITxGossipPolicy
 {
     public List<ITxGossipPolicy> Policies { get; } = new();
-    public bool ShouldListenToGossippedTransactions => Policies.All(static p => p.ShouldListenToGossippedTransactions);
-    public bool CanGossipTransactions => Policies.All(static p => p.CanGossipTransactions);
-    public bool ShouldGossipTransaction(Transaction tx) => Policies.All(p => p.ShouldGossipTransaction(tx));
+    public bool ShouldListenToGossipedTransactions
+    {
+        get
+        {
+            foreach (ITxGossipPolicy policy in CollectionsMarshal.AsSpan(Policies))
+            {
+                if (!policy.ShouldListenToGossipedTransactions)
+                {
+                    return false;
+                }
+            }
+            return true;
+        }
+    }
+
+    public bool CanGossipTransactions
+    {
+        get
+        {
+            foreach (ITxGossipPolicy policy in CollectionsMarshal.AsSpan(Policies))
+            {
+                if (!policy.CanGossipTransactions)
+                {
+                    return false;
+                }
+            }
+            return true;
+        }
+    }
+
+    public bool ShouldGossipTransaction(Transaction tx)
+    {
+        foreach (ITxGossipPolicy policy in CollectionsMarshal.AsSpan(Policies))
+        {
+            if (!policy.ShouldGossipTransaction(tx))
+            {
+                return false;
+            }
+        }
+        return true;
+    }
 }
 
 public class ShouldGossip : ITxGossipPolicy

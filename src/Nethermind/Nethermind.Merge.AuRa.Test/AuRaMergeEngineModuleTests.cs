@@ -50,7 +50,7 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
     [TestCaseSource(nameof(GetWithdrawalValidationValues))]
     public override Task forkchoiceUpdatedV2_should_validate_withdrawals((IReleaseSpec Spec,
         string ErrorMessage,
-        IEnumerable<Withdrawal>? Withdrawals,
+        Withdrawal[]? Withdrawals,
         string BlockHash
         ) input)
         => base.forkchoiceUpdatedV2_should_validate_withdrawals(input);

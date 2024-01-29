@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Runtime.InteropServices;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Core;
@@ -339,7 +340,7 @@ namespace Nethermind.Trie.Test
         [Test]
         public void Leaf_with_simple_account_can_accept_visitors()
         {
-            ITreeVisitor visitor = Substitute.For<ITreeVisitor>();
+            TreeVisitorMock visitor = new();
             TrieVisitContext context = new();
             Account account = new(100);
             AccountDecoder decoder = new();
@@ -347,13 +348,13 @@ namespace Nethermind.Trie.Test
 
             node.Accept(visitor, NullTrieNodeResolver.Instance, context);
 
-            visitor.Received().VisitLeaf(node, context, node.Value.ToArray());
+            visitor.VisitLeafReceived[(node, context, node.Value.ToArray())].Should().Be(1);
         }
 
         [Test]
         public void Leaf_with_contract_without_storage_and_empty_code_can_accept_visitors()
         {
-            ITreeVisitor visitor = Substitute.For<ITreeVisitor>();
+            TreeVisitorMock visitor = new();
             TrieVisitContext context = new();
             Account account = new(1, 100, Keccak.EmptyTreeHash, Keccak.OfAnEmptyString);
             AccountDecoder decoder = new();
@@ -361,15 +362,13 @@ namespace Nethermind.Trie.Test
 
             node.Accept(visitor, NullTrieNodeResolver.Instance, context);
 
-            visitor.Received().VisitLeaf(node, context, node.Value.ToArray());
+            visitor.VisitLeafReceived[(node, context, node.Value.ToArray())].Should().Be(1);
         }
 
         [Test]
         public void Leaf_with_contract_without_storage_and_with_code_can_accept_visitors()
         {
-            ITreeVisitor visitor = Substitute.For<ITreeVisitor>();
-            visitor.ShouldVisit(Arg.Any<Hash256>()).Returns(true);
-
+            TreeVisitorMock visitor = new();
             TrieVisitContext context = new();
             Account account = new(1, 100, Keccak.EmptyTreeHash, Keccak.Zero);
             AccountDecoder decoder = new();
@@ -377,15 +376,13 @@ namespace Nethermind.Trie.Test
 
             node.Accept(visitor, NullTrieNodeResolver.Instance, context);
 
-            visitor.Received().VisitLeaf(node, context, node.Value.ToArray());
+            visitor.VisitLeafReceived[(node, context, node.Value.ToArray())].Should().Be(1);
         }
 
         [Test]
         public void Leaf_with_contract_with_storage_and_without_code_can_accept_visitors()
         {
-            ITreeVisitor visitor = Substitute.For<ITreeVisitor>();
-            visitor.ShouldVisit(Arg.Any<Hash256>()).Returns(true);
-
+            TreeVisitorMock visitor = new();
             TrieVisitContext context = new();
             Account account = new(1, 100, Keccak.Zero, Keccak.OfAnEmptyString);
             AccountDecoder decoder = new();
@@ -393,32 +390,28 @@ namespace Nethermind.Trie.Test
 
             node.Accept(visitor, NullTrieNodeResolver.Instance, context);
 
-            visitor.Received().VisitLeaf(node, context, node.Value.ToArray());
+            visitor.VisitLeafReceived[(node, context, node.Value.ToArray())].Should().Be(1);
         }
 
         [Test]
         public void Extension_with_leaf_can_be_visited()
         {
             Context ctx = new();
-            ITreeVisitor visitor = Substitute.For<ITreeVisitor>();
-            visitor.ShouldVisit(Arg.Any<Hash256>()).Returns(true);
-
+            TreeVisitorMock visitor = new();
             TrieVisitContext context = new();
             TrieNode node = TrieNodeFactory.CreateExtension(Bytes.FromHexString("aa"), ctx.AccountLeaf);
 
             node.Accept(visitor, NullTrieNodeResolver.Instance, context);
 
-            visitor.Received().VisitExtension(node, context);
-            visitor.Received().VisitLeaf(ctx.AccountLeaf, context, ctx.AccountLeaf.Value.ToArray());
+            visitor.VisitExtensionReceived[(node, context)].Should().Be(1);
+            visitor.VisitLeafReceived[(ctx.AccountLeaf, context, ctx.AccountLeaf.Value.ToArray())].Should().Be(1);
         }
 
         [Test]
         public void Branch_with_children_can_be_visited()
         {
             Context ctx = new();
-            ITreeVisitor visitor = Substitute.For<ITreeVisitor>();
-            visitor.ShouldVisit(Arg.Any<Hash256>()).Returns(true);
-
+            TreeVisitorMock visitor = new();
             TrieVisitContext context = new();
             TrieNode node = new(NodeType.Branch);
             for (int i = 0; i < 16; i++)
@@ -428,8 +421,8 @@ namespace Nethermind.Trie.Test
 
             node.Accept(visitor, NullTrieNodeResolver.Instance, context);
 
-            visitor.Received().VisitBranch(node, context);
-            visitor.Received(16).VisitLeaf(ctx.AccountLeaf, context, ctx.AccountLeaf.Value.ToArray());
+            visitor.VisitBranchReceived[(node, context)].Should().Be(1);
+            visitor.VisitLeafReceived[(ctx.AccountLeaf, context, ctx.AccountLeaf.Value.ToArray())].Should().Be(16);
         }
 
         [Test]
@@ -965,6 +958,53 @@ namespace Nethermind.Trie.Test
                 AccountLeaf = TrieNodeFactory.CreateLeaf(
                     Bytes.FromHexString("bbb"),
                     decoder.Encode(account).Bytes);
+            }
+        }
+
+        private class TreeVisitorMock : ITreeVisitor
+        {
+            public readonly Dictionary<(TrieNode, TrieVisitContext), int> VisitExtensionReceived = new();
+            public readonly Dictionary<(TrieNode, TrieVisitContext), int> VisitBranchReceived = new();
+            public readonly Dictionary<(TrieNode, TrieVisitContext, byte[]), int> VisitLeafReceived = new(new LeafComparer());
+
+            public bool IsFullDbScan => true;
+
+            public bool ShouldVisit(Hash256 nextNode) => true;
+
+            public void VisitTree(Hash256 rootHash, TrieVisitContext trieVisitContext)
+            {
+            }
+
+            public void VisitMissingNode(Hash256 nodeHash, TrieVisitContext trieVisitContext)
+            {
+            }
+
+            public void VisitBranch(TrieNode node, TrieVisitContext trieVisitContext)
+            {
+                CollectionsMarshal.GetValueRefOrAddDefault(VisitBranchReceived, (node, trieVisitContext), out _) += 1;
+            }
+
+            public void VisitExtension(TrieNode node, TrieVisitContext trieVisitContext)
+            {
+                CollectionsMarshal.GetValueRefOrAddDefault(VisitExtensionReceived, (node, trieVisitContext), out _) += 1;
+            }
+
+            public void VisitLeaf(TrieNode node, TrieVisitContext trieVisitContext, ReadOnlySpan<byte> value)
+            {
+                CollectionsMarshal.GetValueRefOrAddDefault(VisitLeafReceived, (node, trieVisitContext, value.ToArray()), out _) += 1;
+            }
+
+            public void VisitCode(Hash256 codeHash, TrieVisitContext trieVisitContext)
+            {
+            }
+
+            private class LeafComparer : IEqualityComparer<(TrieNode, TrieVisitContext, byte[])>
+            {
+                public bool Equals((TrieNode, TrieVisitContext, byte[]) x, (TrieNode, TrieVisitContext, byte[]) y) =>
+                    Equals(x.Item1, y.Item1) && Equals(x.Item2, y.Item2) && Bytes.EqualityComparer.Equals(x.Item3, y.Item3);
+
+                public int GetHashCode((TrieNode, TrieVisitContext, byte[]) obj) =>
+                    HashCode.Combine(obj.Item1, obj.Item2, Bytes.EqualityComparer.GetHashCode(obj.Item3));
             }
         }
     }

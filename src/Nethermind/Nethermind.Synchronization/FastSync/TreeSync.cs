@@ -82,7 +82,7 @@ namespace Nethermind.Synchronization.FastSync
             _stateDb = stateDb ?? throw new ArgumentNullException(nameof(stateDb));
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
 
-            _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
 
             byte[] progress = _codeDb.Get(_fastSyncProgressKey);
             _data = new DetailedProgress(_blockTree.NetworkId, progress);
@@ -181,7 +181,7 @@ namespace Nethermind.Synchronization.FastSync
                         return SyncResponseHandlingResult.InternalError;
                     }
 
-                    if (peerInfo == null)
+                    if (peerInfo is null)
                     {
                         AddAgainAllItems();
                         if (_logger.IsTrace) _logger.Trace("Batch was not assigned to any peer.");
@@ -873,7 +873,7 @@ namespace Nethermind.Synchronization.FastSync
                     {
                         _pendingItems.MaxStateLevel = 64;
                         DependentItem dependentItem = new(currentStateSyncItem, currentResponseItem, 2, true);
-                        (Hash256 codeHash, Hash256 storageRoot) = AccountDecoder.DecodeHashesOnly(new RlpStream(trieNode.Value.ToArray()));
+                        (Hash256 codeHash, Hash256 storageRoot) = AccountDecoder.DecodeHashesOnly(trieNode.Value.AsRlpStream());
                         if (codeHash != Keccak.OfAnEmptyString)
                         {
                             // prepare a branch without the code DB

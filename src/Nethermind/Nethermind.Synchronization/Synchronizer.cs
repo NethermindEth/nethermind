@@ -34,6 +34,9 @@ namespace Nethermind.Synchronization
     {
         private const int FeedsTerminationTimeout = 5_000;
 
+        private static MallocTrimmer? s_trimmer;
+        private static SyncDbTuner? s_dbTuner;
+
         private readonly ISpecProvider _specProvider;
         private readonly IReceiptStorage _receiptStorage;
         private readonly IBlockDownloaderFactory _blockDownloaderFactory;
@@ -177,7 +180,7 @@ namespace Nethermind.Synchronization
 
             WireMultiSyncModeSelector();
 
-            new MallocTrimmer(SyncModeSelector, TimeSpan.FromSeconds(_syncConfig.MallocTrimIntervalSec), _logManager);
+            s_trimmer ??= new MallocTrimmer(SyncModeSelector, TimeSpan.FromSeconds(_syncConfig.MallocTrimIntervalSec), _logManager);
             SyncModeSelector.Changed += _syncReport.SyncModeSelectorOnChanged;
         }
 
@@ -207,7 +210,7 @@ namespace Nethermind.Synchronization
 
         private void SetupDbOptimizer()
         {
-            new SyncDbTuner(
+            s_dbTuner ??= new SyncDbTuner(
                 _syncConfig,
                 SnapSyncFeed,
                 BodiesSyncFeed,
@@ -438,7 +441,7 @@ namespace Nethermind.Synchronization
 
         protected void WireFeedWithModeSelector<T>(ISyncFeed<T>? feed)
         {
-            if (feed == null) return;
+            if (feed is null) return;
             SyncModeSelector.Changed += ((sender, args) =>
             {
                 feed?.SyncModeSelectorOnChanged(args.Current);

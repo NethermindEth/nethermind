@@ -79,11 +79,11 @@ namespace Nethermind.Evm.Precompiles
         {
             mpz_t result = new();
             gmp_lib.mpz_init(result);
-            ulong memorySize = ulong.Parse(data.Length.ToString());
+            ulong memorySize = (ulong)data.Length;
             using void_ptr memoryChunk = gmp_lib.allocate(memorySize);
 
             Marshal.Copy(data, 0, memoryChunk.ToIntPtr(), data.Length);
-            gmp_lib.mpz_import(result, ulong.Parse(data.Length.ToString()), 1, 1, 1, 0, memoryChunk);
+            gmp_lib.mpz_import(result, memorySize, 1, 1, 1, 0, memoryChunk);
 
             return result;
         }

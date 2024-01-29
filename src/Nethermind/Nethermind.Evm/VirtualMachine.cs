@@ -19,9 +19,11 @@ using Nethermind.Logging;
 using Nethermind.State;
 using System.Diagnostics.CodeAnalysis;
 using System.Diagnostics;
+using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
 using static Nethermind.Evm.VirtualMachine;
 using static System.Runtime.CompilerServices.Unsafe;
+using ValueHash256 = Nethermind.Core.Crypto.ValueHash256;
 
 #if DEBUG
 using Nethermind.Evm.Tracing.Debugger;
@@ -31,12 +33,40 @@ using Nethermind.Evm.Tracing.Debugger;
 
 namespace Nethermind.Evm;
 
+using System.Collections.Frozen;
 using System.Linq;
+using System.Threading;
+
 using Int256;
 
 public class VirtualMachine : IVirtualMachine
 {
     public const int MaxCallDepth = 1024;
+    internal static FrozenDictionary<Address, CodeInfo> PrecompileCode { get; } = InitializePrecompiledContracts();
+    internal static LruCache<ValueHash256, CodeInfo> CodeCache { get; } = new(MemoryAllowance.CodeCacheSize, MemoryAllowance.CodeCacheSize, "VM bytecodes");
+
+    private readonly static UInt256 P255Int = (UInt256)System.Numerics.BigInteger.Pow(2, 255);
+    internal static ref readonly UInt256 P255 => ref P255Int;
+    internal static readonly UInt256 BigInt256 = 256;
+    internal static readonly UInt256 BigInt32 = 32;
+
+    internal static readonly byte[] BytesZero = { 0 };
+
+    internal static readonly byte[] BytesZero32 =
+    {
+        0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0
+    };
+
+    internal static readonly byte[] BytesMax32 =
+    {
+        255, 255, 255, 255, 255, 255, 255, 255,
+        255, 255, 255, 255, 255, 255, 255, 255,
+        255, 255, 255, 255, 255, 255, 255, 255,
+        255, 255, 255, 255, 255, 255, 255, 255
+    };
 
     private readonly IVirtualMachine _evm;
 
@@ -59,9 +89,44 @@ public class VirtualMachine : IVirtualMachine
     public CodeInfo GetCachedCodeInfo(IWorldState worldState, Address codeSource, IReleaseSpec spec)
         => _evm.GetCachedCodeInfo(worldState, codeSource, spec);
 
+    public void InsertCode(ReadOnlyMemory<byte> code, Address codeOwner, IReleaseSpec spec)
+    {
+        _evm.InsertCode(code, codeOwner, spec);
+    }
+
     public TransactionSubstate Run<TTracingActions>(EvmState state, IWorldState worldState, ITxTracer txTracer)
         where TTracingActions : struct, IIsTracing
         => _evm.Run<TTracingActions>(state, worldState, txTracer);
+
+    private static FrozenDictionary<Address, CodeInfo> InitializePrecompiledContracts()
+    {
+        return new Dictionary<Address, CodeInfo>
+        {
+            [EcRecoverPrecompile.Address] = new(EcRecoverPrecompile.Instance),
+            [Sha256Precompile.Address] = new(Sha256Precompile.Instance),
+            [Ripemd160Precompile.Address] = new(Ripemd160Precompile.Instance),
+            [IdentityPrecompile.Address] = new(IdentityPrecompile.Instance),
+
+            [Bn254AddPrecompile.Address] = new(Bn254AddPrecompile.Instance),
+            [Bn254MulPrecompile.Address] = new(Bn254MulPrecompile.Instance),
+            [Bn254PairingPrecompile.Address] = new(Bn254PairingPrecompile.Instance),
+            [ModExpPrecompile.Address] = new(ModExpPrecompile.Instance),
+
+            [Blake2FPrecompile.Address] = new(Blake2FPrecompile.Instance),
+
+            [G1AddPrecompile.Address] = new(G1AddPrecompile.Instance),
+            [G1MulPrecompile.Address] = new(G1MulPrecompile.Instance),
+            [G1MultiExpPrecompile.Address] = new(G1MultiExpPrecompile.Instance),
+            [G2AddPrecompile.Address] = new(G2AddPrecompile.Instance),
+            [G2MulPrecompile.Address] = new(G2MulPrecompile.Instance),
+            [G2MultiExpPrecompile.Address] = new(G2MultiExpPrecompile.Instance),
+            [PairingPrecompile.Address] = new(PairingPrecompile.Instance),
+            [MapToG1Precompile.Address] = new(MapToG1Precompile.Instance),
+            [MapToG2Precompile.Address] = new(MapToG2Precompile.Instance),
+
+            [PointEvaluationPrecompile.Address] = new(PointEvaluationPrecompile.Instance),
+        }.ToFrozenDictionary();
+    }
 
     internal readonly ref struct CallResult
     {
@@ -113,7 +178,7 @@ public class VirtualMachine : IVirtualMachine
         }
 
         public EvmState? StateToExecute { get; }
-        public byte[] Output { get; }
+        public ReadOnlyMemory<byte> Output { get; }
         public EvmExceptionType ExceptionType { get; }
         public bool ShouldRevert { get; }
         public bool? PrecompileSuccess { get; } // TODO: check this behaviour as it seems it is required and previously that was not the case
@@ -126,56 +191,29 @@ public class VirtualMachine : IVirtualMachine
     public readonly struct IsTracing : IIsTracing { }
 }
 
-internal sealed class VirtualMachine<TLogger> : IVirtualMachine
-    where TLogger : struct, IIsTracing
+internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : struct, IIsTracing
 {
-    private readonly UInt256 P255Int = (UInt256)System.Numerics.BigInteger.Pow(2, 255);
-    private UInt256 P255 => P255Int;
-    private readonly UInt256 BigInt256 = 256;
-    public UInt256 BigInt32 = 32;
-
-    internal byte[] BytesZero = { 0 };
-
-    internal byte[] BytesZero32 =
-    {
-        0, 0, 0, 0, 0, 0, 0, 0,
-        0, 0, 0, 0, 0, 0, 0, 0,
-        0, 0, 0, 0, 0, 0, 0, 0,
-        0, 0, 0, 0, 0, 0, 0, 0
-    };
-
-    internal byte[] BytesMax32 =
-    {
-        255, 255, 255, 255, 255, 255, 255, 255,
-        255, 255, 255, 255, 255, 255, 255, 255,
-        255, 255, 255, 255, 255, 255, 255, 255,
-        255, 255, 255, 255, 255, 255, 255, 255
-    };
-
     private readonly byte[] _chainId;
 
     private readonly IBlockhashProvider _blockhashProvider;
     private readonly ISpecProvider _specProvider;
-    private static readonly LruCache<ValueHash256, CodeInfo> _codeCache = new(MemoryAllowance.CodeCacheSize, MemoryAllowance.CodeCacheSize, "VM bytecodes");
     private readonly ILogger _logger;
     private IWorldState _worldState;
     private IWorldState _state;
     private readonly Stack<EvmState> _stateStack = new();
     private (Address Address, bool ShouldDelete) _parityTouchBugAccount = (Address.FromNumber(3), false);
-    private Dictionary<Address, CodeInfo>? _precompiles;
-    private byte[] _returnDataBuffer = Array.Empty<byte>();
+    private ReadOnlyMemory<byte> _returnDataBuffer = Array.Empty<byte>();
     private ITxTracer _txTracer = NullTxTracer.Instance;
 
     public VirtualMachine(
         IBlockhashProvider? blockhashProvider,
         ISpecProvider? specProvider,
-        ILogger? logger)
+        ILogger logger)
     {
-        _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+        _logger = logger;
         _blockhashProvider = blockhashProvider ?? throw new ArgumentNullException(nameof(blockhashProvider));
         _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
         _chainId = ((UInt256)specProvider.ChainId).ToBigEndian();
-        InitializePrecompiledContracts();
     }
 
     public TransactionSubstate Run<TTracingActions>(EvmState state, IWorldState worldState, ITxTracer txTracer)
@@ -187,7 +225,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine
 
         IReleaseSpec spec = _specProvider.GetSpec(state.Env.TxExecutionContext.BlockExecutionContext.Header.Number, state.Env.TxExecutionContext.BlockExecutionContext.Header.Timestamp);
         EvmState currentState = state;
-        byte[] previousCallResult = null;
+        ReadOnlyMemory<byte>? previousCallResult = null;
         ZeroPaddedSpan previousCallOutput = ZeroPaddedSpan.Empty;
         UInt256 previousCallOutputDestination = UInt256.Zero;
         bool isTracing = _txTracer.IsTracing;
@@ -354,7 +392,9 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine
                         bool invalidCode = CodeDepositHandler.CodeIsInvalid(spec, callResult.Output);
                         if (gasAvailableForCodeDeposit >= codeDepositGasCost && !invalidCode)
                         {
-                            _state.InsertCode(callCodeOwner, callResult.Output, spec);
+                            ReadOnlyMemory<byte> code = callResult.Output;
+                            InsertCode(code, callCodeOwner, spec);
+
                             currentState.GasAvailable -= codeDepositGasCost;
 
                             if (typeof(TTracingActions) == typeof(IsTracing))
@@ -388,7 +428,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine
                     {
                         _returnDataBuffer = callResult.Output;
                         previousCallResult = callResult.PrecompileSuccess.HasValue ? (callResult.PrecompileSuccess.Value ? StatusCode.SuccessBytes : StatusCode.FailureBytes) : StatusCode.SuccessBytes;
-                        previousCallOutput = callResult.Output.AsSpan().SliceWithZeroPadding(0, Math.Min(callResult.Output.Length, (int)previousState.OutputLength));
+                        previousCallOutput = callResult.Output.Span.SliceWithZeroPadding(0, Math.Min(callResult.Output.Length, (int)previousState.OutputLength));
                         previousCallOutputDestination = (ulong)previousState.OutputDestination;
                         if (previousState.IsPrecompile)
                         {
@@ -415,7 +455,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine
                     worldState.Restore(previousState.Snapshot);
                     _returnDataBuffer = callResult.Output;
                     previousCallResult = StatusCode.FailureBytes;
-                    previousCallOutput = callResult.Output.AsSpan().SliceWithZeroPadding(0, Math.Min(callResult.Output.Length, (int)previousState.OutputLength));
+                    previousCallOutput = callResult.Output.Span.SliceWithZeroPadding(0, Math.Min(callResult.Output.Length, (int)previousState.OutputLength));
                     previousCallOutputDestination = (ulong)previousState.OutputDestination;
 
 
@@ -462,6 +502,17 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine
         }
     }
 
+    public void InsertCode(ReadOnlyMemory<byte> code, Address callCodeOwner, IReleaseSpec spec)
+    {
+        var codeInfo = new CodeInfo(code);
+        // Start generating the JumpDestinationBitmap in background.
+        ThreadPool.UnsafeQueueUserWorkItem(codeInfo, preferLocal: false);
+
+        Hash256 codeHash = code.Length == 0 ? Keccak.OfAnEmptyString : Keccak.Compute(code.Span);
+        _state.InsertCode(callCodeOwner, codeHash, code, spec);
+        CodeCache.Set(codeHash, codeInfo);
+    }
+
     private void RevertParityTouchBugAccount(IReleaseSpec spec)
     {
         if (_parityTouchBugAccount.ShouldDelete)
@@ -479,65 +530,44 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine
     {
         if (codeSource.IsPrecompile(vmSpec))
         {
-            if (_precompiles is null)
-            {
-                throw new InvalidOperationException("EVM precompile have not been initialized properly.");
-            }
-
-            return _precompiles[codeSource];
+            return PrecompileCode[codeSource];
         }
 
-        Hash256 codeHash = worldState.GetCodeHash(codeSource);
-        CodeInfo cachedCodeInfo = _codeCache.Get(codeHash);
+        CodeInfo cachedCodeInfo = null;
+        ValueHash256 codeHash = worldState.GetCodeHash(codeSource);
+        if (codeHash == Keccak.OfAnEmptyString.ValueHash256)
+        {
+            cachedCodeInfo = CodeInfo.Empty;
+        }
+
+        cachedCodeInfo ??= CodeCache.Get(codeHash);
         if (cachedCodeInfo is null)
         {
-            byte[] code = worldState.GetCode(codeHash);
+            byte[]? code = worldState.GetCode(codeHash);
 
             if (code is null)
             {
-                throw new NullReferenceException($"Code {codeHash} missing in the state for address {codeSource}");
+                MissingCode(codeSource, codeHash);
             }
 
             cachedCodeInfo = new CodeInfo(code);
-            _codeCache.Set(codeHash, cachedCodeInfo);
+            CodeCache.Set(codeHash, cachedCodeInfo);
         }
         else
         {
+            Db.Metrics.CodeDbCache++;
             // need to touch code so that any collectors that track database access are informed
             worldState.TouchCode(codeHash);
         }
 
         return cachedCodeInfo;
-    }
 
-    private void InitializePrecompiledContracts()
-    {
-        _precompiles = new Dictionary<Address, CodeInfo>
+        [DoesNotReturn]
+        [StackTraceHidden]
+        static void MissingCode(Address codeSource, in ValueHash256 codeHash)
         {
-            [EcRecoverPrecompile.Address] = new(EcRecoverPrecompile.Instance),
-            [Sha256Precompile.Address] = new(Sha256Precompile.Instance),
-            [Ripemd160Precompile.Address] = new(Ripemd160Precompile.Instance),
-            [IdentityPrecompile.Address] = new(IdentityPrecompile.Instance),
-
-            [Bn254AddPrecompile.Address] = new(Bn254AddPrecompile.Instance),
-            [Bn254MulPrecompile.Address] = new(Bn254MulPrecompile.Instance),
-            [Bn254PairingPrecompile.Address] = new(Bn254PairingPrecompile.Instance),
-            [ModExpPrecompile.Address] = new(ModExpPrecompile.Instance),
-
-            [Blake2FPrecompile.Address] = new(Blake2FPrecompile.Instance),
-
-            [G1AddPrecompile.Address] = new(G1AddPrecompile.Instance),
-            [G1MulPrecompile.Address] = new(G1MulPrecompile.Instance),
-            [G1MultiExpPrecompile.Address] = new(G1MultiExpPrecompile.Instance),
-            [G2AddPrecompile.Address] = new(G2AddPrecompile.Instance),
-            [G2MulPrecompile.Address] = new(G2MulPrecompile.Instance),
-            [G2MultiExpPrecompile.Address] = new(G2MultiExpPrecompile.Instance),
-            [PairingPrecompile.Address] = new(PairingPrecompile.Instance),
-            [MapToG1Precompile.Address] = new(MapToG1Precompile.Instance),
-            [MapToG2Precompile.Address] = new(MapToG2Precompile.Instance),
-
-            [PointEvaluationPrecompile.Address] = new(PointEvaluationPrecompile.Instance),
-        };
+            throw new NullReferenceException($"Code {codeHash} missing in the state for address {codeSource}");
+        }
     }
 
     private static bool UpdateGas(long gasCost, ref long gasAvailable)
@@ -690,7 +720,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine
     /// values at compile time.
     /// </remarks>
     [SkipLocalsInit]
-    private CallResult ExecuteCall<TTracingInstructions>(EvmState vmState, byte[]? previousCallResult, ZeroPaddedSpan previousCallOutput, scoped in UInt256 previousCallOutputDestination, IReleaseSpec spec)
+    private CallResult ExecuteCall<TTracingInstructions>(EvmState vmState, ReadOnlyMemory<byte>? previousCallResult, ZeroPaddedSpan previousCallOutput, scoped in UInt256 previousCallOutputDestination, IReleaseSpec spec)
         where TTracingInstructions : struct, IIsTracing
     {
         ref readonly ExecutionEnvironment env = ref vmState.Env;
@@ -726,7 +756,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine
 
         if (previousCallResult is not null)
         {
-            stack.PushBytes(previousCallResult);
+            stack.PushBytes(previousCallResult.Value.Span);
             if (typeof(TTracingInstructions) == typeof(IsTracing)) _txTracer.ReportOperationRemainingGas(vmState.GasAvailable);
         }
 
@@ -774,7 +804,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine
         ref readonly ExecutionEnvironment env = ref vmState.Env;
         ref readonly TxExecutionContext txCtx = ref env.TxExecutionContext;
         ref readonly BlockExecutionContext blkCtx = ref txCtx.BlockExecutionContext;
-        Span<byte> code = env.CodeInfo.MachineCode.AsSpan();
+        ReadOnlySpan<byte> code = env.CodeInfo.MachineCode.Span;
         EvmExceptionType exceptionType = EvmExceptionType.None;
         bool isRevert = false;
 #if DEBUG
@@ -1400,7 +1430,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine
                         {
                             if (!UpdateMemoryCost(vmState, ref gasAvailable, in a, result)) goto OutOfGas;
 
-                            byte[] externalCode = GetCachedCodeInfo(_worldState, address, spec).MachineCode;
+                            ReadOnlyMemory<byte> externalCode = GetCachedCodeInfo(_worldState, address, spec).MachineCode;
                             slice = externalCode.SliceWithZeroPadding(b, (int)result);
                             vmState.Memory.Save(in a, in slice);
                             if (typeof(TTracingInstructions) == typeof(IsTracing))
@@ -1439,7 +1469,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine
                         {
                             if (!UpdateMemoryCost(vmState, ref gasAvailable, in a, result)) goto OutOfGas;
 
-                            slice = _returnDataBuffer.AsSpan().SliceWithZeroPadding(b, (int)result);
+                            slice = _returnDataBuffer.Span.SliceWithZeroPadding(b, (int)result);
                             vmState.Memory.Save(in a, in slice);
                             if (typeof(TTracingInstructions) == typeof(IsTracing))
                             {
@@ -1458,7 +1488,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine
                         if (!stack.PopUInt256(out a)) goto StackUnderflow;
                         long number = a > long.MaxValue ? long.MaxValue : (long)a;
                         Hash256 blockHash = _blockhashProvider.GetBlockhash(blkCtx.Header, number);
-                        stack.PushBytes(blockHash != null ? blockHash.Bytes : BytesZero32);
+                        stack.PushBytes(blockHash is not null ? blockHash.Bytes : BytesZero32);
 
                         if (typeof(TLogger) == typeof(IsTracing))
                         {
@@ -1631,9 +1661,8 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine
                             StorageAccessType.SLOAD,
                             spec)) goto OutOfGas;
 
-                        byte[] value = _state.Get(in storageCell);
+                        ReadOnlySpan<byte> value = _state.Get(in storageCell);
                         stack.PushBytes(value);
-
                         if (typeof(TTracingStorage) == typeof(IsTracing))
                         {
                             _txTracer.LoadOperationStorage(storageCell.Address, result, value);
@@ -1643,10 +1672,6 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine
                     }
                 case Instruction.SSTORE:
                     {
-                        Metrics.SstoreOpcode++;
-
-                        if (vmState.IsStatic) goto StaticCallViolation;
-
                         exceptionType = InstructionSStore<TTracingInstructions, TTracingRefunds, TTracingStorage>(vmState, ref stack, ref gasAvailable, spec);
                         if (exceptionType != EvmExceptionType.None) goto ReturnFailure;
 
@@ -1993,7 +2018,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine
                             if (!stack.PopUInt256(out result)) goto StackUnderflow;
                             storageCell = new(env.ExecutingAccount, result);
 
-                            byte[] value = _state.GetTransientState(in storageCell);
+                            ReadOnlySpan<byte> value = _state.GetTransientState(in storageCell);
                             stack.PushBytes(value);
 
                             if (typeof(TTracingStorage) == typeof(IsTracing))
@@ -2034,7 +2059,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine
                             if (typeof(TTracingStorage) == typeof(IsTracing))
                             {
                                 if (gasAvailable < 0) goto OutOfGas;
-                                byte[] currentValue = _state.GetTransientState(in storageCell);
+                                ReadOnlySpan<byte> currentValue = _state.GetTransientState(in storageCell);
                                 _txTracer.SetOperationTransientStorage(storageCell.Address, result, bytes, currentValue);
                             }
 
@@ -2170,8 +2195,8 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine
     [MethodImpl(MethodImplOptions.NoInlining)]
     private void InstructionExtCodeSize<TTracingInstructions>(Address address, ref EvmStack<TTracingInstructions> stack, IReleaseSpec spec) where TTracingInstructions : struct, IIsTracing
     {
-        byte[] accountCode = GetCachedCodeInfo(_worldState, address, spec).MachineCode;
-        UInt256 result = (UInt256)accountCode.Length;
+        int codeLength = GetCachedCodeInfo(_worldState, address, spec).MachineCode.Span.Length;
+        UInt256 result = (UInt256)codeLength;
         stack.PushUInt256(in result);
     }
 
@@ -2463,7 +2488,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine
             return (EvmExceptionType.None, null);
         }
 
-        Span<byte> initCode = vmState.Memory.LoadSpan(in memoryPositionOfInitCode, initCodeLength);
+        ReadOnlyMemory<byte> initCode = vmState.Memory.Load(in memoryPositionOfInitCode, initCodeLength);
 
         UInt256 balance = _state.GetBalance(env.ExecutingAccount);
         if (value > balance)
@@ -2490,7 +2515,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine
 
         Address contractAddress = instruction == Instruction.CREATE
             ? ContractAddress.From(env.ExecutingAccount, _state.GetNonce(env.ExecutingAccount))
-            : ContractAddress.From(env.ExecutingAccount, salt, initCode);
+            : ContractAddress.From(env.ExecutingAccount, salt, initCode.Span);
 
         if (spec.UseHotAndColdStorage)
         {
@@ -2524,14 +2549,10 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine
 
         _state.SubtractFromBalance(env.ExecutingAccount, value, spec);
 
-        ValueHash256 codeHash = ValueKeccak.Compute(initCode);
-        // Prefer code from code cache (e.g. if create from a factory contract or copypasta)
-        if (!_codeCache.TryGet(codeHash, out CodeInfo codeInfo))
-        {
-            codeInfo = new(initCode.ToArray());
-            // Prime the code cache as likely to be used by more txs
-            _codeCache.Set(codeHash, codeInfo);
-        }
+        // Do not add the initCode to the cache as it is
+        // pointing to data in this tx and will become invalid
+        // for another tx as returned to pool.
+        CodeInfo codeInfo = new(initCode);
 
         ExecutionEnvironment callEnv = new
         (
@@ -2595,6 +2616,9 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine
         where TTracingRefunds : struct, IIsTracing
         where TTracingStorage : struct, IIsTracing
     {
+        Metrics.SstoreOpcode++;
+
+        if (vmState.IsStatic) return EvmExceptionType.StaticCallViolation;
         // fail fast before the first storage read if gas is not enough even for reset
         if (!spec.UseNetGasMetering && !UpdateGas(spec.GetSStoreResetCost(), ref gasAvailable)) return EvmExceptionType.OutOfGas;
 
@@ -2606,16 +2630,9 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine
         }
 
         if (!stack.PopUInt256(out UInt256 result)) return EvmExceptionType.StackUnderflow;
-        Span<byte> bytes = stack.PopWord256();
+        ReadOnlySpan<byte> bytes = stack.PopWord256();
         bool newIsZero = bytes.IsZero();
-        if (!newIsZero)
-        {
-            bytes = bytes.WithoutLeadingZeros().ToArray();
-        }
-        else
-        {
-            bytes = new byte[] { 0 };
-        }
+        bytes = !newIsZero ? bytes.WithoutLeadingZeros() : BytesZero;
 
         StorageCell storageCell = new(vmState.Env.ExecutingAccount, result);
 
@@ -2626,7 +2643,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine
                 StorageAccessType.SSTORE,
                 spec)) return EvmExceptionType.OutOfGas;
 
-        Span<byte> currentValue = _state.Get(in storageCell);
+        ReadOnlySpan<byte> currentValue = _state.Get(in storageCell);
         // Console.WriteLine($"current: {currentValue.ToHexString()} newValue {newValue.ToHexString()}");
         bool currentIsZero = currentValue.IsZero();
 
@@ -2724,10 +2741,10 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine
 
         if (typeof(TTracingInstructions) == typeof(IsTracing))
         {
-            Span<byte> valueToStore = newIsZero ? BytesZero : bytes;
-            bytes = new byte[32]; // do not stackalloc here
-            storageCell.Index.ToBigEndian(bytes);
-            _txTracer.ReportStorageChange(bytes, valueToStore);
+            ReadOnlySpan<byte> valueToStore = newIsZero ? BytesZero.AsSpan() : bytes;
+            byte[] storageBytes = new byte[32]; // do not stackalloc here
+            storageCell.Index.ToBigEndian(storageBytes);
+            _txTracer.ReportStorageChange(storageBytes, valueToStore);
         }
 
         if (typeof(TTracingStorage) == typeof(IsTracing))
