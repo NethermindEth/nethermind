@@ -171,7 +171,7 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams
         {
             try
             {
-                return Rlp.Decode<Transaction>(t, RlpBehaviors.SkipTypedWrapping);
+                return Rlp.Decode<Transaction>(t, RlpBehaviors.SkipTypedWrapping | RlpBehaviors.ExcludeHashes);
             }
             catch (RlpException e)
             {
