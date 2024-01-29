@@ -176,7 +176,7 @@ namespace Nethermind.Serialization.Rlp
             List<Transaction> transactions = new();
             while (decoderContext.Position < transactionsCheck)
             {
-                transactions.Add(Rlp.Decode<Transaction>(ref decoderContext));
+                transactions.Add(Rlp.Decode<Transaction>(ref decoderContext, rlpBehaviors));
             }
 
             decoderContext.Check(transactionsCheck);
