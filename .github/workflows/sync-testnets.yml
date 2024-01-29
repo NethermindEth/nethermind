@@ -102,7 +102,7 @@ jobs:
           good_logs["Processed"]=0
 
           declare -A required_count
-          required_count["Synced chain Head"]=20
+          required_count["Synced Chain Head"]=20
           required_count["Processed"]=20
 
           echo "Starting Docker logs monitoring..."
