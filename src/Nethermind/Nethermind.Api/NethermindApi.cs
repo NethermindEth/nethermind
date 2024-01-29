@@ -97,27 +97,25 @@ namespace Nethermind.Api
         }
 
         public IAbiEncoder AbiEncoder { get; } = Nethermind.Abi.AbiEncoder.Instance;
-        public IBlobTxStorage? BlobTxStorage { get; set; }
+        public IBlobTxStorage BlobTxStorage => BaseContainer.Resolve<IBlobTxStorage>();
         public IBlockchainProcessor? BlockchainProcessor { get; set; }
         public CompositeBlockPreprocessorStep BlockPreprocessor { get; } = new();
         public IBlockProcessingQueue? BlockProcessingQueue { get; set; }
         public IBlockProcessor? MainBlockProcessor { get; set; }
         public IBlockProducer? BlockProducer { get; set; }
         public IBlockProducerRunner? BlockProducerRunner { get; set; }
-        public IBlockTree? BlockTree { get; set; }
+        public IBlockTree BlockTree => BaseContainer.Resolve<IBlockTree>();
         public IBlockValidator? BlockValidator { get; set; }
-        public IBloomStorage? BloomStorage { get; set; }
-        public IChainLevelInfoRepository? ChainLevelInfoRepository { get; set; }
+        public IBloomStorage? BloomStorage => BaseContainer.Resolve<IBloomStorage>();
+        public IChainLevelInfoRepository ChainLevelInfoRepository => BaseContainer.Resolve<IChainLevelInfoRepository>();
         public IConfigProvider ConfigProvider => BaseContainer.Resolve<IConfigProvider>();
         public ICryptoRandom CryptoRandom => BaseContainer.Resolve<ICryptoRandom>();
-        public IDbProvider? DbProvider { get; set; }
-        public IDbFactory? DbFactory { get; set; }
+        public IDbProvider DbProvider => BaseContainer.Resolve<IDbProvider>();
         public IDisconnectsAnalyzer? DisconnectsAnalyzer { get; set; }
         public IDiscoveryApp? DiscoveryApp { get; set; }
-        public ISigner? EngineSigner { get; set; }
-        public ISignerStore? EngineSignerStore { get; set; }
+        public ISigner? EngineSigner => BaseContainer.Resolve<ISigner>();
         public IEnode? Enode => BaseContainer.Resolve<IEnode>();
-        public IEthereumEcdsa? EthereumEcdsa { get; set; }
+        public IEthereumEcdsa EthereumEcdsa => BaseContainer.Resolve<IEthereumEcdsa>();
         public IFileSystem FileSystem => BaseContainer.Resolve<IFileSystem>();
         public IFilterStore? FilterStore { get; set; }
         public IFilterManager? FilterManager { get; set; }
@@ -130,7 +128,7 @@ namespace Nethermind.Api
 
         public IJsonSerializer EthereumJsonSerializer => BaseContainer.Resolve<IJsonSerializer>();
         public IKeyStore KeyStore => BaseContainer.Resolve<IKeyStore>();
-        public ILogFinder? LogFinder { get; set; }
+        public ILogFinder? LogFinder => BaseContainer.Resolve<ILogFinder>();
         public ILogManager LogManager => BaseContainer.Resolve<ILogManager>();
         public IMessageSerializationService MessageSerializationService { get; } = new MessageSerializationService();
         public IGossipPolicy GossipPolicy { get; set; } = Policy.FullGossip;
@@ -140,8 +138,8 @@ namespace Nethermind.Api
         public IPeerPool? PeerPool { get; set; }
         public IProtocolsManager? ProtocolsManager { get; set; }
         public IProtocolValidator? ProtocolValidator { get; set; }
-        public IReceiptStorage? ReceiptStorage { get; set; }
-        public IReceiptFinder? ReceiptFinder { get; set; }
+        public IReceiptStorage ReceiptStorage => BaseContainer.Resolve<IReceiptStorage>();
+        public IReceiptFinder? ReceiptFinder => BaseContainer.Resolve<IReceiptFinder>();
         public IReceiptMonitor? ReceiptMonitor { get; set; }
         public IRewardCalculatorSource? RewardCalculatorSource { get; set; } = NoBlockRewards.Instance;
         public IRlpxHost? RlpxPeer { get; set; }
@@ -177,15 +175,15 @@ namespace Nethermind.Api
         public IPeerDifficultyRefreshPool? PeerDifficultyRefreshPool { get; set; }
         public ISynchronizer? Synchronizer { get; set; }
         public ISyncServer? SyncServer { get; set; }
-        public IWorldState? WorldState { get; set; }
-        public IReadOnlyStateProvider? ChainHeadStateProvider { get; set; }
-        public IWorldStateManager? WorldStateManager { get; set; }
-        public IStateReader? StateReader { get; set; }
+        public IWorldState? WorldState => WorldStateManager.GlobalWorldState;
+        public IReadOnlyStateProvider? ChainHeadStateProvider => BaseContainer.Resolve<IReadOnlyStateProvider>();
+        public IWorldStateManager WorldStateManager => BaseContainer.Resolve<IWorldStateManager>();
+        public IStateReader? StateReader => WorldStateManager.GlobalStateReader;
         public IStaticNodesManager? StaticNodesManager { get; set; }
         public ITimestamper Timestamper => BaseContainer.Resolve<ITimestamper>();
         public ITimerFactory TimerFactory => BaseContainer.Resolve<ITimerFactory>();
         public ITransactionProcessor? TransactionProcessor { get; set; }
-        public ITrieStore? TrieStore { get; set; }
+        public ITrieStore TrieStore => BaseContainer.Resolve<ITrieStore>();
         public ITxSender? TxSender { get; set; }
         public INonceManager? NonceManager { get; set; }
         public ITxPool? TxPool { get; set; }
@@ -200,10 +198,10 @@ namespace Nethermind.Api
 
         public IEthSyncingInfo? EthSyncingInfo { get; set; }
         public IBlockProductionPolicy? BlockProductionPolicy { get; set; }
-        public INodeStorageFactory NodeStorageFactory { get; set; } = null!;
+        public INodeStorageFactory NodeStorageFactory => BaseContainer.Resolve<INodeStorageFactory>();
         public BackgroundTaskScheduler BackgroundTaskScheduler { get; set; } = null!;
         public IWallet Wallet => BaseContainer.Resolve<IWallet>();
-        public IBlockStore? BadBlocksStore { get; set; }
+        public IBlockStore? BadBlocksStore => BaseContainer.ResolveKeyed<IBlockStore>(IBlockStore.Key.BadBlock);
         public ITransactionComparerProvider? TransactionComparerProvider { get; set; }
         public IWebSocketsManager WebSocketsManager { get; set; } = new WebSocketsManager();
 
@@ -216,7 +214,6 @@ namespace Nethermind.Api
         public DisposableStack DisposeStack { get; } = new();
         public IReadOnlyList<INethermindPlugin> Plugins => BaseContainer.Resolve<IReadOnlyList<INethermindPlugin>>();
         public IList<IPublisher> Publishers { get; } = new List<IPublisher>(); // this should be called publishers
-        public CompositePruningTrigger PruningTrigger { get; } = new();
         public IProcessExitSource ProcessExit => BaseContainer.Resolve<IProcessExitSource>();
         public CompositeTxGossipPolicy TxGossipPolicy { get; } = new();
 

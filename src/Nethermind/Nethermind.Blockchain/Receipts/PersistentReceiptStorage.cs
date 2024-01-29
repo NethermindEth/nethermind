@@ -7,6 +7,7 @@ using System.IO;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
+using Autofac.Features.AttributeFilters;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
@@ -47,7 +48,7 @@ namespace Nethermind.Blockchain.Receipts
             ISpecProvider specProvider,
             IReceiptsRecovery receiptsRecovery,
             IBlockTree blockTree,
-            IBlockStore blockStore,
+            [KeyFilter(IBlockStore.Key.Main)] IBlockStore blockStore,
             IReceiptConfig receiptConfig,
             ReceiptArrayStorageDecoder? storageDecoder = null
         )

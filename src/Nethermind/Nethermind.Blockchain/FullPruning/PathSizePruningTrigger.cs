@@ -5,12 +5,16 @@ using System;
 using System.Collections.Generic;
 using System.IO.Abstractions;
 using System.Linq;
+using Autofac.Features.AttributeFilters;
+using Nethermind.Core;
 using Nethermind.Core.Timers;
+using Nethermind.Db;
+using Nethermind.Db.FullPruning;
 
 namespace Nethermind.Blockchain.FullPruning
 {
     /// <summary>
-    /// Allows to trigger full pruning based on size of the path (by default state database). 
+    /// Allows to trigger full pruning based on size of the path (by default state database).
     /// </summary>
     /// <remarks>
     /// It checks the size of the path every 5 minutes.
@@ -31,7 +35,7 @@ namespace Nethermind.Blockchain.FullPruning
         /// <param name="timerFactory">Factory for timers.</param>
         /// <param name="fileSystem">File system access.</param>
         /// <exception cref="ArgumentException">Thrown if <see cref="path"/> doesn't exist.</exception>
-        public PathSizePruningTrigger(string path, long threshold, ITimerFactory timerFactory, IFileSystem fileSystem)
+        public PathSizePruningTrigger([KeyFilter(ComponentKey.FullPruningDbPath)] string path, [KeyFilter(ComponentKey.FullPruningThresholdMb)] long threshold, ITimerFactory timerFactory, IFileSystem fileSystem)
         {
             if (!fileSystem.Directory.Exists(path))
             {

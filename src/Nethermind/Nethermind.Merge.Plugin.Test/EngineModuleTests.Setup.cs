@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
+using Autofac;
 using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Blocks;
@@ -53,18 +54,17 @@ public partial class EngineModuleTests
     }
 
     protected virtual MergeTestBlockchain CreateBaseBlockchain(IMergeConfig? mergeConfig = null,
-        IPayloadPreparationService? mockedPayloadService = null, ILogManager? logManager = null) =>
-        new(mergeConfig, mockedPayloadService, logManager);
+        IPayloadPreparationService? mockedPayloadService = null, Action<ContainerBuilder>? containerMutator = null) =>
+        new(mergeConfig, mockedPayloadService, containerMutator);
 
 
     protected async Task<MergeTestBlockchain> CreateBlockchain(IReleaseSpec? releaseSpec = null, IMergeConfig? mergeConfig = null,
-        IPayloadPreparationService? mockedPayloadService = null)
-        => await CreateBaseBlockchain(mergeConfig, mockedPayloadService)
+        IPayloadPreparationService? mockedPayloadService = null, Action<ContainerBuilder>? containerMutator = null)
+        => await CreateBaseBlockchain(mergeConfig, mockedPayloadService, containerMutator: containerMutator)
             .Build(new TestSingleReleaseSpecProvider(releaseSpec ?? London.Instance));
 
-    protected async Task<MergeTestBlockchain> CreateBlockchain(ISpecProvider specProvider,
-        ILogManager? logManager = null)
-        => await CreateBaseBlockchain(null, null, logManager).Build(specProvider);
+    protected async Task<MergeTestBlockchain> CreateBlockchain(ISpecProvider specProvider)
+        => await CreateBaseBlockchain().Build(specProvider);
 
     private IEngineRpcModule CreateEngineModule(MergeTestBlockchain chain, ISyncConfig? syncConfig = null, TimeSpan? newPayloadTimeout = null, int newPayloadCacheSize = 50)
     {
@@ -152,6 +152,13 @@ public partial class EngineModuleTests
         public ISyncPeerPool SyncPeerPool { get; set; }
 
         protected int _blockProcessingThrottle = 0;
+        private readonly Action<ContainerBuilder>? _containerMutator = null;
+
+        protected override void ConfigureContainer(ContainerBuilder builder)
+        {
+            base.ConfigureContainer(builder);
+            _containerMutator?.Invoke(builder);
+        }
 
         public MergeTestBlockchain ThrottleBlockProcessor(int delayMs)
         {
@@ -163,19 +170,16 @@ public partial class EngineModuleTests
             return this;
         }
 
-        public MergeTestBlockchain(IMergeConfig? mergeConfig = null, IPayloadPreparationService? mockedPayloadPreparationService = null, ILogManager? logManager = null)
+        public MergeTestBlockchain(IMergeConfig? mergeConfig = null, IPayloadPreparationService? mockedPayloadPreparationService = null, Action<ContainerBuilder>? containerMutator = null)
         {
             GenesisBlockBuilder = Core.Test.Builders.Build.A.Block.Genesis.Genesis.WithTimestamp(1UL);
             MergeConfig = mergeConfig ?? new MergeConfig() { TerminalTotalDifficulty = "0" };
-            PayloadPreparationService = mockedPayloadPreparationService;
             SyncPeerPool = Substitute.For<ISyncPeerPool>();
-            LogManager = logManager ?? LogManager;
+            PayloadPreparationService = mockedPayloadPreparationService;
+            _containerMutator = containerMutator;
         }
 
         protected override Task AddBlocksOnStart() => Task.CompletedTask;
-
-        public sealed override ILogManager LogManager { get; set; } = LimboLogs.Instance;
-
         public IEthSyncingInfo? EthSyncingInfo { get; protected set; }
 
         protected override IBlockProducer CreateTestBlockProducer(TxPoolTxSource txPoolTxSource, ISealer sealer, ITransactionComparerProvider transactionComparerProvider)

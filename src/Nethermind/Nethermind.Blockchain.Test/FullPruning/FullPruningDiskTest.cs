@@ -8,6 +8,7 @@ using System.IO.Abstractions;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Autofac;
 using FluentAssertions;
 using Nethermind.Blockchain.FullPruning;
 using Nethermind.Config;
@@ -35,19 +36,16 @@ namespace Nethermind.Blockchain.Test.FullPruning
     {
         public class PruningTestBlockchain : TestBlockchain
         {
-            public FullPruningDb PruningDb { get; private set; } = null!;
-            public INodeStorage MainNodeStorage { get; private set; } = null!;
+            private readonly IPruningConfig _pruningConfig;
+            public IFullPruningDb PruningDb => Container.Resolve<IFullPruningDb>();
             public TempPath TempDirectory { get; }
             public IPruningTrigger PruningTrigger { get; } = Substitute.For<IPruningTrigger>();
-            public FullTestPruner FullPruner { get; private set; } = null!;
-            public IPruningConfig PruningConfig { get; set; } = new PruningConfig();
-            public IDriveInfo DriveInfo { get; set; } = Substitute.For<IDriveInfo>();
-            public IChainEstimations _chainEstimations = Substitute.For<IChainEstimations>();
-            public IProcessExitSource ProcessExitSource { get; } = Substitute.For<IProcessExitSource>();
+            public FullTestPruner FullPruner => Container.Resolve<FullTestPruner>();
 
-            public PruningTestBlockchain()
+            public PruningTestBlockchain(IPruningConfig pruningConfig)
             {
                 TempDirectory = TempPath.GetTempDirectory();
+                _pruningConfig = pruningConfig;
             }
 
             protected override async Task<TestBlockchain> Build(
@@ -57,36 +55,29 @@ namespace Nethermind.Blockchain.Test.FullPruning
             )
             {
                 TestBlockchain chain = await base.Build(specProvider, initialValues, addBlockOnStart);
-                PruningDb = (FullPruningDb)DbProvider.StateDb;
-                DriveInfo.AvailableFreeSpace.Returns(long.MaxValue);
-                _chainEstimations.StateSize.Returns((long?)null);
 
-                NodeStorageFactory nodeStorageFactory = new NodeStorageFactory(INodeStorage.KeyScheme.Current, LimboLogs.Instance);
-                MainNodeStorage = nodeStorageFactory.WrapKeyValueStore(PruningDb);
-
-                FullPruner = new FullTestPruner(
-                    PruningDb,
-                    nodeStorageFactory,
-                    MainNodeStorage,
-                    PruningTrigger,
-                    PruningConfig,
-                    BlockTree,
-                    StateReader,
-                    ProcessExitSource,
-                    DriveInfo,
-                    chain.TrieStore,
-                    _chainEstimations,
-                    LogManager);
+                // Needed so that it listen to event and start
+                _ = chain.Container.Resolve<FullTestPruner>();
                 return chain;
             }
 
-            protected override async Task<IDbProvider> CreateDbProvider()
+            protected override void ConfigureContainer(ContainerBuilder builder)
             {
-                IDbProvider dbProvider = new DbProvider();
-                RocksDbFactory rocksDbFactory = new(new DbConfig(), LogManager, TempDirectory.Path);
-                StandardDbInitializer standardDbInitializer = new(dbProvider, rocksDbFactory, new FileSystem());
-                await standardDbInitializer.InitStandardDbsAsync(true);
-                return dbProvider;
+                base.ConfigureContainer(builder);
+
+                IDriveInfo mockDriveInfo = Substitute.For<IDriveInfo>();
+                mockDriveInfo.AvailableFreeSpace.Returns(long.MaxValue);
+                builder.RegisterInstance(mockDriveInfo).As<IDriveInfo>();
+
+                IChainEstimations chainEstimations = Substitute.For<IChainEstimations>();
+                chainEstimations.StateSize.Returns((long?)null);
+                builder.RegisterInstance(chainEstimations).As<IChainEstimations>();
+
+                builder.RegisterInstance(_pruningConfig).As<IPruningConfig>();
+                builder.RegisterInstance(PruningTrigger).As<IPruningTrigger>();
+
+                builder.RegisterInstance<IDbFactory>(new RocksDbFactory(new DbConfig(), LogManager, TempDirectory.Path));
+                builder.RegisterType<FullTestPruner>().AsSelf().SingleInstance();
             }
 
             public override void Dispose()
@@ -99,7 +90,9 @@ namespace Nethermind.Blockchain.Test.FullPruning
 
             public static async Task<PruningTestBlockchain> Create(IPruningConfig? pruningConfig = null)
             {
-                PruningTestBlockchain chain = new() { PruningConfig = pruningConfig ?? new PruningConfig() };
+                pruningConfig ??= new PruningConfig();
+                pruningConfig.Mode = PruningMode.Full;
+                PruningTestBlockchain chain = new(pruningConfig);
                 await chain.Build();
                 return chain;
             }
@@ -160,8 +153,9 @@ namespace Nethermind.Blockchain.Test.FullPruning
         public async Task should_check_available_space_before_running(long availableSpace, long requiredSpace, bool isEnoughSpace)
         {
             using PruningTestBlockchain chain = await PruningTestBlockchain.Create();
-            chain._chainEstimations.PruningSize.Returns(requiredSpace);
-            chain.DriveInfo.AvailableFreeSpace.Returns(availableSpace);
+            chain.Container.Resolve<IChainEstimations>().PruningSize.Returns(requiredSpace);
+            chain.Container.Resolve<IDriveInfo>().AvailableFreeSpace.Returns(availableSpace);
+
             PruningTriggerEventArgs args = new();
             chain.PruningTrigger.Prune += Raise.Event<EventHandler<PruningTriggerEventArgs>>(args);
             args.Status.Should().Be(isEnoughSpace ? PruningStatus.Starting : PruningStatus.NotEnoughDiskSpace);

@@ -16,10 +16,16 @@ namespace Nethermind.Blockchain.Receipts
         private readonly ISpecProvider _specProvider;
         private readonly bool _reinsertReceiptOnRecover;
 
-        public ReceiptsRecovery(IEthereumEcdsa? ecdsa, ISpecProvider? specProvider, bool reinsertReceiptOnRecover = true)
+        public ReceiptsRecovery(IEthereumEcdsa ecdsa, ISpecProvider specProvider, IReceiptConfig receiptConfig)
+            : this(ecdsa, specProvider, !receiptConfig.CompactReceiptStore)
         {
-            _ecdsa = ecdsa ?? throw new ArgumentNullException(nameof(ecdsa));
-            _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
+
+        }
+
+        public ReceiptsRecovery(IEthereumEcdsa ecdsa, ISpecProvider specProvider, bool reinsertReceiptOnRecover = true)
+        {
+            _ecdsa = ecdsa;
+            _specProvider = specProvider;
             _reinsertReceiptOnRecover = reinsertReceiptOnRecover;
         }
 

@@ -24,7 +24,7 @@ public class BlockStore : IBlockStore
         _blockCache = new(CacheSize, CacheSize, "blocks");
     private readonly long? _maxSize;
 
-    public BlockStore(IDb blockDb, long? maxSize = null)
+    public BlockStore(IDb blockDb, [KeyedParameter(ParameterKey.BlockStoreMaxSize)] long? maxSize = null)
     {
         _blockDb = blockDb;
         _maxSize = maxSize;

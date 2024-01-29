@@ -29,13 +29,12 @@ public class BaseModuleTests
         logManager.GetClassLogger(typeof(TestClass)).Returns(LimboLogs.Instance.GetClassLogger<TestClass>());
 
         ContainerBuilder builder = new ContainerBuilder();
-        builder.RegisterInstance(configProvider);
-        builder.RegisterInstance(processExitSource);
-        builder.RegisterInstance(chainSpec);
         builder.RegisterInstance(jsonSerializer);
         builder.RegisterInstance(logManager);
+        builder.RegisterInstance(chainSpec);
+        builder.RegisterInstance(processExitSource);
+        builder.RegisterInstance(configProvider);
         builder.RegisterModule(new BaseModule());
-
         using IContainer container = builder.Build();
 
         TestClass testObj = container.Resolve<TestClass>();

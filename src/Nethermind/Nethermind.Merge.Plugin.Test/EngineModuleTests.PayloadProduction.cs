@@ -344,7 +344,7 @@ public partial class EngineModuleTests
 
         using SemaphoreSlim blockImprovementLock = new(0);
 
-        MergeTestBlockchain blockchain = CreateBaseBlockchain(null, null, LimboLogs.Instance);
+        MergeTestBlockchain blockchain = CreateBaseBlockchain(null);
         blockchain.InitialStateMutator = (state) =>
         {
             state.CreateAccount(new Address("0xBC2Fd1637C49839aDB7Bb57F9851EAE3194A90f7"), (UInt256)1200482917041833040, 1);
@@ -509,6 +509,7 @@ public partial class EngineModuleTests
         }
 
         using SemaphoreSlim blockImprovementLock = new(0);
+        using MergeTestBlockchain chain = await CreateBlockchain(new TestSingleReleaseSpecProvider(London.Instance));
         TimeSpan delay = TimeSpan.FromMilliseconds(10);
         TimeSpan timePerSlot = 4 * delay;
         using MergeTestBlockchain chain = await CreateBlockchainWithImprovementContext(

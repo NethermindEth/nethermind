@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Autofac;
 using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Consensus.Producers;
@@ -506,8 +507,12 @@ public partial class EngineModuleTests
         blockTree.Head.Returns(Build.A.Block.WithNumber(5).TestObject);
         blockTree.FindBlock(Arg.Any<long>()).Returns(input.Impl);
 
-        using MergeTestBlockchain chain = await CreateBlockchain(Shanghai.Instance);
-        chain.BlockTree = blockTree;
+        using MergeTestBlockchain chain = await CreateBlockchain(Shanghai.Instance, containerMutator: (builder) =>
+        {
+            builder.RegisterInstance(blockTree).As<IBlockTree>();
+            builder.Register((ctx) => true)
+                .Keyed<bool>(ComponentKey.SkipLoadGenesis);
+        });
 
         IEngineRpcModule rpc = CreateEngineModule(chain);
         IEnumerable<ExecutionPayloadBodyV1Result?> payloadBodies =
@@ -525,8 +530,12 @@ public partial class EngineModuleTests
             .Returns(i => Build.A.Block.WithNumber(i.ArgAt<long>(0)).TestObject);
         blockTree.Head.Returns(Build.A.Block.WithNumber(5).TestObject);
 
-        using MergeTestBlockchain chain = await CreateBlockchain(Shanghai.Instance);
-        chain.BlockTree = blockTree;
+        using MergeTestBlockchain chain = await CreateBlockchain(Shanghai.Instance, containerMutator: (builder) =>
+        {
+            builder.RegisterInstance(blockTree).As<IBlockTree>();
+            builder.Register((ctx) => true)
+                .Keyed<bool>(ComponentKey.SkipLoadGenesis);
+        });
 
         IEngineRpcModule rpc = CreateEngineModule(chain);
         IEnumerable<ExecutionPayloadBodyV1Result?> payloadBodies =

@@ -49,10 +49,8 @@ namespace Nethermind.Store.Test
             _inputStateTree!.Accept(accountProofCollector, _inputStateTree.RootHash);
             var proof = accountProofCollector.BuildResult();
 
-            MemDb db = new();
-            DbProvider dbProvider = new();
-            dbProvider.RegisterDb(DbNames.State, db);
-            using ProgressTracker progressTracker = new(null, dbProvider.GetDb<IDb>(DbNames.State), LimboLogs.Instance);
+            IDbProvider dbProvider = TestMemDbProvider.Init();
+            ProgressTracker progressTracker = new(null, dbProvider.GetDb<IDb>(DbNames.State), LimboLogs.Instance);
             SnapProvider snapProvider = CreateSnapProvider(progressTracker, dbProvider);
             var result = snapProvider.AddStorageRange(1, _pathWithAccount, rootHash, Keccak.Zero, TestItem.Tree.SlotsWithPaths, proof!.StorageProofs![0].Proof!.Concat(proof!.StorageProofs![1].Proof!).ToArray());
 
@@ -68,10 +66,8 @@ namespace Nethermind.Store.Test
             _inputStateTree!.Accept(accountProofCollector, _inputStateTree.RootHash);
             var proof = accountProofCollector.BuildResult();
 
-            MemDb db = new();
-            DbProvider dbProvider = new();
-            dbProvider.RegisterDb(DbNames.State, db);
-            using ProgressTracker progressTracker = new(null, dbProvider.GetDb<IDb>(DbNames.State), LimboLogs.Instance);
+            IDbProvider dbProvider = TestMemDbProvider.Init();
+            ProgressTracker progressTracker = new(null, dbProvider.GetDb<IDb>(DbNames.State), LimboLogs.Instance);
             SnapProvider snapProvider = CreateSnapProvider(progressTracker, dbProvider);
             var result = snapProvider.AddStorageRange(1, _pathWithAccount, rootHash, Keccak.Zero, TestItem.Tree.SlotsWithPaths, proof!.StorageProofs![0].Proof!.Concat(proof!.StorageProofs![1].Proof!).ToArray());
 
@@ -83,10 +79,8 @@ namespace Nethermind.Store.Test
         {
             Hash256 rootHash = _inputStorageTree!.RootHash;   // "..."
 
-            MemDb db = new MemDb();
-            DbProvider dbProvider = new();
-            dbProvider.RegisterDb(DbNames.State, db);
-            using ProgressTracker progressTracker = new(null, dbProvider.GetDb<IDb>(DbNames.State), LimboLogs.Instance);
+            IDbProvider dbProvider = TestMemDbProvider.Init();
+            ProgressTracker progressTracker = new(null, dbProvider.GetDb<IDb>(DbNames.State), LimboLogs.Instance);
             SnapProvider snapProvider = CreateSnapProvider(progressTracker, dbProvider);
             var result = snapProvider.AddStorageRange(1, _pathWithAccount, rootHash, TestItem.Tree.SlotsWithPaths[0].Path, TestItem.Tree.SlotsWithPaths);
 
@@ -99,10 +93,8 @@ namespace Nethermind.Store.Test
             Hash256 rootHash = _inputStorageTree!.RootHash;   // "..."
 
             // output state
-            MemDb db = new MemDb();
-            DbProvider dbProvider = new();
-            dbProvider.RegisterDb(DbNames.State, db);
-            using ProgressTracker progressTracker = new(null, dbProvider.GetDb<IDb>(DbNames.State), LimboLogs.Instance);
+            IDbProvider dbProvider = TestMemDbProvider.Init();
+            ProgressTracker progressTracker = new(null, dbProvider.GetDb<IDb>(DbNames.State), LimboLogs.Instance);
             SnapProvider snapProvider = CreateSnapProvider(progressTracker, dbProvider);
 
             AccountProofCollector accountProofCollector = new(TestItem.Tree.AccountAddress0.Bytes, new ValueHash256[] { Keccak.Zero, TestItem.Tree.SlotsWithPaths[1].Path });
@@ -134,10 +126,8 @@ namespace Nethermind.Store.Test
             Hash256 rootHash = _inputStorageTree!.RootHash;   // "..."
 
             // output state
-            MemDb db = new MemDb();
-            DbProvider dbProvider = new();
-            dbProvider.RegisterDb(DbNames.State, db);
-            using ProgressTracker progressTracker = new(null, dbProvider.GetDb<IDb>(DbNames.State), LimboLogs.Instance);
+            IDbProvider dbProvider = TestMemDbProvider.Init();
+            ProgressTracker progressTracker = new(null, dbProvider.GetDb<IDb>(DbNames.State), LimboLogs.Instance);
             SnapProvider snapProvider = CreateSnapProvider(progressTracker, dbProvider);
 
             AccountProofCollector accountProofCollector = new(TestItem.Tree.AccountAddress0.Bytes, new ValueHash256[] { Keccak.Zero, TestItem.Tree.SlotsWithPaths[1].Path });
@@ -165,14 +155,6 @@ namespace Nethermind.Store.Test
 
         private SnapProvider CreateSnapProvider(ProgressTracker progressTracker, IDbProvider dbProvider)
         {
-            try
-            {
-                IDb _ = dbProvider.CodeDb;
-            }
-            catch (ArgumentException)
-            {
-                dbProvider.RegisterDb(DbNames.Code, new MemDb());
-            }
             return new(progressTracker, dbProvider.CodeDb, new NodeStorage(dbProvider.StateDb), LimboLogs.Instance);
         }
     }

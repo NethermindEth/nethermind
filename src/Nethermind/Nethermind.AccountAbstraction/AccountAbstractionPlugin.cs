@@ -396,6 +396,8 @@ public class AccountAbstractionPlugin : IConsensusWrapperPlugin
         return consensusPlugin.InitBlockProducer(UserOperationTxSource);
     }
 
+    public int Priority { get; }
+
     private bool MevPluginEnabled => _mevPlugin.Enabled;
     private bool BundleMiningEnabled => _accountAbstractionConfig.Enabled && (_initConfig.IsMining || _miningConfig.Enabled);
     public bool Enabled => BundleMiningEnabled && !MevPluginEnabled; // IConsensusWrapperPlugin.Enabled

@@ -5,8 +5,10 @@ using System;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Autofac;
 using Nethermind.Api;
 using Nethermind.Blockchain.FullPruning;
+using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Init.Steps.Migrations;
 using Nethermind.JsonRpc;
@@ -43,7 +45,6 @@ public class RegisterRpcModules : IStep
     {
         if (_api.BlockTree is null) throw new StepDependencyException(nameof(_api.BlockTree));
         if (_api.ReceiptFinder is null) throw new StepDependencyException(nameof(_api.ReceiptFinder));
-        if (_api.BloomStorage is null) throw new StepDependencyException(nameof(_api.BloomStorage));
         if (_api.LogManager is null) throw new StepDependencyException(nameof(_api.LogManager));
 
         IJsonRpcConfig jsonRpcConfig = _api.Config<IJsonRpcConfig>();
@@ -129,7 +130,7 @@ public class RegisterRpcModules : IStep
             _api.BlockPreprocessor,
             _api.RewardCalculatorSource,
             _api.ReceiptStorage,
-            new ReceiptMigration(_api),
+            _api.BaseContainer.Resolve<ReceiptMigration>(),
             _api.ConfigProvider,
             _api.SpecProvider,
             _api.SyncModeSelector,
@@ -164,8 +165,7 @@ public class RegisterRpcModules : IStep
         if (_api.StaticNodesManager is null) throw new StepDependencyException(nameof(_api.StaticNodesManager));
         if (_api.Enode is null) throw new StepDependencyException(nameof(_api.Enode));
 
-        ManualPruningTrigger pruningTrigger = new();
-        _api.PruningTrigger.Add(pruningTrigger);
+        ManualPruningTrigger pruningTrigger = _api.BaseContainer.Resolve<ManualPruningTrigger>();
         AdminRpcModule adminRpcModule = new(
             _api.BlockTree,
             networkConfig,
@@ -182,7 +182,6 @@ public class RegisterRpcModules : IStep
         rpcModuleProvider.RegisterSingle<ITxPoolRpcModule>(txPoolRpcModule);
 
         if (_api.SyncServer is null) throw new StepDependencyException(nameof(_api.SyncServer));
-        if (_api.EngineSignerStore is null) throw new StepDependencyException(nameof(_api.EngineSignerStore));
 
         NetRpcModule netRpcModule = new(_api.LogManager, new NetBridge(_api.Enode, _api.SyncServer));
         rpcModuleProvider.RegisterSingle<INetRpcModule>(netRpcModule);
@@ -193,7 +192,7 @@ public class RegisterRpcModules : IStep
             _api.BlockTree,
             _api.ReceiptFinder,
             _api.Enode,
-            _api.EngineSignerStore,
+            _api.BaseContainer.Resolve<ISignerStore>(),
             _api.KeyStore,
             _api.SpecProvider,
             _api.PeerManager);

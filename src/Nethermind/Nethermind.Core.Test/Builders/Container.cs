@@ -2,8 +2,11 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Autofac;
+using Nethermind.Api;
+using Nethermind.Config;
 using Nethermind.Logging;
 using Nethermind.Runner.Modules;
+using NSubstitute;
 
 namespace Nethermind.Core.Test.Builders;
 
@@ -12,8 +15,14 @@ public partial class Build
     public ContainerBuilder BasicTestContainerBuilder()
     {
         ContainerBuilder builder = new ContainerBuilder();
+        builder.RegisterInstance(Substitute.For<IProcessExitSource>()).As<IProcessExitSource>();
+
         builder.RegisterInstance(LimboLogs.Instance).AsImplementedInterfaces();
         builder.RegisterModule(new BaseModule());
+        builder.RegisterModule(new DatabaseModule());
+        builder.RegisterModule(new CoreModule());
+        builder.RegisterModule(new StateModule());
+        builder.Register((ctx) => false).Keyed<bool>(ComponentKey.SkipLoadGenesis);
         return builder;
     }
 }

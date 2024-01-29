@@ -7,6 +7,7 @@ using System.IO;
 using System.Numerics;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 
@@ -29,9 +30,20 @@ namespace Nethermind.Crypto
         private readonly ulong _chainIdValue;
         private readonly ILogger _logger;
 
+        public EthereumEcdsa(ISpecProvider specProvider, ILogger logger) : this(specProvider.ChainId, logger)
+        {
+
+        }
+
+        public EthereumEcdsa(ulong chainId, ILogger logger)
+        {
+            _logger = logger;
+            _chainIdValue = chainId;
+        }
+
         public EthereumEcdsa(ulong chainId, ILogManager logManager)
         {
-            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            _logger = logManager.GetClassLogger();
             _chainIdValue = chainId;
         }
 

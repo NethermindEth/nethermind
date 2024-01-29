@@ -3,6 +3,8 @@
 
 using System;
 using System.IO.Abstractions;
+using Autofac.Features.AttributeFilters;
+using Nethermind.Core;
 using Nethermind.Core.Timers;
 
 namespace Nethermind.Blockchain.FullPruning
@@ -15,7 +17,7 @@ namespace Nethermind.Blockchain.FullPruning
         private readonly IFileSystem _fileSystem;
         private readonly ITimer _timer;
 
-        public DiskFreeSpacePruningTrigger(string path, long threshold, ITimerFactory timerFactory, IFileSystem fileSystem)
+        public DiskFreeSpacePruningTrigger([KeyFilter(ComponentKey.FullPruningDbPath)] string path, [KeyFilter(ComponentKey.FullPruningThresholdMb)] long threshold, ITimerFactory timerFactory, IFileSystem fileSystem)
         {
             _path = path;
             _threshold = threshold;
