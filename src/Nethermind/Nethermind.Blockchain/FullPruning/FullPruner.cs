@@ -257,7 +257,7 @@ namespace Nethermind.Blockchain.FullPruning
                         return true;
                     });
 
-                    _lastPruning = DateTime.Now;
+                    _lastPruning = DateTime.UtcNow;
                 }
             }
             catch (Exception e)
