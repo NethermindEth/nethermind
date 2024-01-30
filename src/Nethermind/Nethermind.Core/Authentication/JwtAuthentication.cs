@@ -26,7 +26,7 @@ public partial class JwtAuthentication : IRpcAuthentication
         ArgumentNullException.ThrowIfNull(secret);
 
         _securityKey = new SymmetricSecurityKey(secret);
-        _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+        _logger = logger;
         _timestamper = timestamper ?? throw new ArgumentNullException(nameof(timestamper));
     }
 

@@ -31,6 +31,26 @@ public class WriteBatcher : IWriteBatch
         }
     }
 
+    public void PutSpan(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags flags = WriteFlags.None)
+    {
+        if (_disposing) throw new InvalidOperationException("Trying to set while disposing");
+        if (!_batches.TryDequeue(out IWriteBatch? currentBatch))
+        {
+            currentBatch = _underlyingDb.StartWriteBatch();
+        }
+
+        currentBatch.PutSpan(key, value, flags);
+        long val = Interlocked.Increment(ref _counter);
+        if (val % 10000 == 0)
+        {
+            currentBatch.Dispose();
+        }
+        else
+        {
+            _batches.Enqueue(currentBatch);
+        }
+    }
+
     public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None)
     {
         if (_disposing) throw new InvalidOperationException("Trying to set while disposing");

@@ -94,12 +94,17 @@ namespace Nethermind.Trie
             get => _data?[0] as byte[];
             internal set
             {
+                InitData();
                 if (IsSealed)
                 {
+                    if ((_data[0] as byte[]).AsSpan().SequenceEqual(value))
+                    {
+                        // No change, parallel read
+                        return;
+                    }
                     ThrowAlreadySealed();
                 }
 
-                InitData();
                 _data![0] = value;
                 Keccak = null;
 
@@ -111,102 +116,113 @@ namespace Nethermind.Trie
                 }
             }
         }
-
-        /// <summary>
-        /// Highly optimized
-        /// </summary>
-        public CappedArray<byte> Value
+        public ref readonly CappedArray<byte> ValueRef
         {
             get
             {
                 InitData();
-                object? obj;
-
                 if (IsLeaf)
                 {
-                    obj = _data![1];
-
-                    if (obj is null)
+                    object? data = _data![1];
+                    if (data is null)
                     {
-                        return CappedArray<byte>.Null;
+                        return ref CappedArray<byte>.Null;
                     }
 
-                    if (obj is byte[] asBytes)
-                    {
-                        return new CappedArray<byte>(asBytes);
-                    }
-
-                    return (CappedArray<byte>)obj;
+                    return ref Unsafe.Unbox<CappedArray<byte>>(data);
                 }
 
                 if (!AllowBranchValues)
                 {
                     // branches that we use for state will never have value set as all the keys are equal length
-                    return CappedArray<byte>.Empty;
+                    return ref CappedArray<byte>.Empty;
                 }
 
-                obj = _data![BranchesCount];
+                ref object? obj = ref _data![BranchesCount];
                 if (obj is null)
                 {
                     RlpFactory rlp = _rlp;
                     if (rlp is null)
                     {
-                        _data[BranchesCount] = Array.Empty<byte>();
-                        return CappedArray<byte>.Empty;
+                        obj = CappedArray<byte>.EmptyBoxed;
+                        return ref CappedArray<byte>.Empty;
                     }
                     else
                     {
                         ValueRlpStream rlpStream = rlp.GetRlpStream();
                         SeekChild(ref rlpStream, BranchesCount);
                         byte[]? bArr = rlpStream.DecodeByteArray();
-                        _data![BranchesCount] = bArr;
-                        return new CappedArray<byte>(bArr);
+                        obj = new CappedArray<byte>(bArr);
+                        return ref Unsafe.Unbox<CappedArray<byte>>(obj);
                     }
                 }
 
-                if (obj is byte[] asBytes2)
-                {
-                    return new CappedArray<byte>(asBytes2);
-                }
-                return (CappedArray<byte>)obj;
+                return ref Unsafe.Unbox<CappedArray<byte>>(obj);
             }
+        }
 
-            set
+        /// <summary>
+        /// Highly optimized
+        /// </summary>
+        public CappedArray<byte> Value
+        {
+            get => ValueRef;
+            set => SetValue(in value);
+        }
+
+        private void SetValue(in CappedArray<byte> value, bool overrideSealed = false)
+        {
+            InitData();
+            var index = IsLeaf ? 1 : BranchesCount;
+            ref var data = ref index >= _data.Length ? ref Unsafe.NullRef<object>() : ref _data[index];
+            if (!overrideSealed && IsSealed)
             {
-                if (IsSealed)
+                if (data is null)
                 {
+                    if (!Unsafe.IsNullRef(ref data) && value.IsNull)
+                    {
+                        // No change, parallel read
+                        return;
+                    }
                     ThrowAlreadySealed();
                 }
-
-                InitData();
-                if (IsBranch && !AllowBranchValues)
+                ref readonly var cappedArray = ref Unsafe.Unbox<CappedArray<byte>>(data);
+                if ((cappedArray.IsNull && value.IsNull) || (!cappedArray.IsNull && !value.IsNull && cappedArray.AsSpan().SequenceEqual(value)))
                 {
-                    // in Ethereum all paths are of equal length, hence branches will never have values
-                    // so we decided to save 1/17th of the array size in memory
-                    throw new TrieException("Optimized Patricia Trie does not support setting values on branches.");
-                }
-
-                if (value.IsNull)
-                {
-                    _data![IsLeaf ? 1 : BranchesCount] = null;
+                    // No change, parallel read
                     return;
                 }
 
-                if (value.IsUncapped)
-                {
-                    // Store array directly if possible to reduce memory
-                    _data![IsLeaf ? 1 : BranchesCount] = value.UnderlyingArray;
-                    return;
-                }
+                ThrowAlreadySealed();
+            }
 
-                _data![IsLeaf ? 1 : BranchesCount] = value;
+            if (IsBranch && !AllowBranchValues)
+            {
+                // in Ethereum all paths are of equal length, hence branches will never have values
+                // so we decided to save 1/17th of the array size in memory
+                ThrowNoValueOnBranches();
+            }
 
-                [DoesNotReturn]
-                [StackTraceHidden]
-                void ThrowAlreadySealed()
-                {
-                    throw new InvalidOperationException($"{nameof(TrieNode)} {this} is already sealed when setting {nameof(Value)}.");
-                }
+            if (value.IsNull)
+            {
+                data = CappedArray<byte>.NullBoxed;
+                return;
+            }
+
+            data = value;
+
+            [DoesNotReturn]
+            [StackTraceHidden]
+            void ThrowAlreadySealed()
+            {
+                throw new InvalidOperationException($"{nameof(TrieNode)} {this} is already sealed when setting {nameof(Value)}.");
+            }
+
+            [DoesNotReturn]
+            [StackTraceHidden]
+            static void ThrowNoValueOnBranches()
+            {
+                throw new TrieException("Optimized Patricia Trie does not support setting values on branches.");
             }
         }
 
@@ -442,11 +458,7 @@ namespace Nethermind.Trie
             {
                 (byte[] key, bool isLeaf) = HexPrefix.FromBytes(rlpStream.DecodeByteArraySpan());
 
-                // a hack to set internally and still verify attempts from the outside
-                // after the code is ready we should just add proper access control for methods from the outside and inside
-                int isDirtyActual = _isDirty;
-                Volatile.Write(ref _isDirty, 1);
-
+                Initialize(isLeaf ? NodeType.Leaf : NodeType.Extension, key);
                 if (isLeaf)
                 {
                     NodeType = NodeType.Leaf;
@@ -455,15 +467,8 @@ namespace Nethermind.Trie
                     ReadOnlySpan<byte> valueSpan = rlpStream.DecodeByteArraySpan();
                     CappedArray<byte> buffer = bufferPool.SafeRentBuffer(valueSpan.Length);
                     valueSpan.CopyTo(buffer.AsSpan());
-                    Value = buffer;
+                    SetValue(in buffer, overrideSealed: true);
                 }
-                else
-                {
-                    NodeType = NodeType.Extension;
-                    Key = key;
-                }
-
-                Volatile.Write(ref _isDirty, isDirtyActual);
             }
             else
             {
@@ -708,7 +713,7 @@ namespace Nethermind.Trie
 
             InitData();
             int index = IsExtension ? i + 1 : i;
-            _data![index] = child;
+            _data[index] = child;
         }
 
         public void SetChild(int i, TrieNode? node)
@@ -720,7 +725,7 @@ namespace Nethermind.Trie
 
             InitData();
             int index = IsExtension ? i + 1 : i;
-            _data![index] = node ?? _nullNode;
+            _data[index] = node ?? _nullNode;
             Keccak = null;
 
             [DoesNotReturn]
@@ -811,7 +816,7 @@ namespace Nethermind.Trie
                 trieNode.InitData();
                 for (int i = 0; i < data.Length; i++)
                 {
-                    trieNode._data![i] = data[i];
+                    trieNode._data[i] = data[i];
                 }
             }
 
@@ -861,7 +866,7 @@ namespace Nethermind.Trie
             Action<TrieNode> action,
             ITrieNodeResolver resolver,
             bool skipPersisted,
-            ILogger logger,
+            in ILogger logger,
             bool resolveStorageRoot = true)
         {
             if (skipPersisted && IsPersisted)
@@ -976,30 +981,38 @@ namespace Nethermind.Trie
             return hasStorage;
         }
 
+        [MemberNotNull(nameof(_data))]
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void InitData()
         {
             if (_data is null)
             {
-                Initialize();
+                Initialize(NodeType);
+            }
+        }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private void Initialize(NodeType nodeType, byte[]? key = null)
+        {
+            switch (nodeType)
+            {
+                case NodeType.Unknown:
+                    ThrowCannotResolveException();
+                    return;
+                case NodeType.Branch:
+                    Interlocked.CompareExchange(ref _data, new object[AllowBranchValues ? BranchesCount + 1 : BranchesCount], null);
+                    break;
+                default:
+                    Interlocked.CompareExchange(ref _data, new object[2], null);
+                    break;
             }
 
-            [MethodImpl(MethodImplOptions.NoInlining)]
-            void Initialize()
+            if (key is not null)
             {
-                switch (NodeType)
-                {
-                    case NodeType.Unknown:
-                        ThrowCannotResolveException();
-                        return;
-                    case NodeType.Branch:
-                        Interlocked.CompareExchange(ref _data, new object[AllowBranchValues ? BranchesCount + 1 : BranchesCount], null);
-                        break;
-                    default:
-                        Interlocked.CompareExchange(ref _data, new object[2], null);
-                        break;
-                }
+                _data[0] = key;
             }
+            // Set NodeType after setting key as it alters code path to one that expects the key to be set
+            NodeType = nodeType;
 
             [DoesNotReturn]
             [StackTraceHidden]

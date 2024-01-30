@@ -21,7 +21,7 @@ namespace Nethermind.Network.P2P
             TimeSpan sendLatency)
         {
             _messageSerializationService = messageSerializationService ?? throw new ArgumentNullException(nameof(messageSerializationService));
-            _logger = logManager.GetClassLogger<PacketSender>() ?? throw new ArgumentNullException(nameof(logManager));
+            _logger = logManager?.GetClassLogger<PacketSender>() ?? throw new ArgumentNullException(nameof(logManager));
             _sendLatency = sendLatency;
         }
 

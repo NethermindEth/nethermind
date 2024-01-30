@@ -34,7 +34,7 @@ namespace Nethermind.Init;
 public class InitializeStateDb : IStep
 {
     private readonly INethermindApi _api;
-    private ILogger? _logger;
+    private ILogger _logger;
 
     public InitializeStateDb(INethermindApi api)
     {

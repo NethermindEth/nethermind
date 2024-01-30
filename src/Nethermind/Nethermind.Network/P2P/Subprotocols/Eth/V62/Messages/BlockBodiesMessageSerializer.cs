@@ -21,7 +21,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
             stream.StartSequence(contentLength);
             foreach (BlockBody? body in message.Bodies.Bodies)
             {
-                if (body == null)
+                if (body is null)
                 {
                     stream.Encode(Rlp.OfEmptySequence);
                 }
@@ -34,7 +34,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
 
         public int GetLength(BlockBodiesMessage message, out int contentLength)
         {
-            contentLength = message.Bodies.Bodies.Select(b => b == null
+            contentLength = message.Bodies.Bodies.Select(b => b is null
                 ? Rlp.OfEmptySequence.Length
                 : Rlp.LengthOfSequence(_blockBodyDecoder.GetBodyLength(b))
             ).Sum();
@@ -66,7 +66,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
 
             public int GetBodyLength(BlockBody b)
             {
-                if (b.Withdrawals != null)
+                if (b.Withdrawals is not null)
                 {
                     return Rlp.LengthOfSequence(GetTxLength(b.Transactions)) +
                            Rlp.LengthOfSequence(GetUnclesLength(b.Uncles)) + Rlp.LengthOfSequence(GetWithdrawalsLength(b.Withdrawals));
@@ -127,7 +127,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
                     stream.Encode(uncle);
                 }
 
-                if (body.Withdrawals != null)
+                if (body.Withdrawals is not null)
                 {
                     stream.StartSequence(GetWithdrawalsLength(body.Withdrawals));
                     foreach (Withdrawal? withdrawal in body.Withdrawals)

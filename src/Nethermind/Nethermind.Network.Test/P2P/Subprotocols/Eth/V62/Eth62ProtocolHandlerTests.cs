@@ -69,7 +69,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             _gossipPolicy.ShouldGossipBlock(Arg.Any<BlockHeader>()).Returns(true);
             _gossipPolicy.ShouldDisconnectGossipingNodes.Returns(false);
             _txGossipPolicy = Substitute.For<ITxGossipPolicy>();
-            _txGossipPolicy.ShouldListenToGossippedTransactions.Returns(true);
+            _txGossipPolicy.ShouldListenToGossipedTransactions.Returns(true);
             _txGossipPolicy.ShouldGossipTransaction(Arg.Any<Transaction>()).Returns(true);
             _handler = new Eth62ProtocolHandler(
                 _session,
@@ -386,7 +386,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         [Test]
         public void Can_handle_transactions([Values(true, false)] bool canGossipTransactions)
         {
-            _txGossipPolicy.ShouldListenToGossippedTransactions.Returns(canGossipTransactions);
+            _txGossipPolicy.ShouldListenToGossipedTransactions.Returns(canGossipTransactions);
             TransactionsMessage msg = new(new List<Transaction>(Build.A.Transaction.SignedAndResolved().TestObjectNTimes(3)));
 
             HandleIncomingStatusMessage();

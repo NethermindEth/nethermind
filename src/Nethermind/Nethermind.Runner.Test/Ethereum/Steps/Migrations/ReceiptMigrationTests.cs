@@ -107,13 +107,13 @@ namespace Nethermind.Runner.Test.Ethereum.Steps.Migrations
             {
                 int blockNum = (commandStartBlockNumber ?? chainLength) - 1 - 1;
                 int txCount = blockNum * 2;
-                txDb.KeyWasWritten((item => item.Item2 == null), txCount);
+                txDb.KeyWasWritten((item => item.Item2 is null), txCount);
                 ((TestMemDb)receiptColumnDb.GetColumnDb(ReceiptsColumns.Blocks)).KeyWasRemoved((_ => true), blockNum);
                 outMemoryReceiptStorage.Count.Should().Be(txCount);
             }
             else
             {
-                txDb.KeyWasWritten((item => item.Item2 == null), 0);
+                txDb.KeyWasWritten((item => item.Item2 is null), 0);
             }
         }
 

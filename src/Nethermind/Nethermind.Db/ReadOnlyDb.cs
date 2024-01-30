@@ -108,7 +108,7 @@ namespace Nethermind.Db
             _memDb.Set(keyBytes, value.ToArray(), writeFlags);
         }
 
-        public void DangerousReleaseMemory(in Span<byte> span) { }
+        public void DangerousReleaseMemory(in ReadOnlySpan<byte> span) { }
 
         public bool PreferWriteByArray => true; // Because of memdb buffer
     }
