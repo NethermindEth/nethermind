@@ -12,6 +12,7 @@ using System.Diagnostics.CodeAnalysis;
 using System.Runtime.Intrinsics;
 using System.Diagnostics;
 using System.Runtime.Intrinsics.X86;
+using Nethermind.Core.Extensions;
 
 namespace Nethermind.Evm;
 
@@ -38,7 +39,7 @@ public ref struct EvmStack<TTracing>
 
     private readonly ITxTracer _tracer;
 
-    public void PushBytes(scoped in Span<byte> value)
+    public void PushBytes(scoped ReadOnlySpan<byte> value)
     {
         if (typeof(TTracing) == typeof(IsTracing)) _tracer.ReportStackPush(value);
 
@@ -105,7 +106,7 @@ public ref struct EvmStack<TTracing>
         }
     }
 
-    private static ReadOnlySpan<byte> OneStackItem() => new byte[] { 1 };
+    private static ReadOnlySpan<byte> OneStackItem() => Bytes.OneByte.Span;
 
     public void PushOne()
     {
@@ -120,7 +121,7 @@ public ref struct EvmStack<TTracing>
         }
     }
 
-    private static ReadOnlySpan<byte> ZeroStackItem() => new byte[] { 0 };
+    private static ReadOnlySpan<byte> ZeroStackItem() => Bytes.ZeroByte.Span;
 
     public void PushZero()
     {
@@ -333,7 +334,7 @@ public ref struct EvmStack<TTracing>
         return _bytes[Head * WordSize + WordSize - sizeof(byte)];
     }
 
-    public void PushLeftPaddedBytes(Span<byte> value, int paddingLength)
+    public void PushLeftPaddedBytes(ReadOnlySpan<byte> value, int paddingLength)
     {
         if (typeof(TTracing) == typeof(IsTracing)) _tracer.ReportStackPush(value);
 

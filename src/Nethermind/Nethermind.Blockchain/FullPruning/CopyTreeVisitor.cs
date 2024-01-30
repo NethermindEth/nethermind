@@ -69,7 +69,7 @@ namespace Nethermind.Blockchain.FullPruning
 
         public void VisitExtension(TrieNode node, TrieVisitContext trieVisitContext) => PersistNode(node);
 
-        public void VisitLeaf(TrieNode node, TrieVisitContext trieVisitContext, byte[]? value = null) => PersistNode(node);
+        public void VisitLeaf(TrieNode node, TrieVisitContext trieVisitContext, ReadOnlySpan<byte> value) => PersistNode(node);
 
         public void VisitCode(Hash256 codeHash, TrieVisitContext trieVisitContext) { }
 
@@ -78,7 +78,7 @@ namespace Nethermind.Blockchain.FullPruning
             if (node.Keccak is not null)
             {
                 // simple copy of nodes RLP
-                _pruningContext.Set(node.Keccak.Bytes, node.FullRlp.ToArray(), _writeFlags);
+                _pruningContext.PutSpan(node.Keccak.Bytes, node.FullRlp.AsSpan(), _writeFlags);
                 Interlocked.Increment(ref _persistedNodes);
 
                 // log message every 1 mln nodes

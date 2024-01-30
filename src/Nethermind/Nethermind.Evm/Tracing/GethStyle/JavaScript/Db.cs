@@ -33,12 +33,12 @@ public class Db
         byte[] array = ArrayPool<byte>.Shared.Rent(32);
         try
         {
-            byte[] bytes = WorldState.Get(new StorageCell(address.ToAddress(), hash.GetHash()));
+            ReadOnlySpan<byte> bytes = WorldState.Get(new StorageCell(address.ToAddress(), hash.GetHash()));
             if (bytes.Length < array.Length)
             {
                 Array.Clear(array);
             }
-            bytes.CopyTo(array, array.Length - bytes.Length);
+            bytes.CopyTo(array.AsSpan(array.Length - bytes.Length));
             return array.ToTypedScriptArray();
         }
         finally

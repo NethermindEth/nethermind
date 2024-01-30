@@ -384,7 +384,7 @@ public class CancellationTxTracer : ITxTracer, ITxTracerWrapper
         }
     }
 
-    public void ReportByteCode(byte[] byteCode)
+    public void ReportByteCode(ReadOnlyMemory<byte> byteCode)
     {
         _token.ThrowIfCancellationRequested();
         if (_innerTracer.IsTracingCode)

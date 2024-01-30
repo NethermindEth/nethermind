@@ -44,7 +44,7 @@ public partial class DbMetricsUpdater
         {
             // It seems that currently there is no other option with .NET api to extract the compaction statistics than through the dumped string
             var compactionStatsString = "";
-            if (_columnFamilyHandle != null)
+            if (_columnFamilyHandle is not null)
             {
                 compactionStatsString = _db.GetProperty("rocksdb.stats", _columnFamilyHandle);
             }

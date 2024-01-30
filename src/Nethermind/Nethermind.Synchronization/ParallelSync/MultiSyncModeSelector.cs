@@ -84,7 +84,7 @@ namespace Nethermind.Synchronization.ParallelSync
             ILogManager logManager,
             bool needToWaitForHeaders = false)
         {
-            _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _syncConfig = syncConfig ?? throw new ArgumentNullException(nameof(syncConfig));
             _beaconSyncStrategy = beaconSyncStrategy ?? throw new ArgumentNullException(nameof(beaconSyncStrategy));
             _syncPeerPool = syncPeerPool ?? throw new ArgumentNullException(nameof(syncPeerPool));
@@ -356,7 +356,7 @@ namespace Nethermind.Synchronization.ParallelSync
         private bool ShouldBeInUpdatingPivot()
         {
             bool updateRequestedAndNotFinished = _syncConfig.MaxAttemptsToUpdatePivot > 0;
-            bool isPostMerge = _beaconSyncStrategy.GetFinalizedHash() != null;
+            bool isPostMerge = _beaconSyncStrategy.MergeTransitionFinished;
             bool stateSyncNotFinished = _syncProgressResolver.FindBestFullState() == 0;
 
             bool result = updateRequestedAndNotFinished &&
@@ -577,7 +577,7 @@ namespace Nethermind.Synchronization.ParallelSync
                    !best.IsInFullSync &&
                    !best.IsInStateSync &&
                    // maybe some more sophisticated heuristic?
-                   best.Peer.TotalDifficulty == UInt256.Zero;
+                   best.Peer.TotalDifficulty.IsZero;
         }
 
         private bool ShouldBeInStateSyncMode(Snapshot best)

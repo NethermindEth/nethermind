@@ -4,7 +4,7 @@
 
 ```
 docker run nethermindeth/send-blobs:latest --rpcurl http://localhost:8545 --bloboptions 5 --privatekey 0x0000000000000000000000000000000000000000000000000000000000000000 --receiveraddress 0x000000000000000000000000000000000000f1c1
-docker run nethermindeth/send-blobs:latest --rpcurl http://localhost:8545 --bloboptions 5x6 --privatekey 0x0000000000000000000000000000000000000000000000000000000000000000 --receiveraddress 0x000000000000000000000000000000000000f1c1 --maxfeeperdatagas 10000 --feemultiplier 4
+docker run nethermindeth/send-blobs:latest --rpcurl http://localhost:8545 --bloboptions 5x6 --privatekey 0x0000000000000000000000000000000000000000000000000000000000000000 --receiveraddress 0x000000000000000000000000000000000000f1c1 --maxfeeperblobgas 10000 --feemultiplier 4
 ```
 
 ## Usage
@@ -19,7 +19,7 @@ Options:
   --privatekey <privateKey>              The key to use for sending blobs.
   --keyfile <keyFile>                    File containing private keys that each blob tx will be send from.
   --receiveraddress <receiverAddress>    Receiver address of the blobs.
-  --maxfeeperdatagas <maxFeePerDataGas>  (Optional) Set the maximum fee per blob data.
+  --maxfeeperblobgas <maxFeePerBlobGas>  (Optional) Set the maximum fee per blob data.
   --feemultiplier <feeMultiplier>        (Optional) A multiplier to use for gas fees.
   --maxpriorityfee <maxPriorityFee>      (Optional) The maximum priority fee for each transaction.
 
@@ -57,7 +57,7 @@ sh
              --bloboptions      1000,5x6,100x2        # transaction count: just a number or a list of tx-count x blob-count
              --privatekey       0x0000..0000          # secret-key
              --receiveraddress  0x0000..0042          # receiver-address
-             --maxfeeperdatagas 10000                 # data gas price limit, 1000 by default
+             --maxfeeperblobgas 10000                 # data gas price limit, 1000 by default
              --feemultiplier    4                     # fee multiplier to compete with other txs in the pool, 4 by default
 
 # send 5 transactions, 1 blob each
@@ -70,7 +70,7 @@ sh
             --bloboptions 10x1,10x6,10x2 \
             --privatekey  0x0000000000000000000000000000000000000000000000000000000000000000 \
             --receiveraddress 0x000000000000000000000000000000000000f1c1 \
-            --maxfeeperdatagas 10000 \
+            --maxfeeperblobgas 10000 \
             --feemultiplier 4
 
 #send a couple of transactions
@@ -79,7 +79,7 @@ sh
             --bloboptions 2x4-1 \
             --privatekey 0x0000000000000000000000000000000000000000000000000000000000000000 \
             --receiveraddress 0x0000000000000000000000000000000000000001 \
-            --maxfeeperdatagas 10000 \
+            --maxfeeperblobgas 10000 \
             --feemultiplier 4
 ```
 ## Blob options

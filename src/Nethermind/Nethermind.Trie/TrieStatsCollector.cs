@@ -79,7 +79,7 @@ namespace Nethermind.Trie
             IncrementLevel(trieVisitContext);
         }
 
-        public void VisitLeaf(TrieNode node, TrieVisitContext trieVisitContext, byte[] value = null)
+        public void VisitLeaf(TrieNode node, TrieVisitContext trieVisitContext, ReadOnlySpan<byte> value)
         {
             if (Stats.NodesCount - _lastAccountNodeCount > 1_000_000)
             {

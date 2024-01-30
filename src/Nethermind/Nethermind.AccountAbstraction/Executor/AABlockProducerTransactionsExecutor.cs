@@ -56,12 +56,12 @@ namespace Nethermind.AccountAbstraction.Executor
             {
                 if (IsAccountAbstractionTransaction(transaction))
                 {
-                    BlockProcessor.TxAction action = ProcessAccountAbstractionTransaction(block, blkCtx, transaction, i++, receiptsTracer, processingOptions, transactionsInBlock);
+                    BlockProcessor.TxAction action = ProcessAccountAbstractionTransaction(block, in blkCtx, transaction, i++, receiptsTracer, processingOptions, transactionsInBlock);
                     if (action == BlockProcessor.TxAction.Stop) break;
                 }
                 else
                 {
-                    BlockProcessor.TxAction action = ProcessTransaction(block, blkCtx, transaction, i++, receiptsTracer, processingOptions, transactionsInBlock);
+                    BlockProcessor.TxAction action = ProcessTransaction(block, in blkCtx, transaction, i++, receiptsTracer, processingOptions, transactionsInBlock);
                     if (action == BlockProcessor.TxAction.Stop) break;
                 }
             }
@@ -81,7 +81,7 @@ namespace Nethermind.AccountAbstraction.Executor
 
         private BlockProcessor.TxAction ProcessAccountAbstractionTransaction(
             Block block,
-            BlockExecutionContext blkCtx,
+            in BlockExecutionContext blkCtx,
             Transaction currentTx,
             int index,
             BlockReceiptsTracer receiptsTracer,
@@ -90,7 +90,7 @@ namespace Nethermind.AccountAbstraction.Executor
         {
             int snapshot = receiptsTracer.TakeSnapshot();
 
-            BlockProcessor.TxAction action = ProcessTransaction(block, blkCtx, currentTx, index, receiptsTracer, processingOptions, transactionsInBlock, false);
+            BlockProcessor.TxAction action = ProcessTransaction(block, in blkCtx, currentTx, index, receiptsTracer, processingOptions, transactionsInBlock, false);
             if (action != BlockProcessor.TxAction.Add)
             {
                 return action;

@@ -43,6 +43,7 @@ namespace Nethermind.Blockchain
         private readonly IHeaderStore _headerStore;
         private readonly IDb _blockInfoDb;
         private readonly IDb _metadataDb;
+        private readonly IBlockStore _badBlockStore;
 
         private readonly LruCache<ValueHash256, Block> _invalidBlocks =
             new(128, 128, "invalid blocks");
@@ -110,6 +111,7 @@ namespace Nethermind.Blockchain
             IHeaderStore? headerDb,
             IDb? blockInfoDb,
             IDb? metadataDb,
+            IBlockStore? badBlockStore,
             IChainLevelInfoRepository? chainLevelInfoRepository,
             ISpecProvider? specProvider,
             IBloomStorage? bloomStorage,
@@ -121,6 +123,7 @@ namespace Nethermind.Blockchain
             _headerStore = headerDb ?? throw new ArgumentNullException(nameof(headerDb));
             _blockInfoDb = blockInfoDb ?? throw new ArgumentNullException(nameof(blockInfoDb));
             _metadataDb = metadataDb ?? throw new ArgumentNullException(nameof(metadataDb));
+            _badBlockStore = badBlockStore ?? throw new ArgumentNullException(nameof(badBlockStore));
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
             _bloomStorage = bloomStorage ?? throw new ArgumentNullException(nameof(bloomStorage));
             _syncConfig = syncConfig ?? throw new ArgumentNullException(nameof(syncConfig));
@@ -710,6 +713,7 @@ namespace Nethermind.Blockchain
             if (_logger.IsDebug) _logger.Debug($"Deleting invalid block {invalidBlock.ToString(Block.Format.FullHashAndNumber)}");
 
             _invalidBlocks.Set(invalidBlock.Hash, invalidBlock);
+            _badBlockStore.Insert(invalidBlock);
 
             BestSuggestedHeader = Head?.Header;
             BestSuggestedBody = Head;
@@ -1295,7 +1299,7 @@ namespace Nethermind.Blockchain
 
             Block? block = null;
             blockNumber ??= _headerStore.GetBlockNumber(blockHash);
-            if (blockNumber != null)
+            if (blockNumber is not null)
             {
                 block = _blockStore.Get(blockNumber.Value, blockHash, shouldCache: false);
             }

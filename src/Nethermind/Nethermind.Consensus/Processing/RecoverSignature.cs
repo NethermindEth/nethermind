@@ -58,10 +58,18 @@ namespace Nethermind.Consensus.Processing
             // Don't access txPool in Parallel loop as increases contention
             foreach (Transaction blockTransaction in block.Transactions.Where(tx => tx.IsSigned && tx.SenderAddress is null))
             {
-                _txPool.TryGetPendingTransaction(blockTransaction.Hash, out Transaction? transaction);
+                Transaction? transaction = null;
+                try
+                {
+                    _txPool.TryGetPendingTransaction(blockTransaction.Hash, out transaction);
+                }
+                catch (Exception e)
+                {
+                    if (_logger.IsError) _logger.Error($"An error occured while getting pending a transaction from TxPool, Transaction: {blockTransaction}", e);
+                }
 
                 Address sender = transaction?.SenderAddress;
-                if (sender != null)
+                if (sender is not null)
                 {
                     blockTransaction.SenderAddress = sender;
 

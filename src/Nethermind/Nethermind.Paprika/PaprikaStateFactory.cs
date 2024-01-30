@@ -96,21 +96,28 @@ public class PaprikaStateFactory : IStateFactory
             _wrapped = wrapped;
         }
 
-        public Account? Get(Address address)
+        public bool TryGet(Address address, out AccountStruct account)
         {
-            PaprikaAccount account = _wrapped.GetAccount(Convert(address));
-            bool hasEmptyStorageAndCode = account.CodeHash == PaprikaKeccak.OfAnEmptyString &&
-                                          account.StorageRootHash == PaprikaKeccak.EmptyTreeHash;
-            if (account.Balance.IsZero &&
-                account.Nonce.IsZero &&
+            PaprikaAccount retrieved = _wrapped.GetAccount(Convert(address));
+            bool hasEmptyStorageAndCode = retrieved.CodeHash == PaprikaKeccak.OfAnEmptyString &&
+                                          retrieved.StorageRootHash == PaprikaKeccak.EmptyTreeHash;
+            if (retrieved.Balance.IsZero &&
+                retrieved.Nonce.IsZero &&
                 hasEmptyStorageAndCode)
-                return null;
+            {
+                account = default;
+                return false;
+            }
 
             if (hasEmptyStorageAndCode)
-                return new Account(account.Nonce, account.Balance);
+            {
+                account = new AccountStruct(retrieved.Nonce, retrieved.Balance);
+                return true;
+            }
 
-            return new Account(account.Nonce, account.Balance, Convert(account.StorageRootHash),
-                Convert(account.CodeHash));
+            account = new AccountStruct(retrieved.Nonce, retrieved.Balance, Convert(retrieved.StorageRootHash),
+                Convert(retrieved.CodeHash));
+            return true;
         }
 
         public byte[] GetStorageAt(in StorageCell cell)
@@ -162,21 +169,28 @@ public class PaprikaStateFactory : IStateFactory
             }
         }
 
-        public Account? Get(Address address)
+        public bool TryGet(Address address, out AccountStruct account)
         {
-            PaprikaAccount account = _wrapped.GetAccount(Convert(address));
-            bool hasEmptyStorageAndCode = account.CodeHash == PaprikaKeccak.OfAnEmptyString &&
-                                          account.StorageRootHash == PaprikaKeccak.EmptyTreeHash;
-            if (account.Balance.IsZero &&
-                account.Nonce.IsZero &&
+            PaprikaAccount retrieved = _wrapped.GetAccount(Convert(address));
+            bool hasEmptyStorageAndCode = retrieved.CodeHash == PaprikaKeccak.OfAnEmptyString &&
+                                          retrieved.StorageRootHash == PaprikaKeccak.EmptyTreeHash;
+            if (retrieved.Balance.IsZero &&
+                retrieved.Nonce.IsZero &&
                 hasEmptyStorageAndCode)
-                return null;
+            {
+                account = default;
+                return false;
+            }
 
             if (hasEmptyStorageAndCode)
-                return new Account(account.Nonce, account.Balance);
+            {
+                account = new AccountStruct(retrieved.Nonce, retrieved.Balance);
+                return true;
+            }
 
-            return new Account(account.Nonce, account.Balance, Convert(account.StorageRootHash),
-                Convert(account.CodeHash));
+            account = new AccountStruct(retrieved.Nonce, retrieved.Balance, Convert(retrieved.StorageRootHash),
+                Convert(retrieved.CodeHash));
+            return true;
         }
 
         public byte[] GetStorageAt(in StorageCell cell)

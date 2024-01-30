@@ -13,14 +13,14 @@ public class PerTableDbConfig
 {
     private readonly string _tableName;
     private readonly IDbConfig _dbConfig;
-    private readonly RocksDbSettings _settings;
+    private readonly DbSettings _settings;
 
-    public PerTableDbConfig(IDbConfig dbConfig, RocksDbSettings rocksDbSettings, string? columnName = null)
+    public PerTableDbConfig(IDbConfig dbConfig, DbSettings dbSettings, string? columnName = null)
     {
         _dbConfig = dbConfig;
-        _settings = rocksDbSettings;
+        _settings = dbSettings;
         _tableName = _settings.DbName;
-        if (columnName != null)
+        if (columnName is not null)
         {
             _tableName += columnName;
         }
@@ -71,11 +71,11 @@ public class PerTableDbConfig
             Type type = dbConfig.GetType();
             PropertyInfo? propertyInfo = type.GetProperty(prefixed, BindingFlags.IgnoreCase | BindingFlags.Public | BindingFlags.Instance);
 
-            if (propertyInfo != null && propertyInfo.PropertyType.CanBeAssignedNull())
+            if (propertyInfo is not null && propertyInfo.PropertyType.CanBeAssignedNull())
             {
                 // If its nullable check if its null first
                 T? val = (T?)propertyInfo?.GetValue(dbConfig);
-                if (val != null)
+                if (val is not null)
                 {
                     return val;
                 }

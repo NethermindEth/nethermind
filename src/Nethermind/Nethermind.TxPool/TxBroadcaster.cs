@@ -26,6 +26,7 @@ namespace Nethermind.TxPool
         private readonly ITxPoolConfig _txPoolConfig;
         private readonly IChainHeadInfoProvider _headInfo;
         private readonly ITxGossipPolicy _txGossipPolicy;
+        private readonly Func<Transaction, bool> _gossipFilter;
 
         /// <summary>
         /// Timer for rebroadcasting pending own transactions.
@@ -78,6 +79,8 @@ namespace Nethermind.TxPool
             _txPoolConfig = txPoolConfig;
             _headInfo = chainHeadInfoProvider;
             _txGossipPolicy = transactionsGossipPolicy ?? ShouldGossip.Instance;
+            // Allocate closure once
+            _gossipFilter = t => _txGossipPolicy.ShouldGossipTransaction(t);
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _persistentTxs = new TxDistinctSortedPool(MemoryAllowance.MemPoolSize, comparer, logManager);
             _accumulatedTemporaryTxs = new ResettableList<Transaction>(512, 4);
@@ -311,7 +314,7 @@ namespace Nethermind.TxPool
             {
                 try
                 {
-                    peer.SendNewTransactions(txs.Where(t => _txGossipPolicy.ShouldGossipTransaction(t)), sendFullTx);
+                    peer.SendNewTransactions(txs.Where(_gossipFilter), sendFullTx);
                     if (_logger.IsTrace) _logger.Trace($"Notified {peer} about transactions.");
                 }
                 catch (Exception e)

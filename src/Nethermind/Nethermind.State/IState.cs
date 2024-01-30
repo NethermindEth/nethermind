@@ -27,7 +27,7 @@ public interface IState : IReadOnlyState
 
 public interface IReadOnlyState : IDisposable
 {
-    Account? Get(Address address);
+    bool TryGet(Address address, out AccountStruct account);
 
     /// <summary>
     /// Gets storage by the cell.
