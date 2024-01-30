@@ -272,9 +272,9 @@ namespace Ethereum.Test.Base
                         {
                             Assert.That(suggestedBlock.Uncles[uncleIndex].Hash, Is.EqualTo(new Hash256(testBlockJson.UncleHeaders[uncleIndex].Hash)));
                         }
-                    }
 
-                    correctRlp.Add((suggestedBlock, testBlockJson.ExpectedException));
+                        correctRlp.Add((suggestedBlock, testBlockJson.ExpectedException));
+                    }
                 }
                 catch (Exception e)
                 {
