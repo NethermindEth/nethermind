@@ -130,8 +130,8 @@ namespace Nethermind.Evm.TransactionProcessing
             ExecutionEnvironment env = BuildExecutionEnvironment(tx, in blCtx, spec, effectiveGasPrice);
 
             long gasAvailable = tx.GasLimit - intrinsicGas;
-            if (!(result = ExecuteEvmCall(tx, header, spec, tracer, opts, gasAvailable, env, out TransactionSubstate? substate, out long spentGas, out byte statusCode))) return result;
-            if (!(result = PayFees(tx, header, spec, tracer, substate, spentGas, premiumPerGas, statusCode))) return result;
+            result = ExecuteEvmCall(tx, header, spec, tracer, opts, gasAvailable, env, out TransactionSubstate? substate, out long spentGas, out byte statusCode);
+            PayFees(tx, header, spec, tracer, substate, spentGas, premiumPerGas, statusCode);
 
             // Finalize
             if (restore)
@@ -177,7 +177,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 }
             }
 
-            return TransactionResult.Ok;
+            return result;
         }
 
         private static void UpdateMetrics(ExecutionOptions opts, UInt256 effectiveGasPrice)
@@ -557,7 +557,7 @@ namespace Nethermind.Evm.TransactionProcessing
             return TransactionResult.Ok;
         }
 
-        protected virtual TransactionResult PayFees(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer, in TransactionSubstate substate, in long spentGas, in UInt256 premiumPerGas, in byte statusCode)
+        protected virtual void PayFees(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer, in TransactionSubstate substate, in long spentGas, in UInt256 premiumPerGas, in byte statusCode)
         {
             if (!tx.IsSystem())
             {
@@ -576,8 +576,6 @@ namespace Nethermind.Evm.TransactionProcessing
                         tracer.ReportFees(fees, burntFees);
                 }
             }
-
-            return TransactionResult.Ok;
         }
 
         protected void PrepareAccountForContractDeployment(Address contractAddress, IReleaseSpec spec)
@@ -654,6 +652,7 @@ namespace Nethermind.Evm.TransactionProcessing
     public readonly struct TransactionResult(string? error)
     {
         public static readonly TransactionResult Ok = new();
+        public static readonly TransactionResult MalformedTransaction = new("malformed");
         [MemberNotNullWhen(true, nameof(Fail))]
         [MemberNotNullWhen(false, nameof(Success))]
         public string? Error { get; } = error;

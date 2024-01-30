@@ -122,8 +122,10 @@ namespace Ethereum.Test.Base
                 header.ExcessBlobGas = BlobGasCalculator.CalculateExcessBlobGas(parent, spec);
             }
             bool isValid = txValidator.IsWellFormed(test.Transaction, spec);
-            if (isValid)
-                transactionProcessor.Execute(test.Transaction, new BlockExecutionContext(header), txTracer);
+            TransactionResult result = isValid
+                ? transactionProcessor.Execute(test.Transaction, new BlockExecutionContext(header), txTracer)
+                : TransactionResult.MalformedTransaction;
+
             stopwatch.Stop();
 
             stateProvider.Commit(specProvider.GenesisSpec);
