@@ -130,7 +130,7 @@ namespace Nethermind.Evm.TransactionProcessing
             ExecutionEnvironment env = BuildExecutionEnvironment(tx, in blCtx, spec, effectiveGasPrice);
 
             long gasAvailable = tx.GasLimit - intrinsicGas;
-            result = ExecuteEvmCall(tx, header, spec, tracer, opts, gasAvailable, env, out TransactionSubstate? substate, out long spentGas, out byte statusCode);
+            ExecuteEvmCall(tx, header, spec, tracer, opts, gasAvailable, env, out TransactionSubstate? substate, out long spentGas, out byte statusCode);
             PayFees(tx, header, spec, tracer, substate, spentGas, premiumPerGas, statusCode);
 
             // Finalize
@@ -177,7 +177,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 }
             }
 
-            return result;
+            return TransactionResult.Ok;
         }
 
         private static void UpdateMetrics(ExecutionOptions opts, UInt256 effectiveGasPrice)
@@ -426,7 +426,7 @@ namespace Nethermind.Evm.TransactionProcessing
             );
         }
 
-        protected TransactionResult ExecuteEvmCall(
+        protected void ExecuteEvmCall(
             Transaction tx,
             BlockHeader header,
             IReleaseSpec spec,
@@ -546,15 +546,10 @@ namespace Nethermind.Evm.TransactionProcessing
             {
                 if (Logger.IsTrace) Logger.Trace($"EVM EXCEPTION: {ex.GetType().Name}:{ex.Message}");
                 WorldState.Restore(snapshot);
-                return ex.Message;
-            }
-            finally
-            {
-                if (validate && !tx.IsSystem())
-                    header.GasUsed += spentGas;
             }
 
-            return TransactionResult.Ok;
+            if (validate && !tx.IsSystem())
+                header.GasUsed += spentGas;
         }
 
         protected virtual void PayFees(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer, in TransactionSubstate substate, in long spentGas, in UInt256 premiumPerGas, in byte statusCode)
