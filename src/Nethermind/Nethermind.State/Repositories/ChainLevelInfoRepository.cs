@@ -70,5 +70,6 @@ namespace Nethermind.State.Repositories
         public BatchWrite StartBatch() => new(_writeLock);
 
         public ChainLevelInfo? LoadLevel(long number) => _blockInfoDb.Get(number, Rlp.GetStreamDecoder<ChainLevelInfo>(), _blockInfoCache);
+        public ChainLevelInfo? LoadLevel(long number, ReadFlags flags) => _blockInfoDb.Get(number, Rlp.GetStreamDecoder<ChainLevelInfo>(), flags);
     }
 }

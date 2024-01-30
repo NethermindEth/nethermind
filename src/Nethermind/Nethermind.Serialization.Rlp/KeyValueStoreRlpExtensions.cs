@@ -33,13 +33,20 @@ public static class KeyValueStoreRlpExtensions
         return Get(db, key, keyDb, decoder, cache, shouldCache);
     }
 
+    public static TItem? Get<TItem>(this IReadOnlyKeyValueStore db, long key, IRlpStreamDecoder<TItem>? decoder, ReadFlags readFlags) where TItem : class
+    {
+        byte[] keyDb = key.ToBigEndianByteArrayWithoutLeadingZeros();
+        return Get(db, key, keyDb, decoder, null, false, readFlags);
+    }
+
     public static TItem? Get<TCacheKey, TItem>(
         this IReadOnlyKeyValueStore db,
         TCacheKey cacheKey,
         ReadOnlySpan<byte> key,
         IRlpStreamDecoder<TItem> decoder,
         LruCache<TCacheKey, TItem> cache = null,
-        bool shouldCache = true
+        bool shouldCache = true,
+        ReadFlags readFlags = ReadFlags.None
     ) where TItem : class
     {
         TItem item = cache?.Get(cacheKey);
@@ -47,7 +54,7 @@ public static class KeyValueStoreRlpExtensions
         {
             if (decoder is IRlpValueDecoder<TItem> valueDecoder)
             {
-                Span<byte> data = db.GetSpan(key);
+                Span<byte> data = db.GetSpan(key, readFlags);
                 if (data.IsNull())
                 {
                     return null;
@@ -70,7 +77,7 @@ public static class KeyValueStoreRlpExtensions
             }
             else
             {
-                Span<byte> data = db.Get(key);
+                Span<byte> data = db.Get(key, readFlags);
                 if (data.IsNull())
                 {
                     return null;

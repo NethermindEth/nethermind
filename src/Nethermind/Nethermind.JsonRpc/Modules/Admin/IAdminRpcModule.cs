@@ -67,4 +67,6 @@ public interface IAdminRpcModule : IRpcModule
         ExampleResponse = "\"Starting\"",
         IsImplemented = true)]
     ResultWrapper<PruningStatus> admin_prune();
+    Task<ResultWrapper<string>> admin_exportHistory(string destination, int epochFrom, int epochTo);
+    Task<ResultWrapper<string>> admin_verifyHistory(string eraSource, string accumulatorFile);
 }

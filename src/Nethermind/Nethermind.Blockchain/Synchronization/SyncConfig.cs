@@ -67,6 +67,7 @@ namespace Nethermind.Blockchain.Synchronization
         public int ExitOnSyncedWaitTimeSec { get; set; } = 60;
         public int MallocTrimIntervalSec { get; set; } = 300;
         public bool TrieHealing { get; set; } = true;
+        public string ImportDirectory { get; set; }
 
         public override string ToString()
         {
